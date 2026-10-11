@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Album, light</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; overflow: hidden; background: #ededed; color: rgba(0,0,0,0.894); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="light" tabs="home:Home|album:Random Access Memories" sel="1" w="1440" hint-size="1440px,48px"></dc-import>
+  <div style="display: flex; height: 780px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="light" layout="classic" sel="albums" h="780" hint-size="280px,780px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(255,255,255,0.62); border-top: 1px solid rgba(0,0,0,0.059); border-left: 1px solid rgba(0,0,0,0.059); border-top-left-radius: 8px; display: flex; overflow: hidden">
+      <aside aria-label="About this album" style="width: 280px; flex-shrink: 0; box-sizing: border-box; padding: 24px 8px 24px 16px; display: flex; flex-direction: column; gap: 14px; background: rgba(255,255,255,0.5); border-top-left-radius: 8px">
+        <span style="width: 256px; height: 256px; border-radius: 8px; background: linear-gradient(135deg, #111 0%, #3a3a3a 40%, #bdbdbd 52%, #3a3a3a 64%, #111 100%); box-shadow: 0 2px 4px rgba(0,0,0,0.1)"></span>
+        <span style="font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.03em; color: rgba(0,0,0,0.447)">Album · 2013</span>
+        <h1 style="margin: -6px 0 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600; letter-spacing: -0.02em">Random Access Memories</h1>
+        <a href="#" style="display: flex; align-items: center; gap: 8px; margin-top: -4px"><span style="width: 28px; height: 28px; border-radius: 14px; background: #2f2f2f; box-shadow: 0 0 0 2px #f9f9f9"></span><span style="font-size: 14px; line-height: 20px; font-weight: 700; color: #004275">Daft Punk</span><span style="font-size: 11px; color: rgba(0,0,0,0.5)">⌄</span></a>
+        <span style="font-size: 12px; line-height: 16px; color: rgba(0,0,0,0.62); margin-top: -6px">13 songs · 1 hr 14 min</span>
+        <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 4px">
+          <span style="display: inline-flex; align-items: center; height: 32px; border-radius: 4px; background: #005fb8; color: #fff; box-shadow: inset 0 -1px 0 rgba(0,0,0,0.3); margin-right: 4px"><button style="width: 88px; height: 32px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; background: transparent; color: #fff; font: inherit; font-size: 14px; font-weight: 600"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10l8-5z" fill="currentColor"></path></svg>Play</button><span style="width: 1px; height: 20px; background: rgba(255,255,255,0.3)"></span><button aria-label="More ways to play" style="width: 32px; height: 32px; border: 0; background: transparent; color: #fff">⌄</button></span>
+          <button aria-label="Shuffle" style="width: 32px; height: 32px; border-radius: 4px; background: rgba(255,255,255,0.702); border: 1px solid rgba(0,0,0,0.09); color: rgba(0,0,0,0.894)">⤨</button>
+          <button aria-label="Remove from Your Library" style="width: 32px; height: 32px; border: 0; background: transparent; color: #005fb8">♥</button>
+          <button aria-label="Share" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; background: transparent; color: rgba(0,0,0,0.894)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 2.5h3.5V6M13.5 2.5 8 8M6 3.5H3v9.5h9.5V10" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+          <button aria-label="More" style="width: 32px; height: 32px; border: 0; background: transparent; color: rgba(0,0,0,0.894)">⋯</button>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px"><span style="font-size: 14px; font-weight: 600">About this release</span><span style="display: grid; grid-template-columns: 76px 1fr; font-size: 14px"><span style="font-size: 12px; color: rgba(0,0,0,0.447)">Released</span><span style="color: rgba(0,0,0,0.62)">May 17, 2013</span></span><span style="display: grid; grid-template-columns: 76px 1fr; font-size: 14px"><span style="font-size: 12px; color: rgba(0,0,0,0.447)">Label</span><span style="color: rgba(0,0,0,0.62)">Columbia</span></span></div>
+      </aside>
+      <span aria-hidden="true" style="width: 16px; flex-shrink: 0"></span>
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; padding-top: 12px">
+        <div role="toolbar" aria-label="List tools" style="height: 44px; flex-shrink: 0; box-sizing: border-box; padding: 6px 14px 6px 6px; display: flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 600; color: rgba(0,0,0,0.62)">
+          <span style="height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 9px">≡ Play next <span style="width: 1px; height: 16px; background: rgba(0,0,0,0.059); margin: 0 4px"></span><span style="color: rgba(0,0,0,0.447)">⌄</span></span>
+          <span style="height: 32px; display: flex; align-items: center; padding: 0 10px 0 9px">⤨ Shuffle</span>
+          <span style="flex-grow: 1"></span>
+          <span style="height: 32px; display: flex; align-items: center; padding: 0 28px 0 9px">⏚ Filter</span>
+          <span style="height: 32px; display: flex; align-items: center; padding: 0 10px 0 9px">⇅ Album order <span style="color: rgba(0,0,0,0.447); margin-left: 6px">⌄</span></span>
+          <span style="width: 32px; height: 32px; margin-left: 6px; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3l3.2 3.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg></span>
+          <span style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center">⋯</span>
+        </div>
+        <div style="padding-right: 8px"><dc-import name="C-TrackList" theme="light" rs="modern" set="album" n="13" marks="8:playing,5:hover,8:liked,2:liked" hint-size="100%,640px"></dc-import></div>
+      </div>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="light" variant="music" w="1440" hint-size="1440px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

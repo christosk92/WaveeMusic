@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Queue panel</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; padding: 24px 40px 0; display: flex; gap: 40px; background: #202020; color: #fff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; overflow: hidden">
+  <sc-for list="{{cols}}" as="c" hint-placeholder-count="3">
+    <div style="display: flex; flex-direction: column; gap: 10px; width: 340px; flex-shrink: 0">
+      <div style="height: 40px"><div style="font-size: 14px; line-height: 20px; font-weight: 600">{{c.t}}</div><div style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">{{c.d}}</div></div>
+      <dc-import name="C-Rail" theme="dark" mode="queue" rs="{{c.rs}}" state="{{c.st}}" h="810" hint-size="340px,810px"></dc-import>
+    </div>
+  </sc-for>
+  <div style="flex-grow: 1; padding-top: 60px; display: flex; flex-direction: column; gap: 16px; font-size: 13px; line-height: 19px; color: rgba(255,255,255,0.773)">
+    <div><b style="color: #fff">Toggles</b> are stock ToggleButtons (32, r4, checked = accent): Shuffle, Repeat, ∞ Autoplay.</div>
+    <div><b style="color: #fff">Skins</b> follow the Classic row-style option: Modern rows 54 with 34 art; Classic rows 44, hairlines, no art, “title · artists” on one line.</div>
+    <div><b style="color: #fff">The playing card</b> keeps a live equalizer (R3), never three frozen bars.</div>
+    <div><b style="color: #fff">Opened</b> from the player bar’s Queue button, which now survives down to the Compact tier (P1).</div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const cols = [['Modern rows (default)', 'Next in queue, then Autoplay at 72 %', 'modern', 'normal'], ['Classic rows', 'Same panel, Classic row style', 'classic', 'normal'], ['Autoplay off', 'Next up from the album instead of Autoplay', 'modern', 'autoplayOff']].map(c => ({ t: c[0], d: c[1], rs: c[2], st: c[3] }));
+  return { cols };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune artist: small window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 800px; height: 600px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="small" crumb="search › the weeknd" accent="{{accent}}" hint-size="800px,48px"></dc-import>
+  <dc-import name="Z-Part-Band" tier="small" section="home" sub="popular,albums,singles &amp; eps,details" on="popular" title="the weeknd" actions="following" collapsed="true" accent="{{accent}}" hint-size="800px,52px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden">
+    <div style="height: 140px; flex-shrink: 0; position: relative; overflow: hidden; background: linear-gradient(180deg, #3a2f4a 0%, #2a2433 70%, #161616 100%)">
+      <div style="position: absolute; left: 24px; top: 12px; font-size: 13px; color: #a8a8a8">verified artist</div>
+      <div style="position: absolute; left: 18px; bottom: 28px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 200; line-height: 72px; letter-spacing: -1px; white-space: nowrap; color: #ffffff">the weeknd</div>
+      <div style="position: absolute; left: 24px; bottom: 8px; font-size: 13px; line-height: 18px; color: #c8c8c8"><span style="{{accentInk}}">#3 in the world</span> · 118m monthly listeners · 92m followers</div>
+      <div style="position: absolute; right: 24px; bottom: 30px; display: flex; gap: 12px; align-items: center">
+        <button aria-label="play" style="{{playRing}}">▶</button>
+        <button aria-label="shuffle" style="{{ring}}">⇄</button>
+        <button style="{{followPill}}">following</button>
+        <button aria-label="more" style="{{ring}}">⋯</button>
+      </div>
+    </div>
+    <div style="display: flex; gap: 32px; padding: 12px 24px 0 24px">
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+        <div style="display: flex; align-items: baseline; gap: 16px; height: 36px; flex-shrink: 0"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">popular</span><a href="#" style="font-size: 13px">see all 10</a></div>
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+          <div style="{{r.rowStyle}}">
+            <span style="{{r.numStyle}}">{{r.num}}</span>
+            <span style="{{r.artStyle}}"></span>
+            <span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="{{r.titleStyle}}">{{r.title}}</span><span style="{{r.subStyle}}">{{r.plays}}</span></span>
+            <span style="{{r.timeStyle}}">{{r.time}}</span>
+            <button aria-label="more" style="{{r.moreStyle}}">⋯</button>
+          </div>
+        </sc-for>
+      </div>
+      <div style="width: 220px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px">
+        <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px; height: 36px; display: flex; align-items: center">latest release</span>
+        <a href="#" style="display: flex; flex-direction: column; gap: 6px"><span style="width: 120px; height: 120px; border-radius: 2px; background: #4a2a2a; display: block"></span><span style="font-size: 15px; line-height: 20px; color: #ffffff">Hurry Up Tomorrow</span><span style="font-size: 13px; line-height: 18px; color: #a8a8a8">album · 2025 · 22 songs</span></a>
+        <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px; margin-top: 8px">artist pick</span>
+        <a href="#" style="display: flex; gap: 12px; align-items: center"><span style="width: 48px; height: 48px; border-radius: 2px; background: #2a3a4a; display: block; flex-shrink: 0"></span><span style="display: flex; flex-direction: column; gap: 1px; min-width: 0"><span style="font-size: 15px; line-height: 20px; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">After Hours (Deluxe)</span><span style="font-size: 12px; line-height: 16px; color: #a8a8a8">"the whole story, in order."</span></span></a>
+      </div>
+    </div>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="medium" title="Save Your Tears" artist="The Weeknd" art="#3a2a5a" progress="56" saved="false" accent="{{accent}}" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const data = [['Blinding Lights', '4.9B plays', '3:20', '#7a2a2a'], ['Starboy', '3.8B plays', '3:50', '#5a2a3a'], ['Save Your Tears', '3.2B plays', '3:35', '#3a2a5a'], ['The Hills', '2.6B plays', '4:02', '#2a2a2a'], ['Die For You', '2.4B plays', '4:20', '#4a3a2a']];
+  const rows = data.map((d, i) => {
+    const play = i === 2, hover = i === 4;
+    return {
+      num: play ? '▮▮▮' : String(i + 1), title: d[0], plays: d[1], time: d[2],
+      rowStyle: 'display: grid; grid-template-columns: 44px 52px minmax(0, 1fr) 52px 40px; align-items: center; height: 52px; flex-shrink: 0; ' + (hover ? 'background: rgba(255,255,255,0.05)' : ''),
+      numStyle: 'font-family: ' + D + '; font-weight: 300; font-size: ' + (play ? 11 : 28) + 'px; line-height: 32px; letter-spacing: ' + (play ? '1px' : '0') + '; padding-left: 4px; color: ' + (play ? accent : '#7a7a7a') + '; font-variant-numeric: tabular-nums',
+      artStyle: 'width: 40px; height: 40px; border-radius: 2px; background: ' + d[3] + '; display: block',
+      titleStyle: 'font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (play ? accent : '#ffffff'),
+      subStyle: 'font-size: 13px; line-height: 18px; font-variant-numeric: tabular-nums; color: ' + (play ? accent : '#9c9c9c'),
+      timeStyle: 'font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; color: ' + (play ? accent : '#9c9c9c'),
+      moreStyle: 'width: 40px; height: 40px; border: 0; background: transparent; color: #ffffff; font-size: 16px; padding: 0; opacity: ' + (hover ? 1 : 0),
+    };
+  });
+  return {
+    accent, rows,
+    accentInk: 'color: ' + accent,
+    playRing: 'width: 36px; height: 36px; border-radius: 18px; border: 0; background: ' + accent + '; color: #000; font-size: 13px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0',
+    ring: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #ffffff; background: transparent; color: #ffffff; font-size: 13px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0',
+    followPill: 'height: 36px; padding: 0 14px; box-sizing: border-box; border-radius: 18px; border: 2px solid ' + accent + '; background: transparent; color: ' + accent + '; font: inherit; font-size: 13px; flex-shrink: 0',
+  };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Panorama breakpoints</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="{{vars}} width: 1440px; height: 1640px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <header style="padding: 36px 36px 20px 36px; display: flex; flex-direction: column; gap: 6px">
+    <span style="font-size: 12px; line-height: 16px; color: var(--t2)">Panorama · window sizes · thresholds in effective pixels (DIP)</span>
+    <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600">Four width tiers, one height rule</h1>
+    <p style="margin: 0; max-width: 1040px; font-size: 14px; line-height: 20px; color: var(--t2)">The thresholds and what collapses at each are Zune's structure: the right panel goes inline at 1008, the play bar steps narrow → medium at 760 and full at 1240, and Huge docks two panes from 1920. Panorama's one exception is typographic: panorama titles drop from Display 68 to Title Large below 1000 px; that is a type rule, not a tier edge. Panorama renders each tier with WinUI parts. The pivot band stays 88 tall in every tier; only what sits inside it changes.</p>
+  </header>
+  <main style="flex-grow: 1; min-height: 0; background: var(--layer); border-top: 1px solid var(--stroke); padding: 24px 36px; display: flex; flex-direction: column; gap: 28px">
+    <section aria-label="Width scale" style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Width</h2>
+      <div style="position: relative; height: 92px">
+        <div style="position: absolute; left: 0; right: 0; top: 0; height: 44px; display: flex; gap: 2px">
+          <sc-for list="{{bands}}" as="b" hint-placeholder-count="5"><span style="{{b.style}}"><span style="font-size: 14px; line-height: 20px; font-weight: 600">{{b.name}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">{{b.range}}</span></span></sc-for>
+        </div>
+        <sc-for list="{{marks}}" as="m" hint-placeholder-count="6"><span style="{{m.style}}"><span style="width: 1px; height: 12px; background: var(--t3)"></span><span style="font-size: 12px; line-height: 16px; color: var(--t2); font-variant-numeric: tabular-nums">{{m.v}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t3); white-space: nowrap">{{m.what}}</span></span></sc-for>
+      </div>
+      <span style="font-size: 12px; line-height: 16px; color: var(--t2)">Scale is logarithmic; thresholds are Zune’s. The real minimum window is 300 DIP wide, so Compact covers 300–639. Below 360 Recents moves from row 1 into the More flyout.</span>
+    </section>
+    <section aria-label="What changes per tier" style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">What each region does per tier</h2>
+      <div role="table" aria-label="Regions by tier" style="display: flex; flex-direction: column; border-radius: 8px; overflow: hidden; border: 1px solid var(--stroke)">
+        <div role="row" style="display: grid; grid-template-columns: 150px repeat(4, minmax(0, 1fr)); gap: 16px; padding: 10px 16px; background: var(--card); font-size: 12px; line-height: 16px; font-weight: 600; color: var(--t2)"><span>Region</span><span>Compact · &lt; 640</span><span>Small · 640–1007</span><span>Standard · 1008–1919</span><span>Huge · ≥ 1920</span></div>
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="13">
+          <div role="row" style="{{r.style}}"><span style="font-weight: 600">{{r.k}}</span><span>{{r.c}}</span><span>{{r.s}}</span><span style="color: var(--t2)">{{r.d}}</span><span>{{r.h}}</span></div>
+        </sc-for>
+      </div>
+    </section>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px">
+      <section aria-label="Height" style="display: flex; flex-direction: column; gap: 10px">
+        <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Height</h2>
+        <div style="padding: 14px 16px; border-radius: 8px; background: var(--card); border: 1px solid var(--cardb); display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 20px">
+          <span>Title bar 48, band 88 and play bar 84 are reserved first: 220 of every height. At 600 tall the page gets 380.</span>
+          <span><strong>Below 720 tall</strong> entity heroes become one header row (art 112, Title Large, actions beside the title) and full-screen art caps at 40 % of the height.</span>
+          <span><strong>Below 520 tall</strong> the band keeps its 88; the play bar switches to the 64 mini bar, so the page gets everything above 200.</span>
+          <span><strong>Below 400 tall</strong> (down to the 340 minimum, 140 left for the page) the header row shrinks again: art 64, the title at Subtitle 20/28 with the actions on its line, so at least one row of content stays in view. Panorama titles keep their own rule: Title Large below 1000 wide.</span>
+        </div>
+      </section>
+      <section aria-label="Motion" style="display: flex; flex-direction: column; gap: 10px">
+        <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">No layout jumps</h2>
+        <div style="padding: 14px 16px; border-radius: 8px; background: var(--card); border: 1px solid var(--cardb); display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 20px">
+          <sc-for list="{{motion}}" as="m" hint-placeholder-count="7"><span style="display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px"><span style="color: var(--t2)">{{m.k}}</span><span>{{m.v}}</span></span></sc-for>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":1640}}'>
+class Component extends DCLogic {
+renderVals() {
+  const dark = (this.props.theme ?? 'dark') !== 'light';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', card: 'rgba(255,255,255,0.0512)', cardb: 'rgba(0,0,0,0.1)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: '#60cdff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', card: '#fbfbfb', cardb: 'rgba(0,0,0,0.0578)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: '#005fb8' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const lo = Math.log(300), hi = Math.log(3840), span = hi - lo;
+  const x = (v) => ((Math.log(v) - lo) / span) * 100;
+  const B = [['Compact', '300–639', 300, 640, 0.10], ['Small', '640–1007', 640, 1008, 0.16], ['Standard', '1008–1919', 1008, 1920, 0.06], ['Huge', '1920–3199', 1920, 3200, 0.16], ['Huge 4K', '3200 and up', 3200, 3840, 0.22]];
+  const bands = B.map((b) => ({ name: b[0], range: b[1],
+    style: 'width: ' + (x(b[3]) - x(b[2])).toFixed(2) + '%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; padding: 0 10px; border-radius: 4px; overflow: hidden; white-space: nowrap; background: color-mix(in srgb, var(--acc) ' + Math.round(b[4] * 100) + '%, transparent)' }));
+  const M = [[640, 'nav steps, mini bar'], [760, 'bar medium'], [1008, 'panel inline'], [1240, 'bar full'], [1920, 'Huge grids, two panes dock'], [3200, '4K columns']];
+  const marks = M.map((m, i) => ({ v: m[0], what: m[1],
+    style: 'position: absolute; top: 46px; left: ' + x(m[0]).toFixed(2) + '%; display: flex; flex-direction: column; align-items: ' + (i === M.length - 1 ? 'flex-end' : 'flex-start') + '; gap: 2px; transform: translateX(' + (i === M.length - 1 ? '-100%' : '0') + ')' }));
+  const R = [
+    ['Title bar', 'Back, mark, search button, avatar; notifications move into the account menu', 'Search becomes a button that opens the box over row 1; avatar without name', 'Breadcrumb, AutoSuggestBox 280, name, notifications', 'AutoSuggestBox 360, everything else as Standard'],
+    ['Band row 1', 'Sections at Subtitle 20/28; text x = 16; pins leave the band', 'Sections at Title 28/36; pins leave the band', 'Title 28/36, pins (up to six) at the right', 'Title 28/36, pins with the playing pill'],
+    ['Band row 2', 'Three words, the rest under More; no context name', 'Four words, the rest under More', 'All words; entity name and actions on the right', 'All words, entity actions always visible'],
+    ['Panorama title', 'Title 28/36, two lines, then ellipsis', 'Title Large 40/52, one line, ellipsis', 'Display 68/92, one line, ellipsis and tooltip', 'Display 68/92; the ramp tops out, art and columns grow instead'],
+    ['Entity layout', 'Art and meta stack; row 2 words switch columns', 'Header row; row 2 words switch columns', 'Panorama columns scroll sideways, row 2 follows', 'Every panorama column on screen, no sideways scroll'],
+    ['Track rows', '52 with art, artist · album on line two; time in the row menu', '52 with art; album kept, date dropped', 'Every column', 'Every column, wider album column'],
+    ['Grids', '2-up, cells ≥ 160', '4-up, cells ≥ 140', 'Rows of 140–148 cells', 'Cells 180–200, 8–11 across; 16 across at 4K'],
+    ['Right panel', 'Bottom sheet over the page, 85 % tall', 'Overlay pane 340, acrylic, light dismiss', 'Inline 340 on Mica, the layer gets the 8 px seam', 'Two panes dock, 380 each (Lyrics + Queue); 4K 480 each'],
+    ['Play bar', 'Mini bar 64: progress line, art, title, save, pause, next', 'Narrow 640–759: volume and More · medium from 760: Lyrics, Queue, Devices words', 'Medium below 1240 · full 84 with labels from 1240', 'Full 84 with Up next and a 140 volume slider'],
+    ['Full screen', 'Now playing is the sheet the mini bar opens', 'Art 280 beside Title Large, card 640', 'Display 68 title, card 880', 'Card on Bloom by default; four layouts, four faces, art up to 720'],
+    ['Page inset', '16', '24', '36', '36; reading pages cap at 1040']
+  ];
+  const rows = R.map((r, i) => ({ k: r[0], c: r[1], s: r[2], d: r[3], h: r[4],
+    style: 'display: grid; grid-template-columns: 150px repeat(4, minmax(0, 1fr)); gap: 16px; padding: 9px 16px; font-size: 13px; line-height: 19px; border-top: 1px solid var(--stroke); ' + (i % 2 ? 'background: var(--card)' : '') }));
+  const motion = [
+    ['Hysteresis', 'Widening commits at the line; narrowing holds 24 DIP below it (the app’s player-bar hysteresis), so a drag on the edge never flickers.'],
+    ['Band words', 'Row 1 changes size by a 250 ms scale on each word; the row keeps its 48 height, so nothing below moves.'],
+    ['Panel', 'Inline to overlay: the content layer animates its width over 250 ms, then the pane lifts onto acrylic.'],
+    ['Play bar', '84 to 64: the seek row folds into the 3 px progress line over 250 ms; the page reserves the old height until it settles.'],
+    ['Grids', 'A column count change moves cells to their new slots (FLIP, 333 ms decelerate); no cell is re-created.'],
+    ['Titles', 'Display to Title Large crossfades with a scale; the title row height animates from 92 to 52.'],
+    ['Reduced motion', 'Every one of these becomes a 83 ms fade.']
+  ].map((m) => ({ k: m[0], v: m[1] }));
+  return { vars, bands, marks, rows, motion };
+}
+}
+</script>
+</body>
+</html>

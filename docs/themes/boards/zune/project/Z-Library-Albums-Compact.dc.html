@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune collection: albums · compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="compact" accent="{{accent}}" hint-size="400px,48px"></dc-import>
+  <dc-import name="Z-Part-Band" tier="compact" section="library" sub="liked,playlists,albums,artists,podcasts,audiobooks" on="albums" accent="{{accent}}" hint-size="400px,92px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex; padding: 0 0 0 16px; gap: 12px; overflow: hidden">
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; overflow: hidden">
+      <div style="height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 12px">
+        <button style="height: 40px; border: 0; background: transparent; color: #ffffff; font: inherit; font-size: 15px; padding: 0; display: flex; align-items: center; gap: 6px">recently added <span style="font-size: 11px; color: #a8a8a8">▾</span></button>
+        <span style="flex-grow: 1"></span>
+        <span style="font-size: 13px; color: #7a7a7a">312 albums</span>
+        <button aria-label="find in albums" style="width: 40px; height: 40px; border: 0; background: transparent; color: #a8a8a8; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg></button>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+        <sc-for list="{{albums}}" as="al" hint-placeholder-count="6">
+          <a href="#" style="display: flex; flex-direction: column; gap: 6px; min-width: 0"><span style="{{al.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="{{al.name}}">{{al.n}}</span><span style="{{al.sub}}">{{al.by}}</span></span></a>
+        </sc-for>
+      </div>
+    </div>
+    <nav aria-label="jump to letter" style="width: 24px; flex-shrink: 0; display: flex; flex-direction: column; padding-top: 48px; margin-right: 4px">
+      <sc-for list="{{jump}}" as="g" hint-placeholder-count="13">
+        <button aria-label="{{g.label}}" style="{{g.style}}"><sc-for list="{{g.letters}}" as="l" hint-placeholder-count="2"><span style="{{l.style}}">{{l.c}}</span></sc-for></button>
+      </sc-for>
+    </nav>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="mini" title="Get Lucky" artist="Daft Punk · Random Access Memories" art="#3a2f22" progress="41" accent="{{accent}}" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const albums = [['Random Access Memories', 'Daft Punk', '#3a2f22', true], ['OutRun', 'Kavinsky', '#6b2f4a', false], ['Endless Summer', 'The Midnight', '#6b4a2f', false], ['Armageddon', 'aespa', '#5b3b6b', false], ['Hurry Up, We’re Dreaming', 'M83', '#3b4a6b', false], ['Trilogy', 'Carpenter Brut', '#6b2f2f', false]].map((d) => ({
+    n: d[0], by: d[1],
+    art: 'width: 100%; aspect-ratio: 1 / 1; border-radius: 2px; background: ' + d[2] + '; display: block; box-sizing: border-box' + (d[3] ? '; outline: 2px solid ' + accent + '; outline-offset: 2px' : ''),
+    name: 'font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (d[3] ? accent : '#ffffff'),
+    sub: 'font-size: 13px; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (d[3] ? accent : '#9c9c9c'),
+  }));
+  const has = 'acdfghijkmnt';
+  const pairs = ['ab', 'cd', 'ef', 'gh', 'ij', 'kl', 'mn', 'op', 'qr', 'st', 'uv', 'wx', 'yz'];
+  const jump = pairs.map((p, i) => ({
+    label: 'jump to ' + p[0] + ' and ' + p[1],
+    style: 'width: 24px; height: 40px; border: 0; padding: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; font: inherit; background: ' + (i === 1 ? 'rgba(255,255,255,0.08)' : 'transparent'),
+    letters: p.split('').map((c) => ({ c, style: 'font-size: 11px; line-height: 14px; font-weight: 600; color: ' + (has.indexOf(c) >= 0 ? (i === 1 ? accent : '#ffffff') : '#4f4f4f') })),
+  }));
+  return { accent, albums, jump };
+}
+}
+</script>
+</body>
+</html>

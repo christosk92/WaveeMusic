@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune light: play bar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 680px; box-sizing: border-box; background: #f5f5f5; color: #111111; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; padding: 32px 48px; display: flex; flex-direction: column; gap: 14px; overflow: hidden">
+  <div style="font-size: 13px; color: #8a8a8a">music · full tier (1240 and wider) · the seek line is the bar's top edge, full width · "playing on" rides above the title in the accent</div>
+  <div style="height: 72px; flex-shrink: 0; background: #ebebeb; position: relative; display: flex; align-items: center; padding: 0 12px 0 24px; gap: 24px">
+    <div style="position: absolute; left: 0; top: 0; right: 0; height: 2px; background: rgba(0,0,0,0.12)"><div style="{{progress}}"></div><div style="{{knob}}"></div></div>
+    <div style="display: flex; align-items: center; gap: 12px; width: 320px; flex-shrink: 0">
+      <span style="width: 48px; height: 48px; border-radius: 2px; background: #6b2f4a; flex-shrink: 0"></span>
+      <span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 11px; line-height: 14px; color: {{accent}}">playing on living room</span><span style="font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Nightcall</span><span style="font-size: 13px; line-height: 18px; color: #5a5a5a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Kavinsky · OutRun</span></span>
+      <button aria-label="saved" style="width: 32px; height: 32px; border: 0; background: transparent; color: {{accent}}; font-size: 16px; padding: 0">♥</button>
+    </div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; gap: 2px">
+      <div style="display: flex; align-items: center; gap: 16px">
+        <button aria-label="previous" style="width: 32px; height: 32px; border: 0; background: transparent; color: #111111; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 3h2v10H3zM13 3 6 8l7 5z"/></svg></button>
+        <button aria-label="pause" style="{{playDisc}}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg></button>
+        <button aria-label="next" style="width: 32px; height: 32px; border: 0; background: transparent; color: #111111; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M11 3h2v10h-2zM3 3l7 5-7 5z"/></svg></button>
+      </div>
+      <span style="font-size: 12px; color: #5a5a5a; font-variant-numeric: tabular-nums">1:14 · -3:04</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 2px; width: 470px; flex-shrink: 0; justify-content: flex-end; font-size: 13px">
+      <button aria-label="shuffle" style="width: 32px; height: 32px; border: 0; background: transparent; color: {{accent}}; font-size: 16px; padding: 0">⇄</button>
+      <button aria-label="repeat" style="width: 32px; height: 32px; border: 0; background: transparent; color: #5a5a5a; font-size: 16px; padding: 0">↻</button>
+      <button aria-label="mute" style="width: 32px; height: 32px; border: 0; background: transparent; color: #111111; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 6h3l4-3v10l-4-3H2z"/><path d="M11.5 5.5a3.5 3.5 0 0 1 0 5"/></svg></button>
+      <span style="width: 96px; height: 2px; background: rgba(0,0,0,0.18); margin: 0 10px 0 2px; display: block"><span style="display: block; width: 70%; height: 2px; background: #111111"></span></span>
+      <button style="height: 32px; border: 0; background: transparent; color: #5a5a5a; font: inherit; font-size: 13px; padding: 0 8px">lyrics</button>
+      <button style="height: 32px; border: 0; background: transparent; color: #5a5a5a; font: inherit; font-size: 13px; padding: 0 8px">video ▾</button>
+      <button style="height: 32px; border: 0; background: transparent; color: #5a5a5a; font: inherit; font-size: 13px; padding: 0 8px">queue</button>
+      <button style="height: 32px; border: 0; background: transparent; color: {{accent}}; font: inherit; font-size: 13px; padding: 0 8px">devices</button>
+      <button aria-label="full screen" style="width: 32px; height: 32px; border: 0; background: transparent; color: #5a5a5a; font-size: 16px; padding: 0">⤢</button>
+      <button aria-label="more" style="width: 32px; height: 32px; border: 0; background: transparent; color: #5a5a5a; font-size: 16px; padding: 0">⋯</button>
+    </div>
+  </div>
+  <div style="font-size: 13px; color: #8a8a8a; margin-top: 6px">podcast · −10 / +10 and the speed word replace shuffle and repeat · chapter ticks sit on the seek line · lyrics reads "transcript"</div>
+  <div style="height: 72px; flex-shrink: 0; background: #ebebeb; position: relative; display: flex; align-items: center; padding: 0 12px 0 24px; gap: 24px">
+    <div style="position: absolute; left: 0; top: 0; right: 0; height: 2px; background: rgba(0,0,0,0.12)"><div style="{{progress2}}"></div></div>
+    <span style="position: absolute; left: 18%; top: 0; width: 1px; height: 8px; background: #111111; opacity: 0.6"></span><span style="position: absolute; left: 41%; top: 0; width: 1px; height: 8px; background: #111111; opacity: 0.6"></span><span style="position: absolute; left: 63%; top: 0; width: 1px; height: 8px; background: #111111; opacity: 0.6"></span><span style="position: absolute; left: 84%; top: 0; width: 1px; height: 8px; background: #111111; opacity: 0.6"></span>
+    <div style="display: flex; align-items: center; gap: 12px; width: 320px; flex-shrink: 0">
+      <span style="width: 48px; height: 48px; border-radius: 2px; background: #2f4a3b; flex-shrink: 0"></span>
+      <span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Why the Premier League keeps changing</span><span style="font-size: 13px; line-height: 18px; color: #5a5a5a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">The Rest Is Football · 9 oct</span></span>
+      <button aria-label="save to your episodes" style="width: 32px; height: 32px; border: 0; background: transparent; color: #111111; font-size: 16px; padding: 0">♡</button>
+    </div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; gap: 2px">
+      <div style="display: flex; align-items: center; gap: 16px">
+        <button style="height: 32px; border: 0; background: transparent; color: #111111; font: inherit; font-size: 13px; padding: 0 6px; font-variant-numeric: tabular-nums">−10</button>
+        <button aria-label="pause" style="{{playDisc}}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg></button>
+        <button style="height: 32px; border: 0; background: transparent; color: #111111; font: inherit; font-size: 13px; padding: 0 6px; font-variant-numeric: tabular-nums">+10</button>
+        <button style="height: 32px; width: 48px; border: 0; background: transparent; color: #5a5a5a; font: inherit; font-size: 13px; padding: 0; font-variant-numeric: tabular-nums">1.5×</button>
+      </div>
+      <span style="font-size: 12px; color: #5a5a5a; font-variant-numeric: tabular-nums">23:40 · -24:12</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 2px; width: 470px; flex-shrink: 0; justify-content: flex-end; font-size: 13px">
+      <button aria-label="mute" style="width: 32px; height: 32px; border: 0; background: transparent; color: #111111; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 6h3l4-3v10l-4-3H2z"/><path d="M11.5 5.5a3.5 3.5 0 0 1 0 5"/></svg></button>
+      <button style="height: 32px; border: 0; background: transparent; color: #5a5a5a; font: inherit; font-size: 13px; padding: 0 8px">transcript</button>
+      <button style="height: 32px; border: 0; background: transparent; color: #5a5a5a; font: inherit; font-size: 13px; padding: 0 8px">queue</button>
+      <button style="height: 32px; border: 0; background: transparent; color: #5a5a5a; font: inherit; font-size: 13px; padding: 0 8px">devices</button>
+      <button aria-label="full screen" style="width: 32px; height: 32px; border: 0; background: transparent; color: #5a5a5a; font-size: 16px; padding: 0">⤢</button>
+      <button aria-label="more" style="width: 32px; height: 32px; border: 0; background: transparent; color: #5a5a5a; font-size: 16px; padding: 0">⋯</button>
+    </div>
+  </div>
+  <div style="font-size: 13px; color: #8a8a8a; margin-top: 6px">medium tier (760) · what the words dropped goes into ⋯ · a loading longer than 450 ms turns the seek line into a sweep</div>
+  <div style="display: flex; gap: 32px; align-items: flex-start">
+    <div style="width: 760px; height: 72px; flex-shrink: 0; background: #ebebeb; position: relative; display: flex; align-items: center; padding: 0 8px 0 16px; gap: 16px">
+      <div style="position: absolute; left: 0; top: 0; right: 0; height: 2px; background: rgba(0,0,0,0.12)"><div style="{{sweep}}"></div></div>
+      <div style="display: flex; align-items: center; gap: 12px; width: 240px; flex-shrink: 0">
+        <span style="width: 48px; height: 48px; border-radius: 2px; background: #2a2a2a; flex-shrink: 0"></span>
+        <span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="font-size: 15px; line-height: 20px; color: #5a5a5a">loading…</span><span style="font-size: 13px; line-height: 18px; color: #8a8a8a">Resonance · HOME</span></span>
+      </div>
+      <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; gap: 2px">
+        <div style="display: flex; align-items: center; gap: 12px">
+          <button aria-label="previous" style="width: 32px; height: 32px; border: 0; background: transparent; color: #111111; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 3h2v10H3zM13 3 6 8l7 5z"/></svg></button>
+          <button aria-label="play" style="{{playDisc}}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg></button>
+          <button aria-label="next" style="width: 32px; height: 32px; border: 0; background: transparent; color: #111111; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M11 3h2v10h-2zM3 3l7 5-7 5z"/></svg></button>
+        </div>
+        <span style="font-size: 12px; color: #5a5a5a">0:00</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 2px; flex-shrink: 0; font-size: 13px">
+        <button aria-label="volume" style="width: 32px; height: 32px; border: 0; background: transparent; color: #111111; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 6h3l4-3v10l-4-3H2z"/><path d="M11.5 5.5a3.5 3.5 0 0 1 0 5"/></svg></button>
+        <button style="height: 32px; border: 0; background: transparent; color: #5a5a5a; font: inherit; font-size: 13px; padding: 0 8px">lyrics</button>
+        <button style="height: 32px; border: 0; background: transparent; color: #5a5a5a; font: inherit; font-size: 13px; padding: 0 8px">devices</button>
+        <button aria-label="more" style="width: 32px; height: 32px; border: 0; background: transparent; color: #5a5a5a; font-size: 16px; padding: 0">⋯</button>
+      </div>
+    </div>
+    <div style="display: flex; gap: 24px; align-items: flex-end">
+      <div style="width: 200px; background: #ffffff; box-shadow: 0 12px 32px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.06); padding: 8px 0; display: flex; flex-direction: column; font-size: 14px">
+        <span style="height: 36px; display: flex; align-items: center; padding: 0 16px">now playing</span>
+        <span style="height: 36px; display: flex; align-items: center; padding: 0 16px; color: {{accent}}">shuffle</span>
+        <span style="height: 36px; display: flex; align-items: center; padding: 0 16px">repeat</span>
+        <span style="height: 36px; display: flex; align-items: center; padding: 0 16px">queue</span>
+        <span style="height: 36px; display: flex; align-items: center; padding: 0 16px">full screen</span>
+        <span style="height: 36px; display: flex; align-items: center; padding: 0 16px; justify-content: space-between">switch to video <span style="color: #8a8a8a">▸</span></span>
+        <span style="height: 36px; display: flex; align-items: center; padding: 0 16px">mute</span>
+      </div>
+      <div style="width: 52px; height: 168px; background: #ffffff; box-shadow: 0 12px 32px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.06); display: flex; align-items: center; justify-content: center">
+        <span style="width: 2px; height: 128px; background: rgba(0,0,0,0.18); position: relative; display: block"><span style="position: absolute; left: 0; bottom: 0; width: 2px; height: 70%; background: #111111; display: block"></span><span style="position: absolute; left: -5px; bottom: 70%; width: 12px; height: 12px; border-radius: 6px; background: #111111; display: block"></span></span>
+      </div>
+      <div style="width: 256px; background: #ffffff; box-shadow: 0 12px 32px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.06); padding: 16px; display: flex; flex-direction: column; gap: 12px; font-size: 13px">
+        <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; font-weight: 300">playback speed</span>
+        <span style="width: 100%; height: 2px; background: rgba(0,0,0,0.18); position: relative; display: block"><span style="position: absolute; left: 0; top: 0; width: 40%; height: 2px; background: {{accent}}; display: block"></span><span style="position: absolute; left: 40%; top: -5px; width: 12px; height: 12px; border-radius: 6px; background: #111111; display: block"></span></span>
+        <span style="display: flex; justify-content: space-between; color: #5a5a5a"><span>1×</span><span style="color: #111111">1.5×</span><span>2×</span><span>3×</span></span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#e0197f","options":["#e0197f","#d65a00","#0a7fb5","#4f8f1a","#8a4fd6"]},"$preview":{"width":1440,"height":680}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#e0197f';
+  return {
+    accent,
+    progress: 'width: 29%; height: 2px; background: ' + accent,
+    knob: 'position: absolute; left: 29%; top: -5px; width: 12px; height: 12px; border-radius: 6px; background: ' + accent + '; margin-left: -6px',
+    progress2: 'width: 49%; height: 2px; background: ' + accent,
+    sweep: 'width: 22%; height: 2px; margin-left: 38%; background: linear-gradient(90deg, transparent, ' + accent + ', transparent)',
+    playDisc: 'width: 40px; height: 40px; border-radius: 20px; border: 0; background: ' + accent + '; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0',
+  };
+}
+}
+</script>
+</body>
+</html>

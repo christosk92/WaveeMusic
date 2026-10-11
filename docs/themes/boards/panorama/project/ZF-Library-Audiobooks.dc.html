@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Collection: audiobooks</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} width: 1440px; height: 960px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" sel="library" items="Liked|Playlists|Albums:312|Artists:184|Podcasts|Audiobooks" sub-sel="{{five}}" lower="{{lower}}" hint-size="1440px,136px"></dc-import>
+  <main style="height: 740px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; padding: 12px 36px 0 36px; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke)">
+    <div style="display: flex; align-items: center; gap: 8px; height: 40px; flex-shrink: 0">
+      <span style="font-size: 14px; color: var(--t2)">Sort by</span>
+      <button style="height: 32px; display: inline-flex; align-items: center; gap: 24px; padding: 0 10px 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px">Recently played<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      <span style="flex-grow: 1"></span>
+      <span style="font-size: 12px; color: var(--t2)">Listening time this month · <span style="color: var(--t1)">9 h 20 min</span> of 15 h left · Resets 1 Nov</span>
+      <span role="progressbar" aria-label="Listening time left this month" aria-valuenow="62" aria-valuemin="0" aria-valuemax="100" style="width: 120px; height: 4px; border-radius: 2px; background: var(--strong); position: relative; margin-left: 4px"><span style="position: absolute; left: 0; top: 0; width: 62%; height: 4px; border-radius: 2px; background: var(--t1)"></span></span>
+    </div>
+    <div style="flex-grow: 1; min-height: 0; display: flex; gap: 40px">
+      <section aria-label="Your audiobooks" style="width: 360px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden">
+        <sc-for list="{{groups}}" as="g" hint-placeholder-count="3">
+          <div style="display: flex; flex-direction: column; flex-shrink: 0">
+            <h2 style="margin: 0; height: 36px; display: flex; align-items: flex-end; gap: 8px; padding: 0 0 4px 12px; box-sizing: border-box; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--t2)">{{g.label}}<span style="font-weight: 400">{{g.count}}</span></h2>
+            <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="2">
+              <a href="#" style="{{r.row}}"><sc-if value="{{r.sel}}" hint-placeholder-val="{{ false }}"><span style="position: absolute; left: 0; top: 18px; width: 3px; height: 16px; border-radius: 2px; background: var(--acc)"></span></sc-if><span style="{{r.art}}"><sc-if value="{{r.hasBar}}" hint-placeholder-val="{{ false }}"><span style="position: absolute; left: 3px; right: 3px; bottom: 3px; height: 3px; border-radius: 2px; background: rgba(0,0,0,0.5)"><span style="{{r.fill}}"></span></span></sc-if></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="{{r.name}}">{{r.n}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.meta}}</span></span><span style="display: flex; justify-content: center; color: var(--t2)"><sc-if value="{{r.cached}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-label="On this PC" role="img"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.2"></circle><path d="M8 4.8v5.4M5.8 8.2 8 10.4l2.2-2.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></sc-if><sc-if value="{{r.done}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-label="Finished" role="img"><path d="M2.5 8.5 6 12l7.5-7.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></sc-if></span></a>
+            </sc-for>
+          </div>
+        </sc-for>
+      </section>
+      <section aria-label="Project Hail Mary" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden">
+        <div style="display: flex; gap: 24px; align-items: flex-end; flex-shrink: 0">
+          <span role="img" aria-label="Project Hail Mary cover" style="width: 184px; height: 184px; flex-shrink: 0; border-radius: 8px; background: linear-gradient(160deg, #1f3a4a, #0f1f2a); box-shadow: 0 8px 16px rgba(0,0,0,0.26)"></span>
+          <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0; flex-grow: 1">
+            <span style="font-size: 12px; line-height: 16px; color: var(--t2)">Audiobook · <a href="#" style="color: var(--acct)">Andy Weir</a> · Read by Ray Porter</span>
+            <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Project Hail Mary</h2>
+            <span style="display: flex; align-items: center; gap: 12px; font-size: 14px; line-height: 20px; color: var(--t2)"><span style="width: 220px; height: 4px; border-radius: 2px; background: var(--strong); position: relative; flex-shrink: 0"><span style="position: absolute; left: 0; top: 0; width: 62%; height: 4px; border-radius: 2px; background: var(--acc)"></span></span><span><span style="color: var(--t1)">6 h 12 min left</span> · Chapter 14 of 30 · 16 h 10 min</span></span>
+            <span style="display: flex; gap: 8px; align-items: center; padding-top: 12px">
+              <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 4px; background: var(--acc); color: var(--onacc); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg>Resume</button>
+              <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8a5 5 0 1 0 1.5-3.5M3 2.5V5h2.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg>Start over</button>
+              <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; border: 0; border-radius: 4px; background: transparent; color: var(--t1); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.5 6 12l7.5-7.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg>Mark as finished</button>
+              <button aria-label="More" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+              <span style="display: inline-flex; align-items: center; gap: 6px; margin-left: 12px; font-size: 12px; line-height: 16px; color: var(--t2)"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.2"></circle><path d="M8 4.8v5.4M5.8 8.2 8 10.4l2.2-2.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>On this PC</span>
+            </span>
+          </div>
+        </div>
+        <p style="margin: 16px 0 0 0; max-width: 720px; font-size: 14px; line-height: 20px; color: var(--t2); flex-shrink: 0">Ryland Grace is the sole survivor on a desperate, last-chance mission, and if he fails, humanity and the earth itself will perish. <a href="#" style="color: var(--acct)">More</a></p>
+        <div style="display: flex; align-items: center; gap: 16px; height: 40px; margin-top: 12px; flex-shrink: 0">
+          <h3 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Chapters</h3>
+          <a href="#" style="font-size: 14px; color: var(--acct)">Jump to where you left off</a>
+          <span style="flex-grow: 1"></span>
+          <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: var(--t1); font: inherit; font-size: 14px">Speed 1.2×<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+          <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: var(--t1); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M12.5 10A5.5 5.5 0 0 1 6 3.5a5.5 5.5 0 1 0 6.5 6.5z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg>Sleep timer: off</button>
+        </div>
+        <div role="table" aria-label="Chapters" style="display: flex; flex-direction: column; min-height: 0">
+          <sc-for list="{{chapters}}" as="c" hint-placeholder-count="8">
+            <div role="row" style="{{c.row}}"><span style="{{c.num}}">{{c.n}}</span><span style="display: flex; align-items: center; gap: 16px; min-width: 0"><span style="{{c.title}}">{{c.t}}</span><sc-if value="{{c.cur}}" hint-placeholder-val="{{ false }}"><span style="width: 200px; height: 4px; border-radius: 2px; background: var(--strong); position: relative; flex-shrink: 0"><span style="position: absolute; left: 0; top: 0; width: 36%; height: 4px; border-radius: 2px; background: var(--acc)"></span></span></sc-if></span><span style="{{c.state}}">{{c.s}}</span><span style="{{c.time}}">{{c.d}}</span></div>
+          </sc-for>
+        </div>
+      </section>
+    </div>
+  </main>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" variant="music" pane="none" hint-size="1440px,84px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"lower":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', div: 'rgba(255,255,255,0.0837)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)', strong: 'rgba(255,255,255,0.5442)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', div: 'rgba(0,0,0,0.0803)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', sub: 'rgba(0,0,0,0.0373)', strong: 'rgba(0,0,0,0.4458)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const book = (d) => { const open = d[5] === 'open', done = d[5] === 'done';
+    return { n: d[0], meta: d[1] + ' · ' + d[3], sel: open, hasBar: d[4] > 0 && !done, cached: !!d[6] && !done, done,
+      row: 'position: relative; display: grid; grid-template-columns: 52px minmax(0, 1fr) 32px; align-items: center; height: 52px; flex-shrink: 0; margin-top: 2px; padding-left: 12px; border-radius: 4px; color: var(--t1); ' + (open ? 'background: var(--sub)' : ''),
+      art: 'position: relative; width: 40px; height: 40px; border-radius: 4px; overflow: hidden; display: block; background: ' + d[2] + (done ? '; opacity: 0.6' : ''),
+      fill: 'position: absolute; left: 0; top: 0; height: 3px; border-radius: 2px; width: ' + d[4] + '%; background: ' + (open ? 'var(--acc)' : '#ffffff'),
+      name: 'font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (open ? 'var(--acct); font-weight: 600' : (done ? 'var(--t2)' : 'var(--t1)')) }; };
+  const groups = [
+    { label: 'In progress', count: '2', rows: [['Project Hail Mary', 'Andy Weir', 'linear-gradient(160deg, #1f3a4a, #0f1f2a)', '6 h 12 min left', 62, 'open', true], ['Dune', 'Frank Herbert', '#6b4a2a', '14 h 5 min left', 33, '', true]].map(book) },
+    { label: 'Not started', count: '3', rows: [['Atomic Habits', 'James Clear', '#8a7a5a', '5 h 35 min', 0, '', false], ['Sapiens', 'Yuval Noah Harari', '#8a2a2a', '15 h 17 min', 0, '', false], ['Tomorrow, and Tomorrow, and Tomorrow', 'Gabrielle Zevin', '#2a5a7a', '12 h 26 min', 0, '', false]].map(book) },
+    { label: 'Finished', count: '1', rows: [['The Hobbit', 'J.R.R. Tolkien', '#3a4a2a', 'Finished in August', 100, 'done', false]].map(book) }
+  ];
+  const ch = [['11', 'Chapter 11', 'Finished', '29:40', 100], ['12', 'Chapter 12', 'Finished', '33:12', 100], ['13', 'Chapter 13', 'Finished', '27:58', 100], ['14', 'Chapter 14', '19 min left', '30:43', 36, true], ['15', 'Chapter 15', '', '31:05', 0], ['16', 'Chapter 16', '', '35:20', 0], ['17', 'Chapter 17', '', '28:14', 0], ['18', 'Chapter 18', '', '32:51', 0]];
+  const chapters = ch.map((d) => { const cur = !!d[5], done = d[4] === 100; return { n: d[0], t: d[1], s: d[2], d: d[3], cur,
+    row: 'display: grid; grid-template-columns: 52px minmax(0, 1fr) 120px 64px; align-items: center; height: 40px; flex-shrink: 0; margin-top: 2px; border-radius: 4px; ' + (cur ? 'background: var(--sub)' : ''),
+    num: 'padding-left: 12px; font-family: \'Segoe UI Variable Display\', \'Segoe UI\', sans-serif; font-size: 20px; line-height: 28px; font-variant-numeric: tabular-nums; color: ' + (cur ? 'var(--acct)' : (done ? 'var(--t3)' : 'var(--t2)')),
+    title: 'font-size: 14px; white-space: nowrap; color: ' + (cur ? 'var(--acct); font-weight: 600' : (done ? 'var(--t2)' : 'var(--t1)')),
+    state: 'font-size: 12px; color: ' + (cur ? 'var(--acct)' : 'var(--t2)'),
+    time: 'text-align: right; padding-right: 8px; font-size: 14px; font-variant-numeric: tabular-nums; color: ' + (cur ? 'var(--acct)' : 'var(--t2)') }; });
+  return { vars, theme, accent, groups, chapters, five: 5, lower: !!(this.props.lower ?? false) };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Side panel</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<aside aria-label="{{title}}" style="{{s.root}}">
+  <sc-if value="{{sheet}}" hint-placeholder-val="{{false}}"><div aria-hidden="true" style="{{s.grab}}"><span style="{{s.grabBar}}"></span></div></sc-if>
+  <div style="{{s.head}}">
+    <h2 style="{{s.h}}">{{title}}</h2>
+    <sc-for list="{{tools}}" as="b" hint-placeholder-count="2"><button aria-label="{{b.l}}" style="{{s.ib}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{b.d}}" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></sc-for>
+  </div>
+  <sc-if value="{{isLyrics}}" hint-placeholder-val="{{true}}">
+    <div style="{{s.lyr}}">
+      <sc-for list="{{lines}}" as="ln" hint-placeholder-count="8"><p style="{{ln.style}}">{{ln.pre}}<span style="{{ln.restStyle}}">{{ln.rest}}</span></p></sc-for>
+    </div>
+  </sc-if>
+  <sc-if value="{{isOffline}}" hint-placeholder-val="{{false}}">
+    <div style="{{s.vac}}">
+      <svg width="40" height="40" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 12h7a2.5 2.5 0 0 0 .5-5 4 4 0 0 0-7.5-1A3 3 0 0 0 4.5 12zM2 2l12 12" fill="none" stroke="currentColor" stroke-width="0.8" stroke-linecap="round"></path></svg>
+      <div style="{{s.vacH}}">Lyrics need a connection</div>
+      <div style="{{s.vacP}}">These lyrics aren’t saved on this PC yet. They’ll appear when you’re back online.</div>
+      <button style="{{s.std}}">Retry</button>
+    </div>
+  </sc-if>
+  <sc-if value="{{isQueue}}" hint-placeholder-val="{{false}}">
+    <div style="{{s.q}}">
+      <div style="display: flex; gap: 8px"><sc-for list="{{toggles}}" as="g" hint-placeholder-count="3"><button aria-pressed="{{g.on}}" style="{{g.style}}">{{g.l}}</button></sc-for></div>
+      <a href="#" style="{{s.from}}">Playing from <b style="font-weight: 700">Random Access Memories</b> ›</a>
+      <div style="{{s.now}}">
+        <sc-if value="{{modern}}" hint-placeholder-val="{{true}}"><span style="{{s.nowArt}}"><span style="display: flex; align-items: flex-end; gap: 2px; height: 14px"><span style="{{s.e1}}"></span><span style="{{s.e2}}"></span><span style="{{s.e3}}"></span></span></span></sc-if>
+        <sc-if value="{{classic}}" hint-placeholder-val="{{false}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" style="{{s.vg}}"><path d="M2.5 6h2.5L8.5 3v10L5 10H2.5zM11 5.5a3.5 3.5 0 0 1 0 5" fill="none" stroke="currentColor" stroke-width="1.2"></path></svg></sc-if>
+        <span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="{{s.nowT}}">{{nowTitle}}</span><sc-if value="{{modern}}" hint-placeholder-val="{{true}}"><span style="{{s.nowA}}">Daft Punk, Pharrell Williams, Nile Rodgers</span></sc-if></span>
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="{{s.heartOn}}"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor"></path></svg>
+      </div>
+      <sc-for list="{{sections}}" as="sec" hint-placeholder-count="2">
+        <div style="{{sec.head}}"><span style="display: flex; flex-direction: column; flex-grow: 1"><span><span style="{{s.eyebrow}}">{{sec.name}}</span><span style="{{s.count}}">{{sec.count}}</span></span><sc-if value="{{sec.note}}" hint-placeholder-val="{{false}}"><span style="{{s.note}}">{{sec.note}}</span></sc-if></span><sc-if value="{{sec.clear}}" hint-placeholder-val="{{false}}"><button style="{{s.clear}}">Clear</button></sc-if></div>
+        <sc-for list="{{sec.rows}}" as="r" hint-placeholder-count="4">
+          <div style="{{r.style}}">
+            <sc-if value="{{classic}}" hint-placeholder-val="{{false}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" style="{{r.hs}}"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="{{r.hf}}" stroke="currentColor" stroke-width="1.2"></path></svg></sc-if>
+            <sc-if value="{{modern}}" hint-placeholder-val="{{true}}"><span style="{{r.art}}"></span></sc-if>
+            <span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="{{r.ts}}">{{r.t}}<sc-if value="{{classic}}" hint-placeholder-val="{{false}}"><span style="{{s.inlineA}}"> · {{r.a}}</span></sc-if></span><sc-if value="{{modern}}" hint-placeholder-val="{{true}}"><span style="{{s.nowA}}">{{r.a}}</span></sc-if></span>
+            <sc-if value="{{modern}}" hint-placeholder-val="{{true}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" style="{{r.hs}}"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="{{r.hf}}" stroke="currentColor" stroke-width="1.2"></path></svg></sc-if>
+            <button aria-label="Remove from queue" style="{{s.x}}"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"></path></svg></button>
+          </div>
+        </sc-for>
+      </sc-for>
+    </div>
+  </sc-if>
+  <sc-if value="{{isNp}}" hint-placeholder-val="{{false}}">
+    <div style="{{s.np}}">
+      <span style="{{s.npArt}}"></span>
+      <div style="display: flex; align-items: flex-start; gap: 8px"><div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0"><span style="{{s.npT}}">Get Lucky (feat. Pharrell Williams &amp; Nile Rodgers)</span><span style="{{s.npA}}">Daft Punk, Pharrell Williams, Nile Rodgers</span><span style="{{s.npAl}}">Random Access Memories</span></div><button aria-label="Remove from Liked Songs" style="{{s.npHeart}}"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor"></path></svg></button></div>
+      <div style="{{s.peek}}"><span style="{{s.peekBar}}"></span><span style="display: flex; flex-direction: column; gap: 4px"><span style="{{s.peekL1}}">a light left on in the hall</span><span style="{{s.peekL2}}">so the morning finds us here</span></span></div>
+      <div style="{{s.about}}"><span style="{{s.aboutH}}">About the artist</span><span style="{{s.aboutP}}">Daft Punk · 22.4M monthly listeners</span></div>
+    </div>
+  </sc-if>
+</aside>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"mode":{"editor":"enum","options":["lyrics","queue","np"],"default":"lyrics"},"rs":{"editor":"enum","options":["modern","classic"],"default":"modern"},"state":{"editor":"enum","options":["normal","offline","autoplayOff"],"default":"normal"},"h":{"editor":"int","default":780},"w":{"editor":"int","default":340},"sheet":{"editor":"boolean","default":false},"$preview":{"width":340,"height":780}}'>
+class Component extends DCLogic {
+renderVals() {
+  const p = this.props;
+  const dark = (p.theme ?? 'dark') !== 'light';
+  const T = dark
+    ? { card: '#282828', stroke: 'rgba(0,0,0,0.098)', t1: '#ffffff', t2: 'rgba(255,255,255,0.773)', t3: 'rgba(255,255,255,0.529)', sub: 'rgba(255,255,255,0.059)', div: 'rgba(255,255,255,0.082)', ctl: 'rgba(255,255,255,0.059)', ctlS: 'rgba(255,255,255,0.071)', acc: '#60cdff', accT: '#a6d8ff', onAcc: '#000', tile: 'rgba(255,255,255,0.051)', cs: 'rgba(0,0,0,0.098)' }
+    : { card: '#f9f9f9', stroke: 'rgba(0,0,0,0.059)', t1: 'rgba(0,0,0,0.894)', t2: 'rgba(0,0,0,0.62)', t3: 'rgba(0,0,0,0.447)', sub: 'rgba(0,0,0,0.035)', div: 'rgba(0,0,0,0.059)', ctl: 'rgba(255,255,255,0.702)', ctlS: 'rgba(0,0,0,0.09)', acc: '#005fb8', accT: '#004275', onAcc: '#fff', tile: 'rgba(255,255,255,0.702)', cs: 'rgba(0,0,0,0.059)' };
+  const mode = p.mode ?? 'lyrics', state = p.state ?? 'normal', rs = p.rs ?? 'modern';
+  const modern = rs !== 'classic', classic = !modern;
+  const w = Number(p.w ?? 340), h = Number(p.h ?? 780);
+  const I = { globe: 'M8 2a6 6 0 1 1 0 12A6 6 0 0 1 8 2zM2 8h12M8 2c-2 2-2 10 0 12M8 2c2 2 2 10 0 12', spark: 'M8 2l1.3 3.7L13 7l-3.7 1.3L8 12l-1.3-3.7L3 7l3.7-1.3z', expand: 'M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5 9 7M2.5 13.5 7 9', close: 'M4 4l8 8M12 4l-8 8' };
+  const title = mode === 'queue' ? 'Queue' : mode === 'np' ? 'Now playing' : 'Lyrics';
+  const tools = mode === 'lyrics' ? [['globe', 'Show translation'], ['spark', 'Word timing by AI'], ['expand', 'Expand lyrics'], ['close', 'Close']] : [['close', 'Close']];
+  const L = ['the city hums a quiet tune', 'we walk the long way home', 'counting windows, one by one', 'a light left on in the hall', 'so the morning finds us here', 'and nothing has to change', 'hold the moment, let it stay', 'until the record ends'];
+  const op = [0.13, 0.19, 1, 1, 0.45, 0.24, 0.14, 0.11];
+  const blur = [2.5, 1.25, 0, 0, 1.25, 2.5, 4, 5.5];
+  const lines = L.map((t, i) => {
+    const active = i === 3;
+    const style = 'margin: 0; font-size: 26px; line-height: 33px; font-weight: 700; color: ' + T.t1 + '; opacity: ' + (i === 2 ? 0.19 : op[i]) + '; filter: blur(' + (i === 2 ? 1.25 : blur[i]) + 'px); transform: scale(' + (active ? 1 : 0.98) + '); transform-origin: left center';
+    return active ? { style, pre: 'a light left ', rest: 'on in the hall', restStyle: 'opacity: 0.58' } : { style, pre: t, rest: '', restStyle: '' };
+  });
+  const tg = (l, on) => ({ l, on: on ? 'true' : 'false', style: 'height: 32px; padding: 0 12px; border-radius: 4px; font: inherit; font-size: 13px; ' + (on ? 'border: 0; background: ' + T.acc + '; color: ' + T.onAcc : 'background: ' + T.ctl + '; border: 1px solid ' + T.ctlS + '; color: ' + T.t1) });
+  const autoplay = state !== 'autoplayOff';
+  const toggles = [tg('⤨ Shuffle', false), tg('↻ Repeat', false), tg('∞ Autoplay', autoplay)];
+  const rowH = modern ? 54 : 44;
+  const mkRow = (r, dim) => ({ t: r[0], a: r[1],
+    style: 'height: ' + rowH + 'px; display: flex; align-items: center; gap: 10px; padding: 0 4px 0 ' + (modern ? 8 : 6) + 'px; box-sizing: border-box; flex-shrink: 0; ' + (modern ? 'border-radius: 6px' : 'border-bottom: 1px solid ' + T.div) + (dim ? '; opacity: 0.72' : ''),
+    art: 'width: 34px; height: 34px; flex-shrink: 0; border-radius: 4px; background: ' + r[2],
+    ts: 'font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + T.t1,
+    hs: 'flex-shrink: 0; color: ' + (r[3] ? T.acc : T.t3), hf: r[3] ? 'currentColor' : 'none' });
+  const queued = [['Instant Crush', 'Daft Punk, Julian Casablancas', '#6d6d6d', false], ['Digital Love', 'Daft Punk', '#3b5b9b', true]];
+  const auto = [['Lose Yourself to Dance', 'Daft Punk, Pharrell Williams', '#555', false], ['Starboy', 'The Weeknd, Daft Punk', '#8a2f2f', true], ['Midnight City', 'M83', '#4a3b8a', false], ['Genesis', 'Justice', '#2f2f2f', false], ['Blinding Lights', 'The Weeknd', '#8a3b2f', true], ['Robot Rock', 'Daft Punk', '#6b5b2f', false]];
+  const sh = 'display: flex; align-items: flex-end; padding: 0 4px 6px; box-sizing: border-box; flex-shrink: 0; height: ';
+  const sections = [{ name: 'Next in queue', count: '2', clear: true, note: '', head: sh + '36px', rows: queued.map(r => mkRow(r, false)) }];
+  if (autoplay) sections.push({ name: 'Autoplay', count: '50', clear: false, note: 'Similar music will keep playing', head: sh + '54px', rows: auto.map(r => mkRow(r, true)) });
+  else sections.push({ name: 'Next up', count: '11', clear: false, note: 'From Random Access Memories', head: sh + '54px', rows: [['Lose Yourself to Dance', 'Daft Punk, Pharrell Williams', '#555', false], ['Touch', 'Daft Punk, Paul Williams', '#555', false], ['Get Lucky', 'Daft Punk, Pharrell Williams, Nile Rodgers', '#555', true], ['Beyond', 'Daft Punk', '#555', false]].map(r => mkRow(r, false)) });
+  const eqb = (hh, o) => 'width: 3px; height: ' + hh + 'px; border-radius: 1px; background: ' + T.acc + '; opacity: ' + o;
+  const s = {
+    root: 'width: ' + w + 'px; height: ' + h + 'px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: ' + T.card + '; border-top: 1px solid ' + T.stroke + '; border-left: 1px solid ' + T.stroke + '; border-top-left-radius: 8px; color: ' + T.t1 + "; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif",
+    head: 'height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding: 0 8px 0 12px',
+    h: 'margin: 0; flex-grow: 1; font-size: 20px; line-height: 28px; font-weight: 600',
+    ib: 'width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: ' + T.t2,
+    lyr: 'flex-grow: 1; display: flex; flex-direction: column; gap: 18px; padding: 40px 22px 0; overflow: hidden; -webkit-mask-image: linear-gradient(180deg, transparent, #000 12%, #000 80%, transparent)',
+    vac: 'flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 24px; text-align: center; color: ' + T.t3,
+    vacH: 'font-size: 20px; line-height: 28px; font-weight: 600; margin-top: 8px; color: ' + T.t1,
+    vacP: 'font-size: 12px; line-height: 16px; color: ' + T.t2 + '; max-width: 240px',
+    std: 'margin-top: 16px; height: 32px; padding: 0 12px; border-radius: 4px; background: ' + T.ctl + '; border: 1px solid ' + T.ctlS + '; font: inherit; font-size: 14px; color: ' + T.t1,
+    q: 'flex-grow: 1; display: flex; flex-direction: column; gap: 4px; padding: 4px 14px 0; overflow: hidden',
+    from: 'display: block; margin: 8px 4px 2px; font-size: 12px; line-height: 16px; color: ' + T.t2 + '; text-decoration: none',
+    now: 'height: ' + (modern ? 60 : 44) + 'px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 12px 0 8px; box-sizing: border-box; ' + (modern ? 'border-radius: 8px; background: ' + T.tile + '; border: 1px solid ' + (dark ? 'rgba(96,205,255,0.35)' : 'rgba(0,95,184,0.35)') : 'border-bottom: 1px solid ' + T.div),
+    nowArt: 'width: 44px; height: 44px; flex-shrink: 0; border-radius: 4px; background: linear-gradient(135deg,#1c1c1c,#6d6d6d 55%,#c9c9c9); display: flex; align-items: center; justify-content: center',
+    e1: eqb(8, 1), e2: eqb(14, 0.85), e3: eqb(6, 1),
+    vg: 'flex-shrink: 0; color: ' + T.accT,
+    nowT: 'font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + T.accT,
+    nowA: 'font-size: 12px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + T.t2,
+    inlineA: 'color: ' + T.t2,
+    heartOn: 'flex-shrink: 0; color: ' + T.acc,
+    eyebrow: 'font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.03em; color: ' + T.t2,
+    count: 'font-size: 12px; line-height: 16px; margin-left: 8px; color: ' + T.t3,
+    note: 'font-size: 12px; line-height: 16px; color: ' + T.t3,
+    clear: 'height: 24px; padding: 0 8px; border: 0; border-radius: 4px; background: transparent; font: inherit; font-size: 12px; font-weight: 600; color: ' + T.accT,
+    x: 'width: 32px; height: 32px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: ' + T.t3,
+    np: 'flex-grow: 1; display: flex; flex-direction: column; gap: 14px; padding: 4px 8px 0; overflow: hidden',
+    npArt: 'width: ' + (Math.round((w - 16) / 4) * 4) + 'px; height: ' + (Math.round((w - 16) / 4) * 4) + 'px; flex-shrink: 0; border-radius: 8px; background: linear-gradient(135deg,#1c1c1c,#6d6d6d 55%,#c9c9c9)',
+    npT: 'font-size: 20px; line-height: 28px; font-weight: 600',
+    npA: 'font-size: 14px; line-height: 20px; color: ' + T.t2,
+    npAl: 'font-size: 12px; line-height: 16px; color: ' + T.t3,
+    npHeart: 'width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: ' + T.acc,
+    peek: 'display: flex; gap: 12px; padding: 4px 4px',
+    peekBar: 'width: 3px; flex-shrink: 0; border-radius: 2px; background: ' + T.acc,
+    peekL1: "font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 350",
+    peekL2: "font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 350; color: " + T.t3,
+    about: 'display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border-radius: 8px; background: ' + T.tile + '; border: 1px solid ' + T.cs,
+    aboutH: 'font-size: 20px; line-height: 28px; font-weight: 600',
+    aboutP: 'font-size: 12px; line-height: 16px; color: ' + T.t2
+  };
+  const sheet = p.sheet === true || p.sheet === 'true';
+  if (sheet) s.root = 'width: ' + w + 'px; height: ' + h + 'px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: ' + T.card + '; border-top: 1px solid ' + (dark ? 'rgba(255,255,255,0.08)' : T.stroke) + '; border-top-left-radius: 8px; border-top-right-radius: 8px; box-shadow: 0 -8px 24px rgba(0,0,0,' + (dark ? 0.35 : 0.14) + '); color: ' + T.t1 + "; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif";
+  s.grab = 'height: 16px; flex-shrink: 0; display: flex; align-items: center; justify-content: center';
+  s.grabBar = 'width: 32px; height: 4px; border-radius: 2px; background: ' + (dark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.25)');
+  return { s, sheet, title, tools: tools.map(t => ({ d: I[t[0]], l: t[1] })), lines, toggles, sections, modern, classic, nowTitle: modern ? 'Get Lucky (feat. Pharrell Williams & Nile Rodgers)' : 'Get Lucky · Daft Punk, Pharrell Williams', isLyrics: mode === 'lyrics' && state !== 'offline', isOffline: mode === 'lyrics' && state === 'offline', isQueue: mode === 'queue', isNp: mode === 'np' };
+}
+}
+</script>
+</body>
+</html>

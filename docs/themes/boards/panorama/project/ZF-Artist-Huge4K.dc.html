@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Artist, huge 4K</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} width: 3840px; height: 2160px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" tier="huge4k" sel="none" crumb="Search › The Weeknd" ctx="The Weeknd" items="Overview|Albums|Singles &amp; EPs|Compilations|About" sub-sel="{{zero}}" actions="artist" lower="{{lower}}" hint-size="3840px,136px"></dc-import>
+  <div style="height: 1940px; flex-shrink: 0; display: flex; min-height: 0">
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 32px; padding: 16px 36px 0 36px; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke); border-right: 1px solid var(--stroke); border-top-right-radius: 8px">
+      <section aria-label="The Weeknd" style="position: relative; height: 560px; flex-shrink: 0; border-radius: 8px; overflow: hidden; background: radial-gradient(120% 140% at 72% 30%, #6b4a7a 0%, #3a2f4a 45%, #1d1826 100%); color: #ffffff">
+        <span aria-hidden="true" style="position: absolute; right: 820px; top: 60px; width: 420px; height: 500px; border-radius: 210px 210px 0 0; background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.03))"></span>
+        <div aria-hidden="true" style="position: absolute; left: 0; right: 0; bottom: 0; height: 320px; background: linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,0.55))"></div>
+        <div style="position: absolute; left: 40px; right: 800px; bottom: 36px; display: flex; flex-direction: column; gap: 4px">
+          <span style="display: flex; align-items: center; gap: 6px; font-size: 14px; line-height: 20px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 9.8 3l2.3-.2.6 2.2 2 1.2-.9 2.1.9 2.1-2 1.2-.6 2.2-2.3-.2L8 14.5 6.2 13l-2.3.2-.6-2.2-2-1.2.9-2.1-.9-2.1 2-1.2.6-2.2 2.3.2z" style="fill: #60cdff"></path><path d="M5.5 8.2 7.2 9.9l3.4-3.6" fill="none" style="stroke: #000000" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"></path></svg>Verified artist</span>
+          <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 68px; line-height: 92px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">The Weeknd</h1>
+          <span style="font-size: 17px; line-height: 24px; color: rgba(255,255,255,0.86)">#3 in the world · 118M monthly listeners · 92M followers</span>
+        </div>
+        <a href="#" style="position: absolute; right: 40px; bottom: 36px; width: 720px; box-sizing: border-box; display: flex; gap: 24px; align-items: center; padding: 20px; border-radius: 8px; background: rgba(44,44,44,0.6); border: 1px solid rgba(0,0,0,0.2); color: #ffffff">
+          <span role="img" aria-label="Hurry Up Tomorrow cover" style="width: 240px; height: 240px; flex-shrink: 0; border-radius: 4px; background: #4a2a2a; box-shadow: 0 8px 16px rgba(0,0,0,0.26)"></span>
+          <span style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+            <span style="font-size: 12px; line-height: 16px; color: #c5c5c5">Latest release</span>
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Hurry Up Tomorrow</span>
+            <span style="font-size: 14px; line-height: 20px; color: #c5c5c5">Album · 2025 · 22 songs · Out now</span>
+          </span>
+        </a>
+      </section>
+      <section aria-label="Popular" style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0">
+        <div style="display: flex; align-items: baseline; gap: 12px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Popular</h2><span style="font-size: 14px; color: var(--t2)">Top 20 this month</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 14px; color: var(--acct)">Show 10 more</a></div>
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(5, 60px); grid-auto-flow: column; column-gap: 32px; row-gap: 2px">
+          <sc-for list="{{rows}}" as="r" hint-placeholder-count="20">
+            <div role="row" style="{{r.row}}"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 400; color: var(--t3); font-variant-numeric: tabular-nums; padding-left: 12px">{{r.n}}</span><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 17px; line-height: 24px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.t}}</span><span style="font-size: 13px; line-height: 18px; color: var(--t2); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.plays}}</span></span><span style="text-align: right; font-size: 15px; color: var(--t2); font-variant-numeric: tabular-nums; padding-right: 12px">{{r.time}}</span></div>
+          </sc-for>
+        </div>
+      </section>
+      <section aria-label="Discography" style="display: flex; flex-direction: column; gap: 12px; flex-shrink: 0">
+        <div style="display: flex; align-items: center; gap: 12px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Discography</h2>
+          <span role="radiogroup" aria-label="Release type" style="display: flex; gap: 8px; margin-left: 12px">
+            <sc-for list="{{chips}}" as="c" hint-placeholder-count="4"><button role="radio" aria-checked="{{c.aria}}" style="{{c.style}}">{{c.label}}</button></sc-for>
+          </span>
+          <span style="flex-grow: 1"></span><a href="#" style="font-size: 14px; color: var(--acct)">Show all 34</a></div>
+        <div style="display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px">
+          <sc-for list="{{disco}}" as="al" hint-placeholder-count="12"><a href="#" style="display: flex; flex-direction: column; gap: 6px; min-width: 0; color: var(--t1)"><span style="{{al.art}}"></span><span style="font-size: 15px; line-height: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{al.n}}</span><span style="font-size: 13px; line-height: 18px; color: var(--t2)">{{al.y}}</span></a></sc-for>
+        </div>
+      </section>
+      <div style="display: grid; grid-template-columns: 880px minmax(0, 1fr) 520px; gap: 48px; min-height: 0">
+        <section aria-label="About" style="display: flex; flex-direction: column; gap: 12px; min-width: 0">
+          <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">About</h2>
+          <div style="display: flex; gap: 24px; padding: 20px; border-radius: 8px; background: var(--card); border: 1px solid var(--cardb)">
+            <span role="img" aria-label="The Weeknd" style="width: 200px; height: 200px; flex-shrink: 0; border-radius: 100px; background: radial-gradient(circle at 60% 35%, #6b4a7a, #2a2433)"></span>
+            <span style="display: flex; flex-direction: column; gap: 12px; min-width: 0">
+              <span style="font-size: 17px; line-height: 28px">Abel Tesfaye grew up in Toronto and put out three mixtapes in 2011, House of Balloons, Thursday and Echoes of Silence, which became Trilogy the year after.</span>
+              <span style="font-size: 17px; line-height: 28px; color: var(--t2)">After Hours, Dawn FM and Hurry Up Tomorrow form a trilogy of their own. Blinding Lights spent 90 weeks on the Billboard Hot 100.</span>
+              <a href="#" style="font-size: 14px; color: var(--acct)">Read more</a>
+            </span>
+          </div>
+        </section>
+        <section aria-label="Fans also like" style="display: flex; flex-direction: column; gap: 12px; min-width: 0">
+          <div style="display: flex; align-items: baseline; gap: 12px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Fans also like</h2><span style="flex-grow: 1"></span><a href="#" style="font-size: 14px; color: var(--acct)">See all</a></div>
+          <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px">
+            <sc-for list="{{similar}}" as="m" hint-placeholder-count="5"><a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 0; color: var(--t1)"><span style="{{m.art}}"></span><span style="max-width: 100%; font-size: 15px; line-height: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{m.n}}</span><span style="font-size: 13px; line-height: 18px; color: var(--t2)">Artist</span></a></sc-for>
+          </div>
+        </section>
+        <section aria-label="Artist pick" style="display: flex; flex-direction: column; gap: 12px; min-width: 0">
+          <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Artist pick</h2>
+          <a href="#" style="display: flex; gap: 20px; align-items: center; padding: 16px; border-radius: 8px; background: var(--card); border: 1px solid var(--cardb); color: var(--t1)"><span style="width: 160px; height: 160px; flex-shrink: 0; border-radius: 4px; background: #2a3a4a"></span><span style="display: flex; flex-direction: column; gap: 4px; min-width: 0"><span style="font-size: 17px; line-height: 24px; font-weight: 600">After Hours (Deluxe)</span><span style="font-size: 14px; line-height: 20px; color: var(--t2)">“The whole story, in order.”</span><span style="font-size: 13px; line-height: 18px; color: var(--t2)">Album · 2020 · 21 songs</span></span></a>
+          <a href="#" style="display: flex; gap: 20px; align-items: center; padding: 16px; border-radius: 8px; background: var(--card); border: 1px solid var(--cardb); color: var(--t1)"><span style="width: 96px; height: 96px; flex-shrink: 0; border-radius: 4px; background: linear-gradient(135deg, #4a2a2a, #6b4a7a)"></span><span style="display: flex; flex-direction: column; gap: 4px; min-width: 0"><span style="font-size: 17px; line-height: 24px; font-weight: 600">This Is The Weeknd</span><span style="font-size: 14px; line-height: 20px; color: var(--t2)">Playlist · 50 songs</span></span></a>
+        </section>
+      </div>
+    </main>
+    <div style="display: flex; flex-shrink: 0">
+      <dc-import name="ZF-Panel" theme="{{theme}}" accent="{{accent}}" tab="queue" mode="inline" w="{{paneW}}" h="{{midH}}" hint-size="360px,1940px"></dc-import>
+      <span aria-hidden="true" style="width: 1px; flex-shrink: 0; background: var(--stroke)"></span>
+      <dc-import name="ZF-Panel" theme="{{theme}}" accent="{{accent}}" tab="lyrics" mode="inline" w="{{paneW}}" h="{{midH}}" hint-size="360px,1940px"></dc-import>
+      <span aria-hidden="true" style="width: 1px; flex-shrink: 0; background: var(--stroke)"></span>
+      <dc-import name="ZF-Panel" theme="{{theme}}" accent="{{accent}}" tab="friends" mode="inline" w="{{paneW}}" h="{{midH}}" friends="{{yes}}" hint-size="360px,1940px"></dc-import>
+    </div>
+  </div>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" tier="huge4k" variant="music" pane="queue" hint-size="3840px,84px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"lower":{"editor":"boolean","default":false},"$preview":{"width":3840,"height":2160}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', div: 'rgba(255,255,255,0.0837)', card: 'rgba(255,255,255,0.0512)', cardb: 'rgba(0,0,0,0.1)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)', strong: 'rgba(255,255,255,0.5442)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', div: 'rgba(0,0,0,0.0803)', card: '#fbfbfb', cardb: 'rgba(0,0,0,0.0578)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', sub: 'rgba(0,0,0,0.0373)', strong: 'rgba(0,0,0,0.4458)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const data = [['Blinding Lights', '4.9B', '3:20', '#7a2a2a'], ['Starboy', '3.8B', '3:50', '#5a2a3a'], ['Save Your Tears', '3.2B', '3:35', '#3a2a5a'], ['The Hills', '2.6B', '4:02', '#2a2a2a'], ['Die For You', '2.4B', '4:20', '#4a3a2a'], ['Call Out My Name', '1.9B', '3:48', '#2a3a4a'], ['I Feel It Coming', '1.8B', '4:29', '#3a4a2a'], ['Can’t Feel My Face', '1.6B', '3:33', '#5a3a2a'], ['Earned It', '1.4B', '4:37', '#2a4a4a'], ['Often', '1.1B', '4:09', '#4a2a4a'], ['In Your Eyes', '1.1B', '3:57', '#5a2a2a'], ['Out of Time', '1.0B', '3:34', '#2a3a5a'], ['Heartless', '980M', '3:18', '#5a2a2a'], ['Less Than Zero', '910M', '3:31', '#2a3a5a'], ['Timeless', '870M', '4:16', '#2a2a3a'], ['Wicked Games', '820M', '5:25', '#2a2a3a'], ['Sacrifice', '760M', '3:08', '#2a3a5a'], ['Popular', '710M', '3:35', '#4a2a3a'], ['São Paulo', '640M', '5:01', '#4a2a2a'], ['Dancing in the Flames', '590M', '3:41', '#5a3a2a']];
+  const rows = data.map((d, i) => { const hover = i === 5; return { n: String(i + 1), t: d[0], plays: d[1] + ' plays', time: d[2],
+    row: 'display: grid; grid-template-columns: 64px 64px minmax(0, 1fr) 64px; align-items: center; height: 60px; border-radius: 4px; ' + (hover ? 'background: var(--sub)' : ''),
+    art: 'width: 48px; height: 48px; border-radius: 4px; display: block; background: ' + d[3] }; });
+  const chips = [['All', true], ['Albums', false], ['Singles and EPs', false], ['Compilations', false]].map((c) => ({ label: c[0], aria: c[1] ? 'true' : 'false',
+    style: 'height: 32px; padding: 0 14px; border-radius: 16px; font: inherit; font-size: 14px; ' + (c[1] ? 'border: 0; background: var(--acc); color: var(--onacc)' : 'background: var(--ctrl); border: 1px solid var(--ctrlb); color: var(--t1)') }));
+  const D = [['Hurry Up Tomorrow', '2025 · Album', '#4a2a2a'], ['Dawn FM', '2022 · Album', '#2a3a5a'], ['After Hours', '2020 · Album', '#5a2a2a'], ['My Dear Melancholy,', '2018 · EP', '#2a2a2a'], ['Starboy', '2016 · Album', '#5a2a3a'], ['Beauty Behind the Madness', '2015 · Album', '#3a2a2a'], ['Kiss Land', '2013 · Album', '#3a2a4a'], ['Trilogy', '2012 · Compilation', '#2a2a3a'], ['The Highlights', '2021 · Compilation', '#3a3a2a'], ['Echoes of Silence', '2011 · Mixtape', '#2a2a2a'], ['Thursday', '2011 · Mixtape', '#3a3a4a'], ['House of Balloons', '2011 · Mixtape', '#4a3a3a']];
+  const disco = D.map((d) => ({ n: d[0], y: d[1], art: 'width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; display: block; background: ' + d[2] }));
+  const similar = [['SZA', '#5b3b4a'], ['Daft Punk', '#3a2f22'], ['Frank Ocean', '#2f4a3b'], ['Drake', '#3a3a2a'], ['Kavinsky', '#6b2f4a']].map((d) => ({ n: d[0], art: 'width: 100%; aspect-ratio: 1 / 1; border-radius: 50%; display: block; background: ' + d[1] }));
+  return { vars, theme, accent, rows, chips, disco, similar, paneW: 360, midH: 1940, zero: 0, yes: true, lower: !!(this.props.lower ?? false) };
+}
+}
+</script>
+</body>
+</html>

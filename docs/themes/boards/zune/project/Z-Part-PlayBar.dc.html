@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune part: play bar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="{{root}}">
+  <div style="position: absolute; left: 0; top: 0; right: 0; height: 2px; background: rgba(255,255,255,0.12)"><div style="{{progressStyle}}"></div></div>
+  <sc-if value="{{hasTicks}}" hint-placeholder-val="{{ false }}"><span style="position: absolute; left: 18%; top: 0; width: 1px; height: 8px; background: #ffffff; opacity: 0.6"></span><span style="position: absolute; left: 41%; top: 0; width: 1px; height: 8px; background: #ffffff; opacity: 0.6"></span><span style="position: absolute; left: 63%; top: 0; width: 1px; height: 8px; background: #ffffff; opacity: 0.6"></span><span style="position: absolute; left: 84%; top: 0; width: 1px; height: 8px; background: #ffffff; opacity: 0.6"></span></sc-if>
+  <div style="{{idCol}}">
+    <span style="{{artStyle}}"></span>
+    <span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1">
+      <sc-if value="{{hasFrom}}" hint-placeholder-val="{{ false }}"><span style="{{fromStyle}}">{{from}}</span></sc-if>
+      <span style="{{titleStyle}}">{{title}}</span>
+      <span style="{{subStyle}}">{{artist}}</span>
+    </span>
+    <sc-if value="{{showHeart}}" hint-placeholder-val="{{ true }}"><button aria-label="save to liked songs" style="{{heartStyle}}">{{heart}}</button></sc-if>
+  </div>
+  <sc-if value="{{isMini}}" hint-placeholder-val="{{ false }}">
+    <span style="display: flex; align-items: center; gap: 4px; flex-shrink: 0">
+      <button aria-label="pause" style="{{disc}}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg></button>
+      <sc-if value="{{isMusic}}" hint-placeholder-val="{{ true }}"><button aria-label="next" style="width: 40px; height: 40px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M11 3h2v10h-2zM3 3l7 5-7 5z"/></svg></button></sc-if>
+      <sc-if value="{{isPodcast}}" hint-placeholder-val="{{ false }}"><button aria-label="forward 10 seconds" style="width: 40px; height: 40px; border: 0; background: transparent; color: #ffffff; padding: 0; font: inherit; font-size: 13px">+10</button></sc-if>
+    </span>
+  </sc-if>
+  <sc-if value="{{isBar}}" hint-placeholder-val="{{ true }}">
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px">
+      <div style="{{transport}}">
+        <sc-if value="{{isPodcast}}" hint-placeholder-val="{{ false }}"><button style="{{word}}">−10</button></sc-if>
+        <sc-if value="{{isMusic}}" hint-placeholder-val="{{ true }}"><button aria-label="previous" style="{{btn}}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 3h2v10H3zM13 3 6 8l7 5z"/></svg></button></sc-if>
+        <button aria-label="pause" style="{{disc}}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg></button>
+        <sc-if value="{{isMusic}}" hint-placeholder-val="{{ true }}"><button aria-label="next" style="{{btn}}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M11 3h2v10h-2zM3 3l7 5-7 5z"/></svg></button></sc-if>
+        <sc-if value="{{isPodcast}}" hint-placeholder-val="{{ false }}"><button style="{{word}}">+10</button><button style="{{word}}">1.0×</button></sc-if>
+      </div>
+      <span style="{{timeStyle}}">{{time}}</span>
+    </div>
+    <div style="{{rightCol}}">
+      <sc-for list="{{tools}}" as="t" hint-placeholder-count="8">
+        <sc-if value="{{t.isSlider}}" hint-placeholder-val="{{ false }}"><span style="{{t.style}}"><span style="display: block; width: 70%; height: 2px; background: #ffffff"></span></span></sc-if>
+        <sc-if value="{{t.isVol}}" hint-placeholder-val="{{ false }}"><button aria-label="volume" style="{{t.style}}"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 6h3l4-3v10l-4-3H2z"/><path d="M11.5 5.5a3.5 3.5 0 0 1 0 5"/></svg></button></sc-if>
+        <sc-if value="{{t.isButton}}" hint-placeholder-val="{{ true }}"><button aria-label="{{t.label}}" style="{{t.style}}">{{t.glyph}}</button></sc-if>
+      </sc-for>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"tier":{"editor":"enum","default":"full","options":["mini","narrow","medium","full","huge","4k"]},"kind":{"editor":"enum","default":"music","options":["music","podcast"]},"title":{"editor":null},"artist":{"editor":null},"art":{"editor":null},"progress":{"editor":null},"time":{"editor":null},"from":{"editor":null},"active":{"editor":null},"saved":{"editor":null},"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":1440,"height":72}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const tier = this.props.tier ?? 'full';
+  const kind = this.props.kind ?? 'music';
+  const podcast = kind === 'podcast';
+  const title = this.props.title ?? 'Nightcall';
+  const artist = this.props.artist ?? 'Kavinsky · OutRun';
+  const art = this.props.art ?? '#6b2f4a';
+  const progress = Number(this.props.progress ?? 29);
+  const from = this.props.from ?? '';
+  const active = this.props.active ?? '';
+  const saved = String(this.props.saved ?? 'false') === 'true';
+  const mini = tier === 'mini', big = tier === '4k', wide = tier === 'huge' || big;
+  const h = mini ? 64 : big ? 88 : 72;
+  const artS = mini ? 44 : big ? 64 : 48;
+  const btnS = big ? 44 : 40;
+  const fs = big ? 15 : 13;
+  const idW = mini ? 0 : tier === 'narrow' ? 200 : tier === 'medium' ? 260 : wide ? (big ? 520 : 420) : 320;
+  const time = this.props.time ?? (podcast ? '23:40 · -24:12' : (tier === 'narrow' || tier === 'medium' ? '1:14' : '1:14 · -3:04'));
+  const ico = (label, glyph, color) => ({ isButton: true, isSlider: false, label, glyph, style: 'width: ' + btnS + 'px; height: ' + btnS + 'px; border: 0; background: transparent; color: ' + color + '; font-size: ' + (big ? 19 : 16) + 'px; padding: 0; flex-shrink: 0' });
+  const wd = (label) => ({ isButton: true, isSlider: false, label, glyph: label, style: 'height: ' + btnS + 'px; border: 0; background: transparent; color: ' + (active === label.split(' ')[0] ? accent : '#a8a8a8') + '; font: inherit; font-size: ' + fs + 'px; padding: 0 8px; flex-shrink: 0; white-space: nowrap' });
+  const vol = ico('volume', '', '#ffffff');
+  vol.isButton = false; vol.isVol = true; vol.style += '; display: flex; align-items: center; justify-content: center';
+  const slider = { isButton: false, isSlider: true, label: '', glyph: '', style: 'width: ' + (wide ? 128 : 96) + 'px; height: 2px; background: rgba(255,255,255,0.18); margin: 0 10px 0 2px; display: block; flex-shrink: 0' };
+  const lyr = podcast ? 'transcript' : 'lyrics';
+  let tools = [];
+  if (tier === 'narrow') tools = [vol, ico('more', '⋯', '#a8a8a8')];
+  else if (tier === 'medium') tools = [vol, wd(lyr), wd('devices'), ico('more', '⋯', '#a8a8a8')];
+  else if (tier === 'full') tools = (podcast ? [] : [ico('shuffle', '⇄', accent), ico('repeat', '↻', '#a8a8a8')]).concat([vol, slider, wd(lyr), wd('queue'), wd('devices'), ico('full screen', '⤢', '#a8a8a8'), ico('more', '⋯', '#a8a8a8')]);
+  else if (wide) tools = (podcast ? [] : [ico('shuffle', '⇄', accent), ico('repeat', '↻', '#a8a8a8')]).concat([vol, slider, wd(lyr), wd('video ▾'), wd('queue'), wd('friends'), wd('devices'), ico('full screen', '⤢', '#a8a8a8'), ico('more', '⋯', '#a8a8a8')]);
+  return {
+    title, artist, from, time, tools,
+    isMini: mini, isBar: !mini, isMusic: !podcast, isPodcast: podcast, hasTicks: podcast && !mini,
+    hasFrom: from.length > 0 && (wide || tier === 'full'),
+    showHeart: !mini && tier !== 'narrow',
+    heart: saved ? '♥' : '♡',
+    nextLabel: podcast ? 'forward 10 seconds' : 'next', nextGlyph: podcast ? '+10' : '▸▸',
+    root: 'width: 100%; height: ' + h + 'px; box-sizing: border-box; flex-shrink: 0; background: #111111; position: relative; display: flex; align-items: center; gap: ' + (mini ? 12 : wide ? 32 : 24) + 'px; padding: 0 ' + (mini ? 8 : 12) + 'px 0 ' + (mini ? 16 : big ? 64 : wide ? 48 : 24) + 'px; color: #ffffff; font-family: \'Segoe UI Variable Text\', \'Segoe UI\', system-ui, sans-serif',
+    progressStyle: 'width: ' + progress + '%; height: 2px; background: ' + accent,
+    idCol: 'display: flex; align-items: center; gap: 12px; min-width: 0; ' + (mini ? 'flex-grow: 1' : 'width: ' + idW + 'px; flex-shrink: 0'),
+    artStyle: 'width: ' + artS + 'px; height: ' + artS + 'px; border-radius: 2px; background: ' + art + '; flex-shrink: 0; display: block',
+    fromStyle: 'font-size: ' + (big ? 13 : 11) + 'px; line-height: ' + (big ? 18 : 14) + 'px; color: ' + accent + '; white-space: nowrap; overflow: hidden; text-overflow: ellipsis',
+    titleStyle: 'font-size: ' + (big ? 17 : 15) + 'px; line-height: ' + (big ? 22 : 20) + 'px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis',
+    subStyle: 'font-size: ' + (big ? 15 : 13) + 'px; line-height: ' + (big ? 20 : 18) + 'px; color: #a8a8a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis',
+    heartStyle: 'width: ' + btnS + 'px; height: ' + btnS + 'px; border: 0; background: transparent; color: ' + (saved ? accent : '#ffffff') + '; font-size: ' + (big ? 19 : 16) + 'px; padding: 0; flex-shrink: 0',
+    transport: 'display: flex; align-items: center; gap: ' + (tier === 'narrow' || tier === 'medium' ? 12 : 16) + 'px',
+    btn: 'width: ' + btnS + 'px; height: ' + btnS + 'px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0',
+    word: 'height: ' + btnS + 'px; border: 0; background: transparent; color: #ffffff; font: inherit; font-size: ' + fs + 'px; padding: 0 6px; font-variant-numeric: tabular-nums',
+    disc: 'width: ' + (big ? 48 : 40) + 'px; height: ' + (big ? 48 : 40) + 'px; border-radius: ' + (big ? 24 : 20) + 'px; border: 0; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0',
+    timeStyle: 'font-size: ' + (big ? 13 : 12) + 'px; color: #a8a8a8; font-variant-numeric: tabular-nums',
+    rightCol: 'display: flex; align-items: center; gap: 2px; flex-shrink: 0; justify-content: flex-end',
+  };
+}
+}
+</script>
+</body>
+</html>

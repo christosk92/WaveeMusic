@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Browse category</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; overflow: hidden; background: radial-gradient(74% 92% at 6% 0%, rgba(192,138,176,0.10), rgba(192,138,176,0) 62%), #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="browse:K-Pop" sel="0" w="1440" hint-size="1440px,48px"></dc-import>
+  <div style="display: flex; height: 780px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="classic" sel="home" h="780" hint-size="280px,780px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; padding: 24px 36px 0; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+      <header style="display: flex; flex-direction: column; gap: 4px; height: 84px; box-sizing: border-box; flex-shrink: 0">
+        <nav aria-label="Breadcrumb" style="height: 28px; display: flex; align-items: flex-end; gap: 6px; font-size: 12px; line-height: 16px; font-weight: 600"><a href="#" style="color: rgba(255,255,255,0.773)">Browse</a><span style="color: rgba(255,255,255,0.529)">›</span><a href="#" style="color: rgba(255,255,255,0.773)">Genres</a></nav>
+        <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em">K-Pop</h1>
+      </header>
+      <sc-for list="{{shelves}}" as="sh" hint-placeholder-count="3">
+        <section aria-label="{{sh.t}}" style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0">
+          <div style="height: 32px; display: flex; align-items: center; gap: 6px"><a href="#" style="display: flex; align-items: center; gap: 6px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">{{sh.t}}<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></a><span style="flex-grow: 1"></span><span style="font-size: 12px; color: rgba(255,255,255,0.6)">‹ ● ○ ›</span></div>
+          <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0">
+            <sc-for list="{{sh.cards}}" as="c" hint-placeholder-count="7"><a href="#" style="display: flex; flex-direction: column; gap: 2px; padding: 8px; border-radius: 8px; min-width: 0"><span style="{{c.art}}"></span><span style="font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.t}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.s}}</span></a></sc-for>
+          </div>
+        </section>
+      </sc-for>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="1440" hint-size="1440px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const pal = ['#c08ab0', '#5b3b6b', '#3b5b6b', '#9b7a3b', '#6b2f3b', '#2f6b6b', '#4a4a6b'];
+  const S = [['Popular K-Pop playlists', ['K-Pop ON! (온)', 'K-Pop Daebak', 'Girl Power', 'K-Pop Rising', 'Kpop Dance', 'K-Pop Ballads', 'Fresh K-Pop']], ['New releases', ['Whiplash', 'MAGNETIC', 'How Sweet', 'Supernova', 'Armageddon', 'SUPER REAL ME', 'Drama']], ['K-Pop by decade', ['2020s K-Pop', '2010s K-Pop', '2000s K-Pop', '90s K-Pop', 'K-Pop Throwback', 'Legends', 'First Gen']]];
+  const subs = ['Playlist · Spotify', 'Album · aespa', 'Playlist · Spotify'];
+  const shelves = S.map((s, si) => ({ t: s[0], cards: s[1].map((t, i) => ({ t, s: subs[si], art: 'display: block; width: 100%; aspect-ratio: 1 / 1; margin-bottom: 6px; border-radius: 8px; background: linear-gradient(160deg, ' + pal[(i + si) % 7] + ', #1a1a1a)' })) }));
+  return { shelves };
+}
+}
+</script>
+</body>
+</html>

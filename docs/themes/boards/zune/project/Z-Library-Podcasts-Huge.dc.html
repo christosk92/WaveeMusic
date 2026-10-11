@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune collection: podcasts · huge</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 2560px; height: 1440px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="huge" crumb="library › podcasts › your episodes" accent="{{accent}}" hint-size="2560px,48px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex">
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+      <dc-import name="Z-Part-Band" tier="huge" section="library" sub="liked,playlists,albums,artists,podcasts,audiobooks" on="podcasts" accent="{{accent}}" hint-size="1840px,84px"></dc-import>
+      <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; padding: 8px 48px 0 48px; gap: 20px; overflow: hidden">
+        <div style="display: flex; align-items: center; gap: 24px; font-size: 13px; color: #a8a8a8; height: 28px; flex-shrink: 0">
+          <span>sort</span><a href="#" style="color: #ffffff">recents</a><a href="#">alphabetical</a><a href="#">recently added</a>
+          <span style="flex-grow: 1"></span>
+          <label style="display: flex; align-items: center; gap: 8px; color: #7a7a7a"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><input type="search" placeholder="find in podcasts" style="border: 0; border-bottom: 1px solid rgba(255,255,255,0.18); background: transparent; color: #fff; font: inherit; font-size: 13px; width: 220px; outline: none; padding: 2px 0"></label>
+          <span>14 shows · 24 saved episodes</span>
+        </div>
+        <div style="flex-grow: 1; min-height: 0; display: flex; gap: 48px">
+          <div style="width: 340px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden">
+            <a href="#" style="height: 52px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; font-size: 15px; color: #ffffff; font-weight: 600; background: rgba(255,255,255,0.05); padding: 0 10px; margin: 0 -10px">your episodes <span style="font-size: 12px; color: #7a7a7a; font-weight: 400">24</span></a>
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; height: 48px; display: flex; align-items: flex-end; padding-bottom: 6px; box-sizing: border-box; flex-shrink: 0">followed shows</span>
+            <sc-for list="{{shows}}" as="s" hint-placeholder-count="14">
+              <a href="#" style="display: grid; grid-template-columns: 48px minmax(0, 1fr) 24px; gap: 14px; align-items: center; height: 60px; flex-shrink: 0"><span style="{{s.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 15px; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.name}}</span><span style="font-size: 12px; color: #7a7a7a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.sub}}</span></span><span style="{{s.dot}}"></span></a>
+            </sc-for>
+          </div>
+          <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden">
+            <div style="display: flex; align-items: baseline; gap: 14px; height: 48px; flex-shrink: 0"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px">your episodes</span><span style="font-size: 13px; color: #7a7a7a">24 saved · 6 hr 12 min</span><span style="flex-grow: 1"></span><span style="display: flex; gap: 18px; font-size: 13px"><a href="#" style="color: #ffffff">all</a><a href="#">unplayed</a><a href="#">in progress</a><a href="#">played</a></span></div>
+            <div style="display: grid; grid-template-columns: 72px minmax(0, 1fr) 160px 110px 120px 40px; align-items: center; height: 32px; font-size: 12px; color: #7a7a7a; flex-shrink: 0; margin-top: 8px"><span></span><span>episode</span><span>show</span><span>released</span><span style="text-align: right">progress</span><span></span></div>
+            <sc-for list="{{groups}}" as="g" hint-placeholder-count="3">
+              <div style="display: flex; flex-direction: column; flex-shrink: 0">
+                <div style="display: flex; align-items: baseline; gap: 12px; height: 44px; padding-top: 8px; box-sizing: border-box"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300">{{g.title}}</span><span style="font-size: 13px; color: #7a7a7a">{{g.count}}</span></div>
+                <sc-for list="{{g.rows}}" as="e" hint-placeholder-count="3">
+                  <div style="{{e.row}}"><span style="{{e.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; gap: 3px; padding-right: 16px"><span style="{{e.title}}">{{e.name}}</span><span style="font-size: 13px; color: #a8a8a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{e.blurb}}</span></span><span style="font-size: 13px; color: #c8c8c8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{e.show}}</span><span style="font-size: 13px; color: #9c9c9c">{{e.when}} · {{e.len}}</span><span style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px"><span style="{{e.state}}">{{e.stateText}}</span><span style="{{e.bar}}"><span style="{{e.fill}}"></span></span></span><button aria-label="more" style="width: 32px; height: 32px; border: 0; background: transparent; color: #a8a8a8; font-size: 16px; padding: 0">⋯</button></div>
+                </sc-for>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+    <dc-import name="Z-Part-Panel" tier="docked2" pivot="friends" h="1320" accent="{{accent}}" hint-size="720px,1320px"></dc-import>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="huge" kind="podcast" title="The hidden history of the synthesizer" artist="Twenty Thousand Hertz" art="#4a2f3b" progress="62" saved="true" from="playing from your episodes" accent="{{accent}}" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const shows = [['The Rest Is Football', 'goalhanger · 3 new', '#2f4a3b', true], ['Twenty Thousand Hertz', 'dallas taylor · 1 new', '#4a2f3b', true], ['Hurry Slowly', 'jocelyn k. glei', '#3b3b2f', false], ['Planet Money', 'npr · 2 new', '#2f3b4a', true], ['Song Exploder', 'hrishikesh hirway', '#4a3b2f', false], ['Darknet Diaries', 'jack rhysider', '#2f2f2f', false], ['99% Invisible', 'roman mars · 1 new', '#3b2f4a', true], ['Lex Fridman Podcast', 'lex fridman', '#2f3b3b', false], ['Radiolab', 'wnyc studios', '#3b2f2f', false], ['The Daily', 'the new york times', '#2f2f3b', false], ['Switched on Pop', 'vulture', '#4a2f4a', false], ['Dissect', 'spotify studios', '#2f4a4a', false], ['Hidden Brain', 'hidden brain media', '#3b4a2f', false], ['Freakonomics Radio', 'stephen dubner', '#4a4a2f', false]].map((d) => ({ name: d[0], sub: d[1], art: 'width: 48px; height: 48px; border-radius: 2px; display: block; background: ' + d[2], dot: 'width: 8px; height: 8px; border-radius: 4px; display: block; justify-self: end; background: ' + (d[3] ? accent : 'transparent') }));
+  const mk = (list) => list.map((d) => ({
+    name: d[0], blurb: d[1], show: d[2], when: d[3], len: d[4], stateText: d[5],
+    row: 'display: grid; grid-template-columns: 72px minmax(0, 1fr) 160px 110px 120px 40px; align-items: center; height: 80px; flex-shrink: 0',
+    art: 'width: 60px; height: 60px; border-radius: 2px; display: block; background: ' + d[6],
+    title: 'font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (d[7] ? accent : '#ffffff'),
+    state: 'font-size: 12px; color: ' + (d[7] ? accent : '#7a7a7a'),
+    bar: 'width: 96px; height: 2px; background: rgba(255,255,255,0.14); display: ' + (d[8] ? 'block' : 'none'),
+    fill: 'display: block; height: 2px; width: ' + (d[8] || 0) + '%; background: ' + (d[7] ? accent : '#a8a8a8'),
+  }));
+  const groups = [
+    { title: 'today', count: '3', rows: mk([['The hidden history of the synthesizer', 'From Moog to the DX7: how a sound became every sound.', 'Twenty Thousand Hertz', 'today', '32 min', '12 min left', '#4a2f3b', true, 62], ['Why the Premier League keeps changing', 'Gary and Alan on rules, money and the new season.', 'The Rest Is Football', 'today', '48 min', 'unplayed', '#2f4a3b', false, 0], ['What the Fed did next', 'Rates, jobs and what a pause actually means.', 'Planet Money', 'today', '24 min', 'unplayed', '#2f3b4a', false, 0]]) },
+    { title: 'this week', count: '9', rows: mk([['Episode 312: slow mornings', 'Building a day that starts without a phone.', 'Hurry Slowly', 'tue', '54 min', 'unplayed', '#3b3b2f', false, 0], ['Deep dive: the 1993 title race', 'The season that made the modern league.', 'The Rest Is Football', 'mon', '47 min', '6 min left', '#2f4a3b', false, 88], ['The Cold Fusion Scandal', 'A lab, a press conference and a result nobody could repeat.', '99% Invisible', 'mon', '38 min', '✓ played', '#3b2f4a', false, 0]]) },
+    { title: 'earlier', count: '12', rows: mk([['Daft Punk · Get Lucky', 'Thomas Bangalter on the song that took a year to finish.', 'Song Exploder', 'sep 28', '26 min', 'unplayed', '#4a3b2f', false, 0], ['The Ransomware Hunter', 'One researcher and the gangs who fear him.', 'Darknet Diaries', 'sep 24', '61 min', '24 min left', '#2f2f2f', false, 40]]) },
+  ];
+  return { accent, shows, groups };
+}
+}
+</script>
+</body>
+</html>

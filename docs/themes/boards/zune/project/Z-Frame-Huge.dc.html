@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune frame: huge window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 2560px; height: 1440px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="huge" accent="{{accent}}" hint-size="2560px,48px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex">
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+      <dc-import name="Z-Part-Band" tier="huge" section="home" sub="all,music,podcasts,audiobooks" on="all" accent="{{accent}}" hint-size="1840px,84px"></dc-import>
+      <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; gap: 36px; padding: 8px 48px 0 48px; overflow: hidden">
+        <div style="display: flex; gap: 48px">
+          <sc-for list="{{groups}}" as="g" hint-placeholder-count="3">
+            <div style="display: flex; flex-direction: column; gap: 10px">
+              <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">{{g.title}}</span><a href="#" style="font-size: 13px">{{g.link}}</a></div>
+              <div style="display: flex; gap: 16px"><sc-for list="{{g.tiles}}" as="t" hint-placeholder-count="4"><a href="#" style="{{t.box}}"><span style="{{t.art}}"></span><span style="{{t.nameStyle}}">{{t.name}}</span><span style="font-size: 12px; color: #a8a8a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.sub}}</span></a></sc-for></div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="height: 220px; flex-shrink: 0; display: flex; background: #1b1b1b; overflow: hidden">
+          <div style="width: 440px; flex-shrink: 0; background: linear-gradient(135deg, #4a2f5b, #7a3b6b 60%, #1b1b1b)"></div>
+          <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; padding: 0 40px; gap: 8px">
+            <span style="font-size: 13px; color: #a8a8a8">good afternoon, christos · your daylist</span>
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 300; line-height: 72px; letter-spacing: -1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">sad girl synth-pop tuesday afternoon</span>
+            <span style="display: flex; gap: 22px; align-items: center; padding-top: 6px; font-size: 14px">
+              <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #fff; font: inherit; padding: 0"><span style="{{playRing}}">▶</span>play</button>
+              <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #fff; font: inherit; padding: 0"><span style="{{ring}}">⇄</span>shuffle</button>
+              <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #fff; font: inherit; padding: 0"><span style="{{ring}}">♡</span>save</button>
+              <span style="font-size: 13px; color: #a8a8a8; margin-left: 12px">synthpop · dream pop · nostalgia · 50 songs</span>
+            </span>
+          </div>
+          <div style="width: 320px; flex-shrink: 0; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding-right: 40px; font-size: 12px; color: #a8a8a8">
+            <span>next daylist in <span style="color: #ffffff; font-variant-numeric: tabular-nums">02:14:33</span></span>
+            <span style="display: flex; gap: 4px; align-items: flex-end; height: 20px"><span style="width: 52px; height: 6px; background: rgba(255,255,255,0.14)"></span><span style="width: 52px; height: 6px; background: rgba(255,255,255,0.14)"></span><span style="{{nowBar}}"></span><span style="width: 52px; height: 6px; background: rgba(255,255,255,0.14)"></span><span style="width: 52px; height: 6px; background: rgba(255,255,255,0.14)"></span></span>
+            <span>early morning · morning · <span style="color: #ffffff">afternoon</span> · evening · night</span>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">made for you</span><span style="font-size: 13px; color: #7a7a7a">daily mixes and moods picked for you</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 13px">see all</a></div>
+          <div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 16px"><sc-for list="{{mixes}}" as="t" hint-placeholder-count="8"><a href="#" style="display: flex; flex-direction: column; gap: 6px; min-width: 0"><span style="{{t.art}}"></span><span style="font-size: 13px; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.name}}</span><span style="font-size: 12px; color: #a8a8a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.sub}}</span></a></sc-for></div>
+        </div>
+        <div style="display: flex; gap: 48px">
+          <div style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+            <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">from artists you follow</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 13px">see all</a></div>
+            <sc-for list="{{releases}}" as="r" hint-placeholder-count="4"><a href="#" style="display: grid; grid-template-columns: 56px minmax(0, 1fr) 90px; align-items: center; gap: 12px; height: 64px"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 15px; color: #ffffff">{{r.name}}</span><span style="font-size: 13px; color: #a8a8a8">{{r.sub}}</span></span><span style="font-size: 12px; color: #7a7a7a; text-align: right">{{r.when}}</span></a></sc-for>
+          </div>
+          <div style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+            <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">because you like</span><span style="font-size: 13px; color: #7a7a7a">the midnight</span></div>
+            <sc-for list="{{similar}}" as="r" hint-placeholder-count="4"><a href="#" style="display: grid; grid-template-columns: 56px minmax(0, 1fr); align-items: center; gap: 12px; height: 64px"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column"><span style="font-size: 15px; color: #ffffff">{{r.name}}</span><span style="font-size: 13px; color: #a8a8a8">{{r.sub}}</span></span></a></sc-for>
+          </div>
+          <div style="width: 420px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px">
+            <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">charts</span><span style="font-size: 13px; color: #7a7a7a">updated daily</span></div>
+            <sc-for list="{{charts}}" as="c" hint-placeholder-count="4"><a href="#" style="height: 64px; display: flex; align-items: center; gap: 14px; color: #ffffff; font-size: 15px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; font-weight: 300; color: #7a7a7a; width: 36px">{{c.n}}</span>{{c.name}}</a></sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+    <dc-import name="Z-Part-Panel" tier="docked2" pivot="friends" h="1320" accent="{{accent}}" hint-size="720px,1320px"></dc-import>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="huge" title="Nightcall" artist="Kavinsky · OutRun" art="#6b2f4a" progress="29" from="playing from late night drive" active="friends" accent="{{accent}}" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const tile = (d, s, play) => ({ name: d[0], sub: d[1] || '', box: 'display: flex; flex-direction: column; gap: 6px; width: ' + s + 'px', art: 'width: ' + s + 'px; height: ' + s + 'px; border-radius: 2px; background: ' + d[2] + '; display: block', nameStyle: 'font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (play ? accent : '#ffffff') });
+  const groups = [
+    { title: 'pins', link: 'edit', tiles: [['late night drive', '', '#3b4a6b'], ['Liked Songs', '', '#5b2f6b'], ['OutRun', '', '#6b2f4a'], ['Odyssey', '', '#2f5b6b'], ['Random Access Memories', '', '#3a2f22'], ['Armageddon', '', '#5b3b6b']].map((d) => tile(d, 180, false)) },
+    { title: 'history', link: 'listening history', tiles: [['OutRun', 'playing', '#6b2f4a'], ['Endless Summer', 'The Midnight', '#6b4a2f'], ['Trilogy', 'Carpenter Brut', '#6b2f2f'], ['Hurry Up, We’re Dreaming', 'M83', '#3b4a6b']].map((d, i) => tile(d, 140, i === 0)) },
+    { title: 'new', link: 'from artists you follow', tiles: [['Heroes', 'The Midnight', '#2f3b6b'], ['Leather Teeth', 'Carpenter Brut', '#3b2f2f'], ['Hostage', 'Gunship', '#2f4a3b']].map((d) => tile(d, 140, false)) },
+  ];
+  const sq = (c) => 'width: 100%; aspect-ratio: 1 / 1; border-radius: 2px; background: ' + c + '; display: block';
+  const mixes = [['Daily Mix 1', 'The Midnight, FM-84, Timecop1983', '#4a3b6b'], ['Daily Mix 2', 'aespa, NewJeans, ILLIT', '#6b3b5b'], ['Discover Weekly', 'your weekly mixtape', '#2f5b4a'], ['Release Radar', 'new from artists you follow', '#5b4a2f'], ['Synthwave Mix', 'Kavinsky, Gunship, HOME', '#2f3b6b'], ['Chill Mix', 'HOME, Resonance, Tycho', '#3b5b6b'], ['Nostalgia Mix', 'M83, Daft Punk, Justice', '#6b2f3b'], ['On Repeat', 'the songs you keep playing', '#4a4a4a']].map((d) => ({ name: d[0], sub: d[1], art: sq(d[2]) }));
+  const a56 = (c, round) => 'width: 56px; height: 56px; border-radius: ' + (round ? 28 : 2) + 'px; background: ' + c + '; display: block';
+  const releases = [['Heroes', 'album · The Midnight', 'friday', '#2f3b6b'], ['Leather Teeth', 'album · Carpenter Brut', 'last week', '#3b2f2f'], ['Hostage', 'single · Gunship', 'last week', '#2f4a3b'], ['Resonance (Slowed)', 'single · HOME', '2 weeks ago', '#2f5b6b']].map((d) => ({ name: d[0], sub: d[1], when: d[2], art: a56(d[3], false) }));
+  const similar = [['FM-84', 'artist', '#4a3b2f', true], ['Timecop1983', 'artist', '#2f3b4a', true], ['The Midnight Radio', 'radio', '#3b3b3b', false], ['Gunship', 'artist', '#5b3b6b', true]].map((d) => ({ name: d[0], sub: d[1], art: a56(d[2], d[3]) }));
+  const charts = ['Top 50 · global', 'Viral 50 · netherlands', 'Top 50 · netherlands', 'Top songs · global'].map((n, i) => ({ n: String(i + 1), name: n }));
+  return {
+    accent, groups, mixes, releases, similar, charts,
+    playRing: 'width: 36px; height: 36px; border-radius: 18px; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; font-size: 13px',
+    ring: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #ffffff; display: flex; align-items: center; justify-content: center; font-size: 13px',
+    nowBar: 'width: 52px; height: 20px; background: ' + accent,
+  };
+}
+}
+</script>
+</body>
+</html>

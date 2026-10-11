@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Unavailable tracks, compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tier="compact" width="400" tabs="home:Home|playlist:LoL Worlds Songs 2014–2026:#5b5b5b" sel="1" hint-size="400px,88px"></dc-import>
+  <main style="flex-grow: 1; min-height: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); padding: 16px 16px 0 16px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+    <div style="display: flex; gap: 16px; align-items: flex-end; flex-shrink: 0">
+      <div style="width: 128px; height: 128px; border-radius: 8px; background: #5b5b5b; flex-shrink: 0"></div>
+      <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0; flex-grow: 1">
+        <div style="font-size: 12px; line-height: 16px; color: #c5c5c5">Playlist · Public</div>
+        <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden">LoL Worlds Songs 2014–2026</h1>
+        <div style="display: flex; align-items: center; gap: 6px; font-size: 14px; line-height: 20px; color: #c5c5c5"><span style="width: 20px; height: 20px; border-radius: 10px; background: #6b5b4a; flex-shrink: 0"></span><a href="#">Chris</a></div>
+        <div style="font-size: 12px; line-height: 16px; color: #9e9e9e">70 songs, 2 unavailable · 4 hr 21 min</div>
+      </div>
+    </div>
+    <div style="display: flex; gap: 8px; align-items: center; flex-shrink: 0">
+      <button style="height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 20px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg>Play</button>
+      <button style="height: 40px; padding: 0 16px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px">Shuffle</button>
+      <span style="flex-grow: 1"></span>
+      <button aria-label="Find in playlist" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></button>
+      <button aria-label="Sort: Custom order" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.5v11M2.5 11.5l2 2 2-2M8.5 4h5M8.5 8h4M8.5 12h2.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    </div>
+    <div role="status" style="flex-shrink: 0; display: flex; align-items: flex-start; gap: 12px; padding: 12px 4px 12px 16px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0326); border: 1px solid rgba(0,0,0,0.1)">
+      <span style="width: 16px; height: 16px; margin-top: 2px; border-radius: 8px; background: #60cdff; color: #000; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 11px; font-weight: 700">i</span>
+      <span style="font-size: 14px; line-height: 20px; flex-grow: 1; min-width: 0">2 songs in this playlist aren’t available in your country. They stay in the playlist and skip during playback.</span>
+      <button aria-label="Close" style="width: 40px; height: 40px; margin-top: -10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg></button>
+    </div>
+    <label style="flex-shrink: 0; display: flex; align-items: center; gap: 12px; height: 40px; font-size: 14px"><span style="flex-grow: 1">Show unavailable songs</span><span style="width: 40px; height: 20px; border-radius: 10px; background: #60cdff; position: relative; display: block; flex-shrink: 0; margin-right: 8px"><span style="position: absolute; top: 4px; left: 24px; width: 12px; height: 12px; border-radius: 6px; background: #000"></span></span></label>
+    <div role="table" aria-label="Tracks" style="display: flex; flex-direction: column; margin: -8px -8px 0 -8px">
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+        <div role="row" aria-disabled="{{r.dis}}" style="{{r.style}}">
+          <span style="{{r.art}}"></span>
+          <span style="display: flex; flex-direction: column; min-width: 0"><span style="{{r.title}}">{{r.t}}</span><span style="{{r.sub}}">{{r.a}}</span></span>
+          <span style="{{r.time}}">{{r.d}}</span>
+          <button aria-label="More for {{r.t}}" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #c5c5c5; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+          <sc-if value="{{r.tip}}" hint-placeholder-val="{{ false }}"><span role="tooltip" style="position: absolute; z-index: 2; left: 56px; top: -30px; padding: 6px 8px 8px 8px; border-radius: 4px; background: #2c2c2c; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 4px 8px rgba(0,0,0,0.26); font-size: 12px; line-height: 16px; white-space: nowrap; color: #ffffff">This track isn’t available in your country</span></sc-if>
+        </div>
+      </sc-for>
+    </div>
+  </main>
+  <dc-import name="Shell-Player" theme="dark" tier="mini" width="400" variant="music" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const d = [['Warriors', 'Imagine Dragons', 'Warriors', '2:50', '#5b4a3b'], ['Worlds Collide', 'Nicki Taylor', 'Worlds Collide', '3:41', '#3b4a5b', 'u'], ['Ignite', 'Zedd', 'Ignite', '3:31', '#6b3b2f'], ['Legends Never Die', 'Against The Current', 'Legends Never Die', '3:54', '#4a3b2f'], ['RISE', 'The Glitch Mob, Mako, The Word Alive', 'RISE', '3:12', '#2f4a6b'], ['Phoenix', 'Cailin Russo, Chrissy Costanza', 'Phoenix', '3:30', '#6b2f2f'], ['Take Over', 'Jeremy McKinnon, MAX, Henry', 'Take Over', '3:06', '#2f2f4a', 'u']];
+  const rows = d.map((x, i) => {
+    const u = x[5] === 'u', tip = i === 1;
+    const ink = u ? '#5d5d5d' : '#ffffff', ink2 = u ? '#5d5d5d' : '#c5c5c5';
+    return { t: x[0], a: x[1] + ' · ' + x[2], d: u ? 'Unavailable' : x[3], dis: u ? 'true' : 'false', tip,
+      style: 'position: relative; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto 40px; column-gap: 12px; align-items: center; height: 56px; padding: 0 0 0 8px; border-radius: 4px; ' + (tip ? 'background: rgba(255,255,255,0.0419)' : ''),
+      art: 'width: 40px; height: 40px; border-radius: 4px; background: ' + x[4] + (u ? '; opacity: 0.35; filter: grayscale(1)' : ''),
+      title: 'font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + ink,
+      sub: 'font-size: 12px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + ink2,
+      time: 'text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; color: ' + ink2 };
+  });
+  return { rows };
+}
+}
+</script>
+</body>
+</html>

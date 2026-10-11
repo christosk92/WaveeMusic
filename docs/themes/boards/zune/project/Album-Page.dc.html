@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune album panorama</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#c8c8c8;text-decoration:none}a:hover{color:#ffffff;text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1280px; height: 900px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; overflow: hidden; position: relative">
+  <div style="position: absolute; left: 40px; top: 18px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 120px; font-weight: 200; line-height: 130px; white-space: nowrap; color: #ffffff; opacity: 0.9">random access memories</div>
+  <div style="position: absolute; left: 48px; top: 180px; right: 0; bottom: 0; display: flex; gap: 64px">
+    <div style="width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 14px">
+      <div style="width: 300px; height: 300px; background: #3a2f22"></div>
+      <a href="#" style="font-size: 20px; color: #ffffff">Daft Punk</a>
+      <div style="font-size: 14px; color: #a8a8a8">2013 · 13 songs · 74 min</div>
+      <div style="display: flex; gap: 22px; padding-top: 6px; font-size: 14px">
+        <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #fff; font: inherit; font-size: 14px; padding: 0"><span style="{{playRing}}">▶</span>play</button>
+        <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #fff; font: inherit; font-size: 14px; padding: 0"><span style="width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 13px">♡</span>save</button>
+        <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #fff; font: inherit; font-size: 14px; padding: 0"><span style="width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 13px">⋯</span>more</button>
+      </div>
+    </div>
+    <div style="width: 560px; flex-shrink: 0; display: flex; flex-direction: column">
+      <div style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 30px; font-weight: 300; height: 48px">songs</div>
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="11">
+        <div style="display: grid; grid-template-columns: 48px minmax(0, 1fr) 56px; align-items: center; height: 46px">
+          <span style="{{r.numStyle}}">{{r.num}}</span>
+          <span style="{{r.titleStyle}}">{{r.title}}</span>
+          <span style="{{r.timeStyle}}">{{r.time}}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="width: 360px; flex-shrink: 0; display: flex; flex-direction: column; gap: 14px">
+      <div style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 30px; font-weight: 300; height: 48px">more by daft punk</div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px">
+        <div style="height: 150px; background: #2b2b2b"></div><div style="height: 150px; background: #33302a"></div>
+        <div style="height: 150px; background: #2a2f33"></div><div style="height: 150px; background: #332a2f"></div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const data = [['Give Life Back to Music', '4:34'], ['The Game of Love', '5:21'], ['Giorgio by Moroder', '9:04'], ['Within', '3:48'], ['Instant Crush', '5:37'], ['Lose Yourself to Dance', '5:53'], ['Touch', '8:18'], ['Get Lucky', '6:09'], ['Beyond', '4:50'], ['Motherboard', '5:41'], ['Fragments of Time', '4:39']];
+  const rows = data.map((d, i) => {
+    const play = i === 7;
+    return {
+      num: play ? '▮▮▮' : String(i + 1), title: d[0], time: d[1],
+      numStyle: 'font-family: \'Segoe UI Variable Display\', \'Segoe UI\', sans-serif; font-weight: 300; font-size: ' + (play ? 11 : 20) + 'px; color: ' + (play ? accent : '#7a7a7a'),
+      titleStyle: 'font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (play ? accent : '#ffffff'),
+      timeStyle: 'font-size: 13px; text-align: right; color: ' + (play ? accent : '#9c9c9c'),
+    };
+  });
+  return { rows, playRing: 'width: 36px; height: 36px; border-radius: 18px; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; font-size: 13px' };
+}
+}
+</script>
+</body>
+</html>

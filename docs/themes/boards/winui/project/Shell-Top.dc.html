@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shell part: title bar with tabs and search</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{s.root}}">
+  <sc-if value="{{tabsOn}}" hint-placeholder-val="{{ true }}">
+  <div style="{{s.strip}}">
+    <sc-for list="{{tabs}}" as="t" hint-placeholder-count="2">
+      <div style="{{t.style}}">
+        <sc-if value="{{t.art}}" hint-placeholder-val="{{ false }}"><span style="{{t.artStyle}}"></span></sc-if>
+        <sc-if value="{{t.glyph}}" hint-placeholder-val="{{ true }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="{{t.d}}" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></sc-if>
+        <sc-if value="{{t.label}}" hint-placeholder-val="{{ true }}"><span style="flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.title}}</span></sc-if>
+        <sc-if value="{{t.close}}" hint-placeholder-val="{{ true }}"><button aria-label="Close tab" style="{{s.tabClose}}"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg></button></sc-if>
+      </div>
+    </sc-for>
+    <button aria-label="New tab (Ctrl+T)" style="{{s.newTab}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></button>
+    <div style="flex-grow: 1"></div>
+    <span style="{{s.cap}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10" fill="none" stroke="currentColor" stroke-width="1"></path></svg></span>
+    <span style="{{s.cap}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5h9v9h-9z" fill="none" stroke="currentColor" stroke-width="1"></path></svg></span>
+    <span style="{{s.cap}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></span>
+  </div>
+  </sc-if>
+  <div style="{{s.bar}}">
+    <div style="display: flex; align-items: center; gap: 4px; padding-left: 4px">
+      <button aria-label="Toggle navigation" style="{{s.tool}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></button>
+      <button aria-label="Back" style="{{s.back}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 8h-11M6.5 3.5 2.5 8l4 4.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      <sc-if value="{{showFwd}}" hint-placeholder-val="{{ true }}"><button aria-label="Forward" style="{{s.fwd}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8h11M9.5 3.5 13.5 8l-4 4.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></sc-if>
+      <sc-if value="{{appMark}}" hint-placeholder-val="{{ false }}"><span style="display: flex; align-items: center; gap: 8px; padding-left: 8px; font-size: 12px"><span style="width: 16px; height: 16px; border-radius: 4px; background: #60cdff"></span>{{appTitle}}</span></sc-if>
+    </div>
+    <sc-if value="{{searchBox}}" hint-placeholder-val="{{ true }}">
+    <label style="{{s.search}}">
+      <span style="{{s.searchText}}">{{queryText}}</span>
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg>
+    </label>
+    </sc-if>
+    <sc-if value="{{searchBtn}}" hint-placeholder-val="{{ false }}"><span></span></sc-if>
+    <div style="display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding-right: 8px">
+      <sc-if value="{{searchBtn}}" hint-placeholder-val="{{ false }}"><button aria-label="Search" style="{{s.tool}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></button></sc-if>
+      <sc-if value="{{showPin}}" hint-placeholder-val="{{ true }}"><button aria-label="Pin this page to the sidebar" style="{{s.tool}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 2.5 13.5 6.5l-1.8.4-2.2 2.2.4 2.6-3.3-3.3L3 12.5l-.5-.5 4.1-3.6L3.3 5.1l2.6.4 2.2-2.2z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+      <button aria-label="Friends" style="{{s.tool}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2.8a2.2 2.2 0 1 1 0 4.4A2.2 2.2 0 0 1 6 2.8zM1.5 13c0-2.3 2-3.8 4.5-3.8s4.5 1.5 4.5 3.8M10.8 3.3a2 2 0 0 1 0 3.8M12 9.4c1.5.4 2.5 1.6 2.5 3.6" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></button></sc-if>
+      <button aria-label="Notifications" style="{{s.toolRel}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2a4 4 0 0 1 4 4v3l1.5 2h-11L4 9V6a4 4 0 0 1 4-4zM6.5 13a1.5 1.5 0 0 0 3 0" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="{{s.badge}}">{{badge}}</span></button>
+      <sc-if value="{{showMore}}" hint-placeholder-val="{{ false }}"><button aria-label="More: pin this page, friends" style="{{s.tool}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button></sc-if>
+      <span aria-label="Chris" role="img" style="{{s.avatar}}"></span>
+      <sc-if value="{{showName}}" hint-placeholder-val="{{ false }}"><span style="font-size: 14px; padding: 0 8px 0 4px">Chris</span></sc-if>
+      <sc-if value="{{capsInBar}}" hint-placeholder-val="{{ false }}">
+        <span style="{{s.capBar}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10" fill="none" stroke="currentColor" stroke-width="1"></path></svg></span>
+        <span style="{{s.capBar}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5h9v9h-9z" fill="none" stroke="currentColor" stroke-width="1"></path></svg></span>
+        <span style="{{s.capBar}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></span>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"tier":{"editor":"enum","options":["compact","small","standard","huge"],"default":"standard"},"width":{"editor":"int","default":1440,"min":320,"max":3840},"tabsOn":{"editor":"boolean","default":true},"tabs":{"editor":"text","default":"home:Home|album:The Stereo Love Show:#3b5b7a"},"sel":{"editor":"int","default":0,"min":0,"max":8},"query":{"editor":"text","default":""},"back":{"editor":"boolean","default":true},"fwd":{"editor":"boolean","default":false},"badge":{"editor":"text","default":""},"$preview":{"width":1440,"height":88}}'>
+class Component extends DCLogic {
+renderVals() {
+  const dark = (this.props.theme ?? 'dark') !== 'light';
+  const tier = String(this.props.tier ?? 'standard');
+  const W = Number(this.props.width ?? 1440);
+  const tabsOn = (this.props.tabsOn ?? true) !== false;
+  const compact = tier === 'compact', small = tier === 'small', huge = tier === 'huge';
+  const T = dark
+    ? { micaAlt: '#1c1c1c', mica: '#202020', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', dis: '#5d5d5d', ctrl: 'rgba(255,255,255,0.0605)', ctrlB: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)', txtB: 'rgba(255,255,255,0.5442)', acc: '#60cdff', onAcc: '#000000' }
+    : { micaAlt: '#e9e9e9', mica: '#f3f3f3', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', dis: '#9f9f9f', ctrl: 'rgba(255,255,255,0.7)', ctrlB: 'rgba(0,0,0,0.0578)', sub: 'rgba(0,0,0,0.0373)', txtB: 'rgba(0,0,0,0.4458)', acc: '#005fb8', onAcc: '#ffffff' };
+  const I = {
+    home: 'M2.5 8.5 8 3l5.5 5.5M4 7.5V13h8V7.5', browse: 'M8 1.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13zM10.5 5.5 9 9l-3.5 1.5L7 7z',
+    library: 'M2.5 3v10M5.5 3v10M8.5 3.6l3.4 9.4', liked: 'M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z',
+    albums: 'M8 1.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13zM8 6.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z', artists: 'M8 2.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM3 13.5c0-2.5 2.2-4 5-4s5 1.5 5 4',
+    podcasts: 'M8 1.5a2 2 0 0 1 2 2v4a2 2 0 0 1-4 0v-4a2 2 0 0 1 2-2zM4.5 7.5a3.5 3.5 0 0 0 7 0M8 11v3M6 14h4', audiobooks: 'M2.5 3h4A1.5 1.5 0 0 1 8 4.5v9A1.5 1.5 0 0 0 6.5 12h-4zM13.5 3h-4A1.5 1.5 0 0 0 8 4.5v9A1.5 1.5 0 0 1 9.5 12h4z',
+    settings: 'M8 5.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4',
+    search: 'M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14', recents: 'M8 1.5a6.5 6.5 0 1 1-6.3 8M1.5 5.5v4h4M8 4.5V8l2.5 1.5',
+    concert: 'M2 4.5h12V7a1.5 1.5 0 0 0 0 3v1.5H2V10a1.5 1.5 0 0 0 0-3z', profile: 'M8 2.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM3 13.5c0-2.5 2.2-4 5-4s5 1.5 5 4',
+    video: 'M2 3h12v10H2zM2 6h12M2 10h12M5 3v10M11 3v10', notes: 'M3 2.5h10v11H3zM5.5 5.5h5M5.5 8h5M5.5 10.5h3', feedback: 'M2.5 3h11v8h-6l-3 2.5V11h-2z', queue: 'M2.5 4h11M2.5 8h7M2.5 12h7M11.5 9.5v4.5l3.5-2.25z', lyrics: 'M3 9.5V7a3 3 0 0 1 3-3M3 9.5h3v3H3zM10 9.5V7a3 3 0 0 1 3-3M10 9.5h3v3h-3z'
+  };
+  const artKinds = { album: 4, playlist: 4, show: 4, episode: 4, artist: 8, folder: 4 };
+  const sel = Number(this.props.sel ?? 0);
+  const raw = String(this.props.tabs ?? 'home:Home');
+  const tabW = huge ? 240 : (small ? 160 : 200);
+  const tabs = raw.split('|').filter(Boolean).map((p, i) => {
+    const parts = p.split(':');
+    const kind = parts[0] || 'home', title = parts[1] || '', color = parts[2] || '#3b5b7a';
+    const isSel = i === sel, art = artKinds[kind] !== undefined;
+    const iconOnly = compact && !isSel;
+    const w = compact ? (isSel ? 140 : 36) : tabW;
+    const pad = iconOnly ? 'padding: 0; justify-content: center; ' : 'padding: 0 6px 0 12px; ';
+    return { title, close: isSel, label: !iconOnly, art, glyph: !art, d: I[kind] || I.home,
+      style: 'height: 36px; width: ' + w + 'px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 8px; ' + pad + 'font-size: 12px; border-radius: 8px 8px 0 0; ' + (isSel ? 'background: ' + T.mica + '; color: ' + T.t1 : 'color: ' + T.t2),
+      artStyle: 'width: 16px; height: 16px; flex-shrink: 0; border-radius: ' + (artKinds[kind] || 4) + 'px; background: ' + color };
+  });
+  const tool = 'width: 40px; height: 36px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: ' + T.t1 + '; font: inherit; cursor: default';
+  const q = String(this.props.query ?? '');
+  const badge = String(this.props.badge ?? '');
+  const cols = huge ? 'minmax(0, 1fr) 640px minmax(0, 1fr)' : (small ? 'auto minmax(0, 1fr) auto' : (compact ? 'auto minmax(0, 1fr) auto' : 'minmax(0, 1fr) 520px minmax(0, 1fr)'));
+  const s = {
+    root: 'width: ' + W + 'px; height: ' + (tabsOn ? 88 : 48) + 'px; box-sizing: border-box; display: flex; flex-direction: column; font-family: \'Segoe UI Variable Text\', \'Segoe UI\', system-ui, sans-serif; color: ' + T.t1 + '; background: ' + T.mica,
+    strip: 'height: 40px; flex-shrink: 0; display: flex; align-items: flex-end; padding-left: 8px; gap: 2px; overflow: hidden; background: ' + T.micaAlt,
+    tabClose: 'width: 24px; height: 24px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: ' + T.t2 + '; font: inherit',
+    newTab: 'width: 32px; height: 32px; flex-shrink: 0; margin: 0 0 4px 2px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: ' + T.t1 + '; font: inherit',
+    cap: 'width: 46px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: ' + T.t1,
+    capBar: 'width: 46px; height: 48px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: ' + T.t1,
+    bar: 'height: 48px; flex-shrink: 0; display: grid; grid-template-columns: ' + cols + '; gap: ' + (small ? '12px' : '0') + '; align-items: center',
+    tool,
+    toolRel: tool + '; position: relative',
+    back: tool.replace('color: ' + T.t1, 'color: ' + ((this.props.back ?? true) ? T.t1 : T.dis)),
+    fwd: tool.replace('color: ' + T.t1, 'color: ' + ((this.props.fwd ?? false) ? T.t1 : T.dis)),
+    search: 'height: 32px; ' + (small ? 'justify-self: center; width: 100%; max-width: 520px; ' : '') + 'display: flex; align-items: center; gap: 8px; padding: 0 10px 0 12px; box-sizing: border-box; border-radius: 4px; background: ' + T.ctrl + '; border: 1px solid ' + T.ctrlB + '; border-bottom: 1px solid ' + T.txtB + '; font-size: 14px; color: ' + (q ? T.t1 : T.t3),
+    searchText: 'flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis',
+    badge: (badge ? 'display: flex' : 'display: none') + '; position: absolute; top: 4px; right: 6px; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box; align-items: center; justify-content: center; border-radius: 8px; background: ' + T.acc + '; color: ' + T.onAcc + '; font-size: 11px; font-weight: 600',
+    avatar: 'width: 32px; height: 32px; margin-left: 4px; border-radius: 16px; background: #6b5b4a; display: block; flex-shrink: 0'
+  };
+  return { s, tabs, tabsOn, queryText: q || (small ? 'Search' : 'Search songs, artists, albums...'), badge,
+    showFwd: !compact, searchBox: !compact, searchBtn: compact, showPin: !compact && !small, showMore: small,
+    showName: huge, capsInBar: !tabsOn, appMark: !tabsOn && !compact, appTitle: 'Wavee' };
+}
+}
+</script>
+</body>
+</html>

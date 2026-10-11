@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Video</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; width: 1440px; height: 900px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="heart:Liked Songs" sel="0" w="1440" hint-size="1440px,48px"></dc-import>
+  <div style="display: flex; height: 780px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="rail" sel="liked" h="780" hint-size="48px,780px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; padding: 24px 28px 0; display: flex; flex-direction: column; gap: 12px; overflow: hidden">
+      <h1 style="margin: 0 8px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400">Liked Songs</h1>
+      <dc-import name="C-TrackList" theme="dark" rs="modern" set="liked" n="10" marks="5:playing" hint-size="100%,520px"></dc-import>
+    </main>
+    <span style="width: 8px; flex-shrink: 0"></span>
+    <aside aria-label="Video" style="width: 340px; flex-shrink: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; display: flex; flex-direction: column; overflow: hidden">
+      <div style="height: 44px; display: flex; align-items: center; gap: 4px; padding: 0 8px 0 12px"><h2 style="margin: 0; flex-grow: 1; font-size: 20px; line-height: 28px; font-weight: 600">Video</h2><button aria-label="Play in a mini player" style="width: 32px; height: 32px; border: 0; background: transparent; color: rgba(255,255,255,0.773)">▭</button><button aria-label="Full screen" style="width: 32px; height: 32px; border: 0; background: transparent; color: rgba(255,255,255,0.773)">⛶</button><button aria-label="Close" style="width: 32px; height: 32px; border: 0; background: transparent; color: rgba(255,255,255,0.773)">✕</button></div>
+      <div style="position: relative; height: 191px; background: linear-gradient(160deg, #3b6b9b, #0e1828)"><div style="position: absolute; left: 0; right: 0; top: 0; height: 30px; background: linear-gradient(180deg, rgba(0,0,0,0.5), transparent)"></div><div style="position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(255,255,255,0.25)"><span style="display: block; width: 36%; height: 4px; background: #60cdff"></span></div></div>
+      <div style="height: 6px; display: flex; justify-content: center; align-items: center"><span style="width: 32px; height: 3px; border-radius: 2px; background: rgba(255,255,255,0.3)"></span></div>
+      <div style="padding: 8px 16px; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 16px; font-weight: 600">Strawberries &amp; Cigarettes</span><span style="font-size: 12px; color: rgba(255,255,255,0.773)">Troye Sivan · Official video · 720p (Auto)</span></div>
+    </aside>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="video" w="1440" hint-size="1440px,72px"></dc-import>
+  <div role="menu" aria-label="Where to play the video" style="position: absolute; right: 150px; bottom: 76px; width: 300px; padding: 4px; box-sizing: border-box; border-radius: 8px; background: #2c2c2c; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 16px rgba(0,0,0,0.26); display: flex; flex-direction: column; font-size: 14px">
+    <sc-for list="{{items}}" as="i" hint-placeholder-count="7"><sc-if value="{{i.sep}}" hint-placeholder-val="{{false}}"><span style="height: 1px; margin: 4px 8px; background: rgba(255,255,255,0.082)"></span></sc-if><sc-if value="{{i.item}}" hint-placeholder-val="{{true}}"><div role="menuitemradio" aria-checked="{{i.on}}" style="{{i.s}}"><span style="width: 16px; color: #60cdff">{{i.mark}}</span><span style="flex-grow: 1">{{i.l}}</span><span style="font-size: 12px; color: rgba(255,255,255,0.529)">{{i.r}}</span></div></sc-if></sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const it = (l, on, r, dis) => ({ item: true, sep: false, l, r: r || '', on: on ? 'true' : 'false', mark: on ? '●' : '', s: 'height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px' + (on ? '; background: rgba(255,255,255,0.059)' : '') + (dis ? '; color: rgba(255,255,255,0.365)' : '') });
+  const items = [it('Dock in the side panel', true), it('Play in a mini player'), it('Play in a separate window'), it('Full screen', false, 'F11'), { sep: true, item: false }, it('Always on top', false, '', true), it('Turn off video')];
+  return { items };
+}
+}
+</script>
+</body>
+</html>

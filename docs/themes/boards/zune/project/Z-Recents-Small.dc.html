@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune recents · small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 800px; height: 600px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="small" crumb="recents › all" accent="{{accent}}" hint-size="800px,48px"></dc-import>
+  <dc-import name="Z-Part-Band" tier="small" section="recents" sub="all,music,podcasts,artists" on="all" accent="{{accent}}" hint-size="800px,84px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex; gap: 28px; padding: 0 24px; overflow: hidden">
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden">
+      <sc-for list="{{days}}" as="d" hint-placeholder-count="2">
+        <div style="display: flex; flex-direction: column; flex-shrink: 0">
+          <div style="display: flex; align-items: center; gap: 14px; height: 40px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">{{d.label}}</span><span style="flex-grow: 1; height: 1px; background: rgba(255,255,255,0.08)"></span><span style="font-size: 12px; color: #7a7a7a">{{d.count}}</span></div>
+          <sc-for list="{{d.rows}}" as="r" hint-placeholder-count="3">
+            <a href="#" style="{{r.row}}"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="{{r.title}}">{{r.name}}</span><span style="font-size: 12px; color: #9c9c9c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.caption}}</span></span><span style="font-size: 12px; color: #7a7a7a; text-align: right; font-variant-numeric: tabular-nums">{{r.time}}</span><span style="font-size: 11px; color: #7a7a7a; text-align: center">{{r.chev}}</span></a>
+            <sc-if value="{{r.open}}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; flex-direction: column; padding: 0 0 4px 60px">
+                <sc-for list="{{r.tracks}}" as="t" hint-placeholder-count="3"><div style="display: grid; grid-template-columns: 36px minmax(0, 1fr) 48px; align-items: center; height: 36px"><span style="{{t.num}}">{{t.n}}</span><span style="{{t.title}}">{{t.name}}</span><span style="font-size: 12px; color: #9c9c9c; text-align: right">{{t.time}}</span></div></sc-for>
+              </div>
+            </sc-if>
+          </sc-for>
+        </div>
+      </sc-for>
+    </div>
+    <div style="width: 220px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; padding-top: 8px">
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">overview</span>
+      <span style="font-size: 12px; color: #a8a8a8">october · 212 plays so far</span>
+      <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px">
+        <sc-for list="{{cells}}" as="c" hint-placeholder-count="35"><span style="{{c}}"></span></sc-for>
+      </div>
+      <span style="font-size: 11px; color: #7a7a7a; display: flex; align-items: center; gap: 6px">quieter <span style="display: flex; gap: 2px"><sc-for list="{{legend}}" as="l" hint-placeholder-count="4"><span style="{{l}}"></span></sc-for></span> busier</span>
+      <span style="display: flex; gap: 14px; font-size: 12px; margin-top: 2px"><a href="#">september</a><a href="#">jump to today</a></span>
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; row-gap: 6px; font-size: 12px; margin-top: 10px">
+        <span style="color: #7a7a7a">most played</span><span>Kavinsky</span>
+        <span style="color: #7a7a7a">busiest day</span><span>oct 6 · 31 plays</span>
+        <span style="color: #7a7a7a">listening time</span><span>14 hr 20 min</span>
+      </div>
+    </div>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="medium" title="Nightcall" artist="Kavinsky" art="#6b2f4a" progress="29" accent="{{accent}}" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const shade = (v) => v === 0 ? 'background: rgba(255,255,255,0.06)' : 'background: ' + accent + '; opacity: ' + (v === 1 ? 0.35 : v === 2 ? 0.65 : 1);
+  const pat = [0,1,2,1,0,3,2, 1,1,2,3,2,1,0, 2,3,3,2,1,1,2, 0,1,2,2,3,1,0, 1,2,0,0,0,0,0];
+  const cells = pat.map((v) => 'height: 24px; display: block; ' + shade(v));
+  const legend = [0, 1, 2, 3].map((v) => 'width: 9px; height: 9px; display: block; ' + shade(v));
+  const row = (kind, name, caption, time, color, open, playing, round) => ({
+    name, caption: kind + ' · ' + caption, time, open, chev: open ? '▴' : '▾',
+    row: 'display: grid; grid-template-columns: 60px minmax(0, 1fr) 48px 28px; align-items: center; height: 52px; flex-shrink: 0; color: #ffffff; ' + (open ? 'background: rgba(255,255,255,0.05)' : ''),
+    art: 'width: 40px; height: 40px; display: block; margin-left: 4px; background: ' + color + '; border-radius: ' + (round ? '20px' : '2px'),
+    title: 'font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (playing ? accent : '#ffffff'),
+    tracks: open ? [['Nightcall', '4:18', true], ['Midnight City', '4:03', false], ['Resonance', '3:32', false]].map((t, i) => ({ n: t[2] ? '▮▮▮' : String(i + 1), name: t[0], time: t[1], num: 'font-family: ' + D + '; font-weight: 300; font-size: ' + (t[2] ? 10 : 20) + 'px; letter-spacing: ' + (t[2] ? '1px' : '0') + '; color: ' + (t[2] ? accent : '#7a7a7a'), title: 'font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (t[2] ? accent : '#ffffff') })) : [],
+  });
+  const days = [
+    { label: 'today', count: '12', rows: [row('playlist', 'late night drive', 'played 6 tracks', '14:32', '#3b4a6b', true, true, false), row('album', 'Random Access Memories', 'Daft Punk · 3 tracks', '11:05', '#3a2f22', false, false, false), row('podcast', 'The Rest Is Football', 'why the premier league keeps changing', '08:40', '#2f4a3b', false, false, false)] },
+    { label: 'yesterday', count: '31', rows: [row('artist', 'The Midnight', 'played 8 tracks', '22:18', '#6b4a2f', false, false, true), row('liked songs', 'Liked Songs', '12 tracks · shuffled', '19:02', '#5b2f6b', false, false, false)] },
+  ];
+  return { accent, cells, legend, days };
+}
+}
+</script>
+</body>
+</html>

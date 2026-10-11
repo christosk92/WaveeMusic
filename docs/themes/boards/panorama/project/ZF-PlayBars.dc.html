@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Play bar variants</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="{{vars}} width: 1440px; height: 820px; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; padding: 28px 0; overflow: hidden; background: var(--layer); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <div style="padding: 0 36px; font-size: 12px; line-height: 16px; color: var(--t2)">Music · full tier (1240 px and wider) · the seek Slider spans the bar's full width on its top row, times at both ends · shuffle on shows Accent text and a dot · Lyrics, Queue, Devices are subtle Buttons with labels</div>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" variant="music" pane="none" hint-size="1440px,84px"></dc-import>
+  <div style="padding: 12px 36px 0 36px; font-size: 12px; line-height: 16px; color: var(--t2)">Podcast · back 10 / forward 10 and the speed button replace previous, next, shuffle and repeat · chapter ticks sit on the track · Lyrics reads Transcript · Queue open shows subtle fill and an Accent text icon</div>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" variant="podcast" pane="queue" hint-size="1440px,84px"></dc-import>
+  <div style="padding: 12px 36px 0 36px; font-size: 12px; line-height: 16px; color: var(--t2)">Video · film badge on the art · SplitButton “Video” (where to play it) and Mini player join the right group</div>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" variant="video" pane="none" hint-size="1440px,84px"></dc-import>
+  <div style="padding: 12px 36px 0 36px; font-size: 12px; line-height: 16px; color: var(--t2)">Remote · “Playing on Living room” rides above the title in Accent text; the Devices button names the device and stays checked · volume is the device's</div>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" variant="remote" pane="none" hint-size="1440px,84px"></dc-import>
+  <div style="padding: 12px 36px 0 36px; font-size: 12px; line-height: 16px; color: var(--t2)">Medium tier (below 1240 px) · labels drop to icons, shuffle, repeat and the volume slider move into More and a volume flyout · flyouts are acrylic, radius 8</div>
+  <div style="display: flex; gap: 24px; align-items: flex-end; padding-left: 0">
+    <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" variant="music" pane="none" narrow="{{yes}}" hint-size="800px,84px"></dc-import>
+    <div role="menu" aria-label="More" style="width: 232px; padding: 4px; box-sizing: border-box; border-radius: 8px; background: var(--fly); border: 1px solid var(--flyb); box-shadow: var(--shadow); display: flex; flex-direction: column; font-size: 14px">
+      <span role="menuitemcheckbox" aria-checked="true" style="height: 32px; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-radius: 4px; background: var(--sub)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="color: var(--acct)"><path d="M2 4h2.5c1.4 0 2.3.7 3.2 1.9l1.6 2.2c.9 1.2 1.8 1.9 3.2 1.9H14M2 12h2.5c1.4 0 2.3-.7 3.2-1.9M8.3 5.9c.9-1.2 1.8-1.9 3.2-1.9H14M12 2l2 2-2 2M12 8l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="flex-grow: 1">Shuffle</span><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.5 6 12l7.5-7.5" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></span>
+      <span role="menuitemcheckbox" aria-checked="false" style="height: 32px; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-radius: 4px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 7V5.5A1.5 1.5 0 0 1 4.5 4H13M11 2l2 2-2 2M13 9v1.5a1.5 1.5 0 0 1-1.5 1.5H3M5 14l-2-2 2-2" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg>Repeat</span>
+      <span style="height: 1px; margin: 4px -4px; background: var(--div)"></span>
+      <span role="menuitem" style="height: 32px; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-radius: 4px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 9.5V7a3 3 0 0 1 3-3M3 9.5h3v3H3zM10 9.5V7a3 3 0 0 1 3-3M10 9.5h3v3h-3z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg>Lyrics</span>
+      <span role="menuitem" style="height: 32px; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-radius: 4px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12v10H2zM2 6h12M2 10h12M5 3v10M11 3v10" fill="none" stroke="currentColor" stroke-width="1"></path></svg><span style="flex-grow: 1">Switch to video</span><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+      <span role="menuitem" style="height: 32px; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-radius: 4px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13zM8 4.5V8l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg><span style="flex-grow: 1">Sleep timer</span><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+      <span style="height: 1px; margin: 4px -4px; background: var(--div)"></span>
+      <span role="menuitem" style="height: 32px; display: flex; align-items: center; padding: 0 12px 0 40px; border-radius: 4px">Go to album</span>
+      <span role="menuitem" style="height: 32px; display: flex; align-items: center; padding: 0 12px 0 40px; border-radius: 4px">Go to artist</span>
+    </div>
+    <div aria-label="Volume" style="width: 56px; height: 176px; box-sizing: border-box; border-radius: 8px; background: var(--fly); border: 1px solid var(--flyb); box-shadow: var(--shadow); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px">
+      <span style="font-size: 12px; color: var(--t2); font-variant-numeric: tabular-nums">70</span>
+      <span style="position: relative; width: 18px; height: 120px; display: flex; justify-content: center"><span style="width: 4px; height: 100%; border-radius: 2px; background: var(--strong)"></span><span style="position: absolute; bottom: 0; width: 4px; height: 70%; border-radius: 2px; background: var(--acc)"></span><span style="position: absolute; bottom: calc(70% - 9px); width: 18px; height: 18px; border-radius: 9px; box-sizing: border-box; background: var(--thumb); border: 1px solid var(--thumbb); display: flex; align-items: center; justify-content: center"><span style="width: 12px; height: 12px; border-radius: 6px; background: var(--acc)"></span></span></span>
+    </div>
+    <div aria-label="Playback speed" style="width: 272px; padding: 16px; box-sizing: border-box; border-radius: 8px; background: var(--fly); border: 1px solid var(--flyb); box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 12px">
+      <span style="font-size: 14px; line-height: 20px; font-weight: 600">Playback speed</span>
+      <span style="position: relative; height: 18px; display: flex; align-items: center"><span style="width: 100%; height: 4px; border-radius: 2px; background: var(--strong)"></span><span style="position: absolute; left: 0; width: 25%; height: 4px; border-radius: 2px; background: var(--acc)"></span><span style="position: absolute; left: calc(25% - 9px); width: 18px; height: 18px; border-radius: 9px; box-sizing: border-box; background: var(--thumb); border: 1px solid var(--thumbb); display: flex; align-items: center; justify-content: center"><span style="width: 12px; height: 12px; border-radius: 6px; background: var(--acc)"></span></span></span>
+      <span style="display: flex; justify-content: space-between; font-size: 12px; color: var(--t2); font-variant-numeric: tabular-nums"><span>0.5×</span><span style="color: var(--t1); font-weight: 600">1.5×</span><span>2×</span><span>3×</span></span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"$preview":{"width":1440,"height":820}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { layer: '#282828', fly: '#2c2c2c', flyb: 'rgba(0,0,0,0.2)', div: 'rgba(255,255,255,0.0837)', sub: 'rgba(255,255,255,0.0605)', strong: 'rgba(255,255,255,0.5442)', thumb: '#454545', thumbb: 'rgba(255,255,255,0.0698)', t1: '#ffffff', t2: '#c5c5c5', acc: pink ? '#ff7ac3' : '#60cdff', acct: pink ? '#ffb3dd' : '#99ebff', shadow: '0 8px 16px rgba(0,0,0,0.26)' }
+    : { layer: '#f9f9f9', fly: '#fcfcfc', flyb: 'rgba(0,0,0,0.0578)', div: 'rgba(0,0,0,0.0803)', sub: 'rgba(0,0,0,0.0373)', strong: 'rgba(0,0,0,0.4458)', thumb: '#ffffff', thumbb: 'rgba(0,0,0,0.0578)', t1: '#1b1b1b', t2: '#626262', acc: pink ? '#c4007a' : '#005fb8', acct: pink ? '#9b0062' : '#003e92', shadow: '0 8px 16px rgba(0,0,0,0.14)' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  return { vars, theme, accent, yes: true };
+}
+}
+</script>
+</body>
+</html>

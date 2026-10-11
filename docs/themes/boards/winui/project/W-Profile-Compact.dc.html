@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Profile, compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tier="compact" width="400" tabs="home:Home|profile:Chris" sel="1" hint-size="400px,88px"></dc-import>
+  <main style="flex-grow: 1; min-height: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); padding: 16px 16px 0 16px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+    <div style="display: flex; gap: 16px; align-items: center; flex-shrink: 0">
+      <span style="width: 128px; height: 128px; border-radius: 64px; background: #6b5b4a; flex-shrink: 0"></span>
+      <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+        <span style="font-size: 12px; line-height: 16px; color: #c5c5c5">Profile · Spotify Premium</span>
+        <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Chris</h1>
+        <span style="font-size: 14px; line-height: 20px; color: #c5c5c5"><a href="#">12 followers</a> · <a href="#">48 following</a></span>
+        <span style="font-size: 12px; line-height: 16px; color: #c5c5c5">6 public playlists</span>
+      </div>
+    </div>
+    <div style="display: flex; gap: 8px; align-items: center; flex-shrink: 0">
+      <a href="#" style="height: 40px; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font-size: 14px">Open account<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 2.5h4.5V7M13.5 2.5 7 9M6 3.5H2.5v10h10V10" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></a>
+      <button aria-label="Share" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M5 5.5l3-3 3 3M3.5 9v3.5h9V9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      <span style="flex-grow: 1"></span>
+      <button aria-label="More" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+    </div>
+    <div role="tablist" aria-label="Profile views" style="display: flex; align-items: center; gap: 4px; margin-right: -16px; overflow: hidden; flex-shrink: 0; border-bottom: 1px solid rgba(255,255,255,0.0837)">
+      <sc-for list="{{views}}" as="v" hint-placeholder-count="5"><button role="tab" aria-selected="{{v.on}}" style="{{v.style}}">{{v.label}}<span style="{{v.bar}}"></span></button></sc-for>
+    </div>
+    <section style="display: flex; flex-direction: column; gap: 12px; flex-shrink: 0">
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <div style="display: flex; align-items: center; gap: 12px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; flex-grow: 1">Top artists this month</h2><a href="#" style="font-size: 14px; line-height: 40px; padding: 0 4px">See all</a></div>
+        <span style="align-self: flex-start; height: 20px; display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: 4px; font-size: 12px; background: rgba(255,255,255,0.0605); color: #c5c5c5"><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 7V5.5a4 4 0 0 1 8 0V7M3 7h10v6.5H3z" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg>Only visible to you</span>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 12px">
+        <sc-for list="{{artists}}" as="c" hint-placeholder-count="4"><a href="#" style="display: flex; flex-direction: column; gap: 8px; align-items: center; color: #fff; text-align: center"><span style="{{c.art}}"></span><span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 14px; line-height: 20px; font-weight: 600">{{c.title}}</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5">Artist</span></span></a></sc-for>
+      </div>
+    </section>
+  </main>
+  <dc-import name="Shell-Player" theme="dark" tier="mini" width="400" variant="music" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const vs = (l, s) => ({ label: l, on: s ? 'true' : 'false', style: 'position: relative; height: 40px; flex-shrink: 0; padding: 0 12px; border: 0; background: transparent; font: inherit; font-size: 14px; white-space: nowrap; color: ' + (s ? '#ffffff' : '#c5c5c5'), bar: s ? 'position: absolute; left: 12px; right: 12px; bottom: 4px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' });
+  const views = [vs('Top artists', true), vs('Playlists', false), vs('Artists', false), vs('Following', false), vs('Followers', false)];
+  const artists = [['Arash', '#4a3b2f'], ['aespa', '#5b2f6b'], ['Edward Maya', '#3b5b7a'], ['The Midnight', '#6b4a2f']].map(a => ({ title: a[0], art: 'display: block; width: 100%; aspect-ratio: 1 / 1; border-radius: 50%; background: ' + a[1] }));
+  return { views, artists };
+}
+}
+</script>
+</body>
+</html>

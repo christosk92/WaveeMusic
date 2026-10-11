@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>No results, compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tier="compact" width="400" tabs="home:Home|search:stereo loev qwz" sel="1" query="stereo loev qwz" hint-size="400px,88px"></dc-import>
+  <main style="flex-grow: 1; min-height: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); padding: 16px 16px 0 16px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+    <label style="height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 4px 0 12px; box-sizing: border-box; border-radius: 4px; background: #1c1c1c; border: 1px solid rgba(255,255,255,0.0698); border-bottom: 2px solid #60cdff; font-size: 14px; color: #ffffff"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0; color: #c5c5c5"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg><span style="flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">stereo loev qwz</span><button aria-label="Clear search" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #c5c5c5; font: inherit"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg></button></label>
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Results for “stereo loev qwz”</h1>
+      <div style="margin-right: -16px; overflow: hidden; border-bottom: 1px solid rgba(255,255,255,0.0837)">
+        <div style="display: flex; align-items: center; gap: 4px; width: max-content">
+          <sc-for list="{{facets}}" as="f" hint-placeholder-count="11"><button style="{{f.style}}">{{f.label}}<span style="{{f.bar}}"></span></button></sc-for>
+        </div>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; padding-top: 36px; text-align: center">
+      <span style="width: 64px; height: 64px; border-radius: 32px; background: rgba(255,255,255,0.0605); color: #c5c5c5; display: flex; align-items: center; justify-content: center"><svg width="28" height="28" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14M5.4 5.4l3.2 3.2M8.6 5.4 5.4 8.6" fill="none" stroke="currentColor" stroke-width="0.8" stroke-linecap="round"></path></svg></span>
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">No results found</span>
+      <span style="max-width: 320px; font-size: 14px; line-height: 20px; color: #c5c5c5">Nothing matched “stereo loev qwz”. Try a different spelling or keyword.</span>
+      <button style="margin-top: 4px; height: 40px; padding: 0 16px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px">Clear search</button>
+    </div>
+    <section aria-label="Recent searches" style="display: flex; flex-direction: column; gap: 12px; align-items: center; padding-top: 16px">
+      <h2 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; color: #c5c5c5">Recent searches</h2>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: center">
+        <sc-for list="{{recent}}" as="r" hint-placeholder-count="5"><button style="height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5a6.5 6.5 0 1 1-6.3 8M1.5 5.5v4h4M8 4.5V8l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg>{{r.q}}</button></sc-for>
+      </div>
+    </section>
+  </main>
+  <dc-import name="Shell-Player" theme="dark" tier="mini" width="400" variant="music" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const fs = (l, s) => ({ label: l, style: 'position: relative; height: 40px; padding: 0 12px; border: 0; background: transparent; font: inherit; font-size: 14px; white-space: nowrap; flex-shrink: 0; color: ' + (s ? '#ffffff' : '#c5c5c5'), bar: s ? 'position: absolute; left: 12px; right: 12px; bottom: 4px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' });
+  const facets = ['All', 'Songs', 'Albums', 'Playlists', 'Artists', 'Podcasts & shows', 'Episodes', 'Audiobooks', 'Authors', 'Profiles', 'Genres'].map((l, i) => fs(l, i === 0));
+  const recent = ['stereo love', 'aespa supernova', 'arash', 'the midnight', 'lol worlds 2024'].map(q => ({ q }));
+  return { facets, recent };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Compact Playlist, followed</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 400px; height: 860px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="playlist:Today’s Top Hits" sel="0" w="400" tier="compact" hint-size="400px,48px"></dc-import>
+  <main style="height: 756px; flex-shrink: 0; box-sizing: border-box; background: linear-gradient(180deg, rgba(72,96,58,0.36), rgba(58,58,58,0.298) 400px); border-top: 1px solid rgba(0,0,0,0.098); padding-top: 16px; display: flex; flex-direction: column; overflow: hidden">
+    <header style="padding: 0 16px; display: flex; flex-direction: column; gap: 4px; flex-shrink: 0">
+      <span role="img" aria-label="Today’s Top Hits cover" style="align-self: center; width: 200px; height: 200px; border-radius: 8px; background: linear-gradient(180deg, #6b8a5a 0%, #3b5a2f 60%), #3b5a2f; box-shadow: 0 2px 8px rgba(0,0,0,0.33); display: flex; align-items: flex-end; padding: 12px; box-sizing: border-box; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; line-height: 28px; font-weight: 700; color: #f0e040">Today’s Top Hits</span>
+      <a href="#" style="margin-top: 10px; display: flex; align-items: center; gap: 8px; height: 28px"><span style="width: 24px; height: 24px; border-radius: 12px; background: #1db954"></span><span style="font-size: 14px; font-weight: 600">Spotify</span></a>
+      <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600; letter-spacing: -0.02em">Today’s Top Hits</h1>
+      <span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">50 songs · 33.9M saves · 2 hr 36 min</span>
+      <span style="font-size: 12px; line-height: 18px; color: rgba(255,255,255,0.529); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">The hottest 50. Cover: Olivia Rodrigo</span>
+      <div style="display: flex; align-items: center; gap: 4px; margin-top: 8px">
+        <span style="display: inline-flex; align-items: center; height: 40px; border-radius: 4px; background: #9bd67a; color: #000; box-shadow: inset 0 -1px 0 rgba(0,0,0,0.22); margin-right: 8px"><button style="width: 104px; height: 40px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; background: transparent; color: #000; font: inherit; font-size: 14px; font-weight: 600"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 3h2.4v10H4.5zM9.1 3h2.4v10H9.1z" fill="currentColor"></path></svg>Pause</button><span style="width: 1px; height: 20px; background: rgba(0,0,0,0.2)"></span><button aria-label="More ways to play" style="width: 40px; height: 40px; border: 0; background: transparent; color: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="1.6"></path></svg></button></span>
+        <sc-for list="{{acts}}" as="a" hint-placeholder-count="4"><button aria-label="{{a.l}}" style="{{a.s}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{a.d}}" fill="{{a.f}}" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></sc-for>
+      </div>
+    </header>
+    <div role="toolbar" aria-label="List tools" style="height: 48px; flex-shrink: 0; margin-top: 12px; padding: 0 4px 0 8px; display: flex; align-items: center; gap: 2px; border-bottom: 1px solid rgba(255,255,255,0.082); font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.773)">
+      <button style="height: 40px; display: flex; align-items: center; gap: 6px; padding: 0 8px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10M3 5l2-2 2 2M11 13V3M9 11l2 2 2-2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>Custom order<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="color: rgba(255,255,255,0.529)"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></button>
+      <span style="flex-grow: 1"></span>
+      <button aria-label="Filter" style="width: 40px; height: 40px; border: 0; border-radius: 4px; background: transparent; color: inherit; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12l-4.5 5.2V13l-3-1.5V8.2z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"></path></svg></button>
+      <button aria-label="Find in this list" style="width: 40px; height: 40px; border: 0; border-radius: 4px; background: transparent; color: inherit; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3l3.2 3.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg></button>
+      <button aria-label="More list options" style="width: 40px; height: 40px; border: 0; border-radius: 4px; background: transparent; color: inherit; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h.01M8 8h.01M13 8h.01" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path></svg></button>
+    </div>
+    <dc-import name="C-TrackList" theme="dark" rs="classic" set="followed" tier="compact" n="8" marks="3:playing" accent="#9bd67a" hint-size="100%,352px"></dc-import>
+  </main>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="400" tier="mini" hint-size="400px,56px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const b = (c, extra) => 'width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 4px; color: ' + c + '; ' + (extra || 'border: 0; background: transparent');
+  const acts = [
+    ['Shuffle', 'M2 4.5h2.5c3 0 4 7 7 7H14M2 11.5h2.5c1.2 0 2-1 2.6-2.2M9 6.7c.6-1.2 1.4-2.2 2.5-2.2H14M12 2.5l2 2-2 2M12 9.5l2 2-2 2', 'none', b('#fff', 'background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071)')],
+    ['Unfollow', 'M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z', 'currentColor', b('#9bd67a')],
+    ['Share', 'M10 2.5h3.5V6M13.5 2.5 8 8M6 3.5H3v9.5h9.5V10', 'none', b('#fff')],
+    ['More', 'M3 8h.01M8 8h.01M13 8h.01', 'none', b('#fff')]
+  ].map(a => ({ l: a[0], d: a[1], f: a[2], s: a[3] }));
+  return { acts };
+}
+}
+</script>
+</body>
+</html>

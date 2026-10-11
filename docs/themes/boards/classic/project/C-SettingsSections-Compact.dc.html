@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Compact Settings, Playback</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a6d8ff;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 400px; height: 860px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="settings:Settings" sel="0" w="400" tier="compact" hint-size="400px,48px"></dc-import>
+  <main style="height: 756px; flex-shrink: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); padding: 12px 16px 0; display: flex; flex-direction: column; overflow: hidden">
+    <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0"><svg width="24" height="24" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 5.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" fill="none" stroke="currentColor" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round"></path></svg><h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em">Settings</h1></div>
+    <div role="tablist" aria-label="Settings sections" style="display: flex; margin: 8px -16px 0; padding: 0 4px; border-bottom: 1px solid rgba(255,255,255,0.082); flex-shrink: 0; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent)"><sc-for list="{{tabs}}" as="t" hint-placeholder-count="7"><button role="tab" aria-selected="{{t.sel}}" style="{{t.s}}">{{t.l}}<span style="{{t.bar}}"></span></button></sc-for></div>
+    <div style="display: flex; flex-direction: column; gap: 4px; padding-top: 12px">
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="10">
+        <sc-if value="{{r.h}}" hint-placeholder-val="{{false}}"><div style="{{r.hs}}"><span style="font-size: 14px; line-height: 20px; font-weight: 600">{{r.l}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">{{r.d}}</span></div></sc-if>
+        <sc-if value="{{r.tog}}" hint-placeholder-val="{{true}}"><div style="min-height: 68px; box-sizing: border-box; padding: 12px 16px; border-radius: 4px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); display: flex; align-items: center; gap: 12px"><span style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0"><span style="font-size: 14px; line-height: 20px">{{r.l}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">{{r.d}}</span></span><span style="font-size: 14px; color: rgba(255,255,255,0.773)">{{r.state}}</span><button role="switch" aria-checked="{{r.on}}" aria-label="{{r.l}}" style="width: 48px; height: 40px; flex-shrink: 0; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center"><span style="{{r.track}}"><span style="{{r.knob}}"></span></span></button></div></sc-if>
+        <sc-if value="{{r.combo}}" hint-placeholder-val="{{false}}"><div style="box-sizing: border-box; padding: 12px 16px 16px; border-radius: 4px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); display: flex; flex-direction: column; gap: 10px"><span style="display: flex; flex-direction: column"><span style="font-size: 14px; line-height: 20px">{{r.l}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">{{r.d}}</span></span><button aria-label="{{r.l}}: {{r.v}}" style="height: 40px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px">{{r.v}}<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="color: rgba(255,255,255,0.6)"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></button></div></sc-if>
+      </sc-for>
+    </div>
+  </main>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="400" tier="mini" hint-size="400px,56px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const tabs = ['General', 'Appearance', 'Playback', 'Notifications', 'Storage & cache', 'Privacy & diagnostics', 'About'].map((l, i) => ({ l, sel: i === 2 ? 'true' : 'false', s: 'position: relative; flex-shrink: 0; height: 44px; padding: 0 12px; border: 0; background: transparent; font: inherit; font-size: 14px; white-space: nowrap; color: ' + (i === 2 ? '#fff' : 'rgba(255,255,255,0.773)'), bar: i === 2 ? 'position: absolute; left: 12px; right: 12px; bottom: -1px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' }));
+  let first = true;
+  const H = (l, d) => { const r = { h: true, tog: false, combo: false, l, d, hs: 'display: flex; flex-direction: column; margin: ' + (first ? 0 : 20) + 'px 0 6px' }; first = false; return r; };
+  const tog = (l, d, on) => ({ h: false, tog: true, combo: false, l, d, on: on ? 'true' : 'false', state: on ? 'On' : 'Off', track: 'display: block; width: 40px; height: 20px; box-sizing: border-box; border-radius: 10px; position: relative; ' + (on ? 'background: #60cdff' : 'border: 1px solid rgba(255,255,255,0.6)'), knob: 'position: absolute; top: ' + (on ? 4 : 3) + 'px; left: ' + (on ? 24 : 4) + 'px; width: 12px; height: 12px; border-radius: 6px; background: ' + (on ? '#000' : 'rgba(255,255,255,0.773)') });
+  const cb = (l, d, v) => ({ h: false, tog: false, combo: true, l, d, v });
+  const rows = [H('Audio', 'Quality, volume and loudness'), cb('Audio quality', 'Very high needs Premium', 'Very high'), cb('On metered connections', 'Quality while on a metered network', 'Normal'), tog('Remember volume', 'Start at the last volume you used', true), tog('Autoplay', 'Keep playing similar music when your queue ends', true), tog('Audio normalization', 'Play every song at a similar loudness', true), H('Sound', 'Equalizer and crossfade'), cb('Equalizer', '10 bands with presets', 'Flat')];
+  return { tabs, rows };
+}
+}
+</script>
+</body>
+</html>

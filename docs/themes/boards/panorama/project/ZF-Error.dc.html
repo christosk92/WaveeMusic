@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Offline and error</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} position: relative; width: 1440px; height: 960px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" sel="library" items="Liked|Playlists|Albums|Artists|Podcasts|Audiobooks" sub-sel="{{zero}}" hint-size="1440px,136px"></dc-import>
+  <main style="height: 740px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; padding: 16px 36px 0 36px; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke)">
+    <div role="status" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 8px 8px 8px 16px; box-sizing: border-box; border-radius: 4px; background: var(--warnbg); border: 1px solid var(--cardb)">
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><circle cx="8" cy="8" r="7" fill="var(--warn)"></circle><path d="M8 4.5v4M8 10.8v.4" fill="none" stroke="var(--onwarn)" stroke-width="1.6" stroke-linecap="round"></path></svg>
+      <span style="font-size: 14px; line-height: 20px; font-weight: 600">You're offline</span>
+      <span style="font-size: 14px; line-height: 20px; flex-grow: 1">Showing music saved on this device. Wavee reconnects by itself.</span>
+      <button style="height: 32px; padding: 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px">Try now</button>
+      <button aria-label="Close" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg></button>
+    </div>
+    <div style="display: flex; align-items: flex-end; gap: 24px">
+      <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1">
+        <span style="font-size: 12px; line-height: 16px; color: var(--t2)">Playlist · Only you</span>
+        <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 68px; line-height: 92px; font-weight: 600">Liked Songs</h1>
+        <span style="font-size: 14px; line-height: 20px; color: var(--t2)">412 songs · 288 downloaded</span>
+      </div>
+      <span style="display: flex; gap: 8px; align-items: center; padding-bottom: 4px">
+        <button aria-pressed="true" style="height: 32px; padding: 0 12px; border: 1px solid transparent; border-radius: 4px; background: var(--acc); color: var(--onacc); font: inherit; font-size: 14px">Downloaded only</button>
+      </span>
+    </div>
+    <div style="display: flex; flex-direction: column">
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+        <div role="row" style="{{r.row}}"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; color: var(--t3); padding-left: 12px; font-variant-numeric: tabular-nums">{{r.n}}</span><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; line-height: 20px">{{r.t}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">{{r.a}}</span></span><span style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--t2)"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="{{r.icon}}" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg>{{r.state}}</span><span style="text-align: right; padding-right: 8px; font-size: 14px; color: var(--t2); font-variant-numeric: tabular-nums">{{r.d}}</span></div>
+      </sc-for>
+    </div>
+    <div role="alert" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 8px 8px 8px 16px; box-sizing: border-box; border-radius: 4px; background: var(--badbg); border: 1px solid var(--cardb)">
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><circle cx="8" cy="8" r="7" fill="var(--bad)"></circle><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4" fill="none" stroke="var(--onwarn)" stroke-width="1.4" stroke-linecap="round"></path></svg>
+      <span style="font-size: 14px; line-height: 20px; font-weight: 600">Couldn't load Recommended</span>
+      <span style="font-size: 14px; line-height: 20px; flex-grow: 1">It needs a connection. Error 0x80072EE7.</span>
+      <button style="height: 32px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: var(--acct); font: inherit; font-size: 14px">Copy details</button>
+    </div>
+  </main>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" variant="music" pane="none" hint-size="1440px,84px"></dc-import>
+  <div style="position: absolute; inset: 0; background: var(--smoke); display: flex; align-items: center; justify-content: center">
+    <div role="dialog" aria-modal="true" aria-labelledby="dlg-title" style="width: 480px; border-radius: 8px; overflow: hidden; background: var(--dlg); border: 1px solid var(--flyb); box-shadow: 0 32px 64px rgba(0,0,0,0.37)">
+      <div style="padding: 24px; display: flex; flex-direction: column; gap: 12px">
+        <h2 id="dlg-title" style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Can't play “Midnight City” right now</h2>
+        <p style="margin: 0; font-size: 14px; line-height: 20px">This song isn't downloaded and you're offline. Wavee can play it as soon as you're back online.</p>
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 14px"><span style="width: 20px; height: 20px; border-radius: 4px; background: var(--acc); color: var(--onacc); display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.5 6 12l7.5-7.5" fill="none" stroke="currentColor" stroke-width="1.6"></path></svg></span>Add it to the queue for later</label>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 24px; background: var(--mica); border-top: 1px solid var(--div)">
+        <button style="height: 32px; border: 0; border-radius: 4px; background: var(--acc); color: var(--onacc); font: inherit; font-size: 14px">Play downloaded songs</button>
+        <button style="height: 32px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', dlg: '#2b2b2b', stroke: 'rgba(255,255,255,0.0837)', div: 'rgba(255,255,255,0.0837)', cardb: 'rgba(0,0,0,0.1)', flyb: 'rgba(0,0,0,0.2)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', warn: '#fce100', bad: '#ff99a4', onwarn: '#000000', warnbg: '#433519', badbg: '#442726', smoke: 'rgba(0,0,0,0.3)', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', dlg: '#ffffff', stroke: 'rgba(0,0,0,0.0578)', div: 'rgba(0,0,0,0.0803)', cardb: 'rgba(0,0,0,0.0578)', flyb: 'rgba(0,0,0,0.0578)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', warn: '#9d5d00', bad: '#c42b1c', onwarn: '#ffffff', warnbg: '#fff4ce', badbg: '#fde7e9', smoke: 'rgba(0,0,0,0.3)', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const down = 'M8 2.5v8M5 7.5l3 3 3-3M3.5 13.5h9';
+  const cloud = 'M4.5 12.5h7a3 3 0 0 0 .4-6A4 4 0 0 0 4.3 7a2.8 2.8 0 0 0 .2 5.5zM2 2l12 12';
+  const rows = [['Nightcall', 'Kavinsky', '4:18', '#6b2f4a', true], ['Supernova', 'aespa', '2:58', '#5b2f4a', true], ['Midnight City', 'M83', '4:03', '#3b4a6b', false], ['Hostage', 'Gunship', '4:41', '#2f4a3b', true], ['Get Lucky', 'Daft Punk, Pharrell Williams', '6:09', '#3a2f22', false], ['Heroes', 'The Midnight', '4:12', '#2f3b6b', true]].map((d, i) => ({ n: String(i + 1), t: d[0], a: d[1], d: d[2], state: d[4] ? 'Downloaded' : 'Needs a connection', icon: d[4] ? down : cloud,
+    row: 'display: grid; grid-template-columns: 44px 52px minmax(0, 1fr) 200px 64px; align-items: center; height: 52px; margin-top: 2px; border-radius: 4px; ' + (d[4] ? '' : 'opacity: 0.45'),
+    art: 'width: 40px; height: 40px; border-radius: 4px; background: ' + d[3] }));
+  return { vars, theme, accent, rows, zero: 0 };
+}
+}
+</script>
+</body>
+</html>

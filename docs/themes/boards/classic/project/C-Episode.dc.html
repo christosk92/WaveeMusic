@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Episode</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="podcast:Coffee &amp; Code|episodes:#127 Building a GPU renderer" sel="1" w="1440" hint-size="1440px,48px"></dc-import>
+  <div style="display: flex; height: 780px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="classic" sel="podcasts" h="780" hint-size="280px,780px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(60,70,48,0.32); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; display: flex; overflow: hidden">
+      <aside aria-label="About this episode" style="width: 280px; flex-shrink: 0; box-sizing: border-box; padding: 24px 8px 24px 16px; display: flex; flex-direction: column; gap: 12px; background: rgba(58,58,58,0.298); border-top-left-radius: 8px">
+        <span style="width: 256px; height: 256px; border-radius: 8px; background: linear-gradient(135deg, #4a5b3b, #9bb36b); box-shadow: 0 2px 8px rgba(0,0,0,0.33)"></span>
+        <a href="#" style="font-size: 12px; font-weight: 600; color: #d6e8a8">Coffee &amp; Code ›</a>
+        <h1 style="margin: -4px 0 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600; letter-spacing: -0.02em">Building a GPU renderer in .NET</h1>
+        <span style="font-size: 12px; color: rgba(255,255,255,0.773)">Oct 2 · 31 min · <span style="font-size: 10px; padding: 0 5px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px">video</span></span>
+        <button style="height: 32px; border: 0; border-radius: 4px; background: #b6d27a; color: #000; font: inherit; font-size: 14px; font-weight: 600">▶ Resume · 17 min left</button>
+        <div style="display: flex; gap: 8px"><button title="Save to Your Episodes" aria-label="Save to Your Episodes" style="width: 32px; height: 32px; border: 0; background: transparent; color: #fff">♡</button><button title="Mark as played" aria-label="Mark as played" style="width: 32px; height: 32px; border: 0; background: transparent; color: #fff">✓</button><button title="Copy link" aria-label="Copy link" style="width: 32px; height: 32px; border: 0; background: transparent; color: #fff">⧉</button><button aria-label="More" style="width: 32px; height: 32px; border: 0; background: transparent; color: #fff">⋯</button></div>
+        <span style="font-size: 12px; line-height: 18px; color: rgba(255,255,255,0.773)">We take a renderer from an empty window to a presented frame: device setup, a scene graph, damage tracking and what it takes to never draw a wrong frame. <a href="#" style="color: #fff; font-weight: 600">… More</a></span>
+      </aside>
+      <span aria-hidden="true" style="width: 16px; flex-shrink: 0"></span>
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+        <nav aria-label="Sections" style="height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 24px; border-bottom: 1px solid rgba(255,255,255,0.082)"><sc-for list="{{tabs}}" as="t" hint-placeholder-count="4"><a href="#" style="{{t.s}}">{{t.l}}<span style="{{t.bar}}"></span></a></sc-for></nav>
+        <div style="max-width: 760px; display: flex; flex-direction: column; gap: 14px; padding-top: 20px">
+          <h2 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600">Chapters</h2>
+          <sc-for list="{{chapters}}" as="c" hint-placeholder-count="6"><a href="#" style="{{c.row}}"><span style="{{c.time}}">{{c.at}}</span><span style="flex-grow: 1">{{c.t}}</span><span style="{{c.now}}">Now playing</span></a></sc-for>
+          <h2 style="margin: 12px 0 0; font-size: 20px; line-height: 28px; font-weight: 600">Transcript</h2>
+          <div style="height: 120px; overflow: hidden; padding: 12px 16px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); font-size: 14px; line-height: 22px; color: rgba(255,255,255,0.773)"><b style="color: #a6d8ff">14:02</b> So the scene graph is the thing that remembers what changed… <br><b style="color: #fff">14:09</b> …and the damage rect is just the union of those changes, clipped to the window.</div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="podcast" w="1440" hint-size="1440px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const tabs = ['About this episode', 'Chapters', 'Transcript', 'Comments (14)'].map((l, i) => ({ l, s: 'position: relative; font-size: 14px; font-weight: 600; color: ' + (i === 1 ? '#fff' : 'rgba(255,255,255,0.6)'), bar: i === 1 ? 'position: absolute; left: 0; right: 0; bottom: -18px; height: 2px; background: #b6d27a' : 'display: none' }));
+  const C = [['0:00', 'Cold open'], ['3:40', 'Why a GPU renderer at all'], ['9:12', 'The scene graph', 1], ['15:30', 'Damage tracking and the first frame'], ['22:05', 'Text, fonts and DirectWrite'], ['27:48', 'Listener questions']];
+  const chapters = C.map(c => ({ at: c[0], t: c[1],
+    row: 'height: 40px; display: flex; align-items: center; gap: 16px; padding: 0 12px; border-radius: 6px; font-size: 14px' + (c[2] ? '; background: rgba(182,210,122,0.12); color: #e6f2c8; font-weight: 600' : ''),
+    time: 'width: 48px; font-size: 12px; font-variant-numeric: tabular-nums; color: ' + (c[2] ? '#b6d27a' : 'rgba(255,255,255,0.529)'),
+    now: c[2] ? 'font-size: 11px; font-weight: 600; color: #b6d27a' : 'display: none' }));
+  return { tabs, chapters };
+}
+}
+</script>
+</body>
+</html>

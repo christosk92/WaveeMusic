@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune episode: small window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 800px; height: 600px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <div style="position: absolute; left: 0; top: 0; right: 0; height: 420px; background: linear-gradient(180deg, #24342b 0%, #1d2621 45%, #161616 100%)"></div>
+  <div style="position: relative; flex-shrink: 0; display: flex; flex-direction: column">
+    <dc-import name="Z-Part-TitleBar" tier="small" crumb="the rest is football › episode 812" accent="{{accent}}" hint-size="800px,48px"></dc-import>
+    <dc-import name="Z-Part-Band" tier="small" section="library" sub="about,chapters,transcript,comments" on="about" title="why the premier league keeps changing" collapsed="true" accent="{{accent}}" hint-size="800px,52px"></dc-import>
+  </div>
+  <div style="position: relative; flex-grow: 1; min-height: 0; overflow: hidden">
+    <div style="position: absolute; left: 18px; top: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 200; line-height: 72px; letter-spacing: -1px; white-space: nowrap; color: #ffffff; opacity: 0.92">why the premier league keeps changing</div>
+    <div style="position: absolute; left: 24px; right: 24px; top: 80px; bottom: 0; display: flex; gap: 32px">
+      <div style="width: 160px; flex-shrink: 0; display: flex; flex-direction: column; gap: 6px">
+        <span style="width: 160px; height: 160px; border-radius: 2px; background: #2f4a3b; display: block; box-shadow: 0 0 0 1px rgba(255,255,255,0.06); margin-bottom: 4px"></span>
+        <span style="font-size: 12px; line-height: 16px; color: #7a7a7a">episode · #812 · <span style="{{accentInk}}">new</span></span>
+        <a href="#" style="font-size: 15px; line-height: 20px; color: #ffffff">The Rest Is Football</a>
+        <span style="font-size: 13px; line-height: 18px; color: #a8a8a8">9 october · 48 min</span>
+        <span style="display: flex; flex-direction: column; gap: 4px; padding-top: 2px"><span style="height: 3px; background: rgba(255,255,255,0.12); display: block"><span style="{{bar}}"></span></span><span style="font-size: 11px; line-height: 14px; color: #7a7a7a">25:06 of 48:00</span></span>
+      </div>
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+        <div style="display: flex; gap: 12px; align-items: center; height: 48px; flex-shrink: 0; font-size: 14px">
+          <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0">
+            <span style="{{resumeRing}}"><span style="{{resumeDisc}}">▶</span></span>
+            <span style="display: flex; flex-direction: column; align-items: flex-start; line-height: 18px"><span>resume</span><span style="font-size: 12px; color: #a8a8a8">23 min left</span></span>
+          </button>
+          <span style="flex-grow: 1"></span>
+          <a href="#" style="font-size: 13px">mark as played</a>
+          <button aria-label="save to your episodes" style="{{ring}}">♡</button>
+          <button aria-label="share" style="{{ring}}">↗</button>
+          <button aria-label="more" style="{{ring}}">⋯</button>
+        </div>
+        <span style="font-size: 14px; line-height: 21px; color: #c8c8c8; margin-top: 12px; flex-shrink: 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden">Gary, Alan and Micah on the rule changes nobody asked for, the ones that quietly worked, and why the league keeps rewriting itself every August. Plus: a listener question about the best pitch in the country.</span>
+        <div style="display: flex; align-items: baseline; gap: 12px; height: 40px; flex-shrink: 0; padding-top: 12px; box-sizing: border-box"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">chapters</span><span style="font-size: 13px; color: #7a7a7a">5</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 13px">transcript</a></div>
+        <sc-for list="{{chapters}}" as="c" hint-placeholder-count="5">
+          <a href="#" style="{{c.row}}"><span style="{{c.num}}">{{c.n}}</span><span style="{{c.title}}">{{c.name}}</span><span style="{{c.timeStyle}}">{{c.time}}</span></a>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="medium" kind="podcast" title="Why the Premier League keeps changing" artist="The Rest Is Football" art="#2f4a3b" progress="52" accent="{{accent}}" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const chapters = [['Intro', '00:00', false], ['The rule changes nobody asked for', '04:12', false], ['What quietly worked', '13:30', true], ['The best pitch in the country', '26:08', false], ['Listener questions', '38:45', false]].map((d, i) => ({
+    n: String(i + 1), name: d[0], time: d[1],
+    row: 'display: grid; grid-template-columns: 40px minmax(0, 1fr) 64px; align-items: center; height: 52px; flex-shrink: 0; color: #ffffff; ' + (d[2] ? 'background: rgba(255,255,255,0.05)' : ''),
+    num: 'font-family: \'Segoe UI Variable Display\', \'Segoe UI\', sans-serif; font-size: 22px; font-weight: 300; padding-left: 4px; color: ' + (d[2] ? accent : '#7a7a7a'),
+    title: 'font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (d[2] ? accent : '#ffffff'),
+    timeStyle: 'font-size: 13px; text-align: right; padding-right: 8px; font-variant-numeric: tabular-nums; color: ' + (d[2] ? accent : '#9c9c9c'),
+  }));
+  return {
+    accent, chapters,
+    accentInk: 'color: ' + accent,
+    bar: 'display: block; width: 52%; height: 3px; background: ' + accent,
+    resumeRing: 'width: 44px; height: 44px; box-sizing: border-box; border-radius: 22px; padding: 3px; background: conic-gradient(' + accent + ' 0 52%, rgba(255,255,255,0.16) 52% 100%); display: flex; flex-shrink: 0',
+    resumeDisc: 'width: 38px; height: 38px; box-sizing: border-box; border-radius: 19px; border: 3px solid #1c2520; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; font-size: 13px',
+    ring: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #ffffff; background: transparent; color: #ffffff; font-size: 13px; display: flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0',
+  };
+}
+}
+</script>
+</body>
+</html>

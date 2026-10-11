@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Podcast show, small window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 800px; height: 600px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tier="small" width="800" tabs="home:Home|show:Coffee &amp; Code:#4a5b3b" sel="1" hint-size="800px,88px"></dc-import>
+  <div style="display: flex; height: 440px; flex-shrink: 0">
+    <dc-import name="Shell-Nav" theme="dark" mode="compact" sel="podcasts" height="440" hint-size="48px,440px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); border-left: 1px solid rgba(255,255,255,0.0837); border-top-left-radius: 8px; padding: 20px 24px 0 24px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+      <div style="display: flex; gap: 20px; align-items: flex-end">
+        <div style="width: 128px; height: 128px; border-radius: 8px; background: #4a5b3b; flex-shrink: 0"></div>
+        <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0; flex-grow: 1">
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 16px; color: #c5c5c5"><span>Podcast</span><span style="height: 20px; display: inline-flex; align-items: center; padding: 0 6px; border-radius: 4px; background: rgba(255,255,255,0.0605)">Video</span><span style="color: #9e9e9e">· 4.7 ★ · 14 episodes · weekly</span></div>
+          <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Coffee &amp; Code</h1>
+          <div style="font-size: 14px; line-height: 20px; color: #c5c5c5"><a href="#">Half Moon Recordings</a></div>
+          <div style="display: flex; gap: 8px; align-items: center; padding-top: 10px">
+            <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg>Resume · 31 min left</button>
+            <button aria-pressed="true" style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0837); border: 1px solid rgba(255,255,255,0.0698); color: #fff; font: inherit; font-size: 14px"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.5 6 12l7.5-7.5" fill="none" stroke="currentColor" stroke-width="1.6"></path></svg>Following</button>
+            <button aria-label="Play trailer" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12v10H2zM2 6h12M2 10h12M5 3v10M11 3v10" fill="none" stroke="currentColor" stroke-width="1"></path></svg></button>
+            <button aria-label="Share" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M5 5.5l3-3 3 3M3.5 9v3.5h9V9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+            <button aria-label="More: notifications, about, rate" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+          </div>
+        </div>
+      </div>
+      <section aria-label="Episodes" style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+        <div style="display: flex; align-items: center; gap: 4px; border-bottom: 1px solid rgba(255,255,255,0.0837)">
+          <sc-for list="{{filters}}" as="v" hint-placeholder-count="4"><button style="{{v.style}}">{{v.label}}<span style="{{v.bar}}"></span></button></sc-for>
+          <span style="flex-grow: 1"></span>
+          <label style="width: 160px; height: 32px; display: flex; align-items: center; padding: 0 10px 0 12px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-bottom-color: rgba(255,255,255,0.5442); font-size: 14px; color: #9e9e9e"><span style="flex-grow: 1; white-space: nowrap">Find in show</span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14" fill="none" stroke="#c5c5c5" stroke-width="1" stroke-linecap="round"></path></svg></label>
+          <button aria-label="Sort: newest first" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.5v11M2 11l2.5 2.5L7 11M9 4h5M9 8h3.5M9 12h2" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+        </div>
+        <sc-for list="{{episodes}}" as="e" hint-placeholder-count="4">
+          <div style="{{e.style}}">
+            <span style="{{e.bar}}"></span>
+            <span style="width: 48px; height: 48px; flex-shrink: 0; border-radius: 4px; background: #4a5b3b"></span>
+            <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0; flex-grow: 1">
+              <span style="display: flex; align-items: center; gap: 8px"><span style="font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{e.title}}</span><span style="{{e.tag}}">{{e.tagText}}</span></span>
+              <span style="font-size: 12px; line-height: 16px; color: #c5c5c5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{e.blurb}}</span>
+              <span style="display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 16px; color: #9e9e9e"><span>{{e.meta}}</span><span style="{{e.prog}}"><span style="{{e.progFill}}"></span></span><span>{{e.left}}</span></span>
+            </span>
+            <button aria-label="{{e.playLabel}}" style="{{e.play}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{e.playD}}" fill="{{e.playFill}}" stroke="{{e.playStroke}}" stroke-width="2" stroke-linecap="round"></path></svg></button>
+          </div>
+        </sc-for>
+      </section>
+    </main>
+  </div>
+  <dc-import name="Shell-Player" theme="dark" tier="compact" width="800" variant="podcast" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const vs = (l, s) => ({ label: l, style: 'position: relative; height: 40px; padding: 0 10px; border: 0; background: transparent; font: inherit; font-size: 14px; white-space: nowrap; color: ' + (s ? '#ffffff' : '#c5c5c5'), bar: s ? 'position: absolute; left: 10px; right: 10px; bottom: 4px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' });
+  const filters = [vs('All · 14', true), vs('Unplayed · 10', false), vs('In progress · 1', false), vs('Played · 3', false)];
+  const ep = [
+    { t: 'Latency, Honestly', b: 'Why p99 is a story, not a number — and what the dashboards hide.', m: '#42 · 23 Sep · 54 min', state: 'playing', pct: 43, left: '31 min left' },
+    { t: 'The Build Trap', b: 'Shipping features nobody asked for, and how to climb out.', m: '#41 · 16 Sep · 41 min', state: 'new' },
+    { t: 'On Craft', b: 'A conversation with Mara Ellison about taste, tools and time.', m: '#40 · 9 Sep · 48 min', state: '' },
+    { t: 'Edge Cases', b: 'Every bug is an edge case until it’s the main case.', m: '#39 · 2 Sep · 37 min', state: 'played' }
+  ];
+  const episodes = ep.map(e => {
+    const playing = e.state === 'playing', played = e.state === 'played', isNew = e.state === 'new';
+    return { title: e.t, blurb: e.b, meta: e.m, left: e.left || '', tagText: isNew ? 'New' : (played ? '✓ Played' : ''),
+      style: 'position: relative; display: flex; align-items: center; gap: 12px; height: 72px; flex-shrink: 0; padding: 0 8px 0 12px; border-radius: 4px; ' + (playing ? 'background: rgba(255,255,255,0.0605);' : '') + (played ? 'opacity: 0.58;' : ''),
+      bar: playing ? 'position: absolute; left: 0; top: 28px; width: 3px; height: 16px; border-radius: 2px; background: #60cdff' : 'display: none',
+      tag: (isNew || played ? 'display: inline-flex' : 'display: none') + '; height: 20px; align-items: center; padding: 0 6px; border-radius: 4px; font-size: 12px; background: rgba(255,255,255,0.0605); color: #c5c5c5; flex-shrink: 0',
+      prog: (e.pct ? 'display: block' : 'display: none') + '; width: 96px; height: 3px; border-radius: 2px; background: rgba(255,255,255,0.0837)',
+      progFill: 'display: block; width: ' + (e.pct || 0) + '%; height: 3px; border-radius: 2px; background: #60cdff',
+      play: 'width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 18px; font: inherit; ' + (playing ? 'background: #60cdff; color: #000' : 'background: rgba(255,255,255,0.0605); color: #fff'),
+      playLabel: playing ? 'Pause' : 'Play', playD: playing ? 'M5.5 3v10M10.5 3v10' : 'M4.5 2.8v10.4L13 8z', playFill: playing ? 'none' : 'currentColor', playStroke: playing ? 'currentColor' : 'none' };
+  });
+  return { filters, episodes };
+}
+}
+</script>
+</body>
+</html>

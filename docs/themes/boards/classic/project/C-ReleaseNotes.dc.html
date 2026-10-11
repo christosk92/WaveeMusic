@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>What’s new</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a6d8ff;text-decoration:none}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="tag:What’s new" sel="0" w="1440" hint-size="1440px,48px"></dc-import>
+  <div style="display: flex; height: 780px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="classic" sel="none" h="780" hint-size="280px,780px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; padding: 24px 36px 0; display: flex; gap: 24px; overflow: hidden">
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+        <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em">What’s new</h1>
+        <section style="padding: 22px 24px 20px; border-radius: 12px; background: rgba(255,255,255,0.031); border: 1px solid rgba(0,0,0,0.098); display: flex; flex-direction: column; gap: 8px">
+          <div style="display: flex; gap: 6px"><span style="font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: #60cdff; color: #000">Latest</span><span style="font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: rgba(255,255,255,0.08)">Stable</span></div>
+          <span style="font-size: 30px; line-height: 38px; font-weight: 600">Wavee 0.3 “Themes”</span>
+          <span style="font-size: 14px; color: rgba(255,255,255,0.773)">Pick how Wavee looks: Classic, WinUI, Zune or Zune Fluent.</span>
+          <span style="font-size: 12px; color: rgba(255,255,255,0.529)">Released Oct 2026 · Requires Windows 10 1809 or later · wavee-v0.3.0</span>
+          <div style="display: flex; gap: 8px; margin-top: 6px"><button style="height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px">Open on GitHub ↗</button><button style="height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px">Copy link</button></div>
+        </section>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+          <sc-for list="{{hl}}" as="h" hint-placeholder-count="3"><div style="border-radius: 8px; overflow: hidden; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098)"><span style="{{h.poster}}"></span><div style="padding: 10px 12px; display: flex; flex-direction: column; gap: 4px"><span style="{{h.pill}}">{{h.k}}</span><span style="font-size: 14px; font-weight: 600">{{h.t}}</span><a href="#" style="font-size: 12px">Read more</a></div></div></sc-for>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <div style="display: flex; align-items: center; gap: 8px"><span style="width: 22px; height: 22px; border-radius: 11px; background: #fce100; color: #000; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700">✓</span><span style="font-size: 16px; font-weight: 600">Fixed</span></div>
+          <div style="border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098)"><sc-for list="{{fixed}}" as="f" hint-placeholder-count="3"><div style="min-height: 40px; display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 14px"><span style="flex-grow: 1">{{f.t}}</span><span style="font-size: 11px; padding: 1px 6px; border-radius: 4px; background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.773)">{{f.i}}</span></div></sc-for></div>
+        </div>
+      </div>
+      <aside aria-label="Releases" style="width: 208px; flex-shrink: 0; display: flex; flex-direction: column; gap: 4px; padding-top: 66px">
+        <span style="font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.773); margin-bottom: 4px">Releases</span>
+        <sc-for list="{{rel}}" as="r" hint-placeholder-count="6"><a href="#" style="{{r.s}}"><span style="font-size: 14px; color: #fff">{{r.v}}</span><span style="font-size: 12px; color: rgba(255,255,255,0.529)">{{r.d}}</span></a></sc-for>
+      </aside>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="1440" hint-size="1440px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const pill = c => 'align-self: flex-start; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: ' + c + '; color: #000';
+  const hl = [['New', 'Themes', '#6ccb5f', 'linear-gradient(135deg,#3b4a8a,#8a4e7a)'], ['Improved', 'Smoother sidebar sections', '#60cdff', 'linear-gradient(135deg,#2f4a6b,#60cdff)'], ['Rebuilt', 'Liked Songs', '#fce100', 'linear-gradient(135deg,#4a3b8a,#6fa3c8)']].map(h => ({ k: h[0], t: h[1], pill: pill(h[2]), poster: 'display: block; aspect-ratio: 16 / 9; background: ' + h[3] }));
+  const fixed = [['Queue stays in the player bar on narrow windows', '#205'], ['The window can no longer shrink below a usable height', '#197'], ['Player style is hidden until it changes Now playing', '#199']].map(f => ({ t: f[0], i: f[1] }));
+  const rel = [['0.3.0', 'Oct 2026', 1], ['0.2.9', 'Sep 2026'], ['0.2.8', 'Sep 2026'], ['0.2.7', 'Aug 2026'], ['0.2.6', 'Aug 2026'], ['0.2.5', 'Jul 2026']].map(r => ({ v: r[0], d: r[1], s: 'position: relative; display: flex; flex-direction: column; padding: 6px 10px; border-radius: 4px' + (r[2] ? '; background: rgba(255,255,255,0.059); box-shadow: inset 3px 0 0 #60cdff' : '') }));
+  return { hl, fixed, rel };
+}
+}
+</script>
+</body>
+</html>

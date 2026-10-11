@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Queue panel beside Search</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 1440px; height: 900px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="search:billie eilish" sel="0" w="1440" query="billie eilish" hint-size="1440px,48px"></dc-import>
+  <div style="display: flex; height: 780px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="rail" sel="none" h="780" hint-size="48px,780px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; padding: 24px 36px 0; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+      <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em">billie eilish</h1>
+      <div role="tablist" aria-label="Result types" style="display: flex; flex-wrap: wrap; column-gap: 4px; row-gap: 2px; margin-left: -12px">
+        <sc-for list="{{tabs}}" as="t" hint-placeholder-count="9"><button role="tab" aria-selected="{{t.sel}}" style="{{t.style}}">{{t.l}}<span style="font-size: 12px; color: rgba(255,255,255,0.529); margin-left: 6px">{{t.c}}</span><span style="{{t.bar}}"></span></button></sc-for>
+      </div>
+      <section aria-label="Top result" style="position: relative; height: 228px; flex-shrink: 0; border-radius: 8px; overflow: hidden; background: radial-gradient(70% 120% at 88% 40%, rgba(59,107,155,0.55), rgba(59,107,155,0) 70%), rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098)">
+        <span style="position: absolute; right: -16px; top: 24px; width: 300px; height: 260px; border-radius: 50%; background: linear-gradient(160deg, #3b6b9b, #0e1828); transform: rotate(-2.5deg)"></span>
+        <div style="position: relative; height: 100%; box-sizing: border-box; padding: 20px 24px; display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; max-width: 520px">
+          <span style="font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.03em; color: #a6d8ff">Top result · Artist</span>
+          <span style="font-size: 28px; line-height: 36px; font-weight: 600">Billie Eilish</span>
+          <span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">Artist · 78.5M monthly listeners</span>
+          <div style="display: flex; gap: 8px; margin-top: 10px"><button style="min-width: 120px; height: 32px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 4px; background: #6a9be0; color: #000; font: inherit; font-size: 14px; font-weight: 600"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10l8-5z" fill="currentColor"></path></svg>Play</button><button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 7.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM2 13.5c0-2.5 2-4 4.5-4 1 0 1.9.2 2.6.6M12.5 9.5v4M10.5 11.5h4" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"></path></svg>Follow</button><button aria-label="More" style="width: 32px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: #fff; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h.01M8 8h.01M13 8h.01" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path></svg></button></div>
+        </div>
+      </section>
+      <section aria-label="Best matches" style="display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: center; gap: 8px"><span style="width: 3px; height: 14px; border-radius: 1px; background: #60cdff"></span><h2 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; flex-grow: 1">Best matches</h2><span style="font-size: 12px; color: rgba(255,255,255,0.6)">‹  ● ○ ○  ›</span></div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 24px">
+          <sc-for list="{{hits}}" as="h" hint-placeholder-count="4"><div style="height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 8px; border-radius: 8px"><span style="{{h.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{h.t}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">Song · <span style="color: #a6d8ff">{{h.a}}</span></span></span><button aria-label="{{h.l}}" style="{{h.btn}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="{{h.d}}" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"></path></svg></button></div></sc-for>
+        </div>
+      </section>
+    </main>
+    <span style="width: 8px; flex-shrink: 0"></span>
+    <dc-import name="C-Rail" theme="dark" mode="queue" h="780" hint-size="340px,780px"></dc-import>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" panel="queue" w="1440" hint-size="1440px,72px"></dc-import>
+  <div role="menu" aria-label="Play on" style="position: absolute; right: 52px; bottom: 76px; width: 240px; padding: 4px; box-sizing: border-box; border-radius: 8px; background: #2c2c2c; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 16px rgba(0,0,0,0.26); display: flex; flex-direction: column">
+    <div style="height: 32px; display: flex; align-items: center; padding: 0 12px; font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.529)">This computer</div>
+    <sc-for list="{{devices}}" as="d" hint-placeholder-count="5"><sc-if value="{{d.head}}" hint-placeholder-val="{{false}}"><div style="height: 32px; display: flex; align-items: center; padding: 6px 12px 0; border-top: 1px solid rgba(255,255,255,0.082); margin-top: 4px; font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.529)">{{d.l}}</div></sc-if><sc-if value="{{d.item}}" hint-placeholder-val="{{true}}"><button role="menuitemradio" aria-checked="{{d.on}}" style="{{d.style}}"><span style="{{d.dot}}"></span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{d.g}}" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="flex-grow: 1; text-align: left">{{d.l}}</span></button></sc-if></sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const tabs = [['All', ''], ['Songs', '435'], ['Playlists', '202'], ['Artists', '116'], ['Albums', '187'], ['Profiles', '1000'], ['Episodes', '1000'], ['Podcasts & shows', '279'], ['Audiobooks', '123'], ['Genres', '51'], ['Authors', '1']].map((t, i) => ({ l: t[0], c: t[1], sel: i === 0 ? 'true' : 'false',
+    style: 'position: relative; height: 36px; padding: 8px 12px 4px; border: 0; background: transparent; font: inherit; font-size: 14px; color: ' + (i === 0 ? '#fff' : 'rgba(255,255,255,0.773)'),
+    bar: i === 0 ? 'position: absolute; left: 12px; right: 12px; bottom: 0; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' }));
+  const hits = [['BIRDS OF A FEATHER', 'Billie Eilish', '#2f4a6b', true], ['lovely (with Khalid)', 'Billie Eilish, Khalid', '#c0c0b0', false], ['What Was I Made For?', 'Billie Eilish', '#d0c060', false], ['WILDFLOWER', 'Billie Eilish', '#3b5b7a', false]].map(h => ({ t: h[0], a: h[1], l: h[3] ? 'Saved to Liked Songs' : 'Save to Liked Songs', d: h[3] ? 'M3 8.5l3 3 7-7' : 'M8 3v10M3 8h10',
+    art: 'width: 48px; height: 48px; flex-shrink: 0; border-radius: 4px; background: ' + h[2], btn: 'width: 32px; height: 32px; border: 0; border-radius: 4px; background: transparent; display: flex; align-items: center; justify-content: center; color: ' + (h[3] ? '#60cdff' : 'rgba(255,255,255,0.773)') }));
+  const dv = (l, g, on) => ({ item: true, head: false, l, on: on ? 'true' : 'false', g,
+    style: 'height: 36px; display: flex; align-items: center; gap: 10px; padding: 0 12px 0 8px; border: 0; border-radius: 4px; background: ' + (on ? 'rgba(255,255,255,0.059)' : 'transparent') + '; color: #fff; font: inherit; font-size: 14px',
+    dot: 'width: 4px; height: 4px; border-radius: 2px; background: ' + (on ? '#60cdff' : 'transparent') });
+  const devices = [dv('System default', 'M2.5 3.5h11v7h-11zM6 13.5h4M8 10.5v3', true), dv('Headset', 'M3 10V8a5 5 0 0 1 10 0v2M3 10h2v3H3zM11 10h2v3h-2z', false), dv('Speakers', 'M4.5 2.5h7v11h-7zM8 6.5h.01M8 9a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z', false), { head: true, item: false, l: 'Spotify Connect' }, dv('Living room TV', 'M2 3.5h12v8H2zM5.5 13.5h5', false), dv('iPhone', 'M5 1.5h6v13H5zM7.5 12.5h1', false)];
+  return { tabs, hits, devices };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Collection: podcasts, small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} width: 800px; height: 600px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" tier="small" sel="library" items="Liked|Playlists|Albums:312|Artists:184|Podcasts|Audiobooks" sub-sel="{{four}}" lower="{{lower}}" hint-size="800px,136px"></dc-import>
+  <main style="height: 380px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; padding: 8px 24px 0 24px; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke)">
+    <div style="display: flex; align-items: center; gap: 8px; height: 40px; flex-shrink: 0">
+      <button style="height: 32px; display: inline-flex; align-items: center; gap: 16px; padding: 0 10px 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px">Recents<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      <span style="flex-grow: 1"></span>
+      <button aria-label="Find in podcasts" style="width: 36px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></button>
+      <span style="font-size: 12px; color: var(--t2)">14 shows</span>
+    </div>
+    <div style="flex-grow: 1; min-height: 0; display: flex; gap: 24px">
+      <section aria-label="Shows" style="width: 220px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden">
+        <a href="#" style="position: relative; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-radius: 4px; background: var(--sub); font-size: 14px; font-weight: 600; color: var(--t1)"><span style="position: absolute; left: 0; top: 12px; width: 3px; height: 16px; border-radius: 2px; background: var(--acc)"></span>Your episodes <span style="font-size: 12px; font-weight: 400; color: var(--t2)">24</span></a>
+        <h2 style="margin: 0; height: 28px; flex-shrink: 0; display: flex; align-items: flex-end; padding: 0 0 4px 12px; box-sizing: border-box; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--t2)">Followed shows</h2>
+        <sc-for list="{{shows}}" as="s" hint-placeholder-count="5">
+          <a href="#" style="display: grid; grid-template-columns: 50px minmax(0, 1fr) 20px; align-items: center; height: 52px; flex-shrink: 0; margin-top: 2px; padding-left: 10px; border-radius: 4px; color: var(--t1)"><span style="{{s.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.name}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.sub}}</span></span><sc-if value="{{s.fresh}}" hint-placeholder-val="{{ false }}"><span role="img" aria-label="{{s.newLabel}}" style="width: 8px; height: 8px; border-radius: 4px; justify-self: center; background: var(--acc)"></span></sc-if></a>
+        </sc-for>
+      </section>
+      <section aria-label="Your episodes" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden">
+        <div style="display: flex; align-items: center; gap: 10px; height: 40px; flex-shrink: 0">
+          <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; white-space: nowrap">Your episodes</h2>
+          <span style="font-size: 12px; color: var(--t2); white-space: nowrap">24 · 6 h 12 min</span>
+          <span style="flex-grow: 1"></span>
+          <button style="height: 32px; display: inline-flex; align-items: center; gap: 12px; padding: 0 10px 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px">All<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+        </div>
+        <sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+          <div style="display: flex; flex-direction: column; flex-shrink: 0">
+            <h3 style="margin: 0; height: 32px; display: flex; align-items: flex-end; gap: 8px; padding: 0 0 4px 10px; box-sizing: border-box; font-size: 14px; line-height: 20px; font-weight: 600">{{g.title}}<span style="font-size: 12px; font-weight: 400; color: var(--t2)">{{g.count}}</span></h3>
+            <sc-for list="{{g.rows}}" as="e" hint-placeholder-count="3">
+              <div style="{{e.row}}"><span style="{{e.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><a href="#" style="{{e.title}}">{{e.name}}</a><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{e.meta}}</span></span><span style="{{e.state}}">{{e.stateText}}</span><button aria-label="{{e.playLabel}}" style="{{e.play}}"><sc-if value="{{e.playing}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3v10M10.5 3v10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg></sc-if><sc-if value="{{e.idle}}" hint-placeholder-val="{{ true }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg></sc-if></button></div>
+            </sc-for>
+          </div>
+        </sc-for>
+      </section>
+    </div>
+  </main>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" tier="small" variant="podcast" pane="none" hint-size="800px,84px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"lower":{"editor":"boolean","default":false},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)', strong: 'rgba(255,255,255,0.5442)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', sub: 'rgba(0,0,0,0.0373)', strong: 'rgba(0,0,0,0.4458)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const shows = [['The Rest Is Football', 'Goalhanger · 3 new', '#2f4a3b', 3], ['The Rest Is History', 'Goalhanger · 2 new', '#4a3b2f', 2], ['Twenty Thousand Hertz', 'Dallas Taylor · 1 new', '#4a2f3b', 1], ['Planet Money', 'NPR · 2 new', '#2f3b4a', 2], ['Hurry Slowly', 'Jocelyn K. Glei', '#3b3b2f', 0]].map((d) => ({ name: d[0], sub: d[1], fresh: d[3] > 0, newLabel: d[3] + ' new episodes',
+    art: 'width: 40px; height: 40px; border-radius: 4px; background: ' + d[2] }));
+  const mk = (list) => list.map((d) => { const p = !!d[4];
+    return { name: d[0], meta: d[1], stateText: d[3], playing: p, idle: !p, playLabel: (p ? 'Pause ' : 'Play ') + d[0],
+      row: 'display: grid; grid-template-columns: 50px minmax(0, 1fr) 88px 40px; align-items: center; height: 52px; flex-shrink: 0; margin-top: 2px; padding-left: 10px; border-radius: 4px; ' + (p ? 'background: var(--sub)' : ''),
+      art: 'width: 40px; height: 40px; border-radius: 4px; background: ' + d[2],
+      title: 'font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (p ? 'var(--acct); font-weight: 600' : 'var(--t1)'),
+      state: 'font-size: 12px; text-align: right; padding-right: 8px; white-space: nowrap; color: ' + (p ? 'var(--acct)' : 'var(--t2)'),
+      play: 'width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 16px; ' + (p ? 'border: 0; background: var(--acc); color: var(--onacc)' : 'background: var(--ctrl); border: 1px solid var(--ctrlb); color: var(--t1)') }; });
+  const groups = [
+    { title: 'Today', count: '3', rows: mk([['The hidden history of the synthesizer', 'Twenty Thousand Hertz · 32 min', '#4a2f3b', '12 min left', false], ['What the Fed did next', 'Planet Money · 24 min', '#2f3b4a', 'Unplayed', false]]) },
+    { title: 'This week', count: '9', rows: mk([['Why the Premier League keeps changing', 'The Rest Is Football · 9 Oct · 48 min', '#2f4a3b', '24 min left', true], ['Episode 312: slow mornings', 'Hurry Slowly · 8 Oct · 54 min', '#3b3b2f', 'Unplayed', false]]) }
+  ];
+  return { vars, theme, accent, shows, groups, four: 4, lower: !!(this.props.lower ?? false) };
+}
+}
+</script>
+</body>
+</html>

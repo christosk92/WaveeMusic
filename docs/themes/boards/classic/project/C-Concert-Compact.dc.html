@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Compact Concert</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 400px; height: 860px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="concert:Billie Eilish · Ziggo Dome" sel="0" w="400" tier="compact" hint-size="400px,48px"></dc-import>
+  <main style="height: 756px; flex-shrink: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); padding: 8px 16px 0; display: flex; flex-direction: column; gap: 12px; overflow: hidden">
+    <nav aria-label="Breadcrumb" style="height: 28px; display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; font-weight: 600; flex-shrink: 0; white-space: nowrap"><a href="#" style="color: rgba(255,255,255,0.773); padding: 6px 0">Browse</a><span style="color: rgba(255,255,255,0.529)">›</span><a href="#" style="color: rgba(255,255,255,0.773); padding: 6px 0">Concerts</a><span style="color: rgba(255,255,255,0.529)">›</span><a href="#" style="color: rgba(255,255,255,0.773); padding: 6px 0">Billie Eilish</a></nav>
+    <section aria-label="Billie Eilish at Ziggo Dome" style="display: flex; flex-direction: column; gap: 10px; flex-shrink: 0">
+      <div style="position: relative; height: 220px; border-radius: 8px; overflow: hidden; border: 1px solid rgba(0,0,0,0.098); background: radial-gradient(50% 60% at 60% 30%, #5d7fa8 0%, rgba(93,127,168,0) 70%), linear-gradient(160deg, #3b5574, #0e1828)">
+        <span aria-hidden="true" style="position: absolute; left: 0; right: 0; bottom: 0; height: 96px; background: linear-gradient(180deg, rgba(14,24,40,0), rgba(14,24,40,0.85))"></span>
+        <div style="position: absolute; left: 16px; right: 16px; bottom: 14px; display: flex; align-items: center; gap: 8px"><span style="font-size: 12px; font-weight: 600; letter-spacing: 0.03em; color: #a6d8ff; flex-grow: 1">Concert</span><span style="font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: #393d1b; color: #6ccb5f">On sale</span></div>
+      </div>
+      <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600; letter-spacing: -0.02em">Billie Eilish — HIT ME HARD AND SOFT: THE TOUR</h1>
+      <div style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.773)">
+        <sc-for list="{{facts}}" as="f" hint-placeholder-count="4"><span style="display: flex; align-items: center; gap: 10px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="{{f.d}}" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg>{{f.t}}</span></sc-for>
+      </div>
+    </section>
+    <section aria-label="Tickets" style="padding: 14px 16px 16px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); display: flex; flex-direction: column; gap: 4px; flex-shrink: 0">
+      <h2 style="margin: 0 0 4px; font-size: 20px; line-height: 28px; font-weight: 600">Tickets</h2>
+      <div style="display: flex; align-items: baseline; gap: 8px"><span style="font-size: 14px; font-weight: 600; flex-grow: 1">Ticketmaster</span><span style="font-size: 20px; line-height: 28px; font-weight: 600">from €89</span></div>
+      <span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">On sale until Mar 13</span>
+      <a href="#" style="margin-top: 8px; height: 40px; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 4px; background: #60cdff; color: #000; font-size: 14px; font-weight: 600; box-shadow: inset 0 -1px 0 rgba(0,0,0,0.22)">Buy tickets<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 2.5h3.5V6M13.5 2.5 8 8M6 3.5H3v9.5h9.5V10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg></a>
+      <a href="#" style="margin-top: 4px; min-height: 44px; display: flex; align-items: center; gap: 8px; border-top: 1px solid rgba(255,255,255,0.082); padding-top: 4px"><span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 14px; font-weight: 600">Resale · from €120</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">Verified fan-to-fan resale</span></span><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="color: rgba(255,255,255,0.529)"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg></a>
+    </section>
+    <section aria-label="Lineup" style="display: flex; flex-direction: column; flex-shrink: 0">
+      <h2 style="margin: 0 0 4px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Lineup</h2>
+      <sc-for list="{{lineup}}" as="l" hint-placeholder-count="3"><div style="height: 60px; display: flex; align-items: center; gap: 12px"><span style="{{l.a}}"></span><span style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0"><span style="font-size: 14px; font-weight: 600">{{l.n}}</span><span style="font-size: 12px; color: rgba(255,255,255,0.773)">{{l.r}}</span></span><button aria-label="{{l.f}}" aria-pressed="{{l.on}}" style="{{l.bs}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{l.g}}" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></div></sc-for>
+    </section>
+  </main>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="400" tier="mini" hint-size="400px,56px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const facts = [['Sat, Mar 14, 2026 · 19:30', 'M2.5 3.5h11v10h-11zM2.5 6.5h11M5.5 2v3M10.5 2v3'], ['Doors open 18:30', 'M8 2a6 6 0 1 1 0 12A6 6 0 0 1 8 2zM8 4.5V8l2.5 1.5'], ['Ziggo Dome, Amsterdam', 'M8 14s4.5-4.2 4.5-7.5a4.5 4.5 0 0 0-9 0C3.5 9.8 8 14 8 14zM8 8a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z'], ['Ages 18+', 'M8 2a6 6 0 1 1 0 12A6 6 0 0 1 8 2zM8 7.5v3.5M8 5h.01']].map(f => ({ t: f[0], d: f[1] }));
+  const follow = 'M6.5 7.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM2 13.5c.4-2.6 2.2-4 4.5-4 1.2 0 2.2.3 3 1M12.5 9v5M10 11.5h5';
+  const following = 'M6.5 7.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM2 13.5c0-2.5 2-4 4.5-4M10 11.5l1.8 1.8 3-3.3';
+  const lineup = [['Billie Eilish', 'Headliner', '#2f4a6b', 1], ['Nat & Alex Wolff', 'Support', '#6b5b3b', 0], ['TV Girl', 'Support', '#8a3b5b', 0]].map(l => ({ n: l[0], r: l[1], f: (l[3] ? 'Following ' : 'Follow ') + l[0], on: l[3] ? 'true' : 'false', g: l[3] ? following : follow,
+    a: 'width: 44px; height: 44px; flex-shrink: 0; border-radius: 22px; background: ' + l[2],
+    bs: 'width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 4px; ' + (l[3] ? 'border: 0; background: rgba(96,205,255,0.16); color: #60cdff' : 'background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff') }));
+  return { facts, lineup };
+}
+}
+</script>
+</body>
+</html>

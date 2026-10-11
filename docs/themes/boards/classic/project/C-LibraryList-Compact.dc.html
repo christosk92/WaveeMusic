@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Compact Library, Artists A–Z</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 400px; height: 860px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="artists:Artists" sel="0" w="400" tier="compact" hint-size="400px,48px"></dc-import>
+  <main style="position: relative; height: 756px; flex-shrink: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); padding: 12px 16px 0; display: flex; flex-direction: column; gap: 12px; overflow: hidden">
+    <div role="tablist" aria-label="Library" style="display: flex; gap: 8px; height: 40px; align-items: center; margin-right: -16px; flex-shrink: 0; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent)">
+      <sc-for list="{{pivots}}" as="p" hint-placeholder-count="5"><button role="tab" aria-selected="{{p.sel}}" style="{{p.s}}">{{p.l}}</button></sc-for>
+    </div>
+    <div style="display: flex; align-items: baseline; gap: 10px; flex-shrink: 0"><h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em">Artists</h1><span style="font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.529)">86</span></div>
+    <div style="display: flex; align-items: center; gap: 8px; height: 40px; flex-shrink: 0">
+      <button aria-label="Sort by" style="height: 40px; display: flex; align-items: center; gap: 6px; padding: 0 8px; margin-left: -8px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit; font-size: 13.5px; font-weight: 600"><span style="position: relative">alphabetical<span style="position: absolute; left: 0; right: 0; bottom: -6px; height: 2px; background: #60cdff"></span></span><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="color: rgba(255,255,255,0.529)"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></button>
+      <label style="flex-grow: 1; min-width: 0; height: 40px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); border-bottom-color: rgba(255,255,255,0.545); font-size: 14px; color: rgba(255,255,255,0.773)"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12l-4.5 5.2V13l-3-1.5V8.2z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"></path></svg><input aria-label="Filter artists" placeholder="Filter" style="flex-grow: 1; min-width: 0; border: 0; background: transparent; color: #fff; font: inherit; font-size: 14px; outline: none"></label>
+    </div>
+    <div role="list" aria-label="Artists in your library" style="display: flex; flex-direction: column; padding-right: 20px">
+      <sc-for list="{{list}}" as="r" hint-placeholder-count="12">
+        <sc-if value="{{r.h}}" hint-placeholder-val="{{false}}"><div role="heading" aria-level="2" style="height: 28px; flex-shrink: 0; display: flex; align-items: center; padding: 0 8px; margin-top: 4px; border-radius: 4px; background: rgba(255,255,255,0.031); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; color: rgba(255,255,255,0.529)">{{r.l}}</div></sc-if>
+        <sc-if value="{{r.row}}" hint-placeholder-val="{{true}}"><a href="#" role="listitem" style="{{r.s}}"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.l}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">{{r.sub}}</span></span><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0; color: rgba(255,255,255,0.529)"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg></a></sc-if>
+      </sc-for>
+    </div>
+    <div role="navigation" aria-label="Jump to letter" style="position: absolute; right: 0; top: 220px; width: 24px; display: flex; flex-direction: column; align-items: center; font-size: 10px; line-height: 17px; color: rgba(255,255,255,0.529)"><sc-for list="{{az}}" as="a" hint-placeholder-count="26"><span style="{{a.s}}">{{a.l}}</span></sc-for></div>
+  </main>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="400" tier="mini" hint-size="400px,56px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const pivots = ['Albums', 'Artists', 'Podcasts', 'Audiobooks', 'Liked Songs'].map((l, i) => ({ l, sel: i === 1 ? 'true' : 'false', s: 'height: 40px; flex-shrink: 0; padding: 0 16px; border-radius: 20px; font: inherit; font-size: 14px; ' + (i === 1 ? 'border: 0; background: #60cdff; color: #000; font-weight: 600' : 'background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff') }));
+  const L = [['C'], ['Chappell Roan', '1 album · 14 songs', '#c06a8a'], ['Conan Gray', '2 albums · 8 songs', '#8aa0b0'], ['D'], ['Daft Punk', '3 albums · 35 songs', '#6b5b2f', 1], ['Dominic Fike', '1 album · 3 songs', '#c0a080'], ['E'], ['Edward Maya', '1 album · 12 songs', '#3b5b7a'], ['EMIN', '4 songs', '#3a3a4a'], ['F'], ['FINNEAS', '1 album · 9 songs', '#5b4a3b']];
+  const list = L.map(r => r.length === 1 ? { h: true, row: false, l: r[0] } : { h: false, row: true, l: r[0], sub: r[1],
+    s: 'position: relative; height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 8px; border-radius: 4px' + (r[3] ? '; background: rgba(255,255,255,0.059)' : ''),
+    art: 'width: 40px; height: 40px; flex-shrink: 0; border-radius: 20px; background: ' + r[2] });
+  const az = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(l => ({ l, s: l === 'D' ? 'color: #60cdff; font-weight: 700' : ('BGJQXZ'.indexOf(l) >= 0 ? 'opacity: 0.3' : '') }));
+  return { pivots, list, az };
+}
+}
+</script>
+</body>
+</html>

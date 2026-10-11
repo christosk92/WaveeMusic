@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune settings playback: huge window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 2560px; height: 1440px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="huge" crumb="settings › playback" accent="{{accent}}" hint-size="2560px,48px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex">
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+      <dc-import name="Z-Part-Band" tier="huge" section="none" sub="" collapsed="true" accent="{{accent}}" hint-size="1840px,52px"></dc-import>
+      <div style="flex-grow: 1; min-height: 0; position: relative; overflow: hidden">
+        <div style="position: absolute; left: 38px; top: -12px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 150px; font-weight: 200; line-height: 160px; letter-spacing: -2.5px; white-space: nowrap; color: #ffffff; opacity: 0.92">settings</div>
+        <div style="position: absolute; left: 48px; top: 176px; right: 48px; bottom: 0; display: flex; gap: 40px">
+          <nav aria-label="settings sections" style="width: 260px; flex-shrink: 0; display: flex; flex-direction: column">
+            <sc-for list="{{sections}}" as="s" hint-placeholder-count="12"><a href="#" style="{{s.style}}">{{s.n}}</a></sc-for>
+          </nav>
+          <div style="width: 760px; flex-shrink: 0; display: flex; flex-direction: column">
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px">playback</span>
+            <div style="display: grid; grid-template-columns: 240px minmax(0, 1fr); column-gap: 24px; row-gap: 24px; align-items: center; margin-top: 20px">
+              <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">crossfade</span><span style="font-size: 12px; color: #7a7a7a">blend the end of one song into the next</span></span>
+              <span style="display: flex; align-items: center; gap: 14px; font-size: 14px"><span style="{{switchOn}}"><span style="position: absolute; right: 2px; top: 2px; width: 16px; height: 16px; background: #000000; display: block"></span></span><span style="width: 280px; height: 2px; background: rgba(255,255,255,0.18); position: relative; display: block"><span style="{{sliderFill}}"></span><span style="position: absolute; left: 41%; top: -9px; width: 8px; height: 20px; background: #ffffff; display: block"></span></span><span style="font-variant-numeric: tabular-nums">5 s</span></span>
+              <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">gapless</span><span style="font-size: 12px; color: #7a7a7a">live albums and mixes play without a break</span></span>
+              <label style="display: flex; align-items: center; gap: 10px; font-size: 14px"><span style="{{switchOn}}"><span style="position: absolute; right: 2px; top: 2px; width: 16px; height: 16px; background: #000000; display: block"></span></span>on</label>
+              <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">autoplay</span><span style="font-size: 12px; color: #7a7a7a">similar music when your queue ends</span></span>
+              <label style="display: flex; align-items: center; gap: 10px; font-size: 14px"><span style="{{switchOn}}"><span style="position: absolute; right: 2px; top: 2px; width: 16px; height: 16px; background: #000000; display: block"></span></span>on</label>
+              <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">on start</span><span style="font-size: 12px; color: #7a7a7a">when wavee opens</span></span>
+              <span style="display: flex; gap: 8px"><sc-for list="{{onStart}}" as="c" hint-placeholder-count="2"><button style="{{c.style}}">{{c.label}}</button></sc-for></span>
+            </div>
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px; margin-top: 44px">audio</span>
+            <div style="display: grid; grid-template-columns: 240px minmax(0, 1fr); column-gap: 24px; row-gap: 24px; align-items: center; margin-top: 20px">
+              <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">streaming quality</span><span style="font-size: 12px; color: #7a7a7a">very high needs premium</span></span>
+              <span style="display: flex; gap: 8px"><sc-for list="{{quality}}" as="c" hint-placeholder-count="4"><button style="{{c.style}}">{{c.label}}</button></sc-for></span>
+              <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">normalise volume</span><span style="font-size: 12px; color: #7a7a7a">every song at the same loudness</span></span>
+              <span style="display: flex; align-items: center; gap: 14px"><span style="{{switchOn}}"><span style="position: absolute; right: 2px; top: 2px; width: 16px; height: 16px; background: #000000; display: block"></span></span><span style="display: flex; gap: 8px"><sc-for list="{{level}}" as="c" hint-placeholder-count="3"><button style="{{c.style}}">{{c.label}}</button></sc-for></span></span>
+              <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">output</span><span style="font-size: 12px; color: #7a7a7a">where this computer plays</span></span>
+              <span style="font-size: 14px">system default · headphones (realtek audio) <a href="#" style="font-size: 13px; margin-left: 10px">change</a></span>
+              <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">cache</span><span style="font-size: 12px; color: #7a7a7a">songs kept on this pc so they start fast</span></span>
+              <span style="display: flex; align-items: center; gap: 14px; font-size: 14px"><span style="{{markIdle}}">↓</span>1.4 GB of 4 GB · 212 songs<a href="#" style="font-size: 13px; margin-left: 10px">clear</a><a href="#" style="font-size: 13px">storage ›</a></span>
+            </div>
+          </div>
+          <div style="flex-grow: 1; min-width: 640px; display: flex; flex-direction: column; gap: 12px; padding-top: 8px">
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">playing now</span>
+            <div style="display: flex; gap: 20px; align-items: center; margin-top: 4px">
+              <span style="width: 120px; height: 120px; border-radius: 2px; background: #3a2f22; flex-shrink: 0"></span>
+              <span style="display: flex; flex-direction: column; gap: 4px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">Get Lucky</span><span style="font-size: 14px; color: #a8a8a8">Daft Punk · Random Access Memories</span><span style="{{accentInk}}">2:30 of 6:09</span></span>
+            </div>
+            <div style="display: grid; grid-template-columns: 140px minmax(0, 1fr); row-gap: 12px; font-size: 14px; margin-top: 16px">
+              <span style="color: #7a7a7a">quality</span><span>very high · 320 kbps</span>
+              <span style="color: #7a7a7a">format</span><span>ogg vorbis · 44.1 khz</span>
+              <span style="color: #7a7a7a">loudness</span><span>−4.2 db to normal</span>
+              <span style="color: #7a7a7a">crossfade</span><span>5 s into Beyond</span>
+              <span style="color: #7a7a7a">output</span><span>headphones · shared mode</span>
+              <span style="color: #7a7a7a">cache</span><span style="display: flex; align-items: center; gap: 8px"><span style="{{markIdle}}">↓</span>on this pc</span>
+            </div>
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px; margin-top: 28px">crossfade</span>
+            <div style="height: 140px; position: relative; background: #1b1b1b; overflow: hidden; flex-shrink: 0">
+              <div style="position: absolute; left: 24px; right: 24px; top: 24px; height: 80px; display: flex; align-items: center; gap: 3px">
+                <sc-for list="{{wave}}" as="w" hint-placeholder-count="80"><span style="{{w.style}}"></span></sc-for>
+              </div>
+              <span style="{{fadeZone}}"></span>
+              <span style="position: absolute; left: 24px; bottom: 10px; font-size: 12px; color: #a8a8a8">Get Lucky</span>
+              <span style="position: absolute; right: 24px; bottom: 10px; font-size: 12px; color: #a8a8a8">Beyond</span>
+              <span style="{{fadeLabel}}">5 s</span>
+            </div>
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px; margin-top: 28px">loudness</span>
+            <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: #a8a8a8">
+              <span style="display: grid; grid-template-columns: 120px minmax(0, 1fr) 80px; align-items: center; gap: 12px"><span>this song</span><span style="height: 6px; background: rgba(255,255,255,0.08); display: block"><span style="display: block; width: 78%; height: 6px; background: #a8a8a8"></span></span><span style="text-align: right; font-variant-numeric: tabular-nums">−9.8 lufs</span></span>
+              <span style="display: grid; grid-template-columns: 120px minmax(0, 1fr) 80px; align-items: center; gap: 12px"><span>after normalise</span><span style="height: 6px; background: rgba(255,255,255,0.08); display: block"><span style="{{loudBar}}"></span></span><span style="text-align: right; font-variant-numeric: tabular-nums; color: #ffffff">−14 lufs</span></span>
+            </div>
+            <span style="font-size: 13px; line-height: 20px; color: #7a7a7a; margin-top: 20px; max-width: 640px">changes take effect from the next song. quality changes keep the current song playing.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <dc-import name="Z-Part-Panel" tier="docked2" pivot="queue" h="1320" accent="{{accent}}" hint-size="720px,1320px"></dc-import>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="huge" title="Get Lucky" artist="Daft Punk · Random Access Memories" art="#3a2f22" progress="41" from="playing from random access memories" active="queue" accent="{{accent}}" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const sections = ['account', 'appearance', 'playback', 'audio', 'lyrics', 'devices & connect', 'storage', 'notifications', 'keyboard', 'privacy', 'feedback & help', 'about'].map((n) => ({ n, style: 'height: 52px; flex-shrink: 0; display: flex; align-items: center; white-space: nowrap; font-family: ' + D + '; font-size: 24px; line-height: 32px; ' + (n === 'playback' ? 'color: #ffffff; font-weight: 400' : 'color: #7a7a7a; font-weight: 300') }));
+  const chips = (labels, on) => labels.map((l, i) => ({ label: l, style: 'height: 36px; padding: 0 14px; border: 0; font: inherit; font-size: 15px; white-space: nowrap; ' + (i === on ? 'background: ' + accent + '; color: #000000' : 'background: rgba(255,255,255,0.06); color: #ffffff') }));
+  const wave = [];
+  for (let i = 0; i < 80; i++) {
+    const h = Math.round(18 + 52 * Math.abs(Math.sin(i * 0.7) * Math.cos(i * 0.23)));
+    const inFade = i >= 46 && i < 62;
+    const next = i >= 54;
+    wave.push({ style: 'flex: 1 1 0; display: block; height: ' + h + 'px; background: ' + (next ? '#ffffff' : accent) + '; opacity: ' + (inFade ? 0.55 : (next ? 0.5 : 0.9)) });
+  }
+  const mark = (c) => 'width: 14px; height: 14px; box-sizing: border-box; border-radius: 7px; border: 2px solid ' + c + '; color: ' + c + '; font-size: 8px; line-height: 10px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0';
+  return {
+    accent, sections, wave,
+    onStart: chips(['resume where i left off', 'stay quiet'], 0),
+    quality: chips(['low', 'normal', 'high', 'very high'], 3),
+    level: chips(['quiet', 'normal', 'loud'], 1),
+    markIdle: mark('#a8a8a8'),
+    accentInk: 'font-size: 13px; color: ' + accent,
+    switchOn: 'width: 40px; height: 20px; background: ' + accent + '; position: relative; display: block; flex-shrink: 0',
+    sliderFill: 'position: absolute; left: 0; top: 0; width: 41%; height: 2px; background: ' + accent + '; display: block',
+    fadeZone: 'position: absolute; left: 58%; width: 20%; top: 16px; height: 96px; border-left: 1px solid rgba(255,255,255,0.4); border-right: 1px solid rgba(255,255,255,0.4); background: rgba(255,255,255,0.04)',
+    fadeLabel: 'position: absolute; left: 66%; bottom: 10px; font-size: 12px; color: ' + accent,
+    loudBar: 'display: block; width: 62%; height: 6px; background: ' + accent,
+  };
+}
+}
+</script>
+</body>
+</html>

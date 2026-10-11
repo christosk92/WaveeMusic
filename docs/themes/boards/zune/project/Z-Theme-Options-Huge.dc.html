@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune theme options: huge window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 2560px; height: 1440px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="huge" crumb="settings › appearance › zune" accent="{{accent}}" hint-size="2560px,48px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex">
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+      <dc-import name="Z-Part-Band" tier="huge" section="none" sub="" collapsed="true" accent="{{accent}}" hint-size="1840px,52px"></dc-import>
+      <div style="flex-grow: 1; min-height: 0; position: relative; overflow: hidden">
+        <div style="position: absolute; left: 38px; top: -12px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 150px; font-weight: 200; line-height: 160px; letter-spacing: -2.5px; white-space: nowrap; color: #ffffff; opacity: 0.92">settings</div>
+        <div style="position: absolute; left: 48px; top: 176px; right: 48px; bottom: 0; display: flex; gap: 40px">
+          <nav aria-label="settings sections" style="width: 260px; flex-shrink: 0; display: flex; flex-direction: column">
+            <sc-for list="{{sections}}" as="s" hint-placeholder-count="12"><a href="#" style="{{s.style}}">{{s.n}}</a></sc-for>
+          </nav>
+          <div style="width: 760px; flex-shrink: 0; display: flex; flex-direction: column; gap: 4px">
+            <div style="display: flex; align-items: baseline; gap: 16px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px">zune options</span><a href="#" style="font-size: 13px">reset</a></div>
+            <span style="font-size: 13px; color: #a8a8a8; margin-bottom: 18px">changes apply at once.</span>
+            <div style="display: grid; grid-template-columns: 240px minmax(0, 1fr); column-gap: 24px; row-gap: 28px; align-items: start">
+              <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">accent</span><span style="font-size: 12px; color: #7a7a7a">play, the playing row, selection</span></span>
+              <span style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap"><sc-for list="{{accents}}" as="a" hint-placeholder-count="5"><button aria-label="{{a.name}}" style="{{a.style}}"></button></sc-for><span style="font-size: 13px; color: #a8a8a8; margin-left: 6px">pink</span><a href="#" style="font-size: 13px; margin-left: 10px">use the windows accent</a></span>
+              <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">ground</span><span style="font-size: 12px; color: #7a7a7a">the page colour</span></span>
+              <span style="display: flex; gap: 8px; flex-wrap: wrap"><sc-for list="{{ground}}" as="c" hint-placeholder-count="3"><button style="{{c.style}}">{{c.label}}</button></sc-for></span>
+              <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">background</span><span style="font-size: 12px; color: #7a7a7a">what sits behind page titles</span></span>
+              <span style="display: flex; flex-direction: column; gap: 8px"><span style="display: flex; gap: 8px; flex-wrap: wrap"><sc-for list="{{background}}" as="c" hint-placeholder-count="3"><button style="{{c.style}}">{{c.label}}</button></sc-for></span><span style="font-size: 12px; line-height: 18px; color: #7a7a7a">artwork wash tints the top of albums, artists and playlists from their cover. mix drifts artist photos behind home and now playing.</span></span>
+              <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">panorama titles</span><span style="font-size: 12px; color: #7a7a7a">page titles at 150</span></span>
+              <span style="display: flex; gap: 8px; flex-wrap: wrap"><sc-for list="{{panorama}}" as="c" hint-placeholder-count="2"><button style="{{c.style}}">{{c.label}}</button></sc-for></span>
+              <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">row size</span><span style="font-size: 12px; color: #7a7a7a">every song list</span></span>
+              <span style="display: flex; gap: 8px; flex-wrap: wrap"><sc-for list="{{density}}" as="c" hint-placeholder-count="3"><button style="{{c.style}}">{{c.label}}</button></sc-for></span>
+              <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">track numbers</span><span style="font-size: 12px; color: #7a7a7a">albums, artists, the queue</span></span>
+              <label style="display: flex; align-items: center; gap: 10px; font-size: 14px"><span style="{{switchOn}}"><span style="position: absolute; right: 2px; top: 2px; width: 16px; height: 16px; background: #000000; display: block"></span></span>big light numbers</label>
+              <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">now playing</span><span style="font-size: 12px; color: #7a7a7a">the full screen face</span></span>
+              <span style="display: flex; gap: 8px; flex-wrap: wrap"><sc-for list="{{face}}" as="c" hint-placeholder-count="4"><button style="{{c.style}}">{{c.label}}</button></sc-for></span>
+              <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">motion</span><span style="font-size: 12px; color: #7a7a7a">follows windows animation effects</span></span>
+              <label style="display: flex; align-items: center; gap: 10px; font-size: 14px"><span style="{{switchOn}}"><span style="position: absolute; right: 2px; top: 2px; width: 16px; height: 16px; background: #000000; display: block"></span></span>pivots slide, titles drift with scroll</label>
+            </div>
+          </div>
+          <div style="flex-grow: 1; min-width: 640px; display: flex; flex-direction: column; gap: 10px; padding-top: 8px">
+            <span style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">preview</span><span style="font-size: 13px; color: #7a7a7a">dark · pink · artwork wash · standard 52</span></span>
+            <div style="width: 100%; height: 400px; flex-shrink: 0; background: #161616; box-shadow: 0 0 0 1px rgba(255,255,255,0.08); position: relative; overflow: hidden">
+              <div style="position: absolute; left: 0; top: 0; right: 0; height: 230px; background: linear-gradient(180deg, #3a2f22 0%, #161616 100%)"></div>
+              <div style="position: absolute; left: 20px; top: 12px; display: flex; gap: 14px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 16px"><span style="color: #7a7a7a">home</span><span style="color: #7a7a7a">browse</span><span style="color: #ffffff; font-weight: 600">library</span><span style="color: #7a7a7a">recents</span></div>
+              <div style="position: absolute; left: 14px; top: 34px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 80px; font-weight: 200; line-height: 88px; white-space: nowrap; letter-spacing: -1.5px">random access memories</div>
+              <span style="position: absolute; left: 20px; top: 132px; width: 132px; height: 132px; border-radius: 2px; background: #3a2f22; box-shadow: 0 0 0 1px rgba(255,255,255,0.08)"></span>
+              <span style="position: absolute; left: 20px; top: 280px; display: flex; align-items: center; gap: 8px; font-size: 12px"><span style="{{prevPlay}}">▶</span>play</span>
+              <div style="position: absolute; left: 176px; top: 132px; right: 20px; display: flex; flex-direction: column">
+                <sc-for list="{{prevRows}}" as="r" hint-placeholder-count="7"><span style="{{r.row}}"><span style="{{r.num}}">{{r.n}}</span><span style="{{r.title}}">{{r.t}}</span><span style="font-size: 11px; color: #7a7a7a; font-variant-numeric: tabular-nums">{{r.time}}</span></span></sc-for>
+              </div>
+              <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 32px; background: #111111"><span style="position: absolute; left: 0; top: 0; right: 0; height: 1px; background: rgba(255,255,255,0.12)"></span><span style="{{prevProgress}}"></span><span style="position: absolute; left: 12px; top: 9px; font-size: 11px; color: #a8a8a8">Get Lucky · Daft Punk</span><span style="{{prevDisc}}"></span></div>
+            </div>
+            <span style="font-size: 13px; color: #7a7a7a">album</span>
+            <div style="width: 100%; height: 340px; flex-shrink: 0; background: #0e0e0e; box-shadow: 0 0 0 1px rgba(255,255,255,0.08); position: relative; overflow: hidden; margin-top: 12px">
+              <div style="position: absolute; left: 50%; top: 50%; width: 720px; height: 720px; margin: -360px 0 0 -360px; border-radius: 50%; background: radial-gradient(circle, rgba(138,106,58,0.85) 0%, rgba(90,70,48,0.5) 30%, rgba(42,36,28,0.2) 55%, rgba(14,14,14,0) 72%)"></div>
+              <span style="position: absolute; left: 50%; top: 56px; width: 168px; height: 168px; margin-left: -84px; border-radius: 2px; background: #3a2f22; box-shadow: 0 16px 48px rgba(0,0,0,0.5)"></span>
+              <span style="position: absolute; left: 0; right: 0; top: 240px; text-align: center; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 32px; font-weight: 300; line-height: 40px">Get Lucky</span>
+              <span style="position: absolute; left: 0; right: 0; top: 282px; text-align: center; font-size: 13px; color: #c8c8c8">Daft Punk · Random Access Memories</span>
+              <span style="position: absolute; left: 25%; right: 25%; bottom: 14px; height: 2px; background: rgba(255,255,255,0.18)"><span style="{{bloomBar}}"></span></span>
+            </div>
+            <span style="font-size: 13px; color: #7a7a7a">now playing · bloom</span>
+            <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 12px">
+              <sc-for list="{{faces}}" as="f" hint-placeholder-count="4"><button style="{{f.box}}"><span style="{{f.thumb}}"></span><span style="{{f.label}}">{{f.name}}</span></button></sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <dc-import name="Z-Part-Panel" tier="docked2" pivot="lyrics" h="1320" accent="{{accent}}" hint-size="720px,1320px"></dc-import>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="huge" title="Get Lucky" artist="Daft Punk · Random Access Memories" art="#3a2f22" progress="41" from="playing from random access memories" active="lyrics" accent="{{accent}}" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const sections = ['account', 'appearance', 'playback', 'audio', 'lyrics', 'devices & connect', 'storage', 'notifications', 'keyboard', 'privacy', 'feedback & help', 'about'].map((n) => ({ n, style: 'height: 52px; flex-shrink: 0; display: flex; align-items: center; white-space: nowrap; font-family: ' + D + '; font-size: 24px; line-height: 32px; ' + (n === 'appearance' ? 'color: #ffffff; font-weight: 400' : 'color: #7a7a7a; font-weight: 300') }));
+  const accents = [['pink', '#ff3ca6'], ['orange', '#ff7a1a'], ['blue', '#60cdff'], ['green', '#8fd14f'], ['purple', '#b983ff']].map((d) => ({ name: d[0], style: 'width: 36px; height: 36px; border: 0; padding: 0; flex-shrink: 0; background: ' + d[1] + (d[1] === accent ? '; outline: 2px solid #ffffff; outline-offset: 2px' : '') }));
+  const chips = (labels, on) => labels.map((l, i) => ({ label: l, style: 'height: 36px; padding: 0 14px; border: 0; font: inherit; font-size: 15px; white-space: nowrap; ' + (i === on ? 'background: ' + accent + '; color: #000000' : 'background: rgba(255,255,255,0.06); color: #ffffff') }));
+  const prevRows = [['1', 'Give Life Back to Music', '4:34'], ['2', 'The Game of Love', '5:21'], ['3', 'Giorgio by Moroder', '9:04'], ['4', 'Within', '3:48'], ['▮▮▮', 'Get Lucky', '6:09'], ['9', 'Beyond', '4:50'], ['10', 'Motherboard', '5:41']].map((d) => { const play = d[0] === '▮▮▮'; return {
+    n: d[0], t: d[1], time: d[2],
+    row: 'display: grid; grid-template-columns: 44px minmax(0, 1fr) 48px; align-items: center; height: 30px',
+    num: 'font-family: ' + D + '; font-weight: 300; font-size: ' + (play ? 9 : 20) + 'px; letter-spacing: ' + (play ? '1px' : '0') + '; color: ' + (play ? accent : '#7a7a7a'),
+    title: 'font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (play ? accent : '#ffffff'),
+  }; });
+  const thumbs = {
+    bloom: 'radial-gradient(circle at 50% 45%, #8a6a3a 0%, #3a2f22 45%, #0e0e0e 75%)',
+    mosaic: 'repeating-linear-gradient(90deg, #3a2f22 0 24px, #2a241c 24px 48px)',
+    type: 'linear-gradient(180deg, #161616 0%, #161616 100%)',
+    spotlight: 'radial-gradient(circle at 30% 50%, #3a2f22 0%, #161616 60%)',
+  };
+  const faces = ['bloom', 'mosaic', 'type', 'spotlight'].map((n, i) => ({
+    name: n,
+    box: 'display: flex; flex-direction: column; gap: 6px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0; text-align: left; min-width: 0',
+    thumb: 'width: 100%; aspect-ratio: 16 / 10; display: block; background: ' + thumbs[n] + (i === 0 ? '; outline: 2px solid ' + accent + '; outline-offset: 2px' : '; box-shadow: 0 0 0 1px rgba(255,255,255,0.08)'),
+    label: 'font-size: 13px; color: ' + (i === 0 ? accent : '#a8a8a8'),
+  }));
+  return {
+    accent, sections, accents, prevRows, faces,
+    ground: chips(['dark', 'light', 'follow windows'], 0),
+    background: chips(['artwork wash', 'mix', 'none'], 0),
+    panorama: chips(['bleed off the edge', 'fit the window'], 0),
+    density: chips(['compact 44', 'standard 52', 'comfortable 60'], 1),
+    face: chips(['bloom', 'mosaic', 'type', 'spotlight'], 0),
+    switchOn: 'width: 40px; height: 20px; background: ' + accent + '; position: relative; display: block; flex-shrink: 0',
+    prevPlay: 'width: 28px; height: 28px; border-radius: 14px; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; font-size: 10px',
+    prevProgress: 'position: absolute; left: 0; top: 0; width: 41%; height: 1px; background: ' + accent,
+    prevDisc: 'position: absolute; left: 50%; top: 5px; width: 22px; height: 22px; margin-left: -11px; border-radius: 11px; background: ' + accent,
+    bloomBar: 'display: block; width: 41%; height: 2px; background: ' + accent,
+  };
+}
+}
+</script>
+</body>
+</html>

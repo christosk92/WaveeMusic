@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune playlist followed: small window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 800px; height: 600px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <div style="position: absolute; left: 0; top: 0; right: 0; height: 400px; background: linear-gradient(180deg, #1a2024 0%, #181c20 50%, #161616 100%)"></div>
+  <div style="position: relative; flex-shrink: 0; display: flex; flex-direction: column">
+    <dc-import name="Z-Part-TitleBar" tier="small" crumb="library › playlists › synthwave essentials" accent="{{accent}}" hint-size="800px,48px"></dc-import>
+    <dc-import name="Z-Part-Band" tier="small" section="library" sub="songs" on="songs" title="synthwave essentials" actions="following" collapsed="true" accent="{{accent}}" hint-size="800px,52px"></dc-import>
+  </div>
+  <div style="position: relative; flex-grow: 1; min-height: 0; overflow: hidden">
+    <div style="position: absolute; left: 18px; top: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 200; line-height: 72px; letter-spacing: -1px; white-space: nowrap; color: #ffffff; opacity: 0.92; text-decoration: underline; text-decoration-color: rgba(255,255,255,0.2); text-underline-offset: 10px; text-decoration-thickness: 1px">synthwave essentials</div>
+    <div style="position: absolute; left: 24px; right: 24px; top: 80px; bottom: 0; display: flex; gap: 32px">
+      <div style="width: 160px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px">
+        <span role="img" aria-label="synthwave essentials cover" style="width: 160px; height: 160px; flex-shrink: 0; display: block; border-radius: 2px; background: #2f3b6b; margin-bottom: 4px"></span>
+        <span style="font-size: 13px; line-height: 18px; color: #c8c8c8; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden">Neon-lit retro-futurism: the essential synthwave tracks, from the pioneers to the new wave.</span>
+        <span style="display: flex; gap: 8px; align-items: center; font-size: 15px; line-height: 20px"><span style="width: 20px; height: 20px; border-radius: 10px; background: #1db954; flex-shrink: 0"></span><a href="#" style="color: #ffffff">Spotify</a></span>
+        <span style="font-size: 12px; line-height: 17px; color: #a8a8a8">120 songs · 7 hr 48 min · 1,204,331 saves</span>
+        <div style="display: flex; gap: 8px; padding-top: 4px">
+          <button aria-label="play" style="{{playRing}}">▶</button>
+          <button aria-label="shuffle" style="{{ring}}">⇄</button>
+          <button aria-label="following" aria-pressed="true" style="{{ringOn}}">♥</button>
+          <button aria-label="more, including share" style="{{ring}}">⋯</button>
+        </div>
+      </div>
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+        <div style="height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; font-size: 13px">
+          <sc-for list="{{chips}}" as="c" hint-placeholder-count="4"><a href="#" style="{{c.style}}">{{c.name}}</a></sc-for>
+          <span style="flex-grow: 1"></span>
+          <a href="#" style="color: #ffffff">sort: custom order</a>
+          <button aria-label="find in playlist" style="width: 36px; height: 36px; border: 0; background: transparent; color: #a8a8a8; padding: 0; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg></button>
+        </div>
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+          <div style="{{r.rowStyle}}">
+            <span style="{{r.numStyle}}">{{r.num}}</span>
+            <span style="{{r.art}}"></span>
+            <span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="{{r.titleStyle}}">{{r.title}}</span><span style="{{r.subStyle}}"><sc-if value="{{r.cached}}" hint-placeholder-val="{{ false }}"><span style="{{r.mark}}">↓</span></sc-if>{{r.artist}}</span></span>
+            <span style="{{r.timeStyle}}">{{r.time}}</span>
+            <button aria-label="more" style="{{r.moreStyle}}">⋯</button>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="medium" title="Nightcall" artist="Kavinsky" art="#6b2f4a" progress="29" accent="{{accent}}" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const chips = ['all', 'synthwave', 'retrowave', 'darksynth'].map((n, i) => ({ name: n, style: 'height: 28px; padding: 0 10px; display: flex; align-items: center; flex-shrink: 0; ' + (i === 0 ? 'background: ' + accent + '; color: #000000' : 'background: #242424; color: #c8c8c8') }));
+  const data = [['Nightcall', 'Kavinsky', '4:18', '#6b2f4a', true], ['Resonance', 'HOME', '3:32', '#2f5b6b', true], ['Tech Noir', 'Gunship', '4:57', '#5b3b6b', false], ['Sunset', 'The Midnight', '5:09', '#6b4a2f', false], ['Turbo Killer', 'Carpenter Brut', '3:20', '#6b2f2f', true], ['A Real Hero', 'College, Electric Youth', '4:28', '#4a6b2f', false]];
+  const rows = data.map((d, i) => {
+    const play = i === 0, hover = i === 3;
+    const mk = play ? accent : '#a8a8a8';
+    return {
+      num: play ? '▮▮▮' : String(i + 1), title: d[0], artist: d[1], time: d[2], cached: d[4],
+      rowStyle: 'display: grid; grid-template-columns: 40px 50px minmax(0, 1fr) 52px 40px; align-items: center; height: 52px; flex-shrink: 0; ' + (hover ? 'background: rgba(255,255,255,0.05)' : ''),
+      numStyle: 'font-family: ' + D + '; font-weight: 300; font-size: ' + (play ? 11 : 22) + 'px; letter-spacing: ' + (play ? '1px' : '0') + '; padding-left: 4px; font-variant-numeric: tabular-nums; color: ' + (play ? accent : '#7a7a7a'),
+      art: 'width: 40px; height: 40px; border-radius: 2px; background: ' + d[3] + '; display: block',
+      titleStyle: 'font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (play ? accent : '#ffffff'),
+      subStyle: 'display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 18px; white-space: nowrap; overflow: hidden; color: ' + (play ? accent : '#9c9c9c'),
+      mark: 'width: 14px; height: 14px; box-sizing: border-box; border-radius: 7px; border: 2px solid ' + mk + '; color: ' + mk + '; font-size: 8px; line-height: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0',
+      timeStyle: 'font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; color: ' + (play ? accent : '#9c9c9c'),
+      moreStyle: 'width: 40px; height: 40px; border: 0; background: transparent; color: #ffffff; font-size: 16px; padding: 0; opacity: ' + (hover ? 1 : 0),
+    };
+  });
+  return {
+    accent, chips, rows,
+    playRing: 'width: 36px; height: 36px; border-radius: 18px; border: 0; background: ' + accent + '; color: #000; font-size: 13px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0',
+    ring: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #ffffff; background: transparent; color: #ffffff; font-size: 13px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0',
+    ringOn: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid ' + accent + '; background: transparent; color: ' + accent + '; font-size: 13px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0',
+  };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Title bar and pivot band</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}
+</style>
+</helmet>
+<div style="{{vars}} width: {{w}}px; height: 136px; box-sizing: border-box; display: flex; flex-direction: column; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; overflow: hidden">
+  <div style="height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding-left: 4px">
+    <button aria-label="Back" style="{{s.back}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 8h-11M6.5 3.5 2.5 8l4 4.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    <sc-if value="{{closed}}" hint-placeholder-val="{{ true }}">
+    <span style="width: 16px; height: 16px; border-radius: 4px; background: var(--acc); color: var(--onacc); display: flex; align-items: center; justify-content: center; margin-left: 4px; flex-shrink: 0"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 9c1.5-4 3-4 4 0s2.5 4 4 0 2.5-4 4 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg></span>
+    <span style="font-size: 12px; line-height: 16px; margin-left: 12px">Wavee</span>
+    <sc-if value="{{hasCrumb}}" hint-placeholder-val="{{ false }}"><span style="font-size: 12px; line-height: 16px; color: var(--t3); margin-left: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{crumb}}</span></sc-if>
+    <span style="flex-grow: 1"></span>
+    </sc-if>
+    <sc-if value="{{openSearch}}" hint-placeholder-val="{{ false }}"><label style="flex-grow: 1; min-width: 0; height: 32px; display: flex; align-items: center; gap: 8px; margin: 0 4px; padding: 0 4px 0 12px; box-sizing: border-box; border-radius: 4px; background: var(--field); border: 1px solid var(--ctrlb); border-bottom: 2px solid var(--acc); font-size: 14px; color: var(--t1)"><span style="flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{queryText}}<span style="display: inline-block; width: 1px; height: 16px; margin-left: 1px; vertical-align: -3px; background: var(--t1)"></span></span><button aria-label="Clear search" style="width: 24px; height: 24px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t2)"><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg></button><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0; margin-right: 6px"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></label></sc-if>
+    <sc-if value="{{wide}}" hint-placeholder-val="{{ true }}">
+      <label style="{{s.search}}"><span style="{{s.searchText}}">{{queryText}}</span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></label>
+    </sc-if>
+    <sc-if value="{{searchBtn}}" hint-placeholder-val="{{ false }}">
+      <button aria-label="Search (Ctrl+F)" style="width: 40px; height: 36px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></button>
+    </sc-if>
+    <sc-if value="{{showAccount}}" hint-placeholder-val="{{ true }}"><button aria-label="Account: Christos" style="height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 8px; margin-left: 8px; border: 0; border-radius: 4px; background: transparent; color: var(--t1); font: inherit; font-size: 14px"><span style="width: 28px; height: 28px; border-radius: 14px; background: #5b6b3b; display: block"></span>{{account}}</button></sc-if>
+    <sc-if value="{{showBell}}" hint-placeholder-val="{{ true }}"><button aria-label="Notifications" style="position: relative; width: 40px; height: 36px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2a4 4 0 0 1 4 4v3l1.5 2h-11L4 9V6a4 4 0 0 1 4-4zM6.5 13a1.5 1.5 0 0 0 3 0" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="position: absolute; top: 7px; right: 10px; width: 6px; height: 6px; border-radius: 3px; background: var(--acc)"></span></button></sc-if>
+    <span style="display: flex; margin-left: 4px">
+      <span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10" fill="none" stroke="currentColor" stroke-width="1"></path></svg></span>
+      <span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5h9v9h-9z" fill="none" stroke="currentColor" stroke-width="1"></path></svg></span>
+      <span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></span>
+    </span>
+  </div>
+  <nav aria-label="Sections" style="{{s.band}}">
+    <div style="{{s.row1}}">
+      <sc-for list="{{pivots}}" as="p" hint-placeholder-count="4">
+        <a href="#" style="{{p.style}}">{{p.label}}<sc-if value="{{p.on}}" hint-placeholder-val="{{ false }}"><span style="{{p.pill}}"></span></sc-if></a>
+      </sc-for>
+      <span style="flex-grow: 1"></span>
+      <sc-if value="{{wide}}" hint-placeholder-val="{{ true }}">
+        <span style="display: flex; align-items: center; gap: 2px">
+          <span style="font-size: 12px; line-height: 16px; color: var(--t3); margin-right: 6px; text-transform: none">Pinned</span>
+          <sc-for list="{{pins}}" as="p" hint-placeholder-count="6">
+            <button aria-label="{{p.name}}" style="position: relative; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; padding: 0"><span style="{{p.art}}"></span><sc-if value="{{p.on}}" hint-placeholder-val="{{ false }}"><span style="position: absolute; left: 14px; bottom: 0; width: 12px; height: 3px; border-radius: 2px; background: var(--acc)"></span></sc-if></button>
+          </sc-for>
+        </span>
+      </sc-if>
+    </div>
+    <div style="{{s.row2}}">
+      <sc-if value="{{hasCtx}}" hint-placeholder-val="{{ false }}"><span style="padding: 0 12px; font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; text-transform: none">{{ctx}}</span><span style="width: 1px; height: 16px; background: var(--div); margin: 0 4px"></span></sc-if>
+      <sc-for list="{{subs}}" as="t" hint-placeholder-count="4">
+        <a href="#" style="{{t.style}}">{{t.label}}<sc-if value="{{t.hasCount}}" hint-placeholder-val="{{ false }}"><span style="font-size: 12px; color: var(--t3)">{{t.count}}</span></sc-if><sc-if value="{{t.on}}" hint-placeholder-val="{{ false }}"><span style="position: absolute; left: 12px; right: 12px; bottom: 4px; height: 3px; border-radius: 2px; background: var(--acc)"></span></sc-if></a>
+      </sc-for>
+      <sc-if value="{{more}}" hint-placeholder-val="{{ false }}"><button style="height: 40px; display: flex; align-items: center; gap: 6px; padding: 0 12px; border: 0; border-radius: 4px; background: transparent; color: var(--t2); font: inherit; font-size: 14px">More<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></sc-if>
+      <span style="flex-grow: 1"></span>
+      <sc-if value="{{artistActions}}" hint-placeholder-val="{{ false }}">
+        <span style="display: flex; align-items: center; gap: 8px; text-transform: none">
+          <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 4px; background: var(--acc); color: var(--onacc); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg>Play</button>
+          <button aria-label="Shuffle" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h2.5c1.4 0 2.3.7 3.2 1.9l1.6 2.2c.9 1.2 1.8 1.9 3.2 1.9H14M2 12h2.5c1.4 0 2.3-.7 3.2-1.9M8.3 5.9c.9-1.2 1.8-1.9 3.2-1.9H14M12 2l2 2-2 2M12 8l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+          <button aria-pressed="true" style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.5 6 12l7.5-7.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg>Following</button>
+          <button aria-label="More" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+        </span>
+      </sc-if>
+    </div>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"sel":{"editor":"enum","options":["home","browse","library","recents","none"],"default":"home"},"items":{"editor":"text","default":"All|Music|Podcasts|Audiobooks"},"subSel":{"editor":"int","default":0,"min":-1,"max":12},"ctx":{"editor":"text","default":""},"actions":{"editor":"enum","options":["none","artist"],"default":"none"},"crumb":{"editor":"text","default":""},"query":{"editor":"text","default":""},"back":{"editor":"boolean","default":true},"narrow":{"editor":"boolean","default":false},"tier":{"editor":"enum","options":["standard","compact","small","huge","huge4k"],"default":"standard"},"searchOpen":{"editor":"boolean","default":false},"lower":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":136}}'>
+class Component extends DCLogic {
+renderVals() {
+  const dark = (this.props.theme ?? 'dark') !== 'light';
+  const pink = (this.props.accent ?? 'windows') === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', div: 'rgba(255,255,255,0.0837)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)', strong: 'rgba(255,255,255,0.5442)', field: '#1f1f1f', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', dis: '#5d5d5d', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', div: 'rgba(0,0,0,0.0803)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', sub: 'rgba(0,0,0,0.0373)', strong: 'rgba(0,0,0,0.4458)', field: '#ffffff', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', dis: '#9f9f9f', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const t0 = this.props.tier ?? 'standard';
+  const tier = (t0 === 'standard' && !!(this.props.narrow ?? false)) ? 'small' : t0;
+  const compact = tier === 'compact';
+  const narrow = compact || tier === 'small';
+  const huge = tier === 'huge' || tier === 'huge4k';
+  const W = { compact: 400, small: 800, standard: 1440, huge: 2560, huge4k: 3840 };
+  const lower = !!(this.props.lower ?? false);
+  const sel = this.props.sel ?? 'home';
+  const padX = compact ? 10 : 12;
+  const pivots = [['home', 'Home'], ['browse', 'Browse'], ['library', 'Library'], ['recents', 'Recents']].map((p) => ({
+    label: p[1], on: p[0] === sel,
+    pill: 'position: absolute; left: ' + padX + 'px; right: ' + padX + 'px; bottom: 2px; height: 3px; border-radius: 2px; background: var(--acc)',
+    style: 'position: relative; height: 48px; display: flex; align-items: center; padding: 0 ' + padX + 'px; font-family: \'Segoe UI Variable Display\', \'Segoe UI\', sans-serif; font-size: ' + (compact ? '20px; line-height: 28px' : '28px; line-height: 36px') + '; font-weight: 600; white-space: nowrap; color: ' + (p[0] === sel ? 'var(--t1)' : 'var(--t3)') }));
+  const subSel = Number(this.props.subSel ?? 0);
+  let raw = String(this.props.items ?? 'All|Music|Podcasts|Audiobooks').split('|').filter(Boolean);
+  let more = false;
+  const cap = compact ? 3 : 4;
+  let idx = raw.map((x, i) => i);
+  if (narrow && raw.length > cap) { idx = idx.slice(0, cap); if (subSel >= cap) idx[cap - 1] = subSel; more = true; }
+  const subs = idx.map((i) => {
+    const parts = raw[i].split(':');
+    return { label: parts[0], count: parts[1] || '', hasCount: !!parts[1], on: i === subSel,
+      style: 'position: relative; height: 40px; display: flex; align-items: center; gap: 6px; padding: 0 12px; font-size: 14px; line-height: 20px; white-space: nowrap; color: ' + (i === subSel ? 'var(--t1)' : 'var(--t2)') };
+  });
+  const pins = [['late night drive', '#3b4a6b'], ['Random Access Memories', '#3a2f22'], ['OutRun', '#6b2f4a'], ['Liked Songs', '#4a3b8b'], ['The Weeknd', '#3a2f4a'], ['Synthwave Essentials', '#2f5b6b']].map((p, i) => ({
+    name: p[0], on: i === 2, art: 'width: 32px; height: 32px; border-radius: ' + (p[0] === 'The Weeknd' ? '16px' : '4px') + '; background: ' + p[1] + '; display: block' }));
+  const q = String(this.props.query ?? '');
+  const crumb = String(this.props.crumb ?? '');
+  const ctx = String(this.props.ctx ?? '');
+  const back = this.props.back ?? true;
+  const s = {
+    back: 'width: 40px; height: 36px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: ' + (back ? 'var(--t1)' : 'var(--dis)'),
+    row1: 'height: 48px; display: flex; align-items: center; padding-left: ' + (compact ? 6 : 24) + 'px; padding-right: 16px',
+    row2: 'height: 40px; display: flex; align-items: center; padding-left: ' + (compact ? 4 : 24) + 'px; padding-right: ' + (compact ? 8 : 16) + 'px',
+    search: 'width: ' + (huge ? 360 : 280) + 'px; height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 12px; box-sizing: border-box; border-radius: 4px; font-size: 14px; ' + (q ? 'background: var(--field); border: 1px solid var(--ctrlb); border-bottom: 2px solid var(--acc); color: var(--t1)' : 'background: var(--ctrl); border: 1px solid var(--ctrlb); border-bottom: 1px solid var(--strong); color: var(--t2)'),
+    searchText: 'flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis',
+    band: 'height: 88px; flex-shrink: 0; display: flex; flex-direction: column; ' + (lower ? 'text-transform: lowercase' : '')
+  };
+  const openSearch = narrow && !!(this.props.searchOpen ?? false);
+  return { vars, w: W[tier] || 1440, narrow, wide: !narrow, openSearch, closed: !openSearch, searchBtn: narrow && !openSearch, showAccount: !(openSearch && compact), showBell: !compact, s, pivots, subs, more, pins, crumb, hasCrumb: !!crumb && !narrow, ctx, hasCtx: !!ctx && !compact,
+    artistActions: (this.props.actions ?? 'none') === 'artist' && !narrow, queryText: q || 'Search', account: narrow ? '' : 'Christos' };
+}
+}
+</script>
+</body>
+</html>

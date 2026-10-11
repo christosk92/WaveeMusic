@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings: all sections</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1800px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tabs="home:Home|settings:Settings" sel="1" hint-size="1440px,88px"></dc-import>
+  <div style="display: flex; height: 1640px; flex-shrink: 0">
+    <dc-import name="Shell-Nav" theme="dark" mode="open" sel="settings" height="1640" hint-size="280px,1640px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); border-left: 1px solid rgba(255,255,255,0.0837); border-top-left-radius: 8px; padding: 24px 36px 0 36px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+      <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600">Settings</h1>
+      <div style="display: flex; align-items: center; gap: 4px; border-bottom: 1px solid rgba(255,255,255,0.0837)">
+        <sc-for list="{{tabs}}" as="v" hint-placeholder-count="7"><button style="{{v.style}}">{{v.label}}<span style="{{v.bar}}"></span></button></sc-for>
+      </div>
+      <div style="max-width: 1000px; display: flex; flex-direction: column; gap: 24px">
+        <sc-for list="{{sections}}" as="s" hint-placeholder-count="6">
+          <section style="display: flex; flex-direction: column; gap: 4px">
+            <div style="display: flex; flex-direction: column; gap: 2px; padding-bottom: 8px"><span style="font-size: 14px; font-weight: 600">{{s.title}}</span><span style="font-size: 12px; color: #c5c5c5">{{s.caption}}</span></div>
+            <sc-for list="{{s.cards}}" as="c" hint-placeholder-count="4">
+              <div style="display: flex; align-items: center; gap: 16px; min-height: 64px; padding: 10px 16px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)">
+                <span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0"><span style="font-size: 14px">{{c.label}}</span><span style="font-size: 12px; color: #c5c5c5">{{c.desc}}</span></span>
+                <sc-if value="{{c.combo}}" hint-placeholder-val="{{ true }}"><span style="height: 32px; min-width: 200px; display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 10px 0 12px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); font-size: 14px">{{c.value}}<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></sc-if>
+                <sc-if value="{{c.toggle}}" hint-placeholder-val="{{ false }}"><span style="display: flex; align-items: center; gap: 12px; font-size: 14px"><span style="{{c.track}}"><span style="{{c.knob}}"></span></span><span style="width: 28px">{{c.value}}</span></span></sc-if>
+                <sc-if value="{{c.button}}" hint-placeholder-val="{{ false }}"><button style="height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px; white-space: nowrap">{{c.value}}</button></sc-if>
+                <sc-if value="{{c.slider}}" hint-placeholder-val="{{ false }}"><span style="display: flex; align-items: center; gap: 12px; font-size: 14px"><span style="position: relative; width: 160px; height: 18px; display: flex; align-items: center"><span style="width: 100%; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.5442)"></span><span style="{{c.fill}}"></span><span style="{{c.thumb}}"><span style="width: 12px; height: 12px; border-radius: 6px; background: #60cdff"></span></span></span><span style="width: 80px">{{c.value}}</span></span></sc-if>
+                <sc-if value="{{c.pill}}" hint-placeholder-val="{{ false }}"><span style="{{c.pillStyle}}">{{c.value}}</span><button style="height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); color: #fff; font: inherit; font-size: 14px; white-space: nowrap">{{c.action}}</button></sc-if>
+              </div>
+            </sc-for>
+          </section>
+        </sc-for>
+      </div>
+    </main>
+  </div>
+  <dc-import name="Shell-Player" theme="dark" variant="music" pane="none" hint-size="1440px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1800}}'>
+class Component extends DCLogic {
+renderVals() {
+  const vs = (l, s) => ({ label: l, style: 'position: relative; height: 40px; padding: 0 12px; border: 0; background: transparent; font: inherit; font-size: 14px; white-space: nowrap; color: ' + (s ? '#ffffff' : '#c5c5c5'), bar: s ? 'position: absolute; left: 12px; right: 12px; bottom: 4px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' });
+  const tabs = ['General', 'Appearance', 'Playback', 'Notifications', 'Storage & cache', 'Privacy & diagnostics', 'About'].map((l, i) => vs(l, i === 0));
+  const base = { combo: false, toggle: false, button: false, slider: false, pill: false };
+  const combo = (l, d, v) => ({ ...base, label: l, desc: d, value: v, combo: true });
+  const btn = (l, d, v) => ({ ...base, label: l, desc: d, value: v, button: true });
+  const tog = (l, d, on) => ({ ...base, label: l, desc: d, value: on ? 'On' : 'Off', toggle: true, track: 'width: 40px; height: 20px; border-radius: 10px; position: relative; display: block; box-sizing: border-box; ' + (on ? 'background: #60cdff' : 'border: 1px solid rgba(255,255,255,0.5442)'), knob: 'position: absolute; top: ' + (on ? '4px' : '3px') + '; left: ' + (on ? '24px' : '3px') + '; width: 12px; height: 12px; border-radius: 6px; background: ' + (on ? '#000' : '#c5c5c5') });
+  const sld = (l, d, pct, v) => ({ ...base, label: l, desc: d, value: v, slider: true, fill: 'position: absolute; left: 0; width: ' + pct + '%; height: 4px; border-radius: 2px; background: #60cdff', thumb: 'position: absolute; left: calc(' + pct + '% - 9px); width: 18px; height: 18px; border-radius: 9px; background: #454545; display: flex; align-items: center; justify-content: center' });
+  const pill = (l, d, v, ok, action) => ({ ...base, label: l, desc: d, value: v, action, pill: true, pillStyle: 'height: 20px; display: inline-flex; align-items: center; padding: 0 6px; border-radius: 4px; font-size: 12px; ' + (ok ? 'background: #393d1b; color: #6ccb5f' : 'background: #433519; color: #fce100') });
+  const sections = [
+    { title: 'General', caption: 'Language, links, the notification area and graphics', cards: [combo('App language', 'Changes are applied the next time Wavee starts.', 'System default'), tog('Open spotify: links in Wavee', 'What Wavee opens from other apps', true), combo('Show Wavee’s icon in the notification area', 'Wavee in the corner of the taskbar', 'Only while Wavee is hidden'), tog('Closing hides Wavee', 'Minimizing can hide Wavee too', false), tog('Open Wavee when you sign in to Windows', 'Starts in the background so playback is ready', true), combo('Graphics adapter', 'Which GPU Wavee renders on', 'Automatic (recommended)')] },
+    { title: 'Playback', caption: 'Audio, sound and the player bar', cards: [pill('Local playback runtime', 'Audio keys are derived locally on this PC. Version 1.2.63.1 · x64', 'Ready', true, 'Manage…'), combo('Audio quality', 'Very high · 320 kbps · about 0.14 GB/hour', 'Very high'), combo('On metered connections', 'Not metered', 'High'), tog('Audio normalization', 'Keeps songs at a similar loudness', true), combo('Loudness level', 'Normal · −14 LUFS', 'Normal'), tog('Crossfade', 'Blend the end of one song into the next', true), sld('Crossfade duration', 'From 0 to 12 seconds', 42, '5 seconds'), tog('Show remaining time', 'In the player bar, instead of the total', false)] },
+    { title: 'Notifications', caption: 'Delivery and what you’re told about', cards: [tog('Windows notifications', 'Also play a sound', true), combo('New albums and singles', 'From artists you follow', 'Windows'), combo('Your daylist refreshed', 'Six times a day', 'In Wavee'), combo('Wavee updates', 'When an update is ready', 'In Wavee')] },
+    { title: 'Storage & cache', caption: 'On this PC: 2.4 GB of 8 GB budget', cards: [btn('Playback cache', 'Encrypted audio, 1.9 GB · license keys cached', 'Clear audio cache'), combo('Audio body budget', 'Auto (10%) of the drive', 'Drive share'), btn('Cache location', 'C:\\Users\\Chris\\AppData\\Local\\Wavee\\cache', 'Open folder'), btn('Metadata cache', '312 MB', 'Clear metadata cache'), btn('Reset Wavee', 'Signs you out and removes all Wavee data on this PC', 'Reset…')] },
+    { title: 'Privacy & diagnostics', caption: 'What leaves this PC: Spotify, lyrics providers, GitHub, AI model download, Wavee’s crash service. No telemetry.', cards: [combo('Crash reports', 'Send a report when Wavee closes unexpectedly', 'Ask each time'), tog('Include a memory snapshot', 'Helps diagnose hangs; about 40 MB', false), btn('Log viewer', 'This session: 1,284 events · 3 warnings', 'Open'), btn('Report a problem', 'Opens a prefilled GitHub form', 'Report…'), tog('Developer mode', 'FPS overlay, test crash, simulated updates', false)] },
+    { title: 'About', caption: 'Wavee 1.6.0 “Harbour” · Built 3 Oct 2026 · last checked 2 min ago', cards: [pill('Updates', 'Install a waiting update when I quit Wavee', 'Up to date', true, 'Check for updates'), combo('Release channel', 'Stable, Beta or Dev', 'Stable'), btn('What’s new in Harbour', 'Show “What’s new” after an update', 'Open'), btn('Licenses', 'Wavee — MIT · Third-party notices', 'View'), btn('Wavee is an independent client and is not affiliated with or endorsed by Spotify AB.', 'Privacy policy · Website · All issues on GitHub', 'Copy diagnostics info')] }
+  ];
+  return { tabs, sections };
+}
+}
+</script>
+</body>
+</html>

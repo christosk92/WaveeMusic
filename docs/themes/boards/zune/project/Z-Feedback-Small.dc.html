@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune settings: feedback &amp; help · small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 800px; height: 600px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="small" crumb="settings › feedback &amp; help" accent="{{accent}}" hint-size="800px,48px"></dc-import>
+  <dc-import name="Z-Part-Band" tier="small" section="none" sub="" collapsed="true" accent="{{accent}}" hint-size="800px,52px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; position: relative; overflow: hidden">
+    <div style="position: absolute; left: 18px; top: -6px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 200; line-height: 72px; letter-spacing: -1px; white-space: nowrap; color: #ffffff; opacity: 0.92">settings</div>
+    <div style="position: absolute; left: 24px; top: 70px; right: 24px; bottom: 0; display: flex; gap: 32px">
+      <nav aria-label="settings sections" style="width: 180px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden">
+        <sc-for list="{{sections}}" as="s" hint-placeholder-count="12"><a href="#" style="{{s.style}}">{{s.n}}</a></sc-for>
+      </nav>
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden">
+        <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px; flex-shrink: 0">feedback &amp; help</span>
+        <span style="font-size: 13px; line-height: 18px; color: #c8c8c8; margin-top: 2px; flex-shrink: 0">Wavee is made by one person. Reports go to GitHub, where you can follow what happens to them.</span>
+        <div style="display: flex; flex-direction: column; margin-top: 8px; flex-shrink: 0">
+          <sc-for list="{{verbs}}" as="v" hint-placeholder-count="3">
+            <a href="#" style="{{v.row}}"><span style="{{v.ring}}">{{v.glyph}}</span><span style="display: flex; flex-direction: column; gap: 1px; min-width: 0"><span style="font-size: 15px; color: #ffffff">{{v.title}}</span><span style="font-size: 12px; color: #a8a8a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{v.hint}}</span></span><span style="font-size: 16px; color: #7a7a7a">›</span></a>
+          </sc-for>
+        </div>
+        <span style="display: flex; align-items: baseline; gap: 12px; margin-top: 12px; flex-shrink: 0"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; font-weight: 300; line-height: 26px">sent from this pc</span><span style="font-size: 12px; color: #7a7a7a">2</span></span>
+        <sc-for list="{{sent}}" as="s" hint-placeholder-count="2">
+          <div style="display: grid; grid-template-columns: minmax(0, 1fr) 96px 104px; align-items: center; height: 44px; font-size: 14px; flex-shrink: 0"><span style="display: flex; flex-direction: column; min-width: 0"><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.title}}</span><span style="font-size: 11px; color: #7a7a7a">{{s.kind}}</span></span><span style="{{s.stateStyle}}">{{s.state}}</span><a href="#" style="font-size: 12px; text-align: right">open on github</a></div>
+        </sc-for>
+        <span style="display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; flex-shrink: 0"><span style="color: #a8a8a8; margin-right: 4px">log detail</span><sc-for list="{{logs}}" as="c" hint-placeholder-count="2"><button style="{{c.style}}">{{c.label}}</button></sc-for><span style="flex-grow: 1"></span><a href="#">copy diagnostics</a><a href="#">open logs folder</a></span>
+      </div>
+    </div>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="medium" title="Get Lucky" artist="Daft Punk" art="#3a2f22" progress="41" accent="{{accent}}" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const sections = ['account', 'appearance', 'playback', 'audio', 'lyrics', 'devices & connect', 'storage', 'notifications', 'keyboard', 'privacy', 'feedback & help', 'about'].map((n) => ({ n, style: 'height: 30px; flex-shrink: 0; display: flex; align-items: center; white-space: nowrap; font-family: ' + D + '; font-size: 18px; line-height: 24px; ' + (n === 'feedback & help' ? 'color: #ffffff; font-weight: 400' : 'color: #7a7a7a; font-weight: 300') }));
+  const verbs = [['!', 'report a problem', 'something broke or looks wrong · opens the report with diagnostics', true], ['+', 'suggest something', 'a feature or a change you want', false], ['?', 'ask a question', 'how something works', false]].map((d) => ({
+    glyph: d[0], title: d[1], hint: d[2],
+    row: 'display: grid; grid-template-columns: 48px minmax(0, 1fr) 20px; align-items: center; height: 52px; padding: 0 10px; margin: 0 -10px; ' + (d[3] ? 'background: rgba(255,255,255,0.05)' : ''),
+    ring: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 14px; ' + (d[3] ? 'background: ' + accent + '; color: #000000' : 'border: 2px solid #ffffff; color: #ffffff'),
+  }));
+  const sent = [['lyrics stop following after a seek in long songs', 'problem · oct 3', 'fixed in 1.6', true], ['let me pin a show to the band', 'suggestion · sep 19', 'open', false]].map((d) => ({ title: d[0], kind: d[1], state: d[2], stateStyle: 'font-size: 12px; color: ' + (d[3] ? '#8fd14f' : '#a8a8a8') }));
+  const logs = ['normal', 'detailed'].map((l, i) => ({ label: l, style: 'height: 28px; padding: 0 10px; border: 0; font: inherit; font-size: 13px; ' + (i === 0 ? 'background: ' + accent + '; color: #000000' : 'background: rgba(255,255,255,0.06); color: #ffffff') }));
+  return { accent, sections, verbs, sent, logs };
+}
+}
+</script>
+</body>
+</html>

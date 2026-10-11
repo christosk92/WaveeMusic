@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lyrics, small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} position: relative; width: 800px; height: 600px; box-sizing: border-box; overflow: hidden; color: #ffffff; background: radial-gradient(90% 120% at 20% 30%, #5a2340 0%, #2a1424 45%, #141014 100%); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.3)"></div>
+  <div style="position: absolute; left: 0; right: 0; top: 0; height: 48px; display: flex; align-items: center; gap: 4px; padding-left: 4px">
+    <button aria-label="Exit full screen" style="width: 40px; height: 36px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #ffffff"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 8h-11M6.5 3.5 2.5 8l4 4.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    <span style="font-size: 12px; margin-left: 8px">Wavee</span>
+    <span style="flex-grow: 1"></span>
+    <span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10" fill="none" stroke="currentColor" stroke-width="1"></path></svg></span>
+    <span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2.5V6H2.5M10 2.5V6h3.5M13.5 10H10v3.5M2.5 10H6v3.5" fill="none" stroke="currentColor" stroke-width="1"></path></svg></span>
+    <span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></span>
+  </div>
+  <nav aria-label="Full screen views" style="position: absolute; left: 12px; top: 48px; height: 40px; display: flex; font-size: 14px">
+    <a href="#" style="position: relative; height: 40px; display: flex; align-items: center; padding: 0 12px; color: rgba(255,255,255,0.78); text-decoration: none">Now playing</a>
+    <a href="#" style="position: relative; height: 40px; display: flex; align-items: center; padding: 0 12px; color: #ffffff; text-decoration: none">Lyrics<span style="position: absolute; left: 12px; right: 12px; bottom: 4px; height: 3px; border-radius: 2px; background: var(--acc)"></span></a>
+    <a href="#" style="position: relative; height: 40px; display: flex; align-items: center; padding: 0 12px; color: rgba(255,255,255,0.78); text-decoration: none">Queue</a>
+    <a href="#" style="position: relative; height: 40px; display: flex; align-items: center; padding: 0 12px; color: rgba(255,255,255,0.78); text-decoration: none">Details</a>
+  </nav>
+  <div style="position: absolute; left: 48px; right: 48px; top: 100px; height: 48px; display: flex; align-items: center; gap: 12px">
+    <span style="width: 48px; height: 48px; flex-shrink: 0; border-radius: 4px; background: linear-gradient(150deg, #a8456f, #4a1f38)"></span>
+    <span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-size: 14px; line-height: 20px; font-weight: 600">Nightcall</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.78)">Kavinsky · OutRun</span></span>
+    <button aria-pressed="true" style="height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #ffffff; font: inherit; font-size: 14px">Translation: Dutch</button>
+    <button aria-label="Lyrics options" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #ffffff"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+  </div>
+  <div style="position: absolute; left: 48px; right: 96px; top: 168px; height: 312px; overflow: hidden; display: flex; flex-direction: column; gap: 12px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">
+    <span style="color: rgba(255,255,255,0.4)">[A LINE ALREADY SUNG]</span>
+    <span style="display: flex; flex-direction: column; gap: 2px"><span><span style="color: #ffffff">[THE LINE BEING SUNG </span><span style="color: rgba(255,255,255,0.6)">NOW]</span></span><span style="font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif; font-size: 16px; line-height: 22px; font-weight: 400; color: rgba(255,255,255,0.78)">[De vertaling van deze regel]</span></span>
+    <span style="color: rgba(255,255,255,0.6)">[THE NEXT LINE]</span>
+    <span style="color: rgba(255,255,255,0.6)">[THE LINE AFTER THAT]</span>
+    <span style="color: rgba(255,255,255,0.6)">[A LONGER LINE THAT WRAPS ONTO A SECOND ROW AT THIS WIDTH]</span>
+    <span style="color: rgba(255,255,255,0.6)">[THE CHORUS STARTS HERE]</span>
+  </div>
+  <div style="position: absolute; left: 80px; bottom: 20px; width: 640px; box-sizing: border-box; padding: 8px 16px; border-radius: 8px; background: rgba(44,44,44,0.78); border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 16px rgba(0,0,0,0.26); display: flex; align-items: center; gap: 12px">
+    <button aria-label="Pause" style="width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 20px; background: var(--acc); color: #000000"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3v10M10.5 3v10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg></button>
+    <span style="width: 36px; font-size: 12px; color: #c5c5c5; font-variant-numeric: tabular-nums">1:14</span>
+    <div style="position: relative; flex-grow: 1; height: 18px; display: flex; align-items: center"><div style="width: 100%; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.5442)"></div><div style="position: absolute; left: 0; width: 29%; height: 4px; border-radius: 2px; background: var(--acc)"></div></div>
+    <span style="width: 36px; text-align: right; font-size: 12px; color: #c5c5c5; font-variant-numeric: tabular-nums">-3:04</span>
+    <button aria-label="Next" style="width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #ffffff"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 3v10M3 3.5v9L10.5 8z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+  </div>
+  <span style="position: absolute; right: 48px; bottom: 96px; font-size: 12px; color: rgba(255,255,255,0.78)">Lyrics by Musixmatch</span>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const pink = (this.props.accent ?? 'windows') === 'pink';
+  const T = { acc: pink ? '#ff7ac3' : '#60cdff' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  return { vars };
+}
+}
+</script>
+</body>
+</html>

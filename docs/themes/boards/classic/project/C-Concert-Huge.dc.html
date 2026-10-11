@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Concert, Huge</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 2560px; height: 1440px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="home:Home|concert:Billie Eilish · Ziggo Dome" sel="1" w="2560" tier="huge" hint-size="2560px,48px"></dc-import>
+  <div style="display: flex; height: 1320px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="classic" sel="home" w="320" h="1320" hint-size="320px,1320px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; padding: 24px 36px 0; display: flex; flex-direction: column; gap: 20px; overflow: hidden">
+      <nav aria-label="Breadcrumb" style="height: 28px; display: flex; align-items: flex-end; gap: 6px; font-size: 12px; line-height: 16px; font-weight: 600; flex-shrink: 0"><a href="#" style="color: rgba(255,255,255,0.773)">Browse</a><span style="color: rgba(255,255,255,0.529)">›</span><a href="#" style="color: rgba(255,255,255,0.773)">Concerts</a><span style="color: rgba(255,255,255,0.529)">›</span><a href="#" style="color: rgba(255,255,255,0.773)">Billie Eilish</a></nav>
+      <div style="display: flex; gap: 32px; flex-shrink: 0">
+        <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 24px">
+          <section aria-label="Billie Eilish at Ziggo Dome" style="height: 400px; display: grid; grid-template-columns: 56fr 44fr; border-radius: 8px; overflow: hidden; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098)">
+            <div style="padding: 40px; display: flex; flex-direction: column; gap: 14px; justify-content: center">
+              <span style="font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.03em; color: #a6d8ff">Concert</span>
+              <h1 style="margin: 0; max-width: 760px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600; letter-spacing: -0.012em">Billie Eilish — HIT ME HARD AND SOFT: THE TOUR</h1>
+              <span style="align-self: flex-start; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: #393d1b; color: #6ccb5f">On sale</span>
+              <div style="display: grid; grid-template-columns: repeat(2, max-content); gap: 8px 40px; font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.773)"><sc-for list="{{facts}}" as="f" hint-placeholder-count="4"><span style="display: flex; align-items: center; gap: 10px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{f.d}}" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg>{{f.t}}</span></sc-for></div>
+            </div>
+            <span role="img" aria-label="Billie Eilish on stage" style="background: radial-gradient(40% 50% at 55% 35%, #5d7fa8 0%, rgba(93,127,168,0) 70%), radial-gradient(30% 30% at 40% 80%, rgba(96,205,255,0.25), rgba(96,205,255,0) 70%), linear-gradient(160deg, #3b5574, #0e1828)"></span>
+          </section>
+          <div style="display: grid; grid-template-columns: 640px minmax(0, 1fr); gap: 24px">
+            <section aria-label="Lineup" style="padding: 16px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); display: flex; flex-direction: column">
+              <h2 style="margin: 0 0 4px; font-size: 20px; line-height: 28px; font-weight: 600">Lineup</h2>
+              <sc-for list="{{lineup}}" as="l" hint-placeholder-count="3"><div style="height: 60px; display: flex; align-items: center; gap: 12px"><span style="{{l.a}}"></span><span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 14px; font-weight: 600">{{l.n}}</span><span style="font-size: 12px; color: rgba(255,255,255,0.773)">{{l.r}}</span></span><button aria-pressed="{{l.on}}" style="{{l.bs}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{l.g}}" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg>{{l.f}}</button></div></sc-for>
+            </section>
+            <section aria-label="Tour dates" style="padding: 16px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); display: flex; flex-direction: column; gap: 12px">
+              <div style="display: flex; align-items: center; gap: 12px"><h2 style="margin: 0; flex-grow: 1; font-size: 20px; line-height: 28px; font-weight: 600">Tour dates</h2><div role="tablist" aria-label="Months" style="display: flex; gap: 4px"><sc-for list="{{months}}" as="m" hint-placeholder-count="3"><button role="tab" aria-selected="{{m.sel}}" style="{{m.s}}">{{m.l}}</button></sc-for></div></div>
+              <div style="display: flex; align-items: baseline; gap: 10px"><span style="font-size: 20px; line-height: 28px; font-weight: 600">March 2026</span><span style="font-size: 12px; color: rgba(255,255,255,0.529)">[N] shows</span></div>
+              <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px"><sc-for list="{{dates}}" as="d" hint-placeholder-count="4"><a href="#" style="{{d.s}}"><span style="{{d.rail}}"></span><span style="width: 44px; display: flex; flex-direction: column; align-items: center"><span style="font-size: 11px; font-weight: 600; color: #60cdff">MAR</span><span style="font-size: 22px; line-height: 26px; font-weight: 600">{{d.day}}</span></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{d.v}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">{{d.c}}</span></span></a></sc-for></div>
+            </section>
+          </div>
+        </div>
+        <aside aria-label="Tickets" style="width: 360px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px">
+          <h2 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600">Tickets</h2>
+          <sc-for list="{{tickets}}" as="t" hint-placeholder-count="2"><div style="padding: 16px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); display: flex; flex-direction: column; gap: 6px"><span style="font-size: 14px; font-weight: 600">{{t.p}}</span><span style="font-size: 20px; line-height: 28px; font-weight: 600">{{t.price}}</span><span style="font-size: 12px; color: rgba(255,255,255,0.773)">{{t.w}}</span><a href="#" style="{{t.bs}}">Buy tickets<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 2.5h3.5V6M13.5 2.5 8 8M6 3.5H3v9.5h9.5V10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg></a></div></sc-for>
+        </aside>
+      </div>
+      <section aria-label="Related concerts" style="display: flex; flex-direction: column; gap: 12px; flex-shrink: 0">
+        <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Related concerts</h2>
+        <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px"><sc-for list="{{related}}" as="r" hint-placeholder-count="5"><a href="#" style="display: flex; gap: 12px; padding: 8px 8px 8px 12px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); min-width: 0"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; gap: 2px; justify-content: center; min-width: 0"><span style="font-size: 12px; line-height: 16px; font-weight: 600; color: #a6d8ff">{{r.d}}</span><span style="font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.t}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">{{r.v}}</span></span></a></sc-for></div>
+      </section>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="2560" tier="huge" panel="none" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const facts = [['Saturday, March 14, 2026 · 19:30', 'M2.5 3.5h11v10h-11zM2.5 6.5h11M5.5 2v3M10.5 2v3'], ['Doors open 18:30', 'M8 2a6 6 0 1 1 0 12A6 6 0 0 1 8 2zM8 4.5V8l2.5 1.5'], ['Ziggo Dome, Amsterdam', 'M8 14s4.5-4.2 4.5-7.5a4.5 4.5 0 0 0-9 0C3.5 9.8 8 14 8 14zM8 8a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z'], ['Ages 18+', 'M8 2a6 6 0 1 1 0 12A6 6 0 0 1 8 2zM8 7.5v3.5M8 5h.01']].map(f => ({ t: f[0], d: f[1] }));
+  const follow = 'M6.5 7.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM2 13.5c.4-2.6 2.2-4 4.5-4 1.2 0 2.2.3 3 1M12.5 9v5M10 11.5h5';
+  const following = 'M6.5 7.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM2 13.5c0-2.5 2-4 4.5-4M10 11.5l1.8 1.8 3-3.3';
+  const lineup = [['Billie Eilish', 'Headliner', '#2f4a6b', 1], ['Nat & Alex Wolff', 'Support', '#6b5b3b', 0], ['TV Girl', 'Support', '#8a3b5b', 0]].map(l => ({ n: l[0], r: l[1], f: l[3] ? 'Following' : 'Follow', on: l[3] ? 'true' : 'false', g: l[3] ? following : follow,
+    a: 'width: 44px; height: 44px; flex-shrink: 0; border-radius: 22px; background: ' + l[2],
+    bs: 'height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; font: inherit; font-size: 13px; ' + (l[3] ? 'background: rgba(96,205,255,0.16); border: 1px solid rgba(96,205,255,0.5); color: #a6d8ff' : 'background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff') }));
+  const months = ['Mar', '[MONTH]', '[MONTH]'].map((l, i) => ({ l, sel: i === 0 ? 'true' : 'false', s: 'height: 32px; padding: 0 12px; border: 0; border-radius: 16px; font: inherit; font-size: 13px; ' + (i === 0 ? 'background: #60cdff; color: #000; font-weight: 600' : 'background: rgba(255,255,255,0.059); color: #fff') }));
+  const dates = [['14', 'Ziggo Dome', 'Amsterdam · Sat 19:30', 1], ['[DAY]', '[VENUE]', '[CITY] · [TIME]'], ['[DAY]', '[VENUE]', '[CITY] · [TIME]'], ['[DAY]', '[VENUE]', '[CITY] · [TIME]']].map(d => ({ day: d[0], v: d[1], c: d[2],
+    s: 'position: relative; height: 68px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 12px 0 16px; border-radius: 8px; min-width: 0; background: ' + (d[3] ? 'rgba(96,205,255,0.10)' : 'rgba(255,255,255,0.031)') + '; border: 1px solid ' + (d[3] ? 'rgba(96,205,255,0.4)' : 'rgba(255,255,255,0.06)'),
+    rail: 'position: absolute; left: 6px; top: 18px; width: 3px; height: 32px; border-radius: 2px; background: ' + (d[3] ? '#60cdff' : 'rgba(255,255,255,0.2)') }));
+  const tickets = [['Ticketmaster', 'from €89', 'On sale until Mar 13', 1], ['Resale', 'from €120', 'Verified fan-to-fan resale', 0]].map(t => ({ p: t[0], price: t[1], w: t[2],
+    bs: 'margin-top: 6px; height: 32px; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 4px; font-size: 14px; font-weight: 600; ' + (t[3] ? 'background: #60cdff; color: #000' : 'background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff') }));
+  const related = [['[DATE] · [TIME]', '[ARTIST]', '[VENUE] · [CITY]', '#5a8ab0'], ['[DATE] · [TIME]', '[ARTIST]', '[VENUE] · [CITY]', '#8a8a9b'], ['[DATE] · [TIME]', '[ARTIST]', '[VENUE] · [CITY]', '#c06a8a'], ['[DATE] · [TIME]', '[ARTIST]', '[VENUE] · [CITY]', '#b0b0b0'], ['[DATE] · [TIME]', '[ARTIST]', '[VENUE] · [CITY]', '#d0a0c0']].map(r => ({ d: r[0], t: r[1], v: r[2], art: 'width: 72px; height: 72px; flex-shrink: 0; border-radius: 8px; background: linear-gradient(160deg, ' + r[3] + ', #1a1a1a)' }));
+  return { facts, lineup, months, dates, tickets, related };
+}
+}
+</script>
+</body>
+</html>

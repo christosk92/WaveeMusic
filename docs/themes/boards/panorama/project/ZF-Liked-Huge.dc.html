@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Liked Songs, huge</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} width: 2560px; height: 1440px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" tier="huge" sel="library" items="Liked|Playlists|Albums|Artists|Podcasts|Audiobooks" sub-sel="{{zero}}" hint-size="2560px,136px"></dc-import>
+  <div style="height: 1220px; flex-shrink: 0; display: flex; min-height: 0">
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; display: flex; gap: 48px; padding: 20px 36px 0 36px; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke); border-right: 1px solid var(--stroke); border-top-right-radius: 8px">
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+        <div style="display: flex; gap: 28px; align-items: flex-end; flex-shrink: 0">
+          <span style="width: 160px; height: 160px; flex-shrink: 0; border-radius: 8px; background: linear-gradient(135deg, #4a3b8b, #7a8bd1); display: flex; align-items: center; justify-content: center; color: #ffffff"><svg width="56" height="56" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor"></path></svg></span>
+          <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0; flex-grow: 1">
+            <span style="font-size: 12px; line-height: 16px; color: var(--t2)">Playlist · Only you</span>
+            <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 68px; line-height: 92px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Liked Songs</h1>
+            <span style="font-size: 14px; line-height: 20px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">412 songs, 26 h 14 min · Updated today · 268 songs on this PC</span>
+          </div>
+          <span style="display: flex; gap: 8px; align-items: center; padding-bottom: 4px; flex-shrink: 0">
+            <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 4px; background: var(--acc); color: var(--onacc); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg>Play</button>
+            <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h2.5c1.4 0 2.3.7 3.2 1.9l1.6 2.2c.9 1.2 1.8 1.9 3.2 1.9H14M2 12h2.5c1.4 0 2.3-.7 3.2-1.9M8.3 5.9c.9-1.2 1.8-1.9 3.2-1.9H14M12 2l2 2-2 2M12 8l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg>Shuffle</button>
+            <button aria-label="More" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+          </span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; height: 40px; flex-shrink: 0">
+          <sc-for list="{{chips}}" as="c" hint-placeholder-count="10"><button aria-pressed="{{c.pressed}}" style="{{c.style}}">{{c.label}}</button></sc-for>
+          <span style="flex-grow: 1"></span>
+          <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: var(--t1); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg>Find</button>
+          <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: var(--t1); font: inherit; font-size: 14px; white-space: nowrap">Recently added<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+        </div>
+        <div role="table" aria-label="Liked Songs" style="display: flex; flex-direction: column; min-height: 0">
+          <div role="row" style="display: grid; grid-template-columns: 44px 52px minmax(0, 1fr) 300px 120px 64px 64px 32px; align-items: center; height: 32px; border-bottom: 1px solid var(--div); font-size: 12px; color: var(--t2)"><span style="padding-left: 12px">#</span><span></span><span>Title</span><span>Album</span><span>Date added</span><span style="text-align: center">On PC</span><span style="text-align: right; padding-right: 8px">Time</span><span></span></div>
+          <sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+            <section style="display: flex; flex-direction: column">
+              <div style="display: flex; align-items: baseline; gap: 10px; height: 40px; padding-left: 12px; padding-top: 6px; box-sizing: border-box"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">{{g.title}}</h2><span style="font-size: 12px; color: var(--t2)">{{g.count}}</span></div>
+              <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="8">
+                <div role="row" style="{{r.row}}"><span style="{{r.num}}"><sc-if value="{{r.playing}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-label="Playing" role="img"><path d="M3 13V7M6.5 13V3M10 13V8M13.5 13V5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg></sc-if><sc-if value="{{r.showNum}}" hint-placeholder-val="{{ true }}">{{r.n}}</sc-if></span><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; padding-right: 16px"><span style="{{r.title}}">{{r.t}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.a}}</span></span><span style="font-size: 14px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 16px">{{r.album}}</span><span style="font-size: 14px; color: var(--t2)">{{r.when}}</span><span style="{{r.pcStyle}}"><sc-if value="{{r.cached}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-label="On this PC" role="img"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.2"></circle><path d="M8 4.8v5.4M5.8 8.2 8 10.4l2.2-2.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></sc-if></span><span style="text-align: right; padding-right: 8px; font-size: 14px; color: var(--t2); font-variant-numeric: tabular-nums">{{r.d}}</span><span style="display: flex; justify-content: center"><sc-if value="{{r.hover}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-label="More" role="img"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></sc-if></span></div>
+              </sc-for>
+            </section>
+          </sc-for>
+        </div>
+      </div>
+      <aside aria-label="Recommended for you" style="width: 420px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; padding-left: 28px; border-left: 1px solid var(--div)">
+        <div style="display: flex; align-items: center; gap: 12px; height: 44px; flex-shrink: 0"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; white-space: nowrap">Recommended for you</h2><span style="flex-grow: 1"></span>
+          <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: var(--t1); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v3h-3" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg>Refresh</button></div>
+        <span style="font-size: 12px; line-height: 16px; color: var(--t2); padding-bottom: 6px">Based on your Liked Songs</span>
+        <sc-for list="{{recs}}" as="r" hint-placeholder-count="18"><div role="row" style="{{r.row}}"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.t}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.a}} · {{r.why}}</span></span><span style="font-size: 14px; color: var(--t2); text-align: right; font-variant-numeric: tabular-nums; padding-right: 8px">{{r.d}}</span><button aria-label="{{r.likeLabel}}" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button><button aria-label="{{r.queueLabel}}" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h7M2.5 12h7M11.5 9.5v4.5l3.5-2.25z" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></div></sc-for>
+      </aside>
+    </main>
+    <div style="display: flex; flex-shrink: 0">
+      <dc-import name="ZF-Panel" theme="{{theme}}" accent="{{accent}}" tab="queue" mode="inline" w="{{paneW}}" h="{{midH}}" hint-size="380px,1220px"></dc-import>
+      <span aria-hidden="true" style="width: 1px; flex-shrink: 0; background: var(--stroke)"></span>
+      <dc-import name="ZF-Panel" theme="{{theme}}" accent="{{accent}}" tab="friends" mode="inline" w="{{paneW}}" h="{{midH}}" friends="{{yes}}" hint-size="380px,1220px"></dc-import>
+    </div>
+  </div>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" tier="huge" variant="music" pane="queue" hint-size="2560px,84px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', div: 'rgba(255,255,255,0.0837)', card: 'rgba(255,255,255,0.0512)', cardb: 'rgba(0,0,0,0.1)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', div: 'rgba(0,0,0,0.0803)', card: '#fbfbfb', cardb: 'rgba(0,0,0,0.0578)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', sub: 'rgba(0,0,0,0.0373)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const chips = ['All', 'Synthwave', 'Dream pop', 'K-pop', 'French house', '80s', 'Chill', 'Outrun', 'Indie', 'Disco'].map((l, i) => ({ label: l, pressed: i === 0 ? 'true' : 'false',
+    style: 'height: 32px; padding: 0 12px; border-radius: 4px; font: inherit; font-size: 14px; white-space: nowrap; ' + (i === 0 ? 'border: 1px solid transparent; background: var(--acc); color: var(--onacc)' : 'background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1)') }));
+  let n = 0;
+  const mk = (list) => list.map((d) => { n += 1; const f = d[6] || {}; return { n: String(n), t: d[0], a: d[1], album: d[2], when: d[3], d: d[4], playing: !!f.playing, showNum: !f.playing, hover: !!f.hover, cached: !!f.cached,
+    row: 'display: grid; grid-template-columns: 44px 52px minmax(0, 1fr) 300px 120px 64px 64px 32px; align-items: center; height: 52px; margin-top: 2px; border-radius: 4px; ' + (f.hover ? 'background: var(--sub)' : ''),
+    num: 'padding-left: 12px; display: flex; align-items: center; font-family: \'Segoe UI Variable Display\', \'Segoe UI\', sans-serif; font-size: 20px; line-height: 28px; font-variant-numeric: tabular-nums; color: ' + (f.playing ? 'var(--acct)' : 'var(--t3)'),
+    art: 'width: 40px; height: 40px; border-radius: 4px; background: ' + d[5],
+    title: 'font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (f.playing ? 'var(--acct)' : 'var(--t1)'),
+    pcStyle: 'display: flex; justify-content: center; color: ' + (f.playing ? 'var(--acct)' : 'var(--t2)') }; });
+  const groups = [
+    { title: 'This week', count: '12 songs', rows: mk([['Nightcall', 'Kavinsky', 'OutRun', 'Today', '4:18', '#6b2f4a', { playing: true, cached: true }], ['Supernova', 'aespa', 'Armageddon', 'Yesterday', '2:58', '#5b2f4a', { cached: true }], ['Hostage', 'Gunship', 'Hostage', 'Monday', '4:41', '#2f4a3b', { hover: true, cached: true }], ['Get Lucky', 'Daft Punk, Pharrell Williams', 'Random Access Memories', 'Monday', '6:09', '#3a2f22', { cached: true }], ['Instant Crush', 'Daft Punk, Julian Casablancas', 'Random Access Memories', 'Monday', '5:37', '#3a2f22', {}], ['Magnetic', 'ILLIT', 'SUPER REAL ME', 'Sunday', '2:40', '#6b5b2f', { cached: true }], ['Lost Boy', 'The Midnight', 'Kids', 'Sunday', '4:39', '#5b3b2f', {}], ['Turbo Killer', 'Carpenter Brut', 'Trilogy', 'Sunday', '3:20', '#6b2f2f', { cached: true }]]) },
+    { title: 'Last week', count: '9 songs', rows: mk([['Heroes', 'The Midnight', 'Heroes', '2 Oct', '4:12', '#2f3b6b', { cached: true }], ['Midnight City', 'M83', 'Hurry Up, We’re Dreaming', '1 Oct', '4:03', '#3b4a6b', { cached: true }], ['How Sweet', 'NewJeans', 'How Sweet', '30 Sep', '3:39', '#3b5b6b', {}], ['Resonance', 'HOME', 'Odyssey', '30 Sep', '3:32', '#2f5b6b', { cached: true }], ['Tech Noir', 'Gunship', 'GUNSHIP', '29 Sep', '4:57', '#5b3b6b', {}], ['Odd Look', 'Kavinsky, The Weeknd', 'Odd Look', '28 Sep', '4:12', '#6b2f4a', {}]]) }
+  ];
+  const recs = [['Blinding Lights', 'The Weeknd', 'you like Odd Look', '3:20', '#7a2a2a'], ['Running Up That Hill', 'Kate Bush', 'popular with synth fans', '4:58', '#3a2f4a'], ['Dark All Day', 'Gunship', 'more from Gunship', '5:24', '#2f2f4a'], ['Digital Love', 'Daft Punk', 'you like Get Lucky', '4:58', '#2f3a5a'], ['Armageddon', 'aespa', 'more from aespa', '3:16', '#5b2f6b'], ['Days of Thunder', 'The Midnight', 'more from The Midnight', '5:12', '#5b3b2f'], ['Genesis', 'Justice', 'french touch', '3:54', '#3a2f4a'], ['Super Shy', 'NewJeans', 'you like How Sweet', '2:34', '#3b5b6b'], ['Arcade Summer', 'FM-84', 'outrun', '4:20', '#4a3b2f'], ['Overnight', 'Parcels', 'disco', '3:34', '#4a5a2f'], ['Dreamer', 'Timecop1983', 'synthwave', '4:52', '#2f3b4a'], ['Something About Us', 'Daft Punk', 'you like Instant Crush', '3:51', '#2f3a5a'], ['Cherish', 'ILLIT', 'more from ILLIT', '2:23', '#6b5b2f'], ['Kids', 'The Midnight', 'you like Lost Boy', '4:53', '#5b3b2f'], ['Wait', 'M83', 'more from M83', '5:43', '#3b4a6b'], ['New Machines', 'HOME', 'you like Resonance', '4:15', '#2f5b6b'], ['Le Perv', 'Carpenter Brut', 'you like Turbo Killer', '4:13', '#6b2f2f'], ['A Real Hero', 'College, Electric Youth', 'in late night drive', '4:28', '#5b4a2f']].map((r, i) => ({ t: r[0], a: r[1], why: r[2], d: r[3], likeLabel: 'Save ' + r[0] + ' to Liked Songs', queueLabel: 'Add ' + r[0] + ' to queue',
+    row: 'display: grid; grid-template-columns: 52px minmax(0, 1fr) 48px 36px 36px; align-items: center; height: 52px; margin-top: 2px; padding: 0 8px; border-radius: 4px; ' + (i === 3 ? 'background: var(--sub)' : ''),
+    art: 'width: 40px; height: 40px; border-radius: 4px; background: ' + r[4] }));
+  return { vars, theme, accent, chips, groups, recs, paneW: 380, midH: 1220, zero: 0, yes: true };
+}
+}
+</script>
+</body>
+</html>

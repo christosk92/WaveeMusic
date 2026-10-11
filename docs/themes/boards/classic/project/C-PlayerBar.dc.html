@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Player bar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<section aria-label="Player" style="{{s.root}}">
+  <span style="{{s.top}}"></span><sc-if value="{{loading}}" hint-placeholder-val="{{false}}"><span style="{{s.sweep}}"></span></sc-if>
+  <sc-if value="{{regular}}" hint-placeholder-val="{{true}}">
+  <div style="{{s.left}}">
+    <span style="{{s.art}}"></span>
+    <span style="display: flex; flex-direction: column; gap: 1px; min-width: 0; flex-grow: 1">
+      <span style="{{s.title}}">{{m.title}}</span>
+      <span style="{{s.sub}}">{{m.sub}}</span>
+      <sc-if value="{{remoteLine}}" hint-placeholder-val="{{false}}"><span style="{{s.remote}}"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h8v6h-8zM5 12h3M12 5.5h2v7h-2z" fill="none" stroke="currentColor" stroke-width="1.2"></path></svg>Playing on Living room TV</span></sc-if>
+    </span>
+    <sc-if value="{{showHeart}}" hint-placeholder-val="{{true}}"><button aria-label="Remove from Liked Songs" style="{{s.heart}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor"></path></svg></button></sc-if>
+  </div>
+  <div style="{{s.centre}}">
+    <sc-if value="{{showPrev}}" hint-placeholder-val="{{true}}"><button aria-label="{{m.prevLabel}}" style="{{s.btn}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{m.prevD}}" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"></path></svg><sc-if value="{{pod}}" hint-placeholder-val="{{false}}"><span style="{{s.skip}}">15</span></sc-if></button></sc-if>
+    <button aria-label="Pause" style="{{s.play}}"><svg width="{{glyph}}" height="{{glyph}}" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 3h2.4v10H4.5zM9.1 3h2.4v10H9.1z" fill="currentColor"></path></svg></button>
+    <sc-if value="{{showPrev}}" hint-placeholder-val="{{true}}"><button aria-label="{{m.nextLabel}}" style="{{s.btn}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{m.nextD}}" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"></path></svg><sc-if value="{{pod}}" hint-placeholder-val="{{false}}"><span style="{{s.skip}}">30</span></sc-if></button></sc-if>
+    <sc-if value="{{showElapsed}}" hint-placeholder-val="{{true}}"><span style="{{s.time}}">{{m.el}}</span></sc-if>
+    <div role="slider" aria-label="Seek" aria-valuenow="{{m.pct}}" style="{{s.seek}}">
+      <sc-for list="{{segs}}" as="g" hint-placeholder-count="1"><span style="{{g.rail}}"><span style="{{g.fill}}"></span></span></sc-for>
+    </div>
+    <sc-if value="{{showRemaining}}" hint-placeholder-val="{{true}}"><span style="{{s.timeL}}">{{m.rem}}</span></sc-if>
+  </div>
+  <div style="{{s.right}}">
+    <sc-for list="{{btns}}" as="b" hint-placeholder-count="8">
+      <sc-if value="{{b.isBtn}}" hint-placeholder-val="{{true}}"><button aria-label="{{b.l}}" aria-pressed="{{b.on}}" style="{{b.style}}"><sc-if value="{{b.txt}}" hint-placeholder-val="{{false}}"><span style="font-size: 12px; font-weight: 600">{{b.txt}}</span></sc-if><sc-if value="{{b.d}}" hint-placeholder-val="{{true}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{b.d}}" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></sc-if><sc-if value="{{b.chev}}" hint-placeholder-val="{{false}}"><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true" style="margin-left: 2px"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6"></path></svg></sc-if></button></sc-if>
+      <sc-if value="{{b.isVol}}" hint-placeholder-val="{{false}}"><span role="slider" aria-label="Volume" aria-valuenow="70" style="{{s.vol}}"><span style="{{s.volRail}}"></span><span style="{{s.volFill}}"></span><span style="{{s.volThumb}}"><span style="{{s.volDot}}"></span></span></span></sc-if>
+    </sc-for>
+  </div>
+  </sc-if>
+  <sc-if value="{{mini}}" hint-placeholder-val="{{false}}">
+  <span role="progressbar" aria-label="Song progress" aria-valuenow="{{m.pct}}" style="{{s.mProg}}"><span style="{{s.mFill}}"></span></span>
+  <button aria-label="Open now playing" style="{{s.mId}}">
+    <span style="{{s.mArt}}"></span>
+    <span style="display: flex; flex-direction: column; gap: 1px; min-width: 0; flex-grow: 1; text-align: left">
+      <span style="{{s.title}}">{{m.title}}</span>
+      <sc-if value="{{remoteMini}}" hint-placeholder-val="{{false}}"><span style="{{s.remote}}"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h8v6h-8zM5 12h3M12 5.5h2v7h-2z" fill="none" stroke="currentColor" stroke-width="1.2"></path></svg>Living room TV</span></sc-if>
+      <sc-if value="{{subMini}}" hint-placeholder-val="{{true}}"><span style="{{s.sub}}">{{m.miniSub}}</span></sc-if>
+    </span>
+  </button>
+  <sc-if value="{{showHeart}}" hint-placeholder-val="{{true}}"><button aria-label="Remove from Liked Songs" style="{{s.mBtn}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor"></path></svg></button></sc-if>
+  <button aria-label="Pause" style="{{s.play}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 3h2.4v10H4.5zM9.1 3h2.4v10H9.1z" fill="currentColor"></path></svg></button>
+  </sc-if>
+  <sc-if value="{{huge}}" hint-placeholder-val="{{false}}">
+  <div style="{{s.hLeft}}">
+    <span style="{{s.art}}"></span>
+    <span style="display: flex; flex-direction: column; gap: 1px; min-width: 0; flex-grow: 1">
+      <span style="{{s.title}}">{{m.title}}</span>
+      <span style="{{s.sub}}">{{m.sub}}</span>
+      <sc-if value="{{remoteHuge}}" hint-placeholder-val="{{false}}"><span style="{{s.remote}}"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h8v6h-8zM5 12h3M12 5.5h2v7h-2z" fill="none" stroke="currentColor" stroke-width="1.2"></path></svg>Playing on Living room TV</span></sc-if>
+      <sc-if value="{{thirdHuge}}" hint-placeholder-val="{{true}}"><span style="{{s.third}}">{{m.third}}</span></sc-if>
+    </span>
+    <sc-if value="{{showHeart}}" hint-placeholder-val="{{true}}"><button aria-label="Remove from Liked Songs" style="{{s.heart}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor"></path></svg></button></sc-if>
+  </div>
+  <div style="{{s.hCentre}}">
+    <div style="{{s.hInner}}">
+      <sc-for list="{{hPre}}" as="b" hint-placeholder-count="2"><button aria-label="{{b.l}}" aria-pressed="{{b.on}}" style="{{b.style}}"><sc-if value="{{b.txt}}" hint-placeholder-val="{{false}}"><span style="font-size: 12px; font-weight: 600">{{b.txt}}</span></sc-if><sc-if value="{{b.d}}" hint-placeholder-val="{{true}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{b.d}}" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></sc-if></button></sc-for>
+      <button aria-label="{{m.prevLabel}}" style="{{s.btn}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{m.prevD}}" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"></path></svg><sc-if value="{{pod}}" hint-placeholder-val="{{false}}"><span style="{{s.skip}}">15</span></sc-if></button>
+      <button aria-label="Pause" style="{{s.play}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 3h2.4v10H4.5zM9.1 3h2.4v10H9.1z" fill="currentColor"></path></svg></button>
+      <button aria-label="{{m.nextLabel}}" style="{{s.btn}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{m.nextD}}" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"></path></svg><sc-if value="{{pod}}" hint-placeholder-val="{{false}}"><span style="{{s.skip}}">30</span></sc-if></button>
+      <sc-for list="{{hPost}}" as="b" hint-placeholder-count="1"><button aria-label="{{b.l}}" aria-pressed="{{b.on}}" style="{{b.style}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{b.d}}" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></sc-for>
+      <span style="{{s.time}}">{{m.el}}</span>
+      <div role="slider" aria-label="Seek" aria-valuenow="{{m.pct}}" style="{{s.seek}}">
+        <sc-for list="{{segs}}" as="g" hint-placeholder-count="1"><span style="{{g.rail}}"><span style="{{g.fill}}"></span></span></sc-for>
+      </div>
+      <span style="{{s.timeL}}">{{m.rem}}</span>
+    </div>
+  </div>
+  <div style="{{s.hRight}}">
+    <sc-for list="{{btns}}" as="b" hint-placeholder-count="8">
+      <sc-if value="{{b.isBtn}}" hint-placeholder-val="{{true}}"><button aria-label="{{b.l}}" aria-pressed="{{b.on}}" style="{{b.style}}"><sc-if value="{{b.d}}" hint-placeholder-val="{{true}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{b.d}}" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></sc-if><sc-if value="{{b.chev}}" hint-placeholder-val="{{false}}"><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true" style="margin-left: 2px"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6"></path></svg></sc-if></button></sc-if>
+      <sc-if value="{{b.isVol}}" hint-placeholder-val="{{false}}"><span role="slider" aria-label="Volume" aria-valuenow="70" style="{{s.vol}}"><span style="{{s.volRail}}"></span><span style="{{s.volFill}}"></span><span style="{{s.volThumb}}"><span style="{{s.volDot}}"></span></span></span></sc-if>
+    </sc-for>
+  </div>
+  </sc-if>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"variant":{"editor":"enum","options":["music","podcast","video","remote","loading","idle"],"default":"music"},"w":{"editor":"int","default":1440,"min":300,"max":3840},"tier":{"editor":"enum","options":["auto","mini","huge"],"default":"auto"},"panel":{"editor":"enum","options":["none","lyrics","queue","both"],"default":"none"},"$preview":{"width":1440,"height":72}}'>
+class Component extends DCLogic {
+renderVals() {
+  const p = this.props;
+  const dark = (p.theme ?? 'dark') !== 'light';
+  const T = dark
+    ? { mica: '#202020', t1: '#ffffff', t2: 'rgba(255,255,255,0.773)', t3: 'rgba(255,255,255,0.529)', dis: 'rgba(255,255,255,0.365)', sub: 'rgba(255,255,255,0.059)', div: 'rgba(255,255,255,0.082)', strong: 'rgba(255,255,255,0.545)', acc: '#60cdff', accT: '#a6d8ff', onAcc: '#000', solid: '#454545', ring: 'rgba(255,255,255,0.094)' }
+    : { mica: '#ededed', t1: 'rgba(0,0,0,0.894)', t2: 'rgba(0,0,0,0.62)', t3: 'rgba(0,0,0,0.447)', dis: 'rgba(0,0,0,0.36)', sub: 'rgba(0,0,0,0.035)', div: 'rgba(0,0,0,0.059)', strong: 'rgba(0,0,0,0.447)', acc: '#005fb8', accT: '#004275', onAcc: '#fff', solid: '#ffffff', ring: 'rgba(0,0,0,0.161)' };
+  const w = Number(p.w ?? 1440), v = p.variant ?? 'music', panel = p.panel ?? 'none';
+  const tierP = p.tier ?? 'auto';
+  const mini = tierP === 'mini', huge = tierP === 'huge', regular = !mini && !huge;
+  const tiers = [[1240, 'full', 260, 48, 40, 12, 8], [1100, 'wide', 240, 48, 40, 12, 8], [900, 'comfortable', 230, 48, 40, 8, 6], [760, 'medium', 220, 48, 40, 8, 6], [440, 'compact', 172, 40, 36, 8, 4], [0, 'minimal', 132, 40, 36, 6, 3]];
+  const t = huge ? [9999, 'full', 360, 56, 40, 16, 16] : tiers.find(x => w >= x[0]);
+  const tier = t[1], rank = ['minimal', 'compact', 'medium', 'comfortable', 'wide', 'full'].indexOf(tier);
+  const at = r => rank >= ['minimal', 'compact', 'medium', 'comfortable', 'wide', 'full'].indexOf(r);
+  const pod = v === 'podcast', idle = v === 'idle', loading = v === 'loading';
+  const M = {
+    music: { title: 'Get Lucky (feat. Pharrell Williams & Nile Rodgers)', sub: 'Daft Punk, Pharrell Williams, Nile Rodgers', third: 'Random Access Memories', miniSub: 'Daft Punk, Pharrell Williams, Nile Rodgers', el: '2:40', rem: '-3:29', pct: 43, art: 'linear-gradient(135deg,#1c1c1c,#6d6d6d 55%,#c9c9c9)' },
+    podcast: { title: 'Building a GPU renderer in .NET', sub: 'Coffee & Code · Ch. 3 of 6 · The scene graph', third: 'Episode #127 · Oct 2', miniSub: 'Coffee & Code · 21 min left', el: '23:10', rem: '-21:48', pct: 51, art: 'linear-gradient(135deg,#4a5b3b,#9bb36b)' },
+    video: { title: 'BIRDS OF A FEATHER', sub: 'Billie Eilish · Official video', third: 'HIT ME HARD AND SOFT', miniSub: 'Billie Eilish · Official video', el: '1:38', rem: '-2:52', pct: 36, art: 'linear-gradient(135deg,#0e2236,#3b6b9b)' },
+    remote: { title: 'Instant Crush (feat. Julian Casablancas)', sub: 'Daft Punk, Julian Casablancas', third: 'Random Access Memories', miniSub: 'Daft Punk, Julian Casablancas', el: '0:58', rem: '-4:39', pct: 17, art: 'linear-gradient(135deg,#1c1c1c,#6d6d6d 55%,#c9c9c9)' },
+    loading: { title: 'Loading…', sub: 'Daft Punk', third: 'Random Access Memories', miniSub: 'Daft Punk', el: '0:00', rem: '-0:00', pct: 0, art: 'linear-gradient(135deg,#1c1c1c,#6d6d6d 55%,#c9c9c9)' },
+    idle: { title: 'Nothing playing', sub: 'Pick something to play', third: '', miniSub: 'Pick something to play', el: '', rem: '', pct: 0, art: dark ? '#2a2a2a' : '#f2f2f2' }
+  };
+  const m = Object.assign({}, M[v]);
+  m.prevD = pod ? 'M3.5 8a4.5 4.5 0 1 0 1.3-3.2M3.5 2.5v2.5H6' : 'M4 3v10M13 3 6 8l7 5z';
+  m.nextD = pod ? 'M12.5 8a4.5 4.5 0 1 1-1.3-3.2M12.5 2.5v2.5H10' : 'M12 3v10M3 3l7 5-7 5z';
+  m.prevLabel = pod ? 'Back 15 seconds' : 'Previous'; m.nextLabel = pod ? 'Forward 30 seconds' : 'Next';
+  const I = { shuffle: 'M2 4.5h2.5c3 0 4 7 7 7H14M2 11.5h2.5c1.2 0 2-1 2.6-2.2M9 6.7c.6-1.2 1.4-2.2 2.5-2.2H14M12 2.5l2 2-2 2M12 9.5l2 2-2 2', repeat: 'M3 7V6a2 2 0 0 1 2-2h8l-2-2M13 9v1a2 2 0 0 1-2 2H3l2 2', volume: 'M2.5 6h2.5L8.5 3v10L5 10H2.5zM11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.8a6 6 0 0 1 0 8.4', lyrics: 'M3 3.5h10v7H7l-3 2.5v-2.5H3zM5.5 6h5M5.5 8h3', video: 'M2 4h8.5v8H2zM10.5 7 14 5v6l-3.5-2', queue: 'M2.5 4h11M2.5 8h11M2.5 12h6M11.5 10.5l3 1.5-3 1.5z', devices: 'M2.5 3.5h8v6h-8zM5 12h3M12 5.5h2v7h-2z', expand: 'M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5 9 7M2.5 13.5 7 9', more: 'M3 8h.01M8 8h.01M13 8h.01' };
+  const bb = (on, dis) => 'height: 32px; min-width: 32px; padding: 0; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; font: inherit; background: ' + (on ? T.sub : 'transparent') + '; color: ' + (dis ? T.dis : on ? T.acc : T.t2);
+  const B = (k, l, on, extra) => Object.assign({ isBtn: true, isVol: false, l, d: I[k], on: on ? 'true' : 'false', style: bb(on, idle), txt: '', chev: false }, extra || {});
+  const lyricsOn = panel === 'lyrics' || panel === 'both', queueOn = panel === 'queue' || panel === 'both';
+  const btns = [];
+  if (huge) {
+    btns.push(B('lyrics', pod ? 'Transcript' : 'Lyrics', lyricsOn));
+    if (v === 'video') btns.push(B('video', 'Video', true, { chev: true, style: bb(true, false) + '; width: 52px; padding-right: 2px' }));
+    btns.push(B('queue', 'Queue', queueOn));
+    btns.push(B('devices', v === 'remote' ? 'Playing on Living room TV' : 'Devices', v === 'remote'));
+    btns.push(B('volume', 'Volume', false));
+    btns.push({ isBtn: false, isVol: true });
+    btns.push(B('expand', 'Full screen', false));
+    btns.push(Object.assign(B('more', 'More', false), { style: bb(false, false) }));
+  } else {
+    if (at('comfortable') && !pod) { btns.push(B('shuffle', 'Shuffle', true)); btns.push(B('repeat', 'Repeat', false)); }
+    if (pod && at('comfortable')) btns.push(B('', 'Playback speed', false, { d: '', txt: '1.2×', style: bb(false, idle) + '; width: 40px' }));
+    if (at('medium')) btns.push(B('volume', 'Volume', false));
+    if (at('wide')) btns.push({ isBtn: false, isVol: true });
+    if (at('medium')) btns.push(B('lyrics', pod ? 'Transcript' : 'Lyrics', lyricsOn));
+    if (v === 'video' && at('wide')) btns.push(B('video', 'Video', true, { chev: true, style: bb(true, false) + '; width: 52px; padding-right: 2px' }));
+    if (at('compact')) btns.push(B('queue', 'Queue', queueOn));
+    btns.push(B('devices', v === 'remote' ? 'Playing on Living room TV' : 'Devices', v === 'remote'));
+    if (at('full')) btns.push(B('expand', 'Full screen', false));
+    btns.push(Object.assign(B('more', 'More', false), { style: bb(false, false) }));
+  }
+  const hPre = pod ? [B('', 'Playback speed', false, { d: '', txt: '1.2×', style: bb(false, idle) + '; width: 40px' })] : [B('shuffle', 'Shuffle', true)];
+  const hPost = pod ? [] : [B('repeat', 'Repeat', false)];
+  const segs = [];
+  const railBg = T.strong;
+  if (pod) {
+    const ch = [12, 18, 21, 17, 20, 12], fillTo = m.pct; let acc = 0;
+    ch.forEach(c => { const start = acc, end = acc + c; acc = end; const f = Math.max(0, Math.min(1, (fillTo - start) / c)); segs.push({ rail: 'position: relative; flex: ' + c + ' 1 0; height: 4px; border-radius: 2px; background: ' + railBg + '; overflow: hidden', fill: 'position: absolute; left: 0; top: 0; bottom: 0; width: ' + Math.round(f * 100) + '%; background: ' + T.acc }); });
+  } else {
+    segs.push({ rail: 'position: relative; flex: 1 1 0; height: 4px; border-radius: 2px; background: ' + (idle ? T.div : railBg) + '; overflow: hidden', fill: 'position: absolute; left: 0; top: 0; bottom: 0; width: ' + m.pct + '%; background: ' + T.acc });
+  }
+  const leftW = t[2], art = t[3], prim = mini ? 40 : t[4], pad = t[5], gap = t[6];
+  const font = "; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; overflow: hidden";
+  const s = {
+    root: mini
+      ? 'position: relative; width: ' + w + 'px; height: 56px; box-sizing: border-box; display: flex; align-items: center; gap: 4px; padding: 2px 8px 0 8px; background: ' + T.mica + '; color: ' + T.t1 + font
+      : 'position: relative; width: ' + w + 'px; height: 72px; box-sizing: border-box; display: flex; align-items: center; gap: ' + gap + 'px; padding: 0 ' + pad + 'px; background: ' + T.mica + '; color: ' + T.t1 + font,
+    top: mini ? 'display: none' : 'position: absolute; left: 0; right: 0; top: 0; height: 1px; background: ' + T.div,
+    sweep: 'position: absolute; left: 22%; width: 30%; top: 0; height: 2px; border-radius: 1px; background: ' + T.acc,
+    left: 'width: ' + leftW + 'px; flex-shrink: 0; display: flex; align-items: center; gap: ' + (rank < 2 ? 6 : 10) + 'px; min-width: 0',
+    art: 'width: ' + art + 'px; height: ' + art + 'px; flex-shrink: 0; border-radius: 6px; background: ' + m.art,
+    title: 'font-size: 14px; line-height: 18px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (idle ? T.t2 : T.t1),
+    sub: 'font-size: 12px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + T.t2,
+    third: 'font-size: 12px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + T.t3,
+    remote: 'display: flex; align-items: center; gap: 4px; font-size: 12px; line-height: 16px; white-space: nowrap; color: ' + T.accT,
+    heart: 'width: 32px; height: 32px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: ' + T.acc,
+    centre: 'flex-grow: 1; min-width: 0; display: flex; align-items: center; gap: ' + (rank < 2 ? 4 : 6) + 'px',
+    btn: 'position: relative; width: 32px; height: 32px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; font: inherit; color: ' + (idle ? T.dis : T.t1),
+    skip: 'position: absolute; font-size: 7px; font-weight: 700; top: 12px; left: 0; right: 0; text-align: center',
+    play: 'width: ' + prim + 'px; height: ' + prim + 'px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: ' + (idle ? T.div : T.acc) + '; color: ' + T.onAcc + '; margin: 0 2px',
+    time: 'width: 44px; flex-shrink: 0; text-align: right; font-size: 12px; line-height: 16px; font-variant-numeric: tabular-nums; color: ' + T.t2,
+    timeL: 'width: 44px; flex-shrink: 0; font-size: 12px; line-height: 16px; font-variant-numeric: tabular-nums; color: ' + T.t2,
+    seek: 'flex-grow: 1; min-width: 40px; height: 32px; display: flex; align-items: center; gap: 2px',
+    right: 'flex-shrink: 0; display: flex; align-items: center; gap: ' + (rank < 2 ? 1 : 2) + 'px',
+    vol: 'position: relative; width: ' + (huge ? 128 : 96) + 'px; height: 32px; flex-shrink: 0; display: flex; align-items: center; margin: 0 4px',
+    volRail: 'position: absolute; left: 0; right: 0; height: 4px; border-radius: 2px; background: ' + T.strong,
+    volFill: 'position: absolute; left: 0; width: 70%; height: 4px; border-radius: 2px; background: ' + T.acc,
+    volThumb: 'position: absolute; left: calc(70% - 11px); width: 22px; height: 22px; border-radius: 11px; background: ' + T.solid + '; box-shadow: inset 0 0 0 1px ' + T.ring + '; display: flex; align-items: center; justify-content: center',
+    volDot: 'width: 12px; height: 12px; border-radius: 6px; background: ' + T.acc + '; transform: scale(0.86)',
+    mProg: 'position: absolute; left: 0; right: 0; top: 0; height: 2px; background: ' + (idle ? T.div : T.strong),
+    mFill: 'position: absolute; left: 0; top: 0; bottom: 0; width: ' + m.pct + '%; background: ' + T.acc,
+    mId: 'flex-grow: 1; min-width: 0; height: 48px; display: flex; align-items: center; gap: 10px; padding: 0 4px 0 0; border: 0; border-radius: 4px; background: transparent; font: inherit; color: inherit',
+    mArt: 'width: 40px; height: 40px; flex-shrink: 0; border-radius: 4px; background: ' + m.art,
+    mBtn: 'width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: ' + T.acc,
+    hLeft: 'width: 360px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; min-width: 0',
+    hCentre: 'flex-grow: 1; min-width: 0; display: flex; justify-content: center',
+    hInner: 'width: 100%; max-width: 1040px; display: flex; align-items: center; gap: 6px',
+    hRight: 'width: 360px; flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; gap: 2px'
+  };
+  return { s, m, segs, btns, hPre, hPost, pod, loading, regular, mini, huge, glyph: rank < 2 ? 14 : 16, showHeart: !idle && !pod, showPrev: at('medium'), showElapsed: at('medium') && !idle, showRemaining: at('compact') && !idle, remoteLine: v === 'remote' && at('comfortable'), remoteMini: v === 'remote', subMini: v !== 'remote', remoteHuge: v === 'remote', thirdHuge: v !== 'remote' && !!m.third };
+}
+}
+</script>
+</body>
+</html>

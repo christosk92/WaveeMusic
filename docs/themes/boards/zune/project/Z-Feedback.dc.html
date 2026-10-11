@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune settings: feedback and help</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1000px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <div style="height: 48px; flex-shrink: 0; display: flex; align-items: center; padding: 0 0 0 48px; gap: 12px">
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 350; letter-spacing: -0.2px; color: #a8a8a8">wavee</span>
+    <button aria-label="back" style="width: 32px; height: 32px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10 3 5 8l5 5"/></svg></button>
+    <span style="font-size: 13px; color: #7a7a7a">settings › <span style="color: #a8a8a8">feedback &amp; help</span></span>
+    <span style="flex-grow: 1"></span>
+    <label style="display: flex; align-items: center; gap: 8px; width: 220px; height: 32px; box-sizing: border-box; padding: 0 10px 0 12px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.18); color: #7a7a7a"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><input type="search" placeholder="search" style="border: 0; background: transparent; color: #fff; font: inherit; font-size: 13px; width: 100%; outline: none; min-width: 0"><span style="font-size: 10px; color: #7a7a7a; border: 1px solid rgba(255,255,255,0.14); padding: 1px 4px; white-space: nowrap">ctrl f</span></label>
+    <button style="display: flex; align-items: center; gap: 8px; height: 32px; border: 0; background: transparent; color: #ffffff; font: inherit; font-size: 13px; padding: 0 8px; margin-left: 8px"><span style="width: 24px; height: 24px; border-radius: 12px; background: #5b6b3b; display: block"></span>christos</button>
+    <button aria-label="notifications" style="width: 32px; height: 32px; border: 0; background: transparent; color: #a8a8a8; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 11V7a4 4 0 0 1 8 0v4l1 1H3z"/><path d="M6.5 13.5a1.5 1.5 0 0 0 3 0"/></svg></button>
+    <span style="display: flex; color: #a8a8a8; font-size: 12px; margin-left: 8px"><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">─</span><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">☐</span><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">✕</span></span>
+  </div>
+  <div style="height: 52px; flex-shrink: 0; display: flex; flex-direction: column; padding: 0 16px 0 48px">
+    <div style="height: 44px; box-sizing: border-box; padding: 4px 0; display: flex; align-items: center; gap: 24px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; letter-spacing: -0.3px">
+      <a href="#" style="color: #7a7a7a; font-weight: 350">home</a><a href="#" style="color: #7a7a7a; font-weight: 350">browse</a><a href="#" style="color: #7a7a7a; font-weight: 350">library</a><a href="#" style="color: #7a7a7a; font-weight: 350">recents</a>
+      <span style="flex-grow: 1"></span>
+      <span style="display: flex; align-items: flex-start; gap: 8px; font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif"><span style="font-size: 11px; line-height: 32px; color: #7a7a7a; margin-right: 4px">pinned</span>
+        <sc-for list="{{pins}}" as="p" hint-placeholder-count="6"><span style="display: flex; flex-direction: column; align-items: center; gap: 2px"><span style="{{p.tile}}"></span><span style="{{p.dot}}"></span></span></sc-for>
+      </span>
+    </div>
+  </div>
+  <div style="flex-grow: 1; min-height: 0; position: relative; overflow: hidden">
+    <div style="position: absolute; left: 40px; top: -6px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 120px; font-weight: 200; line-height: 130px; letter-spacing: -2px; white-space: nowrap; color: #ffffff; opacity: 0.92">settings</div>
+    <div style="position: absolute; left: 48px; top: 140px; right: 48px; bottom: 0; display: flex; gap: 48px">
+      <nav aria-label="settings sections" style="width: 220px; flex-shrink: 0; display: flex; flex-direction: column">
+        <sc-for list="{{sections}}" as="s" hint-placeholder-count="12"><a href="#" style="{{s.style}}">{{s.n}}</a></sc-for>
+      </nav>
+      <div style="width: 660px; flex-shrink: 0; display: flex; flex-direction: column; gap: 6px">
+        <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px">feedback &amp; help</span>
+        <span style="font-size: 14px; line-height: 20px; color: #c8c8c8; margin-top: 4px">Wavee is made by one person. Reports go to GitHub, where you can follow what happens to them.</span>
+        <div style="display: flex; flex-direction: column; margin-top: 14px">
+          <sc-for list="{{verbs}}" as="v" hint-placeholder-count="3">
+            <a href="#" style="{{v.row}}"><span style="{{v.ring}}">{{v.glyph}}</span><span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px; color: #ffffff">{{v.title}}</span><span style="font-size: 12px; color: #a8a8a8">{{v.hint}}</span></span><span style="font-size: 16px; color: #7a7a7a">›</span></a>
+          </sc-for>
+        </div>
+        <span style="display: flex; align-items: baseline; gap: 12px; margin-top: 24px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">sent from this pc</span><span style="font-size: 13px; color: #7a7a7a">2</span></span>
+        <sc-for list="{{sent}}" as="s" hint-placeholder-count="2">
+          <div style="display: grid; grid-template-columns: minmax(0, 1fr) 120px 120px; align-items: center; height: 48px; font-size: 14px"><span style="display: flex; flex-direction: column; min-width: 0"><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.title}}</span><span style="font-size: 12px; color: #7a7a7a">{{s.kind}}</span></span><span style="{{s.stateStyle}}">{{s.state}}</span><a href="#" style="font-size: 13px; text-align: right">open on github</a></div>
+        </sc-for>
+        <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px; margin-top: 22px">diagnostics</span>
+        <div style="display: grid; grid-template-columns: 200px minmax(0, 1fr); column-gap: 24px; row-gap: 16px; align-items: center; margin-top: 10px">
+          <span style="font-size: 15px">log detail</span>
+          <span style="display: flex; gap: 8px"><sc-for list="{{logs}}" as="c" hint-placeholder-count="2"><button style="{{c.style}}">{{c.label}}</button></sc-for></span>
+          <span style="font-size: 15px">this pc</span>
+          <span style="display: flex; gap: 20px; font-size: 13px"><a href="#">copy diagnostics</a><a href="#">open logs folder</a><a href="#">keyboard shortcuts</a></span>
+        </div>
+      </div>
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding-top: 70px">
+        <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">what a report holds</span>
+        <span style="display: flex; gap: 10px; font-size: 14px; margin-top: 6px"><span style="color: #8fd14f">✓</span>what you write, and the steps</span>
+        <span style="display: flex; gap: 10px; font-size: 14px"><span style="color: #8fd14f">✓</span>wavee and windows versions, your gpu</span>
+        <span style="display: flex; gap: 10px; font-size: 14px"><span style="color: #8fd14f">✓</span>the last 200 log lines, if you tick it</span>
+        <span style="display: flex; gap: 10px; font-size: 14px"><span style="color: #ff7a7a">✕</span>never your account, password or files</span>
+        <span style="font-size: 12px; line-height: 18px; color: #7a7a7a; margin-top: 8px">you see the whole report before anything leaves this pc.</span>
+        <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px; margin-top: 22px">help</span>
+        <span style="display: flex; flex-direction: column; gap: 8px; font-size: 14px"><a href="#" style="color: #ffffff">what's new in 1.6</a><a href="#" style="color: #ffffff">wavee on github</a><a href="#" style="color: #ffffff">how wavee handles your data</a></span>
+      </div>
+    </div>
+  </div>
+  <div style="height: 72px; flex-shrink: 0; background: #111111; position: relative; display: flex; align-items: center; padding: 0 12px 0 24px; gap: 24px">
+    <div style="position: absolute; left: 0; top: 0; right: 0; height: 2px; background: rgba(255,255,255,0.12)"><div style="{{progress}}"></div></div>
+    <div style="display: flex; align-items: center; gap: 12px; width: 320px; flex-shrink: 0"><span style="width: 48px; height: 48px; border-radius: 2px; background: #3a2f22; flex-shrink: 0"></span><span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="font-size: 15px; line-height: 20px">Get Lucky</span><span style="font-size: 13px; line-height: 18px; color: #a8a8a8">Daft Punk · Random Access Memories</span></span><button aria-label="save to liked songs" style="width: 32px; height: 32px; border: 0; background: transparent; color: #ffffff; font-size: 16px; padding: 0">♡</button></div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; gap: 2px"><div style="display: flex; align-items: center; gap: 16px"><button aria-label="previous" style="width: 32px; height: 32px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 3h2v10H3zM13 3 6 8l7 5z"/></svg></button><button aria-label="pause" style="{{playDisc}}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg></button><button aria-label="next" style="width: 32px; height: 32px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M11 3h2v10h-2zM3 3l7 5-7 5z"/></svg></button></div><span style="font-size: 12px; color: #a8a8a8; font-variant-numeric: tabular-nums">2:30 · -3:39</span></div>
+    <div style="display: flex; align-items: center; gap: 2px; width: 440px; flex-shrink: 0; justify-content: flex-end; font-size: 13px"><button aria-label="shuffle" style="width: 32px; height: 32px; border: 0; background: transparent; color: #a8a8a8; font-size: 16px; padding: 0">⇄</button><button aria-label="repeat" style="width: 32px; height: 32px; border: 0; background: transparent; color: #a8a8a8; font-size: 16px; padding: 0">↻</button><button aria-label="mute" style="width: 32px; height: 32px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 6h3l4-3v10l-4-3H2z"/><path d="M11.5 5.5a3.5 3.5 0 0 1 0 5"/></svg></button><span style="width: 96px; height: 2px; background: rgba(255,255,255,0.18); margin: 0 10px 0 2px; display: block"><span style="display: block; width: 70%; height: 2px; background: #ffffff"></span></span><button style="height: 32px; border: 0; background: transparent; color: #a8a8a8; font: inherit; font-size: 13px; padding: 0 8px">lyrics</button><button style="height: 32px; border: 0; background: transparent; color: #a8a8a8; font: inherit; font-size: 13px; padding: 0 8px">queue</button><button style="height: 32px; border: 0; background: transparent; color: #a8a8a8; font: inherit; font-size: 13px; padding: 0 8px">devices</button><button aria-label="full screen" style="width: 32px; height: 32px; border: 0; background: transparent; color: #a8a8a8; font-size: 16px; padding: 0">⤢</button><button aria-label="more" style="width: 32px; height: 32px; border: 0; background: transparent; color: #a8a8a8; font-size: 16px; padding: 0">⋯</button></div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f","#b983ff"]},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const pins = ['#3b4a6b', '#6b2f4a', '#2f5b6b', '#5b3b6b', '#6b4a2f', '#4a6b2f'].map((c, i) => ({ tile: 'width: 32px; height: 32px; border-radius: 4px; background: ' + c + '; display: block', dot: 'width: 4px; height: 4px; border-radius: 2px; display: block; background: ' + (i === 1 ? accent : 'transparent') }));
+  const sections = ['account', 'appearance', 'playback', 'audio', 'lyrics', 'devices & connect', 'downloads & storage', 'notifications', 'keyboard', 'privacy', 'feedback & help', 'about'].map((n) => ({ n, style: 'height: 40px; display: flex; align-items: center; font-family: ' + D + '; font-size: 20px; line-height: 28px; ' + (n === 'feedback & help' ? 'color: #ffffff; font-weight: 400' : 'color: #7a7a7a; font-weight: 300') }));
+  const verbs = [['!', 'report a problem', 'something broke or looks wrong · opens the report with diagnostics', true], ['+', 'suggest something', 'a feature or a change you want', false], ['?', 'ask a question', 'how something works', false]].map((d) => ({
+    glyph: d[0], title: d[1], hint: d[2],
+    row: 'display: grid; grid-template-columns: 52px minmax(0, 1fr) 24px; align-items: center; height: 60px; padding: 0 12px; margin: 0 -12px; ' + (d[3] ? 'background: rgba(255,255,255,0.05)' : ''),
+    ring: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 14px; ' + (d[3] ? 'background: ' + accent + '; color: #000000' : 'border: 2px solid #ffffff; color: #ffffff'),
+  }));
+  const sent = [['lyrics stop following after a seek in long songs', 'problem · oct 3', 'fixed in 1.6', true], ['let me pin a show to the band', 'suggestion · sep 19', 'open', false]].map((d) => ({ title: d[0], kind: d[1], state: d[2], stateStyle: 'font-size: 13px; color: ' + (d[3] ? '#8fd14f' : '#a8a8a8') }));
+  const logs = ['normal', 'detailed'].map((l, i) => ({ label: l, style: 'height: 32px; padding: 0 12px; border: 0; font: inherit; font-size: 14px; ' + (i === 0 ? 'background: ' + accent + '; color: #000000' : 'background: rgba(255,255,255,0.06); color: #ffffff') }));
+  return {
+    accent, pins, sections, verbs, sent, logs,
+    progress: 'width: 41%; height: 2px; background: ' + accent,
+    playDisc: 'width: 40px; height: 40px; border-radius: 20px; border: 0; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; padding: 0',
+  };
+}
+}
+</script>
+</body>
+</html>

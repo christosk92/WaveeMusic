@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune setup: sign in · compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <div style="height: 48px; flex-shrink: 0; display: flex; align-items: center; padding: 0 0 0 16px; box-sizing: border-box; opacity: 0.35">
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 350; color: #a8a8a8">wavee</span>
+    <span style="flex-grow: 1"></span>
+    <span style="display: flex; color: #a8a8a8; font-size: 12px"><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">─</span><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">☐</span><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">✕</span></span>
+  </div>
+  <div style="flex-grow: 1; min-height: 0; background: #1f1f1f; display: flex; flex-direction: column">
+    <div style="{{strip}}">
+      <span style="position: absolute; right: 12px; top: -26px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 150px; font-weight: 200; line-height: 150px; color: rgba(0,0,0,0.35)">2</span>
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px; color: #000000; position: relative">sign in</span>
+      <span style="font-size: 12px; line-height: 16px; color: rgba(0,0,0,0.7); position: relative">terms · sign in · layout · local playback</span>
+    </div>
+    <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 20px 16px 16px 16px">
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px">sign in to spotify</span>
+      <span style="font-size: 14px; line-height: 20px; color: #c8c8c8">Sign in with your Spotify account on the Spotify website, or scan the code with your phone.</span>
+      <a href="#" style="background: #292929; padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr) 40px; align-items: center; column-gap: 12px; color: #ffffff; margin-top: 4px; min-height: 88px; box-sizing: border-box">
+        <span style="display: flex; flex-direction: column; gap: 6px; min-width: 0">
+          <span style="font-size: 15px; line-height: 20px">continue in your browser</span>
+          <span style="font-size: 12px; color: #a8a8a8; line-height: 17px">opens accounts.spotify.com in your default browser</span>
+        </span>
+        <span style="{{goRing}}">→</span>
+      </a>
+      <div style="background: #292929; padding: 16px; display: flex; gap: 16px; align-items: center">
+        <span style="width: 96px; height: 96px; flex-shrink: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2px; background: #ffffff; padding: 5px; box-sizing: border-box">
+          <sc-for list="{{qr}}" as="q" hint-placeholder-count="36"><span style="{{q.s}}"></span></sc-for>
+        </span>
+        <span style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+          <span style="font-size: 15px; line-height: 20px">or scan with your phone</span>
+          <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px; font-variant-numeric: tabular-nums">ABCD-1234</span>
+          <span style="font-size: 13px; color: #c8c8c8">spotify.com/pair</span>
+          <span style="font-size: 12px; color: #a8a8a8">expires in 4:59 · <a href="#">copy code</a></span>
+        </span>
+      </div>
+      <span style="font-size: 12px; color: #a8a8a8; display: flex; align-items: center; gap: 8px; height: 20px"><span style="{{dot}}"></span>waiting for you to authorize…</span>
+      <span style="flex-grow: 1"></span>
+      <span style="font-size: 12px; line-height: 17px; color: #7a7a7a">wavee needs spotify premium · don't have a spotify account? <a href="#">sign up</a></span>
+      <span style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; color: #a8a8a8">step 2 of 4</span><span style="height: 2px; background: rgba(255,255,255,0.12); display: block"><span style="{{progress}}"></span></span></span>
+      <div style="display: flex; align-items: center; gap: 8px; height: 48px">
+        <button style="height: 40px; min-width: 64px; border: 0; background: transparent; color: #a8a8a8; font: inherit; font-size: 15px; padding: 0 8px; text-align: left">back</button>
+        <span style="flex-grow: 1"></span>
+        <button style="display: flex; align-items: center; gap: 10px; height: 40px; border: 0; background: transparent; color: #7a7a7a; font: inherit; font-size: 15px; padding: 0">next<span style="width: 40px; height: 40px; box-sizing: border-box; border-radius: 20px; border: 2px solid #4a4a4a; display: flex; align-items: center; justify-content: center; font-size: 14px">→</span></button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const pat = [1,1,1,0,1,0, 1,0,1,1,0,1, 1,1,1,0,1,0, 0,1,0,1,0,1, 1,0,1,1,1,1, 0,1,0,1,0,1];
+  return {
+    accent,
+    qr: pat.map((v) => ({ s: 'display: block; background: ' + (v ? '#000000' : '#ffffff') })),
+    strip: 'height: 120px; flex-shrink: 0; background: ' + accent + '; position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; padding: 0 16px 14px 16px; box-sizing: border-box',
+    goRing: 'width: 40px; height: 40px; box-sizing: border-box; border-radius: 20px; border: 2px solid #ffffff; display: flex; align-items: center; justify-content: center; font-size: 14px',
+    dot: 'width: 8px; height: 8px; border-radius: 4px; background: ' + accent + '; display: block',
+    progress: 'display: block; width: 50%; height: 2px; background: ' + accent,
+  };
+}
+}
+</script>
+</body>
+</html>

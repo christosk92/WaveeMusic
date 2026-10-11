@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune search: huge window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 2560px; height: 1440px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="huge" query="midnight" accent="{{accent}}" hint-size="2560px,48px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex">
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+      <dc-import name="Z-Part-Band" tier="huge" section="browse" sub="all,songs 412,albums 38,playlists 120,artists 14,podcasts &amp; shows 6,episodes 41,profiles 3,genres 2" on="all" accent="{{accent}}" hint-size="1840px,84px"></dc-import>
+      <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; gap: 40px; padding: 8px 48px 0 48px; overflow: hidden">
+        <div style="display: flex; gap: 56px; flex-shrink: 0">
+          <div style="width: 480px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; align-items: baseline; gap: 12px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">top result</span><span style="font-size: 13px; color: #7a7a7a">song</span></div>
+            <span style="width: 240px; height: 240px; border-radius: 2px; background: #3b4a6b; display: block"></span>
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 300; line-height: 72px; letter-spacing: -1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Midnight City</span>
+            <span style="font-size: 14px; color: #a8a8a8">song · <a href="#" style="color: #ffffff">M83</a> · Hurry Up, We're Dreaming · 4:03</span>
+            <span style="{{matchInk}}">matched title · lyrics match</span>
+            <span style="display: flex; gap: 18px; padding-top: 6px; font-size: 14px"><button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #fff; font: inherit; padding: 0"><span style="{{playRing}}">▶</span>play</button><button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #fff; font: inherit; padding: 0"><span style="{{ring}}">+</span>add to queue</button><button aria-label="save to liked songs" style="display: flex; align-items: center; border: 0; background: transparent; color: #fff; font: inherit; padding: 0"><span style="{{ring}}">♡</span></button></span>
+          </div>
+          <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px">
+            <div style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">best matches</div>
+            <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 40px">
+              <sc-for list="{{hits}}" as="h" hint-placeholder-count="12">
+                <a href="#" style="{{h.row}}"><span style="{{h.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="font-size: 15px; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{h.name}}</span><span style="font-size: 13px; color: #a8a8a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{h.sub}}</span></span><span style="font-size: 12px; color: #7a7a7a; text-align: right">{{h.kind}}</span></a>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 56px; flex-shrink: 0">
+          <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+            <div style="{{songHead}}"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px; grid-column: 1 / 3">songs</span><span style="font-size: 12px; color: #7a7a7a">album</span><span style="font-size: 12px; color: #7a7a7a; text-align: right">plays</span><span style="font-size: 12px; color: #7a7a7a; text-align: right">time</span><span></span></div>
+            <sc-for list="{{songs}}" as="s" hint-placeholder-count="5">
+              <div style="{{s.rowStyle}}"><span style="{{s.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="{{s.titleStyle}}">{{s.title}}</span><span style="{{s.subStyle}}">{{s.artist}}</span></span><span style="font-size: 13px; color: #9c9c9c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 16px">{{s.album}}</span><span style="font-size: 13px; color: #7a7a7a; text-align: right; font-variant-numeric: tabular-nums">{{s.plays}}</span><span style="{{s.timeStyle}}">{{s.time}}</span><button aria-label="more" style="{{s.moreStyle}}">⋯</button></div>
+            </sc-for>
+          </div>
+          <div style="width: 560px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px">
+            <div style="display: flex; align-items: baseline; gap: 14px; height: 40px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">artists</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 13px">see all 14</a></div>
+            <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px">
+              <sc-for list="{{artists}}" as="a" hint-placeholder-count="4"><a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 0"><span style="{{a.art}}"></span><span style="font-size: 13px; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%">{{a.name}}</span></a></sc-for>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 20px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">related searches</span><span style="display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 15px"><a href="#">midnight city remix</a><a href="#">the midnight</a><a href="#">midnights taylor swift</a><a href="#">m83</a></span></div>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px; flex-shrink: 0">
+          <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">playlists</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 13px">see all 120</a></div>
+          <div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 16px">
+            <sc-for list="{{lists}}" as="t" hint-placeholder-count="8"><a href="#" style="display: flex; flex-direction: column; gap: 6px; min-width: 0"><span style="{{t.art}}"></span><span style="font-size: 13px; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.name}}</span><span style="font-size: 12px; color: #a8a8a8">{{t.sub}}</span></a></sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+    <dc-import name="Z-Part-Panel" tier="docked2" pivot="lyrics" h="1320" accent="{{accent}}" hint-size="720px,1320px"></dc-import>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="huge" title="Nightcall" artist="Kavinsky · OutRun" art="#6b2f4a" progress="29" from="playing from late night drive" active="lyrics" accent="{{accent}}" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const hits = [['The Midnight', '2.1M monthly listeners', 'artist', '#6b4a2f', true], ['Midnights', 'Taylor Swift · 2022', 'album', '#4a3b5b', false], ['Midnight City (Eric Prydz Remix)', 'M83, Eric Prydz', 'song', '#2f4a5b', false], ['Midnight Memories', 'One Direction · 2013', 'album', '#5b2f2f', false], ['late night drive', 'christos · 42 songs', 'playlist', '#3b4a6b', false], ['Midnight Mass', 'podcast · 48 episodes', 'podcast', '#2f4a3b', false], ['Nightcall', 'Kavinsky · OutRun', 'song', '#6b2f4a', false], ['Midnight Sun', 'Nilüfer Yanya', 'song', '#5b4a2f', false], ['After Midnight', 'spotify · 80 songs', 'playlist', '#3b2f5b', false], ['Midnight Express', 'Giorgio Moroder', 'song', '#3a2f22', false], ['Midnight Radio', 'radio', 'radio', '#3b3b3b', false], ['Synthwave', 'genre', 'genre', '#2f5b6b', false]].map((d) => ({
+    name: d[0], sub: d[1], kind: d[2], row: 'display: grid; grid-template-columns: 52px minmax(0, 1fr) 64px; align-items: center; gap: 12px; height: 60px; ' + (d[4] ? 'background: rgba(255,255,255,0.05)' : ''),
+    art: 'width: 48px; height: 48px; display: block; background: ' + d[3] + '; border-radius: ' + (d[2] === 'artist' ? '24px' : '2px'),
+  }));
+  const cols = 'display: grid; grid-template-columns: 56px minmax(0, 3fr) minmax(0, 2fr) 120px 64px 48px; align-items: center';
+  const songs = [['Midnight City', 'M83', 'Hurry Up, We’re Dreaming', '1,284,110,402', '4:03', '#3b4a6b'], ['Midnight City (Eric Prydz Remix)', 'M83, Eric Prydz', 'Midnight City (Remixes)', '88,402,551', '6:21', '#2f4a5b'], ['Midnight Sun', 'Nilüfer Yanya', 'PAINLESS', '12,771,840', '3:44', '#5b4a2f'], ['Midnight Rain', 'Taylor Swift', 'Midnights', '612,045,893', '2:54', '#4a3b5b'], ['Days of Thunder', 'The Midnight', 'Days of Thunder', '74,662,018', '5:01', '#6b4a2f']].map((d, i) => {
+    const hover = i === 1;
+    return {
+      title: d[0], artist: d[1], album: d[2], plays: d[3], time: d[4],
+      rowStyle: cols + '; height: 52px; ' + (hover ? 'background: rgba(255,255,255,0.05)' : ''),
+      art: 'width: 40px; height: 40px; border-radius: 2px; margin-left: 4px; background: ' + d[5] + '; display: block',
+      titleStyle: 'font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #ffffff',
+      subStyle: 'font-size: 13px; color: #9c9c9c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis',
+      timeStyle: 'font-size: 13px; text-align: right; color: #9c9c9c; font-variant-numeric: tabular-nums',
+      moreStyle: 'width: 40px; height: 40px; justify-self: center; border: 0; background: transparent; color: #ffffff; font-size: 16px; padding: 0; opacity: ' + (hover ? 1 : 0),
+    };
+  });
+  const artists = [['The Midnight', '#6b4a2f'], ['M83', '#3b4a6b'], ['Midnight Oil', '#4a2f2f'], ['Midnight Kids', '#2f4a5b']].map((d) => ({ name: d[0], art: 'width: 100%; aspect-ratio: 1 / 1; border-radius: 50%; background: ' + d[1] + '; display: block' }));
+  const lists = [['Midnight Drive', 'spotify', '#2f3b6b'], ['After Midnight', 'spotify', '#3b2f5b'], ['late night drive', 'christos', '#3b4a6b'], ['Midnight Jazz', 'spotify', '#5b4a2f'], ['Synthwave Essentials', 'spotify', '#2f5b6b'], ['Night Rider', 'spotify', '#6b2f3b'], ['Chillwave Nights', 'spotify', '#2f5b4a'], ['Dark Disco', 'spotify', '#4a2f5b']].map((d) => ({ name: d[0], sub: d[1], art: 'width: 100%; aspect-ratio: 1 / 1; border-radius: 2px; background: ' + d[2] + '; display: block' }));
+  return {
+    accent, hits, songs, artists, lists,
+    songHead: cols + '; height: 40px',
+    matchInk: 'font-size: 12px; color: ' + accent,
+    playRing: 'width: 36px; height: 36px; border-radius: 18px; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; font-size: 13px',
+    ring: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #ffffff; display: flex; align-items: center; justify-content: center; font-size: 13px',
+  };
+}
+}
+</script>
+</body>
+</html>

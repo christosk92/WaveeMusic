@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune search: compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="compact" accent="{{accent}}" hint-size="400px,48px"></dc-import>
+  <div style="height: 48px; flex-shrink: 0; display: flex; align-items: center; padding: 0 16px">
+    <label style="display: flex; align-items: center; gap: 10px; width: 100%; height: 40px; box-sizing: border-box; padding: 0 0 0 14px; border-radius: 20px; border: 2px solid #ffffff; color: #a8a8a8"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><input type="search" value="midnight" aria-label="search" style="border: 0; background: transparent; color: #fff; font: inherit; font-size: 15px; width: 100%; outline: none; min-width: 0"><button aria-label="clear search" style="width: 40px; height: 36px; border: 0; background: transparent; color: #a8a8a8; font-size: 13px; padding: 0; flex-shrink: 0">✕</button></label>
+  </div>
+  <dc-import name="Z-Part-Band" tier="compact" section="browse" sub="all,songs,albums,playlists,artists,podcasts &amp; shows,episodes,profiles,genres" on="all" accent="{{accent}}" hint-size="400px,92px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; gap: 20px; padding: 8px 16px 0 16px; overflow: hidden">
+    <div style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0">
+      <div style="display: flex; align-items: baseline; gap: 12px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">top result</span><span style="font-size: 13px; color: #7a7a7a">song</span></div>
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Midnight City</span>
+      <div style="display: flex; gap: 16px; align-items: flex-end">
+        <span style="width: 120px; height: 120px; border-radius: 2px; background: #3b4a6b; flex-shrink: 0; display: block"></span>
+        <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0; flex-grow: 1">
+          <span style="font-size: 13px; line-height: 18px; color: #a8a8a8">M83 · Hurry Up, We're Dreaming</span>
+          <span style="{{matchInk}}">matched title · lyrics match</span>
+          <span style="display: flex; gap: 12px; padding-top: 6px">
+            <button aria-label="play" style="{{playRing}}">▶</button>
+            <button aria-label="add to queue" style="{{ring}}">+</button>
+            <button aria-label="save to liked songs" style="{{ring}}">♡</button>
+          </span>
+        </div>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; flex-shrink: 0">
+      <div style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px; margin-bottom: 4px">best matches</div>
+      <sc-for list="{{hits}}" as="h" hint-placeholder-count="5">
+        <a href="#" style="{{h.row}}"><span style="{{h.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="font-size: 15px; line-height: 20px; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{h.name}}</span><span style="font-size: 13px; line-height: 18px; color: #9c9c9c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{h.sub}}</span></span><span style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; color: #a8a8a8; font-size: 16px">⋯</span></a>
+      </sc-for>
+    </div>
+    <div style="display: flex; align-items: baseline; gap: 14px; flex-shrink: 0"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">playlists</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 13px">see all 120</a></div>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="mini" title="Nightcall" artist="Kavinsky · OutRun" art="#6b2f4a" progress="29" accent="{{accent}}" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const hits = [['The Midnight', 'artist · 2.1M monthly listeners', 'artist', '#6b4a2f', true], ['Midnights', 'album · Taylor Swift · 2022', 'album', '#4a3b5b', false], ['Midnight City (Eric Prydz Remix)', 'song · M83, Eric Prydz', 'song', '#2f4a5b', false], ['late night drive', 'playlist · christos · 42 songs', 'playlist', '#3b4a6b', false], ['Midnight Mass', 'podcast · 48 episodes', 'podcast', '#2f4a3b', false]].map((d) => ({
+    name: d[0], sub: d[1],
+    row: 'display: grid; grid-template-columns: 56px minmax(0, 1fr) 40px; align-items: center; height: 56px; margin: 0 -16px; padding: 0 0 0 16px; ' + (d[4] ? 'background: rgba(255,255,255,0.05)' : ''),
+    art: 'width: 44px; height: 44px; display: block; background: ' + d[3] + '; border-radius: ' + (d[2] === 'artist' ? '22px' : '2px'),
+  }));
+  return {
+    accent, hits,
+    matchInk: 'font-size: 12px; line-height: 16px; color: ' + accent,
+    playRing: 'width: 40px; height: 40px; border-radius: 20px; border: 0; background: ' + accent + '; color: #000; font-size: 14px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0',
+    ring: 'width: 40px; height: 40px; box-sizing: border-box; border-radius: 20px; border: 2px solid #ffffff; background: transparent; color: #ffffff; font-size: 14px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0',
+  };
+}
+}
+</script>
+</body>
+</html>

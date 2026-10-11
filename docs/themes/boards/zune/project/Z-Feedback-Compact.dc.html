@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune settings: feedback &amp; help · compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="compact" crumb="settings › feedback &amp; help" accent="{{accent}}" hint-size="400px,48px"></dc-import>
+  <dc-import name="Z-Part-Band" tier="compact" section="none" sub="" collapsed="true" accent="{{accent}}" hint-size="400px,52px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 16px; overflow: hidden">
+    <a href="#" style="height: 40px; flex-shrink: 0; align-self: flex-start; display: flex; align-items: center; gap: 6px; font-size: 14px; color: #a8a8a8; padding-right: 12px"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10 3 5 8l5 5"/></svg>settings</a>
+    <div style="height: 72px; flex-shrink: 0; margin: -6px -16px 0 -4px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 200; line-height: 72px; letter-spacing: -1px; white-space: nowrap; overflow: hidden">feedback &amp; help</div>
+    <span style="font-size: 14px; line-height: 20px; color: #c8c8c8; margin-top: 8px; flex-shrink: 0">Wavee is made by one person. Reports go to GitHub, where you can follow what happens to them.</span>
+    <div style="display: flex; flex-direction: column; margin-top: 12px; flex-shrink: 0">
+      <sc-for list="{{verbs}}" as="v" hint-placeholder-count="3">
+        <a href="#" style="{{v.row}}"><span style="{{v.ring}}">{{v.glyph}}</span><span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-size: 15px; line-height: 20px; color: #ffffff">{{v.title}}</span><span style="font-size: 12px; line-height: 16px; color: #a8a8a8">{{v.hint}}</span></span><span style="font-size: 16px; color: #7a7a7a">›</span></a>
+      </sc-for>
+    </div>
+    <span style="display: flex; align-items: baseline; gap: 12px; margin-top: 20px; flex-shrink: 0"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">sent from this pc</span><span style="font-size: 13px; color: #7a7a7a">2</span></span>
+    <sc-for list="{{sent}}" as="s" hint-placeholder-count="2">
+      <a href="#" style="display: grid; grid-template-columns: minmax(0, 1fr) 24px; align-items: center; min-height: 64px; flex-shrink: 0; color: #ffffff"><span style="display: flex; flex-direction: column; min-width: 0; gap: 2px"><span style="font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.title}}</span><span style="font-size: 12px; line-height: 16px; color: #7a7a7a">{{s.kind}} · <span style="{{s.stateStyle}}">{{s.state}}</span></span></span><span style="font-size: 13px; color: #7a7a7a">↗</span></a>
+    </sc-for>
+    <div style="display: flex; flex-direction: column; gap: 6px; margin: 16px -16px 0 -16px; padding: 14px 16px; background: #1b1b1b; flex-shrink: 0">
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">what a report holds</span>
+      <sc-for list="{{holds}}" as="h" hint-placeholder-count="4"><span style="display: flex; gap: 10px; font-size: 14px; line-height: 20px"><span style="{{h.markStyle}}">{{h.mark}}</span>{{h.text}}</span></sc-for>
+      <span style="font-size: 12px; line-height: 17px; color: #7a7a7a; margin-top: 4px">you see the whole report before anything leaves this pc.</span>
+    </div>
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px; margin-top: 20px; flex-shrink: 0">diagnostics</span>
+    <span style="display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-shrink: 0"><span style="font-size: 15px; margin-right: 8px">log detail</span><sc-for list="{{logs}}" as="c" hint-placeholder-count="2"><button style="{{c.style}}">{{c.label}}</button></sc-for></span>
+    <span style="display: flex; gap: 20px; font-size: 13px; margin-top: 6px; flex-shrink: 0"><a href="#" style="height: 40px; display: flex; align-items: center">copy diagnostics</a><a href="#" style="height: 40px; display: flex; align-items: center">open logs folder</a></span>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="mini" title="Get Lucky" artist="Daft Punk · Random Access Memories" art="#3a2f22" progress="41" accent="{{accent}}" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const verbs = [['!', 'report a problem', 'something broke or looks wrong', true], ['+', 'suggest something', 'a feature or a change you want', false], ['?', 'ask a question', 'how something works', false]].map((d) => ({
+    glyph: d[0], title: d[1], hint: d[2],
+    row: 'display: grid; grid-template-columns: 56px minmax(0, 1fr) 24px; align-items: center; height: 64px; padding: 0 16px; margin: 0 -16px; ' + (d[3] ? 'background: rgba(255,255,255,0.05)' : ''),
+    ring: 'width: 40px; height: 40px; box-sizing: border-box; border-radius: 20px; display: flex; align-items: center; justify-content: center; font-size: 15px; ' + (d[3] ? 'background: ' + accent + '; color: #000000' : 'border: 2px solid #ffffff; color: #ffffff'),
+  }));
+  const sent = [['lyrics stop following after a seek in long songs', 'problem · oct 3', 'fixed in 1.6', true], ['let me pin a show to the band', 'suggestion · sep 19', 'open', false]].map((d) => ({ title: d[0], kind: d[1], state: d[2], stateStyle: 'color: ' + (d[3] ? '#8fd14f' : '#a8a8a8') }));
+  const holds = [['✓', 'what you write, and the steps', true], ['✓', 'wavee and windows versions, your gpu', true], ['✓', 'the last 200 log lines, if you tick it', true], ['✕', 'never your account, password or files', false]].map((d) => ({ mark: d[0], text: d[1], markStyle: 'color: ' + (d[2] ? '#8fd14f' : '#ff7a7a') }));
+  const logs = ['normal', 'detailed'].map((l, i) => ({ label: l, style: 'height: 40px; padding: 0 14px; border: 0; font: inherit; font-size: 14px; ' + (i === 0 ? 'background: ' + accent + '; color: #000000' : 'background: rgba(255,255,255,0.06); color: #ffffff') }));
+  return { accent, verbs, sent, holds, logs };
+}
+}
+</script>
+</body>
+</html>

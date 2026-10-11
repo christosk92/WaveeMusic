@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>What’s new, small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} width: 800px; height: 600px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" tier="small" sel="none" crumb="Settings › About › What’s new" items="General|Appearance|Playback|Notifications|Storage &amp; cache|Privacy|About" sub-sel="{{six}}" lower="{{lower}}" hint-size="800px,136px"></dc-import>
+  <main style="height: 380px; flex-shrink: 0; box-sizing: border-box; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke); padding: 4px 24px 0 24px; display: flex; flex-direction: column">
+    <h1 style="margin: 0; flex-shrink: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">What’s new</h1>
+    <div style="flex-grow: 1; min-height: 0; display: flex; gap: 32px; padding-top: 4px">
+      <article aria-labelledby="rel-title" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: baseline; gap: 12px; white-space: nowrap; flex-shrink: 0">
+          <h2 id="rel-title" style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Wavee 1.6.0 “Aurora”</h2>
+          <span style="font-size: 12px; color: var(--t2); overflow: hidden; text-overflow: ellipsis">3 releases since you looked</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; flex-shrink: 0">
+          <sc-for list="{{highlights}}" as="h" hint-placeholder-count="3">
+            <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px; min-height: 108px; box-sizing: border-box; border-radius: 8px; background: var(--card); border: 1px solid var(--cardb)"><span style="font-size: 14px; line-height: 20px; font-weight: 600">{{h.title}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden">{{h.text}}</span><a href="#" style="margin-top: auto; font-size: 14px; line-height: 20px; color: var(--acct)">Try it</a></div>
+          </sc-for>
+        </div>
+        <sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+          <section aria-label="{{g.title}}" style="display: flex; flex-direction: column; flex-shrink: 0">
+            <h3 style="margin: 0; height: 30px; display: flex; align-items: flex-end; padding-bottom: 4px; box-sizing: border-box; font-size: 14px; line-height: 20px; font-weight: 600">{{g.title}}</h3>
+            <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="3">
+              <div style="display: flex; align-items: center; gap: 10px; min-height: 40px; border-top: 1px solid var(--div); font-size: 14px; line-height: 20px"><span style="flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.text}}</span><a href="#" style="{{r.chip}}">{{r.issue}}</a><span style="{{r.avatar}}"></span></div>
+            </sc-for>
+          </section>
+        </sc-for>
+      </article>
+      <nav aria-label="Releases" style="width: 160px; flex-shrink: 0; display: flex; flex-direction: column; gap: 2px">
+        <h2 style="margin: 0 0 4px 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Releases</h2>
+        <sc-for list="{{releases}}" as="v" hint-placeholder-count="6">
+          <a href="#" style="{{v.row}}"><sc-if value="{{v.on}}" hint-placeholder-val="{{ false }}"><span style="position: absolute; left: 0; top: 12px; width: 3px; height: 16px; border-radius: 2px; background: var(--acc)"></span></sc-if><span style="{{v.name}}">{{v.v}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{v.tags}}</span></a>
+        </sc-for>
+      </nav>
+    </div>
+  </main>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" tier="small" variant="music" pane="none" hint-size="800px,84px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"lower":{"editor":"boolean","default":false},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', div: 'rgba(255,255,255,0.0837)', card: 'rgba(255,255,255,0.0512)', cardb: 'rgba(0,0,0,0.1)', sub: 'rgba(255,255,255,0.0605)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff', ok: '#6ccb5f' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', div: 'rgba(0,0,0,0.0803)', card: '#fbfbfb', cardb: 'rgba(0,0,0,0.0578)', sub: 'rgba(0,0,0,0.0373)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92', ok: '#0f7b0f' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const highlights = [['Four themes', 'Wavee Classic, WinUI, Zune and Panorama: one app, four looks.'], ['The pivot band', 'Sections across the top, your pins beside them, no sidebar.'], ['Liked Songs, grouped', 'This week, last week, then the months.']].map((d) => ({ title: d[0], text: d[1] }));
+  const chip = 'height: 22px; display: inline-flex; align-items: center; padding: 0 8px; border-radius: 11px; white-space: nowrap; flex-shrink: 0; font-size: 12px; background: var(--sub); color: var(--ok)';
+  const avatar = (c) => 'width: 20px; height: 20px; border-radius: 10px; flex-shrink: 0; background: ' + c;
+  const groups = [
+    { title: 'Added', rows: [['Themes: Wavee Classic, WinUI, Zune and Panorama, each with its own options', '#210 closed', '#5b6b3b'], ['Liked Songs groups by week and month when sorted by date added', '#203 closed', '#5b6b3b'], ['The pivot band shows up to six pins beside the sections', '#205 closed', '#6b2f4a']] },
+    { title: 'Changed', rows: [['The right panel sits inline from 1008 wide and floats below that', '#198 closed', '#5b6b3b']] }
+  ].map((g) => ({ title: g.title, rows: g.rows.map((r) => ({ text: r[0], issue: r[1], avatar: avatar(r[2]), chip })) }));
+  const releases = [['1.7.0-beta.1', 'Beta', false], ['1.6.0', 'You’re on this', true], ['1.5.2', 'Stable', false], ['1.5.0', '', false], ['1.4.1', '', false], ['1.4.0', '', false]].map((d) => ({ v: d[0], tags: d[1], on: d[2],
+    row: 'position: relative; display: flex; flex-direction: column; justify-content: center; min-height: 40px; padding: 2px 12px; box-sizing: border-box; border-radius: 4px; color: var(--t1); ' + (d[2] ? 'background: var(--sub)' : ''),
+    name: 'font-size: 14px; line-height: 20px; font-variant-numeric: tabular-nums; ' + (d[2] ? 'font-weight: 600' : '') }));
+  return { vars, theme, accent, highlights, groups, releases, six: 6, lower: !!(this.props.lower ?? false) };
+}
+}
+</script>
+</body>
+</html>

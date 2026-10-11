@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune settings sections: huge window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 2560px; height: 1440px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="huge" crumb="settings" accent="{{accent}}" hint-size="2560px,48px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex">
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+      <dc-import name="Z-Part-Band" tier="huge" section="none" sub="" collapsed="true" accent="{{accent}}" hint-size="1840px,52px"></dc-import>
+      <div style="flex-grow: 1; min-height: 0; position: relative; overflow: hidden">
+        <div style="position: absolute; left: 38px; top: -12px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 150px; font-weight: 200; line-height: 160px; letter-spacing: -2.5px; white-space: nowrap; color: #ffffff; opacity: 0.92">settings</div>
+        <div style="position: absolute; left: 48px; top: 176px; right: 48px; bottom: 0; display: flex; gap: 40px">
+          <div style="width: 260px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px">
+            <label style="display: flex; align-items: center; gap: 8px; width: 100%; height: 36px; box-sizing: border-box; padding: 0 12px; border-radius: 18px; border: 1px solid #ffffff; color: #a8a8a8"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><input type="search" value="cross" aria-label="find a setting" style="border: 0; background: transparent; color: #fff; font: inherit; font-size: 14px; width: 100%; outline: none; min-width: 0"></label>
+            <a href="#" style="display: flex; flex-direction: column; padding: 8px 12px; margin: 0 -12px; background: rgba(255,255,255,0.05); color: #ffffff"><span style="font-size: 15px"><span style="{{accentInk}}">cross</span>fade</span><span style="font-size: 12px; color: #7a7a7a">playback</span></a>
+            <a href="#" style="display: flex; flex-direction: column; padding: 8px 12px; margin: 0 -12px; color: #ffffff"><span style="font-size: 15px">automix and <span style="{{accentInk}}">cross</span>fade on playlists</span><span style="font-size: 12px; color: #7a7a7a">playback</span></a>
+            <nav aria-label="settings sections" style="display: flex; flex-direction: column; margin-top: 12px">
+              <sc-for list="{{sections}}" as="s" hint-placeholder-count="12"><a href="#" style="{{s.style}}">{{s.n}}</a></sc-for>
+            </nav>
+          </div>
+          <div style="width: 700px; flex-shrink: 0; display: flex; flex-direction: column; gap: 14px">
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px">account</span>
+            <span style="display: flex; align-items: center; gap: 16px"><span style="width: 64px; height: 64px; border-radius: 32px; background: #5b6b3b; flex-shrink: 0"></span><span style="display: flex; flex-direction: column"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300">christos</span><span style="{{premium}}">spotify premium · individual</span></span></span>
+            <span style="font-size: 14px; color: #a8a8a8">signed in on this pc since sep 2 · country nl</span>
+            <span style="display: flex; gap: 24px; font-size: 14px"><a href="#">manage on spotify.com</a><a href="#">switch account</a><a href="#">sign out</a></span>
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px; margin-top: 28px">lyrics</span>
+            <sc-for list="{{lyrics}}" as="r" hint-placeholder-count="4"><span style="display: grid; grid-template-columns: minmax(0, 1fr) 40px; gap: 16px; align-items: center; min-height: 48px"><span style="display: flex; flex-direction: column; gap: 1px"><span style="font-size: 15px">{{r.label}}</span><span style="font-size: 12px; color: #7a7a7a">{{r.hint}}</span></span><span style="{{r.sw}}"><span style="{{r.knob}}"></span></span></span></sc-for>
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px; margin-top: 28px">devices &amp; connect</span>
+            <label style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 12px; color: #a8a8a8">this pc shows up as</span><input type="text" value="christos’s desktop" style="border: 0; border-bottom: 1px solid rgba(255,255,255,0.18); background: transparent; color: #fff; font: inherit; font-size: 15px; padding: 6px 0; outline: none"></label>
+            <sc-for list="{{devices}}" as="r" hint-placeholder-count="2"><span style="display: grid; grid-template-columns: minmax(0, 1fr) 40px; gap: 16px; align-items: center; min-height: 48px"><span style="display: flex; flex-direction: column; gap: 1px"><span style="font-size: 15px">{{r.label}}</span><span style="font-size: 12px; color: #7a7a7a">{{r.hint}}</span></span><span style="{{r.sw}}"><span style="{{r.knob}}"></span></span></span></sc-for>
+          </div>
+          <div style="width: 700px; flex-shrink: 0; display: flex; flex-direction: column; gap: 14px">
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px">storage</span>
+            <span style="display: flex; height: 12px; width: 100%"><span style="{{storeCache}}"></span><span style="flex-grow: 1; height: 12px; background: rgba(255,255,255,0.08); display: block"></span></span>
+            <span style="display: flex; align-items: center; gap: 18px; font-size: 14px; color: #a8a8a8"><span style="{{markIdle}}">↓</span><span><span style="color: #ffffff">1.1 gb</span> cache · 212 songs on this pc</span><span>limit 2 gb</span></span>
+            <span style="display: flex; align-items: center; gap: 8px; font-size: 14px"><span style="color: #a8a8a8; margin-right: 6px; font-size: 13px">cache limit</span><sc-for list="{{cache}}" as="c" hint-placeholder-count="4"><button style="{{c.style}}">{{c.label}}</button></sc-for></span>
+            <span style="display: flex; gap: 24px; font-size: 14px"><a href="#">clear cache</a><a href="#">move…</a></span>
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px; margin-top: 28px">notifications</span>
+            <sc-for list="{{notify}}" as="r" hint-placeholder-count="4"><span style="display: grid; grid-template-columns: minmax(0, 1fr) 40px; gap: 16px; align-items: center; min-height: 48px"><span style="display: flex; flex-direction: column; gap: 1px"><span style="font-size: 15px">{{r.label}}</span><span style="font-size: 12px; color: #7a7a7a">{{r.hint}}</span></span><span style="{{r.sw}}"><span style="{{r.knob}}"></span></span></span></sc-for>
+            <span style="display: flex; align-items: baseline; gap: 14px; margin-top: 28px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px">keyboard</span><a href="#" style="font-size: 13px">change a shortcut</a></span>
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 40px">
+              <sc-for list="{{keys}}" as="k" hint-placeholder-count="6"><span style="display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; height: 36px; font-size: 15px"><span>{{k.label}}</span><span style="font-size: 12px; color: #a8a8a8; border: 1px solid rgba(255,255,255,0.14); padding: 1px 6px">{{k.key}}</span></span></sc-for>
+            </div>
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px; margin-top: 28px">about</span>
+            <span style="display: flex; align-items: baseline; gap: 20px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 200; line-height: 68px; letter-spacing: -1px">wavee 1.6</span><span style="font-size: 13px; color: #a8a8a8">1.6.0 · up to date · checked 2 hours ago</span></span>
+            <span style="display: flex; gap: 24px; font-size: 14px"><a href="#">check for updates</a><a href="#">release notes</a><a href="#">licences</a><a href="#">github</a></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <dc-import name="Z-Part-Panel" tier="docked2" pivot="friends" h="1320" accent="{{accent}}" hint-size="720px,1320px"></dc-import>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="huge" title="Get Lucky" artist="Daft Punk · Random Access Memories" art="#3a2f22" progress="41" from="playing from random access memories" active="friends" accent="{{accent}}" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const sections = ['account', 'appearance', 'playback', 'audio', 'lyrics', 'devices & connect', 'storage', 'notifications', 'keyboard', 'privacy', 'feedback & help', 'about'].map((n) => ({ n, style: 'height: 48px; flex-shrink: 0; display: flex; align-items: center; white-space: nowrap; font-family: ' + D + '; font-size: 24px; line-height: 32px; ' + (n === 'account' ? 'color: #ffffff; font-weight: 400' : 'color: #7a7a7a; font-weight: 300') }));
+  const sw = (d) => ({ label: d[0], hint: d[1],
+    sw: 'width: 40px; height: 20px; position: relative; display: block; background: ' + (d[2] ? accent : 'rgba(255,255,255,0.14)'),
+    knob: 'position: absolute; top: 2px; width: 16px; height: 16px; display: block; ' + (d[2] ? 'right: 2px; background: #000000' : 'left: 2px; background: #ffffff'),
+  });
+  const chips = (labels, on) => labels.map((l, i) => ({ label: l, style: 'height: 32px; padding: 0 12px; border: 0; font: inherit; font-size: 14px; ' + (i === on ? 'background: ' + accent + '; color: #000000' : 'background: rgba(255,255,255,0.06); color: #ffffff') }));
+  return {
+    accent, sections,
+    lyrics: [['show lyrics', 'in the panel and full screen', true], ['translation line', 'under each line, when spotify has one', false], ['romanisation', 'for korean and japanese', true], ['line up unsynced lyrics', 'on this pc, on the npu', true]].map(sw),
+    devices: [['visible on your network', 'phones and speakers can play here', true], ['only show devices on this network', '', false]].map(sw),
+    notify: [['new releases', 'from artists you follow', true], ['now playing', 'a windows toast when a song starts', false], ['updates', 'when a new wavee is ready', true], ['in-app sounds', '', false]].map(sw),
+    keys: [['play or pause', 'space'], ['next song', 'ctrl →'], ['previous song', 'ctrl ←'], ['search', 'ctrl f'], ['volume up / down', 'ctrl ↑ ↓'], ['go back', 'alt ←']].map((d) => ({ label: d[0], key: d[1] })),
+    cache: chips(['1 gb', '2 gb', '5 gb', 'no limit'], 1),
+    accentInk: 'color: ' + accent,
+    premium: 'font-size: 14px; color: ' + accent,
+    markIdle: 'width: 14px; height: 14px; box-sizing: border-box; border-radius: 7px; border: 2px solid #a8a8a8; color: #a8a8a8; font-size: 8px; line-height: 10px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0',
+    storeCache: 'width: 55%; height: 12px; display: block; background: ' + accent,
+  };
+}
+}
+</script>
+</body>
+</html>

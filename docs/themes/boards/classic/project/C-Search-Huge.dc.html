@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Search, Huge</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 2560px; height: 1440px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="home:Home|search:daft punk" sel="1" w="2560" tier="huge" query="daft punk" hint-size="2560px,48px"></dc-import>
+  <div style="display: flex; height: 1320px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="classic" sel="none" w="320" h="1320" hint-size="320px,1320px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; padding: 24px 36px 0; display: flex; flex-direction: column; gap: 20px; overflow: hidden">
+      <div style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0">
+        <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em">daft punk</h1>
+        <div role="tablist" aria-label="Result types" style="display: flex; column-gap: 4px; margin-left: -12px">
+          <sc-for list="{{tabs}}" as="t" hint-placeholder-count="9"><button role="tab" aria-selected="{{t.sel}}" style="{{t.style}}">{{t.l}}<span style="font-size: 12px; color: rgba(255,255,255,0.529); margin-left: 6px">{{t.c}}</span><span style="{{t.bar}}"></span></button></sc-for>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 32px; flex-shrink: 0">
+        <section aria-label="Top result" style="width: 700px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px">
+          <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.006em">Top result</h2>
+          <a href="#" style="position: relative; height: 300px; box-sizing: border-box; padding: 28px; border-radius: 8px; background: radial-gradient(80% 120% at 90% 10%, rgba(96,205,255,0.10), rgba(0,0,0,0) 60%), rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); display: flex; flex-direction: column; gap: 6px">
+            <span role="img" aria-label="Daft Punk" style="width: 128px; height: 128px; border-radius: 64px; background: radial-gradient(40% 40% at 35% 40%, #c9c9c9, rgba(201,201,201,0) 70%), radial-gradient(40% 40% at 68% 42%, #8a7a3b, rgba(138,122,59,0) 70%), #1d1d1d; box-shadow: 0 4px 12px rgba(0,0,0,0.35)"></span>
+            <span style="margin-top: 10px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600; letter-spacing: -0.012em">Daft Punk</span>
+            <span style="font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.773)">Artist · 22.4M monthly listeners</span>
+            <span style="position: absolute; right: 28px; bottom: 28px; display: flex; gap: 8px">
+              <button aria-pressed="true" style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(96,205,255,0.16); border: 1px solid rgba(96,205,255,0.5); color: #a6d8ff; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM2 13.5c0-2.5 2.2-4 5-4 1 0 1.9.2 2.6.5M10.5 12l1.5 1.5 3-3" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg>Following</button>
+              <button style="min-width: 96px; height: 32px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px; font-weight: 600; box-shadow: inset 0 -1px 0 rgba(0,0,0,0.22)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10l8-5z" fill="currentColor"></path></svg>Play</button>
+            </span>
+          </a>
+        </section>
+        <section aria-label="Best matches" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+          <div style="height: 28px; display: flex; align-items: center"><h2 style="margin: 0; flex-grow: 1; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.006em">Best matches</h2><a href="#" style="font-size: 14px; color: #a6d8ff">All 612 songs</a></div>
+          <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 16px; padding-top: 12px">
+            <sc-for list="{{songs}}" as="s" hint-placeholder-count="12"><div style="{{s.row}}"><span style="{{s.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="{{s.ts}}">{{s.t}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.k}} · {{s.a}}</span></span><span style="font-size: 12px; color: rgba(255,255,255,0.773); font-variant-numeric: tabular-nums">{{s.d}}</span><button aria-label="{{s.sl}}" style="{{s.save}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="{{s.sd}}" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"></path></svg></button></div></sc-for>
+          </div>
+        </section>
+      </div>
+
+      <section aria-label="Artists" style="display: flex; flex-direction: column; gap: 10px; flex-shrink: 0">
+        <div style="height: 32px; display: flex; align-items: center"><h2 style="margin: 0; flex-grow: 1; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.006em">Artists</h2><a href="#" style="font-size: 14px; color: #a6d8ff">See all</a></div>
+        <div style="display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 0; margin: 0 -8px">
+          <sc-for list="{{artists}}" as="a" hint-placeholder-count="10"><a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px; border-radius: 8px; min-width: 0"><span style="{{a.art}}"></span><span style="font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%">{{a.t}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">{{a.s}}</span></a></sc-for>
+        </div>
+      </section>
+
+      <section aria-label="Playlists" style="display: flex; flex-direction: column; gap: 10px; flex-shrink: 0">
+        <div style="height: 32px; display: flex; align-items: center"><h2 style="margin: 0; flex-grow: 1; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.006em">Playlists</h2><a href="#" style="font-size: 14px; color: #a6d8ff">See all</a></div>
+        <div style="display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 0; margin: 0 -8px">
+          <sc-for list="{{lists}}" as="c" hint-placeholder-count="10"><a href="#" style="display: flex; flex-direction: column; gap: 2px; padding: 8px; border-radius: 8px; min-width: 0"><span style="{{c.art}}"></span><span style="font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.t}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.s}}</span></a></sc-for>
+        </div>
+      </section>
+
+      <div style="display: flex; gap: 32px; flex-shrink: 0">
+        <section aria-label="Genres" style="flex: 2 1 0; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+          <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.006em">Genres</h2>
+          <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px"><sc-for list="{{genres}}" as="g" hint-placeholder-count="6"><a href="#" style="{{g.s}}"><span style="{{g.stripe}}"></span><span style="position: relative; font-size: 14px; font-weight: 600">{{g.l}}</span></a></sc-for></div>
+        </section>
+        <section aria-label="Related searches" style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+          <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.006em">Related searches</h2>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px"><sc-for list="{{related}}" as="r" hint-placeholder-count="5"><a href="#" style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 16px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); font-size: 14px"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3l3.2 3.2" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg>{{r}}</a></sc-for></div>
+        </section>
+      </div>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="2560" tier="huge" panel="none" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const tabs = [['All', ''], ['Songs', '612'], ['Albums', '48'], ['Playlists', '1000'], ['Artists', '24'], ['Podcasts & shows', '31'], ['Episodes', '1000'], ['Profiles', '212'], ['Genres', '3']].map((t, i) => ({ l: t[0], c: t[1], sel: i === 0 ? 'true' : 'false', style: 'position: relative; height: 36px; padding: 8px 12px 4px; border: 0; background: transparent; font: inherit; font-size: 14px; color: ' + (i === 0 ? '#fff' : 'rgba(255,255,255,0.773)'), bar: i === 0 ? 'position: absolute; left: 12px; right: 12px; bottom: 0; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' }));
+  const S = [['Get Lucky', 'Daft Punk, Pharrell Williams, Nile Rodgers', 1, '6:09'], ['One More Time', 'Daft Punk', 0, '5:20'], ['Instant Crush', 'Daft Punk, Julian Casablancas', 1, '5:37'], ['Harder, Better, Faster, Stronger', 'Daft Punk', 0, '3:44'], ['Around the World', 'Daft Punk', 0, '7:09'], ['Lose Yourself to Dance', 'Daft Punk, Pharrell Williams', 0, '5:53'], ['Starboy', 'The Weeknd, Daft Punk', 1, '3:50'], ['Digital Love', 'Daft Punk', 0, '4:58'], ['Something About Us', 'Daft Punk', 0, '3:51']];
+  const pal = ['#6d6d6d', '#3b3b6b', '#555', '#6b5b2f', '#2f2f2f', '#4a4a4a', '#8a2f2f', '#3b5b9b', '#5b3b6b'];
+  const songs = S.map((s, i) => ({ t: s[0], a: s[1], d: s[3], k: 'Song', sl: s[2] ? 'Saved to Liked Songs' : 'Save to Liked Songs', sd: s[2] ? 'M3 8.5l3 3 7-7' : 'M8 3v10M3 8h10',
+    row: 'height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 8px; border-radius: 8px; min-width: 0' + (i === 4 ? '; background: rgba(255,255,255,0.059)' : ''),
+    art: 'width: 48px; height: 48px; flex-shrink: 0; border-radius: 4px; background: ' + pal[i],
+    ts: 'font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis' + (i === 0 ? '; color: #a6d8ff' : ''),
+    save: 'width: 32px; height: 32px; flex-shrink: 0; border: 0; border-radius: 4px; background: transparent; display: flex; align-items: center; justify-content: center; color: ' + (s[2] ? '#60cdff' : 'rgba(255,255,255,0.773)') }));
+  const ar = [['Daft Punk', '#2f2f2f'], ['Thomas Bangalter', '#4a4a4a'], ['Justice', '#3b3b3b'], ['Pharrell Williams', '#6b5b2f'], ['Nile Rodgers', '#5b3b6b'], ['The Weeknd', '#8a2f2f'], ['Julian Casablancas', '#3b5b6b'], ['Kavinsky', '#3b3b6b'], ['Breakbot', '#6b3b4a'], ['Cassius', '#2f6b6b']];
+  const artists = ar.map(a => ({ t: a[0], s: 'Artist', art: 'display: block; width: 100%; aspect-ratio: 1 / 1; margin-bottom: 6px; border-radius: 50%; background: linear-gradient(160deg, ' + a[1] + ', #141414)' }));
+  const pl = [['This Is Daft Punk', 'Playlist · Spotify'], ['Daft Punk Radio', 'Playlist · Spotify'], ['French Touch', 'Playlist · Spotify'], ['Daft Punk Complete', 'Playlist · Marco'], ['Disco Revival', 'Playlist · Spotify'], ['Electronic Essentials', 'Playlist · Spotify'], ['Tron: Legacy and more', 'Playlist · Lina'], ['Robot Rock', 'Playlist · Sam'], ['Night Drive', 'Playlist · Spotify'], ['Funk Outta Here', 'Playlist · Spotify']];
+  const lp = ['#3b3b6b', '#6d6d6d', '#3b5b9b', '#2f2f2f', '#9b3b6b', '#2f6b6b', '#1d3a5a', '#6b5b2f', '#3b2f6b', '#9b7a3b'];
+  const lists = pl.map((p, i) => ({ t: p[0], s: p[1], art: 'display: block; width: 100%; aspect-ratio: 1 / 1; margin-bottom: 6px; border-radius: 8px; background: linear-gradient(160deg, ' + lp[i] + ', #1a1a1a)' }));
+  const gs = [['Dance/Electronic', '#3b6b9b'], ['French House', '#9b3b6b'], ['Disco', '#c0613e'], ['Funk', '#9b7a3b'], ['Synth-pop', '#6b4a8a'], ['Soundtracks', '#2f6b6b']];
+  const genres = gs.map(g => ({ l: g[0], s: 'position: relative; height: 56px; display: flex; align-items: flex-end; padding: 0 10px 10px 14px; box-sizing: border-box; overflow: hidden; border-radius: 8px; border: 1px solid rgba(0,0,0,0.098); background: radial-gradient(100% 120% at 100% 0%, ' + g[1] + '55, rgba(0,0,0,0) 70%), rgba(255,255,255,0.051)', stripe: 'position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: ' + g[1] }));
+  const related = ['daft punk get lucky', 'daft punk discovery', 'daft punk tron legacy', 'justice', 'french house'];
+  return { tabs, songs, artists, lists, genres, related };
+}
+}
+</script>
+</body>
+</html>

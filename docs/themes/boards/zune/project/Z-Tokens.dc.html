@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune theme tokens</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1100px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; padding: 40px 48px; display: flex; gap: 48px; overflow: hidden">
+  <div style="width: 400px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px">
+    <div style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px">colour</div>
+    <div style="font-size: 13px; color: #a8a8a8; margin-bottom: 6px">dark ground · the default</div>
+    <sc-for list="{{dark}}" as="c" hint-placeholder-count="10">
+      <div style="display: grid; grid-template-columns: 44px minmax(0, 1fr) 90px; align-items: center; gap: 12px; height: 34px">
+        <span style="{{c.swatch}}"></span>
+        <span style="font-size: 14px">{{c.name}}</span>
+        <span style="font-size: 12px; color: #7a7a7a; font-family: Consolas, monospace">{{c.hex}}</span>
+      </div>
+    </sc-for>
+    <div style="font-size: 13px; color: #a8a8a8; margin: 14px 0 6px 0">light ground · the variant</div>
+    <div style="background: #f5f5f5; color: #111111; padding: 10px 12px; display: flex; flex-direction: column">
+      <sc-for list="{{light}}" as="c" hint-placeholder-count="8">
+        <div style="display: grid; grid-template-columns: 44px minmax(0, 1fr) 90px; align-items: center; gap: 12px; height: 34px">
+          <span style="{{c.swatch}}"></span>
+          <span style="font-size: 14px">{{c.name}}</span>
+          <span style="font-size: 12px; color: #8a8a8a; font-family: Consolas, monospace">{{c.hex}}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="font-size: 13px; color: #a8a8a8; margin: 14px 0 6px 0">accent · a theme option, one of five</div>
+    <div style="display: flex; gap: 10px; align-items: center">
+      <span style="width: 44px; height: 44px; background: #ff3ca6"></span>
+      <span style="width: 44px; height: 44px; background: #ff7a1a"></span>
+      <span style="width: 44px; height: 44px; background: #60cdff"></span>
+      <span style="width: 44px; height: 44px; background: #8fd14f"></span>
+      <span style="width: 44px; height: 44px; background: #b983ff"></span>
+      <span style="font-size: 12px; color: #7a7a7a; margin-left: 8px">pink is the default · on light the accent darkens one step (pink #e0197f)</span>
+    </div>
+  </div>
+  <div style="width: 560px; flex-shrink: 0; display: flex; flex-direction: column; gap: 4px; min-width: 0">
+    <div style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px">type</div>
+    <div style="font-size: 13px; color: #a8a8a8; margin-bottom: 8px">segoe ui variable display for everything 20 and up, text below · lowercase for every label the theme writes, never for names and titles people typed</div>
+    <div style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 120px; font-weight: 200; line-height: 120px; white-space: nowrap; overflow: hidden; letter-spacing: -2px; color: #ffffff">panorama 120</div>
+    <div style="font-size: 12px; color: #7a7a7a; margin-top: -4px">panorama · 120 / 130 · 200 · page titles, bleed off the right edge, never wrap</div>
+    <div style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 300; line-height: 72px; letter-spacing: -1px; margin-top: 10px">hero 64</div>
+    <div style="font-size: 12px; color: #7a7a7a">hero · 64 / 72 · 300 · liked songs, playlist, profile names</div>
+    <div style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px; margin-top: 10px">title 40 · daylist, dialogs</div>
+    <div style="display: flex; align-items: baseline; gap: 24px; margin-top: 10px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; letter-spacing: -0.3px"><span style="font-weight: 600">pivot 28</span><span style="font-weight: 350; color: #7a7a7a">rest 350</span><span style="font-size: 26px; font-weight: 300; color: #ffffff">heading 26 / 32 · 300</span></div>
+    <div style="display: flex; align-items: baseline; gap: 24px; margin-top: 8px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif"><span style="font-size: 22px; font-weight: 300; line-height: 28px">group 22 · this week</span><span style="font-size: 22px; font-weight: 300; color: #7a7a7a">12</span><span style="font-size: 28px; font-weight: 300; color: #7a7a7a">7</span><span style="font-size: 12px; color: #7a7a7a; font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif">track numbers 22 (28 on artist) · 300 · tertiary</span></div>
+    <div style="display: flex; align-items: baseline; gap: 24px; margin-top: 10px"><span style="font-size: 14px; line-height: 20px; font-weight: 600">sub-pivot 14 / 20</span><span style="font-size: 14px; color: #a8a8a8">rest 400</span><span style="font-size: 15px; line-height: 20px">body 15 / 20 · row titles</span><span style="font-size: 13px; line-height: 18px; color: #a8a8a8">meta 13 / 18</span><span style="font-size: 11px; line-height: 14px; color: #7a7a7a">micro 11 / 14</span></div>
+    <div style="margin-top: 18px; height: 150px; overflow: hidden; position: relative">
+      <div style="position: absolute; left: 0; top: -14px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 150px; font-weight: 300; line-height: 150px; white-space: nowrap; color: #ffffff; opacity: 0.92">now playing 150</div>
+    </div>
+    <div style="font-size: 12px; color: #7a7a7a">full screen display · title 150 / 300 · artist name 300 / 300 cropped by the edge · type face rows 420 · 300 · 150</div>
+  </div>
+  <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+    <div style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px">rhythm</div>
+    <div style="font-size: 13px; color: #a8a8a8">spacing · dip</div>
+    <div style="display: flex; align-items: flex-end; gap: 10px">
+      <span style="width: 4px; height: 4px; background: #ff3ca6"></span><span style="width: 8px; height: 8px; background: #ff3ca6"></span><span style="width: 12px; height: 12px; background: #ff3ca6"></span><span style="width: 16px; height: 16px; background: #ff3ca6"></span><span style="width: 24px; height: 24px; background: #ff3ca6"></span><span style="width: 32px; height: 32px; background: #ff3ca6"></span><span style="width: 48px; height: 48px; background: #ff3ca6"></span>
+    </div>
+    <div style="font-size: 12px; color: #7a7a7a">4 · 8 · 12 · 16 · 24 · 32 · 48 — page gutter 48 (the band inset and every title share this x) · section gap 32 · pivot gap 24 · sub-pivot gap 20</div>
+    <div style="font-size: 13px; color: #a8a8a8; margin-top: 6px">heights</div>
+    <div style="font-size: 12px; color: #c8c8c8; line-height: 20px">title bar 48 · band 44 + 32 + 8 = 84 (52 without row 2) · row 52 (compact 44 · comfortable 60) · play bar 72 · panel 340 · dialog 548</div>
+    <div style="font-size: 13px; color: #a8a8a8; margin-top: 10px">radii</div>
+    <div style="display: flex; gap: 14px; align-items: center">
+      <span style="width: 40px; height: 40px; background: #2a2a2a"></span>
+      <span style="width: 40px; height: 40px; background: #3b4a6b; border-radius: 2px"></span>
+      <span style="width: 40px; height: 40px; background: #2a2a2a; border-radius: 4px; box-sizing: border-box; border: 2px solid #60cdff"></span>
+      <span style="width: 40px; height: 40px; border-radius: 20px; box-sizing: border-box; border: 2px solid #ffffff"></span>
+    </div>
+    <div style="font-size: 12px; color: #7a7a7a">0 for every rectangle (tiles, plates, menus, dialogs, inputs) · 2 for covers · 4 only for the focus ring · full for the round metro buttons</div>
+    <div style="font-size: 13px; color: #a8a8a8; margin-top: 10px">shapes</div>
+    <div style="display: flex; gap: 22px; align-items: center; font-size: 14px">
+      <span style="display: flex; align-items: center; gap: 10px"><span style="width: 36px; height: 36px; border-radius: 18px; background: #ff3ca6; color: #000; display: flex; align-items: center; justify-content: center; font-size: 13px">▶</span>play</span>
+      <span style="display: flex; align-items: center; gap: 10px"><span style="width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #ffffff; display: flex; align-items: center; justify-content: center; font-size: 13px">♡</span>save</span>
+      <span style="display: flex; align-items: center; gap: 10px"><span style="width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #7a7a7a; color: #7a7a7a; display: flex; align-items: center; justify-content: center; font-size: 13px">⋯</span><span style="color: #7a7a7a">disabled</span></span>
+    </div>
+    <div style="font-size: 12px; color: #7a7a7a">round metro button 36 · 2 dip stroke · one filled accent per page (play) · label beside it, lowercase</div>
+    <div style="display: flex; gap: 14px; align-items: center; margin-top: 6px; font-size: 14px">
+      <span style="height: 32px; padding: 0 12px; display: flex; align-items: center; background: #ff3ca6; color: #000">all</span>
+      <span style="height: 32px; padding: 0 12px; display: flex; align-items: center; background: rgba(255,255,255,0.06)">pop</span>
+      <span style="display: flex; align-items: center; gap: 8px"><span style="width: 40px; height: 20px; background: #ff3ca6; position: relative; display: block"><span style="position: absolute; right: 2px; top: 2px; width: 16px; height: 16px; background: #000; display: block"></span></span>on</span>
+      <span style="display: flex; align-items: center; gap: 8px"><span style="width: 40px; height: 20px; background: rgba(255,255,255,0.14); position: relative; display: block"><span style="position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; background: #fff; display: block"></span></span>off</span>
+      <label style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.18); color: #7a7a7a; width: 180px; box-sizing: border-box"><span aria-hidden="true">⌕</span><input type="search" placeholder="search" style="border: 0; background: transparent; color: #fff; font: inherit; width: 100%; outline: none; font-size: 13px"></label>
+    </div>
+    <div style="font-size: 12px; color: #7a7a7a">chips are flat rectangles (selected = accent fill, black ink) · switch is a 40 × 20 rectangle · the search pill is the one rounded field</div>
+    <div style="font-size: 13px; color: #a8a8a8; margin-top: 10px">row states</div>
+    <div style="display: flex; flex-direction: column; font-size: 14px">
+      <div style="height: 36px; display: flex; align-items: center; gap: 16px; padding: 0 8px"><span style="width: 24px; color: #7a7a7a; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; font-weight: 300">1</span><span>rest</span></div>
+      <div style="height: 36px; display: flex; align-items: center; gap: 16px; padding: 0 8px; background: rgba(255,255,255,0.05)"><span style="width: 24px; color: #7a7a7a; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; font-weight: 300">2</span><span>hover · 5% white wash, ⋯ appears</span></div>
+      <div style="height: 36px; display: flex; align-items: center; gap: 16px; padding: 0 8px; background: rgba(255,60,166,0.12)"><span style="width: 24px; color: #7a7a7a; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; font-weight: 300">3</span><span>selected · 12% accent wash</span></div>
+      <div style="height: 36px; display: flex; align-items: center; gap: 16px; padding: 0 8px"><span style="width: 24px; color: #ff3ca6; font-size: 10px; letter-spacing: 1px">▮▮▮</span><span style="color: #ff3ca6">playing · accent ink, no plate</span></div>
+      <div style="height: 36px; display: flex; align-items: center; gap: 16px; padding: 0 8px; opacity: 0.45"><span style="width: 24px; color: #7a7a7a; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; font-weight: 300">5</span><span>unavailable · 45% ink, "unavailable" in the time column</span></div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+renderVals() {
+  const sw = (hex, border) => 'width: 44px; height: 28px; background: ' + hex + (border ? '; box-sizing: border-box; border: 1px solid rgba(255,255,255,0.18)' : '');
+  const dark = [
+    ['ground', '#161616', true], ['well · play bar, dialogs', '#111111', true], ['panel · inline right panel', '#1b1b1b', true], ['raised · menus, tiles, flyouts', '#242424'],
+    ['hover wash', 'rgba(255,255,255,0.05)'], ['selected wash', 'rgba(255,60,166,0.12)'], ['ink', '#ffffff'], ['ink secondary', '#a8a8a8'], ['ink tertiary · numbers, rest pivots', '#7a7a7a'], ['hairline · one per surface at most', 'rgba(255,255,255,0.08)'],
+  ].map((d) => ({ name: d[0], hex: d[1], swatch: sw(d[1], d[2]) }));
+  const light = [
+    ['ground', '#f5f5f5'], ['well', '#ebebeb'], ['panel', '#ffffff'], ['raised', '#ffffff'], ['ink', '#111111'], ['ink secondary', '#5a5a5a'], ['ink tertiary', '#8a8a8a'], ['hairline', 'rgba(0,0,0,0.10)'],
+  ].map((d) => ({ name: d[0], hex: d[1], swatch: 'width: 44px; height: 28px; background: ' + d[1] + '; box-sizing: border-box; border: 1px solid rgba(0,0,0,0.12)' }));
+  return { dark, light };
+}
+}
+</script>
+</body>
+</html>

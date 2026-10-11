@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune part: right panel</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<aside aria-label="now playing panel" style="{{root}}">
+  <sc-for list="{{cols}}" as="c" hint-placeholder-count="1">
+    <div style="{{c.colStyle}}">
+      <div style="{{c.headStyle}}">
+        <sc-for list="{{c.pivots}}" as="p" hint-placeholder-count="3"><a href="#" style="{{p.style}}">{{p.name}}</a></sc-for>
+      </div>
+      <sc-if value="{{c.closable}}" hint-placeholder-val="{{ true }}"><button aria-label="close panel" style="position: absolute; right: 8px; top: 8px; width: 40px; height: 40px; border: 0; background: #1b1b1b; color: #a8a8a8; font: inherit; font-size: 14px; padding: 0">✕</button></sc-if>
+      <sc-if value="{{c.isQueue}}" hint-placeholder-val="{{ true }}">
+        <div style="display: flex; gap: 16px; font-size: 13px; color: #a8a8a8; height: 28px; align-items: center"><span style="{{c.accentInk}}">shuffle</span><span>repeat</span><span>autoplay</span></div>
+        <div style="font-size: 13px; color: #7a7a7a; height: 28px; display: flex; align-items: flex-end">playing from late night drive</div>
+        <div style="display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; height: 72px">
+          <span style="width: 56px; height: 56px; border-radius: 2px; background: #6b2f4a"></span>
+          <span style="display: flex; flex-direction: column; min-width: 0; gap: 2px"><span style="{{c.nowTitle}}">Nightcall</span><span style="{{c.nowSub}}">Kavinsky</span></span>
+        </div>
+        <div style="font-size: 13px; color: #7a7a7a; height: 32px; display: flex; align-items: flex-end; padding-bottom: 4px; gap: 12px">next in queue <a href="#" style="font-size: 12px; color: #a8a8a8; text-decoration: none">clear</a></div>
+        <sc-for list="{{c.queue}}" as="r" hint-placeholder-count="2"><div style="{{c.rowStyle}}"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.title}}</span><span style="font-size: 13px; color: #9c9c9c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.artist}}</span></span><button aria-label="more" style="width: 40px; height: 40px; border: 0; background: transparent; color: #a8a8a8; font-size: 16px; padding: 0">⋯</button></div></sc-for>
+        <div style="font-size: 13px; color: #7a7a7a; height: 32px; display: flex; align-items: flex-end; padding-bottom: 4px">next up from late night drive</div>
+        <sc-for list="{{c.next}}" as="r" hint-placeholder-count="4"><div style="{{c.rowStyle}}"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.title}}</span><span style="font-size: 13px; color: #9c9c9c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.artist}}</span></span><span></span></div></sc-for>
+      </sc-if>
+      <sc-if value="{{c.isLyrics}}" hint-placeholder-val="{{ false }}">
+        <div style="font-size: 12px; color: #7a7a7a; height: 28px; display: flex; align-items: center; gap: 16px">synced · musixmatch <a href="#" style="color: #a8a8a8; text-decoration: none">translate</a><a href="#" style="color: #a8a8a8; text-decoration: none">full screen</a></div>
+        <div style="display: flex; flex-direction: column; gap: 10px; padding-top: 18px">
+          <sc-for list="{{c.lyrics}}" as="l" hint-placeholder-count="8"><span style="{{l.style}}">{{l.text}}</span></sc-for>
+        </div>
+      </sc-if>
+      <sc-if value="{{c.isFriends}}" hint-placeholder-val="{{ false }}">
+        <div style="font-size: 12px; color: #7a7a7a; height: 28px; display: flex; align-items: center; gap: 16px">what your friends play · <a href="#" style="color: #a8a8a8; text-decoration: none">find friends</a></div>
+        <sc-for list="{{c.friends}}" as="f" hint-placeholder-count="5">
+          <a href="#" style="display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; min-height: 64px; color: #ffffff; text-decoration: none">
+            <span style="{{f.avatar}}"></span>
+            <span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="font-size: 15px; line-height: 20px">{{f.name}}</span><span style="{{f.trackStyle}}">{{f.track}}</span><span style="font-size: 12px; color: #7a7a7a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{f.context}}</span></span>
+            <span style="{{f.whenStyle}}">{{f.when}}</span>
+          </a>
+        </sc-for>
+      </sc-if>
+    </div>
+  </sc-for>
+</aside>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"tier":{"editor":"enum","default":"inline","options":["sheet","overlay","inline","docked2","docked3"]},"pivot":{"editor":"enum","default":"queue","options":["queue","lyrics","friends"]},"h":{"editor":null},"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":340,"height":800}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const tier = this.props.tier ?? 'inline';
+  const pivot = this.props.pivot ?? 'queue';
+  const h = Number(this.props.h ?? 800);
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const sheet = tier === 'sheet';
+  const art = (c) => 'width: 36px; height: 36px; border-radius: 2px; background: ' + c;
+  const queue = [['Get Lucky', 'Daft Punk', '#3a2f22'], ['Instant Crush', 'Daft Punk, Julian Casablancas', '#3a2f22']].map((d) => ({ title: d[0], artist: d[1], art: art(d[2]) }));
+  const next = [['Resonance', 'HOME', '#2f5b6b'], ['Tech Noir', 'Gunship', '#5b3b6b'], ['Sunset', 'The Midnight', '#6b4a2f'], ['Turbo Killer', 'Carpenter Brut', '#6b2f2f'], ['A Real Hero', 'College, Electric Youth', '#4a6b2f']].map((d) => ({ title: d[0], artist: d[1], art: art(d[2]) }));
+  const lyrics = [['[THE LINE TWO BACK]', 0.18], ['[THE LINE JUST SUNG]', 0.3], ['[THE LINE BEING SUNG NOW]', 1], ['[THE NEXT LINE]', 0.6], ['[THE LINE AFTER THAT]', 0.36], ['[TWO LINES AHEAD]', 0.22], ['[THREE LINES AHEAD]', 0.14]].map((d) => ({ text: d[0], style: 'font-family: ' + D + '; font-size: ' + (sheet ? 26 : 22) + 'px; line-height: ' + (sheet ? 32 : 28) + 'px; font-weight: 300; color: ' + (d[1] === 1 ? accent : '#ffffff') + '; opacity: ' + d[1] }));
+  const friends = [['jeroen', 'Get Lucky · Daft Punk', 'Random Access Memories', 'now', '#3b5b4a', true], ['anna', 'Supernova · aespa', 'Armageddon', '3 min', '#5b3b6b', false], ['sofia', 'Sunset · The Midnight', 'late night drive · your playlist', '12 min', '#6b4a2f', false], ['mark', 'Blinding Lights · The Weeknd', 'After Hours', '1 hr', '#2f4a6b', false], ['lena', 'Resonance · HOME', 'Chill Mix', '3 hr', '#4a2f3b', false]].map((d) => ({
+    name: d[0], track: d[1], context: d[2], when: d[5] ? '▮▮▮' : d[3],
+    avatar: 'width: 40px; height: 40px; border-radius: 20px; background: ' + d[4] + '; display: block',
+    trackStyle: 'font-size: 13px; color: ' + (d[5] ? accent : '#c8c8c8') + '; white-space: nowrap; overflow: hidden; text-overflow: ellipsis',
+    whenStyle: 'font-size: ' + (d[5] ? 10 : 12) + 'px; letter-spacing: ' + (d[5] ? '1px' : '0') + '; color: ' + (d[5] ? accent : '#7a7a7a') + '; padding-left: 8px',
+  }));
+  const piv = (names, sel) => names.map((n) => ({ name: n, style: 'flex-shrink: 0; text-decoration: none; color: ' + (n === sel ? '#ffffff' : '#6f6f6f') }));
+  const col = (kind, names, sel, closable, w) => ({
+    pivots: piv(names, sel), closable, queue, next, lyrics, friends,
+    isQueue: kind === 'queue', isLyrics: kind === 'lyrics', isFriends: kind === 'friends',
+    colStyle: 'position: relative; ' + (w ? 'width: ' + w + 'px; flex-shrink: 0' : 'flex-grow: 1; min-width: 0') + '; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; padding: ' + (sheet ? '8px 16px 16px 16px' : '12px 20px 16px 24px') + '; overflow: hidden',
+    headStyle: 'display: flex; align-items: center; gap: 18px; height: ' + (sheet ? 56 : 44) + 'px; flex-shrink: 0; font-family: ' + D + '; font-size: ' + (sheet ? 40 : 26) + 'px; font-weight: 300; line-height: ' + (sheet ? 48 : 32) + 'px; white-space: nowrap; overflow: hidden; margin-bottom: 6px; padding-right: ' + (closable ? 48 : 0) + 'px; -webkit-mask-image: linear-gradient(90deg, #000 80%, transparent); mask-image: linear-gradient(90deg, #000 80%, transparent)',
+    accentInk: 'color: ' + accent,
+    nowTitle: 'font-size: 17px; color: ' + accent,
+    nowSub: 'font-size: 13px; color: ' + accent + '; opacity: 0.8',
+    rowStyle: 'display: grid; grid-template-columns: 48px minmax(0, 1fr) 40px; align-items: center; height: ' + (sheet ? 56 : 52) + 'px',
+  });
+  const all = ['queue', 'lyrics', 'friends'];
+  let cols, w, bg = '#1b1b1b', shadow = '';
+  if (tier === 'docked3') { w = 1080; cols = [col('queue', ['queue'], 'queue', false, 360), col('lyrics', ['lyrics'], 'lyrics', false, 360), col('friends', ['friends'], 'friends', false, 360)]; }
+  else if (tier === 'docked2') { w = 720; const right = pivot === 'queue' ? 'lyrics' : pivot; cols = [col('queue', ['queue'], 'queue', false, 360), col(right, ['lyrics', 'friends'], right, false, 360)]; }
+  else { w = sheet ? 0 : 340; const order = all.slice(all.indexOf(pivot)).concat(all.slice(0, all.indexOf(pivot))); cols = [col(pivot, sheet ? order : all, pivot, tier !== 'inline', 0)]; if (tier === 'overlay') shadow = '; box-shadow: -12px 0 32px rgba(0,0,0,0.45)'; }
+  return {
+    cols,
+    root: (w ? 'width: ' + w + 'px; ' : 'width: 100%; ') + 'height: ' + h + 'px; box-sizing: border-box; flex-shrink: 0; display: flex; background: ' + bg + shadow + '; color: #ffffff; font-family: \'Segoe UI Variable Text\', \'Segoe UI\', system-ui, sans-serif; overflow: hidden',
+  };
+}
+}
+</script>
+</body>
+</html>

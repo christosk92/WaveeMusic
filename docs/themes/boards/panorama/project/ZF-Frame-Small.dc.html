@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Frame: small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 800px; height: 600px; overflow: hidden; background: #202020">
+  <dc-import name="ZF-Home-Small" theme="{{theme}}" accent="{{accent}}" panel="{{panel}}" lower="{{lower}}" hint-size="800px,600px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"panel":{"editor":"enum","options":["lyrics","queue","details"],"default":"lyrics"},"lower":{"editor":"boolean","default":false},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  return { theme: this.props.theme ?? 'dark', accent: this.props.accent ?? 'windows', panel: this.props.panel ?? 'lyrics', lower: !!(this.props.lower ?? false) };
+}
+}
+</script>
+</body>
+</html>

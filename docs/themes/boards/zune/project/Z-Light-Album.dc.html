@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune light: album</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#5a5a5a;text-decoration:none}a:hover{color:#111111}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1000px; box-sizing: border-box; background: #f5f5f5; color: #111111; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <div style="position: absolute; left: 0; top: 0; right: 0; height: 520px; background: linear-gradient(180deg, #e6dccf 0%, #eee8e0 45%, #f5f5f5 100%)"></div>
+  <div style="position: relative; height: 48px; flex-shrink: 0; display: flex; align-items: center; padding: 0 0 0 48px; gap: 12px">
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 350; letter-spacing: -0.2px; color: #5a5a5a">wavee</span>
+    <button aria-label="back" style="width: 32px; height: 32px; border: 0; background: transparent; color: #111111; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10 3 5 8l5 5"/></svg></button>
+    <span style="font-size: 13px; color: #8a8a8a">daft punk › <span style="color: #5a5a5a">random access memories</span></span>
+    <span style="flex-grow: 1"></span>
+    <label style="display: flex; align-items: center; gap: 8px; width: 220px; height: 32px; box-sizing: border-box; padding: 0 10px 0 12px; border-radius: 16px; border: 1px solid rgba(0,0,0,0.18); color: #8a8a8a"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><input type="search" placeholder="search" style="border: 0; background: transparent; color: #111111; font: inherit; font-size: 13px; width: 100%; outline: none; min-width: 0"><span style="font-size: 10px; color: #8a8a8a; border: 1px solid rgba(0,0,0,0.14); padding: 1px 4px; white-space: nowrap">ctrl f</span></label>
+    <button style="display: flex; align-items: center; gap: 8px; height: 32px; border: 0; background: transparent; color: #111111; font: inherit; font-size: 13px; padding: 0 8px; margin-left: 8px"><span style="width: 24px; height: 24px; border-radius: 12px; background: #5b6b3b; display: block"></span>christos</button>
+    <button aria-label="notifications" style="width: 32px; height: 32px; border: 0; background: transparent; color: #5a5a5a; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 11V7a4 4 0 0 1 8 0v4l1 1H3z"/><path d="M6.5 13.5a1.5 1.5 0 0 0 3 0"/></svg></button>
+    <span style="display: flex; color: #5a5a5a; font-size: 12px; margin-left: 8px"><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">─</span><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">☐</span><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">✕</span></span>
+  </div>
+  <div style="position: relative; height: 84px; flex-shrink: 0; display: flex; flex-direction: column; padding: 0 16px 0 48px">
+    <div style="height: 44px; box-sizing: border-box; padding: 4px 0; display: flex; align-items: center; gap: 24px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; letter-spacing: -0.3px">
+      <a href="#" style="color: #8a8a8a; font-weight: 350">home</a><a href="#" style="color: #8a8a8a; font-weight: 350">browse</a><a href="#" style="color: #8a8a8a; font-weight: 350">library</a><a href="#" style="color: #8a8a8a; font-weight: 350">recents</a>
+      <span style="flex-grow: 1"></span>
+      <span style="display: flex; align-items: flex-start; gap: 8px; font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif"><span style="font-size: 11px; line-height: 32px; color: #8a8a8a; margin-right: 4px">pinned</span>
+        <sc-for list="{{pins}}" as="p" hint-placeholder-count="6"><span style="display: flex; flex-direction: column; align-items: center; gap: 2px"><span style="{{p.tile}}"></span><span style="{{p.dot}}"></span></span></sc-for>
+      </span>
+    </div>
+    <div style="height: 32px; display: flex; align-items: center; gap: 20px; font-size: 14px; line-height: 20px; padding-right: 32px">
+      <span style="color: #111111; font-weight: 600">random access memories</span><span style="width: 1px; height: 16px; background: rgba(0,0,0,0.14)"></span>
+      <a href="#" style="{{tabOn}}">songs</a><a href="#" style="height: 32px; display: flex; align-items: center">more by daft punk</a><a href="#" style="height: 32px; display: flex; align-items: center">credits</a><a href="#" style="height: 32px; display: flex; align-items: center">fans also like</a>
+      <span style="flex-grow: 1"></span>
+      <span style="display: flex; gap: 14px; align-items: center"><button aria-label="play" style="{{miniPlay}}">▶</button><button aria-label="shuffle" style="{{miniRing}}">⇄</button><button style="height: 28px; padding: 0 12px; box-sizing: border-box; border-radius: 14px; border: 2px solid {{accent}}; background: transparent; color: {{accent}}; font: inherit; font-size: 13px">saved</button></span>
+    </div>
+  </div>
+  <div style="position: relative; flex-grow: 1; min-height: 0; overflow: hidden">
+    <div style="position: absolute; left: 40px; top: -6px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 120px; font-weight: 200; line-height: 130px; letter-spacing: -2px; white-space: nowrap; color: #111111; opacity: 0.92">random access memories</div>
+    <div style="position: absolute; left: 48px; top: 140px; right: 48px; bottom: 0; display: flex; gap: 48px">
+      <div style="width: 240px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px">
+        <span style="width: 240px; height: 240px; border-radius: 2px; background: #3a2f22; display: block; box-shadow: 0 0 0 1px rgba(0,0,0,0.06)"></span>
+        <a href="#" style="font-size: 18px; color: #111111">Daft Punk</a>
+        <span style="font-size: 13px; color: #5a5a5a">album · may 17, 2013 · 13 songs · 74 min</span>
+        <div style="display: flex; gap: 18px; padding-top: 4px; font-size: 14px">
+          <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #111111; font: inherit; padding: 0"><span style="{{playRing}}">▶</span>play</button>
+          <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #111111; font: inherit; padding: 0"><span style="{{ringOn}}">♥</span>saved</button>
+          <button aria-label="share" style="display: flex; align-items: center; border: 0; background: transparent; color: #111111; font: inherit; padding: 0"><span style="{{ring}}">↗</span></button>
+        </div>
+        <span style="font-size: 12px; line-height: 18px; color: #8a8a8a; margin-top: 12px">℗ 2013 Daft Life Limited under exclusive license to Columbia Records, a division of Sony Music Entertainment</span>
+      </div>
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+        <div style="height: 40px; display: flex; align-items: center; gap: 16px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300">songs</span><span style="flex-grow: 1"></span><span style="font-size: 12px; color: #8a8a8a; width: 80px; text-align: right">plays</span><span style="font-size: 12px; color: #8a8a8a; width: 56px; text-align: right">time</span></div>
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="13">
+          <div style="{{r.rowStyle}}">
+            <span style="{{r.numStyle}}">{{r.num}}</span>
+            <span style="display: flex; align-items: baseline; gap: 8px; min-width: 0"><span style="{{r.titleStyle}}">{{r.title}}</span><span style="{{r.featStyle}}">{{r.feat}}</span></span>
+            <span style="font-size: 13px; color: #8a8a8a; text-align: right; font-variant-numeric: tabular-nums">{{r.plays}}</span>
+            <span style="{{r.timeStyle}}">{{r.time}}</span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="width: 260px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px">
+        <div style="height: 40px; display: flex; align-items: center; gap: 14px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300">more by</span><a href="#" style="font-size: 13px">discography</a></div>
+        <sc-for list="{{more}}" as="m" hint-placeholder-count="4">
+          <a href="#" style="display: flex; gap: 12px; align-items: center"><span style="{{m.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; color: #111111">{{m.n}}</span><span style="font-size: 12px; color: #5a5a5a">{{m.sub}}</span></span></a>
+        </sc-for>
+        <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; margin-top: 14px">credits</span>
+        <span style="font-size: 13px; line-height: 20px; color: #5a5a5a">written and produced by <a href="#" style="color: #111111">Thomas Bangalter</a> and <a href="#" style="color: #111111">Guy-Manuel de Homem-Christo</a> · with <a href="#" style="color: #111111">Nile Rodgers</a>, <a href="#" style="color: #111111">Pharrell Williams</a>, <a href="#" style="color: #111111">Giorgio Moroder</a> · <a href="#">all credits</a></span>
+      </div>
+    </div>
+  </div>
+  <div style="position: relative; height: 72px; flex-shrink: 0; background: #ebebeb; display: flex; align-items: center; padding: 0 12px 0 24px; gap: 24px">
+    <div style="position: absolute; left: 0; top: 0; right: 0; height: 2px; background: rgba(0,0,0,0.12)"><div style="{{progress}}"></div></div>
+    <div style="display: flex; align-items: center; gap: 12px; width: 320px; flex-shrink: 0"><span style="width: 48px; height: 48px; border-radius: 2px; background: #3a2f22; flex-shrink: 0"></span><span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="font-size: 15px; line-height: 20px">Get Lucky</span><span style="font-size: 13px; line-height: 18px; color: #5a5a5a">Daft Punk · Random Access Memories</span></span><button aria-label="save to liked songs" style="width: 32px; height: 32px; border: 0; background: transparent; color: #111111; font-size: 16px; padding: 0">♡</button></div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; gap: 2px"><div style="display: flex; align-items: center; gap: 16px"><button aria-label="previous" style="width: 32px; height: 32px; border: 0; background: transparent; color: #111111; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 3h2v10H3zM13 3 6 8l7 5z"/></svg></button><button aria-label="pause" style="{{playDisc}}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg></button><button aria-label="next" style="width: 32px; height: 32px; border: 0; background: transparent; color: #111111; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M11 3h2v10h-2zM3 3l7 5-7 5z"/></svg></button></div><span style="font-size: 12px; color: #5a5a5a; font-variant-numeric: tabular-nums">2:30 · -3:39</span></div>
+    <div style="display: flex; align-items: center; gap: 2px; width: 440px; flex-shrink: 0; justify-content: flex-end; font-size: 13px"><button aria-label="shuffle" style="width: 32px; height: 32px; border: 0; background: transparent; color: #5a5a5a; font-size: 16px; padding: 0">⇄</button><button aria-label="repeat" style="width: 32px; height: 32px; border: 0; background: transparent; color: #5a5a5a; font-size: 16px; padding: 0">↻</button><button aria-label="mute" style="width: 32px; height: 32px; border: 0; background: transparent; color: #111111; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 6h3l4-3v10l-4-3H2z"/><path d="M11.5 5.5a3.5 3.5 0 0 1 0 5"/></svg></button><span style="width: 96px; height: 2px; background: rgba(0,0,0,0.18); margin: 0 10px 0 2px; display: block"><span style="display: block; width: 70%; height: 2px; background: #111111"></span></span><button style="height: 32px; border: 0; background: transparent; color: #5a5a5a; font: inherit; font-size: 13px; padding: 0 8px">lyrics</button><button style="height: 32px; border: 0; background: transparent; color: #5a5a5a; font: inherit; font-size: 13px; padding: 0 8px">queue</button><button style="height: 32px; border: 0; background: transparent; color: #5a5a5a; font: inherit; font-size: 13px; padding: 0 8px">devices</button><button aria-label="full screen" style="width: 32px; height: 32px; border: 0; background: transparent; color: #5a5a5a; font-size: 16px; padding: 0">⤢</button><button aria-label="more" style="width: 32px; height: 32px; border: 0; background: transparent; color: #5a5a5a; font-size: 16px; padding: 0">⋯</button></div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#e0197f","options":["#e0197f","#d65a00","#0a7fb5","#4f8f1a","#8a4fd6"]},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#e0197f';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const pins = ['#3b4a6b', '#6b2f4a', '#2f5b6b', '#5b3b6b', '#6b4a2f', '#4a6b2f'].map((c, i) => ({ tile: 'width: 32px; height: 32px; border-radius: 4px; background: ' + c + '; display: block', dot: 'width: 4px; height: 4px; border-radius: 2px; display: block; background: ' + (i === 1 ? accent : 'transparent') }));
+  const data = [['Give Life Back to Music', '', '412M', '4:34'], ['The Game of Love', '', '186M', '5:21'], ['Giorgio by Moroder', '', '298M', '9:04'], ['Within', '', '121M', '3:48'], ['Instant Crush', 'Julian Casablancas', '1.1B', '5:37'], ['Lose Yourself to Dance', 'Pharrell Williams', '640M', '5:53'], ['Touch', 'Paul Williams', '98M', '8:18'], ['Get Lucky', 'Pharrell Williams, Nile Rodgers', '2.1B', '6:09'], ['Beyond', '', '87M', '4:50'], ['Motherboard', '', '79M', '5:41'], ['Fragments of Time', 'Todd Edwards', '64M', '4:39'], ['Doin’ it Right', 'Panda Bear', '412M', '4:11'], ['Contact', '', '96M', '6:21']];
+  const rows = data.map((d, i) => {
+    const play = i === 7, hover = i === 4;
+    return {
+      num: play ? '▮▮▮' : String(i + 1), title: d[0], feat: d[1], plays: d[2], time: hover ? '♡   ⋯' : d[3],
+      rowStyle: 'display: grid; grid-template-columns: 56px minmax(0, 1fr) 80px 56px; align-items: center; height: 42px; flex-shrink: 0; ' + (hover ? 'background: rgba(0,0,0,0.05)' : ''),
+      numStyle: 'font-family: ' + D + '; font-weight: 300; font-size: ' + (play ? 11 : 22) + 'px; letter-spacing: ' + (play ? '1px' : '0') + '; padding-left: 4px; font-variant-numeric: tabular-nums; color: ' + (play ? accent : '#8a8a8a'),
+      titleStyle: 'font-size: 15px; white-space: nowrap; color: ' + (play ? accent : '#111111'),
+      featStyle: 'font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (play ? accent : '#8a8a8a'),
+      timeStyle: 'font-size: 13px; text-align: right; padding-right: 4px; white-space: pre; font-variant-numeric: tabular-nums; color: ' + (play ? accent : (hover ? '#111111' : '#5a5a5a')),
+    };
+  });
+  const more = [['Discovery', 'album · 2001', '#2f3a5a'], ['Homework', 'album · 1997', '#2a2a2a'], ['Human After All', 'album · 2005', '#5a2a2a'], ['Alive 2007', 'live · 2007', '#3a3a5a']].map((d) => ({ n: d[0], sub: d[1], art: 'width: 56px; height: 56px; border-radius: 2px; display: block; flex-shrink: 0; background: ' + d[2] }));
+  return {
+    accent, pins, rows, more,
+    tabOn: 'height: 32px; display: flex; align-items: center; color: #111111; box-shadow: inset 0 -2px 0 ' + accent,
+    miniPlay: 'width: 28px; height: 28px; border-radius: 14px; border: 0; background: ' + accent + '; color: #ffffff; font-size: 11px; display: flex; align-items: center; justify-content: center; padding: 0',
+    miniRing: 'width: 28px; height: 28px; box-sizing: border-box; border-radius: 14px; border: 2px solid #111111; background: transparent; color: #111111; font-size: 12px; display: flex; align-items: center; justify-content: center; padding: 0',
+    playRing: 'width: 36px; height: 36px; border-radius: 18px; background: ' + accent + '; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 13px',
+    ring: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #111111; display: flex; align-items: center; justify-content: center; font-size: 13px',
+    ringOn: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid ' + accent + '; color: ' + accent + '; display: flex; align-items: center; justify-content: center; font-size: 13px',
+    progress: 'width: 41%; height: 2px; background: ' + accent,
+    playDisc: 'width: 40px; height: 40px; border-radius: 20px; border: 0; background: ' + accent + '; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0',
+  };
+}
+}
+</script>
+</body>
+</html>

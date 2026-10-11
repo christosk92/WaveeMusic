@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Play bar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="{{vars}} width: {{w}}px; height: {{h}}px; box-sizing: border-box; display: flex; flex-direction: column; background: var(--mica); color: var(--t1); border-top: 1px solid var(--div); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; overflow: hidden">
+  <sc-if value="{{isMini}}" hint-placeholder-val="{{ false }}">
+    <div role="progressbar" aria-label="Playback position" aria-valuenow="{{c.pct}}" style="position: relative; height: 3px; flex-shrink: 0"><span style="position: absolute; left: 0; right: 0; top: 1px; height: 1px; background: var(--strong)"></span><span style="{{s.miniFill}}"></span></div>
+    <div style="flex-grow: 1; display: flex; align-items: center; gap: 4px; padding: 0 8px 0 12px; min-width: 0">
+      <a href="#" aria-label="Open now playing" style="flex-grow: 1; min-width: 0; height: 52px; display: flex; align-items: center; gap: 12px; border-radius: 4px; color: var(--t1); text-decoration: none">
+        <span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 4px; background: {{c.art}}"></span>
+        <span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.title}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.sub}}</span></span>
+      </a>
+      <button aria-label="Saved to Liked Songs" style="width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="{{heartFill}}" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+      <button aria-label="Pause" style="width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 20px; background: var(--acc); color: var(--onacc)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3v10M10.5 3v10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg></button>
+      <button aria-label="Next" style="width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 3v10M3 3.5v9L10.5 8z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+    </div>
+  </sc-if>
+  <sc-if value="{{full}}" hint-placeholder-val="{{ true }}">
+  <div style="height: 20px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 16px">
+    <span style="width: 44px; font-size: 12px; line-height: 16px; color: var(--t2); font-variant-numeric: tabular-nums">{{c.elapsed}}</span>
+    <div style="position: relative; flex-grow: 1; height: 18px; display: flex; align-items: center">
+      <div style="width: 100%; height: 4px; border-radius: 2px; background: var(--strong)"></div>
+      <div style="{{s.fill}}"></div>
+      <sc-for list="{{ticks}}" as="k" hint-placeholder-count="0"><span style="{{k.style}}"></span></sc-for>
+      <sc-if value="{{showThumb}}" hint-placeholder-val="{{ true }}"><div style="{{s.thumb}}"><span style="width: 12px; height: 12px; border-radius: 6px; background: var(--acc)"></span></div></sc-if>
+    </div>
+    <span style="width: 44px; text-align: right; font-size: 12px; line-height: 16px; color: var(--t2); font-variant-numeric: tabular-nums">{{c.total}}</span>
+  </div>
+  <div style="height: 63px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 16px; padding: 0 12px 0 16px">
+    <div style="display: flex; align-items: center; gap: 12px; min-width: 0">
+      <span style="{{s.art}}"><sc-if value="{{isVideo}}" hint-placeholder-val="{{ false }}"><span style="position: absolute; right: 2px; bottom: 2px; width: 16px; height: 16px; border-radius: 4px; background: rgba(0,0,0,0.6); color: #ffffff; display: flex; align-items: center; justify-content: center"><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12v10H2zM2 6h12M2 10h12M5 3v10M11 3v10" fill="none" stroke="currentColor" stroke-width="1.2"></path></svg></span></sc-if></span>
+      <span style="display: flex; flex-direction: column; min-width: 0">
+        <sc-if value="{{isRemote}}" hint-placeholder-val="{{ false }}"><span style="display: flex; align-items: center; gap: 4px; font-size: 12px; line-height: 16px; color: var(--acct)"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.5h8v13H4zM8 4.5a1 1 0 1 1 0 2 1 1 0 0 1 0-2zM8 8.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4z" fill="none" stroke="currentColor" stroke-width="1.2"></path></svg>Playing on Living room</span></sc-if>
+        <span style="font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.title}}</span>
+        <span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.sub}}</span>
+      </span>
+      <button aria-label="Saved to Liked Songs" style="width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="{{heartFill}}" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+      <sc-if value="{{huge}}" hint-placeholder-val="{{ false }}"><span style="width: 1px; height: 32px; flex-shrink: 0; margin: 0 8px; background: var(--div)"></span><a href="#" style="display: flex; align-items: center; gap: 10px; min-width: 0; height: 48px; padding: 0 8px; border-radius: 4px; color: var(--t1); text-decoration: none"><span style="width: 32px; height: 32px; flex-shrink: 0; border-radius: 4px; background: #3a2f22"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Up next</span><span style="font-size: 12px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Get Lucky · Daft Punk, Pharrell Williams</span></span></a></sc-if>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px">
+      <sc-if value="{{isMusic}}" hint-placeholder-val="{{ true }}"><button aria-label="Previous" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3v10M13 3.5v9L5.5 8z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button></sc-if>
+      <sc-if value="{{isPodcast}}" hint-placeholder-val="{{ false }}"><button aria-label="Back 10 seconds" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M9 2.5a6.5 6.5 0 1 1-6.2 4.5M2.5 2.5v4.5H7" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path><text x="9" y="12.2" text-anchor="middle" font-size="6.5" font-family="Segoe UI Variable Small, Segoe UI, sans-serif" fill="currentColor">10</text></svg></button></sc-if>
+      <button aria-label="Pause" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 20px; background: var(--acc); color: var(--onacc)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3v10M10.5 3v10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg></button>
+      <sc-if value="{{isPodcast}}" hint-placeholder-val="{{ false }}"><button aria-label="Forward 10 seconds" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M9 2.5a6.5 6.5 0 1 0 6.2 4.5M15.5 2.5v4.5H11" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path><text x="9" y="12.2" text-anchor="middle" font-size="6.5" font-family="Segoe UI Variable Small, Segoe UI, sans-serif" fill="currentColor">10</text></svg></button><button aria-label="Playback speed" style="width: 44px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: var(--t1); font: inherit; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums">1.5×</button></sc-if>
+      <sc-if value="{{isMusic}}" hint-placeholder-val="{{ true }}"><button aria-label="Next" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 3v10M3 3.5v9L10.5 8z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button></sc-if>
+    </div>
+    <div style="display: flex; align-items: center; justify-content: flex-end; gap: 2px; min-width: 0">
+      <sc-if value="{{showShuffle}}" hint-placeholder-val="{{ true }}">
+        <button aria-label="Shuffle, on" aria-pressed="true" style="position: relative; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--acct)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h2.5c1.4 0 2.3.7 3.2 1.9l1.6 2.2c.9 1.2 1.8 1.9 3.2 1.9H14M2 12h2.5c1.4 0 2.3-.7 3.2-1.9M8.3 5.9c.9-1.2 1.8-1.9 3.2-1.9H14M12 2l2 2-2 2M12 8l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="position: absolute; bottom: 5px; left: 18px; width: 4px; height: 4px; border-radius: 2px; background: var(--acc)"></span></button>
+        <button aria-label="Repeat" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 7V5.5A1.5 1.5 0 0 1 4.5 4H13M11 2l2 2-2 2M13 9v1.5a1.5 1.5 0 0 1-1.5 1.5H3M5 14l-2-2 2-2" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      </sc-if>
+      <button aria-label="Mute" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6v4h2.5L8 13V3L5 6zM10.5 5.5a3.5 3.5 0 0 1 0 5M12.5 3.5a6 6 0 0 1 0 9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      <sc-if value="{{wide}}" hint-placeholder-val="{{ true }}"><div style="{{s.vol}}"><div style="width: 100%; height: 4px; border-radius: 2px; background: var(--strong)"></div><div style="position: absolute; left: 0; width: 70%; height: 4px; border-radius: 2px; background: var(--acc)"></div></div></sc-if>
+      <sc-for list="{{words}}" as="b" hint-placeholder-count="3">
+        <button aria-label="{{b.label}}" style="{{b.style}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="{{b.iconStyle}}"><path d="{{b.d}}" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg><sc-if value="{{wide}}" hint-placeholder-val="{{ true }}"><span>{{b.label}}</span></sc-if></button>
+      </sc-for>
+      <sc-if value="{{isVideo}}" hint-placeholder-val="{{ false }}"><span style="display: flex; height: 32px; margin: 0 4px; border-radius: 4px; overflow: hidden; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb)"><button style="height: 30px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border: 0; background: transparent; color: var(--t1); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12v10H2zM2 6h12M2 10h12M5 3v10M11 3v10" fill="none" stroke="currentColor" stroke-width="1"></path></svg>Video</button><span style="width: 1px; margin: 6px 0; background: var(--div)"></span><button aria-label="Where to play the video" style="width: 26px; height: 30px; display: flex; align-items: center; justify-content: center; border: 0; background: transparent; color: var(--t1)"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></span><button aria-label="Mini player" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 3.5h13v9h-13zM8 8h5v3.5H8z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button></sc-if>
+      <button aria-label="Full screen" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      <button aria-label="More" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+    </div>
+  </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"variant":{"editor":"enum","options":["music","podcast","video","remote"],"default":"music"},"pane":{"editor":"enum","options":["none","lyrics","queue","details"],"default":"none"},"narrow":{"editor":"boolean","default":false},"tier":{"editor":"enum","options":["standard","compact","small","huge","huge4k"],"default":"standard"},"$preview":{"width":1440,"height":84}}'>
+class Component extends DCLogic {
+renderVals() {
+  const dark = (this.props.theme ?? 'dark') !== 'light';
+  const pink = (this.props.accent ?? 'windows') === 'pink';
+  const T = dark
+    ? { mica: '#202020', div: 'rgba(255,255,255,0.0837)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)', strong: 'rgba(255,255,255,0.5442)', thumb: '#454545', thumbb: 'rgba(255,255,255,0.0698)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', div: 'rgba(0,0,0,0.0803)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', sub: 'rgba(0,0,0,0.0373)', strong: 'rgba(0,0,0,0.4458)', thumb: '#ffffff', thumbb: 'rgba(0,0,0,0.0578)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const v = this.props.variant ?? 'music';
+  const pane = this.props.pane ?? 'none';
+  const t0 = this.props.tier ?? 'standard';
+  const tier = (t0 === 'standard' && !!(this.props.narrow ?? false)) ? 'small' : t0;
+  const isMini = tier === 'compact';
+  const narrow = tier === 'small';
+  const huge = tier === 'huge' || tier === 'huge4k';
+  const W = { compact: 400, small: 800, standard: 1440, huge: 2560, huge4k: 3840 };
+  const isPodcast = v === 'podcast', isVideo = v === 'video', isRemote = v === 'remote';
+  const c = isPodcast
+    ? { title: 'Why the Premier League keeps changing', sub: 'The Rest Is Football · 9 Oct', art: '#2f4a3b', elapsed: '23:40', total: '-24:12', pct: 49 }
+    : isVideo
+    ? { title: 'Nightcall (Official Video)', sub: 'Kavinsky', art: '#6b2f4a', elapsed: '1:14', total: '-3:04', pct: 29 }
+    : { title: 'Nightcall', sub: 'Kavinsky · OutRun', art: '#6b2f4a', elapsed: '1:14', total: '-3:04', pct: 29 };
+  const ticks = isPodcast ? [18, 41, 63, 84].map((p) => ({ style: 'position: absolute; left: ' + p + '%; top: 5px; width: 2px; height: 8px; border-radius: 1px; opacity: 0.7; background: ' + (p < c.pct ? 'var(--onacc)' : 'var(--t1)') })) : [];
+  const D = { lyrics: 'M3 9.5V7a3 3 0 0 1 3-3M3 9.5h3v3H3zM10 9.5V7a3 3 0 0 1 3-3M10 9.5h3v3h-3z', queue: 'M2.5 4h11M2.5 8h7M2.5 12h7M11.5 9.5v4.5l3.5-2.25z', devices: 'M2 3.5h8.5v6H2zM4.5 12.5h3.5M12 6h2.5v7H12z' };
+  const wordList = [[isPodcast ? 'Transcript' : 'Lyrics', 'lyrics', pane === 'lyrics'], ['Queue', 'queue', pane === 'queue'], [isRemote ? 'Living room' : 'Devices', 'devices', isRemote]];
+  const words = wordList.map((w) => ({ label: w[0], d: D[w[1]],
+    style: 'height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 ' + (narrow ? '12' : '10') + 'px; border: 0; border-radius: 4px; font: inherit; font-size: 14px; white-space: nowrap; color: var(--t1); background: ' + (w[2] ? 'var(--sub)' : 'transparent'),
+    iconStyle: 'flex-shrink: 0; color: ' + (w[2] ? 'var(--acct)' : 'var(--t1)') }));
+  const s = {
+    fill: 'position: absolute; left: 0; width: ' + c.pct + '%; height: 4px; border-radius: 2px; background: var(--acc)',
+    thumb: 'position: absolute; left: calc(' + c.pct + '% - 9px); width: 18px; height: 18px; border-radius: 9px; box-sizing: border-box; border: 1px solid var(--thumbb); background: var(--thumb); display: flex; align-items: center; justify-content: center',
+    art: 'position: relative; width: 48px; height: 48px; flex-shrink: 0; border-radius: 4px; background: ' + c.art,
+    miniFill: 'position: absolute; left: 0; top: 0; width: ' + c.pct + '%; height: 3px; border-radius: 0 2px 2px 0; background: var(--acc)',
+    vol: 'position: relative; width: ' + (huge ? 140 : 96) + 'px; height: 18px; display: flex; align-items: center; margin-right: 8px'
+  };
+  return { vars, w: W[tier] || 1440, h: isMini ? 64 : 84, isMini, full: !isMini, huge, wide: !narrow, c, s, ticks, words, isPodcast, isVideo, isRemote, isMusic: !isPodcast,
+    showShuffle: !isPodcast && !narrow, showThumb: !isPodcast, heartFill: isPodcast ? 'none' : 'currentColor' };
+}
+}
+</script>
+</body>
+</html>

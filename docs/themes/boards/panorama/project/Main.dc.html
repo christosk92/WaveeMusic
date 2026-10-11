@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune Fluent decisions</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1440px; height: 2240px; box-sizing: border-box; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden">
+  <header style="padding: 36px 36px 24px 36px; display: flex; flex-direction: column; gap: 6px">
+    <div style="font-size: 12px; line-height: 16px; color: #c5c5c5">Wavee theme 4 · working name Zune Fluent · proposed name Panorama</div>
+    <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600">Zune structure, WinUI style</h1>
+    <p style="margin: 0; max-width: 980px; font-size: 14px; line-height: 20px; color: #c5c5c5">Every region, page layout and navigation model comes from the Zune theme. Every colour, type style, radius, control and material comes from the WinUI theme, one to one from its token board. This theme owns only the translation: which Fluent role renders each Zune element.</p>
+  </header>
+  <main style="flex-grow: 1; min-height: 0; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); padding: 24px 36px; display: flex; flex-direction: column; gap: 28px">
+    <section style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+      <div style="padding: 16px 20px; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 8px">
+        <div style="display: flex; align-items: baseline; gap: 8px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Structure</h2><span style="font-size: 12px; color: #9e9e9e">shared with the Zune theme</span></div>
+        <ul style="margin: 0; padding-left: 18px; font-size: 14px; line-height: 22px; color: #c5c5c5">
+          <li>Frame order: title bar → pivot band → page → inline right panel → play bar at the bottom</li>
+          <li>Navigation: row 1 sections (Home, Browse, Library, Recents), row 2 sub-pivots, or the entity's context tabs; pins in the band; no sidebar</li>
+          <li>Page layouts: panorama columns for entities, the quickplay home, collection columns (artists · albums · songs)</li>
+          <li>The number column and its position, the play bar's three groups and full-width seek</li>
+          <li>Right panel tabs (Queue, Lyrics, Details), inline at 1000 px and wider, overlay below</li>
+          <li>Breakpoints and tiers, full-screen faces</li>
+        </ul>
+      </div>
+      <div style="padding: 16px 20px; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 8px">
+        <div style="display: flex; align-items: baseline; gap: 8px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Style</h2><span style="font-size: 12px; color: #9e9e9e">shared with the WinUI theme</span></div>
+        <ul style="margin: 0; padding-left: 18px; font-size: 14px; line-height: 22px; color: #c5c5c5">
+          <li>Every token: layers, fills, strokes, text 1 · 2 · 3 · disabled, accent, status, dark and light</li>
+          <li>Segoe UI Variable and the WinUI type ramp (Caption 12 to Display 68)</li>
+          <li>ControlCornerRadius 4, OverlayCornerRadius 8, the 4 px spacing grid, 36 px page inset</li>
+          <li>Controls: Accent, standard and subtle Button, ToggleButton, Slider, ToggleSwitch, AutoSuggestBox, SelectorBar, ListView backplate + pill, InfoBar, ContentDialog, MenuFlyout, ProgressRing</li>
+          <li>Materials: Mica base, one content layer, acrylic flyouts; Fluent icons at stroke 1</li>
+        </ul>
+      </div>
+      <div style="padding: 16px 20px; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 8px">
+        <div style="display: flex; align-items: baseline; gap: 8px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Translation</h2><span style="font-size: 12px; color: #9e9e9e">the only thing this theme owns</span></div>
+        <ul style="margin: 0; padding-left: 18px; font-size: 14px; line-height: 22px; color: #c5c5c5">
+          <li>A role map: each structural role (PanoramaTitle, PivotPrimary, PivotSecondary, TrackNumber, PrimaryAction, SecondaryAction, RowBackplate, SeekBar, PaneSurface) names a WinUI style</li>
+          <li>Casing policy: sentence case, lowercase navigation as an option</li>
+          <li>Size picks inside the ramp: panorama 68, pivots 28, numbers 20 / 28 at Regular</li>
+          <li>Accent policy: where the accent may appear</li>
+          <li>Its options: accent, backdrop, casing, title size, numbers, density, panel</li>
+        </ul>
+      </div>
+    </section>
+    <section style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Translation rules: Zune element → Fluent rendering</h2>
+      <div role="table" aria-label="Translation rules" style="display: flex; flex-direction: column; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.0837)">
+        <div role="row" style="display: grid; grid-template-columns: 170px 300px minmax(0, 1fr) 300px; gap: 20px; padding: 10px 16px; background: rgba(255,255,255,0.0326); font-size: 12px; line-height: 16px; color: #c5c5c5; font-weight: 600"><span>Element</span><span>In the Zune theme</span><span>In Zune Fluent</span><span>Why</span></div>
+        <sc-for list="{{rules}}" as="r" hint-placeholder-count="20">
+          <div role="row" style="{{r.style}}"><span style="font-weight: 600">{{r.el}}</span><span style="color: #9e9e9e">{{r.zune}}</span><span>{{r.fluent}}</span><span style="font-size: 12px; line-height: 18px; color: #c5c5c5">{{r.why}}</span></div>
+        </sc-for>
+      </div>
+    </section>
+    <section style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px">
+      <div style="display: flex; flex-direction: column; gap: 10px">
+        <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Type: Zune role → WinUI ramp</h2>
+        <div style="display: flex; flex-direction: column; padding: 12px 16px; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)">
+          <div style="display: flex; align-items: baseline; gap: 16px; height: 92px; overflow: hidden"><span style="width: 160px; flex-shrink: 0; font-size: 12px; color: #9e9e9e">Panorama title · Display 68/92 Semibold</span><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 68px; line-height: 92px; font-weight: 600; white-space: nowrap">Random Access</span></div>
+          <div style="display: flex; align-items: baseline; gap: 16px; height: 48px"><span style="width: 160px; flex-shrink: 0; font-size: 12px; color: #9e9e9e">Pivot row 1 · Title 28/36</span><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Home <span style="color: #9e9e9e">Browse Library</span></span></div>
+          <div style="display: flex; align-items: baseline; gap: 16px; height: 36px"><span style="width: 160px; flex-shrink: 0; font-size: 12px; color: #9e9e9e">Section · Subtitle 20/28</span><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">More by Daft Punk</span></div>
+          <div style="display: flex; align-items: baseline; gap: 16px; height: 36px"><span style="width: 160px; flex-shrink: 0; font-size: 12px; color: #9e9e9e">Track number · 20/28 Regular</span><span style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; color: #9e9e9e; font-variant-numeric: tabular-nums">7</span><span style="font-size: 14px">Touch</span><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; color: #9e9e9e; margin-left: 20px">3</span><span style="font-size: 12px; color: #9e9e9e">28 on artist Popular</span></span></div>
+          <div style="display: flex; align-items: baseline; gap: 16px; height: 28px"><span style="width: 160px; flex-shrink: 0; font-size: 12px; color: #9e9e9e">Row title · Body 14/20</span><span style="font-size: 14px; line-height: 20px">Get Lucky <span style="color: #c5c5c5">· Caption 12/16 for meta</span></span></div>
+          <div style="display: flex; align-items: baseline; gap: 16px; height: 56px"><span style="width: 160px; flex-shrink: 0; font-size: 12px; color: #9e9e9e">Lyrics · Title Large 40/52</span><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600; white-space: nowrap">Like the legend <span style="color: #9e9e9e">of the phoenix</span></span></div>
+        </div>
+        <div style="font-size: 12px; line-height: 18px; color: #9e9e9e">Display face for 20 and up, Text face below. Sizes always come from the ramp; the theme only lowers the weight for numerals so the number column stays quieter than titles.</div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 10px">
+        <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Tokens (WinUI board, one to one)</h2>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+          <div style="padding: 12px 14px; border-radius: 8px; background: #202020; border: 1px solid rgba(255,255,255,0.0837); display: flex; flex-direction: column; gap: 6px; font-size: 12px">
+            <span style="font-size: 14px; font-weight: 600">Dark</span>
+            <sc-for list="{{darkSw}}" as="c" hint-placeholder-count="9"><span style="display: flex; align-items: center; gap: 10px"><span style="{{c.sw}}"></span><span style="flex-grow: 1">{{c.n}}</span><span style="color: #9e9e9e; font-family: Consolas, monospace">{{c.v}}</span></span></sc-for>
+          </div>
+          <div style="padding: 12px 14px; border-radius: 8px; background: #f3f3f3; color: #1b1b1b; border: 1px solid rgba(0,0,0,0.0578); display: flex; flex-direction: column; gap: 6px; font-size: 12px">
+            <span style="font-size: 14px; font-weight: 600">Light</span>
+            <sc-for list="{{lightSw}}" as="c" hint-placeholder-count="9"><span style="display: flex; align-items: center; gap: 10px"><span style="{{c.sw}}"></span><span style="flex-grow: 1">{{c.n}}</span><span style="color: #626262; font-family: Consolas, monospace">{{c.v}}</span></span></sc-for>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; font-size: 12px; color: #c5c5c5"><span>Accent option:</span><span style="width: 24px; height: 24px; border-radius: 4px; background: #60cdff"></span><span>Windows accent (default) #60cdff / #005fb8</span><span style="width: 24px; height: 24px; border-radius: 4px; background: #ff7ac3; margin-left: 8px"></span><span>Zune magenta #ff7ac3 / #c4007a</span></div>
+        <div style="font-size: 12px; line-height: 18px; color: #c5c5c5">Metrics: title bar 48 · pivot band 88 (row 1 48 + row 2 40), never collapses · page inset 36 (row 1 text, row 2 text and every title share x = 36) · right panel 340 · play bar 84 (seek row 20 + transport row 64) · rows 40 single-line, 52 with art · panel inline from 1000 px, labels in the play bar from 1240 px.</div>
+      </div>
+    </section>
+    <section style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">The translated controls</h2>
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 20px; padding: 16px; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)">
+        <div style="display: flex; align-items: flex-end; height: 48px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600"><span style="position: relative; padding: 0 12px 8px 12px; color: #ffffff">Home<span style="position: absolute; left: 12px; right: 12px; bottom: 2px; height: 3px; border-radius: 2px; background: #60cdff"></span></span><span style="padding: 0 12px 8px 12px; color: #9e9e9e">Browse</span></div>
+        <div style="display: flex; align-items: center; gap: 8px">
+          <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 4px; background: #60cdff; color: #000000; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg>Play</button>
+          <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #ffffff; font: inherit; font-size: 14px">Shuffle</button>
+          <button aria-label="More" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #ffffff"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+        </div>
+        <div style="display: flex; gap: 8px"><button aria-pressed="true" style="height: 32px; padding: 0 12px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px">Synthwave</button><button aria-pressed="false" style="height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px">Dream pop</button></div>
+        <label style="width: 220px; height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 12px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-bottom: 2px solid #60cdff; font-size: 14px"><span style="flex-grow: 1">midnight</span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14" fill="none" stroke="#c5c5c5" stroke-width="1" stroke-linecap="round"></path></svg></label>
+        <div style="position: relative; width: 160px; height: 18px; display: flex; align-items: center"><div style="width: 100%; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.5442)"></div><div style="position: absolute; left: 0; width: 40%; height: 4px; border-radius: 2px; background: #60cdff"></div><div style="position: absolute; left: calc(40% - 9px); width: 18px; height: 18px; border-radius: 9px; background: #454545; display: flex; align-items: center; justify-content: center"><span style="width: 12px; height: 12px; border-radius: 6px; background: #60cdff"></span></div></div>
+        <div style="position: relative; width: 300px; height: 40px; display: grid; grid-template-columns: 40px minmax(0, 1fr) 44px; align-items: center; border-radius: 4px; background: rgba(255,255,255,0.0605); font-size: 14px"><span style="position: absolute; left: 0; top: 12px; width: 3px; height: 16px; border-radius: 2px; background: #60cdff"></span><span style="padding-left: 12px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; color: #9e9e9e">5</span><span>Instant Crush</span><span style="font-size: 12px; color: #c5c5c5">5:37</span></div>
+        <div style="display: flex; align-items: center; gap: 12px; width: 340px; height: 40px; padding: 0 12px; box-sizing: border-box; border-radius: 4px; background: #433519; border: 1px solid rgba(0,0,0,0.1); font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2 14.5 13.5h-13zM8 6.5v3.5M8 11.8v.4" fill="none" stroke="#fce100" stroke-width="1.2" stroke-linejoin="round"></path></svg><span style="font-weight: 600">You're offline</span><span style="color: #c5c5c5">Showing saved music</span></div>
+      </div>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2240}}'>
+class Component extends DCLogic {
+renderVals() {
+  const R = [
+    ['Navigation', 'Lowercase pivot words: row 1 sections, row 2 sub-pivots, no sidebar', 'Same two rows. Row 1 is Title 28/36 Semibold, rest Text 3, selected Text 1 with the 3 px accent pill. Row 2 is a SelectorBar: Body 14/20, 40 tall, rest Text 2.', 'Structure kept. One weight for both states, so selecting never reflows the row.'],
+    ['Casing', 'lowercase for every label the theme writes', 'Sentence case everywhere. The option "Lowercase navigation" lowercases row 1 and row 2 only. Names that people or Spotify typed are never re-cased.', 'Windows 11 writes sentence case; lowercase survives as an opt-in where it is most Zune.'],
+    ['Panorama title', '120, weight 200, bleeds off the right edge', 'Display 68/92 Semibold, one line, ellipsis and tooltip; moves at half speed while the panorama scrolls.', 'The ramp tops out at Display. Bleeding type reads as a clipping bug in Fluent.'],
+    ['Section heads', '26, weight 300, lowercase', 'Subtitle 20/28 Semibold. Quickplay heads on Home (Pins, History, New) use Title 28/36.', 'Two sizes only, both from the ramp.'],
+    ['Track numbers', '22, weight 300, tertiary; 28 on artist', 'Subtitle size 20/28 at Regular, Text 3, tabular figures. Artist Popular uses Title size 28/36 Regular.', 'Keeps the Zune number column; Regular keeps it below Semibold titles.'],
+    ['Playing row', 'Equalizer and title in the accent', 'Equalizer glyph and title in Accent text (#99ebff dark, #003e92 light), no plate.', 'Accent text is the Fluent “current” colour.'],
+    ['Round metro buttons', '36 px rings with a label beside, filled accent for play', 'AccentButton Play (32 tall, radius 4, one per page). Standard Button for Shuffle, Save, Follow. Subtle icon Button for Share and More.', 'Circles stay only for transport Play/Pause, avatars and artists (WinUI radii rule).'],
+    ['Chips', 'Flat rectangles, selected is an accent fill', 'ToggleButton, radius 4; checked is the accent fill with Text on accent.', 'Stock control.'],
+    ['Search', 'Rounded pill (radius 16) with a “ctrl f” hint', 'AutoSuggestBox 280 × 32, radius 4, bottom stroke, 2 px accent when focused. Ctrl+F stays the accelerator.', 'Stock control.'],
+    ['Ground', 'One flat #161616 plane', 'Mica base for title bar, band, right panel and play bar; one content layer (#282828 dark, #f9f9f9 light) with a 1 px stroke.', 'The two-layer model of every Windows 11 app.'],
+    ['Right panel', 'Inline 340, flush; overlay in narrow windows', 'A pane on Mica beside the content layer, which gets an 8 px corner at the seam. Below 1000 px it overlays as an acrylic pane (radius 8, shadow, light dismiss).', 'Same structure; the seam is how Fluent separates a pane.'],
+    ['Row hover and selection', '5% wash, 12% accent wash, square', 'ListView backplate: subtle fill on a 4 px inset, radius 4. Selected adds the 3 × 16 accent pill.', 'Stock ListView.'],
+    ['Seek', '2 px line on the play bar’s top edge, full width', 'A full-width Slider row on top of the play bar: 4 px track, 18 px thumb with an accent core, times at both ends.', 'Zune’s position, Fluent’s slider.'],
+    ['Play bar words', '“lyrics queue devices” as lowercase text', 'Subtle Buttons with icon and label. An open pane shows subtle fill and an accent icon. Labels drop below 1240 px.', 'Zune’s wordiness, Fluent’s buttons.'],
+    ['Pins', '32 px tiles in the band, accent dot under the playing one', '32 px art (radius 4) in 40 × 40 subtle buttons; the playing pin gets a 3 × 12 accent pill underneath.', 'The pill is the theme’s one “current” mark.'],
+    ['Radii', '0 everywhere, 2 for covers, full for rings', '4 for controls, rows and small art; 8 for cards, covers, flyouts, dialogs and the content layer.', 'ControlCornerRadius and OverlayCornerRadius.'],
+    ['Accent', 'Pink, used generously', 'Windows accent by default; Zune magenta as an option. Only on Play, slider fills, pills, playing text, links and focus.', 'Accent sparingly.'],
+    ['Narrow overflow', 'Pivots scroll under an edge fade', 'NavigationView top-mode overflow: a More item with a chevron opens a MenuFlyout.', 'Stock overflow, no fades.'],
+    ['Menus, dialogs, status', 'Square raised plates', 'MenuFlyout (acrylic, radius 8), ContentDialog (radius 8, smoke, accent primary), InfoBar for status.', 'Stock controls.'],
+    ['Full screen', 'Type at 150, mosaic wall, flat transport', 'Display 68 title, art radius 8, transport on an acrylic card (radius 8).', 'Stays inside the ramp.']
+  ];
+  const rules = R.map((r, i) => ({ el: r[0], zune: r[1], fluent: r[2], why: r[3],
+    style: 'display: grid; grid-template-columns: 170px 300px minmax(0, 1fr) 300px; gap: 20px; padding: 9px 16px; font-size: 13px; line-height: 19px; border-top: 1px solid rgba(255,255,255,0.0837); ' + (i % 2 ? 'background: rgba(255,255,255,0.0163)' : '') }));
+  const sw = (bg, b) => 'width: 36px; height: 20px; border-radius: 4px; flex-shrink: 0; background: ' + bg + '; box-sizing: border-box; border: 1px solid ' + b;
+  const darkSw = [['Mica base · chrome, panel, play bar', '#202020'], ['Content layer', '#282828'], ['Card', 'rgba(255,255,255,0.0512)'], ['Flyout (acrylic)', '#2c2c2c'], ['Control fill', 'rgba(255,255,255,0.0605)'], ['Text 1 · 2 · 3', '#ffffff'], ['Text 2', '#c5c5c5'], ['Text 3 · numbers, rest pivots', '#9e9e9e'], ['Accent text', '#99ebff']].map((d) => ({ n: d[0], v: d[1], sw: sw(d[1], 'rgba(255,255,255,0.0837)') }));
+  const lightSw = [['Mica base · chrome, panel, play bar', '#f3f3f3'], ['Content layer', '#f9f9f9'], ['Card', '#fbfbfb'], ['Flyout (acrylic)', '#fcfcfc'], ['Control fill', '#fdfdfd'], ['Text 1', '#1b1b1b'], ['Text 2', '#626262'], ['Text 3 · numbers, rest pivots', '#8a8a8a'], ['Accent text', '#003e92']].map((d) => ({ n: d[0], v: d[1], sw: sw(d[1], 'rgba(0,0,0,0.0803)') }));
+  return { rules, darkSw, lightSw };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Home, Compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tier="compact" width="400" tabs="home:Home|album:The Stereo Love Show:#3b5b7a|artist:Arash:#4a3b2f" sel="0" badge="2" hint-size="400px,88px"></dc-import>
+  <main style="flex-grow: 1; min-height: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); padding: 16px 16px 0 16px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+    <div style="display: flex; flex-direction: column; gap: 4px; flex-shrink: 0">
+      <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Good evening, Chris</h1>
+      <div style="display: flex; align-items: center; gap: 4px; margin-right: -16px; overflow: hidden; white-space: nowrap">
+        <sc-for list="{{facets}}" as="f" hint-placeholder-count="4"><button style="{{f.style}}">{{f.label}}<span style="{{f.bar}}"></span></button></sc-for>
+        <span style="width: 1px; height: 20px; margin: 0 4px; flex-shrink: 0; background: rgba(255,255,255,0.0837)"></span>
+        <button aria-pressed="false" style="height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM3 13.5c0-2.5 2.2-4 5-4s5 1.5 5 4" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg>Following</button>
+      </div>
+    </div>
+
+    <section aria-label="Your daylist" style="display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1); flex-shrink: 0">
+      <div style="display: flex; gap: 16px; align-items: flex-start">
+        <div style="width: 96px; height: 96px; border-radius: 4px; background: #6b3b5b; flex-shrink: 0"></div>
+        <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+          <span style="font-size: 12px; line-height: 16px; color: #c5c5c5">Your daylist</span>
+          <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">90s rock permanent wave friday evening</span>
+          <span style="font-size: 12px; line-height: 16px; color: #c5c5c5">Playlist · Spotify · 50 songs</span>
+        </div>
+      </div>
+      <div style="font-size: 14px; line-height: 20px"><a href="#">90s rock</a> · <a href="#">permanent wave</a> · <a href="#">emo phase</a></div>
+      <div style="display: flex; gap: 8px; align-items: center">
+        <button style="height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 20px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg>Play</button>
+        <button style="height: 40px; padding: 0 16px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px">Shuffle</button>
+        <span style="flex-grow: 1"></span>
+        <button aria-label="Save to library" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+        <button aria-label="More" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.0837)">
+        <svg width="24" height="24" viewBox="0 0 28 28" aria-hidden="true" style="flex-shrink: 0"><circle cx="14" cy="14" r="11.5" fill="none" stroke="rgba(255,255,255,0.0837)" stroke-width="3"></circle><path d="M14 2.5a11.5 11.5 0 1 1-11.5 11.5" fill="none" stroke="#60cdff" stroke-width="3" stroke-linecap="round"></path></svg>
+        <span style="display: flex; flex-direction: column"><span style="font-size: 14px; line-height: 20px; font-variant-numeric: tabular-nums">Next daylist in 01:35:05</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5">Friday night arrives at 21:00</span></span>
+      </div>
+    </section>
+
+    <section aria-label="Jump back in" style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0">
+      <div style="display: flex; align-items: center; gap: 12px"><h2 style="margin: 0; flex-grow: 1; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Jump back in</h2><a href="#" style="font-size: 14px; line-height: 40px">Listening history</a></div>
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <sc-for list="{{recent}}" as="r" hint-placeholder-count="3">
+          <a href="#" style="{{r.style}}">
+            <span style="{{r.art}}"></span>
+            <span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="{{r.titleStyle}}">{{r.title}}</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.sub}}</span></span>
+            <span style="{{r.whenStyle}}">{{r.when}}</span>
+          </a>
+        </sc-for>
+      </div>
+    </section>
+
+    <section aria-label="Made for you" style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0">
+      <div style="display: flex; align-items: center; gap: 12px"><h2 style="margin: 0; flex-grow: 1; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Made for you</h2><a href="#" style="font-size: 14px; line-height: 40px">See all</a></div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+        <sc-for list="{{cards}}" as="c" hint-placeholder-count="4">
+          <a href="#" style="display: flex; flex-direction: column; gap: 8px; color: #fff"><span style="{{c.art}}"></span><span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.title}}</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.sub}}</span></span></a>
+        </sc-for>
+      </div>
+    </section>
+  </main>
+  <dc-import name="Shell-Player" theme="dark" tier="mini" width="400" variant="music" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const fs = (l, s) => ({ label: l, style: 'position: relative; height: 40px; flex-shrink: 0; padding: 0 12px; border: 0; background: transparent; font: inherit; font-size: 14px; white-space: nowrap; color: ' + (s ? '#ffffff' : '#c5c5c5'), bar: s ? 'position: absolute; left: 12px; right: 12px; bottom: 4px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' });
+  const facets = [fs('All', true), fs('Music', false), fs('Podcasts', false), fs('Audiobooks', false)];
+  const rec = [['The Stereo Love Show', 'Album · Edward Maya', 'Playing now', '#3b5b7a', true], ['LoL Worlds Songs 2014–2026', 'Playlist · 70 songs', 'Yesterday', '#5b5b5b', false], ['Arash', 'Artist', '2 h ago', '#4a3b2f', false]];
+  const recent = rec.map(r => ({ title: r[0], sub: r[1], when: r[2],
+    style: 'display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 12px 0 8px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1); color: #fff',
+    art: 'width: 40px; height: 40px; flex-shrink: 0; border-radius: ' + (r[1] === 'Artist' ? '20px' : '4px') + '; background: ' + r[3],
+    titleStyle: 'font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (r[4] ? '#99ebff' : '#ffffff'),
+    whenStyle: 'font-size: 12px; white-space: nowrap; color: ' + (r[4] ? '#99ebff' : '#9e9e9e') }));
+  const cd = [['Daily Mix 1', 'IVE, Red Velvet, IU and more', '#5b3b6b'], ['Daily Mix 2', 'aespa, ILLIT, NewJeans and more', '#3b5b6b'], ['Discover Weekly', 'Your weekly mixtape of fresh music', '#2f6b4a'], ['Release Radar', 'New music from artists you follow', '#6b4a2f']];
+  const cards = cd.map(c => ({ title: c[0], sub: c[1], art: 'display: block; width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; background: ' + c[2] }));
+  return { facets, recent, cards };
+}
+}
+</script>
+</body>
+</html>
