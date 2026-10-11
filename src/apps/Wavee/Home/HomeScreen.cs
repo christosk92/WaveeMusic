@@ -4,9 +4,11 @@
 // Spec: docs/plans/wavee/home-rebuild-implementation.md "Fifth pass — stock controls" (Page, Sticky headers),
 //       "Seventh pass" (the facet words are the page title; no greeting headline; no pointer handler on the dim host).
 //
-// The DATA half is carried over from the previous passes unchanged (Props, PageFor, the per-tab fields, the route-arg
-// effect, Demand, Compute, Verdict, LocalizedTitles/Subtitles, SelectFacet*, RevertRoute, RememberFollowing, Prefetch,
-// Seed, BuildWash, the facet/verdict/content logs) — see git history for why each is shaped the way it is. The RENDER
+// The DATA half is carried over from the previous passes unchanged (Props, PageFor, Compute, Verdict,
+// LocalizedTitles/Subtitles, Seed, BuildWash, the verdict/content logs) — see git history for why each is shaped the way
+// it is. The facet machine's state and the effects that drive it (the route-arg effect, Demand, the select path,
+// RevertRoute, RememberFollowing, Prefetch, the landing edge, the facet logs) moved to `HomeHost` (C16): this component
+// keeps the hooks and calls one host method per effect. The RENDER
 // half is rebuilt from the app's own page idiom (Artist.Page.cs ~389, Browse.Page.cs ~150): ONE plain `ScrollView`
 // column, no `ItemsView` of zones, no lanes/extents/RowAt/Tail, no width query, no parallax, no overlay InfoBar.
 //
@@ -40,7 +42,7 @@
 //   `PageFor` re-pushes fresh `Props(route.Tab, route.Arg)` on every commit; an effect keyed on `Props.Arg` resolves it.
 //
 // ── THE SELECTOR INDEX (no render-time writes) ──
-//   The stock `SelectorBar` OWNS `_facetIndex` (writes it on click/roving, then fires OnChange → SelectFacet). An
+//   The stock `SelectorBar` OWNS the host's `FacetIndex` (writes it on click/roving, then fires OnChange → HomeHost.Select). An
 //   effect re-syncs it from `FacetPivot.Resolve(words, switch.Target)` — so a Missing→Failed revert, an Unavailable
 //   no-op, a deep link or a Following toggle all move the selection without a write during Render.
 
@@ -73,25 +75,21 @@ public sealed class HomeScreen : Component
             with { Key = "home:" + route.Tab.ToString(CultureInfo.InvariantCulture) };
 
     // ── per-tab state (props-freeze rule: every field below is a stable object held for the component's whole
-    //    lifetime, never rebuilt per render) ──
-    readonly Signal<FacetSwitchState> _switch = new(FacetSwitchState.Initial(""));
-    readonly Signal<FacetWord[]> _words = new(Array.Empty<FacetWord>());
-    readonly Signal<int> _facetIndex = new(0);                                            // the SelectorBar's own index
-    readonly HashSet<string> _shown = new(StringComparer.Ordinal);                       // "revealed this session"
-    readonly Dictionary<string, bool> _followingMemory = new(StringComparer.Ordinal);
-    readonly Dictionary<string, ZoneKind[]> _lastShape = new(StringComparer.Ordinal);     // per-facet shimmer shape
+    //    lifetime, never rebuilt per render). The facet machine's state and the effects that drive it live in the
+    //    HomeHost (C16): this component keeps the hooks and calls one host method per effect. ──
     readonly ScrollHandle _scroll = new();
+    readonly HomeHost _host;
     readonly object _tintOwner = new();
-    FacetRowProps? _rowProps;                             // built once: its delegates read _tab, never a render-time capture
-    int _tab;
     LoadState? _lastVerdict;                              // edge-gated facet.verdict log
     string? _contentFacet;                                // the facet whose content root is mounted (facet.content log)
+
+    public HomeScreen() => _host = new HomeHost(_scroll);
 
     public override Element Render()
     {
         var p = UseProps<Props>();
         int tab = p.Tab;
-        _tab = tab;
+        _host.Tab = tab;
         var layout = UseRequiredContext(HomeLayout.Slot);
         string scope = UseContext(Shell.PageScrollScope);
         var overlay = UseContext(Overlay.Service);
@@ -99,76 +97,39 @@ public sealed class HomeScreen : Component
         // ── route arg → facet (deep link, Back/Forward, a palette "Home: …" command, a tab restore). Re-runs
         // whenever the route's own Arg changes (a DepKey, not auto-tracking — Props are not a signal) OR the chip
         // strip's word count changes (a cold-start deep link named a facet before its words landed).
-        UseEffect(() =>
-        {
-            string resolved = FacetRoute.FacetOf(Entities.Strings.Resolve(p.Arg), _words.Value);
-            if (resolved != _switch.Peek().Target) SelectFacetCore(resolved, pushHistory: false, tab);
-        }, DepKey.From(p.Arg.Value, _words.Peek().Length));
+        UseEffect(() => _host.ResolveRouteArg(p.Arg, tab), DepKey.From(p.Arg.Value, _host.Words.Peek().Length));
 
         // ── demand (§3.12: the Artist/Album/Show idiom — Demand() in an effect, never in the model memo) ──
-        UseEffect(() => { _ = Entities.ScopeEpoch.Value; Demand(_switch.Value.Target); });   // re-ask in a new scope
+        UseEffect(() => _host.DemandTarget());   // re-ask in a new scope
 
         // ── the screen model: DERIVED over the table signals. No publish, no stamps, no writes. ──
-        var facetSig = UseComputed(() => _switch.Value.Published);
+        var facetSig = UseComputed(() => _host.Switch.Value.Published);
         var model = UseComputed(() => Compute(facetSig.Value, layout.Doc.Value));
         var verdict = UseComputed(() => Verdict(facetSig.Value, model.Value));
 
         // ── "shown this session" + words + the shimmer shape memo: written by an effect on the Ready edge, never
         // in the model memo itself. ──
-        UseEffect(() =>
-        {
-            var m = model.Value;
-            if (m is null) return;
-            _shown.Add(m.Facet);
-            _words.Value = FacetPivot.Words(m.Chips, Loc.Get(Strings.Home.FacetAll));
-            var kinds = new ZoneKind[m.Zones.Count];
-            for (int i = 0; i < kinds.Length; i++) kinds[i] = m.Zones[i].Kind;
-            _lastShape[m.Facet] = kinds;
-        });
+        UseEffect(() => _host.RecordShown(model.Value));
 
         // ── the SelectorBar index follows the switch machine (see the header): reads its own signal too, so a click
         // the machine refused (Unavailable / no-op) snaps the selection back on the next turn. ──
-        UseEffect(() =>
-        {
-            var (idx, _) = FacetPivot.Resolve(_words.Value, _switch.Value.Target);
-            if (_facetIndex.Value != idx) _facetIndex.Value = idx;
-        });
+        UseEffect(() => _host.SyncFacetIndex());
 
         // ── the landing edge: Loading/Refreshing → Idle once the target's document is known (F13: no timer). ──
-        UseEffect(() =>
-        {
-            var s = _switch.Value;
-            if (s.Phase is not (FacetPhase.Loading or FacetPhase.Refreshing)) return;
-            // The fetch concludes by clearing the row's in-flight stamp and bumping the Home table — neither is a
-            // signal `LiveAttemptConcluded` reads, so subscribe to the table's change edge or the switch never lands.
-            _ = Entities.ScopeEpoch.Value;
-            _ = Home.Changed.Value;
-            var h = Entities.HomeFeed(s.Target);
-            if (!h.LiveAttemptConcluded) return;
-            if (h.SectionCount == 0 && !h.Knows(HomeFields.Sections) && Spotify.Status.Value == Spotify.SessionPhase.Online)
-            {
-                _switch.Value = FacetSwitch.Fail(s, s.Target, out string revertTo);
-                RevertRoute(revertTo, tab);
-                return;
-            }
-            _switch.Value = FacetSwitch.Landed(s, s.Target, (float)_scroll.Offset.Value, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), out bool swapped);
-            Log.Event(WaveeLogLevel.Info, "home", "facet.landed", "facet landed target=" + s.Target + " swap=" + swapped);
-        });
+        UseEffect(() => _host.Land(tab));
 
         // ── D-plan §6.3: the "From artists you follow" block on All needs the `music-following-chip` document.
         // Prefetched once per All-entry edge; `Home.EnsureFeed` dedupes on Known/Asked, so re-entering All while it's
         // still in flight (or already known) costs nothing extra. ──
         UseEffect(() =>
         {
-            if (facetSig.Value.Length == 0) Home.EnsureFeed(Entities.HomeFeed("music-following-chip"));
+            if (facetSig.Value.Length == 0) HomeHost.EnsureFollowingChipFeed();
         }, DepKey.From(facetSig.Value.Length == 0));
 
-        // The row's props: the signals are this tab's own stable fields and the delegates read `_tab`, so ONE record
-        // serves the component's whole life (a fresh record per render would re-push on every parent render for nothing).
-        _rowProps ??= new FacetRowProps(_words, _switch, _facetIndex,
-            Select: target => SelectFacet(target, _tab),
-            Dismiss: () => _switch.Value = FacetSwitch.Dismiss(_switch.Peek()),
-            FollowingMemory: id => _followingMemory.TryGetValue(id, out bool on) && on);
+        // The row's props: the host's ONE record (its signals are this tab's own stable fields and its delegates read the
+        // host's Tab), so it serves the component's whole life — a fresh record per render would re-push on every parent
+        // render for nothing.
+        var rowProps = _host.RowProps;
 
         // smoothResize false: a page-level region whose branches differ by hundreds of DIP lands its height at once.
         // Reveal None: the zones own their entrance (Design.Entrance rows in Zones.Column); the shimmer is the SAME tree
@@ -178,7 +139,7 @@ public sealed class HomeScreen : Component
             Failed: () => verdict.Value == LoadState.Failed,
             Content: () => FacetContent(model.Value ?? Seed(facetSig.Value, layout.Doc.Value), overlay),
             ShimmerSource: () => Zones.Column(Seed(facetSig.Value, layout.Doc.Value), facetSig.Value, overlay),
-            OnFailed: () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: RetryFirstLoad),
+            OnFailed: () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: _host.RetryFirstLoad),
             Reveal: SkelReveal.None, Style: SkeletonStyle.Default, Group: this, SmoothResize: false);
 
         // THE CLIP IS THE CONTRACT: the band paints nothing, so the content cuts itself at the band's lower edge and
@@ -203,7 +164,7 @@ public sealed class HomeScreen : Component
             Padding = new Edges4(Spacing.PageWide, Spacing.XXL, Spacing.PageWide, Design.Dock.Reserve + Spacing.XXXL),
             Children =
             [
-                Embed.Comp(_rowProps, static () => new FacetRow()) with { Key = "home:facet-row" },
+                Embed.Comp(rowProps, static () => new FacetRow()) with { Key = "home:facet-row" },
                 content,
             ],
         };
@@ -279,28 +240,6 @@ public sealed class HomeScreen : Component
         return v;
     }
 
-    /// <summary>§3.12's D2 demand: the document first, then — once it's known — the baseline preview lookup.
-    /// `Home.EnsureFeed`/`Home.EnsurePreviews` are both idempotent (the fetch planner dedupes on Known/Asked); in a
-    /// `--fake` build, `Home.EnsureFeed` itself routes through `Entities.SimulateFacetFetch` (F15) — this file never
-    /// asks which build it is.</summary>
-    static void Demand(string facet)
-    {
-        var h = Entities.HomeFeed(facet);
-        if (!h.Knows(HomeFields.Sections)) Home.EnsureFeed(h);
-        else Home.EnsurePreviews(h);
-    }
-
-    /// <summary>The first load concluded with no document while online (the Vacancy's Retry): ask for the launch
-    /// facet's document AGAIN whatever the planner sealed — <see cref="Entities.Refresh"/> un-asks first, where a plain
-    /// <c>Home.EnsureFeed</c> would no-op on a row already marked Asked-and-unanswered (Browse.Page.cs's Retry rule).</summary>
-    void RetryFirstLoad()
-    {
-        var h = Entities.HomeFeed(_switch.Peek().Target);
-        if (!h.IsValid) return;
-        int slot = h.Slot;
-        Entities.Refresh(Entities.Current.Homes, new ReadOnlySpan<int>(in slot), (uint)HomeFields.All, FetchPriority.Visible);
-    }
-
     static ZoneTitles LocalizedTitles() => new(
         MadeForYou: Loc.Get(Strings.Home.MadeForYou),
         BecauseYouLike: Loc.Get(Strings.Home.Zone.BecauseYouLike),
@@ -343,70 +282,6 @@ public sealed class HomeScreen : Component
         _ => null,
     };
 
-    // ══ FACET SELECTION ═════════════════════════════════════════════════════════════════════════════════════════════
-
-    void SelectFacet(string target, int tab) => SelectFacetCore(target, pushHistory: true, tab);
-
-    void SelectFacetCore(string target, bool pushHistory, int tab)
-    {
-        var s = _switch.Peek();
-        if (target == s.Target && s.Phase != FacetPhase.Failed) return;
-
-        long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        var h = Entities.HomeFeed(target);
-        bool knowsSections = h.Knows(HomeFields.Sections);
-        bool shownThisSession = _shown.Contains(target);
-        bool online = Spotify.Status.Value == Spotify.SessionPhase.Online;
-        var verdict = FacetCache.Decide(knowsSections, shownThisSession, h.FetchedAt, nowMs, online);
-
-        var next = FacetSwitch.Select(s, target, verdict, nowMs);
-        Log.Event(WaveeLogLevel.Info, "home", "facet.select",
-            "facet select target=" + target + " from=" + s.Published + " verdict=" + verdict + " phase=" + next.Phase
-            + " published=" + next.Published + " knows=" + knowsSections + " shown=" + shownThisSession);
-        if (next.Equals(s)) return;   // Unavailable / no-op
-
-        _switch.Value = next;
-        RememberFollowing(target);
-
-        if (pushHistory)
-            Shell.GoTo(new Shell.Route(Shell.RouteKind.Home, Arg: Entities.Strings.Intern(FacetRoute.ArgOf(target)), Tab: tab));
-
-        switch (verdict)
-        {
-            case FacetCacheVerdict.Missing:
-                Home.EnsureFeed(h);
-                break;
-            case FacetCacheVerdict.Stale:
-                int slot = h.Slot;
-                Entities.Refresh(Entities.Current.Homes, new ReadOnlySpan<int>(in slot), (uint)HomeFields.All, FetchPriority.Visible);
-                break;
-        }
-    }
-
-    void RevertRoute(string revertTo, int tab)
-        => Shell.GoTo(new Shell.Route(Shell.RouteKind.Home, Arg: Entities.Strings.Intern(FacetRoute.ArgOf(revertTo)), Tab: tab));
-
-    void RememberFollowing(string target)
-    {
-        var words = _words.Peek();
-        foreach (var w in words)
-        {
-            if (!w.HasSub) continue;
-            if (w.SubId == target) { _followingMemory[w.Id] = true; return; }
-            if (w.Id == target) { _followingMemory[w.Id] = false; return; }
-        }
-    }
-
-    void Prefetch(string target)
-    {
-        var h = Entities.HomeFeed(target);
-        long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        bool everFetched = h.FetchedAt != 0;
-        bool online = Spotify.Status.Value == Spotify.SessionPhase.Online;
-        if (FacetCache.ShouldPrefetch(everFetched, h.FetchedAt, nowMs, online, isSubChip: false))
-            Home.EnsureFeed(h);
-    }
-
     // ══ RENDER ═══════════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The facet content: one KEYED subtree per published facet — the swap IS the reconciler's keyed
@@ -434,8 +309,8 @@ public sealed class HomeScreen : Component
                 new BoxEl   // the dim host
                 {
                     Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-                    Opacity = Prop.Of(() => FacetDimPlan.Of(_switch.Value.Phase).Opacity),      // compositor-only (F18)
-                    HitTestVisible = Prop.Of(() => !_switch.Value.Dim),                          // E15
+                    Opacity = Prop.Of(() => FacetDimPlan.Of(_host.Switch.Value.Phase).Opacity),      // compositor-only (F18)
+                    HitTestVisible = Prop.Of(() => !_host.Switch.Value.Dim),                          // E15
                     Children = [Zones.Column(m, m.Facet, overlay)],
                 },
             ],
@@ -450,7 +325,7 @@ public sealed class HomeScreen : Component
     /// for the blank seed card).</summary>
     ScreenModel Seed(string facet, LayoutDoc layoutDoc)
     {
-        ZoneKind[] kinds = _lastShape.TryGetValue(facet, out var known) ? known
+        ZoneKind[] kinds = _host.TryLastShape(facet, out var known) ? known
             : IsPodcastsFacet(facet)
                 ? [ZoneKind.EpisodeLead, ZoneKind.ContinueEpisodes, ZoneKind.ShowGrid]
                 : facet.Length == 0 && !layoutDoc.IsHidden(LayoutZone.Daylist)

@@ -84,59 +84,12 @@ public static partial class Controls
 
     // ══ 2. THE LEDGER BAR ════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The ledger bar: 4 high, 2 between parts, every part at least 2 wide.</summary>
-    public const float LedgerHeight = 4f, LedgerGap = 2f, LedgerMinPart = 2f;
-    /// <summary>The in-progress part's tone (the prototype's 45 % mix) and the floor a part's weight never drops under
-    /// (so an empty part keeps its 2-DIP stub and the flex never divides by zero).</summary>
-    public const float LedgerProgressTone = 0.45f, LedgerFloor = 0.001f;
-
     /// <summary>The played ledger (W1): three flex parts — played (the tone), in progress (the tone at 45 %), to go (the
     /// subtle ground). <paramref name="played"/> and <paramref name="progress"/> are FRACTIONS of the show (0..1, the
     /// rest is "to go"); both are live (<see cref="Prop{T}"/>), and a change re-renders only this bar and slides each
     /// part from its old rect over 250 ms (plan §7 — a mark-played animates, a rail drag does not).</summary>
     public static Element LedgerBar(Prop<float> played, Prop<float> progress, Func<ColorF> tone)
         => Embed.Comp(new LedgerProps(played, progress, tone), static () => new LedgerHost());
-
-    /// <summary>The three part weights for <see cref="LedgerBar"/>: each fraction clamped into what is left of the whole
-    /// (progress never overlaps played), the rest to go, every weight floored at <see cref="LedgerFloor"/>.</summary>
-    public static (float Played, float Progress, float ToGo) LedgerPartsOf(float played, float progress)
-    {
-        float a = Clamp01(played);
-        float b = MathF.Min(Clamp01(progress), 1f - a);
-        float c = MathF.Max(0f, 1f - a - b);
-        return (MathF.Max(LedgerFloor, a), MathF.Max(LedgerFloor, b), MathF.Max(LedgerFloor, c));
-
-        static float Clamp01(float v) => float.IsNaN(v) ? 0f : Math.Clamp(v, 0f, 1f);
-    }
-
-    /// <summary>Where the flex puts the three parts in a bar <paramref name="width"/> wide — the FLIP's "from" and "to"
-    /// (the layout itself is the engine's flex; this mirrors it closely enough to start a slide from). A part whose share
-    /// falls under <see cref="LedgerMinPart"/> is pinned at it and the others share what is left, Yoga's freeze-and-
-    /// redistribute.</summary>
-    public static void LedgerGeometry(float width, float played, float progress, float toGo, Span<float> x, Span<float> w)
-    {
-        Span<float> g = stackalloc float[3];
-        g[0] = played; g[1] = progress; g[2] = toGo;
-        Span<bool> pinned = stackalloc bool[3];
-        float pool = MathF.Max(0f, width - 2f * LedgerGap), sum = g[0] + g[1] + g[2];
-        for (int pass = 0; pass < 3; pass++)
-        {
-            bool changed = false;
-            for (int i = 0; i < 3; i++)
-            {
-                if (pinned[i]) continue;
-                float share = sum > 0f ? pool * g[i] / sum : 0f;
-                if (share >= LedgerMinPart) continue;
-                pinned[i] = true; w[i] = LedgerMinPart; pool -= LedgerMinPart; sum -= g[i]; changed = true;
-            }
-            if (!changed) break;
-        }
-        for (int i = 0; i < 3; i++)
-            if (!pinned[i]) w[i] = sum > 0f ? MathF.Max(0f, pool) * g[i] / sum : 0f;
-        x[0] = 0f;
-        x[1] = w[0] + LedgerGap;
-        x[2] = x[1] + w[1] + LedgerGap;
-    }
 
     sealed record LedgerProps(Prop<float> Played, Prop<float> Progress, Func<ColorF> Tone);
 
@@ -166,18 +119,18 @@ public static partial class Controls
         public override Element Render()
         {
             var p = UseProps<LedgerProps>();
-            (_a, _b, _c) = LedgerPartsOf(p.Played.Current(), p.Progress.Current());
+            (_a, _b, _c) = PodcastLedgerRules.PartsOf(p.Played.Current(), p.Progress.Current());
             if (!ReferenceEquals(_tone, p.Tone))
             {
                 Func<ColorF> tone = p.Tone;
                 _tone = tone;
                 _playedInk = Prop.Of(tone);
-                _progressInk = Prop.Of(() => ToneAt(tone(), LedgerProgressTone));
+                _progressInk = Prop.Of(() => ToneAt(tone(), PodcastLedgerRules.ProgressTone));
             }
             UseLayoutEffect(_slide, DepKey.From(_a, _b));
             return new BoxEl
             {
-                Direction = 0, Height = LedgerHeight, Gap = LedgerGap, MinWidth = 0f, Shrink = 0f,
+                Direction = 0, Height = PodcastLedgerRules.Height, Gap = PodcastLedgerRules.Gap, MinWidth = 0f, Shrink = 0f,
                 OnBoundsChanged = _measured,
                 Children = [Part(0, _a, _playedInk), Part(1, _b, _progressInk), Part(2, _c, Tok.FillSubtleTertiary)],
             };
@@ -185,7 +138,7 @@ public static partial class Controls
 
         BoxEl Part(int i, float weight, Prop<ColorF> fill) => new()
         {
-            Grow = weight, Basis = 0f, MinWidth = LedgerMinPart, Corners = CornerRadius4.All(LedgerHeight / 2f),
+            Grow = weight, Basis = 0f, MinWidth = PodcastLedgerRules.MinPart, Corners = CornerRadius4.All(PodcastLedgerRules.Height / 2f),
             Fill = fill, TransformOriginX = 0f, OnRealized = _realized[i],
         };
 
@@ -198,8 +151,8 @@ public static partial class Controls
             Span<float> ow = stackalloc float[3];
             Span<float> nx = stackalloc float[3];
             Span<float> nw = stackalloc float[3];
-            LedgerGeometry(_barW, pa, pb, pc, ox, ow);
-            LedgerGeometry(_barW, a, b, c, nx, nw);
+            PodcastLedgerRules.Geometry(_barW, pa, pb, pc, ox, ow);
+            PodcastLedgerRules.Geometry(_barW, a, b, c, nx, nw);
             for (int i = 0; i < 3; i++)
             {
                 if (_parts[i].IsNull) continue;
@@ -392,7 +345,7 @@ public static partial class Controls
                     {
                         // Pause while THIS episode is the one playing (a coarse-first subscribing read: the glyph node
                         // re-skins, the door does not re-render).
-                        Text = Prop.Of(() => ShowsPause(playId) ? Icons.Pause : Icons.Play),
+                        Text = Prop.Of(() => PlayRelation.ShowsPause(playId) ? Icons.Pause : Icons.Play),
                         Color = Prop.Of(() => ColorContrast.PickContrast(tone())),
                     },
                 ],

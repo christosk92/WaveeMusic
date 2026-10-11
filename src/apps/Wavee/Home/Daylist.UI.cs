@@ -122,7 +122,7 @@ public sealed class DaylistCard : Component
         // Shuffle STARTS the daylist shuffled; it never toggles (HomeCardNav.Play pauses a daylist that already plays).
         void Shuffle() { Playback.SetShuffle(true); Playback.PlayContext(c.Uri); }
         // The ▶ names what a press does: Pause while this daylist is the context playing (a subscribing, coarse-first read).
-        bool pauses = Controls.ShowsPause(uri);
+        bool pauses = PlayRelation.ShowsPause(uri);
 
         var actions = ActionRow(
             Button.Create(Loc.Get(pauses ? Strings.Home.Pause : Strings.Home.Play), Play, ButtonAppearance.Accent,
@@ -397,7 +397,7 @@ public sealed class DaylistClock : Component
     {
         _ = _flip.Value;                                           // the window ended: swap the face once
         var ladder = Home.Feeds.RolloverState.Value;               // the ladder moved: Updating ↔ Late
-        var mode = Prefs.Appearance.DaylistClock();                // Settings picked another clock: swap the Counting face
+        var mode = HomeHost.DaylistClock();                        // Settings picked another clock: swap the Counting face
         long expiresAtMs = ExpiresAtMs, createdAtMs = CreatedAtMs;
         long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var phase = DaylistCountdown.PhaseOf(expiresAtMs, nowMs);

@@ -1309,7 +1309,7 @@ public static partial class Detail
         /// <summary>The rating row: ★ 4.8 · 12,431 ratings at 12.5 on a 2-DIP padded hit box.</summary>
         public const float RatingHeight = 20f;
         /// <summary>The ledger: the 4-DIP <c>Controls.LedgerBar</c>, 6, then one 12/16 counts line.</summary>
-        public const float LedgerBarHeight = Controls.LedgerHeight, LedgerGap = 6f, LedgerLineHeight = 16f;
+        public const float LedgerBarHeight = PodcastLedgerRules.Height, LedgerGap = 6f, LedgerLineHeight = 16f;
         public const float LedgerHeight = LedgerBarHeight + LedgerGap + LedgerLineHeight;
         /// <summary>The topic words (<c>Controls.Words.Links</c>): two nominal lines of 18, 4 between.</summary>
         public const int TopicLines = 2;

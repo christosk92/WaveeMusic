@@ -466,24 +466,6 @@ public static partial class Controls
 
     // ══ THE CONTEXT PLAY BUTTON — the hero ▶ that says what a press will do ═════════════════════════════════════════════
 
-    /// <summary>Does a press on this container's ▶ PAUSE right now? True when the container is the playing context (or
-    /// the playing item, for a playable), playback is running and no fault stands (the same gate
-    /// <see cref="ContextPlayRules"/> uses to decide Toggle vs Start). A SUBSCRIBING read, coarse-first like
-    /// <see cref="Playback.InstallCardSeam"/>: an idle surface reads one bool and never joins the identity fan-out, and
-    /// a surface that is not the playing one re-renders on no skip at all.</summary>
-    public static bool ShowsPause(EntityId target)
-    {
-        if (target.IsEmpty || !Playback.HasCardContext.Value) return false;
-        bool relates = CardRelation.IsPlayable(target.Kind)
-            ? CardRelation.Relates(target, default, Playback.CurrentId.Value)
-            : CardRelation.Relates(target, Playback.ContextUri.Value, default);
-        return relates && Playback.Error.Value == Playback.Fault.None && Playback.IsPlaying.Value;
-    }
-
-    /// <summary><see cref="ShowsPause(EntityId)"/> for a uri (the parse interns — UI thread, i.e. a Render).</summary>
-    public static bool ShowsPause(string uri)
-        => !string.IsNullOrEmpty(uri) && ShowsPause(EntityId.Parse(uri));
-
     /// <summary>The detail hero's primary: <see cref="PlayButton(Func{ColorF}, Action, string?, string?)"/> whose glyph and
     /// label follow playback (Play ▶ → Pause ⏸ while this subject is the one playing). A small component so the
     /// play/pause flip re-renders THIS button and not the page rail around it; the props freeze at mount, so the subject
@@ -503,7 +485,7 @@ public static partial class Controls
         public override Element Render()
         {
             if (!_parsed) { _id = EntityId.Parse(Uri); _parsed = true; }
-            bool pause = ShowsPause(_id);
+            bool pause = PlayRelation.ShowsPause(_id);
             return pause
                 ? PlayButton(Accent(), OnClick, Loc.Get(Strings.Home.Pause), Icons.Pause)
                 : PlayButton(Accent(), OnClick);

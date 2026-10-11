@@ -251,16 +251,7 @@ public static partial class SettingsVerbs
     /// detail page's rail snaps to the reset widths now rather than next launch.</summary>
     public static bool ResetRailSizes()
     {
-        var s = Platform.Settings;
-        s.Set(Platform.Keys.DetailAlbumRailWidth, Platform.Keys.DetailAlbumRailWidth.Default);
-        s.Set(Platform.Keys.DetailAlbumRailCollapsed, false);
-        s.Set(Platform.Keys.DetailPlaylistRailWidth, Platform.Keys.DetailPlaylistRailWidth.Default);
-        s.Set(Platform.Keys.DetailPlaylistRailCollapsed, false);
-        s.Set(Platform.Keys.DetailLikedRailWidth, Platform.Keys.DetailLikedRailWidth.Default);
-        s.Set(Platform.Keys.DetailLikedRailCollapsed, false);
-        s.Set(Platform.Keys.DetailShowRailWidth, Platform.Keys.DetailShowRailWidth.Default);
-        s.Set(Platform.Keys.DetailShowRailCollapsed, false);
-        Prefs.DetailHero.Bump();
+        DetailRailPrefs.ResetAll();   // the four per-scope pairs, never the uniform pair, ONE bump
         return true;
     }
 

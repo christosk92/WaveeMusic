@@ -416,10 +416,9 @@ public static partial class Detail
         {
             Scope = scope;
             _fade = fade;
-            var keys = RailPolicy.KeysFor(scope);
-            _stored = RailPolicy.ClampStored(Platform.Settings.Get(keys.Width), scope);
+            _stored = DetailRailPrefs.StoredWidth(scope);
             Width = new Signal<float>(RailPolicy.RestingWidth(_stored, scope, RailPolicy.WideMode, RailPolicy.MaxWidth));
-            Collapsed = new Signal<bool>(Platform.Settings.Get(keys.Collapsed));
+            Collapsed = new Signal<bool>(DetailRailPrefs.Collapsed(scope));
             Commit = CommitNow;
             Expand = ExpandNow;
             _options = new Splitter.SplitterOptions
@@ -466,28 +465,25 @@ public static partial class Detail
 
         void CommitNow()
         {
-            var keys = RailPolicy.KeysFor(Scope);
             // A drag that merely parked against a page-imposed cap keeps the wider remembered width.
             _stored = RailPolicy.CommitWidth(Width.Peek(), _stored, _max);
-            Platform.Settings.Set(keys.Width, _stored);
-            // The ONE bump: every mounted (and parked) frame re-syncs its rails, so "Keep left-rail same size" moves them all.
-            Prefs.DetailHero.Set(keys.Collapsed, Collapsed.Peek());
+            // The ONE bump (inside the pref): every mounted (and parked) frame re-syncs its rails, so "Keep left-rail same size" moves them all.
+            DetailRailPrefs.Commit(Scope, _stored, Collapsed.Peek());
         }
 
         void ExpandNow()
         {
             Collapsed.Value = false;
             _fade.Value = 1f;
-            Prefs.DetailHero.Set(RailPolicy.KeysFor(Scope).Collapsed, false);
+            DetailRailPrefs.SetCollapsed(Scope, false);
         }
 
         /// <summary>Re-seed from the store, then re-rest at the page's live bounds (the epoch effect, ch 03 §6).</summary>
         public void Resync()
         {
-            var keys = RailPolicy.KeysFor(Scope);
-            _stored = RailPolicy.ClampStored(Platform.Settings.Get(keys.Width), Scope);
+            _stored = DetailRailPrefs.StoredWidth(Scope);
             Rest(_mode, _max);
-            Collapsed.Value = Platform.Settings.Get(keys.Collapsed);
+            Collapsed.Value = DetailRailPrefs.Collapsed(Scope);
         }
     }
 

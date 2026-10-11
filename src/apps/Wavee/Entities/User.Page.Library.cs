@@ -348,18 +348,18 @@ public readonly partial struct User
                 Shell.RouteKind.LibraryAudiobooks => ("audiobooks", EntityKind.Show, LibraryEdgeKind.SavedShows, FetchEdge.SavedShows),
                 _ => ("albums", EntityKind.Album, LibraryEdgeKind.SavedAlbums, FetchEdge.SavedAlbums),
             };
-            var s = Platform.Settings;
             _navScroll = new ScrollOptions { ScrollKey = "lib:nav:" + _kind, Handle = _navHandle };
-            LeftW = new(s.Get(Platform.Keys.LibraryLeftW(_kind)));
-            MidW = new(s.Get(Platform.Keys.LibraryMidW(_kind)));
-            Sort = new(s.Get(Platform.Keys.LibrarySort(_kind)));
-            Desc = new(s.Get(Platform.Keys.LibraryDesc(_kind)));
-            View = new(s.Get(Platform.Keys.LibraryView(_kind)));
-            Size = new(s.Get(Platform.Keys.LibrarySize(_kind)));
-            SelectedKey = new(s.Get(Platform.Keys.LibrarySelected(_kind)));
-            AlbumKey = new(s.Get(Platform.Keys.LibraryAlbumKey(_kind)));
-            Scope = new(s.Get(Platform.Keys.LibraryScope(_kind)));
-            RSort = new(s.Get(Platform.Keys.LibraryAlbumSort(_kind)));
+            var saved = LibraryViewPrefs.Read(_kind);
+            LeftW = new(saved.LeftW);
+            MidW = new(saved.MidW);
+            Sort = new(saved.Sort);
+            Desc = new(saved.Desc);
+            View = new(saved.View);
+            Size = new(saved.Size);
+            SelectedKey = new(saved.SelectedKey);
+            AlbumKey = new(saved.AlbumKey);
+            Scope = new(saved.Scope);
+            RSort = new(saved.AlbumSort);
 
             _computeShape = ComputeShape;
             _resolveSelected = () => { _ = Entities.ScopeEpoch.Value; return SlotOfKey(_entity, SelectedKey.Value); };
@@ -376,8 +376,8 @@ public readonly partial struct User
             _autoTop = AutoSelectTop;
             _autoAlbum = AutoSelectAlbum;
             _onNavSel = OnNavSel;
-            _commitLeft = () => Platform.Settings.Set(Platform.Keys.LibraryLeftW(_kind), LeftW.Peek());
-            _commitMid = () => Platform.Settings.Set(Platform.Keys.LibraryMidW(_kind), MidW.Peek());
+            _commitLeft = () => LibraryViewPrefs.SetLeftW(_kind, LeftW.Peek());
+            _commitMid = () => LibraryViewPrefs.SetMidW(_kind, MidW.Peek());
             _onBounds = r =>
             {
                 if (r.W <= 0f) return;
@@ -897,16 +897,9 @@ public readonly partial struct User
 
         void SaveState()
         {
-            var s = Platform.Settings;
-            s.Set(Platform.Keys.LibrarySort(_kind), Sort.Peek());
-            s.Set(Platform.Keys.LibraryDesc(_kind), Desc.Peek());
-            s.Set(Platform.Keys.LibraryView(_kind), View.Peek());
-            s.Set(Platform.Keys.LibrarySize(_kind), Size.Peek());
-            s.Set(Platform.Keys.LibrarySelected(_kind), SelectedKey.Peek());
-            if (!IsArtists) return;
-            s.Set(Platform.Keys.LibraryAlbumKey(_kind), AlbumKey.Peek());
-            s.Set(Platform.Keys.LibraryScope(_kind), Scope.Peek());
-            s.Set(Platform.Keys.LibraryAlbumSort(_kind), RSort.Peek());
+            LibraryViewPrefs.Save(_kind, new LibraryViewState(
+                LeftW.Peek(), MidW.Peek(), Sort.Peek(), Desc.Peek(), View.Peek(), Size.Peek(),
+                SelectedKey.Peek(), AlbumKey.Peek(), Scope.Peek(), RSort.Peek()), IsArtists);
         }
 
         // ── the letters: the sticky overlay, the jump strip (W2) ─────────────────────────────────────────────────────

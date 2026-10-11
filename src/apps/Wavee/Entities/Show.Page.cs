@@ -261,9 +261,7 @@ public readonly partial struct Show
             _m.SavedStatus = status;
             _m.SavedOrder = order;
             if (_m.PrefsId.Length == 0) return;
-            string blob = Platform.Settings.Get(Platform.Keys.PodcastViews);
-            string next = ShowReaderRules.Persist(blob, _m.PrefsId, status, order);
-            if (!string.Equals(next, blob, StringComparison.Ordinal)) Platform.Settings.Set(Platform.Keys.PodcastViews, next);
+            ShowViewPrefs.Save(_m.PrefsId, status, order);
         }
 
         /// <summary>The CTA's satellites (W1): ♥ (hidden while Follow is the primary) · trailer (when the show names one)
@@ -411,7 +409,7 @@ public readonly partial struct Show
             Subject = subject;
             SubjectText = subject.IsValid ? subject.Text : "";
             PrefsId = ShowReaderRules.PrefsId(SubjectText);
-            var (status, order) = ShowReaderRules.Seed(Platform.Settings.Get(Platform.Keys.PodcastViews), PrefsId);
+            var (status, order) = ShowReaderRules.Seed(ShowViewPrefs.Blob(), PrefsId);
             Status = new Signal<int>(status);
             Order = new Signal<int>(order);
             SavedStatus = status;

@@ -1,6 +1,6 @@
 // ── Entities/Show.Rules.cs ─────────────────────────────────────────────────────────────────────────────────────────
-// the show page's derived facts: the visit, listen-next, the played ledger, the cadence, the reader's item list, the
-// episode doors and the per-show view prefs
+// the show page's derived facts: the visit, listen-next, the played ledger, the cadence, the reader's item list and the
+// episode doors (the per-show view prefs moved to `ShowViewPrefs.cs`)
 //
 // Role: CORE
 // Owner: R
@@ -682,77 +682,5 @@ public static class EpisodeNeighbours
         int at = slotsNewestFirst.IndexOf(self);
         if (at < 0) return (-1, -1);
         return (at > 0 ? slotsNewestFirst[at - 1] : -1, at + 1 < slotsNewestFirst.Length ? slotsNewestFirst[at + 1] : -1);
-    }
-}
-
-// ══ 7. THE VIEW PREFS ════════════════════════════════════════════════════════════════════════════════════════════════
-
-/// <summary>Filter + sort per show in ONE setting (<see cref="Platform.Keys.PodcastViews"/>, D-6) — never a key per
-/// uri, which grows the store by one value for every show ever opened.
-/// <para>FORMAT: <c>id:status:order;id:status:order;…</c>, most recently written FIRST, at most <see cref="Cap"/>
-/// entries: <see cref="Write"/> moves its show to the front and drops the least recent past the cap. <c>id</c> is the
-/// show's BASE62 id — never its uri, whose colons are the separator: an id that is empty or holds ':' or ';' is
-/// rejected (<see cref="Read"/> answers the defaults, <see cref="Write"/> returns the blob unchanged). status/order are
-/// the caller's enums as non-negative decimal ints (<c>Episode.Rules.Status</c>; 0 newest · 1 oldest) — the caller
-/// clamps a value its enum does not define, since the store is hand-editable.</para>
-/// <para>MALFORMED input never throws: an entry that is not exactly three fields, an empty id, or a non-digit number is
-/// skipped (and dropped by the next write); a blob with no valid entry for the show answers the defaults (0, 0).</para></summary>
-public static class ShowViewPrefs
-{
-    public const int Cap = 64;
-
-    public static bool IsValidId(ReadOnlySpan<char> id) => id.Length > 0 && id.IndexOfAny(':', ';') < 0;
-
-    /// <summary>The show's stored (status, order); (0, 0) when absent, malformed or the id is invalid. Allocation-free.</summary>
-    public static (int Status, int Order) Read(string? blob, ReadOnlySpan<char> showId)
-    {
-        if (!IsValidId(showId)) return (0, 0);
-        var rest = blob.AsSpan();
-        while (!rest.IsEmpty)
-        {
-            var entry = Next(ref rest);
-            if (TryParse(entry, out var id, out int status, out int order) && id.SequenceEqual(showId)) return (status, order);
-        }
-        return (0, 0);
-    }
-
-    /// <summary>The blob with this show's entry FIRST (negative values stored as 0), every other valid entry after it in
-    /// its old order, trimmed to <see cref="Cap"/>. An invalid id returns <paramref name="blob"/> unchanged.</summary>
-    public static string Write(string? blob, ReadOnlySpan<char> showId, int status, int order)
-    {
-        if (!IsValidId(showId)) return blob ?? "";
-        var sb = new StringBuilder((blob?.Length ?? 0) + showId.Length + 24);
-        sb.Append(showId).Append(':').Append(Math.Max(0, status)).Append(':').Append(Math.Max(0, order));
-        int kept = 1;
-        var rest = blob.AsSpan();
-        while (!rest.IsEmpty && kept < Cap)
-        {
-            var entry = Next(ref rest);
-            if (!TryParse(entry, out var id, out _, out _) || id.SequenceEqual(showId)) continue;
-            sb.Append(';').Append(entry);
-            kept++;
-        }
-        return sb.ToString();
-    }
-
-    static ReadOnlySpan<char> Next(ref ReadOnlySpan<char> rest)
-    {
-        int cut = rest.IndexOf(';');
-        var entry = cut < 0 ? rest : rest[..cut];
-        rest = cut < 0 ? default : rest[(cut + 1)..];
-        return entry;
-    }
-
-    static bool TryParse(ReadOnlySpan<char> entry, out ReadOnlySpan<char> id, out int status, out int order)
-    {
-        status = order = 0;
-        int a = entry.IndexOf(':');
-        id = a < 0 ? default : entry[..a];
-        if (a <= 0) return false;
-        var tail = entry[(a + 1)..];
-        int b = tail.IndexOf(':');
-        return b >= 0
-            && int.TryParse(tail[..b], NumberStyles.None, CultureInfo.InvariantCulture, out status)
-            && int.TryParse(tail[(b + 1)..], NumberStyles.None, CultureInfo.InvariantCulture, out order);
     }
 }

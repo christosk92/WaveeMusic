@@ -396,16 +396,9 @@ public static partial class Settings
         }
     }
 
-    /// <summary>The reset's enable gate — a destructive-looking no-op is never offered. The uniform pair is excluded.</summary>
-    internal static bool HasCustomizedRail()
-    {
-        var s = Platform.Settings;
-        return Detail.RailPolicy.HasCustomizedRailPrefs(
-            s.Get(Platform.Keys.DetailAlbumRailWidth), s.Get(Platform.Keys.DetailAlbumRailCollapsed),
-            s.Get(Platform.Keys.DetailPlaylistRailWidth), s.Get(Platform.Keys.DetailPlaylistRailCollapsed),
-            s.Get(Platform.Keys.DetailLikedRailWidth), s.Get(Platform.Keys.DetailLikedRailCollapsed),
-            s.Get(Platform.Keys.DetailShowRailWidth), s.Get(Platform.Keys.DetailShowRailCollapsed));
-    }
+    /// <summary>The reset's enable gate — a destructive-looking no-op is never offered (DetailRailPrefs owns the rule).
+    /// </summary>
+    internal static bool HasCustomizedRail() => DetailRailPrefs.HasCustomized();
 
     /// <summary>A wireframe of the page SYSTEM each choice selects — Automatic: a narrow metadata rail beside full-width
     /// rows; Hero: an artwork field and compact identity above the rows (ch 27 W4).</summary>
