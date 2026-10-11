@@ -1,12 +1,17 @@
 // ── Shell/QueueVerbs.cs ────────────────────────────────────────────────────────────────────────────────────────────
-// the queue verbs the player bar owns today (themes plan C2, X6): DROP PLAY NEXT. The rest of the queue's verbs arrive with
-// the queue model (C7), which extends this class.
+// the queue's VERBS (themes plan C2 X6 + C7 X42): play a row, remove it, clear the queue, move a row, flip autoplay, show more,
+// the row's menu, a foreign drop on the lane, and the player bar's DROP PLAY NEXT. A queue surface of any theme takes an
+// `IQueueVerbs` and wires its rows and buttons to it; it never edits the queue, the settings or a page counter itself.
 //
 // Role: CORE
-// Spec: ch 19 #87, G-211
+// Spec: ch 19 #87, G-211; ch 21 §6.4, §8, §9.5
 //
-// The bar's centre cluster is a drop target: dropping a track, album or playlist there is PLAY NEXT, a front-insert and
-// never an immediate playback change. The target's look and its accept/caption policy are view; the deposit is this.
+// A row is identified by its stable ITEM ID and re-located in the LIVE queue when the verb runs (a render captures an id and a
+// flat index, never a span), so a queue that shifted since the surface drew still edits the row the user meant. A viewed
+// (remote) queue is a mirror: local edits would be overwritten, so every edit refuses it and a play is forwarded.
+//
+// The queue's session writes (`Queue.SkipTo`, `RemoveUpcoming`, `MoveInSection`, `ClearUserQueue`, `InsertUser`) stay in
+// `Queue.Rules.cs`; this is the door in front of them.
 
 using System;
 using System.Collections.Generic;
@@ -19,8 +24,72 @@ namespace Wavee;
 
 public static partial class Shell
 {
-    public static class QueueVerbs
+    /// <summary>What a queue surface can ask of the queue.</summary>
+    public interface IQueueVerbs
     {
+        /// <summary>Play a row: a cursor move inside the live session (the rows the skip passes over are trimmed), never a
+        /// rebuild; a viewed queue forwards it to the owner. <paramref name="index"/> and <paramref name="row"/> are only the
+        /// fallback for a row with no item id (0).</summary>
+        void Play(ulong itemId, int index = -1, EntityRef row = default);
+
+        /// <summary>Remove an upcoming row. Refused on a viewed queue.</summary>
+        void Remove(ulong itemId, int index, EntityRef row);
+
+        /// <summary>Clear the user's queue ("Next in queue"). Refused on a viewed queue.</summary>
+        void Clear();
+
+        /// <summary>Move a row within its section, from position <paramref name="from"/> to <paramref name="to"/>.</summary>
+        void Move(QueueSection section, int from, int to);
+
+        /// <summary>Flip autoplay.</summary>
+        void ToggleAutoplay();
+
+        /// <summary>Set autoplay (a switch that states the value it wants).</summary>
+        void SetAutoplay(bool on);
+
+        /// <summary>One more page of <paramref name="section"/> on this surface.</summary>
+        void ShowMore(QueueSection section);
+
+        /// <summary>The queue-entry menu: header "{artists} · {section}", the strip Play now · Play next · Add to queue ·
+        /// Like, the track rows, Move up / Move down where legal, Remove last. Null for a row that is gone or not a track.</summary>
+        ContextMenuModel? RowMenu(ulong itemId, int index, EntityRef row, bool viewer);
+
+        /// <summary>A foreign drop on the lane: the dropped tracks go into the user queue at <paramref name="userIndex"/>
+        /// (0 = play next), capped like the player bar's drop, and the toast says how many landed.</summary>
+        void DropInsert(object? payload, int userIndex);
+    }
+
+    public sealed class QueueVerbs(QueuePages pages) : IQueueVerbs
+    {
+        /// <summary>Verbs over a private page counter, for a caller with no surface of its own.</summary>
+        public static readonly QueueVerbs Default = new(new QueuePages());
+
+        // ══ THE RULES (pure) ═════════════════════════════════════════════════════════════════════════════════════════
+
+        /// <summary>Where a row a render captured lives NOW: by its item id, else by the captured index while it still holds
+        /// the same ref (−1 when it is gone).</summary>
+        public static int Locate(ulong itemId, int index, EntityRef row, Func<ulong, int> indexOfItem, Func<int, EntityRef> refAt)
+            => itemId != 0 ? indexOfItem(itemId) : refAt(index) == row && !row.IsNone ? index : -1;
+
+        /// <summary><see cref="Locate(ulong, int, EntityRef, Func{ulong, int}, Func{int, EntityRef})"/> in the live queue.</summary>
+        public static int Locate(ulong itemId, int index, EntityRef row) => Locate(itemId, index, row, Queue.IndexOfItem, Queue.RefAt);
+
+        /// <summary>May the menu offer edits for this row? Only on a queue we own, for a row with a stable id that is upcoming.</summary>
+        public static bool RowMenuEditable(bool viewer, ulong itemId, int positionInSection)
+            => !viewer && itemId != 0 && positionInSection >= 0;
+
+        public static bool CanMoveUp(int positionInSection) => positionInSection > 0;
+
+        public static bool CanMoveDown(int positionInSection, int sectionCount) => positionInSection + 1 < sectionCount;
+
+        /// <summary>The section's name in the menu header.</summary>
+        public static string SectionNameKey(QueueSection section) => section switch
+        {
+            QueueSection.Queue => Strings.Player.QueueSectionNext,
+            QueueSection.Autoplay => Strings.Player.QueueSectionAutoplay,
+            _ => Strings.Player.QueueSectionNextUp,
+        };
+
         /// <summary>What a play-next drop inserts, as DATA. <see cref="Order"/> is the indices into the dropped tracks in the
         /// order they are handed to the queue seam: the FIRST <see cref="PlayerBarRules.MaxPlayNextDrop"/> tracks, LAST
         /// first (each is front-inserted, so the dropped order is the play order), skipping any that are not valid.
@@ -45,6 +114,121 @@ public static partial class Shell
             }
             return new PlayNextPlan(order.ToArray(), PlayerBarRules.DropWasTruncated(valid.Length));
         }
+
+        // ══ THE EDITS ════════════════════════════════════════════════════════════════════════════════════════════════
+
+        /// <summary>A queue edit landed: publish it now (a click is a drain boundary) and let the deck re-arm what plays next.</summary>
+        public static void Changed()
+        {
+            Entities.Publish();
+            Playback.Post(Playback.Input.QueueChanged(Playback.FrameNowMs()));
+        }
+
+        public void Play(ulong itemId, int index = -1, EntityRef row = default)
+        {
+            int at = Locate(itemId, index, row);
+            if (at < 0) return;
+            EntityId context = Playback.ContextUri.Peek();
+            if (QueueModel.IsViewer()) { Playback.PlayNow(Queue.RefAt(at), context, Queue.CursorOf(at)); return; }   // the reducer forwards it
+            if (!Queue.SkipTo(at, Playback.Snap().Cursor, out QueueCursor cursor)) return;
+            Entities.Publish();
+            Playback.PlayNow(Queue.RefAt(cursor), context, cursor);
+        }
+
+        public void Remove(ulong itemId, int index, EntityRef row)
+        {
+            int at = Locate(itemId, index, row);
+            if (at >= 0 && !QueueModel.IsViewer() && Queue.RemoveUpcoming(at, Playback.Snap().Cursor)) Changed();
+        }
+
+        public void Clear()
+        {
+            if (!QueueModel.IsViewer() && Queue.ClearUserQueue(Playback.Snap().Cursor) > 0) Changed();
+        }
+
+        public void Move(QueueSection section, int from, int to)
+        {
+            if (!QueueModel.IsViewer() && Queue.MoveInSection(section, from, to, Playback.Snap().Cursor)) Changed();
+        }
+
+        public void ToggleAutoplay() => SetAutoplay(!QueueModel.AutoplayEnabled());
+
+        public void SetAutoplay(bool on) => Platform.Settings.Set(Platform.Keys.AutoplayEnabled, on);
+
+        public void ShowMore(QueueSection section) => pages.ShowMore(section);
+
+        public ContextMenuModel? RowMenu(ulong itemId, int index, EntityRef row, bool viewer)
+        {
+            int at = Locate(itemId, index, row);
+            if (at < 0 || row.Kind != EntityKind.Track || new Track(row.Slot) is not { IsValid: true } track) return null;
+            var rows = Queue.Rows;
+            int pos = Queue.PositionInSection(rows, Queue.Divider(rows, viewer ? -1 : Playback.Snap().Cursor.Index), at, out int count);
+            QueueSection section = Queue.SectionOf(rows[at]);
+            ulong id = rows[at].ItemId;
+            var ctx = new ActionContext(ActionTarget.ForQueueEntry(track, (long)id), Actions.Services);
+
+            var strip = new List<AppBarCommand>(4) { new AppBarCommand(Icons.Play, Loc.Get(Strings.Menu.PlayNow), () => Play(itemId, index, row)) };
+            ReadOnlySpan<ActionId> verbs = [ActionId.PlayNext, ActionId.AddToQueue, ActionId.ToggleLike];
+            for (int v = 0; v < verbs.Length; v++)
+                if (Actions.Menu.Command(verbs[v], in ctx) is { } command) strip.Add(command);
+
+            var list = new List<MenuFlyoutItem>(10);
+            Actions.Menu.AddRows(list, in ctx, [ActionId.AddToPlaylist, ActionId.GoToAlbum, ActionId.GoToArtist]);
+            if (Actions.Menu.Share(in ctx) is { } share) list.Add(share);
+            Actions.Menu.AddRows(list, in ctx, [ActionId.ViewCredits, ActionId.GoToSongRadio]);
+            bool editable = RowMenuEditable(viewer, id, pos);
+            if (editable && (CanMoveUp(pos) || CanMoveDown(pos, count)))
+            {
+                Actions.Menu.OpenGroup(list);
+                Actions.Menu.AddMoveRows(list, CanMoveUp(pos) ? () => Move(section, pos, pos - 1) : null,
+                                         CanMoveDown(pos, count) ? () => Move(section, pos, pos + 1) : null);
+            }
+            if (editable)
+            {
+                Actions.Menu.OpenGroup(list);
+                list.Add(new MenuFlyoutItem(Loc.Get(Strings.Menu.RemoveFromQueue), ActionIcons.Resolve(ActionIcons.Remove), true,
+                                            () => Remove(itemId, index, row)));
+            }
+            string name = Loc.Get(SectionNameKey(section));
+            string artists = Entities.Strings.Resolve(track.ArtistLineId);
+            return new ContextMenuModel(strip, list,
+                Actions.Menu.Header(Controls.ArtUrl(track.ImageId), track.Title, artists.Length > 0 ? artists + " · " + name : name));
+        }
+
+        public void DropInsert(object? payload, int userIndex)
+        {
+            if (Drag.Unwrap(payload) is { CanCopyTracks: true } p) _ = DropInsertAsync(p, userIndex);
+        }
+
+        static async Task DropInsertAsync(DragPayload payload, int userIndex)
+        {
+            Track[] tracks;
+            try { tracks = await payload.ResolveTracksAsync().ConfigureAwait(false); }
+            catch (Exception ex) { Log.Warn("queue", "drop could not resolve its tracks", ex); return; }
+            if (tracks.Length == 0) return;
+            Playback.ToUi(() =>
+            {
+                int cap = PlayerBarRules.DropInsertCount(tracks.Length), n = 0;
+                var refs = new EntityRef[cap];
+                for (int i = 0; i < cap; i++) if (tracks[i].IsValid) refs[n++] = new EntityRef(EntityKind.Track, tracks[i].Slot);
+                if (QueueModel.IsViewer())
+                {
+                    // G-248: another device plays — the rows go to its queue through Connect, not into a queue we do not own.
+                    if (!Playback.QueueToOwner(refs.AsSpan(0, n), next: userIndex == 0))
+                    { Notify.Say(Loc.Get(Strings.Detail.QueueUnavailable), InfoBarSeverity.Warning); return; }
+                    Notify.Say(Strings.Detail.AddedToQueue(Strings.Detail.SongCount(n)), InfoBarSeverity.Success);
+                    return;
+                }
+                int added = Queue.InsertUser(refs.AsSpan(0, n), Playback.Snap().Cursor, userIndex);
+                if (added == 0) return;
+                Changed();
+                Notify.Say(PlayerBarRules.DropWasTruncated(tracks.Length)
+                    ? Strings.Detail.AddedFirstToQueue(Strings.Detail.SongCount(added))
+                    : Strings.Detail.AddedToQueue(Strings.Detail.SongCount(added)), InfoBarSeverity.Success);
+            });
+        }
+
+        // ══ THE PLAYER BAR'S DROP (play next) ════════════════════════════════════════════════════════════════════════
 
         /// <summary>Fire-and-forget entry for a drop handler: resolve the payload's tracks and deposit them.</summary>
         public static void DropPlayNext(DragPayload payload) => _ = DropPlayNextAsync(payload);

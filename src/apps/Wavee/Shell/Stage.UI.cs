@@ -1807,7 +1807,7 @@ public static partial class Stage
         {
             var ctx = UseContext(StageContext)!;
             var set = ctx.Accent.Value;
-            UseSignalEffect(() => { _ = Platform.SettingsChanged.Value; _autoplay.SetIfChanged(Platform.Settings.Get(Platform.Keys.AutoplayEnabled)); });
+            UseSignalEffect(() => { _ = Platform.SettingsChanged.Value; _autoplay.SetIfChanged(Shell.QueueModel.AutoplayEnabled()); });
             EntityId contextId = Playback.ContextUri.Value;
             Queue.ContextWire wire = Playback.ContextLabel.Value;
             UseEffect(static () => Queue.EnsureContext(Queue.ContextTarget(Playback.ContextUri.Peek(), Playback.ContextLabel.Peek())),
@@ -1837,7 +1837,7 @@ public static partial class Stage
                             {
                                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
                                 Children = [new TextEl(Loc.Get(Strings.Player.Autoplay)) { Size = MathF.Round(14f * s), LineHeight = MathF.Round(20f * s), Color = Ink.Ink },
-                                            ToggleSwitch.Create(_autoplay, static on => Platform.Settings.Set(Platform.Keys.AutoplayEnabled, on), style: toggle)],
+                                            ToggleSwitch.Create(_autoplay, static on => Shell.QueueVerbs.Default.SetAutoplay(on), style: toggle)],
                             },
                         ],
                     },

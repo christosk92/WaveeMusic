@@ -699,7 +699,7 @@ public static partial class Rail
 
     /// <summary>One "Next up" row on the shared media surface (<c>Shape.Row</c> over <c>Track.RowData</c>): the row plate,
     /// the hand, the play FAB over the art, a track drag and the right-click menu. The row CLICK plays that queue item —
-    /// the same <c>play</c> the FAB runs (<see cref="Queue.PlayItem"/>, the queue panel's own skip), run through
+    /// the same <c>play</c> the FAB runs (<see cref="Shell.IQueueVerbs.Play"/>, the queue panel's own skip), run through
     /// <c>Track.Invoke</c> so the deck row toggles pause instead. The item is resolved inside the LIVE queue when clicked:
     /// the surface keeps its data across a queue shift (a data-equal re-push carries no new delegate into the render), so
     /// a captured index would go stale. The key carries
@@ -707,9 +707,9 @@ public static partial class Rail
     /// no "…" button (<see cref="QueueRowRules.ShowsMenuButton"/>): the menu is the right-click.</summary>
     static Element NextUpRow(Track t, int queueIndex, ulong itemId, bool art)
     {
-        // The queue panel's own skip (Queue.PlayItem → SkipToRow): resolves the item in the LIVE queue at click time, trims
+        // The queue panel's own skip (IQueueVerbs.Play): resolves the item in the LIVE queue at click time, trims
         // the rows skipped over and plays — so a rail click and a queue-panel click are the same act.
-        Action play = () => Queue.PlayItem(itemId, queueIndex, new EntityRef(EntityKind.Track, t.Slot));
+        Action play = () => Shell.QueueVerbs.Default.Play(itemId, queueIndex, new EntityRef(EntityKind.Track, t.Slot));
         Action click = () => Track.Invoke(t, play);
         var data = Track.RowData(t, new Track.RowDataOptions(OnClick: click, OnPlay: play, ShowArtwork: art,
                                                              ShowExplicit: false, ShowVideo: true,
