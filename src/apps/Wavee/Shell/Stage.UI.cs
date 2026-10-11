@@ -1422,7 +1422,7 @@ public static partial class Stage
         HoverScale = Design.Motion.ScaleEmphatic.HoverIf(enabled), PressScale = Design.Motion.ScaleEmphatic.PressIf(enabled),
         Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, IsEnabled = enabled,
         OnClick = static () => PlayerVerbs.Default.TogglePlay("stage.button"), Cursor = enabled ? CursorId.Hand : (CursorId?)null,
-        Children = [new TextEl(playing ? Icons.Pause : Icons.Play) { Size = 22f, FontFamily = Theme.IconFont, Color = enabled ? set.Ink : Ink.InkTertiary }],
+        Children = [new TextEl(playing ? Icons.Pause : Icons.Play) { Size = 22f, FontFamily = Tok.Definition.Fonts.Icon, Color = enabled ? set.Ink : Ink.InkTertiary }],
     };
 
     /// <summary>A plateless 40-DIP glyph button (glass on hover).</summary>
