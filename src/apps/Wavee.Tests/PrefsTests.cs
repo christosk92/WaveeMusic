@@ -204,14 +204,45 @@ public sealed class PrefsTests : IDisposable
     }
 
     [Fact]
-    public void Blur_minus_one_is_AUTO_and_is_never_confused_with_off()
+    public void The_blur_default_is_100_not_the_removed_Auto()
     {
-        Prefs.Lyrics.SetBlurStrength(-40);
-        Assert.Equal(-1, Prefs.Lyrics.BlurStrength());
-        Prefs.Lyrics.SetBlurStrength(0);
-        Assert.Equal(0, Prefs.Lyrics.BlurStrength());
-        Prefs.Lyrics.SetBlurStrength(250);
+        Assert.Equal(100, Platform.Keys.LyricsBlurStrength.Default);
+        Assert.Equal(100, Prefs.Lyrics.BlurStrength());   // a fresh store
+    }
+
+    [Theory]
+    [InlineData(-1)]    // the removed Auto choice persisted -1: it reads as 100 so an Auto profile keeps its blur
+    [InlineData(-9)]
+    [InlineData(140)]
+    public void A_stored_out_of_range_blur_reads_as_100(int stored)
+    {
+        _store.Set(Platform.Keys.LyricsBlurStrength, stored);
         Assert.Equal(100, Prefs.Lyrics.BlurStrength());
+        Assert.Equal(100, Prefs.Lyrics.FromStored(stored));
+    }
+
+    [Theory]
+    [InlineData(0, 0)]      // 0 is a real, deliberate "off"
+    [InlineData(1, 1)]
+    [InlineData(55, 55)]
+    [InlineData(100, 100)]
+    public void A_stored_in_range_blur_reads_as_itself(int stored, int expected)
+    {
+        _store.Set(Platform.Keys.LyricsBlurStrength, stored);
+        Assert.Equal(expected, Prefs.Lyrics.BlurStrength());
+    }
+
+    [Theory]
+    [InlineData(-40, 0)]    // no Auto value is ever written: a negative clamps to 0 (off)
+    [InlineData(-1, 0)]
+    [InlineData(0, 0)]
+    [InlineData(37, 37)]
+    [InlineData(250, 100)]
+    public void Setting_the_blur_clamps_to_0_to_100(int value, int expected)
+    {
+        Prefs.Lyrics.SetBlurStrength(value);
+        Assert.Equal(expected, _store.Get(Platform.Keys.LyricsBlurStrength));
+        Assert.Equal(expected, Prefs.Lyrics.BlurStrength());
     }
 
     // ── the detail layout ────────────────────────────────────────────────────────────────────────────────────────────

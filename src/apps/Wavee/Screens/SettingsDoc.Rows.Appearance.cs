@@ -94,13 +94,11 @@ public static partial class SettingsDoc
                 captionKey: "settings.sidebar.resetEverythingSub", enabled: NotWhileEditing, catalog: false)),
 
         Sect(T.Appearance, "Lyrics", Strings.Settings.Lyrics.Title, Strings.Settings.Lyrics.Subtitle,
-            // The 0..100 slider; "Auto" (a link beside it, only while pinned to an explicit value) writes −1 back.
+            // The 0..100 slider (0 turns the blur off); there is no Auto choice.
             Make(T.Appearance, "Lyrics", "lyricsBlur", K.Slider, Strings.Settings.Appearance.LyricsBlur,
                 SettingsWriter.OfSlider("lyrics.blur", SettingsVerbs.SetLyricsBlur),
                 captionKey: Strings.Settings.Appearance.LyricsBlurSub,
-                value: s => (float)Lyrics.BlurPolicy.Resolve(s.Get(Platform.Keys.LyricsBlurStrength))),
-            Make(T.Appearance, "Lyrics", "lyricsBlurAuto", K.Action, Strings.Settings.Appearance.LyricsBlurAuto,
-                SettingsWriter.OfAction("lyrics.blurAuto", SettingsVerbs.ResetLyricsBlur), catalog: false),
+                value: s => (float)Prefs.Lyrics.FromStored(s.Get(Platform.Keys.LyricsBlurStrength))),
             // On-device AI lyrics (AiLyrics.UI.Settings.cs): the card is the AI module's own state machine; its switches
             // are rows here, its per-language and per-file verbs stay the module's.
             Make(T.Appearance, "Lyrics", "aiLyrics", K.Toggle, Strings.Settings.Lyrics.Ai.Title,
@@ -305,20 +303,12 @@ public static partial class SettingsVerbs
 
     // ── Lyrics ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Writes the EXPLICIT 0..100 value (dragging always overrides auto), resolved to the int the store holds. An
-    /// unchanged value writes nothing.</summary>
+    /// <summary>Writes the 0..100 value (0 = off). An unchanged value writes nothing.</summary>
     public static bool SetLyricsBlur(float v)
     {
-        int strength = Lyrics.BlurPolicy.Resolve(Math.Clamp((int)MathF.Round(v), 0, 100));
+        int strength = Math.Clamp((int)MathF.Round(v), 0, 100);
         if (Platform.Settings.Get(Platform.Keys.LyricsBlurStrength) == strength) return false;
         Prefs.Lyrics.SetBlurStrength(strength);
-        return true;
-    }
-
-    /// <summary>"Auto" writes −1 back — never whatever the policy currently resolves — so the row stops overriding.</summary>
-    public static bool ResetLyricsBlur()
-    {
-        Prefs.Lyrics.SetBlurStrength(Lyrics.BlurPolicy.Auto);
         return true;
     }
 

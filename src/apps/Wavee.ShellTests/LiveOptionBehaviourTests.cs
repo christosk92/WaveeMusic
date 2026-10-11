@@ -368,7 +368,7 @@ public sealed class LiveOptionBehaviourTests(ShellHost host)
     public void Lyrics_blur_strength_reaches_the_rail_lines_and_never_the_stage()
         => host.Mounted(shell =>
         {
-            int before = Platform.Settings.Get(Platform.Keys.LyricsBlurStrength);
+            int before = Lyrics.Prefs.BlurStrength(onStage: false);   // the READ value (a stored legacy -1 reads 100): the setter has no Auto to restore
             try
             {
                 Lyrics.Prefs.SetBlurStrength(100);   // Settings › Lyrics › Blur

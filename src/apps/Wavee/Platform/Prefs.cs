@@ -211,15 +211,20 @@ public static partial class Prefs
             return ClampMode(s_secondaryLine);
         }
 
-        /// <summary>Reactive read of the lyrics blur strength. <b>−1 means AUTO</b> and is a real, persisted value — the
-        /// surface resolves it against its own backdrop, and 0 (the user turning the blur off entirely) must never be
-        /// confused with it.</summary>
+        /// <summary>Reactive read of the lyrics blur strength, 0..100 (0 = off). The ONE interpreter of the stored value
+        /// (see <see cref="FromStored"/>): the removed Auto choice persisted −1, which still reads as 100 so a profile that
+        /// had Auto keeps its blur, and 0 (the user turning the blur off) is never confused with it.</summary>
         public static int BlurStrength()
         {
             _ = Epoch.Value;
-            int v = Platform.Settings.Get(Platform.Keys.LyricsBlurStrength);
-            return v < 0 ? -1 : System.Math.Min(v, 100);
+            return FromStored(Platform.Settings.Get(Platform.Keys.LyricsBlurStrength));
         }
+
+        /// <summary>The range rule for a stored blur strength: any negative (the removed Auto choice wrote −1) reads as 100,
+        /// anything above 100 clamps to 100. Permanent, not a legacy path: dropping the negative arm would turn the blur off
+        /// for a profile that skipped the build that stopped writing −1. Non-reactive, for seeds that already hold the raw
+        /// value.</summary>
+        public static int FromStored(int stored) => stored < 0 ? 100 : System.Math.Min(stored, 100);
 
         /// <summary>The ONE writer both globe toggles go through: store the clamped mode for this session, then bump so
         /// every mounted lyrics surface re-reads it on the same frame.</summary>
@@ -229,10 +234,10 @@ public static partial class Prefs
             Bump();
         }
 
-        /// <summary>Persist the blur strength (−1 = Auto, else 0-100) and bump.</summary>
+        /// <summary>Persist the blur strength clamped to 0-100 (0 = off) and bump. There is no Auto value to write.</summary>
         public static void SetBlurStrength(int value)
         {
-            Platform.Settings.Set(Platform.Keys.LyricsBlurStrength, value < 0 ? -1 : System.Math.Min(value, 100));
+            Platform.Settings.Set(Platform.Keys.LyricsBlurStrength, System.Math.Clamp(value, 0, 100));
             Bump();
         }
     }
