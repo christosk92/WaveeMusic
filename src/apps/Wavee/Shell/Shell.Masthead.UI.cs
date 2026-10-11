@@ -214,27 +214,14 @@ public static partial class Shell
 
     // ══ 3. THE OMNIBAR (ch 18 W15) ════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The chrome row's ONE suggestion store: the lifecycle (<see cref="Omnibar.Query"/>), a version bumped on
-    /// every change (the render subscription), and the keyboard cursor over the visible rows.</summary>
-    sealed class OmnibarStore
-    {
-        public readonly Omnibar.Query Query = new();
-        public readonly Signal<int> Version = new(0);
-        public readonly Signal<int> Highlight = new(-1);
+    /// <summary>The chrome row's ONE omnibar: the suggestion store (<see cref="OmnibarModel.Query"/>, its version and the
+    /// keyboard cursor), the fetch edges, the focus tickets and the verbs are <see cref="OmnibarModel"/>'s; the field and the
+    /// popup below are views over it. <see cref="OmnibarModel.SearchFocused"/> / <see cref="OmnibarModel.FlyoutOpen"/> are
+    /// what the chrome allocator reads to hand the caret to the new form across a mode flip.</summary>
+    static readonly OmnibarModel s_omnibar = new(OmnibarPorts.Live());
 
-        public OmnibarStore() => Query.Changed += () => Version.Value = Version.Peek() + 1;
-    }
-
-    static readonly OmnibarStore s_omnibar = new();
-
-    /// <summary>The search field has focus / the icon-mode flyout is open — the chrome allocator reads both to hand the
-    /// caret to the new form across a mode flip.</summary>
-    static readonly Signal<bool> s_searchFocused = new(false);
-    static readonly Signal<bool> s_searchFlyoutOpen = new(false);
-
-    /// <summary>The last focus ticket a search form consumed. A form mounting later (a mode flip) acts only on a NEWER
-    /// ticket, so a Ctrl+F from minutes ago never pops the flyout open on mount.</summary>
-    static int s_focusTicketHandled;
+    /// <summary>Ask the omnibar for keyboard focus (Ctrl+F — <see cref="IFrameVerbs.FocusSearch"/>).</summary>
+    internal static void FocusSearch() => s_omnibar.Focus();
 
     /// <summary>The bar's flexible centre column: the field in Field mode, nothing in Icon mode (the icon sits in the
     /// caption-leading island). <paramref name="avail"/> is the bar's LIVE centre measurement.
@@ -265,7 +252,7 @@ public static partial class Shell
                 p[AutoSuggestBox.PartRoot] = b => b with
                 {
                     OnRealized = h => field.Value = h,
-                    OnFocusChanged = static f => s_searchFocused.SetIfChanged(f),
+                    OnFocusChanged = static f => s_omnibar.SearchFocused.SetIfChanged(f),
                 };
                 return p;
             }, DepKey.Empty);
@@ -275,8 +262,7 @@ public static partial class Shell
             {
                 // PartRoot is the chrome, not the editor: focusing it paints a ring that cannot type. FirstFocusableIn lands
                 // on the editable text; the root's focus handler still fires because focus bubbles.
-                if (ticket <= s_focusTicketHandled || field.Value.IsNull) return;
-                s_focusTicketHandled = ticket;
+                if (field.Value.IsNull || !s_omnibar.ConsumeFocusTicket(ticket)) return;
                 var editor = hooks.FirstFocusableIn?.Invoke(field.Value) ?? NodeHandle.Null;
                 if (!editor.IsNull) hooks.FocusNode?.Invoke(editor, true);
             }, DepKey.From(ticket));
@@ -322,7 +308,7 @@ public static partial class Shell
             {
                 handle.Value?.Close();
                 handle.Value = null;
-                s_searchFlyoutOpen.SetIfChanged(false);
+                s_omnibar.Escape();
             }
 
             void OpenFlyout()
@@ -345,19 +331,19 @@ public static partial class Shell
                         ConstrainToRootBounds = true,
                     });
                 handle.Value = h;
-                s_searchFlyoutOpen.SetIfChanged(true);
+                OverlayService.Track(h);
+                s_omnibar.FlyoutOpen.SetIfChanged(true);
                 h.ClosedAction = () =>
                 {
                     handle.Value = null;
-                    s_searchFlyoutOpen.SetIfChanged(false);
+                    s_omnibar.Escape();
                 };
             }
 
             int ticket = SearchFocusRequest.Value;
             UseLayoutEffect(() =>
             {
-                if (ticket <= s_focusTicketHandled) return;
-                s_focusTicketHandled = ticket;
+                if (!s_omnibar.ConsumeFocusTicket(ticket)) return;
                 OpenFlyout();
             }, DepKey.From(ticket));
             UseEffect(() => (Action?)CloseFlyout, DepKey.Empty);
@@ -380,15 +366,9 @@ public static partial class Shell
     sealed class RichOmnibar(TemplateParts? parts, float maxWidth, AutoSuggestBoxSuggestionPresentation presentation,
         bool allowNarrow, Action? afterChoose = null) : Component
     {
-        // The request in flight for the current generation. A superseding keystroke, a clear and an unmount cancel it; the
-        // store drops whatever a cancelled request would have said, so cancelling is only ever a saving.
-        CancellationTokenSource? _inflight;
-
-        void CancelInflight()
-        {
-            _inflight?.Cancel();
-            _inflight = null;
-        }
+        // The request in flight for the current generation (this form's slot). A superseding keystroke, a clear and an
+        // unmount cancel it; the store drops whatever a cancelled request would have said, so cancelling is only ever a saving.
+        readonly OmnibarModel.Fetch _fetch = s_omnibar.NewFetch();
 
         public override Element Render()
         {
@@ -402,8 +382,7 @@ public static partial class Shell
             // and its request.
             UseEffect(() =>
             {
-                int before = query.Generation;
-                if (query.Begin(typed) != before) CancelInflight();
+                if (s_omnibar.Begin(typed)) _fetch.Cancel();
             }, typed);
 
             // The fetch edge: the GENERATION settles (a retype to the same text is a new generation and must be answered),
@@ -412,11 +391,11 @@ public static partial class Shell
                 AutoSuggestBox.TextChangedDebounceMs).Value;
             UseEffect(() =>
             {
-                if (settled != query.Generation || !query.IsPending) return;
-                Fetch(post, settled, query.Text);
+                if (!s_omnibar.NeedsFetch(settled)) return;
+                _ = _fetch.Start(post, settled, query.Text);
             }, DepKey.From(settled));
             // Unmount: the request dies with the component; the store keeps Pending so the next mount re-issues it.
-            UseEffect(() => (Action?)CancelInflight, DepKey.Empty);
+            UseEffect(() => (Action?)_fetch.Cancel, DepKey.Empty);
 
             var completion = UseComputed(() =>
             {
@@ -427,35 +406,23 @@ public static partial class Shell
 
             bool InvokeSelection(int selection)
             {
-                var s = query.Suggestions;
-                int queryRows = Omnibar.QueryRowCount(s);
-                if (selection < 0 || selection >= Omnibar.SelectableCount(s)) return false;
-                if (selection < queryRows)
-                {
-                    string chosen = s.Queries[selection];
-                    SearchText.Value = chosen;
-                    GoTo(Parse("search", chosen));
-                }
-                else
-                {
-                    ChooseOmnibarItem(s.Items[selection - queryRows], query.Text);
-                }
+                if (!s_omnibar.Choose(selection)) return false;
                 afterChoose?.Invoke();
                 return true;
             }
 
             void Submit(string q)
             {
-                GoTo(Parse("search", q.Trim()));
+                s_omnibar.Submit(q);
                 afterChoose?.Invoke();
             }
 
             var presenter = new AutoSuggestBoxPresenter(
                 Build: context => Embed.Comp(() => new SuggestionsPopup(context.Width,
                     selection => { if (InvokeSelection(selection)) context.Close(); }, context.Close, allowNarrow)),
-                MoveSelection: delta => highlight.Value = Omnibar.MoveHighlight(highlight.Peek(), delta, Omnibar.SelectableCount(query.Suggestions)),
+                MoveSelection: delta => s_omnibar.MoveHighlight(delta),
                 SubmitSelection: () => InvokeSelection(highlight.Peek()),
-                ResetSelection: () => highlight.Value = -1);
+                ResetSelection: () => s_omnibar.ResetHighlight());
 
             // Stock metrics: a 32-DIP field at the control corner radius with the control-default chrome. Wrapped in a
             // growing COLUMN so the box is STRETCHED to this component's width: a fill-mode box contributes only its query
@@ -474,45 +441,6 @@ public static partial class Shell
             };
         }
 
-        void Fetch(Action<Action> post, int generation, string text)
-        {
-            CancelInflight();
-            // No source installed (a Wave-4 build, `--fake`): the navigation log answers, synchronously.
-            if (Omnibar.Source is not { } source)
-            {
-                s_omnibar.Query.Complete(generation, Omnibar.FromHistory(History.Store.Entries, text));
-                return;
-            }
-            var cts = new CancellationTokenSource();
-            _inflight = cts;
-            _ = RunAsync(source, post, generation, text, cts.Token);
-        }
-
-        static async Task RunAsync(Func<string, CancellationToken, Task<Omnibar.Suggestions>> source, Action<Action> post,
-            int generation, string text, CancellationToken ct)
-        {
-            try
-            {
-                var answer = await source(text, ct).ConfigureAwait(false);
-                post(() => s_omnibar.Query.Complete(generation, answer));
-            }
-            catch (OperationCanceledException) { }   // superseded or torn down: the store has already moved on
-            catch (Exception ex) { post(() => s_omnibar.Query.Fail(generation, ex)); }
-        }
-    }
-
-    /// <summary>A rich row's choice: a track or an episode PLAYS (through the context seam); everything else navigates,
-    /// and a genre carries its search-lookup origin so its masthead reads <c>"query" › Genre</c>.</summary>
-    static void ChooseOmnibarItem(Omnibar.Item item, string? query)
-    {
-        if (Omnibar.ChoosePlays(item.Kind))
-        {
-            OnPlayContext?.Invoke(item.Uri);
-            return;
-        }
-        var route = Omnibar.RouteFor(item);
-        if (route.IsNone) return;
-        GoTo(route, item.Kind == Omnibar.ItemKind.Genre ? Omnibar.GenreOrigin(query) : null);
     }
 
     /// <summary>The popup body, rendered BY the store's state. Its one sentence, "No results found", is reserved for a
@@ -558,7 +486,7 @@ public static partial class Shell
                 {
                     Omnibar.State.Empty => OmniNotice(w, Loc.Get(Strings.Search.NoResults), null),
                     Omnibar.State.Failed => OmniNotice(w, Loc.Get(Strings.Search.SuggestFailed),
-                        Button.Subtle(Loc.Get(Strings.Common.Retry), static () => s_omnibar.Query.Retry())),
+                        Button.Subtle(Loc.Get(Strings.Common.Retry), static () => s_omnibar.Retry())),
                     // Pending: skeleton rows in the reserved height, so the answer fills space instead of growing it.
                     Omnibar.State.Pending => PendingBody(w),
                     // Idle (closing): no sentence.
@@ -696,33 +624,9 @@ public static partial class Shell
             var kind = item.Kind;
             var rf = item.Ref;                                  // allocates the table row if unseen (UI thread, render)
             string uri = item.Uri.Text;
-            Action? play = Omnibar.CanPlay(kind)
-                ? Omnibar.ChoosePlays(kind)
-                    ? () =>
-                    {
-                        // A track/episode that is the current item toggles pause (the row verb every list row uses);
-                        // else the host's play. Without a table slot, the uri toggle compares playables with the item.
-                        if (kind == Omnibar.ItemKind.Track && rf.Kind == EntityKind.Track && rf.Slot > 0)
-                            Track.Invoke(new Track(rf.Slot), () => OnPlayContext?.Invoke(item.Uri));
-                        else if (OnPlayContext is { } start && ContextPlayRules.For(item.Uri.Id, Playback.ContextUri.Peek(), Playback.CurrentId.Peek(), Playback.Error.Peek()) == ContextPlayAction.Start)
-                            start(item.Uri);
-                        else
-                            Playback.PlayOrToggleContext(item.Uri.Id);
-                        close?.Invoke();
-                    }
-                    : () => { Playback.PlayOrToggleContext(uri); close?.Invoke(); }
-                : null;
-
-            Func<ContextMenuModel?>? menu = OmnibarRowRules.MenuOf(kind) switch
-            {
-                OmnibarRowRules.MenuKind.Track when !rf.IsNone => () =>
-                {
-                    Track.EnsureActions();
-                    return Track.Menu([new Track(rf.Slot)], new Track.MenuOptions(ShowGoToAlbum: true));
-                },
-                OmnibarRowRules.MenuKind.Container => () => Menus.Container(ContainerTargetOf(item), item.ImageUrl, item.Subtitle),
-                _ => null,
-            };
+            // The play decision is the model's (a current track toggles pause; else the host's play); the popup closes after it.
+            Action? play = Omnibar.CanPlay(kind) ? () => { s_omnibar.Play(item); close?.Invoke(); } : null;
+            Func<ContextMenuModel?>? menu = s_omnibar.HasRowMenu(item) ? () => s_omnibar.RowMenu(item) : null;
 
             DragSource? drag = OmnibarRowRules.Drags(kind) && !rf.IsNone
                 ? Drag.Source(() => kind == Omnibar.ItemKind.Track
@@ -742,14 +646,6 @@ public static partial class Shell
             return Controls.SlotSurface(scope, data, OmnibarRowRules.RowShape)
                 with { Role = AutomationRole.MenuItem, Margin = new Edges4(4f, 2f, 4f, 2f) };
         }
-
-        static ActionTarget ContainerTargetOf(Omnibar.Item item) => item.Kind switch
-        {
-            Omnibar.ItemKind.Album => ActionTarget.ForAlbum(item.Uri, item.Title),
-            Omnibar.ItemKind.Artist => ActionTarget.ForArtist(item.Uri, item.Title),
-            Omnibar.ItemKind.Playlist => ActionTarget.ForPlaylist(item.Uri, item.Title),
-            _ => ActionTarget.ForShow(item.Uri, item.Title),
-        };
     }
 
     /// <summary>One sentence in the row slot, optionally with a trailing affordance (the failure's Retry).</summary>

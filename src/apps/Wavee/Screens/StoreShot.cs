@@ -167,7 +167,7 @@ public static partial class Diagnostics
             var p = new Pending(v, Presenting.Peek(), FluentApp.Zoom, 0L);
             s_pending = p;
             Presenting.Value = true;
-            if (v.Zoom > 0) FluentApp.SetZoom(p.PriorZoom * v.Zoom / 100f);
+            if (v.Zoom > 0) ZoomService.Apply(p.PriorZoom * v.Zoom / 100f);
             s_settle?.Dispose();
             // A reveal runs half-way through the settle: after the zoom's reflow, before the frame is taken.
             if (v.Reveal.Length > 0)
@@ -225,7 +225,7 @@ public static partial class Diagnostics
 
         static void Restore(Pending p)
         {
-            if (p.Verb.Zoom > 0) FluentApp.SetZoom(p.PriorZoom);
+            if (p.Verb.Zoom > 0) ZoomService.Apply(p.PriorZoom);
             Presenting.Value = p.WasPresenting;
             s_pending = null;
         }

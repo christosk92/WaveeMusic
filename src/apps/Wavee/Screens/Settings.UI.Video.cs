@@ -210,15 +210,8 @@ public static partial class Settings
                 }));
             if (row.CanReveal)
                 actions.Add(HyperlinkButton.Create(Loc.Get(Strings.VideoOverride.ShowInExplorer), () => Reveal(path)));
-            actions.Add(Button.Standard(Loc.Get(Strings.VideoOverride.Remove), () =>
-            {
-                if (!Video.Overrides.Remove(uri)) return;
-                Log.Event(WaveeLogLevel.Info, "ui", "override.settings.remove", "detached the attached video",
-                    fields: [WaveeLogField.Of("uri", uri), WaveeLogField.Of("path", path)]);
-                // Applies immediately with a toast-undo, never a dialog.
-                Notify.Say(Loc.Get(Strings.VideoOverride.Removed), InfoBarSeverity.Success, Loc.Get(Strings.VideoOverride.Undo),
-                    () => { if (Video.Overrides.Attach(uri, path, sourceKey, DateTimeOffset.UtcNow.ToUnixTimeSeconds()) is null) Notify.Say(Loc.Get(Strings.VideoOverride.RejectedNotFound), InfoBarSeverity.Error); });
-            }));
+            // Applies immediately with a toast-undo, never a dialog (the verb).
+            actions.Add(Button.Standard(Loc.Get(Strings.VideoOverride.Remove), () => SettingsVerbs.RemoveVideoOverride(uri, path, sourceKey)));
 
             return new BoxEl
             {
@@ -244,35 +237,9 @@ public static partial class Settings
         /// <summary>Replace / Locate: pick, validate (a refusal is an ERROR toast + an always-on line), attach, success toast.
         /// Locate spells the deepest surviving folder into the dialog caption.</summary>
         static void Pick(string uri, string sourceKey, string title, string? start)
-        {
-            var filter = Video.OverrideUx.PickerFilter(Loc.Get(Strings.VideoOverride.Filter));
-            Pickers.Pick(PickerRequest.Open(start is null ? title : title + " — " + start, filter),
-                done: picked => { if (picked is not null) Picked(uri, sourceKey, picked); },
-                failed: ex => Notify.Say(ex.Message, InfoBarSeverity.Error));
-        }
+            => SettingsVerbs.PickVideoOverride(uri, sourceKey, title, start);
 
-        /// <summary><see cref="Pick"/>'s answer, on the UI thread once the dialog (its own thread) has closed.</summary>
-        static void Picked(string uri, string sourceKey, string picked)
-        {
-            var rejection = Video.OverrideUx.Validate(picked, Video.Overrides.FileExists);
-            if (rejection != Video.AttachRejection.None)
-            {
-                Notify.Say(Loc.Get(rejection == Video.AttachRejection.NotMp4 ? Strings.VideoOverride.RejectedNotMp4 : Strings.VideoOverride.RejectedNotFound), InfoBarSeverity.Error);
-                Log.Event(WaveeLogLevel.Warning, "ui", "override.attach.rejected", "the picked file was refused",
-                    fields: [WaveeLogField.Of("path", picked), WaveeLogField.Of("reason", rejection == Video.AttachRejection.NotMp4 ? "not-mp4" : "not-found")]);
-                return;
-            }
-            if (Video.Overrides.Attach(uri, picked, sourceKey, DateTimeOffset.UtcNow.ToUnixTimeSeconds()) is null) return;
-            Log.Event(WaveeLogLevel.Info, "ui", "override.settings.replace", "replaced the attached video",
-                fields: [WaveeLogField.Of("uri", uri), WaveeLogField.Of("path", picked)]);
-            Notify.Say(Loc.Get(Strings.VideoOverride.Replaced), InfoBarSeverity.Success);
-        }
-
-        static void Reveal(string path)
-        {
-            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", "/select,\"" + path + "\"") { UseShellExecute = true }); }
-            catch (Exception ex) { Log.Warn("ui", "show in explorer failed", ex); }
-        }
+        static void Reveal(string path) => SettingsVerbs.RevealInExplorer(path);
 
         /// <summary>Ok is deliberately QUIET; the two repairable states are caution; only a file that failed to play is critical.</summary>
         static Element StatusChip(Video.OverrideStatus status)

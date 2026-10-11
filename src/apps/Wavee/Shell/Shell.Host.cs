@@ -108,10 +108,6 @@ public static partial class Shell
     /// is what a build without the local-file surface should do.</summary>
     public static Action<IReadOnlyList<string>>? OnFilesDropped;
 
-    /// <summary>The app palette seam. Owner L's `Design.cs` installs the Wavee palette here BEFORE the first frame; a
-    /// build without it runs on the engine's own palette rather than not running.</summary>
-    public static Action<ThemeKind>? SeedPalette;
-
     /// <summary>Boot's last timing mark: <c>boot.firstframe</c>, the first frame the engine actually rendered — the
     /// number that answers "how long did the user stare at nothing". Subscribed once, right before <c>Run</c>; logs
     /// and unsubscribes on its own first invocation so it never fires again for the rest of the process.</summary>
@@ -227,7 +223,7 @@ public static partial class Shell
             Tray.Host.Arm(startHidden);
         }
 
-        SeedTheme();
+        Appearance.Seed(Appearance.ModeOf(Platform.Settings.Get(Platform.Keys.ThemeMode)));   // the persisted preference, else the live OS theme (a fresh install)
         LoadDocuments();
 
         try
@@ -261,9 +257,10 @@ public static partial class Shell
                     // from 64 by doubling ~45 column arrays put LOH allocations and gen2 collections inside the first
                     // scrolls and navigations (realize=6.8/13.9 ms frames with gc=…/1, 2026-09-23).
                     InitialSceneCapacity = 8192,
-                    // App-wide UI zoom, seeded BEFORE the first frame (the theme discipline: no startup jump from
-                    // 100 % to the user's scale).
-                    Zoom = Platform.Settings.Get(Platform.Keys.ZoomLevel),
+                    // App-wide UI zoom, seeded BEFORE the first frame (the theme discipline: no startup jump). Not the
+                    // persisted level as it stands: the Auto zoom the 500 ms loop would settle this window on, so the first
+                    // frame is final and nothing re-zooms half a second later.
+                    Zoom = ZoomService.InitialZoom(ZoomService.Mode, ZoomService.PersistedLevel, winW, winH, ZoomService.PrimaryMonitor()),
                     // The engine's decoded-image disk cache lands under Wavee's own app data, next to logs/ and the
                     // library — ONE folder for "everything Wavee wrote", which is what the Storage tab measures and
                     // what factory reset wipes.
@@ -711,25 +708,6 @@ public static partial class Shell
         // WP-0 spike (crash-diagnostics-implementation.md §B.0): registers the filter/VEH candidates so a native AV in
         // foreign code (`--crash-probe native`) proves — or disproves — that either sees it under NativeAOT.
         Crash.NativeHook.Install();
-    }
-
-    /// <summary>Seed the theme BEFORE the window comes up (no startup flash): honour the persisted preference, falling
-    /// back to the live OS theme for a fresh install.</summary>
-    static void SeedTheme()
-    {
-        int mode = Platform.Settings.Get(Platform.Keys.ThemeMode);
-        var kind = mode switch
-        {
-            1 => ThemeKind.Light,
-            2 => ThemeKind.Dark,
-            _ => FluentApp.SystemUsesLightTheme() ? ThemeKind.Light : ThemeKind.Dark,
-        };
-        if (SeedPalette is { } seed) seed(kind);
-        else FluentGpu.Dsl.Tok.Use(Design.Definition, kind);
-        if (FluentApp.SystemAccentRamp() is { } ramp) FluentGpu.Dsl.Tok.SetAccent(in ramp);
-        else if (FluentApp.SystemAccent() is { } accent) FluentGpu.Dsl.Tok.SetAccent(accent);
-        // The icon face is the BUNDLED Segoe Fluent Icons file, not the system family of the same name: the system one
-        // ships with Windows 11 only, and on Windows 10 every glyph added in Fluent Icons drew as tofu.
     }
 
     /// <summary>UNPACKAGED ONLY. A packaged build declares its protocols AND its startup task in the manifest and the

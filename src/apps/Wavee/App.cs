@@ -145,7 +145,8 @@ public static class App
         Spotify.Library.Install();       // library writes + sync on Online + the pin bridge; after Sidebar.Boot, before the pane mounts (B2)
         Log.Event(WaveeLogLevel.Info, "app", "boot.playback", "", null, Log.SinceStartMs);
         Shell.InstallUi();               // RootFactory + the Wave-4 pages; must precede Run (I1)
-        Modules.InstallUi();             // the module: page, ModuleOpen/LocalPath, Shell.LinkModules/MatchLink (WP-6.T)
+        FrameModel.UnknownRouteSink = static key => Log.Warn("nav", "route.unknown: " + key);   // the frame decides when (first sighting), the host says it
+        Modules.InstallUi();             // the module: page, ModuleOpen/LocalPath, PlayLinkRouter.Modules/Match (WP-6.T)
         Queue.InstallUi();               // rail/stage queue bodies, the queue verbs and Shell.OnPlayContext; after Actions.Registry.Build (WP-5.Q)
         Track.InstallActions();          // the track row verbs; AFTER Queue.InstallUi, whose Play/PlayNext/AddToQueue registrations win (WP-4.5)
         // EAGER, deliberately — this was made lazy and then REVERTED (2026-09-15). `Shell.PageFor` still carries the
@@ -182,6 +183,29 @@ public static class App
         if (Platform.Args.Fake) Spotify.BootFake();                        // --fake: the session presents Online over the seeded account, no network (G-065)
         else if (Platform.HasStoredCredential()) Spotify.Login();         // resume the stored credential at launch (G-002); its posts wait for the root's poster
         return true;
+    }
+
+    /// <summary>The seams that need the REAL overlay service, input hooks and UI poster, filled once from inside the overlay
+    /// host (the 0.2.9 <c>ActionServicesOverlayBinder</c>); the overlay lane (<c>Shell.Overlays()</c>) calls this from its mount
+    /// effect, where those values first exist. A confirm-required bound action refuses to run without them. The returned
+    /// action unbinds the two that must not outlive the host. Everything else is idempotent (<c>??=</c>): the first host wins.</summary>
+    public static Action? BindOverlayServices(FluentGpu.Controls.IOverlayService overlay, FluentGpu.Hooks.InputHooks hooks, Action<Action> post)
+    {
+        var s = Actions.Services;
+        s.CanConfirm = static () => true;
+        s.Confirm = request => Controls.Confirm(overlay, FluentGpu.Localization.Loc.Get(request.TitleLocKey),
+            FluentGpu.Localization.Loc.Get(request.BodyLocKey), FluentGpu.Localization.Loc.Get(request.PrimaryLocKey), request.OnConfirm);
+        s.Clipboard ??= text => hooks.Clipboard?.SetText(text);
+        s.OpenExternal ??= url => hooks.OpenUri?.Invoke(url);
+        s.Post ??= post;
+        Shell.OnPlayLink ??= PlayLinkRouter.Direct;
+        Track.DrawerOverlay = overlay;
+        Shell.OnReportRequested ??= arg => Shell.ReportDialogOpener?.Invoke(overlay, arg);
+        return () =>
+        {
+            s.CanConfirm = null;
+            s.Confirm = null;
+        };
     }
 
     [STAThread]

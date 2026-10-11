@@ -247,7 +247,7 @@ public static partial class Shell
     //   • Artist.InstallPages (Artist/Discography + Concert.InstallPages's three concert kinds): kept eager for its
     //     ConcertHost seam (nothing in the sidebar reads it since P3).
     //   • Modules.InstallUi, Settings.InstallScreens, Diagnostics.Install: each also wires a seam nothing routes past —
-    //     Shell.LinkModules/MatchLink answer ANY pasted link, the setup wizard and the crash-report dialog must be on
+    //     PlayLinkRouter.Modules/Match answer ANY pasted link, the setup wizard and the crash-report dialog must be on
     //     screen at first launch, and the crash-prompt latch / network-cost host are process-lifetime, not per-page.
     //   • Shell.InstallUi's own SetPage call (History): RootFactory must exist before Run.
     //   • Queue.InstallUi / Track.InstallActions: neither owns a route (Queue is a rail/stage arm, Track a menu's
@@ -1846,7 +1846,7 @@ public static partial class Shell
     //
     // A component body lays out and binds; it does not decide. Each rule below is one the 0.2.9 shell carried inline in
     // a 2,348-line component where nothing could pin it — and two of them (the drag-peek width, the auto-zoom control
-    // loop) are exactly the ones ch 18 §9 records as regressions-in-waiting.
+    // loop, now `ZoomService`) are exactly the ones ch 18 §9 records as regressions-in-waiting.
 
     /// <summary>The frame's geometry, precedence and gating decisions. Pure.</summary>
     public static class FrameRules
@@ -1897,14 +1897,6 @@ public static partial class Shell
             float w = ClampRailWidth(dragWidth);
             return MathF.Abs(w - committedWidth) < 0.01f ? null : w;
         }
-
-        /// <summary>FULL-SCREEN VIDEO OR THE FULLSCREEN STAGE COLLAPSES THE CHROME ROW, THE CONTENT REGION AND THE PLAYER
-        /// BAR — one derived predicate drives all three bound <c>Visible</c> channels, so there is exactly one transport on
-        /// screen and the surface mounting and the chrome leaving cannot disagree by a frame (ch 18 §0.12). A collapse, not
-        /// an unmount: the bands stay mounted (out of layout, paint, hit-test and focus, their subtree inactive), so leaving
-        /// fullscreen does not rebuild the tab row and the whole player bar.</summary>
-        public static bool ChromeMounted(Video.SurfacePlacement resolved, bool immersive)
-            => resolved != Video.SurfacePlacement.Fullscreen && !immersive;
 
         /// <summary>What a bare Escape reaching the shell column does, in precedence order.</summary>
         public enum EscapeAction : byte { None, CloseImmersiveLyrics, ExitVideoFullscreen }
@@ -1995,48 +1987,6 @@ public static partial class Shell
         /// the strip is caution-tinted with a standard action. A deliberate divergence: 0.2.9's banner had no call site
         /// (ch 29 parity 46).</summary>
         public static bool ShowsOfflineStrip(AuthState auth) => auth == AuthState.Offline;
-
-        // ── the large-display auto-zoom control loop (ch 18 W24, large-display-scaling.md §3.2) ──────────────────────
-
-        /// <summary>The zoom re-resolve waits for this much resize quiet (trailing edge). The DIP re-layout itself is
-        /// never debounced — only the zoom half is.</summary>
-        public const float ZoomAutoDebounceMs = 500f;
-
-        /// <summary>Zooms within this of each other are the same zoom (the no-op guard that actually stops re-entry).</summary>
-        public const float ZoomEpsilon = 0.004f;
-
-        public enum ZoomStepKind : byte
-        {
-            /// <summary>Touch nothing.</summary>
-            None,
-            /// <summary>Apply <see cref="ZoomDecision.Zoom"/>.</summary>
-            Apply,
-            /// <summary>Something ELSE moved the zoom while in Auto (a chord, the wheel, the palette): flip the stored mode
-            /// to Manual instead of clobbering the user's pick next tick.</summary>
-            PinManual,
-        }
-
-        /// <summary>One tick's answer plus the loop's carried state (the zoom THIS policy last applied).</summary>
-        public readonly record struct ZoomDecision(ZoomStepKind Kind, float Zoom, float LastAuto, bool Seeded);
-
-        /// <summary>The auto-zoom control loop, as a pure step. <paramref name="baseWidth"/>/<paramref name="baseHeight"/>
-        /// are the window's DIP extent AT ZOOM 1 (<c>viewportDip × Viewport.Zoom</c> — zoom-invariant by construction), so
-        /// a re-entrant tick from our own apply computes the identical suggestion and the no-op guard returns.
-        /// <para>"Someone else moved the zoom" is detected by comparing the LIVE zoom against this policy's OWN last pick,
-        /// not against the suggestion — the only way a static zoom verb with no settings reference can opt a user out of
-        /// Auto.</para></summary>
-        public static ZoomDecision AutoZoom(ZoomAutoMode mode, float baseWidth, float baseHeight, float liveZoom,
-            float lastAuto, bool seeded)
-        {
-            if (mode == ZoomAutoMode.Manual || baseWidth <= 0f || baseHeight <= 0f)
-                return new ZoomDecision(ZoomStepKind.None, liveZoom, lastAuto, seeded);
-            float suggested = ZoomAutoPolicy.Suggest(baseWidth, baseHeight, mode);
-            if (MathF.Abs(suggested - liveZoom) <= ZoomEpsilon)
-                return new ZoomDecision(ZoomStepKind.None, liveZoom, liveZoom, true);
-            if (seeded && MathF.Abs(liveZoom - lastAuto) > ZoomEpsilon)
-                return new ZoomDecision(ZoomStepKind.PinManual, liveZoom, lastAuto, seeded);
-            return new ZoomDecision(ZoomStepKind.Apply, suggested, suggested, true);
-        }
     }
 
     // ══ 13. THE MASTHEAD PUBLICATIONS (ch 18 W13) ═══════════════════════════════════════════════════════════════════
@@ -2096,287 +2046,6 @@ public static partial class Shell
         {
             s_map.Clear();
             s_lru.Clear();
-        }
-    }
-
-    // ══ 14. THE OMNIBAR'S MODEL (ch 18 W15) — the seam owner P's `Search.cs` plugs into ══════════════════════════════
-    //
-    // The omnibar is owner I's; its SUGGESTION SOURCE is owner P's (Wave 5). Until P installs <see cref="Omnibar.Source"/>
-    // the popup answers from the navigation log the CORE already has, so the field is never a dead end. Nested under
-    // `Shell` so P's own `Search.cs` types (Wave 5) cannot collide with these names.
-
-    public static class Omnibar
-    {
-        /// <summary>A rich row's kind — what it looks like and what choosing it does.</summary>
-        public enum ItemKind : byte { Track, Artist, Album, Playlist, Genre, Episode, Podcast, Audiobook, User }
-
-        /// <summary>One rich suggestion row.</summary>
-        public sealed record Item(ItemKind Kind, EntityUri Uri, string Title, string? Subtitle = null, string? ImageUrl = null, AlbumKind? ReleaseKind = null)
-        {
-            /// <summary>The row's entity (kind + table slot), allocating the row if unseen; <see cref="EntityRef.IsNone"/>
-            /// for a kind with no table (a genre, an audiobook). <see cref="Subtitle"/> is the DETAIL only (artists / owner /
-            /// publisher / show) — the row composes its kind word and <see cref="TextJoin.Sep"/> (<c>Search.SubtitleText</c>).</summary>
-            public EntityRef Ref => Entities.Ref(Uri.Id);
-        }
-
-        /// <summary>One answer: the query completions, then the rich rows.</summary>
-        public sealed record Suggestions(IReadOnlyList<string> Queries, IReadOnlyList<Item> Items)
-        {
-            public static readonly Suggestions Empty = new(Array.Empty<string>(), Array.Empty<Item>());
-
-            public bool IsEmpty => Queries.Count == 0 && Items.Count == 0;
-
-            /// <summary>The inline ghost: the FIRST completion that starts with what was typed and is longer — not blindly
-            /// <c>Queries[0]</c> (<c>loff</c> ghosts <c>loffler</c> even when <c>koffie</c> ranks first).</summary>
-            public static string? GhostFor(string? typed, IReadOnlyList<string>? queries)
-            {
-                if (string.IsNullOrEmpty(typed) || queries is null) return null;
-                for (int i = 0; i < queries.Count; i++)
-                {
-                    string q = queries[i];
-                    if (q.Length > typed.Length && q.StartsWith(typed, StringComparison.OrdinalIgnoreCase)) return q;
-                }
-                return null;
-            }
-        }
-
-        /// <summary>The seam: owner P's suggest request. Null ⇒ the popup answers from the navigation log
-        /// (<see cref="FromHistory"/>). Called off the UI thread's await; the omnibar posts the answer back.</summary>
-        public static Func<string, CancellationToken, Task<Suggestions>>? Source { get; set; }
-
-        /// <summary>Row caps, and the same two caps bound the keyboard cursor and the invoke.</summary>
-        public const int MaxQueryRows = 6, MaxRichRows = 10;
-
-        public static int QueryRowCount(Suggestions s) => Math.Min(MaxQueryRows, s.Queries.Count);
-        public static int RichRowCount(Suggestions s) => Math.Min(MaxRichRows, s.Items.Count);
-        public static int SelectableCount(Suggestions s) => QueryRowCount(s) + RichRowCount(s);
-
-        // ── the popup body's reserved height ─────────────────────────────────────────────────────────────────────────
-        // The flyout never sizes itself by async data: while a request is Pending with nothing to show it reserves what the
-        // PREVIOUS answer took (else a typical first answer), and the body is capped where the scroll viewport caps.
-
-        /// <summary>The scroll viewport's cap, and so the most the popup body ever takes.</summary>
-        public const float PopupBodyMaxHeight = 560f;
-
-        /// <summary>One query row (the 40 floor plus its 2 + 2 margin), one rich row (the 58 floor plus its 2 + 2 margin),
-        /// and the divider that separates the two groups (1 high, 4 + 4 margin).</summary>
-        public const float QueryRowHeight = 44f, RichRowHeight = 62f, GroupDividerHeight = 9f;
-
-        /// <summary>The notice slot ("No results found" / the failure + Retry): the stock list item floor.</summary>
-        public const float NoticeHeight = 40f;
-
-        /// <summary>The placeholder rows a Pending body is built from: the previous answer's own row counts when it had any,
-        /// else <see cref="MaxQueryRows"/> query rows + 3 rich ones. The counts are not trimmed to the cap: the reserved
-        /// height is <see cref="PopupBodyHeight"/> and the body's clip cuts the last row, like the real viewport.</summary>
-        public static (int Query, int Rich) PendingSkeletonRows(int lastQueryRows, int lastRichRows)
-        {
-            int q = Math.Clamp(lastQueryRows, 0, MaxQueryRows);
-            int r = Math.Clamp(lastRichRows, 0, MaxRichRows);
-            return q + r == 0 ? (MaxQueryRows, 3) : (q, r);
-        }
-
-        /// <summary>The height a Pending body with nothing to show reserves: one notice slot when the last settled answer
-        /// was a notice (Empty / Failed), else the previous answer's rows (or a typical first answer), capped at
-        /// <see cref="PopupBodyMaxHeight"/>. Typing on past a no-match query therefore never pumps the card.</summary>
-        public static float PendingBodyHeight(int lastQueryRows, int lastRichRows, bool lastWasNotice)
-        {
-            if (lastWasNotice) return NoticeHeight;
-            var (q, r) = PendingSkeletonRows(lastQueryRows, lastRichRows);
-            return PopupBodyHeight(q, r);
-        }
-
-        /// <summary>The body height of <paramref name="queryRows"/> + <paramref name="richRows"/> rows, never above
-        /// <see cref="PopupBodyMaxHeight"/> (past it the viewport scrolls).</summary>
-        public static float PopupBodyHeight(int queryRows, int richRows)
-            => MathF.Min(PopupBodyMaxHeight, RawBodyHeight(Math.Max(0, queryRows), Math.Max(0, richRows)));
-
-        static float RawBodyHeight(int q, int r)
-            => q * QueryRowHeight + r * RichRowHeight + (q > 0 && r > 0 ? GroupDividerHeight : 0f);
-
-        /// <summary>↑/↓ over the visible rows, wrapping through "none" (−1) at both ends.</summary>
-        public static int MoveHighlight(int current, int delta, int count)
-        {
-            if (count <= 0) return -1;
-            return delta > 0
-                ? (current + 1 >= count ? -1 : current + 1)
-                : (current < 0 ? count - 1 : current - 1);
-        }
-
-        /// <summary>▶ is offered for everything that can play (not a profile, not a genre).</summary>
-        public static bool CanPlay(ItemKind kind) => kind is not (ItemKind.User or ItemKind.Genre);
-
-        /// <summary>♡ is offered on a SONG row only.</summary>
-        public static bool ShowsHeart(ItemKind kind) => kind == ItemKind.Track;
-
-        /// <summary>People are circles (radius 22); everything else a 5-DIP rounded square.</summary>
-        public static bool IsCircular(ItemKind kind) => kind is ItemKind.Artist or ItemKind.User;
-
-        /// <summary>Choosing a row PLAYS it (a track, an episode) rather than navigating. Deliberately UNCHANGED by the
-        /// podcast rework's D-2 (an episode DEEP LINK opens its page): picking a rich row here is the user explicitly
-        /// choosing something they just searched for — the same explicit-play action <c>Search.UI.cs</c>'s hit rows and
-        /// <c>Recents.UI.cs</c>'s rows are, not a passively-received shared link. <see cref="RouteFor"/> below has no
-        /// Episode arm (it falls to <see cref="Route.None"/>) precisely because choosing one never navigates.</summary>
-        public static bool ChoosePlays(ItemKind kind) => kind is ItemKind.Track or ItemKind.Episode;
-
-        /// <summary>Where choosing a row navigates, or <see cref="Route.None"/> for a row that plays (or a profile row
-        /// whose uri is not a <c>spotify:user:</c> one — a profile with a user uri opens its page, #161).</summary>
-        public static Route RouteFor(Item item) => item.Kind switch
-        {
-            ItemKind.User when item.Uri.Kind == EntityKind.User => new Route(RouteKind.User, item.Uri, Intern(item.Title)),
-            ItemKind.Artist => new Route(RouteKind.Artist, item.Uri, Intern(item.Title)),
-            ItemKind.Album => new Route(RouteKind.Album, item.Uri, Intern(item.Title)),
-            ItemKind.Playlist => new Route(RouteKind.Playlist, item.Uri, Intern(item.Title)),
-            ItemKind.Podcast or ItemKind.Audiobook => new Route(RouteKind.Show, item.Uri, Intern(item.Title)),
-            ItemKind.Genre => new Route(RouteKind.BrowseCategory, item.Uri, Intern(item.Title)),
-            _ => Route.None,
-        };
-
-        /// <summary>A GENRE row carries its search-lookup origin, so its masthead reads <c>"&lt;query&gt;" › Genre</c> with
-        /// no Browse rung (ch 18 parity 74). Port the origin write with the row, not just the navigation.</summary>
-        public static NavOrigin? GenreOrigin(string? query)
-        {
-            string q = (query ?? "").Trim();
-            return q.Length == 0 ? null : new NavOrigin(q, new Route(RouteKind.Search, default, Intern(q)));
-        }
-
-        /// <summary>The answer the popup gives with no source installed: the user's own recent searches that start or
-        /// contain the typed text (newest first), then the recent ENTITY destinations whose title contains it. Distinct
-        /// by route key; capped at the row caps. Empty text answers nothing.</summary>
-        public static Suggestions FromHistory(IReadOnlyList<HistoryEntry> entries, ReadOnlySpan<char> typed)
-        {
-            var t = typed.Trim();
-            if (t.IsEmpty || entries.Count == 0) return Suggestions.Empty;
-            string needle = t.ToString();
-            var queries = new List<string>(MaxQueryRows);
-            var items = new List<Item>(MaxRichRows);
-            var seen = new HashSet<string>(StringComparer.Ordinal);
-            for (int i = entries.Count - 1; i >= 0; i--)
-            {
-                var r = entries[i].Route;
-                if (r.Kind == RouteKind.Search)
-                {
-                    if (queries.Count >= MaxQueryRows || ArgOf(r) is not { Length: > 0 } q) continue;
-                    if (!q.Contains(needle, StringComparison.OrdinalIgnoreCase)) continue;
-                    if (seen.Add("q" + q)) queries.Add(q);
-                    continue;
-                }
-                if (items.Count >= MaxRichRows) continue;
-                ItemKind? kind = r.Kind switch
-                {
-                    RouteKind.Album => ItemKind.Album,
-                    RouteKind.Playlist => ItemKind.Playlist,
-                    RouteKind.Artist => ItemKind.Artist,
-                    RouteKind.Show => ItemKind.Podcast,
-                    RouteKind.User => ItemKind.User,
-                    _ => null,
-                };
-                if (kind is not { } k || !r.Subject.IsValid) continue;
-                string title = Dest(r).Title;
-                if (!title.Contains(needle, StringComparison.OrdinalIgnoreCase)) continue;
-                if (seen.Add(NameOf(r))) items.Add(new Item(k, r.Subject, title));
-            }
-            return queries.Count == 0 && items.Count == 0 ? Suggestions.Empty : new Suggestions(queries, items);
-        }
-
-        /// <summary>Where the suggestion request stands. The popup renders BY this, and only <see cref="Empty"/> may say
-        /// "No results found".</summary>
-        public enum State : byte
-        {
-            /// <summary>No query — the field is blank; the popup is closed.</summary>
-            Idle,
-            /// <summary>A query exists and its answer has not landed — including the debounce window BEFORE the request is
-            /// sent. The popup shows a progress row (plus the previous answer's rows) and no sentence.</summary>
-            Pending,
-            Results,
-            Empty,
-            /// <summary>The request did not produce an answer — a retry, never "nothing matched".</summary>
-            Failed,
-        }
-
-        /// <summary>The suggestion request lifecycle — a GENERATION-keyed state machine (0.2.9 <c>OmnibarSuggestQuery</c>,
-        /// ported verbatim). <see cref="Begin"/> runs on the UNDEBOUNCED keystroke and enters Pending at once, so "No
-        /// results found" never flashes between a keystroke and its request; an answer for any other generation is
-        /// dropped. Text equality is deliberately NOT the publish guard: a superseded response for a retyped query must
-        /// lose to the newer request even when the texts match. UI thread only.</summary>
-        public sealed class Query
-        {
-            int _generation;
-
-            public int Generation => _generation;
-            public string Text { get; private set; } = "";
-            public State State { get; private set; } = State.Idle;
-
-            /// <summary>While Pending these are the PREVIOUS answer's rows — the field does not blank on every keystroke.</summary>
-            public Suggestions Suggestions { get; private set; } = Suggestions.Empty;
-
-            public Exception? Failure { get; private set; }
-            public bool IsPending => State == State.Pending;
-
-            /// <summary>Raised synchronously after every state change.</summary>
-            public event Action? Changed;
-
-            /// <summary>The keystroke edge. Blank clears; the same trimmed text keeps the generation (an in-flight request
-            /// stays valid); anything else starts a new generation in Pending. Returns the generation the answer must
-            /// carry.</summary>
-            public int Begin(string? query)
-            {
-                string q = (query ?? "").Trim();
-                if (q.Length == 0) { Clear(); return _generation; }
-                if (q == Text && State != State.Idle) return _generation;
-                _generation++;
-                Text = q;
-                State = State.Pending;
-                Failure = null;
-                Changed?.Invoke();
-                return _generation;
-            }
-
-            /// <summary>Re-arm a FAILED query as a new pending generation; a no-op in every other state.</summary>
-            public int Retry()
-            {
-                if (State != State.Failed) return _generation;
-                _generation++;
-                State = State.Pending;
-                Failure = null;
-                Changed?.Invoke();
-                return _generation;
-            }
-
-            /// <summary>Publish an answer for <paramref name="generation"/>; false (nothing changes) when superseded.</summary>
-            public bool Complete(int generation, Suggestions suggestions)
-            {
-                if (generation != _generation) return false;
-                Suggestions = suggestions;
-                State = suggestions.IsEmpty ? State.Empty : State.Results;
-                Failure = null;
-                Changed?.Invoke();
-                return true;
-            }
-
-            /// <summary>Publish a failure. False for a superseded generation AND for a cancellation of the current one —
-            /// cancellation is not an answer (whoever cancelled moved on or is tearing the field down).</summary>
-            public bool Fail(int generation, Exception failure)
-            {
-                if (generation != _generation || failure is OperationCanceledException) return false;
-                Suggestions = Suggestions.Empty;
-                State = State.Failed;
-                Failure = failure;
-                Changed?.Invoke();
-                return true;
-            }
-
-            /// <summary>Back to Idle (NOT Empty: a blank field has no answer). Advances the generation so a late answer for
-            /// the cleared query is dropped.</summary>
-            public void Clear()
-            {
-                if (State == State.Idle) return;
-                _generation++;
-                Text = "";
-                State = State.Idle;
-                Suggestions = Suggestions.Empty;
-                Failure = null;
-                Changed?.Invoke();
-            }
         }
     }
 }

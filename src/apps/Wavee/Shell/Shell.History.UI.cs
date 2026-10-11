@@ -62,7 +62,7 @@ public static partial class Shell
             var sort = sortIndex.Value == 0 ? History.Sort.MostRecent : History.Sort.MostVisited;
             var entries = History.Store.Entries;
             var now = DateTime.Now;
-            bool developerMode = Platform.Settings.Get(Platform.Keys.DeveloperMode);
+            bool developerMode = FrameFacts.DeveloperNow;
 
             var visible = History.Visible(entries, filter, query);
             Element body;
@@ -130,7 +130,7 @@ public static partial class Shell
                             Loc.Get(Strings.Nav.History.ClearAllConfirm),
                             Loc.Get(Strings.Nav.History.ClearAllConfirmBody),
                             Loc.Get(Strings.Nav.History.ClearAll),
-                            static () => History.Store.Clear())),
+                            static () => HistoryVerbs.ClearAll())),
                     ],
                 },
                 AutoSuggestBox.Create(
@@ -321,7 +321,7 @@ public static partial class Shell
             Width = HistoryDeleteBox, Height = HistoryDeleteBox, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             Corners = CornerRadius4.All(Radii.Control), Opacity = 0.5f,
             Role = AutomationRole.Button,
-            OnClick = () => History.Store.Remove(e),
+            OnClick = () => HistoryVerbs.Remove(e),
             Children = [FluentGpu.Dsl.Ui.Icon(Icons.Cancel, 12f, Tok.TextSecondary)],
         }.Interactive(Interaction.Subtle));
 

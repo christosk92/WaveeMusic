@@ -75,13 +75,11 @@ public static partial class Settings
     static readonly Signal<int> s_tab = new(0);
     static readonly Signal<int> s_epoch = new(0);
 
-    // Captured unconditionally by the page render, read by the tab bodies (never null after the first render).
-    static IOverlayService? s_overlay;
-    static InputHooks? s_hooks;
-    static Action<Action> s_post = static a => a();
-    static Action<float>? s_requestTheme;
-    static float s_zoomLive = 1f;
-    static Size2 s_viewportLive;
+    // Published unconditionally by the page render into `SettingsContext` (the verbs read the same values), read by the
+    // tab bodies (never null after the first render).
+    static IOverlayService? s_overlay => SettingsContext.Overlay;
+    static InputHooks? s_hooks => SettingsContext.Hooks;
+    static Action<Action> s_post => SettingsContext.Post;
 
     static readonly Signal<int> s_language = new(0);
     static readonly Signal<int> s_trayMode = new((int)Tray.DefaultIconMode);
@@ -109,13 +107,13 @@ public static partial class Settings
         public override Element Render()
         {
             // UNCONDITIONAL — above the tab switch (a conditional hook breaks hook ORDER).
-            s_overlay = UseContext(Overlay.Service);
-            s_hooks = UseContext(InputHooks.Current);
-            s_requestTheme = UseContext(ThemeControl.Request);
-            s_zoomLive = UseContext(Viewport.Zoom);          // display-only live zoom for the Appearance › Zoom row
-            s_viewportLive = UseContext(Viewport.Size);
+            var overlayHost = UseContext(Overlay.Service);
+            var inputHooks = UseContext(InputHooks.Current);
+            Appearance.BindTransition(UseContext(ThemeControl.Request));
+            _ = UseContext(Viewport.Zoom);   // the page follows a zoom / viewport change (the Appearance › Zoom row's label)
+            _ = UseContext(Viewport.Size);
             var post = UsePost();
-            s_post = post;
+            SettingsContext.Bind(overlayHost, inputHooks, post);
 
             UseEffect(() =>
             {
@@ -296,6 +294,30 @@ public static partial class Settings
             Bump();
         }, isEnabled: isEnabled, style: SettingsCard.CompactToggleStyle());
 
+    /// <summary>The document's row <paramref name="id"/> of <paramref name="tab"/>.</summary>
+    static SettingsRow D(Tab tab, string id) => SettingsDoc.Row(tab, id);
+
+    /// <summary>A compact toggle over a document row: a FRESH signal seeded from the row's value, the row's writer (the one
+    /// verb that persists and applies), then the page bump when the writer asks for it.</summary>
+    static Element RowToggle(SettingsRow row, bool isEnabled = true)
+        => ToggleSwitch.Create(new Signal<bool>(row.Value(Platform.Settings) is true), onChange: on =>
+        {
+            if (row.Writer.Toggle!(on)) Bump();
+        }, isEnabled: isEnabled, style: SettingsCard.CompactToggleStyle());
+
+    /// <summary>One settings row drawn from a document row: its title, its description (the row's REASON while it is greyed
+    /// with one, else its caption — <paramref name="sub"/> overrides it for a live sentence), its glyph (the catalog's, or
+    /// <paramref name="icon"/>) and its enablement. The control is the view's.</summary>
+    static Element DocRow(SettingsRow row, Element? control = null, string? sub = null, string? icon = null,
+                          SettingsCard.ContentAlignment align = SettingsCard.ContentAlignment.Right,
+                          bool isClickEnabled = false, Action? onClick = null, string? actionIcon = null)
+    {
+        var facts = SettingsFacts.Live;
+        string? description = sub ?? (row.DescriptionKey(facts) is { } key ? Loc.Get(key) : null);
+        return Row(Loc.Get(row.TitleKey), description, control, icon ?? (row.GlyphRole is { } glyph ? Glyph(glyph) : null),
+            align, isClickEnabled, onClick, row.Enabled(facts).Enabled, actionIcon);
+    }
+
     /// <summary>N11: every destructive action confirms through the ONE dialog shape, Cancel the default button.</summary>
     static void ConfirmThen(string title, string body, string primaryText, Action onConfirm)
         => Controls.Confirm(s_overlay, title, body, primaryText, onConfirm);
@@ -309,11 +331,7 @@ public static partial class Settings
     };
 
     /// <summary>Open a URI through the host (ms-settings:, https:), fail-soft.</summary>
-    static void OpenUri(string uri)
-    {
-        try { (s_hooks?.OpenUri ?? InputHooks.Current.Default.OpenUri)?.Invoke(uri); }
-        catch (Exception ex) { Log.Warn("settings", "could not open " + uri, ex); }
-    }
+    static void OpenUri(string uri) => SettingsVerbs.OpenUri(uri);
 
     // ══ 4. GLYPHS (0.2.9 `SettingsGlyphs.cs`) ══════════════════════════════════════════════════════════════════════
 
@@ -365,9 +383,8 @@ public static partial class Settings
         {
             SectionHeader(Loc.Get(Strings.Settings.Language.Title), SectionGlyph(Tab.General, "Language & region"),
                 Loc.Get(Strings.Settings.Language.Subtitle)),
-            Row(Loc.Get(Strings.Settings.Language.Label), Loc.Get(Strings.Settings.Language.RestartSub),
-                ComboBox.Create(LanguageLabels(), s_language, width: 260f, onChange: SetLanguage, itemEnabled: Language.Enabled),
-                RowGlyph(Tab.General, "language")),
+            DocRow(D(Tab.General, "language"),
+                ComboBox.Create(LanguageLabels(), s_language, width: 260f, onChange: SetLanguage, itemEnabled: Language.Enabled)),
 
             SectionHeader(Loc.Get(Strings.Settings.Links.Title), SectionGlyph(Tab.General, "Links"),
                 Loc.Get(Strings.Settings.Links.Subtitle)),
@@ -395,8 +412,7 @@ public static partial class Settings
 
     static void SetLanguage(int index)
     {
-        if (!Language.CanPick(index)) return;   // belt-and-braces behind the combo's own disabled items
-        Platform.Settings.Set(Platform.Keys.UiCulture, Language.Codes[index]);
+        if (!D(Tab.General, "language").Writer.Choose!(index)) return;   // the verb refuses what the combo's own disabled items refuse
         s_language.Value = index;
         Bump();
     }
@@ -405,25 +421,17 @@ public static partial class Settings
     /// straight back). A packaged build's manifest owns its protocols, so the row says Windows manages it.</summary>
     static Element SpotifyLinksRow()
     {
-        bool packaged = IsPackaged();
-        return Row(Loc.Get(Strings.Settings.Links.Spotify),
-            Loc.Get(packaged ? Strings.Settings.General.SpotifyLinksPackagedSub : Strings.Settings.Links.SpotifySub),
-            Toggle(Platform.Keys.HandleSpotifyLinks, afterWrite: SyncSpotifyScheme, isEnabled: !packaged),
-            RowGlyph(Tab.General, "spotifyLinks"), isEnabled: !packaged);
+        var row = D(Tab.General, "spotifyLinks");
+        return DocRow(row, RowToggle(row, row.Enabled(SettingsFacts.Live).Enabled));
     }
 
     /// <summary>The tray plan §8 group. Every writer calls <c>Tray.Host.OnSettingsChanged()</c> (icon presence, the
     /// foreground hook and — through it — <c>Shell.SyncStartupRegistration()</c> follow).</summary>
     static void AddTrayRows(List<Element> kids)
     {
-        var mode = Tray.ModeFrom(Platform.Settings.Get(Platform.Keys.TrayIconMode));
-        bool hideAllowed = Tray.HideModesAllowed(mode);
-        bool startOnLogin = Platform.Settings.Get(Platform.Keys.StartOnLogin);
-        bool startHiddenAvailable = Tray.StartHiddenAvailable(startOnLogin, mode);
-        string needsIcon = Loc.Get(Strings.Settings.General.Tray.NeedsIcon);
-
-        kids.Add(Row(Loc.Get(Strings.Settings.General.Tray.IconMode),
-            Loc.Get(mode == Tray.IconMode.Never ? Strings.Settings.General.Tray.IconNeverSub : Strings.Settings.General.Tray.IconModeSub),
+        var facts = SettingsFacts.Live;
+        var iconMode = D(Tab.General, "trayIcon");
+        kids.Add(DocRow(iconMode,
             ComboBox.Create(
                 [
                     Loc.Get(Strings.Settings.General.Tray.IconAlways),
@@ -432,39 +440,20 @@ public static partial class Settings
                 ],
                 s_trayMode, width: 260f, onChange: static i =>
                 {
-                    if (i is < 0 or > 2) return;
-                    Platform.Settings.Set(Platform.Keys.TrayIconMode, i);
+                    if (!D(Tab.General, "trayIcon").Writer.Choose!(i)) return;
                     s_trayMode.Value = i;
-                    Tray.Host.OnSettingsChanged();
                     Bump();
-                }),
-            RowGlyph(Tab.General, "trayIcon")));
+                })));
 
-        kids.Add(Row(Loc.Get(Strings.Settings.General.Tray.CloseToTray),
-            hideAllowed ? Loc.Get(Strings.Settings.General.Tray.CloseToTraySub) : needsIcon,
-            Toggle(Platform.Keys.TrayCloseToTray, afterWrite: static _ => Tray.Host.OnSettingsChanged(), isEnabled: hideAllowed),
-            RowGlyph(Tab.General, "closeToTray"), isEnabled: hideAllowed));
+        // The three rows that need the icon (or the startup task) grey and give their reason in the description.
+        foreach (string id in new[] { "closeToTray", "minimizeToTray", "startHidden" })
+        {
+            var row = D(Tab.General, id);
+            kids.Add(DocRow(row, RowToggle(row, row.Enabled(facts).Enabled)));
+        }
 
-        kids.Add(Row(Loc.Get(Strings.Settings.General.Tray.MinimizeToTray),
-            hideAllowed ? Loc.Get(Strings.Settings.General.Tray.MinimizeToTraySub) : needsIcon,
-            Toggle(Platform.Keys.TrayMinimizeToTray, afterWrite: static _ => Tray.Host.OnSettingsChanged(), isEnabled: hideAllowed),
-            RowGlyph(Tab.General, "minimizeToTray"), isEnabled: hideAllowed));
-
-        kids.Add(Row(Loc.Get(Strings.Settings.General.Tray.StartHidden),
-            startHiddenAvailable ? Loc.Get(Strings.Settings.General.Tray.StartHiddenSub)
-                : !hideAllowed ? needsIcon : Loc.Get(Strings.Settings.General.Tray.NeedsStartOnLogin),
-            Toggle(Platform.Keys.TrayStartHidden, afterWrite: static _ => Tray.Host.OnSettingsChanged(), isEnabled: startHiddenAvailable),
-            RowGlyph(Tab.General, "startHidden"), isEnabled: startHiddenAvailable));
-
-        kids.Add(Row(Loc.Get(Strings.Settings.General.StartOnLogin), Loc.Get(Strings.Settings.General.StartOnLoginSub),
-            Toggle(Platform.Keys.StartOnLogin, afterWrite: static _ =>
-            {
-                // Tray.Host.OnSettingsChanged calls Shell.SyncStartupRegistration first; call it directly too so the
-                // Run value follows even before the tray host has booted.
-                Shell.SyncStartupRegistration();
-                Tray.Host.OnSettingsChanged();
-            }),
-            RowGlyph(Tab.General, "startOnLogin")));
+        var startOnLogin = D(Tab.General, "startOnLogin");
+        kids.Add(DocRow(startOnLogin, RowToggle(startOnLogin)));
     }
 
     /// <summary>Settings › General › Graphics — the render-GPU picker. Its own component so the seeding effect lives on
@@ -473,28 +462,14 @@ public static partial class Settings
     sealed class GpuPickerCard : Component
     {
         readonly Signal<int> _selected = new(0);
-        readonly IReadOnlyList<GpuAdapterDesc> _adapters = SafeAdapters();
-
-        static IReadOnlyList<GpuAdapterDesc> SafeAdapters()
-        {
-            try { return GpuAdapterInfo.EnumerateAdapters(); }
-            catch (Exception ex) { Log.Warn("settings", "GPU adapter enumeration failed", ex); return []; }
-        }
+        readonly IReadOnlyList<GpuAdapterDesc> _adapters = SettingsFacts.RefreshGpus();
 
         public override Element Render()
         {
             UseEffect(() =>
             {
-                long luid = Platform.Settings.Get(Platform.Keys.PreferredGpuLuid);
-                string name = Platform.Settings.Get(Platform.Keys.PreferredGpuName);
-                int idx = 0;
-                if (luid != 0L || name.Length > 0)
-                    for (int k = 0; k < _adapters.Count; k++)
-                    {
-                        if (luid != 0L && _adapters[k].Luid == luid) { idx = k + 1; break; }
-                        if (idx == 0 && name.Length > 0 && string.Equals(_adapters[k].Name, name, StringComparison.Ordinal)) idx = k + 1;
-                    }
-                _selected.Value = idx;
+                _selected.Value = SettingsFacts.GpuIndexOf(_adapters,
+                    Platform.Settings.Get(Platform.Keys.PreferredGpuLuid), Platform.Settings.Get(Platform.Keys.PreferredGpuName));
             }, DepKey.Empty);
 
             var labels = new string[_adapters.Count + 1];
@@ -505,25 +480,14 @@ public static partial class Settings
                 labels[k + 1] = a.IsCurrent ? Strings.Settings.Gpu.InUse(a.Name) : a.Name;
             }
 
-            return Row(Loc.Get(Strings.Settings.Gpu.Label), Loc.Get(Strings.Settings.Gpu.RestartSub),
-                ComboBox.Create(labels, _selected, width: 300f, onChange: Pick), RowGlyph(Tab.General, "preferredGpu"));
+            return DocRow(D(Tab.General, "preferredGpu"), ComboBox.Create(labels, _selected, width: 300f, onChange: Pick));
         }
 
+        // The verb persists and live-applies; the combo's selection is this card's mirror (0 = Automatic).
         void Pick(int i)
         {
-            if (i <= 0 || i > _adapters.Count)
-            {
-                Platform.Settings.Set(Platform.Keys.PreferredGpuLuid, 0L);
-                Platform.Settings.Set(Platform.Keys.PreferredGpuName, "");
-                _selected.Value = 0;
-                GpuAdapterInfo.RequestAdapterSwitch(0L);
-                return;
-            }
-            var a = _adapters[i - 1];
-            Platform.Settings.Set(Platform.Keys.PreferredGpuLuid, a.Luid);
-            Platform.Settings.Set(Platform.Keys.PreferredGpuName, a.Name);
-            _selected.Value = i;
-            GpuAdapterInfo.RequestAdapterSwitch(a.Luid);
+            D(Tab.General, "preferredGpu").Writer.Choose!(i);
+            _selected.Value = i <= 0 || i > _adapters.Count ? 0 : i;
         }
     }
 
@@ -540,17 +504,15 @@ public static partial class Settings
         var children = new List<Element>(16);
 
         // The honesty layer FIRST: when Windows suppresses Wavee every dial below is theatre until that is fixed.
-        if (BlockedBar(NotifyRules.Blocked(ToastDelivery())) is { } blocked) children.Add(blocked);
+        if (BlockedBar(NotifyRules.Blocked(SettingsFacts.ToastDelivery())) is { } blocked) children.Add(blocked);
 
         children.Add(SectionHeader(Loc.Get(Strings.Settings.Notify.DeliveryTitle), Icons.Bell));
-        children.Add(Row(Loc.Get(Strings.Settings.Notify.Windows), Loc.Get(Strings.Settings.Notify.WindowsSub),
-            NotifyToggle(Platform.Keys.NotifyWindows, reconcile: true), Icons.Bell));
+        var windows = D(Tab.Notifications, "windows");
+        children.Add(DocRow(windows, RowToggle(windows), icon: Icons.Bell));
         // Sound and quiet hours only mean something while Windows delivery is on: both rows stay visible but go inert.
-        children.Add(DependentNotifyRow(Loc.Get(Strings.Settings.Notify.Sound), Loc.Get(Strings.Settings.Notify.SoundSub),
-            Platform.Keys.NotifySound, reconcile: false, Icons.Bell, enabled: policy.WindowsEnabled));
-        children.Add(DependentNotifyRow(Loc.Get(Strings.Settings.Notify.Quiet), Loc.Get(Strings.Settings.Notify.QuietSub),
-            Platform.Keys.NotifyQuietEnabled, reconcile: true, Icons.Moon, enabled: policy.WindowsEnabled));
-        if (policy.WindowsEnabled && policy.Quiet.Enabled)
+        children.Add(DependentNotifyRow(D(Tab.Notifications, "sound"), Icons.Bell));
+        children.Add(DependentNotifyRow(D(Tab.Notifications, "quiet"), Icons.Moon));
+        if (D(Tab.Notifications, "quietFrom").Visible(SettingsFacts.Live))
             children.Add(QuietRange(policy));
 
         children.Add(SectionHeader(Loc.Get(Strings.Settings.Notify.TopicsTitle), Icons.Settings));
@@ -577,12 +539,11 @@ public static partial class Settings
             ? [Loc.Get(Strings.Settings.Notify.LevelOff), Loc.Get(Strings.Settings.Notify.LevelInApp), Loc.Get(Strings.Settings.Notify.LevelWindows)]
             : [Loc.Get(Strings.Settings.Notify.LevelOff), Loc.Get(Strings.Settings.Notify.LevelInApp)];
 
+        var ladder = D(Tab.Notifications, SettingsDoc.TopicRowId(topic));
         var dial = SelectorBar.Create(labels, new Signal<int>((int)level), onChange: i =>
         {
-            Notify.Prefs.SetLevel(topic, (NotifyLevel)i);
-            // A SCHEDULED topic dialled down must give back the toast the OS already holds.
-            if (NotificationPolicy.IsScheduled(topic)) Notify.RequestReconcile();
-            Bump();
+            // The verb persists and, for a SCHEDULED topic dialled down, gives back the toast the OS already holds.
+            if (ladder.Writer.Choose!(i)) Bump();
         });
 
         if (!dev) return Row(TopicLabel(topic), TopicSub(topic), dial, TopicGlyph(topic));
@@ -598,55 +559,19 @@ public static partial class Settings
             Items =
             [
                 Item(Loc.Get(Strings.Settings.Notify.Send), sendSub,
-                    Button.Standard(Loc.Get(Strings.Settings.Notify.SendButton), () => RunTestEvent(topic))),
+                    Button.Standard(Loc.Get(Strings.Settings.Notify.SendButton), () =>
+                    {
+                        if (D(Tab.Notifications, SettingsDoc.TopicTestRowId(topic)).Writer.Run!()) Bump();
+                    })),
             ],
         });
     }
 
-    /// <summary>Report what the PIPELINE decided — the report is the feature; the banner is one of its outcomes. Enabled
-    /// at every level including Off: "nothing happens, as configured" is otherwise unverifiable.</summary>
-    static void RunTestEvent(NotifyTopic topic)
-    {
-        var result = SendTestEvent is { } send ? send(topic) : new TestEventResult(TestEventOutcome.Unavailable, null);
-        string key = NotifyRules.OutcomeKey(result.Outcome);
-        string message = NotifyRules.OutcomeHasClock(result.Outcome)
-            ? Loc.Format(key, ("0", NotifyRules.Clock(result.At, CultureInfo.CurrentCulture)))
-            : Loc.Get(key);
-        var severity = NotifyRules.OutcomeSeverity(result.Outcome) switch
-        {
-            1 => InfoBarSeverity.Success,
-            2 => InfoBarSeverity.Warning,
-            _ => InfoBarSeverity.Informational,
-        };
-        Notify.Say(message, severity, durationMs: 6000f);
-        Bump();   // a new bell row / a changed scheduled count is visible on this page
-    }
-
-    static string TopicLabel(NotifyTopic topic) => Loc.Get(topic switch
-    {
-        NotifyTopic.NewAlbums => Strings.Settings.Notify.NewAlbums,
-        NotifyTopic.NewEpisodes => Strings.Settings.Notify.NewEpisodes,
-        NotifyTopic.ReleaseDrops => Strings.Settings.Notify.ReleaseDrops,
-        NotifyTopic.Concerts => Strings.Settings.Notify.Concerts,
-        NotifyTopic.Followers => Strings.Settings.Notify.Followers,
-        NotifyTopic.DaylistRefresh => Strings.Settings.Notify.Daylist,
-        NotifyTopic.AppUpdates => Strings.Settings.Notify.AppUpdates,
-        _ => Strings.Settings.Notify.LibraryActivity,
-    });
+    static string TopicLabel(NotifyTopic topic) => Loc.Get(SettingsDoc.TopicTitleKey(topic));
 
     static string TopicSub(NotifyTopic topic)
     {
-        string sub = Loc.Get(topic switch
-        {
-            NotifyTopic.NewAlbums => Strings.Settings.Notify.NewAlbumsSub,
-            NotifyTopic.NewEpisodes => Strings.Settings.Notify.NewEpisodesSub,
-            NotifyTopic.ReleaseDrops => Strings.Settings.Notify.ReleaseDropsSub,
-            NotifyTopic.Concerts => Strings.Settings.Notify.ConcertsSub,
-            NotifyTopic.Followers => Strings.Settings.Notify.FollowersSub,
-            NotifyTopic.DaylistRefresh => Strings.Settings.Notify.DaylistSub,
-            NotifyTopic.AppUpdates => Strings.Settings.Notify.AppUpdatesSub,
-            _ => Strings.Settings.Notify.LibraryActivitySub,
-        });
+        string sub = Loc.Get(SettingsDoc.TopicCaptionKey(topic));
         return NotificationPolicy.IsScheduled(topic) ? sub + "  ·  " + Loc.Get(Strings.Settings.Notify.ClosedBadge) : sub;
     }
 
@@ -662,17 +587,11 @@ public static partial class Settings
         _ => Icons.Clock,
     };
 
-    static Element NotifyToggle(SettingKey<bool> key, bool reconcile, bool isEnabled = true)
-        => Toggle(key, afterWrite: _ =>
-        {
-            Notify.Prefs.Bump();
-            if (reconcile) Notify.RequestReconcile();
-        }, isEnabled: isEnabled);
-
     /// <summary>A notification row that depends on another setting. The engine does not cascade a card's IsEnabled into its
-    /// content (#183: a greyed card kept a live, enabled-looking switch), so ONE flag drives the card and its toggle.</summary>
-    static Element DependentNotifyRow(string label, string sub, SettingKey<bool> key, bool reconcile, string icon, bool enabled)
-        => Row(label, sub, NotifyToggle(key, reconcile, isEnabled: enabled), icon, isEnabled: enabled);
+    /// content (#183: a greyed card kept a live, enabled-looking switch), so ONE flag (the row's enablement) drives the card
+    /// and its toggle.</summary>
+    static Element DependentNotifyRow(SettingsRow row, string icon)
+        => DocRow(row, RowToggle(row, row.Enabled(SettingsFacts.Live).Enabled), icon: icon);
 
     static Element QuietRange(in NotificationPolicy policy)
     {
@@ -683,27 +602,18 @@ public static partial class Settings
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Shrink = 0f,
                 Children =
                 [
-                    HourCombo(hours, Platform.Keys.NotifyQuietFromHour, policy.Quiet.FromHour),
-                    HourCombo(hours, Platform.Keys.NotifyQuietToHour, policy.Quiet.ToHour),
+                    HourCombo(hours, D(Tab.Notifications, "quietFrom"), policy.Quiet.FromHour),
+                    HourCombo(hours, D(Tab.Notifications, "quietTo"), policy.Quiet.ToHour),
                 ],
             },
             Icons.Clock);
     }
 
-    static Element HourCombo(string[] hours, SettingKey<int> key, int value)
+    static Element HourCombo(string[] hours, SettingsRow row, int value)
         => ComboBox.Create(hours, new Signal<int>(Math.Clamp(value, 0, 23)), width: 120f, onChange: h =>
         {
-            Platform.Settings.Set(key, Math.Clamp(h, 0, 23));
-            Notify.Prefs.Bump();
-            Notify.RequestReconcile();
-            Bump();
+            if (row.Writer.Choose!(h)) Bump();
         });
-
-    static ToastDeliverySetting ToastDelivery()
-    {
-        try { return ToastNotifier.Default.Setting; }
-        catch (Exception) { return ToastDeliverySetting.Unknown; }
-    }
 
     static Element? BlockedBar(BlockedBanner banner)
     {
@@ -719,11 +629,5 @@ public static partial class Settings
             ? Button.Standard(Loc.Get(Strings.Settings.Notify.OpenWindows), static () => OpenUri("ms-settings:notifications"))
             : null;
         return InfoBar.Create(InfoBarSeverity.Warning, t.Title, t.Body, isClosable: false, actionButton: action);
-    }
-
-    static bool IsPackaged()
-    {
-        try { return PackageIdentity.IsPackaged; }
-        catch (Exception) { return false; }
     }
 }

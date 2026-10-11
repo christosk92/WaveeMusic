@@ -94,9 +94,9 @@ public static partial class Settings
 
     private static partial Element AppearanceTab()
     {
-        int themeMode = Math.Clamp(Platform.Settings.Get(Platform.Keys.ThemeMode), 0, 2);
+        int themeMode = (int)Appearance.Mode;
         bool lyricsBlurAuto = Platform.Settings.Get(Platform.Keys.LyricsBlurStrength) < 0;
-        bool dev = Platform.Developer.Enabled.Value;
+        var facts = SettingsFacts.Live;   // developer mode is read reactively here, as the tab always did
         // The Now-playing rows' ONE foreign epoch (ch 27 §7): the header row, the flyout, the art menu and the palette all
         // write it, and these two rows must follow them live.
         int npvPresentation = Rail.PlayerPrefs.Presentation();
@@ -107,25 +107,20 @@ public static partial class Settings
         {
             SectionHeader(Loc.Get(Strings.Settings.Appearance.Title), SectionGlyph(Tab.Appearance, "Theme"),
                 Loc.Get(Strings.Settings.Appearance.Subtitle)),
-            Row(Loc.Get(Strings.Settings.Appearance.Theme), Loc.Get(Strings.Settings.Appearance.ThemeSub),
-                SelectorBar.Create(ThemeLabels(), new Signal<int>(themeMode), onChange: static m => SetTheme(m)),
-                RowGlyph(Tab.Appearance, "theme")),
+            DocRow(D(Tab.Appearance, "theme"),
+                SelectorBar.Create(ThemeLabels(), new Signal<int>(themeMode), onChange: static m => SetTheme(m))),
             // A ComboBox, not a SelectorBar: thirteen items (Auto + twelve rungs) would be thirteen segments wide.
-            Row(Loc.Get(Strings.Settings.Appearance.Zoom), Loc.Get(Strings.Settings.Appearance.ZoomSub),
-                Embed.Comp(static () => new ZoomPicker()), RowGlyph(Tab.Appearance, "zoom")),
-            Row(Loc.Get(Strings.Settings.Appearance.Marquee), Loc.Get(Strings.Settings.Appearance.MarqueeSub),
-                AppearanceToggle(Platform.Keys.MarqueeEnabled), RowGlyph(Tab.Appearance, "marquee")),
-            Row(Loc.Get(Strings.Settings.Appearance.ColorWashes), Loc.Get(Strings.Settings.Appearance.ColorWashesSub),
-                AppearanceToggle(Platform.Keys.ColorWashesEnabled), RowGlyph(Tab.Appearance, "colorWashes")),
+            DocRow(D(Tab.Appearance, "zoom"), Embed.Comp(static () => new ZoomPicker())),
+            DocRow(D(Tab.Appearance, "marquee"), RowToggle(D(Tab.Appearance, "marquee"))),
+            DocRow(D(Tab.Appearance, "colorWashes"), RowToggle(D(Tab.Appearance, "colorWashes"))),
         };
 
         // A SelectorBar, not a ComboBox: it re-pushes its selected index every render (ch 27 §0's frozen-inputs rule),
         // so the row needs no dedicated stable-signal component the way Zoom/NPV-style do. DEVELOPER-ONLY: a normal
         // build navigates at `Design.Nav.DefaultStyle` (Classic) and is offered no choice.
-        if (RowVisible(Tab.Appearance, "pageMotion", dev))
-            kids.Add(Row(Loc.Get(Strings.Settings.Appearance.PageMotion), Loc.Get(Strings.Settings.Appearance.PageMotionSub),
-                SelectorBar.Create(PageMotionLabels(), new Signal<int>(pageMotion), onChange: static i => SetPageMotionStyle(i)),
-                RowGlyph(Tab.Appearance, "pageMotion")));
+        if (D(Tab.Appearance, "pageMotion").Visible(facts))
+            kids.Add(DocRow(D(Tab.Appearance, "pageMotion"),
+                SelectorBar.Create(PageMotionLabels(), new Signal<int>(pageMotion), onChange: static i => SetPageMotionStyle(i))));
 
         kids.Add(SectionHeader(Loc.Get(Strings.Settings.Layout.Title), SectionGlyph(Tab.Appearance, "Lists"),
             Loc.Get(Strings.Settings.Layout.Subtitle)));
@@ -133,8 +128,7 @@ public static partial class Settings
         kids.Add(TrackListStyleGroup());
         kids.Add(PageLayoutGroup());
         // A ComboBox in its own component, the zoom/player-style shape: the items, signal and onChange freeze at mount.
-        kids.Add(Row(Loc.Get(Strings.Settings.Appearance.DaylistClock), Loc.Get(Strings.Settings.Appearance.DaylistClockSub),
-            Embed.Comp(static () => new DaylistClockPicker()), RowGlyph(Tab.Appearance, "daylistClock")));
+        kids.Add(DocRow(D(Tab.Appearance, "daylistClock"), Embed.Comp(static () => new DaylistClockPicker())));
 
         kids.Add(SectionHeader(Loc.Get(Strings.Settings.Sidebar.Title), SectionGlyph(Tab.Appearance, "Sidebar"),
             Loc.Get(Strings.Settings.Sidebar.Subtitle)));
@@ -144,39 +138,29 @@ public static partial class Settings
         // The second line and the animated backdrop are no longer settings at all.
         kids.Add(SectionHeader(Loc.Get(Strings.Settings.Lyrics.Title), SectionGlyph(Tab.Appearance, "Lyrics"),
             Loc.Get(Strings.Settings.Lyrics.Subtitle)));
-        kids.Add(Row(Loc.Get(Strings.Settings.Appearance.LyricsBlur), Loc.Get(Strings.Settings.Appearance.LyricsBlurSub),
-            LyricsBlurControl(lyricsBlurAuto), RowGlyph(Tab.Appearance, "lyricsBlur")));
+        kids.Add(DocRow(D(Tab.Appearance, "lyricsBlur"), LyricsBlurControl(lyricsBlurAuto)));
         kids.Add(AiLyrics.SettingsCard());
 
         // ── the fullscreen stage: the gallery's four settings, mirrored here with the rest of Appearance ──
         kids.Add(SectionHeader(Loc.Get(Strings.Stage.Settings.Title), SectionGlyph(Tab.Appearance, "Fullscreen"), Loc.Get(Strings.Stage.Settings.Subtitle)));
-        kids.Add(Row(Loc.Get(Strings.Stage.Settings.Visualizer), Loc.Get(Strings.Stage.Settings.VisualizerSub),
-            Embed.Comp(static () => new StageVisualizerPicker()), RowGlyph(Tab.Appearance, "stageVisualizer")));
-        kids.Add(Row(Loc.Get(Strings.Stage.Settings.Layout), Loc.Get(Strings.Stage.Settings.LayoutSub),
-            Embed.Comp(static () => new StageLayoutPicker()), RowGlyph(Tab.Appearance, "stageLayout")));
-        kids.Add(Row(Loc.Get(Strings.Stage.Settings.Sensitivity), Loc.Get(Strings.Stage.Settings.SensitivitySub),
-            Embed.Comp(static () => new StageSensitivitySlider()), RowGlyph(Tab.Appearance, "stageSensitivity")));
-        kids.Add(Row(Loc.Get(Strings.Stage.Settings.LyricsOverlay), Loc.Get(Strings.Stage.Settings.LyricsOverlaySub),
-            StageToggle(Platform.Keys.StageLyricsOverlay), RowGlyph(Tab.Appearance, "stageLyricsOverlay")));
-        kids.Add(Row(Loc.Get(Strings.Stage.Settings.SyncOffset), Loc.Get(Strings.Stage.Settings.SyncOffsetSub),
-            Embed.Comp(static () => new StageSyncSlider()), RowGlyph(Tab.Appearance, "stageSyncOffset")));
-        kids.Add(Row(Loc.Get(Strings.Stage.Settings.Calm), Loc.Get(Strings.Stage.Settings.CalmSub),
-            StageToggle(Platform.Keys.StageCalm), RowGlyph(Tab.Appearance, "stageCalm")));
-        kids.Add(Row(Loc.Get(Strings.Stage.Settings.Moments), Loc.Get(Strings.Stage.Settings.MomentsSub),
-            StageToggle(Platform.Keys.StageMoments), RowGlyph(Tab.Appearance, "stageMoments")));
+        kids.Add(DocRow(D(Tab.Appearance, "stageVisualizer"), Embed.Comp(static () => new StageVisualizerPicker())));
+        kids.Add(DocRow(D(Tab.Appearance, "stageLayout"), Embed.Comp(static () => new StageLayoutPicker())));
+        kids.Add(DocRow(D(Tab.Appearance, "stageSensitivity"), Embed.Comp(static () => new StageSensitivitySlider())));
+        kids.Add(DocRow(D(Tab.Appearance, "stageLyricsOverlay"), RowToggle(D(Tab.Appearance, "stageLyricsOverlay"))));
+        kids.Add(DocRow(D(Tab.Appearance, "stageSyncOffset"), Embed.Comp(static () => new StageSyncSlider())));
+        kids.Add(DocRow(D(Tab.Appearance, "stageCalm"), RowToggle(D(Tab.Appearance, "stageCalm"))));
+        kids.Add(DocRow(D(Tab.Appearance, "stageMoments"), RowToggle(D(Tab.Appearance, "stageMoments"))));
 
         kids.Add(SectionHeader(Loc.Get(Strings.Settings.NowPlaying.Title), SectionGlyph(Tab.Appearance, "Now playing"),
             Loc.Get(Strings.Settings.NowPlaying.Subtitle)));
         // The second label FOLLOWS the current style; SelectorBar re-pushes its items, so it relabels in place.
         // DEVELOPER-ONLY, exactly like the rail header switch it duplicates — a normal build shows the cover.
-        if (RowVisible(Tab.Appearance, "npvPresentation", dev))
-            kids.Add(Row(Loc.Get(Strings.Settings.Appearance.NpvPresentation), Loc.Get(Strings.Settings.Appearance.NpvPresentationSub),
+        if (D(Tab.Appearance, "npvPresentation").Visible(facts))
+            kids.Add(DocRow(D(Tab.Appearance, "npvPresentation"),
                 SelectorBar.Create([Loc.Get(Strings.Player.PresentationCover), Loc.Get(npvPreset.ShortLabelKey)],
                     new Signal<int>(npvPresentation),
-                    onChange: static i => Rail.PlayerPrefs.SetPresentation(i, Rail.NpvDiagnostics.SourceSettings)),
-                RowGlyph(Tab.Appearance, "npvPresentation")));
-        kids.Add(Row(Loc.Get(Strings.Settings.Appearance.NpvStyle), Loc.Get(Strings.Settings.Appearance.NpvStyleSub),
-            Embed.Comp(static () => new NpvStylePicker()), RowGlyph(Tab.Appearance, "npvStyle")));
+                    onChange: static i => D(Tab.Appearance, "npvPresentation").Writer.Choose!(i))));
+        kids.Add(DocRow(D(Tab.Appearance, "npvStyle"), Embed.Comp(static () => new NpvStylePicker())));
 
         return TabStack(kids.ToArray());
     }
@@ -190,26 +174,12 @@ public static partial class Settings
         Loc.Get(Strings.Settings.Choice.Dark),
     ];
 
-    /// <summary>0 System · 1 Light · 2 Dark: swap the installed Wavee palette IN PLACE (System re-reads the OS theme and
-    /// accent now), persist, then ask the host for the 250 ms re-theme cross-fade (ch 27 §5).</summary>
+    /// <summary>0 System · 1 Light · 2 Dark: <see cref="Appearance.SetMode"/> swaps the installed Wavee palette IN PLACE
+    /// (System re-reads the OS theme and accent now), persists, and asks the host for the 250 ms re-theme cross-fade
+    /// (ch 27 §5); this page then re-reads its rows.</summary>
     static void SetTheme(int mode)
     {
-        mode = Math.Clamp(mode, 0, 2);
-        var kind = mode switch
-        {
-            1 => ThemeKind.Light,
-            2 => ThemeKind.Dark,
-            _ => FluentApp.SystemUsesLightTheme() ? ThemeKind.Light : ThemeKind.Dark,
-        };
-        if (Shell.SeedPalette is { } seed) seed(kind); else Tok.Use(kind);
-        if (mode == 0)
-        {
-            if (FluentApp.SystemAccentRamp() is { } ramp) Tok.SetAccent(in ramp);
-            else if (FluentApp.SystemAccent() is { } accent) Tok.SetAccent(accent);
-        }
-        Platform.Settings.Set(Platform.Keys.ThemeMode, mode);
-        s_requestTheme?.Invoke(Design.Motion.Standard);
-        Bump();
+        if (D(Tab.Appearance, "theme").Writer.Choose!(mode)) Bump();
     }
 
     /// <summary>Ordered to match the stored value (<see cref="Design.PageMotionStyle"/>'s declaration order) — the
@@ -228,9 +198,7 @@ public static partial class Settings
     /// style, same live-apply contract as row density (ch 30 N12).</summary>
     static void SetPageMotionStyle(int i)
     {
-        if ((uint)i >= (uint)Design.PageMotionStyleCount || Platform.Settings.Get(Platform.Keys.PageMotionStyle) == i) return;
-        Prefs.Appearance.Set(Platform.Keys.PageMotionStyle, i);
-        Bump();
+        if (D(Tab.Appearance, "pageMotion").Writer.Choose!(i)) Bump();
     }
 
     static string[] BuildZoomRungLabels()
@@ -255,8 +223,9 @@ public static partial class Settings
             float zoom = UseContext(Viewport.Zoom);
             var viewport = UseContext(Viewport.Size);
             // baseDip = the live (already zoomed) viewport × zoom — ZoomAutoPolicy takes BASE dips, never live ones.
-            _auto = ZoomAutoPolicy.Suggest(viewport.Width * zoom, viewport.Height * zoom, ZoomAutoMode.Auto);
-            var mode = (ZoomAutoMode)Math.Clamp(Platform.Settings.Get(Platform.Keys.ZoomMode), 0, 2);
+            _auto = ZoomService.AutoSuggestion(viewport.Width, viewport.Height, zoom);
+            SettingsFacts.PublishAutoZoom(_auto);   // what the head item ("Auto (N%)") applies when picked
+            var mode = ZoomService.Mode;
             int index = mode == ZoomAutoMode.Manual
                 ? 1 + Math.Max(0, Array.IndexOf(ZoomLadder.Steps, ZoomLadder.Snap(zoom)))
                 : 0;
@@ -278,28 +247,9 @@ public static partial class Settings
         /// mode = Auto — never Dense — and applies THIS render's suggestion; a rung writes Manual.</summary>
         void Pick(int i)
         {
-            if (i <= 0)
-            {
-                Platform.Settings.Set(Platform.Keys.ZoomMode, (int)ZoomAutoMode.Auto);
-                ApplyZoom(_auto);
-                return;
-            }
-            int step = i - 1;
-            if ((uint)step >= (uint)ZoomLadder.Steps.Length) return;
-            Platform.Settings.Set(Platform.Keys.ZoomMode, (int)ZoomAutoMode.Manual);
-            ApplyZoom(ZoomLadder.Steps[step]);
-        }
-
-        static void ApplyZoom(float zoom)
-        {
-            FluentApp.SetZoom(zoom);   // live, instant (ch 27 §5)
-            Platform.Settings.Set(Platform.Keys.ZoomLevel, zoom);
-            Bump();
+            if (D(Tab.Appearance, "zoom").Writer.Choose!(i)) Bump();
         }
     }
-
-    /// <summary>An appearance switch: persist, bump the appearance epoch once, bump the page.</summary>
-    static Element AppearanceToggle(SettingKey<bool> key) => Toggle(key, afterWrite: static _ => Prefs.Appearance.Bump());
 
     // ══ 4. LISTS ══════════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -334,8 +284,7 @@ public static partial class Settings
                 Item(Loc.Get(Strings.Settings.Appearance.HideTrackArtwork), Loc.Get(Strings.Settings.Appearance.HideTrackArtworkSub),
                     CheckBox.Create("", new Signal<bool>(Platform.Settings.Get(Platform.Keys.HideTrackArtwork)), onChange: static on =>
                     {
-                        Prefs.Appearance.Set(Platform.Keys.HideTrackArtwork, on);
-                        Bump();
+                        if (D(Tab.Appearance, "hideTrackArtwork").Writer.Toggle!(on)) Bump();
                     }, style: CheckBox.DefaultStyle with { MinWidth = Spacing.XXXL, MinHeight = Spacing.XXXL }),
                     icon: RowGlyph(Tab.Appearance, "hideTrackArtwork")),
             ],
@@ -354,9 +303,7 @@ public static partial class Settings
     /// list re-reads it. Called on every keyboard rove too, so an unchanged value writes nothing.</summary>
     static void SetDensity(int i)
     {
-        if ((uint)i >= 4u || Platform.Settings.Get(Platform.Keys.RowDensity) == i) return;
-        Prefs.Appearance.Set(Platform.Keys.RowDensity, i);
-        Bump();
+        if (D(Tab.Appearance, "rowDensity").Writer.Choose!(i)) Bump();
     }
 
     static Element TrackListStyleGroup()
@@ -370,9 +317,7 @@ public static partial class Settings
             Content = ValueTag(TrackListStyleLabel(style)),
             ItemsHeader = ExpanderPanel(Controls.PickerStrip(2, style, static (i, on) => TrackListStyleCard(i, on), static i =>
             {
-                if ((uint)i >= 2u || Platform.Settings.Get(Platform.Keys.TrackRowStyle) == i) return;
-                Prefs.Appearance.Set(Platform.Keys.TrackRowStyle, i);
-                Bump();
+                if (D(Tab.Appearance, "trackListStyle").Writer.Choose!(i)) Bump();
             })),
         }) with { Key = "appearance.track-list-style" };
     }
@@ -394,29 +339,28 @@ public static partial class Settings
     {
         int layout = Prefs.Clamp(Platform.Settings.Get(Platform.Keys.DetailPageLayout), 2);
         Element[] items = [];
-        if (layout == Prefs.DetailHero.Automatic)
+        var facts = SettingsFacts.Live;
+        var uniformDoc = D(Tab.Appearance, "railUniform");
+        var resetDoc = D(Tab.Appearance, "railReset");
+        if (uniformDoc.Visible(facts))
         {
-            bool uniform = Platform.Settings.Get(Platform.Keys.DetailRailUniform);
-            Element uniformRow = Item(Loc.Get(Strings.Settings.Appearance.RailUniform), Loc.Get(Strings.Settings.Appearance.RailUniformSub),
-                ToggleSwitch.Create(new Signal<bool>(uniform), onChange: static on =>
-                {
-                    Prefs.DetailHero.Set(Platform.Keys.DetailRailUniform, on);
-                    Bump();
-                }, style: SettingsCard.CompactToggleStyle()),
-                icon: RowGlyph(Tab.Appearance, "railUniform"));
-            items = uniform
-                ? [uniformRow]
-                :
+            Element uniformRow = Item(Loc.Get(uniformDoc.TitleKey), Loc.Get(uniformDoc.Caption(facts)!),
+                RowToggle(uniformDoc), icon: Glyph(uniformDoc.GlyphRole!));
+            items = resetDoc.Visible(facts)
+                ?
                 [
                     uniformRow,
-                    Item(Loc.Get(Strings.Settings.Appearance.RailReset), Loc.Get(Strings.Settings.Appearance.RailResetSub),
-                        Button.Standard(Loc.Get(Strings.Settings.Appearance.RailResetAction), static () => ConfirmThen(
-                                Loc.Get(Strings.Settings.Appearance.RailResetConfirmTitle),
-                                Loc.Get(Strings.Settings.Appearance.RailResetConfirmBody),
-                                Loc.Get(Strings.Settings.Appearance.RailResetAction), ResetRailSizes),
-                            isEnabled: HasCustomizedRail()),
-                        icon: RowGlyph(Tab.Appearance, "railReset")),
-                ];
+                    Item(Loc.Get(resetDoc.TitleKey), Loc.Get(resetDoc.Caption(facts)!),
+                        Button.Standard(Loc.Get(resetDoc.Confirm!.PrimaryKey), static () =>
+                            {
+                                var reset = D(Tab.Appearance, "railReset");
+                                ConfirmThen(Loc.Get(reset.Confirm!.TitleKey), Loc.Get(reset.Confirm.BodyKey), Loc.Get(reset.Confirm.PrimaryKey),
+                                    () => { if (reset.Writer.Run!()) Bump(); });
+                            },
+                            isEnabled: resetDoc.Enabled(facts).Enabled),
+                        icon: Glyph(resetDoc.GlyphRole!)),
+                ]
+                : [uniformRow];
         }
 
         return SettingsExpander.Create(new SettingsExpander.Options
@@ -427,9 +371,7 @@ public static partial class Settings
             Content = ValueTag(PageLayoutLabel(layout)),
             ItemsHeader = ExpanderPanel(Controls.PickerStrip(2, layout, static (i, on) => PageLayoutCard(i, on), static i =>
             {
-                if ((uint)i >= 2u || Platform.Settings.Get(Platform.Keys.DetailPageLayout) == i) return;
-                Prefs.DetailHero.Set(Platform.Keys.DetailPageLayout, i);
-                Bump();
+                if (D(Tab.Appearance, "pageLayout").Writer.Choose!(i)) Bump();
             })),
             Items = items,
         }) with { Key = "appearance.pagelayout" };
@@ -450,16 +392,12 @@ public static partial class Settings
                     Loc.Get(Strings.Settings.Appearance.DaylistClockUpdateTime),
                     Loc.Get(Strings.Settings.Appearance.DaylistClockCountdown),
                 ],
-                s_daylistClock, width: 220f, onChange: static i =>
-                {
-                    if ((uint)i >= DaylistClockShows.ModeCount || Platform.Settings.Get(Platform.Keys.DaylistClock) == i) return;
-                    Prefs.Appearance.Set(Platform.Keys.DaylistClock, i);
-                });
+                s_daylistClock, width: 220f, onChange: static i => D(Tab.Appearance, "daylistClock").Writer.Choose!(i));
         }
     }
 
     /// <summary>The reset's enable gate — a destructive-looking no-op is never offered. The uniform pair is excluded.</summary>
-    static bool HasCustomizedRail()
+    internal static bool HasCustomizedRail()
     {
         var s = Platform.Settings;
         return Detail.RailPolicy.HasCustomizedRailPrefs(
@@ -467,23 +405,6 @@ public static partial class Settings
             s.Get(Platform.Keys.DetailPlaylistRailWidth), s.Get(Platform.Keys.DetailPlaylistRailCollapsed),
             s.Get(Platform.Keys.DetailLikedRailWidth), s.Get(Platform.Keys.DetailLikedRailCollapsed),
             s.Get(Platform.Keys.DetailShowRailWidth), s.Get(Platform.Keys.DetailShowRailCollapsed));
-    }
-
-    /// <summary>Reset the FOUR per-scope pairs to their authored defaults (never the uniform pair), then ONE bump, so an
-    /// open detail page's rail snaps to the reset widths now rather than next launch.</summary>
-    static void ResetRailSizes()
-    {
-        var s = Platform.Settings;
-        s.Set(Platform.Keys.DetailAlbumRailWidth, Platform.Keys.DetailAlbumRailWidth.Default);
-        s.Set(Platform.Keys.DetailAlbumRailCollapsed, false);
-        s.Set(Platform.Keys.DetailPlaylistRailWidth, Platform.Keys.DetailPlaylistRailWidth.Default);
-        s.Set(Platform.Keys.DetailPlaylistRailCollapsed, false);
-        s.Set(Platform.Keys.DetailLikedRailWidth, Platform.Keys.DetailLikedRailWidth.Default);
-        s.Set(Platform.Keys.DetailLikedRailCollapsed, false);
-        s.Set(Platform.Keys.DetailShowRailWidth, Platform.Keys.DetailShowRailWidth.Default);
-        s.Set(Platform.Keys.DetailShowRailCollapsed, false);
-        Prefs.DetailHero.Bump();
-        Bump();
     }
 
     /// <summary>A wireframe of the page SYSTEM each choice selects — Automatic: a narrow metadata rail beside full-width
@@ -552,21 +473,26 @@ public static partial class Settings
             _ = Sidebar.LayoutVersion.Value;
             var density = Sidebar.Density.Value;
             bool editing = Sidebar.Editing.Value;
-            // Q7: a disabled control always says why; the palette path toasts the same reason (§P4.7).
-            string finish = Loc.Get("sidebar.pane.finishEditing");
+            // Q7: a disabled control always says why (the row's reason); the palette path toasts the same reason (§P4.7).
+            var facts = SettingsFacts.Live;
+            var densityDoc = D(Tab.Appearance, "sidebarDensity");
+            var resetDoc = D(Tab.Appearance, "sidebarReset");
+            var editDoc = D(Tab.Appearance, "sidebarCustomize");
+            var everythingDoc = D(Tab.Appearance, "sidebarResetEverything");
             var items = new List<Element>(4)
             {
-                Item(Loc.Get(Strings.Settings.Sidebar.Density), Loc.Get(Strings.Settings.Sidebar.DensitySub),
+                Item(Loc.Get(densityDoc.TitleKey), Loc.Get(densityDoc.Caption(facts)!),
                     Embed.Comp(() => new SidebarDensityPicker()) with { Key = "sidebar.density:" + (int)density }, icon: Icons.ViewList),
-                Item(Loc.Get(Strings.Settings.Sidebar.Reset), editing ? finish : Loc.Get(Strings.Settings.Sidebar.ResetSub), null,
-                    isClickEnabled: !editing && SidebarLayoutRules.IsModified(Sidebar.State.Of(layout)),
-                    onClick: static () => Sidebar.Dispatch(new ResetLayout(Sidebar.Layout.Peek()), Loc.Format("sidebar.toast.reset", ("name", Sidebar.LayoutName(Sidebar.Layout.Peek())))), icon: Icons.Undo),
-                Item(Loc.Get("sidebar.menu.edit"), editing ? finish : Loc.Get("settings.sidebar.editSub"), null,
-                    isClickEnabled: !editing, onClick: static () => Sidebar.EnterEdit(), icon: Icons.Edit),
-                Item(Loc.Get("sidebar.menu.resetEverything"), editing ? finish : Loc.Get("settings.sidebar.resetEverythingSub"), null,
-                    isClickEnabled: !editing,
-                    // The Settings page's own overlay host (`s_overlay`): the confirm opens over Settings.
-                    onClick: static () => { if (s_overlay is { } overlay) Sidebar.SidebarMenus.ConfirmResetEverything(overlay); },
+                Item(Loc.Get(resetDoc.TitleKey), Loc.Get(resetDoc.DescriptionKey(facts)!), null,
+                    isClickEnabled: resetDoc.Enabled(facts).Enabled,
+                    onClick: static () => D(Tab.Appearance, "sidebarReset").Writer.Run!(), icon: Icons.Undo),
+                Item(Loc.Get(editDoc.TitleKey), Loc.Get(editDoc.DescriptionKey(facts)!), null,
+                    isClickEnabled: editDoc.Enabled(facts).Enabled,
+                    onClick: static () => D(Tab.Appearance, "sidebarCustomize").Writer.Run!(), icon: Icons.Edit),
+                Item(Loc.Get(everythingDoc.TitleKey), Loc.Get(everythingDoc.DescriptionKey(facts)!), null,
+                    isClickEnabled: everythingDoc.Enabled(facts).Enabled,
+                    // The Settings page's own overlay host (`SettingsContext.Overlay`): the confirm opens over Settings.
+                    onClick: static () => D(Tab.Appearance, "sidebarResetEverything").Writer.Run!(),
                     icon: Icons.Delete),
             };
             if (Sidebar.LayoutFileFault)
@@ -596,7 +522,7 @@ public static partial class Settings
             int index = (int)Sidebar.Density.Peek();
             UseEffect(() => s_index.Value = index, DepKey.From(index));
             return ComboBox.Create([Loc.Get("sidebar.density.default"), Loc.Get("sidebar.density.compact")], s_index, width: 160f,
-                onChange: static i => Sidebar.SetDensity(i == 1 ? SidebarDensity.Compact : SidebarDensity.Default));
+                onChange: static i => D(Tab.Appearance, "sidebarDensity").Writer.Choose!(i));
         }
     }
 
@@ -606,13 +532,13 @@ public static partial class Settings
     {
         var strip = Controls.PickerStrip(2, (int)active,
             static (i, on) => SidebarLayoutCardFace((SidebarLayoutId)i, on),
-            editing ? static _ => { } : static i => Sidebar.SwitchLayout((SidebarLayoutId)i));
+            editing ? static _ => { } : static i => D(Tab.Appearance, "sidebarDesign").Writer.Choose!(i));
         if (!editing) return strip;
-        // Q7: never a silent dead control — the cards say why they do not switch.
+        // Q7: never a silent dead control — the cards say why they do not switch (the row's reason).
         return new BoxEl
         {
             Direction = 1, Gap = 6f,
-            Children = [strip, Ui.Caption(Loc.Get("sidebar.pane.finishEditing")) with { Color = Tok.TextSecondary }],
+            Children = [strip, Ui.Caption(Loc.Get(SettingsDoc.FinishEditingKey)) with { Color = Tok.TextSecondary }],
         };
     }
 
@@ -728,17 +654,15 @@ public static partial class Settings
     /// <summary>Writes the EXPLICIT 0..100 value (dragging always overrides auto), resolved to the int the store holds.</summary>
     static void SetLyricsBlur(float v)
     {
-        int strength = Lyrics.BlurPolicy.Resolve(Math.Clamp((int)MathF.Round(v), 0, 100));
-        if (Platform.Settings.Get(Platform.Keys.LyricsBlurStrength) == strength) return;
-        Prefs.Lyrics.SetBlurStrength(strength);
-        s_lyricsBlurSlider.Value = strength;
+        if (!D(Tab.Appearance, "lyricsBlur").Writer.Slide!(v)) return;
+        s_lyricsBlurSlider.Value = Lyrics.BlurPolicy.Resolve(Platform.Settings.Get(Platform.Keys.LyricsBlurStrength));
         Bump();
     }
 
     /// <summary>"Auto" writes −1 back — never whatever the policy currently resolves — so the row stops overriding.</summary>
     static void ResetLyricsBlur()
     {
-        Prefs.Lyrics.SetBlurStrength(Lyrics.BlurPolicy.Auto);
+        D(Tab.Appearance, "lyricsBlurAuto").Writer.Run!();
         s_lyricsBlurSlider.Value = Lyrics.BlurPolicy.Resolve(Lyrics.BlurPolicy.Auto);
         Bump();
     }
@@ -755,7 +679,7 @@ public static partial class Settings
             var labels = new string[presets.Length];
             for (int i = 0; i < presets.Length; i++) labels[i] = Loc.Get(presets[i].LabelKey);
             return ComboBox.Create(labels, s_npvStyle, width: 180f,
-                onChange: static i => Rail.PlayerPrefs.SetStyle(i, Rail.NpvDiagnostics.SourceSettings));
+                onChange: static i => D(Tab.Appearance, "npvStyle").Writer.Choose!(i));
         }
     }
 
@@ -771,10 +695,7 @@ public static partial class Settings
     }
 
     /// <summary>The stored face (already migrated by Prefs.Stage) as its index in the combo.</summary>
-    static int VisualizerIndex() => Math.Max(0, Visualizer.Catalog.IndexOf((Visualizer.Kind)Prefs.Stage.Visualizer()));
-
-    /// <summary>The two toggles read `Platform.SettingsChanged` through `Toggle` as every Appearance toggle does; the bump wakes the stage.</summary>
-    static Element StageToggle(SettingKey<bool> key) => Toggle(key, afterWrite: static _ => Prefs.Stage.Bump());
+    internal static int VisualizerIndex() => Math.Max(0, Visualizer.Catalog.IndexOf((Visualizer.Kind)Prefs.Stage.Visualizer()));
 
     sealed class StageVisualizerPicker : Component
     {
@@ -782,7 +703,7 @@ public static partial class Settings
         {
             UseSignalEffect(static () => s_stageVisualizer.Value = VisualizerIndex());   // the gallery's pick lands here live
             return ComboBox.Create(VisualizerLabels(), s_stageVisualizer, width: 220f,
-                onChange: static i => { if ((uint)i < (uint)Visualizer.Catalog.ShownCount) Prefs.Stage.SetVisualizer((int)Visualizer.Catalog.Shown[i]); });
+                onChange: static i => D(Tab.Appearance, "stageVisualizer").Writer.Choose!(i));
         }
     }
     /// <summary>The layouts' names in the persisted order (the combo's items: the index IS the stored int).</summary>
@@ -795,7 +716,7 @@ public static partial class Settings
         public override Element Render()
         {
             UseSignalEffect(static () => s_stageLayout.SetIfChanged(Prefs.Stage.Layout()));   // the options popover's and the [ ] keys' picks land here live
-            return ComboBox.Create(LayoutLabels(), s_stageLayout, width: 220f, onChange: static i => Prefs.Stage.SetLayout(i));
+            return ComboBox.Create(LayoutLabels(), s_stageLayout, width: 220f, onChange: static i => D(Tab.Appearance, "stageLayout").Writer.Choose!(i));
         }
     }
     sealed class StageSensitivitySlider : Component
@@ -803,7 +724,7 @@ public static partial class Settings
         public override Element Render()
         {
             UseSignalEffect(static () => s_stageSensitivity.SetIfChanged(Prefs.Stage.Sensitivity()));
-            return Slider.Create(s_stageSensitivity, static v => Prefs.Stage.SetSensitivity(v), s_stageSensitivityOptions, length: 180f);
+            return Slider.Create(s_stageSensitivity, static v => D(Tab.Appearance, "stageSensitivity").Writer.Slide!(v), s_stageSensitivityOptions, length: 180f);
         }
     }
     sealed class StageSyncSlider : Component
@@ -811,12 +732,7 @@ public static partial class Settings
         public override Element Render()
         {
             UseSignalEffect(static () => s_stageSyncOffset.SetIfChanged(Prefs.Stage.SyncOffsetMs()));
-            return Slider.Create(s_stageSyncOffset, static v =>
-            {
-                int ms = (int)MathF.Round(v / 10f) * 10;
-                Prefs.Stage.SetSyncOffsetMs(ms);
-                Playback.Audio.SetSpectrumOffsetMs(ms);
-            }, s_stageSyncOptions, length: 180f);
+            return Slider.Create(s_stageSyncOffset, static v => D(Tab.Appearance, "stageSyncOffset").Writer.Slide!(v), s_stageSyncOptions, length: 180f);
         }
     }
 }

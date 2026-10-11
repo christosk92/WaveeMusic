@@ -19,7 +19,7 @@
 //
 //   column = 14 zero-size chord boxes · [chrome row] · content region · [player dock]
 //            └ the bracketed bands and the content region COLLAPSE (bound Visible, still mounted) under full-screen video
-//              OR the fullscreen stage (FrameRules.ChromeMounted): out of layout, paint and hit-test, subtree inactive
+//              OR the fullscreen stage (FrameModel.ChromeMounted): out of layout, paint and hit-test, subtree inactive
 //   content region = ZStack[ row(sidebar column · content card · rail gap · rail reservation) · sidebar seam ·
 //                            rail overlay(Rail.Frame) · rail seam · narrow drawer ]
 //
@@ -58,7 +58,6 @@ public static partial class Shell
         SetPage(RouteKind.History, static (in Route _) => HistoryPage());
         if (NotificationsLauncher is null) NotificationsLauncher = OpenNotificationPanel;
 
-        Design.Install();   // G-196: Tok.Use(Tok.NeutralPalette, _) rather than the engine's own default ramp
         Actions.InstallUi();   // G-195: Stage.NowPlayingMenu
 
         // G-193: a rich-text anchor's entity uri → the app's route key, through the SAME table `GoTo` uses.
@@ -104,7 +103,6 @@ public static partial class Shell
     /// <summary>The frame's context captures, read by the static key handlers and verbs (never a render input).</summary>
     static InputHooks? s_hooks;
     static SceneStore? s_scene;
-    static Action<float>? s_requestTheme;
     static NodeHandle s_contentRegion;
     /// <summary>The sidebar column's node, read only by the pane-invariant probe (never a render input).</summary>
     static NodeHandle s_sidebarColumn;
@@ -214,8 +212,7 @@ public static partial class Shell
         bool _bandSeeded;
         TemplateParts? _seamParts;
         TemplateParts? _railSeamParts;
-        float _lastAutoZoom;
-        bool _autoZoomSeeded;
+        readonly ZoomService.AutoLoop _autoZoom = new();
         Video.PlacementState _videoWas = Video.State.Surface.Peek();
         bool _railWas = Ui.RailOpen.Peek();
         Video.DockedHost _hostWas = Video.DockedHost.Rail;
@@ -224,7 +221,7 @@ public static partial class Shell
         {
             s_hooks = UseContext(InputHooks.Current);
             s_scene = Context.Scene;
-            s_requestTheme = UseContext(ThemeControl.Request);
+            Appearance.BindTransition(UseContext(ThemeControl.Request));
             var post = UsePost();
             var overlay = UseContext(Overlay.Service);
             _seamParts ??= BuildSeamParts(overlay);
@@ -239,22 +236,23 @@ public static partial class Shell
             if (!_bandSeeded)
             {
                 _bandSeeded = true;
-                float w0 = vp.Peek().Width;
-                var band0 = SidebarPaneModeRules.BandOf(w0, SidebarWindowBand.Wide);
-                Sidebar.Band.SetIfChanged(band0);
-                var mode0 = SidebarPaneModeRules.Resolve(band0, Sidebar.UserCollapsed.Peek(), Sidebar.Editing.Peek());
-                Sidebar.Mode.SetIfChanged(mode0);
-                Sidebar.PresentedWidth.SetIfChanged(SidebarPaneModeRules.PresentedWidth(mode0, Sidebar.Width.Peek(), w0));
+                var size0 = vp.Peek();
+                var pane0 = FrameModel.Seed(new WindowFacts(size0.Width, size0.Height),
+                    Sidebar.UserCollapsed.Peek(), Sidebar.Editing.Peek(), Sidebar.Width.Peek());
+                Sidebar.Band.SetIfChanged(pane0.Band);
+                Sidebar.Mode.SetIfChanged(pane0.Mode);
+                Sidebar.PresentedWidth.SetIfChanged(pane0.PresentedWidth);
             }
 
             // THE WINDOW BAND (design V.1): hysteretic, derived — the ONLY way the window width reaches the sidebar.
             UseSignalEffect(() =>
             {
                 var current = Sidebar.Band.Peek();
-                var next = SidebarPaneModeRules.BandOf(vp.Value.Width, current);
+                var size = vp.Value;
+                var next = FrameModel.NextBand(new WindowFacts(size.Width, size.Height), current);
                 if (next == current) return;
                 Sidebar.Band.Value = next;
-                if (!SidebarPaneModeRules.HasOverlay(next)) Sidebar.OverlayOpen.SetIfChanged(false);
+                if (FrameModel.ClosesOverlay(next)) Sidebar.OverlayOpen.SetIfChanged(false);
             });
             // The title bar's pane toggle is disabled while the sidebar is being edited (a plain signal mirrored here).
             UseSignalEffect(static () => s_paneToggleEnabled.SetIfChanged(!Sidebar.Editing.Value));
@@ -262,22 +260,25 @@ public static partial class Shell
             // writes Sidebar.Width or UserCollapsed (those are the preference, persisted at commit).
             UseSignalEffect(() =>
             {
-                float vpW = vp.Value.Width;
+                var size = vp.Value;
                 var band = Sidebar.Band.Value;
                 bool editing = Sidebar.Editing.Value;
-                var state = new SidebarResizeRules.State(Sidebar.UserCollapsed.Value, Sidebar.Width.Value);
-                if (_sidebarDragging.Value && SidebarPaneModeRules.SeamVisible(band))
+                bool collapsed = Sidebar.UserCollapsed.Value;
+                float expandedWidth = Sidebar.Width.Value;
+                // The seam is read only while a drag is being presented (a conditional subscription, as always).
+                bool dragging = FrameModel.PresentsDrag(_sidebarDragging.Value, band);
+                float seam = dragging ? Sidebar.Seam.Value : 0f;
+                var pane = FrameModel.Present(new WindowFacts(size.Width, size.Height), band, collapsed, editing, expandedWidth, dragging, seam);
+                if (dragging)
                 {
-                    var live = SidebarResizeRules.Track(Sidebar.Seam.Value, in state, editing);
-                    Sidebar.Mode.SetIfChanged(live.Collapsed ? SidebarPaneMode.Compact : SidebarPaneMode.Expanded);
-                    Sidebar.PresentedWidth.SetIfChanged(live.PresentedWidth);
-                    _sidebarFade.SetIfChanged(live.Fade);
+                    Sidebar.Mode.SetIfChanged(pane.Mode);
+                    Sidebar.PresentedWidth.SetIfChanged(pane.PresentedWidth);
+                    _sidebarFade.SetIfChanged(pane.Fade);
                     return;
                 }
-                _sidebarFade.SetIfChanged(1f);
-                var mode = SidebarPaneModeRules.Resolve(band, state.UserCollapsed, editing);
-                Sidebar.Mode.SetIfChanged(mode);
-                Sidebar.PresentedWidth.SetIfChanged(SidebarPaneModeRules.PresentedWidth(mode, state.ExpandedWidth, vpW));
+                _sidebarFade.SetIfChanged(pane.Fade);
+                Sidebar.Mode.SetIfChanged(pane.Mode);
+                Sidebar.PresentedWidth.SetIfChanged(pane.PresentedWidth);
             });
             UseSignalEffect(() => FgMotion.SetLayoutTransitionsSuppressed(MotionSuppressionSource.AppResize, _sidebarDragging.Value));
             // F243: a rail drag ends (the splitter clears `dragging` AFTER its commit). A COMMITTED drag already made the
@@ -297,26 +298,15 @@ public static partial class Shell
                 var size = vp.Value;
                 float z = zoom.Value;
                 return new Size2(size.Width * z, size.Height * z);
-            }, FrameRules.ZoomAutoDebounceMs);
+            }, ZoomService.DebounceMs);
             UseSignalEffect(() =>
             {
                 var b = baseDip.Value;
-                float live = zoom.Value;
-                var mode = (ZoomAutoMode)Math.Clamp(Platform.Settings.Get(Platform.Keys.ZoomMode), 0, 2);
-                var d = FrameRules.AutoZoom(mode, b.Width, b.Height, live, _lastAutoZoom, _autoZoomSeeded);
-                _lastAutoZoom = d.LastAuto;
-                _autoZoomSeeded = d.Seeded;
-                if (d.Kind == FrameRules.ZoomStepKind.Apply) post(ZoomApplier(d.Zoom));
-                else if (d.Kind == FrameRules.ZoomStepKind.PinManual) Platform.Settings.Set(Platform.Keys.ZoomMode, (int)ZoomAutoMode.Manual);
+                _autoZoom.Step(ZoomService.Mode, b.Width, b.Height, zoom.Value, post);
             });
             // Zoom persistence: the settled value only, so a held chord or a wheel spin writes once.
-            var zoomSettled = UseDebouncedValue(() => zoom.Value, FrameRules.ZoomAutoDebounceMs);
-            UseSignalEffect(() =>
-            {
-                float z = zoomSettled.Value;
-                if (MathF.Abs(Platform.Settings.Get(Platform.Keys.ZoomLevel) - z) > FrameRules.ZoomEpsilon)
-                    Platform.Settings.Set(Platform.Keys.ZoomLevel, z);
-            });
+            var zoomSettled = UseDebouncedValue(() => zoom.Value, ZoomService.DebounceMs);
+            UseSignalEffect(() => ZoomService.PersistSettled(zoomSettled.Value));
 
             // ── the process-lifetime subscriptions (stage-2 wiring, owner-I report) ──
             UseEffect(() =>
@@ -325,7 +315,7 @@ public static partial class Shell
                 Action<int> onNav = static which => { if (which == 0) GoBack(); else GoForward(); };
                 Func<float, bool> onWheel = static notch => { ZoomStep(notch > 0f ? +1 : -1); return true; };
                 Action<string> onRedirect = _ => post(s_drainActivation);
-                Action onColors = OnSystemColorsChanged;
+                Action onColors = Appearance.OnSystemColorsChanged;
                 FluentApp.AppNavigationCommand += onNav;
                 FluentApp.ActivationRedirected += onRedirect;
                 FluentApp.SystemColorsChanged += onColors;
@@ -413,8 +403,8 @@ public static partial class Shell
                 // DIP wider than the avatar, well past the 16-DIP gutter cushion (#88). Reading it here also subscribes
                 // this effect to the auth fold, so a sign-in or a resume RE-ALLOCATES the row instead of overflowing it.
                 var next = Chrome.Resolve(w, extent, old, FrameRules.ChipFor(Auth.Value));
-                if (FrameRules.ReissueSearchFocus(old.SearchMode, next.SearchMode, s_searchFocused.Peek(), s_searchFlyoutOpen.Peek()))
-                    SearchFocusRequest.Value = SearchFocusRequest.Peek() + 1;
+                if (FrameRules.ReissueSearchFocus(old.SearchMode, next.SearchMode, s_omnibar.SearchFocused.Peek(), s_omnibar.FlyoutOpen.Peek()))
+                    s_omnibar.Focus();
                 ChromeLayout.SetIfChanged(next);
             });
 
@@ -447,20 +437,20 @@ public static partial class Shell
                 OnKeyDown = OnShellKey,
                 Children =
                 [
-                    Chord(NewTabChord, static () => OpenTab(new Route(RouteKind.Home))),
-                    Chord(PaletteChord, static () => PaletteOpen.Value = !PaletteOpen.Peek()),
-                    Chord(FindChord, static () => SearchFocusRequest.Value = SearchFocusRequest.Peek() + 1),
-                    Chord(BackChord, GoBack),
-                    Chord(ForwardChord, GoForward),
-                    Chord(FullscreenChord, ToggleVideoFullscreen),
-                    Chord(ZoomInChord, static () => ZoomStep(+1)),
-                    Chord(ZoomInShiftChord, static () => ZoomStep(+1)),
-                    Chord(ZoomInPadChord, static () => ZoomStep(+1)),
-                    Chord(ZoomOutChord, static () => ZoomStep(-1)),
-                    Chord(ZoomOutShiftChord, static () => ZoomStep(-1)),
-                    Chord(ZoomOutPadChord, static () => ZoomStep(-1)),
-                    Chord(ZoomResetChord, static () => ZoomStep(0)),
-                    Chord(ZoomResetPadChord, static () => ZoomStep(0)),
+                    Chord(NewTabChord, static () => FrameVerbs.Shared.NewTab()),
+                    Chord(PaletteChord, static () => FrameVerbs.Shared.TogglePalette()),
+                    Chord(FindChord, static () => FrameVerbs.Shared.FocusSearch()),
+                    Chord(BackChord, static () => FrameVerbs.Shared.GoBack()),
+                    Chord(ForwardChord, static () => FrameVerbs.Shared.GoForward()),
+                    Chord(FullscreenChord, static () => FrameVerbs.Shared.ToggleFullscreen()),
+                    Chord(ZoomInChord, static () => FrameVerbs.Shared.Zoom(+1)),
+                    Chord(ZoomInShiftChord, static () => FrameVerbs.Shared.Zoom(+1)),
+                    Chord(ZoomInPadChord, static () => FrameVerbs.Shared.Zoom(+1)),
+                    Chord(ZoomOutChord, static () => FrameVerbs.Shared.Zoom(-1)),
+                    Chord(ZoomOutShiftChord, static () => FrameVerbs.Shared.Zoom(-1)),
+                    Chord(ZoomOutPadChord, static () => FrameVerbs.Shared.Zoom(-1)),
+                    Chord(ZoomResetChord, static () => FrameVerbs.Shared.Zoom(0)),
+                    Chord(ZoomResetPadChord, static () => FrameVerbs.Shared.Zoom(0)),
                     // FULL-SCREEN VIDEO COLLAPSES THE CHROME, it does not unmount it: every layer left under the video
                     // costs GPU, and the docked bar is what stacked a second transport under the video's own, but a
                     // structural Flow.Show rebuilt the tab row and the whole player bar (seek rail, marquee, art, device
@@ -649,12 +639,9 @@ public static partial class Shell
         };
     }
 
-    static readonly Func<bool> s_chromeMounted = static () =>
-        FrameRules.ChromeMounted(Video.PlacementCore.Resolve(Video.State.Surface.Value), Ui.ImmersiveLyrics.Value);
+    static readonly Func<bool> s_chromeMounted = static () => FrameFacts.ChromeMounted();
 
     static readonly Action s_drainActivation = DrainActivation;
-
-    static Action ZoomApplier(float zoom) => () => FluentApp.SetZoom(zoom);
 
     static Action CouplingWrites(RailMode? dockMode, Video.SurfacePlacement demoteTo, bool reDock, bool closeRail) => () =>
     {
@@ -693,18 +680,6 @@ public static partial class Shell
     {
         string raw = TakePendingActivation();
         if (raw.Length > 0) ApplyDeepLink(raw);
-    }
-
-    /// <summary>Follow the OS theme live while the preference is "System" (mode 0); the accent follows always.</summary>
-    static void OnSystemColorsChanged()
-    {
-        if (FluentApp.SystemAccentRamp() is { } ramp) Tok.SetAccent(in ramp);
-        if (Platform.Settings.Get(Platform.Keys.ThemeMode) != 0) return;
-        var kind = FluentApp.SystemUsesLightTheme() ? ThemeKind.Light : ThemeKind.Dark;
-        if (kind == Tok.Theme) return;
-        if (SeedPalette is { } seed) seed(kind);
-        else Tok.Use(kind);
-        s_requestTheme?.Invoke(Design.Motion.Standard);
     }
 
     // -- 2.2 the sidebar seam: keyboard, double-click, context menu ---------------------------------------------------
@@ -778,7 +753,7 @@ public static partial class Shell
     /// <summary>F11 — closes the fullscreen stage if it is up; otherwise exits / enters video fullscreen; otherwise opens
     /// the stage (an empty stage is allowed; <c>Stage.Open</c> itself refuses over fullscreen video). With focus inside a
     /// player the element consumes F11 first (focused routing precedes accelerators), so exactly one of them fires.</summary>
-    static void ToggleVideoFullscreen()
+    internal static void ToggleVideoFullscreen()
     {
         switch (FrameRules.F11(Video.State.Resolved == Video.SurfacePlacement.Fullscreen, Video.State.IsActive, Ui.ImmersiveLyrics.Peek()))
         {
@@ -890,7 +865,6 @@ public static partial class Shell
         TransitionFor: PageTransition,
         SuppressLayoutTransitionsOnActivation: true);
 
-    static readonly HashSet<string> s_warnedUnknown = new(StringComparer.Ordinal);
 
     /// <summary>The route whose page is ON SCREEN, as opposed to <see cref="Current"/>, the route just committed: the two
     /// differ for the exit leg of a page swap (<see cref="Design.Nav.ExitDurationMs"/>), while the old page is still
@@ -980,7 +954,7 @@ public static partial class Shell
     static Element PageBody(Route route)
     {
         var factory = PageFor(route);
-        switch (FrameRules.BodyFor(route, factory is not null, Platform.Settings.Get(Platform.Keys.DeveloperMode)))
+        switch (FrameRules.BodyFor(route, factory is not null, FrameFacts.DeveloperNow))
         {
             case FrameRules.BodyKind.Page:
                 return Ctx.Provide(PageScrollScope, ScrollScopeOf(route.Tab), PageBox("page:" + NameOf(route), factory!(route)));
@@ -1003,7 +977,7 @@ public static partial class Shell
     {
         var (_, glyph) = Dest(route);
         string key = NameOf(route) + "|" + (ArgOf(route) ?? "");
-        if (s_warnedUnknown.Add(key)) Log.Warn("nav", "route.unknown: " + key);   // once per key per process
+        FrameModel.NoteUnknownRoute(key);   // once per key per process; the host logs it
         return new BoxEl
         {
             Key = "page-notfound:" + key,
@@ -1139,7 +1113,7 @@ public static partial class Shell
             // The "+" is hover-only, but its 32-DIP slot is reserved at all times so the reported client rect never moves.
             IsAddTabButtonVisible = ChromeLayout.Peek().ShowNewTab,
             AddButtonVisibility = TabStripAddButtonVisibility.OnStripPointerOver,
-            OnAddTabButtonClick = static () => { OpenTab(new Route(RouteKind.Home)); return null; },
+            OnAddTabButtonClick = static () => { WorkspaceVerbs.Shared.OpenTab(new Route(RouteKind.Home)); return null; },
             IndicatorFill = Prop.Of(static () => Tok.AccentDefault),
             MinTabWidth = Layout.ChromeTabMinW,
             MaxTabWidth = Layout.ChromeTabMaxW,
@@ -1148,8 +1122,8 @@ public static partial class Shell
             // CONTRACT: the strip WRITES this cell before raising OnSelectionChanged, so it is never evidence of a change —
             // ActivateTab asks the workspace, and the host re-asserts the cell from the model afterwards.
             SelectedIndex = SelectedTab,
-            OnSelectionChanged = ActivateTab,
-            OnTabCloseRequested = CloseTab,
+            OnSelectionChanged = WorkspaceVerbs.Shared.ActivateTab,
+            OnTabCloseRequested = WorkspaceVerbs.Shared.CloseTab,
             ScrollMetricsChanged = static m => s_tabExtent.SetIfChanged(Chrome.TabExtentFromMetrics(m.ContentExtent)),
         };
         s_strip = strip;   // the factory runs once per mount, so the newest instance IS the mounted one
@@ -1182,45 +1156,33 @@ public static partial class Shell
                 IsPinned = tab.Pinned,
                 ContextMenu = () => TabMenu(id),
                 // CLICK-PRIMARY: switching tabs is the constant intent, so the mouse drag box is widened.
-                Drag = pinId is { } p ? Drag.Source(() => TabPayload(p, pinTitle), clickPrimary: true) : null,
+                Drag = pinId is { } p ? Drag.Source(() => WorkspaceVerbs.Shared.TabPayload(p, pinTitle), clickPrimary: true) : null,
                 DropTarget = TabDropTarget(route, id, destTitle),
             };
         }
         return items;
     }
 
-    /// <summary>A tab dragged out is its destination as a pin payload (tracks resolve lazily, after a compatible drop).</summary>
-    static DragPayload TabPayload(string pinId, string title)
-    {
-        string uri = SidebarPinId.UriOf(pinId);
-        var kind = uri.Length > 0 ? Drag.KindOfUri(uri) : DragKind.Route;
-        Func<CancellationToken, Task<Track[]>>? resolver = null;
-        if (uri.Length > 0 && (kind is DragKind.Playlist or DragKind.Album or DragKind.Show)
-            && Sidebar.LibraryWrites?.ResolveTracks is { } resolve)
-            resolver = ct => resolve(uri, ct);
-        return new DragPayload(kind, pinId, uri, title, TrackResolver: resolver);
-    }
-
     /// <summary>Every tab is a spring-load waypoint (a dwell activates it); a tab standing for an EDITABLE playlist is
     /// also a deposit destination (the cross-tab append). SpringLoadOnly keeps a non-destination silent rather than a
-    /// flashing refusal as a drag crosses the strip.</summary>
+    /// flashing refusal as a drag crosses the strip. What a tab accepts and what a drop does are
+    /// <see cref="IChromeVerbs"/>'s; this only shapes the engine's drop spec.</summary>
     static DropTargetSpec TabDropTarget(in Route route, int tabId, string name)
     {
-        if (route.Kind == RouteKind.Playlist && route.Subject.IsValid
-            && Entities.Current.Playlists.TryGetSlot(route.Subject.Text.AsSpan(), out int slot) && new Playlist(slot).Editable)
+        var chrome = WorkspaceVerbs.Shared;
+        if (chrome.DropSiteFor(route, tabId, name) is { } site)
         {
-            string uri = route.Subject.Text;
             return Drop.Target<DragPayload>(Drag.Resource,
-                accepts: p => Drag.TabAcceptsDeposit(uri, targetEditable: true, p.CanCopyTracks, p.SourcePlaylistUri, p.Uri),
-                onDrop: (p, _) => Sidebar.LibraryWrites?.DepositTracks?.Invoke(uri, name, p),
+                accepts: p => chrome.TabAccepts(p, site),
+                onDrop: (p, _) => chrome.TabDrop(p, site),
                 caption: _ => Drag.AddTo(name),
                 settleOnDrop: false,   // the deposited feel: the lifted visual snaps home
                 springLoadMs: Drag.SpringLoadMs,
-                onSpringLoad: (_, _) => ActivateTabById(tabId));
+                onSpringLoad: (_, _) => chrome.ActivateTabById(tabId));
         }
         return Drop.Target<DragPayload>(Drag.Resource,
             springLoadMs: Drag.SpringLoadMs,
-            onSpringLoad: (_, _) => ActivateTabById(tabId),
+            onSpringLoad: (_, _) => chrome.ActivateTabById(tabId),
             springLoadOnly: true);
     }
 
@@ -1230,15 +1192,16 @@ public static partial class Shell
         if (index < 0) return null;
         var tab = Tabs.Tabs[index];
         bool pinned = tab.Pinned;
+        var chrome = WorkspaceVerbs.Shared;
         var rows = new List<MenuFlyoutItem>(9)
         {
             new MenuFlyoutItem(Loc.Get(pinned ? Strings.Shell.UnpinTab : Strings.Shell.PinTab),
-                ActionIcons.Resolve(pinned ? ActionIcons.Unpin : ActionIcons.Pin), true, () => SetTabPinned(tabId, !pinned)),
+                ActionIcons.Resolve(pinned ? ActionIcons.Unpin : ActionIcons.Pin), true, () => chrome.SetTabPinned(tabId, !pinned)),
             MenuFlyoutItem.Separator,
-            new MenuFlyoutItem(Loc.Get(Strings.Shell.CloseTab), Icons.Cancel, Tabs.Count > 1, () => CloseTabById(tabId)),
-            new MenuFlyoutItem(Loc.Get(Strings.Shell.CloseOtherTabs), default, Tabs.HasOtherUnpinned(tabId), () => CloseOtherTabs(tabId)),
-            new MenuFlyoutItem(Loc.Get(Strings.Shell.CloseTabsRight), default, Tabs.HasUnpinnedToRight(index), () => CloseTabsToRight(tabId)),
-            new MenuFlyoutItem(Loc.Get(Strings.Shell.CloseAllUnpinned), default, Tabs.HasAnyUnpinned(), CloseAllUnpinnedTabs),
+            new MenuFlyoutItem(Loc.Get(Strings.Shell.CloseTab), Icons.Cancel, Tabs.Count > 1, () => chrome.CloseTabById(tabId)),
+            new MenuFlyoutItem(Loc.Get(Strings.Shell.CloseOtherTabs), default, Tabs.HasOtherUnpinned(tabId), () => chrome.CloseOtherTabs(tabId)),
+            new MenuFlyoutItem(Loc.Get(Strings.Shell.CloseTabsRight), default, Tabs.HasUnpinnedToRight(index), () => chrome.CloseTabsToRight(tabId)),
+            new MenuFlyoutItem(Loc.Get(Strings.Shell.CloseAllUnpinned), default, Tabs.HasAnyUnpinned(), chrome.CloseAllUnpinnedTabs),
         };
         if (PinRow(tab.Route) is { } pinRow)
         {
@@ -1248,24 +1211,12 @@ public static partial class Shell
         return new ContextMenuModel(rows, new ContextMenuHeader(null, Dest(tab.Route).Title));
     }
 
-    /// <summary>The absolute Pin/Unpin row for a destination, or null when it is not pinnable (<see cref="PinRowRule"/>).</summary>
+    /// <summary>The absolute Pin/Unpin row for a destination, or null when it is not pinnable (<see cref="PinVerbs.TargetFor"/>).</summary>
     static MenuFlyoutItem? PinRow(in Route route)
     {
-        string? pinId = FrameRules.PinIdFor(route);
-        var kind = PinRowRule.Decide(hasStore: Sidebar.AccountKey.Length > 0, pinId, Sidebar.IsPinned(pinId));
-        if (kind == PinRowKind.None || pinId is not { } id) return null;
-        string title = route.Kind == RouteKind.Search ? Loc.Get(Strings.Nav.Search) : Dest(route).Title;
-        return Actions.Menu.Pin(kind == PinRowKind.Unpin, () => PinDestination(id, title), () => UnpinDestination(id));
+        if (PinVerbs.TargetFor(route) is not { } target) return null;
+        return Actions.Menu.Pin(target.Kind == PinRowKind.Unpin, () => PinVerbs.Pin(target.PinId, target.Title), () => PinVerbs.Unpin(target.PinId));
     }
-
-    static void PinDestination(string pinId, string title)
-    {
-        var pin = new SidebarPin(pinId, SidebarPinId.KindOf(pinId), SidebarPinId.UriOf(pinId), title,
-            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-        Sidebar.PinRecorded(pin, title.Length > 0 ? title : Sidebar.SidebarMenus.PinName(pinId));
-    }
-
-    static void UnpinDestination(string pinId) => Sidebar.UnpinRecorded(pinId, Sidebar.SidebarMenus.PinName(pinId));
 
     static Element ChromeButton(string glyph, Action onClick, string tooltip, string key)
         => ToolTip.Wrap(IconButton.Create(glyph, onClick, ChromeButtonStyle) with { Key = key, Margin = ChromeButtonMargin }, tooltip);
@@ -1275,7 +1226,7 @@ public static partial class Shell
         var l = ChromeLayout.Value;
         bool dark = Theme.Dark;
         var theme = ToolTip.Wrap(
-            IconButton.Create(dark ? Icons.Sun : Icons.Moon, static () => ToggleTheme(s_requestTheme), ChromeButtonStyle)
+            IconButton.Create(dark ? Icons.Sun : Icons.Moon, static () => Appearance.ToggleMode(), ChromeButtonStyle)
                 with { Key = "chrome-theme-toggle", Margin = ChromeButtonMargin },
             Loc.Get(dark ? Strings.Shell.LightTheme : Strings.Shell.DarkTheme));
         return new BoxEl
@@ -1564,8 +1515,7 @@ public static partial class Shell
 
     // ══ 6. THE NOTIFICATION PANEL (ch 19 W14-W17, A9) ══════════════════════════════════════════════════════════════
 
-    static Action? s_closeNotificationPanel;
-    static string? s_runningVersion;
+    static INotificationVerbs PanelVerbs => NotificationVerbs.Shared;
 
     /// <summary>THE one open path for the panel, shared by the bell and the profile menu's row (installed into
     /// <see cref="NotificationsLauncher"/>): same placement and chrome, and the open is the panel's DEMAND — it refetches
@@ -1579,18 +1529,16 @@ public static partial class Shell
                 ConstrainToRootBounds = false,
             });
         handle.Value = h;
+        OverlayService.Track(h);
         Action close = h.Close;
-        s_closeNotificationPanel = close;
+        NotificationVerbs.PanelCloser = close;
         h.ClosedAction = () =>
         {
             handle.Value = null;
-            if (ReferenceEquals(s_closeNotificationPanel, close)) s_closeNotificationPanel = null;
+            if (ReferenceEquals(NotificationVerbs.PanelCloser, close)) NotificationVerbs.PanelCloser = null;
         };
         Notify.PanelOpened(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
     }
-
-    /// <summary>A click that navigates away dismisses the panel (a floating panel over a new page reads as stuck).</summary>
-    static void CloseNotificationPanel() => s_closeNotificationPanel?.Invoke();
 
     sealed class NotificationPanelView : Component
     {
@@ -1672,11 +1620,7 @@ public static partial class Shell
             new TextEl(Loc.Get(Strings.Notifications.Title)) { Size = 15f, Weight = 700, Color = Tok.TextPrimary, Grow = 1f },
             // G-090: Mark all read must also clear the OS banners it acknowledges — otherwise every live toast this
             // session raised keeps sitting in the Action Center after the in-app centre says everything is read.
-            PanelLink(Loc.Get(Strings.Notifications.MarkAllRead), static () =>
-            {
-                Notify.MarkAllRead(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-                Notify.ClearLive();
-            }),
+            PanelLink(Loc.Get(Strings.Notifications.MarkAllRead), static () => NotificationVerbs.Shared.MarkAllRead()),
         };
         if (Notify.ShowsClear(filter) && Notify.ClearActivity is { } clear)
             kids.Add(PanelLink(Loc.Get(Strings.Notifications.Clear), clear));
@@ -1711,7 +1655,7 @@ public static partial class Shell
     static Element NotificationRow(Notification n, long now, Signal<string> expanded, string expandedId, IOverlayService? overlay) => n.Category switch
     {
         NotifyCategory.AppUpdate => NotificationCard("ntf:" + n.Id, UpdateRow(n.Update ?? AppUpdateSnapshot.Idle), n.IsUnread, null),
-        NotifyCategory.Social => NotificationCard("ntf:" + n.Id, SocialRow(n, now), n.IsUnread, () => OpenSocial(n)),
+        NotifyCategory.Social => NotificationCard("ntf:" + n.Id, SocialRow(n, now), n.IsUnread, () => PanelVerbs.OpenSocial(n)),
         NotifyCategory.NewRelease => ReleaseCard(n, overlay),
         _ => ActivityCard(n, now, expanded, expandedId),
     };
@@ -1720,7 +1664,7 @@ public static partial class Shell
     /// (the cards' own — Play next, Add to queue, Save, Go to artist…). An episode release has no container menu.</summary>
     static Element ReleaseCard(Notification n, IOverlayService? overlay)
     {
-        var card = NotificationCard("ntf:" + n.Id, ReleaseRow(n), n.IsUnread, () => OpenRelease(n));
+        var card = NotificationCard("ntf:" + n.Id, ReleaseRow(n), n.IsUnread, () => PanelVerbs.OpenRelease(n));
         if (n.ReleaseKind != NewReleaseKind.Album || !n.Subject.IsValid || overlay is null || Controls.IsNullOverlay(overlay)) return card;
         var target = ActionTarget.ForAlbum(n.Subject, n.Title);
         string? art = n.ImageUrl, creator = n.Creator;
@@ -1782,7 +1726,7 @@ public static partial class Shell
             for (int i = 0; i < buttons.Length; i++)
             {
                 var verb = arm.Actions[i];
-                buttons[i] = PanelPill(UpdateVerbLabel(verb), () => RunUpdateRowVerb(verb, s), accent: i == 0);
+                buttons[i] = PanelPill(UpdateVerbLabel(verb), () => PanelVerbs.RunUpdateRow(verb, s), accent: i == 0);
             }
             trailing = new BoxEl { Direction = 0, Gap = 6f, Wrap = true, Margin = new Edges4(0f, 4f, 0f, 0f), Children = buttons };
         }
@@ -1820,23 +1764,6 @@ public static partial class Shell
         _ => Strings.Update.Action.Dismiss,
     });
 
-    /// <summary>What's new navigates (the running build's notes once it landed, else the target's) and, on a completed
-    /// update, acknowledges it; every other verb is the updater's.</summary>
-    static void RunUpdateRowVerb(UpdateRowAction verb, AppUpdateSnapshot s)
-    {
-        if (verb != UpdateRowAction.WhatsNew)
-        {
-            Notify.UpdateCommand?.Invoke(verb, s);
-            return;
-        }
-        GoTo(Parse("whatsnew", Notify.NotesVersion(s, RunningVersion())));
-        CloseNotificationPanel();
-        if (s.State == AppUpdateState.Completed) Notify.UpdateCommand?.Invoke(UpdateRowAction.Dismiss, s);
-    }
-
-    static string RunningVersion()
-        => s_runningVersion ??= Notify.AppUpdateVersion.ReleaseTagVersion(typeof(Shell).Assembly.GetName().Version?.ToString());
-
     static Element SocialRow(in Notification n, long now)
     {
         var text = new List<Element>(2)
@@ -1858,22 +1785,6 @@ public static partial class Shell
                 new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, Gap = 2f, Children = text.ToArray() },
             ],
         };
-    }
-
-    /// <summary>An in-app route when the target resolves to a destination, else the web page (a profile, a webview).</summary>
-    static void OpenSocial(Notification n)
-    {
-        Notify.MarkRead(n.Id);
-        Notify.Dismiss(n.Id);   // G-090: acting on the in-app row also pulls its live OS banner, if one is still up
-        if (n.ActionType == SocialActionType.Navigate && n.ActionUri is { Length: > 0 } uri
-            && !uri.StartsWith("http", StringComparison.OrdinalIgnoreCase)
-            && For(EntityUri.Parse(uri)) is { IsNone: false } route)
-        {
-            GoTo(route);
-            CloseNotificationPanel();
-            return;
-        }
-        OpenWebFor(n.ActionUri);
     }
 
     static Element ReleaseRow(in Notification n) => new BoxEl
@@ -1899,29 +1810,6 @@ public static partial class Shell
         ],
     };
 
-    /// <summary>An album opens its page; an episode has no detail route yet, so it opens the web player.</summary>
-    static void OpenRelease(Notification n)
-    {
-        Notify.MarkRead(n.Id);
-        Notify.Dismiss(n.Id);   // G-090
-        if (n.ReleaseKind == NewReleaseKind.Album && For(n.Subject, n.Title) is { IsNone: false } route)
-        {
-            GoTo(route);
-            CloseNotificationPanel();
-            return;
-        }
-        OpenWebFor(n.Subject.IsValid ? n.Subject.Text : null);
-    }
-
-    static void OpenWebFor(string? uri)
-    {
-        if (string.IsNullOrEmpty(uri)) return;
-        string web = uri.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? uri : Actions.WebLinkOf(EntityUri.Parse(uri));
-        if (web.Length == 0) return;
-        Actions.Services.OpenExternal?.Invoke(web);
-        CloseNotificationPanel();
-    }
-
     /// <summary>A local library mutation: summary + age + Undo (when the journal offers it); a click expands the detail
     /// (swapping the card's KEY, so the expansion is a keyed remount the slide choreography carries).</summary>
     static Element ActivityCard(Notification n, long now, Signal<string> expanded, string expandedId)
@@ -1932,7 +1820,7 @@ public static partial class Shell
             global::Wavee.Design.Type.MicroMeta(RelativeTime(now - n.TimestampMs)) with { Weight = 600, Color = Tok.TextTertiary, Shrink = 0f },
         };
         if (Notify.UndoActivity is { } undo)
-            right.Add(PanelPill(Loc.Get(Strings.Notifications.Undo), () => _ = UndoActivityAsync(undo, n), accent: false));
+            right.Add(PanelPill(Loc.Get(Strings.Notifications.Undo), () => _ = PanelVerbs.UndoActivityAsync(undo, n), accent: false));
 
         var card = new BoxEl
         {
@@ -1968,15 +1856,6 @@ public static partial class Shell
         };
     }
 
-    static async Task UndoActivityAsync(Func<Notification, Task<bool>> undo, Notification n)
-    {
-        bool ok;
-        try { ok = await undo(n).ConfigureAwait(false); }
-        catch (Exception ex) { Log.Warn("notify", "activity.undo failed", ex); ok = false; }
-        // The toast is a UI-thread write; the journal's await may have resumed anywhere.
-        if (!ok) Notify.ToUi(static () => Notify.Say(Loc.Get(Strings.Notifications.UndoFailed), InfoBarSeverity.Warning));
-    }
-
     /// <summary>The target line (always present, so expanding is never a visual no-op) with an Open jump when the
     /// subject routes, then the journal's detail sentence.</summary>
     static Element ActivityDetail(in Notification n)
@@ -1994,7 +1873,7 @@ public static partial class Shell
                     new TextEl(target) { Size = 12f, Weight = 600, Color = Tok.TextSecondary, Grow = 1f, Basis = 0f, MaxLines = 2, Wrap = TextWrap.Wrap },
                     route.IsNone
                         ? new BoxEl()
-                        : PanelPill(Loc.Get(Strings.Notifications.Activity.Detail.Open), () => { GoTo(route); CloseNotificationPanel(); }, accent: false),
+                        : PanelPill(Loc.Get(Strings.Notifications.Activity.Detail.Open), () => PanelVerbs.OpenRoute(route), accent: false),
                 ],
             });
         if (n.Body.Length > 0)

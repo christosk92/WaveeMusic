@@ -20,7 +20,7 @@
 // …and the 0.3 composition that replaces 0.2.9's provider registry, because 0.3 has none: a module playable is a
 // TRACK ROW (`RowFor`, an `Authority.Full` staged commit), its audio is `Playback.Audio.ModuleOpen`, its video is a
 // tier in front of `Playback.VideoResolver` (`VideoSource.Clear`, G-148), a row the reducer met with no identity is a
-// `FetchProvider` answer, and a pasted link is `Shell.MatchLink`. Under `--fake` the one module is an in-process demo
+// `FetchProvider` answer, and a pasted link is `PlayLinkRouter.Match`. Under `--fake` the one module is an in-process demo
 // (`DemoModule`) driven through the SAME wire over in-memory pipes, so the whole host path runs offline.
 //
 // Threads: module traffic runs on the pool (the JSON-RPC pumps); every table write hops through `Playback.ToUi` (C1).
@@ -2738,12 +2738,12 @@ public static partial class Modules
         Playback.VideoResolver = (id, gid, ct) => id.Provider == EntityProvider.Module ? VideoSourceFor(id, ct) : prior(id, gid, ct);
     }
 
-    // ══ 13. THE LINK ROUTER (Shell.MatchLink) ══════════════════════════════════════════════════════════════════════
+    // ══ 13. THE LINK ROUTER (PlayLinkRouter.Match) ══════════════════════════════════════════════════════════════════════
 
-    /// <summary>THE <c>Shell.MatchLink</c> seam: match → resolve through the host; the one play verb commits the row and
+    /// <summary>THE <c>PlayLinkRouter.Match</c> seam: match → resolve through the host; the one play verb commits the row and
     /// plays it (lighting the video surface first when the answer is video). A module's own failure THROWS with its own
     /// words, which the card shows.</summary>
-    public static async Task<Shell.LinkMatch?> MatchLinkAsync(string text, string? pinnedModuleId, CancellationToken ct)
+    public static async Task<LinkMatch?> MatchLinkAsync(string text, string? pinnedModuleId, CancellationToken ct)
     {
         if (s_host is not { } host) return null;
         ModuleMatch? match = await host.MatchAsync(text, pinnedModuleId, ct).ConfigureAwait(false);
@@ -2751,7 +2751,7 @@ public static partial class Modules
         string uri = ModuleUri.Encode(match.Module.Id, match.Match.PlayableId);
         ResolvedPlayable resolved = match.Resolved;
         string name = Trimmed(match.Module.Manifest.DisplayName) ?? match.Module.Id;
-        return new Shell.LinkMatch(name, Trimmed(resolved.Title) ?? Trimmed(match.Match.Title), resolved.IsLive, () => Play(uri, resolved));
+        return new LinkMatch(name, Trimmed(resolved.Title) ?? Trimmed(match.Match.Title), resolved.IsLive, () => Play(uri, resolved));
     }
 
     /// <summary>Play one module playable now. UI THREAD: commit its row, light the video surface for a video answer,

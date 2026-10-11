@@ -55,8 +55,8 @@ public static partial class Settings
         ReportProblemCard(),
 
         SectionHeader(Loc.Get(PvTools.Title), SectionGlyph(Tab.PrivacyDiagnostics, "Tools"), Loc.Get(PvTools.Subtitle)),
-        ToolLinkCard(PvTools.PlaybackRuntime, PvTools.PlaybackRuntimeSub, "playbackRuntime", Shell.RouteKind.PlaybackDiagnostics),
-        ToolLinkCard(PvTools.Connect, PvTools.ConnectSub, "connectDiagnostics", Shell.RouteKind.ConnectDiagnostics),
+        ToolLinkCard("playbackRuntime"),
+        ToolLinkCard("connectDiagnostics"),
         RealtimeCaptureExpander(),
 
         SectionHeader(Loc.Get(PvDev.Title), SectionGlyph(Tab.PrivacyDiagnostics, "Developer"), Loc.Get(PvDev.Subtitle)),
@@ -93,6 +93,7 @@ public static partial class Settings
         bool configured = Crash.Uploader.Configured;
         var effective = Crash.ConsentPolicy.Effective(stored, configured);
         bool reporting = effective != Crash.Reporting.Off;
+        var facts = SettingsFacts.Live;
         return SettingsExpander.Create(new SettingsExpander.Options
         {
             Header = Loc.Get(PvFacts.CrashReports),
@@ -101,17 +102,21 @@ public static partial class Settings
             Content = ValueTag(Loc.Get(PrivacyRules.ModeKey(effective))),
             Items =
             [
-                ModeItem(Crash.Reporting.Off, effective, Loc.Get(PvFacts.ModeOff), Loc.Get(PvFacts.ModeOffSub), enabled: true),
-                ModeItem(Crash.Reporting.Ask, effective, Loc.Get(PvFacts.ModeAsk), Loc.Get(PvFacts.ModeAskSub), enabled: true),
-                ModeItem(Crash.Reporting.Auto, effective, Loc.Get(PvFacts.ModeAuto),
-                    Loc.Get(configured ? PvFacts.ModeAutoSub : PvFacts.ModeAutoNeedsService), enabled: configured),
+                ModeItemOf(Crash.Reporting.Off, effective, PvFacts.ModeOff, facts),
+                ModeItemOf(Crash.Reporting.Ask, effective, PvFacts.ModeAsk, facts),
+                ModeItemOf(Crash.Reporting.Auto, effective, PvFacts.ModeAuto, facts),
                 Item(Loc.Get(PvFacts.IncludeDump), Loc.Get(PvFacts.IncludeDumpSub),
-                    Toggle(Platform.Keys.CrashIncludeDump, isEnabled: reporting),
+                    RowToggle(D(Tab.PrivacyDiagnostics, "crashDump"), reporting),
                     isEnabled: reporting, icon: RowGlyph(Tab.PrivacyDiagnostics, "crashDump")),
                 Item(Loc.Get(PvFacts.Contents), Loc.Get(PvFacts.ContentsSub), icon: RowGlyph(Tab.PrivacyDiagnostics, "crashContents")),
             ],
         }) with { Key = "privacy.crash-reports" };
     }
+
+    /// <summary>One mode with its caption and enablement from the document (Automatic needs a service, and says so).</summary>
+    static Element ModeItemOf(Crash.Reporting mode, Crash.Reporting current, string labelKey, ISettingsFacts facts)
+        => ModeItem(mode, current, Loc.Get(labelKey), Loc.Get(SettingsDoc.CrashModeCaptionKey((int)mode, facts)),
+            SettingsDoc.CrashModeEnablement((int)mode, facts).Enabled);
 
     /// <summary>One mode: a radio and an indented caption, left-aligned so the card renders ONLY the content
     /// (<c>SettingsCard.ContentAlignment.Left</c>). Disabled, the caption says why.</summary>
@@ -134,9 +139,7 @@ public static partial class Settings
     /// Automatic really writes Ask.</summary>
     static void SetCrashMode(Crash.Reporting mode)
     {
-        if ((Crash.Reporting)Platform.Settings.Get(Platform.Keys.CrashReporting) == mode) return;
-        Platform.Settings.Set(Platform.Keys.CrashReporting, (int)mode);
-        Bump();
+        if (D(Tab.PrivacyDiagnostics, "crashReports").Writer.Choose!((int)mode)) Bump();
     }
 
     /// <summary>"Your data on the crash service": the shortened install id, Copy id, and the confirmed right-to-erasure
@@ -147,25 +150,14 @@ public static partial class Settings
         public override Element Render()
         {
             var overlay = UseContext(Overlay.Service);
-            var hooks = UseContext(InputHooks.Current);
-            var post = UsePost();
-            var epoch = UseSignal(0);
-            _ = epoch.Value;   // subscribed: a rotated install id re-renders
+            _ = SettingsFacts.CrashDataEpoch.Value;   // subscribed: a rotated install id re-renders
 
             string fullId = Crash.InstallId.Peek(Platform.Settings);   // boot ensures it; a render never writes the store
             bool configured = Crash.Uploader.Configured;
 
+            // The confirmed erasure is the row's writer (off the UI thread; the answer bumps the epoch above).
             void OnDelete() => Controls.Confirm(overlay, Loc.Get(PvFacts.DeleteMyDataConfirmTitle), Loc.Get(PvFacts.DeleteMyDataConfirmBody),
-                Loc.Get(PvFacts.DeleteMyDataConfirmButton), () => _ = Task.Run(async () =>
-                {
-                    var result = await Crash.Uploader.DeleteRemote(CancellationToken.None).ConfigureAwait(false);
-                    post(() =>
-                    {
-                        if (result.Ok) Notify.Say(PvFacts.DeleteMyDataDone(result.Deleted.ToString(CultureInfo.InvariantCulture)), InfoBarSeverity.Success);
-                        else Notify.Say(Loc.Get(PvFacts.DeleteMyDataFailed), InfoBarSeverity.Error);
-                        epoch.Value = epoch.Peek() + 1;
-                    });
-                }));
+                Loc.Get(PvFacts.DeleteMyDataConfirmButton), () => D(Tab.PrivacyDiagnostics, "crashService").Writer.Run!());
 
             return SettingsCard.Create(new SettingsCard.Options
             {
@@ -173,15 +165,14 @@ public static partial class Settings
                 Description = PvFacts.YourDataSub(PrivacyRules.ShortInstallId(fullId)),
                 HeaderIcon = RowGlyph(Tab.PrivacyDiagnostics, "crashService"),
                 Content = HStack(Spacing.S,
-                    Button.Subtle(Loc.Get(PvFacts.CopyId), () => hooks.Clipboard?.SetText(fullId), isEnabled: fullId.Length > 0),
+                    Button.Subtle(Loc.Get(PvFacts.CopyId), () => D(Tab.PrivacyDiagnostics, "crashServiceCopy").Writer.Run!(), isEnabled: fullId.Length > 0),
                     Button.Standard(Loc.Get(PvFacts.DeleteMyData), OnDelete, isEnabled: configured)),
             });
         }
     }
 
-    static Element PrivacyPolicyCard() => Row(Loc.Get(PvFacts.Policy), Loc.Get(PvFacts.PolicySub), null,
-        RowGlyph(Tab.PrivacyDiagnostics, "privacyPolicy"), isClickEnabled: true,
-        onClick: static () => OpenUri(Crash.PrivacyUrl), actionIcon: Icons.OpenInNewWindow);
+    static Element PrivacyPolicyCard() => DocRow(D(Tab.PrivacyDiagnostics, "privacyPolicy"), isClickEnabled: true,
+        onClick: static () => D(Tab.PrivacyDiagnostics, "privacyPolicy").Writer.Run!(), actionIcon: Icons.OpenInNewWindow);
 
     // ══ 3. CRASH REPORTS › SAVED REPORTS ══════════════════════════════════════════════════════════════════════════════
 
@@ -212,8 +203,8 @@ public static partial class Settings
                     queued == 1 ? Loc.Get(PvReports.QueuedOne) : PvReports.Queued(queued.ToString(CultureInfo.InvariantCulture)),
                     isClosable: false,
                     actionButton: HStack(Spacing.S,
-                        Button.Accent(Loc.Get(PvReports.SendNow), static () => Crash.Uploader.Drain(), isEnabled: configured),
-                        Button.Standard(Loc.Get(PvReports.Discard), static () => Crash.Uploader.DiscardQueue())))) with { Key = "privacy.reports.queued" });
+                        Button.Accent(Loc.Get(PvReports.SendNow), static () => D(Tab.PrivacyDiagnostics, "reportsSendNow").Writer.Run!(), isEnabled: configured),
+                        Button.Standard(Loc.Get(PvReports.Discard), static () => D(Tab.PrivacyDiagnostics, "reportsDiscard").Writer.Run!())))) with { Key = "privacy.reports.queued" });
             foreach (var b in bundles)
                 items.Add(ReportRow(b, overlay, hooks, post, configured) with { Key = "crash:" + b.Summary.ReportId });
             PruneAnchors(bundles);
@@ -238,10 +229,10 @@ public static partial class Settings
                     [
                         Caption(PvReports.Retention(Crash.Files.KeepBundles.ToString(CultureInfo.InvariantCulture)))
                             with { Color = Tok.TextTertiary, Grow = 1f, MinWidth = 0f, Wrap = TextWrap.Wrap },
-                        Button.Standard(Loc.Get(PvReports.OpenFolder), static () => Diagnostics.OpenFolder(Crash.Files.Root(Crash.Host.LogFolder))),
+                        Button.Standard(Loc.Get(PvReports.OpenFolder), static () => D(Tab.PrivacyDiagnostics, "reportsOpenFolder").Writer.Run!()),
                         Button.Standard(Loc.Get(PvReports.DeleteAll), () => Controls.Confirm(overlay,
                             Loc.Get(PvReports.DeleteAllConfirmTitle), Loc.Get(PvReports.DeleteAllConfirmBody),
-                            Loc.Get(PvReports.DeleteAll), static () => Crash.Host.DeleteAll()), isEnabled: tally.Total > 0),
+                            Loc.Get(PvReports.DeleteAll), static () => D(Tab.PrivacyDiagnostics, "reportsDeleteAll").Writer.Run!()), isEnabled: tally.Total > 0),
                     ],
                 }),
             });
@@ -304,8 +295,8 @@ public static partial class Settings
             string id = b.Summary.ReportId;
             var items = new List<MenuFlyoutItem>(5)
             {
-                new(Loc.Get(PvReports.View), Icons.OpenInNewWindow, true, () => ViewReport(b.ReportTxt)),
-                new(Loc.Get(PvReports.Copy), Icons.Copy, true, () => CopyReport(b, hooks, post)),
+                new(Loc.Get(PvReports.View), Icons.OpenInNewWindow, true, () => SettingsVerbs.ViewCrashReport(b.ReportTxt)),
+                new(Loc.Get(PvReports.Copy), Icons.Copy, true, () => SettingsVerbs.CopyCrashReport(b)),
             };
             if (PrivacyRules.CanSend(b.Summary.Kind, b.Send.State, configured))
                 items.Add(new(Loc.Get(PvReports.Send), Icons.Forward, true, () => Crash.OpenSendPrompt(overlay, b)));
@@ -365,31 +356,6 @@ public static partial class Settings
             : Loc.Get(key);
     }
 
-    /// <summary>"View": the raw local report in Notepad.</summary>
-    static void ViewReport(string path)
-    {
-        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("notepad.exe", "\"" + path + "\"") { UseShellExecute = false })?.Dispose(); }
-        catch (Exception ex) { Log.Warn("crash", "reports.view.failed", ex); }
-    }
-
-    /// <summary>"Copy": exactly what a send would carry — the scrub rules are read on the UI thread, the scrub and layout
-    /// run off it, and the clipboard and the toast come back on it. A failed scrub copies nothing (never an unscrubbed
-    /// report).</summary>
-    static void CopyReport(Crash.BundleInfo b, InputHooks hooks, Action<Action> post)
-    {
-        var rules = Crash.Scrubber.RulesNow();   // UI thread: the live account/device seams
-        _ = Task.Run(() =>
-        {
-            string text = Crash.ComposePreview(b, rules);
-            if (text.Length == 0) return;   // the scrub failed (logged)
-            post(() =>
-            {
-                hooks.Clipboard?.SetText(text);
-                Notify.Say(Loc.Get(PvReports.Copied), InfoBarSeverity.Success, dedupeKey: "crash-copied:" + b.Summary.ReportId);
-            });
-        });
-    }
-
     // ══ 4. LOGS ═══════════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The Log viewer card: opens the viewer page, and its description counts the live session. The counts and
@@ -423,7 +389,7 @@ public static partial class Settings
                 HeaderIcon = RowGlyph(Tab.PrivacyDiagnostics, "logViewer"),
                 IsClickEnabled = true,
                 IsActionIconVisible = true,
-                OnClick = static () => Shell.GoTo(new Shell.Route(Shell.RouteKind.Logs)),
+                OnClick = static () => D(Tab.PrivacyDiagnostics, "logViewer").Writer.Run!(),
                 Parts = _parts,
             });
         }
@@ -446,7 +412,6 @@ public static partial class Settings
     {
         public override Element Render()
         {
-            var post = UsePost();
             _ = Platform.SettingsChanged.Value;   // subscribed
             var viewer = Log.MinLevel;
             var file = LogCapturePolicy.EffectiveFileLevel(viewer, Log.FileMinLevel);
@@ -463,11 +428,11 @@ public static partial class Settings
                 [
                     Item(Loc.Get(PvLogs.InViewer), Loc.Get(PvLogs.InViewerSub),
                         ComboBox.Create(Diagnostics.LogView.LevelNames, new Signal<int>(viewerIndex), width: 160f,
-                            onChange: i => post(() => LogCapturePolicy.SetMinLevel(Platform.Settings, (WaveeLogLevel)Math.Clamp(i, 0, 4))))
+                            onChange: static i => D(Tab.PrivacyDiagnostics, "logLevelViewer").Writer.Choose!(i))
                             with { Key = "privacy.level.viewer:" + viewerIndex.ToString(CultureInfo.InvariantCulture) }),
                     Item(Loc.Get(PvLogs.InFile), Loc.Get(PvLogs.InFileSub),
                         ComboBox.Create(Diagnostics.LogView.LevelNames, new Signal<int>(fileIndex), width: 160f,
-                            onChange: i => post(() => LogCapturePolicy.SetFileLevel(Platform.Settings, (WaveeLogLevel)Math.Clamp(i, 0, 4))))
+                            onChange: static i => D(Tab.PrivacyDiagnostics, "logLevelFile").Writer.Choose!(i))
                             with { Key = "privacy.level.file:" + fileIndex.ToString(CultureInfo.InvariantCulture) }),
                 ],
             });
@@ -479,19 +444,18 @@ public static partial class Settings
     static Element LogFilesCard() => Row(Loc.Get(PvLogs.Files),
         PvLogs.FilesSub(PrivacyRules.WholeMb(Log.MaxFileBytes), Log.RetentionDays.ToString(CultureInfo.InvariantCulture),
             PrivacyRules.WholeMb(Log.RetentionBytes)),
-        Button.Standard(Loc.Get(PvLogs.OpenFolder), static () => Diagnostics.OpenFolder(Platform.LogFolder)),
+        Button.Standard(Loc.Get(PvLogs.OpenFolder), static () => D(Tab.PrivacyDiagnostics, "logFiles").Writer.Run!()),
         RowGlyph(Tab.PrivacyDiagnostics, "logFiles"));
 
     static Element ReportProblemCard() => Row(Loc.Get(PvLogs.Report), Loc.Get(PvLogs.ReportSub), null,
         RowGlyph(Tab.PrivacyDiagnostics, "reportProblem"), isClickEnabled: true,
-        onClick: static () => Feedback.Open(Feedback.ReportKind.Bug));
+        onClick: static () => D(Tab.PrivacyDiagnostics, "reportProblem").Writer.Run!());
 
     // ══ 5. TOOLS ══════════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>A clickable card that opens one diagnostics page (Playback keeps its own door to the same pages).</summary>
-    static Element ToolLinkCard(string headerKey, string subKey, string rowId, Shell.RouteKind route)
-        => Row(Loc.Get(headerKey), Loc.Get(subKey), null, RowGlyph(Tab.PrivacyDiagnostics, rowId), isClickEnabled: true,
-            onClick: () => Shell.GoTo(new Shell.Route(route)));
+    static Element ToolLinkCard(string rowId)
+        => DocRow(D(Tab.PrivacyDiagnostics, rowId), isClickEnabled: true, onClick: () => D(Tab.PrivacyDiagnostics, rowId).Writer.Run!());
 
     /// <summary>The persisted key/subtitle are `dealerArchive` verbatim (CLAUDE.md: no legacy renumbering); the toggle
     /// applies live through <c>RealtimeCaptureHost.OnSettingsChanged</c>, and the two doors sit inside.</summary>
@@ -500,22 +464,17 @@ public static partial class Settings
         Header = Loc.Get(PvTools.Capture),
         Description = Loc.Get(PvTools.CaptureSub),
         HeaderIcon = RowGlyph(Tab.PrivacyDiagnostics, "realtimeCapture"),
-        Content = Toggle(Platform.Keys.DealerArchiveEnabled, afterWrite: static _ => RealtimeCaptureHost.OnSettingsChanged()),
+        Content = RowToggle(D(Tab.PrivacyDiagnostics, "realtimeCapture")),
         Items =
         [
             Item(Loc.Get(PvTools.OpenCaptureViewer), Loc.Get(PvTools.OpenCaptureViewerSub), isClickEnabled: true,
-                onClick: static () => Shell.GoTo(new Shell.Route(Shell.RouteKind.CaptureDiagnostics))),
+                onClick: static () => D(Tab.PrivacyDiagnostics, "captureViewer").Writer.Run!()),
             Item(Loc.Get(PvTools.OpenCaptureFolder), Loc.Get(PvTools.OpenCaptureFolderSub),
-                Button.Standard(Loc.Get(PvTools.OpenFolder), static () => Diagnostics.OpenFolder(Path.Combine(Platform.LogFolder, "capture")))),
+                Button.Standard(Loc.Get(PvTools.OpenFolder), static () => D(Tab.PrivacyDiagnostics, "captureFolder").Writer.Run!())),
         ],
     }) with { Key = "privacy.capture" };
 
     // ══ 6. DEVELOPER ══════════════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>True from the click until the test bundle is written and handed to the uploader (UI thread only). It
-    /// guards the GENERATION — one live dump request at a time from here — not the upload: each click is its own report,
-    /// and its outcome card is its own (<c>crash:&lt;id&gt;</c>). A signal, so the Developer group's button follows it.</summary>
-    static readonly Signal<bool> s_testCrashBusy = new(false);
 
     /// <summary>Developer mode and the three items it unlocks. The items are PRESENT and greyed while the switch is off
     /// (D2), never composed away. The switch and the FPS overlay go through <see cref="Platform.Developer"/> — the one
@@ -525,10 +484,13 @@ public static partial class Settings
     {
         public override Element Render()
         {
-            bool dev = Platform.Developer.Enabled.Value;
+            var facts = SettingsFacts.Live;
+            bool dev = facts.DeveloperMode;
             bool fps = Platform.Developer.FpsOverlay.Value;
-            bool busy = s_testCrashBusy.Value;
-            bool canSend = Crash.Uploader.Configured;
+            bool canSend = facts.CrashServiceConfigured;
+            var fpsDoc = D(Tab.PrivacyDiagnostics, "fpsOverlay");
+            var simulateDoc = D(Tab.PrivacyDiagnostics, "simulateUpdate");
+            var testDoc = D(Tab.PrivacyDiagnostics, "sendTestCrashReport");
 
             return SettingsExpander.Create(new SettingsExpander.Options
             {
@@ -537,60 +499,26 @@ public static partial class Settings
                 HeaderIcon = RowGlyph(Tab.PrivacyDiagnostics, "developerMode"),
                 Content = ToggleSwitch.Create(new Signal<bool>(dev), onChange: static on =>
                 {
-                    Platform.Developer.Set(on);
-                    Bump();   // the Appearance / Notifications developer-only rows are page-composed
+                    // The Appearance / Notifications developer-only rows are page-composed, so the writer asks the page to re-read.
+                    if (D(Tab.PrivacyDiagnostics, "developerMode").Writer.Toggle!(on)) Bump();
                 }, style: SettingsCard.CompactToggleStyle()),
                 Items =
                 [
                     Item(Loc.Get(PvDev.FpsOverlay), Loc.Get(PvDev.FpsOverlaySub),
-                        ToggleSwitch.Create(new Signal<bool>(fps), onChange: static on => Platform.Developer.SetFpsOverlay(on),
-                            isEnabled: dev, style: SettingsCard.CompactToggleStyle()),
-                        isEnabled: dev, icon: RowGlyph(Tab.PrivacyDiagnostics, "fpsOverlay")),
+                        ToggleSwitch.Create(new Signal<bool>(fps), onChange: static on => D(Tab.PrivacyDiagnostics, "fpsOverlay").Writer.Toggle!(on),
+                            isEnabled: fpsDoc.Enabled(facts).Enabled, style: SettingsCard.CompactToggleStyle()),
+                        isEnabled: fpsDoc.Enabled(facts).Enabled, icon: RowGlyph(Tab.PrivacyDiagnostics, "fpsOverlay")),
                     Item(Loc.Get(PvDev.SimulateUpdate), Loc.Get(PvDev.SimulateUpdateSub),
-                        Button.Standard(Loc.Get(PvDev.SimulateUpdateButton), static () => Update.Host.SimulateUpdate(), isEnabled: dev),
-                        isEnabled: dev, icon: RowGlyph(Tab.PrivacyDiagnostics, "simulateUpdate")),
-                    Item(Loc.Get(PvDev.SendTestCrashReport), Loc.Get(canSend ? PvDev.SendTestCrashReportSub : PvDev.SendTestCrashReportUnavailable),
-                        Button.Standard(Loc.Get(PvDev.SendTestCrashReportButton), static () => SendTestCrashReport(),
-                            isEnabled: dev && canSend && !busy),
+                        Button.Standard(Loc.Get(PvDev.SimulateUpdateButton), static () => D(Tab.PrivacyDiagnostics, "simulateUpdate").Writer.Run!(),
+                            isEnabled: simulateDoc.Enabled(facts).Enabled),
+                        isEnabled: simulateDoc.Enabled(facts).Enabled, icon: RowGlyph(Tab.PrivacyDiagnostics, "simulateUpdate")),
+                    Item(Loc.Get(PvDev.SendTestCrashReport), Loc.Get(testDoc.Caption(facts)!),
+                        Button.Standard(Loc.Get(PvDev.SendTestCrashReportButton), static () => D(Tab.PrivacyDiagnostics, "sendTestCrashReport").Writer.Run!(),
+                            isEnabled: testDoc.Enabled(facts).Enabled),
                         isEnabled: dev && canSend, icon: RowGlyph(Tab.PrivacyDiagnostics, "sendTestCrashReport")),
                 ],
             });
         }
-    }
-
-    /// <summary>Developer › "Send a test crash report" (#165): <see cref="Crash.Host.WriteTestReport"/> off the UI thread
-    /// (it blocks on the crash handler's dump), then — back on it — the Saved reports bump and the NORMAL send:
-    /// <see cref="Crash.Uploader.Enqueue"/> with the dump, whatever the reporting mode (this click is the manual send),
-    /// and the real outcome card (<c>Crash.OutcomeToasts</c>) carrying the report's short id.</summary>
-    static void SendTestCrashReport()
-    {
-        if (s_testCrashBusy.Peek() || !Crash.Uploader.Configured) return;
-        s_testCrashBusy.Value = true;
-        var post = s_post;
-        var rules = Crash.Scrubber.RulesNow();   // UI thread: the live account/device tables
-        var writing = Notify.Say(Loc.Get(Strings.Crash.TestReportWriting), InfoBarSeverity.Informational,
-            dedupeKey: "crash-test-report", durationMs: 15000f);
-        _ = Task.Run(() =>
-        {
-            Crash.BundleInfo? bundle = Crash.Host.WriteTestReport(rules);
-            post(() =>
-            {
-                s_testCrashBusy.Value = false;
-                if (bundle is null)
-                {
-                    writing.Close();
-                    Notify.Say(Loc.Get(Strings.Crash.TestReportFailed), InfoBarSeverity.Error, durationMs: 8000f);
-                    return;
-                }
-                Crash.Host.ReportsVersion.Value++;   // Saved reports lists it now
-                var outcome = Crash.OutcomeToasts.Track(bundle, queuedShown: false, test: true);
-                Crash.Uploader.Enqueue(bundle, includeDump: true, settled: rec =>
-                {
-                    writing.Close();
-                    outcome(rec);
-                });
-            });
-        });
     }
 
     // ══ 7. SHARED CHROME OF THIS TAB'S EXPANDERS ══════════════════════════════════════════════════════════════════════

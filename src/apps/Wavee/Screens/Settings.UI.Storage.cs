@@ -118,71 +118,75 @@ public static partial class Settings
             : s.LogFiles == 1 ? Loc.Get(Strings.Settings.Storage.LogsSubOne) : Strings.Settings.Storage.LogsSub(s.LogFiles);
         string keysSub = s_keyCount is not { } keys ? Loc.Get(Strings.Settings.Storage.LicenseKeysSub)
             : keys == 1 ? Loc.Get(Strings.Settings.Storage.LicenseKeysCountOne) : Strings.Settings.Storage.LicenseKeysCount(keys);
-        bool hasCache = Spotify.Audio.DiskCache.Shared is not null;
+        var facts = SettingsFacts.Live;
 
         return TabStack(
             SectionHeader(Loc.Get(Strings.Settings.Storage.OnThisPc), SectionGlyph(Tab.Storage, "On this PC")),
             census,
-            StorageRow(0, "library", Loc.Get(Strings.Settings.Storage.LibrarySub), s?.LibraryDb, Platform.LocalFolder),
-            StorageRow(1, "runtime", Loc.Get(Strings.Settings.Storage.RuntimeSub), s?.Runtime, RuntimeDirectory()),
-            StorageRow(2, "logs", logsSub, s?.Logs, Platform.LogFolder,
-                StorageClearButton(Strings.Settings.Storage.DeleteOldLogs, Strings.Settings.Storage.DeleteOldLogsBody, DeleteOldLogs)),
-            StorageRow(3, "localStore", Loc.Get(Strings.Settings.Storage.LocalStoreSub), s?.Store, Platform.LocalFolder),
-            StorageRow(6, "imageCache", Loc.Get(Strings.Settings.Storage.ImageCacheSub), s?.ImageCache, ImageCacheDirectory()),
+            StorageRow(0, "library", Loc.Get(Strings.Settings.Storage.LibrarySub), s?.LibraryDb),
+            StorageRow(1, "runtime", Loc.Get(Strings.Settings.Storage.RuntimeSub), s?.Runtime),
+            StorageRow(2, "logs", logsSub, s?.Logs, StorageClearButton(D(Tab.Storage, "logsClear"), facts)),
+            StorageRow(3, "localStore", Loc.Get(Strings.Settings.Storage.LocalStoreSub), s?.Store),
+            StorageRow(6, "imageCache", Loc.Get(Strings.Settings.Storage.ImageCacheSub), s?.ImageCache),
 
             SectionHeader(Loc.Get(Strings.Settings.Storage.PlaybackCache), SectionGlyph(Tab.Storage, "Playback cache")),
-            Row(Loc.Get(Strings.Settings.Storage.CacheAudio), Loc.Get(Strings.Settings.Storage.CacheAudioSub),
-                Toggle(Platform.Keys.AudioBodyCacheEnabled), RowGlyph(Tab.Storage, "cacheAudio")),
-            Row(Loc.Get(Strings.Settings.Storage.CacheKeys), Loc.Get(Strings.Settings.Storage.CacheKeysSub),
-                Toggle(Platform.Keys.AudioKeyCacheEnabled), RowGlyph(Tab.Storage, "cacheKeys")),
-            Row(Loc.Get(Strings.Settings.Storage.BodyBudget), Loc.Get(Strings.Settings.Storage.BodyBudgetSub),
-                BodyBudgetControl(s), RowGlyph(Tab.Storage, "budget")),
-            // The PATH is the sub (W16).
+            DocRow(D(Tab.Storage, "cacheAudio"), RowToggle(D(Tab.Storage, "cacheAudio"))),
+            DocRow(D(Tab.Storage, "cacheKeys"), RowToggle(D(Tab.Storage, "cacheKeys"))),
+            DocRow(D(Tab.Storage, "budget"), BodyBudgetControl(s)),
+            // The PATH is the sub (W16). The row itself stays enabled; only the two relocation buttons need the cache.
             Row(Loc.Get(Strings.Settings.Storage.CacheLocation), audioDir, new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Wrap = true,
                 Children =
                 [
-                    Button.Standard(Loc.Get(Strings.Settings.Storage.ChooseLocation), static () => PickCacheLocation(), isEnabled: hasCache),
-                    Button.Standard(Loc.Get(Strings.Settings.Storage.UseDefaultLocation), static () => OfferRelocation(""), isEnabled: hasCache),
-                    HyperlinkButton.Create(Loc.Get(Strings.Settings.Storage.OpenFolder), () => OpenFolder(audioDir)),
+                    Button.Standard(Loc.Get(Strings.Settings.Storage.ChooseLocation),
+                        static () => D(Tab.Storage, "cacheLocation").Writer.Run!(), isEnabled: D(Tab.Storage, "cacheLocation").Enabled(facts).Enabled),
+                    Button.Standard(Loc.Get(Strings.Settings.Storage.UseDefaultLocation),
+                        static () => D(Tab.Storage, "cacheLocationDefault").Writer.Run!(), isEnabled: D(Tab.Storage, "cacheLocationDefault").Enabled(facts).Enabled),
+                    HyperlinkButton.Create(Loc.Get(Strings.Settings.Storage.OpenFolder), static () => SettingsVerbs.OpenStorageFolder("cacheLocation")),
                 ],
             }, RowGlyph(Tab.Storage, "cacheLocation")),
-            StorageRow(4, "audioBodies", Loc.Get(Strings.Settings.Storage.AudioBodiesSub), s?.AudioBody, audioDir,
-                StorageClearButton(Strings.Settings.Storage.ClearAudio, Strings.Settings.Storage.ClearAudioBody, ClearAudioBodies, hasCache)),
-            StorageRow(5, "licenseKeys", keysSub, s?.LicenseDb, Path.GetDirectoryName(Spotify.Audio.KeyStore.DefaultPath()) ?? audioDir,
-                StorageClearButton(Strings.Settings.Storage.ClearKeys, Strings.Settings.Storage.ClearKeysBody, ClearSavedKeys)),
+            StorageRow(4, "audioBodies", Loc.Get(Strings.Settings.Storage.AudioBodiesSub), s?.AudioBody,
+                StorageClearButton(D(Tab.Storage, "audioBodiesClear"), facts)),
+            StorageRow(5, "licenseKeys", keysSub, s?.LicenseDb, StorageClearButton(D(Tab.Storage, "licenseKeysClear"), facts)),
 
             SectionHeader(Loc.Get(Strings.Settings.Storage.MetadataCache), SectionGlyph(Tab.Storage, "Metadata cache")),
-            Row(Loc.Get(Strings.Settings.Storage.MetadataBudget), Loc.Get(Strings.Settings.Storage.MetadataBudgetSub),
-                ComboBox.Create(StorageFormat.MetaBudgetLabels, s_metaBudget, width: 120f, onChange: SetMetaBudget),
-                RowGlyph(Tab.Storage, "metadataBudget")),
+            DocRow(D(Tab.Storage, "metadataBudget"),
+                ComboBox.Create(StorageFormat.MetaBudgetLabels, s_metaBudget, width: 120f, onChange: SetMetaBudget)),
             Row(Loc.Get(Strings.Settings.Storage.MetadataCache), MetadataSub(),
-                StorageClearButton(Strings.Settings.Storage.ClearMetadata, Strings.Settings.Storage.ClearMetadataBody, ClearMetadata,
-                    ClearMetadataCache is not null),
+                StorageClearButton(D(Tab.Storage, "clearMetadata"), facts),
                 RowGlyph(Tab.Storage, "clearMetadata")),
 
             SectionHeader(Loc.Get(Strings.Settings.Storage.FactoryReset), SectionGlyph(Tab.Storage, "Reset"),
                 Loc.Get(Strings.Settings.Storage.FactoryResetSub)),
-            Row(Loc.Get(Strings.Settings.Storage.FactoryReset), Loc.Get(Strings.Settings.Storage.FactoryResetRowSub),
-                Button.Standard(Loc.Get(Strings.Settings.Storage.FactoryResetAction), static () => ConfirmThen(
-                    Loc.Get(Strings.Settings.Storage.FactoryResetConfirmTitle), Loc.Get(Strings.Settings.Storage.FactoryResetConfirmBody),
-                    Loc.Get(Strings.Settings.Storage.FactoryResetAction), RequestFactoryReset)),
-                RowGlyph(Tab.Storage, "factoryReset")));
+            DocRow(D(Tab.Storage, "factoryReset"),
+                Button.Standard(Loc.Get(Strings.Settings.Storage.FactoryResetAction), static () =>
+                {
+                    var reset = D(Tab.Storage, "factoryReset");
+                    ConfirmThen(Loc.Get(reset.Confirm!.TitleKey), Loc.Get(reset.Confirm.BodyKey), Loc.Get(reset.Confirm.PrimaryKey),
+                        () => reset.Writer.Run!());
+                })));
     }
 
-    /// <summary>N11: the verb opens the ONE confirm (Cancel default); the confirmed action runs off-thread and toasts.</summary>
-    static Element StorageClearButton(string verbKey, string bodyKey, Action run, bool isEnabled = true)
-        => Button.Standard(Loc.Get(verbKey), () => ConfirmThen(Loc.Get(verbKey), Loc.Get(bodyKey), Loc.Get(verbKey), run), isEnabled: isEnabled);
+    /// <summary>N11: the verb opens the ONE confirm (Cancel default, the row's <see cref="SettingsConfirm"/>); the confirmed
+    /// action — the row's writer — runs off-thread and toasts.</summary>
+    static Element StorageClearButton(SettingsRow row, ISettingsFacts facts)
+    {
+        var confirm = row.Confirm!;
+        return Button.Standard(Loc.Get(confirm.TitleKey),
+            () => ConfirmThen(Loc.Get(confirm.TitleKey), Loc.Get(confirm.BodyKey), Loc.Get(confirm.PrimaryKey), () => row.Writer.Run!()),
+            isEnabled: row.Enabled(facts).Enabled);
+    }
 
     /// <summary>A category row: the 3-DIP hue accent + the card, whose action lane carries the size (13 DIP secondary,
     /// simply ABSENT until the census lands — never "—", never "0 B"), "Open folder", and an optional verb. The card sits
     /// in a COLUMN so a wrapping description grows the card and the accent with it (#132).</summary>
-    static Element StorageRow(int hue, string rowId, string sub, long? size, string folder, Element? extra = null)
+    static Element StorageRow(int hue, string rowId, string sub, long? size, Element? extra = null)
     {
         var actions = new List<Element>(3);
         if (size is { } bytes) actions.Add(Design.Type.DenseMeta(StorageFormat.Bytes(bytes)) with { Color = Tok.TextSecondary, Shrink = 0f });
-        actions.Add(HyperlinkButton.Create(Loc.Get(Strings.Settings.Storage.OpenFolder), () => OpenFolder(folder)));
+        // "Open folder" is the category row's writer (the folder door).
+        actions.Add(HyperlinkButton.Create(Loc.Get(Strings.Settings.Storage.OpenFolder), () => D(Tab.Storage, rowId).Writer.Run!()));
         if (extra is not null) actions.Add(extra);
         return new BoxEl
         {
@@ -275,7 +279,9 @@ public static partial class Settings
                 [
                     ComboBox.Create(StorageFormat.BodyBudgetLabels, s_budgetPreset, width: 120f, onChange: static i =>
                     {
-                        if ((uint)i < (uint)StorageFormat.BodyBudgetBytes.Length) CommitBudgetBytes(StorageFormat.BodyBudgetBytes[i]);
+                        if ((uint)i >= (uint)StorageFormat.BodyBudgetBytes.Length) return;
+                        s_budgetGiB.Value = StorageFormat.BodyBudgetBytes[i] / (double)(1L << 30);
+                        if (D(Tab.Storage, "budgetPreset").Writer.Choose!(i)) Bump();
                     }),
                     NumberBox.Create(s_budgetGiB, static v =>
                     {
@@ -288,11 +294,8 @@ public static partial class Settings
             },
             (int)AudioCacheBudgetMode.DriveShare => NumberBox.Create(s_budgetPercent, static v =>
             {
-                int pct = Math.Clamp((int)Math.Round(double.IsFinite(v) ? v : 0), 0, 90);
-                s_budgetPercent.Value = pct;
-                Platform.Settings.Set(Platform.Keys.AudioBodyCacheBudgetPercent, pct);
-                RefreshAudioStatus();
-                Bump();
+                s_budgetPercent.Value = SettingsVerbs.ClampBudgetPercent(v);
+                if (SettingsVerbs.SetBudgetPercent(v)) Bump();
             }, s_percentBox) with { Key = "budget:share" },
             _ => new TextEl(Loc.Get(Strings.Settings.Storage.UnlimitedReserve)) { Key = "budget:unlimited", Size = 12f, Color = Tok.TextSecondary },
         };
@@ -307,9 +310,7 @@ public static partial class Settings
                     [Loc.Get(Strings.Settings.Storage.FixedSize), Loc.Get(Strings.Settings.Storage.DriveShare), Loc.Get(Strings.Settings.Storage.Unlimited)],
                     s_budgetMode, onChange: static m =>
                     {
-                        Platform.Settings.Set(Platform.Keys.AudioBodyCacheBudgetMode, Math.Clamp(m, 0, 2));
-                        RefreshAudioStatus();
-                        Bump();
+                        if (D(Tab.Storage, "budget").Writer.Choose!(m)) Bump();
                     }),
                 editor,
                 ProgressBar.Determinate(fraction, width: 300f, state: over ? ProgressBarState.Error : ProgressBarState.Normal),
@@ -324,9 +325,7 @@ public static partial class Settings
     static void CommitBudgetBytes(long bytes)
     {
         s_budgetGiB.Value = bytes / (double)(1L << 30);
-        Platform.Settings.Set(Platform.Keys.AudioBodyCacheBudgetBytes, bytes);
-        RefreshAudioStatus();
-        Bump();
+        if (SettingsVerbs.CommitBudgetBytes(bytes)) Bump();
     }
 
     // ══ 4. THE METADATA CACHE (library.db's cache tier) ═══════════════════════════════════════════════════════════
@@ -335,12 +334,7 @@ public static partial class Settings
     /// lowered ceiling trims without a restart.</summary>
     static void SetMetaBudget(int i)
     {
-        if ((uint)i >= (uint)StorageFormat.MetaBudgetBytes.Length) return;
-        long bytes = StorageFormat.MetaBudgetBytes[i];
-        Platform.Settings.Set(Platform.Keys.MetadataCacheBudgetBytes, bytes);
-        Store.Policy = Store.Policy with { ByteBudget = bytes };
-        Store.Tick();
-        Bump();
+        if (D(Tab.Storage, "metadataBudget").Writer.Choose!(i)) Bump();
     }
 
     /// <summary>The generic sub until the census answers, then the stats sentence ("N extras", localized) plus the

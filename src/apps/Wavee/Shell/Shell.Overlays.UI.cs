@@ -17,7 +17,7 @@
 //
 // THE SEAMS THIS FILE LEAVES FOR LATER WAVES (each a null-safe static, so a build without the owner still runs):
 //   · `PickAndPlayFile`       — owner O's local-file verb. Null ⇒ the whole `Play ▸` row is ABSENT (never disabled).
-//   · `LinkModules` / `MatchLink` — owner T's module host: the match-capable modules, and the router. Null router ⇒
+//   · `PlayLinkRouter.Modules` / `Match` — owner T's module host: the match-capable modules, and the router. Null router ⇒
 //                                the dialog answers "Nothing installed can play this link." in place.
 //   · `NotificationsLauncher` — owner I1's panel launcher, re-anchored to the chip when the ladder folds the bell.
 //   · `ReportDialogOpener`    — owner R's report dialog (`wavee://open?route=report`).
@@ -57,21 +57,6 @@ public static partial class Shell
     /// <summary>"Play ▸ File…" — pick a local file and play it (owner O). Null ⇒ no `Play ▸` row at all.</summary>
     public static Action? PickAndPlayFile;
 
-    /// <summary>One installed module that declares the `match` capability, as its `Play ▸` row shows it (labels already
-    /// folded through <see cref="Actions.PlayLinkRules.MenuLabel"/> / <see cref="Actions.PlayLinkRules.PlaceholderFor"/>).</summary>
-    public readonly record struct LinkModule(string Id, string MenuLabel, string Placeholder);
-
-    /// <summary>The match-capable installed modules, in install order (owner T).</summary>
-    public static Func<IReadOnlyList<LinkModule>>? LinkModules;
-
-    /// <summary>A link some module claimed: its name, the resolved title (null when it matched on shape alone), live-ness,
-    /// and the one play verb (it lights the video surface first when the module says the playable is video).</summary>
-    public sealed record LinkMatch(string ModuleName, string? Title, bool IsLive, Action Play);
-
-    /// <summary>The router: (text, pinned module id or null, token) → the match, or null when nobody owns it. A module's
-    /// own failure THROWS with its own words (owner T).</summary>
-    public static Func<string, string?, CancellationToken, Task<LinkMatch?>>? MatchLink;
-
     /// <summary>Owner I1's notification-panel launcher: (overlay, anchor thunk, the handle cell).</summary>
     public static Action<IOverlayService, Func<NodeHandle>, Ref<OverlayHandle?>>? NotificationsLauncher;
 
@@ -89,25 +74,9 @@ public static partial class Shell
             var post = UsePost();
 
             // The seams that need the REAL overlay service / hooks / post, filled once from inside the overlay host (the
-            // 0.2.9 `ActionServicesOverlayBinder`). A confirm-required bound action refuses to run without them.
-            UseEffect(() =>
-            {
-                var s = Actions.Services;
-                s.CanConfirm = static () => true;
-                s.Confirm = request => Controls.Confirm(overlay, Loc.Get(request.TitleLocKey), Loc.Get(request.BodyLocKey),
-                    Loc.Get(request.PrimaryLocKey), request.OnConfirm);
-                s.Clipboard ??= text => hooks.Clipboard?.SetText(text);
-                s.OpenExternal ??= url => hooks.OpenUri?.Invoke(url);
-                s.Post ??= post;
-                OnPlayLink ??= PlayLinkDirect;
-                Track.DrawerOverlay = overlay;
-                OnReportRequested ??= arg => ReportDialogOpener?.Invoke(overlay, arg);
-                return (Action?)(() =>
-                {
-                    s.CanConfirm = null;
-                    s.Confirm = null;
-                });
-            }, DepKey.Empty);
+            // 0.2.9 `ActionServicesOverlayBinder`). A confirm-required bound action refuses to run without them. The
+            // wiring is the composition root's (`App.BindOverlayServices`); this is where the host's values exist.
+            UseEffect(() => App.BindOverlayServices(overlay, hooks, post), DepKey.Empty);
 
             return new BoxEl
             {
@@ -149,7 +118,7 @@ public static partial class Shell
             bool covering = Setup.Runtime.WizardCovering.Value;
             bool dismissed = Platform.Settings.Get(Platform.Keys.PlaybackRuntimeSetupDismissed);
             bool pending = Platform.Settings.Get(Platform.Keys.SetupPending);
-            bool show = Setup.RuntimeRules.ShowsBanner(facts.Issue, dismissed, covering, pending);
+            bool show = OverlayGates.ShowsRuntimeBanner(facts.Issue, dismissed, covering, pending);
 
             int request = Setup.Runtime.OpenRequest.Value;
             var lastRequest = UseRef(request);
@@ -210,9 +179,8 @@ public static partial class Shell
                 var fault = Playback.Error.Value;
                 if (fault != Playback.Fault.RuntimeMissing || Setup.Runtime.Host is null) return;
                 bool pending = Platform.Settings.Get(Platform.Keys.SetupPending);
-                if (Setup.Runtime.WizardCovering.Peek() || pending) return;
-                if (Setup.RuntimeRules.ShowsBanner(Setup.Runtime.Status.Peek().Issue,
-                        Platform.Settings.Get(Platform.Keys.PlaybackRuntimeSetupDismissed), false, false)) return;
+                if (!OverlayGates.ShowsRuntimeMissingToast(fault, hostInstalled: true, Setup.Runtime.WizardCovering.Peek(), pending,
+                        Setup.Runtime.Status.Peek().Issue, Platform.Settings.Get(Platform.Keys.PlaybackRuntimeSetupDismissed))) return;
                 Notify.Say(Loc.Get(Strings.Playback.Runtime.Missing), InfoBarSeverity.Warning,
                     Loc.Get(Strings.Playback.Runtime.SetUp), Setup.Runtime.RequestOpen);
             });
@@ -324,22 +292,16 @@ public static partial class Shell
     /// so a card that appears mid-download starts at the right percentage.</summary>
     sealed class UpdateToastWatcher : Component
     {
-        const string UpdateToastKey = "update";
         const float UpdateCardBarWidth = 240f;
-
-        static readonly FloatSignal s_progress = new(0f);
-        static AppUpdateSnapshot s_previous = AppUpdateSnapshot.Idle;
 
         public override Element Render()
         {
             UseEffect(() =>
             {
+                // The model remembers the previous snapshot, writes the bound progress first, plans the toast and applies the
+                // dial (a silenced one kills it outright); this only shows what it answers.
                 var next = Notify.Update.Value;
-                var previous = s_previous;
-                s_previous = next;
-                s_progress.Value = Math.Clamp(next.ProgressPercent / 100f, 0f, 1f);
-                if (Notify.AppUpdateToasts.Plan(previous, next) is not { } plan) return;
-                if (Notify.Prefs.Level(NotifyTopic.AppUpdates) == NotifyLevel.Off) return;   // a silenced dial kills it outright
+                if (UpdateToastModel.Shared.Advance(next, static () => Notify.Prefs.Level(NotifyTopic.AppUpdates)) is not { } plan) return;
                 Show(plan, next);
             });
             return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
@@ -354,9 +316,9 @@ public static partial class Shell
             // D29: through the ONE toast door (G-212) — a direct Toast.Show bypassed Notify.Say's announce rule.
             Notify.Say(plan.Body, plan.Severity,
                 actionLabel: hasAction ? Notify.AppUpdateToasts.Label(first) : null,
-                onAction: hasAction ? () => RunUpdateAction(first, snapshot) : null,
-                dedupeKey: UpdateToastKey,
-                durationMs: plan.Sticky ? 0f : 5000f,
+                onAction: hasAction ? () => UpdateToastModel.RunAction(first, snapshot, OpenWhatsNew) : null,
+                dedupeKey: UpdateToastModel.ToastKey,
+                durationMs: plan.Sticky ? 0f : UpdateToastModel.AutoDismissMs,
                 title: title.Length > 0 ? title : null,
                 // The padded custom card exists only while Downloading; Installing/Failed are standard sticky InfoBars
                 // on the same key, so they replace the card's body in place.
@@ -369,22 +331,12 @@ public static partial class Shell
             Children =
             [
                 global::Wavee.Design.Type.DenseTitle(title) with { Color = Tok.TextPrimary },
-                ProgressBar.Create(s_progress, UpdateCardBarWidth),
+                ProgressBar.Create(UpdateToastModel.Shared.Progress, UpdateCardBarWidth),
             ],
         };
-    }
 
-    /// <summary>An update action from a toast or the panel: What's new navigates; everything else routes through the
-    /// SAME <see cref="Notify.UpdateCommand"/> door the notification-centre row uses (G-092), via
-    /// <see cref="Notify.VerbFor"/> — a toast offers one <see cref="ToastActionKind"/>, the row offers an
-    /// <see cref="UpdateRowAction"/>, and only one of the two needs an update host behind it.</summary>
-    public static void RunUpdateAction(ToastActionKind kind, AppUpdateSnapshot snapshot)
-    {
-        if (kind != ToastActionKind.WhatsNew) { Notify.UpdateCommand?.Invoke(Notify.VerbFor(kind), snapshot); return; }
-        string version = snapshot.TargetSemVer is { Length: > 0 } semver
-            ? semver
-            : Notify.AppUpdateVersion.ReleaseTagVersion(snapshot.TargetQuad);
-        GoTo(Parse("whatsnew", version));
+        /// <summary>What's new on the toast: the notes of <paramref name="version"/>.</summary>
+        static void OpenWhatsNew(string version) => GoTo(Parse("whatsnew", version));
     }
 
     // ══ 6. THE PROFILE CHIP AND ITS MENU (ch 19 W4–W7, §6.2) ═════════════════════════════════════════════════════
@@ -400,7 +352,6 @@ public static partial class Shell
         public override Element Render()
         {
             var overlay = UseContext(Overlay.Service);
-            var requestTheme = UseContext(ThemeControl.Request);
             var anchor = UseRef<NodeHandle>(default);
             var handle = UseRef<OverlayHandle?>(null);
             var notifyHandle = UseRef<OverlayHandle?>(null);     // a SECOND handle: the panel re-anchored here never fights the menu's
@@ -410,7 +361,7 @@ public static partial class Shell
             _ = Entities.Current.Users.Changed.Value;             // subscribe: the account's identity lands
             var identity = ReadIdentity();
             // Presentation mode (the Store shot): a generic picture and no name — a listing image carries no account data.
-            bool presenting = Diagnostics.StoreShot.Presenting.Value;
+            bool presenting = FrameFacts.Presenting.Value;
             if (presenting) identity = new AccountIdentity(true, "", null);
             float nameCap = Actions.ProfileRules.NameCap(Layout.ChromeProfileNameW);
 
@@ -432,7 +383,7 @@ public static partial class Shell
                 var tier = Spotify.Current.Tier;
                 handle.Value = overlay.Open(
                     () => anchor.Value,
-                    () => ProfileMenuContent(peekIdentity, tier, unread, actionsInMenu, overlay, requestTheme, Close,
+                    () => ProfileMenuContent(peekIdentity, tier, unread, actionsInMenu, overlay, Close,
                         () => NotificationsLauncher?.Invoke(overlay, () => anchor.Value, notifyHandle)),
                     FlyoutPlacement.BottomEdgeAlignedRight,
                     // MENU chrome, not flyout-presenter chrome: the anchored 250 ms MenuPopupThemeTransition unfold over a
@@ -441,6 +392,7 @@ public static partial class Shell
                     {
                         ConstrainToRootBounds = false,
                     });
+                OverlayService.Track(handle.Value);
                 handle.Value.ClosedAction = () => handle.Value = null;
             }
 
@@ -475,7 +427,7 @@ public static partial class Shell
 
     /// <summary>The account flyout: the header over stock WinUI menu rows, in the row table's order.</summary>
     static Element ProfileMenuContent(AccountIdentity identity, Spotify.Tier tier, int unread, bool actionsInMenu,
-        IOverlayService overlay, Action<float>? requestTheme, Action close, Action openNotifications)
+        IOverlayService overlay, Action close, Action openNotifications)
     {
         var table = Actions.ProfileRules.Rows(PickAndPlayFile is not null, actionsInMenu, NotificationsLauncher is not null,
             hasProfile: User.Me.IsValid);
@@ -513,7 +465,7 @@ public static partial class Shell
                 case Actions.ProfileRow.Theme:
                     bool light = Actions.ProfileRules.OffersLightTheme(dark);   // labelled with the TARGET theme
                     items.Add(new MenuFlyoutItem(Loc.Get(light ? Strings.Shell.LightTheme : Strings.Shell.DarkTheme),
-                        light ? Icons.Sun : Icons.Moon, Invoke: () => { close(); ToggleTheme(requestTheme); }));
+                        light ? Icons.Sun : Icons.Moon, Invoke: () => { close(); Appearance.ToggleMode(); }));
                     break;
                 case Actions.ProfileRow.LogOut:
                     items.Add(new MenuFlyoutItem(Loc.Get(Strings.Auth.LogOut), Icons.SignOut,
@@ -588,7 +540,7 @@ public static partial class Shell
             new(Loc.Get(Strings.Play.File), Icons.Document, Invoke: () => { close(); PickAndPlayFile?.Invoke(); }),
             new(Loc.Get(Strings.Play.Link), Icons.Link, Invoke: () => { close(); OpenPlayLink(overlay, null, generic); }),
         };
-        if (LinkModules?.Invoke() is { Count: > 0 } modules)
+        if (PlayLinkRouter.Modules?.Invoke() is { Count: > 0 } modules)
         {
             items.Add(MenuFlyoutItem.Separator);
             for (int i = 0; i < modules.Count; i++)
@@ -631,8 +583,7 @@ public static partial class Shell
                         Button.Accent(Loc.Get(Strings.Auth.LogOut), () =>
                         {
                             h?.Close();
-                            Log.Info("ui", "profile.logout.confirmed");
-                            Spotify.Logout();
+                            FrameVerbs.Shared.LogOut();
                         }) with { MinWidth = 96f },
                     ],
                 },
@@ -673,38 +624,6 @@ public static partial class Shell
             new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.Modal, Chrome: PopupChrome.Modal));
     }
 
-    /// <summary>`wavee://play?link=` — the same router, play verb and failure sentences as the card, with no status line:
-    /// a miss is an Informational toast, a failure the shared-key Error toast with "Try again".</summary>
-    public static void PlayLinkDirect(string link)
-    {
-        string input = Actions.PlayLinkRules.Normalize(link);
-        if (!Actions.PlayLinkRules.CanSubmit(input)) return;
-        if (MatchLink is not { } match)
-        {
-            Notify.Say(Loc.Get(Strings.Play.NoOwner), InfoBarSeverity.Informational);
-            return;
-        }
-        Action<Action> post = Actions.Services.Post ?? (static a => a());
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                var found = await match(input, null, CancellationToken.None).ConfigureAwait(false);
-                post(() =>
-                {
-                    if (found is null) { Notify.Say(Loc.Get(Strings.Play.NoOwner), InfoBarSeverity.Informational); return; }
-                    found.Play();
-                });
-            }
-            catch (Exception ex)
-            {
-                if (Actions.PlayLinkRules.IsCancelled(ex)) return;
-                post(() => Notify.Say(Actions.PlayLinkRules.ErrorText(ex, Loc.Get(Strings.Play.Failed)), InfoBarSeverity.Error,
-                    Loc.Get(Strings.Play.TryAgain), () => PlayLinkDirect(link), Actions.PlayLinkRules.FailureToastKey));
-            }
-        });
-    }
-
     /// <summary>The card. Every ctor value is an OPEN-TIME constant, so freezing them at mount is the contract; the only
     /// things that change while it is open are its own signals.</summary>
     sealed class PlayLinkCardCore(string? pinnedModuleId, string placeholder, string seed, Action close) : Component
@@ -727,7 +646,7 @@ public static partial class Shell
                 if (lookup.IsRunningNow) return;
                 string input = Actions.PlayLinkRules.Normalize(text.Peek());
                 if (input.Length == 0) return;
-                if (MatchLink is not { } match) { status.Value = Loc.Get(Strings.Play.NoOwner); return; }   // in place, never a toast
+                if (PlayLinkRouter.Match is not { } match) { status.Value = Loc.Get(Strings.Play.NoOwner); return; }   // in place, never a toast
                 status.Value = "";
                 failedInput.Value = "";        // a new attempt retires the previous failure's escape hatch
                 string? pinned = pinnedModuleId;
@@ -785,72 +704,5 @@ public static partial class Shell
                 },
             ]);
         }
-    }
-
-    // ══ 9. TEACHING TIPS (A10 — the presenter; the rules are TipsCore, the persisted set is Tips) ═══════════════════
-
-    static OverlayHandle? s_tipHandle;
-
-    /// <summary>Arm tip <paramref name="tipId"/> against <paramref name="anchor"/>, scheduled for after the next PAINTED
-    /// frame. Returns true when the gate passed. Safe to call every render: the per-launch latch makes repeats no-ops.
-    /// <para>ONE tip at a time, once per launch, never again once acknowledged; it never scrims and never steals focus;
-    /// a double post lets the page paint first; the anchor must still be live AND not parked when it opens; an inert
-    /// handle (a host-less mount) frees the slot at once. The ✕ IS "don't show again".</para></summary>
-    public static bool TryShowTip(IOverlayService? overlay, Action<Action>? post, string tipId, Func<NodeHandle> anchor,
-        Func<SceneStore?> scene, string titleKey, string bodyKey,
-        TeachingTip.PlacementMode placement = TeachingTip.PlacementMode.Bottom)
-    {
-        // A tip whose acknowledgement cannot be persisted or that has nowhere to draw is never shown (TipsCore: canPresent).
-        if (overlay is not { } host || post is not { } schedule) return false;
-        if (!Tips.Arm(tipId, canPresent: true)) return false;
-
-        schedule(() => schedule(() =>
-        {
-            if (!string.Equals(Tips.Active.Peek(), tipId, StringComparison.Ordinal) || s_tipHandle is not null) return;
-            var node = anchor();
-            var sc = scene();
-            if (sc is null || node.IsNull || !sc.IsLive(node) || (sc.Flags(node) & NodeFlags.Parked) != 0)
-            {
-                Tips.Dismiss(tipId);
-                return;
-            }
-            var handle = TeachingTip.Show(host, anchor, tip =>
-            {
-                tip.Title = Loc.Get(titleKey);
-                tip.Subtitle = Loc.Get(bodyKey);
-                tip.PreferredPlacement = placement;
-                tip.IsLightDismissEnabled = false;
-                tip.CloseButtonClick = () => Tips.Acknowledge(tipId);
-            });
-            if (!handle.IsOpen) { Tips.Dismiss(tipId); return; }
-            s_tipHandle = handle;
-            // Every close path — the ✕, CloseTip, the host's orphaned-anchor prune — releases the one slot.
-            handle.ClosedAction = () =>
-            {
-                if (ReferenceEquals(s_tipHandle, handle)) s_tipHandle = null;
-                Tips.Dismiss(tipId);
-            };
-        }));
-        return true;
-    }
-
-    /// <summary>Take the tip down WITHOUT acknowledging it (navigation away, the anchor evicted).</summary>
-    public static void CloseTip(string tipId)
-    {
-        if (!string.Equals(Tips.Active.Peek(), tipId, StringComparison.Ordinal)) return;
-        var handle = s_tipHandle;
-        s_tipHandle = null;
-        Tips.Dismiss(tipId);
-        handle?.Close();
-    }
-
-    /// <summary>The user used the taught affordance: acknowledge (durable) and take the tip down.</summary>
-    public static void AcknowledgeTip(string tipId)
-    {
-        if (!string.Equals(Tips.Active.Peek(), tipId, StringComparison.Ordinal)) return;
-        var handle = s_tipHandle;
-        s_tipHandle = null;
-        Tips.Acknowledge(tipId);
-        handle?.Close();
     }
 }
