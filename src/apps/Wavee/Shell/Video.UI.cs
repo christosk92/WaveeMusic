@@ -262,23 +262,9 @@ public static partial class Video
         s_customRatio.Value = Prefs.CustomRatio(Platform.Settings);
     }
 
-    static VideoAspectMode ToEngine(AspectPreference p) => p switch
-    {
-        AspectPreference.Crop => VideoAspectMode.UniformToFill,
-        AspectPreference.Stretch => VideoAspectMode.Fill,
-        AspectPreference.Native => VideoAspectMode.Native,
-        AspectPreference.Custom => VideoAspectMode.Custom,
-        _ => VideoAspectMode.Uniform,
-    };
+    static VideoAspectMode ToEngine(AspectPreference p) => AspectMapping.ToEngine(p);
 
-    static AspectPreference FromEngine(VideoAspectMode m) => m switch
-    {
-        VideoAspectMode.UniformToFill => AspectPreference.Crop,
-        VideoAspectMode.Fill => AspectPreference.Stretch,
-        VideoAspectMode.Native => AspectPreference.Native,
-        VideoAspectMode.Custom => AspectPreference.Custom,
-        _ => AspectPreference.Fit,
-    };
+    static AspectPreference FromEngine(VideoAspectMode m) => AspectMapping.FromEngine(m);
 
     // ── what is playing ─────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -686,19 +672,21 @@ public static partial class Video
                 var catalogue = CurrentCatalogueSize();
                 float railW = Shell.Ui.RailWidth.Value;
                 if (face != DockedFace.Cap) return;
-                if (!string.Equals(sourceKey, _fittedFor, StringComparison.Ordinal))
+                // The fit itself — the source change that unpins, the natural size's source, the pinned-or-fitted height —
+                // is the pure `DockedFit`; this effect applies it.
+                var fit = DockedFit.Decide(new DockedFit.Input(sourceKey, _fittedFor, Shell.Ui.DockedVideoHeightPinned.Peek(),
+                    Shell.Ui.DockedVideoHeight.Peek(), railW, decoded.Width, decoded.Height, src?.NaturalWidth ?? 0,
+                    src?.NaturalHeight ?? 0, catalogue.W, catalogue.H, Shell.Ui.RailBodyHeight.Peek()));
+                if (fit.SourceChanged)
                 {
                     _fittedFor = sourceKey;
                     if (Shell.Ui.DockedVideoHeightPinned.Peek()) Shell.Ui.DockedVideoHeightPinned.Value = false;
                 }
-                string dimSource = NaturalSeed.Name(NaturalSeed.Pick(decoded.Width, decoded.Height, src?.NaturalWidth ?? 0,
-                    src?.NaturalHeight ?? 0, catalogue.W, catalogue.H, out int naturalW, out int naturalH));
-                var natural = new SizeI(naturalW, naturalH);
-                bool pinned = Shell.Ui.DockedVideoHeightPinned.Peek();
-                float height = pinned
-                    ? Shell.Ui.DockedVideoHeight.Peek()
-                    : Shell.FitDockedVideoHeight(railW, natural.Width, natural.Height, Shell.Ui.RailBodyHeight.Peek());
-                if (!pinned) Shell.Ui.DockedVideoHeight.Value = height;
+                string dimSource = fit.DimSource;
+                var natural = new SizeI(fit.NaturalW, fit.NaturalH);
+                bool pinned = fit.Pinned;
+                float height = fit.Height;
+                if (fit.WritesHeight) Shell.Ui.DockedVideoHeight.Value = height;
                 var now = (sourceKey, railW, natural.Width, natural.Height, height, pinned, dimSource);
                 if (now == _loggedFit) return;
                 _loggedFit = now;
@@ -1002,26 +990,18 @@ public static partial class Video
             return kids.ToArray();
         }
 
-        static float OverlayWidth(SurfacePlacement resolved, Size2 vp, float pipW, RectF slot) => resolved switch
-        {
-            SurfacePlacement.Fullscreen => vp.Width,
-            SurfacePlacement.Docked => slot.W,
-            _ => pipW,
-        };
+        // The overlay's size and offset per resolved placement are the pure `PipOverlay` (PipGesture.cs); these only adapt the
+        // engine's value types to it.
+        static float OverlayWidth(SurfacePlacement resolved, Size2 vp, float pipW, RectF slot)
+            => PipOverlay.Width(resolved, vp.Width, pipW, slot.W);
 
-        static float OverlayHeight(SurfacePlacement resolved, Size2 vp, float pipH, RectF slot) => resolved switch
-        {
-            SurfacePlacement.Fullscreen => vp.Height,
-            SurfacePlacement.Docked => slot.H,
-            _ => pipH,
-        };
+        static float OverlayHeight(SurfacePlacement resolved, Size2 vp, float pipH, RectF slot)
+            => PipOverlay.Height(resolved, vp.Height, pipH, slot.H);
 
         static Affine2D OverlayTransform(SurfacePlacement resolved, Size2 vp, bool placed, float x, float y, float w, float h, RectF slot)
         {
-            if (resolved == SurfacePlacement.Fullscreen) return Affine2D.Identity;
-            if (resolved == SurfacePlacement.Docked) return Affine2D.Translation(slot.X, slot.Y);
-            var (ax, ay) = placed ? (x, y) : Pip.Anchor(w, h, vp.Width, vp.Height);
-            return Affine2D.Translation(PipGesture.ClampX(ax, vp.Width, w), PipGesture.ClampY(ay, vp.Height, h));
+            var o = PipOverlay.Offset(resolved, vp.Width, vp.Height, placed, x, y, w, h, slot.X, slot.Y);
+            return o.Identity ? Affine2D.Identity : Affine2D.Translation(o.X, o.Y);
         }
 
         /// <summary>The hover strip: a drag surface and the ✕, inset by the corner width and the edge band so neither sits

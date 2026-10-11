@@ -1364,111 +1364,72 @@ public static partial class Video
             => isCurrent && hasVideoCommitted && !alreadyActive;
     }
 
-    // ── the in-window mini player's geometry ────────────────────────────────────────────────────────────────────────
+    // ── the aspect policy's two vocabularies (C6, X16) ──────────────────────────────────────────────────────────────
 
-    /// <summary>The PiP's constants and its fit. The numbers are 0.2.9's verbatim, including the deliberately-inexact
-    /// default (<see cref="DefaultW"/>×<see cref="DefaultH"/> is 0.5611, not 9/16 = 0.5625): a rect restored from a
-    /// 0.2.9 profile must land identically, so the 0.25 % is kept rather than "corrected".</summary>
-    public static class Pip
+    /// <summary>The app's storage-stable aspect names (<see cref="AspectPreference"/>) and the control kit's engine enum
+    /// (<c>VideoAspectMode</c>), mapped both ways. The two are deliberately not numerically aligned: persisted data must
+    /// survive an engine enum reorder. An unknown value on either side reads as Fit / Uniform. (The engine enum is plain
+    /// data; this is the one engine type in the file.)</summary>
+    public static class AspectMapping
     {
-        public const float DefaultW = 360f, DefaultH = 202f;
-        public const float MinW = 240f, MinH = 135f;
-        /// <summary>The resize hit bands. Corner rows are 12 tall while the edge bands stay 6, so the bottom band
-        /// grazes only the transport's 8-DIP bottom padding. The chrome strip is inset by <see cref="CornerW"/>
-        /// left/right and <see cref="EdgeBand"/> top so neither the drag surface nor the ✕ sits under a resize band —
-        /// a ✕ whose corner is stolen by the NE zone is the classic overlay bug.</summary>
-        public const float EdgeBand = 6f, CornerW = 14f, CornerH = 12f;
-        /// <summary>The viewport margins the fit reserves (the player bar below, the chrome above).</summary>
-        public const float ReserveBottom = 72f, ReserveTop = 32f;
-        /// <summary>The no-report fallback ratio — <see cref="DefaultH"/>/<see cref="DefaultW"/>, NOT 9/16.</summary>
-        public const float FallbackRatio = DefaultH / DefaultW;
-
-        /// <summary>The card's height for a given width and source ratio, with BOTH a floor and a CEILING. Drop the
-        /// free term and a 9:16 portrait source in a 360-wide mini player asks for 640 DIP of height in a 900-tall
-        /// window and the card walks off the bottom. The floor wins the tie, so a very short window still gets a
-        /// 135-tall card rather than a degenerate one.</summary>
-        public static float FitHeight(float w, float ratio, float viewportH)
+        public static FluentGpu.Media.VideoAspectMode ToEngine(AspectPreference p) => p switch
         {
-            float r = ratio > 0f && float.IsFinite(ratio) ? ratio : FallbackRatio;
-            float free = MathF.Max(MinH, viewportH - ReserveBottom - ReserveTop);
-            return MathF.Max(MinH, MathF.Min(w * r, free));
-        }
+            AspectPreference.Crop => FluentGpu.Media.VideoAspectMode.UniformToFill,
+            AspectPreference.Stretch => FluentGpu.Media.VideoAspectMode.Fill,
+            AspectPreference.Native => FluentGpu.Media.VideoAspectMode.Native,
+            AspectPreference.Custom => FluentGpu.Media.VideoAspectMode.Custom,
+            _ => FluentGpu.Media.VideoAspectMode.Uniform,
+        };
 
-        /// <summary>Clamp a placed rect back inside the viewport — what a window resize re-applies so a card parked at
-        /// the old bottom-right does not end up off-screen.</summary>
-        public static void ClampToViewport(ref float x, ref float y, float w, float h, float viewportW, float viewportH)
+        public static AspectPreference FromEngine(FluentGpu.Media.VideoAspectMode m) => m switch
         {
-            x = MathF.Max(0f, MathF.Min(x, MathF.Max(0f, viewportW - w)));
-            y = MathF.Max(0f, MathF.Min(y, MathF.Max(0f, viewportH - h)));
-        }
-
-        /// <summary>The anchored resting position: bottom-right, above the player bar. While the card is not yet
-        /// user-placed this is re-derived from the viewport every frame, which is what makes it track the corner.</summary>
-        public static (float X, float Y) Anchor(float w, float h, float viewportW, float viewportH)
-            => (MathF.Max(0f, viewportW - w - 16f), MathF.Max(0f, viewportH - h - ReserveBottom - 16f));
+            FluentGpu.Media.VideoAspectMode.UniformToFill => AspectPreference.Crop,
+            FluentGpu.Media.VideoAspectMode.Fill => AspectPreference.Stretch,
+            FluentGpu.Media.VideoAspectMode.Native => AspectPreference.Native,
+            FluentGpu.Media.VideoAspectMode.Custom => AspectPreference.Custom,
+            _ => AspectPreference.Fit,
+        };
     }
 
-    // ── the mini player's gestures, the scrub preview, the join spinner, the fullscreen entry (stage B) ─────────────
-    //
-    // 0.2.9 kept these inside `InWindowVideoPip` / `WaveeShell`; stage B lifted them here so `Video.UI.cs` decides
-    // nothing. Values are 0.2.9's verbatim (ch 24 W8/W11/W12, `InWindowVideoPip.cs:452-534`, `WaveeShell.cs:793-807`).
+    // ── the docked cap's fit ────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Which edges a resize gesture drags; the anchored edges are the ones NOT named. Two edges at once is a
-    /// corner, so one handler covers all eight zones.</summary>
-    [Flags]
-    public enum PipEdge : byte { None = 0, Left = 1, Right = 2, Top = 4, Bottom = 8 }
-
-    /// <summary>The in-window mini player's drag, resize, clamp and layout reservation.</summary>
-    public static class PipGesture
+    /// <summary>The docked cap follows the CONTENT's aspect at the rail's width: the catalogue's kind-99 size seeds it before
+    /// any resolve (G-058), the manifest's dims replace that at resolve, and the decoder's report is a CONFIRM
+    /// (<see cref="NaturalSeed"/>; 16:9 when nothing is known). A splitter drag PINS the height — for THIS source only: a
+    /// new source key unpins it.</summary>
+    public static class DockedFit
     {
-        /// <summary>The gap kept from every window edge (and above the player bar).</summary>
-        public const float Margin = 16f;
+        /// <param name="SourceKey">The playing source's key ("" with none).</param>
+        /// <param name="FittedFor">The source key the cap last fitted for (null before the first fit).</param>
+        /// <param name="Pinned">Is the height pinned by a splitter drag right now?</param>
+        /// <param name="PinnedHeight">The stored height (what a pinned cap keeps).</param>
+        /// <param name="RailW">The rail's width — the card is full-bleed, so this IS the video's width.</param>
+        /// <param name="RemainingRailH">The rail height left for the cap (the fit's ceiling).</param>
+        public readonly record struct Input(string SourceKey, string? FittedFor, bool Pinned, float PinnedHeight, float RailW,
+                                            int DecodedW, int DecodedH, int ManifestW, int ManifestH, int CatalogueW, int CatalogueH,
+                                            float RemainingRailH);
 
-        /// <summary>A card may sit no closer than <see cref="Margin"/> to either side.</summary>
-        public static float ClampX(float x, float viewportW, float w)
-            => Math.Clamp(x, Margin, MathF.Max(Margin, viewportW - w - Margin));
+        /// <param name="SourceChanged">A different source than the last fit: the caller records it and drops the pin.</param>
+        /// <param name="Pinned">Is the height pinned for THIS source (a source change unpins)?</param>
+        /// <param name="NaturalW">The natural size the fit used (0×0 ⇒ none known; 16:9 applies).</param>
+        /// <param name="DimSource">Which fact sized it (<see cref="NaturalSeed.Name"/>), for the always-on fit line.</param>
+        /// <param name="Height">The cap height: the pinned one, else the content fit.</param>
+        /// <param name="WritesHeight">Should the caller publish <paramref name="Height"/>? Only when not pinned.</param>
+        public readonly record struct Result(bool SourceChanged, bool Pinned, int NaturalW, int NaturalH, string DimSource,
+                                             float Height, bool WritesHeight);
 
-        /// <summary>…and no closer than <see cref="Margin"/> to the top or to the player bar.</summary>
-        public static float ClampY(float y, float viewportH, float h)
-            => Math.Clamp(y, Margin, MathF.Max(Margin, viewportH - h - Pip.ReserveBottom - Margin));
-
-        /// <summary>The bottom space the page keeps clear: the card's height + the gap while it sits ANCHORED, 0 once the
-        /// user has placed it (a deliberately placed card is a free-floating overlay) or when it is not mounted.</summary>
-        public static float Reserve(bool mounted, bool placed, float h) => mounted && !placed ? h + Margin : 0f;
-
-        /// <summary>Should the card's HEIGHT follow the content? Always until the user sizes it; after that only when the
-        /// content's own shape changes by more than 0.01 (the user owns the width, the content owns the shape).</summary>
-        public static bool ShouldRefit(bool userSized, float fittedRatio, float contentRatio)
-            => !userSized || (fittedRatio > 0f && MathF.Abs(contentRatio - fittedRatio) > 0.01f);
-
-        /// <summary>One resize sample. The ANCHORED edge is the one not being dragged: growing right/bottom is bounded by
-        /// the viewport, growing left/top by the frozen far edge. Floors are <see cref="Pip.MinW"/> × <see cref="Pip.MinH"/>.</summary>
-        public static (float X, float Y, float W, float H) Resize(PipEdge edge, float startX, float startY, float startW,
-            float startH, float dx, float dy, float viewportW, float viewportH)
+        public static Result Decide(in Input i)
         {
-            float x = startX, y = startY, w = startW, h = startH;
-            float right = startX + startW, bottom = startY + startH;
-            if ((edge & PipEdge.Left) != 0)
-            {
-                w = Math.Clamp(startW - dx, Pip.MinW, MathF.Max(Pip.MinW, right - Margin));
-                x = right - w;
-            }
-            else if ((edge & PipEdge.Right) != 0)
-            {
-                w = Math.Clamp(startW + dx, Pip.MinW, MathF.Max(Pip.MinW, viewportW - Margin - startX));
-            }
-            if ((edge & PipEdge.Top) != 0)
-            {
-                h = Math.Clamp(startH - dy, Pip.MinH, MathF.Max(Pip.MinH, bottom - Margin));
-                y = bottom - h;
-            }
-            else if ((edge & PipEdge.Bottom) != 0)
-            {
-                h = Math.Clamp(startH + dy, Pip.MinH, MathF.Max(Pip.MinH, viewportH - Margin - Pip.ReserveBottom - startY));
-            }
-            return (x, y, w, h);
+            bool changed = !string.Equals(i.SourceKey, i.FittedFor, StringComparison.Ordinal);
+            bool pinned = i.Pinned && !changed;
+            string dimSource = NaturalSeed.Name(NaturalSeed.Pick(i.DecodedW, i.DecodedH, i.ManifestW, i.ManifestH,
+                i.CatalogueW, i.CatalogueH, out int naturalW, out int naturalH));
+            float height = pinned ? i.PinnedHeight : Shell.FitDockedVideoHeight(i.RailW, naturalW, naturalH, i.RemainingRailH);
+            return new Result(changed, pinned, naturalW, naturalH, dimSource, height, WritesHeight: !pinned);
         }
     }
+
+    // The in-window mini player's geometry (`Pip`, `PipBounds`, `PipEdge`, `PipGesture`, `PipOverlay`) is `PipGesture.cs`.
 
     /// <summary>A scrub PREVIEW (a pointer still down on the transport's rail) is a COARSE seek planned through
     /// <see cref="Playback.Video.SeekPlanner"/>: a buffered keyframe when there is one, the segment start when the grid is
