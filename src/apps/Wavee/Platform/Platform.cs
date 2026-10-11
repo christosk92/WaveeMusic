@@ -1205,7 +1205,7 @@ public static partial class Platform
         HostOpenSettings();
         ZoomAutoPolicy.MigrateMode(Settings);
         Developer.Load(Settings);
-        Diagnostics.ScrollSettings.Load(Settings);   // the scroll probe level + feel profile, before the first window
+        ScrollProbePrefs.Load(Settings);   // the scroll probe level + feel profile, before the first window
         string osCulture = "";
         if (gui) HostOsCulture(ref osCulture);
         var locale = AppLocale.Resolve(Settings, osCulture);

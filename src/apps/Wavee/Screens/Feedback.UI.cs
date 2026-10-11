@@ -357,8 +357,7 @@ public static partial class Feedback
         }
 
         string BuildBundle(ComposedReport c, ReportLabels labels, in ReportDraft draft, bool includeLogs, DateTimeOffset now)
-            => ReportBundle.Build(Kind, c.Identity, ReportForm.Answers(Kind, labels, c.Rules, draft), c.Diagnostics,
-                c.CrashHead, c.LogLines, c.LogSource, includeLogs, now);
+            => ReportComposer.BuildBundle(Kind, c, labels, in draft, includeLogs, now);
 
         void CopyReport(ComposedReport? c, ReportDraft draft, bool includeLogs, InputHooks hooks)
         {
@@ -378,15 +377,11 @@ public static partial class Feedback
                 done: path =>
                 {
                     if (path is null) return;
-                    try
-                    {
-                        File.WriteAllText(path, BuildBundle(c, FormLabels(), draft, includeLogs, now));
-                        Notify.Say(Strings.Report.Saved(path), InfoBarSeverity.Success);
-                    }
-                    catch (Exception ex)
-                    {
-                        Notify.Say(ex.Message, InfoBarSeverity.Error);
-                    }
+                    Exception? failure;
+                    try { failure = ReportComposer.TryWriteFile(path, BuildBundle(c, FormLabels(), draft, includeLogs, now)); }
+                    catch (Exception ex) { failure = ex; }   // the bundle build itself failing is toasted like the write
+                    if (failure is null) Notify.Say(Strings.Report.Saved(path), InfoBarSeverity.Success);
+                    else Notify.Say(failure.Message, InfoBarSeverity.Error);
                 },
                 failed: ex => Notify.Say(ex.Message, InfoBarSeverity.Error));
         }
@@ -400,12 +395,7 @@ public static partial class Feedback
             string bundle = BuildBundle(c, labels, draft, includeLogs, now);
 
             hooks.Clipboard?.SetText(bundle);
-            try
-            {
-                Directory.CreateDirectory(Platform.LogFolder);
-                File.WriteAllText(Path.Combine(Platform.LogFolder, ReportBundle.FileName(now)), bundle);
-            }
-            catch (Exception ex) { Log.Warn("report", "save bundle failed", ex); }
+            ReportComposer.SaveBesideLogs(bundle, now);
 
             string urlTitle = ReportForm.UrlTitle(draft.Title, c.CrashSummary, Loc.Get(Strings.Report.CrashTitle));
             string url = IssueFormUrl.Build(Kind, c.Identity, urlTitle,
@@ -422,117 +412,5 @@ public static partial class Feedback
         if (!Actions.PlayLinkRules.IsWebUrl(url)) return;
         if (Actions.Services.OpenExternal is { } open) { open(url); return; }
         hooks.OpenUri?.Invoke(url);
-    }
-
-    // ══ 6. THE COMPOSER ════════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The UI-thread half of a compose: everything that reads live app state.</summary>
-    sealed record ComposeInput(ReportKind Kind, ReportPrefill? Prefill, RedactionRules Rules,
-        ReportIdentity Identity, string DiagnosticsRaw);
-
-    /// <summary>The fully-assembled, ALREADY-REDACTED material the dialog builds the bundle and URL from. <see cref="Rules"/>
-    /// rides along so each keystroke's answers are redacted with the SAME rules the compose used.</summary>
-    sealed record ComposedReport(ReportIdentity Identity, string Diagnostics, string[] LogLines, string? CrashHead,
-        string? CrashReportPath, string LogSource, string CrashSummary, string CrashTime, RedactionRules Rules);
-
-    /// <summary>The ONE place redaction runs over the big text (once, on a pool thread). <see cref="Compose"/> touches files,
-    /// <see cref="Log.Snapshot"/> and the <see cref="PastSessionLog"/> seam only — no engine call.</summary>
-    static class ReportComposer
-    {
-        /// <summary>UI thread: the rules (OS account + machine, and — when known — the signed-in account's id and display
-        /// name plus every Connect device the roster holds), the identity, and the raw diagnostics text.</summary>
-        public static ComposeInput Gather(ReportKind kind, ReportPrefill? prefill)
-        {
-            string diagnostics = "";
-            try { diagnostics = DiagnosticsText?.Invoke() ?? ""; }
-            catch (Exception ex) { Log.Warn("report", "diagnostics text failed", ex); }
-            return new ComposeInput(kind, prefill, Rules(), Identity(), diagnostics);
-        }
-
-        static RedactionRules Rules()
-        {
-            string? account = null, displayName = null;
-            string[]? devices = null;
-            try
-            {
-                if (Platform.Scope.Account is { Length: > 0 } a) account = a;
-                var me = User.Me;
-                if (me.IsValid && me.Knows(UserFields.Identity)) displayName = Entities.Strings.Resolve(me.NameId);
-                var rows = Playback.Devices.Rows;
-                if (rows.Length > 0)
-                {
-                    devices = new string[rows.Length];
-                    for (int i = 0; i < rows.Length; i++) devices[i] = rows[i].Name ?? "";
-                }
-            }
-            catch (Exception ex) { Log.Warn("report", "redaction rules incomplete", ex); }
-            return new RedactionRules(Environment.UserName, Environment.MachineName, account, displayName, devices);
-        }
-
-        static ReportIdentity Identity()
-        {
-            var v = Platform.Version;
-            return ReportIdentity.From(v.SemVer, v.Codename, v.Quad, v.Commit, v.Channel, v.IsStore, v.IsDev,
-                PackageIdentity.IsPackaged, System.Runtime.InteropServices.RuntimeInformation.OSArchitecture.ToString(),
-                Environment.OSVersion.Version.Build);
-        }
-
-        /// <summary>Pool thread. Log source, in priority order: (1) the prefill's crash-report file (the Reports
-        /// list's "View"/crash prompt's "Report on GitHub instead" always carry one; a bare <c>ReportKind.Crash</c>
-        /// with none is only the deep-link/probe corner) — its tail IS the excerpt; (2) a specific past session; (3)
-        /// this session's ring, last <see cref="ReportBundle.ManualLogLines"/> entries.</summary>
-        public static ComposedReport Compose(ComposeInput input)
-        {
-            var rules = input.Rules;
-            var id = input.Identity;
-            string diagnostics = ReportRedactor.Redact(input.DiagnosticsRaw, rules);
-
-            string? reportPath = input.Prefill?.CrashReportPath;
-            if (reportPath is { Length: > 0 } && TryReadFile(reportPath, out string fileText, out string crashTime))
-            {
-                var (head, tail) = ReportBundle.SplitCrashReport(fileText);
-                string[] lines = new string[tail.Length];
-                for (int i = 0; i < tail.Length; i++) lines[i] = ReportRedactor.Redact(tail[i], rules);
-                string summary = ReportRedactor.Redact(ReportBundle.ExceptionSummary(head), rules);
-                return new ComposedReport(id, diagnostics, lines, ReportRedactor.Redact(head, rules), reportPath,
-                    "crash report", summary, crashTime, rules);
-            }
-
-            string? pastId = input.Prefill?.PastSessionId;
-            if (pastId is not null && PastSessionLog?.Invoke(pastId) is { } raw)
-            {
-                int cap = input.Kind == ReportKind.Crash ? ReportBundle.CrashLogLines : ReportBundle.ManualLogLines;
-                int take = Math.Min(raw.Count, cap), start = raw.Count - take;
-                string[] lines = new string[take];
-                for (int i = 0; i < take; i++) lines[i] = ReportRedactor.Redact(raw[start + i], rules);
-                return new ComposedReport(id, diagnostics, lines, null, null, "previous session", "", "", rules);
-            }
-
-            var snapshot = Log.Snapshot();
-            int count = Math.Min(snapshot.Length, ReportBundle.ManualLogLines), from = snapshot.Length - count;
-            var thisSession = new string[count];
-            for (int i = 0; i < count; i++)
-            {
-                var e = snapshot[from + i];
-                thisSession[i] = ReportRedactor.Redact("seq=" + e.Sequence.ToString(System.Globalization.CultureInfo.InvariantCulture) + " " + e.Format(), rules);
-            }
-            return new ComposedReport(id, diagnostics, thisSession, null, null, "this session", "", "", rules);
-        }
-
-        /// <summary>The file's text plus its last-write time ("t") for the crash InfoBar — read here, off the UI thread,
-        /// rather than per render.</summary>
-        static bool TryReadFile(string path, out string text, out string time)
-        {
-            text = "";
-            time = "";
-            try
-            {
-                if (!File.Exists(path)) return false;
-                text = File.ReadAllText(path);
-                time = File.GetLastWriteTime(path).ToString("t");
-                return true;
-            }
-            catch { return false; }
-        }
     }
 }

@@ -61,33 +61,8 @@ public static partial class Crash
             int wizardEpoch = Setup.WizardMarkerEpoch.Value;   // re-evaluate the deferral on every wizard marker bump
             UseEffect(() =>
             {
-                if (Host.ThisLaunch is not { } bundle) return;
-                if (Setup.Gating.IsPending(Platform.Settings) || Setup.WizardOpen.Peek()) return;   // deferred — still armed
-                Host.ThisLaunch = null;                     // one-shot: consumed now, whichever arm fires below
-                ReleaseNotes.CrashNoticeThisLaunch = true;   // the after-update plate waits for the next launch
-
-                // The EFFECTIVE mode: a stored Automatic on a build that can't send behaves as Ask each time.
-                var mode = ConsentPolicy.Effective((Reporting)Platform.Settings.Get(Platform.Keys.CrashReporting), Uploader.Configured);
-                bool online = NetworkStatus.IsOnline;
-                var action = ConsentPolicy.Decide(mode, bundle.Summary.Kind, online);
-                switch (action)
-                {
-                    case ConsentPolicy.Action.UploadSilently:
-                    case ConsentPolicy.Action.Toast:
-                    {
-                        // Automatic queues the report either way. Online, the only toast is the real outcome; offline,
-                        // say now that it waits (the drain's own "still offline" outcome then stays quiet).
-                        bool offline = action == ConsentPolicy.Action.Toast;
-                        bool dumpAllowed = ConsentPolicy.DumpAllowed(mode, bundle.Summary.Kind,
-                            Platform.Settings.Get(Platform.Keys.CrashIncludeDump), manualSend: false);
-                        Uploader.Enqueue(bundle, dumpAllowed, OutcomeToasts.Track(bundle, queuedShown: offline));
-                        if (offline) OutcomeToasts.Show(bundle, UploadToasts.For(SendState.Queued, queuedAlreadyShown: false));
-                        break;
-                    }
-                    case ConsentPolicy.Action.Prompt:
-                        OpenPrompt(overlay, bundle);
-                        break;
-                }
+                // The launch decision (deferral behind the wizard, the one-shot, silent upload / queued toast) is CrashConsent's.
+                if (CrashConsent.ResolveLaunch() is { } bundle) OpenPrompt(overlay, bundle);
             }, wizardEpoch);
 
             // ── effect B: a hang the child reported for THIS process while it kept running ──
@@ -148,17 +123,8 @@ public static partial class Crash
 
     static string FormatMb(long bytes) => (bytes / 1_048_576.0).ToString("0.0", CultureInfo.InvariantCulture) + " MB";
 
-    /// <summary>Pool thread: the scrubbed text a send would carry — what the prompt previews and Saved reports' "Copy"
-    /// puts on the clipboard. "" when the scrub itself failed (logged).</summary>
-    internal static string ComposePreview(BundleInfo bundle, Feedback.RedactionRules rules)
-    {
-        string reportTxt = "";
-        try { reportTxt = File.ReadAllText(bundle.ReportTxt); } catch (Exception ex) { Log.Warn("crash", "preview.read.report.failed", ex); }
-        string[] tail = Array.Empty<string>();
-        try { if (File.Exists(bundle.TailTxt)) tail = File.ReadAllLines(bundle.TailTxt); } catch (Exception ex) { Log.Warn("crash", "preview.read.tail.failed", ex); }
-        try { return Scrubber.Preview(Scrubber.Scrub(bundle.Summary, reportTxt, tail, rules)); }
-        catch (Exception ex) { Log.Warn("crash", "preview.scrub.failed", ex); return ""; }
-    }
+    /// <summary>Pool thread: the scrubbed text a send would carry (<see cref="CrashConsent.ComposePreview"/>).</summary>
+    internal static string ComposePreview(BundleInfo bundle, Feedback.RedactionRules rules) => CrashConsent.ComposePreview(bundle, rules);
 
     // ══ 2. THE OUTCOME TOASTS ══════════════════════════════════════════════════════════════════════════════════════
 
@@ -257,14 +223,7 @@ public static partial class Crash
                         Notify.Say(Loc.Get(Strings.Report.Preparing), InfoBarSeverity.Informational);
                         return false;
                     }
-                    if (!FromList)
-                    {
-                        if (always.Peek()) Platform.Settings.Set(Platform.Keys.CrashReporting, (int)Reporting.Auto);
-                        Platform.Settings.Set(Platform.Keys.CrashConsentAsked, true);
-                    }
-                    // A manual send shows what it sends, so the dump checkbox alone decides (ConsentPolicy.DumpAllowed,
-                    // manualSend). The toast waits for the service's answer.
-                    Uploader.Enqueue(Bundle, includeDump.Peek() && Bundle.HasDump, OutcomeToasts.Track(Bundle, queuedShown: false));
+                    CrashConsent.Submit(Bundle, FromList, always.Peek(), includeDump.Peek());
                     return true;
                 };
                 return (Action?)(() => Session.Submit = null);
