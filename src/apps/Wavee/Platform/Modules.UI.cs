@@ -54,24 +54,24 @@ public static partial class Modules
         Shell.SetPage(Shell.RouteKind.Module, static (in Shell.Route route) => PageFor(in route));
         Playback.Audio.ModuleOpen = OpenAudio;
         Playback.Audio.LocalPath = Playlist.LocalPathOf;
-        Shell.LinkModules = LinkModulesNow;
-        Shell.MatchLink = MatchLinkAsync;
+        PlayLinkRouter.Modules = LinkModulesNow;
+        PlayLinkRouter.Match = MatchLinkAsync;
         InstallVideoTier();
     }
 
-    /// <summary>THE <c>Shell.LinkModules</c> seam: the match-capable installed modules, in catalog order, labelled by
+    /// <summary>THE <c>PlayLinkRouter.Modules</c> seam: the match-capable installed modules, in catalog order, labelled by
     /// their own manifests (an authored loc key wins, then the authored label, then the display name + ellipsis).</summary>
-    public static IReadOnlyList<Shell.LinkModule> LinkModulesNow()
+    public static IReadOnlyList<LinkModule> LinkModulesNow()
     {
         if (s_host is not { } host) return [];
-        var rows = new List<Shell.LinkModule>(host.Installed.Count);
+        var rows = new List<LinkModule>(host.Installed.Count);
         string fallbackPlaceholder = Loc.Get(Strings.Play.Placeholder);
         foreach (InstalledModule module in host.Installed)
         {
             ModuleManifest m = module.Manifest;
             if (!ModuleCapabilities.Declares(m, ModuleCapabilities.Match)) continue;
             string? authored = m.Menu?.LabelLocKey is { Length: > 0 } key && global::FluentGpu.Localization.Localization.Has(key) ? Loc.Get(key) : m.Menu?.Label;
-            rows.Add(new Shell.LinkModule(module.Id, Actions.PlayLinkRules.MenuLabel(authored, m.DisplayName, module.Id),
+            rows.Add(new LinkModule(module.Id, Actions.PlayLinkRules.MenuLabel(authored, m.DisplayName, module.Id),
                 Actions.PlayLinkRules.PlaceholderFor(m.Menu?.Placeholder, fallbackPlaceholder)));
         }
         return rows;
