@@ -1,0 +1,5 @@
+# WVTH010 input: the retired presentation switches (themes plan 2.4, 7.1). One entry per line:
+#   key <setting name>          a persisted setting name; a string constant equal to it outside Theming/ThemeBootstrap.cs is reported
+#   member <Type.Member>        a deleted member (nested types as Outer.Inner.Member); a reference to it outside the bootstrap is reported
+# Each migration PR (M-PR) appends what it retires here; its grandfathered uses go into analyzer-baseline/WVTH010.txt
+# (shrink-only, empty after F4). Nothing is retired yet.

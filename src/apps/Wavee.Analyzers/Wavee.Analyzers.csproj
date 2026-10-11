@@ -6,7 +6,10 @@
     netstandard2.0 assembly is never linked into the app. Mirrors the engine's FluentGpu.SourceGen project.
       Baselines/  the shared baseline infrastructure: AdditionalFiles analyzer-baseline\WVTHnnn.txt, a compilation-end
                   stale-entry diagnostic (WVTH900) and the no-baseline-allowed diagnostic (WVTH901).
-      Themes/     WVTH001, the Wavee.Themes.* layering rule.
+      Themes/     WVTH001 (the Wavee.Themes.* layering rule) and WVTH002-WVTH011: core-state references from themes,
+                  literal looks, identity reads, option layers, key contract, theme.* writes, core hosts, retired names,
+                  structure parameters. RuleSupport.cs is their shared shape (ThemeRuleAnalyzer, RuleEnv, Symbols);
+                  WVTH010/WVTH011 read analyzer-input\*.txt AdditionalFiles.
   -->
 
   <PropertyGroup>

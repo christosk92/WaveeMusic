@@ -1204,6 +1204,7 @@ public static partial class Platform
         if (!Args.RelaunchBroker && !Args.Headless && !Args.Fake) HostApplyFactoryReset();
         HostOpenSettings();
         ZoomAutoPolicy.MigrateMode(Settings);
+        Wavee.Theming.ThemeBootstrap.Run(Settings);   // themes plan 7.1: named, copy-only, order-independent steps (none shipped yet); before anything reads a presentation setting
         Developer.Load(Settings);
         ScrollProbePrefs.Load(Settings);   // the scroll probe level + feel profile, before the first window
         string osCulture = "";
