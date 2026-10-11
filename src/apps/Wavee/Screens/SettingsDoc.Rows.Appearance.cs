@@ -1,0 +1,398 @@
+// ── Screens/SettingsDoc.Rows.Appearance.cs — the Appearance tab as document rows + their verbs ─────────────────────
+//
+// Role: CORE (PR C13; extraction X35 writers). Theme · Lists · Sidebar · Lyrics · Fullscreen · Now playing. The rows still
+// point at TODAY'S keys (each moves to a theme option in its M-PR, §2.3, re-binding exactly one row here). Every write goes
+// through the epoch it always bumped (ch 27 W2 "three facts"): marquee / washes / hide artwork / row density / track list
+// style / daylist clock → `Prefs.Appearance`; page layout, rail uniform, rail reset → `Prefs.DetailHero`; the lyrics blur →
+// `Prefs.Lyrics`; the two Now-playing rows → `Prefs.NpvPlayer` (the tab reads that epoch, no page re-read); the Fullscreen
+// rows → `Prefs.Stage` (raw key writes included — the stage reads that epoch). A verb returns whether the PAGE must re-read.
+
+using T = Wavee.Settings.Tab;
+using K = Wavee.SettingsRowKind;
+
+namespace Wavee;
+
+public static partial class SettingsDoc
+{
+    /// <summary>The Q7 reason a sidebar control gives while the sidebar is being edited (the palette path toasts the same words).</summary>
+    public const string FinishEditingKey = "sidebar.pane.finishEditing";
+
+    static IReadOnlyList<SettingsSection> AppearanceSections() =>
+    [
+        Sect(T.Appearance, "Theme", Strings.Settings.Appearance.Title, Strings.Settings.Appearance.Subtitle,
+            Make(T.Appearance, "Theme", "theme", K.Segmented, Strings.Settings.Appearance.Theme,
+                SettingsWriter.OfChoice("appearance.mode", SettingsVerbs.SetThemeMode),
+                captionKey: Strings.Settings.Appearance.ThemeSub, value: s => (int)Appearance.ModeOf(s.Get(Platform.Keys.ThemeMode))),
+            // A combo, not segments: thirteen items (Auto + twelve rungs). Index 0 is "Auto (N%)" for both Auto and Dense.
+            Make(T.Appearance, "Theme", "zoom", K.Choice, Strings.Settings.Appearance.Zoom,
+                SettingsWriter.OfChoice("zoom.pick", SettingsVerbs.PickZoom),
+                captionKey: Strings.Settings.Appearance.ZoomSub, value: _ => SettingsVerbs.ZoomIndex()),
+            Make(T.Appearance, "Theme", "marquee", K.Toggle, Strings.Settings.Appearance.Marquee,
+                SettingsWriter.OfToggle("appearance.marquee", on => SettingsVerbs.SetAppearanceToggle(Platform.Keys.MarqueeEnabled, on)),
+                captionKey: Strings.Settings.Appearance.MarqueeSub, value: BoolOf(Platform.Keys.MarqueeEnabled)),
+            Make(T.Appearance, "Theme", "colorWashes", K.Toggle, Strings.Settings.Appearance.ColorWashes,
+                SettingsWriter.OfToggle("appearance.colorWashes", on => SettingsVerbs.SetAppearanceToggle(Platform.Keys.ColorWashesEnabled, on)),
+                captionKey: Strings.Settings.Appearance.ColorWashesSub, value: BoolOf(Platform.Keys.ColorWashesEnabled)),
+            // DEVELOPER-ONLY: a normal build navigates at `Design.Nav.DefaultStyle` (Classic) and is offered no choice.
+            Make(T.Appearance, "Theme", "pageMotion", K.Segmented, Strings.Settings.Appearance.PageMotion,
+                SettingsWriter.OfChoice("appearance.pageMotion", SettingsVerbs.SetPageMotionStyle),
+                captionKey: Strings.Settings.Appearance.PageMotionSub,
+                value: _ => Prefs.Appearance.PageMotionStyle(Design.PageMotionStyleCount))),
+
+        Sect(T.Appearance, "Lists", Strings.Settings.Layout.Title, Strings.Settings.Layout.Subtitle,
+            Make(T.Appearance, "Lists", "rowDensity", K.Picker, Strings.Settings.Appearance.RowDensity,
+                SettingsWriter.OfChoice("lists.rowDensity", SettingsVerbs.SetDensity),
+                captionKey: Strings.Settings.Appearance.RowDensitySub, value: s => Prefs.Clamp(s.Get(Platform.Keys.RowDensity), 4)),
+            Make(T.Appearance, "Lists", "hideTrackArtwork", K.Toggle, Strings.Settings.Appearance.HideTrackArtwork,
+                SettingsWriter.OfToggle("lists.hideTrackArtwork", SettingsVerbs.SetHideTrackArtwork),
+                captionKey: Strings.Settings.Appearance.HideTrackArtworkSub, value: BoolOf(Platform.Keys.HideTrackArtwork)),
+            Make(T.Appearance, "Lists", "trackListStyle", K.Picker, Strings.Settings.Appearance.TrackListStyle,
+                SettingsWriter.OfChoice("lists.trackListStyle", SettingsVerbs.SetTrackListStyle),
+                captionKey: Strings.Settings.Appearance.TrackListStyleSub, value: s => Prefs.Clamp(s.Get(Platform.Keys.TrackRowStyle), 2)),
+            Make(T.Appearance, "Lists", "pageLayout", K.Picker, Strings.Settings.Appearance.PageLayout,
+                SettingsWriter.OfChoice("lists.pageLayout", SettingsVerbs.SetPageLayout),
+                captionKey: Strings.Settings.Appearance.PageLayoutSub, value: s => Prefs.Clamp(s.Get(Platform.Keys.DetailPageLayout), 2)),
+            // Both sub-rows exist only for Automatic (Hero composes no rail); "Clear all remembered sizes" is composed AWAY —
+            // not disabled — while "Keep left-rail same size" is on (ch 27 W4, parity 17).
+            Make(T.Appearance, "Lists", "railUniform", K.Toggle, Strings.Settings.Appearance.RailUniform,
+                SettingsWriter.OfToggle("lists.railUniform", SettingsVerbs.SetRailUniform),
+                captionKey: Strings.Settings.Appearance.RailUniformSub, value: BoolOf(Platform.Keys.DetailRailUniform),
+                visible: f => f.PageLayout == Prefs.DetailHero.Automatic),
+            // The reset's enable gate: a destructive-looking no-op is never offered. The uniform pair is excluded.
+            Make(T.Appearance, "Lists", "railReset", K.Action, Strings.Settings.Appearance.RailReset,
+                SettingsWriter.OfAction("lists.railReset", SettingsVerbs.ResetRailSizes),
+                captionKey: Strings.Settings.Appearance.RailResetSub,
+                enabled: f => f.RailCustomized ? SettingsEnablement.On : SettingsEnablement.Off(null), silent: true,
+                visible: f => f.PageLayout == Prefs.DetailHero.Automatic && !f.RailUniform,
+                confirm: new SettingsConfirm(Strings.Settings.Appearance.RailResetConfirmTitle,
+                    Strings.Settings.Appearance.RailResetConfirmBody, Strings.Settings.Appearance.RailResetAction)),
+            // No page re-read: nothing else on this tab shows the clock.
+            Make(T.Appearance, "Lists", "daylistClock", K.Choice, Strings.Settings.Appearance.DaylistClock,
+                SettingsWriter.OfChoice("lists.daylistClock", SettingsVerbs.SetDaylistClock),
+                captionKey: Strings.Settings.Appearance.DaylistClockSub, value: _ => (int)Prefs.Appearance.DaylistClock())),
+
+        Sect(T.Appearance, "Sidebar", Strings.Settings.Sidebar.Title, Strings.Settings.Sidebar.Subtitle,
+            // The cards switch at once; while the sidebar is being edited they say why they do not (design Q7).
+            Make(T.Appearance, "Sidebar", "sidebarDesign", K.Picker, Strings.Settings.Sidebar.Layout,
+                SettingsWriter.OfChoice("sidebar.layout", SettingsVerbs.SwitchSidebarLayout),
+                captionKey: Strings.Settings.Sidebar.LayoutSub, value: _ => (int)Sidebar.Layout.Peek(),
+                enabled: NotWhileEditing),
+            Make(T.Appearance, "Sidebar", "sidebarDensity", K.Choice, Strings.Settings.Sidebar.Density,
+                SettingsWriter.OfChoice("sidebar.density", SettingsVerbs.SetSidebarDensity),
+                captionKey: Strings.Settings.Sidebar.DensitySub, value: _ => (int)Sidebar.Density.Peek(), catalog: false),
+            Make(T.Appearance, "Sidebar", "sidebarReset", K.Action, Strings.Settings.Sidebar.Reset,
+                SettingsWriter.OfAction("sidebar.reset", SettingsVerbs.ResetSidebarLayout),
+                captionKey: Strings.Settings.Sidebar.ResetSub,
+                enabled: f => f.SidebarEditing ? SettingsEnablement.Off(FinishEditingKey)
+                    : f.SidebarModified ? SettingsEnablement.On : SettingsEnablement.Off(null),
+                silent: true, catalog: false),
+            Make(T.Appearance, "Sidebar", "sidebarCustomize", K.Action, "sidebar.menu.edit",
+                SettingsWriter.OfAction("sidebar.edit", SettingsVerbs.EditSidebar),
+                captionKey: "settings.sidebar.editSub", enabled: NotWhileEditing),
+            Make(T.Appearance, "Sidebar", "sidebarResetEverything", K.Action, "sidebar.menu.resetEverything",
+                SettingsWriter.OfAction("sidebar.resetEverything", SettingsVerbs.ResetSidebarEverything),
+                captionKey: "settings.sidebar.resetEverythingSub", enabled: NotWhileEditing, catalog: false)),
+
+        Sect(T.Appearance, "Lyrics", Strings.Settings.Lyrics.Title, Strings.Settings.Lyrics.Subtitle,
+            // The 0..100 slider; "Auto" (a link beside it, only while pinned to an explicit value) writes −1 back.
+            Make(T.Appearance, "Lyrics", "lyricsBlur", K.Slider, Strings.Settings.Appearance.LyricsBlur,
+                SettingsWriter.OfSlider("lyrics.blur", SettingsVerbs.SetLyricsBlur),
+                captionKey: Strings.Settings.Appearance.LyricsBlurSub,
+                value: s => (float)Lyrics.BlurPolicy.Resolve(s.Get(Platform.Keys.LyricsBlurStrength))),
+            Make(T.Appearance, "Lyrics", "lyricsBlurAuto", K.Action, Strings.Settings.Appearance.LyricsBlurAuto,
+                SettingsWriter.OfAction("lyrics.blurAuto", SettingsVerbs.ResetLyricsBlur), catalog: false),
+            // On-device AI lyrics (AiLyrics.UI.Settings.cs): the card is the AI module's own state machine; its switches
+            // are rows here, its per-language and per-file verbs stay the module's.
+            Make(T.Appearance, "Lyrics", "aiLyrics", K.Toggle, Strings.Settings.Lyrics.Ai.Title,
+                SettingsWriter.OfToggle("ai.enabled", SettingsVerbs.SetAiLyricsEnabled)),
+            Make(T.Appearance, "Lyrics", "aiWordSync", K.Toggle, Strings.Settings.Lyrics.Ai.WordSync,
+                SettingsWriter.OfToggle("ai.wordSync", on => SettingsVerbs.SetAiPref(Platform.Keys.AiLyricsWordSync, on)),
+                captionKey: Strings.Settings.Lyrics.Ai.WordSyncSub, value: BoolOf(Platform.Keys.AiLyricsWordSync)),
+            Make(T.Appearance, "Lyrics", "aiPlainText", K.Toggle, Strings.Settings.Lyrics.Ai.PlainText,
+                SettingsWriter.OfToggle("ai.plainText", on => SettingsVerbs.SetAiPref(Platform.Keys.AiLyricsPlainText, on)),
+                captionKey: Strings.Settings.Lyrics.Ai.PlainTextSub, value: BoolOf(Platform.Keys.AiLyricsPlainText)),
+            Make(T.Appearance, "Lyrics", "aiBatterySaver", K.Toggle, Strings.Settings.Lyrics.Ai.BatterySaver,
+                SettingsWriter.OfToggle("ai.batterySaver", on => SettingsVerbs.SetAiPref(Platform.Keys.AiLyricsOnBatterySaver, on)),
+                captionKey: Strings.Settings.Lyrics.Ai.BatterySaverSub, value: BoolOf(Platform.Keys.AiLyricsOnBatterySaver)),
+            Make(T.Appearance, "Lyrics", "aiLanguages", K.Composite, Strings.Settings.Lyrics.Ai.Languages,
+                SettingsWriter.Owned("AiLyrics.InstallLanguage/RemoveLanguage")),
+            Make(T.Appearance, "Lyrics", "aiFiles", K.Composite, Strings.Settings.Lyrics.Ai.Files,
+                SettingsWriter.Owned("AiLyrics.OpenFolder/RemoveFiles"))),
+
+        // The fullscreen stage's settings, mirrored from its gallery and options popover. The page reads `Prefs.Stage.Epoch`,
+        // so a pick made on the stage shows here live (and these writes wake the stage).
+        Sect(T.Appearance, "Fullscreen", Strings.Stage.Settings.Title, Strings.Stage.Settings.Subtitle,
+            Make(T.Appearance, "Fullscreen", "stageVisualizer", K.Choice, Strings.Stage.Settings.Visualizer,
+                SettingsWriter.OfChoice("stage.visualizer", SettingsVerbs.SetStageVisualizer),
+                captionKey: Strings.Stage.Settings.VisualizerSub, value: _ => Settings.VisualizerIndex()),
+            Make(T.Appearance, "Fullscreen", "stageLayout", K.Choice, Strings.Stage.Settings.Layout,
+                SettingsWriter.OfChoice("stage.layout", SettingsVerbs.SetStageLayout),
+                captionKey: Strings.Stage.Settings.LayoutSub, value: _ => Prefs.Stage.Layout()),
+            Make(T.Appearance, "Fullscreen", "stageSensitivity", K.Slider, Strings.Stage.Settings.Sensitivity,
+                SettingsWriter.OfSlider("stage.sensitivity", SettingsVerbs.SetStageSensitivity),
+                captionKey: Strings.Stage.Settings.SensitivitySub, value: _ => Prefs.Stage.Sensitivity()),
+            Make(T.Appearance, "Fullscreen", "stageLyricsOverlay", K.Toggle, Strings.Stage.Settings.LyricsOverlay,
+                SettingsWriter.OfToggle("stage.lyricsOverlay", on => SettingsVerbs.SetStageToggle(Platform.Keys.StageLyricsOverlay, on)),
+                captionKey: Strings.Stage.Settings.LyricsOverlaySub, value: BoolOf(Platform.Keys.StageLyricsOverlay)),
+            Make(T.Appearance, "Fullscreen", "stageSyncOffset", K.Slider, Strings.Stage.Settings.SyncOffset,
+                SettingsWriter.OfSlider("stage.syncOffset", SettingsVerbs.SetStageSyncOffset),
+                captionKey: Strings.Stage.Settings.SyncOffsetSub, value: _ => (float)Prefs.Stage.SyncOffsetMs()),
+            Make(T.Appearance, "Fullscreen", "stageCalm", K.Toggle, Strings.Stage.Settings.Calm,
+                SettingsWriter.OfToggle("stage.calm", on => SettingsVerbs.SetStageToggle(Platform.Keys.StageCalm, on)),
+                captionKey: Strings.Stage.Settings.CalmSub, value: BoolOf(Platform.Keys.StageCalm)),
+            Make(T.Appearance, "Fullscreen", "stageMoments", K.Toggle, Strings.Stage.Settings.Moments,
+                SettingsWriter.OfToggle("stage.moments", on => SettingsVerbs.SetStageToggle(Platform.Keys.StageMoments, on)),
+                captionKey: Strings.Stage.Settings.MomentsSub, value: BoolOf(Platform.Keys.StageMoments))),
+
+        Sect(T.Appearance, "Now playing", Strings.Settings.NowPlaying.Title, Strings.Settings.NowPlaying.Subtitle,
+            // DEVELOPER-ONLY, exactly like the rail header switch it duplicates — a normal build shows the cover. No page re-read:
+            // the tab reads `Prefs.NpvPlayer`'s epoch.
+            Make(T.Appearance, "Now playing", "npvPresentation", K.Segmented, Strings.Settings.Appearance.NpvPresentation,
+                SettingsWriter.OfChoice("npv.presentation", SettingsVerbs.SetNpvPresentation),
+                captionKey: Strings.Settings.Appearance.NpvPresentationSub, value: _ => Rail.PlayerPrefs.Presentation()),
+            Make(T.Appearance, "Now playing", "npvStyle", K.Choice, Strings.Settings.Appearance.NpvStyle,
+                SettingsWriter.OfChoice("npv.style", SettingsVerbs.SetNpvStyle),
+                captionKey: Strings.Settings.Appearance.NpvStyleSub, value: _ => Rail.PlayerPrefs.Style())),
+    ];
+
+    /// <summary>The sidebar's layout verbs refuse while it is being edited, and say so (Q7).</summary>
+    static SettingsEnablement NotWhileEditing(ISettingsFacts f)
+        => f.SidebarEditing ? SettingsEnablement.Off(FinishEditingKey) : SettingsEnablement.On;
+}
+
+public static partial class SettingsVerbs
+{
+    // ── Theme ────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>0 System · 1 Light · 2 Dark: <see cref="Appearance.SetMode"/> swaps the installed Wavee palette IN PLACE (System
+    /// re-reads the OS theme and accent now), persists, and asks the host for the 250 ms re-theme cross-fade (ch 27 §5).</summary>
+    public static bool SetThemeMode(int mode)
+    {
+        Appearance.SetMode((ThemeMode)Math.Clamp(mode, 0, 2));
+        return true;
+    }
+
+    /// <summary>The Zoom combo's pick: index 0 is "Auto (N%)" (mode = Auto, never Dense, applying the suggestion the row last
+    /// showed — <see cref="SettingsFacts.AutoZoom"/>); a rung writes Manual. A deliberate pick writes at once.</summary>
+    public static bool PickZoom(int index)
+    {
+        if (index <= 0)
+        {
+            ZoomService.PickAuto(SettingsFacts.AutoZoom);
+            return true;
+        }
+        int step = index - 1;
+        if ((uint)step >= (uint)FluentGpu.Foundation.ZoomLadder.Steps.Length) return false;
+        ZoomService.PickManual(FluentGpu.Foundation.ZoomLadder.Steps[step]);
+        return true;
+    }
+
+    /// <summary>The Zoom combo's selection: the rung that matches the live zoom in Manual, else the head item (Auto and Dense).</summary>
+    public static int ZoomIndex()
+        => ZoomService.Mode == ZoomAutoMode.Manual
+            ? 1 + Math.Max(0, Array.IndexOf(FluentGpu.Foundation.ZoomLadder.Steps, FluentGpu.Foundation.ZoomLadder.Snap(FluentGpu.FluentApp.Zoom)))
+            : 0;
+
+    /// <summary>An appearance switch: persist and bump the appearance epoch once; the page re-reads.</summary>
+    public static bool SetAppearanceToggle(SettingKey<bool> key, bool on)
+    {
+        Platform.Settings.Set(key, on);
+        Prefs.Appearance.Bump();
+        return true;
+    }
+
+    /// <summary>Page-motion style through the ONE Appearance writer (it bumps the epoch once). Every mounted content host
+    /// re-reads it on its NEXT swap — no restart, no re-navigation required to try a style (ch 30 N12).</summary>
+    public static bool SetPageMotionStyle(int i)
+    {
+        if ((uint)i >= (uint)Design.PageMotionStyleCount || Platform.Settings.Get(Platform.Keys.PageMotionStyle) == i) return false;
+        Prefs.Appearance.Set(Platform.Keys.PageMotionStyle, i);
+        return true;
+    }
+
+    // ── Lists ────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>ch 30 N12: the density write bumps the appearance epoch, so a mounted or parked track list re-reads it. Called
+    /// on every keyboard rove too, so an unchanged value writes nothing.</summary>
+    public static bool SetDensity(int i)
+    {
+        if ((uint)i >= 4u || Platform.Settings.Get(Platform.Keys.RowDensity) == i) return false;
+        Prefs.Appearance.Set(Platform.Keys.RowDensity, i);
+        return true;
+    }
+
+    public static bool SetHideTrackArtwork(bool on)
+    {
+        Prefs.Appearance.Set(Platform.Keys.HideTrackArtwork, on);
+        return true;
+    }
+
+    public static bool SetTrackListStyle(int i)
+    {
+        if ((uint)i >= 2u || Platform.Settings.Get(Platform.Keys.TrackRowStyle) == i) return false;
+        Prefs.Appearance.Set(Platform.Keys.TrackRowStyle, i);
+        return true;
+    }
+
+    public static bool SetPageLayout(int i)
+    {
+        if ((uint)i >= 2u || Platform.Settings.Get(Platform.Keys.DetailPageLayout) == i) return false;
+        Prefs.DetailHero.Set(Platform.Keys.DetailPageLayout, i);
+        return true;
+    }
+
+    public static bool SetRailUniform(bool on)
+    {
+        Prefs.DetailHero.Set(Platform.Keys.DetailRailUniform, on);
+        return true;
+    }
+
+    /// <summary>Reset the FOUR per-scope pairs to their authored defaults (never the uniform pair), then ONE bump, so an open
+    /// detail page's rail snaps to the reset widths now rather than next launch.</summary>
+    public static bool ResetRailSizes()
+    {
+        var s = Platform.Settings;
+        s.Set(Platform.Keys.DetailAlbumRailWidth, Platform.Keys.DetailAlbumRailWidth.Default);
+        s.Set(Platform.Keys.DetailAlbumRailCollapsed, false);
+        s.Set(Platform.Keys.DetailPlaylistRailWidth, Platform.Keys.DetailPlaylistRailWidth.Default);
+        s.Set(Platform.Keys.DetailPlaylistRailCollapsed, false);
+        s.Set(Platform.Keys.DetailLikedRailWidth, Platform.Keys.DetailLikedRailWidth.Default);
+        s.Set(Platform.Keys.DetailLikedRailCollapsed, false);
+        s.Set(Platform.Keys.DetailShowRailWidth, Platform.Keys.DetailShowRailWidth.Default);
+        s.Set(Platform.Keys.DetailShowRailCollapsed, false);
+        Prefs.DetailHero.Bump();
+        return true;
+    }
+
+    /// <summary>The daylist clock (#185): the index IS the <see cref="DaylistClockMode"/> int. The write goes through the ONE
+    /// appearance writer, so the playlist hero strip and the Home card swap their clock live; the page does not re-read.</summary>
+    public static bool SetDaylistClock(int i)
+    {
+        if ((uint)i >= DaylistClockShows.ModeCount || Platform.Settings.Get(Platform.Keys.DaylistClock) == i) return false;
+        Prefs.Appearance.Set(Platform.Keys.DaylistClock, i);
+        return false;
+    }
+
+    // ── Sidebar ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The layout cards: Classic · Library. (The cards are disabled while the sidebar is being edited — the row's
+    /// <see cref="SettingsRow.Enabled"/> — so the view never calls this then.)</summary>
+    public static bool SwitchSidebarLayout(int index)
+    {
+        Sidebar.SwitchLayout((SidebarLayoutId)index);
+        return false;
+    }
+
+    /// <summary>Default · Compact (design P.4).</summary>
+    public static bool SetSidebarDensity(int index)
+    {
+        Sidebar.SetDensity(index == 1 ? SidebarDensity.Compact : SidebarDensity.Default);
+        return false;
+    }
+
+    /// <summary>Reset the current layout to its authored form, with the sidebar's own undo toast.</summary>
+    public static bool ResetSidebarLayout()
+    {
+        Sidebar.Dispatch(new ResetLayout(Sidebar.Layout.Peek()),
+            FluentGpu.Localization.Loc.Format("sidebar.toast.reset", ("name", Sidebar.LayoutName(Sidebar.Layout.Peek()))));
+        return false;
+    }
+
+    /// <summary>"Edit sidebar…" (P4).</summary>
+    public static bool EditSidebar()
+    {
+        Sidebar.EnterEdit();
+        return false;
+    }
+
+    /// <summary>"Reset everything": the sidebar's own confirm, opened over the Settings page's overlay host.</summary>
+    public static bool ResetSidebarEverything()
+    {
+        if (SettingsContext.Overlay is { } overlay) Sidebar.SidebarMenus.ConfirmResetEverything(overlay);
+        return false;
+    }
+
+    // ── Lyrics ───────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Writes the EXPLICIT 0..100 value (dragging always overrides auto), resolved to the int the store holds. An
+    /// unchanged value writes nothing.</summary>
+    public static bool SetLyricsBlur(float v)
+    {
+        int strength = Lyrics.BlurPolicy.Resolve(Math.Clamp((int)MathF.Round(v), 0, 100));
+        if (Platform.Settings.Get(Platform.Keys.LyricsBlurStrength) == strength) return false;
+        Prefs.Lyrics.SetBlurStrength(strength);
+        return true;
+    }
+
+    /// <summary>"Auto" writes −1 back — never whatever the policy currently resolves — so the row stops overriding.</summary>
+    public static bool ResetLyricsBlur()
+    {
+        Prefs.Lyrics.SetBlurStrength(Lyrics.BlurPolicy.Auto);
+        return true;
+    }
+
+    /// <summary>The on-device AI lyrics master switch (the host answers; the card swaps its arm).</summary>
+    public static bool SetAiLyricsEnabled(bool on)
+    {
+        AiLyrics.SetEnabled(on);
+        return false;
+    }
+
+    /// <summary>An AI behaviour switch, written through <c>Prefs.AiLyrics.Set</c> so the driver's epoch re-evaluates the song.</summary>
+    public static bool SetAiPref(SettingKey<bool> key, bool on)
+    {
+        Prefs.AiLyrics.Set(key, on);
+        return false;
+    }
+
+    // ── Fullscreen stage (every write wakes the stage through `Prefs.Stage`) ─────────────────────────────────────────
+
+    public static bool SetStageVisualizer(int index)
+    {
+        if ((uint)index < (uint)Visualizer.Catalog.ShownCount) Prefs.Stage.SetVisualizer((int)Visualizer.Catalog.Shown[index]);
+        return false;
+    }
+
+    public static bool SetStageLayout(int index)
+    {
+        Prefs.Stage.SetLayout(index);
+        return false;
+    }
+
+    public static bool SetStageSensitivity(float v)
+    {
+        Prefs.Stage.SetSensitivity(v);
+        return false;
+    }
+
+    /// <summary>Lyrics overlay · Calm motion · Change with the music: persist, wake the stage, re-read the page.</summary>
+    public static bool SetStageToggle(SettingKey<bool> key, bool on)
+    {
+        Platform.Settings.Set(key, on);
+        Prefs.Stage.Bump();
+        return true;
+    }
+
+    /// <summary>The spectrum offset snaps to 10 ms, persists, and is pushed to the audio host.</summary>
+    public static bool SetStageSyncOffset(float v)
+    {
+        int ms = (int)MathF.Round(v / 10f) * 10;
+        Prefs.Stage.SetSyncOffsetMs(ms);
+        Playback.Audio.SetSpectrumOffsetMs(ms);
+        return false;
+    }
+
+    // ── Now playing (the rail's adapter flips the hero to Player and logs the source; the tab reads its epoch) ───────
+
+    public static bool SetNpvPresentation(int index)
+    {
+        Rail.PlayerPrefs.SetPresentation(index, Rail.NpvDiagnostics.SourceSettings);
+        return false;
+    }
+
+    public static bool SetNpvStyle(int index)
+    {
+        Rail.PlayerPrefs.SetStyle(index, Rail.NpvDiagnostics.SourceSettings);
+        return false;
+    }
+}

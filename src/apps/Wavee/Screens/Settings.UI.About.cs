@@ -29,6 +29,10 @@ namespace Wavee;
 
 public static partial class Settings
 {
+    /// <summary>Page mount: read the shipped notices on a pool thread, so the Licenses expander's first render finds the text
+    /// (disk I/O never sits on the render path).</summary>
+    static partial void SeedAbout() => SettingsFacts.WarmNotices(LoadNotices);
+
     // ══ 1. THE TAB ═════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>Order: update panel, links, the receipts, Licenses. Crash reports moved to Settings › General ›
@@ -48,7 +52,7 @@ public static partial class Settings
     /// have never been opened — the ONLY unread affordance outside the notification centre.</summary>
     static Element AboutLinksCard()
     {
-        Element whatsNew = HyperlinkButton.Create(Loc.Get(Strings.Update.About.OpenWhatsNew), static () => OpenWhatsNew());
+        Element whatsNew = HyperlinkButton.Create(Loc.Get(Strings.Update.About.OpenWhatsNew), static () => D(Tab.About, "whatsNew").Writer.Run!());
         if (ReleaseNotes.RunningNotesUnread())
             whatsNew = new BoxEl { Direction = 0, Gap = 6f, AlignItems = FlexAlign.Center, Children = [whatsNew, InfoBadge.Dot()] };
 
@@ -61,14 +65,14 @@ public static partial class Settings
                 Children =
                 [
                     whatsNew,
-                    HyperlinkButton.Create(Loc.Get(Strings.Report.AboutReportProblem), static () => Feedback.Open(Feedback.ReportKind.Bug)),
-                    HyperlinkButton.Create(Loc.Get(Strings.Report.AboutSuggestFeature), static () => Feedback.Open(Feedback.ReportKind.Feature)),
+                    HyperlinkButton.Create(Loc.Get(Strings.Report.AboutReportProblem), static () => D(Tab.About, "reportProblem").Writer.Run!()),
+                    HyperlinkButton.Create(Loc.Get(Strings.Report.AboutSuggestFeature), static () => D(Tab.About, "suggestFeature").Writer.Run!()),
                     HyperlinkButton.Create(Loc.Get(Strings.Report.AboutAllIssues), IssuesUrl),
                     HyperlinkButton.Create(Loc.Get(Strings.Settings.About.Website), WebsiteUrl),
                     HyperlinkButton.Create(Loc.Get(Strings.Settings.About.PrivacyPolicy), PrivacyUrl),
-                    HyperlinkButton.Create(Loc.Get(Strings.Settings.About.ThirdPartyNotices), static () => OpenNotices()),
-                    HyperlinkButton.Create(Loc.Get(Strings.Settings.About.CopyDiagnostics), static () => CopyDiagnostics()),
-                    HyperlinkButton.Create(Loc.Get(Strings.Settings.About.OpenDataFolder), static () => OpenFolder(Platform.LocalFolder)),
+                    HyperlinkButton.Create(Loc.Get(Strings.Settings.About.ThirdPartyNotices), static () => D(Tab.About, "thirdPartyNotices").Writer.Run!()),
+                    HyperlinkButton.Create(Loc.Get(Strings.Settings.About.CopyDiagnostics), static () => D(Tab.About, "copyDiagnostics").Writer.Run!()),
+                    HyperlinkButton.Create(Loc.Get(Strings.Settings.About.OpenDataFolder), static () => D(Tab.About, "openDataFolder").Writer.Run!()),
                     new TextEl(Loc.Get(Strings.Settings.About.Unofficial)) { Size = 12f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap },
                     new TextEl(OsDescription) { Size = 12f, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap },
                     new TextEl(Platform.LocalFolder) { Size = 12f, Color = Tok.TextSecondary, FontFamily = "Cascadia Code", Wrap = TextWrap.Wrap },
@@ -115,23 +119,20 @@ public static partial class Settings
             var kids = new List<Element>(6) { UpdateHero(me, s) };
             if (me.IsStore)
             {
-                kids.Add(Row(Loc.Get(Strings.Update.Store.Title), Loc.Get(Strings.Update.Store.Hint),
-                    Button.Create(Loc.Get(Strings.Update.Store.Open), static () => RunUpdate(UpdateRowAction.UpdateNow),
-                        ButtonAppearance.Standard, ControlSize.Small), Icons.Refresh));
+                kids.Add(DocRow(D(Tab.About, "storeOpen"),
+                    Button.Create(Loc.Get(Strings.Update.Store.Open), static () => D(Tab.About, "storeOpen").Writer.Run!(),
+                        ButtonAppearance.Standard, ControlSize.Small), icon: Icons.Refresh));
             }
             else
             {
                 kids.Add(UpdateStatusCard(s));
                 // A LINK, not a picker: Beta installs beside Stable, nothing in this app changes when it is clicked.
-                kids.Add(Row(Loc.Get(Strings.Update.Channel.Title), Loc.Get(Strings.Update.Channel.Hint),
-                    HyperlinkButton.Create(Loc.Get(Strings.Update.Channel.Beta), BetaFeedUrl), Icons.Devices));
-                kids.Add(Row(Loc.Get(Strings.Update.InstallOnQuit.Title), Loc.Get(Strings.Update.InstallOnQuit.Hint),
-                    Toggle(Platform.Keys.UpdateInstallOnQuit), Icons.Download));
-                kids.Add(Row(Loc.Get(Strings.Update.Metered.Title), Loc.Get(Strings.Update.Metered.Hint),
-                    Toggle(Platform.Keys.UpdateOnMetered), Icons.RadioTower));
+                kids.Add(DocRow(D(Tab.About, "channel"),
+                    HyperlinkButton.Create(Loc.Get(Strings.Update.Channel.Beta), BetaFeedUrl), icon: Icons.Devices));
+                kids.Add(DocRow(D(Tab.About, "installOnQuit"), RowToggle(D(Tab.About, "installOnQuit")), icon: Icons.Download));
+                kids.Add(DocRow(D(Tab.About, "updateOnMetered"), RowToggle(D(Tab.About, "updateOnMetered")), icon: Icons.RadioTower));
             }
-            kids.Add(Row(Loc.Get(Strings.Update.AutoShow.Title), Loc.Get(Strings.Update.AutoShow.Hint),
-                Toggle(Platform.Keys.ReleaseNotesAutoShow), Icons.RefineSparkle));
+            kids.Add(DocRow(D(Tab.About, "autoShow"), RowToggle(D(Tab.About, "autoShow")), icon: Icons.RefineSparkle));
             return new BoxEl { Direction = 1, Gap = 4f, AlignSelf = FlexAlign.Stretch, Children = kids.ToArray() };
         }
     }
@@ -155,13 +156,10 @@ public static partial class Settings
         pills.Add(new TextEl((me.Commit.Length > 0 ? me.Commit + " · " : "") + ArchToken)
             { Size = 12f, Color = Tok.TextTertiary, FontFamily = "Cascadia Code" });
 
-        Action act = shape.Verb switch
-        {
-            AboutRules.HeroVerb.Check => static () => Update.Host.CheckNow(),
-            AboutRules.HeroVerb.UpdateNow => static () => RunUpdate(UpdateRowAction.UpdateNow),
-            AboutRules.HeroVerb.Retry => static () => RunUpdate(UpdateRowAction.Retry),
-            _ => static () => { },
-        };
+        // The verb is the row's writer, chosen from the live state at the press (check · update now · retry · nothing).
+        Action act = shape.Verb == AboutRules.HeroVerb.None
+            ? static () => { }
+            : static () => D(Tab.About, "updateHero").Writer.Run!();
         var right = new List<Element>(3)
         {
             Button.Create(Loc.Get(shape.ButtonKey), act,
@@ -169,10 +167,10 @@ public static partial class Settings
                 ControlSize.Medium, isEnabled: shape.Tone != AboutRules.HeroTone.Disabled),
         };
         if (me.Codename.Length > 0)
-            right.Add(HyperlinkButton.Create(Strings.Update.About.WhatsNewIn(me.Codename), static () => OpenWhatsNew()));
+            right.Add(HyperlinkButton.Create(Strings.Update.About.WhatsNewIn(me.Codename), static () => D(Tab.About, "whatsNew").Writer.Run!()));
         // The after-update plate on demand; a dev build has no update story to summarize.
-        if (s_overlay is { } overlay && ReleaseNotes.CanShowSummaryAgain)
-            right.Add(HyperlinkButton.Create(Loc.Get(Strings.Update.About.ShowSummaryAgain), () => ReleaseNotes.ShowSummaryAgain(overlay, s_post)));
+        if (s_overlay is not null && ReleaseNotes.CanShowSummaryAgain)
+            right.Add(HyperlinkButton.Create(Loc.Get(Strings.Update.About.ShowSummaryAgain), static () => D(Tab.About, "showSummaryAgain").Writer.Run!()));
 
         long lastChecked = s.LastCheckedMs > 0 ? s.LastCheckedMs : Platform.Settings.Get(Platform.Keys.UpdateLastCheckedMs);
         string provenance = AboutRules.Provenance(me.BuildDate, lastChecked, static d => Strings.Update.About.Built(d),
@@ -224,9 +222,9 @@ public static partial class Settings
             },
             // The release that FAILED, not the bare listing (`Update.ReleasePageUrl` is the one owner of that rule).
             AppUpdateState.Failed => Button.Create(Loc.Get(Strings.Update.Action.OpenReleasePage),
-                static () => RunUpdate(UpdateRowAction.OpenReleasePage), ButtonAppearance.Standard, ControlSize.Small),
+                static () => D(Tab.About, "updateOpenReleasePage").Writer.Run!(), ButtonAppearance.Standard, ControlSize.Small),
             AppUpdateState.Completed => Button.Create(Loc.Get(Strings.Update.Action.Dismiss),
-                static () => RunUpdate(UpdateRowAction.Dismiss), ButtonAppearance.Subtle, ControlSize.Small),
+                static () => D(Tab.About, "updateDismiss").Writer.Run!(), ButtonAppearance.Subtle, ControlSize.Small),
             _ => null,
         };
         return Row(Loc.Get(Strings.Update.Status.Title), Notify.AppUpdateToasts.StateSentence(s), content, Icons.Refresh);

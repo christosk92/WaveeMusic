@@ -103,45 +103,32 @@ public static partial class Settings
         RuntimeCard(),
 
         SectionHeader(Loc.Get(Strings.Settings.Playback.AudioTitle), SectionGlyph(Tab.Playback, "Audio")),
-        Row(Loc.Get(Strings.Settings.Playback.AudioQuality), Loc.Get(Strings.Settings.Playback.AudioSub),
-            QualityCombo(), RowGlyph(Tab.Playback, "audioQuality")),
+        DocRow(D(Tab.Playback, "audioQuality"), QualityCombo()),
         // The description IS the detector's verdict: every state says something, "Unknown" included (never blank).
-        Row(Loc.Get(Strings.Settings.Playback.MeteredQuality), MeteredStatus(),
-            MeteredQualityCombo(), RowGlyph(Tab.Playback, "meteredQuality")),
-        Row(Loc.Get(Strings.Settings.Playback.RememberVolume), Loc.Get(Strings.Settings.Playback.RememberVolumeSub),
-            Toggle(Platform.Keys.RememberVolume), RowGlyph(Tab.Playback, "rememberVolume")),
-        Row(Loc.Get(Strings.Settings.Playback.Autoplay), Loc.Get(Strings.Settings.Playback.AutoplaySub),
-            Toggle(Platform.Keys.AutoplayEnabled), RowGlyph(Tab.Playback, "autoplay")),
+        DocRow(D(Tab.Playback, "meteredQuality"), MeteredQualityCombo(), sub: MeteredStatus()),
+        DocRow(D(Tab.Playback, "rememberVolume"), RowToggle(D(Tab.Playback, "rememberVolume"))),
+        DocRow(D(Tab.Playback, "autoplay"), RowToggle(D(Tab.Playback, "autoplay"))),
         // G-132: the switch 0.2.9 persisted but never showed. D5: it, the mode and album mode all apply LIVE to the playing track.
-        Row(Loc.Get(Strings.Settings.Playback.Normalization), Loc.Get(Strings.Settings.Playback.NormalizationSub),
-            Toggle(Platform.Keys.NormalizationEnabled, afterWrite: static _ => ApplyNormalization?.Invoke()),
-            RowGlyph(Tab.Playback, "normalization")),
-        Row(Loc.Get(Strings.Settings.Playback.NormalizationMode), Loc.Get(Strings.Settings.Playback.NormalizationModeSub),
+        DocRow(D(Tab.Playback, "normalization"), RowToggle(D(Tab.Playback, "normalization"))),
+        DocRow(D(Tab.Playback, "normalizationMode"),
             ComboBox.Create([Loc.Get(Strings.Settings.Playback.NormQuiet), Loc.Get(Strings.Settings.Playback.NormNormal), Loc.Get(Strings.Settings.Playback.NormLoud)],
                 s_normMode, width: 200f,
                 itemDescriptions: [Loc.Get(Strings.Settings.Playback.NormQuietSub), Loc.Get(Strings.Settings.Playback.NormNormalSub), Loc.Get(Strings.Settings.Playback.NormLoudSub)],
-                onChange: static i => { Platform.Settings.Set(Platform.Keys.NormalizationMode, i); ApplyNormalization?.Invoke(); }),
-            RowGlyph(Tab.Playback, "normalizationMode")),
-        Row(Loc.Get(Strings.Settings.Playback.NormalizationAlbum), Loc.Get(Strings.Settings.Playback.NormalizationAlbumSub),
-            Toggle(Platform.Keys.NormalizationAlbum, afterWrite: static _ => ApplyNormalization?.Invoke()),
-            RowGlyph(Tab.Playback, "normalizationAlbum")),
+                onChange: static i => D(Tab.Playback, "normalizationMode").Writer.Choose!(i))),
+        DocRow(D(Tab.Playback, "normalizationAlbum"), RowToggle(D(Tab.Playback, "normalizationAlbum"))),
 
         SectionHeader(Loc.Get(Strings.Settings.Sound.Title), SectionGlyph(Tab.Playback, "Sound")),
         EqualizerGroup(),
         CrossfadeGroup(),
 
         SectionHeader(Loc.Get(Strings.VideoOverride.SettingsTitle), SectionGlyph(Tab.Playback, "Video")),
-        Row(Loc.Get(Strings.Settings.Playback.VideoQuality), Loc.Get(Strings.Settings.Playback.VideoQualitySub),
-            VideoQualityCombo(), RowGlyph(Tab.Playback, "videoQuality")),
-        Row(Loc.Get(Strings.Settings.Playback.VideoMeteredQuality), Loc.Get(Strings.Settings.Playback.VideoMeteredQualitySub),
-            MeteredVideoCombo(), RowGlyph(Tab.Playback, "videoMetered")),
+        DocRow(D(Tab.Playback, "videoQuality"), VideoQualityCombo()),
+        DocRow(D(Tab.Playback, "videoMetered"), MeteredVideoCombo()),
         VideoPrepareAheadRow(),
         VideoOverridesRow(),
 
         SectionHeader(Loc.Get(Strings.Settings.Playback.PlayerBar), SectionGlyph(Tab.Playback, "Player bar")),
-        Row(Loc.Get(Strings.Settings.Playback.ShowRemaining), Loc.Get(Strings.Settings.Playback.ShowRemainingSub),
-            Toggle(Platform.Keys.PlayerBarShowRemaining, afterWrite: static _ => Prefs.PlayerBar.Bump()),
-            RowGlyph(Tab.Playback, "playerBarRemaining")));
+        DocRow(D(Tab.Playback, "playerBarRemaining"), RowToggle(D(Tab.Playback, "playerBarRemaining"))));
 
     // ══ 3. THE RUNTIME CARD (W7 ready · W10 problem · the not-set-up bar) ═══════════════════════════════════════════
 
@@ -158,7 +145,7 @@ public static partial class Settings
                 Header = Loc.Get(Strings.Settings.Common.Ready),
                 Description = Loc.Get(Strings.Settings.Playback.RuntimeReadySub),
                 HeaderIcon = Icons.StatusSuccess,
-                Content = Button.Standard(Loc.Get(Strings.Settings.Common.Manage), static () => Setup.Runtime.RequestOpen()),
+                Content = Button.Standard(Loc.Get(Strings.Settings.Common.Manage), static () => D(Tab.Playback, "runtimeSetup").Writer.Run!()),
                 Items =
                 [
                     RuntimeFact(Loc.Get(Strings.Playback.Runtime.DetailVersion),
@@ -176,7 +163,7 @@ public static partial class Settings
             return InfoBar.Create(InfoBarSeverity.Informational,
                 Loc.Get(Strings.Settings.Playback.RuntimeNotSetUp), Loc.Get(Strings.Settings.Playback.RuntimeNotSetUpSub),
                 isClosable: false,
-                actionButton: Button.Accent(Loc.Get(Strings.Playback.Runtime.SetUp), static () => Setup.Runtime.RequestOpen()))
+                actionButton: Button.Accent(Loc.Get(Strings.Playback.Runtime.SetUp), static () => D(Tab.Playback, "runtimeSetup").Writer.Run!()))
                 with { Key = "playback.runtime:setup" };
 
         // The typed issue's own sentence — the banner used to show one static line and drop the reason.
@@ -187,7 +174,7 @@ public static partial class Settings
             actionButton: new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S,
-                Children = [links, Button.Accent(Loc.Get(Strings.Settings.Common.RetrySetup), static () => Setup.Runtime.RequestOpen())],
+                Children = [links, Button.Accent(Loc.Get(Strings.Settings.Common.RetrySetup), static () => D(Tab.Playback, "runtimeSetup").Writer.Run!())],
             }) with { Key = "playback.runtime:problem" };
     }
 
@@ -218,10 +205,7 @@ public static partial class Settings
         string summary = Setup.RuntimeSignatureSummary(facts);
         bool canView = facts.Signature is { FilePath: { Length: > 0 } path } && File.Exists(path);
         Element? link = canView
-            ? HyperlinkButton.Create(Loc.Get(Strings.Playback.Runtime.ViewSignature), static () =>
-            {
-                if (s_overlay is { } overlay) Shell.OpenSignatureDialog(overlay, Setup.Runtime.Status.Peek());
-            })
+            ? HyperlinkButton.Create(Loc.Get(Strings.Playback.Runtime.ViewSignature), static () => D(Tab.Playback, "runtimeSignature").Writer.Run!())
             : null;
         return Item(Loc.Get(Strings.Playback.Runtime.DetailSignature), summary.Length > 0 ? summary : null, link);
     }
@@ -264,9 +248,7 @@ public static partial class Settings
         return ComboBox.Create(QualityLabels(count), s_quality, width: 280f, itemDescriptions: QualityDescriptions(count),
             onChange: static i =>
             {
-                if (!Quality.IsWritableAudio(i, Spotify.Audio.CanDerive)) return;
-                Platform.Settings.Set(Platform.Keys.PlaybackQuality, i);
-                Bump();
+                if (D(Tab.Playback, "audioQuality").Writer.Choose!(i)) Bump();
             }) with { Key = count == Quality.AudioRungCount(true) ? "playback.quality:lossless" : "playback.quality" };
     }
 
@@ -287,9 +269,7 @@ public static partial class Settings
         return ComboBox.Create(QualityLabels(count), Platform.Network.MeteredQualityCap, width: 280f,
             itemDescriptions: QualityDescriptions(count), onChange: static i =>
             {
-                if ((uint)i >= (uint)Quality.MeteredRungCount(Spotify.Audio.CanDerive)) return;
-                Platform.Network.SetMeteredQualityCap(i);   // persist, then publish
-                Bump();
+                if (D(Tab.Playback, "meteredQuality").Writer.Choose!(i)) Bump();   // persist, then publish
             }) with { Key = count == Quality.AudioRungCount(true) ? "playback.meteredCap:lossless" : "playback.meteredCap" };
     }
 
@@ -331,7 +311,7 @@ public static partial class Settings
             Header = Loc.Get(Strings.Settings.Sound.Equalizer),
             Description = Loc.Get(Strings.Settings.Sound.EqualizerSub),
             HeaderIcon = RowGlyph(Tab.Playback, "equalizer"),
-            Content = Toggle(Platform.Keys.EqualizerEnabled, afterWrite: static _ => PushEqualizer()),
+            Content = RowToggle(D(Tab.Playback, "equalizer")),
             InitiallyExpanded = eqOn,
             Items =
             [
@@ -370,31 +350,19 @@ public static partial class Settings
         return s_eqGains;
     }
 
-    /// <summary>The whole EQ state to the live graph: a gain-only change ramps; an on/off flip changes the topology.</summary>
-    static void PushEqualizer()
-        => Playback.Audio.SetEqualizer(Platform.Settings.Get(Platform.Keys.EqualizerEnabled), EqGains());
-
     /// <summary>One band from the curve (drag, click or keys). The curve reports every pointer sample; a sample that lands
-    /// on the band's current half-decibel writes nothing.</summary>
+    /// on the band's current half-decibel writes nothing (the verb says so).</summary>
     static void SetEqBand(int band, float gain)
     {
-        if ((uint)band >= (uint)Eq.BandCount) return;
-        var gains = Eq.ReadGains(Platform.Settings);
-        float snapped = Eq.SnapGain(gain);
-        if (gains[band] == snapped) return;
-        gains[band] = snapped;
-        Platform.Settings.Set(Platform.Keys.EqualizerGains, Eq.SerializeGains(gains));
-        PushEqualizer();
-        Bump();
+        if (SettingsVerbs.SetEqBand(band, gain)) Bump();
     }
 
+    /// <summary>A preset: the verb persists and pushes the whole state to the live graph; this view keeps its combo's mirror.</summary>
     static void ApplyEqPreset(int index)
     {
         int idx = Math.Clamp(index, 0, Eq.PresetIds.Length - 1);
         s_eqPreset.Value = idx;
-        Platform.Settings.Set(Platform.Keys.EqualizerPreset, Eq.PresetIds[idx]);
-        Platform.Settings.Set(Platform.Keys.EqualizerGains, Eq.SerializeGains(Eq.PresetGains[idx]));
-        PushEqualizer();
+        D(Tab.Playback, "eqPreset").Writer.Choose!(idx);
         Bump();
     }
 
@@ -413,7 +381,7 @@ public static partial class Settings
             Header = Loc.Get(Strings.Settings.Sound.Crossfade),
             Description = Loc.Get(Strings.Settings.Sound.CrossfadeSub),
             HeaderIcon = RowGlyph(Tab.Playback, "crossfade"),
-            Content = Toggle(Platform.Keys.CrossfadeEnabled, afterWrite: static _ => PushCrossfade()),
+            Content = RowToggle(D(Tab.Playback, "crossfade")),
             InitiallyExpanded = crossOn,
             Items =
             [
@@ -435,18 +403,11 @@ public static partial class Settings
     /// persisted and pushed only when the millisecond value actually moved (a slider drag reports every sample).</summary>
     static void CommitCrossfade(double seconds)
     {
-        int ms = Quality.CrossfadeMs(seconds);
-        double snapped = ms / 1000.0;
+        double snapped = Quality.CrossfadeMs(seconds) / 1000.0;
         s_crossSecs.Value = snapped;
         s_crossSlider.Value = (float)snapped;
-        if (Platform.Settings.Get(Platform.Keys.CrossfadeMs) == ms) return;
-        Platform.Settings.Set(Platform.Keys.CrossfadeMs, ms);
-        PushCrossfade();
-        Bump();
+        if (SettingsVerbs.CommitCrossfade(seconds)) Bump();
     }
-
-    static void PushCrossfade()
-        => Playback.Audio.SetCrossfade(Platform.Settings.Get(Platform.Keys.CrossfadeEnabled), Platform.Settings.Get(Platform.Keys.CrossfadeMs));
 
     // ══ 7. VIDEO (W11) ════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -454,10 +415,8 @@ public static partial class Settings
         => ComboBox.Create([Loc.Get(Strings.Settings.Playback.VideoQualityAuto), "180p", "240p", "320p", "480p", "720p", "1080p"],
             s_videoQuality, width: 280f, onChange: static i =>
             {
-                if ((uint)i >= (uint)Quality.VideoHeights.Length) return;
-                int height = Quality.VideoHeights[i];   // stored as a height; 0 = Auto
-                Playback.Video.PinQuality(height);   // persist, then the live pin: the ABR ceiling + the engine's selection
-                Bump();
+                // Stored as a height (0 = Auto); the verb persists, then pins live: the ABR ceiling + the engine's selection.
+                if (D(Tab.Playback, "videoQuality").Writer.Choose!(i)) Bump();
             });
 
     /// <summary>A stored height that matches nothing reads as 480p (index 1). Persisted and published through the
@@ -466,9 +425,7 @@ public static partial class Settings
         => ComboBox.Create([Loc.Get(Strings.Settings.Playback.VideoQualityUnlimited), "480p", "720p", "1080p"],
             s_meteredVideo, width: 280f, onChange: static i =>
             {
-                if ((uint)i >= (uint)Quality.MeteredVideoHeights.Length) return;
-                Platform.Network.SetMeteredVideoMaxHeight(Quality.MeteredVideoHeights[i]);
-                Bump();
+                if (D(Tab.Playback, "videoMetered").Writer.Choose!(i)) Bump();
             });
 
     /// <summary>D15's off switch, DEFAULT ON. On, the video host fetches the licence for the playing video-capable track
@@ -476,9 +433,7 @@ public static partial class Settings
     /// ahead and the native component's preload is the only warm left, which is why the sentence promises data and not
     /// speed. The write persists and then re-decides the keeper's beat immediately, rather than at the next track.</summary>
     static Element VideoPrepareAheadRow()
-        => Row(Loc.Get(Strings.Settings.Playback.VideoPrepareAhead), Loc.Get(Strings.Settings.Playback.VideoPrepareAheadSub),
-            Toggle(Playback.Video.PrepareAhead, afterWrite: static _ => Playback.Video.ApplyPrepareAhead()),
-            RowGlyph(Tab.Playback, "videoPrepareAhead"));
+        => DocRow(D(Tab.Playback, "videoPrepareAhead"), RowToggle(D(Tab.Playback, "videoPrepareAhead")));
 
     /// <summary>The attached-videos SUMMARY (ch 27 W11's states): no roster store → the whole row greyed with NO control;
     /// 0 rows → "No videos attached yet" + Manage and no "Remove all"; N rows → the count + Manage + Remove all. The roster
@@ -515,9 +470,12 @@ public static partial class Settings
         };
         if (count > 0)
             // Bulk detach is the ONE place a confirm earns its keep here: N links at once, no per-row undo (N11).
-            kids[2] = Button.Standard(Loc.Get(Strings.VideoOverride.ClearAll), static () => ConfirmThen(
-                Loc.Get(Strings.VideoOverride.ClearAll), Loc.Get(Strings.VideoOverride.ClearAllBody),
-                Loc.Get(Strings.VideoOverride.ClearAll), ClearAllVideoOverrides));
+            kids[2] = Button.Standard(Loc.Get(Strings.VideoOverride.ClearAll), static () =>
+            {
+                var clear = D(Tab.Playback, "videoOverrides");
+                ConfirmThen(Loc.Get(clear.Confirm!.TitleKey), Loc.Get(clear.Confirm.BodyKey), Loc.Get(clear.Confirm.PrimaryKey),
+                    () => clear.Writer.Run!());
+            });
 
         return Row(header, sub, new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Children = kids }, glyph);
     }
@@ -555,16 +513,5 @@ public static partial class Settings
         s_voOpenPending = false;
         if (s_voHandle is { IsOpen: true }) return;   // already showing — the request is satisfied
         ToggleVideoOverrideManager();
-    }
-
-    static void ClearAllVideoOverrides()
-    {
-        var all = Video.Overrides.All();
-        int removed = 0;
-        for (int i = 0; i < all.Count; i++)
-            if (Video.Overrides.Remove(all[i].Uri)) removed++;
-        Log.Event(WaveeLogLevel.Info, "ui", "override.settings.clear_all", "detached every attached video",
-            fields: [WaveeLogField.Of("count", removed)]);
-        Notify.Say(Loc.Get(Strings.VideoOverride.ClearedAll), InfoBarSeverity.Success);
     }
 }
