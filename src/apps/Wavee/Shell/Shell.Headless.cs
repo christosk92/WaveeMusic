@@ -78,10 +78,18 @@ public static partial class Shell
         /// fixed 16 ms step, so animations advance the same way on every run. Dispose the handle before the next mount.</summary>
         public static HeadlessShell Mount(float widthDip = 1180f, float heightDip = 760f, float scale = 1f,
             IFrameTimeSource? frameTime = null)
+            => Mount(content: null, widthDip, heightDip, scale, frameTime);
+
+        /// <summary>As <see cref="Mount(float, float, float, IFrameTimeSource?)"/> with <paramref name="content"/> in place of the
+        /// frame: it is built inside the same theme providers the frame gets (view registry, option store, theme facts), so a
+        /// view mounted alone resolves its keys, options and facts exactly as it does in the shell. Null mounts the frame.
+        /// This is the seam the shell tests' <c>ViewHarness</c> mounts a single view through.</summary>
+        public static HeadlessShell Mount(Func<Element>? content, float widthDip = 1180f, float heightDip = 760f, float scale = 1f,
+            IFrameTimeSource? frameTime = null)
         {
             RequireUiThread();
             if (s_mounted is not null) throw new InvalidOperationException("A headless shell is already mounted; dispose it first.");
-            var shell = new HeadlessShell(widthDip, heightDip, scale, frameTime ?? new FixedFrameTimeSource(16f));
+            var shell = new HeadlessShell(widthDip, heightDip, scale, frameTime ?? new FixedFrameTimeSource(16f), content);
             s_mounted = shell;
             return shell;
         }
@@ -99,10 +107,11 @@ public static partial class Shell
         }
     }
 
-    /// <summary>The headless root: the frame alone (<see cref="RootHost"/> without its GUI services).</summary>
-    sealed class HeadlessRoot : Component
+    /// <summary>The headless root: the frame alone (<see cref="RootHost"/> without its GUI services), or a test's content
+    /// inside the same theme providers.</summary>
+    sealed class HeadlessRoot(Func<Element>? content) : Component
     {
-        public override Element Render() => RootFrame();
+        public override Element Render() => content is null ? RootFrame() : Theming.ThemeRoot.Wrap(content);
     }
 
     /// <summary>One mounted shell (<see cref="Headless.Mount"/>). Every member runs on the UI thread.</summary>
@@ -120,13 +129,13 @@ public static partial class Shell
         /// <summary>The headless window: its size, scale and input queue (<see cref="HeadlessWindow.QueueInput"/>).</summary>
         public HeadlessWindow Window { get; }
 
-        internal HeadlessShell(float widthDip, float heightDip, float scale, IFrameTimeSource frameTime)
+        internal HeadlessShell(float widthDip, float heightDip, float scale, IFrameTimeSource frameTime, Func<Element>? content = null)
         {
             _app = new HeadlessPlatformApp();
             Window = new HeadlessWindow(new WindowDesc("wavee-shell", new Size2(widthDip * scale, heightDip * scale), scale));
             Window.Show();
             var strings = Entities.Strings;
-            Host = new AppHost(_app, Window, new HeadlessGpuDevice(), new HeadlessFontSystem(strings), strings, new HeadlessRoot(),
+            Host = new AppHost(_app, Window, new HeadlessGpuDevice(), new HeadlessFontSystem(strings), strings, new HeadlessRoot(content),
                 frameTime: frameTime);
             // Every cross-thread seam posts into THIS host, each post followed by the publish on the cadence — the GUI's
             // poster minus the early-post queue (the host exists before anything posts).

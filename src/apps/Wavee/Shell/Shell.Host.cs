@@ -1055,10 +1055,10 @@ public static partial class Shell
 
     // ══ 5. THE ROOT ════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The engine's root component. It reads NO signal, so it renders exactly once for the process and a
-    /// route change never re-runs it — everything below reaches its own state through a signal or a bound prop. When
-    /// stage 2 has not installed a frame it paints one empty full-bleed box, which is a running loop rather than a
-    /// crash.</summary>
+    /// <summary>The engine's root component. Its ONE signal read is the theme epoch (<c>ThemeRoot.Wrap</c>), so it renders
+    /// once for the process and again only on a theme switch (which remounts the frame); a route change never re-runs
+    /// it — everything below reaches its own state through a signal or a bound prop. When stage 2 has not installed a
+    /// frame it paints one empty full-bleed box, which is a running loop rather than a crash.</summary>
     sealed class RootHost : Component
     {
         public override Element Render()
@@ -1099,8 +1099,11 @@ public static partial class Shell
     }
 
     /// <summary>The window's content: <see cref="RootFactory"/>'s frame (<see cref="Frame"/> once <see cref="InstallUi"/>
-    /// ran), or an empty box before it.</summary>
-    static Element RootFrame() => RootFactory is { } factory ? factory() : new BoxEl { Grow = 1f };
+    /// ran), or an empty box before it, inside the theme providers (view registry, option store, theme facts). Both roots
+    /// (the window's and the headless host's) mount this.</summary>
+    static Element RootFrame() => Theming.ThemeRoot.Wrap(RootContent);
+
+    static Element RootContent() => RootFactory is { } factory ? factory() : new BoxEl { Grow = 1f };
 
     // ══ 6. HISTORY.JSON — the navigation log's store (ch 16) ════════════════════════════════════════════════════════
 

@@ -240,6 +240,8 @@
     <ProjectReference Include="..\Wavee.Analyzers\Wavee.Analyzers.csproj"
                       OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <AdditionalFiles Include="analyzer-baseline\*.txt" />
+    <!-- Inputs of rules that need a list the source cannot hold: WVTH010 (retired keys and members), WVTH011 (the structure-parameter probe matrix). -->
+    <AdditionalFiles Include="analyzer-input\*.txt" />
     <CompilerVisibleProperty Include="ProjectDir" />
   </ItemGroup>
   <!-- JIT Debug/Release: NuGet drops e_sqlite3.dll under runtimes/ only; publish colocates it. Copy the arch-matching
