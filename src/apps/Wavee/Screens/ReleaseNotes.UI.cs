@@ -66,13 +66,11 @@ public static partial class ReleaseNotes
     public static void ShowSummaryAgain(IOverlayService overlay, Action<Action> post)
     {
         if (!CanShowSummaryAgain) return;
-        string from = Platform.Settings.Get(Platform.Keys.ReleaseNotesPreviousVersion);
-        _ = LoadThenOpenAsync(overlay, post, from.Length > 0 ? from : Platform.Version.Quad, automatic: false);
+        _ = LoadThenOpenAsync(overlay, post, ReleaseNotesModel.SummaryFromQuad(), automatic: false);
     }
 
     /// <summary>"Open What's new" carries an unread dot while the running release's notes have never been opened.</summary>
-    public static bool RunningNotesUnread()
-        => NotesUnread(Platform.Settings.Get(Platform.Keys.ReleaseNotesLastSeen), Platform.Version.Core);
+    public static bool RunningNotesUnread() => ReleaseNotesModel.RunningNotesUnread();
 
     /// <summary>The build as a localized sentence — <c>Wavee 0.3.0 “Crest”</c> / <c>Wavee 0.3.0</c> /
     /// <c>Wavee 0.3.0 “Crest” · Beta 2</c> (a dev build names its SemVer). The plate's welcome and About's version line.</summary>
@@ -88,11 +86,7 @@ public static partial class ReleaseNotes
         };
     }
 
-    static RunningBuild Running()
-    {
-        var me = Platform.Version;
-        return new RunningBuild(me.Core, me.Channel, me.IsStore);
-    }
+    static RunningBuild Running() => ReleaseNotesModel.Running();
 
     static string ReleaseDate(string? iso) => Links.Date(iso, Loc.Get(Strings.WhatsNew.DateFormat));
 
@@ -131,10 +125,10 @@ public static partial class ReleaseNotes
 
             UseEffect(() =>
             {
-                string lastSeen = Platform.Settings.Get(Platform.Keys.ReleaseNotesLastSeen);   // BEFORE the load
+                string lastSeen = ReleaseNotesModel.LastSeen();   // BEFORE the load
                 var cts = new CancellationTokenSource();
                 _ = LoadAsync(lastSeen, post, cts.Token);
-                Platform.Settings.Set(Platform.Keys.ReleaseNotesLastSeen, Platform.Version.Core);   // seen on OPEN
+                ReleaseNotesModel.MarkSeen();   // seen on OPEN
                 return (Action?)(() => cts.Cancel());
             }, DepKey.Empty);
 
@@ -1151,10 +1145,8 @@ public static partial class ReleaseNotes
             Element? action = null;
             if (store)
                 action = Button.Accent(Loc.Get(Strings.WhatsNew.StoreCta), live ? (Action)OpenStoreListing : Inert, isEnabled: live);
-            else if (h.DeepLink is { Length: > 0 } dl
-                     && Shell.DeepLink(dl, Platform.Settings.Get(Platform.Keys.DeveloperMode)) is { Kind: Shell.DeepLinkKind.Open } verb)
+            else if (ReleaseNotesModel.OpenRouteFor(h.DeepLink) is { } route)
             {
-                var route = verb.Route;
                 action = Button.Accent(Loc.Get(Strings.WhatsNew.TryIt), live ? () => TryIt(route) : Inert, isEnabled: live);
             }
             if (action is not null)
@@ -1197,14 +1189,7 @@ public static partial class ReleaseNotes
 
     // ══ 7. THE AFTER-UPDATE PLATE ════════════════════════════════════════════════════════════════════════════════════
 
-    // 0 idle · 1 a load is in flight, or the automatic plate already resolved this launch (opened, or found nothing).
-    static int s_afterUpdateLatch;
-
-    static AfterUpdateVerdict CurrentGate() => AfterUpdateGate.Decide(
-        Platform.Settings.Get(Platform.Keys.ReleaseNotesPendingFrom),
-        Platform.Settings.Get(Platform.Keys.ReleaseNotesAutoShow),
-        Setup.Gating.IsPending(Platform.Settings) || Setup.WizardOpen.Peek(),
-        CrashNoticeThisLaunch);
+    // The gate, the once-per-launch latch, the load and the resolve step are `ReleaseNotesModel` (C15).
 
     /// <summary>Zero-size, INSIDE the overlay host (only there does <c>Overlay.Service</c> resolve the real service). The
     /// wizard deferral re-evaluates on every marker bump, so the plate still appears THIS launch once setup is done.</summary>
@@ -1219,9 +1204,8 @@ public static partial class ReleaseNotes
 
             UseEffect(() =>
             {
-                if (CurrentGate() != AfterUpdateVerdict.Open) return;                 // every deferral leaves the key armed
-                if (Interlocked.Exchange(ref s_afterUpdateLatch, 1) != 0) return;   // one load at a time, one plate per launch
-                _ = LoadThenOpenAsync(overlay, post, Platform.Settings.Get(Platform.Keys.ReleaseNotesPendingFrom), automatic: true);
+                if (!ReleaseNotesModel.TryBeginAutomaticLoad()) return;   // every deferral leaves the key armed; one load at a time, one plate per launch
+                _ = LoadThenOpenAsync(overlay, post, ReleaseNotesModel.PendingFrom(), automatic: true);
             }, DepKey.From(wizardEpoch, wizardOpen ? 1 : 0));
 
             return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false, Shrink = 0f };
@@ -1233,27 +1217,11 @@ public static partial class ReleaseNotes
     /// opened meanwhile) and, when the load resolved to NOTHING, opens nothing and leaves pendingFrom ARMED.</summary>
     static async Task LoadThenOpenAsync(IOverlayService overlay, Action<Action> post, string fromQuad, bool automatic)
     {
-        (ReleaseNotesDocument Doc, HighlightItem[] Cards)? loaded = null;
-        try
-        {
-            var store = Notes;
-            var me = Running();
-            loaded = await Task.Run(() => LoadSummaryAsync(store, me, CancellationToken.None)).ConfigureAwait(false);
-        }
-        catch (Exception ex) { Log.Warn("whatsnew", "dialog notes load failed", ex); }
+        var loaded = await ReleaseNotesModel.LoadSummaryAsync().ConfigureAwait(false);
 
         post(() =>
         {
-            if (automatic)
-            {
-                if (CurrentGate() != AfterUpdateVerdict.Open) { Interlocked.Exchange(ref s_afterUpdateLatch, 0); return; }   // retry on the next bump
-                if (!AfterUpdateGate.Consume(Platform.Settings, opening: loaded is not null))
-                {
-                    Log.Info("whatsnew", "after-update notes unavailable; the plate stays armed for the next launch");
-                    return;
-                }
-            }
-            else AfterUpdateGate.Consume(Platform.Settings, opening: true);
+            if (!ReleaseNotesModel.Resolve(automatic, loaded is not null)) return;   // automatic: retry on the next bump / stays armed
             OpenPlate(overlay, fromQuad, loaded?.Doc, loaded?.Cards ?? []);
         });
     }
@@ -1329,7 +1297,7 @@ public static partial class ReleaseNotes
                 Children =
                 [
                     // Written IMMEDIATELY, not on close.
-                    CheckBox.Create(Loc.Get(Strings.WhatsNew.Dialog.DontShow), _dontShow, static v => Platform.Settings.Set(Platform.Keys.ReleaseNotesAutoShow, !v)),
+                    CheckBox.Create(Loc.Get(Strings.WhatsNew.Dialog.DontShow), _dontShow, static v => ReleaseNotesModel.SetDontShowAgain(v)),
                     Spacer(),
                     // close THEN navigate — the reverse of the viewer's "Try it": this plate is the thing being replaced.
                     Button.Standard(Loc.Get(Strings.WhatsNew.Dialog.Full), () => { close(); Shell.GoTo(new Shell.Route(Shell.RouteKind.WhatsNew)); }),

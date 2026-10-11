@@ -316,7 +316,7 @@ public static partial class LogsPage
             if (_menu is { IsOpen: true } open) { open.Close(); return; }
 
             bool newest = _newestFirst.Peek() != 0, group = _groupRepeats.Peek() != 0, wrap = _wrap.Peek() != 0;
-            bool verbose = LogCapturePolicy.IsVerbose(Log.MinLevel);
+            bool verbose = LogStore.IsVerbose();
             bool canClear = LogView.CanClear(_session.Peek());
             var items = new List<MenuFlyoutItem>(8)
             {
@@ -325,13 +325,13 @@ public static partial class LogsPage
                 MenuFlyoutItem.Toggle(Loc.Get(Strings.Logs.WrapLines), wrap, () => post(() => _wrap.Value = wrap ? 0 : 1)),
                 MenuFlyoutItem.Toggle(Loc.Get(Strings.Logs.Verbose), verbose, () => post(() =>
                 {
-                    LogCapturePolicy.SetVerbose(Platform.Settings, !verbose);
+                    LogStore.SetVerbose(!verbose);
                     _refresh.Value = _refresh.Peek() + 1;
                 })),
                 MenuFlyoutItem.Separator,
                 new(Loc.Get(Strings.Logs.ClearView), Icons.ClearText, canClear, () => Controls.Confirm(overlay,
                     Loc.Get(Strings.Logs.ClearView), Loc.Get(Strings.Logs.ClearViewBody), Loc.Get(Strings.Logs.ClearView),
-                    () => { Log.ClearRing(); _refresh.Value = _refresh.Peek() + 1; })),
+                    () => { LogStore.ClearRing(); _refresh.Value = _refresh.Peek() + 1; })),
                 new(Loc.Get(Strings.Report.ThisSession), Icons.Attention, true, () => Feedback.Open(Feedback.ReportKind.Bug,
                     new Feedback.ReportPrefill(PastSessionId: SelectedPastSession() is { } s ? WaveeLogSessions.KeyOf(s) : null))),
             };
@@ -352,17 +352,13 @@ public static partial class LogsPage
         {
             if (_sessionsBusy || (!force && _sessions is not null)) return;
             _sessionsBusy = true;
-            string? basePath = Log.BasePath;   // the BASE (wavee.log): the dated live file would glob one day's rolls
+            string? basePath = LogStore.BasePath;   // the BASE (wavee.log): the dated live file would glob one day's rolls
             int pid = Environment.ProcessId;
             _ = Task.Run(() =>
             {
-                long started = System.Diagnostics.Stopwatch.GetTimestamp();
-                WaveeLogSessions.WalkResult? walk = null;
-                Exception? fault = null;
-                try { walk = WaveeLogSessions.ListPastSessions(basePath, pid); }
-                catch (Exception ex) { fault = ex; }
-                long ms = (long)System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
-                LogWalk(walk, fault, ms);
+                var outcome = LogStore.Walk(basePath, pid);   // the disk walk and its one `log.sessions.listed` line
+                var walk = outcome.Walk;
+                var fault = outcome.Fault;
                 try
                 {
                     post(() =>
@@ -373,19 +369,6 @@ public static partial class LogsPage
                 }
                 catch { _sessionsBusy = false; }   // the poster itself failed: never leave the page unable to re-list
             });
-        }
-
-        static void LogWalk(WaveeLogSessions.WalkResult? walk, Exception? fault, long elapsedMs)
-        {
-            var error = fault ?? walk?.Error;
-            if (walk is null)
-            {
-                Log.Event(WaveeLogLevel.Warning, "log", "sessions.listed", "past sessions could not be listed", null, elapsedMs, error);
-                return;
-            }
-            var level = error is null ? WaveeLogLevel.Info : WaveeLogLevel.Warning;
-            Log.Event(level, "log", "sessions.listed", error is null ? "past sessions listed" : "past sessions listed with an error", null, elapsedMs, error,
-                WaveeLogField.Of("files", walk.FilesSeen), WaveeLogField.Of("lines", walk.LinesSeen), WaveeLogField.Of("sessions", walk.Sessions.Count));
         }
 
         /// <summary>UI thread. The selection follows the session's KEY across the re-list (indices shift when a run appears
@@ -415,9 +398,7 @@ public static partial class LogsPage
             _sessionLoadBusy = true;
             _ = Task.Run(() =>
             {
-                WaveeLogEntry[]? loaded = null;
-                try { loaded = WaveeLogSessions.LoadSession(info); }
-                catch (Exception ex) { Log.Warn("log", "a past session could not be read", ex); }
+                WaveeLogEntry[]? loaded = LogStore.Load(info);
                 post(() =>
                 {
                     _sessionEntries = loaded ?? [];
@@ -457,17 +438,12 @@ public static partial class LogsPage
             // The Save As dialog runs on its own thread (Pickers, #155); the export happens when it answers, UI thread.
             Pickers.Pick(
                 PickerRequest.Save(Loc.Get(Strings.Logs.ExportSession),
-                    live ? "wavee-session-live.txt" : "wavee-session-" + WaveeLogSessions.KeyOf(past!) + ".txt",
+                    LogStore.ExportFileName(past),
                     (Loc.Get(Strings.Logs.ExportLogText), "*.txt"), (Loc.Get(Strings.Logs.ExportAllFiles), "*.*")),
                 done: path =>
                 {
                     if (path is null) return;
-                    try
-                    {
-                        if (live) File.WriteAllText(path, LogView.ExportText(Log.Snapshot()));
-                        else WaveeLogSessions.ExportSessionToFile(past!, path);
-                    }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log.Warn("log", "the session export failed", ex); }
+                    LogStore.Export(path, past);
                 },
                 failed: ex => Log.Warn("log", "the export dialog failed", ex));
         }
