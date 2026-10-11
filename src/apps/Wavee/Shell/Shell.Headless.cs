@@ -103,8 +103,7 @@ public static partial class Shell
     static void SeedFixedTheme(ThemeKind kind)
     {
         if (SeedPalette is { } seed) seed(kind);
-        else FluentGpu.Dsl.Tok.Use(kind);
-        FluentGpu.Dsl.Theme.IconFont = WaveeFonts.Icons;
+        else FluentGpu.Dsl.Tok.Use(Design.Definition, kind);
     }
 
     /// <summary>The headless root: the frame alone (<see cref="RootHost"/> without its GUI services).</summary>

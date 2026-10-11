@@ -111,10 +111,11 @@ public static partial class Controls
     };
 
     /// <summary>A card (or swatch) over its label — the shape most of the pickers want.</summary>
-    public static BoxEl PickerTitled(Element card, string label, bool on, float gap = Spacing.S, float labelSize = 12f)
+    // The token defaults are nullable: a theme's spacing is read when the element is built, never frozen at compile time.
+    public static BoxEl PickerTitled(Element card, string label, bool on, float? gap = null, float labelSize = 12f)
         => new()
         {
-            Direction = 1, Gap = gap, AlignItems = FlexAlign.Center,
+            Direction = 1, Gap = gap ?? Spacing.S, AlignItems = FlexAlign.Center,
             Children = [card, PickerLabel(label, on, labelSize)],
         };
 
@@ -123,12 +124,15 @@ public static partial class Controls
     /// <summary>A tinted bar segment for a wireframe row — <paramref name="strong"/> picks the identity ink over the
     /// skeleton ink, <paramref name="height"/> the bar's thickness (and, through the circle radius, its pill
     /// shape).</summary>
-    public static Element PickerBar(float grow, PickerInk ink, bool strong = false, float height = Spacing.XXS)
-        => new BoxEl
+    public static Element PickerBar(float grow, PickerInk ink, bool strong = false, float? height = null)
+    {
+        float h = height ?? Spacing.XXS;
+        return new BoxEl
         {
-            Grow = grow, Basis = 0f, MinWidth = 0f, Height = height,
-            Corners = Radii.Circle(height), Fill = strong ? ink.Block : ink.Faint,
+            Grow = grow, Basis = 0f, MinWidth = 0f, Height = h,
+            Corners = Radii.Circle(h), Fill = strong ? ink.Block : ink.Faint,
         };
+    }
 
     /// <summary>The ROW-DENSITY miniature: three rows whose proportions come from the REAL row geometry, compressed by
     /// one scale factor, so the settings tile and the real list cannot drift into two different explanations of
@@ -175,8 +179,10 @@ public static partial class Controls
     /// <summary>The "Modern" track-row wireframe: a square art tile beside a title+subtitle bar pair (or, with
     /// <paramref name="twoLine"/> false, a single bar) — the art-led stacked-row grammar every Modern track list
     /// uses.</summary>
-    public static Element PickerModernRow(PickerInk ink, float height = Spacing.XL, float art = Spacing.L,
-                                          bool twoLine = true) => new BoxEl
+    public static Element PickerModernRow(PickerInk ink, float? height = null, float? art = null,
+                                          bool twoLine = true) => PickerModernRow(ink, height ?? Spacing.XL, art ?? Spacing.L, twoLine);
+
+    static Element PickerModernRow(PickerInk ink, float height, float art, bool twoLine) => new BoxEl
     {
         Height = height, Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center,
         Padding = new Edges4(Spacing.XS, 0f, Spacing.XS, 0f),
@@ -196,9 +202,9 @@ public static partial class Controls
 
     /// <summary>The "Classic" track-row wireframe: three aligned text-lane bars over a hairline — the three-lane grid +
     /// divider grammar every Classic track list uses.</summary>
-    public static Element PickerClassicRow(PickerInk ink, float height = Spacing.XL) => new BoxEl
+    public static Element PickerClassicRow(PickerInk ink, float? height = null) => new BoxEl
     {
-        Height = height, Direction = 1,
+        Height = height ?? Spacing.XL, Direction = 1,
         Children =
         [
             new BoxEl

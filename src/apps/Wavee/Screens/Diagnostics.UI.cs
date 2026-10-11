@@ -250,7 +250,7 @@ public static partial class Diagnostics
         Corners = CornerRadius4.All(Radii.Control), BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
         Children =
         [
-            new TextEl(glyph) { Size = 18f, FontFamily = Theme.IconFont, Color = glyphColor, Shrink = 0f, Margin = new Edges4(0f, 1f, 0f, 0f) },
+            new TextEl(glyph) { Size = 18f, FontFamily = Tok.Definition.Fonts.Icon, Color = glyphColor, Shrink = 0f, Margin = new Edges4(0f, 1f, 0f, 0f) },
             new BoxEl
             {
                 Direction = 1, Gap = 4f, Grow = 1f, MinWidth = 0f,

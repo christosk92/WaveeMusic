@@ -81,11 +81,11 @@ public static class Facet
     /// <summary>How far below the viewport's top edge the band pins: a breath so the pinned words never sit flush
     /// against the page surface's rounded top (the page ScrollView draws no top edge cue — its own StickyClip + WhileStuck
     /// feathers do the dissolving, the Artist page's precedent).</summary>
-    public const float StuckInset = Spacing.M;
+    public static float StuckInset => Spacing.M;
 
     /// <summary>The pinned band's LOWER edge in the viewport — the page content's clip line and every chapter header's
     /// stick inset (<c>Zones.UI.cs</c>). The one number all three share.</summary>
-    public const float StuckBottom = StuckInset + FacetRowH;
+    public static float StuckBottom => StuckInset + FacetRowH;
 
     /// <summary>The page column's <c>ScrollScope</c> name: the band pins against it (so the pin holds for the whole page
     /// and not for <see cref="FacetRow"/>'s own column, which is where a scope-less <c>.Sticky</c> would release).</summary>

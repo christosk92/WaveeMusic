@@ -309,7 +309,7 @@ public static partial class Visualizer
                                 Width = 20f, Height = 20f, Corners = Radii.Circle(20f), Fill = accent.Fill, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.End, Margin = new Edges4(0f, 8f, 8f, 0f),
                                 AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                                 Visible = Prop.Of(() => kindSig.Value == kind),
-                                Children = [new TextEl(Icons.Check) { Size = 12f, FontFamily = Theme.IconFont, Color = accent.Ink }],
+                                Children = [new TextEl(Icons.Check) { Size = 12f, FontFamily = Tok.Definition.Fonts.Icon, Color = accent.Ink }],
                             },
                         ],
                     },
@@ -348,7 +348,7 @@ public static partial class Visualizer
         Padding = new Edges4(16f, 0f, 12f, 0f), Corners = Radii.ControlAll, Fill = Ink.Plate, BorderWidth = 1f, BorderColor = Ink.Stroke,
         Children =
         [
-            new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Children = [new TextEl(glyph) { Size = 16f, FontFamily = Theme.IconFont, Color = Ink.InkSecondary }, new TextEl(label) { Size = 14f, LineHeight = 20f, Color = Ink.Ink }] },
+            new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Children = [new TextEl(glyph) { Size = 16f, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.InkSecondary }, new TextEl(label) { Size = 14f, LineHeight = 20f, Color = Ink.Ink }] },
             control,
         ],
     };

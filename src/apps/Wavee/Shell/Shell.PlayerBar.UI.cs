@@ -1127,7 +1127,7 @@ public static partial class Shell
             Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false,
             OnRealized = onRealized,
             IsEnabled = enabled, OnClick = onClick, Cursor = enabled ? CursorId.Hand : null,
-            Children = [new TextEl(glyphText) { Size = glyphSize, FontFamily = font ?? FluentGpu.Dsl.Theme.IconFont, Color = ink, HoverColor = inkHover }],
+            Children = [new TextEl(glyphText) { Size = glyphSize, FontFamily = font ?? Tok.Definition.Fonts.Icon, Color = ink, HoverColor = inkHover }],
         };
     }
 
@@ -1182,7 +1182,7 @@ public static partial class Shell
             [
                 new TextEl(glyphText)
                 {
-                    Size = solid, FontFamily = FluentGpu.Dsl.Theme.IconFont,
+                    Size = solid, FontFamily = Tok.Definition.Fonts.Icon,
                     Color = enabled ? Tok.TextOnAccentPrimary : Tok.TextDisabled,
                     Margin = new Edges4(nudge, 0f, 0f, 0f),
                 },
@@ -1237,7 +1237,7 @@ public static partial class Shell
                 HoverScale = Design.Motion.ScaleEmphatic.Hover, PressScale = Design.Motion.ScaleEmphatic.Press,
                 Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false,
                 OnClick = Toggle, Cursor = CursorId.Hand, OnRealized = h => anchor.Value = h,
-                Children = [new TextEl(Icons.More) { Size = _glyph, FontFamily = FluentGpu.Dsl.Theme.IconFont, Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary }],
+                Children = [new TextEl(Icons.More) { Size = _glyph, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary }],
             };
         }
 
@@ -1512,7 +1512,7 @@ public static partial class Shell
                 OnClick = () => BarToggleDevicePicker(overlay, anchor, handle), OnRealized = h => anchor.Value = h,
                 Children =
                 [
-                    new TextEl(Icons.Devices) { Size = 12f, FontFamily = FluentGpu.Dsl.Theme.IconFont, Color = rest, HoverColor = accent },
+                    new TextEl(Icons.Devices) { Size = 12f, FontFamily = Tok.Definition.Fonts.Icon, Color = rest, HoverColor = accent },
                     new BoxEl
                     {
                         Shrink = 1f, MinWidth = 0f, ClipToBounds = true,

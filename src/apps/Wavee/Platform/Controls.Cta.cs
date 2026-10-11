@@ -329,7 +329,7 @@ public static partial class Controls
     public static Element FabGlyph(string glyph, float size, ColorF color) => new BoxEl
     {
         Width = size, Height = size, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        Children = [new TextEl(glyph) { Size = size, FontFamily = Theme.IconFont, Color = color }],
+        Children = [new TextEl(glyph) { Size = size, FontFamily = Tok.Definition.Fonts.Icon, Color = color }],
     };
 
     /// <summary>A scrim-plated on-media action (the cover corner's "…", a cover action). The plate is the ONE on-media
@@ -408,7 +408,7 @@ public static partial class Controls
         if (glyph is { Length: > 0 })
             kids.Add(new TextEl(glyph)
             {
-                Size = 14f, FontFamily = Theme.IconFont,
+                Size = 14f, FontFamily = Tok.Definition.Fonts.Icon,
                 Color = rest, HoverColor = hover, PressedColor = pressed,
             });
         kids.Add(new TextEl(label)

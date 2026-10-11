@@ -38,7 +38,7 @@ public readonly partial struct Recents
     // ══ 1. METRICS ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
     const float CardArt = 48f, SavedTile = 36f, SavedContext = 40f, ChildWhenCol = 60f;
-    const float ChildActionsCol = 40f + Spacing.M + ChildWhenCol;
+    static float ChildActionsCol => 40f + Spacing.M + ChildWhenCol;
 
     /// <summary>An episode member's two bands: the single-play arm is the 64 band the group card and the track row share
     /// (48 art — <c>Shape.Row(48)</c>'s own floor); a drawer child is a 40 cover in a 56 row (the shared row cannot be

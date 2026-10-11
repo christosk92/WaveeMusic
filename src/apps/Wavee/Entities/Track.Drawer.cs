@@ -74,7 +74,7 @@ public readonly partial struct Track
     sealed record DrawerProps(Track Track, DrawerOptions Options);
 
     const int MaxVersionRows = 16;
-    const float StatGap = Spacing.XL;
+    static float StatGap => Spacing.XL;
     static readonly EnterExit? s_fadeUp = new EnterExit(Opacity: 0f, Active: true);
     static readonly LayoutTransition s_shove = new(TransitionChannels.Position,
         TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut));
@@ -679,7 +679,7 @@ public readonly partial struct Track
         /// <summary>The connector gutter, the rail's x inside it (= the indent the table subtracts) and the stub.</summary>
         public const float GutterW = 20f, RailX = RowMetrics.RailOffset, StubW = 9f;
         /// <summary>A version row: the 43 thumb + 4 above + 4 below (ch 04 item 68).</summary>
-        public const float RowH = AudioThumb + 2f * Spacing.XS;
+        public static float RowH => AudioThumb + 2f * Spacing.XS;
         /// <summary>The music-video row's key is its KIND: it is reserved before its uri is known, and kind 99 yields at
         /// most one counterpart.</summary>
         public const string VideoRowKey = "v:video";

@@ -555,7 +555,7 @@ public static partial class Controls
     /// the rail itself cannot disagree.</summary>
     public const float ChipHeight = 32f, ChipRailHeight = 40f, ChipRailInsetX = 3f;
     /// <inheritdoc cref="ChipHeight"/>
-    public const float ChipRailExtent = ChipRailHeight + Spacing.S;
+    public static float ChipRailExtent => ChipRailHeight + Spacing.S;
 
     /// <summary>One filter chip: the STOCK <see cref="ToggleButton.Controlled"/> (32/r4, WinUI's own ramp, checked =
     /// accent) with no style of its own. Every filter chip in the app is this one control, the look the Concerts filter

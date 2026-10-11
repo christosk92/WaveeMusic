@@ -1147,8 +1147,8 @@ public static partial class Controls
     /// <para><paramref name="standalone"/> is the overlay projection for a surface that has no persistent command bar of
     /// its own: the same content inside a floating acrylic card docked to the bottom of the list.</para></summary>
     public static Element SelectionBar(int count, Func<int, Element> commands, bool standalone = false,
-                                       float bottomPadding = Spacing.XL, int minCount = 1)
-        => Embed.Comp(new SelectionBarProps(count, commands, standalone, bottomPadding, minCount),
+                                       float? bottomPadding = null, int minCount = 1)
+        => Embed.Comp(new SelectionBarProps(count, commands, standalone, bottomPadding ?? Spacing.XL, minCount),
                       static () => new SelectionBarHost());
 
     sealed record SelectionBarProps(int Count, Func<int, Element> Commands, bool Standalone, float BottomPadding,

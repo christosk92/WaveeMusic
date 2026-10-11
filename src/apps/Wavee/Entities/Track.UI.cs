@@ -875,7 +875,7 @@ public readonly partial struct Track
         if (showVideo)
         {
             spans[n++] = new TextSpan(" ");
-            spans[n++] = new TextSpan(Icons.Movie, Color: tertiary, FontFamily: Theme.IconFont);
+            spans[n++] = new TextSpan(Icons.Movie, Color: tertiary, FontFamily: Tok.Definition.Fonts.Icon);
         }
         if (artistCount > 0) spans[n++] = new TextSpan("  ·  ", Color: tertiary);
         var slots = t.ArtistSlots;

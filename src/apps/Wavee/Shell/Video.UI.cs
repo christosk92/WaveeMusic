@@ -399,7 +399,7 @@ public static partial class Video
     /// line is bound reactively: the reducer types the fault, and it can land after this notice mounted.</summary>
     static Element[] FailedLine() =>
     [
-        new TextEl(Icons.StatusWarning) { Size = 18f, FontFamily = Theme.IconFont, Color = Tok.OnMediaPrimary },
+        new TextEl(Icons.StatusWarning) { Size = 18f, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.OnMediaPrimary },
         new TextEl(Prop.Of(static () => Loc.Get(Shell.PlayerBarRules.FaultTitleKey(Playback.Error.Value))))
         {
             Size = 12f, Weight = 600, Color = Tok.OnMediaPrimary,
@@ -490,7 +490,7 @@ public static partial class Video
         PressedFill = Tok.OnMediaPrimary with { A = 0.22f },
         Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false,
         Cursor = CursorId.Hand, OnClick = onClick,
-        Children = [new TextEl(glyph) { Size = 11f, FontFamily = Theme.IconFont, Color = Tok.OnMediaSecondary, HoverColor = Tok.OnMediaPrimary }],
+        Children = [new TextEl(glyph) { Size = 11f, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.OnMediaSecondary, HoverColor = Tok.OnMediaPrimary }],
     }, tip);
 
     // ── the shared stage (the mini player, the pop-out, the fullscreen surface) ─────────────────────────────────────
@@ -1478,7 +1478,7 @@ public static partial class Video
             HoverScale = Design.Motion.ScaleEmphatic.Hover, PressScale = Design.Motion.ScaleEmphatic.Press,
             Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
             OnClick = static () => State.ExitFullscreen(),
-            Children = [new TextEl(Icons.BackToWindow) { Size = 18f, FontFamily = Theme.IconFont, Color = Design.StageInk.Ink, HoverColor = Design.StageInk.Ink }],
+            Children = [new TextEl(Icons.BackToWindow) { Size = 18f, FontFamily = Tok.Definition.Fonts.Icon, Color = Design.StageInk.Ink, HoverColor = Design.StageInk.Ink }],
         };
     }
 }

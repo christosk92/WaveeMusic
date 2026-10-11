@@ -71,7 +71,7 @@ public static class Daylist
     /// <summary>The copy column's insets, which are the card's own (the card has no padding, so the art reaches its
     /// edges): 32 from the left edge, the eyebrow 32 below the top, 12 from the right edge (where a narrow card's copy
     /// ends), the timeline labels 24 above the foot.</summary>
-    public static readonly Edges4 CopyPadding = new(Spacing.XXXL, Spacing.XXXL, Spacing.M, Spacing.XXL);
+    public static Edges4 CopyPadding => new(Spacing.XXXL, Spacing.XXXL, Spacing.M, Spacing.XXL);
     /// <summary>At most this many tag links on the description line.</summary>
     public const int MaxTags = 6;
     /// <summary>The countdown ring's size (the stock ring's minimum).</summary>

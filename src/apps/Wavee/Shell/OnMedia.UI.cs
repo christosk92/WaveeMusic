@@ -317,7 +317,7 @@ public static class OnMedia
             [
                 new TextEl(glyph)
                 {
-                    Size = 16f, FontFamily = Theme.IconFont,
+                    Size = 16f, FontFamily = Tok.Definition.Fonts.Icon,
                     Color = enabled ? Tok.OnMediaSecondary : Tok.OnMediaTertiary,
                     HoverColor = enabled ? Tok.OnMediaPrimary : Tok.OnMediaTertiary,
                 },
@@ -341,7 +341,7 @@ public static class OnMedia
             [
                 new TextEl(playing ? Icons.Pause : Icons.Play)
                 {
-                    Size = 18f, FontFamily = Theme.IconFont,
+                    Size = 18f, FontFamily = Tok.Definition.Fonts.Icon,
                     Color = enabled ? Tok.OnMediaPrimary : Tok.OnMediaTertiary,
                 },
             ],

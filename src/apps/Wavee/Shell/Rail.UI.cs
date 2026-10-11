@@ -48,7 +48,7 @@ public static partial class Rail
     /// <summary>Row 1 of the icon-button table pairs the 32-square with a 16-DIP glyph (never 12).</summary>
     internal const float HeaderGlyph = 16f;
 
-    static readonly CornerRadius4 RailCorners = new(Radii.Card, 0f, 0f, 0f);
+    static CornerRadius4 RailCorners => new(Radii.Card, 0f, 0f, 0f);
 
     // ── the frame ────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -210,7 +210,7 @@ public static partial class Rail
         Corners = Radii.ControlAll, Fill = selected ? Tok.OnMediaPrimary with { A = 0.16f } : ColorF.Transparent,
         Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
         OnClick = onClick,
-        Children = [new TextEl(glyph) { Size = 11f, FontFamily = Theme.IconFont, Color = selected ? Tok.OnMediaPrimary : Tok.OnMediaSecondary }],
+        Children = [new TextEl(glyph) { Size = 11f, FontFamily = Tok.Definition.Fonts.Icon, Color = selected ? Tok.OnMediaPrimary : Tok.OnMediaSecondary }],
     }, tip);
 
     /// <summary>A placement intent: re-stamp the availability THIS playable has, then open there.</summary>
@@ -302,7 +302,7 @@ public static partial class Rail
         [
             new TextEl(glyph)
             {
-                Size = HeaderGlyph, FontFamily = Theme.IconFont,
+                Size = HeaderGlyph, FontFamily = Tok.Definition.Fonts.Icon,
                 Color = active ? Tok.AccentTextPrimary : Tok.TextSecondary,
                 HoverColor = active ? Tok.AccentTextPrimary : Tok.TextPrimary,
             },

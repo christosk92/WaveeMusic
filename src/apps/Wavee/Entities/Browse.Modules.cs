@@ -37,7 +37,7 @@ public static class HomeModuleLayout
     /// (8 each side), so two covers sit 16 apart — the prototype's gutter. A 12 gap on top read as 28 between covers.</summary>
     public const float ShelfGap = 0f;
 
-    public const float GridGap = Spacing.M;
+    public static float GridGap => Spacing.M;
 
     // ── the Fold tile ──
     public const float FoldCardHeight = 176f;

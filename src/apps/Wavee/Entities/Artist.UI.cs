@@ -100,7 +100,7 @@ public static class ArtistHeroLayout
     public const float CompactCopyMaxWidth = 640f;
     public const float NarrowCopyMaxWidth = 520f;
     public const float PhotoParallaxFraction = 0.15f;
-    public const float ContentBlendTail = Spacing.XXXL * 3f;
+    public static float ContentBlendTail => Spacing.XXXL * 3f;
     public const float CompactIdentityHeight = Detail.VerticalLayout.CompactIdentityHeight;
 
     public static ArtistHeroTier TierFor(float width, ArtistHeroTier previous)

@@ -155,7 +155,7 @@ public static partial class Shell
     /// its right and bottom and parked in a clip of the real geometry — the right/bottom strokes land in the clipped DIP
     /// and the rounded top-left arc survives whole.</summary>
     static readonly Edges4 StrokeOverhang = new(0f, 0f, -1f, -1f);
-    static readonly CornerRadius4 RailBandCorners = new(Radii.Card, 0f, 0f, 0f);
+    static CornerRadius4 RailBandCorners => new(Radii.Card, 0f, 0f, 0f);
 
     // CLAMP-ONLY: no `collapsed` argument, so the engine detent is off and the raw cell reaches the rail floor. The mode,
     // the approach band and the fade are all SidebarResizeRules (read off Sidebar.Seam).

@@ -115,7 +115,7 @@ public static partial class Design
 
         /// <summary>The content region's ONE rounded corner, facing the nav pane. The shell reads it; so does the page
         /// tone plane, which is a page-root SIBLING of the scrolling page and must clip to the same shape.</summary>
-        public static readonly CornerRadius4 ContentPaneCorners = new(Radii.Card, 0f, 0f, 0f);
+        public static CornerRadius4 ContentPaneCorners => new(Radii.Card, 0f, 0f, 0f);
     }
 
     /// <summary>The bottom player-bar dock geometry. Pages reserve this height so their last row clears the transport.
@@ -200,7 +200,14 @@ public static partial class Design
     /// <c>Tok.Use(Tok.NeutralPalette, kind)</c> explicitly; 0.3 left <see cref="Shell.SeedPalette"/> unset, so every
     /// theme flip fell back to <c>Tok.Use(kind)</c> — the engine's own default (<c>WarmPalette</c>), not Wavee's.
     /// <see cref="Install"/> wires the seam once from the composition root (<c>Shell.InstallUi</c>).</summary>
-    public static void SeedPalette(ThemeKind kind) => Tok.Use(Tok.NeutralPalette, kind);
+    public static void SeedPalette(ThemeKind kind) => Tok.Use(Definition, kind);
+
+    /// <summary>Wavee's theme definition: the engine's Neutral palette with Wavee's fonts — the BUNDLED icon face
+    /// (<see cref="WaveeFonts.Icons"/>), never the system family of the same name, which only Windows 11 ships.</summary>
+    public static readonly FluentGpu.Theming.ThemeDefinition Definition = Tok.NeutralPalette with
+    {
+        Fonts = new FluentGpu.Theming.FontSet(Tok.NeutralPalette.Fonts.Body, WaveeFonts.Icons),
+    };
 
     /// <summary>Install this file's seams into the shell. Called once, from <see cref="Shell.InstallUi"/>.</summary>
     public static void Install() => Shell.SeedPalette = SeedPalette;

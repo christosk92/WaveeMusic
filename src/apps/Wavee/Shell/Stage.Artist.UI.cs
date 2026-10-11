@@ -580,7 +580,7 @@ public static partial class Stage
                 {
                     Width = Px(24f, s), Shrink = 0f, Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center, HitTestVisible = false,
                     Children = [playing
-                        ? new TextEl(Icons.Volume) { Size = Px(14f, s), FontFamily = Theme.IconFont, Color = set.Text }
+                        ? new TextEl(Icons.Volume) { Size = Px(14f, s), FontFamily = Tok.Definition.Fonts.Icon, Color = set.Text }
                         : new TextEl(FormatCache.Int(index + 1)) { Size = Px(14f, s), LineHeight = Px(20f, s), Color = now ? set.Text : Ink.InkTertiary, Wrap = TextWrap.NoWrap }],
                 },
             };

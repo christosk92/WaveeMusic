@@ -206,7 +206,7 @@ public static partial class AiLyrics
                 [
                     new TextEl(Icons.RefineSparkle)
                     {
-                        Size = GlyphSize, FontFamily = Theme.IconFont, Color = color, Shrink = 0f,
+                        Size = GlyphSize, FontFamily = Tok.Definition.Fonts.Icon, Color = color, Shrink = 0f,
                     },
                     new TextEl(progress ? Strings.Lyrics.Ai.Footer.Progress(track.LinesReady, track.LineCount) : Loc.Get(Rules.FooterKey(track)))
                     {

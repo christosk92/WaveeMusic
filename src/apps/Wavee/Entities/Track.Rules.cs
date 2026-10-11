@@ -367,10 +367,10 @@ public readonly partial struct Track
         /// <summary>Density Default.</summary>
         public const float RowHeight = 48f;
         public const float HeaderHeight = 36f;
-        public const float ColGap = Spacing.M;
-        public const float PadX = Spacing.L;
+        public static float ColGap => Spacing.M;
+        public static float PadX => Spacing.L;
         /// <summary>The rounded row-highlight inset (rows pad PadX − RowInset so columns stay header-aligned).</summary>
-        public const float RowInset = Spacing.S;
+        public static float RowInset => Spacing.S;
         /// <summary>36 sat between two ladder rungs and broke DOWNWARD: the Compact row is 40 tall.</summary>
         public const float ThumbSize = Design.Size.Thumb32;
         public const float HeartCol = Lane.Heart;

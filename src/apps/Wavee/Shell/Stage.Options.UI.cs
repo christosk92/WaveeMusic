@@ -418,7 +418,7 @@ public static partial class Stage
                                 Children =
                                 [
                                     new TextEl(name) { Size = 14f, LineHeight = 20f, Weight = 600, Color = Ink.Ink },
-                                    .. (on ? [new TextEl(Icons.Accept) { Size = 12f, FontFamily = Theme.IconFont, Color = Ink.Ink }] : Array.Empty<Element>()),
+                                    .. (on ? [new TextEl(Icons.Accept) { Size = 12f, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.Ink }] : Array.Empty<Element>()),
                                 ],
                             },
                             new TextEl(sub) { Size = 12f, LineHeight = 16f, Color = Ink.InkSecondary, Wrap = TextWrap.Wrap },

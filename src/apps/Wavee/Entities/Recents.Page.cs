@@ -113,7 +113,7 @@ public readonly partial struct Recents
     {
         static readonly Func<int, string> s_itemCount = static n => Strings.Recents.ItemCount(n);
         static readonly Func<int, string> s_groupedFrom = static n => Strings.Recents.GroupedFrom(n);
-        static readonly LayoutTransition BodyFlip = new(TransitionChannels.Position | TransitionChannels.Opacity,
+        static LayoutTransition BodyFlip => new(TransitionChannels.Position | TransitionChannels.Opacity,
             MotionTok.ContentResize.ToDynamics(),
             Enter: new EnterExit(Dy: Spacing.S, Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true));
 

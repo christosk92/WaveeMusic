@@ -427,9 +427,9 @@ public class ProfileListRulesTests
     [Fact]
     public void The_grid_constants_agree_with_their_tokens()
     {
-        Assert.Equal(Spacing.S, ProfileGridFit.StripGap);
+        Assert.Equal(ProfileGridFit.StripGap, Spacing.S);
         Assert.Equal(12f, Spacing.Card);   // the plan above is asserted at this gap
-        Assert.Equal(32f + Spacing.S, ProfileGridFit.ActionLine);
+        Assert.Equal(ProfileGridFit.ActionLine, 32f + Spacing.S);
         Assert.Equal(LibraryLetters.HeaderExtent, ProfileLetterRows.HeaderExtent);
         Assert.Equal(176f, ProfileGridFit.MinCell);
         Assert.Equal(18f, ProfileGridFit.StripWidth);   // User.JumpStrip's own width

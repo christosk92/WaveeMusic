@@ -248,8 +248,8 @@ public class SurfaceRulesTests
     public void The_row_geometry_constants_are_the_spacing_tokens()
     {
         // SurfaceGeometry restates the tokens as whole-DIP literals (it is engine-free); these pin the two.
-        Assert.Equal(Spacing.S, SurfaceGeometry.RowPad);
-        Assert.Equal(Spacing.M, SurfaceGeometry.RowGap);
+        Assert.Equal(SurfaceGeometry.RowPad, Spacing.S);
+        Assert.Equal(SurfaceGeometry.RowGap, Spacing.M);
     }
 
     // ── the host's equality gates ────────────────────────────────────────────────────────────────────────────────────

@@ -714,7 +714,7 @@ public static partial class Stage
             Corners = Radii.ControlAll, Fill = Ink.GlassRest, BorderWidth = 1f, BorderColor = Ink.Stroke,
             Children = glyph is null
                 ? [new TextEl(text) { Size = 12f, LineHeight = 16f, Color = Ink.InkSecondary }]
-                : [new TextEl(glyph) { Size = 12f, FontFamily = Theme.IconFont, Color = Ink.InkSecondary }, new TextEl(text) { Size = 12f, LineHeight = 16f, Color = Ink.InkSecondary }],
+                : [new TextEl(glyph) { Size = 12f, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.InkSecondary }, new TextEl(text) { Size = 12f, LineHeight = 16f, Color = Ink.InkSecondary }],
         };
     }
 
@@ -1471,7 +1471,7 @@ public static partial class Stage
             Fill = lit ? Ink.GlassHover : Ink.GlassRest, HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed, BrushTransitionMs = Design.Motion.Faster,
             Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
             OnClick = onClick, OnRealized = onRealized,
-            Children = [new TextEl(glyph) { Size = 16f, FontFamily = Theme.IconFont, Color = Ink.Ink }],
+            Children = [new TextEl(glyph) { Size = 16f, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.Ink }],
         };
     }
 
@@ -1510,7 +1510,7 @@ public static partial class Stage
                 Width = 40f, Height = 40f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
                 Fill = Ink.GlassRest, HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed, BrushTransitionMs = Design.Motion.Faster,
                 Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, AllowFocusOnInteraction = false, ClickRequestsContext = true,
-                Children = [new TextEl(Icons.More) { Size = 16f, FontFamily = Theme.IconFont, Color = Ink.Ink }],
+                Children = [new TextEl(Icons.More) { Size = 16f, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.Ink }],
             }.WithContextMenu(overlay,
                 () => { var m = NowPlayingMenu?.Invoke(); if (m is { } model && ContextMenu.HasAnyEnabled(model)) ctx.MenuOpen(true); return m; },  // the "…" menu holds the chrome (V-U22); an empty menu never opens, so never counts
                 new ContextMenuOptions { OnClosed = _ => ctx.MenuOpen(false) }));                                       // ContextMenu.cs:43
@@ -1573,7 +1573,7 @@ public static partial class Stage
         HoverScale = Design.Motion.ScaleEmphatic.HoverIf(enabled), PressScale = Design.Motion.ScaleEmphatic.PressIf(enabled),
         Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, IsEnabled = enabled,
         OnClick = static () => Shell.TogglePlayPause("stage.button"), Cursor = enabled ? CursorId.Hand : (CursorId?)null,
-        Children = [new TextEl(playing ? Icons.Pause : Icons.Play) { Size = 22f, FontFamily = Theme.IconFont, Color = enabled ? set.Ink : Ink.InkTertiary }],
+        Children = [new TextEl(playing ? Icons.Pause : Icons.Play) { Size = 22f, FontFamily = Tok.Definition.Fonts.Icon, Color = enabled ? set.Ink : Ink.InkTertiary }],
     };
 
     /// <summary>A plateless 40-DIP glyph button (glass on hover).</summary>
@@ -1584,7 +1584,7 @@ public static partial class Stage
         HoverScale = Design.Motion.ScaleEmphatic.HoverIf(enabled), PressScale = Design.Motion.ScaleEmphatic.PressIf(enabled),
         Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, IsEnabled = enabled, OnClick = enabled ? onClick : null,
         Cursor = enabled ? CursorId.Hand : (CursorId?)null, OnRealized = onRealized,
-        Children = [new TextEl(glyph) { Size = glyphSize, FontFamily = Theme.IconFont, Color = enabled ? Ink.InkSecondary : Ink.InkTertiary, HoverColor = enabled ? Ink.Ink : Ink.InkTertiary }],
+        Children = [new TextEl(glyph) { Size = glyphSize, FontFamily = Tok.Definition.Fonts.Icon, Color = enabled ? Ink.InkSecondary : Ink.InkTertiary, HoverColor = enabled ? Ink.Ink : Ink.InkTertiary }],
     };
 
     /// <summary>Shuffle / repeat: accent-filled while latched (the prototype's <c>.ab.chk</c>).</summary>
@@ -1595,7 +1595,7 @@ public static partial class Stage
         PressedFill = enabled ? Ink.GlassPressed : Ink.GlassRest, BrushTransitionMs = Design.Motion.Faster,
         HoverScale = Design.Motion.ScaleEmphatic.HoverIf(enabled), PressScale = Design.Motion.ScaleEmphatic.PressIf(enabled),
         Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, IsEnabled = enabled, OnClick = onClick, Cursor = enabled ? CursorId.Hand : (CursorId?)null,
-        Children = [new TextEl(glyph) { Size = 16f, FontFamily = Theme.IconFont, Color = !enabled ? Ink.InkTertiary : latched ? ColorContrast.PickContrast(accent) : Ink.InkSecondary, HoverColor = !enabled ? Ink.InkTertiary : latched ? ColorContrast.PickContrast(accent) : Ink.Ink }],
+        Children = [new TextEl(glyph) { Size = 16f, FontFamily = Tok.Definition.Fonts.Icon, Color = !enabled ? Ink.InkTertiary : latched ? ColorContrast.PickContrast(accent) : Ink.InkSecondary, HoverColor = !enabled ? Ink.InkTertiary : latched ? ColorContrast.PickContrast(accent) : Ink.Ink }],
     };
 
     static BoxEl Heart(bool saved, Action? onLike, ColorF accent) => new()
@@ -1603,7 +1603,7 @@ public static partial class Stage
         Width = 40f, Height = 40f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
         Fill = Ink.GlassRest, HoverFill = onLike is null ? Ink.GlassRest : Ink.GlassHover, PressedFill = onLike is null ? Ink.GlassRest : Ink.GlassPressed, BrushTransitionMs = Design.Motion.Faster,
         Role = AutomationRole.Button, Focusable = onLike is not null, AllowFocusOnInteraction = false, OnClick = onLike, Cursor = onLike is null ? (CursorId?)null : CursorId.Hand, BlocksDragArm = true,
-        Children = [new BoxEl { Key = saved ? "sh:on" : "sh:off", Children = [new TextEl(saved ? Icons.HeartFill : Icons.Heart) { Size = 18f, FontFamily = Theme.IconFont, Color = saved ? accent : Ink.InkSecondary, HoverColor = saved ? accent : Ink.Ink }] }],
+        Children = [new BoxEl { Key = saved ? "sh:on" : "sh:off", Children = [new TextEl(saved ? Icons.HeartFill : Icons.Heart) { Size = 18f, FontFamily = Tok.Definition.Fonts.Icon, Color = saved ? accent : Ink.InkSecondary, HoverColor = saved ? accent : Ink.Ink }] }],
     };
 
     sealed class MuteGlyph : Component
@@ -1677,9 +1677,9 @@ public static partial class Stage
                 Shrink = 1f, MinWidth = Layout.DeviceMinW,   // the name gives way before the cluster leaves the card (Layout.TransportRightMinW)
                 Children =
                 [
-                    new TextEl(glyph) { Size = 14f, FontFamily = Theme.IconFont, Color = Ink.Ink },
+                    new TextEl(glyph) { Size = 14f, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.Ink },
                     new TextEl(name) { Size = 14f, LineHeight = 20f, Color = Ink.Ink, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
-                    new TextEl(Icons.ChevronDown) { Size = 12f, FontFamily = Theme.IconFont, Color = Ink.InkSecondary },
+                    new TextEl(Icons.ChevronDown) { Size = 12f, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.InkSecondary },
                 ],
             };
         }

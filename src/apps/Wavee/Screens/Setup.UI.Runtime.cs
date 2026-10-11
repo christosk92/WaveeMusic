@@ -620,7 +620,7 @@ public static partial class Setup
         Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Start,
         Children =
         [
-            new TextEl(glyph) { Size = 18f, FontFamily = Theme.IconFont, Color = glyphColor, Shrink = 0f, Margin = new Edges4(0f, 1f, 0f, 0f) },
+            new TextEl(glyph) { Size = 18f, FontFamily = Tok.Definition.Fonts.Icon, Color = glyphColor, Shrink = 0f, Margin = new Edges4(0f, 1f, 0f, 0f) },
             new BoxEl
             {
                 Direction = 1, Gap = 4f, Grow = 1f, MinWidth = 0f,
@@ -794,7 +794,7 @@ public static partial class Setup
         FocusVisualMargin = Design.FocusInsetRow, OnClick = onClick,
         Children =
         [
-            new TextEl(glyph) { Size = 16f, FontFamily = Theme.IconFont, Color = Tok.TextSecondary, Shrink = 0f },
+            new TextEl(glyph) { Size = 16f, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.TextSecondary, Shrink = 0f },
             new BoxEl
             {
                 Direction = 1, Grow = 1f, MinWidth = 0f, Gap = 1f,
@@ -804,7 +804,7 @@ public static partial class Setup
                     Ui.Caption(caption) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap },
                 ],
             },
-            new TextEl(Icons.ChevronRightMed) { Size = 12f, FontFamily = Theme.IconFont, Color = Tok.TextTertiary, Shrink = 0f },
+            new TextEl(Icons.ChevronRightMed) { Size = 12f, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.TextTertiary, Shrink = 0f },
         ],
     }.Interactive(Interaction.Subtle);
 

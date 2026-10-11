@@ -165,7 +165,7 @@ public readonly partial struct Track
 
     static TextEl Glyph(Prop<string> glyph, float size, Prop<ColorF> color, Prop<bool>? visible = null) => new(glyph)
     {
-        FontFamily = Theme.IconFont, Size = size, Color = color, Visible = visible ?? true,
+        FontFamily = Tok.Definition.Fonts.Icon, Size = size, Color = color, Visible = visible ?? true,
     };
 
     // ══ 3. THE BOUND GRID ════════════════════════════════════════════════════════════════════════════════════════════
@@ -549,7 +549,7 @@ public readonly partial struct Track
                 new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, ClipToBounds = true, Children = runs },
                 new TextEl(Icons.Movie)
                 {
-                    FontFamily = Theme.IconFont, Size = 12f, Shrink = 0f, Color = Ink(static () => Tok.TextTertiary),
+                    FontFamily = Tok.Definition.Fonts.Icon, Size = 12f, Shrink = 0f, Color = Ink(static () => Tok.TextTertiary),
                     Visible = Prop.Of(() => ShowVideo(r.P)),
                 },
             ],
@@ -807,7 +807,7 @@ public readonly partial struct Track
         if (showVideo)
         {
             b.Add(new TextSpan(" "));
-            b.Add(new TextSpan(Icons.Movie, Color: tertiary, FontFamily: Theme.IconFont));
+            b.Add(new TextSpan(Icons.Movie, Color: tertiary, FontFamily: Tok.Definition.Fonts.Icon));
         }
         if (artistCount > 0) b.Add(new TextSpan("  ·  ", Color: tertiary));
         var slots = t.ArtistSlots;

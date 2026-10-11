@@ -70,7 +70,7 @@ public static partial class Settings
 
     const float ContentMaxWidth = 1000f;
     const float CardSpacing = 4f;
-    static readonly Edges4 SectionHeaderMargin = new(0f, Spacing.XXXL, 0f, Spacing.S);
+    static Edges4 SectionHeaderMargin => new(0f, Spacing.XXXL, 0f, Spacing.S);
 
     static readonly Signal<int> s_tab = new(0);
     static readonly Signal<int> s_epoch = new(0);

@@ -32,7 +32,8 @@ public static partial class Rail
 {
     /// <summary>The flyout's content width, and the thumbnail grid derived from it: four cards + three 6-DIP gaps inside
     /// the 12-DIP padding. A const: at rail 200 it overhangs the page by 140 and does not reflow (W7b).</summary>
-    public const float StyleFlyoutW = 340f, ThumbCardGap = 6f, ThumbSize = (StyleFlyoutW - 2f * Spacing.M - 3f * ThumbCardGap) / 4f;
+    public const float StyleFlyoutW = 340f, ThumbCardGap = 6f;
+    public static float ThumbSize => (StyleFlyoutW - 2f * Spacing.M - 3f * ThumbCardGap) / 4f;
 
     const float ThumbCardPad = 4f, OptionLabelW = 60f;
 

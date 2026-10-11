@@ -88,9 +88,9 @@ public class ControlsGeometryTests
     public void The_shelf_chrome_constants_are_the_ones_the_card_renders()
     {
         // SurfaceGeometry restates the spacing tokens as whole-DIP literals (it is engine-free); these pin the two.
-        Assert.Equal(Spacing.XS, SurfaceGeometry.ShelfGutterTop);
+        Assert.Equal(SurfaceGeometry.ShelfGutterTop, Spacing.XS);
         Assert.Equal(0f, SurfaceGeometry.ShelfGutterBottom);
-        Assert.Equal(Spacing.S, SurfaceGeometry.ShelfPlatePad);
+        Assert.Equal(SurfaceGeometry.ShelfPlatePad, Spacing.S);
         Assert.Equal(20f, SurfaceGeometry.CardTitleLineH);
         Assert.Equal(16f, SurfaceGeometry.CardCaptionLineH);
         Assert.Equal(2f, SurfaceGeometry.CardLabelGap);

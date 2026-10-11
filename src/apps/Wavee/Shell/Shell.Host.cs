@@ -725,12 +725,11 @@ public static partial class Shell
             _ => FluentApp.SystemUsesLightTheme() ? ThemeKind.Light : ThemeKind.Dark,
         };
         if (SeedPalette is { } seed) seed(kind);
-        else FluentGpu.Dsl.Tok.Use(kind);
+        else FluentGpu.Dsl.Tok.Use(Design.Definition, kind);
         if (FluentApp.SystemAccentRamp() is { } ramp) FluentGpu.Dsl.Tok.SetAccent(in ramp);
         else if (FluentApp.SystemAccent() is { } accent) FluentGpu.Dsl.Tok.SetAccent(accent);
         // The icon face is the BUNDLED Segoe Fluent Icons file, not the system family of the same name: the system one
         // ships with Windows 11 only, and on Windows 10 every glyph added in Fluent Icons drew as tofu.
-        FluentGpu.Dsl.Theme.IconFont = WaveeFonts.Icons;
     }
 
     /// <summary>UNPACKAGED ONLY. A packaged build declares its protocols AND its startup task in the manifest and the

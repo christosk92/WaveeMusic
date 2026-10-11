@@ -409,9 +409,10 @@ public static partial class Queue
     sealed class RailPanel : QueueSurface
     {
         const float QueueArt = 34f, NowArt = 44f, ClassicExtent = QueueRowRules.ClassicExtent, HeaderRowH = 20f;
-        const float HeaderExtent = Spacing.M + HeaderRowH + Spacing.XS;           // 36
-        const float HeaderSubExtent = HeaderExtent + Spacing.XXS + 16f;           // 54, the Autoplay header's hint line
-        const float MoreRowH = 40f, MoreExtent = MoreRowH + Spacing.XS + Spacing.XXS;
+        static float HeaderExtent => Spacing.M + HeaderRowH + Spacing.XS;           // 36
+        static float HeaderSubExtent => HeaderExtent + Spacing.XXS + 16f;           // 54, the Autoplay header's hint line
+        const float MoreRowH = 40f;
+        static float MoreExtent => MoreRowH + Spacing.XS + Spacing.XXS;
 
         readonly Signal<int> _userPages = new(1), _nextPages = new(1), _autoPages = new(1);
         readonly SwipeGroup _swipe = new();
@@ -834,7 +835,7 @@ public static partial class Queue
                 Layout = LayoutTransition.Slide,
                 Children =
                 [
-                    new TextEl(Icons.ChevronDown) { Size = 12f, FontFamily = Theme.IconFont, Color = Tok.TextSecondary },
+                    new TextEl(Icons.ChevronDown) { Size = 12f, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.TextSecondary },
                     new TextEl(Strings.Player.ShowNext(Math.Min(PageSize, remaining))) { Size = 12f, LineHeight = 16f, Weight = 600, Color = Tok.TextPrimary },
                     new TextEl("·  " + Strings.Player.MoreCount(remaining)) { Size = 12f, LineHeight = 16f, Color = Tok.TextTertiary },
                 ],
@@ -858,7 +859,7 @@ public static partial class Queue
                     {
                         Size = 12f, LineHeight = 16f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Grow = 1f, MinWidth = 0f,
                     },
-                    new TextEl(Icons.ChevronRightMed) { Size = 12f, FontFamily = Theme.IconFont, Color = Tok.TextSecondary },
+                    new TextEl(Icons.ChevronRightMed) { Size = 12f, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.TextSecondary },
                 ],
             };
         }
@@ -934,7 +935,7 @@ public static partial class Queue
             Width = Controls.IconButtonSize, Height = Controls.IconButtonSize, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             Corners = classic ? CornerRadius4.All(0f) : Radii.ControlAll, HoverFill = Design.Colors.RowPressed,
             Role = AutomationRole.Button, Cursor = CursorId.Hand, BlocksDragArm = true, OnClick = remove,
-            Children = [new TextEl(Icons.ChromeClose) { Size = 12f, FontFamily = Theme.IconFont, Color = Tok.TextTertiary, HoverColor = Tok.TextPrimary }],
+            Children = [new TextEl(Icons.ChromeClose) { Size = 12f, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.TextTertiary, HoverColor = Tok.TextPrimary }],
         };
     }
 
@@ -957,7 +958,8 @@ public static partial class Queue
     sealed class StagePane : QueueSurface
     {
         const float RowH = 56f, RowArt = 38f, TimeW = 44f, GripW = 28f;
-        const float NextH = 104f, NextArt = 80f, NextGap = Spacing.M;
+        const float NextH = 104f, NextArt = 80f;
+        static float NextGap => Spacing.M;
         const float HeaderH = 40f;
         const float MoreRowH = 40f;
 
@@ -1041,7 +1043,7 @@ public static partial class Queue
                         {
                             AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center,
                             Opacity = 0f, HoverOpacity = Viewer ? 0f : 1f, HitTestVisible = false,
-                            Children = [new TextEl(Icons.GripperBar) { Size = Px(14f), FontFamily = Theme.IconFont, Color = Ink.InkTertiary }],
+                            Children = [new TextEl(Icons.GripperBar) { Size = Px(14f), FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.InkTertiary }],
                         },
                     ],
                 },
@@ -1177,7 +1179,7 @@ public static partial class Queue
                 Layout = LayoutTransition.Slide,
                 Children =
                 [
-                    new TextEl(Icons.ChevronDown) { Size = Px(12f), FontFamily = Theme.IconFont, Color = Ink.InkSecondary },
+                    new TextEl(Icons.ChevronDown) { Size = Px(12f), FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.InkSecondary },
                     new TextEl("·  " + remaining) { Size = Px(12f), LineHeight = Px(16f), Color = Ink.InkTertiary },
                 ],
             };
@@ -1190,7 +1192,7 @@ public static partial class Queue
             BrushTransitionMs = Design.Motion.Faster,
             HoverScale = Design.Motion.ScaleEmphatic.Hover, PressScale = Design.Motion.ScaleEmphatic.Press,
             Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, OnClick = onClick,
-            Children = [new TextEl(glyph) { Size = 12f, FontFamily = Theme.IconFont, Color = Ink.InkSecondary, HoverColor = Ink.Ink }],
+            Children = [new TextEl(glyph) { Size = 12f, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.InkSecondary, HoverColor = Ink.Ink }],
         };
     }
 

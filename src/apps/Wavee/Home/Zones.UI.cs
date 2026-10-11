@@ -91,7 +91,7 @@ public static class Zones
     public const float HeaderH = Design.Size.ControlH;
     /// <summary>The breath between a header and its body — INSIDE the header's sticky box, so the body's clip line sits
     /// exactly under it.</summary>
-    public const float HeaderGap = Spacing.M;
+    public static float HeaderGap => Spacing.M;
     /// <summary>The feather the body dissolves through while its clip is engaged (the shelf fade rung, as Browse).</summary>
     public const float ClipFadeBand = Design.Size.FadeShelf;
     /// <summary>The viewport line a zone body is cut at while its header is pinned.</summary>

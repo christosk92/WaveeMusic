@@ -1113,7 +1113,7 @@ public readonly partial struct User
 
         static readonly LayoutTransition s_tailBarReveal = new(TransitionChannels.Opacity, MotionTok.Reveal.ToDynamics(),
             Enter: new EnterExit(Sx: 0.55f, Opacity: 0f, Active: true));
-        static readonly LayoutTransition s_tailRowReveal = new(TransitionChannels.Opacity, MotionTok.Reveal.ToDynamics(),
+        static LayoutTransition s_tailRowReveal => new(TransitionChannels.Opacity, MotionTok.Reveal.ToDynamics(),
             Enter: new EnterExit(Dy: Spacing.XS, Opacity: 0f, Active: true));
 
         FactBlendProps? _latest;

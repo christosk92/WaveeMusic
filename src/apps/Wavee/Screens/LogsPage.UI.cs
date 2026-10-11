@@ -506,7 +506,7 @@ public static partial class LogsPage
             [
                 HeaderLabel(Loc.Get(Strings.Logs.ColTime)) with { HoverColor = Tok.TextPrimary },
                 new TextEl(newestFirst ? Icons.ChevronDown : Icons.ChevronUp)
-                    { Size = 10f, FontFamily = Theme.IconFont, Color = Tok.TextTertiary, HoverColor = Tok.TextPrimary, Shrink = 0f },
+                    { Size = 10f, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.TextTertiary, HoverColor = Tok.TextPrimary, Shrink = 0f },
             ],
         };
 

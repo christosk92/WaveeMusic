@@ -98,10 +98,10 @@ public static partial class Detail
     static readonly PathData s_insightsGlyph =
         PathDataParser.Parse("M4 20h16M7.5 20v-7M12 20V6M16.5 20v-4", PathContentEpoch.Mint(), FillRule.NonZero);
 
-    const float SheetHeaderPadY = Spacing.M;          // 12
-    const float SheetPadX = Spacing.L;                // 16
-    const float SheetBodyPadTop = Spacing.M;          // 12
-    const float SheetBodyPadBottom = Spacing.XL;      // 20
+    static float SheetHeaderPadY => Spacing.M;          // 12
+    static float SheetPadX => Spacing.L;                // 16
+    static float SheetBodyPadTop => Spacing.M;          // 12
+    static float SheetBodyPadBottom => Spacing.XL;      // 20
     const float SheetGripW = 4f, SheetGripH = 36f;
     const float SheetToggleEdge = 32f, SheetToggleGlyph = 15f;
     const float SheetCloseEdge = 28f, SheetCloseGlyph = 11f;

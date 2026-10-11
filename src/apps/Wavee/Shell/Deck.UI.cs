@@ -50,7 +50,7 @@ public static partial class Deck
     // ══ 1. THE MOUNT POINT ═══════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The deck's square edge at the default rail width (340 − 2·8 = 324).</summary>
-    public const float DefaultSide = Shell.RailDefaultW - 2f * Spacing.S;
+    public static float DefaultSide => Shell.RailDefaultW - 2f * Spacing.S;
 
     /// <summary>The now-playing player deck for the rail's hero slot: a <c>side × side</c> square that fills the rail's
     /// content width. It reads its own inputs — <see cref="Shell.Ui.RailWidth"/> (quantised to the 4-DIP grid) and the

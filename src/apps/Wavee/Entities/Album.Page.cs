@@ -1064,7 +1064,7 @@ public readonly partial struct Album
              + (targets.Length > 0 ? targets[0].ToString(CultureInfo.InvariantCulture) : "");
     }
 
-    static readonly Edges4 SectionPad = new(Spacing.L, Spacing.XL, Spacing.L, Spacing.L);
+    static Edges4 SectionPad => new(Spacing.L, Spacing.XL, Spacing.L, Spacing.L);
 
     /// <summary>The list section wrapper: the page's trailing padding around a capped, expandable stack.</summary>
     static Element ListSection(string title, int count, TrailKind kind, int parent, string signature) => new BoxEl

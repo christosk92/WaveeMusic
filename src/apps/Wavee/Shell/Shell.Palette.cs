@@ -499,7 +499,7 @@ public static partial class Shell
                         [
                             new TextEl(entry.Glyph)
                             {
-                                Size = 14f, FontFamily = Theme.IconFont,
+                                Size = 14f, FontFamily = Tok.Definition.Fonts.Icon,
                                 Color = active ? Tok.AccentDefault : Tok.TextTertiary,
                             },
                             new BoxEl

@@ -210,14 +210,15 @@ public readonly partial struct Artist
         /// <summary>The spine's own row pitch. <c>RepeatLayout.Stack</c> carries NO gap of its own (its gap field is 0 —
         /// <c>ListOptions.cs:38</c>), so the item extent IS the pitch and the 8 DIP under the 36-DIP cover is part of
         /// the item, not something the layout adds.</summary>
-        const float DotPitch = DotEdge + Spacing.S;
+        static float DotPitch => DotEdge + Spacing.S;
         /// <summary>The seed a block gets before <see cref="ReaderShape.ExtentOf"/> can answer (index out of range during
         /// a resize) — a mid-sized block, so a pre-shape content extent is never absurd.</summary>
         const float EstimatedBlockExtent = 320f;
         /// <summary>The three heights the trailing item can be — air, one line, or the "nothing here yet" vacancy. They
         /// are constants because <see cref="TailExtent"/> has to answer them BEFORE the item renders (the same contract
         /// <see cref="ReaderShape.ExtentOf"/> is under), from the same <see cref="TailKind"/> decision the item reads.</summary>
-        const float TailAirH = Spacing.L, TailLineH = 48f, TailVacancyH = 208f;
+        const float TailLineH = 48f, TailVacancyH = 208f;
+        static float TailAirH => Spacing.L;
 
         /// <summary>The prototype's block row, exactly: <c>28 | 1fr | 32 | 52</c> — number, title, the TRAILING heart,
         /// duration. No per-row "…" (the head owns the album's menu and the row's own context menu is the right button),

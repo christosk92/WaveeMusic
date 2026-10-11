@@ -781,7 +781,7 @@ public readonly partial struct Artist
     // ══ 7. THE GRID (UI, ch 08 W14/W15; 0.2.9 DiscoGrid) ═════════════════════════════════════════════════════════════
 
     const float DiscoMinCol = 180f;
-    const float DiscoGap = Spacing.L;
+    static float DiscoGap => Spacing.L;
     /// <summary>The grid surface's height is the cell width + 50 (the square cover is the cell less its 2 × 8 padding, over the
     /// 8 gap, the title + caption lines and the 12 bottom pad) — one uniform card height, so the drawer's hug spacing is
     /// exact; the seed face pinned to it is exactly as tall. RowGap is the vertical gutter, folded into the LazyGrid row

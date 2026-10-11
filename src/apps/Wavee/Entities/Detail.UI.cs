@@ -378,7 +378,8 @@ public static partial class Detail
     const float TwoColumnHeroBandFraction = 0.55f;                    // the tone plane's synthetic band (hero-only is dead)
     const float TallWindowH = Design.Size.DesignH;                    // the 40/52 rail title at ≥ 900
     const float ShortWindowH = 760f;                                  // the 3-line description below 760
-    const float RailSidePadL = Spacing.L, RailSidePadR = Spacing.S;   // 16 / 8
+    static float RailSidePadL => Spacing.L;
+    static float RailSidePadR => Spacing.S;   // 16 / 8
     const float RailGap = RailLayout.Gap;                             // 14 — the row model's (Detail.cs §8b)
     const float RailFabSize = RailLayout.FabSize;                     // 32 (Workstream B: was 40)
     const int RailCoverDecodePx = 256;                                // the shelf card's bucket — a warm texture on arrival
@@ -1617,7 +1618,7 @@ public static partial class Detail
     /// the spacer and the expand chevron — the chevron is chrome and stays real while the identity loads.</summary>
     static Element CompactRailStrip(FrameSpec spec, float stripW, Action expand, Element identity)
     {
-        const float pad = Spacing.S;
+        float pad = Spacing.S;
         float cover = CompactCover(stripW);
         Element expandHit = new BoxEl
         {

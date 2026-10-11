@@ -1073,7 +1073,8 @@ public static partial class Log
 public static partial class Glyphs
 {
     /// <summary>The icon face is the BUNDLED file, not the system family of the same name — see
-    /// <see cref="WaveeFonts.Icons"/>. Set BEFORE the harness runs: the host interns `Theme.IconFont` once for the
-    /// overlay scrollbar arrows and every control reads it at render.</summary>
-    static partial void RegisterHost() => Theme.IconFont = WaveeFonts.Icons;
+    /// <see cref="WaveeFonts.Icons"/>. Wavee's definition carries it (<see cref="Design.Definition"/>), installed BEFORE the
+    /// harness runs: the host interns the definition's icon font for the overlay scrollbar arrows and every control reads
+    /// it at render.</summary>
+    static partial void RegisterHost() => Tok.Use(Design.Definition, Tok.Theme);
 }

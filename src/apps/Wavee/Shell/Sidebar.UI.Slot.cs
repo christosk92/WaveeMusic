@@ -549,7 +549,7 @@ public static partial class Sidebar
         {
             float pane = _o.ExpandedWidth.Value;
             int cols = Math.Clamp(_o.GridColumns, 2, 4);
-            const float gap = Spacing.S;
+            float gap = Spacing.S;
             float avail = pane - PaneMetrics.PaneInsetH;
             int fitCols = SidebarRowGeometry.GridFallbackColumns(cols, avail, gap, Cover.S40);
             float edge = MathF.Min(PaneMetrics.GridCellMax, MathF.Max(Cover.S40, (avail - gap * (fitCols - 1)) / fitCols));

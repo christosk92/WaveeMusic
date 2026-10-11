@@ -166,16 +166,16 @@ public class AlbumPageRulesTests
         Assert.Equal(5, Rules.SkelRows);                                                      // Featured on shows StackCap rows
         Assert.Equal(Rules.StackCap, Rules.SkelRows);
         Assert.Equal(4f, Rules.SkelRowGap);                                                   // the stack's Spacing.XS
-        Assert.Equal(Spacing.M, Rules.SkelSectionGap);                                        // header-to-body, Section and Stack alike
-        Assert.Equal(Spacing.XL + Spacing.L, Rules.SkelSectionPadV);                          // SectionPad: XL top, L bottom
+        Assert.Equal(Rules.SkelSectionGap, Spacing.M);                                        // header-to-body, Section and Stack alike
+        Assert.Equal(Rules.SkelSectionPadV, Spacing.XL + Spacing.L);                          // SectionPad: XL top, L bottom
         Assert.Equal(Rules.SkelRowH, Shape.RowTileStill.MinHeight);
         Assert.True(Rules.SkelAboutPortrait <= Rules.SkelAboutTextH);
-        Assert.Equal(16f + 28f + 2 * 18f + 2 * Spacing.XS, Rules.SkelAboutTextH);             // eyebrow + name + 2-line bio + gaps
-        Assert.Equal(Rules.SkelAboutTextH + 2 * Spacing.M, Rules.SkelAboutH);
+        Assert.Equal(Rules.SkelAboutTextH, 16f + 28f + 2 * 18f + 2 * Spacing.XS);             // eyebrow + name + 2-line bio + gaps
+        Assert.Equal(Rules.SkelAboutH, Rules.SkelAboutTextH + 2 * Spacing.M);
         Assert.Equal(SurfaceGeometry.ShelfHeight(148f, 1f, captionLines: 1, metaLine: false), Rules.SkelFansH);
         Assert.Equal(Album.SurfaceMetrics.HeroThumbW, Rules.SkelVideoThumbW);
         Assert.Equal(Album.SurfaceMetrics.HeroThumbH, Rules.SkelVideoThumbH);
-        Assert.Equal(Spacing.XL + Album.SurfaceMetrics.HeroThumbH + 2 * Spacing.M, Rules.SkelVideoH);
+        Assert.Equal(Rules.SkelVideoH, Spacing.XL + Album.SurfaceMetrics.HeroThumbH + 2 * Spacing.M);
     }
 
     [Fact]

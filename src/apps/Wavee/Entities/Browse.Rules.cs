@@ -341,12 +341,12 @@ public static class BrowsePageLayout
 public static class BrowseMastheadMetrics
 {
     public const float TitleLine = 52f;
-    public const float Reserve = Spacing.XXXL + TitleLine;
+    public static float Reserve => Spacing.XXXL + TitleLine;
     /// <summary>The body's top inset: the overlay reserve plus the gap that used to sit under the in-flow band.</summary>
-    public const float BodyTop = Reserve + Spacing.L;
+    public static float BodyTop => Reserve + Spacing.L;
     /// <summary>The band paints NOTHING (a fill reads as a black slab on Mica), so a page scrolling under it cuts its
     /// content at the band's lower edge — exactly the reserve.</summary>
-    public const float ClipInset = Reserve;
+    public static float ClipInset => Reserve;
     /// <summary>The feather at that cut — the band every detail surface uses.</summary>
     public const float ClipFadeBand = Detail.VerticalLayout.StickyFadeBand;
 
@@ -360,16 +360,16 @@ public static class BrowseMastheadMetrics
 /// <summary>Layout constants and the column math for the Browse cells (0.2.9 <c>BrowseTiles.cs:286-358</c>).</summary>
 public static class BrowseLayout
 {
-    public const float FrameTop = Spacing.XXXL;
-    public const float MastheadReserve = BrowseMastheadMetrics.Reserve;
-    public const float FrameX = Spacing.PageWide;
+    public static float FrameTop => Spacing.XXXL;
+    public static float MastheadReserve => BrowseMastheadMetrics.Reserve;
+    public static float FrameX => Spacing.PageWide;
     public static Edges4 Frame(float bottom) => new(FrameX, FrameTop, FrameX, bottom);
     /// <summary>First-frame width guess the directory's Responsive grids share before a real measure lands.</summary>
     public const float DirectoryFallbackWidth = 900f;
 
     public const float WordChipH = 36f;
     public const float NameChipH = 32f;
-    public const float ChipGap = Spacing.S;
+    public static float ChipGap => Spacing.S;
     public const float TickW = 3f;
     public const float TickH = 14f;
     public const float BarHeight = 52f;

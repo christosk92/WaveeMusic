@@ -341,7 +341,7 @@ public static partial class Setup
                 return new BoxEl
                 {
                     Width = size, Height = size, Fill = Paper, Corners = Radii.CardAll, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Children = [new TextEl(Icons.MusicNote) { Size = 28f, FontFamily = Theme.IconFont, Color = FallbackGlyph }],
+                    Children = [new TextEl(Icons.MusicNote) { Size = 28f, FontFamily = Tok.Definition.Fonts.Icon, Color = FallbackGlyph }],
                 };
             }
 
@@ -1119,7 +1119,7 @@ public static partial class Setup
                 ? ProgressRing.Indeterminate(16f)
                 : new TextEl(failed ? Icons.Cancel : done ? Icons.Accept : Icons.RadioBullet)
                 {
-                    Size = failed || done ? 15f : 11f, FontFamily = Theme.IconFont,
+                    Size = failed || done ? 15f : 11f, FontFamily = Tok.Definition.Fonts.Icon,
                     Color = failed ? Tok.SystemFillCritical : done ? Tok.AccentDefault : Tok.TextTertiary,
                 };
             mark = mark with

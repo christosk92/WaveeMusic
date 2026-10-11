@@ -458,7 +458,7 @@ public readonly partial struct Album
     /// row — slid ~9 DIP down on those albums and back up on the next one. With one number the rows below start on the
     /// same DIP for every release, and the column that has to fit inside it is sized to fit (see
     /// <see cref="PaneHeader"/>'s own note).</summary>
-    public const float PaneHeaderHeight = PaneCover + Spacing.XL + Spacing.M;
+    public static float PaneHeaderHeight => PaneCover + Spacing.XL + Spacing.M;
 
     // ── the header's TYPE BUDGET ──────────────────────────────────────────────────────────────────────────────────────
     // A stated height only helps if what goes in it FITS: an overflowing column would move the clipping instead of the
@@ -486,7 +486,7 @@ public readonly partial struct Album
     public const float PaneHeaderMetaLine = 16f;
 
     /// <summary>What the block leaves its text column: everything it states, less its own padding — the cover's 128.</summary>
-    public const float PaneHeaderTextBudget = PaneHeaderHeight - Spacing.XL - Spacing.M;
+    public static float PaneHeaderTextBudget => PaneHeaderHeight - Spacing.XL - Spacing.M;
 
     /// <summary>The text column's height for a title of <paramref name="titleLines"/> lines: the four line boxes and the
     /// three gaps. The title link's 2-DIP inset is cancelled by its own negative margin, so it contributes nothing.</summary>
