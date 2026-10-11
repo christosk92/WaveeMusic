@@ -312,10 +312,10 @@ public static partial class Shell
                     case PaletteSettingsVerb.ZoomOut: ZoomStep(-1); break;
                     case PaletteSettingsVerb.ZoomReset: ZoomStep(0); break;
                     case PaletteSettingsVerb.NpvTogglePresentation:
-                        Rail.PlayerPrefs.TogglePresentation(Rail.NpvDiagnostics.SourcePalette);
+                        DeckPrefs.TogglePresentation(DeckPrefSource.Palette);
                         break;
                     case PaletteSettingsVerb.NpvNextStyle:
-                        Rail.PlayerPrefs.NextStyle(Rail.NpvDiagnostics.SourcePalette);
+                        DeckPrefs.NextStyle(DeckPrefSource.Palette);
                         break;
                     case PaletteSettingsVerb.HomeFollowingOn:
                     case PaletteSettingsVerb.HomeFollowingOff:

@@ -173,7 +173,7 @@ public static partial class Settings
             kids.Add(Row(Loc.Get(Strings.Settings.Appearance.NpvPresentation), Loc.Get(Strings.Settings.Appearance.NpvPresentationSub),
                 SelectorBar.Create([Loc.Get(Strings.Player.PresentationCover), Loc.Get(npvPreset.ShortLabelKey)],
                     new Signal<int>(npvPresentation),
-                    onChange: static i => Rail.PlayerPrefs.SetPresentation(i, Rail.NpvDiagnostics.SourceSettings)),
+                    onChange: static i => Shell.DeckPrefs.SetPresentation(i, Shell.DeckPrefSource.Settings)),
                 RowGlyph(Tab.Appearance, "npvPresentation")));
         kids.Add(Row(Loc.Get(Strings.Settings.Appearance.NpvStyle), Loc.Get(Strings.Settings.Appearance.NpvStyleSub),
             Embed.Comp(static () => new NpvStylePicker()), RowGlyph(Tab.Appearance, "npvStyle")));
@@ -755,7 +755,7 @@ public static partial class Settings
             var labels = new string[presets.Length];
             for (int i = 0; i < presets.Length; i++) labels[i] = Loc.Get(presets[i].LabelKey);
             return ComboBox.Create(labels, s_npvStyle, width: 180f,
-                onChange: static i => Rail.PlayerPrefs.SetStyle(i, Rail.NpvDiagnostics.SourceSettings));
+                onChange: static i => Shell.DeckPrefs.SetStyle(i, Shell.DeckPrefSource.Settings));
         }
     }
 

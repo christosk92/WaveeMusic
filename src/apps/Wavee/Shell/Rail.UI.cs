@@ -58,10 +58,11 @@ public static partial class Rail
 
         public override Element Render()
         {
-            bool open = Shell.Ui.RailOpen.Value;
-            float railWidth = Shell.Ui.RailWidth.Value;
-            var mode = Shell.Ui.Mode.Value;
-            bool floating = !Shell.Ui.RailFits.Value;
+            var panel = Shell.PanelHost.Shared.State();
+            bool open = panel.Open;
+            float railWidth = panel.Width;
+            var mode = panel.Mode;
+            bool floating = panel.Floats;
             var state = Video.State.Surface.Value;
             var resolved = Video.PlacementCore.Resolve(state);
 
@@ -155,7 +156,7 @@ public static partial class Rail
                     Grow = 1f, Direction = 1, Justify = FlexJustify.End, HitTestPassThrough = true,
                     Children =
                     [
-                        Splitter.Create(Shell.Ui.DockedVideoHeight, CommitCap, new Splitter.SplitterOptions
+                        Splitter.Create(Shell.Ui.DockedVideoHeight, Shell.PanelHost.CommitDockedVideo, new Splitter.SplitterOptions
                         {
                             Min = Shell.DockedVideoNaturalH(railWidth),
                             Max = Shell.DockedCapCeiling(Shell.Ui.RailBodyHeight.Peek()),
@@ -165,17 +166,6 @@ public static partial class Rail
                 },
             ],
         };
-    }
-
-    /// <summary>A COMMITTED drag pins the height against the content fit for as long as this source plays (the card
-    /// clears the pin at the next source) and persists it.</summary>
-    static void CommitCap()
-    {
-        float h = Shell.ClampDockedVideoHeight(Shell.Ui.DockedVideoHeight.Peek(), Shell.Ui.RailWidth.Peek(),
-            Shell.Ui.RailBodyHeight.Peek());
-        Shell.Ui.DockedVideoHeight.Value = h;
-        Shell.Ui.DockedVideoHeightPinned.Value = true;
-        Platform.Settings.Set(Platform.Keys.ShellDockedVideoHeight, h);
     }
 
     /// <summary>The NowPlaying arm's pinned slot — ONE slot, two possible occupants, never both.</summary>
@@ -198,9 +188,9 @@ public static partial class Rail
         Children =
         [
             ToggleHalf(Icons.Picture, selected: true, Loc.Get(Strings.Player.SwitchToAudio),
-                static () => Video.State.ReportClosed(Video.SurfacePlacement.Docked)),
+                static () => Shell.PanelHost.Shared.HideVideo()),
             ToggleHalf(Icons.Movie, selected: false, Loc.Get(Strings.Player.SwitchToVideo),
-                static () => ShowVideoAt(Video.SurfacePlacement.Docked)),
+                static () => Shell.PanelHost.Shared.ShowVideoAt(Video.SurfacePlacement.Docked)),
         ],
     };
 
@@ -212,14 +202,6 @@ public static partial class Rail
         OnClick = onClick,
         Children = [new TextEl(glyph) { Size = 11f, FontFamily = Theme.IconFont, Color = selected ? Tok.OnMediaPrimary : Tok.OnMediaSecondary }],
     }, tip);
-
-    /// <summary>A placement intent: re-stamp the availability THIS playable has, then open there.</summary>
-    static void ShowVideoAt(Video.SurfacePlacement at)
-    {
-        var r = Playback.Current.Peek();
-        Video.State.FoldAvailability(r.Kind == EntityKind.Track && new Track(r.Slot).HasVideo);
-        Video.State.OpenAt(at);
-    }
 
     // ── the header ───────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -239,12 +221,12 @@ public static partial class Rail
             HeaderButton(Icons.BackToWindow, Loc.Get(Strings.Player.VideoMiniPlayer), static () =>
             {
                 FluentGpu.Input.Announcer.Say(Loc.Get(Strings.Player.VideoMiniPlayer));
-                ShowVideoAt(Video.SurfacePlacement.Floating);
+                Shell.PanelHost.Shared.ShowVideoAt(Video.SurfacePlacement.Floating);
             }),
             HeaderButton(Icons.FullScreen, Loc.Get(Strings.Player.VideoFullScreen), static () =>
             {
                 FluentGpu.Input.Announcer.Say(Loc.Get(Strings.Player.VideoFullScreen));
-                ShowVideoAt(Video.SurfacePlacement.Fullscreen);
+                Shell.PanelHost.Shared.ShowVideoAt(Video.SurfacePlacement.Fullscreen);
             }),
             CloseButton(),
         ]);
@@ -267,7 +249,7 @@ public static partial class Rail
                     active: (available & Prefs.Lyrics.BitFor(secondary)) != 0));
             // The on-device AI sparkle: its own component (only it subscribes the AI status), hidden while the feature is off.
             kids.Add(AiLyrics.HeaderButton());
-            kids.Add(HeaderButton(Icons.FullScreen, Loc.Get(Playback.CurrentId.Value.Kind == EntityKind.Episode ? Strings.Podcast.Reader.Transcript : Strings.Player.ExpandLyrics), () => Stage.Open(begin, "rail-header")));
+            kids.Add(HeaderButton(Icons.FullScreen, Loc.Get(Playback.CurrentId.Value.Kind == EntityKind.Episode ? Strings.Podcast.Reader.Transcript : Strings.Player.ExpandLyrics), () => Shell.PanelHost.Shared.OpenStage(begin, "rail-header")));
             kids.Add(Diagnostics.LyricsInspector.Button());
             kids.Add(CloseButton());
             return HeaderBox(kids.ToArray());
@@ -311,7 +293,7 @@ public static partial class Rail
 
     /// <summary>✕ closes the RAIL for every mode, video included — the coupling demotes a docked video. No tooltip: a close
     /// glyph is universal.</summary>
-    static Element CloseButton() => GlyphBox(Icons.ChromeClose, static () => Shell.Ui.RailOpen.Value = false, active: false);
+    static Element CloseButton() => GlyphBox(Icons.ChromeClose, static () => Shell.PanelHost.Shared.Close(), active: false);
 
     // ── shared reads ─────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -432,7 +414,7 @@ public static partial class Rail
 
             string[] items = [Loc.Get(Strings.Player.PresentationCover), Loc.Get(preset.ShortLabelKey)];
             Element gear = HeaderButton(Icons.Settings, Loc.Get(Strings.Player.PlayerStyle),
-                static () => PlayerPrefs.StyleFlyoutOpen.Value = !PlayerPrefs.StyleFlyoutOpen.Peek(), active: open);
+                static () => Shell.DeckPrefs.ToggleStyleFlyout(), active: open);
 
             // Sentence case, never .ToUpper() on a localized string.
             Element eyebrow = Design.Type.Eyebrow(Loc.Get(Strings.Player.NowPlaying)) with
@@ -460,7 +442,7 @@ public static partial class Rail
                     ? [
                         eyebrow,
                         SelectorBar.Create(items, presentation,
-                            onChange: static i => PlayerPrefs.SetPresentation(i, NpvDiagnostics.SourceHeader),
+                            onChange: static i => Shell.DeckPrefs.SetPresentation(i, Shell.DeckPrefSource.Header),
                             parts: CompactBar, icons: ModeIcons),
                         gearBox,
                       ]
@@ -490,11 +472,7 @@ public static partial class Rail
             int artistSlot = nowArtist.Slot;
 
             // The rail is not a page and never mounts on a route: its demand is keyed on the PLAYING track (§9.3 #6).
-            UseEffect(() =>
-            {
-                if (trackSlot > 0) Entities.Ensure(new Track(trackSlot), TrackFields.Identity);
-                if (artistSlot > 0) Entities.Ensure(new Artist(artistSlot), ArtistFields.Overview);
-            }, DepKey.From(trackSlot, artistSlot));
+            UseEffect(() => Shell.PanelHost.Shared.DemandNowPlaying(trackSlot, artistSlot), DepKey.From(trackSlot, artistSlot));
 
             if (!track.IsValid)
                 return Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact,
@@ -519,7 +497,7 @@ public static partial class Rail
                 var merch = track.Album.MerchSlots.Length > 0 ? track.Album.MerchSlots : artist.MerchSlots;
                 if (merch.Length > 0) sections.Add(MerchSection(merch));
             }
-            if (HasNextUp()) sections.Add(Section(Loc.Get(Strings.Player.NextUp), NextUpList()));
+            if (Shell.NextUpWindow.Any()) sections.Add(Section(Loc.Get(Strings.Player.NextUp), NextUpList()));
 
             return ScrollView(new BoxEl
             {
@@ -690,33 +668,9 @@ public static partial class Rail
 
     // ── "Next up" rows (the NPV section and the Video body share them) ───────────────────────────────────────────────
 
-    /// <summary>The rows the "Next up" list shows: at most five of the queue's upcoming rows, the TRACK ones (an episode is
-    /// not a rail row). The caller must already subscribe <c>Edges.Queue.Changed</c>.</summary>
-    const int NextUpMax = 5;
-
     /// <summary>A "Next up" row's floor: 52 — the <c>Controls.Surface</c> row shape's 8-DIP padding lifts the 40-art row to
     /// 56, and the hidden-artwork row (the 32 play glyph) stays on this floor.</summary>
     const float NextUpRowH = 52f;
-
-    static int NextUpWindow(Span<int> into)
-    {
-        if (!Queue.UpNext(out int start, out int length)) return 0;
-        int n = Math.Min(into.Length, length), count = 0;
-        for (int i = start; i < start + n; i++)
-        {
-            var r = Queue.RefAt(i);
-            if (r.Kind != EntityKind.Track || r.IsNone) continue;
-            into[count++] = i;
-        }
-        return count;
-    }
-
-    /// <summary>Is there any "Next up" row? The parents ask it to decide whether the section mounts at all.</summary>
-    static bool HasNextUp()
-    {
-        Span<int> window = stackalloc int[NextUpMax];
-        return NextUpWindow(window) > 0;
-    }
 
     /// <summary>The "Next up" rows, as ONE component: it owns the subscriptions the rows read (the queue edge, the track
     /// table — a title or an artist line landing late — and the artwork preference), so a table edge re-renders these five
@@ -730,8 +684,8 @@ public static partial class Rail
             _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table reads below
             _ = Entities.Current.Edges.Queue.Changed.Value;
             bool art = !Prefs.Appearance.TrackArtworkHidden();
-            Span<int> window = stackalloc int[NextUpMax];
-            int n = NextUpWindow(window);
+            Span<int> window = stackalloc int[Shell.NextUpWindow.Max];
+            int n = Shell.NextUpWindow.Fill(window);
             var rows = new Element[n];
             var items = Queue.Rows;
             for (int k = 0; k < n; k++)
@@ -789,7 +743,7 @@ public static partial class Rail
             }
             content.Add(new BoxEl { Height = 1f, Shrink = 0f, Fill = Tok.StrokeCardDefault });
             content.Add(Design.Type.Eyebrow(Loc.Get(Strings.Player.VideoUpNext)) with { Color = Tok.TextTertiary });
-            content.Add(HasNextUp()
+            content.Add(Shell.NextUpWindow.Any()
                 ? NextUpList()
                 : Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact, title: Loc.Get(Strings.Player.QueueEmpty), subtitle: ""));
             return ScrollView(new BoxEl
@@ -835,7 +789,7 @@ public static partial class Rail
     {
         public override Element Render()
         {
-            UseEffect(static () => { Friends.SetActive?.Invoke(true); return static () => Friends.SetActive?.Invoke(false); }, DepKey.Empty);
+            UseEffect(static () => { Shell.PanelHost.Shared.SetFriendsActive(true); return static () => Shell.PanelHost.Shared.SetFriendsActive(false); }, DepKey.Empty);
             var tick = UseSignal(0);
             UseInterval(() => tick.Value = tick.Peek() + 1, Friends.TickMs);
             var overlay = UseContext(Overlay.Service);   // the rows' right-click / Menu-key host
