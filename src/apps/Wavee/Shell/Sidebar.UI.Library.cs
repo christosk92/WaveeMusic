@@ -23,9 +23,6 @@ public static partial class Sidebar
     /// <summary>The Library layout's mount: one <see cref="PaneView"/> with the head above the list.</summary>
     internal sealed class LibraryMode : Component
     {
-        /// <summary>0.2.9's binder-pump search debounce (<c>SidebarBinderPump.SearchDebounceMs</c>).</summary>
-        const float SearchDebounceMs = 90f;
-
         readonly bool _inDrawer;   // mount configuration: a drawer and a docked pane are separate mounts
 
         public LibraryMode(bool inDrawer) => _inDrawer = inDrawer;
@@ -37,45 +34,39 @@ public static partial class Sidebar
 
             // MEMOS, not raw width reads: a seam drag writes Width every frame; the column count / folder mode flip rarely.
             var vp = UseContextSignal(Viewport.Size);
-            s.Columns = UseComputed(() => SidebarLibraryHeadRules.GridColumns(LibrarySession.PresentedWidth(inDrawer, vp.Value.Width)));
+            s.Lib.Columns = UseComputed(() => SidebarLibraryHeadRules.GridColumns(NavLibrary.PresentedWidth(inDrawer, vp.Value.Width)));
             // The drawer always drills; a docked pane drills below 240 px (design P.2) and shows the inline tree from 240 up.
-            bool narrow = UseComputed(() => inDrawer || LibrarySession.PresentedWidth(false, vp.Value.Width) < SidebarLibraryMetrics.DrillInWidth).Value;
+            bool narrow = UseComputed(() => inDrawer || NavLibrary.PresentedWidth(false, vp.Value.Width) < SidebarLibraryMetrics.DrillInWidth).Value;
             // Inline disclosure and a drill stack answer the same question, so only one may be live. Signal writes ⇒ effect.
-            UseLayoutEffect(() =>
-            {
-                s.NarrowFolders.SetIfChanged(narrow);
-                if (!narrow) s.ResetDrill();
-            }, DepKey.From(narrow));
+            UseLayoutEffect(() => s.Lib.SetNarrow(narrow), DepKey.From(narrow));
 
             // The binder has no pump of its own: the debounced search text and the folder edits resync here.
-            var search = UseDebouncedValue(LibrarySearch, SearchDebounceMs);
+            var search = UseDebouncedValue(LibrarySearch, NavLibrary.SearchDebounceMs);
             UseEffect(() =>
             {
                 _ = search.Value;
                 _ = FolderVersion.Value;
-                LibrarySession.Resync();
+                s.Lib.Resync();
             });
 
             var config = UseMemo(() => new PaneConfig
             {
                 Layout = SidebarLayoutId.Library,
                 ScrollKeyPrefix = "sidebar.library",
-                Document = static () => { _ = LayoutVersion.Value; return Doc; },
-                Input = s.ShapeInput,
-                ModeEpoch = s.ReadModeEpoch,
-                Options = s.ShapeOptions,
+                Document = static () => Model.ReadLayout(),
+                Input = s.Lib.ShapeInput,
+                ModeEpoch = s.Lib.ReadModeEpoch,
+                Options = s.Lib.ShapeOptions,
                 Head = s.Head,
-                TreeSortedNonCustom = s.TreeSortedNonCustom,
-                SortedListRefusalAction = s.SwitchToCustomSortForReorder,
-                ClampReorderSlot = s.ClampReorderSlot,
+                TreeSortedNonCustom = s.Lib.TreeSortedNonCustom,
+                SortedListRefusalAction = s.Lib.ShowCustomOrder,
+                ClampReorderSlot = s.Lib.ClampReorderSlot,
                 CommitReorder = s.CommitReorder,
-                ActivateFolder = s.ActivateFolder,
-                DisclosesFoldersInline = s.DisclosesFoldersInline,
+                ActivateFolder = s.Lib.ActivateFolder,
+                DisclosesFoldersInline = s.Lib.DisclosesFoldersInline,
                 OnEdgeNavigate = s.OnListEdge,
                 PillOnRowChanged = s.NotePillOnRow,
-                OpenSearch = s.OpenSearch,
-                // Null: the toolbar's "+" calls PaneView.CreatePlaylist() — the pane's ONE create flow.
-                OnCreatePlaylist = null,
+                OpenSearch = s.Lib.OpenSearch,
             }, DepKey.Empty);
 
             // The factory runs once at mount: the session holds the pane so the head's "+" reuses the pane's own
@@ -89,35 +80,23 @@ public static partial class Sidebar
         }
     }
 
-    /// <summary>The Library session: the shaping state the head and the pane share, the drill stack and the reorder rules.
-    /// A reference-stable frozen prop; everything mutable inside is a signal or read at call time. Never persisted.</summary>
+    /// <summary>The Library mount's VIEW session: the pane reference, the head's focus targets and the pill flag, around the
+    /// model's <see cref="NavLibrary"/> (the drill stack, the shaping state, the empty-state facts, the verbs). A reference-stable
+    /// frozen prop; everything mutable inside is a signal or read at call time. Never persisted.</summary>
     internal sealed class LibrarySession
     {
-        /// <summary>The published cell: the binder publishes its OWN <c>Entries</c>; <c>Sidebar.Entries</c> is the headless fallback.</summary>
-        public static SidebarEntries Cell => Binder?.Entries ?? Entries;
-
-        /// <summary>Rebuild the projection now if any trigger moved (one struct compare when nothing did).</summary>
-        public static void Resync() => Binder?.Sync();
-
-        /// <summary>The width the library is presented at: the drawer's overlay width, or the docked pane's presented width.
-        /// The stored preference is not it: a narrow viewport clamps the pane below it.</summary>
-        public static float PresentedWidth(bool inDrawer, float vpW) => inDrawer
-            ? SidebarPaneModeRules.OverlayWidth(Sidebar.Width.Value, vpW)
-            : Sidebar.PresentedWidth.Value;
-
         public LibrarySession(bool inDrawer)
         {
             InDrawer = inDrawer;
+            Lib = Model.OpenLibrary(inDrawer);
             CreateMenuFn = () => PaneRef?.CreateMenu();
             HeaderDropActiveFn = () => PaneRef is { } p && p.HeaderCreateDropActive.Value;
         }
 
+        /// <summary>The model's session for this mount.</summary>
+        public readonly NavLibrary Lib;
         public readonly bool InDrawer;
         public PaneView? PaneRef;                                  // set by the mount factory, before the pane renders
-        public IReadSignal<int>? Columns;                          // the derived grid column count (a memo)
-        public readonly Signal<bool> NarrowFolders = new(false);   // below DrillInWidth (or in the drawer) folders DRILL
-        public readonly Signal<int> DrillVersion = new(0);         // bumped by every push/pop/reset: one re-plan, no remount
-        public readonly SidebarLibraryShaper View = new();         // the built order, shared by the input shaper and the head
         public readonly Func<ContextMenuModel?> CreateMenuFn;
         public readonly Func<bool> HeaderDropActiveFn;
 
@@ -126,9 +105,6 @@ public static partial class Sidebar
 
         public void NotePillOnRow(bool on) => RowPill.SetIfChanged(on);
 
-        readonly List<string> _folderIds = new(4), _folderNames = new(4);
-        long _viewEpoch = long.MinValue;                        // the pane shapes its input twice per plan (list + rail)
-
         // ── the head's focus targets (written by the head's OnRealized; the ring and the list's edge read them) ──
         internal NodeHandle HomeNode, DropdownNode, SearchButtonNode;
         internal InputHooks? Hooks;
@@ -136,165 +112,17 @@ public static partial class Sidebar
         /// <summary>Set by the search box's Esc-close: the toolbar's search button takes focus when it remounts.</summary>
         internal bool FocusSearchButtonOnMount;
 
-        // ── the view state ────────────────────────────────────────────────────────────────────────────────────────
-
-        /// <summary>THE Library view state in one value. Reading it SUBSCRIBES the caller (document, mode epoch, head) to every
-        /// signal the document is a function of, so none can render a state the others disagree with. Allocation-free.</summary>
-        public SidebarLibraryState ReadState()
-        {
-            _ = LayoutVersion.Value;
-            var lib = Doc.Library;
-            var filter = SidebarLibraryFilters.Effective((int)LibraryFilter.Value, lib.HiddenKinds);
-            _ = DrillVersion.Value;          // a push/pop re-slices the view
-            return new SidebarLibraryState(filter, lib.Sort, lib.Descending, lib.View, Columns?.Value ?? 2,
-                SidebarLibraryMetrics.HasQuery(LibrarySearch.Value), DrillActive ? CurrentFolderId : null,
-                Pins.Count > 0);
-        }
-
-        // ── PaneConfig: epoch, head, input, options ──────────────────────────────────────────────────────────────
-
-        public int ReadModeEpoch() => ReadState().GetHashCode();
-
-        /// <summary>KEYED and type-stable: the pane rebuilds this element every render and the instance behind it must
-        /// survive (its hooks own the search focus latch and the self-correcting effects).</summary>
-        public Element Head() => Embed.Comp(() => new LibraryHead(this)) with { Key = "library-head" };
-
-        /// <summary>The published projection (filtered, searched, sorted, matching pins FIRST) re-grouped into tree order or
-        /// sliced to one folder level. While Pinned is shown the planner draws the pins from <c>input.Pins</c> (§P3.5), so the
-        /// list skips the published pin head; with Pinned hidden the pins stay in their natural place.</summary>
-        public SidebarProjectionInput ShapeInput(SidebarProjectionInput input)
-        {
-            var state = ReadState();
-            var cell = Cell;
-            var published = cell.Current;
-            int pinCount = Math.Clamp(cell.PinCount, 0, published.Count);
-            int skip = Doc.Find(SidebarSectionKind.Pinned) is { Hidden: false } && !state.Drilled ? pinCount : 0;
-            bool group = state.FoldersApply;
-            int revision = Binder?.Revision ?? 0;
-
-            // The view's own re-bucket gate: `cell.Version` covers every input `View.Build` reads from the projection, `skip`
-            // covers the pin band, `group`/`drill` cover the view state. `revision` still goes INTO `View.Build` below, as
-            // `EnsureParentMap`'s own cheap internal memo key for the folder→parent walk over the tree slice.
-            long epoch = ViewEpoch(cell.Version.Peek(), skip, group, state.DrillFolderId);
-            if (epoch != _viewEpoch)
-            {
-                _viewEpoch = epoch;
-                View.Build(published, skip, input.PlaylistTree, revision, state.DrillFolderId, group);
-            }
-            // ExpandedFolders is KEPT: the shaped list is already depth-stamped (the planner never re-filters it), and
-            // PlanLibrary reads the set for one thing only — an expanded PINNED folder's children (§P3.5).
-            return input with { Library = View.Rows, LibraryIsTree = group };
-        }
-
-        public SidebarPlanOptions ShapeOptions(SidebarPlanOptions o)
-            => o with
-            {
-                Filter = SidebarLibraryFilters.Effective((int)LibraryFilter.Value, Doc.Library.HiddenKinds),
-                GridColumns = Columns?.Value ?? 2,
-                FoldersInline = DisclosesFoldersInline() && !DrillActive,   // §P3.5: a pinned folder opens in place
-                Drilled = DrillActive,                                       // §P3.5: a folder level has no pins / Liked
-            };
-
-        static long ViewEpoch(int entriesVersion, int skip, bool group, string? drill)
-        {
-            unchecked
-            {
-                long h = entriesVersion;
-                h = h * 1099511628211L + skip;
-                h = h * 1099511628211L + (group ? 1 : 0);
-                h = h * 1099511628211L + (drill is { Length: > 0 } d ? StringComparer.Ordinal.GetHashCode(d) : 0);
-                return h;
-            }
-        }
-
-        // ── PaneConfig: reorder. Pins reorder through the pin store; the library reorders only as a ROOTLIST move under
-        //    Playlists · Custom order (the pane's resource drop → WaveeResourceDrop.MoveRootlist), never a local overlay. ──
-
-        bool CanReorderCustom()
-            => LibraryFilter.Peek() == SidebarLibraryFilter.Playlists && Doc.Library.Sort == SidebarLibrarySort.CustomOrder
-               && LibrarySearch.Peek().Length == 0 && Doc.Library.View == SidebarLibraryView.List && !DrillActive;
-
-        /// <summary>D10 — the tree shows a SORTED view, so positional drops refuse with "clear sorting to reorder" while Into
-        /// stays legal.</summary>
-        public bool TreeSortedNonCustom() => !CanReorderCustom();
-
-        /// <summary>No local overlay to clamp: a rootlist move is the server's.</summary>
-        public int ClampReorderSlot(SidebarSectionKind kind, int from, int to) => to;
+        // ── PaneConfig: reorder. The pin move is the pane's (PaneReorder is a plan-space value); the rules are the model's. ──
 
         public void CommitReorder(PaneReorder r)
         {
             DefaultReorderCommit(in r);
-            Resync();
+            Lib.Resync();
         }
-
-        /// <summary>H3 (#85) — the refusal toast's action: Playlists + Custom order, the one state a positional reorder is legal.</summary>
-        public void SwitchToCustomSortForReorder()
-        {
-            SetLibraryFilter(SidebarLibraryFilter.Playlists);
-            Dispatch(new SetLibrarySort(SidebarLibrarySort.CustomOrder, false));
-            Resync();
-        }
-
-        // ── drill-in ─────────────────────────────────────────────────────────────────────────────────────────────
-        // A STACK of ids AND names: nesting is genuine, and a folder that vanishes mid-session must still label sanely.
-
-        public bool DrillActive => _folderIds.Count > 0;
-        public string CurrentFolderId => _folderIds.Count == 0 ? "" : _folderIds[^1];
-        public string CurrentFolderName => _folderNames.Count == 0 ? Loc.Get(Strings.Sidebar.V3.Title) : _folderNames[^1];
-        /// <summary>The level BACK returns to — the breadcrumb's accessible name.</summary>
-        public string ParentName => _folderNames.Count <= 1 ? Loc.Get(Strings.Sidebar.V3.Title) : _folderNames[^2];
-
-        /// <summary>Enter a folder level. It also EXPANDS the folder: the projection omits a collapsed folder's children,
-        /// so the level would be empty — and widening back to inline leaves you standing inside it.</summary>
-        public void PushFolder(string? folderId, string? name)
-        {
-            if (string.IsNullOrEmpty(folderId)) return;
-            SetFolderExpanded(folderId, true);
-            _folderIds.Add(folderId);
-            _folderNames.Add(name is { Length: > 0 } ? name : Loc.Get(Strings.Sidebar.V3.Kind.Folder));
-            BumpDrill();
-            Resync();
-        }
-
-        public void PopFolder()
-        {
-            if (_folderIds.Count == 0) return;
-            _folderIds.RemoveAt(_folderIds.Count - 1);
-            _folderNames.RemoveAt(_folderNames.Count - 1);
-            BumpDrill();
-        }
-
-        /// <summary>Leave drill-in entirely (pane widened, a query landed, the kind filter changed).</summary>
-        public void ResetDrill()
-        {
-            if (_folderIds.Count == 0) return;
-            _folderIds.Clear();
-            _folderNames.Clear();
-            BumpDrill();
-        }
-
-        void BumpDrill() => DrillVersion.Value = DrillVersion.Peek() + 1;
-
-        /// <summary>WHAT A FOLDER ROW DOES — the one decision point, so the renderer never learns about drill levels:
-        /// a GRID cannot disclose, so switch to the list and open it; a NARROW pane drills; a WIDE pane toggles inline.</summary>
-        public void ActivateFolder(string folderId, string name)
-        {
-            if (folderId.Length == 0) return;
-            if (Doc.Library.View == SidebarLibraryView.Grid)
-            {
-                SetLibraryView(SidebarLibraryView.List);
-                SetFolderExpanded(folderId, true);
-            }
-            else if (NarrowFolders.Peek()) PushFolder(folderId, name);
-            else ToggleFolder(folderId);
-            Resync();
-        }
-
-        /// <summary>Only a wide LIST discloses in place; grid switches view and narrow drills, so neither seeds an
-        /// inline expand/collapse animation.</summary>
-        public bool DisclosesFoldersInline() => !NarrowFolders.Peek() && Doc.Library.View == SidebarLibraryView.List;
 
         // ── the head's ring and the list's edge (design V.11) ──────────────────────────────────────────────────────
+
+        public Element Head() => Embed.Comp(() => new LibraryHead(this)) with { Key = "library-head" };
 
         public bool FocusHead(SidebarLibraryHeadRules.HeadStop stop)
         {
@@ -306,34 +134,6 @@ public static partial class Sidebar
 
         /// <summary>The list's Up from its first row lands on the dropdown (Home when the title is not a menu).</summary>
         public bool OnListEdge(int direction) => direction < 0 && FocusHead(SidebarLibraryHeadRules.HeadStop.Dropdown);
-
-        // ── shared verbs ─────────────────────────────────────────────────────────────────────────────────────────
-
-        public void Navigate(string key, string? arg)
-        {
-            if (PaneRef is { } pane) pane.Navigate(key, arg);
-            else Shell.GoTo(Shell.Parse(key, arg));
-        }
-
-        public void CreatePlaylist() => PaneRef?.CreatePlaylist();
-
-        public void OpenSearch() => LibrarySearchOpen.SetIfChanged(true);
-
-        /// <summary>Close AND clear: a closed box showing leftover text next time would read as a bug.</summary>
-        public void CloseSearch()
-        {
-            LibrarySearchOpen.SetIfChanged(false);
-            LibrarySearch.SetIfChanged("");
-            Resync();
-        }
-
-        /// <summary>The retry banner / error state: invalidate + sync re-runs the contributing reads.</summary>
-        public void Retry()
-        {
-            if (Binder is not { } binder) return;
-            binder.Invalidate();
-            binder.Sync();
-        }
     }
 
     /// <summary>Your Library's fixed head (design P.2a). Reads every changing input from signals in its own render.</summary>
@@ -353,47 +153,35 @@ public static partial class Sidebar
             // Every hook runs BEFORE the compact early return: the rail ⇄ pane switch must not change the hook order.
             var hooks = UseContext(InputHooks.Current);
             s.Hooks = hooks;
-            int drillVersion = s.DrillVersion.Value;
+            int drillVersion = s.Lib.DrillVersion.Value;
             bool searching = SidebarLibraryMetrics.HasQuery(LibrarySearch.Value);
             // Self-correcting state 1: a drilled-into folder that vanished POPS rather than pointing at nothing.
-            bool missing = s.View.DrillTargetMissing;
-            UseLayoutEffect(() => { if (missing) s.PopFolder(); }, DepKey.From(missing ? 1 : 0, drillVersion));
+            bool missing = s.Lib.View.DrillTargetMissing;
+            UseLayoutEffect(() => { if (missing) s.Lib.Back(); }, DepKey.From(missing ? 1 : 0, drillVersion));
             // Self-correcting state 2: a search FLATTENS the tree, so there is no folder to be inside of.
-            UseLayoutEffect(() => { if (searching) s.ResetDrill(); }, DepKey.From(searching));
+            UseLayoutEffect(() => { if (searching) s.Lib.ResetDrill(); }, DepKey.From(searching));
             // The one-shot failure diagnostic: a failed library with no rows (a list-only count is enough here).
-            var cell = LibrarySession.Cell;
-            bool failedEmpty = cell.State == LoadState.Failed && s.View.Count == 0;
-            UseLayoutEffect(() => { if (failedEmpty) Log.Warn("sidebar", "library.failed rows=0", LibrarySession.Cell.Error); },
+            bool failedEmpty = s.Lib.FailedEmpty;
+            UseLayoutEffect(() => { if (failedEmpty) Log.Warn("sidebar", "library.failed rows=0", s.Lib.Cell.Error); },
                 DepKey.From(failedEmpty));
 
             if (!s.InDrawer && Sidebar.Mode.Value == SidebarPaneMode.Compact && !Sidebar.DragPeek.Value) return CompactHead();
 
-            _ = LayoutVersion.Value;
-            // The kind counts AND the query the list was shaped with publish through the binder's input edge (§P5.2).
-            _ = Binder?.InputVersion.Value;
-            // The PUBLISHED rows: the list count, the load state and the pending flag below are plain properties of the cell,
-            // so the head subscribes to the cell's version here. Without this read a search with no results never shows its
-            // band, and a cleared search keeps a stale one.
-            _ = cell.Version.Value;
-            var lib = Doc.Library;
-            var filter = SidebarLibraryFilters.Effective((int)LibraryFilter.Value, lib.HiddenKinds);
+            // The facts subscribe the head to the layout, the binder's input edge and the cell's version (the model's).
+            var facts = s.Lib.ReadFacts();
+            var lib = facts.Options;
+            var filter = facts.Filter;
             string route = Shell.NameOf(Shell.Current.Value);
-            var counts = Binder?.Counts ?? default;
+            var counts = Model.Counts;
             SidebarLibraryHeadRules.Pages(lib.HiddenKinds, in counts, static r => Shell.Dest(Shell.Parse(r)).Glyph, _pages);
             s.HasPages = SidebarLibraryHeadRules.DropdownIsMenu(_pages.Count);
             string? page = SidebarLibraryHeadRules.PageOf(route, lib.HiddenKinds);
 
-            var load = cell.State;
-            bool anyPending = cell.AnyContributingKindPending;
-            // THE ONE OWNER of Your Library's empty state (the planner plans no Empty row in Library, §P3.5): the scroller's
-            // row count exactly as PlanLibrary builds it — the pins ShowsPinInLibrary keeps, the Liked row, the list — over
-            // the query the LIST was shaped with (the binder's, never the live box text, which runs ahead by the debounce).
-            var input = Binder?.CurrentInput ?? default;
-            string? shapedSearch = SidebarSearch.Normalize(input.Search) is { Length: > 0 } q ? q : null;
-            bool pinnedShown = Doc.Find(SidebarSectionKind.Pinned) is { Hidden: false };
-            int rows = SidebarLibraryEmptyRules.ScrollerRows(input.Pins, pinnedShown, lib, filter, shapedSearch,
-                                                             Loc.Get("nav.likedSongs"), s.View.Count, s.DrillActive);
-            var empty = SidebarLibraryEmptyRules.Of(rows, load, anyPending, filter, shapedSearch is not null);
+            // THE ONE OWNER of Your Library's empty state (the planner plans no Empty row in Library, §P3.5) is the model's.
+            var load = facts.Load;
+            int rows = facts.Rows;
+            string? shapedSearch = facts.ShapedSearch;
+            var empty = facts.Empty;
 
             var kids = new List<Element>(9)
             {
@@ -403,7 +191,7 @@ public static partial class Sidebar
                 Embed.Comp(() => new LibraryChips(s)) with { Key = "library-chips" },
                 Embed.Comp(() => new LibraryToolbar(s)) with { Key = "library-toolbar" },
             };
-            if (s.DrillActive) kids.Add(Breadcrumb());
+            if (s.Lib.DrillActive) kids.Add(Breadcrumb());
             kids.Add(new BoxEl
             {
                 Key = "library-rule", Height = SidebarLibraryHeadRules.RuleHeight, Shrink = 0f,
@@ -430,7 +218,7 @@ public static partial class Sidebar
             {
                 Key = "lib-home", Label = home.Title, Shape = SidebarRowShape.Glyph, Glyph = home.Glyph,
                 Selected = string.Equals(route, "home", StringComparison.Ordinal),
-                OnClick = () => s.Navigate("home", null), Focusable = true,
+                OnClick = () => s.Lib.Navigate("home", null), Focusable = true,
                 OnRealized = h => s.HomeNode = h,
                 MenuOverlay = s.PaneRef?.MenuOverlay,
                 // The Home section exists in the Library catalogue; its row menu is the route's (P3's RouteMenu returns the
@@ -533,7 +321,7 @@ public static partial class Sidebar
         {
             if (s.PaneRef?.MenuOverlay is not { } svc || _pages.Count == 0) return;
             if (_pagesMenu is { IsOpen: true } open) { open.Close(); return; }
-            var items = SidebarMenus.MapPages(SidebarMenuModel.Pages(_pages, page), _pages, r => s.Navigate(r, null));
+            var items = SidebarMenus.MapPages(SidebarMenuModel.Pages(_pages, page), _pages, r => s.Lib.Navigate(r, null));
             _pagesMenu = svc.Open(
                 () => s.DropdownNode,
                 () => MenuFlyout.Create(items, () => _pagesMenu?.Close(), minWidth: 220f),
@@ -583,8 +371,8 @@ public static partial class Sidebar
                 Padding = new Edges4(SidebarRowGeometry.PaneEdge, SidebarRowGeometry.PaneTopInset, SidebarRowGeometry.PaneEdge, 0f),
                 Children =
                 [
-                    Tile("lib-home", home.Title, home.Glyph, string.Equals(route, "home", StringComparison.Ordinal), () => s.Navigate("home", null)),
-                    Tile("lib-search", Loc.Get("sidebar.library.search"), Icons.Search, false, () => { s.OpenSearch(); Sidebar.OpenPane(); }),
+                    Tile("lib-home", home.Title, home.Glyph, string.Equals(route, "home", StringComparison.Ordinal), () => s.Lib.Navigate("home", null)),
+                    Tile("lib-search", Loc.Get("sidebar.library.search"), Icons.Search, false, () => { s.Lib.OpenSearch(); Sidebar.OpenPane(); }),
                     SectionHeader.Separator(),
                 ],
             };
@@ -606,10 +394,10 @@ public static partial class Sidebar
                     AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                     Corners = Radii.ControlAll,
                     Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-                    OnClick = s.PopFolder,
+                    OnClick = s.Lib.Back,
                     Children = [Icon(Icons.Back, 12f, Tok.TextSecondary)],
-                }.Interactive(Interaction.Subtle), s.ParentName),
-                new TextEl(s.CurrentFolderName)
+                }.Interactive(Interaction.Subtle), s.Lib.ParentName),
+                new TextEl(s.Lib.CurrentFolderName)
                 {
                     Size = 12f, Weight = 600, Color = Tok.TextSecondary,
                     Grow = 1f, Basis = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
@@ -624,23 +412,23 @@ public static partial class Sidebar
             Element body = empty switch
             {
                 // The FULL error state (page scale), never the compact arm and never the banner.
-                SidebarLibraryEmpty.Failed => Controls.Vacancy(Controls.VacancyVoice.Error, Controls.VacancyScale.Page, onAction: s.Retry),
+                SidebarLibraryEmpty.Failed => Controls.Vacancy(Controls.VacancyVoice.Error, Controls.VacancyScale.Page, onAction: s.Lib.Retry),
                 SidebarLibraryEmpty.Search => Controls.Vacancy(Controls.VacancyVoice.NoMatch, Controls.VacancyScale.Compact,
                     // a pasted paragraph cannot blow out 240 DIP
                     title: Strings.Sidebar.V3.Empty.Search(query.Length > 24 ? string.Concat(query.AsSpan(0, 24), "…") : query),
                     subtitle: Loc.Get(Strings.Sidebar.V3.Empty.SearchSub),
                     actionLabel: Loc.Get(Strings.Sidebar.V3.ClearSearch),
-                    onAction: static () => { LibrarySearch.SetIfChanged(""); LibrarySession.Resync(); }),
+                    onAction: s.Lib.ClearSearch),
                 SidebarLibraryEmpty.Filter => Controls.Vacancy(Controls.VacancyVoice.NoMatch, Controls.VacancyScale.Compact,
                     title: Strings.Sidebar.V3.Empty.Filter(Loc.Get(SidebarLibraryHeadRules.ChipKey(filter))),
                     subtitle: "",
                     actionLabel: Loc.Get(Strings.Sidebar.V3.ClearFilter),
-                    onAction: static () => { SetLibraryFilter(SidebarLibraryFilter.None); LibrarySession.Resync(); }),
+                    onAction: s.Lib.ClearFilter),
                 _ => Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact,
                     title: Loc.Get(Strings.Sidebar.V3.Empty.Library),
                     subtitle: Loc.Get(Strings.Sidebar.V3.Empty.LibrarySub),
                     actionLabel: Loc.Get(Strings.Sidebar.CreatePlaylistTooltip),
-                    onAction: s.CreatePlaylist),
+                    onAction: s.Lib.CreatePlaylist),
             };
             // Shrink 0, no Grow: the state reads as the content it replaces, above the (now empty) scroll surface.
             return new BoxEl { Key = "library-empty", Direction = 1, Shrink = 0f, Children = [body] };
@@ -667,7 +455,7 @@ public static partial class Sidebar
                     Padding = new Edges4(6f, 2f, 6f, 2f), Corners = Radii.ControlAll,
                     Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true,
                     HoverFill = Tok.FillSubtleTertiary,
-                    OnClick = s.Retry,
+                    OnClick = s.Lib.Retry,
                     Children =
                     [
                         new TextEl(Loc.Get(Strings.Common.Retry)) { Size = 12f, Weight = 600, Color = Tok.AccentTextPrimary },
@@ -716,12 +504,7 @@ public static partial class Sidebar
             };
         }
 
-        void Commit(SidebarLibraryFilter chip)
-        {
-            SetLibraryFilter(SidebarLibraryHeadRules.Toggle(LibraryFilter.Peek(), chip));
-            s.ResetDrill();      // a chip change leaves any drilled folder
-            LibrarySession.Resync();
-        }
+        void Commit(SidebarLibraryFilter chip) => s.Lib.ToggleChip(chip);   // a chip change leaves any drilled folder
 
         /// <summary>The app's one filter chip (<see cref="Controls.Chip"/>, the stock toggle: 32/r4, checked = accent); a click
         /// on the active chip clears it, which the lit chip's tooltip says. The root keeps the rail's roving tab stop, but
@@ -813,7 +596,7 @@ public static partial class Sidebar
                 _ = LayoutVersion.Value;
                 var l = Doc.Library;
                 var f = SidebarLibraryFilters.Effective((int)LibraryFilter.Value, l.HiddenKinds);
-                return SidebarLibraryHeadRules.ShapeOf(LibrarySession.PresentedWidth(inDrawer, vp.Value.Width),
+                return SidebarLibraryHeadRules.ShapeOf(NavLibrary.PresentedWidth(inDrawer, vp.Value.Width),
                     Loc.Get(SidebarLibraryHeadRules.ToolbarSortKey(SidebarLibraryHeadRules.Effective(l.Sort, f))));
             }).Value;
             // Icon-only while searching (the box takes the row) and whenever the labelled row would not fit (§P5.1 ShapeOf).
@@ -835,7 +618,7 @@ public static partial class Sidebar
                         kids.Add(Embed.Comp(() => new LibrarySearchBox(s)) with { Key = "lib-search-box" });
                         break;
                     case SidebarLibraryHeadRules.HeadTabStop.Search:
-                        kids.Add(ToolTip.Wrap(IconButton.Create(Icons.Search, s.OpenSearch, parts: searchParts, size: ControlSize.Small)
+                        kids.Add(ToolTip.Wrap(IconButton.Create(Icons.Search, s.Lib.OpenSearch, parts: searchParts, size: ControlSize.Small)
                                                   with { Key = "lib-search" }, Loc.Get("sidebar.library.search")));
                         break;
                     case SidebarLibraryHeadRules.HeadTabStop.Sort:
@@ -849,7 +632,7 @@ public static partial class Sidebar
                         kids.Add(ViewToggle(SidebarLibraryView.Grid, lib.View, Icons.ViewGrid, "sidebar.view.grid"));
                         break;
                     case SidebarLibraryHeadRules.HeadTabStop.Create:
-                        kids.Add(Embed.Comp(() => new CreateButton(s.CreatePlaylist, menu: s.CreateMenuFn,
+                        kids.Add(Embed.Comp(() => new CreateButton(s.Lib.CreatePlaylist, menu: s.CreateMenuFn,
                             drop: s.PaneRef?.HeaderCreateDropSpec(), dropActive: s.HeaderDropActiveFn,
                             box: SidebarLibraryHeadRules.ToolbarControl, glyph: 14f)) with { Key = "lib-create" });
                         break;
@@ -899,10 +682,10 @@ public static partial class Sidebar
         }
 
         void OpenSort(NodeHandle anchor, SidebarLibraryFilter filter)
-            => Open(anchor, SidebarMenus.Map(SidebarMenuModel.Sort(State, filter)));
+            => Open(anchor, SidebarMenus.Map(NavMenuModel.Menu(NavMenuTarget.Sort(filter))));
 
         void OpenOptions(NodeHandle anchor, SidebarLibraryFilter filter)
-            => Open(anchor, SidebarMenus.Map(SidebarMenuModel.LibraryOptions(State, filter)));
+            => Open(anchor, SidebarMenus.Map(NavMenuModel.Menu(NavMenuTarget.LibraryOptions(filter))));
 
         /// <summary>The open/close-handle pattern of the header overflow, moved here.</summary>
         void Open(NodeHandle anchor, IReadOnlyList<MenuFlyoutItem> items)
@@ -959,25 +742,19 @@ public static partial class Sidebar
                     PreviewKeyDown = e =>
                     {
                         if (e.KeyCode != Keys.Escape) return false;
-                        if (SidebarLibraryHeadRules.OnEscape(LibrarySearch.Peek()) == SidebarLibraryHeadRules.SearchEscape.Clear)
-                        {
-                            LibrarySearch.SetIfChanged("");
-                            LibrarySession.Resync();
-                            return true;
-                        }
-                        s.FocusSearchButtonOnMount = true;   // the toolbar's ⌕ takes focus when it remounts
-                        s.CloseSearch();
+                        // The Esc rule is the model's; closing latches the toolbar's ⌕ to take focus when it remounts.
+                        s.Lib.Escape(() => s.FocusSearchButtonOnMount = true);
                         return true;
                     },
                     OnFocusChanged = gained =>
                     {
-                        if (!gained && SidebarLibraryHeadRules.ClosesOnBlur(LibrarySearch.Peek())) s.CloseSearch();
+                        if (!gained) s.Lib.SearchBlurred();
                     },
                 }) with { Key = "search:field" },
             };
             // The editor hides its own ✕ while empty, so an empty box offers a trailing close.
             if (empty)
-                kids.Add(IconButton.Create(Icons.Cancel, s.CloseSearch, size: ControlSize.Small) with { Key = "search:close" });
+                kids.Add(IconButton.Create(Icons.Cancel, s.Lib.CloseSearch, size: ControlSize.Small) with { Key = "search:close" });
 
             return new BoxEl
             {

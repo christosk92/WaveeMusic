@@ -76,7 +76,7 @@ public static partial class Sidebar
 
         public override Element Render()
         {
-            int ver = (Binder?.Entries ?? Entries).Version.Value + PinsVersion.Value + FolderVersion.Value;
+            int ver = Model.LibraryItems.Version.Value + Model.PinsVersion.Value + Model.FolderVersion.Value;
             var plan = Owner.PlanSectionExpanded(SectionId, _buffers);
             // SectionHeader, TreeEnd and Empty rows draw nothing (FlyoutRow's 0-DIP box), so they take no slot and no height.
             _drawn.Clear();
@@ -134,12 +134,12 @@ public static partial class Sidebar
             // A folder nests in place (V.9): its click toggles the shared expansion and Render re-plans on FolderVersion,
             // so the children appear under it; the flyout stays open. Any other row navigates and closes.
             string folderId = e.FolderId;
-            Action? click = e.IsFolder && folderId.Length > 0 ? () => ToggleFolder(folderId)
+            Action? click = e.IsFolder && folderId.Length > 0 ? () => Model.ToggleFolder(folderId)
                 : e.RouteKey is { Length: > 0 } r ? () => { owner.Navigate(r, e.Name); close(); }
                 : null;
             return EntityRow.Create(new RowSpec
             {
-                Key = row.Key, Label = e.Name.Length > 0 ? e.Name : PaneText.ShortUri(e.Uri),
+                Key = row.Key, Label = e.Name.Length > 0 ? e.Name : NavRowFacts.ShortUri(e.Uri),
                 Subtitle = PaneText.SubtitleOf(in e), Shape = SidebarRowShape.EntityTwoLine, Depth = row.Depth,
                 Leading = Cover.ForEntry(in e, SidebarRowGeometry.ArtOf(SidebarRowShape.EntityTwoLine)),
                 Selected = string.Equals(e.RouteKey, owner.SelectedRoutePeek, StringComparison.Ordinal),
@@ -152,8 +152,8 @@ public static partial class Sidebar
     /// <c>MotionRecipes.PageSlideForward/Back</c> and a back chevron above level 1 — the concert date flyout's model, with
     /// the unbounded stack rules in the pure <see cref="SidebarFolderFlyoutNav"/>. Mounted fresh by
     /// <c>PaneView.OpenFolderFlyout</c> on every open, so the stack always starts at the clicked folder.
-    /// <para>LIVE, not a snapshot: <c>Render</c> re-reads <c>Binder.CurrentInput.PlaylistTree</c> every pass and subscribes
-    /// to <c>Entries.Version</c> + <c>FolderVersion</c>, so a push indexes the current tree and a playlist created, renamed,
+    /// <para>LIVE, not a snapshot: <c>Render</c> re-reads <c>Model.Rootlist</c> every pass and subscribes
+    /// to <c>Model.LibraryItems.Version</c> + <c>FolderVersion</c>, so a push indexes the current tree and a playlist created, renamed,
     /// moved or deleted while the panel is open shows up in it. The props below are reference-stable mount seeds.</para>
     /// <para>Rows are <see cref="EntityRow"/> specs with the pane's own menus and drop specs, so a row here and a row in
     /// the expanded pane cannot look or behave differently.</para></summary>
@@ -182,8 +182,8 @@ public static partial class Sidebar
         {
             var nav = _nav ??= new SidebarFolderFlyoutNav(RootFolderId, RootFolderName);
             _ = _epoch.Value;
-            _ = (Binder?.Entries ?? Entries).Version.Value + FolderVersion.Value;   // THE live subscription: the binder's cell, which is the one that publishes (read, never peeked)
-            var tree = Binder?.CurrentInput.PlaylistTree;
+            _ = Model.LibraryItems.Version.Value + Model.FolderVersion.Value;   // THE live subscription: the model's library cell, which is the one that publishes (read, never peeked)
+            var tree = Model.Rootlist;
 
             int count = SidebarFolderTree.Children(tree, nav.Current.FolderId, _children);
             int cursor = count == 0 ? -1 : Math.Clamp(_cursor.Value, -1, count - 1);
@@ -267,7 +267,7 @@ public static partial class Sidebar
             // The SAME menus the pane builds. A folder's Expand verb still means the PANE's disclosure, not this drill-in.
             Func<ContextMenuModel?>? menu = section is null ? null
                 : folder ? owner.FolderMenu(section, -1, in entry, () => owner.ExpandFolderInPane(entry.FolderId),
-                                            IsFolderExpanded(entry.FolderId), entry.Id)
+                                            Model.IsFolderExpanded(entry.FolderId), entry.Id)
                 : owner.EntryMenu(section, -1, in entry, entry.Id);
 
             // A rootlist member either way: a playlist drags out onto any sidebar/rootlist target, a sub-folder files
@@ -289,7 +289,7 @@ public static partial class Sidebar
                 // honest short form; an entity row that has not resolved shows nothing.
                 Label = entry.Name.Length > 0 ? entry.Name
                     : folder || SidebarProjection.ShouldShowUriFallbackTitle(entry.IsPinned, entry.IdentityKnown)
-                        ? PaneText.ShortUri(entry.Id)
+                        ? NavRowFacts.ShortUri(entry.Id)
                         : "",
                 // A sub-folder's count is the count of the very list a drill-in shows (ParentFolderId containment), never
                 // the projection's ChildCount — the second definition that once rendered a full folder as "0 items".

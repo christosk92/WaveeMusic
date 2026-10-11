@@ -18,6 +18,7 @@ plan in `docs/plans/wavee/sidebar-rework-implementation.md`.
 | File store, DTOs, account key | `Shell/Sidebar.Store.cs`, `Shell/Sidebar.Store.V2.cs` | mostly (the store moves bytes) |
 | Migration v2 → v3 | `Shell/Sidebar.Migration.cs` | yes (`SidebarMigrationV2`); `SidebarMigrationHost` is the impure edge |
 | The `Sidebar` service: signals, binder, pin store, account swap | `Shell/Sidebar.Host.cs`, `Shell/Sidebar.Accounts.cs` | no |
+| The nav model: the layout-neutral read surface and the verbs the views use (`Sidebar.Model`) | `Shell/NavModel.cs`, `Shell/NavModel.Binder.cs`, `Shell/NavModel.Selection.cs` | pure rules yes; the model needs `Entities` |
 | Pin bridge to Spotify | `Spotify/Spotify.Encode.cs` (`LibraryPinSync`) | no |
 | Renderer and components | `Shell/Sidebar.UI*.cs` | no |
 
@@ -106,8 +107,34 @@ Public signals (read them from the renderer so the pane subscribes):
 | `LayoutVersion`, `PinsVersion`, `FolderVersion`, `RingVersion` | `IReadSignal<int>` bumps: layout state, pin store, expanded folders, undo ring |
 
 The version signals are public read signals backed by `s_layoutVersion`, `s_ringVersion` and `s_folderVersion`, plus
-`s_binderEpoch` in `Sidebar.UI.cs`. They invalidate caches. A `PaneView` re-plans when a version it
+the model's `BinderEpoch` (`NavModel.Binder.cs`). They invalidate caches. A `PaneView` re-plans when a version it
 read moves; `SidebarReplanCensus` names which planner input moved (see [testing.md](testing.md)).
+
+## 6a. The nav model (`Shell/NavModel*.cs`)
+
+`Sidebar.Model` (a `NavModel`, constructed by `Sidebar.Boot`) is what the views read and the verbs they call. It owns the
+projection binder (the pane's effects run `Model.Pump()` and `Model.SyncAccount()`), and exposes the binder's output as typed
+facts without any row planning: `Destinations` (+ counts), `Pins` / `PinRows`, `Rootlist`, `LibraryItems`, `Feeds`,
+`Selected`, `ReadPlaying()`, `Readiness` (`NavReadiness` Pending / Ready / **Failed**, per source), `Account`, `Editing`,
+`PersistenceHealth` and `Layout`. `INavVerbs` is its verb set: `Navigate`, `Play`, `ToggleSection`, `ToggleFolder`,
+`ActivateFolder`, `CreatePlaylist`, `CreateFolder`, `Pin`, `Unpin`, `MovePin`. The stored state (layout file, pin store, folder
+set, edit mode) stays on `Sidebar`; the model is the read surface, so a view never reaches for `Sidebar.Binder` (gone) or
+an `Acts?.Play`. Failed is published on the model only: the planner still reads the two-state `TreeState` / `LibraryState`,
+so a failed load draws as today's skeleton until a view draws the failure. Row planning, `PlanDiff` and the drag freeze
+stay in the view code.
+
+Your Library's session is the model's too: `Model.OpenLibrary(inDrawer)` returns a `NavLibrary` (`Shell/NavModel.Library.cs`), one
+per mount, holding the drill stack (`Drill`, `Back`, `ResetDrill`), the shaping state (`ReadState`, `ShapeInput`, `ShapeOptions`),
+the empty-state facts (`ReadFacts`), the chip commit (`SetFilter`, `ToggleChip`, `ClearFilter`), `SetSort`, `SetView`, the folder
+rule (`ActivateFolder`), and the search (`Find`, `Escape`, `SearchBlurred`, `CloseSearch`). The Classic `LibrarySession` keeps only
+the pane reference, the head's focus targets and the pill flag around it.
+
+Edit mode and the menus are core too. `Model.Edit` (`NavEditModel`) holds the Outline read, the ops a checkbox, drag or key makes
+(`SetSectionShown`, `SetItemShown`, `MoveSection`, `MoveItem`), undo / redo, the `EnabledEmptySection` note, and the key table
+(`OnPaneKey`, `OnSectionKey`, `OnPinKey`, `OnItemKey`, fed `NavEditKey` / `NavEditMods`). `NavMenuModel` (static) decides which rows a
+`NavMenuTarget` gets (`Menu`), what a picked row does (`Run`, with an `INavMenuHost` for the pane-bound collapse and rootlist step),
+`ToggleKind` / `MoveBy` / `HideItem`, the folder-rename gate and commit, and the "· modified" `LayoutName`. The view only maps rows to
+engine menu items (`SidebarMenus.Map`) and draws the Outline.
 
 ## 7. Stores, persistence and the account swap
 

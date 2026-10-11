@@ -520,44 +520,14 @@ public static partial class Sidebar
         sealed class LikedArt : Component
         {
             readonly float _size, _radius;
-            readonly Func<LikedStamp> _stamp;
+            readonly Func<NavLikedCovers> _stamp;
             readonly string[] _tiles = new string[4];
 
             public LikedArt(float size, float radius)
             {
                 _size = size;
                 _radius = radius;
-                _stamp = Stamp;
-            }
-
-            /// <summary>Newest first; distinct covers only (four likes off one album are one cover, not a mosaic).
-            /// Identity by interned image id: equal text is one id, so this is the url comparison without resolving.</summary>
-            readonly record struct LikedStamp(uint Epoch, int Found, StringId A, StringId B, StringId C, StringId D);
-
-            LikedStamp Stamp()
-            {
-                uint epoch = Entities.ScopeEpoch.Value;          // a boot / scope switch is the wake before any table exists
-                var scope = Entities.Current;
-                if (scope is null) return new LikedStamp(epoch, 0, default, default, default, default);
-                _ = scope.Edges.Liked.Changed.Value;
-                _ = scope.Tracks.Changed.Value;
-
-                var slots = User.Me.LikedTrackSlots;
-                StringId a = default, b = default, c = default, d = default;
-                int found = 0;
-                for (int i = 0; i < slots.Length && found < 4 && i < 64; i++)
-                {
-                    var id = new Track(slots[i]).ImageId;
-                    if (id.IsEmpty || id == a || id == b || id == c) continue;
-                    switch (found++)
-                    {
-                        case 0: a = id; break;
-                        case 1: b = id; break;
-                        case 2: c = id; break;
-                        default: d = id; break;
-                    }
-                }
-                return new LikedStamp(epoch, found, a, b, c, d);
+                _stamp = Sidebar.Model.ReadLikedCovers;   // the first four distinct liked covers: the model's read
             }
 
             public override Element Render()
@@ -754,62 +724,11 @@ public static partial class Sidebar
             public CountHost(LibraryEdgeKind kind)
             {
                 _kind = kind;
-                _stamp = Stamp;
-            }
-
-            /// <summary>The gate's compute: the scope epoch FIRST (G-179 — the welcome switch re-points every table read
-            /// below), then the relation's publish counter (the wake), folded into what the badge paints.</summary>
-            ShortcutCount.Stamp Stamp()
-            {
-                uint epoch = Entities.ScopeEpoch.Value;
-                var relation = User.Relation(_kind);
-                _ = relation.Changed.Value;
-                var me = User.Me;
-                return new ShortcutCount.Stamp(epoch, me.State(_kind), relation.Total(me.Slot));
+                _stamp = () => Sidebar.Model.ReadShortcutCount(kind);   // the scope epoch first, then the relation's wake: the model's read
             }
 
             public override Element Render() => Badge(ShortcutCount.Shown(UseComputed(_stamp).Value));
         }
-    }
-
-    /// <summary>The PURE half of the library-shortcut count badge (W3-A2): which relation a shortcut route counts, what
-    /// the badge shows for a relation state, and the stamp the live badge gates its render on. Public so the rules are
-    /// pinned by facts (<c>SidebarWiringTests</c>) without an engine.</summary>
-    public static class ShortcutCount
-    {
-        /// <summary>Exactly what the badge paints: an UNKNOWN state is the pending plate whatever the total says, any other
-        /// state is the total. The epoch is part of the value so a scope switch that lands on the same number still
-        /// re-points the memo at the new scope's signals (its read of <c>ScopeEpoch</c> is the wake; the equality is what
-        /// decides the render).</summary>
-        public readonly record struct Stamp(uint Epoch, EdgeState State, int Total);
-
-        /// <summary>The relation a shortcut route counts, or null for a route that carries no count (Local files, Home…).</summary>
-        public static LibraryEdgeKind? KindOf(string routeKey) => routeKey switch
-        {
-            "albums" => LibraryEdgeKind.SavedAlbums,
-            "artists" => LibraryEdgeKind.FollowedArtists,
-            "liked" => LibraryEdgeKind.Liked,
-            "podcasts" => LibraryEdgeKind.SavedShows,
-            _ => null,
-        };
-
-        /// <summary>The number the badge shows, or null for the pending plate: the server TOTAL while a relation pages in
-        /// (so the number never climbs), nothing while nobody has answered.</summary>
-        public static int? Shown(EdgeState state, int total) => state == EdgeState.Unknown ? null : total;
-
-        /// <inheritdoc cref="Shown(EdgeState, int)"/>
-        public static int? Shown(in Stamp stamp) => Shown(stamp.State, stamp.Total);
-
-        /// <summary>The live badge's reconciler key — one literal per kind, so a route row's trailing slot never allocates
-        /// a key string per render.</summary>
-        public static string KeyOf(LibraryEdgeKind kind) => kind switch
-        {
-            LibraryEdgeKind.SavedAlbums => "count:albums",
-            LibraryEdgeKind.FollowedArtists => "count:artists",
-            LibraryEdgeKind.Liked => "count:liked",
-            LibraryEdgeKind.SavedShows => "count:podcasts",
-            _ => "count:other",
-        };
     }
 
     /// <summary>The explicit shimmer shapes (a streaming list has no seed rows to derive a skeleton from). Sized by the
@@ -1065,28 +984,6 @@ public static partial class Sidebar
                 SidebarSubtitleKind.Text => s.Detail,
                 _ => null,
             };
-        }
-
-        /// <summary>A release's compact age ("3d" / "2w" / "4mo"): digits + a unit letter (no loc key exists for it).</summary>
-        public static string? AgeBadge(long epochMs)
-        {
-            if (epochMs <= 0) return null;
-            long days = (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - epochMs) / 86_400_000L;
-            if (days < 0) return null;                       // a future stamp is not an age
-            if (days < 1) return "1d";
-            var inv = System.Globalization.CultureInfo.InvariantCulture;
-            if (days < 7) return days.ToString(inv) + "d";
-            if (days < 60) return (days / 7).ToString(inv) + "w";
-            return (days / 30).ToString(inv) + "mo";
-        }
-
-        /// <summary>The last resort when nothing names a row: the uri's / key's final segment. Never blank, never a crash —
-        /// a hand-edited document must render something the user can right-click and remove.</summary>
-        public static string ShortUri(string? uri)
-        {
-            if (string.IsNullOrEmpty(uri)) return "—";
-            int at = uri.LastIndexOf(':');
-            return at >= 0 && at + 1 < uri.Length ? uri[(at + 1)..] : uri;
         }
 
         /// <summary>The EMPTY copy for a section that resolved to zero rows, per kind (never a borrowed debug string).</summary>

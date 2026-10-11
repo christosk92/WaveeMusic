@@ -40,14 +40,9 @@ public static partial class Sidebar
 
         public override Element Render()
         {
-            var layout = Sidebar.Layout.Value;
-            _ = Sidebar.LayoutVersion.Value;
-            _ = Sidebar.PinsVersion.Value;
-            _ = Sidebar.RingVersion.Value;
-            var state = Sidebar.State;
-            int playlists = Sidebar.Binder?.CurrentInput.PlaylistTree?.Count ?? 0;
-            SidebarEditRules.Outline(state, layout, Sidebar.Pins.Items, Sidebar.PinnedLocked(), _showAllPins.Value, playlists, _rows);
-            SidebarEditRules.Band(state.Of(layout), _band);
+            // The edit model reads the Outline (and subscribes this pane to the layout, the pin store and the undo ring).
+            var layout = Model.Edit.ReadOutline(_showAllPins.Value, _rows, _band);
+            var state = Model.Edit.State;
 
             var hooks = UseContext(InputHooks.Current);
             var post = UsePost();
@@ -85,24 +80,37 @@ public static partial class Sidebar
         void OnPaneKey(KeyEventArgs e)
         {
             if (e.Handled) return;
-            if (e.KeyCode == Keys.Escape && e.Mods == KeyModifiers.None)
-            {
-                Sidebar.ExitEdit();
-                e.Handled = true;
-                return;
-            }
-            if (e.Mods == KeyModifiers.Ctrl && e.KeyCode is Keys.Z or Keys.Y)
-            {
-                if (e.KeyCode == Keys.Z) Sidebar.Undo(); else Sidebar.Redo();
-                e.Handled = true;
-            }
+            if (Model.Edit.OnPaneKey(EditKeyOf(e.KeyCode), EditModsOf(e.Mods))) e.Handled = true;
+        }
+
+        /// <summary>The engine key as the edit model's table knows it.</summary>
+        static NavEditKey EditKeyOf(int key) => key switch
+        {
+            Keys.Enter => NavEditKey.Enter,
+            Keys.Up => NavEditKey.Up,
+            Keys.Down => NavEditKey.Down,
+            Keys.Escape => NavEditKey.Escape,
+            Keys.Z => NavEditKey.Z,
+            Keys.Y => NavEditKey.Y,
+            _ => NavEditKey.Other,
+        };
+
+        /// <summary>The held modifiers as the edit model's table knows them; any modifier it does not name is <c>Other</c>.</summary>
+        static NavEditMods EditModsOf(KeyModifiers mods)
+        {
+            var result = NavEditMods.None;
+            if ((mods & KeyModifiers.Alt) != 0) result |= NavEditMods.Alt;
+            if ((mods & KeyModifiers.Shift) != 0) result |= NavEditMods.Shift;
+            if ((mods & KeyModifiers.Ctrl) != 0) result |= NavEditMods.Ctrl;
+            if ((mods & ~(KeyModifiers.Alt | KeyModifiers.Shift | KeyModifiers.Ctrl)) != 0) result |= NavEditMods.Other;
+            return result;
         }
 
         // ── the edit bar ───────────────────────────────────────────────────────────────────────────────────────────────
 
         Element EditBar()
         {
-            bool canUndo = Sidebar.Ring.CanUndo, canRedo = Sidebar.Ring.CanRedo;
+            bool canUndo = Model.Edit.CanUndo, canRedo = Model.Edit.CanRedo;
             return new BoxEl
             {
                 Key = "edit-bar", Direction = 0, Height = 36f, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = 4f,
@@ -118,11 +126,11 @@ public static partial class Sidebar
                         Trim = TextTrim.CharacterEllipsis,
                     },
                     new BoxEl { Grow = 1f },
-                    ToolTip.Wrap(IconButton.Create(Icons.Undo, Sidebar.Undo, isEnabled: canUndo), Loc.Get("sidebar.undo.undoAction")),
-                    ToolTip.Wrap(IconButton.Create(Icons.Redo, Sidebar.Redo, isEnabled: canRedo), Loc.Get("sidebar.undo.redo")),
+                    ToolTip.Wrap(IconButton.Create(Icons.Undo, Model.Edit.Undo, isEnabled: canUndo), Loc.Get("sidebar.undo.undoAction")),
+                    ToolTip.Wrap(IconButton.Create(Icons.Redo, Model.Edit.Redo, isEnabled: canRedo), Loc.Get("sidebar.undo.redo")),
                     Button.Create(Loc.Get("sidebar.edit.reset"), static () => { }, ButtonAppearance.Subtle, ControlSize.Small)
                         .WithContextMenu(owner.MenuOverlay, ResetMenu) with { ClickRequestsContext = true, Key = "edit-reset" },
-                    Button.Accent(Loc.Get("sidebar.edit.done"), Sidebar.ExitEdit) with { Key = "edit-done" },
+                    Button.Accent(Loc.Get("sidebar.edit.done"), Model.Edit.Exit) with { Key = "edit-done" },
                 ],
             };
         }
@@ -131,14 +139,7 @@ public static partial class Sidebar
         ContextMenuModel? ResetMenu()
         {
             SidebarMenus.Overlay = owner.MenuOverlay;
-            var layout = Sidebar.Layout.Peek();
-            var rows = new[]
-            {
-                new SidebarMenuRow(SidebarMenuAction.ResetLayout, "sidebar.menu.resetLayout",
-                    Enabled: SidebarLayoutRules.IsModified(Sidebar.State.Of(layout))),
-                new SidebarMenuRow(SidebarMenuAction.ResetEverything, "sidebar.menu.resetEverything"),
-            };
-            return new ContextMenuModel(SidebarMenus.Map(rows, null, owner));
+            return new ContextMenuModel(SidebarMenus.Map(NavMenuModel.Menu(NavMenuTarget.EditReset), null, owner));
         }
 
         // ── the Outline ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -163,13 +164,13 @@ public static partial class Sidebar
             };
             _sections.ItemCount = _band.Count;
             _sections.ExtentOf = i => SidebarEditRules.ExtentOf(layout, overlay.Find(_band[i])!, Sidebar.Pins.Count, _showAllPins.Peek());
-            _sections.OnReorder = (f, t) => Sidebar.Dispatch(new MoveSection(Sidebar.Layout.Peek(), _band[f], t));
+            _sections.OnReorder = (f, t) => Model.Edit.MoveSection(_band[f], t);
             _sections.AnnounceText = a => Announce(a, SectionName(NameAt(_band, a.Index)));
             _pins.ItemCount = 0;
-            _pins.OnReorder = (f, t) => Sidebar.MovePinRecorded(f, t);
+            _pins.OnReorder = (f, t) => Sidebar.Model.MovePin(f, t);
             _pins.AnnounceText = a => Announce(a, Sidebar.Pins.Count == 0 ? "" : SidebarMenus.PinName(Sidebar.Pins[Math.Clamp(a.Index, 0, Sidebar.Pins.Count - 1)].Id));
             _items.ItemCount = 0;
-            _items.OnReorder = (f, t) => Sidebar.Dispatch(new MoveItem(Sidebar.Layout.Peek(), "collections", _collections[f], t));
+            _items.OnReorder = (f, t) => Model.Edit.MoveItem("collections", _collections[f], t);
             _items.AnnounceText = a => Announce(a, ItemName(NameAt(_collections, a.Index)));
 
             var kids = new List<Element>(_rows.Count + 8);
@@ -346,8 +347,8 @@ public static partial class Sidebar
                     Color = Tok.TextTertiary, MaxLines = 1, Shrink = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis,
                 });
             kids.Add(new BoxEl { Grow = 1f });
-            if (kind == SidebarSectionKind.Pinned && SidebarMenus.LockingNames().Count > 0)
-                kids.Add(Button.Create(Loc.Get("sidebar.menu.unpinShortcuts"), Sidebar.UnpinAllShortcutsRecorded, ButtonAppearance.Subtle, ControlSize.Small)
+            if (kind == SidebarSectionKind.Pinned && NavMenuModel.LockingNames().Count > 0)
+                kids.Add(Button.Create(Loc.Get("sidebar.menu.unpinShortcuts"), Model.Edit.UnpinAllShortcuts, ButtonAppearance.Subtle, ControlSize.Small)
                     with { Key = "pinned-unpin-shortcuts", BlocksDragArm = true });
             if (owner.MenuOverlay is { } svc && owner.HeaderMenu(id) is { } menu)
                 kids.Add(ToolTip.Wrap(SectionHeader.InlineButton(Icons.More, null, reveal: false, requestsContext: true).WithContextMenu(svc, menu),
@@ -371,25 +372,10 @@ public static partial class Sidebar
             if (!SidebarCatalogue.Hideable(kind))
                 return new BoxEl { Width = 24f, Height = 24f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Children = [Icon(Icons.Lock, 12f, Tok.TextTertiary)] };
             string id = row.SectionId;
-            string? reason = row.Locked ? Loc.Format("sidebar.menu.unpinFirst", ("names", string.Join(", ", SidebarMenus.LockingNames()))) : null;
-            return Check("section:" + id, row.Shown, !row.Locked, title, v =>
-            {
-                if (Sidebar.Dispatch(new SetSectionShown(layout, id, v)) != SidebarOpReject.None) return;
-                // Showing an empty section is allowed; Done says so once (design C.3).
-                if (v && HasNothingToShow(kind)) Sidebar.s_enabledEmptySection = title;
-                else if (!v && Sidebar.s_enabledEmptySection == title) Sidebar.s_enabledEmptySection = null;
-            }, reason);
+            string? reason = row.Locked ? Loc.Format("sidebar.menu.unpinFirst", ("names", string.Join(", ", NavMenuModel.LockingNames()))) : null;
+            // Showing an empty section is allowed; Done says so once (design C.3): the edit model keeps the note.
+            return Check("section:" + id, row.Shown, !row.Locked, title, v => Model.Edit.SetSectionShown(layout, id, kind, title, v), reason);
         }
-
-        /// <summary>True when a section has no rows to show right now: the same sources the section renders from.</summary>
-        static bool HasNothingToShow(SidebarSectionKind kind) => kind switch
-        {
-            SidebarSectionKind.Pinned => Sidebar.Pins.Count == 0,
-            SidebarSectionKind.Playlists => Sidebar.Binder?.CurrentInput.PlaylistTree is not { Count: > 0 },
-            SidebarSectionKind.Recent => Sidebar.Binder?.CurrentInput.Played is not { Count: > 0 },
-            SidebarSectionKind.NewReleases => Sidebar.Binder?.CurrentInput.NewReleases is not { Count: > 0 },
-            _ => false,
-        };
 
         /// <summary>A pin row (40): [glyph] [title] spacer [Unpin] [grip]. Its band wrapper takes the keys (<see cref="OnPinKey"/>).</summary>
         Element PinRow(SidebarPin pin)
@@ -404,7 +390,7 @@ public static partial class Sidebar
                     PinArt(pin),
                     new TextEl(name) { Size = 14f, MaxLines = 1, Shrink = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis, Color = Tok.TextPrimary },
                     new BoxEl { Grow = 1f },
-                    ToolTip.Wrap(SectionHeader.InlineButton(Icons.UnPin, () => Sidebar.UnpinRecorded(pin.Id, name), reveal: false), Loc.Get("sidebar.pin.unpin")),
+                    ToolTip.Wrap(SectionHeader.InlineButton(Icons.UnPin, () => Sidebar.Model.Unpin(pin.Id, name), reveal: false), Loc.Get("sidebar.pin.unpin")),
                     Icon(Icons.GripperBar, 16f, Tok.TextTertiary),
                 ],
             };
@@ -423,7 +409,7 @@ public static partial class Sidebar
         /// <summary>The projection's resolved row for a pin (its cover, its kind), or null until the projection has it.</summary>
         static SidebarLibraryEntry? ResolvedPin(string id)
         {
-            var pins = Sidebar.Binder?.CurrentInput.Pins;
+            var pins = Sidebar.Model.PinRows;
             if (pins is null) return null;
             for (int i = 0; i < pins.Count; i++) if (pins[i].Id == id) return pins[i];
             return null;
@@ -436,13 +422,8 @@ public static partial class Sidebar
             string section = row.SectionId, item = row.ItemId;
             var kids = new List<Element>(6)
             {
-                Check("item:" + section + ":" + item, row.Shown, true, ItemName(item), v =>
-                {
-                    if (Sidebar.Dispatch(new SetItemShown(layout, section, item, v)) != SidebarOpReject.None) return;
-                    // A hidden kind's chip is gone: step the active filter off it, as the menu's Filters rows do.
-                    if (!v && kind == SidebarSectionKind.Library)
-                        Sidebar.SetLibraryFilter(SidebarLibraryFilters.Effective((int)Sidebar.LibraryFilter.Peek(), Sidebar.Doc.Library.HiddenKinds));
-                }),
+                // A hidden Library kind's chip is gone: the edit model steps the active filter off it, as the menu's Filters rows do.
+                Check("item:" + section + ":" + item, row.Shown, true, ItemName(item), v => Model.Edit.SetItemShown(layout, section, item, kind, v)),
                 Icon(Shell.Dest(Shell.Parse(item)).Glyph, 16f, Tok.TextSecondary),
                 new TextEl(ItemName(item)) { Size = 14f, MaxLines = 1, Shrink = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis, Color = Tok.TextPrimary },
                 new BoxEl { Grow = 1f },
@@ -464,7 +445,7 @@ public static partial class Sidebar
             var dest = Shell.Dest(new Shell.Route(Shell.RouteKind.Settings));
             var kids = new List<Element>(6)
             {
-                Check("settings", row.Shown, true, dest.Title, v => Sidebar.Dispatch(new SetSectionShown(layout, "settings", v))),
+                Check("settings", row.Shown, true, dest.Title, v => Model.Edit.SetSettingsShown(layout, v)),
                 Icon(Icons.Settings, 16f, Tok.TextSecondary),
                 new TextEl(dest.Title) { Size = 14f, MaxLines = 1, Shrink = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis, Color = Tok.TextPrimary },
                 new BoxEl { Grow = 1f },
@@ -527,27 +508,12 @@ public static partial class Sidebar
 
         // ── keys ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>Keys the lifted Reorderable does not take, on a section wrapper (design Q8): Enter toggles Show; Alt+↑/↓
-        /// moves one step, Alt+Shift+↑/↓ to the edge.</summary>
+        /// <summary>Keys the lifted Reorderable does not take, on a section wrapper (design Q8): the edit model's table decides
+        /// (Enter toggles Show; Alt+↑/↓ moves one step, Alt+Shift+↑/↓ to the edge).</summary>
         void OnSectionKey(string id, int slot, KeyEventArgs e)
         {
             if (e.Handled) return;
-            var layout = Sidebar.Layout.Peek();
-            if (e.KeyCode == Keys.Enter && e.Mods == KeyModifiers.None)
-            {
-                var s = Sidebar.State.Of(layout).Find(id);
-                if (s is not null && SidebarCatalogue.TryKindOf(id, out var kind) && SidebarCatalogue.Hideable(kind))
-                    Sidebar.Dispatch(new SetSectionShown(layout, id, s.Hidden));
-                e.Handled = true;
-                return;
-            }
-            if ((e.KeyCode == Keys.Up || e.KeyCode == Keys.Down) && (e.Mods & KeyModifiers.Alt) != 0)
-            {
-                int dir = e.KeyCode == Keys.Up ? -1 : 1;
-                int to = SidebarEditRules.MoveTarget(slot, _band.Count, dir, toEdge: (e.Mods & KeyModifiers.Shift) != 0);
-                if (to >= 0 && to != slot) Sidebar.Dispatch(new MoveSection(layout, id, to));
-                e.Handled = true;
-            }
+            if (Model.Edit.OnSectionKey(id, slot, _band.Count, EditKeyOf(e.KeyCode), EditModsOf(e.Mods))) e.Handled = true;
         }
 
         /// <summary>Alt+↑/↓ on a pin row's wrapper (Alt+Shift: to the edge). The same in both layouts (Q3). Enter stops here:
@@ -555,12 +521,7 @@ public static partial class Sidebar
         void OnPinKey(int index, KeyEventArgs e)
         {
             if (e.Handled) return;
-            if (e.KeyCode == Keys.Enter) { e.Handled = true; return; }
-            if ((e.KeyCode != Keys.Up && e.KeyCode != Keys.Down) || (e.Mods & KeyModifiers.Alt) == 0) return;
-            int to = SidebarEditRules.MoveTarget(index, Sidebar.Pins.Count, e.KeyCode == Keys.Up ? -1 : 1,
-                                                 toEdge: (e.Mods & KeyModifiers.Shift) != 0);
-            if (to >= 0 && to != index) Sidebar.MovePinRecorded(index, to);
-            e.Handled = true;
+            if (Model.Edit.OnPinKey(index, EditKeyOf(e.KeyCode), EditModsOf(e.Mods))) e.Handled = true;
         }
 
         /// <summary>Keys on a Collections item row's wrapper (design Q8): Enter toggles the item's Show (never the section's);
@@ -568,17 +529,7 @@ public static partial class Sidebar
         void OnItemKey(int index, string itemId, bool shown, KeyEventArgs e)
         {
             if (e.Handled) return;
-            if (e.KeyCode == Keys.Enter && e.Mods == KeyModifiers.None)
-            {
-                Sidebar.Dispatch(new SetItemShown(Sidebar.Layout.Peek(), "collections", itemId, !shown));
-                e.Handled = true;
-                return;
-            }
-            if ((e.KeyCode != Keys.Up && e.KeyCode != Keys.Down) || (e.Mods & KeyModifiers.Alt) == 0) return;
-            int to = SidebarEditRules.MoveTarget(index, _collections.Count, e.KeyCode == Keys.Up ? -1 : 1,
-                                                 toEdge: (e.Mods & KeyModifiers.Shift) != 0);
-            if (to >= 0 && to != index) Sidebar.Dispatch(new MoveItem(Sidebar.Layout.Peek(), "collections", _collections[index], to));
-            e.Handled = true;
+            if (Model.Edit.OnItemKey(index, _collections, itemId, shown, EditKeyOf(e.KeyCode), EditModsOf(e.Mods))) e.Handled = true;
         }
 
         void SetFirstStop(NodeHandle h) => _firstStop = h;

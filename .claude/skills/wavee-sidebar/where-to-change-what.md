@@ -11,8 +11,8 @@ renderer.
 | Add a Collections page (a new library route) | `Shell/Sidebar.Layout.cs` (`SidebarCatalogue.ItemsOf`, the item list in `s_collectionItems`); the page's loc key in `assets/loc/en-US.json`; `Shell/Sidebar.Library.cs` if it is a Library page (`SidebarLibraryPage`) | `SidebarCatalogueTests.cs`, `SidebarLibraryHeadRulesTests.cs` |
 | Add a section kind | `Shell/Sidebar.Layout.cs` (`SidebarSectionKind`, the catalogue, `Movable`/`Collapsible`); `Shell/Sidebar.Store.cs` (the section DTO mapping); `Shell/Sidebar.Planner.cs` (a plan branch); `Shell/Sidebar.UI.Rows.cs` or `Shell/Sidebar.UI.Slot.cs` (the header) | `SidebarCatalogueTests.cs`, `SidebarPlannerTests.cs`, `SidebarStoreV3Tests.cs` |
 | Change a row metric (height, indent, icon, label gap) | `Shell/Sidebar.cs` (`SidebarRowGeometry` — the one ladder; `SidebarRowExtents` if the extents change) | `SidebarRowGeometryTests.cs` |
-| Add a menu item | `Shell/Sidebar.UI.Menus.cs` (the `SidebarMenuAction` value in `Sidebar.Edit.cs`, the row in `SidebarMenuModel`, the case in `SidebarMenus.Run`) | `SidebarMenuModelTests.cs` |
-| Add an Edit mode key or verb | `Shell/Sidebar.UI.Edit.cs` (the key handler); `Shell/Sidebar.Edit.cs` (`SidebarEditRules` for the decision); the `SidebarOp` in `Sidebar.Layout.cs` if it edits the layout | `SidebarEditRulesTests.cs` |
+| Add a menu item | `Shell/Sidebar.UI.Menus.cs` (the `SidebarMenuAction` value in `Sidebar.Edit.cs`, the row in `SidebarMenuModel`, the case in `NavMenuModel.Run`, `Shell/NavMenuModel.cs`) | `NavMenuModelTests.cs` |
+| Add an Edit mode key or verb | `Shell/NavEditModel.cs` (the key table and the ops); `Shell/Sidebar.UI.Edit.cs` (the Outline view and its key mapping); `Shell/Sidebar.Edit.cs` (`SidebarEditRules` for the decision); the `SidebarOp` in `Sidebar.Layout.cs` if it edits the layout | `SidebarEditRulesTests.cs`, `NavEditModelTests.cs` |
 | Add a pane mode rule or change a band | `Shell/Sidebar.Resize.cs` (`SidebarPaneModeRules` for the band; `SidebarResizeRules` for the width) | `SidebarPaneModeRulesTests.cs`, `SidebarResizeRulesTests.cs` |
 | Change the Library head, chips or toolbar | `Shell/Sidebar.Library.cs` (`SidebarLibraryHeadRules`, `SidebarLibraryEmptyRules`, `SidebarLibraryShaper`); `Shell/Sidebar.UI.Library.cs` (the visuals) | `SidebarLibraryHeadRulesTests.cs`, `SidebarLibraryShaperTests.cs`, `SidebarLibraryStateTests.cs` |
 | Change a pin rule or the Liked and Home guard | `Shell/Sidebar.cs` (`SidebarPinId`); `Shell/Sidebar.Rules.cs` (`SidebarPinRules`); `Shell/Sidebar.Host.cs` (`SidebarPinStore`) | `SidebarPinTests.cs` |
@@ -22,7 +22,9 @@ renderer.
 | Change the v2 → v3 migration | `Shell/Sidebar.Migration.cs` (`SidebarMigrationV2`, `SidebarMigrationHost`) | `SidebarMigrationV2Tests.cs` |
 | Add a feed (a section that fetches) | `Shell/Sidebar.Feeds.cs` (`SidebarFeedDemand` and its demand rule); `Shell/Sidebar.Host.cs` (the binder input) | `SidebarFeedsTests.cs`, `SidebarProjectionTests.cs` |
 | Change how a recent item resolves its title | `Shell/Sidebar.Feeds.cs` (`SidebarRecentsRules`, `ISidebarEntityPeek`) | `SidebarFeedsTests.cs` |
-| Change a drop, the drop cue or the rootlist slot | `Shell/Sidebar.cs` (`RootlistSlotResolver`, `RootlistSlotMapper`); `Shell/Sidebar.UI.Drop.cs` (publish, commit, `MoveRootlist`) | `SidebarDropTests.cs` |
+| Change a drop, the drop cue or the rootlist slot | `Shell/NavDropRules.cs` (`RootlistSlotResolver`, `RootlistSlotMapper`, the row table); `Shell/NavModel.Drop.cs` (`Drop`, `MoveRootlist`, `DepositTracks`, refusals); `Shell/Sidebar.UI.Drop.cs` (pointer, cue, publish) | `NavDropRulesTests.cs` |
+| Change what a navigation view can read or ask (a nav fact, a verb, the readiness) | `Shell/NavModel.cs` (the verbs, the stored facts), `Shell/NavModel.Binder.cs` (the projection and its pump), `Shell/NavModel.Selection.cs` (selected route, play state); the binder's readiness in `Shell/Sidebar.Host.cs` | `NavModelTests.cs` |
+| Change Your Library's drill, chip commit, search rules or empty-state facts | `Shell/NavModel.Library.cs` (`NavLibrary`); the visuals in `Shell/Sidebar.UI.Library.cs` | `NavLibraryTests.cs` |
 | Change the account swap or signed-out behaviour | `Shell/Sidebar.Accounts.cs` (`EnsureAccount`, `SwapAccount`); `Shell/Sidebar.Store.cs` (`SidebarAccountKey`) | `SidebarAccountStoreTests.cs` |
 | Change re-plan causes or the census line | `Shell/Sidebar.Census.cs` (`SidebarReplanCause`, `SidebarReplanCensus`); the binder revision in `Shell/Sidebar.Host.cs` | `SidebarReplanCensusTests.cs`, `SidebarRevisionTests.cs` |
 | Change the section or folder disclosure | `Shell/Sidebar.Disclosures.cs` (the bookkeeping, in `feat/smooth-reveal`); `Shell/Sidebar.UI.cs` (`PaneView.StartDisclosure`) | `SidebarDisclosuresTests.cs` (in `feat/smooth-reveal`) |
@@ -36,6 +38,7 @@ Every `Shell/Sidebar*.cs` file, in alphabetical order.
 
 | File | What lives there |
 |---|---|
+| `Shell/NavModel.cs`, `NavModel.Binder.cs`, `NavModel.Selection.cs`, `NavModel.Library.cs`, `NavEditModel.cs`, `NavMenuModel.cs` | The nav model (`Sidebar.Model`): readiness, destinations, the read surface over the binder, the selected route and play state, and the `INavVerbs` verbs. |
 | `Shell/Sidebar.Accounts.cs` | The account swap: `EnsureAccount`, `SwapAccount`, the pending-file adoption on first sign-in. |
 | `Shell/Sidebar.Cards.cs` | Card surfaces: `SidebarCardSurface`, `SidebarCardActivation`, `SidebarCardDrop`, `SidebarCardRules`. |
 | `Shell/Sidebar.Census.cs` | The re-plan census: `SidebarReplanCause` (which planner input moved) and `SidebarReplanCensus` (the log line). |
@@ -55,7 +58,7 @@ Every `Shell/Sidebar*.cs` file, in alphabetical order.
 | `Shell/Sidebar.UI.Edit.cs` | Edit mode's view: `EditPane`, the Outline, the edit bar, and the Edit-mode key handlers (Ctrl+Z / Ctrl+Y included). |
 | `Shell/Sidebar.UI.Flyout.cs` | The collapsed rail's section and folder flyouts (`PaneSectionFlyout`, `PaneFolderFlyout`). |
 | `Shell/Sidebar.UI.Footer.cs` | `PaneFooter`: the footer row and its Settings pill. |
-| `Shell/Sidebar.UI.Library.cs` | The Library mode's view: `LibraryMode`, `LibrarySession`, `LibraryHead`, `LibraryChips`, `LibraryToolbar`, `LibrarySearchBox`. |
+| `Shell/Sidebar.UI.Library.cs` | The Library mode's view: `LibraryMode`, `LibrarySession` (pane reference and focus targets around the model's `NavLibrary`), `LibraryHead`, `LibraryChips`, `LibraryToolbar`, `LibrarySearchBox`. |
 | `Shell/Sidebar.UI.Menus.cs` | `SidebarMenus` (the menu run and labels) and the `PaneView` menu entry points. |
 | `Shell/Sidebar.UI.Rows.cs` | Row content: `RowSpec`, `EntityRow`, `Cover`, `LikedArt`, `Chevron`, `SelectionPill`, `Counts`, `ShortcutCount`, `Skeletons`. |
 | `Shell/Sidebar.UI.Slot.cs` | `PaneSlot`: the per-row component and the card and create-button slots. |

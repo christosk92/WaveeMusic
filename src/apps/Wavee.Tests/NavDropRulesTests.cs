@@ -1,4 +1,7 @@
-// ── Wavee.Tests/SidebarDropTests.cs — the rootlist drop / tree-nav / selection authority, ported from 0.2.9 ───────
+// ── Wavee.Tests/NavDropRulesTests.cs — the rootlist drop / tree-nav / selection authority, ported from 0.2.9 ───────
+//
+// (Renamed from SidebarDropTests.cs by themes plan row C12: the drop rules these facts drive now live in Shell/NavDropRules.cs;
+// the row-level table, the row facts and the model's Drop verb are the classes at the END of this file.)
 //
 // Ports the 0.2.9 sidebar organisation suite onto Sidebar.cs's own DROP, TREE NAV, FOLDER FLYOUT AND
 // MULTI-SELECTION block (L2655+): the pure geometry behind a rootlist drag (`RootlistSlotResolver`), the
@@ -34,6 +37,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using FluentGpu.Foundation;
+using FluentGpu.Localization;
 using Wavee;
 using Xunit;
 
@@ -1657,5 +1662,540 @@ public class SidebarDropFreezeTests
         bay.TryHold(sessionLive: true, "second-session");
         Assert.True(bay.TryFlush(out string? second));
         Assert.Equal("second-session", second);
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// ── C12 · NavDropRules, NavRowFacts, NavModel.Drop (themes plan §5.1 row C12) ──────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// The row-level drop table the Classic pane used to hold in closures (Compatible / Transparent / WhyRefused / CommitArm), the
+// rail-folder gate, the tree row facts, the pure row facts (age badge, short uri, label fallbacks), and the model's Drop verb
+// over the library seam. The pointer → slot geometry stays covered by `RootlistSlotResolverTests` above.
+
+public class NavDropRulesTests
+{
+    const string PlaylistUri = "spotify:playlist:37i9dQZF1DX4sWSpwq3LiO";
+    const string OtherUri = "spotify:playlist:1TSZDcvlPtAnekTaItI3qO";
+
+    static DragPayload Filing(string uri = PlaylistUri)
+        => new(DragKind.Playlist, "pl:" + uri, uri, "P", RootlistItem: true);
+
+    static DragPayload FolderFiling(string id = "abc123")
+        => new(DragKind.Folder, id, "", "F", RootlistItem: true);
+
+    static DragPayload TrackSet()
+        => new(DragKind.Album, "album:spotify:album:a", "spotify:album:a", "A",
+               TrackResolver: static _ => System.Threading.Tasks.Task.FromResult(Array.Empty<Track>()));
+
+    static DragPayload OneTrack()
+        => new(DragKind.Track, "track:spotify:track:t", "spotify:track:t", "T",
+               TrackResolver: static _ => System.Threading.Tasks.Task.FromResult(Array.Empty<Track>()));
+
+    static DragPayload Artist() => new(DragKind.Artist, "artist:spotify:artist:r", "spotify:artist:r", "R");
+
+    static NavDropRow RootRow(string uri = OtherUri) => new(Filing(uri), PinSlot: -1, PlaylistUri: null, IsPlaylistRow: true, HasRailCue: false);
+
+    // ── the payload-only refusal ───────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_filing_waits_for_the_rootlist_before_anything_else()
+    {
+        var row = RootRow();
+        Assert.Equal(SidebarDropRefusal.NotLoaded, NavDropRules.PayloadRefusal(in row, Filing(), rootlistLoaded: false));
+        Assert.False(NavDropRules.Compatible(in row, Filing(), rootlistLoaded: false));
+        Assert.Equal(NavDropRules.Sentence(SidebarDropRefusal.NotLoaded), NavDropRules.WhyRefused(in row, Filing(), rootlistLoaded: false));
+        Assert.True(NavDropRules.Compatible(in row, Filing(), rootlistLoaded: true));
+        Assert.Null(NavDropRules.WhyRefused(in row, Filing(), rootlistLoaded: true));
+    }
+
+    [Fact]
+    public void Dropping_an_item_on_itself_is_self_and_a_folder_on_itself_is_into_itself()
+    {
+        var row = RootRow(PlaylistUri);
+        Assert.Equal(SidebarDropRefusal.Self, NavDropRules.PayloadRefusal(in row, Filing(PlaylistUri), true));
+        Assert.False(NavDropRules.Compatible(in row, Filing(PlaylistUri), true));
+
+        var folderRow = new NavDropRow(FolderFiling("abc123"), -1, null, false, false);
+        Assert.Equal(SidebarDropRefusal.IntoItself, NavDropRules.PayloadRefusal(in folderRow, FolderFiling("abc123"), true));
+        Assert.Equal(SidebarDropRefusal.None, NavDropRules.PayloadRefusal(in folderRow, FolderFiling("zzz999"), true));
+    }
+
+    [Fact]
+    public void A_row_that_is_not_a_rootlist_row_has_no_payload_refusal()
+    {
+        var row = new NavDropRow(null, 3, null, false, false);
+        Assert.Equal(SidebarDropRefusal.None, NavDropRules.PayloadRefusal(in row, Filing(), false));
+        Assert.False(NavDropRules.Filing(in row, Filing()));
+    }
+
+    // ── compatible / transparent / refused ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_track_set_deposits_into_an_editable_playlist_and_is_refused_by_a_read_only_one()
+    {
+        var editable = new NavDropRow(null, -1, PlaylistUri, true, false);
+        Assert.True(NavDropRules.Compatible(in editable, TrackSet(), true));
+        Assert.False(NavDropRules.Transparent(in editable, TrackSet()));
+        Assert.Null(NavDropRules.WhyRefused(in editable, TrackSet(), true));
+        Assert.Equal(NavDropArm.Deposit, NavDropRules.CommitArm(in editable, TrackSet(), ownReorder: false, rootPlanIndex: -1));
+
+        var readOnly = new NavDropRow(null, -1, null, true, false);
+        Assert.False(NavDropRules.Compatible(in readOnly, TrackSet(), true));
+        Assert.False(NavDropRules.Transparent(in readOnly, TrackSet()));          // you aimed at a playlist: it says why
+        Assert.Equal(Loc.Get("drag.cantEditPlaylist"), NavDropRules.WhyRefused(in readOnly, TrackSet(), true));
+        Assert.Equal(NavDropArm.None, NavDropRules.CommitArm(in readOnly, TrackSet(), false, -1));
+    }
+
+    [Fact]
+    public void An_artist_has_no_single_track_set_so_a_playlist_refuses_it_by_name()
+    {
+        var editable = new NavDropRow(null, -1, PlaylistUri, true, false);
+        Assert.False(NavDropRules.Compatible(in editable, Artist(), true));
+        Assert.Equal(Loc.Get("drag.cantAddArtist"), NavDropRules.WhyRefused(in editable, Artist(), true));
+    }
+
+    [Fact]
+    public void A_non_playlist_row_a_track_drag_crosses_is_transparent()
+    {
+        var album = new NavDropRow(null, -1, null, false, false);
+        Assert.True(NavDropRules.Transparent(in album, TrackSet()));
+        Assert.False(NavDropRules.Compatible(in album, TrackSet(), true));
+        Assert.Null(NavDropRules.WhyRefused(in album, TrackSet(), true));
+    }
+
+    [Fact]
+    public void The_pinned_band_refuses_what_can_never_be_a_pin_with_the_reason()
+    {
+        var band = new NavDropRow(null, 2, null, false, false);
+        Assert.False(NavDropRules.Compatible(in band, OneTrack(), true));
+        Assert.False(NavDropRules.Transparent(in band, OneTrack()));
+        Assert.Equal("sidebar.pin.cantPin.track", NavDropRules.PinRefusalKey(in band, OneTrack()));
+        Assert.Equal(Loc.Get("sidebar.pin.cantPin.track"), NavDropRules.WhyRefused(in band, OneTrack(), true));
+
+        Assert.True(NavDropRules.Compatible(in band, Artist(), true));
+        Assert.Null(NavDropRules.PinRefusalKey(in band, Artist()));
+        Assert.Null(NavDropRules.PinRefusalKey(new NavDropRow(null, -1, null, false, false), OneTrack()));   // not a pin region
+    }
+
+    [Fact]
+    public void A_pinned_playlist_row_keeps_its_own_track_answer()
+    {
+        var pinnedPlaylist = new NavDropRow(null, 1, PlaylistUri, true, false);
+        Assert.Null(NavDropRules.PinRefusalKey(in pinnedPlaylist, TrackSet()));
+        Assert.True(NavDropRules.Compatible(in pinnedPlaylist, TrackSet(), true));
+    }
+
+    [Fact]
+    public void A_rail_tile_is_transparent_to_a_rootlist_item_that_carries_no_tracks()
+    {
+        var rail = new NavDropRow(null, -1, null, false, HasRailCue: true);
+        Assert.True(NavDropRules.Transparent(in rail, Filing()));
+        Assert.False(NavDropRules.Transparent(new NavDropRow(null, -1, null, false, false), Filing()));
+    }
+
+    // ── which arm commits ──────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_commit_arm_is_decided_in_one_order_own_reorder_rootlist_deposit_pin()
+    {
+        var band = new NavDropRow(null, 1, null, false, false);
+        Assert.Equal(NavDropArm.OwnReorder, NavDropRules.CommitArm(in band, Artist(), ownReorder: true, rootPlanIndex: -1));
+        Assert.Equal(NavDropArm.Pin, NavDropRules.CommitArm(in band, Artist(), ownReorder: false, rootPlanIndex: -1));
+
+        var root = RootRow();
+        Assert.Equal(NavDropArm.Rootlist, NavDropRules.CommitArm(in root, Filing(), false, rootPlanIndex: 4));
+        Assert.Equal(NavDropArm.None, NavDropRules.CommitArm(in root, Filing(), false, rootPlanIndex: -1));
+
+        // A pinned rootlist row: the rootlist arm outranks the pin arm, the own reorder outranks both.
+        var pinnedRoot = new NavDropRow(Filing(OtherUri), 0, null, true, false);
+        Assert.Equal(NavDropArm.Rootlist, NavDropRules.CommitArm(in pinnedRoot, Filing(), false, 2));
+        Assert.Equal(NavDropArm.OwnReorder, NavDropRules.CommitArm(in pinnedRoot, Filing(), true, 2));
+    }
+
+    [Fact]
+    public void A_cue_a_neighbour_published_is_a_refusal_never_a_fallback_placement()
+    {
+        var mine = new SidebarDropSlot(3, SidebarDropKind.Before, 0, SidebarDropRefusal.None);
+        var neighbours = new SidebarDropSlot(4, SidebarDropKind.Before, 0, SidebarDropRefusal.None);
+        var refused = new SidebarDropSlot(3, SidebarDropKind.None, 0, SidebarDropRefusal.SortedList);
+
+        Assert.Equal(SidebarDropRefusal.None, NavDropRules.RootlistCueRefusal(in mine, 3));
+        Assert.Equal(SidebarDropRefusal.Unavailable, NavDropRules.RootlistCueRefusal(in neighbours, 3));
+        Assert.Equal(SidebarDropRefusal.Unavailable, NavDropRules.RootlistCueRefusal(SidebarDropSlot.None, 3));
+        Assert.Equal(SidebarDropRefusal.SortedList, NavDropRules.RootlistCueRefusal(in refused, 3));
+    }
+
+    [Fact]
+    public void The_hover_facts_fold_the_payload_into_the_rows_structural_ones()
+    {
+        var row = new NavDropRow(Filing(OtherUri), -1, PlaylistUri, true, false);
+        var structural = NavDropRules.TreeEndFacts(sortedNonCustom: false) with { RootlistLoaded = false };
+
+        var folded = NavDropRules.FoldFacts(in row, in structural, TrackSet(), rootlistLoaded: true);
+        Assert.True(folded.CenterAccepts);            // an editable playlist's centre takes a track set
+        Assert.False(folded.SourceIsSelf);
+        Assert.True(folded.RootlistLoaded);
+
+        var self = NavDropRules.FoldFacts(in row, in structural, Filing(OtherUri), rootlistLoaded: true);
+        Assert.True(self.SourceIsSelf);
+        Assert.False(NavDropRules.FoldFacts(in row, in structural, Artist(), true).CenterAccepts);
+    }
+
+    // ── the rail folder row ────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_rail_folder_gate_walks_transparent_not_loaded_into_itself_then_asks_the_marker_stream()
+    {
+        var folder = FolderFiling("abc123");
+        Assert.Equal(NavRailFolderGate.Transparent, NavDropRules.RailFolderGate(TrackSet(), folder, true));
+        Assert.Equal(NavRailFolderGate.NotLoaded, NavDropRules.RailFolderGate(Filing(), folder, false));
+        Assert.Equal(NavRailFolderGate.IntoItself, NavDropRules.RailFolderGate(FolderFiling("abc123"), folder, true));
+        Assert.Equal(NavRailFolderGate.Open, NavDropRules.RailFolderGate(Filing(), folder, true));
+    }
+
+    // ── the payload → refs conversions ─────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_rootlist_payload_becomes_seam_refs_and_entry_ids()
+    {
+        var refs = NavDropRules.RefsOf(Filing());
+        Assert.Single(refs);
+        Assert.Equal(PlaylistUri, refs[0].Key);
+        Assert.False(refs[0].IsFolder);
+
+        var folderRefs = NavDropRules.RefsOf(FolderFiling("abc123"));
+        Assert.Equal("abc123", folderRefs[0].Key);
+        Assert.True(folderRefs[0].IsFolder);
+
+        // With no tree the ids are the ref keys; an empty key is dropped.
+        Assert.Equal(new[] { PlaylistUri }, NavDropRules.SourceIds(null, Filing()));
+    }
+
+    [Fact]
+    public void The_refusal_sentence_is_one_per_refusal_and_none_for_none()
+    {
+        Assert.Null(NavDropRules.Sentence(SidebarDropRefusal.None));
+        Assert.False(string.IsNullOrEmpty(NavDropRules.Sentence(SidebarDropRefusal.Self)));
+        Assert.Equal(Loc.Get(SidebarDropRefusalText.LocKey(SidebarDropRefusal.SortedList)), NavDropRules.Sentence(SidebarDropRefusal.SortedList));
+    }
+
+    // ── tree row facts ─────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(SidebarSectionKind.Playlists, false, true)]
+    [InlineData(SidebarSectionKind.Playlists, true, true)]
+    [InlineData(SidebarSectionKind.Library, false, true)]
+    [InlineData(SidebarSectionKind.Library, true, false)]    // a sorted Library is a view of the rootlist, not the rootlist
+    [InlineData(SidebarSectionKind.Pinned, false, false)]
+    public void Only_the_playlists_section_and_a_custom_ordered_library_are_the_rootlist(SidebarSectionKind kind, bool sortedNonCustom, bool expected)
+        => Assert.Equal(expected, NavDropRules.IsRootlistSection(kind, sortedNonCustom));
+
+    [Fact]
+    public void The_list_end_slot_is_one_whole_row_at_depth_zero()
+    {
+        var end = NavDropRules.TreeEndFacts(sortedNonCustom: true);
+        Assert.True(end.IsListEnd);
+        Assert.True(end.SortedNonCustom);
+        Assert.True(end.RootlistLoaded);
+        Assert.Equal(0, end.Depth);
+        Assert.False(NavDropRules.TreeEndFacts(false).SortedNonCustom);
+    }
+}
+
+public class NavRowFactsTests
+{
+    const long Day = 86_400_000L;
+    const long Now = 1_800_000_000_000L;
+
+    [Fact]
+    public void The_age_badge_is_digits_and_a_unit_and_null_for_no_stamp_or_a_future_one()
+    {
+        Assert.Null(NavRowFacts.AgeBadge(0, Now));
+        Assert.Null(NavRowFacts.AgeBadge(-5, Now));
+        Assert.Null(NavRowFacts.AgeBadge(Now + Day, Now));
+        Assert.Equal("1d", NavRowFacts.AgeBadge(Now - 1000, Now));
+        Assert.Equal("1d", NavRowFacts.AgeBadge(Now - Day, Now));
+        Assert.Equal("6d", NavRowFacts.AgeBadge(Now - 6 * Day, Now));
+        Assert.Equal("1w", NavRowFacts.AgeBadge(Now - 7 * Day, Now));
+        Assert.Equal("8w", NavRowFacts.AgeBadge(Now - 59 * Day, Now));
+        Assert.Equal("2mo", NavRowFacts.AgeBadge(Now - 60 * Day, Now));
+        Assert.Equal("12mo", NavRowFacts.AgeBadge(Now - 365 * Day, Now));
+    }
+
+    [Fact]
+    public void The_short_uri_is_the_last_segment_and_never_blank()
+    {
+        Assert.Equal("—", NavRowFacts.ShortUri(null));
+        Assert.Equal("—", NavRowFacts.ShortUri(""));
+        Assert.Equal("abc", NavRowFacts.ShortUri("spotify:playlist:abc"));
+        Assert.Equal("plain", NavRowFacts.ShortUri("plain"));
+        Assert.Equal("trail:", NavRowFacts.ShortUri("trail:"));
+    }
+
+    static SidebarLibraryEntry Entry(string id, SidebarEntryKind kind, string name, bool pinned = false, bool known = false, bool missing = false)
+        => new SidebarLibraryEntry(id, kind, "spotify:" + kind.ToString().ToLowerInvariant() + ":xyz", name, "", StringId.Empty, null,
+                                   ChildCount: 0, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0, SourceOrder: 0, Depth: 0,
+                                   Circular: false, Flavor: SidebarPlaylistFlavor.None)
+        { IsPinned = pinned, IdentityKnown = known, Missing = missing };
+
+    [Fact]
+    public void A_named_row_shows_its_name_and_is_no_placeholder()
+    {
+        var label = NavRowFacts.LabelOf(Entry("pl:x", SidebarEntryKind.Playlist, "Mix", pinned: true, known: true), online: true);
+        Assert.Equal("Mix", label.Label);
+        Assert.Equal(SidebarPinState.Resolved, label.PinState);
+        Assert.False(label.PlaceholderTitle);
+
+        var plain = NavRowFacts.LabelOf(Entry("pl:x", SidebarEntryKind.Playlist, "Mix"), online: false);
+        Assert.Equal(SidebarPinState.Resolved, plain.PinState);        // a non-pin row has no pin state
+    }
+
+    [Fact]
+    public void An_unnamed_pin_shows_the_kinds_noun_in_a_placeholder_state_that_follows_online()
+    {
+        var pin = Entry("pl:x", SidebarEntryKind.Playlist, "", pinned: true);
+        var online = NavRowFacts.LabelOf(pin, online: true);
+        Assert.Equal(Loc.Get("nav.playlist"), online.Label);
+        Assert.True(online.PlaceholderTitle);
+        Assert.Equal(SidebarPinState.Pending, online.PinState);
+        Assert.Equal(SidebarPinState.Offline, NavRowFacts.LabelOf(pin, online: false).PinState);
+    }
+
+    [Fact]
+    public void An_authoritative_miss_keeps_the_last_known_name_and_marks_the_pin_unavailable()
+    {
+        var gone = NavRowFacts.LabelOf(Entry("pl:x", SidebarEntryKind.Playlist, "Old name", pinned: true, missing: true), online: true);
+        Assert.Equal("Old name", gone.Label);
+        Assert.Equal(SidebarPinState.Unavailable, gone.PinState);
+        Assert.False(gone.PlaceholderTitle);
+    }
+
+    [Fact]
+    public void A_route_entry_shows_its_destinations_title()
+    {
+        var route = NavRowFacts.LabelOf(Entry("search", SidebarEntryKind.AppRoute, ""), online: true);
+        Assert.Equal(Shell.Dest(Shell.Parse("search")).Title, route.Label);
+        Assert.False(route.PlaceholderTitle);
+    }
+
+    [Fact]
+    public void An_unnamed_non_pin_row_keeps_the_identity_gate_on_its_uri_fallback()
+    {
+        var row = Entry("pl:x", SidebarEntryKind.Playlist, "", known: false);
+        string expected = SidebarProjection.ShouldShowUriFallbackTitle(false, false) ? NavRowFacts.ShortUri(row.Uri) : "";
+        Assert.Equal(expected, NavRowFacts.LabelOf(row, online: true).Label);
+    }
+}
+
+[Collection(EntitiesCollection.Name)]
+public sealed class NavModelDropTests : IDisposable
+{
+    const string PlaylistA = "spotify:playlist:37i9dQZF1DX4sWSpwq3LiO";
+    const string PlaylistB = "spotify:playlist:1TSZDcvlPtAnekTaItI3qO";
+
+    readonly string _dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "wavee-navdrop-tests", Guid.NewGuid().ToString("n"));
+    readonly Action<SidebarPin, bool>? _bridge;
+    readonly SidebarLibraryWrites? _writes;
+    readonly NavModel _model = new(new SidebarProjectionBinder(logs: null, peek: null));
+
+    public NavModelDropTests()
+    {
+        TestScope.Fresh();
+        Sidebar.UseProfileDir(System.IO.Path.Combine(_dir, "WaveeMusic"));
+        Sidebar.Boot();
+        _bridge = Sidebar.Pins.OnLocalPinChanged;
+        Sidebar.Pins.OnLocalPinChanged = null;
+        Sidebar.Pins.LoadFrom(null);
+        _writes = Sidebar.LibraryWrites;
+        Sidebar.LibraryWrites = null;
+    }
+
+    public void Dispose()
+    {
+        Sidebar.LibraryWrites = _writes;
+        Sidebar.Dispatch(new ResetLayout(SidebarLayoutId.Classic));
+        Sidebar.EnsureAccount(CatalogScope.Fake());
+        Sidebar.Pins.OnLocalPinChanged = _bridge;
+        Sidebar.Shutdown();
+        try { System.IO.Directory.Delete(_dir, recursive: true); } catch (Exception) { }
+    }
+
+    static void SignIn() => Sidebar.EnsureAccount(new CatalogScope("spotify", "navdrop", "en-US", "US", 0, true));
+
+    static string IdOf(string uri) => SidebarPinId.PlaylistPrefix + uri;
+
+    static DragPayload PlaylistPayload(string uri, bool rootlistItem = false)
+        => new(DragKind.Playlist, IdOf(uri), uri, "Name of " + uri[^4..], RootlistItem: rootlistItem);
+
+    static DragPayload TrackSet()
+        => new(DragKind.Album, "album:spotify:album:a", "spotify:album:a", "A",
+               TrackResolver: static _ => System.Threading.Tasks.Task.FromResult(Array.Empty<Track>()));
+
+    static string[] Ids(SidebarPinStore pins)
+    {
+        var ids = new string[pins.Count];
+        for (int i = 0; i < ids.Length; i++) ids[i] = pins[i].Id;
+        return ids;
+    }
+
+    // ── the pin arms ───────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_signed_out_pin_drop_pins_nothing()
+    {
+        Assert.True(_model.Account.SignedOut);
+        Assert.Equal(NavDropResult.None, _model.Drop(PlaylistPayload(PlaylistA), NavDropTarget.PinIndex(0)));
+        Assert.Empty(_model.Pins);
+    }
+
+    [Fact]
+    public void A_pin_drop_pins_at_the_slot_and_an_already_pinned_payload_moves_instead()
+    {
+        SignIn();
+        Assert.Equal(NavDropResult.Pinned, _model.Drop(PlaylistPayload(PlaylistA), NavDropTarget.PinIndex(0)));
+        Assert.Equal(NavDropResult.Pinned, _model.Drop(PlaylistPayload(PlaylistB), NavDropTarget.PinIndex(1)));
+        Assert.Equal(new[] { IdOf(PlaylistA), IdOf(PlaylistB) }, Ids(_model.Pins));
+
+        // Dropping A at slot 2 (after B): remove-then-insert shifts, so it lands at index 1.
+        Assert.Equal(NavDropResult.PinMoved, _model.Drop(PlaylistPayload(PlaylistA), NavDropTarget.PinIndex(2)));
+        Assert.Equal(new[] { IdOf(PlaylistB), IdOf(PlaylistA) }, Ids(_model.Pins));
+
+        // Dropping B at slot 0 (where it already is) stays put and never duplicates.
+        Assert.Equal(NavDropResult.PinMoved, _model.Drop(PlaylistPayload(PlaylistB), NavDropTarget.PinIndex(0)));
+        Assert.Equal(new[] { IdOf(PlaylistB), IdOf(PlaylistA) }, Ids(_model.Pins));
+    }
+
+    [Fact]
+    public void A_payload_that_cannot_be_a_pin_is_ignored()
+    {
+        SignIn();
+        var track = new DragPayload(DragKind.Track, "track:spotify:track:t", "spotify:track:t", "T");
+        Assert.Equal(NavDropResult.None, _model.Drop(track, NavDropTarget.PinIndex(0)));
+        Assert.Empty(_model.Pins);
+    }
+
+    [Fact]
+    public void Only_the_pinned_section_takes_a_foreign_entity()
+    {
+        SignIn();
+        Assert.Equal(NavDropResult.None, _model.Drop(PlaylistPayload(PlaylistA), NavDropTarget.Section("no-such-section", 0)));
+        Assert.Empty(_model.Pins);
+        Assert.Equal(NavDropResult.Pinned, _model.Drop(PlaylistPayload(PlaylistA), NavDropTarget.Section(SidebarCatalogue.IdOf(SidebarSectionKind.Pinned), 0)));
+        Assert.Single(_model.Pins);
+    }
+
+    // ── the deposit ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_deposit_goes_to_the_seam_once_with_the_playlist_and_its_name()
+    {
+        var calls = new List<(string Uri, string Name, DragPayload Source)>();
+        Sidebar.LibraryWrites = new SidebarLibraryWrites { DepositTracks = (uri, name, source) => calls.Add((uri, name, source)) };
+        var tracks = TrackSet();
+
+        Assert.Equal(NavDropResult.Deposited, _model.Drop(tracks, NavDropTarget.Playlist(PlaylistA, "Morning Mix")));
+
+        var call = Assert.Single(calls);
+        Assert.Equal(PlaylistA, call.Uri);
+        Assert.Equal("Morning Mix", call.Name);
+        Assert.Same(tracks, call.Source);
+    }
+
+    [Fact]
+    public void A_deposit_without_a_seam_or_without_tracks_does_nothing_and_never_throws()
+    {
+        Assert.Equal(NavDropResult.None, _model.Drop(TrackSet(), NavDropTarget.Playlist(PlaylistA, "X")));      // no seam: a refusal, not a crash
+        Assert.False(_model.DepositTracks(PlaylistA, "X", TrackSet()));
+
+        int calls = 0;
+        Sidebar.LibraryWrites = new SidebarLibraryWrites { DepositTracks = (_, _, _) => calls++ };
+        var artist = new DragPayload(DragKind.Artist, "artist:spotify:artist:r", "spotify:artist:r", "R");
+        Assert.Equal(NavDropResult.None, _model.Drop(artist, NavDropTarget.Playlist(PlaylistA, "X")));          // an artist carries no tracks
+        Assert.Equal(NavDropResult.None, _model.Drop(TrackSet(), NavDropTarget.Playlist("", "X")));            // no editable playlist under the pointer
+        Assert.Equal(0, calls);
+    }
+
+    // ── the rootlist move ──────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_rootlist_move_sends_the_refs_the_placement_and_the_destination_to_the_seam()
+    {
+        IReadOnlyList<RootlistItemRef>? items = null;
+        RootlistItemRef? target = null;
+        RootlistDropPlacement? placement = null;
+        string? destination = null;
+        int calls = 0;
+        Sidebar.LibraryWrites = new SidebarLibraryWrites
+        {
+            MoveRootlist = (i, t, p, d, _) => { items = i; target = t; placement = p; destination = d; calls++; },
+        };
+
+        var dest = new RootlistItemRef("abc123", IsFolder: true);
+        Assert.True(_model.MoveRootlist(PlaylistPayload(PlaylistA, rootlistItem: true), dest, RootlistDropPlacement.Inside, "Mixes"));
+
+        Assert.Equal(1, calls);
+        Assert.Equal(PlaylistA, Assert.Single(items!).Key);
+        Assert.Equal(dest, target!.Value);
+        Assert.Equal(RootlistDropPlacement.Inside, placement);
+        Assert.Equal("Mixes", destination);
+    }
+
+    [Fact]
+    public void A_rootlist_move_without_a_seam_refuses_instead_of_failing_silently()
+    {
+        Assert.False(_model.MoveRootlist(PlaylistPayload(PlaylistA, rootlistItem: true), new RootlistItemRef("abc123", true),
+                                         RootlistDropPlacement.Inside, "Mixes"));
+    }
+
+    [Fact]
+    public void A_rail_folder_row_takes_nothing_while_the_rootlist_has_not_arrived()
+    {
+        int calls = 0;
+        Sidebar.LibraryWrites = new SidebarLibraryWrites { MoveRootlist = (_, _, _, _, _) => calls++ };
+        var folderRow = new DragPayload(DragKind.Folder, "abc123", "", "Mixes", RootlistItem: true);
+        var dest = NavDropTarget.Folder("abc123", "Mixes", folderRow);
+        var item = PlaylistPayload(PlaylistA, rootlistItem: true);
+
+        Assert.False(_model.RailFolderAccepts(item, in dest));
+        Assert.Equal(Loc.Get("drag.stillLoading"), _model.RailFolderWhy(item, in dest));
+        Assert.Equal(NavDropResult.None, _model.Drop(item, in dest));
+        Assert.Equal(0, calls);
+
+        // A track drag is merely crossing the folder: no sentence.
+        Assert.Null(_model.RailFolderWhy(TrackSet(), in dest));
+        Assert.False(_model.RailFolderAccepts(TrackSet(), in dest));
+    }
+
+    [Fact]
+    public void A_folder_target_without_its_row_never_accepts()
+    {
+        var dest = new NavDropTarget(NavDropTargetKind.Folder, "abc123", "Mixes");
+        Assert.False(_model.RailFolderAccepts(PlaylistPayload(PlaylistA, true), in dest));
+        Assert.Null(_model.RailFolderWhy(PlaylistPayload(PlaylistA, true), in dest));
+    }
+
+    // ── the facts ──────────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_age_badge_reads_the_models_clock()
+    {
+        long now = 1_800_000_000_000L;
+        _model.Clock = () => now;
+        Assert.Equal("3d", _model.AgeBadge(now - 3 * 86_400_000L));
+        Assert.Null(_model.AgeBadge(0));
+        now += 14 * 86_400_000L;
+        Assert.Equal("2w", _model.AgeBadge(now - 14 * 86_400_000L));
+    }
+
+    [Fact]
+    public void The_model_labels_a_pin_against_its_online_fact()
+    {
+        var pin = new SidebarLibraryEntry(IdOf(PlaylistA), SidebarEntryKind.Playlist, PlaylistA, "", "", StringId.Empty, null,
+            ChildCount: 0, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0, SourceOrder: 0, Depth: 0, Circular: false,
+            Flavor: SidebarPlaylistFlavor.None) { IsPinned = true };
+        var label = _model.LabelOf(in pin);
+        Assert.True(label.PlaceholderTitle);
+        Assert.Equal(NavRowFacts.LabelOf(pin, _model.IsOnline), label);
     }
 }

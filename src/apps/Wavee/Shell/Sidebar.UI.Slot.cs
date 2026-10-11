@@ -191,7 +191,7 @@ public static partial class Sidebar
             int entryIndex = plan.Rows[index].EntryIndex;
             if ((uint)entryIndex >= (uint)plan.Entries.Count) return true;
             string folderId = plan.Entries[entryIndex].FolderId;
-            return _o.DisclosureOpen(folderId, folder: true, fallback: Sidebar.IsFolderExpanded(folderId));
+            return _o.DisclosureOpen(folderId, folder: true, fallback: Sidebar.Model.IsFolderExpanded(folderId));
         }
 
         /// <summary>The chevrons' recycle identity: the section (or folder) the slot's CURRENT row stands for. When it changes
@@ -214,10 +214,9 @@ public static partial class Sidebar
                 : 0;
         }
 
-        /// <summary>The rootlist rows: the Playlists section, and Your Library while it is the Playlists · Custom order list —
-        /// the rootlist itself (§P3.12). A sorted Library is a view of it, so its rows only drop INTO folders.</summary>
-        bool RootlistSection(SidebarSection section)
-            => section.Kind == SidebarSectionKind.Playlists || (section.Kind == SidebarSectionKind.Library && !_o.TreeSortedNonCustom);
+        /// <summary>The rootlist rows (<see cref="NavDropRules.IsRootlistSection"/>): the Playlists section, and Your Library while
+        /// it is the Playlists · Custom order list.</summary>
+        bool RootlistSection(SidebarSection section) => NavDropRules.IsRootlistSection(section.Kind, _o.TreeSortedNonCustom);
 
         // ── item / entity rows ───────────────────────────────────────────────────────────────────────────────────────
 
@@ -231,21 +230,13 @@ public static partial class Sidebar
             bool routeEntry = entry.Kind == SidebarEntryKind.AppRoute;
             // A route pin wears its destination's glyph; the Library's Liked row keeps its heart tile (Cover.ForEntry).
             bool routeGlyph = routeEntry && entry.Id != SidebarCatalogue.LikedRoute;
-            // A PIN is never a blank row (design D9): while nothing has named it, the kind's noun shows in TextTertiary
-            // ("Playlist" is honest where a uri fragment reads as data). An authoritative miss keeps the last-known name,
-            // dimmed, with the warning mark (design Q9). A non-pin row keeps the identity gate (Trap 5) on its uri fallback.
-            bool pinned = entry.IsPinned;
-            var pinState = pinned
-                ? SidebarPinStateRules.Of(entry.IdentityKnown || named, entry.Missing, Spotify.Current.IsOnline)
-                : SidebarPinState.Resolved;
-            bool unavailable = pinState == SidebarPinState.Unavailable;
-            string label = named ? entry.Name
-                : routeEntry ? Shell.Dest(Shell.Parse(entry.Id)).Title
-                : pinned ? (SidebarPinStateRules.FallbackTitleKey(entry.Kind) is { } noun ? Loc.Get(noun) : PaneText.ShortUri(entry.Uri))
-                : SidebarProjection.ShouldShowUriFallbackTitle(entry.IsPinned, entry.IdentityKnown)
-                    ? PaneText.ShortUri(entry.Uri)
-                    : "";
-            bool placeholderTitle = pinned && !named && !routeEntry;
+            // The label, its pin state and whether it is a stand-in are the model's (NavRowFacts.LabelOf): a PIN is never a blank
+            // row (design D9), an authoritative miss keeps the last-known name dimmed with the warning mark (design Q9), and a
+            // non-pin row keeps the identity gate (Trap 5) on its uri fallback.
+            var labelFacts = Sidebar.Model.LabelOf(in entry);
+            bool unavailable = labelFacts.PinState == SidebarPinState.Unavailable;
+            string label = labelFacts.Label;
+            bool placeholderTitle = labelFacts.PlaceholderTitle;
             // Resolved pane-side by the SAME rule the selection sweep uses, so the row that draws the plate and the row
             // whose epoch got bumped can never disagree.
             bool selected = _o.RowSelectsRoute(index, sel);
@@ -336,7 +327,7 @@ public static partial class Sidebar
             if ((uint)row.EntryIndex >= (uint)entries.Count) return Nothing;
             var entry = entries[row.EntryIndex];
             string folderId = entry.FolderId;
-            bool expanded = Sidebar.IsFolderExpanded(folderId);
+            bool expanded = Sidebar.Model.IsFolderExpanded(folderId);
             float height = SidebarRowGeometry.HeightOf(section.Shape);
 
             // A synced folder pin the rootlist no longer carries renders visible-but-disabled, never vanishes.
@@ -345,7 +336,7 @@ public static partial class Sidebar
             var snapshot = entry;
             var shape = section.Shape;
             float art = SidebarRowGeometry.ArtOf(shape);
-            string label = entry.Name.Length > 0 ? entry.Name : PaneText.ShortUri(entry.Id);
+            string label = entry.Name.Length > 0 ? entry.Name : NavRowFacts.ShortUri(entry.Id);
             bool compact = _o.CompactPlan;
             if (compact) _o.SetTileAnchor(index, TileAnchor);   // Enter on the focused tile opens the flyout from here
             string sectionId = row.SectionId;
@@ -368,7 +359,7 @@ public static partial class Sidebar
             // outlives any single render, and ActivateFolder is a TOGGLE.
             Action springLoad = () =>
             {
-                if (!Sidebar.IsFolderExpanded(folderId)) _o.ActivateFolder(folderId, snapshot.Name, index);
+                if (!Sidebar.Model.IsFolderExpanded(folderId)) _o.ActivateFolder(folderId, snapshot.Name, index);
             };
             DropTargetSpec? drop = rootlistItem
                 ? _o.ResourceDropSpec(row.SectionId, -1, null, null, resource, index, springLoad,
@@ -677,7 +668,7 @@ public static partial class Sidebar
         /// ("3d"). The equalizer is the row primitive's own slot; route counts are <see cref="CountBadge"/>'s.</summary>
         static Element? TrailingBadge(SidebarSection section, in SidebarLibraryEntry entry)
         {
-            if (section.Kind == SidebarSectionKind.NewReleases && PaneText.AgeBadge(entry.SortStamp) is { Length: > 0 } age)
+            if (section.Kind == SidebarSectionKind.NewReleases && Sidebar.Model.AgeBadge(entry.SortStamp) is { Length: > 0 } age)
                 return global::Wavee.Design.Type.MicroMeta(age) with { Color = Tok.TextTertiary, MaxLines = 1 };
             return null;
         }
@@ -794,37 +785,12 @@ public static partial class Sidebar
                                         SidebarDropCue.LineY(slot.Kind, _o.RowExtentOf(i)));
         }
 
-        /// <summary>The row's STRUCTURAL drop facts, straight off the published plan. <c>NextVisibleDepth</c> is the whole
-        /// depth-ambiguity story (a slot is ambiguous exactly when it is shallower than this row). The payload-dependent half
-        /// — self, ancestor, whether the centre takes this payload, the live rootlist-loaded gate — is folded in at hover.</summary>
+        /// <summary>The row's STRUCTURAL drop facts, straight off the published plan (<see cref="NavDropRules.TreeRowFacts"/>). The
+        /// payload-dependent half — self, ancestor, whether the centre takes this payload, the live rootlist-loaded gate — is
+        /// folded in at hover.</summary>
         SidebarRowFacts TreeRowFacts(int index, in SidebarLibraryEntry entry)
-        {
-            var rows = _o.Plan.Rows;
-            var entries = _o.Plan.Entries;
-            int nextDepth = 0;
-            bool hasChild = false;
-            if ((uint)index < (uint)rows.Count && index + 1 < rows.Count)
-            {
-                var next = rows[index + 1];
-                if (next.Kind is SidebarRowKind.EntityRow or SidebarRowKind.FolderHeader
-                    && string.Equals(next.SectionId, rows[index].SectionId, StringComparison.Ordinal)
-                    && (uint)next.EntryIndex < (uint)entries.Count)
-                {
-                    nextDepth = entries[next.EntryIndex].Depth;
-                    hasChild = nextDepth > entry.Depth;
-                }
-            }
-            return new SidebarRowFacts(
-                IsFolder: entry.IsFolder,
-                FolderExpanded: entry.IsFolder && Sidebar.IsFolderExpanded(entry.FolderId),
-                FolderHasChildren: hasChild,
-                Depth: entry.Depth,
-                NextVisibleDepth: nextDepth,
-                CenterAccepts: entry.IsFolder,
-                SourceIsSelf: false,
-                SortedNonCustom: _o.TreeSortedNonCustom,
-                RootlistLoaded: true);
-        }
+            => NavDropRules.TreeRowFacts(_o.Plan.Rows, _o.Plan.Entries, index, in entry,
+                                         entry.IsFolder && Sidebar.Model.IsFolderExpanded(entry.FolderId), _o.TreeSortedNonCustom);
 
         /// <summary>The tree's closing gutter: 24 DIP of nothing that owns ONE slot — "top level, at the end" (the chip says
         /// "Move to end"). It exists because that slot had no target and the old create row accepted rootlist payloads,
@@ -832,10 +798,7 @@ public static partial class Sidebar
         /// top-level entry at commit), and its caret reads the LIVE slot index like every other row's.</summary>
         Element TreeEndRow(in SidebarRow row, int index)
         {
-            var facts = new SidebarRowFacts(
-                IsFolder: false, FolderExpanded: false, FolderHasChildren: false,
-                Depth: 0, NextVisibleDepth: 0, CenterAccepts: false, SourceIsSelf: false,
-                SortedNonCustom: _o.TreeSortedNonCustom, RootlistLoaded: true) { IsListEnd = true };
+            var facts = NavDropRules.TreeEndFacts(_o.TreeSortedNonCustom);
             var target = new DragPayload(DragKind.Route, row.SectionId, "", "", RootlistItem: true);
             var drop = _o.ResourceDropSpec(row.SectionId, -1, null, null, target, index, rootFacts: facts);
             return ZStack(
