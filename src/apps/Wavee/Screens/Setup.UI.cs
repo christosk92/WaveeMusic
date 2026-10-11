@@ -124,19 +124,8 @@ public static partial class Setup
     }
 
     static void CloseSignIn() => s_signIn?.Close();
-    static void StartBrowser() => Spotify.SignIn.Start(Spotify.SignInMethod.Browser);
-    static void StartPairing() => Spotify.SignIn.Start(Spotify.SignInMethod.DeviceCode);
-    static void CancelBrowser() => Spotify.SignIn.Cancel(Spotify.SignInMethod.Browser);
     static void OpenExternal(string url) => InputHooks.Current.Default.OpenUri?.Invoke(url);
-
-    /// <summary>"Try again" retries the flow that failed: the pairing code when only it failed, the browser otherwise
-    /// (a failed login after a hand-off included — the browser is the primary way in).</summary>
-    static Action RetryFor(in Spotify.SignInState st)
-    {
-        bool codeFailed = st.Code is Spotify.SignInStage.Failed or Spotify.SignInStage.Denied;
-        bool browserFailed = st.Browser is Spotify.SignInStage.Failed or Spotify.SignInStage.Denied or Spotify.SignInStage.Expired;
-        return codeFailed && !browserFailed ? StartPairing : StartBrowser;
-    }
+    // StartBrowser / StartPairing / CancelBrowser / RetryFor / SwitchAccount: the sign-in verbs, in WizardModel.cs (C14).
 
     // ── the shared option cards (the door's body and the wizard's Sign in page) ────────────────────────────────────────
 
@@ -421,33 +410,16 @@ public static partial class Setup
 
     // ── the contract (owner R) ──────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Bumped at the end of EVERY wizard close (complete, decline, Escape). The report chrome and the after-update
-    /// chrome subscribe to re-evaluate their wizard deferral in the same launch.</summary>
-    public static readonly Signal<int> WizardMarkerEpoch = new(0);
-
-    /// <summary>True while the wizard plate is live (from open until its close has finished).</summary>
-    public static readonly Signal<bool> WizardOpen = new(false);
-
-    /// <summary>What the shell paints behind the plate: <see cref="Cover.Dim"/> while it is up. The plate opens with the
-    /// engine scrim OFF (a shell is always behind it in 0.3), so the shell's cover scrim — Tok.FillSmoke, 250 ms linear,
-    /// 0 under reduced motion — is the only dim.</summary>
-    public static readonly Signal<Cover> Covering = new(Cover.None);
+    // The markers (`WizardMarkerEpoch`, `WizardOpen`, `Covering`), the boot decision (`Wizard.Boot` from `InstallWizard`),
+    // the live session (`WizardModel`: page, direction, Primary / Secondary / Back), the sign-in verbs, the Lottie hero
+    // loader and the crash-consent verb are CORE, in `WizardModel.cs` (C14). This file keeps the overlay handle, the plate,
+    // the footer and the pages.
 
     static OverlayHandle? s_wizard;
-    static bool s_wizardShown;
-
-    /// <summary>Called once by <c>Settings.InstallScreens()</c>. The wizard needs no seam filled; when it is due this launch
-    /// the three Lottie heroes are parsed and compiled off the UI thread before the first page mounts one.</summary>
-    public static void InstallWizard()
-    {
-        var settings = Platform.Settings;
-        bool due = WizardRules.ShouldOpen(Gating.IsPending(settings), Gating.IsCompleted(settings), settings.Get(Platform.Keys.TermsAcceptedVersion));
-        if (due) WarmHeroes();
-        Log.Info("setup", due ? "setup wizard installed — due this launch" : "setup wizard installed — not due");
-    }
 
     /// <summary>Zero-size chrome, mounted in the overlay layer FIRST (before the report and after-update chromes). Once per
-    /// launch it opens the plate when <c>setup.pending</c> is armed or a terms re-arm is due.</summary>
+    /// launch it opens the plate when the boot decision (<see cref="Wizard.Due"/>) says the wizard is due: <c>setup.pending</c>
+    /// armed or a terms re-arm.</summary>
     // MOUNT POINT (owner R contract — Shell.OverlaysLayer, first of the three chromes)
     public static Element WizardChrome() => Embed.Comp(static () => new WizardChromeView());
 
@@ -459,16 +431,11 @@ public static partial class Setup
             var post = UsePost();
             UseEffect(() =>
             {
-                if (s_wizardShown) return;
-                var settings = Platform.Settings;
-                bool completed = Gating.IsCompleted(settings);
-                if (!WizardRules.ShouldOpen(Gating.IsPending(settings), completed, settings.Get(Platform.Keys.TermsAcceptedVersion))) return;
-                bool signedIn = Platform.HasStoredCredential();
-                var entry = WizardRules.EntryFor(completed, signedIn);
-                WarmHeroes();
-                void Open() { if (!s_wizardShown) OpenWizard(overlay, new WizardSession(entry, signedIn, post)); }
-                if (WizardRules.OpenPosts(entry) == 2) post(() => post(Open));
-                else post(Open);
+                if (s_wizardShown || Wizard.Due is not { } model) return;
+                model.Bind(post, OpenExternal);
+                WizardHeroes.Bind(post);
+                WizardHeroes.Warm();
+                model.ScheduleOpen(() => OpenWizard(overlay, model));
             }, DepKey.Empty);
             return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
         }
@@ -476,10 +443,9 @@ public static partial class Setup
 
     /// <summary>THE open and THE close funnel. A programmatic close (the session's own "Open Wavee", "Decline" on a re-arm,
     /// a finish) always goes through; a user dismissal only on an idle terms re-arm. Every close lands in ClosedAction.</summary>
-    static void OpenWizard(IOverlayService overlay, WizardSession session)
+    static void OpenWizard(IOverlayService overlay, WizardModel session)
     {
-        s_wizardShown = true;
-        Log.Info("setup", "setup wizard opened (" + session.Entry + ", on " + session.Page.Peek() + ")");
+        session.BeginOpen();
         OverlayHandle handle = overlay.Open(
             static () => NodeHandle.Null,
             () => Embed.Comp(() => new WizardPlate(session)),
@@ -490,183 +456,16 @@ public static partial class Setup
         handle.ClosedAction = () =>
         {
             if (ReferenceEquals(s_wizard, handle)) s_wizard = null;
-            session.End();
-            Covering.Value = Cover.None;
-            Runtime.WizardCovering.SetIfChanged(false);
-            WizardOpen.Value = false;
-            WizardMarkerEpoch.Value = WizardMarkerEpoch.Peek() + 1;
-            Log.Info("setup", "setup wizard closed (pending " + Gating.IsPending(Platform.Settings) + ")");
+            session.Closed();
         };
         session.RequestClose = handle.Close;
         s_wizard = handle;
-        Covering.Value = Layout.CoverFor(shellBehind: true);
-        WizardOpen.Value = true;
-    }
-
-    // ── the live session (outside the tree; the pages and the footer read its signals) ─────────────────────────────
-
-    /// <summary>The wizard's live model: the page and the swap direction as signals (Dir is written BEFORE Page and only
-    /// Peeked by the keep-alive, so a motion-only write never re-activates a page), and the Primary / Secondary / Back verbs
-    /// every footer row and key maps to (ch 28 §6.1's two tables).</summary>
-    sealed class WizardSession
-    {
-        public readonly Signal<WizardPage> Page;
-        public readonly Signal<Design.NavTransitionKind> Dir = new(Design.NavTransitionKind.Neutral);
-        public readonly WizardEntry Entry;
-        public readonly bool SkipSignIn;
-        public readonly bool SkipLayout;
-        public Action? RequestClose;
-        readonly Action<Action> _post;
-
-        /// <summary>The runtime provisioning model, begun when the wizard first reaches Local playback; null while no
-        /// host is installed (D3), which is the page's model-null arm.</summary>
-        public RuntimeModel? Model { get; private set; }
-
-        public WizardSession(WizardEntry entry, bool signedIn, Action<Action> post)
-        {
-            Entry = entry;
-            SkipSignIn = Gating.SkipSignIn(signedIn);
-            SkipLayout = !Gating.ShowsLayout(entry);
-            _post = post;
-            Page = new(WizardRules.StartPage(entry));
-        }
-
-        public bool IsBusy => Model?.IsBusy ?? false;
-
-        /// <summary>The footer row. Reads the page, the sign-in facet and the runtime phase — subscribing when rendered.</summary>
-        public CommandRow Row()
-        {
-            Spotify.SignInState st = Spotify.SignIn.State.Value;
-            var ctx = new WizardCtx(Page.Value, SignInRules.Project(in st, Spotify.Status.Value, Spotify.Fault.Value),
-                Model is { } m ? Commands.FacetFor(m.Phase.Value) : RuntimeFacet.Offer);
-            return Commands.ResolveFor(in ctx, Model is not null);
-        }
-
-        public void Advance(WizardPage to)
-        {
-            if (to == WizardPage.LocalPlayback && Model is null && Runtime.Host is not null)
-                Model = Runtime.Begin(_post, onClose: Finish, onWizardExit: () => { Gating.MarkDeferred(Platform.Settings); RequestClose?.Invoke(); });
-            Dir.Value = WizardRules.DirectionFor(Page.Peek(), to);
-            Page.Value = to;
-        }
-
-        public void Back() => Advance(Gating.PrevPage(Page.Peek(), SkipSignIn, SkipLayout));
-
-        /// <summary>Ends the runtime session and the sign-in flows (ClosedAction).</summary>
-        public void End()
-        {
-            if (Model is { } m) Runtime.End(m);
-            Model = null;
-            Spotify.SignIn.Reset();
-        }
-
-        void Finish()
-        {
-            Gating.MarkCompleted(Platform.Settings);
-            RequestClose?.Invoke();
-        }
-
-        static void QuitApp()
-        {
-            Log.Info("setup", "setup wizard: quit from a page with nothing behind it");
-            Tray.Host.Quit();
-        }
-
-        public void Primary()
-        {
-            switch (Page.Peek())
-            {
-                case WizardPage.Terms:
-                    // A consent leaves a durable record BEFORE the advance, so a crash in between cannot lose it.
-                    Platform.Settings.Set(Platform.Keys.TermsAcceptedVersion, Gating.TermsVersion);
-                    WizardRules.MarkConsentAsked(Platform.Settings, Entry);   // crash-diagnostics §F: consent asked iff the card was shown
-                    if (Entry == WizardEntry.TermsRearm) Finish();
-                    else Advance(Gating.NextPage(WizardPage.Terms, SkipSignIn, SkipLayout));
-                    break;
-                case WizardPage.Layout:   // the two sidebar layouts apply at once; Next only moves on
-                    Advance(Gating.NextPage(WizardPage.Layout, SkipSignIn, SkipLayout));
-                    break;
-                case WizardPage.SignIn:
-                    Spotify.SignInState st = Spotify.SignIn.State.Peek();
-                    switch (SignInRules.Project(in st, Spotify.Status.Peek(), Spotify.Fault.Peek()))
-                    {
-                        case SignInFacet.Idle: StartBrowser(); break;
-                        case SignInFacet.Done:   // "Is this you?" — moving on is the user's own click, never automatic
-                            if (Gating.SkipsLocalPlayback(Entry, Runtime.Status.Peek().IsReady)) Finish();
-                            else Advance(Gating.NextPage(WizardPage.SignIn, SkipSignIn, SkipLayout));
-                            break;
-                        case SignInFacet.Failed: RetryFor(in st)(); break;
-                        case SignInFacet.Expired: StartPairing(); break;
-                        case SignInFacet.Premium: OpenExternal(SpotifyPremiumUrl); break;
-                    }
-                    break;
-                default:
-                    if (Model is not { } m) return;   // no host: the row offers the primary disabled
-                    switch (m.Phase.Peek())
-                    {
-                        case RuntimePhase.Offer: m.StartDownload(); break;
-                        case RuntimePhase.Advanced: m.InstallSelected(); break;
-                        case RuntimePhase.Untrusted: m.ConfirmUntrusted(); break;
-                        case RuntimePhase.Ready: m.Close(); break;   // OnClose = Finish: the last page has no Done page after it
-                        case RuntimePhase.Failed: m.Retry(); break;
-                    }
-                    break;
-            }
-        }
-
-        public void Secondary()
-        {
-            switch (Page.Peek())
-            {
-                case WizardPage.Terms:
-                    // Pre-auth there is nothing behind a first run's plate: Decline quits and the marker stays armed. A re-arm
-                    // has a live shell behind it and just closes.
-                    if (Entry == WizardEntry.TermsRearm) RequestClose?.Invoke();
-                    else QuitApp();
-                    break;
-                case WizardPage.SignIn:
-                    Spotify.SignInState st = Spotify.SignIn.State.Peek();
-                    switch (SignInRules.Project(in st, Spotify.Status.Peek(), Spotify.Fault.Peek()))
-                    {
-                        case SignInFacet.Busy:   // "Cancel" stops the sign-in, never Wavee
-                            if (st.Handed) { Spotify.SignIn.Reset(); Spotify.Logout(); }
-                            else CancelBrowser();
-                            break;
-                        case SignInFacet.Premium: Spotify.SignIn.Reset(); StartPairing(); break;   // "Use a different account"
-                        case SignInFacet.Done: SwitchAccount(); break;                           // "Not me"
-                        default: QuitApp(); break;                                               // Idle / Failed / Expired "Close"
-                    }
-                    break;
-                default:
-                    if (Model is not { } m || m.Phase.Peek() is RuntimePhase.Offer or RuntimePhase.Failed)
-                    {
-                        // "Not now": a settled "no" — the banner stays quiet, and the wizard finishes outright.
-                        Runtime.Dismiss("setup");
-                        Log.Info("setup", "setup wizard: local playback declined");
-                        Finish();
-                        return;
-                    }
-                    switch (m.Phase.Peek())
-                    {
-                        case RuntimePhase.Advanced: m.Back(); break;                 // a MODEL step, not a page walk
-                        case RuntimePhase.Untrusted: m.CancelUntrusted(); break;
-                        case RuntimePhase.FetchingCatalog or RuntimePhase.Downloading: m.Cancel(); break;
-                    }
-                    break;
-            }
-        }
-    }
-
-    static void SwitchAccount()
-    {
-        Log.Info("setup", "setup wizard: not me — signing this PC out");
-        Spotify.SignIn.Reset();
-        Spotify.Logout();
+        session.Opened();
     }
 
     // ── the plate ───────────────────────────────────────────────────────────────────────────────────────────────────
 
-    sealed class WizardPlate(WizardSession session) : Component
+    sealed class WizardPlate(WizardModel session) : Component
     {
         public override Element Render()
         {
@@ -689,7 +488,7 @@ public static partial class Setup
                 Children =
                 [
                     Flow.KeepAlive(() => session.Page.Value, static p => "setup:page:" + (int)p, p => PageSlot(session, p),
-                        new KeepAliveOptions(MaxEntries: 3, TransitionFor: (_, _) => Design.Nav.RecipeFor(session.Dir.Peek()),
+                        new KeepAliveOptions(MaxEntries: 3, TransitionFor: (_, _) => Design.Nav.RecipeFor(session.Direction.Peek()),
                             SuppressLayoutTransitionsOnActivation: true)),
                 ],
             };
@@ -730,7 +529,7 @@ public static partial class Setup
         };
     }
 
-    static Element PageSlot(WizardSession session, WizardPage page) => new BoxEl
+    static Element PageSlot(WizardModel session, WizardPage page) => new BoxEl
     {
         Key = "setup:capture:" + (int)page, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1,
         Children =
@@ -760,20 +559,19 @@ public static partial class Setup
 
     // ── the footer (Rise's ControlGrid: primary LEFT, secondary RIGHT) ──────────────────────────────────────────────
 
-    sealed class WizardFooter(WizardSession session) : Component
+    sealed class WizardFooter(WizardModel session) : Component
     {
         const float ButtonH = 32f;
 
         public override Element Render()
         {
             bool large = Layout.ShowsIcon(UseContextSignal(Viewport.Size).Value.Width);
-            WizardPage page = session.Page.Value;
             CommandRow row = session.Row();
 
             var kids = new List<Element>(3);
             if (large)
             {
-                var step = Gating.StepNumber(page, session.SkipLayout);
+                var step = session.StepNumber();
                 kids.Add(new BoxEl
                 {
                     // Pinned to the button lane; the 48 is a RIGHT pad (Edges4 is L, T, R, B — the shipped footer-band bug).
@@ -786,7 +584,7 @@ public static partial class Setup
                         {
                             Size = 14f, Weight = 600, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                         },
-                        ProgressBar.Determinate(Gating.Progress(page, session.SkipLayout), Layout.ProgressWidth),
+                        ProgressBar.Determinate(session.Progress(), Layout.ProgressWidth),
                     ],
                 });
             }
@@ -849,7 +647,7 @@ public static partial class Setup
             if (!iconShown)
                 return new BoxEl { Key = "setup:layout:compact", Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Children = [content] };
 
-            FluentGpu.Lottie.LottieSource? source = s_heroes[(int)p.Page].Value;
+            FluentGpu.Lottie.LottieSource? source = WizardHeroes.Hero(p.Page);
             return new BoxEl
             {
                 Key = "setup:layout:wide", Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Gap = Layout.IconColumnGap,
@@ -868,14 +666,6 @@ public static partial class Setup
 
     // ── the Lottie heroes ───────────────────────────────────────────────────────────────────────────────────────────
 
-    static readonly Lazy<FluentGpu.Lottie.LottieSource?>[] s_heroes =
-    [
-        new(static () => LoadHero(WizardPage.Terms)),
-        new(static () => LoadHero(WizardPage.SignIn)),
-        new(static () => LoadHero(WizardPage.Layout)),
-        new(static () => LoadHero(WizardPage.LocalPlayback)),
-    ];
-
     /// <summary>Rise's cadence (the first half of the timeline, once, then hold) recoloured to the live accent, zoomed 1.2×.
     /// Reduced motion stated explicitly: the static pose at To (never an author-side branch).</summary>
     static readonly LottieOptions HeroOptions = LottieOptions.RiseSetup with
@@ -886,27 +676,7 @@ public static partial class Setup
     /// <summary>The live seam over <see cref="Recolor.Apply"/>: today's accent tokens, read once per hero mount.</summary>
     static ColorF RecolorLive(ColorF c) => Recolor.Apply(c, Tok.AccentDefault, Tok.AccentTextPrimary);
 
-    static FluentGpu.Lottie.LottieSource? LoadHero(WizardPage page)
-    {
-        string name = Layout.HeroAsset(page);
-        try { return FluentGpu.Lottie.LottieSource.FromFile(Path.Combine(AppContext.BaseDirectory, "assets", "lottie", name + ".json")); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            Log.Warn("setup", "wizard hero '" + name + "' is unavailable — the icon column stays empty", ex);
-            return null;
-        }
-    }
-
-    /// <summary>Parse + compile the three heroes off the UI thread, so no page mount pays for it (a nicety: a cold hero
-    /// compiles inline on first use).</summary>
-    static void WarmHeroes() => _ = Task.Run(static () =>
-    {
-        foreach (var hero in s_heroes)
-        {
-            try { if (hero.Value is { } source) _ = source.Plan; }
-            catch (Exception ex) { Log.Warn("setup", "wizard hero warm-up failed", ex); }
-        }
-    });
+    // LoadHero / WarmHeroes: the loader is `WizardHeroes` in WizardModel.cs — the disk read and the parse run off the UI thread.
 
     // ── the page body vocabulary: five primitives and a pass-through card ───────────────────────────────────────────
 
@@ -928,7 +698,7 @@ public static partial class Setup
 
     // ── page 0 · Terms ──────────────────────────────────────────────────────────────────────────────────────────────
 
-    sealed class TermsPage(WizardSession session) : Component
+    sealed class TermsPage(WizardModel session) : Component
     {
         const string PrivacyUrl = "https://github.com/christosk92/WaveeMusic/blob/main/PRIVACY.md";
 
@@ -948,7 +718,7 @@ public static partial class Setup
                     HyperlinkButton.Create(Loc.Get(Strings.Setup.Terms.PrivacyLink), static () => OpenExternal(PrivacyUrl), size: ControlSize.Small)),
             };
             // crash-diagnostics plan §D/§F: the consent card never shows on a re-auth (WizardRules.ConsentShown gates it
-            // the same way the durable write does in WizardSession.Primary, so the two never disagree).
+            // the same way the durable write does in WizardModel.Primary, so the two never disagree).
             if (WizardRules.ConsentShown(session.Entry))
                 kids.Add(Embed.Comp(static () => new CrashConsentCard()) with { Key = "setup:terms:crash-consent" });
 
@@ -963,7 +733,7 @@ public static partial class Setup
     /// <c>Crash.ConsentPolicy.Offered</c>), the scrub summary and the Privacy link. The
     /// choice writes <see cref="Platform.Keys.CrashReporting"/> the instant it changes — never waits for Continue, so a
     /// crash between the click and the wizard's own advance cannot lose it. Consent-asked itself is stamped once, on
-    /// Continue, by <see cref="WizardRules.MarkConsentAsked"/> (<c>WizardSession.Primary</c>), not here.</summary>
+    /// Continue, by <see cref="WizardRules.MarkConsentAsked"/> (<c>WizardModel.Primary</c>), not here.</summary>
     sealed class CrashConsentCard : Component
     {
         const string PrivacyUrl = "https://github.com/christosk92/WaveeMusic/blob/main/PRIVACY.md";
@@ -974,8 +744,7 @@ public static partial class Setup
             // would be a promise it cannot keep. The offered list is a prefix of Off/Ask/Auto, so the radio index stays
             // the stored Crash.Reporting value; the seed is the EFFECTIVE mode (a stored Auto reads Ask there).
             bool canSend = Crash.Uploader.Configured;
-            var index = UseSignal((int)Crash.ConsentPolicy.Effective(
-                (Crash.Reporting)Platform.Settings.Get(Platform.Keys.CrashReporting), canSend));   // seeded once from the store
+            var index = UseSignal(WizardModel.CrashReportingChoice(canSend));   // seeded once from the store
             var labels = new List<string>(3);
             foreach (var mode in Crash.ConsentPolicy.Offered(canSend))
                 labels.Add(Loc.Get(mode switch
@@ -990,7 +759,7 @@ public static partial class Setup
             Element choice = RadioButtons.Create(
                 labels,
                 index,
-                onChange: static i => Platform.Settings.Set(Platform.Keys.CrashReporting, i));
+                onChange: static i => WizardModel.SetCrashReporting(i));
 
             Element titleRow = new BoxEl
             {
@@ -1008,7 +777,7 @@ public static partial class Setup
 
     // ── page 1 · Sign in (B5's option cards, in the chapter's column) ───────────────────────────────────────────────
 
-    sealed class SignInPage(WizardSession session) : Component
+    sealed class SignInPage(WizardModel session) : Component
     {
         static readonly string[] FacetKeys = ["signin:Idle", "signin:Busy", "signin:Done", "signin:Failed", "signin:Expired", "signin:Premium"];
 
@@ -1169,7 +938,7 @@ public static partial class Setup
 
     // ── page 2 · Local playback (owner I's runtime model and pieces, in the chapter's column) ──────────────────────
 
-    sealed class LocalPlaybackPage(WizardSession session) : Component
+    sealed class LocalPlaybackPage(WizardModel session) : Component
     {
         public override Element Render()
         {
