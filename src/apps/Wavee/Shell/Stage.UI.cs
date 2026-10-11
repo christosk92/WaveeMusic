@@ -35,7 +35,7 @@
 //
 // Mounted from other files: `Lyrics.StagePane(accent)` (the reading column), `Stage.QueuePaneBody` (Queue.UI.cs:65),
 // `Stage.NowPlayingMenu` (Actions.UI.cs:958), `Shell.SeekBar(onScrubbing:)`/`Shell.TimeText` (the bar's own seek — never a fork),
-// `Shell.PlayerKey`/`Shell.BarKeyStep` (the bar's key map and its keyboard seek ladder).
+// `Shell.PlayerKey`/`Shell.ScrubController.KeyStep` (the bar's key map and its keyboard seek ladder).
 
 using System.Collections.Generic;
 using FluentGpu.Animation;
@@ -530,13 +530,13 @@ public static partial class Stage
             switch (intent)
             {
                 // The bar's keyboard scrub ladder (5 s → 15 s → 30 s while held, Shift = 1 s): the stage's own seek rail mounts its commit tick.
-                case Shell.PlayerKeyIntent.SeekBack: Shell.BarKeyStep(-1, fine: false); break;
-                case Shell.PlayerKeyIntent.SeekForward: Shell.BarKeyStep(1, fine: false); break;
-                case Shell.PlayerKeyIntent.SeekBackFine: Shell.BarKeyStep(-1, fine: true); break;
-                case Shell.PlayerKeyIntent.SeekForwardFine: Shell.BarKeyStep(1, fine: true); break;
+                case Shell.PlayerKeyIntent.SeekBack: Shell.ScrubController.KeyStep(-1, fine: false); break;
+                case Shell.PlayerKeyIntent.SeekForward: Shell.ScrubController.KeyStep(1, fine: false); break;
+                case Shell.PlayerKeyIntent.SeekBackFine: Shell.ScrubController.KeyStep(-1, fine: true); break;
+                case Shell.PlayerKeyIntent.SeekForwardFine: Shell.ScrubController.KeyStep(1, fine: true); break;
                 case Shell.PlayerKeyIntent.VolumeDown: Playback.SetVolume(Math.Clamp(Playback.Volume.Peek() - .05f, 0f, 1f)); break;
                 case Shell.PlayerKeyIntent.VolumeUp: Playback.SetVolume(Math.Clamp(Playback.Volume.Peek() + .05f, 0f, 1f)); break;
-                case Shell.PlayerKeyIntent.Toggle: if (!e.IsRepeat) Shell.TogglePlayPause("stage.space"); break;
+                case Shell.PlayerKeyIntent.Toggle: if (!e.IsRepeat) PlayerVerbs.Default.TogglePlay("stage.space"); break;
             }
         }
 
@@ -1488,7 +1488,7 @@ public static partial class Stage
             var track = ctx.RowValue();
             bool playing = Playback.IsPlaying.Value;
             bool loading = Playback.PhaseSignal.Value == Playback.Phase.Loading;
-            var tf = Shell.TransportFacts();
+            var tf = PlayerVerbs.TransportFacts();
             bool primary = Transport.PrimaryEnabled(track.IsValid, loading);
             var lib = Controls.Library;
             string uri = track.IsValid ? track.Uri.Text : "";
@@ -1548,11 +1548,11 @@ public static partial class Stage
                                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Shrink = 0f,
                                 Children =
                                 [
-                                    ToolTip.Wrap(Satellite(Icons.Shuffle, Shell.ToggleShuffle, tf.CanTransport, Playback.Shuffle.Value, set.Fill), Loc.Get(Strings.Player.Shuffle)),
+                                    ToolTip.Wrap(Satellite(Icons.Shuffle, static () => PlayerVerbs.Default.ToggleShuffle(), tf.CanTransport, Playback.Shuffle.Value, set.Fill), Loc.Get(Strings.Player.Shuffle)),
                                     ToolTip.Wrap(Glyph(Icons.Previous, static () => Playback.Previous(), 40f, 17f, tf.PrevEnabled), Loc.Get(Strings.Player.Previous)),
                                     Play(playing, primary, compact ? 52f : 56f, set),
                                     ToolTip.Wrap(Glyph(Icons.Next, static () => Playback.Next(), 40f, 17f, tf.NextEnabled), Loc.Get(Strings.Player.Next)),
-                                    ToolTip.Wrap(Satellite(repeat == RepeatMode.Track ? Icons.RepeatOne : Icons.RepeatAll, Shell.CycleRepeat, tf.CanTransport, repeat != RepeatMode.Off, set.Fill), Loc.Get(Strings.Player.Repeat)),
+                                    ToolTip.Wrap(Satellite(repeat == RepeatMode.Track ? Icons.RepeatOne : Icons.RepeatAll, static () => PlayerVerbs.Default.CycleRepeat(), tf.CanTransport, repeat != RepeatMode.Off, set.Fill), Loc.Get(Strings.Player.Repeat)),
                                 ],
                             },
                             new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = 6f, Children = right.ToArray() },
@@ -1572,7 +1572,7 @@ public static partial class Stage
         BrushTransitionMs = Design.Motion.Faster, Shadow = enabled ? Elevation.Card : (ShadowSpec?)null,
         HoverScale = Design.Motion.ScaleEmphatic.HoverIf(enabled), PressScale = Design.Motion.ScaleEmphatic.PressIf(enabled),
         Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, IsEnabled = enabled,
-        OnClick = static () => Shell.TogglePlayPause("stage.button"), Cursor = enabled ? CursorId.Hand : (CursorId?)null,
+        OnClick = static () => PlayerVerbs.Default.TogglePlay("stage.button"), Cursor = enabled ? CursorId.Hand : (CursorId?)null,
         Children = [new TextEl(playing ? Icons.Pause : Icons.Play) { Size = 22f, FontFamily = Theme.IconFont, Color = enabled ? set.Ink : Ink.InkTertiary }],
     };
 
@@ -1662,7 +1662,7 @@ public static partial class Stage
             void Toggle()
             {
                 if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
-                Playback.PickerOpened();
+                PlayerVerbs.Default.OpenDevicePicker();
                 var opened = overlay.Open(() => anchor.Value, () => MenuFlyout.Create(DeviceItems(), () => handle.Value?.Close()),
                     FlyoutPlacement.TopEdgeAlignedRight, new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = true });
                 ctx.MenuOpen(true);                                                          // the flyout holds the chrome (V-U22)
@@ -1686,7 +1686,7 @@ public static partial class Stage
         static List<MenuFlyoutItem> DeviceItems()
             => Shell.DevicePickerMenuItems(Playback.OwnerSignal.Peek(), Playback.ActiveDeviceSlot.Peek(), Playback.Devices.Rows,
                 Playback.Audio.Devices.Peek(), Playback.Audio.SelectedOutputId.Peek(), Playback.Audio.Supported.Peek(),
-                Playback.Audio.PlayingOpened, Shell.PickerAskedQuality());
+                Playback.Audio.PlayingOpened, Shell.DevicePickerFacts.Quality);
     }
 
     /// <summary>"Artist · Album" (the previous stage's MetaLink with re-pushed type + colour). Subscribed to ITS row through the

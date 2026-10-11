@@ -92,6 +92,22 @@ public static partial class Shell
     {
         public bool Active => State == PlayerState.Active;
         public bool PrimaryEnabled => Primary != PrimaryVerb.None;
+
+        /// <summary>The seek rail's facts that are decisions rather than looks (themes plan C2, X8): a theme's rail draws
+        /// what these say and fetches nothing itself.</summary>
+        public static class Seek
+        {
+            /// <summary>Does the rail carry a chapter timeline? An episode on a plain track rail; a DVR window or a live line
+            /// has no chapters to mark.</summary>
+            public static bool ChapterRail(EntityKind kind, SeekRailMode mode)
+                => kind == EntityKind.Episode && mode == SeekRailMode.Track;
+
+            /// <summary>The chapter intervals the rail marks: the fetched chapters normalised against the duration once the
+            /// request is <paramref name="ready"/> (sorted, de-duplicated, each ending where the next starts), else none.</summary>
+            public static PodcastChapterTimeline.Interval[] Chapters(bool ready,
+                IReadOnlyList<Spotify.Podcasts.Chapter> items, int durationMs)
+                => ready ? PodcastChapterTimeline.Normalize(items, durationMs) : [];
+        }
     }
 
     public static class PlayerBarRules

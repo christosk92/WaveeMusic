@@ -178,7 +178,7 @@ public static class OnMedia
             bool show = Visible.Value;
             bool playing = Playback.IsPlaying.Value;
             bool can = !Playback.Current.Value.IsNone;
-            var tf = Shell.TransportFacts();                           // the same skip fact set the bar and the stage read
+            var tf = PlayerVerbs.TransportFacts();                        // the same skip fact set the bar and the stage read
             bool muted = Playback.Muted.Value;
             UseSignalEffect(static () => s_volume.SetIfChanged(Playback.Volume.Value));
             var overlay = UseContext(Overlay.Service);
@@ -335,7 +335,7 @@ public static class OnMedia
             HoverScale = Design.Motion.ScaleEmphatic.HoverIf(enabled),
             PressScale = Design.Motion.ScaleEmphatic.PressIf(enabled),
             Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false,
-            IsEnabled = enabled, OnClick = enabled ? static () => Shell.TogglePlayPause("onmedia.button") : null,
+            IsEnabled = enabled, OnClick = enabled ? static () => PlayerVerbs.Default.TogglePlay("onmedia.button") : null,
             Cursor = enabled ? CursorId.Hand : (CursorId?)null,
             Children =
             [

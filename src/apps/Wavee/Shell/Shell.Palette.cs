@@ -292,11 +292,11 @@ public static partial class Shell
             case PaletteKind.Playback:
                 switch (e.PlaybackVerb)
                 {
-                    case PalettePlaybackVerb.PlayPause: TogglePlayPause("palette"); break;
+                    case PalettePlaybackVerb.PlayPause: PlayerVerbs.Default.TogglePlay("palette"); break;
                     case PalettePlaybackVerb.Next: Playback.Next(); break;
                     case PalettePlaybackVerb.Previous: Playback.Previous(); break;
-                    case PalettePlaybackVerb.Shuffle: ToggleShuffle(); break;
-                    case PalettePlaybackVerb.Repeat: CycleRepeat(); break;
+                    case PalettePlaybackVerb.Shuffle: PlayerVerbs.Default.ToggleShuffle(); break;
+                    case PalettePlaybackVerb.Repeat: PlayerVerbs.Default.CycleRepeat(); break;
                 }
                 break;
             case PaletteKind.Settings:

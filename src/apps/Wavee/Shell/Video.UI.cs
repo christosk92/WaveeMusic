@@ -193,7 +193,7 @@ public static partial class Video
             // boundary or a primary click) — committing OpenAt against that stale stamp resolved to None: the video
             // loaded and played with no surface to show it (2026-09-22: audio, an endless join spinner, no window).
             return MenuFlyoutItem.RadioItem(Loc.Get(labelKey), now == p,
-                () => { State.FoldAvailability(hasVideo); State.OpenAt(p); }, icon, allowed) with { AcceleratorText = accel };
+                () => PlayerVerbs.Default.SetVideoPlacement(p, hasVideo), icon, allowed) with { AcceleratorText = accel };
         }
 
         var items = new List<MenuFlyoutItem>(7)

@@ -8,7 +8,7 @@
 // Before this, each surface decided "are we remote?" on its own (the bar by `DeviceRoster.RemoteSlot`, the stage by a bare
 // owner read) and each mapped a click on its own (the bar pulled home through a roster probe that asked Spotify to
 // transfer to OUR OWN hash — the reducer refuses that — while the stage never tried). Now a click is a DATA intent the
-// surface only executes (`Shell.RunDeviceIntent`): choosing a this-computer endpoint persists the output and, unless we
+// surface only executes (`Shell.DeviceVerbs.Run`): choosing a this-computer endpoint persists the output and, unless we
 // already own playback, takes playback over (`Playback.TakeOver`, a local claim — never a transfer to ourselves).
 
 using System;

@@ -501,9 +501,9 @@ public static partial class Queue
                         Direction = 0, Wrap = true, Gap = 8f, AlignItems = FlexAlign.Center, Padding = new Edges4(0f, 4f, 0f, 10f),
                         Children =
                         [
-                            Pill(Icons.Shuffle, Loc.Get(Strings.Player.Shuffle), shuffle, static () => Shell.ToggleShuffle()),
+                            Pill(Icons.Shuffle, Loc.Get(Strings.Player.Shuffle), shuffle, static () => PlayerVerbs.Default.ToggleShuffle()),
                             Pill(repeat == RepeatMode.Track ? Icons.RepeatOne : Icons.RepeatAll, Loc.Get(Strings.Player.Repeat),
-                                 repeat != RepeatMode.Off, static () => Shell.CycleRepeat()),
+                                 repeat != RepeatMode.Off, static () => PlayerVerbs.Default.CycleRepeat()),
                             Pill("∞", Loc.Get(Strings.Player.Autoplay), Autoplay, static () => ToggleAutoplay(), glyphIsText: true),
                         ],
                     },

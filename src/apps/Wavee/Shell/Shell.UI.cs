@@ -812,7 +812,7 @@ public static partial class Shell
         }
         if (e.KeyCode == Keys.Space && FrameRules.SpaceTogglesPlayback(false, FocusedIsTextEditor()))
         {
-            TogglePlayPause("space");
+            PlayerVerbs.Default.TogglePlay("space");
             e.Handled = true;
         }
     }
