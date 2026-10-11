@@ -262,24 +262,14 @@ public static partial class Shell
     /// <summary>"New folder" — owner J's folder command installs it. Null = the row does nothing.</summary>
     public static Action? OnNewFolder;
 
-    /// <summary>Flip light ⇄ dark IN PLACE over the engine's theme transition and persist the explicit mode. The ONE
-    /// theme-flip verb: the palette row, the profile menu's Theme row and any chord call it.</summary>
-    public static void ToggleTheme(Action<float>? requestTransition)
-    {
-        var next = Tok.Theme == ThemeKind.Dark ? ThemeKind.Light : ThemeKind.Dark;
-        if (SeedPalette is { } seed) seed(next); else Tok.Use(next);   // the installed Wavee palette, not the engine's
-        Platform.Settings.Set(Platform.Keys.ThemeMode, next == ThemeKind.Dark ? 2 : 1);
-        requestTransition?.Invoke(Design.Motion.Standard);
-    }
-
     /// <summary>App zoom, one ladder rung per call (0 = reset to 100 %). The ONE zoom verb: the Ctrl±/0 chords, the
     /// Ctrl+wheel hook and the palette rows land here. Persistence is the host's debounced zoom save, never here, so a
     /// held chord does not write the settings store once per rung.</summary>
     public static void ZoomStep(int direction)
-        => FluentApp.SetZoom(direction == 0 ? ZoomLadder.Default
+        => ZoomService.Apply(direction == 0 ? ZoomLadder.Default
             : direction > 0 ? ZoomLadder.In(FluentApp.Zoom) : ZoomLadder.Out(FluentApp.Zoom));
 
-    static void InvokePaletteEntry(PaletteEntry e, Action<float>? requestTheme)
+    static void InvokePaletteEntry(PaletteEntry e)
     {
         switch (e.Kind)
         {
@@ -302,7 +292,7 @@ public static partial class Shell
             case PaletteKind.Settings:
                 switch (e.SettingsVerb)
                 {
-                    case PaletteSettingsVerb.ToggleTheme: ToggleTheme(requestTheme); break;
+                    case PaletteSettingsVerb.ToggleTheme: Appearance.ToggleMode(); break;
                     case PaletteSettingsVerb.ToggleCrossfade:
                         bool on = !Platform.Settings.Get(Platform.Keys.CrossfadeEnabled);
                         Platform.Settings.Set(Platform.Keys.CrossfadeEnabled, on);
@@ -410,7 +400,6 @@ public static partial class Shell
             var dest = UseRef<PaletteEntry[]?>(null);
             var scratch = UseRef<PaletteEntry?>(null);
             var announced = UseRef(false);
-            var requestTheme = UseContext(ThemeControl.Request);
 
             index.Value ??= CommandTable.BuildIndex(Actions.Registry.Current?.Actions, s_paletteGlyphOf);
             dest.Value ??= new PaletteEntry[CommandTable.MaxResults];
@@ -438,7 +427,7 @@ public static partial class Shell
                 if ((uint)i >= (uint)count) return;
                 var entry = hits[i];
                 PaletteOpen.Value = false;
-                InvokePaletteEntry(entry, requestTheme);
+                InvokePaletteEntry(entry);
             }
 
             void OnKey(KeyEventArgs e)

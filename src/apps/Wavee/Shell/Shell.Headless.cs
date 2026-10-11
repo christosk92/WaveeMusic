@@ -69,7 +69,7 @@ public static partial class Shell
             Platform.Boot(["--fake"], BootProfile.HeadlessFake);
             Log.Event(WaveeLogLevel.Info, "app", "boot.platform", "", null, Log.SinceStartMs);
             App.BootCore(BootProfile.HeadlessFake);
-            SeedFixedTheme(options.Theme);
+            Appearance.Seed(options.Theme);   // a fixed kind: no OS read, the token-default accent
             LoadDocuments();
         }
 
@@ -97,14 +97,6 @@ public static partial class Shell
             if (Environment.CurrentManagedThreadId != s_uiThread)
                 throw new InvalidOperationException("The headless shell runs on the thread that booted it.");
         }
-    }
-
-    /// <summary>The seeded theme without the OS: the persisted mode is ignored, the accent is the token default.</summary>
-    static void SeedFixedTheme(ThemeKind kind)
-    {
-        if (SeedPalette is { } seed) seed(kind);
-        else FluentGpu.Dsl.Tok.Use(kind);
-        FluentGpu.Dsl.Theme.IconFont = WaveeFonts.Icons;
     }
 
     /// <summary>The headless root: the frame alone (<see cref="RootHost"/> without its GUI services).</summary>

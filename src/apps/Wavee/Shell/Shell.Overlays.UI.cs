@@ -400,7 +400,6 @@ public static partial class Shell
         public override Element Render()
         {
             var overlay = UseContext(Overlay.Service);
-            var requestTheme = UseContext(ThemeControl.Request);
             var anchor = UseRef<NodeHandle>(default);
             var handle = UseRef<OverlayHandle?>(null);
             var notifyHandle = UseRef<OverlayHandle?>(null);     // a SECOND handle: the panel re-anchored here never fights the menu's
@@ -432,7 +431,7 @@ public static partial class Shell
                 var tier = Spotify.Current.Tier;
                 handle.Value = overlay.Open(
                     () => anchor.Value,
-                    () => ProfileMenuContent(peekIdentity, tier, unread, actionsInMenu, overlay, requestTheme, Close,
+                    () => ProfileMenuContent(peekIdentity, tier, unread, actionsInMenu, overlay, Close,
                         () => NotificationsLauncher?.Invoke(overlay, () => anchor.Value, notifyHandle)),
                     FlyoutPlacement.BottomEdgeAlignedRight,
                     // MENU chrome, not flyout-presenter chrome: the anchored 250 ms MenuPopupThemeTransition unfold over a
@@ -475,7 +474,7 @@ public static partial class Shell
 
     /// <summary>The account flyout: the header over stock WinUI menu rows, in the row table's order.</summary>
     static Element ProfileMenuContent(AccountIdentity identity, Spotify.Tier tier, int unread, bool actionsInMenu,
-        IOverlayService overlay, Action<float>? requestTheme, Action close, Action openNotifications)
+        IOverlayService overlay, Action close, Action openNotifications)
     {
         var table = Actions.ProfileRules.Rows(PickAndPlayFile is not null, actionsInMenu, NotificationsLauncher is not null,
             hasProfile: User.Me.IsValid);
@@ -513,7 +512,7 @@ public static partial class Shell
                 case Actions.ProfileRow.Theme:
                     bool light = Actions.ProfileRules.OffersLightTheme(dark);   // labelled with the TARGET theme
                     items.Add(new MenuFlyoutItem(Loc.Get(light ? Strings.Shell.LightTheme : Strings.Shell.DarkTheme),
-                        light ? Icons.Sun : Icons.Moon, Invoke: () => { close(); ToggleTheme(requestTheme); }));
+                        light ? Icons.Sun : Icons.Moon, Invoke: () => { close(); Appearance.ToggleMode(); }));
                     break;
                 case Actions.ProfileRow.LogOut:
                     items.Add(new MenuFlyoutItem(Loc.Get(Strings.Auth.LogOut), Icons.SignOut,

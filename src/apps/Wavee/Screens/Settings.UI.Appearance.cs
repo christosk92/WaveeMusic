@@ -94,7 +94,7 @@ public static partial class Settings
 
     private static partial Element AppearanceTab()
     {
-        int themeMode = Math.Clamp(Platform.Settings.Get(Platform.Keys.ThemeMode), 0, 2);
+        int themeMode = (int)Appearance.Mode;
         bool lyricsBlurAuto = Platform.Settings.Get(Platform.Keys.LyricsBlurStrength) < 0;
         bool dev = Platform.Developer.Enabled.Value;
         // The Now-playing rows' ONE foreign epoch (ch 27 §7): the header row, the flyout, the art menu and the palette all
@@ -190,25 +190,12 @@ public static partial class Settings
         Loc.Get(Strings.Settings.Choice.Dark),
     ];
 
-    /// <summary>0 System · 1 Light · 2 Dark: swap the installed Wavee palette IN PLACE (System re-reads the OS theme and
-    /// accent now), persist, then ask the host for the 250 ms re-theme cross-fade (ch 27 §5).</summary>
+    /// <summary>0 System · 1 Light · 2 Dark: <see cref="Appearance.SetMode"/> swaps the installed Wavee palette IN PLACE
+    /// (System re-reads the OS theme and accent now), persists, and asks the host for the 250 ms re-theme cross-fade
+    /// (ch 27 §5); this page then re-reads its rows.</summary>
     static void SetTheme(int mode)
     {
-        mode = Math.Clamp(mode, 0, 2);
-        var kind = mode switch
-        {
-            1 => ThemeKind.Light,
-            2 => ThemeKind.Dark,
-            _ => FluentApp.SystemUsesLightTheme() ? ThemeKind.Light : ThemeKind.Dark,
-        };
-        if (Shell.SeedPalette is { } seed) seed(kind); else Tok.Use(kind);
-        if (mode == 0)
-        {
-            if (FluentApp.SystemAccentRamp() is { } ramp) Tok.SetAccent(in ramp);
-            else if (FluentApp.SystemAccent() is { } accent) Tok.SetAccent(accent);
-        }
-        Platform.Settings.Set(Platform.Keys.ThemeMode, mode);
-        s_requestTheme?.Invoke(Design.Motion.Standard);
+        Appearance.SetMode((ThemeMode)Math.Clamp(mode, 0, 2));
         Bump();
     }
 
@@ -255,8 +242,8 @@ public static partial class Settings
             float zoom = UseContext(Viewport.Zoom);
             var viewport = UseContext(Viewport.Size);
             // baseDip = the live (already zoomed) viewport × zoom — ZoomAutoPolicy takes BASE dips, never live ones.
-            _auto = ZoomAutoPolicy.Suggest(viewport.Width * zoom, viewport.Height * zoom, ZoomAutoMode.Auto);
-            var mode = (ZoomAutoMode)Math.Clamp(Platform.Settings.Get(Platform.Keys.ZoomMode), 0, 2);
+            _auto = ZoomService.AutoSuggestion(viewport.Width, viewport.Height, zoom);
+            var mode = ZoomService.Mode;
             int index = mode == ZoomAutoMode.Manual
                 ? 1 + Math.Max(0, Array.IndexOf(ZoomLadder.Steps, ZoomLadder.Snap(zoom)))
                 : 0;
@@ -280,20 +267,13 @@ public static partial class Settings
         {
             if (i <= 0)
             {
-                Platform.Settings.Set(Platform.Keys.ZoomMode, (int)ZoomAutoMode.Auto);
-                ApplyZoom(_auto);
+                ZoomService.PickAuto(_auto);
+                Bump();
                 return;
             }
             int step = i - 1;
             if ((uint)step >= (uint)ZoomLadder.Steps.Length) return;
-            Platform.Settings.Set(Platform.Keys.ZoomMode, (int)ZoomAutoMode.Manual);
-            ApplyZoom(ZoomLadder.Steps[step]);
-        }
-
-        static void ApplyZoom(float zoom)
-        {
-            FluentApp.SetZoom(zoom);   // live, instant (ch 27 §5)
-            Platform.Settings.Set(Platform.Keys.ZoomLevel, zoom);
+            ZoomService.PickManual(ZoomLadder.Steps[step]);
             Bump();
         }
     }

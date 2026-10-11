@@ -1846,7 +1846,7 @@ public static partial class Shell
     //
     // A component body lays out and binds; it does not decide. Each rule below is one the 0.2.9 shell carried inline in
     // a 2,348-line component where nothing could pin it — and two of them (the drag-peek width, the auto-zoom control
-    // loop) are exactly the ones ch 18 §9 records as regressions-in-waiting.
+    // loop, now `ZoomService`) are exactly the ones ch 18 §9 records as regressions-in-waiting.
 
     /// <summary>The frame's geometry, precedence and gating decisions. Pure.</summary>
     public static class FrameRules
@@ -1995,48 +1995,6 @@ public static partial class Shell
         /// the strip is caution-tinted with a standard action. A deliberate divergence: 0.2.9's banner had no call site
         /// (ch 29 parity 46).</summary>
         public static bool ShowsOfflineStrip(AuthState auth) => auth == AuthState.Offline;
-
-        // ── the large-display auto-zoom control loop (ch 18 W24, large-display-scaling.md §3.2) ──────────────────────
-
-        /// <summary>The zoom re-resolve waits for this much resize quiet (trailing edge). The DIP re-layout itself is
-        /// never debounced — only the zoom half is.</summary>
-        public const float ZoomAutoDebounceMs = 500f;
-
-        /// <summary>Zooms within this of each other are the same zoom (the no-op guard that actually stops re-entry).</summary>
-        public const float ZoomEpsilon = 0.004f;
-
-        public enum ZoomStepKind : byte
-        {
-            /// <summary>Touch nothing.</summary>
-            None,
-            /// <summary>Apply <see cref="ZoomDecision.Zoom"/>.</summary>
-            Apply,
-            /// <summary>Something ELSE moved the zoom while in Auto (a chord, the wheel, the palette): flip the stored mode
-            /// to Manual instead of clobbering the user's pick next tick.</summary>
-            PinManual,
-        }
-
-        /// <summary>One tick's answer plus the loop's carried state (the zoom THIS policy last applied).</summary>
-        public readonly record struct ZoomDecision(ZoomStepKind Kind, float Zoom, float LastAuto, bool Seeded);
-
-        /// <summary>The auto-zoom control loop, as a pure step. <paramref name="baseWidth"/>/<paramref name="baseHeight"/>
-        /// are the window's DIP extent AT ZOOM 1 (<c>viewportDip × Viewport.Zoom</c> — zoom-invariant by construction), so
-        /// a re-entrant tick from our own apply computes the identical suggestion and the no-op guard returns.
-        /// <para>"Someone else moved the zoom" is detected by comparing the LIVE zoom against this policy's OWN last pick,
-        /// not against the suggestion — the only way a static zoom verb with no settings reference can opt a user out of
-        /// Auto.</para></summary>
-        public static ZoomDecision AutoZoom(ZoomAutoMode mode, float baseWidth, float baseHeight, float liveZoom,
-            float lastAuto, bool seeded)
-        {
-            if (mode == ZoomAutoMode.Manual || baseWidth <= 0f || baseHeight <= 0f)
-                return new ZoomDecision(ZoomStepKind.None, liveZoom, lastAuto, seeded);
-            float suggested = ZoomAutoPolicy.Suggest(baseWidth, baseHeight, mode);
-            if (MathF.Abs(suggested - liveZoom) <= ZoomEpsilon)
-                return new ZoomDecision(ZoomStepKind.None, liveZoom, liveZoom, true);
-            if (seeded && MathF.Abs(liveZoom - lastAuto) > ZoomEpsilon)
-                return new ZoomDecision(ZoomStepKind.PinManual, liveZoom, lastAuto, seeded);
-            return new ZoomDecision(ZoomStepKind.Apply, suggested, suggested, true);
-        }
     }
 
     // ══ 13. THE MASTHEAD PUBLICATIONS (ch 18 W13) ═══════════════════════════════════════════════════════════════════

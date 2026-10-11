@@ -79,7 +79,6 @@ public static partial class Settings
     static IOverlayService? s_overlay;
     static InputHooks? s_hooks;
     static Action<Action> s_post = static a => a();
-    static Action<float>? s_requestTheme;
     static float s_zoomLive = 1f;
     static Size2 s_viewportLive;
 
@@ -111,7 +110,7 @@ public static partial class Settings
             // UNCONDITIONAL — above the tab switch (a conditional hook breaks hook ORDER).
             s_overlay = UseContext(Overlay.Service);
             s_hooks = UseContext(InputHooks.Current);
-            s_requestTheme = UseContext(ThemeControl.Request);
+            Appearance.BindTransition(UseContext(ThemeControl.Request));
             s_zoomLive = UseContext(Viewport.Zoom);          // display-only live zoom for the Appearance › Zoom row
             s_viewportLive = UseContext(Viewport.Size);
             var post = UsePost();

@@ -1,7 +1,8 @@
 // ── Wavee.Tests/ShellFrameRulesTests.cs — the frame's geometry, precedence and gating rules ──────────────────────────
 //
 // Wave 4 stage B's gate for `Shell.FrameRules` (Shell/Shell.cs §12): every decision `Shell.UI.cs` would otherwise make
-// inline. The two that matter most are the ones ch 18 §9 records as regressions-in-waiting:
+// inline (the auto-zoom loop's rules moved to `ZoomService` in C1; their tests stay here). The two that matter most are
+// the ones ch 18 §9 records as regressions-in-waiting:
 //
 //   THE DRAG PEEK IS IN THE PANE WIDTH. A drag that starts on a collapsed rail presents the pane expanded; the column is
 //   clipped, so a width derived from "presented compact" alone renders 56 DIP of art with every label cut off (W12).
@@ -206,18 +207,18 @@ public class ShellAutoZoomLoopTests
     [Fact]
     public void Manual_mode_and_a_degenerate_extent_touch_nothing()
     {
-        var manual = Shell.FrameRules.AutoZoom(ZoomAutoMode.Manual, BigW, BigH, liveZoom: 1f, lastAuto: 0f, seeded: false);
-        Assert.Equal(Shell.FrameRules.ZoomStepKind.None, manual.Kind);
+        var manual = ZoomService.AutoZoom(ZoomAutoMode.Manual, BigW, BigH, liveZoom: 1f, lastAuto: 0f, seeded: false);
+        Assert.Equal(ZoomService.ZoomStepKind.None, manual.Kind);
         Assert.False(manual.Seeded);
-        var degenerate = Shell.FrameRules.AutoZoom(ZoomAutoMode.Auto, 0f, BigH, 1f, 0f, false);
-        Assert.Equal(Shell.FrameRules.ZoomStepKind.None, degenerate.Kind);
+        var degenerate = ZoomService.AutoZoom(ZoomAutoMode.Auto, 0f, BigH, 1f, 0f, false);
+        Assert.Equal(ZoomService.ZoomStepKind.None, degenerate.Kind);
     }
 
     [Fact]
     public void A_suggestion_that_already_holds_seeds_the_loop_without_applying()
     {
-        var d = Shell.FrameRules.AutoZoom(ZoomAutoMode.Auto, 1920f, 1080f, liveZoom: 1f, lastAuto: 0f, seeded: false);
-        Assert.Equal(Shell.FrameRules.ZoomStepKind.None, d.Kind);
+        var d = ZoomService.AutoZoom(ZoomAutoMode.Auto, 1920f, 1080f, liveZoom: 1f, lastAuto: 0f, seeded: false);
+        Assert.Equal(ZoomService.ZoomStepKind.None, d.Kind);
         Assert.True(d.Seeded);
         Assert.Equal(1f, d.LastAuto);
     }
@@ -225,38 +226,38 @@ public class ShellAutoZoomLoopTests
     [Fact]
     public void A_bigger_display_applies_and_its_own_reentrant_tick_is_a_no_op()
     {
-        var apply = Shell.FrameRules.AutoZoom(ZoomAutoMode.Auto, BigW, BigH, liveZoom: 1f, lastAuto: 1f, seeded: true);
-        Assert.Equal(Shell.FrameRules.ZoomStepKind.Apply, apply.Kind);
+        var apply = ZoomService.AutoZoom(ZoomAutoMode.Auto, BigW, BigH, liveZoom: 1f, lastAuto: 1f, seeded: true);
+        Assert.Equal(ZoomService.ZoomStepKind.Apply, apply.Kind);
         Assert.Equal(2f, apply.Zoom);
         Assert.Equal(2f, apply.LastAuto);
 
         // Our own SetZoom re-fires the effect: the base extent is zoom-invariant, so the same suggestion comes back.
-        var again = Shell.FrameRules.AutoZoom(ZoomAutoMode.Auto, BigW, BigH, liveZoom: apply.Zoom, apply.LastAuto, apply.Seeded);
-        Assert.Equal(Shell.FrameRules.ZoomStepKind.None, again.Kind);
+        var again = ZoomService.AutoZoom(ZoomAutoMode.Auto, BigW, BigH, liveZoom: apply.Zoom, apply.LastAuto, apply.Seeded);
+        Assert.Equal(ZoomService.ZoomStepKind.None, again.Kind);
     }
 
     [Fact]
     public void Someone_else_moving_the_zoom_pins_manual_instead_of_being_clobbered()
     {
         // Auto last applied 200 %; a Ctrl+− took the live zoom to 175 % while the suggestion is still 200 %.
-        var d = Shell.FrameRules.AutoZoom(ZoomAutoMode.Auto, BigW, BigH, liveZoom: 1.75f, lastAuto: 2f, seeded: true);
-        Assert.Equal(Shell.FrameRules.ZoomStepKind.PinManual, d.Kind);
+        var d = ZoomService.AutoZoom(ZoomAutoMode.Auto, BigW, BigH, liveZoom: 1.75f, lastAuto: 2f, seeded: true);
+        Assert.Equal(ZoomService.ZoomStepKind.PinManual, d.Kind);
         Assert.Equal(1.75f, d.Zoom);
     }
 
     [Fact]
     public void A_monitor_hop_while_auto_owns_the_zoom_applies_the_new_suggestion()
     {
-        var d = Shell.FrameRules.AutoZoom(ZoomAutoMode.Auto, 1920f, 1080f, liveZoom: 2f, lastAuto: 2f, seeded: true);
-        Assert.Equal(Shell.FrameRules.ZoomStepKind.Apply, d.Kind);
+        var d = ZoomService.AutoZoom(ZoomAutoMode.Auto, 1920f, 1080f, liveZoom: 2f, lastAuto: 2f, seeded: true);
+        Assert.Equal(ZoomService.ZoomStepKind.Apply, d.Kind);
         Assert.Equal(1f, d.Zoom);
     }
 
     [Fact]
     public void Dense_may_suggest_below_one_hundred_percent()
     {
-        var d = Shell.FrameRules.AutoZoom(ZoomAutoMode.Dense, 1200f, 675f, liveZoom: 1f, lastAuto: 0f, seeded: false);
-        Assert.Equal(Shell.FrameRules.ZoomStepKind.Apply, d.Kind);
+        var d = ZoomService.AutoZoom(ZoomAutoMode.Dense, 1200f, 675f, liveZoom: 1f, lastAuto: 0f, seeded: false);
+        Assert.Equal(ZoomService.ZoomStepKind.Apply, d.Kind);
         Assert.Equal(0.75f, d.Zoom);
     }
 }

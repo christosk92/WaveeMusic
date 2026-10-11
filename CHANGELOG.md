@@ -69,6 +69,9 @@ versions separately under `v*` and is not tracked in this file.)
 - **Pointing at a sidebar section header no longer lights up its ⋯ button.**
 - **Artist names on narrow album and playlist pages stay readable** instead of collapsing to "…".
 - **Search suggestions keep their height while you type** instead of shrinking to a bar on every keystroke.
+- **No zoom jump right after Wavee starts.** With Zoom on Auto, a zoom saved on another window or monitor used to be
+  replaced by the right one half a second after the first frame, so the whole app visibly resized. The first frame
+  now opens at the zoom Auto picks for the window.
 
 - **A pinned Your Episodes opens Your Episodes.** It used to open a playlist page with recommended songs, "2
   collaborators" and no episodes; now it opens the Your Episodes tab of the Podcasts page, and its sidebar row counts

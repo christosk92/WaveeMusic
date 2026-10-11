@@ -58,7 +58,6 @@ public static partial class Shell
         SetPage(RouteKind.History, static (in Route _) => HistoryPage());
         if (NotificationsLauncher is null) NotificationsLauncher = OpenNotificationPanel;
 
-        Design.Install();   // G-196: Tok.Use(Tok.NeutralPalette, _) rather than the engine's own default ramp
         Actions.InstallUi();   // G-195: Stage.NowPlayingMenu
 
         // G-193: a rich-text anchor's entity uri → the app's route key, through the SAME table `GoTo` uses.
@@ -104,7 +103,6 @@ public static partial class Shell
     /// <summary>The frame's context captures, read by the static key handlers and verbs (never a render input).</summary>
     static InputHooks? s_hooks;
     static SceneStore? s_scene;
-    static Action<float>? s_requestTheme;
     static NodeHandle s_contentRegion;
     /// <summary>The sidebar column's node, read only by the pane-invariant probe (never a render input).</summary>
     static NodeHandle s_sidebarColumn;
@@ -214,8 +212,7 @@ public static partial class Shell
         bool _bandSeeded;
         TemplateParts? _seamParts;
         TemplateParts? _railSeamParts;
-        float _lastAutoZoom;
-        bool _autoZoomSeeded;
+        readonly ZoomService.AutoLoop _autoZoom = new();
         Video.PlacementState _videoWas = Video.State.Surface.Peek();
         bool _railWas = Ui.RailOpen.Peek();
         Video.DockedHost _hostWas = Video.DockedHost.Rail;
@@ -224,7 +221,7 @@ public static partial class Shell
         {
             s_hooks = UseContext(InputHooks.Current);
             s_scene = Context.Scene;
-            s_requestTheme = UseContext(ThemeControl.Request);
+            Appearance.BindTransition(UseContext(ThemeControl.Request));
             var post = UsePost();
             var overlay = UseContext(Overlay.Service);
             _seamParts ??= BuildSeamParts(overlay);
@@ -297,26 +294,15 @@ public static partial class Shell
                 var size = vp.Value;
                 float z = zoom.Value;
                 return new Size2(size.Width * z, size.Height * z);
-            }, FrameRules.ZoomAutoDebounceMs);
+            }, ZoomService.DebounceMs);
             UseSignalEffect(() =>
             {
                 var b = baseDip.Value;
-                float live = zoom.Value;
-                var mode = (ZoomAutoMode)Math.Clamp(Platform.Settings.Get(Platform.Keys.ZoomMode), 0, 2);
-                var d = FrameRules.AutoZoom(mode, b.Width, b.Height, live, _lastAutoZoom, _autoZoomSeeded);
-                _lastAutoZoom = d.LastAuto;
-                _autoZoomSeeded = d.Seeded;
-                if (d.Kind == FrameRules.ZoomStepKind.Apply) post(ZoomApplier(d.Zoom));
-                else if (d.Kind == FrameRules.ZoomStepKind.PinManual) Platform.Settings.Set(Platform.Keys.ZoomMode, (int)ZoomAutoMode.Manual);
+                _autoZoom.Step(ZoomService.Mode, b.Width, b.Height, zoom.Value, post);
             });
             // Zoom persistence: the settled value only, so a held chord or a wheel spin writes once.
-            var zoomSettled = UseDebouncedValue(() => zoom.Value, FrameRules.ZoomAutoDebounceMs);
-            UseSignalEffect(() =>
-            {
-                float z = zoomSettled.Value;
-                if (MathF.Abs(Platform.Settings.Get(Platform.Keys.ZoomLevel) - z) > FrameRules.ZoomEpsilon)
-                    Platform.Settings.Set(Platform.Keys.ZoomLevel, z);
-            });
+            var zoomSettled = UseDebouncedValue(() => zoom.Value, ZoomService.DebounceMs);
+            UseSignalEffect(() => ZoomService.PersistSettled(zoomSettled.Value));
 
             // ── the process-lifetime subscriptions (stage-2 wiring, owner-I report) ──
             UseEffect(() =>
@@ -325,7 +311,7 @@ public static partial class Shell
                 Action<int> onNav = static which => { if (which == 0) GoBack(); else GoForward(); };
                 Func<float, bool> onWheel = static notch => { ZoomStep(notch > 0f ? +1 : -1); return true; };
                 Action<string> onRedirect = _ => post(s_drainActivation);
-                Action onColors = OnSystemColorsChanged;
+                Action onColors = Appearance.OnSystemColorsChanged;
                 FluentApp.AppNavigationCommand += onNav;
                 FluentApp.ActivationRedirected += onRedirect;
                 FluentApp.SystemColorsChanged += onColors;
@@ -654,8 +640,6 @@ public static partial class Shell
 
     static readonly Action s_drainActivation = DrainActivation;
 
-    static Action ZoomApplier(float zoom) => () => FluentApp.SetZoom(zoom);
-
     static Action CouplingWrites(RailMode? dockMode, Video.SurfacePlacement demoteTo, bool reDock, bool closeRail) => () =>
     {
         if (dockMode is { } mode)
@@ -693,18 +677,6 @@ public static partial class Shell
     {
         string raw = TakePendingActivation();
         if (raw.Length > 0) ApplyDeepLink(raw);
-    }
-
-    /// <summary>Follow the OS theme live while the preference is "System" (mode 0); the accent follows always.</summary>
-    static void OnSystemColorsChanged()
-    {
-        if (FluentApp.SystemAccentRamp() is { } ramp) Tok.SetAccent(in ramp);
-        if (Platform.Settings.Get(Platform.Keys.ThemeMode) != 0) return;
-        var kind = FluentApp.SystemUsesLightTheme() ? ThemeKind.Light : ThemeKind.Dark;
-        if (kind == Tok.Theme) return;
-        if (SeedPalette is { } seed) seed(kind);
-        else Tok.Use(kind);
-        s_requestTheme?.Invoke(Design.Motion.Standard);
     }
 
     // -- 2.2 the sidebar seam: keyboard, double-click, context menu ---------------------------------------------------
@@ -1275,7 +1247,7 @@ public static partial class Shell
         var l = ChromeLayout.Value;
         bool dark = Theme.Dark;
         var theme = ToolTip.Wrap(
-            IconButton.Create(dark ? Icons.Sun : Icons.Moon, static () => ToggleTheme(s_requestTheme), ChromeButtonStyle)
+            IconButton.Create(dark ? Icons.Sun : Icons.Moon, static () => Appearance.ToggleMode(), ChromeButtonStyle)
                 with { Key = "chrome-theme-toggle", Margin = ChromeButtonMargin },
             Loc.Get(dark ? Strings.Shell.LightTheme : Strings.Shell.DarkTheme));
         return new BoxEl

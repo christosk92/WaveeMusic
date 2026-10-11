@@ -197,13 +197,10 @@ public static partial class Design
     // ══ 3. COLOUR ════════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>Which of the engine's built-in ramps Wavee themes over (G-196). 0.2.9 called
-    /// <c>Tok.Use(Tok.NeutralPalette, kind)</c> explicitly; 0.3 left <see cref="Shell.SeedPalette"/> unset, so every
-    /// theme flip fell back to <c>Tok.Use(kind)</c> — the engine's own default (<c>WarmPalette</c>), not Wavee's.
-    /// <see cref="Install"/> wires the seam once from the composition root (<c>Shell.InstallUi</c>).</summary>
+    /// <c>Tok.Use(Tok.NeutralPalette, kind)</c> explicitly; 0.3 went through an optional shell seam nobody installed, so
+    /// every theme flip fell back to <c>Tok.Use(kind)</c> — the engine's own default (<c>WarmPalette</c>), not Wavee's.
+    /// <see cref="Appearance"/> (the one owner of the mode) calls this for every kind change.</summary>
     public static void SeedPalette(ThemeKind kind) => Tok.Use(Tok.NeutralPalette, kind);
-
-    /// <summary>Install this file's seams into the shell. Called once, from <see cref="Shell.InstallUi"/>.</summary>
-    public static void Install() => Shell.SeedPalette = SeedPalette;
 
     /// <summary>Wavee's app-shell colours. The authenticated shell is the STOCK Windows 11 Mica stack:
     /// <list type="number">
