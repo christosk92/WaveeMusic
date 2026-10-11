@@ -282,11 +282,11 @@ public static partial class Shell
             case PaletteKind.Playback:
                 switch (e.PlaybackVerb)
                 {
-                    case PalettePlaybackVerb.PlayPause: TogglePlayPause("palette"); break;
+                    case PalettePlaybackVerb.PlayPause: PlayerVerbs.Default.TogglePlay("palette"); break;
                     case PalettePlaybackVerb.Next: Playback.Next(); break;
                     case PalettePlaybackVerb.Previous: Playback.Previous(); break;
-                    case PalettePlaybackVerb.Shuffle: ToggleShuffle(); break;
-                    case PalettePlaybackVerb.Repeat: CycleRepeat(); break;
+                    case PalettePlaybackVerb.Shuffle: PlayerVerbs.Default.ToggleShuffle(); break;
+                    case PalettePlaybackVerb.Repeat: PlayerVerbs.Default.CycleRepeat(); break;
                 }
                 break;
             case PaletteKind.Settings:
@@ -302,10 +302,10 @@ public static partial class Shell
                     case PaletteSettingsVerb.ZoomOut: ZoomStep(-1); break;
                     case PaletteSettingsVerb.ZoomReset: ZoomStep(0); break;
                     case PaletteSettingsVerb.NpvTogglePresentation:
-                        Rail.PlayerPrefs.TogglePresentation(Rail.NpvDiagnostics.SourcePalette);
+                        DeckPrefs.TogglePresentation(DeckPrefSource.Palette);
                         break;
                     case PaletteSettingsVerb.NpvNextStyle:
-                        Rail.PlayerPrefs.NextStyle(Rail.NpvDiagnostics.SourcePalette);
+                        DeckPrefs.NextStyle(DeckPrefSource.Palette);
                         break;
                     case PaletteSettingsVerb.HomeFollowingOn:
                     case PaletteSettingsVerb.HomeFollowingOff:

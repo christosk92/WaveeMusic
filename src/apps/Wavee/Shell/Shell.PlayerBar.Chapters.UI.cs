@@ -34,10 +34,10 @@ public static partial class Shell
             UseEffect(() => () => { CloseTip(); lease.Dispose(); }, DepKey.Empty);
             UseSignalEffect(() =>
             {
-                var state = (LoadState)lease.Data.State.Value;
+                bool ready = (LoadState)lease.Data.State.Value == LoadState.Ready;
                 int duration = Playback.DurationMs.Value;
-                var chapters = state == LoadState.Ready
-                    ? PodcastChapterTimeline.Normalize(lease.Data.Value.Value.Items, duration) : [];
+                // The items are read only once the request is ready (the subscription follows the data, not the pending seed).
+                var chapters = PlayerBarFacts.Seek.Chapters(ready, ready ? lease.Data.Value.Value.Items : [], duration);
                 _duration.SetIfChanged(duration);
                 _chapters.Value = chapters;
             });

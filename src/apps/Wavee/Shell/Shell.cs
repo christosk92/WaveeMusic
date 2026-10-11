@@ -1124,12 +1124,7 @@ public static partial class Shell
         // content host reads that one cell rather than a second copy here.
 
         /// <summary>Clicking the already-showing mode CLOSES the rail; otherwise switch to that mode and open.</summary>
-        public static void Toggle(RailMode mode)
-        {
-            if (RailOpen.Peek() && Mode.Peek() == mode) { RailOpen.Value = false; return; }
-            Mode.Value = mode;
-            RailOpen.Value = true;
-        }
+        public static void Toggle(RailMode mode) => PanelHost.Shared.Toggle(mode);
 
         /// <summary>Viewport-fit test for sidebar + rail + a minimum usable content region.</summary>
         public static bool CanFitRail(float viewportW, float sidebarW, float railW = RailDefaultW,

@@ -35,7 +35,7 @@
 //
 // Mounted from other files: `Lyrics.StagePane(accent)` (the reading column), `Stage.QueuePaneBody` (Queue.UI.cs:65),
 // `Stage.NowPlayingMenu` (Actions.UI.cs:958), `Shell.SeekBar(onScrubbing:)`/`Shell.TimeText` (the bar's own seek — never a fork),
-// `Shell.PlayerKey`/`Shell.BarKeyStep` (the bar's key map and its keyboard seek ladder).
+// `Shell.PlayerKey`/`Shell.ScrubController.KeyStep` (the bar's key map and its keyboard seek ladder).
 
 using System.Collections.Generic;
 using FluentGpu.Animation;
@@ -132,6 +132,8 @@ public static partial class Stage
         /// <summary>The options popover is open (the top bar's sliders button lights while it is) and the action that toggles it.</summary>
         public readonly Signal<bool> OptionsOpen = new(false);
         public Action OpenOptions = static () => { };
+        /// <summary>Open the gallery (never closes it) — the options footer's switch; G is <see cref="ToggleGallery"/>.</summary>
+        public Action OpenGallery = static () => { };
         public Action<Mode> SetMode = static _ => { };
         public Action ToggleGallery = static () => { }, Exit = static () => { }, Activity = static () => { };
         /// <summary>The idle machine's holds: pointer over a control · a menu/tip/flyout open (counted) · a seek scrub.</summary>
@@ -188,10 +190,15 @@ public static partial class Stage
         readonly StageCtx _ctx = new();
         readonly FloatSignal _frac = new(0f);
         readonly Action _onWake;
-        PlayerChromeVisibility? _idle;        // created in Render with the host timer clock (MediaPlayerElement.cs:729-730) — never with 0 (V-U10)
+        // The idle machine + the counted menu hold (the device flyout, the "…" menu, the options popover and the TeachingTip each count
+        // one, V-U22) belong to the IMMERSIVE MODE, not to this component: a remount adopts the same object. The machine itself is
+        // started in Render with the host timer clock (MediaPlayerElement.cs:729-730) — never with 0 (V-U10).
+        readonly ChromeIdle _idle = ImmersiveService.Shared.IdleOf(ImmersiveKind.Stage);
+        readonly IStageVerbs _verbs;
+        IImmersiveHost? _immersiveHost;
+        Action? _openOptions;                 // the options popover's toggle, rebuilt each Render (it closes over the overlay)
         TimerHandle _wake;
         double _armedDueMs = double.PositiveInfinity;
-        int _menusOpen;                       // the device flyout, the "…" menu and the TeachingTip each count one (V-U22)
         InputHooks? _hooks;
         Action<string>? _begin;
         NodeHandle _root;
@@ -201,29 +208,32 @@ public static partial class Stage
         public SurfaceCore()
         {
             _onWake = () => { _armedDueMs = double.PositiveInfinity; Sync(); };
-            _ctx.SetMode = m => { Prefs.Stage.SetMode((int)m); Diagnostics.NoteMode(m); };
-            _ctx.ToggleGallery = () =>
-            {
-                // The gallery exists only in the Card layout: from a layout (or from another mode while a layout is stored) G goes
-                // back to Card AND opens it — ToggleGallery alone would CLOSE a gallery whose stored flag is still true.
-                bool layoutStored = _ctx.Look.Peek().IsLayout || (_ctx.Mode.Peek() != Mode.Visualizer && _ctx.LayoutPref.Peek() != VizLayout.Card);
-                if (layoutStored)
-                {
-                    Prefs.Stage.SetLayout((int)VizLayout.Card);
-                    if (_ctx.Mode.Peek() != Mode.Visualizer) Prefs.Stage.SetMode((int)Mode.Visualizer);
-                    Prefs.Stage.SetGalleryOpen(true);
-                    return;
-                }
-                var (mode, open) = ModeRules.ToggleGallery(_ctx.Mode.Peek(), _ctx.GalleryOpen.Peek());
-                if (mode != _ctx.Mode.Peek()) Prefs.Stage.SetMode((int)mode);
-                Prefs.Stage.SetGalleryOpen(open);
-            };
-            _ctx.Exit = () => Close(_begin, "exit-button");
-            _ctx.Activity = () => { _idle?.Activity(ChromeActivity.Pointer, Now()); Sync(); };
-            _ctx.OverControls = over => { _idle?.SetPointerOverControls(over, Now()); Sync(); };
-            _ctx.MenuOpen = open => { _menusOpen = Math.Max(0, _menusOpen + (open ? 1 : -1)); _idle?.SetMenuOpen(_menusOpen > 0, Now()); Sync(); };
-            _ctx.Scrubbing = on => { _idle?.SetScrubbing(on, Now()); Sync(); };
+            // The stage's verbs (StageModel.cs): the mode, the ONE gallery rule, the face step, exit, activity, options.
+            _verbs = new StageVerbs(StagePrefsPort.Shared, () => StageModel.StateOf(_ctx), new StageHost(this));
+            _ctx.SetMode = _verbs.SetMode;
+            _ctx.ToggleGallery = _verbs.ToggleGallery;
+            _ctx.OpenGallery = _verbs.OpenGallery;
+            _ctx.Exit = _verbs.Exit;
+            _ctx.Activity = _verbs.Activity;
+            _ctx.OpenOptions = _verbs.OpenOptions;
+            _ctx.OverControls = over => { _idle.SetPointerOverControls(over, Now()); Sync(); };
+            _ctx.MenuOpen = open => { _idle.MenuOpen(open, Now()); Sync(); };
+            _ctx.Scrubbing = on => { _idle.SetScrubbing(on, Now()); Sync(); };
         }
+
+        /// <summary>The surface, as the stage's verbs reach it.</summary>
+        sealed class StageHost(SurfaceCore owner) : IStageHost
+        {
+            public void Close(string cause) => Stage.Close(owner._begin, cause);
+            public void OpenOptions() => owner._openOptions?.Invoke();
+            public void Activity() { owner._idle.Activity(ChromeActivity.Pointer, owner.Now()); owner.Sync(); }
+            public void GoTo(Shell.Route route) => Shell.GoTo(route);
+            public void NoteMode(Mode mode) => Diagnostics.NoteMode(mode);
+            public void NotePick(Visualizer.Kind face) => Diagnostics.NotePick(face);
+        }
+
+        /// <summary>The stage is still wanted (the shell mounts it while this is up): a teardown that finds it true is a REMOUNT.</summary>
+        static bool StageWanted() => Shell.Ui.ImmersiveLyrics.Peek();
 
         public override Element Render()
         {
@@ -234,7 +244,7 @@ public static partial class Stage
             var vp = UseContextSignal(Viewport.Size);
             var ctx = _ctx;
             // the options popover: anchored under the sliders button (the TeachingTip's anchor too), light-dismiss, holding the chrome while open
-            ctx.OpenOptions = () =>
+            _openOptions = () =>
             {
                 if (_options is { IsOpen: true } open) { open.Close(); return; }
                 var opened = overlay.Open(() => ctx.GalleryButton.Peek(), () => OptionsContent(ctx, () => _options?.Close()),
@@ -314,31 +324,22 @@ public static partial class Stage
             int themeEpoch = Tok.Epoch;
             UseEffect(PublishAccent, DepKey.From(themeEpoch, 0, 0, 0));
 
-            // ── REAL fullscreen with prior-state restore (Video.UI.cs:1213-1218) ──
-            var priorFs = UseRef(false);
+            // ── REAL fullscreen with prior-state restore, and a focus scope at the root with focus returned to whoever opened the
+            //    stage: both are the IMMERSIVE SERVICE's (ImmersiveService.cs), keyed by the mode — a remount of this view while the
+            //    stage is still wanted leaves the window and the scope as they are ──
+            var immersive = ImmersiveService.Shared;
+            var immersiveHost = _immersiveHost ??= new HooksImmersiveHost(hooks);
             UseLayoutEffect(() =>
             {
-                priorFs.Value = hooks.IsWindowFullscreen?.Invoke() ?? false;
-                if (!priorFs.Value) hooks.WindowSetFullscreen?.Invoke(true);
-                return () => { if (!priorFs.Value) hooks.WindowSetFullscreen?.Invoke(false); };
+                immersive.EnterWindow(ImmersiveKind.Stage, immersiveHost);
+                return () => { immersive.ReleaseWindow(ImmersiveKind.Stage, immersiveHost, StageWanted); };
             }, DepKey.Empty);
 
-            // ── a focus scope at the root; focus returns to whoever opened the stage (Video.UI.cs:1221-1236) ──
-            var priorFocus = UseRef<NodeHandle>(default);
             UseLayoutEffect(() =>
             {
                 if (Context.HostNode.IsNull) return null;
-                var root = Context.HostNode;
-                priorFocus.Value = hooks.GetFocus?.Invoke() ?? default;
-                hooks.PushFocusScope?.Invoke(root);
-                hooks.FocusNode?.Invoke(root, false);
-                return () =>
-                {
-                    hooks.PopFocusScope?.Invoke(root);
-                    var back = priorFocus.Value;
-                    priorFocus.Value = default;
-                    if (!back.IsNull) hooks.RestoreFocus?.Invoke(back);
-                };
+                immersive.PushFocus(ImmersiveKind.Stage, immersiveHost, Context.HostNode, focusRoot: true);
+                return () => { immersive.ReleaseFocus(ImmersiveKind.Stage, immersiveHost, StageWanted); };
             }, DepKey.Empty);
 
             // ── unmount: release the cursor override, close the tip ──
@@ -354,9 +355,10 @@ public static partial class Stage
 
             // ── idle: the engine machine on the HOST TIMER clock, one timer re-armed from NextWakeMs (MediaPlayerElement.cs:390-416, :726-730) ──
             _wake = UseTimeout(_onWake, 1_000f, DepKey.Empty);                           // arms once at mount — harmless (Sync re-arms)
-            var idle = _idle ??= new PlayerChromeVisibility(PlayerChromeTiming.Default, _wake.NowMs);
+            var idle = _idle;
+            idle.Start(_wake.NowMs);
             bool playing = Playback.IsPlaying.Value;
-            UseEffect(() => { idle.SetPlayback(playing ? ChromePlayback.Playing : ChromePlayback.Paused, Now()); idle.SetCursorMayHide(true, Now()); Sync(); }, DepKey.From(playing));
+            UseEffect(() => { idle.SetPlayback(playing, Now()); Sync(); }, DepKey.From(playing));
 
             // ── the hairline fraction from the coarse report (1 Hz is plenty for a 3-DIP line) ──
             UseSignalEffect(() => { int d = Playback.DurationMs.Value, p = Playback.PositionMs.Value; _frac.SetIfChanged(d > 0 ? Math.Clamp(p / (float)d, 0f, 1f) : 0f); });
@@ -499,28 +501,20 @@ public static partial class Stage
         /// they arrive through SMTC regardless of focus (Playback.Os.cs:309-323). Any key is idle activity.</summary>
         void OnKey(KeyEventArgs e)
         {
-            _idle?.Activity(ChromeActivity.Keyboard, Now());
+            _idle.Activity(ChromeActivity.Keyboard, Now());
             Sync();
             if (e.Handled) return;
             if (e.Mods == KeyModifiers.None && e.KeyCode == Keys.Escape) { e.Handled = true; Close(_begin, "escape"); return; }
             if (e.Mods == KeyModifiers.None && e.KeyCode == Keys.F11) { e.Handled = true; Close(_begin, "f11"); return; }
             // [ / ] the previous / next face (Shift: the group) in Visualizer mode; G the gallery (from another mode it
             // switches to Visualizer first — ModeRules.ToggleGallery)
-            int step = e.Ctrl || e.Alt || _ctx.Mode.Peek() != Mode.Visualizer ? 0 : ModeRules.FaceStep(e.KeyCode);
+            int step = StageModel.FaceStepOf(e.KeyCode, e.Ctrl, e.Alt, _ctx.Mode.Peek());
             if (step != 0)
             {
                 e.Handled = true;
-                if (_ctx.Look.Peek().IsLayout && !LayoutRules.KeysStepFaces(_ctx.Look.Peek().Eff))
-                {
-                    // inside a layout the keys walk the layouts (Artist only: Large art / Centered step the FACE behind the cover; the STORED one — an Artist without a header draws Large art but
-                    // steps on from Artist); Card is entered and left through the options popover or G
-                    Prefs.Stage.SetLayout((int)LayoutRules.Step(_ctx.LayoutPref.Peek(), step));
-                    return;
-                }
-                var kind = _ctx.Kind.Peek();
-                var next = e.Shift ? Visualizer.Catalog.StepGroup(kind, step) : Visualizer.Catalog.Step(kind, step);
-                Prefs.Stage.SetVisualizer((int)next);
-                Diagnostics.NotePick(next);
+                // inside a layout the keys walk the layouts (Artist only: Large art / Centered step the FACE behind the cover; the STORED one — an Artist without a header draws Large art but
+                // steps on from Artist); Card is entered and left through the options popover or G
+                _verbs.StepFace(step, e.Shift);
                 return;
             }
             if (e.Mods == KeyModifiers.None && e.KeyCode == Keys.G && !e.IsRepeat) { e.Handled = true; _ctx.ToggleGallery(); return; }
@@ -530,13 +524,13 @@ public static partial class Stage
             switch (intent)
             {
                 // The bar's keyboard scrub ladder (5 s → 15 s → 30 s while held, Shift = 1 s): the stage's own seek rail mounts its commit tick.
-                case Shell.PlayerKeyIntent.SeekBack: Shell.BarKeyStep(-1, fine: false); break;
-                case Shell.PlayerKeyIntent.SeekForward: Shell.BarKeyStep(1, fine: false); break;
-                case Shell.PlayerKeyIntent.SeekBackFine: Shell.BarKeyStep(-1, fine: true); break;
-                case Shell.PlayerKeyIntent.SeekForwardFine: Shell.BarKeyStep(1, fine: true); break;
+                case Shell.PlayerKeyIntent.SeekBack: Shell.ScrubController.KeyStep(-1, fine: false); break;
+                case Shell.PlayerKeyIntent.SeekForward: Shell.ScrubController.KeyStep(1, fine: false); break;
+                case Shell.PlayerKeyIntent.SeekBackFine: Shell.ScrubController.KeyStep(-1, fine: true); break;
+                case Shell.PlayerKeyIntent.SeekForwardFine: Shell.ScrubController.KeyStep(1, fine: true); break;
                 case Shell.PlayerKeyIntent.VolumeDown: Playback.SetVolume(Math.Clamp(Playback.Volume.Peek() - .05f, 0f, 1f)); break;
                 case Shell.PlayerKeyIntent.VolumeUp: Playback.SetVolume(Math.Clamp(Playback.Volume.Peek() + .05f, 0f, 1f)); break;
-                case Shell.PlayerKeyIntent.Toggle: if (!e.IsRepeat) Shell.TogglePlayPause("stage.space"); break;
+                case Shell.PlayerKeyIntent.Toggle: if (!e.IsRepeat) PlayerVerbs.Default.TogglePlay("stage.space"); break;
             }
         }
 
@@ -544,7 +538,8 @@ public static partial class Stage
         /// value-gated, apply the cursor, re-arm the one timer at NextWakeMs (+∞ = nothing pending, no timer — V-U48).</summary>
         void Sync()
         {
-            if (_idle is not { } vis) return;
+            var vis = _idle;
+            if (!vis.Started) return;
             double now = _wake.NowMs;
             vis.Tick(now);
             _ctx.Chrome.SetIfChanged(vis.ChromeVisible);
@@ -909,9 +904,7 @@ public static partial class Stage
         readonly FloatSignal[] _dotAlpha = new FloatSignal[Lyrics.Interlude.DotCount];
         readonly Action _tick;
         readonly Action<NodeHandle> _onMain, _onGlow, _onDots;
-        Deck.PositionInterpolator _pos;
-        bool _anchored, _advancing;
-        int _lastReport = int.MinValue;
+        readonly CaptionClock _clock = new();   // the playhead the caption extrapolates + its edge wake (core)
         Lyrics.Doc? _doc;
         int _docGen;                          // bumps per document, so a new track's line 5 is a NEW keyed slot (its wipe nodes re-report)
         // the active line's two wipe nodes (main + bloom), the line they were built for, its measured run and the wrap width
@@ -923,7 +916,6 @@ public static partial class Stage
         // The one-shot wake at the next view edge (Caption.EdgeWake, published to CaptionWake), the timer's callback, and
         // whether the report effect has had its mount run.
         readonly Signal<Lyrics.MotionWake> _edgeWake = new(new Lyrics.MotionWake(0, -1f));
-        Caption.EdgeWake _edge;
         int _edgeSeq;
         readonly Action _onEdge;
         bool _reportSubscribed;
@@ -932,7 +924,7 @@ public static partial class Stage
         {
             for (int k = 0; k < _dotAlpha.Length; k++) _dotAlpha[k] = new FloatSignal(0f);
             _tick = () => Reactive.Untrack(Tick);
-            _onEdge = () => { _edge.Fire(); _tick(); };
+            _onEdge = () => { _clock.FireEdge(); _tick(); };
             _onMain = h => _mainNode = h;
             _onGlow = h => _glowNode = h;
             _onDots = h => _dotsNode = h;
@@ -960,8 +952,7 @@ public static partial class Stage
                 bool advancing = Playback.IsPlaying.Value && !Playback.Buffering.Value;
                 // re-anchor on every report AND on a play/pause edge (Deck.PositionInterpolator.Anchor): a resume must not
                 // extrapolate across the paused gap for a tick
-                if (pos != _lastReport || advancing != _advancing || !_anchored) { _pos.Anchor(Design.FrameTime.NowMs, pos); _anchored = true; _lastReport = pos; }
-                _advancing = advancing;
+                _clock.Report(pos, advancing, Design.FrameTime.NowMs);
                 // a report (or a play/pause edge) re-times the render-thread wipe and the edge wake; never on the mount run,
                 // which runs inside this render
                 if (!_reportSubscribed) { _reportSubscribed = true; return; }
@@ -977,7 +968,7 @@ public static partial class Stage
             // The render resolves the view itself (so a new document never shows the old one's indices for a tick) and
             // SUBSCRIBES to the tick's signal for the next change.
             int view = _view.Value;
-            if (_doc is { } d0 && _anchored) view = ComputeView(d0, Now(), out _, out _);
+            if (_doc is { } d0 && _clock.Anchored) view = ComputeView(d0, Now(), out _, out _);
             IReadOnlyList<Lyrics.Line> lines = _doc?.Lines ?? Array.Empty<Lyrics.Line>();
             int count = view == Unresolved ? 0 : lines.Count;
             int anchor = Caption.AnchorOf(view);
@@ -1003,7 +994,7 @@ public static partial class Stage
                 kids.Add(ContextLine(lines[prevI].Text, "cap:p:" + gen + ":" + prevI, cSize, cLine, Tone.CaptionPrevA, capW));
             if (dots) kids.Add(DotsSlot("cap:d:" + gen + ":" + anchor, aLine));
             else if (centreI >= 0 && lines[centreI].Text.Length > 0)
-                kids.Add(ActiveSlot(lines[centreI], "cap:a:" + gen + ":" + centreI, aSize, aLine, cSize, cLine, set.Text, capW, _anchored ? Now() : 0L));
+                kids.Add(ActiveSlot(lines[centreI], "cap:a:" + gen + ":" + centreI, aSize, aLine, cSize, cLine, set.Text, capW, _clock.Anchored ? Now() : 0L));
             if (nextI >= 0 && lines[nextI].Text.Length > 0)
                 kids.Add(ContextLine(lines[nextI].Text, "cap:n:" + gen + ":" + nextI, cSize, cLine, Tone.CaptionNextA, capW));
 
@@ -1111,7 +1102,7 @@ public static partial class Stage
             };
         }
 
-        long Now() => _pos.Estimate(Design.FrameTime.NowMs, _advancing, null, null, Playback.DurationMs.Peek());
+        long Now() => _clock.Now(Design.FrameTime.NowMs, Playback.DurationMs.Peek());
 
         /// <summary>The packed view at <paramref name="now"/> (<see cref="Caption.ViewAt"/>).</summary>
         static int ComputeView(Lyrics.Doc d, long now, out long gapStart, out long gapEnd) => Caption.ViewAt(d, now, out gapStart, out gapEnd);
@@ -1120,12 +1111,12 @@ public static partial class Stage
 
         void Tick()
         {
-            if (_doc is not { } d || !_anchored) { _rows.Hold(Context.Anim, Context.Scene); ArmEdge(long.MaxValue, 0L); return; }
+            if (_doc is not { } d || !_clock.Anchored) { _rows.Hold(Context.Anim, Context.Scene); ArmEdge(long.MaxValue, 0L); return; }
             long now = Now();
             int view = ComputeView(d, now, out long gapStart, out long gapEnd);
             if (view != _view.Peek()) _view.Value = view;
             // playing: the next instant the view can change is the one wake owed (the dots tick per frame and need none)
-            ArmEdge(_advancing && !Caption.DotsOf(view) ? Caption.NextEdgeMs(d, now) : long.MaxValue, now);
+            ArmEdge(_clock.Advancing && !Caption.DotsOf(view) ? Caption.NextEdgeMs(d, now) : long.MaxValue, now);
             if (Context.Scene is not { } scene) return;
             if (Caption.DotsOf(view)) { _rows.Hold(Context.Anim, scene); DriveDots(scene, now, gapStart, gapEnd); return; }
             int anchor = Caption.AnchorOf(view);
@@ -1135,7 +1126,7 @@ public static partial class Stage
             if (!line.IsWordByWord || line.Syllables.Count == 0) { _rows.Hold(Context.Anim, scene); return; }
             var main = _mainNode;
             if (!main.IsNull && scene.IsLive(main) && float.IsNaN(_runLen)) _runLen = MeasureRun(scene, main, line.Text);
-            if (_advancing && Context.Anim is { RenderOwnsCompositor: true } anim
+            if (_clock.Advancing && Context.Anim is { RenderOwnsCompositor: true } anim
                 && _rows.Seed(anim, scene, line, anchor, main, _glowNode, now, Design.FrameTime.NowMs, _runLen)) return;
             _rows.Cancel(Context.Anim);   // the UI owns the split (paused, buffering, a host whose render thread does not own the compositor)
             CaptionWipeRows.DriveUi(scene, main, _glowNode, line, now, _runLen);
@@ -1145,7 +1136,7 @@ public static partial class Stage
         /// none) through <see cref="Caption.EdgeWake"/>, in the frame clock's one domain.</summary>
         void ArmEdge(long atMs, long now)
         {
-            if (_edge.Arm(atMs, now, Design.FrameTime.NowMs, out float delay))
+            if (_clock.ArmEdge(atMs, now, Design.FrameTime.NowMs, out float delay))
                 _edgeWake.Value = new Lyrics.MotionWake(++_edgeSeq, delay);
         }
 
@@ -1195,148 +1186,6 @@ public static partial class Stage
             if (MathF.Abs(paint.LocalTransform.M11 - scale) < Lyrics.Interlude.ScaleEps) return;
             paint.LocalTransform = scale >= 1f ? Affine2D.Identity : new Affine2D(scale, 0f, 0f, scale, 0f, 0f);
             scene.Mark(h, NodeFlags.TransformDirty | NodeFlags.PaintDirty);
-        }
-    }
-
-    /// <summary>The caption's karaoke wipe on its active line's two text nodes (the main glyphs and the bloom). Playing, the
-    /// RENDER THREAD poses it: <see cref="Seed"/> lays the exact split function from now to where it settles
-    /// (<see cref="Lyrics.Wipe.SplitKeyframes"/>) on <c>AnimChannel.GlyphWipeSplit</c>, once per line and again when a report
-    /// moves the clock. A line handing off is <see cref="Hold">held</see> where it stands, its on-screen split written back
-    /// as the authored one; paused, <see cref="Cancel"/> drops the rows and <see cref="DriveUi"/> writes the split on the same
-    /// tick. Every split, the UI's and the render thread's, steps in whole DIPs of the measured reading-order run
-    /// (<see cref="GlyphWipe.Run"/>), so a wrapped line moves exactly as the UI wrote it.</summary>
-    public sealed class CaptionWipeRows
-    {
-        int _line = -1;
-        NodeHandle _main, _glow;
-        long _clock;
-
-        /// <summary>The line the rows were seeded for; -1 = none (the UI writes the split, or nothing is wiping).</summary>
-        public int Line => _line;
-
-        /// <summary>LineRow's split: the char-weighted sung fraction on TRUE time, nudged by the wipe's own lead mid-line.</summary>
-        public static float SplitAt(Lyrics.Line line, long now)
-        {
-            float split = Lyrics.Wipe.ComputeSplit(line, now);
-            return split > 0f && split < 1f ? Math.Clamp(split + Lyrics.Wipe.LeadFrac, 0f, 1f) : split;
-        }
-
-        /// <summary>The split the UI writes at <paramref name="now"/>: stepped in whole DIPs of the run (as the render thread
-        /// steps a <see cref="GlyphWipe.Run"/> of the same length).</summary>
-        public static float UiSplit(Lyrics.Line line, long now, float runLen) => GlyphWipe.Quantize(SplitAt(line, now), Run(runLen));
-
-        static float Run(float runLen) => runLen > 1f ? runLen : 0f;
-
-        /// <summary>Seed the rows on <paramref name="main"/> (and <paramref name="glow"/> when it carries a wipe) for line
-        /// <paramref name="anchor"/>; <paramref name="clockNowMs"/> is the frame clock <paramref name="now"/> was estimated
-        /// on (a report that moves position - clock re-seeds). False = the line's nodes are not realized yet.</summary>
-        public bool Seed(AnimEngine anim, SceneStore scene, Lyrics.Line line, int anchor, NodeHandle main, NodeHandle glow,
-            long now, long clockNowMs, float runLen)
-        {
-            if (main.IsNull || !scene.IsLive(main) || !scene.TryGetGlyphWipe(main, out _)) return false;
-            bool halo = !glow.IsNull && scene.IsLive(glow) && scene.TryGetGlyphWipe(glow, out _);
-            long clock = now - clockNowMs;
-            if (_line == anchor && _main == main && _glow == (halo ? glow : default) && Math.Abs(clock - _clock) <= 1L) return true;
-            if (_line >= 0 && (_line != anchor || _main != main)) Hold(anim, scene);
-            float softness = Lyrics.Wipe.SoftnessOfLine(runLen > 1f ? runLen : MathF.Max(1f, scene.Bounds(main).W), large: true);
-            var keys = Lyrics.Wipe.SplitKeyframes(line, now, lead: true, out long endMs);
-            _line = anchor; _main = main; _glow = halo ? glow : default; _clock = clock;
-            if (keys is null)
-            {
-                // settled: the split is 1 - written once, as the UI path would
-                anim.Cancel(main, AnimChannel.GlyphWipeSplit);
-                if (halo) anim.Cancel(glow, AnimChannel.GlyphWipeSplit);
-                WriteSplit(scene, main, 1f, softness, runLen);
-                if (halo) WriteSplit(scene, glow, 1f, softness, runLen);
-                return true;
-            }
-            float durationMs = endMs - now;
-            // the rows start from the value at `now`: written as the authored split too, so a row not posed yet shows the same
-            WriteSplit(scene, main, keys[0].Value, softness, runLen);
-            anim.Keyframes(main, AnimChannel.GlyphWipeSplit, keys, durationMs);
-            if (halo)
-            {
-                WriteSplit(scene, glow, keys[0].Value, softness, runLen);
-                anim.Keyframes(glow, AnimChannel.GlyphWipeSplit, keys, durationMs);   // the bloom tracks the main layer exactly
-            }
-            return true;
-        }
-
-        /// <summary>Stop the rows where they STAND (<see cref="AnimEngine.SetHeld"/>): an outgoing line (it exits keyed) or a
-        /// break keeps the split on screen, as the UI path simply stopped writing it. The on-screen split is written back as
-        /// the authored one too, so a row that is ever lost (an overlay-row overflow, a later cancel) leaves the line where it
-        /// stands instead of snapping it back to its seed.</summary>
-        public void Hold(AnimEngine? anim, SceneStore? scene)
-        {
-            if (_line < 0) return;
-            if (anim is not null)
-            {
-                HoldOne(anim, scene, _main);
-                HoldOne(anim, scene, _glow);
-            }
-            _line = -1;
-            _main = _glow = default;
-        }
-
-        static void HoldOne(AnimEngine anim, SceneStore? scene, NodeHandle node)
-        {
-            if (node.IsNull) return;
-            if (scene is not null && scene.IsLive(node) && scene.TryGetGlyphWipe(node, out var w)
-                && anim.TryGetTrackValue(node, AnimChannel.GlyphWipeSplit, out float value))
-            {
-                float shown = w.QuantizeSplit(value, scene.Bounds(node).W);
-                if (shown != w.Split)
-                {
-                    scene.SetGlyphWipe(node, w with { Split = shown });
-                    scene.Mark(node, NodeFlags.PaintDirty);
-                }
-            }
-            anim.SetHeld(node, AnimChannel.GlyphWipeSplit, true);
-        }
-
-        /// <summary>Hand the split back to the UI on the SAME line (paused, buffering): the rows go, and the caller writes the
-        /// split from the clock on this same tick (<see cref="DriveUi"/>), so a cancelled row's pose never stays on screen.</summary>
-        public void Cancel(AnimEngine? anim)
-        {
-            if (_line < 0) return;
-            if (anim is not null)
-            {
-                if (!_main.IsNull) anim.Cancel(_main, AnimChannel.GlyphWipeSplit);
-                if (!_glow.IsNull) anim.Cancel(_glow, AnimChannel.GlyphWipeSplit);
-            }
-            _line = -1;
-            _main = _glow = default;
-        }
-
-        /// <summary>The UI's own write of the wipe — the lyrics view's write path in shape: the split stepped along the run,
-        /// the per-line DIP feather, the settled/eps write-stops (a tick that moves nothing writes nothing).</summary>
-        public static void DriveUi(SceneStore scene, NodeHandle main, NodeHandle glow, Lyrics.Line line, long now, float runLen)
-        {
-            if (main.IsNull || !scene.IsLive(main) || !scene.TryGetGlyphWipe(main, out var mw)) return;
-            float split = UiSplit(line, now, runLen);
-            float softness = Lyrics.Wipe.SoftnessOfLine(runLen > 1f ? runLen : MathF.Max(1f, scene.Bounds(main).W), large: true);
-            if (WipeMoved(split, softness, in mw))
-            {
-                scene.SetGlyphWipe(main, mw with { Split = split, Softness = softness, Run = Run(runLen) });
-                scene.Mark(main, NodeFlags.PaintDirty);
-            }
-            if (glow.IsNull || !scene.IsLive(glow) || !scene.TryGetGlyphWipe(glow, out var gw) || !WipeMoved(split, softness, in gw)) return;
-            scene.SetGlyphWipe(glow, gw with { Split = split, Softness = softness, Run = Run(runLen) });   // the bloom tracks the main layer exactly
-            scene.Mark(glow, NodeFlags.PaintDirty);
-        }
-
-        static bool WipeMoved(float split, float softness, in GlyphWipe w)
-            => !Lyrics.Wipe.SplitSettled(split, w.Split)
-               && (MathF.Abs(split - w.Split) > Lyrics.Wipe.SplitEps || MathF.Abs(softness - w.Softness) > Lyrics.Wipe.SoftnessEps);
-
-        /// <summary>The authored split (and its feather and run), written only when it differs.</summary>
-        static void WriteSplit(SceneStore scene, NodeHandle node, float split, float softness, float runLen)
-        {
-            if (node.IsNull || !scene.IsLive(node) || !scene.TryGetGlyphWipe(node, out var w)) return;
-            float run = Run(runLen);
-            if (w.Split == split && w.Run == run && MathF.Abs(softness - w.Softness) <= Lyrics.Wipe.SoftnessEps) return;
-            scene.SetGlyphWipe(node, w with { Split = split, Softness = softness, Run = run });
-            scene.Mark(node, NodeFlags.PaintDirty);
         }
     }
 
@@ -1488,7 +1337,7 @@ public static partial class Stage
             var track = ctx.RowValue();
             bool playing = Playback.IsPlaying.Value;
             bool loading = Playback.PhaseSignal.Value == Playback.Phase.Loading;
-            var tf = Shell.TransportFacts();
+            var tf = PlayerVerbs.TransportFacts();
             bool primary = Transport.PrimaryEnabled(track.IsValid, loading);
             var lib = Controls.Library;
             string uri = track.IsValid ? track.Uri.Text : "";
@@ -1548,11 +1397,11 @@ public static partial class Stage
                                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Shrink = 0f,
                                 Children =
                                 [
-                                    ToolTip.Wrap(Satellite(Icons.Shuffle, Shell.ToggleShuffle, tf.CanTransport, Playback.Shuffle.Value, set.Fill), Loc.Get(Strings.Player.Shuffle)),
+                                    ToolTip.Wrap(Satellite(Icons.Shuffle, static () => PlayerVerbs.Default.ToggleShuffle(), tf.CanTransport, Playback.Shuffle.Value, set.Fill), Loc.Get(Strings.Player.Shuffle)),
                                     ToolTip.Wrap(Glyph(Icons.Previous, static () => Playback.Previous(), 40f, 17f, tf.PrevEnabled), Loc.Get(Strings.Player.Previous)),
                                     Play(playing, primary, compact ? 52f : 56f, set),
                                     ToolTip.Wrap(Glyph(Icons.Next, static () => Playback.Next(), 40f, 17f, tf.NextEnabled), Loc.Get(Strings.Player.Next)),
-                                    ToolTip.Wrap(Satellite(repeat == RepeatMode.Track ? Icons.RepeatOne : Icons.RepeatAll, Shell.CycleRepeat, tf.CanTransport, repeat != RepeatMode.Off, set.Fill), Loc.Get(Strings.Player.Repeat)),
+                                    ToolTip.Wrap(Satellite(repeat == RepeatMode.Track ? Icons.RepeatOne : Icons.RepeatAll, static () => PlayerVerbs.Default.CycleRepeat(), tf.CanTransport, repeat != RepeatMode.Off, set.Fill), Loc.Get(Strings.Player.Repeat)),
                                 ],
                             },
                             new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = 6f, Children = right.ToArray() },
@@ -1572,8 +1421,8 @@ public static partial class Stage
         BrushTransitionMs = Design.Motion.Faster, Shadow = enabled ? Elevation.Card : (ShadowSpec?)null,
         HoverScale = Design.Motion.ScaleEmphatic.HoverIf(enabled), PressScale = Design.Motion.ScaleEmphatic.PressIf(enabled),
         Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, IsEnabled = enabled,
-        OnClick = static () => Shell.TogglePlayPause("stage.button"), Cursor = enabled ? CursorId.Hand : (CursorId?)null,
-        Children = [new TextEl(playing ? Icons.Pause : Icons.Play) { Size = 22f, FontFamily = Tok.Definition.Fonts.Icon, Color = enabled ? set.Ink : Ink.InkTertiary }],
+        OnClick = static () => PlayerVerbs.Default.TogglePlay("stage.button"), Cursor = enabled ? CursorId.Hand : (CursorId?)null,
+        Children = [new TextEl(playing ? Icons.Pause : Icons.Play) { Size = 22f, FontFamily = Theme.IconFont, Color = enabled ? set.Ink : Ink.InkTertiary }],
     };
 
     /// <summary>A plateless 40-DIP glyph button (glass on hover).</summary>
@@ -1662,7 +1511,7 @@ public static partial class Stage
             void Toggle()
             {
                 if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
-                Playback.PickerOpened();
+                PlayerVerbs.Default.OpenDevicePicker();
                 var opened = overlay.Open(() => anchor.Value, () => MenuFlyout.Create(DeviceItems(), () => handle.Value?.Close()),
                     FlyoutPlacement.TopEdgeAlignedRight, new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = true });
                 ctx.MenuOpen(true);                                                          // the flyout holds the chrome (V-U22)
@@ -1686,7 +1535,7 @@ public static partial class Stage
         static List<MenuFlyoutItem> DeviceItems()
             => Shell.DevicePickerMenuItems(Playback.OwnerSignal.Peek(), Playback.ActiveDeviceSlot.Peek(), Playback.Devices.Rows,
                 Playback.Audio.Devices.Peek(), Playback.Audio.SelectedOutputId.Peek(), Playback.Audio.Supported.Peek(),
-                Playback.Audio.PlayingOpened, Shell.PickerAskedQuality());
+                Playback.Audio.PlayingOpened, Shell.DevicePickerFacts.Quality);
     }
 
     /// <summary>"Artist · Album" (the previous stage's MetaLink with re-pushed type + colour). Subscribed to ITS row through the
@@ -1774,8 +1623,7 @@ public static partial class Stage
             if (r.Kind != EntityKind.Track) return;
             var route = Shell.LinkFor(new Track(r.Slot), Shell.LinkSlot.Artist);
             if (route.Kind == Shell.RouteKind.NotFound) return;
-            Close(_begin, "navigate");          // leave the stage BEFORE navigating (V-U29): the shell body is collapsed under it
-            Shell.GoTo(route);
+            StageVerbs.NavigateClosingStage(_begin, route);          // leave the stage BEFORE navigating (V-U29): the shell body is collapsed under it
         }
     }
 
@@ -1807,7 +1655,7 @@ public static partial class Stage
         {
             var ctx = UseContext(StageContext)!;
             var set = ctx.Accent.Value;
-            UseSignalEffect(() => { _ = Platform.SettingsChanged.Value; _autoplay.SetIfChanged(Platform.Settings.Get(Platform.Keys.AutoplayEnabled)); });
+            UseSignalEffect(() => { _ = Platform.SettingsChanged.Value; _autoplay.SetIfChanged(Shell.QueueModel.AutoplayEnabled()); });
             EntityId contextId = Playback.ContextUri.Value;
             Queue.ContextWire wire = Playback.ContextLabel.Value;
             UseEffect(static () => Queue.EnsureContext(Queue.ContextTarget(Playback.ContextUri.Peek(), Playback.ContextLabel.Peek())),
@@ -1837,7 +1685,7 @@ public static partial class Stage
                             {
                                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
                                 Children = [new TextEl(Loc.Get(Strings.Player.Autoplay)) { Size = MathF.Round(14f * s), LineHeight = MathF.Round(20f * s), Color = Ink.Ink },
-                                            ToggleSwitch.Create(_autoplay, static on => Platform.Settings.Set(Platform.Keys.AutoplayEnabled, on), style: toggle)],
+                                            ToggleSwitch.Create(_autoplay, static on => Shell.QueueVerbs.Default.SetAutoplay(on), style: toggle)],
                             },
                         ],
                     },

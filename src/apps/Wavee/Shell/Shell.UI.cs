@@ -120,14 +120,8 @@ public static partial class Shell
     {
         if (s_frameSeeded) return;
         s_frameSeeded = true;
-        Ui.RailWidth.Value = ClampRailWidth(Platform.Settings.Get(Platform.Keys.ShellRailWidth));
-        Ui.RailDragWidth.Value = Ui.RailWidth.Peek();
-        Ui.DockedVideoHeight.Value = ClampDockedVideoHeight(Platform.Settings.Get(Platform.Keys.ShellDockedVideoHeight), Ui.RailWidth.Peek());
-        if (Session.ShellSection is { } shell && shell.RailMode >= (int)RailMode.Lyrics && shell.RailMode <= (int)RailMode.Video)
-        {
-            Ui.RailOpen.Value = shell.RailOpen;
-            Ui.Mode.Value = (RailMode)shell.RailMode;
-        }
+        PanelHost.Shared.SeedSizes();
+        if (Session.ShellSection is { } shell) PanelHost.Shared.RestoreSession(shell.RailOpen, shell.RailMode);
     }
 
     // ══ 2. THE FRAME ROOT ═════════════════════════════════════════════════════════════════════════════════════════
@@ -619,7 +613,7 @@ public static partial class Shell
                 Transform = Prop.Of(() => Affine2D.Translation(FrameRules.RailSeamX(vp.Value.Width, Ui.RailDragWidth.Value), 0f)),
                 Children =
                 [
-                    Splitter.Create(Ui.RailDragWidth, CommitRailDrag, RailSeamOptions, collapsed: Ui.RailOpen, fade: _railFade,
+                    Splitter.Create(Ui.RailDragWidth, PanelHost.CommitWidth, RailSeamOptions, collapsed: Ui.RailOpen, fade: _railFade,
                         dragging: _railDragging, parts: _railSeamParts),
                 ],
             },
@@ -740,16 +734,6 @@ public static partial class Shell
             : Loc.Format("sidebar.seam.announceWidth", ("width", (int)Sidebar.Width.Peek())));
     }
 
-    /// <summary>F243: the drag's release. The seam wrote only <c>Ui.RailDragWidth</c>; the rail's layout width and
-    /// the persisted setting change here, once, so the page reflows and the PlayReady stream resizes once per drag.</summary>
-    static void CommitRailDrag()
-    {
-        if (FrameRules.RailDragCommit(Ui.RailDragWidth.Peek(), Ui.RailWidth.Peek()) is not { } w) return;
-        Ui.RailWidth.Value = w;
-        Ui.RailDragWidth.Value = w;
-        Platform.Settings.Set(Platform.Keys.ShellRailWidth, w);
-    }
-
     /// <summary>F11 — closes the fullscreen stage if it is up; otherwise exits / enters video fullscreen; otherwise opens
     /// the stage (an empty stage is allowed; <c>Stage.Open</c> itself refuses over fullscreen video). With focus inside a
     /// player the element consumes F11 first (focused routing precedes accelerators), so exactly one of them fires.</summary>
@@ -787,7 +771,7 @@ public static partial class Shell
         }
         if (e.KeyCode == Keys.Space && FrameRules.SpaceTogglesPlayback(false, FocusedIsTextEditor()))
         {
-            TogglePlayPause("space");
+            PlayerVerbs.Default.TogglePlay("space");
             e.Handled = true;
         }
     }

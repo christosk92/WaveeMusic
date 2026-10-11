@@ -386,13 +386,13 @@ public static partial class SettingsVerbs
 
     public static bool SetNpvPresentation(int index)
     {
-        Rail.PlayerPrefs.SetPresentation(index, Rail.NpvDiagnostics.SourceSettings);
+        Shell.DeckPrefs.SetPresentation(index, Shell.DeckPrefSource.Settings);
         return false;
     }
 
     public static bool SetNpvStyle(int index)
     {
-        Rail.PlayerPrefs.SetStyle(index, Rail.NpvDiagnostics.SourceSettings);
+        Shell.DeckPrefs.SetStyle(index, Shell.DeckPrefSource.Settings);
         return false;
     }
 }

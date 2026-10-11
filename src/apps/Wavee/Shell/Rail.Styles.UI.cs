@@ -99,7 +99,7 @@ public static partial class Rail
             Width = ThumbSize, Shrink = 0f, Direction = 1, Gap = ThumbCardPad, Padding = Edges4.All(ThumbCardPad),
             AlignItems = FlexAlign.Center, Corners = CornerRadius4.All(6f),
             Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, FocusVisualMargin = Design.FocusInsetBordered,
-            OnClick = () => PlayerPrefs.SetStyle(id, NpvDiagnostics.SourceFlyout),
+            OnClick = () => Shell.DeckPrefs.SetStyle(id, Shell.DeckPrefSource.Flyout),
             Children =
             [
                 Thumbnail(id, ThumbSize - 2f * ThumbCardPad),
@@ -132,8 +132,8 @@ public static partial class Rail
         var items = new SegmentedItem[option.Choices.Length];
         for (int i = 0; i < items.Length; i++) items[i] = new SegmentedItem(Loc.Get(option.Choices[i].LabelKey));
         // A per-render mirror: the click writes it (the pill moves at once), then onChange writes the store.
-        return Segmented.Create(items, new Signal<int>(PlayerPrefs.Choice(preset, option)),
-            i => PlayerPrefs.SetChoice(preset, option, i, NpvDiagnostics.SourceFlyout),
+        return Segmented.Create(items, Shell.DeckPrefs.ChoiceMirror(preset, option),
+            i => Shell.DeckPrefs.SetChoice(preset, option, i, Shell.DeckPrefSource.Flyout),
             new Segmented.SegmentedOptions { Style = CompactSeg });
     }
 
@@ -157,7 +157,7 @@ public static partial class Rail
                 AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                 BorderWidth = selected ? 2f : 0f, BorderColor = selected ? Tok.AccentDefault : ColorF.Transparent,
                 Role = AutomationRole.RadioButton, Focusable = true, Cursor = CursorId.Hand, FocusVisualMargin = Design.FocusInsetBordered,
-                OnClick = () => PlayerPrefs.SetChoice(preset, option, index, NpvDiagnostics.SourceFlyout),
+                OnClick = () => Shell.DeckPrefs.SetChoice(preset, option, index, Shell.DeckPrefSource.Flyout),
                 Children =
                 [
                     new BoxEl
@@ -185,14 +185,14 @@ public static partial class Rail
     static ContextMenuModel? ArtMenu(int presentation, in PlayerCatalog.Preset preset, bool switchVisible)
     {
         var style = new MenuFlyoutItem(Loc.Get(Strings.Player.PlayerStyleEllipsis), Icons.Settings,
-            Invoke: static () => PlayerPrefs.StyleFlyoutOpen.Value = true);
+            Invoke: static () => Shell.DeckPrefs.OpenStyleFlyout());
         if (!switchVisible) return new ContextMenuModel([style]);
         return new ContextMenuModel(
         [
             MenuFlyoutItem.RadioItem(Loc.Get(Strings.Player.PresentationCover), presentation == PlayerPrefs.Cover,
-                static () => PlayerPrefs.SetPresentation(PlayerPrefs.Cover, NpvDiagnostics.SourceArtMenu), Icons.Picture),
+                static () => Shell.DeckPrefs.SetPresentation(PlayerPrefs.Cover, Shell.DeckPrefSource.ArtMenu), Icons.Picture),
             MenuFlyoutItem.RadioItem(Loc.Get(preset.ShortLabelKey), presentation == PlayerPrefs.Player,
-                static () => PlayerPrefs.SetPresentation(PlayerPrefs.Player, NpvDiagnostics.SourceArtMenu), Icons.Album),
+                static () => Shell.DeckPrefs.SetPresentation(PlayerPrefs.Player, Shell.DeckPrefSource.ArtMenu), Icons.Album),
             MenuFlyoutItem.Separator,
             style,
         ]);

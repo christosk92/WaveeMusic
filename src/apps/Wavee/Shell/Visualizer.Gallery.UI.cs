@@ -176,57 +176,6 @@ public static partial class Visualizer
         }
     }
 
-    /// <summary>The gallery's keyboard arithmetic over the grouped grid: the shown faces in order, each group starting a
-    /// fresh row of <c>cols</c>. ↑ / ↓ keep the column across a group boundary (clamped to the shorter row).</summary>
-    public static class GalleryNav
-    {
-        /// <summary>The index the key moves to from <paramref name="index"/>; −1 for a key the grid does not take.</summary>
-        public static int Move(int index, int keyCode, int cols)
-        {
-            int n = Catalog.ShownCount;
-            cols = Math.Max(1, cols);
-            index = Math.Clamp(index, 0, n - 1);
-            switch (keyCode)
-            {
-                case Keys.Left: return Math.Max(0, index - 1);
-                case Keys.Right: return Math.Min(n - 1, index + 1);
-                case Keys.Home: return 0;
-                case Keys.End: return n - 1;
-                case Keys.Up:
-                case Keys.Down:
-                {
-                    var (start, count) = GroupSpan(index);
-                    int row = (index - start) / cols, col = (index - start) % cols, rows = (count + cols - 1) / cols;
-                    if (keyCode == Keys.Down)
-                    {
-                        if (row + 1 < rows) return Math.Min(start + count - 1, start + (row + 1) * cols + col);
-                        if (start + count >= n) return index;
-                        var (ns, nc) = GroupSpan(start + count);
-                        return ns + Math.Min(col, nc - 1);
-                    }
-                    if (row > 0) return start + (row - 1) * cols + col;
-                    if (start == 0) return index;
-                    var (ps, pc) = GroupSpan(start - 1);
-                    int lastRow = (pc - 1) / cols;
-                    return ps + Math.Min(lastRow * cols + col, pc - 1);
-                }
-                default: return -1;
-            }
-        }
-
-        /// <summary>The first index and the size of the group <paramref name="index"/> belongs to (groups are contiguous in
-        /// <see cref="Catalog.Shown"/>).</summary>
-        public static (int Start, int Count) GroupSpan(int index)
-        {
-            var shown = Catalog.Shown;
-            var g = Catalog.GroupOf(shown[index]);
-            int start = index, end = index;
-            while (start > 0 && Catalog.GroupOf(shown[start - 1]) == g) start--;
-            while (end + 1 < shown.Length && Catalog.GroupOf(shown[end + 1]) == g) end++;
-            return (start, end - start + 1);
-        }
-    }
-
     static void PickFace(Kind kind)
     {
         Prefs.Stage.SetVisualizer((int)kind);
@@ -395,11 +344,4 @@ public static partial class Visualizer
         Group.Zune => Strings.Stage.VizGroup.Zune, Group.ITunes => Strings.Stage.VizGroup.Itunes, _ => Strings.Stage.VizGroup.Fluent,
     };
 
-    /// <summary>The tile's second line: the face's blurb, or — while it is the active kind falling back — where its motion comes from.
-    /// <paramref name="current"/> is the context's kind SIGNAL value (never a registry read — O8).</summary>
-    static string SubtitleOf(Kind k, Kind current, Source live)
-    {
-        if (current != k || live == Source.Live) return Loc.Get(SubKey(k));
-        return Loc.Get(live switch { Source.Precomputed => Strings.Stage.Source.Precomputed, Source.TempoGrid => Strings.Stage.Source.Tempo, _ => Strings.Stage.Source.Breath });
-    }
 }

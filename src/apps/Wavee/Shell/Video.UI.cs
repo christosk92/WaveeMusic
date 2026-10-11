@@ -193,7 +193,7 @@ public static partial class Video
             // boundary or a primary click) — committing OpenAt against that stale stamp resolved to None: the video
             // loaded and played with no surface to show it (2026-09-22: audio, an endless join spinner, no window).
             return MenuFlyoutItem.RadioItem(Loc.Get(labelKey), now == p,
-                () => { State.FoldAvailability(hasVideo); State.OpenAt(p); }, icon, allowed) with { AcceleratorText = accel };
+                () => PlayerVerbs.Default.SetVideoPlacement(p, hasVideo), icon, allowed) with { AcceleratorText = accel };
         }
 
         var items = new List<MenuFlyoutItem>(7)
@@ -1373,23 +1373,27 @@ public static partial class Video
     sealed class FullscreenSurface : Component
     {
         NodeHandle _root;
+        IImmersiveHost? _immersiveHost;
+
+        /// <summary>Fullscreen is still wanted (the host mounts this surface while it resolves): a teardown that finds it true is a REMOUNT.</summary>
+        static bool FullscreenWanted() => PlacementCore.Resolve(State.Surface.Peek()) == SurfacePlacement.Fullscreen;
 
         public override Element Render()
         {
             var hooks = UseContext(InputHooks.Current);
-            var priorOsFullscreen = UseRef(false);
-            var priorFocus = UseRef<NodeHandle>(default);
+            var immersive = ImmersiveService.Shared;
+            var immersiveHost = _immersiveHost ??= new HooksImmersiveHost(hooks);
 
             bool live = PlacementCore.Resolve(State.Surface.Value) == SurfacePlacement.Fullscreen;
             UseEffect(() => State.ReportLive(SurfacePlacement.Fullscreen, live), DepKey.From(live));
             UseEffect(() => () => State.ReportLive(SurfacePlacement.Fullscreen, false), DepKey.Empty);
 
-            // REAL OS fullscreen, restoring the REMEMBERED prior state — never an unconditional false.
+            // REAL OS fullscreen, restoring the REMEMBERED prior state — never an unconditional false (ImmersiveService: keyed by the
+            // mode, so a remount of this surface while fullscreen is still wanted does not leave it).
             UseLayoutEffect(() =>
             {
-                priorOsFullscreen.Value = hooks.IsWindowFullscreen?.Invoke() ?? false;
-                if (!priorOsFullscreen.Value) hooks.WindowSetFullscreen?.Invoke(true);
-                return () => { if (!priorOsFullscreen.Value) hooks.WindowSetFullscreen?.Invoke(false); };
+                immersive.EnterWindow(ImmersiveKind.VideoFullscreen, immersiveHost);
+                return () => { immersive.ReleaseWindow(ImmersiveKind.VideoFullscreen, immersiveHost, FullscreenWanted); };
             }, DepKey.Empty);
 
             // A focus SCOPE at the root (Tab cannot walk into the collapsed chrome); focus parks INSIDE the video — but only
@@ -1397,18 +1401,9 @@ public static partial class Video
             UseLayoutEffect(() =>
             {
                 if (Context.HostNode.IsNull) return null;
-                var root = Context.HostNode;
-                priorFocus.Value = hooks.GetFocus?.Invoke() ?? default;
-                hooks.PushFocusScope?.Invoke(root);
-                if (FullscreenEntry.UserInitiated(s_beforeFullscreen, State.Surface.Peek()))
-                    hooks.FocusNode?.Invoke(root, false);
-                return () =>
-                {
-                    hooks.PopFocusScope?.Invoke(root);
-                    var back = priorFocus.Value;
-                    priorFocus.Value = default;
-                    if (!back.IsNull) hooks.RestoreFocus?.Invoke(back);
-                };
+                immersive.PushFocus(ImmersiveKind.VideoFullscreen, immersiveHost, Context.HostNode,
+                    focusRoot: FullscreenEntry.UserInitiated(s_beforeFullscreen, State.Surface.Peek()));
+                return () => { immersive.ReleaseFocus(ImmersiveKind.VideoFullscreen, immersiveHost, FullscreenWanted); };
             }, DepKey.Empty);
 
             return new BoxEl

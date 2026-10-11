@@ -95,7 +95,7 @@ public static partial class Queue
     // ══ 1. SHARED READS ═══════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>A remote device owns playback: the list is its mirror, and local edits would be overwritten.</summary>
-    static bool Viewing => Playback.OwnerSignal.Peek() == Playback.Owner.Foreign;
+    static bool Viewing => Shell.QueueModel.IsViewer();
 
     /// <summary><see cref="Unavailable"/>: a ruled-unavailable track — the row says so (no artists, no cover) instead of
     /// painting what the table still holds of it.</summary>
@@ -264,6 +264,9 @@ public static partial class Queue
         protected const int PageSize = 100;
         protected readonly View View = new();
         protected readonly Reorderable Reorder;
+        /// <summary>This surface's page counters ("Show more") and the core queue verbs bound to them.</summary>
+        protected readonly Shell.QueuePages Pages;
+        protected readonly Shell.QueueVerbs Verbs;
         protected IOverlayService? MenuHost;
         protected bool Viewer, Autoplay;
         protected EntityRef Current;
@@ -274,9 +277,11 @@ public static partial class Queue
         /// row's height says so through <see cref="SetRowExtent"/> before it configures the lane.</summary>
         protected float RowExtent { get; private set; }
 
-        protected QueueSurface(float rowExtent)
+        protected QueueSurface(float rowExtent, Shell.QueuePages pages)
         {
             RowExtent = rowExtent;
+            Pages = pages;
+            Verbs = new Shell.QueueVerbs(pages);
             Reorder = new Reorderable(Drag.Resource)
             {
                 ItemExtent = rowExtent,
@@ -323,7 +328,7 @@ public static partial class Queue
             UseEffect(s_observeContext);
             Viewer = Playback.OwnerSignal.Value == Playback.Owner.Foreign;
             _ = Platform.SettingsChanged.Value;
-            Autoplay = Platform.Settings.Get(Platform.Keys.AutoplayEnabled);
+            Autoplay = Shell.QueueModel.AutoplayEnabled();
             var rows = Queue.Rows;
             View.Read(rows, Divider(rows, Viewer ? -1 : Playback.Snap().Cursor.Index));
             return rows;
@@ -358,7 +363,7 @@ public static partial class Queue
         protected Element Attach(BoxEl row, ulong itemId, int index, EntityRef r)
         {
             bool viewer = Viewer;
-            return MenuHost is { } host ? row.WithContextMenu(host, () => RowMenu(itemId, index, r, viewer)) : row;
+            return MenuHost is { } host ? row.WithContextMenu(host, () => Verbs.RowMenu(itemId, index, r, viewer)) : row;
         }
 
         float ExtentAt(int i) => (uint)i < (uint)View.SlotCount ? ExtentOf(View.Slots[i]) : RowExtent;
@@ -373,12 +378,12 @@ public static partial class Queue
         void CommitMove(int from, int to)
         {
             var plan = QueueMovePlan.For(View.Live, from, to);
-            if (plan.Kind == QueueMoveKind.Move) MoveRow(plan.Section, plan.FromPos, plan.ToPos);
+            if (plan.Kind == QueueMoveKind.Move) Verbs.Move(plan.Section, plan.FromPos, plan.ToPos);
             else if (plan.Kind == QueueMoveKind.Refused) Notify.Say(Loc.Get(Strings.Drag.CantMoveAcrossSections));
         }
 
         void CommitForeign(object? payload, int fromIndex, Reorderable? from, Reorderable to, int slot)
-            => InsertPayload(payload, QueueMovePlan.InsertIndex(View.Live, slot));
+            => Verbs.DropInsert(payload, QueueMovePlan.InsertIndex(View.Live, slot));
     }
 
     /// <summary>The queue row as a drag: its track travels for the chip, and <c>SourceQueueItemId</c> marks it a reorder
@@ -414,7 +419,6 @@ public static partial class Queue
         const float MoreRowH = 40f;
         static float MoreExtent => MoreRowH + Spacing.XS + Spacing.XXS;
 
-        readonly Signal<int> _userPages = new(1), _nextPages = new(1), _autoPages = new(1);
         readonly SwipeGroup _swipe = new();
         /// <summary>The panel viewport's scroll handle: any scroll while a row's swipe is open closes it.</summary>
         readonly ScrollHandle _scroll = new();
@@ -428,7 +432,7 @@ public static partial class Queue
         readonly Signal<ColorF> _chipAccent = new(Tok.AccentDefault);
         readonly Action _pushChip;
 
-        public RailPanel() : base(QueueRowRules.Extent(classic: false, QueueArt))
+        public RailPanel() : base(QueueRowRules.Extent(classic: false, QueueArt), new Shell.QueuePages())
         {
             _pushChip = () => _chipAccent.Value = _chipPending;
             _closeSwipeOnScroll = () =>
@@ -459,12 +463,10 @@ public static partial class Queue
             _ => RowExtent,                 // the live skin's: SetRowExtent, each render
         };
 
-        Signal<int> PagesOf(QueueSection s) => s switch { QueueSection.Queue => _userPages, QueueSection.NextUp => _nextPages, _ => _autoPages };
-
         public override Element Render()
         {
             var rows = Prologue();
-            UseEffect(() => { _userPages.Value = 1; _nextPages.Value = 1; _autoPages.Value = 1; }, DepKey.From(ContextId.GetHashCode()));
+            UseEffect(() => Pages.Reset(), DepKey.From(ContextId.GetHashCode()));
             UseSignalEffect(_closeSwipeOnScroll);
             bool classic = Prefs.Appearance.TrackRowStyle() == 1;
             bool art = !classic && !Prefs.Appearance.TrackArtworkHidden();
@@ -475,16 +477,17 @@ public static partial class Queue
             if (cover.Length > 0) _ = Palette.Watch(cover).Value;
             ResolveChipAccent(cover);
 
-            View.Build(QueueSlots.Realized(View.User, _userPages.Value, PageSize), QueueSlots.Realized(View.Next, _nextPages.Value, PageSize),
-                       QueueSlots.Realized(View.Auto, _autoPages.Value, PageSize), Autoplay, headers: true);
+            View.Build(QueueSlots.Realized(View.User, Pages.Of(QueueSection.Queue).Value, PageSize),
+                       QueueSlots.Realized(View.Next, Pages.Of(QueueSection.NextUp).Value, PageSize),
+                       QueueSlots.Realized(View.Auto, Pages.Of(QueueSection.Autoplay).Value, PageSize), Autoplay, headers: true);
             ConfigureReorder();
             DumpRows(rows);
 
             var content = new List<Element>(4);
-            if (ContextName(ContextId, in Wire) is { Length: > 0 } source) content.Add(PlayingFrom(source, ContextTarget(ContextId, in Wire)));
+            if (Shell.QueueModel.PlayingFromOf(ContextId, in Wire) is { } playingFrom) content.Add(PlayingFrom(playingFrom.Name, playingFrom.Target));
             if (!Current.IsNone) content.Add(NowPlayingCard(Current, classic));
             if (View.SlotCount > 0) content.Add((BoxEl)Reorder.List(Upcoming(rows, art, classic)) with { Grow = 0f, Key = "lane:upcoming" });
-            if (Current.IsNone && View.User == 0 && View.Next == 0)
+            if (Shell.QueueModel.ShowsNothingPlaying(Current.IsNone, new Shell.QueueCounts(View.User, View.Next, View.Auto)))
                 content.Add(Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact,
                                              title: Loc.Get(Strings.Player.NothingPlaying), subtitle: ""));
 
@@ -502,10 +505,10 @@ public static partial class Queue
                         Direction = 0, Wrap = true, Gap = 8f, AlignItems = FlexAlign.Center, Padding = new Edges4(0f, 4f, 0f, 10f),
                         Children =
                         [
-                            Pill(Icons.Shuffle, Loc.Get(Strings.Player.Shuffle), shuffle, static () => Shell.ToggleShuffle()),
+                            Pill(Icons.Shuffle, Loc.Get(Strings.Player.Shuffle), shuffle, static () => PlayerVerbs.Default.ToggleShuffle()),
                             Pill(repeat == RepeatMode.Track ? Icons.RepeatOne : Icons.RepeatAll, Loc.Get(Strings.Player.Repeat),
-                                 repeat != RepeatMode.Off, static () => Shell.CycleRepeat()),
-                            Pill("∞", Loc.Get(Strings.Player.Autoplay), Autoplay, static () => ToggleAutoplay(), glyphIsText: true),
+                                 repeat != RepeatMode.Off, static () => PlayerVerbs.Default.CycleRepeat()),
+                            Pill("∞", Loc.Get(Strings.Player.Autoplay), Autoplay, static () => Shell.QueueVerbs.Default.ToggleAutoplay(), glyphIsText: true),
                         ],
                     },
                     new ScrollEl
@@ -575,7 +578,7 @@ public static partial class Queue
             if (!removable || !Controls.SwipeArmed) return el;
             var remove = new SwipeAction(ActionIcons.Resolve(ActionIcons.Remove), Loc.Get(Strings.Menu.RemoveFromQueue))
             {
-                OnInvoked = () => RemoveRow(itemId, index, r),
+                OnInvoked = () => Verbs.Remove(itemId, index, r),
             };
             SwipeSide? like = r.Kind == EntityKind.Track && AppActions.Find(ActionId.ToggleLike) is { } toggle
                 ? SwipeSide.Of(toggle.ToSwipeAction(new ActionContext(ActionTarget.ForTracks([new Track(r.Slot)]), Actions.Services)))
@@ -586,16 +589,16 @@ public static partial class Queue
         /// <summary>The Modern row: THE shared media surface (<c>Shape.Row</c>) over the row's own adapter — the plate, the
         /// hand, the play FAB, the pill and the right-click menu are the surface's (no "…" button,
         /// <see cref="QueueRowRules.ShowsMenuButton"/>); the heart and ✕ are its trailing cluster. A click (and the FAB) is
-        /// a cursor move inside the live session (<see cref="SkipToRow"/>), and the lane's reorder gesture rides the wrapper
+        /// a cursor move inside the live session (<see cref="Shell.IQueueVerbs.Play"/>), and the lane's reorder gesture rides the wrapper
         /// above the row, so the surface carries a drag of its own only for a viewer, who has no lane. The wrapper here carries what the surface has no dial for: the key (a skin flip REMOUNTS), the
         /// autoplay dim and the Enter/Exit/Slide motion.</summary>
         Element SurfaceRow(RowText text, EntityRef r, ulong itemId, int index, QueueSection section, bool art, bool removable)
         {
             bool viewer = Viewer;
-            Action skip = () => SkipToRow(itemId, index, r);
+            Action skip = () => Verbs.Play(itemId, index, r);
             var data = SurfaceData(r, text, art, click: skip, play: skip, draggable: QueueRowRules.RowDrags(viewer), queueItem: itemId,
-                                   menu: () => RowMenu(itemId, index, r, viewer),
-                                   trailing: RowTrailing(text, removable, () => RemoveRow(itemId, index, r)));
+                                   menu: () => Verbs.RowMenu(itemId, index, r, viewer),
+                                   trailing: RowTrailing(text, removable, () => Verbs.Remove(itemId, index, r)));
             var shape = Shape.Row(TrackRowRules.ArtEdge(QueueArt, art)) with { MinHeight = RowExtent };
             return new BoxEl
             {
@@ -621,7 +624,7 @@ public static partial class Queue
                 [
                     HeartLane(text, ClassicExtent),
                     ClassicIdentity(text, nowPlaying: false),
-                    removable ? CloseGlyph(() => RemoveRow(itemId, index, r), classic: true) : new BoxEl { Width = Controls.IconButtonSize, Shrink = 0f },
+                    removable ? CloseGlyph(() => Verbs.Remove(itemId, index, r), classic: true) : new BoxEl { Width = Controls.IconButtonSize, Shrink = 0f },
                 ],
             };
             var row = new BoxEl
@@ -634,7 +637,7 @@ public static partial class Queue
                 PressScale = Design.Motion.ScaleSubtle.Press,
                 Opacity = QueueRowRules.Dim(section),
                 Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true,
-                OnClick = () => SkipToRow(itemId, index, r),
+                OnClick = () => Verbs.Play(itemId, index, r),
                 Enter = new EnterExit(Dy: 6f, Opacity: 0f, Active: true),
                 Exit = new EnterExit(Dy: -4f, Opacity: 0f, Active: true),
                 Layout = LayoutTransition.Slide,
@@ -803,7 +806,7 @@ public static partial class Queue
                 {
                     Padding = new Edges4(Spacing.S, Spacing.XXS, Spacing.S, Spacing.XXS), Corners = Radii.ControlAll,
                     HoverFill = Design.Colors.RowHover, PressedFill = Design.Colors.RowPressed,
-                    Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, OnClick = static () => ClearRows(),
+                    Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, OnClick = static () => Shell.QueueVerbs.Default.Clear(),
                     Children = [new TextEl(Loc.Get(Strings.Player.Clear)) { Size = 12f, LineHeight = 16f, Weight = 600, Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary }],
                 });
             bool hint = section == QueueSection.Autoplay;
@@ -823,15 +826,14 @@ public static partial class Queue
 
         Element ShowMore(QueueSection section)
         {
-            var pages = PagesOf(section);
-            int total = View.CountOf(section), remaining = total - QueueSlots.Realized(total, pages.Peek(), PageSize);
+            int total = View.CountOf(section), remaining = total - QueueSlots.Realized(total, Pages.Of(section).Peek(), PageSize);
             return new BoxEl
             {
                 Key = "more:" + Tag(section),
                 Direction = 0, Height = MoreRowH, Gap = Spacing.S, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                 BlocksDragArm = true, Margin = new Edges4(0f, Spacing.XS, 0f, Spacing.XXS), Corners = Radii.ControlAll,
                 Fill = Tok.FillCardSecondary, HoverFill = Design.Colors.RowHover, PressedFill = Design.Colors.RowPressed,
-                Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, OnClick = () => pages.Value = pages.Peek() + 1,
+                Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, OnClick = () => Verbs.ShowMore(section),
                 Layout = LayoutTransition.Slide,
                 Children =
                 [
@@ -946,8 +948,6 @@ public static partial class Queue
         Children = [Controls.Artwork(url, edge, edge, Radii.Control, decodePx: decode), Controls.NowPlayingOverlay(uri, play, fab, centred: true)],
     };
 
-    static void ToggleAutoplay() => Platform.Settings.Set(Platform.Keys.AutoplayEnabled, !Platform.Settings.Get(Platform.Keys.AutoplayEnabled));
-
     // ══ 4. THE STAGE QUEUE PANE (ch 21 W12) ═══════════════════════════════════════════════════════════════════════════
 
     /// <summary>The rows under K's stage skin, sized for the stage: every metric scales by <c>Stage.Layout.QueueScale</c> (1 on
@@ -963,10 +963,9 @@ public static partial class Queue
         const float HeaderH = 40f;
         const float MoreRowH = 40f;
 
-        readonly Signal<int> _pages = new(1);
         float _s = 1f;
 
-        public StagePane() : base(RowH) { }
+        public StagePane() : base(RowH, new Shell.QueuePages(unified: true)) { }
 
         /// <summary>The first row of the whole upcoming list is the Next row: its extent includes the gap under it.</summary>
         bool IsNextSlot(QueueSlot slot) => slot.IsRow && View.FlatIndex(slot.Section, slot.Pos) == 0;
@@ -983,9 +982,9 @@ public static partial class Queue
             var rows = Prologue();
             _s = UseContext(Stage.StageContext)?.Layout.Value.QueueScale ?? 1f;
             SetRowExtent(RowH * _s);
-            UseEffect(() => { _pages.Value = 1; }, DepKey.From(ContextId.GetHashCode()));
+            UseEffect(() => Pages.Reset(), DepKey.From(ContextId.GetHashCode()));
             bool art = !Prefs.Appearance.TrackArtworkHidden();
-            int pages = _pages.Value;
+            int pages = Pages.Of(QueueSection.Queue).Value;
             View.Build(QueueSlots.Realized(View.User, pages, PageSize), QueueSlots.Realized(View.Next, pages, PageSize),
                        QueueSlots.Realized(View.Auto, pages, PageSize), Autoplay, headers: true);
             ConfigureReorder();
@@ -1006,7 +1005,7 @@ public static partial class Queue
                 }
                 kids.Add((BoxEl)Reorder.List(new BoxEl { Key = "stageupcoming", Direction = 1, Children = slots }) with { Grow = 0f, Key = "stagelane:upcoming" });
             }
-            if (View.User == 0 && View.Next == 0 && View.Auto == 0)
+            if (Shell.QueueModel.IsEmpty(new Shell.QueueCounts(View.User, View.Next, View.Auto)))
                 kids.Add(new BoxEl
                 {
                     Padding = new Edges4(0f, Spacing.XXL, 0f, 0f),
@@ -1048,7 +1047,7 @@ public static partial class Queue
                     ],
                 },
             };
-            if (art) kids.Add(ArtTile(text.Art, text.Uri, () => SkipToRow(itemId, index, r), Px(RowArt), Px(26f), (int)Px(96f)));
+            if (art) kids.Add(ArtTile(text.Art, text.Uri, () => Verbs.Play(itemId, index, r), Px(RowArt), Px(26f), (int)Px(96f)));
             kids.Add(TitleBlock(text, Px(14f), Px(20f), 600, null, Px(12f), Px(16f)));
             // Tabular by geometry: a fixed end-aligned slot, so every colon lands on the same x.
             kids.Add(new BoxEl
@@ -1068,7 +1067,7 @@ public static partial class Queue
                 PressScale = Design.Motion.ScaleSubtle.Press,
                 Opacity = section == QueueSection.Autoplay ? 0.68f : 1f,
                 Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, AllowFocusOnInteraction = false,
-                OnClick = () => SkipToRow(itemId, index, r),
+                OnClick = () => Verbs.Play(itemId, index, r),
                 Enter = new EnterExit(Dy: 6f, Opacity: 0f, Active: true),
                 Exit = new EnterExit(Dy: -4f, Opacity: 0f, Active: true),
                 Layout = LayoutTransition.Slide,
@@ -1086,7 +1085,7 @@ public static partial class Queue
             ulong itemId = edge.ItemId;
             bool removable = QueueRowRules.Removable(Viewer, itemId);
             var kids = new List<Element>(4);
-            if (art) kids.Add(ArtTile(text.Art, text.Uri, () => SkipToRow(itemId, index, r), Px(NextArt), Px(32f), (int)Px(192f)));
+            if (art) kids.Add(ArtTile(text.Art, text.Uri, () => Verbs.Play(itemId, index, r), Px(NextArt), Px(32f), (int)Px(192f)));
             kids.Add(TitleBlock(text, Px(22f), Px(28f), 600, Loc.Get(Strings.Stage.NextTrack), Px(14f), Px(20f)));
             kids.Add(new BoxEl
             {
@@ -1107,7 +1106,7 @@ public static partial class Queue
                 PressScale = Design.Motion.ScaleSubtle.Press,
                 Opacity = section == QueueSection.Autoplay ? 0.68f : 1f,
                 Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, AllowFocusOnInteraction = false,
-                OnClick = () => SkipToRow(itemId, index, r),
+                OnClick = () => Verbs.Play(itemId, index, r),
                 Enter = new EnterExit(Dy: 6f, Opacity: 0f, Active: true),
                 Exit = new EnterExit(Dy: -4f, Opacity: 0f, Active: true),
                 Layout = LayoutTransition.Slide,
@@ -1138,7 +1137,7 @@ public static partial class Queue
         }
 
         Element RemoveSlot(bool removable, ulong itemId, int index, EntityRef r) => removable
-            ? new BoxEl { Opacity = 0f, HoverOpacity = 1f, Shrink = 0f, BlocksDragArm = true, Children = [StageGlyph(Icons.ChromeClose, () => RemoveRow(itemId, index, r))] }
+            ? new BoxEl { Opacity = 0f, HoverOpacity = 1f, Shrink = 0f, BlocksDragArm = true, Children = [StageGlyph(Icons.ChromeClose, () => Verbs.Remove(itemId, index, r))] }
             : new BoxEl { Width = Controls.IconButtonSize, Shrink = 0f };
 
         /// <summary>A section caption in the stage's ink: the section's name and its count (the rail's grammar, on media).</summary>
@@ -1175,7 +1174,7 @@ public static partial class Queue
                 Direction = 0, Height = Px(MoreRowH), Gap = Px(Spacing.S), AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                 BlocksDragArm = true, Margin = new Edges4(0f, Px(Spacing.XS), 0f, Px(Spacing.XXS)), Corners = Radii.ControlAll,
                 Fill = Ink.GlassRest, HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed,
-                Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, OnClick = () => _pages.Value = _pages.Peek() + 1,
+                Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, OnClick = () => Verbs.ShowMore(section),
                 Layout = LayoutTransition.Slide,
                 Children =
                 [
@@ -1194,136 +1193,6 @@ public static partial class Queue
             Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, OnClick = onClick,
             Children = [new TextEl(glyph) { Size = 12f, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.InkSecondary, HoverColor = Ink.Ink }],
         };
-    }
-
-    // ══ 5. THE ROW VERBS — resolved at INVOKE time ════════════════════════════════════════════════════════════════════
-
-    /// <summary>Where a row a render captured lives NOW: by its item id, else by the captured index while it still holds
-    /// the same ref.</summary>
-    static int Locate(ulong itemId, int index, EntityRef row)
-        => itemId != 0 ? IndexOfItem(itemId) : RefAt(index) == row && !row.IsNone ? index : -1;
-
-    /// <summary>A click on a row: a cursor move inside the live session, never a rebuild (ch 21 §6.4).</summary>
-    static void SkipToRow(ulong itemId, int index, EntityRef row)
-    {
-        int at = Locate(itemId, index, row);
-        if (at < 0) return;
-        EntityId context = Playback.ContextUri.Peek();
-        if (Viewing) { Playback.PlayNow(RefAt(at), context, CursorOf(at)); return; }      // the reducer forwards it
-        if (!SkipTo(at, Playback.Snap().Cursor, out QueueCursor cursor)) return;
-        Entities.Publish();
-        Playback.PlayNow(RefAt(cursor), context, cursor);
-    }
-
-    /// <summary>Play a queue row from OUTSIDE the panel (the rail's "Next up" rows): the very cursor move a click on the
-    /// panel's own row makes — <see cref="SkipTo"/> trims the rows the skip passes over, then the deck plays the row — and
-    /// a viewed (remote) queue forwards it. The row is found by <paramref name="itemId"/> in the LIVE queue, so a queue
-    /// that shifted since the caller rendered still plays the row the user clicked; <paramref name="index"/> and
-    /// <paramref name="row"/> are only the fallback for an entry that has no item id (0): the index the caller saw and
-    /// the ref it saw there, which must still agree. A row that is gone, or not upcoming, does nothing.</summary>
-    internal static void PlayItem(ulong itemId, int index = -1, EntityRef row = default) => SkipToRow(itemId, index, row);
-
-    static void RemoveRow(ulong itemId, int index, EntityRef row)
-    {
-        int at = Locate(itemId, index, row);
-        if (at >= 0 && !Viewing && RemoveUpcoming(at, Playback.Snap().Cursor)) Changed();
-    }
-
-    static void MoveRow(QueueSection section, int from, int to)
-    {
-        if (!Viewing && MoveInSection(section, from, to, Playback.Snap().Cursor)) Changed();
-    }
-
-    static void ClearRows()
-    {
-        if (!Viewing && ClearUserQueue(Playback.Snap().Cursor) > 0) Changed();
-    }
-
-    /// <summary>A queue edit landed: publish it now (a click is a drain boundary) and let the deck re-arm what plays next.</summary>
-    static void Changed()
-    {
-        Entities.Publish();
-        Playback.Post(Playback.Input.QueueChanged(Playback.FrameNowMs()));
-    }
-
-    /// <summary>A foreign drop on the lane: resolve the payload's tracks cold, insert them at the user-queue slot the
-    /// insertion line marked, capped like the player bar's drop, and say how many landed.</summary>
-    static void InsertPayload(object? payload, int userIndex)
-    {
-        if (Drag.Unwrap(payload) is { CanCopyTracks: true } p) _ = InsertPayloadAsync(p, userIndex);
-    }
-
-    static async Task InsertPayloadAsync(DragPayload payload, int userIndex)
-    {
-        Track[] tracks;
-        try { tracks = await payload.ResolveTracksAsync().ConfigureAwait(false); }
-        catch (Exception ex) { Log.Warn("queue", "drop could not resolve its tracks", ex); return; }
-        if (tracks.Length == 0) return;
-        Playback.ToUi(() =>
-        {
-            int cap = Shell.PlayerBarRules.DropInsertCount(tracks.Length), n = 0;
-            var refs = new EntityRef[cap];
-            for (int i = 0; i < cap; i++) if (tracks[i].IsValid) refs[n++] = new EntityRef(EntityKind.Track, tracks[i].Slot);
-            if (Viewing)
-            {
-                // G-248: another device plays — the rows go to its queue through Connect, not into a queue we do not own.
-                if (!Playback.QueueToOwner(refs.AsSpan(0, n), next: userIndex == 0))
-                { Notify.Say(Loc.Get(Strings.Detail.QueueUnavailable), InfoBarSeverity.Warning); return; }
-                Notify.Say(Strings.Detail.AddedToQueue(Strings.Detail.SongCount(n)), InfoBarSeverity.Success);
-                return;
-            }
-            int added = InsertUser(refs.AsSpan(0, n), Playback.Snap().Cursor, userIndex);
-            if (added == 0) return;
-            Changed();
-            Notify.Say(Shell.PlayerBarRules.DropWasTruncated(tracks.Length)
-                ? Strings.Detail.AddedFirstToQueue(Strings.Detail.SongCount(added))
-                : Strings.Detail.AddedToQueue(Strings.Detail.SongCount(added)), InfoBarSeverity.Success);
-        });
-    }
-
-    /// <summary>The queue-entry menu (ch 21 §6.4, 0.2.9 <c>Menus.QueueEntry</c>): header "{artists} · {section}", the strip
-    /// Play now · Play next · Add to queue · Like, the track rows, Move up / Move down where legal, Remove last.</summary>
-    static ContextMenuModel? RowMenu(ulong itemId, int index, EntityRef row, bool viewer)
-    {
-        int at = Locate(itemId, index, row);
-        if (at < 0 || row.Kind != EntityKind.Track || new Track(row.Slot) is not { IsValid: true } track) return null;
-        var rows = Rows;
-        int pos = PositionInSection(rows, Divider(rows, viewer ? -1 : Playback.Snap().Cursor.Index), at, out int count);
-        QueueSection section = SectionOf(rows[at]);
-        ulong id = rows[at].ItemId;
-        var ctx = new ActionContext(ActionTarget.ForQueueEntry(track, (long)id), Actions.Services);
-
-        var strip = new List<AppBarCommand>(4) { new AppBarCommand(Icons.Play, Loc.Get(Strings.Menu.PlayNow), () => SkipToRow(itemId, index, row)) };
-        ReadOnlySpan<ActionId> verbs = [ActionId.PlayNext, ActionId.AddToQueue, ActionId.ToggleLike];
-        for (int v = 0; v < verbs.Length; v++)
-            if (Actions.Menu.Command(verbs[v], in ctx) is { } command) strip.Add(command);
-
-        var list = new List<MenuFlyoutItem>(10);
-        Actions.Menu.AddRows(list, in ctx, [ActionId.AddToPlaylist, ActionId.GoToAlbum, ActionId.GoToArtist]);
-        if (Actions.Menu.Share(in ctx) is { } share) list.Add(share);
-        Actions.Menu.AddRows(list, in ctx, [ActionId.ViewCredits, ActionId.GoToSongRadio]);
-        bool editable = !viewer && id != 0 && pos >= 0;
-        if (editable && (pos > 0 || pos + 1 < count))
-        {
-            Actions.Menu.OpenGroup(list);
-            Actions.Menu.AddMoveRows(list, pos > 0 ? () => MoveRow(section, pos, pos - 1) : null,
-                                     pos + 1 < count ? () => MoveRow(section, pos, pos + 1) : null);
-        }
-        if (editable)
-        {
-            Actions.Menu.OpenGroup(list);
-            list.Add(new MenuFlyoutItem(Loc.Get(Strings.Menu.RemoveFromQueue), ActionIcons.Resolve(ActionIcons.Remove), true,
-                                        () => RemoveRow(itemId, index, row)));
-        }
-        string name = Loc.Get(section switch
-        {
-            QueueSection.Queue => Strings.Player.QueueSectionNext,
-            QueueSection.Autoplay => Strings.Player.QueueSectionAutoplay,
-            _ => Strings.Player.QueueSectionNextUp,
-        });
-        string artists = Entities.Strings.Resolve(track.ArtistLineId);
-        return new ContextMenuModel(strip, list,
-            Actions.Menu.Header(Controls.ArtUrl(track.ImageId), track.Title, artists.Length > 0 ? artists + " · " + name : name));
     }
 
     // ══ 6. QUEUEING (G-027) — a context LOAD is the playback host's (`Playback.PlayContext`) ═══════════════════════════
@@ -1390,7 +1259,7 @@ public static partial class Queue
         int cap = Shell.PlayerBarRules.DropInsertCount(refs.Length);
         int n = InsertUser(refs[..cap], Playback.Snap().Cursor, next ? 0 : int.MaxValue);
         if (n == 0) return;
-        Changed();
+        Shell.QueueVerbs.Changed();
         if (announce)
             Notify.Say(refs.Length > cap ? Strings.Detail.AddedFirstToQueue(Strings.Detail.SongCount(n))
                                          : Strings.Detail.AddedToQueue(Strings.Detail.SongCount(n)), InfoBarSeverity.Success);
@@ -1429,7 +1298,7 @@ public static partial class Queue
             Id = ActionId.RemoveFromQueue, IconKey = ActionIcons.Remove, Destructive = true,
             Label = static _ => Loc.Get(Strings.Menu.RemoveFromQueue),
             IsEnabled = static c => c.Target.Kind == TargetKind.QueueEntry && c.Target.QueueItemId != 0 && !Viewing,
-            Execute = static c => RemoveRow((ulong)c.Target.QueueItemId, -1, default),
+            Execute = static c => Shell.QueueVerbs.Default.Remove((ulong)c.Target.QueueItemId, -1, default),
         });
         AppActions.Register(new AppAction
         {
