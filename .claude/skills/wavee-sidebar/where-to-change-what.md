@@ -24,6 +24,7 @@ renderer.
 | Change how a recent item resolves its title | `Shell/Sidebar.Feeds.cs` (`SidebarRecentsRules`, `ISidebarEntityPeek`) | `SidebarFeedsTests.cs` |
 | Change a drop, the drop cue or the rootlist slot | `Shell/Sidebar.cs` (`RootlistSlotResolver`, `RootlistSlotMapper`); `Shell/Sidebar.UI.Drop.cs` (publish, commit, `MoveRootlist`) | `SidebarDropTests.cs` |
 | Change what a navigation view can read or ask (a nav fact, a verb, the readiness) | `Shell/NavModel.cs` (the verbs, the stored facts), `Shell/NavModel.Binder.cs` (the projection and its pump), `Shell/NavModel.Selection.cs` (selected route, play state); the binder's readiness in `Shell/Sidebar.Host.cs` | `NavModelTests.cs` |
+| Change Your Library's drill, chip commit, search rules or empty-state facts | `Shell/NavModel.Library.cs` (`NavLibrary`); the visuals in `Shell/Sidebar.UI.Library.cs` | `NavLibraryTests.cs` |
 | Change the account swap or signed-out behaviour | `Shell/Sidebar.Accounts.cs` (`EnsureAccount`, `SwapAccount`); `Shell/Sidebar.Store.cs` (`SidebarAccountKey`) | `SidebarAccountStoreTests.cs` |
 | Change re-plan causes or the census line | `Shell/Sidebar.Census.cs` (`SidebarReplanCause`, `SidebarReplanCensus`); the binder revision in `Shell/Sidebar.Host.cs` | `SidebarReplanCensusTests.cs`, `SidebarRevisionTests.cs` |
 | Change the section or folder disclosure | `Shell/Sidebar.Disclosures.cs` (the bookkeeping, in `feat/smooth-reveal`); `Shell/Sidebar.UI.cs` (`PaneView.StartDisclosure`) | `SidebarDisclosuresTests.cs` (in `feat/smooth-reveal`) |
@@ -37,7 +38,7 @@ Every `Shell/Sidebar*.cs` file, in alphabetical order.
 
 | File | What lives there |
 |---|---|
-| `Shell/NavModel.cs`, `NavModel.Binder.cs`, `NavModel.Selection.cs` | The nav model (`Sidebar.Model`): readiness, destinations, the read surface over the binder, the selected route and play state, and the `INavVerbs` verbs. |
+| `Shell/NavModel.cs`, `NavModel.Binder.cs`, `NavModel.Selection.cs`, `NavModel.Library.cs` | The nav model (`Sidebar.Model`): readiness, destinations, the read surface over the binder, the selected route and play state, and the `INavVerbs` verbs. |
 | `Shell/Sidebar.Accounts.cs` | The account swap: `EnsureAccount`, `SwapAccount`, the pending-file adoption on first sign-in. |
 | `Shell/Sidebar.Cards.cs` | Card surfaces: `SidebarCardSurface`, `SidebarCardActivation`, `SidebarCardDrop`, `SidebarCardRules`. |
 | `Shell/Sidebar.Census.cs` | The re-plan census: `SidebarReplanCause` (which planner input moved) and `SidebarReplanCensus` (the log line). |
@@ -57,7 +58,7 @@ Every `Shell/Sidebar*.cs` file, in alphabetical order.
 | `Shell/Sidebar.UI.Edit.cs` | Edit mode's view: `EditPane`, the Outline, the edit bar, and the Edit-mode key handlers (Ctrl+Z / Ctrl+Y included). |
 | `Shell/Sidebar.UI.Flyout.cs` | The collapsed rail's section and folder flyouts (`PaneSectionFlyout`, `PaneFolderFlyout`). |
 | `Shell/Sidebar.UI.Footer.cs` | `PaneFooter`: the footer row and its Settings pill. |
-| `Shell/Sidebar.UI.Library.cs` | The Library mode's view: `LibraryMode`, `LibrarySession`, `LibraryHead`, `LibraryChips`, `LibraryToolbar`, `LibrarySearchBox`. |
+| `Shell/Sidebar.UI.Library.cs` | The Library mode's view: `LibraryMode`, `LibrarySession` (pane reference and focus targets around the model's `NavLibrary`), `LibraryHead`, `LibraryChips`, `LibraryToolbar`, `LibrarySearchBox`. |
 | `Shell/Sidebar.UI.Menus.cs` | `SidebarMenus` (the menu run and labels) and the `PaneView` menu entry points. |
 | `Shell/Sidebar.UI.Rows.cs` | Row content: `RowSpec`, `EntityRow`, `Cover`, `LikedArt`, `Chevron`, `SelectionPill`, `Counts`, `ShortcutCount`, `Skeletons`. |
 | `Shell/Sidebar.UI.Slot.cs` | `PaneSlot`: the per-row component and the card and create-button slots. |

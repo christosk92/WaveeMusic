@@ -123,6 +123,12 @@ an `Acts?.Play`. Failed is published on the model only: the planner still reads 
 so a failed load draws as today's skeleton until a view draws the failure. Row planning, `PlanDiff` and the drag freeze
 stay in the view code.
 
+Your Library's session is the model's too: `Model.OpenLibrary(inDrawer)` returns a `NavLibrary` (`Shell/NavModel.Library.cs`), one
+per mount, holding the drill stack (`Drill`, `Back`, `ResetDrill`), the shaping state (`ReadState`, `ShapeInput`, `ShapeOptions`),
+the empty-state facts (`ReadFacts`), the chip commit (`SetFilter`, `ToggleChip`, `ClearFilter`), `SetSort`, `SetView`, the folder
+rule (`ActivateFolder`), and the search (`Find`, `Escape`, `SearchBlurred`, `CloseSearch`). The Classic `LibrarySession` keeps only
+the pane reference, the head's focus targets and the pill flag around it.
+
 ## 7. Stores, persistence and the account swap
 
 - **`sidebar.json`** (`SidebarStoreV3`, `Sidebar.Store.cs`, `FileName`): the device document, v3: the two layout overlays
