@@ -233,6 +233,15 @@
     <ProjectReference Include="$(EngineRoot)src\FluentGpu.SourceGen\FluentGpu.SourceGen.csproj"
                       OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
+  <!-- ── Theme layering analyzers (Wavee.Analyzers, WVTH rules) ───────────────────────────────────────────────
+       Loaded as an analyzer only (never linked). Each rule's grandfathered violations are AdditionalFiles named
+       analyzer-baseline\WVTHnnn.txt; a baseline entry that matches nothing is itself a warning (WVTH900). -->
+  <ItemGroup>
+    <ProjectReference Include="..\Wavee.Analyzers\Wavee.Analyzers.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <AdditionalFiles Include="analyzer-baseline\*.txt" />
+    <CompilerVisibleProperty Include="ProjectDir" />
+  </ItemGroup>
   <!-- JIT Debug/Release: NuGet drops e_sqlite3.dll under runtimes/ only; publish colocates it. Copy the arch-matching
        binary next to Wavee.exe so Rider F5 and the publish preflight share the same layout. -->
   <Target Name="CopyESqlite3ToAppRoot" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT'">

@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The in-repo Roslyn analyzer assembly for Wavee's theming architecture (WVTH rules, themes technical plan section 2.4).
+    Loaded by Wavee.csproj as an OutputItemType=Analyzer ProjectReference with ReferenceOutputAssembly=false, so this
+    netstandard2.0 assembly is never linked into the app. Mirrors the engine's FluentGpu.SourceGen project.
+      Baselines/  the shared baseline infrastructure: AdditionalFiles analyzer-baseline\WVTHnnn.txt, a compilation-end
+                  stale-entry diagnostic (WVTH900) and the no-baseline-allowed diagnostic (WVTH901).
+      Themes/     WVTH001, the Wavee.Themes.* layering rule.
+  -->
+
+  <PropertyGroup>
+    <!-- Analyzers MUST target netstandard2.0 (override the net10.0 repo baseline). -->
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <!-- Loads into whatever compiler host runs the build (an arm64 csc for an x64 cross-pack): stay AnyCPU. -->
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+
+    <!-- An analyzer assembly, not a library reference: do not emit it as a compile ref. -->
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IsAotCompatible>false</IsAotCompatible>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <!-- RS2008 (analyzer release tracking) is advisory; these analyzers ship in-repo, not as a NuGet analyzer. -->
+    <NoWarn>$(NoWarn);RS2008</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Pinned to 4.14.0 like the engine's FluentGpu.SourceGen. PrivateAssets=all keeps Roslyn from flowing to consumers. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>
