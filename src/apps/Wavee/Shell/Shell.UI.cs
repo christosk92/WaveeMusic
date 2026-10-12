@@ -535,7 +535,7 @@ public static partial class Shell
             OnContentRegionRealized = static h => { s_contentRegion = h; PublishScrimClip(); },
             OnContentRegionBounds = static _ => PublishScrimClip(),
             ChromeRow = static () => ChromeRow(),
-            PlayerBarDock = static () => PlayerBarDock(),
+            PlayerBar = PlayerBarHost.Props,
             MaterialLayer = static () => MaterialLayer(),
             ContentHost = static () => Embed.Comp(static () => new ContentHost()),
             SidebarPane = static () => Sidebar.Pane(),

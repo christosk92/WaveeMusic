@@ -9,6 +9,7 @@
 using FluentGpu.Theming;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
+using Wavee.Theming.Roles;
 using Wavee.Themes.Classic;
 using Xunit;
 
@@ -84,6 +85,25 @@ public sealed class ThemePolicyHostTests : IDisposable
         Assert.Equal(ShellCapabilities.Unrestricted, ThemeHost.Facts.Peek().Capabilities);
         Assert.NotEqual(StyleMetrics.Unset, ThemeHost.Facts.Peek().Metrics);
         Assert.Equal(s_baseline, Probe());
+    }
+
+    [Fact]
+    public void The_page_bottom_reserve_follows_the_active_bars_height()
+    {
+        // Classic: the bar is 72 and so is the style table's reserve; the table itself is returned, not a copy.
+        ThemeHost.Install(ClassicTheme.Create());
+        Assert.Equal(72f, R.Space.DockReserve);
+        Assert.Same(R.Current.Space, R.Space);
+
+        // Another structure's bar is another height; the pages reserve what it covers, and the style table is untouched.
+        ThemeHost.Install(Structured("tall", static (_, _) =>
+        {
+            var d = ThemePolicies.Default;
+            return d with { PlayerBar = d.PlayerBar with { Height = 88f } };
+        }));
+        Assert.Equal(88f, R.Space.DockReserve);
+        Assert.Equal(72f, R.Current.Space.DockReserve);
+        Assert.Equal(R.Current.Space.SectionGap, R.Space.SectionGap);   // nothing else about the table moves
     }
 
     [Fact]

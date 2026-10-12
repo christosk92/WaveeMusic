@@ -8,7 +8,8 @@
 // the level count is the core's six (a structure re-tunes the six, T6 may generalise the vocabulary).
 //
 // `Default` is the shell before themes (what Wavee Classic declares): 440 / 760 / 900 / 1100 / 1240 with a 24-DIP narrowing
-// hold and a 72-DIP bar.
+// hold and a 72-DIP bar. T6a: each level also states what the PODCAST bar carries (`PodcastSlots`, `PodcastLeftW`), which is what
+// `Shell.PodcastBarLayout` used to derive from the level ordinals.
 
 using System.Collections.Immutable;
 
@@ -47,6 +48,9 @@ public enum PlayerBarSlots : ushort
     PrevNext = 1 << 11,
     /// <summary>The artist line under the title: with the title one indivisible identity block, so every level carries it.</summary>
     Subtitle = 1 << 12,
+    /// <summary>The title and artist text beside the cover. Every level of the music bar carries it; the podcast bar's narrowest
+    /// level drops it and shows the cover alone.</summary>
+    Title = 1 << 13,
 }
 
 /// <summary>One pressure level of the player bar: where it starts, what it carries and how it spaces it.</summary>
@@ -64,17 +68,31 @@ public enum PlayerBarSlots : ushort
 /// <param name="ButtonGlyph">A secondary button's glyph (never below 16).</param>
 /// <param name="PrimaryBox">The play button's box (never below 36).</param>
 /// <param name="PrimaryGlyph">The play button's glyph (never below 18).</param>
+/// <param name="PodcastSlots">The parts the PODCAST bar carries at this level, or null for the generic rule (the level's parts without
+/// the shuffle and repeat buttons and the inline volume rail: the podcast transport spends that room on its ±10 s steps and the
+/// speed button). It is a subset of <paramref name="VisibleSlots"/>. This replaces the level ordinals the podcast pressure map
+/// used to compare (previous / next from Wide, the time labels from Comfortable, the heart from Medium).</param>
+/// <param name="PodcastLeftW">The identity block's width on the podcast bar at this level, or NaN for <paramref name="LeftW"/>.</param>
 public sealed record PlayerTier(
     float MinWidth, PlayerBarSlots VisibleSlots,
     float LeftW, float ArtSize, float RowGap, float RowPad, float ClusterGap, float LeftGap, float SeekGap, float RightGap,
-    float ButtonBox, float ButtonGlyph, float PrimaryBox, float PrimaryGlyph);
+    float ButtonBox, float ButtonGlyph, float PrimaryBox, float PrimaryGlyph,
+    PlayerBarSlots? PodcastSlots = null, float PodcastLeftW = float.NaN)
+{
+    /// <summary>The parts the podcast bar carries at this level.</summary>
+    public PlayerBarSlots PodcastSet
+        => PodcastSlots ?? (VisibleSlots & ~(PlayerBarSlots.ShuffleRepeat | PlayerBarSlots.VolumeSlider));
+
+    /// <summary>The identity block's width on the podcast bar.</summary>
+    public float PodcastLeft => float.IsNaN(PodcastLeftW) ? LeftW : PodcastLeftW;
+}
 
 /// <summary>The player bar's policy.</summary>
 /// <param name="Tiers">Exactly <see cref="TierCount"/> levels, narrowest first, each starting wider than the one before.</param>
 /// <param name="Hysteresis">Narrowing holds the current level through this many DIP of dip, so a pointer resize cannot chatter
 /// structural controls at a threshold. Widening commits at once.</param>
-/// <param name="Height">The bar's height. The page bottom reserve (the style role <c>SpaceRoles.DockReserve</c>) still carries the Classic value
-/// until the page paddings follow the policy (T4/T6).</param>
+/// <param name="Height">The bar's height. The page bottom reserve follows it (T6a): <c>R.Space.DockReserve</c> answers this height, the style
+/// table's own <c>SpaceRoles.DockReserve</c> being the value it equals in Classic (72).</param>
 public sealed record PlayerBarPolicy(ImmutableArray<PlayerTier> Tiers, float Hysteresis, float Height)
 {
     /// <summary>The six pressure levels of the core vocabulary (<c>Shell.PlayerBarTier</c>).</summary>
@@ -84,37 +102,49 @@ public sealed record PlayerBarPolicy(ImmutableArray<PlayerTier> Tiers, float Hys
     public static PlayerBarPolicy Default { get; } = new(
         [
             // Minimal: the 300-DIP floor. Identity-first, flat hit targets, nothing optional.
-            new PlayerTier(0f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle,
+            new PlayerTier(0f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title,
                 LeftW: 132f, ArtSize: 40f, RowGap: 3f, RowPad: 6f, ClusterGap: 2f, LeftGap: 4f, SeekGap: 4f, RightGap: 0f,
-                ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: 36f, PrimaryGlyph: 18f),
+                ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: 36f, PrimaryGlyph: 18f,
+                PodcastSlots: PlayerBarSlots.Devices | PlayerBarSlots.Subtitle, PodcastLeftW: 40f),
             // Compact: the remaining time joins.
-            new PlayerTier(440f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.TimesRemaining,
+            new PlayerTier(440f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.TimesRemaining,
                 LeftW: 172f, ArtSize: 40f, RowGap: 4f, RowPad: 8f, ClusterGap: 3f, LeftGap: 6f, SeekGap: 5f, RightGap: 1f,
-                ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: 36f, PrimaryGlyph: 18f),
+                ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: 36f, PrimaryGlyph: 18f,
+                PodcastSlots: PlayerBarSlots.Devices | PlayerBarSlots.Subtitle | PlayerBarSlots.Title, PodcastLeftW: 120f),
             // Medium: the 48 cover, the roomy play button, previous / next, elapsed time, lyrics and the volume button.
-            new PlayerTier(760f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.TimesRemaining
+            new PlayerTier(760f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.TimesRemaining
                     | PlayerBarSlots.VolumeButton | PlayerBarSlots.Lyrics | PlayerBarSlots.TimesElapsed | PlayerBarSlots.PrevNext,
                 LeftW: 220f, ArtSize: Design.Size.ArtPlayerBar, RowGap: 6f, RowPad: 8f, ClusterGap: 4f, LeftGap: 8f, SeekGap: 6f, RightGap: 2f,
-                ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: 40f, PrimaryGlyph: 20f),
+                ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: 40f, PrimaryGlyph: 20f,
+                PodcastSlots: PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.VolumeButton
+                    | PlayerBarSlots.Lyrics),
             // Comfortable: shuffle / repeat and the remote-device line join.
-            new PlayerTier(900f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.TimesRemaining
+            new PlayerTier(900f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.TimesRemaining
                     | PlayerBarSlots.VolumeButton | PlayerBarSlots.Lyrics | PlayerBarSlots.TimesElapsed | PlayerBarSlots.PrevNext
                     | PlayerBarSlots.ShuffleRepeat | PlayerBarSlots.RemoteDeviceLine,
                 LeftW: 230f, ArtSize: Design.Size.ArtPlayerBar, RowGap: 6f, RowPad: 8f, ClusterGap: 4f, LeftGap: 8f, SeekGap: 6f, RightGap: 2f,
-                ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: 40f, PrimaryGlyph: 20f),
+                ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: 40f, PrimaryGlyph: 20f,
+                PodcastSlots: PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.TimesRemaining
+                    | PlayerBarSlots.VolumeButton | PlayerBarSlots.Lyrics | PlayerBarSlots.TimesElapsed | PlayerBarSlots.RemoteDeviceLine),
             // Wide: the queue and the inline volume rail join; the row breathes (gap 8, pad 12).
-            new PlayerTier(1100f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.TimesRemaining
+            new PlayerTier(1100f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.TimesRemaining
                     | PlayerBarSlots.VolumeButton | PlayerBarSlots.Lyrics | PlayerBarSlots.TimesElapsed | PlayerBarSlots.PrevNext
                     | PlayerBarSlots.ShuffleRepeat | PlayerBarSlots.RemoteDeviceLine | PlayerBarSlots.Queue | PlayerBarSlots.VolumeSlider,
                 LeftW: 240f, ArtSize: Design.Size.ArtPlayerBar, RowGap: 8f, RowPad: 12f, ClusterGap: 4f, LeftGap: 8f, SeekGap: 6f, RightGap: 2f,
-                ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: 40f, PrimaryGlyph: 20f),
+                ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: 40f, PrimaryGlyph: 20f,
+                PodcastSlots: PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.TimesRemaining
+                    | PlayerBarSlots.VolumeButton | PlayerBarSlots.Lyrics | PlayerBarSlots.TimesElapsed | PlayerBarSlots.PrevNext
+                    | PlayerBarSlots.RemoteDeviceLine | PlayerBarSlots.Queue),
             // Full: the expand button joins; the widest identity block.
-            new PlayerTier(1240f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.TimesRemaining
+            new PlayerTier(1240f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.TimesRemaining
                     | PlayerBarSlots.VolumeButton | PlayerBarSlots.Lyrics | PlayerBarSlots.TimesElapsed | PlayerBarSlots.PrevNext
                     | PlayerBarSlots.ShuffleRepeat | PlayerBarSlots.RemoteDeviceLine | PlayerBarSlots.Queue | PlayerBarSlots.VolumeSlider
                     | PlayerBarSlots.Expand,
                 LeftW: 260f, ArtSize: Design.Size.ArtPlayerBar, RowGap: 8f, RowPad: 12f, ClusterGap: 4f, LeftGap: 8f, SeekGap: 6f, RightGap: 2f,
-                ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: 40f, PrimaryGlyph: 20f),
+                ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: 40f, PrimaryGlyph: 20f,
+                PodcastSlots: PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.TimesRemaining
+                    | PlayerBarSlots.VolumeButton | PlayerBarSlots.Lyrics | PlayerBarSlots.TimesElapsed | PlayerBarSlots.PrevNext
+                    | PlayerBarSlots.RemoteDeviceLine | PlayerBarSlots.Queue | PlayerBarSlots.Expand),
         ],
         Hysteresis: 24f, Height: Design.Size.PlayerBarH);
 
@@ -174,6 +204,15 @@ public sealed record PlayerBarPolicy(ImmutableArray<PlayerTier> Tiers, float Hys
             float[] metrics = [t.LeftW, t.ArtSize, t.RowGap, t.RowPad, t.ClusterGap, t.LeftGap, t.SeekGap, t.RightGap];
             foreach (float m in metrics)
                 if (!float.IsFinite(m) || m < 0f) { problems.Add(at + " has a negative or non-finite metric"); break; }
+            if (t.PodcastSlots is { } podcast)
+            {
+                if ((podcast & ~t.VisibleSlots) != PlayerBarSlots.None)
+                    problems.Add(at + ".PodcastSlots must be a subset of VisibleSlots");
+                if ((podcast & (PlayerBarSlots.Devices | PlayerBarSlots.Subtitle)) != (PlayerBarSlots.Devices | PlayerBarSlots.Subtitle))
+                    problems.Add(at + ".PodcastSlots must carry the Devices and Subtitle slots");
+            }
+            if (!float.IsNaN(t.PodcastLeftW) && !(float.IsFinite(t.PodcastLeftW) && t.PodcastLeftW >= 0f))
+                problems.Add(at + ".PodcastLeftW must be NaN (the level's own) or zero or more");
             if (!(t.ButtonBox >= Shell.PlayerBarLayout.MinButtonBox) || !(t.ButtonGlyph >= Shell.PlayerBarLayout.MinButtonGlyph)
                 || !(t.PrimaryBox >= Shell.PlayerBarLayout.MinPrimaryBox) || !(t.PrimaryGlyph >= Shell.PlayerBarLayout.MinPrimaryGlyph))
                 problems.Add(at + " has a hit target below the 32 / 36 DIP floors");

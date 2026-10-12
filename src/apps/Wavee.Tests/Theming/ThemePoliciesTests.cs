@@ -442,16 +442,16 @@ public sealed class PlayerBarPolicyRulesTests
         Assert.True(classicWide.ShowQueue);
         Assert.False(otherWide.ShowQueue);
 
-        Span<Shell.OverflowCommand> buffer = stackalloc Shell.OverflowCommand[Shell.PlayerBarRules.MaxOverflow];
+        Span<OverflowCommand> buffer = stackalloc OverflowCommand[Shell.PlayerBarRules.MaxOverflow];
         int n = Shell.PlayerBarRules.Overflow(classicWide, ownsTransport: true, active: true, hasVideo: false, buffer);
-        Assert.False(Carries(buffer[..n], Shell.OverflowCommand.Queue));
+        Assert.False(Carries(buffer[..n], OverflowCommand.Queue));
         n = Shell.PlayerBarRules.Overflow(otherWide, ownsTransport: true, active: true, hasVideo: false, buffer);
-        Assert.True(Carries(buffer[..n], Shell.OverflowCommand.Queue));
+        Assert.True(Carries(buffer[..n], OverflowCommand.Queue));
         // The right cluster loses the slot's width too: a dropped slot is not reserved.
         Assert.True(otherWide.RightWMax < classicWide.RightWMax);
     }
 
-    static bool Carries(ReadOnlySpan<Shell.OverflowCommand> commands, Shell.OverflowCommand wanted)
+    static bool Carries(ReadOnlySpan<OverflowCommand> commands, OverflowCommand wanted)
     {
         foreach (var command in commands)
             if (command == wanted) return true;

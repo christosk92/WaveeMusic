@@ -20,9 +20,9 @@
 //     content region = ZStack[ row(sidebar column · content card · rail gap · rail reservation) · sidebar seam ·
 //                              rail overlay · rail seam · narrow drawer ]
 //
-// The surfaces that are not this PR's (title bar, material, player bar, sidebar pane, rail, stage, overlays, palette, drag chip,
-// fps) arrive as element builders on the props (`ShellFrameProps`); T4b, T4c, T5, T6 and T7 give each its own key and replace the
-// builder with a `ctx.View` call here.
+// The surfaces that are not this PR's (title bar, material, sidebar pane, rail, stage, overlays, palette, drag chip, fps) arrive
+// as element builders on the props (`ShellFrameProps`); T4b, T4c, T5, T6b and T7 give each its own key and replace the builder
+// with a `ctx.View` call here. The player bar did that in T6a: `ViewKeys.PlayerBar`, mounted below with its own props.
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -55,7 +55,7 @@ internal static class ClassicFrame
                 // pauses its subtree (UseInterval, UseIsActive), and the edge never re-renders the frame.
                 props.ChromeRow() with { Visible = Prop.Of(props.ChromeMounted) },
                 ContentRegion(props),
-                props.PlayerBarDock() with { Visible = Prop.Of(props.ChromeMounted) },
+                ctx.View(ViewKeys.PlayerBar, props.PlayerBar) with { Visible = Prop.Of(props.ChromeMounted) },
             ],
         };
 

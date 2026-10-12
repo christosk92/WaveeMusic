@@ -418,9 +418,10 @@ public sealed class ThemeCatalogTests : IDisposable
         Assert.Equal("classic", classic.Manifest.Id);
         Assert.Equal(ThemeCatalog.FallbackId, classic.Manifest.Id);
         Assert.Equal(ContractVersion.Major, classic.Manifest.ContractMajor);
-        // T4a registers the frame and the content states; each later T-PR adds its family (RegistryCompletenessTests, T13, pins the full list).
+        // T4a registers the frame and the content states, T6a the player bar; each later T-PR adds its family (RegistryCompletenessTests, T13, pins the full list).
         Assert.True(classic.Registry.Contains(ViewKeys.ShellFrame.Id));
         Assert.True(classic.Registry.Contains(ViewKeys.ShellContentState.Id));
+        Assert.True(classic.Registry.Contains(ViewKeys.PlayerBar.Id));
         Assert.Empty(classic.ExposedOptions.All);
 
         var values = Values(classic);

@@ -35,8 +35,28 @@ public static class R
     /// <summary>The surfaces and row ladders.</summary>
     public static LayerReads Layer => new(Current.Layer);
 
-    /// <summary>The page-rhythm, shelf and flyout geometry.</summary>
-    public static SpaceRoles Space => Current.Space;
+    /// <summary>The page-rhythm, shelf and flyout geometry. <see cref="SpaceRoles.DockReserve"/> follows the ACTIVE structure's player-bar
+    /// height (T6a): the bar's height is the structure's (<c>PlayerBarPolicy.Height</c>), and a page reserves what the bar covers, so
+    /// the style table's own value is the fallback that equals it (Classic: 72 = 72, the table is returned as is, no copy). A
+    /// structure whose bar is another height gets the table with that reserve, memoized per table and height.</summary>
+    public static SpaceRoles Space
+    {
+        get
+        {
+            var table = Current.Space;
+            float height = ShellPolicy.Now.PlayerBar.Height;
+            if (table.DockReserve == height) return table;
+            var cached = s_dockCache;
+            if (cached is not null && ReferenceEquals(cached.Source, table) && cached.Height == height) return cached.Result;
+            var result = table with { DockReserve = height };
+            s_dockCache = new DockCache(table, height, result);
+            return result;
+        }
+    }
+
+    private sealed record DockCache(SpaceRoles Source, float Height, SpaceRoles Result);
+
+    private static volatile DockCache? s_dockCache;
 
     /// <summary>Everything that paints on top of artwork or video.</summary>
     public static OnMediaReads OnMedia => new(Current.OnMedia);

@@ -1231,7 +1231,8 @@ public static partial class Shell
         bool ShowTimesElapsed, bool ShowTimesRemaining, bool ShowPrevNext, bool ShowSubtitle,
         float ButtonBox, float ButtonGlyph, float PrimaryBox, float PrimaryGlyph,
         float LeftW, float ArtSize, float RowGap, float RowPad, float ClusterGap, float LeftGap, float SeekGap,
-        float RightGap, float TopEdgeWidth, float RightWMax)
+        float RightGap, float TopEdgeWidth, float RightWMax,
+        bool ShowTitleBlock = true)
     {
         static bool Has(Theming.PlayerBarSlots set, Theming.PlayerBarSlots slot) => (set & slot) != 0;
 
@@ -1282,6 +1283,7 @@ public static partial class Shell
                 ShowTimesRemaining: Has(slots, Theming.PlayerBarSlots.TimesRemaining),
                 ShowPrevNext: Has(slots, Theming.PlayerBarSlots.PrevNext),
                 ShowSubtitle: Has(slots, Theming.PlayerBarSlots.Subtitle),         // title + artist are one indivisible identity block
+                ShowTitleBlock: Has(slots, Theming.PlayerBarSlots.Title),
                 ButtonBox: level.ButtonBox,
                 ButtonGlyph: level.ButtonGlyph,
                 PrimaryBox: level.PrimaryBox,

@@ -85,7 +85,7 @@ public static partial class Design
     /// <summary>Fixed control / surface dimensions that are not style roles (see the section header).</summary>
     public static class Size
     {
-        public const float ControlH = 32f, NavItemH = 44f, TrackRowH = 56f, PlayerBarH = 72f;   // taller dock: room for the seek row
+        public const float ControlH = 32f, NavItemH = 44f, TrackRowH = 56f, PlayerBarH = 72f;   // taller dock: room for the seek row. Classic's bar height and the core fallback's (`PlayerBarPolicy.Default`); the ACTIVE height is `PlayerBarPolicy.Height`
         public const float RailCard = 180f, NavPaneW = 240f, NavCompactW = 56f;   // NavPaneW 240 = WinUI OpenPaneLength (flush, no inset gap)
         public const float ArtThumb = 40f, ArtNowPlaying = 64f, ArtPlayerBar = 48f;
 
