@@ -918,6 +918,10 @@ public readonly partial struct Track
             _hooks = UseContext(InputHooks.Current);
             _scrollScope = UseContext(Shell.PageScrollScope);
             _post = UsePost();
+            // The structure's row templates (T8a): resolved once per host render; the slots read `_listStyle` on their rare renders.
+            var registry = UseContext(global::FluentGpu.Theming.ViewRegistry.Context);
+            _listStyle = registry is not null && registry.TryGetStyle(global::Wavee.Theming.Contracts.StyleKeys.TrackTable, out var listStyle)
+                ? listStyle : null;
 
             _snapshot = UseComputed(ComputeSnapshot);
             _shape = UseComputed(ComputeShape);
@@ -2033,17 +2037,14 @@ public readonly partial struct Track
 
         // ══ 8. THE ROW SKIN, THE DRAWER, THE PRESENTATION ═══════════════════════════════════════════════════════════
 
-        static readonly LayoutTransition s_mountEntrance = new(TransitionChannels.Opacity,
-            TransitionDynamics.Tween(280f, Easing.FluentDecelerate), Enter: new EnterExit(Opacity: 0f, Active: true));
-
-        static readonly LayoutTransition s_checkShift = new(TransitionChannels.Position,
-            TransitionDynamics.Tween(Design.Motion.Slow, Easing.FluentDecelerate));
-
-        /// <summary>The bound, shape-stable row container for a TRACK row. Zebra is DISPLAY-index parity; selection never
-        /// changes the fill except in Classic (RowHover); the 3×16 pill is the highlight cue and hands over to the check
-        /// lane; an .mp4 drag over the row rides the same fill closure instead of an overlay node (ch 04 §0.6). Built by
-        /// the slot on its rare re-renders (shape / flow / open), so a recycle only moves the closures' index signal and
-        /// allocates nothing.
+        /// <summary>The bound, shape-stable row container for a TRACK row: the CORE half. This wires the behaviour (the drag
+        /// source and the .mp4 drop target, the tap / double-tap / Enter / Space / Alt+arrow gestures, the focus and hover edges
+        /// the equalizer's pause reads, the check lane) and hands it to the structure's skin template
+        /// (<see cref="Wavee.Theming.Contracts.TrackListStyle"/>), which draws it: zebra is DISPLAY-index parity; selection never
+        /// changes the fill except in Classic (RowHover); the 3×16 pill is the highlight cue and hands over to the check lane;
+        /// an .mp4 drag over the row rides the same fill closure instead of an overlay node (ch 04 §0.6). Built by the slot on
+        /// its rare re-renders (shape / flow / open), so a recycle only moves the closures' index signal and allocates nothing.
+        /// The context menu is attached here, once, around whatever the template returned.
         /// <para>An episode row is never wrapped here — <see cref="TableSlot"/> hands it straight to
         /// <see cref="Episode.ReaderRow"/>, which is fully self-contained (its own click, hover, check lane, "…").</para></summary>
         internal BoxEl Skin(RowScope scope, Element content, in Shape shape, bool rowFlow, bool squared, int start,
@@ -2054,38 +2055,28 @@ public readonly partial struct Track
             var interact = scope.OnInteraction;
             bool classic = shape.Set.Classic;
             bool plain = !classic && VerticalArm && !rowFlow;   // the hero system's STACKED flow: plain full-bleed rows
-            float pad = RowMetrics.PadXFor(shape.Set.Tier);
             var drop = Video.Overrides.Present ? VideoDrop(index, start) : null;
             Func<bool> cue = drop is null ? _false : () => _videoDropRow.Value == index.Value;
-            bool Odd() => Math.Max(0, index.Value - start) % 2 != 0;
 
-            var skin = new BoxEl
+            var templates = RowTemplatesFor(classic);
+            if (templates is null) return new BoxEl { MinHeight = shape.RowH, Children = [content] };
+
+            var wiring = new global::Wavee.Theming.Contracts.TrackRowSkin
             {
-                ZStack = true, MinHeight = shape.RowH, ClipToBounds = true,
-                Margin = classic || plain ? default : new Edges4(RowMetrics.RowInset, 0f, RowMetrics.RowInset, 0f),
-                // Bottom corners square while THIS row's drawer is open or still closing under it, so the row and its drawer
-                // read as one plate.
-                Corners = classic || plain ? CornerRadius4.All(0f)
-                    : squared ? new CornerRadius4(6f, 6f, 0f, 0f) : CornerRadius4.All(6f),
-                Animate = entrance ? s_mountEntrance : null,
+                Content = content,
+                CheckLane = SelectorVisualsBound.BoundCheckLane(_checksRead, isSel, interact, leftMargin: 4f),
+                RowHeight = shape.RowH,
+                PadX = RowMetrics.PadXFor(shape.Set.Tier),
+                Plain = plain,
+                Squared = squared,
+                Entrance = entrance,
+                IsSelected = isSel,
+                Cue = cue,
+                Odd = () => Math.Max(0, index.Value - start) % 2 != 0,
+                ChecksVisible = _checksRead,
+                Accent = _accent,
                 DropTarget = drop,
-                Fill = classic ? Prop.Of(() => cue() || isSel() ? R.Layer.RowHover : ColorF.Transparent)
-                    : plain ? Prop.Of(() => cue() ? R.Layer.RowHover : ColorF.Transparent)
-                    : Prop.Of(() => cue() ? R.Layer.RowHover : Odd() ? R.Layer.RowZebra : ColorF.Transparent),
-                HoverFill = classic || plain ? Prop.Of(static () => R.Layer.RowHover)
-                    : Prop.Of(() => Odd() ? R.Layer.RowHoverZebra : R.Layer.RowHover),
-                PressedFill = classic || plain ? Prop.Of(static () => R.Layer.RowPressed)
-                    : Prop.Of(() => Odd() ? R.Layer.RowPressedZebra : R.Layer.RowPressed),
-                // No PressScale: a ~1000-DIP row that shrinks 2 % reads as the whole row springing back (ch 01 §0.11).
-                // Stationary lift: the row stays at 0.4 while the chip follows the pointer.
                 Draggable = Drag.Source(() => DragPayloadFor(index.Peek(), start)),
-                BorderWidth = classic || plain ? 0f : 1f,
-                BorderColor = classic || plain ? ColorF.Transparent
-                    : Prop.Of(() => Odd() ? Tok.StrokeCardDefault : ColorF.Transparent),
-                HoverBorderColor = classic || plain ? ColorF.Transparent : Tok.StrokeCardDefault,
-                FocusVisualMargin = Design.FocusInsetRow,
-                Focusable = false,                   // the ItemsView roving effect owns the one tab stop
-                Role = AutomationRole.Button,
                 OnPointerReleased = args =>
                 {
                     if (RowClickPolicy.TriggerOf(args.ClickCount, args.Mods) == ItemContainerTrigger.DoubleTap) interact(ItemContainerTrigger.DoubleTap, args.Mods);
@@ -2107,35 +2098,35 @@ public readonly partial struct Track
                 // Row hover → the equalizer's pause (it sits under a hover-opacity reveal and must stop ticking).
                 OnHoverMove = _ => { if (!hovered.Peek()) hovered.Value = true; },
                 OnPointerExit = () => { if (hovered.Peek()) hovered.Value = false; },
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Animate = s_checkShift,
-                        Children = [SelectorVisualsBound.BoundCheckLane(_checksRead, isSel, interact, leftMargin: 4f), content],
-                    },
-                    new BoxEl
-                    {
-                        Key = "row-pill", Width = 3f, Height = 16f, Margin = new Edges4(2f, 0f, 0f, 0f),
-                        Corners = classic ? CornerRadius4.All(0f) : CornerRadius4.All(1.5f),
-                        Fill = Prop.Of(_accent), AlignSelf = FlexAlign.Center,
-                        HitTestVisible = false, PressScale = 10f / 16f,
-                        Opacity = classic ? (Prop<float>)0f : Prop.Of(() => isSel() && !_checksRead() ? 1f : 0f),
-                    },
-                    new BoxEl
-                    {
-                        Key = "row-divider", AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Stretch, Height = 1f,
-                        Fill = classic ? Prop.Of(static () => Tok.StrokeDividerDefault) : (Prop<ColorF>)ColorF.Transparent,
-                        Margin = classic ? new Edges4(pad, 0f, pad, 0f) : default,
-                        HitTestVisible = false,
-                    },
-                ],
             };
+            BoxEl skin = templates.Skin(wiring);
             var overlay = _overlay;
             if (Controls.IsNullOverlay(overlay)) return skin;
             bool expandLane = shape.Set.Expand;
             // Attached ONCE per slot render; the factory runs at OPEN and reads the slot's live index + selection.
             return skin.WithContextMenu(overlay, () => RowMenuFor(index.Peek(), start, expandLane));
+        }
+
+        // ── the structure's row templates ──────────────────────────────────────────────────────────────────────────
+
+        /// <summary>The active structure's track-list style, resolved once per host render (the registry is ambient; a theme
+        /// switch remounts the root, so a mounted host never sees it change). Null when no registry provides one.</summary>
+        global::Wavee.Theming.Contracts.TrackListStyle? _listStyle;
+        bool _listStyleReported;
+
+        /// <summary>The Modern or the Classic row templates (the row style is today's <see cref="ColumnSet.Classic"/>; the
+        /// structure supplies both). Read by the slot components on their rare renders, never per bind. Null when the registry
+        /// has no <c>StyleKeys.TrackTable</c>: the row then renders its bare container, and the first miss is logged.</summary>
+        internal global::Wavee.Theming.Contracts.TrackRowTemplates? RowTemplatesFor(bool classic)
+        {
+            var style = _listStyle;
+            if (style is not null) return classic ? style.Classic : style.Modern;
+            if (!_listStyleReported)
+            {
+                _listStyleReported = true;
+                Log.Warn("ui", "track table: no TrackListStyle is registered (StyleKeys.TrackTable); the rows render nothing");
+            }
+            return null;
         }
 
         /// <summary>The drawer's mount, keying and reveal — its BODY is the profile's. One drawer at a time, keyed by ROW
@@ -2167,13 +2158,6 @@ public readonly partial struct Track
                 ],
             };
         }
-
-        /// <summary>What one row paints, as one equality-gated value: a recycle recomputes it once and re-renders the row
-        /// only when its visual state really changed (a title landing is the row's Version; a like, the Liked edge).</summary>
-        internal readonly record struct RowPresentation(
-            Track Track, int Display, RowState State, uint TrackVersion, uint AlbumVersion, ulong ArtistStamp,
-            int AddedAt, User AddedBy, uint UserVersion, byte Chart, bool Marquee, bool ShowTrackArtist,
-            bool ShowAlbumColumn, bool Open);
 
         internal RowPresentation Present(Track t, int display)
         {
@@ -2399,7 +2383,7 @@ public readonly partial struct Track
         }
     }
 
-    /// <summary>The live grid of one row, built ONCE per slot per shape (<c>Track.BoundGrid</c>): every per-item value is a
+    /// <summary>The live grid of one row, built ONCE per slot per shape (the structure's grid template): every per-item value is a
     /// bound Prop over this slot's equality-gated presentation memo, so a recycle rebinds and allocates no element. Re-renders
     /// only on the shape and the reveal edge. Before the ramp reaches it: a blank ShimmerRow of the identical extent (a GridEl —
     /// the TYPE change to the BoxEl-wrapped real row is what forces the crossing remount and its 280 ms fade; a Key change
@@ -2450,9 +2434,11 @@ public readonly partial struct Track
             if (_latch == 0) _latch = real ? (byte)2 : (byte)1;
             if (!real) return Track.ShimmerRow(in set, shape.Tracks, shape.RowH, RowMetrics.PadXFor(set.Tier)) with { Key = "row:shim" };
 
-            _row ??= new Track.BoundRow(presentation, likePop, _hovered, _host.AccentRead, PlayCurrent, LikeCurrent, ToggleExpandCurrent);
+            _row ??= new Track.BoundRow(presentation, likePop, _hovered, Playback.IsPlaying, _host.AccentRead, PlayCurrent, LikeCurrent, ToggleExpandCurrent);
             var row = _row;
-            Element grid = Track.BoundGrid(row, in set, shape.Tracks, shape.RowH, shape.Art);
+            // The structure draws the grid (Modern or Classic template); built ONCE per slot per shape, like it always was.
+            var templates = _host.RowTemplatesFor(set.Classic);
+            Element grid = templates is null ? new BoxEl() : templates.Grid(row, in set, shape.Tracks, shape.RowH, shape.Art);
             // The tracklist EDGE answers with row ids first and the rows' own fields land in a later fetch, so a slot can be
             // valid while its row has no data. The table's reveal gate holds the whole region until the first page knows its
             // face (TableRules.RowsPending), so this branch is for the rows PAST that band — a later batch's rows, a row
