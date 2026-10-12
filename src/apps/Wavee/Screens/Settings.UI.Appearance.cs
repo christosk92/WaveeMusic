@@ -1,9 +1,9 @@
 // ── Screens/Settings.UI.Appearance.cs ──────────────────────────────────────────────────────────────────────────────
-// the Appearance tab: Theme (theme, zoom, marquee, colour washes, page motion*) · Lists (the three collapsed picker groups:
-// row density + hide artwork, track list style, track page layout + the two rail rows; then the daylist clock combo) ·
-// Sidebar (the layout cards and density) · Lyrics (blur, the on-device AI lyrics card) ·
-// Fullscreen (visualizer, sensitivity, lyrics overlay, sync offset, calm motion, change with the music — the fullscreen
-// stage's gallery settings, mirrored through `Prefs.Stage`) · Now playing (hero*, player style)
+// the Appearance tab (themes plan 8.1, T1b): Theme (the picker) · the active theme's options (one expander; its sidebar, track
+// list and surface rows are in `Settings.UI.Theme.cs`) · App mode · Zoom · Marquee, then what is not a theme option and has no
+// other home yet: Lyrics (blur, the on-device AI lyrics card) · Fullscreen (visualizer, sensitivity, lyrics overlay, sync offset,
+// calm motion, change with the music — the fullscreen stage's gallery settings, mirrored through `Prefs.Stage`) · Now playing
+// (hero*, player style) · Home (the daylist clock)
 //
 // * DEVELOPER-ONLY rows (`Catalog.RowVisible`): page motion and the Cover/‹Player› hero switch are composed away while the
 // developer switch is off. "Lyrics second line" and "Animated lyrics backdrop" are not gated but GONE — neither is a
@@ -94,44 +94,27 @@ public static partial class Settings
 
     private static partial Element AppearanceTab()
     {
-        int themeMode = (int)Appearance.Mode;
-        var facts = SettingsFacts.Live;   // developer mode is read reactively here, as the tab always did
-        // The Now-playing rows' ONE foreign epoch (ch 27 §7): the header row, the flyout, the art menu and the palette all
+        // The now-playing rows' ONE foreign epoch (ch 27 §7): the header row, the flyout, the art menu and the palette all
         // write it, and these two rows must follow them live.
         int npvPresentation = Rail.PlayerPrefs.Presentation();
         var npvPreset = Rail.PlayerPrefs.CurrentPreset();
-        int pageMotion = Prefs.Appearance.PageMotionStyle(Design.PageMotionStyleCount);
+        var facts = SettingsFacts.Live;   // developer mode is read reactively here, as the tab always did
 
-        var kids = new List<Element>(20)
+        // T1b (themes plan 8.1): Theme (the picker) · the active theme's options · App mode · Zoom, then what is not a theme
+        // option and has no other home yet. The picker and the options are components that re-render on their own signals.
+        var kids = new List<Element>(24)
         {
             SectionHeader(Loc.Get(Strings.Settings.Appearance.Title), SectionGlyph(Tab.Appearance, "Theme"),
-                Loc.Get(Strings.Settings.Appearance.Subtitle)),
-            DocRow(D(Tab.Appearance, "theme"),
-                SelectorBar.Create(ThemeLabels(), new Signal<int>(themeMode), onChange: static m => SetTheme(m))),
+                Loc.Get(Strings.Settings.ThemePicker.Subtitle)),
+            ThemePickerView(),
+            ThemeOptionsExpander(),
+            // The core presentation prefs every theme honours: no header, so they read as the board's rows under the options.
+            DocRow(D(Tab.Appearance, "appMode"),
+                SelectorBar.Create(ThemeLabels(), new Signal<int>((int)Appearance.Mode), onChange: static m => SetTheme(m))),
             // A ComboBox, not a SelectorBar: thirteen items (Auto + twelve rungs) would be thirteen segments wide.
             DocRow(D(Tab.Appearance, "zoom"), Embed.Comp(static () => new ZoomPicker())),
             DocRow(D(Tab.Appearance, "marquee"), RowToggle(D(Tab.Appearance, "marquee"))),
-            DocRow(D(Tab.Appearance, "colorWashes"), RowToggle(D(Tab.Appearance, "colorWashes"))),
         };
-
-        // A SelectorBar, not a ComboBox: it re-pushes its selected index every render (ch 27 §0's frozen-inputs rule),
-        // so the row needs no dedicated stable-signal component the way Zoom/NPV-style do. DEVELOPER-ONLY: a normal
-        // build navigates at `Design.Nav.DefaultStyle` (Classic) and is offered no choice.
-        if (D(Tab.Appearance, "pageMotion").Visible(facts))
-            kids.Add(DocRow(D(Tab.Appearance, "pageMotion"),
-                SelectorBar.Create(PageMotionLabels(), new Signal<int>(pageMotion), onChange: static i => SetPageMotionStyle(i))));
-
-        kids.Add(SectionHeader(Loc.Get(Strings.Settings.Layout.Title), SectionGlyph(Tab.Appearance, "Lists"),
-            Loc.Get(Strings.Settings.Layout.Subtitle)));
-        kids.Add(DensityGroup());
-        kids.Add(TrackListStyleGroup());
-        kids.Add(PageLayoutGroup());
-        // A ComboBox in its own component, the zoom/player-style shape: the items, signal and onChange freeze at mount.
-        kids.Add(DocRow(D(Tab.Appearance, "daylistClock"), Embed.Comp(static () => new DaylistClockPicker())));
-
-        kids.Add(SectionHeader(Loc.Get(Strings.Settings.Sidebar.Title), SectionGlyph(Tab.Appearance, "Sidebar"),
-            Loc.Get(Strings.Settings.Sidebar.Subtitle)));
-        kids.Add(Embed.Comp(static () => new SidebarLayoutCard()));
 
         // The blur dial, then the on-device AI lyrics card (its own component: setup progress re-renders only the card).
         // The second line and the animated backdrop are no longer settings at all.
@@ -161,6 +144,11 @@ public static partial class Settings
                     onChange: static i => D(Tab.Appearance, "npvPresentation").Writer.Choose!(i))));
         kids.Add(DocRow(D(Tab.Appearance, "npvStyle"), Embed.Comp(static () => new NpvStylePicker())));
 
+        kids.Add(SectionHeader(Loc.Get(Strings.Settings.Home.Title), SectionGlyph(Tab.Appearance, "Home"),
+            Loc.Get(Strings.Settings.Home.Subtitle)));
+        // A ComboBox in its own component, the zoom/player-style shape: the items, signal and onChange freeze at mount.
+        kids.Add(DocRow(D(Tab.Appearance, "daylistClock"), Embed.Comp(static () => new DaylistClockPicker())));
+
         return TabStack(kids.ToArray());
     }
 
@@ -178,7 +166,7 @@ public static partial class Settings
     /// (ch 27 §5); this page then re-reads its rows.</summary>
     static void SetTheme(int mode)
     {
-        if (D(Tab.Appearance, "theme").Writer.Choose!(mode)) Bump();
+        if (D(Tab.Appearance, "appMode").Writer.Choose!(mode)) Bump();
     }
 
     /// <summary>Ordered to match the stored value (<see cref="Design.PageMotionStyle"/>'s declaration order) — the
@@ -266,30 +254,6 @@ public static partial class Settings
     static string PageLayoutLabel(int i)
         => Loc.Get(i == Prefs.DetailHero.Hero ? Strings.Settings.Choice.Hero : Strings.Settings.Choice.Automatic);
 
-    /// <summary>Row density, collapsed behind its answer (N4/N5): the cards in <c>ItemsHeader</c> — a wireframe strip is
-    /// not a settings row — and "Always hide track artwork" as the one item.</summary>
-    static Element DensityGroup()
-    {
-        int density = Prefs.Clamp(Platform.Settings.Get(Platform.Keys.RowDensity), 4);
-        return SettingsExpander.Create(new SettingsExpander.Options
-        {
-            Header = Loc.Get(Strings.Settings.Appearance.RowDensity),
-            Description = Loc.Get(Strings.Settings.Appearance.RowDensitySub),
-            HeaderIcon = RowGlyph(Tab.Appearance, "rowDensity"),
-            Content = ValueTag(DensityLabel(density)),
-            ItemsHeader = ExpanderPanel(Controls.PickerStrip(4, density, static (i, on) => DensityCard(i, on), static i => SetDensity(i))),
-            Items =
-            [
-                Item(Loc.Get(Strings.Settings.Appearance.HideTrackArtwork), Loc.Get(Strings.Settings.Appearance.HideTrackArtworkSub),
-                    CheckBox.Create("", new Signal<bool>(Platform.Settings.Get(Platform.Keys.HideTrackArtwork)), onChange: static on =>
-                    {
-                        if (D(Tab.Appearance, "hideTrackArtwork").Writer.Toggle!(on)) Bump();
-                    }, style: CheckBox.DefaultStyle with { MinWidth = Spacing.XXXL, MinHeight = Spacing.XXXL }),
-                    icon: RowGlyph(Tab.Appearance, "hideTrackArtwork")),
-            ],
-        }) with { Key = "appearance.density" };
-    }
-
     /// <summary>The miniature's row height and art edge are the REAL Modern ladder × the tested preview scale (N6).</summary>
     static Element DensityCard(int value, bool on)
         => Controls.PickerTitled(
@@ -305,22 +269,6 @@ public static partial class Settings
         if (D(Tab.Appearance, "rowDensity").Writer.Choose!(i)) Bump();
     }
 
-    static Element TrackListStyleGroup()
-    {
-        int style = Prefs.Clamp(Platform.Settings.Get(Platform.Keys.TrackRowStyle), 2);
-        return SettingsExpander.Create(new SettingsExpander.Options
-        {
-            Header = Loc.Get(Strings.Settings.Appearance.TrackListStyle),
-            Description = Loc.Get(Strings.Settings.Appearance.TrackListStyleSub),
-            HeaderIcon = RowGlyph(Tab.Appearance, "trackListStyle"),
-            Content = ValueTag(TrackListStyleLabel(style)),
-            ItemsHeader = ExpanderPanel(Controls.PickerStrip(2, style, static (i, on) => TrackListStyleCard(i, on), static i =>
-            {
-                if (D(Tab.Appearance, "trackListStyle").Writer.Choose!(i)) Bump();
-            })),
-        }) with { Key = "appearance.track-list-style" };
-    }
-
     /// <summary>UI-native miniature rows, never screenshots: Modern = the art-led stacked row, Classic = three lanes + a
     /// hairline; both inherit the live theme and the card's selected ink.</summary>
     static Element TrackListStyleCard(int value, bool on)
@@ -330,50 +278,6 @@ public static partial class Settings
         return Controls.PickerTitled(
             Controls.PickerCard(on, Controls.PickerTile, RowOf(), RowOf(), RowOf()) with { Justify = FlexJustify.Center },
             TrackListStyleLabel(value), on);
-    }
-
-    /// <summary>Track page layout. Both sub-rows exist only for Automatic (Hero composes no rail); "Clear all remembered
-    /// sizes" is composed AWAY — not disabled — while "Keep left-rail same size" is on (ch 27 W4, parity 17).</summary>
-    static Element PageLayoutGroup()
-    {
-        int layout = Prefs.Clamp(Platform.Settings.Get(Platform.Keys.DetailPageLayout), 2);
-        Element[] items = [];
-        var facts = SettingsFacts.Live;
-        var uniformDoc = D(Tab.Appearance, "railUniform");
-        var resetDoc = D(Tab.Appearance, "railReset");
-        if (uniformDoc.Visible(facts))
-        {
-            Element uniformRow = Item(Loc.Get(uniformDoc.TitleKey), Loc.Get(uniformDoc.Caption(facts)!),
-                RowToggle(uniformDoc), icon: Glyph(uniformDoc.GlyphRole!));
-            items = resetDoc.Visible(facts)
-                ?
-                [
-                    uniformRow,
-                    Item(Loc.Get(resetDoc.TitleKey), Loc.Get(resetDoc.Caption(facts)!),
-                        Button.Standard(Loc.Get(resetDoc.Confirm!.PrimaryKey), static () =>
-                            {
-                                var reset = D(Tab.Appearance, "railReset");
-                                ConfirmThen(Loc.Get(reset.Confirm!.TitleKey), Loc.Get(reset.Confirm.BodyKey), Loc.Get(reset.Confirm.PrimaryKey),
-                                    () => { if (reset.Writer.Run!()) Bump(); });
-                            },
-                            isEnabled: resetDoc.Enabled(facts).Enabled),
-                        icon: Glyph(resetDoc.GlyphRole!)),
-                ]
-                : [uniformRow];
-        }
-
-        return SettingsExpander.Create(new SettingsExpander.Options
-        {
-            Header = Loc.Get(Strings.Settings.Appearance.PageLayout),
-            Description = Loc.Get(Strings.Settings.Appearance.PageLayoutSub),
-            HeaderIcon = RowGlyph(Tab.Appearance, "pageLayout"),
-            Content = ValueTag(PageLayoutLabel(layout)),
-            ItemsHeader = ExpanderPanel(Controls.PickerStrip(2, layout, static (i, on) => PageLayoutCard(i, on), static i =>
-            {
-                if (D(Tab.Appearance, "pageLayout").Writer.Choose!(i)) Bump();
-            })),
-            Items = items,
-        }) with { Key = "appearance.pagelayout" };
     }
 
     /// <summary>The "Daylist clock" combo (#185): Countdown and update time · Update time only · Countdown only, in
@@ -453,57 +357,6 @@ public static partial class Settings
     }
 
     // ══ 5. SIDEBAR (G-182; ch 25 W21 compact cards, ch 27 W2/W29 ②) ═════════════════════════════════════════════════
-
-    /// <summary>Settings › Sidebar (design C.2 entry 3): the layout (two cards, "· modified"), density, Edit sidebar (P4),
-    /// reset; a corrupt-file InfoBar and the migration's "What changed" note when they apply. Subscribes to the layout
-    /// signals, so a change made on the sidebar itself shows here live.</summary>
-    sealed class SidebarLayoutCard : Component
-    {
-        public override Element Render()
-        {
-            var layout = Sidebar.Layout.Value;
-            _ = Sidebar.LayoutVersion.Value;
-            var density = Sidebar.Density.Value;
-            bool editing = Sidebar.Editing.Value;
-            // Q7: a disabled control always says why (the row's reason); the palette path toasts the same reason (§P4.7).
-            var facts = SettingsFacts.Live;
-            var densityDoc = D(Tab.Appearance, "sidebarDensity");
-            var resetDoc = D(Tab.Appearance, "sidebarReset");
-            var editDoc = D(Tab.Appearance, "sidebarCustomize");
-            var everythingDoc = D(Tab.Appearance, "sidebarResetEverything");
-            var items = new List<Element>(4)
-            {
-                Item(Loc.Get(densityDoc.TitleKey), Loc.Get(densityDoc.Caption(facts)!),
-                    Embed.Comp(() => new SidebarDensityPicker()) with { Key = "sidebar.density:" + (int)density }, icon: Icons.ViewList),
-                Item(Loc.Get(resetDoc.TitleKey), Loc.Get(resetDoc.DescriptionKey(facts)!), null,
-                    isClickEnabled: resetDoc.Enabled(facts).Enabled,
-                    onClick: static () => D(Tab.Appearance, "sidebarReset").Writer.Run!(), icon: Icons.Undo),
-                Item(Loc.Get(editDoc.TitleKey), Loc.Get(editDoc.DescriptionKey(facts)!), null,
-                    isClickEnabled: editDoc.Enabled(facts).Enabled,
-                    onClick: static () => D(Tab.Appearance, "sidebarCustomize").Writer.Run!(), icon: Icons.Edit),
-                Item(Loc.Get(everythingDoc.TitleKey), Loc.Get(everythingDoc.DescriptionKey(facts)!), null,
-                    isClickEnabled: everythingDoc.Enabled(facts).Enabled,
-                    // The Settings page's own overlay host (`SettingsContext.Overlay`): the confirm opens over Settings.
-                    onClick: static () => D(Tab.Appearance, "sidebarResetEverything").Writer.Run!(),
-                    icon: Icons.Delete),
-            };
-            if (Sidebar.LayoutFileFault)
-                items.Insert(0, Item(Loc.Get(Strings.Settings.Sidebar.FileFault), "", null, icon: Icons.Warning));
-            if (Platform.Settings.Get(Platform.Keys.SidebarMigrationDropped) is { Length: > 0 } dropped)
-                items.Add(Item(Loc.Get(Strings.Settings.Sidebar.WhatChanged),
-                    Strings.Settings.Sidebar.WhatChangedSub(Sidebar.DroppedNames(dropped.Split(','))), null,
-                    icon: Icons.Info));
-            return SettingsExpander.Create(new SettingsExpander.Options
-            {
-                Header = Loc.Get(Strings.Settings.Sidebar.Layout),
-                Description = Loc.Get(Strings.Settings.Sidebar.LayoutSub),
-                HeaderIcon = RowGlyph(Tab.Appearance, "sidebarDesign"),
-                Content = ValueTag(Sidebar.LayoutName(layout)),
-                ItemsHeader = ExpanderPanel(SidebarLayoutCards(layout, editing)),
-                Items = [.. items],
-            }) with { Key = "appearance.sidebar.layout" };
-        }
-    }
 
     /// <summary>Default · Compact (design P.4).</summary>
     sealed class SidebarDensityPicker : Component

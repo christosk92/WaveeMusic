@@ -1,12 +1,14 @@
 // ── Screens/SettingsDoc.Rows.Appearance.cs — the Appearance tab as document rows + their verbs ─────────────────────
 //
-// Role: CORE (PR C13; extraction X35 writers). Theme · Lists · Sidebar · Lyrics · Fullscreen · Now playing. The rows still
-// point at TODAY'S keys (each moves to a theme option in its M-PR, §2.3, re-binding exactly one row here). Every write goes
+// Role: CORE (PR C13; extraction X35 writers). Theme (the picker) · Theme options (the rows the active structure still binds
+// to legacy keys, in their final groups: T1b) · Display (app mode, zoom, marquee) · Lyrics · Fullscreen · Now playing · Home.
+// The rows still point at TODAY'S keys (each moves to a theme option in its M-PR, §2.3, re-binding exactly one row here). Every write goes
 // through the epoch it always bumped (ch 27 W2 "three facts"): marquee / washes / hide artwork / row density / track list
 // style / daylist clock → `Prefs.Appearance`; page layout, rail uniform, rail reset → `Prefs.DetailHero`; the lyrics blur →
 // `Prefs.Lyrics`; the two Now-playing rows → `Prefs.NpvPlayer` (the tab reads that epoch, no page re-read); the Fullscreen
 // rows → `Prefs.Stage` (raw key writes included — the stage reads that epoch). A verb returns whether the PAGE must re-read.
 
+using Wavee.Theming;
 using T = Wavee.Settings.Tab;
 using K = Wavee.SettingsRowKind;
 
@@ -19,79 +21,82 @@ public static partial class SettingsDoc
 
     static IReadOnlyList<SettingsSection> AppearanceSections() =>
     [
-        Sect(T.Appearance, "Theme", Strings.Settings.Appearance.Title, Strings.Settings.Appearance.Subtitle,
-            Make(T.Appearance, "Theme", "theme", K.Segmented, Strings.Settings.Appearance.Theme,
-                SettingsWriter.OfChoice("appearance.mode", SettingsVerbs.SetThemeMode),
-                captionKey: Strings.Settings.Appearance.ThemeSub, value: s => (int)Appearance.ModeOf(s.Get(Platform.Keys.ThemeMode))),
-            // A combo, not segments: thirteen items (Auto + twelve rungs). Index 0 is "Auto (N%)" for both Auto and Dense.
-            Make(T.Appearance, "Theme", "zoom", K.Choice, Strings.Settings.Appearance.Zoom,
-                SettingsWriter.OfChoice("zoom.pick", SettingsVerbs.PickZoom),
-                captionKey: Strings.Settings.Appearance.ZoomSub, value: _ => SettingsVerbs.ZoomIndex()),
-            Make(T.Appearance, "Theme", "marquee", K.Toggle, Strings.Settings.Appearance.Marquee,
-                SettingsWriter.OfToggle("appearance.marquee", on => SettingsVerbs.SetAppearanceToggle(Platform.Keys.MarqueeEnabled, on)),
-                captionKey: Strings.Settings.Appearance.MarqueeSub, value: BoolOf(Platform.Keys.MarqueeEnabled)),
-            Make(T.Appearance, "Theme", "colorWashes", K.Toggle, Strings.Settings.Appearance.ColorWashes,
-                SettingsWriter.OfToggle("appearance.colorWashes", on => SettingsVerbs.SetAppearanceToggle(Platform.Keys.ColorWashesEnabled, on)),
-                captionKey: Strings.Settings.Appearance.ColorWashesSub, value: BoolOf(Platform.Keys.ColorWashesEnabled)),
-            // DEVELOPER-ONLY: a normal build navigates at `Design.Nav.DefaultStyle` (Classic) and is offered no choice.
-            Make(T.Appearance, "Theme", "pageMotion", K.Segmented, Strings.Settings.Appearance.PageMotion,
-                SettingsWriter.OfChoice("appearance.pageMotion", SettingsVerbs.SetPageMotionStyle),
-                captionKey: Strings.Settings.Appearance.PageMotionSub,
-                value: _ => Prefs.Appearance.PageMotionStyle(Design.PageMotionStyleCount))),
+        // The theme picker: one row, one writer (`ThemeHost.Switch`). Its value is the index of the selected card among the
+        // cards the picker shows (`ThemePickerEntry`s), so a view and a test read the same answer.
+        Sect(T.Appearance, "Theme", Strings.Settings.Appearance.Title, Strings.Settings.ThemePicker.Subtitle,
+            Make(T.Appearance, "Theme", "themePicker", K.Picker, Strings.Settings.Appearance.Title,
+                SettingsWriter.OfChoice("theme.pick", SettingsVerbs.PickTheme),
+                captionKey: Strings.Settings.ThemePicker.Sub, value: _ => SettingsVerbs.ThemeIndex())),
 
-        Sect(T.Appearance, "Lists", Strings.Settings.Layout.Title, Strings.Settings.Layout.Subtitle,
-            Make(T.Appearance, "Lists", "rowDensity", K.Picker, Strings.Settings.Appearance.RowDensity,
-                SettingsWriter.OfChoice("lists.rowDensity", SettingsVerbs.SetDensity),
-                captionKey: Strings.Settings.Appearance.RowDensitySub, value: s => Prefs.Clamp(s.Get(Platform.Keys.RowDensity), 4)),
-            Make(T.Appearance, "Lists", "hideTrackArtwork", K.Toggle, Strings.Settings.Appearance.HideTrackArtwork,
-                SettingsWriter.OfToggle("lists.hideTrackArtwork", SettingsVerbs.SetHideTrackArtwork),
-                captionKey: Strings.Settings.Appearance.HideTrackArtworkSub, value: BoolOf(Platform.Keys.HideTrackArtwork)),
-            Make(T.Appearance, "Lists", "trackListStyle", K.Picker, Strings.Settings.Appearance.TrackListStyle,
+        // The rows the ACTIVE structure still binds to today's keys (T1b). The view lists them by `IStructureLayer.LegacyRows`
+        // (id and group are the theme's), so a theme with other options, or none, shows none of them.
+        Sect(T.Appearance, "Theme options", Strings.Settings.ThemeOptions.TitleKey, null,
+            Make(T.Appearance, "Theme options", "sidebarDesign", K.Picker, Strings.Settings.Sidebar.Layout,
+                SettingsWriter.OfChoice("sidebar.layout", SettingsVerbs.SwitchSidebarLayout),
+                captionKey: Strings.Settings.Sidebar.LayoutSub, value: _ => (int)Sidebar.Layout.Peek(),
+                enabled: NotWhileEditing),
+            Make(T.Appearance, "Theme options", "sidebarDensity", K.Choice, Strings.Settings.Sidebar.Density,
+                SettingsWriter.OfChoice("sidebar.density", SettingsVerbs.SetSidebarDensity),
+                captionKey: Strings.Settings.Sidebar.DensitySub, value: _ => (int)Sidebar.Density.Peek(), catalog: false),
+            Make(T.Appearance, "Theme options", "sidebarReset", K.Action, Strings.Settings.Sidebar.Reset,
+                SettingsWriter.OfAction("sidebar.reset", SettingsVerbs.ResetSidebarLayout),
+                captionKey: Strings.Settings.Sidebar.ResetSub,
+                enabled: f => f.SidebarEditing ? SettingsEnablement.Off(FinishEditingKey)
+                    : f.SidebarModified ? SettingsEnablement.On : SettingsEnablement.Off(null),
+                silent: true, catalog: false),
+            Make(T.Appearance, "Theme options", "sidebarCustomize", K.Action, "sidebar.menu.edit",
+                SettingsWriter.OfAction("sidebar.edit", SettingsVerbs.EditSidebar),
+                captionKey: "settings.sidebar.editSub", enabled: NotWhileEditing),
+            Make(T.Appearance, "Theme options", "sidebarResetEverything", K.Action, "sidebar.menu.resetEverything",
+                SettingsWriter.OfAction("sidebar.resetEverything", SettingsVerbs.ResetSidebarEverything),
+                captionKey: "settings.sidebar.resetEverythingSub", enabled: NotWhileEditing, catalog: false),
+            Make(T.Appearance, "Theme options", "trackListStyle", K.Picker, Strings.Settings.Appearance.TrackListStyle,
                 SettingsWriter.OfChoice("lists.trackListStyle", SettingsVerbs.SetTrackListStyle),
                 captionKey: Strings.Settings.Appearance.TrackListStyleSub, value: s => Prefs.Clamp(s.Get(Platform.Keys.TrackRowStyle), 2)),
-            Make(T.Appearance, "Lists", "pageLayout", K.Picker, Strings.Settings.Appearance.PageLayout,
+            Make(T.Appearance, "Theme options", "rowDensity", K.Picker, Strings.Settings.Appearance.RowDensity,
+                SettingsWriter.OfChoice("lists.rowDensity", SettingsVerbs.SetDensity),
+                captionKey: Strings.Settings.Appearance.RowDensitySub, value: s => Prefs.Clamp(s.Get(Platform.Keys.RowDensity), 4)),
+            Make(T.Appearance, "Theme options", "hideTrackArtwork", K.Toggle, Strings.Settings.Appearance.HideTrackArtwork,
+                SettingsWriter.OfToggle("lists.hideTrackArtwork", SettingsVerbs.SetHideTrackArtwork),
+                captionKey: Strings.Settings.Appearance.HideTrackArtworkSub, value: BoolOf(Platform.Keys.HideTrackArtwork)),
+            Make(T.Appearance, "Theme options", "pageLayout", K.Picker, Strings.Settings.Appearance.PageLayout,
                 SettingsWriter.OfChoice("lists.pageLayout", SettingsVerbs.SetPageLayout),
                 captionKey: Strings.Settings.Appearance.PageLayoutSub, value: s => Prefs.Clamp(s.Get(Platform.Keys.DetailPageLayout), 2)),
             // Both sub-rows exist only for Automatic (Hero composes no rail); "Clear all remembered sizes" is composed AWAY —
             // not disabled — while "Keep left-rail same size" is on (ch 27 W4, parity 17).
-            Make(T.Appearance, "Lists", "railUniform", K.Toggle, Strings.Settings.Appearance.RailUniform,
+            Make(T.Appearance, "Theme options", "railUniform", K.Toggle, Strings.Settings.Appearance.RailUniform,
                 SettingsWriter.OfToggle("lists.railUniform", SettingsVerbs.SetRailUniform),
                 captionKey: Strings.Settings.Appearance.RailUniformSub, value: BoolOf(Platform.Keys.DetailRailUniform),
                 visible: f => f.PageLayout == Prefs.DetailHero.Automatic),
             // The reset's enable gate: a destructive-looking no-op is never offered. The uniform pair is excluded.
-            Make(T.Appearance, "Lists", "railReset", K.Action, Strings.Settings.Appearance.RailReset,
+            Make(T.Appearance, "Theme options", "railReset", K.Action, Strings.Settings.Appearance.RailReset,
                 SettingsWriter.OfAction("lists.railReset", SettingsVerbs.ResetRailSizes),
                 captionKey: Strings.Settings.Appearance.RailResetSub,
                 enabled: f => f.RailCustomized ? SettingsEnablement.On : SettingsEnablement.Off(null), silent: true,
                 visible: f => f.PageLayout == Prefs.DetailHero.Automatic && !f.RailUniform,
                 confirm: new SettingsConfirm(Strings.Settings.Appearance.RailResetConfirmTitle,
                     Strings.Settings.Appearance.RailResetConfirmBody, Strings.Settings.Appearance.RailResetAction)),
-            // No page re-read: nothing else on this tab shows the clock.
-            Make(T.Appearance, "Lists", "daylistClock", K.Choice, Strings.Settings.Appearance.DaylistClock,
-                SettingsWriter.OfChoice("lists.daylistClock", SettingsVerbs.SetDaylistClock),
-                captionKey: Strings.Settings.Appearance.DaylistClockSub, value: _ => (int)Prefs.Appearance.DaylistClock())),
+            Make(T.Appearance, "Theme options", "colorWashes", K.Toggle, Strings.Settings.Appearance.ColorWashes,
+                SettingsWriter.OfToggle("appearance.colorWashes", on => SettingsVerbs.SetAppearanceToggle(Platform.Keys.ColorWashesEnabled, on)),
+                captionKey: Strings.Settings.Appearance.ColorWashesSub, value: BoolOf(Platform.Keys.ColorWashesEnabled)),
+            // DEVELOPER-ONLY: a normal build navigates at `Design.Nav.DefaultStyle` (Classic) and is offered no choice.
+            Make(T.Appearance, "Theme options", "pageMotion", K.Segmented, Strings.Settings.Appearance.PageMotion,
+                SettingsWriter.OfChoice("appearance.pageMotion", SettingsVerbs.SetPageMotionStyle),
+                captionKey: Strings.Settings.Appearance.PageMotionSub,
+                value: _ => Prefs.Appearance.PageMotionStyle(Design.PageMotionStyleCount))),
 
-        Sect(T.Appearance, "Sidebar", Strings.Settings.Sidebar.Title, Strings.Settings.Sidebar.Subtitle,
-            // The cards switch at once; while the sidebar is being edited they say why they do not (design Q7).
-            Make(T.Appearance, "Sidebar", "sidebarDesign", K.Picker, Strings.Settings.Sidebar.Layout,
-                SettingsWriter.OfChoice("sidebar.layout", SettingsVerbs.SwitchSidebarLayout),
-                captionKey: Strings.Settings.Sidebar.LayoutSub, value: _ => (int)Sidebar.Layout.Peek(),
-                enabled: NotWhileEditing),
-            Make(T.Appearance, "Sidebar", "sidebarDensity", K.Choice, Strings.Settings.Sidebar.Density,
-                SettingsWriter.OfChoice("sidebar.density", SettingsVerbs.SetSidebarDensity),
-                captionKey: Strings.Settings.Sidebar.DensitySub, value: _ => (int)Sidebar.Density.Peek(), catalog: false),
-            Make(T.Appearance, "Sidebar", "sidebarReset", K.Action, Strings.Settings.Sidebar.Reset,
-                SettingsWriter.OfAction("sidebar.reset", SettingsVerbs.ResetSidebarLayout),
-                captionKey: Strings.Settings.Sidebar.ResetSub,
-                enabled: f => f.SidebarEditing ? SettingsEnablement.Off(FinishEditingKey)
-                    : f.SidebarModified ? SettingsEnablement.On : SettingsEnablement.Off(null),
-                silent: true, catalog: false),
-            Make(T.Appearance, "Sidebar", "sidebarCustomize", K.Action, "sidebar.menu.edit",
-                SettingsWriter.OfAction("sidebar.edit", SettingsVerbs.EditSidebar),
-                captionKey: "settings.sidebar.editSub", enabled: NotWhileEditing),
-            Make(T.Appearance, "Sidebar", "sidebarResetEverything", K.Action, "sidebar.menu.resetEverything",
-                SettingsWriter.OfAction("sidebar.resetEverything", SettingsVerbs.ResetSidebarEverything),
-                captionKey: "settings.sidebar.resetEverythingSub", enabled: NotWhileEditing, catalog: false)),
+        // The core presentation prefs every theme honours (the plan's App mode and Zoom rows; marquee is a core pref, owner Q27).
+        Sect(T.Appearance, "Display", Strings.Settings.ThemeOptions.DisplayTitle, null,
+            Make(T.Appearance, "Display", "appMode", K.Segmented, Strings.Settings.Appearance.AppMode,
+                SettingsWriter.OfChoice("appearance.mode", SettingsVerbs.SetThemeMode),
+                captionKey: Strings.Settings.Appearance.ThemeSub, value: s => (int)Appearance.ModeOf(s.Get(Platform.Keys.ThemeMode))),
+            // A combo, not segments: thirteen items (Auto + twelve rungs). Index 0 is "Auto (N%)" for both Auto and Dense.
+            Make(T.Appearance, "Display", "zoom", K.Choice, Strings.Settings.Appearance.Zoom,
+                SettingsWriter.OfChoice("zoom.pick", SettingsVerbs.PickZoom),
+                captionKey: Strings.Settings.Appearance.ZoomSub, value: _ => SettingsVerbs.ZoomIndex()),
+            Make(T.Appearance, "Display", "marquee", K.Toggle, Strings.Settings.Appearance.Marquee,
+                SettingsWriter.OfToggle("appearance.marquee", on => SettingsVerbs.SetAppearanceToggle(Platform.Keys.MarqueeEnabled, on)),
+                captionKey: Strings.Settings.Appearance.MarqueeSub, value: BoolOf(Platform.Keys.MarqueeEnabled))),
 
         Sect(T.Appearance, "Lyrics", Strings.Settings.Lyrics.Title, Strings.Settings.Lyrics.Subtitle,
             // The 0..100 slider (0 turns the blur off); there is no Auto choice.
@@ -151,6 +156,12 @@ public static partial class SettingsDoc
             Make(T.Appearance, "Now playing", "npvStyle", K.Choice, Strings.Settings.Appearance.NpvStyle,
                 SettingsWriter.OfChoice("npv.style", SettingsVerbs.SetNpvStyle),
                 captionKey: Strings.Settings.Appearance.NpvStyleSub, value: _ => Rail.PlayerPrefs.Style())),
+
+        Sect(T.Appearance, "Home", Strings.Settings.Home.Title, Strings.Settings.Home.Subtitle,
+            // No page re-read: nothing else on this tab shows the clock.
+            Make(T.Appearance, "Home", "daylistClock", K.Choice, Strings.Settings.Appearance.DaylistClock,
+                SettingsWriter.OfChoice("lists.daylistClock", SettingsVerbs.SetDaylistClock),
+                captionKey: Strings.Settings.Appearance.DaylistClockSub, value: _ => (int)Prefs.Appearance.DaylistClock())),
     ];
 
     /// <summary>The sidebar's layout verbs refuse while it is being edited, and say so (Q7).</summary>
@@ -161,6 +172,26 @@ public static partial class SettingsDoc
 public static partial class SettingsVerbs
 {
     // ── Theme ────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The theme picker's pick: switch to the card at <paramref name="index"/> of the cards the picker shows. The picked
+    /// theme's root mounts fresh (owner Q26), so the page never needs a re-read; picking the selected card, or an index no card
+    /// has (the list changed under a stale view), does nothing.</summary>
+    public static bool PickTheme(int index)
+    {
+        var entries = ThemePickerFacts.State.Peek().Entries(Platform.Developer.Enabled.Peek());
+        if ((uint)index >= (uint)entries.Count || entries[index].Selected) return false;
+        _ = ThemeHost.Switch(entries[index].Id);
+        return false;
+    }
+
+    /// <summary>The index of the selected card among the cards the picker shows; -1 before a theme is installed.</summary>
+    public static int ThemeIndex()
+    {
+        var entries = ThemePickerFacts.State.Peek().Entries(Platform.Developer.Enabled.Peek());
+        for (int i = 0; i < entries.Count; i++)
+            if (entries[i].Selected) return i;
+        return -1;
+    }
 
     /// <summary>0 System · 1 Light · 2 Dark: <see cref="Appearance.SetMode"/> swaps the installed Wavee palette IN PLACE (System
     /// re-reads the OS theme and accent now), persists, and asks the host for the 250 ms re-theme cross-fade (ch 27 §5).</summary>

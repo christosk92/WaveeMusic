@@ -164,6 +164,36 @@ public static class ThemeHost
         return Task.CompletedTask;
     }
 
+    /// <summary>Forgets every persisted option of the installed theme <paramref name="themeId"/> (its UI state stays) and, when it
+    /// is the active theme, puts the cells back to the composition's defaults: a Live option re-renders its readers, a
+    /// Transaction option remounts the root once. The Settings "Reset ‹theme› options" verb. No-op for an id that is not installed.</summary>
+    public static void ResetOptions(string themeId)
+    {
+        ArgumentNullException.ThrowIfNull(themeId);
+        RequireInstalled();
+        ThemeComposition? target = ThemeCatalog.Find(themeId);
+        if (target is null) return;
+        ThemeOptionStore.ResetOptions(target, Platform.Settings);
+
+        ThemeComposition active = s_current.Peek();
+        if (!ReferenceEquals(target, active)) return;
+        ThemeOptionStore store = s_store!;
+        bool remount = false;
+        bool changed = false;
+        foreach (LayerOption lo in active.AllOptions)
+        {
+            if (!active.IsUserOption(lo) || active.DefaultOf(lo) is not { } fallback) continue;
+            if (!lo.Option.Publish(store.Store, fallback, persist: false)) continue;
+            changed = true;
+            remount |= lo.Option.Apply == ApplyMode.Transaction;
+        }
+        if (!changed) return;
+        s_values = store.Snapshot();
+        PublishFacts(active);
+        ApplyDefinition(active);
+        if (remount) Remount();
+    }
+
     private static (LayerOption Option, object Value) Resolve(ThemeComposition theme, OptionChange change)
     {
         LayerOption option = theme.FindQualified(change.LayerQualifiedId)

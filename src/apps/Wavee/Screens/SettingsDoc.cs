@@ -196,6 +196,14 @@ public static partial class SettingsDoc
         throw new InvalidOperationException("SettingsDoc: no row '" + id + "' on tab " + tab + ".");
     }
 
+    /// <summary>The row <paramref name="id"/> of <paramref name="tab"/>, or false when the document has none (a theme that lists a
+    /// legacy row this build no longer has: the page leaves it out instead of failing).</summary>
+    public static bool TryRow(Settings.Tab tab, string id, out SettingsRow row)
+    {
+        s_index ??= IndexRows();
+        return s_index.TryGetValue((tab, id), out row!);
+    }
+
     static Dictionary<(Settings.Tab, string), SettingsRow>? s_index;
 
     static Dictionary<(Settings.Tab, string), SettingsRow> IndexRows()

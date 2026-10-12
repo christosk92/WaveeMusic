@@ -1302,6 +1302,36 @@
       "title": "Now playing",
       "subtitle": "The player styles behind the pinned cover"
     },
+    "themePicker": {
+      "$comment": "Settings > Appearance > Theme: the strip of installed-theme cards (themes plan 8.1).",
+      "subtitle": "A theme changes how every page, the player and navigation look",
+      "sub": "Each theme keeps its own options",
+      "none": "No themes are installed",
+      "developer": "Developer"
+    },
+    "themeOptions": {
+      "$comment": "Settings > Appearance > the active theme's options: one expander, rows grouped (themes plan 8.1). The title is built from the theme's own name.",
+      "title": "{theme} options",
+      "none": "This theme has no options",
+      "displayTitle": "Display",
+      "animationEffects": "Animation effects",
+      "animationEffectsSub": "Follows the Windows animation setting",
+      "reset": "Reset options",
+      "resetSub": "Put every option of this theme back to its default. Your other settings are not changed.",
+      "resetConfirmTitle": "Reset options?",
+      "resetConfirmBody": "Every option of this theme goes back to its default. This can't be undone.",
+      "resetAction": "Reset",
+      "group": {
+        "sidebar": "Sidebar",
+        "trackLists": "Track lists",
+        "trackPages": "Track pages",
+        "surfaces": "Surfaces"
+      }
+    },
+    "home": {
+      "title": "Home",
+      "subtitle": "How Home shows your daylist"
+    },
     "appearance": {
       "title": "Theme",
       "subtitle": "Theme, zoom and shell effects",
@@ -1324,6 +1354,7 @@
       "zoomReset": "Reset zoom",
       "theme": "Theme",
       "themeSub": "System follows the Windows setting live",
+      "appMode": "App mode",
       "rowDensity": "Row density",
       "rowDensitySub": "Choose how much music fits on screen; the miniature rows preview the real spacing.",
       "trackListStyle": "Track list style",
@@ -2647,7 +2678,18 @@
     "unavailable": "This category isn't available right now",
     "homeSubtitle": "Genres, moods and charts — everything Spotify is featuring right now."
   },
+  "theme": {
+    "$comment": "Installed themes: their names and one-line descriptions, referenced by each theme's manifest (Theming/Composition/ThemeManifest.cs).",
+    "classic": {
+      "name": "Wavee Classic",
+      "description": "Today’s Wavee: sidebar, tabs, washes"
+    }
+  },
   "setup": {
+    "theme": {
+      "title": "Choose your theme",
+      "body": "A theme changes how every page, the player and navigation look. You can switch any time in Settings."
+    },
     "layout": {
       "title": "Choose your sidebar",
       "body": "Classic shows sections you can arrange. Library is one list with filters. You can switch any time in Settings."
@@ -2825,7 +2867,10 @@
     "homePodcasts": "Home: Podcasts",
     "homeAudiobooks": "Home: Audiobooks",
     "homeFollowingOn": "Home: Following on",
-    "homeFollowingOff": "Home: Following off"
+    "homeFollowingOff": "Home: Following off",
+    "themeOptionOn": "{option}: on",
+    "themeOptionOff": "{option}: off",
+    "themeOptionChoice": "{option}: {choice}"
   },
   "shortcuts": {
     "title": "Keyboard shortcuts",

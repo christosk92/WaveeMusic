@@ -35,7 +35,7 @@ public static partial class Shell
 {
     // ══ 1. PURE — the command table and its keystroke filter ═════════════════════════════════════════════════════════
 
-    public enum PaletteKind : byte { Navigate, Playback, Settings, Registry, CatalogSearch, Library }
+    public enum PaletteKind : byte { Navigate, Playback, Settings, Registry, CatalogSearch, Library, ThemeOption }
     public enum PalettePlaybackVerb : byte { PlayPause, Next, Previous, Shuffle, Repeat }
     public enum PaletteSettingsVerb : byte { ToggleTheme, ToggleCrossfade, ZoomIn, ZoomOut, ZoomReset, NpvTogglePresentation, NpvNextStyle, HomeFollowingOn, HomeFollowingOff, EditSidebar, SidebarClassic, SidebarLibrary }
 
@@ -64,6 +64,8 @@ public static partial class Shell
         public string? RegistryKey;
         public ActionTargetMode RegistryTarget;
         public string? CatalogQuery;
+        /// <summary>What a <see cref="PaletteKind.ThemeOption"/> row does: the active theme's option applies itself (themes plan 8.2).</summary>
+        public Action? Run;
     }
 
     public static class CommandTable
@@ -114,22 +116,34 @@ public static partial class Shell
             NavRow("home.customize", Loc.Get(Strings.Home.Customizer.Title), Icons.Edit, RouteKind.HomeCustomize),
         ];
 
-        /// <summary>A fresh index for one open: the builtins, then every registry action that accepts a target the
-        /// palette can supply (now playing, the active page, or none). <paramref name="glyphOf"/> resolves a
-        /// descriptor's semantic icon key; null or an unknown key falls back to <c>Icons.More</c>.</summary>
-        public static PaletteEntry[] BuildIndex(IReadOnlyList<ActionDescriptor>? registryActions, Func<string, string?>? glyphOf)
+        /// <summary>A fresh index for one open: the builtins, then the active theme's option commands
+        /// (<paramref name="themeCommands"/>: the options that asked for a palette row), then every registry action that
+        /// accepts a target the palette can supply (now playing, the active page, or none). <paramref name="glyphOf"/>
+        /// resolves a descriptor's semantic icon key; null or an unknown key falls back to <c>Icons.More</c>.</summary>
+        public static PaletteEntry[] BuildIndex(IReadOnlyList<ActionDescriptor>? registryActions, Func<string, string?>? glyphOf,
+            IReadOnlyList<Theming.ThemeCommand>? themeCommands = null)
         {
             var builtins = Builtins();
-            if (registryActions is null || registryActions.Count == 0) return builtins;
+            int themeCount = themeCommands?.Count ?? 0;
             int extra = 0;
-            for (int i = 0; i < registryActions.Count; i++)
-                if (TargetOf(registryActions[i].AcceptedTargets, out _)) extra++;
-            if (extra == 0) return builtins;
+            if (registryActions is not null)
+                for (int i = 0; i < registryActions.Count; i++)
+                    if (TargetOf(registryActions[i].AcceptedTargets, out _)) extra++;
+            if (extra == 0 && themeCount == 0) return builtins;
 
-            var all = new PaletteEntry[builtins.Length + extra];
+            var all = new PaletteEntry[builtins.Length + themeCount + extra];
             Array.Copy(builtins, all, builtins.Length);
             int w = builtins.Length;
-            for (int i = 0; i < registryActions.Count; i++)
+            for (int i = 0; i < themeCount; i++)
+            {
+                var command = themeCommands![i];
+                all[w++] = new PaletteEntry
+                {
+                    Id = command.Id, Label = command.Label, LabelLower = command.Label.ToLowerInvariant(), Glyph = Icons.Brush,
+                    Kind = PaletteKind.ThemeOption, Run = command.Run,
+                };
+            }
+            for (int i = 0; registryActions is not null && i < registryActions.Count; i++)
             {
                 var d = registryActions[i];
                 if (!TargetOf(d.AcceptedTargets, out var target)) continue;
@@ -329,6 +343,9 @@ public static partial class Shell
             case PaletteKind.Library:
                 (e.LibraryVerb == PaletteLibraryVerb.NewPlaylist ? OnNewPlaylist : OnNewFolder)?.Invoke();
                 break;
+            case PaletteKind.ThemeOption:
+                e.Run?.Invoke();
+                break;
             case PaletteKind.Registry:
                 if (e.RegistryKey is not { Length: > 0 } key) return;
                 var binding = new ActionBinding(Actions.Key.PublisherOf(key), key, e.RegistryTarget);
@@ -401,7 +418,8 @@ public static partial class Shell
             var scratch = UseRef<PaletteEntry?>(null);
             var announced = UseRef(false);
 
-            index.Value ??= CommandTable.BuildIndex(Actions.Registry.Current?.Actions, s_paletteGlyphOf);
+            index.Value ??= CommandTable.BuildIndex(Actions.Registry.Current?.Actions, s_paletteGlyphOf,
+                Theming.ThemeOptionsSection.Commands(Platform.Developer.Enabled.Peek()));
             dest.Value ??= new PaletteEntry[CommandTable.MaxResults];
             scratch.Value ??= CommandTable.NewCatalogScratch();
 
