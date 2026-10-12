@@ -21,6 +21,8 @@ internal static class Fixtures
                 public static ColorF FromRgba(byte r, byte g, byte b, byte a = 255) => default;
                 public static ColorF FromHsv(float h, float s, float v) => default;
             }
+            public readonly record struct Size2(float Width, float Height);
+            public readonly record struct RectF(float X, float Y, float W, float H);
         }
         namespace FluentGpu.Signals
         {
@@ -34,8 +36,36 @@ internal static class Fixtures
             public class TextEl : Element { }
             public static class Tok { public static int Epoch; }
         }
+        namespace FluentGpu.Hooks
+        {
+            public sealed class Context<T> { public T Default; public Context(T defaultValue) { Default = defaultValue; } }
+            public static class Viewport { public static readonly Context<FluentGpu.Foundation.Size2> Size = new(default); }
+            public class RenderContext
+            {
+                public T UseContext<T>(Context<T> context) => context.Default;
+                public FluentGpu.Signals.IReadSignal<T> UseContextSignal<T>(Context<T> context) => null!;
+                public FluentGpu.Signals.IReadSignal<float> UseMeasuredWidth(float quantum = 0f) => null!;
+                public FluentGpu.Signals.IReadSignal<FluentGpu.Foundation.RectF> UseMeasuredBounds() => null!;
+            }
+            public abstract class Component
+            {
+                protected T UseContext<T>(Context<T> context) => context.Default;
+                protected FluentGpu.Signals.IReadSignal<T> UseContextSignal<T>(Context<T> context) => null!;
+                protected FluentGpu.Signals.IReadSignal<float> UseMeasuredWidth(float quantum = 0f) => null!;
+                protected FluentGpu.Signals.IReadSignal<FluentGpu.Foundation.RectF> UseMeasuredBounds() => null!;
+            }
+        }
+        namespace FluentGpu.Controls
+        {
+            public static class Responsive
+            {
+                public static FluentGpu.Dsl.Element Of(System.Func<float, FluentGpu.Dsl.Element> build, float fallback = 0f, float grow = 0f) => null!;
+                public static FluentGpu.Dsl.Element Of<TState>(TState state, System.Func<TState, float, FluentGpu.Dsl.Element> build, float fallback = 0f, float grow = 0f) => null!;
+            }
+        }
         namespace FluentGpu.Theming
         {
+            public readonly ref struct ViewContext { public FluentGpu.Hooks.RenderContext Hooks => null!; }
             public readonly record struct OptionKey<T>(string Id, T Default);
             public readonly record struct ViewKey<TProps>(string Id) where TProps : class;
             public readonly record struct StyleKey<TStyle>(string Id) where TStyle : class;
@@ -90,6 +120,10 @@ internal static class Fixtures
                 public static FluentGpu.Signals.IReadSignal<int> Facts { get; } = null!;
             }
             public static class ThemeCatalog { public const string FallbackId = "classic"; }
+            public readonly record struct TierFacts(
+                Wavee.Theming.Contracts.WidthTier Window, Wavee.Theming.Contracts.WidthTier Content,
+                float ContentWidth, float ViewportWidth, float ViewportHeight);
+            public static class TierContext { public static TierFacts Tier(this in FluentGpu.Theming.ViewContext ctx) => default; }
         }
         namespace Wavee.Theming.Roles
         {
@@ -97,6 +131,7 @@ internal static class Fixtures
         }
         namespace Wavee.Theming.Contracts
         {
+            public enum WidthTier : byte { Compact, Small, Standard, Huge, Huge4K }
             [System.AttributeUsage(System.AttributeTargets.Class)]
             public sealed class CoreHostAttribute : System.Attribute { }
         }

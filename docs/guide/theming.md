@@ -234,9 +234,10 @@ rule that allows none is WVTH901. Rules that need a list read `src\apps\Wavee\an
 | WVTH009 | `ctx.OptionRequests.Set` only with own-layer keys | none |
 | WVTH010 | retired keys and deleted members (listed in `analyzer-input\WVTH010.legacy.txt`) only in `ThemeBootstrap.cs` | empty after F4 |
 | WVTH011 | each hidden structure option has a line with two or more values in `analyzer-input\WVTH011.matrix.txt` | none |
+| WVTH013 | the tier fence: in `Themes\**` and `[CoreHost]` types, no comparison of a measured width (`Viewport.Size`, `UseMeasuredWidth`/`UseMeasuredBounds`, the width parameter of a `Responsive.Of` build lambda, a `TierFacts` width/height member) with a number or a constant declared outside `Rules\Tiers*.cs`, and no `Responsive.Of`/`UseMeasured*` call that feeds one (section 7) | Classic only, shrink-only, deleted by TC10 |
 
 The analyzers recognise types by namespace and name (they run inside the compiler and never reference the app), so a rule
-is tested with stand-in declarations (`Wavee.Analyzers.Tests\Fixtures.cs`). WVTH013 (window tiers) arrives with T3c.
+is tested with stand-in declarations (`Wavee.Analyzers.Tests\Fixtures.cs`).
 
 ## 6. Testing a view (`ViewHarness`)
 
@@ -301,6 +302,22 @@ keeps its minimum and overflows into the clipping ancestor for that one refresh.
 **Adding a ladder.** A structure builds its `TierPolicy` in `Rules\Tiers*.cs` (WVTH003 allows literals there) and sets it on its bundle (`ClassicPolicies.Bundle` is `new(...) { Tiers = ClassicTiers.Policy }`). Keep the instance in a static property or field (in a static constructor if the ladders spread over several files): the facts compare equal only while the policy is the
 same object. A finer ladder a core model reads by id goes in `Ladders` as a `NamedLadder` (`TierPolicy.Ladder(id)`); nothing in core reads one today.
 
+**The fence (WVTH013, T3c).** A view never compares a width with a number: it reads `ctx.Tier()` and its structure's layout record, and
+the breakpoints live in the structure's `Rules\Tiers*.cs`. The rule is a syntax rule over `Themes\**` and over types marked
+`[CoreHost]`; `Rules\**` of a structure, `Theming\Policies\**` and `Shell\WindowTiers.cs` (the measurement) are exempt. It reports, at the
+comparison, a relational or equality comparison (`<`, `<=`, `>`, `>=`, `==`, `!=`, and the relational or constant patterns of `is` and
+`switch`) with a **measurement** on one side and a non-zero numeric literal, or a constant declared outside `Rules\Tiers*.cs`, on the
+other; and, at the call, a `Responsive.Of` whose build lambda holds such a comparison and a `UseMeasuredWidth`/`UseMeasuredBounds`
+whose result feeds one. A measurement is `Viewport.Size` (read through `UseContext`/`UseContextSignal`), the result of
+`UseMeasuredWidth`/`UseMeasuredBounds`, the width (last) parameter of a `Responsive.Of` lambda, or `TierFacts.ContentWidth`/`ViewportWidth`/
+`ViewportHeight`; a member read, `+ - * /`, a `Math`/`MathF` call and a local assigned from one carry it. Comparing the tier
+(`ctx.Tier().Content >= WidthTier.Huge`), a layout-record member, a control-size literal (`Width = 32`) or a value against zero is
+clean. That page-level widths come from the layout record is a review rule, not an analyzer rule (an analyzer cannot tell a page-level
+region from a control size). The baseline detail is the measurement kind (`Viewport.Size`, `UseMeasuredWidth`, `UseMeasuredBounds`,
+`Responsive.Of`, `TierFacts.ContentWidth`...), the same for the comparison and its call, so one entry per file and kind covers a site;
+Classic's file is `analyzer-baseline\WVTH013.txt` (no file today: no view has moved into `Themes\**` yet), emptied family by family by the
+Classic tier PRs and deleted by TC10. Where a ladder cannot move without a behaviour change, the move PR lists the file there.
+
 **Testing.** The pure rules (`WindowTiers.Resolve`, a policy's ladders) are driven with numbers (`TierPolicyTests`); the live resize
 (resized frame keeps the old tier, the next frame crosses with tracks, a drag crosses once) is `Wavee.ShellTests\TierResizeTests`;
 `ViewHarness` resolves the tiers of a view mounted alone from its window size, with hysteresis across `Resize`.
@@ -308,4 +325,4 @@ same object. A finer ladder a core model reads by id goes in `Ladders` as a `Nam
 **Classic today.** Classic's window ladder is the production sidebar band (Compact below 528, Small below 660, Standard above) and has
 no Huge band; TC1 redesigns it from the boards (528 / 1008 / 1920). Not moved out of core, because none is a ladder this primitive can
 state without changing behaviour: the chrome-row allocator, the stage aspect classes, the right-rail fit and the detail page-mode
-ladder. The zoom clamp (C1b) and WVTH013 (T3c) come after.
+ladder. The zoom clamp (C1b) comes after.
