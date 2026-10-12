@@ -142,7 +142,7 @@ public readonly partial struct Track
             body[0] = FactsStrip(FactsFor(t, p.Options), arriving: _opened);
             _opened = true;
             // A whole step of top air, not a hairline: the eyebrow heads the ROWS, not the flat strip above it.
-            body[1] = Design.Type.Eyebrow(Loc.Get(Strings.Detail.Versions.VersionsAndFormats)) with
+            body[1] = R.Type.Eyebrow(Loc.Get(Strings.Detail.Versions.VersionsAndFormats)) with
             {
                 Key = "versions-head", Color = Tok.TextTertiary, Margin = new Edges4(0f, Spacing.M, 0f, 2f),
             };
@@ -241,7 +241,7 @@ public readonly partial struct Track
             lines.Add(new BoxEl
             {
                 Key = "facts-hero", Direction = 0, Wrap = true, Gap = StatGap, MinWidth = 0f,
-                Stagger = Design.Reduced || !arriving ? 0f : Design.Motion.MastheadStaggerMs,   // reduced motion is a VALUE
+                Stagger = Design.Reduced || !arriving ? 0f : R.Motion.MastheadStaggerMs,   // reduced motion is a VALUE
                 Children = heroes.ToArray(),
             });
         if (prose.Count > 0) lines.Add(FactLine("facts-prose", prose, arriving));
@@ -271,7 +271,7 @@ public readonly partial struct Track
             MinWidth = 0f, Margin = new Edges4(0f, 0f, StatGap, 0f), Opacity = pending ? 0.6f : 1f,
             Children =
             [
-                Design.Type.StatHero(split.Value, split.Unit),
+                R.Type.StatHero(split.Value, split.Unit),
                 Caption(Loc.Get(Facts.LabelKey(f.Kind))) with
                 {
                     Weight = 600, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
@@ -436,7 +436,7 @@ public readonly partial struct Track
                     Children =
                     [
                         // 13.5 / 540 is 0.2.9's own version-title cut (TrackVersionsPanel.cs:311-316), ported as pixels.
-                        Design.Type.DenseTitle(version.Knows(TrackFields.Title) ? version.Title : "") with
+                        R.Type.DenseTitle(version.Knows(TrackFields.Title) ? version.Title : "") with
                         {
                             Weight = 540, Color = isNow ? Tok.AccentTextPrimary : Tok.TextPrimary,
                             MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
@@ -615,7 +615,7 @@ public readonly partial struct Track
                     Children = [LoadingBar(12f, 120f), LoadingBar(14f, 220f), LoadingBar(14f, 190f), LoadingBar(14f, 210f)],
                 },
                 DrawerRules.CreditsView.List => CreditsList(scope.Edges, parent),
-                _ => Design.Type.DenseMeta(Loc.Get(Strings.Menu.NoCredits)) with { Color = Tok.TextSecondary },
+                _ => R.Type.DenseMeta(Loc.Get(Strings.Menu.NoCredits)) with { Color = Tok.TextSecondary },
             };
             return new BoxEl { Direction = 1, MinWidth = 0f, MaxWidth = 440f, Children = [body] };
         }
@@ -636,7 +636,7 @@ public readonly partial struct Track
         {
             int i = order[k];
             if (keys[i].Length > 0 && DrawerRules.StartsGroup(keys, order.AsSpan(0, n), k))
-                kids.Add(Design.Type.Eyebrow(keys[i]) with { Color = Tok.TextTertiary });
+                kids.Add(R.Type.Eyebrow(keys[i]) with { Color = Tok.TextTertiary });
             kids.Add(CreditRow(Entities.Strings.Resolve(rows[i].Name), Entities.Strings.Resolve(rows[i].Role), targets[i]));
         }
         return ScrollView(new BoxEl { Direction = 1, Gap = Spacing.S, MinWidth = 0f, Children = kids.ToArray() }) with { MaxHeight = 420f };
@@ -645,14 +645,14 @@ public readonly partial struct Track
     // A credit linked to an artist slot is an accent link; an unlinked contributor is plain text.
     static Element CreditRow(string name, string role, int artistSlot)
     {
-        var creditTitle = Design.Type.DenseTitle("");
+        var creditTitle = R.Type.DenseTitle("");
         Element label = artistSlot > 0
             ? new SpanTextEl(new TextSpan[] { new(name, OnClick: () => GoToArtist(new Artist(artistSlot))) })
             {
                 Size = creditTitle.Size, LineHeight = creditTitle.LineHeight, Weight = 650,
                 Color = Tok.AccentTextPrimary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
             }
-            : Design.Type.DenseTitle(name) with
+            : R.Type.DenseTitle(name) with
             {
                 Weight = 650, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
             };
@@ -662,7 +662,7 @@ public readonly partial struct Track
             Children =
             [
                 new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [label] },
-                role.Length == 0 ? new BoxEl() : Design.Type.MicroMeta(role) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                role.Length == 0 ? new BoxEl() : R.Type.MicroMeta(role) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
             ],
         };
     }

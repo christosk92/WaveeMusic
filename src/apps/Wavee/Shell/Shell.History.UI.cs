@@ -113,7 +113,7 @@ public static partial class Shell
                     Children =
                     [
                         FluentGpu.Dsl.Ui.Icon(Icons.Clock, 22f, Tok.TextPrimary),
-                        Design.Type.PageHero(Loc.Get(Strings.Nav.History.Title)) with { Grow = 1f },
+                        R.Type.PageHero(Loc.Get(Strings.Nav.History.Title)) with { Grow = 1f },
                         new BoxEl
                         {
                             Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
@@ -236,7 +236,7 @@ public static partial class Shell
     {
         var kids = new System.Collections.Generic.List<Element>(3)
         {
-            Design.Type.Eyebrow(label) with { Color = Tok.TextSecondary },
+            R.Type.Eyebrow(label) with { Color = Tok.TextSecondary },
             new BoxEl { Grow = 1f, Height = 1f, Margin = new Edges4(4f, 0f, 4f, 0f), Fill = Tok.StrokeDividerDefault },
         };
         if (count is not null)

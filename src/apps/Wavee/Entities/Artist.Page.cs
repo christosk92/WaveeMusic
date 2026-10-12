@@ -551,9 +551,9 @@ public readonly partial struct Artist
         /// both sides, a 32 section gap, the player dock's reserve under the last section (ArtistPage.cs:271-285).</summary>
         static Element Magazine(Element[] sections, float gutter) => new BoxEl
         {
-            Direction = 1, Gap = Design.Size.SectionGap,
-            Grow = 1f, Shrink = 1f, MinWidth = 0f, Basis = 0f, MaxWidth = Design.Size.PageMaxW,
-            Padding = new Edges4(gutter, Spacing.M, gutter, Design.Dock.Reserve + 40f),
+            Direction = 1, Gap = R.Space.SectionGap,
+            Grow = 1f, Shrink = 1f, MinWidth = 0f, Basis = 0f, MaxWidth = R.Space.PageMaxW,
+            Padding = new Edges4(gutter, Spacing.M, gutter, R.Space.DockReserve + 40f),
             Children = sections,
         };
 
@@ -629,7 +629,7 @@ public readonly partial struct Artist
                 ],
             };
             // The content sits at the page's 1600 measure; the band's extent stays full-bleed.
-            Element row = Detail.Band(MathF.Min(width, Design.Size.PageMaxW), gutter, [title, pivot, actions]);
+            Element row = Detail.Band(MathF.Min(width, R.Space.PageMaxW), gutter, [title, pivot, actions]);
             return new BoxEl
             {
                 Width = width, Height = Detail.BandLayout.Height, ZStack = true,
@@ -1325,7 +1325,7 @@ public readonly partial struct Artist
                 Padding = new Edges4(Spacing.S, Spacing.S, Spacing.S, Spacing.M),
                 Corners = CornerRadius4.All(Radii.Card), Fill = Tok.FillCardSecondary,
                 BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, HoverFill = Tok.FillCardDefault,
-                HoverScale = Design.Motion.ScaleStandard.Hover,
+                HoverScale = R.Motion.ScaleStandard.Hover,
                 Role = link ? AutomationRole.Button : AutomationRole.None, Focusable = link,
                 FocusVisualMargin = Design.FocusInsetBordered,
                 Cursor = link ? CursorId.Hand : null,
@@ -1337,12 +1337,12 @@ public readonly partial struct Artist
                         ZStack = true, ClipToBounds = true, Corners = CornerRadius4.All(Radii.Control),
                         Children = [Controls.ArtworkFill(image, Radii.Control)],
                     },
-                    Design.Type.DenseTitle(name) with
+                    R.Type.DenseTitle(name) with
                     {
                         Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MaxLines = 2,
                         Trim = TextTrim.CharacterEllipsis,
                     },
-                    Design.Type.DenseTitle(price) with { Weight = 700, Color = Tok.AccentTextPrimary, MaxLines = 1 },
+                    R.Type.DenseTitle(price) with { Weight = 700, Color = Tok.AccentTextPrimary, MaxLines = 1 },
                 ],
             };
         };
@@ -1363,7 +1363,7 @@ public readonly partial struct Artist
                 Width = w, Height = w, Corners = CornerRadius4.All(Radii.Card), ClipToBounds = true,
                 Role = AutomationRole.Button, Focusable = true, FocusVisualMargin = Design.FocusInsetBordered,
                 Cursor = CursorId.Hand,
-                HoverScale = Design.Motion.ScaleStandard.Hover, PressScale = Design.Motion.ScaleStandard.Press,
+                HoverScale = R.Motion.ScaleStandard.Hover, PressScale = R.Motion.ScaleStandard.Press,
                 OnClick = () => GalleryOpen(_overlay, urls, index),
                 Children = [Controls.Artwork(urls[index], w, w, Radii.Card, decodePx: 480)],
             }, Loc.Get(Strings.Artist.Gallery), accent);
@@ -1396,7 +1396,7 @@ public readonly partial struct Artist
             return Controls.Surface(data, s_shelfShape, w);
         }
 
-        static Element CardSubtitle(string text) => Design.Type.TrackMeta(text) with
+        static Element CardSubtitle(string text) => R.Type.TrackMeta(text) with
         {
             MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
@@ -1519,7 +1519,7 @@ public readonly partial struct Artist
             long max = 1;
             for (int i = 0; i < cities.Length; i++) if (cities[i].Listeners > max) max = cities[i].Listeners;
             var rows = new Element[cities.Length + 1];
-            rows[0] = Design.Type.Eyebrow(Loc.Get(Strings.Artist.ListenedMostIn)) with { Color = Tok.TextTertiary };
+            rows[0] = R.Type.Eyebrow(Loc.Get(Strings.Artist.ListenedMostIn)) with { Color = Tok.TextTertiary };
             for (int i = 0; i < cities.Length; i++)
             {
                 float frac = (float)((double)cities[i].Listeners / max);
@@ -1538,7 +1538,7 @@ public readonly partial struct Artist
                                     Size = 14f, Color = Tok.TextPrimary, Grow = 1f, Basis = 0f, MinWidth = 0f,
                                     MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                                 },
-                                Design.Type.DenseMeta(CountLabel(cities[i].Listeners)) with { Color = Tok.TextSecondary },
+                                R.Type.DenseMeta(CountLabel(cities[i].Listeners)) with { Color = Tok.TextSecondary },
                             ],
                         },
                         new BoxEl
@@ -1586,8 +1586,8 @@ public readonly partial struct Artist
 
         // Sentence case: the type word is localized upstream and never caps-transformed.
         string eyebrowText = type.Length > 0 ? Loc.Get(Strings.Artist.Upcoming) + " · " + type : Loc.Get(Strings.Artist.Upcoming);
-        TextEl eyebrow = Design.Type.Eyebrow(eyebrowText) with { Color = tint, MaxLines = 1 };
-        TextEl title = Design.Type.PickQuote(name) with
+        TextEl eyebrow = R.Type.Eyebrow(eyebrowText) with { Color = tint, MaxLines = 1 };
+        TextEl title = R.Type.PickQuote(name) with
         {
             Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
@@ -1604,7 +1604,7 @@ public readonly partial struct Artist
                 ? [artistLine, Caption(Strings.Detail.ReleasesOn(dateText)) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }]
                 : [artistLine],
         };
-        TextEl? bigDate = dateText is null ? null : Design.Type.SurfaceDisplay(dateText) with { MaxLines = 1 };
+        TextEl? bigDate = dateText is null ? null : R.Type.SurfaceDisplay(dateText) with { MaxLines = 1 };
 
         Element actions = new BoxEl
         {
@@ -1719,7 +1719,7 @@ public readonly partial struct Artist
             Drag: Drag.Source(() => new DragPayload(DragKind.Album, uri, uri, title,
                 new EntityRef(EntityKind.Album, album.Slot), ArtUrl: cover)))
         {
-            Eyebrow = Design.Type.Eyebrow(eyebrow) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+            Eyebrow = R.Type.Eyebrow(eyebrow) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
             Menu = () => Menus.Container(ActionTarget.ForAlbum(album.Uri, title), cover, eyebrow),
         };
         return Controls.Surface(data, Shape.Row(72f) with { Plate = PlateKind.Tile });
@@ -1751,10 +1751,10 @@ public readonly partial struct Artist
                     Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = 2f,
                     Children =
                     [
-                        Design.Type.Eyebrow(Entities.Strings.Resolve(a.TourEyebrowId)) with { Color = Design.Accent.Decor },
+                        R.Type.Eyebrow(Entities.Strings.Resolve(a.TourEyebrowId)) with { Color = Design.Accent.Decor },
                         new TextEl(Entities.Strings.Resolve(a.TourHeadlineId))
                             { Size = 16f, Weight = 700, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                        Design.Type.DenseMeta(Entities.Strings.Resolve(a.TourSublineId)) with
+                        R.Type.DenseMeta(Entities.Strings.Resolve(a.TourSublineId)) with
                         {
                             Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                         },

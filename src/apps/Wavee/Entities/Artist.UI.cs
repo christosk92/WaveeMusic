@@ -500,9 +500,9 @@ public readonly partial struct Artist
 
         TextEl name = m.Tier switch
         {
-            ArtistHeroTier.Wide => Design.Type.ArtistDisplay(text.Name),
-            ArtistHeroTier.Medium => Design.Type.ArtistTitle(text.Name),
-            _ => Design.Type.ArtistCompactTitle(text.Name),
+            ArtistHeroTier.Wide => R.Type.ArtistDisplay(text.Name),
+            ArtistHeroTier.Medium => R.Type.ArtistTitle(text.Name),
+            _ => R.Type.ArtistCompactTitle(text.Name),
         };
         name = name with { Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MaxLines = 2, MinWidth = 0f };
 
@@ -769,7 +769,7 @@ public readonly partial struct Artist
             Grow = horizontal ? 1f : 0f,
             Children =
             [
-                Design.Type.PickQuote(comment) with
+                R.Type.PickQuote(comment) with
                 {
                     Wrap = TextWrap.Wrap, MaxLines = 4, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 },
@@ -791,8 +791,8 @@ public readonly partial struct Artist
             ? Embed.Comp(() => new Controls.PreSaveButton { Uri = target, Name = title, Accent = accent })
                 with { Key = "pick-presave:" + target }
             : Controls.PlayButton(tint, play);
-        Element metaKind = Design.Type.TrackMeta(kind) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
-        TextEl titleText = Design.Type.TrackTitle(title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
+        Element metaKind = R.Type.TrackMeta(kind) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
+        TextEl titleText = R.Type.TrackTitle(title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
         Element foot = new BoxEl
         {
             Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center,
@@ -1273,7 +1273,7 @@ public readonly partial struct Artist
                     BorderWidth = 2f, BorderColor = active ? Tok.AccentTextPrimary : ColorF.FromRgba(0, 0, 0, 0),
                     Opacity = active ? 1f : 0.55f, Transition = MotionTok.ControlFast,
                     OnClick = () => setSelected(idx), Cursor = CursorId.Hand, Role = AutomationRole.Button,
-                    HoverScale = Design.Motion.ScaleStandard.Hover,
+                    HoverScale = R.Motion.ScaleStandard.Hover,
                     Children = [Controls.Artwork(_photos[idx], Thumb, Thumb, Radii.Control, decodePx: 128)],
                 };
             }

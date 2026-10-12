@@ -223,6 +223,16 @@ public sealed class CoreHostPresentationAnalyzerTests
             Flagged("namespace Wavee.X { [Wavee.Theming.Contracts.CoreHost] class Host { " + Body + " } }"));
 
     [Fact]
+    public void MarkedHost_ReadingAStyleRole_IsFlagged()
+        => Assert.Equal(new[] { "R.SectionGap", "Wavee.Theming.Roles.R.SectionGap" },
+            Flagged("using Wavee.Theming.Roles; namespace Wavee.X { [Wavee.Theming.Contracts.CoreHost] class Host { "
+                + "float A() => R.SectionGap; float B() => Wavee.Theming.Roles.R.SectionGap; } }"));
+
+    [Fact]
+    public void MarkedHost_WithItsOwnMemberNamedR_IsClean()
+        => Assert.Empty(Flagged("namespace Wavee.X { [Wavee.Theming.Contracts.CoreHost] class Host { class Pair { public int R; } int M(Pair p) => p.R; } }"));
+
+    [Fact]
     public void NestedTypeAndLambda_OfAMarkedHost_AreFlagged()
         => Assert.Single(Flagged("namespace Wavee.X { [Wavee.Theming.Contracts.CoreHost] class Host { class Inner { System.Func<object> F = () => new FluentGpu.Dsl.TextEl(); } } }"));
 

@@ -68,7 +68,7 @@ public interface IStyleLayer
     ThemeOptionSchema Options { get; }
 
     /// <summary>The definition for these option values and the OS accent. Pure and memoized per (stamp, accent): the same
-    /// inputs return the same instance. <c>AppRoles</c> is a <c>WaveeStyleRoles</c> once T2a lands.</summary>
+    /// inputs return the same instance. <c>AppRoles</c> is the style's <c>WaveeStyleRoles</c>.</summary>
     ThemeDefinition Definition(OptionValues style, AccentRamp osAccent);
 
     /// <summary>The metrics for these option values.</summary>

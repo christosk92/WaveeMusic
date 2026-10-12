@@ -13,6 +13,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using Wavee;
 using Xunit;
+using Wavee.Theming.Roles;
 
 namespace Wavee.Tests;
 
@@ -218,7 +219,7 @@ public class SurfaceRulesTests
 
     [Fact]
     public void A_wide_shelf_tile_extent_is_unchanged()
-        => Assert.Equal(232f + 84f, SurfaceGeometry.StackExtent(Shape.Shelf(1, metaLine: true), 428f, Design.Size.WideTileAspect));
+        => Assert.Equal(232f + 84f, SurfaceGeometry.StackExtent(Shape.Shelf(1, metaLine: true), 428f, R.Space.WideTileAspect));
 
     [Fact]
     public void A_wrapping_stack_title_reserves_its_extra_lines()

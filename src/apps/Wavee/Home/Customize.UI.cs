@@ -107,8 +107,8 @@ public sealed class CustomizeScreen : Component
                 Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Gap = 4f,
                 Children =
                 [
-                    Design.Type.PageHero(Loc.Get(Strings.Home.Customizer.Title)) with { Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MaxLines = 1 },
-                    Design.Type.TrackMeta(Loc.Get(Strings.Home.CustomizeBody)) with { Wrap = TextWrap.Wrap, MaxLines = 2 },
+                    R.Type.PageHero(Loc.Get(Strings.Home.Customizer.Title)) with { Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MaxLines = 1 },
+                    R.Type.TrackMeta(Loc.Get(Strings.Home.CustomizeBody)) with { Wrap = TextWrap.Wrap, MaxLines = 2 },
                 ],
             },
             Button.Standard(Loc.Get(Strings.Home.ResetDefault), Reset) with { Shrink = 0f },

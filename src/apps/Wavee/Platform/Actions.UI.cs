@@ -509,12 +509,12 @@ public static partial class Actions
                 : new BoxEl
                 {
                     Height = 44f, AlignItems = FlexAlign.Center, Padding = new Edges4(8f, 0f, 8f, 0f),
-                    Children = [Design.Type.DenseMeta(spec.EmptyText) with { Color = Tok.TextSecondary }],
+                    Children = [R.Type.DenseMeta(spec.EmptyText) with { Color = Tok.TextSecondary }],
                 };
 
             var kids = new List<Element>(3);
             if (spec.Body is { Length: > 0 } body)
-                kids.Add(Design.Type.DenseMeta(body) with
+                kids.Add(R.Type.DenseMeta(body) with
                 {
                     Color = Tok.TextSecondary, MaxLines = 2, Trim = TextTrim.CharacterEllipsis,
                 });

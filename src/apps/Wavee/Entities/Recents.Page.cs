@@ -311,7 +311,7 @@ public readonly partial struct Recents
 
         Element Hero(Shape shape)
         {
-            var title = Design.Type.SurfaceDisplay(Loc.Get(Strings.Home.Recents)) with
+            var title = R.Type.SurfaceDisplay(Loc.Get(Strings.Home.Recents)) with
             {
                 MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Grow = 1f, Basis = 0f,
                 Enter = new EnterExit(Dy: 10f, Opacity: 0f, Active: true), Transition = MotionTok.StandardEnter,
@@ -327,7 +327,7 @@ public readonly partial struct Recents
                 Direction = 1, Gap = Spacing.XS,
                 Padding = new Edges4(Spacing.PageWide, Spacing.XXL, Spacing.PageWide, Spacing.L),
                 // The two lines arrive 45 ms apart; reduced motion is a VALUE (0), never a branch.
-                Stagger = Design.Reduced ? 0f : Design.Motion.MastheadStaggerMs,
+                Stagger = Design.Reduced ? 0f : R.Motion.MastheadStaggerMs,
                 Children = shape.Summary.Length == 0
                     ? [titleRow]
                     :
@@ -375,7 +375,7 @@ public readonly partial struct Recents
                         Children =
                         [
                             new BoxEl { Width = CardArt, Height = CardArt, Shrink = 0f, Corners = Radii.ControlAll },
-                            new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XXS, Children = [Design.Type.TrackTitle(""), Caption("")] },
+                            new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XXS, Children = [R.Type.TrackTitle(""), Caption("")] },
                             new BoxEl { Direction = 0, Gap = Spacing.M, Shrink = 0f, AlignItems = FlexAlign.Center, Children = [Caption(""), Caption("")] },
                         ],
                     };
@@ -872,7 +872,7 @@ public readonly partial struct Recents
 
         Element Tab(string? token, string label, bool available, bool isSelected)
         {
-            Element text = Design.Type.PivotLabel(label) with
+            Element text = R.Type.PivotLabel(label) with
             {
                 Color = !available ? Tok.TextDisabled : isSelected ? Tok.TextPrimary : Tok.TextSecondary, MaxLines = 1,
             };

@@ -754,7 +754,7 @@ public readonly partial struct Artist
         var trail = new Element[tier.ShowDuration ? 2 : 1];
         trail[0] = Track.Heart(st.Saved, onLike, pop, classic);
         if (tier.ShowDuration)
-            trail[1] = Design.Type.DenseMeta(c.Duration) with { Color = nowInk ?? Tok.TextSecondary };
+            trail[1] = R.Type.DenseMeta(c.Duration) with { Color = nowInk ?? Tok.TextSecondary };
 
         var rowChildren = new Element[showArtwork ? 4 : 3];
         int child = 0;
@@ -807,7 +807,7 @@ public readonly partial struct Artist
             Corners = classic ? CornerRadius4.All(Radii.None) : CornerRadius4.All(6f),
             Fill = ColorF.Transparent,
             HoverFill = Design.Colors.RowHover, PressedFill = Design.Colors.RowPressed,
-            PressScale = Design.Motion.ScaleSubtle.Press,
+            PressScale = R.Motion.ScaleSubtle.Press,
             BorderWidth = classic ? 0f : 1f, BorderColor = ColorF.Transparent,
             HoverBorderColor = classic ? ColorF.Transparent : Tok.StrokeCardDefault,
             Role = AutomationRole.Button,
@@ -907,7 +907,7 @@ public readonly partial struct Artist
     {
         Width = 28f, Height = 28f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
         Corners = CornerRadius4.All(14f), HoverFill = enabled ? Tok.FillSubtleSecondary : ColorF.Transparent,
-        HoverScale = Design.Motion.ScaleEmphatic.HoverIf(enabled), OnClick = enabled ? onClick : null,
+        HoverScale = R.Motion.ScaleEmphatic.HoverIf(enabled), OnClick = enabled ? onClick : null,
         Role = AutomationRole.Button, Cursor = enabled ? CursorId.Hand : null,
         Children = [Icon(glyph, 12f, enabled ? Tok.TextSecondary : Tok.TextTertiary)],
     };

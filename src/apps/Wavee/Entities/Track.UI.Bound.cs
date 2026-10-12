@@ -241,7 +241,7 @@ public readonly partial struct Track
                                 {
                                     Width = RowTransportBox, Height = RowTransportBox,
                                     AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                                    PressScale = Design.Motion.ScaleEmphatic.Press,
+                                    PressScale = R.Motion.ScaleEmphatic.Press,
                                     Visible = Prop.Of(() => !r.P.State.IsBuffering),
                                     Children =
                                     [
@@ -405,7 +405,7 @@ public readonly partial struct Track
     /// real mount so the marquee host only exists on that one row.</summary>
     static Element[] BoundTitleRuns(BoundRow r)
     {
-        // Design.Type.TrackTitle's rung (BodyStrong 14/20/600), constructed once with its binds.
+        // R.Type.TrackTitle's rung (BodyStrong 14/20/600), constructed once with its binds.
         var plain = new TextEl(Prop.Of(() => r.P.Track.ForDisplay.Title))
         {
             Size = 14f, LineHeight = 20f, Weight = 600,
@@ -462,10 +462,10 @@ public readonly partial struct Track
             }),
             Children =
             [
-                // Design.Type.Eyebrow's rung (Caption 12/16, 600, tracked) and Controls.ExplicitBadge(14), each built once.
+                // R.Type.Eyebrow's rung (Caption 12/16, 600, tracked) and Controls.ExplicitBadge(14), each built once.
                 new TextEl(Prop.Of(() => Loc.Get(Strings.Detail.Badge.Episode)))
                 {
-                    Size = 12f, LineHeight = 16f, Weight = 600, CharSpacing = Design.Type.EyebrowTracking,
+                    Size = 12f, LineHeight = 16f, Weight = 600, CharSpacing = R.Type.EyebrowTracking,
                     Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1,
                     Visible = Prop.Of(() => r.P.Track.ForDisplay.IsPodcast),
                 },

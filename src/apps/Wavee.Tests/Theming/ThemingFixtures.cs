@@ -9,6 +9,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Theming;
 using Wavee.Theming;
+using Wavee.Theming.Roles;
 
 namespace Wavee.Tests.Theming;
 
@@ -47,17 +48,24 @@ sealed class FakeStructure(string id, ThemeOptionSchema? options = null) : IStru
 /// process-wide token state) or its own copy (for tests that read the definition without applying it).</summary>
 sealed class FakeStyle(string id, ThemeOptionSchema? options = null, bool live = true) : IStyleLayer
 {
-    private readonly ThemeDefinition _own = Tok.Definition with { Id = id + ".definition" };
+    private readonly ThemeDefinition _own = Tok.Definition with { Id = id + ".definition", AppRoles = null };
+    private ThemeDefinition? _withRoles;
 
     public string Id => id;
     public ThemeOptionSchema Options { get; set; } = options ?? ThemeOptionSchema.Empty;
     public Func<OptionValues, StyleMetrics> MetricsFn { get; set; } = static _ => StyleMetrics.Unset;
     public int DefinitionCalls { get; private set; }
 
+    /// <summary>The roles the style's own definition carries (a style that is not <c>live</c>); null = none. Set before the first
+    /// <see cref="Definition"/> call: one definition instance is returned per roles instance.</summary>
+    public WaveeStyleRoles? Roles { get; set; }
+
     public ThemeDefinition Definition(OptionValues style, AccentRamp osAccent)
     {
         DefinitionCalls++;
-        return live ? Tok.Definition : _own;
+        if (live) return Tok.Definition;
+        if (Roles is null) return _own;
+        return _withRoles is { } built && ReferenceEquals(built.AppRoles, Roles) ? built : _withRoles = _own with { AppRoles = Roles };
     }
 
     public StyleMetrics Metrics(OptionValues style) => MetricsFn(style);

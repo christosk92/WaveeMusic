@@ -230,7 +230,7 @@ public static partial class Detail
             if (f.Eyebrow) blocks.Add(Block("hero-eyebrow", EyebrowRun(id.Eyebrow), late: true));
             blocks.Add(Block("hero-title", slots.Title is { } editTitle
                 ? editTitle(plan.Size, float.NaN)
-                : Design.Type.DetailHero(id.Title) with
+                : R.Type.DetailHero(id.Title) with
                 {
                     Size = plan.Size, Weight = 600,
                     // CLEARED: the natural line box of the size drawn (the plan's LineHeight is that same number).

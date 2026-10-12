@@ -91,6 +91,10 @@ internal static class Fixtures
             }
             public static class ThemeCatalog { public const string FallbackId = "classic"; }
         }
+        namespace Wavee.Theming.Roles
+        {
+            public static class R { public static float SectionGap; }
+        }
         namespace Wavee.Theming.Contracts
         {
             [System.AttributeUsage(System.AttributeTargets.Class)]

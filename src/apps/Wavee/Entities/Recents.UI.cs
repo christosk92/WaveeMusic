@@ -172,7 +172,7 @@ public readonly partial struct Recents
             Focusable = !overlay, Cursor = CursorId.Hand, OnClick = onClick,
             Children =
             [
-                Design.Type.ModuleHeader(label) with
+                R.Type.ModuleHeader(label) with
                 {
                     Shrink = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                     HoverColor = page.Accent.Value.Ink, BrushTransitionMs = Design.Motion.Faster,
@@ -469,7 +469,7 @@ public readonly partial struct Recents
                         Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
                         Children =
                         [
-                            Design.Type.ModuleHeader(first.ToString("MMMM", culture)) with
+                            R.Type.ModuleHeader(first.ToString("MMMM", culture)) with
                             {
                                 Color = month.IsCurrentMonth ? page.AccentInkProp : (Prop<ColorF>)Tok.TextPrimary,
                                 BrushTransitionMs = AccentTransitionMs, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 0f,

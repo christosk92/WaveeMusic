@@ -356,7 +356,7 @@ public readonly partial struct Track
                 return track.ForDisplay.Title;
             }), s_rowMarqueeStyle);
         }
-        return Design.Type.TrackTitle(t.ForDisplay.Title) with
+        return R.Type.TrackTitle(t.ForDisplay.Title) with
         {
             Color = isNow ? Tok.AccentTextPrimary : Tok.TextPrimary,
             Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
@@ -429,7 +429,7 @@ public readonly partial struct Track
             : new BoxEl
             {
                 Width = RowTransportBox, Height = RowTransportBox, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                PressScale = Design.Motion.ScaleEmphatic.Press,   // a real button push; the row-driven reveal is the hover cue
+                PressScale = R.Motion.ScaleEmphatic.Press,   // a real button push; the row-driven reveal is the hover cue
                 Children = [Icon(st.IsNow && st.IsPlaying ? Icons.Pause : Icons.Play, 12f, st.IsNow ? ink : Tok.TextPrimary)],
             };
         Element revealed = onPlay is null
@@ -604,8 +604,8 @@ public readonly partial struct Track
         {
             Width = RowMoreBox, Height = RowMoreBox,
             Corners = classic ? CornerRadius4.All(Radii.None) : Radii.Circle(RowMoreBox),
-            HoverScale = classic ? 1f : Design.Motion.ScaleEmphatic.Hover,
-            PressScale = classic ? 1f : Design.Motion.ScaleEmphatic.Press,
+            HoverScale = classic ? 1f : R.Motion.ScaleEmphatic.Hover,
+            PressScale = classic ? 1f : R.Motion.ScaleEmphatic.Press,
             Opacity = 1f, HoverOpacity = float.NaN,
             Focusable = false,
         };
@@ -659,7 +659,7 @@ public readonly partial struct Track
         var kids = new Element[kidCount];
         int k = 0;
         if (episode)
-            kids[k++] = Design.Type.Eyebrow(Loc.Get(Strings.Detail.Badge.Episode)) with
+            kids[k++] = R.Type.Eyebrow(Loc.Get(Strings.Detail.Badge.Episode)) with
             {
                 Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1,
             };
@@ -1318,7 +1318,7 @@ public readonly partial struct Track
     {
         Width = RowMoreBox, Height = RowMoreBox, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
         Corners = Radii.Circle(RowMoreBox), BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault,
-        HoverScale = Design.Motion.ScaleEmphatic.Hover, PressScale = Design.Motion.ScaleEmphatic.Press,
+        HoverScale = R.Motion.ScaleEmphatic.Hover, PressScale = R.Motion.ScaleEmphatic.Press,
         Cursor = CursorId.Hand, OnClick = onAdd,
         Role = AutomationRole.Button, BlocksDragArm = true,
         Children = [Icon(Icons.Add, 15f, Tok.TextPrimary)],

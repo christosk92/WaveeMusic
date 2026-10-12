@@ -182,8 +182,8 @@ public static partial class Visualizer
                         Direction = 1, HitTestVisible = false,
                         Children =
                         [
-                            new TextEl(ZuneLower(Loc.Get(Strings.Player.NowPlaying))) { Size = 20f, LineHeight = 28f, Weight = 600, FontFamily = Design.Type.DisplayFace, Color = Ink.Ink with { A = 0.8f } },
-                            new TextEl(line) { Size = 20f, LineHeight = 28f, FontFamily = Design.Type.DisplayFace, Color = Ink.Ink with { A = 0.55f }, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MaxWidth = Stage.Layout.NowPlayingCardW },
+                            new TextEl(ZuneLower(Loc.Get(Strings.Player.NowPlaying))) { Size = 20f, LineHeight = 28f, Weight = 600, FontFamily = R.Type.DisplayFace, Color = Ink.Ink with { A = 0.8f } },
+                            new TextEl(line) { Size = 20f, LineHeight = 28f, FontFamily = R.Type.DisplayFace, Color = Ink.Ink with { A = 0.55f }, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MaxWidth = Stage.Layout.NowPlayingCardW },
                         ],
                     }));
                 }
@@ -249,7 +249,7 @@ public static partial class Visualizer
 
         TextEl Glyphs() => new(Word)
         {
-            Size = Size, LineHeight = Size, Weight = Weight, FontFamily = Design.Type.DisplayFace, Color = Color,
+            Size = Size, LineHeight = Size, Weight = Weight, FontFamily = R.Type.DisplayFace, Color = Color,
             Wrap = TextWrap.NoWrap, MaxLines = 1, Shrink = 0f,
         };
     }
@@ -616,13 +616,13 @@ public static partial class Visualizer
             if (artist.Length > 0)
                 kids.Add(new CanvasChild(x + 8f * k, artistY, new TextEl(artist)
                 {
-                    Size = 28f * k, LineHeight = 36f * k, Weight = 600, FontFamily = Design.Type.DisplayFace, Color = Prop.Bind(Slab.A),
+                    Size = 28f * k, LineHeight = 36f * k, Weight = 600, FontFamily = R.Type.DisplayFace, Color = Prop.Bind(Slab.A),
                     MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MaxWidth = W - 2f * x,
                 }));
             if (title.Length > 0)
                 kids.Add(new CanvasChild(x, titleY, new TextEl(title)
                 {
-                    Size = size, LineHeight = size, Weight = 300, FontFamily = Design.Type.DisplayFace, Color = Ink.Ink with { A = 0.92f },
+                    Size = size, LineHeight = size, Weight = 300, FontFamily = R.Type.DisplayFace, Color = Ink.Ink with { A = 0.92f },
                     MaxLines = 1, Trim = TextTrim.Clip, MaxWidth = W - x,
                 }));
             return new BoxEl { Width = W, Height = H, HitTestVisible = false, Children = [Canvas.Create(W, H, kids)] };
@@ -859,13 +859,13 @@ public static partial class Visualizer
                 float x = 64f * k, metaY = top + 0.16f * nameSize - 20f * k - 28f * k, titleY = metaY - 30f * k;
                 kids.Add(new CanvasChild(x, titleY, new TextEl(ZuneLower(track.Title))
                 {
-                    Size = 22f * k, LineHeight = 30f * k, Weight = 600, FontFamily = Design.Type.DisplayFace, Color = Ink.Ink with { A = 0.9f },
+                    Size = 22f * k, LineHeight = 30f * k, Weight = 600, FontFamily = R.Type.DisplayFace, Color = Ink.Ink with { A = 0.9f },
                     MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MaxWidth = W - 2f * x,
                 }));
                 if (meta.Length > 0)
                     kids.Add(new CanvasChild(x, metaY, new TextEl(ZuneLower(meta))
                     {
-                        Size = 20f * k, LineHeight = 28f * k, FontFamily = Design.Type.DisplayFace, Color = Ink.InkSecondary,
+                        Size = 20f * k, LineHeight = 28f * k, FontFamily = R.Type.DisplayFace, Color = Ink.InkSecondary,
                         MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MaxWidth = W - 2f * x,
                     }));
             }
@@ -897,7 +897,7 @@ public static partial class Visualizer
                 [
                     new TextEl(Word)
                     {
-                        Size = Size, LineHeight = Size, Weight = 300, FontFamily = Design.Type.DisplayFace, Color = Ink.Ink with { A = 0.9f },
+                        Size = Size, LineHeight = Size, Weight = 300, FontFamily = R.Type.DisplayFace, Color = Ink.Ink with { A = 0.9f },
                         Wrap = TextWrap.NoWrap, MaxLines = 1, Shrink = 0f,
                     },
                 ],

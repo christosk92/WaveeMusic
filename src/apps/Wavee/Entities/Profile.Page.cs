@@ -379,13 +379,13 @@ public static partial class Profile
         /// both sides, a 32 section gap, the player dock's reserve under the last section.</summary>
         static Element Magazine(Element[] sections, float gutter) => new BoxEl
         {
-            Direction = 1, Gap = Design.Size.SectionGap,
-            Grow = 1f, Shrink = 1f, MinWidth = 0f, Basis = 0f, MaxWidth = Design.Size.PageMaxW,
-            Padding = new Edges4(gutter, Spacing.M, gutter, Design.Dock.Reserve + 40f),
+            Direction = 1, Gap = R.Space.SectionGap,
+            Grow = 1f, Shrink = 1f, MinWidth = 0f, Basis = 0f, MaxWidth = R.Space.PageMaxW,
+            Padding = new Edges4(gutter, Spacing.M, gutter, R.Space.DockReserve + 40f),
             Children = sections,
         };
 
-        float MagazineInnerWidth() => MathF.Max(1f, MathF.Min(_width, Design.Size.PageMaxW) - 2f * _metrics.Gutter);
+        float MagazineInnerWidth() => MathF.Max(1f, MathF.Min(_width, R.Space.PageMaxW) - 2f * _metrics.Gutter);
 
         /// <summary>One section's body verdict + element, latched for its region's delegates.</summary>
         void Latch(ProfileSection s, User u, in ProfileFacts f, ColorF accent)
@@ -499,7 +499,7 @@ public static partial class Profile
                     ],
                 };
             // The content sits at the page's 1600 measure; the band's extent stays full-bleed.
-            Element row = Detail.Band(MathF.Min(width, Design.Size.PageMaxW), gutter, [title, pivot, actions]);
+            Element row = Detail.Band(MathF.Min(width, R.Space.PageMaxW), gutter, [title, pivot, actions]);
             float revealStart = ArtistHeroLayout.CompactRevealStart(collapse);
             return new BoxEl
             {

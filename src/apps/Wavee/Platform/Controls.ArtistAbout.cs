@@ -64,7 +64,7 @@ public static partial class Controls
                     Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XS,
                     Children =
                     [
-                        Design.Type.Eyebrow(Loc.Get(Strings.Detail.AboutTheArtist))
+                        R.Type.Eyebrow(Loc.Get(Strings.Detail.AboutTheArtist))
                             with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                         new BoxEl
                         {
@@ -83,7 +83,7 @@ public static partial class Controls
                             ],
                         },
                         bio.Length > 0
-                            ? Design.Type.DenseMeta(bio) with
+                            ? R.Type.DenseMeta(bio) with
                             {
                                 Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis,
                             }

@@ -205,16 +205,16 @@ public readonly partial struct Album
         {
             var rows = new Element[_allCount];
             for (int i = 0; i < rows.Length; i++) rows[i] = FlyoutRow(new Artist(_all[i]), _close);
-            var list = new BoxEl { Direction = 1, Gap = 2f, Width = Design.Size.FacePileListW, Children = rows };
+            var list = new BoxEl { Direction = 1, Gap = 2f, Width = R.Space.FacePileListW, Children = rows };
             return new BoxEl
             {
-                Direction = 1, Width = Design.Size.FacePileFlyoutW, MaxHeight = Design.Size.FacePileFlyoutH,
+                Direction = 1, Width = R.Space.FacePileFlyoutW, MaxHeight = R.Space.FacePileFlyoutH,
                 Padding = Edges4.All(Spacing.S),
                 Children =
                 [
                     ScrollView(list) with
                     {
-                        Width = Design.Size.FacePileListW, MaxHeight = Design.Size.FacePileListH,
+                        Width = R.Space.FacePileListW, MaxHeight = R.Space.FacePileListH,
                         ContentSized = true, AutoEdgeFade = true, Grow = 0f,
                     },
                 ],
@@ -321,7 +321,7 @@ public readonly partial struct Album
                         Direction = 1, Gap = Spacing.XS, MinWidth = 0f, Grow = 1f,
                         Children =
                         [
-                            Design.Type.Eyebrow(Loc.Get(Strings.Detail.PreReleaseEyebrow)) with { Color = Prop.Of(p.Accent), MaxLines = 1 },
+                            R.Type.Eyebrow(Loc.Get(Strings.Detail.PreReleaseEyebrow)) with { Color = Prop.Of(p.Accent), MaxLines = 1 },
                             body,
                         ],
                     },
@@ -422,7 +422,7 @@ public readonly partial struct Album
             var rows = new Element[shown];
             for (int i = 0; i < shown; i++) rows[i] = TrailRow(p.Kind, p.Parent, i);
 
-            Element title = Design.Type.RailHeader(p.Title) with
+            Element title = R.Type.RailHeader(p.Title) with
             {
                 Grow = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
             };
@@ -469,7 +469,7 @@ public readonly partial struct Album
 
     /// <summary>Between the header's text lines.</summary>
     public const float PaneHeaderGap = 3f;
-    /// <summary>The eyebrow's line box — <c>Design.Type.Eyebrow</c> is <c>Ui.Caption</c>, 12 / 16.</summary>
+    /// <summary>The eyebrow's line box — <c>R.Type.Eyebrow</c> is <c>Ui.Caption</c>, 12 / 16.</summary>
     public const float PaneHeaderEyebrowLine = 16f;
     /// <summary>The title link. 24 / 30 and not the prototype's 28 / 34: at 34 two lines alone spent 129 of the 128 the
     /// cover leaves. A one-line title — the common case — reads the same at either size.</summary>
@@ -531,7 +531,7 @@ public readonly partial struct Album
                 Direction = 1, Grow = 1f, Basis = 0f, Gap = PaneHeaderGap, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true,
                 Children =
                 [
-                    Design.Type.Eyebrow(eyebrow) with { Color = Tok.TextTertiary },
+                    R.Type.Eyebrow(eyebrow) with { Color = Tok.TextTertiary },
                     new TextEl(title)
                     {
                         Size = PaneTitleSize, LineHeight = PaneTitleLine, Weight = 600,
@@ -588,7 +588,7 @@ public readonly partial struct Album
     public static Element PaneCommands(Action play, Action shuffle, Element save, Element more, Action open)
     {
         string openLabel = Loc.Get(Strings.Library.OpenAlbum);
-        TextEl label = Design.Type.DenseMeta(openLabel) with
+        TextEl label = R.Type.DenseMeta(openLabel) with
         {
             Color = Tok.AccentTextPrimary, HoverColor = Tok.AccentTextSecondary,
             MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,

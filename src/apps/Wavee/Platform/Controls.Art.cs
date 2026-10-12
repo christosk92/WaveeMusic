@@ -92,7 +92,7 @@ public static partial class Controls
     /// <para>ONLY A NON-SQUARE COVER ZOOMS (width ≠ height: the 16:9 wide tiles, a 2-span lead): 1.02 over the
     /// <see cref="Design.Motion.Standard"/> rung with a decelerate ease — the prototype's slow drift into a wide
     /// picture. A square cover stays still; its hover is the plate's fill alone (rule 2). Reduced motion collapses the
-    /// zoom to 1 (<see cref="Design.ScaleTier.Hover"/>).</para>
+    /// zoom to 1 (<see cref="ScaleTier.Hover"/>).</para>
     /// <para><paramref name="circular"/> flips the clip OFF (rule 4): the FAB sits inside the cover's RECTANGLE but
     /// outside the avatar circle, so clipping it would cut the affordance in half. It is honoured only on a SQUARE slot
     /// (<see cref="CoverShape.IsCircular"/>).</para>
@@ -110,7 +110,7 @@ public static partial class Controls
         {
             ZStack = true, Width = width, Height = height,
             ClipToBounds = !CoverShape.IsCircular(circular, width / MathF.Max(1f, height)),
-            HoverScale = wide ? Design.Motion.ScaleSubtle.Hover : 1f,
+            HoverScale = wide ? R.Motion.ScaleSubtle.Hover : 1f,
             HoverDurationMs = Design.Motion.Slow, HoverEasing = Easing.FluentDecelerate,
             Children = kids.ToArray(),
         };
@@ -153,7 +153,7 @@ public static partial class Controls
     {
         Shrink = 0f, Padding = new Edges4(Spacing.S, 2f, Spacing.S, 2f),
         Corners = Radii.PillAll, Fill = Tok.FillSubtleSecondary,
-        Children = [Design.Type.MicroMeta(text) with { Weight = 600, Color = Tok.TextTertiary, MaxLines = 1 }],
+        Children = [R.Type.MicroMeta(text) with { Weight = 600, Color = Tok.TextTertiary, MaxLines = 1 }],
     };
 
     // ══ 3. THE NOW-PLAYING OVERLAY ═══════════════════════════════════════════════════════════════════════════════════
@@ -632,7 +632,7 @@ public static partial class Controls
                 ? [new BoxEl { Key = "v", Children = [valueRun] }]
                 : [new BoxEl { Key = "v:" + value, Animate = MotionRecipes.TextSwap, Children = [valueRun] }],
         };
-        Element captionRun = Design.Type.MicroMeta(caption)
+        Element captionRun = R.Type.MicroMeta(caption)
             with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
 
         return new BoxEl
@@ -804,8 +804,8 @@ public static partial class Controls
             // this inset must keep supporting.
             FocusVisualMargin = live ? Design.FocusInsetRow : default,
             HoverFill = !live ? ColorF.Transparent : f.Selected ? Tok.AccentSecondary : Tok.AccentSubtle,
-            HoverScale = live ? Design.Motion.ScaleStandard.Hover : 1f,
-            PressScale = live ? Design.Motion.ScaleStandard.Press : 1f,
+            HoverScale = live ? R.Motion.ScaleStandard.Hover : 1f,
+            PressScale = live ? R.Motion.ScaleStandard.Press : 1f,
             HoverDurationMs = Design.Motion.Faster,
             OnClick = f.OnClick,
             Children = [PersonPicture.Create("", FaceAvatar, displayName: f.Name, imageSourcePath: f.ImageUrl)],
@@ -830,8 +830,8 @@ public static partial class Controls
             FocusVisualMargin = live ? Design.FocusInsetRow : default,
             HoverFill = live ? Tok.FillSubtleSecondary : ColorF.Transparent,
             PressedFill = live ? Tok.FillSubtleTertiary : ColorF.Transparent,
-            HoverScale = live ? Design.Motion.ScaleStandard.Hover : 1f,
-            PressScale = live ? Design.Motion.ScaleStandard.Press : 1f,
+            HoverScale = live ? R.Motion.ScaleStandard.Hover : 1f,
+            PressScale = live ? R.Motion.ScaleStandard.Press : 1f,
             HoverDurationMs = Design.Motion.Faster,
             OnClick = onClick,
             Children =

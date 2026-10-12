@@ -555,7 +555,7 @@ public static partial class Lyrics
                         Fill = InkMode.Plate, BorderWidth = 1f, BorderColor = InkMode.PlateStroke,
                         HoverFill = InkMode.PlateHover, PressedFill = InkMode.PlatePressed,
                         // PRESS only — the pill never grows on hover (ch 22 audit 1, parity 75).
-                        PressScale = Design.Motion.ScaleSubtle.Press, Cursor = CursorId.Hand,
+                        PressScale = R.Motion.ScaleSubtle.Press, Cursor = CursorId.Hand,
                         OnClick = () => BeginResync(Context.Scene),
                         Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false,
                         Enter = new EnterExit(Dy: 4f, Opacity: 0f, Active: true),
@@ -582,7 +582,7 @@ public static partial class Lyrics
             string meta = TranscriptPeek.MetaLine(duration, TranscriptPeek.LanguageLabel(episode.TranscriptLanguage));
             var gate = new List<Element>(3)
             {
-                global::Wavee.Design.Type.DenseMeta(Loc.Get(Strings.Podcast.PeekFollows)) with
+                R.Type.DenseMeta(Loc.Get(Strings.Podcast.PeekFollows)) with
                 {
                     Color = InkMode.Secondary, Wrap = TextWrap.Wrap, MaxLines = 0,
                 },
@@ -2600,7 +2600,7 @@ public static partial class Lyrics
                     Transition = MotionTok.ControlFast,
                     Children =
                     [
-                        Design.Type.NpvLyric(lines[index].Text) with
+                        R.Type.NpvLyric(lines[index].Text) with
                         {
                             Color = Tok.TextPrimary, MaxLines = 2, MinWidth = 0f,
                             Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,

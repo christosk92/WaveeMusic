@@ -169,7 +169,7 @@ public readonly partial struct Show
             var f = m.Facts?.Value ?? default;
             var id = IdentityOf(show, in f);
             Element header = Album.PaneHeader(id.CoverUrl, id.Eyebrow, id.Title, _open,
-                Design.Type.DenseMeta(Entities.Strings.Resolve(show.PublisherId))
+                R.Type.DenseMeta(Entities.Strings.Resolve(show.PublisherId))
                     with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                 id.Meta ?? "");
             Element commands = new BoxEl

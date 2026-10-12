@@ -1077,7 +1077,7 @@ public readonly partial struct Album
     static Element Section(string title, Element body) => new BoxEl
     {
         Direction = 1, Gap = Spacing.M, AlignSelf = FlexAlign.Stretch, Padding = SectionPad,
-        Children = [Design.Type.RailHeader(title), body],
+        Children = [R.Type.RailHeader(title), body],
     };
 
     /// <summary>One row of a list section, read live off its relation.</summary>
@@ -1140,7 +1140,7 @@ public readonly partial struct Album
     }
 
     static Element SubtitleLine(string text)
-        => Design.Type.TrackMeta(text) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
+        => R.Type.TrackMeta(text) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
 
     /// <summary>A navigable resource as a drag payload: tracks resolve through the library seam, lazily, after a drop.</summary>
     static DragPayload ResourcePayload(DragKind kind, EntityKind entity, int slot, string uri, string title, string? cover)
@@ -1169,14 +1169,14 @@ public readonly partial struct Album
             Corners = Radii.CardAll,
             Fill = Tok.FillCardSecondary, HoverFill = Tok.FillCardDefault, PressedFill = Tok.FillSubtleTertiary,
             BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-            HoverScale = Design.Motion.ScaleSubtle.HoverIf(live), PressScale = Design.Motion.ScaleSubtle.PressIf(live),
+            HoverScale = R.Motion.ScaleSubtle.HoverIf(live), PressScale = R.Motion.ScaleSubtle.PressIf(live),
             Role = live ? AutomationRole.Button : AutomationRole.None,
             Focusable = live, Cursor = live ? CursorId.Hand : (CursorId?)null,
             OnClick = live ? () => Actions.Services.OpenExternal?.Invoke(url!) : null,
             Children =
             [
                 Controls.Artwork(Controls.ArtUrl(m.ImageId), 48f, 48f, Radii.Control),
-                Design.Type.TrackTitle(name) with { Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                R.Type.TrackTitle(name) with { Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                 new TextEl(price.Length > 0 ? price : Loc.Get(Strings.Artist.Buy))
                 {
                     Size = 12f, LineHeight = 16f, Weight = 600, Shrink = 0f,
@@ -1313,9 +1313,9 @@ public readonly partial struct Album
             Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XS,
             Children =
             [
-                Design.Type.Eyebrow(Loc.Get(customVideo ? Strings.VideoOverride.CustomLabel : Strings.Detail.WatchOfficialVideo))
+                R.Type.Eyebrow(Loc.Get(customVideo ? Strings.VideoOverride.CustomLabel : Strings.Detail.WatchOfficialVideo))
                     with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                Controls.TrimmedTitle(Design.Type.RailHeader(title)
+                Controls.TrimmedTitle(R.Type.RailHeader(title)
                     with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }, title),
                 new TextEl(VideoMeta(in v))
                 {
@@ -1359,7 +1359,7 @@ public readonly partial struct Album
             header: VideoShelfHeader(items.Length),
             pager: ShelfPager.Chevrons | ShelfPager.Pips,
             minCardW: VideoCardMinW, maxCardW: VideoCardMaxW, gap: Spacing.M, headerGap: Spacing.M,
-            snap: ShelfSnap.Page, edgeFade: Design.Size.FadeRail,
+            snap: ShelfSnap.Page, edgeFade: R.Space.FadeRail,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
             lift: ShelfLift.None,   // the shared card hovers fill-only: no lift halo to reserve clearance for
             onInvoke: s_videoInvoke,   // the slot owns the click: the card's own WatchVideo
@@ -1377,9 +1377,9 @@ public readonly partial struct Album
         Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
         Children =
         [
-            Design.Type.RailHeader(Loc.Get(Strings.Artist.MusicVideos))
+            R.Type.RailHeader(Loc.Get(Strings.Artist.MusicVideos))
                 with { MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-            Design.Type.DenseTitle(count.ToString(CultureInfo.CurrentCulture)) with
+            R.Type.DenseTitle(count.ToString(CultureInfo.CurrentCulture)) with
             {
                 Color = Tok.TextTertiary, MaxLines = 1, Shrink = 0f,
             },

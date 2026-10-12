@@ -686,7 +686,7 @@ public readonly partial struct Track
             /// <summary>The owning header brightens — except Index, the default order, which carries no indicator.</summary>
             static TextEl HLabel(string s, SortColumn col, SortSpec sort, bool classic)
             {
-                var t = classic ? Design.Type.MicroMeta(s) : Ui.Caption(s);
+                var t = classic ? R.Type.MicroMeta(s) : Ui.Caption(s);
                 return t with
                 {
                     Weight = 600,
@@ -697,7 +697,7 @@ public readonly partial struct Track
 
             static Element PlainHeader(string label, FlexJustify justify, bool classic)
             {
-                var t = classic ? Design.Type.MicroMeta(label) : Ui.Caption(label);
+                var t = classic ? R.Type.MicroMeta(label) : Ui.Caption(label);
                 return new BoxEl
                 {
                     Direction = 0, AlignItems = FlexAlign.Center, Justify = justify, MinWidth = 0f, ClipToBounds = true,
@@ -791,7 +791,7 @@ public readonly partial struct Track
                     : Loc.Get(song ? Strings.Detail.Column.Song : Strings.Detail.Column.Title);
                 UseTransition(AnimChannel.Opacity, 0f, 1f, Expressive.Fast, Easing.SmoothOut, text);
                 UseTransition(AnimChannel.TranslateY, 4f, 0f, Expressive.Fast, Easing.SmoothOut, text);
-                var t = classic ? Design.Type.MicroMeta(text) : Ui.Caption(text);
+                var t = classic ? R.Type.MicroMeta(text) : Ui.Caption(text);
                 return t with
                 {
                     Weight = 600,

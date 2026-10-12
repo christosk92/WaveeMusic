@@ -128,7 +128,7 @@ public sealed class SectionScreen : Component
             Children =
             [
                 total > 0
-                    ? Design.Type.TrackMeta(Strings.Home.SectionItems(total))
+                    ? R.Type.TrackMeta(Strings.Home.SectionItems(total))
                     : new BoxEl(),
                 new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1, Children = [Body()] },
             ],

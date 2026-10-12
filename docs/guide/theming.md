@@ -63,6 +63,41 @@ composition and its option stamps, memoized per (stamp, OS accent).
 Every override a composition makes (`CompositionOptions`, `FixedEffect`, `HiddenOptions`, `DefaultOverrides`,
 `ReplacedOptions`) is a named, counted member of the record, so a review reads them in one place.
 
+### Style roles (`Theming\Roles`, T2a)
+
+A view never asks "which theme": it asks the **roles** of the style it renders under. A style publishes one immutable
+`WaveeStyleRoles` table on its definition (`ThemeDefinition.AppRoles`) and a view reads it through the `R` facade, at the
+point it builds an element:
+
+```csharp
+Element title = R.Type.TrackTitle(name);                  // text: the role's rung + deviations (TypeRoles)
+Gap = R.Space.SectionGap, MaxWidth = R.Space.PageMaxW      // page rhythm, shelf and flyout geometry (SpaceRoles)
+HoverScale = R.Motion.ScaleSubtle.Hover                    // interaction scale tiers, stagger rungs (MotionRoles)
+Case = R.Case.For(LabelKind.Navigation)                    // how the style cases the words it writes (CaseRoles)
+```
+
+| Rule | Why |
+|---|---|
+| **Read `R` where the element is built.** Never into a `const`, a `static readonly` field or a long-lived closure | `R` caches nothing: it is `Tok.Definition.AppRoles` on every call, so a definition swap (`Tok.Use`, a theme switch, a Live option) reaches the next render. A field keeps the first style's value for the process. A value that needs a compile-time number is not a role yet (see `Design.Size`'s header) |
+| **A role is data, a table is a record.** Add a role as a member of its record and give every style a value | Equal tables compare equal, so republishing an unchanged table is not a change (`Tok.Use` adopts the instance, no epoch moves); a table that differs in any role is a non-colour change (`StyleEpoch`) |
+| **A text role is a rung plus deviations** (`TextRole`: face, size, line height, weight, tracking, auto-fit floor, secondary ink) | Every role resolves a size, a line height and a weight, and a style that changes the engine's type ramp changes every role built on it. Colour is the call site's (colour roles: T2b) |
+| **No role selects structure** | How a row or a pivot is *arranged* is the structure's (options, parameters, policies); how big, which colour, which casing is the style's |
+
+**Classic's table** is `Themes\Classic\Style\ClassicRoles.cs` and holds the numbers `Design.Type`, `Design.Size`, `Design.Dock` and
+`Design.Motion` held before T2a (pinned by `Wavee.Tests\Theming\ClassicRolesTests.cs`). `ClassicStyle.Definition` is `Design.Definition`
+carrying that table. The appearance seed installs the **active composition's** definition (`ThemeHost.ActiveDefinition`), so a
+light/dark flip keeps the active theme's roles.
+
+**The process baseline.** Before a definition with roles is installed (a few boot steps, and a unit-test process that never boots
+the shell) `R` falls back to a registered baseline. `ClassicRoles` registers itself with a module initializer, so core never names
+a theme and no read lands on an empty table. A test that needs other roles installs a definition carrying them in the shell
+test process (`Wavee.ShellTests\StyleRolesTests.cs`), the one process where `Tok` may change.
+
+**What stayed in `Design`.** The colour ladders (T2b), the behaviour (`Entrance`, `Reveal`, `Nav`, `FrameTime`, `Cadence`,
+`Reduced`), the Fluent duration ladder (`Design.Motion.Faster` .. `Slow`, WinUI constants that `MotionTok` mirrors and a few
+`static readonly` transitions bake in) and the structural geometry whose consumers need compile-time numbers (`Design.Size`:
+control, row, pane, rail, thumb and player-bar sizes). Each leaves with the family that owns it.
+
 ## 3. Options
 
 An option is data: a `ToggleOption`, `SelectOption<TEnum>`, `SliderOption`, `ColorOption`, `ActionOption` or
@@ -137,7 +172,7 @@ rule that allows none is WVTH901. Rules that need a list read `src\apps\Wavee\an
 | WVTH005 | an option is read or published only by its own layer (and Options/Composition) | none |
 | WVTH006 | keys created only under `Theming\Contracts`; dotted unique ids; props are sealed records with read-only members | none |
 | WVTH007 | `theme.*` settings minted only in `Theming\Options`, `ThemeBootstrap.cs`, `ThemeHost.cs` (`theme.mode` stays core) | none |
-| WVTH008 | a `[CoreHost]` type builds no element and reads no `Tok.*`/`Design.*` | shrinks per surface PR |
+| WVTH008 | a `[CoreHost]` type builds no element and reads no `Tok.*`/`Design.*`/`R.*` | shrinks per surface PR |
 | WVTH009 | `ctx.OptionRequests.Set` only with own-layer keys | none |
 | WVTH010 | retired keys and deleted members (listed in `analyzer-input\WVTH010.legacy.txt`) only in `ThemeBootstrap.cs` | empty after F4 |
 | WVTH011 | each hidden structure option has a line with two or more values in `analyzer-input\WVTH011.matrix.txt` | none |

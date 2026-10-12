@@ -94,12 +94,12 @@ public readonly partial struct Concert
     internal static Element Tile(in TileData d, Action? onClick)
     {
         var text = new Element[d.Place.Length > 0 ? 3 : 2];
-        text[0] = Design.Type.Eyebrow(d.Caption) with
+        text[0] = R.Type.Eyebrow(d.Caption) with
         { Color = Tok.AccentTextPrimary, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
-        text[1] = Design.Type.TrackTitle(d.Title) with
+        text[1] = R.Type.TrackTitle(d.Title) with
         { MinWidth = 0f, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
         if (d.Place.Length > 0)
-            text[2] = Design.Type.TrackMeta(d.Place) with { MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
+            text[2] = R.Type.TrackMeta(d.Place) with { MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
         return new BoxEl
         {
             Key = "concert:" + d.Key,
@@ -155,7 +155,7 @@ public readonly partial struct Concert
                     Direction = 1, Width = 48f, Shrink = 0f, AlignItems = FlexAlign.Center,
                     Children =
                     [
-                        Design.Type.Eyebrow(date.ToString("MMM", CultureInfo.CurrentCulture)) with { Color = Tok.AccentTextPrimary, MaxLines = 1 },
+                        R.Type.Eyebrow(date.ToString("MMM", CultureInfo.CurrentCulture)) with { Color = Tok.AccentTextPrimary, MaxLines = 1 },
                         new TextEl(date.Day.ToString(CultureInfo.CurrentCulture)) { Size = 28f, LineHeight = 36f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1 },
                     ],
                 },
@@ -211,8 +211,8 @@ public readonly partial struct Concert
                     Direction = 1, MinWidth = 0f, Gap = 3f,
                     Children =
                     [
-                        Design.Type.Eyebrow(Loc.Get(Strings.Concerts.LiveMusic)) with { Color = Tok.AccentTextPrimary, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                        Design.Type.TrackTitle(Loc.Get(Strings.Concerts.BrowseAll)) with { MinWidth = 0f, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                        R.Type.Eyebrow(Loc.Get(Strings.Concerts.LiveMusic)) with { Color = Tok.AccentTextPrimary, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                        R.Type.TrackTitle(Loc.Get(Strings.Concerts.BrowseAll)) with { MinWidth = 0f, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                     ],
                 },
             ],
@@ -221,7 +221,7 @@ public readonly partial struct Concert
 
     /// <summary>The accent eyebrow every concert section heads with (§4 row 11).</summary>
     internal static TextEl SectionCaption(string label)
-        => Design.Type.Eyebrow(label) with { Color = Tok.AccentTextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
+        => R.Type.Eyebrow(label) with { Color = Tok.AccentTextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
 
     // ══ 2. DATE BLOCKS, THE SPLIT HERO, THE LOCATION BUTTON (W13, W13b/c, W19) ════════════════════════════════════════
 
@@ -236,7 +236,7 @@ public readonly partial struct Concert
             Corners = Radii.ControlAll, Fill = Tok.FillCardSecondary, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
             Children =
             [
-                Design.Type.Eyebrow(date.ToString("MMM", culture)) with { Color = Tok.AccentTextPrimary, MaxLines = 1 },
+                R.Type.Eyebrow(date.ToString("MMM", culture)) with { Color = Tok.AccentTextPrimary, MaxLines = 1 },
                 BodyStrong(date.Day.ToString(culture)) with { Color = Tok.TextPrimary, MaxLines = 1 },
             ],
         };
@@ -735,7 +735,7 @@ public readonly partial struct Concert
                 : new BoxEl
                 {
                     Height = 48f, AlignItems = FlexAlign.Center, Direction = 0,
-                    Children = [Design.Type.TrackMeta(Loc.Get(loading ? Strings.Concerts.Location.Searching : Strings.Concerts.Location.NoneFound))],
+                    Children = [R.Type.TrackMeta(Loc.Get(loading ? Strings.Concerts.Location.Searching : Strings.Concerts.Location.NoneFound))],
                 });
             return new BoxEl { Direction = 1, Width = 360f, Gap = Spacing.S, Padding = Edges4.All(Spacing.M), Children = kids.ToArray() };
         }
@@ -829,8 +829,8 @@ public readonly partial struct Concert
                     {
                         Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = 1f,
                         Children = detail.Length > 0
-                            ? [Design.Type.TrackTitle(name) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis }, Design.Type.TrackMeta(detail) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis }]
-                            : [Design.Type.TrackTitle(name) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis }],
+                            ? [R.Type.TrackTitle(name) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis }, R.Type.TrackMeta(detail) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis }]
+                            : [R.Type.TrackTitle(name) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis }],
                     },
                 ],
             }.Interactive(Interaction.Subtle);

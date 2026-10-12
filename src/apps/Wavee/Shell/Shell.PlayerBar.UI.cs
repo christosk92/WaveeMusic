@@ -943,7 +943,7 @@ public static partial class Shell
             Corners = Radii.ControlAll,
             Fill = plate, HoverFill = plateHover, PressedFill = plate,
             BrushTransitionMs = Design.Motion.Faster,
-            HoverScale = Design.Motion.ScaleEmphatic.HoverIf(enabled), PressScale = Design.Motion.ScaleEmphatic.PressIf(enabled),
+            HoverScale = R.Motion.ScaleEmphatic.HoverIf(enabled), PressScale = R.Motion.ScaleEmphatic.PressIf(enabled),
             // Clicking never moves focus, so the shell's Space shortcut keeps working after a click.
             Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false,
             OnRealized = onRealized,
@@ -995,7 +995,7 @@ public static partial class Shell
             HoverFill = enabled ? Tok.AccentSecondary : Tok.FillSubtleSecondary,
             PressedFill = enabled ? Tok.AccentTertiary : Tok.FillSubtleSecondary,
             BrushTransitionMs = Design.Motion.Faster,
-            HoverScale = Design.Motion.ScaleEmphatic.HoverIf(enabled), PressScale = Design.Motion.ScaleEmphatic.PressIf(enabled),
+            HoverScale = R.Motion.ScaleEmphatic.HoverIf(enabled), PressScale = R.Motion.ScaleEmphatic.PressIf(enabled),
             Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false,
             IsEnabled = enabled, Cursor = enabled ? CursorId.Hand : null,
             OnClick = verb == PrimaryVerb.Retry ? static () => PlayerVerbs.Default.Retry() : static () => PlayerVerbs.Default.TogglePlay("playerbar.button"),
@@ -1055,7 +1055,7 @@ public static partial class Shell
             return new BoxEl
             {
                 Width = _box, Height = _box, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                HoverScale = Design.Motion.ScaleEmphatic.Hover, PressScale = Design.Motion.ScaleEmphatic.Press,
+                HoverScale = R.Motion.ScaleEmphatic.Hover, PressScale = R.Motion.ScaleEmphatic.Press,
                 Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false,
                 OnClick = Toggle, Cursor = CursorId.Hand, OnRealized = h => anchor.Value = h,
                 Children = [new TextEl(Icons.More) { Size = _glyph, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary }],
@@ -1734,7 +1734,7 @@ public static partial class Shell
                     Padding = new Edges4(Spacing.XS, 0f, Spacing.XS, 0f), Corners = Radii.ControlAll,
                     HoverFill = _ink is null ? Tok.FillSubtleSecondary : Design.OnMedia.GlassHover,
                     PressedFill = _ink is null ? Tok.FillSubtleTertiary : Design.OnMedia.GlassPressed,
-                    HoverScale = Design.Motion.ScaleSubtle.Hover, PressScale = Design.Motion.ScaleSubtle.Press,
+                    HoverScale = R.Motion.ScaleSubtle.Hover, PressScale = R.Motion.ScaleSubtle.Press,
                     Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
                     OnClick = static () => PlayerVerbs.Default.GoLive(),
                     Children = [new TextEl(_goLive) { Size = 9f, LineHeight = 12f, Weight = 600, Color = fg, Wrap = TextWrap.NoWrap }],

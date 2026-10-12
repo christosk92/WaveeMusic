@@ -364,7 +364,7 @@ public readonly partial struct Episode
         var item = Fixed(RowItem.Of(episode));
         return RowGrid(Art(in item, narrow ? RowArtNarrow : RowArt),
             new BoxEl { Direction = 1, Grow = 1, Basis = 0, MinWidth = 0, Gap = Spacing.S,
-                Children = [Design.Type.DenseMeta(Loc.Get(Strings.Podcast.Reader.Unavailable)) with
+                Children = [R.Type.DenseMeta(Loc.Get(Strings.Podcast.Reader.Unavailable)) with
                 {
                     Wrap = TextWrap.Wrap, Color = Tok.TextSecondary,
                 }] },
@@ -488,7 +488,7 @@ public readonly partial struct Episode
         var body = seed ? SeedDescription : item.Text(static r => DescriptionOf(r.Episode));
         return new TextEl(body)
         {
-            Size = Design.Type.DenseMeta("").Size, LineHeight = Design.Type.DenseMeta("").LineHeight,
+            Size = R.Type.DenseMeta("").Size, LineHeight = R.Type.DenseMeta("").LineHeight,
             Color = Tok.TextSecondary, MaxLines = 2, Wrap = TextWrap.Wrap,
             Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             Visible = seed ? true : item.Show(static r => HasDescription(r.Episode)),
@@ -513,7 +513,7 @@ public readonly partial struct Episode
                 with { Visible = item.Show(static r => (FlagsOf(r.Episode) & EpisodeFlags.Video) != 0) },
             Controls.Chip(Loc.Get(Strings.Podcast.Badge.Subscribers), LockGlyph)
                 with { Visible = item.Show(static r => (FlagsOf(r.Episode) & EpisodeFlags.Paywalled) != 0) },
-            Design.Type.MicroMeta(Loc.Get(Strings.Podcast.New)) with
+            R.Type.MicroMeta(Loc.Get(Strings.Podcast.New)) with
             {
                 Weight = 700, CharSpacing = 60f, Color = toneInk, MaxLines = 1,
                 Visible = item.Show(static r => IsNew(in r)),
@@ -595,7 +595,7 @@ public readonly partial struct Episode
             OnFocusChanged = focus,
             Width = RowDisc, Height = RowDisc, Shrink = 0f, Corners = Radii.Circle(RowDisc), Fill = Prop.Of(tone),
             AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            HoverScale = Design.Motion.ScaleEmphatic.Hover, PressScale = Design.Motion.ScaleEmphatic.Press,
+            HoverScale = R.Motion.ScaleEmphatic.Hover, PressScale = R.Motion.ScaleEmphatic.Press,
             Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, BlocksDragArm = true,
             OnClick = item.Invoke(r => play(r.Episode)),
             Children =
@@ -800,5 +800,5 @@ public readonly partial struct Episode
 
     /// <summary>A one-line secondary caption, ellipsised (the show name, the meta caption).</summary>
     static TextEl RowCaption(string s)
-        => Design.Type.TrackMeta(s) with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
+        => R.Type.TrackMeta(s) with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
 }

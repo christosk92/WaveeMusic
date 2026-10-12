@@ -492,7 +492,7 @@ public static class ArtistTour
     }
 
     /// <summary>The eyebrow's loc key (batch-loc WP-5.N-B.json). Sentence case: the eyebrow role does not caps-transform
-    /// (Design.Type.Eyebrow), so 0.2.9's "ON TOUR NOW" is the key's English, not a ToUpper.</summary>
+    /// (R.Type.Eyebrow), so 0.2.9's "ON TOUR NOW" is the key's English, not a ToUpper.</summary>
     public static string EyebrowKey(TourArm arm) => arm switch
     {
         TourArm.UpcomingShow => "artist.tour.upcomingShow",

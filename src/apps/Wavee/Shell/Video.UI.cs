@@ -1453,7 +1453,7 @@ public static partial class Video
             BorderWidth = 1f, BorderColor = Design.StageInk.Stroke,
             Shadow = Elevation.Card,
             BrushTransitionMs = Design.Motion.Faster,
-            HoverScale = Design.Motion.ScaleEmphatic.Hover, PressScale = Design.Motion.ScaleEmphatic.Press,
+            HoverScale = R.Motion.ScaleEmphatic.Hover, PressScale = R.Motion.ScaleEmphatic.Press,
             Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
             OnClick = static () => State.ExitFullscreen(),
             Children = [new TextEl(Icons.BackToWindow) { Size = 18f, FontFamily = Tok.Definition.Fonts.Icon, Color = Design.StageInk.Ink, HoverColor = Design.StageInk.Ink }],

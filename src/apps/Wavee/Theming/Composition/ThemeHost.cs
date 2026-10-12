@@ -66,6 +66,11 @@ public static class ThemeHost
     /// <summary>The option values of the active composition, as the layers' functions see them.</summary>
     public static ThemeOptionValues Values => s_values;
 
+    /// <summary>The definition of the active composition for its option values and the OS accent, or null before
+    /// <see cref="Install"/>. This is what the appearance seed installs (<c>Design.SeedPalette</c>), so a light/dark flip keeps
+    /// the active theme's roles and not the base definition's. The composition memoizes it: the same inputs return the same instance.</summary>
+    public static ThemeDefinition? ActiveDefinition => s_installed ? s_current.Peek().Definition(s_values, OsAccent) : null;
+
     /// <summary>Bumped by every switch (and every Transaction-mode option change): <c>ThemeRoot</c> remounts the root on it.</summary>
     public static IReadSignal<long> RootEpoch => s_rootEpoch;
 

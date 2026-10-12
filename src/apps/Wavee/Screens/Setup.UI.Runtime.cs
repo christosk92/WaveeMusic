@@ -152,11 +152,11 @@ public static partial class Setup
 
     /// <summary>Body copy: 13, TextSecondary unless overridden, wrapping.</summary>
     public static Element RuntimeText(string text, ColorF? color = null)
-        => Design.Type.DenseMeta(text) with { Color = color ?? Tok.TextSecondary, Wrap = TextWrap.Wrap };
+        => R.Type.DenseMeta(text) with { Color = color ?? Tok.TextSecondary, Wrap = TextWrap.Wrap };
 
     /// <summary>The lead sentence: 16 TextPrimary, wrapping.</summary>
     public static Element RuntimeLead(string text)
-        => Design.Type.SheetTitle(text) with { Color = Tok.TextPrimary, Wrap = TextWrap.Wrap };
+        => R.Type.SheetTitle(text) with { Color = Tok.TextPrimary, Wrap = TextWrap.Wrap };
 
     /// <summary>An inline status block — an 18-DIP severity glyph beside a 14/600 heading over wrapped body copy
     /// (clean dialog content, not a box-in-a-box InfoBar). The Failed body may be an arbitrary sentence.</summary>
@@ -171,8 +171,8 @@ public static partial class Setup
                 Direction = 1, Gap = 4f, Grow = 1f, MinWidth = 0f,
                 Children =
                 [
-                    Design.Type.TrackTitle(heading) with { Wrap = TextWrap.Wrap },
-                    Design.Type.DenseMeta(body) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap },
+                    R.Type.TrackTitle(heading) with { Wrap = TextWrap.Wrap },
+                    R.Type.DenseMeta(body) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap },
                 ],
             },
         ],
@@ -190,12 +190,12 @@ public static partial class Setup
         Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center,
         Children =
         [
-            Design.Type.DenseTitle(label) with
+            R.Type.DenseTitle(label) with
             {
                 Color = Tok.TextPrimary,
                 Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
             },
-            Design.Type.TrackMeta(value) with { Shrink = 0f },
+            R.Type.TrackMeta(value) with { Shrink = 0f },
         ],
     };
 
@@ -262,7 +262,7 @@ public static partial class Setup
         Children =
         [
             InfoBadge.Icon(InfoBadgeSeverity.Success),
-            Design.Type.TrackTitle(Loc.Get(Strings.Playback.Runtime.Ready)),
+            R.Type.TrackTitle(Loc.Get(Strings.Playback.Runtime.Ready)),
         ],
     };
 
@@ -345,7 +345,7 @@ public static partial class Setup
                 Direction = 1, Grow = 1f, MinWidth = 0f, Gap = 1f,
                 Children =
                 [
-                    Design.Type.TrackTitle(title),
+                    R.Type.TrackTitle(title),
                     Ui.Caption(caption) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap },
                 ],
             },

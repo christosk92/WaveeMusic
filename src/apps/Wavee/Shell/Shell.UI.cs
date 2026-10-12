@@ -989,7 +989,7 @@ public static partial class Shell
             Children =
             [
                 Icon(glyph, 40f, Tok.TextTertiary),
-                Design.Type.PageHero(Loc.Get(Strings.Nav.PageNotFound)),
+                R.Type.PageHero(Loc.Get(Strings.Nav.PageNotFound)),
                 Button.Standard(Loc.Get(Strings.Nav.GoHome), static () => GoTo(new Route(RouteKind.Home))),
             ],
         };
@@ -1721,7 +1721,7 @@ public static partial class Shell
                 Children =
                 [
                     ProgressBar.Create(Notify.UpdateProgress, 200f),
-                    global::Wavee.Design.Type.MicroMeta(s.ProgressPercent.ToString(CultureInfo.InvariantCulture) + "%") with
+                    R.Type.MicroMeta(s.ProgressPercent.ToString(CultureInfo.InvariantCulture) + "%") with
                         { Color = Tok.TextTertiary, FontFamily = "Cascadia Code" },
                 ],
             };
@@ -1751,7 +1751,7 @@ public static partial class Shell
                     Direction = 1, Grow = 1f, Basis = 0f, Gap = 3f, MinWidth = 0f,
                     Children =
                     [
-                        global::Wavee.Design.Type.DenseTitle(title) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                        R.Type.DenseTitle(title) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                         body.Length > 0 ? new TextEl(body) { Size = 12f, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 3 } : new BoxEl(),
                         trailing,
                     ],
@@ -1774,10 +1774,10 @@ public static partial class Shell
     {
         var text = new List<Element>(2)
         {
-            global::Wavee.Design.Type.DenseMeta(SpotifyUpdates.CleanTitle(n.Title)) with { Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MaxLines = 2 },
+            R.Type.DenseMeta(SpotifyUpdates.CleanTitle(n.Title)) with { Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MaxLines = 2 },
         };
         if (n.TimestampMs > 0 && n.TimestampMs != NotifyRows.UpdatePin)
-            text.Add(global::Wavee.Design.Type.MicroMeta(RelativeTime(now - n.TimestampMs)) with { Weight = 600, Color = Tok.TextTertiary });
+            text.Add(R.Type.MicroMeta(RelativeTime(now - n.TimestampMs)) with { Weight = 600, Color = Tok.TextTertiary });
         return new BoxEl
         {
             Direction = 0, Grow = 1f, Basis = 0f, Gap = 10f, AlignItems = FlexAlign.Center,
@@ -1808,7 +1808,7 @@ public static partial class Shell
                 Direction = 1, Grow = 1f, Basis = 0f, Gap = 2f, MinWidth = 0f,
                 Children =
                 [
-                    global::Wavee.Design.Type.DenseTitle(n.Title) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                    R.Type.DenseTitle(n.Title) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                     new TextEl(n.Creator ?? "") { Size = 12f, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                 ],
             },
@@ -1823,7 +1823,7 @@ public static partial class Shell
         bool isExpanded = expandedId == n.Id;
         var right = new List<Element>(2)
         {
-            global::Wavee.Design.Type.MicroMeta(RelativeTime(now - n.TimestampMs)) with { Weight = 600, Color = Tok.TextTertiary, Shrink = 0f },
+            R.Type.MicroMeta(RelativeTime(now - n.TimestampMs)) with { Weight = 600, Color = Tok.TextTertiary, Shrink = 0f },
         };
         if (Notify.UndoActivity is { } undo)
             right.Add(PanelPill(Loc.Get(Strings.Notifications.Undo), () => _ = PanelVerbs.UndoActivityAsync(undo, n), accent: false));
@@ -1847,7 +1847,7 @@ public static partial class Shell
                     Children =
                     [
                         GlyphChip(Icons.StatusInfo, Tok.TextSecondary),
-                        global::Wavee.Design.Type.DenseMeta(n.Title) with { Grow = 1f, Basis = 0f, MaxLines = 2, Wrap = TextWrap.Wrap, Color = Tok.TextPrimary },
+                        R.Type.DenseMeta(n.Title) with { Grow = 1f, Basis = 0f, MaxLines = 2, Wrap = TextWrap.Wrap, Color = Tok.TextPrimary },
                         new BoxEl { Direction = 1, Shrink = 0f, AlignItems = FlexAlign.End, Gap = 4f, Children = right.ToArray() },
                     ],
                 },
@@ -1903,7 +1903,7 @@ public static partial class Shell
     {
         Direction = 1, Width = Notify.PanelWidth, MinHeight = 120f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
         Padding = Edges4.All(24f),
-        Children = [global::Wavee.Design.Type.DenseTitle(message) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxWidth = 300f }],
+        Children = [R.Type.DenseTitle(message) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxWidth = 300f }],
     };
 
     static Element GlyphChip(string glyph, ColorF tint) => new BoxEl
@@ -1916,7 +1916,7 @@ public static partial class Shell
     static Element PanelTypePill(string label) => new BoxEl
     {
         Shrink = 0f, Padding = new Edges4(9f, 2f, 9f, 2f), Corners = CornerRadius4.All(10f), Fill = Tok.FillSubtleSecondary,
-        Children = [Design.Type.Eyebrow(label) with { Color = Tok.TextTertiary }],
+        Children = [R.Type.Eyebrow(label) with { Color = Tok.TextTertiary }],
     };
 
     static Element PanelPill(string label, Action onClick, bool accent) => new BoxEl

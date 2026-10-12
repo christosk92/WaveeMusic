@@ -448,7 +448,7 @@ public readonly partial struct Album
                 Padding = new Edges4(Spacing.XL, Spacing.S, Spacing.XL, Spacing.XL),
                 Children =
                 [
-                    Design.Type.Eyebrow(Strings.Library.AlsoBy(new Artist(artist).Name)) with { Color = Tok.TextTertiary },
+                    R.Type.Eyebrow(Strings.Library.AlsoBy(new Artist(artist).Name)) with { Color = Tok.TextTertiary },
                     // The house shape for a horizontal rail: a stated height (the surface's own shelf extent — a
                     // ScrollEl is a viewport with no content height to grow from), Grow 0, and the edge fade instead
                     // of a scrollbar rail under 96-px art (Concert.Page.cs:736, Sidebar.UI.Library.cs).

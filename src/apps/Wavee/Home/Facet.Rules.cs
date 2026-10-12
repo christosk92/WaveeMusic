@@ -46,6 +46,6 @@ public static class FacetForm
     /// (The prototype's "~720" is a 1440-board figure with wider spacing.)</summary>
     public const float TitleMinWidth = 600f;
 
-    /// <summary>True → <c>Design.FacetTitleStyle</c>; false → <c>Design.FacetCompactStyle</c>.</summary>
+    /// <summary>True → <c>R.Type.FacetTitleStyle</c>; false → <c>R.Type.FacetCompactStyle</c>.</summary>
     public static bool IsTitle(float rowWidth) => rowWidth >= TitleMinWidth;
 }

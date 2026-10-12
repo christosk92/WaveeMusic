@@ -17,7 +17,7 @@
 //      ScrollView (Key/ScrollKey per PUBLISHED facet, Handle = _scroll)
 //        └─ centred column  Gap=XL(20)  MaxWidth=PageMaxW  Padding=(PageWide, XXL(24), PageWide, Dock.Reserve+32)
 //           │                ScrollScope=Facet.PageScope
-//           ├─ FacetRow (Facet.UI.cs: SelectorBar in Design.FacetTitleStyle — the facet words ARE the page title —
+//           ├─ FacetRow (Facet.UI.cs: SelectorBar in R.Type.FacetTitleStyle — the facet words ARE the page title —
 //           │     · Following ToggleButton · busy ProgressBar · failure InfoBar)
 //           │     its band is `.Sticky(Facet.StuckInset, scope: Facet.PageScope)` — transparent, no acrylic
 //           └─ content  `.StickyClip(Facet.StuckBottom)` + EdgeFade(Top, 24) { WhileStuck }   (the Browse masthead idiom)
@@ -159,9 +159,9 @@ public sealed class HomeScreen : Component
         Element column = new BoxEl
         {
             Key = "home:column", Direction = 1, Gap = Spacing.XL,
-            Grow = 1f, Shrink = 1f, MinWidth = 0f, Basis = 0f, MaxWidth = Design.Size.PageMaxW,
+            Grow = 1f, Shrink = 1f, MinWidth = 0f, Basis = 0f, MaxWidth = R.Space.PageMaxW,
             AlignItems = FlexAlign.Stretch, ScrollScope = Facet.PageScope,
-            Padding = new Edges4(Spacing.PageWide, Spacing.XXL, Spacing.PageWide, Design.Dock.Reserve + Spacing.XXXL),
+            Padding = new Edges4(Spacing.PageWide, Spacing.XXL, Spacing.PageWide, R.Space.DockReserve + Spacing.XXXL),
             Children =
             [
                 Embed.Comp(rowProps, static () => new FacetRow()) with { Key = "home:facet-row" },

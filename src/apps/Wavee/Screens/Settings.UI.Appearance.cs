@@ -555,7 +555,7 @@ public static partial class Settings
             Children = on ? [title with { Shrink = 1f }, ActiveTag()] : [title],
         };
         return Controls.PickerCard(on, Controls.PickerPaneCompact, preview, titleRow,
-            Design.Type.MicroMeta(Loc.Get(library ? "sidebar.layoutName.librarySub" : "sidebar.layoutName.classicSub")) with
+            R.Type.MicroMeta(Loc.Get(library ? "sidebar.layoutName.librarySub" : "sidebar.layoutName.classicSub")) with
             {
                 Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.WordEllipsis,
                 AlignSelf = FlexAlign.Stretch,

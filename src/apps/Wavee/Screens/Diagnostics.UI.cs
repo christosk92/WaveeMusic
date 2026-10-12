@@ -188,7 +188,7 @@ public static partial class Diagnostics
     static Element PageHeader(string glyph, string title) => new BoxEl
     {
         Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Padding = new Edges4(Spacing.L, Spacing.L, Spacing.L, Spacing.M),
-        Children = [FluentGpu.Dsl.Ui.Icon(glyph, 22f, Tok.TextPrimary), Design.Type.PageHero(title) with { Grow = 1f }],
+        Children = [FluentGpu.Dsl.Ui.Icon(glyph, 22f, Tok.TextPrimary), R.Type.PageHero(title) with { Grow = 1f }],
     };
 
     /// <summary>The pinned header over ONE scroll keyed on the route (ch 27 W28: nothing compacts, nothing is sticky).</summary>
@@ -234,12 +234,12 @@ public static partial class Diagnostics
     {
         Padding = new Edges4(6f, 1f, 6f, 1f), Corners = CornerRadius4.All(Radii.Control),
         Fill = present ? Tok.SystemFillSuccessBackground : Tok.SystemFillCriticalBackground,
-        Children = [Design.Type.MicroMeta((present ? "✓ " : "✕ ") + label) with { Color = Tok.TextPrimary }],
+        Children = [R.Type.MicroMeta((present ? "✓ " : "✕ ") + label) with { Color = Tok.TextPrimary }],
     };
 
     static TextEl Body(string text) => new(text) { Size = 12f, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap };
 
-    static TextEl Caption(string text) => Design.Type.MicroMeta(text) with { Color = Tok.TextTertiary, Wrap = TextWrap.Wrap };
+    static TextEl Caption(string text) => R.Type.MicroMeta(text) with { Color = Tok.TextTertiary, Wrap = TextWrap.Wrap };
 
     static BoxEl Separator(float top) => new() { Height = 1f, Fill = Tok.StrokeCardDefault, Margin = new Edges4(0f, top, 0f, 6f) };
 
@@ -256,8 +256,8 @@ public static partial class Diagnostics
                 Direction = 1, Gap = 4f, Grow = 1f, MinWidth = 0f,
                 Children =
                 [
-                    Design.Type.TrackTitle(heading) with { Wrap = TextWrap.Wrap },
-                    Design.Type.DenseMeta(body) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap },
+                    R.Type.TrackTitle(heading) with { Wrap = TextWrap.Wrap },
+                    R.Type.DenseMeta(body) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap },
                 ],
             },
         ],
@@ -659,10 +659,10 @@ public static partial class Diagnostics
                     Direction = 0, Gap = Spacing.S,
                     Children =
                     [
-                        Design.Type.MicroMeta(Loc.Get(Strings.Diagnostics.PodcastWire.ColOp)) with { Weight = 600, Color = Tok.TextTertiary, Width = 190f },
-                        Design.Type.MicroMeta(Loc.Get(Strings.Diagnostics.PodcastWire.ColStatus)) with { Weight = 600, Color = Tok.TextTertiary, Width = 60f },
-                        Design.Type.MicroMeta(Loc.Get(Strings.Diagnostics.PodcastWire.ColBytes)) with { Weight = 600, Color = Tok.TextTertiary, Width = 70f },
-                        Design.Type.MicroMeta(Loc.Get(Strings.Diagnostics.PodcastWire.ColRoot)) with { Weight = 600, Color = Tok.TextTertiary, Grow = 1f },
+                        R.Type.MicroMeta(Loc.Get(Strings.Diagnostics.PodcastWire.ColOp)) with { Weight = 600, Color = Tok.TextTertiary, Width = 190f },
+                        R.Type.MicroMeta(Loc.Get(Strings.Diagnostics.PodcastWire.ColStatus)) with { Weight = 600, Color = Tok.TextTertiary, Width = 60f },
+                        R.Type.MicroMeta(Loc.Get(Strings.Diagnostics.PodcastWire.ColBytes)) with { Weight = 600, Color = Tok.TextTertiary, Width = 70f },
+                        R.Type.MicroMeta(Loc.Get(Strings.Diagnostics.PodcastWire.ColRoot)) with { Weight = 600, Color = Tok.TextTertiary, Grow = 1f },
                     ],
                 },
                 Separator(2f),
@@ -1033,7 +1033,7 @@ public static partial class Diagnostics
                 return Column(10f, kids);
             }
 
-            kids.Add(Design.Type.DenseTitle(report.Summary) with { Color = Tok.AccentTextPrimary, Wrap = TextWrap.Wrap });
+            kids.Add(R.Type.DenseTitle(report.Summary) with { Color = Tok.AccentTextPrimary, Wrap = TextWrap.Wrap });
             if (LyricsInspector.ReferenceLabel(report.Summary) is { Length: > 0 } reference)
                 kids.Add(new TextEl(reference) { Size = 12f, LineHeight = 16f, Weight = 600, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap });
             kids.Add(new TextEl(Strings.Diagnostics.Inspector.TitleLine(
@@ -1072,21 +1072,21 @@ public static partial class Diagnostics
             {
                 Row(8f,
                     new BoxEl { Width = 8f, Height = 8f, Corners = Radii.Circle(8f), Fill = dot, AlignSelf = FlexAlign.Center, Shrink = 0f },
-                    Design.Type.DenseTitle(t.SourceId) with { Weight = 700, Color = t.Winner ? Tok.AccentTextPrimary : Tok.TextPrimary },
-                    Design.Type.MicroMeta(LyricsReport.OutcomeLine(t)) with { Weight = 600, Color = Tok.TextTertiary, Grow = 1f, MinWidth = 0f }),
+                    R.Type.DenseTitle(t.SourceId) with { Weight = 700, Color = t.Winner ? Tok.AccentTextPrimary : Tok.TextPrimary },
+                    R.Type.MicroMeta(LyricsReport.OutcomeLine(t)) with { Weight = 600, Color = Tok.TextTertiary, Grow = 1f, MinWidth = 0f }),
                 new TextEl(LyricsReport.Verdict(t, winnerScore))
                     { Size = 12f, LineHeight = 16f, Wrap = TextWrap.Wrap, Color = t.Winner ? Good : Tok.TextSecondary },
             };
             if (match.Length > 0)
-                rows.Add(Design.Type.MicroMeta(Strings.Diagnostics.Inspector.MatchLine(match)) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap });
+                rows.Add(R.Type.MicroMeta(Strings.Diagnostics.Inspector.MatchLine(match)) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap });
             if (rerank.Length > 0)
-                rows.Add(Design.Type.MicroMeta(Strings.Diagnostics.Inspector.RerankLine(rerank)) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap });
+                rows.Add(R.Type.MicroMeta(Strings.Diagnostics.Inspector.RerankLine(rerank)) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap });
             if (t.Detail.Length > 0) rows.Add(Caption(t.Detail));
             if (parsed is not null)
             {
                 rows.Add(Caption(LyricsReport.ParsedLine(parsed)));
                 string timing = Lyrics.Timing.Describe(parsed.Document);
-                rows.Add(Design.Type.MicroMeta("timing: " + timing) with
+                rows.Add(R.Type.MicroMeta("timing: " + timing) with
                 {
                     Wrap = TextWrap.Wrap,
                     Color = timing.StartsWith("clean", StringComparison.Ordinal) ? Tok.TextTertiary : Warn,
@@ -1197,8 +1197,8 @@ public static partial class Diagnostics
                     [
                         Row(8f,
                             new BoxEl { Width = 8f, Height = 8f, Corners = Radii.Circle(8f), Fill = dot, AlignSelf = FlexAlign.Center, Shrink = 0f },
-                            Design.Type.DenseTitle(Loc.Get(Strings.Diagnostics.Inspector.Ai.Title)) with { Weight = 700, Color = Tok.TextPrimary },
-                            Design.Type.MicroMeta(Strings.Diagnostics.Inspector.Ai.Setup(status.Phase.ToString()))
+                            R.Type.DenseTitle(Loc.Get(Strings.Diagnostics.Inspector.Ai.Title)) with { Weight = 700, Color = Tok.TextPrimary },
+                            R.Type.MicroMeta(Strings.Diagnostics.Inspector.Ai.Setup(status.Phase.ToString()))
                                 with { Weight = 600, Color = Tok.TextTertiary, Grow = 1f, MinWidth = 0f }),
                         new TextEl(sentence)
                         {
@@ -1210,7 +1210,7 @@ public static partial class Diagnostics
                                 _ => Tok.TextSecondary,
                             },
                         },
-                        Design.Type.MicroMeta(Strings.Diagnostics.Inspector.Ai.Meta(times.Separate, times.Align, times.Total, times.Language, pack))
+                        R.Type.MicroMeta(Strings.Diagnostics.Inspector.Ai.Meta(times.Separate, times.Align, times.Total, times.Language, pack))
                             with { FontFamily = Mono, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap },
                         Caption(Strings.Diagnostics.Inspector.Ai.Npu(OrDash(status.NpuName), OrDash(status.NpuDriver))),
                         Caption(result),
@@ -1264,7 +1264,7 @@ public static partial class Diagnostics
                         Direction = 1, Gap = 4f,
                         Children =
                         [
-                            Design.Type.MicroMeta(p.Label) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, FontFamily = Mono },
+                            R.Type.MicroMeta(p.Label) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, FontFamily = Mono },
                             Row(8f,
                                 Caption(LyricsReport.PayloadCaption(p, shown.Length)) with { Grow = 1f, MinWidth = 0f },
                                 Standard(Loc.Get(Strings.Diagnostics.Inspector.Copy), () =>
@@ -1275,7 +1275,7 @@ public static partial class Diagnostics
                         ],
                     },
                     Rule(),
-                    Design.Type.MicroMeta(shown) with { FontFamily = Mono, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap },
+                    R.Type.MicroMeta(shown) with { FontFamily = Mono, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap },
                 ],
             };
         }
@@ -1356,10 +1356,10 @@ public static partial class Diagnostics
             var kids = new List<Element>(4)
             {
                 Row(8f,
-                    Design.Type.MicroMeta(i.ToString(System.Globalization.CultureInfo.InvariantCulture)) with { FontFamily = Mono, Color = Tok.TextTertiary, Width = 26f, Shrink = 0f },
-                    Design.Type.MicroMeta(LyricsReport.TimeCell(l)) with { FontFamily = Mono, Color = timeInk, Width = 130f, Shrink = 0f },
+                    R.Type.MicroMeta(i.ToString(System.Globalization.CultureInfo.InvariantCulture)) with { FontFamily = Mono, Color = Tok.TextTertiary, Width = 26f, Shrink = 0f },
+                    R.Type.MicroMeta(LyricsReport.TimeCell(l)) with { FontFamily = Mono, Color = timeInk, Width = 130f, Shrink = 0f },
                     // The DURATION spelled out: a squashed line is invisible in two timestamps and obvious as "217ms".
-                    Design.Type.MicroMeta(LyricsReport.DurationCell(l)) with { FontFamily = Mono, Color = check.Squashed ? Warn : Tok.TextTertiary, Width = 52f, Shrink = 0f },
+                    R.Type.MicroMeta(LyricsReport.DurationCell(l)) with { FontFamily = Mono, Color = check.Squashed ? Warn : Tok.TextTertiary, Width = 52f, Shrink = 0f },
                     new TextEl(blank ? Loc.Get(Strings.Diagnostics.Inspector.BlankLine) : l.Text)
                     {
                         Size = 12f, LineHeight = 16f, Wrap = TextWrap.Wrap, Grow = 1f, MinWidth = 0f,
@@ -1369,7 +1369,7 @@ public static partial class Diagnostics
             if (l.Translation is { Length: > 0 } tr) kids.Add(SubLine("[tr] " + tr));
             if (l.Romanization is { Length: > 0 } ro) kids.Add(SubLine("[ro] " + ro));
             if (showSyllables && l.Syllables.Count > 0)
-                kids.Add(Design.Type.MicroMeta(LyricsReport.SyllableStrip(l)) with
+                kids.Add(R.Type.MicroMeta(LyricsReport.SyllableStrip(l)) with
                 {
                     FontFamily = Mono, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap,
                     Margin = new Edges4(34f, 0f, 0f, 0f),
@@ -1388,13 +1388,13 @@ public static partial class Diagnostics
 
         static BoxEl Rule() => new() { Height = 1f, Fill = Tok.StrokeCardDefault };
 
-        static TextEl SubLine(string text) => Design.Type.MicroMeta(text) with
+        static TextEl SubLine(string text) => R.Type.MicroMeta(text) with
         {
             Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, Margin = new Edges4(34f, 0f, 0f, 0f),
         };
 
         static TextEl Note(string text) => new(text) { Size = 12f, LineHeight = 17f, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap };
 
-        static TextEl Caption(string text) => Design.Type.MicroMeta(text) with { Color = Tok.TextTertiary, Wrap = TextWrap.Wrap };
+        static TextEl Caption(string text) => R.Type.MicroMeta(text) with { Color = Tok.TextTertiary, Wrap = TextWrap.Wrap };
     }
 }

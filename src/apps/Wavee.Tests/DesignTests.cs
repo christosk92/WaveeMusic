@@ -14,6 +14,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using Wavee;
 using Xunit;
+using Wavee.Theming.Roles;
 
 namespace Wavee.Tests;
 
@@ -30,21 +31,21 @@ public class DesignTypeRampTests
 
     static TextEl Alias(string name) => name switch
     {
-        "TrackTitle" => Design.Type.TrackTitle("x"),
-        "CardTitle" => Design.Type.CardTitle("x"),
-        "TrackMeta" => Design.Type.TrackMeta("x"),
-        "Eyebrow" => Design.Type.Eyebrow("x"),
-        "MicroMeta" => Design.Type.MicroMeta("x"),
-        "DenseMeta" => Design.Type.DenseMeta("x"),
-        "DenseTitle" => Design.Type.DenseTitle("x"),
-        "SheetTitle" => Design.Type.SheetTitle("x"),
-        "RailHeader" => Design.Type.RailHeader("x"),
-        "ModuleHeader" => Design.Type.ModuleHeader("x"),
-        "PageHero" => Design.Type.PageHero("x"),
-        "DetailHero" => Design.Type.DetailHero("x"),
-        "SurfaceDisplay" => Design.Type.SurfaceDisplay("x"),
-        "NowPlayingTitle" => Design.Type.NowPlayingTitle("x"),
-        "PickQuote" => Design.Type.PickQuote("x"),
+        "TrackTitle" => R.Type.TrackTitle("x"),
+        "CardTitle" => R.Type.CardTitle("x"),
+        "TrackMeta" => R.Type.TrackMeta("x"),
+        "Eyebrow" => R.Type.Eyebrow("x"),
+        "MicroMeta" => R.Type.MicroMeta("x"),
+        "DenseMeta" => R.Type.DenseMeta("x"),
+        "DenseTitle" => R.Type.DenseTitle("x"),
+        "SheetTitle" => R.Type.SheetTitle("x"),
+        "RailHeader" => R.Type.RailHeader("x"),
+        "ModuleHeader" => R.Type.ModuleHeader("x"),
+        "PageHero" => R.Type.PageHero("x"),
+        "DetailHero" => R.Type.DetailHero("x"),
+        "SurfaceDisplay" => R.Type.SurfaceDisplay("x"),
+        "NowPlayingTitle" => R.Type.NowPlayingTitle("x"),
+        "PickQuote" => R.Type.PickQuote("x"),
         _ => throw new ArgumentOutOfRangeException(nameof(name), name, null),
     };
 
@@ -69,28 +70,28 @@ public class DesignTypeRampTests
     public void The_six_sanctioned_weight_divergences_and_no_seventh()
     {
         // THREE display-face 700s — the masthead voice, not a UI label.
-        Assert.Equal(700, Design.Type.ArtistDisplay("x").ResolvedWeight);
-        Assert.Equal(700, Design.Type.ArtistTitle("x").ResolvedWeight);
-        Assert.Equal(700, Design.Type.ArtistCompactTitle("x").ResolvedWeight);
+        Assert.Equal(700, R.Type.ArtistDisplay("x").ResolvedWeight);
+        Assert.Equal(700, R.Type.ArtistTitle("x").ResolvedWeight);
+        Assert.Equal(700, R.Type.ArtistCompactTitle("x").ResolvedWeight);
         // THREE SemiLight 350s — the same cut the engine's own pivot header uses.
-        Assert.Equal(350, Design.Type.PivotLabel("x").ResolvedWeight);
-        Assert.Equal(350, Design.Type.NpvLyric("x").ResolvedWeight);
-        Assert.Equal(350, Design.Type.StatHero("2B", null).Weight);
+        Assert.Equal(350, R.Type.PivotLabel("x").ResolvedWeight);
+        Assert.Equal(350, R.Type.NpvLyric("x").ResolvedWeight);
+        Assert.Equal(350, R.Type.StatHero("2B", null).Weight);
     }
 
     [Fact]
     public void The_three_artist_aliases_carry_their_shrink_floors()
     {
         // The floor is what makes a long artist name step DOWN inside one rung rather than break to a second line.
-        Assert.Equal(68f, Design.Type.ArtistDisplay("x").MinSize);
-        Assert.Equal(40f, Design.Type.ArtistTitle("x").MinSize);
-        Assert.Equal(28f, Design.Type.ArtistCompactTitle("x").MinSize);
+        Assert.Equal(68f, R.Type.ArtistDisplay("x").MinSize);
+        Assert.Equal(40f, R.Type.ArtistTitle("x").MinSize);
+        Assert.Equal(28f, R.Type.ArtistCompactTitle("x").MinSize);
     }
 
     [Fact]
     public void ArtistDisplay_carries_its_masthead_metrics()
     {
-        var el = Design.Type.ArtistDisplay("x");
+        var el = R.Type.ArtistDisplay("x");
         Assert.Equal(84f, el.Size);
         Assert.Equal(96f, el.LineHeight);
         Assert.Equal(700, el.ResolvedWeight);
@@ -99,7 +100,7 @@ public class DesignTypeRampTests
     [Fact]
     public void ArtistTitle_carries_its_masthead_metrics()
     {
-        var el = Design.Type.ArtistTitle("x");
+        var el = R.Type.ArtistTitle("x");
         Assert.Equal(48f, el.Size);
         Assert.Equal(60f, el.LineHeight);
         Assert.Equal(700, el.ResolvedWeight);
@@ -108,7 +109,7 @@ public class DesignTypeRampTests
     [Fact]
     public void ArtistCompactTitle_carries_its_masthead_metrics()
     {
-        var el = Design.Type.ArtistCompactTitle("x");
+        var el = R.Type.ArtistCompactTitle("x");
         Assert.Equal(32f, el.Size);
         Assert.Equal(40f, el.LineHeight);
         Assert.Equal(700, el.ResolvedWeight);
@@ -117,7 +118,7 @@ public class DesignTypeRampTests
     [Fact]
     public void NowPlayingTitle_is_Ui_Subtitle()
     {
-        var el = Design.Type.NowPlayingTitle("x");
+        var el = R.Type.NowPlayingTitle("x");
         Assert.Equal(20f, el.Size);
         Assert.Equal(28f, el.LineHeight);
         Assert.Equal(600, el.ResolvedWeight);
@@ -126,7 +127,7 @@ public class DesignTypeRampTests
     [Fact]
     public void PickQuote_carries_Title_ramp_at_regular_weight()
     {
-        var el = Design.Type.PickQuote("x");
+        var el = R.Type.PickQuote("x");
         Assert.Equal(28f, el.Size);
         Assert.Equal(36f, el.LineHeight);
         Assert.Equal(400, el.ResolvedWeight);
@@ -135,7 +136,7 @@ public class DesignTypeRampTests
     [Fact]
     public void NpvLyric_carries_Subtitle_metrics_at_SemiLight()
     {
-        var el = Design.Type.NpvLyric("x");
+        var el = R.Type.NpvLyric("x");
         Assert.Equal(20f, el.Size);
         Assert.Equal(28f, el.LineHeight);
         Assert.Equal(350, el.ResolvedWeight);
@@ -144,7 +145,7 @@ public class DesignTypeRampTests
     [Fact]
     public void StatHero_carries_Title_metrics_at_SemiLight()
     {
-        var el = Design.Type.StatHero("2B", null);
+        var el = R.Type.StatHero("2B", null);
         Assert.Equal(28f, el.Size);
         Assert.Equal(36f, el.LineHeight);
         Assert.Equal(350, el.Weight);
@@ -161,11 +162,11 @@ public class DesignTypeRampTests
             Assert.Equal(weight, el.ResolvedWeight);
         }
 
-        OffRamp(Design.Type.PivotLabel("x"), 19f, 25f, 350);
-        OffRamp(Design.Type.MicroMeta("x"), 11f, 15f, 400);
-        OffRamp(Design.Type.DenseMeta("x"), 13f, 18f, 400);
-        OffRamp(Design.Type.DenseTitle("x"), 13f, 18f, 600);
-        OffRamp(Design.Type.SheetTitle("x"), 16f, 22f, 600);
+        OffRamp(R.Type.PivotLabel("x"), 19f, 25f, 350);
+        OffRamp(R.Type.MicroMeta("x"), 11f, 15f, 400);
+        OffRamp(R.Type.DenseMeta("x"), 13f, 18f, 400);
+        OffRamp(R.Type.DenseTitle("x"), 13f, 18f, 600);
+        OffRamp(R.Type.SheetTitle("x"), 16f, 22f, 600);
     }
 
     [Fact]
@@ -173,8 +174,8 @@ public class DesignTypeRampTests
     {
         // Named for the surface, not for the voice — but it borrows every one of PickQuote's numbers, and that
         // borrowing is the thing that must not silently become a second cut.
-        var a = Design.Type.FoldTitle("x");
-        var b = Design.Type.PickQuote("x");
+        var a = R.Type.FoldTitle("x");
+        var b = R.Type.PickQuote("x");
         Assert.Equal(b.Size, a.Size);
         Assert.Equal(b.LineHeight, a.LineHeight);
         Assert.Equal(b.ResolvedWeight, a.ResolvedWeight);
@@ -188,17 +189,17 @@ public class DesignTypeRampTests
         // stacked on one page never looked like the same label. (Sentence case is the other half of the rule and is a
         // parity item rather than a fact: the alias simply passes the string through, so there is no transform to
         // assert the absence of.)
-        Assert.Equal(30f, Design.Type.EyebrowTracking);
-        Assert.Equal(Design.Type.EyebrowTracking, Design.Type.Eyebrow("Daily Mix").CharSpacing);
+        Assert.Equal(30f, R.Type.EyebrowTracking);
+        Assert.Equal(R.Type.EyebrowTracking, R.Type.Eyebrow("Daily Mix").CharSpacing);
     }
 
     [Fact]
     public void A_baseline_paired_span_never_wraps()
     {
         // The small run would land alone on line 2 with no heading to sit on.
-        foreach (var span in new[] { Design.Type.ModuleHeader("Radio", "20 stations"),
-                                     Design.Type.RailHeader("Radio", "20 stations"),
-                                     Design.Type.StatHero("2B", "monthly") })
+        foreach (var span in new[] { R.Type.ModuleHeader("Radio", "20 stations"),
+                                     R.Type.RailHeader("Radio", "20 stations"),
+                                     R.Type.StatHero("2B", "monthly") })
         {
             Assert.Equal(TextWrap.NoWrap, span.Wrap);
             Assert.Equal(1, span.MaxLines);
@@ -212,7 +213,7 @@ public class DesignTypeRampTests
         // The small run shares the heading's BASELINE because the two are one paragraph — which only works if the
         // paragraph carries the HEADING's size and line height, not an average of the two.
         var heading = Ui.Subtitle("");
-        var paired = Design.Type.ModuleHeader("Radio", "20 stations");
+        var paired = R.Type.ModuleHeader("Radio", "20 stations");
         Assert.Equal(heading.Size, paired.Size);
         Assert.Equal(heading.LineHeight, paired.LineHeight);
     }
@@ -224,8 +225,10 @@ public class DesignSizeTests
     public void The_zoom_design_box_agrees_with_the_token_layer()
     {
         // `ZoomAutoPolicy` keeps BCL-only literals so it source-includes cleanly; this is the convergence test ch 00
-        // §9.6 asks for, and it is the whole reason `DesignH` was promoted out of a bare literal.
-        Assert.Equal(Design.Size.PageMaxW, Design.Size.DesignW);
+        // §9.6 asks for, and it is the whole reason `DesignH` was promoted out of a bare literal. `DesignW` is the page
+        // measure of the style the process runs (Classic here): the design box does not follow a style, so a style whose
+        // measure differs must say so in its own table and leave the zoom box alone.
+        Assert.Equal(Design.Size.DesignW, R.Space.PageMaxW);
         Assert.Equal(Design.Size.DesignW, ZoomAutoPolicy.DesignW);
         Assert.Equal(Design.Size.DesignH, ZoomAutoPolicy.DesignH);
     }
@@ -256,7 +259,7 @@ public class DesignSizeTests
 
     [Fact]
     public void The_dock_reserves_exactly_its_own_height()
-        => Assert.Equal(Design.Dock.BarH, Design.Dock.Reserve);
+        => Assert.Equal(Design.Size.PlayerBarH, R.Space.DockReserve);
 
     [Fact]
     public void The_content_pane_has_exactly_one_rounded_corner()
@@ -680,19 +683,19 @@ public class DesignMotionTests
     [Fact]
     public void Three_scale_tiers_and_nothing_else()
     {
-        Assert.Equal(1.02f, Design.Motion.ScaleSubtle.HoverTarget);
-        Assert.Equal(0.98f, Design.Motion.ScaleSubtle.PressTarget);
-        Assert.Equal(1.04f, Design.Motion.ScaleStandard.HoverTarget);
-        Assert.Equal(0.96f, Design.Motion.ScaleStandard.PressTarget);
-        Assert.Equal(1.07f, Design.Motion.ScaleEmphatic.HoverTarget);
-        Assert.Equal(0.92f, Design.Motion.ScaleEmphatic.PressTarget);
+        Assert.Equal(1.02f, R.Motion.ScaleSubtle.HoverTarget);
+        Assert.Equal(0.98f, R.Motion.ScaleSubtle.PressTarget);
+        Assert.Equal(1.04f, R.Motion.ScaleStandard.HoverTarget);
+        Assert.Equal(0.96f, R.Motion.ScaleStandard.PressTarget);
+        Assert.Equal(1.07f, R.Motion.ScaleEmphatic.HoverTarget);
+        Assert.Equal(0.92f, R.Motion.ScaleEmphatic.PressTarget);
     }
 
     [Fact]
     public void A_dead_affordance_does_not_answer_the_pointer()
     {
-        Assert.Equal(1f, Design.Motion.ScaleStandard.HoverIf(false));
-        Assert.Equal(1f, Design.Motion.ScaleStandard.PressIf(false));
+        Assert.Equal(1f, R.Motion.ScaleStandard.HoverIf(false));
+        Assert.Equal(1f, R.Motion.ScaleStandard.PressIf(false));
     }
 
     [Fact]
@@ -700,7 +703,7 @@ public class DesignMotionTests
     {
         // The source comment said 360; the arithmetic and its test say 320. The code was right, the comment was not.
         Assert.Equal(8, Design.Entrance.StaggerCap);
-        Assert.Equal(320f, Design.Entrance.StaggerCap * Design.Motion.StaggerMs);
+        Assert.Equal(320f, Design.Entrance.StaggerCap * R.Motion.StaggerMs);
         Assert.Equal(320f, Design.Entrance.DelayMs(8));
         Assert.Equal(320f, Design.Entrance.DelayMs(50));   // everything past the cap lands together
         Assert.Equal(0f, Design.Entrance.DelayMs(0));
@@ -727,8 +730,8 @@ public class DesignMotionTests
     {
         // A separate rung for a MECHANICAL reason: the per-item one is capped because a list is unbounded, and this one
         // offsets exactly two authored lines, so the uncapped index × ms spelling is safe.
-        Assert.Equal(45f, Design.Motion.MastheadStaggerMs);
-        Assert.NotEqual(Design.Motion.StaggerMs, Design.Motion.MastheadStaggerMs);
+        Assert.Equal(45f, R.Motion.MastheadStaggerMs);
+        Assert.NotEqual(R.Motion.StaggerMs, R.Motion.MastheadStaggerMs);
     }
 }
 
@@ -1030,7 +1033,7 @@ public class DesignWashTests
 
     [Fact]
     public void The_wash_host_inset_is_the_dock()
-        => Assert.Equal(Design.Dock.Reserve, Design.Wash.HostBottomInset);
+        => Assert.Equal(R.Space.DockReserve, Design.Wash.HostBottomInset);
 }
 
 public class DesignTintOwnershipTests

@@ -290,7 +290,7 @@ public readonly partial struct Playlist
             new BoxEl
             {
                 Key = saved ? "txt:saved" : "txt:saving", Animate = MotionRecipes.TextSwap,
-                Children = [Design.Type.MicroMeta(Loc.Get(saved ? Strings.Detail.Edit.Saved : Strings.Detail.Edit.Saving)) with { Weight = 600, Color = Tok.TextSecondary, MaxLines = 1 }],
+                Children = [R.Type.MicroMeta(Loc.Get(saved ? Strings.Detail.Edit.Saved : Strings.Detail.Edit.Saving)) with { Weight = 600, Color = Tok.TextSecondary, MaxLines = 1 }],
             },
         ],
     };
@@ -406,7 +406,7 @@ public readonly partial struct Playlist
             Element run = _description
                 ? (blank ? new TextEl(shown) { Size = 12f, Color = Tok.TextTertiary, Grow = 1f, Basis = 0f, MinWidth = 0f, Wrap = TextWrap.Wrap }
                          : Controls.RichTextFlex(text, 12f, Tok.TextSecondary, AccentOf(p), 6, NavRoute))
-                : Design.Type.DetailHero(shown) with
+                : R.Type.DetailHero(shown) with
                 {
                     // The frame's title rule: the size it chose, drawn exactly (no auto-fit under an authored line box),
                     // wrapping freely, ellipsised only past the pathological cap.
@@ -598,7 +598,7 @@ public readonly partial struct Playlist
                     Children =
                     [
                         PersonPicture.Create("", 24f, displayName: name, imageSourcePath: Controls.ArtUrl(owner.ImageId)),
-                        Design.Type.TrackTitle(name) with
+                        R.Type.TrackTitle(name) with
                         {
                             Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                             HoverColor = go ? Tok.AccentTextPrimary : default, BrushTransitionMs = Design.Motion.Faster,
@@ -668,7 +668,7 @@ public readonly partial struct Playlist
                 Padding = wide ? new Edges4(10f, 0f, 12f, 0f) : default, Corners = CornerRadius4.All(14f),
                 BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault, HoverFill = Tok.FillSubtleSecondary,
                 PressedFill = Tok.FillSubtleTertiary, BrushTransitionMs = Design.Motion.Faster,
-                HoverScale = Design.Motion.ScaleSubtle.Hover, PressScale = Design.Motion.ScaleSubtle.Press,
+                HoverScale = R.Motion.ScaleSubtle.Hover, PressScale = R.Motion.ScaleSubtle.Press,
                 Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, OnClick = _openAccess,
                 OnRealized = n => _inviteNode = n,
                 Children = wide
@@ -719,11 +719,11 @@ public readonly partial struct Playlist
                     ],
                 };
             }
-            var list = new BoxEl { Direction = 1, Gap = 2f, Width = Design.Size.FacePileListW, Children = rows };
+            var list = new BoxEl { Direction = 1, Gap = 2f, Width = R.Space.FacePileListW, Children = rows };
             handle = overlay.Open(_pileAnchor, () => new BoxEl
             {
-                Direction = 1, Width = Design.Size.FacePileFlyoutW, MaxHeight = Design.Size.FacePileFlyoutH, Padding = Edges4.All(Spacing.S),
-                Children = [ScrollView(list) with { Width = Design.Size.FacePileListW, MaxHeight = Design.Size.FacePileListH, ContentSized = true, AutoEdgeFade = true }],
+                Direction = 1, Width = R.Space.FacePileFlyoutW, MaxHeight = R.Space.FacePileFlyoutH, Padding = Edges4.All(Spacing.S),
+                Children = [ScrollView(list) with { Width = R.Space.FacePileListW, MaxHeight = R.Space.FacePileListH, ContentSized = true, AutoEdgeFade = true }],
             }, FlyoutPlacement.BottomEdgeAlignedLeft,
                 new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup) { ConstrainToRootBounds = false });
             _membersHandle = handle;
@@ -872,7 +872,7 @@ public readonly partial struct Playlist
                     new BoxEl
                     {
                         Key = "cta-txt:" + (state == 2 ? 1 : 0), Animate = MotionRecipes.TextSwap,
-                        Children = [Design.Type.DenseTitle(Loc.Get(state == 2 ? Strings.Auth.Copied : Strings.Detail.Edit.CopyInviteLink)) with { Color = ink }],
+                        Children = [R.Type.DenseTitle(Loc.Get(state == 2 ? Strings.Auth.Copied : Strings.Detail.Edit.CopyInviteLink)) with { Color = ink }],
                     },
                 ],
             };
@@ -888,8 +888,8 @@ public readonly partial struct Playlist
                     Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = 2f,
                     Children =
                     [
-                        Design.Type.DenseTitle(label) with { Color = Tok.TextPrimary, MaxLines = 1 },
-                        Design.Type.MicroMeta(caption) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 2, MinWidth = 0f },
+                        R.Type.DenseTitle(label) with { Color = Tok.TextPrimary, MaxLines = 1 },
+                        R.Type.MicroMeta(caption) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 2, MinWidth = 0f },
                     ],
                 },
                 saving ? StatusChip(saved: false) : new BoxEl(),
@@ -1182,7 +1182,7 @@ public readonly partial struct Playlist
                     {
                         Width = 32f, Height = 32f, Corners = CornerRadius4.All(16f), AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                         HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary, BrushTransitionMs = Design.Motion.Faster,
-                        HoverScale = Design.Motion.ScaleEmphatic.Hover, PressScale = Design.Motion.ScaleEmphatic.Press,
+                        HoverScale = R.Motion.ScaleEmphatic.Hover, PressScale = R.Motion.ScaleEmphatic.Press,
                         Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, OnClick = _refresh,
                         Children = [Icon(Icons.Refresh, 14f, Tok.TextSecondary)],
                     }, Loc.Get(Strings.Detail.Recommended)),
@@ -1228,7 +1228,7 @@ public readonly partial struct Playlist
                 Children =
                 [
                     addCell,
-                    Design.Type.TrackMeta(Track.Format.TrackTime(t.DurationMs)) with { Width = DurationW, MaxLines = 1 },
+                    R.Type.TrackMeta(Track.Format.TrackTime(t.DurationMs)) with { Width = DurationW, MaxLines = 1 },
                 ],
             };
             var data = Track.RowData(t, new Track.RowDataOptions(

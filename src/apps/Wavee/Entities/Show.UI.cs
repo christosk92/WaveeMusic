@@ -39,7 +39,7 @@ namespace Wavee;
 public readonly partial struct Show
 {
     /// <summary>The reader's bottom reserve: the last row clears the player dock by 24 (ch 09 item 11).</summary>
-    public static float BottomReserve => Design.Dock.Reserve + Spacing.XXL;
+    public static float BottomReserve => R.Space.DockReserve + Spacing.XXL;
 
     // ── the reader's rhythm (the prototype's .reader / .sec / .wordrail) ──
     const float ReaderPad = ShowReaderRules.Pad, ReaderPadNarrow = ShowReaderRules.PadNarrow;
@@ -108,7 +108,7 @@ public readonly partial struct Show
 
     static TextSpan SmallSpan(string text)
     {
-        var d = Design.Type.DenseMeta("");
+        var d = R.Type.DenseMeta("");
         return new(text, Weight: 400, Color: Tok.TextTertiary, Size: d.Size);
     }
 
@@ -125,7 +125,7 @@ public readonly partial struct Show
     {
         var kids = new List<Element>(4) { title };
         if (sub is { Length: > 0 })
-            kids.Add(Design.Type.DenseMeta(sub) with
+            kids.Add(R.Type.DenseMeta(sub) with
             {
                 Color = Tok.TextTertiary, MaxLines = stack ? 2 : 1,
                 Wrap = stack ? TextWrap.Wrap : TextWrap.NoWrap,
@@ -269,7 +269,7 @@ public readonly partial struct Show
             ClickRequestsContext = true,
             Children =
             [
-                Design.Type.DenseTitle("") with { Text = Prop.Of(() => FilterLabelOf(m, m.Status.Value)), MaxLines = 1 },
+                R.Type.DenseTitle("") with { Text = Prop.Of(() => FilterLabelOf(m, m.Status.Value)), MaxLines = 1 },
                 Icon(Icons.ChevronDown, 10f) with { Color = Prop.Of(() => tone()) },
             ],
         }.Interactive(Interaction.Subtle);
@@ -501,7 +501,7 @@ public readonly partial struct Show
                 Direction = 1, MaxWidth = AboutMeasure, MinWidth = 0f,
                 Children = [Controls.RichTextFlex(Entities.Strings.Resolve(!show.HtmlDescriptionId.IsEmpty ? show.HtmlDescriptionId : show.DescriptionId), 14f, Tok.TextSecondary, h.Tone(), 0, s_navRoute)],
             });
-        kids.Add(Design.Type.DenseMeta(MetaOf(s.Total, s.Cadence, s.OldestYear)) with
+        kids.Add(R.Type.DenseMeta(MetaOf(s.Total, s.Cadence, s.OldestYear)) with
         {
             Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MinWidth = 0f,
         });
@@ -702,7 +702,7 @@ public readonly partial struct Show
     static Element MiniPlate(ShowReaderRules.MiniLeadKind lead, string numeral, string? artUrl, string title, string meta,
                              Element? trailing, Action? onClick, ReaderHost? host = null, Episode episode = default)
     {
-        var titleText = Design.Type.DenseTitle(title) with
+        var titleText = R.Type.DenseTitle(title) with
         {
             Color = onClick is null ? Tok.TextSecondary : Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap,
             Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
@@ -727,7 +727,7 @@ public readonly partial struct Show
             [
                 // Only a live card tips (the seed and the failure arm are not links, and their title is no name).
                 onClick is null ? titleText : Controls.TrimmedTitle(titleText, title),
-                Design.Type.MicroMeta(meta) with
+                R.Type.MicroMeta(meta) with
                 {
                     Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 },
@@ -758,7 +758,7 @@ public readonly partial struct Show
         var link = new BoxEl
         {
             Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand, OnClick = h.Model.MarkFreshPlayed,
-            Children = [Design.Type.DenseTitle(Loc.Get(Strings.Podcast.MarkAllPlayed)) with { Color = h.Tone(), MaxLines = 1 }],
+            Children = [R.Type.DenseTitle(Loc.Get(Strings.Podcast.MarkAllPlayed)) with { Color = h.Tone(), MaxLines = 1 }],
         };
         var kids = new List<Element>(s.Fresh.Length + 1)
         {
@@ -779,7 +779,7 @@ public readonly partial struct Show
     {
         var kids = new List<Element>(2) { Pivot(Loc.Get(Strings.Podcast.CaughtUp)) };
         if (s.Day is { } day)
-            kids.Add(Design.Type.DenseMeta(Strings.Podcast.CaughtUpNext(s_dayWords[(int)day])) with
+            kids.Add(R.Type.DenseMeta(Strings.Podcast.CaughtUpNext(s_dayWords[(int)day])) with
             {
                 Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MinWidth = 0f,
             });
@@ -899,7 +899,7 @@ public readonly partial struct Show
                 [
                     new TextEl(Prop.Of(() => s_monthWords.Get(monthKey.Value, s_monthWord)))
                     {
-                        Size = Design.Type.MicroMeta("").Size, LineHeight = Design.Type.MicroMeta("").LineHeight,
+                        Size = R.Type.MicroMeta("").Size, LineHeight = R.Type.MicroMeta("").LineHeight,
                         Weight = 600, Color = Tok.TextTertiary, MaxLines = 1,
                     },
                 ],
@@ -948,7 +948,7 @@ public readonly partial struct Show
     /// empty. Same key as the strip, so the two reconcile in place and the list never changes width with the filter.</summary>
     static Element YearStripReserve() => new BoxEl { Key = "rd:years", Direction = 1, Width = YearStripW, Shrink = 0f };
 
-    static TextEl YearInk(string text, ushort weight, Prop<ColorF> ink) => Design.Type.MicroMeta(text) with
+    static TextEl YearInk(string text, ushort weight, Prop<ColorF> ink) => R.Type.MicroMeta(text) with
     {
         Weight = weight, Color = ink, BrushTransitionMs = Design.Motion.Fast,
         AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center,
@@ -1037,7 +1037,7 @@ public readonly partial struct Show
         return new BoxEl
         {
             Direction = 0, MinWidth = 0f, MaxWidth = float.IsFinite(width) ? width : AboutMeasure,
-            Children = [Design.Type.DenseMeta(text) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f }],
+            Children = [R.Type.DenseMeta(text) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f }],
         };
     }
 

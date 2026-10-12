@@ -378,7 +378,7 @@ public static partial class Visualizer
                         if (tempo != lastTempo) { lastTempo = tempo; label = Geo.BpmLabel(tempo); }
                         return label;
                     }))
-                    { Size = size, LineHeight = size * 1.25f, Weight = 600, FontFamily = Design.Type.DisplayFace, Color = Ink.Ink with { A = 0.9f }, MinSize = 24f, MaxLines = 1 },
+                    { Size = size, LineHeight = size * 1.25f, Weight = 600, FontFamily = R.Type.DisplayFace, Color = Ink.Ink with { A = 0.9f }, MinSize = 24f, MaxLines = 1 },
                     new TextEl("BPM") { Size = 14f, LineHeight = 20f, Color = Ink.InkSecondary, MaxLines = 1 },
                 ],
             }));

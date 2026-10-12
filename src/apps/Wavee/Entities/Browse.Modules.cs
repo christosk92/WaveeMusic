@@ -24,15 +24,16 @@ using static FluentGpu.Dsl.Ui;
 namespace Wavee;
 
 /// <summary>ONE source of truth for the shelf/grid/fold-tile geometry Browse and Search read, read by the renderer AND
-/// (via <see cref="Design.Size"/>/<see cref="Spacing"/>) anything sizing the same shapes. The shelf height reads
+/// (via <see cref="SpaceRoles"/>/<see cref="Spacing"/>) anything sizing the same shapes. The shelf height reads
 /// <see cref="SurfaceGeometry"/> — the rule the shared surface renders — so the two cannot be handed different numbers.</summary>
 public static class HomeModuleLayout
 {
     public const float FallbackWidth = 1100f;
 
-    public const float ShelfCardMin = Design.Size.ShelfCardMin;
-    public const float ShelfCardMax = Design.Size.ShelfCardMax;
-    public const float ShelfEdgeFade = Design.Size.FadeShelf;
+    // The shelf band and its edge feather are the style's space roles (a property, so a definition swap reaches the next layout).
+    public static float ShelfCardMin => R.Space.ShelfCardMin;
+    public static float ShelfCardMax => R.Space.ShelfCardMax;
+    public static float ShelfEdgeFade => R.Space.FadeShelf;
     /// <summary>The gap BETWEEN shelf cards: zero, because the shared card already insets its cover by its plate padding
     /// (8 each side), so two covers sit 16 apart — the prototype's gutter. A 12 gap on top read as 28 between covers.</summary>
     public const float ShelfGap = 0f;
@@ -121,9 +122,9 @@ public static class HomeModules
     public static Element ModuleHeader(string title, string? subtitle, Element? tools, Action? open)
     {
         Element label = subtitle is { Length: > 0 } sub
-            ? Design.Type.ModuleHeader(title, sub) with
+            ? R.Type.ModuleHeader(title, sub) with
               { Shrink = 1f, MinWidth = 0f, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis }
-            : Design.Type.ModuleHeader(title) with { Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
+            : R.Type.ModuleHeader(title) with { Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
         Element titleEl = open is null
             ? new BoxEl { Direction = 0, Shrink = 1f, MinWidth = 0f, Children = [label] }
             : new BoxEl
@@ -278,7 +279,7 @@ public static class HomeFoldTile
         }
 
         string title = !string.IsNullOrWhiteSpace(s.Title) ? s.Title! : Loc.Get(Strings.Home.Sections);
-        Element titleEl = Design.Type.FoldTitle(title) with { Wrap = TextWrap.Wrap, MaxLines = 3, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
+        Element titleEl = R.Type.FoldTitle(title) with { Wrap = TextWrap.Wrap, MaxLines = 3, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
         // The copy column is painted LAST, over the covers; hit-test off so the ROOT owns the one hyperlink.
         children.Add(new BoxEl
         {
@@ -288,7 +289,7 @@ public static class HomeFoldTile
             Padding = new Edges4(Spacing.XL, Spacing.XL, Spacing.M, 18f),
             MaxWidth = cardW * HomeModuleLayout.FoldCopyMaxFrac, Grow = 1f, Basis = 0f, MinWidth = 0f,
             Children = eyebrow is { Length: > 0 }
-                ? [Design.Type.Eyebrow(eyebrow) with { Color = Tok.AccentTextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }, titleEl]
+                ? [R.Type.Eyebrow(eyebrow) with { Color = Tok.AccentTextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }, titleEl]
                 : [titleEl],
         });
 

@@ -296,7 +296,7 @@ public static partial class Crash
                             Content = new BoxEl
                             {
                                 Padding = Edges4.All(10f),
-                                Children = [Design.Type.MicroMeta(preview ?? Loc.Get(Strings.Report.Preparing))
+                                Children = [R.Type.MicroMeta(preview ?? Loc.Get(Strings.Report.Preparing))
                                     with { FontFamily = "Cascadia Code", Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxWidth = BodyWidth - 52f }],
                             },
                         },

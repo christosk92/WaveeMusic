@@ -352,7 +352,7 @@ public readonly partial struct User
             Children =
             [
                 Icon(Icons.HeartFill, 16f, Design.OnMedia.Ink),
-                Design.Type.DenseTitle(Loc.Get(Strings.Detail.LikedSongs)) with
+                R.Type.DenseTitle(Loc.Get(Strings.Detail.LikedSongs)) with
                 {
                     Color = Design.OnMedia.Ink, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                 },
@@ -1099,7 +1099,7 @@ public readonly partial struct User
                 Width = Columns * Controls.PickerCoverMini.Width + (Columns - 1) * Spacing.M + CardPad.Left + CardPad.Right,
                 Children =
                 [
-                    Design.Type.Eyebrow(Loc.Get(Strings.Detail.LikedCover.Title)) with { Color = Tok.TextPrimary },
+                    R.Type.Eyebrow(Loc.Get(Strings.Detail.LikedCover.Title)) with { Color = Tok.TextPrimary },
                     Controls.PickerStrip(order.Length, selected, _mini, _apply, maxColumns: Columns),
                     new TextEl(Loc.Get(Strings.Detail.LikedCover.Note))
                     {
