@@ -20,11 +20,11 @@
 //     content region = ZStack[ row(sidebar column · content card · rail gap · rail reservation) · sidebar seam ·
 //                              rail overlay · rail seam · narrow drawer ]
 //
-// The surfaces that are not yet a key of their own (player bar, rail, stage, overlays) arrive as element builders on the props
-// (`ShellFrameProps`); T6 and T7 give each its own key and replace the builder with a `ctx.View` call here. The title bar (T4b) is
-// mounted as `Shell.TitleBar` and the sidebar pane (T5a) as `Shell.NavPane`; T4c did the same for the material, the file-drop cue, the
-// palette, the cover scrim, the drag chip and the frame-rate overlay (each member of the props is now the child view's props record);
-// the narrow drawer's core host (its props change with the band) is still a builder.
+// The surfaces that are not yet a key of their own (rail, stage, overlays) arrive as element builders on the props
+// (`ShellFrameProps`); T6b and T7 give each its own key and replace the builder with a `ctx.View` call here. The title bar (T4b) is
+// mounted as `Shell.TitleBar`, the sidebar pane (T5a) as `Shell.NavPane` and the player bar (T6a) as `Player.Bar`; T4c did the same for
+// the material, the file-drop cue, the palette, the cover scrim, the drag chip and the frame-rate overlay (each member of the props is now
+// the child view's props record); the narrow drawer's core host (its props change with the band) is still a builder.
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -57,7 +57,7 @@ internal static class ClassicFrame
                 // pauses its subtree (UseInterval, UseIsActive), and the edge never re-renders the frame.
                 ctx.View(ViewKeys.ShellTitleBar, props.TitleBar) with { Visible = Prop.Of(props.ChromeMounted) },
                 ContentRegion(props, in ctx),
-                props.PlayerBarDock() with { Visible = Prop.Of(props.ChromeMounted) },
+                ctx.View(ViewKeys.PlayerBar, props.PlayerBar) with { Visible = Prop.Of(props.ChromeMounted) },
             ],
         };
 

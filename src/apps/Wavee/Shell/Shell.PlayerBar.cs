@@ -20,6 +20,8 @@ using System.Globalization;
 
 using FluentGpu.Controls;
 
+using Wavee.Theming.Contracts;
+
 using DeviceKind = Wavee.Spotify.Decode.DeviceKind;
 using RepeatMode = Wavee.Spotify.Decode.RepeatMode;
 
@@ -47,44 +49,15 @@ public static partial class Shell
     /// </list></summary>
     public enum FaceArm : byte { Live, Hold, Placeholder }
 
-    /// <summary>The title line's ink rung.</summary>
-    public enum NowPlayingInk : byte { Primary, Secondary, Critical }
-
-    /// <summary>What the primary transport button does when clicked.</summary>
-    public enum PrimaryVerb : byte { None, TogglePlay, Retry }
-
     /// <summary>What a single click on a LIST row does (<c>Track.Invoke</c>): start that row, or toggle the deck.</summary>
     public enum RowAction : byte { Start, Toggle }
-
-    /// <summary>One row of the "⋯" overflow, in BUILD order — which IS the menu order (ch 20 W17).</summary>
-    public enum OverflowCommand : byte { Previous, Next, Shuffle, Repeat, Lyrics, Queue, NowPlaying, FullScreen, Video, Mute }
 
     /// <summary>What the centre rail IS right now — decided by the source's own timeline, never by whether a duration
     /// happened to be reported (a sliding DVR window reported as a 3-minute "track" is the defect this ends).</summary>
     public enum SeekRailMode : byte { Track, Dvr, Line }
 
-    /// <summary>The right cluster's SLOTS, in bit order — which IS the row order. A slot's PRESENCE is a function of the
-    /// tier (<see cref="PlayerBarRules.RightSlots"/>) with ONE exception — the video split, which exists iff the
-    /// current track has a video (user decision 2026-09-16: a 52-DIP hole beside lyrics was worse than the row easing
-    /// once when a video track lands). Playback STATE only lights a slot's FACE (<see cref="PlayerBarRules.SlotFaceVisible"/>).
-    /// That split is still the fix for the bar reflowing on track start: the heart, lyrics and overflow used to ARRIVE
-    /// with <c>active</c>, each arrival stealing width from the centre while every cluster animated its bounds. A track
-    /// starting WITHOUT a video therefore still moves nothing; the centre's seek bar has exactly two widths per tier.</summary>
-    [Flags]
-    public enum RightSlot : ushort
-    {
-        None = 0,
-        Shuffle = 1 << 0,
-        Repeat = 1 << 1,
-        Volume = 1 << 2,
-        VolumeSlider = 1 << 3,
-        Lyrics = 1 << 4,
-        Video = 1 << 5,
-        Queue = 1 << 6,
-        Devices = 1 << 7,
-        Expand = 1 << 8,
-        More = 1 << 9,
-    }
+    // `RightSlot` (the right cluster's slots), `OverflowCommand`, `PrimaryVerb` and `NowPlayingInk` are contract words now
+    // (`Theming\Contracts\PlayerBarVocabulary.cs`, T6a): a theme's player bar draws what these decide and may not name `Shell`.
 
     /// <summary>The folded answer the bar renders from.</summary>
     public readonly record struct PlayerBarFacts(PlayerState State, bool CanTransport, bool PrevEnabled, bool NextEnabled,
@@ -467,18 +440,32 @@ public static partial class Shell
             _ => PlayerKeyIntent.None,
         };
 
-    /// <summary>The podcast pressure map prioritizes its time-step and speed controls over secondary commands.</summary>
-    public static PlayerBarLayout PodcastBarLayout(in PlayerBarLayout layout)
+    /// <summary>The podcast pressure map prioritizes its time-step and speed controls over secondary commands. WHAT the podcast bar
+    /// carries at a level is the level's (<c>PlayerTier.PodcastSet</c>, <c>PodcastLeft</c>: the structure's policy), not a
+    /// comparison against the level ordinals: the bar stays one pressure machine and a structure states its own podcast map.
+    /// <paramref name="policy"/> null is the active one.</summary>
+    public static PlayerBarLayout PodcastBarLayout(in PlayerBarLayout layout, Theming.PlayerBarPolicy? policy = null)
     {
+        var level = ShellPolicy.PlayerBarOr(policy).Tiers[(int)layout.Tier];
+        var slots = level.PodcastSet & level.VisibleSlots;
+        static bool Has(Theming.PlayerBarSlots set, Theming.PlayerBarSlots slot) => (set & slot) != 0;
         var next = layout with
         {
-            ShowShuffleRepeat = false,
-            ShowVolumeSlider = false,
-            ShowPrevNext = layout.Tier >= PlayerBarTier.Wide,
-            ShowTimesElapsed = layout.Tier >= PlayerBarTier.Comfortable,
-            ShowTimesRemaining = layout.Tier >= PlayerBarTier.Comfortable,
-            ShowLikeSlot = layout.Tier >= PlayerBarTier.Medium,
-            LeftW = layout.Tier switch { PlayerBarTier.Minimal => layout.ArtSize, PlayerBarTier.Compact => 120f, _ => layout.LeftW },
+            ShowExpand = Has(slots, Theming.PlayerBarSlots.Expand),
+            ShowDevices = Has(slots, Theming.PlayerBarSlots.Devices),
+            ShowQueue = Has(slots, Theming.PlayerBarSlots.Queue),
+            ShowVolumeSlider = Has(slots, Theming.PlayerBarSlots.VolumeSlider),
+            ShowShuffleRepeat = Has(slots, Theming.PlayerBarSlots.ShuffleRepeat),
+            ShowLikeSlot = Has(slots, Theming.PlayerBarSlots.LikeSlot),
+            ShowVolumeButton = Has(slots, Theming.PlayerBarSlots.VolumeButton),
+            ShowLyrics = Has(slots, Theming.PlayerBarSlots.Lyrics),
+            ShowRemoteDeviceLine = Has(slots, Theming.PlayerBarSlots.RemoteDeviceLine),
+            ShowTimesElapsed = Has(slots, Theming.PlayerBarSlots.TimesElapsed),
+            ShowTimesRemaining = Has(slots, Theming.PlayerBarSlots.TimesRemaining),
+            ShowPrevNext = Has(slots, Theming.PlayerBarSlots.PrevNext),
+            ShowSubtitle = Has(slots, Theming.PlayerBarSlots.Subtitle),
+            ShowTitleBlock = Has(slots, Theming.PlayerBarSlots.Title),
+            LeftW = float.IsNaN(level.PodcastLeftW) ? layout.LeftW : level.PodcastLeftW,
         };
         return next with { RightWMax = PlayerBarRules.RightWidth(in next, hasVideo: true) };
     }

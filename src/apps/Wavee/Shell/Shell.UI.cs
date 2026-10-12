@@ -542,7 +542,7 @@ public static partial class Shell
             OnContentRegionRealized = static h => { s_contentRegion = h; PublishScrimClip(); },
             OnContentRegionBounds = static _ => PublishScrimClip(),
             TitleBar = TitleBarProps(),
-            PlayerBarDock = static () => PlayerBarDock(),
+            PlayerBar = PlayerBarHost.Props,
             Material = new MaterialProps { State = MaterialState },
             ContentHost = static () => Embed.Comp(static () => new ContentHost()),
             NavPane = Sidebar.DockedPaneProps,

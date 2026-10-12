@@ -1,4 +1,5 @@
 using FluentGpu.Foundation;
+using Wavee.Theming.Contracts;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -122,18 +123,18 @@ public sealed class PodcastPlayerBarTests
         Assert.True(width - occupied >= 20, $"width={width} occupied={occupied}");
         Assert.False(layout.ShowShuffleRepeat);
         Assert.False(layout.ShowVolumeSlider);
-        Span<Shell.OverflowCommand> commands = stackalloc Shell.OverflowCommand[Shell.PlayerBarRules.MaxOverflow];
+        Span<OverflowCommand> commands = stackalloc OverflowCommand[Shell.PlayerBarRules.MaxOverflow];
         int count = Shell.PlayerBarRules.Overflow(layout, true, true, false, commands);
-        Assert.Contains(Shell.OverflowCommand.Shuffle, commands[..count].ToArray());
-        Assert.Contains(Shell.OverflowCommand.Repeat, commands[..count].ToArray());
+        Assert.Contains(OverflowCommand.Shuffle, commands[..count].ToArray());
+        Assert.Contains(OverflowCommand.Repeat, commands[..count].ToArray());
         // The now-playing rail's toggle rides every tier's overflow (the Full tier's Expand slot opens the stage instead).
-        Assert.Contains(Shell.OverflowCommand.NowPlaying, commands[..count].ToArray());
+        Assert.Contains(OverflowCommand.NowPlaying, commands[..count].ToArray());
         // The stage's door: the Expand slot where the row has it (Full), the "⋯" menu's Full screen row everywhere else.
-        Assert.Equal(!layout.ShowExpand, Array.IndexOf(commands[..count].ToArray(), Shell.OverflowCommand.FullScreen) >= 0);
+        Assert.Equal(!layout.ShowExpand, Array.IndexOf(commands[..count].ToArray(), OverflowCommand.FullScreen) >= 0);
         if (!layout.ShowPrevNext)
         {
-            Assert.Contains(Shell.OverflowCommand.Previous, commands[..count].ToArray());
-            Assert.Contains(Shell.OverflowCommand.Next, commands[..count].ToArray());
+            Assert.Contains(OverflowCommand.Previous, commands[..count].ToArray());
+            Assert.Contains(OverflowCommand.Next, commands[..count].ToArray());
         }
     }
 }

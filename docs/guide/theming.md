@@ -163,7 +163,7 @@ A structure decides the numbers the core state machines run on; the machines the
 |---|---|---|
 | `NavPanePolicy` | what the Narrow and Tiny bands force (`NavPaneMode`: Expanded, Compact rail, Overlay drawer, None; `ModeFor(WidthTier)`), the expanded width bounds and default, the content floor, the seam collapse rule, whether the pane is resizable. The bands themselves are the window tiers (section 7): Compact is Tiny, Small is Narrow, Standard and up are Wide | `SidebarPaneModeRules`, `SidebarResizeRules`, `FrameModel`, `SidebarPaneBounds.Clamp` |
 | `PanelPolicy` | the panel's min and max width, the content it must leave to stay inline, full height, the mini player's `Video.PipBounds` | `Shell.ClampRailWidth`, `Shell.CanFitRail`, `PanelHost.FitWidthTo`, `Video.PipGesture` |
-| `PlayerBarPolicy` | six pressure levels (start width, `PlayerBarSlots`, spacing, art, hit targets), the narrowing hold and the bar height | `Shell.PlayerBar`, `Shell.PlayerBarLayout.ForTier` (so `PlayerBarRules.Overflow` and `RightWidth` follow) |
+| `PlayerBarPolicy` | six pressure levels (start width, `PlayerBarSlots`, spacing, art, hit targets, and what the podcast bar carries at the level: `PodcastSlots`, `PodcastLeftW`), the narrowing hold and the bar height | `Shell.PlayerBar`, `Shell.PlayerBarLayout.ForTier`, `Shell.PodcastBarLayout` (so `PlayerBarRules.Overflow` and `RightWidth` follow); `R.Space.DockReserve` answers the bar's height |
 | `ChromePolicy` | the title-bar row's `ChromeBudget`: where the actions, name and forward button may appear, what each affordance costs, the search and tab widths | `Shell.Chrome` (the allocator) |
 | `StagePolicy` | the stage's `AspectThresholds` (Compact, Portrait, Ultrawide edges and holds) | `Stage.Layout.ClassOf` / `Resolve` |
 
@@ -202,9 +202,10 @@ T4a is the first PR that registers a view. The API was T1's (`IStructureLayer.Re
 | 6. Register | `ClassicStructure.Register` | `views.Add(ViewKeys.ShellFrame, ClassicFrame.Template, "classic.shell.frame");` The template id is the slot's identity: a different id under the same key remounts the slot, the same id with a new registry only re-runs it |
 
 **Surfaces that are not yet their own key arrive as builders.** A moved view often places surfaces another T-PR owns. Until that
-PR gives them a key, the props carry a `Func<Element>` over the core builder that exists (`ShellFrameProps.MaterialLayer`,
-`.PlayerBarDock`, `.SidebarPane`, `.RailBody`, ...); the owning PR replaces the member with a `ctx.View(...)` call. Nothing else in
-the frame changes.
+PR gives them a key, the props carry a `Func<Element>` over the core builder that exists (`ShellFrameProps.RailBody`, ...); the owning
+PR replaces the member with a `ctx.View(...)` call. Nothing else in the frame changes. The title bar (T4b), the frame's small views (T4c),
+the sidebar pane (T5a) and the player bar (T6a) did: `ShellFrameProps.PlayerBar` carries its props and the frame mounts
+`ctx.View(ViewKeys.PlayerBar, props.PlayerBar)`.
 
 **What stays core, and why.** Models, state machines, signals and verbs (the sidebar band and presentation, the tiers, auto zoom,
 the rail and docked-video coupling, the chrome allocator, the material mirror, the route reducer, the auth fold, the page
@@ -341,6 +342,32 @@ gives the pane its key and moves the **rows**; T5b-f move the rest, one sub-surf
 `NavDropRulesTests`, `SidebarRowGeometryTests`, `NavModelTests` for the owning section); the mounted facts are
 `Wavee.ShellTests\NavPaneMountedTests.cs` (the registered template is Classic's, the real shell draws the pane through the key and
 its Home row stands at the ladder's row height, and the kit plans with Classic's planner).
+
+### The player bar (T6a)
+
+| Key | Props | Core half | Classic template |
+|---|---|---|---|
+| `Player.Bar` | `PlayerBarProps` (`PlayerBarView`, `PlayerBarMetrics`, `IPlayerBarHost`; `RightSlot`, `OverflowCommand`, `PrimaryVerb`, `NowPlayingInk` moved to `Theming\Contracts\PlayerBarVocabulary.cs`) | `Shell.PlayerBarHost` (`[CoreHost]`, `Shell\Shell.PlayerBar.Host.cs`) | `ClassicPlayerBar` (the dock, the three clusters, the buttons, the reserved slots, the "⋯", the volume, devices and remote-device faces) and `ClassicPlayerBarPodcast` (the ±10 s steps, the speed button and panel); numbers in `Rules\PlayerBarLayout.cs` |
+
+**The host runs on the template's hook context.** The bar is one render over a lot of state (the five-way fold, the face hold,
+the level machine, the saved-episodes demand, two deadline timers), and its hold commits in layout effects *after* the render
+that read it. Splitting that across a host component and a child would change when the hold's model is read relative to those
+effects, so the contract does not split the component: the template's first line is `props.Host.Use(ctx.Hooks)`, which runs the
+core's hooks on the slot's hook context in the order the old component ran them and answers a `PlayerBarView`; the template then
+draws that view with its own hooks (the hover signal, the captured nodes, the like pop, the face cross-fade). A theme that skipped
+the call would draw a bar with no bookkeeping. The `Host` is also the seam for a test: a fixture host returns a fixed view and the
+template draws it (`PlayerBarMountedTests`).
+
+**The levels stay policy and the machine stays core.** `PlayerBarPolicy` (Classic's values in `ClassicPolicies`) is the single
+source of the six levels, the 24 DIP narrowing hold and the bar's height; `Shell.PlayerBar`/`PlayerBarLayout` resolve them. T6a adds
+what the podcast bar carries at each level to the same record (`PlayerTier.PodcastSlots`, `PodcastLeftW`, `PlayerBarSlots.Title`),
+replacing the level-ordinal comparisons `Shell.PodcastBarLayout` made. `R.Space.DockReserve` (what a page reserves under its last
+row) answers the active policy's height; the style table's own 72 is the value it equals in Classic.
+
+**What stayed core, and why.** The seek rail with its chapter decoration, the time labels, the credits line and the device
+picker's rows are shared with the stage and the on-media strip (or have no key yet) and arrive as builders on the props until T6b
+and T7 give them keys; the "⋯" rows (`OverflowItem`: labels and what a row does, built from live reads at open time) and the key
+map (`PlayerKey`) are decisions.
 
 ## 3. Options
 

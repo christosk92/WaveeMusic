@@ -3,8 +3,8 @@
 // Registers the views T-lane PRs have moved here, one family at a time (`Register`): T4a is the frame and the content states
 // (`Views\Frame\ClassicFrame.cs`, `ClassicContentState.cs`), T4b the title bar and the search (`Views\TitleBar\ClassicTitleBar.cs`,
 // `Views\Search\ClassicSearch.cs`), T4c the frame's small views (`Views\Masthead`, `Material`, `Drawer`, `Palette`, `FrameBits`),
-// T5a the navigation pane's rows (`Views\Nav\ClassicNavPane.cs`, `ClassicNavRows.cs`, `ClassicNavRow.cs`); every other surface is
-// still core code. It
+// T5a the navigation pane's rows (`Views\Nav\ClassicNavPane.cs`, `ClassicNavRows.cs`, `ClassicNavRow.cs`), T6a the player bar
+// (`Views\Player\ClassicPlayerBar.cs`); every other surface is still core code. It
 // decides the shell's policies (`Rules\ClassicPolicies.cs`: nav pane, panel and mini player, player bar, chrome row, stage)
 // and offers every capability (T3). Its window tiers (T3b) are `Rules\Tiers.cs`.
 //
@@ -56,6 +56,8 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.ShellFps, ClassicFrameBits.Fps, "classic.shell.fps");
         // T5a: the navigation pane (the rows: planner, diff, extents, freeze and the row slot; the rest of the pane is T5b-f's).
         views.Add(ViewKeys.ShellNavPane, ClassicNavPane.Template, "classic.shell.nav-pane");
+        // T6a: the player bar (the podcast transport rides with it).
+        views.Add(ViewKeys.PlayerBar, ClassicPlayerBar.Template, "classic.player.bar");
     }
 
     /// <inheritdoc />

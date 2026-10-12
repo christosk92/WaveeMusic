@@ -11,7 +11,7 @@
 //   · Behaviour the host wires (the shell chords, the key handler, the file-drop target, the realized-node captures the
 //     probes and the scrim clip read): the template only PLACES them.
 //   · Element builders of the surfaces that are not this PR's: each is a `Func<Element>` over the core builder that exists
-//     today (the player bar, the rail, the stage, the overlay layers). A later
+//     today (the rail, the stage, the overlay layers). A later
 //     T-PR gives its surface its own view key and replaces the builder with `ctx.View(...)`; nothing else here changes.
 //     T4a draws the FRAME: the column, the window layers, the content region and its seams. T4c gave the material, the
 //     palette, the file-drop cue, the cover scrim, the drag chip and the frame-rate overlay their keys: those members now carry
@@ -104,8 +104,9 @@ public sealed record ShellFrameProps
 
     // ── surfaces that are not T4a's: element builders until each has its own key ────────────────────────────────────
 
-    /// <summary>The player bar dock (T6a).</summary>
-    public required Func<Element> PlayerBarDock { get; init; }
+    /// <summary>The player bar's props: the frame mounts <see cref="ViewKeys.PlayerBar"/> with them (T6a). The bar's hooks and
+    /// decisions are the core half the template runs first (<see cref="IPlayerBarHost"/>).</summary>
+    public required PlayerBarProps PlayerBar { get; init; }
 
     /// <summary>The shell material under the column: the props of <see cref="ViewKeys.ShellMaterialLayer"/> (T4c).</summary>
     public required MaterialProps Material { get; init; }
