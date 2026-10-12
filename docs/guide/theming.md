@@ -139,6 +139,31 @@ alternating component type from the first switch on, which is how the root remou
 > (plan 1.2), and inside `namespace Wavee.*` the simple name `Themes` binds to that namespace. Read every `Themes.Current`,
 > `Themes.Facts`, `Themes.Switch` or `Themes.Apply` in the plan as `ThemeHost.…` (`using Wavee.Theming;`).
 
+### The options UI (T1b)
+
+Settings › Appearance is `Theme` (the picker) · `‹Theme› options` · `Display` (app mode, zoom, marquee), then the rows that have
+no other home yet (lyrics, full screen, now playing, Home). Nothing in it names a theme.
+
+- **Picker.** `Screens\Settings.UI.Theme.cs` draws one fixed-size card per `ThemePickerEntry` (`PickerState.Entries(developerMode)`:
+  install order, Developer themes only in Developer mode but always the active one). Name is one line, description two, the
+  preview is a UI-native miniature with the manifest's preview image over it when the asset ships. A pick is
+  `SettingsVerbs.PickTheme` → `ThemeHost.Switch`; the remounted page opens on Appearance again. The manifest's
+  `DescriptionKey` is optional.
+- **Generated section.** `Theming\Options\ThemeOptionsSection.Build/Current` turns `ExposedOptions` into `GeneratedOptionRow`s
+  (a `SettingsRow` plus choices, range, swatches): toggle, select (Radio → segments up to 4 choices, else a combo; Combo; Cards
+  and Swatches → picker; Toggle with exactly two choices → switch), slider, colour (swatches or a free picker), action (its
+  `ThemeVerbs.Register`ed verb; greyed without one), reference to a core pref (the core row's own control). Every write is
+  `ThemeHost.Apply`; a refused value is logged and changes nothing. `VisibleWhen` and Developer visibility are evaluated at build.
+  "Reset options" is `ThemeHost.ResetOptions` (forgets the stored keys and puts the cells back; one remount if a transaction
+  option changed).
+- **Legacy rows.** A structure lists the options that are still switches in `IStructureLayer.LegacyRows` (a `SettingsDoc` row id and a
+  group). The page draws them in the same expander and groups; an M-PR deletes its rows from the list and declares the option, so
+  the tab never changes layout again. Classic lists 13.
+- **Palette.** An option with `Command = true` contributes rows (`ThemeOptionsSection.Commands`): a toggle on/off, a select one per
+  choice, an action one. `Shell.CommandTable.BuildIndex` appends them after the builtins (`PaletteKind.ThemeOption`).
+- **Setup.Theme.** `Setup.ThemeStep()` (`Screens\Setup.UI.Theme.cs`) is the Layout page's twin (same frame) with the picker and the options;
+  it replaces Layout in M7a and is mounted by nothing until then.
+
 ## 4. Migrating a retired switch (`ThemeBootstrap`)
 
 Each M-PR that retires a presentation switch adds one named step to `ThemeBootstrap.Steps`:

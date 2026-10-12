@@ -76,6 +76,18 @@ public abstract record ThemeOption(string Id, string TitleKey, string? Descripti
 
     /// <summary>The cell's current value, boxed.</summary>
     internal abstract object? Peek(OptionStore store);
+
+    /// <summary>The loc keys of a select option's choices, in order (what the generated Settings row lists); empty for every other kind.</summary>
+    internal virtual IReadOnlyList<string> ChoiceTitleKeys => Array.Empty<string>();
+
+    /// <summary>The position of <paramref name="value"/> among a select option's choices, or -1 (not a select, not a choice).</summary>
+    internal virtual int ChoiceIndexOf(object? value) => -1;
+
+    /// <summary>The value of choice <paramref name="index"/> of a select option, or null when there is no such choice.</summary>
+    internal virtual object? ChoiceAt(int index) => null;
+
+    /// <summary>How a select option is drawn; null for every other kind.</summary>
+    internal virtual PickerStyle? SelectPicker => null;
 }
 
 /// <summary>An on/off option.</summary>
@@ -144,6 +156,31 @@ public sealed record SelectOption<TEnum>(string Id, string TitleKey, string? Des
 
     internal override bool Publish(OptionStore store, object? value, bool persist) => value is TEnum e && store.Publish(Key, e, persist);
     internal override object? Peek(OptionStore store) => store.Peek(Key);
+
+    internal override IReadOnlyList<string> ChoiceTitleKeys
+    {
+        get
+        {
+            if (Choices.IsDefaultOrEmpty) return Array.Empty<string>();
+            var keys = new string[Choices.Length];
+            for (int i = 0; i < keys.Length; i++) keys[i] = Choices[i].TitleKey;
+            return keys;
+        }
+    }
+
+    internal override int ChoiceIndexOf(object? value)
+    {
+        if (value is not TEnum e || Choices.IsDefaultOrEmpty) return -1;
+        int raw = ToInt(e);
+        for (int i = 0; i < Choices.Length; i++)
+            if (ToInt(Choices[i].Value) == raw) return i;
+        return -1;
+    }
+
+    internal override object? ChoiceAt(int index)
+        => !Choices.IsDefaultOrEmpty && (uint)index < (uint)Choices.Length ? Choices[index].Value : null;
+
+    internal override PickerStyle? SelectPicker => Picker;
 
     private static int ToInt(TEnum value) => Convert.ToInt32(value, CultureInfo.InvariantCulture);
 

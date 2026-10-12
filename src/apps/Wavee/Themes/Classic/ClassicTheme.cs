@@ -20,14 +20,15 @@ public static class ClassicTheme
     public static ThemeComposition Create() => new(
         new ThemeManifest(
             Id: Id,
-            DisplayNameKey: "theme.classic.name",
+            DisplayNameKey: Strings.Theme.Classic.Name,
             ContractMajor: ContractVersion.Major,
             ContractMinor: ContractVersion.Minor,
             StructureId: ClassicStructure.LayerId,
             StyleId: ClassicStyle.LayerId,
             InheritsFrom: null,
             Availability: ThemeAvailability.Public,
-            Preview: new ThemePreview("themes/classic-light.png", "themes/classic-dark.png")),
+            Preview: new ThemePreview("themes/classic-light.png", "themes/classic-dark.png"),
+            DescriptionKey: Strings.Theme.Classic.Description),
         new ClassicStructure(),
         new ClassicStyle());
 }

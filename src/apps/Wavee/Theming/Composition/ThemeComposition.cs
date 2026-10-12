@@ -133,8 +133,16 @@ public sealed record ThemeComposition(
         return null;
     }
 
-    /// <summary>True when Settings shows the option.</summary>
-    public bool IsExposed(LayerOption lo) => lo.Option.Visibility != OptionVisibility.Hidden && IsUserOption(lo);
+    /// <summary>True when Settings shows the option: not a structure parameter, not hidden by this composition and not replaced
+    /// by a composition option. An option that holds no value (an action, a reference to a core preference) is shown too: it has
+    /// a row but nothing is stored for it (<see cref="IsUserOption"/> is about stored values).</summary>
+    public bool IsExposed(LayerOption lo)
+    {
+        if (lo.Option.Visibility == OptionVisibility.Hidden) return false;
+        if (HiddenOptions is { } hidden && hidden.Contains(lo.Option.Id)) return false;
+        if (ReplacedOptions is { } replaced && replaced.ContainsKey(lo.Option.Id)) return false;
+        return true;
+    }
 
     /// <summary>True when the USER can set the option: it holds a value, is not a structure parameter, is not hidden by this
     /// composition and is not replaced by a composition option. Only these are read from and written to settings.</summary>

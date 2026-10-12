@@ -12,6 +12,11 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **Settings > Appearance is regrouped.** The tab now starts with a Theme picker (one card per installed theme), then one
+  expandable "Wavee Classic options" card that holds the sidebar, track list, track page and surface settings that used to
+  be spread over the Lists, Sidebar and Theme sections, followed by App mode, Zoom and Marquee text. The daylist clock
+  moved to its own Home section. Every setting keeps its value; nothing was removed. The command palette (Ctrl+K) lists
+  a theme's options that ask for a command, and the setup wizard has a Theme page ready (not shown yet).
 - **Lyrics blur: the Auto choice is gone; the intensity slider is the one setting (0 turns it off).** Settings >
   Appearance > Lyrics no longer has an "Auto" link next to the slider. The blur is the 0-100 slider, 100 by default; if
   you had Auto, your lyrics keep the full blur (100) until you move the slider.

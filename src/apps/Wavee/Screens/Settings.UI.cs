@@ -74,8 +74,20 @@ public static partial class Settings
 
     // The pivot is ROOT-LIFETIME state (RootScope.cs, owner Q26): a remounted root opens Settings on its first tab, like a fresh
     // navigation. `Open(tab)` before the first mount writes the ambient scope the root then adopts.
-    static readonly RootState<Signal<int>> s_tabState = new("Settings.Tab", static () => new Signal<int>(0));
+    static readonly RootState<Signal<int>> s_tabState = new("Settings.Tab", static () => new Signal<int>(TakePendingTab()));
     static Signal<int> s_tab => s_tabState.Value;
+
+    /// <summary>The tab the NEXT mounted root's pivot opens on, or -1 for the first. A theme pick sets it to Appearance before the
+    /// root remounts (owner Q26: the remounted page is a fresh navigation, to Settings › Appearance, picker first); the new
+    /// root's pivot cell consumes it when it is created.</summary>
+    static int s_pendingTab = -1;
+
+    static int TakePendingTab()
+    {
+        int tab = s_pendingTab;
+        s_pendingTab = -1;
+        return tab >= 0 && tab < TabSlugs.Length ? tab : 0;
+    }
     static readonly Signal<int> s_epoch = new(0);
 
     // Published unconditionally by the page render into `SettingsContext` (the verbs read the same values), read by the
@@ -347,7 +359,7 @@ public static partial class Settings
         "Globe" => Icons.Globe, "Link" => Icons.Link, "Devices" => Icons.Devices, "Device" => Icons.Device,
         "Code" => Icons.Code, "LocaleLanguage" => Icons.LocaleLanguage, "OpenInNewWindow" => Icons.OpenInNewWindow,
         "Settings" => Icons.Settings, "Clock" => Icons.Clock, "Document" => Icons.Document, "Refresh" => Icons.Refresh,
-        "Brush" => Icons.Brush, "Sun" => Icons.Sun, "Zoom" => Icons.Zoom, "Font" => Icons.Font, "Design" => Icons.Design,
+        "Brush" => Icons.Brush, "Sun" => Icons.Sun, "Zoom" => Icons.Zoom, "Font" => Icons.Font, "Design" => Icons.Design, "Home" => Icons.Home,
         "List" => Icons.List, "RowSize" => Icons.RowSize, "Picture" => Icons.Picture, "ViewList" => Icons.ViewList,
         "DockLeft" => Icons.DockLeft, "SplitView" => Icons.SplitView, "Edit" => Icons.Edit, "Microphone" => Icons.Microphone,
         "RefineSparkle" => Icons.RefineSparkle, "Filter" => Icons.Filter, "MusicNote" => Icons.MusicNote,

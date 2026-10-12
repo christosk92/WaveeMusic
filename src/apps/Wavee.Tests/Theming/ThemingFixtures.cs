@@ -33,6 +33,10 @@ sealed class FakeStructure(string id, ThemeOptionSchema? options = null) : IStru
     public Func<OptionValues, StyleMetrics, ThemePolicies> PolicyFn { get; set; } = static (_, _) => ThemePolicies.Empty;
     public RoleSet RequiredRoles => RoleSet.None;
 
+    /// <summary>The rows this structure still binds to legacy keys (the options page lists them next to the generated ones).</summary>
+    public IReadOnlyList<LegacyOptionRow> Legacy { get; set; } = Array.Empty<LegacyOptionRow>();
+    public IReadOnlyList<LegacyOptionRow> LegacyRows => Legacy;
+
     public void Register(ViewRegistryBuilder views)
     {
         RegisterCalls++;
