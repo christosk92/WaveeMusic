@@ -1136,10 +1136,13 @@ public static partial class Shell
     // One clamp for every writer (the left-seam splitter, the settings seed, CanFitRail). A second literal pair is how
     // the sidebar drag and the probe drifted apart in 0.2.9; do not reintroduce that here.
 
+    /// <summary>The shell's baseline panel bounds and content floor: <c>PanelPolicy.Default</c> (what Wavee Classic declares) is
+    /// built from them; the clamp reads the policy.</summary>
     public const float RailMinW = 200f, RailMaxW = 500f, RailDefaultW = 340f;
     public const float MinContentW = 480f;
 
-    public static float ClampRailWidth(float w) => Math.Clamp(w, RailMinW, RailMaxW);
+    /// <summary>The one panel-width clamp: the active panel policy's bounds (Classic 200-500), or <paramref name="policy"/>'s.</summary>
+    public static float ClampRailWidth(float w, Theming.PanelPolicy? policy = null) => ShellPolicy.PanelOr(policy).ClampWidth(w);
 
     /// <summary>16:9 height of a full-bleed rail-width video cap (no inset). The splitter's floor — drag only grows
     /// from here.</summary>
@@ -1189,31 +1192,24 @@ public static partial class Shell
     /// bar.</summary>
     public enum PlayerBarTier : byte { Minimal, Compact, Medium, Comfortable, Wide, Full }
 
+    /// <summary>The player bar's pressure machine: which of the six levels a width belongs to, and the narrowing hold. The
+    /// level starts and the hold are the active <see cref="Theming.PlayerBarPolicy"/>'s (Classic 440 / 760 / 900 / 1100 / 1240 and
+    /// 24); every method takes it as a trailing argument (null = the active one).</summary>
     public static class PlayerBar
     {
-        public const float CompactW = 440f;
-        public const float MediumW = 760f;
-        public const float ComfortableW = 900f;
-        public const float WideW = 1100f;
-        public const float FullW = 1240f;
-        public const float NarrowHysteresis = 24f;
+        /// <summary>The level a width belongs to before any narrowing hold.</summary>
+        public static PlayerBarTier Nominal(float width, Theming.PlayerBarPolicy? policy = null)
+            => (PlayerBarTier)ShellPolicy.PlayerBarOr(policy).LevelOf(width);
 
-        public static PlayerBarTier Nominal(float width) =>
-            width >= FullW ? PlayerBarTier.Full :
-            width >= WideW ? PlayerBarTier.Wide :
-            width >= ComfortableW ? PlayerBarTier.Comfortable :
-            width >= MediumW ? PlayerBarTier.Medium :
-            width >= CompactW ? PlayerBarTier.Compact :
-            PlayerBarTier.Minimal;
-
-        /// <summary>Widening commits immediately; narrowing holds the current presentation through a 24-DIP dip so a
-        /// pointer resize cannot chatter structural controls at a threshold.</summary>
-        public static PlayerBarTier Resolve(float width, PlayerBarTier current, bool initialized)
+        /// <summary>Widening commits immediately; narrowing holds the current presentation through the policy's dip (24 DIP in
+        /// Classic) so a pointer resize cannot chatter structural controls at a threshold.</summary>
+        public static PlayerBarTier Resolve(float width, PlayerBarTier current, bool initialized, Theming.PlayerBarPolicy? policy = null)
         {
             if (width <= 0f) return current;
-            var nominal = Nominal(width);
+            policy = ShellPolicy.PlayerBarOr(policy);
+            var nominal = Nominal(width, policy);
             if (!initialized || nominal >= current) return nominal;
-            var dipped = Nominal(width + NarrowHysteresis);
+            var dipped = Nominal(width + policy.Hysteresis, policy);
             return dipped < current ? dipped : current;
         }
     }
@@ -1237,12 +1233,12 @@ public static partial class Shell
         float LeftW, float ArtSize, float RowGap, float RowPad, float ClusterGap, float LeftGap, float SeekGap,
         float RightGap, float TopEdgeWidth, float RightWMax)
     {
+        static bool Has(Theming.PlayerBarSlots set, Theming.PlayerBarSlots slot) => (set & slot) != 0;
+
         public const float MinButtonBox = 32f;
         public const float MinButtonGlyph = 16f;
         public const float MinPrimaryBox = 36f;
         public const float MinPrimaryGlyph = 18f;
-        public const float PrimaryBoxRoomy = 40f;
-        public const float PrimaryGlyphRoomy = 20f;
 
         /// <summary>The inline volume rail's length (the stock 22-DIP thumb ring rides it).</summary>
         public const float VolumeSliderW = 96f;
@@ -1256,59 +1252,48 @@ public static partial class Shell
         /// narrower regresses.</summary>
         public const float TopEdgeWidthFloor = 2400f;
 
-        public static PlayerBarLayout Initial(float width) => ForTier(Shell.PlayerBar.Nominal(width), width);
+        public static PlayerBarLayout Initial(float width, Theming.PlayerBarPolicy? policy = null)
+            => ForTier(Shell.PlayerBar.Nominal(width, policy), width, policy);
 
-        public static PlayerBarLayout Resolve(float width, in PlayerBarLayout current, bool initialized)
-            => ForTier(Shell.PlayerBar.Resolve(width, current.Tier, initialized), width);
+        public static PlayerBarLayout Resolve(float width, in PlayerBarLayout current, bool initialized, Theming.PlayerBarPolicy? policy = null)
+            => ForTier(Shell.PlayerBar.Resolve(width, current.Tier, initialized, policy), width, policy);
 
         /// <param name="tier">The resolved pressure tier.</param>
         /// <param name="width">The bar's measured width in DIP; 0 keeps the pre-fix 2400 behaviour via the floor.</param>
-        public static PlayerBarLayout ForTier(PlayerBarTier tier, float width = 0f)
+        /// <param name="policy">The player-bar policy whose level <paramref name="tier"/> picks; null is the active one.</param>
+        public static PlayerBarLayout ForTier(PlayerBarTier tier, float width = 0f, Theming.PlayerBarPolicy? policy = null)
         {
-            bool full = tier == PlayerBarTier.Full;
-            bool wide = tier >= PlayerBarTier.Wide;
-            bool comfortable = tier >= PlayerBarTier.Comfortable;
-            bool medium = tier >= PlayerBarTier.Medium;
-            bool compact = tier >= PlayerBarTier.Compact;
+            policy = ShellPolicy.PlayerBarOr(policy);
+            var level = policy.Tiers[(int)tier];
+            var slots = level.VisibleSlots;
 
             var layout = new PlayerBarLayout(
                 Tier: tier,
-                ShowExpand: full,
-                ShowDevices: true,          // the device picker is the only route when local playback is unavailable
-                ShowQueue: wide,
-                ShowVolumeSlider: wide,
-                ShowShuffleRepeat: comfortable,
-                ShowLikeSlot: true,         // identity-first: the heart survives down to the 300-DIP floor
-                ShowVolumeButton: medium,
-                ShowLyrics: medium,
-                ShowRemoteDeviceLine: comfortable,
-                ShowTimesElapsed: medium,
-                ShowTimesRemaining: compact,
-                ShowPrevNext: medium,
-                ShowSubtitle: true,         // title + artist are one indivisible identity block
-                ButtonBox: MinButtonBox,
-                ButtonGlyph: MinButtonGlyph,
-                PrimaryBox: medium ? PrimaryBoxRoomy : MinPrimaryBox,
-                PrimaryGlyph: medium ? PrimaryGlyphRoomy : MinPrimaryGlyph,
-                // The identity block gives back the DIPs the floors took at the two narrow tiers (the like button grew
-                // 30→32 and the primary 30→36 there): 180→172 and 140→132.
-                LeftW: tier switch
-                {
-                    PlayerBarTier.Full => 260f,
-                    PlayerBarTier.Wide => 240f,
-                    PlayerBarTier.Comfortable => 230f,
-                    PlayerBarTier.Medium => 220f,
-                    PlayerBarTier.Compact => 172f,
-                    _ => 132f,
-                },
-                // 48 from Medium up (ch 20, 0.2.9 `WaveeSize.ArtPlayerBar`), 40 at the two narrow tiers.
-                ArtSize: medium ? Design.Size.ArtPlayerBar : 40f,
-                RowGap: wide ? 8f : medium ? 6f : compact ? 4f : 3f,
-                RowPad: wide ? 12f : medium ? 8f : compact ? 8f : 6f,
-                ClusterGap: medium ? 4f : compact ? 3f : 2f,
-                LeftGap: medium ? 8f : compact ? 6f : 4f,
-                SeekGap: medium ? 6f : compact ? 5f : 4f,
-                RightGap: medium ? 2f : compact ? 1f : 0f,
+                ShowExpand: Has(slots, Theming.PlayerBarSlots.Expand),
+                ShowDevices: Has(slots, Theming.PlayerBarSlots.Devices),   // the device picker is the only route when local playback is unavailable
+                ShowQueue: Has(slots, Theming.PlayerBarSlots.Queue),
+                ShowVolumeSlider: Has(slots, Theming.PlayerBarSlots.VolumeSlider),
+                ShowShuffleRepeat: Has(slots, Theming.PlayerBarSlots.ShuffleRepeat),
+                ShowLikeSlot: Has(slots, Theming.PlayerBarSlots.LikeSlot),         // identity-first: the heart survives down to the 300-DIP floor
+                ShowVolumeButton: Has(slots, Theming.PlayerBarSlots.VolumeButton),
+                ShowLyrics: Has(slots, Theming.PlayerBarSlots.Lyrics),
+                ShowRemoteDeviceLine: Has(slots, Theming.PlayerBarSlots.RemoteDeviceLine),
+                ShowTimesElapsed: Has(slots, Theming.PlayerBarSlots.TimesElapsed),
+                ShowTimesRemaining: Has(slots, Theming.PlayerBarSlots.TimesRemaining),
+                ShowPrevNext: Has(slots, Theming.PlayerBarSlots.PrevNext),
+                ShowSubtitle: Has(slots, Theming.PlayerBarSlots.Subtitle),         // title + artist are one indivisible identity block
+                ButtonBox: level.ButtonBox,
+                ButtonGlyph: level.ButtonGlyph,
+                PrimaryBox: level.PrimaryBox,
+                PrimaryGlyph: level.PrimaryGlyph,
+                LeftW: level.LeftW,
+                ArtSize: level.ArtSize,
+                RowGap: level.RowGap,
+                RowPad: level.RowPad,
+                ClusterGap: level.ClusterGap,
+                LeftGap: level.LeftGap,
+                SeekGap: level.SeekGap,
+                RightGap: level.RightGap,
                 TopEdgeWidth: MathF.Max(TopEdgeWidthFloor, width),
                 RightWMax: 0f);
             // The right cluster's WIDEST width at this tier — the slot sum WITH the video split (PlayerBarRules.RightWidth,

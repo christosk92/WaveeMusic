@@ -35,6 +35,7 @@ public static class ThemeHost
 
     private static readonly Signal<ThemeComposition> s_current = new(null!);
     private static readonly Signal<ThemeFacts> s_facts = new(ThemeFacts.Default);
+    private static readonly Signal<ThemePolicies> s_policies = new(ThemePolicies.Default);
     private static readonly Signal<long> s_rootEpoch = new(0L);
     private static readonly OptionStore s_noOptions = new();
 
@@ -62,6 +63,11 @@ public static class ThemeHost
 
     /// <summary>The facts of the active composition; core models read this.</summary>
     public static IReadSignal<ThemeFacts> Facts => s_facts;
+
+    /// <summary>The policies of the active composition (<see cref="ThemeFacts.Policies"/>) on a signal of their own, so a core
+    /// state machine that reads only its policy is not re-run when another fact (the window tier) moves. Always a bundle the
+    /// shell can run on: <see cref="ThemePolicies.Default"/> before <see cref="Install"/> and in place of an invalid one.</summary>
+    public static IReadSignal<ThemePolicies> Policies => s_policies;
 
     /// <summary>The option values of the active composition, as the layers' functions see them.</summary>
     public static ThemeOptionValues Values => s_values;
@@ -118,6 +124,7 @@ public static class ThemeHost
         s_registry = ViewRegistry.Empty;
         s_current.Value = null!;
         s_facts.Value = ThemeFacts.Default;
+        s_policies.Value = ThemePolicies.Default;
         s_rootEpoch.Value = 0L;
         ThemePickerFacts.Publish(PickerState.Empty);
         ThemeState.Bind(ThemeCatalog.FallbackId);
@@ -226,7 +233,18 @@ public static class ThemeHost
     private static void PublishFacts(ThemeComposition theme)
     {
         // The tiers are the window's fact (T3b), not the composition's: keep what is published.
-        s_facts.Value = theme.Facts(s_values) with { Tiers = s_facts.Peek().Tiers };
+        ThemeFacts facts = theme.Facts(s_values) with { Tiers = s_facts.Peek().Tiers };
+        // A policy the core state machines cannot run on (an inverted band, a level below a hit-target floor) never reaches
+        // them: the structure is told in the log and the shell's baseline policies stand in, so a theme's bug is a wrong
+        // look and not a frozen or collapsed window.
+        IReadOnlyList<string> problems = facts.Policies.Validate();
+        if (problems.Count > 0)
+        {
+            Log.Warn("theme", "theme '" + theme.Manifest.Id + "' published policies the shell cannot run on; using the baseline: " + string.Join("; ", problems));
+            facts = facts with { Policies = ThemePolicies.Default };
+        }
+        s_facts.Value = facts;
+        s_policies.Value = facts.Policies;
     }
 
     /// <summary>Hands the composition's definition to the engine when it is not the one already installed. For a plain

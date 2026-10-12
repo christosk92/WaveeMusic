@@ -43,7 +43,7 @@ public sealed class ViewHarnessTests(ShellHost host)
                 return new BoxEl { Key = "harness:" + props.Name, Width = wide ? 300f : 100f, Height = facts.Capabilities.MaxBandPins * 10f };
             }, "Harness.Probe.Template");
 
-        public ThemePolicies Policies(OptionValues structure, in StyleMetrics metrics) => ThemePolicies.Empty;
+        public ThemePolicies Policies(OptionValues structure, in StyleMetrics metrics) => ThemePolicies.Default;
 
         public ShellCapabilities Capabilities(OptionValues structure)
             => ShellCapabilities.Unrestricted with { MaxBandPins = (int)structure.Get(PinOption.Key) };

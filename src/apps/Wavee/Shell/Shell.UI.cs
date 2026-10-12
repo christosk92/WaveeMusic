@@ -158,16 +158,16 @@ public static partial class Shell
 
     // CLAMP-ONLY: no `collapsed` argument, so the engine detent is off and the raw cell reaches the rail floor. The mode,
     // the approach band and the fade are all SidebarResizeRules (read off Sidebar.Seam).
-    static readonly Splitter.SplitterOptions SidebarSeamOptions = new()
+    static Splitter.SplitterOptions SidebarSeamOptionsFor(Theming.NavPanePolicy nav) => new()
     {
-        Min = SidebarRowGeometry.RailWidth, Max = SidebarResizeRules.ExpandedMaxW, ShowIndicator = false,
+        Min = SidebarRowGeometry.RailWidth, Max = nav.MaxWidth, ShowIndicator = false,
     };
 
     // The indicator is the drag GUIDE (F243): the rail seam writes Ui.RailDragWidth, so nothing else moves until release;
     // BuildRailSeamParts shows the 2-DIP thumb only while a drag is in flight (never on hover).
-    static readonly Splitter.SplitterOptions RailSeamOptions = new()
+    static Splitter.SplitterOptions RailSeamOptionsFor(Theming.PanelPolicy panel) => new()
     {
-        Min = RailMinW, Max = RailMaxW, Polarity = SplitterPolarity.Leading, ShowIndicator = true, InvertCollapsed = true,
+        Min = panel.MinWidth, Max = panel.MaxWidth, Polarity = SplitterPolarity.Leading, ShowIndicator = true, InvertCollapsed = true,
     };
 
     // The shell chords. KeyPreview is modifier-blind, so every chord rides the dispatcher's accelerator seam (matched after
@@ -237,8 +237,10 @@ public static partial class Shell
             var overlay = UseContext(Overlay.Service);
             _seamParts ??= BuildSeamParts(overlay);
             _railSeamParts ??= BuildRailSeamParts(_railDragging);
+            // The structure's policies, read tracked: a theme switch or a policy-moving option re-renders the frame with the new seams.
+            var policies = ShellPolicy.Tracked;
             // Float the engine's toast lane above the docked player bar (the idempotent registration idiom).
-            Toast.EdgeInset = Design.Size.PlayerBarH;
+            Toast.EdgeInset = policies.PlayerBar.Height;
             var vp = UseContextSignal(Viewport.Size);
             var zoom = UseContextSignal(Viewport.Zoom);
 
@@ -249,7 +251,7 @@ public static partial class Shell
                 _bandSeeded = true;
                 var size0 = vp.Peek();
                 var pane0 = FrameModel.Seed(new WindowFacts(size0.Width, size0.Height),
-                    Sidebar.UserCollapsed.Peek(), Sidebar.Editing.Peek(), Sidebar.Width.Peek());
+                    Sidebar.UserCollapsed.Peek(), Sidebar.Editing.Peek(), Sidebar.Width.Peek(), policies.NavPane);
                 Sidebar.Band.SetIfChanged(pane0.Band);
                 Sidebar.Mode.SetIfChanged(pane0.Mode);
                 Sidebar.PresentedWidth.SetIfChanged(pane0.PresentedWidth);
@@ -260,13 +262,16 @@ public static partial class Shell
             {
                 var current = Sidebar.Band.Peek();
                 var size = vp.Value;
-                var next = FrameModel.NextBand(new WindowFacts(size.Width, size.Height), current);
-                if (next == current) return;
-                Sidebar.Band.Value = next;
-                if (FrameModel.ClosesOverlay(next)) Sidebar.OverlayOpen.SetIfChanged(false);
+                // Tracked: another structure's edges re-band the window in place (hysteresis from the band it is in).
+                var nav = ShellPolicy.Tracked.NavPane;
+                var next = FrameModel.NextBand(new WindowFacts(size.Width, size.Height), current, nav);
+                if (next != current) Sidebar.Band.Value = next;
+                // Also when the band did not move: a policy whose band stopped having an overlay closes it.
+                if (FrameModel.ClosesOverlay(next, nav)) Sidebar.OverlayOpen.SetIfChanged(false);
             });
             // The title bar's pane toggle is disabled while the sidebar is being edited (a plain signal mirrored here).
-            UseSignalEffect(static () => s_paneToggleEnabled.SetIfChanged(!Sidebar.Editing.Value));
+            UseSignalEffect(static () => s_paneToggleEnabled.SetIfChanged(
+                SidebarPaneModeRules.CanTogglePane(Sidebar.Band.Value, Sidebar.Editing.Value, ShellPolicy.Tracked.NavPane)));
             // THE ONE PRESENTATION EFFECT: ① the mode, ② the presented width. A live drag presents Track(seam). It never
             // writes Sidebar.Width or UserCollapsed (those are the preference, persisted at commit).
             UseSignalEffect(() =>
@@ -277,9 +282,10 @@ public static partial class Shell
                 bool collapsed = Sidebar.UserCollapsed.Value;
                 float expandedWidth = Sidebar.Width.Value;
                 // The seam is read only while a drag is being presented (a conditional subscription, as always).
-                bool dragging = FrameModel.PresentsDrag(_sidebarDragging.Value, band);
+                var nav = ShellPolicy.Tracked.NavPane;
+                bool dragging = FrameModel.PresentsDrag(_sidebarDragging.Value, band, nav);
                 float seam = dragging ? Sidebar.Seam.Value : 0f;
-                var pane = FrameModel.Present(new WindowFacts(size.Width, size.Height), band, collapsed, editing, expandedWidth, dragging, seam);
+                var pane = FrameModel.Present(new WindowFacts(size.Width, size.Height), band, collapsed, editing, expandedWidth, dragging, seam, nav);
                 if (dragging)
                 {
                     Sidebar.Mode.SetIfChanged(pane.Mode);
@@ -358,8 +364,12 @@ public static partial class Shell
                 Video.DockedHosting.PageStageHosts(Ui.ActiveStagePlayable.Value, Playback.CurrentId.Value.Text)));
             UseSignalEffect(() =>
             {
-                Ui.RailFits.SetIfChanged(Ui.CanFitRail(vp.Value.Width, Sidebar.PresentedWidth.Value, Ui.RailWidth.Value));
+                Ui.RailFits.SetIfChanged(Ui.CanFitRail(vp.Value.Width, Sidebar.PresentedWidth.Value, Ui.RailWidth.Value,
+                    ShellPolicy.Tracked.Panel.InlineMin));
             });
+            // A policy change (a theme switch) moves the panel's bounds: the committed width follows them. The stored preference is
+            // left alone, so the next launch loads it again through the new bounds.
+            UseSignalEffect(() => PanelHost.Shared.FitWidthTo(ShellPolicy.Tracked.Panel));
             // The video host-capability REPORT (an input to the availability intersection, never chrome state). Reads the
             // published fit, so it runs when a fact flips rather than per resize pixel.
             UseSignalEffect(() =>
@@ -403,7 +413,7 @@ public static partial class Shell
             UseSignalEffect(static () =>
             {
                 _ = TabsVersion.Value;
-                float seeded = Chrome.SeedTabExtent(s_tabExtent.Peek(), Tabs.Count, Tabs.PinnedCount);
+                float seeded = Chrome.SeedTabExtent(s_tabExtent.Peek(), Tabs.Count, Tabs.PinnedCount, ShellPolicy.Tracked.Chrome.Budget);
                 s_tabExtent.SetIfChanged(seeded);
             });
             UseSignalEffect(() =>
@@ -415,7 +425,7 @@ public static partial class Shell
                 // The identity chip's FORM is a budget input, not a decoration: "Connecting" and "Reconnect" are 58-68
                 // DIP wider than the avatar, well past the 16-DIP gutter cushion (#88). Reading it here also subscribes
                 // this effect to the auth fold, so a sign-in or a resume RE-ALLOCATES the row instead of overflowing it.
-                var next = Chrome.Resolve(w, extent, old, FrameRules.ChipFor(Auth.Value));
+                var next = Chrome.Resolve(w, extent, old, FrameRules.ChipFor(Auth.Value), ShellPolicy.Tracked.Chrome.Budget);
                 if (FrameRules.ReissueSearchFocus(old.SearchMode, next.SearchMode, s_omnibar.SearchFocused.Peek(), s_omnibar.FlyoutOpen.Peek()))
                     s_omnibar.Focus();
                 ChromeLayout.SetIfChanged(next);
@@ -470,7 +480,7 @@ public static partial class Shell
                     // buttons) on every exit. A bound Visible takes each out of layout, paint, hit-test and focus and
                     // pauses its subtree (UseInterval, UseIsActive), and the edge never re-renders the frame.
                     ChromeRow() with { Visible = Prop.Of(s_chromeMounted) },
-                    ContentRegion(vp),
+                    ContentRegion(vp, policies),
                     PlayerBarDock() with { Visible = Prop.Of(s_chromeMounted) },
                 ],
             };
@@ -512,7 +522,7 @@ public static partial class Shell
                 Ctx.Provide(ShellMaterial.Slot, MaterialState, OverlayHost.Create(stack)));
         }
 
-        Element ContentRegion(IReadSignal<Size2> vp) => ZStack(
+        Element ContentRegion(IReadSignal<Size2> vp, Theming.ThemePolicies policies) => ZStack(
             new BoxEl
             {
                 // The row never moves on a toggle: the content card FLIPs relative to THIS frame.
@@ -588,7 +598,7 @@ public static partial class Shell
                 Transform = Prop.Of(static () => Affine2D.Translation(Sidebar.PresentedWidth.Value, 0f)),
                 Children =
                 [
-                    Splitter.Create(Sidebar.Seam, () => Sidebar.CommitSeam(), SidebarSeamOptions,
+                    Splitter.Create(Sidebar.Seam, () => Sidebar.CommitSeam(), SidebarSeamOptionsFor(policies.NavPane),
                         fade: _sidebarFade, dragging: _sidebarDragging, parts: _seamParts),
                 ],
             },
@@ -632,7 +642,7 @@ public static partial class Shell
                 Transform = Prop.Of(() => Affine2D.Translation(FrameRules.RailSeamX(vp.Value.Width, Ui.RailDragWidth.Value), 0f)),
                 Children =
                 [
-                    Splitter.Create(Ui.RailDragWidth, PanelHost.CommitWidth, RailSeamOptions, collapsed: Ui.RailOpen, fade: _railFade,
+                    Splitter.Create(Ui.RailDragWidth, PanelHost.CommitWidth, RailSeamOptionsFor(policies.Panel), collapsed: Ui.RailOpen, fade: _railFade,
                         dragging: _railDragging, parts: _railSeamParts),
                 ],
             },
@@ -742,8 +752,8 @@ public static partial class Shell
         {
             case Keys.Left: Sidebar.StepSeam(-1, e.Shift); break;
             case Keys.Right: Sidebar.StepSeam(+1, e.Shift); break;
-            case Keys.Home: Sidebar.SetExpandedWidth(SidebarResizeRules.ExpandedMinW); break;
-            case Keys.End: Sidebar.SetExpandedWidth(SidebarResizeRules.ExpandedMaxW); break;
+            case Keys.Home: Sidebar.SetExpandedWidth(ShellPolicy.Now.NavPane.MinWidth); break;
+            case Keys.End: Sidebar.SetExpandedWidth(ShellPolicy.Now.NavPane.MaxWidth); break;
             case Keys.Enter or Keys.Space: Sidebar.TogglePane(); break;
             default: return;
         }
@@ -1121,8 +1131,8 @@ public static partial class Shell
             AddButtonVisibility = TabStripAddButtonVisibility.OnStripPointerOver,
             OnAddTabButtonClick = static () => { WorkspaceVerbs.Shared.OpenTab(new Route(RouteKind.Home)); return null; },
             IndicatorFill = Prop.Of(static () => Tok.AccentDefault),
-            MinTabWidth = Layout.ChromeTabMinW,
-            MaxTabWidth = Layout.ChromeTabMaxW,
+            MinTabWidth = ShellPolicy.Now.Chrome.Budget.TabMinW,
+            MaxTabWidth = ShellPolicy.Now.Chrome.Budget.TabMaxW,
             ItemsSource = BuildTabItems,
             ItemsVersion = TabStripItemsVersion,
             // CONTRACT: the strip WRITES this cell before raising OnSelectionChanged, so it is never evidence of a change —
@@ -1288,7 +1298,7 @@ public static partial class Shell
         if (PinRow(Current.Value) is not { Invoke: { } invoke } row)
             return new BoxEl
             {
-                Key = "chrome-pin-placeholder", Width = Layout.ChromeNavButtonW, Height = TitleBar.ExpandedHeight,
+                Key = "chrome-pin-placeholder", Width = ShellPolicy.Now.Chrome.Budget.NavButtonW, Height = TitleBar.ExpandedHeight,
                 Shrink = 0f, HitTestVisible = false, Opacity = 0f,
             };
         return ChromeButton(row.Icon.Glyph ?? Icons.Pin, invoke, row.Label, "chrome-pin");

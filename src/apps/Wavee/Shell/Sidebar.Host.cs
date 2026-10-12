@@ -558,7 +558,7 @@ public static partial class Sidebar
     /// <summary>Set the expanded width outright (Home/End, Settings): clamped, expanded, persisted.</summary>
     public static void SetExpandedWidth(float width)
     {
-        float w = Math.Clamp(float.IsFinite(width) ? width : Width.Peek(), SidebarResizeRules.ExpandedMinW, SidebarResizeRules.ExpandedMaxW);
+        float w = SidebarPaneBounds.Clamp(float.IsFinite(width) ? width : Width.Peek());
         Apply(new SidebarResizeRules.Settle(false, w, w));
     }
 

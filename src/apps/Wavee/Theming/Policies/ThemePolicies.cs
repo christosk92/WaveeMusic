@@ -1,11 +1,10 @@
 // ── Theming/Policies/ThemePolicies.cs — what a structure decides for the core (themes plan 5.5) ───────────────────────
 //
-// T1 declares the SHAPE the rest of the plan hangs on and the values a theme that decides nothing yet returns:
-//   · `ThemePolicies`      the policy bundle a structure returns. T3 fills it (tiers, nav pane, panel, player bar, chrome,
-//                          stage) and re-points the core consumers; until then it is empty and no core code reads it.
+//   · `ThemePolicies`      the policy bundle a structure returns: nav pane, panel, player bar, chrome, stage. Each member is
+//                          its own file; the core state machines (`SidebarPaneModeRules`, `Shell.Chrome`, `PlayerBarLayout`,
+//                          `Stage.Layout`, `PanelHost`, the mini player) take the member instead of Classic constants.
 //   · `ShellCapabilities`  what the shell offers. `Unrestricted` is "every feature on", which is what Classic is today.
-//   · `StyleMetrics`       the style's row heights and gutters. T2/T3 fill it from the role table; `Unset` (all zero)
-//                          means "no metric published yet" and no consumer reads one in T1.
+//   · `StyleMetrics`       the style's row heights and gutters. A style publishes them; `Unset` (all zero) means "none".
 //   · `TierFacts`          the window-tier fact (T3b). A placeholder with no members yet.
 //   · `ThemeFacts`         the bundle `ThemeHost.Facts` publishes and `ThemeFactsContext` mirrors for templates.
 
@@ -14,12 +13,32 @@ using FluentGpu.Signals;
 
 namespace Wavee.Theming;
 
-/// <summary>The policy bundle of the active structure (T3 adds the members of plan 5.5: tiers, nav pane, panel, player bar,
-/// chrome, stage). Equality is by value, so an unchanged bundle republished is not a change.</summary>
-public sealed record ThemePolicies
+/// <summary>The policy bundle of the active structure. Equality is by value, so an unchanged bundle republished is not a
+/// change. T3b adds the tier policy (<c>TierPolicy Tiers</c>) beside these.</summary>
+/// <param name="NavPane">The navigation pane: window bands, widths, the seam.</param>
+/// <param name="Panel">The right panel and the mini player.</param>
+/// <param name="PlayerBar">The player bar's pressure levels.</param>
+/// <param name="Chrome">The title-bar row's budget.</param>
+/// <param name="Stage">The fullscreen stage's layout classes.</param>
+public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, PlayerBarPolicy PlayerBar, ChromePolicy Chrome, StagePolicy Stage)
 {
-    /// <summary>The bundle of a structure that has no policies yet.</summary>
-    public static ThemePolicies Empty { get; } = new();
+    /// <summary>The shell as it shipped before themes (what Wavee Classic declares). Published until a composition is
+    /// installed, and in place of a bundle that fails <see cref="Validate"/>, so a core state machine always has a policy it
+    /// can run on.</summary>
+    public static ThemePolicies Default { get; } = new(
+        NavPanePolicy.Default, PanelPolicy.Default, PlayerBarPolicy.Default, ChromePolicy.Default, StagePolicy.Default);
+
+    /// <summary>Everything wrong with the bundle, empty when every core state machine can run on it.</summary>
+    public IReadOnlyList<string> Validate()
+    {
+        var problems = new List<string>();
+        if (NavPane is null) problems.Add("NavPane is missing"); else problems.AddRange(NavPane.Validate());
+        if (Panel is null) problems.Add("Panel is missing"); else problems.AddRange(Panel.Validate());
+        if (PlayerBar is null) problems.Add("PlayerBar is missing"); else problems.AddRange(PlayerBar.Validate());
+        if (Chrome is null) problems.Add("Chrome is missing"); else problems.AddRange(Chrome.Validate());
+        if (Stage is null) problems.Add("Stage is missing"); else problems.AddRange(Stage.Validate());
+        return problems;
+    }
 }
 
 /// <summary>What the shell offers under the active structure.</summary>
@@ -42,7 +61,8 @@ public readonly record struct StyleMetrics(
     float PivotRow, float SubPivotRow, float SeekRow, float TransportRow, float SearchWidth,
     float Gutter, float Section, float MinPageColumn, float PanoramaCompactBelow)
 {
-    /// <summary>No metric published (every member 0). T2/T3 replace it with the Classic values taken from <c>Design</c>.</summary>
+    /// <summary>No metric published (every member 0): what a style that publishes none answers. Wavee Classic publishes its own
+    /// (<c>ClassicStyle.Metrics</c>).</summary>
     public static StyleMetrics Unset => default;
 }
 
@@ -59,7 +79,7 @@ public readonly record struct TierFacts
 public sealed record ThemeFacts(ThemePolicies Policies, ShellCapabilities Capabilities, StyleMetrics Metrics, TierFacts Tiers)
 {
     /// <summary>The facts before any composition is installed.</summary>
-    public static ThemeFacts Default { get; } = new(ThemePolicies.Empty, ShellCapabilities.Unrestricted, StyleMetrics.Unset, TierFacts.Unknown);
+    public static ThemeFacts Default { get; } = new(ThemePolicies.Default, ShellCapabilities.Unrestricted, StyleMetrics.Unset, TierFacts.Unknown);
 }
 
 /// <summary>The context that carries <see cref="ThemeHost.Facts"/> to templates. The value is the SIGNAL, not a snapshot: the

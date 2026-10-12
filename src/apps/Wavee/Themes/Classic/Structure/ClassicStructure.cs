@@ -1,7 +1,8 @@
 // ── Themes/Classic/Structure/ClassicStructure.cs — the Classic structure (themes plan 6.1) ─────────────────────────────
 //
-// T1: registers no view (every surface is still core code), declares no option, decides no policy. Each T-lane PR adds the
-// views of one family to `Register`; T3 returns the Classic policies and capabilities.
+// Registers no view yet (every surface is still core code). Each T-lane PR adds the views of one family to `Register`. It
+// decides the shell's policies (`Rules\ClassicPolicies.cs`: nav pane, panel and mini player, player bar, chrome row, stage)
+// and offers every capability (T3).
 //
 // T1b: the options Classic will own (plan 6.1) are still TODAY's switches, bound to their legacy keys through `SettingsDoc`
 // rows. `LegacyRows` lists them in their FINAL grouping so Settings › Appearance shows Classic's section once, in its
@@ -31,7 +32,7 @@ public sealed class ClassicStructure : IStructureLayer
     public ThemeOptionSchema Options => ThemeOptionSchema.Empty;
 
     /// <inheritdoc />
-    public ThemePolicies Policies(OptionValues structure, in StyleMetrics metrics) => ThemePolicies.Empty;
+    public ThemePolicies Policies(OptionValues structure, in StyleMetrics metrics) => ClassicPolicies.Bundle;
 
     /// <inheritdoc />
     public ShellCapabilities Capabilities(OptionValues structure) => ShellCapabilities.Unrestricted;

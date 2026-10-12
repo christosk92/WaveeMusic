@@ -594,7 +594,7 @@ public static partial class Settings
     {
         Width = 30f, Height = 30f, Shrink = 0f, Corners = Radii.PillAll, Fill = color,
         BorderWidth = on ? 3f : 1f, BorderColor = on ? Tok.TextPrimary : Tok.StrokeControlDefault,
-        HoverScale = Design.Motion.ScaleSubtle.Hover, PressScale = Design.Motion.ScaleSubtle.Press, Cursor = CursorId.Hand,
+        HoverScale = R.Motion.ScaleSubtle.Hover, PressScale = R.Motion.ScaleSubtle.Press, Cursor = CursorId.Hand,
     };
 
     /// <summary>A select drawn as a combo box. The items and signal freeze at mount, so the component keeps the signal in step

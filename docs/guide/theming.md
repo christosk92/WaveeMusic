@@ -98,6 +98,39 @@ test process (`Wavee.ShellTests\StyleRolesTests.cs`), the one process where `Tok
 `static readonly` transitions bake in) and the structural geometry whose consumers need compile-time numbers (`Design.Size`:
 control, row, pane, rail, thumb and player-bar sizes). Each leaves with the family that owns it.
 
+## 2a. Policies and metrics (T3)
+
+A structure decides the numbers the core state machines run on; the machines themselves stay core. `ThemePolicies`
+(`Theming\Policies\`) is the bundle a structure returns from `IStructureLayer.Policies`:
+
+| Record | What the structure decides | Core machine that takes it |
+|---|---|---|
+| `NavPanePolicy` | the Wide / Narrow / Tiny window edges and their holds, what Narrow and Tiny force (`NavPaneMode`: Expanded, Compact rail, Overlay drawer, None), the expanded width bounds and default, the content floor, the seam collapse rule, whether the pane is resizable | `SidebarPaneModeRules`, `SidebarResizeRules`, `FrameModel`, `SidebarPaneBounds.Clamp` |
+| `PanelPolicy` | the panel's min and max width, the content it must leave to stay inline, full height, the mini player's `Video.PipBounds` | `Shell.ClampRailWidth`, `Shell.CanFitRail`, `PanelHost.FitWidthTo`, `Video.PipGesture` |
+| `PlayerBarPolicy` | six pressure levels (start width, `PlayerBarSlots`, spacing, art, hit targets), the narrowing hold and the bar height | `Shell.PlayerBar`, `Shell.PlayerBarLayout.ForTier` (so `PlayerBarRules.Overflow` and `RightWidth` follow) |
+| `ChromePolicy` | the title-bar row's `ChromeBudget`: where the actions, name and forward button may appear, what each affordance costs, the search and tab widths | `Shell.Chrome` (the allocator) |
+| `StagePolicy` | the stage's `AspectThresholds` (Compact, Portrait, Ultrawide edges and holds) | `Stage.Layout.ClassOf` / `Resolve` |
+
+`ShellCapabilities` says what the shell offers (Classic: `Unrestricted`) and `StyleMetrics` is the style's row heights and
+gutters (Classic publishes its own from `Design`). The tier policy (`TierPolicy`, `WidthTier`) is T3b's and joins this bundle.
+
+- **Classic's numbers are `Themes\Classic\Structure\Rules\ClassicPolicies.cs`** and equal what the shell shipped with. The
+  core keeps the same set as `ThemePolicies.Default` so it has a policy before a composition is installed and when a structure
+  publishes one it cannot run on; `ClassicPoliciesTests` pins the two equal, so a tuning PR changes both on purpose.
+- **A rule takes its policy as a trailing argument.** `null` is the active policy (`ShellPolicy.Now`, a plain read of
+  `ThemeHost.Policies`); an effect or a render that must re-run when the policy changes passes `ShellPolicy.Tracked.<Member>`
+  (the frame, the player-bar owner, the chrome allocation and the stage layout do). `ThemeHost.Policies` is the policy half of
+  `ThemeHost.Facts` on a signal of its own, so a tier change does not re-run a policy reader.
+- **Validation.** Every record has `Validate()` (ordered edges, finite and positive widths, the six player-bar levels rising,
+  hit targets at or above the 32 / 36 floors, a device route and an identity block in every level). `ThemeHost` validates what a
+  structure publishes; a bundle that fails is logged and replaced by `ThemePolicies.Default`, so a theme's bug is a wrong look
+  and not a collapsed window.
+- **A policy change at runtime** (a theme switch, or a live option that moves a policy) republishes `ThemeHost.Policies`: the
+  frame re-bands, re-presents the pane and re-allocates the title bar, the bar re-resolves its level, the open stage
+  re-classifies, and the panel's committed width is brought inside the new bounds (the stored preference is left alone).
+- **Equality is by value** (the player bar's level array compares element by element), so republishing an unchanged bundle is
+  not a change.
+
 ## 3. Options
 
 An option is data: a `ToggleOption`, `SelectOption<TEnum>`, `SliderOption`, `ColorOption`, `ActionOption` or
