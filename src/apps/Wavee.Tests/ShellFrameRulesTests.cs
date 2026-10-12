@@ -263,7 +263,7 @@ public class ShellAutoZoomLoopTests
 }
 
 // The clipped "Sear" stub (#88): a MOUNTED search field must never be laid out at the icon's 44 DIP, no matter which
-// frame it renders on relative to the allocator flipping `SearchMode`. `SearchField.Render()` (Shell.Masthead.UI.cs)
+// frame it renders on relative to the allocator flipping `SearchMode`. `SearchField.Render()` (now Themes\Classic\Structure\Views\Search\ClassicSearch.cs)
 // used to size itself with `Chrome.LaidOutSearchWidth`, which dispatches on `SearchMode` and answers 44 outright once
 // the mode is Icon — reachable even while the field is still the thing on screen, because the field's own re-render
 // and the host's mount/unmount decision are driven by different signals (`ChromeLayout` vs. `ContentVersion`) and can
@@ -320,7 +320,7 @@ public class ShellChromeSearchFieldWidthTests
     [Fact]
     public void Form_and_width_cannot_disagree_so_there_is_only_one_reading_to_key_the_mount_decision_on()
     {
-        // `CenterIsland` mounts/unmounts the field off `SearchMode`; nothing else in the allocation is allowed to say
+        // The title bar's centre island (`ClassicTitleBar`) mounts/unmounts the field off the search form; nothing else in the allocation is allowed to say
         // something different, or a caller reading the "other" field could be one frame stale relative to the mount
         // decision without any test ever noticing. Pin the single invariant that removes that possibility: the icon
         // form ALWAYS publishes exactly the icon width, and the field form NEVER publishes below the floor — so

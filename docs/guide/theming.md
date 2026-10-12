@@ -202,7 +202,7 @@ T4a is the first PR that registers a view. The API was T1's (`IStructureLayer.Re
 | 6. Register | `ClassicStructure.Register` | `views.Add(ViewKeys.ShellFrame, ClassicFrame.Template, "classic.shell.frame");` The template id is the slot's identity: a different id under the same key remounts the slot, the same id with a new registry only re-runs it |
 
 **Surfaces that are not yet their own key arrive as builders.** A moved view often places surfaces another T-PR owns. Until that
-PR gives them a key, the props carry a `Func<Element>` over the core builder that exists (`ShellFrameProps.ChromeRow`,
+PR gives them a key, the props carry a `Func<Element>` over the core builder that exists (`ShellFrameProps.MaterialLayer`,
 `.PlayerBarDock`, `.SidebarPane`, `.RailBody`, ...); the owning PR replaces the member with a `ctx.View(...)` call. Nothing else in
 the frame changes.
 
@@ -235,6 +235,44 @@ A theme that mounts the real shell must register `Shell.Frame` and `Shell.Conten
 **Tests.** The decision and its edges are pure (`Wavee.Tests\ContentStateTests.cs`); the mounted facts are
 `Wavee.ShellTests\ContentStateMountedTests.cs` (the registered frame is Classic's, each state stands under its key in the real
 shell, the lane comes and goes, and `ViewHarness` mounts `Shell.ContentState` alone under the Classic composition).
+
+### The title bar and the search (T4b)
+
+| Key | Props | Core side | Classic template |
+|---|---|---|---|
+| `Shell.TitleBar` | `ShellTitleBarProps` (`ShellFrameProps.TitleBar` replaced the frame's `ChromeRow` builder) | `Shell.TitleBarProps()` (`Shell\Shell.TitleBar.cs`) over the allocator (`Shell.Chrome`), the tab workspace's items (`BuildTabItems`), the auth fold, the history stacks, the pin | `ClassicTitleBar`: the engine `TitleBar` in merged mode (tabs island with the history buttons and the text-first strip, the centre column, the trailing identity island with the bell, friends and pin, the caption-leading theme toggle and magnifier) |
+| `Shell.Search` | `ShellSearchProps` (`Form` is a `SearchForm`: the field or the magnifier) | `OmnibarModel` (the store, the keystroke and fetch edges, the focus tickets, the verbs), the field width rule | `ClassicSearch`: `SearchField`, `SearchFlyoutButtonView` and the rich omnibar over the model |
+| `Shell.SearchSuggestions` | `SearchSuggestionsProps` (a `SearchSuggestionSource` the core shares, plus the popup's width, choose and close) | `Shell.OmnibarAnswer()`: the store's state as a `SearchAnswer` (state, the visible completions, the visible rich rows with the builder of their facts) | `ClassicSearch.SuggestionsPopup` and `OmniRow`: rows, the pending skeleton, the notices, the always-mounted progress slot |
+
+**The allocator stays core.** `Shell.Chrome` is a state machine that takes the structure's `ChromePolicy`: it decides which of the
+name, the actions (bell, friends, pin) and the forward button are in the row, how wide the search field and the tabs are, and holds
+each promotion for 40 DIP so a resize drag commits one change. The view reads its decision as a `ChromeRowState` (`Shell.RowStateOf`:
+the flags, the identity chip's `ChromeChipForm`, the `SearchForm`, the field width and the tabs island's width) and draws it; the
+element tree is exactly what the budget priced (the pin keeps its 44 DIP as an invisible slot when the destination cannot be pinned).
+`ClassicPolicies.Chrome` holds the widths the row is allocated by; the view's own numbers (the 40×44 island buttons, the chip box,
+the popup's paddings and skeleton bars) are `Rules\ChromeLayout.cs` (`ClassicChromeLayout`).
+
+**Where the engine's control stays the engine's.** The drag regions and the three caption buttons are the `TitleBar` control's: it
+reports the interactive islands as Client regions, the buttons as HTMIN / HTMAX / HTCLOSE and the whole bar as the Caption catch-all.
+The template only fills its slots, and the core's `ContentVersion` stamp (every term an island reads) makes an island that changes
+size re-push the regions in the same frame. The same holds for the tab strip (overflow scroll, pinned cells, drag reorder, the drop
+targets that spring-load a tab): the template configures the engine `TabStrip`, the items and verbs are the workspace's.
+
+**Writable cells and the model travel as Funcs and a model object.** WVTH006 keeps a writable `Signal<T>` out of a props member, so the
+strip's selection cell and the omnibar's text cell are `Func<Signal<T>>` (the control binds them once at mount). The omnibar's model is
+carried as the object; the members a view may use are the ones that name no `Shell` type (`Version`, `Highlight`, `SearchFocused`,
+`FlyoutOpen`, the edges, `QueryGeneration`, `QueryText`, `GhostFor`, the verbs). Anything typed with `Shell.Omnibar.*` (the answer's
+items, an item's play, menu and drag) stays in the core and reaches the popup as a `SearchAnswer` and its `SearchRichRowFacts`.
+
+**Root-lifetime state moved with its user.** `Shell.TabStrip` (the mounted strip instance) is declared in `ClassicTitleBar` and
+`Omnibar.AnswerMemory` (what the mounted popup last measured) in `ClassicSearch`; a root remount starts both fresh, as before. The
+strip's measured extent (`Shell.TabExtent`) feeds the allocator and stays in `Shell.UI.cs`.
+
+**Tests.** The mapping from the allocation to the view's value, with the hysteresis intact, is `Wavee.Tests\ChromeRowStateTests.cs`;
+the published ids, Classic's registration and the props equality are `TitleBarContractTests.cs`. The mounted facts are
+`Wavee.ShellTests\TitleBarMountedTests.cs`: the real shell's title row is the registered template's, narrowing swaps the field for the
+magnifier and widening brings it back, `ViewHarness` mounts the title bar with fixture props (each identity chip, the pin slot, the
+search form) and the suggestions body alone (the progress slot, the pending height, rows).
 
 ## 3. Options
 

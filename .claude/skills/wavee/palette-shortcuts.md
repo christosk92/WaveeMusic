@@ -30,7 +30,7 @@ A `>` prefix (VS Code) restricts the scan to commands. Typing without `>` also a
 | Chord | Action | Wiring |
 |---|---|---|
 | Ctrl+K | Toggle command palette | `FocusSearchChord` → `OpenPalette` (subsumes omnibar) |
-| Ctrl+F | Focus omnibar | `FindChord` → `_searchFocusRequest` (MergedChromeRow `FirstFocusableIn`) |
+| Ctrl+F | Focus omnibar | `FindChord` → `Shell.SearchFocusRequest` ticket (the `Shell.Search` view's `FirstFocusableIn`, `Themes/Classic/Structure/Views/Search/ClassicSearch.cs`) |
 | Ctrl+T | New Home tab | existing `NewTabChord` |
 | Alt+Left | Back | `BackChord` → `Back()` |
 | Alt+Right | Forward | `ForwardChord` → `Forward()` |
@@ -66,7 +66,7 @@ A press after more than 250 ms of silence starts a fresh ladder from the current
 
 ### Ctrl+F / in-page filter
 
-`DetailTracks` owns a private `_searchExpanded` with no shell-reachable ticket. Ctrl+F therefore focuses the omnibar. Keep `_searchFocusRequest` for that path so Wave 1's `FirstFocusableIn` fix in `MergedChromeRow` keeps working. Wiring an in-page filter ticket is a follow-up on the page that owns the field.
+`DetailTracks` owns a private `_searchExpanded` with no shell-reachable ticket. Ctrl+F therefore focuses the omnibar. Keep the `SearchFocusRequest` ticket for that path so Wave 1's `FirstFocusableIn` fix in `ClassicSearch.SearchField` keeps working. Wiring an in-page filter ticket is a follow-up on the page that owns the field.
 
 ## Announcer pattern
 

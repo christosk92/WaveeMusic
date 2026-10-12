@@ -24,7 +24,7 @@ Keep `OnFocusChanged` on `PartRoot`. `SetFocus` fires GotFocus as a **bubbling**
 
 ## Fixed sites
 
-- `MergedSearchField` in `src/apps/Wavee/Features/Shell/MergedChromeRow.cs` — Ctrl+K / `_searchFocusRequest` used to `FocusNode(PartRoot)`.
+- `SearchField` in `src/apps/Wavee/Themes/Classic/Structure/Views/Search/ClassicSearch.cs` (was `MergedSearchField` in `MergedChromeRow.cs`, then `Shell.Masthead.UI.cs`; the `Shell.Search` view since T4b) — the focus ticket (`Shell.SearchFocusRequest`, Ctrl+F) used to `FocusNode(PartRoot)`; the `SearchFlyoutButtonView` beside it opens the flyout from the same ticket.
 - `LibraryV3Search` in `src/apps/Wavee/Features/Sidebar/Modes/LibraryV3/LibraryV3Search.cs` — expand-to-field used to `FocusNode(PartRoot)`.
 
 ## Regression gate
