@@ -58,6 +58,14 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.ShellNavPane, ClassicNavPane.Template, "classic.shell.nav-pane");
         // T6a: the player bar (the podcast transport rides with it).
         views.Add(ViewKeys.PlayerBar, ClassicPlayerBar.Template, "classic.player.bar");
+        // T6b: the right panel (frame, header, arms), its friends body, the now-playing hero, the deck's style flyout, the device
+        // picker's menu and the on-media transport.
+        views.Add(ViewKeys.ShellPanel, ClassicPanel.Template, "classic.shell.panel");
+        views.Add(ViewKeys.PanelFriends, ClassicFriends.Template, "classic.panel.friends");
+        views.Add(ViewKeys.NowPlayingHero, ClassicNowPlayingHero.Template, "classic.player.now-playing-hero");
+        views.Add(ViewKeys.DeckStyleFlyout, ClassicDeckFlyout.Template, "classic.player.deck-style-flyout");
+        views.Add(ViewKeys.DevicePicker, ClassicDevicePicker.Template, "classic.player.device-picker");
+        views.Add(ViewKeys.OnMediaTransport, ClassicOnMedia.Template, "classic.player.on-media-transport");
     }
 
     /// <inheritdoc />

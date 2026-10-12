@@ -162,7 +162,7 @@ A structure decides the numbers the core state machines run on; the machines the
 | Record | What the structure decides | Core machine that takes it |
 |---|---|---|
 | `NavPanePolicy` | what the Narrow and Tiny bands force (`NavPaneMode`: Expanded, Compact rail, Overlay drawer, None; `ModeFor(WidthTier)`), the expanded width bounds and default, the content floor, the seam collapse rule, whether the pane is resizable. The bands themselves are the window tiers (section 7): Compact is Tiny, Small is Narrow, Standard and up are Wide | `SidebarPaneModeRules`, `SidebarResizeRules`, `FrameModel`, `SidebarPaneBounds.Clamp` |
-| `PanelPolicy` | the panel's min and max width, the content it must leave to stay inline, full height, the mini player's `Video.PipBounds` | `Shell.ClampRailWidth`, `Shell.CanFitRail`, `PanelHost.FitWidthTo`, `Video.PipGesture` |
+| `PanelPolicy` | the panel's min and max width, the content it must leave to stay inline, full height (on `PanelView.FullHeight` since T6b), the mini player's `Video.PipBounds` | `Shell.ClampRailWidth`, `Shell.CanFitRail`, `PanelHost.FitWidthTo`, `Video.PipGesture` |
 | `PlayerBarPolicy` | six pressure levels (start width, `PlayerBarSlots`, spacing, art, hit targets, and what the podcast bar carries at the level: `PodcastSlots`, `PodcastLeftW`), the narrowing hold and the bar height | `Shell.PlayerBar`, `Shell.PlayerBarLayout.ForTier`, `Shell.PodcastBarLayout` (so `PlayerBarRules.Overflow` and `RightWidth` follow); `R.Space.DockReserve` answers the bar's height |
 | `ChromePolicy` | the title-bar row's `ChromeBudget`: where the actions, name and forward button may appear, what each affordance costs, the search and tab widths | `Shell.Chrome` (the allocator) |
 | `StagePolicy` | the stage's `AspectThresholds` (Compact, Portrait, Ultrawide edges and holds) | `Stage.Layout.ClassOf` / `Resolve` |
@@ -202,9 +202,9 @@ T4a is the first PR that registers a view. The API was T1's (`IStructureLayer.Re
 | 6. Register | `ClassicStructure.Register` | `views.Add(ViewKeys.ShellFrame, ClassicFrame.Template, "classic.shell.frame");` The template id is the slot's identity: a different id under the same key remounts the slot, the same id with a new registry only re-runs it |
 
 **Surfaces that are not yet their own key arrive as builders.** A moved view often places surfaces another T-PR owns. Until that
-PR gives them a key, the props carry a `Func<Element>` over the core builder that exists (`ShellFrameProps.RailBody`, ...); the owning
+PR gives them a key, the props carry a `Func<Element>` over the core builder that exists (`ShellFrameProps.StageView`, ...); the owning
 PR replaces the member with a `ctx.View(...)` call. Nothing else in the frame changes. The title bar (T4b), the frame's small views (T4c),
-the sidebar pane (T5a) and the player bar (T6a) did: `ShellFrameProps.PlayerBar` carries its props and the frame mounts
+the sidebar pane (T5a), the player bar (T6a) and the right panel (T6b) did: `ShellFrameProps.PlayerBar` carries its props and the frame mounts
 `ctx.View(ViewKeys.PlayerBar, props.PlayerBar)`.
 
 **What stays core, and why.** Models, state machines, signals and verbs (the sidebar band and presentation, the tiers, auto zoom,
@@ -364,10 +364,46 @@ what the podcast bar carries at each level to the same record (`PlayerTier.Podca
 replacing the level-ordinal comparisons `Shell.PodcastBarLayout` made. `R.Space.DockReserve` (what a page reserves under its last
 row) answers the active policy's height; the style table's own 72 is the value it equals in Classic.
 
-**What stayed core, and why.** The seek rail with its chapter decoration, the time labels, the credits line and the device
-picker's rows are shared with the stage and the on-media strip (or have no key yet) and arrive as builders on the props until T6b
-and T7 give them keys; the "⋯" rows (`OverflowItem`: labels and what a row does, built from live reads at open time) and the key
-map (`PlayerKey`) are decisions.
+**What stayed core, and why.** The seek rail with its chapter decoration, the time labels and the credits line are shared with the
+stage and the on-media strip (or have no key yet) and arrive as builders on the props until T7 gives them keys (the device picker's
+menu is `Player.DevicePicker` since T6b, below); the "⋯" rows (`OverflowItem`: labels and what a row does, built from live reads at
+open time) and the key map (`PlayerKey`) are decisions.
+
+### The right panel and the Player family's other views (T6b)
+
+| Key | Props | Core half | Classic template |
+|---|---|---|---|
+| `Shell.Panel` | `PanelProps` (`ShellFrameProps.Panel` replaced the `RailBody` builder) | `RailWiring.Panel` (`Shell\Rail.Wiring.cs`, `[CoreHost]`) over `Shell.PanelHost`, `Rail.VideoCoupling`, `Video` | `ClassicPanel` (`Views\Panel\`): the frame component (surface, edge, the 300 ms slide), the header and its glyph buttons, the arm of each mode, the docked video cap and its splitter, the Art \| Video switch |
+| `Panel.Friends` | `FriendsProps` (`IFriendsFeed`: the rows and state with their tables subscribed) | `RailWiring` (the feed, the clock, the retry seam, the profile verb) | `ClassicFriends`: the rows, the skeleton, offline, error (Retry only when the host can retry) and empty faces |
+| `Player.NowPlayingHero` | `NowPlayingHeroProps` | `RailWiring` (the playing track and cover, the deck, the entity subscriptions, the demand) | `ClassicNowPlayingHero`: the pinned tile (header strip, cover or the hosted deck, the art menu) and the now-playing body under it (credits, About, cities, merch, Next up) |
+| `Player.DeckStyleFlyout` | `DeckStyleFlyoutProps` (`IDeckStyleVerbs`) | `Shell.DeckPrefs` behind `RailWiring`'s verbs object | `ClassicDeckFlyout` and `Rules\DeckThumbnails.cs`: the preset shelves, the option rows, the swatches, the twelve mini-arts |
+| `Player.DevicePicker` | `DevicePickerProps` (`DevicePickerView`: `DevicePickerEntry` rows and a stamp; built per open) | `Shell.DevicePicker.Entries`, `RailWiring.ReadDevicePicker`; the overlay stays the bar's `ToggleDevicePicker` | `ClassicDevicePicker`: the menu over the entries, scrolled to the window |
+| `Player.OnMediaTransport` | `OnMediaTransportProps` (`OnMediaFacts`; a surface adds its idle signal and chrome feed) | `OnMedia.Transport` mounts it (`RailWiring.OnMediaProps`); `OnMedia.MoreMenu` and `FadeChrome` stay | `ClassicOnMedia`: previous / play / next, the seek rail, the times, mute, the volume popup, "⋯" |
+
+**The state machine and the coupling stay core.** `Shell.PanelHost` (open, mode, committed width, floats, the docked video's height and pin),
+the width and fit rules (`PanelPolicy`, `Shell.ClampRailWidth`, `Shell.CanFitRail`, `PanelHost.FitWidthTo`), the rail <-> docked-video
+coupling (`Rail.VideoCoupling`) and the seam's splitter (the frame places it: `ShellFrameProps.RailSeam` stays a builder, like the
+sidebar's) are unchanged. The panel view reads ONE decided `PanelView` per render (`PanelProps.Read`): open, committed width, floats,
+the body after the page stage's substitution (`BodyModeFor`), whether the docked card is up, and what occupies the now-playing arm's
+pinned slot (`Rail.VideoCoupling.PinnedFor`: the tile, the docked video, or the tile with the switch). `PanelPolicy.FullHeight` is on the
+view for a theme whose panel spans the window; Classic's is `false` and nothing in Classic's panel reads it.
+
+**The frame is a component of the theme.** `ClassicPanelFrame` is the old rail frame moved whole: the slide is a layout effect on its rendered
+root with a seeded-once flag (no fly-in at startup, a rapid reversal continues from the presented position), the surface fill and the
+body-height report are built once per instance, and the arms are the same elements in the same positions, so a mode switch reconciles exactly as
+before. Opening and closing is ONE `TranslateX` track, never an opacity track; the docked surface paints nothing (the frame's reservation band is
+the one coat) and the floating one paints its own ring and elevation.
+
+**The deck is hosted, not built.** The hero places `props.Deck` under the keyed wrapper (`"cover"` or `"<slug>@<side>"`), so a style flip
+re-mounts the deck exactly as it did and a mode switch re-mounts nothing the deck owns. Which face paints is the core's decision
+(`Rail.PlayerPrefs.ResolvedPresentation`, developer-gated as today). Every write goes through `IDeckStyleVerbs` with the surface that made it.
+
+**Builders other lanes still own.** The lyrics header and body (T7b), the video body (T7c), the queue body (T7d), the docked video card, the
+lyrics peek and the "Next up" rows arrive as `Func<Element>` members on the props; their keys replace them.
+
+**Tests.** The pinned slot, the mode vocabulary and the picker's entries are pure (`Wavee.Tests\PanelContractTests.cs`); the mounted facts are
+`Wavee.ShellTests\PanelMountedTests.cs` (the registered templates are Classic's; the real shell draws the hero's cover at the panel, a mode switch
+keeps it, a narrow window floats the panel; `ViewHarness` mounts the panel with fixture bodies, the friends faces, the picker and the strip).
 
 ## 3. Options
 

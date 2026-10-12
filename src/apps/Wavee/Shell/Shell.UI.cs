@@ -21,7 +21,7 @@
 //            └ the bracketed bands and the content region COLLAPSE (bound Visible, still mounted) under full-screen video
 //              OR the fullscreen stage (FrameModel.ChromeMounted): out of layout, paint and hit-test, subtree inactive
 //   content region = ZStack[ row(sidebar column · content card · rail gap · rail reservation) · sidebar seam ·
-//                            rail overlay(Rail.Frame) · rail seam · narrow drawer ]
+//                            rail overlay(Shell.Panel) · rail seam · narrow drawer ]
 //
 // T4a (themes plan 6.1): the frame's PICTURE moved to the structure. `FrameRoot` below is the core host (hooks, effects, state
 // machines; [CoreHost]) and mounts `Shell.Frame`; the column, the layers and the content region are
@@ -548,7 +548,7 @@ public static partial class Shell
             NavPane = Sidebar.DockedPaneProps,
             SidebarSeam = () => Splitter.Create(Sidebar.Seam, () => Sidebar.CommitSeam(), SidebarSeamOptionsFor(policies.NavPane),
                 fade: _sidebarFade, dragging: _sidebarDragging, parts: _seamParts),
-            RailBody = static () => Rail.Frame(),
+            Panel = RailWiring.Panel,
             RailSeam = () => Splitter.Create(Ui.RailDragWidth, PanelHost.CommitWidth, RailSeamOptionsFor(policies.Panel), collapsed: Ui.RailOpen,
                 fade: _railFade, dragging: _railDragging, parts: _railSeamParts),
             NarrowDrawer = static () => Embed.Comp(static () => new NarrowDrawer()),

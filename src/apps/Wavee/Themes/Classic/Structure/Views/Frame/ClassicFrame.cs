@@ -20,9 +20,10 @@
 //     content region = ZStack[ row(sidebar column · content card · rail gap · rail reservation) · sidebar seam ·
 //                              rail overlay · rail seam · narrow drawer ]
 //
-// The surfaces that are not yet a key of their own (rail, stage, overlays) arrive as element builders on the props
-// (`ShellFrameProps`); T6b and T7 give each its own key and replace the builder with a `ctx.View` call here. The title bar (T4b) is
-// mounted as `Shell.TitleBar`, the sidebar pane (T5a) as `Shell.NavPane` and the player bar (T6a) as `Player.Bar`; T4c did the same for
+// The surfaces that are not yet a key of their own (stage, overlays) arrive as element builders on the props
+// (`ShellFrameProps`); T7 gives each its own key and replaces the builder with a `ctx.View` call here. The title bar (T4b) is
+// mounted as `Shell.TitleBar`, the sidebar pane (T5a) as `Shell.NavPane`, the player bar (T6a) as `Player.Bar` and the right panel
+// (T6b) as `Shell.Panel` (its seam stays a builder: the splitter is behaviour the host wires and the template places); T4c did the same for
 // the material, the file-drop cue, the palette, the cover scrim, the drag chip and the frame-rate overlay (each member of the props is now
 // the child view's props record); the narrow drawer's core host (its props change with the band) is still a builder.
 
@@ -191,7 +192,7 @@ internal static class ClassicFrame
                             Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, HitTestPassThrough = true,
                             Corners = ClassicFrameRules.RailBandCorners, IsolateLayout = true,
                             Opacity = Prop.Of(() => props.RailFade.Value),
-                            Children = [props.RailBody()],
+                            Children = [ctx.View(ViewKeys.ShellPanel, props.Panel)],
                         },
                     ],
                 },

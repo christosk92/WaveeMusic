@@ -26,6 +26,8 @@
 
 using FluentGpu.Signals;
 
+using Wavee.Theming.Contracts;
+
 namespace Wavee;
 
 public static partial class Rail
@@ -96,6 +98,18 @@ public static partial class Rail
         /// and therefore no ordering between "the stage released it" and "the rail restored itself" to get wrong.</para></summary>
         public static Shell.RailMode BodyModeFor(Shell.RailMode mode, bool stageHostsVideo)
             => stageHostsVideo && mode is Shell.RailMode.Video or Shell.RailMode.NowPlaying ? Shell.RailMode.Queue : mode;
+
+        /// <summary>What occupies the NowPlaying arm's pinned slot — ONE slot, two possible occupants, never both. The page stage hosting
+        /// the video leaves the hero tile alone (the stage owns the one surface); a docked video IS the slot; otherwise the tile, with
+        /// the Art | Video switch over its corner when the video could be docked here.</summary>
+        /// <param name="stageHosts">The page stage hosts the docked video.</param>
+        /// <param name="dockedResolved">The video's resolved placement is Docked.</param>
+        /// <param name="dockAllowed">Docking is among the placements available right now.</param>
+        public static PanelPinned PinnedFor(bool stageHosts, bool dockedResolved, bool dockAllowed)
+            => stageHosts ? PanelPinned.Art
+             : dockedResolved ? PanelPinned.DockedVideo
+             : !dockAllowed ? PanelPinned.Art
+             : PanelPinned.ArtWithVideoToggle;
     }
 
     // ── 2. the player-style catalog (ids and slugs are PERSISTED) ───────────────────────────────────────────────────
