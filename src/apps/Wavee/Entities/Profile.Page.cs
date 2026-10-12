@@ -99,7 +99,7 @@ public static partial class Profile
         readonly Signal<ColorF> _accent = new(AccentHold.Last ?? Tok.AccentDefault);
         readonly Signal<Design.PageAccent> _pageAccent = new(new Design.PageAccent(
             AccentHold.Last ?? Tok.AccentTextPrimary, AccentHold.Last ?? Tok.AccentDefault, ""));
-        readonly Signal<ThemeKind> _theme = new(ThemeKind.Dark);
+        int _accentEpoch = -1;   // the Tok.Epoch the accent was last published at (themes plan X44)
         readonly Func<ColorF> _accentFn;
 
         // ── readiness ──
@@ -118,7 +118,7 @@ public static partial class Profile
         // ── cached delegates (a node handler never captures a render's closure) ──
         readonly Func<bool> _pendingFn, _failedFn;
         readonly Func<Element> _contentFn, _shimmerFn, _failedPanelFn;
-        readonly Action _demand, _demandTop, _publishAccent, _publishTheme, _resolveSpy, _bumpPivot, _retry;
+        readonly Action _demand, _demandTop, _publishAccent, _republishAccent, _resolveSpy, _bumpPivot, _retry;
         readonly Action _scrollToTop, _watchScroll;
         readonly Action<NodeHandle> _captureViewport;
         readonly Action<RectF> _measure;
@@ -160,7 +160,7 @@ public static partial class Profile
             _demand = Demand;
             _demandTop = DemandTop;
             _publishAccent = PublishAccent;
-            _publishTheme = () => _theme.Value = Tok.Theme;
+            _republishAccent = RepublishAccent;
             _resolveSpy = ResolveSpy;
             _bumpPivot = () => _pivotEpoch.Value = _pivotEpoch.Peek() + 1;
             _scrollToTop = () => _scroll.ScrollTo(0.0, Design.Reduced ? ScrollMove.Immediate : ScrollMove.Glide);
@@ -203,7 +203,7 @@ public static partial class Profile
             {
                 // The first paint carries a cached grading's accent instead of one frame of the default.
                 _accentSeeded = true;
-                _theme.Value = Tok.Theme;
+                _accentEpoch = Tok.Epoch;
                 if (_latest.Subject.IsValid) PublishAccent(Entities.User(_latest.Subject), _latest.RouteKey);
             }
             _props.Value = _latest;
@@ -235,7 +235,7 @@ public static partial class Profile
             // Own top artists ride Home.Feeds; a vanity uri learns it is yours only once Social lands, so this re-keys on it.
             UseEffect(_demandTop, DepKey.From(u.Slot, (int)scopeEpoch, _own ? 1 : 0, 0));
             UseEffect(_publishAccent);
-            UseEffect(_publishTheme, DepKey.From((int)Tok.Theme));
+            UseEffect(_republishAccent, DepKey.From(Tok.Epoch));    // a theme flip or a definition swap re-derives the accent (X44)
             UseEffect(_resolveSpy);
             UseActivation(onActivated: _demand);                   // keep-alive return re-reads (SWR: ProfileAsk → Invalidate)
 
@@ -660,7 +660,16 @@ public static partial class Profile
         {
             _ = Entities.ScopeEpoch.Value;
             _ = Entities.Current.Users.Changed.Value;
-            _ = _theme.Value;
+            PublishAccent(_user, _latest?.RouteKey ?? "");
+        }
+
+        /// <summary>Themes plan X44: the accent follows <see cref="Tok.Epoch"/> (the light/dark kind AND the definition) instead of a
+        /// <c>Signal&lt;ThemeKind&gt;</c> the page republished on every flip. The first publish (<see cref="ApplyProps"/>) already ran
+        /// at the current epoch, so the effect's mount run does nothing.</summary>
+        void RepublishAccent()
+        {
+            if (_accentEpoch == Tok.Epoch) return;
+            _accentEpoch = Tok.Epoch;
             PublishAccent(_user, _latest?.RouteKey ?? "");
         }
 

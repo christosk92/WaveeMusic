@@ -246,7 +246,7 @@ public static class HomeFoldTile
         var children = new List<Element>(5);
         if (accent != 0u)
         {
-            ColorF c = Design.Palette.ToColor(accent) with { A = 1f };
+            ColorF c = ColorScience.ToColor(accent) with { A = 1f };
             children.Add(new BoxEl
             {
                 HitTestVisible = false, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,

@@ -157,13 +157,13 @@ public static partial class Controls
     /// <summary>The ONE on-media scrim button ramp (Workstream B) — a <see cref="Button.ButtonPalette"/> for a labeled
     /// or icon-only stock control sitting directly on artwork (a video poster's transport row, a cover-corner action
     /// that wants LABEL text instead of <see cref="CoverActionFab"/>'s bare glyph). Shares the ONE on-media scrim ramp
-    /// (<see cref="Design.OnMedia"/>) every other on-photo affordance already uses, so three controls on the same
+    /// (<see cref="R.OnMedia"/>) every other on-photo affordance already uses, so three controls on the same
     /// artwork read as one darkness instead of three.</summary>
     public static Button.ButtonPalette OnMediaPalette => new(
-        Background: new StateBrush(Design.OnMedia.ScrimRest, Design.OnMedia.ScrimHover, Design.OnMedia.ScrimPressed, Design.OnMedia.ScrimRest),
-        Foreground: new StateBrush(Design.OnMedia.Ink, Design.OnMedia.Ink,
-                                   Design.OnMedia.Ink with { A = OnFillSecondaryAlpha(Design.OnMedia.Ink) }, Design.OnMedia.Ink with { A = 0.4f }),
-        Border: Button.BorderRamp.Flat(GradientSpec.Solid(Design.OnMedia.Stroke)),
+        Background: new StateBrush(R.OnMedia.ScrimRest, R.OnMedia.ScrimHover, R.OnMedia.ScrimPressed, R.OnMedia.ScrimRest),
+        Foreground: new StateBrush(R.OnMedia.Ink, R.OnMedia.Ink,
+                                   R.OnMedia.Ink with { A = OnFillSecondaryAlpha(R.OnMedia.Ink) }, R.OnMedia.Ink with { A = 0.4f }),
+        Border: Button.BorderRamp.Flat(GradientSpec.Solid(R.OnMedia.Stroke)),
         Sizing: BackgroundSizing.InnerBorderEdge);
 
     /// <summary>A filter/mode <see cref="ToggleButton.Style"/> whose CHECKED state is <paramref name="fill"/> (the
@@ -341,10 +341,10 @@ public static partial class Controls
             Width = size, Height = size, Shrink = 0f,
             AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             Corners = CornerRadius4.All(size / 2f),
-            Fill = Design.OnMedia.ScrimRest,
-            HoverFill = Design.OnMedia.ScrimHover,
-            PressedFill = Design.OnMedia.ScrimPressed,
-            BorderWidth = 1f, BorderColor = Design.OnMedia.Stroke,
+            Fill = R.OnMedia.ScrimRest,
+            HoverFill = R.OnMedia.ScrimHover,
+            PressedFill = R.OnMedia.ScrimPressed,
+            BorderWidth = 1f, BorderColor = R.OnMedia.Stroke,
             Role = AutomationRole.Button, Focusable = true,
             FocusVisualMargin = Design.FocusInsetBordered,
             Cursor = CursorId.Hand,
@@ -352,7 +352,7 @@ public static partial class Controls
             PressScale = R.Motion.ScaleEmphatic.Press,
             BlocksDragArm = true,
             OnClick = onClick,
-            Children = [FabGlyph(glyph, size * 0.42f, Design.OnMedia.Ink)],
+            Children = [FabGlyph(glyph, size * 0.42f, R.OnMedia.Ink)],
         };
         return requestsContext ? box with { OnClick = null, ClickRequestsContext = true } : box;
     }

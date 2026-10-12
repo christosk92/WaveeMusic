@@ -422,7 +422,7 @@ public readonly partial struct Episode
             root = root with
             {
                 Role = AutomationRole.Button, Focusable = false, OnClick = null,
-                Fill = Prop.Of(() => scope.IsSelected() ? Design.Colors.RowHover : ColorF.Transparent),
+                Fill = Prop.Of(() => scope.IsSelected() ? R.Layer.RowHover : ColorF.Transparent),
                 OnFocusChanged = scope.OnFocusChanged,
                 OnPointerReleased = args =>
                 {

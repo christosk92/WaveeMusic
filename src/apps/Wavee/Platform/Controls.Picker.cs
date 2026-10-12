@@ -85,7 +85,7 @@ public static partial class Controls
         ClipToBounds = true,
         Corners = CornerRadius4.All(Radii.Card),
         Fill = on ? Tok.AccentSubtle : Tok.FillCardDefault,
-        HoverFill = on ? Design.Colors.SelectedHover : Tok.FillCardSecondary,
+        HoverFill = on ? R.Layer.SelectedHover : Tok.FillCardSecondary,
         PressedFill = on ? Tok.AccentSubtle : Tok.FillSubtleSecondary,
         BorderWidth = on ? 2f : 1f,
         BorderColor = on ? Tok.AccentDefault : Tok.StrokeControlDefault,

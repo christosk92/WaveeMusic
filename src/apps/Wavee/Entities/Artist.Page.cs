@@ -141,8 +141,8 @@ public readonly partial struct Artist
         readonly Signal<ColorF> _accent = new(AccentHold.Last ?? Tok.AccentDefault);
         readonly Signal<Design.PageAccent> _pageAccent = new(new Design.PageAccent(
             AccentHold.Last ?? Tok.AccentTextPrimary, AccentHold.Last ?? Tok.AccentDefault, ""));
-        readonly Signal<ThemeKind> _theme = new(ThemeKind.Dark);
         readonly Func<ColorF> _accentFn;
+        int _accentEpoch = -1;   // the Tok.Epoch the accent was last published at (themes plan X44)
 
         // ── readiness ──
         bool _ready, _failed, _bodyReady, _heroGateOpened;
@@ -166,7 +166,7 @@ public readonly partial struct Artist
         // ── cached delegates (a node handler never captures a render's closure) ──
         readonly Func<bool> _pendingFn, _failedFn;
         readonly Func<Element> _contentFn, _shimmerFn, _failedPanelFn;
-        readonly Action _demand, _demandRows, _publishAccent, _publishTheme, _resolveSpy, _bumpPivot, _retry;
+        readonly Action _demand, _demandRows, _publishAccent, _republishAccent, _resolveSpy, _bumpPivot, _retry;
         readonly Action _play, _shuffle, _radio, _scrollToTop;
         readonly Action<NodeHandle> _captureViewport;
         readonly Action<RectF> _measure;
@@ -190,7 +190,7 @@ public readonly partial struct Artist
             _demand = Demand;
             _demandRows = DemandRows;
             _publishAccent = PublishAccent;
-            _publishTheme = () => _theme.Value = Tok.Theme;
+            _republishAccent = RepublishAccent;
             _resolveSpy = ResolveSpy;
             _bumpPivot = () => _pivotEpoch.Value = _pivotEpoch.Peek() + 1;
             _retry = Demand;
@@ -235,7 +235,7 @@ public readonly partial struct Artist
             {
                 // The first paint carries a cached grading's accent instead of one frame of the default.
                 _accentSeeded = true;
-                _theme.Value = Tok.Theme;
+                _accentEpoch = Tok.Epoch;
                 if (_latest.Subject.IsValid) PublishAccent(Entities.Artist(_latest.Subject), _latest.RouteKey);
             }
             _props.Value = _latest;
@@ -288,7 +288,7 @@ public readonly partial struct Artist
             UseEffect(_demand, DepKey.From(a.Slot, (int)scopeEpoch));   // once per artist per scope
             UseEffect(_demandRows);                                       // re-runs as the lists land
             UseEffect(_publishAccent);                                    // the watched chrome accent
-            UseEffect(_publishTheme, DepKey.From((int)Tok.Theme));
+            UseEffect(_republishAccent, DepKey.From(Tok.Epoch));          // a theme flip or a definition swap re-derives the accent (X44)
             UseEffect(_resolveSpy);                                       // the scroll spy
 
             // ch 08 §6's settings, each subscribing the appearance epoch.
@@ -1014,13 +1014,22 @@ public readonly partial struct Artist
             }
         }
 
-        /// <summary>Auto-tracked: the header's grading, the theme tick and the artist row. A grading landing re-derives
+        /// <summary>Auto-tracked: the header's grading and the artist row. A grading landing re-derives
         /// the accent — the page re-renders once, not on "the next unrelated render" (ch 08 §9 inconsistency #2).</summary>
         void PublishAccent()
         {
             _ = Entities.ScopeEpoch.Value;
             _ = Entities.Current.Artists.Changed.Value;
-            _ = _theme.Value;
+            PublishAccent(_artist, _latest?.RouteKey ?? "");
+        }
+
+        /// <summary>Themes plan X44: the accent follows <see cref="Tok.Epoch"/> (the light/dark kind AND the definition) instead of a
+        /// <c>Signal&lt;ThemeKind&gt;</c> the page republished on every flip. The first publish (<see cref="ApplyProps"/>) already ran
+        /// at the current epoch, so the effect's mount run does nothing.</summary>
+        void RepublishAccent()
+        {
+            if (_accentEpoch == Tok.Epoch) return;
+            _accentEpoch = Tok.Epoch;
             PublishAccent(_artist, _latest?.RouteKey ?? "");
         }
 
@@ -1751,7 +1760,7 @@ public readonly partial struct Artist
                     Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = 2f,
                     Children =
                     [
-                        R.Type.Eyebrow(Entities.Strings.Resolve(a.TourEyebrowId)) with { Color = Design.Accent.Decor },
+                        R.Type.Eyebrow(Entities.Strings.Resolve(a.TourEyebrowId)) with { Color = R.Ink.AccentDecor },
                         new TextEl(Entities.Strings.Resolve(a.TourHeadlineId))
                             { Size = 16f, Weight = 700, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                         R.Type.DenseMeta(Entities.Strings.Resolve(a.TourSublineId)) with

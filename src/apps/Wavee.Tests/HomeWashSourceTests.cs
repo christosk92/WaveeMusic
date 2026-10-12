@@ -32,7 +32,7 @@ public sealed class HomeWashSourceTests
 
         var pick = HomeWashSource.Pick(card, _ => Graded);
         Assert.True(pick.HasValue);
-        Assert.Equal(Design.Palette.Lift(Design.Palette.ToColor(accent)) with { A = 1f }, pick!.Value.Color);
+        Assert.Equal(ColorScience.Lift(ColorScience.ToColor(accent)) with { A = 1f }, pick!.Value.Color);
         Assert.Equal(1f, pick.Value.Color.A);
         Assert.Equal(Palette.KeyOf(Cover).ToString(), pick.Value.Key);
         // A resolved accent needs no grading — the plane is never awaited.

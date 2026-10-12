@@ -5,9 +5,10 @@
 // LightModeOverhaul, DetailPageTone, ShellWashGeometry, HoverMotionGate, DetailRevealRamp, ContentHostPageTransition.
 //
 // NOTHING HERE STARTS THE ENGINE LOOP OR OPENS A WINDOW. Every theme-dependent fact goes through the PURE overload
-// (`ShellGroundFor(set, theme)`, `Hairline(seed, theme, bg)`, `PageTone(scheme, theme)`, `StageArm.For(theme)`) rather
-// than mutating `Tok.Theme` — which is exactly why those overloads exist, and why this file can run beside every other
-// suite without a collection of its own.
+// (`ColorScience.ShellGround(set, theme)`, `ColorScience.Hairline(seed, theme, bg)`, `ColorScience.PageTone(scheme, theme)`,
+// `R.StageArm.For(theme)`) rather than mutating `Tok.Theme` — which is exactly why those overloads exist, and why this file can
+// run beside every other suite without a collection of its own. (Classic's COLOUR ROLES are pinned against the formulas they
+// replaced in `Theming\ClassicColourRolesTests.cs`.)
 
 using FluentGpu.Animation;
 using FluentGpu.Dsl;
@@ -294,8 +295,8 @@ public class DesignColorTests
         // preset with a different canvas is not what this pins.
         var theme = light ? ThemeKind.Light : ThemeKind.Dark;
         var set = light ? Tok.NeutralPalette.Light : Tok.NeutralPalette.Dark;
-        var composed = ColorContrast.Over(Design.Colors.ContentLayerFor(theme), Design.Colors.ShellGroundFor(set, theme));
-        var opaque = Design.Colors.ContentSurfaceFor(set, theme);
+        var composed = ColorContrast.Over(ColorScience.ContentLayer(theme), ColorScience.ShellGround(set, theme));
+        var opaque = ColorScience.ContentSurface(set, theme);
         Assert.True(Near(composed, opaque), $"{composed} != {opaque}");
     }
 
@@ -304,8 +305,8 @@ public class DesignColorTests
     {
         // A row paints ONE Fill. `Over` is associative, so the merged rung composites pixel-identically to painting the
         // two rungs in sequence — which is exactly what the old hand-picked literals were approximating.
-        Assert.Equal(ColorContrast.Over(Design.Colors.RowHover, Design.Colors.RowZebra), Design.Colors.RowHoverZebra);
-        Assert.Equal(ColorContrast.Over(Design.Colors.RowPressed, Design.Colors.RowZebra), Design.Colors.RowPressedZebra);
+        Assert.Equal(ColorContrast.Over(R.Layer.RowHover, R.Layer.RowZebra), R.Layer.RowHoverZebra);
+        Assert.Equal(ColorContrast.Over(R.Layer.RowPressed, R.Layer.RowZebra), R.Layer.RowPressedZebra);
     }
 
     [Fact]
@@ -313,7 +314,7 @@ public class DesignColorTests
     {
         // THE invariant. In dark the shell's own zebra is LITERALLY the hover fill, which is why the app overrides it:
         // a stripe that equals hover means the row has no hover at all.
-        Assert.True(Design.Colors.RowZebra.A < Design.Colors.RowHover.A,
+        Assert.True(R.Layer.RowZebra.A < R.Layer.RowHover.A,
                     "the stripe must be quieter than the hover that lands on it");
     }
 
@@ -322,9 +323,9 @@ public class DesignColorTests
     {
         // The bug this replaced was an INVERSION: hovering the selected row swapped DOWN to a quieter plate, so pointing
         // at the row you are on looked like a deselection. Hover is strictly stronger than rest; press sits between.
-        float rest = Alpha(Design.Colors.SelectedRest);
-        float hover = Alpha(Design.Colors.SelectedHover);
-        float press = Alpha(Design.Colors.SelectedPressed);
+        float rest = Alpha(R.Layer.SelectedRest);
+        float hover = Alpha(R.Layer.SelectedHover);
+        float press = Alpha(R.Layer.SelectedPressed);
         Assert.True(hover > rest, "hovered-selected must be stronger than selected");
         Assert.True(press > rest && press <= hover, "pressed sits above rest and no higher than hover");
     }
@@ -334,18 +335,18 @@ public class DesignColorTests
     {
         // Transparent is premultiplied BLACK: cross-fading into or out of it drags the whole ramp toward black, which is
         // what read as "the shell tint goes neutral AND DARKER" at almost every navigation.
-        Assert.True(Design.Wash.NeutralGround.A > 0f);
-        Assert.Equal(0.03f, Design.Wash.NeutralGround.A, 4);
+        Assert.True(R.Wash.NeutralGround.A > 0f);
+        Assert.Equal(0.03f, R.Wash.NeutralGround.A, 4);
     }
 
     [Fact]
     public void On_media_ink_is_theme_invariant()
     {
         // White ink on a dark scrim, in BOTH themes. The one surface that flips is the stage, and it has its own arm.
-        Assert.Equal(1f, Design.OnMedia.Ink.R, 3);
-        Assert.Equal(1f, Design.OnMedia.Ink.G, 3);
-        Assert.Equal(1f, Design.OnMedia.Ink.B, 3);
-        Assert.Equal(0f, Design.OnMedia.ScrimRest.R, 3);
+        Assert.Equal(1f, R.OnMedia.Ink.R, 3);
+        Assert.Equal(1f, R.OnMedia.Ink.G, 3);
+        Assert.Equal(1f, R.OnMedia.Ink.B, 3);
+        Assert.Equal(0f, R.OnMedia.ScrimRest.R, 3);
     }
 
     [Fact]
@@ -353,7 +354,7 @@ public class DesignColorTests
     {
         // A REST state needs its own edge before the pointer arrives — which is exactly why the stage's way out is
         // ink-plated rather than scrim-plated on a ground that is already 76% black.
-        Assert.True(Design.OnMedia.GlassPlate.A > Design.OnMedia.GlassHover.A);
+        Assert.True(R.OnMedia.GlassPlate.A > R.OnMedia.GlassHover.A);
     }
 
     static float Alpha(in ColorF c) => c.A;
@@ -371,17 +372,17 @@ public class DesignPaletteTests
     public void Lift_only_ever_lifts()
     {
         var dim = ColorF.FromRgba(10, 20, 10);
-        var lifted = Design.Palette.Lift(dim);
+        var lifted = ColorScience.Lift(dim);
         Assert.True(MathF.Max(lifted.R, MathF.Max(lifted.G, lifted.B)) > MathF.Max(dim.R, MathF.Max(dim.G, dim.B)));
         // Already bright enough ⇒ unchanged. Never darkens.
         var bright = ColorF.FromRgba(250, 250, 250);
-        Assert.Equal(bright, Design.Palette.Lift(bright));
+        Assert.Equal(bright, ColorScience.Lift(bright));
     }
 
     [Fact]
     public void Lift_of_pure_black_is_a_neutral_grey_at_the_target()
     {
-        var c = Design.Palette.Lift(ColorF.FromRgba(0, 0, 0));
+        var c = ColorScience.Lift(ColorF.FromRgba(0, 0, 0));
         Assert.Equal(c.R, c.G, 3);
         Assert.Equal(c.G, c.B, 3);
         Assert.Equal(210f / 255f, c.R, 2);
@@ -391,7 +392,7 @@ public class DesignPaletteTests
     public void Vivid_leaves_a_near_neutral_alone()
     {
         var grey = ColorF.FromRgba(120, 121, 120);
-        Assert.Equal(grey, Design.Palette.Vivid(grey));
+        Assert.Equal(grey, ColorScience.Vivid(grey));
     }
 
     [Fact]
@@ -400,10 +401,10 @@ public class DesignPaletteTests
         // The bright-accent role is pure white in every dark grading and pure black in every light one — 100% over 9,316
         // cached gradings. Reading it as "the accent" made the neutral guard fire on EVERY cover, so every Play CTA in
         // the app rendered system blue. The accent is the most SATURATED role, and white has no saturation.
-        var accent = Design.Palette.Accent(Green);
-        Assert.NotEqual(Design.Palette.ToColor(Green.TextBrightAccent), accent);
+        var accent = ColorScience.Accent(Green);
+        Assert.NotEqual(ColorScience.ToColor(Green.TextBrightAccent), accent);
         var (_, sat, _) = accent.ToHsv();
-        Assert.True(sat > Design.Palette.NeutralS);
+        Assert.True(sat > ColorScience.NeutralS);
     }
 
     [Fact]
@@ -422,34 +423,34 @@ public class DesignPaletteTests
         // THE CLAMP IS THE POINT: hue from the record, lightness and saturation from the PAGE. Two albums by the same
         // artist must read as the same page in two colours.
         var theme = light ? ThemeKind.Light : ThemeKind.Dark;
-        var tone = Design.Palette.PageTone(Green, theme);
+        var tone = ColorScience.PageTone(Green, theme);
         Assert.NotNull(tone);
-        var (_, s, l) = Design.Palette.ToHsl(tone!.Value);
-        Assert.Equal(light ? Design.Palette.PageToneLightL : Design.Palette.PageToneDarkL, l, 2);
-        Assert.True(s <= (light ? Design.Palette.PageToneLightSMax : Design.Palette.PageToneDarkSMax) + 0.001f);
+        var (_, s, l) = ColorScience.ToHsl(tone!.Value);
+        Assert.Equal(light ? ColorScience.PageToneLightL : ColorScience.PageToneDarkL, l, 2);
+        Assert.True(s <= (light ? ColorScience.PageToneLightSMax : ColorScience.PageToneDarkSMax) + 0.001f);
     }
 
     [Fact]
     public void PageTone_of_greyscale_art_is_the_neutral_tone_and_not_an_invented_hue()
     {
-        Assert.Equal(Design.Palette.PageToneNeutralDark, Design.Palette.PageTone(Grey, ThemeKind.Dark));
-        Assert.Equal(Design.Palette.PageToneNeutralLight, Design.Palette.PageTone(Grey, ThemeKind.Light));
+        Assert.Equal(ColorScience.PageToneNeutralDark, ColorScience.PageTone(Grey, ThemeKind.Dark));
+        Assert.Equal(ColorScience.PageToneNeutralLight, ColorScience.PageTone(Grey, ThemeKind.Light));
     }
 
     [Fact]
     public void PageTone_of_no_grading_is_null_so_the_page_paints_nothing()
-        => Assert.Null(Design.Palette.PageTone(null, ThemeKind.Dark));
+        => Assert.Null(ColorScience.PageTone(null, ThemeKind.Dark));
 
     [Fact]
     public void The_neutral_fallback_scheme_is_greyscale_on_purpose()
     {
         // A fabricated blue made the fallback the one "cover" in the app with a hue, which is precisely the wrong shape
         // to test chrome against.
-        var n = Design.Palette.Neutral;
+        var n = ColorScience.Neutral;
         foreach (uint role in new[] { n.BackgroundBase, n.BackgroundTintedBase, n.TextBase, n.TextSubdued, n.TextBrightAccent })
         {
-            var (_, sat, _) = Design.Palette.ToColor(role).ToHsv();
-            Assert.True(sat <= Design.Palette.NeutralS, "role " + role.ToString("X8") + " has a hue");
+            var (_, sat, _) = ColorScience.ToColor(role).ToHsv();
+            Assert.True(sat <= ColorScience.NeutralS, "role " + role.ToString("X8") + " has a hue");
         }
     }
 
@@ -459,7 +460,7 @@ public class DesignPaletteTests
         // The wire colours already ARE the dark-surface answer, and re-grading them would break the one property the
         // Camelot wheel guarantees: harmonically adjacent keys stay adjacent hues.
         const uint yellow = 0xFFFFD400;
-        Assert.Equal(Design.Palette.ToColor(yellow), Design.Palette.DataDotInk(yellow, ThemeKind.Dark));
+        Assert.Equal(ColorScience.ToColor(yellow), ColorScience.DataDotInk(yellow, ThemeKind.Dark));
     }
 
     [Fact]
@@ -468,8 +469,8 @@ public class DesignPaletteTests
         // Darkening for a light surface is HUE-DEPENDENT: yellow and cyan sit near the top of the luminance curve and
         // need ~three rungs; red and blue need about one, and darkening them as far as yellow turns the wheel into
         // twelve browns.
-        var (_, _, lYellow) = Design.Palette.ToHsl(Design.Palette.DataDotInk(0xFFFFD400, ThemeKind.Light));
-        var (_, _, lRed) = Design.Palette.ToHsl(Design.Palette.DataDotInk(0xFFE53935, ThemeKind.Light));
+        var (_, _, lYellow) = ColorScience.ToHsl(ColorScience.DataDotInk(0xFFFFD400, ThemeKind.Light));
+        var (_, _, lRed) = ColorScience.ToHsl(ColorScience.DataDotInk(0xFFE53935, ThemeKind.Light));
         Assert.Equal(0.30f, lYellow, 2);
         Assert.Equal(0.40f, lRed, 2);
         Assert.True(lYellow < lRed);
@@ -478,7 +479,7 @@ public class DesignPaletteTests
     [Fact]
     public void DataDotInk_never_invents_a_hue_for_a_grey()
     {
-        var c = Design.Palette.DataDotInk(0xFF808080, ThemeKind.Light);
+        var c = ColorScience.DataDotInk(0xFF808080, ThemeKind.Light);
         Assert.Equal(c.R, c.G, 3);
         Assert.Equal(c.G, c.B, 3);
     }
@@ -490,8 +491,8 @@ public class DesignPaletteTests
     [InlineData(359f)]
     public void Hsl_round_trips(float hue)
     {
-        var c = Design.Palette.FromHsl(hue, 0.6f, 0.5f);
-        var (h, s, l) = Design.Palette.ToHsl(c);
+        var c = ColorScience.FromHsl(hue, 0.6f, 0.5f);
+        var (h, s, l) = ColorScience.ToHsl(c);
         Assert.Equal(hue, h, 1);
         Assert.Equal(0.6f, s, 2);
         Assert.Equal(0.5f, l, 2);
@@ -506,7 +507,7 @@ public class DesignPaletteTests
         // every accent-ink digit in the app.
         var theme = light ? ThemeKind.Light : ThemeKind.Dark;
         var ground = light ? ColorF.FromRgba(0xF9, 0xF9, 0xF9) : ColorF.FromRgba(0x28, 0x28, 0x28);
-        var ink = Design.Palette.Hairline(ColorF.FromRgba(0x2E, 0x7D, 0x32), theme, ground);
+        var ink = ColorScience.Hairline(ColorF.FromRgba(0x2E, 0x7D, 0x32), theme, ground);
         Assert.True(ColorContrast.Ratio(ink, ground) >= 3.1f);
     }
 
@@ -516,7 +517,7 @@ public class DesignPaletteTests
         // Some hues cannot hit AA at the saturation cap (a mid-blue on a dark card tops out ≈4.4:1); those fall back so
         // the digits stay readable rather than staying pretty and illegible.
         var ground = ColorF.FromRgba(0x28, 0x28, 0x28);
-        var ink = Design.Palette.TextInk(ColorF.FromRgba(0x21, 0x96, 0xF3), ThemeKind.Dark, ground);
+        var ink = ColorScience.TextInk(ColorF.FromRgba(0x21, 0x96, 0xF3), ThemeKind.Dark, ground);
         Assert.True(ColorContrast.MeetsAaText(ink, ground));
     }
 
@@ -604,16 +605,16 @@ public class DesignStageArmTests
     {
         // "Dark theme is byte-identical to what shipped" is an executable claim here rather than a promise — and it is
         // what keeps the on-media ladder theme-INVARIANT while the stage alone gets a polarity.
-        var dark = Design.StageArm.For(ThemeKind.Dark);
-        Assert.Equal(Design.OnMedia.Ink, dark.Ink);
-        Assert.Equal(Design.OnMedia.InkSecondary, dark.InkSecondary);
-        Assert.Equal(Design.OnMedia.InkTertiary, dark.InkTertiary);
-        Assert.Equal(Design.OnMedia.ScrimRest, dark.ScrimRest);
-        Assert.Equal(Design.OnMedia.ScrimHover, dark.ScrimHover);
-        Assert.Equal(Design.OnMedia.ScrimPressed, dark.ScrimPressed);
-        Assert.Equal(Design.OnMedia.Stroke, dark.Stroke);
-        Assert.Equal(Design.OnMedia.LightButton, dark.ButtonFill);
-        Assert.Equal(Design.OnMedia.LightButtonInk, dark.ButtonInk);
+        var dark = R.StageArm.For(ThemeKind.Dark);
+        Assert.Equal(R.OnMedia.Ink, dark.Ink);
+        Assert.Equal(R.OnMedia.InkSecondary, dark.InkSecondary);
+        Assert.Equal(R.OnMedia.InkTertiary, dark.InkTertiary);
+        Assert.Equal(R.OnMedia.ScrimRest, dark.ScrimRest);
+        Assert.Equal(R.OnMedia.ScrimHover, dark.ScrimHover);
+        Assert.Equal(R.OnMedia.ScrimPressed, dark.ScrimPressed);
+        Assert.Equal(R.OnMedia.Stroke, dark.Stroke);
+        Assert.Equal(R.OnMedia.LightButton, dark.ButtonFill);
+        Assert.Equal(R.OnMedia.LightButtonInk, dark.ButtonInk);
         Assert.Equal(Tok.MediaStage, dark.Veil);
     }
 
@@ -622,12 +623,12 @@ public class DesignStageArmTests
     {
         // The scrim ALPHAS need no light arm: mixing toward black at a partial alpha destroys far more perceptual
         // luminance than mixing toward white, so the light arm's alpha'd ink clears a HIGHER ratio than dark ships.
-        var light = Design.StageArm.For(ThemeKind.Light);
-        Assert.Equal(Design.Palette.PageToneNeutralLight, light.Veil);
+        var light = R.StageArm.For(ThemeKind.Light);
+        Assert.Equal(ColorScience.PageToneNeutralLight, light.Veil);
         Assert.Equal(Tok.MediaStage, light.Ink);
-        Assert.Equal(Design.OnMedia.ScrimRest.A, light.ScrimRest.A, 3);
-        Assert.Equal(Design.OnMedia.GlassHover.A, light.GlassHover.A, 3);
-        Assert.Equal(Design.OnMedia.GlassPlate.A, light.GlassPlate.A, 3);
+        Assert.Equal(R.OnMedia.ScrimRest.A, light.ScrimRest.A, 3);
+        Assert.Equal(R.OnMedia.GlassHover.A, light.GlassHover.A, 3);
+        Assert.Equal(R.OnMedia.GlassPlate.A, light.GlassPlate.A, 3);
     }
 
     [Fact]
@@ -637,7 +638,7 @@ public class DesignStageArmTests
         // under the dark scrim in light theme.
         foreach (var theme in new[] { ThemeKind.Dark, ThemeKind.Light })
         {
-            var arm = Design.StageArm.For(theme);
+            var arm = R.StageArm.For(theme);
             Assert.Equal(arm.Veil, arm.Floor);
         }
     }
@@ -646,17 +647,17 @@ public class DesignStageArmTests
     public void The_hairline_inverts_with_the_ink()
     {
         // A white hairline on a light plate is not a quiet ring, it is an absent one.
-        var light = Design.StageArm.For(ThemeKind.Light);
+        var light = R.StageArm.For(ThemeKind.Light);
         Assert.Equal(light.Ink.R, light.Stroke.R, 3);
-        Assert.Equal(Design.OnMedia.Stroke.A, light.Stroke.A, 3);
+        Assert.Equal(R.OnMedia.Stroke.A, light.Stroke.A, 3);
     }
 
     [Fact]
     public void The_stage_accent_is_the_chrome_accent_in_dark_and_a_solved_ink_in_light()
     {
         var chrome = ColorF.FromRgba(0x2E, 0x7D, 0x32);
-        Assert.Equal(chrome, Design.StageArm.For(ThemeKind.Dark).AccentFrom(chrome));
-        Assert.NotEqual(chrome, Design.StageArm.For(ThemeKind.Light).AccentFrom(chrome));
+        Assert.Equal(chrome, R.StageArm.For(ThemeKind.Dark).AccentFrom(chrome));
+        Assert.NotEqual(chrome, R.StageArm.For(ThemeKind.Light).AccentFrom(chrome));
     }
 }
 
@@ -1016,8 +1017,9 @@ public class DesignWashTests
     {
         // The same colour reads far weaker over the dark ground, and the light ground has less headroom before a wash
         // turns into a smudge.
-        Assert.True(Design.Wash.HeroAlpha(light: false) > Design.Wash.HeroAlpha(light: true) * 1.5f);
-        Assert.True(Design.Wash.ShelfAlpha(light: false) > Design.Wash.ShelfAlpha(light: true) * 1.5f);
+        var wash = R.Current.Wash;
+        Assert.True(wash.HeroAlpha.Dark > wash.HeroAlpha.Light * 1.5f);
+        Assert.True(wash.ShelfAlpha.Dark > wash.ShelfAlpha.Light * 1.5f);
     }
 
     [Fact]

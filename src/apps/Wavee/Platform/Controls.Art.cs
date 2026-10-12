@@ -245,13 +245,13 @@ public static partial class Controls
                 ? new BoxEl
                 {
                     Shrink = 0f, Padding = new Edges4(6f, 4f, 6f, 4f),
-                    Corners = Radii.PillAll, Fill = Design.OnMedia.ScrimRest,
-                    BorderWidth = 1f, BorderColor = Design.OnMedia.Stroke,
+                    Corners = Radii.PillAll, Fill = R.OnMedia.ScrimRest,
+                    BorderWidth = 1f, BorderColor = R.OnMedia.Stroke,
                     // Centred on the cover in the stack's own terms, and handed over to the FAB on hover: at rest the
                     // playing surface shows THIS (the equalizer on its small scrim), never a pause button (owner, #160).
                     AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center,
                     HoverOpacity = 0f, HoverDurationMs = Design.Motion.Fast, HoverEasing = Easing.SmoothOut,
-                    Children = [Equalizer(pb!.IsPlaying, () => Design.OnMedia.Ink, EqualizerH)],
+                    Children = [Equalizer(pb!.IsPlaying, () => R.OnMedia.Ink, EqualizerH)],
                 }
                 // The STAND-IN. Keeping the slot occupied is what stops the FAB's node being re-keyed when the
                 // equalizer appears beside it.

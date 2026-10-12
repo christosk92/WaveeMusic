@@ -91,7 +91,7 @@ public static partial class Rail
             Element surface = new BoxEl
             {
                 Grow = 1f, Corners = RailCorners, ClipToBounds = true,
-                Fill = Prop.Of(static () => Shell.Ui.RailFits.Value && Shell.Ui.RailOpen.Value ? ColorF.Transparent : Design.Colors.FileArea),
+                Fill = Prop.Of(static () => Shell.Ui.RailFits.Value && Shell.Ui.RailOpen.Value ? ColorF.Transparent : R.Layer.FileArea),
                 OnBoundsChanged = static r =>
                 {
                     if (MathF.Abs(Shell.Ui.RailBodyHeight.Peek() - r.H) > 0.5f) Shell.Ui.RailBodyHeight.Value = r.H;
@@ -184,7 +184,7 @@ public static partial class Rail
     {
         Height = 24f, Shrink = 0f, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.End,
         Margin = new Edges4(0f, Hero.ArtTop + Spacing.XS, Spacing.S + Spacing.XS, 0f),
-        Direction = 0, Corners = Radii.ControlAll, ClipToBounds = true, Fill = Design.OnMedia.GlassHover,
+        Direction = 0, Corners = Radii.ControlAll, ClipToBounds = true, Fill = R.OnMedia.GlassHover,
         Children =
         [
             ToggleHalf(Icons.Picture, selected: true, Loc.Get(Strings.Player.SwitchToAudio),
@@ -322,8 +322,8 @@ public static partial class Rail
     public static ColorF HeroWashColor(string? url)
     {
         if (url is { Length: > 0 }) _ = Palette.Watch(url).Value;
-        ColorF accent = Design.SchemeFor(url) is { } s ? Design.Palette.Lift(Design.Palette.Accent(s)) : Tok.AccentDefault;
-        return ColorF.Lerp(Tok.FillCardSecondary, accent, Tok.Theme == ThemeKind.Dark ? 0.18f : 0.10f);
+        ColorF accent = Design.SchemeFor(url) is { } s ? ColorScience.Lift(ColorScience.Accent(s)) : Tok.AccentDefault;
+        return ColorF.Lerp(Tok.FillCardSecondary, accent, R.Wash.CoverMix);
     }
 
     static void GoTo(EntityUri uri, string name) => Shell.GoTo(Shell.For(uri, name));
@@ -882,7 +882,7 @@ public static partial class Rail
                     {
                         Width = avatar, Height = avatar, Direction = 1, Justify = FlexJustify.End, AlignItems = FlexAlign.End, HitTestVisible = false,
                         // The ring is the opaque content rung, so the dot reads as a hole docked or floating.
-                        Children = [new BoxEl { Width = 12f, Height = 12f, Corners = Radii.Circle(12f), Fill = Tok.AccentDefault, BorderWidth = 2f, BorderColor = Design.Colors.FloatingPane }],
+                        Children = [new BoxEl { Width = 12f, Height = 12f, Corners = Radii.Circle(12f), Fill = Tok.AccentDefault, BorderWidth = 2f, BorderColor = R.Layer.FloatingPane }],
                     },
                 ],
             };
@@ -929,8 +929,8 @@ public static partial class Rail
             Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinHeight = Design.Size.TrackRowH,
             Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, Spacing.XS), Corners = Radii.ControlAll,
             Fill = ColorF.Transparent,                                     // no zebra on a short list
-            HoverFill = nav ? Design.Colors.RowHover : ColorF.Transparent,
-            PressedFill = nav ? Design.Colors.RowPressed : ColorF.Transparent,
+            HoverFill = nav ? R.Layer.RowHover : ColorF.Transparent,
+            PressedFill = nav ? R.Layer.RowPressed : ColorF.Transparent,
             PressScale = R.Motion.ScaleSubtle.PressIf(nav),
             Role = nav ? AutomationRole.Button : AutomationRole.None, Cursor = nav ? CursorId.Hand : CursorId.Arrow,
             Focusable = nav, FocusVisualMargin = Design.FocusInsetRow, OnClick = onClick,

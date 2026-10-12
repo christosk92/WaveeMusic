@@ -552,9 +552,9 @@ public static partial class Deck
     static ColorF Wash(string? url)
     {
         ColorF accent = url is { Length: > 0 } && Design.SchemeFor(url) is { } s
-            ? Design.Palette.Lift(Design.Palette.Accent(s))
+            ? ColorScience.Lift(ColorScience.Accent(s))
             : Tok.AccentDefault;
-        return ColorF.Lerp(Tok.FillCardSecondary, accent, Tok.Theme == ThemeKind.Dark ? 0.18f : 0.10f);
+        return ColorF.Lerp(Tok.FillCardSecondary, accent, R.Wash.CoverMix);
     }
 
     /// <summary>The wash as a bound channel: the grading lands after the leaf is built and repaints one fill.</summary>
@@ -572,7 +572,7 @@ public static partial class Deck
         string? url = CoverUrlOf(cur);
         if (url is null) { WatchRow(cur); return fallback; }
         _ = Wavee.Palette.Watch(url).Value;
-        return Design.SchemeFor(url) is { } s ? Design.Palette.Accent(s) : fallback;
+        return Design.SchemeFor(url) is { } s ? ColorScience.Accent(s) : fallback;
     }
 
     /// <summary>The position a clock or a bar SHOWS: a live drag first, then a committed seek, then the report.</summary>

@@ -79,8 +79,8 @@ Case = R.Case.For(LabelKind.Navigation)                    // how the style case
 | Rule | Why |
 |---|---|
 | **Read `R` where the element is built.** Never into a `const`, a `static readonly` field or a long-lived closure | `R` caches nothing: it is `Tok.Definition.AppRoles` on every call, so a definition swap (`Tok.Use`, a theme switch, a Live option) reaches the next render. A field keeps the first style's value for the process. A value that needs a compile-time number is not a role yet (see `Design.Size`'s header) |
-| **A role is data, a table is a record.** Add a role as a member of its record and give every style a value | Equal tables compare equal, so republishing an unchanged table is not a change (`Tok.Use` adopts the instance, no epoch moves); a table that differs in any role is a non-colour change (`StyleEpoch`) |
-| **A text role is a rung plus deviations** (`TextRole`: face, size, line height, weight, tracking, auto-fit floor, secondary ink) | Every role resolves a size, a line height and a weight, and a style that changes the engine's type ramp changes every role built on it. Colour is the call site's (colour roles: T2b) |
+| **A role is data, a table is a record.** Add a role as a member of its record and give every style a value | Equal tables compare equal, so republishing an unchanged table is not a change (`Tok.Use` adopts the instance, no epoch moves); a table that differs in a non-colour role is a non-colour change (`StyleEpoch`); one that differs only in colour roles is not (see below) |
+| **A text role is a rung plus deviations** (`TextRole`: face, size, line height, weight, tracking, auto-fit floor, secondary ink) | Every role resolves a size, a line height and a weight, and a style that changes the engine's type ramp changes every role built on it. Colour is the colour roles' (T2b, below) |
 | **No role selects structure** | How a row or a pivot is *arranged* is the structure's (options, parameters, policies); how big, which colour, which casing is the style's |
 
 **Classic's table** is `Themes\Classic\Style\ClassicRoles.cs` and holds the numbers `Design.Type`, `Design.Size`, `Design.Dock` and
@@ -93,10 +93,65 @@ the shell) `R` falls back to a registered baseline. `ClassicRoles` registers its
 a theme and no read lands on an empty table. A test that needs other roles installs a definition carrying them in the shell
 test process (`Wavee.ShellTests\StyleRolesTests.cs`), the one process where `Tok` may change.
 
-**What stayed in `Design`.** The colour ladders (T2b), the behaviour (`Entrance`, `Reveal`, `Nav`, `FrameTime`, `Cadence`,
-`Reduced`), the Fluent duration ladder (`Design.Motion.Faster` .. `Slow`, WinUI constants that `MotionTok` mirrors and a few
-`static readonly` transitions bake in) and the structural geometry whose consumers need compile-time numbers (`Design.Size`:
-control, row, pane, rail, thumb and player-bar sizes). Each leaves with the family that owns it.
+**What stayed in `Design`.** The behaviour (`Entrance`, `Reveal`, `Nav`, `FrameTime`, `Cadence`, `Reduced`), the Fluent duration ladder
+(`Design.Motion.Faster` .. `Slow`, WinUI constants that `MotionTok` mirrors and a few `static readonly` transitions bake in), the
+structural geometry whose consumers need compile-time numbers (`Design.Size`: control, row, pane, rail, thumb and player-bar sizes) and the
+focus insets (`Design.FocusInsetBordered` / `FocusInsetRow`, an `Edges4` of the shape family: they leave with the shape roles). From T2b
+the colour ladders are gone from `Design.cs`; what it keeps of colour is listed at the end of the next section.
+
+### Colour roles (`Theming\Roles`, T2b)
+
+T2b adds the **colour** half of the vocabulary to `WaveeStyleRoles`, family by family, with the same call syntax:
+
+```csharp
+Fill = R.Layer.RowHover, PressedFill = R.Layer.RowPressed          // surfaces and row ladders (LayerRoles; was Design.Colors)
+Color = R.Ink.AccentDecor                                          // the accent budget, premium green, data-hue ink (InkRoles; was Design.Accent)
+Fill = R.OnMedia.ScrimRest, BorderColor = R.OnMedia.Stroke         // everything painted ON artwork or video (OnMediaLadder; was Design.OnMedia)
+Fill = StageInk.Plate  /  R.StageArm.For(kind).Plate               // the immersive stage's polarity (StageArmTable; was Design.StageArm / StageInk)
+float a = R.Wash.HeroAlpha, mix = R.Wash.CoverMix                  // how strongly artwork colours a surface (WashRoles; was Design.Wash + 8 branches)
+float s = R.Lyrics.BloomScale                                      // the lyrics ink's numbers and its one polarity decision (LyricsInkRoles)
+```
+
+| Family | Record (`Theming\Roles`) | Reads | Members |
+|---|---|---|---|
+| Layer | `LayerRoles` | `R.Layer` | the translucent MUX rungs, `ShellGround`, `ContentSurface`, `ContentLayer`, `FloatingChrome`, `FloatingPane`, the row ladder (`RowZebra`, `RowHover`, `RowPressed`, `RowHoverZebra`, `RowPressedZebra`), the selection ladder, `ChromeHover`, `ChromePressed`, `Badge`, `EventPlate`, `EventHeroPlate`, `ArtPlaceholder` |
+| Ink | `InkRoles` | `R.Ink` | `AccentAction`, `AccentSelection`, `AccentDecor`, `PremiumText`, `DataDot(argb)` |
+| On-media | `OnMediaLadder` | `R.OnMedia` | scrim plates, `Stroke`, the three inks, glass and glass-plate rungs, `BackdropDim`, the spotlight stops, the light-button ramp and its two drops |
+| Stage arm | `StageArmTable` | `R.StageArm` (the table), `StageInk` (the live arm) | `IsDark`, `Veil`, `Floor`, ink, glass, scrim, `Stroke`, the play disc, `SkeletonBar`, the quiet plates, `Card`, `AccentFrom`, `SelectedTileWash`, `ScrimBaseA` |
+| Wash | `WashRoles` | `R.Wash` | `NeutralGround`, the strengths (`HeroAlpha`, `ShelfAlpha`, `BandPull`, `HeroVeilPull`, `HeroVeilPeak`, `CoverMix`, `ConcertMediaMix`, `PageTonePlaneAlpha`, `BlendWashTop`, `BlendWashBoundary`, `ShellTintAlpha`) and the recipes (`PageToneFromHue`, `ShellTintFromScheme`, `BlendWashLadder`) |
+| Lyrics | `LyricsInkRoles` | `R.Lyrics` | `ThemePlateAlpha`, `RingTrackThemeAlpha`, `RingTrackOnMediaAlpha`, `BloomOnMedia`, `BloomScale` |
+
+**A colour role is a pair or a function of the theme kind** (`ColorRole.cs`). `ColorRole.Pair(light, dark)` / `Fixed(c)` hold values and
+compare by value; `ColorRole.By(kind => …)` is a recipe over the engine's **live** tokens (`Tok.FillSubtleTertiary`, `Tok.Palette.LightShell`,
+the accent ramp): the engine re-derives those on every accent or palette change, so a role that IS "the engine's hover rung" cannot be a frozen
+colour. A recipe is built from a `static` lambda (equal tables share the delegate, so an unchanged table compares equal), receives the kind it is
+asked for, and reads everything else as live as the call. The numbers a style gives per polarity (a wash alpha, a tint pull) are
+`ModePair<float>(light, dark)`. The `R.*` facades (`LayerReads`, `InkReads`, `OnMediaReads`, `WashReads`, `LyricsReads`) evaluate a role for the
+**active** kind (`ColorRole.Now`); `Roles.X.Resolve(kind)` is the pure per-kind evaluation the tests use.
+
+| Rule | Why |
+|---|---|
+| **A colour or an alpha that differs by kind is a role**; a view never writes `Tok.Theme == ThemeKind.Light ? a : b` | The branch is the style's decision. The 27 branches in `Design.cs`, `Controls.cs`, `Concert.UI.cs`, `Deck.UI.cs`, `Rail.UI.cs`, `Shell.Masthead.UI.cs` and `Detail.UI.cs` are role reads now |
+| **The polarity as an ARGUMENT is `R.Kind` / `R.IsLight`** | Selecting the graded half of a cover (`Design.SchemeFor`, `ChromeSchemeFor`, `PlaceholderFor`), the `light` flag of the pure follow-button maths (`ButtonRules.FollowStyle`) and the theme picker's preview image need the kind, not a colour. Apart from the stage faces' own `dark` flag (`StageInk.IsDark`; T7 re-points the faces) and the install paths (`Appearance`, `ThemeHost`, `Tok.Use`), these are the only places code asks for the kind |
+| **Key a wash or tone plane on `Tok.Epoch`, never on the light/dark flag** (themes plan X44) | `Tok.Epoch` moves for a kind flip AND a definition swap, so the plane is rebuilt in the same publication as the theme; a key on the kind keeps the old plane across a swap that moves a wash role. `Palette.ToneKey(route, Tok.Epoch)` builds the tone plane's key, the shell tint binder keys its publish effect on the epoch, and the three pages that republished a `Signal<ThemeKind>` (Detail, Artist, Profile) re-derive their accent from an effect keyed on `Tok.Epoch` instead |
+| **A colour-only table is not a transaction** | `WaveeStyleRoles.DiffersOnlyInColours` compares the type, space, motion and case roles; ink, layer, on-media, stage arm, wash and lyrics may differ. A swap that moves only those bumps `Tok.Epoch` and leaves `StyleEpoch`, so the engine takes the live cross-fade path |
+
+**The maths is `Platform\ColorScience.cs`.** Lift, vivid, the hairline and text-ink contrast solves (the 22-iteration bisection stays 22), the page-tone
+clamp, the data-hue ink, the shell ground and content step, the placeholder blend and the accent ladder take the theme **kind**, the card surface and
+the fallback colour as arguments and read no token. A recipe in a style calls it; `Design.Palette` is the thin face that binds it to the active kind
+and accent (`Hairline(seed)`, `HairlineHover`, `TextInk`, `ChromeAccent(scheme)`, `ChromeFromPayload`).
+
+**Classic's colour table** is the `Layer()`, `Ink()`, `OnMedia()`, `StageArm()`, `Wash()` and `Lyrics()` recipes in `ClassicRoles.cs`: each is the body
+of the `Design` expression it replaced with the kind passed in. They are pinned against the formulas written out in the test
+(`Wavee.Tests\Theming\ClassicColourRolesTests.cs`: both kinds for every role whose formula reads no live token, the process's own kind for the rest) and
+against a flip in the shell process, where the kind may change (`Wavee.ShellTests\ColourRolesTests.cs`, which also covers the colour-only swap and a
+mounted view repainting).
+
+**What stayed in `Design` of colour, and why.** `SchemeFor` / `ChromeSchemeFor` / `PlaceholderFor` / `WatchedPlaceholder` (they read a cover's grading
+for the active polarity from the palette TABLE: data selection, not a look), `Design.Palette` (above), `Design.Wash`'s window-relative GEOMETRY and
+paint budget (not a look), the shell material channel (`ShellMaterial`, `TintOwnership`) and the four cover-leaf components, which now read their
+alphas and recipes from `R.Wash` and move to Classic's material views in T4. The shape roles (`ShapeRole`) and the icon table (`IconTable`) are not part
+of T2b: their consumers (the omnibar row, the surface shapes, the route glyphs) are the T3/T4/T6/T8 PRs.
 
 ## 2a. Policies and metrics (T3)
 
@@ -230,7 +285,7 @@ rule that allows none is WVTH901. Rules that need a list read `src\apps\Wavee\an
 | WVTH005 | an option is read or published only by its own layer (and Options/Composition) | none |
 | WVTH006 | keys created only under `Theming\Contracts`; dotted unique ids; props are sealed records with read-only members | none |
 | WVTH007 | `theme.*` settings minted only in `Theming\Options`, `ThemeBootstrap.cs`, `ThemeHost.cs` (`theme.mode` stays core) | none |
-| WVTH008 | a `[CoreHost]` type builds no element and reads no `Tok.*`/`Design.*`/`R.*` | shrinks per surface PR |
+| WVTH008 | a `[CoreHost]` type builds no element and reads no `Tok.*`/`Design.*`/`R.*` (nor the live `StageInk.*`); every colour-role facade is a member of `R`, so it is fenced with the rest | shrinks per surface PR |
 | WVTH009 | `ctx.OptionRequests.Set` only with own-layer keys | none |
 | WVTH010 | retired keys and deleted members (listed in `analyzer-input\WVTH010.legacy.txt`) only in `ThemeBootstrap.cs` | empty after F4 |
 | WVTH011 | each hidden structure option has a line with two or more values in `analyzer-input\WVTH011.matrix.txt` | none |

@@ -94,6 +94,7 @@ internal static class Fixtures
         namespace Wavee.Theming.Roles
         {
             public static class R { public static float SectionGap; }
+            public static class StageInk { public static float Ink; }
         }
         namespace Wavee.Theming.Contracts
         {

@@ -1178,7 +1178,7 @@ public readonly partial struct Recents
             {
                 _ = Palette.Watch(url).Value;
                 if (Design.ChromeSchemeFor(url) is { } scheme)
-                    resolved = new Design.PageAccent(Design.Palette.ChromeAccent(scheme), Design.Palette.Accent(scheme), url);
+                    resolved = new Design.PageAccent(Design.Palette.ChromeAccent(scheme), ColorScience.Accent(scheme), url);
             }
             UseLayoutEffect(() => page.Accent.SetIfChanged(resolved), DepKey.From(resolved.GetHashCode()));
 

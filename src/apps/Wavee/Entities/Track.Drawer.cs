@@ -411,7 +411,7 @@ public readonly partial struct Track
                 meta.Add(new BoxEl
                 {
                     Width = 6f, Height = 6f, Corners = CornerRadius4.All(1.5f), Opacity = 0.85f, Shrink = 0f, AlignSelf = FlexAlign.Center,
-                    Fill = Design.Palette.DataDotInk(version.CamelotColor, Tok.Theme),
+                    Fill = R.Ink.DataDot(version.CamelotColor),
                 });
             meta.Add(Caption(Format.TempoLabel(version.Tempo)));
             if (Facts.KeyLabel(Format.CamelotLabel(version.Camelot), Format.KeyLabel(version.Key)) is { Length: > 0 } key)

@@ -2069,13 +2069,13 @@ public readonly partial struct Track
                     : squared ? new CornerRadius4(6f, 6f, 0f, 0f) : CornerRadius4.All(6f),
                 Animate = entrance ? s_mountEntrance : null,
                 DropTarget = drop,
-                Fill = classic ? Prop.Of(() => cue() || isSel() ? Design.Colors.RowHover : ColorF.Transparent)
-                    : plain ? Prop.Of(() => cue() ? Design.Colors.RowHover : ColorF.Transparent)
-                    : Prop.Of(() => cue() ? Design.Colors.RowHover : Odd() ? Design.Colors.RowZebra : ColorF.Transparent),
-                HoverFill = classic || plain ? Prop.Of(static () => Design.Colors.RowHover)
-                    : Prop.Of(() => Odd() ? Design.Colors.RowHoverZebra : Design.Colors.RowHover),
-                PressedFill = classic || plain ? Prop.Of(static () => Design.Colors.RowPressed)
-                    : Prop.Of(() => Odd() ? Design.Colors.RowPressedZebra : Design.Colors.RowPressed),
+                Fill = classic ? Prop.Of(() => cue() || isSel() ? R.Layer.RowHover : ColorF.Transparent)
+                    : plain ? Prop.Of(() => cue() ? R.Layer.RowHover : ColorF.Transparent)
+                    : Prop.Of(() => cue() ? R.Layer.RowHover : Odd() ? R.Layer.RowZebra : ColorF.Transparent),
+                HoverFill = classic || plain ? Prop.Of(static () => R.Layer.RowHover)
+                    : Prop.Of(() => Odd() ? R.Layer.RowHoverZebra : R.Layer.RowHover),
+                PressedFill = classic || plain ? Prop.Of(static () => R.Layer.RowPressed)
+                    : Prop.Of(() => Odd() ? R.Layer.RowPressedZebra : R.Layer.RowPressed),
                 // No PressScale: a ~1000-DIP row that shrinks 2 % reads as the whole row springing back (ch 01 §0.11).
                 // Stationary lift: the row stays at 0.4 while the chip follows the pointer.
                 Draggable = Drag.Source(() => DragPayloadFor(index.Peek(), start)),
@@ -2152,7 +2152,7 @@ public readonly partial struct Track
                 Key = "drawer:" + rowKey, Direction = 1, MinWidth = 0f, ClipToBounds = true, Animate = Design.Reveal.Drawer,
                 OnRealized = h => { _drawerNode = h; _drawerNodeKey = rowKey; },
                 Fill = classic ? (Prop<ColorF>)ColorF.Transparent
-                    : Prop.Of(() => Math.Max(0, index.Value - start) % 2 != 0 ? Design.Colors.RowZebra : ColorF.Transparent),
+                    : Prop.Of(() => Math.Max(0, index.Value - start) % 2 != 0 ? R.Layer.RowZebra : ColorF.Transparent),
                 Margin = classic ? default : new Edges4(RowMetrics.RowInset, 0f, RowMetrics.RowInset, 0f),
                 Corners = classic ? CornerRadius4.All(0f) : new CornerRadius4(0f, 0f, 6f, 6f),
                 Children =

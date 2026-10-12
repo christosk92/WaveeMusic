@@ -392,7 +392,7 @@ public readonly partial struct Artist
         // key on `src` would remount HeroArt (and its zoom/settle state) on every one of those, undoing the latch. The
         // url instead reaches the mounted instance live as a re-pushed prop (HeroArtProps + UseProps), exactly like the
         // wash and veil below.
-        // ch 08 BUG F: WATCHED, not the raw `Design.ArtworkPlaceholder` ColorF — the same frozen-placeholder defect as
+        // ch 08 BUG F: WATCHED, not the raw `R.Layer.ArtPlaceholder` ColorF — the same frozen-placeholder defect as
         // PersonPicture's fill (Artist.UI.cs's pick avatar, below). No url here means no tint EITHER way (the "never a
         // cover tint" rule above still holds — Design.WatchedPlaceholder(null) resolves to the same flat neutral), but
         // it is now a live-bound Prop like every other art slot's placeholder instead of a value baked in at this
@@ -672,7 +672,7 @@ public readonly partial struct Artist
                         [
                             // The FLAT theme neutral, never a cover tint: a 440-DIP tinted slab is a different design.
                             Ui.Image(p.Url, ImageFit.Cover, aspect: aspect, decodePx: dw, corners: 0f,
-                                     placeholder: Design.ArtworkPlaceholder, blurHash: null, transition: ImageTransition.None)
+                                     placeholder: R.Layer.ArtPlaceholder, blurHash: null, transition: ImageTransition.None)
                                 with { FocusX = 0.62f, FocusY = 0.34f },
                         ],
                     },
@@ -913,7 +913,7 @@ public readonly partial struct Artist
             ZStack = true, ClipToBounds = true,
             Children =
             [
-                // ch 08 BUG F: WATCHED, not the raw `Design.ArtworkPlaceholder` ColorF (Controls.ArtworkFill's own
+                // ch 08 BUG F: WATCHED, not the raw `R.Layer.ArtPlaceholder` ColorF (Controls.ArtworkFill's own
                 // pattern). The entry is Ready when this mounts, so the placeholder only covers an eviction race.
                 Ui.Image(url, ImageFit.Cover, aspect: PickPhotoAspect, decodePx: PickPhotoDecodeW, corners: 0f,
                          placeholder: (ColorF?)null) with

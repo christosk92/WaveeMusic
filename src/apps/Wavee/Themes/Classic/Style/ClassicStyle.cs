@@ -1,9 +1,9 @@
 // ── Themes/Classic/Style/ClassicStyle.cs — the Classic style (themes plan 6.1) ─────────────────────────────────────────
 //
 // The style IS today's `Design.Definition` (the engine's Neutral palette with Wavee's fonts) carrying Classic's roles
-// (`ClassicRoles`, T2a), returned as ONE instance for every option set and accent, so the definition the composition resolves
-// is the instance the appearance seed installs and a switch back to Classic adopts by reference. Colour joins the roles in T2b;
-// no option exists yet. It publishes Classic's metrics (T3): the row heights, control height, gutter and section gap Classic
+// (`ClassicRoles`: type, space, motion and case from T2a, the colour roles from T2b), returned as ONE instance for every option set
+// and accent, so the definition the composition resolves is the instance the appearance seed installs and a switch back to Classic
+// adopts by reference. No option exists yet. It publishes Classic's metrics (T3): the row heights, control height, gutter and section gap Classic
 // lays out with.
 
 using FluentGpu.Dsl;

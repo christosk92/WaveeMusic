@@ -1699,8 +1699,8 @@ public static partial class Shell
                 Width = isLive ? float.NaN : TimeLabel.SlotW, MinWidth = TimeLabel.SlotW, Shrink = 0f,
                 Direction = 0, AlignItems = FlexAlign.Center,
                 Justify = right ? FlexJustify.Start : FlexJustify.End,   // the digits hug the rail
-                HoverFill = right ? (_ink is null ? Tok.FillSubtleSecondary : Design.OnMedia.GlassHover) : ColorF.Transparent,
-                PressedFill = right ? (_ink is null ? Tok.FillSubtleTertiary : Design.OnMedia.GlassPressed) : ColorF.Transparent,
+                HoverFill = right ? (_ink is null ? Tok.FillSubtleSecondary : R.OnMedia.GlassHover) : ColorF.Transparent,
+                PressedFill = right ? (_ink is null ? Tok.FillSubtleTertiary : R.OnMedia.GlassPressed) : ColorF.Transparent,
                 Corners = Radii.ControlAll,
                 OnClick = right ? static () => PlayerVerbs.Default.ToggleRemaining() : null,
                 Cursor = right ? CursorId.Hand : null,
@@ -1726,15 +1726,15 @@ public static partial class Shell
         public override Element Render()
         {
             bool offer = UseComputed(static () => TimeLabel.OffersGoLive(Playback.Live.Value, Playback.IsBehindLive.Value)).Value;
-            ColorF fg = _ink ?? Design.Accent.Decor;
+            ColorF fg = _ink ?? R.Ink.AccentDecor;
             Element face = offer
                 ? new BoxEl
                 {
                     // A TEXT button, not a plate — a filled accent here would outrank the transport itself.
                     MinWidth = 44f, Shrink = 0f, Height = 20f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                     Padding = new Edges4(Spacing.XS, 0f, Spacing.XS, 0f), Corners = Radii.ControlAll,
-                    HoverFill = _ink is null ? Tok.FillSubtleSecondary : Design.OnMedia.GlassHover,
-                    PressedFill = _ink is null ? Tok.FillSubtleTertiary : Design.OnMedia.GlassPressed,
+                    HoverFill = _ink is null ? Tok.FillSubtleSecondary : R.OnMedia.GlassHover,
+                    PressedFill = _ink is null ? Tok.FillSubtleTertiary : R.OnMedia.GlassPressed,
                     HoverScale = R.Motion.ScaleSubtle.Hover, PressScale = R.Motion.ScaleSubtle.Press,
                     Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
                     OnClick = static () => PlayerVerbs.Default.GoLive(),

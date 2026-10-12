@@ -125,33 +125,33 @@ public static partial class Lyrics
     public readonly record struct Ink(bool OnMedia)
     {
         /// <summary>A sung glyph, the active line, a lit interlude dot.</summary>
-        public ColorF Primary => OnMedia ? Design.StageInk.Ink : Tok.TextPrimary;
+        public ColorF Primary => OnMedia ? StageInk.Ink : Tok.TextPrimary;
         /// <summary>An inactive line-synced line and the secondary layer.</summary>
-        public ColorF Secondary => OnMedia ? Design.StageInk.InkSecondary : Tok.TextSecondary;
+        public ColorF Secondary => OnMedia ? StageInk.InkSecondary : Tok.TextSecondary;
         /// <summary>Meta captions that are not lyric text.</summary>
-        public ColorF Tertiary => OnMedia ? Design.StageInk.InkTertiary : Tok.TextTertiary;
+        public ColorF Tertiary => OnMedia ? StageInk.InkTertiary : Tok.TextTertiary;
 
         /// <summary>The one plate the reading surface owns (the resync pill, the video note).</summary>
-        public ColorF Plate => OnMedia ? Design.StageInk.ScrimRest : Tok.FillSolidBase with { A = 0.92f };
-        public ColorF PlateHover => OnMedia ? Design.StageInk.ScrimHover : Tok.FillSubtleSecondary;
-        public ColorF PlatePressed => OnMedia ? Design.StageInk.ScrimPressed : Tok.FillSubtleTertiary;
-        public ColorF PlateStroke => OnMedia ? Design.StageInk.Stroke : Tok.StrokeCardDefault;
+        public ColorF Plate => OnMedia ? StageInk.ScrimRest : Tok.FillSolidBase with { A = R.Lyrics.ThemePlateAlpha };
+        public ColorF PlateHover => OnMedia ? StageInk.ScrimHover : Tok.FillSubtleSecondary;
+        public ColorF PlatePressed => OnMedia ? StageInk.ScrimPressed : Tok.FillSubtleTertiary;
+        public ColorF PlateStroke => OnMedia ? StageInk.Stroke : Tok.StrokeCardDefault;
 
         /// <summary>The resync ring: the accent on a theme plate, plain ink on media.</summary>
-        public ColorF RingFill => OnMedia ? Design.StageInk.Ink : Tok.AccentDefault;
+        public ColorF RingFill => OnMedia ? StageInk.Ink : Tok.AccentDefault;
         /// <summary>The active transcript line's SUNG glyph — the one place the wipe shows a highlight instead of
         /// plain ink (<see cref="TranscriptPresentation.InkRung.Accent"/>). Same rung as <see cref="RingFill"/>.</summary>
         public ColorF Accent => RingFill;
-        public ColorF RingTrack => OnMedia ? Design.StageInk.Ink with { A = 0.30f } : Tok.StrokeControlDefault with { A = 0.55f };
+        public ColorF RingTrack => OnMedia ? StageInk.Ink with { A = R.Lyrics.RingTrackOnMediaAlpha } : Tok.StrokeControlDefault with { A = R.Lyrics.RingTrackThemeAlpha };
 
         /// <summary>The loading bars.</summary>
-        public ColorF Skeleton => OnMedia ? Design.StageInk.SkeletonBar : Tok.FillSubtleSecondary;
+        public ColorF Skeleton => OnMedia ? StageInk.SkeletonBar : Tok.FillSubtleSecondary;
 
         /// <summary>The held-note BLOOM: on a dark stage the ink (a halo adds luminance), on a light stage the VEIL —
         /// blurred near-black under near-black subtracts and reads as a smudge.</summary>
-        public ColorF Bloom => OnMedia ? (Design.StageInk.IsDark ? Design.StageInk.Ink : Design.StageInk.Veil) : Tok.TextPrimary;
+        public ColorF Bloom => OnMedia ? R.Lyrics.BloomOnMedia : Tok.TextPrimary;
         /// <summary>…and how much of it survives: half on the light stage.</summary>
-        public float BloomScale => OnMedia && !Design.StageInk.IsDark ? 0.5f : 1f;
+        public float BloomScale => OnMedia ? R.Lyrics.BloomScale : 1f;
     }
 
     // ══ 2. THE VIEW ══════════════════════════════════════════════════════════════════════════════════════════════════

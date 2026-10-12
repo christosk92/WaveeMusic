@@ -806,7 +806,7 @@ public readonly partial struct Artist
             ZStack = true, MinHeight = rowHeight, MinWidth = 0f, ClipToBounds = classic,
             Corners = classic ? CornerRadius4.All(Radii.None) : CornerRadius4.All(6f),
             Fill = ColorF.Transparent,
-            HoverFill = Design.Colors.RowHover, PressedFill = Design.Colors.RowPressed,
+            HoverFill = R.Layer.RowHover, PressedFill = R.Layer.RowPressed,
             PressScale = R.Motion.ScaleSubtle.Press,
             BorderWidth = classic ? 0f : 1f, BorderColor = ColorF.Transparent,
             HoverBorderColor = classic ? ColorF.Transparent : Tok.StrokeCardDefault,

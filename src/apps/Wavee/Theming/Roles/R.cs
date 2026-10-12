@@ -1,7 +1,8 @@
 // ── Theming/Roles/R.cs — the facade every view reads its style roles through (themes plan 5.4) ─────────────────────────
 //
-// `R.Type.MicroMeta(text)`, `R.Space.SectionGap`, `R.Motion.ScaleSubtle.Hover`, `R.Case.For(kind)`: the active style's roles,
-// read where the element is built. The roles are `Tok.Definition.AppRoles`, the table the active `ThemeDefinition` carries, so
+// `R.Type.MicroMeta(text)`, `R.Space.SectionGap`, `R.Motion.ScaleSubtle.Hover`, `R.Case.For(kind)`, and (T2b) the colour roles
+// `R.Layer.RowHover`, `R.Ink.AccentDecor`, `R.OnMedia.ScrimRest`, `R.Wash.HeroAlpha`, `R.StageArm.For(kind)`: the active style's
+// roles, read where the element is built. The roles are `Tok.Definition.AppRoles`, the table the active `ThemeDefinition` carries, so
 //   · a definition swap (`Tok.Use`, a theme switch, a Live option that moves a role) reaches the NEXT read: nothing is cached
 //     here, and the engine re-renders every mounted component on the epoch bump that comes with the swap;
 //   · a view never captures a role into a `const`, a `static readonly` field or a long-lived closure (the same rule as the
@@ -28,14 +29,41 @@ public static class R
     /// <summary>The type roles, as the call syntax a view builds text with (<c>R.Type.TrackTitle(text)</c>).</summary>
     public static TypeFactory Type => new(Current.Type);
 
+    /// <summary>The ink: the accent budget's three roles, the premium green and the data-hue ink.</summary>
+    public static InkReads Ink => new(Current.Ink);
+
+    /// <summary>The surfaces and row ladders.</summary>
+    public static LayerReads Layer => new(Current.Layer);
+
     /// <summary>The page-rhythm, shelf and flyout geometry.</summary>
     public static SpaceRoles Space => Current.Space;
+
+    /// <summary>Everything that paints on top of artwork or video.</summary>
+    public static OnMediaReads OnMedia => new(Current.OnMedia);
+
+    /// <summary>The immersive stage's polarity table: <c>R.StageArm.For(kind)</c> is a pure per-kind view; the live view of the
+    /// active kind is <see cref="StageInk"/>.</summary>
+    public static StageArmTable StageArm => Current.StageArm;
+
+    /// <summary>How strongly artwork colours a surface.</summary>
+    public static WashReads Wash => new(Current.Wash);
+
+    /// <summary>The lyrics surface's ink decisions.</summary>
+    public static LyricsReads Lyrics => new(Current.Lyrics);
 
     /// <summary>The interaction scale tiers and stagger rungs.</summary>
     public static MotionRoles Motion => Current.Motion;
 
     /// <summary>How the style cases the words it writes.</summary>
     public static CaseRoles Case => Current.Case;
+
+    /// <summary>The theme kind (light or dark) the roles are being read for: the polarity of the active theme mode. A view that needs the kind
+    /// as an ARGUMENT to a pure function (a graded cover's light or dark half, a contrast solve) reads it here; a colour or an alpha that
+    /// differs by kind is a role and is read from its family instead of branched on this.</summary>
+    public static ThemeKind Kind => Tok.Theme;
+
+    /// <summary><see cref="Kind"/> is light.</summary>
+    public static bool IsLight => Tok.Theme == ThemeKind.Light;
 
     /// <summary>Registers the roles a read falls back to while no definition carries any. Called once by the theme the app
     /// treats as its default (a module initializer in the app assembly); a second call replaces the first.</summary>

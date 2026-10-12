@@ -1528,7 +1528,7 @@ public readonly partial struct Artist
             {
                 // Height, not MinHeight: the slot IS the 32-DIP pitch, so a column totals EXACTLY rows x RowPitch.
                 ZStack = true, Height = DrawerVerdict.RowPitch, ClipToBounds = true, Corners = Radii.ControlAll, Margin = margin,
-                Fill = ColorF.Transparent, HoverFill = Design.Colors.RowHover, PressedFill = Design.Colors.RowPressed,
+                Fill = ColorF.Transparent, HoverFill = R.Layer.RowHover, PressedFill = R.Layer.RowPressed,
                 Role = AutomationRole.Button, Cursor = CursorId.Hand,
                 Focusable = false,                                // the ItemsView roving effect owns the one tab stop
                 FocusVisualMargin = Design.FocusInsetRow,
@@ -1569,7 +1569,7 @@ public readonly partial struct Artist
         {
             Key = "row:show-all", Height = DrawerVerdict.RowPitch, AlignItems = FlexAlign.Center,
             Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Cursor = CursorId.Hand, Role = AutomationRole.Button,
-            Corners = Radii.ControlAll, HoverFill = Design.Colors.RowHover, PressedFill = Design.Colors.RowPressed,
+            Corners = Radii.ControlAll, HoverFill = R.Layer.RowHover, PressedFill = R.Layer.RowPressed,
             Focusable = false, FocusVisualMargin = Design.FocusInsetRow,
             OnPointerReleased = _showAllRelease ??= _ => _o.GoAlbum(),
             OnKeyDown = _showAllKey ??= args =>

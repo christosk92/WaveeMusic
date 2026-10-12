@@ -229,6 +229,12 @@ public sealed class CoreHostPresentationAnalyzerTests
                 + "float A() => R.SectionGap; float B() => Wavee.Theming.Roles.R.SectionGap; } }"));
 
     [Fact]
+    public void MarkedHost_ReadingTheLiveStageInk_IsFlagged()
+        => Assert.Equal(new[] { "StageInk.Ink", "Wavee.Theming.Roles.StageInk.Ink" },
+            Flagged("using Wavee.Theming.Roles; namespace Wavee.X { [Wavee.Theming.Contracts.CoreHost] class Host { "
+                + "float A() => StageInk.Ink; float B() => Wavee.Theming.Roles.StageInk.Ink; } }"));
+
+    [Fact]
     public void MarkedHost_WithItsOwnMemberNamedR_IsClean()
         => Assert.Empty(Flagged("namespace Wavee.X { [Wavee.Theming.Contracts.CoreHost] class Host { class Pair { public int R; } int M(Pair p) => p.R; } }"));
 

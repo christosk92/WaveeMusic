@@ -504,7 +504,7 @@ public static partial class Controls
     static GradientSpec BandGradient(ColorF accent)
     {
         ColorF card = Tok.FillCardDefault;
-        ColorF top = ColorF.Lerp(card, accent, Tok.Theme == ThemeKind.Dark ? 0.10f : 0.06f) with { A = card.A };
+        ColorF top = ColorF.Lerp(card, accent, R.Wash.BandPull) with { A = card.A };
         return GradientDown(
             new GradientStop(0f, top),
             new GradientStop(0.45f, card),
@@ -522,11 +522,12 @@ public static partial class Controls
     public static GradientSpec ArtistHeroVeil(ColorF accent, bool vertical)
     {
         ColorF layer = Tok.FillLayerDefault;
-        float pull = Tok.Theme == ThemeKind.Light ? 0.16f : 0.24f;
+        var wash = R.Wash;
+        float pull = wash.HeroVeilPull;
         ColorF veil = ColorF.Lerp(layer, accent, pull);
         if (vertical)
         {
-            float top = Tok.Theme == ThemeKind.Light ? 0.42f : 0.78f;
+            float top = wash.HeroVeilPeak;
             return GradientDown(
                 new GradientStop(0f, veil with { A = 0f }),
                 new GradientStop(0.45f, veil with { A = 0.35f }),
@@ -1024,7 +1025,7 @@ public static partial class Controls
 
             bool on = lib.IsSaved(Uri);                          // subscribe → re-skin on any saved-set change
             ColorF a = Accent?.Invoke() ?? (ctx is { } page ? page.Value.Fill : Tok.AccentDefault);
-            bool light = Tok.Theme == ThemeKind.Light;
+            bool light = R.IsLight;
 
             return ToggleButton.Controlled(Label(Verb, false), on, _ => lib.ToggleSaved(Uri, Name),
                 glyph: Icons.Heart, checkedGlyph: Icons.HeartFill, checkedLabel: Label(Verb, true),
@@ -1041,7 +1042,7 @@ public static partial class Controls
         /// off the live theme, so it shimmers as itself rather than a stretched default bar.</summary>
         public static Element SkeletonShape(FollowVerb verb = FollowVerb.Follow) => ToggleButton.Controlled(
             Label(verb, false), false, static _ => { }, glyph: Icons.Heart,
-            style: ButtonRules.FollowStyle(Tok.AccentDefault, Tok.Theme == ThemeKind.Light), parts: RootNoShrink);
+            style: ButtonRules.FollowStyle(Tok.AccentDefault, R.IsLight), parts: RootNoShrink);
     }
 
     /// <summary>The same follow toggle as a plateless TEXT ACTION, for the sticky context band — which has no plates in
