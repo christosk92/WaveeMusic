@@ -221,9 +221,6 @@ public static partial class Sidebar
     {
         public static readonly Edges4 PanePad = new(SidebarRowGeometry.PaneEdge, SidebarRowGeometry.PaneTopInset, SidebarRowGeometry.PaneEdge, 0f);
         public const float PaneInsetH = SidebarRowGeometry.PaneEdge * 2f;
-        /// <summary>A band above the list whose content starts at the header text's x (pane 14).</summary>
-        public static readonly Edges4 HeadBandInset = new(SidebarRowGeometry.PaneEdge + SidebarRowGeometry.HeaderTextX, 0f,
-                                                          SidebarRowGeometry.PaneEdge + SidebarRowGeometry.TrailingPad, 0f);
     }
 
     // ══ 5. THE PANE ════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -528,9 +525,6 @@ public static partial class Sidebar
 
         // ── the pane layer's children ──────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>The rail's empty body: the rail has no room for the empty hint, so an empty rail is just its head.</summary>
-        static readonly BoxEl s_railSpacer = new() { Key = "empty", Grow = 1f };
-
         /// <summary>The layer's children, top to bottom: the mode head and the body (the padded list or the empty hint). There
         /// is no footer: Settings lives in the profile menu and the palette, the pane menu on the pane's right-click.</summary>
         Element[] PaneChildren(int rows, bool compact, bool editing)
@@ -542,8 +536,10 @@ public static partial class Sidebar
 
             // The list is built ONCE: every option it carries is a mount-stable field or delegate, and the count rides
             // its CountSignal — so a re-render hands the reconciler the same element and it writes nothing.
-            // The rail has no room for the empty hint: an empty rail is just its head.
-            Element body = rows == 0 ? (compact ? s_railSpacer : EmptyPane()) : (_paddedList ??= PaddedList());
+            // The rail has no room for the empty hint: an empty rail is just its head. The body is the structure's (`Shell.NavEmpty`).
+            Element body = rows == 0
+                ? ViewSlots.View(ViewKeys.ShellNavEmpty, compact ? NavEmptyProps.Rail : NavEmptyProps.Pane) with { Key = "empty" }
+                : (_paddedList ??= PaddedList());
             return modeHead is { } mh ? [mh, body] : [body];
         }
 
@@ -737,71 +733,9 @@ public static partial class Sidebar
             RepublishNow();
         }
 
-        /// <summary>The transient filter (design V.11): a 32-px field under the Playlists header, focused on open; Esc, or
-        /// leaving it empty on blur, closes it and clears the query.</summary>
-        internal Element FilterBox() => Embed.Comp(() => new PaneFilterBox(this)) with { Key = "pane-filter" };
-
-        /// <summary>The filter field: the pane's own search signal in a plain editor, focused when it opens and again on a
-        /// re-press of Ctrl+F (the ticket moves).</summary>
-        sealed class PaneFilterBox(PaneView owner) : Component
-        {
-            public override Element Render()
-            {
-                var hooks = UseContext(InputHooks.Current);
-                var post = UsePost();
-                var root = UseRef<NodeHandle>(default);
-                // A fresh box takes focus on its first realization; a later Ctrl+F moves focus through the ticket.
-                var pending = UseRef(true);
-                int ticket = owner._filterFocus.Value;
-                void Focus(NodeHandle h) => post(() => hooks.FocusNode?.Invoke(hooks.FirstFocusableIn?.Invoke(h) ?? h, true));
-                UseLayoutEffect(() =>
-                {
-                    if (!root.Value.IsNull) Focus(root.Value);
-                }, DepKey.From(ticket));
-
-                var parts = UseMemo(() =>
-                {
-                    var pr = new TemplateParts();
-                    pr[EditableText.PartRoot] = b => b with
-                    {
-                        Fill = ColorF.Transparent, HoverFill = ColorF.Transparent,
-                        OnRealized = h =>
-                        {
-                            root.Value = h;
-                            if (!pending.Value) return;
-                            pending.Value = false;
-                            Focus(h);
-                        },
-                    };
-                    return pr;
-                }, DepKey.Empty);
-
-                return new BoxEl
-                {
-                    Direction = 1, Height = 32f,
-                    Margin = new Edges4(SidebarRowGeometry.HeaderTextX, 0f, SidebarRowGeometry.TrailingPad, 4f),
-                    Children =
-                    [
-                        Embed.Comp(() => new EditableText
-                        {
-                            Text = owner._search, Placeholder = Loc.Get(Strings.Sidebar.V3.SearchPlaceholder),
-                            Width = float.NaN, Height = 32f, FontSize = 13f, Parts = parts,
-                            ShowDeleteButton = true,
-                            PreviewKeyDown = e =>
-                            {
-                                if (e.KeyCode != Keys.Escape) return false;
-                                owner.CloseFilter();
-                                return true;
-                            },
-                            OnFocusChanged = gained =>
-                            {
-                                if (!gained && owner._search.Peek().Length == 0) owner.CloseFilter();
-                            },
-                        }),
-                    ],
-                };
-            }
-        }
+        // The transient filter (design V.11) is a 32-px field under the Playlists header, focused on open; Esc, or leaving it empty
+        // on blur, closes it and clears the query. The pane keeps the state (the section, the query, the focus ticket, CloseFilter)
+        // and reaches the box through `INavRowHost`; the box is the structure's (`ClassicNavFilter.cs`), placed by the header slot.
 
         // ── the section header's ⋯ menu ──
 
@@ -816,26 +750,6 @@ public static partial class Sidebar
                 SidebarMenus.Overlay = MenuOverlay;
                 var rows = NavMenuModel.Menu(NavMenuTarget.Header(sectionId));
                 return rows.Count == 0 ? null : new ContextMenuModel(SidebarMenus.Map(rows, sectionId, this));
-            };
-        }
-
-        /// <summary>The authored-empty pane (ch 25 W8): it names the state only. There is no customizer to offer a fix from.</summary>
-        Element EmptyPane()
-        {
-            var kids = new List<Element>(2)
-            {
-                Icon(Icons.SplitView, 24f, Tok.TextTertiary),
-                new TextEl(Loc.Get("sidebar.paneEmpty"))
-                {
-                    Size = 14f, Weight = 600, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 2,
-                },
-            };
-            return new BoxEl
-            {
-                Key = "empty", Direction = 1, Grow = 1f, Gap = Spacing.S,
-                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                Padding = new Edges4(16f, 24f, 16f, 24f),
-                Children = [.. kids],
             };
         }
 

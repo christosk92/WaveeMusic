@@ -183,7 +183,7 @@ public sealed class RootScopeTests(ShellHost host)
                     // PROCESS state: settings, playback mode, the omnibar's typed text.
                     Prefs.Stage.SetLayout((int)Stage.VizLayout.LargeArt);
                     Playback.SetShuffle(true);   // the engine owns the mode; the signal only mirrors it
-                    Until(a, () => Playback.Shuffle.Peek(), "the player took shuffle on (its inbox drains off the UI thread)");
+                    UntilBackground(a, () => Playback.Shuffle.Peek(), "the player took shuffle on (its inbox drains off the UI thread)");
 
                     // PAGE UI state: the Settings pivot, the overlay set, what a mounted omnibar form holds.
                     Settings.Open(Settings.Tab.Appearance);

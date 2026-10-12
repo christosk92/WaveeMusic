@@ -199,7 +199,7 @@ public static class SidebarLibraryHeadRules
 
     /// <summary>The head's Tab order — exactly its left-to-right, top-to-bottom screen order (Q11): Home, the dropdown, the
     /// chips, the toolbar (search or the open box, sort, List, Grid, +, ⋯; the view toggles only when the shape keeps
-    /// them; the open box replaces search and the right-hand group), then the list. <c>LibraryToolbar</c> BUILDS its
+    /// them; the open box replaces search and the right-hand group), then the list. Classic's <c>ClassicLibraryToolbar</c> BUILDS its
     /// controls by walking this list, so the order the fact pins is the order on screen.</summary>
     public static void TabOrder(ToolbarShape shape, bool searching, List<HeadTabStop> into)
     {

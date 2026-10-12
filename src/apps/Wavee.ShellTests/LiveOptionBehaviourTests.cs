@@ -299,7 +299,7 @@ public sealed class LiveOptionBehaviourTests(ShellHost host)
             try
             {
                 Shell.GoTo(new Shell.Route(Shell.RouteKind.Recents));   // the page that publishes an artwork wash (Recents.Page.cs)
-                Until(shell, () => shell.FindPrefix("shell.wash.").Count > 0, "the recents page's artwork wash mounted");
+                UntilBackground(shell, () => shell.FindPrefix("shell.wash.").Count > 0, "the recents page's artwork wash mounted");
                 shell.RunFrames(60);
 
                 // Off: the legs leave with their host box (no exit fade of their own: production today, not pinned).
@@ -307,7 +307,7 @@ public sealed class LiveOptionBehaviourTests(ShellHost host)
                 Until(shell, () => shell.FindPrefix("shell.wash.").Count == 0, "the wash legs left");
 
                 SetWashes(true);
-                Until(shell, () => shell.FindPrefix("shell.wash.").Count > 0, "the wash legs came back");
+                UntilBackground(shell, () => shell.FindPrefix("shell.wash.").Count > 0, "the wash legs came back");
                 var back = shell.FindPrefix("shell.wash.");
                 Assert.All(back, leg => Assert.True(shell.Host.Animation.HasTracks(leg.Node), leg.Key + " appeared without its entrance fade"));
             }

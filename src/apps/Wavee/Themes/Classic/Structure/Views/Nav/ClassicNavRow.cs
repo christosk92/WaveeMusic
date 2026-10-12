@@ -5,10 +5,11 @@
 // the tree's closing gutter, the drop band, the selection pill and the drop cues). The core pane keeps planning, publishing and
 // the per-row epochs; this is what one row looks like. It reaches the pane only through `INavRowHost`.
 //
-// The row primitives it builds from (`Sidebar.EntityRow`, `Cover`, `Chevron`, `SelectionPill`, `Counts`, `Skeletons`,
-// `SectionHeader`, `CreateButton`, the pane text, loc and glyph tables) stay in `Shell/Sidebar.UI.Rows.cs` for now: the flyouts,
-// the Library head and the pages (`Sidebar.Chevron`, `Sidebar.Cover.Liked`) still draw with them (T5b, T5c, T5f move them).
-// The menus, the drop specs, the flyouts and the grid cell are the host's until T5b-f give them to the structure.
+// The row primitives it builds from (`Sidebar.EntityRow`, `Cover`, `Chevron`, `SelectionPill`, `Skeletons`, the pane text, loc
+// and glyph tables) stay in `Shell/Sidebar.UI.Rows.cs` for now: the flyouts, the Edit outline and the pages (`Sidebar.Chevron`,
+// `Sidebar.Cover.Liked`) still draw with them (T5c, T5d, T5f move them). T5b gave the structure the heads: the section header,
+// the separator, the "+" and the quiet count are `ClassicNavHead.cs`, the filter box is `ClassicNavFilter.cs`.
+// The menus, the drop specs, the flyouts and the grid cell are the host's until T5c-f give them to the structure.
 //
 // Numbers are `Rules\SidebarGeometry.cs` (the Classic ladder) -- WVTH003 allows no literal look here.
 
@@ -83,7 +84,7 @@ internal sealed class ClassicNavRow : Component
         {
             SidebarRowKind.SectionHeader => HeaderRow(section, in row, index, sel),
             // Only a Divider SECTION plans this row; ordinary section joins are whitespace, never implicit rules.
-            SidebarRowKind.Divider => Sidebar.SectionHeader.Separator(),
+            SidebarRowKind.Divider => ClassicNavHead.Separator(),
             SidebarRowKind.IconRow => RouteRow(section, row.Key, sel, index),
             SidebarRowKind.EntityRow => (uint)row.EntryIndex < (uint)_o.Plan.Entries.Count
                 ? EntryRow(section, _o.Plan.Entries[row.EntryIndex], in row, sel, index) : Nothing,
@@ -145,12 +146,12 @@ internal sealed class ClassicNavRow : Component
         // Every delegate reads LIVE pane state: a header slot recycles across sections.
         Element? create = null, more = null;
         if (section.Kind == SidebarSectionKind.Playlists)
-            create = Embed.Comp(() => new Sidebar.CreateButton(
+            create = Embed.Comp(() => new ClassicNavCreateButton(
                 owner.CreatePlaylist, menu: owner.CreateMenu, drop: owner.HeaderCreateDropSpec(),
                 dropActive: () => owner.HeaderCreateDropActive.Value,
                 box: SidebarGeometry.HeaderButton, glyph: 12f)) with { Key = "tree-create" };
         if (_o.MenuOverlay is { } svc && _o.HeaderMenu(id) is { } menu)
-            more = ToolTip.Wrap(Sidebar.SectionHeader.InlineButton(Icons.More, null, reveal: !_o.TouchLast, requestsContext: true)
+            more = ToolTip.Wrap(ClassicNavHead.InlineButton(Icons.More, null, reveal: !_o.TouchLast, requestsContext: true)
                 .WithContextMenu(svc, menu), Loc.Get(Sidebar.PaneLoc.SectionOptions));
 
         // ONE rotating glyph, never a swap; a recycle onto another section seeds its angle instead of spinning.
@@ -162,8 +163,8 @@ internal sealed class ClassicNavRow : Component
             Children = [Sidebar.Chevron.Section(_headerOpen ??= HeaderOpenLive, identity: _sectionIdentity ??= SectionIdentity)],
         };
 
-        Element header = Sidebar.SectionHeader.Header(Sidebar.PaneText.TitleOf(section), !section.Collapsed, toggle, create, more, chevron);
-        if (_o.FilterOpenFor(id)) header = new BoxEl { Direction = 1, Children = [header, _o.FilterBox()] };
+        Element header = ClassicNavHead.Header(Sidebar.PaneText.TitleOf(section), !section.Collapsed, toggle, create, more, chevron);
+        if (_o.FilterOpenFor(id)) header = new BoxEl { Direction = 1, Children = [header, FilterBox()] };
 
         // The header's own pill: centred on the 40-px title band (a header has no margin, so no RowMarginY).
         _pillState = new SidebarPillState(_o.PillRouteOf(index, sel), _o.RowSelectsRoute(index, sel), 0f,
@@ -171,6 +172,10 @@ internal sealed class ClassicNavRow : Component
         Func<SidebarPillState> probe = _pillProbe ??= PillState;
         return ZStack(header, Embed.Comp(() => new Sidebar.SelectionPill(owner, probe)));
     }
+
+    /// <summary>The transient Playlists filter (design V.11), under an open filter's header: the pane's query, focus ticket and close
+    /// verb are <see cref="INavRowHost"/>'s, the field is <see cref="ClassicNavFilterBox"/>.</summary>
+    Element FilterBox() => Embed.Comp(() => new ClassicNavFilterBox(_o)) with { Key = "pane-filter" };
 
     /// <summary>The header chevron's live open state. Captures only the SLOT: it re-reads the plan row at the slot's
     /// current index, and its epoch read is what re-renders the chevron on a toggle.</summary>
@@ -639,7 +644,7 @@ internal sealed class ClassicNavRow : Component
         string name = entry.Name;
         var active = _folderPlusDrop;
         Func<float> reveal = _folderPlusReveal ??= FolderPlusOpacity;
-        Element plus = Embed.Comp(() => new Sidebar.CreateButton(
+        Element plus = Embed.Comp(() => new ClassicNavCreateButton(
             () => owner.NewPlaylistInFolder(folderId),
             menu: () => owner.FolderCreateMenu(folderId),
             drop: owner.FolderCreateDropSpec(folderId, name, active),
@@ -674,16 +679,16 @@ internal sealed class ClassicNavRow : Component
     /// <summary>The library-shortcut count through the ONE quiet badge (never an accent pill). Albums / Artists / Liked /
     /// Podcasts read the signed-in account's library edges — the server total while a relation is still paging, so the
     /// number does not climb — and an UNKNOWN relation is the 20×12 pending plate. Local files carries no count.
-    /// <para>The relation's publish signal is read INSIDE <see cref="Sidebar.Counts.Live"/>'s own component, behind a value gate
+    /// <para>The relation's publish signal is read INSIDE <see cref="ClassicNavCounts.Live"/>'s own component, behind a value gate
     /// (W3-A2) — never here. This slot used to subscribe to it directly, and the library relations publish on exactly
     /// the routes that were slow: an artist page asking "is this album saved / this artist followed" and a playlist
     /// page asking "is this track liked" bump <c>SavedAlbums</c> / <c>FollowedArtists</c> / <c>Liked</c> on every
     /// membership answer, so the two shortcut rows rebuilt their whole row (spec, menu, drop spec, indicator — ~67 KB
     /// each) per publication while the number they show did not change (the <c>PaneSlot×2</c> census line).</para></summary>
-    static Element? CountBadge(SidebarSection section, string routeKey)
+    Element? CountBadge(SidebarSection section, string routeKey)
     {
         if (section.Kind != SidebarSectionKind.Collections || Sidebar.ShortcutCount.KindOf(routeKey) is not { } kind) return null;
-        return Sidebar.Counts.Live(kind);
+        return ClassicNavCounts.Live(_o.Model, kind);
     }
 
     /// <summary>Attach the item-owned selection pill and both drop cues. Shape-stable for recycling: a slot never

@@ -4,8 +4,9 @@
 // row and wires its gestures. This is the whole surface a slot reads, so a structure never reaches into the pane: it asks
 // the host for the published plan, for the facts the pane resolves once on behalf of every row (the selected route, the
 // playing rows, the pill target, the band a row reorders in), and for the pieces of the surfaces that are not the rows' yet --
-// menus, drop specs, flyouts, the header's create flow, the grid cell -- which T5b-f give to the structure one sub-surface
-// at a time and the slot then calls directly.
+// menus, drop specs, flyouts, the grid cell -- which T5c-f give to the structure one sub-surface at a time and the slot then
+// calls directly. The heads (T5b) are the structure's now: the header's chrome and the filter box are drawn by the slot, and the
+// pane keeps the state they edit (the disclosure channel, the filter's query, ticket and close).
 //
 // Every member is live (a method or a signal read inside a render, an epoch or a bound thunk), never a value captured at
 // mount: a slot recycles across rows.
@@ -123,13 +124,19 @@ internal interface INavRowHost
     /// <summary>A new playlist in a folder (the folder row's "+").</summary>
     void NewPlaylistInFolder(string folderId);
 
-    // ── the Classic filter box (the header hosts it) ─────────────────────────────────────────────────────────────────
+    // ── the Classic filter box (the header hosts it; the slot draws it, T5b) ─────────────────────────────────────────
 
     /// <summary>Is the transient Playlists filter open under this section's header?</summary>
     bool FilterOpenFor(string sectionId);
 
-    /// <summary>The filter field.</summary>
-    Element FilterBox();
+    /// <summary>The filter's query: the pane's own search signal (the box edits it, the planner reads it).</summary>
+    Signal<string> FilterQuery { get; }
+
+    /// <summary>The focus ticket: bumped when the box opens and on a second Ctrl+F. A box that sees it move focuses its field.</summary>
+    Signal<int> FilterTicket { get; }
+
+    /// <summary>Closes the filter box and clears its query (Esc, or blur while the query is empty).</summary>
+    void CloseFilter();
 
     // ── the tree's multi-selection ───────────────────────────────────────────────────────────────────────────────────
 
@@ -151,7 +158,7 @@ internal interface INavRowHost
     /// <summary>Clear the selection (Esc).</summary>
     void ClearTreeSelection();
 
-    // ── menus, drags, drops and flyouts: the sub-surfaces T5b-f move ─────────────────────────────────────────────────
+    // ── menus, drags, drops and flyouts: the sub-surfaces T5c-f move ─────────────────────────────────────────────────
 
     /// <summary>A section header's ⋯ menu, or null for a kind with none.</summary>
     Func<ContextMenuModel?>? HeaderMenu(string sectionId);

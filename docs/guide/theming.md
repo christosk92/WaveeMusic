@@ -307,7 +307,7 @@ cue, the scrim, the HUD only in developer mode), and the cover leaves still publ
 ### The navigation pane's rows (T5a)
 
 The sidebar is one pane over six sub-surfaces (rows, heads, flyouts and menus, the Edit outline, drop cues, the library grid). T5a
-gives the pane its key and moves the **rows**; T5b-f move the rest, one sub-surface each.
+gives the pane its key and moves the **rows**; T5b moves the **heads** (below); T5c-f move the rest, one sub-surface each.
 
 | Key | Props | Core host | Classic template |
 |---|---|---|---|
@@ -315,8 +315,9 @@ gives the pane its key and moves the **rows**; T5b-f move the rest, one sub-surf
 
 - **The pane is a core host.** `PaneView` keeps every hook, effect and state machine: the plan -> publish -> per-row epoch pipeline,
   the selection travel and the pill target, disclosures, reorder bands, the tree multi-selection, the drag peek and when the freeze
-  holds or flushes. It is not marked `[CoreHost]` yet: it still builds the pane layer, the filter box and the empty hint
-  (WVTH008 would list all of them), which move with the heads (T5b).
+  holds or flushes. It is not marked `[CoreHost]` yet: it still builds the pane layer (the layer, root and context-menu shield
+  boxes and the padded list) and the Edit pane, which WVTH008 would list. The filter box and the empty hint left with the heads
+  (T5b, below).
 - **The structure supplies the list as a `NavRowKit`** (`Theming\Contracts\NavRowKit.cs`; Classic's is `ClassicNavRows`): the planner
   and its owning-section answer, the publish diff (`RowChanged`), the analytic extent that seeds the virtualizing host, the mid-drag
   parking bay (`INavStageHold<T>`: no row jumps while a list is frozen during a drag, the newest stage flushes once at session end)
@@ -328,8 +329,8 @@ gives the pane its key and moves the **rows**; T5b-f move the rest, one sub-surf
   `ClassicNavPane.cs` (the template).
 - **`INavRowHost`** (`Theming\Contracts\NavRowHost.cs`, implemented explicitly by `PaneView` in `Shell\Sidebar.UI.Host.cs`) is what a
   slot may ask of the pane: the published plan, what the pane resolved once for every row (selected route, playing rows, the pill
-  target, the reorder band), the verbs, and the pieces of the surfaces T5b-f still own (menus, drop specs, flyouts, the header's
-  create flow, the grid cell). A slot never reaches into `Sidebar` or `Shell`.
+  target, the reorder band), the verbs, and the pieces of the surfaces T5c-f still own (menus, drop specs, flyouts, the grid cell).
+  A slot never reaches into `Shell`.
 - **X26 is gone.** `OwningSection` (which section would hold a route: the pill's header or folder anchor) was a layout branch inside
   the "one renderer"; it is `SidebarRowPlanner.OwningSection`, next to the Library plan, and `NavModel` no longer answers it.
 - **A transitional mirror.** The row ladder is Classic's. Core keeps `SidebarRowGeometry`: the plan queries (`TrySectionBodyRange`,
@@ -342,6 +343,39 @@ gives the pane its key and moves the **rows**; T5b-f move the rest, one sub-surf
 `NavDropRulesTests`, `SidebarRowGeometryTests`, `NavModelTests` for the owning section); the mounted facts are
 `Wavee.ShellTests\NavPaneMountedTests.cs` (the registered template is Classic's, the real shell draws the pane through the key and
 its Home row stands at the ladder's row height, and the kit plans with Classic's planner).
+
+### The navigation pane's heads (T5b)
+
+T5b gives the structure the pane's **heads**: whatever stands above or between the list's rows as chrome.
+
+| Surface | Contract | Core side | Classic |
+|---|---|---|---|
+| Section header, its "+", the separator, the quiet count | none: they are part of a row, so they ride the row slot | the disclosure channel (`INavRowHost.ToggleSection`, `DisclosureOpen`), the create flow, the header menu | `Views\Nav\ClassicNavHead.cs` (`Header`, `InlineButton`, `Separator`, `ClassicNavCreateButton`, `ClassicNavCounts`) |
+| Playlists filter box | `INavRowHost.FilterOpenFor`, `FilterQuery`, `FilterTicket`, `CloseFilter` | which section hosts it, the query signal, the focus ticket, Ctrl+F and the close rule (`PaneView`) | `Views\Nav\ClassicNavFilter.cs` (`ClassicNavFilterBox`), placed by the header slot |
+| The empty body | `Shell.NavEmpty` (`NavEmptyProps`: `Pane` or `Rail`) | when the published row count is zero, and the presented compact flag | `ClassicNavEmpty` (the sentence, or the rail's bare spacer) |
+| Your Library's head | `Shell.NavLibraryHead` (`NavLibraryHeadProps`: the host) | `LibrarySession` implements `INavLibraryHeadHost` (`Theming\Contracts\NavLibraryHead.cs`) over the model's `NavLibrary` | `Views\Nav\ClassicNavLibraryHead.cs` (`ClassicLibraryHead`, `ClassicLibraryChips`, `ClassicLibraryToolbar`, `ClassicLibrarySearchBox`) |
+
+- **The head is drawn by the structure; the session decides.** Home, the page dropdown, the chips, the toolbar (and its Tab order,
+  `SidebarLibraryHeadRules.TabOrder`), the breadcrumb, the retry banner, the empty band and the compact rail's form (Home, the
+  search tile, the separator) are `ClassicNavLibraryHead.cs`. The model's session (`NavLibrary`: drill, shaping, facts, every
+  verb), the head<->list focus ring's targets (`HomeNode`, `DropdownNode`, `SearchButtonNode`; the list's Up from its first row
+  and the pane's pill rule read them), the pill flag and the menus' rows stay core, and the head reaches them only through
+  `INavLibraryHeadHost`. The host is internal, so `NavLibraryHeadProps` keeps it internal (public record, internal member),
+  as `NavRowKit.Slot` does for the row host. Every component keeps its hook order: the head still runs every hook before the
+  compact early return, so the rail <-> pane switch never reorders them.
+- **The collapse chevron is core's** (`Sidebar.Chevron`, in `Sidebar.UI.Rows.cs`): its spring rotation is the disclosure band's
+  own `Reveal`, and the episode discussion draws with it too. The section-collapse animation, its persistence and the
+  choreography flags (`_choreographed`) are the pane's and did not move.
+- **`SidebarRowGeometry` shrank.** The header height, the separator's two numbers and the empty-hint height had no core reader
+  left and were deleted; `HeaderTextX` (the Library lane rules) and `HeaderButton` (the Edit outline's inline buttons) stay
+  until T5d / T5f. `Sidebar.SectionHeader.InlineButton` stays in `Sidebar.UI.Rows.cs` as a copy for the Edit outline (T5d deletes
+  it). `PaneMetrics.HeadBandInset`, which nothing read, is gone. `SidebarGeometryParityTests` still pins every member core keeps.
+- **Numbers** the heads carried as literals are `Rules\NavHeadLayout.cs` (`ClassicNavHeadLayout`); the Library lane's are core's
+  `SidebarLibraryHeadRules`, which the pure tests pin.
+
+**Tests.** The mounted facts are in `Wavee.ShellTests\NavPaneMountedTests.cs` (Classic registers both keys, the real shell in the
+Library layout draws the head through its key with its ring, dropdown and toolbar standing, and the empty body is the sentence
+or the bare spacer); the Library head's rules stay `SidebarLibraryHeadRulesTests`, `NavLibraryTests`.
 
 ### The player bar (T6a)
 

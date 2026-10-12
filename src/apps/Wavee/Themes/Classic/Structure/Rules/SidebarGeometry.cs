@@ -4,8 +4,8 @@
 // edits them HERE. Literals are allowed in this file (WVTH003 exempts `Rules\**`), so the row slot (`Views\Nav\ClassicNavRow.cs`),
 // the planner's analytic extents (`SidebarPlanner.cs`) and the pill read their sizes from this class and never inline them.
 //
-// TRANSITIONAL MIRROR. The pane's other sub-surfaces are still core until T5b-f (the heads, the flyouts and menus, the Edit
-// outline, the drop cues, the library grid) and so are the shared row primitives in `Shell/Sidebar.UI.Rows.cs`, and they cannot
+// TRANSITIONAL MIRROR. The pane's other sub-surfaces are still core until T5c-f (the flyouts and menus, the Edit outline, the
+// drop cues, the library grid; T5b moved the heads) and so are the shared row primitives in `Shell/Sidebar.UI.Rows.cs`, and they cannot
 // name a structure. Core keeps `SidebarRowGeometry`: the plan queries (which are no pixels: `TrySectionBodyRange`,
 // `FolderHeaderIndexOf`, ...) and a copy of exactly the ladder members those readers still use. `SidebarGeometryParityTests` pins
 // every shared member equal, so the two cannot drift; the last core reader to move (T5f) deletes the copy. The band widths are

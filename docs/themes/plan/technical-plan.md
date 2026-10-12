@@ -1712,7 +1712,8 @@ screenshots, §2.5; no golden report, owner Q23). Every key also has per-tier la
 Keys added after the review (missing from BP §2): `Pages.Local` (Local files route, `Shell.cs:54`), `Track.Drawer`
 (+ `.FormatSplit`, `.Credits`; `Track.Drawer.cs`), `Detail.Insights` (+ `Detail.FactCard`), `Episode.Discussion`
 (+ `Episode.CommentCard`, `Episode.ReactionFlyout`), `Shell.ContentState` (offline lane, empty body, not-found, page
-transition; `Shell.UI.cs:965-1036`).
+transition; `Shell.UI.cs:965-1036`), `Shell.NavLibraryHead` and `Shell.NavEmpty` (T5b: Your Library's head with its host
+`INavLibraryHeadHost`, and the pane's empty body; the section header, the "+", the count and the filter box ride the row slot).
 
 | Family | Keys | Classic | WinUI | Zune | Panorama |
 |---|---|---|---|---|---|
