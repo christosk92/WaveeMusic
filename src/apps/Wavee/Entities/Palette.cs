@@ -435,6 +435,13 @@ public static partial class Palette
     /// <summary>How many images are waiting to be graded — the host's pump reads it, and the diagnostics page shows it.</summary>
     public static int Pending => s_pending.Count;
 
+    /// <summary>Empty the queue and clear the queued marker on every row (<see cref="ResetPump"/>).</summary>
+    static void ClearQueue()
+    {
+        s_pending.Clear();
+        for (int slot = 1; slot < Images.Count; slot++) Images.Known[slot] &= ~(uint)PaletteBits.Queued;
+    }
+
     /// <summary>Ask for a batch of images explicitly (ch 07 G1: "<c>Palette.Ensure(span of image ids)</c>, batched by
     /// <c>Fetch</c> exactly like rows"). Rare: the render-path miss is the normal request, and ch 00 is explicit that
     /// an image-keyed colour is NOT part of a page's model — do not fold it into a page's mount demand.</summary>

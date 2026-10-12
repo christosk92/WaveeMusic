@@ -143,6 +143,7 @@ public static partial class Shell
             AppHost host = Host;
             AssignPosters(action => host.Post(PublishAfter.Wrap(action)));
             Host.FrameCompleted += s_frameTick;
+            Palette.ResetPump();   // the pump's deadline and in-flight batch belong to the previous host's clock
             Host.RunFrame();
         }
 

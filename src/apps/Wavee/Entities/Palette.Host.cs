@@ -79,6 +79,20 @@ public static partial class Palette
     /// uses it too, to force a grading pass without waiting out the debounce.</para></summary>
     public static void ForceDue() => s_dueMs = 0;
 
+    /// <summary>Forget the pump's state: no deadline, nothing in flight, no row queued. A HEADLESS host calls it when it mounts.
+    /// The pump is process state but its clock is the host's frame clock, which restarts at zero for every new host, and a
+    /// host torn down with a batch in flight drops the answer's post: without this a later mount would wait out a deadline
+    /// from another epoch, or never grade again (`s_inFlight` stuck). The GUI has one host and one clock and never calls it.
+    /// <para>The rows a lost batch held are no longer in the queue, so the queued marker is cleared on every row, not just
+    /// the queued ones; each row keeps its fetch id, as after a failure, and re-queues on the next render-path miss.</para></summary>
+    public static void ResetPump()
+    {
+        s_armed = false;
+        s_inFlight = false;
+        s_dueMs = 0;
+        ClearQueue();
+    }
+
     /// <summary>THE shell's frame tick calls this (beside `Fetch.Drain()`), and it is the only clock this layer has.
     /// Idempotent and cheap: two comparisons when nothing is due.
     /// <para>ONE request at a time. The rows stay marked <c>Queued</c> until an answer clears them, which is what stops
