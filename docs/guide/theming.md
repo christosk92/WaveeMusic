@@ -105,18 +105,18 @@ A structure decides the numbers the core state machines run on; the machines the
 
 | Record | What the structure decides | Core machine that takes it |
 |---|---|---|
-| `NavPanePolicy` | the Wide / Narrow / Tiny window edges and their holds, what Narrow and Tiny force (`NavPaneMode`: Expanded, Compact rail, Overlay drawer, None), the expanded width bounds and default, the content floor, the seam collapse rule, whether the pane is resizable | `SidebarPaneModeRules`, `SidebarResizeRules`, `FrameModel`, `SidebarPaneBounds.Clamp` |
+| `NavPanePolicy` | what the Narrow and Tiny bands force (`NavPaneMode`: Expanded, Compact rail, Overlay drawer, None; `ModeFor(WidthTier)`), the expanded width bounds and default, the content floor, the seam collapse rule, whether the pane is resizable. The bands themselves are the window tiers (section 7): Compact is Tiny, Small is Narrow, Standard and up are Wide | `SidebarPaneModeRules`, `SidebarResizeRules`, `FrameModel`, `SidebarPaneBounds.Clamp` |
 | `PanelPolicy` | the panel's min and max width, the content it must leave to stay inline, full height, the mini player's `Video.PipBounds` | `Shell.ClampRailWidth`, `Shell.CanFitRail`, `PanelHost.FitWidthTo`, `Video.PipGesture` |
 | `PlayerBarPolicy` | six pressure levels (start width, `PlayerBarSlots`, spacing, art, hit targets), the narrowing hold and the bar height | `Shell.PlayerBar`, `Shell.PlayerBarLayout.ForTier` (so `PlayerBarRules.Overflow` and `RightWidth` follow) |
 | `ChromePolicy` | the title-bar row's `ChromeBudget`: where the actions, name and forward button may appear, what each affordance costs, the search and tab widths | `Shell.Chrome` (the allocator) |
 | `StagePolicy` | the stage's `AspectThresholds` (Compact, Portrait, Ultrawide edges and holds) | `Stage.Layout.ClassOf` / `Resolve` |
 
 `ShellCapabilities` says what the shell offers (Classic: `Unrestricted`) and `StyleMetrics` is the style's row heights and
-gutters (Classic publishes its own from `Design`). The tier policy (`TierPolicy`, `WidthTier`) is T3b's and joins this bundle.
+gutters (Classic publishes its own from `Design`). `ThemePolicies.Tiers` carries the tier policy (`TierPolicy`, `WidthTier`; section 7).
 
 - **Classic's numbers are `Themes\Classic\Structure\Rules\ClassicPolicies.cs`** and equal what the shell shipped with. The
   core keeps the same set as `ThemePolicies.Default` so it has a policy before a composition is installed and when a structure
-  publishes one it cannot run on; `ClassicPoliciesTests` pins the two equal, so a tuning PR changes both on purpose.
+  publishes one it cannot run on; `ClassicPoliciesTests` pins the two equal (the tiers aside: core never names a theme, so `Default` carries `TierPolicy.Standard` and Classic's bundle carries `ClassicTiers.Policy`), so a tuning PR changes both on purpose.
 - **A rule takes its policy as a trailing argument.** `null` is the active policy (`ShellPolicy.Now`, a plain read of
   `ThemeHost.Policies`); an effect or a render that must re-run when the policy changes passes `ShellPolicy.Tracked.<Member>`
   (the frame, the player-bar owner, the chrome allocation and the stage layout do). `ThemeHost.Policies` is the policy half of
@@ -258,3 +258,54 @@ asserts structure and geometry rules. Every member runs on the UI thread (`Shell
 
 Core tests for the machinery itself are in `Wavee.Tests\Theming\` (catalog, options, bootstrap) against fake layers; they
 live in the platform collection because `Themes` is process state.
+
+## 7. Window tiers (`TierPolicy`, `WindowTiers`, T3b)
+
+Tiers are a **core fact**; where a tier begins, how it holds across a resize and what each tier lays out are the **structure's**
+(plan section 3). The shell measures the window, the structure's ladders decide, a view reads the answer.
+
+| Piece | Where | What |
+|---|---|---|
+| `WidthTier` (Compact, Small, Standard, Huge, Huge4K), `HeightTier` (Short, Regular) | `Theming\Contracts\Tiers.cs` | the contract enums; a ladder's tier index is the enum value |
+| `TierPolicy` | `Theming\Policies\TierPolicy.cs` | three engine `TierLadder`s (window width, content width, window height), `CompactFloor` (300), `ShortFloor`, `NamedRung`s (board marks that are not tiers) and `NamedLadder`s (finer ladders a core model may read by id; Classic declares none); `ThemePolicies.Tiers` |
+| `TierFacts` | `Theming\Policies\TierFacts.cs` | what is published: `Window`, `Height`, `Content`, `ContentWidth`, the viewport size, `Resizing`, `Rung(id)` |
+| `WindowTiers` | `Shell\WindowTiers.cs` | the core rules (`EstimateContentWidth`, `Resolve`) and the frame root's `Binding` over the engine's `UseTier` |
+| `ctx.Tier()` | `Theming\TierContext.cs` | how a template reads `TierFacts` (never a width) |
+| `TierRegion`, `ITierLayoutRecord`, `TierClip` | `Theming\Policies\TierRegions.cs` | the clip-region API of a tier layout record |
+| Classic's ladders | `Themes\Classic\Structure\Rules\Tiers.cs` | the production numbers, moved out of core |
+
+**An edge** is the engine's `TierEdge(At, NarrowHold, WidenHold)`: crossed upward at `At + WidenHold`, downward below
+`At - NarrowHold`; a fresh resolve (a launch, a navigation, a first mount) uses `At`. An absent edge (`TierEdge.None`) leaves the
+band above it unreachable, so a structure that draws no Huge 4K band lets its Huge band cover every wider window. Classic holds on
+widening (528 to 568, 660 to 700); WinUI, Zune and Panorama will hold on narrowing.
+
+**The sidebar's bands are the window tiers.** `SidebarPaneModeRules.BandOf(WidthTier)` maps Compact to Tiny, Small to Narrow and the rest to Wide; `NavPanePolicy.ModeFor(WidthTier)` is what the band forces. The pane has no edges of its own, so the frame seeds its band from the window tier of the first frame and derives `Sidebar.Band` from the tier signal. **The player bar's levels are not a ladder here:** they are `PlayerBarPolicy`'s (section 2a), which carries each level's slots and spacing beside its start width and the narrowing hold.
+
+**No jumps (plan 3.3).** A first mount resolves in its own frame. A crossing found after mount is a *pending* value in the host and
+is committed on the first frame that is **not resized**, right before FLIP capture: the resized frame lays the OLD tier out at the new
+size and snaps, and the new tier crosses on the next frame as an ordinary animated update (moved nodes FLIP, swapped subtrees
+cross-fade). A composited edge drag therefore produces one crossing, at mouse-up. A size that is not positive and finite (a minimised
+window reports 0) resolves to "keep the previous tier", so a restore returns to the tier the window left.
+
+**Reading tiers.** Core models read `ThemeHost.Facts.Value.Tiers`; a template reads `ctx.Tier()` and its structure's layout record
+for that tier. The fact is republished when a tier, a rung or `Resizing` changes, not once per resized frame, so the three size members
+are the sizes *at that snapshot*; a reader that needs the live width reads `Viewport.Size`.
+
+**Content width** is the window less the sidebar column the *logical* window tier presents (the pending crossing included, so the
+content tier crosses together with the window tier) and an inline rail (`WindowTiers.EstimateContentWidth`).
+
+**Clip, never squeeze.** A tier layout record implements `ITierLayoutRecord`: it lists the regions it may clip with their minimum
+sizes, builds each with `TierRegion.Host` and puts them in a `TierClip.Ancestor`. On the resized frame a region the old tier cannot fit
+keeps its minimum and overflows into the clipping ancestor for that one refresh. Tests read the same declaration (`TierClip.ClippedAt`).
+
+**Adding a ladder.** A structure builds its `TierPolicy` in `Rules\Tiers*.cs` (WVTH003 allows literals there) and sets it on its bundle (`ClassicPolicies.Bundle` is `new(...) { Tiers = ClassicTiers.Policy }`). Keep the instance in a static property or field (in a static constructor if the ladders spread over several files): the facts compare equal only while the policy is the
+same object. A finer ladder a core model reads by id goes in `Ladders` as a `NamedLadder` (`TierPolicy.Ladder(id)`); nothing in core reads one today.
+
+**Testing.** The pure rules (`WindowTiers.Resolve`, a policy's ladders) are driven with numbers (`TierPolicyTests`); the live resize
+(resized frame keeps the old tier, the next frame crosses with tracks, a drag crosses once) is `Wavee.ShellTests\TierResizeTests`;
+`ViewHarness` resolves the tiers of a view mounted alone from its window size, with hysteresis across `Resize`.
+
+**Classic today.** Classic's window ladder is the production sidebar band (Compact below 528, Small below 660, Standard above) and has
+no Huge band; TC1 redesigns it from the boards (528 / 1008 / 1920). Not moved out of core, because none is a ladder this primitive can
+state without changing behaviour: the chrome-row allocator, the stage aspect classes, the right-rail fit and the detail page-mode
+ladder. The zoom clamp (C1b) and WVTH013 (T3c) come after.

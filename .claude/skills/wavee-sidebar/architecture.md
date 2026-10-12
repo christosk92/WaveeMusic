@@ -80,8 +80,11 @@ Coordinate space: all pane metrics are in DIP of the pane's own coordinate space
 ## 5. Modes and the window band (`Shell/Sidebar.Resize.cs`)
 
 - **`SidebarPaneMode`**: `Expanded`, `Compact`, `Minimal`. **`SidebarWindowBand`**: `Wide`, `Narrow`, `Tiny`.
-- **`SidebarPaneModeRules`** decides the band with hysteresis. Narrow is `528 ≤ w < 660` and is left at 700 (a forced
-  48-DIP rail whose toggle opens the overlay pane). Tiny is `w < 528` and is left at 568 (no rail, the drawer).
+- **`SidebarPaneModeRules`** maps the window width TIER to the band (`BandOf`; the tier, with its hysteresis, comes from the
+  structure's window ladder through `WindowTiers`, committed on the first non-resized frame). Classic's ladder is
+  `Themes/Classic/Structure/Rules/Tiers.cs`: Narrow is `528 ≤ w < 660` and is left at 700 (a forced 48-DIP rail whose
+  toggle opens the overlay pane). Tiny is `w < 528` and is left at 568 (no rail, the drawer). What a band forces is the structure's
+  `NavPanePolicy` (`ModeFor(WidthTier)`, `ForcedModeOf(band)`); every rule takes it as a trailing argument (null = the active one).
 - **`SidebarResizeRules`** owns the live width, the settle target and the fade. `UserCollapsed` is written only in the
   Wide band and only when not editing; a collapse forced by the band never reaches the saved setting.
 - The overlay pane and the rail share one list (the rail is the same `PaneView` at 48 DIP, not a second renderer).

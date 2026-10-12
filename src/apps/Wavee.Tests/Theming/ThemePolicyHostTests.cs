@@ -8,6 +8,7 @@
 
 using FluentGpu.Theming;
 using Wavee.Theming;
+using Wavee.Theming.Contracts;
 using Wavee.Themes.Classic;
 using Xunit;
 
@@ -30,14 +31,14 @@ public sealed class ThemePolicyHostTests : IDisposable
         Platform.UseSettings(null);
     }
 
-    /// <summary>Another structure's policies: the pane goes narrow at 800 (back at 860), the player bar's Medium level starts at
+    /// <summary>Another structure's policies: the Narrow band forces the drawer instead of the rail, the player bar's Medium level starts at
     /// 800, the stage is Compact under 800 wide, the panel is 260-400, the chrome row shows its actions from 500.</summary>
     static ThemePolicies Other()
     {
         var d = ThemePolicies.Default;
         return d with
         {
-            NavPane = d.NavPane with { NarrowEnterW = 800f, WideEnterW = 860f },
+            NavPane = d.NavPane with { NarrowMode = NavPaneMode.Overlay },
             PlayerBar = d.PlayerBar with { Tiers = d.PlayerBar.Tiers.SetItem(2, d.PlayerBar.Tiers[2] with { MinWidth = 800f }) },
             Panel = d.Panel with { MinWidth = 260f, MaxWidth = 400f },
             Chrome = new ChromePolicy(d.Chrome.Budget with { ActionsEnterW = 500f }),
@@ -49,18 +50,18 @@ public sealed class ThemePolicyHostTests : IDisposable
         => Fakes.Theme(id, new FakeStructure(id + ".structure", schema) { PolicyFn = policies });
 
     /// <summary>What the core rules answer for the windows where <see cref="Other"/> and the baseline differ.</summary>
-    static (SidebarWindowBand Band, Shell.PlayerBarTier Level, float Panel, bool Actions, Stage.Aspect StageClass) Probe() => (
-        SidebarPaneModeRules.BandOf(799f, SidebarWindowBand.Wide),
+    static (SidebarPaneMode NarrowPane, Shell.PlayerBarTier Level, float Panel, bool Actions, Stage.Aspect StageClass) Probe() => (
+        SidebarPaneModeRules.Resolve(SidebarWindowBand.Narrow, userCollapsed: false, editing: false),
         Shell.PlayerBar.Nominal(780f),
         Shell.ClampRailWidth(500f),
         Shell.Chrome.Resolve(1000f, 110f, null, Shell.FrameRules.ChipForm.Profile).ShowActions,
         Stage.Layout.ClassOf(700f, 500f, null));
 
-    static readonly (SidebarWindowBand, Shell.PlayerBarTier, float, bool, Stage.Aspect) s_baseline =
-        (SidebarWindowBand.Wide, Shell.PlayerBarTier.Medium, 500f, false, Stage.Aspect.Desktop);
+    static readonly (SidebarPaneMode, Shell.PlayerBarTier, float, bool, Stage.Aspect) s_baseline =
+        (SidebarPaneMode.Compact, Shell.PlayerBarTier.Medium, 500f, false, Stage.Aspect.Desktop);
 
-    static readonly (SidebarWindowBand, Shell.PlayerBarTier, float, bool, Stage.Aspect) s_other =
-        (SidebarWindowBand.Narrow, Shell.PlayerBarTier.Compact, 400f, true, Stage.Aspect.Compact);
+    static readonly (SidebarPaneMode, Shell.PlayerBarTier, float, bool, Stage.Aspect) s_other =
+        (SidebarPaneMode.Minimal, Shell.PlayerBarTier.Compact, 400f, true, Stage.Aspect.Compact);
 
     [Fact]
     public void Before_install_the_baseline_is_what_the_core_runs_on()
@@ -75,10 +76,11 @@ public sealed class ThemePolicyHostTests : IDisposable
     public void Classic_installed_publishes_its_declaration_and_changes_nothing_for_the_core()
     {
         ThemeHost.Install(ClassicTheme.Create());
-        // Equal, not the same instance: Classic's bundle equals the baseline value for value, so the policy signal keeps
-        // the instance it holds and no policy reader re-runs on the install.
+        // Equal, not the same instance: Classic's bundle equals the baseline value for value but for its window tiers (core never
+        // names a theme, so the baseline carries the Standard tiers), so the rules below answer exactly what they did.
         Assert.Equal(ClassicPolicies.Bundle, ShellPolicy.Now);
         Assert.Equal(ClassicPolicies.Bundle, ThemeHost.Facts.Peek().Policies);
+        Assert.Equal(ThemePolicies.Default, ShellPolicy.Now with { Tiers = TierPolicy.Standard });
         Assert.Equal(ShellCapabilities.Unrestricted, ThemeHost.Facts.Peek().Capabilities);
         Assert.NotEqual(StyleMetrics.Unset, ThemeHost.Facts.Peek().Metrics);
         Assert.Equal(s_baseline, Probe());
@@ -130,11 +132,11 @@ public sealed class ThemePolicyHostTests : IDisposable
     [Fact]
     public void A_policy_the_shell_cannot_run_on_is_replaced_by_the_baseline()
     {
-        // An inverted pane band, a player bar with five levels: either alone is enough.
+        // An inverted pane width range, a player bar with five levels: either alone is enough.
         ThemeHost.Install(Structured("bad", static (_, _) =>
         {
             var d = ThemePolicies.Default;
-            return d with { NavPane = d.NavPane with { TinyEnterW = 700f, NarrowEnterW = 50f } };
+            return d with { NavPane = d.NavPane with { MinWidth = 500f } };
         }));
         Assert.Same(ThemePolicies.Default, ShellPolicy.Now);
         Assert.Same(ThemePolicies.Default, ThemeHost.Facts.Peek().Policies);
@@ -174,12 +176,14 @@ public sealed class ThemePolicyHostTests : IDisposable
     public void The_pane_resolves_a_fresh_launch_through_the_active_policy()
     {
         ThemeHost.Install(Structured("zune", static (_, _) => Other()));
-        var seed = FrameModel.Seed(new WindowFacts(750f, 800f), userCollapsed: false, editing: false, expandedWidth: 320f);
+        var seed = FrameModel.Seed(new WindowFacts(600f, 800f), WidthTier.Small, userCollapsed: false, editing: false, expandedWidth: 320f);
         Assert.Equal(SidebarWindowBand.Narrow, seed.Band);
-        Assert.Equal(SidebarPaneMode.Compact, seed.Mode);
+        Assert.Equal(SidebarPaneMode.Minimal, seed.Mode);   // the other structure's Narrow band is the drawer
         ThemeHost.Install(Plain("classic"));
-        var classic = FrameModel.Seed(new WindowFacts(750f, 800f), userCollapsed: false, editing: false, expandedWidth: 320f);
-        Assert.Equal(SidebarWindowBand.Wide, classic.Band);
+        var classic = FrameModel.Seed(new WindowFacts(600f, 800f), WidthTier.Small, userCollapsed: false, editing: false, expandedWidth: 320f);
+        Assert.Equal(SidebarWindowBand.Narrow, classic.Band);
+        Assert.Equal(SidebarPaneMode.Compact, classic.Mode);
+        Assert.Equal(SidebarWindowBand.Wide, FrameModel.Seed(new WindowFacts(750f, 800f), WidthTier.Standard, userCollapsed: false, editing: false, expandedWidth: 320f).Band);
     }
 
     static ThemeComposition Plain(string id) => Fakes.Theme(id);

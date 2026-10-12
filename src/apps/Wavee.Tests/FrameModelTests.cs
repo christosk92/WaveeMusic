@@ -1,9 +1,11 @@
 // ── Wavee.Tests/FrameModelTests.cs — the frame's pure decisions (Shell/FrameModel.cs, PR C8) ───────────────────────
 //
 // `FrameRoot` used to seed the sidebar's band and mode, derive the band from the window width and resolve the mode and the
-// presented width inline. These tests drive the REAL decisions (`FrameModel`) over the sidebar's own constants, so any
-// future tier policy that replaces the constants changes one place and these say what the frame does with them today.
+// presented width inline. These tests drive the REAL decisions (`FrameModel`) over Classic's window ladder (the structure's
+// tier policy, T3b), so they say what the frame does with Classic's numbers today.
 
+using Wavee.Tests.Theming;
+using Wavee.Theming.Contracts;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -21,7 +23,7 @@ public class FrameModelTests
     [InlineData(500f, SidebarWindowBand.Tiny, SidebarPaneMode.Minimal)]
     public void A_launch_seeds_the_band_and_mode_for_its_first_width(float width, SidebarWindowBand band, SidebarPaneMode mode)
     {
-        var pane = FrameModel.Seed(new WindowFacts(width, 760f), userCollapsed: false, editing: false, Expanded);
+        var pane = FrameModel.Seed(new WindowFacts(width, 760f), ClassicTierFixture.FreshWindow(width), userCollapsed: false, editing: false, Expanded);
         Assert.Equal(band, pane.Band);
         Assert.Equal(mode, pane.Mode);
         Assert.Equal(SidebarPaneModeRules.PresentedWidth(mode, Expanded, width), pane.PresentedWidth);
@@ -31,13 +33,13 @@ public class FrameModelTests
     [Fact]
     public void The_users_collapse_decides_only_in_the_wide_band_and_editing_overrides_it()
     {
-        var collapsed = FrameModel.Seed(new WindowFacts(1180f, 760f), userCollapsed: true, editing: false, Expanded);
+        var collapsed = FrameModel.Seed(new WindowFacts(1180f, 760f), WidthTier.Standard, userCollapsed: true, editing: false, Expanded);
         Assert.Equal(SidebarPaneMode.Compact, collapsed.Mode);
 
-        var editing = FrameModel.Seed(new WindowFacts(1180f, 760f), userCollapsed: true, editing: true, Expanded);
+        var editing = FrameModel.Seed(new WindowFacts(1180f, 760f), WidthTier.Standard, userCollapsed: true, editing: true, Expanded);
         Assert.Equal(SidebarPaneMode.Expanded, editing.Mode);
 
-        var narrow = FrameModel.Seed(new WindowFacts(600f, 760f), userCollapsed: false, editing: false, Expanded);
+        var narrow = FrameModel.Seed(new WindowFacts(600f, 760f), ClassicTierFixture.FreshWindow(600f), userCollapsed: false, editing: false, Expanded);
         Assert.Equal(SidebarPaneMode.Compact, narrow.Mode);   // a forced mode never writes the preference
     }
 
@@ -51,8 +53,8 @@ public class FrameModelTests
     [InlineData(SidebarWindowBand.Tiny, 550f, SidebarWindowBand.Tiny)]       // leaves at 568
     [InlineData(SidebarWindowBand.Tiny, 568f, SidebarWindowBand.Narrow)]
     [InlineData(SidebarWindowBand.Tiny, 0f, SidebarWindowBand.Tiny)]          // a minimized window never moves it
-    public void The_band_is_the_sidebars_hysteretic_function_of_the_width(SidebarWindowBand from, float width, SidebarWindowBand expected)
-        => Assert.Equal(expected, FrameModel.NextBand(new WindowFacts(width, 700f), from));
+    public void The_band_is_the_window_ladders_hysteretic_function_of_the_width(SidebarWindowBand from, float width, SidebarWindowBand expected)
+        => Assert.Equal(expected, FrameModel.BandOf(ClassicTierFixture.NextWindow(width, from)));
 
     [Theory]
     [InlineData(SidebarWindowBand.Wide)]

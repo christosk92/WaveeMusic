@@ -435,12 +435,16 @@ public sealed class ThemeCatalogTests : IDisposable
     public void Classic_AsTheOnlyTheme_IsActiveAfterInstall_WithoutTouchingTheTokens()
     {
         var before = Tok.Definition;
-        ThemeHost.Install(Wavee.Themes.Classic.ClassicTheme.Create());
+        var classic = Wavee.Themes.Classic.ClassicTheme.Create();
+        ThemeHost.Install(classic);
         Assert.Equal("classic", ThemeHost.Current.Peek().Manifest.Id);
         Assert.Same(before, Tok.Definition);
-        // Classic decides the shell's policies (the baseline) and publishes its own metrics; the capabilities and the tier fact are the defaults.
+        // Classic decides the shell's policies (the baseline, plus its window tiers, T3b) and publishes its own metrics; the
+        // capabilities and the tier FACT (no frame has resolved one) are the defaults.
         var facts = ThemeHost.Facts.Peek();
-        Assert.Equal(ThemeFacts.Default.Policies, facts.Policies);
+        Assert.Equal(Wavee.Themes.Classic.ClassicPolicies.Bundle, facts.Policies);
+        Assert.Same(Wavee.Themes.Classic.ClassicPolicies.Bundle.Tiers, facts.Policies.Tiers);   // ClassicTiers.Policy (internal): the bundle carries it
+        Assert.NotSame(TierPolicy.Standard, facts.Policies.Tiers);
         Assert.Equal(ThemeFacts.Default.Capabilities, facts.Capabilities);
         Assert.Equal(ThemeFacts.Default.Tiers, facts.Tiers);
         Assert.NotEqual(ThemeFacts.Default.Metrics, facts.Metrics);

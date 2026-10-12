@@ -1,11 +1,12 @@
 // ── Theming/Policies/ThemePolicies.cs — what a structure decides for the core (themes plan 5.5) ───────────────────────
 //
-//   · `ThemePolicies`      the policy bundle a structure returns: nav pane, panel, player bar, chrome, stage. Each member is
+//   · `ThemePolicies`      the policy bundle a structure returns: nav pane, panel, player bar, chrome, stage, and the window tiers
+//                          (`Tiers`, T3b, an init property beside the five). Each member is
 //                          its own file; the core state machines (`SidebarPaneModeRules`, `Shell.Chrome`, `PlayerBarLayout`,
 //                          `Stage.Layout`, `PanelHost`, the mini player) take the member instead of Classic constants.
 //   · `ShellCapabilities`  what the shell offers. `Unrestricted` is "every feature on", which is what Classic is today.
 //   · `StyleMetrics`       the style's row heights and gutters. A style publishes them; `Unset` (all zero) means "none".
-//   · `TierFacts`          the window-tier fact (T3b). A placeholder with no members yet.
+//   · `TierFacts`          the window-tier fact (T3b): `Theming/Policies/TierFacts.cs`, with `TierPolicy` beside it.
 //   · `ThemeFacts`         the bundle `ThemeHost.Facts` publishes and `ThemeFactsContext` mirrors for templates.
 
 using FluentGpu.Hooks;
@@ -14,7 +15,7 @@ using FluentGpu.Signals;
 namespace Wavee.Theming;
 
 /// <summary>The policy bundle of the active structure. Equality is by value, so an unchanged bundle republished is not a
-/// change. T3b adds the tier policy (<c>TierPolicy Tiers</c>) beside these.</summary>
+/// change. The window tiers (<see cref="Tiers"/>) ride beside the positional policies.</summary>
 /// <param name="NavPane">The navigation pane: window bands, widths, the seam.</param>
 /// <param name="Panel">The right panel and the mini player.</param>
 /// <param name="PlayerBar">The player bar's pressure levels.</param>
@@ -28,6 +29,10 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
     public static ThemePolicies Default { get; } = new(
         NavPanePolicy.Default, PanelPolicy.Default, PlayerBarPolicy.Default, ChromePolicy.Default, StagePolicy.Default);
 
+    /// <summary>The structure's window tiers (T3b). A structure that declares none is Standard at every size; the core never
+    /// names a theme, so <see cref="Default"/> carries <see cref="TierPolicy.Standard"/> and Classic's bundle replaces it.</summary>
+    public TierPolicy Tiers { get; init; } = TierPolicy.Standard;
+
     /// <summary>Everything wrong with the bundle, empty when every core state machine can run on it.</summary>
     public IReadOnlyList<string> Validate()
     {
@@ -37,6 +42,7 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
         if (PlayerBar is null) problems.Add("PlayerBar is missing"); else problems.AddRange(PlayerBar.Validate());
         if (Chrome is null) problems.Add("Chrome is missing"); else problems.AddRange(Chrome.Validate());
         if (Stage is null) problems.Add("Stage is missing"); else problems.AddRange(Stage.Validate());
+        if (Tiers is null) problems.Add("Tiers is missing"); else problems.AddRange(Tiers.Validate());
         return problems;
     }
 }
@@ -64,14 +70,6 @@ public readonly record struct StyleMetrics(
     /// <summary>No metric published (every member 0): what a style that publishes none answers. Wavee Classic publishes its own
     /// (<c>ClassicStyle.Metrics</c>).</summary>
     public static StyleMetrics Unset => default;
-}
-
-/// <summary>The window-tier fact of themes plan 3.2 (T3b adds the width and height tiers and the content width). A
-/// placeholder in T1 so <see cref="ThemeFacts"/> already has its final shape.</summary>
-public readonly record struct TierFacts
-{
-    /// <summary>No tier information yet.</summary>
-    public static TierFacts Unknown => default;
 }
 
 /// <summary>What the active composition publishes for the core: policies, capabilities, metrics and tiers. Core models

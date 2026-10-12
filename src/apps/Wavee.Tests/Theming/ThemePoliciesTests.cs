@@ -3,15 +3,17 @@
 // Two questions, both answered with plain numbers (no engine, no process state):
 //   1. CLASSIC BEHAVES AS TODAY. `ClassicPolicies` is the numbers the shell shipped with; the pre-T3 behaviour of each state
 //      machine is restated here (the player bar's per-level layout, its ladder) or pinned by the existing rule tests, which keep
-//      running on the baseline policy. The baseline and Classic's declaration are the same value.
+//      running on the baseline policy. The baseline and Classic's declaration are the same value, the window tiers aside (the
+//      edges of the bands are the tier ladder's, T3b: `TierPolicyTests`, and here through `ClassicTierFixture`).
 //   2. ANOTHER POLICY CHANGES IT, AS SPECIFIED. Each machine is driven with a policy that differs in exactly one thing and the
-//      difference is asserted: band edges, what a band forces, a fixed pane, width bounds, a level's slots, a budget entry, the
+//      difference is asserted: what a band forces, a fixed pane, width bounds, a level's slots, a budget entry, the
 //      stage's edges, the panel's bounds and the mini player's.
 //
 // Nothing here installs a theme: the rules take the policy as an argument. The installed-theme path is `ThemePolicyHostTests`.
 
 using System.Collections.Immutable;
 using Wavee.Theming;
+using Wavee.Theming.Contracts;
 using Wavee.Themes.Classic;
 using Xunit;
 using L = Wavee.Stage.Layout;
@@ -24,7 +26,9 @@ public sealed class ClassicPoliciesTests
     [Fact]
     public void Classic_declares_exactly_the_shell_baseline()
     {
-        Assert.Equal(ThemePolicies.Default, ClassicPolicies.Bundle);
+        Assert.Equal(ThemePolicies.Default, ClassicPolicies.Bundle with { Tiers = TierPolicy.Standard });   // core never names a theme: Default carries Standard tiers
+        Assert.NotSame(TierPolicy.Standard, ClassicPolicies.Bundle.Tiers);
+        Assert.NotEqual(ThemePolicies.Default, ClassicPolicies.Bundle);
         Assert.Equal(NavPanePolicy.Default, ClassicPolicies.NavPane);
         Assert.Equal(PanelPolicy.Default, ClassicPolicies.Panel);
         Assert.Equal(PlayerBarPolicy.Default, ClassicPolicies.PlayerBar);
@@ -92,10 +96,10 @@ public sealed class ClassicPoliciesTests
     public void Validation_names_what_is_wrong()
     {
         var d = ThemePolicies.Default;
-        Assert.NotEmpty((d with { NavPane = d.NavPane with { TinyEnterW = 700f } }).Validate());          // 700 > TinyLeaveW 568
         Assert.NotEmpty((d with { NavPane = d.NavPane with { MinWidth = 500f } }).Validate());           // min > max
         Assert.NotEmpty((d with { NavPane = d.NavPane with { DefaultWidth = 100f } }).Validate());       // default outside the bounds
-        Assert.NotEmpty((d with { NavPane = d.NavPane with { WideEnterW = float.NaN } }).Validate());
+        Assert.NotEmpty((d with { NavPane = d.NavPane with { ContentFloorW = float.NaN } }).Validate());
+        Assert.NotEmpty((d with { Tiers = d.Tiers with { CompactFloor = 0f } }).Validate());                  // the tiers are validated too
         Assert.NotEmpty((d with { Panel = d.Panel with { MinWidth = 600f } }).Validate());
         Assert.NotEmpty((d with { PlayerBar = d.PlayerBar with { Tiers = d.PlayerBar.Tiers.RemoveAt(5) } }).Validate());   // five levels
         Assert.NotEmpty((d with { PlayerBar = d.PlayerBar with { Tiers = d.PlayerBar.Tiers.SetItem(1, d.PlayerBar.Tiers[1] with { MinWidth = 0f }) } }).Validate());   // not rising
@@ -111,7 +115,7 @@ public sealed class NavPanePolicyRulesTests
 {
     static readonly NavPanePolicy Classic = ClassicPolicies.NavPane;
 
-    // ── Classic: today's edges, at the bounds ───────────────────────────────────────────────────────────────────────
+    // ── Classic: today's edges (the window ladder's), at the bounds ─────────────────────────────────────────────────
 
     [Theory]
     [InlineData(660f, SidebarWindowBand.Wide, SidebarWindowBand.Wide)]
@@ -126,8 +130,7 @@ public sealed class NavPanePolicyRulesTests
     [InlineData(700f, SidebarWindowBand.Tiny, SidebarWindowBand.Wide)]
     public void Classic_bands_move_at_the_edges_it_always_had(float width, SidebarWindowBand from, SidebarWindowBand expected)
     {
-        Assert.Equal(expected, SidebarPaneModeRules.BandOf(width, from, Classic));
-        Assert.Equal(expected, SidebarPaneModeRules.BandOf(width, from));   // the active policy is the baseline
+        Assert.Equal(expected, ClassicTierFixture.BandOf(width, from));
     }
 
     [Fact]
@@ -152,45 +155,49 @@ public sealed class NavPanePolicyRulesTests
         Assert.False(SidebarPaneModeRules.CanTogglePane(SidebarWindowBand.Wide, true, Classic));
     }
 
-    // ── another policy: the edges ───────────────────────────────────────────────────────────────────────────────────
+    // ── the bands are the window tiers; the policy decides what each forces ────────────────────────────────────────────
 
     [Fact]
-    public void Other_edges_move_the_bands()
+    public void A_window_tier_is_a_band_and_the_policy_answers_what_it_forces()
     {
-        var p = Classic with { TinyEnterW = 600f, TinyLeaveW = 640f, NarrowEnterW = 800f, WideEnterW = 860f };
-        Assert.Empty((ThemePolicies.Default with { NavPane = p }).Validate());
-        Assert.Equal(SidebarWindowBand.Narrow, SidebarPaneModeRules.BandOf(799f, SidebarWindowBand.Wide, p));
-        Assert.Equal(SidebarWindowBand.Wide, SidebarPaneModeRules.BandOf(799f, SidebarWindowBand.Wide, Classic));
-        Assert.Equal(SidebarWindowBand.Narrow, SidebarPaneModeRules.BandOf(850f, SidebarWindowBand.Narrow, p));
-        Assert.Equal(SidebarWindowBand.Wide, SidebarPaneModeRules.BandOf(860f, SidebarWindowBand.Narrow, p));
-        Assert.Equal(SidebarWindowBand.Tiny, SidebarPaneModeRules.BandOf(599f, SidebarWindowBand.Wide, p));
-        Assert.Equal(SidebarWindowBand.Tiny, SidebarPaneModeRules.BandOf(630f, SidebarWindowBand.Tiny, p));
-        Assert.Equal(SidebarWindowBand.Narrow, SidebarPaneModeRules.BandOf(640f, SidebarWindowBand.Tiny, p));
-        // A fresh launch asks from Wide: only the entering edges apply.
-        Assert.Equal(SidebarWindowBand.Narrow, SidebarPaneModeRules.InitialBand(700f, p));
-        Assert.Equal(SidebarWindowBand.Wide, SidebarPaneModeRules.InitialBand(700f, Classic));
+        Assert.Equal(SidebarWindowBand.Tiny, SidebarPaneModeRules.BandOf(WidthTier.Compact));
+        Assert.Equal(SidebarWindowBand.Narrow, SidebarPaneModeRules.BandOf(WidthTier.Small));
+        foreach (var tier in new[] { WidthTier.Standard, WidthTier.Huge, WidthTier.Huge4K })
+            Assert.Equal(SidebarWindowBand.Wide, SidebarPaneModeRules.BandOf(tier));
+        Assert.Equal(NavPaneMode.Overlay, Classic.ModeFor(WidthTier.Compact));
+        Assert.Equal(NavPaneMode.Compact, Classic.ModeFor(WidthTier.Small));
+        Assert.Equal(NavPaneMode.Expanded, Classic.ModeFor(WidthTier.Standard));
+        var p = Classic with { NarrowMode = NavPaneMode.None, TinyMode = NavPaneMode.Compact };
+        Assert.Equal(NavPaneMode.Compact, p.ModeFor(WidthTier.Compact));
+        Assert.Equal(NavPaneMode.None, p.ModeFor(WidthTier.Small));
+        Assert.Equal(NavPaneMode.Expanded, p.ModeFor(WidthTier.Huge));
     }
 
     [Fact]
-    public void A_degenerate_width_never_moves_a_band_under_any_policy()
+    public void A_degenerate_width_never_moves_a_band()
     {
-        var p = Classic with { NarrowEnterW = 800f, WideEnterW = 860f };
         foreach (float w in new[] { 0f, -5f, float.NaN, float.PositiveInfinity })
-            Assert.Equal(SidebarWindowBand.Narrow, SidebarPaneModeRules.BandOf(w, SidebarWindowBand.Narrow, p));
+            Assert.Equal(SidebarWindowBand.Narrow, ClassicTierFixture.BandOf(w, SidebarWindowBand.Narrow));
     }
 
     [Fact]
-    public void The_frame_seed_follows_the_policy()
+    public void The_frame_seed_follows_the_tier_and_the_policy()
     {
-        var p = Classic with { NarrowEnterW = 800f, WideEnterW = 860f };
-        var classic = FrameModel.Seed(new WindowFacts(750f, 800f), userCollapsed: false, editing: false, expandedWidth: 320f, Classic);
+        var classic = FrameModel.Seed(new WindowFacts(750f, 800f), ClassicTierFixture.FreshWindow(750f),
+            userCollapsed: false, editing: false, expandedWidth: 320f, policy: Classic);
         Assert.Equal(SidebarWindowBand.Wide, classic.Band);
         Assert.Equal(SidebarPaneMode.Expanded, classic.Mode);
         Assert.Equal(270f, classic.PresentedWidth);   // 750 less the 480 content floor
-        var other = FrameModel.Seed(new WindowFacts(750f, 800f), userCollapsed: false, editing: false, expandedWidth: 320f, p);
-        Assert.Equal(SidebarWindowBand.Narrow, other.Band);
-        Assert.Equal(SidebarPaneMode.Compact, other.Mode);
-        Assert.Equal(SidebarRowGeometry.RailWidth, other.PresentedWidth);
+        var small = FrameModel.Seed(new WindowFacts(600f, 800f), ClassicTierFixture.FreshWindow(600f),
+            userCollapsed: false, editing: false, expandedWidth: 320f, policy: Classic);
+        Assert.Equal(SidebarWindowBand.Narrow, small.Band);
+        Assert.Equal(SidebarPaneMode.Compact, small.Mode);
+        Assert.Equal(SidebarRowGeometry.RailWidth, small.PresentedWidth);
+        var drawer = FrameModel.Seed(new WindowFacts(600f, 800f), ClassicTierFixture.FreshWindow(600f),
+            userCollapsed: false, editing: false, expandedWidth: 320f, policy: Classic with { NarrowMode = NavPaneMode.Overlay });
+        Assert.Equal(SidebarWindowBand.Narrow, drawer.Band);
+        Assert.Equal(SidebarPaneMode.Minimal, drawer.Mode);
+        Assert.Equal(0f, drawer.PresentedWidth);
     }
 
     // ── another policy: what a band forces ──────────────────────────────────────────────────────────────────────────

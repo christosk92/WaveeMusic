@@ -102,13 +102,20 @@ public sealed class ViewHarness : IDisposable
 
         if (composition is null)
         {
+            // No frame root resolves the tiers of a view mounted alone: resolve them from the window the view is mounted at.
+            TierFacts tiers = WindowTiers.Resolve(ThemeHost.Facts.Peek().Policies.Tiers, options.WidthDip, options.HeightDip, options.WidthDip);
+            ThemeHost.PublishTiers(in tiers);
             content = () => Slots.View(key, props);
         }
         else
         {
             store = new ThemeOptionStore(composition, new InMemorySettings());
             values = ApplyOptions(composition, store, options.Options);
-            var ownFacts = new Signal<ThemeFacts>(composition.Facts(values));
+            ThemeFacts compositionFacts = composition.Facts(values);
+            var ownFacts = new Signal<ThemeFacts>(compositionFacts with
+            {
+                Tiers = WindowTiers.Resolve(compositionFacts.Policies.Tiers, options.WidthDip, options.HeightDip, options.WidthDip),
+            });
             facts = ownFacts;
             TokenState.UseDefinition(composition.Definition(values, ThemeHost.OsAccent), options.Kind ?? restoreKind);
             ViewRegistry registry = composition.Registry;
@@ -204,8 +211,18 @@ public sealed class ViewHarness : IDisposable
     /// <summary>Runs <paramref name="count"/> frames.</summary>
     public void RunFrames(int count) => Shell.RunFrames(count);
 
-    /// <summary>Resizes the window; the next frame lays out in the new viewport.</summary>
-    public void Resize(float widthDip, float heightDip) => Shell.Resize(widthDip, heightDip);
+    /// <summary>Resizes the window; the next frame lays out in the new viewport. The tiers the view reads follow the new size
+    /// at once (hysteresis from the previous ones): a view mounted alone has no frame root, so there is no resized frame to
+    /// defer the crossing past.</summary>
+    public void Resize(float widthDip, float heightDip)
+    {
+        Shell.Resize(widthDip, heightDip);
+        ThemeFacts current = Facts.Peek();
+        TierFacts previous = current.Tiers;
+        TierFacts next = WindowTiers.Resolve(current.Policies.Tiers, widthDip, heightDip, widthDip, previous: previous);
+        if (Composition is not null) ((Signal<ThemeFacts>)Facts).Value = current with { Tiers = next };
+        else ThemeHost.PublishTiers(in next);
+    }
 
     /// <summary>Writes an option of the composition the view renders under and runs frames until it settles (the views that
     /// read the cell re-render). The facts follow.</summary>
@@ -217,7 +234,7 @@ public sealed class ViewHarness : IDisposable
             ?? throw new ArgumentException($"ViewHarness: theme '{Composition.Manifest.Id}' has no option '{qualifiedId}'.");
         if (!Store.Publish(option, value))
             throw new ArgumentException($"ViewHarness: '{value}' is not a new valid value of option '{qualifiedId}'.");
-        ((Signal<ThemeFacts>)Facts).Value = Composition.Facts(Store.Snapshot());
+        ((Signal<ThemeFacts>)Facts).Value = Composition.Facts(Store.Snapshot()) with { Tiers = Facts.Peek().Tiers };
         Shell.RunFrames(frames);
     }
 

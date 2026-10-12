@@ -5,8 +5,11 @@
 // per-band answers are the structure's, and arrive here as a value. `Default` is the shell as it shipped before themes (the
 // values Wavee Classic declares): used until a composition is installed and as the fallback of an invalid policy.
 //
-// T3 expresses the bands as the pane's own width edges. T3b replaces the three width edges with the structure's tier
-// ladder (`ModeFor(WidthTier)`); the per-band modes, the width bounds and the seam rules stay as they are here.
+// WHERE the bands begin is not the pane's: the bands are the window's width tiers (T3b, `TierPolicy.Window`; Classic's
+// edges are `Themes\Classic\Structure\Rules\Tiers.cs`) and `SidebarPaneModeRules.BandOf(WidthTier)` reads them. The policy
+// decides what each band forces (`ModeFor(WidthTier)`), the width bounds and the seam rules.
+
+using Wavee.Theming.Contracts;
 
 namespace Wavee.Theming;
 
@@ -24,10 +27,6 @@ public enum NavPaneMode : byte
 }
 
 /// <summary>The navigation pane's policy.</summary>
-/// <param name="TinyEnterW">Window width below which the Tiny band starts (leaving Wide or Narrow).</param>
-/// <param name="TinyLeaveW">Window width at which Tiny is left (a widening hold above <see cref="TinyEnterW"/>).</param>
-/// <param name="NarrowEnterW">Window width below which Wide becomes Narrow.</param>
-/// <param name="WideEnterW">Window width at which Narrow or Tiny become Wide again (a widening hold above <see cref="NarrowEnterW"/>).</param>
 /// <param name="ContentFloorW">The content width the docked pane leaves: the expanded pane never presents wider than the
 /// window minus this.</param>
 /// <param name="MinWidth">The narrowest an expanded pane may be.</param>
@@ -41,17 +40,15 @@ public enum NavPaneMode : byte
 /// <see cref="DefaultWidth"/> and the seam does not exist.</param>
 /// <param name="Seam">The seam strip's width where the pane is docked and resizable.</param>
 public sealed record NavPanePolicy(
-    float TinyEnterW, float TinyLeaveW, float NarrowEnterW, float WideEnterW, float ContentFloorW,
+    float ContentFloorW,
     float MinWidth, float MaxWidth, float DefaultWidth,
     float CollapseApproach, float CollapseHysteresis,
     NavPaneMode NarrowMode, NavPaneMode TinyMode, bool Resizable, float Seam)
 {
-    /// <summary>The shell before themes: 528 / 568 and 660 / 700 with a 40-DIP hold, a 480 content floor, an expanded
+    /// <summary>The shell before themes: a 480 content floor, an expanded
     /// pane of 180-460 (320 fresh), a drag collapse 64 below the minimum with a 24 hold, a forced rail in Narrow and the
     /// drawer in Tiny, a resizable pane with a 16-DIP seam.</summary>
     public static NavPanePolicy Default { get; } = new(
-        TinyEnterW: SidebarPaneModeRules.TinyEnterW, TinyLeaveW: SidebarPaneModeRules.TinyLeaveW,
-        NarrowEnterW: SidebarPaneModeRules.NarrowEnterW, WideEnterW: SidebarPaneModeRules.WideEnterW,
         ContentFloorW: SidebarPaneModeRules.ContentFloorW,
         MinWidth: SidebarPaneBounds.NavPaneMinW, MaxWidth: SidebarPaneBounds.NavPaneMaxW, DefaultWidth: SidebarPaneBounds.DefaultWidth,
         CollapseApproach: SidebarResizeRules.RegimePush, CollapseHysteresis: SidebarResizeRules.RegimeHysteresis,
@@ -84,6 +81,10 @@ public sealed record NavPanePolicy(
         _ => NavPaneMode.Expanded,
     };
 
+    /// <summary>What a window width tier forces: the tier's band (<see cref="SidebarPaneModeRules.BandOf(WidthTier)"/>) through
+    /// <see cref="ForcedModeOf"/>.</summary>
+    public NavPaneMode ModeFor(WidthTier tier) => ForcedModeOf(SidebarPaneModeRules.BandOf(tier));
+
     /// <summary>Everything wrong with the policy, empty when it can drive the pane.</summary>
     public IReadOnlyList<string> Validate()
     {
@@ -92,10 +93,6 @@ public sealed record NavPanePolicy(
         {
             if (!float.IsFinite(v) || v < 0f || (!allowZero && v == 0f)) problems.Add($"NavPane.{name} must be {(allowZero ? "zero or more" : "positive")} and finite (was {v})");
         }
-        Finite(nameof(TinyEnterW), TinyEnterW, false);
-        Finite(nameof(TinyLeaveW), TinyLeaveW, false);
-        Finite(nameof(NarrowEnterW), NarrowEnterW, false);
-        Finite(nameof(WideEnterW), WideEnterW, false);
         Finite(nameof(ContentFloorW), ContentFloorW, true);
         Finite(nameof(MinWidth), MinWidth, false);
         Finite(nameof(MaxWidth), MaxWidth, false);
@@ -104,10 +101,6 @@ public sealed record NavPanePolicy(
         Finite(nameof(CollapseHysteresis), CollapseHysteresis, true);
         Finite(nameof(Seam), Seam, true);
         if (problems.Count > 0) return problems;
-        if (TinyEnterW > TinyLeaveW) problems.Add("NavPane.TinyEnterW must not exceed TinyLeaveW");
-        if (TinyLeaveW > WideEnterW) problems.Add("NavPane.TinyLeaveW must not exceed WideEnterW");
-        if (TinyEnterW > NarrowEnterW) problems.Add("NavPane.TinyEnterW must not exceed NarrowEnterW");
-        if (NarrowEnterW > WideEnterW) problems.Add("NavPane.NarrowEnterW must not exceed WideEnterW");
         if (MinWidth > MaxWidth) problems.Add("NavPane.MinWidth must not exceed MaxWidth");
         if (DefaultWidth < MinWidth || DefaultWidth > MaxWidth) problems.Add("NavPane.DefaultWidth must lie inside [MinWidth, MaxWidth]");
         if (!Enum.IsDefined(NarrowMode)) problems.Add("NavPane.NarrowMode is not a NavPaneMode");

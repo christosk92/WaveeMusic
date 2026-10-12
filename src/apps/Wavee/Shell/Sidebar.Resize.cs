@@ -4,18 +4,20 @@
 // Role: CORE
 // Plan: docs/plans/wavee/sidebar-rework-implementation.md §P2.1
 //
-// The pane reads the viewport only: the window's width band picks the mode (Expanded, Compact rail, Minimal drawer),
-// and the user's collapse decides only in a band that forces nothing (Wide). Forced modes never write the user's collapse.
-// Everything here is engine-free — no signal, no clock, no Element — so Wavee.Tests drives every branch. `public` because
-// Wavee.Tests is a ProjectReference with no InternalsVisibleTo.
+// The pane reads the window only: the window's width TIER picks the band (T3b: the structure's window ladder, with its
+// hysteresis, decides where the bands begin; Classic's 528 / 568 and 660 / 700 live in `Themes\Classic\Structure\Rules\Tiers.cs`),
+// the band picks the mode (Expanded, Compact rail, Minimal drawer), and the user's collapse decides only in the Wide band.
+// Forced modes never write the user's collapse. Everything here is engine-free — no signal, no clock, no Element — so
+// Wavee.Tests drives every branch. `public` because Wavee.Tests is a ProjectReference with no InternalsVisibleTo.
 //
-// THE NUMBERS ARE THE STRUCTURE'S (themes plan 5.5, T3). Every rule takes a trailing `NavPanePolicy? policy`: the band
-// edges, the content floor, the width bounds, what each band forces and whether the pane is resizable. Null answers for the
-// ACTIVE policy (`ShellPolicy.Now`), so a caller that does not care gets the structure's; an effect or a render that must
-// re-run when the policy changes passes `ShellPolicy.Tracked.NavPane`. The consts below are the shell's baseline, which
-// `NavPanePolicy.Default` (what Wavee Classic declares) is built from; no rule reads them.
+// THE NUMBERS ARE THE STRUCTURE'S (themes plan 5.5, T3). Every rule takes a trailing `NavPanePolicy? policy`: the content
+// floor, the width bounds, what each band forces and whether the pane is resizable (the band EDGES are the window tiers, not
+// the policy's). Null answers for the ACTIVE policy (`ShellPolicy.Now`), so a caller that does not care gets the structure's;
+// an effect or a render that must re-run when the policy changes passes `ShellPolicy.Tracked.NavPane`. The consts below are
+// the shell's baseline, which `NavPanePolicy.Default` (what Wavee Classic declares) is built from; no rule reads them.
 
 using Wavee.Theming;
+using Wavee.Theming.Contracts;
 
 namespace Wavee;
 
@@ -23,9 +25,11 @@ namespace Wavee;
 /// CompactInline), Compact (the 48-px rail, inline), Minimal (no rail; the toggle opens the overlay drawer).</summary>
 public enum SidebarPaneMode : byte { Expanded = 0, Compact = 1, Minimal = 2 }
 
-/// <summary>The window's width band, hysteretic. Wide: the user's collapse decides. Narrow (Classic: 528 ≤ w &lt; 660, leave
-/// at 700): a FORCED rail whose toggle opens the overlay pane. Tiny (Classic: w &lt; 528 = 48 + 480, leave at 568): no rail,
-/// the drawer. What each band forces is the policy's (<see cref="NavPanePolicy.NarrowMode"/>, <see cref="NavPanePolicy.TinyMode"/>).</summary>
+/// <summary>The window's width band, the sidebar's reading of the window <see cref="WidthTier"/>. Wide (Standard and up): the
+/// user's collapse decides. Narrow (Small): a FORCED rail whose toggle opens the overlay pane. Tiny (Compact): no rail, the
+/// drawer. Where each begins is the structure's window ladder (Classic: Narrow from 528, leaving Tiny at 568; Wide from 660,
+/// leaving Narrow at 700). What each band forces is the policy's (<see cref="NavPanePolicy.NarrowMode"/>,
+/// <see cref="NavPanePolicy.TinyMode"/>).</summary>
 public enum SidebarWindowBand : byte { Wide = 0, Narrow = 1, Tiny = 2 }
 
 /// <summary>THE MODE RULES (design V.1). The pane reads the viewport ONLY; the right rail reads the pane's presented width
@@ -36,32 +40,15 @@ public static class SidebarPaneModeRules
 {
     /// <summary>The shell's baseline content floor (<c>Shell.MinContentW</c>).</summary>
     public const float ContentFloorW = 480f;
-    public const float NarrowEnterW = 660f;   // below: forced rail
-    public const float WideEnterW = 700f;     // the Narrow → Wide edge (hysteresis 40)
-    public const float TinyEnterW = 528f;     // below: no rail (48 + 480)
-    public const float TinyLeaveW = 568f;     // the Tiny → Narrow edge (hysteresis 40)
 
-    /// <summary>The next band from the viewport width and the current band. A non-positive or non-finite width (a
-    /// minimized window) never moves it.</summary>
-    public static SidebarWindowBand BandOf(float viewportW, SidebarWindowBand current, NavPanePolicy? policy = null)
+    /// <summary>The band of a window width tier: Compact is Tiny, Small is Narrow, Standard and up are Wide. The hysteresis is
+    /// the window ladder's (a tier already carries it), so this is a pure mapping.</summary>
+    public static SidebarWindowBand BandOf(WidthTier window) => window switch
     {
-        if (!float.IsFinite(viewportW) || viewportW <= 0f) return current;
-        var p = ShellPolicy.NavOr(policy);
-        return current switch
-        {
-            SidebarWindowBand.Wide => viewportW >= p.NarrowEnterW ? SidebarWindowBand.Wide
-                : viewportW >= p.TinyEnterW ? SidebarWindowBand.Narrow : SidebarWindowBand.Tiny,
-            SidebarWindowBand.Narrow => viewportW >= p.WideEnterW ? SidebarWindowBand.Wide
-                : viewportW >= p.TinyEnterW ? SidebarWindowBand.Narrow : SidebarWindowBand.Tiny,
-            _ => viewportW >= p.WideEnterW ? SidebarWindowBand.Wide
-                : viewportW >= p.TinyLeaveW ? SidebarWindowBand.Narrow : SidebarWindowBand.Tiny,
-        };
-    }
-
-    /// <summary>The first band of a launch (no history): asked from Wide, so only the entering thresholds apply (a fresh
-    /// launch at 600 is Narrow, at 500 Tiny).</summary>
-    public static SidebarWindowBand InitialBand(float viewportW, NavPanePolicy? policy = null)
-        => BandOf(viewportW, SidebarWindowBand.Wide, policy);
+        WidthTier.Compact => SidebarWindowBand.Tiny,
+        WidthTier.Small => SidebarWindowBand.Narrow,
+        _ => SidebarWindowBand.Wide,
+    };
 
     /// <summary>① The mode. What a band forces (Narrow ⇒ Compact and Tiny ⇒ Minimal in Classic) wins whatever the user or Edit
     /// mode wants (Edit then pins the OVERLAY open instead); a band that forces nothing ⇒ the user's collapse, unless

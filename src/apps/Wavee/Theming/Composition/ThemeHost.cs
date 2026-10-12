@@ -114,6 +114,12 @@ public static class ThemeHost
         Activate(ThemeCatalog.Resolve(Platform.Settings.Get(IdKey)), Platform.Settings);
     }
 
+    /// <summary>Publishes the window's tier facts into <see cref="Facts"/>. The frame root (<c>WindowTiers</c>) calls it on mount
+    /// and at every tier crossing; the view harness calls it for a view mounted without a frame. The tiers are the window's
+    /// fact, not the composition's: a switch or an option change republishes the policies and keeps these until the new root
+    /// resolves its own.</summary>
+    public static void PublishTiers(in TierFacts tiers) => s_facts.SetIfChanged(s_facts.Peek() with { Tiers = tiers });
+
     /// <summary>Back to the not-installed state (tests).</summary>
     public static void Reset()
     {

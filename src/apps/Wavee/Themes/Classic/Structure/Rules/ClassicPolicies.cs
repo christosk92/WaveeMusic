@@ -1,12 +1,14 @@
 // ── Themes/Classic/Structure/Rules/ClassicPolicies.cs — Wavee Classic's policies (themes plan 5.5, 6.1) ───────────────
 //
-// What the Classic structure decides for the core: the navigation pane's bands and widths, the panel's bounds and the mini
-// player's, the player bar's six pressure levels, the title-bar row's budget and the stage's layout classes. These are the
+// What the Classic structure decides for the core: the navigation pane's widths and what each band forces, the panel's bounds
+// and the mini player's, the player bar's six pressure levels, the title-bar row's budget and the stage's layout classes, and
+// (T3b) the window tiers whose edges are the pane's bands (`Tiers.cs`). These are the
 // numbers the shell shipped with before themes existed; Classic behaves exactly as it did because the core state machines now
 // take them from here (through `ThemeHost.Policies`) instead of from constants.
 //
 // A tuned-Classic PR (CT, TC) changes a value HERE and nowhere else. `ThemePolicies.Default` in core is the same set, kept so
-// the shell has a policy before a composition is installed; `ClassicPoliciesTests` pins the two equal.
+// the shell has a policy before a composition is installed; `ClassicPoliciesTests` pins the two equal (the tiers aside: core
+// never names a theme, so `Default` carries `TierPolicy.Standard` and the bundle below carries `ClassicTiers.Policy`).
 //
 // Literal numbers are allowed in this file (WVTH003 exempts `Rules\**`).
 
@@ -18,11 +20,11 @@ namespace Wavee.Themes.Classic;
 /// <summary>The policies of Wavee Classic.</summary>
 public static class ClassicPolicies
 {
-    /// <summary>The pane: the Wide band lets the user collapse; Narrow (528 up to 660, back at 700) forces the 48-DIP rail with
-    /// an overlay pane; Tiny (under 528, back at 568) is the drawer. An expanded pane is 180-460 (320 fresh) and leaves 480 of
-    /// content; a drag 64 below 180 collapses it, 24 back expands it. The seam strip is 16 wide.</summary>
+    /// <summary>The pane: the Wide band lets the user collapse; Narrow forces the 48-DIP rail with an overlay pane; Tiny is the
+    /// drawer (where the bands begin is the window ladder's, 528 and 660 in <c>ClassicTiers</c>). An expanded pane is 180-460
+    /// (320 fresh) and leaves 480 of content; a drag 64 below 180 collapses it, 24 back expands it. The seam strip is 16 wide.</summary>
     public static NavPanePolicy NavPane { get; } = new(
-        TinyEnterW: 528f, TinyLeaveW: 568f, NarrowEnterW: 660f, WideEnterW: 700f, ContentFloorW: 480f,
+        ContentFloorW: 480f,
         MinWidth: 180f, MaxWidth: 460f, DefaultWidth: 320f,
         CollapseApproach: 64f, CollapseHysteresis: 24f,
         NarrowMode: NavPaneMode.Compact, TinyMode: NavPaneMode.Overlay, Resizable: true, Seam: 16f);
@@ -90,7 +92,8 @@ public static class ClassicPolicies
         CompactBelowW: 600f, PortraitEnter: 0.80f, PortraitLeave: 0.85f, UltrawideEnter: 2.00f, UltrawideLeave: 1.95f,
         CompactEnterH: 460f, CompactLeaveH: 484f));
 
-    /// <summary>The whole bundle. One instance, so republishing the facts is not a change. Declared LAST: static properties
-    /// initialise in textual order and it reads the five above.</summary>
-    public static ThemePolicies Bundle { get; } = new(NavPane, Panel, PlayerBar, Chrome, Stage);
+    /// <summary>The whole bundle, with Classic's window tiers. One instance, so republishing the facts is not a change. Declared
+    /// LAST: static properties initialise in textual order and it reads the five above (`ClassicTiers` builds its policy in its
+    /// own initializer and never reads this class).</summary>
+    public static ThemePolicies Bundle { get; } = new(NavPane, Panel, PlayerBar, Chrome, Stage) { Tiers = ClassicTiers.Policy };
 }

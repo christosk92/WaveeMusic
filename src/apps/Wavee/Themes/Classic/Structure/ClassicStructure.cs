@@ -2,7 +2,7 @@
 //
 // Registers no view yet (every surface is still core code). Each T-lane PR adds the views of one family to `Register`. It
 // decides the shell's policies (`Rules\ClassicPolicies.cs`: nav pane, panel and mini player, player bar, chrome row, stage)
-// and offers every capability (T3).
+// and offers every capability (T3). Its window tiers (T3b) are `Rules\Tiers.cs`.
 //
 // T1b: the options Classic will own (plan 6.1) are still TODAY's switches, bound to their legacy keys through `SettingsDoc`
 // rows. `LegacyRows` lists them in their FINAL grouping so Settings › Appearance shows Classic's section once, in its
