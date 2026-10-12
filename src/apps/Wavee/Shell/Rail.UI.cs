@@ -256,7 +256,7 @@ public static partial class Rail
         }
     }
 
-    static Element TitleText(Shell.RailMode mode) => Design.Type.RailHeader(Title(mode)) with
+    static Element TitleText(Shell.RailMode mode) => R.Type.RailHeader(Title(mode)) with
     {
         Grow = 1f, MinWidth = 0f, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
     };
@@ -392,8 +392,8 @@ public static partial class Rail
                     if (content.Children[i] is TextEl t && t.FontFamily is null)
                     {
                         var rung = t.Weight is 600 or 650 or 700 or 540
-                            ? global::Wavee.Design.Type.DenseTitle("")
-                            : global::Wavee.Design.Type.DenseMeta("");
+                            ? R.Type.DenseTitle("")
+                            : R.Type.DenseMeta("");
                         kids[i] = t with { Size = rung.Size, LineHeight = rung.LineHeight, Weight = rung.ResolvedWeight };
                     }
                     else kids[i] = content.Children[i];
@@ -417,7 +417,7 @@ public static partial class Rail
                 static () => Shell.DeckPrefs.ToggleStyleFlyout(), active: open);
 
             // Sentence case, never .ToUpper() on a localized string.
-            Element eyebrow = Design.Type.Eyebrow(Loc.Get(Strings.Player.NowPlaying)) with
+            Element eyebrow = R.Type.Eyebrow(Loc.Get(Strings.Player.NowPlaying)) with
             {
                 Color = Tok.TextTertiary, Grow = 1f, Basis = 0f, MinWidth = 0f,
                 Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
@@ -576,7 +576,7 @@ public static partial class Rail
     static Element Section(string title, Element body) => new BoxEl
     {
         Direction = 1, Gap = Spacing.S,
-        Children = [Design.Type.RailHeader(title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis }, body],
+        Children = [R.Type.RailHeader(title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis }, body],
     };
 
     static Element AboutArtist(Artist artist)
@@ -736,13 +736,13 @@ public static partial class Rail
             if (track.IsValid && track.Knows(TrackFields.Video) && !track.HasVideo) content.Add(NoVideoPlaceholder(track));
             if (track.IsValid)
             {
-                content.Add(Design.Type.NowPlayingTitle(track.Title) with { MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis });
+                content.Add(R.Type.NowPlayingTitle(track.Title) with { MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis });
                 string artists = Entities.Strings.Resolve(track.ArtistLineId), album = track.Album.IsValid ? track.Album.Title : "";
                 string meta = artists.Length == 0 ? album : album.Length == 0 ? artists : artists + " · " + album;
-                if (meta.Length > 0) content.Add(Design.Type.TrackMeta(meta) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis });
+                if (meta.Length > 0) content.Add(R.Type.TrackMeta(meta) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis });
             }
             content.Add(new BoxEl { Height = 1f, Shrink = 0f, Fill = Tok.StrokeCardDefault });
-            content.Add(Design.Type.Eyebrow(Loc.Get(Strings.Player.VideoUpNext)) with { Color = Tok.TextTertiary });
+            content.Add(R.Type.Eyebrow(Loc.Get(Strings.Player.VideoUpNext)) with { Color = Tok.TextTertiary });
             content.Add(Shell.NextUpWindow.Any()
                 ? NextUpList()
                 : Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact, title: Loc.Get(Strings.Player.QueueEmpty), subtitle: ""));
@@ -931,7 +931,7 @@ public static partial class Rail
             Fill = ColorF.Transparent,                                     // no zebra on a short list
             HoverFill = nav ? Design.Colors.RowHover : ColorF.Transparent,
             PressedFill = nav ? Design.Colors.RowPressed : ColorF.Transparent,
-            PressScale = Design.Motion.ScaleSubtle.PressIf(nav),
+            PressScale = R.Motion.ScaleSubtle.PressIf(nav),
             Role = nav ? AutomationRole.Button : AutomationRole.None, Cursor = nav ? CursorId.Hand : CursorId.Arrow,
             Focusable = nav, FocusVisualMargin = Design.FocusInsetRow, OnClick = onClick,
             Enter = new EnterExit(Dy: 6f, Opacity: 0f, Active: true),

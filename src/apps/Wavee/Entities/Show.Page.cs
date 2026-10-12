@@ -1284,8 +1284,8 @@ public readonly partial struct Show
                 Children =
                 [
                     Icon(Icons.FavoriteStarFill, 13f) with { Color = Prop.Of(_toneRead) },
-                    Design.Type.DenseTitle(average) with { Color = Tok.TextPrimary, MaxLines = 1 },
-                    Design.Type.DenseMeta(count) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
+                    R.Type.DenseTitle(average) with { Color = Tok.TextPrimary, MaxLines = 1 },
+                    R.Type.DenseMeta(count) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
                 ],
             };
             var show = _m.Peek().Show;

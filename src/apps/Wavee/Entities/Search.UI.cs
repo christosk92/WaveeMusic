@@ -74,7 +74,7 @@ public readonly partial struct Search
 
     /// <summary>The query echo: the committed query lowercased in the display face, one line, Shrink never Grow (§0.2).</summary>
     internal static Element QueryEcho(string lowered)
-        => Design.Type.SurfaceDisplay(lowered) with
+        => R.Type.SurfaceDisplay(lowered) with
         {
             MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
         };
@@ -175,7 +175,7 @@ public readonly partial struct Search
             Children =
             [
                 new BoxEl { Width = BrowseLayout.TickW, Height = BrowseLayout.TickH, Shrink = 0f, Corners = CornerRadius4.All(Spacing.XXS), Fill = Tok.AccentDefault },
-                Design.Type.RailHeader(title) with { Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                R.Type.RailHeader(title) with { Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
             ],
         };
         if (open is null) return label with { AlignSelf = FlexAlign.Stretch };
@@ -388,9 +388,9 @@ public readonly partial struct Search
             : new Controls.CardData(uri, title, null, CoverOf(hit), open, play, Circular: RoundArt(hit.Kind));
         return data with
         {
-            Subtitle = Design.Type.TrackMeta(SubtitleOf(hit, flags)) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+            Subtitle = R.Type.TrackMeta(SubtitleOf(hit, flags)) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
             Eyebrow = SearchHitRules.LyricsEyebrow(large, flags)
-                ? Design.Type.Eyebrow(Loc.Get(Strings.Search.LyricsMatch)) with { Color = Tok.AccentTextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }
+                ? R.Type.Eyebrow(Loc.Get(Strings.Search.LyricsMatch)) with { Color = Tok.AccentTextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }
                 : null,
             Trailing = TrailingOf(hit, uri, title, compact: true),
             Menu = MenuOf(hit),
@@ -466,9 +466,9 @@ public readonly partial struct Search
             Padding = new Edges4(Spacing.L, Spacing.L, Spacing.XL, Spacing.L),
             Children =
             [
-                Design.Type.Eyebrow(Loc.Get(Strings.Search.TopResult) + " · " + KindWordOf(hit.Kind, flags)) with
+                R.Type.Eyebrow(Loc.Get(Strings.Search.TopResult) + " · " + KindWordOf(hit.Kind, flags)) with
                     { Color = Tok.AccentTextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                Design.Type.PageHero(title) with { MinWidth = 0f, MaxLines = 2, Trim = TextTrim.CharacterEllipsis },
+                R.Type.PageHero(title) with { MinWidth = 0f, MaxLines = 2, Trim = TextTrim.CharacterEllipsis },
                 hit.Kind is EntityKind.Artist or EntityKind.User
                     ? new BoxEl()
                     : new TextEl(SubtitleOf(hit, flags)) { Size = 12f, LineHeight = 16f, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
@@ -519,7 +519,7 @@ public readonly partial struct Search
     {
         Shrink = 0f, Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, Spacing.XS), Corners = Radii.FullAll,
         Fill = ColorF.Transparent, BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault,
-        Children = [Design.Type.Eyebrow(text) with { Color = Tok.TextSecondary }],
+        Children = [R.Type.Eyebrow(text) with { Color = Tok.TextSecondary }],
     };
 
     // ══ 6. BEST MATCHES, THE PLAYLIST RAIL, THE SONGS GRID (W5, W6, W1) ═════════════════════════════════════════════
@@ -590,7 +590,7 @@ public readonly partial struct Search
         string? sub = hit.Kind is EntityKind.Playlist or EntityKind.Collection ? card.OwnerName : card.Subtitle;
         return new Controls.CardData(
             hit.Id.Text, TitleOf(hit),
-            sub is { Length: > 0 } ? Design.Type.TrackMeta(sub) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f } : null,
+            sub is { Length: > 0 } ? R.Type.TrackMeta(sub) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f } : null,
             CoverOf(hit), () => OpenHit(h, origin), CanPlay(hit.Kind) ? () => PlayHit(h) : null,
             Circular: RoundArt(hit.Kind), Drag: DragOf(hit)) { Menu = MenuOf(hit) };
     }
@@ -753,7 +753,7 @@ public readonly partial struct Search
                 OnClick = () => Shell.GoTo(Shell.Parse("search".AsSpan(), committed.AsSpan())),
                 Children =
                 [
-                    Design.Type.ModuleHeader(committed.ToLowerInvariant()) with
+                    R.Type.ModuleHeader(committed.ToLowerInvariant()) with
                     {
                         Color = Tok.TextSecondary, HoverColor = Tok.AccentTextPrimary, Weight = 400,
                         MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,

@@ -18,7 +18,7 @@
 //   No art url ⇒ neither layer: the plain card, the copy alone. The whole card is the click target.
 //   copy column (SpaceBetween)
 //     top:    eyebrow (body, secondary: the greeting lives ONLY here) · the title (≤ 2 lines; the 40/52
-//             `Design.Type.HeroTitle` while the copy is ≥ `DaylistForm.HeroTitleMinText`, else the 28/36 display
+//             `R.Type.HeroTitle` while the copy is ≥ `DaylistForm.HeroTitleMinText`, else the 28/36 display
 //             rung at 600, so a narrow copy keeps the name on one line and the card at its 320 floor) ·
 //             tags (ONE 14/20 `SpanTextEl` of link spans, a tag opens Search) · meta (caption, tertiary) ·
 //             ONE action row: stock Accent Play + Standard Shuffle + `Controls.SaveButton` + a standalone "…" icon button
@@ -268,8 +268,8 @@ public sealed class DaylistCard : Component
     /// (<see cref="DaylistForm.UseHeroTitle"/> over <see cref="DaylistForm.CopyWidth"/>).</summary>
     static TextEl TitleRung(string title, float text)
         => DaylistForm.UseHeroTitle(text)
-            ? Design.Type.HeroTitle(title)
-            : Design.Type.DetailHero(title) with { Weight = 600 };
+            ? R.Type.HeroTitle(title)
+            : R.Type.DetailHero(title) with { Weight = 600 };
 
     /// <summary>The ONE action row: 20 below the meta, 8 apart, never wrapping (the copy's floor fits it).</summary>
     static BoxEl ActionRow(params Element[] actions) => new()

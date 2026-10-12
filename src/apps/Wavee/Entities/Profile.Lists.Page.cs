@@ -250,7 +250,7 @@ public static partial class ProfileLists
                 Children =
                 [
                     BreadcrumbBar.Create([name, title], i => { if (i == 0 && !profile.IsNone) Shell.GoTo(profile); }),
-                    Design.Type.PageHero(title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                    R.Type.PageHero(title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                     // A FRESH signal per render: the ROUTE, not the control, is the truth; a change navigates and the next
                     // route re-seeds it (Discography's head).
                     SelectorBar.Create(labels, new Signal<int>(ProfileListFacets.IndexOf(facet)), onChange: i =>
@@ -711,7 +711,7 @@ public static partial class ProfileLists
             ],
         };
 
-        static Element Sub(string text) => Design.Type.TrackMeta(text) with
+        static Element Sub(string text) => R.Type.TrackMeta(text) with
             { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
     }
 

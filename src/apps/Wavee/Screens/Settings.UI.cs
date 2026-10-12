@@ -205,7 +205,7 @@ public static partial class Settings
         Children =
         [
             Icon(Icons.Settings, 24f, Tok.TextPrimary),
-            Design.Type.PageHero(Loc.Get(Strings.Settings.Title)) with { Grow = 1f },
+            R.Type.PageHero(Loc.Get(Strings.Settings.Title)) with { Grow = 1f },
         ],
     };
 

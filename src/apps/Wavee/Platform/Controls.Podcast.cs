@@ -20,7 +20,7 @@
 // ── WHAT IS NOT HERE ─────────────────────────────────────────────────────────────────────────────────────────────────
 //
 // No caps transform. The prototype sets the door label in capitals via CSS; this file does NOT upper-case a localized
-// string (Design.Type.Eyebrow's rule — a caps transform mangles Turkish dotted i and German ß): the label keeps its own
+// string (R.Type.Eyebrow's rule — a caps transform mangles Turkish dotted i and German ß): the label keeps its own
 // casing at 11/700 with +90 tracking. The ledger and the stars never format a number: their callers pass values.
 
 using FluentGpu.Animation;
@@ -195,7 +195,7 @@ public static partial class Controls
                   {
                       Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = () => r(n),
                       HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
-                      HoverScale = Design.Motion.ScaleSubtle.Hover, PressScale = Design.Motion.ScaleSubtle.Press,
+                      HoverScale = R.Motion.ScaleSubtle.Hover, PressScale = R.Motion.ScaleSubtle.Press,
                   }, Strings.Podcast.Rate.Stars(n))
                 : cell with { IsEnabled = false };
         }
@@ -231,7 +231,7 @@ public static partial class Controls
         };
         var copy = new List<Element>(5)
         {
-            Design.Type.Eyebrow(d.Label) with
+            R.Type.Eyebrow(d.Label) with
             {
                 Color = Prop.Of(d.Tone),
                 MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
@@ -332,7 +332,7 @@ public static partial class Controls
         Width = DoorDisc, Height = DoorDisc, Shrink = 0f, Corners = Radii.Circle(DoorDisc),
         AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Fill = Prop.Of(tone),
         Role = AutomationRole.Button, Focusable = true, FocusVisualMargin = Design.FocusInsetBordered, Cursor = CursorId.Hand,
-        HoverScale = Design.Motion.ScaleEmphatic.Hover, PressScale = Design.Motion.ScaleEmphatic.Press,
+        HoverScale = R.Motion.ScaleEmphatic.Hover, PressScale = R.Motion.ScaleEmphatic.Press,
         BlocksDragArm = true, OnClick = play,
         Children =
         [

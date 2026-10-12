@@ -773,8 +773,8 @@ public readonly partial struct Artist
                     meta = era.Label + " · " + Strings.Artist.ReleaseCount(era.Count);
             }
             return meta.Length > 0
-                ? Design.Type.RailHeader(props.Title, meta)
-                : (Element)(Design.Type.RailHeader(props.Title) with { MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis });
+                ? R.Type.RailHeader(props.Title, meta)
+                : (Element)(R.Type.RailHeader(props.Title) with { MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis });
         }
     }
 
@@ -1136,7 +1136,7 @@ public readonly partial struct Artist
             Direction = 0, AlignItems = FlexAlign.Center, Gap = 4f, MinWidth = 0f,
             Children =
             [
-                Design.Type.TrackMeta(meta) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
+                R.Type.TrackMeta(meta) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
                 Icon(glyph, 9f, Tok.TextTertiary),
             ],
         };
@@ -1258,7 +1258,7 @@ public readonly partial struct Artist
         {
             var al = p.Album;
             ColorF accent = p.Accent();
-            var titleType = Design.Type.DenseTitle("");
+            var titleType = R.Type.DenseTitle("");
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Height = 36f,
@@ -1398,7 +1398,7 @@ public readonly partial struct Artist
             Padding = new Edges4(Spacing.S, Spacing.M, Spacing.S, Spacing.M),
             Children =
             [
-                Design.Type.DenseMeta(Loc.Get(Strings.Detail.Empty.NoTracks))
+                R.Type.DenseMeta(Loc.Get(Strings.Detail.Empty.NoTracks))
                     with { Grow = 1f, Basis = 0f, MinWidth = 0f, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                 Button.Standard(Loc.Get(Strings.Common.Retry), retry),
             ],
@@ -1618,7 +1618,7 @@ public readonly partial struct Artist
             var t = TrackOf(p);
             if (t.Slot <= Table.None) return new BoxEl();
             var st = Track.StateOf(t);
-            Element title = Design.Type.DenseTitle(t.Title)
+            Element title = R.Type.DenseTitle(t.Title)
                 with
                 {
                     Color = st.IsNow ? Tok.AccentTextPrimary : Tok.TextPrimary,
@@ -1714,7 +1714,7 @@ public readonly partial struct Artist
                 Children =
                 [
                     BreadcrumbBar.Create([name, title], i => { if (i == 0) Shell.GoTo(Shell.For(goArtist, name)); }),
-                    Design.Type.PageHero(title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                    R.Type.PageHero(title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                     // A FRESH signal per render: the ROUTE, not the control, is the truth; a change navigates and the next
                     // route re-seeds it (0.2.9 DiscographyPage.cs:120-125).
                     SelectorBar.Create(labels, new Signal<int>((int)facet),
@@ -1724,8 +1724,8 @@ public readonly partial struct Artist
 
             var content = new BoxEl
             {
-                Direction = 1, Gap = Design.Size.SectionGap,
-                Padding = new Edges4(Spacing.PageWide, Spacing.XXL, Spacing.PageWide, Design.Dock.Reserve + Spacing.PageWide),
+                Direction = 1, Gap = R.Space.SectionGap,
+                Padding = new Edges4(Spacing.PageWide, Spacing.XXL, Spacing.PageWide, R.Space.DockReserve + Spacing.PageWide),
                 Children =
                 [
                     head,

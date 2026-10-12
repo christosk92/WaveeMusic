@@ -221,7 +221,7 @@ public static partial class Sidebar
                 if (hasSubtitle)
                     lines.Add(Caption(spec.Subtitle!).Secondary() with { Trim = TextTrim.CharacterEllipsis, MaxLines = 1, Wrap = TextWrap.NoWrap });
                 if (hasCaption)
-                    lines.Add(global::Wavee.Design.Type.MicroMeta(spec.Caption!) with
+                    lines.Add(R.Type.MicroMeta(spec.Caption!) with
                     {
                         Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                     });
@@ -697,7 +697,7 @@ public static partial class Sidebar
         /// <summary>The number, or the pending plate while <paramref name="count"/> is unknown.</summary>
         public static Element Badge(int? count) => count is { } n ? Number(n) : Pending();
 
-        public static Element Number(int count) => global::Wavee.Design.Type.MicroMeta(FormatCache.Int(count)) with
+        public static Element Number(int count) => R.Type.MicroMeta(FormatCache.Int(count)) with
         {
             Color = Tok.TextTertiary, MaxLines = 1, Shrink = 0f,
         };

@@ -989,7 +989,7 @@ public readonly partial struct Artist
         Element NameColumn(Artist a, bool named, ReaderShapeKey shape, bool stacked)
         {
             string name = named ? a.Name : "…";
-            TextEl nameText = Design.Type.ArtistCompactTitle(name) with
+            TextEl nameText = R.Type.ArtistCompactTitle(name) with
             {
                 Color = Tok.TextPrimary, HoverColor = Tok.AccentTextPrimary, BrushTransitionMs = Design.Motion.Faster,
                 Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, LineHeight = ReaderShape.NameLine,
@@ -1014,7 +1014,7 @@ public readonly partial struct Artist
                 Children =
                 [
                     Controls.TrimTip(link, name, nameText),
-                    Design.Type.DenseMeta(named ? LibraryLine(shape) : "") with
+                    R.Type.DenseMeta(named ? LibraryLine(shape) : "") with
                     {
                         Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                     },
@@ -1259,7 +1259,7 @@ public readonly partial struct Artist
                         ? Strings.Library.FetchingMore(missing)
                         : Strings.Library.AllInLibrary(new Artist(_artist).Name);
                 }
-                body = [Design.Type.DenseMeta(text) with { Color = Tok.TextTertiary }];
+                body = [R.Type.DenseMeta(text) with { Color = Tok.TextTertiary }];
             }
             else body = Array.Empty<Element>();
 

@@ -267,9 +267,9 @@ public static partial class Settings
                 new TextEl(label) { Size = 12f, Color = Tok.TextSecondary, Shrink = 0f },
                 new TextEl(value)
                 {
-                    Size = global::Wavee.Design.Type.DenseTitle("").Size,
-                    LineHeight = global::Wavee.Design.Type.DenseTitle("").LineHeight,
-                    Weight = global::Wavee.Design.Type.DenseTitle("").ResolvedWeight,
+                    Size = R.Type.DenseTitle("").Size,
+                    LineHeight = R.Type.DenseTitle("").LineHeight,
+                    Weight = R.Type.DenseTitle("").ResolvedWeight,
                     Color = Tok.TextPrimary, Grow = 1f, MinWidth = 0f, Wrap = TextWrap.Wrap,
                 },
             ],

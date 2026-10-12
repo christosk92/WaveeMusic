@@ -220,12 +220,12 @@ public static partial class LogsPage
                             if (i == 0) Shell.GoTo(new Shell.Route(Shell.RouteKind.Settings));
                             else if (i == 1) Settings.Open(Settings.Tab.PrivacyDiagnostics);
                         }),
-                        Design.Type.PageHero(Loc.Get(Strings.Logs.Title)) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                        R.Type.PageHero(Loc.Get(Strings.Logs.Title)) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                     ],
                 },
             };
             if (PickerCaptionText() is { } caption)
-                kids.Add(Design.Type.MicroMeta(caption) with
+                kids.Add(R.Type.MicroMeta(caption) with
                 {
                     Key = "logs:caption", Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis,
                     MaxWidth = 200f, Shrink = 1f, MinWidth = 0f,
@@ -470,7 +470,7 @@ public static partial class LogsPage
             };
         }
 
-        static TextEl HeaderLabel(string text) => Design.Type.MicroMeta(text) with { Weight = 600, Color = Tok.TextTertiary };
+        static TextEl HeaderLabel(string text) => R.Type.MicroMeta(text) with { Weight = 600, Color = Tok.TextTertiary };
 
         /// <summary>The sortable Time header: the arrow shows where the NEWEST row sits. A click flips the order.</summary>
         Element TimeHeader(bool newestFirst, Action<Action> post) => new BoxEl
@@ -499,7 +499,7 @@ public static partial class LogsPage
                 {
                     Grow = 1f, Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Gap = Spacing.M,
                     Padding = new Edges4(0f, 64f, 0f, 64f),
-                    Children = [FluentGpu.Dsl.Ui.Icon(Icons.Search, 36f, Tok.TextTertiary), Design.Type.PageHero(Loc.Get(Strings.Logs.EmptyFilter))],
+                    Children = [FluentGpu.Dsl.Ui.Icon(Icons.Search, 36f, Tok.TextTertiary), R.Type.PageHero(Loc.Get(Strings.Logs.EmptyFilter))],
                 };
 
             // The list's ItemCount/template freeze at mount: the visible SET changing remounts it; ScrollKey keeps the offset.
@@ -550,7 +550,7 @@ public static partial class LogsPage
                     new TextEl(LogView.FormatTime(e.UnixMs, LocalOffset)) { Size = 12f, Color = Tok.TextSecondary, FontFamily = "Cascadia Code", Width = TimeColumn, Shrink = 0f },
                     LevelPill(e.Level),
                     new TextEl(e.Category) { Size = 12f, Color = Tok.TextSecondary, FontFamily = "Cascadia Code", Width = CategoryColumn, Shrink = 0f, Trim = TextTrim.CharacterEllipsis },
-                    Design.Type.DenseMeta(e.Message) with
+                    R.Type.DenseMeta(e.Message) with
                     {
                         Color = Tok.TextPrimary, Grow = 1f, MinWidth = 0f,
                         Wrap = wrapAll ? TextWrap.Wrap : TextWrap.NoWrap, Trim = wrapAll ? TextTrim.None : TextTrim.CharacterEllipsis, MaxLines = wrapAll ? 0 : 1,
@@ -568,7 +568,7 @@ public static partial class LogsPage
                 string fieldText = LogView.FieldText(e.Fields);
                 if (fieldText.Length > 0) detail.Add(DetailSection(Loc.Get(Strings.Logs.Fields), fieldText));
                 if (e.Exception is { Length: > 0 } ex) detail.Add(DetailSection(Loc.Get(Strings.Logs.Exception), ex));
-                detail.Add(Design.Type.MicroMeta(LogView.MetaLine(in e)) with { Color = Tok.TextTertiary, FontFamily = "Cascadia Code", Margin = new Edges4(44f, 0f, 0f, 0f) });
+                detail.Add(R.Type.MicroMeta(LogView.MetaLine(in e)) with { Color = Tok.TextTertiary, FontFamily = "Cascadia Code", Margin = new Edges4(44f, 0f, 0f, 0f) });
                 children = [line, new BoxEl
                 {
                     Key = "details", Direction = 1, Gap = 4f, Padding = new Edges4(0f, 4f, 0f, Spacing.S),
@@ -581,7 +581,7 @@ public static partial class LogsPage
         static Element DetailSection(string caption, string text) => new BoxEl
         {
             Direction = 1, Gap = 4f, Padding = new Edges4(44f, 0f, Spacing.M, 4f),
-            Children = [Design.Type.MicroMeta(caption) with { Weight = 600, Color = Tok.TextTertiary }, CodeBlock.Create(text, copyable: true, fontSize: 12f)],
+            Children = [R.Type.MicroMeta(caption) with { Weight = 600, Color = Tok.TextTertiary }, CodeBlock.Create(text, copyable: true, fontSize: 12f)],
         };
 
         /// <summary>A dot only for Warning and ≥ Error; every other level holds the 6-DIP column with a blank spacer.</summary>
@@ -595,7 +595,7 @@ public static partial class LogsPage
         static Element RepeatBadge(int repeat) => new BoxEl
         {
             Padding = new Edges4(7f, 1f, 7f, 2f), Corners = CornerRadius4.All(Radii.Full), Fill = Tok.FillSubtleSecondary,
-            Children = [Design.Type.MicroMeta("×" + repeat.ToString(CultureInfo.InvariantCulture)) with { Weight = 700, Color = Tok.TextSecondary }],
+            Children = [R.Type.MicroMeta("×" + repeat.ToString(CultureInfo.InvariantCulture)) with { Weight = 700, Color = Tok.TextSecondary }],
         };
 
         static BoxEl LevelPill(WaveeLogLevel level)
@@ -636,7 +636,7 @@ public static partial class LogsPage
                 kids.Add(HyperlinkButton.Create(Loc.Get(Strings.Logs.LoadMore), () => _visibleLimit.Value = LogView.NextCap(_visibleLimit.Peek())));
             var min = Log.MinLevel;
             var file = LogCapturePolicy.EffectiveFileLevel(min, Log.FileMinLevel);
-            kids.Add(Design.Type.MicroMeta(Strings.Logs.CaptureCaption(LevelName(min), LevelName(file))) with { Color = Tok.TextTertiary });
+            kids.Add(R.Type.MicroMeta(Strings.Logs.CaptureCaption(LevelName(min), LevelName(file))) with { Color = Tok.TextTertiary });
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Padding = new Edges4(Spacing.L, Spacing.S, Spacing.M, Spacing.S),

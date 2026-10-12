@@ -234,7 +234,7 @@ public static partial class Stage
                 string eyebrow = Entities.Strings.Resolve(a.TourEyebrowId), headline = Entities.Strings.Resolve(a.TourHeadlineId);
                 var tour = new List<Element>(2);
                 if (eyebrow.Length > 0)
-                    tour.Add(Design.Type.Eyebrow(eyebrow) with { Size = Px(12f, s), Color = set.Text, MaxLines = 1, Shrink = 0f });
+                    tour.Add(R.Type.Eyebrow(eyebrow) with { Size = Px(12f, s), Color = set.Text, MaxLines = 1, Shrink = 0f });
                 tour.Add(new TextEl(headline) { Size = Px(14f, s), LineHeight = Px(20f, s), Color = Ink.InkSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f });
                 lines.Add(new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Px(Spacing.S, s), MinWidth = 0f, Children = tour.ToArray() });
             }
@@ -497,7 +497,7 @@ public static partial class Stage
                 Padding = new Edges4(Px(Spacing.S, s), 0f, Px(Spacing.M, s), 0f), Corners = Radii.ControlAll,
                 Fill = now ? Ink.Plate : Ink.GlassRest, HoverFill = now ? Ink.PlateHover : Ink.GlassHover, PressedFill = Ink.GlassPressed,
                 BorderWidth = now ? 1f : 0f, BorderColor = Ink.Stroke, BrushTransitionMs = Design.Motion.Faster,
-                PressScale = Design.Motion.ScaleSubtle.Press,
+                PressScale = R.Motion.ScaleSubtle.Press,
                 Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, AllowFocusOnInteraction = false,
                 OnClick = () => Track.Invoke(t, () => PlayFrom(artistSlot, index)),
                 Children = kids.ToArray(),
@@ -624,7 +624,7 @@ public static partial class Stage
                 {
                     Direction = 1, Width = avatar, Shrink = 0f, Gap = Px(Spacing.XS, s), AlignItems = FlexAlign.Center,
                     Role = AutomationRole.Hyperlink, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
-                    PressScale = Design.Motion.ScaleSubtle.Press, OnClick = () => GoToArtist(_begin, slot),
+                    PressScale = R.Motion.ScaleSubtle.Press, OnClick = () => GoToArtist(_begin, slot),
                     Children =
                     [
                         Controls.Artwork(Controls.ArtUrl(r.ImageId), avatar, avatar, avatar * 0.5f),

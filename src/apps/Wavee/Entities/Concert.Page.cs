@@ -94,7 +94,7 @@ public readonly partial struct Concert
             new BoxEl { Height = BrowseMastheadMetrics.Reserve + 40f, HitTestVisible = false },
             UnderBand(new BoxEl
             {
-                Direction = 1, MinWidth = 0f, Padding = new Edges4(32f, 0f, 32f, Design.Dock.Reserve + 40f), Children = [region],
+                Direction = 1, MinWidth = 0f, Padding = new Edges4(32f, 0f, 32f, R.Space.DockReserve + 40f), Children = [region],
             }),
         ],
     }) with { Grow = 1f, MinHeight = 0f, ScrollKey = scrollKey };
@@ -157,7 +157,7 @@ public readonly partial struct Concert
             kids[0] = new BoxEl
             {
                 Width = 64f, Shrink = 0f, Direction = 0, Justify = FlexJustify.End,
-                Children = [Design.Type.TrackTitle(((int)Math.Round(shown)).ToString("N0", CultureInfo.CurrentCulture)) with { MaxLines = 1 }],
+                Children = [R.Type.TrackTitle(((int)Math.Round(shown)).ToString("N0", CultureInfo.CurrentCulture)) with { MaxLines = 1 }],
             };
             kids[1] = Body(_suffix) with { Color = Tok.TextSecondary, MaxLines = 1 };
             if (animating) kids[2] = Embed.Comp(_clock) with { Key = "count-tick:" + goal.ToString(CultureInfo.InvariantCulture) };
@@ -372,7 +372,7 @@ public readonly partial struct Concert
                     new BoxEl
                     {
                         Direction = 1, Gap = Spacing.L,
-                        Padding = BrowseMastheadMetrics.FamilyUnderBandPad(Design.Dock.Reserve + Spacing.PageWide),
+                        Padding = BrowseMastheadMetrics.FamilyUnderBandPad(R.Space.DockReserve + Spacing.PageWide),
                         Children =
                         [
                             UnderBand(HeaderCard()),
@@ -396,7 +396,7 @@ public readonly partial struct Concert
             Children =
             [
                 SectionCaption(Loc.Get(Strings.Concerts.LiveMusic)),
-                Design.Type.PageHero(Loc.Get(Strings.Concerts.Title)) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                R.Type.PageHero(Loc.Get(Strings.Concerts.Title)) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                 Body(Loc.Get(Strings.Concerts.Subtitle)) with { Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
             ],
         };
@@ -1010,7 +1010,7 @@ public readonly partial struct Concert
             var blocks = new List<Element>(6)
             {
                 SectionCaption(Loc.Get(Strings.Concerts.Schedule.OnTour)),
-                Design.Type.PageHero(name) with { Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis },
+                R.Type.PageHero(name) with { Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis },
                 Body(ConcertScheduleShaping.StatsLine(stats)) with { Color = Tok.TextSecondary, MinWidth = 0f, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
             };
             uint accent = 0;
@@ -1036,8 +1036,8 @@ public readonly partial struct Concert
                             Children =
                             [
                                 SectionCaption(Strings.Concerts.Schedule.NextShow(ConcertScheduleShaping.RelativeTime(next.Date, now))),
-                                Design.Type.TrackTitle(text.Primary) with { MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                                Design.Type.TrackMeta(text.Secondary) with { MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                                R.Type.TrackTitle(text.Primary) with { MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                                R.Type.TrackMeta(text.Secondary) with { MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                             ],
                         },
                     ],
@@ -1280,7 +1280,7 @@ public readonly partial struct Concert
             Children =
             [
                 BodyStrong(day) with { Color = Tok.TextPrimary, MaxLines = 1 },
-                Design.Type.Eyebrow(weekday) with { Color = Tok.TextSecondary, MaxLines = 1 },
+                R.Type.Eyebrow(weekday) with { Color = Tok.TextSecondary, MaxLines = 1 },
             ],
         };
 
@@ -1540,7 +1540,7 @@ public readonly partial struct Concert
             var headline = new List<Element>(3)
             {
                 SectionCaption(Loc.Get(Strings.Concerts.Detail.Concert)),
-                Design.Type.PageHero(d.Title) with { Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis },
+                R.Type.PageHero(d.Title) with { Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis },
             };
             if (d.Status is { } status)
                 headline.Add(new BoxEl
@@ -1584,18 +1584,18 @@ public readonly partial struct Concert
                 var o = offers[i];
                 var lines = new List<Element>(5)
                 {
-                    Design.Type.TrackTitle(o.Provider) with { Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                    R.Type.TrackTitle(o.Provider) with { Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                 };
-                if (o.Availability is { } availability) lines.Add(Design.Type.TrackMeta(availability) with { MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis });
+                if (o.Availability is { } availability) lines.Add(R.Type.TrackMeta(availability) with { MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis });
                 if (o.Price is { } price) lines.Add(Body(price) with { Color = Tok.TextPrimary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis });
-                if (o.Sale is { } sale) lines.Add(Design.Type.TrackMeta(sale) with { MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis });
+                if (o.Sale is { } sale) lines.Add(R.Type.TrackMeta(sale) with { MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis });
                 if (o.Url is { } url)
                     lines.Add(new BoxEl
                     {
                         Direction = 0, Padding = new Edges4(0f, Spacing.XS, 0f, 0f),
                         Children = [Button.Accent(Loc.Get(Strings.Concerts.Detail.BuyTickets), () => Actions.Services.OpenExternal?.Invoke(url))],
                     });
-                else lines.Add(Design.Type.TrackMeta(Loc.Get(Strings.Concerts.Detail.TicketsUnavailable)) with { MaxLines = 1 });
+                else lines.Add(R.Type.TrackMeta(Loc.Get(Strings.Concerts.Detail.TicketsUnavailable)) with { MaxLines = 1 });
                 kids[i + 1] = new BoxEl
                 {
                     Key = "offer:" + i.ToString(CultureInfo.InvariantCulture) + ":" + o.Provider,
@@ -1622,7 +1622,7 @@ public readonly partial struct Concert
                     Width = 44f, Height = 44f, Shrink = 0f, Corners = CornerRadius4.All(22f), ClipToBounds = true,
                     Children = [Controls.Artwork(act.Image, 44f, 44f, 22f)],
                 };
-                kids[1] = Design.Type.TrackTitle(act.Name) with { Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
+                kids[1] = R.Type.TrackTitle(act.Name) with { Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
                 if (live) kids[2] = Icon(Icons.ChevronRight, 14f, Tok.TextSecondary) with { Shrink = 0f };
                 rows[i] = new BoxEl
                 {
@@ -1648,7 +1648,7 @@ public readonly partial struct Concert
                         Children =
                         [
                             new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [SectionCaption(Loc.Get(Strings.Concerts.Detail.Lineup))] },
-                            Design.Type.Eyebrow(Strings.Concerts.Detail.ArtistCount(acts.Length)) with { Color = Tok.TextSecondary, MaxLines = 1 },
+                            R.Type.Eyebrow(Strings.Concerts.Detail.ArtistCount(acts.Length)) with { Color = Tok.TextSecondary, MaxLines = 1 },
                         ],
                     },
                     new BoxEl { Height = 1f, MinWidth = 0f, Fill = Tok.StrokeSurfaceDefault },

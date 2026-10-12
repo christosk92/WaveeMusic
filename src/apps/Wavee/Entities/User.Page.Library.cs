@@ -1039,7 +1039,7 @@ public readonly partial struct User
                 Direction = 0, AlignItems = FlexAlign.End, Gap = Spacing.S, MinWidth = 0f,
                 Children =
                 [
-                    Design.Type.PageHero(Shell.Dest(new Shell.Route(_route)).Title) with
+                    R.Type.PageHero(Shell.Dest(new Shell.Route(_route)).Title) with
                         { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f },
                     new TextEl(_countText) { Size = 14f, LineHeight = 20f, Color = Tok.TextTertiary, Shrink = 0f },
                 ],
@@ -1494,7 +1494,7 @@ public readonly partial struct User
 
         static Element SearchScroll(Element[] rows) => ScrollView(new BoxEl
         {
-            Direction = 1, Gap = 2f, Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, Design.Dock.Reserve + Spacing.XL),
+            Direction = 1, Gap = 2f, Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, R.Space.DockReserve + Spacing.XL),
             Children = rows,
         }) with { Grow = 1f };
 

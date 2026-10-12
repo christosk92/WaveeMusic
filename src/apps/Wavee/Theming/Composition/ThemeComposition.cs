@@ -234,11 +234,12 @@ public sealed record ThemeComposition(
         bool changed = false;
         if (effect.Roles is { } mapRoles)
         {
-            if (def.AppRoles is not null && def.AppRoles is not WaveeStyleRoles)
-                throw new InvalidOperationException($"Theme '{Manifest.Id}': a composition effect maps roles, but the style's AppRoles is a {def.AppRoles.GetType().Name}, not WaveeStyleRoles.");
-            WaveeStyleRoles before = roles ?? WaveeStyleRoles.Empty;
-            WaveeStyleRoles after = mapRoles(before);
-            if (!Equals(before, after) || roles is null)
+            if (roles is null)
+                throw new InvalidOperationException(def.AppRoles is null
+                    ? $"Theme '{Manifest.Id}': a composition effect maps roles, but the style publishes no AppRoles."
+                    : $"Theme '{Manifest.Id}': a composition effect maps roles, but the style's AppRoles is a {def.AppRoles.GetType().Name}, not WaveeStyleRoles.");
+            WaveeStyleRoles after = mapRoles(roles);
+            if (!Equals(roles, after))
             {
                 roles = after;
                 changed = true;

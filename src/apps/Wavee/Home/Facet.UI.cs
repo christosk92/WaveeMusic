@@ -5,13 +5,13 @@
 //   `FacetPivot.UI.cs` (the hand pivot `WordBox`, its roving keyboard model, the compact `FacetBand`, the private
 //   `FollowingToggle` style, the context slot) outright. Every piece here is a STOCK engine control — nothing
 //   hand-rolled. Seventh pass: the facet words ARE the page title (there is no greeting headline), so the stock
-//   SelectorBar takes `Design.FacetTitleStyle` (28/36 display, rest secondary, selected primary semibold, no pill, a
+//   SelectorBar takes `R.Type.FacetTitleStyle` (28/36 display, rest secondary, selected primary semibold, no pill, a
 //   subtle hover plate, 40-px items) through its `style` parameter instead of its default 14-px pill look.
 //
 // ── The row (component tree) ─────────────────────────────────────────────────────────────────────────────────────
 //   FacetRow (props re-pushed: Embed.Comp(props, factory))
 //   └─ column
-//      ├─ HStack h=SelectorH(40) [ SelectorBar.Create(labels, Index, onChange, style: Design.FacetTitleStyle) · spacer
+//      ├─ HStack h=SelectorH(40) [ SelectorBar.Create(labels, Index, onChange, style: R.Type.FacetTitleStyle) · spacer
 //      │                           · Flow.Show(hasSub, ToggleButton.Controlled) ]
 //      ├─ 3-px box  { ProgressBar.Indeterminate(width: NaN) }   Opacity ← Switch.Bar (compositor bind, no re-render)
 //      └─ Flow.Show(Phase == Failed, InfoBar.Create(Error, "Couldn't load <facet>", …, Retry))
@@ -65,7 +65,7 @@ public sealed record FacetRowProps(
 /// <summary>The constants the page and the zones share: the pinned facet band's height and the sticky scope name.</summary>
 public static class Facet
 {
-    /// <summary>The selector HStack's height: <c>Design.FacetTitleStyle</c>'s item height (the prototype's 40-px facet
+    /// <summary>The selector HStack's height: <c>R.Type.FacetTitleStyle</c>'s item height (the prototype's 40-px facet
     /// row — a 28/36 display word in a 40-px hover plate, no pill slot). The row is set to exactly this and centres the
     /// bar in it, so the constant is authoritative for the sticky clip inset rather than a measured value.</summary>
     public const float SelectorH = 40f;
@@ -143,7 +143,7 @@ public sealed class FacetRow : Component
             Children =
             [
                 SelectorBar.Create(labels, p.Index, onChange: OnWord,
-                    style: FacetForm.IsTitle(w) ? Design.FacetTitleStyle : Design.FacetCompactStyle),
+                    style: FacetForm.IsTitle(w) ? R.Type.FacetTitleStyle : R.Type.FacetCompactStyle),
                 new BoxEl { Grow = 1f, MinWidth = 0f },
                 Flow.Show(() => hasSub, following),
             ],

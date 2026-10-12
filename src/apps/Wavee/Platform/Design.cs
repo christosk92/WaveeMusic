@@ -9,6 +9,12 @@
 // Budget: 3000 lines
 // Spec: ch 00 §9.4 (2,600-3,000) + ch 29 §9.10 (200)
 //
+// THEMES PLAN T2a. The TYPE ramp, the page-rhythm / shelf / flyout SPACE and the interaction SCALE tiers + stagger rungs are
+// not here any more: they are the active style's roles, read as `R.Type.*`, `R.Space.*` and `R.Motion.*` (Theming\Roles), with
+// Classic's values in Themes\Classic\Style\ClassicRoles.cs. What this file keeps is the structural geometry that needs
+// compile-time numbers, the Fluent duration ladder, the colour ladders (T2b), the behaviour (entrance, reveal, page-nav
+// motion, frame time) and the cover leaves.
+//
 // ── WHAT THIS FILE IS ────────────────────────────────────────────────────────────────────────────────────────────────
 //
 // Wavee's design system, as ONE static partial class over the engine's token layer. Everything here is static, pure and
@@ -57,8 +63,16 @@ public static partial class Design
     //
     // The fixed sizing ladder the engine's `Spacing.*` / `Radii.*` supersets do not carry. The 4-px grid is the native
     // tell; every value here is a multiple of 4 (the thumb ladder is an 8-step ON that grid).
+    //
+    // WHAT IS HERE, AND WHAT IS A ROLE (themes plan T2a). The page-rhythm, shelf and flyout geometry (the section gaps, the
+    // page measure, the shelf and wide-tile card bands, the edge-fade ladder, the face-pile flyout, the dock reserve) is the
+    // STYLE's: it is read as `R.Space.*` (Theming\Roles\SpaceRoles.cs) and Classic's table carries the values it had here.
+    // What stays below is geometry whose consumers need a COMPILE-TIME number (a default parameter, a persisted-key default,
+    // a `const` alias, a `static readonly` table, the zoom policy's BCL-only twin), so it cannot be a role yet. It is control,
+    // row, pane, rail, thumb and player-bar geometry, and each member leaves with the family that owns it: T3 policies and
+    // metrics, T5 nav, T6 player, T8 rows, T9 rails.
 
-    /// <summary>Fixed control / surface dimensions.</summary>
+    /// <summary>Fixed control / surface dimensions that are not style roles (see the section header).</summary>
     public static class Size
     {
         public const float ControlH = 32f, NavItemH = 44f, TrackRowH = 56f, PlayerBarH = 72f;   // taller dock: room for the seek row
@@ -76,56 +90,20 @@ public static partial class Design
         /// a page from carrying five almost-identical art sizes that read as sloppiness rather than as hierarchy.</summary>
         public const float Thumb32 = 32f, Thumb40 = 40f, Thumb48 = 48f, Thumb56 = 56f, Thumb64 = 64f;
 
-        /// <summary>The vertical rhythm BETWEEN page sections / feed modules — the wide rung at desktop widths and the
-        /// narrow rung below the layout's own breakpoint. Home's module gap and the artist page's section stack read the
-        /// SAME two constants, so a section boundary is the same distance in both places.</summary>
-        public const float SectionGap = 32f, SectionGapWide = 40f;
-
-        /// <summary>The widest a page's content column grows before it stops tracking the window. The detail frame, the
-        /// artist page and Home all cap their rows here, so the three line up at the same measure on an ultra-wide
-        /// display instead of one of them running edge to edge.</summary>
-        public const float PageMaxW = 1600f;
-
-        /// <summary>The zoom design box's two numbers, PROMOTED (ch 00 DATA GAPS). <see cref="DesignW"/> IS
-        /// <see cref="PageMaxW"/>; <see cref="DesignH"/> is the detail frame's tall-hero gate (winH ≥ 900), which in
-        /// 0.2.9 was a bare literal inside the zoom policy with no token twin at all.
+        /// <summary>The zoom design box's two numbers, PROMOTED (ch 00 DATA GAPS). <see cref="DesignW"/> is the page
+        /// measure (Classic's <c>R.Space.PageMaxW</c>, pinned equal by a test); <see cref="DesignH"/> is the detail
+        /// frame's tall-hero gate (winH ≥ 900), which in 0.2.9 was a bare literal inside the zoom policy with no token
+        /// twin at all.
         /// <para>`ZoomAutoPolicy` keeps its own BCL-only literals so it stays source-includable; the convergence test
         /// that pins the two pairs is this wave's.</para></summary>
-        public const float DesignW = PageMaxW, DesignH = 900f;
+        public const float DesignW = 1600f, DesignH = 900f;
 
-        /// <summary>THE horizontal shelf's card-width band and the grid gap (ch 00 §12.2 magic-number row 4). Three
-        /// surfaces authored 148/188 by hand and a fourth invented 200; one name here is what stops a fifth.</summary>
-        public const float ShelfCardMin = 148f, ShelfCardMax = 188f, GridGap = 12f;
-
-        /// <summary>The WIDE tile's card-width band and its cover ratio — a 16:9 header image over the same card plate
-        /// (<c>SurfaceGeometry.ShelfHeight(w, WideTileAspect, captionLines: 1, metaLine: true)</c> is its extent). One name, for the same reason
-        /// as <see cref="ShelfCardMin"/>.</summary>
-        public const float WideTileMin = 330f, WideTileMax = 440f, WideTileAspect = 16f / 9f;
-
-        /// <summary>The edge-fade ladder (ch 00 §12.2 magic-number row 2). A scroll viewport feathers its clipped edge by
-        /// exactly one of these: a chip rail 16, a card shelf 24, the right rail's own 36 (the engine default).</summary>
-        public const float FadeChip = 16f, FadeShelf = 24f, FadeRail = 36f;
-
-        /// <summary>The "…and N more" attribution flyout hung off a face pile (ch 00 §12.2 magic-number row 1). Four
-        /// hand copies of a nine-number shape is how one of them silently became 320 instead of 344.</summary>
-        public const float FacePileFlyoutW = 280f, FacePileFlyoutH = 360f,
-                           FacePileListW = 264f, FacePileListH = 344f;
-        /// <inheritdoc cref="FacePileFlyoutW"/>
+        /// <summary>One row of the "…and N more" attribution flyout (<c>R.Space.FacePile*</c>): a nav row tall.</summary>
         public const float FacePileRowH = NavItemH;
 
         /// <summary>The content region's ONE rounded corner, facing the nav pane. The shell reads it; so does the page
         /// tone plane, which is a page-root SIBLING of the scrolling page and must clip to the same shape.</summary>
         public static CornerRadius4 ContentPaneCorners => new(Radii.Card, 0f, 0f, 0f);
-    }
-
-    /// <summary>The bottom player-bar dock geometry. Pages reserve this height so their last row clears the transport.
-    /// <see cref="Reserve"/> is also the wash host's bottom margin — the Mix wash's PEAK used to land across the dock
-    /// band, which is what read as "the dock has a pastel gradient" (ch 00 W8). It never had one; it had the shell's.</summary>
-    public static class Dock
-    {
-        public const float BarH = 72f;
-        public const float Margin = 0f;
-        public const float Reserve = BarH;
     }
 
     // ── the focus insets (ch 29 §1.2, W1) ────────────────────────────────────────────────────────────────────────────
@@ -199,8 +177,10 @@ public static partial class Design
     /// <summary>Which of the engine's built-in ramps Wavee themes over (G-196). 0.2.9 called
     /// <c>Tok.Use(Tok.NeutralPalette, kind)</c> explicitly; 0.3 went through an optional shell seam nobody installed, so
     /// every theme flip fell back to <c>Tok.Use(kind)</c> — the engine's own default (<c>WarmPalette</c>), not Wavee's.
-    /// <see cref="Appearance"/> (the one owner of the mode) calls this for every kind change.</summary>
-    public static void SeedPalette(ThemeKind kind) => Tok.Use(Definition, kind);
+    /// <see cref="Appearance"/> (the one owner of the mode) calls this for every kind change.
+    /// <para>The definition is the ACTIVE composition's (it carries the style's roles, so a light/dark flip keeps them);
+    /// <see cref="Definition"/> itself, which has none, is only the fallback before <c>ThemeHost.Install</c>.</para></summary>
+    public static void SeedPalette(ThemeKind kind) => Tok.Use(Wavee.Theming.ThemeHost.ActiveDefinition ?? Definition, kind);
 
     /// <summary>Wavee's theme definition: the engine's Neutral palette with Wavee's fonts — the BUNDLED icon face
     /// (<see cref="WaveeFonts.Icons"/>), never the system family of the same name, which only Windows 11 ships.</summary>
@@ -1169,338 +1149,30 @@ public static partial class Design
     static readonly Dictionary<string, Prop<ColorF>> s_watchedPlaceholders = new(StringComparer.Ordinal);
 
     // ══ 8. THE TYPE RAMP ═════════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>Semantic type aliases so call sites read INTENT, not raw sizes. Every alias maps to the engine's WinUI
-    /// type ramp. NEVER author a raw <c>TextEl { Size = … }</c>.
-    ///
-    /// <para><b>THE THREE-PART CONTRACT.</b> Every alias resolves a SIZE, a LINE HEIGHT and a WEIGHT — never a size
-    /// alone. That is the whole reason to go through an alias rather than <c>with { Size = 13f }</c>: a bare size
-    /// override keeps whatever line height the previous rung published, and a page of hand-picked sizes therefore has
-    /// no vertical rhythm at all. The engine ramp carries eight pairs (12/16 · 14/20 · 14/20-600 · 18/24 · 20/28-600 ·
-    /// 28/36-600 · 40/52-600 · 68/92-600); the app adds four rungs on that ladder (<see cref="MicroMeta"/> 11/15,
-    /// <see cref="DenseMeta"/> 13/18, <see cref="DenseTitle"/> 13/18-600, <see cref="SheetTitle"/> 16/22-600) — twelve
-    /// named sizes total, not a thirteenth invented ad hoc. <see cref="PivotLabel"/> 19/25/350 remains a sanctioned
-    /// off-ramp. Repointing a call site at an alias brings the line height with it.</para>
-    ///
-    /// <para><b>WEIGHT POLICY: 400 and 600 only, with SIX documented divergences.</b> Three DISPLAY-FACE identity
-    /// aliases keep 700 (<see cref="ArtistDisplay"/> / <see cref="ArtistTitle"/> / <see cref="ArtistCompactTitle"/> —
-    /// the masthead voice, not UI labels) and three keep SemiLight 350 (<see cref="PivotLabel"/> /
-    /// <see cref="NpvLyric"/> / <see cref="StatHero"/> — the same WinUI SemiLight the engine's own pivot control uses
-    /// for its header row). A SEVENTH is a regression.</para>
-    ///
-    /// <para><b>ONE default is not <c>TextPrimary</c>.</b> <c>Ui.Caption</c> ships bound to <c>Tok.TextSecondary</c>, so
-    /// <see cref="Eyebrow"/> and every "Caption at 600" rung are SECONDARY unless the call site sets <c>Color</c>, and
-    /// <see cref="TrackMeta"/>'s secondary read is a restatement rather than a change.</para></summary>
-    public static class Type
-    {
-        /// <summary>The display face every display-voice alias here sets — and <see cref="FacetTitleStyle"/>, the one
-        /// control style that speaks in it.</summary>
-        internal const string DisplayFace = "Segoe UI Variable Display";
-
-        /// <summary>Track / album / playlist titles in lists. → <c>Ui.BodyStrong</c> (14 / 20 / 600).</summary>
-        public static TextEl TrackTitle(string s) => Ui.BodyStrong(s);
-
-        /// <summary>A media CARD's headline (a playlist tile, a mix card, a feed card, a shelf cell) — the same rung as
-        /// <see cref="TrackTitle"/>, named for the surface it sits on so a card body does not have to claim it is
-        /// rendering a track.</summary>
-        public static TextEl CardTitle(string s) => Ui.BodyStrong(s);
-
-        /// <summary>Artist · duration · metadata. → <c>Ui.Caption</c> secondary (12 / 16 / 400).</summary>
-        public static TextEl TrackMeta(string s) => Ui.Caption(s).Secondary();
-
-        /// <summary>THE tracking every eyebrow carries — 30/1000 em, owned by <see cref="Eyebrow"/> and authored nowhere
-        /// else. Before convergence the app carried NINE tracking values on this one role (10, 20, 30, 32, 40, 50, 60,
-        /// 70, 80, 120): a letterspacing ladder nobody designed, spread over 58 call sites, which is why two eyebrows
-        /// stacked on the same page never looked like the same label. 30 is the value that survives SENTENCE case — the
-        /// old 60-120 rungs were compensating for ALL-CAPS, and caps is exactly what this role gave up.</summary>
-        public const float EyebrowTracking = 30f;
-
-        /// <summary>An EYEBROW — the small label that names what a card/section IS ("Editorial", "Daily Mix", "Video",
-        /// the hero's greeting). One rung, one weight, ONE tracking, everywhere.
-        /// <para>CASE IS NOT PART OF THE VOICE. The role used to be ALL-CAPS + heavy letterspacing, which is neither
-        /// Fluent (sentence case everywhere) nor the editorial register the rest of the app aims at — and a
-        /// <c>.ToUpper()</c> on a LOCALIZED string is worse than a style mistake: it mangles Turkish dotted i, expands
-        /// German ß, and shouts a user's own display name back at them. So the alias takes the string's OWN casing and
-        /// no call site may caps-transform it.</para>
-        /// <para>COLOUR belongs to the call site — an accent reason, a tertiary kind tag and an on-accent badge are the
-        /// same type doing three different jobs. Metrics and tracking are the alias's; colour is not. The DEFAULT, when
-        /// the call site sets nothing, is <c>Tok.TextSecondary</c>.</para>
-        /// <para>Text that merely wants this RUNG without being an eyebrow — a rank numeral, a podium tile's artist
-        /// name, a day heading — reads <c>Ui.Caption(x) with { Weight = 600 }</c> straight off the factory (same
-        /// metrics, no tracking) rather than claiming to be a label it is not. One alias per ROLE, not per rung.</para></summary>
-        public static TextEl Eyebrow(string s) => Ui.Caption(s) with { Weight = 600, CharSpacing = EyebrowTracking };
-
-        /// <summary>Badges, counts, timestamps, chart marks — the rung BELOW caption. The engine ramp stops at 12/16
-        /// because it is a document ramp; a dense media row needs one step under it, and 61 sites had already invented
-        /// it as a raw 11f with no line height.</summary>
-        public static TextEl MicroMeta(string s) => Ui.Caption(s) with { Size = 11f, LineHeight = 15f };
-
-        /// <summary>Credits, list metadata, drawer body — between caption and body. 65 sites had invented it as 13f.</summary>
-        public static TextEl DenseMeta(string s) => Ui.Body(s) with { Size = 13f, LineHeight = 18f };
-
-        /// <summary>A title in a dense list (drawer rows, chart rows) — DenseMeta's weight pair.</summary>
-        public static TextEl DenseTitle(string s) => Ui.BodyStrong(s) with { Size = 13f, LineHeight = 18f };
-
-        /// <summary>A sheet or card heading, between BodyStrong and Subtitle.</summary>
-        public static TextEl SheetTitle(string s) => Ui.BodyLarge(s) with { Size = 16f, LineHeight = 22f, Weight = 600 };
-
-        /// <summary>"Because you played…" section / rail headers. → <c>Ui.Subtitle</c> (20 / 28 / 600), UI face.</summary>
-        public static TextEl RailHeader(string s) => Ui.Subtitle(s);
-
-        /// <summary>A Home MODULE header — the same 20/28 Semibold metrics as <see cref="RailHeader(string)"/> but set
-        /// in the DISPLAY face with a hair of negative tracking. That is the whole difference between a shelf label and
-        /// a module title: at 20 px the display face's tighter fit and optical sizing make a stack of thirteen headings
-        /// read as typography rather than as thirteen repeated UI labels.</summary>
-        public static TextEl ModuleHeader(string s) => Ui.Subtitle(s) with
-        {
-            FontFamily = DisplayFace,
-            CharSpacing = -6f,
-        };
-
-        /// <summary>A module header plus its subdued fact ("Radio · 20 stations"), shaped as ONE paragraph so the 12 px
-        /// run sits on the 20 px run's real BASELINE. Two separate text nodes cannot do this — the engine's
-        /// <c>FlexAlign</c> has no Baseline member, so side-by-side nodes can only be bottom-aligned, which puts the
-        /// small run a couple of pixels low and reads as a mistake at this size.
-        /// <para>The gap IS two literal spaces: a run break cannot carry margin.</para></summary>
-        public static SpanTextEl ModuleHeader(string title, string meta) => Paired(title, meta, DisplayFace, -6f);
-
-        /// <summary>A rail heading plus baseline-aligned compact metadata, in the UI face. Same construction as
-        /// <see cref="ModuleHeader(string,string)"/>.</summary>
-        public static SpanTextEl RailHeader(string title, string meta) => Paired(title, meta, null, 0f);
-
-        // The ONE baseline-paired-span construction. Both callers ship NoWrap + CharacterEllipsis + MaxLines 1 +
-        // MinWidth 0 + Shrink 1: a baseline-paired span must never wrap, because the small run would land alone on line
-        // 2 with no heading to sit on.
-        static SpanTextEl Paired(string title, string meta, string? face, float tracking)
-        {
-            var heading = Ui.Subtitle("");
-            var caption = Ui.Caption("");
-            return new SpanTextEl(
-            [
-                new TextSpan(title),
-                new TextSpan("  " + meta, Weight: caption.ResolvedWeight, Color: Tok.TextTertiary, Size: caption.Size),
-            ])
-            {
-                FontFamily = face,
-                CharSpacing = tracking,
-                Size = heading.Size,
-                Weight = heading.ResolvedWeight,
-                LineHeight = heading.LineHeight,
-                LineStacking = heading.LineStacking,
-                LineBounds = heading.LineBounds,
-                Wrap = TextWrap.NoWrap,
-                Trim = TextTrim.CharacterEllipsis,
-                MaxLines = 1,
-                MinWidth = 0f,
-                Shrink = 1f,
-            };
-        }
-
-        /// <summary>Page hero (playlist / album name), UI face. → <c>Ui.Title</c> (28 / 36 / 600).</summary>
-        public static TextEl PageHero(string s) => Ui.Title(s);
-
-        /// <summary>The two-column detail rail's identity title — and the vertical hero's. <see cref="PageHero"/>'s
-        /// engine-ramp metrics in the DISPLAY face with −20/1000 em tracking. One alias so playlist, liked and album
-        /// rails share a voice; the frame still swaps Size/LineHeight to 40/52 when the window is tall
-        /// (<see cref="Size.DesignH"/>).</summary>
-        public static TextEl DetailHero(string s) => Ui.Title(s) with
-        {
-            FontFamily = DisplayFace,
-            CharSpacing = -20f,
-        };
-
-        /// <summary>A LIBRARY SURFACE's masthead — the name of a PLACE rather than of a record ("Recents"). One rung
-        /// above <see cref="PageHero"/> on the SAME engine ramp (40 / 52), set in the display face at the LIGHT weight so
-        /// the word reads as typography over a Mica wash instead of as one more bold UI label.
-        /// <para>Deliberately NOT a fourth display-face divergence: it keeps the ramp's size/line-height pair and stays
-        /// inside the 400/600 weight policy — the face and the hair of negative tracking are the same two liberties
-        /// <see cref="ModuleHeader(string)"/> already takes, and nothing more.</para></summary>
-        public static TextEl SurfaceDisplay(string s) => Ui.TitleLarge(s) with
-        {
-            FontFamily = DisplayFace,
-            Weight = 400,
-            CharSpacing = -12f,
-        };
-
-        /// <summary>The daylist card's TITLE — the Home page's one hero line ("cutesy korean r&amp;b sunday afternoon").
-        /// <see cref="SurfaceDisplay"/>'s cut (the 40 / 52 engine rung, the display face, −12/1000 em) at SEMIBOLD
-        /// 600: a record's name, not a place's, so it takes the heading weight where the place masthead stays light.
-        /// On the ramp and inside the 400/600 policy — no new divergence. The line budget (≤ 2) is the call site's.</summary>
-        public static TextEl HeroTitle(string s) => Ui.TitleLarge(s) with
-        {
-            FontFamily = DisplayFace,
-            Weight = 600,
-            CharSpacing = -12f,
-        };
-
-        /// <summary>Wide artist identity display. 84 / 96 / <b>700</b> — one of the three sanctioned display-face
-        /// divergences. The <c>MinSize</c> floor is the point: the engine shrinks the glyph run toward it before it wraps
-        /// or ellipsises, so a long artist name steps DOWN inside one rung rather than breaking to a second line.</summary>
-        public static TextEl ArtistDisplay(string s) => Ui.Display(s) with
-        {
-            FontFamily = DisplayFace, Size = 84f, LineHeight = 96f, Weight = 700, CharSpacing = -28f, MinSize = 68f,
-        };
-
-        /// <summary>Medium artist identity title. 48 / 60 / <b>700</b> — sanctioned display-face divergence.</summary>
-        public static TextEl ArtistTitle(string s) => Ui.TitleLarge(s) with
-        {
-            FontFamily = DisplayFace, Size = 48f, LineHeight = 60f, Weight = 700, CharSpacing = -20f, MinSize = 40f,
-        };
-
-        /// <summary>Compact artist identity title. 32 / 40 / <b>700</b> — sanctioned display-face divergence.</summary>
-        public static TextEl ArtistCompactTitle(string s) => Ui.Title(s) with
-        {
-            FontFamily = DisplayFace, Size = 32f, LineHeight = 40f, Weight = 700, CharSpacing = -12f, MinSize = 28f,
-        };
-
-        /// <summary>Now-playing track title. → <c>Ui.Subtitle</c> (20 / 28 / 600).</summary>
-        public static TextEl NowPlayingTitle(string s) => Ui.Subtitle(s);
-
-        /// <summary>The artist SPEAKING — the pick card's quote, set as editorial typography rather than a UI label.
-        /// → <c>Ui.Title</c>'s ramp pair (28 / 36) in the display face at REGULAR 400: on the engine ramp and inside the
-        /// weight policy, taking only the same two liberties <see cref="SurfaceDisplay"/> takes. Regular at 28 px is
-        /// what makes a first-person sentence read as a voice instead of a heading; the string keeps the artist's OWN
-        /// casing.</summary>
-        public static TextEl PickQuote(string s) => Ui.Title(s) with
-        {
-            FontFamily = DisplayFace,
-            Weight = 400,
-            CharSpacing = -12f,
-        };
-
-        /// <summary>The Fold tile's crop — the SAME cut as <see cref="PickQuote"/>, named for the surface it sits on
-        /// rather than for the voice it carries: a Fold tile's title is a card headline, not an artist speaking. The
-        /// prototype's own cut for this role (300 weight at 32 px) is deliberately NOT copied — 300 is off the 400/600
-        /// policy and 32 px has no rung on the engine ramp.</summary>
-        public static TextEl FoldTitle(string s) => PickQuote(s);
-
-        /// <summary>A pivot tab header (All / Music / Podcasts / Artists) — the display face at SemiLight, one rung
-        /// under <see cref="RailHeader(string)"/>. 19 / 25 / <b>350</b>, and deliberately OFF the eight-rung engine
-        /// ramp: the second and last sanctioned off-ramp (the other is <c>Controls.Picker.Label</c>'s <c>size + 4</c>
-        /// line box, which at its default 12 lands exactly on the 12/16 rung). A THIRD off-ramp is a regression.</summary>
-        public static TextEl PivotLabel(string s) => Ui.BodyLarge(s) with
-        {
-            FontFamily = DisplayFace, Size = 19f, LineHeight = 25f, Weight = 350, CharSpacing = -6f,
-        };
-
-        /// <summary>NPV lyrics-peek reel — Subtitle's 20/28 pair in the display face at SemiLight 350.</summary>
-        public static TextEl NpvLyric(string s) => Ui.Subtitle(s) with
-        {
-            FontFamily = DisplayFace, Weight = 350, CharSpacing = -6f,
-        };
-
-        /// <summary>A GLANCEABLE STAT — one number the reader takes in without reading: a play count, a tempo, a key, a
-        /// duration. → <c>Ui.Title</c>'s ramp pair (28 / 36) in the display face at SemiLight <b>350</b>, the third and
-        /// last use of that sanctioned cut.
-        ///
-        /// <para>WHY THE TITLE RUNG AND NOT SUBTITLE. The stat has no heading above it: it IS the heading, sitting over
-        /// its own sentence-case caption, and the whole point of dropping the tiles that used to box these values is
-        /// that the numerals must now carry the section by themselves. At 20/28 a play count and the version rows below
-        /// it are close enough to read as one undifferentiated column of text — which is the wall the tiles were there
-        /// to break up.</para>
-        ///
-        /// <para><paramref name="unit"/> is the small run that shares the numeral's BASELINE — built as ONE paragraph
-        /// for the same reason <see cref="ModuleHeader(string,string)"/> is. Null (the common case) yields the numeral
-        /// alone.</para></summary>
-        public static SpanTextEl StatHero(string value, string? unit)
-        {
-            var heading = Ui.Title("");
-            var caption = Ui.Caption("");
-            TextSpan[] spans = unit is { Length: > 0 }
-                ? [new TextSpan(value),
-                   new TextSpan("  " + unit, Weight: caption.ResolvedWeight, Color: Tok.TextSecondary, Size: caption.Size)]
-                : [new TextSpan(value)];
-            return new SpanTextEl(spans)
-            {
-                FontFamily = DisplayFace,
-                CharSpacing = -6f,
-                Size = heading.Size,
-                Weight = 350,
-                LineHeight = heading.LineHeight,
-                LineStacking = heading.LineStacking,
-                LineBounds = heading.LineBounds,
-                Wrap = TextWrap.NoWrap,
-                Trim = TextTrim.CharacterEllipsis,
-                MaxLines = 1,
-                MinWidth = 0f,
-                Shrink = 1f,
-            };
-        }
-    }
-
-    /// <summary>The Home FACET ROW as the page's title (All · Music · Podcasts · Audiobooks): the stock
-    /// <see cref="SelectorBar"/> restyled into the prototype's page-title pivot. The words are 28 / 36 in the display
-    /// face — <c>Ui.Title</c>'s engine rung, no tracking — SECONDARY at rest and PRIMARY 600 when selected, so the
-    /// selected facet reads as the heading and its siblings as the choices beside it. No pill: the selection is the
-    /// weight and the ink. Hover and press lay the subtle fill ladder (subtle-hover, then subtle-press) on an
-    /// 8-DIP-padded, 40-tall item, 24 apart, and the first item pulls −8 so its WORD — not its plate — sits on the
-    /// page's leading edge.
-    /// <para>A PROPERTY, like <see cref="Controls.TileCardStyle"/>: every colour is a live token read, so a theme flip
-    /// re-resolves it at the next render.</para></summary>
-    public static SelectorBarStyle FacetTitleStyle => new()
-    {
-        LabelSize = 28f,
-        LineHeight = 36f,
-        FontFamily = Type.DisplayFace,
-        CharSpacing = 0f,
-        RestWeight = 400,
-        SelectedWeight = 600,
-        RestColor = Tok.TextSecondary,
-        SelectedColor = Tok.TextPrimary,
-        HoverColor = Tok.TextPrimary,
-        PressedColor = Tok.TextSecondary,
-        HoverFill = Tok.FillSubtleSecondary,
-        PressedFill = Tok.FillSubtleTertiary,
-        ShowPill = false,
-        ItemPadding = new Edges4(8f, 2f, 8f, 2f),
-        ItemHeight = 40f,
-        ItemGap = 24f,
-        LeadingInset = -8f,
-    };
-
-    /// <summary><see cref="FacetTitleStyle"/> one rung down the ramp (20/28; items 8 apart, so with the plates' own 8-DIP
-    /// padding the WORDS stay 24 apart) for a facet row too narrow for
-    /// four 28-px words and the Following toggle (the prototype's compact form, 06 §2.1; the edge is Home's FacetForm). Same
-    /// 40-tall item, so the pinned band's height — every sticky inset under it — never changes with the form.</summary>
-    public static SelectorBarStyle FacetCompactStyle => FacetTitleStyle with { LabelSize = 20f, LineHeight = 28f, ItemGap = 8f };
+    //
+    // MOVED (themes plan T2a). The semantic type aliases (`Design.Type.TrackTitle` … `StatHero`), the display face, the eyebrow
+    // tracking and the Home facet row's `SelectorBarStyle`s are the STYLE's type roles: they are read as `R.Type.*`
+    // (Theming\Roles\TypeRoles.cs) and Classic's table (Themes\Classic\Style\ClassicRoles.cs) carries the rungs and deviations
+    // they had here. The three-part contract (every role resolves a SIZE, a LINE HEIGHT and a WEIGHT, never a size alone), the
+    // 400/600 weight policy with its six documented divergences and the rule that no call site authors a raw
+    // `TextEl { Size = … }` moved with them.
 
     // ══ 9. MOTION ════════════════════════════════════════════════════════════════════════════════════════════════════
     //
     // Wavee's ONE motion vocabulary. Hover/press motion everywhere is Wavee's identity — a media app should feel alive
-    // under the pointer where WinUI is deliberately still — but it is a SYSTEM, not 20 hand-picked numbers. This section
-    // owns both halves: the three interaction SCALE tiers (every HoverScale/PressScale in the app resolves to one) and
-    // the Fluent duration ladder (every hover/press/brush duration snaps to one of its rungs).
-    //
-    // ── WHY THE TIERS READ ReducedMotion AND THE ENGINE DOES NOT ─────────────────────────────────────────────────────
-    // The hover/press SCALE path is the ONLY animated channel in the engine that carries no reduced-motion policy.
-    // Structural motion goes through the seeding paths that consult the reduced-snap policy and place the channel at its
-    // end value; the declarative While*/Transition surface carries a motion token whose Reduced policy is honoured the
-    // same way. But the interaction fade is seeded with no policy parameter and the recorder composites the scale
-    // unconditionally — so a reduced-motion user WOULD still get every scale cue, fully eased. The values are authored
-    // app-side, so the correct minimal fix is app-side and lives HERE: the tier accessors return 1f under reduced
-    // motion, which makes the recorder's |s − 1| > 0.0008 test fail and skips the transform entirely. This is
-    // reduced-motion-AS-A-VALUE (the canon rule) — a value read during Render, never a hook-order-breaking branch. If
-    // the engine ever grows a policy on the interaction channels, delete the flag reads here and keep the tiers.
+    // under the pointer where WinUI is deliberately still — but it is a SYSTEM, not 20 hand-picked numbers. It has two halves:
+    //   · the three interaction SCALE tiers (every HoverScale/PressScale in the app resolves to one) and the two stagger
+    //     rungs are the STYLE's, read as `R.Motion.*` (Theming\Roles\MotionRoles.cs, themes plan T2a). The tiers read
+    //     ReducedMotion themselves: the hover/press SCALE path is the ONLY animated channel in the engine that carries no
+    //     reduced-motion policy (the recorder composites the scale unconditionally), so they return 1f under reduced motion,
+    //     which makes the recorder's |s − 1| > 0.0008 test fail and skips the transform. That is reduced-motion-AS-A-VALUE
+    //     (the canon rule): a value read during Render, never a hook-order-breaking branch;
+    //   · the Fluent duration ladder below (every hover/press/brush duration snaps to one of its rungs) is a PLATFORM
+    //     constant, WinUI's Control*AnimationDuration, and stays here as `const`.
 
-    /// <summary>The three interaction scale tiers and the Fluent duration ladder.</summary>
+    /// <summary>The Fluent duration ladder.</summary>
     public static class Motion
     {
-        /// <summary>Chips, small toggles, settings rows, inline pickers — a surface the pointer crosses often.
-        /// Barely-there, so a scrolling list does not shimmer.
-        /// <para>NOT a near-full-width track/list row: even this "subtle" 2% swing moves each edge several DIP in
-        /// opposite directions on a ~1000 px row, which reads as the whole row shrinking and springing back and visibly
-        /// blurs the title mid-scale. A wide row's press acknowledgement is its <c>PressedFill</c> alone — no
-        /// <c>PressScale</c>.</para></summary>
-        public static readonly ScaleTier ScaleSubtle = new(1.02f, 0.98f);
-
-        /// <summary>Buttons, CTAs, pills, secondary circles — a deliberate, discrete target. The media pill's tier.</summary>
-        public static readonly ScaleTier ScaleStandard = new(1.04f, 0.96f);
-
-        /// <summary>Media FABs, transport + primary play, on-artwork circles, the "…" corner — a round affordance that
-        /// floats over media and is the page's loudest interactive object. Absorbs the old 1.06/1.07/1.10/1.16 and
-        /// 0.86/0.90/0.92/0.94 family.</summary>
-        public static readonly ScaleTier ScaleEmphatic = new(1.07f, 0.92f);
-
         // ── the Fluent duration ladder (ms) ──────────────────────────────────────────────────────────────────────────
         // INTERACTION durations only. Structural enter/exit choreography stays authored per surface: those are
         // asymmetric by design (enter decelerates long, exit accelerates short) and are not on this ladder.
@@ -1516,21 +1188,6 @@ public static partial class Design
         public const float Standard = 250f;
         /// <summary>WinUI ControlSlowAnimationDuration — a slow, decelerating drift: the wide-cover hover zoom.</summary>
         public const float Slow = 333f;
-
-        /// <summary>List/shelf entrance stagger per item. Reached through <see cref="Entrance"/>, never multiplied by
-        /// hand at a call site (that is what produced the uncapped, reduced-motion-blind entrances this rung
-        /// replaced).</summary>
-        public const float StaggerMs = 40f;
-
-        /// <summary>A drill-in surface's MASTHEAD stagger: the offset between the display line and the metadata line
-        /// under it, assigned to the two-child container's <c>Element.Stagger</c>.
-        /// <para>A separate rung from <see cref="StaggerMs"/> on purpose, and the distinction is MECHANICAL rather than
-        /// aesthetic: that one is the per-ITEM offset of an unbounded list and is therefore capped by
-        /// <see cref="Entrance.StaggerCap"/>; this one offsets exactly TWO authored lines, so the engine's uncapped
-        /// <c>index × ms</c> spelling is safe and the cascade is bounded by construction.</para>
-        /// <para>Reduced motion is a VALUE at the call site (<c>Design.Reduced ? 0f : MastheadStaggerMs</c>), never a
-        /// branch — <c>Element.Stagger</c> is a plain float and takes no motion token.</para></summary>
-        public const float MastheadStaggerMs = 45f;
     }
 
     /// <summary>THE disclosure motion (fluent-gpu docs/plans/smooth-reveal-implementation.md): layout lands once, the
@@ -1559,7 +1216,7 @@ public static partial class Design
 
     /// <summary>THE list/shelf entrance recipe — the one place a Wavee surface says "my items arrive in sequence".
     ///
-    /// <para>A short rise + fade + a hair of blur, offset by <see cref="Motion.StaggerMs"/> per item and <b>capped</b>
+    /// <para>A short rise + fade + a hair of blur, offset by <see cref="MotionRoles.StaggerMs"/> per item and <b>capped</b>
     /// at <see cref="StaggerCap"/>: items 0-8 cascade, everything after shares item 8's delay and lands together. The
     /// cap is not a nicety — <c>Element.Stagger</c> is <i>index × ms</i> with no ceiling, so a 50-row list authored that
     /// way takes two seconds to finish arriving, and the rows nobody is looking at are the ones still animating.</para>
@@ -1596,39 +1253,11 @@ public static partial class Design
 
         /// <summary>Item <paramref name="index"/>'s entrance delay in ms: capped, and 0 under reduced motion.</summary>
         public static float DelayMs(int index)
-            => Reduced ? 0f : Math.Clamp(index, 0, StaggerCap) * Motion.StaggerMs;
+            => Reduced ? 0f : Math.Clamp(index, 0, StaggerCap) * R.Motion.StaggerMs;
 
         /// <summary>Assign to the item's own wrapper box (never to a node whose Opacity is already bound — a bound
         /// channel and an Enter opacity track fight over the same row).</summary>
         public static LayoutTransition Row(int index) => Rise with { DelayMs = DelayMs(index) };
-    }
-
-    /// <summary>One interaction scale tier: the authored hover/press targets plus the reduced-motion-safe accessors
-    /// every call site must use. Construct only through <see cref="Design.Motion"/>'s three tiers — there is no
-    /// fourth.</summary>
-    public readonly struct ScaleTier
-    {
-        /// <summary>The authored target, BEFORE the reduced-motion read. For tests/diagnostics; call sites use
-        /// <see cref="Hover"/>.</summary>
-        public readonly float HoverTarget;
-        /// <inheritdoc cref="HoverTarget"/>
-        public readonly float PressTarget;
-
-        internal ScaleTier(float hoverTarget, float pressTarget)
-        {
-            HoverTarget = hoverTarget;
-            PressTarget = pressTarget;
-        }
-
-        /// <summary>Assign to <c>BoxEl.HoverScale</c>. Collapses to 1f under reduced motion.</summary>
-        public float Hover => Reduced ? 1f : HoverTarget;
-        /// <summary>Assign to <c>BoxEl.PressScale</c>. Collapses to 1f under reduced motion.</summary>
-        public float Press => Reduced ? 1f : PressTarget;
-        /// <summary>Hover scale for an affordance that can be DEAD (a disabled transport button, an unavailable filter):
-        /// a surface that cannot be clicked must not answer the pointer.</summary>
-        public float HoverIf(bool enabled) => enabled ? Hover : 1f;
-        /// <inheritdoc cref="HoverIf"/>
-        public float PressIf(bool enabled) => enabled ? Press : 1f;
     }
 
     /// <summary>Arms once the pointer has demonstrably MOVED — never on the first sample. A card's hover-driven effects
@@ -2140,9 +1769,9 @@ public static partial class Design
 
         /// <summary>The wash host's bottom inset is a MARGIN, not a re-anchored ellipse. The placements' centre/radius
         /// are node-relative CONSTANTS precisely because the box is a fraction of the WINDOW; subtracting a fixed
-        /// <see cref="Dock.Reserve"/> from the box HEIGHT would make those two ratios viewport-dependent and they would
+        /// <see cref="SpaceRoles.DockReserve"/> from the box HEIGHT would make those two ratios viewport-dependent and they would
         /// go stale on the next resize.</summary>
-        public const float HostBottomInset = Dock.Reserve;
+        public static float HostBottomInset => R.Space.DockReserve;
 
         /// <summary>Every wash stop carries the wash's own RGB at α 0, never <c>ColorF.Transparent</c>: stop
         /// interpolation is STRAIGHT-alpha, and premultiplied black would drag the whole falloff toward black.</summary>

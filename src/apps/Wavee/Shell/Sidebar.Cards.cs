@@ -213,7 +213,7 @@ public static partial class Sidebar
 
         static Element? SubtitleOf(string? subtitle)
             => subtitle is { Length: > 0 } s
-                ? global::Wavee.Design.Type.TrackMeta(s) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }
+                ? R.Type.TrackMeta(s) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }
                 : null;
     }
 }

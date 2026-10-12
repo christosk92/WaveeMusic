@@ -86,7 +86,7 @@ public static partial class Profile
                 new BoxEl
                 {
                     Direction = 1, Justify = FlexJustify.End, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
-                    MaxWidth = Design.Size.PageMaxW,   // aligns with the magazine's 1600 measure
+                    MaxWidth = R.Space.PageMaxW,   // aligns with the magazine's 1600 measure
                     Padding = new Edges4(m.Gutter, m.TopPad, m.Gutter, m.BottomPad),
                     Children = [content],
                 },
@@ -124,9 +124,9 @@ public static partial class Profile
     {
         TextEl name = (m.Tier switch
         {
-            ArtistHeroTier.Wide => Design.Type.ArtistDisplay(t.Name),
-            ArtistHeroTier.Medium => Design.Type.ArtistTitle(t.Name),
-            _ => Design.Type.ArtistCompactTitle(t.Name),
+            ArtistHeroTier.Wide => R.Type.ArtistDisplay(t.Name),
+            ArtistHeroTier.Medium => R.Type.ArtistTitle(t.Name),
+            _ => R.Type.ArtistCompactTitle(t.Name),
         }) with
         {
             Color = Tok.TextPrimary, Wrap = m.NameLines > 1 ? TextWrap.Wrap : TextWrap.NoWrap, MaxLines = m.NameLines,
@@ -191,7 +191,7 @@ public static partial class Profile
             Margin = new Edges4(-Spacing.S, -Spacing.XS, -Spacing.S, -Spacing.XS),
             Children =
             [
-                Design.Type.StatHero(ProfileStats.Numeral(c.Value, CultureInfo.CurrentCulture), null),
+                R.Type.StatHero(ProfileStats.Numeral(c.Value, CultureInfo.CurrentCulture), null),
                 Caption(StatLabel(in c)) with
                 {
                     Weight = 600, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
@@ -379,7 +379,7 @@ public static partial class Profile
     // ══ 3. THE CARDS ══════════════════════════════════════════════════════════════════════════════════════════════════
 
     static Element CardSubtitle(string text)
-        => Design.Type.TrackMeta(text) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
+        => R.Type.TrackMeta(text) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
 
     /// <summary>A follower-count message (<paramref name="key"/> = a <c>…FollowersKey</c> const): <c>count</c> picks the
     /// plural arm, <c>n</c> is the grouped numeral — the formatter's own <c>#</c> prints invariant digits with no grouping
@@ -474,7 +474,7 @@ public static partial class Profile
             {
                 Width = RankColumn, Shrink = 0f, Direction = 1, AlignItems = FlexAlign.End, HitTestVisible = false,
                 Padding = new Edges4(0f, SurfaceGeometry.ShelfGutterTop + SurfaceGeometry.ShelfPlatePad, Spacing.XS, 0f),
-                Children = [Design.Type.StatHero(ProfileStats.Numeral(c.Rank, CultureInfo.CurrentCulture), null) with { Color = Tok.TextSecondary }],
+                Children = [R.Type.StatHero(ProfileStats.Numeral(c.Rank, CultureInfo.CurrentCulture), null) with { Color = Tok.TextSecondary }],
             },
             ArtistCard(c, w - RankColumn),
         ],

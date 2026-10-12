@@ -634,7 +634,7 @@ public static partial class Queue
                 ZStack = true, MinHeight = ClassicExtent, ClipToBounds = true,
                 Corners = CornerRadius4.All(0f),
                 Fill = ColorF.Transparent, HoverFill = Design.Colors.RowHover, PressedFill = Design.Colors.RowPressed,
-                PressScale = Design.Motion.ScaleSubtle.Press,
+                PressScale = R.Motion.ScaleSubtle.Press,
                 Opacity = QueueRowRules.Dim(section),
                 Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true,
                 OnClick = () => Verbs.Play(itemId, index, r),
@@ -797,7 +797,7 @@ public static partial class Queue
             });
             var top = new List<Element>(4)
             {
-                Design.Type.Eyebrow(title) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                R.Type.Eyebrow(title) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                 new TextEl(View.CountOf(section).ToString()) { Size = 12f, LineHeight = 16f, Weight = 600, Color = Tok.TextTertiary },
                 new BoxEl { Grow = 1f, MinWidth = 0f },
             };
@@ -1064,7 +1064,7 @@ public static partial class Queue
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Px(Spacing.M), MinHeight = Px(RowH), Height = Px(RowH),
                 Padding = new Edges4(Px(Spacing.S), 0f, Px(Spacing.S), 0f), Corners = Radii.ControlAll,
                 Fill = Ink.GlassRest, HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed, BrushTransitionMs = Design.Motion.Faster,
-                PressScale = Design.Motion.ScaleSubtle.Press,
+                PressScale = R.Motion.ScaleSubtle.Press,
                 Opacity = section == QueueSection.Autoplay ? 0.68f : 1f,
                 Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, AllowFocusOnInteraction = false,
                 OnClick = () => Verbs.Play(itemId, index, r),
@@ -1103,7 +1103,7 @@ public static partial class Queue
                 Padding = new Edges4(Px(Spacing.M), 0f, Px(Spacing.S), 0f), Corners = Radii.CardAll,
                 Fill = Ink.Plate, HoverFill = Ink.PlateHover, PressedFill = Ink.GlassPressed, BrushTransitionMs = Design.Motion.Faster,
                 BorderWidth = 1f, BorderColor = Ink.Stroke,
-                PressScale = Design.Motion.ScaleSubtle.Press,
+                PressScale = R.Motion.ScaleSubtle.Press,
                 Opacity = section == QueueSection.Autoplay ? 0.68f : 1f,
                 Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, AllowFocusOnInteraction = false,
                 OnClick = () => Verbs.Play(itemId, index, r),
@@ -1122,10 +1122,10 @@ public static partial class Queue
             if (text.Thin) return new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f };
             var lines = new List<Element>(3);
             if (eyebrow is not null)
-                lines.Add(Design.Type.Eyebrow(eyebrow) with { Size = MathF.Round(subSize * 0.86f), Color = Ink.InkSecondary, MaxLines = 1 });
+                lines.Add(R.Type.Eyebrow(eyebrow) with { Size = MathF.Round(subSize * 0.86f), Color = Ink.InkSecondary, MaxLines = 1 });
             lines.Add(new TextEl(text.Title)
             {
-                Size = titleSize, LineHeight = titleLine, Weight = titleWeight, FontFamily = eyebrow is null ? null : Design.Type.DisplayFace,
+                Size = titleSize, LineHeight = titleLine, Weight = titleWeight, FontFamily = eyebrow is null ? null : R.Type.DisplayFace,
                 Color = Ink.Ink, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             });
             Element artists = new TextEl(text.Artists) { Size = subSize, LineHeight = subLine, Color = Ink.InkSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
@@ -1158,7 +1158,7 @@ public static partial class Queue
                 BlocksDragArm = true,                                              // a slot, never a handle
                 Children =
                 [
-                    Design.Type.Eyebrow(title) with { Size = Px(12f), Color = Ink.InkTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                    R.Type.Eyebrow(title) with { Size = Px(12f), Color = Ink.InkTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                     new TextEl(FormatCache.Int(View.CountOf(section))) { Size = Px(12f), LineHeight = Px(16f), Weight = 600, Color = Ink.InkTertiary },
                 ],
             };
@@ -1189,7 +1189,7 @@ public static partial class Queue
             Width = Controls.IconButtonSize, Height = Controls.IconButtonSize, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             Corners = Radii.ControlAll, Fill = Ink.GlassRest, HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed,
             BrushTransitionMs = Design.Motion.Faster,
-            HoverScale = Design.Motion.ScaleEmphatic.Hover, PressScale = Design.Motion.ScaleEmphatic.Press,
+            HoverScale = R.Motion.ScaleEmphatic.Hover, PressScale = R.Motion.ScaleEmphatic.Press,
             Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, OnClick = onClick,
             Children = [new TextEl(glyph) { Size = 12f, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.InkSecondary, HoverColor = Ink.Ink }],
         };

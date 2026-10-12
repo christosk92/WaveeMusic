@@ -268,7 +268,7 @@ public readonly partial struct User
         static Element PanelHeader(string t) => new BoxEl
         {
             Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, Spacing.XXS),
-            Children = [Design.Type.Eyebrow(t) with { Color = Tok.TextTertiary }],
+            Children = [R.Type.Eyebrow(t) with { Color = Tok.TextTertiary }],
         };
     }
 
@@ -350,7 +350,7 @@ public readonly partial struct User
         };
     }
 
-    static TextEl StripInk(string text, ushort weight, Prop<ColorF> ink) => Design.Type.MicroMeta(text) with
+    static TextEl StripInk(string text, ushort weight, Prop<ColorF> ink) => R.Type.MicroMeta(text) with
     {
         Weight = weight, Color = ink, BrushTransitionMs = Design.Motion.Fast,
         AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center,
@@ -676,7 +676,7 @@ public readonly partial struct User
         Padding = new Edges4(Spacing.M, Spacing.M, Spacing.M, Spacing.S),
         Children =
         [
-            Design.Type.Eyebrow(label) with { Color = Tok.TextTertiary },
+            R.Type.Eyebrow(label) with { Color = Tok.TextTertiary },
             count >= 0
                 ? new TextEl(FormatCache.Int(count))
                   {

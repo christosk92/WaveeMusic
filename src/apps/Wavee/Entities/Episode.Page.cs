@@ -204,7 +204,7 @@ public readonly partial struct Episode
                 Direction = 1, MinWidth = 0, Gap = Spacing.S, Margin = new Edges4(0, Spacing.XS, 0, 0), Children =
                 [
                     new BoxEl { Height = 1, Shrink = 0, MinWidth = 0, Fill = Tok.StrokeDividerDefault },
-                    Design.Type.Eyebrow(Loc.Get(Strings.Podcast.RailAbout)) with { Color = Tok.TextTertiary },
+                    R.Type.Eyebrow(Loc.Get(Strings.Podcast.RailAbout)) with { Color = Tok.TextTertiary },
                     Controls.ExpandableRichTextFlex(prose, 13, Tok.TextSecondary, Tok.AccentTextPrimary, ClampLines,
                         "rail-about:" + e.Uri.Text, static key => Shell.GoTo(Shell.Parse(key))),
                 ],

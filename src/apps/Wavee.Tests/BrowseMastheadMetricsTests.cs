@@ -7,6 +7,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using Wavee;
 using Xunit;
+using Wavee.Theming.Roles;
 
 namespace Wavee.Tests;
 
@@ -19,7 +20,7 @@ public class BrowseMastheadMetricsTests
         Assert.Equal(BrowseMastheadMetrics.TitleLine, Ui.TitleLarge("x").LineHeight);
         Assert.Equal(BrowseMastheadMetrics.Reserve, Spacing.XXXL + Ui.TitleLarge("x").LineHeight);
         // 0.3: the masthead's title IS the SurfaceDisplay face, which keeps the TitleLarge line.
-        Assert.Equal(BrowseMastheadMetrics.TitleLine, Design.Type.SurfaceDisplay("x").LineHeight);
+        Assert.Equal(BrowseMastheadMetrics.TitleLine, R.Type.SurfaceDisplay("x").LineHeight);
     }
 
     [Fact]

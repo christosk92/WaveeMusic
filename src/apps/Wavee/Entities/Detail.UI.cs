@@ -852,7 +852,7 @@ public static partial class Detail
                 // instead of overflowing the clipped content card. A z-stack of the [rail | right] flow and the seam layer
                 // above it; both arms keep this shape, so `right` reconciles in place across a collapse.
                 ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Basis = 0f,
-                MaxWidth = Design.Size.PageMaxW,
+                MaxWidth = R.Space.PageMaxW,
                 DropTarget = drop,
                 Children =
                 [
@@ -1220,7 +1220,7 @@ public static partial class Detail
         Key = key, Direction = 1, Layout = Shove, Enter = FadeUp, Children = [child],
     };
 
-    static TextEl EyebrowRun(string text) => Design.Type.Eyebrow(text) with
+    static TextEl EyebrowRun(string text) => R.Type.Eyebrow(text) with
     {
         Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
     };
@@ -1321,7 +1321,7 @@ public static partial class Detail
         // box, ellipsised only past TitleLineCap.
         var titlePlan = VerticalLayout.RailTitleTypeFor(cover, titleSize, id.Title);
         kids.Add(Row("rail:title", slots.Title?.Invoke(titlePlan.Size, float.NaN)
-            ?? Design.Type.DetailHero(id.Title) with
+            ?? R.Type.DetailHero(id.Title) with
             {
                 Size = titlePlan.Size, Weight = 600, Width = cover, LineHeight = float.NaN,
                 Wrap = TextWrap.WrapWholeWords, MaxLines = VerticalLayout.TitleLineCap, Trim = TextTrim.CharacterEllipsis,
@@ -1679,7 +1679,7 @@ public static partial class Detail
             info.Add(SlotRow("hdr:badges", badgesOwn(), RailLayout.BadgeHeight));
 
         info.Add(Row("hdr:title", slots.Title?.Invoke(28f, 36f)
-            ?? Design.Type.PageHero(id.Title) with
+            ?? R.Type.PageHero(id.Title) with
             {
                 Size = 28f, LineHeight = 36f, Weight = 600,
                 // The detail frame's ONE trim rule: a title wraps, ellipsised only past the pathological cap.
@@ -1765,7 +1765,7 @@ public static partial class Detail
     {
         if (!id.MetaLoading && id.Meta is { Length: > 0 } meta)
         {
-            var line = Design.Type.TrackMeta(meta) with
+            var line = R.Type.TrackMeta(meta) with
             {
                 MaxLines = maxLines, Wrap = TextWrap.WrapWholeWords, Trim = TextTrim.CharacterEllipsis,
             };
@@ -1780,7 +1780,7 @@ public static partial class Detail
 
     static readonly Func<bool> s_true = static () => true;
     static readonly Func<bool> s_false = static () => false;
-    static readonly Func<Element> s_metaShimmer = static () => Design.Type.TrackMeta(MetaShimmerText) with { MaxLines = 1 };
+    static readonly Func<Element> s_metaShimmer = static () => R.Type.TrackMeta(MetaShimmerText) with { MaxLines = 1 };
 
     /// <summary>A rich-text anchor's route key → navigation.</summary>
     static readonly Action<string> s_navRoute = static key => Shell.GoTo(Shell.Parse(key));

@@ -1046,7 +1046,7 @@ public readonly partial struct Album
         }
 
         // The skeleton's numbers, derived from the real surfaces (Album.Page.cs) so the reserve equals the paint.
-        /// <summary>A section header's line box (<c>Design.Type.RailHeader</c> = Subtitle 20/28) and the bone drawn in it.</summary>
+        /// <summary>A section header's line box (<c>R.Type.RailHeader</c> = Subtitle 20/28) and the bone drawn in it.</summary>
         public const float SkelHeaderH = 28f, SkelHeaderBarH = 18f;
         /// <summary>A related row's floor (pinned to <c>Shape.RowTileStill</c>), the gap between rows, and the rows a block shows
         /// (<see cref="StackCap"/>).</summary>

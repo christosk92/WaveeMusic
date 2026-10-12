@@ -310,7 +310,7 @@ public static class SurfaceParts
         bool circular = Controls.CoverShape.IsCircular(d.Circular, d.CoverAspect);
         // A circular card's title is a CONTENT-SIZED run capped at the slot (MaxWidth), so the block's centring can place
         // it under the circle — a fixed Width made it a full-width, left-set line over a centred subtitle.
-        TextEl title = Design.Type.CardTitle(d.Title) with
+        TextEl title = R.Type.CardTitle(d.Title) with
         {
             Width = circular ? float.NaN : inner, MaxWidth = circular ? inner : float.NaN,
             MaxLines = lines, Wrap = lines > 1 ? TextWrap.Wrap : TextWrap.NoWrap,
@@ -325,7 +325,7 @@ public static class SurfaceParts
         {
             if (d.Subtitle is not null) kids.Add(d.Subtitle);
             if (d.Meta is { Length: > 0 } meta)
-                kids.Add(Design.Type.TrackMeta(meta) with
+                kids.Add(R.Type.TrackMeta(meta) with
                     { Color = Tok.TextTertiary, Width = inner, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f });
         }
         return new BoxEl
@@ -363,7 +363,7 @@ public static class SurfaceParts
     }
 
     static TextEl RowTitleStyle(in SurfaceShape s, string text)
-        => s.IsLargeRow ? Design.Type.PageHero(text) : Design.Type.TrackTitle(text);
+        => s.IsLargeRow ? R.Type.PageHero(text) : R.Type.TrackTitle(text);
 
     // The title inside the trim tooltip (`Controls.TrimmedTitle`, the one wrapper): the plain run, or the search-highlight
     // arm at the SAME line budget (the tooltip measures with the plain run's style either way). On a circular card the run
@@ -388,7 +388,7 @@ public static class SurfaceParts
         TextSpan[] spans = caption.Length == 0 ? [new TextSpan(meta!, Color: Tok.TextTertiary)]
             : hasMeta ? [new TextSpan(caption), new TextSpan(" · " + meta, Color: Tok.TextTertiary)]
             : [new TextSpan(caption)];
-        var style = Design.Type.TrackMeta("");
+        var style = R.Type.TrackMeta("");
         return new SpanTextEl(spans)
         {
             Size = style.Size, LineHeight = style.LineHeight, Color = Tok.TextSecondary,

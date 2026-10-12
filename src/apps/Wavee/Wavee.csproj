@@ -244,6 +244,11 @@
     <AdditionalFiles Include="analyzer-input\*.txt" />
     <CompilerVisibleProperty Include="ProjectDir" />
   </ItemGroup>
+  <!-- The style roles are read in ~140 files as `R.Type.X`, `R.Space.X`, `R.Motion.X` (themes plan 5.4): a global using keeps
+       that call syntax free of a per-file import, the way ImplicitUsings does for System. Test projects import it themselves. -->
+  <ItemGroup>
+    <Using Include="Wavee.Theming.Roles" />
+  </ItemGroup>
   <!-- JIT Debug/Release: NuGet drops e_sqlite3.dll under runtimes/ only; publish colocates it. Copy the arch-matching
        binary next to Wavee.exe so Rider F5 and the publish preflight share the same layout. -->
   <Target Name="CopyESqlite3ToAppRoot" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT'">

@@ -205,7 +205,7 @@ public readonly partial struct Search
                 : ScrollView(new BoxEl
                 {
                     Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
-                    Padding = new Edges4(Spacing.L, Spacing.S, Spacing.L, Design.Dock.Reserve + Spacing.XXL),
+                    Padding = new Edges4(Spacing.L, Spacing.S, Spacing.L, R.Space.DockReserve + Spacing.XXL),
                     Children =
                     [
                         new BoxEl { Key = "facet-body:" + facetId, Animate = motion, Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = [region] },

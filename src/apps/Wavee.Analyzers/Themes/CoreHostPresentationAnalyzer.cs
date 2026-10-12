@@ -11,7 +11,7 @@ namespace Wavee.Analyzers.Themes;
 /// <c>[CoreHost]</c> (<c>Wavee.Theming.Contracts.CoreHostAttribute</c>) positions slots and wires engine behaviour controls
 /// that arrive as slots; it constructs no element (<c>new BoxEl</c>, <c>new TextEl</c>... any type deriving from
 /// <c>FluentGpu.Dsl.Element</c>, except an element obtained from a slot or a call) and reads no token or role (<c>Tok.*</c>,
-/// <c>Design.*</c>). The rule shrinks per surface PR: a surface PR puts <c>[CoreHost]</c> on the host it extracts, and the
+/// <c>Design.*</c>, and the style-role facade <c>R.*</c> of <c>Wavee.Theming.Roles</c>). The rule shrinks per surface PR: a surface PR puts <c>[CoreHost]</c> on the host it extracts, and the
 /// violations that host still has are listed in <c>analyzer-baseline\WVTH008.txt</c> (path, detail = the constructed type or
 /// the member read) until the PR that moves them out; T13 deletes the baseline. With no type marked, the rule reports nothing.
 /// </summary>
@@ -64,13 +64,13 @@ public sealed class CoreHostPresentationAnalyzer : ThemeRuleAnalyzer
     {
         var name = (IdentifierNameSyntax)context.Node;
         string text = name.Identifier.ValueText;
-        if (text != "Tok" && text != "Design")
+        if (text != "Tok" && text != "Design" && text != "R")
             return;
         INamedTypeSymbol? host = HostOf(context.ContainingSymbol);
         if (host is null)
             return;
-        // Only the type name as the receiver of a member access: 'Tok.Epoch', 'Design.Colors.Ground', and the qualified
-        // spellings 'FluentGpu.Dsl.Tok.Epoch' / 'Wavee.Design.Gutter' (where the name is itself the right side of an access).
+        // Only the type name as the receiver of a member access: 'Tok.Epoch', 'Design.Colors.Ground', 'R.Type.TrackTitle', and the
+        // qualified spellings 'FluentGpu.Dsl.Tok.Epoch' / 'Wavee.Design.Gutter' (where the name is itself the right side of an access).
         ExpressionSyntax typeExpression = name;
         if (name.Parent is MemberAccessExpressionSyntax qualified && ReferenceEquals(qualified.Name, name))
             typeExpression = qualified;
@@ -79,7 +79,8 @@ public sealed class CoreHostPresentationAnalyzer : ThemeRuleAnalyzer
         ISymbol? symbol = context.SemanticModel.GetSymbolInfo(name, context.CancellationToken).Symbol;
         bool tok = Symbols.IsType(symbol as ITypeSymbol, "FluentGpu.Dsl", "Tok");
         bool design = Symbols.IsType(symbol as ITypeSymbol, "Wavee", "Design");
-        if (!tok && !design)
+        bool roles = Symbols.IsType(symbol as ITypeSymbol, "Wavee.Theming.Roles", "R");
+        if (!tok && !design && !roles)
             return;
         string member = text + "." + access.Name.Identifier.ValueText;
         env.Report(context.ReportDiagnostic, access.GetLocation(), member, member, host.Name);

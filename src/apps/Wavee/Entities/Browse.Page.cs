@@ -168,7 +168,7 @@ public readonly partial struct Browse
             Element directory = new BoxEl
             {
                 Direction = 1, MinWidth = 0f, Gap = Spacing.L,
-                Padding = BrowseMastheadMetrics.FamilyUnderBandPad(Design.Dock.Reserve + Spacing.XXL),
+                Padding = BrowseMastheadMetrics.FamilyUnderBandPad(R.Space.DockReserve + Spacing.XXL),
                 // Feathered exactly while the clip is engaged, on the render turn that poses it (RCA 2026-09-25 F(ii)).
                 EdgeFade = new EdgeFadeSpec(EdgeMask.Top, BrowseMastheadMetrics.ClipFadeBand) { WhileStuck = true },
                 Children = [region],
@@ -476,7 +476,7 @@ public readonly partial struct Browse
             return ScrollView(new BoxEl
             {
                 Direction = 1, Gap = Spacing.L, MinWidth = 0f,
-                Padding = new Edges4(0f, 0f, 0f, Design.Dock.Reserve + Spacing.XXL),
+                Padding = new Edges4(0f, 0f, 0f, R.Space.DockReserve + Spacing.XXL),
                 Children = kids,
             }) with { Grow = 1f, MinHeight = 0f, ScrollKey = _scrollScope + "browse:" + _uri };
         }
@@ -486,7 +486,7 @@ public readonly partial struct Browse
         Element Framed(Element content) => ScrollView(new BoxEl
         {
             Direction = 1, Gap = Spacing.L, MinWidth = 0f,
-            Padding = new Edges4(0f, 0f, 0f, Design.Dock.Reserve + Spacing.XXL),
+            Padding = new Edges4(0f, 0f, 0f, R.Space.DockReserve + Spacing.XXL),
             Children = [content, ExploreAll(GoDirectory)],
         }) with { Grow = 1f, MinHeight = 0f, ScrollKey = _scrollScope + "browse:" + _uri };
 
@@ -660,7 +660,7 @@ public readonly partial struct Browse
     static readonly Func<Element> s_shimmer = static () => new BoxEl
     {
         Direction = 1, Gap = Spacing.L, MinWidth = 0f, Grow = 1f,
-        Padding = new Edges4(0f, 0f, 0f, Design.Dock.Reserve + Spacing.XXL),
+        Padding = new Edges4(0f, 0f, 0f, R.Space.DockReserve + Spacing.XXL),
         Children = [ShimmerRelated(), ShimmerShelf(), ShimmerShelf()],
     };
 
@@ -684,7 +684,7 @@ public readonly partial struct Browse
             Direction = 1, Gap = Spacing.S, MinWidth = 0f,
             Children =
             [
-                Design.Type.ModuleHeader(Loc.Get(Strings.Browse.ExploreAll)),
+                R.Type.ModuleHeader(Loc.Get(Strings.Browse.ExploreAll)),
                 new BoxEl { Direction = 0, Gap = HomeModuleLayout.ShelfGap, MinWidth = 0f, ClipToBounds = true, Children = cards },
             ],
         };

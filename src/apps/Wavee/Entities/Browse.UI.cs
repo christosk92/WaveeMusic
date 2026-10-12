@@ -77,7 +77,7 @@ public static partial class BrowseTiles
             Corners = CornerRadius4.All(999f),
             Fill = Tok.FillControlDefault, HoverFill = Tok.FillControlSecondary,
             BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault, HoverBorderColor = Tok.AccentDefault,
-            HoverScale = Design.Motion.ScaleSubtle.Hover, PressScale = Design.Motion.ScaleSubtle.Press,
+            HoverScale = R.Motion.ScaleSubtle.Hover, PressScale = R.Motion.ScaleSubtle.Press,
             HoverDurationMs = Design.Motion.Fast, HoverEasing = Easing.FluentDecelerate,
             Children = lead is null ? [text] : [lead, text],
         };
@@ -140,7 +140,7 @@ public static partial class BrowseTiles
                     Padding = Edges4.All(Spacing.S),
                     Children =
                     [
-                        Design.Type.CardTitle(m.Title) with
+                        R.Type.CardTitle(m.Title) with
                         {
                             Color = Tok.TextPrimary, MaxLines = 2, Wrap = TextWrap.Wrap,
                             Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
@@ -164,7 +164,7 @@ public static partial class BrowseTiles
             MaxWidth = cardW > 0f ? cardW * BrowseLayout.PeekCopyFrac : float.NaN,
             Children =
             [
-                Design.Type.ModuleHeader(m.Title) with
+                R.Type.ModuleHeader(m.Title) with
                 {
                     Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MaxLines = 2,
                     Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
@@ -387,7 +387,7 @@ public readonly partial struct Browse
     /// <summary>A band heading NAMES the row; it is not a peer of its destinations — the eyebrow rung (Caption 600 +
     /// tracking, secondary), sentence case, never caps-transformed (a localized string).</summary>
     static Element BandLabel(string label)
-        => Design.Type.Eyebrow(label) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
+        => R.Type.Eyebrow(label) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
 
     /// <summary>The localized band heading (membership is uri-keyed and culture-independent; only the label translates).
     /// Never asked for Charts — that band carries the Fold deck's own header.</summary>
@@ -439,7 +439,7 @@ public readonly partial struct Browse
         AlignSelf = FlexAlign.Start, Padding = new Edges4(0f, Spacing.S, 0f, Spacing.S),
         FocusVisualMargin = Design.FocusInsetBordered,
         OnClick = open,
-        Children = [Design.Type.TrackMeta(Loc.Get(Strings.Browse.ExploreAll)) with { Color = Tok.AccentTextPrimary }],
+        Children = [R.Type.TrackMeta(Loc.Get(Strings.Browse.ExploreAll)) with { Color = Tok.AccentTextPrimary }],
     };
 
     /// <summary>The Explore-all verb: the directory, no origin.</summary>

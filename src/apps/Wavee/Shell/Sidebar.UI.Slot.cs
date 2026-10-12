@@ -587,7 +587,7 @@ public static partial class Sidebar
                 Padding = new Edges4(SidebarRowGeometry.HeaderTextX, 0f, SidebarRowGeometry.TrailingPad, 0f),
                 Children =
                 [
-                    global::Wavee.Design.Type.MicroMeta(text) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                    R.Type.MicroMeta(text) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                 ],
             };
         }
@@ -669,7 +669,7 @@ public static partial class Sidebar
         static Element? TrailingBadge(SidebarSection section, in SidebarLibraryEntry entry)
         {
             if (section.Kind == SidebarSectionKind.NewReleases && Sidebar.Model.AgeBadge(entry.SortStamp) is { Length: > 0 } age)
-                return global::Wavee.Design.Type.MicroMeta(age) with { Color = Tok.TextTertiary, MaxLines = 1 };
+                return R.Type.MicroMeta(age) with { Color = Tok.TextTertiary, MaxLines = 1 };
             return null;
         }
 

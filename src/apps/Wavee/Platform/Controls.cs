@@ -442,9 +442,9 @@ public static partial class Controls
     /// its content.</summary>
     public static BoxEl AccentHeader(string title, ColorF accent, string? eyebrow = null)
     {
-        var head = Design.Type.RailHeader(title) with { MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
+        var head = R.Type.RailHeader(title) with { MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
         Element[] lines = eyebrow is { Length: > 0 }
-            ? [Design.Type.Eyebrow(eyebrow) with { Color = accent, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+            ? [R.Type.Eyebrow(eyebrow) with { Color = accent, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                head, AccentRule(accent)]
             : [head, AccentRule(accent)];
         return new BoxEl { Direction = 1, Gap = 2f, MinWidth = 0f, Children = lines };
@@ -470,8 +470,8 @@ public static partial class Controls
                 // Grow: a SPACER — not the heading — pushes the tools to the trailing edge, which is what keeps the
                 // subtitle sitting right next to the title.
                 subtitle is { Length: > 0 } s
-                    ? Design.Type.ModuleHeader(title, s)
-                    : Design.Type.ModuleHeader(title) with
+                    ? R.Type.ModuleHeader(title, s)
+                    : R.Type.ModuleHeader(title) with
                         { Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                 new BoxEl { Grow = 1f, MinWidth = 0f },
                 tools ?? new BoxEl(),
@@ -888,7 +888,7 @@ public static partial class Controls
             {
                 Width = Box, Height = Box, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                 Corners = Radii.ControlAll,
-                HoverScale = Design.Motion.ScaleEmphatic.Hover, PressScale = Design.Motion.ScaleEmphatic.Press,
+                HoverScale = R.Motion.ScaleEmphatic.Hover, PressScale = R.Motion.ScaleEmphatic.Press,
                 Role = AutomationRole.Button,
                 OnClick = () => lib.ToggleSaved(Uri, Name),
                 Children = [Icon(saved ? Icons.HeartFill : Icons.Heart, Glyph, saved ? ink : Tok.TextSecondary)],
@@ -965,7 +965,7 @@ public static partial class Controls
                     : Foreground is { } fg ? fg with { A = 0.42f } : Tok.StrokeControlDefault,
                 HoverFill = Foreground is { } hover ? hover with { A = 0.12f } : Tok.FillSubtleSecondary,
                 PressedFill = Foreground is { } press ? press with { A = 0.18f } : Tok.FillSubtleTertiary,
-                HoverScale = Design.Motion.ScaleStandard.Hover, PressScale = Design.Motion.ScaleStandard.Press,
+                HoverScale = R.Motion.ScaleStandard.Hover, PressScale = R.Motion.ScaleStandard.Press,
                 Role = AutomationRole.Button, Cursor = CursorId.Hand,
                 OnClick = () => lib.ToggleSaved(Uri, Name),
                 Children =
@@ -1259,12 +1259,12 @@ public static partial class Controls
             actionLabel = Loc.Get(Strings.Common.Retry);
 
         TextEl headline = scale == VacancyScale.Page
-            ? Design.Type.PageHero(title ?? t)
+            ? R.Type.PageHero(title ?? t)
             : Ui.Subtitle(title ?? t);
 
         var kids = new List<Element>(4) { headline with { Wrap = TextWrap.Wrap } };
         string? caption = subtitle ?? s;
-        if (caption is { Length: > 0 }) kids.Add(Design.Type.TrackMeta(caption) with { Wrap = TextWrap.Wrap });
+        if (caption is { Length: > 0 }) kids.Add(R.Type.TrackMeta(caption) with { Wrap = TextWrap.Wrap });
         if (actionLabel is { Length: > 0 } && onAction is not null)
         {
             kids.Add(new BoxEl { Height = Spacing.L });
@@ -1286,7 +1286,7 @@ public static partial class Controls
         var kids = new List<Element>(4)
         {
             Icon(Icons.InfoBarBackgroundCircle, 16f, Tok.SystemFillCaution),
-            Design.Type.TrackMeta(message ?? Loc.Get(Strings.Common.Offline)),
+            R.Type.TrackMeta(message ?? Loc.Get(Strings.Common.Offline)),
             new BoxEl { Grow = 1 },
         };
         if (onRetry is not null) kids.Add(Button.Standard(Loc.Get(Strings.Common.Retry), onRetry));

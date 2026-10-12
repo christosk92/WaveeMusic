@@ -1,8 +1,8 @@
 // ── Wavee.Tests/Theming/ThemeCatalogTests.cs — installing, resolving, switching and composing themes (T1) ────────────
 //
 // Against FAKE layers (ThemingFixtures.cs): the core must behave for any structure and style. The one real theme tested
-// here is Classic, and only for what T1 promises: it installs, registers no view yet and publishes `Design.Definition`
-// unchanged. `Themes` is process state, so the class is in the platform collection and resets it around every fact.
+// here is Classic, and only for what it promises so far: it installs, registers no view yet and publishes `Design.Definition`
+// carrying its roles (T2a). `Themes` is process state, so the class is in the platform collection and resets it around every fact.
 
 using System.Collections.Immutable;
 using FluentGpu.Dsl;
@@ -11,6 +11,7 @@ using FluentGpu.Theming;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Xunit;
+using Wavee.Theming.Roles;
 
 namespace Wavee.Tests.Theming;
 
@@ -287,6 +288,42 @@ public sealed class ThemeCatalogTests : IDisposable
     }
 
     [Fact]
+    public void Definition_WithARolesEffect_MapsTheStylesRoles_AndScopesTheId()
+    {
+        var classic = Wavee.Themes.Classic.ClassicRoles.Table;
+        var style = new FakeStyle("s", live: false) { Roles = classic };
+        var theme = Fakes.Theme("x", style: style, fixedEffect: new CompositionEffect(
+            Roles: r => r with { Space = r.Space with { SectionGap = 48f } }));
+
+        var def = theme.Definition(Values(theme), AccentRamp.FluentDefault);
+        var roles = Assert.IsType<WaveeStyleRoles>(def.AppRoles);
+        Assert.Equal(48f, roles.Space.SectionGap);
+        Assert.Equal(classic.Type, roles.Type);                                  // the rest of the table is the style's
+        Assert.Equal(32f, classic.Space.SectionGap);                             // and the style's own table is not touched
+        Assert.StartsWith("s.definition|x|", def.Id);
+        Assert.Same(def, theme.Definition(Values(theme), AccentRamp.FluentDefault));
+    }
+
+    [Fact]
+    public void Definition_WithARolesEffectThatChangesNothing_IsTheStylesInstance()
+    {
+        var style = new FakeStyle("s", live: false) { Roles = Wavee.Themes.Classic.ClassicRoles.Table };
+        var theme = Fakes.Theme("x", style: style, fixedEffect: new CompositionEffect(Roles: static r => r with { }));
+        var def = theme.Definition(Values(theme), AccentRamp.FluentDefault);
+        Assert.Equal("s.definition", def.Id);
+        Assert.Same(Wavee.Themes.Classic.ClassicRoles.Table, def.AppRoles);
+    }
+
+    [Fact]
+    public void Definition_WithARolesEffect_OverAStyleThatPublishesNoRoles_IsRefused()
+    {
+        var theme = Fakes.Theme("x", style: new FakeStyle("s", live: false),
+            fixedEffect: new CompositionEffect(Roles: static r => r with { }));
+        var ex = Assert.Throws<InvalidOperationException>(() => theme.Definition(Values(theme), AccentRamp.FluentDefault));
+        Assert.Contains("publishes no AppRoles", ex.Message);
+    }
+
+    [Fact]
     public void Definition_TwoThemesSharingAStyle_NeverShareAnInstance_WhenTheyChangeIt()
     {
         var style = new FakeStyle("shared", live: false);
@@ -385,7 +422,10 @@ public sealed class ThemeCatalogTests : IDisposable
         Assert.Empty(classic.ExposedOptions.All);
 
         var values = Values(classic);
-        Assert.Same(Design.Definition, classic.Definition(values, AccentRamp.FluentDefault));
+        var definition = classic.Definition(values, AccentRamp.FluentDefault);
+        Assert.Same(definition, classic.Definition(values, AccentRamp.FluentDefault));   // one instance for every call
+        Assert.Same(Wavee.Themes.Classic.ClassicRoles.Table, definition.AppRoles);
+        Assert.Equal(Design.Definition with { AppRoles = Wavee.Themes.Classic.ClassicRoles.Table }, definition);   // today's definition + its roles
         Assert.Equal(ShellCapabilities.Unrestricted, classic.Capabilities(values));
         Assert.Equal(StyleMetrics.Unset, classic.Metrics(values));
     }

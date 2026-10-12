@@ -673,7 +673,7 @@ public static partial class Detail
         public static float MaxWidthForPage(float pageWidth, int mode)
         {
             if (!ComposesRail(mode) || pageWidth <= 0f) return MaxWidth;
-            float room = MathF.Min(pageWidth, Design.Size.PageMaxW) - GripStripW - Breakpoints.ContentMinWidthForMode(mode);
+            float room = MathF.Min(pageWidth, R.Space.PageMaxW) - GripStripW - Breakpoints.ContentMinWidthForMode(mode);
             room = MathF.Floor(room / MaxQuantum) * MaxQuantum;
             return Math.Clamp(room, MinWidth, MaxWidth);
         }
@@ -726,7 +726,7 @@ public static partial class Detail
         /// <summary>What the right column is left with — the guard every arm must clear
         /// (<see cref="Breakpoints.ContentMinWidthForMode"/>).</summary>
         public static float ContentWidthFor(float pageWidth, float railWidth, float gripWidth)
-            => MathF.Min(pageWidth, Design.Size.PageMaxW) - railWidth - gripWidth;
+            => MathF.Min(pageWidth, R.Space.PageMaxW) - railWidth - gripWidth;
 
         /// <summary>The COLLAPSED arm's content width: the 96-DIP identity strip plus its 20-DIP re-open grip. 96 + 20 +
         /// 300 = 416, well under the narrowest two-column page (540), so collapsing can never squeeze the content out.</summary>

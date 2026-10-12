@@ -227,8 +227,8 @@ public static partial class Controls
                 Bold = true,
             }) with
         {
-            HoverScale = Design.Motion.ScaleStandard.Hover,
-            PressScale = Design.Motion.ScaleStandard.Press,
+            HoverScale = R.Motion.ScaleStandard.Hover,
+            PressScale = R.Motion.ScaleStandard.Press,
             Cursor = CursorId.Hand,
         };
 
@@ -276,8 +276,8 @@ public static partial class Controls
             HoverBorderBrush = s.HoverBorderBrush,
             PressedBorderBrush = s.PressedBorderBrush,
             BorderWidth = s.BorderWidth,
-            HoverScale = Design.Motion.ScaleStandard.Hover,
-            PressScale = Design.Motion.ScaleStandard.Press,
+            HoverScale = R.Motion.ScaleStandard.Hover,
+            PressScale = R.Motion.ScaleStandard.Press,
             Cursor = CursorId.Hand,
         };
         return requestsContext ? box with { OnClick = null, ClickRequestsContext = true } : box;
@@ -291,8 +291,8 @@ public static partial class Controls
         var box = IconButton.Create(glyph, onClick ?? NoOp,
             style: IconButton.DefaultStyle with { Size = size, CornerRadius = Radii.Control }) with
         {
-            HoverScale = Design.Motion.ScaleSubtle.Hover,
-            PressScale = Design.Motion.ScaleSubtle.Press,
+            HoverScale = R.Motion.ScaleSubtle.Hover,
+            PressScale = R.Motion.ScaleSubtle.Press,
             Cursor = CursorId.Hand,
         };
         return requestsContext ? box with { OnClick = null, ClickRequestsContext = true } : box;
@@ -315,8 +315,8 @@ public static partial class Controls
             Role = AutomationRole.Button, Focusable = true,
             FocusVisualMargin = Design.FocusInsetBordered,
             Cursor = CursorId.Hand,
-            HoverScale = Design.Motion.ScaleEmphatic.Hover,
-            PressScale = Design.Motion.ScaleEmphatic.Press,
+            HoverScale = R.Motion.ScaleEmphatic.Hover,
+            PressScale = R.Motion.ScaleEmphatic.Press,
             // Forget this and the FAB stops working the moment its row or card becomes a drag source.
             BlocksDragArm = true,
             OnClick = onClick,
@@ -348,8 +348,8 @@ public static partial class Controls
             Role = AutomationRole.Button, Focusable = true,
             FocusVisualMargin = Design.FocusInsetBordered,
             Cursor = CursorId.Hand,
-            HoverScale = Design.Motion.ScaleEmphatic.Hover,
-            PressScale = Design.Motion.ScaleEmphatic.Press,
+            HoverScale = R.Motion.ScaleEmphatic.Hover,
+            PressScale = R.Motion.ScaleEmphatic.Press,
             BlocksDragArm = true,
             OnClick = onClick,
             Children = [FabGlyph(glyph, size * 0.42f, Design.OnMedia.Ink)],

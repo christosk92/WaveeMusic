@@ -212,7 +212,7 @@ public static partial class Modules
                     ScrollView(new BoxEl
                     {
                         Direction = 1, MinWidth = 0f,
-                        Padding = new Edges4(32f, 40f, 32f, Design.Dock.Reserve + 40f),
+                        Padding = new Edges4(32f, 40f, 32f, R.Space.DockReserve + 40f),
                         Children = [body],
                     }) with { Grow = 1f, MinHeight = 0f, ScrollKey = UseContext(Shell.PageScrollScope) + "module-page:" + pageUri },
                 ],
@@ -285,10 +285,10 @@ public static partial class Modules
     static Element Hero(PageHero hero, string moduleId)
     {
         var text = new List<Element>(5);
-        if (Trimmed(hero.Eyebrow) is { } eyebrow) text.Add(Design.Type.Eyebrow(eyebrow) with { Key = "hero:eyebrow" });
+        if (Trimmed(hero.Eyebrow) is { } eyebrow) text.Add(R.Type.Eyebrow(eyebrow) with { Key = "hero:eyebrow" });
 
         // "Live" is a property of the thing named, so the badge sits beside the name rather than in the meta line.
-        var titleRow = new List<Element>(2) { Design.Type.DetailHero(hero.Title) with { MinWidth = 0f, Shrink = 1f, Wrap = TextWrap.Wrap, MaxLines = 3 } };
+        var titleRow = new List<Element>(2) { R.Type.DetailHero(hero.Title) with { MinWidth = 0f, Shrink = 1f, Wrap = TextWrap.Wrap, MaxLines = 3 } };
         if (hero.IsLive) titleRow.Add(LiveBadge());
         text.Add(new BoxEl { Key = "hero:title", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f, Children = titleRow.ToArray() });
 
@@ -298,7 +298,7 @@ public static partial class Modules
             text.Add(Embed.Comp(() => new MetaLink(subtitle, route)) with { Key = "hero:subtitle:" + subtitle + "|" + (route ?? "") });
         }
         if (Trimmed(hero.MetaLine) is { } meta)
-            text.Add(Design.Type.TrackMeta(meta) with { Key = "hero:meta", MaxLines = 2, Wrap = TextWrap.Wrap, MinWidth = 0f });
+            text.Add(R.Type.TrackMeta(meta) with { Key = "hero:meta", MaxLines = 2, Wrap = TextWrap.Wrap, MinWidth = 0f });
 
         return new BoxEl
         {
@@ -367,7 +367,7 @@ public static partial class Modules
     {
         Key = key, Enter = SectionFadeUp, Layout = SectionShove,
         Direction = 1, Gap = Spacing.M, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
-        Children = Trimmed(title) is { } t ? [Design.Type.RailHeader(t), body] : [body],
+        Children = Trimmed(title) is { } t ? [R.Type.RailHeader(t), body] : [body],
     };
 
     static Element? FactsBlock(string key, PageSection section, ref int budget)
@@ -389,7 +389,7 @@ public static partial class Modules
         return Section(key, section.Title, new BoxEl
         {
             Key = key + ":tiles", Direction = 0, Gap = Spacing.S, Wrap = true,
-            Stagger = Design.Reduced ? 0f : Design.Motion.MastheadStaggerMs, Children = tiles.ToArray(),
+            Stagger = Design.Reduced ? 0f : R.Motion.MastheadStaggerMs, Children = tiles.ToArray(),
         });
     }
 
@@ -404,8 +404,8 @@ public static partial class Modules
             string uri = ModuleUri.Encode(moduleId, playableId);
             Action play = () => PlayOrToggle(uri);
             Element? subtitle = Trimmed(item.Subtitle) is { } sub
-                ? Design.Type.TrackMeta(sub) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f } : null;
-            Element? trailing = Trimmed(item.Meta) is { } meta ? Design.Type.TrackMeta(meta) with { Shrink = 0f } : null;
+                ? R.Type.TrackMeta(sub) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f } : null;
+            Element? trailing = Trimmed(item.Meta) is { } meta ? R.Type.TrackMeta(meta) with { Shrink = 0f } : null;
             rows.Add(Controls.Surface(new Controls.CardData(uri, title, subtitle, Trimmed(item.ImageUrl), play, play)
                 { Trailing = item.IsLive ? LiveBadge() : trailing }, Shape.Row(40f)) with { Key = key + ":row:" + i.ToString(System.Globalization.CultureInfo.InvariantCulture) });
         }
@@ -432,7 +432,7 @@ public static partial class Modules
                 : Actions.PlayLinkRules.IsWebUrl(url) ? () => OpenUrl(url)
                 : play ?? NoOp;
             Element? subtitle = Trimmed(item.Subtitle) is { } sub
-                ? Design.Type.TrackMeta(sub) with { MaxLines = 2, Wrap = TextWrap.Wrap, MinWidth = 0f } : null;
+                ? R.Type.TrackMeta(sub) with { MaxLines = 2, Wrap = TextWrap.Wrap, MinWidth = 0f } : null;
             cards.Add(Controls.Surface(new Controls.CardData(playable ?? route ?? "", title, subtitle, Trimmed(item.ImageUrl), open, play), Shape.Shelf(captionLines: 2), CardWidth) with { Key = key + ":card:" + i.ToString(System.Globalization.CultureInfo.InvariantCulture) });
         }
         budget -= take;
@@ -451,8 +451,8 @@ public static partial class Modules
         {
             if (items[i] is not { } item || Trimmed(item.Title) is not { } title || !Actions.PlayLinkRules.IsWebUrl(item.Url)) continue;
             string url = item.Url!;
-            var text = new List<Element>(2) { Design.Type.TrackTitle(title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f } };
-            if (Trimmed(item.Subtitle) is { } sub) text.Add(Design.Type.TrackMeta(sub) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f });
+            var text = new List<Element>(2) { R.Type.TrackTitle(title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f } };
+            if (Trimmed(item.Subtitle) is { } sub) text.Add(R.Type.TrackMeta(sub) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f });
             rows.Add(new BoxEl
             {
                 Key = key + ":link:" + i.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -481,7 +481,7 @@ public static partial class Modules
     {
         var kids = new List<Element>(6)
         {
-            Design.Type.NowPlayingTitle(model.Title) with { Key = "watch:title", MaxLines = 2, Wrap = TextWrap.Wrap, MinWidth = 0f },
+            R.Type.NowPlayingTitle(model.Title) with { Key = "watch:title", MaxLines = 2, Wrap = TextWrap.Wrap, MinWidth = 0f },
         };
         if (model.IsLive || model.MetaLine is { Length: > 0 }) kids.Add(MetaRow(model));
         if (model.ChannelName is { Length: > 0 }) kids.Add(ChannelRow(model, moduleId));
@@ -495,7 +495,7 @@ public static partial class Modules
     {
         var kids = new List<Element>(2);
         if (model.IsLive) kids.Add(LiveBadge());
-        if (model.MetaLine is { Length: > 0 } meta) kids.Add(Design.Type.TrackMeta(meta) with { MinWidth = 0f, Shrink = 1f, MaxLines = 2, Wrap = TextWrap.Wrap });
+        if (model.MetaLine is { Length: > 0 } meta) kids.Add(R.Type.TrackMeta(meta) with { MinWidth = 0f, Shrink = 1f, MaxLines = 2, Wrap = TextWrap.Wrap });
         return new BoxEl { Key = "watch:meta", Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
     }
 
@@ -515,7 +515,7 @@ public static partial class Modules
             Children =
             [
                 PersonPicture.Create("", ChannelAvatar, displayName: name, imageSourcePath: model.ChannelAvatarUrl),
-                Design.Type.TrackTitle(name) with { MinWidth = 0f, Shrink = 1f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                R.Type.TrackTitle(name) with { MinWidth = 0f, Shrink = 1f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
             ],
         };
         return linked ? row.Interactive(Interaction.ListRow) : row;

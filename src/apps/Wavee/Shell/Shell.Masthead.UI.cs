@@ -102,16 +102,16 @@ public static partial class Shell
                 OnClick = crumb.Route is { } target ? () => GoTo(target) : null,
                 Children =
                 [
-                    Design.Type.SurfaceDisplay(crumb.Label) with
+                    R.Type.SurfaceDisplay(crumb.Label) with
                     {
                         Color = Tok.TextTertiary, HoverColor = Tok.TextSecondary, PressedColor = Tok.TextTertiary,
                         MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 0f,
                     },
                 ],
             });
-            segs.Add(Design.Type.SurfaceDisplay("›") with { Color = Tok.TextTertiary, Shrink = 0f });
+            segs.Add(R.Type.SurfaceDisplay("›") with { Color = Tok.TextTertiary, Shrink = 0f });
         }
-        var current = Design.Type.SurfaceDisplay(title) with
+        var current = R.Type.SurfaceDisplay(title) with
         {
             Key = "masthead-current", MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             Grow = 1f, Basis = 0f, Shrink = 1f,
@@ -659,7 +659,7 @@ public static partial class Shell
                 : null;
 
             var data = new Controls.CardData(uri, item.Title,
-                Design.Type.TrackMeta(Search.SubtitleText(OmniKindWord(item), item.Subtitle))
+                R.Type.TrackMeta(Search.SubtitleText(OmniKindWord(item), item.Subtitle))
                     with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
                 item.ImageUrl, () => choose(index), play, Circular: Omnibar.IsCircular(kind), Drag: drag)
             {

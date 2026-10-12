@@ -9,7 +9,7 @@
 // card template or a hover recipe of its own: every zone body is composed from exactly the pieces the app's native pages
 // compose — `PagedShelf` + `HomeCards.ShelfCell` + `HomeCardNav` (Entities/Browse.Page.cs's shelf, verbatim),
 // `Controls.Surface` rows (`Shape.Row*`) in a `GridEl`, stock `SettingsCard`, `Ui.Card` + `Ui.SectionHeader`, `Controls.Vacancy` — and
-// every header is `HomeModules.ModuleHeader` (Entities/Browse.Modules.cs). Type is `Design.Type.*`, rhythm is
+// every header is `HomeModules.ModuleHeader` (Entities/Browse.Modules.cs). Type is `R.Type.*`, rhythm is
 // `Spacing.*`/`Design.Size.*`, radii are `Radii.*`. The data pipeline (`Zone`, `ZoneCluster`, `RecentsCells`,
 // `ReleaseListRules`, `ShelfLead`, `EpisodeCaption`) is untouched.
 //
@@ -93,7 +93,7 @@ public static class Zones
     /// exactly under it.</summary>
     public static float HeaderGap => Spacing.M;
     /// <summary>The feather the body dissolves through while its clip is engaged (the shelf fade rung, as Browse).</summary>
-    public const float ClipFadeBand = Design.Size.FadeShelf;
+    public static float ClipFadeBand => R.Space.FadeShelf;
     /// <summary>The viewport line a zone body is cut at while its header is pinned.</summary>
     public static float BodyClipInset => Facet.StuckBottom + HeaderH + HeaderGap;
 
@@ -131,7 +131,7 @@ public static class Zones
             };
         return new BoxEl
         {
-            Direction = 1, Gap = Design.Size.SectionGapWide, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+            Direction = 1, Gap = R.Space.SectionGapWide, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
             Children = kids,
         };
     }
@@ -292,7 +292,7 @@ public static class Zones
                                        HomeCardNav.DragOf(in c), host, HomeCardNav.MenuOf(in c), coverAspect);
         }
 
-        float squareAspect = wide ? Design.Size.WideTileAspect : 1f;
+        float squareAspect = wide ? R.Space.WideTileAspect : 1f;
         // The row's cross extent, EXACT for what its cards show (`SurfaceGeometry.ShelfHeight`, the rule the card renders): a
         // wide cell is its 16:9 cover + title + ONE caption line + the separate meta line; a cover shelf reserves the
         // most caption lines any of its cards shows — 2 when it carries the lead (its meta inline on those lines), else
@@ -306,8 +306,8 @@ public static class Zones
             cardHeight: cardHeight,
             pager: controller is null ? ShelfPager.Chevrons | ShelfPager.Pips : ShelfPager.None,
             controller: controller,
-            minCardW: wide ? Design.Size.WideTileMin : HomeModuleLayout.ShelfCardMin,
-            maxCardW: wide ? Design.Size.WideTileMax : HomeModuleLayout.ShelfCardMax,
+            minCardW: wide ? R.Space.WideTileMin : HomeModuleLayout.ShelfCardMin,
+            maxCardW: wide ? R.Space.WideTileMax : HomeModuleLayout.ShelfCardMax,
             gap: HomeModuleLayout.ShelfGap, edgeFade: HomeModuleLayout.ShelfEdgeFade, snap: ShelfSnap.Page,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
             lift: ShelfLift.None,   // the shared card hovers fill-only: no lift halo to reserve clearance for
@@ -326,7 +326,7 @@ public static class Zones
 
     // The shelf extents as cached delegates (one per shape, never a per-render closure).
     static readonly Func<float, float> s_wideCardHeight =
-        static w => SurfaceGeometry.ShelfHeight(w, Design.Size.WideTileAspect, captionLines: 1, metaLine: true);
+        static w => SurfaceGeometry.ShelfHeight(w, R.Space.WideTileAspect, captionLines: 1, metaLine: true);
     static readonly Func<float, float> s_coverCardHeight1 = static w => SurfaceGeometry.ShelfHeight(w, 1f, captionLines: 1, metaLine: false);
     static readonly Func<float, float> s_coverCardHeight2 = static w => SurfaceGeometry.ShelfHeight(w, 1f, captionLines: 2, metaLine: false);
 
@@ -613,7 +613,7 @@ public static class Zones
         string when = ReleaseListRules.DateLabel(c.ReleasedAtMs, nowMs, tz, culture);
         var trailingKids = new List<Element>(2);
         if (type.Length > 0) trailingKids.Add(Controls.RowChip(type));
-        if (when.Length > 0) trailingKids.Add(Design.Type.TrackMeta(when) with { Color = Tok.TextTertiary, MaxLines = 1 });
+        if (when.Length > 0) trailingKids.Add(R.Type.TrackMeta(when) with { Color = Tok.TextTertiary, MaxLines = 1 });
         Element? trailing = trailingKids.Count == 0 ? null : new BoxEl
         {
             Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Shrink = 0f, Children = trailingKids.ToArray(),
@@ -700,7 +700,7 @@ public static class Zones
         }
         return new BoxEl
         {
-            Direction = 1, MinWidth = 0f, Gap = Design.Size.SectionGap, AlignItems = FlexAlign.Stretch,
+            Direction = 1, MinWidth = 0f, Gap = R.Space.SectionGap, AlignItems = FlexAlign.Stretch,
             Children =
             [
                 new GridEl { MinColWidth = TilesMinCol, MaxColumns = TilesMaxCols, ColGap = Spacing.M, RowGap = Spacing.M, Children = tiles },
@@ -866,7 +866,7 @@ public static class Zones
 
     /// <summary>A one-line secondary caption, ellipsised.</summary>
     static TextEl Meta(string s)
-        => Design.Type.TrackMeta(s) with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
+        => R.Type.TrackMeta(s) with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
 
     /// <summary>The "Listening history" drill (the Recents header's tools link).</summary>
     public static void GoRecents() => Shell.GoTo(new Shell.Route(Shell.RouteKind.Recents));

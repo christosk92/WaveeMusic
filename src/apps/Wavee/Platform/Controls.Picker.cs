@@ -89,8 +89,8 @@ public static partial class Controls
         PressedFill = on ? Tok.AccentSubtle : Tok.FillSubtleSecondary,
         BorderWidth = on ? 2f : 1f,
         BorderColor = on ? Tok.AccentDefault : Tok.StrokeControlDefault,
-        HoverScale = Design.Motion.ScaleSubtle.Hover,
-        PressScale = Design.Motion.ScaleSubtle.Press,
+        HoverScale = R.Motion.ScaleSubtle.Hover,
+        PressScale = R.Motion.ScaleSubtle.Press,
         Cursor = CursorId.Hand,
         Children = body,
     };
@@ -555,7 +555,7 @@ public static partial class Controls
                 Shadow = Elevation.Tooltip,
                 Children =
                 [
-                    Design.Type.MicroMeta(EqualizerBands[band])
+                    R.Type.MicroMeta(EqualizerBands[band])
                         with { FontFamily = "Cascadia Code", Color = Tok.TextSecondary, Shrink = 0f },
                     new TextEl(EqCurveRules.DbText(gain))
                         { Size = 12f, Weight = 700, Color = Tok.TextPrimary, Grow = 1f, MaxLines = 1,

@@ -253,7 +253,7 @@ public static partial class Setup
                         ? new BoxEl
                         {
                             Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
-                            Children = [ProgressRing.Indeterminate(20f), Design.Type.DenseMeta(Loc.Get(Strings.Auth.GettingCode)) with { Color = Tok.TextTertiary }],
+                            Children = [ProgressRing.Indeterminate(20f), R.Type.DenseMeta(Loc.Get(Strings.Auth.GettingCode)) with { Color = Tok.TextTertiary }],
                         }
                         : Button.Standard(Loc.Get(Strings.Auth.GetNewCode), StartPairing),
                 });
@@ -834,7 +834,7 @@ public static partial class Setup
             new BoxEl { AlignSelf = FlexAlign.Start, Children = [Embed.Comp(static () => new LoginStepBar())] },
             new BoxEl
             {
-                Direction = 0, Wrap = true, Gap = Spacing.L, Stagger = Design.Reduced ? 0f : Design.Motion.StaggerMs,
+                Direction = 0, Wrap = true, Gap = Spacing.L, Stagger = Design.Reduced ? 0f : R.Motion.StaggerMs,
                 Children = [StepRow(0), StepRow(1), StepRow(2), StepRow(3)],
             });
 
