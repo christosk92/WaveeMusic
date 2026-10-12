@@ -1945,6 +1945,34 @@ public static partial class Shell
         public static BodyKind BodyFor(in Route route, bool hasPage, bool developerMode)
             => !IsKnown(route, developerMode) ? BodyKind.NotFound : hasPage ? BodyKind.Page : BodyKind.Empty;
 
+        /// <summary>The route's body as the contract's kind: what the theme's <c>Shell.ContentState</c> view draws in the content
+        /// region. The same decision as <see cref="BodyFor"/>, named for the contract (T4a).</summary>
+        public static Theming.Contracts.ContentStateKind ContentBodyFor(in Route route, bool hasPage, bool developerMode)
+            => BodyFor(route, hasPage, developerMode) switch
+            {
+                BodyKind.Page => Theming.Contracts.ContentStateKind.Page,
+                BodyKind.Empty => Theming.Contracts.ContentStateKind.EmptyBody,
+                _ => Theming.Contracts.ContentStateKind.NotFound,
+            };
+
+        /// <summary>WHICH STATE THE CONTENT REGION IS IN (T4a, <c>Shell.ContentState</c>): the route's body and whether the offline
+        /// lane floats over it. Pure and stateless: a quick run of route changes decides each route on its own, so the answer for a
+        /// route never depends on the one before it. The theme draws the answer; the keep-alive boundary and its page transition stay
+        /// core (the recipe is the motion's, not a picture).</summary>
+        public static Theming.Contracts.ContentState ContentFor(in Route route, bool hasPage, bool developerMode, AuthState auth)
+            => new(ContentBodyFor(route, hasPage, developerMode), ShowsOfflineStrip(auth));
+
+        /// <summary>The node key of a content state's root box, from the route's key (<see cref="NameOf"/>) and arg (<see cref="ArgOf"/>):
+        /// <c>page:&lt;route&gt;</c>, <c>page-empty:&lt;route&gt;</c> and <c>page-notfound:&lt;route&gt;|&lt;arg&gt;</c>; the lane has none.
+        /// These are the keys the frame mounted before the theme drew them, so a probe and a test find the same nodes.</summary>
+        public static string ContentKey(Theming.Contracts.ContentStateKind kind, string routeName, string? routeArg) => kind switch
+        {
+            Theming.Contracts.ContentStateKind.Page => "page:" + routeName,
+            Theming.Contracts.ContentStateKind.EmptyBody => "page-empty:" + routeName,
+            Theming.Contracts.ContentStateKind.NotFound => "page-notfound:" + routeName + "|" + (routeArg ?? ""),
+            _ => "",
+        };
+
         /// <summary>The CLEARING half of <see cref="Ui.ActiveStagePlayable"/>: a navigation to a route no module watch page
         /// will mount for clears a stale claim — value-gated, so an idle navigation writes nothing. Module routes are the
         /// PAGES' to hand over (an unconditional clear could land after the incoming page's claim and erase it).</summary>

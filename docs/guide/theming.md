@@ -25,8 +25,9 @@
 - **Contract version 1.0** (`Contracts\ContractVersion.cs`): the published view keys and style keys, their props records
   and the role vocabulary. A theme records the version it was built against in its manifest; `ThemeHost.Install` refuses a
   composition whose major differs or whose minor is newer than the core's.
-- Keys live only in `Contracts\ViewKeys.cs` and `StyleKeys.cs` (WVTH006). T1 declares none; each extraction PR adds its
-  family.
+- Keys live only in `Contracts\ViewKeys*.cs` and `StyleKeys.cs` (WVTH006). T1 declares none; each extraction PR adds its
+  family in its own partial file (`ViewKeys.Shell.cs`: T4a's `Shell.Frame` and `Shell.ContentState`). How a surface becomes a
+  registered view is section 2b.
 
 ## 2. Writing a theme
 
@@ -130,6 +131,55 @@ gutters (Classic publishes its own from `Design`). `ThemePolicies.Tiers` carries
   re-classifies, and the panel's committed width is brought inside the new bounds (the stored preference is left alone).
 - **Equality is by value** (the player bar's level array compares element by element), so republishing an unchanged bundle is
   not a change.
+
+## 2b. Views: moving a surface into a structure (T4a, the T-lane recipe)
+
+T4a is the first PR that registers a view. The API was T1's (`IStructureLayer.Register(ViewRegistryBuilder)`, the engine's
+`ViewKey<TProps>`, `Slots.View`, `ViewTemplate<TProps>`); T4a only uses it. Every later T-PR repeats the same six steps.
+
+| Step | Where | What |
+|---|---|---|
+| 1. Key | `Theming\Contracts\ViewKeys.<Family>.cs` | `public static readonly ViewKey<XProps> ShellFrame = new("Shell.Frame");` A dotted, constant, unique id (WVTH006); the key is created nowhere else |
+| 2. Props | `Theming\Contracts\XProps.cs` | a **sealed record class**, init-only members (WVTH006: no setter, no `Signal<T>` member: carry `IReadSignal<T>`, a `Func`, a value). Props freeze at mount: **live values reach the template through signals or Funcs it binds with `Prop.Of`**, never through a changing member. Delegates are cached statics or built once, so an equal record skips the template |
+| 3. Core host | the existing component | keeps every hook, effect, state machine and verb; builds the props once; mounts `Slots.View(ViewKeys.X, props)`. Mark it `[CoreHost]` (WVTH008: it then builds no element and reads no `Tok`/`Design`/`R`; what it still does goes in `analyzer-baseline\WVTH008.txt` and shrinks) |
+| 4. Template | `Themes\Classic\Structure\Views\<Family>\ClassicX.cs` | `internal static class ClassicX { public static Element Template(XProps props, in ViewContext ctx) }`: the element tree the core built before, with the same keys, ids, transitions and bound channels. It may not reference `Shell`, `Entities`, `Playback`, `Spotify`, `Store`, `Prefs` (WVTH002): what it needs arrives on the props or as a verb |
+| 5. Numbers | `Themes\Classic\Structure\Rules\` | a literal size, radius, gap or opacity (not 0 or 1) is a rule or a role, not a template literal (WVTH003). The shell-level constants that came with the code (`ClassicFrameRules`) live here |
+| 6. Register | `ClassicStructure.Register` | `views.Add(ViewKeys.ShellFrame, ClassicFrame.Template, "classic.shell.frame");` The template id is the slot's identity: a different id under the same key remounts the slot, the same id with a new registry only re-runs it |
+
+**Surfaces that are not yet their own key arrive as builders.** A moved view often places surfaces another T-PR owns. Until that
+PR gives them a key, the props carry a `Func<Element>` over the core builder that exists (`ShellFrameProps.ChromeRow`,
+`.PlayerBarDock`, `.SidebarPane`, `.RailBody`, ...); the owning PR replaces the member with a `ctx.View(...)` call. Nothing else in
+the frame changes.
+
+**What stays core, and why.** Models, state machines, signals and verbs (the sidebar band and presentation, the tiers, auto zoom,
+the rail and docked-video coupling, the chrome allocator, the material mirror, the route reducer, the auth fold, the page
+transition's recipe) decide and publish; a theme only draws. Behaviour the engine wires as a control (the splitter, the
+shell chords, the file-drop target, the realized-node captures the probes and the scrim clip read) is built by the host and
+**placed** by the template.
+
+### The frame and the content states (T4a)
+
+| Key | Props | Core host | Classic template |
+|---|---|---|---|
+| `Shell.Frame` | `ShellFrameProps` | `Shell.FrameRoot` (`[CoreHost]`, `Shell\Shell.UI.cs`) | `ClassicFrame`: the column (chords, title row, content region, player dock) under the material, the stage, the video and overlay layers, the content region (sidebar column, content card and its stroke, rail gap and reservation, both seams, the rail overlay, the narrow drawer) |
+| `Shell.ContentState` | `ContentStateProps` (`Kind` is a `ContentStateKind`) | `Shell.ContentHost` (`PageBody`, `NotFoundPage`, `OfflineLane`) | `ClassicContentState`: the page and empty-body boxes, the not-found page, the offline lane |
+
+`Shell.ContentState` is also a **pure core value**: `Theming\Contracts\ContentState` = the route's body (`Page`, `EmptyBody`,
+`NotFound`) and the offline-lane flag. `Shell.FrameRules.ContentFor(route, hasPage, developerMode, auth)` decides it (a known route
+with a page is a page; a known route whose page is not registered is an empty body, never the not-found page; an unknown route, or a
+developer-only route while developer mode is off, is the not-found page; the lane is up exactly while the session is `Offline`,
+over any body) and `Shell.FrameRules.ContentKey` names the body's node key (`page:<route>`, `page-empty:<route>`,
+`page-notfound:<route>|<arg>`). The decision is stateless, so a quick run of route changes decides each route alone. The keep-alive
+boundary, its LRU, the page-swap transition recipe (`PageTransition`) and the scroll scope stay in `ContentHost`/`PageBody`:
+the recipe is the motion's (M1 moves it to the structure), not a picture.
+
+A theme that mounts the real shell must register `Shell.Frame` and `Shell.ContentState`: a registry without them draws nothing
+(the slot logs `[view-slot] view key 'Shell.Frame' renders nothing`). A test theme that mounts the shell registers Classic's views
+(`new ClassicStructure().Register(views)`), as `ThemeOptionsMountedTests` does.
+
+**Tests.** The decision and its edges are pure (`Wavee.Tests\ContentStateTests.cs`); the mounted facts are
+`Wavee.ShellTests\ContentStateMountedTests.cs` (the registered frame is Classic's, each state stands under its key in the real
+shell, the lane comes and goes, and `ViewHarness` mounts `Shell.ContentState` alone under the Classic composition).
 
 ## 3. Options
 

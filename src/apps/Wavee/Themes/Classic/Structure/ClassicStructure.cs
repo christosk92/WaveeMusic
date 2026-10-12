@@ -1,6 +1,7 @@
 // ── Themes/Classic/Structure/ClassicStructure.cs — the Classic structure (themes plan 6.1) ─────────────────────────────
 //
-// Registers no view yet (every surface is still core code). Each T-lane PR adds the views of one family to `Register`. It
+// Registers the views T-lane PRs have moved here, one family at a time (`Register`): T4a is the frame and the content states
+// (`Views\Frame\ClassicFrame.cs`, `ClassicContentState.cs`); every other surface is still core code. It
 // decides the shell's policies (`Rules\ClassicPolicies.cs`: nav pane, panel and mini player, player bar, chrome row, stage)
 // and offers every capability (T3). Its window tiers (T3b) are `Rules\Tiers.cs`.
 //
@@ -11,6 +12,7 @@
 
 using FluentGpu.Theming;
 using Wavee.Theming;
+using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
 
@@ -26,6 +28,9 @@ public sealed class ClassicStructure : IStructureLayer
     /// <inheritdoc />
     public void Register(ViewRegistryBuilder views)
     {
+        // T4a: the window frame and the content region's states (offline lane, empty body, not-found, page).
+        views.Add(ViewKeys.ShellFrame, ClassicFrame.Template, "classic.shell.frame");
+        views.Add(ViewKeys.ShellContentState, ClassicContentState.Template, "classic.shell.content-state");
     }
 
     /// <inheritdoc />

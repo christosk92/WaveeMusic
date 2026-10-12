@@ -30,7 +30,9 @@ public sealed class ThemeOptionsMountedTests(ShellHost host)
         public string Id => id;
         public ThemeOptionSchema Options => options;
         public RoleSet RequiredRoles => RoleSet.None;
-        public void Register(ViewRegistryBuilder views) { }
+        // The frame is the structure's since T4a: a fake theme that mounts the real shell needs a frame to draw it, so the stub
+        // registers Classic's views (the options under test are the stub's own).
+        public void Register(ViewRegistryBuilder views) => new ClassicStructure().Register(views);
         public ThemePolicies Policies(OptionValues structure, in StyleMetrics metrics) => ThemePolicies.Default;
         public ShellCapabilities Capabilities(OptionValues structure) => ShellCapabilities.Unrestricted;
     }
