@@ -29,7 +29,7 @@ sealed class FakeStructure(string id, ThemeOptionSchema? options = null) : IStru
     public bool RegistersView { get; set; } = true;
     public int RegisterCalls { get; private set; }
     public Func<OptionValues, ShellCapabilities> CapabilityFn { get; set; } = static _ => ShellCapabilities.Unrestricted;
-    public Func<OptionValues, StyleMetrics, ThemePolicies> PolicyFn { get; set; } = static (_, _) => ThemePolicies.Empty;
+    public Func<OptionValues, StyleMetrics, ThemePolicies> PolicyFn { get; set; } = static (_, _) => ThemePolicies.Default;
     public RoleSet RequiredRoles => RoleSet.None;
 
     public void Register(ViewRegistryBuilder views)

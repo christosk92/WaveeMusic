@@ -13,6 +13,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Wavee.Theming;
 
 namespace Wavee;
 
@@ -234,25 +235,26 @@ public static partial class Shell
         /// <see cref="EstimatedTabExtent"/> assumes every tab sits at its 110-DIP floor, which is optimistic by up to
         /// 90 DIP per tab. That is the RIGHT direction — the seed only ever moves the extent UP as the strip measures
         /// itself — but a call site that HAS the measured extent must use <see cref="Resolve(float, float, Chrome?,
-        /// FrameRules.ChipForm)"/> instead, which is what the shell's viewport effect does.</summary>
+        /// FrameRules.ChipForm, ChromeBudget)"/> instead, which is what the shell's viewport effect does.</summary>
         public static Chrome FromWidth(float width, int tabCount,
-            FrameRules.ChipForm chip = FrameRules.ChipForm.Profile)
-            => Resolve(width, EstimatedTabExtent(tabCount), null, chip);
+            FrameRules.ChipForm chip = FrameRules.ChipForm.Profile, ChromeBudget? budget = null)
+            => Resolve(width, EstimatedTabExtent(tabCount, 0, budget), null, chip, budget);
 
         /// <inheritdoc cref="FromWidth"/>
         public static Chrome Resolve(float width, int tabCount, Chrome? previous = null,
-            FrameRules.ChipForm chip = FrameRules.ChipForm.Profile)
-            => Resolve(width, EstimatedTabExtent(tabCount), previous, chip);
+            FrameRules.ChipForm chip = FrameRules.ChipForm.Profile, ChromeBudget? budget = null)
+            => Resolve(width, EstimatedTabExtent(tabCount, 0, budget), previous, chip, budget);
 
         public static Chrome Resolve(float width, float naturalTabExtent, Chrome? previous = null,
-            FrameRules.ChipForm chip = FrameRules.ChipForm.Profile)
+            FrameRules.ChipForm chip = FrameRules.ChipForm.Profile, ChromeBudget? budget = null)
         {
+            var b = ShellPolicy.BudgetOr(budget);
             width = MathF.Max(0f, width);
-            naturalTabExtent = MathF.Max(Layout.ChromeTabViewportMinW, naturalTabExtent);
-            var candidate = StageFor(width, naturalTabExtent, chip);
-            if (previous is not { } old) return Compose(width, naturalTabExtent, in candidate, chip, null);
+            naturalTabExtent = MathF.Max(b.TabViewportMinW, naturalTabExtent);
+            var candidate = StageFor(width, naturalTabExtent, chip, b);
+            if (previous is not { } old) return Compose(width, naturalTabExtent, in candidate, chip, null, b);
 
-            var reserved = StageFor(MathF.Max(0f, width - Layout.ChromePromotionHysteresisW), naturalTabExtent, chip);
+            var reserved = StageFor(MathF.Max(0f, width - b.PromotionHysteresisW), naturalTabExtent, chip, b);
             var held = new Stage(
                 candidate.Name && (old.ShowName || reserved.Name),
                 candidate.Actions && (old.ShowActions || reserved.Actions),
@@ -261,43 +263,60 @@ public static partial class Shell
                 candidate.NewTab && (old.ShowNewTab || reserved.NewTab),
                 candidate.Trailing && (old.ShowTrailing || reserved.Trailing),
                 candidate.Field && (old.SearchMode == MergedSearchMode.Field || reserved.Field));
-            return Compose(width, naturalTabExtent, in held, chip, old.LeadClusterW);
+            return Compose(width, naturalTabExtent, in held, chip, old.LeadClusterW, b);
         }
 
-        public float FixedBudgetFor()
-            => FixedBudget(ShowName, ShowActions, ShowForward, ShowBack, ShowNewTab, ShowTrailing, Chip);
+        public float FixedBudgetFor(ChromeBudget? budget = null)
+            => FixedBudget(ShowName, ShowActions, ShowForward, ShowBack, ShowNewTab, ShowTrailing, Chip, budget);
 
-        public float FootprintFor(float naturalTabExtent)
-            => FixedBudgetFor()
-             + (SearchMode == MergedSearchMode.Field ? SearchWidth : Layout.ChromeSearchIconW)
-             + RequiredTabExtent(naturalTabExtent);
-
-        public static float EstimatedTabExtent(int tabCount, int pinnedCount = 0)
+        public float FootprintFor(float naturalTabExtent, ChromeBudget? budget = null)
         {
+            var b = ShellPolicy.BudgetOr(budget);
+            return FixedBudgetFor(b)
+                 + (SearchMode == MergedSearchMode.Field ? SearchWidth : b.SearchIconW)
+                 + RequiredTabExtent(naturalTabExtent, b);
+        }
+
+        public static float EstimatedTabExtent(int tabCount, int pinnedCount = 0, ChromeBudget? budget = null)
+        {
+            var b = ShellPolicy.BudgetOr(budget);
             int open = Math.Max(1, tabCount);
             int pinned = Math.Clamp(pinnedCount, 0, open);
-            return pinned * Layout.ChromePinnedTabW + (open - pinned) * Layout.ChromeTabMinW;
+            return pinned * b.PinnedTabW + (open - pinned) * b.TabMinW;
         }
 
         /// <summary>Measured titles retain their full natural width whenever the window can fit them. Round UP so
         /// the quantisation itself never clips the last glyph or forces a needless horizontal scroll.</summary>
-        public static float RequiredTabExtent(float naturalTabExtent)
-            => MathF.Max(Layout.ChromeTabViewportMinW, QuantiseUp(naturalTabExtent));
+        public static float RequiredTabExtent(float naturalTabExtent, ChromeBudget? budget = null)
+        {
+            var b = ShellPolicy.BudgetOr(budget);
+            return MathF.Max(b.TabViewportMinW, QuantiseUp(naturalTabExtent, b));
+        }
 
         /// <summary>The island contains navigation and the add button beside the measured scrolling viewport.</summary>
-        public float TabIslandWidth => LeadClusterW
-            + (ShowBack ? Layout.ChromeNavButtonW : 0f)
-            + (ShowForward ? Layout.ChromeNavButtonW : 0f)
-            + (ShowNewTab ? Layout.ChromeAddSlotW : 0f);
+        public float TabIslandWidth => TabIslandWidthFor();
+
+        /// <summary><see cref="TabIslandWidth"/> over an explicit budget (null = the active one).</summary>
+        public float TabIslandWidthFor(ChromeBudget? budget = null)
+        {
+            var b = ShellPolicy.BudgetOr(budget);
+            return LeadClusterW
+                 + (ShowBack ? b.NavButtonW : 0f)
+                 + (ShowForward ? b.NavButtonW : 0f)
+                 + (ShowNewTab ? b.AddSlotW : 0f);
+        }
 
         /// <summary>What the search WANTS at this window width — a DESIRE, never an entitlement. It clamps UP to
         /// <see cref="Layout.ChromeSearchMinW"/>, so on its own it says nothing about whether the row can seat a field;
         /// <see cref="SearchLane"/> is what answers that.</summary>
-        public static float PreferredSearchWidth(float width)
-            => QuantiseDown(Math.Clamp(
-                width * Layout.ChromeSearchWidthRatio,
-                Layout.ChromeSearchMinW,
-                Layout.ChromeSearchMaxW));
+        public static float PreferredSearchWidth(float width, ChromeBudget? budget = null)
+        {
+            var b = ShellPolicy.BudgetOr(budget);
+            return QuantiseDown(Math.Clamp(
+                width * b.SearchWidthRatio,
+                b.SearchMinW,
+                b.SearchMaxW), b);
+        }
 
         /// <summary>The DIPs the row can genuinely hand the centre island at this width, for this stage: the window
         /// minus the resolved fixed budget minus the tab lane's own required extent. This — not
@@ -305,10 +324,13 @@ public static partial class Shell
         /// field is then sized to. May be negative; the caller compares, it does not clamp. (#88)</summary>
         public static float SearchLane(float width, float naturalTabExtent,
             bool name, bool actionsInRow, bool forward, bool back, bool newTab, bool trailing,
-            FrameRules.ChipForm chip = FrameRules.ChipForm.Profile)
-            => width
-             - FixedBudget(name, actionsInRow, forward, back, newTab, trailing, chip)
-             - RequiredTabExtent(naturalTabExtent);
+            FrameRules.ChipForm chip = FrameRules.ChipForm.Profile, ChromeBudget? budget = null)
+        {
+            var b = ShellPolicy.BudgetOr(budget);
+            return width
+                 - FixedBudget(name, actionsInRow, forward, back, newTab, trailing, chip, b)
+                 - RequiredTabExtent(naturalTabExtent, b);
+        }
 
         /// <summary>The width a FIELD is actually laid out at, given the bar's measured centre-column width. This is the
         /// ONLY width computation a mounted field view may call — it never reads <see cref="SearchMode"/> and so it
@@ -326,11 +348,12 @@ public static partial class Shell
         /// <see cref="Layout.ChromeSearchMinW"/>. A measurement is honoured only while it is itself at least that
         /// minimum (so it can still trim a field the row narrowed under, which is real), and the result never leaves
         /// [min, max]. A measurement below the minimum is evidence the measurement is wrong, not the ladder. (#88)</para></summary>
-        public static float FieldWidthFor(float searchWidth, float measuredCentreAvail)
+        public static float FieldWidthFor(float searchWidth, float measuredCentreAvail, ChromeBudget? budget = null)
         {
-            float w = Math.Clamp(searchWidth, Layout.ChromeSearchMinW, Layout.ChromeSearchMaxW);
-            if (float.IsFinite(measuredCentreAvail) && measuredCentreAvail >= Layout.ChromeSearchMinW)
-                w = MathF.Min(w, MathF.Min(measuredCentreAvail, Layout.ChromeSearchMaxW));
+            var b = ShellPolicy.BudgetOr(budget);
+            float w = Math.Clamp(searchWidth, b.SearchMinW, b.SearchMaxW);
+            if (float.IsFinite(measuredCentreAvail) && measuredCentreAvail >= b.SearchMinW)
+                w = MathF.Min(w, MathF.Min(measuredCentreAvail, b.SearchMaxW));
             return w;
         }
 
@@ -345,10 +368,13 @@ public static partial class Shell
         /// chance to unmount it, lay itself out at 44, and render the placeholder as the clipped "Sear" stub. A field
         /// view calls <see cref="FieldWidthFor"/> directly instead, so the form it is not currently displaying can
         /// never reach it (#88).</para></summary>
-        public float LaidOutSearchWidth(float measuredCentreAvail)
-            => SearchMode == MergedSearchMode.Icon
-                ? Layout.ChromeSearchIconW
-                : FieldWidthFor(SearchWidth, measuredCentreAvail);
+        public float LaidOutSearchWidth(float measuredCentreAvail, ChromeBudget? budget = null)
+        {
+            var b = ShellPolicy.BudgetOr(budget);
+            return SearchMode == MergedSearchMode.Icon
+                ? b.SearchIconW
+                : FieldWidthFor(SearchWidth, measuredCentreAvail, b);
+        }
 
         /// <summary>The row's non-tab, non-search DIPs. <paramref name="actionsInRow"/> reserves THREE nav buttons at
         /// once (bell, friends, pin) REGARDLESS of whether pin actually applies to the current destination:
@@ -356,18 +382,21 @@ public static partial class Shell
         /// disagrees with the budget reflows the island on every navigation. There is no "…" reservation — Forward
         /// simply hides below its own threshold instead of moving to an overflow menu.</summary>
         public static float FixedBudget(bool name, bool actionsInRow, bool forward, bool back, bool newTab, bool trailing,
-            FrameRules.ChipForm chip = FrameRules.ChipForm.Profile)
-            => Layout.ChromeBarLeadW
-             + Layout.ChromeThemeToggleW
-             + (back ? Layout.ChromeNavButtonW : 0f)
-             + (forward ? Layout.ChromeNavButtonW : 0f)
-             + (newTab ? Layout.ChromeAddSlotW : 0f)
-             + (trailing ? ChipWidth(chip) : 0f)
-             + (trailing && name && chip == FrameRules.ChipForm.Profile ? Layout.ChromeProfileNameW : 0f)
-             + (actionsInRow ? 3f * Layout.ChromeNavButtonW : 0f)
-             + 2f * Layout.ChromeGutterMinW
-             + Layout.ChromeMinDragStripW
-             + Layout.ChromeCaptionClusterW;
+            FrameRules.ChipForm chip = FrameRules.ChipForm.Profile, ChromeBudget? budget = null)
+        {
+            var b = ShellPolicy.BudgetOr(budget);
+            return b.BarLeadW
+                 + b.ThemeToggleW
+                 + (back ? b.NavButtonW : 0f)
+                 + (forward ? b.NavButtonW : 0f)
+                 + (newTab ? b.AddSlotW : 0f)
+                 + (trailing ? ChipWidth(chip, b) : 0f)
+                 + (trailing && name && chip == FrameRules.ChipForm.Profile ? b.ProfileNameW : 0f)
+                 + (actionsInRow ? 3f * b.NavButtonW : 0f)
+                 + 2f * b.GutterMinW
+                 + b.MinDragStripW
+                 + b.CaptionClusterW;
+        }
 
         /// <summary>What the identity chip really costs in the form <see cref="FrameRules.ChipFor"/> selects — the ONE
         /// place the row's four chips are priced. The budget used to know only the avatar's 32 DIP, which under-reserved
@@ -377,20 +406,24 @@ public static partial class Shell
         /// <para>Only <see cref="FrameRules.ChipForm.Profile"/> can carry the display NAME — the other three forms are
         /// already a caption or a labelled button, so <see cref="Layout.ChromeProfileNameW"/> is charged with the avatar
         /// alone and the common path's flip widths are exactly where they were.</para></summary>
-        public static float ChipWidth(FrameRules.ChipForm chip) => chip switch
+        public static float ChipWidth(FrameRules.ChipForm chip, ChromeBudget? budget = null)
         {
-            FrameRules.ChipForm.Connecting => Layout.ChromeConnectingChipW,
-            FrameRules.ChipForm.Reconnect => Layout.ChromeReconnectChipW,
-            FrameRules.ChipForm.SignIn => Layout.ChromeSignInChipW,
-            _ => Layout.ChromeProfileChipW,
-        };
+            var b = ShellPolicy.BudgetOr(budget);
+            return chip switch
+            {
+                FrameRules.ChipForm.Connecting => b.ConnectingChipW,
+                FrameRules.ChipForm.Reconnect => b.ReconnectChipW,
+                FrameRules.ChipForm.SignIn => b.SignInChipW,
+                _ => b.ProfileChipW,
+            };
+        }
 
         readonly record struct Stage(bool Name, bool Actions, bool Forward, bool Back, bool NewTab, bool Trailing, bool Field);
 
-        static Stage StageFor(float width, float naturalTabExtent, FrameRules.ChipForm chip)
+        static Stage StageFor(float width, float naturalTabExtent, FrameRules.ChipForm chip, ChromeBudget b)
         {
             bool name = false, actionsInRow = false;
-            bool forward = width > Layout.ChromeForwardEnterW;
+            bool forward = width > b.ForwardEnterW;
             bool back = true, newTab = true, trailing = true;
 
             // The tab viewport is the last elastic lane. Under extreme pressure shed fixed islands before allowing it
@@ -398,8 +431,8 @@ public static partial class Shell
             // optional island is bought yet, so this runs against the bare row — and it only ever binds far below the
             // narrowest width at which a field is possible at all (FixedBudget + 280 + one tab ≈ 780+).
             bool FitsEssential()
-                => width - FixedBudget(name, actionsInRow, forward, back, newTab, trailing, chip) - Layout.ChromeSearchIconW
-                   >= Layout.ChromeTabViewportMinW;
+                => width - FixedBudget(name, actionsInRow, forward, back, newTab, trailing, chip, b) - b.SearchIconW
+                   >= b.TabViewportMinW;
             if (!FitsEssential()) newTab = false;
             if (!FitsEssential()) trailing = false;
             if (!FitsEssential()) back = false;
@@ -422,14 +455,14 @@ public static partial class Shell
             // its own gate is evaluated against the settled actions cost, it cannot flip back off as the window grows
             // past the actions' own entry.
             bool Affords(bool withName, bool withActions)
-                => SearchLane(width, naturalTabExtent, withName, withActions, forward, back, newTab, trailing, chip)
-                   >= Layout.ChromeSearchMinW;
+                => SearchLane(width, naturalTabExtent, withName, withActions, forward, back, newTab, trailing, chip, b)
+                   >= b.SearchMinW;
 
-            actionsInRow = width >= Layout.ChromeActionsEnterW && Affords(false, true);
+            actionsInRow = width >= b.ActionsEnterW && Affords(false, true);
             // Only the avatar chip HAS a name column to open (the other three forms are already a caption or a labelled
             // button), so the stage is Profile-only and `FixedBudget` charges ChromeProfileNameW for that form alone.
             name = actionsInRow && chip == FrameRules.ChipForm.Profile
-                && width >= Layout.ChromeNameEnterW && Affords(true, true);
+                && width >= b.NameEnterW && Affords(true, true);
 
             // THE HONEST FIELD TEST (#88). Ask what the centre lane can actually hand over, then ask whether that is at
             // least the field's own minimum. The previous form compared the leftover against `PreferredSearchWidth`,
@@ -437,79 +470,81 @@ public static partial class Shell
             // same question only while the desire is exactly the minimum. Above 1000 DIP the desire runs ahead of the
             // minimum and the test became stricter than the row; the real damage was the other half of the contract
             // (`Compose` handing back 280+ whatever the lane was), which is what seated a clipped stub.
-            float lane = SearchLane(width, naturalTabExtent, name, actionsInRow, forward, back, newTab, trailing, chip);
-            bool field = lane >= Layout.ChromeSearchMinW;
+            float lane = SearchLane(width, naturalTabExtent, name, actionsInRow, forward, back, newTab, trailing, chip, b);
+            bool field = lane >= b.SearchMinW;
             return new Stage(name, actionsInRow, forward, back, newTab, trailing, field);
         }
 
         static Chrome Compose(float width, float naturalTabExtent, in Stage stage, FrameRules.ChipForm chip,
-            float? previousLeadClusterW)
+            float? previousLeadClusterW, ChromeBudget b)
         {
-            float searchWidth = SearchWidthFor(width, naturalTabExtent, in stage, chip);
+            float searchWidth = SearchWidthFor(width, naturalTabExtent, in stage, chip, b);
             return new Chrome(stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing, chip,
                 stage.Field ? MergedSearchMode.Field : MergedSearchMode.Icon, searchWidth,
-                LeadClusterFor(width, naturalTabExtent, in stage, chip, searchWidth, previousLeadClusterW));
+                LeadClusterFor(width, naturalTabExtent, in stage, chip, searchWidth, previousLeadClusterW, b));
         }
 
         /// <summary>The field is sized to the LANE, capped by the desire and floored at the minimum — so the published
         /// <see cref="SearchWidth"/> is by construction a width the row can seat
         /// (<c>FixedBudget + SearchWidth + RequiredTabExtent ≤ width</c>), which is the invariant the view then trusts
         /// instead of second-guessing it against a measurement. (#88)</summary>
-        static float SearchWidthFor(float width, float naturalTabExtent, in Stage stage, FrameRules.ChipForm chip)
+        static float SearchWidthFor(float width, float naturalTabExtent, in Stage stage, FrameRules.ChipForm chip, ChromeBudget b)
         {
-            if (!stage.Field) return Layout.ChromeSearchIconW;
+            if (!stage.Field) return b.SearchIconW;
             float lane = SearchLane(width, naturalTabExtent,
-                stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing, chip);
-            return Math.Clamp(MathF.Min(PreferredSearchWidth(width), QuantiseDown(lane)),
-                Layout.ChromeSearchMinW, Layout.ChromeSearchMaxW);
+                stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing, chip, b);
+            return Math.Clamp(MathF.Min(PreferredSearchWidth(width, b), QuantiseDown(lane, b)),
+                b.SearchMinW, b.SearchMaxW);
         }
 
         /// <summary>The tab lane's reserved width. Bounded by what the row can spare once the resolved fixed budget
         /// and search allotment are taken out — the SAME budget the boolean stages already pay, so this can never
         /// over-reserve and starve the row — and then held with the widen-now / narrow-later shape.</summary>
         static float LeadClusterFor(float width, float naturalTabExtent, in Stage stage, FrameRules.ChipForm chip,
-            float searchWidth, float? previousLeadClusterW)
+            float searchWidth, float? previousLeadClusterW, ChromeBudget b)
         {
-            float budget = FixedBudget(stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing, chip);
-            float available = MathF.Max(Layout.ChromeTabViewportMinW, width - budget - searchWidth);
-            float desired = MathF.Max(Layout.ChromeTabViewportMinW,
-                MathF.Min(RequiredTabExtent(naturalTabExtent), available));
-            float candidate = QuantiseDown(desired);
-            float held = HeldLeadCluster(candidate, previousLeadClusterW);
+            float fixedBudget = FixedBudget(stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing, chip, b);
+            float available = MathF.Max(b.TabViewportMinW, width - fixedBudget - searchWidth);
+            float desired = MathF.Max(b.TabViewportMinW,
+                MathF.Min(RequiredTabExtent(naturalTabExtent, b), available));
+            float candidate = QuantiseDown(desired, b);
+            float held = HeldLeadCluster(candidate, previousLeadClusterW, b);
             // A STRUCTURAL shrink of `available` (a window resize, or a stage losing a fixed island) always wins over
             // the hold — the hold exists to smooth CONTENT jitter at a fixed width, never to overflow the row.
-            return MathF.Max(Layout.ChromeTabViewportMinW, MathF.Min(held, available));
+            return MathF.Max(b.TabViewportMinW, MathF.Min(held, available));
         }
 
         /// <summary>WIDEN-IMMEDIATELY / NARROW-AFTER-<see cref="Layout.ChromePromotionHysteresisW"/>: a longer tab
         /// title must never clip (so growth is never delayed), but a shorter one must not yank the reservation back
         /// only to need it again next frame — the opposite polarity from the boolean stages, which hide overflow by
         /// NOT showing something yet, while this hides jitter by NOT giving space back yet.</summary>
-        static float HeldLeadCluster(float candidate, float? previous)
+        static float HeldLeadCluster(float candidate, float? previous, ChromeBudget b)
         {
             if (previous is not { } prev) return candidate;
             if (candidate >= prev) return candidate;
-            return prev - candidate >= Layout.ChromePromotionHysteresisW ? candidate : prev;
+            return prev - candidate >= b.PromotionHysteresisW ? candidate : prev;
         }
 
         /// <summary>The tab strip's MEASURED natural extent, as the allocator consumes it: rounded UP to the
         /// width quantum and floored at one tab's minimum. The strip publishes its content extent on every re-measure;
         /// quantising here is what stops a sub-pixel title reflow from re-resolving the row.</summary>
-        public static float TabExtentFromMetrics(float contentExtent)
-            => MathF.Max(Layout.ChromeTabMinW,
-                QuantiseUp(contentExtent));
+        public static float TabExtentFromMetrics(float contentExtent, ChromeBudget? budget = null)
+        {
+            var b = ShellPolicy.BudgetOr(budget);
+            return MathF.Max(b.TabMinW, QuantiseUp(contentExtent, b));
+        }
 
         /// <summary>The UPWARD seed applied the instant a tab is added or unpinned, so the row can collapse the search in
         /// the same event turn instead of squeezing the new tab behind a stale measurement. Never lowers the measured
         /// value — the strip's own measurement does that.</summary>
-        public static float SeedTabExtent(float measured, int tabCount, int pinnedCount)
-            => MathF.Max(measured, EstimatedTabExtent(tabCount, pinnedCount));
+        public static float SeedTabExtent(float measured, int tabCount, int pinnedCount, ChromeBudget? budget = null)
+            => MathF.Max(measured, EstimatedTabExtent(tabCount, pinnedCount, budget));
 
-        static float QuantiseDown(float value)
-            => MathF.Floor(value / Layout.ChromeWidthQuantumW) * Layout.ChromeWidthQuantumW;
+        static float QuantiseDown(float value, ChromeBudget b)
+            => MathF.Floor(value / b.WidthQuantumW) * b.WidthQuantumW;
 
-        static float QuantiseUp(float value)
-            => MathF.Ceiling(value / Layout.ChromeWidthQuantumW) * Layout.ChromeWidthQuantumW;
+        static float QuantiseUp(float value, ChromeBudget b)
+            => MathF.Ceiling(value / b.WidthQuantumW) * b.WidthQuantumW;
     }
 
     // ══ 3. THE TAB WORKSPACE ════════════════════════════════════════════════════════════════════════════════════════

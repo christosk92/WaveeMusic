@@ -135,7 +135,7 @@ public static partial class Shell
 
     // ══ 1. THE TIER OWNER ════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>Folds the viewport width into the coarse layout SIGNAL (with the 24-DIP narrowing hysteresis), so a
+    /// <summary>Folds the viewport width into the coarse layout SIGNAL (with the policy's narrowing hysteresis, 24 DIP in Classic), so a
     /// resize drag re-renders the bar only at a tier crossing — never per pixel.</summary>
     sealed class PlayerBarRoot : Component
     {
@@ -150,7 +150,8 @@ public static partial class Shell
             {
                 var previous = layout.Peek();
                 float width = viewport.Value.Width;
-                var next = PlayerBarLayout.Resolve(width, in previous, initialized.Value);
+                // The policy is read tracked: a theme's own levels, slots and spacing re-resolve the bar in place.
+                var next = PlayerBarLayout.Resolve(width, in previous, initialized.Value, ShellPolicy.Tracked.PlayerBar);
                 if (width > 0f) initialized.Value = true;
                 if (next.Equals(previous)) return;
                 // Always-on and cheap: a band change is a handful of events per session (0.2.9 gated this on an env var).
@@ -607,7 +608,7 @@ public static partial class Shell
             return new BoxEl
             {
                 // NO fill, NO shadow, NO Elevation.DockTop: the dock is a paint-site omission over live Mica.
-                Direction = 1, Height = Design.Size.PlayerBarH, ClipToBounds = true,
+                Direction = 1, Height = ShellPolicy.Tracked.PlayerBar.Height, ClipToBounds = true,
                 IsolateLayout = true,   // the layout firewall: a title change re-solves THIS subtree only
                 Focusable = true, FocusVisualMargin = Edges4.All(Spacing.XXS),
                 OnRealized = node => barNode.Value = node,

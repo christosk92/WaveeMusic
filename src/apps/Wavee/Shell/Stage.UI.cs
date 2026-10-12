@@ -256,7 +256,8 @@ public static partial class Stage
             };
 
             // ── the ONE layout signal, equality-gated (Signal<T>.SetIfChanged) ──
-            UseSignalEffect(() => { var size = vp.Value; ctx.Layout.SetIfChanged(Layout.Resolve(size.Width, size.Height, ctx.Layout.Peek())); });
+            // The classifier's edges are the stage policy's, read tracked so another structure re-classifies the open stage in place.
+            UseSignalEffect(() => { var size = vp.Value; ctx.Layout.SetIfChanged(Layout.Resolve(size.Width, size.Height, ctx.Layout.Peek(), ShellPolicy.Tracked.Stage.Aspect)); });
             // ── the gallery's "shown" gate, narrowed to one bool (a resize re-runs this, the clock's lease only on a flip): open, room
             //    for it, and a layout that has a gallery (only Card does) ──
             UseSignalEffect(() => ctx.GalleryShown.SetIfChanged(ctx.GalleryOpen.Value && ctx.Layout.Value.ShowGallery && LayoutRules.GalleryAllowed(ctx.Look.Value.Eff)));

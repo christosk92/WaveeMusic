@@ -5,9 +5,9 @@
 // inline. The decisions are pure functions here (engine-free; the tests drive every branch); the frame component reads the
 // signals, asks, and writes the answers back in the order it always wrote them.
 //
-// THE POLICY IS TODAY'S. `NavPaneState`'s mode comes from the sidebar's existing constants (`SidebarPaneModeRules`: 660 / 700
-// and 528 / 568 with a 40-DIP hysteresis). The tier policy that will replace them is T3's; this file only gives the frame one
-// place to ask.
+// THE POLICY IS THE STRUCTURE'S (T3). `NavPaneState`'s band, mode and presented width come from `SidebarPaneModeRules` over a
+// `NavPanePolicy` (Classic: 660 / 700 and 528 / 568 with a 40-DIP hysteresis). Every decision here takes a trailing
+// policy; null is the active one. The frame's effects pass `ShellPolicy.Tracked.NavPane` so a policy change re-runs them.
 //
 // THE FACTS (`FrameFacts`) are the few reads a view must not make from settings or from a foreign model's signals: developer
 // mode, "presenting" (the Store shot), the immersive stage and the derived "chrome mounted".
@@ -32,39 +32,44 @@ public static class FrameModel
     /// <summary>The pane's first values, known only when the frame first renders: asked from the Wide band, so only the
     /// ENTERING thresholds apply (a fresh launch at 600 is Narrow, at 500 Tiny), and a small launch lays out as a rail (or no
     /// pane) on frame one.</summary>
-    public static NavPaneState Seed(in WindowFacts window, bool userCollapsed, bool editing, float expandedWidth)
+    public static NavPaneState Seed(in WindowFacts window, bool userCollapsed, bool editing, float expandedWidth,
+        Theming.NavPanePolicy? policy = null)
     {
-        var band = SidebarPaneModeRules.BandOf(window.Width, SidebarWindowBand.Wide);
-        var mode = SidebarPaneModeRules.Resolve(band, userCollapsed, editing);
-        return new NavPaneState(band, mode, SidebarPaneModeRules.PresentedWidth(mode, expandedWidth, window.Width), 1f);
+        policy = ShellPolicy.NavOr(policy);
+        var band = SidebarPaneModeRules.BandOf(window.Width, SidebarWindowBand.Wide, policy);
+        var mode = SidebarPaneModeRules.Resolve(band, userCollapsed, editing, policy);
+        return new NavPaneState(band, mode, SidebarPaneModeRules.PresentedWidth(mode, expandedWidth, window.Width, policy), 1f);
     }
 
     /// <summary>THE WINDOW BAND (design V.1): hysteretic and derived — the ONLY way the window width reaches the sidebar.</summary>
-    public static SidebarWindowBand NextBand(in WindowFacts window, SidebarWindowBand current)
-        => SidebarPaneModeRules.BandOf(window.Width, current);
+    public static SidebarWindowBand NextBand(in WindowFacts window, SidebarWindowBand current, Theming.NavPanePolicy? policy = null)
+        => SidebarPaneModeRules.BandOf(window.Width, current, policy);
 
     /// <summary>Leaving into a band with no overlay pane closes the overlay.</summary>
-    public static bool ClosesOverlay(SidebarWindowBand band) => !SidebarPaneModeRules.HasOverlay(band);
+    public static bool ClosesOverlay(SidebarWindowBand band, Theming.NavPanePolicy? policy = null)
+        => !SidebarPaneModeRules.HasOverlay(band, policy);
 
     /// <summary>THE ONE PRESENTATION DECISION: ① the mode, ② the presented width. A live seam drag presents the tracked seam
     /// (<paramref name="dragging"/> and a band where the seam is visible); it never writes the preference
     /// (<c>Sidebar.Width</c> / <c>UserCollapsed</c> are persisted at commit).</summary>
     public static NavPaneState Present(in WindowFacts window, SidebarWindowBand band, bool userCollapsed, bool editing,
-        float expandedWidth, bool dragging, float seam)
+        float expandedWidth, bool dragging, float seam, Theming.NavPanePolicy? policy = null)
     {
-        if (dragging && SidebarPaneModeRules.SeamVisible(band))
+        policy = ShellPolicy.NavOr(policy);
+        if (dragging && SidebarPaneModeRules.SeamVisible(band, policy))
         {
             var state = new SidebarResizeRules.State(userCollapsed, expandedWidth);
-            var live = SidebarResizeRules.Track(seam, in state, editing);
+            var live = SidebarResizeRules.Track(seam, in state, editing, policy);
             return new NavPaneState(band, live.Collapsed ? SidebarPaneMode.Compact : SidebarPaneMode.Expanded,
                 live.PresentedWidth, live.Fade);
         }
-        var mode = SidebarPaneModeRules.Resolve(band, userCollapsed, editing);
-        return new NavPaneState(band, mode, SidebarPaneModeRules.PresentedWidth(mode, expandedWidth, window.Width), 1f);
+        var mode = SidebarPaneModeRules.Resolve(band, userCollapsed, editing, policy);
+        return new NavPaneState(band, mode, SidebarPaneModeRules.PresentedWidth(mode, expandedWidth, window.Width, policy), 1f);
     }
 
     /// <summary>Is a seam drag being presented (rather than the resolved mode)? The frame reads the seam signal only then.</summary>
-    public static bool PresentsDrag(bool dragging, SidebarWindowBand band) => dragging && SidebarPaneModeRules.SeamVisible(band);
+    public static bool PresentsDrag(bool dragging, SidebarWindowBand band, Theming.NavPanePolicy? policy = null)
+        => dragging && SidebarPaneModeRules.SeamVisible(band, policy);
 
     /// <summary>FULL-SCREEN VIDEO OR THE FULLSCREEN STAGE COLLAPSES THE CHROME ROW, THE CONTENT REGION AND THE PLAYER
     /// BAR — one derived predicate drives all three bound <c>Visible</c> channels, so there is exactly one transport on

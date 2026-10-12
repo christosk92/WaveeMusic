@@ -286,6 +286,18 @@ public static partial class Shell
             sizes.SaveWidth(w);
         }
 
+        /// <summary>The panel's bounds changed (a theme switch gave it another policy): bring the committed width, and the width
+        /// a seam preview parks at, inside <paramref name="policy"/>. Nothing is persisted: the stored preference stays what the
+        /// user chose, and the next launch loads it through the bounds in force then. A width already inside the bounds is
+        /// untouched, so the call is free to run on every policy publication.</summary>
+        public void FitWidthTo(Theming.PanelPolicy policy)
+        {
+            float committed = Cells.Width.Peek();
+            float fitted = policy.ClampWidth(committed);
+            if (fitted != committed) Cells.Width.Value = fitted;
+            if (Cells.DragWidth.Peek() != fitted) Cells.DragWidth.Value = fitted;
+        }
+
         public void ResizeDockedVideo()
         {
             float h = ClampDockedVideoHeight(Cells.DockedVideoHeight.Peek(), Cells.Width.Peek(), Cells.BodyHeight.Peek());

@@ -881,6 +881,9 @@ public static partial class Video
 
         readonly Signal<float> _x = new(0f), _y = new(0f);
         readonly Signal<float> _w = new(Pip.DefaultW), _h = new(Pip.DefaultH);
+
+        /// <summary>The mini player's bounds: the active panel policy's (Classic: the 0.2.9 numbers), read at the moment of a gesture.</summary>
+        static PipBounds PipBoundsNow => ShellPolicy.Now.Panel.Pip;
         readonly Signal<bool> _placed = new(false);   // false = anchored (tracks the corner, reserves layout)
         bool _sized;                                  // the user sized it (a gesture or a remembered rect)
         float _fitRatio;
@@ -903,7 +906,7 @@ public static partial class Video
                 if (PlacementPersistence.TryLoadRect(Platform.Settings.Get(Platform.Keys.VideoPipRect), out float px, out float py, out float pw, out float ph))
                 {
                     _x.Value = px; _y.Value = py;
-                    _w.Value = MathF.Max(Pip.MinW, pw); _h.Value = MathF.Max(Pip.MinH, ph);
+                    _w.Value = MathF.Max(PipBoundsNow.MinW, pw); _h.Value = MathF.Max(PipBoundsNow.MinH, ph);
                     _placed.Value = true;
                     _sized = true;
                 }
@@ -926,7 +929,8 @@ public static partial class Video
             UseEffect(() => State.ReportLive(SurfacePlacement.Floating, livePip), DepKey.From(livePip));
             UseSignalEffect(() =>
                 FloatingSurfaceReserve.Value = PipGesture.Reserve(
-                    PlacementCore.Resolve(State.Surface.Value) == SurfacePlacement.Floating, _placed.Value, _h.Value));
+                    PlacementCore.Resolve(State.Surface.Value) == SurfacePlacement.Floating, _placed.Value, _h.Value,
+                    ShellPolicy.Tracked.Panel.Pip));
             UseEffect(() => () =>
             {
                 FloatingSurfaceReserve.Value = 0f;
@@ -947,7 +951,7 @@ public static partial class Video
                 float ratio = naturalW > 0 && naturalH > 0 ? (float)naturalH / naturalW : Pip.FallbackRatio;
                 if (!PipGesture.ShouldRefit(_sized, _fitRatio, ratio)) { if (_fitRatio <= 0f) _fitRatio = ratio; return; }
                 _fitRatio = ratio;
-                _h.Value = Pip.FitHeight(w, ratio, vp.Value.Height);
+                _h.Value = Pip.FitHeight(w, ratio, vp.Value.Height, ShellPolicy.Tracked.Panel.Pip);
             });
 
             if (!mounted) return new BoxEl();
@@ -1003,7 +1007,7 @@ public static partial class Video
 
         static Affine2D OverlayTransform(SurfacePlacement resolved, Size2 vp, bool placed, float x, float y, float w, float h, RectF slot)
         {
-            var o = PipOverlay.Offset(resolved, vp.Width, vp.Height, placed, x, y, w, h, slot.X, slot.Y);
+            var o = PipOverlay.Offset(resolved, vp.Width, vp.Height, placed, x, y, w, h, slot.X, slot.Y, ShellPolicy.Tracked.Panel.Pip);
             return o.Identity ? Affine2D.Identity : Affine2D.Translation(o.X, o.Y);
         }
 
@@ -1112,9 +1116,10 @@ public static partial class Video
         {
             var vp = ViewportPeek();
             float w = _w.Peek(), h = _h.Peek();
-            var (x, y) = _placed.Peek() ? (_x.Peek(), _y.Peek()) : Pip.Anchor(w, h, vp.Width, vp.Height);
-            _x.Value = PipGesture.ClampX(x, vp.Width, w);
-            _y.Value = PipGesture.ClampY(y, vp.Height, h);
+            var bounds = PipBoundsNow;
+            var (x, y) = _placed.Peek() ? (_x.Peek(), _y.Peek()) : Pip.Anchor(w, h, vp.Width, vp.Height, bounds);
+            _x.Value = PipGesture.ClampX(x, vp.Width, w, bounds);
+            _y.Value = PipGesture.ClampY(y, vp.Height, h, bounds);
             _placed.Value = true;
             _startX = _x.Peek(); _startY = _y.Peek(); _startW = w; _startH = h;
         }
@@ -1134,8 +1139,9 @@ public static partial class Video
             if (scene is null || _dragNode.IsNull || !scene.IsLive(_dragNode)) return;
             var abs = scene.AbsoluteRect(_dragNode);   // the grip moves WITH the surface → reconstruct window space
             var vp = ViewportPeek();
-            _x.Value = PipGesture.ClampX(_startX + (local.X + abs.X - _startPx), vp.Width, _w.Peek());
-            _y.Value = PipGesture.ClampY(_startY + (local.Y + abs.Y - _startPy), vp.Height, _h.Peek());
+            var bounds = PipBoundsNow;
+            _x.Value = PipGesture.ClampX(_startX + (local.X + abs.X - _startPx), vp.Width, _w.Peek(), bounds);
+            _y.Value = PipGesture.ClampY(_startY + (local.Y + abs.Y - _startPy), vp.Height, _h.Peek(), bounds);
         }
 
         void OnResizeDown(int slot, Point2 local)
@@ -1157,7 +1163,7 @@ public static partial class Video
             var abs = scene.AbsoluteRect(band);
             var vp = ViewportPeek();
             var r = PipGesture.Resize(edge, _startX, _startY, _startW, _startH,
-                local.X + abs.X - _startPx, local.Y + abs.Y - _startPy, vp.Width, vp.Height);
+                local.X + abs.X - _startPx, local.Y + abs.Y - _startPy, vp.Width, vp.Height, PipBoundsNow);
             _x.Value = r.X; _y.Value = r.Y; _w.Value = r.W; _h.Value = r.H;
         }
 

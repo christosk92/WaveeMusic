@@ -312,7 +312,7 @@ public sealed class ThemeCatalogTests : IDisposable
     public void Policies_AreGivenTheComposedMetrics()
     {
         StyleMetrics seen = default;
-        var structure = new FakeStructure("s") { PolicyFn = (_, m) => { seen = m; return ThemePolicies.Empty; } };
+        var structure = new FakeStructure("s") { PolicyFn = (_, m) => { seen = m; return ThemePolicies.Default; } };
         var theme = Fakes.Theme("x", structure, new FakeStyle("t") { MetricsFn = static _ => StyleMetrics.Unset with { Gutter = 24f } });
         theme.Policies(Values(theme));
         Assert.Equal(24f, seen.Gutter);
@@ -387,7 +387,8 @@ public sealed class ThemeCatalogTests : IDisposable
         var values = Values(classic);
         Assert.Same(Design.Definition, classic.Definition(values, AccentRamp.FluentDefault));
         Assert.Equal(ShellCapabilities.Unrestricted, classic.Capabilities(values));
-        Assert.Equal(StyleMetrics.Unset, classic.Metrics(values));
+        Assert.NotEqual(StyleMetrics.Unset, classic.Metrics(values));   // Classic publishes its metrics (ClassicPoliciesTests pins them)
+        Assert.Same(Wavee.Themes.Classic.ClassicPolicies.Bundle, classic.Policies(values));
     }
 
     [Fact]
@@ -397,7 +398,12 @@ public sealed class ThemeCatalogTests : IDisposable
         ThemeHost.Install(Wavee.Themes.Classic.ClassicTheme.Create());
         Assert.Equal("classic", ThemeHost.Current.Peek().Manifest.Id);
         Assert.Same(before, Tok.Definition);
-        Assert.Equal(ThemeFacts.Default, ThemeHost.Facts.Peek());
+        // Classic decides the shell's policies (the baseline) and publishes its own metrics; the capabilities and the tier fact are the defaults.
+        var facts = ThemeHost.Facts.Peek();
+        Assert.Equal(ThemeFacts.Default.Policies, facts.Policies);
+        Assert.Equal(ThemeFacts.Default.Capabilities, facts.Capabilities);
+        Assert.Equal(ThemeFacts.Default.Tiers, facts.Tiers);
+        Assert.NotEqual(ThemeFacts.Default.Metrics, facts.Metrics);
     }
 
     [Fact]

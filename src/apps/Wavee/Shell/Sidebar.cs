@@ -62,9 +62,11 @@ public static class SidebarPaneBounds
     /// <summary>The anti-flicker band for a threshold crossing (the regime flip's drag-back distance).</summary>
     public const float NavPaneHysteresisDip = 24f;
 
-    /// <summary>The one clamp.</summary>
-    public static float Clamp(float width)
-        => width < NavPaneMinW ? NavPaneMinW : width > NavPaneMaxW ? NavPaneMaxW : width;
+    /// <summary>The one clamp: the active nav-pane policy's bounds (Classic 180-460), or <paramref name="policy"/>'s. A
+    /// non-finite width reads as the policy's default width. The consts above are the shell's baseline that the default
+    /// policy is built from.</summary>
+    public static float Clamp(float width, Theming.NavPanePolicy? policy = null)
+        => ShellPolicy.NavOr(policy).ClampWidth(width);
 }
 
 public static partial class Sidebar

@@ -94,7 +94,8 @@ public static partial class Stage
         /// <summary>The art is quantised to this grid so a resize pixel re-renders nothing (the previous stage's rule, kept).</summary>
         public const float ArtQuantum = 4f;
 
-        // ── thresholds (§2.2) ──────────────────────────────────────────────────────────────────────────────────────
+        // ── thresholds (§2.2): the shell's baseline; the classifier reads the active StagePolicy's AspectThresholds, which
+        //    `AspectThresholds.Default` (what Wavee Classic declares) builds from these ──────────────────────────────────
         /// <summary>Under this width the stage is Compact whatever the height (the previous stage's one threshold, kept).</summary>
         public const float WideEnterW = 600f;
         public const float PortraitEnter = 0.80f, PortraitLeave = 0.85f;
@@ -103,28 +104,30 @@ public static partial class Stage
 
         public static float Q4(float v) => MathF.Floor(v / ArtQuantum) * ArtQuantum;
 
-        /// <summary>The class for (w, h) given the previous one (hysteresis). A degenerate size keeps the previous class.</summary>
-        public static Aspect ClassOf(float w, float h, Aspect? previous)
+        /// <summary>The class for (w, h) given the previous one (hysteresis). A degenerate size keeps the previous class. The
+        /// edges are the stage policy's (<paramref name="aspect"/>; null = the active one).</summary>
+        public static Aspect ClassOf(float w, float h, Aspect? previous, Theming.AspectThresholds? aspect = null)
         {
             if (w <= 0f || h <= 0f) return previous ?? Aspect.Desktop;
-            if (w < WideEnterW) return Aspect.Compact;
+            var t = ShellPolicy.AspectOr(aspect);
+            if (w < t.CompactBelowW) return Aspect.Compact;
             float ratio = w / h;
             bool wasCompact = previous == Aspect.Compact, wasPortrait = previous == Aspect.Portrait, wasUltra = previous == Aspect.Ultrawide;
-            if (ratio >= 1f && (h <= CompactEnterH || (wasCompact && h < CompactLeaveH))) return Aspect.Compact;
-            if (ratio <= PortraitEnter || (wasPortrait && ratio < PortraitLeave)) return Aspect.Portrait;
-            if (ratio >= UltrawideEnter || (wasUltra && ratio > UltrawideLeave)) return Aspect.Ultrawide;
+            if (ratio >= 1f && (h <= t.CompactEnterH || (wasCompact && h < t.CompactLeaveH))) return Aspect.Compact;
+            if (ratio <= t.PortraitEnter || (wasPortrait && ratio < t.PortraitLeave)) return Aspect.Portrait;
+            if (ratio >= t.UltrawideEnter || (wasUltra && ratio > t.UltrawideLeave)) return Aspect.Ultrawide;
             return Aspect.Desktop;
         }
 
-        public static Layout Seed(float w, float h) => Resolve(w, h, null);
+        public static Layout Seed(float w, float h, Theming.AspectThresholds? aspect = null) => Resolve(w, h, null, aspect);
 
         /// <summary>The live resolve. Every fraction is the prototype's (Main.dc.html:46 `--hw:min(28cqw, 82cqh − 340px)` and
         /// the three container queries at :142-170); the hero is clamped and quantised.</summary>
-        public static Layout Resolve(float w, float h, Layout? previous)
+        public static Layout Resolve(float w, float h, Layout? previous, Theming.AspectThresholds? aspect = null)
         {
             w = MathF.Max(0f, w);
             h = MathF.Max(0f, h);
-            var a = ClassOf(w, h, previous?.Aspect);
+            var a = ClassOf(w, h, previous?.Aspect, aspect);
             switch (a)
             {
                 case Aspect.Ultrawide:
