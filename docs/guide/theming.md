@@ -369,6 +369,50 @@ picker's rows are shared with the stage and the on-media strip (or have no key y
 and T7 give them keys; the "⋯" rows (`OverflowItem`: labels and what a row does, built from live reads at open time) and the key
 map (`PlayerKey`) are decisions.
 
+### The fullscreen stage's frame (T7a1)
+
+| Key | Props | Core half | Classic template |
+|---|---|---|---|
+| `Stage.Root` | `StageRootProps` (`Mount`), drawn from a `StageRootView` | `Stage.SurfaceCore` (`Shell\Stage.UI.cs`), mounted through `ShellFrameProps.StageRoot` (replacing the `StageView` builder) | `ClassicStageRoot`: the root box, the layer stack, the chrome's placement and its Enter/Exit, the smoke, the hairline |
+| `Stage.TopBar` | `StageTopBarProps` | the stage context's verbs (`SetMode`, `OpenOptions`, `Exit`, `OverControls`) | `ClassicStageTopBar`: brand, the mode `SelectorBar`, the options glyph (the TeachingTip's anchor), exit |
+| `Stage.Transport` | `StageTransportProps` (`Facts`, `Verbs`, the bar's seek and time pieces) | `Stage.TransportFacts` and friends (`Shell\Stage.Frame.cs`) | `ClassicStageTransport`: the card, the seek row, the clusters, the mute button, the volume slider, the device button |
+| `Stage.Options` | `StageOptionsProps` (`Verbs` is an `IStageSettingsVerbs`) | `Stage.OptionsContent` (the opener re-provides the stage context in the overlay layer), `SurfaceCore._openOptions` | `ClassicStageOptions`: the tabs, the visualizer grid, the layout rows, the hero options |
+| `Stage.Gallery` | `StageGalleryProps` | the root mounts it under the chrome's Show; `Visualizer.Gallery.UI.cs` keeps the words | `ClassicStageGallery` (+ `ClassicStageGalleryTiles`): the pane, the live/poster tiles, the settings rows |
+| `Stage.Caption` | `StageCaptionProps` (what one render of the host decided) | `Stage.CaptionHost` (`Shell\Stage.Caption.UI.cs`): the playhead clock, the edge wake, the render-thread wipe, the dots' driver | `ClassicStageCaption`: the veil, the keyed previous/active/next slots, the bloom and the dots |
+
+**The surface stays a component; the structure draws its root.** The stage is one component with hooks that must run in a fixed order
+whatever the theme (the window and the focus scope are `ImmersiveService`'s, the idle machine and the cursor, the ONE layout signal and its
+aspect classes with their hysteresis (`StagePolicy.Aspect` -> `Stage.Layout.ClassOf/Resolve`), the preferences mirrored into `Stage.StageCtx`,
+the accent, the key map: Escape / F11 close, `[` `]` step, `G` the gallery). So the frame mounts `Stage.Root` and the template is
+`props.Mount(Draw)`: the core component calls `Draw` (a static method, so its delegate is cached) with a `StageRootView` each render and
+mounts what comes back under the stage context. The shell body's immersive collapse (bound `Visible` false on the chrome row, the content region and
+the dock) and the open/close choreography (`Stage.EnterTerminal` / `ExitTerminal`) are the frame's and did not move.
+
+**The stage context travels as a core object.** `Stage.StageCtx` is the stage's ambient signal bag (mode, layout, accent, palette, the chrome flag, the
+preference mirrors) plus its verbs as actions. It names no `Shell` type, so the props carry it; what a theme may not name (`Prefs`, `Playback`, `Shell`)
+arrives as facts (`StageTransportFacts`, `StageDeviceFacts`, read inside the template's render so a signal read subscribes it), as verbs
+(`IPlayerVerbs`, `IStageSettingsVerbs`: one `Prefs.Stage` setter each, the sync offset also pushes the audio graph's spectrum offset, a face pick also
+writes the `viz.pick` line) or as builders (the bar's own seek rail and time labels, the device picker's rows).
+
+**Layers other lanes own arrive as builders.** `StageRootView.Layers` carries `Func<Element>` over the core components of the backdrop, hero layer, face, face
+scrim, spectrum, now-playing card, identity, artist name and pane host (T7a2; the lyrics pane inside the pane host is T7b's and the queue pane T7d's),
+plus the zero-size machinery (lyric facts, hero facts, the visualizer clock) the template must still place. The root keys and orders them exactly as the stack
+always was.
+
+**Numbers.** `Rules\StageGeometry.cs` holds the frame's look (the chrome's Enter/Exit offsets, the top bar's selector and brand, the transport card's paddings,
+glyph and disc sizes, the volume slider's alphas); `StageGeometry.Options.cs`, `.Gallery.cs` and `.Caption.cs` hold their views'. The allocator's
+authored extents (`Stage.Layout.TopBarH`, `TransportDesktopH`, `Pad`, the gallery column, the caption block) stay in `Stage.Layout`: the core budgets
+the face-safe rect, the caption and the pane from them, so the views read them by name. The aspect thresholds are `StagePolicy`'s.
+
+**Polarity.** The stage faces' own dark flag (`StageInk.IsDark`; T7a2 re-points the faces) is read by the core palette derivation only
+(`Stage.StageCtx`'s seed palette and `SurfaceCore.PublishAccent`: polarity as an argument, not a colour); the moved views take rungs from the stage-arm
+table (`StageInk.Ink`, `GlassHover`, `Card`, `SelectedTileWash`, ...) and never ask which arm is live.
+
+**Tests.** `Wavee.Tests\StageFrameContractTests.cs` pins the keys' ids, Classic's registration and the props' cached equality;
+`StageSettingsVerbsTests.cs` pins what the option surfaces write (each verb persists and bumps the stage epoch once, a picked face survives other writes);
+`Wavee.ShellTests\StageFrameMountedTests.cs` opens the real stage under Classic and checks the registered templates, the root's stack and the chrome's
+nodes, then mounts the top bar, the transport card, the options popover and the gallery alone under `ViewHarness` with fixture props.
+
 ## 3. Options
 
 An option is data: a `ToggleOption`, `SelectOption<TEnum>`, `SliderOption`, `ColorOption`, `ActionOption` or

@@ -11,8 +11,9 @@
 //   · Behaviour the host wires (the shell chords, the key handler, the file-drop target, the realized-node captures the
 //     probes and the scrim clip read): the template only PLACES them.
 //   · Element builders of the surfaces that are not this PR's: each is a `Func<Element>` over the core builder that exists
-//     today (the rail, the stage, the overlay layers). A later
-//     T-PR gives its surface its own view key and replaces the builder with `ctx.View(...)`; nothing else here changes.
+//     today (the rail, the video and overlay layers). A later
+//     T-PR gives its surface its own view key and replaces the builder with `ctx.View(...)`; nothing else here changes. The stage
+//     did (T7a1): `StageRoot` carries the props of `Stage.Root`.
 //     T4a draws the FRAME: the column, the window layers, the content region and its seams. T4c gave the material, the
 //     palette, the file-drop cue, the cover scrim, the drag chip and the frame-rate overlay their keys: those members now carry
 //     the child view's PROPS and the frame mounts `ctx.View(key, props)`. (The narrow drawer's props change with the band, so its
@@ -132,8 +133,10 @@ public sealed record ShellFrameProps
     /// decision, and mounts <see cref="ViewKeys.ShellNarrowDrawer"/> itself (its props change with the band and the open flag).</summary>
     public required Func<Element> NarrowDrawer { get; init; }
 
-    /// <summary>The fullscreen stage (T7a).</summary>
-    public required Func<Element> StageView { get; init; }
+    /// <summary>The fullscreen stage: the props of <see cref="ViewKeys.StageRoot"/> (T7a1). The frame mounts the key inside the immersive
+    /// layer's Show; the core surface keeps the stage's hooks, machines and key map and the structure draws the layer stack
+    /// (<see cref="StageRootProps.Mount"/>).</summary>
+    public required StageRootProps StageRoot { get; init; }
 
     /// <summary>The floating video layer.</summary>
     public required Func<Element> VideoPipLayer { get; init; }

@@ -4,7 +4,8 @@
 // (`Views\Frame\ClassicFrame.cs`, `ClassicContentState.cs`), T4b the title bar and the search (`Views\TitleBar\ClassicTitleBar.cs`,
 // `Views\Search\ClassicSearch.cs`), T4c the frame's small views (`Views\Masthead`, `Material`, `Drawer`, `Palette`, `FrameBits`),
 // T5a the navigation pane's rows (`Views\Nav\ClassicNavPane.cs`, `ClassicNavRows.cs`, `ClassicNavRow.cs`), T6a the player bar
-// (`Views\Player\ClassicPlayerBar.cs`); every other surface is still core code. It
+// (`Views\Player\ClassicPlayerBar.cs`), T7a1 the fullscreen stage's frame (`Views\Stage\ClassicStageRoot.cs`, `ClassicStageTopBar.cs`,
+// `ClassicStageTransport.cs`, `ClassicStageOptions.cs`, `ClassicStageGallery.cs`, `ClassicStageCaption.cs`); every other surface is still core code. It
 // decides the shell's policies (`Rules\ClassicPolicies.cs`: nav pane, panel and mini player, player bar, chrome row, stage)
 // and offers every capability (T3). Its window tiers (T3b) are `Rules\Tiers.cs`.
 //
@@ -58,6 +59,15 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.ShellNavPane, ClassicNavPane.Template, "classic.shell.nav-pane");
         // T6a: the player bar (the podcast transport rides with it).
         views.Add(ViewKeys.PlayerBar, ClassicPlayerBar.Template, "classic.player.bar");
+        // T7a1: the fullscreen stage's frame: the root (layer stack, chrome placement, hairline), the top bar, the transport card, the
+        // options popover, the visualizer gallery and the lyric caption. The layouts, hero and artist pane (T7a2), lyrics (T7b), video
+        // (T7c) and the queue pane (T7d) arrive as builders on the root until they have keys.
+        views.Add(ViewKeys.StageRoot, ClassicStageRoot.Template, "classic.stage.root");
+        views.Add(ViewKeys.StageTopBar, ClassicStageTopBar.Template, "classic.stage.top-bar");
+        views.Add(ViewKeys.StageTransport, ClassicStageTransport.Template, "classic.stage.transport");
+        views.Add(ViewKeys.StageOptions, ClassicStageOptions.Template, "classic.stage.options");
+        views.Add(ViewKeys.StageGallery, ClassicStageGallery.Template, "classic.stage.gallery");
+        views.Add(ViewKeys.StageCaption, ClassicStageCaption.Template, "classic.stage.caption");
     }
 
     /// <inheritdoc />

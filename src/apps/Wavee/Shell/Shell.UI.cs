@@ -10,7 +10,7 @@
 //
 // THE FRAME, BOTTOM-UP (ch 18 §1-§6). Everything under `OverlayHost` is one ZStack:
 //
-//   tinted[ MaterialLayer · column ]  ·  Stage.View  ·  Video.PipLayer  ·  Video.FullscreenLayer  ·  Overlays
+//   tinted[ MaterialLayer · column ]  ·  Stage.Root  ·  Video.PipLayer  ·  Video.FullscreenLayer  ·  Overlays
 //         ·  file-drop cue  ·  CommandPalette  ·  drag preview
 //
 //   The video layers sit BELOW the banner, toast and drop-cue layers: the video is a hole in the UI swapchain (a DestOut
@@ -552,7 +552,7 @@ public static partial class Shell
             RailSeam = () => Splitter.Create(Ui.RailDragWidth, PanelHost.CommitWidth, RailSeamOptionsFor(policies.Panel), collapsed: Ui.RailOpen,
                 fade: _railFade, dragging: _railDragging, parts: _railSeamParts),
             NarrowDrawer = static () => Embed.Comp(static () => new NarrowDrawer()),
-            StageView = static () => Stage.View(),
+            StageRoot = Stage.RootProps,
             VideoPipLayer = static () => Video.PipLayer(),
             VideoFullscreenLayer = static () => Video.FullscreenLayer(),
             Overlays = static () => Overlays(),

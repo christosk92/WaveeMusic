@@ -347,7 +347,7 @@ public static partial class Visualizer
 
     /// <summary>The tile's second line: the face's blurb, or — while it is the active kind falling back — where its motion comes from.
     /// <paramref name="current"/> is the context's kind SIGNAL value (never a registry read — O8).</summary>
-    static string SubtitleOf(Kind k, Kind current, Source live)
+    internal static string SubtitleOf(Kind k, Kind current, Source live)
     {
         if (current != k || live == Source.Live) return Loc.Get(SubKey(k));
         return Loc.Get(live switch { Source.Precomputed => Strings.Stage.Source.Precomputed, Source.TempoGrid => Strings.Stage.Source.Tempo, _ => Strings.Stage.Source.Breath });
