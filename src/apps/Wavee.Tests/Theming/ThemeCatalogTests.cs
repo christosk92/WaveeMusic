@@ -408,17 +408,19 @@ public sealed class ThemeCatalogTests : IDisposable
         Assert.Equal(1, structure.RegisterCalls);
     }
 
-    // ── Classic, as T1 ships it ──────────────────────────────────────────────────────────────────────────────────────────
+    // ── Classic, as the T-lane PRs grow it ───────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Classic_InstallsWithAnEmptyStructure_AndTodaysDefinition()
+    public void Classic_InstallsWithItsRegisteredViews_AndTodaysDefinition()
     {
         var classic = Wavee.Themes.Classic.ClassicTheme.Create();
         Assert.Empty(classic.Validate());
         Assert.Equal("classic", classic.Manifest.Id);
         Assert.Equal(ThemeCatalog.FallbackId, classic.Manifest.Id);
         Assert.Equal(ContractVersion.Major, classic.Manifest.ContractMajor);
-        Assert.Equal(0, classic.Registry.ViewCount);
+        // T4a registers the frame and the content states; each later T-PR adds its family (RegistryCompletenessTests, T13, pins the full list).
+        Assert.True(classic.Registry.Contains(ViewKeys.ShellFrame.Id));
+        Assert.True(classic.Registry.Contains(ViewKeys.ShellContentState.Id));
         Assert.Empty(classic.ExposedOptions.All);
 
         var values = Values(classic);

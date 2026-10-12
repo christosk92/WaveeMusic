@@ -83,7 +83,7 @@ public sealed class BootOrderingTests : IDisposable
             if (kind == Shell.RouteKind.NotFound)
             {
                 // The one INTENTIONALLY factory-less kind: PageFor's null is what routes the frame to the not-found
-                // arm (Shell.UI.cs's NotFoundPage), never a crash on a missing registration.
+                // arm (Shell.UI.cs's NotFoundPage, drawn by Classic's Shell.ContentState), never a crash on a missing registration.
                 Assert.Null(Shell.PageFor(route));
                 continue;
             }

@@ -23,6 +23,12 @@
 //   content region = ZStack[ row(sidebar column · content card · rail gap · rail reservation) · sidebar seam ·
 //                            rail overlay(Rail.Frame) · rail seam · narrow drawer ]
 //
+// T4a (themes plan 6.1): the frame's PICTURE moved to the structure. `FrameRoot` below is the core host (hooks, effects, state
+// machines; [CoreHost]) and mounts `Shell.Frame`; the column, the layers and the content region are
+// `Themes\Classic\Structure\Views\Frame\ClassicFrame.cs`. The content region's four states (a page, an empty body, the not-found
+// page, the offline lane) are decided here (`FrameRules.ContentFor`) and drawn by `Shell.ContentState`
+// (`ClassicContentState.cs`); the keep-alive boundary and its page transition stay in `ContentHost`.
+//
 // THE RULE THIS FILE KEEPS: it lays out and binds, it never decides. Every geometry/precedence/gating answer below is a
 // call into `Shell.FrameRules`, `Shell.Chrome`, `TabWorkspace`, `Notify` or an owner's rule table — each pinned by a
 // test. The frame root renders ONCE for the process: every live value reaches it through a bound prop, a `Flow.Show`
@@ -40,8 +46,10 @@ using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
 using Wavee.HomeUi;
+using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 using FgMotion = FluentGpu.Dsl.Motion;
+using ViewSlots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -133,29 +141,6 @@ public static partial class Shell
 
     // ══ 2. THE FRAME ROOT ═════════════════════════════════════════════════════════════════════════════════════════
 
-    // The sidebar collapse AND the content card's FLIP share ONE transition, so the pane's animating edge and the card's
-    // left edge ease on identical dynamics. Reveal lays out at the FINAL size and eases a clip + translate only; a grip
-    // drag snaps both 1:1 through the suppression arbiter. WinUI SplitView's pane spline at 300 ms (200 ms read as a snap
-    // behind the heavier media surface).
-    static readonly EasingSpec PaneEase = EasingSpec.CubicBezier(0f, 0.35f, 0.15f, 1f);
-    const float PaneMs = 300f;
-    const string ContentRowMorphId = "shell.content-row";
-
-    /// <summary>The pane opens in 200 ms and closes in 100 ms on WinUI's SplitView spline (MotionTok.PaneOpen/PaneClose).</summary>
-    static readonly LayoutTransition SidebarPaneAnim = new(TransitionChannels.Size | TransitionChannels.Position,
-        TransitionDynamics.Tween(MotionTok.PaneOpen.DurationMs, Easing.FluentPane), SizeMode.Reveal,
-        ExitDynamics: TransitionDynamics.Tween(MotionTok.PaneClose.DurationMs, Easing.FluentPane), SuppressDescendantTransitions: true);
-
-    static readonly LayoutTransition ContentCardAnim = new(TransitionChannels.Position | TransitionChannels.Size,
-        TransitionDynamics.Tween(PaneMs, PaneEase), SizeMode.Reveal,
-        ExitDynamics: TransitionDynamics.Tween(PaneMs, PaneEase), SuppressDescendantTransitions: true);
-
-    /// <summary>A LEFT+TOP-only stroke: the engine's border is one uniform SDF ring, so the stroked box is one DIP larger on
-    /// its right and bottom and parked in a clip of the real geometry — the right/bottom strokes land in the clipped DIP
-    /// and the rounded top-left arc survives whole.</summary>
-    static readonly Edges4 StrokeOverhang = new(0f, 0f, -1f, -1f);
-    static CornerRadius4 RailBandCorners => new(Radii.Card, 0f, 0f, 0f);
-
     // CLAMP-ONLY: no `collapsed` argument, so the engine detent is off and the raw cell reaches the rail floor. The mode,
     // the approach band and the fade are all SidebarResizeRules (read off Sidebar.Seam).
     static Splitter.SplitterOptions SidebarSeamOptionsFor(Theming.NavPanePolicy nav) => new()
@@ -191,6 +176,29 @@ public static partial class Shell
     static BoxEl Chord(KeyAccelerator chord, Action onFire)
         => new() { Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false, Accelerator = chord, OnClick = onFire };
 
+    /// <summary>The fourteen chord boxes the frame's column mounts first, in this order. Behaviour the shell owns (what a chord
+    /// DOES is <see cref="FrameVerbs"/>), built once; the structure's frame places them (<c>ShellFrameProps.Chords</c>).</summary>
+    static readonly IReadOnlyList<Element> s_chords =
+    [
+        Chord(NewTabChord, static () => FrameVerbs.Shared.NewTab()),
+        Chord(PaletteChord, static () => FrameVerbs.Shared.TogglePalette()),
+        Chord(FindChord, static () => FrameVerbs.Shared.FocusSearch()),
+        Chord(BackChord, static () => FrameVerbs.Shared.GoBack()),
+        Chord(ForwardChord, static () => FrameVerbs.Shared.GoForward()),
+        Chord(FullscreenChord, static () => FrameVerbs.Shared.ToggleFullscreen()),
+        Chord(ZoomInChord, static () => FrameVerbs.Shared.Zoom(+1)),
+        Chord(ZoomInShiftChord, static () => FrameVerbs.Shared.Zoom(+1)),
+        Chord(ZoomInPadChord, static () => FrameVerbs.Shared.Zoom(+1)),
+        Chord(ZoomOutChord, static () => FrameVerbs.Shared.Zoom(-1)),
+        Chord(ZoomOutShiftChord, static () => FrameVerbs.Shared.Zoom(-1)),
+        Chord(ZoomOutPadChord, static () => FrameVerbs.Shared.Zoom(-1)),
+        Chord(ZoomResetChord, static () => FrameVerbs.Shared.Zoom(0)),
+        Chord(ZoomResetPadChord, static () => FrameVerbs.Shared.Zoom(0)),
+    ];
+
+    /// <summary>The window's core host (T4a): every hook, effect and state machine of the frame, and ONE props record for the
+    /// structure's <c>Shell.Frame</c> view. It builds no element and reads no token: the picture is the theme's.</summary>
+    [CoreHost]
     sealed class FrameRoot : Component
     {
         readonly DropTargetSpec _fileDrop = new([DropKinds.Files],
@@ -488,212 +496,64 @@ public static partial class Shell
                 Announcer.SayThrottled(artist.Length == 0 ? title : title + ", " + artist);
             });
 
-            var column = new BoxEl
-            {
-                // Window-tall, bound: the content region yields instead of shoving the docked bar off the bottom.
-                Direction = 1, Grow = 1f, Height = Prop.Of(() => vp.Value.Height),
-                OnKeyDown = OnShellKey,
-                Children =
-                [
-                    Chord(NewTabChord, static () => FrameVerbs.Shared.NewTab()),
-                    Chord(PaletteChord, static () => FrameVerbs.Shared.TogglePalette()),
-                    Chord(FindChord, static () => FrameVerbs.Shared.FocusSearch()),
-                    Chord(BackChord, static () => FrameVerbs.Shared.GoBack()),
-                    Chord(ForwardChord, static () => FrameVerbs.Shared.GoForward()),
-                    Chord(FullscreenChord, static () => FrameVerbs.Shared.ToggleFullscreen()),
-                    Chord(ZoomInChord, static () => FrameVerbs.Shared.Zoom(+1)),
-                    Chord(ZoomInShiftChord, static () => FrameVerbs.Shared.Zoom(+1)),
-                    Chord(ZoomInPadChord, static () => FrameVerbs.Shared.Zoom(+1)),
-                    Chord(ZoomOutChord, static () => FrameVerbs.Shared.Zoom(-1)),
-                    Chord(ZoomOutShiftChord, static () => FrameVerbs.Shared.Zoom(-1)),
-                    Chord(ZoomOutPadChord, static () => FrameVerbs.Shared.Zoom(-1)),
-                    Chord(ZoomResetChord, static () => FrameVerbs.Shared.Zoom(0)),
-                    Chord(ZoomResetPadChord, static () => FrameVerbs.Shared.Zoom(0)),
-                    // FULL-SCREEN VIDEO COLLAPSES THE CHROME, it does not unmount it: every layer left under the video
-                    // costs GPU, and the docked bar is what stacked a second transport under the video's own, but a
-                    // structural Flow.Show rebuilt the tab row and the whole player bar (seek rail, marquee, art, device
-                    // buttons) on every exit. A bound Visible takes each out of layout, paint, hit-test and focus and
-                    // pauses its subtree (UseInterval, UseIsActive), and the edge never re-renders the frame.
-                    ChromeRow() with { Visible = Prop.Of(s_chromeMounted) },
-                    ContentRegion(vp, policies),
-                    PlayerBarDock() with { Visible = Prop.Of(s_chromeMounted) },
-                ],
-            };
-
-            var tinted = new BoxEl
-            {
-                Grow = 1f, ZStack = true, Fill = ColorF.Transparent,
-                // The shell-wide "drop a file to play it" target. The engine hands a drop to the DEEPEST accepting target,
-                // so a row's own file target still wins; only drops on the rest of the window land here.
-                DropTarget = _fileDrop,
-                Children = [MaterialLayer(), column],
-            };
-
-            var stack = ZStack(
-                tinted,
-                // The immersive stage covers the content, the sidebar and the rail, and sits below the banner, the drop cue
-                // and the toast lane. A predicate, not a render read; Direction 1 so an oversized measure is cross-clamped.
-                Flow.Show(static () => Ui.ImmersiveLyrics.Value, new BoxEl
-                {
-                    Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, HitTestPassThrough = true,
-                    Enter = Stage.EnterTerminal, Exit = Stage.ExitTerminal,
-                    Children = [Stage.View()],
-                }),
-                // The video layers come BEFORE the in-stack overlays: the hole erases whatever is drawn under it, so the
-                // runtime banner, the toasts and the drop pill must be painted after it to stay over a floating or
-                // fullscreen picture (every one of them is pass-through, so the mini player's drag still lands).
-                Video.PipLayer(),
-                Video.FullscreenLayer(),
-                Overlays(),
-                FileDropLayer(),
-                CommandPalette(),
-                Embed.Comp(static () => new CoverScrim()),
-                DragPreviewLayer.Of(Drag.Preview),
-                Diagnostics.FpsOverlay()) with { Grow = 1f };
+            // THE PICTURE IS THE STRUCTURE'S (T4a). Everything above wired the window's hooks, effects and state machines; the
+            // column, the layers, the content region and its seams are the `Shell.Frame` template's. The root still renders ONCE
+            // for the process: the props freeze at mount, and every live value reaches the template through a signal or a Func.
+            var frame = ViewSlots.View(ViewKeys.ShellFrame, FrameProps(vp, policies));
 
             // HomeLayout (F29): one app-wide document signal, provided at the shell root beside the material cell so
             // HomeScreen and CustomizeScreen both read it and a customize edit is visible on Home the same frame.
             return Ctx.Provide(HomeLayout.Slot, HomeLayout.Instance,
-                Ctx.Provide(ShellMaterial.Slot, MaterialState, OverlayHost.Create(stack)));
+                Ctx.Provide(ShellMaterial.Slot, MaterialState, OverlayHost.Create(frame)));
         }
 
-        Element ContentRegion(IReadSignal<Size2> vp, Theming.ThemePolicies policies) => ZStack(
-            new BoxEl
-            {
-                // The row never moves on a toggle: the content card FLIPs relative to THIS frame.
-                MorphId = ContentRowMorphId, Direction = 0, Grow = 1f, ClipToBounds = true,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        // THE W12 TRAP lives in FrameRules.SidebarPaneWidth: a drag peek presents the pane expanded, so this
-                        // clipped column widens with it.
-                        Direction = 1, Shrink = 0f, ClipToBounds = true,
-                        OnRealized = static h => s_sidebarColumn = h,
-                        Width = Prop.Of(static () => FrameRules.SidebarPaneWidth(
-                            Sidebar.DragPeek.Value, Sidebar.Width.Value, Sidebar.PresentedWidth.Value)),
-                        Animate = SidebarPaneAnim,
-                        Children =
-                        [
-                            // The layout firewall for the whole sidebar, INSIDE the animating pane. Minimal presents the
-                            // column at 0 DIP and the drawer owns the sidebar, so the docked pane unmounts: a mounted one
-                            // would keep planning the full list and leave its rows reachable by Tab inside the clipped column.
-                            new BoxEl
-                            {
-                                Direction = 1, Grow = 1f, IsolateLayout = true, ClipToBounds = true,
-                                Opacity = Prop.Of(() => _sidebarFade.Value),
-                                Children = [Flow.Show(static () => Sidebar.Mode.Value != SidebarPaneMode.Minimal, Sidebar.Pane())],
-                            },
-                        ],
-                    },
-                    new BoxEl
-                    {
-                        // The stock Win11 content region: flush, one corner, a left+top stroke, no shadow, no gutter.
-                        Direction = 1, ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Basis = 0f,
-                        Children =
-                        [
-                            new BoxEl { Grow = 1f, Fill = Prop.Of(static () => R.Layer.FileArea), Corners = Design.Size.ContentPaneCorners },
-                            new BoxEl
-                            {
-                                Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-                                Fill = ColorF.Transparent, Corners = Design.Size.ContentPaneCorners, ClipToBounds = true,
-                                IsolateLayout = true, Animate = ContentCardAnim, RelativeTo = ContentRowMorphId,
-                                Children = [Embed.Comp(static () => new ContentHost())],
-                            },
-                            ContentRegionStroke(),
-                        ],
-                    },
-                    // The rail's 8-DIP breathing room exists only while the rail is inline.
-                    new BoxEl
-                    {
-                        Shrink = 0f, HitTestVisible = false,
-                        Width = Prop.Of(static () => FrameRules.RailGapWidth(Ui.RailOpen.Value, Ui.RailFits.Value)),
-                    },
-                    // The rail RESERVATION: snaps 0 ↔ width at commit; its underlay is the docked band's ONE coat.
-                    new BoxEl
-                    {
-                        Shrink = 0f,
-                        Width = Prop.Of(static () => FrameRules.RailReservedWidth(Ui.RailOpen.Value, Ui.RailFits.Value, Ui.RailWidth.Value)),
-                        Children =
-                        [
-                            new BoxEl
-                            {
-                                Grow = 1f, HitTestPassThrough = true, ClipToBounds = true, ZStack = true,
-                                Children = [new BoxEl { Margin = StrokeOverhang, Fill = Prop.Of(static () => R.Layer.FileArea), Corners = RailBandCorners }],
-                            },
-                        ],
-                    },
-                ],
-            },
-            // The sidebar seam: a strip translated to the pane edge, entirely on the content side of it.
-            new BoxEl
-            {
-                Direction = 1, ClipToBounds = true,
-                Width = Prop.Of(static () => FrameRules.SidebarSeamWidth(SidebarPaneModeRules.SeamVisible(Sidebar.Band.Value))),
-                Transform = Prop.Of(static () => Affine2D.Translation(Sidebar.PresentedWidth.Value, 0f)),
-                Children =
-                [
-                    Splitter.Create(Sidebar.Seam, () => Sidebar.CommitSeam(), SidebarSeamOptionsFor(policies.NavPane),
-                        fade: _sidebarFade, dragging: _sidebarDragging, parts: _seamParts),
-                ],
-            },
-            // The rail overlay: final width always; Rail.Frame owns the translate, the coats and the bodies.
-            new BoxEl
-            {
-                Grow = 1f, Direction = 0, Justify = FlexJustify.End, HitTestPassThrough = true,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Direction = 1, Shrink = 0f, ClipToBounds = true, ZStack = true, HitTestPassThrough = true,
-                        Width = Prop.Of(static () => Ui.RailWidth.Value),
-                        Children =
-                        [
-                            // The FLOATING rail's backing band (the shell ground) — paint-only, never the deepest hit.
-                            new BoxEl
-                            {
-                                Grow = 1f, HitTestPassThrough = true,
-                                Fill = Prop.Of(static () => FrameRules.RailFloats(Ui.RailOpen.Value, Ui.RailFits.Value)
-                                    ? R.Layer.FloatingChrome : ColorF.Transparent),
-                            },
-                            new BoxEl
-                            {
-                                Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, HitTestPassThrough = true,
-                                Corners = RailBandCorners, IsolateLayout = true,
-                                Opacity = Prop.Of(() => _railFade.Value),
-                                Children = [Rail.Frame()],
-                            },
-                        ],
-                    },
-                ],
-            },
-            // The rail seam: exists only while the rail is open. It paints AFTER (above) the rail overlay: the rail no longer
-            // moves during a drag, so a narrowing drag carries the guide into the rail's rect, and it must stay visible over
-            // the rail's content. At rest the strip lies wholly left of the rail, so hit-testing is unchanged.
-            new BoxEl
-            {
-                Direction = 1, ClipToBounds = true,
-                Width = Prop.Of(static () => FrameRules.RailSeamWidth(Ui.RailOpen.Value)),
-                Transform = Prop.Of(() => Affine2D.Translation(FrameRules.RailSeamX(vp.Value.Width, Ui.RailDragWidth.Value), 0f)),
-                Children =
-                [
-                    Splitter.Create(Ui.RailDragWidth, PanelHost.CommitWidth, RailSeamOptionsFor(policies.Panel), collapsed: Ui.RailOpen, fade: _railFade,
-                        dragging: _railDragging, parts: _railSeamParts),
-                ],
-            },
-            Embed.Comp(static () => new NarrowDrawer())) with
+        /// <summary>The props of the structure's frame: the live values as read-only signals and Funcs, the behaviour this host wired
+        /// (chords, key handler, file-drop target, realized-node captures, the two seams' splitters) and the element builders of the
+        /// surfaces that have no key of their own yet. Nothing here is presentation.</summary>
+        ShellFrameProps FrameProps(IReadSignal<Size2> vp, Theming.ThemePolicies policies) => new()
         {
-            // The ONE region that yields when the window is shorter than the column; clipped so a settling page never
-            // paints into the dock slot. The drag spotlight scrim is scoped to it (chrome and dock stay lit).
-            // The bound Visible COLLAPSES the whole shell body while the fullscreen stage OR full-screen video is up: out of
-            // layout, paint and hit-test, and its subtree goes inactive (UseInterval pauses, UseActivation fires its edges as on a KeepAlive
-            // tab switch — every consumer reviewed benign, V-U37). It sits on THIS node, which carries no MorphId: the
-            // content row's MorphId stays on an inner node with an unbound Visible (the BindContract rule guards the
-            // tagged node itself).
-            Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true,
-            Visible = Prop.Of(s_chromeMounted),
-            OnRealized = static h => { s_contentRegion = h; PublishScrimClip(); },
-            OnBoundsChanged = static _ => PublishScrimClip(),
+            Viewport = vp,
+            SidebarFade = _sidebarFade,
+            RailFade = _railFade,
+            SidebarPresentedWidth = Sidebar.PresentedWidth,
+            RailWidth = Ui.RailWidth,
+            ChromeMounted = s_chromeMounted,
+            ImmersiveOpen = static () => Ui.ImmersiveLyrics.Value,
+            SidebarPaneDocked = static () => Sidebar.Mode.Value != SidebarPaneMode.Minimal,
+            RailFloats = static () => FrameRules.RailFloats(Ui.RailOpen.Value, Ui.RailFits.Value),
+            // THE W12 TRAP lives in FrameRules.SidebarPaneWidth: a drag peek presents the pane expanded, so the clipped column widens with it.
+            SidebarColumnWidth = static () => FrameRules.SidebarPaneWidth(Sidebar.DragPeek.Value, Sidebar.Width.Value, Sidebar.PresentedWidth.Value),
+            SidebarSeamWidth = static () => FrameRules.SidebarSeamWidth(SidebarPaneModeRules.SeamVisible(Sidebar.Band.Value)),
+            RailGapWidth = static () => FrameRules.RailGapWidth(Ui.RailOpen.Value, Ui.RailFits.Value),
+            RailReservedWidth = static () => FrameRules.RailReservedWidth(Ui.RailOpen.Value, Ui.RailFits.Value, Ui.RailWidth.Value),
+            RailSeamWidth = static () => FrameRules.RailSeamWidth(Ui.RailOpen.Value),
+            RailSeamX = () => FrameRules.RailSeamX(vp.Value.Width, Ui.RailDragWidth.Value),
+            Chords = s_chords,
+            OnKeyDown = OnShellKey,
+            FileDrop = _fileDrop,
+            OnSidebarColumnRealized = static h => s_sidebarColumn = h,
+            OnContentRegionRealized = static h => { s_contentRegion = h; PublishScrimClip(); },
+            OnContentRegionBounds = static _ => PublishScrimClip(),
+            ChromeRow = static () => ChromeRow(),
+            PlayerBarDock = static () => PlayerBarDock(),
+            MaterialLayer = static () => MaterialLayer(),
+            ContentHost = static () => Embed.Comp(static () => new ContentHost()),
+            SidebarPane = static () => Sidebar.Pane(),
+            SidebarSeam = () => Splitter.Create(Sidebar.Seam, () => Sidebar.CommitSeam(), SidebarSeamOptionsFor(policies.NavPane),
+                fade: _sidebarFade, dragging: _sidebarDragging, parts: _seamParts),
+            RailBody = static () => Rail.Frame(),
+            RailSeam = () => Splitter.Create(Ui.RailDragWidth, PanelHost.CommitWidth, RailSeamOptionsFor(policies.Panel), collapsed: Ui.RailOpen,
+                fade: _railFade, dragging: _railDragging, parts: _railSeamParts),
+            NarrowDrawer = static () => Embed.Comp(static () => new NarrowDrawer()),
+            StageView = static () => Stage.View(),
+            VideoPipLayer = static () => Video.PipLayer(),
+            VideoFullscreenLayer = static () => Video.FullscreenLayer(),
+            Overlays = static () => Overlays(),
+            FileDropLayer = static () => FileDropLayer(),
+            CommandPalette = static () => CommandPalette(),
+            CoverScrim = static () => Embed.Comp(static () => new CoverScrim()),
+            DragPreview = static () => DragPreviewLayer.Of(Drag.Preview),
+            FpsOverlay = static () => Diagnostics.FpsOverlay(),
         };
     }
 
@@ -711,19 +571,6 @@ public static partial class Shell
         if (demoteTo != Video.SurfacePlacement.None) Video.State.Demote(demoteTo);
         if (reDock) Video.State.OpenAt(Video.SurfacePlacement.Docked);
         if (closeRail) Ui.RailOpen.Value = false;
-    };
-
-    static Element ContentRegionStroke() => new BoxEl
-    {
-        ZStack = true, ClipToBounds = true, HitTestVisible = false,
-        Children =
-        [
-            new BoxEl
-            {
-                Margin = StrokeOverhang, BorderWidth = 1f, BorderColor = Prop.Of(static () => Tok.StrokeCardDefault),
-                Corners = Design.Size.ContentPaneCorners,
-            },
-        ],
     };
 
     static uint PackArgb(ColorF c)
@@ -999,63 +846,49 @@ public static partial class Shell
         return oldToken is Route from ? RecipeFor(from, next, motion) : RecipeFor(motion);
     }
 
+    /// <summary>The body for a route: the content region's state (<see cref="FrameRules.ContentBodyFor"/>) as the props of the
+    /// structure's <c>Shell.ContentState</c> view, which draws it (T4a). The core decides which state and builds the page; the
+    /// body box, the not-found page and the lane are the theme's. The scroll scope is provided around the slot, so the page below
+    /// reads it as it always did.</summary>
     static Element PageBody(Route route)
     {
         var factory = PageFor(route);
-        switch (FrameRules.BodyFor(route, factory is not null, FrameFacts.DeveloperNow))
+        switch (FrameRules.ContentBodyFor(route, factory is not null, FrameFacts.DeveloperNow))
         {
-            case FrameRules.BodyKind.Page:
-                return Ctx.Provide(PageScrollScope, ScrollScopeOf(route.Tab), PageBox("page:" + NameOf(route), factory!(route)));
-            case FrameRules.BodyKind.Empty:
-                return PageBox("page-empty:" + NameOf(route), null);
+            case ContentStateKind.Page:
+                return Ctx.Provide(PageScrollScope, ScrollScopeOf(route.Tab),
+                    ViewSlots.View(ViewKeys.ShellContentState,
+                        ContentStateProps.ForPage(FrameRules.ContentKey(ContentStateKind.Page, NameOf(route), null), factory!(route))));
+            case ContentStateKind.EmptyBody:
+                return ViewSlots.View(ViewKeys.ShellContentState,
+                    ContentStateProps.ForEmptyBody(FrameRules.ContentKey(ContentStateKind.EmptyBody, NameOf(route), null)));
             default:
                 return NotFoundPage(route);
         }
     }
 
-    static BoxEl PageBox(string key, Element? page) => new()
-    {
-        Key = key, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1,
-        Children = page is null ? [] : [page],
-    };
+    static readonly Action s_goHome = static () => GoTo(new Route(RouteKind.Home));
 
     /// <summary>Nothing claims the route (a retired key, a stale restored tab, a developer route with developer mode off).
-    /// NOT "coming soon": say so, keep the destination's own glyph, give the one action that always works.</summary>
+    /// NOT "coming soon": the theme says so, keeps the destination's own glyph and gives the one action that always works. The
+    /// core notes the unknown route (once per key per process) and hands over the glyph and the action.</summary>
     static Element NotFoundPage(in Route route)
     {
         var (_, glyph) = Dest(route);
-        string key = NameOf(route) + "|" + (ArgOf(route) ?? "");
-        FrameModel.NoteUnknownRoute(key);   // once per key per process; the host logs it
-        return new BoxEl
-        {
-            Key = "page-notfound:" + key,
-            Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1, Gap = Spacing.M,
-            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Children =
-            [
-                Icon(glyph, 40f, Tok.TextTertiary),
-                R.Type.PageHero(Loc.Get(Strings.Nav.PageNotFound)),
-                Button.Standard(Loc.Get(Strings.Nav.GoHome), static () => GoTo(new Route(RouteKind.Home))),
-            ],
-        };
+        string name = NameOf(route);
+        string? arg = ArgOf(route);
+        FrameModel.NoteUnknownRoute(name + "|" + (arg ?? ""));   // once per key per process; the host logs it
+        return ViewSlots.View(ViewKeys.ShellContentState,
+            ContentStateProps.ForNotFound(FrameRules.ContentKey(ContentStateKind.NotFound, name, arg), glyph, s_goHome));
     }
 
     /// <summary>The page-scale offline strip (ch 29 W9 C / W10) floated over the kept content while a stored credential
-    /// exists but the session is down. The chrome's accent Reconnect is the loud layer; this one is caution-tinted.</summary>
-    static Element OfflineLane() => new BoxEl
-    {
-        Grow = 1f, Direction = 1, Justify = FlexJustify.Start, AlignItems = FlexAlign.Center, HitTestPassThrough = true,
-        Padding = new Edges4(16f, 12f, 16f, 0f),
-        Children =
-        [
-            new BoxEl
-            {
-                MaxWidth = 720f, Shrink = 0f, ClipToBounds = true, Corners = CornerRadius4.All(Radii.Control),
-                Fill = Prop.Of(static () => Tok.FillSolidBase), Shadow = Elevation.Flyout,
-                Children = [Controls.OfflineStrip(onRetry: static () => Spotify.Login())],
-            },
-        ],
-    };
+    /// exists but the session is down. The chrome's accent Reconnect is the loud layer; the lane the theme draws is
+    /// caution-tinted. Core hands over the strip's builder (its own surface, <c>Controls.OfflineStrip</c>).</summary>
+    static Element OfflineLane() => ViewSlots.View(ViewKeys.ShellContentState, s_offlineLane);
+
+    static readonly ContentStateProps s_offlineLane = ContentStateProps.ForOfflineLane(
+        static () => Controls.OfflineStrip(onRetry: static () => Spotify.Login()));
 
     // ══ 4. THE MERGED CHROME ROW ══════════════════════════════════════════════════════════════════════════════════
     //
