@@ -10,7 +10,7 @@
 //
 // ── WHY ADAPTERS, AND WHY THE SLOT CLASS STAYS HOOK-FREE ─────────────────────────────────────────────────────────────
 //
-// `PaneSlot` (Sidebar.UI.Slot.cs) is a hook-free class: every builder is a plain method, so the hook order is identical
+// `ClassicNavRow` (Themes/Classic/Structure/Views/Nav/ClassicNavRow.cs, the pane slot) is a hook-free class: every builder is a plain method, so the hook order is identical
 // across every recycle. A `Controls.Surface` is a hook-OWNING CHILD component, which that class explicitly sanctions, and
 // it is legal here because it is PROPS-DRIVEN: `Embed.Comp(props, factory)` re-pushes the new `CardData` on every rebind of
 // the recycling slot instead of freezing a constructor argument at mount. The surface is therefore built with a plain

@@ -236,6 +236,45 @@ A theme that mounts the real shell must register `Shell.Frame` and `Shell.Conten
 `Wavee.ShellTests\ContentStateMountedTests.cs` (the registered frame is Classic's, each state stands under its key in the real
 shell, the lane comes and goes, and `ViewHarness` mounts `Shell.ContentState` alone under the Classic composition).
 
+### The navigation pane's rows (T5a)
+
+The sidebar is one pane over six sub-surfaces (rows, heads, flyouts and menus, the Edit outline, drop cues, the library grid). T5a
+gives the pane its key and moves the **rows**; T5b-f move the rest, one sub-surface each.
+
+| Key | Props | Core host | Classic template |
+|---|---|---|---|
+| `Shell.NavPane` | `NavPaneProps` (`InDrawer`, `Mount`) | `Sidebar.PaneHost` -> `ClassicMode` / `LibraryMode` -> `PaneView` (`Shell\Sidebar.UI*.cs`), mounted by the frame (`ShellFrameProps.NavPane`, replacing the `SidebarPane` builder) and by the narrow drawer (`Sidebar.DrawerPane()`) | `ClassicNavPane` (`Views\Nav\`): hands the core builder Classic's `ClassicNavRows` |
+
+- **The pane is a core host.** `PaneView` keeps every hook, effect and state machine: the plan -> publish -> per-row epoch pipeline,
+  the selection travel and the pill target, disclosures, reorder bands, the tree multi-selection, the drag peek and when the freeze
+  holds or flushes. It is not marked `[CoreHost]` yet: it still builds the pane layer, the filter box and the empty hint
+  (WVTH008 would list all of them), which move with the heads (T5b).
+- **The structure supplies the list as a `NavRowKit`** (`Theming\Contracts\NavRowKit.cs`; Classic's is `ClassicNavRows`): the planner
+  and its owning-section answer, the publish diff (`RowChanged`), the analytic extent that seeds the virtualizing host, the mid-drag
+  parking bay (`INavStageHold<T>`: no row jumps while a list is frozen during a drag, the newest stage flushes once at session end)
+  and the row **slot**. The template calls `props.Mount(kit)` and the core builds the pane around it, so core never names a structure.
+- **Classic's files.** `Rules\SidebarPlanner.cs` (`SidebarRowPlanner`, `SidebarPlanDiff`, `SidebarRowDiff`, `SidebarRowExtents`,
+  `SidebarStageHold<T>`), `Rules\SidebarGeometry.cs` (the row ladder: heights, the icon column, indent, pill, the grid and cue
+  numbers), `Views\Nav\ClassicNavRow.cs` (the bound slot: header, route, entity and folder rows, rail tiles, grid strips, the empty
+  hint, the tree's end gutter, the drop band, the selection pill and the drop cues), `ClassicNavRows.cs` (the kit),
+  `ClassicNavPane.cs` (the template).
+- **`INavRowHost`** (`Theming\Contracts\NavRowHost.cs`, implemented explicitly by `PaneView` in `Shell\Sidebar.UI.Host.cs`) is what a
+  slot may ask of the pane: the published plan, what the pane resolved once for every row (selected route, playing rows, the pill
+  target, the reorder band), the verbs, and the pieces of the surfaces T5b-f still own (menus, drop specs, flyouts, the header's
+  create flow, the grid cell). A slot never reaches into `Sidebar` or `Shell`.
+- **X26 is gone.** `OwningSection` (which section would hold a route: the pill's header or folder anchor) was a layout branch inside
+  the "one renderer"; it is `SidebarRowPlanner.OwningSection`, next to the Library plan, and `NavModel` no longer answers it.
+- **A transitional mirror.** The row ladder is Classic's. Core keeps `SidebarRowGeometry`: the plan queries (`TrySectionBodyRange`,
+  `FolderHeaderIndexOf`, ... no pixels) and a copy of exactly the ladder members the still-core readers use (the shared row
+  primitives in `Sidebar.UI.Rows.cs`, the Library head, the flyouts, the Edit outline, the drop rules, the resize rules).
+  `SidebarGeometryParityTests` pins every shared member equal; the last reader to move (T5f) deletes the copy. The band widths are
+  `NavPanePolicy`'s (section 2a).
+
+**Tests.** The planner, the diff, the extents, the freeze and the ladder are pure (`SidebarPlannerTests`, `SidebarWiringTests`,
+`NavDropRulesTests`, `SidebarRowGeometryTests`, `NavModelTests` for the owning section); the mounted facts are
+`Wavee.ShellTests\NavPaneMountedTests.cs` (the registered template is Classic's, the real shell draws the pane through the key and
+its Home row stands at the ladder's row height, and the kit plans with Classic's planner).
+
 ## 3. Options
 
 An option is data: a `ToggleOption`, `SelectOption<TEnum>`, `SliderOption`, `ColorOption`, `ActionOption` or

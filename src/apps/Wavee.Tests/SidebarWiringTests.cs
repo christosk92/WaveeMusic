@@ -23,6 +23,7 @@
 
 using FluentGpu.Foundation;
 using Wavee;
+using Wavee.Themes.Classic;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -677,9 +678,9 @@ public class SidebarPlanDiffTests
     public void An_identical_republish_changes_no_row_and_leaves_the_rail_alone()
     {
         var entries = new[] { Entry("a", "A") };
-        Assert.False(Sidebar.PlanDiff.RowChanged(TwoRows, entries, TwoRows, entries, 0));
-        Assert.False(Sidebar.PlanDiff.RowChanged(TwoRows, entries, TwoRows, entries, 1));
-        Assert.False(Sidebar.PlanDiff.Changed(TwoRows, entries, TwoRows, entries));
+        Assert.False(SidebarPlanDiff.RowChanged(TwoRows, entries, TwoRows, entries, 0));
+        Assert.False(SidebarPlanDiff.RowChanged(TwoRows, entries, TwoRows, entries, 1));
+        Assert.False(SidebarPlanDiff.Changed(TwoRows, entries, TwoRows, entries));
     }
 
     [Fact]
@@ -691,8 +692,8 @@ public class SidebarPlanDiffTests
         var before = new[] { Entry("a", "A", new List<StringId> { new(1), new(2), new(3), new(4) }) };
         var after = new[] { Entry("a", "A", new List<StringId> { new(1), new(2), new(3), new(4) }) };
         Assert.False(before[0].Equals(after[0]));   // the trap this rule exists for
-        Assert.False(Sidebar.PlanDiff.RowChanged(TwoRows, before, TwoRows, after, 1));
-        Assert.False(Sidebar.PlanDiff.Changed(TwoRows, before, TwoRows, after));
+        Assert.False(SidebarPlanDiff.RowChanged(TwoRows, before, TwoRows, after, 1));
+        Assert.False(SidebarPlanDiff.Changed(TwoRows, before, TwoRows, after));
     }
 
     [Fact]
@@ -700,7 +701,7 @@ public class SidebarPlanDiffTests
     {
         var before = new[] { Entry("a", "A", new List<StringId> { new(1), new(2) }) };
         var after = new[] { Entry("a", "A", new List<StringId> { new(1), new(9) }) };
-        Assert.True(Sidebar.PlanDiff.RowChanged(TwoRows, before, TwoRows, after, 1));
+        Assert.True(SidebarPlanDiff.RowChanged(TwoRows, before, TwoRows, after, 1));
     }
 
     [Fact]
@@ -708,9 +709,9 @@ public class SidebarPlanDiffTests
     {
         var before = new[] { Entry("a", "") };
         var after = new[] { Entry("a", "A", count: 12) };
-        Assert.False(Sidebar.PlanDiff.RowChanged(TwoRows, before, TwoRows, after, 0));   // the header carries no entry
-        Assert.True(Sidebar.PlanDiff.RowChanged(TwoRows, before, TwoRows, after, 1));
-        Assert.True(Sidebar.PlanDiff.Changed(TwoRows, before, TwoRows, after));
+        Assert.False(SidebarPlanDiff.RowChanged(TwoRows, before, TwoRows, after, 0));   // the header carries no entry
+        Assert.True(SidebarPlanDiff.RowChanged(TwoRows, before, TwoRows, after, 1));
+        Assert.True(SidebarPlanDiff.Changed(TwoRows, before, TwoRows, after));
     }
 
     [Fact]
@@ -718,7 +719,7 @@ public class SidebarPlanDiffTests
     {
         var entries = new[] { Entry("a", "A"), Entry("b", "B") };
         var after = new[] { TwoRows[0], Row(SidebarRowKind.EntityRow, 1, "pl:b") };
-        Assert.True(Sidebar.PlanDiff.RowChanged(TwoRows, entries, after, entries, 1));
+        Assert.True(SidebarPlanDiff.RowChanged(TwoRows, entries, after, entries, 1));
     }
 
     [Fact]
@@ -726,9 +727,9 @@ public class SidebarPlanDiffTests
     {
         var entries = new[] { Entry("a", "A"), Entry("b", "B") };
         var grown = new[] { TwoRows[0], TwoRows[1], Row(SidebarRowKind.EntityRow, 1, "pl:b") };
-        Assert.True(Sidebar.PlanDiff.RowChanged(TwoRows, entries, grown, entries, 2));
-        Assert.True(Sidebar.PlanDiff.Changed(TwoRows, entries, grown, entries));
-        Assert.True(Sidebar.PlanDiff.Changed(grown, entries, TwoRows, entries));   // shrinking moves it too
+        Assert.True(SidebarPlanDiff.RowChanged(TwoRows, entries, grown, entries, 2));
+        Assert.True(SidebarPlanDiff.Changed(TwoRows, entries, grown, entries));
+        Assert.True(SidebarPlanDiff.Changed(grown, entries, TwoRows, entries));   // shrinking moves it too
     }
 
     [Fact]
@@ -736,15 +737,15 @@ public class SidebarPlanDiffTests
     {
         var some = new[] { Entry("a", "A") };
         var none = Array.Empty<SidebarLibraryEntry>();
-        Assert.True(Sidebar.PlanDiff.RowChanged(TwoRows, none, TwoRows, some, 1));
-        Assert.True(Sidebar.PlanDiff.RowChanged(TwoRows, some, TwoRows, none, 1));
+        Assert.True(SidebarPlanDiff.RowChanged(TwoRows, none, TwoRows, some, 1));
+        Assert.True(SidebarPlanDiff.RowChanged(TwoRows, some, TwoRows, none, 1));
         // Out of range on BOTH sides is a placeholder that stayed a placeholder.
-        Assert.False(Sidebar.PlanDiff.RowChanged(TwoRows, none, TwoRows, none, 1));
+        Assert.False(SidebarPlanDiff.RowChanged(TwoRows, none, TwoRows, none, 1));
     }
 
     [Fact]
     public void An_index_past_the_new_plan_is_never_a_change()
-        => Assert.False(Sidebar.PlanDiff.RowChanged(TwoRows, Array.Empty<SidebarLibraryEntry>(), TwoRows,
+        => Assert.False(SidebarPlanDiff.RowChanged(TwoRows, Array.Empty<SidebarLibraryEntry>(), TwoRows,
                                                     Array.Empty<SidebarLibraryEntry>(), 5));
 
     // ── the ordered edit script (S3): what the pane splices into the extent table ──

@@ -13,7 +13,10 @@
   and Library (one list with filters, like Spotify's Your Library). Pick one in Settings › Appearance or from the
   sidebar's ⋯ menu.
 - **One renderer.** `PaneView` draws every layout. `SidebarRowPlanner.Build` turns a `SidebarLayoutDoc` and the
-  live library into a flat list of rows; `PaneView` only paints that list.
+  live library into a flat list of rows; `PaneView` only paints that list. The planner, the row ladder, the row diff and
+  the row slot are the structure's since T5a (Classic: `Themes/Classic/Structure/Rules/SidebarPlanner.cs`,
+  `SidebarGeometry.cs`, `Views/Nav/ClassicNavRow.cs`); the pane reaches them through `NavRowKit`
+  (`docs/guide/theming.md` section 2b).
 - **Three pane modes** (Expanded, Compact, Minimal), chosen from the window band (section 4).
 - **One Edit mode** and **one undo ring** (section 8).
 
@@ -54,8 +57,10 @@ library kinds (Albums, Artists, Podcasts, Audiobooks).
 
 ## 3. Rows and metrics
 
-Row metrics come from the WinUI ladder, held in constants on `SidebarRowGeometry` (`Shell/Sidebar.cs`), and are
-pinned by `SidebarRowGeometryTests`:
+Row metrics come from the WinUI ladder, held in constants on `SidebarGeometry`
+(`Themes/Classic/Structure/Rules/SidebarGeometry.cs`), and are pinned by `SidebarRowGeometryTests`. Core keeps a pinned copy
+of the members its still-core surfaces read (`SidebarRowGeometry`, `Shell/Sidebar.cs`; `SidebarGeometryParityTests`) until
+those surfaces move:
 
 - Row height 36 (two-line entity rows 40), row margin 2 top and bottom, pane edge 4.
 - Icon column 40, glyph 16, entity art 32 (two-line) or 24 (one-line). Label gap 4, trailing pad 14.
@@ -199,7 +204,7 @@ Shaping is done by `SidebarLibraryShaper` and `SidebarLibraryHeadRules` (`Shell/
 | Add a section kind, or a Collections page | `SidebarSectionKind` and `SidebarCatalogue` (kind rules, items, loc key) |
 | Change what a layout holds or locks | `SidebarCatalogue`, then `SidebarLayoutRules.Apply` for the edit it allows |
 | Add an edit | a new `SidebarOp` record, handled in `SidebarLayoutRules.Apply` and in `Sidebar.Host.cs`'s dispatch |
-| Change a row metric | `SidebarRowGeometry` (`Shell/Sidebar.cs`) |
+| Change a row metric | `SidebarGeometry` (`Themes/Classic/Structure/Rules/SidebarGeometry.cs`), and the pinned copy `SidebarRowGeometry` (`Shell/Sidebar.cs`) while a core surface still reads the member |
 | Add a menu item | `SidebarMenuModel`, then `SidebarMenus.Run` |
 | Add a pane mode or band rule | `SidebarPaneModeRules` (`Shell/Sidebar.Resize.cs`) |
 | Add a persisted field | the DTO in `Shell/Sidebar.Store.cs`, `SidebarStoreJsonCtx`, and a round-trip test |
@@ -212,7 +217,7 @@ Pure classes are engine-free and covered by `Wavee.Tests`. Each test file (`src/
 
 - **Layout and model:** `SidebarCatalogueTests`, `SidebarLayoutRulesTests`, `SidebarVisibilityRulesTests`,
   `SidebarStoreV3Tests`, `SidebarMigrationV2Tests`.
-- **Rows and geometry:** `SidebarRowGeometryTests`, `SidebarPlannerTests` (fixture `PlanFixture`), `SidebarPillRulesTests`,
+- **Rows and geometry:** `SidebarRowGeometryTests` (with `SidebarGeometryParityTests`), `SidebarPlannerTests` (fixture `PlanFixture`), `SidebarPillRulesTests`,
   `SidebarSubtitleRulesTests`, `SidebarProjectionTests`.
 - **Modes and sizing:** `SidebarPaneModeRulesTests`, `SidebarResizeRulesTests`.
 - **Edit, menus and undo:** `SidebarEditRulesTests`, `NavEditModelTests`, `NavMenuModelTests`, `SidebarUndoRingTests`,
@@ -221,7 +226,7 @@ Pure classes are engine-free and covered by `Wavee.Tests`. Each test file (`src/
 - **Pins and accounts:** `SidebarPinTests`, `SidebarPinSyncTests`, `SidebarAccountStoreTests`.
 - **Feeds and cards:** `SidebarFeedsTests`, `SidebarCardsTests`.
 - **Persistence:** `SidebarFileStoreTests` (against a temp folder).
-- **Wiring:** `SidebarWiringTests`.
+- **Wiring:** `SidebarWiringTests`; the mounted pane is `Wavee.ShellTests/NavPaneMountedTests.cs`.
 - **Revisions and census:** `SidebarRevisionTests`, `SidebarReplanCensusTests`.
 
 Tests assert behaviour through the pure classes. There are no source-text tests.

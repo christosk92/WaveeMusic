@@ -14,6 +14,7 @@ using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -24,12 +25,14 @@ public static partial class Sidebar
     internal sealed class LibraryMode : Component
     {
         readonly bool _inDrawer;   // mount configuration: a drawer and a docked pane are separate mounts
+        readonly NavRowKit _kit;   // the structure's list (planner, diff, extents, freeze, row slot)
 
-        public LibraryMode(bool inDrawer) => _inDrawer = inDrawer;
+        public LibraryMode(bool inDrawer, NavRowKit kit) { _inDrawer = inDrawer; _kit = kit; }
 
         public override Element Render()
         {
             bool inDrawer = _inDrawer;
+            var kit = _kit;
             var s = UseMemo(() => new LibrarySession(inDrawer), DepKey.Empty);
 
             // MEMOS, not raw width reads: a seam drag writes Width every frame; the column count / folder mode flip rarely.
@@ -73,7 +76,7 @@ public static partial class Sidebar
             // HeaderCreateDropSpec / CreateMenu / CreatePlaylist and the ring can focus the list.
             return Embed.Comp(() =>
             {
-                var pane = new PaneView(config, inDrawer);
+                var pane = new PaneView(config, inDrawer, kit);
                 s.PaneRef = pane;
                 return pane;
             });

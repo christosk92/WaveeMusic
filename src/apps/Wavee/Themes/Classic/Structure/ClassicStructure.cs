@@ -1,7 +1,8 @@
 // ── Themes/Classic/Structure/ClassicStructure.cs — the Classic structure (themes plan 6.1) ─────────────────────────────
 //
 // Registers the views T-lane PRs have moved here, one family at a time (`Register`): T4a is the frame and the content states
-// (`Views\Frame\ClassicFrame.cs`, `ClassicContentState.cs`); every other surface is still core code. It
+// (`Views\Frame\ClassicFrame.cs`, `ClassicContentState.cs`), T5a the navigation pane's rows (`Views\Nav\ClassicNavPane.cs`,
+// `ClassicNavRows.cs`, `ClassicNavRow.cs`); every other surface is still core code. It
 // decides the shell's policies (`Rules\ClassicPolicies.cs`: nav pane, panel and mini player, player bar, chrome row, stage)
 // and offers every capability (T3). Its window tiers (T3b) are `Rules\Tiers.cs`.
 //
@@ -31,6 +32,8 @@ public sealed class ClassicStructure : IStructureLayer
         // T4a: the window frame and the content region's states (offline lane, empty body, not-found, page).
         views.Add(ViewKeys.ShellFrame, ClassicFrame.Template, "classic.shell.frame");
         views.Add(ViewKeys.ShellContentState, ClassicContentState.Template, "classic.shell.content-state");
+        // T5a: the navigation pane (the rows: planner, diff, extents, freeze and the row slot; the rest of the pane is T5b-f's).
+        views.Add(ViewKeys.ShellNavPane, ClassicNavPane.Template, "classic.shell.nav-pane");
     }
 
     /// <inheritdoc />

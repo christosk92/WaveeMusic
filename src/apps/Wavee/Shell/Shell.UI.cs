@@ -538,7 +538,7 @@ public static partial class Shell
             PlayerBarDock = static () => PlayerBarDock(),
             MaterialLayer = static () => MaterialLayer(),
             ContentHost = static () => Embed.Comp(static () => new ContentHost()),
-            SidebarPane = static () => Sidebar.Pane(),
+            NavPane = Sidebar.DockedPaneProps,
             SidebarSeam = () => Splitter.Create(Sidebar.Seam, () => Sidebar.CommitSeam(), SidebarSeamOptionsFor(policies.NavPane),
                 fade: _sidebarFade, dragging: _sidebarDragging, parts: _seamParts),
             RailBody = static () => Rail.Frame(),

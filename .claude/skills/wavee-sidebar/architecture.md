@@ -10,7 +10,7 @@ plan in `docs/plans/wavee/sidebar-rework-implementation.md`.
 |---|---|---|
 | Layout model: catalogue, overlays, ops, rules | `Shell/Sidebar.Layout.cs` | yes |
 | Pane modes, window bands, resize | `Shell/Sidebar.Resize.cs` | yes |
-| Planner and row plan | `Shell/Sidebar.Planner.cs`, `Shell/Sidebar.cs` (`SidebarRowPlan`, `SidebarRowGeometry`, `SidebarRowShape`) | yes |
+| Planner, row diff, extents, freeze, row ladder (the structure's since T5a) | `Themes/Classic/Structure/Rules/SidebarPlanner.cs`, `SidebarGeometry.cs`; the plan's vocabulary stays core: `Shell/Sidebar.Planner.cs` (`SidebarPlanOptions`), `Shell/Sidebar.cs` (`SidebarRowPlan`, `SidebarRowShape`, the `SidebarRowGeometry` plan queries and its pinned mirror) | yes |
 | Rules: pills, type-ahead, subtitles, label fit, pin rules | `Shell/Sidebar.Rules.cs`, `Shell/Sidebar.cs` (`RootlistOps`, `RootlistSlotResolver`) | yes |
 | Library head rules and shaper | `Shell/Sidebar.Library.cs` | yes |
 | Edit rules, menu model, undo ring | `Shell/Sidebar.Edit.cs` | yes |
@@ -33,8 +33,8 @@ the narrow overlay drawer (`inDrawer: true`). Both mount a `PaneHost`.
 PaneHost(inDrawer)                                  Sidebar.UI.cs
 └── ClassicMode(inDrawer) | LibraryMode(inDrawer)   Sidebar.UI.cs, Sidebar.UI.Library.cs
     ├── LibraryHead ─ LibraryChips, LibraryToolbar, LibrarySearchBox   (Library only; Sidebar.UI.Library.cs)
-    └── PaneView(config, inDrawer)                  Sidebar.UI.cs (+ .Drop, .Flyout, .Menus, .Slot, .Rows)
-        ├── PaneSlot (one per visible row)          Sidebar.UI.Slot.cs
+    └── PaneView(config, inDrawer, kit)             Sidebar.UI.cs (+ .Drop, .Flyout, .Menus, .Host, .Rows)
+        ├── ClassicNavRow (one per visible row)     Themes/Classic/Structure/Views/Nav/ClassicNavRow.cs (via NavRowKit.Slot)
         ├── PaneFooter                              Sidebar.UI.Footer.cs
         ├── EditPane (Edit mode: the Outline and the edit bar)   Sidebar.UI.Edit.cs
         ├── PaneSectionFlyout / PaneFolderFlyout    Sidebar.UI.Flyout.cs (collapsed rail)
@@ -66,13 +66,18 @@ at mount (see [pitfalls.md](pitfalls.md)).
 
 - **`SidebarProjectionInput`** is the immutable snapshot the binder hands the planner: playlist tree, folder state,
   pins, feeds, library counts, recents, the drop context (`PinDropArmed`, see `SidebarPlanOptions`), and the search.
-- **`SidebarRowPlanner.Build(doc, input, options)`** flattens (document × projection) into one `SidebarRow` list. It
+- **`SidebarRowPlanner.Build(doc, input, options)`** (Classic's, `Themes/Classic/Structure/Rules/SidebarPlanner.cs`; the pane calls it through `NavRowKit.Plan`) flattens (document × projection) into one `SidebarRow` list. It
   is pure and POD. It emits the visible subtree of an expanded pinned folder at relative depth, honours nested
   disclosure state, and shares the section cap.
-- **`SidebarRowPlan`** is the list plus the measured geometry. **`SidebarRowGeometry`** is the one metrics ladder
-  (row height 36 / two-line 40, icon column 40, label gap 4, trailing pad 14, pane edge 4, rail 48, tile 40).
-  **`SidebarRowShape`** says which of the shapes a row takes. Geometry lives there and nowhere else.
-- **`SidebarRowExtents`** turns a plan into the extents `ItemsView` virtualizes over.
+- **`SidebarRowPlan`** is the list plus the measured geometry. **`SidebarGeometry`** (Classic, `Rules/SidebarGeometry.cs`) is the one metrics ladder
+  (row height 36 / two-line 40, icon column 40, label gap 4, trailing pad 14, pane edge 4, rail 48, tile 40). Core's `SidebarRowGeometry`
+  keeps the plan queries and a pinned copy of the members the still-core surfaces read (`SidebarGeometryParityTests`) until T5b-f move them.
+  **`SidebarRowShape`** says which of the shapes a row takes.
+- **`SidebarRowExtents`** (Classic, `SidebarPlanner.cs`) turns a plan into the extents `ItemsView` virtualizes over; the diff (`SidebarPlanDiff`)
+  and the mid-drag parking bay (`SidebarStageHold<T>`) live beside it. `SidebarRowPlanner.OwningSection` answers which section holds a route (X26).
+- **`NavRowKit`** (`Theming/Contracts/NavRowKit.cs`) is how the core pane reaches all of the above plus the row slot; `INavRowHost`
+  (`NavRowHost.cs`, implemented in `Shell/Sidebar.UI.Host.cs`) is what a slot may ask of the pane. The pane mounts through the
+  `Shell.NavPane` view key (`NavPaneProps`).
 
 Coordinate space: all pane metrics are in DIP of the pane's own coordinate space (the coordinate-space note in
 `docs/guide/sidebar.md` §3).
@@ -123,8 +128,8 @@ facts without any row planning: `Destinations` (+ counts), `Pins` / `PinRows`, `
 `ActivateFolder`, `CreatePlaylist`, `CreateFolder`, `Pin`, `Unpin`, `MovePin`. The stored state (layout file, pin store, folder
 set, edit mode) stays on `Sidebar`; the model is the read surface, so a view never reaches for `Sidebar.Binder` (gone) or
 an `Acts?.Play`. Failed is published on the model only: the planner still reads the two-state `TreeState` / `LibraryState`,
-so a failed load draws as today's skeleton until a view draws the failure. Row planning, `PlanDiff` and the drag freeze
-stay in the view code.
+so a failed load draws as today's skeleton until a view draws the failure. Row planning, the publish diff and the drag freeze
+are the structure's since T5a (`Themes/Classic/Structure/Rules/SidebarPlanner.cs`, reached through `NavRowKit`).
 
 Your Library's session is the model's too: `Model.OpenLibrary(inDrawer)` returns a `NavLibrary` (`Shell/NavModel.Library.cs`), one
 per mount, holding the drill stack (`Drill`, `Back`, `ResetDrill`), the shaping state (`ReadState`, `ShapeInput`, `ShapeOptions`),

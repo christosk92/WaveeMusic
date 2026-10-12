@@ -13,6 +13,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Wavee;
+using Wavee.Themes.Classic;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -556,20 +557,20 @@ public sealed class SidebarPlanGeometryTests
     [InlineData(-3, 0f)]
     public void TreeContentX_IsThirtyOnePerLevelFromTheRowOrigin(int depth, float expected)
     {
-        Assert.Equal(expected, SidebarRowGeometry.TreeContentX(depth), 3);
+        Assert.Equal(expected, SidebarGeometry.TreeContentX(depth), 3);
         // …and it IS a sum of the named constants, not a literal that happens to match.
-        int clamped = Math.Clamp(depth, 0, SidebarRowGeometry.MaxIndentDepth);
-        Assert.Equal(SidebarRowGeometry.IndentFor(0) + clamped * SidebarRowGeometry.IndentStep,
-                     SidebarRowGeometry.TreeContentX(depth), 3);
+        int clamped = Math.Clamp(depth, 0, SidebarGeometry.MaxIndentDepth);
+        Assert.Equal(SidebarGeometry.IndentFor(0) + clamped * SidebarGeometry.IndentStep,
+                     SidebarGeometry.TreeContentX(depth), 3);
     }
 
     [Fact]
     public void TreeContentX_MarchesOneIndentStepPerLevel()
     {
         // The step the depth pick reads backwards. If these two ever differ, an outdent lands on the wrong level.
-        for (int d = 0; d < SidebarRowGeometry.MaxIndentDepth; d++)
-            Assert.Equal(SidebarRowGeometry.IndentStep,
-                         SidebarRowGeometry.TreeContentX(d + 1) - SidebarRowGeometry.TreeContentX(d), 3);
+        for (int d = 0; d < SidebarGeometry.MaxIndentDepth; d++)
+            Assert.Equal(SidebarGeometry.IndentStep,
+                         SidebarGeometry.TreeContentX(d + 1) - SidebarGeometry.TreeContentX(d), 3);
     }
 
     // ── 1. the row ladder (WinUI NavigationView) ─────────────────────────────────────────────────────────────────────
@@ -580,8 +581,8 @@ public sealed class SidebarPlanGeometryTests
     [InlineData(SidebarRowShape.EntityTwoLine, 40f, 44f)]
     public void HeightAndPitch_AreTheThreeWinUiShapes(SidebarRowShape shape, float height, float pitch)
     {
-        Assert.Equal(height, SidebarRowGeometry.HeightOf(shape));
-        Assert.Equal(pitch, SidebarRowGeometry.PitchOf(shape));
+        Assert.Equal(height, SidebarGeometry.HeightOf(shape));
+        Assert.Equal(pitch, SidebarGeometry.PitchOf(shape));
     }
 
     [Theory]
@@ -591,7 +592,7 @@ public sealed class SidebarPlanGeometryTests
     [InlineData(4, 93f)]
     [InlineData(9, 93f)]   // clamped at three levels
     public void IndentFor_IsThirtyOnePerLevelClampedAtThree(int depth, float expected)
-        => Assert.Equal(expected, SidebarRowGeometry.IndentFor(depth));
+        => Assert.Equal(expected, SidebarGeometry.IndentFor(depth));
 
     // ── 2. pure plan geometry ────────────────────────────────────────────────────────────────────────────────────────
 
@@ -661,7 +662,7 @@ public sealed class SidebarPlanGeometryTests
     public void GridFallbackColumns_HonoursThePlannerAtAWidePane()
     {
         // 240 available, 3 planner columns, 8-DIP gap: edge = (240 - 16) / 3 = 74.67 — comfortably above the 40 floor.
-        Assert.Equal(3, SidebarRowGeometry.GridFallbackColumns(3, 240f, 8f, 40f));
+        Assert.Equal(3, SidebarGeometry.GridFallbackColumns(3, 240f, 8f, 40f));
     }
 
     [Fact]
@@ -669,23 +670,23 @@ public sealed class SidebarPlanGeometryTests
     {
         // The narrow-pane case: at the 180-DIP floor (164 DIP available after the 16-DIP pane inset), 4 planner columns would
         // give (164 - 24) / 4 = 35 — under the 40-DIP floor — so the strip falls back to 3.
-        Assert.Equal(3, SidebarRowGeometry.GridFallbackColumns(4, 164f, 8f, 40f));
+        Assert.Equal(3, SidebarGeometry.GridFallbackColumns(4, 164f, 8f, 40f));
         // A 2-column section never needed the fallback in the first place.
-        Assert.Equal(2, SidebarRowGeometry.GridFallbackColumns(2, 164f, 8f, 40f));
+        Assert.Equal(2, SidebarGeometry.GridFallbackColumns(2, 164f, 8f, 40f));
     }
 
     [Fact]
     public void GridFallbackColumns_NeverExceedsThePlannersColumnCount()
     {
         // A very wide pane must not invent MORE columns than the planner asked for — the planner is the ceiling.
-        Assert.Equal(4, SidebarRowGeometry.GridFallbackColumns(4, 2000f, 8f, 40f));
+        Assert.Equal(4, SidebarGeometry.GridFallbackColumns(4, 2000f, 8f, 40f));
     }
 
     [Fact]
     public void GridFallbackColumns_FloorsAtOneColumn()
     {
         // Even one column's edge can go under the floor at an extreme width — the fallback never returns less than 1.
-        Assert.Equal(1, SidebarRowGeometry.GridFallbackColumns(4, 10f, 8f, 40f));
+        Assert.Equal(1, SidebarGeometry.GridFallbackColumns(4, 10f, 8f, 40f));
     }
 
     [Theory]
@@ -693,7 +694,7 @@ public sealed class SidebarPlanGeometryTests
     [InlineData(0)]
     [InlineData(-3)]
     public void GridFallbackColumns_TreatsANonPositivePlannedCountAsOne(int planned)
-        => Assert.Equal(1, SidebarRowGeometry.GridFallbackColumns(planned, 2000f, 8f, 40f));
+        => Assert.Equal(1, SidebarGeometry.GridFallbackColumns(planned, 2000f, 8f, 40f));
 
     // ── pin glyph (issue #85, H1) ─────────────────────────────────────────────────────────────────────────────────────
 
@@ -980,8 +981,8 @@ public class SidebarPaneInvariantTests
     [Fact]
     public void NestedRowsIndentOneStepPerLevel()
     {
-        Assert.Equal(SidebarRowGeometry.IndentStep, SidebarRowGeometry.IndentFor(1));
-        Assert.Equal(SidebarRowGeometry.IndentFor(3), SidebarRowGeometry.IndentFor(9));   // clamped at 3 levels
+        Assert.Equal(SidebarGeometry.IndentStep, SidebarGeometry.IndentFor(1));
+        Assert.Equal(SidebarGeometry.IndentFor(3), SidebarGeometry.IndentFor(9));   // clamped at 3 levels
     }
 }
 #endregion

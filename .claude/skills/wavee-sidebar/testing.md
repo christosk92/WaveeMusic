@@ -47,7 +47,7 @@ Pure classes are tested directly. Each row names the class under test and its fi
 | Edit mode: Outline, ops, the empty-section note, undo / redo, the key table | `NavEditModel` | `NavEditModelTests.cs` |
 | Undo ring (50, batch, memory only) | `SidebarUndoRing` | `SidebarUndoRingTests.cs` |
 | Planner and row plan | `SidebarRowPlanner`, `PlanFixture` | `SidebarPlannerTests.cs` |
-| Row geometry | `SidebarRowGeometry`, `SidebarRowExtents` | `SidebarRowGeometryTests.cs` |
+| Row geometry | `SidebarGeometry` (Classic), `SidebarRowExtents`; the core mirror's parity | `SidebarRowGeometryTests.cs` (incl. `SidebarGeometryParityTests`) |
 | Pane modes and bands | `SidebarPaneModeRules` | `SidebarPaneModeRulesTests.cs` |
 | Resize and settle | `SidebarResizeRules` | `SidebarResizeRulesTests.cs` |
 | Library head and empty states | `SidebarLibraryHeadRules`, `SidebarLibraryEmptyRules` | `SidebarLibraryHeadRulesTests.cs` |
@@ -101,6 +101,6 @@ sidebar needs an engine change, hand it off to the engine repo. Only then run st
 
 ## Known limits of the tests
 
-The renderer (`PaneView`, `PaneSlot`, the Library head) is engine-bound and has no unit tests. Its behaviour is checked
+The renderer (`PaneView`, `ClassicNavRow`, the Library head) is engine-bound and has no unit tests of its own; `Wavee.ShellTests/NavPaneMountedTests.cs` mounts the pane through its key. Its behaviour is checked
 by the build and by hand in the running app (`dotnet run --project src/apps/Wavee -- --fake` for an offline demo). Keep
 new decisions out of the renderer, so they can be tested.

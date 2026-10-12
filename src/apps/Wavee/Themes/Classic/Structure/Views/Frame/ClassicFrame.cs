@@ -20,9 +20,9 @@
 //     content region = ZStack[ row(sidebar column · content card · rail gap · rail reservation) · sidebar seam ·
 //                              rail overlay · rail seam · narrow drawer ]
 //
-// The surfaces that are not this PR's (title bar, material, player bar, sidebar pane, rail, stage, overlays, palette, drag chip,
-// fps) arrive as element builders on the props (`ShellFrameProps`); T4b, T4c, T5, T6 and T7 give each its own key and replace the
-// builder with a `ctx.View` call here.
+// The surfaces that are not this PR's (title bar, material, player bar, rail, stage, overlays, palette, drag chip, fps) arrive as
+// element builders on the props (`ShellFrameProps`); T4b, T4c, T6 and T7 give each its own key and replace the builder with a
+// `ctx.View` call here. The sidebar pane is `Shell.NavPane` since T5a.
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -54,7 +54,7 @@ internal static class ClassicFrame
                 // buttons) on every exit. A bound Visible takes each out of layout, paint, hit-test and focus and
                 // pauses its subtree (UseInterval, UseIsActive), and the edge never re-renders the frame.
                 props.ChromeRow() with { Visible = Prop.Of(props.ChromeMounted) },
-                ContentRegion(props),
+                ContentRegion(props, in ctx),
                 props.PlayerBarDock() with { Visible = Prop.Of(props.ChromeMounted) },
             ],
         };
@@ -91,7 +91,7 @@ internal static class ClassicFrame
             props.FpsOverlay()) with { Grow = 1f };
     }
 
-    private static Element ContentRegion(ShellFrameProps props) => ZStack(
+    private static Element ContentRegion(ShellFrameProps props, in ViewContext ctx) => ZStack(
         new BoxEl
         {
             // The row never moves on a toggle: the content card FLIPs relative to THIS frame.
@@ -115,7 +115,7 @@ internal static class ClassicFrame
                         {
                             Direction = 1, Grow = 1f, IsolateLayout = true, ClipToBounds = true,
                             Opacity = Prop.Of(() => props.SidebarFade.Value),
-                            Children = [Flow.Show(props.SidebarPaneDocked, props.SidebarPane())],
+                            Children = [Flow.Show(props.SidebarPaneDocked, ctx.View(ViewKeys.ShellNavPane, props.NavPane))],
                         },
                     ],
                 },
