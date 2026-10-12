@@ -63,7 +63,7 @@ public sealed class ClassicPoliciesTests
         Assert.Equal(0f, m.PanoramaCompactBelow);
         // The dock is ONE row: the player-bar policy's height is the seek row plus the transport row, and the page reserve is the same number.
         Assert.Equal(m.SeekRow + m.TransportRow, ClassicPolicies.PlayerBar.Height);
-        Assert.Equal(Design.Dock.Reserve, ClassicPolicies.PlayerBar.Height);
+        Assert.Equal(ClassicRoles.Table.Space.DockReserve, ClassicPolicies.PlayerBar.Height);
         // A page column keeps the content floor the panel needs beside it.
         Assert.Equal(ClassicPolicies.Panel.InlineMin, m.MinPageColumn);
         Assert.Equal(ClassicPolicies.NavPane.ContentFloorW, m.MinPageColumn);

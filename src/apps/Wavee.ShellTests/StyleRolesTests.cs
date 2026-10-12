@@ -138,7 +138,7 @@ public sealed class StyleRolesTests(ShellHost host)
             => views.Add(Probe, static (ProbeProps props, in ViewContext ctx) =>
                 new BoxEl { Key = "roles:" + props.Name, Width = R.Type.TrackTitle("x").Size, Height = R.Space.SectionGap }, "Roles.Probe.Template");
 
-        public ThemePolicies Policies(OptionValues structure, in StyleMetrics metrics) => ThemePolicies.Empty;
+        public ThemePolicies Policies(OptionValues structure, in StyleMetrics metrics) => ThemePolicies.Default;
         public ShellCapabilities Capabilities(OptionValues structure) => ShellCapabilities.Unrestricted;
     }
 

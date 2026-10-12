@@ -31,7 +31,7 @@ public sealed class ThemeOptionsMountedTests(ShellHost host)
         public ThemeOptionSchema Options => options;
         public RoleSet RequiredRoles => RoleSet.None;
         public void Register(ViewRegistryBuilder views) { }
-        public ThemePolicies Policies(OptionValues structure, in StyleMetrics metrics) => ThemePolicies.Empty;
+        public ThemePolicies Policies(OptionValues structure, in StyleMetrics metrics) => ThemePolicies.Default;
         public ShellCapabilities Capabilities(OptionValues structure) => ShellCapabilities.Unrestricted;
     }
 

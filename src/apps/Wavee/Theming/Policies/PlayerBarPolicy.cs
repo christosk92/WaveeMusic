@@ -73,7 +73,7 @@ public sealed record PlayerTier(
 /// <param name="Tiers">Exactly <see cref="TierCount"/> levels, narrowest first, each starting wider than the one before.</param>
 /// <param name="Hysteresis">Narrowing holds the current level through this many DIP of dip, so a pointer resize cannot chatter
 /// structural controls at a threshold. Widening commits at once.</param>
-/// <param name="Height">The bar's height. The page bottom reserve (<c>Design.Dock.Reserve</c>) still carries the Classic value
+/// <param name="Height">The bar's height. The page bottom reserve (the style role <c>SpaceRoles.DockReserve</c>) still carries the Classic value
 /// until the page paddings follow the policy (T4/T6).</param>
 public sealed record PlayerBarPolicy(ImmutableArray<PlayerTier> Tiers, float Hysteresis, float Height)
 {
