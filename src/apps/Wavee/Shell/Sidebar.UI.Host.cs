@@ -57,9 +57,11 @@ public static partial class Sidebar
         void INavRowHost.CreatePlaylist() => CreatePlaylist();
         void INavRowHost.NewPlaylistInFolder(string folderId) => NewPlaylistInFolder(folderId);
 
-        // ── the Classic filter box ──
+        // ── the Classic filter box (drawn by the slot) ──
         bool INavRowHost.FilterOpenFor(string sectionId) => FilterOpenFor(sectionId);
-        Element INavRowHost.FilterBox() => FilterBox();
+        Signal<string> INavRowHost.FilterQuery => _search;
+        Signal<int> INavRowHost.FilterTicket => _filterFocus;
+        void INavRowHost.CloseFilter() => CloseFilter();
 
         // ── the tree's multi-selection ──
         SidebarTreeSelection INavRowHost.TreeSelection => TreeSelection;
@@ -69,7 +71,7 @@ public static partial class Sidebar
         void INavRowHost.ToggleTreeSelection(string entryId) => ToggleTreeSelection(entryId);
         void INavRowHost.ClearTreeSelection() => ClearTreeSelection();
 
-        // ── menus, drags, drops and flyouts (T5b-f) ──
+        // ── menus, drags, drops and flyouts (T5c-f) ──
         Func<ContextMenuModel?>? INavRowHost.HeaderMenu(string sectionId) => HeaderMenu(sectionId);
         ContextMenuModel? INavRowHost.CreateMenu() => CreateMenu();
         ContextMenuModel? INavRowHost.FolderCreateMenu(string folderId) => FolderCreateMenu(folderId);

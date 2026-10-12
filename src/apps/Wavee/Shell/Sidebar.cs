@@ -369,16 +369,12 @@ public static class SidebarRowGeometry
     public const float TrailingGap = 6f;
 
     // ── chrome rows ──
-    public const float HeaderHeight = 40f;
+    // (T5b: the header's height, the separator and the empty hint are Classic's alone now; core keeps the two the Library lane
+    // rules and the Edit outline's inline buttons still read.)
     /// <summary>The header title's x: the rows' <see cref="LeadInset"/> (pane 14), so a title starts where the covers do.</summary>
     public const float HeaderTextX = LeadInset;
     /// <summary>A header's inline button (chevron, ⋯, +): 24×24.</summary>
     public const float HeaderButton = 24f;
-    /// <summary>A separator: the 1-px rule plus its 0,3,0,4 margin (TR:223, TR:247), full pane width.</summary>
-    public const float SeparatorHeight = 8f;
-    public const float SeparatorLineTop = 3f;
-    /// <summary>A quiet one-line hint (an empty Playlists, a search with no match): 40 tall in the 4,2 margin.</summary>
-    public const float EmptyHintHeight = 40f;
     // ── the pill ──
     public const float PillW = 3f, PillH = 16f, PillRadius = 2f;
 

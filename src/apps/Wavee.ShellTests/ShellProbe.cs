@@ -25,6 +25,21 @@ static class ShellProbe
         Assert.Fail("never happened within " + maxFrames + " frames: " + what);
     }
 
+    /// <summary>Run frames until <paramref name="ready"/> holds, for a condition that waits on BACKGROUND work (an image decode,
+    /// a palette extraction): a frame budget alone races the worker thread on a busy machine, so this runs against a wall-clock
+    /// deadline and yields the CPU between frames.</summary>
+    public static void UntilBackground(Shell.HeadlessShell shell, Func<bool> ready, string what, int timeoutMs = 10_000)
+    {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        while (clock.ElapsedMilliseconds < timeoutMs)
+        {
+            if (ready()) return;
+            shell.Host.RunFrame();
+            Thread.Sleep(1);
+        }
+        Assert.Fail("never happened within " + timeoutMs + " ms: " + what);
+    }
+
     /// <summary>The one live node with <paramref name="key"/>, failing when it is not mounted.</summary>
     public static NodeHandle Node(Shell.HeadlessShell shell, string key)
     {

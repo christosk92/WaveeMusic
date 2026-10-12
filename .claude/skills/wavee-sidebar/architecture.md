@@ -32,18 +32,20 @@ the narrow overlay drawer (`inDrawer: true`). Both mount a `PaneHost`.
 ```
 PaneHost(inDrawer)                                  Sidebar.UI.cs
 └── ClassicMode(inDrawer) | LibraryMode(inDrawer)   Sidebar.UI.cs, Sidebar.UI.Library.cs
-    ├── LibraryHead ─ LibraryChips, LibraryToolbar, LibrarySearchBox   (Library only; Sidebar.UI.Library.cs)
+    ├── Shell.NavLibraryHead ─ ClassicLibraryHead ─ Chips, Toolbar, SearchBox   (Library only; Themes/Classic/Structure/Views/Nav/ClassicNavLibraryHead.cs, over LibrarySession in Sidebar.UI.Library.cs)
     └── PaneView(config, inDrawer, kit)             Sidebar.UI.cs (+ .Drop, .Flyout, .Menus, .Host, .Rows)
         ├── ClassicNavRow (one per visible row)     Themes/Classic/Structure/Views/Nav/ClassicNavRow.cs (via NavRowKit.Slot)
+        │   └── ClassicNavHead (section header, "+", count), ClassicNavFilterBox   Views/Nav/ClassicNavHead.cs, ClassicNavFilter.cs
+        ├── Shell.NavEmpty (the empty body)         Views/Nav/ClassicNavFilter.cs (ClassicNavEmpty)
         ├── PaneFooter                              Sidebar.UI.Footer.cs
         ├── EditPane (Edit mode: the Outline and the edit bar)   Sidebar.UI.Edit.cs
         ├── PaneSectionFlyout / PaneFolderFlyout    Sidebar.UI.Flyout.cs (collapsed rail)
-        ├── PaneFilterBox, DragPeekWatcher          Sidebar.UI.cs
+        ├── DragPeekWatcher                         Sidebar.UI.cs
         └── SidebarMenus                            Sidebar.UI.Menus.cs (pane ⋯ / header ⋯ / row menus)
 ```
 
 Row content is built from `Sidebar.UI.Rows.cs` (`EntityRow`, `Cover`, `LikedArt`, `Chevron`, `SelectionPill`,
-`Counts`, `Skeletons`). `Sidebar.UI.Drop.cs` owns the drag, the drop slot and the commit, and `Sidebar.UI.Edit.cs` owns
+`Skeletons`; the section header, the "+" and the count are Classic's, `Views/Nav/ClassicNavHead.cs`). `Sidebar.UI.Drop.cs` owns the drag, the drop slot and the commit, and `Sidebar.UI.Edit.cs` owns
 Edit mode. A `PaneView` is one keyed `Component`: its children are not rebuilt by the parent, so parent props freeze
 at mount (see [pitfalls.md](pitfalls.md)).
 
@@ -192,7 +194,9 @@ resolve in this order: the index, then the resident peek (`SidebarResidentPeek`)
   one entry, which may be a `Batch`, and shows one toast. Ctrl+Z and Ctrl+Y are taken by the sidebar's own key handlers,
   and only when focus is in the pane, the head or the edit bar. They are never a frame-level chord.
 
-## 10. Library head (`Shell/Sidebar.Library.cs`, `Sidebar.UI.Library.cs`)
+## 10. Library head (`Shell/Sidebar.Library.cs`, `Sidebar.UI.Library.cs`, `Themes/Classic/Structure/Views/Nav/ClassicNavLibraryHead.cs`)
+
+The head is drawn by the structure (`Shell.NavLibraryHead`); `LibrarySession` (core) is its host (`INavLibraryHeadHost`).
 
 Library's head is one row of Home (a fixed route), a page dropdown (navigation only: Albums, Artists, Podcasts,
 Audiobooks), filter chips (filtering only), and a toolbar (sort, list or grid, create). `SidebarLibraryShaper` shapes the
