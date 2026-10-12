@@ -32,39 +32,8 @@ public sealed partial class NavModel
         return _routeKeyCache;
     }
 
-    /// <summary>The first visible top-level section of <paramref name="doc"/> that would hold <paramref name="route"/> if it were
-    /// expanded: Pinned for a pinned route, Collections for one of its pages, Playlists for a playlist or folder in the tree,
-    /// and Your Library for an entity route under the Library layout. Null otherwise.</summary>
-    public string? OwningSection(SidebarLayoutDoc doc, string route)
-    {
-        if (route.Length == 0) return null;
-        var input = _binder.CurrentInput;
-        if (doc.Find(SidebarSectionKind.Pinned) is { Hidden: false } pinned && Sidebar.IsPinned(SidebarPinId.FromRoute(route))) return pinned.Id;
-        if (doc.Find(SidebarSectionKind.Collections) is { Hidden: false } collections && ItemsHold(collections.Items, route))
-            return collections.Id;
-        if (doc.Find(SidebarSectionKind.Playlists) is { Hidden: false } playlists
-            && input.PlaylistTree is { } tree && EntriesHold(tree, route)) return playlists.Id;
-        if (doc.Layout == SidebarLayoutId.Library && doc.Find(SidebarSectionKind.Library) is { Hidden: false } library
-            && input.Library is { } list && EntriesHold(list, route)) return library.Id;
-        return null;
-    }
-
-    static bool ItemsHold(IReadOnlyList<string> items, string route)
-    {
-        for (int i = 0; i < items.Count; i++)
-            if (string.Equals(items[i], route, StringComparison.Ordinal)) return true;
-        return false;
-    }
-
-    static bool EntriesHold(IReadOnlyList<SidebarLibraryEntry> entries, string route)
-    {
-        for (int i = 0; i < entries.Count; i++)
-        {
-            var entry = entries[i];
-            if (string.Equals(entry.Id, route, StringComparison.Ordinal) || SidebarRowResolve.EntrySelects(in entry, route)) return true;
-        }
-        return false;
-    }
+    // WHICH SECTION holds a route (the pill's header or folder anchor) is the planner's answer, not the model's: it depends on
+    // which layouts exist and what each holds (X26). See `SidebarRowPlanner.OwningSection`, reached through `NavRowKit`.
 
     // ── playing ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 

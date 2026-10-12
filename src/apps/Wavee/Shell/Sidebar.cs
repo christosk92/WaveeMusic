@@ -7,14 +7,16 @@
 // The sections, in file order:
 //
 //   CORE       `SidebarPaneBounds` — the expanded width's clamp pair and its default.
-//   GEOMETRY   `SidebarRowGeometry`, `SidebarRowExtents` — the one height/indent/art/lane ladder. Art starts at pane
+//   GEOMETRY   `SidebarRowGeometry` — the plan queries (which rows a disclosure owns) and the TRANSITIONAL MIRROR of the ladder the
+//              not-yet-moved core surfaces still read. The ladder itself, `SidebarRowExtents` and the planner are the
+//              structure's since T5a (`Themes/Classic/Structure/Rules/SidebarGeometry.cs`, `SidebarPlanner.cs`). Art starts at pane
 //              centre x = 24 and the label at x = 48 on EVERY row shape; one height per SECTION, never per row (a mixed
 //              band breaks both the `Reorderable` slot pitch and the virtualizing host's extent table).
 //   ROWS       `SidebarRowKind`, `SidebarRow`/`SidebarRowPlan`, `SidebarProjectionInput`, `SidebarPlanBuffers` — the
 //              plan's vocabulary. The planner itself is `Sidebar.Planner.cs`: (document × projection) flattened into ONE
 //              array of row kinds, rendered by ONE bound list. The buffers are caller-owned and ALIAS.
-//   DIFF       `SidebarRowDiff`, `SidebarRowResolve`, `SidebarPillState` — which realized rows re-render, which row
-//              draws selected, and the one lit/dark rule for the accent pill.
+//   DIFF       `SidebarRowResolve`, `SidebarPillState` — which row draws selected, and the one lit/dark rule for the accent
+//              pill. (Which realized rows re-render is the structure's `SidebarPlanDiff`.)
 //   DROP       `RootlistSlotResolver` + `SidebarDropCue` + `RootlistDropDecision` + `RootlistTreeNav` — ONE resolver,
 //              ONE published slot, ONE commit. Line ⟺ ordering, plate ⟺ Into, never both. Every refusal has a
 //              sentence; a drop that cannot be honoured never returns silently.
@@ -69,19 +71,6 @@ public static class SidebarPaneBounds
         => ShellPolicy.NavOr(policy).ClampWidth(width);
 }
 
-public static partial class Sidebar
-{
-    // ── the planner, named ───────────────────────────────────────────────────────────────────────────────────────────
-    //
-    // One thin name over `SidebarRowPlanner` so a caller never has to pick an overload. The buffers are the CALLER's and
-    // they ALIAS: the plan points into them, so a caller keeps two and alternates — otherwise the outgoing rows die under
-    // the diff that is still reading them.
-
-    /// <summary>(document × projection) → ONE flat row array, for the expanded pane or the 48 rail.</summary>
-    public static SidebarRowPlan Plan(SidebarLayoutDoc doc, in SidebarProjectionInput input, in SidebarPlanOptions options,
-                                      SidebarPlanBuffers buffers)
-        => SidebarRowPlanner.Build(doc, in input, in options, buffers);
-}
 // ── ROOTLIST MARKER STREAM + MOVE LEGALITY ─────────────────────────────────────────────────────────────────────────
 // The marker-stream value shape (RootlistEntry) and the item/placement/move value types every sidebar drop, every
 // "Move to folder…" destination and every Alt+↑/↓ verb is expressed against. CheckMove/CheckMoves are the ONE pure
@@ -314,13 +303,13 @@ public static class RootlistMarkerStream
     }
 }
 
-// ── GEOMETRY, EXTENTS, DIFF, RESOLVE, PILL, REORDER, STAGE-HOLD, MENUS, DIAG ─────────────────────────────────────
+// ── GEOMETRY, RESOLVE, PILL, REORDER, MENUS, DIAG ───────────────────────────────────────────────────────────────
 //
-// The sidebar pane's pure numeric ladder and per-row bookkeeping: row/indent/tree-content geometry and the plan
-// geometry helpers built on it; the analytic row extent a plan seeds before anything measures; the per-row change
-// diff; the row→route selection join; the accent-pill lit rule; the reorder-clamp displacement hint; the mid-drag
-// stage-hold parking bay; context-menu verb layout; and the docked-pane terminal-state invariant. Every number here
-// is a fact verified against a screenshot ruler — port it exactly, never re-derive it.
+// The sidebar pane's pure per-row bookkeeping: the plan geometry helpers and the ladder mirror the core surfaces still read;
+// the row→route selection join; the accent-pill lit rule; the reorder-clamp displacement hint; context-menu verb layout; and
+// the docked-pane terminal-state invariant. The analytic row extent, the publish diff and the mid-drag stage-hold parking bay
+// moved to the structure with the planner (T5a). Every number here is a fact verified against a screenshot ruler — port it
+// exactly, never re-derive it.
 
 /// <summary>Which of the three WinUI row shapes a section's rows take (design V.3). One shape per SECTION, never per
 /// row: a band's reorder pitch and the virtualizing host's extent table both assume it.</summary>
@@ -334,11 +323,14 @@ public enum SidebarRowShape : byte
     EntityOneLine = 2,
 }
 
-/// <summary>THE ONE ROW LADDER, drawn to WinUI NavigationView (NavigationView_themeresources.xaml, "TR"): 36-px rows in
-/// a 4,2 margin (TR:217, TR:228), a 40-px icon column whose centre sits at pane x 24 (TR:612), the label at pane x 48
-/// (TR:251), trailing content ending at pane W − 18 (TR:604), a 40-px chevron column at pane W − 44..W − 4 (TR:617), 31-px
-/// folder indents (NavigationViewItemBase.h:63) and the 3×16 r2 pill at slot x 31·depth (TR:220-222). Numbers are SLOT
-/// space (the list's one 4-px inset is <see cref="PaneEdge"/>). Engine-free so Wavee.Tests pins every one.</summary>
+/// <summary>THE PLAN QUERIES of the row ladder (which rows a disclosure owns, where a folder header or a route sits, which way a
+/// selection travelled) and the TRANSITIONAL MIRROR of its numbers (T5a). The ladder is the structure's:
+/// <c>Themes/Classic/Structure/Rules/SidebarGeometry.cs</c> (drawn to WinUI NavigationView, "TR": 36-px rows in a 4,2 margin, a
+/// 40-px icon column, 31-px folder indents, the 3×16 r2 pill). What is left here are exactly the members the sub-surfaces that are
+/// still core read -- the shared row primitives (<c>Sidebar.UI.Rows.cs</c>), the heads, the flyouts, the Edit outline, the drop
+/// rules, the resize rules -- each a copy of Classic's value, pinned equal by <c>SidebarGeometryParityTests</c>. The last of those
+/// readers to move (T5f) deletes the copy. Numbers are SLOT space (the list's one 4-px inset is <see cref="PaneEdge"/>).
+/// Engine-free so Wavee.Tests pins every one.</summary>
 public static class SidebarRowGeometry
 {
     // ── the pane ──
@@ -387,9 +379,6 @@ public static class SidebarRowGeometry
     public const float SeparatorLineTop = 3f;
     /// <summary>A quiet one-line hint (an empty Playlists, a search with no match): 40 tall in the 4,2 margin.</summary>
     public const float EmptyHintHeight = 40f;
-    /// <summary>The tree's closing drop gutter.</summary>
-    public const float TreeEndHeight = 24f;
-
     // ── the pill ──
     public const float PillW = 3f, PillH = 16f, PillRadius = 2f;
 
@@ -413,9 +402,6 @@ public static class SidebarRowGeometry
     /// pill, icon and label move (NavigationViewItem.cpp:894-902).</summary>
     public static float IndentFor(int depth) => IndentStep * ClampDepth(depth);
 
-    /// <summary>The pill's x in slot space (pane 4 + 31·depth).</summary>
-    public static float PillX(int depth) => IndentFor(depth);
-
     /// <summary>The pill's y inside a slot whose row is <paramref name="rowHeight"/> tall: centred on the row, below its
     /// 2-px top margin.</summary>
     public static float PillTop(float rowHeight) => RowMarginY + (rowHeight - PillH) * 0.5f;
@@ -423,12 +409,6 @@ public static class SidebarRowGeometry
     /// <summary>Where the drop caret for depth <paramref name="depth"/> starts (slot space): the same x as the pill, so
     /// "insert here at this depth" lines up with the row it describes. Read backwards by the drop resolver.</summary>
     public static float TreeContentX(int depth) => IndentFor(depth);
-
-    /// <summary>Pane-space rulers (diagnostics, tests).</summary>
-    public const float IconCentreX = PaneEdge + LeadInset + ArtSlot * 0.5f;     // 30
-    public const float LabelX = PaneEdge + IconColumn + LabelGap;               // 54
-    public static float TrailingRight(float paneWidth) => paneWidth - PaneEdge - TrailingPad;   // W − 18
-    public static float ChevronLeft(float paneWidth) => paneWidth - PaneEdge - ChevronColumn;   // W − 44
 
     /// <summary>A subtitle line is drawn only in a two-line row and only when there is text.</summary>
     public static bool SubtitleVisible(SidebarRowShape shape, string? subtitle)
@@ -527,26 +507,6 @@ public static class SidebarRowGeometry
     /// is not a track (a track is never pinnable — locked decision).</summary>
     public static bool ShowsPinGlyph(bool isPinned, bool isTrack) => isPinned && !isTrack;
 
-    // ── grid strip fallback (issue #84) ──
-    // The planner owns the column COUNT; re-deriving it from width here would disagree with how the planner already
-    // sliced entries into column-wide strips. What the 180-DIP floor (down from 240) broke is that the planned count
-    // can no longer be honoured without shrinking cells under the 40-DIP art floor, so the SLOT clamps the column
-    // count DOWN as a function of the width it has to render into, wrapping the strip to more lines instead.
-
-    /// <summary>The largest column count in <c>[1, plannedCols]</c> whose cells still clear <paramref name="minCell"/>
-    /// at <paramref name="availableWidth"/>. Never exceeds <paramref name="plannedCols"/> and never returns less
-    /// than 1.</summary>
-    public static int GridFallbackColumns(int plannedCols, float availableWidth, float gap, float minCell)
-    {
-        int cols = plannedCols < 1 ? 1 : plannedCols;
-        for (int c = cols; c > 1; c--)
-        {
-            float edge = (availableWidth - gap * (c - 1)) / c;
-            if (edge >= minCell) return c;
-        }
-        return 1;
-    }
-
     /// <summary>Resolve the contiguous BODY owned by one planned section header. A different section at the same or
     /// a shallower depth is a structural sibling and terminates the band even when that sibling is a divider or has
     /// no header of its own. Deeper rows belong to a nested CustomGroup subtree and stay inside the parent
@@ -590,84 +550,6 @@ public static class SidebarRowGeometry
         firstIndex = header + 1;
         count = end - firstIndex;
         return count > 0;
-    }
-}
-
-/// <summary>The pane's ANALYTIC ROW EXTENT — the height a planned row will occupy, computed from the plan alone (a
-/// pure function of row kind × section display options × previous row kind). It SEEDS the virtualizing host's
-/// extent table so a folder expand/collapse does not shuffle every row above and below it while unrealized rows
-/// measure themselves for the first time — the geometry is right before anything is realized.
-///
-/// It is a SEED, not a substitute for measurement: a <c>GridStrip</c> (and a header's wrapping chip strip) cannot be
-/// predicted exactly and report their best analytic guess; the measured seam corrects them on realize, exactly as
-/// every row does today.</summary>
-public static class SidebarRowExtents
-{
-    /// <summary>The analytic extent of plan row <paramref name="index"/>, read off the row's kind and its section's shape: one
-    /// SLOT (row + its 2 + 2 margin) per item kind, 40 per header, 8 per separator. NaN for a grid strip (estimate, then
-    /// correct on measure). A glyph row inside an entity section takes the SECTION's pitch, so a band never mixes two.</summary>
-    public static float HeightOf(IReadOnlyList<SidebarRow> rows, int index, SidebarSection? section)
-    {
-        ArgumentNullException.ThrowIfNull(rows);
-        if ((uint)index >= (uint)rows.Count || section is null) return 0f;
-        return rows[index].Kind switch
-        {
-            SidebarRowKind.SectionHeader => SidebarRowGeometry.HeaderHeight,
-            SidebarRowKind.Divider => SidebarRowGeometry.SeparatorHeight,
-            SidebarRowKind.IconRow or SidebarRowKind.SectionTile => SidebarRowGeometry.PitchOf(SidebarRowShape.Glyph),
-            SidebarRowKind.EntityRow or SidebarRowKind.FolderHeader or SidebarRowKind.Skeleton => SidebarRowGeometry.PitchOf(section.Shape),
-            SidebarRowKind.Empty => SidebarRowGeometry.EmptyHintHeight + 2f * SidebarRowGeometry.RowMarginY,
-            SidebarRowKind.DropBand => SidebarRowGeometry.PitchOf(SidebarRowShape.Glyph),
-            SidebarRowKind.TreeEnd => SidebarRowGeometry.TreeEndHeight,
-            _ => float.NaN,   // GridStrip: estimate, correct on measure
-        };
-    }
-}
-
-/// <summary>The per-row change detector behind the pane's row epochs. A bound row slot is a FROZEN child — a
-/// re-plan does not re-render it — so this is what lets a publish bump only the indices whose rendered content can
-/// actually have changed, instead of every realized row every time. Pure and engine-free.</summary>
-public static class SidebarRowDiff
-{
-    /// <summary>Fill <paramref name="changed"/> with "row i must re-render". The row RECORD is not enough on its
-    /// own: a row addresses its entry by INDEX, so a library refresh can leave every row record identical while the
-    /// entry behind it gained a name, a cover or a child count — both are therefore compared. A row present in the
-    /// new plan but not the old one always counts as changed, and so does a row whose entry index is valid in one
-    /// plan and not the other.</summary>
-    /// <param name="changed">Written for indices [0, newRows.Count); the caller sizes it. Any excess is left alone.</param>
-    public static void Diff(
-        IReadOnlyList<SidebarRow> oldRows, IReadOnlyList<SidebarLibraryEntry> oldEntries,
-        IReadOnlyList<SidebarRow> newRows, IReadOnlyList<SidebarLibraryEntry> newEntries,
-        Span<bool> changed)
-    {
-        int n = Math.Min(newRows.Count, changed.Length);
-        for (int i = 0; i < n; i++)
-            changed[i] = RowChanged(oldRows, oldEntries, newRows, newEntries, i);
-    }
-
-    /// <summary>Does row <paramref name="index"/> render differently between the two plans?</summary>
-    public static bool RowChanged(
-        IReadOnlyList<SidebarRow> oldRows, IReadOnlyList<SidebarLibraryEntry> oldEntries,
-        IReadOnlyList<SidebarRow> newRows, IReadOnlyList<SidebarLibraryEntry> newEntries,
-        int index)
-    {
-        if ((uint)index >= (uint)newRows.Count) return false;
-        if (index >= oldRows.Count) return true;              // the row is new at this slot
-        var row = newRows[index];
-        if (!row.Equals(oldRows[index])) return true;
-        return !SameEntry(oldEntries, newEntries, row.EntryIndex);
-    }
-
-    /// <summary>Compare the entry both plans' row addresses. An out-of-range index on BOTH sides is equal — the row
-    /// carries no entry (a header, a divider, a skeleton) and nothing behind it can go stale.</summary>
-    static bool SameEntry(IReadOnlyList<SidebarLibraryEntry> oldEntries, IReadOnlyList<SidebarLibraryEntry> newEntries,
-                          int entryIndex)
-    {
-        if (entryIndex < 0) return true;
-        bool inOld = entryIndex < oldEntries.Count;
-        bool inNew = entryIndex < newEntries.Count;
-        if (inOld != inNew) return false;
-        return !inNew || oldEntries[entryIndex].Equals(newEntries[entryIndex]);
     }
 }
 
@@ -807,50 +689,6 @@ public static class SidebarReorderClamp
         if (to < from && slot >= to && slot < from) return extent;
         return 0f;
     }
-}
-
-/// <summary>THE MID-DRAG PARKING BAY for a sidebar plan stage.
-///
-/// A rootlist organisation drag aims at the tree's ROWS. A re-projection that arrives mid-gesture (a dealer push
-/// from another device, our own optimistic ack, a background revalidate) re-keys those rows under the pointer, and
-/// the drop then lands somewhere the user did not aim. So the newest stage is HELD here instead of published, and
-/// applied on SESSION END (drop, cancel and Escape alike).
-///
-/// LAST WRITER WINS: a burst of publishes during one gesture converges to the newest stage, which is the only one
-/// worth applying. A stage that arrives AFTER the session ended is never held — <see cref="TryHold"/> says so, and
-/// the caller publishes it normally.
-///
-/// Generic and engine-free so a test can drive the real state machine without knowing what a stage IS.</summary>
-public sealed class SidebarStageHold<TStage> where TStage : class
-{
-    TStage? _held;
-
-    /// <summary>Is a stage parked right now? Diagnostics and tests only — the pane never branches on it.</summary>
-    public bool HasHeld => _held is not null;
-
-    /// <summary>Hold <paramref name="stage"/> instead of publishing it, when <paramref name="sessionLive"/>.
-    /// Returns TRUE when the stage was parked — the caller must NOT publish. Returns FALSE when no session is live,
-    /// which is the race that matters: a stage produced after the drag ended publishes on the spot rather than
-    /// waiting for a flush that will never come.</summary>
-    public bool TryHold(bool sessionLive, TStage stage)
-    {
-        if (!sessionLive) return false;
-        _held = stage;
-        return true;
-    }
-
-    /// <summary>Hand back the parked stage EXACTLY ONCE. The bay is emptied before the caller publishes, so a
-    /// publish that re-enters this type cannot flush the same stage twice.</summary>
-    public bool TryFlush(out TStage? stage)
-    {
-        stage = _held;
-        _held = null;
-        return stage is not null;
-    }
-
-    /// <summary>Drop the parked stage without publishing it — the pane is going away (unmount), or a stage got
-    /// published through another path and the parked one is now stale.</summary>
-    public void Discard() => _held = null;
 }
 
 /// <summary>A settled pane observation (the presentation as decided, plus the column's laid-out width).</summary>

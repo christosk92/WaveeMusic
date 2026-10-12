@@ -11,7 +11,7 @@
 //   · Behaviour the host wires (the shell chords, the key handler, the file-drop target, the realized-node captures the
 //     probes and the scrim clip read): the template only PLACES them.
 //   · Element builders of the surfaces that are not this PR's: each is a `Func<Element>` over the core builder that exists
-//     today (the player bar, the sidebar pane, the rail, the stage, the overlay layers). A later
+//     today (the player bar, the rail, the stage, the overlay layers). A later
 //     T-PR gives its surface its own view key and replaces the builder with `ctx.View(...)`; nothing else here changes.
 //     T4a draws the FRAME: the column, the window layers, the content region and its seams. T4c gave the material, the
 //     palette, the file-drop cue, the cover scrim, the drag chip and the frame-rate overlay their keys: those members now carry
@@ -114,8 +114,9 @@ public sealed record ShellFrameProps
     /// <see cref="ViewKeys.ShellContentState"/>.</summary>
     public required Func<Element> ContentHost { get; init; }
 
-    /// <summary>The docked sidebar pane (T5).</summary>
-    public required Func<Element> SidebarPane { get; init; }
+    /// <summary>The docked sidebar pane's props: the frame mounts it as <see cref="ViewKeys.ShellNavPane"/> (T5a), so the pane's list is
+    /// the structure's while the core pane keeps its state machines.</summary>
+    public required NavPaneProps NavPane { get; init; }
 
     /// <summary>The sidebar seam: the splitter wired to the sidebar width.</summary>
     public required Func<Element> SidebarSeam { get; init; }

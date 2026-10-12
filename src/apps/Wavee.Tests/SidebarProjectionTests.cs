@@ -52,6 +52,7 @@ using System.Collections.Generic;
 using FluentGpu.Foundation;
 using Google.Protobuf;
 using Wavee;
+using Wavee.Themes.Classic;
 using Xunit;
 
 namespace Wavee.Tests;

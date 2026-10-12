@@ -40,6 +40,7 @@ using System.Linq;
 using FluentGpu.Foundation;
 using FluentGpu.Localization;
 using Wavee;
+using Wavee.Themes.Classic;
 using Xunit;
 
 namespace Wavee.Tests;

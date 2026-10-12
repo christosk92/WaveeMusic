@@ -25,6 +25,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -636,14 +637,14 @@ public static partial class Sidebar
     {
         public const float PillW = SidebarRowGeometry.PillW, PillH = SidebarRowGeometry.PillH;
 
-        readonly PaneView _owner;
+        readonly INavRowHost _owner;
         readonly Func<SidebarPillState> _state;
         readonly Prop<float> _opacity;
         readonly SidebarPillLane _lane;
         NodeHandle _self;
         string? _route;
 
-        public SelectionPill(PaneView owner, Func<SidebarPillState> state, SidebarPillLane lane = SidebarPillLane.List)
+        public SelectionPill(INavRowHost owner, Func<SidebarPillState> state, SidebarPillLane lane = SidebarPillLane.List)
         {
             _owner = owner;
             _state = state;

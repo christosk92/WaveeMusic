@@ -20,11 +20,11 @@
 //     content region = ZStack[ row(sidebar column · content card · rail gap · rail reservation) · sidebar seam ·
 //                              rail overlay · rail seam · narrow drawer ]
 //
-// The surfaces that are not yet a key of their own (player bar, sidebar pane, rail, stage, overlays) arrive as element builders on the
-// props (`ShellFrameProps`); T5, T6 and T7 give each its own key and replace the builder with a `ctx.View` call here. The title bar
-// (T4b) is mounted as `Shell.TitleBar`; T4c did the same for the material, the file-drop cue, the palette, the cover scrim, the drag chip
-// and the frame-rate overlay (each member of the props is now the child view's props record); the narrow drawer's core host (its props
-// change with the band) is still a builder.
+// The surfaces that are not yet a key of their own (player bar, rail, stage, overlays) arrive as element builders on the props
+// (`ShellFrameProps`); T6 and T7 give each its own key and replace the builder with a `ctx.View` call here. The title bar (T4b) is
+// mounted as `Shell.TitleBar` and the sidebar pane (T5a) as `Shell.NavPane`; T4c did the same for the material, the file-drop cue, the
+// palette, the cover scrim, the drag chip and the frame-rate overlay (each member of the props is now the child view's props record);
+// the narrow drawer's core host (its props change with the band) is still a builder.
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -56,7 +56,7 @@ internal static class ClassicFrame
                 // buttons) on every exit. A bound Visible takes each out of layout, paint, hit-test and focus and
                 // pauses its subtree (UseInterval, UseIsActive), and the edge never re-renders the frame.
                 ctx.View(ViewKeys.ShellTitleBar, props.TitleBar) with { Visible = Prop.Of(props.ChromeMounted) },
-                ContentRegion(props),
+                ContentRegion(props, in ctx),
                 props.PlayerBarDock() with { Visible = Prop.Of(props.ChromeMounted) },
             ],
         };
@@ -93,7 +93,7 @@ internal static class ClassicFrame
             ctx.View(ViewKeys.ShellFps, props.Fps)) with { Grow = 1f };
     }
 
-    private static Element ContentRegion(ShellFrameProps props) => ZStack(
+    private static Element ContentRegion(ShellFrameProps props, in ViewContext ctx) => ZStack(
         new BoxEl
         {
             // The row never moves on a toggle: the content card FLIPs relative to THIS frame.
@@ -117,7 +117,7 @@ internal static class ClassicFrame
                         {
                             Direction = 1, Grow = 1f, IsolateLayout = true, ClipToBounds = true,
                             Opacity = Prop.Of(() => props.SidebarFade.Value),
-                            Children = [Flow.Show(props.SidebarPaneDocked, props.SidebarPane())],
+                            Children = [Flow.Show(props.SidebarPaneDocked, ctx.View(ViewKeys.ShellNavPane, props.NavPane))],
                         },
                     ],
                 },

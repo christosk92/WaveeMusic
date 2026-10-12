@@ -9,8 +9,8 @@ renderer.
 | Task | Edit, in order | Guard test |
 |---|---|---|
 | Add a Collections page (a new library route) | `Shell/Sidebar.Layout.cs` (`SidebarCatalogue.ItemsOf`, the item list in `s_collectionItems`); the page's loc key in `assets/loc/en-US.json`; `Shell/Sidebar.Library.cs` if it is a Library page (`SidebarLibraryPage`) | `SidebarCatalogueTests.cs`, `SidebarLibraryHeadRulesTests.cs` |
-| Add a section kind | `Shell/Sidebar.Layout.cs` (`SidebarSectionKind`, the catalogue, `Movable`/`Collapsible`); `Shell/Sidebar.Store.cs` (the section DTO mapping); `Shell/Sidebar.Planner.cs` (a plan branch); `Shell/Sidebar.UI.Rows.cs` or `Shell/Sidebar.UI.Slot.cs` (the header) | `SidebarCatalogueTests.cs`, `SidebarPlannerTests.cs`, `SidebarStoreV3Tests.cs` |
-| Change a row metric (height, indent, icon, label gap) | `Shell/Sidebar.cs` (`SidebarRowGeometry` — the one ladder; `SidebarRowExtents` if the extents change) | `SidebarRowGeometryTests.cs` |
+| Add a section kind | `Shell/Sidebar.Layout.cs` (`SidebarSectionKind`, the catalogue, `Movable`/`Collapsible`); `Shell/Sidebar.Store.cs` (the section DTO mapping); `Themes/Classic/Structure/Rules/SidebarPlanner.cs` (a plan branch); `Shell/Sidebar.UI.Rows.cs` or `Themes/Classic/Structure/Views/Nav/ClassicNavRow.cs` (the header) | `SidebarCatalogueTests.cs`, `SidebarPlannerTests.cs`, `SidebarStoreV3Tests.cs` |
+| Change a row metric (height, indent, icon, label gap) | `Themes/Classic/Structure/Rules/SidebarGeometry.cs` (the one ladder; `SidebarRowExtents` in `SidebarPlanner.cs` if the extents change), then the pinned copy in `Shell/Sidebar.cs` (`SidebarRowGeometry`) for a member a core surface still reads | `SidebarRowGeometryTests.cs` |
 | Add a menu item | `Shell/Sidebar.UI.Menus.cs` (the `SidebarMenuAction` value in `Sidebar.Edit.cs`, the row in `SidebarMenuModel`, the case in `NavMenuModel.Run`, `Shell/NavMenuModel.cs`) | `NavMenuModelTests.cs` |
 | Add an Edit mode key or verb | `Shell/NavEditModel.cs` (the key table and the ops); `Shell/Sidebar.UI.Edit.cs` (the Outline view and its key mapping); `Shell/Sidebar.Edit.cs` (`SidebarEditRules` for the decision); the `SidebarOp` in `Sidebar.Layout.cs` if it edits the layout | `SidebarEditRulesTests.cs`, `NavEditModelTests.cs` |
 | Add a pane mode rule or change a band | `Shell/Sidebar.Resize.cs` (`SidebarPaneModeRules` for the band's mode; `SidebarResizeRules` for the width); where a band BEGINS is the structure's window ladder (`Themes/Classic/Structure/Rules/Tiers.cs`) | `SidebarPaneModeRulesTests.cs`, `SidebarResizeRulesTests.cs` |
@@ -29,7 +29,7 @@ renderer.
 | Change re-plan causes or the census line | `Shell/Sidebar.Census.cs` (`SidebarReplanCause`, `SidebarReplanCensus`); the binder revision in `Shell/Sidebar.Host.cs` | `SidebarReplanCensusTests.cs`, `SidebarRevisionTests.cs` |
 | Change the section or folder disclosure | `Shell/Sidebar.Disclosures.cs` (the bookkeeping, in `feat/smooth-reveal`); `Shell/Sidebar.UI.cs` (`PaneView.StartDisclosure`) | `SidebarDisclosuresTests.cs` (in `feat/smooth-reveal`) |
 | Change a collapsed-rail flyout | `Shell/Sidebar.UI.Flyout.cs` | renderer, no unit test |
-| Change a card surface (Home-style tiles in the pane) | `Shell/Sidebar.Cards.cs` (`SidebarCardRules`); `Shell/Sidebar.UI.Slot.cs` (the surface) | `SidebarCardsTests.cs` |
+| Change a card surface (Home-style tiles in the pane) | `Shell/Sidebar.Cards.cs` (`SidebarCardRules`); `Themes/Classic/Structure/Views/Nav/ClassicNavRow.cs` (the grid strip) and `Shell/Sidebar.UI.Host.cs` (`GridCell`) | `SidebarCardsTests.cs` |
 | Change the footer or the Settings pill | `Shell/Sidebar.UI.Footer.cs` | renderer, no unit test |
 
 ## One line per file
@@ -49,7 +49,7 @@ Every `Shell/Sidebar*.cs` file, in alphabetical order.
 | `Shell/Sidebar.Layout.cs` | The layout model: `SidebarCatalogue`, `SidebarLayoutState`, `LayoutOverlay`, `SidebarOp` and its records, `SidebarLayoutRules.Apply`, `SidebarLayoutDoc`, `SidebarVisibilityRules`. |
 | `Shell/Sidebar.Library.cs` | The Library head and shaping: `SidebarLibraryPage`, `SidebarLibraryCounts`, `SidebarLibraryHeadRules`, `SidebarLibraryEmptyRules`, `SidebarLibraryMetrics`, `SidebarLibraryShaper`. |
 | `Shell/Sidebar.Migration.cs` | The one-time v2 → v3 migration (`SidebarMigrationV2`), its input and result records, and the impure host (`SidebarMigrationHost`). |
-| `Shell/Sidebar.Planner.cs` | `SidebarRowPlanner.Build` and `SidebarPlanOptions`: the (document × projection) → rows flattening. |
+| `Shell/Sidebar.Planner.cs` | `SidebarPlanOptions`. The planner itself (`SidebarRowPlanner`, the (document × projection) → rows flattening) is `Themes/Classic/Structure/Rules/SidebarPlanner.cs`. |
 | `Shell/Sidebar.Resize.cs` | Pane modes and bands (`SidebarPaneMode`, `SidebarWindowBand`, `SidebarPaneModeRules`) and the resize and settle rules (`SidebarResizeRules`). |
 | `Shell/Sidebar.Rules.cs` | Pure rules: pills (`SidebarPillRules`, `SidebarPillMotionRules`), subtitles, type-ahead, label fit, `SidebarPinRules`, `MenuLabel`. |
 | `Shell/Sidebar.Store.V2.cs` | The v2 layout DTOs (read by the migration only) and `SidebarStoreV2`. |
@@ -58,11 +58,11 @@ Every `Shell/Sidebar*.cs` file, in alphabetical order.
 | `Shell/Sidebar.UI.Edit.cs` | Edit mode's view: `EditPane`, the Outline, the edit bar, and the Edit-mode key handlers (Ctrl+Z / Ctrl+Y included). |
 | `Shell/Sidebar.UI.Flyout.cs` | The collapsed rail's section and folder flyouts (`PaneSectionFlyout`, `PaneFolderFlyout`). |
 | `Shell/Sidebar.UI.Footer.cs` | `PaneFooter`: the footer row and its Settings pill. |
+| `Shell/Sidebar.UI.Host.cs` | `INavRowHost` implemented by `PaneView`: the explicit forwarders a row slot reads (T5a). The slot itself, `ClassicNavRow`, is `Themes/Classic/Structure/Views/Nav/ClassicNavRow.cs`. |
 | `Shell/Sidebar.UI.Library.cs` | The Library mode's view: `LibraryMode`, `LibrarySession` (pane reference and focus targets around the model's `NavLibrary`), `LibraryHead`, `LibraryChips`, `LibraryToolbar`, `LibrarySearchBox`. |
 | `Shell/Sidebar.UI.Menus.cs` | `SidebarMenus` (the menu run and labels) and the `PaneView` menu entry points. |
 | `Shell/Sidebar.UI.Rows.cs` | Row content: `RowSpec`, `EntityRow`, `Cover`, `LikedArt`, `Chevron`, `SelectionPill`, `Counts`, `ShortcutCount`, `Skeletons`. |
-| `Shell/Sidebar.UI.Slot.cs` | `PaneSlot`: the per-row component and the card and create-button slots. |
 | `Shell/Sidebar.UI.cs` | `PaneHost`, `ClassicMode`, `PaneConfig`, `PaneView` (the one renderer, `PlanDep`, `StartDisclosure`), `PaneMetrics`, `PlanDiff`, `PaneFilterBox`, `DragPeekWatcher`. |
-| `Shell/Sidebar.cs` | Engine-free types shared by the planner and the renderer: `SidebarRowPlan`, `SidebarRowGeometry`, `SidebarRowShape`, `SidebarRowExtents`, `SidebarProjectionInput`, `RootlistSlotResolver`, `RootlistSlotMapper`, `RootlistOps`, `RootlistMarkerStream`, `SidebarPinId`, `SidebarPin`, `SidebarPaneBounds`. |
+| `Shell/Sidebar.cs` | Engine-free types shared by the planner and the renderer: `SidebarRowPlan`, `SidebarRowGeometry` (plan queries + the pinned mirror of Classic's ladder), `SidebarRowShape`, `SidebarProjectionInput`, `RootlistSlotResolver`, `RootlistSlotMapper`, `RootlistOps`, `RootlistMarkerStream`, `SidebarPinId`, `SidebarPin`, `SidebarPaneBounds`. |
 
 Outside `Shell/`, the pin bridge is `Spotify/Spotify.Encode.cs` (`LibraryPinSync`, the pin write marks).

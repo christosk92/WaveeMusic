@@ -23,6 +23,7 @@ using System.IO;
 using System.Threading;
 using FluentGpu.Localization;
 using Wavee;
+using Wavee.Themes.Classic;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -338,13 +339,15 @@ public sealed class NavModelProjectionTests : IDisposable
         Assert.False(model.IsPinned(PlaylistId("spotify:playlist:p11")));
         Assert.Equal(12, model.Rootlist!.Count);
 
-        // The owning section of a route: Pinned for a pin, Playlists for the rest of the tree, Collections for a page.
+        // The owning section of a route (the planner's answer since T5a, X26): Pinned for a pin, Playlists for the rest of the tree,
+        // Collections for a page.
         var doc = SidebarLayoutRules.Resolve(SidebarLayoutState.Default, SidebarLayoutId.Classic, SidebarDensity.Default);
-        Assert.Equal("pinned", model.OwningSection(doc, PlaylistId("spotify:playlist:p3")));
-        Assert.Equal("playlists", model.OwningSection(doc, PlaylistId("spotify:playlist:p11")));
-        Assert.Equal("collections", model.OwningSection(doc, "albums"));
-        Assert.Null(model.OwningSection(doc, ""));
-        Assert.Null(model.OwningSection(doc, "no-such-route"));
+        var input = model.Projection;
+        Assert.Equal("pinned", SidebarRowPlanner.OwningSection(doc, in input, PlaylistId("spotify:playlist:p3"), Sidebar.IsPinned));
+        Assert.Equal("playlists", SidebarRowPlanner.OwningSection(doc, in input, PlaylistId("spotify:playlist:p11"), Sidebar.IsPinned));
+        Assert.Equal("collections", SidebarRowPlanner.OwningSection(doc, in input, "albums", Sidebar.IsPinned));
+        Assert.Null(SidebarRowPlanner.OwningSection(doc, in input, "", Sidebar.IsPinned));
+        Assert.Null(SidebarRowPlanner.OwningSection(doc, in input, "no-such-route", Sidebar.IsPinned));
     }
 
     // ── fixture 5: never loaded (the account has nothing and nothing has answered) ────────────────────────────────

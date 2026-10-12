@@ -30,7 +30,9 @@ using FluentGpu.Input;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
+using ViewSlots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -38,17 +40,31 @@ public static partial class Sidebar
 {
     // ══ 1. MOUNT POINTS ════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The docked sidebar: the active layout's pane (one layer: the rail is the same list planned compact). Reads
-    /// its own state — <see cref="Layout"/>, <see cref="Width"/>, <see cref="Mode"/>, <see cref="DragPeek"/>,
-    /// <c>Shell.Current</c> — so the shell mounts it with no arguments and binds the COLUMN width itself
-    /// (<c>Compact ∧ ¬DragPeek ? 48 : Width</c>, the 200/100 ms FluentPane Reveal, the IsolateLayout firewall).</summary>
-    // MOUNT POINT (stage B contract)
-    public static Element Pane() => Embed.Comp(static () => new PaneHost(inDrawer: false));
+    // The docked sidebar is mounted by the frame (`ShellFrameProps.NavPane` -> `Shell.NavPane`); the drawer by `DrawerPane()`. Both
+    // are the structure's `Shell.NavPane` view since T5a: the template hands the pane its list (`NavRowKit`: planner, diff,
+    // extents, freeze, row slot) and `Mount` builds the core host around it. The host reads its own state (<see cref="Layout"/>,
+    // <see cref="Width"/>, <see cref="Mode"/>, <see cref="DragPeek"/>, <c>Shell.Current</c>), so the frame mounts it with no
+    // arguments and binds the COLUMN width itself (<c>Compact ∧ ¬DragPeek ? 48 : Width</c>, the 200/100 ms FluentPane Reveal,
+    // the IsolateLayout firewall).
 
     /// <summary>The narrow-shell drawer's mount (viewport ≤ 720): the SAME host, always expanded, no rail layer, its
     /// own scroll key — a second independent mount, never a shared instance (ch 25 W20).</summary>
     // MOUNT POINT (stage B contract)
-    public static Element DrawerPane() => Embed.Comp(static () => new PaneHost(inDrawer: true));
+    public static Element DrawerPane() => ViewSlots.View(ViewKeys.ShellNavPane, DrawerPaneProps);
+
+    /// <summary>The docked pane's props (one instance: equal across re-pushes, so the template runs once per theme).</summary>
+    public static readonly NavPaneProps DockedPaneProps = new()
+    {
+        InDrawer = false,
+        Mount = static kit => Embed.Comp(() => new PaneHost(inDrawer: false, kit)),
+    };
+
+    /// <summary>The drawer pane's props.</summary>
+    public static readonly NavPaneProps DrawerPaneProps = new()
+    {
+        InDrawer = true,
+        Mount = static kit => Embed.Comp(() => new PaneHost(inDrawer: true, kit)),
+    };
 
     // ══ 2. THE LAYOUT HOST ═════════════════════════════════════════════════════════════════════════════════════════════
     // The projection binder, its pump and its first-build epoch are the nav model's (NavModel.Binder.cs): the host only
@@ -59,8 +75,9 @@ public static partial class Sidebar
     internal sealed class PaneHost : Component
     {
         readonly bool _inDrawer;
+        readonly NavRowKit _kit;
 
-        public PaneHost(bool inDrawer) => _inDrawer = inDrawer;
+        public PaneHost(bool inDrawer, NavRowKit kit) { _inDrawer = inDrawer; _kit = kit; }
 
         public override Element Render()
         {
@@ -75,8 +92,8 @@ public static partial class Sidebar
             // The ONLY signal this body reads: a width, filter or collapse change never re-renders the host.
             var layout = Layout.Value;
             Element mode = layout == SidebarLayoutId.Library
-                ? Embed.Comp(() => new LibraryMode(_inDrawer))
-                : Embed.Comp(() => new ClassicMode(_inDrawer));
+                ? Embed.Comp(() => new LibraryMode(_inDrawer, _kit))
+                : Embed.Comp(() => new ClassicMode(_inDrawer, _kit));
             return new BoxEl
             {
                 Grow = 1f, Direction = 1,
@@ -122,8 +139,9 @@ public static partial class Sidebar
     internal sealed class ClassicMode : Component
     {
         readonly bool _inDrawer;
+        readonly NavRowKit _kit;
 
-        public ClassicMode(bool inDrawer) => _inDrawer = inDrawer;
+        public ClassicMode(bool inDrawer, NavRowKit kit) { _inDrawer = inDrawer; _kit = kit; }
 
         public override Element Render()
         {
@@ -133,7 +151,7 @@ public static partial class Sidebar
                 ScrollKeyPrefix = "sidebar.classic",
                 Document = static () => Model.ReadLayout(),
             }, DepKey.Empty);
-            return Embed.Comp(() => new PaneView(config, _inDrawer));
+            return Embed.Comp(() => new PaneView(config, _inDrawer, _kit));
         }
     }
 
@@ -206,9 +224,6 @@ public static partial class Sidebar
         /// <summary>A band above the list whose content starts at the header text's x (pane 14).</summary>
         public static readonly Edges4 HeadBandInset = new(SidebarRowGeometry.PaneEdge + SidebarRowGeometry.HeaderTextX, 0f,
                                                           SidebarRowGeometry.PaneEdge + SidebarRowGeometry.TrailingPad, 0f);
-        public const float EmptyHintHeight = SidebarRowGeometry.EmptyHintHeight;
-        /// <summary>Grid cells stay media-card sized at the 460-DIP maximum.</summary>
-        public const float GridCellMax = 160f;
     }
 
     // ══ 5. THE PANE ════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -231,6 +246,8 @@ public static partial class Sidebar
         // ── frozen-at-mount wiring ──
         internal readonly PaneConfig Config;
         internal readonly bool InDrawer;
+        /// <summary>The structure's list: planner, diff, extents, freeze and the row slot (T5a). Frozen at mount.</summary>
+        internal readonly NavRowKit Kit;
 
         /// <summary>The pane's measured OPEN width — the shared width preference.</summary>
         internal Signal<float> ExpandedWidth => Width;
@@ -361,14 +378,16 @@ public static partial class Sidebar
         /// <summary>The grid column count the PUBLISHED plan's strips were cut with (GridStripRow wraps by it).</summary>
         internal int GridColumns { get; private set; } = 2;
 
-        /// <summary>THE MID-DRAG FREEZE: a re-projection arriving during a rootlist filing is parked, not published.</summary>
-        readonly SidebarStageHold<PlanStage> _deferredStage = new();
+        /// <summary>THE MID-DRAG FREEZE: a re-projection arriving during a rootlist filing is parked, not published. The bay is the
+        /// structure's (<see cref="NavRowKit.NewStageHold{TStage}"/>); when to hold and when to flush stay this pane's.</summary>
+        readonly INavStageHold<PlanStage> _deferredStage;
         /// <summary>One-shot: this gesture's OWN commit is not a foreign projection and must publish through the freeze.</summary>
         bool _publishThroughFreeze;
 
         // ── the pill target (design V.5): ONE pill per pane ──
         SidebarPillTarget _pillTarget = SidebarPillTarget.None;
         string _pillRoute = "";
+        Func<string?, bool>? _isPinned;
         readonly List<string> _ancestorScratch = new(4);
         InputHooks? _hooks;
 
@@ -382,17 +401,19 @@ public static partial class Sidebar
         readonly Dictionary<int, SidebarPillLane> _selectionLaneByNode = new();
 
         /// <summary>STATEFUL (estimate-then-correct + scroll anchoring), so created once per pane. Seeded ANALYTICALLY
-        /// from the plan (<see cref="SidebarRowExtents"/>) so a folder expansion lands at its final geometry before
+        /// from the plan (<see cref="NavRowKit.ExtentOf"/>) so a folder expansion lands at its final geometry before
         /// anything realizes.</summary>
         readonly RepeatLayout _rowLayout;
 
         /// <summary>Reordering rides <c>MotionTok.ItemPlacement</c>.</summary>
         static readonly LayoutTransition RowPlacement = new(TransitionChannels.Position, MotionTok.ItemPlacement.ToDynamics());
 
-        internal PaneView(PaneConfig config, bool inDrawer)
+        internal PaneView(PaneConfig config, bool inDrawer, NavRowKit kit)
         {
             Config = config;
             InDrawer = inDrawer;
+            Kit = kit;
+            _deferredStage = kit.NewStageHold<PlanStage>();
             _rowLayout = RepeatLayout.Extents(RowExtentSeed, estimatedExtent: SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine));
         }
 
@@ -543,7 +564,7 @@ public static partial class Sidebar
 
         Element PlanList() => ItemsView.CreateBound(
             Plan.Rows.Count,
-            scope => Embed.Comp(() => new PaneSlot(this, scope)),
+            scope => Kit.Slot(this, scope),
             _rowLayout,
             new ListOptions
             {
@@ -891,7 +912,7 @@ public static partial class Sidebar
             var input = Input(search);
             bool useA = !_planPublished || !_presentedUsesA;
             var paneBuffers = useA ? _paneBuffersA : _paneBuffersB;
-            var pane = Sidebar.Plan(document, in input, in options, paneBuffers);
+            var pane = Kit.Plan(document, in input, in options, paneBuffers);
             return new PlanStage(document, pane, SidebarSearch.Normalize(input.Search), useA, ++_nextPlanEpoch,
                 options.Mode == SidebarPaneMode.Compact, options.GridColumns);
         }
@@ -902,7 +923,7 @@ public static partial class Sidebar
         internal SidebarRowPlan PlanSectionExpanded(string sectionId, SidebarPlanBuffers buffers)
         {
             var input = Input(_search.Peek());
-            return SidebarRowPlanner.BuildSection(Doc, sectionId, in input, buffers);
+            return Kit.PlanSection(Doc, sectionId, in input, buffers);
         }
 
         void TryPublishStage(PlanStage stage)
@@ -1294,13 +1315,13 @@ public static partial class Sidebar
         }
 
         /// <summary>Bump exactly the rows whose record or ENTRY differs from the presented plan's — through
-        /// <see cref="PlanDiff"/>, whose entry compare is by VALUE (see its remarks for the mosaic-tiles trap).</summary>
+        /// <see cref="NavRowKit.RowChanged"/>, whose entry compare is by VALUE (see <c>SidebarPlanDiff</c> for the mosaic-tiles trap).</summary>
         void BumpChangedRowEpochs(IReadOnlyList<SidebarRow> oldRows, IReadOnlyList<SidebarLibraryEntry> oldEntries)
         {
             var rows = Plan.Rows;
             var entries = Plan.Entries;
             for (int i = 0; i < rows.Count; i++)
-                if (PlanDiff.RowChanged(oldRows, oldEntries, rows, entries, i)) BumpRowEpoch(i);
+                if (Kit.RowChanged(oldRows, oldEntries, rows, entries, i)) BumpRowEpoch(i);
         }
 
         /// <summary>The pane's ONE read of playback on behalf of every row: the coarse active-context gate first (an idle
@@ -1356,7 +1377,7 @@ public static partial class Sidebar
         {
             SidebarPillRules.AncestorFolders(Model.Rootlist, route, _ancestorScratch);
             _pillTarget = SidebarPillRules.Resolve(Plan.Rows, Plan.Entries, _rowRouteOf ??= RowRouteOf, route, _ancestorScratch,
-                Model.OwningSection(Doc, route));
+                Kit.OwningSection(Doc, Model.Projection, route, _isPinned ??= IsPinned));
             bool onRow = _pillTarget.PlanIndex >= 0;
             if (onRow != _pillOnRow)
             {
@@ -1517,7 +1538,7 @@ public static partial class Sidebar
             if (!_planPublished) return SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine);
             var rows = Plan.Rows;
             if ((uint)index >= (uint)rows.Count) return SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine);
-            return SidebarRowExtents.HeightOf(rows, index, SectionOf(rows[index].SectionId));
+            return Kit.ExtentOf(rows, index, SectionOf(rows[index].SectionId));
         }
 
         void ReseedRowExtents()
@@ -1978,35 +1999,11 @@ public static partial class Sidebar
         internal bool IsRailDropActive(string key) => string.Equals(_railDropUri.Value, key, StringComparison.Ordinal);
     }
 
-    /// <summary>THE PANE'S PUBLISH DIFF (W3-A2): which realized rows a republish must re-skin, and whether a plan moved at
-    /// all. The shape rule is <see cref="SidebarRowDiff"/>'s — a row is new at its slot, its record differs, or the entry
-    /// it addresses differs — with ONE correction: the entry compare is <see cref="SidebarEntriesShadow.SameEntry"/>,
-    /// whose <c>MosaicTiles</c> leg is BY VALUE. The projection materialises a folder's (and a cover-less playlist's)
-    /// tile list fresh on every rebuild, so the record's compiler equality — a REFERENCE compare on that one member — read
-    /// every folder row and every mosaic row as changed on every re-plan that followed a rebuild: two slots, a disclosure
-    /// chevron and a selection pill re-rendered per publication with nothing about them moved (the <c>PaneSlot×2</c> /
-    /// <c>Chevron×1</c> / <c>SelectionPill×1</c> lines of the scroll census). Public so the rule is pinned by facts
-    /// (<c>SidebarWiringTests</c>); allocation-free.</summary>
+    /// <summary>The ORDERED EDIT SCRIPT between two plans (the key-matched publish's motion reads it). Which realized rows a
+    /// republish must RE-SKIN is the structure's (<see cref="NavRowKit.RowChanged"/>; Classic's <c>SidebarPlanDiff</c>): that is a
+    /// picture rule, this is a structure one and stays core. Public so the rule is pinned by facts (<c>SidebarWiringTests</c>).</summary>
     public static class PlanDiff
     {
-        /// <summary>Does row <paramref name="index"/> of the new plan render differently from the same slot of the old?</summary>
-        public static bool RowChanged(
-            IReadOnlyList<SidebarRow> oldRows, IReadOnlyList<SidebarLibraryEntry> oldEntries,
-            IReadOnlyList<SidebarRow> newRows, IReadOnlyList<SidebarLibraryEntry> newEntries,
-            int index)
-        {
-            if ((uint)index >= (uint)newRows.Count) return false;
-            if (index >= oldRows.Count) return true;              // the row is new at this slot
-            var row = newRows[index];
-            if (!row.Equals(oldRows[index])) return true;
-            int entry = row.EntryIndex;
-            if (entry < 0) return false;                          // a header / divider / skeleton carries no entry
-            bool inOld = entry < oldEntries.Count;
-            bool inNew = entry < newEntries.Count;
-            if (inOld != inNew) return true;
-            return inNew && !SidebarEntriesShadow.SameEntry(oldEntries[entry], newEntries[entry]);
-        }
-
         /// <summary>The ORDERED EDIT SCRIPT from <paramref name="oldRows"/> to <paramref name="newRows"/>, matched on
         /// (SectionId, Key): a two-pointer walk with set lookups. A row only in the old list is removed, a row only in the
         /// new list is inserted, and a key that CHANGES section is a remove plus an insert (it is a different row). The
@@ -2060,18 +2057,6 @@ public static partial class Sidebar
             }
             Flush();
             return result;
-        }
-
-        /// <summary>Did the plan move at all — a different row count, or any slot <see cref="RowChanged"/>? The rail's
-        /// version gate: a re-plan that reproduced the same rail rows over the same entries bumps nothing.</summary>
-        public static bool Changed(
-            IReadOnlyList<SidebarRow> oldRows, IReadOnlyList<SidebarLibraryEntry> oldEntries,
-            IReadOnlyList<SidebarRow> newRows, IReadOnlyList<SidebarLibraryEntry> newEntries)
-        {
-            if (oldRows.Count != newRows.Count) return true;
-            for (int i = 0; i < newRows.Count; i++)
-                if (RowChanged(oldRows, oldEntries, newRows, newEntries, i)) return true;
-            return false;
         }
     }
 }
