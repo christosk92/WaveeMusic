@@ -318,6 +318,18 @@ region from a control size). The baseline detail is the measurement kind (`Viewp
 Classic's file is `analyzer-baseline\WVTH013.txt` (no file today: no view has moved into `Themes\**` yet), emptied family by family by the
 Classic tier PRs and deleted by TC10. Where a ladder cannot move without a behaviour change, the move PR lists the file there.
 
+**Zoom and tiers (C1b).** Tiers are measured on the layout viewport, after app zoom, so Auto zoom is clamped against ONE core reference,
+`ZoomTierReference.HugeFrom` = 1920 (`Platform\ZoomService.cs`), the Huge edge of every shipped ladder. It is not any structure's ladder, so
+a theme switch never changes the zoom. For an unzoomed window width W: `W < 1920 ? Suggest : min(Suggest, plateauDown(W / 1920))`, with
+`Suggest` the unchanged `ZoomAutoPolicy` curve. Both arms are non-decreasing in W, so widening a window never lowers the zoom, and a window of
+1920 or more never lays out narrower than 1920 (1440p at 100 % and 4K at 150 % get 1.25 instead of 1.5; 4K at 100 % stays 2.0). `AutoZoom`,
+`InitialZoom` (the first frame) and `AutoSuggestion` (the Zoom row's "Auto (N%)") all go through it. A **settled** size (maximize, restore,
+Snap, a drag release, a DPI or monitor change) is classified by `ZoomService.AutoLoop.Arrive` and the frame steps in the same layout phase, so
+the zoom write is one more resized frame and the tier crosses once; only a stream of sizes (another within 500 ms of the previous) waits for the
+debounce, and nothing is rescaled inside the modal size-move loop. Manual zoom stops at `ZoomTierReference.CompactFloor` (300 layout DIP):
+`ZoomService.ManualStep` refuses a chord, wheel notch or palette step that would go under it, `PickManual` and `InitialZoom` land on the largest
+rung that fits. `ZoomTierTests` pin the rule.
+
 **Testing.** The pure rules (`WindowTiers.Resolve`, a policy's ladders) are driven with numbers (`TierPolicyTests`); the live resize
 (resized frame keeps the old tier, the next frame crosses with tracks, a drag crosses once) is `Wavee.ShellTests\TierResizeTests`;
 `ViewHarness` resolves the tiers of a view mounted alone from its window size, with hysteresis across `Resize`.
@@ -325,4 +337,4 @@ Classic tier PRs and deleted by TC10. Where a ladder cannot move without a behav
 **Classic today.** Classic's window ladder is the production sidebar band (Compact below 528, Small below 660, Standard above) and has
 no Huge band; TC1 redesigns it from the boards (528 / 1008 / 1920). Not moved out of core, because none is a ladder this primitive can
 state without changing behaviour: the chrome-row allocator, the stage aspect classes, the right-rail fit and the detail page-mode
-ladder. The zoom clamp (C1b) comes after.
+ladder.

@@ -319,8 +319,31 @@ public static partial class Shell
             // Session chrome, not a preference: reopening restores the rail exactly as it was.
             UseSignalEffect(static () => Session.CaptureShell(Ui.RailOpen.Value, (int)Ui.Mode.Value));
 
-            // ── large-display auto-zoom (ch 18 W24): resize-SETTLED base extent → the pure control loop ──
-            var baseDip = UseDebouncedValue(() =>
+            // ── large-display auto-zoom (ch 18 W24; plan 3.2, C1b): the window's base extent → the pure control loop ──
+            // A SETTLED size (a maximize, restore, Snap, a drag release, a DPI or monitor change) steps HERE, synchronously: this
+            // effect runs in the layout phase of the resized frame that carries the size, so the new zoom is written there
+            // (the zoom write gives one more resized frame) and the old zoom is never on screen for 500 ms. Inside the OS modal
+            // size-move loop nothing is rescaled (the drag's end is the settled size). The base is the viewport times the zoom,
+            // zoom-invariant, so our own write re-fires this effect with the same base: Unchanged. The zoom is Peeked (the host
+            // writes the viewport and the zoom in the same paint, before any effect runs); a zoom someone else moved is the
+            // trailing effect's business below.
+            var modal = UseContextSignal(Viewport.InModalLoop);
+            UseSignalEffect(() =>
+            {
+                var size = vp.Value;
+                bool inModal = modal.Value;
+                float z = zoom.Peek();
+                float baseW = size.Width * z, baseH = size.Height * z;
+                ZoomService.NoteWindow(baseW);
+                if (_autoZoom.Arrive(Environment.TickCount64, baseW, baseH, inModal) == ZoomService.SizeArrival.Settled)
+                    _autoZoom.Step(ZoomService.Mode, baseW, baseH, z, static run => run());
+            });
+            // A STREAM of sizes (a second one within DebounceMs of the previous, e.g. a scripted resize animation) waits here for
+            // the quiet; an isolated size was already settled above and finds nothing left to do. The debounce is only the
+            // quiet timer: the step uses the loop's LATEST base, never the debounced copy, which a settled step above may have
+            // outrun (a stale base would undo the zoom just written). The zoom is tracked, as it always was: a Ctrl+-, the wheel
+            // or the palette moving it in Auto re-runs this at once, and the loop pins Manual instead of undoing the pick.
+            var quiet = UseDebouncedValue(() =>
             {
                 var size = vp.Value;
                 float z = zoom.Value;
@@ -328,8 +351,10 @@ public static partial class Shell
             }, ZoomService.DebounceMs);
             UseSignalEffect(() =>
             {
-                var b = baseDip.Value;
-                _autoZoom.Step(ZoomService.Mode, b.Width, b.Height, zoom.Value, post);
+                _ = quiet.Value;
+                float z = zoom.Value;
+                if (_autoZoom.TryGetLatest(out float baseW, out float baseH))
+                    _autoZoom.Step(ZoomService.Mode, baseW, baseH, z, post);
             });
             // Zoom persistence: the settled value only, so a held chord or a wheel spin writes once.
             var zoomSettled = UseDebouncedValue(() => zoom.Value, ZoomService.DebounceMs);
