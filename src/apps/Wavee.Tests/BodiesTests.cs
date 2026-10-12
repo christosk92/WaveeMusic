@@ -128,11 +128,17 @@ public class BodiesTests
         const int Size = 1_000_000;
         byte[] data = Payload(Size);
         for (int i = 0; i < 3; i++) Bodies.ReadOwned(new Trickle(data, 16_384), null);   // warm the pool's buckets
-        var stream = new Trickle(data, 16_384);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        byte[] read = Bodies.ReadOwned(stream, null);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.Equal(Size, read.Length);
+        // The least of three reads: a gen-2 collection may trim the shared pool between the warm-up and a read, and that one
+        // read then rents fresh buffers. A doubling chain allocates on EVERY read, so the minimum still tells the two apart.
+        long allocated = long.MaxValue;
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            var stream = new Trickle(data, 16_384);
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            byte[] read = Bodies.ReadOwned(stream, null);
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+            Assert.Equal(Size, read.Length);
+        }
         // The old MemoryStream read of the same body allocated ~3.1 MB (the 4K…2M chain plus the ToArray copy).
         Assert.InRange(allocated, Size, Size + 64 * 1024);
     }
