@@ -1,8 +1,8 @@
 // ── Shell/Stage.UI.cs ──────────────────────────────────────────────────────────────────────────────────────────────
 // StageCtx (the stage's signals), SurfaceCore (fullscreen, focus scope, idle, accent, the track-key signal), Backdrop, Hero
-// (the morphing cover), PaneHost (Lyrics · Up next · Artist under KeepAlive), the lyric caption (previous · active with the
-// karaoke wipe and bloom · next, the break dots), ChromeHost → TopBar, TransportCard, GalleryHost, the hairline, the
-// TeachingTip, Open/Close
+// (the morphing cover), PaneHost (Lyrics · Up next · Artist under KeepAlive), the layer builders the structure's root places,
+// the TeachingTip, Open/Close. The frame's PICTURE (the layer stack, the chrome's placement, the top bar, the transport card, the
+// gallery, the options popover, the caption) is the structure's since T7a1: `Stage.Root` and its siblings (`ViewKeys.Stage*`).
 //
 // Role: UI
 // Owner: K
@@ -11,9 +11,10 @@
 // Spec: docs/plans/wavee/fullscreen-flagship-implementation.md §3, §4.10
 //
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-// THE FULLSCREEN STAGE. `Stage.View()` is what the shell mounts while `Shell.Ui.ImmersiveLyrics` is up (Shell.UI.cs:500).
-// Mount = enter: the window goes borderless-fullscreen (the Video.UI.cs:1213-1218 shape), the shell collapses its chrome and
-// body (FrameModel.ChromeMounted → bound Visible on the chrome row, the content region and the dock), a focus scope takes the keys. Unmount = exit.
+// THE FULLSCREEN STAGE. The frame mounts `Stage.Root` (`StageRootProps.Mount` → `Stage.Mount`) while `Shell.Ui.ImmersiveLyrics` is up
+// (ClassicFrame, inside the immersive layer's Flow.Show). Mount = enter: the window goes borderless-fullscreen (the Video.UI.cs:1213-1218
+// shape), the shell collapses its chrome and body (FrameModel.ChromeMounted → bound Visible on the chrome row, the content region and
+// the dock), a focus scope takes the keys. Unmount = exit.
 //
 //   • ONE context instance of SIGNALS (`StageCtx`) for the stage's life; every layer is a component on the signals it reads,
 //     so SurfaceCore's tree is static and a track / preference / layout change re-renders only what reads it.
@@ -32,6 +33,9 @@
 //     child and a layer component's root are a full-bleed `Layer` (Stretch + Grow), and the placed box sits one level down.
 //   • Preferences are read ONCE per epoch into the context's signals; no tick, bind thunk or child render touches Prefs.Stage.
 //   • Nothing here decides: modes, aspect classes, demand, visuals are `Stage` (CORE) and `Visualizer` (CORE).
+//   • THE SURFACE IS CORE, THE ROOT'S TREE IS THE STRUCTURE'S (T7a1). SurfaceCore keeps every hook, effect and machine; each render it
+//     hands the structure's `Draw` a `StageRootView` (size, the wiring it put on the root box, the layers' predicates, the chrome
+//     views' props, the builders of the layers T7a2/T7b/T7d still own) and mounts what comes back under the context provider.
 //
 // Mounted from other files: `Lyrics.StagePane(accent)` (the reading column), `Stage.QueuePaneBody` (Queue.UI.cs:65),
 // `Stage.NowPlayingMenu` (Actions.UI.cs:958), `Shell.SeekBar(onScrubbing:)`/`Shell.TimeText` (the bar's own seek — never a fork),
@@ -49,8 +53,9 @@ using FluentGpu.Scene;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
+using Wavee.Theming.Contracts;
+
 using Ink = Wavee.Theming.Roles.StageInk;
-using RepeatMode = Wavee.Spotify.Decode.RepeatMode;
 
 namespace Wavee;
 
@@ -58,8 +63,15 @@ public static partial class Stage
 {
     // ══ 0. MOUNT POINT + SEAMS ══════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The fullscreen stage. Mount it while <c>Shell.Ui.ImmersiveLyrics</c> is true (Shell.UI.cs:500).</summary>
-    public static Element View() => Embed.Comp(static () => new SurfaceCore());
+    /// <summary>The fullscreen stage's core surface, drawing its root with <paramref name="draw"/> (the structure's <c>Stage.Root</c>
+    /// template passes its own static method). Mount it while <c>Shell.Ui.ImmersiveLyrics</c> is true; the frame does, through the key.</summary>
+    public static Element Mount(Func<StageRootView, Element> draw) => Embed.Comp(new SurfaceArgs(draw), static () => new SurfaceCore());
+
+    /// <summary>The props of <see cref="ViewKeys.StageRoot"/>, shared by the frame's props: one cached object.</summary>
+    public static readonly StageRootProps RootProps = new() { Mount = Mount };
+
+    /// <summary>What the surface is mounted with: the structure's drawing of the root.</summary>
+    sealed record SurfaceArgs(Func<StageRootView, Element> Draw);
 
     public static EnterExit EnterTerminal => Design.Reduced
         ? new EnterExit(Opacity: 0f, Active: true) : new EnterExit(Sx: 1.03f, Sy: 1.03f, Opacity: 0f, Active: true);
@@ -176,12 +188,11 @@ public static partial class Stage
     /// only as tall as its content (the hero's titles slot collapsed to 0 and took the artist line with it). Stretch fills
     /// the anchor's width, Grow + Basis 0 its height; the PLACED box is this layer's direct child, where vertical = AlignSelf,
     /// horizontal = JustifySelf and the Margin is the offset (FlexLayout.ArrangeZStack). Decorative layers turn hit-testing off.</summary>
-    static readonly BoxEl Layer = new()
+    internal static readonly BoxEl Layer = new()
     {
         AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
         ZStack = true, HitTestPassThrough = true,
     };
-    static readonly FormatCache<int> s_percent = FormatCache.Create<int>();
 
     // ══ 1. THE SURFACE ══════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -195,6 +206,9 @@ public static partial class Stage
         // started in Render with the host timer clock (MediaPlayerElement.cs:729-730) — never with 0 (V-U10).
         readonly ChromeIdle _idle = ImmersiveService.Shared.IdleOf(ImmersiveKind.Stage);
         readonly IStageVerbs _verbs;
+        // The root box's wiring and the structure's view of the surface: built ONCE (the delegates close over this component's fields);
+        // each render only re-sizes the view. The structure places all of it and decides none of it.
+        readonly StageRootView _view;
         IImmersiveHost? _immersiveHost;
         Action? _openOptions;                 // the options popover's toggle, rebuilt each Render (it closes over the overlay)
         TimerHandle _wake;
@@ -219,6 +233,38 @@ public static partial class Stage
             _ctx.OverControls = over => { _idle.SetPointerOverControls(over, Now()); Sync(); };
             _ctx.MenuOpen = open => { _idle.MenuOpen(open, Now()); Sync(); };
             _ctx.Scrubbing = on => { _idle.SetScrubbing(on, Now()); Sync(); };
+            var ctx = _ctx;
+            _view = new StageRootView
+            {
+                Stage = ctx, Width = 0f, Height = 0f,
+                OnRealized = h => _root = h,
+                OnHoverMove = p => { _idle.PointerMoved(p.X, p.Y, Now()); Sync(); },
+                OnPointerExit = () => { _idle.PointerLeft(Now()); Sync(); },
+                OnPointerWheel = _ => { _idle.Activity(ChromeActivity.Pointer, Now()); Sync(); },   // wheel = activity (V-U22)
+                OnKeyDown = OnKey,
+                // Never leave focus NULL while the stage is up: an unhandled Escape clears it and disarms the key map (Video.UI.cs:1255-1259).
+                OnFocusChanged = got =>
+                {
+                    if (got || _root.IsNull) return;
+                    if ((_hooks?.GetFocus?.Invoke() ?? default).IsNull) _hooks?.FocusNode?.Invoke(_root, false);
+                },
+                // artist photo + scrims (the backdrop is hidden under an opaque header, see Backdrop)
+                ShowHeroLayer = () => ctx.Mode.Value == Mode.Visualizer && ctx.Look.Value.Eff == VizLayout.Artist,
+                ShowFace = () => ctx.Mode.Value == Mode.Visualizer && LayoutRules.ShowsFace(ctx.Look.Value.Eff),
+                ShowSmoke = () => ctx.Mode.Value == Mode.Visualizer && ctx.Look.Value.Eff == VizLayout.Card,
+                ShowArtistName = () => ctx.Mode.Value == Mode.Visualizer && ctx.Look.Value.Eff == VizLayout.Artist && !ctx.Look.Value.HeroLyrics,
+                ShowCaption = () => ctx.CaptionOn.Value,
+                ChromeVisible = () => ctx.Chrome.Value,
+                // NOT gated on the idle chrome: the face beside it is inset for it while it is open (GalleryShown)
+                ShowGallery = () => ctx.Mode.Value == Mode.Visualizer && ctx.GalleryShown.Value,
+                // artist-header lookups only while the Artist layout is the stored choice in Visualizer mode (Card never pays for them)
+                ShowHeroFacts = () => ctx.Mode.Value == Mode.Visualizer && ctx.LayoutPref.Value == VizLayout.Artist,
+                HairlineFraction = () => _frac.Value,
+                TopBar = new StageTopBarProps { Stage = ctx },
+                Transport = TransportProps(ctx),
+                Gallery = new StageGalleryProps { Stage = ctx, Verbs = StageSettingsVerbs.Shared },
+                Layers = s_layers,
+            };
         }
 
         /// <summary>The surface, as the stage's verbs reach it.</summary>
@@ -237,6 +283,7 @@ public static partial class Stage
 
         public override Element Render()
         {
+            var draw = UseProps<SurfaceArgs>().Draw;
             var hooks = UseContext(InputHooks.Current);
             _hooks = hooks;
             var overlay = UseContext(Overlay.Service);
@@ -383,93 +430,8 @@ public static partial class Stage
             });
 
             var L = ctx.Layout.Value;
-            var fade = new EnterExit(Opacity: 0f, Active: true);
-            return Ctx.Provide(StageContext, ctx, new BoxEl
-            {
-                Width = L.W, Height = L.H, ZStack = true, ClipToBounds = true, Focusable = true,   // explicit size (V-U49); the floor is the Backdrop's
-                OnRealized = h => _root = h,
-                OnHoverMove = p => { idle.PointerMoved(p.X, p.Y, Now()); Sync(); },
-                OnPointerExit = () => { idle.PointerLeft(Now()); Sync(); },
-                OnPointerWheel = _ => { idle.Activity(ChromeActivity.Pointer, Now()); Sync(); },   // wheel = activity (V-U22)
-                OnKeyDown = OnKey,
-                // Never leave focus NULL while the stage is up: an unhandled Escape clears it and disarms the key map (Video.UI.cs:1255-1259).
-                OnFocusChanged = got =>
-                {
-                    if (got || _root.IsNull) return;
-                    if ((hooks.GetFocus?.Invoke() ?? default).IsNull) hooks.FocusNode?.Invoke(_root, false);
-                },
-                Children =
-                [
-                    Embed.Comp(static () => new Backdrop()) with { Key = "stage:backdrop" },
-                    // the Artist layout's photo + scrims (the backdrop is hidden under an opaque header, see Backdrop)
-                    Flow.Show(() => ctx.Mode.Value == Mode.Visualizer && ctx.Look.Value.Eff == VizLayout.Artist, Layer with
-                    {
-                        Key = "stage:hero", HitTestVisible = false, HitTestPassThrough = false,
-                        Enter = fade, Exit = fade, Transition = MotionTok.StandardEnter,
-                        Children = [Embed.Comp(static () => new HeroLayer())],
-                    }),
-                    // the face: the Show's child carries its own Enter/Exit (the bare-ComponentEl rule, §1.8 — V-U31); FaceHost keys a CHILD per kind
-                    Flow.Show(() => ctx.Mode.Value == Mode.Visualizer && LayoutRules.ShowsFace(ctx.Look.Value.Eff), new BoxEl
-                    {
-                        Key = "stage:face", AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,
-                        Enter = new EnterExit(Sx: 0.97f, Sy: 0.97f, Opacity: 0f, Active: true), Exit = fade, Transition = MotionTok.StandardEnter,
-                        Children = [Embed.Comp(static () => new FaceHost())],
-                    }),
-                    // bottom smoke under the face: BOTTOM (AlignSelf) across the width (JustifySelf) — V-U9
-                    new BoxEl
-                    {
-                        Key = "stage:smoke", Height = Tone.SmokeH, AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,
-                        Gradient = GradientDown(new GradientStop(0f, Shade(0f)), new GradientStop(1f, Shade(Tone.SmokeA))),
-                        Visible = Prop.Of(() => ctx.Mode.Value == Mode.Visualizer && ctx.Look.Value.Eff == VizLayout.Card),
-                    },
-                    // the legibility scrim between a BACKDROP face (Large art, Centered) and the cover / lyrics: the stage veil, deeper over
-                    // the cover-carrying faces (LayoutRules.BackdropScrim); a static fill, so a face change cross-fades it
-                    Embed.Comp(static () => new FaceScrim()) with { Key = "stage:facescrim" },
-                    // the layouts' spectrum: a strip / ring in its own small RepaintBoundary (Card draws none — the face is the picture)
-                    Embed.Comp(static () => new SpectrumLayer()) with { Key = "stage:spectrum" },
-                    Embed.Comp(static () => new NowPlayingCard()) with { Key = "stage:npc" },
-                    Embed.Comp(static () => new Hero()) with { Key = "stage:identity" },
-                    Flow.Show(() => ctx.Mode.Value == Mode.Visualizer && ctx.Look.Value.Eff == VizLayout.Artist && !ctx.Look.Value.HeroLyrics, Layer with
-                    {
-                        Key = "stage:artistname", HitTestVisible = false, HitTestPassThrough = false,
-                        Enter = fade, Exit = fade, Transition = MotionTok.StandardEnter,
-                        Children = [Embed.Comp(static () => new ArtistNameLayer())],
-                    }),
-                    Embed.Comp(static () => new PaneHost()) with { Key = "stage:pane" },
-                    // the lyric caption: a full-bleed LAYER (the Show's child carries the fade); CaptionHost places its block from the
-                    // allocator's caption geometry (Layout.CaptionX/W/Bottom) — centred in the face's region, above the transport
-                    Flow.Show(() => ctx.CaptionOn.Value, Layer with
-                    {
-                        // The caption animates every frame (its clock is per-frame) over the still scrim and art: a
-                        // RepaintBoundary keeps that motion in its own slice (tiles over the text only) instead of re-
-                        // rastering the full-window root tiles under it on every frame.
-                        Key = "stage:caption", HitTestVisible = false, HitTestPassThrough = false, RepaintBoundary = true,
-                        Enter = new EnterExit(Dy: 12f, Opacity: 0f, Active: true), Exit = fade, Transition = MotionTok.ControlNormal,
-                        Children = [Embed.Comp(static () => new CaptionHost())],
-                    }),
-                    Embed.Comp(static () => new ChromeHost()) with { Key = "stage:chrome" },
-                    // the hairline while the chrome is hidden: BOTTOM edge (AlignSelf), full width (JustifySelf) as a direct child of
-                    // the Show's layer — directly under the Show anchor its AlignSelf End read horizontally and left it 0 wide (V-U49)
-                    Flow.Show(() => !ctx.Chrome.Value, Layer with
-                    {
-                        Key = "stage:hairline", HitTestVisible = false, HitTestPassThrough = false,
-                        Enter = fade, Exit = fade, Transition = MotionTok.ControlNormal,
-                        Children =
-                        [
-                            new BoxEl
-                            {
-                                Height = Layout.HairlineH, AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Stretch, Direction = 0, HitTestVisible = false,
-                                Children = [new BoxEl { Grow = 1f, Height = Layout.HairlineH, Fill = Prop.Bind(ctx.Slab.Accent), TransformOriginX = 0f, TransformOriginY = 0.5f,
-                                                        Transform = Prop.Of(() => Affine2D.Scale(_frac.Value, 1f)) }],
-                            },
-                        ],
-                    }),
-                    Embed.Comp(static () => new LyricFacts()) with { Key = "stage:facts" },
-                    // artist-header lookups only while the Artist layout is the stored choice in Visualizer mode (Card never pays for them)
-                    Flow.Show(() => ctx.Mode.Value == Mode.Visualizer && ctx.LayoutPref.Value == VizLayout.Artist, Embed.Comp(static () => new HeroFacts()) with { Key = "stage:herofacts" }),
-                    Embed.Comp(static () => new Visualizer.Clock()) with { Key = "stage:clock" },
-                ],
-            });
+            // THE PICTURE IS THE STRUCTURE'S: the root box (size, wiring), the layer stack and the chrome's placement are `draw`'s.
+            return Ctx.Provide(StageContext, ctx, draw(_view with { Width = L.W, Height = L.H }));   // explicit size (V-U49); the floor is the Backdrop's
         }
 
         /// <summary>The accent derivation (one definition, two triggers). Reads the track KEY (not the table), the cover's late
@@ -875,670 +837,6 @@ public static partial class Stage
         }
     }
 
-    // ══ 4. THE LYRIC CAPTION (over the face · Compact Lyrics mode's lyric line) ═════════════════════════════════════
-
-    /// <summary>The lyric over the visualizer, presented as three lines: the PREVIOUS line above (small, ≈35 %), the ACTIVE line
-    /// at the hero-title scale (40–56 DIP by height) and the NEXT line below (small, ≈45 %), centred in the face's region at the
-    /// allocator's caption geometry (<c>Layout.CaptionX/W/Bottom</c> — the lower third, above the transport and hairline) over a
-    /// soft elliptical veil, never a plate.
-    /// <list type="bullet">
-    /// <item>The active line carries the lyrics view's karaoke WIPE (<c>Wipe.ComputeSplit</c> + <c>LeadFrac</c>, its DIP feather
-    /// over the measured run, its lift — LineRow's recipe) and a blurred accent BLOOM layer that follows the same split; a
-    /// line-synced line has no wipe and fades in whole. No other line is blurred.</item>
-    /// <item>A real instrumental break (and a long intro) shows the lyrics view's three breathing dots in the active slot
-    /// (<c>Interlude.Progress/Pulse/DotAlpha/BreathScale</c>), until the next line resolves (<c>Stage.Caption.View</c>).</item>
-    /// <item>Every slot is KEYED by its role + line index (+ the document's generation), so a hand-off plays the Exit (up and
-    /// out) on the outgoing line and the Enter (up from 16 DIP below) on the incoming one — StandardEnter, 300 ms; reduced
-    /// motion keeps only the cross-fade.</item>
-    /// <item>While playing, the RENDER THREAD poses the active line's wipe (<c>AnimChannel.GlyphWipeSplit</c> keyframes,
-    /// <c>Lyrics.Wipe.SplitKeyframes</c> — the exact split function, seeded once per line and again when a position report
-    /// moves the clock), the lyrics view's channel; the UI wakes once per view EDGE (<c>Caption.NextEdgeMs</c>) and per
-    /// report, not per frame. A break's dots still tick per frame (scene columns only). Paused, NOTHING ticks: the media
-    /// clock stands still, so the view and the split change only on a position report (a seek) or a play/pause edge, and
-    /// the report effect ticks exactly then. A render happens only when the packed view (line + break edge) changes.</item>
-    /// </list></summary>
-    sealed class CaptionHost : Component
-    {
-        const int Unresolved = int.MinValue;
-        /// <summary>The packed view (<c>Stage.Caption.Pack</c>) — the ONE signal the render subscribes to; the tick writes it on change.</summary>
-        readonly Signal<int> _view = new(Unresolved);
-        readonly FloatSignal[] _dotAlpha = new FloatSignal[Lyrics.Interlude.DotCount];
-        readonly Action _tick;
-        readonly Action<NodeHandle> _onMain, _onGlow, _onDots;
-        readonly CaptionClock _clock = new();   // the playhead the caption extrapolates + its edge wake (core)
-        Lyrics.Doc? _doc;
-        int _docGen;                          // bumps per document, so a new track's line 5 is a NEW keyed slot (its wipe nodes re-report)
-        // the active line's two wipe nodes (main + bloom), the line they were built for, its measured run and the wrap width
-        NodeHandle _mainNode, _glowNode, _dotsNode;
-        int _wipeLine = -1;
-        float _runLen = float.NaN, _wrapW = float.NaN;
-        // The render-thread wipe rows (CaptionWipeRows).
-        readonly CaptionWipeRows _rows = new();
-        // The one-shot wake at the next view edge (Caption.EdgeWake, published to CaptionWake), the timer's callback, and
-        // whether the report effect has had its mount run.
-        readonly Signal<Lyrics.MotionWake> _edgeWake = new(new Lyrics.MotionWake(0, -1f));
-        int _edgeSeq;
-        readonly Action _onEdge;
-        bool _reportSubscribed;
-
-        public CaptionHost()
-        {
-            for (int k = 0; k < _dotAlpha.Length; k++) _dotAlpha[k] = new FloatSignal(0f);
-            _tick = () => Reactive.Untrack(Tick);
-            _onEdge = () => { _clock.FireEdge(); _tick(); };
-            _onMain = h => _mainNode = h;
-            _onGlow = h => _glowNode = h;
-            _onDots = h => _dotsNode = h;
-        }
-
-        static EnterExit SlotEnter => new(Dy: Design.Reduced ? 0f : Tone.CaptionRiseDip, Opacity: 0f, Active: true);
-        static EnterExit SlotExit => new(Dy: Design.Reduced ? 0f : -Tone.CaptionRiseDip, Opacity: 0f, Active: true);
-
-        public override Element Render()
-        {
-            var ctx = UseContext(StageContext)!;
-            var L = ctx.Layout.Value;
-            var k = ctx.Look.Value;
-            bool galleryShown = ctx.GalleryShown.Value;
-            var set = ctx.Accent.Value;
-            _ = Lyrics.Store.Changed.Value;
-            var track = ctx.RowValue();
-            var doc = track.IsValid ? Lyrics.Store.Doc(track) : null;
-            if (doc is not null && (!Lyrics.IsTimed(doc) || doc.Lines.Count == 0)) doc = null;
-            if (!ReferenceEquals(doc, _doc)) { _doc = doc; _docGen++; _wipeLine = -1; _runLen = float.NaN; }
-            bool playing = Playback.IsPlaying.Value;
-            UseSignalEffect(() =>
-            {
-                int pos = Playback.PositionMs.Value;
-                bool advancing = Playback.IsPlaying.Value && !Playback.Buffering.Value;
-                // re-anchor on every report AND on a play/pause edge (Deck.PositionInterpolator.Anchor): a resume must not
-                // extrapolate across the paused gap for a tick
-                _clock.Report(pos, advancing, Design.FrameTime.NowMs);
-                // a report (or a play/pause edge) re-times the render-thread wipe and the edge wake; never on the mount run,
-                // which runs inside this render
-                if (!_reportSubscribed) { _reportSubscribed = true; return; }
-                _tick();
-            });
-            // Paused, no timer at all: the clock is frozen, so the report effect above (a seek, a play/pause edge) and the
-            // post-commit effect below are the only instants the view or the split can change. (A 4 Hz interval used to tick
-            // here and re-present the stage ~3x a second for a picture that never moved.) Playing, the render thread poses
-            // the wipe and the UI wakes at the next view edge (CaptionWake); only a break's breathing dots - or a host whose
-            // render thread does not own the compositor - tick per frame (the ticker child below is mounted only then).
-            bool renderOwned = Context.Anim is { RenderOwnsCompositor: true };
-
-            // The render resolves the view itself (so a new document never shows the old one's indices for a tick) and
-            // SUBSCRIBES to the tick's signal for the next change.
-            int view = _view.Value;
-            if (_doc is { } d0 && _clock.Anchored) view = ComputeView(d0, Now(), out _, out _);
-            IReadOnlyList<Lyrics.Line> lines = _doc?.Lines ?? Array.Empty<Lyrics.Line>();
-            int count = view == Unresolved ? 0 : lines.Count;
-            int anchor = Caption.AnchorOf(view);
-            bool dots = count > 0 && Caption.DotsOf(view);
-            bool perFrame = _doc is not null && playing && (dots || !renderOwned);
-            Element[] ticker = perFrame ? [Embed.Comp(() => new CaptionFrames(_tick))]
-                : _doc is not null && playing ? [Embed.Comp(() => new CaptionWake(this))] : [];
-            var (prevI, centreI, nextI) = count > 0 ? Caption.Slots(anchor, dots, L.CaptionContextFor(in k), count) : (-1, -1, -1);
-
-            float capW = L.CaptionWFor(in k, galleryShown), capX = L.CaptionXFor(in k, galleryShown), capBottom = L.CaptionBottomFor(in k);
-            var (aSize, aLine) = L.CaptionFont;
-            var (cSize, cLine) = L.CaptionContextFont;
-            // the wipe nodes belong to ONE line: a new centre re-keys the slot, whose fresh text nodes report through OnRealized
-            if (centreI != _wipeLine) { _wipeLine = centreI; _mainNode = default; _glowNode = default; _runLen = float.NaN; }
-            if (capW != _wrapW) { _wrapW = capW; _runLen = float.NaN; }
-            if (!dots) _dotsNode = default;
-            // after the commit that realized this view's nodes: seed (or hand back) the wipe and re-arm the edge wake
-            UseEffect(_tick, DepKey.From(HashCode.Combine(view, centreI, _docGen, playing, capW)));
-
-            string gen = _docGen.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            var kids = new List<Element>(3);
-            if (prevI >= 0 && lines[prevI].Text.Length > 0)
-                kids.Add(ContextLine(lines[prevI].Text, "cap:p:" + gen + ":" + prevI, cSize, cLine, Tone.CaptionPrevA, capW));
-            if (dots) kids.Add(DotsSlot("cap:d:" + gen + ":" + anchor, aLine));
-            else if (centreI >= 0 && lines[centreI].Text.Length > 0)
-                kids.Add(ActiveSlot(lines[centreI], "cap:a:" + gen + ":" + centreI, aSize, aLine, cSize, cLine, set.Text, capW, _clock.Anchored ? Now() : 0L));
-            if (nextI >= 0 && lines[nextI].Text.Length > 0)
-                kids.Add(ContextLine(lines[nextI].Text, "cap:n:" + gen + ":" + nextI, cSize, cLine, Tone.CaptionNextA, capW));
-
-            return Layer with
-            {
-                HitTestVisible = false, HitTestPassThrough = false,
-                Children =
-                [
-                    // the veil: a wide ELLIPSE behind the block at its tallest, feathered to nothing (radial) — legibility over a
-                    // bright face without a plate; BOTTOM-anchored around the block (vertical = AlignSelf, horizontal = JustifySelf)
-                    new BoxEl
-                    {
-                        Width = capW + 2f * Layout.CaptionVeilPadX, Height = L.CaptionBlockMaxHFor(in k) + 2f * Layout.CaptionVeilPadY,
-                        AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Start, HitTestVisible = false,
-                        Margin = new Edges4(capX - Layout.CaptionVeilPadX, 0f, 0f, MathF.Max(0f, capBottom - Layout.CaptionVeilPadY)),
-                        Gradient = RadialGradient(new GradientStop(0f, Shade(Tone.CaptionVeilA)), new GradientStop(0.55f, Shade(Tone.CaptionVeilA * 0.55f)), new GradientStop(1f, Shade(0f))),
-                    },
-                    // the block: previous · active (or the dots) · next, centred in its region, bottom-anchored above the transport
-                    new BoxEl
-                    {
-                        Width = capW, AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Start, Margin = new Edges4(capX, 0f, 0f, capBottom),
-                        Direction = 1, AlignItems = FlexAlign.Center, Gap = Layout.CaptionLineGap, HitTestVisible = false,
-                        Children = kids.ToArray(),
-                    },
-                    .. ticker,
-                ],
-            };
-        }
-
-        /// <summary>The caption's per-frame tick (<see cref="Controls.FrameTicker"/>), named for the <c>[wake]</c> census.</summary>
-        sealed class CaptionFrames(Action tick) : Controls.FrameTicker(tick);
-
-        /// <summary>A context line (previous / next): small, one line, the stage ink at a low alpha — never blurred.</summary>
-        static Element ContextLine(string text, string key, float size, float line, float alpha, float maxW) => new BoxEl
-        {
-            Key = key, Direction = 1, AlignItems = FlexAlign.Center, MaxWidth = maxW, HitTestVisible = false,
-            Enter = SlotEnter, Exit = SlotExit, Transition = MotionTok.StandardEnter,
-            Children = [new TextEl(text) { Size = size, LineHeight = line, Weight = 600, FontFamily = DisplayFace, Color = Ink.Ink with { A = alpha }, Wrap = TextWrap.Wrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
-        };
-
-        /// <summary>The active line: a ZStack of [the accent bloom (blurred, low alpha), the sung/unsung text], both carrying the
-        /// SAME wipe for a word-synced line (the halo follows the voice, LineRow's recipe); a line-synced line is plain ink and
-        /// fades in whole with its slot. The translation / romanization, when chosen, sits under it at the context size.</summary>
-        Element ActiveSlot(Lyrics.Line line, string key, float size, float lineH, float subSize, float subLine, ColorF bloom, float maxW, long now)
-        {
-            ColorF sung = Ink.Ink, unsung = Ink.Ink with { A = Tone.CaptionUnsungA };
-            TextEl main = LineText(line.Text, size, lineH, sung), glow = LineText(line.Text, size, lineH, bloom);
-            if (line.IsWordByWord && line.Syllables.Count > 0)
-            {
-                float split = SplitAt(line, now);
-                float soft = Lyrics.Wipe.SoftnessOfLine(float.IsNaN(_runLen) ? MathF.Max(1f, maxW) : _runLen, large: true);
-                float lift = Lyrics.Wipe.LiftFor(large: true, Design.Reduced);
-                float run = float.IsNaN(_runLen) ? 0f : _runLen;   // the run the render thread steps the split along
-                main = main with { Wipe = new GlyphWipe(sung, unsung, split, soft, lift) { Run = run }, OnRealized = _onMain };
-                glow = glow with { Wipe = new GlyphWipe(bloom, bloom with { A = 0f }, split, soft, lift) { Run = run }, OnRealized = _onGlow };
-            }
-            var stack = new BoxEl
-            {
-                ZStack = true, HitTestVisible = false,
-                Children =
-                [
-                    new BoxEl { Direction = 1, Blur = Tone.CaptionBloomSigma, Opacity = Tone.CaptionBloomA, HitTestVisible = false, Children = [glow] },
-                    main,
-                ],
-            };
-            string? secondary = Prefs.Lyrics.SecondaryLine() switch { Prefs.Lyrics.Translation => line.Translation, Prefs.Lyrics.Romanization => line.Romanization, _ => null };
-            return new BoxEl
-            {
-                Key = key, Direction = 1, AlignItems = FlexAlign.Center, Gap = 4f, MaxWidth = maxW, HitTestVisible = false,
-                Enter = SlotEnter, Exit = SlotExit, Transition = MotionTok.StandardEnter,
-                Children = secondary is { Length: > 0 }
-                    ? [stack, new TextEl(secondary) { Size = subSize, LineHeight = subLine, Color = Ink.InkSecondary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }]
-                    : [stack],
-            };
-        }
-
-        static TextEl LineText(string text, float size, float line, ColorF color) => new(text)
-        {
-            Size = size, LineHeight = line, Weight = 600, FontFamily = DisplayFace, Color = color,
-            Wrap = TextWrap.Wrap, MaxLines = Layout.CaptionActiveMaxLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-        };
-
-        /// <summary>The break's three breathing dots in the active slot (the lyrics view's dots: size, gap, ink); one active
-        /// line tall so the block keeps its rhythm. The inner row is the breath owner (no transform of its own).</summary>
-        Element DotsSlot(string key, float height)
-        {
-            float d = Lyrics.Interlude.DotSize(large: true);
-            return new BoxEl
-            {
-                Key = key, Height = height, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HitTestVisible = false,
-                Enter = SlotEnter, Exit = SlotExit, Transition = MotionTok.StandardEnter,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Direction = 0, Shrink = 0f, Gap = Lyrics.Interlude.DotGap(large: true), AlignItems = FlexAlign.Center, OnRealized = _onDots,
-                        Children = [Dot(0, d), Dot(1, d), Dot(2, d)],
-                    },
-                ],
-            };
-
-            Element Dot(int k, float size) => new BoxEl
-            {
-                Width = size, Height = size, Shrink = 0f, Corners = CornerRadius4.All(size * 0.5f), Fill = Ink.Ink, Opacity = (Prop<float>)_dotAlpha[k],
-            };
-        }
-
-        long Now() => _clock.Now(Design.FrameTime.NowMs, Playback.DurationMs.Peek());
-
-        /// <summary>The packed view at <paramref name="now"/> (<see cref="Caption.ViewAt"/>).</summary>
-        static int ComputeView(Lyrics.Doc d, long now, out long gapStart, out long gapEnd) => Caption.ViewAt(d, now, out gapStart, out gapEnd);
-
-        static float SplitAt(Lyrics.Line line, long now) => CaptionWipeRows.SplitAt(line, now);
-
-        void Tick()
-        {
-            if (_doc is not { } d || !_clock.Anchored) { _rows.Hold(Context.Anim, Context.Scene); ArmEdge(long.MaxValue, 0L); return; }
-            long now = Now();
-            int view = ComputeView(d, now, out long gapStart, out long gapEnd);
-            if (view != _view.Peek()) _view.Value = view;
-            // playing: the next instant the view can change is the one wake owed (the dots tick per frame and need none)
-            ArmEdge(_clock.Advancing && !Caption.DotsOf(view) ? Caption.NextEdgeMs(d, now) : long.MaxValue, now);
-            if (Context.Scene is not { } scene) return;
-            if (Caption.DotsOf(view)) { _rows.Hold(Context.Anim, scene); DriveDots(scene, now, gapStart, gapEnd); return; }
-            int anchor = Caption.AnchorOf(view);
-            // the nodes belong to the line the last render built; a line-synced line has no wipe (it faded in whole)
-            if (anchor < 0 || anchor != _wipeLine || (uint)anchor >= (uint)d.Lines.Count) { _rows.Hold(Context.Anim, scene); return; }
-            var line = d.Lines[anchor];
-            if (!line.IsWordByWord || line.Syllables.Count == 0) { _rows.Hold(Context.Anim, scene); return; }
-            var main = _mainNode;
-            if (!main.IsNull && scene.IsLive(main) && float.IsNaN(_runLen)) _runLen = MeasureRun(scene, main, line.Text);
-            if (_clock.Advancing && Context.Anim is { RenderOwnsCompositor: true } anim
-                && _rows.Seed(anim, scene, line, anchor, main, _glowNode, now, Design.FrameTime.NowMs, _runLen)) return;
-            _rows.Cancel(Context.Anim);   // the UI owns the split (paused, buffering, a host whose render thread does not own the compositor)
-            CaptionWipeRows.DriveUi(scene, main, _glowNode, line, now, _runLen);
-        }
-
-        /// <summary>Arm (or clear) the one-shot wake at media instant <paramref name="atMs"/> (<see cref="long.MaxValue"/> =
-        /// none) through <see cref="Caption.EdgeWake"/>, in the frame clock's one domain.</summary>
-        void ArmEdge(long atMs, long now)
-        {
-            if (_clock.ArmEdge(atMs, now, Design.FrameTime.NowMs, out float delay))
-                _edgeWake.Value = new Lyrics.MotionWake(++_edgeSeq, delay);
-        }
-
-        /// <summary>The caption's one-shot wake at the next view edge while the render thread poses the wipe: a re-arm restarts
-        /// it, a cleared one cancels it. Named for the <c>[wake]</c> census.</summary>
-        sealed class CaptionWake(CaptionHost owner) : Component
-        {
-            public override Element Render()
-            {
-                var wake = owner._edgeWake.Value;
-                var timer = UseTimeout(owner._onEdge, MathF.Max(wake.DelayMs, 1f), DepKey.From(wake.Seq));
-                if (wake.DelayMs < 0f) timer.Cancel();
-                return new BoxEl { HitTestVisible = false, Width = 0f, Height = 0f };
-            }
-        }
-
-        /// <summary>The active line's reading-order run length at the wrap width it was laid out at (one seam query per line,
-        /// stack-allocated — the lyrics view's MeasureRunLength over the node's OWN text style).</summary>
-        float MeasureRun(SceneStore scene, NodeHandle node, string text)
-        {
-            float wrap = _wrapW > 1f ? _wrapW : scene.Bounds(node).W;
-            if (text.Length == 0 || !(wrap > 1f) || FluentGpu.Text.TextSeam.Default is not { } fonts) return MathF.Max(1f, wrap);
-            var style = scene.Layout(node).TextStyle;
-            Span<RectF> fragments = stackalloc RectF[8];
-            int n = fonts.GetRangeRects(text, in style, wrap, 0, text.Length, fragments);
-            float sum = 0f;
-            for (int i = 0; i < n; i++) sum += fragments[i].W;
-            return sum > 1f ? sum : MathF.Max(1f, wrap);
-        }
-
-        /// <summary>The dots' fill + breath on the media clock (the lyrics view's DriveInterludeDots): three alpha signals bound
-        /// to the dots, one transform on their row — both write-gated.</summary>
-        void DriveDots(SceneStore scene, long now, long gapStart, long gapEnd)
-        {
-            float progress = Lyrics.Interlude.Progress(now, gapStart, gapEnd);
-            float pulse = Lyrics.Interlude.Pulse(now, gapStart, Design.Reduced);
-            var alpha = _dotAlpha;
-            for (int k = 0; k < alpha.Length; k++)
-            {
-                float a = Lyrics.Interlude.DotAlpha(k, progress, pulse);
-                if (MathF.Abs(alpha[k].Peek() - a) >= Lyrics.Wipe.DotAlphaEps) alpha[k].Value = a;
-            }
-            var h = _dotsNode;
-            if (h.IsNull || !scene.IsLive(h)) return;
-            ref NodePaint paint = ref scene.Paint(h);
-            float scale = Lyrics.Interlude.BreathScale(pulse);
-            if (MathF.Abs(paint.LocalTransform.M11 - scale) < Lyrics.Interlude.ScaleEps) return;
-            paint.LocalTransform = scale >= 1f ? Affine2D.Identity : new Affine2D(scale, 0f, 0f, scale, 0f, 0f);
-            scene.Mark(h, NodeFlags.TransformDirty | NodeFlags.PaintDirty);
-        }
-    }
-
-    // ══ 5. THE CHROME (top bar · transport card · gallery) ══════════════════════════════════════════════════════════
-
-    /// <summary>Always mounted; each chrome piece sits under its OWN Flow.Show whose child is a BoxEl carrying the Enter/Exit
-    /// (a bare ComponentEl root never plays its exit, Reconciler.cs:4106-4137 — V-U31) and the ZStack placement
-    /// (vertical = AlignSelf, horizontal = JustifySelf — V-U9). The wrapper is PASS-THROUGH so empty chrome area yields to the
-    /// stage root's pointer handlers while the bars stay clickable (V-U8).</summary>
-    sealed class ChromeHost : Component
-    {
-        public override Element Render()
-        {
-            var ctx = UseContext(StageContext)!;
-            var L = ctx.Layout.Value;
-            bool sheet = L.Aspect == Aspect.Portrait;
-            // Every piece: Flow.Show → a full-bleed LAYER carrying the Enter/Exit → the PLACED box as the layer's direct ZStack
-            // child. Placed directly under the Show anchor (a flex column, see Layer), the bar's AlignSelf Start / the card's End
-            // read as HORIZONTAL alignment: the bar shrank to its content (brand over "Lyrics", exit cut to "Ex…") and the card
-            // sat at the top-right overflowing the window; and this host, content-height, put "bottom" near the top.
-            return Layer with
-            {
-                Children =
-                [
-                    // TOP bar: top edge (AlignSelf Start), full width (JustifySelf Stretch)
-                    Flow.Show(() => ctx.Chrome.Value, Layer with
-                    {
-                        Key = "chrome:top",
-                        Enter = new EnterExit(Dy: -8f, Opacity: 0f, Active: true), Exit = new EnterExit(Dy: -8f, Opacity: 0f, Active: true), Transition = MotionTok.ControlNormal,
-                        Children =
-                        [
-                            new BoxEl
-                            {
-                                Height = Layout.TopBarH, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Stretch, Direction = 0,
-                                Children = [Embed.Comp(static () => new TopBar())],
-                            },
-                        ],
-                    }),
-                    // TRANSPORT card: bottom edge (AlignSelf End — auto height ⇒ the card's own 112/96), full width at Pad, or right of
-                    // the art on Compact (Layout.TransportLeft — V-U23); the Margin is the ZStack offset, so the gutters hold.
-                    Flow.Show(() => ctx.Chrome.Value, Layer with
-                    {
-                        Key = "chrome:transport",
-                        Enter = new EnterExit(Dy: 8f, Opacity: 0f, Active: true), Exit = new EnterExit(Dy: 8f, Opacity: 0f, Active: true), Transition = MotionTok.ControlNormal,
-                        Children =
-                        [
-                            new BoxEl
-                            {
-                                AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Stretch, Direction = 0,
-                                Margin = new Edges4(L.TransportLeft, 0f, Layout.Pad, Layout.Pad),
-                                Children = [Embed.Comp(static () => new TransportCard())],
-                            },
-                        ],
-                    }),
-                    // GALLERY pane: a right-docked column (top-aligned, JustifySelf End) or Portrait's bottom sheet (AlignSelf End, full width)
-                    // NOT gated on the idle chrome: the face beside it is inset for it while it is open (GalleryShown)
-                    Flow.Show(() => ctx.Mode.Value == Mode.Visualizer && ctx.GalleryShown.Value, Layer with
-                    {
-                        Key = "chrome:gallery",
-                        Enter = new EnterExit(Dx: sheet ? 0f : 32f, Dy: sheet ? 32f : 0f, Opacity: 0f, Active: true), Exit = new EnterExit(Dx: sheet ? 0f : 32f, Dy: sheet ? 32f : 0f, Opacity: 0f, Active: true), Transition = MotionTok.StandardEnter,
-                        Children =
-                        [
-                            new BoxEl
-                            {
-                                Direction = 0,
-                                AlignSelf = sheet ? FlexAlign.End : FlexAlign.Start, JustifySelf = sheet ? FlexAlign.Stretch : FlexAlign.End,
-                                Margin = sheet ? new Edges4(0f, 0f, 0f, L.TransportH + 2f * Layout.Pad) : new Edges4(0f, Layout.GalleryTop, Layout.GalleryRight, Layout.GalleryBottom),
-                                Children = [Embed.Comp(static () => new GalleryHost())],
-                            },
-                        ],
-                    }),
-                ],
-            };
-        }
-    }
-
-    /// <summary>48 DIP: brand · the SelectorBar (pill tinted through TemplateParts) · gallery toggle · exit. Fills its wrapper (Grow).</summary>
-    sealed class TopBar : Component
-    {
-        readonly Signal<int> _index = new(0);
-        public override Element Render()
-        {
-            var ctx = UseContext(StageContext)!;
-            var L = ctx.Layout.Value;
-            var set = ctx.Accent.Value;
-            UseSignalEffect(() => _index.SetIfChanged((int)ctx.Mode.Value));
-            var parts = UseMemo(() => { var p = new TemplateParts(); p.Set<BoxEl>(SelectorBar.PartPill, b => b with { Fill = set.Fill }); return p; }, DepKey.From(set.GetHashCode()));
-            string[] items = L.IconOnlySelector ? ["", "", "", ""] : [Loc.Get(Strings.Stage.Mode.Lyrics), Loc.Get(Strings.Stage.Mode.Visualizer), Loc.Get(Strings.Stage.Mode.Queue), Loc.Get(Strings.Stage.Mode.Artist)];
-            string?[] icons = [Icons.Document, Icons.Equalizer, Icons.Queue, Icons.Contact];
-            var style = new SelectorBarStyle { RestColor = Ink.InkSecondary, SelectedColor = Ink.Ink, HoverColor = Ink.Ink, HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed, SelectedWeight = 600, ItemHeight = 36f, ItemGap = 4f };
-            bool optionsOn = ctx.OptionsOpen.Value;
-            return new BoxEl
-            {
-                Grow = 1f, Height = Layout.TopBarH, Direction = 0, AlignItems = FlexAlign.Center,
-                Padding = new Edges4(Spacing.L, 0f, Spacing.S, 0f), Gap = Spacing.S,
-                Gradient = GradientDown(new GradientStop(0f, Shade(0.42f)), new GradientStop(1f, Shade(0f))),
-                OnHoverMove = _ => ctx.OverControls(true), OnPointerExit = () => ctx.OverControls(false),
-                Children =
-                [
-                    new BoxEl
-                    {
-                        // the brand never paints over the selector: clipped, and the subtitle is the part that gives way
-                        Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, ClipToBounds = true,
-                        Children =
-                        [
-                            new BoxEl { Width = 18f, Height = 18f, Corners = CornerRadius4.All(4.5f), Fill = Prop.Bind(ctx.Slab.Accent), Shrink = 0f },
-                            new TextEl("Wavee") { Size = 12f, LineHeight = 16f, Weight = 600, Color = Ink.Ink, Shrink = 0f },
-                            new TextEl(Loc.Get(Strings.Stage.Brand)) { Size = 12f, LineHeight = 16f, Color = Ink.InkSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
-                        ],
-                    },
-                    SelectorBar.Create(items, _index, onChange: i => ctx.SetMode((Mode)Math.Clamp(i, 0, ModeRules.Count - 1)), parts: parts, icons: icons, style: style),
-                    new BoxEl
-                    {
-                        Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = Layout.BarButtonGap,
-                        Children =
-                        [
-                            ToolTip.Wrap(BarGlyph(Icons.Equalizer, ctx.OpenOptions, lit: optionsOn, onRealized: h => ctx.GalleryButton.SetIfChanged(h)), Loc.Get(Strings.Stage.Options.Button)),   // the TeachingTip's anchor SIGNAL (V-U16)
-                            // Labelled only where the allocator says the column holds it (never "Ex…"); else the glyph with the label as its tooltip.
-                            L.ExitLabelShown
-                                ? Button.Create(Loc.Get(Strings.Stage.Exit), ctx.Exit, ButtonAppearance.Standard, ControlSize.Small, glyph: Icons.BackToWindow) with { Shrink = 0f }
-                                : ToolTip.Wrap(BarGlyph(Icons.BackToWindow, ctx.Exit, lit: false, onRealized: null), Loc.Get(Strings.Stage.Exit)),
-                        ],
-                    },
-                ],
-            };
-        }
-
-        /// <summary>A 40×36 glass glyph button of the top bar (the gallery toggle, the icon-only exit).</summary>
-        static BoxEl BarGlyph(string glyph, Action onClick, bool lit, Action<NodeHandle>? onRealized) => new()
-        {
-            Width = Layout.BarButtonW, Height = 36f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
-            Fill = lit ? Ink.GlassHover : Ink.GlassRest, HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed, BrushTransitionMs = Design.Motion.Faster,
-            Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
-            OnClick = onClick, OnRealized = onRealized,
-            Children = [new TextEl(glyph) { Size = 16f, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.Ink }],
-        };
-    }
-
-    /// <summary>The acrylic transport card: seek row (the bar's own seek + times) and the three clusters. Fills its wrapper (Grow);
-    /// reads the playing row through the context's key (V-U34), never Tracks.Changed.</summary>
-    sealed class TransportCard : Component
-    {
-        public override Element Render()
-        {
-            var ctx = UseContext(StageContext)!;
-            var L = ctx.Layout.Value;
-            var set = ctx.Accent.Value;
-            var overlay = UseContext(Overlay.Service);
-            var track = ctx.RowValue();
-            bool playing = Playback.IsPlaying.Value;
-            bool loading = Playback.PhaseSignal.Value == Playback.Phase.Loading;
-            var tf = PlayerVerbs.TransportFacts();
-            bool primary = Transport.PrimaryEnabled(track.IsValid, loading);
-            var lib = Controls.Library;
-            string uri = track.IsValid ? track.Uri.Text : "";
-            string title = track.IsValid ? track.Title : "";
-            bool saved = lib is not null && uri.Length > 0 && lib.IsSaved(uri);
-            Action? like = lib is { } seam && uri.Length > 0 ? () => seam.ToggleSaved(uri, title) : null;
-            var repeat = Playback.Repeat.Value;
-            EntityId contextId = Playback.ContextUri.Value;
-            Queue.ContextWire wire = Playback.ContextLabel.Value;
-            string? source = Queue.ContextName(contextId, in wire);
-            bool hasSource = source is { Length: > 0 };
-            bool compact = L.Aspect == Aspect.Compact;
-
-            var right = new List<Element>(5) { Heart(saved, like, set.Fill), Embed.Comp(static () => new MuteGlyph()) };
-            if (L.VolumeFits) right.Add(Embed.Comp(new VolumeRow.Props(set, Layout.VolumeSliderW), static () => new VolumeRow()));   // only where the cluster still fits the card
-            right.Add(Embed.Comp(static () => new DeviceButton()));
-            right.Add(new BoxEl
-            {
-                Width = 40f, Height = 40f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
-                Fill = Ink.GlassRest, HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed, BrushTransitionMs = Design.Motion.Faster,
-                Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, AllowFocusOnInteraction = false, ClickRequestsContext = true,
-                Children = [new TextEl(Icons.More) { Size = 16f, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.Ink }],
-            }.WithContextMenu(overlay,
-                () => { var m = NowPlayingMenu?.Invoke(); if (m is { } model && ContextMenu.HasAnyEnabled(model)) ctx.MenuOpen(true); return m; },  // the "…" menu holds the chrome (V-U22); an empty menu never opens, so never counts
-                new ContextMenuOptions { OnClosed = _ => ctx.MenuOpen(false) }));                                       // ContextMenu.cs:43
-
-            return new BoxEl
-            {
-                Grow = 1f, Height = L.TransportH, Direction = 1, Padding = new Edges4(20f, 10f, 20f, 0f), Corners = Radii.CardAll,
-                Acrylic = Ink.Card, Shadow = Elevation.Card, ClipToBounds = true,
-                OnHoverMove = _ => ctx.OverControls(true), OnPointerExit = () => ctx.OverControls(false),
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-                        // the bar's own seek; its scrub edge holds the chrome through the new onScrubbing seam (§4.12 — a PlayerChromeFeed is inert without a MediaPlayerElement owner)
-                        Children = [Shell.TimeText(remaining: false, ink: Ink.InkSecondary), new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, Children = [Shell.SeekBar(onScrubbing: ctx.Scrubbing)] }, Shell.TimeText(remaining: true, ink: Ink.InkSecondary)],
-                    },
-                    new BoxEl
-                    {
-                        Direction = 0, AlignItems = FlexAlign.Center, Height = MathF.Min(58f, L.TransportH - 46f),   // 10 pad + 32 seek hit-box + this ≤ the card (Compact is 96)
-                        Children =
-                        [
-                            new BoxEl
-                            {
-                                Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 1,
-                                Children =
-                                [
-                                    // a formatted key: the generated method formats; Loc.Get would render "[…]" (V-D15). No source ⇒ no label (never "Playing from search" for nothing).
-                                    new TextEl(hasSource ? Strings.Stage.PlayingFrom(Queue.ContextKindLabel(contextId)) : "") { Size = 12f, LineHeight = 16f, Color = Ink.InkTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                                    new TextEl(source ?? "") { Size = 14f, LineHeight = 20f, Weight = 600, Color = Ink.Ink, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                                ],
-                            },
-                            new BoxEl
-                            {
-                                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Shrink = 0f,
-                                Children =
-                                [
-                                    ToolTip.Wrap(Satellite(Icons.Shuffle, static () => PlayerVerbs.Default.ToggleShuffle(), tf.CanTransport, Playback.Shuffle.Value, set.Fill), Loc.Get(Strings.Player.Shuffle)),
-                                    ToolTip.Wrap(Glyph(Icons.Previous, static () => Playback.Previous(), 40f, 17f, tf.PrevEnabled), Loc.Get(Strings.Player.Previous)),
-                                    Play(playing, primary, compact ? 52f : 56f, set),
-                                    ToolTip.Wrap(Glyph(Icons.Next, static () => Playback.Next(), 40f, 17f, tf.NextEnabled), Loc.Get(Strings.Player.Next)),
-                                    ToolTip.Wrap(Satellite(repeat == RepeatMode.Track ? Icons.RepeatOne : Icons.RepeatAll, static () => PlayerVerbs.Default.CycleRepeat(), tf.CanTransport, repeat != RepeatMode.Off, set.Fill), Loc.Get(Strings.Player.Repeat)),
-                                ],
-                            },
-                            new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = 6f, Children = right.ToArray() },
-                        ],
-                    },
-                ],
-            };
-        }
-    }
-
-    /// <summary>The 56-DIP filled play disc: a hand-built circular BoxEl on the surface's AccentSet (Button.Create has no circular
-    /// variant, so <c>ButtonPalette.ForAccent</c> is not used — V-U46).</summary>
-    static Element Play(bool playing, bool enabled, float box, AccentSet set) => new BoxEl
-    {
-        Width = box, Height = box, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.Circle(box),
-        Fill = enabled ? set.Fill : Ink.ScrimRest, HoverFill = enabled ? set.FillSecondary : Ink.ScrimRest, PressedFill = enabled ? set.FillTertiary : Ink.ScrimRest,
-        BrushTransitionMs = Design.Motion.Faster, Shadow = enabled ? Elevation.Card : (ShadowSpec?)null,
-        HoverScale = R.Motion.ScaleEmphatic.HoverIf(enabled), PressScale = R.Motion.ScaleEmphatic.PressIf(enabled),
-        Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, IsEnabled = enabled,
-        OnClick = static () => PlayerVerbs.Default.TogglePlay("stage.button"), Cursor = enabled ? CursorId.Hand : (CursorId?)null,
-        Children = [new TextEl(playing ? Icons.Pause : Icons.Play) { Size = 22f, FontFamily = Tok.Definition.Fonts.Icon, Color = enabled ? set.Ink : Ink.InkTertiary }],
-    };
-
-    /// <summary>A plateless 40-DIP glyph button (glass on hover).</summary>
-    static BoxEl Glyph(string glyph, Action? onClick, float box, float glyphSize, bool enabled = true, Action<NodeHandle>? onRealized = null) => new()
-    {
-        Width = box, Height = box, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
-        Fill = Ink.GlassRest, HoverFill = enabled ? Ink.GlassHover : Ink.GlassRest, PressedFill = enabled ? Ink.GlassPressed : Ink.GlassRest, BrushTransitionMs = Design.Motion.Faster,
-        HoverScale = R.Motion.ScaleEmphatic.HoverIf(enabled), PressScale = R.Motion.ScaleEmphatic.PressIf(enabled),
-        Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, IsEnabled = enabled, OnClick = enabled ? onClick : null,
-        Cursor = enabled ? CursorId.Hand : (CursorId?)null, OnRealized = onRealized,
-        Children = [new TextEl(glyph) { Size = glyphSize, FontFamily = Tok.Definition.Fonts.Icon, Color = enabled ? Ink.InkSecondary : Ink.InkTertiary, HoverColor = enabled ? Ink.Ink : Ink.InkTertiary }],
-    };
-
-    /// <summary>Shuffle / repeat: accent-filled while latched (the prototype's <c>.ab.chk</c>).</summary>
-    static BoxEl Satellite(string glyph, Action onClick, bool enabled, bool latched, ColorF accent) => new()
-    {
-        Width = 40f, Height = 40f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
-        Fill = latched && enabled ? accent : Ink.GlassRest, HoverFill = latched && enabled ? accent with { A = 0.9f } : enabled ? Ink.GlassHover : Ink.GlassRest,
-        PressedFill = enabled ? Ink.GlassPressed : Ink.GlassRest, BrushTransitionMs = Design.Motion.Faster,
-        HoverScale = R.Motion.ScaleEmphatic.HoverIf(enabled), PressScale = R.Motion.ScaleEmphatic.PressIf(enabled),
-        Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, IsEnabled = enabled, OnClick = onClick, Cursor = enabled ? CursorId.Hand : (CursorId?)null,
-        Children = [new TextEl(glyph) { Size = 16f, FontFamily = Tok.Definition.Fonts.Icon, Color = !enabled ? Ink.InkTertiary : latched ? ColorContrast.PickContrast(accent) : Ink.InkSecondary, HoverColor = !enabled ? Ink.InkTertiary : latched ? ColorContrast.PickContrast(accent) : Ink.Ink }],
-    };
-
-    static BoxEl Heart(bool saved, Action? onLike, ColorF accent) => new()
-    {
-        Width = 40f, Height = 40f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
-        Fill = Ink.GlassRest, HoverFill = onLike is null ? Ink.GlassRest : Ink.GlassHover, PressedFill = onLike is null ? Ink.GlassRest : Ink.GlassPressed, BrushTransitionMs = Design.Motion.Faster,
-        Role = AutomationRole.Button, Focusable = onLike is not null, AllowFocusOnInteraction = false, OnClick = onLike, Cursor = onLike is null ? (CursorId?)null : CursorId.Hand, BlocksDragArm = true,
-        Children = [new BoxEl { Key = saved ? "sh:on" : "sh:off", Children = [new TextEl(saved ? Icons.HeartFill : Icons.Heart) { Size = 18f, FontFamily = Tok.Definition.Fonts.Icon, Color = saved ? accent : Ink.InkSecondary, HoverColor = saved ? accent : Ink.Ink }] }],
-    };
-
-    sealed class MuteGlyph : Component
-    {
-        public override Element Render()
-        {
-            bool muted = Playback.Muted.Value;
-            return ToolTip.Wrap(Glyph(muted ? Icons.Mute : Icons.Volume, static () => Playback.ToggleMute(), 40f, 17f), Loc.Get(muted ? Strings.Player.Unmute : Strings.Player.Mute));
-        }
-    }
-
-    /// <summary>The stock Slider in the surface accent at a fixed length (re-pushed props: a new accent re-skins in place).</summary>
-    sealed class VolumeRow : Component
-    {
-        public sealed record Props(AccentSet Set, float Length);
-        static readonly Slider.SliderOptions Options = new()
-        {
-            ThumbToolTipValueConverter = static v => s_percent.Get(Math.Clamp((int)MathF.Round(v * 100f), 0, 100), static p => p + "%"),   // cached: the tooltip re-reads per drag frame
-        };
-        readonly FloatSignal _level = new(Playback.Volume.Peek());
-        public override Element Render()
-        {
-            var p = UseProps<Props>();
-            UseSignalEffect(() => _level.SetIfChanged(Playback.Volume.Value));
-            var style = Slider.DefaultStyle with
-            {
-                RailFill = Ink.Ink with { A = 0.545f }, RailFillDisabled = Ink.Ink with { A = 0.235f },
-                ValueFill = p.Set.Fill, ValueFillPointerOver = p.Set.FillSecondary, ValueFillPressed = p.Set.FillTertiary, ValueFillDisabled = p.Set.Fill with { A = 0.3f },
-                ThumbRing = Tok.FillControlSolid, ThumbFill = p.Set.Fill, ThumbFillPointerOver = p.Set.FillSecondary, ThumbFillPressed = p.Set.FillTertiary, ThumbFillDisabled = p.Set.Fill with { A = 0.3f },
-                ThumbBorder = GradientSpec.Solid(Ink.Stroke),
-            };
-            return Slider.Create(_level, static v => Playback.SetVolume(v), Options, length: p.Length, thickness: 32f, style: style);
-        }
-    }
-
-    /// <summary>"This PC ▾" — the two-section device picker over the SAME items the player bar builds (Shell.DevicePickerMenuItems).</summary>
-    sealed class DeviceButton : Component
-    {
-        public override Element Render()
-        {
-            var ctx = UseContext(StageContext)!;
-            var anchor = UseRef<NodeHandle>(default);
-            var handle = UseRef<OverlayHandle?>(null);
-            var overlay = UseContext(Overlay.Service);
-            _ = Playback.Devices.Changed.Value;
-            var rows = Playback.Devices.Rows;
-            int slot = Shell.DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, rows);
-            string name = slot >= 0 ? rows[slot].Name ?? "" : Loc.Get(Strings.Player.SystemDefault);
-            string glyph = slot >= 0 ? Icons.Devices : Icons.ThisPc;
-            if (slot < 0)
-            {
-                string? selected = Playback.Audio.SelectedOutputId.Value;
-                foreach (var d in Playback.Audio.Devices.Value)
-                    if (selected is { Length: > 0 } && string.Equals(d.Id, selected, StringComparison.OrdinalIgnoreCase)) { name = d.Name; break; }
-            }
-            void Toggle()
-            {
-                if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
-                PlayerVerbs.Default.OpenDevicePicker();
-                var opened = overlay.Open(() => anchor.Value, () => MenuFlyout.Create(DeviceItems(), () => handle.Value?.Close()),
-                    FlyoutPlacement.TopEdgeAlignedRight, new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = true });
-                ctx.MenuOpen(true);                                                          // the flyout holds the chrome (V-U22)
-                opened.ClosedAction = () => { handle.Value = null; ctx.MenuOpen(false); };
-                handle.Value = opened;
-            }
-            return new BoxEl
-            {
-                Height = 32f, Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Padding = new Edges4(11f, 0f, 10f, 0f), Corners = Radii.ControlAll,
-                Fill = Ink.GlassRest, HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed, BrushTransitionMs = Design.Motion.Faster, BorderWidth = 1f, BorderColor = Ink.Stroke,
-                Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, OnClick = Toggle, OnRealized = h => anchor.Value = h, MaxWidth = 220f,
-                Shrink = 1f, MinWidth = Layout.DeviceMinW,   // the name gives way before the cluster leaves the card (Layout.TransportRightMinW)
-                Children =
-                [
-                    new TextEl(glyph) { Size = 14f, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.Ink },
-                    new TextEl(name) { Size = 14f, LineHeight = 20f, Color = Ink.Ink, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
-                    new TextEl(Icons.ChevronDown) { Size = 12f, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.InkSecondary },
-                ],
-            };
-        }
-        static List<MenuFlyoutItem> DeviceItems()
-            => Shell.DevicePickerMenuItems(Playback.OwnerSignal.Peek(), Playback.ActiveDeviceSlot.Peek(), Playback.Devices.Rows,
-                Playback.Audio.Devices.Peek(), Playback.Audio.SelectedOutputId.Peek(), Playback.Audio.Supported.Peek(),
-                Playback.Audio.PlayingOpened, Shell.DevicePickerFacts.Quality);
-    }
-
     /// <summary>"Artist · Album" (the previous stage's MetaLink with re-pushed type + colour). Subscribed to ITS row through the
     /// context's key (V-U34) and to Albums.Changed for the album title. Navigation CLOSES the stage first (V-U29).</summary>
     sealed class MetaLink : Component
@@ -1625,24 +923,6 @@ public static partial class Stage
             var route = Shell.LinkFor(new Track(r.Slot), Shell.LinkSlot.Artist);
             if (route.Kind == Shell.RouteKind.NotFound) return;
             StageVerbs.NavigateClosingStage(_begin, route);          // leave the stage BEFORE navigating (V-U29): the shell body is collapsed under it
-        }
-    }
-
-    // ══ 6. THE GALLERY MOUNT ════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The gallery pane's body (placement + Enter/Exit live on ChromeHost's wrapper). Re-renders on the layout signal;
-    /// the pane's controls take the context's own preference signals (O8).</summary>
-    sealed class GalleryHost : Component
-    {
-        public override Element Render()
-        {
-            var ctx = UseContext(StageContext)!;
-            var L = ctx.Layout.Value;
-            return new BoxEl
-            {
-                OnHoverMove = _ => ctx.OverControls(true), OnPointerExit = () => ctx.OverControls(false),
-                Children = [Visualizer.Gallery(ctx, L, close: static () => Prefs.Stage.SetGalleryOpen(false))],
-            };
         }
     }
 

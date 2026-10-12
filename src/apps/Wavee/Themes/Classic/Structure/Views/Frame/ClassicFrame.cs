@@ -7,7 +7,7 @@
 //
 //   THE FRAME, BOTTOM-UP.  Everything under `OverlayHost` is one ZStack:
 //
-//     tinted[ MaterialLayer · column ]  ·  Stage.View  ·  Video.PipLayer  ·  Video.FullscreenLayer  ·  Overlays
+//     tinted[ MaterialLayer · column ]  ·  Stage.Root  ·  Video.PipLayer  ·  Video.FullscreenLayer  ·  Overlays
 //           ·  file-drop cue  ·  CommandPalette  ·  setup scrim  ·  drag preview  ·  fps overlay
 //
 //   The video layers sit BELOW the banner, toast and drop-cue layers: the video is a hole in the UI swapchain (a DestOut
@@ -20,10 +20,11 @@
 //     content region = ZStack[ row(sidebar column · content card · rail gap · rail reservation) · sidebar seam ·
 //                              rail overlay · rail seam · narrow drawer ]
 //
-// The surfaces that are not yet a key of their own (stage, overlays) arrive as element builders on the props
-// (`ShellFrameProps`); T7 gives each its own key and replaces the builder with a `ctx.View` call here. The title bar (T4b) is
-// mounted as `Shell.TitleBar`, the sidebar pane (T5a) as `Shell.NavPane`, the player bar (T6a) as `Player.Bar` and the right panel
-// (T6b) as `Shell.Panel` (its seam stays a builder: the splitter is behaviour the host wires and the template places); T4c did the same for
+// The surfaces that are not yet a key of their own (video and overlays) arrive as element builders on the props
+// (`ShellFrameProps`); T7c and T11 give each its own key and replace the builder with a `ctx.View` call here. The title bar (T4b) is
+// mounted as `Shell.TitleBar`, the sidebar pane (T5a) as `Shell.NavPane`, the player bar (T6a) as `Player.Bar`, the right panel
+// (T6b) as `Shell.Panel` (its seam stays a builder: the splitter is behaviour the host wires and the template places) and the stage
+// (T7a1) as `Stage.Root`; T4c did the same for
 // the material, the file-drop cue, the palette, the cover scrim, the drag chip and the frame-rate overlay (each member of the props is now
 // the child view's props record); the narrow drawer's core host (its props change with the band) is still a builder.
 
@@ -79,7 +80,7 @@ internal static class ClassicFrame
             {
                 Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, HitTestPassThrough = true,
                 Enter = Stage.EnterTerminal, Exit = Stage.ExitTerminal,
-                Children = [props.StageView()],
+                Children = [ctx.View(ViewKeys.StageRoot, props.StageRoot)],
             }),
             // The video layers come BEFORE the in-stack overlays: the hole erases whatever is drawn under it, so the
             // runtime banner, the toasts and the drop pill must be painted after it to stay over a floating or
