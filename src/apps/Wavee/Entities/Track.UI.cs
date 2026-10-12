@@ -156,7 +156,7 @@ public readonly partial struct Track
     /// TRAILING ♥ cell today, because only the eager reader row sets <see cref="ColumnSet.HeartTrailing"/> — a bound
     /// TABLE that sets it must gain the matching cell in <c>BoundGrid</c> and an empty header cell in the same
     /// position first, or its cells and its tracks fall out of step by one.</para></summary>
-    static int CellCount(in ColumnSet set)
+    internal static int CellCount(in ColumnSet set)
         => 3 + (set.Heart ? 1 : 0) + (set.Thumb ? 1 : 0) + (set.Artist ? 1 : 0) + (set.Album ? 1 : 0)
            + (set.By ? 1 : 0) + (set.Date ? 1 : 0) + (set.Plays ? 1 : 0) + (RowMetrics.ShowTempo(in set) ? 1 : 0)
            + (RowMetrics.ShowHeartTrailing(in set) ? 1 : 0)
@@ -181,9 +181,9 @@ public readonly partial struct Track
         IReadSignal<bool>? HoverPaused = null, Func<ColorF>? Accent = null, long NowUnixSeconds = 0,
         bool HeartRevealOnHover = false);
 
-    const float RowNotYetOutOpacity = 0.45f;   // ch 01 §0.7: the whole title column steps back, not a colour swap
-    const float RowEqualizerHeight = 13f;
-    const float RowTransportBox = 24f;
+    internal const float RowNotYetOutOpacity = 0.45f;   // ch 01 §0.7: the whole title column steps back, not a colour swap
+    internal const float RowEqualizerHeight = 13f;
+    internal const float RowTransportBox = 24f;
     const float RowMoreBox = 28f;
 
     /// <summary>ONE decode size for every row thumbnail, on every density, in both the eager <see cref="Grid"/> and the
@@ -328,7 +328,7 @@ public readonly partial struct Track
         };
     }
 
-    static readonly Marquee.Style s_rowMarqueeStyle = new()
+    internal static readonly Marquee.Style s_rowMarqueeStyle = new()
     {
         // The engine defaults for Speed/Gap/delays/fade (ch 30 §3.4, "now-playing ROW marquee"); only size, weight and
         // ink are the row's. The ink is a THUNK so a live theme flip re-tints the frozen style.
@@ -474,7 +474,7 @@ public readonly partial struct Track
 
     /// <summary>The row number as text, formatted ONCE per value for the life of the process — a recycle never formats a
     /// number (ch 01 §9 trap 5).</summary>
-    static string RowNumberLabel(int n)
+    internal static string RowNumberLabel(int n)
     {
         if (n < 0) return "";
         if (n >= s_rowNumberLabels.Length)
@@ -490,7 +490,7 @@ public readonly partial struct Track
     /// <summary>The heart's pop: an Enter-only overshoot spring (response 0.30, damping 0.55) from 0.25 scale, 0 opacity
     /// and a 2-DIP blur. A SPRING, so the reduced-motion policy keeps it where it would drop a tween Enter. No Exit leg: a
     /// scrolling list must never spawn exit orphans for recycled glyphs.</summary>
-    static readonly LayoutTransition s_heartPopIn = new(
+    internal static readonly LayoutTransition s_heartPopIn = new(
         TransitionChannels.Opacity,
         TransitionDynamics.Spring(0.30f, 0.55f),
         Enter: new EnterExit(Sx: 0.25f, Sy: 0.25f, Opacity: 0f, Active: true, Blur: Expressive.BlurSmall));
@@ -911,7 +911,7 @@ public readonly partial struct Track
 
     /// <summary>The row's container: its album, or — for a podcast row, which carries its SHOW in the album slot — the
     /// show, read from the table the row's kind names (ch 04 DATA GAPS).</summary>
-    static (EntityUri Uri, string Name) ContainerOf(Track t)
+    internal static (EntityUri Uri, string Name) ContainerOf(Track t)
     {
         int slot = t.AlbumSlot;
         if (slot <= 0) return (default, "");
@@ -940,13 +940,13 @@ public readonly partial struct Track
         Shell.GoTo(Shell.For(a.Uri, a.Title));
     }
 
-    static void GoToArtistAt(Track t, int index)
+    internal static void GoToArtistAt(Track t, int index)
     {
         var slots = t.ArtistSlots;   // re-read at CLICK time: the run may have been re-committed since the render
         if ((uint)index < (uint)slots.Length) GoToArtist(new Artist(slots[index]));
     }
 
-    static void GoToContainer(Track t)
+    internal static void GoToContainer(Track t)
     {
         var (uri, name) = ContainerOf(t);
         if (uri.IsValid) Shell.GoTo(Shell.For(uri, name));
@@ -960,19 +960,19 @@ public readonly partial struct Track
 
     // Each wrapper takes the lane's key at construction: the grid never `with { Key = … }`-clones a cell after the fact.
 
-    static BoxEl RowCenterCell(Element content, string? key = null) => new()
+    internal static BoxEl RowCenterCell(Element content, string? key = null) => new()
     {
         Key = key, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, MinWidth = 0f, ClipToBounds = true,
         Children = [content],
     };
 
-    static BoxEl RowLeftCell(Element content, string? key = null) => new()
+    internal static BoxEl RowLeftCell(Element content, string? key = null) => new()
     {
         Key = key, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Start, MinWidth = 0f, ClipToBounds = true,
         Children = [content],
     };
 
-    static BoxEl RowEndCell(Element content, string? key = null) => new()
+    internal static BoxEl RowEndCell(Element content, string? key = null) => new()
     {
         Key = key, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, MinWidth = 0f, ClipToBounds = true,
         Children = [content],
@@ -1001,7 +1001,7 @@ public readonly partial struct Track
 
     // The keys this file adds (scratchpad batch-loc WP-4.5-U1.json) — literal, so the file compiles before the merge
     // regenerates `Strings`.
-    const string LocChartNew = "detail.row.chartNew";
+    internal const string LocChartNew = "detail.row.chartNew";
     const string LocMoreArtists = "detail.row.moreArtists";
 
     // ══ 4. THE EAGER ROW ═════════════════════════════════════════════════════════════════════════════════════════════

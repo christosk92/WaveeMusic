@@ -369,6 +369,54 @@ picker's rows are shared with the stage and the on-media strip (or have no key y
 and T7 give them keys; the "⋯" rows (`OverflowItem`: labels and what a row does, built from live reads at open time) and the key
 map (`PlayerKey`) are decisions.
 
+### The track table's rows (T8a)
+
+A virtualized list is not a view a theme can hand back as an `Element`: recycling, selection, drag, the keyboard and scroll anchoring
+are core behaviour. So the table is a **style**, not a view: the structure registers a `TrackListStyle` with
+`views.AddStyle(StyleKeys.TrackTable, ...)` and the core host builds its rows from it. T8a is the rows' half of that record; T8b adds
+the header, the command and list bar, the filter card, the selection bar and the placeholder, T8c the eager and episode rows, the
+surface, the artist chart and the drawer.
+
+| Key | Contract | Core half | Classic |
+|---|---|---|---|
+| `StyleKeys.TrackTable` (`StyleKey<TrackListStyle>`, id `Track.Table`) | `TrackListStyle` (`Stamp`, `Modern`, `Classic`: each a `TrackRowTemplates` = the bound grid + the skin); `TrackRowSkin` is what the core wires for a skin | `Track.TableHost` and its slot components `TableSlot` and `TableRowContent` (`Entities\Track.Table.cs`), `Track.BoundRow` / `Track.RowPresentation` / `Track.RowCellRules` (`Entities\Track.UI.Bound.cs`) | `ClassicTrackTable` (`Themes\Classic\Structure\Lists\`): both pairs; numbers and the two motions in `Rules\ClassicTrackRowLayout.cs` |
+
+- **Two templates, one per row style.** The core picks `Modern` or `Classic` by the table's `ColumnSet.Classic` (the `detail.rowstyle`
+  setting, read into the snapshot); M2 deletes that flag and the pick becomes the structure's own option. Classic's two pairs share one
+  body per cell and branch on a `classic` argument exactly where the source did, so each style draws the tree it always drew.
+- **The grid.** `templates.Grid(row, in set, tracks, rowH, art)` runs once per slot per shape from `TableRowContent` (the code that
+  called `Track.BoundGrid`): every per-item value is a bound `Prop` over `row.Presentation`, frequent flips are `Visible` binds, the
+  rare heavy branches (spinner, equalizer, marquee, the withheld # cell) are `Flow.Show`. A recycle rebinds and builds no element.
+  A template reads the slot only through `Track.BoundRow` and never names `Playback`, `Entities` or `Store` (WVTH002): the deck's
+  playing flag is `row.Playing`, the clock is `Track.NowUnix`, the adder's name is `Track.AddedByLabel`.
+- **The skin.** `TableHost.Skin` keeps the behaviour and builds a `TrackRowSkin`: the drag source and the .mp4 drop target, the tap /
+  double-tap / Enter / Space / Alt+arrow handlers, the focus and hover edges (the hover edge pauses the equalizer), the selection
+  check lane, and the live facts the fills read (`IsSelected`, `Cue`, `Odd`, `ChecksVisible`, `Accent`). The template draws the box
+  (fills for rest / hover / pressed / selected / the drop cue, the zebra border, the corners, the pill, the divider, the mount
+  entrance and the check lane's shift) and applies every wired member; the core attaches the context menu around what it returns.
+  A template must keep the box `Focusable = false` (the list owns the one roving tab stop) with the Button role.
+- **What stays core.** Which rows exist, the track / episode switch, the reveal gate and the shimmer row, the presentation memo and
+  its equality gate, the like-edge latch, the drawer (`DrawerBox`, T8c), column sets and widths (`ColumnSet`, `TracksFor`, the relief
+  ladder), row height and density, the selection model, the keyboard map, the menu and the pure decisions (`RowCellRules`, pinned by
+  `TrackRowCellRulesTests`). The cell wrappers and navigation the eager row shares (`Track.RowCenterCell`, `MoreCell`,
+  `GoToArtistAt`, ...) are `internal` on `Track` until T8c moves that row.
+- **Not yet the engine's typed channel.** EP6 (`ItemsView.CreateBound` over `BoundListProps`, a stamp-driven rebuild of every slot, the
+  FGTH003 ban on components in a row template) wants the whole slot as a plain tree. The table's slot is two components today
+  (the kind switch and the open drawer; the reveal gate, the presentation memo and the like latch), and folding them would add binds
+  and `Flow` boundaries to every row. T8a therefore moves the picture and leaves the slot as it is: the per-row cost on a scroll
+  frame is unchanged (no extra component, no extra closure per bind). `TrackListStyle.Stamp` is carried for the PR that folds the
+  slot; until then a row-style change re-keys the list (`list:<scroll>:d<N>:classic|modern`), as before.
+- **A host without a registry.** A table mounted where no registry provides `StyleKeys.TrackTable` logs once
+  (`track table: no TrackListStyle is registered`) and draws bare containers. A test that mounts a table outside the real shell
+  provides Classic's registry (`new ClassicStructure().Register(builder)`, `Ctx.Provide(ViewRegistry.Context, ...)`), as
+  `TrackRowRecycleAllocationTests` does.
+
+**Tests.** The registration and the two template pairs are `Wavee.Tests\Theming\TrackListStyleTests.cs`; the recycle budget on the real
+table (a scroll re-renders no row component and allocates at most 7 KB per recycled row) is `TrackRowRecycleAllocationTests`; the
+mounted facts in both row styles (the skin's pill and divider, the number and title lanes, the row height from the style's ladder)
+are `Wavee.ShellTests\TrackRowsMountedTests.cs`; the re-keying on the setting, the density and the hidden art stay
+`LiveOptionBehaviourTests`.
+
 ## 3. Options
 
 An option is data: a `ToggleOption`, `SelectOption<TEnum>`, `SliderOption`, `ColorOption`, `ActionOption` or
