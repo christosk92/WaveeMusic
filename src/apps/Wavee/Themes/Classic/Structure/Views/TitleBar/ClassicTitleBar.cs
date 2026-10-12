@@ -222,7 +222,7 @@ internal static class ClassicTitleBar
                 if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
                 var items = props.HistoryMenu(forward);   // read at OPEN, never at mount
                 if (items.Count == 0) return;             // an empty stack opens nothing at all
-                var h = overlay.Open(() => anchor.Value, () => MenuFlyout.Create(items, () => handle.Value?.Close()),
+                var h = overlay.Open(() => anchor.Value, () => ViewSlots.View(ViewKeys.ShellHistoryMenu, new HistoryMenuProps { Items = items, Close = () => handle.Value?.Close() }),
                     FlyoutPlacement.BottomEdgeAlignedLeft,
                     new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
                 handle.Value = h;

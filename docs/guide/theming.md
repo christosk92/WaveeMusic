@@ -132,7 +132,7 @@ asked for, and reads everything else as live as the call. The numbers a style gi
 
 | Rule | Why |
 |---|---|
-| **A colour or an alpha that differs by kind is a role**; a view never writes `Tok.Theme == ThemeKind.Light ? a : b` | The branch is the style's decision. The 27 branches in `Design.cs`, `Controls.cs`, `Concert.UI.cs`, `Deck.UI.cs`, `Rail.UI.cs`, `Shell.Masthead.UI.cs` and `Detail.UI.cs` are role reads now |
+| **A colour or an alpha that differs by kind is a role**; a view never writes `Tok.Theme == ThemeKind.Light ? a : b` | The branch is the style's decision. The 27 branches in `Design.cs`, `Controls.cs`, `Concert.UI.cs`, `Deck.UI.cs`, `Rail.UI.cs`, `ClassicMaterial.cs` (was `Shell.Masthead.UI.cs`) and `Detail.UI.cs` are role reads now |
 | **The polarity as an ARGUMENT is `R.Kind` / `R.IsLight`** | Selecting the graded half of a cover (`Design.SchemeFor`, `ChromeSchemeFor`, `PlaceholderFor`), the `light` flag of the pure follow-button maths (`ButtonRules.FollowStyle`) and the theme picker's preview image need the kind, not a colour. Apart from the stage faces' own `dark` flag (`StageInk.IsDark`; T7 re-points the faces) and the install paths (`Appearance`, `ThemeHost`, `Tok.Use`), these are the only places code asks for the kind |
 | **Key a wash or tone plane on `Tok.Epoch`, never on the light/dark flag** (themes plan X44) | `Tok.Epoch` moves for a kind flip AND a definition swap, so the plane is rebuilt in the same publication as the theme; a key on the kind keeps the old plane across a swap that moves a wash role. `Palette.ToneKey(route, Tok.Epoch)` builds the tone plane's key, the shell tint binder keys its publish effect on the epoch, and the three pages that republished a `Signal<ThemeKind>` (Detail, Artist, Profile) re-derive their accent from an effect keyed on `Tok.Epoch` instead |
 | **A colour-only table is not a transaction** | `WaveeStyleRoles.DiffersOnlyInColours` compares the type, space, motion and case roles; ink, layer, on-media, stage arm, wash and lyrics may differ. A swap that moves only those bumps `Tok.Epoch` and leaves `StyleEpoch`, so the engine takes the live cross-fade path |
@@ -150,8 +150,8 @@ mounted view repainting).
 
 **What stayed in `Design` of colour, and why.** `SchemeFor` / `ChromeSchemeFor` / `PlaceholderFor` / `WatchedPlaceholder` (they read a cover's grading
 for the active polarity from the palette TABLE: data selection, not a look), `Design.Palette` (above), `Design.Wash`'s window-relative GEOMETRY and
-paint budget (not a look), the shell material channel (`ShellMaterial`, `TintOwnership`) and the four cover-leaf components, which now read their
-alphas and recipes from `R.Wash` and move to Classic's material views in T4. The shape roles (`ShapeRole`) and the icon table (`IconTable`) are not part
+paint budget (not a look), the shell material channel (`ShellMaterial`, `TintOwnership`, now `Platform\ShellMaterial.cs`), while the four cover-leaf components read their
+alphas and recipes from `R.Wash` and are Classic's material views since T4c. The shape roles (`ShapeRole`) and the icon table (`IconTable`) are not part
 of T2b: their consumers (the omnibar row, the surface shapes, the route glyphs) are the T3/T4/T6/T8 PRs.
 
 ## 2a. Policies and metrics (T3)
@@ -273,6 +273,35 @@ the published ids, Classic's registration and the props equality are `TitleBarCo
 `Wavee.ShellTests\TitleBarMountedTests.cs`: the real shell's title row is the registered template's, narrowing swaps the field for the
 magnifier and widening brings it back, `ViewHarness` mounts the title bar with fixture props (each identity chip, the pin slot, the
 search form) and the suggestions body alone (the progress slot, the pending height, rows).
+
+### The frame's small views (T4c)
+
+| Key | Props | Core host | Classic template |
+|---|---|---|---|
+| `Shell.Masthead` | `MastheadProps` (a held `PageChrome`, `Live`, the tool verb) | `Shell.MastheadBand` (`[CoreHost]`, `Shell\Shell.Masthead.UI.cs`): which route's publication is live, the trail it holds while an unknown family fades | `ClassicMasthead`: the band row, its frame insets, the Show/Hide fade |
+| `Page.Head` | `PageHeadProps` (a `PageChrome`) | placed by the masthead; a page that draws its own head mounts it | `ClassicPageHead`: the trail-as-title row (dim clickable crumbs, chevrons, the current title under a stable key) |
+| `Shell.Material` | `MaterialProps` (the published `ShellMaterialState` as a read-only signal) | the frame; the channel is `Platform\ShellMaterial.cs` | `ClassicMaterial`: the flat tint with its brush fade, Home's three radial washes |
+| `Shell.Material.PageTone`, `.ArtistBlend`, `.ArtistVeil`, `.TintBinder` | `CoverToneProps`, `CoverBlendProps`, `CoverVeilProps`, `CoverTintProps` | the mounts in `Entities\Palette.Host.cs` (pages never write `Slots.View`) | `ClassicCoverLeaves`: the four cover leaves, moved from `Design.cs` |
+| `Shell.NarrowDrawer` | `NarrowDrawerProps` (`Mounted`, `Open`, and the stable `NarrowDrawerParts`) | `Shell.NarrowDrawer` (`[CoreHost]`, `Shell\Shell.UI.cs`): the Escape key-preview chain, the leaf-navigation close, the mount decision | `ClassicDrawer`: the scrim, the pane, their open/close motion |
+| `Shell.CommandPalette` | `PaletteProps` (the popup control, a session factory, close) | `Shell.CommandPalette()` + `Shell.PaletteSession` (`Shell\Shell.Palette.cs`); the table, the filter and the empty-query order stay `CommandTable` | `ClassicPalette`: the lane, the card, the keyboard navigation |
+| `Shell.HistoryMenu` | `HistoryMenuProps` (the rows, close) | `NavHistoryButton` decides the rows (`FrameRules.HistoryMenu`) | `ClassicFrameBits.HistoryMenu` |
+| `Shell.FileDrop`, `Shell.DragChip`, `Shell.CoverScrim`, `Shell.Fps` | `FileDropProps`, `DragChipProps`, `CoverScrimProps`, `FpsProps` | the frame root (the drop target, `Drag.Preview`, `Setup.Covering`, `Diagnostics.FpsOverlayOn`) | `ClassicFrameBits` |
+
+**`PageChrome`** (`Theming\Contracts\PageChrome.cs`) is the value the core hands the frame for a page's head: today the title, the trail
+(`PageCrumb`: a label and a navigate verb, none on the current page) and the "Show all" tool's state, built from the masthead publications
+(`Shell.Mastheads`, the nav origins, `Shell.TryMasthead`). Views, band pivots, actions, the material claim and the backdrop join it as additive members
+with the lanes that have data for them.
+
+**Props that cannot carry a writable signal.** The tint binder publishes into the shell material, and a props record may not hold a `Signal<T>`
+(WVTH006), so it carries a `MaterialPort` (`Platform\ShellMaterial.cs`): one cached object per slot, compared by reference, whose `Publish` is
+`ShellMaterial.Publish`. The palette's popup is the engine control wired to the open flag by the host, so the props carry a
+`Func<Element, Func<Element>, Element>` and the template places what comes back. The decisions stay core and pinned by their tests: the hand-over
+rule (`TintOwnership`: a claim, an owner-only refresh, never a clear, so a navigation never flashes), the veil's pre-settlement guard
+(`VeilSettlement`), the drawer's mount decision (`NarrowDrawerMount`, the band alone), the palette's scoring and the FPS rule (developer mode only).
+
+**Tests.** `Wavee.ShellTests\FrameBitsMountedTests.cs`: Classic is the registered template of every key above, each view stands in the real
+shell or alone under `ViewHarness` with fixture props (the masthead row, the drawer's two states, the palette's rows and keyboard, the file-drop
+cue, the scrim, the HUD only in developer mode), and the cover leaves still publish the shell tint through the port.
 
 ## 3. Options
 

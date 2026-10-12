@@ -22,9 +22,10 @@
 //     delegate the composition root installs, because the persisted-query table is `Spotify.Api`'s and owner F's — see
 //     the gap note at the bottom of this file.
 //
-//  3. THE MOUNTS. The four cover leaves are `Platform/Design.cs`'s Components; these are the one-line factories that
-//     embed them with their props and their Key, so no page ever writes `Embed.Comp(new CoverPageTonePlane.Props(…))`
-//     by hand and no page ever holds a palette subscription at PAGE scope.
+//  3. THE MOUNTS. The four cover leaves are the structure's views (T4c: `Shell.Material.PageTone`, `.ArtistBlend`,
+//     `.ArtistVeil`, `.TintBinder`; Classic's are `Themes/Classic/Structure/Views/Material/ClassicCoverLeaves.cs`); these are
+//     the one-line factories that mount them with their props and their Key, so no page ever writes `Slots.View(…)` by hand
+//     and no page ever holds a palette subscription at PAGE scope.
 
 using System.Text.Json;
 using System.Threading;
@@ -33,6 +34,8 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
+using ViewSlots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -273,26 +276,26 @@ public static partial class Palette
     public static Element PageTonePlane(string? url, string? fallbackUrl, bool disabled,
                                         float backdropBand, float pageHeight, bool heroOnly, string key,
                                         uint payloadAccent = 0)
-        => Embed.Comp(new CoverPageTonePlane.Props(url, fallbackUrl, disabled, backdropBand, pageHeight, heroOnly, payloadAccent),
-                      static () => new CoverPageTonePlane()) with { Key = key };
+        => ViewSlots.View(ViewKeys.ShellCoverTone,
+            new CoverToneProps(url, fallbackUrl, disabled, backdropBand, pageHeight, heroOnly, payloadAccent)) with { Key = key };
 
     /// <summary>The artist page's blend wash. <paramref name="height"/> / <paramref name="boundary"/> come from the
     /// caller's own hero layout. <paramref name="payloadAccent"/> is the header row's raw accent (the ladder's payload
     /// rung) — 0 when the caller has none.</summary>
     public static Element ArtistBlendWash(string? url, float height, float boundary, bool disabled, string key,
                                            uint payloadAccent = 0)
-        => Embed.Comp(new CoverArtistBlendWash.Props(url, height, boundary, disabled, payloadAccent),
-                      static () => new CoverArtistBlendWash()) with { Key = key };
+        => ViewSlots.View(ViewKeys.ShellCoverBlend,
+            new CoverBlendProps(url, height, boundary, disabled, payloadAccent)) with { Key = key };
 
     /// <summary>The full-bleed artist hero veil over photography (also the Home daylist card's). <paramref name="payloadAccent"/>
     /// is the header row's raw accent (the ladder's payload rung) — 0 when the caller has none.
     /// <para><paramref name="width"/>/<paramref name="height"/> finite = the veil at that size (the artist hero);
     /// <c>float.NaN</c> for both = the STRETCH arm: the veil takes its ZStack slot, for a surface whose height is its
-    /// content's (<see cref="CoverKeyedVeil"/>).</para></summary>
+    /// content's (<see cref="CoverVeilProps"/>).</para></summary>
     public static Element ArtistHeroVeil(string? url, bool vertical, float width, float height, string key,
                                           uint payloadAccent = 0)
-        => Embed.Comp(new CoverKeyedVeil.Props(url, vertical, width, height, payloadAccent),
-                      static () => new CoverKeyedVeil()) with { Key = key };
+        => ViewSlots.View(ViewKeys.ShellCoverVeil,
+            new CoverVeilProps(url, vertical, width, height, payloadAccent)) with { Key = key };
 
     /// <summary>Publishes the page-scoped shell-material tint when THIS cover is graded — with no page re-render. Every
     /// detail page must mount one, or the window chrome stays neutral while the page is coloured, which is the single
@@ -300,8 +303,8 @@ public static partial class Palette
     public static Element ShellTint(string? url, bool ready, bool disabled, bool apply, object owner,
                                     Signal<ShellMaterialState>? slot, string key, string? fallbackUrl = null,
                                     uint payloadAccent = 0)
-        => Embed.Comp(new CoverShellTintBinder.Props(url, fallbackUrl, ready, disabled, apply, owner, slot, payloadAccent),
-                      static () => new CoverShellTintBinder()) with { Key = key };
+        => ViewSlots.View(ViewKeys.ShellCoverTint,
+            new CoverTintProps(url, fallbackUrl, ready, disabled, apply, owner, MaterialPort.Of(slot), payloadAccent)) with { Key = key };
 }
 
 // ── WHAT IS NOT HERE, AND WHY ─────────────────────────────────────────────────────────────────────────────────────────

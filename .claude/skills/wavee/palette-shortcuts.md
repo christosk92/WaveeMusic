@@ -1,6 +1,8 @@
 # Command palette & shortcuts
 
-Wavee's Ctrl+K palette (`WaveeCommandPalette` in `src/apps/Wavee/Features/Shell/WaveePalette.cs`) is a port of the gallery `CommandPalette`: `Popup.Create(FocusTrap: true, Chrome: Popup)` over a `TextBox` + ranked result list. The type is not named `WaveePalette` — that name is already the cover-colour mapper in `Design/WaveePalette.cs`.
+Wavee's Ctrl+K palette is a port of the gallery `CommandPalette`: `Popup.Create(FocusTrap: true, Chrome: Popup)` over a `TextBox` + ranked result list. The type is not named `WaveePalette` — that name is already the cover-colour mapper in `Design/WaveePalette.cs`.
+
+**Where it lives now (themes plan T4c):** the table, the filter and the invoke are core in `Shell/Shell.Palette.cs` (`Shell.CommandTable`, `Shell.PaletteSession` is the model one open card reads, `Shell.PaletteOpen` the flag). The lane, the popup's anchor and the card (keyboard navigation, selection clamp, announcements) are the structure's `Shell.CommandPalette` view, `Themes/Classic/Structure/Views/Palette/ClassicPalette.cs`; the popup control itself is wired to the open flag by the host (`PaletteProps.Popup`).
 
 ## How to add a command
 

@@ -95,6 +95,13 @@ Read [wiring-discipline.md](wiring-discipline.md) before any seam/composition-ro
   `Themes/Classic/Structure/Views/Frame/ClassicFrame.cs`. `ContentHost` decides the page / empty body / not-found / offline-lane
   state (`Shell.FrameRules.ContentFor`) and mounts `Shell.ContentState` (`ClassicContentState.cs`). Edit the picture there,
   the decision and the wiring in `Shell.UI.cs`; a new surface follows the six steps of `docs/guide/theming.md` section 2b.
+- **The frame's small views are the structure's too** (themes plan T4c): the masthead band + `Page.Head` (`Shell.MastheadBand` in
+  `Shell/Shell.Masthead.UI.cs` is the core host, it publishes a `PageChrome`), the material layer and the four cover leaves
+  (`Platform/ShellMaterial.cs` keeps the channel and the hand-over rule; `Entities/Palette.Host.cs` mounts the leaves by view key), the
+  narrow drawer (`Shell.NarrowDrawer` host keeps the Escape/key-preview chain), the command palette (`Shell.PaletteSession` is the model the
+  card reads; `Shell.CommandTable` is unchanged), the history menu, the file-drop cue, the drag chip layer, the setup cover scrim and the
+  frame-rate HUD (`Diagnostics.FpsOverlayOn` is the rule). Pictures: `Themes/Classic/Structure/Views/{Masthead,Material,Drawer,Palette,FrameBits}`;
+  numbers: `Rules/ClassicFrameBitsRules.cs`; keys: `Theming/Contracts/ViewKeys.FrameBits.cs`.
 - **Full-screen Now Playing + visualizers** — the stage, the eight faces, the demand tiers and fallback ladder, the
   `stage.*` / `viz.*` log events and the Diagnostics card. Guide: `docs/guide/fullscreen-visualizers.md`.
 - [probes.md](probes.md) — the windowless CLI probe arms (`--log-sessions` and the others `Probe.TryRunCliArm`
