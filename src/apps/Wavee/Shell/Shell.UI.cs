@@ -1,5 +1,5 @@
 // ── Shell/Shell.UI.cs ──────────────────────────────────────────────────────────────────────────────────────────────
-// window frame, merged chrome row, tab strip, drill trail, narrow drawer, back/forward flyout, not-found page,
+// window frame, merged chrome row, tab strip, drill trail, narrow drawer (host), back/forward flyout, not-found page,
 // network chrome, file-drop target + cue (LocalFileActions), the notification panel and its rows (A9)
 //
 // Role: UI
@@ -28,6 +28,13 @@
 // `Themes\Classic\Structure\Views\Frame\ClassicFrame.cs`. The content region's four states (a page, an empty body, the not-found
 // page, the offline lane) are decided here (`FrameRules.ContentFor`) and drawn by `Shell.ContentState`
 // (`ClassicContentState.cs`); the keep-alive boundary and its page transition stay in `ContentHost`.
+//
+// T4c: the frame's small views are the structure's too. The material, the file-drop cue, the command palette, the setup cover
+// scrim, the drag chip and the frame-rate overlay are child views the frame mounts from their props (`ShellFrameProps`); the
+// narrow drawer (`NarrowDrawer` below) is a [CoreHost] that keeps the Escape key-preview chain and mounts `Shell.NarrowDrawer`; the
+// back/forward history menu is `Shell.HistoryMenu`, mounted by `NavHistoryButton`. The pictures are
+// `Themes\Classic\Structure\Views\{Drawer,FrameBits,Material,Palette}`; the decisions (the file-drop target, `Setup.Covering`, the drag
+// chip resolver, the FPS rule) are the props this file builds.
 //
 // THE RULE THIS FILE KEEPS: it lays out and binds, it never decides. Every geometry/precedence/gating answer below is a
 // call into `Shell.FrameRules`, `Shell.Chrome`, `TabWorkspace`, `Notify` or an owner's rule table — each pinned by a
@@ -536,7 +543,7 @@ public static partial class Shell
             OnContentRegionBounds = static _ => PublishScrimClip(),
             ChromeRow = static () => ChromeRow(),
             PlayerBarDock = static () => PlayerBarDock(),
-            MaterialLayer = static () => MaterialLayer(),
+            Material = new MaterialProps { State = MaterialState },
             ContentHost = static () => Embed.Comp(static () => new ContentHost()),
             SidebarPane = static () => Sidebar.Pane(),
             SidebarSeam = () => Splitter.Create(Sidebar.Seam, () => Sidebar.CommitSeam(), SidebarSeamOptionsFor(policies.NavPane),
@@ -549,11 +556,11 @@ public static partial class Shell
             VideoPipLayer = static () => Video.PipLayer(),
             VideoFullscreenLayer = static () => Video.FullscreenLayer(),
             Overlays = static () => Overlays(),
-            FileDropLayer = static () => FileDropLayer(),
-            CommandPalette = static () => CommandPalette(),
-            CoverScrim = static () => Embed.Comp(static () => new CoverScrim()),
-            DragPreview = static () => DragPreviewLayer.Of(Drag.Preview),
-            FpsOverlay = static () => Diagnostics.FpsOverlay(),
+            FileDropCue = new FileDropProps { Over = FileDropOver },
+            CommandPalette = s_paletteProps,
+            CoverScrim = s_coverScrimProps,
+            DragChip = s_dragChipProps,
+            Fps = s_fpsProps,
         };
     }
 
@@ -715,42 +722,22 @@ public static partial class Shell
         scene.SpotlightScrimClip = r.IsEmpty ? null : r;
     }
 
-    /// <summary>The centred drop pill — bound opacity, so a drag hover never re-renders the shell.</summary>
-    static Element FileDropLayer() => new BoxEl
-    {
-        Grow = 1f, HitTestPassThrough = true, Direction = 1, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
-        Opacity = Prop.Of(static () => FileDropOver.Value ? 1f : 0f),
-        Children =
-        [
-            new BoxEl
-            {
-                HitTestVisible = false,
-                Padding = new Edges4(18f, 10f, 18f, 10f), Corners = CornerRadius4.All(Radii.Control),
-                Fill = Prop.Of(static () => Tok.FillSolidBase), BorderColor = Prop.Of(static () => Tok.AccentDefault),
-                BorderWidth = 1f, Shadow = Elevation.Dialog,
-                Children = [new TextEl(Loc.Get(Strings.LocalFile.DropHint)) { Size = 14f, Color = Tok.TextPrimary }],
-            },
-        ],
-    };
+    // ── the small frame views' props (T4c) ──────────────────────────────────────────────────────────────────────────────
+    //
+    // The file-drop cue (`Shell.FileDrop`, bound to `FileDropOver`), the setup wizard's cover scrim (`Shell.CoverScrim`), the drag
+    // chip layer (`Shell.DragChip`) and the frame-rate overlay (`Shell.Fps`) are the structure's pictures
+    // (`Themes\Classic\Structure\Views\FrameBits\ClassicFrameBits.cs`); these are the decisions they bind to. Cached statics, so
+    // an equal record skips the template.
 
-    /// <summary>The setup wizard's cover scrim (ch 28 parity item 22): the plate opens with the engine's own overlay
-    /// scrim OFF (a shell is always behind it in 0.3 — <see cref="Setup.Covering"/>'s doc comment), so this box is the
-    /// only dim. Tok.FillSmoke, 250 ms linear, 0 under reduced motion; nothing ticks while <see cref="Setup.Covering"/>
-    /// holds still, and the box is hit-test transparent whenever it is not dimming.</summary>
-    sealed class CoverScrim : Component
-    {
-        bool _mounted;
+    /// <summary>Does the setup wizard dim the shell? (<see cref="Setup.Covering"/>'s doc comment: the plate opens with the engine's own
+    /// overlay scrim OFF, a shell is always behind it in 0.3, so the cover scrim is the only dim.)</summary>
+    static readonly CoverScrimProps s_coverScrimProps = new() { Dim = static () => Setup.Covering.Value == Setup.Cover.Dim };
 
-        public override Element Render()
-        {
-            bool dim = Setup.Covering.Value == Setup.Cover.Dim;
-            float ms = Design.Reduced ? 0f : 250f;
-            float target = dim ? 1f : 0f;
-            UseTransition(AnimChannel.Opacity, _mounted ? 1f - target : target, target, ms, Easing.Linear, DepKey.From(dim));
-            _mounted = true;
-            return new BoxEl { Grow = 1f, Fill = Tok.FillSmoke, Opacity = target, HitTestVisible = dim };
-        }
-    }
+    /// <summary>What the dragged payload is called and shows: the app's chip resolver (<c>Drag.Preview</c>).</summary>
+    static readonly DragChipProps s_dragChipProps = new() { Preview = static state => Drag.Preview(state) };
+
+    /// <summary>The FPS HUD's rule: developer mode AND the overlay toggle, never in presentation mode.</summary>
+    static readonly FpsProps s_fpsProps = new() { Shown = static () => Diagnostics.FpsOverlayOn() };
 
     // ══ 3. THE CONTENT HOST ═══════════════════════════════════════════════════════════════════════════════════════
 
@@ -1201,7 +1188,8 @@ public static partial class Shell
                     items[rows + 1] = new MenuFlyoutItem(Loc.Get(Strings.Nav.ViewAllHistory), Icons.Clock, true,
                         static () => GoTo(new Route(RouteKind.History)));
                 }
-                var h = overlay.Open(() => anchor.Value, () => MenuFlyout.Create(items, () => handle.Value?.Close()),
+                var h = overlay.Open(() => anchor.Value,
+                    () => ViewSlots.View(ViewKeys.ShellHistoryMenu, new HistoryMenuProps { Items = items, Close = () => handle.Value?.Close() }),
                     FlyoutPlacement.BottomEdgeAlignedLeft,
                     new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
                 handle.Value = h;
@@ -1254,8 +1242,26 @@ public static partial class Shell
     // the saved desktop preference is never overwritten. Always mounted while the window is narrow; open/close is
     // compositor-only.
 
+    /// <summary>The drawer's core host (T4c): the band's overlay and pinned answers, the single <c>KeyPreview</c> slot it chains while
+    /// open (bare Escape closes the overlay; while editing, Escape belongs to the pane first), the leaf-navigation close and the mount
+    /// decision. It builds no element: the scrim, the pane and their open/close motion are the structure's <c>Shell.NarrowDrawer</c>
+    /// (<c>ClassicDrawer.cs</c>).</summary>
+    [CoreHost]
     sealed class NarrowDrawer : Component
     {
+        /// <summary>The live reads and verbs the scrim and the pane bind to: cached, equal across renders.</summary>
+        static readonly NarrowDrawerParts s_drawerParts = new()
+        {
+            IsOpen = static () => Sidebar.OverlayOpen.Value || SidebarPaneModeRules.OverlayPinned(Sidebar.Band.Value, Sidebar.Editing.Value),
+            IsPinned = static () => SidebarPaneModeRules.OverlayPinned(Sidebar.Band.Value, Sidebar.Editing.Value),
+            Width = static viewportW => SidebarPaneModeRules.OverlayWidth(Sidebar.Width.Value, viewportW),
+            WidthNow = static viewportW => SidebarPaneModeRules.OverlayWidth(Sidebar.Width.Peek(), viewportW),
+            RestingOpacity = static open => Layout.DrawerRestingOpacity(open),
+            RestingTranslateX = static (open, width) => Layout.DrawerRestingTranslateX(open, width),
+            Close = static () => Sidebar.OverlayOpen.Value = false,
+            PaneBody = static () => Sidebar.DrawerPane(),
+        };
+
         Func<int, bool>? _savedPreview;
         Func<int, bool>? _escapePreview;
         bool _installed;
@@ -1300,31 +1306,18 @@ public static partial class Shell
                 if (SidebarPaneModeRules.LeafInvokeClosesOverlay(Sidebar.Editing.Peek())) Sidebar.OverlayOpen.SetIfChanged(false);
             });
 
-            // BUG E1 (perf): on a desktop-width window the overlay is unreachable, so mount NOTHING — no scrim, no second
-            // `Sidebar.DrawerPane()` (a whole second PaneView planning the sidebar on every invalidation and a second
-            // `PumpBinder` registration), no overlay PaneHost at all. Gated on the band ALONE, never on `Sidebar.OverlayOpen`
-            // (see `NarrowDrawerMount.ShouldMount`): the pane must stay mounted for the ENTIRE time the shell is narrow, closed
-            // included, or the first open after entering the narrow band would have nothing already-mounted for the pane's
-            // open/close slide (`UseTransition`) to animate from. `PaneHost`'s `UseSignalEffect(PumpBinder)` is a
-            // `SignalEffectCell` (`IDisposableCell`), so mounting/unmounting across the breakpoint cleanly registers/unregisters
-            // the binder pump (verified in the engine's `RenderContext.RunAllCleanups`).
+            // BUG E1 (perf): the mount decision stays here (`NarrowDrawerMount.ShouldMount`, the band ALONE, never `Sidebar.OverlayOpen`); the theme
+            // mounts nothing but a zero-size placeholder when it is false (no scrim, no second `Sidebar.DrawerPane()`, no overlay PaneHost) and
+            // keeps the pane mounted, closed included, for the ENTIRE time the shell is narrow, so the first open has something to slide from.
+            // `PaneHost`'s `UseSignalEffect(PumpBinder)` is a `SignalEffectCell` (`IDisposableCell`), so mounting/unmounting across the breakpoint
+            // cleanly registers/unregisters the binder pump (verified in the engine's `RenderContext.RunAllCleanups`).
             // Peek, not Value: ShouldMount ignores the open flag entirely (see its own doc).
-            if (!NarrowDrawerMount.ShouldMount(overlay, Sidebar.OverlayOpen.Peek()))
-                return new BoxEl { Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false };
-
-            return new BoxEl
+            return ViewSlots.View(ViewKeys.ShellNarrowDrawer, new NarrowDrawerProps
             {
-                Grow = 1f, ZStack = true, HitTestVisible = open,
-                Children =
-                [
-                    Embed.Comp(static () => new DrawerScrim()),
-                    new BoxEl
-                    {
-                        Grow = 1f, Direction = 0, Justify = FlexJustify.Start, HitTestPassThrough = true,
-                        Children = [Embed.Comp(static () => new DrawerPane())],
-                    },
-                ],
-            };
+                Mounted = NarrowDrawerMount.ShouldMount(overlay, Sidebar.OverlayOpen.Peek()),
+                Open = open,
+                Parts = s_drawerParts,
+            });
         }
     }
 
@@ -1338,63 +1331,6 @@ public static partial class Shell
     public static class NarrowDrawerMount
     {
         public static bool ShouldMount(bool hasOverlay, bool overlayOpen) => hasOverlay;
-    }
-
-    sealed class DrawerScrim : Component
-    {
-        bool _mounted;
-
-        public override Element Render()
-        {
-            // Pinned (editing in a forced band) keeps the pane open behind a non-dismissing 0.2 scrim that lets the page
-            // behind it stay usable (Q16): no hit test, no click-to-close.
-            bool pinned = SidebarPaneModeRules.OverlayPinned(Sidebar.Band.Value, Sidebar.Editing.Value);
-            bool open = Sidebar.OverlayOpen.Value || pinned;
-            float ms = Design.Reduced ? 0f : Design.Motion.Fast;
-            float target = Layout.DrawerRestingOpacity(open);
-            UseTransition(AnimChannel.Opacity, _mounted ? 1f - target : target, target, ms, Easing.Linear, DepKey.From(open));
-            _mounted = true;
-            return new BoxEl
-            {
-                Grow = 1f,
-                Fill = pinned ? new ColorF(0f, 0f, 0f, 0.2f) : ColorF.FromRgba(0, 0, 0, 0x33),
-                Opacity = pinned ? 1f : target,
-                HitTestVisible = open && !pinned, OnClick = pinned ? null : static () => Sidebar.OverlayOpen.Value = false,
-            };
-        }
-    }
-
-    sealed class DrawerPane : Component
-    {
-        bool _mounted;
-
-        public override Element Render()
-        {
-            bool open = Sidebar.OverlayOpen.Value || SidebarPaneModeRules.OverlayPinned(Sidebar.Band.Value, Sidebar.Editing.Value);
-            var vp = UseContextSignal(Viewport.Size);
-            float width = SidebarPaneModeRules.OverlayWidth(Sidebar.Width.Peek(), vp.Peek().Width);
-            float ms = Design.Reduced ? 0f : (open ? MotionTok.PaneOpen.DurationMs : MotionTok.PaneClose.DurationMs);
-            float target = Layout.DrawerRestingTranslateX(open, width);
-            UseTransition(AnimChannel.TranslateX, _mounted ? (open ? -width : 0f) : target, target, ms, Easing.FluentPane, DepKey.From(open));
-            _mounted = true;
-
-            return new BoxEl
-            {
-                Direction = 1, Shrink = 0f, Grow = 0f, AlignSelf = FlexAlign.Stretch, ClipToBounds = true,
-                // The resting position stays coupled to the live width: a closed pane can grow while resizing inside the
-                // band, and a stale static translation would expose the added strip.
-                Transform = Prop.Of(() => Affine2D.Translation(Layout.DrawerRestingTranslateX(
-                    Sidebar.OverlayOpen.Value || SidebarPaneModeRules.OverlayPinned(Sidebar.Band.Value, Sidebar.Editing.Value),
-                    SidebarPaneModeRules.OverlayWidth(Sidebar.Width.Value, vp.Value.Width)), 0f)),
-                Width = Prop.Of(() => SidebarPaneModeRules.OverlayWidth(Sidebar.Width.Value, vp.Value.Width)),
-                // A stock OVERLAY PANE (NavigationView minimal mode): in-app acrylic + flyout elevation, not a dialog slab.
-                Fill = ColorF.Transparent, Acrylic = Tok.AcrylicFlyout,
-                BorderWidth = 1f, BorderColor = Prop.Of(static () => Tok.StrokeCardDefault),
-                Corners = new CornerRadius4(0f, Radii.Card, Radii.Card, 0f),
-                Shadow = Elevation.Flyout, HitTestVisible = open,
-                Children = [Sidebar.DrawerPane()],
-            };
-        }
     }
 
     // ══ 6. THE NOTIFICATION PANEL (ch 19 W14-W17, A9) ══════════════════════════════════════════════════════════════

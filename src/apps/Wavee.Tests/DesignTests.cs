@@ -550,8 +550,8 @@ public class DesignPaletteTests
     }
 }
 
-/// <summary>Pins <see cref="VeilSettlement"/> — the pure decision <see cref="CoverArtistBlendWash"/> and
-/// <see cref="CoverKeyedVeil"/> share to stop two differently-hued veils compositing over the artist photo (repo
+/// <summary>Pins <see cref="VeilSettlement"/> — the pure decision the artist blend wash and
+/// the artist hero veil (<c>ClassicCoverBlend</c>, <c>ClassicCoverVeil</c>) share to stop two differently-hued veils compositing over the artist photo (repo
 /// rule: no source-text tests — the decision was extracted for exactly this).</summary>
 public class VeilSettlementTests
 {

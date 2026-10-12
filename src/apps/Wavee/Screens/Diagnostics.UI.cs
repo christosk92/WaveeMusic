@@ -146,40 +146,12 @@ public static partial class Diagnostics
     // MOUNT POINT (stage B contract) — registered by Install
     public static Element ConnectPage() => Embed.Comp(static () => new ConnectPageView());
 
-    /// <summary>The FPS HUD (ch 27 W26) for the shell frame's overlay ZStack: a full-bleed, hit-test PASS-THROUGH plain
-    /// positioner (a component's output would mirror its Grow onto the wrapper and swallow every hit — the 0.2.9 bug that
-    /// killed scrolling) holding a content-sized pill, shown only while developer mode AND the overlay toggle are on.</summary>
-    // MOUNT POINT (stage B contract) — mounted by the shell frame (owner I / the orchestrator)
-    public static Element FpsOverlay() => new BoxEl
-    {
-        Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, HitTestPassThrough = true,
-        Direction = 1, AlignItems = FlexAlign.End, Padding = new Edges4(0f, 104f, 14f, 0f),
-        Children =
-        [
-            Flow.Show(static () => Platform.Developer.ShowsFpsOverlay(Platform.Developer.Enabled.Value && !StoreShot.Presenting.Value,
-                    Platform.Developer.FpsOverlay.Value),
-                Embed.Comp(static () => new FpsPill())),
-        ],
-    };
-
-    /// <summary>Renders EXACTLY ONCE: both numbers are retained dynamic-text slots the host refreshes in place, so the HUD
-    /// never re-renders per frame and never depresses the rate it displays. First painted frame: two literal "--".</summary>
-    sealed class FpsPill : Component
-    {
-        public override Element Render() => new BoxEl
-        {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = 4f, Padding = new Edges4(8f, 4f, 8f, 4f), Corners = CornerRadius4.All(6f),
-            Fill = Tok.FillSolidBase with { A = 0.90f }, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-            Children =
-            [
-                new TextEl("--") { Size = 12f, Weight = 700, Color = Tok.AccentTextPrimary, DynamicText = DynamicTextKind.FrameFps },
-                new TextEl("fps") { Size = 12f, Weight = 600, Color = Tok.TextSecondary },
-                new TextEl("·") { Size = 12f, Weight = 600, Color = Tok.TextTertiary },
-                new TextEl("--") { Size = 12f, Weight = 600, Color = Tok.TextSecondary, DynamicText = DynamicTextKind.FrameMs },
-                new TextEl("ms") { Size = 12f, Weight = 600, Color = Tok.TextTertiary },
-            ],
-        };
-    }
+    /// <summary>Is the FPS HUD (ch 27 W26) on? Developer mode AND the overlay toggle, never in presentation mode (the Store shot).
+    /// The HUD itself is the structure's <c>Shell.Fps</c> view (T4c, <c>ClassicFrameBits.cs</c>): the shell frame mounts it and binds
+    /// it to this rule, so the pill exists only while the rule holds. The reads are tracked (a <c>Flow.Show</c> predicate).</summary>
+    public static bool FpsOverlayOn()
+        => Platform.Developer.ShowsFpsOverlay(Platform.Developer.Enabled.Value && !StoreShot.Presenting.Value,
+            Platform.Developer.FpsOverlay.Value);
 
     // ══ 3. THE SHARED DIAGNOSTICS CHROME (ONE copy — 0.2.9 had it twice) ════════════════════════════════════════════
 

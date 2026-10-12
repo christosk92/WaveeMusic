@@ -20,9 +20,10 @@
 //     content region = ZStack[ row(sidebar column · content card · rail gap · rail reservation) · sidebar seam ·
 //                              rail overlay · rail seam · narrow drawer ]
 //
-// The surfaces that are not this PR's (title bar, material, player bar, sidebar pane, rail, stage, overlays, palette, drag chip,
-// fps) arrive as element builders on the props (`ShellFrameProps`); T4b, T4c, T5, T6 and T7 give each its own key and replace the
-// builder with a `ctx.View` call here.
+// The surfaces that are not this PR's (title bar, player bar, sidebar pane, rail, stage, overlays) arrive as element builders on the
+// props (`ShellFrameProps`); T4b, T5, T6 and T7 give each its own key and replace the builder with a `ctx.View` call here. T4c did so
+// for the material, the file-drop cue, the palette, the cover scrim, the drag chip and the frame-rate overlay (each member of the props
+// is now the child view's props record); the narrow drawer's core host (its props change with the band) is still a builder.
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -65,7 +66,7 @@ internal static class ClassicFrame
             // The shell-wide "drop a file to play it" target. The engine hands a drop to the DEEPEST accepting target,
             // so a row's own file target still wins; only drops on the rest of the window land here.
             DropTarget = props.FileDrop,
-            Children = [props.MaterialLayer(), column],
+            Children = [ctx.View(ViewKeys.ShellMaterialLayer, props.Material), column],
         };
 
         return ZStack(
@@ -84,11 +85,11 @@ internal static class ClassicFrame
             props.VideoPipLayer(),
             props.VideoFullscreenLayer(),
             props.Overlays(),
-            props.FileDropLayer(),
-            props.CommandPalette(),
-            props.CoverScrim(),
-            props.DragPreview(),
-            props.FpsOverlay()) with { Grow = 1f };
+            ctx.View(ViewKeys.ShellFileDrop, props.FileDropCue),
+            ctx.View(ViewKeys.ShellCommandPalette, props.CommandPalette),
+            ctx.View(ViewKeys.ShellCoverScrim, props.CoverScrim),
+            ctx.View(ViewKeys.ShellDragChip, props.DragChip),
+            ctx.View(ViewKeys.ShellFps, props.Fps)) with { Grow = 1f };
     }
 
     private static Element ContentRegion(ShellFrameProps props) => ZStack(

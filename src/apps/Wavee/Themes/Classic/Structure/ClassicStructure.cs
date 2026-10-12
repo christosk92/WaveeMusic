@@ -1,7 +1,8 @@
 // ── Themes/Classic/Structure/ClassicStructure.cs — the Classic structure (themes plan 6.1) ─────────────────────────────
 //
 // Registers the views T-lane PRs have moved here, one family at a time (`Register`): T4a is the frame and the content states
-// (`Views\Frame\ClassicFrame.cs`, `ClassicContentState.cs`); every other surface is still core code. It
+// (`Views\Frame\ClassicFrame.cs`, `ClassicContentState.cs`); T4c is the frame's small views (`Views\Masthead`, `Material`, `Drawer`,
+// `Palette`, `FrameBits`); every other surface is still core code. It
 // decides the shell's policies (`Rules\ClassicPolicies.cs`: nav pane, panel and mini player, player bar, chrome row, stage)
 // and offers every capability (T3). Its window tiers (T3b) are `Rules\Tiers.cs`.
 //
@@ -31,6 +32,22 @@ public sealed class ClassicStructure : IStructureLayer
         // T4a: the window frame and the content region's states (offline lane, empty body, not-found, page).
         views.Add(ViewKeys.ShellFrame, ClassicFrame.Template, "classic.shell.frame");
         views.Add(ViewKeys.ShellContentState, ClassicContentState.Template, "classic.shell.content-state");
+        // T4c: the surfaces around the frame. The masthead and the page head, the material and its four cover leaves, the narrow drawer, the
+        // command palette, and the small ones (history menu, file-drop cue, drag chip layer, setup wizard's cover scrim, frame-rate overlay).
+        views.Add(ViewKeys.ShellMasthead, ClassicMasthead.Template, "classic.shell.masthead");
+        views.Add(ViewKeys.PageHead, ClassicPageHead.Template, "classic.page.head");
+        views.Add(ViewKeys.ShellMaterialLayer, ClassicMaterial.Template, "classic.shell.material");
+        views.Add(ViewKeys.ShellCoverTone, ClassicMaterial.CoverTone, "classic.shell.material.page-tone");
+        views.Add(ViewKeys.ShellCoverBlend, ClassicMaterial.CoverBlend, "classic.shell.material.artist-blend");
+        views.Add(ViewKeys.ShellCoverVeil, ClassicMaterial.CoverVeil, "classic.shell.material.artist-veil");
+        views.Add(ViewKeys.ShellCoverTint, ClassicMaterial.CoverTint, "classic.shell.material.tint-binder");
+        views.Add(ViewKeys.ShellNarrowDrawer, ClassicDrawer.Template, "classic.shell.narrow-drawer");
+        views.Add(ViewKeys.ShellCommandPalette, ClassicPalette.Template, "classic.shell.command-palette");
+        views.Add(ViewKeys.ShellHistoryMenu, ClassicFrameBits.HistoryMenu, "classic.shell.history-menu");
+        views.Add(ViewKeys.ShellFileDrop, ClassicFrameBits.FileDrop, "classic.shell.file-drop");
+        views.Add(ViewKeys.ShellDragChip, ClassicFrameBits.DragChip, "classic.shell.drag-chip");
+        views.Add(ViewKeys.ShellCoverScrim, ClassicFrameBits.CoverScrim, "classic.shell.cover-scrim");
+        views.Add(ViewKeys.ShellFps, ClassicFrameBits.Fps, "classic.shell.fps");
     }
 
     /// <inheritdoc />

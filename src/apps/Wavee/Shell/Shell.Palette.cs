@@ -13,7 +13,8 @@
 //               into a CALLER-OWNED array, the `>` commands-only prefix and the "Search for …" row. No LINQ and no
 //               per-keystroke allocation beyond the query's own lowercase copy.
 //   2. SHELL  — invoking an entry, and the two shell verbs it lands on (theme, zoom) that had no 0.3 home.
-//   3. UI     — the lane (a ZStack sibling, top pad 64, hit-test transparent), the popup and the card.
+//   3. UI     — the host of the structure's `Shell.CommandPalette` view (T4c): the props and the session. The lane (a ZStack
+//               sibling, top pad 64, hit-test transparent), the popup's anchor and the card are `ClassicPalette.cs`.
 //
 // 0.2.9 names: `WaveeCommands` (the table) and `WaveeCommandPalette`/`WaveePaletteContent` (the card). Nothing here is
 // named `Palette`: inside `Shell` a nested `Palette` would shadow `Wavee.Palette`, the cover-colour table.
@@ -28,6 +29,8 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Input;
 using FluentGpu.Localization;
+using Wavee.Theming.Contracts;
+using ViewSlots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -377,171 +380,53 @@ public static partial class Shell
         if (target is not null) GoTo(new Route(RouteKind.Home, Arg: Entities.Strings.Intern(target)));
     }
 
-    // ══ 3. UI — the lane, the popup, the card ═══════════════════════════════════════════════════════════════════════
-
-    const float PaletteCardW = 560f, PaletteCardMaxH = 460f;
+    // ══ 3. UI — the host of the structure's view ═══════════════════════════════════════════════════════════════════
 
     /// <summary>The descriptor glyph resolver — the action platform's ONE semantic-key map (<c>Actions.UI.cs</c>).</summary>
     static readonly Func<string, string?> s_paletteGlyphOf = static key => ActionIcons.Resolve(key).Glyph;
 
-    // MOUNT POINT (stage B contract)
-    /// <summary>The command palette's lane: a hit-test-transparent ZStack sibling whose top pad puts the card's top edge
-    /// exactly 64 DIP down, centred, a hard 560 wide with no clamp (W1). Open state is <see cref="PaletteOpen"/>, which
-    /// Ctrl+K TOGGLES (the frame's chord). Because this is a sibling lane rather than an overlay entry, the frame's own
-    /// Escape handler must bail while it is open.</summary>
-    public static Element CommandPalette()
-        => new BoxEl
-        {
-            Grow = 1f, Direction = 1, AlignItems = FlexAlign.Center, HitTestVisible = false,
-            Padding = new Edges4(0f, Spacing.XXXL * 2f, 0f, 0f),
-            Children =
-            [
-                Popup.Create(
-                    new BoxEl { Width = PaletteCardW, Height = 0f },
-                    content: static () => Embed.Comp(static () => new PaletteCard()),
-                    isOpen: PaletteOpen,
-                    placement: FlyoutPlacement.BottomEdgeAlignedLeft,
-                    options: new PopupOptions(FocusTrap: true, Chrome: PopupChrome.Popup)),
-            ],
-        };
-
-    /// <summary>The card body. Popup mounts it FRESH per open, so the query and the selection reset for free; the index,
-    /// the result array and the catalog row are allocated once per mount (ch 19 §9.1 item 2).</summary>
-    sealed class PaletteCard : Component
+    /// <summary>The palette's props (T4c): the popup control wired to <see cref="PaletteOpen"/> (a controlled signal; light-dismiss and
+    /// a focus trap), the session factory and the close verb. Cached statics, so an equal record skips the template.</summary>
+    static readonly PaletteProps s_paletteProps = new()
     {
-        public override Element Render()
+        Popup = static (anchor, content) => Popup.Create(
+            anchor, content,
+            isOpen: PaletteOpen,
+            placement: FlyoutPlacement.BottomEdgeAlignedLeft,
+            options: new PopupOptions(FocusTrap: true, Chrome: PopupChrome.Popup)),
+        NewSession = static () => new PaletteSession(),
+        Close = static () => PaletteOpen.Value = false,
+    };
+
+    // MOUNT POINT (stage B contract)
+    /// <summary>The command palette: the structure's <c>Shell.CommandPalette</c> view (T4c), which draws the lane (a hit-test-transparent
+    /// ZStack sibling whose top pad puts the card's top edge exactly 64 DIP down, centred, a hard 560 wide with no clamp, W1) and the
+    /// card. Open state is <see cref="PaletteOpen"/>, which Ctrl+K TOGGLES (the frame's chord). Because the lane is a sibling rather
+    /// than an overlay entry, the frame's own Escape handler must bail while it is open.</summary>
+    public static Element CommandPalette() => ViewSlots.View(ViewKeys.ShellCommandPalette, s_paletteProps);
+
+    /// <summary>One open palette (the card's session): the command index, the result array and the catalog row, allocated once per
+    /// mount (ch 19 §9.1 item 2). The card mounts FRESH per open, so the session does too.</summary>
+    sealed class PaletteSession : IPaletteSession
+    {
+        readonly PaletteEntry[] _index = CommandTable.BuildIndex(Actions.Registry.Current?.Actions, s_paletteGlyphOf,
+            Theming.ThemeOptionsSection.Commands(Platform.Developer.Enabled.Peek()));
+        readonly PaletteEntry[] _hits = new PaletteEntry[CommandTable.MaxResults];
+        readonly PaletteEntry _scratch = CommandTable.NewCatalogScratch();
+        int _count;
+
+        public int Filter(string query) => _count = CommandTable.Filter(_index, query, _hits, _scratch);
+
+        public string GlyphAt(int index) => _hits[index].Glyph;
+
+        public string LabelAt(int index) => _hits[index].Label;
+
+        public void Invoke(int index)
         {
-            var query = UseSignal("");
-            var sel = UseSignal(0);            // UNCLAMPED; the per-render clamp below is the second tier (§9.1 item 1)
-            var index = UseRef<PaletteEntry[]?>(null);
-            var dest = UseRef<PaletteEntry[]?>(null);
-            var scratch = UseRef<PaletteEntry?>(null);
-            var announced = UseRef(false);
-
-            index.Value ??= CommandTable.BuildIndex(Actions.Registry.Current?.Actions, s_paletteGlyphOf,
-                Theming.ThemeOptionsSection.Commands(Platform.Developer.Enabled.Peek()));
-            dest.Value ??= new PaletteEntry[CommandTable.MaxResults];
-            scratch.Value ??= CommandTable.NewCatalogScratch();
-
-            var hits = dest.Value;
-            string q = query.Value;
-            int count = CommandTable.Filter(index.Value, q, hits, scratch.Value);
-            int selected = count == 0 ? 0 : Math.Clamp(sel.Value, 0, count - 1);
-
-            // "Command palette" once on open, then the throttled count on every edit (W3).
-            UseEffect(() =>
-            {
-                if (!Announcer.IsAvailable) return;
-                if (!announced.Value)
-                {
-                    announced.Value = true;
-                    Announcer.Say(Loc.Get(Strings.Palette.Title));
-                }
-                Announcer.SayThrottled(count == 0 ? Loc.Get(Strings.Palette.NoMatches) : Strings.Palette.Matches(count));
-            }, (DepKey)q);
-
-            void Commit(int i)
-            {
-                if ((uint)i >= (uint)count) return;
-                var entry = hits[i];
-                PaletteOpen.Value = false;
-                InvokePaletteEntry(entry);
-            }
-
-            void OnKey(KeyEventArgs e)
-            {
-                switch (e.KeyCode)
-                {
-                    case Keys.Down:
-                        if (count > 0) sel.Value = (selected + 1) % count;
-                        e.Handled = true;
-                        break;
-                    case Keys.Up:
-                        if (count > 0) sel.Value = (selected - 1 + count) % count;
-                        e.Handled = true;
-                        break;
-                    case Keys.Enter:
-                        Commit(selected);
-                        e.Handled = true;
-                        break;
-                    case Keys.Escape:
-                        PaletteOpen.Value = false;
-                        e.Handled = true;
-                        break;
-                }
-            }
-
-            Element[] rows;
-            if (count == 0)
-            {
-                rows =
-                [
-                    new BoxEl
-                    {
-                        Padding = new Edges4(Spacing.L, Spacing.M, Spacing.L, Spacing.M),
-                        Children = [R.Type.DenseMeta(Loc.Get(Strings.Palette.NoMatches)) with { Color = Tok.TextTertiary }],
-                    },
-                ];
-            }
-            else
-            {
-                rows = new Element[count];
-                string enter = Loc.Get(Strings.Palette.Enter);
-                for (int i = 0; i < count; i++)
-                {
-                    int at = i;
-                    bool active = at == selected;
-                    var entry = hits[at];
-                    rows[i] = new BoxEl
-                    {
-                        Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S,
-                        MinHeight = Design.Size.ControlH, MinWidth = 0f,
-                        Padding = new Edges4(Spacing.L, Spacing.XS, Spacing.L, Spacing.XS),
-                        Corners = Radii.ControlAll,
-                        // Selection and hover paint the SAME fill; the accent glyph + "Enter" disambiguate (W34).
-                        Fill = active ? Tok.FillSubtleSecondary : ColorF.Transparent,
-                        HoverFill = Tok.FillSubtleSecondary,
-                        OnClick = () => Commit(at),
-                        Children =
-                        [
-                            new TextEl(entry.Glyph)
-                            {
-                                Size = 14f, FontFamily = Tok.Definition.Fonts.Icon,
-                                Color = active ? Tok.AccentDefault : Tok.TextTertiary,
-                            },
-                            new BoxEl
-                            {
-                                Grow = 1f, MinWidth = 0f,
-                                Children =
-                                [
-                                    new TextEl(entry.Label)
-                                    {
-                                        Size = 14f, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                                    },
-                                ],
-                            },
-                            active ? R.Type.MicroMeta(enter) with { Color = Tok.TextTertiary } : new BoxEl(),
-                        ],
-                    };
-                }
-            }
-
-            return new BoxEl
-            {
-                Direction = 1, Width = PaletteCardW, MaxHeight = PaletteCardMaxH, Gap = Spacing.XXS,
-                Padding = Edges4.All(Spacing.S),
-                OnKeyDown = OnKey,
-                Children =
-                [
-                    TextBox.Create(query, options: new TextBox.TextBoxOptions
-                    {
-                        Placeholder = Loc.Get(Strings.Palette.Placeholder),
-                        Width = PaletteCardW - Spacing.S * 2f,
-                    }),
-                    new BoxEl { Height = Spacing.XXS },
-                    new BoxEl { Direction = 1, Gap = 1f, Children = rows },
-                ],
-            };
+            if ((uint)index >= (uint)_count) return;
+            var entry = _hits[index];
+            PaletteOpen.Value = false;
+            InvokePaletteEntry(entry);
         }
     }
 }

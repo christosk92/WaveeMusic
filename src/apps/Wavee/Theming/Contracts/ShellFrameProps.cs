@@ -11,9 +11,12 @@
 //   · Behaviour the host wires (the shell chords, the key handler, the file-drop target, the realized-node captures the
 //     probes and the scrim clip read): the template only PLACES them.
 //   · Element builders of the surfaces that are not this PR's: each is a `Func<Element>` over the core builder that exists
-//     today (the title bar, the material, the player bar, the sidebar pane, the rail, the stage, the overlay layers). A later
+//     today (the title bar, the player bar, the sidebar pane, the rail, the stage, the overlay layers). A later
 //     T-PR gives its surface its own view key and replaces the builder with `ctx.View(...)`; nothing else here changes.
-//     T4a draws the FRAME: the column, the window layers, the content region and its seams.
+//     T4a draws the FRAME: the column, the window layers, the content region and its seams. T4c gave the material, the
+//     palette, the file-drop cue, the cover scrim, the drag chip and the frame-rate overlay their keys: those members now carry
+//     the child view's PROPS and the frame mounts `ctx.View(key, props)`. (The narrow drawer's props change with the band, so its
+//     core host stays a builder.)
 //
 // Members are init-only and every delegate is a cached static or a closure built once at mount (the frame root renders
 // once for the process), so the props are equal across re-pushes and an equal record skips the template.
@@ -102,8 +105,8 @@ public sealed record ShellFrameProps
     /// <summary>The player bar dock (T6a).</summary>
     public required Func<Element> PlayerBarDock { get; init; }
 
-    /// <summary>The shell material under the column (T4c).</summary>
-    public required Func<Element> MaterialLayer { get; init; }
+    /// <summary>The shell material under the column: the props of <see cref="ViewKeys.ShellMaterialLayer"/> (T4c).</summary>
+    public required MaterialProps Material { get; init; }
 
     /// <summary>The page-swap host: the keep-alive boundary, the masthead and the offline lane. Draws its states through
     /// <see cref="ViewKeys.ShellContentState"/>.</summary>
@@ -121,7 +124,8 @@ public sealed record ShellFrameProps
     /// <summary>The rail seam: the splitter wired to the rail width.</summary>
     public required Func<Element> RailSeam { get; init; }
 
-    /// <summary>The narrow-window drawer (T4c).</summary>
+    /// <summary>The narrow-window drawer's core host (T4c): it keeps the key-preview chain, the leaf-navigation close and the mount
+    /// decision, and mounts <see cref="ViewKeys.ShellNarrowDrawer"/> itself (its props change with the band and the open flag).</summary>
     public required Func<Element> NarrowDrawer { get; init; }
 
     /// <summary>The fullscreen stage (T7a).</summary>
@@ -136,18 +140,18 @@ public sealed record ShellFrameProps
     /// <summary>The overlay layer (banner, toast cues) (T11a).</summary>
     public required Func<Element> Overlays { get; init; }
 
-    /// <summary>The file-drop cue (T4c).</summary>
-    public required Func<Element> FileDropLayer { get; init; }
+    /// <summary>The file-drop cue: the props of <see cref="ViewKeys.ShellFileDrop"/> (T4c).</summary>
+    public required FileDropProps FileDropCue { get; init; }
 
-    /// <summary>The command palette (T4c).</summary>
-    public required Func<Element> CommandPalette { get; init; }
+    /// <summary>The command palette: the props of <see cref="ViewKeys.ShellCommandPalette"/> (T4c).</summary>
+    public required PaletteProps CommandPalette { get; init; }
 
-    /// <summary>The setup wizard's cover scrim (T4c).</summary>
-    public required Func<Element> CoverScrim { get; init; }
+    /// <summary>The setup wizard's cover scrim: the props of <see cref="ViewKeys.ShellCoverScrim"/> (T4c).</summary>
+    public required CoverScrimProps CoverScrim { get; init; }
 
-    /// <summary>The drag chip (T4c).</summary>
-    public required Func<Element> DragPreview { get; init; }
+    /// <summary>The drag chip layer: the props of <see cref="ViewKeys.ShellDragChip"/> (T4c).</summary>
+    public required DragChipProps DragChip { get; init; }
 
-    /// <summary>The frame-rate overlay (T4c).</summary>
-    public required Func<Element> FpsOverlay { get; init; }
+    /// <summary>The frame-rate overlay: the props of <see cref="ViewKeys.ShellFps"/> (T4c).</summary>
+    public required FpsProps Fps { get; init; }
 }
