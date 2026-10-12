@@ -211,6 +211,9 @@ public static partial class Shell
         readonly Signal<bool> _pageStageHosts = new(false);
 
         bool _bandSeeded;
+        /// <summary>The window and content tiers of this root (T3b): created with the first render on the ACTIVE structure's
+        /// ladders, so a theme switch (a new root) re-resolves them with the new structure's.</summary>
+        WindowTiers.Binding? _tiers;
         TemplateParts? _seamParts;
         TemplateParts? _railSeamParts;
         readonly ZoomService.AutoLoop _autoZoom = new();
@@ -242,25 +245,33 @@ public static partial class Shell
             var vp = UseContextSignal(Viewport.Size);
             var zoom = UseContextSignal(Viewport.Zoom);
 
+            // THE WINDOW TIERS (T3b, plan 3.2-3.3): resolved here from the layout viewport through the active structure's
+            // ladders. A first mount is final in its own frame; a crossing after mount is committed by the host on the first
+            // frame that is not resized (the resized frame keeps the old tier), so the band below changes on that frame and
+            // the pane, the content card and the player bar FLIP instead of snapping.
+            var tiers = _tiers ??= WindowTiers.ForActiveStructure(vp);
+            tiers.Begin(Context);
+
             // The window band's FIRST value is known only here; seed it before the column mounts so a small launch lays out as
             // a rail (or no pane) on frame one (no subscriber reads it yet).
             if (!_bandSeeded)
             {
                 _bandSeeded = true;
                 var size0 = vp.Peek();
-                var pane0 = FrameModel.Seed(new WindowFacts(size0.Width, size0.Height),
+                var pane0 = FrameModel.Seed(new WindowFacts(size0.Width, size0.Height), tiers.WindowNow,
                     Sidebar.UserCollapsed.Peek(), Sidebar.Editing.Peek(), Sidebar.Width.Peek());
                 Sidebar.Band.SetIfChanged(pane0.Band);
                 Sidebar.Mode.SetIfChanged(pane0.Mode);
                 Sidebar.PresentedWidth.SetIfChanged(pane0.PresentedWidth);
             }
+            // The content tier is estimated from the sidebar the seed above just settled, then the facts are published.
+            tiers.Complete(Context);
 
-            // THE WINDOW BAND (design V.1): hysteretic, derived — the ONLY way the window width reaches the sidebar.
+            // THE WINDOW BAND (design V.1): the window tier read as a band — the ONLY way the window width reaches the sidebar.
             UseSignalEffect(() =>
             {
                 var current = Sidebar.Band.Peek();
-                var size = vp.Value;
-                var next = FrameModel.NextBand(new WindowFacts(size.Width, size.Height), current);
+                var next = FrameModel.BandOf(tiers.Window);
                 if (next == current) return;
                 Sidebar.Band.Value = next;
                 if (FrameModel.ClosesOverlay(next)) Sidebar.OverlayOpen.SetIfChanged(false);

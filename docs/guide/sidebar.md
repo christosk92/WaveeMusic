@@ -68,7 +68,9 @@ pane's list: the 4-px pane edge is the only inset the list adds.
 
 ## 4. Modes and the window band
 
-`SidebarPaneModeRules` (`Shell/Sidebar.Resize.cs`) maps the window width to a band, and the band to a mode:
+The window's width TIER (`WindowTiers`, `docs/guide/theming.md` section 7) maps to a band (`SidebarPaneModeRules.BandOf`:
+Compact is Tiny, Small is Narrow, Standard and up are Wide), and `SidebarPaneModeRules` (`Shell/Sidebar.Resize.cs`) maps the
+band to a mode. Where the bands begin is the structure's window ladder; Classic's is in `Themes/Classic/Structure/Rules/Tiers.cs`:
 
 | Band | Width | Mode |
 |---|---|---|
@@ -76,7 +78,8 @@ pane's list: the 4-px pane edge is the only inset the list adds.
 | Narrow | 528 to 660 (leaves Wide at ≥ 700, Tiny below 528) | Compact |
 | Tiny | < 528 (leaves at ≥ 568) | Minimal |
 
-The 40-px hysteresis keeps the band from flickering at a threshold. Narrow and Tiny force their mode whatever the
+The 40-px hysteresis keeps the band from flickering at a threshold, and the band changes on the first frame that is not
+resized (the resized frame keeps the old band), so the pane animates across the crossing instead of snapping. Narrow and Tiny force their mode whatever the
 user wants. In Narrow and Tiny, Edit mode opens the sidebar as an overlay pane instead.
 
 `userCollapsed` is written only in the Wide band and not while editing. In Narrow and Tiny the collapse is

@@ -5,9 +5,10 @@
 // inline. The decisions are pure functions here (engine-free; the tests drive every branch); the frame component reads the
 // signals, asks, and writes the answers back in the order it always wrote them.
 //
-// THE POLICY IS TODAY'S. `NavPaneState`'s mode comes from the sidebar's existing constants (`SidebarPaneModeRules`: 660 / 700
-// and 528 / 568 with a 40-DIP hysteresis). The tier policy that will replace them is T3's; this file only gives the frame one
-// place to ask.
+// THE POLICY IS THE STRUCTURE'S. `NavPaneState`'s band comes from the window's width TIER (T3b: `WindowTiers` resolves it
+// through the active structure's window ladder, with its hysteresis; Classic's 528 / 568 and 660 / 700 live in
+// `Themes\Classic\Structure\Rules\Tiers.cs`). The nav-pane policy that replaces the rest of the sidebar's constants is T3's; this
+// file only gives the frame one place to ask.
 //
 // THE FACTS (`FrameFacts`) are the few reads a view must not make from settings or from a foreign model's signals: developer
 // mode, "presenting" (the Store shot), the immersive stage and the derived "chrome mounted".
@@ -16,6 +17,7 @@
 // notification panel, the omnibar) lives with them: `WorkspaceVerbs`, `NotificationVerbs`, `OmnibarModel`.
 
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 
 namespace Wavee;
 
@@ -29,19 +31,19 @@ public readonly record struct NavPaneState(SidebarWindowBand Band, SidebarPaneMo
 /// <summary>The frame's pure decisions.</summary>
 public static class FrameModel
 {
-    /// <summary>The pane's first values, known only when the frame first renders: asked from the Wide band, so only the
-    /// ENTERING thresholds apply (a fresh launch at 600 is Narrow, at 500 Tiny), and a small launch lays out as a rail (or no
-    /// pane) on frame one.</summary>
-    public static NavPaneState Seed(in WindowFacts window, bool userCollapsed, bool editing, float expandedWidth)
+    /// <summary>The pane's first values, known only when the frame first renders. <paramref name="windowTier"/> is the tier a
+    /// FRESH resolve gave the first frame (only the entering edges apply: Classic at 600 is Small, at 500 Compact), so a small
+    /// launch lays out as a rail (or no pane) on frame one.</summary>
+    public static NavPaneState Seed(in WindowFacts window, WidthTier windowTier, bool userCollapsed, bool editing, float expandedWidth)
     {
-        var band = SidebarPaneModeRules.BandOf(window.Width, SidebarWindowBand.Wide);
+        var band = SidebarPaneModeRules.BandOf(windowTier);
         var mode = SidebarPaneModeRules.Resolve(band, userCollapsed, editing);
         return new NavPaneState(band, mode, SidebarPaneModeRules.PresentedWidth(mode, expandedWidth, window.Width), 1f);
     }
 
-    /// <summary>THE WINDOW BAND (design V.1): hysteretic and derived — the ONLY way the window width reaches the sidebar.</summary>
-    public static SidebarWindowBand NextBand(in WindowFacts window, SidebarWindowBand current)
-        => SidebarPaneModeRules.BandOf(window.Width, current);
+    /// <summary>THE WINDOW BAND (design V.1): the window's width tier read as a sidebar band — the ONLY way the window width
+    /// reaches the sidebar. The tier is hysteretic and deferred to the first frame that is not resized (<c>WindowTiers</c>).</summary>
+    public static SidebarWindowBand BandOf(WidthTier windowTier) => SidebarPaneModeRules.BandOf(windowTier);
 
     /// <summary>Leaving into a band with no overlay pane closes the overlay.</summary>
     public static bool ClosesOverlay(SidebarWindowBand band) => !SidebarPaneModeRules.HasOverlay(band);

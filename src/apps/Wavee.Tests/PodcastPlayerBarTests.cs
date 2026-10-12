@@ -1,4 +1,5 @@
 using FluentGpu.Foundation;
+using Wavee.Tests.Theming;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -114,7 +115,7 @@ public sealed class PodcastPlayerBarTests
     [InlineData(1240f)]
     public void Podcast_transport_speed_and_secondary_commands_fit_every_pressure_tier(float width)
     {
-        var layout = Shell.PodcastBarLayout(Shell.PlayerBarLayout.Initial(width));
+        var layout = Shell.PodcastBarLayout(Shell.PlayerBarLayout.Initial(ClassicTierFixture.PlayerBar, width));
         float transport = layout.PrimaryBox + 2 * layout.ButtonBox + Shell.EpisodeSpeedButtonWidth
             + (layout.ShowPrevNext ? 2 * layout.ButtonBox : 0);
         float occupied = 2 * layout.RowPad + layout.LeftW + 2 * layout.RowGap + transport

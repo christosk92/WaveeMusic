@@ -1189,32 +1189,28 @@ public static partial class Shell
     /// bar.</summary>
     public enum PlayerBarTier : byte { Minimal, Compact, Medium, Comfortable, Wide, Full }
 
+    /// <summary>The player bar's tier ladder is the STRUCTURE's (T3b: Classic's lives in
+    /// <c>Themes\Classic\Structure\Rules\Tiers.PlayerBar.cs</c>, id <c>player.bar</c>): five edges, six tiers, widening commits at
+    /// the edge and narrowing holds through a 24-DIP dip so a pointer resize cannot chatter structural controls at a
+    /// threshold. These functions only map the ladder's tier index onto <see cref="PlayerBarTier"/>.</summary>
     public static class PlayerBar
     {
-        public const float CompactW = 440f;
-        public const float MediumW = 760f;
-        public const float ComfortableW = 900f;
-        public const float WideW = 1100f;
-        public const float FullW = 1240f;
-        public const float NarrowHysteresis = 24f;
+        /// <summary>The active structure's player-bar ladder (the bar mounts under the installed theme's policy).</summary>
+        public static TierLadder ActiveLadder()
+            => Theming.ThemeHost.Facts.Peek().Policies.Tiers.Ladder(Theming.TierLadderIds.PlayerBar);
 
-        public static PlayerBarTier Nominal(float width) =>
-            width >= FullW ? PlayerBarTier.Full :
-            width >= WideW ? PlayerBarTier.Wide :
-            width >= ComfortableW ? PlayerBarTier.Comfortable :
-            width >= MediumW ? PlayerBarTier.Medium :
-            width >= CompactW ? PlayerBarTier.Compact :
-            PlayerBarTier.Minimal;
+        /// <summary>The tier a bar of <paramref name="width"/> lands in on a fresh resolve (a first mount: each edge at its own
+        /// width). A non-positive width is Minimal.</summary>
+        public static PlayerBarTier Nominal(TierLadder ladder, float width)
+            => (PlayerBarTier)ladder.Resolve(width, -1);
 
-        /// <summary>Widening commits immediately; narrowing holds the current presentation through a 24-DIP dip so a
-        /// pointer resize cannot chatter structural controls at a threshold.</summary>
-        public static PlayerBarTier Resolve(float width, PlayerBarTier current, bool initialized)
+        /// <summary>Widening commits immediately; narrowing holds the current presentation through the ladder's dip. A
+        /// non-positive width (a minimised window) keeps <paramref name="current"/>; <paramref name="initialized"/> false means
+        /// <paramref name="current"/> is a seed, not a tier the user has seen, so the width resolves fresh.</summary>
+        public static PlayerBarTier Resolve(TierLadder ladder, float width, PlayerBarTier current, bool initialized)
         {
             if (width <= 0f) return current;
-            var nominal = Nominal(width);
-            if (!initialized || nominal >= current) return nominal;
-            var dipped = Nominal(width + NarrowHysteresis);
-            return dipped < current ? dipped : current;
+            return (PlayerBarTier)ladder.Resolve(width, initialized ? (int)current : -1);
         }
     }
 
@@ -1256,10 +1252,10 @@ public static partial class Shell
         /// narrower regresses.</summary>
         public const float TopEdgeWidthFloor = 2400f;
 
-        public static PlayerBarLayout Initial(float width) => ForTier(Shell.PlayerBar.Nominal(width), width);
+        public static PlayerBarLayout Initial(TierLadder ladder, float width) => ForTier(Shell.PlayerBar.Nominal(ladder, width), width);
 
-        public static PlayerBarLayout Resolve(float width, in PlayerBarLayout current, bool initialized)
-            => ForTier(Shell.PlayerBar.Resolve(width, current.Tier, initialized), width);
+        public static PlayerBarLayout Resolve(TierLadder ladder, float width, in PlayerBarLayout current, bool initialized)
+            => ForTier(Shell.PlayerBar.Resolve(ladder, width, current.Tier, initialized), width);
 
         /// <param name="tier">The resolved pressure tier.</param>
         /// <param name="width">The bar's measured width in DIP; 0 keeps the pre-fix 2400 behaviour via the floor.</param>

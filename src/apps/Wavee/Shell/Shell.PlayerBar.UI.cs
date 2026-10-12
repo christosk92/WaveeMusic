@@ -139,18 +139,22 @@ public static partial class Shell
     /// resize drag re-renders the bar only at a tier crossing — never per pixel.</summary>
     sealed class PlayerBarRoot : Component
     {
+        TierLadder? _ladder;
+
         public override Element Render()
         {
             var viewport = UseContextSignal(Viewport.Size);
             float initialWidth = viewport.Peek().Width;
-            var layout = UseSignal(PlayerBarLayout.Initial(initialWidth));
+            // The ladder is the active structure's (its player-bar tiers, T3b); a theme switch mounts a new root and so a new bar.
+            var ladder = _ladder ??= PlayerBar.ActiveLadder();
+            var layout = UseSignal(PlayerBarLayout.Initial(ladder, initialWidth));
             var initialized = UseRef(initialWidth > 0f);
 
             UseSignalEffect(() =>
             {
                 var previous = layout.Peek();
                 float width = viewport.Value.Width;
-                var next = PlayerBarLayout.Resolve(width, in previous, initialized.Value);
+                var next = PlayerBarLayout.Resolve(ladder, width, in previous, initialized.Value);
                 if (width > 0f) initialized.Value = true;
                 if (next.Equals(previous)) return;
                 // Always-on and cheap: a band change is a handful of events per session (0.2.9 gated this on an env var).

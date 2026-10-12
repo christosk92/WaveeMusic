@@ -6,7 +6,7 @@
 //   · `ShellCapabilities`  what the shell offers. `Unrestricted` is "every feature on", which is what Classic is today.
 //   · `StyleMetrics`       the style's row heights and gutters. T2/T3 fill it from the role table; `Unset` (all zero)
 //                          means "no metric published yet" and no consumer reads one in T1.
-//   · `TierFacts`          the window-tier fact (T3b). A placeholder with no members yet.
+//   · `TierFacts`          the window-tier fact (T3b): `Theming/Policies/TierFacts.cs`, with `TierPolicy` beside it.
 //   · `ThemeFacts`         the bundle `ThemeHost.Facts` publishes and `ThemeFactsContext` mirrors for templates.
 
 using FluentGpu.Hooks;
@@ -20,6 +20,9 @@ public sealed record ThemePolicies
 {
     /// <summary>The bundle of a structure that has no policies yet.</summary>
     public static ThemePolicies Empty { get; } = new();
+
+    /// <summary>The structure's window tiers (T3b). A structure that declares none is Standard at every size.</summary>
+    public TierPolicy Tiers { get; init; } = TierPolicy.Standard;
 }
 
 /// <summary>What the shell offers under the active structure.</summary>
@@ -44,14 +47,6 @@ public readonly record struct StyleMetrics(
 {
     /// <summary>No metric published (every member 0). T2/T3 replace it with the Classic values taken from <c>Design</c>.</summary>
     public static StyleMetrics Unset => default;
-}
-
-/// <summary>The window-tier fact of themes plan 3.2 (T3b adds the width and height tiers and the content width). A
-/// placeholder in T1 so <see cref="ThemeFacts"/> already has its final shape.</summary>
-public readonly record struct TierFacts
-{
-    /// <summary>No tier information yet.</summary>
-    public static TierFacts Unknown => default;
 }
 
 /// <summary>What the active composition publishes for the core: policies, capabilities, metrics and tiers. Core models

@@ -27,6 +27,7 @@
 
 using FluentGpu.Localization;
 
+using Wavee.Tests.Theming;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -972,17 +973,17 @@ public class PlayerBarLayoutTests
     [InlineData(1100f, Shell.PlayerBarTier.Wide)]
     [InlineData(1240f, Shell.PlayerBarTier.Full)]
     public void The_tier_ladder(float width, Shell.PlayerBarTier expected)
-        => Assert.Equal(expected, Shell.PlayerBar.Nominal(width));
+        => Assert.Equal(expected, Shell.PlayerBar.Nominal(ClassicTierFixture.PlayerBar, width));
 
     [Fact]
     public void Widening_commits_at_once_and_narrowing_holds_through_the_dip()
     {
         Assert.Equal(Shell.PlayerBarTier.Wide,
-            Shell.PlayerBar.Resolve(1100f, Shell.PlayerBarTier.Comfortable, initialized: true));
+            Shell.PlayerBar.Resolve(ClassicTierFixture.PlayerBar, 1100f, Shell.PlayerBarTier.Comfortable, initialized: true));
         Assert.Equal(Shell.PlayerBarTier.Wide,
-            Shell.PlayerBar.Resolve(1090f, Shell.PlayerBarTier.Wide, initialized: true));
+            Shell.PlayerBar.Resolve(ClassicTierFixture.PlayerBar, 1090f, Shell.PlayerBarTier.Wide, initialized: true));
         Assert.Equal(Shell.PlayerBarTier.Comfortable,
-            Shell.PlayerBar.Resolve(1070f, Shell.PlayerBarTier.Wide, initialized: true));
+            Shell.PlayerBar.Resolve(ClassicTierFixture.PlayerBar, 1070f, Shell.PlayerBarTier.Wide, initialized: true));
     }
 
     [Fact]
