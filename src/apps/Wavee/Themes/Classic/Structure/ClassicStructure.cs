@@ -1,7 +1,8 @@
 // ── Themes/Classic/Structure/ClassicStructure.cs — the Classic structure (themes plan 6.1) ─────────────────────────────
 //
 // Registers the views T-lane PRs have moved here, one family at a time (`Register`): T4a is the frame and the content states
-// (`Views\Frame\ClassicFrame.cs`, `ClassicContentState.cs`); every other surface is still core code. It
+// (`Views\Frame\ClassicFrame.cs`, `ClassicContentState.cs`), T4b the title bar and the search (`Views\TitleBar\ClassicTitleBar.cs`,
+// `Views\Search\ClassicSearch.cs`); every other surface is still core code. It
 // decides the shell's policies (`Rules\ClassicPolicies.cs`: nav pane, panel and mini player, player bar, chrome row, stage)
 // and offers every capability (T3). Its window tiers (T3b) are `Rules\Tiers.cs`.
 //
@@ -31,6 +32,10 @@ public sealed class ClassicStructure : IStructureLayer
         // T4a: the window frame and the content region's states (offline lane, empty body, not-found, page).
         views.Add(ViewKeys.ShellFrame, ClassicFrame.Template, "classic.shell.frame");
         views.Add(ViewKeys.ShellContentState, ClassicContentState.Template, "classic.shell.content-state");
+        // T4b: the merged title bar row, the search (the field or the magnifier and its flyout) and the suggestions popup body.
+        views.Add(ViewKeys.ShellTitleBar, ClassicTitleBar.Template, "classic.shell.title-bar");
+        views.Add(ViewKeys.ShellSearch, ClassicSearch.Template, "classic.shell.search");
+        views.Add(ViewKeys.ShellSearchSuggestions, ClassicSearch.SuggestionsTemplate, "classic.shell.search-suggestions");
     }
 
     /// <inheritdoc />

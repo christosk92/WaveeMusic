@@ -1,6 +1,6 @@
 // ── Shell/Shell.UI.cs ──────────────────────────────────────────────────────────────────────────────────────────────
-// window frame, merged chrome row, tab strip, drill trail, narrow drawer, back/forward flyout, not-found page,
-// network chrome, file-drop target + cue (LocalFileActions), the notification panel and its rows (A9)
+// window frame (T4a: the host of `Shell.Frame`), the core side of the merged chrome row (T4b: the picture is `Shell.TitleBar`), drill trail,
+// narrow drawer, not-found page, network chrome, file-drop target + cue (LocalFileActions), the notification panel and its rows (A9)
 //
 // Role: UI
 // Owner: I
@@ -534,7 +534,7 @@ public static partial class Shell
             OnSidebarColumnRealized = static h => s_sidebarColumn = h,
             OnContentRegionRealized = static h => { s_contentRegion = h; PublishScrimClip(); },
             OnContentRegionBounds = static _ => PublishScrimClip(),
-            ChromeRow = static () => ChromeRow(),
+            TitleBar = TitleBarProps(),
             PlayerBarDock = static () => PlayerBarDock(),
             MaterialLayer = static () => MaterialLayer(),
             ContentHost = static () => Embed.Comp(static () => new ContentHost()),
@@ -890,27 +890,20 @@ public static partial class Shell
     static readonly ContentStateProps s_offlineLane = ContentStateProps.ForOfflineLane(
         static () => Controls.OfflineStrip(onRetry: static () => Spotify.Login()));
 
-    // ══ 4. THE MERGED CHROME ROW ══════════════════════════════════════════════════════════════════════════════════
+    // ══ 4. THE MERGED CHROME ROW (the core side) ═════════════════════════════════════════════════════════════════
     //
-    // ONE 48-DIP TitleBar in merged mode: the tabs island (nav cluster + text-first strip) · the window-centred omnibar
-    // (`+Shell.Masthead.UI.cs`) · the trailing identity island. The island builders run INSIDE the bar's render — no
-    // hooks here; hook-owned behaviour lives in child components. `ContentVersion` is the bar's memo key and folds every
-    // term an island reads.
-
-    /// <summary>The island-button footprint: 40×44, the bar's own nav metric (a 32-DIP button would leave strips that are
-    /// neither draggable nor clickable). A property: the default style captures theme brushes.</summary>
-    static IconButton.Style ChromeButtonStyle => IconButton.DefaultStyle with { Size = 40f, Height = 44f };
-
-    /// <summary>2 DIP either side — what the bar gives its own pane toggle.</summary>
-    static readonly Edges4 ChromeButtonMargin = new(2f, 0f, 2f, 0f);
+    // T4b (themes plan 6.1): the row's PICTURE is the structure's `Shell.TitleBar` (`Themes\Classic\Structure\Views\TitleBar\
+    // ClassicTitleBar.cs`): ONE 48-DIP TitleBar in merged mode, the tabs island (nav cluster + text-first strip) · the
+    // window-centred omnibar (`Shell.Search`, `Views\Search\ClassicSearch.cs`) · the trailing identity island. What stays here is
+    // what the picture reads, and `+Shell.TitleBar.cs` builds its props from it: the strip's measured extent, the pane toggle's
+    // enabled cell and tooltip, the version stamps, and the tab items with their menus, drops and pin rows. The allocation is
+    // `Shell.Chrome` (`Shell.Chrome.cs`). The island builders run INSIDE the bar's render — no hooks there; hook-owned
+    // behaviour lives in child components. `ContentVersion` is the bar's memo key and folds every term an island reads.
 
     /// <summary>The strip's natural content extent (quantised), fed back into the chrome allocator.</summary>
     static readonly RootState<Signal<float>> s_tabExtentState = new("Shell.TabExtent", static () => new Signal<float>(Layout.ChromeTabMinW));
     /// <summary>The tab strip's measured content extent (root-lifetime: the new root's strip measures itself again).</summary>
     static Signal<float> s_tabExtent => s_tabExtentState.Value;
-
-    static readonly RootState<TabStrip?> s_stripState = new("Shell.TabStrip");
-    static TabStrip? s_strip { get => s_stripState.Value; set => s_stripState.Value = value; }
 
     /// <summary>The title bar's pane toggle reads this for its enabled state (see <see cref="PaneToggleTip"/>). A plain
     /// signal mirrored by the frame component, so the bar's live binding needs no runtime at construction.</summary>
@@ -921,26 +914,6 @@ public static partial class Shell
          : Sidebar.Mode.Value == SidebarPaneMode.Expanded || Sidebar.OverlayOpen.Value ? Loc.Get("sidebar.pane.collapse")
          : Loc.Get("sidebar.pane.expand");
 
-    static readonly LayoutTransition TabLaneMotion = new(TransitionChannels.Bounds,
-        TransitionDynamics.Tween(FgMotion.ControlFast, Easing.FluentPopOpen));
-
-    static Element ChromeRow() => Embed.Comp(static () =>
-    {
-        var bar = new TitleBar
-        {
-            IconGlyph = "", ShowBackButton = false, ShowCaptionButtons = true,
-            ShowPaneToggle = true, OnPaneToggle = Sidebar.TogglePane,
-            PaneToggleEnabledSignal = s_paneToggleEnabled, PaneToggleToolTip = PaneToggleTip,
-            ShowRailBaseline = false,          // the seam below is the content region's own stroke
-            Tabs = TabsIsland, TabsVersion = TitleBarTabsVersion,
-            TabsElasticLane = true,            // tabs absorb the overrun; the omnibar keeps its allocation
-            Trailing = TrailingIsland, CaptionLeading = CaptionLeadingIsland,
-            ContentVersion = ChromeContentVersion,
-        };
-        bar.CenterContent = _ => CenterIsland(bar.CenterAvail);
-        return bar;
-    });
-
     static int ChromeContentVersion()
     {
         var l = ChromeLayout.Value;
@@ -949,7 +922,7 @@ public static partial class Shell
                   | (l.ShowNewTab ? 32 : 0) | (l.ShowTrailing ? 64 : 0);
         var r = Current.Value;
         // The route and the pin store's version: the trailing Pin/Unpin follows a navigation and a pin change.
-        // l.Chip is the form the trailing island actually BUILDS from (AuthChip(l.Chip)); Auth.Value alone is not enough:
+        // l.Chip is the form the trailing island actually BUILDS from (the view's AuthChip); Auth.Value alone is not enough:
         // the allocator effect publishes the new Chip after Auth flips, so the bar can render once with the stale chip
         // and the version must move again when ChromeLayout lands, or TitleBar's render memo returns the stale tree.
         return HashCode.Combine(flags, (int)l.SearchWidth, (int)l.LeadClusterW, TitleBarTabsVersion(), (int)Auth.Value,
@@ -961,58 +934,6 @@ public static partial class Shell
     static int TitleBarTabsVersion() => HashCode.Combine(TabsVersion.Value, SelectedTab.Value, Shown.Value);
 
     static int TabStripItemsVersion() => HashCode.Combine(TabsVersion.Value, ChromeLayout.Value.ShowNewTab, Shown.Value);
-
-    /// <summary>The tabs island takes a RESERVED, quantised width (issue #88): hugging the strip shoved the centred search
-    /// by half of every title swing.</summary>
-    static Element TabsIsland()
-    {
-        var l = ChromeLayout.Value;
-        var kids = new List<Element>(3);
-        if (l.ShowBack)
-        {
-            kids.Add(Embed.Comp(static () => new NavHistoryButton(forward: false)) with { Key = "chrome-back" });
-        }
-        if (l.ShowForward)
-        {
-            kids.Add(Embed.Comp(static () => new NavHistoryButton(forward: true)) with { Key = "chrome-forward" });
-        }
-        if (s_strip is { } strip) strip.IsAddTabButtonVisible = l.ShowNewTab;
-        kids.Add(Embed.Comp(BuildTabStrip) with { Key = "chrome-tab-strip" });
-        return new BoxEl
-        {
-            Key = "chrome-tabs-lane", Animate = TabLaneMotion,
-            Direction = 0, AlignItems = FlexAlign.Center, Height = TitleBar.ExpandedHeight,
-            Width = l.TabIslandWidth, Shrink = 0f, ClipToBounds = true, Children = kids.ToArray(),
-        };
-    }
-
-    static TabStrip BuildTabStrip()
-    {
-        var strip = new TabStrip
-        {
-            // TEXT-FIRST tabs: weight + opacity carry selection, one sliding 2-DIP accent underline marks it.
-            Appearance = TabStripAppearance.Text,
-            OverflowMode = TabStripOverflowMode.Scroll,
-            TextFontSize = 13f,
-            // The "+" is hover-only, but its 32-DIP slot is reserved at all times so the reported client rect never moves.
-            IsAddTabButtonVisible = ChromeLayout.Peek().ShowNewTab,
-            AddButtonVisibility = TabStripAddButtonVisibility.OnStripPointerOver,
-            OnAddTabButtonClick = static () => { WorkspaceVerbs.Shared.OpenTab(new Route(RouteKind.Home)); return null; },
-            IndicatorFill = Prop.Of(static () => Tok.AccentDefault),
-            MinTabWidth = ShellPolicy.Now.Chrome.Budget.TabMinW,
-            MaxTabWidth = ShellPolicy.Now.Chrome.Budget.TabMaxW,
-            ItemsSource = BuildTabItems,
-            ItemsVersion = TabStripItemsVersion,
-            // CONTRACT: the strip WRITES this cell before raising OnSelectionChanged, so it is never evidence of a change —
-            // ActivateTab asks the workspace, and the host re-asserts the cell from the model afterwards.
-            SelectedIndex = SelectedTab,
-            OnSelectionChanged = WorkspaceVerbs.Shared.ActivateTab,
-            OnTabCloseRequested = WorkspaceVerbs.Shared.CloseTab,
-            ScrollMetricsChanged = static m => s_tabExtent.SetIfChanged(Chrome.TabExtentFromMetrics(m.ContentExtent)),
-        };
-        s_strip = strip;   // the factory runs once per mount, so the newest instance IS the mounted one
-        return strip;
-    }
 
     static IReadOnlyList<TabViewItem> BuildTabItems()
     {
@@ -1100,151 +1021,6 @@ public static partial class Shell
     {
         if (PinVerbs.TargetFor(route) is not { } target) return null;
         return Actions.Menu.Pin(target.Kind == PinRowKind.Unpin, () => PinVerbs.Pin(target.PinId, target.Title), () => PinVerbs.Unpin(target.PinId));
-    }
-
-    static Element ChromeButton(string glyph, Action onClick, string tooltip, string key)
-        => ToolTip.Wrap(IconButton.Create(glyph, onClick, ChromeButtonStyle) with { Key = key, Margin = ChromeButtonMargin }, tooltip);
-
-    static Element CaptionLeadingIsland()
-    {
-        var l = ChromeLayout.Value;
-        bool dark = Theme.Dark;
-        var theme = ToolTip.Wrap(
-            IconButton.Create(dark ? Icons.Sun : Icons.Moon, static () => Appearance.ToggleMode(), ChromeButtonStyle)
-                with { Key = "chrome-theme-toggle", Margin = ChromeButtonMargin },
-            Loc.Get(dark ? Strings.Shell.LightTheme : Strings.Shell.DarkTheme));
-        return new BoxEl
-        {
-            Direction = 0, Height = TitleBar.ExpandedHeight, Shrink = 0f, AlignItems = FlexAlign.Center,
-            Children = l.SearchMode == MergedSearchMode.Icon ? [theme, SearchFlyoutButton()] : [theme],
-        };
-    }
-
-    static Element TrailingIsland()
-    {
-        var l = ChromeLayout.Value;
-        if (!l.ShowTrailing) return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
-        var kids = new List<Element>(5) { AuthChip(l.Chip) };
-        // The ONE "actions in row" stage: bell, friends and pin enter together. Below it they fold into the profile menu
-        // (pin simply drops — the tab menu still offers it).
-        if (l.ActionsInRow)
-        {
-            kids.Add(Embed.Comp(static () => new BellButton()) with { Key = "chrome-bell" });
-            kids.Add(ChromeButton(Icons.Friends, static () => Ui.Toggle(RailMode.Friends), Loc.Get(Strings.Shell.Friends), "chrome-friends"));
-            kids.Add(PinButton());
-        }
-        return new BoxEl
-        {
-            Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Height = TitleBar.ExpandedHeight,
-            Children = kids.ToArray(),
-        };
-    }
-
-    /// <summary>The identity form from the AUTH FOLD, never raw session status: a silent resume behind the cache-first
-    /// shell is Connecting, and an actionable "Sign in" there would race it (ch 18 W17).
-    /// <para>The form comes from the RESOLVED row (<c>Chrome.Chip</c>), not from <c>Auth</c> directly, for the same
-    /// reason <see cref="PinButton"/> reserves its 44 DIP unconditionally: the element tree must never be a form the
-    /// budget did not price. The allocator reads the same <see cref="FrameRules.ChipFor"/> fold, so the two can only
-    /// ever agree. (#88)</para></summary>
-    static Element AuthChip(FrameRules.ChipForm chip) => chip switch
-    {
-        FrameRules.ChipForm.Profile => ProfileChip() with { Key = "chrome-profile" },
-        FrameRules.ChipForm.Connecting => new BoxEl
-        {
-            Key = "chrome-connecting", Height = 32f, AlignItems = FlexAlign.Center, Padding = new Edges4(8f, 0f, 8f, 0f),
-            Children = [Caption(Loc.Get(Strings.Shell.Connecting)).Secondary()],
-        },
-        // Offline = a credential is on disk but the resume failed: the verb is "try again", not "sign in".
-        var form => Button.Accent(Loc.Get(form == FrameRules.ChipForm.Reconnect ? Strings.Shell.Reconnect : Strings.Shell.SignIn),
-            static () => Spotify.Login()) with { Key = "chrome-sign-in" },
-    };
-
-    /// <summary>The direct Pin/Unpin for the destination on screen. Its 44 DIP are budgeted unconditionally (issue #88), so
-    /// an unpinnable destination gets an invisible placeholder of the same width — the tree stays honest to the budget.</summary>
-    static Element PinButton()
-    {
-        if (PinRow(Current.Value) is not { Invoke: { } invoke } row)
-            return new BoxEl
-            {
-                Key = "chrome-pin-placeholder", Width = ShellPolicy.Now.Chrome.Budget.NavButtonW, Height = TitleBar.ExpandedHeight,
-                Shrink = 0f, HitTestVisible = false, Opacity = 0f,
-            };
-        return ChromeButton(row.Icon.Glyph ?? Icons.Pin, invoke, row.Label, "chrome-pin");
-    }
-
-    /// <summary>Back or Forward: the primary on click, the history flyout on right-click / touch-hold.</summary>
-    sealed class NavHistoryButton(bool forward) : Component
-    {
-        public override Element Render()
-        {
-            bool canDo = (forward ? CanForward : CanBack).Value;
-            var anchor = UseRef<NodeHandle>(default);
-            var handle = UseRef<OverlayHandle?>(null);
-            var overlay = UseContext(Overlay.Service);
-
-            void OpenHistory(ContextRequestEventArgs _)
-            {
-                if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
-                var stack = forward ? s_nav.Forward : s_nav.Back;   // read at OPEN, never at mount
-                var (rows, hasMore) = FrameRules.HistoryMenu(stack.Count);
-                if (rows == 0) return;                              // an empty stack opens nothing at all
-                var items = new MenuFlyoutItem[rows + (hasMore ? 2 : 0)];
-                for (int i = 0; i < rows; i++)
-                {
-                    var r = stack[FrameRules.HistoryMenuIndex(stack.Count, i)];
-                    var (title, glyph) = Dest(r);
-                    items[i] = new MenuFlyoutItem(title, glyph, true, () => GoTo(r));
-                }
-                if (hasMore)
-                {
-                    items[rows] = MenuFlyoutItem.Separator;
-                    items[rows + 1] = new MenuFlyoutItem(Loc.Get(Strings.Nav.ViewAllHistory), Icons.Clock, true,
-                        static () => GoTo(new Route(RouteKind.History)));
-                }
-                var h = overlay.Open(() => anchor.Value, () => MenuFlyout.Create(items, () => handle.Value?.Close()),
-                    FlyoutPlacement.BottomEdgeAlignedLeft,
-                    new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
-                handle.Value = h;
-                h.ClosedAction = () => handle.Value = null;
-            }
-
-            return IconButton.Create(forward ? Icons.Forward : Icons.Back, forward ? GoForward : (Action)GoBack,
-                    ChromeButtonStyle, isEnabled: canDo)
-                with { Margin = ChromeButtonMargin, OnRealized = h => anchor.Value = h, OnContextRequested = OpenHistory };
-        }
-    }
-
-    /// <summary>The trailing island's bell: the unread pill over the button's own box (never its footprint).</summary>
-    sealed class BellButton : Component
-    {
-        public override Element Render()
-        {
-            var overlay = UseContext(Overlay.Service);
-            var anchor = UseRef<NodeHandle>(default);
-            var handle = UseRef<OverlayHandle?>(null);
-            // presentation mode (the Store shot): the account's unread count is account data, so no badge
-            int unread = Diagnostics.StoreShot.Presenting.Value ? 0 : Notify.Unread.Value;
-
-            void Toggle() => OpenNotificationPanel(overlay, () => anchor.Value, handle);
-
-            var style = ChromeButtonStyle;
-            var button = IconButton.Create(Icons.Bell, Toggle, style) with { OnRealized = h => anchor.Value = h };
-            float w = style.Size, hgt = style.Height ?? style.Size;
-            BoxEl content = unread <= 0 ? button : new BoxEl
-            {
-                ZStack = true, Width = w, Height = hgt, Shrink = 0f,
-                Children =
-                [
-                    button,
-                    new BoxEl
-                    {
-                        Width = w, Height = hgt, Direction = 1, Justify = FlexJustify.Start, HitTestVisible = false,
-                        Children = [new BoxEl { Direction = 0, Justify = FlexJustify.End, Children = [InfoBadge.Count(unread)] }],
-                    },
-                ],
-            };
-            return ToolTip.Wrap(content with { Margin = ChromeButtonMargin }, Loc.Get(Strings.Notifications.Title));
-        }
     }
 
     // ══ 5. THE OVERLAY PANE ════════════════════════════════════════════════════════════════════════════════════════════

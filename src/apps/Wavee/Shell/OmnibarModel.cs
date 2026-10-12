@@ -392,6 +392,18 @@ public sealed class OmnibarModel : IOmnibarVerbs
     /// <summary>The ports (the per-mount fetch reads the source and the fallback through them).</summary>
     public OmnibarPorts Ports => _ports;
 
+    // ── what a theme's view reads (T4b): the members below name no `Shell` type, so a view in Themes\** can use them ─────
+
+    /// <summary>The generation the current query is on (<c>Shell.Omnibar.Query.Generation</c>): the fetch edge settles on it.</summary>
+    public int QueryGeneration => Query.Generation;
+
+    /// <summary>The trimmed text the current query was started with (<c>Shell.Omnibar.Query.Text</c>).</summary>
+    public string QueryText => Query.Text;
+
+    /// <summary>The inline ghost for <paramref name="typed"/>: the first completion that starts with it and is longer, or "" when
+    /// there is none (<c>Shell.Omnibar.Suggestions.GhostFor</c> over the current answer's completions).</summary>
+    public string GhostFor(string typed) => Shell.Omnibar.Suggestions.GhostFor(typed, Query.Suggestions.Queries) ?? "";
+
     // ── the keystroke and fetch edges ────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>THE KEYSTROKE EDGE, undebounced: Pending starts NOW, so "No results found" never flashes between a keystroke
