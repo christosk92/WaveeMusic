@@ -14,7 +14,8 @@
 // `PlayerVerbs.Default`), and live READS and ACTIONS the core built once (delegates over `Playback`, `Entities`, the rail): a
 // template calls a read inside a bound `Prop.Of` thunk or inside its own render, so the subscription lands where it reads.
 // The core pieces a surface shares with the stage and the on-media strip (the seek rail with its chapter decoration, the time
-// labels, the credits line, the device picker's rows) arrive as element builders, until T6b / T7 give each its own key.
+// labels, the credits line) arrive as element builders, until T7 gives each its own key (the device picker's menu is `Player.DevicePicker`
+// since T6b).
 //
 // WVTH006: a sealed record with init-only members and no writable signal.
 
@@ -228,7 +229,8 @@ public sealed record PlayerBarProps
     public required Action<float> SetVolume { get; init; }
     /// <summary>The bar's key map: (key event, is the bar the focused container).</summary>
     public required Action<KeyEventArgs, bool> OnKey { get; init; }
-    /// <summary>Open the device picker over an anchor, or close it when it is open. The picker's rows are core until T6b.</summary>
+    /// <summary>Open the device picker over an anchor, or close it when it is open. The overlay is the core's (placement, dismissal,
+    /// the picker-opened side effect); what goes in it is <see cref="ViewKeys.DevicePicker"/> (T6b).</summary>
     public required Action<IOverlayService, Ref<NodeHandle>, Ref<OverlayHandle?>> ToggleDevicePicker { get; init; }
     /// <summary>The heart's pop edge rule: the same playable's unsaved to saved edge only.</summary>
     public required Func<int, bool, int, bool, bool> LikePops { get; init; }

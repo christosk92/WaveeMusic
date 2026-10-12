@@ -14,6 +14,10 @@
 using System;
 using System.Collections.Generic;
 
+using FluentGpu.Controls;
+
+using Wavee.Theming.Contracts;
+
 namespace Wavee;
 
 public static partial class Shell
@@ -76,6 +80,34 @@ public static partial class Shell
                 items.Add(new DevicePickerItem(row, intent));
             }
             return items;
+        }
+
+        /// <summary>The items as the contract's entries (<c>Player.DevicePicker</c>, T6b): a theme draws a separator, an information row, a
+        /// command (a this-computer output: choosing it persists the output and pulls playback here) or a radio (a Connect device, checked
+        /// when it is the active one), each with the glyph the roster rules give it and the verb that executes its intent. A disabled
+        /// command row stands in as the section header (a menu has no header kind); the quality echo rides the same shape: informational,
+        /// never a radio. The roster, owner and outputs are read by the caller; nothing here subscribes.</summary>
+        public static DevicePickerEntry[] Entries(IReadOnlyList<DevicePickerItem> items)
+        {
+            var entries = new DevicePickerEntry[items.Count];
+            for (int i = 0; i < entries.Length; i++)
+            {
+                var row = items[i].Row;
+                var intent = items[i].Intent;
+                entries[i] = row.Kind switch
+                {
+                    DevicePickerRowKind.Separator => new DevicePickerEntry(DevicePickerEntryKind.Separator, "", "", false, false, null, null),
+                    DevicePickerRowKind.LocalDefault => new DevicePickerEntry(DevicePickerEntryKind.Command, row.Label, Icons.ThisPc,
+                        row.Enabled, false, row.Accelerator, row.Enabled ? () => DeviceVerbs.Run(intent) : null),
+                    DevicePickerRowKind.LocalDevice => new DevicePickerEntry(DevicePickerEntryKind.Command, row.Label,
+                        DeviceRoster.LocalGlyph(row.LocalKind),
+                        row.Enabled, false, row.Accelerator, row.Enabled ? () => DeviceVerbs.Run(intent) : null),
+                    DevicePickerRowKind.ConnectDevice => new DevicePickerEntry(DevicePickerEntryKind.Radio, row.Label,
+                        DeviceRoster.ConnectGlyph(row.ConnectKind), true, row.IsChecked, null, () => DeviceVerbs.Run(intent)),
+                    _ => new DevicePickerEntry(DevicePickerEntryKind.Info, row.Label, "", false, false, null, null),
+                };
+            }
+            return entries;
         }
     }
 

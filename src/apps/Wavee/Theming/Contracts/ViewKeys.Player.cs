@@ -1,7 +1,7 @@
 // ── Theming/Contracts/ViewKeys.Player.cs — the Player family of published view keys (themes plan 6.0, T6a) ───────────────
 //
 // T6a publishes the first key of the Player family: the player bar. The rest of the family (device picker, on-media transport,
-// now-playing hero, deck flyout) arrives with T6b.
+// now-playing hero, deck flyout) and the right panel are T6b's, in `ViewKeys.Panel.cs`.
 
 using FluentGpu.Theming;
 

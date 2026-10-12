@@ -42,6 +42,7 @@ using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
 
 using RepeatMode = Wavee.Spotify.Decode.RepeatMode;
+using ViewSlots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -403,20 +404,23 @@ public static partial class Shell
 
     // ══ 5. DEVICES ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
-    // The Devices button and the "Playing on" line are the structure's (they call `ToggleDevicePicker`); the picker's rows are
-    // core until T6b gives the picker its own key (the stage's "Playing on" flyout calls `DevicePickerMenuItems` too).
+    // The Devices button and the "Playing on" line are the structure's (they call `ToggleDevicePicker`); the picker's MENU is the
+    // structure's too since T6b (`Player.DevicePicker`, `ClassicDevicePicker`), over the entries `RailWiring.ReadDevicePicker` decides.
+    // The overlay (where it opens, how it dismisses, the picker-opened side effect) stays here with the bar's toggle.
 
     /// <summary>One picker, two anchors (the Devices button, the "Playing on" line): upward, right-aligned to the
     /// anchor, light-dismiss, focus trap. The menu caps its own scroll height at <see cref="DeviceRoster.PickerMaxHeight"/>
     /// (window height − 96 DIP, G-210) rather than trusting the engine's own fixed 468-DIP <c>MenuFlyout</c> cap, which
-    /// closes 0.2.9's uncapped-roster trap (ch 20 §9, parity 81) even on a short/undocked window.</summary>
+    /// closes 0.2.9's uncapped-roster trap (ch 20 §9, parity 81) even on a short/undocked window. The body re-renders WHILE OPEN
+    /// (a transfer landing swaps the checks in place, parity 79).</summary>
     static void BarToggleDevicePicker(IOverlayService overlay, Ref<NodeHandle> anchor, Ref<OverlayHandle?> handle)
     {
         if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
         PlayerVerbs.Default.OpenDevicePicker();                                // the cluster hears it, as the official client's picker does
+        var props = RailWiring.DevicePicker(() => handle.Value?.Close());      // built once per open: the content builder may run again
         handle.Value = overlay.Open(
             () => anchor.Value,
-            () => Embed.Comp(() => new BarDevicePickerMenu(() => handle.Value?.Close())),
+            () => ViewSlots.View(ViewKeys.DevicePicker, props),
             FlyoutPlacement.TopEdgeAlignedRight,
             // The roster already caps itself to the window (PickerMaxHeight = height - 96), so it never needs to
             // escape the root bounds -- and NOT escaping is what keeps it on the engine's in-window acrylic path
@@ -425,47 +429,9 @@ public static partial class Shell
         handle.Value.ClosedAction = () => handle.Value = null;
     }
 
-    /// <summary>The picker body. It re-renders WHILE OPEN — a transfer landing swaps the checks in place (parity 79) —
-    /// and re-keys its menu presenter on every change, because the presenter freezes its rows at mount.</summary>
-    sealed class BarDevicePickerMenu(Action close) : Component
-    {
-        readonly Action _close = close;
-
-        public override Element Render()
-        {
-            uint roster = Playback.Devices.Changed.Value;
-            var owner = Playback.OwnerSignal.Value;
-            int activeSlot = Playback.ActiveDeviceSlot.Value;
-            var local = Playback.Audio.Devices.Value;
-            string? selected = Playback.Audio.SelectedOutputId.Value;
-            bool supported = Playback.Audio.Supported.Value;
-            float windowH = UseContextSignal(Viewport.Size).Value.Height;
-
-            // The verification row: the player's own echo, never a loopback of the setting (user's exact ask).
-            var observed = Playback.Audio.PlayingOpened;
-            var asked = DevicePickerFacts.Quality;
-            var items = DevicePickerMenuItems(owner, activeSlot, Playback.Devices.Rows, local, selected, supported, observed, asked)
-                .ToArray();
-
-            // G-210: a dozen Connect devices must scroll well before the window edge, not just the engine's own fixed
-            // 468-DIP cap — a short/undocked window is smaller than that.
-            float maxH = DeviceRoster.PickerMaxHeight(windowH);
-            var parts = new TemplateParts();
-            parts.Set<ScrollEl>(MenuFlyout.PartScrollViewer, s => s with { MaxHeight = maxH });
-
-            int version = HashCode.Combine(roster, (byte)owner, activeSlot, local.Length, selected, supported, maxH,
-                HashCode.Combine(observed.Label, (byte)observed.Format, (byte)asked));
-            return new BoxEl
-            {
-                Direction = 1,
-                Children = [MenuFlyout.Create(items, _close, parts: parts) with { Key = "devices:" + version }],
-            };
-        }
-
-    }
-
-    /// <summary>THE device picker's menu items: the bar's Devices flyout and the stage's "Playing on" flyout both call this
-    /// (over <see cref="DevicePicker.Items"/>), so the two surfaces cannot disagree about a row or what it does. Local
+    /// <summary>THE device picker's menu items for the stage's "Playing on" flyout, over the SAME <see cref="DevicePicker.Items"/> the
+    /// bar's picker composes its entries from (<c>RailWiring.ReadDevicePicker</c>), so the two surfaces cannot disagree about a row or
+    /// what it does. The stage mounts <c>Player.DevicePicker</c> instead when T7a moves its flyout, and this goes. Local
     /// (this-computer) rows are plain commands, not radios: choosing one persists the output for the next session and
     /// pulls playback here, but the engine does not yet re-route a live session to it, so no row claims to be "the
     /// endpoint in use".</summary>

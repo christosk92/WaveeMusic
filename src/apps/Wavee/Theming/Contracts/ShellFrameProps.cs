@@ -11,11 +11,11 @@
 //   · Behaviour the host wires (the shell chords, the key handler, the file-drop target, the realized-node captures the
 //     probes and the scrim clip read): the template only PLACES them.
 //   · Element builders of the surfaces that are not this PR's: each is a `Func<Element>` over the core builder that exists
-//     today (the rail, the stage, the overlay layers). A later
+//     today (the stage, the overlay layers, the two seams' splitters). A later
 //     T-PR gives its surface its own view key and replaces the builder with `ctx.View(...)`; nothing else here changes.
 //     T4a draws the FRAME: the column, the window layers, the content region and its seams. T4c gave the material, the
 //     palette, the file-drop cue, the cover scrim, the drag chip and the frame-rate overlay their keys: those members now carry
-//     the child view's PROPS and the frame mounts `ctx.View(key, props)`. (The narrow drawer's props change with the band, so its
+//     the child view's PROPS and the frame mounts `ctx.View(key, props)`. T6b did the same for the right panel (`Panel`). (The narrow drawer's props change with the band, so its
 //     core host stays a builder.)
 //
 // Members are init-only and every delegate is a cached static or a closure built once at mount (the frame root renders
@@ -122,8 +122,9 @@ public sealed record ShellFrameProps
     /// <summary>The sidebar seam: the splitter wired to the sidebar width.</summary>
     public required Func<Element> SidebarSeam { get; init; }
 
-    /// <summary>The right rail's body (T6b).</summary>
-    public required Func<Element> RailBody { get; init; }
+    /// <summary>The right panel's props: the frame mounts <see cref="ViewKeys.ShellPanel"/> with them (T6b). The panel's state machine
+    /// (open, mode, width, floats, the docked video) stays the core's; the template draws the decided <see cref="PanelView"/>.</summary>
+    public required PanelProps Panel { get; init; }
 
     /// <summary>The rail seam: the splitter wired to the rail width.</summary>
     public required Func<Element> RailSeam { get; init; }
