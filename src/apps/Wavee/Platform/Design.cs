@@ -15,6 +15,15 @@
 // compile-time numbers, the Fluent duration ladder, the colour ladders (T2b), the behaviour (entrance, reveal, page-nav
 // motion, frame time) and the cover leaves.
 //
+// THEMES PLAN T2b. The COLOUR ladders are not here any more either: the surfaces and row ladders (`Design.Colors`), the accent budget
+// (`Design.Accent`), the on-media ladder (`Design.OnMedia`), the immersive stage's polarity (`Design.StageArm` / `Design.StageInk`),
+// the wash strengths and the lyrics ink are the active style's COLOUR ROLES, read as `R.Layer.*`, `R.Ink.*`, `R.OnMedia.*`,
+// `StageInk.*` / `R.StageArm`, `R.Wash.*` and `R.Lyrics.*` (Theming\Roles), with Classic's recipes in
+// Themes\Classic\Style\ClassicRoles.cs. The colour MATHS (lift, vivid, the hairline and text-ink solves, the page-tone clamp, the
+// data-hue ink, the shell ground and the placeholder blend) is `Platform\ColorScience.cs`, a pure class that takes the theme kind
+// as an argument. What this file keeps of colour is the part that reads a cover's grading for the active polarity (`SchemeFor`,
+// `ChromeSchemeFor`, `PlaceholderFor`), the Tok-bound face of the maths (`Design.Palette`) and the shell material channel.
+//
 // ── WHAT THIS FILE IS ────────────────────────────────────────────────────────────────────────────────────────────────
 //
 // Wavee's design system, as ONE static partial class over the engine's token layer. Everything here is static, pure and
@@ -30,13 +39,13 @@
 // ── THE FOUR RULES THIS LAYER IS WRITTEN UNDER (ch 00 §9.1) ──────────────────────────────────────────────────────────
 //
 //  1. EVERY COLOUR MEMBER IS A `get =>` PROPERTY, NEVER A `static readonly` FIELD. `Tok.*` are LIVE theme reads; a field
-//     captures the palette at type-init and never re-themes. The only sanctioned `static readonly` colours here are the
-//     on-media literals, which are theme-INVARIANT by contract.
+//     captures the palette at type-init and never re-themes. (The same holds for a role: `R.*` is read where the element is
+//     built, never into a field.)
 //  2. THE TWO GRADING HALVES STAY TWO FUNCTIONS (§7). Collapsing them is invisible in dark and glaring in light.
-//  3. THE 22-ITERATION BISECTION IN `Palette.Hairline` STAYS 22 ITERATIONS. It is the contrast solve; a cheaper
+//  3. THE 22-ITERATION BISECTION IN `ColorScience.Hairline` STAYS 22 ITERATIONS. It is the contrast solve; a cheaper
 //     approximation changes every identity hairline and every accent-ink digit in the app.
-//  4. THE CLAMP CONSTANTS ARE NOT TUNING KNOBS. If a page should take more colour, raise the PLANE ALPHA pair, never
-//     the page-tone clamp.
+//  4. THE CLAMP CONSTANTS ARE NOT TUNING KNOBS. If a page should take more colour, raise the PLANE ALPHA pair
+//     (`R.Wash.PageTonePlaneAlpha`), never the page-tone clamp.
 //
 // ── THE TWO NAME COLLISIONS, STATED ONCE ─────────────────────────────────────────────────────────────────────────────
 //
@@ -44,7 +53,8 @@
 // spelled that way everywhere below:
 //   · `FgMotion` (the alias at the top of the file) = `FluentGpu.Dsl.Motion`, shadowed by `Design.Motion`.
 //   · `Wavee.Palette` (the TABLE — the per-image graded schemes, the TTL, `Watch`, `Ensure`) is shadowed by
-//     `Design.Palette` (the ARGB MATHS). Nothing in `Design.Palette` touches a table, a fetch or a readiness bit (A5).
+//     `Design.Palette` (the Tok-bound face of `ColorScience`). Nothing in `Design.Palette` touches a table, a fetch or a
+//     readiness bit (A5).
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;
@@ -129,48 +139,10 @@ public static partial class Design
     public static readonly Edges4 FocusInsetRow = Edges4.All(1f);
 
     // ══ 2. THE ACCENT BUDGET ═════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>THE ACCENT BUDGET — the three roles accent colour is allowed to play, and the rules that keep them apart.
-    ///
-    /// <para>Wavee is deliberately NOT a monochrome Fluent app: the artwork-derived accent is identity, and it stays.
-    /// What it stopped being is AMBIENT. An accent that appears in four unrelated jobs on one page stops meaning any of
-    /// them — the reader can no longer tell "click this" from "you are here" from "this is a section". So every accent
-    /// paint site declares which of exactly THREE roles it is:</para>
-    ///
-    /// <list type="number">
-    /// <item><b>Action</b> — "clicking this does the page's primary thing." A SOLID accent plate behind on-accent ink.
-    /// AT MOST ONE per screenful — if a surface has two, one of them is a secondary and takes the stock ramp. This is
-    /// the scarcest role and the reason an empty state's action is quiet: an empty page's "Browse" must not outrank the
-    /// page's real primary.</item>
-    /// <item><b>Selection</b> — "you are here." Geometry is the tell and it is RESERVED: a short accent bar/pill against
-    /// the edge of a control means selection and means nothing else.</item>
-    /// <item><b>Decor</b> — "this content has a colour." Section spines, hero washes, eyebrows, accent facts. Accent as
-    /// TEXT or as a wash, never as a plate behind ink and never as a selection-shaped bar. The largest role by site
-    /// count, and it is the identity.</item>
-    /// </list>
-    ///
-    /// <para>THE TWO HARD RULES, both enforced by construction:</para>
-    /// <list type="bullet">
-    /// <item>A decorative ornament may not take SELECTION geometry. The artist section header's old 3×22 r1.5 accent
-    /// capsule was pixel-for-pixel the selection-indicator shape doing a decorative job; it is now the 20×2 underline
-    /// <see cref="Controls.AccentRule"/> draws, which is unmistakably a rule.</item>
-    /// <item>Accent is never STRUCTURE. A border, a divider, a chevron or a disclosure glyph is chrome; it takes
-    /// <c>Tok.StrokeDividerDefault</c> / <c>Tok.TextSecondary</c>. Accent on structure was the single largest source of
-    /// ambient accent in the app.</item>
-    /// </list></summary>
-    public static class Accent
-    {
-        /// <summary>Role 1 — the SOLID plate behind on-accent ink for the page's ONE primary action. Artwork-derived
-        /// surfaces pass their own graded fill to the CTA instead of reading this.</summary>
-        public static ColorF Action => Tok.AccentDefault;
-
-        /// <summary>Role 2 — "you are here". The bar/pill geometry that carries it is reserved to selection.</summary>
-        public static ColorF Selection => Tok.AccentDefault;
-
-        /// <summary>Role 3 — accent as CONTENT colour: text, spines, washes. The contrast-corrected accent INK, never
-        /// the raw fill, because this role always paints on the page surface rather than under on-accent ink.</summary>
-        public static ColorF Decor => Tok.AccentTextPrimary;
-    }
+    //
+    // MOVED (themes plan T2b). The three roles accent colour is allowed to play (Action, Selection, Decor) and the rules that keep
+    // them apart are the style's INK roles: `R.Ink.AccentAction`, `R.Ink.AccentSelection`, `R.Ink.AccentDecor`
+    // (Theming\Roles\InkRoles.cs carries the budget's full text).
 
     // ══ 3. COLOUR ════════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -189,825 +161,61 @@ public static partial class Design
         Fonts = new FluentGpu.Theming.FontSet(Tok.NeutralPalette.Fonts.Body, WaveeFonts.Icons),
     };
 
-    /// <summary>Wavee's app-shell colours. The authenticated shell is the STOCK Windows 11 Mica stack:
-    /// <list type="number">
-    /// <item>BASE LAYER — Mica passthrough. The shell root paints NOTHING; every chrome band (merged title row, sidebar,
-    /// player dock) is a paint-site OMISSION over the live window material. <see cref="ShellGround"/> survives as the
-    /// no-Mica FALLBACK and as the flatten base for opaque floating surfaces.</item>
-    /// <item>MATERIAL — the page-published layer above the backdrop (<see cref="ShellMaterialState"/>): a low-alpha flat
-    /// tint, or Home's three clipped radial washes — a scrim over Mica, so the material carries the page's hue.</item>
-    /// <item>CONTENT LAYER — <see cref="FileArea"/> (the stock layer fill), TRANSLUCENT, PAIRED with a 1-px
-    /// <c>Tok.StrokeCardDefault</c> stroke on its LEFT+TOP edges only, ONE rounded corner, and NO shadow. That pairing
-    /// is the whole separation model — a translucent fill alone is too small a step to read as an edge, and stock never
-    /// adds elevation to this layer.</item>
-    /// </list>
-    /// <para>EVERY MEMBER IS A PROPERTY (rule 1 in the file header). A `static readonly ColorF` here is a bug.</para></summary>
-    public static class Colors
-    {
-        static ShellPalette ActiveShell => Tok.Theme == ThemeKind.Light ? Tok.Palette.LightShell : Tok.Palette.DarkShell;
-
-        // The translucent MUX rungs. The authenticated shell no longer PAINTS them — every chrome band is a paint-site
-        // omission over the ground — but they stay published verbatim: the palette contrast gates measure the tint
-        // through them, and the palette recipes are defined in terms of them.
-        public static ColorF Toolbar => ActiveShell.Toolbar;
-        public static ColorF Sidebar => ActiveShell.Sidebar;
-        public static ColorF PlayerBar => ActiveShell.PlayerBar;
-        public static ColorF FileArea => ActiveShell.FileArea;
-        public static ColorF Content => ActiveShell.Content;
-        public static ColorF ContentAlt => ActiveShell.ContentAlt;
-
-        /// <summary>Premium green. Light takes the system success token; dark keeps the brand value, which the system
-        /// token is too dim for over a #202020 ground.</summary>
-        public static ColorF PremiumText =>
-            Tok.Theme == ThemeKind.Light ? Tok.SystemFillSuccess : ColorF.FromRgba(0x1D, 0xB9, 0x54);
-
-        /// <summary>The chrome GROUND, as a value — for a floating pane that stands in for a docked CHROME band (the
-        /// narrow nav drawer, the sidebar preview well, the floating right-rail backing). Identical to what the shell
-        /// paints under the docked band, and opaque by construction: the page it covers must not read through it.</summary>
-        public static ColorF FloatingChrome => ShellGround;
-
-        /// <summary>The CONTENT surface, as a value — for a floating surface that stands in for a docked content band,
-        /// and for the login view, which has no shell under it at all. Same rung as <see cref="ContentSurface"/> by
-        /// definition; the two names mark intent (docked surface vs floating stand-in), not different colours.</summary>
-        public static ColorF FloatingPane => ContentSurface;
-
-        // The dark ground's lightness (the palette builder's Tinted(0.125, …) canvas) and the lift that takes it to
-        // #282828. Expressed as a mix-toward-white FRACTION rather than a literal grey, so a tinted preset canvas would
-        // take the same perceptual step instead of being flattened back to neutral; at chroma 0 it lands on exactly
-        // 40/255 per channel.
-        const float DarkGroundL = 0.125f;
-        const float DarkContentLift = (40f / 255f - DarkGroundL) / (1f - DarkGroundL);
-
-        // The LIGHT ground's DROP off the stock canvas, in the same idiom mirrored to the other mix endpoint: the lift
-        // above is (target − L)/(1 − L) because Lighten mixes toward WHITE; Darken mixes toward BLACK, so the matching
-        // fraction is (L − target)/L. The neutral light canvas is #F3F3F3 (243/255) and the target is #EDEDED (237/255)
-        // — the bare Mica Alt tone the reference shell carries as its DARKEST chrome band. So the drop is 6/243 ≈ 2.469%.
-        const float LightGroundL = 243f / 255f;
-        const float LightGroundDrop = (LightGroundL - 237f / 255f) / LightGroundL;
-
-        // The content step as a TRANSLUCENT white layer: source-over of white@α onto a ground G lands on G + α(1−G) —
-        // the same mix-toward-white the opaque rung uses, so α IS the lift fraction. Dark reuses DarkContentLift
-        // verbatim; light solves (249−237)/(255−237) = 2/3 against the #EDEDED ground.
-        const float LightContentLayerA = (249f / 255f - 237f / 255f) / (1f - 237f / 255f);
-
-        /// <summary>The chrome GROUND: the full-bleed opaque rect the whole authenticated shell sits on. Light is the
-        /// stock solid base #F3F3F3 dropped to #EDEDED — #F3F3F3 read as PAGE, not chrome. Dark keeps #202020 verbatim:
-        /// it is already that band.</summary>
-        public static ColorF ShellGround => ShellGroundFor(
-            Tok.Theme == ThemeKind.Light ? Tok.Palette.Light : Tok.Palette.Dark, Tok.Theme);
-
-        /// <summary>Pure overload of <see cref="ShellGround"/> for an arbitrary token set — the gates resolve a palette
-        /// that is not the active one without mutating global theme state.</summary>
-        public static ColorF ShellGroundFor(TokenSet set, ThemeKind theme) => theme == ThemeKind.Light
-            ? ColorRamp.Darken(set.FillSolidBase, LightGroundDrop)
-            : set.FillSolidBase;
-
-        /// <summary>The OPAQUE content rung — ONE step above the ground. NOT what the docked shell paints any more: this
-        /// is the wallpaper-independent stand-in every FLOATING content surface takes, and the value the palette gates
-        /// flatten the translucent ladder against. Light resolves to #F9F9F9 over the #EDEDED ground; dark is a
-        /// deliberate #282828 over the #202020 ground (the dark solid-tertiary rung lifts 6% to #2D2D2D, which reads as
-        /// a second card rather than as the page).</summary>
-        public static ColorF ContentSurface => ContentSurfaceFor(
-            Tok.Theme == ThemeKind.Light ? Tok.Palette.Light : Tok.Palette.Dark, Tok.Theme);
-
-        /// <summary>Pure overload of <see cref="ContentSurface"/>, so the gates pin both themes without mutating the
-        /// active one.</summary>
-        public static ColorF ContentSurfaceFor(TokenSet set, ThemeKind theme) => theme == ThemeKind.Light
-            ? set.FillSolidTertiary
-            : ColorRamp.Lighten(set.FillSolidBase, DarkContentLift);
-
-        /// <summary>The content step expressed as a translucent white LAYER. It composites to
-        /// <see cref="ContentSurface"/> over the bare ground AND lands on the TINTED equivalent over a page's published
-        /// shell tint, which an opaque fill cannot (it would punch a neutral hole through the wash).
-        /// <para>Nothing in the shell paints this today. It stays published as the LAYER-equivalent of the opaque rung:
-        /// the identity <c>Over(ContentLayer, ShellGround) == ContentSurface</c> is what a fallback or a gate reasons
-        /// with in either space, and it is pinned by test. If a chrome-band-scale plate is ever wanted again, this is
-        /// the value it takes — not a hand-mixed grey.</para></summary>
-        public static ColorF ContentLayer => ContentLayerFor(Tok.Theme);
-
-        /// <inheritdoc cref="ContentLayer"/>
-        public static ColorF ContentLayerFor(ThemeKind theme) => ColorF.FromRgba(0xFF, 0xFF, 0xFF,
-            (byte)((theme == ThemeKind.Light ? LightContentLayerA : DarkContentLift) * 255f + 0.5f));
-
-        // ── the LIST row ladder ──────────────────────────────────────────────────────────────────────────────────────
-
-        /// <summary>THE zebra stripe — the resting plate on an odd row of a LONG tracklist, and nothing else. Zebra is a
-        /// scanning aid for lists long enough to lose your place in; a 6-row queue or a friends rail gets plain rows
-        /// plus the standard hover, because striping a short list only adds noise.
-        /// <para>DARK derives it from the engine's SUBTLE-FILL ink at its quietest rung because the shell's own dark
-        /// zebra is LITERALLY the hover fill (both 0x0F), so hovering a striped row moved the surface by five alpha
-        /// steps and read as nothing at all. A stripe MUST be quieter than hover or the row has no hover. LIGHT takes
-        /// the shell's own row ladder, which is the black-alpha stripe solved TOGETHER with the light hover/press rungs
-        /// against the art-derived page tone.</para></summary>
-        public static ColorF RowZebra => Tok.Theme == ThemeKind.Light ? ActiveShell.RowZebra : Tok.FillSubtleTertiary;
-
-        public static ColorF RowHover => ActiveShell.RowHover;
-        public static ColorF RowPressed => ActiveShell.RowPressed;
-
-        /// <summary>Hover/press ON a striped row: the row state SOURCE-OVER the stripe, collapsed to ONE translucent
-        /// fill (a row paints a single <c>Fill</c>, never two stacked plates). <c>ColorContrast.Over</c> is associative,
-        /// so the merged rung composites pixel-identically to painting the two rungs in sequence.
-        /// <para>THE PRESS DIRECTION INVERTS BY THEME and BOTH arms are correct: LIGHT pressed (7.1%) is ABOVE hover
-        /// (5.1%) — black ink deepening; DARK pressed (0x0A) is BELOW hover (0x0F) — the white subtle-fill ladder's own
-        /// rest→hover(up)→pressed(down-but-above-rest) shape. Do NOT "fix" one to match the other.</para></summary>
-        public static ColorF RowHoverZebra => ColorContrast.Over(RowHover, RowZebra);
-        /// <inheritdoc cref="RowHoverZebra"/>
-        public static ColorF RowPressedZebra => ColorContrast.Over(RowPressed, RowZebra);
-
-        // ── THE SELECTION LADDER ─────────────────────────────────────────────────────────────────────────────────────
-        //
-        // "You are here" for a NAV row (accent role 2), and the ordering law that goes with it.
-        //
-        // THE BUG THIS REPLACES WAS AN INVERSION, not a tuning miss. Every sidebar row in every design painted the same
-        // trio: selected-at-rest = the subtle-secondary fill, and hovering that selected row swapped DOWN to
-        // subtle-tertiary. So pointing at the row you are already on made the app look like it had deselected it, while
-        // an unselected row hovering to the higher rung was simultaneously the loudest thing in the pane.
-        //
-        // THE FIX IS THREE RUNGS THAT ONLY EVER GO UP, and it COMPOSES rather than swaps:
-        //   rest    = Tok.AccentSubtle (accent @ 14% light / 16% dark) — WinUI ships it for exactly this job.
-        //   hover   = the standard hover veil composed OVER that plate, so hovered-selected is strictly stronger.
-        //   pressed = the quieter press veil over the same plate: above rest, below hover — WinUI's own shape.
-        //
-        // The accent is COLOUR only: the reserved selection GEOMETRY is still the 3-DIP pill, and this plate never
-        // appears without it. BROWSE/LIST selection is deliberately NOT this — a track row, a library hit and a
-        // suggestion row keep the neutral ladder above, because spending the page's accent on a row that is not an
-        // action makes the same state look like two different states depending on which list you are in.
-        public static ColorF SelectedRest => Tok.AccentSubtle;
-        public static ColorF SelectedHover => ColorContrast.Over(Tok.FillSubtleSecondary, Tok.AccentSubtle);
-        public static ColorF SelectedPressed => ColorContrast.Over(Tok.FillSubtleTertiary, Tok.AccentSubtle);
-
-        public static ColorF ChromeHover => Tok.FillSubtleSecondary;
-        public static ColorF ChromePressed => Tok.FillSubtleTertiary;
-        public static ColorF Badge => Tok.AccentDefault;
-
-        // TWO TOMBSTONES, kept so neither is re-invented:
-        //  · The palette PICKER (Settings + the profile menu) and its swatch preview are gone — Wavee always renders the
-        //    neutral palette. `Platform.cs`'s theme resolver survives as the ONE place a future preset would be named.
-        //  · The sticky context band has NO material here. It used to flatten the translucent content rung onto a
-        //    neutral no-wallpaper reference tone, and that was still wrong: live Mica takes its colour from the USER'S
-        //    DESKTOP and a constant cannot follow it (on a dark wallpaper it read as a solid black slab across the
-        //    page). The band now paints NOTHING and scrolled content is CLIPPED at its lower edge, so the band region
-        //    shows the page's real ground whatever that is, and there is no constant left to drift.
-    }
-
-    // ══ 4. THE ON-MEDIA LADDER ═══════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The ONE on-media colour ladder: everything that paints ON TOP of artwork or video — the scrim plates
-    /// behind a floating "…"/FAB/chip, the hairline that rings them, the ink on them, the dim under a blurred stand-in
-    /// backdrop, and the light-theme on-media button ramp.
-    ///
-    /// <para><b>Why it exists.</b> The card layer alone hand-rolled 36 colour literals for this one job, including THREE
-    /// near-duplicate scrim ladders that disagreed by 10-50 alpha steps for visually identical affordances
-    /// (185/225/245 · 132/190/220 · 120/184/218). They are collapsed here into ONE ladder built from the MIDDLE of the
-    /// three, except that the REST rung takes the engine's own <c>Tok.MediaScrim</c> rather than minting an app-local
-    /// near-duplicate 8 alpha steps away — the engine already owns "the chip/pill/FAB scrim plate floated over media".
-    /// The visible consequence is that the corner "…" and the cover FAB got LIGHTER and the save button slightly darker:
-    /// three affordances that sit on the same artwork now share one plate instead of advertising three.</para>
-    ///
-    /// <para><b>Theme invariance is the point, not an oversight.</b> Ink over artwork is theme-INVARIANT, so these
-    /// plates stay dark and this ink stays white in light mode too. The one place a THEME does change the answer — the
-    /// immersive stage — is <see cref="StageArm"/>'s, and it is the only surface that gets a polarity.</para></summary>
-    public static class OnMedia
-    {
-        // ── scrim plates (a small dark surface floated over art) ─────────────────────────────────────────────────────
-
-        /// <summary>The resting plate: the engine's canonical on-media plate (black @ 0.55).</summary>
-        public static ColorF ScrimRest => Tok.MediaScrim;
-
-        /// <summary>Hover — black @ 190/255. BLACK, not the old (20,20,20): a 20-per-channel lift under a 0.75 alpha is
-        /// invisible over artwork and existed in exactly one of the three ladders.</summary>
-        public static readonly ColorF ScrimHover = ColorF.FromRgba(0, 0, 0, 190);
-
-        /// <summary>Pressed — the middle of 245 · 220 · 218.</summary>
-        public static readonly ColorF ScrimPressed = ColorF.FromRgba(0, 0, 0, 220);
-
-        /// <summary>The full-cover hover veil — a whole square of artwork dimmed so a centred FAB reads on it. A
-        /// different ROLE from <see cref="ScrimRest"/> (which is a small plate), so it keeps its own, LIGHTER value:
-        /// black @ 110/255.</summary>
-        public static readonly ColorF CoverScrim = ColorF.FromRgba(0, 0, 0, 110);
-
-        /// <summary>The hairline that rings every on-media plate: white @ 58/255 — the middle of the old 70/58/55, and
-        /// already what two of the three sites used. Doubles as the faint on-media RULE (the countdown ring's
-        /// track).</summary>
-        public static readonly ColorF Stroke = ColorF.FromRgba(255, 255, 255, 58);
-
-        // ── ink (the engine's on-media tiers, reused verbatim) ───────────────────────────────────────────────────────
-
-        /// <summary>Primary on-media ink: titles, chip labels, glyphs, the swept countdown arc. Collapses the old
-        /// 224/225/230/235 near-whites, which were four ways of writing "white" over a dark scrim.</summary>
-        public static ColorF Ink => Tok.OnMediaPrimary;
-        /// <summary>Secondary on-media ink: eyebrows and subtitles over art. White @ 0.80.</summary>
-        public static ColorF InkSecondary => Tok.OnMediaSecondary;
-        /// <summary>Tertiary on-media ink: captions / meta over art. White @ 0.60.</summary>
-        public static ColorF InkTertiary => Tok.OnMediaTertiary;
-
-        // ── glass: the on-media INTERACTION ramp for a control carrying NO resting plate ──────────────────────────────
-        // The scrim ladder above is a PLATE — a small dark surface a control sits on permanently. Glass is its opposite:
-        // nothing at rest, a breath of the on-media INK on hover, one rung more on press. It is what the immersive stage
-        // paints, where the rule is "everything is ink on the scrim" and a dark plate under every hovered row would
-        // re-plate a surface whose whole premise is that it has none.
-
-        /// <summary>Rest: nothing. Stated as a rung so a call site never spells Transparent and reads as "no state
-        /// model".</summary>
-        public static ColorF GlassRest => ColorF.Transparent;
-        /// <summary>Hover — the on-media ink at 10%: the lightest fill that still reads as a surface over artwork.</summary>
-        public static ColorF GlassHover => Tok.OnMediaPrimary with { A = 0.10f };
-        /// <summary>Pressed — one rung on, at 16%: the ratio the subtle ladder keeps between its two rungs.</summary>
-        public static ColorF GlassPressed => Tok.OnMediaPrimary with { A = 0.16f };
-
-        // ── the INK PLATE: a resting ground made of ink rather than of scrim ─────────────────────────────────────────
-        // For the one control that must be findable without hunting — the immersive stage's way out. The scrim ladder is
-        // the wrong tool THERE, and the reason is arithmetic rather than taste: the stage's top band is already deepened
-        // to 0.76 black on every cover, so a 55%-black plate on a 76%-black ground has no edge at all — only the
-        // hairline ring and the glyph survive, which is precisely the "I cannot find the way out" report. On a ground
-        // that is already dark, separation has to come from LIGHT.
-
-        /// <summary>The resting ground of an ink-plated on-media control. Deliberately ABOVE <see cref="GlassHover"/> —
-        /// this is a REST state, not a hover breath, and it has to hold its own edge before the pointer arrives.</summary>
-        public static ColorF GlassPlate => Tok.OnMediaPrimary with { A = 0.14f };
-        /// <inheritdoc cref="GlassPlate"/>
-        public static ColorF GlassPlateHover => Tok.OnMediaPrimary with { A = 0.22f };
-        /// <inheritdoc cref="GlassPlate"/>
-        public static ColorF GlassPlatePressed => Tok.OnMediaPrimary with { A = 0.28f };
-
-        // ── backdrop treatments ──────────────────────────────────────────────────────────────────────────────────────
-
-        /// <summary>The dim laid over a BAKED-BLUR derivative so it reads as a backdrop rather than as a stretched
-        /// square. Two surfaces disagreed by 0.03 alpha for no stated reason; one value now.</summary>
-        public static readonly ColorF BackdropDim = ColorF.FromRgba(8, 8, 10) with { A = 0.45f };
-
-        /// <summary>The hover spotlight's inner stop — a soft white bloom under the pointer on an editorial cover.</summary>
-        public static readonly ColorF SpotlightInner = ColorF.FromRgba(255, 255, 255, 46);
-        /// <summary>The hover spotlight's mid stop (it falls to transparent at the edge).</summary>
-        public static readonly ColorF SpotlightMid = ColorF.FromRgba(255, 255, 255, 20);
-
-        // ── the LIGHT on-media button ramp ───────────────────────────────────────────────────────────────────────────
-        // Derived from the on-media ink rather than hardcoded greys, so a palette preset that ever re-tints the on-media
-        // whites carries the button's whole ramp with it. The old literals were 255/235/215 with (12,12,14) ink; the
-        // fractions below reproduce them to within one 8-bit step.
-
-        internal const float LightHoverDrop = 0.08f, LightPressedDrop = 0.157f;
-
-        /// <summary>Rest fill of a light-on-media button: the on-media ink itself.</summary>
-        public static ColorF LightButton => Tok.OnMediaPrimary;
-        /// <summary>Hover fill (≈ #EBEBEB).</summary>
-        public static ColorF LightButtonHover => ColorRamp.Darken(Tok.OnMediaPrimary, LightHoverDrop);
-        /// <summary>Pressed fill (≈ #D7D7D7).</summary>
-        public static ColorF LightButtonPressed => ColorRamp.Darken(Tok.OnMediaPrimary, LightPressedDrop);
-        /// <summary>The glyph ON a light on-media button: the engine's opaque media stage (#0A0A0A) — the old literal
-        /// was (12,12,14), two steps away and one more hand-mixed near-black.</summary>
-        public static ColorF LightButtonInk => Tok.MediaStage;
-    }
-
-    // ══ 5. THE IMMERSIVE STAGE'S POLARITY ════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>THE IMMERSIVE STAGE'S INK — the one place in the app that knows which POLARITY the stage is painted in,
-    /// as a PURE value over <see cref="ThemeKind"/>.
-    ///
-    /// <para>The stage used to be single-theme: always art-dark, in both themes, on the argument that "the room is lit
-    /// by the playing track". That is a defensible design and it is not the one this product wants — in light theme it
-    /// read as a black slab bolted under light chrome. The stage now flips with the theme, and the whole of that
-    /// decision lives HERE so the four renderers stay provably theme-blind.</para>
-    ///
-    /// <para><b>The dark arm delegates to <see cref="OnMedia"/> VERBATIM.</b> That is deliberate and it is pinned by a
-    /// test: "dark theme is byte-identical to what shipped" is then an executable claim rather than a promise. It also
-    /// keeps <see cref="OnMedia"/> exactly what it is — a THEME-INVARIANT ladder for everything that paints on top of
-    /// ACTUAL artwork. That ladder must NOT become theme-aware; on a cover thumbnail white-on-scrim is right in both
-    /// themes. The stage is the one surface whose "media" is a full-bleed blurred backdrop it also owns the scrim of,
-    /// which is exactly why it — and only it — gets a polarity.</para>
-    ///
-    /// <para>The scrim ALPHAS need no light arm: the sRGB transfer curve does the work — mixing toward black at a
-    /// partial alpha destroys far more perceptual luminance than mixing toward white, so the light arm's alpha'd ink
-    /// clears a HIGHER contrast ratio than the dark arm already ships.</para></summary>
-    public readonly record struct StageArm(bool Dark)
-    {
-        /// <summary>The pure entry point: a theme in, an arm out, with no global read — so value tests drive both arms
-        /// without mutating global theme state.</summary>
-        public static StageArm For(ThemeKind theme) => new(theme == ThemeKind.Dark);
-
-        // ── the ground ───────────────────────────────────────────────────────────────────────────────────────────────
-
-        /// <summary>The colour every scrim alpha is mixed FROM, and the opaque floor under the backdrop. Light takes the
-        /// app's own canon achromatic light ground rather than minting a near-duplicate; achromatic on purpose, so the
-        /// cover's own colour comes through the veil instead of fighting a tint underneath it.</summary>
-        public ColorF Veil => Dark ? Tok.MediaStage : Palette.PageToneNeutralLight;
-
-        /// <summary>The opaque plate beneath the (possibly missing, still-decoding) cover. It IS the veil — which is
-        /// what every comment on the surface already claimed it was, while the code actually painted the solid base and
-        /// so flashed near-white under the dark scrim in light theme.</summary>
-        public ColorF Floor => Veil;
-
-        // ── ink ──────────────────────────────────────────────────────────────────────────────────────────────────────
-        // Light ink is Tok.MediaStage — an ON-MEDIA token, deliberately NOT Tok.TextPrimary. Two reasons: the stage's
-        // ink must stay opaque (the theme text rung is black @ 0.894, which is a second, quieter ladder), and the
-        // surface's "no theme-flipping text rung" guard stays true by construction.
-
-        /// <summary>The loudest thing on the surface: the title, a sung glyph, the active line.</summary>
-        public ColorF Ink => Dark ? OnMedia.Ink : Tok.MediaStage;
-        /// <inheritdoc cref="Ink"/>
-        public ColorF InkSecondary => Dark ? OnMedia.InkSecondary : Tok.MediaStage with { A = Tok.OnMediaSecondary.A };
-        /// <inheritdoc cref="Ink"/>
-        public ColorF InkTertiary => Dark ? OnMedia.InkTertiary : Tok.MediaStage with { A = Tok.OnMediaTertiary.A };
-
-        // ── glass: the stage's interaction ramp for a control carrying NO resting plate ───────────────────────────────
-
-        /// <summary>Rest: nothing.</summary>
-        public ColorF GlassRest => ColorF.Transparent;
-        /// <inheritdoc cref="GlassRest"/>
-        public ColorF GlassHover => Ink with { A = OnMedia.GlassHover.A };
-        /// <inheritdoc cref="GlassRest"/>
-        public ColorF GlassPressed => Ink with { A = OnMedia.GlassPressed.A };
-
-        // ── the ink PLATE: a resting ground for the one control that must be found (the way out) ──────────────────────
-
-        /// <inheritdoc cref="OnMedia.GlassPlate"/>
-        public ColorF GlassPlate => Ink with { A = OnMedia.GlassPlate.A };
-        /// <inheritdoc cref="OnMedia.GlassPlate"/>
-        public ColorF GlassPlateHover => Ink with { A = OnMedia.GlassPlateHover.A };
-        /// <inheritdoc cref="OnMedia.GlassPlate"/>
-        public ColorF GlassPlatePressed => Ink with { A = OnMedia.GlassPlatePressed.A };
-
-        // ── the scrim plate + its hairline ───────────────────────────────────────────────────────────────────────────
-
-        /// <summary>A small plate floated over ARTWORK (the secondary-line toggle). Same alphas, mirrored ground.</summary>
-        public ColorF ScrimRest => Dark ? OnMedia.ScrimRest : Veil with { A = OnMedia.ScrimRest.A };
-        /// <inheritdoc cref="ScrimRest"/>
-        public ColorF ScrimHover => Dark ? OnMedia.ScrimHover : Veil with { A = OnMedia.ScrimHover.A };
-        /// <inheritdoc cref="ScrimRest"/>
-        public ColorF ScrimPressed => Dark ? OnMedia.ScrimPressed : Veil with { A = OnMedia.ScrimPressed.A };
-
-        /// <summary>The hairline that rings a plate. It inverts WITH the ink — a white hairline on a light plate is not
-        /// a quiet ring, it is an absent one.</summary>
-        public ColorF Stroke => Dark ? OnMedia.Stroke : Ink with { A = OnMedia.Stroke.A };
-
-        // ── the ONE filled control (play/pause) ──────────────────────────────────────────────────────────────────────
-        // Named ButtonFill rather than the dark arm's "LightButton": on a light stage the loudest affordance is a DARK
-        // disc, so the old name would be a lie in half the product. Same 0.08 / 0.157 ramp, mirrored direction.
-
-        /// <summary>The stage's play/pause — the only plate on the surface that is not a hover state.</summary>
-        public ColorF ButtonFill => Dark ? OnMedia.LightButton : Ink;
-        /// <inheritdoc cref="ButtonFill"/>
-        public ColorF ButtonFillHover => Dark ? OnMedia.LightButtonHover : ColorRamp.Lighten(Ink, OnMedia.LightHoverDrop);
-        /// <inheritdoc cref="ButtonFill"/>
-        public ColorF ButtonFillPressed => Dark ? OnMedia.LightButtonPressed : ColorRamp.Lighten(Ink, OnMedia.LightPressedDrop);
-        /// <summary>The glyph ON that disc — the ground it stands on, so the two can never collide.</summary>
-        public ColorF ButtonInk => Dark ? OnMedia.LightButtonInk : Veil;
-
-        /// <summary>The stage's plateau scrim alpha — the ONE number both this file and owner K's stage layout read.
-        /// Declared here because <see cref="AccentFrom"/> solves against it; `Shell/Stage.cs` must REFERENCE this
-        /// constant rather than restate 0.46 (ch 00 §4.4).</summary>
-        public const float ScrimBaseA = 0.46f;
-
-        // ── the art-derived accent ───────────────────────────────────────────────────────────────────────────────────
-
-        /// <summary>The stage spends its one art-derived colour on exactly four jobs: a latched satellite, the saved
-        /// heart, the pivot underline + section rule, and the ∞ when autoplay is on.
-        ///
-        /// <para>Dark takes the CHROME accent — the lifted, saturation-FLOORED role, correct for a colour that must hold
-        /// its own as a lit mark on a dark ground. Light cannot: a lifted accent on a pale veil is a highlighter. So the
-        /// light arm re-solves the SAME hue as INK against the brightest ground this stage can produce, which is the
-        /// app's existing role-3 answer rather than a fourth accent solve invented here. The honest cost is chroma —
-        /// <see cref="Palette.TextInk(ColorF,ThemeKind,ColorF)"/> caps saturation below the chrome accent's floor, so
-        /// the light stage's accent is a quieter version of the same hue, and some mid-blues fall through to a
-        /// near-neutral. Both are properties of accent-as-ink.</para></summary>
-        public ColorF AccentFrom(ColorF chrome) =>
-            Dark ? chrome : Palette.TextInk(chrome, ThemeKind.Light, AccentGround);
-
-        /// <summary>The BRIGHTEST ground the light stage can put an accent on: the plateau veil over a white cover.
-        /// Solving against the worst case is what stops the accent going illegible on a pale sleeve.</summary>
-        ColorF AccentGround => ColorContrast.Over(Veil with { A = ScrimBaseA }, Tok.OnMediaPrimary);
-
-        // ── two non-colour helpers, so the renderers make ZERO polarity reads of their own ────────────────────────────
-
-        /// <summary>The lyrics loading shimmer. It used to paint a THEME fill straight onto the stage, which is a light
-        /// bar on a dark surface in dark theme.</summary>
-        public ColorF SkeletonBar => Ink with { A = SkeletonA };
-
-        const float SkeletonA = 0.12f;
-
-        // ── the stage's floating cards ─────────────────────────────────────────────────────────────────────────────
-
-        /// <summary>The acrylic under the stage's floating cards (the transport, the now-playing card, the visualizer
-        /// gallery). The dark arm is the in-app base recipe; the light arm is its light-theme twin (WinUI's light
-        /// AcrylicInAppFillColorBase). The dark recipe under the light arm's near-black ink was the unreadable transport.</summary>
-        public AcrylicSpec Card => Dark ? AcrylicSpec.InAppBase
-            : new(ColorF.FromRgba(0xF3, 0xF3, 0xF3), 0f, 30f, 0.02f, 0.90f, ColorF.FromRgba(0xEE, 0xEE, 0xEE));
-
-        /// <summary>A quiet plate INSIDE a card or on the stage (a settings row, a gallery tile, the artist card): ink at a
-        /// low alpha, so it reads as a step on either ground. It replaced white-alpha literals that vanished on light.</summary>
-        public ColorF Plate => Ink with { A = PlateA };
-        /// <inheritdoc cref="Plate"/>
-        public ColorF PlateHover => Ink with { A = PlateHoverA };
-
-        const float PlateA = 0.045f, PlateHoverA = 0.075f;
-    }
-
-    /// <summary>The LIVE facade over <see cref="StageArm"/>. <see cref="Arm"/> is the pure entry point; everything else
-    /// re-reads the active theme AT THE POINT OF CONSUMPTION, which is the whole contract — a <c>ColorF</c> frozen into
-    /// a component's constructor does not follow a live theme flip, because component props freeze at mount.</summary>
-    public static class StageInk
-    {
-        /// <inheritdoc cref="StageArm"/>
-        public static StageArm Arm(ThemeKind theme) => StageArm.For(theme);
-
-        /// <summary>The arm for the ACTIVE theme. This — and only this — is the stage's theme branch.</summary>
-        static StageArm Live => Arm(Tok.Theme);
-
-        /// <summary>Which arm is live, for the handful of decisions that are a POLARITY rather than a colour (the lyrics
-        /// bloom's direction and weight). Everything else takes a rung instead of asking this.</summary>
-        public static bool IsDark => Live.Dark;
-
-        public static ColorF Veil => Live.Veil;
-        public static ColorF Floor => Live.Floor;
-        public static ColorF Ink => Live.Ink;
-        public static ColorF InkSecondary => Live.InkSecondary;
-        public static ColorF InkTertiary => Live.InkTertiary;
-        public static ColorF GlassRest => Live.GlassRest;
-        public static ColorF GlassHover => Live.GlassHover;
-        public static ColorF GlassPressed => Live.GlassPressed;
-        public static ColorF GlassPlate => Live.GlassPlate;
-        public static ColorF GlassPlateHover => Live.GlassPlateHover;
-        public static ColorF GlassPlatePressed => Live.GlassPlatePressed;
-        public static ColorF ScrimRest => Live.ScrimRest;
-        public static ColorF ScrimHover => Live.ScrimHover;
-        public static ColorF ScrimPressed => Live.ScrimPressed;
-        public static ColorF Stroke => Live.Stroke;
-        public static ColorF ButtonFill => Live.ButtonFill;
-        public static ColorF ButtonFillHover => Live.ButtonFillHover;
-        public static ColorF ButtonFillPressed => Live.ButtonFillPressed;
-        public static ColorF ButtonInk => Live.ButtonInk;
-        public static ColorF SkeletonBar => Live.SkeletonBar;
-        public static AcrylicSpec Card => Live.Card;
-        public static ColorF Plate => Live.Plate;
-        public static ColorF PlateHover => Live.PlateHover;
-
-        /// <summary>The stage's accent for a cover url. The cover LOOKUP lives here rather than on
-        /// <see cref="StageArm"/> so the arm stays a pure value type over the token layer — which is what lets value
-        /// tests drive both arms with no cover plane, no theme and no window.</summary>
-        public static ColorF Accent(ReadOnlySpan<char> coverUrl)
-            => ChromeSchemeFor(coverUrl) is { } scheme
-                ? Live.AccentFrom(Palette.ChromeAccent(scheme))
-                : Tok.AccentDefault;
-
-        /// <summary>The backdrop's stand-in while the cover is missing or still decoding, in the STAGE's polarity rather
-        /// than the page's. The cover TINT survives (it is what stops the slot reading as a hole); only the neutral it
-        /// is blended toward follows the stage.</summary>
-        public static ColorF ArtStandIn(ReadOnlySpan<char> url) => PlaceholderFor(url, light: !IsDark);
-    }
+    // MOVED (themes plan T2b). `Design.Colors` (the shell ground, the content step, the translucent MUX rungs, the list-row ladder, the
+    // selection ladder, the premium green) is the style's LAYER roles, read as `R.Layer.*` (Theming\Roles\LayerRoles.cs). Classic's
+    // recipes are Themes\Classic\Style\ClassicRoles.cs and the ground / content-step maths is `ColorScience.ShellGround` /
+    // `ContentSurface` / `ContentLayer`.
+    //
+    // TWO TOMBSTONES, kept so neither is re-invented:
+    //  · The palette PICKER (Settings + the profile menu) and its swatch preview are gone — Wavee always renders the
+    //    neutral palette. `Platform.cs`'s theme resolver survives as the ONE place a future preset would be named.
+    //  · The sticky context band has NO material here. It used to flatten the translucent content rung onto a
+    //    neutral no-wallpaper reference tone, and that was still wrong: live Mica takes its colour from the USER'S
+    //    DESKTOP and a constant cannot follow it (on a dark wallpaper it read as a solid black slab across the
+    //    page). The band now paints NOTHING and scrolled content is CLIPPED at its lower edge, so the band region
+    //    shows the page's real ground whatever that is, and there is no constant left to drift.
+
+    // ══ 4. THE ON-MEDIA LADDER, AND 5. THE IMMERSIVE STAGE'S POLARITY ═════════════════════════════════════════════════
+    //
+    // MOVED (themes plan T2b). The on-media ladder (the scrim plates, the hairline, the ink, the glass, the light-button ramp) is the
+    // style's `R.OnMedia.*` (Theming\Roles\OnMediaLadder.cs): theme-INVARIANT in Classic by contract. The immersive stage's polarity
+    // (`Design.StageArm`, the one surface that flips with the theme) is the style's `R.StageArm` table and its live facade
+    // `StageInk.*` (Theming\Roles\StageArmTable.cs); a face reads `Ink.Plate` and never asks which theme it is in.
 
     // ══ 6. THE COVER PALETTE → RENDERER COLOUR ═══════════════════════════════════════════════════════════════════════
 
-    /// <summary>The boundary mapper: the framework-neutral cover-colour roles (<see cref="Scheme"/>, ARGB) → engine
-    /// <see cref="ColorF"/>. This is the ONLY place a cover colour becomes a renderer colour. A page asks the plane for
-    /// its cover's scheme and maps the roles it needs here; nothing carries a per-entity palette.
-    /// <para>NOTE THE NAME: this is <c>Design.Palette</c>, the ARGB MATHS. The TABLE — the per-image graded schemes, the
-    /// TTL, <c>Watch</c>, <c>Ensure</c> — is <c>Wavee.Palette</c> (A5), and nothing in this section touches it.</para></summary>
+    /// <summary>The Tok-bound face of <see cref="ColorScience"/>, the boundary mapper from the cover-colour roles
+    /// (<see cref="Scheme"/>, ARGB) to engine <see cref="ColorF"/>: the members that need the ACTIVE theme kind, the active accent or the
+    /// active layer roles read them here and hand them to the pure maths as arguments. Everything that needs none of them is
+    /// <c>ColorScience</c> itself (<c>ColorScience.Lift</c>, <c>ColorScience.PageTone</c>, <c>ColorScience.DataDotInk</c>, …).
+    /// <para>NOTE THE NAME: this is <c>Design.Palette</c>. The TABLE — the per-image graded schemes, the TTL, <c>Watch</c>,
+    /// <c>Ensure</c> — is <c>Wavee.Palette</c> (A5), and nothing in this section touches it.</para></summary>
     public static class Palette
     {
-        const float HairlineSaturationCeiling = 0.50f;
-        const float HairlineContrast = 3.25f;
-        const float HairlineHoverContrast = 3.55f;
+        /// <summary>The card surface an identity cue is solved against: the card fill flattened onto the floating pane.</summary>
+        static ColorF CardGround(ColorF cardFill) => ColorContrast.Flatten(cardFill, R.Layer.FloatingPane);
 
-        /// <summary>Below this HSV saturation a colour has no hue worth amplifying — grading a genuinely greyscale cover
-        /// would just produce a random tint. Callers fall back to the semantic accent instead.</summary>
-        public const float NeutralS = 0.08f;
-
-        /// <summary>WCAG AA text contrast. <see cref="Hairline(ColorF)"/> is the quieter 3.25:1 rule; this is the same
-        /// hue solve at the text threshold. Chrome FILLS are plates — painting them as ink on a wash mixed from the same
-        /// hue is what made a countdown unreadable.</summary>
-        public const float TextContrast = 4.5f;
-
-        public static ColorF ToColor(uint argb)
-        {
-            byte a = (byte)(argb >> 24), r = (byte)(argb >> 16), g = (byte)(argb >> 8), b = (byte)argb;
-            return ColorF.FromRgba(r, g, b, a);
-        }
-
-        /// <summary>Brighten a colour so its strongest channel reaches <paramref name="targetMax"/> (0-255), scaling RGB
-        /// uniformly to preserve hue — only ever LIFTS, never darkens. The provider's dark background role is often
-        /// near-black and collapses to nothing as a faint tint; this keeps it legible.</summary>
-        public static ColorF Lift(ColorF c, byte targetMax = 210)
-        {
-            float target = targetMax / 255f;
-            float max = MathF.Max(c.R, MathF.Max(c.G, c.B));
-            if (max <= 0.001f) { float v = target; return new ColorF(v, v, v, c.A); }   // pure black → neutral grey at the target
-            if (max >= target) return c;                                                // already bright enough — don't darken
-            float k = target / max;
-            return new ColorF(MathF.Min(1f, c.R * k), MathF.Min(1f, c.G * k), MathF.Min(1f, c.B * k), c.A);
-        }
-
-        /// <summary>Saturation FLOOR for a colour used as a CHROME FILL (the Play capsule, the Verified pill, the accent
-        /// bars). <see cref="Lift"/> only raises brightness, so a cover graded to a washed pastel stayed washed and the
-        /// CTA read as a grey plate. This pushes S up at constant HUE and keeps V at or above the same 210 ceiling Lift
-        /// targets — so after a Lift the V clamp is a no-op and only S moves. Near-neutrals are returned UNCHANGED.
-        /// <para>Raising S at constant V LOWERS relative luminance, so an accent used as TEXT on a light card gets
-        /// slightly darker (better), and the contrast picker keeps picking the legible ink on fills.</para></summary>
-        public static ColorF Vivid(ColorF c, float minS = 0.55f, byte targetMax = 210)
-        {
-            var (h, s, v) = c.ToHsv();
-            if (s <= NeutralS) return c;
-            return ColorF.FromHsv(h, MathF.Max(s, minS), MathF.Max(v, targetMax / 255f), c.A);
-        }
-
-        /// <summary>A quiet identity hairline solved against the actual card surface. Saturation is capped, then value is
-        /// binary-solved to a 3.25:1 contrast ratio in the theme-appropriate direction. Deliberately separate from
-        /// <see cref="Lift"/>/<see cref="Vivid"/>: chrome fills want brightness and chroma; a 2-DIP rule does not.</summary>
+        /// <summary>A quiet identity hairline solved against the actual card surface of the ACTIVE theme (3.25:1).</summary>
         public static ColorF Hairline(ColorF seed)
-            => Hairline(seed, Tok.Theme,
-                ColorContrast.Flatten(Tok.FillCardDefault, Colors.FloatingPane), HairlineContrast);
+            => ColorScience.Hairline(seed, R.Kind, CardGround(Tok.FillCardDefault), ColorScience.HairlineContrast);
 
         /// <summary>The hovered card's slightly stronger identity cue; 3.55:1 remains below the 4.5:1 text threshold —
         /// on purpose.</summary>
         public static ColorF HairlineHover(ColorF seed)
-            => Hairline(seed, Tok.Theme,
-                ColorContrast.Flatten(Tok.FillCardSecondary, Colors.FloatingPane), HairlineHoverContrast);
+            => ColorScience.Hairline(seed, R.Kind, CardGround(Tok.FillCardSecondary), ColorScience.HairlineHoverContrast);
 
-        /// <summary>Pure overload used by the contrast tests for both themes without mutating global theme state.
-        /// <para>THE 22 ITERATIONS ARE THE CONTRAST SOLVE (file-header rule 3). Contrast is monotonic along V for a
-        /// fixed hue/saturation, so a bisection converges; a cheaper approximation changes every identity hairline and
-        /// every accent-ink digit in the app.</para></summary>
-        public static ColorF Hairline(ColorF seed, ThemeKind theme, ColorF cardBackground,
-                                      float targetContrast = HairlineContrast)
-        {
-            var (h, s, _) = seed.ToHsv();
-            s = MathF.Min(s, HairlineSaturationCeiling);
-
-            // Dark cards search from black to white and retain the LIGHTER solution; light cards search the same
-            // interval and retain the DARKER one.
-            float lo = 0f, hi = 1f;
-            for (int i = 0; i < 22; i++)
-            {
-                float mid = (lo + hi) * 0.5f;
-                float ratio = ColorContrast.Ratio(ColorF.FromHsv(h, s, mid, seed.A), cardBackground);
-                if (theme == ThemeKind.Dark)
-                {
-                    if (ratio < targetContrast) lo = mid; else hi = mid;
-                }
-                else
-                {
-                    // On a light card, contrast FALLS as V rises.
-                    if (ratio < targetContrast) hi = mid; else lo = mid;
-                }
-            }
-            float v = theme == ThemeKind.Dark ? hi : lo;
-            return ColorF.FromHsv(h, s, v, seed.A);
-        }
-
-        /// <summary>Accent as TEXT on a card-like surface. Same hue as <see cref="Hairline(ColorF)"/>, solved to
-        /// <see cref="TextContrast"/>.</summary>
+        /// <summary>Accent as TEXT on a card-like surface of the ACTIVE theme. Same hue as <see cref="Hairline(ColorF)"/>, solved to
+        /// <see cref="ColorScience.TextContrast"/>.</summary>
         public static ColorF TextInk(ColorF seed)
-            => TextInk(seed, Tok.Theme, ColorContrast.Flatten(Tok.FillCardDefault, Colors.FloatingPane));
+            => ColorScience.TextInk(seed, R.Kind, CardGround(Tok.FillCardDefault));
 
-        /// <summary>Pure overload for both themes. Some hues cannot hit AA at the hairline saturation cap (a mid-blue on
-        /// a dark card tops out ≈4.4:1); those fall back to the contrast picker so the digits stay readable.</summary>
-        public static ColorF TextInk(ColorF seed, ThemeKind theme, ColorF cardBackground)
-        {
-            var ink = Hairline(seed, theme, cardBackground, TextContrast);
-            return ColorContrast.MeetsAaText(ink, cardBackground) ? ink : ColorContrast.PickContrast(cardBackground);
-        }
+        /// <summary>Chrome fill from a raw wire colour (see <see cref="ColorScience.ChromeFromPayload"/>); 0 (no payload) and a
+        /// greyscale hue are the active semantic accent.</summary>
+        public static ColorF ChromeFromPayload(uint argb) => ColorScience.ChromeFromPayload(argb, Tok.AccentDefault);
 
-        /// <summary>Chrome fill from a raw wire colour (a pathfinder extracted colour before the plane has graded the
-        /// art). Same <see cref="Lift"/> THEN THE SAME <see cref="Vivid"/> saturation floor <see cref="ChromeAccent"/>
-        /// applies — this rung and the graded rung are consumed by the SAME control (<c>Detail.AccentFor</c>'s Play
-        /// pill), and the header payload accent routinely paints for a beat before the async grading lands. Without
-        /// the floor here, that beat is a WASHED payload hue snapping to a saturation-floored graded hue the moment
-        /// grading lands — the muted-salmon-then-salmon flash this fixes. 0 (no payload) is the semantic accent, not a
-        /// fabricated hue.</summary>
-        public static ColorF ChromeFromPayload(uint argb)
-        {
-            if (argb == 0) return Tok.AccentDefault;
-            var lifted = Lift(ToColor(argb));
-            var (_, sat, _) = lifted.ToHsv();
-            return sat <= NeutralS ? Tok.AccentDefault : Vivid(lifted);
-        }
-
-        /// <summary>Dark-theme wash from a raw wire colour: the payload's hue sunk to the brightness of the neutral
-        /// scheme's dark background role, so a first paint before the grading lands sits where the graded
-        /// <see cref="BackgroundDark"/> will. 0 (no payload) is the neutral dark base itself.</summary>
-        public static ColorF DarkFromPayload(uint argb)
-        {
-            ColorF ground = BackgroundDark(Neutral);
-            if (argb == 0) return ground;
-            ColorF c = ToColor(argb);
-            float target = MathF.Max(ground.R, MathF.Max(ground.G, ground.B));
-            float max = MathF.Max(c.R, MathF.Max(c.G, c.B));
-            if (max <= 0.001f) return ground;
-            float k = target / max;
-            return new ColorF(c.R * k, c.G * k, c.B * k, c.A);
-        }
-
-        /// <summary>THE page's chrome accent — the one derivation every accent-filled control on a media surface uses:
-        /// the cover's most-saturated graded role (<see cref="Accent(in Scheme)"/>), brightness-lifted then
-        /// saturation-floored. Greyscale/near-monochrome art has no hue to amplify, so it falls back to the system
-        /// accent rather than shipping a grey Play button.
-        /// <para>Deliberately NOT used for the hero WASHES: those keep the plain <see cref="Lift"/>ed accent, so wash
-        /// strength (alpha) and chrome chroma (saturation) stay independent axes.</para></summary>
-        public static ColorF ChromeAccent(in Scheme s)
-        {
-            var lifted = Lift(Accent(s));
-            var (_, sat, _) = lifted.ToHsv();
-            return sat <= NeutralS ? Tok.AccentDefault : Vivid(lifted);
-        }
-
-        /// <summary>The cover's HUE — the most saturated of the graded roles, in preference order
-        /// <c>BackgroundTintedBase → BackgroundBase → TextSubdued → TextBrightAccent</c> (strict <c>&gt;</c>, so a tie
-        /// keeps the earlier, higher-preference role).
-        ///
-        /// <para><b>Why not simply <c>TextBrightAccent</c>, which its name promises:</b> in the real payloads that role
-        /// is the CONTRAST-GRADED INK, not a hue — pure <c>#FFFFFF</c> in every dark half and pure <c>#000000</c> in
-        /// every light half, verified over 9,316 cached gradings (100%). Reading it as "the accent" made
-        /// <see cref="ChromeAccent"/>'s <see cref="NeutralS"/> guard fire on EVERY cover, so every Play CTA in the app
-        /// rendered system blue. The cover's actual chroma lives in the BACKGROUND roles (dark tinted base: median HSV
-        /// S ≈ 0.73) and, in the light half, in <c>TextSubdued</c> (median S ≈ 0.45). It stays in the list — LAST — so a
-        /// future feed that does grade it chromatically still wins wherever it is the most saturated role.</para>
-        ///
-        /// <para>A <c>Span</c> collection expression: stack-allocated, so the hottest palette function stays
-        /// allocation-free on the render path (P1).</para></summary>
-        public static ColorF Accent(in Scheme s)
-        {
-            Span<uint> roles = [s.BackgroundTintedBase, s.BackgroundBase, s.TextSubdued, s.TextBrightAccent];
-            ColorF best = default;
-            float bestS = -1f;
-            for (int i = 0; i < roles.Length; i++)
-            {
-                var c = ToColor(roles[i]);
-                var (_, sat, _) = c.ToHsv();
-                if (sat > bestS) { bestS = sat; best = c; }
-            }
-            return best;
-        }
-
-        /// <summary>The two RAW role reads — no lift, no clamp. The artist blend wash's dark arm and the shell tint's
-        /// dark arm are the only callers; everything else goes through <see cref="Accent(in Scheme)"/> /
-        /// <see cref="PageTone"/> / <see cref="ChromeAccent"/>.</summary>
-        public static ColorF BackgroundDark(in Scheme s) => ToColor(s.BackgroundBase);
-        /// <inheritdoc cref="BackgroundDark"/>
-        public static ColorF TintedDark(in Scheme s) => ToColor(s.BackgroundTintedBase);
-
-        // ── THE PAGE TONE ────────────────────────────────────────────────────────────────────────────────────────────
-        //
-        // The detail pages' ONE art-derived surface. Two rules, and they are the whole contract:
-        //
-        //   1. COMPLEMENTARY, NOT SAMPLED. The tone takes the cover's HUE and nothing else. It is not the cover's
-        //      dominant colour re-painted at page scale — that is what produced pages the artwork could not be told
-        //      apart from. Saturation and lightness are the PAGE'S, not the record's, so two albums by the same artist
-        //      read as the same PAGE in two different colours rather than as two different apps.
-        //   2. THE CLAMP IS THE POINT. Apple Music's unclamped version of this is its single loudest complaint: a
-        //      saturated cover produces a page that is genuinely hard to read, and a dark cover produces one that is
-        //      indistinguishable from every other dark cover's. So lightness is FORCED (never sampled) and saturation is
-        //      CAPPED. The forced lightness is also what makes the standard `Tok` ink tokens correct on this plane in
-        //      BOTH themes — there is no on-media ladder on these pages, because polarity is guaranteed by construction
-        //      rather than measured per cover.
-        //
-        // A cover with no hue worth using (greyscale art, a mosaic of monochrome tiles) gets the NEUTRAL tone instead of
-        // an invented tint — the same decision ChromeAccent makes for the Play button, for the same reason.
-
-        /// <summary>Below this HSV saturation the dominant graded role has no hue to build a page tone from.</summary>
-        public const float PageToneChromaFloor = 0.12f;
-
-        /// <summary>The forced HSL lightness of the dark tone, and the cap on its HSL saturation.</summary>
-        public const float PageToneDarkL = 0.15f, PageToneDarkSMax = 0.30f;
-
-        /// <summary>The forced HSL lightness of the light tone, and the cap on its HSL saturation.
-        /// <para>THE LIGHT ARM IS A WHISPER, and the numbers say so. The first light clamp (L 0.89 / S ≤ 0.42) was the
-        /// dark arm's clamp MIRRORED, and mirroring is exactly the mistake: the dark tone paints a hue at 15% lightness
-        /// where 30% saturation is a suggestion, while 42% saturation at 89% lightness is a full pastel — a green cover
-        /// landed on ≈#D7EFD7 and REPLACED the page's ground with a coloured plane. In light there is no headroom to
-        /// spend: the ink is dark, the surfaces are near-white, and every chromatic step the ground takes is a step the
-        /// ink and every card on top of it has to survive. So the light tone is the same idea at a tenth of the volume —
-        /// L 0.94 (four points above Mica Alt's own #EDEDED, so the page still reads as a PAGE and not as chrome) with
-        /// saturation capped at 0.16, which is enough for "this record is green" and not enough for "this app is
-        /// green".</para></summary>
-        public const float PageToneLightL = 0.94f, PageToneLightSMax = 0.16f;
-
-        /// <summary>The hue-less answer: a near-black in dark, the canon neutral off-white in light.
-        /// <para>The light value used to be a WARM off-white (#F6F4F1) on the argument that a neutral grey page reads as
-        /// "unfinished" beside every tinted one. That argument was written against the old 0.42 saturation cap, where
-        /// the tinted pages really were pastel. Under the whisper clamp above the tinted pages are barely tinted, so the
-        /// warm tone stopped being the quiet member of a family and became the app's one un-asked-for colour cast. It is
-        /// now #F5F5F5: achromatic, and within 5/255 of the clamp's own achromatic point (L 0.94 ⇒ #F0F0F0), so a
-        /// greyscale sleeve and a hued one produce pages of the same brightness.</para></summary>
-        public static ColorF PageToneNeutralDark { get; } = ColorF.FromRgba(0x15, 0x15, 0x15);
-        /// <inheritdoc cref="PageToneNeutralDark"/>
-        public static ColorF PageToneNeutralLight { get; } = ColorF.FromRgba(0xF5, 0xF5, 0xF5);
-
-        // THE BLURRED-BACKDROP ALPHAS ARE GONE, and this note is the tombstone. A luminance-adaptive alpha pair existed
-        // to keep the detail page's blurred cover band level across sleeves, because that band's loudness was roughly
-        // its own luminance × its alpha. It was the only quantity in this file that was a function of the ARTWORK rather
-        // than of the theme, and that is exactly why it never converged: three tunings and a bright sleeve still bloomed
-        // while a dark one showed nothing, so the same page read as two different designs depending on the record. The
-        // band itself is deleted; the page is now the clamped page tone alone.
-
-        /// <summary>THE detail page's ground tone for a cover's grading, or null when there is no grading to build one
-        /// from (the caller then paints NOTHING and the page keeps its neutral surface — a miss is a designed state, not
-        /// a skeleton).</summary>
-        public static ColorF? PageTone(Scheme? scheme, ThemeKind theme)
-            => scheme is { } s ? PageToneFromHue(Accent(s), theme) : null;
-
-        /// <summary>Page ground from a raw hue (payload <c>extractedColors</c>, a coverless mosaic's hex) using the same
-        /// lightness/saturation clamp as a graded cover.</summary>
-        public static ColorF? PageToneFromHue(ColorF dominant, ThemeKind theme)
-        {
-            var (_, hsvSat, _) = dominant.ToHsv();
-            if (hsvSat < PageToneChromaFloor)
-                return theme == ThemeKind.Dark ? PageToneNeutralDark : PageToneNeutralLight;
-            var (h, sat, _) = ToHsl(dominant);
-            return theme == ThemeKind.Dark
-                ? FromHsl(h, MathF.Min(sat, PageToneDarkSMax), PageToneDarkL)
-                : FromHsl(h, MathF.Min(sat, PageToneLightSMax), PageToneLightL);
-        }
-
-        // HSL, not HSV: the page tone's contract is stated in LIGHTNESS ("dark: L ≈ 15%"), and HSV's V is not lightness —
-        // a fully saturated hue at V = 0.15 and a grey at V = 0.15 have very different perceived brightness. The
-        // engine's ColorF publishes HSV only, so the two conversions live here, where the callers that need them are.
-
-        /// <summary>RGB → HSL (hue in degrees).</summary>
-        public static (float H, float S, float L) ToHsl(in ColorF c)
-        {
-            float max = MathF.Max(c.R, MathF.Max(c.G, c.B));
-            float min = MathF.Min(c.R, MathF.Min(c.G, c.B));
-            float l = (max + min) * 0.5f;
-            float d = max - min;
-            if (d <= 1e-6f) return (0f, 0f, l);
-            float s = l > 0.5f ? d / (2f - max - min) : d / (max + min);
-            float h = max == c.R ? (c.G - c.B) / d + (c.G < c.B ? 6f : 0f)
-                : max == c.G ? (c.B - c.R) / d + 2f
-                : (c.R - c.G) / d + 4f;
-            h *= 60f;
-            if (h >= 360f - 1e-3f) h = 0f;   // float noise just under a full turn is hue 0
-            return (h, s, l);
-        }
-
-        /// <summary>HSL (hue in degrees) → RGB.</summary>
-        public static ColorF FromHsl(float hDeg, float s, float l, float a = 1f)
-        {
-            s = Math.Clamp(s, 0f, 1f);
-            l = Math.Clamp(l, 0f, 1f);
-            if (s <= 0f) return new ColorF(l, l, l, a);
-            float q = l < 0.5f ? l * (1f + s) : l + s - l * s;
-            float p = 2f * l - q;
-            float h = hDeg / 360f;
-            h -= MathF.Floor(h);
-            return new ColorF(Hue(p, q, h + 1f / 3f), Hue(p, q, h), Hue(p, q, h - 1f / 3f), a);
-
-            static float Hue(float p, float q, float t)
-            {
-                if (t < 0f) t += 1f;
-                if (t > 1f) t -= 1f;
-                if (t < 1f / 6f) return p + (q - p) * 6f * t;
-                if (t < 0.5f) return q;
-                if (t < 2f / 3f) return p + (q - p) * (2f / 3f - t) * 6f;
-                return p;
-            }
-        }
-
-        // ── DATA-ENCODING INK ────────────────────────────────────────────────────────────────────────────────────────
-
-        /// <summary>Saturation and the two lightness rungs a data hue is forced to in LIGHT.</summary>
-        const float DataDotLightS = 0.65f, DataDotLightLDim = 0.30f, DataDotLightLBright = 0.40f;
-
-        /// <summary>The hue band whose members are intrinsically LIGHT — yellow through cyan.</summary>
-        const float DataDotBandLo = 40f, DataDotBandHi = 200f;
-
-        /// <summary>A SERVER-SUPPLIED data hue (the Camelot key wheel) rendered as ink for the CURRENT theme.
-        ///
-        /// <para>The wheel's colours arrive fully saturated and mid-to-high lightness — authored for a dark surface,
-        /// where a 6-DIP saturated dot at 0.85 opacity is a quiet identity mark. Painted UNCHANGED on a near-white row
-        /// the same dot is the loudest thing in the tracklist: a saturated yellow or cyan at L ≈ 0.5 has almost no
-        /// contrast against #FCFCFC, so it reads as a smear of colour rather than as a token.</para>
-        ///
-        /// <para>The correction is Fluent's own shared-colour principle, and its awkward part is the part that matters:
-        /// darkening for a light surface is HUE-DEPENDENT. Yellow and cyan sit near the top of the luminance curve and
-        /// need roughly three rungs of darkening before they read as ink; red, blue and magenta need about one, and
-        /// darkening them as far as yellow turns the wheel into twelve browns. So the band [40°, 200°] is forced to
-        /// L 0.30 and everything else to L 0.40, at a common S 0.65 that keeps adjacent keys distinguishable (the
-        /// wheel's whole point is that harmonically adjacent keys are adjacent hues).</para>
-        ///
-        /// <para>DARK IS A PASSTHROUGH, deliberately: the wire colours already ARE the dark-surface answer, and
-        /// re-grading them would break the one property the wheel guarantees. An input with no hue worth keeping
-        /// returns a NEUTRAL at the same lightness rung rather than being pushed to S 0.65, which would invent a red for
-        /// a grey.</para></summary>
-        public static ColorF DataDotInk(uint argb, ThemeKind theme)
-        {
-            var c = ToColor(argb);
-            if (theme == ThemeKind.Dark) return c;
-            var (h, s, _) = ToHsl(c);
-            float l = h >= DataDotBandLo && h <= DataDotBandHi ? DataDotLightLDim : DataDotLightLBright;
-            return s <= NeutralS ? FromHsl(0f, 0f, l, c.A) : FromHsl(h, DataDotLightS, l, c.A);
-        }
-
-        /// <summary>Neutral fallback when the plane has no grading yet. Every role is greyscale ON PURPOSE — including
-        /// the bright-accent role, which the real wire always grades to pure white in the dark half. A fabricated blue
-        /// here made the fallback scheme the one "cover" in the app with a hue, which is precisely the wrong shape to
-        /// test chrome against.</summary>
-        public static Scheme Neutral { get; } =
-            new(BackgroundBase: 0xFF1C1C1C, BackgroundTintedBase: 0xFF2A2A2A, TextBase: 0xFFFFFFFF,
-                TextSubdued: 0xFFB3B3B3, TextBrightAccent: 0xFFFFFFFF);
-
-        /// <summary>The player bar's neutral dark base — the surface the album hue is only faintly lifted from. WinUI's
-        /// subtlety came from acrylic over a real blurred desktop; we have neither, so the bar is a flat neutral fill
-        /// with a capped hue instead of a saturated tint.</summary>
-        public static ColorF BarSurface { get; } = ColorF.FromRgba(0x1A, 0x1B, 0x1E, 0xFF);
+        /// <summary>THE page's chrome accent (see <see cref="ColorScience.ChromeAccent"/>); greyscale art falls back to the active
+        /// semantic accent rather than shipping a grey Play button.</summary>
+        public static ColorF ChromeAccent(in Scheme s) => ColorScience.ChromeAccent(s, Tok.AccentDefault);
     }
 
     // ══ 7. THE TWO GRADING HALVES, AND THE ART PLACEHOLDER ═══════════════════════════════════════════════════════════
@@ -1042,17 +250,17 @@ public static partial class Design
     /// signals at PAGE scope (that rebuilds the whole page); subscribe from a leaf tone/tint node or a bound Fill
     /// instead — see <see cref="CoverPageTonePlane"/> and its siblings.</para></summary>
     public static Scheme? SchemeFor(ReadOnlySpan<char> url)
-        => Wavee.Palette.TryScheme(url, Tok.Theme == ThemeKind.Light, out var s) ? s : null;
+        => Wavee.Palette.TryScheme(url, R.IsLight, out var s) ? s : null;
 
     /// <inheritdoc cref="SchemeFor(ReadOnlySpan{char})"/>
     public static Scheme? SchemeFor(StringId imageRef)
-        => Wavee.Palette.TryScheme(imageRef, Tok.Theme == ThemeKind.Light, out var s) ? s : null;
+        => Wavee.Palette.TryScheme(imageRef, R.IsLight, out var s) ? s : null;
 
     /// <summary>The artwork grading used by SOLID chrome. The contrast branch is intentionally OPPOSITE
     /// <see cref="SchemeFor(ReadOnlySpan{char})"/>'s — see the block comment above.</summary>
     public static Scheme? ChromeSchemeFor(ReadOnlySpan<char> url)
     {
-        bool pageIsLight = Tok.Theme == ThemeKind.Light;
+        bool pageIsLight = R.IsLight;
         if (Wavee.Palette.TryScheme(url, lightTheme: !pageIsLight, out var opposite)) return opposite;
         return Wavee.Palette.TryScheme(url, lightTheme: pageIsLight, out var same) ? same : null;
     }
@@ -1064,31 +272,16 @@ public static partial class Design
     // image-keyed plane that ENQUEUES ON A MISS, so rendering the art IS the request and no surface has to remember to
     // prefetch a colour.
 
-    /// <summary>Artwork is OPAQUE content. Theme card brushes are intentionally translucent, so placeholders use
-    /// explicit opaque neutrals instead of letting the surface below wash through the image slot — a small thumb sits
-    /// over an UNPAINTED chrome band, so a see-through placeholder lets the desktop read through and the cover becomes a
-    /// washed smear.</summary>
-    public static readonly ColorF ArtworkPlaceholderDark = ColorF.FromRgba(0x2A, 0x2A, 0x2A);
-    /// <inheritdoc cref="ArtworkPlaceholderDark"/>
-    public static readonly ColorF ArtworkPlaceholderLight = ColorF.FromRgba(0xF2, 0xF2, 0xF2);
-
-    /// <summary>How far a cover's own colour pulls the placeholder away from the neutral tile. Full strength would make
-    /// a long list read as a wall of saturated blocks; this keeps the slot legible as "art loading" while still being
-    /// THAT cover's colour. It is the difference between a list of grey squares and one that paints its covers at
-    /// once.</summary>
-    public const float TintStrength = 0.55f;
+    // The neutral tile itself (an OPAQUE explicit neutral, never a translucent theme brush) is the style's `R.Layer.ArtPlaceholder`, and
+    // the blend toward the cover's own colour is `ColorScience.Placeholder` at `ColorScience.TintStrength`.
 
     /// <summary>Below this edge the breathe is imperceptible, so a slot takes a cheap STATIC tile: no component, no hook
     /// cells, no image-epoch subscription — a 50k-row virtualized list pays nothing per item.</summary>
     public const float ShimmerMinEdge = 80f;
 
-    /// <inheritdoc cref="ArtworkPlaceholderDark"/>
-    public static ColorF ArtworkPlaceholder =>
-        Tok.Theme == ThemeKind.Dark ? ArtworkPlaceholderDark : ArtworkPlaceholderLight;
-
     /// <summary>THE art placeholder resolver, for the ACTIVE theme's polarity. Light theme only accepts a LIGHT grading;
     /// a dark-only entry keeps the neutral tile rather than dropping a dark slab onto a pale page.</summary>
-    public static ColorF PlaceholderFor(ReadOnlySpan<char> url) => PlaceholderFor(url, Tok.Theme == ThemeKind.Light);
+    public static ColorF PlaceholderFor(ReadOnlySpan<char> url) => PlaceholderFor(url, R.IsLight);
 
     /// <summary>The same resolver with the polarity SUPPLIED rather than read. A surface whose ground does not follow
     /// the page — the immersive stage, which owns its own veil — needs the tile graded for ITS polarity, or a
@@ -1096,10 +289,10 @@ public static partial class Design
     /// image-keyed plane and a miss still enqueues; only the neutral it is blended toward changes.</summary>
     public static ColorF PlaceholderFor(ReadOnlySpan<char> url, bool light)
     {
-        ColorF neutral = light ? ArtworkPlaceholderLight : ArtworkPlaceholderDark;
+        ColorF neutral = R.Current.Layer.ArtPlaceholder.Resolve(light ? ThemeKind.Light : ThemeKind.Dark);
         if (url.IsEmpty) return neutral;
         return Wavee.Palette.TryTint(url, light, out uint argb)
-            ? ColorF.Lerp(neutral, Palette.ToColor(argb), TintStrength)
+            ? ColorScience.Placeholder(neutral, argb)
             : neutral;
     }
 
@@ -1732,15 +925,9 @@ public static partial class Design
         public static readonly ShellWashPlacement Mix =
             Resolve(new Point2(0.58f, 1.00f), new Point2(0.90f, 0.70f), 0.66f);
 
-        /// <summary>Alpha at the wash origin (offset 0). DARK carries roughly TWICE the light strength: the same colour
-        /// reads far weaker over the dark ground, and the light ground has less headroom before a wash turns into a
-        /// smudge.</summary>
-        public const float HeroAlphaLight = 0.055f, ShelfAlphaLight = 0.05f;
-        /// <inheritdoc cref="HeroAlphaLight"/>
-        public const float HeroAlphaDark = 0.10f, ShelfAlphaDark = 0.085f;
-
-        public static float HeroAlpha(bool light) => light ? HeroAlphaLight : HeroAlphaDark;
-        public static float ShelfAlpha(bool light) => light ? ShelfAlphaLight : ShelfAlphaDark;
+        // The wash STRENGTHS (alpha at the origin, light and dark) are the style's `R.Wash.HeroAlpha` / `R.Wash.ShelfAlpha`: DARK carries roughly
+        // TWICE the light strength, since the same colour reads far weaker over the dark ground and the light ground has less headroom before
+        // a wash turns into a smudge. What stays here is GEOMETRY and the paint budget.
 
         /// <summary>Clip a window-relative radial wash to the bounds of its own ellipse at
         /// <paramref name="fadeOffset"/> and re-express the ellipse relative to that box. Pure — no theme, no viewport,
@@ -1761,11 +948,8 @@ public static partial class Design
                 fadeOffset);
         }
 
-        /// <summary>The neutral ground the material layer paints when no page has a colour. <b>Never
-        /// <c>ColorF.Transparent</c></b> — transparent is premultiplied BLACK, and cross-fading into or out of it drags
-        /// the interpolated colour toward black for the whole ramp. That is what read as "the shell tint goes neutral
-        /// AND DARKER" at almost every navigation. A correctness fix disguised as a constant.</summary>
-        public static ColorF NeutralGround => Colors.ShellGround with { A = 0.03f };
+        // The neutral ground the material layer paints when no page has a colour is `R.Wash.NeutralGround` (NEVER Transparent: transparent is
+        // premultiplied BLACK, and cross-fading into or out of it drags the interpolated colour toward black for the whole ramp).
 
         /// <summary>The wash host's bottom inset is a MARGIN, not a re-anchored ellipse. The placements' centre/radius
         /// are node-relative CONSTANTS precisely because the box is a fraction of the WINDOW; subtracting a fixed
@@ -1925,7 +1109,7 @@ public static class TintOwnership
 /// still bloomed: a dark sleeve made it invisible and a bright one made it a haze across the top of the page, so two
 /// records rendered as two different DESIGNS — reported as "the pages are inconsistent by kind" when what actually
 /// differed was cover brightness. It also contradicted the rule the rest of the system is built on:
-/// <see cref="Design.Palette.PageTone"/>'s first clause is <i>complementary, not sampled</i>, and a blurred copy of the
+/// <see cref="ColorScience.PageTone"/>'s first clause is <i>complementary, not sampled</i>, and a blurred copy of the
 /// cover at page scale is exactly the forbidden move, sitting directly on the plane that forbids it. Do not reintroduce
 /// it; the tone tests assert its absence.</para></summary>
 public sealed class CoverPageTonePlane : Component
@@ -1953,7 +1137,7 @@ public sealed class CoverPageTonePlane : Component
     /// rediscovered as a bug: <b>in light theme the record's hue is close to imperceptible</b> and a busy wallpaper
     /// shows through. Light identity is carried by the CHROME accent (the Play capsule, the accent rule, row chrome),
     /// not by the page ground. Raise THIS pair, never the clamp, if the page should take more colour again.</para></summary>
-    public const float PlaneAlphaDark = 0.20f, PlaneAlphaLight = 0.30f;
+    // The pair itself is `R.Wash.PageTonePlaneAlpha` (themes plan T2b).
 
     public override Element Render()
     {
@@ -1982,7 +1166,7 @@ public sealed class CoverPageTonePlane : Component
             // BOUND: the brush stays a compositor value, so a theme/preset re-fire lands without this subtree being
             // rebuilt, and the 250 ms ramp CROSS-FADES a grading arrival instead of snapping to it.
             Fill = Prop.Of(() => !p.HeroOnly && Resolve(p) is { } t
-                ? t with { A = Tok.Theme == ThemeKind.Light ? PlaneAlphaLight : PlaneAlphaDark }
+                ? t with { A = R.Wash.PageTonePlaneAlpha }
                 : ColorF.Transparent),
             BrushTransitionMs = Design.Motion.Standard,
             Children = kids,
@@ -1993,10 +1177,12 @@ public sealed class CoverPageTonePlane : Component
     /// owns that), so it is safe on the paint path.</summary>
     static ColorF? Resolve(Props p)
     {
-        var fromArt = Design.Palette.PageTone(Design.SchemeFor(p.Url) ?? Design.SchemeFor(p.FallbackUrl), Tok.Theme);
-        if (fromArt is not null) return fromArt;
+        var wash = R.Wash;
+        if ((Design.SchemeFor(p.Url) ?? Design.SchemeFor(p.FallbackUrl)) is { } scheme
+            && wash.PageToneFromHue(ColorScience.Accent(scheme)) is { } fromArt)
+            return fromArt;
         if (p.PayloadAccent == 0) return null;
-        return Design.Palette.PageToneFromHue(Design.Palette.ToColor(p.PayloadAccent), Tok.Theme);
+        return wash.PageToneFromHue(ColorScience.ToColor(p.PayloadAccent));
     }
 
     /// <summary>Hero-only mode: the tone paints ONLY the hero band and fades to nothing below it. Under the
@@ -2009,7 +1195,7 @@ public sealed class CoverPageTonePlane : Component
         float pageH = p.PageHeight > 1f ? p.PageHeight : 0f;
         if (pageH <= 1f) return null;
         if (Resolve(p) is not { } tone) return null;
-        float alpha = Tok.Theme == ThemeKind.Light ? PlaneAlphaLight : PlaneAlphaDark;
+        float alpha = R.Wash.PageTonePlaneAlpha;
         float start = Math.Clamp(p.BackdropBand / pageH, 0.12f, 0.80f);
         float end = MathF.Min(1f, start + 0.22f);
         return new BoxEl
@@ -2063,8 +1249,6 @@ public sealed class CoverArtistBlendWash : Component
     /// <inheritdoc cref="CoverArtistBlendWash"/>
     public sealed record Props(string? Url, float Height, float Boundary, bool Disabled, uint PayloadAccent = 0);
 
-    static readonly Func<uint, ColorF> s_lift = static a => Design.Palette.Lift(Design.Palette.ToColor(a));
-    static readonly Func<uint, ColorF> s_sink = static a => Design.Palette.DarkFromPayload(a);
     bool _mounted;
     /// <summary>Has the ladder ever produced a DEFINITIVE first answer (a real grading hit, or Definite because
     /// nothing better can ever arrive)? See the Exit guard below — the whole point of this field.</summary>
@@ -2077,21 +1261,17 @@ public sealed class CoverArtistBlendWash : Component
 
         if (p.Url is { Length: > 0 } url) _ = Palette.Watch(url).Value;
         var pagePal = Design.SchemeFor(p.Url);
-        bool light = Tok.Theme == ThemeKind.Light;
-        // Both arms follow the ladder (graded → payload → neutral). LIGHT lifts the hue toward the accent; DARK sinks
-        // it to the dark background role, so the first frame already carries the record's hue at the brightness the
-        // grading will settle on instead of a grey that brightens a beat later.
+        // Both arms follow the ladder (graded → payload → neutral): the style's `R.Wash.BlendWashLadder`. Classic's LIGHT arm lifts the hue
+        // toward the accent; its DARK arm sinks it to the dark background role, so the first frame already carries the record's hue at
+        // the brightness the grading will settle on instead of a grey that brightens a beat later.
         bool definite = string.IsNullOrEmpty(p.Url) || !Palette.CanGrade(p.Url);
-        AccentLadder.Result result = light
-            ? AccentLadder.Resolve(new(pagePal is { } wp ? Design.Palette.Lift(Design.Palette.Accent(wp)) : null, p.PayloadAccent, definite),
-                                   null, Tok.AccentDefault, s_lift)
-            : AccentLadder.Resolve(new(pagePal is { } dp ? Design.Palette.BackgroundDark(dp) : null, p.PayloadAccent, definite),
-                                   null, Design.Palette.BackgroundDark(Design.Palette.Neutral), s_sink);
+        var roles = R.Wash;
+        AccentLadder.Result result = roles.BlendWashLadder(pagePal, p.PayloadAccent, definite);
         ColorF wash = result.Color;
         AccentLadder.Rung rung = result.Rung;
         GradientSpec gradient = GradientDown(
-            new GradientStop(0f, wash with { A = light ? 0.20f : 0.30f }),
-            new GradientStop(p.Boundary, wash with { A = light ? 0.06f : 0.08f }),
+            new GradientStop(0f, wash with { A = roles.BlendWashTop }),
+            new GradientStop(p.Boundary, wash with { A = roles.BlendWashBoundary }),
             new GradientStop(1f, wash with { A = 0f }));
         // Keyed swap, not a bound Fill: the recorder writes a Gradient directly (Reconciler.cs SetGradient), so
         // BrushTransitionMs cannot cross-fade it. Re-keying on the rung + colour makes a grading arrival mount a fresh
@@ -2134,7 +1314,7 @@ public sealed class CoverKeyedVeil : Component
     /// <inheritdoc cref="CoverKeyedVeil"/>
     public sealed record Props(string? Url, bool Vertical, float Width, float Height, uint PayloadAccent = 0);
 
-    static readonly Func<uint, ColorF> s_lift = static a => Design.Palette.Lift(Design.Palette.ToColor(a));
+    static readonly Func<uint, ColorF> s_lift = static a => ColorScience.Lift(ColorScience.ToColor(a));
     bool _mounted;
     /// <summary>See the identical field on <see cref="CoverArtistBlendWash"/> and the Exit guard below — this leaf
     /// veils the same photo the wash sits behind, so it carries the same defect and the same fix.</summary>
@@ -2148,7 +1328,7 @@ public sealed class CoverKeyedVeil : Component
         // The page palette's own lifted accent is the graded rung; the payload (header) accent and the neutral
         // FillLayerDefault (ArtistHeroVeil then lerps into the layer colour itself = no tint) fill the rest of the
         // ladder — the old chrome-scheme fallback is gone, subsumed by the shared ladder.
-        ColorF? graded = pagePal is { } wp ? Design.Palette.Lift(Design.Palette.Accent(wp)) : null;
+        ColorF? graded = pagePal is { } wp ? ColorScience.Lift(ColorScience.Accent(wp)) : null;
         bool definite = string.IsNullOrEmpty(p.Url) || !Palette.CanGrade(p.Url);
         var result = AccentLadder.Resolve(new(graded, p.PayloadAccent, definite), null, Tok.FillLayerDefault, s_lift);
         // Keyed swap: see CoverArtistBlendWash — a Gradient can't cross-fade through BrushTransitionMs, and a
@@ -2188,10 +1368,9 @@ public sealed class CoverShellTintBinder : Component
     public sealed record Props(string? Url, string? FallbackUrl, bool Ready, bool Disabled, bool Apply, object Owner,
                                Signal<ShellMaterialState>? Slot, uint PayloadAccent = 0);
 
-    /// <summary>The two tint arms. LIGHT lifts the cover's TEXT role to a 5% whisper; DARK takes the tinted background
-    /// role at 14%. Two different ROLES, not one role at two alphas — a lifted background role in light is a pastel
-    /// smear across the chrome. It WARMS the ground; it never replaces it.</summary>
-    public const float TintAlphaLight = 0.05f, TintAlphaDark = 0.14f;
+    // The two tint arms are the style's `R.Wash.ShellTintFromScheme` (Classic: LIGHT lifts the cover's TEXT role to a 5% whisper; DARK takes
+    // the tinted background role at 14%: two different ROLES, not one role at two alphas) and `R.Wash.ShellTintAlpha` for a raw payload
+    // colour. The tint WARMS the ground; it never replaces it.
 
     public override Element Render()
     {
@@ -2209,16 +1388,15 @@ public sealed class CoverShellTintBinder : Component
         ColorF? known = null;
         if (!definite)
         {
+            var wash = R.Wash;
             if (artPalette is { } artScheme)
             {
-                known = Tok.Theme == ThemeKind.Light
-                    ? Design.Palette.Lift(Design.Palette.ToColor(artScheme.TextBase)) with { A = TintAlphaLight }
-                    : Design.Palette.TintedDark(artScheme) with { A = TintAlphaDark };
+                known = wash.ShellTintFromScheme(artScheme);
             }
             else if (p.PayloadAccent != 0)
             {
-                var lifted = Design.Palette.Lift(Design.Palette.ToColor(p.PayloadAccent));
-                known = lifted with { A = Tok.Theme == ThemeKind.Light ? TintAlphaLight : TintAlphaDark };
+                var lifted = ColorScience.Lift(ColorScience.ToColor(p.PayloadAccent));
+                known = lifted with { A = wash.ShellTintAlpha };
             }
         }
 
@@ -2228,14 +1406,14 @@ public sealed class CoverShellTintBinder : Component
 
         void Publish(bool isClaim) => ShellMaterial.Publish(p.Slot, p.Owner, isClaim, definite, known, wash: null);
 
-        // `Tok.Theme` is IN THE KEY on purpose: a live theme flip re-derives the tint ARM (light Lift(TextBase)@0.05 vs
-        // dark TintedDark@0.14) and re-publishes it. Without it the chrome keeps the OLD arm's tint until the next
-        // navigation.
+        // `Tok.Epoch` is IN THE KEY on purpose: a live theme flip (kind) or a definition swap that moves a wash role re-derives the tint
+        // and re-publishes it. Without it the chrome keeps the OLD tint until the next navigation. (The epoch, not the light/dark kind:
+        // themes plan X44.)
         UseEffect(() =>
         {
             Publish(isClaim: !claimedOnce.Value);
             claimedOnce.Value = true;
-        }, DepKey.From(HashCode.Combine(p.Url, known.HasValue, known.GetValueOrDefault(), Tok.Theme,
+        }, DepKey.From(HashCode.Combine(p.Url, known.HasValue, known.GetValueOrDefault(), Tok.Epoch,
                                         p.Ready, p.Disabled, p.Apply, p.PayloadAccent)));
         // Reactivation (KeepAlive Back/forward) is ALWAYS a claim, regardless of claimedOnce — the whole point is to
         // retake the slot from whatever deactivated in between, even if that never cleared it either.

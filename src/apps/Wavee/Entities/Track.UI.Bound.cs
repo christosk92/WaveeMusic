@@ -696,7 +696,7 @@ public readonly partial struct Track
                 new BoxEl
                 {
                     Width = 6f, Height = 6f, Corners = CornerRadius4.All(1.5f), Opacity = 0.85f, AlignSelf = FlexAlign.Center,
-                    Fill = Prop.Of(() => Design.Palette.DataDotInk(r.P.Track.CamelotColor, Tok.Theme)),
+                    Fill = Prop.Of(() => R.Ink.DataDot(r.P.Track.CamelotColor)),
                     Visible = Prop.Of(() => r.P.Track.CamelotColor != 0),
                 },
                 Factual(classic, Prop.Of(() => s_tempoLabels.Get(r.P.Track.Tempo, s_tempoFormat)), primary),

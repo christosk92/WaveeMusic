@@ -742,7 +742,7 @@ public readonly partial struct Track
     }
 
     /// <summary>"[swatch] 101.5 · 8B" — the Camelot colour as a 6-DIP swatch at 0.85 through
-    /// <c>Design.Palette.DataDotInk</c> (a passthrough in dark, a hue-aware darkening in light), the BPM, then ONE key
+    /// <c>ColorScience.DataDotInk</c> (a passthrough in dark, a hue-aware darkening in light), the BPM, then ONE key
     /// token (Camelot preferred, else the tonic). EMPTY — not "0 BPM", not a dash — until kind 222 lands, because a
     /// placeholder would flicker to a value a moment later (ch 01 §0.7, parity 28).</summary>
     public static Element TempoCell(Track t, ColorF? ink, bool classic)
@@ -757,7 +757,7 @@ public readonly partial struct Track
             {
                 // Both the 6-DIP box and its 1.5 corner sit below their ramps on purpose: a colour SWATCH, not a surface.
                 Width = 6f, Height = 6f, Corners = CornerRadius4.All(1.5f), Opacity = 0.85f,
-                Fill = Design.Palette.DataDotInk(t.CamelotColor, Tok.Theme), AlignSelf = FlexAlign.Center,
+                Fill = R.Ink.DataDot(t.CamelotColor), AlignSelf = FlexAlign.Center,
             };
         parts[i++] = RowFactualText(Format.TempoLabel(t.Tempo), classic, ink ?? Tok.TextSecondary);
         if (key is not null)
@@ -1133,9 +1133,9 @@ public readonly partial struct Track
                 MinHeight = p.RowH, ClipToBounds = true,
                 Margin = new Edges4(RowMetrics.RowInset, 0f, RowMetrics.RowInset, 0f),
                 Corners = Radii.ControlAll,
-                Fill = oddZebra ? Design.Colors.RowZebra : ColorF.Transparent,
-                HoverFill = oddZebra ? Design.Colors.RowHoverZebra : Design.Colors.RowHover,
-                PressedFill = oddZebra ? Design.Colors.RowPressedZebra : Design.Colors.RowPressed,
+                Fill = oddZebra ? R.Layer.RowZebra : ColorF.Transparent,
+                HoverFill = oddZebra ? R.Layer.RowHoverZebra : R.Layer.RowHover,
+                PressedFill = oddZebra ? R.Layer.RowPressedZebra : R.Layer.RowPressed,
                 // NO PressScale: a near-full-width row visibly shrinks and blurs its title mid-scale (ch 01 §0.11). The
                 // pressed fill is the row's only press acknowledgement.
                 BorderWidth = 1f,

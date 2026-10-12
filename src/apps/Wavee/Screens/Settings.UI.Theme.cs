@@ -130,7 +130,7 @@ public static partial class Settings
     static Element ThemeThumbnail(ThemePreview preview)
     {
         var layers = new List<Element>(2) { ThemeMiniature() };
-        string asset = Tok.Theme == ThemeKind.Light ? preview.LightAsset : preview.DarkAsset;
+        string asset = R.IsLight ? preview.LightAsset : preview.DarkAsset;
         if (PreviewPath(asset) is { } path)
             layers.Add(new ImageEl
             {

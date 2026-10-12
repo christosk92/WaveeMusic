@@ -508,7 +508,6 @@ public static partial class Detail
         readonly Signal<float> _heroHeight = new(0f);
         readonly Signal<ColorF> _accent = new(ColorF.Transparent);
         readonly Signal<Design.PageAccent> _pageAccent = new(new Design.PageAccent(Tok.AccentTextPrimary, Tok.AccentDefault, ""));
-        readonly Signal<ThemeKind> _theme = new(ThemeKind.Dark);
         readonly Action?[] _playAllCell = new Action?[1];
         readonly object _tintOwner = new();
         IReadSignal<Size2>? _viewport;
@@ -536,7 +535,7 @@ public static partial class Detail
         readonly Action _resyncRails;
         readonly Action _restRails;
         readonly Action _publishAccentTracked;
-        readonly Action _publishTheme;
+        readonly Action _republishAccent;
         readonly Func<int> _heightRungsCompute;
         readonly Func<bool> _railPending;
 
@@ -581,7 +580,7 @@ public static partial class Detail
             _resyncRails = ResyncRails;
             _restRails = RestRails;
             _publishAccentTracked = PublishAccentTracked;
-            _publishTheme = () => { _theme.Value = Tok.Theme; };
+            _republishAccent = RepublishAccent;
             _heightRungsCompute = ComputeHeightRungs;
             _railPending = () => _spec.Value?.Identity.HeaderPending ?? true;
 
@@ -650,7 +649,7 @@ public static partial class Detail
                 // The first paint already carries a cached grading's accent instead of the default for one frame.
                 _accentSeeded = true;
                 PublishAccent(spec);
-                _theme.Value = Tok.Theme;
+                _accentEpoch = Tok.Epoch;
             }
             _spec.Value = spec;
         }
@@ -678,7 +677,7 @@ public static partial class Detail
             _viewport = viewportSig;
             var rungsMemo = UseComputed(_heightRungsCompute);
             UseEffect(_publishAccentTracked);                                   // grading / spec
-            UseEffect(_publishTheme, DepKey.From((int)Tok.Theme));              // a theme flip re-derives the accent
+            UseEffect(_republishAccent, DepKey.From(Tok.Epoch));                // a theme flip or a definition swap re-derives the accent (X44)
 
             string? paletteUrl = id.PaletteUrl ?? id.CoverUrl;
             string routeKey = spec.RouteKey;
@@ -729,7 +728,7 @@ public static partial class Detail
             float heroBand = verticalTracks ? _heroHeight.Peek() : pageH * TwoColumnHeroBandFraction;
             Element tone = Palette.PageTonePlane(paletteUrl, fallbackUrl: null, disabled: !washes, backdropBand: heroBand,
                 pageHeight: pageH, heroOnly: false,
-                key: "detail-tone:" + routeKey + (Tok.Theme == ThemeKind.Light ? ":light" : ":dark"),
+                key: Palette.ToneKey(routeKey, Tok.Epoch),
                 payloadAccent: id.CardAccent);
 
             // ── the notice strip: about the PAGE, read before the content it qualifies; never an error page ──
@@ -1092,17 +1091,29 @@ public static partial class Detail
             if (_latest is { } spec) Playback.PlayOrToggleContext(spec.Identity.Subject.Id);
         }
 
-        /// <summary>Auto-tracked: the spec, the theme tick and the cover palette watch. A grading landing re-derives
-        /// the accent without re-rendering the page.</summary>
+        /// <summary>Auto-tracked: the spec and the cover palette watch. A grading landing re-derives the accent without
+        /// re-rendering the page.</summary>
         void PublishAccentTracked()
         {
             var spec = _spec.Value;
             if (spec is null) return;
-            _ = _theme.Value;
             string? paletteUrl = spec.Identity.PaletteUrl ?? spec.Identity.CoverUrl;
             if (paletteUrl is { Length: > 0 } p) _ = Palette.Watch(p).Value;
             PublishAccent(spec);
         }
+
+        /// <summary>Themes plan X44: the accent follows <see cref="Tok.Epoch"/> (the light/dark kind AND the definition: the graded half and the
+        /// contrast solves read both) instead of a <c>Signal&lt;ThemeKind&gt;</c> the page republished on every flip. The first publish
+        /// (<see cref="ApplyProps"/>) already ran at the current epoch, so the effect's mount run does nothing.</summary>
+        void RepublishAccent()
+        {
+            if (_accentEpoch == Tok.Epoch) return;
+            _accentEpoch = Tok.Epoch;
+            if (_latest is { } spec) PublishAccent(spec);
+        }
+
+        /// <summary>The epoch the accent was last published at.</summary>
+        int _accentEpoch = -1;
 
         /// <summary>The accent and the page-scoped context pair are written together, so a consumer reading either
         /// never sees them disagree.</summary>

@@ -241,7 +241,7 @@ public static partial class BrowseTiles
     };
 
     /// <summary>ONE accent resolution for every cell: a colour ⇒ raw; null or 0 ⇒ the semantic accent (never black).</summary>
-    static ColorF Accent(in BrowseTileModel m) => m.Color is { } c && c != 0u ? Design.Palette.ToColor(c) : Tok.AccentDefault;
+    static ColorF Accent(in BrowseTileModel m) => m.Color is { } c && c != 0u ? ColorScience.ToColor(c) : Tok.AccentDefault;
 
     /// <summary>The Genres grid — the SAME grid a category page's grid/related block renders: 3 / 2 / 1 columns at the
     /// 720 / 380 bands, colGap 12, rowGap 8, keyed by its column count (the one width a key may carry).</summary>

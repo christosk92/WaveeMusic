@@ -592,7 +592,7 @@ public static partial class Shell
                         Direction = 1, ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Basis = 0f,
                         Children =
                         [
-                            new BoxEl { Grow = 1f, Fill = Prop.Of(static () => Design.Colors.FileArea), Corners = Design.Size.ContentPaneCorners },
+                            new BoxEl { Grow = 1f, Fill = Prop.Of(static () => R.Layer.FileArea), Corners = Design.Size.ContentPaneCorners },
                             new BoxEl
                             {
                                 Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
@@ -619,7 +619,7 @@ public static partial class Shell
                             new BoxEl
                             {
                                 Grow = 1f, HitTestPassThrough = true, ClipToBounds = true, ZStack = true,
-                                Children = [new BoxEl { Margin = StrokeOverhang, Fill = Prop.Of(static () => Design.Colors.FileArea), Corners = RailBandCorners }],
+                                Children = [new BoxEl { Margin = StrokeOverhang, Fill = Prop.Of(static () => R.Layer.FileArea), Corners = RailBandCorners }],
                             },
                         ],
                     },
@@ -654,7 +654,7 @@ public static partial class Shell
                             {
                                 Grow = 1f, HitTestPassThrough = true,
                                 Fill = Prop.Of(static () => FrameRules.RailFloats(Ui.RailOpen.Value, Ui.RailFits.Value)
-                                    ? Design.Colors.FloatingChrome : ColorF.Transparent),
+                                    ? R.Layer.FloatingChrome : ColorF.Transparent),
                             },
                             new BoxEl
                             {
@@ -1728,8 +1728,8 @@ public static partial class Shell
         Key = key,
         Direction = 0, AlignItems = FlexAlign.Center, Gap = 10f, MinHeight = 56f,
         Padding = new Edges4(10f, 8f, 10f, 8f), Corners = CornerRadius4.All(8f),
-        HoverFill = onClick is not null ? Design.Colors.RowHover : ColorF.Transparent,
-        PressedFill = onClick is not null ? Design.Colors.RowPressed : ColorF.Transparent,
+        HoverFill = onClick is not null ? R.Layer.RowHover : ColorF.Transparent,
+        PressedFill = onClick is not null ? R.Layer.RowPressed : ColorF.Transparent,
         Role = onClick is not null ? AutomationRole.Button : AutomationRole.None,
         Cursor = onClick is not null ? CursorId.Hand : CursorId.Arrow,
         Focusable = onClick is not null,
@@ -1878,7 +1878,7 @@ public static partial class Shell
             Key = "ntf:act:" + n.Id,
             Direction = 0, AlignItems = FlexAlign.Center, Gap = 10f, MinHeight = 56f,
             Padding = new Edges4(10f, 8f, 10f, 8f), Corners = CornerRadius4.All(8f),
-            HoverFill = Design.Colors.RowHover, PressedFill = Design.Colors.RowPressed,
+            HoverFill = R.Layer.RowHover, PressedFill = R.Layer.RowPressed,
             Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true,
             OnClick = () => { Notify.MarkRead(n.Id); expanded.Value = isExpanded ? "" : n.Id; },
             Enter = new EnterExit(Dy: 6f, Opacity: 0f, Active: true),
@@ -1981,7 +1981,7 @@ public static partial class Shell
     {
         Shrink = 0f, MinHeight = 28f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
         Padding = new Edges4(8f, 3f, 8f, 3f), Corners = CornerRadius4.All(6f),
-        HoverFill = Design.Colors.RowHover, PressedFill = Design.Colors.RowPressed,
+        HoverFill = R.Layer.RowHover, PressedFill = R.Layer.RowPressed,
         Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, OnClick = onClick,
         Children = [new TextEl(label) { Size = 12f, Weight = 600, Color = Tok.AccentTextPrimary }],
     };

@@ -28,7 +28,7 @@ using FluentGpu.Localization;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 
-using Ink = Wavee.Design.StageInk;
+using Ink = Wavee.Theming.Roles.StageInk;
 
 namespace Wavee;
 
@@ -134,7 +134,7 @@ public static partial class Stage
             var current = ctx.Kind.Value;
             var pal = ctx.Palette.Value;
             var slab = ctx.PosterSlab;
-            float wash = Ink.IsDark ? 0.12f : 0.08f;
+            float wash = Ink.SelectedTileWash;
             ColorF bg = ColorF.Lerp(Ink.Veil, slab.A.Value, wash);
 
             Element Poster(Visualizer.Kind kind, float w, float h) => new BoxEl

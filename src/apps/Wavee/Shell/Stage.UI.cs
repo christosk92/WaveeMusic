@@ -49,7 +49,7 @@ using FluentGpu.Scene;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
-using Ink = Wavee.Design.StageInk;
+using Ink = Wavee.Theming.Roles.StageInk;
 using RepeatMode = Wavee.Spotify.Decode.RepeatMode;
 
 namespace Wavee;

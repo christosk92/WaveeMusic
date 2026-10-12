@@ -307,7 +307,7 @@ public static partial class Setup
     {
         static readonly FluentGpu.Foundation.ColorF SourceAccent = FluentGpu.Foundation.ColorF.FromRgba(0x00, 0x78, 0xD4);
         static readonly FluentGpu.Foundation.ColorF SourceDeep = FluentGpu.Foundation.ColorF.FromRgba(0x00, 0x2B, 0x67);
-        static readonly float SourceAccentHue = Design.Palette.ToHsl(SourceAccent).H;
+        static readonly float SourceAccentHue = ColorScience.ToHsl(SourceAccent).H;
 
         const float HueBandMin = 195f, HueBandMax = 285f, HueBandMinSaturation = 0.35f;
 
@@ -320,9 +320,9 @@ public static partial class Setup
         {
             if (IsClose(c, SourceAccent)) return accent with { A = c.A };
             if (IsClose(c, SourceDeep)) return accentDeep with { A = c.A };
-            var (h, s, l) = Design.Palette.ToHsl(c);
+            var (h, s, l) = ColorScience.ToHsl(c);
             if (s < HueBandMinSaturation || h < HueBandMin || h > HueBandMax) return c;
-            return Design.Palette.FromHsl(h + (Design.Palette.ToHsl(accent).H - SourceAccentHue), s, l, c.A);
+            return ColorScience.FromHsl(h + (ColorScience.ToHsl(accent).H - SourceAccentHue), s, l, c.A);
         }
 
         static bool IsClose(FluentGpu.Foundation.ColorF a, FluentGpu.Foundation.ColorF b) =>

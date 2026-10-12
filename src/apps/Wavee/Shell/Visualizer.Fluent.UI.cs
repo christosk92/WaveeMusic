@@ -40,7 +40,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Signals;
 
 using Geo = Wavee.Visualizer.FluentGeometry;
-using Ink = Wavee.Design.StageInk;
+using Ink = Wavee.Theming.Roles.StageInk;
 
 namespace Wavee;
 

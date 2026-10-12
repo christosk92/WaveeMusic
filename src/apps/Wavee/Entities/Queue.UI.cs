@@ -46,7 +46,7 @@ using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
-using Ink = Wavee.Design.StageInk;
+using Ink = Wavee.Theming.Roles.StageInk;
 using RepeatMode = Wavee.Spotify.Decode.RepeatMode;
 
 namespace Wavee;
@@ -633,7 +633,7 @@ public static partial class Queue
                 Draggable = OwnDrag(Viewer, itemId, index, r),
                 ZStack = true, MinHeight = ClassicExtent, ClipToBounds = true,
                 Corners = CornerRadius4.All(0f),
-                Fill = ColorF.Transparent, HoverFill = Design.Colors.RowHover, PressedFill = Design.Colors.RowPressed,
+                Fill = ColorF.Transparent, HoverFill = R.Layer.RowHover, PressedFill = R.Layer.RowPressed,
                 PressScale = R.Motion.ScaleSubtle.Press,
                 Opacity = QueueRowRules.Dim(section),
                 Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true,
@@ -687,7 +687,7 @@ public static partial class Queue
                 {
                     Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 1, Justify = FlexJustify.Center,
                     Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true,
-                    Corners = Radii.ControlAll, HoverFill = Design.Colors.RowHover,
+                    Corners = Radii.ControlAll, HoverFill = R.Layer.RowHover,
                     Padding = new Edges4(Spacing.XS, 0f, Spacing.XS, 0f), Margin = new Edges4(-Spacing.XS, 0f, -Spacing.XS, 0f),
                     OnClick = () => Shell.GoTo(route),
                     Children = [identity],
@@ -805,7 +805,7 @@ public static partial class Queue
                 top.Add(new BoxEl
                 {
                     Padding = new Edges4(Spacing.S, Spacing.XXS, Spacing.S, Spacing.XXS), Corners = Radii.ControlAll,
-                    HoverFill = Design.Colors.RowHover, PressedFill = Design.Colors.RowPressed,
+                    HoverFill = R.Layer.RowHover, PressedFill = R.Layer.RowPressed,
                     Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, OnClick = static () => Shell.QueueVerbs.Default.Clear(),
                     Children = [new TextEl(Loc.Get(Strings.Player.Clear)) { Size = 12f, LineHeight = 16f, Weight = 600, Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary }],
                 });
@@ -832,7 +832,7 @@ public static partial class Queue
                 Key = "more:" + Tag(section),
                 Direction = 0, Height = MoreRowH, Gap = Spacing.S, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                 BlocksDragArm = true, Margin = new Edges4(0f, Spacing.XS, 0f, Spacing.XXS), Corners = Radii.ControlAll,
-                Fill = Tok.FillCardSecondary, HoverFill = Design.Colors.RowHover, PressedFill = Design.Colors.RowPressed,
+                Fill = Tok.FillCardSecondary, HoverFill = R.Layer.RowHover, PressedFill = R.Layer.RowPressed,
                 Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, OnClick = () => Verbs.ShowMore(section),
                 Layout = LayoutTransition.Slide,
                 Children =
@@ -853,7 +853,7 @@ public static partial class Queue
                 Key = "qp:ctx",
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinHeight = 28f,
                 Padding = new Edges4(Spacing.S, Spacing.XXS, Spacing.S, Spacing.S), Corners = Radii.ControlAll,
-                HoverFill = nav ? Design.Colors.RowHover : ColorF.Transparent, Cursor = nav ? CursorId.Hand : CursorId.Arrow,
+                HoverFill = nav ? R.Layer.RowHover : ColorF.Transparent, Cursor = nav ? CursorId.Hand : CursorId.Arrow,
                 OnClick = nav ? () => Shell.GoTo(route) : null,
                 Children =
                 [
@@ -935,7 +935,7 @@ public static partial class Queue
         static Element CloseGlyph(Action remove, bool classic) => new BoxEl
         {
             Width = Controls.IconButtonSize, Height = Controls.IconButtonSize, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Corners = classic ? CornerRadius4.All(0f) : Radii.ControlAll, HoverFill = Design.Colors.RowPressed,
+            Corners = classic ? CornerRadius4.All(0f) : Radii.ControlAll, HoverFill = R.Layer.RowPressed,
             Role = AutomationRole.Button, Cursor = CursorId.Hand, BlocksDragArm = true, OnClick = remove,
             Children = [new TextEl(Icons.ChromeClose) { Size = 12f, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.TextTertiary, HoverColor = Tok.TextPrimary }],
         };

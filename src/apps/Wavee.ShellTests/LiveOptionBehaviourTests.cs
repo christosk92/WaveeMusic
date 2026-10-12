@@ -25,6 +25,7 @@ using FluentGpu.Animation;
 using FluentGpu.Foundation;
 using FluentGpu.Scene;
 using Wavee;
+using Wavee.Theming.Roles;
 using Xunit;
 using static Wavee.ShellTests.ShellProbe;
 
@@ -329,7 +330,7 @@ public sealed class LiveOptionBehaviourTests(ShellHost host)
                 // them: a page that has to fetch would reach the network.
                 Shell.GoTo(new Shell.Route(Shell.RouteKind.Home));
                 var tint = Node(shell, "shell.material.tint");
-                var neutral = Design.Wash.NeutralGround;
+                var neutral = R.Wash.NeutralGround;
                 Until(shell, () => !Same(shell.Host.Scene.Paint(tint).Fill, neutral), "the cover tinted the chrome");
                 shell.RunFrames(120);
 

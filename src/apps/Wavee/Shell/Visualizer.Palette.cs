@@ -12,7 +12,7 @@
 // REAL COVER COLOURS ONLY. The previous palette's second colour was the accent's hue + 150° — a synthetic complement (the
 // "salmon") that appeared on no cover. Now:
 //
-//   A     the accent (the stage's art-derived accent: the most saturated graded role, Design.Palette.Accent)
+//   A     the accent (the stage's art-derived accent: the most saturated graded role, ColorScience.Accent)
 //   B     the next graded role at least 28° of hue away from A; with none, A moved in VALUE — a tint of a real colour
 //   C     the next distinct role; else the HSV mid between A and B, moved in value until it is distinct
 //   Deep  BackgroundBase, clamped deep on the dark arm and pale on the light one (the backdrop's floor tone)
@@ -68,7 +68,7 @@ public static partial class Visualizer
         /// <summary>Derive from the stage accent and the cover's graded scheme (null/empty = no grading yet) for one arm.</summary>
         public static Palette From(ColorF accent, Scheme? scheme, bool dark)
         {
-            var ground = Design.StageInk.Arm(dark ? ThemeKind.Dark : ThemeKind.Light).Veil;
+            var ground = StageInk.Arm(dark ? ThemeKind.Dark : ThemeKind.Light).Veil;
             var a = Floor(accent with { A = 1f }, ground, dark);
 
             // the graded roles, raw (TextBrightAccent is the contrast-graded INK — pure white/black — never a colour)
@@ -76,9 +76,9 @@ public static partial class Visualizer
             int count = 0;
             if (scheme is { IsEmpty: false } sc)
             {
-                roles[count++] = Design.Palette.ToColor(sc.BackgroundTintedBase) with { A = 1f };
-                roles[count++] = Design.Palette.ToColor(sc.BackgroundBase) with { A = 1f };
-                roles[count++] = Design.Palette.ToColor(sc.TextSubdued) with { A = 1f };
+                roles[count++] = ColorScience.ToColor(sc.BackgroundTintedBase) with { A = 1f };
+                roles[count++] = ColorScience.ToColor(sc.BackgroundBase) with { A = 1f };
+                roles[count++] = ColorScience.ToColor(sc.TextSubdued) with { A = 1f };
             }
 
             // B: the first chromatic role far enough round the wheel from A
@@ -114,7 +114,7 @@ public static partial class Visualizer
         {
             var (hx, sx, _) = x.ToHsv();
             var (hy, sy, _) = y.ToHsv();
-            if (sx <= Design.Palette.NeutralS || sy <= Design.Palette.NeutralS) return 0f;
+            if (sx <= ColorScience.NeutralS || sy <= ColorScience.NeutralS) return 0f;
             float d = MathF.Abs(hx - hy) % 360f;
             return d > 180f ? 360f - d : d;
         }
@@ -152,11 +152,11 @@ public static partial class Visualizer
             }
         }
 
-        static bool Chromatic(ColorF c) => c.ToHsv().S > Design.Palette.NeutralS;
+        static bool Chromatic(ColorF c) => c.ToHsv().S > ColorScience.NeutralS;
 
         /// <summary>A raw graded role → a paint colour: brightness-lifted and saturation-floored (the chrome accent's own
         /// recipe), so a near-black background role becomes its colour rather than a smudge.</summary>
-        static ColorF Paint(ColorF role) => Design.Palette.Vivid(Design.Palette.Lift(role));
+        static ColorF Paint(ColorF role) => ColorScience.Vivid(ColorScience.Lift(role));
 
         /// <summary>A moved in value: darker on the dark arm, lighter on the light arm (then floored and separated).</summary>
         static ColorF ValueTint(ColorF a, bool dark)
@@ -195,7 +195,7 @@ public static partial class Visualizer
         /// light one; without a grading, A's hue at those values.</summary>
         static ColorF DeepOf(Scheme? scheme, ColorF a, bool dark)
         {
-            var (h, s, v) = scheme is { IsEmpty: false } sc ? Design.Palette.ToColor(sc.BackgroundBase).ToHsv() : a.ToHsv();
+            var (h, s, v) = scheme is { IsEmpty: false } sc ? ColorScience.ToColor(sc.BackgroundBase).ToHsv() : a.ToHsv();
             if (scheme is not { IsEmpty: false }) { s *= dark ? 0.7f : 0.25f; v = dark ? 0.20f : 0.92f; }
             return dark ? ColorF.FromHsv(h, s, Math.Clamp(v, 0.08f, 0.28f)) : ColorF.FromHsv(h, MathF.Min(s, 0.35f), MathF.Max(v, 0.86f));
         }

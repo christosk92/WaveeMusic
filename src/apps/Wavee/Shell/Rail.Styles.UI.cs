@@ -173,7 +173,7 @@ public static partial class Rail
 
     /// <summary>0xAARRGGBB (the catalog's persisted encoding) → a colour. Never called with
     /// <see cref="PlayerCatalog.FromCover"/>, which is not a colour.</summary>
-    public static ColorF SwatchColor(uint argb) => Design.Palette.ToColor(argb);
+    public static ColorF SwatchColor(uint argb) => ColorScience.ToColor(argb);
 
     // ── the artwork context menu (W10) ───────────────────────────────────────────────────────────────────────────────
 

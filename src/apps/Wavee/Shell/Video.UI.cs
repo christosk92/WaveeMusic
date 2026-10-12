@@ -1455,14 +1455,14 @@ public static partial class Video
         {
             Width = 44f, Height = 44f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             Corners = Radii.Circle(44f),
-            Fill = Design.StageInk.GlassPlate, HoverFill = Design.StageInk.GlassPlateHover, PressedFill = Design.StageInk.GlassPlatePressed,
-            BorderWidth = 1f, BorderColor = Design.StageInk.Stroke,
+            Fill = StageInk.GlassPlate, HoverFill = StageInk.GlassPlateHover, PressedFill = StageInk.GlassPlatePressed,
+            BorderWidth = 1f, BorderColor = StageInk.Stroke,
             Shadow = Elevation.Card,
             BrushTransitionMs = Design.Motion.Faster,
             HoverScale = R.Motion.ScaleEmphatic.Hover, PressScale = R.Motion.ScaleEmphatic.Press,
             Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
             OnClick = static () => State.ExitFullscreen(),
-            Children = [new TextEl(Icons.BackToWindow) { Size = 18f, FontFamily = Tok.Definition.Fonts.Icon, Color = Design.StageInk.Ink, HoverColor = Design.StageInk.Ink }],
+            Children = [new TextEl(Icons.BackToWindow) { Size = 18f, FontFamily = Tok.Definition.Fonts.Icon, Color = StageInk.Ink, HoverColor = StageInk.Ink }],
         };
     }
 }

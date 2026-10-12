@@ -16,8 +16,8 @@
 //                       Main.dc.html:142-170) and every DIP the renderer lays out as a fraction of the viewport; the
 //                       cover's two sizes (hero / thumb) that the one morphing node moves between.
 //   • `Stage.Transport` the three predicates the transport card keeps (byte-identical to the previous stage).
-//   • `Stage.Tone`      the accent cross-fade and scrim constants (alphas live here, colours in Design.StageInk — ch 00 §4.4;
-//                       named Tone because the UI files alias `Ink = Wavee.Design.StageInk`, V-U1).
+//   • `Stage.Tone`      the accent cross-fade and scrim constants (alphas live here, colours in StageInk — ch 00 §4.4;
+//                       named Tone because the UI files alias `Ink = Wavee.Theming.Roles.StageInk`, V-U1).
 //   • `Stage.Entry`     who may enter (not over fullscreen video — an EMPTY stage is allowed, as the rail ⛶ does today) and
 //                       the morph key the bar art and the hero share.
 //   • `Stage.Caption`   the lyric caption's clock view (which line it hangs on, when the break dots stand in) and its slots.
@@ -388,7 +388,7 @@ public static partial class Stage
         public static bool UsesTitle(string? title, string? uri) => title is { Length: > 0 } && title != uri;
     }
 
-    // ── 4. tone arithmetic (alphas and the cross-fade; the colours are Design.StageInk's) ────────────────────────────
+    // ── 4. tone arithmetic (alphas and the cross-fade; the colours are StageInk's) ────────────────────────────
 
     public static class Tone
     {

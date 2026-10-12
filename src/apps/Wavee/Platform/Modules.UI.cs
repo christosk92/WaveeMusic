@@ -321,9 +321,9 @@ public static partial class Modules
     static Element LiveBadge() => new BoxEl
     {
         Key = "badge:live", Shrink = 0f, Height = 18f, Padding = new Edges4(Spacing.XS, 0f, Spacing.XS, 0f),
-        Corners = CornerRadius4.All(2f), BorderWidth = 1f, BorderColor = Design.Accent.Decor,
+        Corners = CornerRadius4.All(2f), BorderWidth = 1f, BorderColor = R.Ink.AccentDecor,
         AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        Children = [new TextEl(Loc.Get(Strings.Play.Live)) { Size = 10f, LineHeight = 14f, Weight = 600, Color = Design.Accent.Decor, Wrap = TextWrap.NoWrap }],
+        Children = [new TextEl(Loc.Get(Strings.Play.Live)) { Size = 10f, LineHeight = 14f, Weight = 600, Color = R.Ink.AccentDecor, Wrap = TextWrap.NoWrap }],
     };
 
     static Element? ActionRow(PageAction[]? actions, string moduleId)
@@ -550,7 +550,7 @@ public static partial class Modules
         Role = AutomationRole.Text,
         Children =
         [
-            Icon(Icons.Play, 12f, Design.Accent.Decor),
+            Icon(Icons.Play, 12f, R.Ink.AccentDecor),
             Ui.Caption(Loc.Get(Strings.ModulePage.Playing)) with { Weight = 600, Wrap = TextWrap.NoWrap },
         ],
     };

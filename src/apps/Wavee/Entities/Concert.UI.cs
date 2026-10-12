@@ -120,18 +120,18 @@ public readonly partial struct Concert
                 AlignSelf = FlexAlign.Stretch, ZStack = true, ClipToBounds = true, Corners = Radii.CardAll,
                 Children = [Ui.Image(url, ImageFit.Cover, 1f, 320f, Radii.Card, Tok.FillCardSecondary)],
             };
-        ColorF baseFill = DarkOr(0x1C, 0x1C, 0x1E);
+        ColorF baseFill = R.Layer.EventPlate;
         return new BoxEl
         {
             AlignSelf = FlexAlign.Stretch, AspectRatio = 1f, Corners = Radii.CardAll,
-            Fill = accent != 0 ? ColorF.Lerp(baseFill, Design.Palette.ToColor(accent), 0.32f) : baseFill,
+            Fill = accent != 0 ? ColorF.Lerp(baseFill, ColorScience.ToColor(accent), 0.32f) : baseFill,
             AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             Children = [Icon(Icons.Calendar, 38f, Tok.TextSecondary with { A = 0.72f })],
         };
     }
 
-    /// <summary><c>#RRGGBB</c> in dark theme, <c>FillCardSecondary</c> in light — the §4 base fills that are NOT token swaps.</summary>
-    static ColorF DarkOr(byte r, byte g, byte b) => Tok.Theme == ThemeKind.Dark ? ColorF.FromRgba(r, g, b) : Tok.FillCardSecondary;
+    // The §4 base fills that are NOT token swaps (a fixed near-black in dark, <c>FillCardSecondary</c> in light) are the style's LAYER roles
+    // <c>R.Layer.EventPlate</c> (the tile and the card) and <c>R.Layer.EventHeroPlate</c> (the split hero).
 
     /// <summary>The artist page's "Upcoming concerts" card (0.2.9 <c>ArtistPage.ConcertStub</c>, ch 08 §9): the accent month
     /// over a 28/36 day numeral, venue and pin + city. <paramref name="width"/> is the shelf's fitted card width.</summary>
@@ -198,7 +198,7 @@ public readonly partial struct Concert
                 new BoxEl
                 {
                     AlignSelf = FlexAlign.Stretch, AspectRatio = 1f, ZStack = true, ClipToBounds = true,
-                    Corners = Radii.CardAll, Fill = DarkOr(0x1C, 0x1C, 0x1E),
+                    Corners = Radii.CardAll, Fill = R.Layer.EventPlate,
                     Children =
                     [
                         new BoxEl { Padding = Edges4.All(Spacing.M), AlignItems = FlexAlign.Start, Justify = FlexJustify.Start, Children = [Icon(Icons.Calendar, 30f, glyph)] },
@@ -248,9 +248,8 @@ public readonly partial struct Concert
     internal static Element SplitHero(string? imageUrl, uint accent, Element copy, bool wide)
     {
         var metrics = ConcertLayout.EditorialHero(wide);
-        bool dark = Tok.Theme == ThemeKind.Dark;
-        ColorF baseFill = DarkOr(0x1B, 0x1B, 0x1D);
-        ColorF mediaFill = accent != 0 ? ColorF.Lerp(baseFill, Design.Palette.ToColor(accent), dark ? 0.30f : 0.18f) : baseFill;
+        ColorF baseFill = R.Layer.EventHeroPlate;
+        ColorF mediaFill = accent != 0 ? ColorF.Lerp(baseFill, ColorScience.ToColor(accent), R.Wash.ConcertMediaMix) : baseFill;
 
         Element photo = imageUrl is { Length: > 0 }
             ? new ImageEl

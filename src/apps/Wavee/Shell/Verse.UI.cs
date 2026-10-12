@@ -42,7 +42,7 @@ using FluentGpu.Scene;
 using FluentGpu.Signals;
 using FluentGpu.Text;
 
-using Ink = Wavee.Design.StageInk;
+using Ink = Wavee.Theming.Roles.StageInk;
 using FrameTime = Wavee.Design.FrameTime;
 
 namespace Wavee;

@@ -55,7 +55,7 @@ namespace Wavee;
 
 /// <summary>The five colour roles the provider grades per cover — the shape BOTH extension kind 179
 /// (<c>VISUAL_IDENTITY_TRAIT</c>) and the <c>getDynamicColorsByUris</c> pathfinder query return. Opaque ARGB, framework
-/// neutral: <c>Design.Palette.ToColor</c> maps a role to a renderer colour at the UI boundary.
+/// neutral: <c>ColorScience.ToColor</c> maps a role to a renderer colour at the UI boundary.
 ///
 /// <para>Five <c>uint</c>s in one unmanaged value, so a whole scheme is ONE column read and one cache line rather than
 /// five (P2 — the roles are always read together; nothing reads <c>TextSubdued</c> alone).</para>
@@ -63,7 +63,7 @@ namespace Wavee;
 /// <para><b>Do not read <see cref="TextBrightAccent"/> as "the accent".</b> Over 9,316 cached gradings it is pure
 /// <c>#FFFFFF</c> in every dark half and pure <c>#000000</c> in every light half — 100%. Treating it as the accent is
 /// what made every Play CTA render system blue in 0.2.9; the accent is the most saturated of four roles, and that pick
-/// is <c>Design.Palette.Accent</c> (ch 00 §4.2).</para></summary>
+/// is <c>ColorScience.Accent</c> (ch 00 §4.2).</para></summary>
 public readonly record struct Scheme(
     uint BackgroundBase,
     uint BackgroundTintedBase,

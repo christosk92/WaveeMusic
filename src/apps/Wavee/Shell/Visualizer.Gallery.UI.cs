@@ -19,7 +19,7 @@
 //
 // The tiles bind the slab's A/B/C like the stage faces, so a cover change re-tints in place; a tile re-renders once per
 // LANDED palette fade (the live `StageCtx.Palette`, for the gradient stops a face cannot bind). Ink is stage ink: plate,
-// hover plate, stroke and card acrylic from Design.StageInk, so the pane reads on both arms. The selected tile wears a
+// hover plate, stroke and card acrylic from StageInk, so the pane reads on both arms. The selected tile wears a
 // 2-DIP accent outline and a check disc (never colour alone); the keyboard cursor an ink outline.
 //
 // Every preference is a SIGNAL on the context (O8): the controls take the context's own signals (seeded ONCE by
@@ -36,7 +36,7 @@ using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
-using Ink = Wavee.Design.StageInk;
+using Ink = Wavee.Theming.Roles.StageInk;
 
 namespace Wavee;
 
@@ -227,7 +227,7 @@ public static partial class Visualizer
             float pw = p.W - 12f;
             // frozen at render BY DESIGN (a theme flip re-renders the stage): plain colour locals, so the thunks read only signals
             ColorF pickBorder = accent.Fill, cursorBorder = Ink.Ink, restBorder = Ink.Stroke, veil = Ink.Veil;
-            float wash = Ink.IsDark ? 0.12f : 0.08f;
+            float wash = Ink.SelectedTileWash;
             var tile = new BoxEl
             {
                 Width = p.W, Direction = 1, Gap = 6f, Padding = new Edges4(6f, 6f, 6f, 8f), Corners = CornerRadius4.All(6f), Fill = Ink.Plate,

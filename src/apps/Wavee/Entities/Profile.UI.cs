@@ -115,7 +115,7 @@ public static partial class Profile
                 Corners = Radii.Circle(edge), BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, Shadow = Elevation.Card,
                 Children = [Controls.Artwork(url, edge, edge, edge / 2f, decodePx: ProfileHeroLayout.AvatarDecodePx)],
             };
-        ColorF? fill = t.PersonArgb != 0 ? Design.Palette.ToColor(t.PersonArgb) : null;
+        ColorF? fill = t.PersonArgb != 0 ? ColorScience.ToColor(t.PersonArgb) : null;
         return PersonPicture.Create("", edge, displayName: t.Name, fill: fill) with { Shrink = 0f, Shadow = Elevation.Card };
     }
 
@@ -455,7 +455,7 @@ public static partial class Profile
         string? url = u.Image;
         float inner = SurfaceParts.InnerOf(w);
         uint argb = ProfileTone.Argb(u.Color);
-        ColorF? fill = argb != 0 ? Design.Palette.ToColor(argb) : null;
+        ColorF? fill = argb != 0 ? ColorScience.ToColor(argb) : null;
         var card = c;
         var data = new Controls.CardData(u.Uri.Text, name, CardSubtitle(Loc.Get(Strings.Search.TypeUser)), url,
             () => Open(card), Circular: true,

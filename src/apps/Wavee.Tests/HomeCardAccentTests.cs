@@ -33,7 +33,7 @@ public class HomeCardAccentTests
     public void Raw_is_the_payload_accent_alone()
     {
         TestScope.Fresh();
-        Assert.Equal(Design.Palette.ToColor(Green), HomeCardAccent.Raw(CardOf("spotify:playlist:acc-raw", Green)));
+        Assert.Equal(ColorScience.ToColor(Green), HomeCardAccent.Raw(CardOf("spotify:playlist:acc-raw", Green)));
         Assert.Null(HomeCardAccent.Raw(CardOf("spotify:playlist:acc-raw-none", image: "https://i.example/raw.jpg")));
     }
 
@@ -43,7 +43,7 @@ public class HomeCardAccentTests
         TestScope.Fresh();
         var card = CardOf("spotify:playlist:acc-payload", Green, "https://i.example/payload.jpg");
         var asked = new List<string?>();
-        Assert.Equal(Design.Palette.Lift(Design.Palette.ToColor(Green)), HomeCardAccent.Accent(card, Answer(Graded, asked)));
+        Assert.Equal(ColorScience.Lift(ColorScience.ToColor(Green)), HomeCardAccent.Accent(card, Answer(Graded, asked)));
         Assert.Empty(asked);                                       // resolved before the plane is ever consulted
     }
 
@@ -53,7 +53,7 @@ public class HomeCardAccentTests
         TestScope.Fresh();
         var card = CardOf("spotify:playlist:acc-graded", image: "https://i.example/graded.jpg");
         var asked = new List<string?>();
-        Assert.Equal(Design.Palette.Lift(Design.Palette.ToColor(Teal)), HomeCardAccent.Accent(card, Answer(Graded, asked)));
+        Assert.Equal(ColorScience.Lift(ColorScience.ToColor(Teal)), HomeCardAccent.Accent(card, Answer(Graded, asked)));
         Assert.Equal("https://i.example/graded.jpg", Assert.Single(asked));   // keyed by the card's own artwork
     }
 
@@ -63,7 +63,7 @@ public class HomeCardAccentTests
         TestScope.Fresh();
         var card = CardOf("spotify:playlist:acc-base", image: "https://i.example/base.jpg");
         var untinted = Graded with { BackgroundTintedBase = 0u };
-        Assert.Equal(Design.Palette.ToColor(untinted.BackgroundBase), HomeCardAccent.Seed(card, Answer(untinted)));
+        Assert.Equal(ColorScience.ToColor(untinted.BackgroundBase), HomeCardAccent.Seed(card, Answer(untinted)));
     }
 
     [Fact]
@@ -92,7 +92,7 @@ public class HomeCardAccentTests
     {
         TestScope.Fresh();
         var card = CardOf("spotify:playlist:acc-chrome", Green);
-        Assert.Equal(Design.Palette.Lift(Design.Palette.ToColor(Green)),
+        Assert.Equal(ColorScience.Lift(ColorScience.ToColor(Green)),
             HomeCardAccent.AccentOrChrome(card, Tok.AccentDefault, Answer(null)));
     }
 
@@ -101,7 +101,7 @@ public class HomeCardAccentTests
     {
         TestScope.Fresh();
         var card = CardOf("spotify:playlist:acc-spine", Green);
-        var seed = Design.Palette.ToColor(Green);
+        var seed = ColorScience.ToColor(Green);
         Assert.Equal(Design.Palette.Hairline(seed), HomeCardAccent.SpineAccent(card, false, Answer(null)));
         Assert.Equal(Design.Palette.HairlineHover(seed), HomeCardAccent.SpineAccent(card, true, Answer(null)));
     }
@@ -111,8 +111,8 @@ public class HomeCardAccentTests
     {
         TestScope.Fresh();
         var grey = CardOf("spotify:playlist:acc-grey", Grey);
-        var (_, saturation, _) = Design.Palette.ToColor(Grey).ToHsv();
-        Assert.True(saturation <= Design.Palette.NeutralS);
+        var (_, saturation, _) = ColorScience.ToColor(Grey).ToHsv();
+        Assert.True(saturation <= ColorScience.NeutralS);
 
         var fallback = HomeCardAccent.SpineFallback(grey);
         Assert.Equal(Design.Palette.Hairline(fallback), HomeCardAccent.SpineAccent(grey, false, Answer(null)));

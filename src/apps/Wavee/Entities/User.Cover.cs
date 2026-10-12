@@ -19,7 +19,7 @@
 // THE CLIP FRAME IS OUTSIDE AND UNROTATED (Wall and Marquee rotate their content): ClipToBounds on or under a rotated
 // node clips to the axis-aligned box, which would cut the cover's corners.
 //
-// INK ON IMAGERY IS `Design.OnMedia`, never a theme token — a Rainbow cover is every luminance at once.
+// INK ON IMAGERY IS `R.OnMedia`, never a theme token — a Rainbow cover is every luminance at once.
 //
 // THE LEAF DISCIPLINE (§4). A grading landing for one of sixteen covers repaints ONE node: only the four leaves read
 // `Palette.Watch`; the cover component and the treatments never do. Every leaf paints its neutral fallback immediately
@@ -110,7 +110,7 @@ public readonly partial struct User
     /// <summary>The bundled Spotify stock cover — correct offline, never a render-time request. No reveal transition: a
     /// fade on the DEGRADE target is what reads as a flash (G8, M-23).</summary>
     static Element StockLikedCover(float size, float radius, string? morphKey)
-        => Image(s_stockCoverPath, size, size, radius, Design.ArtworkPlaceholder, transition: ImageTransition.None)
+        => Image(s_stockCoverPath, size, size, radius, R.Layer.ArtPlaceholder, transition: ImageTransition.None)
             with { MorphId = morphKey };
 
     static readonly string s_stockCoverPath = Path.Combine(AppContext.BaseDirectory, "assets", "covers", "liked-songs-300.png");
@@ -347,14 +347,14 @@ public readonly partial struct User
             AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Start, Margin = new Edges4(14f, 0f, 0f, 14f),
             Direction = 0, AlignItems = FlexAlign.Center, Gap = 8f, Shrink = 0f,
             Height = 34f, Padding = new Edges4(10f, 0f, 12f, 0f),
-            Corners = Radii.FullAll, Fill = Design.OnMedia.ScrimRest,
-            BorderWidth = 1f, BorderColor = Design.OnMedia.Stroke, HitTestVisible = false,
+            Corners = Radii.FullAll, Fill = R.OnMedia.ScrimRest,
+            BorderWidth = 1f, BorderColor = R.OnMedia.Stroke, HitTestVisible = false,
             Children =
             [
-                Icon(Icons.HeartFill, 16f, Design.OnMedia.Ink),
+                Icon(Icons.HeartFill, 16f, R.OnMedia.Ink),
                 R.Type.DenseTitle(Loc.Get(Strings.Detail.LikedSongs)) with
                 {
-                    Color = Design.OnMedia.Ink, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                    Color = R.OnMedia.Ink, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                 },
             ],
         };
@@ -673,7 +673,7 @@ public readonly partial struct User
                     WhileHover = new MotionTarget { OffsetX = hover.Dx, OffsetY = hover.Dy, Rotation = hover.Rot },
                     Transition = MotionTok.ControlNormal,
                     HitTestVisible = false, Shadow = Elevation.Card, ClipToBounds = true, Corners = CornerRadius4.All(6f),
-                    BorderWidth = 1f, BorderColor = Design.OnMedia.Stroke,
+                    BorderWidth = 1f, BorderColor = R.OnMedia.Stroke,
                     Children = [ArtImage(url, HeroDecodePx, 6f)],
                 };
             }
@@ -738,11 +738,11 @@ public readonly partial struct User
 
     /// <summary>The chroma a cover contributes to a ground: <c>Vivid(Accent(scheme))</c>.</summary>
     static ColorF? LikedChroma(string? url)
-        => TryDarkScheme(url, out var s) ? Design.Palette.Vivid(Design.Palette.Accent(in s)) : null;
+        => TryDarkScheme(url, out var s) ? ColorScience.Vivid(ColorScience.Accent(in s)) : null;
 
     /// <summary>The ground plate's tint — the tinted-dark background role, so the plate stays a plate.</summary>
     static ColorF? LikedBaseTint(string? url)
-        => TryDarkScheme(url, out var s) ? Design.Palette.TintedDark(in s) : null;
+        => TryDarkScheme(url, out var s) ? ColorScience.TintedDark(in s) : null;
 
     /// <summary>Subscribe the calling leaf to a cover's grading.</summary>
     static void WatchCover(string? url)
@@ -817,7 +817,7 @@ public readonly partial struct User
         {
             var p = UseProps<VeilProps>();
             WatchCover(p.UrlA); WatchCover(p.UrlB);
-            ColorF a = LikedChroma(p.UrlA) ?? Design.Palette.PageToneNeutralDark;
+            ColorF a = LikedChroma(p.UrlA) ?? ColorScience.PageToneNeutralDark;
             ColorF b = LikedChroma(p.UrlB) ?? a;
             return new BoxEl
             {
@@ -846,8 +846,8 @@ public readonly partial struct User
 
             // The base is the app's neutral page-tone dark — Tone's plate and the page ground under it are the same token.
             ColorF plate = LikedChroma(p.U0) is { } lead
-                ? ColorF.Lerp(Design.Palette.PageToneNeutralDark, lead, 0.55f)
-                : Design.Palette.PageToneNeutralDark;
+                ? ColorF.Lerp(ColorScience.PageToneNeutralDark, lead, 0.55f)
+                : ColorScience.PageToneNeutralDark;
 
             var kids = new Element[urls.Length + 1];
             for (int i = 0; i < urls.Length; i++)

@@ -148,23 +148,23 @@ public static partial class Shell
         {
             var state = MaterialState.Value;                  // navigation rate
             var vp = UseContextSignal(Viewport.Size);         // read through BOUND sizes: a resize never re-renders this
-            bool light = Tok.Theme == ThemeKind.Light;
 
             // Always mounted, even at the neutral ground, so the node is live across a change and the brush transition has
             // a colour to fade FROM. Never Transparent (premultiplied black drags the ramp dark).
             Element tint = new BoxEl
             {
                 Key = "shell.material.tint", Grow = 1f, HitTestVisible = false,
-                Fill = state.Tint ?? Design.Wash.NeutralGround,
+                Fill = state.Tint ?? R.Wash.NeutralGround,
                 BrushTransitionMs = Design.Motion.Standard,
             };
             if (state.Wash is not { } wash)
                 return new BoxEl { Grow = 1f, ZStack = true, HitTestVisible = false, Children = [tint] };
 
             var legs = new List<Element>(3);
-            AddWash(legs, wash.Hero, Design.Wash.Hero, Design.Wash.HeroAlpha(light), "shell.wash.hero", vp);
-            AddWash(legs, wash.Weekly, Design.Wash.Weekly, Design.Wash.ShelfAlpha(light), "shell.wash.weekly", vp);
-            AddWash(legs, wash.Mix, Design.Wash.Mix, Design.Wash.ShelfAlpha(light), "shell.wash.mix", vp);
+            var strength = R.Wash;
+            AddWash(legs, wash.Hero, Design.Wash.Hero, strength.HeroAlpha, "shell.wash.hero", vp);
+            AddWash(legs, wash.Weekly, Design.Wash.Weekly, strength.ShelfAlpha, "shell.wash.weekly", vp);
+            AddWash(legs, wash.Mix, Design.Wash.Mix, strength.ShelfAlpha, "shell.wash.mix", vp);
             return new BoxEl
             {
                 Grow = 1f, ZStack = true, HitTestVisible = false,

@@ -496,11 +496,11 @@ public class SetupWizardRecolorTests
     public void The_hue_band_keeps_saturation_and_lightness_but_rotates_the_hue()
     {
         var c = ColorF.FromRgba(0x2E, 0x5D, 0xD3);
-        var (h, s, l) = Design.Palette.ToHsl(c);
+        var (h, s, l) = ColorScience.ToHsl(c);
         Assert.InRange(h, 195f, 285f);
         Assert.True(s >= 0.35f);
 
-        var (gh, gs, gl) = Design.Palette.ToHsl(Setup.Recolor.Apply(c, Accent, AccentDeep));
+        var (gh, gs, gl) = ColorScience.ToHsl(Setup.Recolor.Apply(c, Accent, AccentDeep));
         Assert.Equal(s, gs, 2);
         Assert.Equal(l, gl, 2);
         Assert.NotEqual(h, gh, 1);
@@ -521,7 +521,7 @@ public class SetupWizardRecolorTests
     public void The_teal_outside_the_hue_band_is_untouched()
     {
         var teal = ColorF.FromRgba(0x96, 0xE9, 0xDC);
-        var (h, s, _) = Design.Palette.ToHsl(teal);
+        var (h, s, _) = ColorScience.ToHsl(teal);
         Assert.True(h < 195f || s < 0.35f);
         Assert.Equal(teal, Setup.Recolor.Apply(teal, Accent, AccentDeep));
     }

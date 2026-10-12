@@ -46,7 +46,7 @@ public static class HomeWashSource
     {
         if (card is not { } c) return null;
         if (c.Accent != 0u)
-            return new HomeWashPick(Design.Palette.Lift(Design.Palette.ToColor(c.Accent)) with { A = 1f }, KeyOf(c));
+            return new HomeWashPick(ColorScience.Lift(ColorScience.ToColor(c.Accent)) with { A = 1f }, KeyOf(c));
         if (c.ImageUrl is { Length: > 0 } url && schemeFor(url) is { } scheme)
             return new HomeWashPick(Design.Palette.ChromeAccent(scheme) with { A = 1f }, KeyOf(c));
         return null;
@@ -152,7 +152,7 @@ public static class HomeCardText
 public static class HomeCardAccent
 {
     /// <summary>The payload accent alone, or null.</summary>
-    public static ColorF? Raw(in HomeCard c) => c.Accent != 0u ? Design.Palette.ToColor(c.Accent) : null;
+    public static ColorF? Raw(in HomeCard c) => c.Accent != 0u ? ColorScience.ToColor(c.Accent) : null;
 
     /// <summary>The identity seed: payload accent → the graded <c>BackgroundTintedBase</c> (else <c>BackgroundBase</c>) of
     /// the card's cover → null. A card with no artwork is never asked.</summary>
@@ -161,12 +161,12 @@ public static class HomeCardAccent
         if (Raw(in c) is { } payload) return payload;
         if (c.ImageUrl is not { Length: > 0 } url || schemeFor(url) is not { } g) return null;
         uint tone = g.BackgroundTintedBase != 0u ? g.BackgroundTintedBase : g.BackgroundBase;
-        return tone != 0u ? Design.Palette.ToColor(tone) : null;
+        return tone != 0u ? ColorScience.ToColor(tone) : null;
     }
 
     /// <summary>The lifted identity colour, or null ("not graded yet" — paint nothing).</summary>
     public static ColorF? Accent(in HomeCard c, Func<string?, Scheme?> schemeFor)
-        => Seed(in c, schemeFor) is { } seed ? Design.Palette.Lift(seed) : null;
+        => Seed(in c, schemeFor) is { } seed ? ColorScience.Lift(seed) : null;
 
     /// <summary>The 2-DIP spine: null without a seed; a near-neutral seed is re-hued from the card's stable hash; then the
     /// contrast-solved hairline (3.25:1, 3.55:1 hovered).</summary>
@@ -174,7 +174,7 @@ public static class HomeCardAccent
     {
         if (Seed(in c, schemeFor) is not { } seed) return null;
         var (_, saturation, _) = seed.ToHsv();
-        if (saturation <= Design.Palette.NeutralS) seed = SpineFallback(in c);
+        if (saturation <= ColorScience.NeutralS) seed = SpineFallback(in c);
         return hovered ? Design.Palette.HairlineHover(seed) : Design.Palette.Hairline(seed);
     }
 

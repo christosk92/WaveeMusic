@@ -181,7 +181,7 @@ public sealed class TrackTable : Table
     // ── cold ──
     public Column<uint> PlayCount;
     /// <summary>The camelot swatch's wire colour (ch 01 §7's BPM · key · swatch cell). Opaque ARGB; the light-mode ink
-    /// derivation is <c>Design.Palette.DataDotInk</c>, pure, in <c>Platform/Design.cs</c> (ch 01 GAP 9).</summary>
+    /// derivation is <c>ColorScience.DataDotInk</c>, pure, in <c>Platform/Design.cs</c> (ch 01 GAP 9).</summary>
     public Column<uint> CamelotColor;
     public Column<ushort> Year;
     /// <summary>Tempo ×10, so 128.4 BPM is 1284 in two bytes (plan §4.2).</summary>
