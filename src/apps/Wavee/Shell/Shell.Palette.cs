@@ -278,10 +278,10 @@ public static partial class Shell
 
     /// <summary>App zoom, one ladder rung per call (0 = reset to 100 %). The ONE zoom verb: the Ctrl±/0 chords, the
     /// Ctrl+wheel hook and the palette rows land here. Persistence is the host's debounced zoom save, never here, so a
-    /// held chord does not write the settings store once per rung.</summary>
+    /// held chord does not write the settings store once per rung. A step that would take the layout under the Compact floor
+    /// on this window is refused (<see cref="ZoomService.ManualStep"/>, plan 3.2).</summary>
     public static void ZoomStep(int direction)
-        => ZoomService.Apply(direction == 0 ? ZoomLadder.Default
-            : direction > 0 ? ZoomLadder.In(FluentApp.Zoom) : ZoomLadder.Out(FluentApp.Zoom));
+        => ZoomService.Apply(ZoomService.ManualStep(FluentApp.Zoom, direction, ZoomService.WindowBaseWidth));
 
     static void InvokePaletteEntry(PaletteEntry e)
     {

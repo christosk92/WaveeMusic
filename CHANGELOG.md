@@ -49,6 +49,15 @@ versions separately under `v*` and is not tracked in this file.)
   gap; pointing at the row swaps it for the row's ⋯ button.
 - **Less space between a page's side column and its songs.** The gap beside a resizable album or playlist column is
   half as wide, the same as everywhere else; the column still resizes from that edge.
+- **Auto zoom is smaller on some large monitors, and it applies at once.** With Zoom on Auto, a window at least 1920
+  wide (before zoom) is no longer zoomed so far that the page gets narrower than 1920: there is more room and the text
+  is a little smaller. On a 1440p-class monitor at 100 % (2560 × 1440) and a 4K monitor at 150 % Auto
+  now picks 125 % instead of 150 %; 4K at 125 % goes from 175 % to 150 %, 1440p at 125 % and 4K at 175 % from 125 % to
+  100 %. 1080p monitors and 4K at 100 % are unchanged (100 % and 200 %). Widening the window never lowers the zoom. The
+  new zoom is also applied in the same frame when you maximize, restore, snap or release a window edge, or move the
+  window to another monitor, instead of half a second later; only a quick series of resizes still waits for the last
+  one. Zoom picked by hand (the Zoom row, Ctrl+Plus/Minus, Ctrl+wheel) now stops before the page would get narrower than
+  300, instead of zooming a small window into a sliver.
 
 ### Removed
 

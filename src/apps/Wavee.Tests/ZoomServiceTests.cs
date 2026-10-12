@@ -39,9 +39,11 @@ public class ZoomServiceTests
     [InlineData(ZoomAutoMode.Auto, 1.5f, 1180f, 760f, 1.0f)]
     [InlineData(ZoomAutoMode.Auto, 1.0f, 1180f, 760f, 1.0f)]    // already settled: nothing to do
     [InlineData(ZoomAutoMode.Auto, 0.75f, 1180f, 760f, 1.0f)]   // Auto never goes below 100 %
-    // A window the user asked to be big (the screenshot loop's --width / --height) is zoomed for the display it fills.
-    [InlineData(ZoomAutoMode.Auto, 1.0f, 3200f, 1800f, 2.0f)]
-    [InlineData(ZoomAutoMode.Auto, 1.0f, 2560f, 1400f, 1.5f)]
+    // A window the user asked to be big (the screenshot loop's --width / --height) is zoomed for the display it fills, and
+    // never below the Huge layout it already has (C1b: 3200 wide is 1.5, not 2.0; 2560 wide is 1.25, not 1.5).
+    [InlineData(ZoomAutoMode.Auto, 1.0f, 3840f, 2160f, 2.0f)]
+    [InlineData(ZoomAutoMode.Auto, 1.0f, 3200f, 1800f, 1.5f)]
+    [InlineData(ZoomAutoMode.Auto, 1.0f, 2560f, 1400f, 1.25f)]
     // Dense may go below 100 %.
     [InlineData(ZoomAutoMode.Dense, 1.0f, 1180f, 760f, 0.75f)]
     // Manual owns the zoom: the persisted level is the first frame's, whatever the window.
@@ -104,16 +106,16 @@ public class ZoomServiceTests
     public void The_monitor_bounds_the_window_the_loop_would_see()
     {
         // A 3200 x 1800 request on a 1920 x 1040 work area: the first window is no larger than the screen, so Auto
-        // settles on that extent (100 %), not on the request (200 %).
+        // settles on that extent (100 %), not on the request (150 %).
         Assert.Equal(1f, ZoomService.InitialZoom(ZoomAutoMode.Auto, 1f, 3200f, 1800f, Fhd100));
-        Assert.Equal(2f, ZoomService.InitialZoom(ZoomAutoMode.Auto, 1f, 3200f, 1800f, Uhd100));
+        Assert.Equal(1.5f, ZoomService.InitialZoom(ZoomAutoMode.Auto, 1f, 3200f, 1800f, Uhd100));
     }
 
     [Fact]
     public void An_unknown_monitor_leaves_the_requested_extent_alone()
     {
         Assert.False(default(ZoomMonitor).IsKnown);
-        Assert.Equal(2f, ZoomService.InitialZoom(ZoomAutoMode.Auto, 1f, 3200f, 1800f, default));
+        Assert.Equal(1.5f, ZoomService.InitialZoom(ZoomAutoMode.Auto, 1f, 3200f, 1800f, default));
         Assert.Equal(1f, ZoomService.InitialZoom(ZoomAutoMode.Auto, 2f, 1180f, 760f, default));
     }
 
@@ -146,12 +148,12 @@ public class ZoomServiceTests
         var loop = new ZoomService.AutoLoop();
         var posted = new List<Action>();
 
-        // Tick 1: a 3200 x 1800 base at the live 100 % — Auto wants 200 %, posted for the UI thread (not run here).
-        Assert.Equal(ZoomService.ZoomStepKind.Apply, loop.Step(ZoomAutoMode.Auto, 3200f, 1800f, 1f, posted.Add));
+        // Tick 1: a 3840 x 2160 base at the live 100 % — Auto wants 200 %, posted for the UI thread (not run here).
+        Assert.Equal(ZoomService.ZoomStepKind.Apply, loop.Step(ZoomAutoMode.Auto, 3840f, 2160f, 1f, posted.Add));
         Assert.Single(posted);
 
         // Tick 2: our own apply re-fires the effect at 200 % with the same (zoom-invariant) base — a no-op.
-        Assert.Equal(ZoomService.ZoomStepKind.None, loop.Step(ZoomAutoMode.Auto, 3200f, 1800f, 2f, posted.Add));
+        Assert.Equal(ZoomService.ZoomStepKind.None, loop.Step(ZoomAutoMode.Auto, 3840f, 2160f, 2f, posted.Add));
         Assert.Single(posted);
     }
 

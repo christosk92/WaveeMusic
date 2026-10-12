@@ -459,6 +459,12 @@ public static class ZoomAutoPolicy
         return SnapPlateauDown(Math.Clamp(ratio, lo, Ceiling));
     }
 
+    /// <summary>The largest plateau at or below <paramref name="ratio"/>, held inside the plateau range (0.75 to
+    /// <see cref="Ceiling"/>); a non-finite ratio is the neutral zoom. The same snap <see cref="Suggest"/> ends with,
+    /// exposed so the large-display clamp (<c>ZoomTierReference</c>, C1b) lands on the same plateaus.</summary>
+    public static float PlateauAtOrBelow(float ratio)
+        => float.IsFinite(ratio) ? SnapPlateauDown(Math.Clamp(ratio, Plateaus[0], Ceiling)) : NeutralZoom;
+
     /// <summary>Snap DOWN to the nearest plateau at or below <paramref name="ratio"/> — 1.20 → 100% and 1.55 → 150%,
     /// never the nearer-by-distance rung. The caller has already clamped to [lo, Ceiling], both of which are plateau
     /// members, so this always finds a member at or below it.</summary>

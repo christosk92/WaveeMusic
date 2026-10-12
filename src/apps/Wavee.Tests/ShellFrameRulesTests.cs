@@ -201,8 +201,8 @@ public class ShellFrameBodyRulesTests
 
 public class ShellAutoZoomLoopTests
 {
-    // 3200 × 1800 base DIPs is exactly twice the design box on both axes: the policy suggests 200 %.
-    const float BigW = 3200f, BigH = 1800f;
+    // 3840 × 2160 base DIPs is past twice the design box on both axes and exactly twice the Huge edge: Auto suggests 200 %.
+    const float BigW = 3840f, BigH = 2160f;
 
     [Fact]
     public void Manual_mode_and_a_degenerate_extent_touch_nothing()
