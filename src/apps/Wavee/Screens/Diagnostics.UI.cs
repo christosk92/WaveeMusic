@@ -68,7 +68,7 @@ public static partial class Diagnostics
         Shell.SetPage(Shell.RouteKind.ConnectDiagnostics, static (in Shell.Route _) => ConnectPage());
         Shell.SetPage(Shell.RouteKind.CaptureDiagnostics, static (in Shell.Route _) => CapturePage());
         Shell.SetPage(Shell.RouteKind.Logs, static (in Shell.Route _) => LogsPage.Page());
-        Shell.RouteNoted += static route => NavigationFrameWatch.NoteRoute(route);
+        Shell.RouteNoted += static route => { NavigationFrameWatch.NoteRoute(route); Crash.Host.NoteContextChanged(); };
         NavigationFrameWatch.Attach();
 
         Platform.Network.Install(Playback.ToUi);

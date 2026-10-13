@@ -37,7 +37,9 @@ Content-Type: application/json
   "dumpBytes": 0,
   "exceptionCode": 0,
   "faultModule": "",
-  "faultOffset": 0
+  "faultOffset": 0,
+  "dumpIncluded": false,
+  "dumpOmissionReason": "missing"
 }
 --wavee-3f9c2b1a8d7e4c60a1b2c3d4e5f60718
 Content-Disposition: form-data; name="report"

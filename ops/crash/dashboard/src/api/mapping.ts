@@ -130,6 +130,7 @@ export function mapReport(w: WireReportRow): AppReport {
     faultModule: w.fault_module ?? "",
     faultOffset: w.fault_offset ?? 0,
     fpVersion: w.fp_version ?? 1,
+    collection: w.collection,
   };
 }
 

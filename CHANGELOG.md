@@ -12,6 +12,9 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **More useful crash reports.** Exit reports retain the failing app's process, session and GPU context, and their
+  log excerpt follows that process. The crash dashboard explains when a local dump was omitted from an upload;
+  recovery and shutdown checkpoints help diagnose remaining crashes. Existing consent settings still apply. (#209)
 - **Smooth expand and collapse.** Sidebar sections and folders, the song details under a track row, Recents, the
   discography, the Blend card, log rows, episode replies and an album's "Show all" now open and close with one smooth
   motion that is the same in both directions. Everything below moves along with it instead of jumping at the start or
@@ -52,6 +55,9 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **Resizing after graphics recovery can no longer strand the rendering thread.** Closing after a removed graphics
+  device also skips its invalid fence drain while healthy devices still finish their queued work. These correct
+  reproduced engine defects; the reported AMD, NVIDIA and unknown-module access violations remain under investigation. (#209)
 - **Album covers, avatars and headers load sharp.** Images that Spotify describes only by their maximum width used to
   load the smallest (64 px) version.
 - **The now-playing equalizer keeps moving after you navigate back to a page,** and a paused one no longer restarts
