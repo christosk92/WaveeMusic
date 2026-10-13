@@ -166,7 +166,7 @@ public class CrashCollectionTests
             for (int i = 1; i <= 256; i++) Assert.Equal("B" + i, lines[i]);
             Assert.Equal("D forced-control", lines[^2]);
             Assert.Equal(latest, lines[^1]);
-            Assert.Single(lines.Where(line => line.StartsWith("C ", StringComparison.Ordinal)));
+            Assert.Single(lines, line => line.StartsWith("C ", StringComparison.Ordinal));
             Assert.DoesNotContain("ordinary-overflow", lines);
         }
         finally
