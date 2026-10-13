@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "product": "wavee",
+  "version": "0.3.5",
+  "packageVersion": "",
+  "name": "Crest",
+  "tagline": "A new sidebar, smoother expanding lists, lighter lyrics processing and safer graphics recovery.",
+  "date": "",
+  "channel": "stable",
+  "lang": "en",
+  "minOs": "10.0.19041.0",
+  "arch": ["x64", "arm64"],
+  "links": { "release": "", "changelog": "", "compare": "" },
+  "highlights": [
+    {
+      "id": "sidebar",
+      "title": "A sidebar that fits your window",
+      "body": "Choose Classic or Library from Settings or the sidebar menu. The sidebar switches between a full pane, an icon rail and an overlay as the window narrows. Edit sections and pins in place with Undo, and filter, sort or search your library from its toolbar.",
+      "kind": "improved",
+      "issues": []
+    },
+    {
+      "id": "smooth-lighter",
+      "title": "Smoother and lighter",
+      "body": "Sections and song details expand and collapse with one smooth motion, moving the rows below them along. On-device lyrics models give their memory back sooner after timing a song and while Wavee is minimized. Song-list filters now have their own button and a single card for changing them.",
+      "kind": "improved",
+      "issues": []
+    },
+    {
+      "id": "recovery",
+      "title": "Safer graphics recovery",
+      "body": "Resizing during graphics recovery no longer leaves the rendering thread waiting indefinitely. Closing after device removal avoids an invalid GPU fence wait. Crash reports now preserve the failing app's context and explain omitted dumps, helping us investigate remaining crashes with your existing consent settings.",
+      "kind": "fixed",
+      "issues": [209]
+    }
+  ],
+  "sections": [],
+  "notices": [],
+  "media": [],
+  "generatedAt": ""
+}

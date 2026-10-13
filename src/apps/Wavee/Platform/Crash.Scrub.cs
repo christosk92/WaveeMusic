@@ -228,6 +228,14 @@ public static partial class Crash
 
         static readonly string[] CredentialMarkers = { "Authorization", "Cookie", "client-token", "set-cookie" };
 
+        static readonly HashSet<string> GpuStatusKeys = new(StringComparer.Ordinal)
+            { "recorded", "currentReason", "hr", "ntstatus", "exceptionCode" };
+        static readonly HashSet<string> GpuPhases = new(StringComparer.Ordinal)
+        {
+            "recover-start", "recover-end", "recover-failed", "submit-start", "submit-end",
+            "target-drain", "target-released", "device-drain", "device-release", "device-released",
+        };
+
         static string ScrubTail(IEnumerable<string> lines)
         {
             var sb = new StringBuilder();
@@ -270,6 +278,7 @@ public static partial class Crash
             if (i < tokens.Count && tokens[i] != "-" && !tokens[i].Contains('='))
                 eventId = tokens[i];
             bool startup = eventId == "startup";
+            bool gpuDiagnostic = tokens.Contains("[d3d12]") || tokens.Contains("[d3d12.recovery]") || tokens.Contains("[d3d12.teardown]");
 
             var sb = new StringBuilder(rawLine.Length);
             for (int k = 0; k < tokens.Count; k++)
@@ -282,7 +291,7 @@ public static partial class Crash
                     string key = tok[..eq];
                     string value = tok[(eq + 1)..];
                     bool forceDrop = startup && StartupForceDropped.Contains(key);
-                    bool keep = !forceDrop && KeepValue(key, value);
+                    bool keep = !forceDrop && KeepValue(key, value, gpuDiagnostic);
                     sb.Append(keep ? tok : key + "=<dropped>");
                 }
                 else sb.Append(tok);
@@ -304,14 +313,28 @@ public static partial class Crash
             _ => null,
         };
 
-        static bool KeepValue(string key, string rawValue)
+        static bool KeepValue(string key, string rawValue, bool gpuDiagnostic)
         {
+            string value = StripQuotes(rawValue);
+            if (gpuDiagnostic && (GpuStatusKeys.Contains(key) || key == "reason")) return IsHex(value, 8, 8);
+            if (gpuDiagnostic && key is "vendorId" or "deviceId") return IsHex(value, 4, 8);
+            if (gpuDiagnostic && key == "phase") return GpuPhases.Contains(value);
+            if (gpuDiagnostic && key == "backend") return value == "D3D12";
+            if (key == "stage" && Enum.TryParse<ShutdownPhase>(value, out var phase)
+                && Enum.IsDefined(phase) && phase.ToString() == value) return true;
             if (AllowlistedKeys.Contains(key)) return true;
-            if (IsPurelyNumeric(StripQuotes(rawValue))) return true;
+            if (IsPurelyNumeric(value)) return true;
             if (key.EndsWith("Ms", StringComparison.Ordinal)) return true;
             if (key.EndsWith("Bytes", StringComparison.Ordinal)) return true;
             if (key.StartsWith("frames", StringComparison.Ordinal)) return true;
             return false;
+        }
+
+        static bool IsHex(string value, int minDigits, int maxDigits)
+        {
+            if (!value.StartsWith("0x", StringComparison.Ordinal) || value.Length < minDigits + 2 || value.Length > maxDigits + 2) return false;
+            foreach (char c in value.AsSpan(2)) if (!char.IsAsciiHexDigit(c)) return false;
+            return true;
         }
 
         static bool IsPurelyNumeric(string v)

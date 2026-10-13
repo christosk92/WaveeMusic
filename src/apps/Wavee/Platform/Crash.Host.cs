@@ -24,6 +24,9 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
+using FluentGpu;
+using FluentGpu.Foundation;
+using FluentGpu.Hosting;
 using FluentGpu.Signals;
 using FluentGpu.WindowsApi.Power;
 
@@ -57,20 +60,23 @@ public static partial class Crash
         static int s_suspendEpoch;
         static int s_modalDepth;
         static string? s_installLine;   // "I <id>", cached by the first (main-thread) Adopt
+        static ParentContext? s_parentContext;
+        static long s_contextSequence;
 
         /// <summary>The child's stdin, written off the caller's thread. A pipe write BLOCKS once the pipe buffer is full, and
         /// a handler that is ready but stopped reading (hung, suspended under a debugger) would otherwise freeze the UI
         /// thread inside <c>SendLine</c> (beat, first frame, modal and suspend lines all come from it). Lines go into a
-        /// bounded queue drained by one writer thread, in order; on overflow the NEW line is dropped with one log line (a
-        /// lost beat is exactly what the child's watchdog is for). The dump request is queued with <c>force</c> (never
-        /// dropped) and its reply is awaited with its own timeout.</summary>
-        sealed class StdinSink
+        /// bounded ordinary queue drained by one writer thread, in order; on overflow an ordinary NEW line is dropped
+        /// with one log line. A separate coalesced slot always retains the latest context. The dump request is queued
+        /// with <c>force</c> (never dropped) and its reply is awaited with its own timeout. Public only to exercise the
+        /// actual blocked-writer behavior in the engine-free collection tests.</summary>
+        public sealed class StdinSink
         {
             const int Max = 256;
             readonly StreamWriter _writer;
             readonly Queue<string> _queue = new();
             readonly object _gate = new();
-            bool _dead, _busy, _overflowLogged;
+            bool _dead, _busy, _overflowLogged, _contextQueued;
 
             public StdinSink(StreamWriter writer)
             {
@@ -81,10 +87,24 @@ public static partial class Crash
             public void Post(string line, bool force = false)
             {
                 bool logOverflow = false;
+                bool isContext = line.StartsWith("C ", StringComparison.Ordinal);
                 lock (_gate)
                 {
                     if (_dead) return;
-                    if (!force && _queue.Count >= Max)
+                    if (isContext)
+                    {
+                        // Only the latest snapshot matters. Keep beats/control requests in their original order.
+                        int queued = _queue.Count;
+                        while (queued-- > 0)
+                        {
+                            string pending = _queue.Dequeue();
+                            if (!pending.StartsWith("C ", StringComparison.Ordinal)) _queue.Enqueue(pending);
+                        }
+                        _contextQueued = false;
+                    }
+                    // One latest context has its own slot; an unchanged published snapshot must not disappear
+                    // permanently because ordinary beats/control lines happened to fill their 256-line budget.
+                    if (!isContext && !force && _queue.Count - (_contextQueued ? 1 : 0) >= Max)
                     {
                         logOverflow = !_overflowLogged;
                         _overflowLogged = true;
@@ -92,6 +112,7 @@ public static partial class Crash
                     else
                     {
                         _queue.Enqueue(line);
+                        if (isContext) _contextQueued = true;
                         Monitor.PulseAll(_gate);
                     }
                 }
@@ -112,7 +133,7 @@ public static partial class Crash
 
             public void Stop()
             {
-                lock (_gate) { _dead = true; _queue.Clear(); Monitor.PulseAll(_gate); }
+                lock (_gate) { _dead = true; _queue.Clear(); _contextQueued = false; Monitor.PulseAll(_gate); }
             }
 
             void Run()
@@ -125,6 +146,7 @@ public static partial class Crash
                         while (_queue.Count == 0 && !_dead) Monitor.Wait(_gate);
                         if (_dead) return;
                         line = _queue.Dequeue();
+                        if (line.StartsWith("C ", StringComparison.Ordinal)) _contextQueued = false;
                         _busy = true;
                     }
                     try { _writer.WriteLine(line); }
@@ -163,6 +185,19 @@ public static partial class Crash
             s_logFolder = logFolder;
             s_logBasePath = logBasePath;
             try { Directory.CreateDirectory(Files.Root(logFolder)); } catch { }
+
+            // Read PE/module/build identity once on the healthy parent, never in the reporter child.
+            try
+            {
+                string installId = InstallId.Ensure(Platform.Settings);
+                var metadata = Report.BuildSummary(Kind.UncleanExit, null, 0, installIdOverride: installId);
+                s_parentContext = new ParentContext(Environment.ProcessId, Interlocked.Increment(ref s_contextSequence),
+                    Math.Max(0, Environment.TickCount64 - Log.SinceStartMs), metadata,
+                    Path.GetFileName(Environment.ProcessPath) ?? "", RuntimeInformation.FrameworkDescription,
+                    RuntimeInformation.OSDescription, Platform.Version.BuildDate);
+                FluentApp.FrameCompleted += OnContextFrame;
+            }
+            catch (Exception ex) { Log.Warn("crash", "crash.context.capture.failed", ex); }
 
             SpawnChild(logFolder, logBasePath);
 
@@ -235,6 +270,7 @@ public static partial class Crash
                 // First call is on the main thread (Install), which may write the id; a respawn runs on a pool thread and
                 // replays the cached string (settings writes are UI-thread-only). Then the state a fresh handler missed.
                 try { s_installLine ??= "I " + InstallId.Ensure(Platform.Settings); sink.Post(s_installLine); } catch { }
+                if (Volatile.Read(ref s_parentContext) is { } context) sink.Post(ContextProtocol.Format(context), force: true);
                 try
                 {
                     if (FirstFrameSeen) sink.Post("F");
@@ -266,6 +302,7 @@ public static partial class Crash
         {
             try { s_beatTimer?.Dispose(); } catch { }
             s_beatTimer = null;
+            FluentApp.FrameCompleted -= OnContextFrame;
             try { PowerSession.Suspending -= OnSuspending; PowerSession.Resumed -= OnResumed; } catch { }
         }
 
@@ -274,6 +311,40 @@ public static partial class Crash
             StdinSink? sink;
             lock (s_writeLock) sink = s_stdin;
             sink?.Post(line);   // never blocks: queued for the writer thread (StdinSink)
+        }
+
+        static void OnContextFrame(FrameStats _) => NoteContextChanged();
+
+        /// <summary>Route names only; no route arguments, account or path data. The unchanged per-frame path allocates nothing.</summary>
+        public static void NoteContextChanged()
+        {
+            var context = Volatile.Read(ref s_parentContext);
+            if (context is null) return;
+            var m = context.Metadata;
+            string route = Diagnostics.NavigationFrameWatch.Route;
+            string gpu = GpuProfile.AdapterName;
+            string tier = GpuProfile.Tier switch { GpuPowerTier.Weak => "Weak", GpuPowerTier.Strong => "Strong", _ => "Unknown" };
+            if (m.LastRoute == route && m.Gpu == gpu && m.GpuTier == tier
+                && m.SoftwareAdapter == GpuProfile.IsSoftwareAdapter && m.BeforeFirstFrame == !FirstFrameSeen) return;
+            var next = context with
+            {
+                Sequence = Interlocked.Increment(ref s_contextSequence),
+                Metadata = m with { LastRoute = route, Gpu = gpu, GpuTier = tier,
+                    SoftwareAdapter = GpuProfile.IsSoftwareAdapter, BeforeFirstFrame = !FirstFrameSeen },
+            };
+            Volatile.Write(ref s_parentContext, next);
+            SendLine(ContextProtocol.Format(next));
+        }
+
+        public static void NoteShutdownPhase(ShutdownPhase phase)
+        {
+            try
+            {
+                Log.Info("app", "shutdown.phase phase=" + ((int)phase).ToString(CultureInfo.InvariantCulture) + " stage=" + phase);
+                // Cold path: publish each phase before entering native/runtime cleanup that could terminate abruptly.
+                Log.Flush();
+            }
+            catch { } // Diagnostics must not prevent cleanup or replace a prior shutdown failure.
         }
 
         // ── 2. the heartbeat + the hang-report poll ─────────────────────────────────────────────────────────────────
@@ -286,7 +357,7 @@ public static partial class Crash
         /// <c>IsHungAppWindow</c>, so no beat before first frame costs nothing.</summary>
         static void OnBeatTick(object? _)
         {
-            Playback.ToUi(static () => SendLine("B"));
+            Playback.ToUi(static () => { NoteContextChanged(); SendLine("B"); });
             long now = Environment.TickCount64;
             if (now - s_lastHangPollTickMs >= BeatMs - 500)
             {
@@ -377,7 +448,7 @@ public static partial class Crash
         /// snapshot is taken first, so a line the writer lands meanwhile is in both and deduped rather than in neither.
         /// Shared by the managed, native and test-report paths.</summary>
         static void WriteLogTail(string dir, Feedback.RedactionRules rules)
-            => Crash.Bundles.WriteTail(dir, Crash.Bundles.ResolveTailPath(s_logBasePath ?? Log.BasePath), 300, rules, Log.PendingFileLines());
+            => Crash.Bundles.WriteTail(dir, Crash.Bundles.ResolveTailPath(s_logBasePath ?? Log.BasePath), 300, rules, Log.PendingFileLines(), Environment.ProcessId, Log.SessionId);
 
         /// <summary>The native-fault path's public entry (<c>Crash.NativeHook.OnForeignFault</c> — the FILTER, §B.0's
         /// spike — wires <see cref="RequestDumpCore"/> directly so it also has the fault code for the summary; this
@@ -518,6 +589,7 @@ public static partial class Crash
         public static void NoteFirstFrame()
         {
             FirstFrameSeen = true;
+            NoteContextChanged();
             try { RunMarker.MarkFrame(Platform.Settings); } catch { }
             Crash.Bundles.WriteBootFailures(LogFolder, 0);   // the streak ends the moment a frame is on screen
             SendLine("F");
@@ -525,6 +597,7 @@ public static partial class Crash
 
         public static void NoteExiting()
         {
+            NoteContextChanged();
             SendLine("X");
             StdinSink? sink;
             lock (s_writeLock) sink = s_stdin;

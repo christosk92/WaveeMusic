@@ -161,6 +161,60 @@ describe("Report detail page (real API)", () => {
     vi.unstubAllEnvs();
   });
 
+  it("shows unknown historical collection facts and does not infer why a dump was omitted", async () => {
+    renderReportDetail(REPORT_ID);
+    await screen.findByText("Facts");
+    expect(screen.getByText("Parent PID")).toBeInTheDocument();
+    expect(screen.getByText("Reporter PID")).toBeInTheDocument();
+    expect(screen.getByText("Local dump: Unknown")).toBeInTheDocument();
+    expect(screen.getByText("Uploaded dump: Unavailable")).toBeInTheDocument();
+    expect(screen.getByText("Dump omission reason: Unknown")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Download" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["consent", "Memory snapshot upload was not enabled."],
+    ["missing", "The local dump file was missing."],
+    ["read-failed", "The local dump could not be read."],
+    ["size-cap", "The dump exceeded the upload size limit."],
+  ] as const)("shows %s omission and distinguishes parent/reporter identity without trusting an attachment claim", async (reason, message) => {
+    fetchMock.mockImplementation(async (input) => {
+      if (String(input) === `/v1/reports/${REPORT_ID}`) return fakeResponse(200, {
+        report: { ...wireReport, collection: { parentPid: 4444, reporterPid: 5555,
+          localDumpCreated: true, localDumpBytes: 42, dumpIncluded: true, dumpOmissionReason: reason } },
+        this_install: { reports_30d: 1, first_seen_quad: wireReport.quad },
+      });
+      return fakeResponse(200, "report.txt body");
+    });
+    renderReportDetail(REPORT_ID);
+    await screen.findByText("Facts");
+    expect(screen.getByText("4444")).toBeInTheDocument();
+    expect(screen.getByText("5555")).toBeInTheDocument();
+    expect(screen.getByText(/Local dump: Created/)).toBeInTheDocument();
+    expect(screen.getByText("Uploaded dump: Unavailable")).toBeInTheDocument();
+    expect(screen.getByText(message)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Download" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Download" })).not.toBeInTheDocument();
+  });
+
+  it("uses server attachment state despite contradictory local or omission claims", async () => {
+    fetchMock.mockImplementation(async (input) => {
+      if (String(input) === `/v1/reports/${REPORT_ID}`) return fakeResponse(200, {
+        report: { ...wireReport, has_dump: 1, dump_bytes: 42, collection: {
+          parentPid: null, reporterPid: null, localDumpCreated: false, localDumpBytes: 0,
+          dumpIncluded: false, dumpOmissionReason: "missing" } },
+        this_install: { reports_30d: 1, first_seen_quad: wireReport.quad },
+      });
+      return fakeResponse(200, "report.txt body");
+    });
+    renderReportDetail(REPORT_ID);
+    await screen.findByText("Facts");
+    expect(screen.getByText("Local dump: Not created")).toBeInTheDocument();
+    expect(screen.getByText(/Uploaded dump: Available/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Download" })).toHaveAttribute("href", `/v1/reports/${REPORT_ID}/dump`);
+    expect(screen.queryByText("The local dump file was missing.")).not.toBeInTheDocument();
+  });
+
   it("deletes the report with DELETE /v1/reports/:id, then returns to the reports list", async () => {
     renderReportDetail(REPORT_ID);
 

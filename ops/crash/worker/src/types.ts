@@ -9,6 +9,20 @@
 export const KINDS = ["Managed", "Native", "Hang", "ExitCode", "UncleanExit"] as const;
 export type Kind = (typeof KINDS)[number];
 
+export const DUMP_OMISSION_REASONS = ["consent", "missing", "read-failed", "size-cap"] as const;
+export type DumpOmissionReason = (typeof DUMP_OMISSION_REASONS)[number];
+
+/** Client diagnostic facts from the R2 summary; null means not recorded or invalid. */
+export interface CollectionFacts {
+  parentPid: number | null;
+  reporterPid: number | null;
+  localDumpCreated: boolean | null;
+  localDumpBytes: number | null;
+  /** Client claim only; report.has_dump remains the authoritative attachment state. */
+  dumpIncluded: boolean | null;
+  dumpOmissionReason: DumpOmissionReason | null;
+}
+
 export interface Summary {
   reportId: string;
   installId: string;
@@ -36,9 +50,15 @@ export interface Summary {
   moduleSize: number;
   debugId: string;
   exitCode: number;
-  /** The client's claim only — the Worker derives `has_dump`/`dump_bytes` from the actual `dump` part. */
+  /** Locally created dump facts — the Worker derives `has_dump`/`dump_bytes` from the actual `dump` part. */
   hasDump: boolean;
   dumpBytes: number;
+  /** Whether MiniDumpWriteDump succeeded, even if local retention later removed the file. */
+  dumpLocalCreated?: boolean;
+  parentPid?: number;
+  reporterPid?: number;
+  dumpIncluded?: boolean;
+  dumpOmissionReason?: DumpOmissionReason;
   /** NTSTATUS of a Native fault (uint32); 0 for every other kind or an older client. */
   exceptionCode: number;
   /** Faulting module's base name, lower-case `[a-z0-9._-]` (validate.ts sanitizes); "" when unknown. */

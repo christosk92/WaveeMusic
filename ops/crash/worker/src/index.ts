@@ -4,7 +4,7 @@ import { computeFingerprint, deriveTitle, FINGERPRINT_VERSION, type GroupingInpu
 import { purgeExpiredReports, reportObjectKeys, type PurgeResult } from "./retention.js";
 import { symbolicate } from "./symbolicate.js";
 import { D1Store, parseFramesJson, type Store } from "./store.js";
-import { validateSummary } from "./validate.js";
+import { collectionFacts, validateSummary } from "./validate.js";
 import { ISSUE_STATUSES, type Env, type IssueStatus } from "./types.js";
 
 /** Total multipart body cap — matches `Crash.Bundle.CapBytes` on the client (plan §I ingest contract). */
@@ -286,12 +286,20 @@ async function handlePatchIssue(request: Request, store: Store, fingerprint: str
   return json({ issue }, 200);
 }
 
-async function handleReportDetail(store: Store, id: string, nowMs: number): Promise<Response> {
+async function handleReportDetail(env: Env, store: Store, id: string, nowMs: number): Promise<Response> {
   const report = await store.getReport(id);
   if (!report) return json({ error: "not found" }, 404);
   // crash-dashboard-implementation.md §4: Report detail's "This install" card.
   const thisInstall = await store.getThisInstall(report.install_id, daysAgoIso(30, nowMs));
-  return json({ report, this_install: thisInstall }, 200);
+  // No D1 migration: optional diagnostics live in the original summary. Older/missing/malformed
+  // summaries yield unknown facts, never fabricated PIDs or omission reasons.
+  const summary = await env.BUCKET.get(`reports/${report.quad}/${id}/summary.json`);
+  let summaryJson: unknown = null;
+  if (summary) {
+    const summaryText = await summary.text();
+    try { summaryJson = JSON.parse(summaryText); } catch { /* malformed historical JSON */ }
+  }
+  return json({ report: { ...report, collection: collectionFacts(summaryJson) }, this_install: thisInstall }, 200);
 }
 
 /** `DELETE /v1/reports/:id` — the dashboard's "Delete report" (#165): the report's R2 objects and row go, and its
@@ -457,7 +465,7 @@ async function routeAccessGated(request: Request, url: URL, env: Env, store: Sto
   }
   const reportMatch = /^\/v1\/reports\/([^/]+)$/.exec(url.pathname);
   if (reportMatch && request.method === "GET") {
-    return handleReportDetail(store, decodeURIComponent(reportMatch[1]!), deps.now());
+    return handleReportDetail(env, store, decodeURIComponent(reportMatch[1]!), deps.now());
   }
   if (reportMatch && request.method === "DELETE") {
     return handleDeleteReport(env, store, decodeURIComponent(reportMatch[1]!));

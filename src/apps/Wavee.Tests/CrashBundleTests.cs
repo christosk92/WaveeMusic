@@ -126,7 +126,9 @@ public class CrashBundleTests
         byte[] actual = Bundle.Pack(scrubbed, bigDump, capBytes: tooSmallCap, boundary: "B2", out bool dumpDropped);
 
         Assert.True(dumpDropped);
-        Assert.Equal(withoutDump, actual);
+        byte[] expected = Bundle.Pack(scrubbed with { Summary = scrubbed.Summary with { DumpOmissionReason = "size-cap" } },
+            null, Bundle.CapBytes, "B2", out _);
+        Assert.Equal(expected, actual);
         string text = Encoding.UTF8.GetString(actual);
         Assert.DoesNotContain("name=\"dump\"", text, StringComparison.Ordinal);
         Assert.False(ContainsBytes(actual, bigDump));
