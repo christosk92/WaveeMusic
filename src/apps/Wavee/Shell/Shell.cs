@@ -1002,19 +1002,10 @@ public static partial class Shell
     /// so a drill-in's two halves read as one gesture rather than an independent constant that can drift from it.</summary>
     internal const float FadeThroughExitMs = Design.Nav.FadeThroughExitMs;
 
-    /// <summary>Reactive read of the persisted page-motion STYLE (Settings ▸ Appearance ▸ Page motion), clamped like
-    /// every other appearance rung (ch 27 W2 "three facts") — same contract as <c>Prefs.Appearance.LikedCover</c>.</summary>
-    static Design.PageMotionStyle PageMotionStyle()
-        => (Design.PageMotionStyle)Prefs.Appearance.PageMotionStyle(Design.PageMotionStyleCount);
-
-    /// <summary>The recipe for a page swap, at the persisted <see cref="PageMotionStyle"/>. The one-argument form is
-    /// Entrance (tests, a first paint). The content host classifies the relation from the two routes.</summary>
+    /// <summary>The recipe for a page swap (<see cref="Design.Nav.RecipeFor"/>): the one fade-through for every pair of
+    /// pages, a plain fade for Neutral.</summary>
     public static LayoutTransition RecipeFor(NavTransitionKind motion)
-        => Design.Nav.RecipeFor(PageMotionStyle(), MapMotion(motion),
-            motion == NavTransitionKind.Neutral ? Design.NavRelation.Fade : Design.NavRelation.Entrance);
-
-    public static LayoutTransition RecipeFor(in Route from, in Route to, NavTransitionKind motion)
-        => Design.Nav.RecipeFor(PageMotionStyle(), MapMotion(motion), RelationOf(from, to, motion));
+        => Design.Nav.RecipeFor(MapMotion(motion));
 
     public static LayoutTransition? RecipeForVideoSafe(NavTransitionKind motion)
         => Design.Nav.RecipeForVideoSafe(MapMotion(motion));
@@ -1026,27 +1017,6 @@ public static partial class Shell
     /// outgoing root is still drawing for the whole exit.</summary>
     public static bool NeedsVideoSafe(in Route from, in Route to)
         => from.Kind == RouteKind.Module || to.Kind == RouteKind.Module;
-
-    public static Design.NavSurface SurfaceOf(RouteKind kind) => kind switch
-    {
-        RouteKind.Module => Design.NavSurface.Module,
-        RouteKind.Album or RouteKind.Playlist or RouteKind.Artist or RouteKind.Show or RouteKind.Prerelease
-            or RouteKind.Discography or RouteKind.Concert or RouteKind.ArtistConcerts
-            or RouteKind.HomeSection or RouteKind.BrowseSection
-            or RouteKind.User or RouteKind.ProfileList => Design.NavSurface.Detail,
-        _ => Design.NavSurface.TopLevel,
-    };
-
-    public static Design.NavRelation RelationOf(in Route from, in Route to, NavTransitionKind motion)
-        => Design.Nav.RelationOf(SurfaceOf(from.Kind), SurfaceOf(to.Kind), from.Kind == to.Kind,
-            SameIdentity(from, to), MapMotion(motion));
-
-    static bool SameIdentity(in Route a, in Route b)
-    {
-        if (a.Kind != b.Kind) return false;
-        if (Row(a.Kind).KeyedByArg) return a.Arg.Equals(b.Arg);
-        return a.Subject.Equals(b.Subject);
-    }
 
     static Design.NavTransitionKind MapMotion(NavTransitionKind motion) => motion switch
     {

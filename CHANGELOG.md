@@ -20,6 +20,9 @@ versions separately under `v*` and is not tracked in this file.)
 - **Lyrics blur: the Auto choice is gone; the intensity slider is the one setting (0 turns it off).** Settings >
   Appearance > Lyrics no longer has an "Auto" link next to the slider. The blur is the 0-100 slider, 100 by default; if
   you had Auto, your lyrics keep the full blur (100) until you move the slider.
+- **The developer-only "Page motion" setting is gone.** Settings > Appearance no longer offers it (it only showed in
+  developer mode). Pages always animate with the standard fade-through that everyone already had; a value stored by an
+  older build is ignored.
 - **Smooth expand and collapse.** Sidebar sections and folders, the song details under a track row, Recents, the
   discography, the Blend card, log rows, episode replies and an album's "Show all" now open and close with one smooth
   motion that is the same in both directions. Everything below moves along with it instead of jumping at the start or

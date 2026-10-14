@@ -115,7 +115,7 @@ public static partial class Settings
 
             new(Tab.Appearance, "Theme", "themePicker", "Picture"),
             // The rows a structure still binds to legacy keys (`IStructureLayer.LegacyRows`); each leaves this section when its
-            // M-PR turns the switch into a theme option. "Brush" for the washes and "Movie" for the developer page motion: a
+            // M-PR turns the switch into a theme option. "Brush" for the washes: a
             // glyph may not repeat inside a section (SettingsCatalogTests.NoGlyph_RepeatsWithinASection).
             new(Tab.Appearance, "Theme options", "sidebarDesign", "SplitView"),
             new(Tab.Appearance, "Theme options", "sidebarCustomize", "Edit"),
@@ -126,7 +126,6 @@ public static partial class Settings
             new(Tab.Appearance, "Theme options", "railUniform", "Pin"),
             new(Tab.Appearance, "Theme options", "railReset", "Delete"),
             new(Tab.Appearance, "Theme options", "colorWashes", "Brush"),
-            new(Tab.Appearance, "Theme options", "pageMotion", "Movie", DeveloperOnly: true),
             // The core presentation prefs every theme honours.
             new(Tab.Appearance, "Display", "appMode", "Sun"),
             new(Tab.Appearance, "Display", "zoom", "Zoom"),

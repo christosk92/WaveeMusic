@@ -61,7 +61,6 @@ public class SettingsCatalogTests
     /// which are present and greyed while developer mode is off). This is the gate the tabs call, so the table IS the
     /// answer rather than a condition repeated in each UI file.</summary>
     [Theory]
-    [InlineData(Settings.Tab.Appearance, "pageMotion")]
     [InlineData(Settings.Tab.Appearance, "npvPresentation")]
     public void A_developer_only_row_is_absent_without_developer_mode_and_present_with_it(Settings.Tab tab, string rowId)
     {
@@ -71,14 +70,14 @@ public class SettingsCatalogTests
 
     /// <summary>Everything else is visible in BOTH states — a gate that leaked would empty the page for normal users.
     /// The two Developer items that used to be gated here (Simulate an update, Send a test crash report) are greyed on
-    /// the Privacy &amp; diagnostics tab instead, so only the two Appearance rows remain.</summary>
+    /// the Privacy &amp; diagnostics tab instead, so only the NPV presentation row remains.</summary>
     [Fact]
-    public void Only_the_two_appearance_rows_are_developer_only()
+    public void Only_the_npv_presentation_row_is_developer_only()
     {
         var gated = Settings.Catalog.Rows.Where(r => !Settings.Catalog.RowVisible(r.Tab, r.RowId, developerMode: false))
                                          .Select(r => r.Tab + "/" + r.RowId)
                                          .OrderBy(s => s, StringComparer.Ordinal).ToArray();
-        Assert.Equal(new[] { "Appearance/npvPresentation", "Appearance/pageMotion" }, gated);
+        Assert.Equal(new[] { "Appearance/npvPresentation" }, gated);
         foreach (var row in Settings.Catalog.Rows)
             Assert.True(Settings.Catalog.RowVisible(row.Tab, row.RowId, developerMode: true));
     }

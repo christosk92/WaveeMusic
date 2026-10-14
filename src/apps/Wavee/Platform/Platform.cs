@@ -134,10 +134,6 @@ public static partial class Platform
         /// is that the collection cover is made of the user's own music, and every treatment degrades to the bundled PNG
         /// until the library owns enough distinct artwork — so a fresh install still paints what it painted before.</summary>
         public static readonly SettingKey<int> LikedCoverStyle = new("appearance.likedCover.style", 1);
-        /// <summary>The page-swap MOTION STYLE (Settings ▸ Appearance ▸ Page motion — a DEVELOPER-ONLY row). The default IS
-        /// <see cref="Design.Nav.DefaultStyle"/>, never a literal, so the persisted default and the code default cannot
-        /// drift: a fresh profile gets Classic's fade-through, and a profile that already picked a style keeps it.</summary>
-        public static readonly SettingKey<int> PageMotionStyle = new("appearance.pageMotion.style", (int)Design.Nav.DefaultStyle);
         /// <summary>BPM · Key as its own COLUMN. Off: it is enrichment most listeners never scan for and it costs width on
         /// every row; it is always available inside a row's expander regardless.</summary>
         public static readonly SettingKey<bool> TempoColumn = new("detail.tempoColumn", false);

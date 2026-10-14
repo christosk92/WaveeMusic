@@ -256,19 +256,6 @@ public class ShellPageMotionTests
     }
 
     [Fact]
-    public void Home_to_album_is_DrillIn_and_artist_to_artist_is_Sibling()
-    {
-        var home = new Shell.Route(Shell.RouteKind.Home);
-        var album = Shell.Parse("album:spotify:album:1");
-        var a = Shell.Parse("artist:spotify:artist:a");
-        var b = Shell.Parse("artist:spotify:artist:b");
-        Assert.Equal(Design.NavRelation.DrillIn, Shell.RelationOf(home, album, Shell.NavTransitionKind.Forward));
-        Assert.Equal(Design.NavRelation.Sibling, Shell.RelationOf(a, b, Shell.NavTransitionKind.Forward));
-        Assert.Equal(Design.NavRelation.Entrance, Shell.RelationOf(home, new Shell.Route(Shell.RouteKind.LibraryAlbums),
-            Shell.NavTransitionKind.Forward));
-    }
-
-    [Fact]
     public void Forward_and_back_sibling_enter_from_opposite_sides()
         => Assert.Equal(-Shell.PageSlideSafeForward.Enter.Dx, Shell.PageSlideSafeBack.Enter.Dx);
 

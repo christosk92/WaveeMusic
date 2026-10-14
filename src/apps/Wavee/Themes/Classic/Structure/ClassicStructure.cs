@@ -285,7 +285,7 @@ public sealed class ClassicStructure : IStructureLayer
     public RoleSet RequiredRoles => RoleSet.None;
 
     /// <summary>Each entry leaves with the M-PR that migrates its switch: sidebar M7a, row style M2, row density M3, hide art M4,
-    /// washes M6, page layout and rails M8, page motion M1 (deleted).</summary>
+    /// washes M6, page layout and rails M8. (Page motion, M1, was deleted: it has no row.)</summary>
     public IReadOnlyList<LegacyOptionRow> LegacyRows { get; } =
     [
         new("sidebarDesign", Strings.Settings.ThemeOptions.Group.Sidebar),
@@ -300,6 +300,5 @@ public sealed class ClassicStructure : IStructureLayer
         new("railUniform", Strings.Settings.ThemeOptions.Group.TrackPages),
         new("railReset", Strings.Settings.ThemeOptions.Group.TrackPages),
         new("colorWashes", Strings.Settings.ThemeOptions.Group.Surfaces),
-        new("pageMotion", Strings.Settings.ThemeOptions.Group.Surfaces),
     ];
 }

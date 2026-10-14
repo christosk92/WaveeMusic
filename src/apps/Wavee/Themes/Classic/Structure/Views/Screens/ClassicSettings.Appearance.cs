@@ -6,7 +6,7 @@
 // document) · Now playing (hero*, player style) · Home (the daylist clock). The sidebar, track-list and surface cards (the picture of the legacy rows a structure
 // still binds) are in this file's §4-§5.
 //
-// * DEVELOPER-ONLY rows (`Catalog.RowVisible`, the document's `Visible`): page motion and the Cover/‹Player› hero switch are composed away while the
+// * DEVELOPER-ONLY rows (`Catalog.RowVisible`, the document's `Visible`): the Cover/‹Player› hero switch is composed away while the
 // developer switch is off. "Lyrics second line" and "Animated lyrics backdrop" are not gated but GONE — neither is a setting any more.
 //
 // EVERY ROW WRITES THROUGH ITS DOCUMENT ROW'S WRITER (which bumps the epoch it always bumped: ch 27 W2 "three facts"). The tab body reads the document, never a
@@ -155,25 +155,6 @@ internal static partial class ClassicSettings
     static void SetTheme(int mode)
     {
         if (D(Tab.Appearance, "appMode").Writer.Choose!(mode)) Settings.Bump();
-    }
-
-    /// <summary>Ordered to match the stored value (<see cref="Design.PageMotionStyle"/>'s declaration order) — the
-    /// index IS the store.</summary>
-    static string[] PageMotionLabels() =>
-    [
-        Loc.Get(Strings.Settings.Appearance.PageMotionFluent),
-        Loc.Get(Strings.Settings.Appearance.PageMotionSpatial),
-        Loc.Get(Strings.Settings.Appearance.PageMotionWinUi),
-        Loc.Get(Strings.Settings.Appearance.PageMotionClassic),
-        Loc.Get(Strings.Settings.Appearance.PageMotionNone),
-    ];
-
-    /// <summary>Persist the page-motion style through the ONE Appearance writer (bumps the epoch once), then bump the
-    /// page. Every mounted content host re-reads it on its NEXT swap — no restart, no re-navigation required to try a
-    /// style, same live-apply contract as row density (ch 30 N12).</summary>
-    static void SetPageMotionStyle(int i)
-    {
-        if (D(Tab.Appearance, "pageMotion").Writer.Choose!(i)) Settings.Bump();
     }
 
     static string[] BuildZoomRungLabels()

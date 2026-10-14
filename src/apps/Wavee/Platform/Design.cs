@@ -476,33 +476,6 @@ public static partial class Design
     /// activate.</summary>
     public enum NavTransitionKind : byte { Forward, Back, Neutral }
 
-    /// <summary>WinUI surface class: top-level (sidebar / Home / Library), a content detail, or a module page that
-    /// may host composited video.</summary>
-    public enum NavSurface : byte { TopLevel, Detail, Module }
-
-    /// <summary>The spatial relation of a keep-alive swap — WinUI Entrance / DrillIn / sibling slide, plus Neutral's
-    /// fade. Connected (cover-fly) is deliberately not a member this round.</summary>
-    public enum NavRelation : byte { Entrance, DrillIn, Sibling, Fade }
-
-    /// <summary>The five page-motion PERSONALITIES a user can choose in Settings ▸ Appearance ▸ Page motion. Every
-    /// member but <see cref="None"/> SEQUENCES the outgoing and incoming legs — the exit finishes before the enter
-    /// starts — so two full-bleed pages are never both legible at once. That is the defect this enum exists to fix:
-    /// two legs both starting at t=0 read as two full-bleed pages simultaneously visible for ~130ms (summed opacity
-    /// peaking at 1.83), then the outgoing page popping out. Only the GEOMETRY differs per style; the CLOCK
-    /// (<see cref="Nav.ExitDurationMs"/> / <see cref="Nav.EnterDelayMs"/> / <see cref="Nav.EnterDurationMs"/>) is
-    /// shared by every sequenced style — Material's fade-through, verified clean.
-    /// <para><see cref="Fluent"/>: a plain cross-fade, no geometry, on every relation. <see cref="Spatial"/>: Entrance
-    /// fades, DrillIn is a semantic zoom, Sibling slides the INCOMING page only. <see cref="WinUi"/>:
-    /// WinUI's own page-refresh Entrance (a 140-DIP rise, the outgoing side only fades), the same zoom as Spatial for
-    /// DrillIn, and a Sibling where both pages move by different amounts. <see cref="Classic"/> (the DEFAULT): the 0.2.x
-    /// fade-through, an 8-DIP badge-twitch translate, uniform across every relation. <see cref="None"/>: an instant
-    /// cut — no motion at all.</para></summary>
-    public enum PageMotionStyle : byte { Fluent, Spatial, WinUi, Classic, None }
-
-    /// <summary>How many styles the enum defines — the count <c>Prefs.Appearance.PageMotionStyle</c> clamps against
-    /// (the same "clamp at the reader" contract as <c>LikedCoverRules.StyleCount</c>).</summary>
-    public const int PageMotionStyleCount = 5;
-
     /// <summary>The IDENTITY of a keep-alive page slot: which browser tab, which route, which argument. The nav
     /// DIRECTION is deliberately NOT part of it — direction decides how a swap animates, not which page is cached.
     /// Folding it in made a motion-only write on the already-active key look like an activation change, which re-seeded
@@ -511,10 +484,10 @@ public static partial class Design
     /// `Shell.cs`'s route type. Owner I builds one of these from a route at the call site.</para></summary>
     public readonly record struct PageSlot(int TabId, string Route, string? Arg);
 
-    /// <summary>The page-swap policy of the content card: slot identity and the recipe a relation maps to. Pure — no
+    /// <summary>The page-swap policy of the content card: slot identity and the recipe a swap maps to. Pure — no
     /// pages, no controls, no GPU — so it is pinned by tests.
     /// <para>The route → VIDEO-SAFE classification stays in the shell (it knows module routes); this section only
-    /// supplies the recipe families.</para></summary>
+    /// supplies the recipe.</para></summary>
     public static class Nav
     {
         /// <summary>Every destination page gets its own slot inside the active tab, so ALL forward/back navigation uses
@@ -525,29 +498,10 @@ public static partial class Design
         public static string SlotKey(in PageSlot s)
             => s.TabId + "\u001F" + s.Route + "\u001F" + (s.Arg ?? "");
 
-        /// <summary>Classify a swap by the two surfaces and whether they are the same kind / identity. Neutral is always
-        /// a fade. Same-kind different identity (artist→artist, search query→query) is a sibling slide. Anything that
-        /// touches a detail surface is DrillIn. Otherwise Entrance (sidebar / top-level refresh).</summary>
-        public static NavRelation RelationOf(NavSurface from, NavSurface to, bool sameKind, bool sameIdentity,
-                                            NavTransitionKind motion)
-        {
-            if (motion == NavTransitionKind.Neutral) return NavRelation.Fade;
-            if (sameKind && !sameIdentity) return NavRelation.Sibling;
-            if (from == NavSurface.Detail || to == NavSurface.Detail) return NavRelation.DrillIn;
-            return NavRelation.Entrance;
-        }
+        // ── PAGE MOTION: the sequenced clock + the one geometry ─────────────────────────────────────────────────────
 
-        // ── PAGE-MOTION STYLE: the sequenced clock + per-style geometry (the fix) ───────────────────────────────────
-
-        /// <summary>The style Settings ▸ Appearance ▸ Page motion defaults to when nothing is persisted yet — and, since
-        /// that row is DEVELOPER-ONLY, the style a normal build navigates with. <see cref="PageMotionStyle.Classic"/>: the
-        /// 0.2.x fade-through, uniform across every relation. <c>Platform.Keys.PageMotionStyle</c> takes its persisted
-        /// default FROM this constant, so a profile that never picked a style follows it and one that did keeps its
-        /// pick.</summary>
-        public const PageMotionStyle DefaultStyle = PageMotionStyle.Classic;
-
-        /// <summary>The exit leg's duration for every SEQUENCED style (everything but <see cref="PageMotionStyle.None"/>)
-        /// — Material's fade-through, verified to have zero overlap.</summary>
+        /// <summary>The exit leg's duration of the page swap — Material's
+        /// fade-through, verified to have zero overlap.</summary>
         public const float ExitDurationMs = 90f;
         /// <summary>The enter leg's start delay. Equal to <see cref="ExitDurationMs"/> EXACTLY — never less, or the two
         /// legs are briefly both on screen, which is the regression this file exists to fix (two full-bleed pages
@@ -561,101 +515,36 @@ public static partial class Design
         /// drift from it.</summary>
         public const float FadeThroughExitMs = ExitDurationMs;
 
-        /// <summary>WinUi's Entrance rise — its own page-refresh travel, distinct from Spatial's (which does not rise
-        /// at all) and from a badge twitch (<see cref="Expressive.DistBase"/>).</summary>
-        public const float WinUiEntranceDy = 140f;
-        /// <summary>Spatial's Sibling travel (the incoming page only) — shared with the video-safe pair so a module
-        /// page does not twitch <see cref="Expressive.DistBase"/> DIP when it must slide instead of cross-fade.</summary>
+        /// <summary>The video-safe pair's travel, so a module page does not twitch <see cref="Expressive.DistBase"/> DIP
+        /// when it must slide instead of cross-fade.</summary>
         public const float SiblingDx = 80f;
-        /// <summary>WinUi's Sibling: the incoming page travels further than the outgoing one recedes.</summary>
-        public const float WinUiSiblingInDx = 200f, WinUiSiblingOutDx = 150f;
-        /// <summary>Classic's uniform badge-twitch travel — the 0.2.x fade-through, verbatim.</summary>
+        /// <summary>The page swap's badge-twitch travel — the 0.2.x fade-through, verbatim.</summary>
         public const float ClassicDx = Expressive.DistBase;
-        /// <summary>Spatial's and WinUi's DrillIn scale terminals — a semantic zoom, not an eight-DIP fade.</summary>
-        public const float DrillScaleIn = 0.94f, DrillScaleOut = 1.04f;
 
         static TransitionDynamics SeqEnter => TransitionDynamics.Tween(EnterDurationMs, Easing.FluentDecelerate);
         static TransitionDynamics SeqExit => TransitionDynamics.Tween(ExitDurationMs, Easing.FluentAccelerate);
 
-        /// <summary>A plain sequenced cross-fade: Fluent's whole vocabulary, and Spatial's Entrance.</summary>
-        static LayoutTransition SeqFade() => new(
-            TransitionChannels.Opacity, SeqEnter,
-            Enter: new EnterExit(Opacity: 0f, Active: true),
-            Exit: new EnterExit(Opacity: 0f, Active: true),
-            ExitDynamics: SeqExit, DelayMs: EnterDelayMs, ExitDelayMs: 0f);
-
-        /// <summary>A sequenced translate + fade — the enter and exit legs each on their own vector (a magnitude of 0
-        /// on either leg means that side only fades, e.g. Spatial's Sibling exit / WinUi's Entrance exit).</summary>
-        static LayoutTransition SeqTranslate(float enterDx, float enterDy, float exitDx, float exitDy) => new(
+        /// <summary>A sequenced translate + fade — the enter and exit legs each on their own horizontal travel.</summary>
+        static LayoutTransition SeqTranslate(float enterDx, float exitDx) => new(
             TransitionChannels.Position | TransitionChannels.Opacity, SeqEnter,
-            Enter: new EnterExit(Dx: enterDx, Dy: enterDy, Opacity: 0f, Active: true),
-            Exit: new EnterExit(Dx: exitDx, Dy: exitDy, Opacity: 0f, Active: true),
+            Enter: new EnterExit(Dx: enterDx, Opacity: 0f, Active: true),
+            Exit: new EnterExit(Dx: exitDx, Opacity: 0f, Active: true),
             ExitDynamics: SeqExit, DelayMs: EnterDelayMs, ExitDelayMs: 0f);
 
-        /// <summary>A sequenced semantic zoom: scale + fade, no translate.</summary>
-        static LayoutTransition SeqScale(float enterScale, float exitScale) => new(
-            TransitionChannels.Opacity, SeqEnter,
-            Enter: new EnterExit(Sx: enterScale, Sy: enterScale, Opacity: 0f, Active: true),
-            Exit: new EnterExit(Sx: exitScale, Sy: exitScale, Opacity: 0f, Active: true),
-            ExitDynamics: SeqExit, DelayMs: EnterDelayMs, ExitDelayMs: 0f);
-
-        /// <summary>The instant cut <see cref="PageMotionStyle.None"/> hands back for every relation: the same shape as
-        /// <see cref="MotionRecipes.PageFade"/> — so <c>Exit.Active</c> stays true and the card never flashes empty —
-        /// at a duration too short to read as motion at all.</summary>
-        static readonly LayoutTransition NoneCut = MotionRecipes.PageFade with
+        /// <summary>The recipe for a page swap, WITH its Exit half. Both halves are load-bearing: the reconciler only
+        /// overlaps the outgoing page (ZStacked on the boundary, hit-test invisible, parked once its tracks settle) when
+        /// <c>Exit.Active</c> is true — with a stripped Exit the outgoing page is detached in the same frame and the card
+        /// flashes EMPTY before the incoming page arrives. Neutral is a plain fade; Forward/Back are the 0.2.x
+        /// fade-through (a sequenced 8-DIP translate + fade), the same for every pair of pages.
+        /// <para>CRITICAL: the translate passes <c>ExitDelayMs: 0f</c> EXPLICITLY. It is <c>float?</c> and null means
+        /// "inherit <c>DelayMs</c>" — omitting it would push the exit out by <see cref="EnterDelayMs"/> too and flash the
+        /// content card empty for that whole window (the bug a naive port reintroduces).</para></summary>
+        public static LayoutTransition RecipeFor(NavTransitionKind motion) => motion switch
         {
-            Dynamics = TransitionDynamics.Tween(1f, Easing.Linear),
-            ExitDynamics = TransitionDynamics.Tween(1f, Easing.Linear),
+            NavTransitionKind.Neutral => MotionRecipes.PageFade,
+            NavTransitionKind.Back => SeqTranslate(-ClassicDx, ClassicDx),
+            _ => SeqTranslate(ClassicDx, -ClassicDx),
         };
-
-        /// <summary>The recipe for a page swap, WITH its Exit half, at the <see cref="DefaultStyle"/>. Both halves are
-        /// load-bearing: the reconciler only overlaps the outgoing page (ZStacked on the boundary, hit-test invisible,
-        /// parked once its tracks settle) when <c>Exit.Active</c> is true — with a stripped Exit the outgoing page is
-        /// detached in the same frame and the card flashes EMPTY before the incoming page arrives.
-        /// <para>The one-argument overload is Entrance (the setup wizard, a first paint). The content host passes the
-        /// classified <see cref="NavRelation"/>; <c>Shell.RecipeFor</c> passes the persisted style.</para></summary>
-        public static LayoutTransition RecipeFor(NavTransitionKind motion)
-            => RecipeFor(motion, motion == NavTransitionKind.Neutral ? NavRelation.Fade : NavRelation.Entrance);
-
-        /// <inheritdoc cref="RecipeFor(NavTransitionKind)"/>
-        public static LayoutTransition RecipeFor(NavTransitionKind motion, NavRelation relation)
-            => RecipeFor(DefaultStyle, motion, relation);
-
-        /// <summary>The PURE recipe lookup: style × direction × relation → <see cref="LayoutTransition"/>. No pages, no
-        /// controls, no GPU — <c>DesignNavMotionTests</c> pins it one style at a time.
-        /// <para>CRITICAL: every sequenced branch below passes <c>ExitDelayMs: 0f</c> EXPLICITLY. It is <c>float?</c>
-        /// and null means "inherit <c>DelayMs</c>" — omitting it would push the exit out by <see cref="EnterDelayMs"/>
-        /// too and flash the content card empty for that whole window (the bug a naive port reintroduces).</para></summary>
-        public static LayoutTransition RecipeFor(PageMotionStyle style, NavTransitionKind motion, NavRelation relation)
-        {
-            if (motion == NavTransitionKind.Neutral || relation == NavRelation.Fade)
-                return MotionRecipes.PageFade;
-            if (style == PageMotionStyle.None)
-                return NoneCut;
-            bool back = motion == NavTransitionKind.Back;
-            return style switch
-            {
-                PageMotionStyle.Fluent => SeqFade(),
-                PageMotionStyle.Spatial => relation switch
-                {
-                    NavRelation.DrillIn => back ? SeqScale(DrillScaleOut, DrillScaleIn) : SeqScale(DrillScaleIn, DrillScaleOut),
-                    // Incoming only: the outgoing page fades IN PLACE (Exit.Dx stays 0) rather than sliding away with it.
-                    NavRelation.Sibling => back ? SeqTranslate(-SiblingDx, 0f, 0f, 0f) : SeqTranslate(SiblingDx, 0f, 0f, 0f),
-                    _ => SeqFade(),
-                },
-                PageMotionStyle.WinUi => relation switch
-                {
-                    NavRelation.DrillIn => back ? SeqScale(DrillScaleOut, DrillScaleIn) : SeqScale(DrillScaleIn, DrillScaleOut),
-                    NavRelation.Sibling => back
-                        ? SeqTranslate(-WinUiSiblingInDx, 0f, WinUiSiblingOutDx, 0f)
-                        : SeqTranslate(WinUiSiblingInDx, 0f, -WinUiSiblingOutDx, 0f),
-                    // Incoming rises; the outgoing page only fades (no Dy) — WinUI's own page-refresh Entrance.
-                    _ => back ? SeqTranslate(0f, -WinUiEntranceDy, 0f, 0f) : SeqTranslate(0f, WinUiEntranceDy, 0f, 0f),
-                },
-                // The 0.2.x fade-through, verbatim, uniform across every relation.
-                _ => back ? SeqTranslate(-ClassicDx, 0f, ClassicDx, 0f) : SeqTranslate(ClassicDx, 0f, -ClassicDx, 0f),
-            };
-        }
 
         // ── the VIDEO-SAFE pair ──────────────────────────────────────────────────────────────────────────────────────
 

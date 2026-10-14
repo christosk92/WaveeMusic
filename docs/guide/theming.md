@@ -1551,6 +1551,11 @@ and retried next launch. `Platform.Boot` runs the shipped steps right after `Zoo
 legacy keys there and a new step is covered without a new test. Add the retired names to
 `src\apps\Wavee\analyzer-input\WVTH010.legacy.txt` in the same PR (section 5).
 
+A switch that is *deleted* rather than moved (M1, page motion) needs no step: its stored value has no replacement, so nothing
+copies it. The key is listed in `WVTH010.legacy.txt` (no code may name it again) and the stale value stays in the settings
+file as inert data, never read. `Design.Nav.RecipeFor` is the one page-swap recipe (the 0.2.x fade-through, the plain fade
+for Neutral), asked for by `Shell.RecipeFor`; a theme that wants its own page motion adds a structure verb in its own PR.
+
 ## 5. The analyzers (`Wavee.Analyzers`, WVTH rules)
 
 All rules are errors and run in the normal Wavee build. Baselines (`src\apps\Wavee\analyzer-baseline\WVTHnnn.txt`, one

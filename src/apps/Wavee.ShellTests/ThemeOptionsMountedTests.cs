@@ -100,7 +100,6 @@ public sealed class ThemeOptionsMountedTests(ShellHost host)
                 "trackListStyle", "rowDensity", "hideTrackArtwork", "pageLayout", "railUniform", "railReset", "colorWashes",
             })
                 Assert.False(shell.Find("legacy:" + id).IsNull, "legacy row '" + id + "' is mounted");
-            Assert.True(shell.Find("legacy:pageMotion").IsNull, "the developer-only page motion row is composed away");
         });
 
     [Fact]

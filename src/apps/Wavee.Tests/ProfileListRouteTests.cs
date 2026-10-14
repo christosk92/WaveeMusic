@@ -164,13 +164,6 @@ public class ProfileListRouteTests
     }
 
     [Fact]
-    public void Profile_routes_are_Detail_surfaces()
-    {
-        Assert.Equal(Design.NavSurface.Detail, Shell.SurfaceOf(Shell.RouteKind.User));
-        Assert.Equal(Design.NavSurface.Detail, Shell.SurfaceOf(Shell.RouteKind.ProfileList));
-    }
-
-    [Fact]
     public void Profile_routes_are_not_sidebar_pins_yet()
     {
         Assert.Null(SidebarPinId.FromRoute("user:" + Jane));
