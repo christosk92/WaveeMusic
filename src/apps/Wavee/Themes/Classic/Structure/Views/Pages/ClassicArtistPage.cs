@@ -217,13 +217,13 @@ internal static class ClassicArtistPage
         {
             Direction = 1, MinWidth = 0f, Shrink = 1f, MaxWidth = Detail.BandLayout.TitleCap,
             Cursor = CursorId.Hand, OnClick = p.ScrollToTop,
-            Children = [Detail.BandTitle(name)],
+            Children = [ClassicDetailBand.BandTitle(name)],
         };
         // The pivot is the ONLY elastic lane; the title and the actions never drop (W28).
         Element pivot = new BoxEl
         {
             Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, Height = Detail.BandLayout.Height, AlignItems = FlexAlign.Center,
-            Children = [Detail.Pivot(items, p.Active, p.AccentFn)],
+            Children = [ClassicDetailBand.Pivot(items, p.Active, p.AccentFn)],
         };
         Element actions = new BoxEl
         {
@@ -237,7 +237,7 @@ internal static class ClassicArtistPage
             ],
         };
         // The content sits at the page's 1600 measure; the band's extent stays full-bleed.
-        Element row = Detail.Band(MathF.Min(width, R.Space.PageMaxW), gutter, [title, pivot, actions]);
+        Element row = ClassicDetailBand.Band(MathF.Min(width, R.Space.PageMaxW), gutter, [title, pivot, actions]);
         return new BoxEl
         {
             Width = width, Height = Detail.BandLayout.Height, ZStack = true,
@@ -253,7 +253,7 @@ internal static class ClassicArtistPage
                 new BoxEl
                 {
                     Width = width, Height = Detail.BandLayout.Height, Direction = 1, Justify = FlexJustify.End,
-                    HitTestVisible = false, Children = [Detail.BandHairline()],
+                    HitTestVisible = false, Children = [ClassicDetailBand.BandHairline()],
                 },
             ],
         }.Reveal(ArtistHeroLayout.CompactRevealStart(collapse), collapse - ArtistHeroLayout.CompactRevealStart(collapse),

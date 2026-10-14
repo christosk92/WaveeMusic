@@ -369,14 +369,14 @@ internal static partial class ClassicShow
 
     // ── the date rail (report 4b): the sticky month and the year strip ──
     //
-    // The Albums list's A–Z navigation, for dates — the same two shells (`User.StickyLetter` + `User.JumpStrip`) over the same kernel
+    // The Albums list's A–Z navigation, for dates — the same two shells (`ClassicLetterKit.StickyLetter` + `ClassicLetterKit.JumpStrip`) over the same kernel
     // (`JumpIndex`, through `ShowDateIndex`). Months are the headers; the STRIP shows years, because a decade of months is a scrollbar,
     // not a strip.
 
     static readonly FormatCache<int> s_years = new();
     static readonly Func<int, string> s_yearFormat = static y => y <= 0 ? "" : y.ToString(CultureInfo.InvariantCulture);
 
-    /// <summary>The month pinned at the list's top — the twin of <c>User.StickyLetter</c>: always mounted, transparent
+    /// <summary>The month pinned at the list's top — the twin of <c>ClassicLetterKit.StickyLetter</c>: always mounted, transparent
     /// until a month is actually under the top edge (a presence flip would relayout the overlay), and inset by the
     /// rail's own height so it sits UNDER the sticky toolbar, never behind it.
     /// <para><paramref name="monthKey"/> is the item's <see cref="DateKeys"/> month key — THE same key the group header
@@ -386,7 +386,7 @@ internal static partial class ClassicShow
         float pad = narrow ? ShowReaderRules.PadNarrow : ShowReaderRules.Pad;
         return new BoxEl
         {
-            // Shrink-wrap like User.StickyLetter: a ZStack sibling without a height stretches, and the inner
+            // Shrink-wrap like ClassicLetterKit.StickyLetter: a ZStack sibling without a height stretches, and the inner
             // FillCardDefault then paints a white sheet over the episode list (the "September 2026" overlay).
             Key = "rd:sticky-month",
             Height = ShowReaderRules.RailExtent + Spacing.XS + StickyMonthPlateH,
@@ -414,7 +414,7 @@ internal static partial class ClassicShow
         };
     }
 
-    /// <summary>The year strip on the reader's right edge — the twin of <c>User.JumpStrip</c>: one 26 × 15 row per year
+    /// <summary>The year strip on the reader's right edge — the twin of <c>ClassicLetterKit.JumpStrip</c>: one 26 × 15 row per year
     /// the view holds, the year under the viewport top in accent/700 (two stacked runs: <c>Weight</c> is not bindable),
     /// a tap = <c>StartBringItemIntoView</c> on that year's first month. Not a tab stop (27 letters must not become 27
     /// stops, and neither must 20 years) — it is a pointer affordance beside a list that already has keyboard nav.

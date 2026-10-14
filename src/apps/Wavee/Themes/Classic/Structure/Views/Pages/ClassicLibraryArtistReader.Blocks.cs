@@ -154,7 +154,7 @@ internal static partial class ClassicLibraryArtistReader
                                       Strings.Library.PlayAlbum(title));
         Element save = Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Glyph = Artist.ReaderShape.HeadGlyph, Box = Artist.ReaderShape.HeadCircle })
                        with { Key = "save:" + uri };
-        Element more = Detail.MoreButton(cell.Menu, Artist.ReaderShape.HeadCircle);
+        Element more = ClassicDetailKit.MoreButton(cell.Menu, Artist.ReaderShape.HeadCircle);
         Element titleSlot = TitleSlot(title, go, narrow);
         if (!narrow)
             return new BoxEl

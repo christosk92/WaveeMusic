@@ -432,6 +432,6 @@ public class ProfileListRulesTests
         Assert.Equal(ProfileGridFit.ActionLine, 32f + Spacing.S);
         Assert.Equal(LibraryLetters.HeaderExtent, ProfileLetterRows.HeaderExtent);
         Assert.Equal(176f, ProfileGridFit.MinCell);
-        Assert.Equal(18f, ProfileGridFit.StripWidth);   // User.JumpStrip's own width
+        Assert.Equal(18f, ProfileGridFit.StripWidth);   // ClassicLetterKit.JumpStrip's own width
     }
 }

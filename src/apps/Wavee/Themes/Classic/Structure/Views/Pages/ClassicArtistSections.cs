@@ -38,6 +38,13 @@ internal sealed class ClassicArtistLatch
 /// <summary>Wavee Classic's artist page sections.</summary>
 internal static class ClassicArtistSections
 {
+    /// <summary>A section is an accent-ruled header over its body — never a card (ch 08 §0 #11, Sections.cs:39-42). The profile page's sections draw the same shell.</summary>
+    public static Element SectionBlock(string title, Element body, ColorF accent) => new BoxEl
+    {
+        Direction = 1, Gap = Spacing.M, MinWidth = 0f,
+        Children = [Controls.AccentHeader(title, accent), body],
+    };
+
     /// <summary>One section's body, in the plan's order (ArtistPage.cs:234-269).</summary>
     public static Element Body(ArtistSection s, ArtistPageProps p, ClassicArtistLatch latch, SurfaceStyle? surface)
     {
@@ -46,8 +53,8 @@ internal static class ClassicArtistSections
         return s switch
         {
             ArtistSection.Popular => TopBand(p, latch, surface),
-            ArtistSection.Upcoming => Artist.SectionBlock(Loc.Get(Strings.Artist.Upcoming), ClassicArtistBanners.UpcomingCard(a, p.AccentFn, wide: false), accent),
-            ArtistSection.LatestRelease => Artist.SectionBlock(Loc.Get(Strings.Artist.LatestRelease), ClassicArtistBanners.LatestBanner(a.Latest, accent), accent),
+            ArtistSection.Upcoming => SectionBlock(Loc.Get(Strings.Artist.Upcoming), ClassicArtistBanners.UpcomingCard(a, p.AccentFn, wide: false), accent),
+            ArtistSection.LatestRelease => SectionBlock(Loc.Get(Strings.Artist.LatestRelease), ClassicArtistBanners.LatestBanner(a.Latest, accent), accent),
             ArtistSection.Albums => Artist.FacetSection(a, DiscoFacet.Albums, p.AccentFn, Detail.BandLayout.Height, ArtistSections.FacetExpandedTopInset),
             ArtistSection.Singles => Artist.FacetSection(a, DiscoFacet.Singles, p.AccentFn, Detail.BandLayout.Height, ArtistSections.FacetExpandedTopInset),
             ArtistSection.Compilations => Artist.FacetSection(a, DiscoFacet.Compilations, p.AccentFn, Detail.BandLayout.Height, ArtistSections.FacetExpandedTopInset),
@@ -85,7 +92,7 @@ internal static class ClassicArtistSections
             if (!pick && !upcomingInRail) return new BoxEl { Direction = 1, MinWidth = 0f, Children = [tracks] };
             Element featured = pick
                 ? ClassicArtistPick.Card(a, accentFn, horizontal: !wide, overlay, surface) with { Key = wide ? "featured:pick:rail" : "featured:pick:band" }
-                : Artist.SectionBlock(Loc.Get(Strings.Artist.Upcoming), ClassicArtistBanners.UpcomingCard(a, accentFn, wide), accent)
+                : SectionBlock(Loc.Get(Strings.Artist.Upcoming), ClassicArtistBanners.UpcomingCard(a, accentFn, wide), accent)
                     with { Key = wide ? "featured:upcoming:rail" : "featured:upcoming:band" };
             return new BoxEl
             {

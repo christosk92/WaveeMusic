@@ -5,8 +5,8 @@
 // the chapters list. The spy (the anchors, the viewport, the active section), the chapter lease, the saved / playing / resume decisions and
 // the transcript view stay core; this file draws what the host hands it.
 //
-// The pivot sits in a `Detail.Band`-geometry row (the same header height and pivot metrics Show / Album / Artist's own bands use), which is
-// why the band helpers stay in `Detail`: the artist and profile pages build the same band.
+// The pivot sits in a `ClassicDetailBand.Band`-geometry row (the same header height and pivot metrics Show / Album / Artist's own bands use), which is
+// why the band helpers are shared (`ClassicDetailBand`): the artist and profile pages build the same band.
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -37,9 +37,9 @@ internal static class ClassicEpisodeReader
         {
             Height = Detail.BandLayout.Height, Shrink = 0, MinWidth = 0, Direction = 1, Children =
             [
-                Detail.Band(float.NaN, Spacing.L, [Detail.Pivot(pivotItems, p.Active, static () => Tok.AccentDefault)])
+                ClassicDetailBand.Band(float.NaN, Spacing.L, [ClassicDetailBand.Pivot(pivotItems, p.Active, static () => Tok.AccentDefault)])
                     with { Grow = 1, Basis = 0, MinWidth = 0 },
-                Detail.BandHairline(),
+                ClassicDetailBand.BandHairline(),
             ],
         };
 

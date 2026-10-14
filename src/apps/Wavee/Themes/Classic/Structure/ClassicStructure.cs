@@ -185,6 +185,10 @@ public sealed class ClassicStructure : IStructureLayer
         // T10c1: the library page (the navigator, the grips, the detail pane, the search columns, the collapsed drill-in) and its four panes (album, show, artists' reader, Your Episodes).
         // The library data, the shape memo, the selection and its persistence, the search matcher, the collapse state and every pane model and demand stay core.
         ClassicLibrary.Register(views);
+        // T10c2: Recents, the profile page and the Following / Followers list page (`Views\Pages`). The shapes, demands, accents, scroll spies, load rules and every verb stay core.
+        views.Add(ViewKeys.RecentsPage, ClassicRecents.Template, "classic.recents.page");
+        ClassicProfile.Register(views);
+        ClassicProfileList.Register(views);
         // T9b: the album and playlist sub-contracts of the detail frame. The notice strip and the vertical arm's trailing body (the frame's two leaves only an album or a
         // playlist fills); the album's billed-artist line and flyout, countdown, release facts, trailing band (region, sections, stack) and unresolved line; the playlist's
         // cover face and editable cover, inline editor, owner block and collaborator flyout, access panel, Tune panel, daylist strip and recommendations. The models, the

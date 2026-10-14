@@ -250,16 +250,16 @@ internal static partial class ClassicDetailFrame
         var fabs = new List<Element>(3);
         if (heart)
         {
-            string saveUri = Detail.SaveTargetOf(id).Text;
+            string saveUri = ClassicDetailKit.SaveTargetOf(id).Text;
             string saveName = id.Title;
             fabs.Add(Embed.Comp(() => new Controls.SaveButton { Uri = saveUri, Name = saveName, Glyph = 16f, Box = RailFabSize, Accent = accent })
                 with { Key = "save:" + saveUri });
         }
-        if (Detail.ShareActionFor(id) is { } share)
-            fabs.Add(Controls.Named(Detail.Fab(Icons.Share, share), Loc.Get(Strings.Menu.Share)));
+        if (ClassicDetailKit.ShareActionFor(id) is { } share)
+            fabs.Add(Controls.Named(ClassicDetailKit.Fab(Icons.Share, share), Loc.Get(Strings.Menu.Share)));
         // ch 05 parity 15: an album's rail has no ⋯ — its overflow is the vertical hero's alone.
         if (acts.More is { } more && id.Kind != DetailKind.Album)
-            fabs.Add(Detail.MoreButton(more, RailFabSize) with { Key = "rail:more" });
+            fabs.Add(ClassicDetailKit.MoreButton(more, RailFabSize) with { Key = "rail:more" });
         return fabs;
     }
 
@@ -562,12 +562,12 @@ internal static partial class ClassicDetailFrame
             var cta = new List<Element>(3) { primary };
             if (cfg.Heart != HeartMode.None)
             {
-                string saveUri = Detail.SaveTargetOf(id).Text;
+                string saveUri = ClassicDetailKit.SaveTargetOf(id).Text;
                 string saveName = id.Title;
                 cta.Add(Embed.Comp(() => new Controls.SaveButton { Uri = saveUri, Name = saveName, Glyph = 16f, Box = RailFabSize, Accent = accent })
                     with { Key = "save:" + saveUri });
             }
-            if (Detail.ShareActionFor(id) is { } share) cta.Add(Controls.Named(Detail.Fab(Icons.Share, share), Loc.Get(Strings.Menu.Share)));
+            if (ClassicDetailKit.ShareActionFor(id) is { } share) cta.Add(Controls.Named(ClassicDetailKit.Fab(Icons.Share, share), Loc.Get(Strings.Menu.Share)));
             ctaRow = new BoxEl
             {
                 Key = "hdr:play", Layout = ClassicDetailKit.Shove,

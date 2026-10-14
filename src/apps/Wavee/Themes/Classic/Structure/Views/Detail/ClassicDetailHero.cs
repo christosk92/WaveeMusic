@@ -14,7 +14,7 @@
 // ONE bucketed width (`BucketW`, once, at the top), ONE presence-flag set (`Detail.FlagsOf`) and ONE title plan (`VerticalLayout.TitleTypeFor` over
 // the identity's title — pure, so all three agree whenever the title is known): the rules and the arithmetic stay core, this picture draws them.
 //
-// The band helpers (`Detail.Band` / `BandTitle` / `BandByline` / `BandHairline` / `Pivot`) STAY in `Detail`: the artist, profile and episode pages
+// The band helpers (`Band` / `BandTitle` / `BandByline` / `BandHairline` / `Pivot`) are `ClassicDetailBand` (T10c2): the artist, profile and episode pages
 // build the same band.
 //
 // NAME NOTE: `Text`, `Skeleton` and `Config` are nested `Detail` classes; the aliases keep their short names here.
@@ -233,7 +233,7 @@ internal static partial class ClassicDetailFrame
             Element identityBlock = new BoxEl
             {
                 Direction = 1, MinWidth = 0f, Shrink = 1f, Gap = 0f,
-                Children = byline is { Length: > 0 } ? [Detail.BandTitle(id.Title), Detail.BandByline(byline)] : [Detail.BandTitle(id.Title)],
+                Children = byline is { Length: > 0 } ? [ClassicDetailBand.BandTitle(id.Title), ClassicDetailBand.BandByline(byline)] : [ClassicDetailBand.BandTitle(id.Title)],
             };
             // The expanded search field takes the TITLE's place, never the actions' — one zero-gap slot, so the hidden
             // arm cannot leave a cluster gap behind.
@@ -251,7 +251,7 @@ internal static partial class ClassicDetailFrame
                     ],
                 };
             }
-            Element normalBand = Detail.Band(availW, parts.CompactLeft, lead, parts.BandActions);
+            Element normalBand = ClassicDetailBand.Band(availW, parts.CompactLeft, lead, parts.BandActions);
 
             // The selection arm swaps the band's CONTENT at the same 56 — the same band in another mode, not a plate.
             Element bandContent = normalBand;
@@ -312,21 +312,21 @@ internal static partial class ClassicDetailFrame
             Controls.PlayButton(spec.Accent, spec.PlayAll ?? DetailVerbs.PlayContext(id.Subject)) with { Key = "vhero-play" },
         };
         if (acts.Shuffle is { } shuffle)
-            actions.Add(Detail.Satellite(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle) with { Key = "vhero-shuffle" });
+            actions.Add(ClassicDetailKit.Satellite(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle) with { Key = "vhero-shuffle" });
         if (cfg.Heart != HeartMode.None)
         {
             // Keyed on the TARGET: SaveButton's uri freezes at mount. The heart reads the page accent through
             // Design.AccentCtx, which the frame host provides.
-            string saveUri = Detail.SaveTargetOf(id).Text;
+            string saveUri = ClassicDetailKit.SaveTargetOf(id).Text;
             string saveName = id.Title;
             actions.Add(Embed.Comp(() => new Controls.SaveButton
                 { Uri = saveUri, Name = saveName, Glyph = 16f, Box = Controls.IconButtonSize })
                 with { Key = "vhero-save:" + saveUri });
         }
-        if (Detail.ShareActionFor(id) is { } share)
-            actions.Add(Detail.Satellite(Icons.Share, Loc.Get(Strings.Menu.Share), share) with { Key = "vhero-share" });
+        if (ClassicDetailKit.ShareActionFor(id) is { } share)
+            actions.Add(ClassicDetailKit.Satellite(Icons.Share, Loc.Get(Strings.Menu.Share), share) with { Key = "vhero-share" });
         if (acts.More is { } more)
-            actions.Add(Detail.MoreButton(more, Controls.IconButtonSize) with { Key = "vhero-more:" + id.Subject.Text });
+            actions.Add(ClassicDetailKit.MoreButton(more, Controls.IconButtonSize) with { Key = "vhero-more:" + id.Subject.Text });
         return new BoxEl
         {
             Direction = 0, Gap = Spacing.S, Wrap = true,

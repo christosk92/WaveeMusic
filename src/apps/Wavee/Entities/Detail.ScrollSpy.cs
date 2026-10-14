@@ -1,7 +1,7 @@
 namespace Wavee;
 
 // Wave E (podcast-ui-repair plan §5.1): the episode page's section switcher stops being a filter-word tab rail
-// (Controls.Words.Rail) and becomes a Detail.Pivot scroll-spy over one stacked scroll, the same shape Artist.Page.cs (ResolveSpy)
+// (Controls.Words.Rail) and becomes a ClassicDetailBand.Pivot scroll-spy over one stacked scroll, the same shape Artist.Page.cs (ResolveSpy)
 // and `ClassicArtistPage` (BandBar) and Detail.UI.Hero.cs use. Artist's own spy answer comes from Detail.BandLayout.ActiveSection,
 // which folds in the sticky compact-band collapse (a bandBottom offset, an "at scroll end" snap). The episode reader
 // has no such collapsing band — its pivot sits in a plain header row above a single ScrollView — so this is a smaller,

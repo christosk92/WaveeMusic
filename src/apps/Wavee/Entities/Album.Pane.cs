@@ -200,12 +200,13 @@ public readonly partial struct Album
             // and re-ask the model).
             string? cover = null;
             string eyebrow = "", title = "", meta = "";
-            Element? attribution = null, notice = null;
+            IReadOnlyList<Controls.Face>? artists = null;
+            Element? notice = null;
             if (state != AlbumPaneState.Header)
             {
                 var id = Detail.Identity.For(a);
                 cover = id.CoverUrl; eyebrow = EyebrowOf(a); title = id.Title; meta = MetaOf(a, id);
-                attribution = Detail.ArtistLine(id.Artists);
+                artists = id.Artists;
                 // The unnamed-credit verdict goes through the page's OWN pipeline rather than the readiness gate: one strip over a rendered list, and — exactly as on the full
                 // page (Detail.UI.cs:572) — suppressed for `MinifiedAlbum`, which self-heals when the credits land. Zero-height and hit-test free while there is nothing to say,
                 // so the rows below it never move.
@@ -214,7 +215,7 @@ public readonly partial struct Album
             return Slots.View(ViewKeys.LibraryAlbumPane, new LibraryAlbumPaneProps
             {
                 State = state, BodyKey = state == AlbumPaneState.Header ? _skelKey : _paneKey,
-                CoverUrl = cover, Eyebrow = eyebrow, Title = title, Meta = meta, Attribution = attribution, Notice = notice,
+                CoverUrl = cover, Eyebrow = eyebrow, Title = title, Meta = meta, Artists = artists, Notice = notice,
                 Uri = _uri, SaveKey = _saveKey, Open = _open, Play = _play, Shuffle = _shuffle, More = _menu, Retry = _retry,
                 // One per state, never mutated: the region reads the State signal of the instance it was handed (§5.5 note 2).
                 Region = state == AlbumPaneState.Ready ? _ready : _pending, ShimRows = _shimRows, RowHeight = _rowH,

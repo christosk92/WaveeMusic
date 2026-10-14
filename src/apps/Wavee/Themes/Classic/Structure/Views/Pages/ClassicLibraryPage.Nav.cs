@@ -63,19 +63,19 @@ internal static partial class ClassicLibraryPage
         {
             Key = "nav:body", Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, ZStack = true, ClipToBounds = true,
             Children = mount.Lettered
-                ? [list, c.Sticky ??= User.StickyLetter(nav.StickyLetter, nav.StickyPush) with { Key = "nav:sticky" }]
+                ? [list, c.Sticky ??= ClassicLetterKit.StickyLetter(nav.StickyLetter, nav.StickyPush) with { Key = "nav:sticky" }]
                 : [list],
         };
         return new BoxEl                                  // the region's single child: unkeyed, shape-stable
         {
             Direction = 0, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
             Children = mount.Strip
-                ? [body, c.Strip ??= User.JumpStrip(nav.Present, nav.StickyLetter, nav.Jump) with { Key = "nav:strip" }]
+                ? [body, c.Strip ??= ClassicLetterKit.JumpStrip(nav.Present, nav.StickyLetter, nav.Jump) with { Key = "nav:strip" }]
                 : [body],
         };
     }
 
-    /// <summary>The list slot: the template runs ONCE per recycled slot and branches at BUILD time on the pooled content type (Recents' `RecentsRowSlot` idiom) — a header plate and a row
+    /// <summary>The list slot: the template runs ONCE per recycled slot and branches at BUILD time on the pooled content type (Recents' `ClassicRecentsRowSlot` idiom) — a header plate and a row
     /// never share a pool.</summary>
     static Element NavSlot(BoundItemScope<LibraryNavItem> scope, EntityKind kind, bool compact)
         => scope.Item.Peek().Slot < Table.None ? LetterHeader(scope) : NavRow(scope, kind, compact);
@@ -86,7 +86,7 @@ internal static partial class ClassicLibraryPage
     {
         Height = LibraryLetters.HeaderExtent, Direction = 0, AlignItems = FlexAlign.End, HitTestVisible = false,
         Padding = new Edges4(Spacing.S, 0f, Spacing.S, Spacing.XS),
-        Children = [User.LetterPlate(scope.Text(static it => User.LetterText(-it.Slot - 1)))],
+        Children = [ClassicLetterKit.LetterPlate(scope.Text(static it => ClassicLetterKit.LetterText(-it.Slot - 1)))],
     };
 
     // ══ THE BOUND ROWS AND CARDS (W1-W5, W19, W22) ═══════════════════════════════════════════════════════════════════

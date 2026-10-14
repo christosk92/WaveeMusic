@@ -117,7 +117,7 @@ namespace Wavee;
 //      about one paragraph earlier. A FAILED verdict resolves the region to Ready and the block paints its own Retry
 //      strip, so no `Exception` is ever allocated to carry a state the block already shows.
 //   3. The block's ▶ is `Controls.PlayFab(play, Icons.Play, 32f)` under `Controls.Named`, not
-//      `Album.CommandCircle(…) with { Fill = Tok.AccentDefault }`: `CommandCircle` returns `Element` (it wraps its box in
+//      `ClassicDetailKit.CommandCircle(…) with { Fill = Tok.AccentDefault }`: `CommandCircle` returns `Element` (it wraps its box in
 //      a tooltip), so `with { Fill = … }` does not compile, and `Interaction.Subtle` OWNS the circle's `Fill` — an accent
 //      rest face has to come from a control that declares one. `PlayFab` is that control, at the head's 32-DIP tier.
 //   4. The head's meta is `Detail.Text.AlbumMeta(n, totalMs, durationsKnown)`, not `Detail.Identity.For(a).Meta`:
@@ -180,7 +180,7 @@ public readonly partial struct Artist
     }
 
     /// <summary>The library's artist reader (§5.7): band · word rails · spine · one virtualized list of album blocks.
-    /// <para>It owns its props CHANNEL (<see cref="IPropsHost"/>, the <c>Detail.MoreButton</c> host's pattern) instead of
+    /// <para>It owns its props CHANNEL (<see cref="IPropsHost"/>, the <c>ClassicDetailKit.MoreButton</c> host's pattern) instead of
     /// reading them through <c>UseProps</c>: the shape is a memo, and a memo only recomputes when a SIGNAL it read
     /// changed. With the slot arriving as a plain field, selecting a different artist would re-render the band over the
     /// previous artist's blocks — so the props land in a signal the shape memo reads, and one flush carries both.</para></summary>

@@ -2,8 +2,8 @@
 // THE SHARED DETAIL FRAME (ch 03 §1.2), CORE HALF: Identity (+ Identity.For(Album)), FrameActions, FrameSlots, FrameSpec and
 // Frame — the 4-mode responsive ladder with both anti-flicker fail-safes, the Hero page-layout override, the per-scope rail
 // prefs + the Splitter grip + resist fade, the page tone plane and shell tint leaves, the accent and the page-body drop
-// target — plus the page-facing builders every detail page and library pane makes its pieces from (NoticeBar,
-// Satellite, the More button and ArtistLine).
+// target, and `NoticeBar` (the mount of the notice view). The satellite, the More button, the artist line and the save / share targets are Classic's (T10c2:
+// `ClassicDetailKit.Helpers.cs`).
 //
 // T9b (themes plan 6.1): the notice strip (`NoticeBar` is now only the mount of `Detail.Notice`), the vertical arm's trailing body (`Detail.VerticalTrailing`),
 // the keyed rail rows (`Row` / `LateRow` / `ReleaseRow`, their FLIP and fade-up), the eyebrow run and the billed-artist line box are Classic's: they moved to
@@ -389,7 +389,6 @@ public static partial class Detail
     const float TwoColumnHeroBandFraction = 0.55f;                    // the tone plane's synthetic band (hero-only is dead)
     const float TallWindowH = Design.Size.DesignH;                    // the 40/52 rail title at ≥ 900
     const float ShortWindowH = 760f;                                  // the 3-line description below 760
-    const float RailFabSize = RailLayout.FabSize;                     // 32 (Workstream B: was 40)
 
     /// <summary><c>DetailShell.RailW</c>: the breakpoint rail of modes 1/2, the config's own width at mode 0. The
     /// NON-RESIZABLE arm only (<c>RailResizable: false</c>) — a resizable rail rests through
@@ -1115,23 +1114,10 @@ public static partial class Detail
         return AccentFor(id.PaletteUrl ?? id.CoverUrl, id.CardAccent);
     }
 
-    // ══ 4. THE SAVE AND SHARE TARGETS ═══════════════════════════════════════════════════════════════════════════════════
+    // ══ 4. THE WEB LINK ═════════════════════════════════════════════════════════════════════════════════════
     //
-    // The rail's keyed rows (`Row` / `LateRow` / `ReleaseRow`), the eyebrow run and the billed-artist line box are Classic's (T9b: `ClassicDetailKit`).
-
-    internal static EntityUri SaveTargetOf(Identity id) => id.SaveTarget.IsValid ? id.SaveTarget : id.Subject;
-
-    /// <summary>Copy the page's web link with the confirmation toast — only when a clipboard seam exists.</summary>
-    internal static Action? ShareActionFor(Identity id)
-    {
-        if (id.ShareUrl is not { Length: > 0 } url) return null;
-        return () =>
-        {
-            if (Actions.Services.Clipboard is not { } copy) return;
-            copy(url);
-            _ = Notify.Say(Loc.Get(Strings.Menu.LinkCopied), InfoBarSeverity.Success);
-        };
-    }
+    // The rail's keyed rows (`Row` / `LateRow` / `ReleaseRow`), the eyebrow run and the billed-artist line box are Classic's (T9b: `ClassicDetailKit`); so are the
+    // save target and the share action the views draw from an `Identity` (T10c2: `ClassicDetailKit.SaveTargetOf` / `ShareActionFor`). What stays is the web link.
 
     /// <summary>The open.spotify.com link a Spotify catalogue uri shares as (the ShareUrl column's fallback).</summary>
     static string? WebUrlOf(EntityUri uri)
@@ -1149,7 +1135,7 @@ public static partial class Detail
         return bare.IsEmpty ? null : "https://open.spotify.com/" + kind + "/" + new string(bare);
     }
 
-    // ══ 5. NOTICE, PILL, SATELLITE, FAB, MORE ════════════════════════════════════════════════════════════════════════
+    // ══ 5. THE NOTICE ════════════════════════════════════════════════════════════════════════
 
     /// <summary>W15: bad news is a strip, never an error page (the `Detail.Notice` view: one Informational bar; zero-height
     /// and hit-test free while there is nothing to say). <paramref name="showMinifiedAlbum"/> is false on the full page, which
@@ -1161,88 +1147,4 @@ public static partial class Detail
 
     /// <summary>The brush budget every accent consumer shares — a VALUE under reduced motion (0 ⇒ an instant swap).</summary>
     static float AccentTransitionMs => Design.Reduced ? 0f : Design.Motion.Standard;
-
-    /// <summary>The hero's quiet secondary action: the standard 32/r4 <see cref="Controls.IconAction"/> (its own 16-DIP
-    /// glyph rung), and a tooltip naming it.</summary>
-    public static Element Satellite(string glyph, string tooltip, Action? onClick, float size = 32f)
-        => ToolTip.Wrap(Controls.IconAction(glyph, onClick, size: size), tooltip);
-
-    /// <summary>The rail's icon action, on the standard 32/r4 ladder (<see cref="Controls.IconAction"/>). <paramref name="size"/>
-    /// is the rail's edge by default; the library panes ask for their own 32 so the ⋯ matches the standard icon buttons
-    /// beside it instead of standing apart.
-    /// <para>Workstream B: was a round FAB (the Emphatic scale tier, the Subtle interaction fill); every non-media FAB
-    /// on the rail is now this same standard icon button — the round plate stays reserved for media exceptions
-    /// (<see cref="Controls.PlayFab"/>, <see cref="Controls.CoverActionFab"/>).</para></summary>
-    internal static BoxEl Fab(string glyph, Action? onClick, float size = RailFabSize)
-        => Controls.IconAction(glyph, onClick, size: size);
-
-    /// <summary>The More button: its flyout is built lazily AT OPEN from the newest menu factory. <c>internal</c> because the
-    /// library's panes (<c>Album.Pane</c>, <c>Artist.Reader</c>) head their command rows with the SAME ⋯ — one menu host, so
-    /// a surface never grows a second one (library rework §5.0).</summary>
-    internal static Element MoreButton(Func<ContextMenuModel?> menu, float size)
-        => Embed.Comp(new MoreProps(size, menu), static () => new MoreHost());
-
-    sealed record MoreProps(float Size, Func<ContextMenuModel?> Menu)
-    {
-        public bool Equals(MoreProps? o) => o is not null && Size == o.Size;
-        public override int GetHashCode() => Size.GetHashCode();
-    }
-
-    static readonly ContextMenuOptions s_moreMenu = new()
-    {
-        PointerPlacement = FlyoutPlacement.BottomEdgeAlignedRight,
-        KeyboardPlacement = FlyoutPlacement.BottomEdgeAlignedRight,
-    };
-
-    sealed class MoreHost : Component, IPropsHost
-    {
-        MoreProps? _latest;
-        readonly Signal<MoreProps?> _props = new(null);
-        readonly Func<ContextMenuModel?> _menu;
-
-        public MoreHost() => _menu = () => _latest?.Menu();
-
-        public void ApplyProps(object props)
-        {
-            _latest = (MoreProps)props;
-            _props.Value = _latest;
-        }
-
-        public override Element Render()
-        {
-            _ = _props.Value;
-            var p = _latest!;
-            var overlay = UseContext(Overlay.Service);
-            // Workstream B: the ⋯ is the standard 32/r4 IconAction everywhere.
-            BoxEl button = Controls.IconAction(Icons.More, null, requestsContext: true, size: p.Size);
-            if (!Controls.IsNullOverlay(overlay)) button = ContextMenu.Attach(button, overlay, _menu, s_moreMenu);
-            return ToolTip.Wrap(button, Loc.Get(Strings.Common.More));
-        }
-    }
-
-    // ── the billed-artist attribution line ───────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The billed artists as one comma-joined run of 14/20/600 links (accent on hover), each one shrinkable and
-    /// clipped so a long bill yields instead of pushing the meta line out. An empty bill is an EMPTY BOX, never a blank
-    /// row of air: the header's gap must not open for an attribution that does not exist. A detail-frame piece, shared by
-    /// the library's album pane, the show pane's publisher slot and the artist reader (library rework §5.5).</summary>
-    internal static Element ArtistLine(IReadOnlyList<Controls.Face>? artists)
-    {
-        if (artists is not { Count: > 0 }) return new BoxEl();
-        var kids = new Element[artists.Count * 2 - 1];
-        for (int i = 0, k = 0; i < artists.Count; i++)
-        {
-            if (i > 0) kids[k++] = new TextEl(", ") { Size = 14f, LineHeight = 20f, Weight = 600, Color = Tok.TextSecondary };
-            var face = artists[i];
-            var label = new TextEl(face.Name)
-            {
-                Size = 14f, LineHeight = 20f, Weight = 600, Color = Tok.TextSecondary, HoverColor = Tok.AccentTextPrimary,
-                MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-            };
-            kids[k++] = face.OnClick is { } go
-                ? new BoxEl { Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand, OnClick = go, Shrink = 1f, MinWidth = 0f, Children = [label] }
-                : label;
-        }
-        return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true, Children = kids };
-    }
 }

@@ -28,7 +28,7 @@
 //
 // ── THE BAND (ch 08 §9 #11) ──────────────────────────────────────────────────────────────────────────────────────────
 //
-// The band is `Detail.Band` / `BandTitle` / `BandHairline` / `Pivot` + `Detail.BandLayout` — written once, by M, for both
+// The band is `ClassicDetailBand` (`Band` / `BandTitle` / `BandHairline` / `Pivot`) + `Detail.BandLayout` — written once, by M, for both
 // consumers; the artist ARM (title · pivot · Play + Follow words) is Classic's. What this file owns is the SECTION
 // ANCHORS: a fixed array of node handles filled from `OnRealized` (the host hands each pivot destination's callback in
 // its `ArtistSectionSlot`) and RESET FROM RENDER (never an effect: `OnRealized` fires during the reconcile of the view's
@@ -906,14 +906,4 @@ public readonly partial struct Artist
         if (avatar is { Length: > 0 } && !string.Equals(avatar, url, StringComparison.Ordinal)) _ = Palette.Watch(avatar).Value;
         return Detail.AccentFor(url, a.HeaderAccent, fallbackUrl: avatar);
     }
-
-    // ══ 3. THE SECTION SHELL ═══════════════════════════════════════════════════════════════════════════════════════════
-    // The profile page's sections read this one too, so it stays core until that page moves (T10c2); Classic's artist page calls it.
-
-    /// <summary>A section is an accent-ruled header over its body — never a card (ch 08 §0 #11, Sections.cs:39-42).</summary>
-    internal static Element SectionBlock(string title, Element body, ColorF accent) => new BoxEl
-    {
-        Direction = 1, Gap = Spacing.M, MinWidth = 0f,
-        Children = [Controls.AccentHeader(title, accent), body],
-    };
 }

@@ -20,6 +20,9 @@ public static class ClassicDetailKitLayout
     /// <summary>The trigger's side padding (its vertical padding is the rule's <c>RailArtistLine.PadY</c>).</summary>
     public const float ArtistTriggerPadX = 6f;
 
+    /// <summary>The page-facing billed-artist line (`ClassicDetailKit.ArtistLine`): size and line height of each link; the satellite icon action default edge.</summary>
+    public const float ArtistLineSize = 14f, ArtistLineHeight = 20f, SatelliteSize = 32f;
+
     // ── the notice strip ──
 
     /// <summary>The strip's padding: left and right, top, bottom.</summary>

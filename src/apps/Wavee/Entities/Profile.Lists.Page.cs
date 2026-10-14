@@ -7,8 +7,10 @@
 //
 // ── THE SHAPE ────────────────────────────────────────────────────────────────────────────────────────────────────────
 //
-//  PageHost (keyed "people-page:" + route key)
-//  └─ column
+// T10c2: the structure draws the page (`Themes\Classic\Structure\Views\Pages\ClassicProfileList*.cs`, key `Pages.ProfileList`). This host (a `[CoreHost]`) keeps what decides.
+//
+//  PageHost (keyed "people-page:" + route key)  →  Slots.View(ViewKeys.ProfileListPage, ProfileListProps)
+//  view:  column
 //     ├─ HEAD (always real, outside the region): BreadcrumbBar [name › facet] · PageHero(facet) · SelectorBar (a change NAVIGATES —
 //     │        the route is the truth, not the control; Discography's head)
 //     └─ BODY (PageWide gutters) └─ measured box (_bodyW, floored to 8 DIP) └─ ONE SkelRegionEl (Soft; no outer ScrollView —
@@ -34,6 +36,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 
 namespace Wavee;
 
@@ -50,20 +53,7 @@ public static partial class ProfileLists
 
     sealed record PageProps(Shell.Route Route, string Key);
 
-    /// <summary>What the list shows, as a VALUE: the load face, the facet, the counts, the grid plan, the flat row count and
-    /// the mount identity. Equality is the compiler's, so a re-derivation that changed nothing writes nothing.
-    /// <paramref name="Epoch"/> moves whenever the rows were rebuilt (data, filter or width), which re-fires the realized slots.</summary>
-    sealed record ListShape(ProfileListLoad Load, ProfileFacet Facet, int Total, int Visible, ProfileChip Chip,
-                            ProfileChipCounts Counts, ProfileGridPlan Plan, int Rows, string MountKey, uint Epoch)
-    {
-        public static readonly ListShape Pending = new(ProfileListLoad.Pending, ProfileFacet.Following, 0, 0, ProfileChip.All,
-            default, default, 0, "", 0u);
-    }
-
-    static readonly Func<Element> s_followShape = static () => Controls.FollowToggle.SkeletonShape();
-    static readonly string[] s_faceKeys =
-        ["people:pending", "people:ready", "people:empty", "people:hidden", "people:unavailable", "people:failed"];
-
+    [CoreHost]
     sealed class PageHost : Component
     {
         // ── identity (rebound by Bind on a subject or scope change) ──
@@ -77,8 +67,7 @@ public static partial class ProfileLists
         string _scrollScope = "";
 
         // ── state ──
-        readonly Signal<ListShape> _shape;
-        internal ListShape ShapeNow;
+        readonly Signal<ProfileListShape> _shape;
         readonly Signal<ProfileChip> _chip = new(ProfileChip.All);
         readonly Signal<string> _query = new("");
         /// <summary>The body's measured width, floored to 8 DIP (never wider than the box, so a card never overhangs).</summary>
@@ -111,26 +100,29 @@ public static partial class ProfileLists
         string? _mountKey;
         RepeatLayout _layout;
         ListOptions<ProfileRowItem>? _options;
-        Element? _stickyEl, _stripEl;
 
         // ── cached delegates (a node handler never captures a render's closure) ──
         readonly Func<bool> _pendingFn, _failedFn;
-        readonly Func<Element> _contentFn, _shimmerFn, _failedPanelFn;
         readonly Action _demand, _sync, _watchLetters, _retry;
-        readonly Action<int> _jump;
+        readonly Action<int> _jump, _pickFacet;
         readonly Action<RectF> _onBounds;
-        readonly Func<BoundItemScope<ProfileRowItem>, Element> _rowT;
         readonly Func<int, float> _extentOf;
         readonly Func<int, int> _contentType;
-        readonly Action[] _chipClicks;
+        readonly Action<ProfileChip> _selectChip;
+        readonly Func<Signal<string>> _queryCell;
+        readonly Func<string, ProfileListMount> _mount;
+        readonly Func<ProfileFacet> _facetNow;
+        readonly Func<float> _bodyWidthNow;
+        readonly Func<string> _displayName;
+        readonly Func<int> _visibleCount;
+        readonly Func<int, ProfileEntry> _visibleAt;
 
         public PageHost()
         {
             // The per-artist Follow toggle writes through this seam (Show / Playlist page precedent).
             Controls.Library ??= User.LibrarySeam;
 
-            ShapeNow = ListShape.Pending;
-            _shape = new Signal<ListShape>(ShapeNow);
+            _shape = new Signal<ProfileListShape>(ProfileListShape.Pending);
             _rows = BoundItems.Project(_shape, static s => s.Rows, (_, i) => Letters.Item(i), default(ProfileRowItem));
 
             _demand = Demand;
@@ -138,6 +130,7 @@ public static partial class ProfileLists
             _watchLetters = WatchLetters;
             _retry = Retry;
             _jump = Jump;
+            _pickFacet = PickFacet;
             _onBounds = r =>
             {
                 if (r.W <= 0f) return;
@@ -148,18 +141,16 @@ public static partial class ProfileLists
             // and is replaced a frame later: the shape is only written by Sync, off the measured width.
             _pendingFn = () => { var s = _shape.Value; return s.Load == ProfileListLoad.Pending || s.Plan.Columns == 0; };
             _failedFn = () => _shape.Value.Load == ProfileListLoad.Failed;
-            _contentFn = Content;
-            _shimmerFn = Shimmer;
-            _failedPanelFn = () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: _retry);
-            _rowT = scope => Embed.Comp(() => new RowSlot(this, scope));
             _extentOf = flat => Letters.ExtentOf(flat);
             _contentType = i => Letters.IsHeader(i) ? 1 : 0;
-            _chipClicks =
-            [
-                () => _chip.Value = ProfileChip.All,
-                () => _chip.Value = ProfileChip.Artists,
-                () => _chip.Value = ProfileChip.People,
-            ];
+            _selectChip = chip => _chip.Value = chip;
+            _queryCell = () => _query;
+            _mount = key => { EnsureMount(key); return new ProfileListMount(_layout, _options!); };
+            _facetNow = () => _facet;
+            _bodyWidthNow = () => _bodyW.Peek();
+            _displayName = DisplayName;
+            _visibleCount = () => _model.VisibleCount;
+            _visibleAt = k => _model.VisibleAt(k);
         }
 
         // ── identity ─────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -198,37 +189,22 @@ public static partial class ProfileLists
             UseEffect(_demand, DepKey.From(u.Slot, (int)facet, (int)epoch, 0));
             UseSignalEffect(_sync);
             UseSignalEffect(_watchLetters);
-            if (!parsed) return Controls.Vacancy(Controls.VacancyVoice.Error);
 
-            Element head = Head(u, facet);
-            Element region = new SkelRegionEl(
-                Pending: _pendingFn, Failed: _failedFn, Content: _contentFn, ShimmerSource: _shimmerFn,
-                OnFailed: _failedPanelFn, Reveal: SkelReveal.Soft, Style: SkeletonStyle.Default,
-                Group: null, SmoothResize: false);
-            Element body = new BoxEl
+            // The structure draws the page (T10c2): this host keeps every decision and hands the view the values and verbs it draws.
+            return global::FluentGpu.Theming.Slots.View(ViewKeys.ProfileListPage, new ProfileListProps
             {
-                Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
-                Padding = new Edges4(Spacing.PageWide, 0f, Spacing.PageWide, Spacing.L),
-                Children =
-                [
-                    // The measured box is INSIDE the gutters: its width is the list's, not the page's.
-                    new BoxEl
-                    {
-                        Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
-                        OnBoundsChanged = _onBounds, Children = [region],
-                    },
-                ],
-            };
-            return new BoxEl
-            {
-                Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-                Children = [head, body],
-            };
+                Parsed = parsed, Head = Head(u, facet),
+                Pending = _pendingFn, Failed = _failedFn, Retry = _retry,
+                Shape = _shape, Facet = _facetNow, BodyWidth = _bodyWidthNow, OnBodyBounds = _onBounds, DisplayName = _displayName,
+                Query = _queryCell, SelectChip = _selectChip, Mount = _mount, Rows = _rows,
+                StickyLetter = _sticky, StickyPush = _push, Present = _present, Jump = _jump,
+                ExtentOf = _extentOf, VisibleCount = _visibleCount, VisibleAt = _visibleAt,
+            });
         }
 
-        // ── the head (always real) ───────────────────────────────────────────────────────────────────────────────────────
+        // ── the head's words and navigation ──────────────────────────────────────────────────────────────────────────────
 
-        Element Head(User u, ProfileFacet facet)
+        ProfileListHead Head(User u, ProfileFacet facet)
         {
             bool valid = u.IsValid;
             string name = valid ? u.Name : "";
@@ -242,26 +218,18 @@ public static partial class ProfileLists
                 ProfileListFilter.WordCount(Loc.Get(Strings.Person.Pivot.Followers), valid ? u.Followers : 0, social, culture),
             ];
             var profile = valid ? ProfileRoute.For(u) : Shell.Route.None;
-            var listRoute = new Func<ProfileFacet, Shell.Route>(f => valid ? ProfileListRoute.For(u, f) : Shell.Route.None);
-            return new BoxEl
-            {
-                Direction = 1, Gap = Spacing.S, MinWidth = 0f, Shrink = 0f,
-                Padding = new Edges4(Spacing.PageWide, Spacing.XXL, Spacing.PageWide, Spacing.M),
-                Children =
-                [
-                    BreadcrumbBar.Create([name, title], i => { if (i == 0 && !profile.IsNone) Shell.GoTo(profile); }),
-                    R.Type.PageHero(title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                    // A FRESH signal per render: the ROUTE, not the control, is the truth; a change navigates and the next
-                    // route re-seeds it (Discography's head).
-                    SelectorBar.Create(labels, new Signal<int>(ProfileListFacets.IndexOf(facet)), onChange: i =>
-                    {
-                        var target = ProfileListFacets.At(i);
-                        if (target == facet) return;
-                        var route = listRoute(target);
-                        if (!route.IsNone) Shell.GoTo(route);
-                    }),
-                ],
-            };
+            return new ProfileListHead(name, title, facet, labels,
+                profile.IsNone ? null : () => Shell.GoTo(profile), _pickFacet);
+        }
+
+        /// <summary>A facet word was picked: the ROUTE, not the control, is the truth, so this navigates (and a pick of the current facet does nothing).</summary>
+        void PickFacet(int index)
+        {
+            var target = ProfileListFacets.At(index);
+            if (target == _facet) return;
+            var u = _user;
+            var route = u.IsValid ? ProfileListRoute.For(u, target) : Shell.Route.None;
+            if (!route.IsNone) Shell.GoTo(route);
         }
 
         // ── demand ───────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -337,9 +305,8 @@ public static partial class ProfileLists
                 valid ? ProfileLoadRule.Header(u) : ProfileLoad.Unavailable,
                 valid && u.Knows(UserFields.Social), valid && u.ShowFollows, valid && u.IsCurrentUser,
                 valid ? u.ProfileReadiness(_shelf) : EdgeState.Unknown, valid ? u.ProfileFailure(_shelf) : 0, _model.Count);
-            var shape = new ListShape(ProfileListLoadRule.Of(in facts), _facet, _model.Count, _model.VisibleCount, chip,
+            var shape = new ProfileListShape(ProfileListLoadRule.Of(in facts), _facet, _model.Count, _model.VisibleCount, chip,
                 _model.Counts, plan, Letters.FlatCount, _mountKeyNow, _epoch);
-            ShapeNow = shape;
             _shape.Value = shape;
 
             _present.SetIfChanged(Letters.Present);
@@ -434,111 +401,11 @@ public static partial class ProfileLists
             if (flat >= 0) _ctl.StartBringItemIntoView(flat, alignmentRatio: 0f);
         }
 
-        // ── the region's faces ───────────────────────────────────────────────────────────────────────────────────────────
-
-        /// <summary>Content (everything but Pending / Failed). Every face is a KEYED CHILD of one stable root (rule 14: a key on
-        /// a single-child slot's root is inert), so a face change remounts instead of morphing one tree into another.</summary>
-        Element Content()
-        {
-            var s = _shape.Value;
-            Element face = s.Load switch
-            {
-                ProfileListLoad.Ready => ReadyFace(s),
-                ProfileListLoad.Empty => Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Page,
-                    Loc.Get(s.Facet == ProfileFacet.Followers ? Strings.Person.List.Empty.Followers : Strings.Person.List.Empty.Following), ""),
-                ProfileListLoad.Hidden => Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Page,
-                    Loc.Get(Strings.Person.List.Hidden.Title), Strings.Person.List.Hidden.Subtitle(DisplayName())),
-                ProfileListLoad.Unavailable => Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Page,
-                    Loc.Get(Strings.Person.List.Unavailable.Title), Loc.Get(Strings.Person.List.Unavailable.Subtitle)),
-                _ => new BoxEl(),
-            };
-            return new BoxEl
-            {
-                Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f,
-                Children = [face with { Key = s_faceKeys[(int)s.Load] }],
-            };
-        }
-
         string DisplayName()
         {
             var u = _user;
             string name = u.IsValid ? u.Name : "";
             return name.Length > 0 ? name : Loc.Get(Strings.Person.List.FallbackName);
-        }
-
-        Element ReadyFace(ListShape s)
-        {
-            Element body = s.Visible == 0
-                ? Controls.Vacancy(Controls.VacancyVoice.NoMatch) with { Key = "people:nomatch" }
-                : ListBody(s);
-            return new BoxEl
-            {
-                Direction = 1, Gap = Spacing.S, Grow = 1f, MinWidth = 0f, MinHeight = 0f,
-                Children = [Tools(s) with { Key = "people:tools" }, body],
-            };
-        }
-
-        /// <summary>The tools: Following has the All / Artists / People chips and the find box, Followers the find box alone.
-        /// Wide, chips sit left and find right; below <see cref="ProfileGridFit.ToolsStackBelow"/> they stack. They stay mounted
-        /// when a query narrows the list to nothing, so the query can be cleared.</summary>
-        Element Tools(ListShape s)
-        {
-            string placeholder = Loc.Get(s.Facet == ProfileFacet.Followers ? Strings.Person.List.Find.Followers : Strings.Person.List.Find.Following);
-            Element find = Controls.FindBox(_query, placeholder) with { Key = "people:find" };
-            bool stack = s.Plan.StackTools;
-            var kids = new List<Element>(2);
-            if (ProfileListFacets.HasChips(s.Facet))
-            {
-                var c = s.Counts;
-                var culture = CultureInfo.CurrentCulture;
-                kids.Add(new BoxEl
-                {
-                    Direction = 0, Gap = Spacing.S, Shrink = 0f, AlignItems = FlexAlign.Center,
-                    Children =
-                    [
-                        Chip(ProfileChip.All, Strings.Person.List.Chip.All, c.All, s.Chip, culture),
-                        Chip(ProfileChip.Artists, Strings.Person.List.Chip.Artists, c.Artists, s.Chip, culture),
-                        Chip(ProfileChip.People, Strings.Person.List.Chip.People, c.People, s.Chip, culture),
-                    ],
-                });
-            }
-            kids.Add(find);
-            return new BoxEl
-            {
-                Direction = stack ? (byte)1 : (byte)0, Gap = stack ? Spacing.S : Spacing.M, MinWidth = 0f, Shrink = 0f,
-                AlignItems = stack ? FlexAlign.Start : FlexAlign.Center,
-                Justify = kids.Count > 1 ? FlexJustify.SpaceBetween : FlexJustify.End,
-                Padding = new Edges4(0f, 0f, 0f, Spacing.XS),
-                Children = kids.ToArray(),
-            };
-        }
-
-        Element Chip(ProfileChip chip, string wordKey, int count, ProfileChip selected, CultureInfo culture)
-            => Controls.Chip(ProfileListFilter.WordCount(Loc.Get(wordKey), count, true, culture), selected == chip, count > 0,
-                             _chipClicks[(int)chip]);
-
-        /// <summary>The list: the bound view (a keyed child, remounted when its geometry changes) with the sticky letter over
-        /// it, and the A–Z strip beside it when the body is wide enough. Rows scroll UNDER the pinned letter: clipped at exactly
-        /// its height with a feather.</summary>
-        Element ListBody(ListShape s)
-        {
-            EnsureMount(s.MountKey);
-            Element list = new BoxEl
-            {
-                Key = s.MountKey, Grow = 1f, Direction = 1, MinHeight = 0f,
-                Children = [ItemsView.CreateBound(_rows, _rowT, _layout, _options!)],
-            };
-            Element zstack = new BoxEl
-            {
-                Key = "people:body", Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, ZStack = true, ClipToBounds = true,
-                Children = [list, _stickyEl ??= User.StickyLetter(_sticky, _push)],
-            };
-            return new BoxEl
-            {
-                Key = "people:list", Direction = 0, Gap = ProfileGridFit.StripGap, Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
-                AlignItems = FlexAlign.Stretch,
-                Children = s.Plan.Strip ? [zstack, _stripEl ??= User.JumpStrip(_present, _sticky, _jump)] : [zstack],
-            };
         }
 
         /// <summary>The (layout, options) pair for one mount key, built once and reused while the key does not change. The
@@ -561,171 +428,6 @@ public static partial class ProfileLists
                     ItemClipTopInset = ProfileLetterRows.HeaderExtent, ItemClipTopFadeBand = Detail.VerticalLayout.StickyFadeBand,
                 },
             };
-        }
-
-        // ── the shimmer SOURCE: tool bones + two rows of circular seed cards ─────────────────────────────────────────────────
-
-        /// <summary>Derived once per pending→loaded edge; stateful leaves (the Follow toggle, the find box, the list) never
-        /// mount in it. The tools are childless declared-size boxes (the deriver turns them into bars); each cell is the
-        /// surface's own SEED face (already bones — handed to the deriver as-is, because derived, its aspect-only cover would
-        /// collapse) over a Follow bone on every other cell of Following.</summary>
-        Element Shimmer()
-        {
-            bool chips = ProfileListFacets.HasChips(_facet);
-            var plan = ProfileGridFit.For(_bodyW.Peek(), Spacing.Card);
-            int cols = plan.Columns > 0 ? plan.Columns : 4;
-
-            var toolKids = new List<Element>(2);
-            if (chips)
-                toolKids.Add(new BoxEl
-                {
-                    Direction = 0, Gap = Spacing.S, Shrink = 0f,
-                    Children =
-                    [
-                        new BoxEl { Width = 96f, Height = Controls.ChipHeight, Shrink = 0f, Corners = Radii.ControlAll },
-                        new BoxEl { Width = 96f, Height = Controls.ChipHeight, Shrink = 0f, Corners = Radii.ControlAll },
-                        new BoxEl { Width = 96f, Height = Controls.ChipHeight, Shrink = 0f, Corners = Radii.ControlAll },
-                    ],
-                });
-            toolKids.Add(new BoxEl { Width = Controls.FindBoxWidth, Height = 32f, Shrink = 0f, Corners = Radii.ControlAll });
-            Element tools = new BoxEl
-            {
-                Direction = plan.StackTools ? (byte)1 : (byte)0, Gap = plan.StackTools ? Spacing.S : Spacing.M, MinWidth = 0f,
-                AlignItems = plan.StackTools ? FlexAlign.Start : FlexAlign.Center,
-                Justify = toolKids.Count > 1 ? FlexJustify.SpaceBetween : FlexJustify.End,
-                Padding = new Edges4(0f, 0f, 0f, Spacing.XS),
-                Children = toolKids.ToArray(),
-            };
-
-            var rowsEl = new Element[2];
-            for (int r = 0; r < rowsEl.Length; r++)
-            {
-                var cells = new Element[cols];
-                for (int c = 0; c < cols; c++)
-                {
-                    bool toggle = chips && (r + c) % 2 == 0;
-                    Element cell = new BoxEl
-                    {
-                        Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                        Children = toggle
-                            ? [SurfaceParts.Seed(Shape.Grid, float.NaN, circular: true), FollowBone()]
-                            : [SurfaceParts.Seed(Shape.Grid, float.NaN, circular: true)],
-                    };
-                    cells[c] = cell.Skel(cell);
-                }
-                rowsEl[r] = new BoxEl { Direction = 0, Gap = Spacing.Card, AlignItems = FlexAlign.Start, Children = cells };
-            }
-            return new BoxEl
-            {
-                Direction = 1, Gap = Spacing.S, Grow = 1f, MinWidth = 0f, MinHeight = 0f,
-                Children = [tools, new BoxEl { Direction = 1, Gap = Spacing.Card, MinWidth = 0f, Children = rowsEl }],
-            };
-        }
-
-        /// <summary>A Follow toggle's bone, in its action line (the verbatim seed is not derived, so the bone is explicit).</summary>
-        static Element FollowBone() => new BoxEl
-        {
-            Height = ProfileGridFit.ActionLine, Shrink = 0f, Direction = 0, Justify = FlexJustify.Center, AlignItems = FlexAlign.Start,
-            Padding = new Edges4(0f, Spacing.S, 0f, 0f), IsEnabled = false,
-            Children = [new BoxEl { Width = 96f, Height = 32f, Shrink = 0f, Corners = Radii.ControlAll, Fill = Tok.FillSubtleSecondary }],
-        };
-
-        // ── the slot: one flat item → a letter header, or a pinned-height row of cards ───────────────────────────────────────
-
-        internal Element BuildSlot(in ProfileRowItem it, int index, IOverlayService? overlay)
-        {
-            // An out-of-range slot (a shrink in flight) resolves to the default item: draw nothing, not a "#".
-            if (it.Epoch == 0u) return new BoxEl();
-            if (it.IsHeader)
-                return new BoxEl
-                {
-                    Height = ProfileLetterRows.HeaderExtent, Direction = 0, AlignItems = FlexAlign.End, HitTestVisible = false,
-                    Padding = new Edges4(Spacing.S, 0f, Spacing.S, Spacing.XS),
-                    Children = [User.LetterPlate(User.LetterText(it.Letter))],
-                };
-            var s = ShapeNow;
-            // A stale item (the filter shrank under a slot that has not rebound yet) never reads past the visible set.
-            int n = Math.Min(it.Count, _model.VisibleCount - it.Start);
-            if (n <= 0) return new BoxEl();
-            var cells = new Element[n];
-            for (int k = 0; k < cells.Length; k++)
-            {
-                var e = _model.VisibleAt(it.Start + k);
-                cells[k] = Cell(s, in e, overlay);
-            }
-            // PINNED to the projection's extent: the seed the layout used and the measured height are the same number.
-            return new BoxEl
-            {
-                Direction = 0, Gap = Spacing.Card, AlignItems = FlexAlign.Start, Height = Letters.ExtentOf(index), Shrink = 0f,
-                Children = cells,
-            };
-        }
-
-        /// <summary>One cell: a fixed-width column holding the surface card, and — for an artist in Following — its Follow toggle
-        /// on a 40-DIP centred line. The toggle's uri freezes at mount, so it is keyed on it.</summary>
-        Element Cell(ListShape s, in ProfileEntry e, IOverlayService? overlay)
-        {
-            float w = s.Plan.CellWidth;
-            string name = e.Name;
-            if (e.IsArtist)
-            {
-                var a = new Artist(e.Slot);
-                string uri = a.Uri.Text;
-                var hc = new HomeCard(new EntityRef(EntityKind.Artist, e.Slot));
-                var menu = HomeCardNav.MenuOf(in hc);
-                bool hasMenu = menu is not null && !Controls.IsNullOverlay(overlay);
-                string sub = e.Followers > 0 ? Profile.FollowerCount(Strings.Person.List.Card.ArtistFollowersKey, e.Followers) : Loc.Get(Strings.Person.List.Card.Artist);
-                var data = new Controls.CardData(uri, name, Sub(sub), Controls.ArtUrl(a.ImageId),
-                    () => HomeCardNav.Open(in hc, null), () => HomeCardNav.Play(in hc),
-                    Circular: true, Drag: HomeCardNav.DragOf(in hc), ShowMenu: hasMenu) { Menu = hasMenu ? menu : null };
-                Element card = Controls.Surface(data, Shape.Grid) with { Key = "card:" + uri };
-                Element[] kids = s.Facet == ProfileFacet.Following
-                    ? [card, FollowLine(uri, name)]
-                    : [card];
-                return new BoxEl { Key = "cell:" + uri, Width = w, Shrink = 0f, Direction = 1, Children = kids };
-            }
-
-            var person = new User(e.Slot);
-            string puri = person.Uri.Text;
-            string? art = person.Image;
-            var route = ProfileRoute.For(person);
-            string psub = e.Followers > 0 ? Profile.FollowerCount(Strings.Person.List.Card.FollowersKey, e.Followers) : Loc.Get(Strings.Person.List.Card.Profile);
-            // No avatar: the initials in the card's own inner width (its 8-DIP plate padding either side), not a blank hole.
-            Element? cover = art is null
-                ? PersonPicture.Create("", MathF.Max(1f, w - 2f * SurfaceGeometry.ShelfPlatePad), displayName: name)
-                : null;
-            var pdata = new Controls.CardData(puri, name, Sub(psub), art,
-                () => { if (!route.IsNone) Shell.GoTo(route); }, null, Circular: true, ShowMenu: false) { CoverOverride = cover };
-            Element pcard = Controls.Surface(pdata, Shape.Grid) with { Key = "card:" + puri };
-            return new BoxEl { Key = "cell:" + puri, Width = w, Shrink = 0f, Direction = 1, Children = [pcard] };
-        }
-
-        static Element FollowLine(string uri, string name) => new BoxEl
-        {
-            Height = ProfileGridFit.ActionLine, Shrink = 0f, Direction = 0, Justify = FlexJustify.Center, AlignItems = FlexAlign.Start,
-            Padding = new Edges4(0f, Spacing.S, 0f, 0f),
-            Children =
-            [
-                Embed.Comp(() => new Controls.FollowToggle { Uri = uri, Name = name })
-                    with { Key = "follow:" + uri, SkeletonProxy = s_followShape },
-            ],
-        };
-
-        static Element Sub(string text) => R.Type.TrackMeta(text) with
-            { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
-    }
-
-    /// <summary>A BOUND slot: the template runs once per recycled slot and rebinds through the scope's item signal. It
-    /// subscribes to exactly what it paints — the bound item (an epoch bump re-skins it when data lands or the width moves)
-    /// and its index (the pinned extent).</summary>
-    sealed class RowSlot(PageHost page, BoundItemScope<ProfileRowItem> scope) : Component
-    {
-        public override Element Render()
-        {
-            var overlay = UseContext(Overlay.Service);
-            var it = scope.Item.Value;
-            int index = scope.Index.Value;
-            return page.BuildSlot(in it, index, overlay);
         }
     }
 }

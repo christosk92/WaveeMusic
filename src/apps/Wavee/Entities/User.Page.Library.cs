@@ -36,8 +36,8 @@
 //  ListBody = Skel.Region(eight Skeletons.ListItemRow  ⇄  NavHost, StaggerRows)         ← the shimmer CROSS-DISSOLVES
 //             NavHost (unkeyed, single-child slot — see REMOUNT VS REFRESH below)
 //             └─ BoxEl "nav:body" ZStack: BoxEl[Mount.Key] ItemsView.CreateBound<LibraryNavItem>(_items, template, …)
-//                                          + User.StickyLetter "nav:sticky" (only while Mount.Lettered)
-//                        │ User.JumpStrip "nav:strip" on the right edge (only while Mount.Strip, i.e. a–z in ANY view)
+//                                          + ClassicLetterKit.StickyLetter "nav:sticky" (only while Mount.Lettered)
+//                        │ ClassicLetterKit.JumpStrip "nav:strip" on the right edge (only while Mount.Strip, i.e. a–z in ANY view)
 //             (drawn by `ClassicLibraryPage.Nav.cs` over `ResolveMount()`: the host resolves the mount, the view draws it)
 //
 // THE NAVIGATOR IS A MEMO, NOT A RENDER. `ComputeShape` (a UseComputed) filters the SOURCE into pooled buffers, sorts

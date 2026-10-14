@@ -83,10 +83,10 @@ internal static class ClassicLibraryAlbumPane
             Direction = 1, Grow = 1f, ClipToBounds = true,
             Children =
             [
-                ClassicLibraryPaneKit.PaneHeader(p.CoverUrl, p.Eyebrow, p.Title, p.Open, p.Attribution!, p.Meta),
+                ClassicLibraryPaneKit.PaneHeader(p.CoverUrl, p.Eyebrow, p.Title, p.Open, ClassicDetailKit.ArtistLine(p.Artists), p.Meta),
                 ClassicLibraryPaneKit.PaneCommands(p.Play, p.Shuffle,
                     Embed.Comp(() => new Controls.SaveButton { Uri = p.Uri, Name = p.Title, Box = ClassicLibraryPaneRules.CommandBox }) with { Key = p.SaveKey },
-                    Detail.MoreButton(p.More, ClassicLibraryPaneRules.CommandBox), p.Open),
+                    ClassicDetailKit.MoreButton(p.More, ClassicLibraryPaneRules.CommandBox), p.Open),
                 p.Notice!,
                 // ONE flex slot, in every state: the shimmer, the Retry strip and the real table all grow into it, so the header and the commands above never move. "Also by" is NOT a
                 // sibling here any more — it is the table's trailing band, inside the table's scroller.

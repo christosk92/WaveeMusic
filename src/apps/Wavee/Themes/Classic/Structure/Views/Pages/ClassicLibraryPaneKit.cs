@@ -24,7 +24,7 @@ internal static class ClassicLibraryPaneKit
         Enter: new EnterExit(Dy: ClassicLibraryPaneRules.SwapDy, Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
         ExitDynamics: TransitionDynamics.Tween(ClassicLibraryPaneRules.SwapOutMs, Easing.SmoothOut));
 
-    /// <summary>Cover 128 (r 6, <c>Elevation.Card</c>) · eyebrow · the title LINK 24/30/600 (2 lines, accent on hover) · the attribution (<c>Detail.ArtistLine(id.Artists)</c>, or a show's
+    /// <summary>Cover 128 (r 6, <c>Elevation.Card</c>) · eyebrow · the title LINK 24/30/600 (2 lines, accent on hover) · the attribution (<c>ClassicDetailKit.ArtistLine(id.Artists)</c>, or a show's
     /// publisher line) · meta 12.5/16. <c>AlignItems End</c>: the text block sits on the cover's baseline, the prototype's stance.
     /// <para>The block is <see cref="ClassicLibraryPaneRules.PaneHeaderHeight"/> tall, ALWAYS, and the text column is budgeted to fit inside the 128 the cover leaves: 16 eyebrow + 60 title
     /// (two 30-DIP lines; the 2-DIP link inset is cancelled by its own negative margin) + 20 attribution + 16 meta + three 3-DIP gaps = 121. That budget is why the title is 24/30 and not the
@@ -117,7 +117,7 @@ internal static class ClassicLibraryPaneKit
             Children =
             [
                 Controls.PlayButton(Tok.AccentDefault, play),
-                Album.CommandCircle(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle),
+                ClassicDetailKit.CommandCircle(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle),
                 save, more,
                 new BoxEl { Grow = 1f },
                 new BoxEl
