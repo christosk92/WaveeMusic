@@ -37,7 +37,7 @@ public static partial class Visualizer
 {
     // ══ 1. THE SIM HOST ══════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The per-frame half of a simulated face: dt from <c>Design.FrameTime</c> (clamped, a restart is one frame),
+    /// <summary>The per-frame half of a simulated face: dt from <c>FrameTime</c> (clamped, a restart is one frame),
     /// then <see cref="Advance"/> — Peek the slab, step the body, write and publish. Built once per face build; the tick
     /// delegate is allocated here, never per frame.</summary>
     abstract class FaceSim
@@ -53,7 +53,7 @@ public static partial class Visualizer
             Slab = slab; Dark = dark; Levels = new float[slab.Bands.Length];
             Tick = () =>
             {
-                long now = Design.FrameTime.NowMs;
+                long now = FrameTime.NowMs;
                 float dt = Particles.Dt(_lastMs, now);
                 _lastMs = now;
                 Advance(dt);

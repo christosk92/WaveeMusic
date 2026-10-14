@@ -402,8 +402,6 @@ internal static partial class ClassicSettings
                         () => { if (reset.Writer.Run!()) Settings.Bump(); });
                 }, isEnabled: enabled), icon: icon);
             }
-            case "colorWashes":
-                return Item(title, sub, RowToggle(row, enabled), isEnabled: enabled, icon: icon);
             default:
                 Log.Warn("settings", "theme options: no control for the legacy row '" + id + "'; it is left out");
                 return null;

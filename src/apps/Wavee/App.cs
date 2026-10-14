@@ -121,7 +121,7 @@ public static class App
 #endif
         // A monotonic clock that never freezes (decision D22): the audio thread, the Connect snapshot and the SMTC throttles
         // stamp with it off the UI thread, and it keeps running while the window is idle, minimized or tray-hidden. Same QPC
-        // domain as Design.FrameTime, so render sites convert explicitly.
+        // domain as FrameTime, so render sites convert explicitly.
         Playback.FrameNowMs = static () => (long)(System.Diagnostics.Stopwatch.GetTimestamp() * (1000.0 / System.Diagnostics.Stopwatch.Frequency));
         Playback.Audio.EnumerateEndpoints = static () =>
         {

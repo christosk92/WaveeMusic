@@ -282,7 +282,7 @@ internal static class ClassicSearchBody
     static Element BestMatches(IReadOnlyList<Search.HitItem> items, Func<float, int> colsFor, Search.HitContext ctx)
     {
         if (items.Count == 0) return new BoxEl();
-        return Stretch(Responsive.Of(w =>
+        return Stretch(Responsive.Of("search:best-matches", w =>
         {
             int cols = colsFor(w);
             int rows = Search.RowsFor(cols);
@@ -342,7 +342,7 @@ internal static class ClassicSearchBody
     /// renders a card-shaped placeholder and scrolling never shifts the rows; the page pages the edge from its demand
     /// (the host), never from the visible window.</summary>
     static Element FacetGrid(Search row, Search.HitContext ctx)
-        => Responsive.Of(w =>
+        => Responsive.Of("search:facet-grid", w =>
         {
             float width = w > 0f ? w : HomeModuleLayout.FallbackWidth;
             int cols = Search.FacetGridColumns(width);
@@ -402,7 +402,7 @@ internal static class ClassicSearchBody
 
     static Element GenreBody(IReadOnlyList<BrowseTileModel> models, bool header)
     {
-        Element body = Responsive.Of(width =>
+        Element body = Responsive.Of("search:genres", width =>
         {
             int cols = ClassicBrowseTiers.LinkColumns(width > 0f ? width : ClassicBrowseRules.DirectoryFallbackWidth);
             var cells = new Element[models.Count];

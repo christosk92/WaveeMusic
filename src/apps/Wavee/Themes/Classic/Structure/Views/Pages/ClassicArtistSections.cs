@@ -85,7 +85,7 @@ internal static class ClassicArtistSections
         Func<ColorF> accentFn = p.AccentFn;
         ColorF accent = p.Accent;
         IOverlayService? overlay = p.Overlay;
-        return Responsive.Of(w =>
+        return Responsive.Of("artist:top-band", w =>
         {
             bool wide = latch.TopBandWide = ArtistSections.TopBandWide(w, latch.TopBandWide);
             Element tracks = Artist.Chart(a, accentSignal);
@@ -397,7 +397,7 @@ internal static class ClassicArtistSections
         long albums = Artist.FacetTotal(a, DiscoFacet.Albums), singles = Artist.FacetTotal(a, DiscoFacet.Singles);
         long concerts = a.ConcertSlots.Length;
         int relatedCount = p.RelatedCount;
-        return Responsive.Of(w =>
+        return Responsive.Of("artist:bio-band", w =>
         {
             latch.BioMode = Detail.Breakpoints.ModeFor(w, latch.BioMode, latch.BioModeInitialized);
             latch.BioModeInitialized = true;

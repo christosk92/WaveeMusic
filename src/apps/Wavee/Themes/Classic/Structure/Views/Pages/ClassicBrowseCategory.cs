@@ -158,7 +158,7 @@ internal static class ClassicBrowseCategory
     {
         var tiles = new List<BrowseTileModel>(band.Tiles.Count);
         for (int i = 0; i < band.Tiles.Count; i++) tiles.Add(BrowseTiles.ToModel(band.Tiles[i], p.OpenCategory, BrowseTiles.OpenFeature));
-        return ClassicBrowseCells.CategoryBlock(band.Facts.Title, tiles) with { Key = "browse-cats:" + band.Facts.Uri };
+        return ClassicBrowseCells.CategoryBlock("browse-cats:" + band.Facts.Uri, band.Facts.Title, tiles);
     }
 
     /// <summary>A flattened body (0.2.9 <c>BrowsePage.FlattenBody</c>): the non-shelf blocks and the Explore link PIN
@@ -196,7 +196,7 @@ internal static class ClassicBrowseCategory
         IReadOnlyList<HomeCard> cards = concat ? p.Merged : first?.Cards ?? (IReadOnlyList<HomeCard>)Array.Empty<HomeCard>();
         bool charts = first is { IsChart: true } && (!concat || second is null || second.IsChart);
 
-        Element grid = Responsive.Of(new GridState(cards, key, charts), static (st, w) => HomeModules.SectionGrid(
+        Element grid = Responsive.Of("browse-category:grid", new GridState(cards, key, charts), static (st, w) => HomeModules.SectionGrid(
             st.Cards, st.Key, w, static c => HomeCardNav.Open(in c), charts: st.Charts), fallback: HomeModuleLayout.FallbackWidth, grow: 1f);
 
         return new BoxEl
@@ -231,7 +231,7 @@ internal static class ClassicBrowseCategory
         var tiles = new BrowseTileModel[s_shimmerTileUris.Length];
         for (int i = 0; i < tiles.Length; i++)
             tiles[i] = new BrowseTileModel(Loc.Get(Strings.Browse.Genres), s_shimmerTileUris[i], null, null, BrowseTiles.ToModelNoop);
-        return ClassicBrowseCells.CategoryBlock(Loc.Get(Strings.Browse.More), tiles);
+        return ClassicBrowseCells.CategoryBlock("browse-more", Loc.Get(Strings.Browse.More), tiles);
     }
 
     static Element ShimmerShelf()

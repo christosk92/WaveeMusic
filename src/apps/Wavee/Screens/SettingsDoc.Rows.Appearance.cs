@@ -3,7 +3,7 @@
 // Role: CORE (PR C13; extraction X35 writers). Theme (the picker) · Theme options (the rows the active structure still binds
 // to legacy keys, in their final groups: T1b) · Display (app mode, zoom, marquee) · Lyrics · Fullscreen · Now playing · Home.
 // The rows still point at TODAY'S keys (each moves to a theme option in its M-PR, §2.3, re-binding exactly one row here). Every write goes
-// through the epoch it always bumped (ch 27 W2 "three facts"): marquee / washes / track list
+// through the epoch it always bumped (ch 27 W2 "three facts"): marquee / track list
 // style / daylist clock → `Prefs.Appearance`; page layout, rail uniform, rail reset → `Prefs.DetailHero`; the lyrics blur →
 // `Prefs.Lyrics`; the two Now-playing rows → `Prefs.NpvPlayer` (the tab reads that epoch, no page re-read); the Fullscreen
 // rows → `Prefs.Stage` (raw key writes included — the stage reads that epoch). A verb returns whether the PAGE must re-read.
@@ -69,10 +69,7 @@ public static partial class SettingsDoc
                 enabled: f => f.RailCustomized ? SettingsEnablement.On : SettingsEnablement.Off(null), silent: true,
                 visible: f => f.PageLayout == Prefs.DetailHero.Automatic && !f.RailUniform,
                 confirm: new SettingsConfirm(Strings.Settings.Appearance.RailResetConfirmTitle,
-                    Strings.Settings.Appearance.RailResetConfirmBody, Strings.Settings.Appearance.RailResetAction)),
-            Make(T.Appearance, "Theme options", "colorWashes", K.Toggle, Strings.Settings.Appearance.ColorWashes,
-                SettingsWriter.OfToggle("appearance.colorWashes", on => SettingsVerbs.SetAppearanceToggle(Platform.Keys.ColorWashesEnabled, on)),
-                captionKey: Strings.Settings.Appearance.ColorWashesSub, value: BoolOf(Platform.Keys.ColorWashesEnabled))),
+                    Strings.Settings.Appearance.RailResetConfirmBody, Strings.Settings.Appearance.RailResetAction))),
 
         // The core presentation prefs every theme honours (the plan's App mode and Zoom rows; marquee is a core pref, owner Q27).
         Sect(T.Appearance, "Display", Strings.Settings.ThemeOptions.DisplayTitle, null,

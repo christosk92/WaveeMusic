@@ -149,9 +149,9 @@ public class FrameBitsTests
     [Fact]
     public void The_cover_leaf_mounts_carry_the_pages_own_key()
     {
-        Assert.Equal("detail-tone:x", Palette.PageTonePlane(null, null, disabled: true, 0f, 0f, heroOnly: false, key: "detail-tone:x").Key);
-        Assert.Equal("artist-wash", Palette.ArtistBlendWash(null, 100f, 0.5f, disabled: true, key: "artist-wash").Key);
+        Assert.Equal("detail-tone:x", Palette.PageTonePlane(null, null, 0f, 0f, heroOnly: false, key: "detail-tone:x").Key);
+        Assert.Equal("artist-wash", Palette.ArtistBlendWash(null, 100f, 0.5f, key: "artist-wash").Key);
         Assert.Equal("artist-veil", Palette.ArtistHeroVeil(null, vertical: false, 100f, 100f, key: "artist-veil").Key);
-        Assert.Equal("detail-tint", Palette.ShellTint(null, ready: false, disabled: true, apply: false, new object(), slot: null, key: "detail-tint").Key);
+        Assert.Equal("detail-tint", Palette.ShellTint(null, ready: false, apply: false, new object(), slot: null, key: "detail-tint").Key);
     }
 }

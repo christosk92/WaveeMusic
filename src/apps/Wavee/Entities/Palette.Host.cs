@@ -52,7 +52,7 @@ public static partial class Palette
     /// (the read path still answers from whatever kind 179 has seeded).</summary>
     public static Func<string[], CancellationToken, Task<Graded?[]>>? Filler { get; set; }
 
-    // The debounce, measured on the FRAME clock. `Design.FrameTime.NowMs` is the frame's predicted present time, which
+    // The debounce, measured on the FRAME clock. `FrameTime.NowMs` is the frame's predicted present time, which
     // is the same epoch every other timed decision in the app compares against; `Environment.TickCount64` would be a
     // second epoch for no gain.
     static long s_dueMs;
@@ -66,7 +66,7 @@ public static partial class Palette
     /// flew past — and <see cref="MaxQueue"/> bounds the backlog regardless.</para></summary>
     static partial void PalettePump()
     {
-        s_dueMs = Design.FrameTime.NowMs + PumpDebounceMs;
+        s_dueMs = FrameTime.NowMs + PumpDebounceMs;
         s_armed = true;
     }
 
@@ -98,7 +98,7 @@ public static partial class Palette
     public static void Tick()
     {
         if (!s_armed || s_inFlight) return;
-        if (Design.FrameTime.NowMs < s_dueMs) return;
+        if (FrameTime.NowMs < s_dueMs) return;
         s_armed = false;
         if (Filler is not { } fill) { DrainUnqueued(); return; }
 
@@ -284,19 +284,19 @@ public static partial class Palette
 
     /// <summary>THE detail page's ground: one flat, translucent art-derived plane behind both hero arms.
     /// <para>Mount it as a page-root SIBLING of the scrolling page, never as a child of it.</para></summary>
-    public static Element PageTonePlane(string? url, string? fallbackUrl, bool disabled,
+    public static Element PageTonePlane(string? url, string? fallbackUrl,
                                         float backdropBand, float pageHeight, bool heroOnly, string key,
                                         uint payloadAccent = 0)
         => ViewSlots.View(ViewKeys.ShellCoverTone,
-            new CoverToneProps(url, fallbackUrl, disabled, backdropBand, pageHeight, heroOnly, payloadAccent)) with { Key = key };
+            new CoverToneProps(url, fallbackUrl, backdropBand, pageHeight, heroOnly, payloadAccent)) with { Key = key };
 
     /// <summary>The artist page's blend wash. <paramref name="height"/> / <paramref name="boundary"/> come from the
     /// caller's own hero layout. <paramref name="payloadAccent"/> is the header row's raw accent (the ladder's payload
     /// rung) — 0 when the caller has none.</summary>
-    public static Element ArtistBlendWash(string? url, float height, float boundary, bool disabled, string key,
+    public static Element ArtistBlendWash(string? url, float height, float boundary, string key,
                                            uint payloadAccent = 0)
         => ViewSlots.View(ViewKeys.ShellCoverBlend,
-            new CoverBlendProps(url, height, boundary, disabled, payloadAccent)) with { Key = key };
+            new CoverBlendProps(url, height, boundary, payloadAccent)) with { Key = key };
 
     /// <summary>The full-bleed artist hero veil over photography (also the Home daylist card's). <paramref name="payloadAccent"/>
     /// is the header row's raw accent (the ladder's payload rung) — 0 when the caller has none.
@@ -311,11 +311,11 @@ public static partial class Palette
     /// <summary>Publishes the page-scoped shell-material tint when THIS cover is graded — with no page re-render. Every
     /// detail page must mount one, or the window chrome stays neutral while the page is coloured, which is the single
     /// loudest visual regression available here.</summary>
-    public static Element ShellTint(string? url, bool ready, bool disabled, bool apply, object owner,
+    public static Element ShellTint(string? url, bool ready, bool apply, object owner,
                                     Signal<ShellMaterialState>? slot, string key, string? fallbackUrl = null,
                                     uint payloadAccent = 0)
         => ViewSlots.View(ViewKeys.ShellCoverTint,
-            new CoverTintProps(url, fallbackUrl, ready, disabled, apply, owner, MaterialPort.Of(slot), payloadAccent)) with { Key = key };
+            new CoverTintProps(url, fallbackUrl, ready, apply, owner, MaterialPort.Of(slot), payloadAccent)) with { Key = key };
 }
 
 // ── WHAT IS NOT HERE, AND WHY ─────────────────────────────────────────────────────────────────────────────────────────

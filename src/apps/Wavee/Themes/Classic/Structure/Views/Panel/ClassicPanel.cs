@@ -16,8 +16,8 @@
 //
 // The frame is a Component (as `Rail.FrameCore` was): the slide is a layout effect on the component's rendered root, its
 // seeded-once flag is a field, and the arms are the same elements in the same positions, so a mode switch reconciles exactly as
-// it did. The lyrics header and body and the queue body are core builders on the props (T7b and T7d's bodies are core hosts that mount their views); the video body is `ClassicVideoPanelBody` (T7c); the friends
-// body and the hero are keys of their own.
+// it did. The lyrics body and the queue body are core builders on the props (T7b and T7d's bodies are core hosts that mount their views); the video body is `ClassicVideoPanelBody` (T7c); the friends
+// body, the hero and the lyrics header (`Panel.LyricsHeader`, `ClassicLyricsHeader`, P3) are keys of their own.
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;
@@ -135,7 +135,7 @@ internal static class ClassicPanel
 
     // ── the header ───────────────────────────────────────────────────────────────────────────────────────────────────
 
-    static BoxEl HeaderBox(Element[] kids) => new()
+    internal static BoxEl HeaderBox(Element[] kids) => new()
     {
         Direction = 0, Height = Design.Size.NavItemH, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.XS,
         Padding = new Edges4(Spacing.M, 0f, Spacing.S, 0f), Children = kids,
@@ -143,11 +143,11 @@ internal static class ClassicPanel
 
     internal static Element Header(PanelProps props, PanelMode body)
     {
-        if (body != PanelMode.Video) return HeaderBox([TitleText(body), CloseButton(props)]);
+        if (body != PanelMode.Video) return HeaderBox([TitleText(Title(body)), CloseButton(props.Close)]);
         // The header's ▣ / ⛶ are the one ALWAYS-visible way to move a docked video (W23b) — keep all three.
         return HeaderBox(
         [
-            TitleText(body),
+            TitleText(Title(body)),
             HeaderButton(Icons.BackToWindow, Loc.Get(Strings.Player.VideoMiniPlayer), () =>
             {
                 FluentGpu.Input.Announcer.Say(Loc.Get(Strings.Player.VideoMiniPlayer));
@@ -158,18 +158,19 @@ internal static class ClassicPanel
                 FluentGpu.Input.Announcer.Say(Loc.Get(Strings.Player.VideoFullScreen));
                 props.VideoToFullScreen();
             }),
-            CloseButton(props),
+            CloseButton(props.Close),
         ]);
     }
 
-    static Element TitleText(PanelMode mode) => R.Type.RailHeader(Title(mode)) with
+    /// <summary>The header's title, ellipsised in the row's free width (the lyrics header titles itself "Lyrics" or "Transcript").</summary>
+    internal static Element TitleText(string title) => R.Type.RailHeader(title) with
     {
         Grow = 1f, MinWidth = 0f, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
     };
 
+    /// <summary>The title of a body the panel heads itself (the lyrics arm mounts its own header).</summary>
     static string Title(PanelMode m) => m switch
     {
-        PanelMode.Lyrics => Loc.Get(Strings.Player.Lyrics),
         PanelMode.Queue => Loc.Get(Strings.Player.Queue),
         PanelMode.Friends => Loc.Get(Strings.Friends.Title),
         PanelMode.Video => Loc.Get(Strings.Player.Video),
@@ -199,7 +200,7 @@ internal static class ClassicPanel
 
     /// <summary>✕ closes the RAIL for every mode, video included — the coupling demotes a docked video. No tooltip: a close
     /// glyph is universal.</summary>
-    static Element CloseButton(PanelProps props) => GlyphBox(Icons.ChromeClose, props.Close, active: false);
+    internal static Element CloseButton(Action close) => GlyphBox(Icons.ChromeClose, close, active: false);
 }
 
 /// <summary>The panel's frame: the surface, the edge, the slide and the arm of the body on show. A component of the theme because
@@ -255,7 +256,7 @@ internal sealed class ClassicPanelFrame : Component
             return ClassicPanel.Arm(open, floating, surface, edge,
                 ClassicPanel.PinnedHero(props, view), ClassicPanel.GrowSlot(ClassicPanel.Body(props, PanelMode.NowPlaying)));
 
-        Element header = body == PanelMode.Lyrics ? props.LyricsHeader() : ClassicPanel.Header(props, body);
+        Element header = body == PanelMode.Lyrics ? Slots.View(ViewKeys.PanelLyricsHeader, props.LyricsHeader) : ClassicPanel.Header(props, body);
         return ClassicPanel.Arm(open, floating, surface, edge,
             ClassicPanel.DockedCap(props, view.DockedHere, railWidth), header, ClassicPanel.GrowSlot(ClassicPanel.Body(props, body)));
     }

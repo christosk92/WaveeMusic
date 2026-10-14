@@ -48,7 +48,7 @@ public static partial class Prefs
     /// <summary>The cross-surface APPEARANCE epoch. Settings writes bump it once so mounted and KeepAlive-parked
     /// player/detail/artist surfaces re-read their persisted appearance flags on the same frame.
     ///
-    /// <para>WHAT BUMPS IT: marquee text, colour washes, track list style, the animated
+    /// <para>WHAT BUMPS IT: marquee text, track list style, the animated
     /// lyrics backdrop, the liked-cover treatment, and the daylist clock. WHAT DOES NOT: the THEME (the engine's own epoch re-themes every
     /// mounted render in place) and the ZOOM (the host folds it into the window scale, which relayouts everything
     /// anyway).</para></summary>
@@ -66,15 +66,6 @@ public static partial class Prefs
         {
             _ = Epoch.Value;
             return Platform.Settings.Get(Platform.Keys.MarqueeEnabled);
-        }
-
-        /// <summary>Reactive read of the colour-wash master switch. FALSE means every tone plane, hero wash, artist
-        /// blend and shell tint binder takes its <c>disabled</c> arm and paints NOTHING — on the already-open page, with
-        /// no restart and no navigation.</summary>
-        public static bool ColorWashes()
-        {
-            _ = Epoch.Value;
-            return Platform.Settings.Get(Platform.Keys.ColorWashesEnabled);
         }
 
         /// <summary>Reactive read of the track-list SKIN (0 Modern · 1 Classic), clamped.</summary>

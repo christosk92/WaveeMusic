@@ -445,7 +445,7 @@ public static partial class Visualizer
             {
                 float ev = e.Value;
                 _ = heartbeat.Value;
-                long now = Design.FrameTime.NowMs;
+                long now = FrameTime.NowMs;
                 float dt = last == 0 ? 0f : Math.Clamp(now - last, 0L, 50L);
                 last = now;
                 phase = Geo.AuroraAdvance(phase, dt, speed, ev, motion);

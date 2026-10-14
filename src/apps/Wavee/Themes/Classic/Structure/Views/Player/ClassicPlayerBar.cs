@@ -7,7 +7,7 @@
 // did. The podcast transport (the ±10 s steps, the speed button and its panel) is `ClassicPlayerBarPodcast.cs`.
 //
 //   THE COST MODEL (ch 20 §9). The BAR is rich (marquees, links, menus, drag, drop) but re-renders only on LOW-frequency facts;
-//   everything HOT is either a compositor bind (the seek fill + thumb, the volume rail: the core pieces `props.SeekBar` and the
+//   everything HOT is either a compositor bind (the seek fill + thumb, the volume rail: the seek rail's `Player.SeekRail` and the
 //   slider's own binds) or an isolated bound text channel (the two time labels); and the dock root is a LAYOUT FIREWALL
 //   (`IsolateLayout`), so a title change never re-solves the window.
 //
@@ -16,9 +16,10 @@
 //   `PlayerBarView`; everything below draws that view. This template's own hooks (the hover signal, the captured nodes, the like
 //   pop and the face cross-fade) follow, as they followed the bookkeeping in the single component.
 //
-//   What the template does NOT draw: the seek rail with its chapter decoration, the time labels, the credits line and the device
-//   picker's rows. They are shared with the stage and the on-media strip (or have no key yet) and arrive as builders on the props
-//   until T6b / T7 give them keys.
+//   What the template places but does not draw itself: the seek rail and the time labels (`props.SeekBar` / `props.TimeText` are the
+//   core hosts shared with the stage and the on-media strip; they mount `Player.SeekRail` / `Player.TimeLabel`, drawn by
+//   `ClassicTransport.cs`). The credits line under the title is this template's own (`ClassicPlayerBar.Credits.cs`, over the facts
+//   `props.Credits` states); the device picker's menu is `Player.DevicePicker`.
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;
@@ -136,7 +137,7 @@ internal static partial class ClassicPlayerBar
         metaKids.Add(v.Marquee ? titleEl : Controls.TrimTip(titleEl, props.TitleText(), titleRun) with { Key = titleKey });
         if (v.ShowArtistLine)
             metaKids.Add(v.Marquee
-                ? Marquee.Content(props.ArtistsLineFull, new Marquee.Style
+                ? Marquee.Content(() => new Credits(props, compact: false), new Marquee.Style
                 {
                     Speed = ClassicPlayerBarLayout.MarqueeSpeed, CycleMs = ClassicPlayerBarLayout.MarqueeCycleMs,
                     EndPauseMs = ClassicPlayerBarLayout.MarqueeEndPauseMs, StartDelayMs = ClassicPlayerBarLayout.MarqueeStartDelayMs,
@@ -145,7 +146,7 @@ internal static partial class ClassicPlayerBar
                 : new BoxEl
                 {
                     Key = "np-artists", ClipToBounds = true, MinWidth = 0f,
-                    Children = [props.ArtistsLineCompact()],
+                    Children = [Embed.Comp(() => new Credits(props, compact: true))],
                 });
 
         var metaCol = new BoxEl

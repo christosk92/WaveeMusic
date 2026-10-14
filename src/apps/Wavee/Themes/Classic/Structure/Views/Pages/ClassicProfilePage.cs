@@ -172,7 +172,7 @@ internal static class ClassicProfilePage
         Element sentinel = new BoxEl { Height = 0f, HitTestVisible = false }
             .Sticky(ArtistHeroLayout.CompactIdentityHeight, engaged: p.CompactEdge());
         Element wash = Palette.ArtistBlendWash(p.PaletteUrl, ProfileHeroLayout.WashHeight(in m),
-            ProfileHeroLayout.WashBoundary(in m), disabled: !p.Washes, key: "profile-wash:" + uri,
+            ProfileHeroLayout.WashBoundary(in m), key: "profile-wash:" + uri,
             payloadAccent: p.PayloadAccent);
         // THE MAGAZINE'S CLIP IS THE CONTRACT: the band paints nothing, so no CONTENT may render into its 56 DIP — the
         // magazine is cut at the line, its cut feathered exactly while the clip is engaged. The WASH is deliberately

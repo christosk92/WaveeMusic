@@ -171,7 +171,7 @@ internal sealed class ClassicRecentsRail(IRecentsHost host) : Component
 
     public override Element Render()
     {
-        float slotH = UseMeasuredBounds().Value.H;
+        float slotH = UseMeasuredBounds("recents:rail").Value.H;
         int measured = host.RailMeasuredVersion.Value;
         int epoch = host.ShapeEpoch.Peek();
         var labels = UseMemo(host.RailLabelsFunc, DepKey.From(epoch, measured));

@@ -28,6 +28,7 @@ using Wavee;
 using Wavee.Themes.Classic;
 using Wavee.Theming;
 using Wavee.Theming.Roles;
+using Wavee.Themes.Classic;
 using Xunit;
 using static Wavee.ShellTests.ShellProbe;
 
@@ -291,15 +292,15 @@ public sealed class LiveOptionBehaviourTests(ShellHost host)
 
     static void SetWashes(bool on)
     {
-        Platform.Settings.Set(Platform.Keys.ColorWashesEnabled, on);   // Settings › Appearance › Colour washes (AppearanceToggle)
-        Prefs.Appearance.Bump();
+        // Settings › Appearance › Classic options › Color washes: the generated row's writer, ThemeHost.Apply on Classic's Surfaces option.
+        _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, "structure.surfaces", on ? SurfaceWash.Subtle : SurfaceWash.Off));
     }
 
     [Fact]
     public void Washes_remove_the_artwork_legs_and_bring_them_back_fading()
         => host.Mounted(shell =>
         {
-            bool before = Platform.Settings.Get(Platform.Keys.ColorWashesEnabled);
+            bool before = ClassicStructure.WashesOn(ThemeHost.Values.Structure.Get(ClassicStructure.Surfaces.Key));
             SetWashes(true);
             try
             {
@@ -327,7 +328,7 @@ public sealed class LiveOptionBehaviourTests(ShellHost host)
     public void Washes_fade_the_material_tint_in_place()
         => host.Mounted(shell =>
         {
-            bool before = Platform.Settings.Get(Platform.Keys.ColorWashesEnabled);
+            bool before = ClassicStructure.WashesOn(ThemeHost.Values.Structure.Get(ClassicStructure.Surfaces.Key));
             SetWashes(true);
             try
             {

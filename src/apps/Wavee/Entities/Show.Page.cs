@@ -980,7 +980,7 @@ public readonly partial struct Show
             Style ??= StyleOf(registry);
             _accent = UseContext(Design.AccentCtx.Slot);
             _scrollScope = UseContext(Shell.PageScrollScope);
-            _width = UseMeasuredWidth(4f);
+            _width = UseMeasuredWidth("show:body", 4f);           // keyed (E17c): a remount starts at the remembered width
             Narrow = UseComputed(_narrowOf);
             Toolbar = UseComputed(_toolbarStageOf);
             _tone = UseComputed(_toneOf);

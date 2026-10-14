@@ -153,8 +153,8 @@ public static partial class Diagnostics
     // menu, no drag, no shortcut. The pure half (the text, the inks, the cells) is `LyricsReport` in Diagnostics.cs; the
     // bundle writer is `SaveLyricsBundle` in Diagnostics.Host.cs.
 
-    /// <summary>The inspector's two doors: <see cref="Open"/> (the dialog) and <see cref="Button()"/> (the rail header's
-    /// developer-mode <c>&lt;/&gt;</c> glyph, mounted by <c>Rail.UI.cs</c>).</summary>
+    /// <summary>The inspector's door: <see cref="Open"/> (the dialog). The panel's lyrics header draws the developer-mode <c>&lt;/&gt;</c>
+    /// glyph that opens it (`Panel.LyricsHeader`; <c>RailWiring</c> gates it on <see cref="StoreShot.DeveloperSurfaces"/>).</summary>
     public static class LyricsInspector
     {
         /// <summary>The WinUI ContentDialog maximum — a raw payload wants every DIP of it (ch 22 §3).</summary>
@@ -171,15 +171,6 @@ public static partial class Diagnostics
             d.DefaultButton = ContentDialog.DefaultBtn.Close;
             d.Content = Embed.Comp(() => new LyricsInspectorBody(trackId));
         });
-
-        /// <summary>The rail header's <c>&lt;/&gt;</c> glyph for the playing track. Composes itself away unless
-        /// developer mode is on, and follows a flip live.</summary>
-        // MOUNT POINT (stage B contract)
-        public static Element Button() => Button(static () => CurrentTrackId());
-
-        /// <summary>The same glyph over a caller-chosen track. The id is read at CLICK time through
-        /// <paramref name="currentTrackId"/>, so the glyph never re-renders on a track change.</summary>
-        public static Element Button(Func<string> currentTrackId) => Embed.Comp(() => new LyricsInspectorButton(currentTrackId));
 
         /// <summary>The playing row's diagnostics key, or "" when nothing (or an episode) is playing. A <c>Peek</c>:
         /// called at click time, never in a render.</summary>
@@ -203,24 +194,6 @@ public static partial class Diagnostics
                 LyricsReport.ReferenceKind.None => Loc.Get(Strings.Diagnostics.Inspector.ReferenceNone),
                 _ => "",
             };
-        }
-    }
-
-    /// <summary>The header glyph. Its own component so ONLY it subscribes the settings epoch: a developer-mode flip
-    /// mounts or removes it without re-rendering the rail header. The track getter is a mount seed (a thunk read at
-    /// click time), not changing caller data.</summary>
-    sealed class LyricsInspectorButton(Func<string> currentTrackId) : Component
-    {
-        public override Element Render()
-        {
-            var overlay = UseContext(Overlay.Service);
-            // subscribes to the setting and to presentation mode → a flip of either composes the glyph in/out live
-            if (!StoreShot.DeveloperSurfaces()) return new BoxEl { Visible = false };
-            return Rail.HeaderButton(Icons.Code, Loc.Get(Strings.Player.InspectLyrics), () =>
-            {
-                if (Controls.IsNullOverlay(overlay)) return;
-                LyricsInspector.Open(overlay, currentTrackId());
-            });
         }
     }
 

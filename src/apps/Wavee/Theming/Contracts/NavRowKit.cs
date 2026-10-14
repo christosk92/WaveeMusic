@@ -5,7 +5,8 @@
 // reorder bands. What the structure owns is the LIST: how (layout document x projection) is flattened into rows and which
 // section holds a route (the planner, X26), which realized rows a republish must re-skin (the diff), how tall a row is
 // before anything measures (the analytic extent), that a re-projection arriving mid-drag is parked until the session ends
-// (the freeze), and what one row looks like (the slot). The structure hands all of it to the pane as ONE kit when the
+// (the freeze), what one row looks like (the slot) and, since P3, the boxes the pane is built in (the layout host's box, the
+// pane's frame with its context-menu shield, the list's inset box). The structure hands all of it to the pane as ONE kit when the
 // pane mounts (`Shell.NavPane` -> `NavPaneProps.Mount(kit)`), so core never names a structure and a second theme plans and
 // draws another list over the same pane.
 //
@@ -95,4 +96,18 @@ public abstract class NavRowKit
     /// <summary>The bound slot of one plan row: a component the list builds once per slot and recycles by writing the scope's
     /// index. It reads the plan and the per-row epoch through <paramref name="host"/>.</summary>
     internal abstract Element Slot(INavRowHost host, RowScope scope);
+
+    /// <summary>The layout host's box around the mounted layout mode (P3). <paramref name="mode"/> arrives keyed by the core
+    /// (<c>sidebar.classic</c> / <c>sidebar.library</c>: a layout switch is a remount); the structure draws the box and the switch's
+    /// motion. Called from the host's render.</summary>
+    public abstract Element ModeHost(Element mode);
+
+    /// <summary>The pane's frame (P3): the layer around <see cref="NavPaneFrameArgs.Layer"/>, the root, and, when there is a menu
+    /// overlay, the context-menu shell with its CHILDLESS shield beneath the content (content wins wherever it hits, the shield
+    /// takes the rest, and a cascade from a childless node reaches nothing). Called from the pane's render.</summary>
+    public abstract Element Frame(in NavPaneFrameArgs args);
+
+    /// <summary>The box around the virtualized list: the pane's one inset (<see cref="ListInset"/>) and nowhere else (P3). Built once
+    /// per pane: <paramref name="list"/> is mount-stable.</summary>
+    public abstract Element ListBox(Element list);
 }

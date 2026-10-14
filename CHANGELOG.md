@@ -17,6 +17,10 @@ versions separately under `v*` and is not tracked in this file.)
   be spread over the Lists, Sidebar and Theme sections, followed by App mode, Zoom and Marquee text. The daylist clock
   moved to its own Home section. Every setting keeps its value; nothing was removed. The command palette (Ctrl+K) lists
   a theme's options that ask for a command, and the setup wizard has a Theme page ready (not shown yet).
+- **Color washes are now Wavee Classic's "Color washes" option.** Settings > Appearance > Wavee Classic options > Surfaces
+  shows the same on/off switch as before (generated with the theme's other options, without the old brush icon), and your
+  choice carries over. With the washes off, the Recents page's accent colour now still follows the artwork, like every other
+  page's.
 - **Lyrics blur: the Auto choice is gone; the intensity slider is the one setting (0 turns it off).** Settings >
   Appearance > Lyrics no longer has an "Auto" link next to the slider. The blur is the 0-100 slider, 100 by default; if
   you had Auto, your lyrics keep the full blur (100) until you move the slider.
@@ -76,6 +80,10 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **Pages you return to no longer re-flow on their first frame.** When a page is opened again after it left the page
+  cache, its width-dependent parts (the artist page's top and biography bands, Home's daylist, facet row and recents grid,
+  Browse and Search grids, the concert pages, the track list's command bar and similar) now appear at their final layout
+  at once, instead of showing a default-width layout for one frame and then snapping to the real one.
 - **Album covers, avatars and headers load sharp.** Images that Spotify describes only by their maximum width used to
   load the smallest (64 px) version.
 - **The now-playing equalizer keeps moving after you navigate back to a page,** and a paused one no longer restarts

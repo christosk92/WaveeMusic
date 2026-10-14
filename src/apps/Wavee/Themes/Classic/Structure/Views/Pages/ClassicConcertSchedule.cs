@@ -70,8 +70,8 @@ internal static class ClassicConcertSchedule
         Func<Element> content = () => props.Empty
             ? Controls.Vacancy(Controls.VacancyVoice.Empty, title: Loc.Get(Strings.Concerts.Schedule.NoUpcoming),
                 subtitle: Loc.Get(Strings.Concerts.Schedule.NoUpcomingSubtitle))
-            : Responsive.Of(build, fallback: Rules.ScheduleFallbackWidth);
-        Element region = Cells.Region(props.Pending, props.Failed, content, () => Responsive.Of(buildSeed, fallback: Rules.ScheduleFallbackWidth),
+            : Responsive.Of("concert-schedule", build, fallback: Rules.ScheduleFallbackWidth);
+        Element region = Cells.Region(props.Pending, props.Failed, content, () => Responsive.Of("concert-schedule", buildSeed, fallback: Rules.ScheduleFallbackWidth),
             () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: props.Retry), "artist-schedule:" + props.RouteKey);
         Element scroll = Cells.SubPageScroll(props.ScrollScope + "artist-schedule:" + props.RouteKey, region) with
         {

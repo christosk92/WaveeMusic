@@ -112,7 +112,7 @@ internal static class ClassicHomeDaylistClock
                     },
                 ],
             },
-            Responsive.Of(w => Timeline(w, segs, current, face), fallback: DaylistForm.TextMin),
+            Responsive.Of("home:daylist:timeline", w => Timeline(w, segs, current, face), fallback: DaylistForm.TextMin),
         ],
     };
 

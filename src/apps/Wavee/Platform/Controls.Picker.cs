@@ -340,7 +340,7 @@ public static partial class Controls
         public override Element Render()
         {
             var p = UsePropsOrDefault<EqCurveProps>();
-            var measuredW = UseMeasuredWidth(1f);
+            var measuredW = UseMeasuredWidth("eq-curve", 1f);
             _props = p;
             _width = measuredW;
             if (p is null) return new BoxEl { AlignSelf = FlexAlign.Stretch, MinWidth = 0f, MinHeight = 250f };

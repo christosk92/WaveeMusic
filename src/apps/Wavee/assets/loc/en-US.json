@@ -1311,6 +1311,8 @@
       "resetConfirmTitle": "Reset options?",
       "resetConfirmBody": "Every option of this theme goes back to its default. This can't be undone.",
       "resetAction": "Reset",
+      "surfacesOff": "Off",
+      "surfacesSubtle": "Subtle",
       "group": {
         "sidebar": "Sidebar",
         "trackLists": "Track lists",

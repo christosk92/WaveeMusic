@@ -33,13 +33,14 @@ the narrow overlay drawer (`inDrawer: true`). Both mount a `PaneHost`.
 PaneHost(inDrawer)                                  Sidebar.UI.cs
 └── ClassicMode(inDrawer) | LibraryMode(inDrawer)   Sidebar.UI.cs, Sidebar.UI.Library.cs
     ├── Shell.NavLibraryHead ─ ClassicLibraryHead ─ Chips, Toolbar, SearchBox   (Library only; Themes/Classic/Structure/Views/Nav/ClassicNavLibraryHead.cs, over LibrarySession in Sidebar.UI.Library.cs)
-    └── PaneView(config, inDrawer, kit)             Sidebar.UI.cs (+ .Drop, .Flyout, .Menus, .Host, .Rows)
+    └── PaneView(config, inDrawer, kit)             Sidebar.UI.cs (+ .Drop, .Flyout, .Menus, .Host, .Rows); [CoreHost]
+        ├── the frame: layer, root, menu shell + childless shield, plan-pad inset   Views/Nav/ClassicNavFrame.cs (via NavRowKit.Frame / ListBox; PaneHost's box: ModeHost)
         ├── ClassicNavRow (one per visible row)     Themes/Classic/Structure/Views/Nav/ClassicNavRow.cs (via NavRowKit.Slot)
         │   └── ClassicNavHead (section header, "+", count), ClassicNavFilterBox   Views/Nav/ClassicNavHead.cs, ClassicNavFilter.cs
         ├── Shell.NavEmpty (the empty body)         Views/Nav/ClassicNavFilter.cs (ClassicNavEmpty)
         ├── Shell.NavEdit (Edit mode: the Outline and the edit bar)   Themes/Classic/Structure/Views/Nav/ClassicNavEdit.cs (ClassicEditPane; host: INavEditHost in Sidebar.UI.Host.cs)
         ├── PaneView.OpenSectionFlyout/OpenFolderFlyout  Sidebar.UI.Flyout.cs (opens the collapsed rail's flyouts; panels: Classic's ClassicSectionFlyout / ClassicFolderFlyout, Themes/Classic/Structure/Views/Nav/ClassicNavFlyouts.cs)
-        ├── DragPeekWatcher                         Sidebar.UI.cs
+        ├── DragPeekWatcher                         Sidebar.UI.cs (Sidebar.DragPeekWatcher, beside the pane; the frame places it)
         └── SidebarMenus                            Sidebar.UI.Menus.cs (pane right-click / header ⋯ / row menus)
 ```
 

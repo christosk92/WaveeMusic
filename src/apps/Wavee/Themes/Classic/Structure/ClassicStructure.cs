@@ -18,7 +18,7 @@
 // T1b: the options Classic will own (plan 6.1) that are still TODAY's switches are bound to their legacy keys through `SettingsDoc`
 // rows. `LegacyRows` lists them in their FINAL grouping so Settings › Appearance shows Classic's section once, in its
 // final shape; each M-PR deletes its rows from the list and declares the option in `Options` (the generated row takes the
-// same place in the same group). M4 declared `hideTrackArt` here; M3's `density` is the style's.
+// same place in the same group). M4 declared `hideTrackArt` here and M6 `Surfaces` (the colour washes); M3's `density` is the style's.
 
 using FluentGpu.Theming;
 using Wavee.Themes.Common;
@@ -26,6 +26,15 @@ using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
+
+/// <summary>The levels of Classic's Surfaces option. The values are what is stored (appended members never re-mean a stored value).</summary>
+public enum SurfaceWash
+{
+    /// <summary>No colour washes: the neutral ground.</summary>
+    Off = 0,
+    /// <summary>Today's washes.</summary>
+    Subtle = 1,
+}
 
 /// <summary>The structure of Wavee Classic.</summary>
 public sealed class ClassicStructure : IStructureLayer
@@ -73,6 +82,12 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.ShellNavEdit, ClassicNavEdit.Template, "classic.shell.nav-edit");
         // T6a: the player bar (the podcast transport rides with it).
         views.Add(ViewKeys.PlayerBar, ClassicPlayerBar.Template, "classic.player.bar");
+        // Leftovers P3: the transport pieces the bar, the stage's transport card and the on-media strip share (`Views\Player\ClassicTransport.cs`).
+        views.Add(ViewKeys.SeekRail, ClassicTransport.SeekRail, "classic.player.seek-rail");
+        views.Add(ViewKeys.SeekChapters, ClassicTransport.SeekChapters, "classic.player.seek-chapters");
+        views.Add(ViewKeys.ChapterTip, ClassicTransport.ChapterTip, "classic.player.chapter-tip");
+        views.Add(ViewKeys.SeekReadout, ClassicTransport.SeekReadout, "classic.player.seek-readout");
+        views.Add(ViewKeys.TimeLabel, ClassicTransport.TimeLabel, "classic.player.time-label");
         // T8a: the track table's rows (the Modern and Classic bound grids and skins; the header, chrome and placeholder are T8b's).
         views.AddStyle(StyleKeys.TrackTable, ClassicTrackTable.Style);
         // T8c: the other list surfaces: the eager track row (grid, title run, hover container), the podcast episode row (content, seed,
@@ -90,6 +105,11 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.DeckStyleFlyout, ClassicDeckFlyout.Template, "classic.player.deck-style-flyout");
         views.Add(ViewKeys.DevicePicker, ClassicDevicePicker.Template, "classic.player.device-picker");
         views.Add(ViewKeys.OnMediaTransport, ClassicOnMedia.Template, "classic.player.on-media-transport");
+        // P3: the panel's lyrics header (with the AI sparkle and the developer inspector), the "Next up" rows and the lyrics peek; their facts,
+        // verbs, the rows' data and the peek's clock stay core (`RailWiring`, `AiLyrics.HeaderFacts`, `Rail.NextUpRows`, `Lyrics.PeekReel`).
+        views.Add(ViewKeys.PanelLyricsHeader, ClassicLyricsHeader.Template, "classic.panel.lyrics-header");
+        views.Add(ViewKeys.PanelNextUp, ClassicNextUp.Template, "classic.panel.next-up");
+        views.Add(ViewKeys.LyricsPeek, ClassicLyricsPeek.Template, "classic.player.lyrics-peek");
         // T7a1: the fullscreen stage's frame: the root (layer stack, chrome placement, hairline), the top bar, the transport card, the
         // options popover, the visualizer gallery and the lyric caption. The layouts, hero and artist pane (T7a2) have keys (the lyrics pane
         // is T7b's and the queue pane T7d's, below), and so do the video surfaces (T7c, after the queue's).
@@ -108,6 +128,8 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.StageNowPlayingCard, ClassicStageNowPlayingCard.Template, "classic.stage.now-playing-card");
         views.Add(ViewKeys.StageIdentity, ClassicStageIdentity.Template, "classic.stage.identity");
         views.Add(ViewKeys.StageArtistPane, ClassicStageArtistPane.Template, "classic.stage.artist-pane");
+        // P3: the stage's pane region (its rect, move, clip and the frame each pane enters in); the KeepAlive and which pane is shown stay core (`Stage.PaneHost`).
+        views.Add(ViewKeys.StagePane, ClassicStagePane.Template, "classic.stage.pane");
         // T7b: the lyrics reading surface (the layer stack, the overlays, the stage's reading column) and its lines style (the state line, the
         // loading bars, the unsynced block, the synced list and its rows, the podcast peek). The document, the clock, the follow, the cascade,
         // the depth-of-field ramp and the word wipe stay core (`Lyrics.ViewCore`).
@@ -272,8 +294,29 @@ public sealed class ClassicStructure : IStructureLayer
     /// <summary>The layer-qualified id Settings and the palette know the option by (<c>structure.hideTrackArt</c>).</summary>
     public static string HideTrackArtQualifiedId => "structure." + HideTrackArt.Id;
 
+    /// <summary>Surfaces: how much the artwork tints the shell and the pages (the colour washes: chrome tint, page ground, hero
+    /// wash). Off paints the neutral ground; Subtle is today's wash. Stored as the enum's int (`theme.classic.structure.surfaces`);
+    /// the option replaced the `appearance.colorWashes.enabled` switch (<c>ThemeBootstrap</c>'s "ColorWashes" step copies it).
+    /// Drawn as a switch (Subtle is "on"); a Rich choice joins in CT9. Live: the wash fades exactly as the switch did. It is a
+    /// STRUCTURE option because the structure's material views and cover leaves read it (WVTH005: an option is read only by its
+    /// own layer; the style's roles do not change with it).</summary>
+    public static SelectOption<SurfaceWash> Surfaces { get; } = new(
+        Id: "surfaces", TitleKey: Strings.Settings.Appearance.ColorWashes, DescriptionKey: Strings.Settings.Appearance.ColorWashesSub,
+        Group: Strings.Settings.ThemeOptions.Group.Surfaces, Default: SurfaceWash.Subtle,
+        Choices:
+        [
+            new SelectChoice<SurfaceWash>(SurfaceWash.Off, Strings.Settings.ThemeOptions.SurfacesOff),
+            new SelectChoice<SurfaceWash>(SurfaceWash.Subtle, Strings.Settings.ThemeOptions.SurfacesSubtle),
+        ],
+        Picker: PickerStyle.Toggle);
+
+    /// <summary>Colour washes are drawn (anything but Off): what the material views and cover leaves read.</summary>
+    public static bool WashesOn(SurfaceWash surfaces) => surfaces != SurfaceWash.Off;
+
+    private static readonly ThemeOptionSchema s_options = ThemeOptionSchema.Of(HideTrackArt, Surfaces);
+
     /// <inheritdoc />
-    public ThemeOptionSchema Options { get; } = ThemeOptionSchema.Of(HideTrackArt);
+    public ThemeOptionSchema Options => s_options;
 
     /// <inheritdoc />
     public ThemePolicies Policies(OptionValues structure, in StyleMetrics metrics)
@@ -285,8 +328,9 @@ public sealed class ClassicStructure : IStructureLayer
     /// <inheritdoc />
     public RoleSet RequiredRoles => RoleSet.None;
 
-    /// <summary>Each entry leaves with the M-PR that migrates its switch: sidebar M7a, row style M2, washes M6, page layout and rails M8.
-    /// (Page motion, M1, was deleted: it has no row; row density, M3, is the style's `density` option and hide art, M4, the structure's `hideTrackArt`.)</summary>
+    /// <summary>Each entry leaves with the M-PR that migrates its switch: sidebar M7a, row style M2, page layout and rails M8. (Page motion, M1,
+    /// was deleted: it has no row. Washes, M6, became the structure's `surfaces` option; row density, M3, the style's `density` option and hide art, M4,
+    /// the structure's `hideTrackArt`.)</summary>
     public IReadOnlyList<LegacyOptionRow> LegacyRows { get; } =
     [
         new("sidebarDesign", Strings.Settings.ThemeOptions.Group.Sidebar),
@@ -298,6 +342,5 @@ public sealed class ClassicStructure : IStructureLayer
         new("pageLayout", Strings.Settings.ThemeOptions.Group.TrackPages),
         new("railUniform", Strings.Settings.ThemeOptions.Group.TrackPages),
         new("railReset", Strings.Settings.ThemeOptions.Group.TrackPages),
-        new("colorWashes", Strings.Settings.ThemeOptions.Group.Surfaces),
     ];
 }

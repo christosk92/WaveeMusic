@@ -152,9 +152,9 @@ internal static class ClassicBrowseDirectory
         {
             BrowseGroup.Top => WrapRow(items, live, word: true),
             BrowseGroup.ForYou => WrapRow(items, live, word: false),
-            BrowseGroup.Genres => Responsive.Of(state, static (st, w) => LinkGridOf(st, w), fallback: ClassicBrowseRules.DirectoryFallbackWidth),
-            BrowseGroup.MoodActivity => Responsive.Of(state, static (st, w) => BarGrid(st, w), fallback: ClassicBrowseRules.DirectoryFallbackWidth),
-            _ => Responsive.Of(state, static (st, w) => MoreGrid(st, w), fallback: ClassicBrowseRules.DirectoryFallbackWidth),
+            BrowseGroup.Genres => Responsive.Of("browse:genres", state, static (st, w) => LinkGridOf(st, w), fallback: ClassicBrowseRules.DirectoryFallbackWidth),
+            BrowseGroup.MoodActivity => Responsive.Of("browse:moods", state, static (st, w) => BarGrid(st, w), fallback: ClassicBrowseRules.DirectoryFallbackWidth),
+            _ => Responsive.Of("browse:more", state, static (st, w) => MoreGrid(st, w), fallback: ClassicBrowseRules.DirectoryFallbackWidth),
         };
         return new BoxEl
         {

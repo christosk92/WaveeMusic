@@ -14,7 +14,7 @@
 //   · Value rules (BP 1.6): an unknown or out-of-range legacy value becomes the option default (the step simply does not
 //     copy it); a renamed option starts at its default; a removed choice becomes the default.
 //
-// T1 shipped the machinery with no step; the M-PRs add theirs to `Steps` (M3 row density, M4 hide track art). It runs from `Platform.Boot` right after `ZoomAutoPolicy.MigrateMode`
+// T1 shipped the machinery; each M-PR registers its step in `Steps` (M3 row density, M4 hide track art, M6 colour washes). It runs from `Platform.Boot` right after `ZoomAutoPolicy.MigrateMode`
 // and before anything reads a presentation setting. WVTH010 keeps legacy key names and deleted member names inside this file.
 
 namespace Wavee.Theming;
@@ -28,17 +28,27 @@ public static class ThemeBootstrap
     /// <summary>The prefix of the done markers: <c>theme.bootstrap.done.&lt;Name&gt;</c>.</summary>
     public const string DonePrefix = "theme.bootstrap.done.";
 
-    // ── the retired switches' keys (WVTH010 lists the names; only this file may spell them) and the options that replaced them ──────────
+    // -- the retired switches (WVTH010 lists these names; only this file may spell them) and the options that replaced them
+
+    /// <summary>M6: the colour-washes switch (default on). Its option is Classic's Surfaces select (`theme.classic.structure.surfaces`,
+    /// the enum's int: Off 0, Subtle 1).</summary>
+    private static readonly SettingKey<bool> LegacyColorWashes = new("appearance.colorWashes.enabled", true);
+    private static readonly SettingKey<int> SurfacesKey = new("theme.classic.structure.surfaces", 1);
 
     private static readonly SettingKey<int> LegacyRowDensity = new("detail.rowdensity", 1);
     private static readonly SettingKey<bool> LegacyHideTrackArtwork = new("appearance.trackArtwork.hidden", false);
     private static readonly SettingKey<int> DensityOptionKey = new("theme.classic.style.density", 1);
     private static readonly SettingKey<bool> HideArtOptionKey = new("theme.classic.structure.hideTrackArt", false);
 
-    /// <summary>The steps shipped in this build; each migration PR appends its own.</summary>
+    /// <summary>The steps shipped in this build: each migration PR appends its own.</summary>
     public static IReadOnlyList<ThemeBootstrapStep> Steps { get; } =
     [
-        // M3: the row density rung (0 Compact · 1 Default · 2 Cozy · 3 Comfortable) is Classic's `style.density`, the same numbers. A hand-edited or
+        // M6 washes: false -> Off (0), true -> Subtle (1, today's wash). A switch the user never touched is absent, so it stays at the
+        // option's default (Subtle).
+        new ThemeBootstrapStep("ColorWashes",
+            ReadsLegacyKeys: ["appearance.colorWashes.enabled"], WritesKeys: ["theme.classic.structure.surfaces"],
+            Run: static s => Copy(s, LegacyColorWashes, SurfacesKey, static on => (true, on ? 1 : 0))),
+        // M3: the row density rung (0 Compact, 1 Default, 2 Cozy, 3 Comfortable) is Classic's `style.density`, the same numbers. A hand-edited or
         // downgraded value outside 0..3 is not copied (the option default applies; the old reader answered Compact).
         new ThemeBootstrapStep("TrackRowDensity",
             ReadsLegacyKeys: ["detail.rowdensity"], WritesKeys: ["theme.classic.style.density"],

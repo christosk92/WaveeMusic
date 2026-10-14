@@ -145,8 +145,6 @@ public static partial class Platform
         /// <summary>TRUE (the default) scrolls overflowing text; FALSE truncates. Renamed from the negative DisableMarquee
         /// (no migration — pre-1.0, cosmetic).</summary>
         public static readonly SettingKey<bool> MarqueeEnabled = new("appearance.marquee.enabled", true);
-        /// <summary>FALSE keeps the neutral surface: every tone plane / wash / tint binder paints nothing.</summary>
-        public static readonly SettingKey<bool> ColorWashesEnabled = new("appearance.colorWashes.enabled", true);
         /// <summary>App-wide UI zoom (effective scale = OS DPI × zoom). Seeded into the window BEFORE it comes up and
         /// SNAPPED on that read: a hand-edited value must never seed a non-ladder scale, because off-rung zooms alias the
         /// glyph-atlas raster buckets — which is the whole reason the ladder is discrete.</summary>
@@ -1192,7 +1190,7 @@ public static partial class Platform
         if (!Args.RelaunchBroker && !Args.Headless && !Args.Fake) HostApplyFactoryReset();
         HostOpenSettings();
         ZoomAutoPolicy.MigrateMode(Settings);
-        Wavee.Theming.ThemeBootstrap.Run(Settings);   // themes plan 7.1: named, copy-only, order-independent steps (M3 density, M4 hide track art); before anything reads a presentation setting
+        Wavee.Theming.ThemeBootstrap.Run(Settings);   // themes plan 7.1: named, copy-only, order-independent steps (M3 density, M4 hide track art, M6 colour washes); before anything reads a presentation setting
         Developer.Load(Settings);
         ScrollProbePrefs.Load(Settings);   // the scroll probe level + feel profile, before the first window
         string osCulture = "";

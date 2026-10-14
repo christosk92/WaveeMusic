@@ -50,7 +50,7 @@ internal static class ClassicHomeRecents
     /// <summary>The whole grid: a <see cref="Responsive"/> box that rebuilds the grid at its measured width. The ONE builder both the
     /// template and the skeleton call.</summary>
     static Element Tree(HomeRecentsProps p)
-        => Responsive.Of(w => Grid(w, p), fallback: HomeModuleLayout.FallbackWidth);
+        => Responsive.Of("home:recents", w => Grid(w, p), fallback: HomeModuleLayout.FallbackWidth);
 
     /// <summary>The grid at one measured width: 2·cols − 1 played tiles + the history tile, two flush rows.</summary>
     static Element Grid(float w, HomeRecentsProps p)

@@ -54,6 +54,10 @@
 // follows (the realized node, the slot signal, the fit and the log lines), the join fold (`JoinWatch`), the geometry binds, the PiP gestures
 // (they run on `PipGesture` and the panel policy's bounds), the pop-out's caption regions and move-loop hold, the fullscreen mode, focus
 // scope and Escape / F keys, and the placement rows. A theme draws around and over the hole and never between it and its ancestors.
+//
+// EVERY HOST HERE IS A [CoreHost] (P3): the boxes on the hole's ancestor chain (the video layer, the presenter's column, the area's stack, the
+// stage box), the fullscreen focus-scope root and the empty / zero-size placeholders are built in ONE place, `HoleBoxes` — core on purpose, so
+// the hole rule cannot be broken by a theme, and carrying no look (transparent, 0 / Grow, no motion).
 
 using FluentGpu.Controls;
 using FluentGpu.Controls.Media;
@@ -137,17 +141,13 @@ public static partial class Video
     {
         PopOut.ContentFactory ??= static () => new PopOutRoot();
         PopOut.TitleFactory = static () => CurrentTitle() is { Length: > 0 } title ? title : Loc.Get(Strings.Player.NowPlaying);
-        return new BoxEl
-        {
-            Grow = 1f, MinHeight = 0f, ZStack = true, HitTestPassThrough = true,
-            Children =
+        return HoleBoxes.Layer(
             [
                 Embed.Comp(static () => new PipSurface()),
                 Embed.Comp(static () => new PopOut { Settings = Platform.Settings }),
                 Embed.Comp(static () => new HostObserver()),
                 Embed.Comp(static () => new JoinWatch()),
-            ],
-        };
+            ]);
     }
 
     // MOUNT POINT (stage B contract)
@@ -317,6 +317,7 @@ public static partial class Video
     /// a `DepKey.Empty` timeout of its own, so the first join earned the 400 ms and every later one found it already
     /// spent and showed the ring instantly. The clock is the host timer's own (`TimerHandle.NowMs`) so the budget and
     /// the wake that samples it can never disagree — and the headless harness's virtual clock drives both.</para></summary>
+    [CoreHost]
     sealed class JoinWatch : Component
     {
         /// <summary>The grace timer's wake. Read by the fold, written by nothing else: the budget is SPENT, not polled.</summary>
@@ -375,7 +376,7 @@ public static partial class Video
                     $"gen={binding.Generation} key={Show(key)}");
             });
 
-            return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
+            return HoleBoxes.Machinery();
         }
     }
 
@@ -388,6 +389,7 @@ public static partial class Video
 
     /// <summary>One presenter of the bound player. Props freeze at mount: the host bundle is constant per surface.
     /// Host-fullscreen is a live signal so Docked↔PiP↔FS never remounts the hole. Engine transport is always off.</summary>
+    [CoreHost]
     sealed class PlayerStage(StageHost host, IReadSignal<bool> hostFullscreen, Signal<bool> chromeVisible, PlayerChromeFeed feed) : Component
     {
         long _loggedGen = -1;
@@ -438,7 +440,7 @@ public static partial class Video
             // No `hostFullscreen.Value` read here: the element reads HostFullscreen itself (MediaPlayerElement), so a
             // fullscreen edge re-renders only the element that cares, not this stage and its transport strip too.
             var binding = Playback.Video.Player.Value;
-            if (binding.Player is not { } player) return new BoxEl { Grow = 1f, MinHeight = 0f };
+            if (binding.Player is not { } player) return HoleBoxes.Vacancy();
             var cursor = StageInput.HidesCursorWindowed(host.Identity) ? CursorAutoHidePolicy.Always : CursorAutoHidePolicy.FullscreenOnly;
             if (_loggedGen != binding.Generation)
             {
@@ -448,12 +450,7 @@ public static partial class Video
                     + " engineTransport=" + MainWindowHole.EngineTransportEnabled
                     + " key=player:" + binding.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture));
             }
-            return new BoxEl
-            {
-                Grow = 1f, MinHeight = 0f, ZStack = true, ClipToBounds = true, Fill = ColorF.Transparent,
-                OnRealized = h => _box = h,
-                OnBoundsChanged = _ => TryLogMount(),
-                Children =
+            return HoleBoxes.Stage(h => _box = h, _ => TryLogMount(),
                 [
                     Embed.Comp(() => new MediaPlayerElement
                     {
@@ -483,8 +480,7 @@ public static partial class Video
                         Key = "player:" + binding.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     },
                     OnMedia.Transport(chromeVisible, feed),
-                ],
-            };
+                ]);
         }
     }
 
@@ -506,6 +502,73 @@ public static partial class Video
     static readonly Func<string> s_currentTitle = static () => CurrentTitle();
 
     static string GenKey(long generation) => "gen:" + generation.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>THE HOLE'S STRUCTURAL BOXES, the one place this file builds an element (P3), so every host below is a <c>[CoreHost]</c> that WVTH008
+    /// guards. They stay core on purpose: they are the picture's ANCESTORS (the shell's video layer, the presenter's column, the video area's
+    /// stack, the stage box that holds the <c>MediaPlayerElement</c>) or the fullscreen mode's focus-scope root, and the hole rule (no layout
+    /// transition, opacity, offscreen effect or scale Enter/Exit on any ancestor of the hole) binds every theme: keeping the chain core means
+    /// no theme can put an effect between the picture and the window. They carry no look: no colour but transparent (an erasable, hit-testable
+    /// plate), no size but 0 and Grow, no motion. Everything a theme draws around and over the hole is a key (`Video.Pip`, `Video.Docked`,
+    /// `Video.PopOut`, `Video.Fullscreen`, `Video.JoinPoster`) placed INSIDE these boxes.</summary>
+    static class HoleBoxes
+    {
+        /// <summary>The shell's top-Z video layer (<see cref="PipLayer"/>): a pass-through ZStack where only the card takes input.</summary>
+        public static Element Layer(Element[] children) => new BoxEl
+        {
+            Grow = 1f, MinHeight = 0f, ZStack = true, HitTestPassThrough = true, Children = children,
+        };
+
+        /// <summary>A surface whose mount decision is false (the docked card yielded, the presenter with nothing to present).</summary>
+        public static Element Unmounted() => new BoxEl();
+
+        /// <summary>Zero-size machinery (the join fold).</summary>
+        public static Element Machinery() => new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
+
+        /// <summary>The player stage's place while no player is bound (the poster stacked over it shows).</summary>
+        public static Element Vacancy() => new BoxEl { Grow = 1f, MinHeight = 0f };
+
+        /// <summary>The player stage: the <c>MediaPlayerElement</c> and the on-media transport, clipped, over a transparent plate (the hole erases
+        /// it). <paramref name="realized"/> and <paramref name="bounds"/> feed the mount log.</summary>
+        public static Element Stage(Action<NodeHandle> realized, Action<RectF> bounds, Element[] children) => new BoxEl
+        {
+            Grow = 1f, MinHeight = 0f, ZStack = true, ClipToBounds = true, Fill = ColorF.Transparent,
+            OnRealized = realized,
+            OnBoundsChanged = bounds,
+            Children = children,
+        };
+
+        /// <summary>The main window's video area: the stage over the poster, always the same ZStack shape (see <see cref="MainVideoArea"/>).</summary>
+        public static Element Area(Element[] children) => new BoxEl
+        {
+            Grow = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, Fill = ColorF.Transparent, Children = children,
+        };
+
+        /// <summary>The stay-mounted presenter's pass-through column around the theme's <c>Video.Pip</c> box (which carries the geometry binds).</summary>
+        public static Element Presenter(Element pip) => new BoxEl
+        {
+            Grow = 1f, Direction = 1, HitTestPassThrough = true, Children = [pip],
+        };
+
+        /// <summary>The fullscreen layer's pass-through column while fullscreen resolves.</summary>
+        public static Element FullscreenLayer(Element surface) => new BoxEl
+        {
+            Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
+            HitTestPassThrough = true,
+            Children = [surface],
+        };
+
+        /// <summary>The fullscreen mode's root: the focus scope's node, with the Escape / F exit and the "never leave focus null" rule wired on it.</summary>
+        public static Element FullscreenRoot(Action<NodeHandle> realized, Action<KeyEventArgs> keyDown, Action<bool> focusChanged, Element chrome) => new BoxEl
+        {
+            Grow = 1f, Direction = 1, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
+            HitTestPassThrough = true,
+            Focusable = true,
+            OnRealized = realized,
+            OnKeyDown = keyDown,
+            OnFocusChanged = focusChanged,
+            Children = [chrome],
+        };
+    }
 
     /// <summary>F243: a minimum spacing for a log line that rides a GEOMETRY signal (the docked slot). A window or splitter
     /// resize writes it per frame; the line is for the settled value, not the sweep. A line that passes carries how many
@@ -548,6 +611,7 @@ public static partial class Video
     /// <summary>The docked music-video surface: video that simply LIVES in the app at zero commitment. Two faces, one
     /// card — the rail's Cap (height follows the content's own aspect, splitter-overridable) and the watch page's
     /// PageStage (the page owns the envelope). NO transition, NO shadow, NO corners of its own.</summary>
+    [CoreHost]
     sealed class DockedSurface(DockedFace face, string? ownerStagePlayable) : Component
     {
         /// <summary>F243: the docked slot lines are at most one per this many ms, the settled rect always written last (see
@@ -643,7 +707,7 @@ public static partial class Video
             // The slot log's trailing edge: re-armed by every held line, so it fires GeometryLogGapMs after the sweep stops.
             _slotFlush = UseTimeout(FlushSlotLog, GeometryLogGapMs);
 
-            if (!mount) return new BoxEl();
+            if (!mount) return HoleBoxes.Unmounted();
 
             // The card is the theme's (`Video.Docked`): a hollow reservation the stay-mounted presenter follows, with the Space key.
             _onRealized ??= h => { _slot = h; s_dockedReservation = h; };
@@ -719,6 +783,7 @@ public static partial class Video
     /// <para>The wrapper's SHAPE never changes: always a ZStack of [stage?, poster], the poster KEYED and merely collapsed
     /// (<c>Visible</c> false, which also takes it out of hit-test and paint) once the first frame is up. Swapping
     /// between a ZStack and a bare box at first frame re-laid the stage out on the very frame the hole went live.</para></summary>
+    [CoreHost]
     sealed class MainVideoArea : Component
     {
         public override Element Render()
@@ -737,7 +802,7 @@ public static partial class Video
                     poster,
                 }
                 : new Element[] { poster };
-            return new BoxEl { Grow = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, Fill = ColorF.Transparent, Children = kids };
+            return HoleBoxes.Area(kids);
         }
     }
 
@@ -745,6 +810,7 @@ public static partial class Video
     /// MediaPlayerElement. Geometry lives in bound <c>Transform</c>/<c>Width</c>/<c>Height</c> thunks. The box those binds are put on
     /// and the chrome over the picture are the theme's (<c>Video.Pip</c>); this component keeps the binds, the picture's mount and the
     /// mini player's gestures (<see cref="IVideoPipGestures"/>).</summary>
+    [CoreHost]
     sealed class PipSurface : Component, IVideoPipGestures
     {
         readonly Signal<float> _x = new(0f), _y = new(0f);
@@ -822,7 +888,7 @@ public static partial class Video
                 _h.Value = Pip.FitHeight(w, ratio, vp.Value.Height, ShellPolicy.Tracked.Panel.Pip);
             });
 
-            if (!mounted) return new BoxEl();
+            if (!mounted) return HoleBoxes.Unmounted();
 
             if (!_widthBind.IsBound)
             {
@@ -832,11 +898,7 @@ public static partial class Video
             }
 
             // The box, its frame and the chrome over the picture are the theme's (`Video.Pip`); the binds are the engine's geometry.
-            return new BoxEl
-            {
-                Grow = 1f, Direction = 1, HitTestPassThrough = true,
-                Children =
-                [
+            return HoleBoxes.Presenter(
                     ViewSlots.View(ViewKeys.VideoPip, new VideoPipProps
                     {
                         Placement = resolved,
@@ -851,9 +913,7 @@ public static partial class Video
                         ToFullscreen = s_toFullscreen,
                         TurnOffDocked = s_turnOffDocked,
                         ClosePip = s_closePip,
-                    }),
-                ],
-            };
+                    }));
         }
 
         /// <summary>A BOUND Visible, so covering or releasing the picture re-renders and remounts nothing: the subtree goes inactive, the
@@ -958,6 +1018,7 @@ public static partial class Video
     /// facts): the same reason, so without them `Video.PopOut`, `Video.JoinPoster` and the on-media strip would resolve to nothing in
     /// this window. A theme switch re-renders this root through the epoch `Wrap` reads, like the main window's. The child MUST be a
     /// component (the overlay host mounts its child once).</summary>
+    [CoreHost]
     sealed class PopOutRoot : Component
     {
         public override Element Render() => Theming.ThemeRoot.Wrap(static () =>
@@ -967,6 +1028,7 @@ public static partial class Video
     /// <summary>The pop-out's content: sized to THIS window's viewport, ALWAYS opaque (the hole erases the fill over the
     /// video rect; anything unpainted shows the desktop), the shared stage when a player exists and the POSTER otherwise
     /// (0.2.9 left a bare letterbox rect here — W14b, a deliberate divergence).</summary>
+    [CoreHost]
     sealed class PopOutContent : Component
     {
         // ── the title band is an OS caption region ──────────────────────────────────────────────────────────────────
@@ -1083,6 +1145,7 @@ public static partial class Video
     static PlacementState s_beforeFullscreen = PlacementState.Music;
 
     /// <summary>The shell-lifetime half: observes every placement change and mounts the surface while fullscreen resolves.</summary>
+    [CoreHost]
     sealed class FullscreenHost : Component
     {
         public override Element Render()
@@ -1094,18 +1157,14 @@ public static partial class Video
             });
             return Flow.Show(
                 static () => PlacementCore.Resolve(State.Surface.Value) == SurfacePlacement.Fullscreen,
-                new BoxEl
-                {
-                    Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-                    HitTestPassThrough = true,
-                    Children = [Embed.Comp(static () => new FullscreenSurface())],
-                });
+                HoleBoxes.FullscreenLayer(Embed.Comp(static () => new FullscreenSurface())));
         }
     }
 
     /// <summary>A REAL fullscreen: the OS window goes borderless-fullscreen on its monitor and restores what it found; the
     /// shell collapses its chrome for the duration (one transport). Its lifetime IS the mode — mount = enter, unmount =
     /// exit, for every route out.</summary>
+    [CoreHost]
     sealed class FullscreenSurface : Component
     {
         NodeHandle _root;
@@ -1142,15 +1201,11 @@ public static partial class Video
                 return () => { immersive.ReleaseFocus(ImmersiveKind.VideoFullscreen, immersiveHost, FullscreenWanted); };
             }, DepKey.Empty);
 
-            return new BoxEl
-            {
-                Grow = 1f, Direction = 1, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-                HitTestPassThrough = true,
-                Focusable = true,
-                OnRealized = h => _root = h,
+            return HoleBoxes.FullscreenRoot(
+                h => _root = h,
                 // Escape/F exit, handled at the ROOT (no focused control can swallow the way out). A modified key belongs
                 // to whatever else claims it — Shift+Esc does nothing, deliberately.
-                OnKeyDown = static e =>
+                static e =>
                 {
                     if (e.Handled || (e.Mods & (KeyModifiers.Ctrl | KeyModifiers.Alt | KeyModifiers.Shift)) != 0) return;
                     if (e.KeyCode != Keys.Escape && e.KeyCode != Keys.F) return;
@@ -1158,13 +1213,12 @@ public static partial class Video
                     State.ExitFullscreen();
                 },
                 // Never leave focus null while the surface is up.
-                OnFocusChanged = got =>
+                got =>
                 {
                     if (got || _root.IsNull) return;
                     if ((hooks.GetFocus?.Invoke() ?? default).IsNull) hooks.FocusNode?.Invoke(_root, false);
                 },
-                Children = [ViewSlots.View(ViewKeys.VideoFullscreen, s_chromeProps)],
-            };
+                ViewSlots.View(ViewKeys.VideoFullscreen, s_chromeProps));
         }
 
         /// <summary>The chrome's props, built once: the title (bound) and the way out. Its band is the theme's (`Video.Fullscreen`).</summary>

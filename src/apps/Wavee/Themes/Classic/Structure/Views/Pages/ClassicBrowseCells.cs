@@ -247,13 +247,14 @@ public static class ClassicBrowseCells
     /// <summary>A grid / related block (0.2.9 <c>BrowsePage.CategoryBlock</c>): a LABEL header — <c>DrillHeader(title,
     /// null)</c>, never a chevron, never a click — over the Responsive link grid; an untitled block is the bare grid with
     /// no header row and no header gap (parity 101).</summary>
-    internal static Element CategoryBlock(string? title, IReadOnlyList<BrowseTileModel> tiles)
+    internal static Element CategoryBlock(string key, string? title, IReadOnlyList<BrowseTileModel> tiles)
     {
-        Element grid = Responsive.Of(tiles, static (items, w) => LinkGrid(items, w), fallback: ClassicBrowseRules.DirectoryFallbackWidth);
-        if (string.IsNullOrWhiteSpace(title)) return grid;
+        // Keyed (E17c): the grid remounts at its remembered width; the block itself carries the same key.
+        Element grid = Responsive.Of(key + ":grid", tiles, static (items, w) => LinkGrid(items, w), fallback: ClassicBrowseRules.DirectoryFallbackWidth);
+        if (string.IsNullOrWhiteSpace(title)) return grid with { Key = key };
         return new BoxEl
         {
-            Direction = 1, Gap = Spacing.S, MinWidth = 0f,
+            Key = key, Direction = 1, Gap = Spacing.S, MinWidth = 0f,
             Children = [HomeModules.DrillHeader(title, null), grid],
         };
     }

@@ -80,7 +80,7 @@ internal static class ClassicHomeFacetRow
 
         // The band (a column) cross-stretches the Responsive box, so it measures the row's full width and builds the row
         // in the form that width holds.
-        Element row = Responsive.Of(w => new BoxEl
+        Element row = Responsive.Of("home:facet", w => new BoxEl
         {
             Key = "home:facet:row",
             Direction = 0, AlignItems = FlexAlign.Center, Height = ClassicHomeRules.SelectorH, MinWidth = 0f,

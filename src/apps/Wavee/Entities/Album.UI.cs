@@ -243,6 +243,7 @@ public readonly partial struct Album
         public override int GetHashCode() => HashCode.Combine(ReleaseAt, Bare);
     }
 
+    [CoreHost]
     sealed class CountdownHost : Component
     {
         const float TickMs = 1000f;
@@ -261,11 +262,11 @@ public readonly partial struct Album
             var p = UseProps<CountdownProps>();
             if (_frameAnchorMs == 0)
             {
-                _frameAnchorMs = Design.FrameTime.NowMs;
+                _frameAnchorMs = FrameTime.NowMs;
                 _unixAnchorMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             }
             _ = _tick.Value;                                        // a once-a-second ping, never the value itself
-            long nowMs = _unixAnchorMs + (Design.FrameTime.NowMs - _frameAnchorMs);
+            long nowMs = _unixAnchorMs + (FrameTime.NowMs - _frameAnchorMs);
             long leftMs = Math.Max(0L, p.ReleaseAt * 1000L - nowMs);
             bool released = leftMs == 0;
             UseInterval(_ping, TickMs, enabled: !released);

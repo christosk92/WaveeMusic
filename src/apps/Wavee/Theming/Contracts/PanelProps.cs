@@ -12,9 +12,9 @@
 // whether it floats over the page, which body to show (`BodyModeFor`: a stage that hosts the video swaps the Video and
 // NowPlaying bodies for the queue), whether the docked card is up, and what occupies the now-playing arm's pinned slot.
 //
-// THE BODIES. The now-playing body is this PR's (`NowPlaying`); the friends body is the `Panel.Friends` key. The lyrics header and
-// body and the queue body are `Func<Element>` builders (the lyrics body and the queue body are core hosts that mount `Lyrics.View` (T7b)
-// and `Queue.Panel` (T7d)); the docked video card is a core host that mounts `Video.Docked` (`Video.DockedCap`). The video body (T7c) is
+// THE BODIES. The now-playing body is this PR's (`NowPlaying`); the friends body is the `Panel.Friends` key; the lyrics header is the
+// `Panel.LyricsHeader` key (`LyricsHeader`, P3). The lyrics body and the queue body are `Func<Element>` builders of core hosts that mount
+// `Lyrics.View` (T7b) and `Queue.Panel` (T7d); the docked video card is a core host that mounts `Video.Docked` (`Video.DockedCap`). The video body (T7c) is
 // the template's own: it reads the playing track and the "Next up" rows through `NowPlaying` and subscribes through `SubscribeVideoBody`.
 //
 // WVTH006: a sealed record with init-only members and no writable signal. The record is built once (`RailWiring.Panel`), so an
@@ -116,8 +116,9 @@ public sealed record PanelProps
     /// <summary>The docked video card (the core host that mounts <see cref="ViewKeys.VideoDocked"/>): zero size and no reflow while the video is not docked.</summary>
     public required Func<Element> DockedCard { get; init; }
 
-    /// <summary>The lyrics mode's header (title, second-line toggle, AI sparkle, expand, inspector, close): a core builder.</summary>
-    public required Func<Element> LyricsHeader { get; init; }
+    /// <summary>The lyrics mode's header (title, second-line toggle, AI sparkle, expand, inspector, close): the props the lyrics arm mounts
+    /// <see cref="ViewKeys.PanelLyricsHeader"/> with.</summary>
+    public required PanelLyricsHeaderProps LyricsHeader { get; init; }
 
     /// <summary>The lyrics body: the core host that mounts <see cref="ViewKeys.LyricsView"/>.</summary>
     public required Func<Element> LyricsBody { get; init; }
