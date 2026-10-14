@@ -1,7 +1,7 @@
 // ── Platform/Actions.Rules.cs ──────────────────────────────────────────────────────────────────────────────────────
 // The named partial of Actions.cs for the PURE rules behind the menu vocabulary, the two pickers, the profile menu and
-// the play-a-link dialog — the decisions owner I's two UI files (Actions.UI.cs, +Shell.Overlays.UI.cs) draw, pulled
-// out of the component bodies so a test can pin them (stage-B rule: a new pure decision goes to CORE with a test).
+// the play-a-link dialog — the decisions owner I's two UI files (Actions.UI.cs, +Shell.Overlays.UI.cs) host and the structure's
+// views (`Dialog.FolderPicker`, `Overlay.ProfileMenu`, `Dialog.PlayLink`) draw, pulled out of the component bodies so a test can pin them (stage-B rule: a new pure decision goes to CORE with a test).
 //
 // Role: CORE
 // Owner: I

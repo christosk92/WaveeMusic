@@ -1266,6 +1266,40 @@ presentation is the view's all the same.
 nothing without a fact), the keyed rows of a stack, the one trailing region, the video hero and the list sections, the vertical arm's trailing rows, the editor's
 read / edit / status states and the keyed field, the copy-invite call to action, the flip cells while counting, and a smoke mount of the views with no keyed output.
 
+### The overlays and the dialog bodies (T11a)
+
+| Key | Props | Core half | Classic template |
+|---|---|---|---|
+| `Overlay.ProfileChip` | `ProfileChipProps` (identity, the named form, presentation mode, the name cap, `Open`, `Realized`) | `Shell.ProfileChipCore` (`[CoreHost]`, `Shell\Shell.Overlays.UI.cs`): the overlay handle (toggle, light dismiss, focus trap), the anchor capture, the chrome ladder's flags | `ClassicProfileChip`: the avatar (a skeleton until the identity is known) and, in the named form, the name beside it |
+| `Overlay.ProfileMenu` | `ProfileMenuProps` (identity, tier facts, the decided `MenuFlyoutItem` rows, `Close`) | `ProfileMenuContent`: which rows exist (`Actions.ProfileRules.Rows`), their labels, "close first, then act", the Play cascade | `ClassicProfileMenu`: the header (avatar, name, tier line in the premium ink), the divider, the menu |
+| `Overlay.Notifications` | `NotificationsProps` (the rows that pass the filter, `Now`, the expanded id, the empty line, `Clear`, `CanUndo`, the progress and pending-sync signals, `INotificationsHost`) | `Shell.NotificationPanelView` (`[CoreHost]`, `Shell\Shell.UI.cs`) over the feed, the filter, the 30 s tick and `NotificationsHost` (filter, read marks, undo, the activity target, the release menu); the popup is `Shell.OpenNotificationPanel`, the verbs `INotificationVerbs` | `ClassicNotifications`: header, filter pills, pending-sync line, the update / social / release / activity rows with their enter, exit and slide choreography |
+| `Overlay.RuntimeBanner` | `RuntimeBannerProps` (`Show`, the issue's text, `Dismiss`, `SetUp`) | `Shell.RuntimeBannerChrome` (`[CoreHost]`): the gate (`OverlayGates.ShowsRuntimeBanner`), the setup-request watcher, the one-card-at-a-time rule; the lane's top pad stays core | `ClassicRuntimeBanner`: the width cap, the opaque base and elevation under the warning InfoBar |
+| `Overlay.Toast` | `ToastCardProps` (title, a bound `FloatSignal`) | `UpdateToastWatcher` and `UpdateToastModel` (what a toast is and when it is planned); `Notify.Say` is the one door | `ClassicToast`: the update toast's download card |
+| `Overlay.OfflineStrip` | `OfflineStripProps` (message, `OnRetry`) | `Shell.OfflineLane` hands the content state's lane its builder; `FrameRules.ShowsOfflineStrip` decides | `ClassicOfflineStrip` |
+| `Menu.Context` | `ContextMenuTileProps` (art url, circular) | `Actions.Menu.Header` | `ClassicContextMenuTile`: the 38 DIP tile (a rounded square, or a circle for an artist) |
+| `Dialog.LogoutConfirm` | `LogoutConfirmProps` (`Cancel`, `Confirm`) | `Shell.ConfirmLogout`: the modal popup, what the buttons do | `ClassicLogoutConfirm` on `ClassicModalCard` |
+| `Dialog.PlayLink` | `PlayLinkProps` (placeholder, the text cell, the status, `CanPlay`, the browser escape, the verbs) | `Shell.PlayLinkCardCore` (`[CoreHost]`): the field's text, the lookup, the status, the failed input, the failure toast | `ClassicPlayLink` on `ClassicModalCard` |
+| `Dialog.Signature` | `SignatureSheetProps` (summary, trusted, resolved label and value rows) | `Shell.OpenSignatureDialog`: the engine ContentDialog (548, Close the one command) and every string | `ClassicSignature` |
+| `Dialog.FolderPicker` | `DestinationPickerProps` (guidance, placeholder, empty line, the filtered rows, the query cell, `Commit`) | `Actions.DestinationPicker` (`[CoreHost]`): the live filter and the match rule (`PickRules`, a pinned row is never filtered away); `Actions.OpenPicker` opens the dialog | `ClassicDestinationPicker`: guidance, the field, the rows (plated glyph, cover or glyph, label over subtitle, indent per level) or the empty line |
+| `Dialog.Sheet` | `CreditsSheetProps` (the three states, the ordered entries with their group headings, `OpenArtist`) | `Track.OpenCredits` (the sheet: `Controls.Sheet`) and `Track.CreditsHost` (`[CoreHost]`: the demand, the grouping and the order) | `ClassicCreditsSheet`: bars while unanswered, grouped contributors in a bounded scroll, the empty line |
+
+**The shells stay the engine's.** The toast queue (`ToastHost`: the cap and the stacking, enter and exit motion, the auto-dismiss clock, hover-to-pause, the
+action buttons, the dedupe key), the context menu and the menu presenter (`ContextMenu`, `MenuFlyout`) and the dialog shell (`ContentDialog`: the card, the command
+row and its button order, the default button, Enter and Escape, the focus trap and its return, the open and close motion) are engine controls; the core configures
+them and the structure draws only what the app puts in them. `Dialog.LogoutConfirm` and `Dialog.PlayLink` are the two bare modal cards (`PopupChrome.Modal`, no light
+dismiss). Their presenter parts (the card, the verb strip, the button order) wait for the engine's control style table (E14).
+
+**What has no key, and why.** Teaching tips: the app-level subsystem (`TipService`, `Shell.Tips`) was deleted as dead code in an earlier cleanup, so there is
+nothing to move (the stage's one first-visit tip is an engine `TeachingTip` configured with two strings, in the stage host). The destructive confirm, the prompt (rename a
+playlist or a folder) and "reset everything" are `ContentDialog` configurations (`Controls.Confirm`, `Prompt`, `Sheet`; `SidebarMenus.ConfirmResetEverything`) with no
+element tree of the app's own: the destructive verb on the left, Cancel on the right as the default, the width ladder (320 / 480 / 548) and busy states are the shell's and
+the opener's. `Dialog.Feedback` and `Dialog.Crash` are T11c's, the setup and release-notes dialogs T11b's and T11c's.
+
+**Tests.** The ids, the registration and the header builder are `Wavee.Tests\OverlayContractTests.cs`; the decisions stay `OverlayGatesTests`, `NotifyPanelRulesTests`,
+`PlayLinkRulesTests`, `ActionMenuRulesTests` and `TrackDrawerRulesTests`. The mounted facts are `Wavee.ShellTests\OverlaysMountedTests.cs`: the chip is one button and
+reports its node, one menu row per decided row, a card per notification under its key and the expanded wrapper, the banner's buttons only while shown, the offline
+strip's retry, the two cards' buttons, the picker's keyed rows and the credits and signature sheets.
+
 ## 3. Options
 
 An option is data: a `ToggleOption`, `SelectOption<TEnum>`, `SliderOption`, `ColorOption`, `ActionOption` or

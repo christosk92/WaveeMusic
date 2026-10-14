@@ -1,6 +1,7 @@
 // ── Entities/Track.Drawer.cs ───────────────────────────────────────────────────────────────────────────────────────
 // the expanded-row drawer BODY: the facts strip, "Versions and formats" (the connector rail, the self row, the reserved
-// music-video row, alternate audio), the waveform, the format split button + its radio ladder, and the View-credits sheet
+// music-video row, alternate audio), the waveform, the format split button + its radio ladder, and the View-credits sheet's
+// host (its body is `Dialog.Sheet`, T11a)
 //
 // Role: UI (+ the pure `DrawerRules` section, pinned by Wavee.Tests/TrackDrawerRulesTests.cs)
 // Owner: M
@@ -36,6 +37,7 @@ using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
+using ViewSlots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -301,6 +303,7 @@ public readonly partial struct Track
 
     sealed record CreditsProps(Track Track);
 
+    [CoreHost]
     sealed class CreditsHost : Component
     {
         CreditsProps? _latest;
@@ -322,23 +325,19 @@ public readonly partial struct Track
             UseEffect(_demand, DepKey.From(p.Track.Slot, (int)epoch));
             int parent = p.Track.IsValid ? p.Track.Slot : 0;
             var credits = scope.Edges.TrackCredits;
-            // Bars while unanswered — never an empty sheet that fills in (W27).
-            Element body = DrawerRules.CreditsViewFor(credits.Readiness(parent), credits.Count(parent)) switch
+            // Bars while unanswered — never an empty sheet that fills in (W27): the view (`Dialog.Sheet`) draws the three states.
+            var state = DrawerRules.CreditsViewFor(credits.Readiness(parent), credits.Count(parent));
+            return ViewSlots.View(ViewKeys.DialogSheet, new CreditsSheetProps
             {
-                DrawerRules.CreditsView.Loading => new BoxEl
-                {
-                    Direction = 1, Gap = 10f, Padding = new Edges4(0f, Spacing.S, 0f, Spacing.S),
-                    Children = [LoadingBar(12f, 120f), LoadingBar(14f, 220f), LoadingBar(14f, 190f), LoadingBar(14f, 210f)],
-                },
-                DrawerRules.CreditsView.List => CreditsList(scope.Edges, parent),
-                _ => R.Type.DenseMeta(Loc.Get(Strings.Menu.NoCredits)) with { Color = Tok.TextSecondary },
-            };
-            return new BoxEl { Direction = 1, MinWidth = 0f, MaxWidth = 440f, Children = [body] };
+                State = state,
+                Entries = state == DrawerRules.CreditsView.List ? CreditEntries(scope.Edges, parent) : [],
+                OpenArtist = static slot => GoToArtist(new Artist(slot)),
+            });
         }
     }
 
-    // The server's group headings in its own casing (never re-cased), one row per contributor, in a bounded scroll.
-    static Element CreditsList(Edges edges, int parent)
+    // The server's group headings in its own casing (never re-cased), one entry per contributor, in the order and the groups the rules decide.
+    static CreditsEntry[] CreditEntries(Edges edges, int parent)
     {
         var targets = edges.TrackCredits.Targets(parent);
         var rows = edges.TrackCredits.Payload(parent);
@@ -347,46 +346,15 @@ public readonly partial struct Track
             keys[i] = DrawerRules.CreditGroupKey(Entities.Strings.Resolve(rows[i].Group), Entities.Strings.Resolve(rows[i].Role));
         var order = new int[rows.Length];
         int n = DrawerRules.CreditOrder(keys, order);
-        var kids = new List<Element>(n + 4);
+        var entries = new CreditsEntry[n];
         for (int k = 0; k < n; k++)
         {
             int i = order[k];
-            if (keys[i].Length > 0 && DrawerRules.StartsGroup(keys, order.AsSpan(0, n), k))
-                kids.Add(R.Type.Eyebrow(keys[i]) with { Color = Tok.TextTertiary });
-            kids.Add(CreditRow(Entities.Strings.Resolve(rows[i].Name), Entities.Strings.Resolve(rows[i].Role), targets[i]));
+            string? heading = keys[i].Length > 0 && DrawerRules.StartsGroup(keys, order.AsSpan(0, n), k) ? keys[i] : null;
+            entries[k] = new CreditsEntry(heading, Entities.Strings.Resolve(rows[i].Name), Entities.Strings.Resolve(rows[i].Role), targets[i]);
         }
-        return ScrollView(new BoxEl { Direction = 1, Gap = Spacing.S, MinWidth = 0f, Children = kids.ToArray() }) with { MaxHeight = 420f };
+        return entries;
     }
-
-    // A credit linked to an artist slot is an accent link; an unlinked contributor is plain text.
-    static Element CreditRow(string name, string role, int artistSlot)
-    {
-        var creditTitle = R.Type.DenseTitle("");
-        Element label = artistSlot > 0
-            ? new SpanTextEl(new TextSpan[] { new(name, OnClick: () => GoToArtist(new Artist(artistSlot))) })
-            {
-                Size = creditTitle.Size, LineHeight = creditTitle.LineHeight, Weight = 650,
-                Color = Tok.AccentTextPrimary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-            }
-            : R.Type.DenseTitle(name) with
-            {
-                Weight = 650, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-            };
-        return new BoxEl
-        {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S,
-            Children =
-            [
-                new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [label] },
-                role.Length == 0 ? new BoxEl() : R.Type.MicroMeta(role) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-            ],
-        };
-    }
-
-    static Element LoadingBar(float h, float w) => new BoxEl
-    {
-        Height = h, Width = w, Corners = CornerRadius4.All(Radii.Control), Fill = Tok.FillSubtleSecondary,
-    };
 
     // ══ 6. THE PURE SECTION — DrawerRules (Wavee.Tests/TrackDrawerRulesTests.cs) ═════════════════════════════════════
 

@@ -11,7 +11,7 @@
 // `StyleKeys.TrackTable` style; T8b its chrome, `ClassicTrackChrome.cs`), T8c the other list surfaces (`Lists\ClassicEagerRow.cs`,
 // `ClassicEpisodeRow.cs`, `ClassicSurface.cs`, `ClassicArtistChart.cs`, `ClassicTrackDrawer.cs`, with the shared cells in `ClassicRowCells.cs`:
 // the `StyleKeys.EagerTrackRow`, `EpisodeRow`, `Surface`, `ArtistChart` and `TrackDrawer` styles), T10a1 Home (`Views\Home`: the page, facet row, daylist and clock, zone bodies, the drill page and the
-// customizer), T9a the shared detail frame (`Views\Detail`: the scaffold, the rail and its strip, the show header, the hero, the insights sheet), T9b its album and playlist sub-contracts (`Views\Detail\ClassicAlbum*.cs`, `ClassicPlaylist*.cs`, `ClassicDetailSeam.cs`), T10a2 Browse and Search (`Views\Pages`: the directory and its Charts band, a category page, the section drill key, the Search results page), T7d the queue (`Views\Queue`: the rail panel and the stage's Up next column), T7c the video surfaces (`Views\Video`: the docked card, the in-window overlay and its chrome, the pop-out, the fullscreen exit chrome, the poster and join notice, the placement flyout, the panel's video body), T10b1 the artist page (`Views\Pages\ClassicArtist*.cs`: the page, the hero, the sections, the banners, the pick card), T10b2 the rest of the artist family (the gallery lightbox `ClassicArtistLightbox.cs`, the discography page `ClassicDiscographyPage.cs`, the discography style `Lists\ClassicDiscography.cs` and the chart's frame), T10b3 the concert surfaces (`Views\Pages\ClassicConcert*.cs`: the hub with its filter bar, tail and location picker, an artist's tour dashboard, the event page) and the Common module page (`Themes\Common\CommonModulePage.cs`), T10c1 the library (`Views\Pages\ClassicLibrary*.cs`: the master-detail page and its album, show, artist and Your Episodes panes); every other surface is still core code. It
+// customizer), T9a the shared detail frame (`Views\Detail`: the scaffold, the rail and its strip, the show header, the hero, the insights sheet), T9b its album and playlist sub-contracts (`Views\Detail\ClassicAlbum*.cs`, `ClassicPlaylist*.cs`, `ClassicDetailSeam.cs`), T10a2 Browse and Search (`Views\Pages`: the directory and its Charts band, a category page, the section drill key, the Search results page), T7d the queue (`Views\Queue`: the rail panel and the stage's Up next column), T7c the video surfaces (`Views\Video`: the docked card, the in-window overlay and its chrome, the pop-out, the fullscreen exit chrome, the poster and join notice, the placement flyout, the panel's video body), T10b1 the artist page (`Views\Pages\ClassicArtist*.cs`: the page, the hero, the sections, the banners, the pick card), T10b2 the rest of the artist family (the gallery lightbox `ClassicArtistLightbox.cs`, the discography page `ClassicDiscographyPage.cs`, the discography style `Lists\ClassicDiscography.cs` and the chart's frame), T10b3 the concert surfaces (`Views\Pages\ClassicConcert*.cs`: the hub with its filter bar, tail and location picker, an artist's tour dashboard, the event page) and the Common module page (`Themes\Common\CommonModulePage.cs`), T10c1 the library (`Views\Pages\ClassicLibrary*.cs`: the master-detail page and its album, show, artist and Your Episodes panes), T11a the overlays and the dialog bodies (`Views\Overlays`: the account chip and menu, the notification panel, the runtime banner, the update toast's card, the offline strip, the context menu's tile; `Views\Dialogs`: the log-out card, the play-a-link card, the signature sheet, the destination picker, the credits sheet); every other surface is still core code. It
 // decides the shell's policies (`Rules\ClassicPolicies.cs`: nav pane, panel and mini player, player bar, chrome row, stage)
 // and offers every capability (T3). Its window tiers (T3b) are `Rules\Tiers.cs`.
 //
@@ -232,6 +232,22 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.PlaylistDaylist, ClassicPlaylist.DaylistTemplate, "classic.playlist.daylist");
         views.Add(ViewKeys.PlaylistRecs, ClassicPlaylist.RecsTemplate, "classic.playlist.recs");
         views.Add(ViewKeys.PlaylistRecRow, ClassicPlaylist.RecRowTemplate, "classic.playlist.rec-row");
+        // T11a: the overlays (the account chip and its menu, the notification panel, the runtime banner, the update toast's download card, the offline
+        // strip, the context menu's identity tile) and the dialog bodies the app builds (the log-out card, the play-a-link card, the signature sheet, the
+        // destination picker, the credits sheet). Which overlay is open, its dismiss rules and focus trap, the toast queue, the dialog shells and every
+        // verb and decision stay core; the confirm, prompt and reset dialogs are engine ContentDialog configurations with no picture of the app's own.
+        views.Add(ViewKeys.OverlayProfileChip, ClassicProfileChip.Template, "classic.overlay.profile-chip");
+        views.Add(ViewKeys.OverlayProfileMenu, ClassicProfileMenu.Template, "classic.overlay.profile-menu");
+        views.Add(ViewKeys.OverlayNotifications, ClassicNotifications.Template, "classic.overlay.notifications");
+        views.Add(ViewKeys.OverlayRuntimeBanner, ClassicRuntimeBanner.Template, "classic.overlay.runtime-banner");
+        views.Add(ViewKeys.OverlayToast, ClassicToast.Template, "classic.overlay.toast");
+        views.Add(ViewKeys.OverlayOfflineStrip, ClassicOfflineStrip.Template, "classic.overlay.offline-strip");
+        views.Add(ViewKeys.MenuContext, ClassicContextMenuTile.Template, "classic.menu.context-tile");
+        views.Add(ViewKeys.DialogLogoutConfirm, ClassicLogoutConfirm.Template, "classic.dialog.logout-confirm");
+        views.Add(ViewKeys.DialogPlayLink, ClassicPlayLink.Template, "classic.dialog.play-link");
+        views.Add(ViewKeys.DialogSignature, ClassicSignature.Template, "classic.dialog.signature");
+        views.Add(ViewKeys.DialogFolderPicker, ClassicDestinationPicker.Template, "classic.dialog.folder-picker");
+        views.Add(ViewKeys.DialogSheet, ClassicCreditsSheet.Template, "classic.dialog.sheet");
     }
 
     /// <inheritdoc />

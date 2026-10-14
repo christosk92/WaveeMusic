@@ -102,6 +102,15 @@ Read [wiring-discipline.md](wiring-discipline.md) before any seam/composition-ro
   card reads; `Shell.CommandTable` is unchanged), the history menu, the file-drop cue, the drag chip layer, the setup cover scrim and the
   frame-rate HUD (`Diagnostics.FpsOverlayOn` is the rule). Pictures: `Themes/Classic/Structure/Views/{Masthead,Material,Drawer,Palette,FrameBits}`;
   numbers: `Rules/ClassicFrameBitsRules.cs`; keys: `Theming/Contracts/ViewKeys.FrameBits.cs`.
+- **The overlays and the dialog bodies are the structure's** (themes plan T11a): the account chip and menu, the notification panel, the
+  runtime banner, the update toast's download card, the offline strip, the context menu's identity tile, and the bodies of the log-out
+  card, the play-a-link card, the signature sheet, the destination picker and the credits sheet. The core keeps the overlay handles, dismiss
+  rules, focus traps, the toast queue (the engine's `ToastHost`), the dialog shells (the engine's `ContentDialog`) and every verb: hosts in
+  `Shell/Shell.Overlays.UI.cs` (chip, banner, play-a-link, log-out, signature opener), `Shell/Shell.UI.cs` (the notification panel host and
+  `NotificationsHost`), `Platform/Actions.UI.cs` (the picker's filter, the menu header), `Entities/Track.Drawer.cs` (the credits host).
+  Pictures: `Themes/Classic/Structure/Views/{Overlays,Dialogs}`; numbers: `Rules/Classic{Overlay,Notification,Dialog}Rules.cs`; keys:
+  `Theming/Contracts/ViewKeys.Overlays.cs` (props in `OverlayProps.cs`, `NotificationsProps.cs`, `DialogProps.cs`). Confirm, prompt (rename) and
+  "reset everything" are engine ContentDialog configurations with no picture of the app's own: they have no key.
 - **Full-screen Now Playing + visualizers** — the stage, the eight faces, the demand tiers and fallback ladder, the
   `stage.*` / `viz.*` log events and the Diagnostics card. Guide: `docs/guide/fullscreen-visualizers.md`.
 - [probes.md](probes.md) — the windowless CLI probe arms (`--log-sessions` and the others `Probe.TryRunCliArm`

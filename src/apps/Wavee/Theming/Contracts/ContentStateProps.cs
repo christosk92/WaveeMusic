@@ -9,8 +9,7 @@
 //   EmptyBody     an empty body box keyed `Key` (`page-empty:<route>`)
 //   NotFound      the route's own glyph (`Glyph`), the not-found line and the one action that always works (`GoHome`), keyed
 //                 `Key` (`page-notfound:<route>|<arg>`)
-//   OfflineLane   the strip over the kept content; `OfflineStrip` builds the strip itself (the offline strip is its own
-//                 surface and gets its own key in the overlays PR, T11a)
+//   OfflineLane   the strip over the kept content; `Strip` is the props of the strip's own view (`Overlay.OfflineStrip`, T11a)
 //
 // Delegates are cached statics of the core (equal props compare equal by reference), so an unchanged state skips the template.
 
@@ -22,7 +21,7 @@ namespace Wavee.Theming.Contracts;
 public sealed record ContentStateProps
 {
     private static readonly Action s_nothing = static () => { };
-    private static readonly Func<Element> s_nothingToShow = static () => new BoxEl();
+    private static readonly OfflineStripProps s_noStrip = new();
 
     /// <summary>Which of the four states this mount draws.</summary>
     public ContentStateKind Kind { get; init; }
@@ -39,8 +38,8 @@ public sealed record ContentStateProps
     /// <summary>The not-found page's action: go to Home.</summary>
     public Action GoHome { get; init; } = s_nothing;
 
-    /// <summary>Builds the offline strip the lane floats.</summary>
-    public Func<Element> OfflineStrip { get; init; } = s_nothingToShow;
+    /// <summary>The offline strip the lane floats (the props of <see cref="ViewKeys.OverlayOfflineStrip"/>).</summary>
+    public OfflineStripProps Strip { get; init; } = s_noStrip;
 
     /// <summary>A page fills the body.</summary>
     public static ContentStateProps ForPage(string key, Element page)
@@ -55,6 +54,6 @@ public sealed record ContentStateProps
         => new() { Kind = ContentStateKind.NotFound, Key = key, Glyph = glyph, GoHome = goHome };
 
     /// <summary>The offline lane.</summary>
-    public static ContentStateProps ForOfflineLane(Func<Element> offlineStrip)
-        => new() { Kind = ContentStateKind.OfflineLane, OfflineStrip = offlineStrip };
+    public static ContentStateProps ForOfflineLane(OfflineStripProps strip)
+        => new() { Kind = ContentStateKind.OfflineLane, Strip = strip };
 }
