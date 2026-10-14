@@ -246,8 +246,11 @@ public static partial class Shell
                 _scope = RootScope.Begin();
                 // The omnibar model is process state; the facts its mounted forms hold go with this root.
                 _scope.OnDispose(static () => s_omnibar.ResetMountedFacts(SearchFocusRequest.Peek()));
+                // The window's theme-transaction runner goes with this root (a remount binds it again in the new root's render).
+                _scope.OnDispose(static () => Theming.ThemeHost.BindTransactions(null));
             }
             s_hooks = UseContext(InputHooks.Current);
+            Theming.ThemeHost.BindTransactions(s_hooks);
             s_scene = Context.Scene;
             Appearance.BindTransition(UseContext(ThemeControl.Request));
             var post = UsePost();

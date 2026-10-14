@@ -17,6 +17,11 @@
 //   ToggleMode()            the flip verb (palette row, profile menu, title-bar button): the other kind, persist the
 //                           explicit mode (Light = 1, Dark = 2), cross-fade. The accent is not touched.
 //   OnSystemColorsChanged() the OS colours changed: the accent ramp follows ALWAYS; the kind only while the mode is System.
+//
+// LIVE OR TRANSACTION (themes plan 4.2, A4.2). A kind change is a colour change, so it takes the live path (swap in place, the
+// 250 ms cross-fade) — unless the active definition asks for something non-colour to change with the kind (today: a different
+// window material per kind). Then the kind goes through the theme transaction (freeze, settle, dissolve, the DWM change ordered
+// with the dissolve) and no cross-fade is requested.
 
 using FluentGpu;
 using FluentGpu.Dsl;
@@ -41,6 +46,13 @@ public interface IAppearancePorts
 
     /// <summary>Swap the installed Wavee palette to <paramref name="kind"/> in place.</summary>
     void ApplyKind(ThemeKind kind);
+
+    /// <summary>True when switching to <paramref name="kind"/> changes more than colours in the active definition (its window
+    /// material differs per kind): the change must go through the theme transaction.</summary>
+    bool KindChangeIsStructural(ThemeKind kind);
+
+    /// <summary>Switch to <paramref name="kind"/> on the theme transaction (it owns its own dissolve).</summary>
+    void ApplyKindInTransaction(ThemeKind kind);
 
     /// <summary>Push the OS accent into the tokens: the accent ramp when the OS has one; the plain accent colour only
     /// when <paramref name="allowPlainFallback"/> (the boot and the Settings selector fall back, the OS listener does not).</summary>
@@ -76,7 +88,7 @@ public sealed class AppearanceModel
     /// travels in Wavee's definition (<c>Design.Definition</c>, installed by the kind's palette seed).</summary>
     public void Seed(ThemeMode mode)
     {
-        _ports.ApplyKind(KindOf(mode));
+        _ports.ApplyKind(KindOf(mode));   // before the window: nothing to hold, always in place
         _ports.ApplySystemAccent(allowPlainFallback: true);
     }
 
@@ -87,19 +99,19 @@ public sealed class AppearanceModel
     /// <summary>The Settings selector: swap in place (System re-reads the OS theme and accent now), persist, cross-fade.</summary>
     public void SetMode(ThemeMode mode)
     {
-        _ports.ApplyKind(KindOf(mode));
+        bool live = Switch(KindOf(mode));
         if (mode == ThemeMode.System) _ports.ApplySystemAccent(allowPlainFallback: true);
         _ports.StoredMode = (int)mode;
-        _transition?.Invoke(TransitionMs);
+        if (live) _transition?.Invoke(TransitionMs);
     }
 
     /// <summary>Flip light/dark in place and persist the EXPLICIT mode.</summary>
     public void ToggleMode()
     {
         var next = _ports.CurrentKind == ThemeKind.Dark ? ThemeKind.Light : ThemeKind.Dark;
-        _ports.ApplyKind(next);
+        bool live = Switch(next);
         _ports.StoredMode = (int)(next == ThemeKind.Dark ? ThemeMode.Dark : ThemeMode.Light);
-        _transition?.Invoke(TransitionMs);
+        if (live) _transition?.Invoke(TransitionMs);
     }
 
     /// <summary>The OS colours changed: the accent follows always; the theme follows only while the mode is System.</summary>
@@ -109,8 +121,20 @@ public sealed class AppearanceModel
         if (Mode != ThemeMode.System) return;
         var kind = KindOf(ThemeMode.System);
         if (kind == _ports.CurrentKind) return;
+        if (Switch(kind)) _transition?.Invoke(TransitionMs);
+    }
+
+    /// <summary>Apply <paramref name="kind"/>: in place (true: the caller asks for the live cross-fade), or on the theme
+    /// transaction when the kind changes more than colours (false: the transaction dissolves on its own).</summary>
+    bool Switch(ThemeKind kind)
+    {
+        if (kind != _ports.CurrentKind && _ports.KindChangeIsStructural(kind))
+        {
+            _ports.ApplyKindInTransaction(kind);
+            return false;
+        }
         _ports.ApplyKind(kind);
-        _transition?.Invoke(TransitionMs);
+        return true;
     }
 
     /// <summary>The OS theme is read only for System: an explicit mode never touches the registry.</summary>
@@ -180,6 +204,14 @@ sealed class LiveAppearancePorts : IAppearancePorts
 
     // Wavee's own ramp (G-196), not the engine's default one.
     public void ApplyKind(ThemeKind kind) => Design.SeedPalette(kind);
+
+    public bool KindChangeIsStructural(ThemeKind kind)
+    {
+        var definition = Wavee.Theming.ThemeHost.ActiveDefinition ?? Design.Definition;
+        return definition.Materials.For(kind) != definition.Materials.For(Tok.Theme);
+    }
+
+    public void ApplyKindInTransaction(ThemeKind kind) => _ = Wavee.Theming.ThemeHost.SwitchKind(kind);
 
     public void ApplySystemAccent(bool allowPlainFallback)
     {

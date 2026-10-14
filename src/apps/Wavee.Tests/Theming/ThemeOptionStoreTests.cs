@@ -250,16 +250,23 @@ public sealed class ThemeOptionStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task Apply_TransactionOption_RemountsTheRoot()
+    public async Task Apply_TransactionOption_PublishesInPlace_WithoutARemount()
     {
+        // No window is bound here, so the transaction applies at once (the mounted path is ThemeTransactionMountedTests).
         ThemeHost.Install(Facted(ApplyMode.Transaction));
         long epoch = ThemeHost.RootEpoch.Peek();
+        var key = new OptionKey<Density>("density", Density.Normal);
 
         await ThemeHost.Apply(new OptionChange("f", "structure.density", Density.Compact));
-        Assert.Equal(epoch + 1, ThemeHost.RootEpoch.Peek());
+        Assert.Equal(Density.Compact, ThemeHost.Options.Get(key));
+        Assert.Equal((int)Density.Compact, _settings.Get(Key("theme.f.structure.density", -1)));
+        Assert.Equal((int)Density.Compact, ThemeHost.Facts.Peek().Capabilities.MaxBandPins);
+        Assert.Equal(epoch, ThemeHost.RootEpoch.Peek());   // in place: a same-structure change keeps the slots' state (plan 5.6)
 
+        int writes = _settings.WrittenCount;
         await ThemeHost.Apply(new OptionChange("f", "structure.density", Density.Compact));   // unchanged: nothing happens
-        Assert.Equal(epoch + 1, ThemeHost.RootEpoch.Peek());
+        Assert.Equal(writes, _settings.WrittenCount);
+        Assert.Equal(epoch, ThemeHost.RootEpoch.Peek());
     }
 
     [Fact]

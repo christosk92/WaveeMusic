@@ -5,20 +5,30 @@
 //   · Current     the active composition (a signal; only code allowed to read identity may use it, WVTH004).
 //   · Facts       what core needs from it: policies, capabilities, metrics, tiers. Core models read this signal; templates
 //                 read the same signal through `ThemeFactsContext`.
-//   · Switch      another composition: persists `theme.id`, activates it, applies its definition and REMOUNTS the root.
+//   · Switch      another composition, on the engine's THEME TRANSACTION (E5, A4.2): prewarm the new fonts with the UI live,
+//                 freeze the window and its pop-outs, then in one apply flush persist `theme.id`, activate the composition,
+//                 install its definition and REMOUNT the root; settle; thaw with the 250 ms dissolve.
 //   · Apply       one option: a Live option is written to its cell (the views that read it re-render) and, when it moves
-//                 the definition, applied live; a Transaction option takes the Switch path (remount).
+//                 the definition, applied live; a Transaction option is published inside a transaction IN PLACE (no
+//                 remount: a slot whose template did not change keeps its state, plan 5.6).
 //
-// A CUT TRANSACTION until the engine's theme transaction (A4.2, plan 4.2) exists: Switch and a Transaction-mode Apply run
-// persist -> activate -> apply the definition -> bump the root epoch, in one UI turn, with no freeze, no snapshot and no
-// dissolve. The root remounts because `ThemeRoot` renders a different component type for the new epoch (the engine
-// replaces a component whose type differs), which disposes every page below it: nothing is carried (owner Q26).
+// THE REMOUNT. The root remounts because `ThemeRoot` renders a different component type for the new epoch (the engine replaces a
+// component whose type differs), which disposes every page below it: nothing is carried (owner Q26). Under the freeze the new
+// pages mount fresh and settle; the user sees the old frame, then the dissolve to the settled new one.
+//
+// THE RUNNER. The frame root binds the window's transaction runner (`BindTransactions`, from its `InputHooks`). With none bound
+// (boot before the window, unit tests) a change applies at once: there is no frame to hold. A failed transaction is rolled back
+// under the freeze by the engine (the previous composition is re-activated and the root remounted) and told in a toast.
 //
 // NAME. The class is `Wavee.Theming.ThemeHost` (plan 5.3) and each theme lives in a namespace `Wavee.Themes.<Name>` (plan
 // 1.2). Inside `namespace Wavee` the simple name `Themes` therefore binds to the NAMESPACE: callers there (App.cs) write the
 // class as `Wavee.Theming.ThemeHost`, and tests alias it (`using ThemeHost = Wavee.Theming.ThemeHost;`).
 
+using FluentGpu.Controls;
 using FluentGpu.Dsl;
+using FluentGpu.Hooks;
+using FluentGpu.Hosting;
+using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 
@@ -43,6 +53,14 @@ public static class ThemeHost
     private static ThemeOptionValues s_values = ThemeOptionValues.Empty;
     private static ViewRegistry s_registry = ViewRegistry.Empty;
     private static bool s_installed;
+
+    private static Func<ThemeTransactionRequest, Task<ThemeTransactionResult>>? s_runTransaction;
+    private static IReadSignal<bool>? s_transactionBusy;
+    private static Func<bool>? s_transactionRunning;
+    private static Action? s_heldNavigation;
+    private static readonly Signal<string?> s_pendingSwitch = new(null);
+    private static readonly Task<ThemeTransactionResult> s_nothingToDo =
+        Task.FromResult(new ThemeTransactionResult(ThemeTransactionOutcome.Immediate));
 
     /// <summary>The OS accent the style resolves its definition with. Defaults to the WinUI ramp (which every definition
     /// treats as "use the baked accent tokens"); the appearance seed sets the real one.</summary>
@@ -77,7 +95,8 @@ public static class ThemeHost
     /// the active theme's roles and not the base definition's. The composition memoizes it: the same inputs return the same instance.</summary>
     public static ThemeDefinition? ActiveDefinition => s_installed ? s_current.Peek().Definition(s_values, OsAccent) : null;
 
-    /// <summary>Bumped by every switch (and every Transaction-mode option change): <c>ThemeRoot</c> remounts the root on it.</summary>
+    /// <summary>Bumped by every switch (inside its transaction's apply flush): <c>ThemeRoot</c> remounts the root on it. A Transaction-mode
+    /// option change does not bump it (it re-renders in place).</summary>
     public static IReadSignal<long> RootEpoch => s_rootEpoch;
 
     /// <summary>The view registry of the active composition (the empty registry before <see cref="Install"/>): the value
@@ -120,6 +139,44 @@ public static class ThemeHost
     /// resolves its own.</summary>
     public static void PublishTiers(in TierFacts tiers) => s_facts.SetIfChanged(s_facts.Peek() with { Tiers = tiers });
 
+    /// <summary>The frame root binds its window's theme-transaction runner (<see cref="InputHooks.RunThemeTransaction"/>) on
+    /// every render, and the root's scope unbinds it (null) when that root goes. A pop-out's hooks carry no runner and never bind.</summary>
+    public static void BindTransactions(InputHooks? hooks)
+    {
+        if (hooks is not null && hooks.RunThemeTransaction is null) return;
+        s_runTransaction = hooks?.RunThemeTransaction;
+        s_transactionBusy = hooks?.ThemeTransactionBusy;
+        s_transactionRunning = hooks?.IsThemeTransactionRunning;
+    }
+
+    /// <summary>True while a theme transaction runs or waits on the bound window (from the request to its thaw start).</summary>
+    public static bool IsTransactionRunning => s_transactionRunning?.Invoke() == true;
+
+    /// <summary>Navigation during a transaction waits for its thaw start (plan 4.2 f): while one runs, <paramref name="replay"/> is
+    /// kept (the latest wins) and run when the transaction commits or fails, and this returns true. False: navigate now.</summary>
+    public static bool HoldNavigation(Action replay)
+    {
+        ArgumentNullException.ThrowIfNull(replay);
+        if (!IsTransactionRunning) return false;
+        s_heldNavigation = replay;
+        return true;
+    }
+
+    /// <summary>A transaction committed (thaw start) or failed: the navigation it held runs now.</summary>
+    private static void ReleaseNavigation()
+    {
+        var replay = s_heldNavigation;
+        s_heldNavigation = null;
+        replay?.Invoke();
+    }
+
+    /// <summary>The theme a <see cref="Switch"/> is heading to while its transaction runs, or null. The picker shows its card
+    /// pressed, with a busy ring once <see cref="SwitchBusy"/> says the prewarm has held the UI for 100 ms.</summary>
+    public static IReadSignal<string?> PendingSwitch => s_pendingSwitch;
+
+    /// <summary>True while a transaction's prewarm has held the live UI for 100 ms (a tracked read inside a render).</summary>
+    public static bool SwitchBusy => s_transactionBusy?.Value ?? false;
+
     /// <summary>Back to the not-installed state (tests).</summary>
     public static void Reset()
     {
@@ -132,29 +189,62 @@ public static class ThemeHost
         s_facts.Value = ThemeFacts.Default;
         s_policies.Value = ThemePolicies.Default;
         s_rootEpoch.Value = 0L;
+        s_pendingSwitch.Value = null;
+        s_heldNavigation = null;
         ThemePickerFacts.Publish(PickerState.Empty);
         ThemeState.Bind(ThemeCatalog.FallbackId);
     }
 
-    /// <summary>Activates the composition with <paramref name="id"/> (unknown or unavailable ids resolve to Classic): persists
-    /// <c>theme.id</c>, publishes its facts and options, applies its definition and remounts the root. A cut until A4.2.</summary>
-    public static Task Switch(string id)
+    /// <summary>Activates the composition with <paramref name="id"/> (unknown or unavailable ids resolve to Classic) on a theme
+    /// transaction: its fonts prewarm with the UI live, then under the frozen frame <c>theme.id</c> is persisted, its facts and
+    /// options are published, its definition is installed and the root remounts; the new frame settles and dissolves in. A
+    /// switch to the active theme completes at once. The task completes on a later turn (or at once when no window is bound).</summary>
+    public static Task<ThemeTransactionResult> Switch(string id)
     {
         RequireInstalled();
         ThemeComposition target = ThemeCatalog.Resolve(id);
-        if (ReferenceEquals(target, s_current.Peek())) return Task.CompletedTask;
+        ThemeComposition previous = s_current.Peek();
+        if (ReferenceEquals(target, previous)) return s_nothingToDo;
 
-        Platform.Settings.Set(IdKey, target.Manifest.Id);
-        Activate(target, Platform.Settings);
-        ApplyDefinition(target);
-        Remount();
-        return Task.CompletedTask;
+        ThemeDefinition next = target.Definition(ThemeOptionStore.Load(target), OsAccent);
+        s_pendingSwitch.Value = target.Manifest.Id;
+        return Transact(new ThemeTransactionRequest(next, Tok.Theme, () =>
+        {
+            Platform.Settings.Set(IdKey, target.Manifest.Id);
+            Activate(target, Platform.Settings);
+            Remount();
+        })
+        {
+            Prewarm = new PrewarmSet { Fonts = next.Fonts },
+            Rollback = () =>
+            {
+                Platform.Settings.Set(IdKey, previous.Manifest.Id);
+                Activate(previous, Platform.Settings);
+                Remount();
+            },
+            OnCommitted = static () => s_pendingSwitch.Value = null,
+            OnFailed = ex => SwitchFailed(target.Manifest.Id, ex),
+            Label = "switch:" + target.Manifest.Id,
+        });
+    }
+
+    /// <summary>Switches the theme kind on a theme transaction (the appearance service's choice when the active definition changes
+    /// more than colours with the kind, e.g. a window material per kind). The definition stays the active one.</summary>
+    public static Task<ThemeTransactionResult> SwitchKind(ThemeKind kind)
+    {
+        ThemeDefinition definition = ActiveDefinition ?? Tok.Definition;
+        if (kind == Tok.Theme) return s_nothingToDo;
+        return Transact(new ThemeTransactionRequest(definition, kind, static () => { })
+        {
+            OnFailed = ex => Log.Warn("theme", "switching the theme kind failed and was rolled back", ex),
+            Label = "kind:" + kind,
+        });
     }
 
     /// <summary>Applies one option change. The value is validated against the option (an invalid value, an unknown option or
     /// a structure parameter throws <see cref="ArgumentException"/>, a programming error). A Live option is written to its cell and the definition
-    /// is re-applied live; a Transaction option also remounts the root. A change to a theme that is not active is persisted
-    /// and nothing else happens.</summary>
+    /// is re-applied live; a Transaction option is published on a theme transaction, in place (the root does not remount). A
+    /// change to a theme that is not active is persisted and nothing else happens.</summary>
     public static Task Apply(OptionChange change)
     {
         ArgumentNullException.ThrowIfNull(change);
@@ -173,18 +263,56 @@ public static class ThemeHost
 
         (LayerOption option, object value) = Resolve(active, change);
         ThemeOptionStore store = s_store!;
+        if (option.Option.Apply == ApplyMode.Transaction)
+        {
+            object? old = option.Option.Peek(store.Store);
+            if (Equals(old, value)) return s_nothingToDo;
+            return PublishInTransaction(active, store, [(option, value, old)], "option:" + option.QualifiedId);
+        }
         if (!store.Publish(option, value)) return Task.CompletedTask;
 
         s_values = store.Snapshot();
         PublishFacts(active);
         ApplyDefinition(active);
-        if (option.Option.Apply == ApplyMode.Transaction) Remount();
         return Task.CompletedTask;
     }
 
+    /// <summary>Publishes Transaction-mode option values on a theme transaction, IN PLACE: under the frozen frame the cells are
+    /// written (and persisted), the facts republished and the definition for the new values installed; the views re-render where
+    /// they stand, so a slot whose template did not change keeps its state (plan 5.6) and the transient hosting the option's
+    /// control stays open. A failure puts the old values back.</summary>
+    private static Task<ThemeTransactionResult> PublishInTransaction(ThemeComposition active, ThemeOptionStore store,
+        (LayerOption Option, object Value, object? Old)[] changes, string label)
+    {
+        ThemeOptionValues nextValues = active.Build(lo =>
+        {
+            foreach (var c in changes) if (c.Option.Equals(lo)) return c.Value;
+            return lo.Option.Peek(store.Store);
+        });
+        ThemeDefinition next = active.Definition(nextValues, OsAccent);
+        return Transact(new ThemeTransactionRequest(next, Tok.Theme, () =>
+        {
+            foreach (var c in changes) store.Publish(c.Option, c.Value);
+            s_values = store.Snapshot();
+            PublishFacts(active);
+        })
+        {
+            Prewarm = new PrewarmSet { Fonts = next.Fonts },
+            Rollback = () =>
+            {
+                foreach (var c in changes) if (c.Old is not null) store.Publish(c.Option, c.Old);
+                s_values = store.Snapshot();
+                PublishFacts(active);
+            },
+            OnFailed = ex => Log.Warn("theme", "option change '" + label + "' failed and was rolled back", ex),
+            Label = label,
+        });
+    }
+
     /// <summary>Forgets every persisted option of the installed theme <paramref name="themeId"/> (its UI state stays) and, when it
-    /// is the active theme, puts the cells back to the composition's defaults: a Live option re-renders its readers, a
-    /// Transaction option remounts the root once. The Settings "Reset ‹theme› options" verb. No-op for an id that is not installed.</summary>
+    /// is the active theme, puts the cells back to the composition's defaults: a Live option re-renders its readers; when a
+    /// Transaction option changes, all of them are put back in one theme transaction. The Settings "Reset ‹theme› options" verb.
+    /// No-op for an id that is not installed.</summary>
     public static void ResetOptions(string themeId)
     {
         ArgumentNullException.ThrowIfNull(themeId);
@@ -196,20 +324,26 @@ public static class ThemeHost
         ThemeComposition active = s_current.Peek();
         if (!ReferenceEquals(target, active)) return;
         ThemeOptionStore store = s_store!;
-        bool remount = false;
+        var structural = new List<(LayerOption, object, object?)>();
         bool changed = false;
         foreach (LayerOption lo in active.AllOptions)
         {
             if (!active.IsUserOption(lo) || active.DefaultOf(lo) is not { } fallback) continue;
-            if (!lo.Option.Publish(store.Store, fallback, persist: false)) continue;
-            changed = true;
-            remount |= lo.Option.Apply == ApplyMode.Transaction;
+            if (lo.Option.Apply == ApplyMode.Transaction)
+            {
+                object? old = lo.Option.Peek(store.Store);
+                if (!Equals(old, fallback)) structural.Add((lo, fallback, old));
+                continue;
+            }
+            if (lo.Option.Publish(store.Store, fallback, persist: false)) changed = true;
         }
-        if (!changed) return;
-        s_values = store.Snapshot();
-        PublishFacts(active);
-        ApplyDefinition(active);
-        if (remount) Remount();
+        if (changed)
+        {
+            s_values = store.Snapshot();
+            PublishFacts(active);
+            ApplyDefinition(active);
+        }
+        if (structural.Count > 0) _ = PublishInTransaction(active, store, structural.ToArray(), "reset:" + active.Manifest.Id);
     }
 
     private static (LayerOption Option, object Value) Resolve(ThemeComposition theme, OptionChange change)
@@ -262,6 +396,33 @@ public static class ThemeHost
     }
 
     private static void Remount() => s_rootEpoch.Value = s_rootEpoch.Peek() + 1;
+
+    /// <summary>Hands <paramref name="request"/> to the bound window's transaction. With no window bound (the boot before the
+    /// first frame, unit tests) the change applies at once: there is no frame to hold.</summary>
+    private static Task<ThemeTransactionResult> Transact(ThemeTransactionRequest request)
+    {
+        if (s_runTransaction is { } run)
+        {
+            var onCommitted = request.OnCommitted;
+            var onFailed = request.OnFailed;
+            return run(request with
+            {
+                OnCommitted = () => { onCommitted?.Invoke(); ReleaseNavigation(); },
+                OnFailed = ex => { onFailed?.Invoke(ex); ReleaseNavigation(); },
+            });
+        }
+        Tok.Use(request.Next, request.Kind);
+        request.Apply();
+        request.OnCommitted?.Invoke();
+        return Task.FromResult(new ThemeTransactionResult(ThemeTransactionOutcome.Immediate));
+    }
+
+    private static void SwitchFailed(string id, Exception error)
+    {
+        s_pendingSwitch.Value = null;
+        Log.Warn("theme", "switching to theme '" + id + "' failed; the current theme was kept", error);
+        Notify.Say(Loc.Get(Strings.Settings.ThemePicker.SwitchFailed), FluentGpu.Controls.InfoBarSeverity.Error, dedupeKey: "theme.switch.failed");
+    }
 
     /// <summary>A view asked for an option change through <c>ctx.OptionRequests</c>: the request names the option by its id.</summary>
     private static void OnOptionRequest(string optionId, object? raw)

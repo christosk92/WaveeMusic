@@ -1297,7 +1297,8 @@
       "subtitle": "A theme changes how every page, the player and navigation look",
       "sub": "Each theme keeps its own options",
       "none": "No themes are installed",
-      "developer": "Developer"
+      "developer": "Developer",
+      "switchFailed": "This theme could not be applied, so Wavee kept the current one"
     },
     "themeOptions": {
       "$comment": "Settings > Appearance > the active theme's options: one expander, rows grouped (themes plan 8.1). The title is built from the theme's own name.",

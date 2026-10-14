@@ -73,7 +73,9 @@ internal static partial class ClassicSettings
                 int selected = -1;
                 for (int i = 0; i < entries.Count; i++)
                     if (entries[i].Selected) { selected = i; break; }
-                body = Controls.PickerStrip(entries.Count, selected, (i, on) => ThemeCard(entries[i], on), PickTheme);
+                // A pick runs a theme transaction: while its prewarm holds the UI the picked card shows a busy ring after 100 ms.
+                string? busyId = ThemeHost.SwitchBusy ? ThemeHost.PendingSwitch.Value : null;
+                body = Controls.PickerStrip(entries.Count, selected, (i, on) => ThemeCard(entries[i], on, busyId == entries[i].Id), PickTheme);
             }
 
             var card = SettingsCard.DefaultStyle;
@@ -96,13 +98,14 @@ internal static partial class ClassicSettings
         if (D(Tab.Appearance, "themePicker").Writer.Choose!(index)) Settings.Bump();
     }
 
-    static Element ThemeCard(ThemePickerEntry entry, bool on)
+    static Element ThemeCard(ThemePickerEntry entry, bool on, bool busy)
     {
         string name = Loc.Get(entry.NameKey);
         var nameText = (on ? BodyStrong(name) : Body(name)) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Wrap = TextWrap.NoWrap, MinWidth = 0f, Shrink = 1f };
         var tags = new List<Element>(3) { nameText };
         if (on) tags.Add(ActiveTag());
         if (entry.Availability == ThemeAvailability.Developer) tags.Add(DeveloperTag());
+        if (busy) tags.Add(ProgressRing.Indeterminate(size: ProgressRing.MinSize));
 
         var kids = new List<Element>(2)
         {

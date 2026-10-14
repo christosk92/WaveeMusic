@@ -46,6 +46,18 @@ public sealed class LiveOptionBehaviourTests(ShellHost host)
         shell.RunFrames(120);   // the entrance and every spring settle
     }
 
+    /// <summary>A Live option keeps production's motion: it never asks for a theme transaction, so no frame of the change is
+    /// frozen (A4.2: only theme switches and Transaction-mode options freeze).</summary>
+    static void RunFramesLive(Shell.HeadlessShell shell, int frames)
+    {
+        for (int i = 0; i < frames; i++)
+        {
+            Assert.False(shell.Host.IsThemeTransactionRunning, "a Live option started a theme transaction");
+            Assert.Equal(FluentGpu.Hosting.FreezePhase.None, shell.Host.FreezeState);
+            shell.RunFrames(1);
+        }
+    }
+
     static void CloseStage(Shell.HeadlessShell shell)
     {
         Stage.Close(null, "test");
@@ -67,7 +79,7 @@ public sealed class LiveOptionBehaviourTests(ShellHost host)
                 Assert.False(shell.Host.Animation.HasTracks(cover), "the cover was still moving before the change");
 
                 Prefs.Stage.SetLayout((int)Stage.VizLayout.LargeArt);   // the options popover's writer (Stage.Options.UI.cs)
-                shell.RunFrames(2);
+                RunFramesLive(shell, 2);
                 cover = Node(shell, "stage:cover");
                 Assert.True(shell.Host.Animation.HasTracks(cover), "Card → Large art snapped the cover instead of springing it");
             }
@@ -214,7 +226,7 @@ public sealed class LiveOptionBehaviourTests(ShellHost host)
             try
             {
                 Prefs.Appearance.Set(Platform.Keys.RowDensity, other);   // Settings › Appearance › Density
-                shell.RunFrames(30);
+                RunFramesLive(shell, 30);
                 var (_, next) = Single(shell, "list:");
                 Assert.Contains(":d" + other + ":", next);
             }

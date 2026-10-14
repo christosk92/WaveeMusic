@@ -36,7 +36,7 @@ public enum ApplyMode : byte
 {
     /// <summary>Written to the cell; the views that read it re-render. Only for colour-only or production-behaviour options.</summary>
     Live,
-    /// <summary>Needs the theme transaction (a cut remount until A4.2): the option changes structure or a non-colour role.</summary>
+    /// <summary>Needs the theme transaction (freeze, apply in place, settle, dissolve; A4.2): the option changes structure or a non-colour role.</summary>
     Transaction,
 }
 

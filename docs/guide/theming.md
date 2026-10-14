@@ -1492,13 +1492,39 @@ answer the composition's default.
 keys (its UI state and other themes stay). `ThemeState` keeps small UI state (a panel width, the last tab) under
 `theme.<themeId>.state.<key>`, clamped to the key's range on read and write.
 
-### Apply and switch (a cut, until A4.2)
+### Apply and switch (the theme transaction, A4.2)
 
-`ThemeHost.Switch(id)` persists `theme.id`, activates the composition (new option store, facts, registry), applies its
-definition when it differs from the installed one, and bumps `ThemeHost.RootEpoch`. `ThemeHost.Apply(OptionChange)` validates the
-change (an invalid value, an unknown option or a parameter throws `ArgumentException`), publishes it, republishes the facts
-and re-applies the definition; a Transaction option also bumps the epoch. There is **no freeze, snapshot or dissolve**: the
-engine's theme transaction (A4.2) replaces exactly these two paths later. Nothing is carried across a switch (owner Q26).
+`ThemeHost.Switch(id)` runs on the engine's **theme transaction** (`AppHost.RunThemeTransaction`, engine EP14 / E5): the new
+composition's fonts prewarm with the UI live (the picked picker card shows a busy ring once that takes 100 ms), the window and its
+pop-outs freeze, and in ONE apply flush under the frozen frame `theme.id` is persisted, the composition activated (new option
+store, facts, registry), its definition installed and `ThemeHost.RootEpoch` bumped, so the root remounts; the new frame settles
+(6 passes / 250 ms) and the thaw dissolves to it (250 ms; on the D3D12 backend, which cannot dissolve yet, the settled frame
+replaces the snapshot in one present). The DWM backdrop change, when the material or the dark flag differs, is ordered with the
+dissolve by the engine. `ThemeHost.Apply(OptionChange)` validates the change (an invalid value, an unknown option or a parameter
+throws `ArgumentException`); a **Live** option is published and the definition re-applied live (the cross-fade path, no freeze);
+a **Transaction** option is published inside a transaction **in place**: no remount, so every slot whose template did not change
+keeps its state and the transient hosting the option's control stays open. `ResetOptions` resets the Live options live and the
+Transaction ones in one transaction.
+
+- **Nothing is carried** (owner Q26): the remounted pages mount like a fresh navigation (find text, drawers, disclosures reset;
+  route, panel, stage and every core model stay; scroll lands where `ScrollPositionMemory` puts a fresh navigation).
+  `SwitchResetsStateTests` pins it.
+- **Failure:** a template of the new theme that throws (or an `Apply` that throws) is rolled back under the same freeze: the previous
+  composition is re-activated and the root swapped back, the frame thaws with a cut, and a toast says the theme could not be
+  applied (`Strings.Settings.ThemePicker.SwitchFailed`).
+- **Navigation during a transaction** (`Shell.GoTo`) waits for its thaw start (`ThemeHost.HoldNavigation`; the latest wins).
+- **Appearance:** light/dark stays live. Only when the active definition changes more than colours with the kind (a different
+  window material per kind) does `Appearance` take the transaction (`ThemeHost.SwitchKind`), with no live cross-fade.
+- **The runner:** the frame root binds its window's `InputHooks.RunThemeTransaction` (`ThemeHost.BindTransactions`); with none
+  bound (the boot before the window, unit tests) a change applies at once.
+- **The video presenter** is `Flow.Persist(Video.PresenterPersistKey)` (`"video.presenter"`): the new root adopts the playing
+  picture's subtree (its surface and binding) instead of re-creating it.
+- **Not built yet:** a Transaction-mode slider or colour picker must apply on release (plan 8.2); no such option exists and the
+  engine `Slider` has no release callback, so it lands with the first one.
+- Tests: `ThemeTransactionMountedTests` (the test-only `ClassicAlt` theme, `Wavee.ShellTests/ClassicAlt.cs`, switches live and
+  back; a Transaction option applies in place; navigation waits; 100 switches over Home, Artist, Search, Concert, Browse, Show and
+  the stage with lyrics playing end with 0 settle timeouts), `SwitchResetsStateTests`, `LiveOptionBehaviourTests` (a Live option
+  never freezes), `AppearanceTests`.
 
 `ThemeRoot.Wrap` (called by both `RootHost` and the headless root through `Shell.RootFrame`) provides
 `ViewRegistry.Context`, `OptionStore.Context` and `ThemeFactsContext.Signal` around the frame, and renders the frame in an
