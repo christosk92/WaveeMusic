@@ -217,25 +217,6 @@ public readonly partial struct Track
         FontSize = 14f, Weight = 600, Foreground = Prop.Of(static () => Tok.AccentTextPrimary),
     };
 
-    /// <summary>The blank placeholder row a slot shows before its reveal edge (ch 01 W10, ch 03 §9.4): a <c>GridEl</c>
-    /// with the SAME tracks, gap, height and inner padding as the live row and one empty box per track, so the crossing
-    /// is a cross-fade and never a reflow. It stays a <c>GridEl</c> on purpose — the real row mounts inside a
-    /// <c>BoxEl</c> crossing wrapper, and the TYPE change is what makes the crossing a remount (ch 01 §9 trap 3).
-    /// <paramref name="padX"/> is the grid's resolved inner padding (<c>PadXFor(tier) − RowInset</c>, Classic
-    /// <c>PadXFor(tier)</c>).</summary>
-    public static Element ShimmerRow(in ColumnSet set, TrackSize[] tracks, float rowH, float padX)
-    {
-        var cells = new Element[tracks.Length];
-        for (int i = 0; i < cells.Length; i++) cells[i] = new BoxEl();
-        return new GridEl
-        {
-            Key = "row:shim",
-            Columns = tracks, ColGap = RowMetrics.ColGapFor(set.Tier), RowHeight = rowH, Grow = 1f,
-            Padding = new Edges4(padX, 0f, padX, 0f),
-            Children = cells,
-        };
-    }
-
     // ══ 3. THE CELLS ═════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>Per-slot like-edge detector: true only when the SAME row flipped unsaved → saved since this slot's last

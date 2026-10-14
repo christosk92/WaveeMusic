@@ -1,4 +1,5 @@
 using Wavee;
+using Wavee.Themes.Classic;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -173,7 +174,7 @@ public sealed class PodcastTranscriptLyricsTests
     [InlineData(640, true, true)]
     [InlineData(700, true, false)]
     public void SavedRowsUseHysteresisAcrossCompactBoundary(float width, bool previous, bool expected)
-        => Assert.Equal(expected, SavedEpisodeLayout.Compact(width, previous));
+        => Assert.Equal(expected, ClassicLibraryTiers.SavedEpisodesCompact(width, previous));
     [Fact]
     public void TranscriptPublishesReadyOnlyAfterOwnerRowsArePrepared()
     {

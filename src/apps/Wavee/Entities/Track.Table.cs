@@ -2154,9 +2154,10 @@ public readonly partial struct Track
         }
 
         /// <summary>The blank placeholder row of the structure's chrome (T8b): the SAME tracks, gap, height and padding as the live row, so
-        /// the crossing is a cross-fade and never a reflow. A host with no registry draws the host-free <see cref="Track.ShimmerRow"/>.</summary>
+        /// the crossing is a cross-fade and never a reflow. A host with no registry has no style at all (its rows render their bare container, and the first miss is logged), so its placeholder is
+        /// the same bare box.</summary>
         internal Element PlaceholderRow(in ColumnSet set, TrackSize[] tracks, float rowH, float padX)
-            => _listStyle?.Chrome.Placeholder is { } placeholder ? placeholder(in set, tracks, rowH, padX) : Track.ShimmerRow(in set, tracks, rowH, padX);
+            => _listStyle?.Chrome.Placeholder is { } placeholder ? placeholder(in set, tracks, rowH, padX) : new BoxEl();
 
         /// <summary>The drawer's mount, keying and reveal — its BODY is the profile's. One drawer at a time, keyed by ROW
         /// identity (item id, else uri#@display), continuing the row's zebra parity with square top corners. ONE spec on the
@@ -2404,7 +2405,7 @@ public readonly partial struct Track
 
     /// <summary>The live grid of one row, built ONCE per slot per shape (the structure's grid template): every per-item value is a
     /// bound Prop over this slot's equality-gated presentation memo, so a recycle rebinds and allocates no element. Re-renders
-    /// only on the shape and the reveal edge. Before the ramp reaches it: a blank ShimmerRow of the identical extent (a GridEl —
+    /// only on the shape and the reveal edge. Before the ramp reaches it: a blank placeholder row of the identical extent (a GridEl —
     /// the TYPE change to the BoxEl-wrapped real row is what forces the crossing remount and its 280 ms fade; a Key change
     /// alone cannot). Only a slot whose FIRST render was a placeholder fades.</summary>
     sealed class TableRowContent(TableHost host, RowScope scope, IReadSignal<Track> item, int start, IReadSignal<bool> hovered)

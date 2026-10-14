@@ -3,7 +3,7 @@
 // each a small component that owns its stamp memo and its hooks and hands the decided values to the structure's
 // `ShowReaderStyle` (`Theming\Contracts\ShowReaderStyle.cs`, Classic's `Themes\Classic\Structure\Views\Show\`), which draws them.
 // What stayed here: the tone, the month word's culture text, the meta line's words and the plumbing from the snapshot to the
-// style's args. The library pane's show header IS Album.PaneHeader (one geometry for both kinds, library rework §5.4) — the
+// style's args. The library pane's show header IS the album pane's (`ClassicLibraryPaneKit.PaneHeader`: one geometry for both kinds, library rework §5.4) — the
 // show pane calls it directly
 //
 // Role: UI (the hosts are core; the picture is the structure's)

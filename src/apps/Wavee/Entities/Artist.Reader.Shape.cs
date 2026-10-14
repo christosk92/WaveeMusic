@@ -127,7 +127,7 @@ public readonly partial struct Artist
         // ── the two reader-width edges (#158; moved from the Reader's SpineHideBelow / NarrowBelow / BreakHysteresis) ─
 
         /// <summary>The narrow edge: under it the block cover drops 120 → 88 and the album head STACKS. The library's
-        /// own 640 (`LibraryLayoutBreakpoints.Collapsed`; WinUI's 641 compact threshold), and already sufficient for the
+        /// own 640 (`ClassicLibraryTiers.Collapsed`; WinUI's 641 compact threshold), and already sufficient for the
         /// inline head — at 640 its title keeps <see cref="TitleFloorW"/> with room to spare (pinned by a test).</summary>
         public const float NarrowBelow = 640f;
         /// <summary>Both edges' exit band: an arm entered under its edge holds until the width clears the edge by this
@@ -150,6 +150,14 @@ public readonly partial struct Artist
         /// <summary>The cover spine's width. It stands beside the list, in the same lane, exactly while the reader is NOT
         /// <see cref="Medium"/> — so every width the band or a block gets is the reader's less this, in that arm.</summary>
         public const float SpineW = 56f;
+        /// <summary>The two CHROME items at the head of the one scroller (0 = the artist band, 1 = the pinned sub-rail): every flat index the list speaks is
+        /// <c>Prefix + blockIndex</c>. The reader (core) and the structure's view (which places the band and the rail in slots 0 and 1) read the same number.</summary>
+        public const int Prefix = 2;
+        /// <summary>The sub-rail's padding, above and below the one word-rail row (<c>Controls.Words.Height</c> tall).</summary>
+        public const float SubRailPadTop = 6f, SubRailPadBottom = 10f;
+        /// <summary>The sub-rail's STATED height — pad + the rail row + pad + the 1-DIP divider (49). The list's analytic extent, the pinned clip inset, the scroll spy's probe
+        /// and the rail root's declared <c>Height</c> are this one number, so analytic == measured by identity.</summary>
+        public const float SubRailH = SubRailPadTop + Controls.Words.Height + SubRailPadBottom + Divider;
         public static float CoverOf(bool narrow) => narrow ? CoverEdgeNarrow : CoverEdge;
         /// <summary>The width the band and every block lay out in: the reader, less the spine when it stands.</summary>
         public static float ListW(float readerW, bool medium) => medium ? readerW : readerW - SpineW;

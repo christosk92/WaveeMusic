@@ -1,46 +1,44 @@
 // ── Entities/User.Page.Library.cs ──────────────────────────────────────────────────────────────────────────────────
-// the albums / artists / podcasts MASTER-DETAIL page: LibraryPageFor + LibraryPage (the two-rung browser, its persisted
-// per-kind signals, the letter groups, the collapse arm, the search mode) and the ONE pane that still lives here — the
-// compact show pane (bound episodes). The album pane is `Album.Pane` (Entities/Album.Pane.cs) and the artists' right
-// column is `Artist.Reader` (Entities/Artist.Reader.cs): this file mounts them, it does not build them.
+// the albums / artists / podcasts / audiobooks MASTER-DETAIL page's CORE HOST: LibraryPageFor + LibraryPage (the two-rung browser's
+// persisted per-kind signals, the shape memo, the letter groups, the selection, the collapse state, the search mode) over the structure's
+// `Pages.Library` view. The page's PICTURE is Classic's (T10c1: `Themes\Classic\Structure\Views\Pages\ClassicLibraryPage*.cs`, props in
+// `Theming\Contracts\LibraryPageProps.cs`); the panes it mounts are `Album.Pane` (Entities/Album.Pane.cs), `Show.Pane` (Entities/Show.Pane.cs)
+// and the artists' `Artist.Reader` (Entities/Artist.Reader.cs), each a core host over its own view key, and `SavedEpisodesReader`
+// (Entities/User.SavedEpisodes.cs): this file mounts them, it does not build them.
 //
-// Role: UI
+// Role: CORE host
 // Owner: O
 // Wave: 5 (reworked 2026-09-17: library-rework-implementation.md §5.3, wave L2; 2026-09-18: A1-A4 of
 //       library-stabilization-plan.md — the navigator's remount key moved off an inert single-child-slot root onto a
 //       keyed CHILD, one mint (`LibraryNavMount.For`) now owns everything frozen at mount, and the a–z gate waits for
 //       every listed row's title before the list sorts by one)
-// Budget: 1200 lines (+30 % = 1560)
 // Spec: ch 15 §0-§9 (0.2.9 Features/Library/LibraryPage.cs) + library-rework-implementation.md §2 (W1, W2, W3, W6, W7),
 //       §3.1/§3.2 (the two component trees), §4 (the interaction contract), §5.3, §5.4, §6, §7;
 //       library-stabilization-plan.md §3.3 (the target view-switching design), §5 wave 1 (A1-A4).
 //
-// ── THE SHAPE ────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ── THE SHAPE (the host hands `Pages.Library` one props record per render; Classic draws this tree) ─────────────────────────────────
 //
 //  LibraryPage (keyed "library:"+route)            ─ seeds every persisted signal in its CONSTRUCTOR (frame one = saved)
-//  └─ root BoxEl (OnBoundsChanged → _collapsed, 640/24 hysteresis)
+//  └─ Pages.Library → root BoxEl (OnBoundsChanged → the structure's 640/24 collapse ladder → `_collapsed`)
 //     ├─ WIDE "lib:wide": NavPanel "lib:nav"[Toolbar · ListBody | LeftSearchBody] │ "lib:grip" ColumnGrip(LeftW) │ right
-//     │        Toolbar = PageHero + the bound count · User.WordRail (fill) + User.ViewToggle · the filter box
-//     │        right   = DetailColumn → Album.Pane (albums) | LibraryShowPane (podcasts)
-//     │                  ReaderColumn → Artist.Reader (artists, 280 + the rest — no MidW, no third pane)
-//     │                  the two SEARCH column shapes (unchanged, still MidW + _midGrip)
+//     │        Toolbar = PageHero + the bound count · the word rail + the view toggle · the filter box
+//     │        right   = the pane (`PaneFor`): Album.Pane (albums) | Show.Pane (podcasts, audiobooks)
+//     │                  the reader (artists, 280 + the rest — no MidW, no third pane)
+//     │                  the two SEARCH column shapes (unchanged, still MidW + "lib:midgrip")
 //     └─ COLLAPSED "lib:collapsed": CrumbBar "lib:crumbs" · depth 0 (toolbar + list) | depth 1 (the pane / the reader) —
 //                   BROWSE has no depth 2 any more (the reader is one pane); SEARCH keeps three rungs in the artists
 //                   view (2 = the track hits)
 //
-// EVERY BRANCH ROOT ON THAT DIAGRAM IS KEYED, and the collapse arm is why. The reconciler matches a KEYED child only
-// against the same key and an UNKEYED child by ordinal among its unkeyed siblings, so two unkeyed branch roots at the
-// same ordinal are ONE node that survives the swap — subtree and all. That is what happened here: `lib:wide` and
-// `lib:collapsed` paired, and one child deeper the crumb bar paired with the nav column. The nav column's `Width` is
-// the persisted `LeftW` SIGNAL — a bound channel, and bound wiring runs at MOUNT — so the reused node came out of the
-// collapse holding the crumb bar's static `Width = NaN`, took the whole page and pushed the reader off screen. Keys,
-// not props, are what turn a branch swap into the remount a bind needs.
+// EVERY BRANCH ROOT ON THAT DIAGRAM IS KEYED, and the collapse arm is why (the full note is in `ClassicLibraryPage.cs`): the reconciler
+// pairs two unkeyed branch roots at the same ordinal into ONE node that survives the swap, and the nav column's `Width` is the persisted
+// `LeftW` SIGNAL, a bound channel whose wiring runs only at MOUNT.
 //
 //  ListBody = Skel.Region(eight Skeletons.ListItemRow  ⇄  NavHost, StaggerRows)         ← the shimmer CROSS-DISSOLVES
 //             NavHost (unkeyed, single-child slot — see REMOUNT VS REFRESH below)
 //             └─ BoxEl "nav:body" ZStack: BoxEl[Mount.Key] ItemsView.CreateBound<LibraryNavItem>(_items, template, …)
 //                                          + User.StickyLetter "nav:sticky" (only while Mount.Lettered)
 //                        │ User.JumpStrip "nav:strip" on the right edge (only while Mount.Strip, i.e. a–z in ANY view)
+//             (drawn by `ClassicLibraryPage.Nav.cs` over `ResolveMount()`: the host resolves the mount, the view draws it)
 //
 // THE NAVIGATOR IS A MEMO, NOT A RENDER. `ComputeShape` (a UseComputed) filters the SOURCE into pooled buffers, sorts
 // them with the reusable `LibraryNavSorter`, builds the letter groups (`LibraryLetters`) when the sort is a–z, folds one
@@ -53,7 +51,7 @@
 // REMOUNT VS REFRESH — the 0.2.10 defect this page was reworked around, and the regression (library-stabilization-plan
 // RC1) that a `Skel.Region` wrap reintroduced on top of it. A `Key` is honored ONLY on a CHILD the reconciler pairs
 // through `ReconcileChildren`; the ROOT of a single-child slot (a `Skel.Region` content thunk, a `Show` body, a
-// component's own root) is paired by `Element.ElementTypeId` alone and its `Key` is INERT — so `NavList()`'s root is an
+// component's own root) is paired by `Element.ElementTypeId` alone and its `Key` is INERT — so the view's `NavList` root is an
 // UNKEYED, always-the-same-shape host (`NavHost`, "the region's single child: unkeyed, shape-stable" below), and the
 // list that actually needs to remount is a KEYED CHILD of it, one level down. That key — `LibraryNavMount.Key`, minted
 // in ONE place (`LibraryNavMount.For`, `ComputeShape` calls it, everyone else reads `shape.Mount`) — is `view:size:
@@ -115,7 +113,9 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
+using Slots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -151,8 +151,6 @@ public readonly partial struct User
     sealed record NavShape(int Count, int FlatCount, string OrderKey, string FactsKey, ulong RowsKey, ulong LettersKey,
                            bool Answered, bool TitlesKnown, LibraryNavMount Mount);
 
-    sealed record PaneProps(int Slot);
-
     /// <summary>Podcasts row-1 words (0 Followed shows · 1 Your Episodes, A2 plan §3.5): the standard toolbar's picker
     /// row IS the mode switch for this kind. Shared rather than per page instance so a navigation can open Your
     /// Episodes (<see cref="YourEpisodesRoute"/>).</summary>
@@ -186,18 +184,12 @@ public readonly partial struct User
         return id.IsValid && id.Kind == kind && Entities.TableFor(kind) is { } table ? table.Slot(id) : Table.None;
     }
 
-    static Element EmptyCompact(string text) => Controls.Vacancy(Controls.VacancyVoice.NoMatch, Controls.VacancyScale.Compact, title: text, subtitle: "");
-
-    static readonly string[] s_noSuggest = [];
-    static readonly Func<bool> s_true = static () => true, s_false = static () => false;
-
     // ══ 2. THE PAGE ══════════════════════════════════════════════════════════════════════════════════════════════════
 
+    [CoreHost]
     sealed class LibraryPage : Component
     {
         const float SearchDebounceMs = 180f;
-        const int SkelRows = 6;
-        const int NavSkelRows = 8;
         // The list row's TRUTHFUL outer extent — the 56 / 40 plate the prototype draws PLUS the bound chrome's 2+2
         // margin (`NavRowExtent`/`NavRowCompactExtent`, User.UI.cs), so 60 and 44 — now lives in ONE place,
         // `LibraryNavMount.For`'s `RowExtent`, alongside every other fact frozen at mount. A seed that counted the plate
@@ -276,7 +268,7 @@ public readonly partial struct User
         /// reads it): what <see cref="ExtentOf"/>/<see cref="RowExtent"/> ask for instead of peeking <c>View</c>, so a
         /// mounted list's measured-extent seed never disagrees with the layout it was actually built with.</summary>
         LibraryNavMount _mountSpec;
-        /// <summary>The mount key <see cref="NavList"/> has already pre-written a selection for (<see cref="PrepareMount"/>)
+        /// <summary>The mount key <c>ClassicLibraryPage.NavList</c> has already pre-written a selection for (<see cref="PrepareMount"/>)
         /// — NOT the same field as <c>_lastNavKey</c>: this one guards the pre-write against running twice for the same
         /// key inside one render pass; that one is <c>SyncNav</c>'s own after-the-fact bookkeeping.</summary>
         string _pendingKey = "";
@@ -294,7 +286,6 @@ public readonly partial struct User
         /// old per-key <c>_layout</c> cache existed — a fresh <c>RepeatLayout.Extents</c> per render throws every
         /// measured row away.</summary>
         readonly NavMountCache _mounts = new();
-        Element? _picker, _leftGrip, _midGrip, _sticky, _strip;
 
         readonly Func<NavShape> _computeShape;
         readonly Func<int> _resolveSelected;
@@ -303,7 +294,6 @@ public readonly partial struct User
         readonly Func<uint> _runSearch;
         readonly Action _demandEdge, _demandRows, _syncNav, _syncLetters, _syncLoad, _saveState, _resetDepth, _autoTop, _autoAlbum;
         readonly Action _onNavSel, _commitLeft, _commitMid;
-        readonly Action<RectF> _onBounds;
         readonly Action<int> _pickDepth, _jump, _onAlsoBy;
         /// <summary>The truthful mount signal (A3): wired ONCE, frozen, on the keyed nav-list box — the engine calls it
         /// only when THAT box is actually realized (a real mount), never on a refresh. It reads <c>_shape.Peek()</c> for
@@ -317,12 +307,21 @@ public readonly partial struct User
         string _scrollScope = "";   // the tab (Shell.PageScrollScope), composed onto the restore keys
         readonly Action _watchLetters;
         long _lettersKey = long.MinValue;
-        readonly Func<int, Element> _navContent;
-        readonly Func<Element> _navNoMatch;
         /// <summary>The toolbar's count, as ONE bound property allocated once: a row landing re-fires this thunk and
         /// rewrites one text node instead of re-rendering the toolbar.</summary>
         readonly Prop<string> _countText;
-        readonly Func<BoundItemScope<LibraryNavItem>, Element> _slotT, _slotCompactT, _cardT, _cardCompactT;
+        LibraryNavigatorProps? _navigator;
+        readonly Func<LibraryNavMountPlan> _resolveMount;
+        readonly Func<IReadOnlyList<LibraryHitRow>> _artistHitRows, _albumHitRows, _artistAlbumHitRows;
+        readonly Func<IReadOnlyList<LibraryTrackHitRow>> _trackHitRows;
+        readonly Action<int> _selectArtist, _selectAlbum;
+        readonly Action<bool> _setCollapsed;
+        readonly Func<bool> _isCollapsed;
+        // The writable cells the view binds its controls to, as Funcs (WVTH006): the same instances for the page's life.
+        readonly Func<Signal<float>> _leftW, _midW;
+        readonly Func<Signal<int>> _sort, _view, _size, _podcastsMode;
+        readonly Func<Signal<bool>> _desc;
+        readonly Func<Signal<string>> _filter;
 
         bool IsArtists => _entity == EntityKind.Artist;
         /// <summary>The Show ENTITY, whichever of the two show-kind library routes this is (A2 plan §3.6): the
@@ -378,12 +377,8 @@ public readonly partial struct User
             _onNavSel = OnNavSel;
             _commitLeft = () => LibraryViewPrefs.SetLeftW(_kind, LeftW.Peek());
             _commitMid = () => LibraryViewPrefs.SetMidW(_kind, MidW.Peek());
-            _onBounds = r =>
-            {
-                if (r.W <= 0f) return;
-                bool c = LibraryLayoutBreakpoints.Collapsed(r.W, _collapsed.Peek());
-                if (c != _collapsed.Peek()) _collapsed.Value = c;
-            };
+            _isCollapsed = () => _collapsed.Peek();
+            _setCollapsed = c => { if (c != _collapsed.Peek()) _collapsed.Value = c; };
             _pickDepth = i => _depth.Value = i;
             _jump = Jump;
             _onAlsoBy = Select;                       // the ONE library-internal jump that stays: select in place
@@ -391,14 +386,17 @@ public readonly partial struct User
             _extentOf = ExtentOf;
             _contentType = ContentTypeOf;
             _watchLetters = WatchLetters;
-            _navContent = _ => NavList();
-            _navNoMatch = () => EmptyCompact(Loc.Get(Strings.Library.NoMatch));
             _countText = Prop.Of(() => FormatCache.Int(_shape is { } shape ? shape.Value.Count : 0));
-            var entity = _entity;
-            _slotT = scope => NavSlot(scope, entity, compact: false);
-            _slotCompactT = scope => NavSlot(scope, entity, compact: true);
-            _cardT = scope => NavCard(scope, entity, compact: false);
-            _cardCompactT = scope => NavCard(scope, entity, compact: true);
+            _resolveMount = ResolveMount;
+            _artistHitRows = ArtistHitRows;
+            _albumHitRows = AlbumHitRows;
+            _artistAlbumHitRows = ArtistAlbumHitRows;
+            _trackHitRows = TrackHitRows;
+            _selectArtist = SelectArtist;
+            _selectAlbum = SelectAlbum;
+            _leftW = () => LeftW; _midW = () => MidW;
+            _sort = () => Sort; _view = () => View; _size = () => Size; _podcastsMode = () => PodcastsMode;
+            _desc = () => Desc; _filter = () => Filter;
 
             // `ListOptions<T>` is UNPACKED at factory time and FROZEN at mount, so BOTH variants are built once, here —
             // the lettered one adds the header recycle pool, the header skip, and the sticky band's clip.
@@ -468,40 +466,39 @@ public readonly partial struct User
             UseEffect(_autoTop, DepKey.From((int)hitsGeneration, fullSearch ? 1 : 0));
             UseEffect(_autoAlbum, DepKey.From((int)hitsGeneration, sArtist));
 
-            Element inner;
+            // Your Episodes (A2 plan §3.5): Podcasts' row-1 words ARE the mode switch, so the selected word swaps the WHOLE body for
+            // the flat episode table while the toolbar stays put.
+            bool savedMode = IsPodcasts && PodcastsMode.Value == 1;
+            // The collapsed rung and its crumbs: TWO rungs when BROWSING (the navigator, the pane or reader); SEARCH keeps three columns,
+            // so the artists view keeps a third rung (artist hits, album hits, track hits).
+            int depth = 0;
+            IReadOnlyList<string> crumbs = Array.Empty<string>();
             if (collapsed)
-                inner = Collapsed(fullSearch, shimmer, selectedSlot);
-            // Your Episodes (A2 plan §3.5): the standard toolbar's row-1 words ARE the mode switch for Podcasts now —
-            // no more wrapper above the page. Selecting the word swaps the WHOLE body for the flat episode table (real
-            // Spotify shows no per-show pane beside it either), but the toolbar (and so the word that switches back)
-            // stays put, which is the one thing the old top-level `tabs` swap did not keep visible.
-            else if (IsPodcasts && PodcastsMode.Value == 1)
-                inner = new BoxEl
-                {
-                    Key = "lib:wide:saved",
-                    Direction = 1, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
-                    Children = [Toolbar(title: true), Embed.Comp(() => new SavedEpisodesReader()) with { Key = "saved-episodes:" + epoch }],
-                };
-            else
             {
-                Element right = fullSearch
-                    ? (IsArtists ? SearchArtistColumns(railOpen, shimmer, awaiting) : SearchAlbumDetail(shimmer, awaiting))
-                    : (IsArtists ? ReaderColumn(sel.Length > 0, selectedSlot) : DetailColumn(sel.Length > 0, selectedSlot));
-                // KEYED, and so is `Collapsed`'s root. Both branch roots were unkeyed BoxEls, so the reconciler paired
-                // them by ORDINAL across a collapse and REUSED the node — and with it the whole subtree: the crumb bar
-                // ⇄ the nav column, one child deep. `LeftColumn` sets `Width = LeftW`, a BOUND channel whose wiring is
-                // MOUNT-ONLY, while the crumb bar's box carries a static `Width = NaN`; a reused node never runs the
-                // bind, so the nav column came back from a collapse at NaN, took the whole page and pushed the reader
-                // off screen. Two different keys make the swap a remount, which is the only thing that re-wires a bind.
-                inner = new BoxEl
-                {
-                    Key = "lib:wide",
-                    Direction = 0, Grow = 1f, AlignItems = FlexAlign.Stretch,
-                    Children = [LeftColumn(fullSearch, shimmer), _leftGrip ??= LeftGrip(), right],
-                };
+                depth = Math.Clamp(_depth.Value, 0, IsArtists && fullSearch ? 2 : 1);
+                crumbs = CrumbsOf(depth, fullSearch, selectedSlot);
             }
-            // The page publishes no shell material and tints nothing: the library is the app's accent-neutral browser.
-            return new BoxEl { Direction = 1, Grow = 1f, AlignItems = FlexAlign.Stretch, OnBoundsChanged = _onBounds, Children = [inner] };
+
+            _navigator ??= new LibraryNavigatorProps
+            {
+                Load = _navLoad, Items = _items, Mount = _resolveMount, OnMounted = _onNavMounted,
+                StickyLetter = _stickyLetter, StickyPush = _stickyPush, Present = _present, Jump = _jump,
+            };
+
+            // The structure draws the page (T10c1): this host keeps every decision and hands the view the values and verbs it draws.
+            return Slots.View(ViewKeys.LibraryPage, new LibraryPageProps
+            {
+                Title = Shell.Dest(new Shell.Route(_route)).Title, Entity = _entity, IsPodcasts = IsPodcasts,
+                Collapsed = collapsed, SavedEpisodesMode = savedMode, FullSearch = fullSearch, Shimmer = shimmer, Awaiting = awaiting,
+                RailOpen = railOpen, HasSelection = sel.Length > 0, Depth = depth, Crumbs = crumbs,
+                IsCollapsed = _isCollapsed, SetCollapsed = _setCollapsed, PickDepth = _pickDepth,
+                LeftW = _leftW, MidW = _midW, Sort = _sort, Desc = _desc, View = _view, Size = _size, Filter = _filter, PodcastsMode = _podcastsMode,
+                CommitLeft = _commitLeft, CommitMid = _commitMid, CountText = _countText,
+                Pane = () => PaneFor(selectedSlot),
+                SavedEpisodes = () => Embed.Comp(() => new SavedEpisodesReader()) with { Key = "saved-episodes:" + epoch },
+                SkelGroup = _skelGroup, Navigator = _navigator,
+                Search = fullSearch ? SearchPropsOf() : null,
+            });
         }
 
         // ── the navigator shape ─────────────────────────────────────────────────────────────────────────────────────
@@ -975,88 +972,7 @@ public readonly partial struct User
             return header < 0 ? -1 : _letters.RowOf(header + 1);
         }
 
-        // ── the left column ─────────────────────────────────────────────────────────────────────────────────────────
-
-        /// <summary>The navigator column. KEYED: its <c>Width</c> is the persisted <c>LeftW</c> SIGNAL — a bound channel,
-        /// wired once at mount — so this node may only ever be paired with another <c>lib:nav</c>. Anything else reusing
-        /// it inherits a width nothing will ever write again.</summary>
-        Element LeftColumn(bool fullSearch, bool shimmer) => NavPanel with
-        {
-            Key = "lib:nav",
-            Width = LeftW, Shrink = 0f,
-            Children = [Toolbar(title: true), fullSearch ? LeftSearchBody(shimmer) : ListBody()],
-        };
-
-        /// <summary>The two column seams, each built ONCE into its cached field — so the key goes on at construction
-        /// rather than through a per-render <c>with</c> clone. Both carry a bound <c>Fill</c> and a <c>Splitter</c>
-        /// bound to their own width signal, which is the reason they may not be paired by ordinal with anything else.</summary>
-        Element LeftGrip() => ColumnGrip(LeftW, 240f, 560f, _commitLeft) with { Key = "lib:grip" };
-
-        /// <inheritdoc cref="LeftGrip"/>
-        Element MidGrip() => ColumnGrip(MidW, 300f, 620f, _commitMid) with { Key = "lib:midgrip" };
-
-        /// <summary>The master column's head (W1): the page title (PageHero, one line) with the live count beside it, the
-        /// word rail + the view toggle, then the filter. The collapsed layout drops the title row — the crumb root names
-        /// the kind. The count is a BOUND text, so a row landing re-fires one property instead of the toolbar.</summary>
-        Element Toolbar(bool title)
-        {
-            // Podcasts' row-1 words ARE Followed shows / Your Episodes (A2 plan §3.5) — the shows sort rail only
-            // makes sense while browsing shows, and the mode switch belongs in the SAME row Albums uses for its own
-            // words, not a wrapper of its own.
-            // Podcasts' mode words own their row: sharing it with the view toggle scrolled "Your Episodes" out of a
-            // narrow column. The filter and the view toggle only browse SHOWS, so they share the next row and Your
-            // Episodes (which has neither) drops it.
-            _picker ??= new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
-                Children = IsPodcasts
-                    ? [Controls.Words.Rail([new(Loc.Bind(Strings.Podcast.Reader.FollowedShows)), new(Loc.Bind(Strings.Podcast.Reader.YourEpisodes))], PodcastsMode, fill: true)]
-                    : [WordRail(_entity, Sort, Desc), ViewToggle(View, Size)],
-            };
-            Element? filter = IsPodcasts && PodcastsMode.Value == 1 ? null : AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Library.Filter),
-                text: Filter, queryIcon: Icons.Search, grow: 1f, maxFillWidth: 9999f, minHeight: 32f, cornerRadius: Radii.Control);
-            if (IsPodcasts && filter is not null)
-                filter = new BoxEl
-                {
-                    Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
-                    Children = [filter, ViewToggle(View, Size)],
-                };
-            // The two arms differ in CHILD COUNT (the collapsed one drops the title row), so they carry different keys:
-            // paired by ordinal they would have matched the title row against `_picker` and `_picker` against the filter
-            // — and the count is a BOUND text (`_countText`) that only a mount wires. The two arms live under
-            // "lib:wide" and "lib:collapsed" respectively, which already keeps them apart; this is the second lock.
-            if (!title)
-                return new BoxEl
-                {
-                    Key = "lib:toolbar:compact",
-                    Direction = 1, Gap = Spacing.S, Shrink = 0f, Padding = new Edges4(Spacing.M, Spacing.M, Spacing.M, Spacing.S),
-                    Children = filter is null ? [_picker] : [_picker, filter],
-                };
-            Element titleRow = new BoxEl
-            {
-                // FlexAlign.End, not Baseline: the engine's FlexAlign has no baseline arm (Foundation/LayoutTypes.cs),
-                // and END puts the 20-line count's bottom on the 36-line hero's, which is the prototype's reading.
-                Direction = 0, AlignItems = FlexAlign.End, Gap = Spacing.S, MinWidth = 0f,
-                Children =
-                [
-                    R.Type.PageHero(Shell.Dest(new Shell.Route(_route)).Title) with
-                        { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f },
-                    new TextEl(_countText) { Size = 14f, LineHeight = 20f, Color = Tok.TextTertiary, Shrink = 0f },
-                ],
-            };
-            return new BoxEl
-            {
-                Key = "lib:toolbar",
-                Direction = 1, Gap = Spacing.S, Shrink = 0f, Padding = new Edges4(Spacing.M, Spacing.L, Spacing.M, Spacing.S),
-                Children = filter is null ? [titleRow, _picker] : [titleRow, _picker, filter],
-            };
-        }
-
-        /// <summary>The navigator, as ONE skeleton boundary: eight shimmer rows while the relation has not answered, the
-        /// no-match vacancy for a filter that matched nothing (the engine's own Empty arm), otherwise the bound list —
-        /// and the answer CROSS-DISSOLVES into the rows (`SkelReveal.StaggerRows`) instead of swapping hard.</summary>
-        Element ListBody() => Skel.Region(_navLoad, s_navShimmer, _navContent, SkelReveal.StaggerRows,
-                                          isEmpty: static n => n == 0, onEmpty: _navNoMatch, group: _skelGroup);
+        // ── the navigator's loading state ───────────────────────────────────────────────────────────────────────────
 
         /// <summary>"Loading" is decided by the pure <see cref="LibraryNavReadiness"/> (A4), never inline here: the
         /// relation not having answered (as always), OR — new — the sort being a–z while a listed row's title has not
@@ -1074,57 +990,16 @@ public readonly partial struct User
             else if (!_navLoad.IsReady || _navLoad.Value.Peek() != shape.Count) _navLoad.SetReady(shape.Count);
         }
 
-        static readonly Func<Element> s_navShimmer = static () =>
+        /// <summary>The navigator's mount at the moment the region asks for its content (<c>ClassicLibraryPage.NavList</c>): the shape's mount identity (the ONLY
+        /// reactive read — it rides the shape memo), the selection pre-write for a fresh list (<see cref="PrepareMount"/>) and the one cached (layout, options) pair for
+        /// that key (<see cref="NavMountCache.Resolve"/>), built once and reused for as long as the key does not change. The structure draws the list, the letters and the
+        /// strip around it; every one that must actually remount is a KEYED CHILD of the region's unkeyed single-child root (RC1).</summary>
+        LibraryNavMountPlan ResolveMount()
         {
-            var rows = new Element[NavSkelRows];
-            for (int i = 0; i < rows.Length; i++)
-                rows[i] = Skeletons.ListItemRow(withThumbnail: true, 40f) with { Key = "navskel:" + i };
-            return new BoxEl
-            {
-                Direction = 1, Gap = Spacing.S, Padding = new Edges4(Spacing.M, Spacing.XS, Spacing.M, Spacing.XS),
-                Children = rows,
-            };
-        };
-
-        /// <summary>The real navigator (library-stabilization-plan §3.3, A1). The ROOT returned here is the region's
-        /// single-child slot — UNKEYED and the SAME shape (a plain row `BoxEl`) every single render, forever, because a
-        /// `Key` in that slot is INERT (RC1: <c>ReconcileSkeletonRegion</c> pairs a region's content root by
-        /// <c>ElementTypeId</c> alone, never by <c>Key</c>). Everything that must actually remount is a KEYED CHILD, one
-        /// level down, where <c>ReconcileChildren</c> honors keys: the nav list itself (<c>shape.Mount.Key</c>), the
-        /// sticky letter ("nav:sticky", present only while <c>Mount.Lettered</c>) and the jump strip ("nav:strip",
-        /// present only while <c>Mount.Strip</c> — a–z in ANY view, not just the lettered list). None of the three ever
-        /// changes ELEMENT TYPE across a render, so the reconciler never has a chance to reuse one node as another.
-        /// <para><see cref="PrepareMount"/> pre-writes the selection into <see cref="_navSel"/> the FIRST time this
-        /// render sees a new <c>Mount.Key</c> — before the fresh <c>ItemsView</c> below is even constructed — and
-        /// <see cref="NavMountCache.Resolve"/> hands back the one (layout, options) pair for that key, built once and
-        /// reused for as long as the key does not change.</para></summary>
-        Element NavList()
-        {
-            var shape = _shape!.Value;                       // the ONLY reactive read: Mount rides the shape
-            var mount = shape.Mount;
+            var mount = _shape!.Value.Mount;
             PrepareMount(mount);
             var (layout, options) = _mounts.Resolve(mount, this);
-            Element list = new BoxEl
-            {
-                Key = mount.Key, OnRealized = _onNavMounted,
-                Grow = 1f, Direction = 1, MinHeight = 0f,
-                Padding = mount.GridPadding ? new Edges4(Spacing.S, Spacing.S, Spacing.S, 0f) : default,
-                Children = [ItemsView.CreateBound(_items!, TemplateOf(mount.Template), layout, options)],
-            };
-            Element body = new BoxEl
-            {
-                Key = "nav:body", Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, ZStack = true, ClipToBounds = true,
-                Children = mount.Lettered
-                    ? [list, _sticky ??= StickyLetter(_stickyLetter, _stickyPush) with { Key = "nav:sticky" }]
-                    : [list],
-            };
-            return new BoxEl                                  // the region's single child: unkeyed, shape-stable
-            {
-                Direction = 0, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
-                Children = mount.Strip
-                    ? [body, _strip ??= JumpStrip(_present, _stickyLetter, _jump) with { Key = "nav:strip" }]
-                    : [body],
-            };
+            return new LibraryNavMountPlan(mount, layout, options);
         }
 
         /// <summary>The mount-key pre-write (A2, risk (b)). The FIRST render to carry a new <see cref="LibraryNavMount.Key"/>
@@ -1154,14 +1029,6 @@ public readonly partial struct User
             return baseOptions with { Scroll = baseOptions.Scroll! with { ScrollKey = _scrollScope + mount.ScrollKey } };
         }
 
-        Func<BoundItemScope<LibraryNavItem>, Element> TemplateOf(LibraryNavTemplate template) => template switch
-        {
-            LibraryNavTemplate.RowCompact => _slotCompactT,
-            LibraryNavTemplate.Card => _cardT,
-            LibraryNavTemplate.CardCompact => _cardCompactT,
-            _ => _slotT,
-        };
-
         /// <summary>The truthful mount signal (A3): wired on the keyed nav-list box, the engine calls this only when
         /// THAT box is actually realized — a real mount, never a refresh. It reads <c>_shape.Peek()</c> for "which mount
         /// is this" (the field is frozen and shared across every mount, so it cannot close over a per-render value) and
@@ -1189,11 +1056,6 @@ public readonly partial struct User
              : prev.CellMin != next.CellMin ? "size"
              : "letters";
 
-        /// <summary>The list slot: the template runs ONCE per recycled slot and branches at BUILD time on the pooled
-        /// content type (Recents' `RecentsRowSlot` idiom) — a header plate and a row never share a pool.</summary>
-        Element NavSlot(BoundItemScope<LibraryNavItem> scope, EntityKind kind, bool compact)
-            => scope.Item.Peek().Slot < Table.None ? LetterHeader(scope) : NavRow(scope, kind, compact);
-
         /// <summary>One (<see cref="RepeatLayout"/>, <see cref="ListOptions{T}"/>) pair per <see cref="LibraryNavMount.Key"/>,
         /// built ONCE and reused while the key does not change — page-private, NOT a component. <c>RepeatLayout.Extents</c>
         /// wraps a STATEFUL measured layout (it accumulates every row's measurement), so a fresh one per render would
@@ -1219,55 +1081,21 @@ public readonly partial struct User
             }
         }
 
-        // ── the right column (browse) ───────────────────────────────────────────────────────────────────────────────
+        // ── the panes and the crumbs ────────────────────────────────────────────────────────────────────────────────
 
-        Element DetailColumn(bool hasSelection, int slot)
+        /// <summary>The selected row's pane, mounted by the structure inside its column. NO `Key` on the album pane: a selection change RE-PUSHES its props and the pane
+        /// re-skins in place (it owns its own crossfade) — a keyed remount would throw away its scroll and its warm demand. The artists view's one right-hand rung is the
+        /// reader: the navigator's slot plus the three Signal instances it steers itself with (there is no MidW and no third pane — the reader is the leaf).</summary>
+        Element PaneFor(int slot) => _entity switch
         {
-            if (!hasSelection) return Placeholder(IsShowEntity ? Strings.Library.SelectShow : Strings.Library.SelectAlbum);
-            return ReadingPane with { Key = "lib:detail", Grow = 1f, Basis = 0f, Children = [PaneFor(_entity, slot)] };
-        }
+            EntityKind.Show => Embed.Comp(new Show.PaneProps(slot), static () => new Show.Pane()),
+            EntityKind.Artist => Embed.Comp(new Artist.ReaderProps(slot, Scope, RSort, AlbumKey), static () => new Artist.Reader()),
+            _ => Embed.Comp(new Album.PaneProps(slot, ShowAlsoBy: true, OnAlsoBy: _onAlsoBy), static () => new Album.Pane()),
+        };
 
-        /// <summary>NO `Key` on the album pane: a selection change RE-PUSHES its props and the pane re-skins in place
-        /// (it owns its own crossfade) — a keyed remount would throw away its scroll and its warm demand.</summary>
-        Element PaneFor(EntityKind kind, int slot) => kind == EntityKind.Show
-            ? Embed.Comp(new Show.PaneProps(slot), static () => new Show.Pane())
-            : Embed.Comp(new Album.PaneProps(slot, ShowAlsoBy: true, OnAlsoBy: _onAlsoBy), static () => new Album.Pane());
-
-        /// <summary>The artists view's ONE right-hand rung (W3): the reader takes the navigator's slot plus the three
-        /// Signal instances it steers itself with. There is no MidW here and no third pane — the reader is the leaf.</summary>
-        Element ReaderColumn(bool hasSelection, int artistSlot)
+        /// <summary>The collapsed layout's breadcrumb, root first: the kind, then the selected row (or the search hit), then (artists search) the album hit.</summary>
+        IReadOnlyList<string> CrumbsOf(int depth, bool fullSearch, int selectedSlot)
         {
-            if (!hasSelection) return Placeholder(Strings.Library.SelectArtist);
-            return ReadingPane with
-            {
-                Key = "lib:reader", Grow = 1f, Basis = 0f, MinWidth = 0f,
-                Children = [Embed.Comp(new Artist.ReaderProps(artistSlot, Scope, RSort, AlbumKey), static () => new Artist.Reader())],
-            };
-        }
-
-        static Element Placeholder(string key) => ReadingPane with { Key = "lib:empty", Grow = 1f, Children = [EmptyCompact(Loc.Get(key))] };
-
-        // ── the collapsed drill-in (W7) ─────────────────────────────────────────────────────────────────────────────
-
-        /// <summary>The drill: opacity only, 160 ms, and the arriving leaf slides 12 DIP in from the right. A depth swap
-        /// is a mount/unmount of a keyed wrapper, so the engine's enter/exit terminals do the work — no frame clock.</summary>
-        static readonly LayoutTransition s_drillIn = new(
-            TransitionChannels.Opacity, TransitionDynamics.Tween(160f, Easing.SmoothOut),
-            Enter: new EnterExit(Dx: 12f, Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
-            ExitDynamics: TransitionDynamics.Tween(160f, Easing.SmoothOut));
-
-        static readonly LayoutTransition s_drillRoot = new(
-            TransitionChannels.Opacity, TransitionDynamics.Tween(160f, Easing.SmoothOut),
-            Enter: new EnterExit(Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
-            ExitDynamics: TransitionDynamics.Tween(160f, Easing.SmoothOut));
-
-        /// <summary>TWO rungs when BROWSING, for every kind: depth 0 the navigator, depth 1 the pane (albums / podcasts)
-        /// or the reader (artists) — the browse reader is ONE pane, so the old depth 2 is gone there. SEARCH mode keeps
-        /// its three columns, so the artists view keeps a third rung for them: depth 0 artist hits, 1 album hits, 2 track
-        /// hits (§0.9-§0.10 — search is untouched by the rework).</summary>
-        Element Collapsed(bool fullSearch, bool shimmer, int selectedSlot)
-        {
-            int depth = Math.Clamp(_depth.Value, 0, IsArtists && fullSearch ? 2 : 1);
             int sArtist = _sArtist.Value, sAlbum = _sAlbum.Value;
             string level1 = IsArtists
                 ? NameOrEllipsis(EntityKind.Artist, fullSearch ? sArtist : selectedSlot)
@@ -1275,47 +1103,8 @@ public readonly partial struct User
             var crumbs = new List<string>(3) { KindCrumb() };
             if (depth >= 1) crumbs.Add(level1);
             if (depth >= 2) crumbs.Add(NameOrEllipsis(EntityKind.Album, sAlbum));
-
-            Element body;
-            if (depth == 0)
-                body = new BoxEl
-                {
-                    Key = "col:nav",   // keyed like its three alternatives; the "depth:N" wrapper already separates them
-                    Direction = 1, Grow = 1f,
-                    Children = [Toolbar(title: false), IsPodcasts && PodcastsMode.Value == 1
-                        ? Embed.Comp(() => new SavedEpisodesReader()) with { Key = "saved-episodes:" + Entities.ScopeEpoch.Value }
-                        : (fullSearch ? LeftSearchBody(shimmer) : ListBody())],
-                };
-            else if (depth >= 2)
-                body = ReadingPane with { Key = "col:tracks", Grow = 1f, Basis = 0f, Children = [TrackHits(shimmer)] };
-            else if (IsArtists)
-                body = ReadingPane with
-                {
-                    Key = "col:reader", Grow = 1f, Basis = 0f, MinWidth = 0f,
-                    Children = [fullSearch ? AlbumHits(shimmer, explain: false) : ReaderLeaf(selectedSlot)],
-                };
-            else
-                body = ReadingPane with
-                {
-                    Key = "col:detail", Grow = 1f, Basis = 0f,
-                    Children = [fullSearch ? TrackHits(shimmer) : PaneFor(_entity, selectedSlot)],
-                };
-            Element wrapper = new BoxEl
-            {
-                Key = "depth:" + depth, Animate = depth > 0 ? s_drillIn : s_drillRoot,
-                Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, MinWidth = 0f, Children = [body],
-            };
-            // KEYED against `Render`'s "lib:wide" — see the note there: two unkeyed branch roots paired by ordinal, and
-            // the crumb bar inherited the nav column's node (and lost its bound Width) on the way back out.
-            return new BoxEl
-            {
-                Key = "lib:collapsed", Direction = 1, Grow = 1f, ClipToBounds = true,
-                Children = [CrumbBar(crumbs, _pickDepth), wrapper],
-            };
+            return crumbs;
         }
-
-        Element ReaderLeaf(int artistSlot)
-            => Embed.Comp(new Artist.ReaderProps(artistSlot, Scope, RSort, AlbumKey), static () => new Artist.Reader());
 
         string KindCrumb() => _entity switch
         {
@@ -1380,127 +1169,71 @@ public readonly partial struct User
             return ai < 0 ? default : _hits.AlbumsOf(_hits.Artists[ai]);
         }
 
-        (int AlbumSlot, Element[] Rows) SelectedTrackRows()
+        /// <summary>The hits and the selection the structure draws. The lists are built lazily, so a collapsed rung builds only the column it shows.</summary>
+        LibrarySearchProps SearchPropsOf() => new()
+        {
+            ArtistHits = _artistHitRows, AlbumHits = _albumHitRows, ArtistAlbumHits = _artistAlbumHitRows, TrackHits = _trackHitRows,
+            SelectedArtist = _sArtist.Value, SelectedAlbum = _sAlbum.Value, ShowTrackArt = !Prefs.Appearance.TrackArtworkHidden(),
+            SelectArtist = _selectArtist, SelectAlbum = _selectAlbum,
+        };
+
+        /// <summary>The artists view's left column: the artist hits, each with the "why" eyebrow when the match is not the name.</summary>
+        IReadOnlyList<LibraryHitRow> ArtistHitRows()
+        {
+            var artists = _hits.Artists;
+            var rows = new LibraryHitRow[artists.Length];
+            for (int i = 0; i < rows.Length; i++)
+            {
+                var a = artists[i];
+                rows[i] = new LibraryHitRow(a.Slot, a.MatchStart, a.MatchLen, "", MatchEyebrow(a.Match));
+            }
+            return rows;
+        }
+
+        /// <summary>The albums view's left column: explained album hits (the match eyebrow, the "artist · year" line).</summary>
+        IReadOnlyList<LibraryHitRow> AlbumHitRows()
+        {
+            var albums = _hits.Albums;
+            var rows = new LibraryHitRow[albums.Length];
+            for (int i = 0; i < rows.Length; i++)
+            {
+                var al = albums[i];
+                rows[i] = new LibraryHitRow(al.Slot, al.MatchStart, al.MatchLen, AlbumSubtitle(al.Slot), MatchEyebrow(al.Match));
+            }
+            return rows;
+        }
+
+        /// <summary>The artists view's middle column: browse context under the selected artist (no eyebrow, no message — W23).</summary>
+        IReadOnlyList<LibraryHitRow> ArtistAlbumHitRows()
+        {
+            var albums = AlbumsOfSelectedArtist();
+            var rows = new LibraryHitRow[albums.Length];
+            for (int i = 0; i < rows.Length; i++)
+            {
+                var al = albums[i];
+                rows[i] = new LibraryHitRow(al.Slot, al.MatchStart, al.MatchLen, AlbumSubtitle(al.Slot), null);
+            }
+            return rows;
+        }
+
+        /// <summary>The selected album's track hits; a click plays the album from that track in place.</summary>
+        IReadOnlyList<LibraryTrackHitRow> TrackHitRows()
         {
             var albums = IsArtists ? AlbumsOfSelectedArtist() : _hits.Albums;
             int ali = LibraryHits.IndexOf(albums, _sAlbum.Peek());
-            if (ali < 0) return (Table.None, Array.Empty<Element>());
+            if (ali < 0) return Array.Empty<LibraryTrackHitRow>();
             var album = albums[ali];
             var tracks = _hits.TracksOf(album);
-            bool showArt = !Prefs.Appearance.TrackArtworkHidden();
-            var rows = new Element[tracks.Length];
-            for (int i = 0; i < tracks.Length; i++)
+            var rows = new LibraryTrackHitRow[tracks.Length];
+            for (int i = 0; i < rows.Length; i++)
             {
                 var t = tracks[i];
                 int albumSlot = album.Slot, trackSlot = t.Slot;
-                rows[i] = TrackHitRow("search:t" + trackSlot, trackSlot, t.MatchStart, t.MatchLen, showArt,
+                rows[i] = new LibraryTrackHitRow(trackSlot, t.MatchStart, t.MatchLen,
                     () => Playback.PlayContext(LibraryRows.IdOf(EntityKind.Album, albumSlot), LibraryRows.IdOf(EntityKind.Track, trackSlot)));
             }
-            return (album.Slot, rows);
+            return rows;
         }
-
-        Element LeftSearchBody(bool shimmer)
-        {
-            if (!IsArtists) return AlbumHits(shimmer, explain: true);
-            var artists = _hits.Artists;
-            int selected = _sArtist.Value;
-            var rows = new Element[artists.Length];
-            for (int i = 0; i < artists.Length; i++)
-            {
-                var a = artists[i];
-                int slot = a.Slot;
-                rows[i] = SearchRow("search:a" + slot, EntityKind.Artist, slot, a.MatchStart, a.MatchLen, "", MatchEyebrow(a.Match),
-                    slot == selected, () => SelectArtist(slot));
-            }
-            return SearchSkel(shimmer, s_skelNameRow, rows.Length == 0 ? () => SearchMessage(Loc.Get(Strings.Library.NoMatch)) : () => SearchScroll(rows));
-        }
-
-        /// <summary>Album hits: the albums view's LEFT column (explained, with its zero-hit message) or the artists view's
-        /// middle column (browse context under an explained artist: no eyebrow, no message — W23).</summary>
-        Element AlbumHits(bool shimmer, bool explain)
-        {
-            var albums = explain ? _hits.Albums : AlbumsOfSelectedArtist();
-            int selected = _sAlbum.Value;
-            var rows = new Element[albums.Length];
-            for (int i = 0; i < albums.Length; i++)
-            {
-                var al = albums[i];
-                int slot = al.Slot;
-                rows[i] = SearchRow("search:al" + slot, EntityKind.Album, slot, al.MatchStart, al.MatchLen, AlbumSubtitle(slot),
-                    explain ? MatchEyebrow(al.Match) : null, slot == selected, () => SelectAlbum(slot));
-            }
-            Func<Element> content = explain && rows.Length == 0 ? () => SearchMessage(Loc.Get(Strings.Library.NoMatch)) : () => SearchScroll(rows);
-            return SearchSkel(shimmer, s_skelNameRow, content);
-        }
-
-        Element TrackHits(bool shimmer)
-        {
-            var (_, rows) = SelectedTrackRows();
-            return SearchSkel(shimmer, s_skelTrackRow, () => SearchScroll(rows));
-        }
-
-        Element SearchArtistColumns(bool railOpen, bool shimmer, bool awaiting)
-        {
-            _ = _sAlbum.Value; _ = _sArtist.Value;
-            int albumCount = AlbumsOfSelectedArtist().Length;
-            var (_, trackRows) = SelectedTrackRows();
-            Element albumPane = ReadingPane with
-            {
-                Key = "s:albums", Basis = MidW.Value, MinWidth = railOpen ? 220f : 300f, MaxWidth = MidW.Value, Shrink = 1f, Grow = 0f,
-                Children = [FacetHeader(Loc.Get(Strings.Search.Albums), shimmer ? -1 : albumCount, awaiting), AlbumHits(shimmer, explain: false)],
-            };
-            Element trackPane = ReadingPane with
-            {
-                Key = "s:tracks", Grow = 1f, Basis = 0f, MinWidth = 220f, Shrink = 1f,
-                Children = [FacetHeader(Loc.Get(Strings.Search.Songs), shimmer ? -1 : trackRows.Length, awaiting),
-                            SearchSkel(shimmer, s_skelTrackRow, () => SearchScroll(trackRows))],
-            };
-            // Keyed like the other two arms of `right` (lib:reader / lib:detail / lib:empty), and the seam keyed like the
-            // panes beside it: this row's children must never pair across a branch swap by ordinal alone, because the
-            // seam carries a bound Fill and a Splitter bound to MidW.
-            return new BoxEl
-            {
-                Key = "lib:search",
-                Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ClipToBounds = true,
-                Children = [albumPane, _midGrip ??= MidGrip(), trackPane],
-            };
-        }
-
-        Element SearchAlbumDetail(bool shimmer, bool awaiting)
-        {
-            _ = _sAlbum.Value;
-            var (_, rows) = SelectedTrackRows();
-            return ReadingPane with
-            {
-                Key = "s:detail", Grow = 1f, Basis = 0f,
-                Children = [FacetHeader(Loc.Get(Strings.Search.Songs), shimmer ? -1 : rows.Length, awaiting),
-                            SearchSkel(shimmer, s_skelTrackRow, () => SearchScroll(rows))],
-            };
-        }
-
-        /// <summary>The engine's skeleton boundary: shimmer rows DERIVED from the same row builder, a staggered reveal, and
-        /// ONE group so the columns settle together. Shimmer only while there is nothing worth keeping on screen.</summary>
-        Element SearchSkel(bool shimmer, Func<Element> row, Func<Element> content) => new SkelRegionEl(
-            Pending: shimmer ? s_true : s_false, Failed: s_false, Content: content,
-            ShimmerSource: () => ShimmerStack(row), OnFailed: null,
-            Reveal: SkelReveal.StaggerRows, Style: SkeletonStyle.Default, Group: _skelGroup);
-
-        static Element ShimmerStack(Func<Element> row)
-        {
-            var kids = new Element[SkelRows];
-            for (int i = 0; i < SkelRows; i++) kids[i] = row() with { Key = "skel:" + i };
-            return new BoxEl { Direction = 1, Gap = 2f, Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, Spacing.XS), Children = kids };
-        }
-
-        static Element SearchScroll(Element[] rows) => ScrollView(new BoxEl
-        {
-            Direction = 1, Gap = 2f, Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, R.Space.DockReserve + Spacing.XL),
-            Children = rows,
-        }) with { Grow = 1f };
-
-        // The shimmer rows are the surface's own seed face at each hit's shape (an artist and an album hit share one).
-        static readonly Func<Element> s_skelNameRow = static () => Controls.Surface(Controls.CardData.Seed, LibrarySearchRowRules.NameShape);
-        static readonly Func<Element> s_skelTrackRow = static () => Controls.Surface(Controls.CardData.Seed, LibrarySearchRowRules.TrackShape(showArtwork: true));
 
         static string AlbumSubtitle(int slot)
         {
@@ -1549,9 +1282,6 @@ public readonly partial struct User
             if (c.Depth is { } d) _depth.Value = albumPick && d == 1 && IsArtists && _fullSearch && _collapsed.Peek() ? 2 : d;
         }
     }
-
-    // ══ 3. THE COMPACT SHOW PANE (W3: Follow, no "Open album ↗", compact episodes) ════════════════════════════════════
-
 }
 
 /// <summary>The Podcasts/Audiobooks split (A2 plan §3.6): pure over <see cref="ShowFlags"/>, the same bit

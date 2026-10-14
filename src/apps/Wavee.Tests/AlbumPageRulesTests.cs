@@ -474,9 +474,9 @@ public class AlbumPageRulesTableTests
     [Fact]
     public void PaneHeader_StatesTheCoverPlusItsOwnPadding()
     {
-        Assert.Equal(160f, Album.PaneHeaderHeight);
-        Assert.Equal(Album.PaneCover, Album.PaneHeaderTextBudget);
-        Assert.True(Album.PaneHeaderHeight > Album.PaneCover, "the cover would touch the block's edges");
+        Assert.Equal(160f, ClassicLibraryPaneRules.PaneHeaderHeight);
+        Assert.Equal(ClassicLibraryPaneRules.PaneCover, ClassicLibraryPaneRules.PaneHeaderTextBudget);
+        Assert.True(ClassicLibraryPaneRules.PaneHeaderHeight > ClassicLibraryPaneRules.PaneCover, "the cover would touch the block's edges");
     }
 
     /// <summary>A WRAPPED title fits the budget with room to spare — the fact that keeps the tracklist still. It is the
@@ -487,10 +487,10 @@ public class AlbumPageRulesTableTests
     [InlineData(9)]   // clamped to the two lines the title actually paints
     public void PaneHeader_TextColumnFitsTheBudgetAtEveryTitleLength(int lines)
     {
-        Assert.True(Album.PaneHeaderTextHeight(lines) <= Album.PaneHeaderTextBudget,
-            $"{lines}-line title: {Album.PaneHeaderTextHeight(lines)} does not fit {Album.PaneHeaderTextBudget}");
-        Assert.Equal(Album.PaneHeaderTextHeight(Album.PaneTitleMaxLines), Album.PaneHeaderTextHeight(9));
+        Assert.True(ClassicLibraryPaneRules.PaneHeaderTextHeight(lines) <= ClassicLibraryPaneRules.PaneHeaderTextBudget,
+            $"{lines}-line title: {ClassicLibraryPaneRules.PaneHeaderTextHeight(lines)} does not fit {ClassicLibraryPaneRules.PaneHeaderTextBudget}");
+        Assert.Equal(ClassicLibraryPaneRules.PaneHeaderTextHeight(ClassicLibraryPaneRules.PaneTitleMaxLines), ClassicLibraryPaneRules.PaneHeaderTextHeight(9));
         // A two-line title costs exactly one more line than a one-line one: nothing else in the column moves with it.
-        Assert.Equal(Album.PaneTitleLine, Album.PaneHeaderTextHeight(2) - Album.PaneHeaderTextHeight(1));
+        Assert.Equal(ClassicLibraryPaneRules.PaneTitleLine, ClassicLibraryPaneRules.PaneHeaderTextHeight(2) - ClassicLibraryPaneRules.PaneHeaderTextHeight(1));
     }
 }
