@@ -799,6 +799,30 @@ handles, the fallback rows, the rail, the genre tiles, the related queries), so 
 stay `BrowseLoadGateTests`, `SearchFacetRulesTests` and `SearchHitDataTests`. The mounted facts are `Wavee.ShellTests\BrowseSearchMountedTests.cs`: Classic is the registered template of every key, a tile block keys
 each tile by its destination's uri, the Search facet row is the skeleton until the first body has answered, and then carries one underline and a body keyed by the facet.
 
+### The artist page (T10b1)
+
+The artist page is the structure's picture over a core host. The scroll column, the page's skeleton region, the hero and its collapse into the context band, the section anchors, the Top-tracks band, the shelves, the biography band, the banners and the artist pick card are one registered Classic view
+(`Themes\Classic\Structure\Views\Pages\ClassicArtist*.cs`); the demands, the readiness, the section plan, the hero metrics' hysteresis, the accent, the scroll spy and the Play / Shuffle / Radio decisions stay core.
+
+| Key | Props | Core host | Classic template |
+|---|---|---|---|
+| `Pages.Artist` | `ArtistPageProps` (the route and scope keys, the artist handle, the pending / failed verdicts and Retry, the measured width and the ONE resolved `ArtistHeroMetrics`, the accent as a value, a live read, an untracked read and a signal, the palette and hero urls, the washes flag, the tint claim leaf, the band's engaged edge, the pivot tabs and the spy's answer, the section slots with their anchor callbacks, the fans pool, the verbs, `RowsClassic` / `ShowTrackArt` for the chart's skeleton) | `Artist.PageHost` (`[CoreHost]`, `Entities\Artist.Page.cs`): the demand effects, `DemandRows`, `Stamp`, readiness and the failure verdict, the hero-photo latch and its decode warm-up, the watched accent, `PlanSections` (the plan and the pivot's membership), the anchor registry and the spy | `ClassicArtistPage`: the keyed column and scroller over the `SkelRegionEl` (Reveal.Soft, Group null), the hero, the sentinel, the clipped magazine and wash, the band's artist arm and the derived shimmer; `ClassicArtistHero`, `ClassicArtistSections`, `ClassicArtistBanners`, `ClassicArtistPick` |
+
+**There is no hero key.** The hero's pinned, collapsing root has to stay a direct child of the page column (a slot would put a component boundary between the sticky node and its scroll content) and the derived skeleton cannot run a view slot, so the page view builds the hero for the live page and for the shimmer with the same builder
+(`ClassicArtistHero.Build`; the skeleton passes the placeholder facts and null verbs). The tiers (`ArtistHeroLayout`: widths, hysteresis, heights, photo bands, gutters, copy measures, the collapse arithmetic) are **core**, not a Classic rules file: the profile page reads the same tiers and the host decodes the photo at the size they name; the Classic numbers the
+pictures own (the pick card's pieces, the magazine's dock reserve, the biography band and city bars, the banners) are `Rules\ClassicArtistRules.cs`.
+
+**What the view may call.** The WVTH002 fence applies. What a card opens, plays or puts in its menu, an interned string and an external link are the static `ArtistVerbs` (`Entities\Artist.Verbs.cs`: `Text`, `OpenRoute`, `OpenEntity`, `OpenPlaylist`, `OpenConcert`, `OpenSchedule`, `PlayOrToggle`, `Play`, `PickMenu`, `OpenLink`); the handles' own commands (`Track.GoToAlbum`, `Menus.Container`, `Drag.Source`) and the shared builders
+(`Controls.*`, `Detail.Band` / `Pivot`, `Artist.SectionBlock`, the chart and the discography facets as core hosts) are called directly. The chart is still `StyleKeys.ArtistChart` and the facets `Artist.FacetSection`; the Top band mounts the chart as a component. The gallery lightbox opens through the host (`OpenGallery`).
+
+**Motion is the page's, unchanged.** The hero photo's zoom-in and fade on its own ready edge, the parallax and stretch, the collapse into the band (the Leading collapse with no `ClipToBounds`), the band's reveal over the last 44 DIP, the magazine's `WhileStuck` feather, the pick photo's grow-open, the soft reveal over the shimmer and the reduced-motion arms
+are the same elements with the same keys. The view keeps the page's latches (the Top band's wide arm, the biography band's mode, the resolved styles) in one hook cell of its slot; the host keeps the tier latch.
+
+**Washes.** The shell-tint claim is the host's (`Palette.ShellTint`, handed over as `Tint`); the blend wash is drawn by the view through `Palette.ArtistBlendWash` with the washes flag the host reads, so M6 moves the flag behind the structure's material rules without touching the page again.
+
+**Tests.** `Wavee.Tests\ArtistPageContractTests.cs` pins the id, Classic's registration and the value types; the plan, the pivot rules, the failure verdict and the hero tiers stay `ArtistPageRulesTests` and `ArtistHeroLayoutTests`. `Wavee.ShellTests\ArtistPageMountedTests.cs` mounts the page under Classic: the keyed column, scroller and body child while pending
+and while failed, no magazine without a body, and the size observer hearing the width.
+
 ### The detail frame (T9a)
 
 The shared detail frame is the structure's picture over a core host. Every album, playlist, Liked, show and episode page hands `Detail.Frame` one

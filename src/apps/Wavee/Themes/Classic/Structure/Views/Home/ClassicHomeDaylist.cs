@@ -4,7 +4,7 @@
 //
 // One `Ui.Card` (border, 8-DIP corners, at least 320 tall, NO padding, ClipToBounds — the art and the veil clip to its
 // rounded corners; its border paints after its children, so it stays on top of the art) around a `Responsive.Of`
-// ZStack built at the card's width — the artist hero's layering (`Artist.UI.cs` `HeroBanner`: media · veil · copy):
+// ZStack built at the card's width — the artist hero's layering (`ClassicArtistHero.Build`: media · veil · copy):
 //   art:  `Controls.CoverFill` of `DaylistArt.Of` across the WHOLE card (corner 0: the card's clip rounds it), focused a
 //         little above centre (the crop stays centred horizontally);
 //   veil: `Palette.ArtistHeroVeil`, horizontal (0 → .96, .30 → .92, .62 → .35, 1 → 0), cover-keyed, in its STRETCH arm

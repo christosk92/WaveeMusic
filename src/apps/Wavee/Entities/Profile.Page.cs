@@ -70,7 +70,7 @@ public static partial class Profile
         /// <summary>This page's identity as the shell material's owner; survives keep-alive park/reactivate.</summary>
         readonly object _tintOwner = new();
 
-        // ── geometry (latched fields — Artist.Page's discipline) ──
+        // ── geometry (latched fields — `ClassicArtistPage`'s discipline) ──
         readonly Signal<float> _heroWidth = new(ArtistHeroLayout.WideWidth);
         readonly Signal<int> _layoutEpoch = new(0);
         ArtistHeroTier _tier = ArtistHeroTier.Wide;
@@ -292,7 +292,7 @@ public static partial class Profile
 
         // ── the loaded page ──────────────────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>[wash clipped at the band] under [hero · sentinel · magazine clipped at the band] — Artist.Page's
+        /// <summary>[wash clipped at the band] under [hero · sentinel · magazine clipped at the band] — `ClassicArtistPage`'s
         /// Compose, verbatim in shape. Plan, anchors and pivot are built in ONE pass so they cannot disagree.</summary>
         Element Compose(User u, string? avatar, ProfileToneSource tone, bool washes)
         {
@@ -466,7 +466,7 @@ public static partial class Profile
             if (_user.IsValid) Shell.GoTo(ProfileListRoute.For(_user.Uri, facet));
         }
 
-        // ── the context band (Artist.Page §2.2, the profile arm: title · pivot · Follow as a word) ──────────────────────
+        // ── the context band (`ClassicArtistPage.BandBar`, the profile arm: title · pivot · Follow as a word) ──────────────────────
 
         Element BandBar(string uri, bool own, float width, float gutter, float collapse, bool canHit,
                         (string Label, Action OnClick)[] pivotItems)

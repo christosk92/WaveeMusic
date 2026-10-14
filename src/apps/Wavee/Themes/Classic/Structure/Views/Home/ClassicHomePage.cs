@@ -1,6 +1,6 @@
 // ── Themes/Classic/Structure/Views/Home/ClassicHomePage.cs — Classic's `Pages.Home` (themes plan 6.1, T10a1) ──────────────────
 //
-// From `Home\HomeScreen.cs`: the render half of the Home page, rebuilt from the app's own page idiom (Artist.Page.cs ~389, `ClassicBrowseDirectory`):
+// From `Home\HomeScreen.cs`: the render half of the Home page, rebuilt from the app's own page idiom (`ClassicArtistPage`, `ClassicBrowseDirectory`):
 // ONE plain `ScrollView` column, no `ItemsView` of zones, no lanes/extents/RowAt/Tail, no width query, no parallax, no overlay
 // InfoBar.
 //
@@ -59,7 +59,7 @@ internal static class ClassicHomePage
             Reveal: SkelReveal.None, Style: SkeletonStyle.Default, Group: props.Group, SmoothResize: false);
 
         // THE CLIP IS THE CONTRACT: the band paints nothing, so the content cuts itself at the band's lower edge and
-        // feathers that cut exactly while the clip is engaged (`ClassicBrowseDirectory`'s directory / Artist.Page.cs's magazine).
+        // feathers that cut exactly while the clip is engaged (`ClassicBrowseDirectory`'s directory / `ClassicArtistPage`'s magazine).
         Element content = new BoxEl
         {
             Key = "home:content", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
@@ -67,7 +67,7 @@ internal static class ClassicHomePage
             Children = [region],
         }.StickyClip(ClassicHomeRules.StuckBottom);
 
-        // The centred page column (Artist.Page.cs's Magazine): Grow toward the free width, capped at PageMaxW, the wide
+        // The centred page column (`ClassicArtistPage`'s Magazine): Grow toward the free width, capped at PageMaxW, the wide
         // gutter, the dock's reserve under the last section. It NAMES the sticky scope the facet band pins against. The
         // facet row is the page title, so the column opens 24 below the top and steps 20 to the content (the prototype's
         // facet-row → first zone step); the zones space themselves at SectionGapWide inside the zone column.
@@ -84,7 +84,7 @@ internal static class ClassicHomePage
             ],
         };
 
-        // Keyed per PUBLISHED facet (Artist.Page.cs:389 idiom): each facet keeps its own scroll offset under its own
+        // Keyed per PUBLISHED facet (`ClassicArtistPage`'s idiom): each facet keeps its own scroll offset under its own
         // ScrollKey, and the handle feeds the Refreshing swap's at-top test (FacetSwitch.Landed).
         Element scroll = Ui.ScrollView(new BoxEl { Direction = 0, Justify = FlexJustify.Center, MinWidth = 0f, Children = [column] })
             with
@@ -93,7 +93,7 @@ internal static class ClassicHomePage
                 ScrollKey = props.ScrollKey,
                 Handle = props.Scroll,
                 // No viewport edge cue: its 40-DIP top feather would fade the pinned facet band and chapter headers.
-                // The page dissolves its own content under them (StickyClip + WhileStuck), as Artist.Page does.
+                // The page dissolves its own content under them (StickyClip + WhileStuck), as `ClassicArtistPage` does.
                 EdgeCues = ScrollEdgeCues.None,
             };
 

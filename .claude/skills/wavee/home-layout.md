@@ -110,7 +110,7 @@ migrated.
 
 ## Sticky headers — the app's own no-background idiom
 
-Home reuses the pattern already in `ClassicBrowseDirectory.cs` (Classic's Browse directory view)/`Artist.Page.cs`: a sticky
+Home reuses the pattern already in `ClassicBrowseDirectory.cs` (Classic's Browse directory view)/`ClassicArtistPage.cs`: a sticky
 header paints NOTHING; the content under it clips to the header's lower edge with
 `.StickyClip(inset)` plus a top `EdgeFadeSpec(EdgeMask.Top, band) { WhileStuck =
 true }`, so it dissolves into the header instead of being guillotined. The facet

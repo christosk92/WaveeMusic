@@ -11,7 +11,7 @@
 // `StyleKeys.TrackTable` style; T8b its chrome, `ClassicTrackChrome.cs`), T8c the other list surfaces (`Lists\ClassicEagerRow.cs`,
 // `ClassicEpisodeRow.cs`, `ClassicSurface.cs`, `ClassicArtistChart.cs`, `ClassicTrackDrawer.cs`, with the shared cells in `ClassicRowCells.cs`:
 // the `StyleKeys.EagerTrackRow`, `EpisodeRow`, `Surface`, `ArtistChart` and `TrackDrawer` styles), T10a1 Home (`Views\Home`: the page, facet row, daylist and clock, zone bodies, the drill page and the
-// customizer), T9a the shared detail frame (`Views\Detail`: the scaffold, the rail and its strip, the show header, the hero, the insights sheet), T9b its album and playlist sub-contracts (`Views\Detail\ClassicAlbum*.cs`, `ClassicPlaylist*.cs`, `ClassicDetailSeam.cs`), T10a2 Browse and Search (`Views\Pages`: the directory and its Charts band, a category page, the section drill key, the Search results page); every other surface is still core code. It
+// customizer), T9a the shared detail frame (`Views\Detail`: the scaffold, the rail and its strip, the show header, the hero, the insights sheet), T9b its album and playlist sub-contracts (`Views\Detail\ClassicAlbum*.cs`, `ClassicPlaylist*.cs`, `ClassicDetailSeam.cs`), T10a2 Browse and Search (`Views\Pages`: the directory and its Charts band, a category page, the section drill key, the Search results page), T10b1 the artist page (`Views\Pages\ClassicArtist*.cs`: the page, the hero, the sections, the banners, the pick card); every other surface is still core code. It
 // decides the shell's policies (`Rules\ClassicPolicies.cs`: nav pane, panel and mini player, player bar, chrome row, stage)
 // and offers every capability (T3). Its window tiers (T3b) are `Rules\Tiers.cs`.
 //
@@ -164,6 +164,10 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.BrowseCategory, ClassicBrowseCategory.Template, "classic.browse.category");
         views.Add(ViewKeys.BrowseSection, ClassicHomeSection.Template, "classic.browse.section");
         views.Add(ViewKeys.SearchPage, ClassicSearchPage.Template, "classic.search.page");
+        // T10b1: the artist page (`Views\Pages\ClassicArtist*.cs`): the scroll column and its skeleton region, the hero and its collapse into the context band, the
+        // magazine (the Top-tracks band, the shelves, the biography band, the upcoming / latest-release / tour banners) and the artist pick card. The demands, the
+        // readiness, the section plan, the latched hero metrics, the accent, the scroll spy and the Play / Shuffle / Radio decisions stay core (`Artist.PageHost`).
+        views.Add(ViewKeys.ArtistPage, ClassicArtistPage.Template, "classic.artist.page");
         // T9b: the album and playlist sub-contracts of the detail frame. The notice strip and the vertical arm's trailing body (the frame's two leaves only an album or a
         // playlist fills); the album's billed-artist line and flyout, countdown, release facts, trailing band (region, sections, stack) and unresolved line; the playlist's
         // cover face and editable cover, inline editor, owner block and collaborator flyout, access panel, Tune panel, daylist strip and recommendations. The models, the

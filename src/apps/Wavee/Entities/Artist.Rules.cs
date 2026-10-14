@@ -199,7 +199,7 @@ public static class ArtistReadiness
     /// <summary>When the page-level skeleton may swap to the real body: the overview (the data unit), a measured
     /// page width, and the chart ready-or-failed. NOT the hero photograph - a slow download would hold an otherwise
     /// fully-known page at a shimmer, and the photo owns its own scale-and-fade entrance when its bitmap lands
-    /// (<c>Artist.HeroArt</c>), so the page never animates a tree whose picture is still arriving.
+    /// (<c>ClassicArtistHero</c>'s photo), so the page never animates a tree whose picture is still arriving.
     /// <para>The measured width and the settled chart are both there for the same reason: without them the page
     /// flashes default-Wide geometry, and then plays a SECOND top-tracks wave a moment after it has revealed.</para>
     /// Once revealed, the page stays revealed for this artist so a later image/size change cannot put the skeleton
