@@ -1,5 +1,5 @@
 // ── Entities/Concert.Rules.cs ──────────────────────────────────────────────────────────────────────────────────────
-// the ported concert rules: the editorial art geometry, the hub's filter tuple, the
+// the ported concert rules: the hub's filter tuple, the
 // schedule shaping (spotlight, month boards, runs, the 6-tile cap, the near-you guard, tile text), offers, detail facts
 //
 // Role: CORE
@@ -236,62 +236,6 @@ public sealed class ConcertCopy
         set => s_current = value ?? throw new ArgumentNullException(nameof(value));
     }
 }
-
-// ── #86 — the procedural promo-card art's geometry (Home consumes it; ch 11) ──────────────────────────────────────────
-// BCL-only (no PathData/engine types) so it stays testable: the art component freezes this geometry at mount from its
-// own measured width/height (baked into its Key so a resize remounts) and turns it into engine primitives.
-
-public static class EditorialArtGeometry
-{
-    const double DegToRad = Math.PI / 180.0;
-
-    /// <summary>One circular-arc segment in node-local DIP space.</summary>
-    public static ArcSweep Arc(float cx, float cy, float r, float startDeg, float sweepDeg)
-    {
-        double a0 = startDeg * DegToRad, a1 = (startDeg + sweepDeg) * DegToRad;
-        float x0 = cx + r * (float)Math.Cos(a0), y0 = cy + r * (float)Math.Sin(a0);
-        float x1 = cx + r * (float)Math.Cos(a1), y1 = cy + r * (float)Math.Sin(a1);
-        int largeArc = MathF.Abs(sweepDeg) > 180f ? 1 : 0;
-        int sweepFlag = sweepDeg >= 0f ? 1 : 0;
-        return new ArcSweep(x0, y0, x1, y1, r, largeArc, sweepFlag);
-    }
-
-    /// <summary>The Concerts treatment's outer sweep — a broad arc low in the pane (a stage horizon).</summary>
-    public static ArcSweep ConcertArcOuter(float width, float height)
-    {
-        float cx = width * 0.5f, cy = height * 0.62f;
-        float r = MathF.Min(width, height) * 0.62f;
-        return Arc(cx, cy, r, startDeg: -150f, sweepDeg: 120f);
-    }
-
-    /// <summary>The Concerts treatment's inner counter-sweep, swept the OPPOSITE direction.</summary>
-    public static ArcSweep ConcertArcInner(float width, float height)
-    {
-        float cx = width * 0.5f, cy = height * 0.62f;
-        float r = MathF.Min(width, height) * 0.46f;
-        return Arc(cx, cy, r, startDeg: 40f, sweepDeg: -110f);
-    }
-
-    /// <summary>The Browse treatment's category mosaic: three rounded tiles at fixed relative fractions of the pane.</summary>
-    public static BrowseTile[] BrowseTiles(float width, float height) =>
-    [
-        new BrowseTile(width * 0.10f, height * 0.14f, width * 0.40f, height * 0.46f),
-        new BrowseTile(width * 0.42f, height * 0.30f, width * 0.34f, height * 0.40f),
-        new BrowseTile(width * 0.30f, height * 0.58f, width * 0.30f, height * 0.34f),
-    ];
-}
-
-/// <summary>One circular-arc segment. <see cref="ToPathData"/> is the SVG path-data fragment the engine's path parser
-/// consumes directly.</summary>
-public readonly record struct ArcSweep(float X0, float Y0, float X1, float Y1, float Radius, int LargeArc, int SweepFlag)
-{
-    public string ToPathData() => string.Format(
-        CultureInfo.InvariantCulture,   // a decimal-comma locale must never corrupt the token stream
-        "M{0:F2},{1:F2} A{2:F2},{2:F2} 0 {3},{4} {5:F2},{6:F2}",
-        X0, Y0, Radius, LargeArc, SweepFlag, X1, Y1);
-}
-
-public readonly record struct BrowseTile(float X, float Y, float Width, float Height);
 
 // ── the hub (ConcertHubModel.cs) ──────────────────────────────────────────────────────────────────────────────────
 

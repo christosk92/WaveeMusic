@@ -96,7 +96,7 @@ public class ConcertTests
         Assert.Equal((byte)2, concert.Status);
         Assert.Equal("On sale", Entities.Strings.Resolve(concert.StatusTextId));
         Assert.Equal("14+", Entities.Strings.Resolve(concert.AgeRestrictionId));
-        Assert.Equal("metro:manchester", Entities.Strings.Resolve(concert.MetroAreaId));
+        Assert.Equal("metro:manchester", Entities.Strings.Resolve(Entities.Current.Concerts.MetroArea[concert.Slot]));
         Assert.True(MathF.Abs(concert.Lat - 53.4839f) < 0.0001f);
         Assert.True(concert.IsNearUser);
         Assert.True(concert.Knows(ConcertFields.Coords));

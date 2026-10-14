@@ -360,8 +360,6 @@ public readonly partial struct Concert(int slot) : IEquatable<Concert>
     public StringId StatusTextId => T.StatusText[Slot];
     public StringId RegionId => T.Region[Slot];
     public StringId CountryId => T.Country[Slot];
-    public StringId VenuePlaceId => T.VenuePlace[Slot];
-    public StringId MetroAreaId => T.MetroArea[Slot];
     public float Lat => T.Lat[Slot];
     public float Lon => T.Lon[Slot];
 
@@ -619,15 +617,6 @@ public sealed class StagedConcertEdgeList : StagedList
         if (mark > _pendingCount) return;
         int start = Flush(mark);
         Run(link, in parent, default, start, Count - start, 0);
-        Pop(mark);
-    }
-
-    /// <summary>Land what was pushed since <paramref name="mark"/> under a KEYED parent (a place, a feed subject).</summary>
-    public void CloseKeyed(ConcertLink link, TextRef parentKey, int mark, bool append)
-    {
-        if (mark > _pendingCount) return;
-        int start = Flush(mark);
-        Run(link, default, parentKey, start, Count - start, append ? (byte)1 : (byte)0);
         Pop(mark);
     }
 
