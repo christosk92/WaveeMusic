@@ -29,7 +29,7 @@ public class ProfilePageContractTests
     public void A_section_slot_compares_by_its_members()
     {
         Action go = static () => { };
-        Action<FluentGpu.Scene.NodeHandle> anchor = static _ => { };
+        Action<FluentGpu.Foundation.NodeHandle> anchor = static _ => { };
         ProfileCard[] cards = [];
         Assert.Equal(new ProfileSectionSlot(ProfileSection.Playlists, ProfileSectionBody.Empty, cards, null, go, go, anchor),
             new ProfileSectionSlot(ProfileSection.Playlists, ProfileSectionBody.Empty, cards, null, go, go, anchor));

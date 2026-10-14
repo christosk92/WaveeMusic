@@ -6,6 +6,7 @@
 //   registered   Classic is the registered template of the key
 //   faces        each load face of the region stands as ONE keyed child of a stable root (a face change remounts); the tools stay mounted for both facets and for a find that matched nothing
 
+using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
