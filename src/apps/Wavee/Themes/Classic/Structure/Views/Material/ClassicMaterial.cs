@@ -27,10 +27,18 @@ internal static class ClassicMaterial
     /// motion, never a hook branch.</summary>
     static EnterExit? WashFade => Design.Reduced ? null : new EnterExit(Opacity: 0f, Active: true);
 
+    /// <summary>Colour washes are drawn: Classic's Surfaces option is anything but Off (Subtle with no store, as a bare unit test
+    /// reads it). A tracked read: the caller re-renders when the option changes.</summary>
+    internal static bool WashesOn(IOptionReader? options)
+        => ClassicStructure.WashesOn(options is null ? ClassicStructure.Surfaces.Default : options.Get(ClassicStructure.Surfaces.Key));
+
     /// <summary>The registered template of <see cref="ViewKeys.ShellMaterialLayer"/>.</summary>
     public static Element Template(MaterialProps props, in ViewContext ctx)
     {
         var state = props.State.Value;                              // navigation rate
+        // Surfaces Off: the layer paints the neutral ground whatever the pages published (the core publishes data; the theme decides
+        // whether it is drawn), so Home's and Recents' washes leave and the tint fades to neutral in place.
+        if (!WashesOn(ctx.Options)) state = state with { Tint = null, Wash = null };
         var vp = ctx.Hooks.UseContextSignal(Viewport.Size);         // read through BOUND sizes: a resize never re-renders this
 
         // Always mounted, even at the neutral ground, so the node is live across a change and the brush transition has

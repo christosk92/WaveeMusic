@@ -948,7 +948,7 @@ pictures own (the pick card's pieces, the magazine's dock reserve, the biography
 **Motion is the page's, unchanged.** The hero photo's zoom-in and fade on its own ready edge, the parallax and stretch, the collapse into the band (the Leading collapse with no `ClipToBounds`), the band's reveal over the last 44 DIP, the magazine's `WhileStuck` feather, the pick photo's grow-open, the soft reveal over the shimmer and the reduced-motion arms
 are the same elements with the same keys. The view keeps the page's latches (the Top band's wide arm, the biography band's mode, the resolved styles) in one hook cell of its slot; the host keeps the tier latch.
 
-**Washes.** The shell-tint claim is the host's (`Palette.ShellTint`, handed over as `Tint`); the blend wash is drawn by the view through `Palette.ArtistBlendWash` with the washes flag the host reads, so M6 moves the flag behind the structure's material rules without touching the page again.
+**Washes.** The shell-tint claim is the host's (`Palette.ShellTint`, handed over as `Tint`); the blend wash is drawn by the view through `Palette.ArtistBlendWash` and whether it draws at all is Classic's Surfaces option (M6), read by the leaf itself: the host passes no flag.
 
 **Tests.** `Wavee.Tests\ArtistPageContractTests.cs` pins the id, Classic's registration and the value types; the plan, the pivot rules, the failure verdict and the hero tiers stay `ArtistPageRulesTests` and `ArtistHeroLayoutTests`. `Wavee.ShellTests\ArtistPageMountedTests.cs` mounts the page under Classic: the keyed column, scroller and body child while pending
 and while failed, no magazine without a body, and the size observer hearing the width.
@@ -1476,7 +1476,7 @@ no other home yet (lyrics, full screen, now playing, Home). Nothing in it names 
   option changed).
 - **Legacy rows.** A structure lists the options that are still switches in `IStructureLayer.LegacyRows` (a `SettingsDoc` row id and a
   group). The page draws them in the same expander and groups; an M-PR deletes its rows from the list and declares the option, so
-  the tab never changes layout again. Classic lists 13.
+  the tab never changes layout again. Classic lists 11 (M1 deleted one, M6 moved the washes into the options).
 - **Palette.** An option with `Command = true` contributes rows (`ThemeOptionsSection.Commands`): a toggle on/off, a select one per
   choice, an action one. `Shell.CommandTable.BuildIndex` appends them after the builtins (`PaletteKind.ThemeOption`).
 - **Setup.Theme.** `Setup.ThemeStep()` (`Screens\Setup.UI.Theme.cs`) mounts the `Setup.Theme` view (`ClassicSetup.ThemeTemplate`, the Layout page's twin: same frame) with the picker and the options;
@@ -1504,6 +1504,23 @@ A switch that is *deleted* rather than moved (M1, page motion) needs no step: it
 copies it. The key is listed in `WVTH010.legacy.txt` (no code may name it again) and the stale value stays in the settings
 file as inert data, never read. `Design.Nav.RecipeFor` is the one page-swap recipe (the 0.2.x fade-through, the plain fade
 for Neutral), asked for by `Shell.RecipeFor`; a theme that wants its own page motion adds a structure verb in its own PR.
+
+### M6: the colour washes became Classic's first option
+
+`appearance.colorWashes.enabled` (a bool, default on) is now `ClassicStructure.Surfaces`, a `SelectOption<SurfaceWash>` {Off 0, Subtle 1}
+(default Subtle, drawn as a switch because it has two choices; Rich joins in CT9), stored as the int under
+`theme.classic.structure.surfaces`. It is a *structure* option, not the plan's `style.surfaces`: the structure's material views read it and
+WVTH005 lets a layer read only its own options (the style's roles do not change with it). The "ColorWashes" step in
+`ThemeBootstrap.Steps` copies the stored bool (`false` becomes Off, `true` becomes Subtle) when the new key is absent; the legacy key stays as
+inert data and is listed in `WVTH010.legacy.txt` with `Prefs.Appearance.ColorWashes` and `Platform.Keys.ColorWashesEnabled`. The Settings row is the generated
+"Surfaces" row (the `colorWashes` legacy row, its catalog entry and its `SettingsDoc` writer are gone).
+
+Who reads it: **the theme decides whether a wash is drawn, the core publishes data.** Classic's four cover leaves read the option themselves
+(`UseContext(OptionStore.Context)` in `ClassicCoverLeaves.cs`: the tone plane and the artist blend paint nothing when Off, the tint binder
+publishes a definite "no colour"), and `Shell.Material` (`ClassicMaterial.Template`, `ctx.Options`) paints the neutral ground whatever the
+pages published. The hosts (`Detail`, `Artist`, `Profile`, `Home`, `Recents`) pass no flag: `Palette.PageTonePlane/ArtistBlendWash/ShellTint`
+and the `Cover*Props` records lost their `disabled` parameter, and `ArtistProps.Washes` / `ProfilePageProps.Washes` are gone. The Recents
+binder publishes its wash and page accent whatever the option says (the accent follows the artwork even with the washes off, owner NQ6).
 
 ## 5. The analyzers (`Wavee.Analyzers`, WVTH rules)
 

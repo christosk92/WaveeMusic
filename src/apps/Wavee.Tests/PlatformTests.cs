@@ -275,7 +275,6 @@ public class PlatformSettingsTests
         => WithStore(new MemoryAppSettings(), static () =>
         {
             Assert.Equal(1, Platform.Settings.Get(Platform.Keys.RowDensity));                 // Default, not Compact
-            Assert.True(Platform.Settings.Get(Platform.Keys.ColorWashesEnabled));
         });
 
     /// <summary>Every write bumps the epoch `Platform/Prefs.cs` (owner L, Wave 4) hangs its four preference epochs

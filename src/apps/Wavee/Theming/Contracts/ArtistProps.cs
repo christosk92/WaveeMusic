@@ -98,9 +98,6 @@ public sealed record ArtistPageProps
     /// <summary>The hero photo's LATCHED art identity (never re-read from the row: the latch keeps a CDN size swap from remounting the photo).</summary>
     public string? HeroUrl { get; init; }
 
-    /// <summary>Colour washes are on (`appearance.colorWashes.enabled`): off, the blend wash renders nothing (the veil and the Play colour stay).</summary>
-    public required bool Washes { get; init; }
-
     /// <summary>The shell-tint claim (`Palette.ShellTint`): a zero-size leaf the page keeps in its tree so the window chrome follows the page.</summary>
     public required Element Tint { get; init; }
 

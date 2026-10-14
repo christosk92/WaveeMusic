@@ -214,8 +214,6 @@ public static partial class Profile
             UseEffect(_resolveSpy);
             UseActivation(onActivated: _demand);                   // keep-alive return re-reads (SWR: ProfileAsk → Invalidate)
 
-            bool washes = Prefs.Appearance.ColorWashes();
-
             _ = _layoutEpoch.Value;
             _width = MathF.Max(1f, _heroWidth.Value);
             _metrics = ProfileHeroLayout.For(_width, _tier);
@@ -229,7 +227,7 @@ public static partial class Profile
             string? avatar = valid ? u.Image : null;
             var tone = ProfileTone.Of(avatar, valid ? u.Color : 0u, avatar is { Length: > 0 } a && Palette.CanGrade(a));
             // A 0×0 leaf owns the watch + the publish. Unavailable/Failed opt out (definite → neutral chrome).
-            Element tint = Palette.ShellTint(tone.PaletteUrl, ready: Detail.CoverLatch.IsUsable(tone.PaletteUrl), disabled: !washes,
+            Element tint = Palette.ShellTint(tone.PaletteUrl, ready: Detail.CoverLatch.IsUsable(tone.PaletteUrl),
                 apply: _header is not (ProfileLoad.Unavailable or ProfileLoad.Failed),
                 owner: _tintOwner, slot: shellSlot, key: "profile-tint:" + routeKey, payloadAccent: tone.PayloadArgb);
 
@@ -266,7 +264,6 @@ public static partial class Profile
                 PageAccent = _pageAccent,
                 PaletteUrl = tone.PaletteUrl,
                 PayloadAccent = tone.PayloadArgb,
-                Washes = washes,
                 Tint = tint,
                 Hero = composed ? ProfileHeroText.For(u, _own, avatar) : ProfileHeroText.PlaceholderFor(_own),
                 HeroActs = _acts,

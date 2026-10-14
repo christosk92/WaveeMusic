@@ -18,7 +18,7 @@
 // T1b: the options Classic will own (plan 6.1) are still TODAY's switches, bound to their legacy keys through `SettingsDoc`
 // rows. `LegacyRows` lists them in their FINAL grouping so Settings › Appearance shows Classic's section once, in its
 // final shape; each M-PR deletes its rows from the list and declares the option in `Options` (the generated row takes the
-// same place in the same group).
+// same place in the same group). M6 is the first: `Surfaces` (the colour washes).
 
 using FluentGpu.Theming;
 using Wavee.Themes.Common;
@@ -26,6 +26,15 @@ using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
+
+/// <summary>The levels of Classic's Surfaces option. The values are what is stored (appended members never re-mean a stored value).</summary>
+public enum SurfaceWash
+{
+    /// <summary>No colour washes: the neutral ground.</summary>
+    Off = 0,
+    /// <summary>Today's washes.</summary>
+    Subtle = 1,
+}
 
 /// <summary>The structure of Wavee Classic.</summary>
 public sealed class ClassicStructure : IStructureLayer
@@ -259,8 +268,29 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.DialogCrash, ClassicCrash.Template, "classic.dialog.crash");
     }
 
+    /// <summary>Surfaces: how much the artwork tints the shell and the pages (the colour washes: chrome tint, page ground, hero
+    /// wash). Off paints the neutral ground; Subtle is today's wash. Stored as the enum's int (`theme.classic.structure.surfaces`);
+    /// the option replaced the `appearance.colorWashes.enabled` switch (<c>ThemeBootstrap</c>'s "ColorWashes" step copies it).
+    /// Drawn as a switch (Subtle is "on"); a Rich choice joins in CT9. Live: the wash fades exactly as the switch did. It is a
+    /// STRUCTURE option because the structure's material views and cover leaves read it (WVTH005: an option is read only by its
+    /// own layer; the style's roles do not change with it).</summary>
+    public static SelectOption<SurfaceWash> Surfaces { get; } = new(
+        Id: "surfaces", TitleKey: Strings.Settings.Appearance.ColorWashes, DescriptionKey: Strings.Settings.Appearance.ColorWashesSub,
+        Group: Strings.Settings.ThemeOptions.Group.Surfaces, Default: SurfaceWash.Subtle,
+        Choices:
+        [
+            new SelectChoice<SurfaceWash>(SurfaceWash.Off, Strings.Settings.ThemeOptions.SurfacesOff),
+            new SelectChoice<SurfaceWash>(SurfaceWash.Subtle, Strings.Settings.ThemeOptions.SurfacesSubtle),
+        ],
+        Picker: PickerStyle.Toggle);
+
+    /// <summary>Colour washes are drawn (anything but Off): what the material views and cover leaves read.</summary>
+    public static bool WashesOn(SurfaceWash surfaces) => surfaces != SurfaceWash.Off;
+
+    private static readonly ThemeOptionSchema s_options = ThemeOptionSchema.Of(Surfaces);
+
     /// <inheritdoc />
-    public ThemeOptionSchema Options => ThemeOptionSchema.Empty;
+    public ThemeOptionSchema Options => s_options;
 
     /// <inheritdoc />
     public ThemePolicies Policies(OptionValues structure, in StyleMetrics metrics) => ClassicPolicies.Bundle;
@@ -272,7 +302,7 @@ public sealed class ClassicStructure : IStructureLayer
     public RoleSet RequiredRoles => RoleSet.None;
 
     /// <summary>Each entry leaves with the M-PR that migrates its switch: sidebar M7a, row style M2, row density M3, hide art M4,
-    /// washes M6, page layout and rails M8. (Page motion, M1, was deleted: it has no row.)</summary>
+    /// page layout and rails M8. (Page motion, M1, was deleted: it has no row. Washes, M6, became the style's Surfaces option.)</summary>
     public IReadOnlyList<LegacyOptionRow> LegacyRows { get; } =
     [
         new("sidebarDesign", Strings.Settings.ThemeOptions.Group.Sidebar),
@@ -286,6 +316,5 @@ public sealed class ClassicStructure : IStructureLayer
         new("pageLayout", Strings.Settings.ThemeOptions.Group.TrackPages),
         new("railUniform", Strings.Settings.ThemeOptions.Group.TrackPages),
         new("railReset", Strings.Settings.ThemeOptions.Group.TrackPages),
-        new("colorWashes", Strings.Settings.ThemeOptions.Group.Surfaces),
     ];
 }

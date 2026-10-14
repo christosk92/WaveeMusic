@@ -47,7 +47,6 @@ public sealed class ArtistPageMountedTests(ShellHost host)
             AccentPeek = () => accent,
             AccentSignal = new Signal<ColorF>(accent),
             PageAccent = null,
-            Washes = false,
             Tint = new BoxEl(),
             Compact = false,
             CompactEdge = () => compact,

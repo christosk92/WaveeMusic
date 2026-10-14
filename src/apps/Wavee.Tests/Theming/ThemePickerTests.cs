@@ -156,7 +156,7 @@ public sealed class ThemePickerTests : IDisposable
     }
 
     [Fact]
-    public void Classic_lists_exactly_the_rows_of_the_options_section_in_four_groups()
+    public void Classic_lists_exactly_the_rows_of_the_options_section_in_three_groups()
     {
         var legacy = new ClassicStructure().LegacyRows;
         var doc = SettingsDoc.Section(Settings.Tab.Appearance, ThemeOptionsSection.SectionTitle).Rows.Select(r => r.Id).ToArray();
@@ -169,7 +169,7 @@ public sealed class ThemePickerTests : IDisposable
             Assert.Equal(ThemeOptionsSection.SectionTitle, found.Section);
             Assert.False(string.IsNullOrEmpty(row.Group), row.RowId);
         }
-        Assert.Equal(4, legacy.Select(l => l.Group).Distinct().Count());
+        Assert.Equal(3, legacy.Select(l => l.Group).Distinct().Count());
         // Rows of a group sit together: no group label would ever appear twice.
         var seen = new List<string>();
         foreach (var row in legacy)
@@ -178,15 +178,19 @@ public sealed class ThemePickerTests : IDisposable
     }
 
     [Fact]
-    public void The_options_section_of_the_installed_classic_shows_every_legacy_row_with_nothing_generated()
+    public void The_options_section_of_the_installed_classic_shows_its_legacy_rows_and_the_generated_surfaces_row()
     {
         ThemeHost.Install(ClassicTheme.Create());
         var model = ThemeOptionsSection.Current(developerMode: true);
 
-        Assert.Empty(model.Rows);          // no Classic option is migrated yet
+        var surfaces = Assert.Single(model.Rows);   // M6: the washes are Classic's first option
+        Assert.Equal("structure.surfaces", surfaces.QualifiedId);
+        Assert.Equal(Strings.Settings.ThemeOptions.Group.Surfaces, surfaces.Group);
+        Assert.Equal(SettingsRowKind.Toggle, surfaces.Row.Kind);
         Assert.False(model.IsEmpty);
-        Assert.Equal(12, model.Legacy.Count);   // M1 deleted the page-motion row
-        Assert.Null(model.Reset);          // legacy keys are not the theme's stored options
+        Assert.Equal(11, model.Legacy.Count);   // M1 deleted the page-motion row, M6 moved the washes into the options
+        Assert.DoesNotContain(model.Legacy, l => l.RowId == "colorWashes");
+        Assert.NotNull(model.Reset);       // the option is stored, so Reset is about something
         Assert.Equal("theme.classic.name", model.NameKey);
         Assert.Empty(ThemeOptionsSection.Commands(true));
     }

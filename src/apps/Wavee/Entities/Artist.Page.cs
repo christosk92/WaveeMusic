@@ -275,8 +275,7 @@ public readonly partial struct Artist
             UseEffect(_republishAccent, DepKey.From(ThemeEpoch()));          // a theme flip or a definition swap re-derives the accent (X44)
             UseEffect(_resolveSpy);                                       // the scroll spy
 
-            // ch 08 §6's settings, each subscribing the appearance epoch. The structure's view draws with them (M2, M4 and M6 move the decisions behind them).
-            bool washes = Prefs.Appearance.ColorWashes();
+            // ch 08 §6's settings, each subscribing the appearance epoch. The structure's view draws with them (M2 and M4 move the decisions behind them).
             bool rowsClassic = Prefs.Appearance.TrackRowStyle() == 1;
             bool showArtwork = !Prefs.Appearance.TrackArtworkHidden();
 
@@ -337,7 +336,7 @@ public readonly partial struct Artist
             // search/home card's avatar, warmed by an earlier batch) must land its colour on the first paint, and only
             // a genuinely ungraded cover falls through to TintOwnership's hold.
             bool artUsable = Detail.CoverLatch.IsUsable(paletteUrl);
-            Element tint = Palette.ShellTint(paletteUrl, ready: artUsable, disabled: !washes, apply: true,
+            Element tint = Palette.ShellTint(paletteUrl, ready: artUsable, apply: true,
                 owner: _tintOwner, slot: shellSlot, key: "artist-tint:" + routeKey);
 
             // ONE visual swap: overview + measured width + the first hero decode + chart settled. Snap, not FadeOnly:
@@ -381,7 +380,6 @@ public readonly partial struct Artist
                 PageAccent = _pageAccent,
                 PaletteUrl = paletteUrl,
                 HeroUrl = _heroUrl,
-                Washes = washes,
                 Tint = tint,
                 Compact = compact,
                 CompactEdge = _compactEdgeFn,

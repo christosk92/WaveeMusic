@@ -38,10 +38,10 @@ public sealed class PrefsTests : IDisposable
     {
         // The epoch caches NOTHING. A value written behind the epoch's back (a settings import, a second window) is
         // still what the next read returns.
-        _store.Set(Platform.Keys.ColorWashesEnabled, false);
-        Assert.False(Prefs.Appearance.ColorWashes());
-        _store.Set(Platform.Keys.ColorWashesEnabled, true);
-        Assert.True(Prefs.Appearance.ColorWashes());
+        _store.Set(Platform.Keys.MarqueeEnabled, false);
+        Assert.False(Prefs.Appearance.Marquee());
+        _store.Set(Platform.Keys.MarqueeEnabled, true);
+        Assert.True(Prefs.Appearance.Marquee());
     }
 
     [Fact]

@@ -118,9 +118,6 @@ public sealed record ProfilePageProps
     /// <summary>The person's own colour as the wash's payload accent (0 when a gradeable avatar leads).</summary>
     public required uint PayloadAccent { get; init; }
 
-    /// <summary>Colour washes are on (`appearance.colorWashes.enabled`): off, the blend wash renders nothing.</summary>
-    public required bool Washes { get; init; }
-
     /// <summary>The shell-tint claim (`Palette.ShellTint`): a zero-size leaf the page keeps in its tree so the window chrome follows the page.</summary>
     public required Element Tint { get; init; }
 

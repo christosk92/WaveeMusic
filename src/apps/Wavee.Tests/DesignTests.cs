@@ -896,7 +896,7 @@ public class DesignTintOwnershipTests
     [Fact]
     public void A_page_that_has_DECIDED_it_carries_no_colour_writes_neutral()
     {
-        // "Washes are off" / "this layout applies no tint" is a decision, not a transient; it eases to neutral like any
+        // "Surfaces are off" / "this layout applies no tint" is a decision, not a transient; it eases to neutral like any
         // other colour rather than holding the previous page's.
         Assert.Equal(TintOwnership.Outcome.WriteNeutral,
             TintOwnership.Resolve(PageA, new TintOwnership.Request(PageA, IsClaim: false, Definite: true, HasColor: false)));

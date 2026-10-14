@@ -744,9 +744,10 @@ public readonly partial struct Recents
     // ══ 6. THE LEAVES: the accent + wash binder, the owner demand ════════════════════════════════════════════════════
 
     /// <summary>The ONE node that owns the cover-grading watch (§4.1, §9.2). Re-derives once per DAY crossing (the
-    /// quantized <c>AccentDay</c>), on a washes toggle, and when an identity or a grading lands; publishes the page accent
+    /// quantized <c>AccentDay</c>) and when an identity or a grading lands; publishes the page accent
     /// and ONE Hero leg of the shell wash — claim on the first publish and on reactivation, refresh while owner, never
-    /// clear (§4.2).</summary>
+    /// clear (§4.2). It publishes DATA only: whether the wash is drawn is the theme's (Classic's material layer reads its
+    /// Surfaces option), and the page accent follows the artwork whatever that option says (owner NQ6).</summary>
     internal sealed class AccentBinder(PageView page) : Component
     {
         static readonly Func<string?, Scheme?> s_chromeScheme = static url => Design.ChromeSchemeFor(url.AsSpan());
@@ -754,7 +755,6 @@ public readonly partial struct Recents
         public override Element Render()
         {
             var slot = UseContext(ShellMaterial.Slot);
-            bool washes = Prefs.Appearance.ColorWashes();
             _ = Entities.ScopeEpoch.Value;
             _ = page.AccentDay.Value;
             _ = page.ShapeEpoch.Value;
@@ -769,7 +769,7 @@ public readonly partial struct Recents
             string? url = target.Slot > 0 ? FactsOf(target).Cover : null;
 
             var resolved = FallbackAccent();
-            if (washes && url is { Length: > 0 })
+            if (url is { Length: > 0 })
             {
                 _ = Palette.Watch(url).Value;
                 if (Design.ChromeSchemeFor(url) is { } scheme)
@@ -785,19 +785,19 @@ public readonly partial struct Recents
                 var t = RecentsView.EntitySlotOf(rows, shape.Display[i]);
                 if (t.Slot > 0 && FactsOf(t).Cover is { Length: > 0 }) card = new HomeCard(t);
             }
-            if (washes && HomeWashSource.PlaneUrl(card) is { Length: > 0 } plane) _ = Palette.Watch(plane).Value;
-            var pick = washes ? HomeWashSource.Pick(card, s_chromeScheme) : null;
+            if (HomeWashSource.PlaneUrl(card) is { Length: > 0 } plane) _ = Palette.Watch(plane).Value;
+            var pick = HomeWashSource.Pick(card, s_chromeScheme);
             HomeWash? wash = pick is { } p ? new HomeWash(new WashLayer(p.Color, p.Key), null, null) : null;
             page.LastWash = wash;
 
             var claimed = UseRef(false);
             UseEffect(() =>
             {
-                ShellMaterial.Publish(slot, page.WashOwner, isClaim: !claimed.Value, definite: !washes, tint: null, wash);
+                ShellMaterial.Publish(slot, page.WashOwner, isClaim: !claimed.Value, definite: false, tint: null, wash);
                 claimed.Value = true;
-            }, DepKey.From(HashCode.Combine(washes, pick?.Key, pick?.Color.R, pick?.Color.G, pick?.Color.B)));
+            }, DepKey.From(HashCode.Combine(pick?.Key, pick?.Color.R, pick?.Color.G, pick?.Color.B)));
             UseActivation(onActivated: () => ShellMaterial.Publish(slot, page.WashOwner, isClaim: true,
-                definite: !Prefs.Appearance.ColorWashes(), tint: null, page.LastWash));
+                definite: false, tint: null, page.LastWash));
             return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
         }
     }

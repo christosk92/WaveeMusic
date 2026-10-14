@@ -14,7 +14,7 @@
 //   · Value rules (BP 1.6): an unknown or out-of-range legacy value becomes the option default (the step simply does not
 //     copy it); a renamed option starts at its default; a removed choice becomes the default.
 //
-// T1 ships the machinery with NO step registered. It runs from `Platform.Boot` right after `ZoomAutoPolicy.MigrateMode`
+// T1 shipped the machinery; each M-PR registers its step in `Steps`. It runs from `Platform.Boot` right after `ZoomAutoPolicy.MigrateMode`
 // and before anything reads a presentation setting. WVTH010 keeps legacy key names and deleted member names inside this file.
 
 namespace Wavee.Theming;
@@ -28,8 +28,22 @@ public static class ThemeBootstrap
     /// <summary>The prefix of the done markers: <c>theme.bootstrap.done.&lt;Name&gt;</c>.</summary>
     public const string DonePrefix = "theme.bootstrap.done.";
 
-    /// <summary>The steps shipped in this build. Empty in T1: each migration PR appends its own.</summary>
-    public static IReadOnlyList<ThemeBootstrapStep> Steps { get; } = [];
+    // ── the retired switches (WVTH010 lists these names; only this file may spell them) ────────────────────────────────────────
+
+    /// <summary>M6: the colour-washes switch (default on). Its option is Classic's Surfaces select (`theme.classic.structure.surfaces`,
+    /// the enum's int: Off 0, Subtle 1).</summary>
+    private static readonly SettingKey<bool> LegacyColorWashes = new("appearance.colorWashes.enabled", true);
+    private static readonly SettingKey<int> SurfacesKey = new("theme.classic.structure.surfaces", 1);
+
+    /// <summary>The steps shipped in this build: each migration PR appends its own.</summary>
+    public static IReadOnlyList<ThemeBootstrapStep> Steps { get; } =
+    [
+        // M6 washes: false → Off (0), true → Subtle (1, today's wash). A switch the user never touched is absent, so it stays at the
+        // option's default (Subtle).
+        new ThemeBootstrapStep("ColorWashes",
+            ReadsLegacyKeys: ["appearance.colorWashes.enabled"], WritesKeys: ["theme.classic.structure.surfaces"],
+            Run: static s => Copy(s, LegacyColorWashes, SurfacesKey, static on => (true, on ? 1 : 0))),
+    ];
 
     /// <summary>The setting name of a step's done marker.</summary>
     public static string DoneKey(string stepName) => DonePrefix + stepName;

@@ -53,7 +53,6 @@ public sealed class ProfilePageMountedTests(ShellHost host)
             AccentPeek = () => accent,
             PageAccent = null,
             PayloadAccent = 0u,
-            Washes = false,
             Tint = new BoxEl(),
             Hero = new ProfileHeroText("Jane", null, 0u, 5, 5, 3, own, true, false),
             HeroActs = new ProfileHeroActs(go, static () => null, static _ => { }),

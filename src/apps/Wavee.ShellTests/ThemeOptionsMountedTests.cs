@@ -97,9 +97,11 @@ public sealed class ThemeOptionsMountedTests(ShellHost host)
             foreach (string id in new[]
             {
                 "sidebarDesign", "sidebarDensity", "sidebarReset", "sidebarCustomize", "sidebarResetEverything",
-                "trackListStyle", "rowDensity", "hideTrackArtwork", "pageLayout", "railUniform", "railReset", "colorWashes",
+                "trackListStyle", "rowDensity", "hideTrackArtwork", "pageLayout", "railUniform", "railReset",
             })
                 Assert.False(shell.Find("legacy:" + id).IsNull, "legacy row '" + id + "' is mounted");
+            Assert.True(shell.Find("legacy:colorWashes").IsNull, "the washes are a generated option since M6");
+            Assert.NotEmpty(shell.FindPrefix("opt:structure.surfaces"));
         });
 
     [Fact]

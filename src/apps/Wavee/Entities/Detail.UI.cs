@@ -662,7 +662,6 @@ public static partial class Detail
             var cfg = spec.Config;
 
             // ── preferences (each subscribes its epoch, then re-reads the store) ──
-            bool washes = Prefs.Appearance.ColorWashes();
             int pageLayout = Prefs.DetailHero.PageLayout();
             bool uniform = Prefs.DetailHero.RailUniform();
             int railEpoch = Prefs.DetailHero.Epoch.Value;
@@ -720,13 +719,13 @@ public static partial class Detail
             UseEffect(_syncInsightsArm, DepKey.From(_sheetHosts ? 1 : 0));
 
             // ── the leaves: shell tint (a hand-over, never a clear) and the page tone plane (the ONE ground) ──
-            Element tint = Palette.ShellTint(paletteUrl, ready: true, disabled: !washes, apply: cfg.TwoColumn,
+            Element tint = Palette.ShellTint(paletteUrl, ready: true, apply: cfg.TwoColumn,
                 owner: _tintOwner, slot: shellSlot, key: "detail-tint:" + routeKey, payloadAccent: id.CardAccent);
             float pageH = _measuredH > 1f ? _measuredH : viewportSig.Peek().Height;
             // heroOnly is dead (the setting is gone): the band/height props feed only that arm, so they are PEEKED — a
             // hero measurement must not re-render the page for a value nothing paints.
             float heroBand = verticalTracks ? _heroHeight.Peek() : pageH * TwoColumnHeroBandFraction;
-            Element tone = Palette.PageTonePlane(paletteUrl, fallbackUrl: null, disabled: !washes, backdropBand: heroBand,
+            Element tone = Palette.PageTonePlane(paletteUrl, fallbackUrl: null, backdropBand: heroBand,
                 pageHeight: pageH, heroOnly: false,
                 key: Palette.ToneKey(routeKey, Tok.Epoch),
                 payloadAccent: id.CardAccent);

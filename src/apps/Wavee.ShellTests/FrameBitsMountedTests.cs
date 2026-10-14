@@ -33,6 +33,13 @@ public sealed class FrameBitsMountedTests(ShellHost host)
 {
     static ViewHarnessOptions UnderClassic() => new() { Composition = ClassicTheme.Create() };
 
+    /// <summary>Classic with its Surfaces option (M6: the colour washes) set to Off.</summary>
+    static ViewHarnessOptions WashesOff() => new()
+    {
+        Composition = ClassicTheme.Create(),
+        Options = new Dictionary<string, object> { ["structure.surfaces"] = SurfaceWash.Off },
+    };
+
     static NodeHandle Root(ViewHarness harness) => harness.Shell.Host.Scene.Root;
 
     static int Count(ViewHarness harness) => CountUnder(harness.Shell, Root(harness));
@@ -181,13 +188,50 @@ public sealed class FrameBitsMountedTests(ShellHost host)
         var slot = new Signal<ShellMaterialState>(default);
         var owner = new object();
         ViewHarness.With(host, ViewKeys.ShellCoverTint,
-            new CoverTintProps(null, null, Ready: true, Disabled: true, Apply: true, owner, MaterialPort.Of(slot)),
+            new CoverTintProps(null, null, Ready: true, Apply: false, owner, MaterialPort.Of(slot)),
             harness =>
             {
                 harness.RunFrames(3);
                 Assert.Same(owner, slot.Peek().Owner);   // a page that decided it has no colour claims the neutral ground
                 Assert.Null(slot.Peek().Tint);
             }, UnderClassic());
+    }
+
+    [Fact]
+    public void Surfaces_off_makes_the_tint_binder_claim_the_neutral_ground_like_a_page_with_no_tint()
+    {
+        var slot = new Signal<ShellMaterialState>(default);
+        var owner = new object();
+        ViewHarness.With(host, ViewKeys.ShellCoverTint,
+            new CoverTintProps(null, null, Ready: true, Apply: true, owner, MaterialPort.Of(slot), PayloadAccent: 0xFF336699u),
+            harness =>
+            {
+                harness.RunFrames(3);
+                Assert.Same(owner, slot.Peek().Owner);
+                Assert.Null(slot.Peek().Tint);   // the payload accent would tint it were the washes on
+            }, WashesOff());
+        var onSlot = new Signal<ShellMaterialState>(default);
+        ViewHarness.With(host, ViewKeys.ShellCoverTint,
+            new CoverTintProps(null, null, Ready: true, Apply: true, owner, MaterialPort.Of(onSlot), PayloadAccent: 0xFF336699u),
+            harness =>
+            {
+                harness.RunFrames(3);
+                Assert.NotNull(onSlot.Peek().Tint);   // Subtle (the default) draws today's tint
+            }, UnderClassic());
+    }
+
+    [Fact]
+    public void Surfaces_off_draws_the_neutral_ground_whatever_the_pages_published()
+    {
+        var published = new ShellMaterialState(new object(), Tint, new HomeWash(new WashLayer(OtherTint, "art-1"), null, null));
+        ViewHarness.With(host, ViewKeys.ShellMaterialLayer, new MaterialProps { State = new Signal<ShellMaterialState>(published) },
+            harness =>
+            {
+                Assert.Empty(harness.FindPrefix("shell.wash."));
+                Assert.True(harness.Contains("shell.material.tint"));   // the node stays mounted: it is what fades to neutral
+            }, WashesOff());
+        ViewHarness.With(host, ViewKeys.ShellMaterialLayer, new MaterialProps { State = new Signal<ShellMaterialState>(published) },
+            harness => Assert.True(harness.Contains("shell.wash.hero:art-1")), UnderClassic());
     }
 
     // ── the drawer ──────────────────────────────────────────────────────────────────────────────────────────────────────────

@@ -6,3 +6,6 @@
 key appearance.pageMotion.style
 member Prefs.Appearance.PageMotionStyle
 member Platform.Keys.PageMotionStyle
+key appearance.colorWashes.enabled
+member Prefs.Appearance.ColorWashes
+member Platform.Keys.ColorWashesEnabled

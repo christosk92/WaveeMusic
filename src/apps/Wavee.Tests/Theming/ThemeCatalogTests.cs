@@ -422,7 +422,7 @@ public sealed class ThemeCatalogTests : IDisposable
         Assert.True(classic.Registry.Contains(ViewKeys.ShellFrame.Id));
         Assert.True(classic.Registry.Contains(ViewKeys.ShellContentState.Id));
         Assert.True(classic.Registry.Contains(ViewKeys.PlayerBar.Id));
-        Assert.Empty(classic.ExposedOptions.All);
+        Assert.Equal("surfaces", Assert.Single(classic.ExposedOptions.All).Id);   // M6: the colour washes, Classic's first option
 
         var values = Values(classic);
         var definition = classic.Definition(values, AccentRamp.FluentDefault);

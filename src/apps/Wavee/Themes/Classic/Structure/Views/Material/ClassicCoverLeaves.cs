@@ -18,6 +18,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Signals;
+using FluentGpu.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
@@ -64,6 +65,7 @@ internal sealed class ClassicCoverTone : Component
     public override Element Render()
     {
         var p = UseProps<CoverToneProps>();
+        bool washes = ClassicMaterial.WashesOn(UseContext(OptionStore.Context));   // Classic's Surfaces option; Off paints nothing
 
         // The watch subscriptions, resolved ONCE per render and read here. Hoisting them out of the Fill closure
         // matters: a bound brush is re-evaluated on the PAINT path. Render still has to subscribe (not just the brush)
@@ -73,8 +75,8 @@ internal sealed class ClassicCoverTone : Component
         if (p.FallbackUrl is { Length: > 0 } fb && !string.Equals(fb, p.Url, StringComparison.Ordinal))
             _ = Palette.Watch(fb).Value;
 
-        ColorF? resolved = p.Disabled ? null : Resolve(p);
-        if (p.Disabled || resolved is null)
+        ColorF? resolved = washes ? Resolve(p) : null;
+        if (!washes || resolved is null)
             return new BoxEl { Grow = 1f, HitTestVisible = false };
 
         // At most ONE child, and only in hero-only mode: the tone BAND that fades back to the neutral surface. The
@@ -145,7 +147,7 @@ internal sealed class ClassicCoverBlend : Component
     public override Element Render()
     {
         var p = UseProps<CoverBlendProps>();
-        if (p.Disabled) return new BoxEl();
+        if (!ClassicMaterial.WashesOn(UseContext(OptionStore.Context))) return new BoxEl();   // Classic's Surfaces option: Off paints nothing
 
         if (p.Url is { Length: > 0 } url) _ = Palette.Watch(url).Value;
         var pagePal = Design.SchemeFor(p.Url);
@@ -256,16 +258,17 @@ internal sealed class ClassicCoverTint : Component
     public override Element Render()
     {
         var p = UseProps<CoverTintProps>();
+        bool washes = ClassicMaterial.WashesOn(UseContext(OptionStore.Context));   // Classic's Surfaces option
         if (p.Url is { Length: > 0 } url) _ = Palette.Watch(url).Value;
         if (p.FallbackUrl is { Length: > 0 } fb && !string.Equals(fb, p.Url, StringComparison.Ordinal))
             _ = Palette.Watch(fb).Value;
 
         var coverArt = p.Ready ? Design.SchemeFor(p.Url) : null;
         var artPalette = coverArt ?? (p.Ready ? Design.SchemeFor(p.FallbackUrl) : null);
-        // DEFINITE "no colour": the page has DECIDED to opt out (colour washes off in Settings, or this layout applies
+        // DEFINITE "no colour": the page has DECIDED to opt out (Surfaces Off in Settings, or this layout applies
         // no tint) — as opposed to simply not having a grading YET, which is transient and HOLDS the current colour
         // rather than dipping to neutral and back.
-        bool definite = p.Disabled || !p.Apply;
+        bool definite = !washes || !p.Apply;
         ColorF? known = null;
         if (!definite)
         {
@@ -295,7 +298,7 @@ internal sealed class ClassicCoverTint : Component
             Publish(isClaim: !claimedOnce.Value);
             claimedOnce.Value = true;
         }, DepKey.From(HashCode.Combine(p.Url, known.HasValue, known.GetValueOrDefault(), Tok.Epoch,
-                                        p.Ready, p.Disabled, p.Apply, p.PayloadAccent)));
+                                        p.Ready, washes, p.Apply, p.PayloadAccent)));
         // Reactivation (KeepAlive Back/forward) is ALWAYS a claim, regardless of claimedOnce — the whole point is to
         // retake the slot from whatever deactivated in between, even if that never cleared it either.
         UseActivation(onActivated: () => Publish(isClaim: true));

@@ -76,15 +76,6 @@ public static partial class Prefs
             return Platform.Settings.Get(Platform.Keys.MarqueeEnabled);
         }
 
-        /// <summary>Reactive read of the colour-wash master switch. FALSE means every tone plane, hero wash, artist
-        /// blend and shell tint binder takes its <c>disabled</c> arm and paints NOTHING — on the already-open page, with
-        /// no restart and no navigation.</summary>
-        public static bool ColorWashes()
-        {
-            _ = Epoch.Value;
-            return Platform.Settings.Get(Platform.Keys.ColorWashesEnabled);
-        }
-
         /// <summary>Reactive read of the row-density rung (0 Compact · 1 Default · 2 Cozy · 3 Comfortable), clamped.
         /// The LADDERS themselves are owner M's (`Entities/Track.cs`'s table rules); this is only the persisted
         /// choice.</summary>
