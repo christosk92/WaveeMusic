@@ -24,7 +24,7 @@ namespace Wavee;
 public static partial class Stage
 {
     /// <summary>The layers the root places that are not the layout layers' (those are views since T7a2, `Shell\Stage.Layers.cs`), as cached
-    /// builders over their core components (T7b: the lyrics pane inside PaneHost; T7d: the queue pane inside PaneHost). The caption host is
+    /// builders over their core components (T7b: the lyrics pane inside PaneHost; the queue pane is the `Queue.StagePane` view PaneHost mounts since T7d). The caption host is
     /// T7a1's core half; the lyric facts, the artist-header lookups and the visualizer clock are zero-size machinery.</summary>
     static readonly StageLayers s_layers = new()
     {

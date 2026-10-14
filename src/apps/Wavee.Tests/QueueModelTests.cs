@@ -8,6 +8,7 @@
 //   THE VERBS        a row is re-located by its item id in the LIVE queue; the menu's edits need an owned queue and an
 //                    upcoming row with a stable id; autoplay is one flag written through one door.
 
+using Wavee.Theming.Contracts;
 using Xunit;
 
 using RepeatMode = Wavee.Spotify.Decode.RepeatMode;
@@ -30,7 +31,7 @@ public class QueueModelProjectionTests
 
     static EntityRef RefAt(int i) => new(EntityKind.Track, i + 10);
 
-    static Shell.QueueProps Project(int cursor = 1, bool viewer = false, bool autoplay = true, QueueEdge[]? edges = null)
+    static QueueProps Project(int cursor = 1, bool viewer = false, bool autoplay = true, QueueEdge[]? edges = null)
         => Shell.QueueModel.Project(edges ?? Edges, RefAt, cursor, viewer, autoplay, shuffle: false, RepeatMode.Off,
             RefAt(1), playingFrom: null);
 
@@ -38,7 +39,7 @@ public class QueueModelProjectionTests
     public void The_counts_split_the_upcoming_rows_by_section()
     {
         var props = Project();
-        Assert.Equal(new Shell.QueueCounts(2, 2, 1), props.Counts);
+        Assert.Equal(new QueueCounts(2, 2, 1), props.Counts);
         Assert.Equal(2, props.NextInQueue);
         Assert.Equal(2, props.NextUp);
         Assert.Equal(5, props.Counts.Total);
@@ -54,6 +55,37 @@ public class QueueModelProjectionTests
             rows.Select(r => r.Section));
         Assert.Equal(new[] { 0, 1, 0, 1, 0 }, rows.Select(r => r.Position));
         Assert.Equal(RefAt(4), rows[2].Ref);
+    }
+
+    [Fact]
+    public void A_section_row_is_found_by_its_position_in_the_list()
+    {
+        var props = Project();
+        Assert.True(props.TryRow(QueueSection.Queue, 1, out var queued));
+        Assert.Equal(4UL, queued.ItemId);
+        Assert.True(props.TryRow(QueueSection.NextUp, 0, out var next));
+        Assert.Equal(5UL, next.ItemId);
+        Assert.True(props.TryRow(QueueSection.Autoplay, 0, out var radio));
+        Assert.Equal(7UL, radio.ItemId);
+        Assert.Equal(RefAt(6), radio.Ref);
+    }
+
+    [Fact]
+    public void A_position_past_a_sections_end_has_no_row()
+    {
+        var props = Project();
+        Assert.False(props.TryRow(QueueSection.Queue, 2, out _));
+        Assert.False(props.TryRow(QueueSection.NextUp, -1, out _));
+        Assert.False(props.TryRow(QueueSection.Autoplay, 1, out _));
+    }
+
+    [Fact]
+    public void Autoplay_rows_have_no_row_to_find_while_the_toggle_is_off()
+    {
+        var off = Project(autoplay: false);
+        Assert.False(off.TryRow(QueueSection.Autoplay, 0, out _));
+        Assert.True(off.TryRow(QueueSection.NextUp, 1, out var last));
+        Assert.Equal(6UL, last.ItemId);
     }
 
     [Fact]
@@ -110,7 +142,7 @@ public class QueueModelProjectionTests
     {
         var props = Project(cursor: -1, edges: []);
         Assert.Empty(props.Rows);
-        Assert.Equal(default(Shell.QueueCounts), props.Counts);
+        Assert.Equal(default(QueueCounts), props.Counts);
         Assert.True(props.Empty);
         Assert.True(props.Autoplay.Preview.IsNone);
     }
@@ -118,7 +150,7 @@ public class QueueModelProjectionTests
     [Fact]
     public void The_toggles_and_the_context_ride_along_unchanged()
     {
-        var from = new Shell.QueuePlayingFrom("Road Trip", default);
+        var from = new QueuePlayingFrom("Road Trip", default);
         var props = Shell.QueueModel.Project(Edges, RefAt, 1, viewer: false, autoplayEnabled: true, shuffle: true, RepeatMode.Track,
             RefAt(1), from);
         Assert.True(props.Shuffle);
@@ -132,29 +164,29 @@ public class QueueModelProjectionTests
     {
         Assert.Null(Shell.QueueModel.PlayingFromOf(null, default));
         Assert.Null(Shell.QueueModel.PlayingFromOf("", default));
-        Assert.Equal(new Shell.QueuePlayingFrom("Liked Songs", default), Shell.QueueModel.PlayingFromOf("Liked Songs", default));
+        Assert.Equal(new QueuePlayingFrom("Liked Songs", default), Shell.QueueModel.PlayingFromOf("Liked Songs", default));
     }
 
     [Fact]
     public void Nothing_playing_is_no_now_playing_row_and_nothing_queued_or_continuing_and_autoplay_alone_does_not_count()
     {
-        Assert.True(Shell.QueueModel.ShowsNothingPlaying(true, new Shell.QueueCounts(0, 0, 9)));
-        Assert.False(Shell.QueueModel.ShowsNothingPlaying(false, new Shell.QueueCounts(0, 0, 0)));
-        Assert.False(Shell.QueueModel.ShowsNothingPlaying(true, new Shell.QueueCounts(1, 0, 0)));
-        Assert.False(Shell.QueueModel.ShowsNothingPlaying(true, new Shell.QueueCounts(0, 1, 0)));
+        Assert.True(Shell.QueueModel.ShowsNothingPlaying(true, new QueueCounts(0, 0, 9)));
+        Assert.False(Shell.QueueModel.ShowsNothingPlaying(false, new QueueCounts(0, 0, 0)));
+        Assert.False(Shell.QueueModel.ShowsNothingPlaying(true, new QueueCounts(1, 0, 0)));
+        Assert.False(Shell.QueueModel.ShowsNothingPlaying(true, new QueueCounts(0, 1, 0)));
     }
 
     [Fact]
     public void Empty_means_nothing_in_any_section_autoplay_included()
     {
-        Assert.True(Shell.QueueModel.IsEmpty(new Shell.QueueCounts(0, 0, 0)));
-        Assert.False(Shell.QueueModel.IsEmpty(new Shell.QueueCounts(0, 0, 1)));
+        Assert.True(Shell.QueueModel.IsEmpty(new QueueCounts(0, 0, 0)));
+        Assert.False(Shell.QueueModel.IsEmpty(new QueueCounts(0, 0, 1)));
     }
 
     [Fact]
     public void The_counts_answer_per_section()
     {
-        var counts = new Shell.QueueCounts(1, 2, 3);
+        var counts = new QueueCounts(1, 2, 3);
         Assert.Equal(1, counts.Of(QueueSection.Queue));
         Assert.Equal(2, counts.Of(QueueSection.NextUp));
         Assert.Equal(3, counts.Of(QueueSection.Autoplay));
@@ -204,7 +236,7 @@ public class QueuePagesTests
     public void The_verb_pages_the_surface_it_was_built_over()
     {
         var pages = new Shell.QueuePages();
-        Shell.IQueueVerbs verbs = new Shell.QueueVerbs(pages);      // by the interface: the contract, not just the class
+        IQueueVerbs verbs = new Shell.QueueVerbs(pages);      // by the interface: the contract, not just the class
         verbs.ShowMore(QueueSection.Queue);
         Assert.Equal(2, pages.Of(QueueSection.Queue).Peek());
     }

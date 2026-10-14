@@ -1,11 +1,11 @@
 // ── Shell/QueueModel.cs ────────────────────────────────────────────────────────────────────────────────────────────
 // the QUEUE as one core model (themes plan C7, X42): what a queue surface (the rail panel, the stage pane, a theme's own)
-// draws, as DATA — where it is playing from, the now-playing row, the three sections' counts, the autoplay toggle and the
-// row it would play next, shuffle, repeat, the rows with their section and position, and the two "nothing here" facts — plus
-// the paging state behind "Show more".
+// draws, as DATA (`QueueProps` and its parts, published in `Theming\Contracts\QueueProps.cs`: where it is playing from, the
+// now-playing row, the three sections' counts, the autoplay toggle and the row it would play next, shuffle, repeat, the rows with
+// their section and position, and the two "nothing here" facts) — plus the paging state behind "Show more".
 //
 // Role: CORE
-// Spec: ch 21 §6, §8, §9.5; the verbs are `Shell.IQueueVerbs` (`QueueVerbs.cs`)
+// Spec: ch 21 §6, §8, §9.5; the verbs are `IQueueVerbs` (`Theming/Contracts/QueueProps.cs`, implemented by `QueueVerbs.cs`)
 //
 // Before this, the surfaces read the settings key, the owner signal and the section split themselves, and each owned its
 // "pages" signals. The split, the divider and the section rules stay where they have always lived (`Queue.Rules.cs`:
@@ -15,6 +15,7 @@
 using System;
 
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 
 using RepeatMode = Wavee.Spotify.Decode.RepeatMode;
 
@@ -22,51 +23,6 @@ namespace Wavee;
 
 public static partial class Shell
 {
-    // ══ THE DATA ═════════════════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>How many upcoming rows each section holds. <see cref="Autoplay"/> is the raw count: whether those rows are
-    /// LISTED is the autoplay toggle's business.</summary>
-    public readonly record struct QueueCounts(int Queue, int NextUp, int Autoplay)
-    {
-        public int Total => Queue + NextUp + Autoplay;
-
-        public int Of(QueueSection section) => section switch
-        {
-            QueueSection.Queue => Queue,
-            QueueSection.NextUp => NextUp,
-            _ => Autoplay,
-        };
-    }
-
-    /// <summary>"Playing from {Name}": the context's name, and the entity its header opens (empty: opens nothing).</summary>
-    public readonly record struct QueuePlayingFrom(string Name, EntityId Target);
-
-    /// <summary>The autoplay lane: the toggle, how many rows the radio tail holds, and the one it would play first (the preview).</summary>
-    public readonly record struct QueueAutoplay(bool Enabled, int Count, EntityRef Preview);
-
-    /// <summary>One listed row: its stable item id (0 = none), its flat index in the queue, the section and position within
-    /// it, and what the viewer may do with it. A surface re-locates a row by item id at invoke time, never by this index.</summary>
-    public readonly record struct QueueRowProps(ulong ItemId, int Index, EntityRef Ref, QueueSection Section, int Position,
-        bool Removable, bool Draggable);
-
-    /// <summary>What a queue surface draws. <see cref="Rows"/> lists the upcoming rows section by section in list order: the
-    /// queue, the continuation, then the autoplay rows ONLY while the toggle is on.</summary>
-    public sealed record QueueProps(bool Viewer, EntityRef NowPlaying, QueuePlayingFrom? PlayingFrom, QueueCounts Counts,
-        QueueAutoplay Autoplay, bool Shuffle, RepeatMode Repeat, QueueRowProps[] Rows)
-    {
-        /// <summary>"Next in queue": the rows the user queued.</summary>
-        public int NextInQueue => Counts.Queue;
-
-        /// <summary>"Next up": the context's own continuation.</summary>
-        public int NextUp => Counts.NextUp;
-
-        /// <summary>Nothing upcoming in ANY section (the stage pane's "nothing up next").</summary>
-        public bool Empty => QueueModel.IsEmpty(Counts);
-
-        /// <summary>The rail's "Nothing playing" vacancy: no now-playing row and nothing queued or continuing.</summary>
-        public bool NothingPlaying => QueueModel.ShowsNothingPlaying(NowPlaying.IsNone, Counts);
-    }
-
     // ══ THE PAGING ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>"Show more": how many pages of each section are realized (a visual pagination; the queue itself is whole).

@@ -13,8 +13,8 @@
 // NowPlaying bodies for the queue), whether the docked card is up, and what occupies the now-playing arm's pinned slot.
 //
 // THE BODIES. The now-playing body is this PR's (`NowPlaying`); the friends body is the `Panel.Friends` key. The lyrics header and
-// body, the queue body and the video body are `Func<Element>` builders until T7b (lyrics), T7d (queue) and T7c (video) give them
-// keys; the docked video card is the video lane's (`Video.DockedCap`).
+// body, the queue body and the video body are `Func<Element>` builders (the lyrics body and the queue body are core hosts that mount
+// `Lyrics.View` (T7b) and `Queue.Panel` (T7d); the video body waits for T7c); the docked video card is the video lane's (`Video.DockedCap`).
 //
 // WVTH006: a sealed record with init-only members and no writable signal. The record is built once (`RailWiring.Panel`), so an
 // equal re-push skips the template.
@@ -121,7 +121,7 @@ public sealed record PanelProps
     /// <summary>The lyrics body. T7b.</summary>
     public required Func<Element> LyricsBody { get; init; }
 
-    /// <summary>The queue body (the queue panel, or its empty grammar). T7d.</summary>
+    /// <summary>The queue body (the core host of the queue panel, which mounts <see cref="ViewKeys.QueuePanel"/>, or its empty grammar).</summary>
     public required Func<Element> QueueBody { get; init; }
 
     /// <summary>The video mode's body under the docked card (track meta, up next). T7c.</summary>

@@ -126,7 +126,7 @@ public sealed record StageRootView
     /// <summary>The Artist layout's big name (mounted under <see cref="ShowArtistName"/>).</summary>
     public required StageArtistNameProps ArtistName { get; init; }
 
-    /// <summary>The layers other T-PRs own, as builders until each has a key (lyrics: T7b; queue: T7d, both inside the pane host).</summary>
+    /// <summary>The layers other T-PRs own, as builders until each has a key (lyrics: T7b, inside the pane host; the queue pane is the `Queue.StagePane` view since T7d, which the pane host mounts).</summary>
     public required StageLayers Layers { get; init; }
 }
 

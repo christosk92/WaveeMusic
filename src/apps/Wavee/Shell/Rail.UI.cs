@@ -18,8 +18,8 @@
 //
 // WHAT IS STILL HERE is what other lanes own and the panel receives as builders: `Rail.LyricsHeader()` (T7b: the lyrics lane owns
 // its header, with the AI sparkle and the inspector button, both of which call `Rail.HeaderButton`), `Rail.VideoBody()` (T7c) and
-// the track-row "Next up" list (T8a), which Classic's now-playing body places too. The queue body installs itself through
-// `Rail.QueueBody` (owner Q's `Entities/Queue.UI.cs`, T7d).
+// the track-row "Next up" list (T8a), which Classic's now-playing body places too. The queue body is the core host
+// `Queue.RailPanelHost` (`Entities/Queue.UI.cs`), which installs itself through `Rail.QueueBody` and mounts the `Queue.Panel` view (T7d).
 //
 // Mounted from other stage-B files: `Video.DockedCap()` (K3), `Deck.View()` (K2), `Lyrics.NpvPeek()` and `Lyrics.View()` (K3).
 
@@ -37,8 +37,8 @@ namespace Wavee;
 
 public static partial class Rail
 {
-    /// <summary>The Queue body — owner Q's rail queue panel (`Entities/Queue.UI.cs`, Wave 5) installs itself here at
-    /// composition. Until then the rail shows the queue's empty grammar.</summary>
+    /// <summary>The Queue body — the core host of the rail's queue panel (`Entities/Queue.UI.cs`, `Queue.RailPanelHost`) installs
+    /// itself here at composition. Until then the rail shows the queue's empty grammar.</summary>
     public static Func<Element>? QueueBody { get; set; }
 
     /// <summary>The queue mode's body: the installed queue panel, or the queue's empty grammar.</summary>
@@ -190,7 +190,7 @@ public static partial class Rail
 
     /// <summary>One "Next up" row on the shared media surface (<c>Shape.Row</c> over <c>Track.RowData</c>): the row plate,
     /// the hand, the play FAB over the art, a track drag and the right-click menu. The row CLICK plays that queue item —
-    /// the same <c>play</c> the FAB runs (<see cref="Shell.IQueueVerbs.Play"/>, the queue panel's own skip), run through
+    /// the same <c>play</c> the FAB runs (<see cref="Wavee.Theming.Contracts.IQueueVerbs.Play"/>, the queue panel's own skip), run through
     /// <c>Track.Invoke</c> so the deck row toggles pause instead. The item is resolved inside the LIVE queue when clicked:
     /// the surface keeps its data across a queue shift (a data-equal re-push carries no new delegate into the render), so
     /// a captured index would go stale. The key carries

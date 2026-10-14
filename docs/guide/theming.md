@@ -480,8 +480,9 @@ the one coat) and the floating one paints its own ring and elevation.
 re-mounts the deck exactly as it did and a mode switch re-mounts nothing the deck owns. Which face paints is the core's decision
 (`Rail.PlayerPrefs.ResolvedPresentation`, developer-gated as today). Every write goes through `IDeckStyleVerbs` with the surface that made it.
 
-**Builders other lanes still own.** The lyrics header (T7b, not yet a key; the body is `Lyrics.View` since T7b, mounted by the core builder `Lyrics.View()`), the video body (T7c), the queue body (T7d), the docked video card, the
-lyrics peek and the "Next up" rows arrive as `Func<Element>` members on the props; their keys replace them.
+**Builders other lanes still own.** The lyrics header (T7b, not yet a key; the body is `Lyrics.View` since T7b, mounted by the core builder `Lyrics.View()`), the video body (T7c), the docked video card, the
+lyrics peek and the "Next up" rows arrive as `Func<Element>` members on the props; their keys replace them. The queue body (`PanelProps.QueueBody`) is the core host's builder
+(`Queue.RailPanelHost` inside its slot pin), which mounts the `Queue.Panel` key since T7d.
 
 **Tests.** The pinned slot, the mode vocabulary and the picker's entries are pure (`Wavee.Tests\PanelContractTests.cs`); the mounted facts are
 `Wavee.ShellTests\PanelMountedTests.cs` (the registered templates are Classic's; the real shell draws the hero's cover at the panel, a mode switch
@@ -623,7 +624,7 @@ arrives as facts (`StageTransportFacts`, `StageDeviceFacts`, read inside the tem
 writes the `viz.pick` line) or as builders (the bar's own seek rail and time labels, the device picker's rows).
 
 **Layers other lanes own arrive as builders.** `StageRootView.Layers` carries `Func<Element>` over the core components of the pane host (the lyrics pane inside
-it mounts `Lyrics.View` since T7b, below, and the queue pane is T7d's), the caption host, plus the zero-size machinery (lyric facts, hero facts, the visualizer clock) the template must still
+it mounts `Lyrics.View` since T7b, below, and the queue pane mounts `Queue.StagePane` since T7d, below), the caption host, plus the zero-size machinery (lyric facts, hero facts, the visualizer clock) the template must still
 place. The backdrop, hero photo, face, scrim, spectrum, now-playing card, identity and artist name were builders here until T7a2 gave them keys (below). The root
 keys and orders them exactly as the stack always was.
 
@@ -727,6 +728,42 @@ bars) are the core's and the views read them by name.
 `Wavee.ShellTests\LyricsViewMountedTests.cs` opens the real rail on lyrics (nothing playing: the centred line; a fixture track: the keyed rows and
 the layer overlays) and the real stage's column, and `LiveOptionBehaviourTests.Lyrics_blur_strength_reaches_the_rail_lines_and_never_the_stage`
 keeps pinning the blur.
+
+### The queue (T7d)
+
+Two keys, both drawn by `Themes\Classic\Structure\Views\Queue`: `Queue.Panel` (`QueuePanelProps`, the rail's queue body: the shuffle, repeat and autoplay pills,
+"Playing from", the now-playing card, the three sections' headers, rows and "Show more", the nothing-playing vacancy) and `Queue.StagePane`
+(`QueueStagePaneProps`, the fullscreen stage's Up next column: the title, the Autoplay switch, the glass rows and the larger Next row, the empty sentence).
+`ClassicQueue.cs` holds the two templates; `ClassicQueuePanel` and `ClassicQueueStagePane` are components because the picture has state of its own (the
+swipe group, the scroll handle and the chip accent with its hold on the rail; the switch's signal on the stage). The numbers are `Rules\ClassicQueueRules.cs`
+(the art edges, the row's extent under each skin, the header and "Show more" slots, the autoplay dims, the stage's row, Next row, grip and duration slots,
+which the view scales by `Stage.Layout.QueueScale`).
+
+**The model, the lane and the verbs stay core.** `Queue.RailPanelHost` and `Queue.StagePaneHost` (`Entities\Queue.UI.cs`, one `QueueSurface` base) keep every
+subscription (the queue edge, the two row tables, the deck's current row and phase and owner, the settings epoch), the section split
+(`Shell.QueueModel.Project` into one `QueueProps` per render), the page counters (`Shell.QueuePages`: three on the rail, one unified on the stage), the realized
+slots (`QueueSlots`), the reorder lane (`Reorderable`: the lift, the keyboard reorder, the foreign-drop rule and its captions, `QueueMovePlan`), the row's drag
+payload and context menu, the demand for row text and the context's name, and `Shell.QueueVerbs` (play, remove, clear, move, autoplay, show more, the entry menu,
+a foreign drop). They mount the key with a props record; `QueueProps`, `QueueRowProps`, `QueueCounts`, `QueuePlayingFrom`, `QueueAutoplay` and `IQueueVerbs` are
+published in `Theming\Contracts\QueueProps.cs` (they were nested in `Shell`, which a theme may not name).
+
+**What a theme reaches.** `QueueProps` (`Rows` listed section by section, the autoplay rows only while the toggle is on; `TryRow(section, position)` finds a
+row), `IQueueVerbs` (bound to the surface's own page counters), the player's verbs (the pills and the card's play button), and `IQueueLane`: the realized slots
+(`SlotCount`, `SlotAt`, `ItemAt` under the live drag projection), `Lane` / `List` (the wrapper a row needs and the lane around the body), `OwnDrag` and `Attach`
+(a viewed queue's own drag; the entry's context menu), `Remaining` / `PageSize` ("Show more"), `TextOf` (what a row paints: the entity tables are not a theme's), `Clock`,
+`RowKey` and `SetMetrics`. **A template must call `SetMetrics(rowExtent, extentOf)` before it builds the lane**: the reorder maths needs every slot's height
+EXACT, and the heights are the skin's (a skin or a scale change moves them). The settings the core read arrive as facts (`HairlineRows`, `HideTrackArt`,
+`RepeatOn`, `RepeatTrack`), the two navigations as `Action?` (`OpenPlayingFrom`, `OpenNowPlaying`: null means display-only). The stage's accent, queue scale and
+width travel in the stage's ambient context (`Stage.StageContext`), which the view component reads.
+
+**Motion and identity are the old surface's.** Row keys (`i<itemId>` or `e<index>`, plus the skin and art suffix), the lane keys (`lane:upcoming`,
+`lane:empty`, `stagelane:upcoming`, `stagelane:empty`), the header, more and "Playing from" keys, the Enter / Exit / Slide of every slot, the now-playing card's
+track-keyed remount, the hover-revealed grip and ✕ on the stage, the swipe actions and every accessibility role and name are unchanged. The `queue.panel.rows`
+diagnostic line and its capture stay in the rail host.
+
+**Tests.** `Wavee.Tests\QueueContractTests.cs` pins the ids, Classic's registration and the section tags; `QueueModelTests.cs` the projection (and `TryRow`), the
+paging and the verbs; `QueueRowRulesTests.cs` the core's decisions (the ✕, the row's own drag, no "..." button) and `ClassicQueueRulesTests.cs` the structure's
+(extents, dim, adapter, card click). `Wavee.ShellTests\QueueMountedTests.cs` mounts the real rail on the queue and the real stage's column.
 
 ### Home (T10a1)
 

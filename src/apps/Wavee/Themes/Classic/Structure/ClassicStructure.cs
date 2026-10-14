@@ -11,7 +11,7 @@
 // `StyleKeys.TrackTable` style; T8b its chrome, `ClassicTrackChrome.cs`), T8c the other list surfaces (`Lists\ClassicEagerRow.cs`,
 // `ClassicEpisodeRow.cs`, `ClassicSurface.cs`, `ClassicArtistChart.cs`, `ClassicTrackDrawer.cs`, with the shared cells in `ClassicRowCells.cs`:
 // the `StyleKeys.EagerTrackRow`, `EpisodeRow`, `Surface`, `ArtistChart` and `TrackDrawer` styles), T10a1 Home (`Views\Home`: the page, facet row, daylist and clock, zone bodies, the drill page and the
-// customizer), T9a the shared detail frame (`Views\Detail`: the scaffold, the rail and its strip, the show header, the hero, the insights sheet), T9b its album and playlist sub-contracts (`Views\Detail\ClassicAlbum*.cs`, `ClassicPlaylist*.cs`, `ClassicDetailSeam.cs`), T10a2 Browse and Search (`Views\Pages`: the directory and its Charts band, a category page, the section drill key, the Search results page); every other surface is still core code. It
+// customizer), T9a the shared detail frame (`Views\Detail`: the scaffold, the rail and its strip, the show header, the hero, the insights sheet), T9b its album and playlist sub-contracts (`Views\Detail\ClassicAlbum*.cs`, `ClassicPlaylist*.cs`, `ClassicDetailSeam.cs`), T10a2 Browse and Search (`Views\Pages`: the directory and its Charts band, a category page, the section drill key, the Search results page), T7d the queue (`Views\Queue`: the rail panel and the stage's Up next column); every other surface is still core code. It
 // decides the shell's policies (`Rules\ClassicPolicies.cs`: nav pane, panel and mini player, player bar, chrome row, stage)
 // and offers every capability (T3). Its window tiers (T3b) are `Rules\Tiers.cs`.
 //
@@ -92,7 +92,7 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.OnMediaTransport, ClassicOnMedia.Template, "classic.player.on-media-transport");
         // T7a1: the fullscreen stage's frame: the root (layer stack, chrome placement, hairline), the top bar, the transport card, the
         // options popover, the visualizer gallery and the lyric caption. The layouts, hero and artist pane (T7a2) have keys; video
-        // (T7c) and the queue pane (T7d) arrive as builders on the root until they do (the lyrics pane is T7b's, below).
+        // (T7c) arrives as a builder on the root until it does (the lyrics pane is T7b's and the queue pane T7d's, below).
         views.Add(ViewKeys.StageRoot, ClassicStageRoot.Template, "classic.stage.root");
         views.Add(ViewKeys.StageTopBar, ClassicStageTopBar.Template, "classic.stage.top-bar");
         views.Add(ViewKeys.StageTransport, ClassicStageTransport.Template, "classic.stage.transport");
@@ -113,6 +113,12 @@ public sealed class ClassicStructure : IStructureLayer
         // the depth-of-field ramp and the word wipe stay core (`Lyrics.ViewCore`).
         views.Add(ViewKeys.LyricsView, ClassicLyrics.Template, "classic.lyrics.view");
         views.AddStyle(StyleKeys.LyricsLines, ClassicLyricsLines.Style);
+        // T7d: the queue. The rail panel (the pills, "Playing from", the now-playing card, the sections' headers, rows and "Show more", the
+        // nothing-playing vacancy) and the stage's Up next column (the title, the Autoplay switch, the glass rows and the Next row). The model,
+        // the verbs, the page counters, the realized slots and the reorder lane (drag, drop, keyboard) stay core (`Queue.RailPanelHost`,
+        // `Queue.StagePaneHost`).
+        views.Add(ViewKeys.QueuePanel, ClassicQueue.PanelTemplate, "classic.queue.panel");
+        views.Add(ViewKeys.QueueStagePane, ClassicQueue.StagePaneTemplate, "classic.queue.stage-pane");
         // T10a1: Home. The page (the scroll column, the skeleton region, the zone column and every chapter), the facet row, the daylist card
         // and its clock, the zone bodies (`Home.Zone.<Kind>`: the Recents grid and the Charts block have core hosts, the other fourteen kinds are
         // pure functions of their zone and share one template), the "See all" drill page and the customizer. The facet machine, the model, the

@@ -36,9 +36,9 @@
 //   • Nothing here decides: modes, aspect classes, demand, visuals are `Stage` (CORE) and `Visualizer` (CORE).
 //   • THE SURFACE IS CORE, THE ROOT'S TREE IS THE STRUCTURE'S (T7a1). SurfaceCore keeps every hook, effect and machine; each render it
 //     hands the structure's `Draw` a `StageRootView` (size, the wiring it put on the root box, the layers' predicates, the chrome
-//     views' props, the builders of the layers T7a2/T7b/T7d still own) and mounts what comes back under the context provider.
+//     views' props, the builders of the layers T7a2/T7b still own) and mounts what comes back under the context provider.
 //
-// Mounted from other files: `Lyrics.StagePane(accent)` (the reading column), `Stage.QueuePaneBody` (Queue.UI.cs:65),
+// Mounted from other files: `Lyrics.StagePane(accent)` (the reading column), `Queue.StagePane()` (the Up next column: Queue.UI.cs, the `Queue.StagePane` view),
 // `Stage.NowPlayingMenu` (Actions.UI.cs:958), `Shell.SeekBar(onScrubbing:)`/`Shell.TimeText` (the bar's own seek — never a fork),
 // `Shell.PlayerKey`/`Shell.ScrubController.KeyStep` (the bar's key map and its keyboard seek ladder).
 
@@ -80,8 +80,6 @@ public static partial class Stage
     public static EnterExit ExitTerminal => Design.Reduced
         ? new EnterExit(Opacity: 0f, Active: true) : new EnterExit(Sx: 1.02f, Sy: 1.02f, Opacity: 0f, Active: true);
 
-    /// <summary>The Up-next rows (Queue.UI.cs:65 installs it). Null renders the empty sentence.</summary>
-    public static Func<Element>? QueuePaneBody { get; set; }
     /// <summary>The now-playing context menu (Actions.UI.cs:958 installs it); asked at OPEN time.</summary>
     public static Func<ContextMenuModel?>? NowPlayingMenu { get; set; }
 
@@ -535,7 +533,7 @@ public static partial class Stage
 
     // ══ 1b. THE CORE LAYERS (each a component on the context's SIGNALS — SurfaceCore's tree is static, V-U50) ═════════
     // The backdrop, hero photo, face, scrim, spectrum, card, identity and artist name are the structure's since T7a2 (`Shell\Stage.Layers.cs`
-    // builds their props); what stays here are the pane region (T7b / T7d own what it holds) and the zero-size machinery.
+    // builds their props); what stays here are the pane region (it mounts the lyrics view, T7b, and the `Queue.StagePane` view, T7d) and the zero-size machinery.
 
     /// <summary>The pane region: KeepAlive keeps the lyrics view's state across mode switches. TOP-LEFT at (PaneX, PaneTop).</summary>
     sealed class PaneHost : Component
@@ -561,7 +559,7 @@ public static partial class Stage
                     Flow.KeepAlive(() => ctx.Pane.Value, static p => "pane:" + (int)p, p => p switch
                     {
                         PaneKind.Lyrics => PaneFrame(Lyrics.StagePane(slab.Accent)),
-                        PaneKind.Queue => PaneFrame(Embed.Comp(static () => new QueuePane())),
+                        PaneKind.Queue => PaneFrame(Queue.StagePane()),
                         PaneKind.Artist => PaneFrame(ViewSlots.View(ViewKeys.StageArtistPane, _artist ??= ArtistPaneProps(ctx))),
                         _ => new BoxEl { HitTestVisible = false },
                     }),
@@ -591,60 +589,6 @@ public static partial class Stage
             UseEffect(() => ctx.HasTimedLyrics.SetIfChanged(hasTimed), DepKey.From(hasTimed));
             UseEffect(() => { if (track.IsValid) Lyrics.Store.Ensure(track); }, DepKey.From(track.Slot));
             return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
-        }
-    }
-
-    // ══ 7. UP NEXT · ARTIST ═════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>"Up next" + the Autoplay ToggleSwitch, then the queue's own rows (QueuePaneBody).</summary>
-    sealed class QueuePane : Component
-    {
-        readonly Signal<bool> _autoplay = new(true);   // seeded once, mirrored from the setting by the effect — never a new signal per render
-        public override Element Render()
-        {
-            var ctx = UseContext(StageContext)!;
-            var set = ctx.Accent.Value;
-            UseSignalEffect(() => { _ = Platform.SettingsChanged.Value; _autoplay.SetIfChanged(Shell.QueueModel.AutoplayEnabled()); });
-            EntityId contextId = Playback.ContextUri.Value;
-            Queue.ContextWire wire = Playback.ContextLabel.Value;
-            UseEffect(static () => Queue.EnsureContext(Queue.ContextTarget(Playback.ContextUri.Peek(), Playback.ContextLabel.Peek())),
-                      DepKey.From(contextId.GetHashCode() ^ (wire.Referrer.GetHashCode() * 31)));
-            // the stage's own ink for the OFF state too: the stock Off* ramp is the app THEME's, and the stage's ground is not (V-U30)
-            var toggle = ToggleSwitch.DefaultStyle with
-            {
-                OnFill = set.Fill, OnHover = set.FillSecondary, OnPressed = set.FillTertiary, OnKnob = set.Ink,
-                OffFill = Ink.GlassRest, OffHover = Ink.GlassHover, OffPressed = Ink.GlassPressed, OffBorder = Ink.InkSecondary, OffKnob = Ink.InkSecondary,
-                Foreground = Ink.Ink, MinWidth = 40f,
-            };
-            Element? rows = QueuePaneBody?.Invoke();
-            var layout = ctx.Layout.Value;
-            float s = layout.QueueScale;
-            return new BoxEl
-            {
-                Direction = 1, Grow = 1f, MinHeight = 0f, MinWidth = 0f, ClipToBounds = true, MaxWidth = layout.QueueListMaxW,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.SpaceBetween, Margin = new Edges4(0f, 0f, 0f, Spacing.M),
-                        Children =
-                        [
-                            new TextEl(Loc.Get(Strings.Stage.UpNext)) { Size = MathF.Round(28f * s), LineHeight = MathF.Round(36f * s), Weight = 600, FontFamily = DisplayFace, Color = Ink.Ink },
-                            new BoxEl
-                            {
-                                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-                                Children = [new TextEl(Loc.Get(Strings.Player.Autoplay)) { Size = MathF.Round(14f * s), LineHeight = MathF.Round(20f * s), Color = Ink.Ink },
-                                            ToggleSwitch.Create(_autoplay, static on => Shell.QueueVerbs.Default.SetAutoplay(on), style: toggle)],
-                            },
-                        ],
-                    },
-                    new ScrollEl
-                    {
-                        Grow = 1f, MinHeight = 0f, AutoEdgeFade = true, ScrollKey = "stagequeue",
-                        Content = rows ?? new BoxEl { Padding = new Edges4(0f, Spacing.XXL, 0f, 0f), Children = [new TextEl(Loc.Get(Strings.Player.QueueEmpty)) { Size = 14f, LineHeight = 20f, Color = Ink.InkTertiary }] },
-                    },
-                ],
-            };
         }
     }
 

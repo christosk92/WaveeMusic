@@ -19,46 +19,12 @@ using System.Threading.Tasks;
 
 using FluentGpu.Controls;
 using FluentGpu.Localization;
+using Wavee.Theming.Contracts;
 
 namespace Wavee;
 
 public static partial class Shell
 {
-    /// <summary>What a queue surface can ask of the queue.</summary>
-    public interface IQueueVerbs
-    {
-        /// <summary>Play a row: a cursor move inside the live session (the rows the skip passes over are trimmed), never a
-        /// rebuild; a viewed queue forwards it to the owner. <paramref name="index"/> and <paramref name="row"/> are only the
-        /// fallback for a row with no item id (0).</summary>
-        void Play(ulong itemId, int index = -1, EntityRef row = default);
-
-        /// <summary>Remove an upcoming row. Refused on a viewed queue.</summary>
-        void Remove(ulong itemId, int index, EntityRef row);
-
-        /// <summary>Clear the user's queue ("Next in queue"). Refused on a viewed queue.</summary>
-        void Clear();
-
-        /// <summary>Move a row within its section, from position <paramref name="from"/> to <paramref name="to"/>.</summary>
-        void Move(QueueSection section, int from, int to);
-
-        /// <summary>Flip autoplay.</summary>
-        void ToggleAutoplay();
-
-        /// <summary>Set autoplay (a switch that states the value it wants).</summary>
-        void SetAutoplay(bool on);
-
-        /// <summary>One more page of <paramref name="section"/> on this surface.</summary>
-        void ShowMore(QueueSection section);
-
-        /// <summary>The queue-entry menu: header "{artists} · {section}", the strip Play now · Play next · Add to queue ·
-        /// Like, the track rows, Move up / Move down where legal, Remove last. Null for a row that is gone or not a track.</summary>
-        ContextMenuModel? RowMenu(ulong itemId, int index, EntityRef row, bool viewer);
-
-        /// <summary>A foreign drop on the lane: the dropped tracks go into the user queue at <paramref name="userIndex"/>
-        /// (0 = play next), capped like the player bar's drop, and the toast says how many landed.</summary>
-        void DropInsert(object? payload, int userIndex);
-    }
-
     public sealed class QueueVerbs(QueuePages pages) : IQueueVerbs
     {
         /// <summary>Verbs over a private page counter, for a caller with no surface of its own.</summary>

@@ -17,7 +17,7 @@
 //
 // The layout layers (T7a2: backdrop, hero photo, face, face scrim, spectrum, now-playing card, identity, artist name) are views of their own
 // (`ViewKeys.Stage*`, mounted here at the position the stack has always had, each under the same keys). The pane host (with the lyrics pane
-// T7b and the queue pane T7d inside it), the caption host and the zero-size machinery (lyric facts, hero facts, the visualizer clock) arrive
+// T7b and the queue pane T7d, both views, inside it), the caption host and the zero-size machinery (lyric facts, hero facts, the visualizer clock) arrive
 // as builders on `StageRootView.Layers`. Nothing here decides: every predicate is the core surface's.
 
 using FluentGpu.Animation;
