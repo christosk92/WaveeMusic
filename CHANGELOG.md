@@ -69,6 +69,10 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **Pages you return to no longer re-flow on their first frame.** When a page is opened again after it left the page
+  cache, its width-dependent parts (the artist page's top and biography bands, Home's daylist, facet row and recents grid,
+  Browse and Search grids, the concert pages, the track list's command bar and similar) now appear at their final layout
+  at once, instead of showing a default-width layout for one frame and then snapping to the real one.
 - **Album covers, avatars and headers load sharp.** Images that Spotify describes only by their maximum width used to
   load the smallest (64 px) version.
 - **The now-playing equalizer keeps moving after you navigate back to a page,** and a paused one no longer restarts

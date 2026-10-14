@@ -99,13 +99,15 @@ public static partial class Controls
         TrimTipProps? _p;
         readonly Signal<TrimTipProps?> _props = new(null);
         TrimTipProps? _measuredFor; float _measuredW = float.NaN; bool _trimmed;
+        string? _memKey;   // the keyed-measurement role (E17c), composed once from the first text: a remount starts measured
 
         public void ApplyProps(object props) { _p = (TrimTipProps)props; _props.Value = _p; }
 
         public override Element Render()
         {
             _ = _props.Value;
-            float w = UseMeasuredWidth(4f).Value;                       // written during layout → this re-renders next frame
+            _memKey ??= "trim:" + _p!.Text;
+            float w = UseMeasuredWidth(_memKey, 4f).Value;              // written during layout → this re-renders next frame
             var p = _p!;
             if (w > 0f && (w != _measuredW || !p.SameMeasure(_measuredFor)))
             {

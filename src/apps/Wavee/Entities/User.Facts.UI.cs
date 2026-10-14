@@ -830,7 +830,7 @@ public readonly partial struct User
             _anchor = UseRef<NodeHandle>(default);
             _handle = UseRef<OverlayHandle?>(null);
             _moreOpen = UseSignal(false);
-            var measuredW = UseMeasuredWidth(Controls.FaceStep);
+            var measuredW = UseMeasuredWidth("facts:artists", Controls.FaceStep);
             // The gate (W3-A3): the Artists counter is subscribed inside the memo; a publication that leaves every
             // ranked artist's version where it was resolves this render clean.
             _ = UseComputed(_stamp).Value;

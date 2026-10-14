@@ -982,6 +982,12 @@ public static partial class Shell
         => r.Tab.ToString(CultureInfo.InvariantCulture) + "" + NameOf(r) + ""
          + (Row(r.Kind).KeyedByArg ? Entities.Strings.Resolve(r.Arg) : "");
 
+    /// <summary>The page's keyed-measurement SCOPE (<c>MeasureMemory.Scope</c>, E17c): the keep-alive slot's identity (tab,
+    /// destination and the argument a keyed destination carries), so a region keyed by its role inside a page finds its size
+    /// again when the same page instance remounts (a theme switch's new root, a revisit after a keep-alive eviction), and the
+    /// same page open in two tabs keeps two sizes. Provided per keep-alive slot by the content host (<c>PageBody</c>).</summary>
+    public static string MeasureScopeOf(in Route r) => SlotKey(r) + "/";
+
     /// <summary>How many pages the content host keeps alive. Back to a page shows it exactly as it was, including
     /// scroll and selection; the fourth oldest is evicted.</summary>
     public const int KeepAliveSlots = 3;

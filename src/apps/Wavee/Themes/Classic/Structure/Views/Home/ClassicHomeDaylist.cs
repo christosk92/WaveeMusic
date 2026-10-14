@@ -139,7 +139,7 @@ internal static class ClassicHomeDaylist
     /// (the border paints after the children, so it stays on top of the art), around the layers built at the card's
     /// width (<see cref="Row"/>; the copy's width follows <see cref="DaylistForm"/>).</summary>
     static BoxEl CardShape(Parts parts)
-        => Ui.Card(Responsive.Of(w => Row(parts, w), fallback: HomeModuleLayout.FallbackWidth, grow: 1f))
+        => Ui.Card(Responsive.Of("home:daylist", w => Row(parts, w), fallback: HomeModuleLayout.FallbackWidth, grow: 1f))
             with
             {
                 Padding = default, ClipToBounds = true, MinHeight = ClassicHomeRules.DaylistCardMinHeight,

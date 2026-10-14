@@ -1603,6 +1603,16 @@ region from a control size). The baseline detail is the measurement kind (`Viewp
 Classic's file is `analyzer-baseline\WVTH013.txt` (no file today: every moved view is clean), emptied family by family by the
 Classic tier PRs and deleted by TC10. Where a ladder cannot move without a behaviour change, the move PR lists the file there.
 
+**Keyed measurement (A4.0, engine E17c).** A measured region in a view is KEYED by its role: `Responsive.Of("artist:top-band", w => ...)`,
+`Responsive.Of("browse:genres", state, (st, w) => ...)`, `UseMeasuredWidth("show:body", 4f)`, `UseMeasuredBounds("recents:rail")`. The
+content host provides the page slot as the scope (`Shell.MeasureScopeOf(route)` = the keep-alive slot key + `/`, as
+`MeasureMemory.Scope` around `PageBody`), so the full key names one region of one page instance; when that page remounts (a theme
+switch's new root, a revisit after a keep-alive eviction) the region builds its first frame at its remembered width, and the switch's
+settle (`AppHost.Settle`) is quiet in its first pass. The role must be unique among the page's measured regions (a repeated block
+folds its identity in: `CategoryBlock("browse-cats:" + uri, ...)`); a keyed `Responsive.Of` also uses it as the element `Key`. An
+unkeyed hook still works and costs the settle one corrective pass. The WVTH013 fence reads the keyed overloads exactly like the
+unkeyed ones. Pinned by `KeyedMeasureTests` (`Wavee.ShellTests`).
+
 **Zoom and tiers (C1b).** Tiers are measured on the layout viewport, after app zoom, so Auto zoom is clamped against ONE core reference,
 `ZoomTierReference.HugeFrom` = 1920 (`Platform\ZoomService.cs`), the Huge edge of every shipped ladder. It is not any structure's ladder, so
 a theme switch never changes the zoom. For an unzoomed window width W: `W < 1920 ? Suggest : min(Suggest, plateauDown(W / 1920))`, with
