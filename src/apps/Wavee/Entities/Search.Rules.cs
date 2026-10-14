@@ -278,9 +278,6 @@ public readonly partial struct Search
     /// <summary>The wire page size a facet asks (0.2.9 <c>SearchPageSize</c>).</summary>
     public const int PageSize = 50;
 
-    /// <summary>The eleven placeholder pill widths — the known facet superset, which wraps to two rows at typical widths.</summary>
-    public static readonly float[] ChipSkeletonWidths = [40f, 68f, 76f, 74f, 88f, 68f, 96f, 116f, 76f, 76f, 76f];
-
     /// <summary>The static fallback facet order (<c>FacetsFrom</c>'s second pass).</summary>
     public static readonly SearchFacet[] FallbackFacets =
     [
@@ -472,6 +469,9 @@ public readonly partial struct Search
         SearchFacet.Albums or SearchFacet.Playlists or SearchFacet.Genres => ShimmerShape.CardGrid,
         _ => ShimmerShape.Rows,
     };
+
+    /// <summary>The Albums and Playlists facets are the two card-GRID facets: their body owns its own virtual scroll (no page ScrollView).</summary>
+    public static bool IsGridFacet(SearchFacet facet) => facet is SearchFacet.Albums or SearchFacet.Playlists;
 
     /// <summary>The facet body slides only on a REAL switch — never on the first render.</summary>
     public static bool Slides(bool armed, int previousChip, int chip) => armed && previousChip != chip;

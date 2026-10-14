@@ -197,7 +197,7 @@ public static partial class Modules
             return new BoxEl
             {
                 Direction = 1, Grow = 1f, MinHeight = 0f,
-                Padding = new Edges4(0f, BrowseLayout.MastheadReserve, 0f, 0f),
+                Padding = new Edges4(0f, BrowseMastheadMetrics.Reserve, 0f, 0f),
                 Children =
                 [
                     model is null

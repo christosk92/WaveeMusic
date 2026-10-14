@@ -131,7 +131,7 @@ public static partial class Shell
 
         /// <summary>Choosing a row PLAYS it (a track, an episode) rather than navigating. Deliberately UNCHANGED by the
         /// podcast rework's D-2 (an episode DEEP LINK opens its page): picking a rich row here is the user explicitly
-        /// choosing something they just searched for — the same explicit-play action <c>Search.UI.cs</c>'s hit rows and
+        /// choosing something they just searched for — the same explicit-play action <c>Search.Hits.cs</c>'s hit rows and
         /// <c>Recents.UI.cs</c>'s rows are, not a passively-received shared link. <see cref="RouteFor"/> below has no
         /// Episode arm (it falls to <see cref="Route.None"/>) precisely because choosing one never navigates.</summary>
         public static bool ChoosePlays(ItemKind kind) => kind is ItemKind.Track or ItemKind.Episode;

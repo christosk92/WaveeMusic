@@ -1,13 +1,15 @@
 // ── Wavee.Tests/BrowseLayoutTests.cs — the directory cells' column math, the star grid and the tile model ──────────
 //
-// NEW in 0.3 (0.2.9 had these private in `Features/Browse/BrowseTiles.cs:286-358` with no test). The four column
+// NEW in 0.3 (0.2.9 had these private in `Features/Browse/BrowseTiles.cs:286-358` with no test). The three column
 // decisions a band makes — Genres' fixed bands (`LinkColumns`), Mood's uncapped floor-fit (`BarColumns`), More's capped
-// floor-fit (`MoreColumns`) and the star grid's own track count (`StarGrid`) — plus `StarGrid`'s empty case, and the
-// pure half of the cell factories (`BrowseTiles.ToModel` / `FeatureRoute` / `PageRoute`).
+// floor-fit (`MoreColumns`), which T10a2 moved into Classic's `Rules\Tiers.Browse.cs` (`ClassicBrowseTiers`) — and the star grid's
+// own track count (`ClassicBrowseCells.StarGrid`) with its empty case, plus the pure half of the cell factories
+// (`BrowseTiles.ToModel` / `FeatureRoute` / `PageRoute`, still core).
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using Wavee;
+using Wavee.Themes.Classic;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -25,7 +27,7 @@ public class BrowseLayoutTests
     [InlineData(380f, 1)]
     [InlineData(0f, 1)]
     public void LinkColumns_AreFixedBands_NeverAFloorDivide(float width, int expected)
-        => Assert.Equal(expected, BrowseLayout.LinkColumns(width));
+        => Assert.Equal(expected, ClassicBrowseTiers.LinkColumns(width));
 
     [Theory]
     [InlineData(0f, 1)]
@@ -34,7 +36,7 @@ public class BrowseLayoutTests
     [InlineData(264f, 2)]
     [InlineData(1320f, 10)]   // no cap
     public void BarColumns_FloorFitAt132_Uncapped(float width, int expected)
-        => Assert.Equal(expected, BrowseLayout.BarColumns(width));
+        => Assert.Equal(expected, ClassicBrowseTiers.BarColumns(width));
 
     [Theory]
     [InlineData(0f, 1)]
@@ -43,7 +45,7 @@ public class BrowseLayoutTests
     [InlineData(672f, 4)]
     [InlineData(5000f, 4)]    // capped at four
     public void MoreColumns_FloorFitAt168_CappedAtFour(float width, int expected)
-        => Assert.Equal(expected, BrowseLayout.MoreColumns(width));
+        => Assert.Equal(expected, ClassicBrowseTiers.MoreColumns(width));
 
     [Theory]
     [InlineData(3, 3)]
@@ -53,7 +55,7 @@ public class BrowseLayoutTests
     public void StarGrid_HasOneStarTrackPerColumn_AtLeastOne(int columns, int tracks)
     {
         Element[] cells = [new BoxEl(), new BoxEl(), new BoxEl(), new BoxEl(), new BoxEl()];
-        var grid = Assert.IsType<GridEl>(BrowseLayout.StarGrid(columns, Spacing.S, Spacing.M, cells));
+        var grid = Assert.IsType<GridEl>(ClassicBrowseCells.StarGrid(columns, Spacing.S, Spacing.M, cells));
 
         Assert.Equal(tracks, grid.Columns.Length);
         Assert.All(grid.Columns, t => Assert.Equal(TrackSize.Star(), t));
@@ -66,15 +68,11 @@ public class BrowseLayoutTests
 
     [Fact]
     public void StarGrid_WithNoCells_IsABareBox()
-        => Assert.IsType<BoxEl>(BrowseLayout.StarGrid(3, Spacing.S, Spacing.S, []));
+        => Assert.IsType<BoxEl>(ClassicBrowseCells.StarGrid(3, Spacing.S, Spacing.S, []));
 
     [Fact]
-    public void TheFrameIsThePageGutterUnderTheSharedTitleY()
-    {
-        var frame = BrowseLayout.Frame(Spacing.XXL);
-        Assert.Equal(new Edges4(Spacing.PageWide, Spacing.XXXL, Spacing.PageWide, Spacing.XXL), frame);
-        Assert.True(BrowseLayout.WordChipH > BrowseLayout.NameChipH);  // the Top pills outrank For-you's
-    }
+    public void TheTopPillsOutrankForYous()
+        => Assert.True(ClassicBrowseRules.WordChipH > ClassicBrowseRules.NameChipH);
 
     // ── the tile model (0.2.9 BrowseTiles.ToModel) ──────────────────────────────────────────────────────────────────
 
