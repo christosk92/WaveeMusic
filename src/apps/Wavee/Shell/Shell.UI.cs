@@ -843,8 +843,9 @@ public static partial class Shell
         {
             case ContentStateKind.Page:
                 return Ctx.Provide(PageScrollScope, ScrollScopeOf(route.Tab),
-                    ViewSlots.View(ViewKeys.ShellContentState,
-                        ContentStateProps.ForPage(FrameRules.ContentKey(ContentStateKind.Page, NameOf(route), null), factory!(route))));
+                    Ctx.Provide(MeasureMemory.Scope, MeasureScopeOf(route),
+                        ViewSlots.View(ViewKeys.ShellContentState,
+                            ContentStateProps.ForPage(FrameRules.ContentKey(ContentStateKind.Page, NameOf(route), null), factory!(route)))));
             case ContentStateKind.EmptyBody:
                 return ViewSlots.View(ViewKeys.ShellContentState,
                     ContentStateProps.ForEmptyBody(FrameRules.ContentKey(ContentStateKind.EmptyBody, NameOf(route), null)));

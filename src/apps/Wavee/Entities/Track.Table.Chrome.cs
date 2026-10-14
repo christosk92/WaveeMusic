@@ -129,7 +129,7 @@ public readonly partial struct Track
             };
         }
 
-        Element Toolbar() => Responsive.Of(_buildToolbar, fallback: _lastW > 0f ? _lastW : 760f) with { Key = "detail-track-commandbar" };
+        Element Toolbar() => Responsive.Of("detail-track-commandbar", _buildToolbar, fallback: _lastW > 0f ? _lastW : 760f);
 
         // ══ 2. THE COMMAND BAR ══════════════════════════════════════════════════════════════════════════════════════
 

@@ -54,8 +54,8 @@ internal static class ClassicConcertDetail
         Func<Element> content = () => props.Unavailable
             ? Controls.Vacancy(Controls.VacancyVoice.Empty, title: Loc.Get(Strings.Concerts.Detail.NotAvailable),
                 subtitle: Loc.Get(Strings.Concerts.Detail.NotAvailableSubtitle))
-            : Responsive.Of(build, fallback: Rules.DetailFallbackWidth);
-        Element region = Cells.Region(props.Pending, static () => false, content, () => Responsive.Of(buildSeed, fallback: Rules.DetailFallbackWidth),
+            : Responsive.Of("concert-detail", build, fallback: Rules.DetailFallbackWidth);
+        Element region = Cells.Region(props.Pending, static () => false, content, () => Responsive.Of("concert-detail", buildSeed, fallback: Rules.DetailFallbackWidth),
             s_never, "concert-detail:" + props.RouteKey);
         return Cells.SubPageScroll(props.ScrollScope + "concert-detail:" + props.RouteKey, region);
     }
