@@ -1,7 +1,7 @@
 // ── Theming/Contracts/ListStyleLookup.cs — how a core host reads the structure's list style (themes plan 6.1, T8c) ───────────────
 //
 // A list-shaped surface is a STYLE, not a view (`TrackListStyle`, `EagerRowStyle`, `EpisodeRowStyle`, `SurfaceStyle`,
-// `ArtistChartStyle`, `TrackDrawerStyle`): the core host keeps its hooks, its state and its decisions and calls the templates of the
+// `ArtistChartStyle`, `TrackDrawerStyle`, `DiscographyStyle`): the core host keeps its hooks, its state and its decisions and calls the templates of the
 // style while it renders. The registry is ambient (`ViewRegistry.Context`; a theme switch remounts the root, so a mounted host
 // never sees it change). A host mounted where no registry provides the key (a test that mounts outside the real shell) logs the
 // miss ONCE per key and draws nothing, exactly as the track table's host always did since T8a.

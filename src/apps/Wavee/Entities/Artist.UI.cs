@@ -2,10 +2,11 @@
 // The artist page's CORE layout sections and facts: ArtistHeroLayout and ArtistPopularLayout (ported VERBATIM from 0.2.9's
 // Features/Detail/ArtistHeroLayout.cs / ArtistPopularLayout.cs, ch 08 §8) and ArtistSections (the page's pure decisions: section order, pivot
 // membership, the top band's wide latch, the chart's column clamp, the profile-facts list, the fans fallback, the page-failure verdict), then the
-// hero's facts (HeroText) and the gallery lightbox. The hero, the artist pick, the shelves, the biography band and the banners are the structure's
-// since T10b1 (`Themes\Classic\Structure\Views\Pages\ClassicArtist*.cs`); the Top-tracks chart is the named partial Artist.UI.Chart.cs.
+// hero's facts (HeroText) and the gallery lightbox's core (the overlay, the open index, the export). The hero, the artist pick, the shelves, the
+// biography band and the banners are the structure's since T10b1 (`Themes\Classic\Structure\Views\Pages\ClassicArtist*.cs`), the lightbox's
+// picture since T10b2 (`ClassicArtistLightbox.cs`, `ViewKeys.ArtistLightbox`); the Top-tracks chart is the named partial Artist.UI.Chart.cs.
 //
-// Role: UI (+ CORE sections 1-3, engine-free except the Spacing constants)
+// Role: CORE (sections 1-3 engine-free except the Spacing constants; section 4 the hero's facts and the lightbox's overlay, index and export)
 // Owner: N (stream N-A)
 // Wave: 5
 // Spec: ch 08 §8-§9
@@ -37,7 +38,9 @@ using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Scroll.Effects;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
+using Slots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -303,6 +306,17 @@ public static class ArtistSections
     public static int ChartColumns(int total)
         => Math.Clamp((total + ChartMaxRows - 1) / ChartMaxRows, 1, ChartMaxColumns);
 
+    /// <summary>The chart skeleton's counts: the rows shown (the known count, else the overview's seed cap: an empty edge assumes the overview's
+    /// ten, W5), the columns the real layout would offer (up to ten charted is 2 x 5) and the rows per column. The structure's skeleton draws
+    /// them (`ArtistChartStyle.Skeleton`).</summary>
+    public static (int Total, int Columns, int PerColumn) ChartSkeletonShape(int knownCount)
+    {
+        int total = knownCount > 0 ? Math.Min(knownCount, ArtistPopularTracks.OverviewSeedCap) : ArtistPopularTracks.OverviewSeedCap;
+        int cols = ChartColumns(total);
+        int perCol = Math.Min(ChartMaxRows, Math.Max(1, (total + cols - 1) / cols));
+        return (total, cols, perCol);
+    }
+
     /// <summary>The profile-facts tiles in their fixed order, a zero stat dropping its WHOLE tile (never "0 Albums").
     /// Returns the count written into <paramref name="into"/> (≥ 6). Zero tiles ⇒ the biography takes the full width.</summary>
     public static int FactTiles(long monthly, long followers, long albums, long singles, long concerts, long related,
@@ -340,7 +354,7 @@ public static class ArtistSections
         => !overviewKnown && !overviewPending && chartReadiness == EdgeState.Failed;
 }
 
-// ══ 4. THE LEAVES ═════════════════════════════════════════════════════════════════════════════════════════════════════
+// ══ 4. THE HERO'S FACTS AND THE LIGHTBOX'S CORE ═══════════════════════════════════════════════════════════════════════
 
 public readonly partial struct Artist
 {
@@ -359,353 +373,62 @@ public readonly partial struct Artist
             Verified: true, Rank: 100, Monthly: 10_000_000, Followers: 10_000_000);
     }
 
-    // ── 4.2 the gallery lightbox (ArtistGalleryLightbox.cs, W21) ────────────────────────────────────────────────────
+    // ── 4.2 the gallery lightbox: the overlay, the open index and the export (ArtistGalleryLightbox.cs, W21) ──────────
 
     /// <summary>Open the full-window modal lightbox at <paramref name="index"/>: focus-trapped, no light dismiss; Escape
-    /// closes — unless zoomed, where it unzooms and VETOES the close.</summary>
+    /// closes — unless zoomed, where the view unzooms and VETOES the close. The picture (the pager, the pan/zoom mode, the
+    /// chrome, the filmstrip) is the structure's <see cref="ViewKeys.ArtistLightbox"/>; this keeps the overlay, the selected
+    /// index (one signal per open), the close, the Escape veto's wiring and the export.</summary>
     internal static void GalleryOpen(IOverlayService? overlay, string[] photos, int index)
     {
         if (photos.Length == 0 || Controls.IsNullOverlay(overlay)) return;
         OverlayHandle? handle = null;
-        GalleryLightbox? viewer = null;
+        Func<bool>? consumeEscape = null;
+        Action? closed = null;
+        var selected = new Signal<int>(Math.Clamp(index, 0, Math.Max(0, photos.Length - 1)));
+        var saving = new Signal<bool>(false);
+        var props = new ArtistLightboxProps
+        {
+            Photos = photos,
+            Selected = selected,
+            Select = i => { if (selected.Peek() != i) selected.Value = i; },
+            Saving = saving,
+            Export = (at, post) => { if ((uint)at < (uint)photos.Length) GalleryExport.Start(photos[at], at, saving, post); },
+            Close = () => handle?.Close(),
+            Attach = (escape, onClosed) => { consumeEscape = escape; closed = onClosed; },
+        };
         handle = overlay.Open(
             static () => NodeHandle.Null,
-            () => Embed.Comp(() => viewer = new GalleryLightbox(photos, index, () => handle)),
+            () => Slots.View(ViewKeys.ArtistLightbox, props),
             FlyoutPlacement.BottomCenter,
             new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.Modal, Chrome: PopupChrome.Modal));
-        handle.ClosingAction = _ => !(viewer?.TryConsumeEscape() ?? false);
-        handle.ClosedAction = () => viewer?.Cleanup();
+        handle.ClosingAction = _ => !(consumeEscape?.Invoke() ?? false);
+        handle.ClosedAction = () => closed?.Invoke();
     }
 
-    /// <summary>FlipView paging under auto-hiding floating chrome (2600 ms of pointer stillness), a filmstrip, and a real
-    /// pan/zoom mode that REPLACES the pager and the filmstrip subtrees so drag/wheel ownership is never ambiguous. The
-    /// photo list and the opening index are mount-stable by construction (the overlay mounts one instance per open).
-    /// 0.3 changes: the unzoom settle is a frame-clock <c>UseTimeout</c> instead of <c>Task.Delay</c> (ch 08 §5), and
-    /// every string goes through its key (ch 08 §6).</summary>
-    sealed class GalleryLightbox : Component
+    /// <summary>The lightbox's export: the native Save As picker, then the original bytes — a CDN url downloads, a local
+    /// cover (the offline seed's bundled art) copies — and the notice. <c>saving</c> is the open's flag the view reads.</summary>
+    static class GalleryExport
     {
-        const float IdleHideMs = 2600f, UnzoomSettleMs = 260f;
-        const float ZoomMax = 4f, ZoomClick = 2.2f, ZoomWheelK = 0.0011f;   // per DIP of wheel delta: ~7 % zoom per 64 DIP notch
-        const float Thumb = 56f, StripPad = 14f;
-
-        static readonly GradientSpec TopScrim = GradientDown(
-            new GradientStop(0f, ColorF.FromRgba(0, 0, 0, 158)),
-            new GradientStop(1f, ColorF.FromRgba(0, 0, 0, 0)));
-
         /// <summary>One client for the process's exports, created on the first one.</summary>
         static HttpClient? s_http;
 
-        readonly string[] _photos;
-        readonly int _initialIndex;
-        readonly Func<OverlayHandle?> _handle;
-        readonly Signal<bool> _saving = new(false);
-        readonly Signal<bool> _chrome = new(true);
-        readonly Signal<bool> _zoomMode = new(false);
-
-        // pan/zoom live state — screen px written straight onto the carrier's anim channels, never through a render
-        NodeHandle _zoomNode;
-        float _s = 1f, _tx, _ty;
-        Point2 _pendingAnchor;
-        bool _hasPendingAnchor;
-        readonly Keyframe[] _seedKeys = new Keyframe[2];
-        Point2 _dragLast, _dragDown;
-        bool _dragMoved;
-        TimerHandle _idleHide, _unzoom;
-
-        public GalleryLightbox(string[] photos, int initialIndex, Func<OverlayHandle?> handle)
+        public static void Start(string url, int index, Signal<bool> saving, Action<Action> post)
         {
-            _photos = photos;
-            _initialIndex = Math.Clamp(initialIndex, 0, Math.Max(0, photos.Length - 1));
-            _handle = handle;
-        }
-
-        /// <summary>Zoomed ⇒ unzoom and report the Escape consumed (the overlay vetoes its close).</summary>
-        public bool TryConsumeEscape()
-        {
-            if (!_zoomMode.Peek()) return false;
-            SpringZoomHome();
-            return true;
-        }
-
-        public void Cleanup()
-        {
-            _idleHide.Cancel();
-            _unzoom.Cancel();
-        }
-
-        public override Element Render()
-        {
-            var vp = UseContext(Viewport.Size);
-            var (selected, setSelected) = UseState(_initialIndex);
-            var post = UsePost();
-            int current = Math.Clamp(selected, 0, Math.Max(0, _photos.Length - 1));
-            bool zoomed = _zoomMode.Value;
-            _idleHide = UseTimeout(() => { if (_chrome.Peek()) _chrome.Value = false; }, IdleHideMs);
-            // Swap back to the pager only once the spring has visibly settled, and only if nobody zoomed in again.
-            _unzoom = UseTimeout(() => { if (_zoomMode.Peek() && _s <= 1.001f) _zoomMode.Value = false; }, UnzoomSettleMs);
-
-            return new BoxEl
-            {
-                Grow = 1f, ZStack = true, Fill = ColorF.FromRgba(0, 0, 0, 224), Focusable = true,
-                OnKeyDown = e => OnKeys(e, current, setSelected),
-                OnHoverMove = _ => Poke(),
-                Children =
-                [
-                    zoomed ? ZoomSurface(_photos[current], vp) : Pager(vp, current, i => { ResetZoomState(); setSelected(i); }),
-                    TopChrome(current, post),
-                    zoomed ? new BoxEl() : Filmstrip(current, i => { ResetZoomState(); setSelected(i); }),
-                ],
-            };
-        }
-
-        Element Pager(Size2 vp, int current, Action<int> onSelect)
-        {
-            var pages = new Element[_photos.Length];
-            for (int i = 0; i < pages.Length; i++)
-                pages[i] = new BoxEl
-                {
-                    Width = vp.Width, Height = vp.Height, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    // Ctrl+wheel / a touchpad pinch enters zoom; everything else bubbles to the FlipView.
-                    OnPointerWheel = e =>
-                    {
-                        if ((e.Mods & KeyModifiers.Ctrl) == 0) return;
-                        e.Handled = true;
-                        EnterZoom(e.Local);
-                    },
-                    Children = [Photo(_photos[i], vp)],
-                };
-            return FlipView.Create(pages, vp.Width, vp.Height, new Signal<int>(current), onChange: onSelect);
-        }
-
-        /// <summary>The photo's placeholder is fully TRANSPARENT, so a still-decoding frame shows the black ground.</summary>
-        static Element Photo(string url, Size2 vp) => new ImageEl
-        {
-            Key = "gallery-image:" + url,
-            Source = url, Width = vp.Width, Height = vp.Height, Fit = ImageFit.Contain,
-            DecodePx = MathF.Min(MathF.Max(vp.Width, vp.Height), Design.ImageDecodeScale.Ceiling),
-            Placeholder = ColorF.FromRgba(0, 0, 0, 0),
-            RevealTransition = ImageTransition.Fade(140f),
-        };
-
-        Element ZoomSurface(string url, Size2 vp) => new BoxEl
-        {
-            Width = vp.Width, Height = vp.Height, ClipToBounds = true,
-            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Cursor = CursorId.Hand,
-            OnPointerDown = lp => { _dragLast = lp; _dragDown = lp; _dragMoved = false; },
-            OnDrag = lp =>
-            {
-                float dx = lp.X - _dragLast.X, dy = lp.Y - _dragLast.Y;
-                if (MathF.Abs(lp.X - _dragDown.X) + MathF.Abs(lp.Y - _dragDown.Y) > 4f) _dragMoved = true;   // 4-px slop
-                _dragLast = lp;
-                _tx += dx;
-                _ty += dy;
-                ClampPan(vp);
-                WriteTransform();
-            },
-            OnClick = () => { if (!_dragMoved) SpringZoomHome(); },
-            OnPointerWheel = e =>
-            {
-                e.Handled = true;
-                if ((e.Mods & KeyModifiers.Ctrl) != 0)
-                {
-                    float s1 = _s * MathF.Exp(-e.Delta * ZoomWheelK);
-                    if (s1 <= 1.02f) { SpringZoomHome(); return; }
-                    ZoomAt(e.Local, s1, vp);
-                    WriteTransform();
-                }
-                else
-                {
-                    _tx -= e.DeltaX;
-                    _ty -= e.Delta;
-                    ClampPan(vp);
-                    WriteTransform();
-                }
-            },
-            Children =
-            [
-                new BoxEl
-                {
-                    Width = vp.Width, Height = vp.Height, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    TransformOriginX = 0.5f, TransformOriginY = 0.5f,
-                    OnRealized = nh => { _zoomNode = nh; SeedEnterZoom(vp); },
-                    Children = [Photo(url, vp)],
-                },
-            ],
-        };
-
-        void EnterZoom(Point2 anchor)
-        {
-            _pendingAnchor = anchor;
-            _hasPendingAnchor = true;
-            _s = 1f; _tx = 0f; _ty = 0f;
-            _zoomMode.Value = true;
-        }
-
-        void SeedEnterZoom(Size2 vp)
-        {
-            WriteTransform();
-            Point2 a = _hasPendingAnchor ? _pendingAnchor : new Point2(vp.Width * 0.5f, vp.Height * 0.5f);
-            _hasPendingAnchor = false;
-            ZoomAt(a, ZoomClick, vp);
-            SpringChannels();
-        }
-
-        void ZoomAt(Point2 local, float s1, Size2 vp)
-        {
-            s1 = Math.Clamp(s1, 1f, ZoomMax);
-            float dx = local.X - vp.Width * 0.5f, dy = local.Y - vp.Height * 0.5f;
-            float k = s1 / _s;
-            _tx = dx - (dx - _tx) * k;
-            _ty = dy - (dy - _ty) * k;
-            _s = s1;
-            ClampPan(vp);
-        }
-
-        /// <summary>The pan bound. The gallery edge carries no pixel dimensions, so the contain box is taken as the
-        /// viewport's shorter side squared — a bound that never lets the photo leave the window.</summary>
-        void ClampPan(Size2 vp)
-        {
-            float edge = MathF.Min(vp.Width, vp.Height);
-            float maxX = MathF.Max(0f, (edge * _s - vp.Width) * 0.5f);
-            float maxY = MathF.Max(0f, (edge * _s - vp.Height) * 0.5f);
-            _tx = Math.Clamp(_tx, -maxX, maxX);
-            _ty = Math.Clamp(_ty, -maxY, maxY);
-        }
-
-        void WriteTransform()
-        {
-            var anim = Context.Anim;
-            if (anim is null || _zoomNode.IsNull) return;
-            Seed(anim, AnimChannel.ScaleX, _s);
-            Seed(anim, AnimChannel.ScaleY, _s);
-            Seed(anim, AnimChannel.TranslateX, _tx);
-            Seed(anim, AnimChannel.TranslateY, _ty);
-        }
-
-        void Seed(AnimEngine anim, AnimChannel ch, float v)
-        {
-            _seedKeys[0] = new Keyframe(0f, v, Easing.Linear);
-            _seedKeys[1] = new Keyframe(1f, v, Easing.Linear);
-            anim.Keyframes(_zoomNode, ch, _seedKeys, 1f);
-        }
-
-        void SpringChannels()
-        {
-            var anim = Context.Anim;
-            if (anim is null || _zoomNode.IsNull) return;
-            var sp = SpringParams.FromResponse(0.32f, 0.9f);
-            anim.Spring(_zoomNode, AnimChannel.ScaleX, _s, sp);
-            anim.Spring(_zoomNode, AnimChannel.ScaleY, _s, sp);
-            anim.Spring(_zoomNode, AnimChannel.TranslateX, _tx, sp);
-            anim.Spring(_zoomNode, AnimChannel.TranslateY, _ty, sp);
-        }
-
-        void SpringZoomHome()
-        {
-            _s = 1f; _tx = 0f; _ty = 0f;
-            SpringChannels();
-            _unzoom.Restart();
-        }
-
-        void ResetZoomState()
-        {
-            _s = 1f; _tx = 0f; _ty = 0f;
-            if (_zoomMode.Peek()) _zoomMode.Value = false;
-        }
-
-        void OnKeys(KeyEventArgs e, int current, Action<int> setSelected)
-        {
-            if (e.Handled) return;
-            if (e.KeyCode is Keys.Left or Keys.Right)
-            {
-                int next = Math.Clamp(current + (e.KeyCode == Keys.Right ? 1 : -1), 0, _photos.Length - 1);
-                if (next != current) { ResetZoomState(); setSelected(next); }
-                e.Handled = true;
-            }
-        }
-
-        /// <summary>ONE 72-DIP row: [Gallery / "n / N"] · spacer · Export · Close (ch 08 audit #3).</summary>
-        Element TopChrome(int current, Action<Action> post)
-        {
-            bool saving = _saving.Value;
-            return new BoxEl
-            {
-                Height = 72f, Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-                Padding = new Edges4(Spacing.L, Spacing.M, Spacing.L, Spacing.M),
-                Gradient = TopScrim,
-                Opacity = _chrome.Value ? 1f : 0f, Transition = MotionTok.ControlNormal,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Direction = 1, Gap = 2f,
-                        Children =
-                        [
-                            new TextEl(Loc.Get(Strings.Artist.Gallery)) { Size = 14f, Weight = 600, Color = Tok.TextPrimary },
-                            new TextEl((current + 1).ToString(CultureInfo.CurrentCulture) + " / "
-                                       + _photos.Length.ToString(CultureInfo.CurrentCulture)) { Size = 12f, Color = Tok.TextSecondary },
-                        ],
-                    },
-                    new BoxEl { Grow = 1f },
-                    Button.Accent(Loc.Get(saving ? Strings.Artist.GalleryExporting : Strings.Artist.GalleryExport),
-                        () => ExportImage(_photos[current], current, post), isEnabled: !saving),
-                    Button.Standard(Loc.Get(Strings.Common.Close), () => _handle()?.Close()),
-                ],
-            };
-        }
-
-        Element Filmstrip(int current, Action<int> setSelected)
-        {
-            var thumbs = new Element[_photos.Length];
-            for (int i = 0; i < thumbs.Length; i++)
-            {
-                int idx = i;
-                bool active = i == current;
-                thumbs[i] = new BoxEl
-                {
-                    Width = Thumb, Height = Thumb, Shrink = 0f,
-                    Corners = CornerRadius4.All(Radii.Control), ClipToBounds = true,
-                    BorderWidth = 2f, BorderColor = active ? Tok.AccentTextPrimary : ColorF.FromRgba(0, 0, 0, 0),
-                    Opacity = active ? 1f : 0.55f, Transition = MotionTok.ControlFast,
-                    OnClick = () => setSelected(idx), Cursor = CursorId.Hand, Role = AutomationRole.Button,
-                    HoverScale = R.Motion.ScaleStandard.Hover,
-                    Children = [Controls.Artwork(_photos[idx], Thumb, Thumb, Radii.Control, decodePx: 128)],
-                };
-            }
-            return new BoxEl
-            {
-                Height = Thumb + 2f * StripPad, AlignSelf = FlexAlign.End,
-                Direction = 0, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center, Gap = Spacing.S,
-                Padding = Edges4.All(StripPad),
-                Opacity = _chrome.Value ? 1f : 0f, Transition = MotionTok.ControlNormal,
-                Children = thumbs,
-            };
-        }
-
-        void Poke()
-        {
-            if (!_chrome.Peek()) _chrome.Value = true;
-            _idleHide.Restart();
-        }
-
-        /// <summary>The native Save As picker, then the original bytes: a CDN url downloads, a local cover (the offline
-        /// seed's bundled art) copies.</summary>
-        void ExportImage(string url, int index, Action<Action> post)
-        {
-            if (_saving.Peek() || url.Length == 0) return;
+            if (saving.Peek() || url.Length == 0) return;
             Pickers.Pick(
                 PickerRequest.Save(Loc.Get(Strings.Artist.GalleryExportTitle),
                     "artist-gallery-" + (index + 1).ToString("D2", CultureInfo.InvariantCulture) + ExtensionOf(url),
                     (Loc.Get(Strings.Artist.GalleryImages), "*.jpg;*.jpeg;*.png;*.webp"),
                     (Loc.Get(Strings.Artist.GalleryAllFiles), "*.*")),
-                done: path => { if (path is not null) _ = SaveImage(url, path, post); },
+                done: path => { if (path is not null) _ = SaveImage(url, path, saving, post); },
                 failed: ex => Log.Warn("artist", "the gallery export dialog failed", ex));
         }
 
-        /// <summary>The bytes half of <see cref="ExportImage"/>, once the Save As dialog answered (UI thread in).</summary>
-        async Task SaveImage(string url, string path, Action<Action> post)
+        /// <summary>The bytes half of <see cref="Start"/>, once the Save As dialog answered (UI thread in).</summary>
+        static async Task SaveImage(string url, string path, Signal<bool> saving, Action<Action> post)
         {
-            _saving.Value = true;
+            saving.Value = true;
             try
             {
                 if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
@@ -723,7 +446,7 @@ public readonly partial struct Artist
                 }
                 post(() =>
                 {
-                    _saving.Value = false;
+                    saving.Value = false;
                     Notify.Say(Loc.Get(Strings.Artist.GalleryExported), InfoBarSeverity.Success);
                 });
             }
@@ -734,7 +457,7 @@ public readonly partial struct Artist
                 string reason = ex.Message;
                 post(() =>
                 {
-                    _saving.Value = false;
+                    saving.Value = false;
                     Notify.Say(Strings.Artist.GalleryExportFailed(reason), InfoBarSeverity.Error);
                 });
             }

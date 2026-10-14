@@ -2,7 +2,8 @@
 // The artist page's "Top tracks" CHART (0.2.9 Features/Detail/ArtistPopular.cs): ONE PagedShelf collection — a five-row
 // virtual strip with page-mandatory snapping, at most two columns, a ‹ ●● › pip pager in the header — whose realized
 // cells are chart ROW components keyed by track. The named partial ch 08 §9 and plan §2 ask for, inside Artist.UI.cs's
-// 1,500-line budget.
+// 1,500-line budget. The PICTURE is the structure's (`StyleKeys.ArtistChart`: T8c the rows, the cells, the header, the skeleton, the failed
+// panel and the pager; T10b2 the frame, the shelf's holder and the selection bar); this file keeps the host, its gate, its asks and its verbs.
 //
 // Role: UI
 // Owner: N (stream N-A)
@@ -138,7 +139,8 @@ public readonly partial struct Artist
             _pendingFn = () => !_ready && !_failed;
             _failedFn = () => _failed;
             _contentFn = () => _shelf ?? new BoxEl();
-            _shimmerFn = () => ChartSkeleton(_style, Owner.PopularSlots.Length, Classic, ShowArtwork);
+            _shimmerFn = () => _style is null ? new BoxEl()
+                : _style.Skeleton(ArtistChartSkeletonArgs.For(Owner.PopularSlots.Length, Classic, ShowArtwork));
             _retry = Retry;
             _failedPanelFn = () => _style is null ? new BoxEl()
                 : _style.Failed(Loc.Get(Strings.Artist.TopTracks), AccentSignal?.Peek() ?? Tok.AccentDefault, _retry);
@@ -215,26 +217,15 @@ public readonly partial struct Artist
                 onInvoke: _invoke,
                 selectionMode: ItemsSelectionMode.Extended,
                 selection: Selection);
-            // A key on a component's ROOT is inert (ReconcileSingleChild pairs by type alone), so the keyed shelf is a
-            // CHILD of a pass-through column (ch 08 §9 trap 2).
-            _shelf = new BoxEl { Direction = 1, MinWidth = 0f, Children = [shelf with { Key = s_chartShelfKeys[shelfKey] }] };
+            // The shelf's remount key rides the shelf itself; the structure's holder keeps it a CHILD (a key on a component's ROOT is inert).
+            _shelf = style.Shelf(shelf with { Key = s_chartShelfKeys[shelfKey] });
 
-            return new BoxEl
+            // The selection bar is its own component, so a select/clear re-renders the bar and the bound row chrome, never this host or the shelf.
+            return style.Frame(new ArtistChartFrameArgs
             {
-                Direction = 1, MinWidth = 0f,
-                Children =
-                [
-                    // The standard selection bar floats over the chart's own rows the moment the selection earns it
-                    // (SelectionBarRules.Visible); it is its own component, so a select/clear re-renders the bar and the
-                    // bound row chrome — never this host or the shelf.
-                    ZStack(
-                        new SkelRegionEl(
-                            Pending: _pendingFn, Failed: _failedFn, Content: _contentFn, ShimmerSource: _shimmerFn,
-                            OnFailed: _failedPanelFn, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default,
-                            Group: null, SmoothResize: false),
-                        Embed.Comp(() => new ChartBar(this)) with { Key = "chart-bar" }),
-                ],
-            };
+                Pending = _pendingFn, Failed = _failedFn, Content = _contentFn, Shimmer = _shimmerFn, OnFailed = _failedPanelFn,
+                Bar = Embed.Comp(() => new ChartBar(this)) with { Key = "chart-bar" },
+            });
         }
 
         // ── readiness: the failure gate, its latch, and the recheck ─────────────────────────────────────────────────
@@ -527,7 +518,7 @@ public readonly partial struct Artist
         }
     }
 
-    /// <summary>The chart's floating selection bar — a component of its own so selecting re-renders only it.</summary>
+    /// <summary>The chart's floating selection bar: a component of its own so selecting re-renders only it (the structure draws it).</summary>
     sealed class ChartBar : Component
     {
         readonly ChartHost _host;
@@ -549,7 +540,7 @@ public readonly partial struct Artist
         {
             _ = _host.Selection.Version.Value;
             int n = _host.Selection.SelectedCount;
-            return Controls.SelectionBar(SelectionBarRules.Visible(n, false) ? n : 0, _lane, standalone: true, bottomPadding: Spacing.S);
+            return _host.Style!.Bar(SelectionBarRules.Visible(n, false) ? n : 0, _lane);
         }
     }
 
@@ -669,20 +660,6 @@ public readonly partial struct Artist
             count++;
         }
         return pageIn && count > 0 ? (first, count) : (0, 0);
-    }
-
-    /// <summary>The chart's derived-skeleton source: the structure's skeleton (the SAME row builder over a representative shape) at the
-    /// seed's column count (≤ 10 charted ⇒ 2 × 5; an empty edge assumes the overview's ten, W5). The counts are the core's decision.</summary>
-    internal static Element ChartSkeleton(ArtistChartStyle? style, int knownCount, bool classic, bool showArtwork)
-    {
-        if (style is null) return new BoxEl();
-        int total = knownCount > 0 ? Math.Min(knownCount, ArtistPopularTracks.OverviewSeedCap) : ArtistPopularTracks.OverviewSeedCap;
-        int cols = ArtistSections.ChartColumns(total);
-        int perCol = Math.Min(ArtistSections.ChartMaxRows, Math.Max(1, (total + cols - 1) / cols));
-        return style.Skeleton(new ArtistChartSkeletonArgs
-        {
-            Total = total, Columns = cols, PerColumn = perCol, Classic = classic, ShowArtwork = showArtwork,
-        });
     }
 
     // ══ 4. THE PAGER ═════════════════════════════════════════════════════════════════════════════════════════════════

@@ -317,9 +317,10 @@ internal static class ClassicArtistPage
                     Direction = 0, AlignItems = FlexAlign.Center,
                     Children = [Controls.AccentHeader(Loc.Get(Strings.Artist.Albums), p.AccentPeek())],
                 },
-                new BoxEl { Direction = 0, Gap = Artist.DiscoGap, Children = cells },
+                new BoxEl { Direction = 0, Gap = ClassicDiscographyRules.Gap, Children = cells },
             ],
         };
-        return Magazine([Artist.ChartSkeleton(chart, 0, p.RowsClassic, p.ShowTrackArt), facet], p.Metrics.Gutter);
+        Element chartShape = chart is null ? new BoxEl() : chart.Skeleton(ArtistChartSkeletonArgs.For(0, p.RowsClassic, p.ShowTrackArt));
+        return Magazine([chartShape, facet], p.Metrics.Gutter);
     }
 }

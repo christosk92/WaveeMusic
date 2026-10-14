@@ -5,7 +5,8 @@
 // `EpisodeRow`, `Surface`, `ArtistChart`, `TrackDrawer`) and the core host that keeps its hooks and decisions reads it through
 // `ListStyleLookup`. What a registry can say without mounting: Classic registers all five, the published ids are what the contract says
 // and are distinct, a registry without them answers none, and the lookup returns the style or null (the host then logs once and draws
-// nothing). The pictures themselves are asserted mounted (`Wavee.ShellTests\ListSurfacesMountedTests.cs`).
+// nothing). The pictures themselves are asserted mounted (`Wavee.ShellTests\ListSurfacesMountedTests.cs`). T10b2 adds the discography's style
+// (`StyleKeys.Discography`: the facet section, the cards, the album drawer), read the same way by the facet, grid and drawer hosts.
 
 using FluentGpu.Theming;
 using Wavee.Theming.Contracts;
@@ -59,6 +60,13 @@ public sealed class ListSurfaceStylesTests
     }
 
     [Fact]
+    public void Classic_registers_the_discography_style()
+    {
+        Assert.True(ClassicRegistry().TryGetStyle(StyleKeys.Discography, out var style));
+        Assert.NotNull(style);
+    }
+
+    [Fact]
     public void The_key_ids_are_the_published_ones()
     {
         Assert.Equal("Track.EagerRow", StyleKeys.EagerTrackRow.Id);
@@ -66,6 +74,7 @@ public sealed class ListSurfaceStylesTests
         Assert.Equal("Media.Surface", StyleKeys.Surface.Id);
         Assert.Equal("Artist.Chart", StyleKeys.ArtistChart.Id);
         Assert.Equal("Track.Drawer", StyleKeys.TrackDrawer.Id);
+        Assert.Equal("Artist.Discography", StyleKeys.Discography.Id);
     }
 
     [Fact]
@@ -74,7 +83,7 @@ public sealed class ListSurfaceStylesTests
         string[] ids =
         [
             StyleKeys.TrackTable.Id, StyleKeys.EagerTrackRow.Id, StyleKeys.EpisodeRow.Id, StyleKeys.Surface.Id,
-            StyleKeys.ArtistChart.Id, StyleKeys.TrackDrawer.Id,
+            StyleKeys.ArtistChart.Id, StyleKeys.TrackDrawer.Id, StyleKeys.Discography.Id,
         ];
         Assert.Equal(ids.Length, ids.Distinct(StringComparer.Ordinal).Count());
     }
@@ -87,6 +96,7 @@ public sealed class ListSurfaceStylesTests
         Assert.False(ViewRegistry.Empty.TryGetStyle(StyleKeys.Surface, out _));
         Assert.False(ViewRegistry.Empty.TryGetStyle(StyleKeys.ArtistChart, out _));
         Assert.False(ViewRegistry.Empty.TryGetStyle(StyleKeys.TrackDrawer, out _));
+        Assert.False(ViewRegistry.Empty.TryGetStyle(StyleKeys.Discography, out _));
     }
 
     [Fact]
@@ -96,6 +106,7 @@ public sealed class ListSurfaceStylesTests
         Assert.NotNull(ListStyleLookup.Of(registry, StyleKeys.EagerTrackRow));
         Assert.NotNull(ListStyleLookup.Of(registry, StyleKeys.Surface));
         Assert.NotNull(ListStyleLookup.Of(registry, StyleKeys.TrackDrawer));
+        Assert.NotNull(ListStyleLookup.Of(registry, StyleKeys.Discography));
     }
 
     [Fact]
