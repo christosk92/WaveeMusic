@@ -34,6 +34,11 @@ versions separately under `v*` and is not tracked in this file.)
   "Wavee Classic options" card (the artwork switch now comes before the density cards) and work as before, including the
   Row size slider in a track list's toolbar; your current choices carry over. "Reset options" now puts them back to
   their defaults (Default density, artwork shown) together with the card's other options.
+- **The track page layout, "Keep left-rail same size" and "Clear all remembered sizes" are now Wavee Classic options.** They
+  sit in Settings > Appearance > Wavee Classic options > Track pages with the same two layout cards, the same switch and
+  the same confirmed button, and show and hide exactly as before (the switch only with the Automatic layout, the reset only
+  while the rails are not shared). Your layout, your shared-rail choice and every rail width you set carry over.
+  "Reset options" now also puts the layout back to Automatic and the rails to per-kind.
 - **The developer-only "Page motion" setting is gone.** Settings > Appearance no longer offers it (it only showed in
   developer mode). Pages always animate with the standard fade-through that everyone already had; a value stored by an
   older build is ignored.

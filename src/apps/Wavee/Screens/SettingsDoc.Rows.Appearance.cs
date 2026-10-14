@@ -4,7 +4,7 @@
 // to legacy keys, in their final groups: T1b) · Display (app mode, zoom, marquee) · Lyrics · Fullscreen · Now playing · Home.
 // The rows still point at TODAY'S keys (each moves to a theme option in its M-PR, §2.3, re-binding exactly one row here). Every write goes
 // through the epoch it always bumped (ch 27 W2 "three facts"): marquee / track list
-// style / daylist clock → `Prefs.Appearance`; page layout, rail uniform, rail reset → `Prefs.DetailHero`; the lyrics blur →
+// style / daylist clock → `Prefs.Appearance`; the lyrics blur →
 // `Prefs.Lyrics`; the two Now-playing rows → `Prefs.NpvPlayer` (the tab reads that epoch, no page re-read); the Fullscreen
 // rows → `Prefs.Stage` (raw key writes included — the stage reads that epoch). A verb returns whether the PAGE must re-read.
 
@@ -45,24 +45,7 @@ public static partial class SettingsDoc
                 captionKey: "settings.sidebar.resetEverythingSub", enabled: NotWhileEditing, catalog: false),
             Make(T.Appearance, "Theme options", "trackListStyle", K.Picker, Strings.Settings.Appearance.TrackListStyle,
                 SettingsWriter.OfChoice("lists.trackListStyle", SettingsVerbs.SetTrackListStyle),
-                captionKey: Strings.Settings.Appearance.TrackListStyleSub, value: s => Prefs.Clamp(s.Get(Platform.Keys.TrackRowStyle), 2)),
-            Make(T.Appearance, "Theme options", "pageLayout", K.Picker, Strings.Settings.Appearance.PageLayout,
-                SettingsWriter.OfChoice("lists.pageLayout", SettingsVerbs.SetPageLayout),
-                captionKey: Strings.Settings.Appearance.PageLayoutSub, value: s => Prefs.Clamp(s.Get(Platform.Keys.DetailPageLayout), 2)),
-            // Both sub-rows exist only for Automatic (Hero composes no rail); "Clear all remembered sizes" is composed AWAY —
-            // not disabled — while "Keep left-rail same size" is on (ch 27 W4, parity 17).
-            Make(T.Appearance, "Theme options", "railUniform", K.Toggle, Strings.Settings.Appearance.RailUniform,
-                SettingsWriter.OfToggle("lists.railUniform", SettingsVerbs.SetRailUniform),
-                captionKey: Strings.Settings.Appearance.RailUniformSub, value: BoolOf(Platform.Keys.DetailRailUniform),
-                visible: f => f.PageLayout == Prefs.DetailHero.Automatic),
-            // The reset's enable gate: a destructive-looking no-op is never offered. The uniform pair is excluded.
-            Make(T.Appearance, "Theme options", "railReset", K.Action, Strings.Settings.Appearance.RailReset,
-                SettingsWriter.OfAction("lists.railReset", SettingsVerbs.ResetRailSizes),
-                captionKey: Strings.Settings.Appearance.RailResetSub,
-                enabled: f => f.RailCustomized ? SettingsEnablement.On : SettingsEnablement.Off(null), silent: true,
-                visible: f => f.PageLayout == Prefs.DetailHero.Automatic && !f.RailUniform,
-                confirm: new SettingsConfirm(Strings.Settings.Appearance.RailResetConfirmTitle,
-                    Strings.Settings.Appearance.RailResetConfirmBody, Strings.Settings.Appearance.RailResetAction))),
+                captionKey: Strings.Settings.Appearance.TrackListStyleSub, value: s => Prefs.Clamp(s.Get(Platform.Keys.TrackRowStyle), 2))),
 
         // The core presentation prefs every theme honours (the plan's App mode and Zoom rows; marquee is a core pref, owner Q27).
         Sect(T.Appearance, "Display", Strings.Settings.ThemeOptions.DisplayTitle, null,
@@ -215,27 +198,6 @@ public static partial class SettingsVerbs
     {
         if ((uint)i >= 2u || Platform.Settings.Get(Platform.Keys.TrackRowStyle) == i) return false;
         Prefs.Appearance.Set(Platform.Keys.TrackRowStyle, i);
-        return true;
-    }
-
-    public static bool SetPageLayout(int i)
-    {
-        if ((uint)i >= 2u || Platform.Settings.Get(Platform.Keys.DetailPageLayout) == i) return false;
-        Prefs.DetailHero.Set(Platform.Keys.DetailPageLayout, i);
-        return true;
-    }
-
-    public static bool SetRailUniform(bool on)
-    {
-        Prefs.DetailHero.Set(Platform.Keys.DetailRailUniform, on);
-        return true;
-    }
-
-    /// <summary>Reset the FOUR per-scope pairs to their authored defaults (never the uniform pair), then ONE bump, so an open
-    /// detail page's rail snaps to the reset widths now rather than next launch.</summary>
-    public static bool ResetRailSizes()
-    {
-        DetailRailPrefs.ResetAll();   // the four per-scope pairs, never the uniform pair, ONE bump
         return true;
     }
 

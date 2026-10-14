@@ -156,7 +156,7 @@ public sealed class ThemePickerTests : IDisposable
     }
 
     [Fact]
-    public void Classic_lists_exactly_the_rows_of_the_options_section_in_three_groups()
+    public void Classic_lists_exactly_the_rows_of_the_options_section_in_two_groups()
     {
         var legacy = new ClassicStructure().LegacyRows;
         var doc = SettingsDoc.Section(Settings.Tab.Appearance, ThemeOptionsSection.SectionTitle).Rows.Select(r => r.Id).ToArray();
@@ -169,7 +169,7 @@ public sealed class ThemePickerTests : IDisposable
             Assert.Equal(ThemeOptionsSection.SectionTitle, found.Section);
             Assert.False(string.IsNullOrEmpty(row.Group), row.RowId);
         }
-        Assert.Equal(3, legacy.Select(l => l.Group).Distinct().Count());
+        Assert.Equal(2, legacy.Select(l => l.Group).Distinct().Count());
         // Rows of a group sit together: no group label would ever appear twice.
         var seen = new List<string>();
         foreach (var row in legacy)
@@ -183,8 +183,9 @@ public sealed class ThemePickerTests : IDisposable
         ThemeHost.Install(ClassicTheme.Create());
         var model = ThemeOptionsSection.Current(developerMode: true);
 
-        // M4 (hide track art), M6 (surfaces) and M7a (sidebar layout and density) are structure options, M3 (row density) the style's: structure options come first in the schema.
-        Assert.Equal(new[] { "structure.sidebar", "structure.libraryDensity", "structure.hideTrackArt", "structure.surfaces", "style.density" }, model.Rows.Select(r => r.QualifiedId));
+        // M4 (hide track art), M6 (surfaces), M7a (sidebar layout and density) and M8 (page layout, rails' uniformity, their reset) are structure options, M3 (row density) the style's: structure options come first in the schema.
+        Assert.Equal(new[] { "structure.sidebar", "structure.libraryDensity", "structure.hideTrackArt", "structure.surfaces", "structure.pageLayout", "structure.railUniform", "structure.clearRememberedSizes", "style.density" },
+            model.Rows.Select(r => r.QualifiedId));
         var layout = model.Rows[0];
         Assert.Equal(Strings.Settings.ThemeOptions.Group.Sidebar, layout.Group);
         Assert.Equal(SettingsRowKind.Picker, layout.Row.Kind);   // Cards
@@ -196,8 +197,14 @@ public sealed class ThemePickerTests : IDisposable
         Assert.Equal(Strings.Settings.ThemeOptions.Group.Surfaces, surfaces.Group);
         Assert.Equal(SettingsRowKind.Toggle, surfaces.Row.Kind);
         Assert.False(model.IsEmpty);
-        Assert.Equal(7, model.Legacy.Count);   // 12 before the M-PRs: M6 took the washes, M3 the row density, M4 the hide-art row, M7a the sidebar layout and density (M1 had deleted page motion)
-        Assert.DoesNotContain(model.Legacy, l => l.RowId is "colorWashes" or "rowDensity" or "hideTrackArtwork" or "sidebarDesign" or "sidebarDensity");
+        Assert.Equal(4, model.Legacy.Count);   // 12 before the M-PRs: M6 took the washes, M3 the row density, M4 the hide-art row, M7a the sidebar layout and density, M8 the page layout and the two rail rows (M1 had deleted page motion)
+        Assert.DoesNotContain(model.Legacy, l => l.RowId is "colorWashes" or "rowDensity" or "hideTrackArtwork" or "sidebarDesign" or "sidebarDensity" or "pageLayout" or "railUniform" or "railReset");
+        var pageLayout = model.Rows.Single(r => r.QualifiedId == "structure.pageLayout");
+        Assert.Equal(Strings.Settings.ThemeOptions.Group.TrackPages, pageLayout.Group);
+        Assert.Equal(SettingsRowKind.Picker, pageLayout.Row.Kind);   // the two wireframe cards
+        Assert.Equal(PickerStyle.Cards, pageLayout.Picker);
+        Assert.Equal(SettingsRowKind.Toggle, model.Rows.Single(r => r.QualifiedId == "structure.railUniform").Row.Kind);
+        Assert.Equal(SettingsRowKind.Action, model.Rows.Single(r => r.QualifiedId == "structure.clearRememberedSizes").Row.Kind);
         Assert.NotNull(model.Reset);            // the theme stores options now ...
         Assert.False(model.Reset!.Enabled(SettingsFacts.Live).Enabled);   // ... and none is stored yet, so Reset has nothing to forget
         Assert.Equal("theme.classic.name", model.NameKey);

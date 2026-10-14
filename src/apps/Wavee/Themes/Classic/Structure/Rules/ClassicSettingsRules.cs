@@ -98,7 +98,7 @@ internal static class ClassicSettingsRules
 
     // ── the page-layout card's wireframe (ch 27 W4) ──
 
-    /// <summary>The two page layouts the document's `pageLayout` row indexes (`Prefs.DetailHero`'s values).</summary>
+    /// <summary>The two page layouts the document's `pageLayout` row indexes (<c>DetailPageLayout</c>'s values: the page-layout option's choice index).</summary>
     public const int PageLayoutAutomatic = 0, PageLayoutHero = 1;
 
     /// <summary>A wireframe row bar, and the hero field of the Hero layout.</summary>

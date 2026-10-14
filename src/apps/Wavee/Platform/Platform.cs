@@ -132,8 +132,6 @@ public static partial class Platform
         /// <summary>Stream counts as their own COLUMN. VISIBILITY ONLY — the trait bundle rides every list surface
         /// regardless, because gating the FETCH on this setting permanently starved lists opened while it was off.</summary>
         public static readonly SettingKey<bool> PlaysColumn = new("detail.playsColumn", false);
-        /// <summary>0 Automatic (rail on wide windows, hero on narrow) · 1 Hero (the hero composition at every width).</summary>
-        public static readonly SettingKey<int> DetailPageLayout = new("detail.page.layout", 0);
         /// <summary>What the daylist's clock shows on the playlist hero strip and the Home card (<see cref="DaylistClockMode"/>):
         /// 0 Countdown and update time (the default — what every build before #185 showed) · 1 Update time only (no ticking
         /// digits, no per-second motion) · 2 Countdown only. Read through <c>Prefs.Appearance.DaylistClock</c>, which clamps.</summary>
@@ -163,21 +161,9 @@ public static partial class Platform
         public static readonly SettingKey<bool> AiLyricsOnBatterySaver = new("lyrics.ai.onBatterySaver", false);
         public static readonly SettingKey<string> AiLyricsLanguages = new("lyrics.ai.languages", "en");   // comma-separated
 
-        // ── detail rails + shell rail. The four widths default to Design.cs tokens (RailAlbum 280 / RailPlaylist 240 /
-        //    ShellResponsiveLayout.RailDefaultW 340); Wave 4 owes the convergence test that pins these literals to them.
-        public static readonly SettingKey<float> DetailAlbumRailWidth = new("detail.rail.album.width", 280f);
-        public static readonly SettingKey<float> DetailPlaylistRailWidth = new("detail.rail.playlist.width", 240f);
-        public static readonly SettingKey<float> DetailLikedRailWidth = new("detail.rail.liked.width", 240f);
-        public static readonly SettingKey<float> DetailShowRailWidth = new("detail.rail.show.width", 280f);
+        // ── shell rail. (The detail pages' rails are Classic's theme state, `DetailRailPrefs`.)
         public static readonly SettingKey<float> ShellRailWidth = new("shell.rail.width", 340f);
         public static readonly SettingKey<float> ShellDockedVideoHeight = new("shell.rail.docked-video.height", 0f);
-        public static readonly SettingKey<bool> DetailAlbumRailCollapsed = new("detail.rail.album.collapsed", false);
-        public static readonly SettingKey<bool> DetailPlaylistRailCollapsed = new("detail.rail.playlist.collapsed", false);
-        public static readonly SettingKey<bool> DetailLikedRailCollapsed = new("detail.rail.liked.collapsed", false);
-        public static readonly SettingKey<bool> DetailShowRailCollapsed = new("detail.rail.show.collapsed", false);
-        public static readonly SettingKey<bool> DetailRailUniform = new("detail.rail.uniform", false);
-        public static readonly SettingKey<float> DetailUniformRailWidth = new("detail.rail.uniform.width", 240f);
-        public static readonly SettingKey<bool> DetailUniformRailCollapsed = new("detail.rail.uniform.collapsed", false);
 
         // ── shell state ──
         public static readonly SettingKey<bool> PlayerBarShowRemaining = new("playerbar.duration.remaining", true);
@@ -1187,6 +1173,7 @@ public static partial class Platform
         HostOpenSettings();
         ZoomAutoPolicy.MigrateMode(Settings);
         Wavee.Theming.ThemeBootstrap.Run(Settings);   // themes plan 7.1: named, copy-only, order-independent steps (M3 density, M4 hide track art, M6 colour washes); before anything reads a presentation setting
+        DetailRailPrefs.RegisterVerbs();   // M8: the theme verb behind the structure's "Clear all remembered sizes" action
         Developer.Load(Settings);
         ScrollProbePrefs.Load(Settings);   // the scroll probe level + feel profile, before the first window
         string osCulture = "";

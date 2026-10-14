@@ -9,7 +9,7 @@
 // `Detail.RailPolicy`, the collapse detent) and the hero's arithmetic (`Detail.VerticalLayout`, `BandLayout`, `Skeleton.RailPlanFor`, `RailLayout`)
 // are DECISIONS the core host and the table both read and the skeleton must agree with row for row, so they stay core, pure and unit-tested
 // (`DetailRailPolicyTests`, `DetailSkeletonGeometryTests`); the views are handed their results through the props, and no view compares a width with
-// a number (WVTH013). M8 moves the rail policy and its state into Classic's own options (plan §5.3); the hero's per-kind knobs
+// a number (WVTH013). M8 made the page layout, the rails' uniformity and the reset Classic's options (`ClassicStructure.PageLayout` / `RailUniform` / `ClearRememberedSizes`) and the remembered sizes Classic's theme state (`DetailRailPrefs`); the width arithmetic stays core; the hero's per-kind knobs
 // (`SlimHead` / `HoverHeart` / `PlainRows`) were never ported to this branch (T9c found no members to move).
 
 using FluentGpu.Animation;

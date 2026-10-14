@@ -235,11 +235,11 @@ public class DesignSizeTests
     }
 
     [Fact]
-    public void The_rail_widths_agree_with_their_persisted_defaults()
+    public void The_rail_widths_agree_with_their_remembered_defaults()
     {
         // A default that drifts from its token is a user who opens an album and sees a rail one step off the design.
-        Assert.Equal(Design.Size.RailAlbum, Platform.Keys.DetailAlbumRailWidth.Default);
-        Assert.Equal(Design.Size.RailPlaylist, Platform.Keys.DetailPlaylistRailWidth.Default);
+        Assert.Equal(Design.Size.RailAlbum, DetailRailPrefs.WidthKey(RailScope.Album).Default);
+        Assert.Equal(Design.Size.RailPlaylist, DetailRailPrefs.WidthKey(RailScope.Playlist).Default);
     }
 
     [Fact]

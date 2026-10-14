@@ -192,9 +192,8 @@ public class DetailConfigTests
     {
         var scope = Detail.RailPolicy.ScopeFor(Config.Episode.RailScope, uniform: false);
         Assert.Equal(RailScope.Show, scope);
-        Assert.Equal(Detail.RailPolicy.KeysFor(RailScope.Show), Detail.RailPolicy.KeysFor(scope));
-        Assert.Equal(Platform.Keys.DetailShowRailWidth, Detail.RailPolicy.KeysFor(scope).Width);
-        Assert.Equal(Platform.Keys.DetailShowRailCollapsed, Detail.RailPolicy.KeysFor(scope).Collapsed);
+        Assert.Equal(DetailRailPrefs.WidthKey(RailScope.Show), DetailRailPrefs.WidthKey(scope));
+        Assert.Equal(DetailRailPrefs.CollapsedKey(RailScope.Show), DetailRailPrefs.CollapsedKey(scope));
         Assert.Equal(RailScope.Uniform, Detail.RailPolicy.ScopeFor(Config.Episode.RailScope, uniform: true));
     }
 

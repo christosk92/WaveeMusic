@@ -1166,7 +1166,7 @@ episode) own the per-kind slot builders and their sub-contract keys; the frame p
 | `Detail.InsightsToggle` | `DetailInsightsToggleProps` (the toggle and its `Form`) | the hero's toolbar row, and `Detail.InsightsBandAction` for the table's pinned band | `ToggleTemplate`: the glyph button, or the band's plateless word (its own component) |
 
 **What stays core, and why.** The decisions the frame, the table and the skeleton must agree on row for row are core, pure and unit-tested: the
-breakpoint ladder (`Breakpoints`), the rail's width bands and prefs (`RailPolicy`, `DetailRailPrefs`: M8 moves them into Classic's options),
+breakpoint ladder (`Breakpoints`), the rail's width bands (`RailPolicy`) and the persistence of its remembered sizes (`DetailRailPrefs`, theme state since M8),
 the hero arithmetic (`VerticalLayout`, `BandLayout`, `Skeleton.RailPlanFor`, `RailLayout`, `Detail.FlagsOf`, `Detail.HeroBandHeight`), the notice rules,
 `InsightsSheet` (which arm hosts the facts, the sheet's width), `Identity` / `Config` / `FrameSlots`, the shell-tint and page-tone claims, and the
 accent. No view compares a width with a number (WVTH013): the views are handed the mode, the rail width, the rung and the strip width. The numbers
@@ -1526,7 +1526,7 @@ no other home yet (lyrics, full screen, now playing, Home). Nothing in it names 
   option changed).
 - **Legacy rows.** A structure lists the options that are still switches in `IStructureLayer.LegacyRows` (a `SettingsDoc` row id and a
   group). The page draws them in the same expander and groups; an M-PR deletes its rows from the list and declares the option, so
-  the tab never changes layout again. Classic lists 7 (M1 deleted one; M3, M4, M6 and M7a moved the row density, the hide-art switch, the washes and the sidebar layout and density into options; the sidebar's three actions stay rows). Inside a group the generated rows come first, so the layout cards and the density sit above the sidebar's actions, as the rows they replaced did.
+  the tab never changes layout again. Classic lists 4 (M1 deleted one; M3, M4, M6, M7a and M8 moved the row density, the hide-art switch, the washes, the sidebar layout and density and the page layout with its two rail rows into options; the sidebar's three actions and the track list style stay rows). Inside a group the generated rows come first, so the layout cards and the density sit above the sidebar's actions, as the rows they replaced did.
 - **Palette.** An option with `Command = true` contributes rows (`ThemeOptionsSection.Commands`): a toggle on/off, a select one per
   choice, an action one. `Shell.CommandTable.BuildIndex` appends them after the builtins (`PaletteKind.ThemeOption`).
 - **Setup.Theme.** The wizard's second page (`WizardPage.Theme`, M7a: it replaced the Layout page and its two sidebar cards) mounts the `Setup.Theme` view (`ClassicSetup.ThemeTemplate`, on the Layout page's frame) with the picker and
@@ -1591,6 +1591,22 @@ Density, value)` (a theme without the option ignores it and the choice lasts for
 row is text only) and `structure.libraryDensity` as the narrow combo it always was, and the options kept the icons of the rows they replaced. The density stays visible with either layout
 (the plan said "only with Library", but the density shapes the Classic layout's entity rows too). The wizard's second page is the Theme page; the Layout page, `Settings.SidebarLayoutCards`
 and the palette's "Use ... layout" rows are gone.
+
+### M8: the page layout and the detail rails
+
+`detail.page.layout` (0 Automatic, 1 Hero), `detail.rail.uniform` and the ten remembered rail sizes (`detail.rail.<album|playlist|liked|show|uniform>.width|collapsed`) left the core
+settings. The choice of shape is Classic's *structure* options `ClassicStructure.PageLayout` (a Cards `SelectOption<DetailPageLayout>`, drawn with the two wireframe cards the old row had),
+`RailUniform` (a toggle, shown only with the Automatic layout: the Hero composes no rail to size) and `ClearRememberedSizes` (an `ActionOption` with a confirmation, shown only with
+Automatic and per-kind rails, greyed while nothing is customised), all in the group "Track pages". The **remembered sizes** are Classic's theme *state* (`theme.classic.state.rail.<scope>.width|collapsed`,
+one `StateKey` per scope declared by the core host that writes them, `DetailRailPrefs.WidthKey/CollapsedKey`, clamped to the grip's range on every read and write; owner Q6: sizes are per theme).
+Three `ThemeBootstrap` steps copy the stored values once (`DetailPageLayout`, 0 or 1; `DetailRailUniform`; `DetailRailSizes`, all ten), so an existing user keeps their layout and their rails.
+
+How the core follows without reading an option (WVTH005): the structure publishes **`ThemePolicies.Detail`** (`DetailPolicy(PageLayout, RailUniform)`, `ClassicPolicies.For(..., pageLayout, railUniform)`, one bundle per
+combination). `Detail.FrameHost` reads `ShellPolicy.Tracked.Detail` (Hero forces the vertical arm for a track page; uniform folds every kind into `RailScope.Uniform`) and `DetailRailPrefs.Epoch` (bumped once per
+grip release, re-open or reset, so every mounted and parked frame re-syncs). The reset's behaviour is the core's (`DetailRailPrefs.ResetAll`, registered at boot as the `clearRememberedSizes` theme verb with an enable gate,
+`ThemeVerbs.Register(id, run, enabled)`; `ActionOption.Confirm` makes the page ask first, so the action has no palette row). What stays core: the width ARITHMETIC (`RailPolicy`: the bounds, the page-aware cap, the
+resting width, what a drag commits) because the skeleton and the host agree on it row for row; the plan's "RailPolicy becomes a Classic rule" would need every width through a published policy and moves nothing a second
+theme could not simply reuse. `Prefs.DetailHero`, the twelve `Platform.Keys.Detail*` keys, the three legacy Settings rows, `SettingsVerbs.SetPageLayout/SetRailUniform/ResetRailSizes` and the three `ISettingsFacts` members are gone.
 
 ### Worked example: row density and hide track art (M3, M4)
 

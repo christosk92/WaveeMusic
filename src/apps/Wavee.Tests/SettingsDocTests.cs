@@ -35,9 +35,6 @@ public class SettingsDocTests
         public bool EqualizerEnabled { get; init; } = true;
         public bool CrossfadeEnabled { get; init; } = true;
         public bool VideoOverridesPresent { get; init; } = true;
-        public int PageLayout { get; init; } = Prefs.DetailHero.Automatic;
-        public bool RailUniform { get; init; }
-        public bool RailCustomized { get; init; } = true;
         public bool SidebarEditing { get; init; }
         public bool SidebarModified { get; init; } = true;
         public bool AudioCacheAvailable { get; init; } = true;
@@ -52,7 +49,7 @@ public class SettingsDocTests
     {
         DeveloperMode = false, Packaged = true, TrayMode = Tray.IconMode.Never, StartOnLogin = false, WindowsNotifications = false,
         QuietHours = false, CanDerive = false, EqualizerEnabled = false, CrossfadeEnabled = false, VideoOverridesPresent = false,
-        PageLayout = Prefs.DetailHero.Hero, RailUniform = true, RailCustomized = false, SidebarEditing = true, SidebarModified = false,
+        SidebarEditing = true, SidebarModified = false,
         AudioCacheAvailable = false, MetadataClearAvailable = false, CrashServiceConfigured = false, CrashReportingOn = false,
         TestCrashBusy = true,
     };
@@ -174,7 +171,7 @@ public class SettingsDocTests
             Assert.False(string.IsNullOrEmpty(row.Confirm.BodyKey));
             Assert.False(string.IsNullOrEmpty(row.Confirm.PrimaryKey));
         }
-        foreach (var id in new[] { "railReset", "videoOverrides", "factoryReset", "logsClear", "audioBodiesClear", "licenseKeysClear", "clearMetadata", "crashService", "reportsDeleteAll" })
+        foreach (var id in new[] { "videoOverrides", "factoryReset", "logsClear", "audioBodiesClear", "licenseKeysClear", "clearMetadata", "crashService", "reportsDeleteAll" })
             Assert.NotNull(Rows.Single(r => r.Id == id).Confirm);
     }
 
@@ -324,24 +321,6 @@ public class SettingsDocTests
     }
 
     [Fact]
-    public void The_rail_sub_rows_exist_only_for_the_automatic_layout_and_the_reset_only_without_uniform()
-    {
-        var uniform = SettingsDoc.Row(Settings.Tab.Appearance, "railUniform");
-        var reset = SettingsDoc.Row(Settings.Tab.Appearance, "railReset");
-
-        Assert.True(uniform.Visible(new Facts { PageLayout = Prefs.DetailHero.Automatic }));
-        Assert.False(uniform.Visible(new Facts { PageLayout = Prefs.DetailHero.Hero }));
-
-        Assert.True(reset.Visible(new Facts { PageLayout = Prefs.DetailHero.Automatic, RailUniform = false }));
-        Assert.False(reset.Visible(new Facts { PageLayout = Prefs.DetailHero.Automatic, RailUniform = true }));   // composed AWAY, not disabled
-        Assert.False(reset.Visible(new Facts { PageLayout = Prefs.DetailHero.Hero }));
-
-        // A destructive-looking no-op is never offered: with nothing customized the reset greys.
-        Assert.False(reset.Enabled(new Facts { RailCustomized = false }).Enabled);
-        Assert.True(reset.Enabled(new Facts { RailCustomized = true }).Enabled);
-    }
-
-    [Fact]
     public void The_quiet_hours_range_is_composed_only_while_windows_delivery_and_quiet_hours_are_on()
     {
         foreach (var id in new[] { "quietFrom", "quietTo" })
@@ -426,7 +405,6 @@ public class SettingsDocTests
         Assert.False(SettingsVerbs.SetTrayIconMode(5));
         Assert.False(SettingsVerbs.SetCrashMode(7));
         Assert.False(SettingsVerbs.SetTrackListStyle(5));
-        Assert.False(SettingsVerbs.SetPageLayout(5));
         Assert.False(SettingsVerbs.SetDaylistClock(99));
         Assert.False(SettingsVerbs.PickZoom(999));
         Assert.False(SettingsVerbs.SetStageVisualizer(999));

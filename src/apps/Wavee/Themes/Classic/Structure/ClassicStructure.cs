@@ -18,7 +18,8 @@
 // T1b: the options Classic will own (plan 6.1) that are still TODAY's switches are bound to their legacy keys through `SettingsDoc`
 // rows. `LegacyRows` lists them in their FINAL grouping so Settings › Appearance shows Classic's section once, in its
 // final shape; each M-PR deletes its rows from the list and declares the option in `Options` (the generated row takes the
-// same place in the same group). M4 declared `hideTrackArt` here, M6 `Surfaces` (the colour washes) and M7a `Sidebar` and `LibraryDensity`; M3's `density` is the style's.
+// same place in the same group). M4 declared `hideTrackArt` here, M6 `Surfaces` (the colour washes), M7a `Sidebar` and `LibraryDensity` and M8 `PageLayout`, `RailUniform` and
+// `ClearRememberedSizes`; M3's `density` is the style's.
 
 using FluentGpu.Theming;
 using Wavee.Themes.Common;
@@ -350,14 +351,64 @@ public sealed class ClassicStructure : IStructureLayer
     /// <inheritdoc cref="SidebarOptionId"/>
     public const string LibraryDensityOptionId = "structure." + NavPaneOptionIds.Density;
 
-    private static readonly ThemeOptionSchema s_options = ThemeOptionSchema.Of(Sidebar, LibraryDensity, HideTrackArt, Surfaces);
+    /// <summary>Page layout (M8): how a TRACK page (album, playlist, Liked) is composed. Automatic keeps the metadata rail beside the list on wide windows and
+    /// the artwork hero on narrow ones; Hero uses the hero composition at every width (no rail). Stored as the enum's int (`theme.classic.structure.pageLayout`:
+    /// Automatic 0, Hero 1); the option replaced `detail.page.layout` (`ThemeBootstrap`'s "DetailPageLayout" step). Drawn as the two wireframe cards of the row it
+    /// replaced (`ClassicSettings.Theme.cs`). The core frame follows it through <see cref="DetailPolicy.PageLayout"/> (see <see cref="Policies"/>).</summary>
+    public static SelectOption<DetailPageLayout> PageLayout { get; } = new(
+        Id: "pageLayout", TitleKey: Strings.Settings.Appearance.PageLayout, DescriptionKey: Strings.Settings.Appearance.PageLayoutSub,
+        Group: Strings.Settings.ThemeOptions.Group.TrackPages, Default: DetailPageLayout.Automatic,
+        Choices:
+        [
+            new SelectChoice<DetailPageLayout>(DetailPageLayout.Automatic, Strings.Settings.Choice.Automatic),
+            new SelectChoice<DetailPageLayout>(DetailPageLayout.Hero, Strings.Settings.Choice.Hero),
+        ],
+        Picker: PickerStyle.Cards);
+
+    /// <summary>"Keep left-rail same size" (M8): every kind's rail rests at one shared remembered size and resizing it once applies everywhere. It replaced
+    /// `detail.rail.uniform` (the "DetailRailUniform" step). Shown only with the Automatic page layout: the Hero composes no rail to size. The core frame follows it
+    /// through <see cref="DetailPolicy.RailUniform"/>.</summary>
+    public static ToggleOption RailUniform { get; } = new ToggleOption(
+        Id: "railUniform", TitleKey: Strings.Settings.Appearance.RailUniform, DescriptionKey: Strings.Settings.Appearance.RailUniformSub,
+        Group: Strings.Settings.ThemeOptions.Group.TrackPages, Default: false)
+        with { VisibleWhen = new OptionCondition(PageLayoutId, DetailPageLayout.Automatic) };
+
+    /// <summary>"Clear all remembered sizes" (M8): the verb forgets every kind's remembered rail width and collapse (the shared uniform size is not touched), after a
+    /// confirmation. It is composed AWAY, not disabled, while the page layout is Hero or the rails share one size (there is no per-kind rail to forget), and greys
+    /// while nothing is customised. The behaviour is the core's (`DetailRailPrefs`, registered as the <see cref="DetailVerbIds.ClearRememberedSizes"/> theme verb); the remembered
+    /// sizes are this theme's state (`rail.&lt;scope&gt;.width` / `.collapsed`).</summary>
+    public static ActionOption ClearRememberedSizes { get; } = new ActionOption(
+        Id: "clearRememberedSizes", TitleKey: Strings.Settings.Appearance.RailReset, Group: Strings.Settings.ThemeOptions.Group.TrackPages,
+        VerbId: DetailVerbIds.ClearRememberedSizes, Caption: Strings.Settings.Appearance.RailResetSub)
+        with
+        {
+            Command = false,   // a destructive action asks first, and the palette has no dialog
+            Confirm = new SettingsConfirm(Strings.Settings.Appearance.RailResetConfirmTitle, Strings.Settings.Appearance.RailResetConfirmBody,
+                Strings.Settings.Appearance.RailResetAction),
+            VisibleWhen = new OptionCondition(PageLayoutId, DetailPageLayout.Automatic) { And = new OptionCondition(RailUniform.Id, false) },
+        };
+
+    private const string PageLayoutId = "pageLayout";
+
+    /// <summary>The layer-qualified ids of the two rail options (the Settings view gives them the icons of the rows they replaced).</summary>
+    public const string RailUniformQualifiedId = "structure.railUniform";
+
+    /// <inheritdoc cref="RailUniformQualifiedId"/>
+    public const string ClearRememberedSizesQualifiedId = "structure.clearRememberedSizes";
+
+    /// <summary>The layer-qualified ids of the page options (what <c>GeneratedOptionRow.QualifiedId</c> answers): the Settings view draws the page layout with its
+    /// wireframe cards.</summary>
+    public const string PageLayoutQualifiedId = "structure." + PageLayoutId;
+
+    private static readonly ThemeOptionSchema s_options = ThemeOptionSchema.Of(Sidebar, LibraryDensity, HideTrackArt, Surfaces, PageLayout, RailUniform, ClearRememberedSizes);
 
     /// <inheritdoc />
     public ThemeOptionSchema Options => s_options;
 
     /// <inheritdoc />
     public ThemePolicies Policies(OptionValues structure, in StyleMetrics metrics)
-        => ClassicPolicies.For(structure.Get(Sidebar.Key), structure.Get(LibraryDensity.Key), structure.Get(HideTrackArt.Key));
+        => ClassicPolicies.For(structure.Get(Sidebar.Key), structure.Get(LibraryDensity.Key), structure.Get(HideTrackArt.Key),
+            structure.Get(PageLayout.Key), structure.Get(RailUniform.Key));
 
     /// <inheritdoc />
     public ShellCapabilities Capabilities(OptionValues structure) => ShellCapabilities.Unrestricted;
@@ -365,17 +416,15 @@ public sealed class ClassicStructure : IStructureLayer
     /// <inheritdoc />
     public RoleSet RequiredRoles => RoleSet.None;
 
-    /// <summary>Each entry leaves with the M-PR that migrates its switch: row style M2, page layout and rails M8. (Page motion, M1,
+    /// <summary>Each entry leaves with the M-PR that migrates its switch: row style M2. (Page motion, M1,
     /// was deleted: it has no row. Washes, M6, became the structure's `surfaces` option; row density, M3, the style's `density` option, hide art, M4,
-    /// the structure's `hideTrackArt`; the sidebar layout and density, M7a, the structure's `sidebar` and `libraryDensity`. The three sidebar ACTIONS stay: they are not switches.)</summary>
+    /// the structure's `hideTrackArt`; the sidebar layout and density, M7a, the structure's `sidebar` and `libraryDensity`; the page layout, the rails' uniformity and
+    /// their reset, M8, the structure's `pageLayout`, `railUniform` and `clearRememberedSizes`. The three sidebar ACTIONS stay: they are not switches.)</summary>
     public IReadOnlyList<LegacyOptionRow> LegacyRows { get; } =
     [
         new("sidebarReset", Strings.Settings.ThemeOptions.Group.Sidebar),
         new("sidebarCustomize", Strings.Settings.ThemeOptions.Group.Sidebar),
         new("sidebarResetEverything", Strings.Settings.ThemeOptions.Group.Sidebar),
         new("trackListStyle", Strings.Settings.ThemeOptions.Group.TrackLists),
-        new("pageLayout", Strings.Settings.ThemeOptions.Group.TrackPages),
-        new("railUniform", Strings.Settings.ThemeOptions.Group.TrackPages),
-        new("railReset", Strings.Settings.ThemeOptions.Group.TrackPages),
     ];
 }

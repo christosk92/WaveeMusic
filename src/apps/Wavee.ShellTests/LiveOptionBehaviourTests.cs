@@ -3,7 +3,7 @@
 // The Live-option pins (themes plan §2.1, LP1), written before any view moves into a theme: per option, change it through
 // TODAY's writer on the real mounted frame and assert the mechanism production uses, on the nodes production keys. A
 // later PR that moves a surface keeps this file green; an M-PR re-points the write from the legacy key to the theme
-// option, and the assertions stay (M3 density and M4 hide art write through `ThemeHost.Apply`, the way the Settings rows and the table's slider do).
+// option, and the assertions stay (M3 density, M4 hide art and M8 page layout write through `ThemeHost.Apply`, the way the Settings rows and the table's slider do).
 //
 //   stage layout    the popover writer and `[` / `]` → the `stage:cover` node's Bounds FLIP spring runs (the keys
 //                   step the face instead wherever the layout keeps its cover)
@@ -329,26 +329,29 @@ public sealed class LiveOptionBehaviourTests(ShellHost host)
 
     // ── the detail page ───────────────────────────────────────────────────────────────────────────────────────────
 
+    static void SetPageLayout(DetailPageLayout layout)
+        => _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, ClassicStructure.PageLayoutQualifiedId, layout));
+
     [Fact]
     public void Page_layout_swaps_the_detail_arm()
         => host.Mounted(shell =>
         {
-            int before = Platform.Settings.Get(Platform.Keys.DetailPageLayout);
-            Prefs.DetailHero.Set(Platform.Keys.DetailPageLayout, Prefs.DetailHero.Automatic);
+            var before = ThemeHost.Values.Structure.Get(ClassicStructure.PageLayout.Key);
+            SetPageLayout(DetailPageLayout.Automatic);
             try
             {
                 Shell.GoTo(new Shell.Route(Shell.RouteKind.Liked));
                 Until(shell, () => !shell.Find("detail:two-column").IsNull, "the wide liked page mounted its two-column arm");
-                Prefs.DetailHero.Set(Platform.Keys.DetailPageLayout, Prefs.DetailHero.Hero);   // Settings › Appearance › Page layout
+                SetPageLayout(DetailPageLayout.Hero);   // Settings › Appearance › Page layout
                 Until(shell, () => !shell.Find("detail:vertical").IsNull, "Hero swapped the page to its vertical arm");
                 shell.RunFrames(30);
                 Assert.True(shell.Find("detail:two-column").IsNull, "the two-column arm stayed mounted under Hero");
-                Prefs.DetailHero.Set(Platform.Keys.DetailPageLayout, Prefs.DetailHero.Automatic);
+                SetPageLayout(DetailPageLayout.Automatic);
                 Until(shell, () => !shell.Find("detail:two-column").IsNull, "Automatic swapped the wide page back to two columns");
             }
             finally
             {
-                Prefs.DetailHero.Set(Platform.Keys.DetailPageLayout, before);
+                SetPageLayout(before);
                 shell.RunFrames(30);
             }
         });

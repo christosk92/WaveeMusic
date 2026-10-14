@@ -375,26 +375,6 @@ internal static partial class ClassicSettings
                     if (D(Tab.Appearance, "trackListStyle").Writer.Choose!(i)) Settings.Bump();
                 }), SettingsCard.ContentAlignment.Vertical, icon: icon);
             }
-            case "pageLayout":
-            {
-                int layout = row.Current is int current ? current : 0;
-                return Item(title, sub, Controls.PickerStrip(2, layout, static (i, on) => PageLayoutCard(i, on), static i =>
-                {
-                    if (D(Tab.Appearance, "pageLayout").Writer.Choose!(i)) Settings.Bump();
-                }), SettingsCard.ContentAlignment.Vertical, icon: icon);
-            }
-            case "railUniform":
-                return Item(title, sub, RowToggle(row, enabled), isEnabled: enabled, icon: icon);
-            case "railReset":
-            {
-                var confirm = row.Confirm!;
-                return Item(title, sub, Button.Standard(Loc.Get(confirm.PrimaryKey), static () =>
-                {
-                    var reset = D(Tab.Appearance, "railReset");
-                    ConfirmThen(Loc.Get(reset.Confirm!.TitleKey), Loc.Get(reset.Confirm.BodyKey), Loc.Get(reset.Confirm.PrimaryKey),
-                        () => { if (reset.Writer.Run!()) Settings.Bump(); });
-                }, isEnabled: enabled), icon: icon);
-            }
             default:
                 Log.Warn("settings", "theme options: no control for the legacy row '" + id + "'; it is left out");
                 return null;
@@ -490,6 +470,12 @@ internal static partial class ClassicSettings
                 return OptionCard(wizard, title, sub, Embed.Comp(() => new OptionSlider(g)) with { Key = "opt:slider:" + g.QualifiedId },
                     icon, isEnabled: enabled);
 
+            case SettingsRowKind.Action when row.Confirm is { } confirm:
+                // A destructive action (M8's "Clear all remembered sizes"): a button that asks first, as the row it replaced did.
+                return OptionCard(wizard, title, sub, Button.Standard(Loc.Get(confirm.PrimaryKey), () =>
+                    ConfirmThen(Loc.Get(confirm.TitleKey), Loc.Get(confirm.BodyKey), Loc.Get(confirm.PrimaryKey),
+                        () => { if (row.Writer.Run!()) Settings.Bump(); }), isEnabled: enabled), icon, isEnabled: enabled);
+
             case SettingsRowKind.Action:
                 return OptionCard(wizard, title, sub, null, icon, isEnabled: enabled, clickable: enabled, onClick: () =>
                 {
@@ -509,6 +495,9 @@ internal static partial class ClassicSettings
         if (qualifiedId == ClassicStructure.LibraryDensityOptionId) return Icons.ViewList;
         if (qualifiedId == ClassicDensity.QualifiedId) return Glyph("RowSize");
         if (qualifiedId == ClassicStructure.HideTrackArtQualifiedId) return Glyph("Picture");
+        if (qualifiedId == ClassicStructure.PageLayoutQualifiedId) return Icons.DockLeft;
+        if (qualifiedId == ClassicStructure.RailUniformQualifiedId) return Icons.Pin;
+        if (qualifiedId == ClassicStructure.ClearRememberedSizesQualifiedId) return Icons.Delete;
         return null;
     }
 
@@ -525,6 +514,8 @@ internal static partial class ClassicSettings
     {
         // The density's cards are miniature rows at the real spacing (the picture the old Settings row drew), not a word.
         if (g.QualifiedId == ClassicDensity.QualifiedId) return DensityCard(index, on);
+        // The page layout's cards are the wireframes of the page system each choice selects (the picture the old Settings row drew).
+        if (g.QualifiedId == ClassicStructure.PageLayoutQualifiedId) return PageLayoutCard(index, on);
         Element label = Controls.PickerLabel(Loc.Get(g.ChoiceTitleKeys[index]), on) with
         {
             Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.WordEllipsis, MinWidth = 0f, Shrink = 1f,

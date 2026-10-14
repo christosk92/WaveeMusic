@@ -57,6 +57,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Theming;
 using static FluentGpu.Dsl.Ui;
 using Contracts = Wavee.Theming.Contracts;
 using ViewSlots = FluentGpu.Theming.Slots;
@@ -661,10 +662,12 @@ public static partial class Detail
             var id = spec.Identity;
             var cfg = spec.Config;
 
-            // ── preferences (each subscribes its epoch, then re-reads the store) ──
-            int pageLayout = Prefs.DetailHero.PageLayout();
-            bool uniform = Prefs.DetailHero.RailUniform();
-            int railEpoch = Prefs.DetailHero.Epoch.Value;
+            // ── the structure's decision (the page layout, the rails' uniformity: a tracked read of the published policy) and the rail epoch
+            //    (each write to a rail's remembered size subscribes it, then re-reads the store) ──
+            var detailPolicy = ShellPolicy.Tracked.Detail;
+            DetailPageLayout pageLayout = detailPolicy.PageLayout;
+            bool uniform = detailPolicy.RailUniform;
+            int railEpoch = DetailRailPrefs.Epoch.Value;
             UseEffect(_resyncRails, DepKey.From(railEpoch));
             // Auto-tracked on _mode + _railMax: a breakpoint cross or a narrower page re-rests every rail from its
             // REMEMBERED width. A signal write belongs in an effect, never in a render (rule 6).
@@ -695,7 +698,7 @@ public static partial class Detail
                 if (fit > mode) mode = fit;
             }
             // The Hero page layout forces the vertical SYSTEM for track pages only; _mode keeps tracking the real width.
-            if (cfg.Content == DetailContent.Tracks && pageLayout == Prefs.DetailHero.Hero)
+            if (cfg.Content == DetailContent.Tracks && pageLayout == DetailPageLayout.Hero)
                 mode = Breakpoints.VerticalMode;
             bool vertical = mode == Breakpoints.VerticalMode;
             bool verticalTracks = vertical && cfg.Content == DetailContent.Tracks;

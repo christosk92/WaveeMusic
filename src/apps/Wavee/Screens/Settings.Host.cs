@@ -68,8 +68,6 @@ public static partial class Settings
         }
     }
 
-    /// <summary>The "Clear all remembered sizes" reset's enable gate — a destructive-looking no-op is never offered (DetailRailPrefs owns the rule).</summary>
-    internal static bool HasCustomizedRail() => DetailRailPrefs.HasCustomized();
 
     /// <summary>The stored fullscreen-stage face (already migrated by Prefs.Stage) as its index in the combo's list (the gallery's order).</summary>
     internal static int VisualizerIndex() => Math.Max(0, Visualizer.Catalog.IndexOf((Visualizer.Kind)Prefs.Stage.Visualizer()));
