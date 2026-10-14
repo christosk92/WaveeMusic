@@ -3,9 +3,9 @@
 // The pane (`Sidebar.PaneView`, core) plans, publishes and sweeps; a row SLOT (the structure's, `NavRowKit.Slot`) draws one plan
 // row and wires its gestures. This is the whole surface a slot reads, so a structure never reaches into the pane: it asks
 // the host for the published plan, for the facts the pane resolves once on behalf of every row (the selected route, the
-// playing rows, the pill target, the band a row reorders in), and for the pieces of the surfaces that are not the rows' yet --
-// menus, drop specs, flyouts, the grid cell -- which T5c-f give to the structure one sub-surface at a time and the slot then
-// calls directly. The heads (T5b) are the structure's now: the header's chrome and the filter box are drawn by the slot, and the
+// playing rows, the pill target, the band a row reorders in), and for the pieces core decides --
+// menus and drop specs -- which the slot then calls directly (the flyout panels, the Edit outline, the drop cues and the grid
+// cell are the structure's since T5c-f). The heads (T5b) are the structure's now: the header's chrome and the filter box are drawn by the slot, and the
 // pane keeps the state they edit (the disclosure channel, the filter's query, ticket and close).
 //
 // Every member is live (a method or a signal read inside a render, an epoch or a bound thunk), never a value captured at
@@ -158,7 +158,7 @@ internal interface INavRowHost
     /// <summary>Clear the selection (Esc).</summary>
     void ClearTreeSelection();
 
-    // ── menus, drags, drops and flyouts: the flyout panels are the structure's (T5c); the rest T5d-f move ─────────────────────────────────────────────────
+    // ── menus, drags, drops and flyouts: the flyout panels are the structure's (T5c); core decides the rest ─────────────────────────────────────────────────
 
     /// <summary>A section header's ⋯ menu, or null for a kind with none.</summary>
     Func<ContextMenuModel?>? HeaderMenu(string sectionId);
@@ -235,6 +235,7 @@ internal interface INavRowHost
     /// <summary>Register a rail tile's anchor by plan index, so Enter on the focused tile opens the flyout its click opens.</summary>
     void SetTileAnchor(int index, Func<NodeHandle> anchor);
 
-    /// <summary>One cell of a Grid-presentation section: the shared media surface at the tile shape, <paramref name="edge"/> wide.</summary>
-    Element GridCell(SidebarSection section, in SidebarLibraryEntry entry, float edge, string selectedRoute);
+    /// <summary>A grid cell's context menu (right-click only: the card's corner "..." would cover a small cover), or null when the pane has no menus
+    /// (T5f: the cell itself is the structure's, `ClassicNavGridCell`).</summary>
+    Func<ContextMenuModel?>? GridCellMenu(in SidebarLibraryEntry entry);
 }

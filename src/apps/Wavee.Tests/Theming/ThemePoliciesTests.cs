@@ -99,6 +99,7 @@ public sealed class ClassicPoliciesTests
         Assert.NotEmpty((d with { NavPane = d.NavPane with { MinWidth = 500f } }).Validate());           // min > max
         Assert.NotEmpty((d with { NavPane = d.NavPane with { DefaultWidth = 100f } }).Validate());       // default outside the bounds
         Assert.NotEmpty((d with { NavPane = d.NavPane with { ContentFloorW = float.NaN } }).Validate());
+        Assert.NotEmpty((d with { NavPane = d.NavPane with { RailWidth = 0f } }).Validate());                // the rail needs a width
         Assert.NotEmpty((d with { Tiers = d.Tiers with { CompactFloor = 0f } }).Validate());                  // the tiers are validated too
         Assert.NotEmpty((d with { Panel = d.Panel with { MinWidth = 600f } }).Validate());
         Assert.NotEmpty((d with { PlayerBar = d.PlayerBar with { Tiers = d.PlayerBar.Tiers.RemoveAt(5) } }).Validate());   // five levels
@@ -192,7 +193,7 @@ public sealed class NavPanePolicyRulesTests
             userCollapsed: false, editing: false, expandedWidth: 320f, policy: Classic);
         Assert.Equal(SidebarWindowBand.Narrow, small.Band);
         Assert.Equal(SidebarPaneMode.Compact, small.Mode);
-        Assert.Equal(SidebarRowGeometry.RailWidth, small.PresentedWidth);
+        Assert.Equal(Classic.RailWidth, small.PresentedWidth);
         var drawer = FrameModel.Seed(new WindowFacts(600f, 800f), ClassicTierFixture.FreshWindow(600f),
             userCollapsed: false, editing: false, expandedWidth: 320f, policy: Classic with { NarrowMode = NavPaneMode.Overlay });
         Assert.Equal(SidebarWindowBand.Narrow, drawer.Band);

@@ -28,7 +28,7 @@ public class SidebarResizeRulesTests
     {
         var live = SidebarResizeRules.Track(100f, Expanded(), editing: false);
         Assert.True(live.Collapsed);
-        Assert.Equal(SidebarRowGeometry.RailWidth, live.PresentedWidth);
+        Assert.Equal(SidebarPaneBounds.RailWidth, live.PresentedWidth);
         Assert.Equal(1f, live.Fade);
     }
 
@@ -70,7 +70,7 @@ public class SidebarResizeRulesTests
         var settle = SidebarResizeRules.Resolve(100f, Expanded(300f), editing: false);
         Assert.True(settle.UserCollapsed);
         Assert.Equal(300f, settle.ExpandedWidth);
-        Assert.Equal(SidebarRowGeometry.RailWidth, settle.TargetWidth);
+        Assert.Equal(SidebarPaneBounds.RailWidth, settle.TargetWidth);
     }
 
     [Fact]
@@ -95,7 +95,7 @@ public class SidebarResizeRulesTests
     [Fact]
     public void Step_CollapsesAtTheFloor_ButNotWhileEditing()
     {
-        Assert.Equal(new SidebarResizeRules.Settle(true, 180f, SidebarRowGeometry.RailWidth),
+        Assert.Equal(new SidebarResizeRules.Settle(true, 180f, SidebarPaneBounds.RailWidth),
             SidebarResizeRules.Step(Expanded(180f), -1, large: false, editing: false));
         Assert.Equal(new SidebarResizeRules.Settle(false, 180f, 180f),
             SidebarResizeRules.Step(Expanded(180f), -1, large: false, editing: true));
@@ -113,7 +113,7 @@ public class SidebarResizeRulesTests
     [Fact]
     public void Toggle_FlipsAndKeepsTheWidth()
     {
-        Assert.Equal(new SidebarResizeRules.Settle(true, 300f, SidebarRowGeometry.RailWidth),
+        Assert.Equal(new SidebarResizeRules.Settle(true, 300f, SidebarPaneBounds.RailWidth),
             SidebarResizeRules.Toggle(Expanded(300f)));
         Assert.Equal(new SidebarResizeRules.Settle(false, 300f, 300f),
             SidebarResizeRules.Toggle(Collapsed(300f)));

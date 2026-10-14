@@ -78,7 +78,7 @@ public static partial class Sidebar
         Density.Value = s.Get(Platform.Keys.SidebarPaneDensity) == 1 ? SidebarDensity.Compact : SidebarDensity.Default;
         Width.Value = SidebarPaneBounds.Clamp(s.Get(Platform.Keys.SidebarPaneWidth));
         UserCollapsed.Value = s.Get(Platform.Keys.SidebarPaneUserCollapsed);
-        Seam.Value = UserCollapsed.Peek() ? SidebarRowGeometry.RailWidth : Width.Peek();
+        Seam.Value = UserCollapsed.Peek() ? ShellPolicy.Now.NavPane.RailWidth : Width.Peek();
         PresentedWidth.Value = Seam.Peek();
 
         s_deviceFile = new SidebarFileStore(SidebarStoreV3.PathUnder(s_profileDir)) { WriteCompleted = OnWriteCompleted };

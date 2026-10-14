@@ -161,7 +161,7 @@ A structure decides the numbers the core state machines run on; the machines the
 
 | Record | What the structure decides | Core machine that takes it |
 |---|---|---|
-| `NavPanePolicy` | what the Narrow and Tiny bands force (`NavPaneMode`: Expanded, Compact rail, Overlay drawer, None; `ModeFor(WidthTier)`), the expanded width bounds and default, the content floor, the seam collapse rule, whether the pane is resizable. The bands themselves are the window tiers (section 7): Compact is Tiny, Small is Narrow, Standard and up are Wide | `SidebarPaneModeRules`, `SidebarResizeRules`, `FrameModel`, `SidebarPaneBounds.Clamp` |
+| `NavPanePolicy` | what the Narrow and Tiny bands force (`NavPaneMode`: Expanded, Compact rail, Overlay drawer, None; `ModeFor(WidthTier)`), the expanded width bounds and default, the content floor, the seam collapse rule, the collapsed rail's width (`RailWidth`), whether the pane is resizable. The bands themselves are the window tiers (section 7): Compact is Tiny, Small is Narrow, Standard and up are Wide | `SidebarPaneModeRules`, `SidebarResizeRules`, `FrameModel`, `SidebarPaneBounds.Clamp` |
 | `PanelPolicy` | the panel's min and max width, the content it must leave to stay inline, full height (on `PanelView.FullHeight` since T6b), the mini player's `Video.PipBounds` | `Shell.ClampRailWidth`, `Shell.CanFitRail`, `PanelHost.FitWidthTo`, `Video.PipGesture` |
 | `PlayerBarPolicy` | six pressure levels (start width, `PlayerBarSlots`, spacing, art, hit targets, and what the podcast bar carries at the level: `PodcastSlots`, `PodcastLeftW`), the narrowing hold and the bar height | `Shell.PlayerBar`, `Shell.PlayerBarLayout.ForTier`, `Shell.PodcastBarLayout` (so `PlayerBarRules.Overflow` and `RightWidth` follow); `R.Space.DockReserve` answers the bar's height |
 | `ChromePolicy` | the title-bar row's `ChromeBudget`: where the actions, name and forward button may appear, what each affordance costs, the search and tab widths | `Shell.Chrome` (the allocator) |
@@ -329,15 +329,14 @@ gives the pane its key and moves the **rows**; T5b moves the **heads** (below); 
   `ClassicNavPane.cs` (the template).
 - **`INavRowHost`** (`Theming\Contracts\NavRowHost.cs`, implemented explicitly by `PaneView` in `Shell\Sidebar.UI.Host.cs`) is what a
   slot may ask of the pane: the published plan, what the pane resolved once for every row (selected route, playing rows, the pill
-  target, the reorder band), the verbs, and the pieces of the surfaces T5c-f still own (menus, drop specs, flyouts, the grid cell).
+  target, the reorder band), the verbs, and the pieces core decides for the structure's surfaces (menus' rows, drop specs).
   A slot never reaches into `Shell`.
 - **X26 is gone.** `OwningSection` (which section would hold a route: the pill's header or folder anchor) was a layout branch inside
   the "one renderer"; it is `SidebarRowPlanner.OwningSection`, next to the Library plan, and `NavModel` no longer answers it.
-- **A transitional mirror.** The row ladder is Classic's. Core keeps `SidebarRowGeometry`: the plan queries (`TrySectionBodyRange`,
-  `FolderHeaderIndexOf`, ... no pixels) and a copy of exactly the ladder members the still-core readers use (the shared row
-  primitives in `Sidebar.UI.Rows.cs`, the Library head, the flyouts, the Edit outline, the drop rules, the resize rules).
-  `SidebarGeometryParityTests` pins every shared member equal; the last reader to move (T5f) deletes the copy. The band widths are
-  `NavPanePolicy`'s (section 2a).
+- **No core copy of the ladder.** The row ladder is Classic's alone. T5a kept a pinned mirror (`SidebarRowGeometry`, with
+  `SidebarGeometryParityTests`) for the sub-surfaces that were still core; T5f, the last sidebar lane, deleted both (see "The navigation
+  pane's Library grid (T5f)" below). What core keeps is no pixels: the plan queries (`SidebarPlanQueries`: `TrySectionBodyRange`,
+  `FolderHeaderIndexOf`, ...). The band widths are `NavPanePolicy`'s (section 2a).
 
 **Tests.** The planner, the diff, the extents, the freeze and the ladder are pure (`SidebarPlannerTests`, `SidebarWiringTests`,
 `NavDropRulesTests`, `SidebarRowGeometryTests`, `NavModelTests` for the owning section); the mounted facts are
@@ -366,11 +365,12 @@ T5b gives the structure the pane's **heads**: whatever stands above or between t
 - **The collapse chevron is core's** (`Sidebar.Chevron`, in `Sidebar.UI.Rows.cs`): its spring rotation is the disclosure band's
   own `Reveal`, and the episode discussion draws with it too. The section-collapse animation, its persistence and the
   choreography flags (`_choreographed`) are the pane's and did not move.
-- **`SidebarRowGeometry` shrank.** The header height, the separator's two numbers and the empty-hint height had no core reader
-  left and were deleted; `HeaderTextX` (the Library lane rules) and `HeaderButton` (the Edit outline's inline buttons) stay
-  until T5d / T5f. The `Sidebar.SectionHeader.InlineButton` copy is gone (T5d: the Edit outline uses `ClassicNavHead.InlineButton`). `PaneMetrics.HeadBandInset`, which nothing read, is gone. `SidebarGeometryParityTests` still pins every member core keeps.
-- **Numbers** the heads carried as literals are `Rules\NavHeadLayout.cs` (`ClassicNavHeadLayout`); the Library lane's are core's
-  `SidebarLibraryHeadRules`, which the pure tests pin.
+- **The mirror shrank.** The header height, the separator's two numbers and the empty-hint height had no core reader left and were
+  deleted. The `Sidebar.SectionHeader.InlineButton` copy is gone (T5d: the Edit outline uses `ClassicNavHead.InlineButton`).
+  `PaneMetrics.HeadBandInset`, which nothing read, is gone; the rest of the mirror went with T5f.
+- **Numbers** the heads carried as literals are `Rules\NavHeadLayout.cs` (`ClassicNavHeadLayout`); the Library head's heights, insets and
+  toolbar widths are `Rules\NavLibraryHeadLayout.cs` (`ClassicLibraryHeadLayout`, T5f: they moved out of core's `SidebarLibraryHeadRules`,
+  which keeps the decisions the pure tests pin).
 
 **Tests.** The mounted facts are in `Wavee.ShellTests\NavPaneMountedTests.cs` (Classic registers both keys, the real shell in the
 Library layout draws the head through its key with its ring, dropdown and toolbar standing, and the empty body is the sentence
@@ -394,8 +394,8 @@ T5c gives the structure the **pictures** of the pane's flyouts; the menu **rows*
   public record, internal member, as `NavLibraryHeadProps`). `INavRowHost` gained `PlanSectionExpanded`, `RailFolderDropSpec`,
   `IsRailDropActive` and `ExpandFolderInPane`; the panels read the rest (`Model`, `Navigate`, `SelectedRoutePeek`, `EntryMenu`,
   `FolderMenu`, `PayloadOf`, `ResourceDropSpec`, `MenuOverlay`) from it. Numbers are `Rules\NavFlyoutLayout.cs`.
-- **Nothing was left to delete.** `SidebarRowGeometry`'s ladder members the flyouts read (`PitchOf`, `ArtOf`, `PaneEdge`) still have
-  other core readers (the row primitives, the Edit outline, the drop rules), so the mirror shrinks with T5d / T5f.
+- **Nothing was left to delete.** The ladder members the flyouts read (`PitchOf`, `ArtOf`, `PaneEdge`) had other core readers (the row
+  primitives, the drop rules), so the mirror went with T5f.
 
 **Tests.** `Wavee.ShellTests\NavPaneMountedTests.cs` pins that Classic registers both keys; the drill-in stack stays
 `SidebarFolderFlyoutNavTests` (`NavDropRulesTests.cs`).
@@ -440,11 +440,46 @@ cues live inside the row slot and the flyout rows that T5a and T5c already moved
   line); the caret and plate numbers did not move, only the readers (`SidebarDropCue.LineThickness` / `LineCorner` / `DotSize` / `LineWidth` /
   `LineY` became `SidebarGeometry.DropLineThickness` / `DropLineCorner` / `DropDotSize` / `DropLineWidth` / `DropLineY`; the flyout plate's 1-DIP
   border is `SidebarGeometry.DropPlateBorderWidth`).
-- **The depth origin is shared.** The resolver's depth pick (core) and the caret's start (Classic) both read `TreeContentX`; core's copy is the
-  pinned mirror (`SidebarGeometryParityTests`) until T5f deletes it.
+- **The depth origin is shared.** The resolver's depth pick (core) and the caret's start (Classic) both read `TreeContentX`: the pane hands
+  the resolver the kit's `NavRowKit.TreeLadder` (T5f), so there is no core copy.
 
 **Tests.** The cue invariant is `NavDropRulesTests` (`SidebarDropCueTests`: line iff ordering, plate iff Into); the caret geometry is
 `SidebarRowGeometryTests`; the mounted pane still draws through Classic's kit (`NavPaneMountedTests`).
+
+### The navigation pane's Library grid (T5f)
+
+T5f is the last sidebar lane. It gives the structure the Library layout's grid tile and ends the T5a mirror: **core reads the row ladder
+through the kit and the policy, and `SidebarRowGeometry` and `SidebarGeometryParityTests` are deleted.** Library data, the layout
+choice, persistence and the demands stay core (`NavLibrary`, the layout store, the binder).
+
+| Surface | Core keeps | Classic draws |
+|---|---|---|
+| The grid tile (one cell of a `GridStrip`) | `SidebarCardRules` (selected, activation, play, drop, drag, the title gate, pending, circular: pure facts, `SidebarCardsTests`), the verbs and specs through `INavRowHost` (`Navigate`, `Play`, `GridCellMenu`, `ResourceDropSpec`, `PayloadOf`, `DestOf`) | `Views\Nav\ClassicNavGridCell.cs`: the `CardData` the media surface renders (the cover box a no-art entry gets, its kind glyph, the subtitle's look, the cover's size in the card's plate, `SidebarGeometry.TileCover`) at `Shape.SidebarTile` |
+| The strip, its columns and cells | the presented pane width; `INavRowHost.GridColumns` (the planned count) | `ClassicNavRow.GridStripRow` (unchanged), `SidebarGeometry.GridColumns` / `GridFallbackColumns` / `GridCellMax` |
+| The head's rows, chips and toolbar | the session, the pages, chips, sort rules, the Tab order and ring (`SidebarLibraryHeadRules`, incl. the `ToolbarShape` vocabulary) | their heights, insets and the toolbar widths that choose the shape: `Rules\NavLibraryHeadLayout.cs` (`ClassicLibraryHeadLayout`: `ShapeOf`, `ToolbarWidth`, `ToolbarLane`) |
+
+- **The mirror is gone; the structure answers.** Each remaining core reader asks for what it needs:
+  - the drop resolver's depth pick takes the kit's `NavTreeLadder` (`NavRowKit.TreeLadder`: origin and indent step; `RootlistSlotResolver.Resolve`
+    gained a trailing `in NavTreeLadder`);
+  - the pane's list inset, a row's pitch (the virtualizing host's estimate, the reorder bands, the live-extent fallback) and the selection
+    indicator's height are `NavRowKit.ListInset`, `PitchOf(SidebarRowShape)` and `PillHeight`; the Library grid's column count is
+    `NavRowKit.GridColumns(paneWidth)` (the mode asks it and hands the planner the count);
+  - the rail's width is `NavPanePolicy.RailWidth` (Classic 48, `ClassicPolicies.NavPane`; core's baseline is `SidebarPaneBounds.RailWidth`),
+    read by the resize and mode rules, the seam's floor, the boot seed and `SidebarPaneInvariant.Inspect`.
+- **The row primitives moved with the ladder they are drawn on.** `Sidebar.EntityRow` / `RowSpec` / `RowDropCue` are
+  `ClassicEntityRow` / `ClassicRowSpec` / `ClassicRowDropCue` (`Views\Nav\ClassicNavEntityRow.cs`), `Sidebar.SelectionPill` and
+  `Sidebar.Skeletons` are `ClassicSelectionPill` and `ClassicSkeletons` (`ClassicNavRowParts.cs`); their literals are `SidebarGeometry`
+  members. What stays in `Shell\Sidebar.UI.Rows.cs` is shared with the pages: `Sidebar.Cover` (Recents, Home), `Sidebar.Chevron` (the track
+  table, the episode discussion, the logs page), the pane text, loc and glyph tables.
+- **What `SidebarRowGeometry` became.** The plan queries (no pixels) are `SidebarPlanQueries` in `Shell\Sidebar.cs`; `SidebarLabelFit.LabelWidth`
+  is `SidebarGeometry.LabelWidth`; every other member was Classic's already.
+- **Nothing changes in behavior.** The tile's data, its closures, its menu, drag and drop spec and the strip's column math are the code that
+  was in `SidebarCards`, moved; the layout switch, the rail form, selection and the playing indicator, drag reorder, the chips, the empty
+  and signed-out states, keyboard navigation and every accessible name are untouched.
+
+**Tests.** `SidebarGeometryKitTests` (`SidebarRowGeometryTests.cs`) pins the kit's answers, the rail width, the grid columns and the label
+width; `SidebarCardsTests` the card facts; `NavDropRulesTests` drives the resolver with Classic's ladder (`DropLadder`);
+`SidebarLibraryHeadRulesTests` the head's rules and Classic's toolbar shape; `NavPaneMountedTests` that the list stands inside the kit's inset.
 
 ### The player bar (T6a)
 

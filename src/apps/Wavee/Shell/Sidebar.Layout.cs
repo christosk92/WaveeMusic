@@ -847,8 +847,8 @@ public static class SidebarDedupeMotion
         var newBands = new List<(int First, int Count)>(ids.Count);
         for (int i = 0; i < ids.Count; i++)
         {
-            if (SidebarRowGeometry.TrySectionBodyRange(oldRows, ids[i], out int of, out int oc)) oldBands.Add((of, oc));
-            if (SidebarRowGeometry.TrySectionBodyRange(newRows, ids[i], out int nf, out int nc)) newBands.Add((nf, nc));
+            if (SidebarPlanQueries.TrySectionBodyRange(oldRows, ids[i], out int of, out int oc)) oldBands.Add((of, oc));
+            if (SidebarPlanQueries.TrySectionBodyRange(newRows, ids[i], out int nf, out int nc)) newBands.Add((nf, nc));
         }
         return Seeds(splices, oldBands, newBands, oldExtentOf, newExtentOf, newRows.Count);
     }

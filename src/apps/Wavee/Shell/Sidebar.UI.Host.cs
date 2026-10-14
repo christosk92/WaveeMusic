@@ -130,7 +130,6 @@ public static partial class Sidebar
             return null;
         }
 
-        Element INavRowHost.GridCell(SidebarSection section, in SidebarLibraryEntry entry, float edge, string selectedRoute)
-            => Controls.Surface(SidebarCards.Tile(this, section, in entry, edge, selectedRoute), global::Wavee.Shape.SidebarTile);
+        Func<ContextMenuModel?>? INavRowHost.GridCellMenu(in SidebarLibraryEntry entry) => GridCellMenu(in entry);
     }
 }

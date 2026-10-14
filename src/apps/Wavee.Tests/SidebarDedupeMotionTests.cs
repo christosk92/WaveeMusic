@@ -109,7 +109,7 @@ public sealed class SidebarDedupeMotionTests
         AssertSplicesBalance(oldPlan, newPlan, splices);
 
         // The Pinned body is the band: whatever it inserted, the band presents it.
-        Assert.True(SidebarRowGeometry.TrySectionBodyRange(newPlan.Rows, Pinned, out int first, out int count));
+        Assert.True(SidebarPlanQueries.TrySectionBodyRange(newPlan.Rows, Pinned, out int first, out int count));
         for (int i = first; i < first + count; i++) Assert.False(seeds.ContainsKey(i), "band row " + i);
 
         // pl:a left Playlists: the survivors below it start one row lower than they now lie.
@@ -170,7 +170,7 @@ public sealed class SidebarDedupeMotionTests
         var newPlan = Plan(newDoc, input);
 
         var seeds = Run(oldDoc, oldPlan, newDoc, newPlan, out _, Playlists);
-        Assert.True(SidebarRowGeometry.TrySectionBodyRange(newPlan.Rows, Playlists, out int first, out int count));
+        Assert.True(SidebarPlanQueries.TrySectionBodyRange(newPlan.Rows, Playlists, out int first, out int count));
         for (int i = first; i < first + count; i++) Assert.False(seeds.ContainsKey(i), "band row " + i);
     }
 

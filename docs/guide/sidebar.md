@@ -58,9 +58,9 @@ library kinds (Albums, Artists, Podcasts, Audiobooks).
 ## 3. Rows and metrics
 
 Row metrics come from the WinUI ladder, held in constants on `SidebarGeometry`
-(`Themes/Classic/Structure/Rules/SidebarGeometry.cs`), and are pinned by `SidebarRowGeometryTests`. Core keeps a pinned copy
-of the members its still-core surfaces read (`SidebarRowGeometry`, `Shell/Sidebar.cs`; `SidebarGeometryParityTests`) until
-those surfaces move:
+(`Themes/Classic/Structure/Rules/SidebarGeometry.cs`), and are pinned by `SidebarRowGeometryTests`. Core keeps no copy: it asks the
+kit (`NavRowKit`: the tree ladder, the list inset, a row's pitch, the pill's height, the grid's columns) and the nav-pane policy
+(`NavPanePolicy.RailWidth`):
 
 - Row height 36 (two-line entity rows 40), row margin 2 top and bottom, pane edge 4.
 - Icon column 40, glyph 16, entity art 32 (two-line) or 24 (one-line). Label gap 4, trailing pad 14.
@@ -204,7 +204,7 @@ Shaping is done by `SidebarLibraryShaper` and `SidebarLibraryHeadRules` (`Shell/
 | Add a section kind, or a Collections page | `SidebarSectionKind` and `SidebarCatalogue` (kind rules, items, loc key) |
 | Change what a layout holds or locks | `SidebarCatalogue`, then `SidebarLayoutRules.Apply` for the edit it allows |
 | Add an edit | a new `SidebarOp` record, handled in `SidebarLayoutRules.Apply` and in `Sidebar.Host.cs`'s dispatch |
-| Change a row metric | `SidebarGeometry` (`Themes/Classic/Structure/Rules/SidebarGeometry.cs`), and the pinned copy `SidebarRowGeometry` (`Shell/Sidebar.cs`) while a core surface still reads the member |
+| Change a row metric | `SidebarGeometry` (`Themes/Classic/Structure/Rules/SidebarGeometry.cs`); the rail's width is `NavPanePolicy.RailWidth` (`ClassicPolicies.NavPane`) |
 | Add a menu item | `SidebarMenuModel`, then `SidebarMenus.Run` |
 | Add a pane mode or band rule | `SidebarPaneModeRules` (`Shell/Sidebar.Resize.cs`) |
 | Add a persisted field | the DTO in `Shell/Sidebar.Store.cs`, `SidebarStoreJsonCtx`, and a round-trip test |
@@ -217,7 +217,7 @@ Pure classes are engine-free and covered by `Wavee.Tests`. Each test file (`src/
 
 - **Layout and model:** `SidebarCatalogueTests`, `SidebarLayoutRulesTests`, `SidebarVisibilityRulesTests`,
   `SidebarStoreV3Tests`, `SidebarMigrationV2Tests`.
-- **Rows and geometry:** `SidebarRowGeometryTests` (with `SidebarGeometryParityTests`), `SidebarPlannerTests` (fixture `PlanFixture`), `SidebarPillRulesTests`,
+- **Rows and geometry:** `SidebarRowGeometryTests` (incl. `SidebarGeometryKitTests`), `SidebarPlannerTests` (fixture `PlanFixture`), `SidebarPillRulesTests`,
   `SidebarSubtitleRulesTests`, `SidebarProjectionTests`.
 - **Modes and sizing:** `SidebarPaneModeRulesTests`, `SidebarResizeRulesTests`.
 - **Edit, menus and undo:** `SidebarEditRulesTests`, `NavEditModelTests`, `NavMenuModelTests`, `SidebarUndoRingTests`,

@@ -92,7 +92,7 @@ internal sealed class ClassicLibraryHead(INavLibraryHeadHost s) : Component
         if (s.Lib.DrillActive) kids.Add(Breadcrumb());
         kids.Add(new BoxEl
         {
-            Key = "library-rule", Height = SidebarLibraryHeadRules.RuleHeight, Shrink = 0f,
+            Key = "library-rule", Height = ClassicLibraryHeadLayout.RuleHeight, Shrink = 0f,
             Margin = new Edges4(-SidebarGeometry.PaneEdge, 0f, -SidebarGeometry.PaneEdge, 0f),
             Fill = Tok.StrokeDividerDefault,
         });
@@ -112,7 +112,7 @@ internal sealed class ClassicLibraryHead(INavLibraryHeadHost s) : Component
     Element HomeRow(string route)
     {
         var home = s.DestOf("home");
-        var row = Sidebar.EntityRow.Create(new Sidebar.RowSpec
+        var row = ClassicEntityRow.Create(new ClassicRowSpec
         {
             Key = "lib-home", Label = home.Title, Shape = SidebarRowShape.Glyph, Glyph = home.Glyph,
             Selected = string.Equals(route, "home", StringComparison.Ordinal),
@@ -128,7 +128,7 @@ internal sealed class ClassicLibraryHead(INavLibraryHeadHost s) : Component
             Key = "lib-home-ring", ZStack = true, Shrink = 0f,
             OnKeyDown = e => OnRingKey(SidebarLibraryHeadRules.HeadStop.Home, e),
             Children = s.PaneRef is { } pane
-                ? [row, Embed.Comp(() => new Sidebar.SelectionPill(pane, HomePill, SidebarPillLane.Head)) with { Key = "lib-home-pill" }]
+                ? [row, Embed.Comp(() => new ClassicSelectionPill(pane, HomePill, SidebarPillLane.Head)) with { Key = "lib-home-pill" }]
                 : [row],
         };
     }
@@ -147,7 +147,7 @@ internal sealed class ClassicLibraryHead(INavLibraryHeadHost s) : Component
         string? pg = SidebarLibraryHeadRules.PageOf(live, s.Doc.Library.HiddenKinds);
         bool lit = pg is not null && SidebarLibraryHeadRules.DropdownCarriesPill(live, s.Doc.Library.HiddenKinds, s.RowPill.Value);
         return new SidebarPillState(lit ? pg : null, lit, 0f,
-            (SidebarLibraryHeadRules.DropdownRowHeight - SidebarGeometry.PillH) * 0.5f);
+            (ClassicLibraryHeadLayout.DropdownRowHeight - SidebarGeometry.PillH) * 0.5f);
     }
 
     Element DropdownRow(string? page)
@@ -175,22 +175,22 @@ internal sealed class ClassicLibraryHead(INavLibraryHeadHost s) : Component
             ? new BoxEl
             {
                 Key = "library-title", Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicNavHeadLayout.LibraryTitleGap,
-                Height = SidebarLibraryHeadRules.ToolbarControl,
-                Margin = new Edges4(SidebarLibraryHeadRules.TitleX - SidebarGeometry.PaneEdge, 4f, 0f, 4f),
+                Height = ClassicLibraryHeadLayout.ToolbarControl,
+                Margin = new Edges4(ClassicLibraryHeadLayout.TitleX - SidebarGeometry.PaneEdge, 4f, 0f, 4f),
                 Children = [.. words],
             }
             : ToolTip.Wrap(new BoxEl
             {
                 Key = "library-dropdown", Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicNavHeadLayout.LibraryTitleGap,
-                Height = SidebarLibraryHeadRules.ToolbarControl, Shrink = 1f, MinWidth = 0f,
-                Margin = new Edges4(SidebarLibraryHeadRules.TitleX - SidebarGeometry.PaneEdge - SidebarLibraryHeadRules.TitleHitInset, 4f, 0f, 4f),
-                Padding = new Edges4(SidebarLibraryHeadRules.TitleHitInset, 0f, SidebarLibraryHeadRules.TitleHitInset, 0f),
+                Height = ClassicLibraryHeadLayout.ToolbarControl, Shrink = 1f, MinWidth = 0f,
+                Margin = new Edges4(ClassicLibraryHeadLayout.TitleX - SidebarGeometry.PaneEdge - ClassicLibraryHeadLayout.TitleHitInset, 4f, 0f, 4f),
+                Padding = new Edges4(ClassicLibraryHeadLayout.TitleHitInset, 0f, ClassicLibraryHeadLayout.TitleHitInset, 0f),
                 Corners = Radii.ControlAll,
                 Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
                 OnRealized = h => s.DropdownNode = h,
                 OnClick = () => OpenPages(page),
                 OnKeyDown = e => OnRingKey(SidebarLibraryHeadRules.HeadStop.Dropdown, e),
-                Children = [.. words, Icon(Icons.ChevronDown, SidebarLibraryHeadRules.TitleChevron, Tok.TextSecondary)],
+                Children = [.. words, Icon(Icons.ChevronDown, ClassicLibraryHeadLayout.TitleChevron, Tok.TextSecondary)],
             }.Interactive(new InteractionRecipe
             {
                 Fill = new StateBrush(Tok.FillSubtleTransparent, Tok.FillSubtleSecondary, Tok.FillSubtleTertiary, Tok.FillSubtleTransparent),
@@ -198,11 +198,11 @@ internal sealed class ClassicLibraryHead(INavLibraryHeadHost s) : Component
             }), title);
         return new BoxEl
         {
-            Key = "library-dropdown-row", ZStack = true, Height = SidebarLibraryHeadRules.DropdownRowHeight, Shrink = 0f,
+            Key = "library-dropdown-row", ZStack = true, Height = ClassicLibraryHeadLayout.DropdownRowHeight, Shrink = 0f,
             // The pill is ALWAYS mounted (lit or dark, like a row's): the pane's selection transaction needs the outgoing
             // node to animate it out when the route leaves the page (§P5.5 "Cross-container pill motion").
             Children = s.PaneRef is { } pane
-                ? [Embed.Comp(() => new Sidebar.SelectionPill(pane, DropdownPill, SidebarPillLane.Head)) with { Key = "lib-dropdown-pill" }, title0]
+                ? [Embed.Comp(() => new ClassicSelectionPill(pane, DropdownPill, SidebarPillLane.Head)) with { Key = "lib-dropdown-pill" }, title0]
                 : [title0],
         };
     }
@@ -258,7 +258,7 @@ internal sealed class ClassicLibraryHead(INavLibraryHeadHost s) : Component
         string route = s.Route;
         var home = s.DestOf("home");
         Element Tile(string key, string label, string glyph, bool selected, Action click)
-            => ToolTip.Wrap(Sidebar.EntityRow.Create(new Sidebar.RowSpec
+            => ToolTip.Wrap(ClassicEntityRow.Create(new ClassicRowSpec
             {
                 Key = key, Label = label, Shape = SidebarRowShape.Glyph, Tile = true, Glyph = glyph,
                 Focusable = true, Selected = selected, OnClick = click,
@@ -282,7 +282,7 @@ internal sealed class ClassicLibraryHead(INavLibraryHeadHost s) : Component
         Key = "library-breadcrumb",
         Direction = 0, Height = SidebarLibraryMetrics.BreadcrumbHeight, AlignItems = FlexAlign.Center, Gap = ClassicNavHeadLayout.BreadcrumbGap,
         // Optical lane: the 24-DIP box starts 6 before the lane so its 12-DIP GLYPH sits on it.
-        Padding = new Edges4(SidebarLibraryHeadRules.TitleX - SidebarGeometry.PaneEdge - 6f, 0f, SidebarGeometry.TrailingPad, 0f),
+        Padding = new Edges4(ClassicLibraryHeadLayout.TitleX - SidebarGeometry.PaneEdge - 6f, 0f, SidebarGeometry.TrailingPad, 0f),
         Animate = BreadcrumbFly,
         Children =
         [
@@ -390,14 +390,14 @@ internal sealed class ClassicLibraryChips(INavLibraryHeadHost s) : Component
 
         return ScrollView(new BoxEl
         {
-            Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Gap = SidebarLibraryHeadRules.ChipGap,
-            Padding = new Edges4(SidebarLibraryHeadRules.BandInsetX - SidebarGeometry.PaneEdge, 4f,
-                                 SidebarLibraryHeadRules.BandInsetX - SidebarGeometry.PaneEdge, 4f),
+            Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Gap = ClassicLibraryHeadLayout.ChipGap,
+            Padding = new Edges4(ClassicLibraryHeadLayout.BandInsetX - SidebarGeometry.PaneEdge, 4f,
+                                 ClassicLibraryHeadLayout.BandInsetX - SidebarGeometry.PaneEdge, 4f),
             OnKeyDown = e => Rove(e, hooks, nodes, focused, roved),
             Children = chips,
         }, horizontal: true) with
         {
-            Grow = 0f, Height = SidebarLibraryHeadRules.ChipRowHeight, AutoEdgeFade = true, SuppressScrollBar = true,
+            Grow = 0f, Height = ClassicLibraryHeadLayout.ChipRowHeight, AutoEdgeFade = true, SuppressScrollBar = true,
             ScrollKey = "sidebar.library.chips", Handle = scroll,
         };
     }
@@ -494,7 +494,7 @@ internal sealed class ClassicLibraryToolbar(INavLibraryHeadHost s) : Component
             _ = s.LayoutVersion.Value;
             var l = s.Doc.Library;
             var f = SidebarLibraryFilters.Effective((int)s.Filter.Value, l.HiddenKinds);
-            return SidebarLibraryHeadRules.ShapeOf(NavLibrary.PresentedWidth(inDrawer, vp.Value.Width),
+            return ClassicLibraryHeadLayout.ShapeOf(NavLibrary.PresentedWidth(inDrawer, vp.Value.Width),
                 Loc.Get(SidebarLibraryHeadRules.ToolbarSortKey(SidebarLibraryHeadRules.Effective(l.Sort, f))));
         }).Value;
         // Icon-only while searching (the box takes the row) and whenever the labelled row would not fit (§P5.1 ShapeOf).
@@ -532,7 +532,7 @@ internal sealed class ClassicLibraryToolbar(INavLibraryHeadHost s) : Component
                 case SidebarLibraryHeadRules.HeadTabStop.Create:
                     kids.Add(Embed.Comp(() => new ClassicNavCreateButton(s.Lib.CreatePlaylist, menu: s.CreateMenuFn,
                         drop: s.PaneRef?.HeaderCreateDropSpec(), dropActive: s.HeaderDropActiveFn,
-                        box: SidebarLibraryHeadRules.ToolbarControl, glyph: 14f)) with { Key = "lib-create" });
+                        box: ClassicLibraryHeadLayout.ToolbarControl, glyph: 14f)) with { Key = "lib-create" });
                     break;
                 case SidebarLibraryHeadRules.HeadTabStop.More:
                     kids.Add(ToolTip.Wrap(IconButton.Create(Icons.More, () => OpenOptions(moreAnchor.Value, filter), parts: moreParts,
@@ -543,9 +543,9 @@ internal sealed class ClassicLibraryToolbar(INavLibraryHeadHost s) : Component
             }
         return new BoxEl
         {
-            Key = "library-toolbar", Direction = 0, Height = SidebarLibraryHeadRules.ToolbarHeight, Shrink = 0f,
-            AlignItems = FlexAlign.Center, Gap = SidebarLibraryHeadRules.ToolbarGap,
-            Padding = new Edges4(SidebarLibraryHeadRules.BandInsetX - SidebarGeometry.PaneEdge, 4f, 0f, 4f),
+            Key = "library-toolbar", Direction = 0, Height = ClassicLibraryHeadLayout.ToolbarHeight, Shrink = 0f,
+            AlignItems = FlexAlign.Center, Gap = ClassicLibraryHeadLayout.ToolbarGap,
+            Padding = new Edges4(ClassicLibraryHeadLayout.BandInsetX - SidebarGeometry.PaneEdge, 4f, 0f, 4f),
             Children = [.. kids],
         };
     }
@@ -567,7 +567,7 @@ internal sealed class ClassicLibraryToolbar(INavLibraryHeadHost s) : Component
         var cell = new BoxEl
         {
             Key = "lib-view-" + (v == SidebarLibraryView.Grid ? "grid" : "list"),
-            Width = SidebarLibraryHeadRules.ToolbarControl, Height = SidebarLibraryHeadRules.ToolbarControl, Shrink = 0f,
+            Width = ClassicLibraryHeadLayout.ToolbarControl, Height = ClassicLibraryHeadLayout.ToolbarControl, Shrink = 0f,
             AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
             Fill = on ? Tok.FillSubtleSecondary : ColorF.Transparent,
             HoverFill = on ? Tok.FillSubtleTertiary : Tok.FillSubtleSecondary,
@@ -618,7 +618,7 @@ internal sealed class ClassicLibrarySearchBox(INavLibraryHeadHost s) : Component
                 // FirstFocusableIn (the node is not laid out in OnRealized).
                 OnRealized = h => post(() => hooks.FocusNode?.Invoke(hooks.FirstFocusableIn?.Invoke(h) ?? h, true)),
             };
-            pr[EditableText.PartLane] = b => b with { Padding = new Edges4(SidebarLibraryHeadRules.ToolbarControl, 0f, 4f, 0f) };
+            pr[EditableText.PartLane] = b => b with { Padding = new Edges4(ClassicLibraryHeadLayout.ToolbarControl, 0f, 4f, 0f) };
             return pr;
         }, DepKey.Empty);
 
@@ -626,7 +626,7 @@ internal sealed class ClassicLibrarySearchBox(INavLibraryHeadHost s) : Component
         {
             new BoxEl
             {
-                Key = "search:glyph", Width = SidebarLibraryHeadRules.ToolbarControl, Height = SidebarLibraryHeadRules.ToolbarControl,
+                Key = "search:glyph", Width = ClassicLibraryHeadLayout.ToolbarControl, Height = ClassicLibraryHeadLayout.ToolbarControl,
                 Shrink = 0f, HitTestVisible = false, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                 JustifySelf = FlexAlign.Start, AlignSelf = FlexAlign.Start,
                 Children = [Icon(Icons.Search, 16f, Tok.TextSecondary)],
@@ -634,7 +634,7 @@ internal sealed class ClassicLibrarySearchBox(INavLibraryHeadHost s) : Component
             Embed.Comp(() => new EditableText
             {
                 Text = s.Search, Placeholder = Loc.Get("sidebar.library.searchPlaceholder"),
-                Width = float.NaN, Height = SidebarLibraryHeadRules.ToolbarControl, FontSize = ClassicNavHeadLayout.LibrarySearchFontSize, Chromeless = true,
+                Width = float.NaN, Height = ClassicLibraryHeadLayout.ToolbarControl, FontSize = ClassicNavHeadLayout.LibrarySearchFontSize, Chromeless = true,
                 Parts = parts, ShowDeleteButton = true,   // the WinUI inline ✕ — clears, keeps focus
                 // BEFORE the editor's own revert-then-blur; true pre-empts it.
                 PreviewKeyDown = e =>
@@ -657,7 +657,7 @@ internal sealed class ClassicLibrarySearchBox(INavLibraryHeadHost s) : Component
         return new BoxEl
         {
             Key = "lib-search", ZStack = false, Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f,
-            Height = SidebarLibraryHeadRules.ToolbarControl, AlignItems = FlexAlign.Center, Corners = Radii.ControlAll,
+            Height = ClassicLibraryHeadLayout.ToolbarControl, AlignItems = FlexAlign.Center, Corners = Radii.ControlAll,
             Fill = Tok.FillSubtleSecondary,
             Children = [.. kids],
         };

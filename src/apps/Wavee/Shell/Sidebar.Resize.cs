@@ -76,16 +76,16 @@ public static class SidebarPaneModeRules
                     p.MinWidth, p.MaxWidth);
             }
             case SidebarPaneMode.Compact:
-                return SidebarRowGeometry.RailWidth;
+                return ShellPolicy.NavOr(policy).RailWidth;
             default:
                 return 0f;
         }
     }
 
     /// <summary>The overlay pane's width (the drawer in Minimal, the pane opened over a forced rail in Narrow): the
-    /// preference, leaving at least the 48-px rail's worth of page visible.</summary>
+    /// preference, leaving at least the rail's worth of page visible.</summary>
     public static float OverlayWidth(float preferredW, float viewportW, NavPanePolicy? policy = null)
-        => MathF.Max(0f, MathF.Min(SidebarPaneBounds.Clamp(preferredW, policy), viewportW - SidebarRowGeometry.RailWidth));
+        => MathF.Max(0f, MathF.Min(SidebarPaneBounds.Clamp(preferredW, policy), viewportW - ShellPolicy.NavOr(policy).RailWidth));
 
     /// <summary>Does a toggle / seam / double-click write <c>sidebar.pane.userCollapsed</c>? Only in a band that forces nothing
     /// (Wide in Classic) and never while editing.</summary>
@@ -147,11 +147,11 @@ public static class SidebarResizeRules
 
     public static Live Track(float raw, in State prev, bool editing, NavPanePolicy? policy = null)
     {
-        if (!float.IsFinite(raw))
-            return new(prev.UserCollapsed, prev.UserCollapsed ? SidebarRowGeometry.RailWidth : prev.ExpandedWidth, 1f);
         var p = ShellPolicy.NavOr(policy);
+        if (!float.IsFinite(raw))
+            return new(prev.UserCollapsed, prev.UserCollapsed ? p.RailWidth : prev.ExpandedWidth, 1f);
         bool collapsed = !editing && (prev.UserCollapsed ? raw < p.ExpandedEnterW : raw < p.RailEnterW);
-        if (collapsed) return new(true, SidebarRowGeometry.RailWidth, 1f);
+        if (collapsed) return new(true, p.RailWidth, 1f);
         float presented = Math.Clamp(raw, p.MinWidth, p.MaxWidth);
         float fade = editing || raw >= p.MinWidth ? 1f : SplitterFade(p.MinWidth - raw, p.CollapseApproach);
         return new(false, presented, fade);
@@ -161,7 +161,7 @@ public static class SidebarResizeRules
     {
         var live = Track(raw, in prev, editing, policy);
         return live.Collapsed
-            ? new(true, prev.ExpandedWidth, SidebarRowGeometry.RailWidth)
+            ? new(true, prev.ExpandedWidth, ShellPolicy.NavOr(policy).RailWidth)
             : new(false, live.PresentedWidth, live.PresentedWidth);
     }
 
@@ -170,7 +170,7 @@ public static class SidebarResizeRules
         var p = ShellPolicy.NavOr(policy);
         if (s.UserCollapsed)
         {
-            if (direction <= 0 || editing) return new(true, s.ExpandedWidth, SidebarRowGeometry.RailWidth);
+            if (direction <= 0 || editing) return new(true, s.ExpandedWidth, p.RailWidth);
             float back = Math.Clamp(s.ExpandedWidth, p.MinWidth, p.MaxWidth);
             return new(false, back, back);
         }
@@ -178,7 +178,7 @@ public static class SidebarResizeRules
         if (!p.Resizable) return new(false, s.ExpandedWidth, p.ExpandedWidthFor(s.ExpandedWidth));
         float next = s.ExpandedWidth + direction * (large ? NudgeLargeW : NudgeW);
         if (!editing && next < p.MinWidth && s.ExpandedWidth <= p.MinWidth)
-            return new(true, s.ExpandedWidth, SidebarRowGeometry.RailWidth);
+            return new(true, s.ExpandedWidth, p.RailWidth);
         float w = Math.Clamp(next, p.MinWidth, p.MaxWidth);
         return new(false, w, w);
     }
@@ -188,7 +188,7 @@ public static class SidebarResizeRules
         var p = ShellPolicy.NavOr(policy);
         return s.UserCollapsed
             ? new(false, s.ExpandedWidth, p.ExpandedWidthFor(s.ExpandedWidth))
-            : new(true, s.ExpandedWidth, SidebarRowGeometry.RailWidth);
+            : new(true, s.ExpandedWidth, p.RailWidth);
     }
 
     /// <summary>SplitterMath.Fade restated (CORE must not reference FluentGpu.Controls): 1 at 0, MinFade at <paramref name="over"/>.</summary>
