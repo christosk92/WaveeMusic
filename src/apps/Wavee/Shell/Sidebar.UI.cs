@@ -214,14 +214,6 @@ public static partial class Sidebar
         public bool Contains(int planIndex) => Count > 0 && planIndex >= Start && planIndex < Start + Count;
     }
 
-    /// <summary>The pane's one inset (the list's 4-px WinUI item margin + the 3-px content-grid top) and the shape of
-    /// each section's rows. Every band above or below the list reproduces <see cref="PanePad"/>'s horizontal 4.</summary>
-    internal static class PaneMetrics
-    {
-        public static readonly Edges4 PanePad = new(SidebarRowGeometry.PaneEdge, SidebarRowGeometry.PaneTopInset, SidebarRowGeometry.PaneEdge, 0f);
-        public const float PaneInsetH = SidebarRowGeometry.PaneEdge * 2f;
-    }
-
     // ══ 5. THE PANE ════════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>THE ONE SIDEBAR PANE RENDERER (0.2.9 <c>SidebarPane</c>).
@@ -410,7 +402,7 @@ public static partial class Sidebar
             InDrawer = inDrawer;
             Kit = kit;
             _deferredStage = kit.NewStageHold<PlanStage>();
-            _rowLayout = RepeatLayout.Extents(RowExtentSeed, estimatedExtent: SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine));
+            _rowLayout = RepeatLayout.Extents(RowExtentSeed, estimatedExtent: kit.PitchOf(SidebarRowShape.EntityTwoLine));
         }
 
         public override Element Render()
@@ -550,10 +542,11 @@ public static partial class Sidebar
             return -1;
         }
 
-        /// <summary>THE PANE'S ONE INSET: PaneMetrics.PanePad (4,3,4,0) around the virtualized list, and nowhere else.</summary>
+        /// <summary>THE PANE'S ONE INSET: the structure's list inset (<see cref="NavRowKit.ListInset"/>; Classic's is 4,3,4,0) around
+        /// the virtualized list, and nowhere else.</summary>
         Element PaddedList() => new BoxEl
         {
-            Key = "plan-pad", Direction = 1, Grow = 1f, Padding = PaneMetrics.PanePad,
+            Key = "plan-pad", Direction = 1, Grow = 1f, Padding = Kit.ListInset,
             Children = [PlanList()],
         };
 
@@ -1004,7 +997,7 @@ public static partial class Sidebar
 
             string? bandId = null;
             int bandStart = 0;
-            float bandExtent = SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine);
+            float bandExtent = Kit.PitchOf(SidebarRowShape.EntityTwoLine);
             for (int i = 0; i < rows.Count; i++)
             {
                 var row = rows[i];
@@ -1022,7 +1015,7 @@ public static partial class Sidebar
                     continue;
                 bandId = row.SectionId;
                 bandStart = i;
-                bandExtent = SidebarRowGeometry.PitchOf(section.Shape);
+                bandExtent = Kit.PitchOf(section.Shape);
             }
             if (bandId is not null) _bands.Add(new PaneBand(bandId, bandStart, rows.Count - bandStart, bandExtent));
         }
@@ -1041,7 +1034,7 @@ public static partial class Sidebar
 
         bool TrySectionBodyRange(string sectionId, out ItemDisclosureRange range)
         {
-            if (!SidebarRowGeometry.TrySectionBodyRange(Plan.Rows, sectionId, out int first, out int count))
+            if (!SidebarPlanQueries.TrySectionBodyRange(Plan.Rows, sectionId, out int first, out int count))
             {
                 range = default;
                 return false;
@@ -1052,7 +1045,7 @@ public static partial class Sidebar
 
         bool TryFolderDescendantRange(string folderId, out ItemDisclosureRange range)
         {
-            if (!SidebarRowGeometry.TryFolderDescendantRange(Plan.Rows, Plan.Entries, folderId, out int first, out int count))
+            if (!SidebarPlanQueries.TryFolderDescendantRange(Plan.Rows, Plan.Entries, folderId, out int first, out int count))
             {
                 range = default;
                 return false;
@@ -1130,7 +1123,7 @@ public static partial class Sidebar
         void BumpDisclosureEpochs(string id, bool folder, ItemDisclosureRange? band)
         {
             int header = folder
-                ? SidebarRowGeometry.FolderHeaderIndexOf(Plan.Rows, Plan.Entries, id)
+                ? SidebarPlanQueries.FolderHeaderIndexOf(Plan.Rows, Plan.Entries, id)
                 : SectionHeaderIndexOf(Plan, id);
             if (header >= 0) BumpRowEpoch(header);
             if (band is not { Count: > 0 } b) return;
@@ -1424,8 +1417,8 @@ public static partial class Sidebar
             // Same container and depth ⇒ the continuous worm; anything else — a depth change, or the pill moving between the
             // head, the list and the footer (design V.5) — scales out and in place, pivoting at the facing edges.
             bool sameLane = SidebarPillMotionRules.Slides(LaneOf(outgoing), LaneOf(incoming), to.X - from.X);
-            NavigationSelectionMotion.StartVertical(anim, outgoing, 0f, travel, SelectionPill.PillH, outgoing: true, sameDepth: sameLane);
-            NavigationSelectionMotion.StartVertical(anim, incoming, -travel, 0f, SelectionPill.PillH, outgoing: false, sameDepth: sameLane);
+            NavigationSelectionMotion.StartVertical(anim, outgoing, 0f, travel, Kit.PillHeight, outgoing: true, sameDepth: sameLane);
+            NavigationSelectionMotion.StartVertical(anim, incoming, -travel, 0f, Kit.PillHeight, outgoing: false, sameDepth: sameLane);
             _selectionFlightFrom = outgoing;
             _selectionFlightTo = incoming;
         }
@@ -1448,9 +1441,9 @@ public static partial class Sidebar
         /// <summary>The analytic seed extent (NaN = measure). Called only when the host seeds/resizes — never per frame.</summary>
         float RowExtentSeed(int index)
         {
-            if (!_planPublished) return SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine);
+            if (!_planPublished) return Kit.PitchOf(SidebarRowShape.EntityTwoLine);
             var rows = Plan.Rows;
-            if ((uint)index >= (uint)rows.Count) return SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine);
+            if ((uint)index >= (uint)rows.Count) return Kit.PitchOf(SidebarRowShape.EntityTwoLine);
             return Kit.ExtentOf(rows, index, SectionOf(rows[index].SectionId));
         }
 
@@ -1462,12 +1455,12 @@ public static partial class Sidebar
         /// <summary>The row's LIVE laid-out height (bound-safe: one peek + one rect read), 44 on any degenerate answer.</summary>
         internal float RowExtentOf(int index)
         {
-            if ((uint)index >= (uint)Plan.Rows.Count) return SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine);
-            float cross = MathF.Max(1f, Sidebar.Width.Peek() - PaneMetrics.PaneInsetH);
+            if ((uint)index >= (uint)Plan.Rows.Count) return Kit.PitchOf(SidebarRowShape.EntityTwoLine);
+            float cross = MathF.Max(1f, Sidebar.Width.Peek() - ListInsetH);
             var layout = _rowLayout.CustomLayout;
-            if (layout is null) return SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine);
+            if (layout is null) return Kit.PitchOf(SidebarRowShape.EntityTwoLine);
             float extent = layout.ItemRect(index, cross).H;
-            return float.IsFinite(extent) && extent > 0f ? extent : SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine);
+            return float.IsFinite(extent) && extent > 0f ? extent : Kit.PitchOf(SidebarRowShape.EntityTwoLine);
         }
 
         /// <summary>The normalized query that built the published plan (pane head, or V3's mode-global query).</summary>
@@ -1871,7 +1864,10 @@ public static partial class Sidebar
         // ── the facts the drop/menu halves read ────────────────────────────────────────────────────────────────────
 
         /// <summary>A row's content width (bound-safe signal read).</summary>
-        internal float ContentWidth => MathF.Max(0f, Sidebar.Width.Value - PaneMetrics.PaneInsetH);
+        internal float ContentWidth => MathF.Max(0f, Sidebar.Width.Value - ListInsetH);
+
+        /// <summary>What a row's content has less than the pane: the list inset's left and right (the structure's).</summary>
+        float ListInsetH => Kit.ListInset.Left + Kit.ListInset.Right;
 
         internal bool TreeSortedNonCustom => Config.TreeSortedNonCustom?.Invoke() ?? false;
 

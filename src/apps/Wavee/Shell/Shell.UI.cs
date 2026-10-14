@@ -151,7 +151,7 @@ public static partial class Shell
     // the approach band and the fade are all SidebarResizeRules (read off Sidebar.Seam).
     static Splitter.SplitterOptions SidebarSeamOptionsFor(Theming.NavPanePolicy nav) => new()
     {
-        Min = SidebarRowGeometry.RailWidth, Max = nav.MaxWidth, ShowIndicator = false,
+        Min = nav.RailWidth, Max = nav.MaxWidth, ShowIndicator = false,
     };
 
     // The indicator is the drag GUIDE (F243): the rail seam writes Ui.RailDragWidth, so nothing else moves until release;

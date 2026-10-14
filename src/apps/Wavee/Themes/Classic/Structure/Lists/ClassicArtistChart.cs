@@ -1,7 +1,8 @@
 // ── Themes/Classic/Structure/Lists/ClassicArtistChart.cs — Classic's artist Top-tracks chart (themes plan 6.1, T8c) ─────────────
 //
 // From `Entities/Artist.UI.Chart.cs` (the prototype row `ChartRowView`, the credit line, the pager's chevron, the skeleton source, the
-// header and the failed panel, and the cell's selection pill): the picture of the artist page's Top-tracks chart. `StyleKeys.ArtistChart`
+// header and the failed panel, and the cell's selection pill; T10b2 added the host's frame, the shelf's holder and the selection bar): the
+// picture of the artist page's Top-tracks chart. `StyleKeys.ArtistChart`
 // carries the templates the core chart host calls while it renders; the host keeps the readiness gate, the asks, the items and their
 // keys, the selection model, the drag payload, the menu, the play-from-here queue, the per-row memo that is a row's render gate, the
 // tier decision and the pager's controlled-pips state (see `Theming\Contracts\ArtistChartStyle.cs`).
@@ -21,6 +22,7 @@
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
@@ -34,7 +36,7 @@ using ChartCells = global::Wavee.Theming.Contracts.ArtistChartCells;
 internal static class ClassicArtistChart
 {
     /// <summary>The style Classic registers under <c>StyleKeys.ArtistChart</c>. Stateless: every host and a test share it.</summary>
-    public static readonly ArtistChartStyle Style = new(Metrics, Header, Row, Cell, Skeleton, Failed, Pager);
+    public static readonly ArtistChartStyle Style = new(Metrics, Frame, Shelf, Bar, Header, Row, Cell, Skeleton, Failed, Pager);
 
     /// <summary>Modern rows are 56 tall on a 12 gap, Classic's 48 on 8; the 264 card minimum is a BREAKPOINT (two columns when the chart column is
     /// 540 wide), and the maximum is uncapped on purpose.</summary>
@@ -43,6 +45,31 @@ internal static class ClassicArtistChart
                classic ? Spacing.S : ClassicArtistChartLayout.CellGap,
                classic ? Spacing.S : ClassicArtistChartLayout.HeaderGap,
                ClassicArtistChartLayout.MinCardWidth, ClassicArtistChartLayout.EdgeFade);
+
+    /// <summary>The chart's frame. The standard selection bar floats over the chart's own rows the moment the selection earns it
+    /// (SelectionBarRules.Visible); it is its own component, so a select/clear re-renders the bar and the bound row chrome, never the host or
+    /// the shelf. The page waits for the chart (`ArtistReadiness.BodyReady`), so this inner region joins no page-level skeleton group (that
+    /// coordination faded the hero from 0 after the photo was already decoded).</summary>
+    static Element Frame(ArtistChartFrameArgs a) => new BoxEl
+    {
+        Direction = 1, MinWidth = 0f,
+        Children =
+        [
+            ZStack(
+                new SkelRegionEl(
+                    Pending: a.Pending, Failed: a.Failed, Content: a.Content, ShimmerSource: a.Shimmer,
+                    OnFailed: a.OnFailed, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default,
+                    Group: null, SmoothResize: false),
+                a.Bar),
+        ],
+    };
+
+    /// <summary>A key on a component's ROOT is inert (ReconcileSingleChild pairs by type alone), so the keyed shelf is a CHILD of a pass-through
+    /// column (ch 08 §9 trap 2).</summary>
+    static Element Shelf(Element keyedShelf) => new BoxEl { Direction = 1, MinWidth = 0f, Children = [keyedShelf] };
+
+    /// <summary>The standard selection bar, standalone, 8 up from the chart's bottom.</summary>
+    static Element Bar(int count, Func<int, Element> lane) => Controls.SelectionBar(count, lane, standalone: true, bottomPadding: Spacing.S);
 
     static Element Header(string title, ColorF accent) => Controls.AccentHeader(title, accent);
 

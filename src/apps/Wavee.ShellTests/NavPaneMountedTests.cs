@@ -107,6 +107,37 @@ public sealed class NavPaneMountedTests(ShellHost host)
             }
         });
 
+    [Fact]
+    public void The_list_stands_inside_the_inset_the_kit_answers()
+        => host.Mounted(shell =>
+        {
+            shell.RunFrames(60);
+            var original = Sidebar.Layout.Peek();
+            try
+            {
+                if (original != SidebarLayoutId.Classic)
+                {
+                    Sidebar.SwitchLayout(SidebarLayoutId.Classic);
+                    shell.RunFrames(60);
+                }
+                var mode = Node(shell, "sidebar.classic");
+                Until(shell, () => HomeRowsIn(shell, mode).Count == 1, "the pane's Home row " + SidebarCatalogue.HomeRoute);
+                var inset = ClassicNavRows.Kit.ListInset;
+                var pad = shell.Host.Scene.AbsoluteRect(Node(shell, "plan-pad"));
+                var home = shell.Host.Scene.AbsoluteRect(HomeRowsIn(shell, mode)[0]);
+                Assert.Equal(pad.X + inset.Left, home.X, 0.5f);
+                Assert.Equal(pad.W - inset.Left - inset.Right, home.W, 0.5f);
+            }
+            finally
+            {
+                if (original != SidebarLayoutId.Classic)
+                {
+                    Sidebar.SwitchLayout(original);
+                    shell.RunFrames(60);
+                }
+            }
+        });
+
     /// <summary>The nodes keyed as the Home route inside the pane (the title bar has a Home of its own).</summary>
     static List<NodeHandle> HomeRowsIn(Shell.HeadlessShell shell, NodeHandle mode)
     {

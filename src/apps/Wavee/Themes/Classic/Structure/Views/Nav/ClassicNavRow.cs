@@ -5,11 +5,11 @@
 // the tree's closing gutter, the drop band, the selection pill and the drop cues). The core pane keeps planning, publishing and
 // the per-row epochs; this is what one row looks like. It reaches the pane only through `INavRowHost`.
 //
-// The row primitives it builds from (`Sidebar.EntityRow`, `Cover`, `Chevron`, `SelectionPill`, `Skeletons`, the pane text, loc
-// and glyph tables) stay in `Shell/Sidebar.UI.Rows.cs` for now: the flyouts, the Edit outline and the pages (`Sidebar.Chevron`,
-// `Sidebar.Cover.Liked`) still draw with them (T5c, T5d, T5f move them). T5b gave the structure the heads: the section header,
-// the separator, the "+" and the quiet count are `ClassicNavHead.cs`, the filter box is `ClassicNavFilter.cs`.
-// The menus, the drop specs, the flyouts and the grid cell are the host's until T5c-f give them to the structure.
+// The row primitives it builds from are Classic's (`ClassicEntityRow`, `ClassicSelectionPill`, `ClassicSkeletons`: `ClassicNavEntityRow.cs`,
+// `ClassicNavRowParts.cs`, T5f). What stays in `Shell/Sidebar.UI.Rows.cs` is shared with the pages: `Sidebar.Cover`, `Sidebar.Chevron`, the
+// pane text, loc and glyph tables. T5b gave the structure the heads: the section header, the separator, the "+" and the quiet count are
+// `ClassicNavHead.cs`, the filter box is `ClassicNavFilter.cs`; T5f the grid tile (`ClassicNavGridCell.cs`). The menus' rows and the drop
+// specs are the host's (core decides what a menu holds and where a drop lands).
 //
 // Numbers are `Rules\SidebarGeometry.cs` (the Classic ladder) -- WVTH003 allows no literal look here.
 
@@ -34,7 +34,7 @@ namespace Wavee.Themes.Classic;
 /// row kind has its own recycle pool (<c>ContentType</c> = row kind), so a header slot never rebinds into a
 /// chevron-less shape. A surface is PROPS-DRIVEN (<c>Embed.Comp(props, factory)</c> re-pushes the new <c>CardData</c>
 /// on every rebind), which is what makes it legal under a recycling slot: no constructor argument freezes at mount
-/// (the adapters are Sidebar.Cards.cs).</para>
+/// (the adapter is ClassicNavGridCell.cs).</para>
 ///
 /// <para>Rows never read playback or the route signal themselves: the pane reads both ONCE on behalf of every row
 /// (<see cref="INavRowHost.RowPlayState"/>, <see cref="INavRowHost.SelectedRoutePeek"/>).</para></summary>
@@ -91,7 +91,7 @@ internal sealed class ClassicNavRow : Component
             SidebarRowKind.FolderHeader => FolderRow(section, in row, index, sel),
             SidebarRowKind.GridStrip => GridStripRow(section, in row, sel),
             SidebarRowKind.Empty => EmptyRow(),
-            SidebarRowKind.Skeleton => Sidebar.Skeletons.Row(section.Shape,
+            SidebarRowKind.Skeleton => ClassicSkeletons.Row(section.Shape,
                 heightOverride: SidebarGeometry.HeightOf(section.Shape), artOverride: SidebarGeometry.ArtOf(section.Shape)),
             SidebarRowKind.TreeEnd => TreeEndRow(in row, index),
             SidebarRowKind.SectionTile => SectionTileRow(section, in row, index, sel),
@@ -170,7 +170,7 @@ internal sealed class ClassicNavRow : Component
         _pillState = new SidebarPillState(_o.PillRouteOf(index, sel), _o.RowSelectsRoute(index, sel), 0f,
             (SidebarGeometry.HeaderHeight - SidebarGeometry.PillH) * 0.5f);
         Func<SidebarPillState> probe = _pillProbe ??= PillState;
-        return ZStack(header, Embed.Comp(() => new Sidebar.SelectionPill(owner, probe)));
+        return ZStack(header, Embed.Comp(() => new ClassicSelectionPill(owner, probe)));
     }
 
     /// <summary>The transient Playlists filter (design V.11), under an open filter's header: the pane's query, focus ticket and close
@@ -284,7 +284,7 @@ internal sealed class ClassicNavRow : Component
                 isPlaylistRow: playlistRow, rootFacts: TreeRowFacts(index, in snapshot))
             : PinSpec(section, row.SectionId, index);
 
-        var spec = new Sidebar.RowSpec
+        var spec = new ClassicRowSpec
         {
             Key = row.Key,
             Label = label,
@@ -320,8 +320,8 @@ internal sealed class ClassicNavRow : Component
         };
         if (treeRow && rootlistItem) ApplyTreeSelection(ref spec, snapshot.Id, click);
         spec.LabelTooltip = LabelOverflows(label, row.Depth, spec.Trailing is null ? 0f : SidebarGeometry.CountTrail);
-        Element built = Sidebar.EntityRow.Create(in spec);
-        if (track) built = Sidebar.EntityRow.WithPlayTrackHint(built);
+        Element built = ClassicEntityRow.Create(in spec);
+        if (track) built = ClassicEntityRow.WithPlayTrackHint(built);
         // The pill stays in the row's own indent (31 per depth level), never the drop caret's gutter.
         return Indicator(Tipped(built, spec.LabelTooltip, label), selected, IndentOf(in row), height, route);
     }
@@ -374,7 +374,7 @@ internal sealed class ClassicNavRow : Component
                 rootFacts: TreeRowFacts(index, in snapshot))
             : PinSpec(section, row.SectionId, index, springLoad);
 
-        var spec = new Sidebar.RowSpec
+        var spec = new ClassicRowSpec
         {
             Key = row.Key,
             Label = label,
@@ -409,7 +409,7 @@ internal sealed class ClassicNavRow : Component
         // A folder is a pill anchor when it is the deepest visible ancestor of the route (rule 2 of §P1.2). Both drop
         // cues stay: the bottom band of an expanded header IS the "first child" slot, and the whole outdent gesture
         // happens on folder rows.
-        return Indicator(Tipped(Sidebar.EntityRow.Create(in spec), spec.LabelTooltip, label), _o.RowSelectsRoute(index, sel),
+        return Indicator(Tipped(ClassicEntityRow.Create(in spec), spec.LabelTooltip, label), _o.RowSelectsRoute(index, sel),
             IndentOf(in row), height, _o.PillRouteOf(index, sel));
     }
 
@@ -420,7 +420,7 @@ internal sealed class ClassicNavRow : Component
         string reason = Loc.Get(Strings.Sidebar.Pin.FolderMissing);
         float art = SidebarGeometry.ArtOf(section.Shape);
         var menu = _o.MissingFolderMenu(in entry);
-        var spec = new Sidebar.RowSpec
+        var spec = new ClassicRowSpec
         {
             Key = row.Key,
             Label = entry.Name.Length > 0 ? entry.Name : Loc.Get(Strings.Sidebar.V3.Kind.Folder),
@@ -437,13 +437,13 @@ internal sealed class ClassicNavRow : Component
             MenuOverlay = _o.MenuOverlay,
             Menu = menu,
         };
-        return Tipped(Sidebar.EntityRow.Create(in spec), true, reason);
+        return Tipped(ClassicEntityRow.Create(in spec), true, reason);
     }
 
     /// <summary>Does the one-line label truncate in this row? The pane's CURRENT width (peeked: a tooltip decision, not a
     /// subscription) minus the row's own ladder, through the one estimate <see cref="SidebarLabelFit"/> owns.</summary>
     bool LabelOverflows(string label, int depth, float trailing)
-        => SidebarLabelFit.Overflows(label, SidebarLabelFit.LabelWidth(_o.ExpandedWidth.Peek(), depth, trailing));
+        => SidebarLabelFit.Overflows(label, SidebarGeometry.LabelWidth(_o.ExpandedWidth.Peek(), depth, trailing));
 
     /// <summary>A row whose full label would truncate wears it as a tooltip. The slot owns the wrap, so the tooltip is the
     /// row's wrapper and a sibling of the drop cues, never a child of the row. A compact TILE always wears its label (the
@@ -469,14 +469,14 @@ internal sealed class ClassicNavRow : Component
         string id = section.Id;
         var owner = _o;
         owner.SetTileAnchor(index, TileAnchor);   // Enter on the focused tile opens the flyout from here
-        var spec = new Sidebar.RowSpec
+        var spec = new ClassicRowSpec
         {
             Key = row.Key, Label = Sidebar.PaneText.TitleOf(section), Shape = SidebarRowShape.Glyph, Tile = true,
             Glyph = Sidebar.PaneIcon.SectionGlyph(section.Kind), Selected = _o.RowSelectsRoute(index, sel),
             OnRealized = TileRealize,
             OnClick = () => owner.OpenSectionFlyout(id, TileAnchor),
         };
-        var built = ToolTip.Wrap(Sidebar.EntityRow.Create(in spec), spec.Label);
+        var built = ToolTip.Wrap(ClassicEntityRow.Create(in spec), spec.Label);
         return Indicator(built, spec.Selected, 0, SidebarGeometry.RowHeight, _o.PillRouteOf(index, sel));
     }
 
@@ -496,7 +496,7 @@ internal sealed class ClassicNavRow : Component
             : null;
         var menu = _o.RouteMenu(section, key, index);
 
-        var spec = new Sidebar.RowSpec
+        var spec = new ClassicRowSpec
         {
             Key = key,
             Label = title,
@@ -515,7 +515,7 @@ internal sealed class ClassicNavRow : Component
             DropTarget = PinSpec(section, section.Id, index),
         };
         spec.LabelTooltip = LabelOverflows(title, 0, spec.Trailing is null ? 0f : SidebarGeometry.CountTrail);
-        return Indicator(Tipped(Sidebar.EntityRow.Create(in spec), spec.LabelTooltip, title), selected, 0, height, key);
+        return Indicator(Tipped(ClassicEntityRow.Create(in spec), spec.LabelTooltip, title), selected, 0, height, key);
     }
 
     /// <summary>The empty Pinned band while a pinnable drag is live (design V.3): 36 tall in the 4,2 margin, a dashed
@@ -538,11 +538,11 @@ internal sealed class ClassicNavRow : Component
     /// count can starve cells below the 40-DIP cell floor, so this only WRAPS fewer cells per visual line
     /// (<c>SidebarGeometry.GridFallbackColumns</c>): the strip grows taller, its cells never narrower. The pane width
     /// is SUBSCRIBED so the cell edge re-flows with the seam. A cell's cover is its edge less the shared grid card's 2 × 8
-    /// plate padding (<see cref="SidebarCardRules.TileCover"/>), so the chosen column count is honoured down to the floor.</para></summary>
+    /// plate padding (<see cref="SidebarGeometry.TileCover"/>), so the chosen column count is honoured down to the floor.</para></summary>
     Element GridStripRow(SidebarSection section, in SidebarRow row, string sel)
     {
         float pane = _o.ExpandedWidth.Value;
-        int cols = Math.Clamp(_o.GridColumns, 2, 4);
+        int cols = Math.Clamp(_o.GridColumns, SidebarGeometry.GridMinColumns, SidebarGeometry.GridMaxColumns);
         float gap = Spacing.S;
         float avail = pane - SidebarGeometry.PaneInsetH;
         int fitCols = SidebarGeometry.GridFallbackColumns(cols, avail, gap, Sidebar.Cover.S40);
@@ -567,12 +567,13 @@ internal sealed class ClassicNavRow : Component
     /// <summary>One cell of a grid strip: the shared media surface at the tile shape, in a column of the strip's derived
     /// width (a component anchor mirrors its rendered child's size rather than carrying flex props, so the width lands on
     /// this thin wrapper). Selection, the title gate (Trap 5), the activation, the play, the menu, the drag and the drop spec
-    /// are <see cref="SidebarCards.Tile"/>'s — a grid cell is a different renderer, not a different rule.</summary>
+    /// are <see cref="ClassicNavGridCell"/>'s (over core's <see cref="SidebarCardRules"/>) — a grid cell is a different renderer, not a
+    /// different rule.</summary>
     Element GridCell(SidebarSection section, SidebarLibraryEntry entry, float edge, string sel)
         => new BoxEl
         {
             Direction = 1, Width = edge, Shrink = 0f,
-            Children = [_o.GridCell(section, in entry, edge, sel)],
+            Children = [ClassicNavGridCell.Build(_o, section, in entry, edge, sel)],
         };
 
     // ── degraded rows ────────────────────────────────────────────────────────────────────────────────────────────
@@ -609,7 +610,7 @@ internal sealed class ClassicNavRow : Component
     /// because Ctrl/Shift are the gesture; <paramref name="plain"/> is the row's ordinary verb, which a plain click still
     /// runs after clearing the selection. The check lane reads the live selection through BOUND thunks (a selection
     /// change re-skins it with no re-render); the quiet plate is a value the pane's epoch bump re-renders.</summary>
-    void ApplyTreeSelection(ref Sidebar.RowSpec spec, string entryId, Action? plain)
+    void ApplyTreeSelection(ref ClassicRowSpec spec, string entryId, Action? plain)
     {
         if (entryId.Length == 0) return;
         var owner = _o;
@@ -704,7 +705,7 @@ internal sealed class ClassicNavRow : Component
             Top: SidebarGeometry.PillTop(height));
         var owner = _o;
         Func<SidebarPillState> probe = _pillProbe ??= PillState;
-        return ZStack(DropPlate(), row, Embed.Comp(() => new Sidebar.SelectionPill(owner, probe)), InsertionLine());
+        return ZStack(DropPlate(), row, Embed.Comp(() => new ClassicSelectionPill(owner, probe)), InsertionLine());
     }
 
     /// <summary>THE "INTO" PLATE (W16): mounted once per row, ALWAYS, as the ZStack's first child — accent@0.18 with a

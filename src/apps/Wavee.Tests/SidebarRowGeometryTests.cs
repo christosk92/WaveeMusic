@@ -6,7 +6,7 @@ using Xunit;
 
 namespace Wavee.Tests;
 
-// ── SidebarRowGeometry: the one row ladder, pinned to the WinUI NavigationView numbers it was drawn from ──────────────
+// ── SidebarGeometry (Classic): the one row ladder, pinned to the WinUI NavigationView numbers it was drawn from ──────────────
 //
 // Pure numbers. A retune of any of these is a visible change to every sidebar row, so each one is pinned here rather
 // than inferred from a rendered screenshot.
@@ -71,54 +71,51 @@ public sealed class SidebarRowGeometryTests
     }
 }
 
-// ── The transitional mirror: core's `SidebarRowGeometry` equals Classic's `SidebarGeometry` (T5a) ────────────────────────
+// ── What core asks the structure (T5f: there is no core copy of the ladder any more) ─────────────────────────────────────
 //
-// The ladder is Classic's (`Themes/Classic/Structure/Rules/SidebarGeometry.cs`). Core keeps a copy of exactly the members the
-// sub-surfaces that are still core read (the heads, the flyouts, the Edit outline, the drop rules, the resize rules, the shared
-// row primitives), until T5b-f move them. A copy that drifts is a sidebar whose head and rows disagree, so every shared constant
-// and every shared function is pinned equal here; the day the last reader moves, the copy and this class go.
-public sealed class SidebarGeometryParityTests
+// Core's pane reads the ladder only through the kit (`NavRowKit`) and the rail's width through the policy. Classic answers from
+// `SidebarGeometry`; these facts pin the answers, so a retune cannot leave core's seed extents, the list's inset or the drop
+// resolver's depth ladder disagreeing with the rows.
+public sealed class SidebarGeometryKitTests
 {
     [Fact]
-    public void Every_constant_core_keeps_is_the_value_classic_declares()
+    public void TheKitAnswersFromTheLadder()
     {
-        var mismatches = new List<string>();
-        foreach (var core in typeof(SidebarRowGeometry).GetFields(BindingFlags.Public | BindingFlags.Static))
-        {
-            if (!core.IsLiteral) continue;
-            var classic = typeof(SidebarGeometry).GetField(core.Name, BindingFlags.Public | BindingFlags.Static);
-            if (classic is null || !classic.IsLiteral) { mismatches.Add(core.Name + ": missing in Classic"); continue; }
-            if (!Equals(classic.GetRawConstantValue(), core.GetRawConstantValue()))
-                mismatches.Add(core.Name + ": Classic " + classic.GetRawConstantValue() + ", core " + core.GetRawConstantValue());
-        }
-        Assert.Empty(mismatches);
+        var kit = ClassicNavRows.Kit;
+        Assert.Equal(new Wavee.Theming.Contracts.NavTreeLadder(SidebarGeometry.TreeContentX(0), SidebarGeometry.IndentStep), kit.TreeLadder);
+        Assert.Equal(SidebarGeometry.ListInset, kit.ListInset);
+        Assert.Equal(SidebarGeometry.PillH, kit.PillHeight);
+        foreach (var shape in new[] { SidebarRowShape.Glyph, SidebarRowShape.EntityTwoLine, SidebarRowShape.EntityOneLine })
+            Assert.Equal(SidebarGeometry.PitchOf(shape), kit.PitchOf(shape));
     }
 
-    [Theory]
-    [InlineData(SidebarRowShape.Glyph)]
-    [InlineData(SidebarRowShape.EntityTwoLine)]
-    [InlineData(SidebarRowShape.EntityOneLine)]
-    public void The_shape_functions_agree(SidebarRowShape shape)
+    [Fact]
+    public void TheListInset_IsTheItemMarginAndTheTopInset()
     {
-        Assert.Equal(SidebarGeometry.HeightOf(shape), SidebarRowGeometry.HeightOf(shape));
-        Assert.Equal(SidebarGeometry.PitchOf(shape), SidebarRowGeometry.PitchOf(shape));
-        Assert.Equal(SidebarGeometry.ArtOf(shape), SidebarRowGeometry.ArtOf(shape));
-        Assert.Equal(SidebarGeometry.SubtitleVisible(shape, "48 songs"), SidebarRowGeometry.SubtitleVisible(shape, "48 songs"));
-        Assert.Equal(SidebarGeometry.SubtitleVisible(shape, ""), SidebarRowGeometry.SubtitleVisible(shape, ""));
+        Assert.Equal(new FluentGpu.Foundation.Edges4(4f, 3f, 4f, 0f), SidebarGeometry.ListInset);
+        Assert.Equal(8f, SidebarGeometry.PaneInsetH);
     }
 
-    [Theory]
-    [InlineData(-1)]
-    [InlineData(0)]
-    [InlineData(1)]
-    [InlineData(2)]
-    [InlineData(3)]
-    [InlineData(9)]
-    public void The_depth_functions_agree(int depth)
+    [Fact]
+    public void TheRailWidth_IsThePolicys() => Assert.Equal(SidebarGeometry.RailWidth, ClassicPolicies.NavPane.RailWidth);
+
+    [Fact]
+    public void GridColumns_Clamped()
     {
-        Assert.Equal(SidebarGeometry.ClampDepth(depth), SidebarRowGeometry.ClampDepth(depth));
-        Assert.Equal(SidebarGeometry.IndentFor(depth), SidebarRowGeometry.IndentFor(depth));
-        Assert.Equal(SidebarGeometry.TreeContentX(depth), SidebarRowGeometry.TreeContentX(depth));
+        Assert.Equal(2, SidebarGeometry.GridColumns(240f));
+        Assert.Equal(2, SidebarGeometry.GridColumns(300f));
+        Assert.Equal(3, SidebarGeometry.GridColumns(420f));
+        Assert.Equal(4, SidebarGeometry.GridColumns(560f));
+        Assert.Equal(4, SidebarGeometry.GridColumns(900f));
+        Assert.Equal(2, SidebarGeometry.GridColumns(float.NaN));
+    }
+
+    [Fact]
+    public void LabelWidth_IsThePaneLessTheRowsLadder()
+    {
+        // 320 - 8 (list insets) - 0 (indent) - 42 (icon column) - 8 (label gap) - 14 (trailing pad) - 28 (count).
+        Assert.Equal(220f, SidebarGeometry.LabelWidth(320f, 0, 28f));
+        Assert.Equal(220f - 31f, SidebarGeometry.LabelWidth(320f, 1, 28f));
     }
 
     // ── the insertion caret's geometry (moved from SidebarDropCueTests with the pictures) ──
