@@ -112,8 +112,6 @@ public class VisualizerPaletteTests
         var p = P.From(accent, Schemes[0], dark: true);
         Assert.Equal(accent, p.Accent);
         Assert.Equal(1f, p.A.A); Assert.Equal(1f, p.B.A); Assert.Equal(1f, p.C.A); Assert.Equal(1f, p.Deep.A);
-        Assert.Equal(P.WashAlphaDark, p.WashA);
-        Assert.Equal(P.WashAlphaLight, P.From(accent, Schemes[0], dark: false).WashA);
     }
 
     [Fact]

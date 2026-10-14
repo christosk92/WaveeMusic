@@ -89,8 +89,8 @@ public class StageLayoutAxisTests
         Assert.True(Rules.FaceAmbient(VL.LargeArt)); Assert.True(Rules.FaceAmbient(VL.Centered));
         Assert.False(Rules.FaceAmbient(VL.Card)); Assert.False(Rules.FaceAmbient(VL.Artist));
         // the scrim sits over the backdrop face only; Card has none
-        Assert.True(Rules.BackdropScrim(VL.LargeArt, Visualizer.Kind.Ring) > 0f);
-        Assert.Equal(0f, Rules.BackdropScrim(VL.Card, Visualizer.Kind.Mosaic));
+        Assert.True(Rules.BackdropScrim(VL.LargeArt) > 0f);
+        Assert.Equal(0f, Rules.BackdropScrim(VL.Card));
         Assert.True(Rules.KeysStepFaces(VL.Centered)); Assert.False(Rules.KeysStepFaces(VL.Artist));
     }
 
@@ -159,13 +159,10 @@ public class StageLayoutAxisTests
             Assert.Equal((l.PaneX, l.PaneTop, l.PaneW, l.PaneH), l.PaneRect(in k));
             Assert.Equal(0f, l.StripH(in k));
             Assert.Equal(Stage.Tone.ScrimFor(mode, Visualizer.Kind.Bloom), Rules.ScrimFor(mode, VL.Artist, Visualizer.Kind.Bloom));
-            Assert.Equal(Visualizer.Field.BaseOpacity(0.3f, false), Rules.BaseFieldFor(0.3f, mode, VL.LargeArt));
         }
-        // Visualizer mode in Card is the same plain look; under a layout the scrim and the field take the Lyrics-mode depth
+        // Visualizer mode in Card is the same plain look; under a layout the scrim takes the Lyrics-mode depth
         Assert.Equal(Stage.Tone.ScrimFor(M.Visualizer, Visualizer.Kind.Bloom), Rules.ScrimFor(M.Visualizer, VL.Card, Visualizer.Kind.Bloom));
         Assert.Equal(Stage.Tone.ScrimA, Rules.ScrimFor(M.Visualizer, VL.Centered, Visualizer.Kind.Bloom));
-        Assert.Equal(Visualizer.Field.BaseOpacity(0.3f, true), Rules.BaseFieldFor(0.3f, M.Visualizer, VL.Card));
-        Assert.Equal(Visualizer.Field.BaseOpacity(0.3f, false), Rules.BaseFieldFor(0.3f, M.Visualizer, VL.Artist));
     }
 
     [Fact]
@@ -178,18 +175,6 @@ public class StageLayoutAxisTests
         Assert.Equal(VL.LargeArt, Rules.Step(VL.Centered, -1));
         for (int i = 0; i < 12; i++)
             Assert.NotEqual(VL.Card, Rules.Step((VL)(1 + i % 3), i % 2 == 0 ? 1 : -1));
-    }
-
-    [Fact]
-    public void The_layout_grid_cursor_moves_within_its_two_by_two()
-    {
-        Assert.Equal(1, Rules.CardNav(0, 39));   // → from Card to Large art
-        Assert.Equal(0, Rules.CardNav(1, 37));
-        Assert.Equal(2, Rules.CardNav(0, 40));   // ↓ from Card to Centered
-        Assert.Equal(0, Rules.CardNav(2, 38));
-        Assert.Equal(3, Rules.CardNav(1, 40));
-        Assert.Equal(2, Rules.CardNav(3, 37));
-        Assert.Equal(1, Rules.CardNav(1, 13));   // any other key leaves it
     }
 
     [Fact]
@@ -399,9 +384,6 @@ public class StageLayoutAxisTests
         Assert.Equal(Layout.TopBarH + 16f + 48f + 18f, pane.Y, 2);
         Assert.True(pane.Y + pane.H <= l.StripTop(in k) + 0.01f);
         Assert.Equal((17f, 22f), l.TitleFont(in k));
-        // the pane type scale follows the pane the look gives it, not the Lyrics-mode pane
-        Assert.True(l.LyricsTypeScaleFor(in k) >= 1f);
-        Assert.Equal(l.LyricsTypeScale, l.LyricsTypeScaleFor(Look.Plain(M.Lyrics)));
     }
 
     [Fact]

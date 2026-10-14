@@ -22,7 +22,6 @@
 // slider and colour picker are therefore tiny components that keep one stable signal in step with the live option value
 // through an effect (`GeneratedOptionRow.Live`), exactly as the zoom and player-style combos do.
 
-using FluentGpu;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;

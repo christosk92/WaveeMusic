@@ -123,9 +123,6 @@ public static partial class Shell
         /// <summary>▶ is offered for everything that can play (not a profile, not a genre).</summary>
         public static bool CanPlay(ItemKind kind) => kind is not (ItemKind.User or ItemKind.Genre);
 
-        /// <summary>♡ is offered on a SONG row only.</summary>
-        public static bool ShowsHeart(ItemKind kind) => kind == ItemKind.Track;
-
         /// <summary>People are circles (radius 22); everything else a 5-DIP rounded square.</summary>
         public static bool IsCircular(ItemKind kind) => kind is ItemKind.Artist or ItemKind.User;
 
@@ -388,9 +385,6 @@ public sealed class OmnibarModel : IOmnibarVerbs
 
     /// <summary>The icon-mode flyout is open — read with <see cref="SearchFocused"/> by the allocator.</summary>
     public Signal<bool> FlyoutOpen { get; } = new(false);
-
-    /// <summary>The ports (the per-mount fetch reads the source and the fallback through them).</summary>
-    public OmnibarPorts Ports => _ports;
 
     // ── what a theme's view reads (T4b): the members below name no `Shell` type, so a view in Themes\** can use them ─────
 

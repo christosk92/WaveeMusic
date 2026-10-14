@@ -15,8 +15,8 @@
 // DELETED IN WAVE L2 (no legacy paths — their consumers went with them): `SortViewPill` / `SortPanel` and their two
 // hosts (the word rail replaced the sort pill outright), `DiscoRow` / `DiscoCard` / `DiscoSubtitle` / `AlbumCode` (the
 // discography grid pane is gone; `Artist.Reader` stacks art + tracks blocks instead) and `GoToArtistLink` (the reader's
-// doorway is a `Controls.Named` icon button). `SortLabelKey` / `SortLabel` / `ViewGlyph` / `IsGridView` /
-// `IsCompactView` STAY: the sidebar's Library V3 shares the codes and `ViewPanel` still draws the view glyphs.
+// doorway is a `Controls.Named` icon button). `ViewGlyph` / `IsGridView` / `IsCompactView` STAY: the sidebar's Library
+// V3 shares the codes and `ViewPanel` still draws the view glyphs.
 //
 // MOVED IN PODCAST WAVE P1 (podcast-show-rework-implementation.md §5.5): the rail itself — `RailBar`, `RailWord`,
 // `RailInk`, `WordRailHost` and the RailWord* metrics — is `Controls.Words` now, shared with the podcast reader. Only
@@ -60,20 +60,6 @@ public readonly record struct LibraryNavItem(EntityKind Kind, int Slot, uint Ver
 public readonly partial struct User
 {
     // ══ 1. THE PERSISTED CODES (shared with the sidebar's Library V3 — never renumber) ═══════════════════════════════
-
-    /// <summary>Sort code → its Title-Case loc KEY. Codes 0..4 are persisted (<c>library.&lt;kind&gt;.sort</c>); unknown →
-    /// Recents. The library's own rail reads the lowercase <c>library.rail.*</c> keys through
-    /// <see cref="LibraryWordRail.WordKey"/> — these labels are the SIDEBAR's (Library V3's pills share the codes).</summary>
-    public static string SortLabelKey(int code) => code switch
-    {
-        1 => Strings.Library.Sort.RecentlyAdded,
-        2 => Strings.Library.Sort.Alphabetical,
-        3 => Strings.Library.Sort.Creator,
-        4 => Strings.Library.Sort.ReleaseDate,
-        _ => Strings.Library.Sort.Recents,
-    };
-
-    public static string SortLabel(int code) => Loc.Get(SortLabelKey(code));
 
     /// <summary>View code (0 CompactList · 1 List · 2 CompactGrid · 3 Grid) → its glyph (the view toggle's and the view
     /// panel's four cells; the sidebar's own switch reads the same codes).</summary>

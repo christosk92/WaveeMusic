@@ -156,8 +156,7 @@ public class LibraryWordRailTests
     [Fact]
     public void WordKey_IsTheRailsOwnKeySet_NotThePillsLabels()
     {
-        // The rail's words are lowercase ("added", "a–z"); the sidebar's Library V3 shares `library.sort.*` for codes 0–3
-        // and would have gone lowercase with them, so the rail got its own `library.rail.*` block (plan §5.9).
+        // The rail's words are lowercase ("added", "a–z") and live in their own `library.rail.*` block (plan §5.9).
         for (int code = 0; code <= 5; code++)
             Assert.StartsWith("library.rail.", LibraryWordRail.WordKey((LibraryNavSort)code), StringComparison.Ordinal);
     }

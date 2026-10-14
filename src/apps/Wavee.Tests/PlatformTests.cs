@@ -410,8 +410,6 @@ public class PlatformSettingsTests
     [Fact]
     public void PerSubjectKeys_SpellTheirPersistedNames()
     {
-        Assert.Equal("detail.sort.col:spotify:album:x", Platform.Keys.DetailSortCol("spotify:album:x").Name);
-        Assert.Equal("detail.sort.desc:spotify:album:x", Platform.Keys.DetailSortDesc("spotify:album:x").Name);
         Assert.Equal("library.artists.leftw", Platform.Keys.LibraryLeftW("artists").Name);
         Assert.Equal(280f, Platform.Keys.LibraryLeftW("artists").Default);      // artists is the one narrow default
         Assert.Equal(340f, Platform.Keys.LibraryLeftW("albums").Default);

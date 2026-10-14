@@ -20,7 +20,6 @@
 // `Settings.Open(Tab)`; `Settings.SendTestEvent` (owner S assigns the notification simulator, G-218). The Appearance,
 // Playback, Storage, Privacy & diagnostics and About bodies live in their named partials.
 
-using System.Globalization;
 using FluentGpu;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -29,7 +28,6 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Rhi.D3D12;
 using FluentGpu.Signals;
-using FluentGpu.WindowsApi.Notifications;
 using FluentGpu.WindowsApi.Packaging;
 using static FluentGpu.Dsl.Ui;
 
@@ -299,16 +297,6 @@ public static partial class Settings
         Children = [content],
     };
 
-    /// <summary>A compact toggle over one bool key: a FRESH signal seeded from the store (the store is the truth, never
-    /// a mirror), the write, the optional after-write hop, then the page bump.</summary>
-    static Element Toggle(SettingKey<bool> key, Action<bool>? afterWrite = null, bool isEnabled = true)
-        => ToggleSwitch.Create(new Signal<bool>(Platform.Settings.Get(key)), onChange: on =>
-        {
-            Platform.Settings.Set(key, on);
-            afterWrite?.Invoke(on);
-            Bump();
-        }, isEnabled: isEnabled, style: SettingsCard.CompactToggleStyle());
-
     /// <summary>The document's row <paramref name="id"/> of <paramref name="tab"/>.</summary>
     static SettingsRow D(Tab tab, string id) => SettingsDoc.Row(tab, id);
 
@@ -336,14 +324,6 @@ public static partial class Settings
     /// <summary>N11: every destructive action confirms through the ONE dialog shape, Cancel the default button.</summary>
     static void ConfirmThen(string title, string body, string primaryText, Action onConfirm)
         => Controls.Confirm(s_overlay, title, body, primaryText, onConfirm);
-
-    /// <summary>The shared "still reading" block (ch 27 §3 ProgressRing sizes: 28 page, 20 census, 18 roster).</summary>
-    static Element Loading(float size = 28f) => new BoxEl
-    {
-        Grow = 1f, Shrink = 1f, MinHeight = 0f, Direction = 1,
-        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        Children = [ProgressRing.Create(size: size)],
-    };
 
     /// <summary>Open a URI through the host (ms-settings:, https:), fail-soft.</summary>
     static void OpenUri(string uri) => SettingsVerbs.OpenUri(uri);

@@ -233,7 +233,6 @@ public class SidebarPinIdentityTests
             Assert.Equal(SidebarEntryKind.AppRoute, SidebarPinId.KindOf(route));
         }
         Assert.Null(SidebarPinId.FromRoute("settings"));
-        Assert.False(SidebarPinId.IsPinnableRoute("settings"));
         Assert.Null(SidebarPinId.FromRoute("playback-diagnostics"));
         Assert.Null(SidebarPinId.FromRoute(""));
         Assert.Null(SidebarPinId.FromRoute(null));
@@ -250,7 +249,6 @@ public class SidebarPinIdentityTests
     {
         Assert.Contains("recents", SidebarPinId.PinnableRoutes);
         Assert.Equal("recents", SidebarPinId.FromRoute("recents"));
-        Assert.True(SidebarPinId.IsPinnableRoute("recents"));
         Assert.Equal(SidebarEntryKind.AppRoute, SidebarPinId.KindOf("recents"));
         Assert.Equal("recents", SidebarPinId.RouteOf("recents"));
         Assert.Equal("", SidebarPinId.UriOf("recents"));            // a route pin carries no entity uri

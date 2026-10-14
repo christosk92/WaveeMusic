@@ -1,6 +1,7 @@
 // ── Wavee.Tests/HomeCardTextTests.cs — the card vocabulary's number / duration / blurb formats (Wave 5, owner P) ────
 //
-// 0.2.9 `HomeCards.Duration/Hours/CompactNumber/FirstSentence` + `SpotifyExportMapper.ToPlainText`, which had no tests.
+// 0.2.9 `HomeCards.Duration/Hours/CompactNumber/FirstSentence` + `SpotifyExportMapper.ToPlainText`, which had no tests
+// (`CompactNumber` lives on as `Detail.Text.CompactCount`).
 // Every expected duration string is built from the SAME typed `Strings.*` call the rule uses (no hardcoded English), and
 // every culture-dependent fact pins a culture CLONED from invariant (the repo builds with InvariantGlobalization, where a
 // named culture cannot be constructed) and restores the previous one.
@@ -68,7 +69,7 @@ public class HomeCardTextTests
     public void Hours_is_culture_aware_on_the_value()
         => Assert.Equal("1,3 h", WithCulture(Comma(), () => HomeCardText.Hours(4_680_000)));
 
-    // ── CompactNumber ───────────────────────────────────────────────────────────────────────────────────────────────
+    // ── CompactCount (0.2.9 CompactNumber) ───────────────────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData(1_234_567_890L, "1.2B")]
@@ -77,14 +78,14 @@ public class HomeCardTextTests
     [InlineData(1_000L, "1K")]
     [InlineData(999L, "999")]
     [InlineData(0L, "0")]
-    public void CompactNumber_truncates_to_one_decimal_and_a_suffix(long n, string expected)
-        => Assert.Equal(expected, WithCulture(CultureInfo.InvariantCulture, () => HomeCardText.CompactNumber(n)));
+    public void CompactCount_truncates_to_one_decimal_and_a_suffix(long n, string expected)
+        => Assert.Equal(expected, WithCulture(CultureInfo.InvariantCulture, () => Detail.Text.CompactCount(n)));
 
     [Fact]
-    public void CompactNumber_uses_the_cultures_own_separators()
+    public void CompactCount_uses_the_cultures_own_separators()
     {
-        Assert.Equal("1,5M", WithCulture(Comma(), () => HomeCardText.CompactNumber(1_500_000)));
-        Assert.Equal("5,6K", WithCulture(Comma(), () => HomeCardText.CompactNumber(5_600)));
+        Assert.Equal("1,5M", WithCulture(Comma(), () => Detail.Text.CompactCount(1_500_000)));
+        Assert.Equal("5,6K", WithCulture(Comma(), () => Detail.Text.CompactCount(5_600)));
     }
 
     // ── FirstSentence + PlainText ───────────────────────────────────────────────────────────────────────────────────

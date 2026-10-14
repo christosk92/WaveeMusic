@@ -23,14 +23,12 @@
 // tiles the cover paints, the edit verbs, the permission verdicts); each builds one props record per render and mounts its key.
 
 using System.Globalization;
-using FluentGpu;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
-using FluentGpu.Scene;
 using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;

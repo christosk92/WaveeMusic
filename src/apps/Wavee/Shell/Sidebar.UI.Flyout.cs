@@ -11,7 +11,6 @@
 
 using FluentGpu.Controls;
 using FluentGpu.Foundation;
-using FluentGpu.Scene;
 using Wavee.Theming.Contracts;
 using ViewSlots = FluentGpu.Theming.Slots;
 

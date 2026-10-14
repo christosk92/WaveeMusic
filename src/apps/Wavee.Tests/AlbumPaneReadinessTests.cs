@@ -8,12 +8,9 @@
 // The 2026-09-18 correction is the second half of that defect. The row fact used to be one flag, "unnamed", that mixed
 // "this row has no title" with "a credited artist of this row has no name" — and NOBODY demands `ArtistFields.Name` for a
 // track's credits, so the second half can never land and the pane shimmered forever on a perfectly renderable tracklist.
-// Only the TITLE gates now; the unnamed credit is a notice over a rendered list (`Detail.NoticeRules`). The legacy
-// five-argument overload — the shape the pane and the reader still call, `anyUnnamed:` and all — accepts that flag and
-// IGNORES it, which is exactly the unblocking.
+// Only the TITLE gates now; the unnamed credit is a notice over a rendered list (`Detail.NoticeRules`).
 //
-// Pinned here: the whole state table exhaustively over both overloads, the named cases the defect is about, that the
-// legacy overload can no longer be held in a skeleton by an unnamed credit, and the counted shimmer's floor.
+// Pinned here: the whole state table exhaustively, the named cases the defect is about, and the counted shimmer's floor.
 
 using Xunit;
 
@@ -25,10 +22,6 @@ public class AlbumPaneReadinessTests
     static AlbumPaneState Of(bool id, EdgeState tracks, bool edgeFailed, bool untitled, bool rowsFailed)
         => AlbumPaneReadiness.Of(id, tracks, edgeFailed, new AlbumRowFacts(untitled, rowsFailed));
 
-    /// <summary>The LEGACY five-argument rule: its fourth argument is the mixed "unnamed" flag, which no longer gates.</summary>
-    static AlbumPaneState Legacy(bool id, EdgeState tracks, bool edgeFailed, bool unnamed, bool rowsFailed)
-        => AlbumPaneReadiness.Of(id, tracks, edgeFailed, anyUnnamed: unnamed, rowsFailed: rowsFailed);
-
     // ── the four states, one named fact each ────────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -38,7 +31,6 @@ public class AlbumPaneReadinessTests
         // everything below it: there is no title to draw a failure strip under.
         Assert.Equal(AlbumPaneState.Header, Of(false, EdgeState.Unknown, false, false, false));
         Assert.Equal(AlbumPaneState.Header, Of(false, EdgeState.Complete, true, true, true));
-        Assert.Equal(AlbumPaneState.Header, Legacy(false, EdgeState.Complete, true, true, true));
     }
 
     [Fact]
@@ -46,7 +38,6 @@ public class AlbumPaneReadinessTests
     {
         Assert.Equal(AlbumPaneState.Rows, Of(true, EdgeState.Unknown, false, false, false));
         Assert.Equal(AlbumPaneState.Rows, Of(true, EdgeState.Partial, false, true, false));
-        Assert.Equal(AlbumPaneState.Rows, Legacy(true, EdgeState.Partial, false, true, false));
     }
 
     [Fact]
@@ -54,7 +45,6 @@ public class AlbumPaneReadinessTests
     {
         Assert.Equal(AlbumPaneState.Failed, Of(true, EdgeState.Unknown, true, false, false));
         Assert.Equal(AlbumPaneState.Failed, Of(true, EdgeState.Partial, true, true, false));
-        Assert.Equal(AlbumPaneState.Failed, Legacy(true, EdgeState.Partial, true, true, false));
     }
 
     [Fact]
@@ -91,46 +81,6 @@ public class AlbumPaneReadinessTests
         // separate bool. A caller that forgot the bool gets a shimmer, not a wrong "ready".
         Assert.Equal(AlbumPaneState.Failed, Of(true, EdgeState.Failed, true, false, false));
         Assert.Equal(AlbumPaneState.Rows, Of(true, EdgeState.Failed, false, false, false));
-    }
-
-    // ── the 2026-09-18 correction: an unnamed CREDIT is not a skeleton gate ─────────────────────────────────────────
-
-    [Fact]
-    public void TheLegacyOverload_IsNoLongerHeldInASkeletonByAnUnnamedCredit()
-    {
-        // The pane and the reader feed the fourth argument `Detail.NoticeRules.ForAlbum(...) != None`, which is true
-        // when a row has no title OR when one of its credited artists has no name. Nobody demands that artist name, so
-        // before the correction these two rows were a permanent shimmer and a permanent Retry strip over a tracklist
-        // that had every title it needed. Both are Ready now; the missing credit is the notice pipeline's to say.
-        Assert.Equal(AlbumPaneState.Ready, Legacy(true, EdgeState.Complete, false, unnamed: true, rowsFailed: false));
-        Assert.Equal(AlbumPaneState.Ready, Legacy(true, EdgeState.Complete, false, unnamed: true, rowsFailed: true));
-    }
-
-    [Fact]
-    public void TheLegacyOverload_IgnoresItsUnnamedFlagEverywhere_NotJustOnTheCompleteRow()
-    {
-        // The flag is accepted and dropped — it must not be able to change ANY cell of the table, or the call sites that
-        // still pass it would be deciding readiness by accident.
-        EdgeState[] states = [EdgeState.Unknown, EdgeState.Partial, EdgeState.Complete, EdgeState.Failed];
-        foreach (bool id in Bools)
-        foreach (var tracks in states)
-        foreach (bool edgeFailed in Bools)
-        foreach (bool rowsFailed in Bools)
-            Assert.Equal(Legacy(id, tracks, edgeFailed, false, rowsFailed), Legacy(id, tracks, edgeFailed, true, rowsFailed));
-    }
-
-    [Fact]
-    public void TheLegacyOverloadIsTheRichRuleWithNothingUntitled()
-    {
-        // One sentence, not two rules: the five-argument shape is `AlbumRowFacts(AnyUntitled: false, rowsFailed)`.
-        EdgeState[] states = [EdgeState.Unknown, EdgeState.Partial, EdgeState.Complete, EdgeState.Failed];
-        foreach (bool id in Bools)
-        foreach (var tracks in states)
-        foreach (bool edgeFailed in Bools)
-        foreach (bool unnamed in Bools)
-        foreach (bool rowsFailed in Bools)
-            Assert.Equal(Of(id, tracks, edgeFailed, untitled: false, rowsFailed),
-                         Legacy(id, tracks, edgeFailed, unnamed, rowsFailed));
     }
 
     // ── the whole table, exhaustively ───────────────────────────────────────────────────────────────────────────────
@@ -185,25 +135,6 @@ public class AlbumPaneReadinessTests
         Assert.Contains(AlbumPaneState.Rows, reached);
         Assert.Contains(AlbumPaneState.Failed, reached);
         Assert.Contains(AlbumPaneState.Ready, reached);
-    }
-
-    [Fact]
-    public void TheLegacyOverloadStillReachesEveryState_AndItsOnlyFailureIsTheEdge()
-    {
-        // With nothing untitled there is no row-level Retry left, and that is the point: the only failure a caller of
-        // the five-argument shape can raise is the one it can actually answer, a failed tracks EDGE.
-        var reached = new HashSet<AlbumPaneState>();
-        EdgeState[] states = [EdgeState.Unknown, EdgeState.Partial, EdgeState.Complete, EdgeState.Failed];
-        foreach (bool id in Bools)
-        foreach (var tracks in states)
-        foreach (bool edgeFailed in Bools)
-        foreach (bool unnamed in Bools)
-        foreach (bool rowsFailed in Bools)
-            reached.Add(Legacy(id, tracks, edgeFailed, unnamed, rowsFailed));
-
-        Assert.Equal(4, reached.Count);   // Failed is still reachable — through edgeFailed, which has a Retry
-        Assert.Equal(AlbumPaneState.Failed, Legacy(true, EdgeState.Complete, true, false, false));
-        Assert.Equal(AlbumPaneState.Ready, Legacy(true, EdgeState.Complete, false, true, true));
     }
 
     // ── the counted shimmer ─────────────────────────────────────────────────────────────────────────────────────────

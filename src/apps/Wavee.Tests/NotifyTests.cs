@@ -225,7 +225,7 @@ public class NotificationMergeTests
         => NotifyRows.ForSocial(id, at, unread, "Title", null, SocialActionType.Navigate, null, null, null);
 
     static Notification Activity(string id, long at)
-        => NotifyRows.ForActivity(id, at, true, "Saved", "", default);
+        => new("act:" + id, at, true, NotifyCategory.Activity, Title: "Saved", Body: "");
 
     static Notification Row(in Notify.Feed feed, string id)
     {

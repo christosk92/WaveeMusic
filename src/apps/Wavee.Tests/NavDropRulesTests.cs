@@ -9,13 +9,12 @@
 // (`RootlistOps.CheckMove`/`CheckMoves`, `RootlistDropDecision`), the Undo anchor (`RootlistUndoAnchors`), the
 // non-mouse organisation verbs (`RootlistTreeNav`, `RootlistSelection`, `RootlistBatchOrder`,
 // `SidebarTreeNavLayout`), the folder flyout's drill-in stack (`SidebarFolderTree`, `SidebarFolderFlyoutNav`), the
-// tree's multi-selection (`SidebarTreeSelection`), the mid-drag freeze (`SidebarStageHold<T>`), the reorder-clamp
-// displacement offset (`SidebarReorderClamp`).
+// tree's multi-selection (`SidebarTreeSelection`) and the mid-drag freeze (`SidebarStageHold<T>`).
 // Pure, engine-free: no `TestScope.Fresh()`, no `[Collection(EntitiesCollection.Name)]`, no engine loop — matching
 // what every type tested here already promises ("Engine-free... so a test can drive the real ... directly").
 //
 // An earlier pass of this port DROPPED every fact above that touched a type Sidebar.cs declared WITHOUT `public`
-// (`SidebarTreeSelection`, `SidebarFolderFlyoutNav`, `SidebarFolderTree`, `SidebarReorderClamp`,
+// (`SidebarTreeSelection`, `SidebarFolderFlyoutNav`, `SidebarFolderTree`,
 // `SidebarStageHold<T>`, `RootlistDropDecision`, `RootlistSlotMapper`,
 // `SidebarRowGeometry`) — this assembly reaches Sidebar.cs only via an ordinary `ProjectReference` and the solution
 // carries no `InternalsVisibleTo` anywhere, so none of them were reachable from `Wavee.Tests`, contradicting
@@ -1257,7 +1256,6 @@ public class SidebarTreeSelectionTests
         Assert.True(s.Clear());
         Assert.Equal(0, s.Count);
         Assert.Null(s.Anchor);
-        Assert.False(s.CheckMode);
         Assert.False(s.CheckLaneVisible);
         Assert.False(s.Clear());                 // idempotent — a second Escape bumps nothing
     }
@@ -1546,31 +1544,6 @@ public class SidebarFolderFlyoutNavTests
         var ids = new string[rows.Count];
         for (int i = 0; i < rows.Count; i++) ids[i] = rows[i].Id;
         return ids;
-    }
-}
-
-// ── SidebarReorderClamp: the reorder-clamp displacement offset, restored ───────────────────────────────────────────
-//
-// Only the SidebarReorderClamp.Offset facts from SidebarDragClampTests.cs — restored now that the type is public.
-// The rest of that old file (LibraryV3View.ClampToSiblingRun, SidebarRailDropRules) is left out on purpose: both types
-// are gone (the list shaper is SidebarLibraryShaper, Sidebar.Library.cs), and the drag gate lives in Platform/Drag.cs.
-public class SidebarDragClampTests
-{
-    [Fact]
-    public void TheClampedGap_MovesOnlyTheRowsBetweenSourceAndDestination()
-    {
-        const float h = 40f;
-        // Downward: the rows the lifted one passes close up behind it.
-        Assert.Equal(0f, SidebarReorderClamp.Offset(slot: 0, from: 0, to: 3, h));   // the lifted row itself
-        Assert.Equal(-h, SidebarReorderClamp.Offset(slot: 1, from: 0, to: 3, h));
-        Assert.Equal(-h, SidebarReorderClamp.Offset(slot: 3, from: 0, to: 3, h));
-        Assert.Equal(0f, SidebarReorderClamp.Offset(slot: 4, from: 0, to: 3, h));   // past the destination
-        // Upward: they part to make room.
-        Assert.Equal(h, SidebarReorderClamp.Offset(slot: 1, from: 3, to: 1, h));
-        Assert.Equal(h, SidebarReorderClamp.Offset(slot: 2, from: 3, to: 1, h));
-        Assert.Equal(0f, SidebarReorderClamp.Offset(slot: 0, from: 3, to: 1, h));
-        // A no-move draws no gap.
-        Assert.Equal(0f, SidebarReorderClamp.Offset(slot: 2, from: 2, to: 2, h));
     }
 }
 

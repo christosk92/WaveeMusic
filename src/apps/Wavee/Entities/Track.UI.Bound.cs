@@ -13,14 +13,11 @@
 // Budget: 700 lines
 // Spec: ch 01 §9
 
-using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
-using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
-using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
 

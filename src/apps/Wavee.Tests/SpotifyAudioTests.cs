@@ -342,10 +342,9 @@ public class SpotifyAudioLadderTests
 
     static string StorageResolvePath(string fileIdHex, Md.AudioFile.Types.Format wire)
     {
-        var session = default(Spotify.Session);
         var args = new Spotify.RequestArgs { Id = fileIdHex, Number = (long)wire };
         Span<char> path = stackalloc char[512];
-        var request = Spotify.Build(session, Spotify.RequestKind.StorageResolve, args, path);
+        var request = Spotify.Build(Spotify.RequestKind.StorageResolve, args, path);
         return new string(request.Path);
     }
 

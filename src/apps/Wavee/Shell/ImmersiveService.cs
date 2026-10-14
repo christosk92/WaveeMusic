@@ -16,8 +16,6 @@
 // happens when the mode itself ended. The window and the focus go through `IImmersiveHost`, so `ImmersiveServiceTests` drives
 // the real service with a recording host.
 
-using System;
-
 using FluentGpu.Controls.Media;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;

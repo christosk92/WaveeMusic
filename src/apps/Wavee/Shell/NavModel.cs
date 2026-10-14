@@ -22,7 +22,6 @@
 // THREADING: UI thread only, unsynchronized, like every static service here. No environment-variable switches.
 
 using FluentGpu.Controls;
-using FluentGpu.Foundation;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 
@@ -46,9 +45,6 @@ public enum NavReadiness : byte
 public readonly record struct NavReadinessFacts(NavReadiness Tree, NavReadiness Library)
 {
     public static NavReadinessFacts Pending => new(NavReadiness.Pending, NavReadiness.Pending);
-
-    /// <summary>The worse of the two (Failed over Pending over Ready).</summary>
-    public NavReadiness Overall => NavReadinessRules.Worst(Tree, Library);
 
     public bool AnyFailed => Tree == NavReadiness.Failed || Library == NavReadiness.Failed;
 }
@@ -78,28 +74,6 @@ public static class NavReadinessRules
 }
 
 // ── the small value shapes ─────────────────────────────────────────────────────────────────────────────────────────────
-
-/// <summary>One fixed destination the pane offers (Home, Liked Songs, the library pages, Settings) with its live count:
-/// null while unknown or when the destination has no count (design D9: never "0" for "not loaded").</summary>
-public readonly record struct NavDestination(string RouteKey, int? Count);
-
-/// <summary>The fixed destinations in catalogue order, from the kind counts. PURE.</summary>
-public static class NavDestinationRules
-{
-    public static NavDestination[] Build(in SidebarLibraryCounts counts)
-    {
-        var items = SidebarCatalogue.ItemsOf(SidebarLayoutId.Classic, SidebarSectionKind.Collections);
-        var all = new NavDestination[items.Count + 2];
-        all[0] = new NavDestination(SidebarCatalogue.HomeRoute, null);
-        for (int i = 0; i < items.Count; i++)
-        {
-            string item = items[i];
-            all[i + 1] = new NavDestination(item, SidebarCatalogue.KindFlagOf(item) != SidebarLibraryKinds.None ? counts.Of(item) : null);
-        }
-        all[^1] = new NavDestination(SidebarCatalogue.SettingsRoute, null);
-        return all;
-    }
-}
 
 /// <summary>The two feeds the Classic layout can show: Recently played and New releases, resolved (never a nameless row).</summary>
 public readonly record struct NavFeeds(IReadOnlyList<SidebarLibraryEntry>? Played, IReadOnlyList<SidebarLibraryEntry>? NewReleases);
@@ -162,9 +136,6 @@ public sealed partial class NavModel : INavVerbs
 {
     readonly SidebarProjectionBinder _binder;
 
-    NavDestination[]? _destinations;
-    SidebarLibraryCounts _destinationCounts;
-
     /// <param name="binder">The projection driver; null = a new one over the shell's own logs. A test hands its own so it never
     /// races the process-wide stores.</param>
     public NavModel(SidebarProjectionBinder? binder = null)
@@ -176,28 +147,7 @@ public sealed partial class NavModel : INavVerbs
     /// <summary>Edit mode: the Outline, the ops its checkboxes, drags and keys make, undo and redo (<c>NavEditModel.cs</c>).</summary>
     public NavEditModel Edit { get; }
 
-    // ── destinations ────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>Home, the library pages (Liked Songs, Albums, Artists, Podcasts, Audiobooks) and Settings, with the kind counts
-    /// the binder computed over the FULL projection. Rebuilt only when the counts moved, so a read allocates nothing.</summary>
-    public IReadOnlyList<NavDestination> Destinations
-    {
-        get
-        {
-            var counts = _binder.Counts;
-            if (_destinations is null || counts != _destinationCounts)
-            {
-                _destinations = NavDestinationRules.Build(in counts);
-                _destinationCounts = counts;
-            }
-            return _destinations;
-        }
-    }
-
     // ── layout ──────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The active layout (<c>sidebar.layout.id</c>). A switch remounts the mode.</summary>
-    public IReadSignal<SidebarLayoutId> LayoutId => Sidebar.Layout;
 
     /// <summary>The active layout's resolved document (<c>sidebar.json</c> resolved against the catalogue). PEEKS: a render
     /// that must re-plan calls <see cref="ReadLayout"/>. Cached by the service on (version, layout, density), so the same

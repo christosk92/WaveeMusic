@@ -46,8 +46,8 @@ public class ArtworkDecodeTests
     [InlineData(8f, 8)]      // already on the grid: no rounding past it
     [InlineData(9f, 16)]     // one px past a bucket boundary still costs a whole bucket
     [InlineData(200f, 200)]  // already a clean multiple of 8: untouched
-    [InlineData(44f, 48)]    // User.UI.cs:453 / Concert.Page.cs:1587 / Shell.UI.cs:1702 shape
-    [InlineData(36f, 40)]    // User.UI.cs:476 shape
+    [InlineData(44f, 48)]    // the 44-DIP thumbnail shape
+    [InlineData(36f, 40)]    // the 36-DIP thumbnail shape
     public void The_decode_edge_is_bucketed_up_to_8_never_down(float edge, int expectedDw)
         => Assert.Equal(expectedDw, Controls.ArtworkDecode(edge, edge, 0).DecodeW);
 

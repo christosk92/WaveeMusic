@@ -15,15 +15,12 @@
 // activity: a pointer parked over ⋯/volume must not let the idle machine hide the very control it is sitting on.
 
 using FluentGpu.Controls;
-using FluentGpu.Controls.Media;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
-using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Theming.Contracts;
-using Wavee.Theming.Roles;
 
 namespace Wavee.Themes.Classic;
 

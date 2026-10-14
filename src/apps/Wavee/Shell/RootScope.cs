@@ -25,7 +25,6 @@
 //
 // UI THREAD ONLY, like every handle it holds. `Current` is volatile only so a reader on another thread sees a whole object.
 
-using System;
 using System.Collections.Generic;
 using System.Threading;
 

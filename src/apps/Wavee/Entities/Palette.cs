@@ -330,7 +330,7 @@ public static partial class Palette
     //
     // UI thread, like every other column read (C1); the render thread only resolves StringIds. A MISS ENQUEUES, which
     // is what makes every art slot in the app self-resolving: rendering the art IS the request, and no surface has to
-    // remember to prefetch. The one probe that must not enqueue is `HasFreshDark`, and it says so.
+    // remember to prefetch. The one probe that must not enqueue is `HasFreshNegative`, and it says so.
 
     /// <summary>The graded roles for a cover, or false when nothing fresh is known (⇒ the caller paints the neutral
     /// tile, which is a designed state and not a skeleton).
@@ -384,24 +384,8 @@ public static partial class Palette
     public static bool TryTint(StringId imageRef, bool lightTheme, out uint argb)
         => TryTint(Entities.Strings.Resolve(imageRef).AsSpan(), lightTheme, out argb);
 
-    /// <summary>Does this cover already carry a fresh DARK grading? A PURE probe: unlike the reads above it never
-    /// enqueues, because its caller is not rendering anything — it is the kind-179 trait projector asking "has this
-    /// image been through here?" before a request is planned, and enqueuing from a planning question would turn every
-    /// warm page into a <c>getDynamicColorsByUris</c> batch.
-    ///
-    /// <para>Dark specifically: 179 only ever ships dark, so a dark entry is exactly what a 179 answer would produce —
-    /// and a NEGATIVE is not one, because a cover the colour server declined can still get a 179 payload.</para></summary>
-    public static bool HasFreshDark(ReadOnlySpan<char> url)
-    {
-        if (!Images.TryGetSlot(KeyOf(url), out int slot)) return false;
-        uint known = Images.Known[slot];
-        return (known & (uint)PaletteBits.Dark) != 0
-            && (known & (uint)PaletteBits.Negative) == 0
-            && Entities.Now - Images.Ts[slot] <= HitTtlSeconds;
-    }
-
-    /// <summary>Does this cover already carry a fresh NEGATIVE (the server has no colours for it)? A PURE probe, like
-    /// <see cref="HasFreshDark"/>: it never enqueues, so a caller checking "has this already been asked about" cannot
+    /// <summary>Does this cover already carry a fresh NEGATIVE (the server has no colours for it)? A PURE probe: it never
+    /// enqueues, so a caller checking "has this already been asked about" cannot
     /// itself turn into a request.</summary>
     public static bool HasFreshNegative(string url)
     {

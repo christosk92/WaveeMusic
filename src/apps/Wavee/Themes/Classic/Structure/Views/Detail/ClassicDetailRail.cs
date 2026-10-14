@@ -259,7 +259,7 @@ internal static partial class ClassicDetailFrame
             fabs.Add(Controls.Named(Detail.Fab(Icons.Share, share), Loc.Get(Strings.Menu.Share)));
         // ch 05 parity 15: an album's rail has no ⋯ — its overflow is the vertical hero's alone.
         if (acts.More is { } more && id.Kind != DetailKind.Album)
-            fabs.Add(Detail.MoreButton(more, RailFabSize, 16f, round: true) with { Key = "rail:more" });
+            fabs.Add(Detail.MoreButton(more, RailFabSize) with { Key = "rail:more" });
         return fabs;
     }
 

@@ -7,7 +7,6 @@
 // in `Rules\**`). The WIDTHS the row is allocated by (what each affordance costs, where the optional ones may appear, how wide the
 // search and the tabs may be) are not here: they are `ClassicPolicies.Chrome`, the budget the core allocator runs on.
 
-using FluentGpu.Animation;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FgMotion = FluentGpu.Dsl.Motion;

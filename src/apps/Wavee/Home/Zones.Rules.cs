@@ -1,4 +1,4 @@
-// ── Home/Zones.Rules.cs — pure rules Zones.UI.cs builds its zone bodies from (Wave 3, agent B2) ────────────────────────
+// ── Home/Zones.Rules.cs — pure rules the zone bodies (ClassicHomeZones.cs) are built from (Wave 3, agent B2) ──────────
 //
 // Role: CORE
 // Owner: B2
@@ -6,7 +6,7 @@
 // Spec: docs/plans/wavee/home-redesign-implementation.md "Workstream H", "Zone → controls → metrics" sheet
 //        (ReleaseList row 9 .rel "type badge" + "date col 88"; CoverShelf/RadioShelf row 6 "two-cell wide lead").
 //
-// Two small pure fragments pulled out of Zones.UI.cs so they are unit-testable with no engine running (the
+// Two small pure fragments pulled out of the zone bodies so they are unit-testable with no engine running (the
 // "no source-text tests" rule — these are exercised directly, not by grepping the UI file):
 //   • ReleaseListRules — the Releases list row's type badge label and trailing date column text.
 //   • ShelfLead        — merges a Zone's separately-carried Lead card back into its Items array for a PagedShelf's
@@ -16,15 +16,13 @@
 // Engine-free, pure: no hooks, no elements, no I/O. HomeCardKind/HomeCard are plain data reads (Entities/Home.cs),
 // the same convention Home/ZonePlanner.cs already uses for its own pure rules.
 
-using System;
 using System.Collections.Generic;
 using System.Globalization;
-using FluentGpu.Foundation;
 
 namespace Wavee.HomeUi;
 
 /// <summary>The Releases list row's two caller-owned text cells (<see cref="Items.ListRow"/>'s <c>typeLabel</c>/
-/// <c>dateLabel</c> params) — kept out of Zones.UI.cs so the ladder-vs-short-date choice is independently
+/// <c>dateLabel</c> params) — kept out of the zone bodies so the ladder-vs-short-date choice is independently
 /// testable.</summary>
 public static class ReleaseListRules
 {

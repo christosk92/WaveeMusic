@@ -5,8 +5,8 @@
 // `SidebarPinId`). Three pure, engine-free surfaces, in file order:
 //
 //   SidebarPinId   the pin id IS the nav route key — a pinned row resolves its label/glyph with no extra plumbing,
-//                  and a pin survives a library refresh because it never depends on a list index. Here: IsPinnable /
-//                  FromEntry, the one screen every pin-creation call site (menu, drag, touch) funnels a row through
+//                  and a pin survives a library refresh because it never depends on a list index. Here: FromEntry,
+//                  the one screen every pin-creation call site (menu, drag, touch) funnels a row through
 //                  — Track is the one refusal.
 //   PinSyncRules   the pin id <-> Spotify's ylpin wire uri map. Liked Songs is never a pin: `liked` has no wire
 //                  uri, and no collection spelling (bare, `:tracks`-suffixed or user-namespaced) maps back to one.
@@ -16,7 +16,7 @@
 //
 // NOT ported here (see the porting agent's handoff for the full accounting):
 //   - SidebarPinKindWireTests.cs's wire-string/legacy-int round trips (PinKindName / TryParsePinKind /
-//     TryLegacyPinKind / LegacyPinKindInt): SidebarDocTests.cs already drives those; only the IsPinnable/FromEntry
+//     TryLegacyPinKind / LegacyPinKindInt): SidebarDocTests.cs already drives those; only the FromEntry
 //     half is ported here.
 //   - WaveeExtensionRegistryTests.cs's ATrackActionTargetYieldsNoPinRow (needs
 //     SidebarPinId.FromTarget(in ActionTarget) — the Actions platform was not ported to 0.3) and
@@ -37,9 +37,7 @@ public class SidebarPinTests
     [Fact]
     public void A_track_is_never_pinnable()
     {
-        Assert.False(SidebarPinId.IsPinnable(SidebarEntryKind.Track));
-
-        // The pin-creation path itself: SidebarPinId.FromEntry is the ONE screen every RowForEntry/menu/drag call
+        // The pin-creation path: SidebarPinId.FromEntry is the ONE screen every RowForEntry/menu/drag call
         // site funnels through.
         var track = new SidebarLibraryEntry("queue:1", SidebarEntryKind.Track, "spotify:track:x", "A Song", "",
             StringId.Empty, null, ChildCount: 0, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0, SourceOrder: 0,
@@ -47,19 +45,7 @@ public class SidebarPinTests
         Assert.Null(SidebarPinId.FromEntry(in track));
     }
 
-    [Theory]
-    [InlineData(SidebarEntryKind.AppRoute)]
-    [InlineData(SidebarEntryKind.Playlist)]
-    [InlineData(SidebarEntryKind.Album)]
-    [InlineData(SidebarEntryKind.Artist)]
-    [InlineData(SidebarEntryKind.Show)]
-    [InlineData(SidebarEntryKind.Folder)]
-    public void Every_other_kind_is_pinnable(SidebarEntryKind kind)
-        => Assert.True(SidebarPinId.IsPinnable(kind));
-
     // ── PinSyncRules: the pin id <-> ylpin wire uri map ─────────────────────────────────────────────────────────────
-
-    const string User = "bob";
 
     [Theory]
     [InlineData("pl:spotify:playlist:37i9dQZF1DX4sWSpwq3LiO", "spotify:playlist:37i9dQZF1DX4sWSpwq3LiO")]
@@ -67,14 +53,13 @@ public class SidebarPinTests
     [InlineData("artist:spotify:artist:4tZwfgrHOc3mvqYlEYSvVi", "spotify:artist:4tZwfgrHOc3mvqYlEYSvVi")]
     [InlineData("show:spotify:show:4rOoJ6Egrf8K2IrywzwOMk", "spotify:show:4rOoJ6Egrf8K2IrywzwOMk")]
     public void Spotify_kind_pins_map_to_their_bare_uri(string pinId, string expectedUri)
-        => Assert.Equal(expectedUri, PinSyncRules.TryWireUri(pinId, User));
+        => Assert.Equal(expectedUri, PinSyncRules.TryWireUri(pinId));
 
     [Fact]
     public void Liked_is_never_a_wire_pin()
     {
-        Assert.Null(PinSyncRules.TryWireUri("liked", User));
-        Assert.Null(PinSyncRules.TryWireUri("liked", ""));
-        Assert.False(PinSyncRules.IsSyncable("liked", ""));
+        Assert.Null(PinSyncRules.TryWireUri("liked"));
+        Assert.False(PinSyncRules.IsSyncable("liked"));
     }
 
     [Theory]
@@ -89,14 +74,14 @@ public class SidebarPinTests
     [InlineData("")]
     public void Local_only_pins_never_produce_a_wire_uri(string? pinId)
     {
-        Assert.Null(PinSyncRules.TryWireUri(pinId, User));
-        Assert.False(PinSyncRules.IsSyncable(pinId, User));
+        Assert.Null(PinSyncRules.TryWireUri(pinId));
+        Assert.False(PinSyncRules.IsSyncable(pinId));
     }
 
     [Fact]
     public void Folder_pin_maps_to_the_spotify_folder_uri()
         => Assert.Equal("spotify:folder:36405e1711f88d9c",
-            PinSyncRules.TryWireUri("folder:36405e1711f88d9c", User));
+            PinSyncRules.TryWireUri("folder:36405e1711f88d9c"));
 
     [Fact]
     public void Folder_wire_uri_maps_back_to_the_folder_pin()
@@ -112,7 +97,7 @@ public class SidebarPinTests
     [InlineData("home", false)]
     [InlineData("pl:wavee:playlist:x", false)]
     public void IsSyncable_agrees_with_TryWireUri(string pinId, bool expected)
-        => Assert.Equal(expected, PinSyncRules.IsSyncable(pinId, User));
+        => Assert.Equal(expected, PinSyncRules.IsSyncable(pinId));
 
     [Theory]
     [InlineData("spotify:playlist:37i9dQZF1DX4sWSpwq3LiO", "pl:spotify:playlist:37i9dQZF1DX4sWSpwq3LiO")]

@@ -897,7 +897,7 @@ public static partial class ReleaseNotes
             bool store = HighlightVisibility.IsStore(h);
             string id = SlideId(item, index);
             float w = VL.PlateWidth(vp.Width, vp.Height);
-            float imgH = VL.ImageHeight(w, item.Poster is { Length: > 0 });   // W·9/16 ALWAYS, poster or not (issue #89 L4)
+            float imgH = VL.ImageHeight(w);   // W·9/16 ALWAYS, poster or not (issue #89 L4)
             bool hasPager = count >= 2;
 
             var plateKids = new List<Element>(3) { Band(item, h, id, imgH, index, count, store, IsVideo(h)) };

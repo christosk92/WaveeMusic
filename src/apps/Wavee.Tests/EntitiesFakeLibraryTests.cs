@@ -321,6 +321,6 @@ public class EntitiesFakeLibraryTests
         Assert.Equal(8, set.Count);
         Assert.Equal(7, set.EvidencedCount);
         Assert.Equal(new[] { "Pop", "Dance", "Indie", "Hip Hop", "Chill", "Rock", "Electronic", "Jazz" }, set.Titles.ToArray());
-        Assert.False(set.IsEvidenced(7));
+        Assert.False(7 < set.EvidencedCount);
     }
 }

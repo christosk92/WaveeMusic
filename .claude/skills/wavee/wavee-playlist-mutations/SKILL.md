@@ -213,18 +213,18 @@ at commit in `DepositAtAsync`, the first moment a slot exists. `TryBlockMove` (k
 
 ### Rootlist moves — ONE legality authority, and one commit
 
-**`RootlistOps.CheckMove(store.Rootlist(), source, target, placement)` is the only decider in the app.** It runs over
+**`RootlistOps` (`Shell/Sidebar.cs`) is the only decider in the app; production asks it through `CheckMoves`.** It runs over
 the **flat marker stream** (`RootlistEntry[]` — a folder is a balanced `start-group` / `end-group` pair, kind 1 / 2),
 which is the very structure the write indexes into, and it is literally `TryBuildMove(…, out RootlistMoveCheck)` with
 the op discarded — so "the cue says yes" and "the writer can build it" cannot differ.
 
 | | |
 |---|---|
-| lives in | `Backend/Playlists/RootlistOps.cs` (backend, engine-free) |
+| lives in | `Shell/Sidebar.cs` (`RootlistOps`, engine-free) |
 | decides over | the flat marker stream — `IStore.Rootlist()` |
 | answers with | `RootlistMoveCheck {Ok, Missing, SameItem, Invalid, NoOp, Cycle}` |
 | batch form | `RootlistOps.CheckMoves(entries, IReadOnlyList<RootlistMove>)` — the same enum for a whole multi-selection |
-| reached by | **exactly one call site**: `RootlistDropDecision.Check` (`Features/Sidebar/Data/RootlistDropDecision.cs`) |
+| reached by | `RootlistDropDecision` (`Shell/NavDropRules.cs`), through `CheckMoves`; the single-move `CheckMove` is the tests' oracle for the writer-parity facts |
 | reached from | `LibraryBridge.CheckRootlistMove` (the app-side accessor, over the attached `IStore`) · the sidebar drop cue · the rail folder tile · `RootlistTreeNav` (the "Move to folder…" picker + the menu's `HasDestinations`) |
 | UI mapping | ONE table, `RootlistDropDecision.RefusalFor`: `Ok→None`, `NoOp→NoOp`, `Cycle→IntoDescendant`, `SameItem→Self`, `Missing`/`Invalid`→`Unavailable` |
 
@@ -232,8 +232,7 @@ the op discarded — so "the cue says yes" and "the writer can build it" cannot 
 projection tree* — was **deleted on 2026-08-16**, along with the pane's own `SourceContainsRow` cycle walk. It could not
 tell "after the folder" from "after the folder's last child" (a tree row list has no end marker between them), so it
 called legal moves `NoOp`: the user was told "Already there" for a perfectly good filing, and the picker silently hid
-legal destinations. `RootlistDropScenarioTests.NoRefusalIsEverComputedFromAMarkerFreeTree` is the guard — it scans app
-CODE (comments stripped) for the deleted names and asserts `RootlistOps.CheckMove` still has exactly one call site.
+legal destinations.
 
 **A refused move is a THROW, not a quiet return.** `PlaylistMutationSource.MoveRootlistItemAsync` used to `return` when
 `TryBuildMove` refused, so the awaiting caller completed successfully and posted "Moved to …" for a move that was never

@@ -500,7 +500,7 @@ sealed class RealtimeCaptureWriter : ICaptureSink, IDisposable
         finally { ArrayPool<byte>.Shared.Return(scratch); }
     }
 
-    /// <summary>Best-effort synchronous drain + close, mirroring `Log.FlushAndClose` — called on the 1→0 settings
+    /// <summary>Best-effort synchronous drain + close — called on the 1→0 settings
     /// transition and at process shutdown so the last records reach disk before the handle is released.</summary>
     public void Flush()
     {
@@ -529,7 +529,7 @@ sealed class RealtimeCaptureWriter : ICaptureSink, IDisposable
 /// installs/tears down the <see cref="RealtimeCaptureWriter"/> on each transition. `Init()` is called once, from
 /// `Platform.Host.cs`'s `HostOpenLog()` (right after the app log itself opens, so a capture-on-launch user gets a
 /// segment from the very first frame); `OnSettingsChanged()` is the live hook the Settings row's `Toggle` calls,
-/// exactly like `Tray.Host.OnSettingsChanged`'s own pattern (`Settings.UI.cs:445,452,457,463,472`).</summary>
+/// exactly like `Tray.Host.OnSettingsChanged`'s own pattern.</summary>
 public static class RealtimeCaptureHost
 {
     /// <summary>The ONE live signal every reader of "is capture on" should use — mirrors §3.4's

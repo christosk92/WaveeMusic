@@ -16,11 +16,14 @@ namespace Wavee.Tests;
 
 public class CommandTableShapeTests
 {
+    /// <summary>The builtin rows' count; registry and theme rows are appended after them.</summary>
+    internal const int BuiltinCount = 29;
+
     [Fact]
     public void The_builtin_table_is_nav_first_with_the_sidebar_rows_before_library()
     {
         var rows = Shell.CommandTable.Builtins();
-        Assert.Equal(Shell.CommandTable.BuiltinCount, rows.Length);
+        Assert.Equal(BuiltinCount, rows.Length);
         Assert.Equal("nav.home", rows[0].Id);
         Assert.Equal("nav.search", rows[1].Id);
         Assert.Equal("nav.library", rows[2].Id);
@@ -78,7 +81,7 @@ public class CommandTableShapeTests
                     AcceptedTargets = ActionTargetModes.FixedEntity, Run = static (_, _, _) => { } },
         ];
         var index = Shell.CommandTable.BuildIndex(actions, glyphOf: null);
-        Assert.Equal(Shell.CommandTable.BuiltinCount + 1, index.Length);
+        Assert.Equal(BuiltinCount + 1, index.Length);
         var row = index[^1];
         Assert.Equal(Shell.PaletteKind.Registry, row.Kind);
         Assert.Equal("wavee.toggleLike", row.RegistryKey);

@@ -407,14 +407,13 @@ public static partial class Sidebar
     // ══ 2. COVERS ════════════════════════════════════════════════════════════════════════════════════════════════════
     //
     // The ONE leading-visual factory for every row, tile and card: the radius ladder, circular-for-artists, the folder /
-    // route glyph tiles, the mosaic hand-off and the six canonical sizes. The image pipeline itself (decode, placeholder
+    // route glyph tiles, the mosaic hand-off and the rail size. The image pipeline itself (decode, placeholder
     // tint, shimmer) is Controls.Artwork's — a sidebar cover and a grid card share one decode cache.
 
     internal static class Cover
     {
-        /// <summary>The six canonical sidebar art sizes: caption 20 · compact 28 · cozy 32 · comfortable / rail 40 ·
-        /// compact grid 48 · grid / spotlight 64.</summary>
-        public const float S20 = 20f, S28 = 28f, S32 = 32f, S40 = 40f, S48 = 48f, S64 = 64f;
+        /// <summary>The comfortable / rail art size: the grid's smallest cell.</summary>
+        public const float S40 = 40f;
 
         /// <summary>4 (≤28) → 6 (≤40) → 8; circular is always half the size.</summary>
         public static float Radius(float size, bool circular)
@@ -436,7 +435,7 @@ public static partial class Sidebar
             {
                 SidebarEntryKind.Folder => Folder(size),
                 SidebarEntryKind.AppRoute => RouteGlyph(e.Id, size),
-                _ => Art(e.Cover, e.MosaicTiles, e.Id, size, e.Circular || e.Kind == SidebarEntryKind.Artist),
+                _ => Art(e.Cover, e.MosaicTiles, size, e.Circular || e.Kind == SidebarEntryKind.Artist),
             };
         }
 
@@ -461,11 +460,9 @@ public static partial class Sidebar
         }
 
         /// <summary>Cover art: the image when there is one; for a cover-less entry a 2×2 mosaic of ≥4 tiles, else its first
-        /// tile; else the neutral placeholder tile. <paramref name="seedKey"/> is the entity's stable id — never an index —
-        /// so a re-sorted list keeps each row's identity (0.2.9's seed was likewise inert: the tint comes from the url's
-        /// graded colour, and a url-less slot takes the opaque neutral tile).</summary>
-        public static Element Art(StringId cover, IReadOnlyList<StringId>? mosaicTiles, string seedKey, float size,
-                                  bool circular = false)
+        /// tile; else the neutral placeholder tile (the tint comes from the url's graded colour, and a url-less slot takes
+        /// the opaque neutral tile).</summary>
+        public static Element Art(StringId cover, IReadOnlyList<StringId>? mosaicTiles, float size, bool circular = false)
         {
             float radius = Radius(size, circular);
             string? url = Controls.ArtUrl(cover);
@@ -479,11 +476,6 @@ public static partial class Sidebar
             }
             return Controls.Artwork(url, size, size, radius, decodePx: DecodeBucket(size));
         }
-
-        /// <summary>A hand-placed item's retained art (<c>FallbackImageUrl</c>), or the placeholder tile when it has none.</summary>
-        public static Element ArtUrl(string? url, string seedKey, float size, bool circular = false)
-            => Controls.Artwork(url is { Length: > 0 } ? url : null, size, size, Radius(size, circular),
-                                decodePx: DecodeBucket(size));
 
         /// <summary>A neutral tile carrying a glyph — what a folder / route / unavailable entity wears, so the leading
         /// column is always the same width whatever it holds.</summary>
@@ -505,14 +497,6 @@ public static partial class Sidebar
         /// <summary>An app-route tile wearing the route's own glyph (a pinned Liked shows a heart, not a square).</summary>
         public static Element RouteGlyph(string routeKey, float size)
             => Glyph(Shell.Dest(Shell.Parse(routeKey)).Glyph, size);
-
-        /// <summary>The stable 31-hash seed for a key (the same hash every landed sidebar row used).</summary>
-        public static int SeedFrom(string key)
-        {
-            int h = 17;
-            foreach (char c in key) h = h * 31 + c;
-            return h & 0x7fffffff;
-        }
 
         /// <summary>The liked-collection composition. Subscribes to the liked relation and the track table — inside a
         /// value gate (W2-A2): the memo's value is the first four distinct liked cover ids, so the mosaic is
@@ -694,9 +678,9 @@ public static partial class Sidebar
     internal static class Skeletons
     {
         /// <summary>One pending row in the row's own ladder: the row's icon column (the art centred in its 32 slot at slot
-        /// x 10), the label at slot x 50, bars 140×12 (+ 80×10 at gap 4 in a two-line row), r4. Uniform by design
-        /// (<paramref name="index"/> is position-independent).</summary>
-        public static Element Row(int index, SidebarRowShape shape, float heightOverride = float.NaN,
+        /// x 10), the label at slot x 50, bars 140×12 (+ 80×10 at gap 4 in a two-line row), r4. Uniform by design (every
+        /// position draws the same row).</summary>
+        public static Element Row(SidebarRowShape shape, float heightOverride = float.NaN,
                                   float artOverride = float.NaN)
         {
             bool subtitle = shape == SidebarRowShape.EntityTwoLine;

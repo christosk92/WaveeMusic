@@ -28,11 +28,9 @@
 //     and no page ever holds a palette subscription at PAGE scope.
 
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
-using FluentGpu.Hooks;
 using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
 using ViewSlots = FluentGpu.Theming.Slots;
@@ -75,8 +73,7 @@ public static partial class Palette
     /// <summary>Bring the armed debounce due NOW. The ONE test seam in this file, and it is a seam rather than an
     /// injected clock on purpose: the debounce is a DEADLINE, so "drive time forward" is exactly "clear the deadline",
     /// and a fake clock would be a second epoch for the one value this file compares.
-    /// <para>Public rather than internal because this assembly has no <c>InternalsVisibleTo</c> — the diagnostics page
-    /// uses it too, to force a grading pass without waiting out the debounce.</para></summary>
+    /// <para>Public rather than internal because this assembly has no <c>InternalsVisibleTo</c>.</para></summary>
     public static void ForceDue() => s_dueMs = 0;
 
     /// <summary>Forget the pump's state: no deadline, nothing in flight, no row queued. A HEADLESS host calls it when it mounts.

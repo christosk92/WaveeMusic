@@ -143,7 +143,6 @@ public class SidebarPinSyncTests
         Assert.Contains(("spotify:playlist:b", true), rig.Writes);
         Assert.Contains(("spotify:folder:ab12", true), rig.Writes);
         Assert.True(rig.Latch.Migrated);
-        Assert.True(rig.Sync.Migrated);
     }
 
     [Fact]

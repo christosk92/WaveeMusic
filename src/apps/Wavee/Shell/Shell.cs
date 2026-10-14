@@ -1,6 +1,6 @@
 // ── Shell/Shell.cs ─────────────────────────────────────────────────────────────────────────────────────────────────
 // nav, routes, deep links, responsive layout, page-nav recipes, tint ownership, the first-run composite;
-// WaveeTipsCore (A10); the Shell.History section and the play log (ch 16); the in-app update card's arms (ch 14 → ch
+// the Shell.History section and the play log (ch 16); the in-app update card's arms (ch 14 → ch
 // 19); the player bar's tier + picker rules and the Shell.Ui rail-state section the bar's four toggles write —
 // RailOpen, Mode, RailWidth, DockedVideoHeight(+Pinned), ActiveStagePlayable, RailFits, ImmersiveLyrics, Toggle,
 // CanFitRail (App/ShellUi.cs 91; ch 20 asks for a home and §2 had none) (ch 20, +230)
@@ -15,7 +15,6 @@
 // `Shell/Shell.Chrome.cs` (named on day one of the wave, §5 / §8 G4) — one file cannot hold ch 18's 1,150 pure lines
 // plus ch 20's +230 plus ch 16's +180 plus the route table inside 2,100.
 
-using System;
 using System.Collections.Generic;
 using System.Globalization;
 
@@ -213,7 +212,8 @@ public static partial class Shell
     /// three lists that must stay in step.</summary>
     public static ref readonly RouteRow Row(RouteKind k) => ref s_routes[(int)k];
 
-    /// <summary>Total kinds — the nav probe walks this rather than a hand-kept list (ch 29 §9.3 rule (e)).</summary>
+    /// <summary>Total kinds: the route table's length, which the route tests walk (and pin against the enum) rather than a
+    /// hand-kept list.</summary>
     public static int RouteKindCount => s_routes.Length;
 
     /// <summary>Register the page a kind renders. Called once per kind — at boot by the owner of that page, or on the
@@ -1515,10 +1515,6 @@ public static partial class Shell
         return new TintOwner(claimant, argb != 0u ? argb : current.Argb, definite || current.Definite);
     }
 
-    /// <summary>A grading that arrives for a page the user has already left must be DROPPED, not painted.</summary>
-    public static bool AcceptsRefresh(in TintOwner current, string claimant)
-        => claimant.Length > 0 && string.Equals(current.Claimant, claimant, StringComparison.Ordinal);
-
     /// <summary>The claimant key a route publishes under. Two different pages must never collide, and the same page
     /// re-entered must reclaim its own plane — so it is the slot key WITHOUT the tab.</summary>
     public static string TintClaimantOf(in Route route)
@@ -1557,97 +1553,6 @@ public static partial class Shell
             Spotify.SessionPhase.Offline => AuthState.Offline,
             _ => AuthState.Connecting,
         };
-    }
-
-    // ══ 10. TEACHING TIPS — the pure half (A10) ═════════════════════════════════════════════════════════════════════
-
-    /// <summary>The stable ids of every teaching tip the app can show. <b>APPEND-ONLY:</b> an id is PERSISTED (it
-    /// lands in <c>tips.seen</c> the moment a user acknowledges that tip), so renaming or reusing one would silently
-    /// re-show a tip an existing install already dismissed. Add a new const; never edit an old one. Ids are dotted,
-    /// feature-first, and deliberately do NOT include the loc-key suffix — a wording change never touches this
-    /// table.</summary>
-    public static class TipIds
-    {
-        /// <summary>The playlist detail command bar's <c>Tune ▾</c> command.</summary>
-        public const string DetailTuning = "detail.tuning";
-    }
-
-    /// <summary>The PURE half of the teaching-tip service: the acknowledged-id SET codec and the gating decision. The
-    /// set is newline-joined (a tip id may never contain a newline — ids are dotted ASCII); empty segments are ignored
-    /// on read and never produced on write, so a hand-edited or older value cannot wedge the codec.</summary>
-    public static class TipsCore
-    {
-        public const char Separator = '\n';
-
-        /// <summary>True when <paramref name="tipId"/> is one of the acknowledged ids. Scans IN PLACE (no split, no
-        /// allocation) — this runs on every eligible render of every tip's host.</summary>
-        public static bool Contains(string? seen, string? tipId)
-        {
-            if (string.IsNullOrEmpty(seen) || string.IsNullOrEmpty(tipId)) return false;
-            int i = 0;
-            while (i <= seen.Length)
-            {
-                int end = seen.IndexOf(Separator, i);
-                if (end < 0) end = seen.Length;
-                if (end - i == tipId.Length && string.CompareOrdinal(seen, i, tipId, 0, tipId.Length) == 0) return true;
-                i = end + 1;
-            }
-            return false;
-        }
-
-        /// <summary>The set with <paramref name="tipId"/> added — IDEMPOTENT (an already-present id returns the input
-        /// unchanged, so re-acknowledging never grows the string) and order-preserving.</summary>
-        public static string Add(string? seen, string? tipId)
-        {
-            if (string.IsNullOrEmpty(tipId)) return seen ?? "";
-            if (Contains(seen, tipId)) return seen!;
-            return string.IsNullOrEmpty(seen) ? tipId : seen + Separator + tipId;
-        }
-
-        /// <summary>The acknowledged ids in stored order, empty segments dropped. For tests and diagnostics — the hot
-        /// path is <see cref="Contains"/>.</summary>
-        public static List<string> Parse(string? seen)
-        {
-            var ids = new List<string>();
-            if (string.IsNullOrEmpty(seen)) return ids;
-            int i = 0;
-            while (i <= seen.Length)
-            {
-                int end = seen.IndexOf(Separator, i);
-                if (end < 0) end = seen.Length;
-                if (end > i) ids.Add(seen.Substring(i, end - i));
-                i = end + 1;
-            }
-            return ids;
-        }
-
-        /// <summary>Serialize an id set back to storage form (dedup + drop empties, order preserved).</summary>
-        public static string Serialize(IEnumerable<string>? ids)
-        {
-            if (ids is null) return "";
-            string acc = "";
-            foreach (var id in ids) acc = Add(acc, id);
-            return acc;
-        }
-
-        /// <summary>The one gating decision, in one place. A tip may be armed only when:
-        /// <list type="bullet">
-        /// <item><paramref name="canPresent"/> — the caller has everything it needs to actually SHOW it. A tip whose
-        /// acknowledgement cannot be persisted is never shown at all: it would return on every page forever, and
-        /// nagging is worse than never teaching.</item>
-        /// <item>the id is not in <paramref name="seen"/> — the durable "don't show again".</item>
-        /// <item><paramref name="armedThisSession"/> is false — at most one appearance per launch per tip, so walking
-        /// away without acknowledging does not re-open it on the next page that hosts the same tip.</item>
-        /// <item><paramref name="anotherTipActive"/> is false — ONE tip at a time, process-wide. Two callouts up
-        /// together read as an error state, and the second would fight the first for attention.</item>
-        /// </list></summary>
-        public static bool ShouldShow(string? seen, string? tipId, bool armedThisSession, bool anotherTipActive,
-            bool canPresent)
-            => canPresent
-            && !string.IsNullOrEmpty(tipId)
-            && !armedThisSession
-            && !anotherTipActive
-            && !Contains(seen, tipId);
     }
 
     // ══ 11. SHELL.HISTORY — the navigation log's decisions (ch 16 §8, +180) ═════════════════════════════════════════
@@ -1956,13 +1861,6 @@ public static partial class Shell
                 BodyKind.Empty => Theming.Contracts.ContentStateKind.EmptyBody,
                 _ => Theming.Contracts.ContentStateKind.NotFound,
             };
-
-        /// <summary>WHICH STATE THE CONTENT REGION IS IN (T4a, <c>Shell.ContentState</c>): the route's body and whether the offline
-        /// lane floats over it. Pure and stateless: a quick run of route changes decides each route on its own, so the answer for a
-        /// route never depends on the one before it. The theme draws the answer; the keep-alive boundary and its page transition stay
-        /// core (the recipe is the motion's, not a picture).</summary>
-        public static Theming.Contracts.ContentState ContentFor(in Route route, bool hasPage, bool developerMode, AuthState auth)
-            => new(ContentBodyFor(route, hasPage, developerMode), ShowsOfflineStrip(auth));
 
         /// <summary>The node key of a content state's root box, from the route's key (<see cref="NameOf"/>) and arg (<see cref="ArgOf"/>):
         /// <c>page:&lt;route&gt;</c>, <c>page-empty:&lt;route&gt;</c> and <c>page-notfound:&lt;route&gt;|&lt;arg&gt;</c>; the lane has none.

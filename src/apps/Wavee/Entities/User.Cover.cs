@@ -14,7 +14,7 @@
 // Wave: 5
 // Spec: ch 07 §0 items 1-6, 11, 15; W5-W15; §3-§6 cover rows; §9 cover notes. Ported from 0.2.9
 //       `Features/Detail/LikedCoverTreatments.cs`, `LikedCoverLeaves.cs`, `LikedHeart.cs`, `LikedCoverArt.cs`,
-//       `LikedCoverPicker.cs`, `Components/LikedSongsArtwork.cs`. Contract §2.3 (LikedCover / LikedArtwork /
+//       `LikedCoverPicker.cs`, `Components/LikedSongsArtwork.cs`. Contract §2.3 (LikedCover /
 //       LikedChipArt / LikedToneAnchorUrl).
 //
 // 0.3 DATA: the tiles are the newest-first `Edges.Liked` prefix through `LikedCoverRules.Tiles(ReadOnlySpan<Track>)`
@@ -54,23 +54,6 @@ public readonly partial struct User
             {
                 Key = "liked-cover:" + (int)size + ":" + (int)radius + ":" + (morphKey ?? ""),
             };
-
-    /// <summary>The card / sidebar / menu-header funnel (0.2.9 <c>LikedSongsArtwork.Fitted</c>): a square slot gets the
-    /// cover verbatim (its own site ladder: a treatment ≥ 140, the flat 2×2 mosaic below, the stock PNG below that); a
-    /// letterbox slot composes at its LONGER edge and centre-crops, as every other cover in a non-square frame does.</summary>
-    public static Element LikedArtwork(float width, float height, float radius)
-    {
-        if (LikedCoverRules.IsSquare(width, height)) return LikedCover(width, radius, picker: false);
-        float side = LikedCoverRules.FitSide(width, height);
-        return new BoxEl
-        {
-            Width = width, Height = height, Shrink = 0f, ClipToBounds = true, Corners = CornerRadius4.All(radius),
-            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            // The composed square carries NO corners of its own — the frame rounds the slot; rounding both would notch
-            // the crop.
-            Children = [LikedCover(side, 0f, picker: false)],
-        };
-    }
 
     /// <summary><c>Drag.LikedChipArt</c>: the 40-DIP art box's cover — below the treatment floor, so the flat 2×2 mosaic
     /// of the newest likes (or the stock PNG). A live component element: build it ONCE at install, never per frame.</summary>

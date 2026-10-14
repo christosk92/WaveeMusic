@@ -4,6 +4,7 @@
 // each is pinned against the 0.2.9 behaviour ch 08 records (§1.1, W12, W18, W19, W23, the breakpoint table), plus the
 // resolved-metrics wash forms that fix ch 08 §9's inconsistency #1.
 
+using FluentGpu.Dsl;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -91,7 +92,6 @@ public class ArtistPageRulesTests
         Assert.False(ArtistSections.TopBandWide(759f, wasWide: false));
         Assert.True(ArtistSections.TopBandWide(736f, wasWide: true));
         Assert.False(ArtistSections.TopBandWide(735f, wasWide: true));
-        Assert.True(ArtistSections.PreMeasureWidth >= ArtistSections.TopBandWideW);   // the first frame starts WIDE (parity 90)
     }
 
     /// <summary>ch 08 audit #4: a ≤ 5-track chart is ONE column at any width; never more than two.</summary>
@@ -169,6 +169,6 @@ public class ArtistPageRulesTests
         var wide = ArtistHeroLayout.For(1200f, ArtistHeroTier.Wide);
         Assert.Equal(ArtistHeroLayout.BlendBackdropHeightFor(1200f), ArtistHeroLayout.BlendBackdropHeightFor(in wide));
         Assert.Equal(ArtistHeroLayout.BlendBoundaryFor(1200f), ArtistHeroLayout.BlendBoundaryFor(in wide), 4);
-        Assert.Equal(ArtistHeroLayout.PageGutterFor(1200f), wide.Gutter);
+        Assert.Equal(Spacing.PageWide, wide.Gutter);
     }
 }

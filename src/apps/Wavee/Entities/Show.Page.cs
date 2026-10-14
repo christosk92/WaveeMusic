@@ -45,7 +45,6 @@
 // the prefix is guillotined at the rail's lower edge by ONE shared clip (`ItemClipTopInset` + the 24-DIP fade band), so
 // the rail needs no plate of its own — the page's tone ground shows through, as in the prototype.
 
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -761,7 +760,6 @@ public readonly partial struct Show
         // the month pinned at the list's top
         JumpGroup[] _groups = new JumpGroup[ShowDateIndex.MaxGroups];
         int _groupCount;
-        int[] _years = [];
         readonly Signal<int> _stickyMonth = new(-1);
         readonly Action<int> _jumpYear;
         readonly Func<int[]> _yearsOf;

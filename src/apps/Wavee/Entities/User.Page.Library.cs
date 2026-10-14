@@ -101,13 +101,12 @@
 //   · albums — the library RELEASE count, descending, then title; an artist with one liked feature ranks below one with
 //     six saved records, whether either is followed.
 //
-// ORPHANED SETTINGS (do NOT "clean them up"): `library.<kind>.album.desc` / `.album.view` / `.album.size` are no longer
-// read or written — the discography grid they steered is deleted. They stay DEFINED in `Platform.Keys` because a user's
-// store.json still carries them and a renumber would mean something else. `library.<kind>.album.sort` IS still used: it
-// is where `Artist.Reader`'s own sort persists (its old 0..4 values clamp inside the reader).
+// RETIRED SETTINGS: `library.<kind>.album.desc` / `.album.view` / `.album.size` are no longer read or written (the
+// discography grid they steered is deleted); a user's store.json may still carry them, so the strings are never reused
+// (see the note in `Platform.Keys`). `library.<kind>.album.sort` IS still used: it is where `Artist.Reader`'s own sort
+// persists (its old 0..4 values clamp inside the reader).
 
 using System.Runtime.InteropServices;
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;

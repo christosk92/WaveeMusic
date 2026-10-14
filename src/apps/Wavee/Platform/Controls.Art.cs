@@ -51,7 +51,6 @@
 //     `ItemsView.SlotRow` and renders click-less and focus-less: the slot root is the ONE gesture owner and the ONE tab
 //     stop (input-a11y.md §6.5) — a surface that also owned them is the shelf's old double tab stop.
 
-using System.Collections.Generic;
 using System.Text;
 using FluentGpu.Animation;
 using FluentGpu.Controls;

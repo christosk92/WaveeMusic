@@ -1,6 +1,6 @@
 // ── Entities/Show.Rules.cs ─────────────────────────────────────────────────────────────────────────────────────────
-// the show page's derived facts: the visit, listen-next, the played ledger, the cadence, the reader's item list and the
-// episode doors (the per-show view prefs moved to `ShowViewPrefs.cs`)
+// the show page's derived facts: the visit, listen-next, the played ledger, the cadence and the reader's item list (the
+// per-show view prefs moved to `ShowViewPrefs.cs`)
 //
 // Role: CORE
 // Owner: R
@@ -8,7 +8,7 @@
 // Budget: 420 lines (podcast-show-rework-implementation.md §11 → ch 09 §9.5)
 // Spec: podcast-show-rework-implementation.md §5.2 (the code) · §4 (the interaction contract) · §6.1 (readiness) · §10
 //   (the tests) · §12 D-1, D-5, D-6 · 0d0429a0 `ShowViewModel.cs:929-1036` (listen-next) · the approved prototype
-//   `podcast-show-episode-mica.html` (`listenNext`, the ledger's P/U, the doors' `chrono[k ± 1]`)
+//   `podcast-show-episode-mica.html` (`listenNext`, the ledger's P/U)
 //
 // DERIVED FACTS LIVE ON THE MODEL. Every decision the show reader and the episode page make about a listener's place in
 // a show is here, as a pure function of numbers the model already holds: pcts (`Episode.Rules.Pct`, one per RESIDENT
@@ -21,7 +21,6 @@
 // the caller passes a completed episode as 1f and `Episode.Rules.Played` then agrees with it everywhere below.
 
 using System.Globalization;
-using System.Text;
 
 namespace Wavee;
 
@@ -334,9 +333,6 @@ public static class DateKeys
     /// <summary>The year of a month key; <see cref="None"/> for anything that is not one.</summary>
     public static int YearOfMonth(int monthKey) => TryMonth(monthKey, out int year, out _) ? year : None;
 
-    /// <summary>The month (1-12) of a month key; 0 for anything that is not one.</summary>
-    public static int MonthOfMonth(int monthKey) => TryMonth(monthKey, out _, out int month) ? month : 0;
-
     /// <summary>The first of the month a month key names. False leaves <paramref name="date"/> at
     /// <c>default</c> — the one place a <see cref="DateTime"/> is built from a key, and it is built only from
     /// components this type has already validated.</summary>
@@ -404,7 +400,7 @@ public static class ShowReaderShape
 
     /// <summary>The <see cref="DateKeys"/> month key (<c>year*100 + month</c>) of a unix-seconds date in UTC;
     /// <see cref="DateKeys.None"/> when undated. There is no second month encoding: decode it with
-    /// <see cref="DateKeys.YearOfMonth"/> / <see cref="DateKeys.MonthOfMonth"/> / <see cref="DateKeys.MonthLabel"/>,
+    /// <see cref="DateKeys.YearOfMonth"/> / <see cref="DateKeys.TryMonth"/> / <see cref="DateKeys.MonthLabel"/>,
     /// all of which are total.</summary>
     public static int MonthKeyOf(int unixSeconds) => DateKeys.MonthKeyOfUtc(unixSeconds);
 
@@ -537,12 +533,6 @@ public static class ShowToolbarLayout
     public static float NeedOf(ToolbarStage stage, in ToolbarNeeds needs)
         => LeftGroup(stage, in needs) + Gap + RightGroup(stage, in needs);
 
-    /// <summary>The room the left group gets beside the right group at <paramref name="stage"/> in a toolbar
-    /// <paramref name="width"/> wide — what the chips are laid out in (they never shrink, so this is ≥ their width at
-    /// every stage <see cref="For"/> picks short of <see cref="ToolbarStage.FilterMenu"/>).</summary>
-    public static float LeftRoom(float width, bool narrowPad, ToolbarStage stage, in ToolbarNeeds needs)
-        => InnerWidth(width, narrowPad) - Gap - RightGroup(stage, in needs);
-
     /// <summary>The stage for a toolbar <paramref name="width"/> DIP wide (its own arranged width, gutters included);
     /// <paramref name="previous"/> is the stage on screen (null = none yet). See the type doc.</summary>
     public static ToolbarStage For(float width, in ToolbarNeeds needs, bool narrowPad, ToolbarStage? previous = null)
@@ -664,23 +654,4 @@ public static class AudiobookOrder
     /// the reader runs last-chapter-first, so position 0 is the last chapter and the final position is chapter 1. The
     /// provider states no <c>number</c> on an audiobook item, which is why the reader numbers by POSITION.</summary>
     public static int ChapterNumber(int index, int count) => (uint)index < (uint)count ? count - index : 0;
-}
-
-// ══ 6. THE EPISODE PAGE'S DOORS ══════════════════════════════════════════════════════════════════════════════════════
-
-public static class EpisodeNeighbours
-{
-    /// <summary>The next/previous doors under the episode page's reader. NEXT is the NEWER neighbour and PREVIOUS the
-    /// older, in EVERY order: for a serial that is the plan's "number + 1", for anything else "the newer one" (§5.2),
-    /// and the prototype takes <c>chrono[k+1]</c> / <c>chrono[k-1]</c> for both. The order changes only the COPY —
-    /// "next in the story" · next / previous for a serial, "around this episode" · newer / older otherwise — which the
-    /// page reads from the show's order itself, so this rule takes none (a parameter no branch reads is a fact that can
-    /// lie). Returns SLOTS from <paramref name="slotsNewestFirst"/>; -1 at either end, and both -1 when
-    /// <paramref name="self"/> is not among them.</summary>
-    public static (int Next, int Previous) Of(ReadOnlySpan<int> slotsNewestFirst, int self)
-    {
-        int at = slotsNewestFirst.IndexOf(self);
-        if (at < 0) return (-1, -1);
-        return (at > 0 ? slotsNewestFirst[at - 1] : -1, at + 1 < slotsNewestFirst.Length ? slotsNewestFirst[at + 1] : -1);
-    }
 }

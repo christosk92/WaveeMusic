@@ -18,14 +18,11 @@
 // The popover's own state (the tab, the grid cursor, the group filter, the mirrored layout / spectrum / dimming cells) lives in the
 // slot's hook cells, so it survives the template's re-runs and goes with the popover.
 
-using System.Collections.Generic;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
-using FluentGpu.Hooks;
 using FluentGpu.Localization;
-using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Theming.Contracts;

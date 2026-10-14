@@ -84,8 +84,8 @@ public class TempoFilterTests
         {
             Tempo = Track.TempoBand.From120To139, Camelot = Camelot("8B"), Tag = "K-Pop",
         };
-        Assert.Equal(3, f.ActiveCount);
+        Assert.Equal(3, f.ActiveCountFor(searching: true));
         Assert.False(f.IsDefault);
-        Assert.Equal(0, Track.FilterState.Default.ActiveCount);
+        Assert.Equal(0, Track.FilterState.Default.ActiveCountFor(searching: true));
     }
 }

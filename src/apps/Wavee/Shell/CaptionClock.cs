@@ -11,8 +11,6 @@
 // the last report and the edge wake. It takes the frame clock as an argument (`Design.FrameTime.NowMs` in production), so
 // `CaptionClockTests` drives it with a fake one.
 
-using System;
-
 namespace Wavee;
 
 public static partial class Stage

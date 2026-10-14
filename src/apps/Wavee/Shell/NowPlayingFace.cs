@@ -16,8 +16,6 @@
 // Everything that decides is pure and takes its clock as an argument (`nowMs`), so `NowPlayingFaceTests` drives it with a
 // fake clock and no engine.
 
-using System;
-
 using FluentGpu.Signals;
 
 namespace Wavee;
@@ -52,9 +50,6 @@ public static partial class Shell
         /// <c>Phase == Playing</c> and therefore FALSE for the 150 ms a skip takes; the primary's face must not read that,
         /// or it flips pause → play → pause on every track change.</summary>
         public bool PlayingBeforeLoad => _playingBeforeLoad;
-
-        /// <summary>Frame-clock stamp of the open loading/buffering window, or 0: the sweep grace's origin.</summary>
-        public long LoadingSinceMs => _loadingSinceMs;
 
         /// <summary>Wake every reader of <see cref="Wake"/> (a hold or sweep deadline passed).</summary>
         public void Bump() => Wake.Value = Wake.Peek() + 1;

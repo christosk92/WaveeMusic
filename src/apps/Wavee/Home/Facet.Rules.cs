@@ -19,8 +19,6 @@
 // Engine-free and pure (no signals, no Element, no I/O) so it can be unit-tested without a host — the "no
 // source-text tests" rule's pattern (ButtonRulesTests/AppUpdateToasts/etc.): extract the DECISION, test it directly.
 
-using Wavee;
-
 namespace Wavee.HomeUi;
 
 /// <summary>The old content's target opacity and transition duration during a facet switch, keyed purely on the

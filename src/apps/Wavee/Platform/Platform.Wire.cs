@@ -156,11 +156,11 @@ public static class Wire
             try
             {
                 HttpResponseMessage response = base.Send(request, ct);
-                CaptureEnd(captureId, request, response, null);
+                CaptureEnd(captureId, request, response);
                 Note(client, storms, request, (int)response.StatusCode, response.Content.Headers.ContentLength, start, null);
                 return response;
             }
-            catch (Exception ex) { CaptureEnd(captureId, request, null, ex); Note(client, storms, request, 0, null, start, ex); throw; }
+            catch (Exception ex) { CaptureEnd(captureId, request, null); Note(client, storms, request, 0, null, start, ex); throw; }
         }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
@@ -171,11 +171,11 @@ public static class Wire
             try
             {
                 HttpResponseMessage response = await base.SendAsync(request, ct).ConfigureAwait(false);
-                CaptureEnd(captureId, request, response, null);
+                CaptureEnd(captureId, request, response);
                 Note(client, storms, request, (int)response.StatusCode, response.Content.Headers.ContentLength, start, null);
                 return response;
             }
-            catch (Exception ex) { CaptureEnd(captureId, request, null, ex); Note(client, storms, request, 0, null, start, ex); throw; }
+            catch (Exception ex) { CaptureEnd(captureId, request, null); Note(client, storms, request, 0, null, start, ex); throw; }
         }
     }
 
@@ -207,7 +207,7 @@ public static class Wire
         return Capture.Begin(CaptureKind.HttpCall, causeId, a: endpoint, payload: CapturedRequestBody(request));
     }
 
-    static void CaptureEnd(long id, HttpRequestMessage request, HttpResponseMessage? response, Exception? ex)
+    static void CaptureEnd(long id, HttpRequestMessage request, HttpResponseMessage? response)
     {
         if (id == 0) return; // never began (capture was off, or off by the time we got here) — nothing to close
         if (response is null) { Capture.End(id, n0: 0, truncated: true); return; } // transport failure — no status, no body

@@ -173,10 +173,10 @@ public class EntitiesFakeAlbumTests
         var e = Entities.Current.Edges;
         Assert.Equal(2, al2.ArtistSlots.Length);
         Assert.Equal(2, al2.VersionSlots.Length);
-        Assert.Equal(6, al2.MoreBySlots.Length);                           // "Show all 6"
+        Assert.Equal(6, Entities.Current.Edges.AlbumMoreBy.Targets(al2.Slot).Length);                           // "Show all 6"
         Assert.Equal(7, e.AlbumRecommendations.Count(al2.Slot));
-        Assert.Equal(7, al2.FeaturedOnSlots.Length);
-        Assert.Equal(6, al2.SimilarSlots.Length);
+        Assert.Equal(7, Entities.Current.Edges.AlbumFeaturedOn.Targets(al2.Slot).Length);
+        Assert.Equal(6, Entities.Current.Edges.AlbumSimilar.Targets(al2.Slot).Length);
         Assert.Equal(6, al2.MerchSlots.Length);
 
         int noPrice = 0, noShop = 0;
@@ -198,7 +198,7 @@ public class EntitiesFakeAlbumTests
         // The other albums answer each trailing relation EMPTY: absent, not a skeleton.
         var al7 = AlbumOf(7);
         Assert.Equal(EdgeState.Complete, e.AlbumMerch.State(al7.Slot));
-        Assert.Equal(0, al7.MoreBySlots.Length + al7.SimilarSlots.Length + al7.MerchSlots.Length);
+        Assert.Equal(0, Entities.Current.Edges.AlbumMoreBy.Targets(al7.Slot).Length + Entities.Current.Edges.AlbumSimilar.Targets(al7.Slot).Length + al7.MerchSlots.Length);
     }
 
     [Fact]

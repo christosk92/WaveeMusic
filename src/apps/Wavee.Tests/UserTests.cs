@@ -321,7 +321,7 @@ public class UserTests
 
         int stamp = me.AddedAt(LibraryEdgeKind.Liked, trackSlot);
         Assert.Equal((int)Store.ToUnix(1_000_000), stamp);
-        Assert.Equal(stamp, me.LikedEdges[0].AddedAt);
+        Assert.Equal(stamp, Wavee.User.Relation(LibraryEdgeKind.Liked).Payload(me.Slot)[0].AddedAt);
         Assert.NotEqual(1_000_000, stamp);
     }
 

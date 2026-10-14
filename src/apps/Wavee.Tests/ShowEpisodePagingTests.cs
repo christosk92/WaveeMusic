@@ -2,7 +2,7 @@
 //
 // Ported from 0.2.9 `Wavee.Tests/ShowEpisodePagingTests.cs` (246 lines, 5 facts), which drove the hydration ladder,
 // the pump and `StoreLibrarySource`. Those have no 0.3 counterpart: the membership is `Edges.ShowEpisodes` (paged by
-// `ReplacePage`, Partial until its length reaches the stated total), the POST arithmetic is `Spotify.Api.Batches`, the
+// `ReplacePage`, Partial until its length reaches the stated total), the POST size is `Fetch.MaxUrisPerRequest`, the
 // cursor is `ShowTable.EpisodesAsked` (advanced by the answer whether or not rows came back, forward only) and the gate
 // is `Episode.Rules.CanLoadMore`. The assertions keep 0.2.9's numbers — 700 members in 300/300/100, a cursor that
 // comes back unmoved past the end, a 12-episode show already done, and the regression fact
@@ -40,22 +40,6 @@ public class ShowEpisodePagingTests
         ref var row = ref s.Shows.RowFor(s.Text(showUri), Authority.Full, (uint)ShowFields.None);
         row.EpisodesAsked = through;
         TestScope.CommitAndPublish(s);
-    }
-
-    [Fact]
-    public void Full_Pages700MembersInThreePages()
-    {
-        // THE regression: a 700-member show used to end at 300. Three requests of 300/300/100 — sizes, and the last is
-        // the remainder rather than a padded page, and every member is asked exactly once.
-        Span<Range> pages = stackalloc Range[8];
-        int n = Spotify.Api.Batches(Members, pages);
-        Assert.Equal(3, n);
-        Span<int> sizes = stackalloc int[3];
-        for (int i = 0; i < n; i++) sizes[i] = pages[i].End.Value - pages[i].Start.Value;
-        sizes.Sort();
-        Assert.Equal(new[] { 100, 300, 300 }, sizes.ToArray());
-        Assert.Equal(Members, sizes[0] + sizes[1] + sizes[2]);
-        Assert.Equal(Members, pages[n - 1].End.Value);
     }
 
     [Fact]

@@ -1,6 +1,6 @@
 // ── Theming/Contracts/ContentStateProps.cs — the props of `Shell.ContentState` (themes plan 6.0, T4a) ──────────────────────
 //
-// One view key, four kinds (`ContentStateKind`). The core content host decides the state (`Shell.FrameRules.ContentFor`),
+// One view key, four kinds (`ContentStateKind`). The core content host decides the state (`Shell.FrameRules.ContentBodyFor` / `ShowsOfflineStrip`),
 // builds ONE of these per mounted state and mounts `Slots.View(ViewKeys.ShellContentState, props)`; the theme's template
 // switches on `Kind` and draws it. A props record freezes at mount: every live value reaches the template through the page
 // element it hosts or a verb, never through a changing member.

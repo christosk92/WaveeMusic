@@ -185,9 +185,6 @@ public static partial class ReleaseNotes
         }
     }
 
-    /// <summary>Replace the store (a harness, a loopback feed). The composition root does not need to call it.</summary>
-    public static void UseStore(Store store) => Volatile.Write(ref s_notes, store);
-
     /// <summary>Fill the seams other owners left for this store: the updater's two notes seams
     /// (<c>Update.Host.PeekIndexEntry</c> / <c>PrefetchNotes</c>, read through static forwarders at call time, so the order
     /// against <c>Update.Host.Start</c> does not matter) and the diagnostics page's pipeline receipts.</summary>
@@ -329,10 +326,8 @@ public static partial class ReleaseNotes
             }
         }
 
-        /// <summary>The index we already have (memory, else the disk cache). NO network — the update check's hot path.</summary>
-        public Task<ReleaseNotesIndex?> PeekIndexAsync(CancellationToken ct) => Task.FromResult(PeekIndex());
-
-        /// <summary>The synchronous half of <see cref="PeekIndexAsync"/> (the updater's seam is synchronous).</summary>
+        /// <summary>The index we already have (memory, else the disk cache). NO network — the update check's hot path,
+        /// synchronous like the updater's seam.</summary>
         public ReleaseNotesIndex? PeekIndex()
         {
             if (IndexSnapshot() is { } live) return live;

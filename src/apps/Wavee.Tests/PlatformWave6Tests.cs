@@ -231,8 +231,6 @@ public class NetworkPolicyTests
         Assert.Equal(2, Platform.Network.EffectiveQuality(2, 0, in Unrestricted));
         var unknown = NetworkCost.Unknown;
         Assert.Equal(3, Platform.Network.EffectiveQuality(3, 0, in unknown));
-        Assert.False(Platform.Network.ShouldDeferPrefetch(in unknown));
-        Assert.True(Platform.Network.ShouldDeferPrefetch(in Metered));
     }
 
     [Fact]
@@ -449,14 +447,6 @@ public class RunMarkerTests
         s.Set(Platform.Keys.RunMarker, RunMarker.Running);
         RunMarker.End(s);
         Assert.Equal(RunMarker.Clean, s.Get(Platform.Keys.RunMarker));
-    }
-
-    [Fact]
-    public void MarkCrashed_writes_crashed()
-    {
-        var s = new MemoryAppSettings();
-        RunMarker.MarkCrashed(s);
-        Assert.Equal(RunMarker.Crashed, s.Get(Platform.Keys.RunMarker));
     }
 }
 

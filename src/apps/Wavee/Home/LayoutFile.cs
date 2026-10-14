@@ -258,8 +258,6 @@ public static class LayoutWire
 
 // ══ 5. THE STORE — home-layout.json off the UI thread ══════════════════════════════════════════════════════════════
 
-public enum LayoutSaveFault : byte { None = 0, IoFailure = 1 }
-
 /// <summary>home-layout.json v2: load / fault-classify + an atomic write through a .tmp and a <c>File.Replace</c>
 /// that rotates one .bak. Same folder, same mechanics as the old store (0.2.9 → 0.3's <c>HomeLayoutStore</c>):
 /// <c>…\WaveeMusic\home-layout.json</c> under <see cref="Platform.LocalFolder"/>, beside sidebar-layout.json and
@@ -270,7 +268,6 @@ public sealed class LayoutStore
     readonly object _writeGate = new();
     long _seq;
     volatile bool _writesBlocked;
-    volatile LayoutSaveFault _saveFault;
     Task? _pending;
 
     public LayoutStore(string path) => _path = path;
@@ -288,7 +285,6 @@ public sealed class LayoutStore
     public string BakPath => _path + ".bak";
     public string TmpPath => _path + ".tmp";
     public bool WritesBlocked => _writesBlocked;
-    public LayoutSaveFault SaveFault => _saveFault;
 
     /// <summary>No file ⇒ the v2 default with no fault (first run is not a fault). A file that reads with
     /// <see cref="LayoutReadFault.TooNew"/> or <see cref="LayoutReadFault.Malformed"/> blocks every write until a
@@ -352,12 +348,9 @@ public sealed class LayoutStore
                 {
                     File.Move(TmpPath, _path, overwrite: true);
                 }
-
-                _saveFault = LayoutSaveFault.None;
             }
             catch (Exception ex)
             {
-                _saveFault = LayoutSaveFault.IoFailure;
                 Log.Warn("home", "home.layout.save_failed fault=io_failure exception_type=" + ex.GetType().Name);
                 try { if (File.Exists(TmpPath)) File.Delete(TmpPath); } catch (Exception) { }
             }
@@ -380,7 +373,7 @@ public sealed class LayoutStore
 /// <summary>The one app-wide Home layout instance: a live <see cref="Signal{T}"/> of <see cref="LayoutDoc"/> plus the
 /// single mutation path (<see cref="Dispatch"/>), backed by <see cref="LayoutStore"/>. Constructed once
 /// (<see cref="Instance"/>, lazy — the same seam as <c>Sidebar.Store</c>) and read through <see cref="Slot"/> by both
-/// <c>HomeScreen</c> (<c>Home/Screen.UI.cs</c>) and <c>CustomizeScreen</c> (<c>Home/Customize.UI.cs</c>), so a
+/// <c>HomeScreen</c> (<c>Home/HomeScreen.cs</c>) and <c>CustomizeScreen</c> (<c>Home/Customize.Host.cs</c>), so a
 /// customize edit is visible on Home the same frame it commits: no second private copy, no file I/O in
 /// <c>Render()</c> (F29 — <c>LayoutStore.ForApp().Load()</c> used to run inside <c>HomeScreen.Render()</c> AND inside
 /// the customizer's constructor, and the two never synced).</summary>
@@ -424,13 +417,4 @@ public sealed class HomeLayout
     /// <summary>Force <see cref="Instance"/> to materialize now — called once from <c>App.cs</c>, beside
     /// <c>Sidebar.Boot()</c>, so home-layout.json is read before the first Home render rather than on it.</summary>
     public static void Boot() => _ = Instance;
-
-    /// <summary>Point the service at another instance — a test (a temp-file-backed store) or a host with its own
-    /// profile. Call before anything reads <see cref="Instance"/> or <see cref="Slot"/>: the document already loaded
-    /// is not re-read.</summary>
-    public static void UseInstance(HomeLayout instance)
-    {
-        ArgumentNullException.ThrowIfNull(instance);
-        s_instance = instance;
-    }
 }

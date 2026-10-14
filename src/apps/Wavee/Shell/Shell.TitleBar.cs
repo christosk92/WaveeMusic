@@ -11,11 +11,8 @@
 // it calls inside the engine bar's render, so it subscribes exactly where the builders did before the move.
 
 using FluentGpu.Controls;
-using FluentGpu.Dsl;
 using FluentGpu.Foundation;
-using FluentGpu.Hooks;
 using FluentGpu.Localization;
-using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
 
 namespace Wavee;
@@ -185,7 +182,7 @@ public static partial class Shell
             Play = play,
             Menu = menu,
             Drag = drag,
-            Trailing = rf.IsNone ? null : Search.TrailingOf(rf, uri, item.Title, compact: true),
+            Trailing = rf.IsNone ? null : Search.TrailingOf(rf, uri, item.Title),
         };
     }
 

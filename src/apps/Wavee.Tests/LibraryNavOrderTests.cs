@@ -269,22 +269,6 @@ public class LibraryNavOrderTests
     public void TheSortCodesAreTheWire(int code, LibraryNavSort sort) => Assert.Equal(code, (int)sort);
 
     [Fact]
-    public void EverySortCodeHasItsOwnLabelKey_AndAnUnknownCodeReadsAsRecents()
-    {
-        var keys = new HashSet<string>(StringComparer.Ordinal);
-        for (int code = 0; code <= 4; code++)
-        {
-            string key = User.SortLabelKey(code);
-            Assert.False(string.IsNullOrWhiteSpace(key));
-            Assert.True(keys.Add(key), $"sort code {code} reuses the loc key {key}");
-        }
-        // An out-of-range code reads as Recents. (5 is a real sort since the rework — the artists rail's "albums" —
-        // and its RAIL word is `LibraryWordRail.WordKey`; this pill's label table is the sidebar's, codes 0-4.)
-        Assert.Equal(User.SortLabelKey(0), User.SortLabelKey(6));
-        Assert.Equal(User.SortLabelKey(0), User.SortLabelKey(-1));
-    }
-
-    [Fact]
     public void TheViewCodes_TwoAndThreeAreGrids_ZeroAndTwoAreCompact()
     {
         Assert.False(User.IsGridView(0));

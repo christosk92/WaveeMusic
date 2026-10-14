@@ -9,9 +9,8 @@
 // MOVED out of `Video.cs` (the `Pip`, `PipEdge` and `PipGesture` blocks, verbatim) plus two additions:
 //
 //   · `PipBounds` — the minimum size, the player-bar and chrome reserves and the edge margin as a VALUE. Every rule that
-//     used a constant now has an overload taking the bounds; the original signatures are kept and answer for
-//     `PipBounds.Classic` (0.2.9's numbers, which a rect restored from a 0.2.9 profile must still land on). A theme's tier
-//     policy (T3) will hand its own bounds instead of editing the constants.
+//     used a constant takes the bounds: the active panel policy's (`ShellPolicy.Tracked.Panel.Pip`), whose Classic value
+//     is `PipBounds.Classic` (0.2.9's numbers, which a rect restored from a 0.2.9 profile must still land on).
 //   · `PipOverlay` — what `Video.UI.cs`'s `PipLayer` switched over in three private methods: the overlay surface's width,
 //     height and offset per resolved placement (fullscreen fills the window, docked follows the reservation, the
 //     floating card is clamped inside the viewport).
@@ -43,9 +42,6 @@ public static partial class Video
         /// free term and a 9:16 portrait source in a 360-wide mini player asks for 640 DIP of height in a 900-tall
         /// window and the card walks off the bottom. The floor wins the tie, so a very short window still gets a
         /// 135-tall card rather than a degenerate one.</summary>
-        public static float FitHeight(float w, float ratio, float viewportH) => FitHeight(w, ratio, viewportH, PipBounds.Classic);
-
-        /// <summary><see cref="FitHeight(float, float, float)"/> inside explicit <paramref name="bounds"/>.</summary>
         public static float FitHeight(float w, float ratio, float viewportH, in PipBounds bounds)
         {
             float r = ratio > 0f && float.IsFinite(ratio) ? ratio : FallbackRatio;
@@ -53,20 +49,8 @@ public static partial class Video
             return MathF.Max(bounds.MinH, MathF.Min(w * r, free));
         }
 
-        /// <summary>Clamp a placed rect back inside the viewport — what a window resize re-applies so a card parked at
-        /// the old bottom-right does not end up off-screen.</summary>
-        public static void ClampToViewport(ref float x, ref float y, float w, float h, float viewportW, float viewportH)
-        {
-            x = MathF.Max(0f, MathF.Min(x, MathF.Max(0f, viewportW - w)));
-            y = MathF.Max(0f, MathF.Min(y, MathF.Max(0f, viewportH - h)));
-        }
-
         /// <summary>The anchored resting position: bottom-right, above the player bar. While the card is not yet
         /// user-placed this is re-derived from the viewport every frame, which is what makes it track the corner.</summary>
-        public static (float X, float Y) Anchor(float w, float h, float viewportW, float viewportH)
-            => Anchor(w, h, viewportW, viewportH, PipBounds.Classic);
-
-        /// <summary><see cref="Anchor(float, float, float, float)"/> inside explicit <paramref name="bounds"/>.</summary>
         public static (float X, float Y) Anchor(float w, float h, float viewportW, float viewportH, in PipBounds bounds)
             => (MathF.Max(0f, viewportW - w - bounds.Margin), MathF.Max(0f, viewportH - h - bounds.ReserveBottom - bounds.Margin));
     }
@@ -102,25 +86,16 @@ public static partial class Video
         /// <summary>The gap kept from every window edge (and above the player bar).</summary>
         public const float Margin = 16f;
 
-        /// <summary>A card may sit no closer than <see cref="Margin"/> to either side.</summary>
-        public static float ClampX(float x, float viewportW, float w) => ClampX(x, viewportW, w, PipBounds.Classic);
-
-        /// <summary><see cref="ClampX(float, float, float)"/> inside explicit <paramref name="bounds"/>.</summary>
+        /// <summary>A card may sit no closer than the bounds' margin to either side.</summary>
         public static float ClampX(float x, float viewportW, float w, in PipBounds bounds)
             => Math.Clamp(x, bounds.Margin, MathF.Max(bounds.Margin, viewportW - w - bounds.Margin));
 
-        /// <summary>…and no closer than <see cref="Margin"/> to the top or to the player bar.</summary>
-        public static float ClampY(float y, float viewportH, float h) => ClampY(y, viewportH, h, PipBounds.Classic);
-
-        /// <summary><see cref="ClampY(float, float, float)"/> inside explicit <paramref name="bounds"/>.</summary>
+        /// <summary>…and no closer than the margin to the top or to the player bar.</summary>
         public static float ClampY(float y, float viewportH, float h, in PipBounds bounds)
             => Math.Clamp(y, bounds.Margin, MathF.Max(bounds.Margin, viewportH - h - bounds.ReserveBottom - bounds.Margin));
 
         /// <summary>The bottom space the page keeps clear: the card's height + the gap while it sits ANCHORED, 0 once the
         /// user has placed it (a deliberately placed card is a free-floating overlay) or when it is not mounted.</summary>
-        public static float Reserve(bool mounted, bool placed, float h) => Reserve(mounted, placed, h, PipBounds.Classic);
-
-        /// <summary><see cref="Reserve(bool, bool, float)"/> inside explicit <paramref name="bounds"/>.</summary>
         public static float Reserve(bool mounted, bool placed, float h, in PipBounds bounds) => mounted && !placed ? h + bounds.Margin : 0f;
 
         /// <summary>Should the card's HEIGHT follow the content? Always until the user sizes it; after that only when the
@@ -129,13 +104,7 @@ public static partial class Video
             => !userSized || (fittedRatio > 0f && MathF.Abs(contentRatio - fittedRatio) > 0.01f);
 
         /// <summary>One resize sample. The ANCHORED edge is the one not being dragged: growing right/bottom is bounded by
-        /// the viewport, growing left/top by the frozen far edge. Floors are <see cref="Pip.MinW"/> × <see cref="Pip.MinH"/>.</summary>
-        public static (float X, float Y, float W, float H) Resize(PipEdge edge, float startX, float startY, float startW,
-            float startH, float dx, float dy, float viewportW, float viewportH)
-            => Resize(edge, startX, startY, startW, startH, dx, dy, viewportW, viewportH, PipBounds.Classic);
-
-        /// <summary><see cref="Resize(PipEdge, float, float, float, float, float, float, float, float)"/> inside explicit
-        /// <paramref name="bounds"/>.</summary>
+        /// the viewport, growing left/top by the frozen far edge. Floors are the bounds' minimum size.</summary>
         public static (float X, float Y, float W, float H) Resize(PipEdge edge, float startX, float startY, float startW,
             float startH, float dx, float dy, float viewportW, float viewportH, in PipBounds bounds)
         {
@@ -188,12 +157,6 @@ public static partial class Video
             _ => pipH,
         };
 
-        public static OverlayOffset Offset(SurfacePlacement resolved, float viewportW, float viewportH, bool placed,
-            float x, float y, float w, float h, float slotX, float slotY)
-            => Offset(resolved, viewportW, viewportH, placed, x, y, w, h, slotX, slotY, PipBounds.Classic);
-
-        /// <summary><see cref="Offset(SurfacePlacement, float, float, bool, float, float, float, float, float, float)"/> inside
-        /// explicit <paramref name="bounds"/>.</summary>
         public static OverlayOffset Offset(SurfacePlacement resolved, float viewportW, float viewportH, bool placed,
             float x, float y, float w, float h, float slotX, float slotY, in PipBounds bounds)
         {

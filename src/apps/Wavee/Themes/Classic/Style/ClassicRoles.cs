@@ -16,7 +16,6 @@
 
 using System.Runtime.CompilerServices;
 using FluentGpu.Foundation;
-using Wavee.Theming.Roles;
 using ShellPalette = FluentGpu.Dsl.ShellPalette;
 using ThemeKind = FluentGpu.Dsl.ThemeKind;
 using TokenSet = FluentGpu.Dsl.TokenSet;
@@ -276,7 +275,6 @@ public static class ClassicRoles
         NeutralGround: ColorRole.By(static k => ShellGroundOf(k) with { A = 0.03f }),
         HeroAlpha: new ModePair<float>(0.055f, 0.10f),
         ShelfAlpha: new ModePair<float>(0.05f, 0.085f),
-        BandPull: new ModePair<float>(0.06f, 0.10f),
         HeroVeilPull: new ModePair<float>(0.16f, 0.24f),
         HeroVeilPeak: new ModePair<float>(0.42f, 0.78f),
         CoverMix: new ModePair<float>(0.10f, 0.18f),

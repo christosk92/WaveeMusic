@@ -616,19 +616,18 @@ public class SpotifyConnectHelloTests
 public class SpotifyConnectPublishGateTests
 {
     [Theory]
-    [InlineData(true, Spotify.Connect.PutReason.PlayerStateChanged, false, Spotify.Connect.PublishOutcome.Send)]
-    [InlineData(true, Spotify.Connect.PutReason.NewDevice, false, Spotify.Connect.PublishOutcome.Send)]
-    [InlineData(true, Spotify.Connect.PutReason.BecameInactive, true, Spotify.Connect.PublishOutcome.Send)]
-    [InlineData(false, Spotify.Connect.PutReason.PlayerStateChanged, false, Spotify.Connect.PublishOutcome.Hold)]
-    [InlineData(false, Spotify.Connect.PutReason.VolumeChanged, true, Spotify.Connect.PublishOutcome.Hold)]
-    [InlineData(false, Spotify.Connect.PutReason.NewDevice, false, Spotify.Connect.PublishOutcome.Hold)]
-    [InlineData(false, Spotify.Connect.PutReason.PickerOpened, false, Spotify.Connect.PublishOutcome.Hold)]
-    [InlineData(false, Spotify.Connect.PutReason.SpircHello, true, Spotify.Connect.PublishOutcome.Hold)]
-    [InlineData(false, Spotify.Connect.PutReason.BecameInactive, false, Spotify.Connect.PublishOutcome.Drop)]
-    [InlineData(false, Spotify.Connect.PutReason.BecameInactive, true, Spotify.Connect.PublishOutcome.Drop)]
+    [InlineData(true, Spotify.Connect.PutReason.PlayerStateChanged, Spotify.Connect.PublishOutcome.Send)]
+    [InlineData(true, Spotify.Connect.PutReason.NewDevice, Spotify.Connect.PublishOutcome.Send)]
+    [InlineData(true, Spotify.Connect.PutReason.BecameInactive, Spotify.Connect.PublishOutcome.Send)]
+    [InlineData(false, Spotify.Connect.PutReason.PlayerStateChanged, Spotify.Connect.PublishOutcome.Hold)]
+    [InlineData(false, Spotify.Connect.PutReason.VolumeChanged, Spotify.Connect.PublishOutcome.Hold)]
+    [InlineData(false, Spotify.Connect.PutReason.NewDevice, Spotify.Connect.PublishOutcome.Hold)]
+    [InlineData(false, Spotify.Connect.PutReason.PickerOpened, Spotify.Connect.PublishOutcome.Hold)]
+    [InlineData(false, Spotify.Connect.PutReason.SpircHello, Spotify.Connect.PublishOutcome.Hold)]
+    [InlineData(false, Spotify.Connect.PutReason.BecameInactive, Spotify.Connect.PublishOutcome.Drop)]
     public void A_connection_id_always_sends_its_absence_holds_everything_but_BecameInactive(bool hasConnectionId,
-        Spotify.Connect.PutReason reason, bool hasHeld, Spotify.Connect.PublishOutcome expected)
-        => Assert.Equal(expected, Spotify.Connect.PublishGate.Decide(hasConnectionId, reason, hasHeld));
+        Spotify.Connect.PutReason reason, Spotify.Connect.PublishOutcome expected)
+        => Assert.Equal(expected, Spotify.Connect.PublishGate.Decide(hasConnectionId, reason));
 }
 
 /// <summary>B2: the content key that suppresses an identical PlayerStateChanged / VolumeChanged re-send. Never

@@ -2,7 +2,7 @@
 //
 // Wave 4's gate for `Platform/Design.cs` (owner L). These are the 0.2.9 suites ch 00 §9.3(6) names, ported with the
 // rules they pin: DesignTokenConvergence, MotionSystem, EntranceStagger, ShellMergedRung, VoiceUnification,
-// LightModeOverhaul, DetailPageTone, ShellWashGeometry, HoverMotionGate, DetailRevealRamp, ContentHostPageTransition.
+// LightModeOverhaul, DetailPageTone, ShellWashGeometry, DetailRevealRamp, ContentHostPageTransition.
 //
 // NOTHING HERE STARTS THE ENGINE LOOP OR OPENS A WINDOW. Every theme-dependent fact goes through the PURE overload
 // (`ColorScience.ShellGround(set, theme)`, `ColorScience.Hairline(seed, theme, bg)`, `ColorScience.PageTone(scheme, theme)`,
@@ -255,7 +255,7 @@ public class DesignSizeTests
         => Assert.Equal(Design.Size.ControlH, Controls.IconButtonSize);
 
     [Fact]
-    public void The_media_pill_is_one_step_above_the_control_ladder()
+    public void The_follow_pill_is_one_step_above_the_control_ladder()
         => Assert.Equal(36f, Controls.PillHeight);
 
     [Fact]
@@ -733,38 +733,6 @@ public class DesignMotionTests
         // offsets exactly two authored lines, so the uncapped index × ms spelling is safe.
         Assert.Equal(45f, R.Motion.MastheadStaggerMs);
         Assert.NotEqual(R.Motion.StaggerMs, R.Motion.MastheadStaggerMs);
-    }
-}
-
-public class DesignHoverGateTests
-{
-    [Fact]
-    public void The_first_sample_is_a_baseline_and_never_a_hover()
-    {
-        // The engine re-fires a node's move-within at the SAME point when new content lands under a resting cursor —
-        // exactly the back-navigation case — so the first sample must never arm.
-        var gate = default(Design.HoverMotionGate);
-        Assert.False(gate.Observe(new Point2(10f, 10f)));
-        Assert.False(gate.Observe(new Point2(10f, 10f)));
-    }
-
-    [Fact]
-    public void Sub_pixel_jitter_does_not_read_as_movement()
-    {
-        var gate = default(Design.HoverMotionGate);
-        gate.Observe(new Point2(10f, 10f));
-        Assert.False(gate.Observe(new Point2(10.3f, 10.2f)));
-    }
-
-    [Fact]
-    public void A_real_move_arms_it_and_it_stays_armed()
-    {
-        // A one-shot "has real input happened since mount" latch, not a per-hover-cycle re-check: a page the user is
-        // already interacting with must not re-litigate every hover-out/in.
-        var gate = default(Design.HoverMotionGate);
-        gate.Observe(new Point2(10f, 10f));
-        Assert.True(gate.Observe(new Point2(40f, 10f)));
-        Assert.True(gate.Observe(new Point2(40f, 10f)));
     }
 }
 

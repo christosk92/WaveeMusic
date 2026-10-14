@@ -16,8 +16,8 @@
 // WHAT IS DELIBERATELY NOT HERE. The fold's surface effects (`Video.State`) are `VideoStateTests`' — one class per
 // process-wide static, the rule this suite's `VideoSurfaceRulesTests` header states — so this class touches the
 // roster and the tables and never the placement machine. The one thing worth saying about it: the mirror folds
-// through `State.FoldForTrack(..., boundary: false)`, whose upgrade is DEFERRED, and it applies neither of
-// `OverrideMutation.Plan`'s reveal/force legs — attaching a file lights the BUTTON and plays nothing.
+// through `State.FoldForTrack(..., boundary: false)`, whose upgrade is DEFERRED, and it neither reveals nor forces a
+// reload — attaching a file lights the BUTTON and plays nothing.
 //
 // The mirror is INSTALLED and UNINSTALLED by the fixture, the way the composition root installs it, so the facts run
 // against the real subscription rather than a hand-called method — the missing subscription being the whole defect.

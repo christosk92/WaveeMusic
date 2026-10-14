@@ -713,20 +713,13 @@ public class ServerClockTests
     }
 
     [Fact]
-    public void Server_now_is_zero_until_the_clock_is_synced()
-    {
-        var session = default(Spotify.Session);
-        Assert.Equal(0, Spotify.ServerNowMs(session, 1000));
-    }
-
-    [Fact]
     public void A_passive_sample_bootstraps_the_offset_but_never_overrides_a_probe()
     {
         var session = default(Spotify.Session);
         Assert.False(Spotify.ObservePassiveClock(ref session, 6000, 2000));
         Assert.True(session.ClockSynced);
         Assert.False(session.ClockProbed);
-        Assert.Equal(6000, Spotify.ServerNowMs(session, 2000));
+        Assert.Equal(4000, session.ClockOffsetMs);
 
         long best = long.MaxValue;
         Spotify.ObserveClockProbe(ref session, 1000, 5000, 1000, ref best);

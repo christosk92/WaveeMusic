@@ -114,7 +114,7 @@ public static partial class Entities
         var staging = Staging.Rent();
         try
         {
-            SeedRows(staging, now0);
+            SeedRows(staging);
             Commit(staging);
         }
         finally
@@ -207,7 +207,7 @@ public static partial class Entities
         _ => (AlbumKind.Album, 10),
     };
 
-    static void SeedRows(Staging s, long now0)
+    static void SeedRows(Staging s)
     {
         // ── users: me + three owners ────────────────────────────────────────────────────────────────────────────────
         for (int i = 0; i < 4; i++)

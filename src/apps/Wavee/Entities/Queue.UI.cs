@@ -34,7 +34,6 @@
 // and the settings epoch; the demand for row text is ONE `Entities.Ensure` over the whole queue per publication.
 
 using System.Buffers;
-using System.Collections.Generic;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -352,7 +351,7 @@ public static partial class Queue
         public Element List(Element body, string key) => (BoxEl)Reorder.List(body) with { Grow = 0f, Key = key };
 
         public DragSource? OwnDrag(ulong itemId, int index, EntityRef row)
-            => QueueRowRules.RowDrags(Viewer) ? Drag.Source(() => PayloadFor(itemId, index, row)) : null;
+            => QueueRowRules.RowDrags(Viewer) ? Drag.Source(() => PayloadFor(itemId, row)) : null;
 
         public Element Attach(BoxEl row, ulong itemId, int index, EntityRef rowRef)
         {
@@ -371,7 +370,7 @@ public static partial class Queue
         object? PayloadAt(int i)
         {
             if ((uint)i >= (uint)_slotCount || !_slots[i].IsRow) return null;
-            return Model.TryRow(_slots[i].Section, _slots[i].Pos, out var row) ? PayloadFor(row.ItemId, row.Index, row.Ref) : null;
+            return Model.TryRow(_slots[i].Section, _slots[i].Pos, out var row) ? PayloadFor(row.ItemId, row.Ref) : null;
         }
 
         void CommitMove(int from, int to)
@@ -387,7 +386,7 @@ public static partial class Queue
 
     /// <summary>The queue row as a drag: its track travels for the chip, and <c>SourceQueueItemId</c> marks it a reorder
     /// that no playlist, tab or player-bar surface may deposit.</summary>
-    static DragPayload? PayloadFor(ulong itemId, int index, EntityRef row)
+    static DragPayload? PayloadFor(ulong itemId, EntityRef row)
     {
         if (row.IsNone) return null;
         var text = TextOf(row);

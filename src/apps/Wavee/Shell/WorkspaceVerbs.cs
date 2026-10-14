@@ -9,7 +9,6 @@
 // deposit destination (the cross-tab append). A non-destination stays silent rather than flashing a refusal as a drag
 // crosses the strip.
 
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace Wavee;

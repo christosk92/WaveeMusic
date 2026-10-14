@@ -35,7 +35,6 @@
 // this file); `Setup.Runtime.WizardCovering` is written here while the Local playback page is up. Every decision is CORE
 // (`Setup.Gating`, `Setup.SignInRules`, and the wizard rules parked in `Setup.Host.cs` region 1); this file lays out and wires.
 
-using FluentGpu;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -58,10 +57,6 @@ public static partial class Setup
     // MOUNT POINT (gap batch B5 — Shell.OverlaysLayer)
     public static Element SignInDoor()
         => Platform.Args.Fake ? new BoxEl() : Embed.Comp(static () => new SignInDoorView());   // --fake never signs in: its scope is seeded, not an account
-
-    /// <summary>Ask for the sign-in surface from anywhere on the UI thread — the same request <c>Spotify.Login()</c> makes
-    /// when there is nothing to resume.</summary>
-    public static void RequestSignIn() => Spotify.SignIn.Requests.Value = Spotify.SignIn.Requests.Peek() + 1;
 
     /// <summary>The open surface, or null. UI THREAD.</summary>
     static readonly RootState<OverlayHandle?> s_signInState = new("Setup.SignInDoor");   // ROOT-LIFETIME (RootScope.cs)
@@ -141,7 +136,7 @@ public static partial class Setup
     });
 
     /// <summary>"Wavee needs Spotify Premium.  Don't have a Spotify account? Sign up" — ONE wrapping row. The wizard sets it at
-    /// body 14 secondary with a medium (32-DIP lane) link, the budget's <c>LinkRowHeight</c>; the 460 door keeps caption size.</summary>
+    /// body 14 secondary with a medium (32-DIP lane) link; the 460 door keeps caption size.</summary>
     static Element PremiumRow(bool wizard) => new BoxEl
     {
         Direction = 0, Wrap = true, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f,
@@ -732,14 +727,12 @@ public static partial class Setup
     /// <summary>The Terms page's opt-in crash-reporting card (crash-diagnostics plan §D "Wizard consent"): title + an
     /// "Optional" pill, the one-line question, a radio choice (No · Ask me first · Always send —
     /// <see cref="Crash.Reporting"/> Off/Ask/Auto, default Off; only the first two on a build that can't send,
-    /// <c>Crash.ConsentPolicy.Offered</c>), the scrub summary and the Privacy link. The
+    /// <c>Crash.ConsentPolicy.Offered</c>) and the scrub summary (the page's fine print carries the Privacy link). The
     /// choice writes <see cref="Platform.Keys.CrashReporting"/> the instant it changes — never waits for Continue, so a
     /// crash between the click and the wizard's own advance cannot lose it. Consent-asked itself is stamped once, on
     /// Continue, by <see cref="WizardRules.MarkConsentAsked"/> (<c>WizardModel.Primary</c>), not here.</summary>
     sealed class CrashConsentCard : Component
     {
-        const string PrivacyUrl = "https://github.com/christosk92/WaveeMusic/blob/main/PRIVACY.md";
-
         public override Element Render()
         {
             // #165: a build that can't send (no ingest URL / key / quad) offers only No · Ask me first — "Always send"

@@ -18,7 +18,6 @@
 //
 // Numbers are `Rules\ClassicArtistChartLayout.cs` (WVTH003 allows no literal look here).
 
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;

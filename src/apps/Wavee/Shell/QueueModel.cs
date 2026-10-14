@@ -12,8 +12,6 @@
 // `Queue.Divider`, `Queue.Split`, `QueueSlots`, `QueueMovePlan`); this projects them. A surface's row LAYOUT (slots, headers,
 // extents) is still its own: that is structure, not data.
 
-using System;
-
 using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
 

@@ -65,7 +65,6 @@ public class DateKeysTests
         Assert.True(DateKeys.TryMonth(key, out int y, out int m));
         Assert.Equal((year, month), (y, m));
         Assert.Equal(year, DateKeys.YearOfMonth(key));
-        Assert.Equal(month, DateKeys.MonthOfMonth(key));
         Assert.True(DateKeys.TryMonthStart(key, out var date));
         Assert.Equal(new DateTime(year, month, 1), date);
         Assert.Equal(new DateTime(year, month, 1).ToString("MMMM yyyy", Invariant), DateKeys.MonthLabel(key, Invariant));
@@ -128,7 +127,6 @@ public class DateKeysTests
         Assert.Equal(DateKeys.None, year);
         Assert.Equal(0, month);
         Assert.Equal(DateKeys.None, DateKeys.YearOfMonth(key));
-        Assert.Equal(0, DateKeys.MonthOfMonth(key));
         Assert.False(DateKeys.TryMonthStart(key, out var date));
         Assert.Equal(default(DateTime), date);
         Assert.Equal("", DateKeys.MonthLabel(key, Invariant));

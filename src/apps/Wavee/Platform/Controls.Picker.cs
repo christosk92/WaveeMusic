@@ -57,15 +57,10 @@ public static partial class Controls
     public static readonly PickerShell PickerTile = new(116f, 84f, 8f, 4f);
     /// <summary>The sidebar design card as it appears in Settings, where it shares a page column.</summary>
     public static readonly PickerShell PickerPaneCompact = new(200f, float.NaN, 10f, 7f);
-    /// <summary>The sidebar design card at full size — the fresh-install chooser.</summary>
-    public static readonly PickerShell PickerPane = new(224f, float.NaN, 10f, 7f);
     /// <summary>The cover-style thumbnail: a 76-DIP square miniature inside the shared card shell (92 wide, 8 of resting
     /// inset each side). Content-sized in height — the miniature IS the card's content, and the label sits UNDER the
     /// card rather than in it.</summary>
     public static readonly PickerShell PickerCoverMini = new(92f, float.NaN, 8f, 5f);
-    /// <summary>A wide horizontal row card — the setup wizard's chooser, where the picker reads as a vertical LIST of
-    /// full-width rows rather than a strip of square cards.</summary>
-    public static readonly PickerShell PickerWideRow = new(480f, 100f, 8f, 0f);
 
     /// <summary>The card SHELL: fill, radius, the accent border that grows INWARD on selection, the subtle hover/press
     /// scale.

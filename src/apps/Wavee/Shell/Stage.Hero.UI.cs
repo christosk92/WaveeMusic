@@ -12,12 +12,9 @@
 // The photo's layer asks the stage context for the header the lookups found (`HeroFact`, `HeroArtist`, `NextHeroUrl`); this file is the
 // lookups. They run only while the Artist layout is the stored choice in Visualizer mode (Card users never pay for artist lookups).
 
-using System.Collections.Generic;
 using FluentGpu.Animation;
 using FluentGpu.Dsl;
-using FluentGpu.Foundation;
 using FluentGpu.Hooks;
-using FluentGpu.Localization;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 

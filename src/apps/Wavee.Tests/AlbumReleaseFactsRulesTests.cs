@@ -55,16 +55,6 @@ public class AlbumReleaseFactsRulesTests
         var facts = For([Released(180_000), Released(200_000), NotYetOut()]);
         Assert.Equal(2, facts.SongsOut);
         Assert.Equal(3, facts.SongsTotal);
-        // ch 05 §6 (05-album.md:998): 0.2.9 concatenated "2 of 3"; 0.3 spells it through `detail.factOfCount`.
-        Assert.Equal(Strings.Detail.FactOfCount(2, 3), Rules.SongsText(facts));
-    }
-
-    [Fact]
-    public void Songs_PlainCount_WhenEveryTrackIsOut()
-    {
-        TestScope.Fresh();
-        var facts = For([Released(180_000), Released(200_000)]);
-        Assert.Equal("2", Rules.SongsText(facts));
     }
 
     [Fact]
@@ -72,7 +62,6 @@ public class AlbumReleaseFactsRulesTests
     {
         TestScope.Fresh();
         var facts = For([]);
-        Assert.Null(Rules.SongsText(facts));
         Assert.False(facts.HasSongs);
     }
 
@@ -84,8 +73,8 @@ public class AlbumReleaseFactsRulesTests
         // Two OUT tracks, both duration-less: the count exists, the length must not lie "0 min".
         TestScope.Fresh();
         var facts = For([Released(0), Released(0)]);
-        Assert.Null(Rules.LengthText(facts));
-        Assert.NotNull(Rules.SongsText(facts));
+        Assert.False(facts.HasLength);
+        Assert.True(facts.HasSongs);
     }
 
     [Fact]
@@ -95,32 +84,20 @@ public class AlbumReleaseFactsRulesTests
         TestScope.Fresh();
         var facts = For([Released(47 * 60_000), NotYetOut()]);
         Assert.Equal(47 * 60_000L, facts.LengthMs);
-        Assert.Equal((0, 47), Rules.LengthParts(facts.LengthMs));
-        // ch 05 §6 (05-album.md:1001-1007): 0.2.9 pinned the English literal "47 min" (TotalTimeLiteral); 0.3 spells the
-        // tile through the SAME formatter the meta line uses.
-        Assert.Equal(Track.Format.TotalTime(47 * 60_000), Rules.LengthText(facts));
+        Assert.True(facts.HasLength);
     }
 
-    [Theory]
-    [InlineData(59_000L, 0, 1)]              // a sub-minute total floors UP to one minute, never "0 min"
-    [InlineData(47 * 60_000L, 0, 47)]
-    [InlineData(72 * 60_000L, 1, 12)]        // an hour-plus total reads hours + minutes
-    public void LengthParts_FloorsSubMinuteUp_AndSplitsHours(long ms, int hours, int minutes)
-        => Assert.Equal((hours, minutes), Rules.LengthParts(ms));
-
     [Fact]
-    public void Length_IsSpelledOnce_TheTileAndTheMetaLineAgree()
+    public void Length_IsSpelledOnce_ThroughTheMetaLinesFormatter()
     {
         // The worst of the loc drifts (ch 05 §6, parity 72): one album stated its duration two ways in any non-English
-        // locale. Both arms now read Track.Format.TotalTime.
+        // locale. The meta line spells it through Track.Format.TotalTime.
         TestScope.Fresh();
         var facts = For([Released(40 * 60_000), Released(32 * 60_000)]);
         string meta = Detail.Text.AlbumMeta(2, facts.LengthMs, durationsKnown: true)!;
-        // Loc-agnostic: the tile's text IS the one formatter's, and the meta line is the template over that same text.
-        Assert.Equal(Track.Format.TotalTime(72 * 60_000), Rules.LengthText(facts));
         // The count slot is the "N songs" phrase AlbumMeta passes, not the raw int: with a catalog loaded the two differ
         // ("2 songs · …" vs "2 · …"), so the raw-int form only passed while no other test had loaded the locale.
-        Assert.Equal(Strings.Detail.MetaLine(Strings.Detail.SongCount(2), Rules.LengthText(facts)!), meta);
+        Assert.Equal(Strings.Detail.MetaLine(Strings.Detail.SongCount(2), Track.Format.TotalTime(72 * 60_000)), meta);
     }
 
     // ── Released ─────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -314,7 +291,6 @@ public class AlbumReleaseFactsRulesTests
         var facts = Rules.Of(album, Now);
         Assert.Equal(1, facts.SongsOut);
         Assert.Equal(1, facts.SongsTotal);
-        Assert.Equal("1", Rules.SongsText(facts));
-        Assert.Equal(Track.Format.TotalTime(200_000), Rules.LengthText(facts));
+        Assert.Equal(200_000L, facts.LengthMs);
     }
 }

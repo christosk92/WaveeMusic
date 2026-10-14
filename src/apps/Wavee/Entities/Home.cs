@@ -634,15 +634,7 @@ public readonly partial struct Section(int slot) : IEquatable<Section>
     public ReadOnlySpan<int> PreviewSlots => Entities.Current.Edges.SectionPreviewTracks.Targets(Slot);
     /// <inheritdoc cref="PreviewSlots"/>
     public ReadOnlySpan<PreviewEdge> PreviewRanks => Entities.Current.Edges.SectionPreviewTracks.Payload(Slot);
-    public EdgeState PreviewState => Entities.Current.Edges.SectionPreviewTracks.State(Slot);
     public uint PreviewVersion => Entities.Current.Edges.SectionPreviewTracks.Version(Slot);
-
-    /// <summary>IS THIS SECTION WHOLE? Ch 10 §7's reveal gate — "a section reveals COMPLETE" — answered from three
-    /// columns, so the page never counts and never probes: somebody has answered for the band, and the server has
-    /// nothing left past our cursor. A section that revealed on "some cards arrived" is the pop-in the chapter
-    /// forbids, and one that waited for <see cref="Total"/> to be reached would never reveal at all (7 of 31 measured
-    /// sections overshoot their own total).</summary>
-    public bool IsComplete => Knows(SectionFields.Identity) && !HasMore;
 
     /// <summary>Does "Show all" stay armed?</summary>
     public bool HasMore => SectionPaging.HasMore(Raw, Cards, Total, NextOffset);
@@ -801,9 +793,6 @@ public struct StagedSection : IStagedRow
     /// <c>s.Slot(table, in row.Id)</c> — and no format-to-arena-then-parse-back round trip.</summary>
     public StagedId Id;
     public TextRef Title, Subtitle;
-    /// <summary>The feed or browse-page row this band belongs to, so the commit can rebuild the parent's edge without
-    /// a second pass. Empty for a band fetched on its own (the drill page).</summary>
-    public TextRef ParentUri;
     public int Total, Raw, Cards, NextOffset;
     public uint Accent;
     public ushort Unsupported, Duplicates;
@@ -1105,20 +1094,6 @@ public static class HomeFeedReadiness
     public static bool MayReveal(bool feedSettled, bool chromeConcluded, double msSinceSettled, bool force = false)
         => feedSettled && (chromeConcluded || force || msSinceSettled >= ChromeSettleMs);
 
-    /// <summary>A MOUNTING page's warm-start predicate — "should this region seed already revealed instead of a
-    /// skeleton?" Deliberately NOT <see cref="Home.Classify"/>: a disk-warmed row can carry Known sections BEFORE
-    /// its first live check concludes (<c>Store.Warm</c> — "the store paints yesterday's rows at boot"), and
-    /// painting those on a genuine COLD BOOT is the exact "cached grid, then everything jumps" regression Classify
-    /// exists to prevent (see the file banner). <paramref name="revealedThisSession"/> is the signal that rules
-    /// that case out WITHOUT relaxing Classify's gate: it is true only after this exact content has already cleared
-    /// that gate once, this process, this scope (<see cref="Home.Feeds.HasRevealed"/> /
-    /// <see cref="Home.Feeds.HasChartsRevealed"/> — session-scoped, so a KEEP-ALIVE EVICTION of the page's
-    /// Loadable/gate never clears it). A background refresh setting <c>Inflight</c> again afterward does not
-    /// un-reveal it — that is the point: a returning page must paint the graph's still-known content and let the
-    /// refresh update it in place, not re-shimmer merely because its page-local state was discarded.</summary>
-    public static bool ShouldPaintOnMount(int groupCount, bool revealedThisSession)
-        => groupCount > 0 && revealedThisSession;
-
     /// <summary>The epoch/placeholder transition every UNFACETED read runs: a withheld read returns the applied epoch
     /// UNCHANGED, so a later read at the SAME epoch still publishes; <paramref name="force"/> publishes a placeholder but
     /// still obeys the epoch gate.</summary>
@@ -1205,9 +1180,6 @@ public sealed class HomeRevealGate<TFeed> where TFeed : class
 
 public readonly partial struct Home
 {
-    /// <summary>The selected facet id ("" = unfiltered). App-global, like 0.2.9's <c>Services.HomeFacet</c>: the strip
-    /// WRITES it; the page and the feed host READ it — the host as a request parameter (ch 10 §9 trap 7).</summary>
-    public static readonly Signal<string> SelectedFacet = new("");
 
     /// <summary>"The live attempt for this row concluded" (ch 10 §7): no request is out for the row AND the session is
     /// not in <c>Resolving..Minting</c> AND the row has been answered, asked, or can never be asked (the session is not
@@ -1442,17 +1414,6 @@ public readonly record struct HomeCard(EntityRef Target, int SectionSlot = Table
     public EntityId Id => !IsBlank && SectionTable.CardTable(Target.Kind) is { } table && (uint)Target.Slot < (uint)table.Count
         ? table.Id[Target.Slot] : default;
 
-    /// <summary>The target row knows its Identity group.</summary>
-    public bool KnowsIdentity => !IsBlank && Live && Target.Kind switch
-    {
-        EntityKind.Playlist or EntityKind.Collection => S.Playlists.Knows(Target.Slot, (uint)PlaylistFields.Identity),
-        EntityKind.Album => S.Albums.Knows(Target.Slot, (uint)AlbumFields.Title),
-        EntityKind.Artist => S.Artists.Knows(Target.Slot, (uint)ArtistFields.Name),
-        EntityKind.Track => S.Tracks.Knows(Target.Slot, (uint)TrackFields.Title),
-        EntityKind.Episode => S.Episodes.Knows(Target.Slot, (uint)EpisodeFields.Title),
-        EntityKind.Show => S.Shows.Knows(Target.Slot, (uint)ShowFields.Title),
-        _ => false,
-    };
 
     public string Title => Resolve(TitleId);
 

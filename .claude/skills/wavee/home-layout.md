@@ -61,7 +61,8 @@ use the app's own `Spacing`/`Radii`/`R.Type`/`Design.Motion` instead, see
 `Entities/Browse.Cards.cs`'s `HomeCards`/`HomeCardNav`, the same ones Browse and
 Search ride), `Chapter.UI.cs` (hand chapter bands — `ModuleHeader` now), `Skeleton.UI.cs`
 (hand skeleton — `SkelRegionEl`/`Skel.Region` now), `Podcasts.UI.cs` (folded into
-`Zones.UI.cs`), `FacetPivot.UI.cs` (replaced by the ~80-line `Facet.UI.cs`),
+the zone bodies, now Classic's `ClassicHomeZones`), `FacetPivot.UI.cs` (replaced by the facet row, now Classic's
+`ClassicHomeFacetRow`),
 `Zones.Rules.cs`'s `ZoneRows`/`ZoneEnter` (the virtualized-list row-extent seed and
 entrance stagger — there is no more `ItemsView` of zones to seed), `Reveal.cs`'s
 `CardNav` (superseded by the app-wide `HomeCardNav`). (`Time.cs`'s `RecentsWeek`/
@@ -76,7 +77,7 @@ Home-private card-nav type.
 
 `Entities/Home.cs` and `Home.Rules.cs` still hold what the page reads OFF THE
 TABLES: `HomeCard`/`HomeCardKind` (the entity handle), `HomeSectionView` (the
-lossless per-section ledger), `HomeCardText`/`HomeCardAccent`, the section
+lossless per-section ledger), `HomeCardText`, the section
 routing rules, `HomeBrowseCards`. (Section paging is the query layer's: `SectionPaging` + `BrowseWalk`.)
 
 ## The layout document (home-layout.json v2)
@@ -98,7 +99,7 @@ migrated.
 - `LayoutCommands.{Toggle, Move, Reset}` build a `LayoutDoc → LayoutDoc` reducer
   function; there is no polymorphic command hierarchy.
 - `LayoutStore` is the file half: `Load()`/`Commit(doc)`, fault-classified
-  (`LayoutReadFault`, `LayoutSaveFault`), fail-soft (corrupt/too-new/unreadable →
+  (`LayoutReadFault`; a failed save is logged), fail-soft (corrupt/too-new/unreadable →
   default in memory, file untouched, writes blocked).
 - `HomeLayout` is the one process-lifetime owner (`HomeLayout.Slot`, a
   `Context<HomeLayout>` with no default — a screen mounted without a provider

@@ -158,7 +158,7 @@ public static partial class Platform
             {
                 try { Log.Warn("crash", "Crash bundle could not be written", writeEx); } catch { }
             }
-            // No RunMarker.MarkCrashed here: it is a settings write on the crashing thread (fatal off the UI thread, see
+            // No run-marker write here: it would be a settings write on the crashing thread (fatal off the UI thread, see
             // Crash.Host.OnManagedCrash). The bundle on disk plus the stale "running"/"frame" marker already say "crashed".
             try { Log.Flush(); } catch { }
         };
@@ -750,13 +750,6 @@ public static partial class Log
     public static void Flush()
     {
         try { DrainFileQueue(); } catch { }
-    }
-
-    /// <summary>Test hook: drain synchronously AND release the handle, so a test can read the file back.</summary>
-    public static void FlushAndClose()
-    {
-        Flush();
-        lock (s_writeGate) CloseStream();
     }
 
     /// <summary>The lines still QUEUED for the file, formatted exactly as the writer will write them, oldest first — a

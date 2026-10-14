@@ -53,7 +53,7 @@ public class DetailHeroDescriptionTests
             {
                 var plan = VerticalLayout.TitleTypeFor(w, rowFlow: true, title,
                     eyebrow: true, attribution: true, meta: true, pulse: true);
-                float identity = VerticalLayout.IdentityHeightFor(plan, rowFlow: true,
+                float identity = VerticalLayout.IdentityHeightFor(plan,
                     eyebrow: true, attribution: true, meta: true, pulse: true);
                 // A title no line budget holds above the floor WRAPS at the floor (2026-09-30: never trimmed) — its extra
                 // lines are the title's own, not the description's, and are the only other growth allowed.
@@ -74,7 +74,7 @@ public class DetailHeroDescriptionTests
         {
             var plan = VerticalLayout.TitleTypeFor(w, rowFlow, title: null,
                 eyebrow: true, attribution: true, meta: true, pulse: true);
-            float identity = VerticalLayout.IdentityHeightFor(plan, rowFlow,
+            float identity = VerticalLayout.IdentityHeightFor(plan,
                 eyebrow: true, attribution: true, meta: true, pulse: true);
             float art = VerticalLayout.ArtworkFor(w, rowFlow);
             float toolbar = VerticalLayout.ExpandedToolbarTopPad + VerticalLayout.ToolbarRowHeight

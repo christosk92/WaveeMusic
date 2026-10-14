@@ -591,9 +591,8 @@ public readonly partial struct Album
                     videoCount = PageRules.VideoDecided(known) ? PageRules.SelectVideos(known, probe) : 0;
                 }
                 _shape = a.IsValid
-                    ? PageRules.SkeletonShape(a.Knows(AlbumFields.Kind), a.Kind, a.TrackCount, videoKnown: videoCount > 0,
-                                              videoShelf: PageRules.ArmFor(videoCount) == PageRules.VideoArm.Shelf)
-                    : PageRules.SkeletonShape(knowsKind: false, AlbumKind.Album, 0);
+                    ? PageRules.SkeletonShape(videoKnown: videoCount > 0, videoShelf: PageRules.ArmFor(videoCount) == PageRules.VideoArm.Shelf)
+                    : PageRules.SkeletonShape();
                 int hash = (_shape.About ? 1 : 0) | (_shape.Fans ? 2 : 0) | (_shape.Video ? 4 : 0) | (_shape.VideoShelf ? 8 : 0)
                            | (_shape.RowBlocks << 4);
                 _skelKey = "trailing-skel:" + hash.ToString(CultureInfo.InvariantCulture);

@@ -10,8 +10,6 @@
 // face-safe rect, the caption and the pane from one set of extents) and `Stage.LayoutRules`; the views read them by name. What this
 // file adds is the look of the parts inside those extents.
 
-using FluentGpu.Dsl;
-
 namespace Wavee.Themes.Classic;
 
 /// <summary>The constants of Classic's stage layout layers.</summary>

@@ -8,7 +8,6 @@
 // WHAT IS NOT HERE. The lane widths, the row heights per density and the art ladder are the core's (`Track.Lane`, `Track.TableRules`,
 // `Track.RowMetrics`): the table's relief ladder and the header run on them, and the Classic values are M2's and M3's to move.
 
-using FluentGpu.Animation;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 

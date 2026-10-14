@@ -20,13 +20,11 @@
 // `Entities/Track.UI.Bound.cs`, and the cell wrappers and navigation the eager row shares (`Track.RowCenterCell`, `Track.MoreCell`,
 // `Track.GoToArtistAt`...) stay on `Track` until T8c. Numbers are `Rules\ClassicTrackRowLayout.cs` (WVTH003 allows no literal look here).
 
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
-using FluentGpu.Scene;
 using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;

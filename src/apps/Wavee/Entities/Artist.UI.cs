@@ -21,14 +21,13 @@
 // 0.2.9 sized the hero from the HYSTERETIC tier while the blend wash and the magazine gutter read the bare-width
 // HeroHeightFor/PageGutterFor, so between 856 and 880 the hero was 440 tall with a 36 gutter while the wash was sized for
 // 384 + 96. The page now resolves ONE ArtistHeroMetrics per render and hands it to the hero, the band, the wash
-// (BlendBackdropHeightFor/BlendBoundaryFor(in metrics)) and the magazine gutter (metrics.Gutter). The width-only forms
-// stay, verbatim, for their tests.
+// (BlendBackdropHeightFor/BlendBoundaryFor(in metrics)) and the magazine gutter (metrics.Gutter). The width-only height
+// forms stay, verbatim, for their tests.
 //
 // NAME NOTE: inside `struct Artist` the simple names `Uri`, `Id`, `Name`, `Version`, `Pick`, `Latest` and `Links` are the
 // handle's INSTANCE members — `System.Uri` is spelled in full and nothing here declares a nested type of those names.
 
 using System.Globalization;
-using FluentGpu;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -123,11 +122,6 @@ public static class ArtistHeroLayout
         };
     }
 
-    public static float PageGutterFor(float width) => width >= WideWidth ? Spacing.PageWide
-        : width >= MediumWidth ? Spacing.XXXL
-        : width >= CompactWidth ? Spacing.L
-        : Spacing.PageNarrow;
-
     public static float PhotoFadeBandFor(float height) => Math.Clamp(height * 0.28f, 120f, 180f);
     public static float CollapseDistance(float height) => MathF.Max(1f, height - CompactIdentityHeight);
     public static float ExpandedFadeStart(float collapseDistance) => Detail.VerticalLayout.ExpandedFadeStart(collapseDistance);
@@ -220,10 +214,6 @@ public readonly record struct ArtistFact(ArtistFactKind Kind, long Value);
 public static class ArtistSections
 {
     public const int Count = 16;
-
-    /// <summary>Both <c>Responsive.Of</c> call sites decide their first composed frame at 900, not the real pane
-    /// (ch 08 breakpoint table "Pre-measure width", parity 90).</summary>
-    public const float PreMeasureWidth = 900f;
 
     /// <summary>The Top-tracks band goes side by side at 760 and holds down to 736 once wide (TopTracks.cs:17-27).</summary>
     public const float TopBandWideW = 760f, TopBandHysteresis = 24f;
@@ -421,8 +411,6 @@ public readonly partial struct Artist
         Point2 _dragLast, _dragDown;
         bool _dragMoved;
         TimerHandle _idleHide, _unzoom;
-        int _renderCurrent;
-        Action<Action> _post = static a => a();
 
         public GalleryLightbox(string[] photos, int initialIndex, Func<OverlayHandle?> handle)
         {
@@ -451,8 +439,6 @@ public readonly partial struct Artist
             var (selected, setSelected) = UseState(_initialIndex);
             var post = UsePost();
             int current = Math.Clamp(selected, 0, Math.Max(0, _photos.Length - 1));
-            _renderCurrent = current;
-            _post = post;
             bool zoomed = _zoomMode.Value;
             _idleHide = UseTimeout(() => { if (_chrome.Peek()) _chrome.Value = false; }, IdleHideMs);
             // Swap back to the pager only once the spring has visibly settled, and only if nobody zoomed in again.

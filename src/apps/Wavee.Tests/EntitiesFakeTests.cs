@@ -36,7 +36,7 @@ public class EntitiesFakeTests
         var track0First = Entities.Track(EntityUri.Parse("spotify:track:tr0"));
         string title0First = track0First.Title;
         uint playCount0First = track0First.PlayCount;
-        var liked0First = Wavee.User.Me.LikedEdges[0];
+        var liked0First = Wavee.User.Relation(LibraryEdgeKind.Liked).Payload(Wavee.User.Me.Slot)[0];
 
         Entities.Boot(CatalogScope.Fake());
         Entities.SeedFake(Now0);
@@ -44,7 +44,7 @@ public class EntitiesFakeTests
 
         Assert.Equal(title0First, track0Second.Title);
         Assert.Equal(playCount0First, track0Second.PlayCount);
-        Assert.Equal(liked0First.AddedAt, Wavee.User.Me.LikedEdges[0].AddedAt);
+        Assert.Equal(liked0First.AddedAt, Wavee.User.Relation(LibraryEdgeKind.Liked).Payload(Wavee.User.Me.Slot)[0].AddedAt);
     }
 
     [Fact]
@@ -54,12 +54,12 @@ public class EntitiesFakeTests
         Entities.Boot(CatalogScope.Fake());
         Entities.SeedFake(Now0);
         string titleBefore = Entities.Track(EntityUri.Parse("spotify:track:tr12")).Title;
-        int likedAddedAtBefore = Wavee.User.Me.LikedEdges[12].AddedAt;
+        int likedAddedAtBefore = Wavee.User.Relation(LibraryEdgeKind.Liked).Payload(Wavee.User.Me.Slot)[12].AddedAt;
 
         Entities.Boot(CatalogScope.Fake());
         Entities.SeedFake(Now0 + 86_400);
         string titleAfter = Entities.Track(EntityUri.Parse("spotify:track:tr12")).Title;
-        int likedAddedAtAfter = Wavee.User.Me.LikedEdges[12].AddedAt;
+        int likedAddedAtAfter = Wavee.User.Relation(LibraryEdgeKind.Liked).Payload(Wavee.User.Me.Slot)[12].AddedAt;
 
         Assert.Equal(titleBefore, titleAfter);                       // undated: unchanged
         Assert.Equal(86_400, likedAddedAtAfter - likedAddedAtBefore); // dated: shifted by exactly the offset

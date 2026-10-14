@@ -13,7 +13,6 @@
 // device / owner signals re-render the chips row only (V-U50) and a track change re-renders what read the track. Elements, keys,
 // transitions and bound channels are exactly what the stage built before the move.
 
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;

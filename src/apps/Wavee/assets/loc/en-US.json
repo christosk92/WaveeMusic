@@ -62,9 +62,7 @@
       "current": "Current",
       "reset": "Reset tuning",
       "applied": "Playlist tuned",
-      "applyFailed": "Couldn’t tune this playlist. Try again.",
-      "tipTitle": "Tune this playlist",
-      "tipBody": "Adjust the mix's direction right from here — Wavee rebuilds the track list."
+      "applyFailed": "Couldn’t tune this playlist. Try again."
     },
     "playNext": "Play next",
     "playAfter": "Play after",
@@ -392,7 +390,6 @@
     "factSong": "Song",
     "factLength": "Length",
     "factLabel": "Label",
-    "factOfCount": "{n} of {total}",
     "otherVersions": "Other versions",
     "recommended": "Recommended songs",
     "noSuggestions": "No suggestions right now",
@@ -1052,13 +1049,6 @@
     "sortBy": "Sort by",
     "viewAs": "View as",
     "size": "Size",
-    "sort": {
-      "recents": "Recents",
-      "recentlyAdded": "Recently added",
-      "alphabetical": "Alphabetical",
-      "creator": "Artist",
-      "releaseDate": "Release date"
-    },
     "rail": {
       "recents": "recents",
       "alphabetical": "alphabetical",

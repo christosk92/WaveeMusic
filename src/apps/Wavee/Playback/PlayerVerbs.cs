@@ -14,8 +14,6 @@
 // The decisions that are not just a `Playback` post are PURE (`PlayerVerbRules`, `Shell.ScrubController`, `Shell.QueueVerbs`,
 // `Shell.DeviceVerbs`) and unit-tested without a reducer; this class composes them with the model.
 
-using System;
-
 using FluentGpu.Controls;
 
 using RepeatMode = Wavee.Spotify.Decode.RepeatMode;

@@ -44,12 +44,10 @@
 // The write happens in `ApplyProps` (this pane is an `IPropsHost`), i.e. at the reconciler's props seam, OUTSIDE render
 // and inside its `Runtime.Batch` — never during `Render`, which would loop (engine rule 6).
 
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
-using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;

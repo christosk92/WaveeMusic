@@ -26,12 +26,10 @@
 // entity ids and playable ids are different namespaces), so the ATTACHED page is the one writer of
 // `Shell.Ui.ActiveStagePlayable` — from a signal effect gated on `UseIsActive`, reading every input inside the closure.
 
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
-using FluentGpu.Input;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Sdk;
@@ -485,7 +483,7 @@ public static partial class Modules
         };
         if (model.IsLive || model.MetaLine is { Length: > 0 }) kids.Add(MetaRow(model));
         if (model.ChannelName is { Length: > 0 }) kids.Add(ChannelRow(model, moduleId));
-        if (ChipRow(model, moduleId, doc) is { } chips) kids.Add(chips);
+        if (ChipRow(model, moduleId) is { } chips) kids.Add(chips);
         if (DescriptionCard(model) is { } card) kids.Add(card);
         if (WatchShelf(model, moduleId) is { } shelf) kids.Add(shelf);
         return new BoxEl { Key = "watch-caption", Direction = 1, Gap = Spacing.M, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = kids.ToArray() };
@@ -523,7 +521,7 @@ public static partial class Modules
 
     /// <summary>The document's actions as capsules. The play capsule is replaced by an inert "Playing" state capsule
     /// while this page's playable is the item in the bar; nothing is invented (no Save, no Share).</summary>
-    static Element? ChipRow(WatchPageModel model, string moduleId, ModulePageDoc doc)
+    static Element? ChipRow(WatchPageModel model, string moduleId)
     {
         var kids = new List<Element>(model.Chips.Length + 1);
         bool playing = model.Stage == WatchStageKind.Live;

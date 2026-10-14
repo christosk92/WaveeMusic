@@ -15,18 +15,14 @@
 // (`SetEqualizer`, `SetCrossfade`), so the ear follows the curve while it is dragged; normalization goes through the
 // `ApplyNormalization` seam below until the audio host exposes its own setter.
 //
-// SEAMS: `Settings.ApplyNormalization` (owner B4 assigns `Playback.Audio.SetNormalization`); `Settings.OpenVideoOverrides()`
-// is the "Manage" deep-link door a missing/unplayable-video toast calls.
+// SEAMS: `Settings.ApplyNormalization` (owner B4 assigns `Playback.Audio.SetNormalization`).
 
 using System.Globalization;
-using FluentGpu;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
-using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
-using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
 
@@ -68,15 +64,12 @@ public static partial class Settings
     };
     static readonly NumberBox.NumberBoxOptions s_crossBoxOff = s_crossBoxOn with { IsEnabled = false };
 
-    // The "Manage" flyout: its handle, the anchor (a wrapper around the button — Button owns its own root props) and the
-    // deep link's deferred open.
+    // The "Manage" flyout: its handle and the anchor (a wrapper around the button — Button owns its own root props).
     // ROOT-LIFETIME (RootScope.cs): the flyout and its anchor belong to the mounted root's tree and overlay host.
     static readonly RootState<OverlayHandle?> s_voHandleState = new("Settings.VideoOverrides.Handle");
     static readonly RootState<NodeHandle> s_voAnchorState = new("Settings.VideoOverrides.Anchor");
-    static readonly RootState<bool> s_voOpenPendingState = new("Settings.VideoOverrides.OpenPending");
     static OverlayHandle? s_voHandle { get => s_voHandleState.Value; set => s_voHandleState.Value = value; }
     static NodeHandle s_voAnchor { get => s_voAnchorState.Value; set => s_voAnchorState.Value = value; }
-    static bool s_voOpenPending { get => s_voOpenPendingState.Value; set => s_voOpenPendingState.Value = value; }
 
     static partial void SeedPlayback()
     {
@@ -464,12 +457,8 @@ public static partial class Settings
         kids[1] = new BoxEl
         {
             Direction = 0, Shrink = 0f,
-            // The realized wrapper is the anchor, and its realization is what satisfies a deep link that arrived first.
-            OnRealized = static h =>
-            {
-                s_voAnchor = h;
-                if (s_voOpenPending) s_post(TryOpenPendingVideoOverrides);
-            },
+            // The realized wrapper is the anchor.
+            OnRealized = static h => s_voAnchor = h,
             Children = [Button.Standard(Loc.Get(Strings.VideoOverride.Manage), static () => ToggleVideoOverrideManager())],
         };
         if (count > 0)
@@ -499,23 +488,5 @@ public static partial class Settings
             });
         s_voHandle = handle;
         handle.ClosedAction = () => { if (ReferenceEquals(s_voHandle, handle)) s_voHandle = null; };
-    }
-
-    /// <summary>The "Manage" deep link (a missing / unplayable attachment toast's action): land on Settings ▸ Playback AND
-    /// open the manager. The open is deferred — the button is not realized on the frame the tab flips — and whichever of
-    /// the posted retry or the button's realization sees a live anchor first wins, exactly once.</summary>
-    public static void OpenVideoOverrides()
-    {
-        s_voOpenPending = true;
-        Open(Tab.Playback);
-        s_post(TryOpenPendingVideoOverrides);
-    }
-
-    static void TryOpenPendingVideoOverrides()
-    {
-        if (!s_voOpenPending || s_voAnchor.IsNull || s_overlay is null || !Video.Overrides.Present) return;
-        s_voOpenPending = false;
-        if (s_voHandle is { IsOpen: true }) return;   // already showing — the request is satisfied
-        ToggleVideoOverrideManager();
     }
 }

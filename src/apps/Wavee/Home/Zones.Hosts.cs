@@ -13,13 +13,10 @@
 // changes. The two chart titles are the same literals the previous pass carried — the loc table has captions for these tiles
 // (<c>home.chartsCaption.*</c>) but no title keys yet.
 
-using System;
 using System.Collections.Generic;
 using System.Globalization;
 using FluentGpu.Dsl;
-using FluentGpu.Foundation;
 using FluentGpu.Hooks;
-using FluentGpu.Signals;
 using Wavee;
 using Wavee.Theming.Contracts;
 using Slots = FluentGpu.Theming.Slots;

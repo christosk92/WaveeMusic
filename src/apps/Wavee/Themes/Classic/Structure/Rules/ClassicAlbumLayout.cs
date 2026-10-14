@@ -71,7 +71,7 @@ public static class ClassicAlbumLayout
 
     /// <summary>The SHELF arm fits its own 16:9 thumb to whatever card width the shelf hands it, between these two (16:9 cards want more room than the
     /// 148–188 square-card shelf range).</summary>
-    public const float VideoCardMinW = Wavee.Album.PageRules.VideoCardMinW, VideoCardMaxW = 280f;   // the min is the skeleton's reserve (core)
+    public const float VideoCardMinW = 200f, VideoCardMaxW = 280f;
 
     /// <summary>A video card's cover aspect.</summary>
     public const float VideoAspect = 16f / 9f;

@@ -166,13 +166,6 @@ public class ContextBandLayoutTests
     public void AnEmptyPivot_HasNoActiveSection()
         => Assert.Equal(-1, BandLayout.ActiveSection(ReadOnlySpan<float>.Empty, BandLayout.Height, 800f, atScrollEnd: true));
 
-    [Fact]
-    public void ScrollTarget_ParksTheSectionUnderTheBandAndNeverGoesNegative()
-    {
-        Assert.Equal(944f, BandLayout.ScrollTargetFor(400f, 600f, BandLayout.Height));
-        Assert.Equal(0f, BandLayout.ScrollTargetFor(0f, -400f, BandLayout.Height));
-    }
-
     /// <summary>The band paints nothing, so the page owes it a CLIP covering its WHOLE height: the artist arm at the
     /// identity row alone (56), the detail arm at identity row + column header + the one hairline.</summary>
     [Fact]
@@ -199,9 +192,10 @@ public class ContextBandLayoutTests
     {
         Assert.Equal(20f, BandLayout.TextLine);
         Assert.Equal(32f, BandLayout.ItemHeight);
-        Assert.Equal(6f, BandLayout.TextTopIn(BandLayout.ItemHeight));
-        Assert.Equal(18f, (BandLayout.Height - BandLayout.ItemHeight) / 2f + BandLayout.TextTopIn(BandLayout.ItemHeight));
-        Assert.Equal(BandLayout.TextTopIn(BandLayout.Height), (BandLayout.Height - BandLayout.ItemHeight) / 2f + BandLayout.TextTopIn(BandLayout.ItemHeight));
+        float textTopInItem = (BandLayout.ItemHeight - BandLayout.TextLine) / 2f;
+        Assert.Equal(6f, textTopInItem);
+        Assert.Equal(18f, (BandLayout.Height - BandLayout.ItemHeight) / 2f + textTopInItem);
+        Assert.Equal((BandLayout.Height - BandLayout.TextLine) / 2f, (BandLayout.Height - BandLayout.ItemHeight) / 2f + textTopInItem);
     }
 
     [Fact]
@@ -209,6 +203,6 @@ public class ContextBandLayoutTests
     {
         Assert.Equal(30f, BandLayout.UnderlineY);
         Assert.Equal(BandLayout.ItemHeight, BandLayout.UnderlineY + BandLayout.UnderlineHeight);
-        Assert.Equal(BandLayout.UnderlineGap, BandLayout.UnderlineY - (BandLayout.TextTopIn(BandLayout.ItemHeight) + BandLayout.TextLine));
+        Assert.Equal(BandLayout.UnderlineGap, BandLayout.UnderlineY - ((BandLayout.ItemHeight - BandLayout.TextLine) / 2f + BandLayout.TextLine));
     }
 }

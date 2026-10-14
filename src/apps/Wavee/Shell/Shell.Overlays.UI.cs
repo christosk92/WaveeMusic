@@ -26,14 +26,12 @@
 // would have had to fill, and with neither wired an update toast's button did nothing.
 // The runtime banner reads `Setup.Runtime` (`+Screens/Setup.UI.Runtime.cs`), whose host the SHELL half installs.
 
-using System.Threading;
 using System.Threading.Tasks;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
-using FluentGpu.Scene;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 

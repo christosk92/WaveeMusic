@@ -152,14 +152,10 @@ public class SetupGatingTests
     }
 
     [Fact]
-    public void A_sign_in_required_launch_reauthenticates_a_completed_install_and_first_runs_the_rest()
+    public void A_reauth_with_the_runtime_ready_skips_the_local_playback_page()
     {
-        Assert.Equal(Setup.WizardEntry.Reauth, Setup.Gating.EntryFor(completed: true));
-        Assert.Equal(Setup.WizardEntry.FirstRun, Setup.Gating.EntryFor(completed: false));
         Assert.True(Setup.Gating.SkipsLocalPlayback(Setup.WizardEntry.Reauth, runtimeReady: true));
         Assert.False(Setup.Gating.SkipsLocalPlayback(Setup.WizardEntry.FirstRun, runtimeReady: true));
-        Assert.True(Setup.Gating.SuppressesRuntimePrompts(pending: true, sessionOpen: false));
-        Assert.False(Setup.Gating.SuppressesRuntimePrompts(pending: false, sessionOpen: false));
     }
 }
 
@@ -520,19 +516,4 @@ public class SetupQrTests
             return (modeBits == 4 ? Encoding.UTF8.GetString(bytes) : "<mode " + modeBits + ">", ecc, syn);
         }
     }
-}
-
-public class SetupRuntimeIssueTests
-{
-    [Theory]
-    [InlineData(ProvisioningOutcome.Ready, Setup.RuntimeIssue.None)]
-    [InlineData(ProvisioningOutcome.NeverAttempted, Setup.RuntimeIssue.None)]
-    [InlineData(ProvisioningOutcome.RuntimeUnavailable, Setup.RuntimeIssue.Missing)]
-    [InlineData(ProvisioningOutcome.PackDownloadFailed, Setup.RuntimeIssue.Missing)]
-    [InlineData(ProvisioningOutcome.ArchUnsupported, Setup.RuntimeIssue.WrongArch)]
-    [InlineData(ProvisioningOutcome.NoSupportedPack, Setup.RuntimeIssue.NoPack)]
-    [InlineData(ProvisioningOutcome.HashMismatch, Setup.RuntimeIssue.Unsupported)]
-    [InlineData(ProvisioningOutcome.SignatureInvalid, Setup.RuntimeIssue.Unsupported)]
-    public void A_provisioning_outcome_names_the_banner_issue(ProvisioningOutcome outcome, Setup.RuntimeIssue issue)
-        => Assert.Equal(issue, Setup.RuntimeRules.IssueFor(outcome));
 }

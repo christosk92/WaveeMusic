@@ -20,14 +20,12 @@
 // Read directly, no seam: the log ring (Log.Snapshot), Platform.Version, and the account/device names (Platform.Scope,
 // User.Me, Playback.Devices).
 
-using FluentGpu;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
-using FluentGpu.WindowsApi.Packaging;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;

@@ -138,24 +138,6 @@ public class RuntimeCardRulesTests
     }
 
     [Fact]
-    public void The_failed_footer_wraps_and_a_single_row_footer_does_not()
-    {
-        float btn = 96f, buttons = 2f * btn + Spacing.S;                    // [Not now][Try again] at their 96 minimum
-        // Failed: two hyperlinks (text + the 11-DIP pad each side, ~125 each) + two buttons > the 412 slot -> wraps.
-        Assert.True(Setup.RuntimeRules.FooterWraps(2f * 125f, buttons));
-        // Offer: one link and two buttons fit one line; Ready/Advanced: one link, one button.
-        Assert.False(Setup.RuntimeRules.FooterWraps(125f, buttons));
-        Assert.False(Setup.RuntimeRules.FooterWraps(125f, btn));
-        // A footer with no links (or no buttons) never wraps, whatever the other group measures.
-        Assert.False(Setup.RuntimeRules.FooterWraps(0f, 500f));
-        Assert.False(Setup.RuntimeRules.FooterWraps(500f, 0f));
-        // Exactly full is one line (the engine's 0.01 slack); one DIP over wraps.
-        float room = Setup.RuntimeRules.ProgressWidth - Spacing.S;
-        Assert.False(Setup.RuntimeRules.FooterWraps(room - buttons, buttons));
-        Assert.True(Setup.RuntimeRules.FooterWraps(room - buttons + 1f, buttons));
-    }
-
-    [Fact]
     public void Install_enables_only_with_a_loaded_catalog_that_offers_something()
     {
         Assert.True(Setup.RuntimeRules.FooterFor(RuntimePhase.Advanced, Setup.RuntimeCatalog.Loaded, 2, true).AccentEnabled);

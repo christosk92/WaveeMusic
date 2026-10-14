@@ -5,7 +5,7 @@
 //
 // Ported suites: `DetachedFullscreenRuleTests` (8), `DockedVideoHostingTests` (10), the `ConnectVideoFacts` block of
 // `ConnectStateBuilderTests` (5), `VideoStageInputTests` (3), `VideoAspectPersistenceTests` (4),
-// `VideoOverrideMutationCoreTests` (the plan / boundary / reveal / mount facts; the three `HasVideoLatch` facts stay
+// `VideoOverrideMutationCoreTests` (the mount facts; the three `HasVideoLatch` facts stay
 // with the playback owner that holds the latch), and the pure half of `Actions/VideoOverrideUxTests` (the service-bound
 // facts are re-stated against `Video.Overrides`, below). New: `Video.Pip`, and the host chokepoint `Video.State.Commit`.
 //
@@ -511,10 +511,10 @@ public class VideoOverrideUxTests
         foreach (var ext in spec.Split(';'))
         {
             string sample = @"C:\m\x" + ext.TrimStart('*');
-            Assert.True(OverrideUx.IsAudioFile(sample) || OverrideUx.IsMp4(sample), sample);
+            Assert.True(Playlist.IsLocalAudioFile(sample) || OverrideUx.IsMp4(sample), sample);
         }
         Assert.Equal(("Video", "*.mp4"), OverrideUx.PickerFilter("Video"));
-        Assert.False(OverrideUx.IsAudioFile(@"C:\m\x.wav"));
+        Assert.False(Playlist.IsLocalAudioFile(@"C:\m\x.wav"));
     }
 
     [Fact]
@@ -548,7 +548,6 @@ public class VideoOverrideUxTests
         var rec = new OverrideRecord("spotify:track:a", @"C:\v\a.mp4", 1, "local:video:aaaa");
         Assert.Equal(OverrideTier.None, OverrideUx.Decide(false, in rec, false, static _ => true).Tier);
         Assert.Equal(OverrideTier.UseOverride, OverrideUx.Decide(true, in rec, false, static _ => true).Tier);
-        Assert.True(OverrideUx.Decide(true, in rec, false, static _ => true).Wins);
         Assert.Equal(OverrideTier.Broken, OverrideUx.Decide(true, in rec, false, static _ => false).Tier);
         Assert.Equal(OverrideTier.Broken, OverrideUx.Decide(true, in rec, false, static _ => throw new IOException()).Tier);
         Assert.Equal(OverrideTier.Quarantined, OverrideUx.Decide(true, in rec, true, static _ => false).Tier);
@@ -764,82 +763,6 @@ public class VideoOverrideUxTests
     }
 }
 
-public class VideoOverrideMutationTests
-{
-    const string KeyA = "local:video:aaaa";
-    const string KeyB = "local:video:bbbb";
-
-    [Fact]
-    public void Attach_does_not_clear_the_has_video_latch_and_clears_dead_only()
-    {
-        var p = OverrideMutation.Plan(OverrideMutationKind.Attach, isCurrentPlayable: true, videoAlreadyActive: false,
-            previousSourceKey: null, nextSourceKey: KeyA);
-        Assert.False(p.ClearHasVideoLatch);
-        Assert.True(p.ClearDeadVideoLatch);
-        Assert.True(p.CommitHasVideoUpgrade);
-        Assert.False(p.ForceReloadIfVideo);
-        Assert.True(p.RevealSurfaceIfCurrent);
-    }
-
-    [Fact]
-    public void Remove_clears_the_has_video_latch()
-    {
-        var p = OverrideMutation.Plan(OverrideMutationKind.Remove, true, true, KeyA, null);
-        Assert.True(p.ClearHasVideoLatch);
-        Assert.True(p.ClearDeadVideoLatch);
-        Assert.False(p.ForceReloadIfVideo);
-        Assert.False(p.RevealSurfaceIfCurrent);
-    }
-
-    [Fact]
-    public void Replace_with_the_same_key_does_not_force_a_reload()
-    {
-        var p = OverrideMutation.Plan(OverrideMutationKind.Replace, true, true, KeyA, KeyA);
-        Assert.False(p.ClearHasVideoLatch);
-        Assert.False(p.ForceReloadIfVideo);
-    }
-
-    [Fact]
-    public void Replace_with_a_changed_key_while_video_is_active_forces_a_reload()
-    {
-        var p = OverrideMutation.Plan(OverrideMutationKind.Replace, true, true, KeyA, KeyB);
-        Assert.False(p.ClearHasVideoLatch);
-        Assert.True(p.ForceReloadIfVideo);
-        Assert.True(p.RevealSurfaceIfCurrent);
-    }
-
-    [Fact]
-    public void Attach_while_audio_does_not_force_a_reload()
-        => Assert.False(OverrideMutation.Plan(OverrideMutationKind.Attach, true, false, null, KeyA).ForceReloadIfVideo);
-
-    [Fact]
-    public void A_mutation_to_another_playable_never_reveals_or_reloads()
-    {
-        var p = OverrideMutation.Plan(OverrideMutationKind.Replace, isCurrentPlayable: false, true, KeyA, KeyB);
-        Assert.False(p.ForceReloadIfVideo);
-        Assert.False(p.RevealSurfaceIfCurrent);
-    }
-
-    [Fact]
-    public void A_null_next_uri_is_not_a_real_track_boundary()
-    {
-        Assert.False(OverrideMutation.IsRealTrackBoundary("spotify:track:a", null));
-        Assert.False(OverrideMutation.IsRealTrackBoundary("spotify:track:a", ""));
-        Assert.False(OverrideMutation.IsRealTrackBoundary(null, "spotify:track:a"));
-        Assert.False(OverrideMutation.IsRealTrackBoundary("spotify:track:a", "spotify:track:a"));
-        Assert.True(OverrideMutation.IsRealTrackBoundary("spotify:track:a", "spotify:track:b"));
-    }
-
-    [Fact]
-    public void Can_reveal_requires_has_video_committed()
-    {
-        Assert.False(OverrideMutation.CanReveal(isCurrent: true, hasVideoCommitted: false, alreadyActive: false));
-        Assert.False(OverrideMutation.CanReveal(isCurrent: false, hasVideoCommitted: true, alreadyActive: false));
-        Assert.False(OverrideMutation.CanReveal(isCurrent: true, hasVideoCommitted: true, alreadyActive: true));
-        Assert.True(OverrideMutation.CanReveal(isCurrent: true, hasVideoCommitted: true, alreadyActive: false));
-    }
-}
-
 // ── the in-window mini player's geometry ─────────────────────────────────────────────────────────────────────────────
 
 public class VideoPipTests
@@ -853,17 +776,17 @@ public class VideoPipTests
 
     [Fact]
     public void A_landscape_source_fits_its_width()
-        => Assert.Equal(202.5f, Pip.FitHeight(360f, 9f / 16f, 900f), 2);
+        => Assert.Equal(202.5f, Pip.FitHeight(360f, 9f / 16f, 900f, PipBounds.Classic), 2);
 
     [Fact]
     public void A_portrait_source_is_capped_by_the_viewport_and_never_walks_off_the_bottom()
-        => Assert.Equal(600f - Pip.ReserveBottom - Pip.ReserveTop, Pip.FitHeight(360f, 16f / 9f, 600f), 2);
+        => Assert.Equal(600f - Pip.ReserveBottom - Pip.ReserveTop, Pip.FitHeight(360f, 16f / 9f, 600f, PipBounds.Classic), 2);
 
     [Fact]
     public void The_floor_wins_the_tie_in_a_very_short_window_and_for_a_tiny_width()
     {
-        Assert.Equal(Pip.MinH, Pip.FitHeight(360f, 16f / 9f, 200f));
-        Assert.Equal(Pip.MinH, Pip.FitHeight(100f, 9f / 16f, 900f));
+        Assert.Equal(Pip.MinH, Pip.FitHeight(360f, 16f / 9f, 200f, PipBounds.Classic));
+        Assert.Equal(Pip.MinH, Pip.FitHeight(100f, 9f / 16f, 900f, PipBounds.Classic));
     }
 
     [Theory]
@@ -872,32 +795,13 @@ public class VideoPipTests
     [InlineData(float.NaN)]
     [InlineData(float.PositiveInfinity)]
     public void An_unreported_or_bogus_ratio_uses_the_fallback(float ratio)
-        => Assert.Equal(Pip.DefaultH, Pip.FitHeight(Pip.DefaultW, ratio, 900f), 2);
-
-    [Fact]
-    public void Clamp_pulls_a_parked_card_back_inside_a_shrunken_viewport()
-    {
-        float x = 2000f, y = 2000f;
-        Pip.ClampToViewport(ref x, ref y, 360f, 202f, 1280f, 720f);
-        Assert.Equal(920f, x);
-        Assert.Equal(518f, y);
-
-        x = -50f; y = -50f;
-        Pip.ClampToViewport(ref x, ref y, 360f, 202f, 1280f, 720f);
-        Assert.Equal(0f, x);
-        Assert.Equal(0f, y);
-
-        x = 10f; y = 10f;
-        Pip.ClampToViewport(ref x, ref y, 360f, 202f, 200f, 100f);   // the card is bigger than the viewport
-        Assert.Equal(0f, x);
-        Assert.Equal(0f, y);
-    }
+        => Assert.Equal(Pip.DefaultH, Pip.FitHeight(Pip.DefaultW, ratio, 900f, PipBounds.Classic), 2);
 
     [Fact]
     public void The_anchor_is_bottom_right_above_the_player_bar()
     {
-        Assert.Equal((904f, 430f), Pip.Anchor(360f, 202f, 1280f, 720f));
-        Assert.Equal((0f, 0f), Pip.Anchor(360f, 202f, 100f, 100f));
+        Assert.Equal((904f, 430f), Pip.Anchor(360f, 202f, 1280f, 720f, PipBounds.Classic));
+        Assert.Equal((0f, 0f), Pip.Anchor(360f, 202f, 100f, 100f, PipBounds.Classic));
     }
 }
 
@@ -1508,15 +1412,9 @@ public class VideoMainWindowHoleTests
     }
 
     [Fact]
-    public void On_media_transport_is_the_shared_player_on_every_visible_placement()
+    public void On_media_transport_is_the_one_shared_id()
     {
-        Assert.Equal("onmedia.transport", OnMedia.TransportId);
-        Assert.Equal(OnMedia.TransportId, OnMediaTransport.Id);
-        Assert.True(OnMediaTransport.UsesSharedPlayer(SurfacePlacement.Docked));
-        Assert.True(OnMediaTransport.UsesSharedPlayer(SurfacePlacement.Floating));
-        Assert.True(OnMediaTransport.UsesSharedPlayer(SurfacePlacement.Detached));
-        Assert.True(OnMediaTransport.UsesSharedPlayer(SurfacePlacement.Fullscreen));
-        Assert.False(OnMediaTransport.UsesSharedPlayer(SurfacePlacement.None));
+        Assert.Equal("onmedia.transport", OnMediaTransport.Id);
     }
 }
 

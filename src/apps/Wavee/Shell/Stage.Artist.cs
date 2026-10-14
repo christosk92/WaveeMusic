@@ -18,7 +18,6 @@
 //   • Navigation CLOSES the stage first (V-U29): the shell body is collapsed under it.
 
 using System.Buffers;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using FluentGpu.Foundation;
 using Wavee.Theming.Contracts;

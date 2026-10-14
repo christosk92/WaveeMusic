@@ -16,12 +16,10 @@
 // hook-free slot class (the sidebar's) or a (B) surface may call them directly. Every geometry constant is `SurfaceGeometry`'s
 // (Surface.Rules.cs), so the estimators and the renderer agree to the DIP.
 
-using System.Collections.Generic;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
-using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 

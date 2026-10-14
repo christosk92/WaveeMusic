@@ -1,7 +1,8 @@
 // ── Theming/Contracts/ContentState.cs — what the content region shows (themes plan 6.0, T4a) ──────────────────────────────
 //
 // The shell decides WHICH state the content region is in; the theme DRAWS it (`Shell.ContentState`, one view key with four
-// kinds). The decision is a pure value so every edge of it is a table in a test:
+// kinds). The decision is two pure rules (`Shell.FrameRules.ContentBodyFor`, `ShowsOfflineStrip`), so every edge of it is a
+// table in a test:
 //
 //   Body          what stands where the page goes: the page itself, an EMPTY body (a real destination whose page is not
 //                 registered yet: never the not-found page), or the not-found page (nothing claims the route).
@@ -28,18 +29,4 @@ public enum ContentStateKind : byte
 
     /// <summary>The offline strip over the kept content.</summary>
     OfflineLane,
-}
-
-/// <summary>Which state the content region is in right now: the route's body and whether the offline lane floats over it.</summary>
-/// <param name="Body">The route's body: <see cref="ContentStateKind.Page"/>, <see cref="ContentStateKind.EmptyBody"/> or
-/// <see cref="ContentStateKind.NotFound"/>. <see cref="ContentStateKind.OfflineLane"/> is not a body.</param>
-/// <param name="OfflineLane">The offline lane is up.</param>
-public readonly record struct ContentState(ContentStateKind Body, bool OfflineLane)
-{
-    /// <summary>Is <paramref name="kind"/> on screen: the body for the three body kinds, the lane flag for
-    /// <see cref="ContentStateKind.OfflineLane"/>.</summary>
-    public bool Shows(ContentStateKind kind) => kind == ContentStateKind.OfflineLane ? OfflineLane : Body == kind;
-
-    /// <summary>True for the three kinds a route can have as its body.</summary>
-    public static bool IsBody(ContentStateKind kind) => kind != ContentStateKind.OfflineLane;
 }

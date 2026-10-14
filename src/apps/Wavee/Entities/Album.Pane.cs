@@ -222,9 +222,9 @@ public readonly partial struct Album
                     PaneHeader(id.CoverUrl, EyebrowOf(a), id.Title, _open, Detail.ArtistLine(id.Artists), MetaOf(a, id)),
                     PaneCommands(_play, _shuffle,
                         Embed.Comp(() => new Controls.SaveButton { Uri = _uri, Name = id.Title, Box = 36f }) with { Key = _saveKey },
-                        Detail.MoreButton(_menu, 36f, 16f, round: true), _open),
+                        Detail.MoreButton(_menu, 36f), _open),
                     // The unnamed-credit verdict goes through the page's OWN pipeline rather than the readiness gate:
-                    // one strip over a rendered list, and — exactly as on the full page (Detail.UI.cs:572) — suppressed
+                    // one strip over a rendered list, and — exactly as on the full page (<c>Detail.NoticeBar</c>, <c>showMinifiedAlbum: false</c>) — suppressed
                     // for `MinifiedAlbum`, which self-heals when the credits land. Zero-height and hit-test free while
                     // there is nothing to say, so the rows below it never move.
                     Detail.NoticeBar(Detail.NoticeRules.ForAlbum(MemoryMarshal.Cast<int, Track>(a.TrackSlots)),
@@ -374,7 +374,7 @@ public readonly partial struct Album
         // and cross-dissolves the real table over it. Two consequences shape it.
         //  · The header is CHROME, not data (W5 paints the real "#  Title  ♥  ⏱" while the rows shimmer), so it goes to
         //    the deriver as its own override — `Skel(head)` — which returns it verbatim.
-        //  · `Track.ShimmerRow` cannot BE the row: its cells are bare `new BoxEl()` (Track.UI.cs:328), the table's
+        //  · `Track.ShimmerRow` cannot BE the row: its cells are bare `new BoxEl()`, the table's
         //    pre-reveal blank — it paints nothing, and the deriver maps a childless box with no declared extent to an
         //    empty spacer, so the pane would load as a void (the complaint itself). The row below is that row's EXTENT —
         //    the same tracks, `ColGapFor`/`PadXFor(EmbeddedTier)` and pitch — with three cells that declare a bar.

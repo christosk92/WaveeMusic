@@ -21,7 +21,6 @@
 // The palettes are literal hex — a deck is a physical object, identical in light and dark (ch 23 §4.1). The only
 // localised string a face renders is the WMP preset caption; every other string is part of the device's own look.
 
-using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using FluentGpu.Animation;
@@ -978,7 +977,6 @@ public static partial class Deck
     static class WinampFace
     {
         const int SpectrumBands = 19;
-        static readonly FormatCache<int> TimeCache = FormatCache.Create<int>();
 
         public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig)
         {

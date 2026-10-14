@@ -41,7 +41,6 @@
 
 using System.Globalization;
 using System.Runtime.InteropServices;
-using FluentGpu.Animation;
 using FluentGpu.Scroll.Effects;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;

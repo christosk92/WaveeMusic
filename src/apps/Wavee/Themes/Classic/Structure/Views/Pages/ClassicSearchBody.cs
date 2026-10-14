@@ -181,7 +181,7 @@ internal static class ClassicSearchBody
 
         var actions = new List<Element>(4);
         if (Search.CanPlay(hit.Kind)) actions.Add(Controls.PlayButton(accent, () => Search.PlayHit(h)) with { Shrink = 0f });
-        if (Search.TrailingOf(hit, uri, title, compact: false) is { } trailing) actions.Add(trailing);
+        if (Search.TrailingOf(hit, uri, title) is { } trailing) actions.Add(trailing);
         // The "…" is a hover/focus REVEAL on the card (the Surface host's own mechanism, which a hand-built card does not
         // get for free): the wrapper is NON-interactive, so the engine's hover cascade resolves to the card and the pointer
         // anywhere on it reveals the button (HoverOpacity); keyboard focus within the card reveals it through the folded

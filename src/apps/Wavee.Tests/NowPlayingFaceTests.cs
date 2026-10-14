@@ -165,7 +165,6 @@ public class NowPlayingFaceTests
         Assert.Equal(300f, face.MsInLoading(true, 1_300));
         Assert.Equal(0f, face.MsInLoading(false, 1_300));
         face.ObserveLoading(false, 1_400);
-        Assert.Equal(0L, face.LoadingSinceMs);
         Assert.Equal(0f, face.MsInLoading(true, 1_500));
     }
 

@@ -23,7 +23,6 @@
 // uniformly. Colours come from the slab's cross-faded A/B/C wherever a bind can carry them, from `pal` where the engine
 // takes a static (gradients).
 
-using System.Collections.Generic;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;

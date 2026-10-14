@@ -399,75 +399,8 @@ public sealed class SidebarLibraryShaper
         EmitLevel(published, _top, 0);
     }
 
-    /// <summary>The parent-folder id of a built row — the sibling band a custom-order drag may move WITHIN. "" for
-    /// a top-level row.</summary>
-    public string ParentOf(int index)
-        => (uint)index < (uint)_rows.Count ? ParentKey(_rows[index]) : "";
-
-    /// <summary>Whether two built rows are siblings. A drop aimed across a folder boundary must not commit here:
-    /// this overlay is Your Library's LOCAL custom order, and moving an item between folders is a rootlist write, made only
-    /// through the resource-drop seam and folder actions.</summary>
-    public bool SameParent(int a, int b)
-        => string.Equals(ParentOf(a), ParentOf(b), StringComparison.Ordinal);
-
-    /// <summary>The same boundary, applied DURING the gesture: the slot a drag from <paramref name="from"/> may
-    /// actually reach when the pointer asks for <paramref name="to"/>. Snapping the REQUESTED slot to the nearest
-    /// one inside the source's sibling run means the gap never opens across a boundary in the first place.
-    /// <para>The run is the SET of same-parent rows, not a contiguous span (an expanded folder's children sit
-    /// between two top-level siblings), so a top-level drag must be able to travel PAST them. Ties go to the lower
-    /// slot — either is equally legal and the choice only needs to be deterministic.</para></summary>
-    public int ClampToSiblingRun(int from, int to)
-    {
-        int n = _rows.Count;
-        if (n == 0 || (uint)from >= (uint)n) return to;
-        if (to < 0) to = 0;
-        else if (to >= n) to = n - 1;
-        if (SameParent(from, to)) return to;
-
-        string parent = ParentKey(_rows[from]);
-        int below = -1, above = -1;
-        for (int i = to - 1; i >= 0; i--)
-            if (string.Equals(ParentKey(_rows[i]), parent, StringComparison.Ordinal)) { below = i; break; }
-        for (int i = to + 1; i < n; i++)
-            if (string.Equals(ParentKey(_rows[i]), parent, StringComparison.Ordinal)) { above = i; break; }
-        // `from` is itself in the run, so at least one side always resolves; the fallback is a no-move.
-        if (below < 0) return above < 0 ? from : above;
-        if (above < 0) return below;
-        return to - below <= above - to ? below : above;
-    }
-
     /// <summary>The stable key (entry id) at a built index — what the pane's reorder band reports per slot.</summary>
     public string KeyAt(int index) => (uint)index < (uint)_rows.Count ? _rows[index].Id : "";
-
-    /// <summary>Materialize the ENTIRE visible order into <paramref name="into"/> as entry ids, with the row at
-    /// <paramref name="from"/> moved to <paramref name="to"/> — "on any user move the whole current visible order
-    /// is written", which is what keeps later appends stable without ever rewriting the overlay again.</summary>
-    public void MaterializeOrder(List<string> into, int from, int to)
-    {
-        into.Clear();
-        for (int i = 0; i < _rows.Count; i++)
-        {
-            int slot = MovedIndex(i, from, to);                    // which VIEW slot supplies row i after the move
-            if ((uint)slot >= (uint)_rows.Count) continue;
-            var e = _rows[slot];
-            // An authored route row (Liked Songs) and a track row have no place in a playlist order.
-            if (e.Kind is SidebarEntryKind.AppRoute or SidebarEntryKind.Track) continue;
-            if (e.Id.Length > 0) into.Add(e.Id);
-        }
-    }
-
-    // The permutation a single remove-at-from/insert-at-to applies, read backwards (which VIEW slot supplies row i).
-    static int MovedIndex(int i, int from, int to)
-    {
-        if (from == to) return i;
-        if (from < to)
-        {
-            if (i < from || i > to) return i;
-            return i == to ? from : i + 1;
-        }
-        if (i < to || i > from) return i;
-        return i == to ? from : i - 1;
-    }
 
     // ── the rebuild ──────────────────────────────────────────────────────────────────────────────────────────────
 

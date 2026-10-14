@@ -12,7 +12,6 @@
 // Each fact is the body of the old component's render that touched those tables, moved verbatim: the same reads, in the same order,
 // so the same signals subscribe the same renders.
 
-using System.Collections.Generic;
 using FluentGpu.Controls;
 using FluentGpu.Localization;
 using Wavee.Theming.Contracts;
@@ -44,7 +43,7 @@ public static partial class Stage
         Alpha = () =>
         {
             var eff = ctx.Look.Value.Eff;
-            return ctx.Mode.Value == Mode.Visualizer ? LayoutRules.BackdropScrim(eff, ctx.Kind.Value) : 0f;
+            return ctx.Mode.Value == Mode.Visualizer ? LayoutRules.BackdropScrim(eff) : 0f;
         },
     };
 

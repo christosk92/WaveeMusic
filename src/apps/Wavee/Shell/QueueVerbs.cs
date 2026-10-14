@@ -13,7 +13,6 @@
 // The queue's session writes (`Queue.SkipTo`, `RemoveUpcoming`, `MoveInSection`, `ClearUserQueue`, `InsertUser`) stay in
 // `Queue.Rules.cs`; this is the door in front of them.
 
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 

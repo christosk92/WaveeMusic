@@ -36,8 +36,6 @@ public static partial class Settings
     /// is no longer a tab (it is the route <c>logs</c>), so the old <c>logs</c> slug now falls back to General.</summary>
     public static readonly string[] TabSlugs = ["general", "appearance", "playback", "notifications", "storage", "privacy", "about"];
 
-    public static string SlugOf(Tab tab) => (uint)tab < (uint)TabSlugs.Length ? TabSlugs[(int)tab] : TabSlugs[0];
-
     /// <summary>A deep link's tab name → the tab, General when unknown (a bad arg lands on the page, never nowhere).</summary>
     public static Tab TabFromSlug(string? slug)
     {
@@ -317,9 +315,6 @@ public static partial class Settings
 
     public static class Quality
     {
-        /// <summary>The persisted rung of <c>playback.quality</c> that means Lossless.</summary>
-        public const int LosslessRung = 3;
-
         /// <summary>How many audio rungs the combo offers. 0.2.9 offered three (Lossless was "an advert", ch 27 W7);
         /// decision D7 offers the fourth ONLY when a key deriver is installed — a lossless stream cannot play without one.</summary>
         public static int AudioRungCount(bool canDerive) => canDerive ? 4 : 3;
@@ -436,19 +431,6 @@ public static partial class Settings
             >= 1024L => (bytes / 1024.0).ToString("0", CultureInfo.InvariantCulture) + " KB",
             _ => bytes.ToString(CultureInfo.InvariantCulture) + " B",
         };
-
-        /// <summary>The nearest preset to a stored byte budget (ties keep the earlier rung).</summary>
-        public static int BodyBudgetIndex(long bytes)
-        {
-            int best = 5;
-            long bestDiff = long.MaxValue;
-            for (int i = 0; i < BodyBudgetBytes.Length; i++)
-            {
-                long diff = Math.Abs(BodyBudgetBytes[i] - bytes);
-                if (diff < bestDiff) { bestDiff = diff; best = i; }
-            }
-            return best;
-        }
 
         /// <summary>An exact preset match, else <see cref="CustomBudgetIndex"/> (typing a value snaps the combo to Custom).</summary>
         public static int BodyBudgetExactIndex(long bytes)

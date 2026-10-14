@@ -266,8 +266,8 @@ public class ShellAutoZoomLoopTests
 
 // The clipped "Sear" stub (#88): a MOUNTED search field must never be laid out at the icon's 44 DIP, no matter which
 // frame it renders on relative to the allocator flipping `SearchMode`. `SearchField.Render()` (now Themes\Classic\Structure\Views\Search\ClassicSearch.cs)
-// used to size itself with `Chrome.LaidOutSearchWidth`, which dispatches on `SearchMode` and answers 44 outright once
-// the mode is Icon — reachable even while the field is still the thing on screen, because the field's own re-render
+// used to size itself with a width method that dispatched on `SearchMode` and answered 44 outright once
+// the mode was Icon — reachable even while the field is still the thing on screen, because the field's own re-render
 // and the host's mount/unmount decision are driven by different signals (`ChromeLayout` vs. `ContentVersion`) and can
 // disagree for a frame. The fix is a FORM-VS-WIDTH split: a field view asks `Chrome.FieldWidthFor` directly, which
 // never reads `SearchMode` and floors even the icon form's own published width back up to `ChromeSearchMinW`.

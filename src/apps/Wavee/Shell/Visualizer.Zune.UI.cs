@@ -115,7 +115,7 @@ public static partial class Visualizer
     /// <summary>Three giant lowercase rows (artist 420/300, title 300/600 in the accent, album 150/300) cropped by the
     /// edges and drifting at speeds the energy drives; the title brightens on the kick. A "now playing" eyebrow under the
     /// now-playing card. Preview: the three rows, static.</summary>
-    public static Element TypeFace(Slab slab, in Palette pal, in FaceSpec spec)
+    public static Element TypeFace(Slab slab, in FaceSpec spec)
     {
         float w = spec.W, h = spec.H;
         bool preview = spec.Preview;
@@ -258,7 +258,7 @@ public static partial class Visualizer
 
     /// <summary>A Metro wall of the queue's and recently played covers (12 columns, ~14 % 2×2): on every beat two tiles flip (bound ScaleX, the source swapped edge-on), each column dims and brightens with
     /// its band, and the title sits big over a bottom fade. Preview: a 6 × 3 static wall.</summary>
-    public static Element MosaicFace(Slab slab, in Palette pal, in FaceSpec spec)
+    public static Element MosaicFace(Slab slab, in FaceSpec spec)
     {
         bool preview = spec.Preview;
         int cols = preview ? Covers.Tiles.PreviewCols : Covers.Tiles.Cols;

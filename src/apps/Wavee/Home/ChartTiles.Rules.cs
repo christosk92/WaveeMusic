@@ -5,7 +5,7 @@
 //        ACTUAL playlists, taken data-driven from the Featured Charts section's items (never hard-coded playlist ids),
 //        falling back to the Charts category page while that section has not landed or carries no match.
 //
-// Zones.UI.cs's `ChartsBlock` reads the Featured Charts section (through `SectionReader`, demanded through
+// `ChartsBlockView` (Zones.Hosts.cs) reads the Featured Charts section (through `SectionReader`, demanded through
 // `Home.EnsureSection` — the same path Browse's Charts band and the section drill use) into `FeaturedChartItem`s and
 // hands them here; everything below is plain string work, so the pick is unit-tested with no scope, no table and no
 // element (the "no source-text tests" rule).

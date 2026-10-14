@@ -16,15 +16,11 @@
 //     store, so a search-mode flip keeps the rows, the pending generation and the cursor. The SUGGESTION SOURCE is owner
 //     P's (`Shell.Omnibar.Source`, Wave 5); with none installed the popup answers from the navigation log.
 
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
-using FluentGpu.Foundation;
 using FluentGpu.Hooks;
-using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
-using static FluentGpu.Dsl.Ui;
 using ViewSlots = FluentGpu.Theming.Slots;
 
 namespace Wavee;

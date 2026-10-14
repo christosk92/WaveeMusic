@@ -18,7 +18,6 @@
 // through `Controls.Confirm`; every toast goes through `Notify.Say`.
 
 using System.Globalization;
-using FluentGpu;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -188,8 +187,6 @@ public static partial class Settings
         public override Element Render()
         {
             var overlay = UseContext(Overlay.Service);
-            var hooks = UseContext(InputHooks.Current);
-            var post = UsePost();
             _ = Crash.Host.ReportsVersion.Value;       // subscribed
             _ = Crash.Uploader.OutboxVersion.Value;    // subscribed
             var bundles = Crash.Host.Bundles();        // at most Crash.Files.KeepBundles; event-driven, never per frame
@@ -206,7 +203,7 @@ public static partial class Settings
                         Button.Accent(Loc.Get(PvReports.SendNow), static () => D(Tab.PrivacyDiagnostics, "reportsSendNow").Writer.Run!(), isEnabled: configured),
                         Button.Standard(Loc.Get(PvReports.Discard), static () => D(Tab.PrivacyDiagnostics, "reportsDiscard").Writer.Run!())))) with { Key = "privacy.reports.queued" });
             foreach (var b in bundles)
-                items.Add(ReportRow(b, overlay, hooks, post, configured) with { Key = "crash:" + b.Summary.ReportId });
+                items.Add(ReportRow(b, overlay, configured) with { Key = "crash:" + b.Summary.ReportId });
             PruneAnchors(bundles);
 
             return SettingsExpander.Create(new SettingsExpander.Options
@@ -257,7 +254,7 @@ public static partial class Settings
 
         /// <summary>One report: kind dot · when + short id · kind · what · send state · "…". Not clickable as a whole —
         /// every action is in the menu.</summary>
-        Element ReportRow(Crash.BundleInfo b, IOverlayService? overlay, InputHooks hooks, Action<Action> post, bool configured)
+        Element ReportRow(Crash.BundleInfo b, IOverlayService? overlay, bool configured)
         {
             var s = b.Summary;
             string id = s.ReportId;
@@ -280,7 +277,7 @@ public static partial class Settings
                     new TextEl(Loc.Get(PrivacyRules.KindKey(s.Kind))) { Size = 13f, Weight = 600, Width = 56f, Shrink = 0f },
                     new TextEl(WhatText(s)) { Size = 13f, Color = Tok.TextSecondary, Grow = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                     new TextEl(StateText(b)) { Size = 12f, Color = Tok.TextTertiary, Width = 110f, Shrink = 0f },
-                    ToolTip.Wrap(IconButton.Create(Icons.More, () => OpenRowMenu(b, overlay, hooks, post, configured), size: ControlSize.Small)
+                    ToolTip.Wrap(IconButton.Create(Icons.More, () => OpenRowMenu(b, overlay, configured), size: ControlSize.Small)
                         with { Shrink = 0f, OnRealized = h => _anchors[id] = h }, Loc.Get(PvReports.RowMenu)),
                 ],
             };
@@ -288,7 +285,7 @@ public static partial class Settings
 
         /// <summary>The row's one menu, anchored at its "…" (the same anchored-flyout shape as the history menu and the
         /// video-override manager). Built at open time, so Send… reflects the live send state. A second press closes it.</summary>
-        void OpenRowMenu(Crash.BundleInfo b, IOverlayService? overlay, InputHooks hooks, Action<Action> post, bool configured)
+        void OpenRowMenu(Crash.BundleInfo b, IOverlayService? overlay, bool configured)
         {
             if (overlay is null) return;
             if (_menu is { IsOpen: true } open) { open.Close(); return; }

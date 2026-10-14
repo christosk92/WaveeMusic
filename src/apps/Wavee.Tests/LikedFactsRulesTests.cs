@@ -907,7 +907,7 @@ public class LikedFactsRulesTests
         Assert.Equal(LikedFactsRules.LikedLens.Year, LikedFactsRules.ActiveLenses(filter));
         Assert.True(LikedFactsRules.IsYearLens(filter, new LikedFactsRules.YearBucket(2010, 2014, 3)));
         Assert.False(LikedFactsRules.IsYearLens(filter, new LikedFactsRules.YearBucket(2010, 2010, 1)));
-        Assert.Equal(1, filter.ActiveCount);
+        Assert.Equal(1, filter.ActiveCountFor(searching: true));
         Assert.True(Track.FilterModel.Matches(RowOf(T(null, "in", year: 2012), NowSec), "", filter, NowSec));
         Assert.False(Track.FilterModel.Matches(RowOf(T(null, "out", year: 2009), NowSec), "", filter, NowSec));
         Assert.False(Track.FilterModel.Matches(RowOf(T(null, "unknown", year: 0), NowSec), "", filter, NowSec));
@@ -1143,7 +1143,7 @@ public class LikedFactsRulesTests
         Assert.True(LikedFactsRules.IsTempoLens(filter, Track.TempoBand.From120To139));
         Assert.False(LikedFactsRules.IsTempoLens(filter, Track.TempoBand.Under90));
         Assert.False(LikedFactsRules.IsTempoLens(Track.FilterState.Default, Track.TempoBand.Any));
-        Assert.Equal(1, filter.ActiveCount);
+        Assert.Equal(1, filter.ActiveCountFor(searching: true));
         var cleared = LikedFactsRules.ClearLens(filter, LikedFactsRules.LikedLens.Tempo);
         Assert.Equal(Track.TempoBand.Any, cleared.Tempo);
         Assert.Equal(LikedFactsRules.LikedLens.None, LikedFactsRules.ActiveLenses(cleared));

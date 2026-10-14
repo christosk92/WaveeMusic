@@ -196,9 +196,6 @@ public static partial class Platform
         public static int EffectiveVideoMaxHeight(int storedCap, in NetworkCost cost)
             => !cost.IsMetered || storedCap <= 0 ? int.MaxValue : storedCap;
 
-        /// <summary>Prefetch and CDN warm-up wait on a metered link; an unknown cost does not defer.</summary>
-        public static bool ShouldDeferPrefetch(in NetworkCost cost) => cost.IsMetered;
-
         /// <summary>The live snapshot (any thread).</summary>
         public static NetworkCost Current => Unpack(Volatile.Read(ref s_packed));
         public static bool IsMetered => Current.IsMetered;
@@ -715,8 +712,6 @@ public static class RunMarker
         string cur = s.Get(Platform.Keys.RunMarker);
         if (cur is Running or Frame) s.Set(Platform.Keys.RunMarker, Clean);
     }
-
-    public static void MarkCrashed(IAppSettings s) => s.Set(Platform.Keys.RunMarker, Crashed);
 }
 
 // CrashSource / CrashPromptMode / CrashPromptDecision / CrashPromptPolicy retired

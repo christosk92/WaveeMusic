@@ -293,7 +293,6 @@ public sealed class WizardModelTests : IDisposable
         model.Advance(Setup.WizardPage.LocalPlayback);
 
         Assert.Null(model.Model);
-        Assert.Null(model.RuntimePhaseNow());
         Assert.False(model.IsBusy);
         var row = model.Row();
         Assert.False(row.PrimaryEnabled);

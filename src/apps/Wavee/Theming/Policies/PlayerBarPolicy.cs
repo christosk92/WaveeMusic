@@ -82,9 +82,6 @@ public sealed record PlayerTier(
     /// <summary>The parts the podcast bar carries at this level.</summary>
     public PlayerBarSlots PodcastSet
         => PodcastSlots ?? (VisibleSlots & ~(PlayerBarSlots.ShuffleRepeat | PlayerBarSlots.VolumeSlider));
-
-    /// <summary>The identity block's width on the podcast bar.</summary>
-    public float PodcastLeft => float.IsNaN(PodcastLeftW) ? LeftW : PodcastLeftW;
 }
 
 /// <summary>The player bar's policy.</summary>

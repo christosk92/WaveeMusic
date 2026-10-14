@@ -21,7 +21,6 @@
 // epoch effect) and write through the stage's settings verbs (`IStageSettingsVerbs`), a write that round-trips through the stored
 // value and the same effect, which SetIfChanges the clamped value back.
 
-using System.Collections.Generic;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -30,7 +29,6 @@ using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Theming.Contracts;
-using Wavee.Theming.Roles;
 using static FluentGpu.Dsl.Ui;
 
 using Ink = Wavee.Theming.Roles.StageInk;

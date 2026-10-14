@@ -842,10 +842,7 @@ public readonly partial struct Track
         public bool IsDefault => Equals(Default);
 
         /// <summary>The number on the Filter affordance: each toggle and each non-default facet counts once; a window is ONE
-        /// facet however many endpoints it names.</summary>
-        public int ActiveCount => ActiveCountFor(searching: true);
-
-        /// <summary><see cref="ActiveCount"/> as the badge states it: the search scope is the QUERY's, so it counts only while a query
+        /// facet however many endpoints it names. The search scope is the QUERY's, so it counts only while a query
         /// is typed (<paramref name="searching"/>); an empty find leaves the scope uncounted, as nothing on the card is then narrowing.</summary>
         public int ActiveCountFor(bool searching)
         {
@@ -1532,11 +1529,6 @@ public readonly partial struct Track
             }
         }
 
-        /// <summary>The same question in DISPLAY coordinates (what a drop hands over).</summary>
-        public static bool AnchorRowIsKeyed(ReadOnlySpan<int> view, ReadOnlySpan<StringId> itemIds,
-                                            ReadOnlySpan<RowRef> moved, int displaySlot)
-            => AnchorRowIsKeyedAt(itemIds, moved, OriginalInsertionIndex(view, itemIds.Length, displaySlot));
-
         /// <summary>Invert the display→original map for ONE row (the payload carries ORIGINAL indices, the engine's
         /// virtual-removal math counts DISPLAY positions). O(1) in natural order, a scan otherwise; −1 = not displayed.</summary>
         public static int DisplayRowOf(int originalIndex, ReadOnlySpan<int> view)
@@ -1605,30 +1597,12 @@ public readonly partial struct Track
 //
 // Role: CORE (pure, engine-free)
 //
-// TWO pure classes, unit-tested without touching Track.Table.cs's live host: `TableRowShape` (what template/height a
-// row's kind gets), `SelectionVerbs` (which `ActionId`s a selection's kind mix shows in the batch bar). No source-text
-// tests read these — `TableRowShapeTests.cs` / `SelectionVerbsTests.cs` exercise them by value.
+// `SelectionVerbs` (which `ActionId`s a selection's kind mix shows in the batch bar), unit-tested without touching
+// Track.Table.cs's live host: no source-text test reads it — `SelectionVerbsTests.cs` exercises it by value.
 
 
 /// <summary>What a display row's ROOT SWITCHES on inside <c>TableSlot</c>.</summary>
 public enum RowTemplate : byte { Track = 0, Episode = 1 }
-
-/// <summary>The row TEMPLATE and HEIGHT a kind gets.</summary>
-public static class TableRowShape
-{
-    /// <summary>A resident member's template. There is no <see cref="EntityKind.Episode"/>-shaped ambiguity: every kind
-    /// other than <see cref="EntityKind.Episode"/> renders as a track row (the table's long-standing default).</summary>
-    public static RowTemplate TemplateOf(EntityKind kind) => kind == EntityKind.Episode ? RowTemplate.Episode : RowTemplate.Track;
-
-    /// <summary>The height a row's template draws at, given the table's live density/skin — the ONE place a caller
-    /// (the row-height estimator, a measured-layout fallback) asks "how tall is THIS row" without re-deriving the
-    /// ladder by hand.</summary>
-    public static float HeightOf(RowTemplate template, int density, bool classic) => template switch
-    {
-        RowTemplate.Episode => Track.RowMetrics.EpisodeRowHeightFor(density),
-        _ => Track.TableRules.RowHeightFor(density, classic),
-    };
-}
 
 /// <summary>One <see cref="ItemsViewController.CorrectMeasuredExtent"/> write a drawer toggle must apply (item 9): a
 /// display INDEX and the extent it should read now.</summary>

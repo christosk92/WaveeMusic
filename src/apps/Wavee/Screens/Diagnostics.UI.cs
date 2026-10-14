@@ -24,14 +24,12 @@
 // before its node is torn down.
 
 using System.Globalization;
-using FluentGpu;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Media;
-using FluentGpu.Scene;
 using FluentGpu.Signals;
 
 namespace Wavee;

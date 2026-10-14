@@ -65,11 +65,6 @@ public static class ZoomTierReference
         return MathF.Min(suggested, ZoomAutoPolicy.PlateauAtOrBelow(baseWidth / HugeFrom));
     }
 
-    /// <summary>The most a Manual zoom may reach on a window <paramref name="baseWidth"/> wide at zoom 1 before the layout
-    /// falls under <see cref="CompactFloor"/>; <see cref="float.PositiveInfinity"/> where the width is unknown.</summary>
-    public static float MaxManualZoom(float baseWidth)
-        => float.IsFinite(baseWidth) && baseWidth > 0f ? baseWidth / CompactFloor : float.PositiveInfinity;
-
     /// <summary>A Manual <paramref name="zoom"/> brought back inside the floor: unchanged when the layout would stay at or above
     /// <see cref="CompactFloor"/> (and always at 100 % or below, which never narrows the layout), else the largest ladder step
     /// that fits, never below 100 %. An unknown width bounds nothing.</summary>

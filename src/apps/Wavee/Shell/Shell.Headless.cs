@@ -51,9 +51,6 @@ public static partial class Shell
         static int s_uiThread;
         static HeadlessShell? s_mounted;
 
-        /// <summary>True once <see cref="Boot"/> ran in this process.</summary>
-        public static bool Booted => s_headless;
-
         /// <summary>Boot the app under <see cref="BootProfile.HeadlessFake"/>, on the calling thread, which becomes the UI
         /// thread of every mount. Once per process. The marks are the GUI's: `boot.platform`, `boot.entities`,
         /// `boot.playback`, `boot.pages`, `boot.documents`.</summary>

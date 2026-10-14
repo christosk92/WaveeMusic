@@ -13,9 +13,7 @@
 // Every side effect lives here, off the UI thread where it touches the disk; the UI files only call in and post the
 // answer back through the page's poster.
 
-using System.Globalization;
 using System.Runtime.InteropServices;
-using FluentGpu;
 using FluentGpu.Controls;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;

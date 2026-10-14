@@ -26,7 +26,6 @@
 
 using System.Globalization;
 using FluentGpu.Controls;
-using FluentGpu.Foundation;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 
@@ -532,11 +531,9 @@ public static partial class Sidebar
         Apply(SidebarResizeRules.Toggle(ResizeState()));
     }
 
-    public static void SetUserCollapsed(bool collapsed) { if (UserCollapsed.Peek() != collapsed) TogglePane(); }
-
     /// <summary>Show the FULL pane from wherever it is — the rail's search tile (design P.2a: "its search tile expands the
     /// pane with the search box open"). Narrow / Tiny: open the overlay pane (a forced rail has <c>UserCollapsed</c> false,
-    /// so <see cref="SetUserCollapsed"/> would do nothing there). Wide: clear the user's collapse. Never closes anything;
+    /// so clearing the collapse would do nothing there). Wide: clear the user's collapse. Never closes anything;
     /// a no-op while editing (Edit already presents the pane).</summary>
     public static void OpenPane()
     {
@@ -1291,7 +1288,6 @@ public sealed class SidebarProjectionBinder
 
     readonly BuildSlot _slotA = new(), _slotB = new();
     BuildSlot _publishedStage;
-    BuildSlot _lastBuild;
 
     BuildSlot BuildTarget => ReferenceEquals(_publishedStage, _slotA) ? _slotB : _slotA;
 
@@ -1357,7 +1353,6 @@ public sealed class SidebarProjectionBinder
     public SidebarProjectionBinder(ISidebarRecencyLogs? logs = null, ISidebarEntityPeek? peek = null)
     {
         _publishedStage = _slotA;
-        _lastBuild = _slotA;
         _isFolderExpanded = Sidebar.IsFolderExpanded;
         _logs = logs ?? ShellRecencyLogs.Instance;
         _peek = peek ?? SidebarResidentPeek.Instance;
@@ -1454,7 +1449,6 @@ public sealed class SidebarProjectionBinder
         var demand = SidebarFeedDemands.Of(doc);
 
         var build = BuildTarget;
-        _lastBuild = build;
 
         // 1, 2 — THE projection (every kind, folders and children) + the tree slice + the join index.
         var full = SidebarProjection.Build(build.All, in u, SidebarEntryKindMask.All, firstSeen, recency,

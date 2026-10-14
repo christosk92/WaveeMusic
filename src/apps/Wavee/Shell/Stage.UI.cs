@@ -13,8 +13,8 @@
 //
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 // THE FULLSCREEN STAGE. The frame mounts `Stage.Root` (`StageRootProps.Mount` → `Stage.Mount`) while `Shell.Ui.ImmersiveLyrics` is up
-// (ClassicFrame, inside the immersive layer's Flow.Show). Mount = enter: the window goes borderless-fullscreen (the Video.UI.cs:1213-1218
-// shape), the shell collapses its chrome and body (FrameModel.ChromeMounted → bound Visible on the chrome row, the content region and
+// (ClassicFrame, inside the immersive layer's Flow.Show). Mount = enter: the window goes borderless-fullscreen (the fullscreen
+// video layer's shape), the shell collapses its chrome and body (FrameModel.ChromeMounted → bound Visible on the chrome row, the content region and
 // the dock), a focus scope takes the keys. Unmount = exit.
 //
 //   • ONE context instance of SIGNALS (`StageCtx`) for the stage's life; every layer is a component on the signals it reads,
@@ -39,10 +39,9 @@
 //     views' props, the builders of the layers T7a2/T7b still own) and mounts what comes back under the context provider.
 //
 // Mounted from other files: `Lyrics.StagePane(accent)` (the reading column), `Queue.StagePane()` (the Up next column: Queue.UI.cs, the `Queue.StagePane` view),
-// `Stage.NowPlayingMenu` (Actions.UI.cs:958), `Shell.SeekBar(onScrubbing:)`/`Shell.TimeText` (the bar's own seek — never a fork),
+// `Stage.NowPlayingMenu` (installed by `Actions.InstallUi`), `Shell.SeekBar(onScrubbing:)`/`Shell.TimeText` (the bar's own seek — never a fork),
 // `Shell.PlayerKey`/`Shell.ScrubController.KeyStep` (the bar's key map and its keyboard seek ladder).
 
-using System.Collections.Generic;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Controls.Media;
@@ -50,9 +49,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
-using FluentGpu.Scene;
 using FluentGpu.Signals;
-using static FluentGpu.Dsl.Ui;
 
 using Wavee.Theming.Contracts;
 
@@ -80,7 +77,7 @@ public static partial class Stage
     public static EnterExit ExitTerminal => Design.Reduced
         ? new EnterExit(Opacity: 0f, Active: true) : new EnterExit(Sx: 1.02f, Sy: 1.02f, Opacity: 0f, Active: true);
 
-    /// <summary>The now-playing context menu (Actions.UI.cs:958 installs it); asked at OPEN time.</summary>
+    /// <summary>The now-playing context menu (<c>Actions.InstallUi</c> installs it); asked at OPEN time.</summary>
     public static Func<ContextMenuModel?>? NowPlayingMenu { get; set; }
 
     /// <summary>The accent TARGET for the playing cover. The clock eases <c>Slab.Accent</c> toward it (Stage.Tone.CrossFadeMs).</summary>
@@ -152,7 +149,6 @@ public static partial class Stage
         public Action<bool> OverControls = static _ => { }, MenuOpen = static _ => { }, Scrubbing = static _ => { };
         /// <summary>The playing track's row from the key — <c>Value</c> subscribes the caller to the KEY (one write per slot/version change).</summary>
         public Track RowValue() { int slot = (int)(TrackKey.Value >> 32); return slot > 0 ? new Track(slot) : default; }
-        public Track RowPeek() { int slot = (int)(TrackKey.Peek() >> 32); return slot > 0 ? new Track(slot) : default; }
     }
     public static readonly Context<StageCtx?> StageContext = new(null);
 
@@ -241,7 +237,7 @@ public static partial class Stage
                 OnPointerExit = () => { _idle.PointerLeft(Now()); Sync(); },
                 OnPointerWheel = _ => { _idle.Activity(ChromeActivity.Pointer, Now()); Sync(); },   // wheel = activity (V-U22)
                 OnKeyDown = OnKey,
-                // Never leave focus NULL while the stage is up: an unhandled Escape clears it and disarms the key map (Video.UI.cs:1255-1259).
+                // Never leave focus NULL while the stage is up: an unhandled Escape clears it and disarms the key map (the fullscreen video layer guards the same way).
                 OnFocusChanged = got =>
                 {
                     if (got || _root.IsNull) return;

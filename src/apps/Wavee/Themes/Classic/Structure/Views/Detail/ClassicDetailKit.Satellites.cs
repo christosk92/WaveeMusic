@@ -35,5 +35,5 @@ internal static partial class ClassicDetailKit
 
     /// <summary>The ⋯ as a satellite: the frame's lazily-built More menu at <see cref="Detail.RailLayout.SatelliteSize"/>.</summary>
     public static Element RailSatelliteMore(Func<ContextMenuModel?> menu)
-        => Detail.MoreButton(menu, Detail.RailLayout.SatelliteSize, 16f, round: true) with { Key = "rail:more" };
+        => Detail.MoreButton(menu, Detail.RailLayout.SatelliteSize) with { Key = "rail:more" };
 }

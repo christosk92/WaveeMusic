@@ -146,7 +146,7 @@ public readonly partial struct Search
 
     /// <summary>The trailing control: Follow for an artist / playlist / show, the heart for a track / album, none else.
     /// Keyed on the uri — the embed's props freeze by design (Controls.cs §4).</summary>
-    internal static Element? TrailingOf(EntityRef hit, string uri, string name, bool compact)
+    internal static Element? TrailingOf(EntityRef hit, string uri, string name)
         => SearchHitRules.TrailingOf(hit.Kind, hasUri: uri.Length > 0) switch
         {
             SearchHitRules.Trailing.Follow
@@ -187,7 +187,7 @@ public readonly partial struct Search
             Eyebrow = SearchHitRules.LyricsEyebrow(large, flags)
                 ? R.Type.Eyebrow(Loc.Get(Strings.Search.LyricsMatch)) with { Color = Tok.AccentTextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }
                 : null,
-            Trailing = TrailingOf(hit, uri, title, compact: true),
+            Trailing = TrailingOf(hit, uri, title),
             Menu = MenuOf(hit),
             Drag = DragOf(hit),
         };

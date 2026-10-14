@@ -12,12 +12,10 @@
 // "isn't available" vacancy as CONTENT (no Retry, the 404 seal); Failed → the error vacancy with Retry = RetryHeader.
 
 using System.Globalization;
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
-using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Scroll.Effects;
 using FluentGpu.Scroll.Runtime;
@@ -404,7 +402,7 @@ public static partial class Profile
             _secEl[k] = body switch
             {
                 ProfileSectionBody.Cards => Shelf(s, CardsOf(s, u), accent, SeeAllFor(s, u, count)),
-                ProfileSectionBody.Empty => Artist.SectionBlock(SectionTitle(s), EmptyShelf(s, f.Own), accent),
+                ProfileSectionBody.Empty => Artist.SectionBlock(SectionTitle(s), EmptyShelf(f.Own), accent),
                 _ => null,
             };
         }

@@ -573,11 +573,11 @@ public class LyricsRowRenderTests
     public void The_active_row_is_also_near_and_the_ring_is_NearDistance_wide()
     {
         int active = Shape(20, 20);
-        Assert.True(Lyrics.RowRender.IsActive(active));
+        Assert.NotEqual(0, active & Lyrics.RowRender.ActiveBit);
         Assert.True(Lyrics.RowRender.IsNear(active));
         Assert.True(Lyrics.RowRender.IsNear(Shape(20 + Lyrics.Surface.NearDistance, 20)));
         Assert.False(Lyrics.RowRender.IsNear(Shape(20 + Lyrics.Surface.NearDistance + 1, 20)));
-        Assert.False(Lyrics.RowRender.IsActive(Shape(21, 20)));
+        Assert.Equal(0, Shape(21, 20) & Lyrics.RowRender.ActiveBit);
     }
 
     [Fact]
@@ -794,14 +794,6 @@ public class LyricsCascadeTests
         var s = Slab(4);
         Assert.False(Lyrics.Cascade.Step(s.Comp, s.Vel, s.Delay, s.Rate, s.Write, 16f));
         for (int i = 0; i < 4; i++) Assert.Equal(Lyrics.Cascade.WriteNone, s.Write[i]);
-    }
-
-    [Fact]
-    public void The_dt_clamp_stops_a_parked_window_teleporting()
-    {
-        Assert.Equal(Lyrics.Cascade.DtMaxMs, Lyrics.Cascade.ClampDt(10_000f, 16f));
-        Assert.Equal(16f, Lyrics.Cascade.ClampDt(0f, 16f));
-        Assert.Equal(33f, Lyrics.Cascade.ClampDt(33f, 16f));
     }
 
     [Fact]

@@ -195,8 +195,6 @@ public static partial class Platform
 
         // ── shell state ──
         public static readonly SettingKey<bool> PlayerBarShowRemaining = new("playerbar.duration.remaining", true);
-        public static readonly SettingKey<string> TipsSeen = new("tips.seen", "");
-        public static readonly SettingKey<string> SavedLibrary = new("library.saved", "");
         public static readonly SettingKey<string> PlaylistDepositRecents = new("playlist.deposit.recents", "");
         public static readonly SettingKey<string> WorkspacePinnedTabs = new("workspace.tabs.pinned", "");
 
@@ -217,7 +215,8 @@ public static partial class Platform
         public static readonly SettingKey<double> VideoCustomAspectRatio = new("video.aspect.customRatio", 16.0 / 9.0);
         public static readonly SettingKey<bool> VideoWindowAlwaysOnTop = new("video.window.ontop", true);
 
-        // ── local playback runtime (the provisioning card; RuntimePhase below) ──
+        // ── local playback runtime (the provisioning card; RuntimePhase below). Path, pack and catalog are read and written by the
+        // private PlayPlay module's provisioner, which is not in this repository. ──
         public static readonly SettingKey<string> PlaybackRuntimePath = new("playback.runtime.path", "");
         public static readonly SettingKey<string> PlaybackRuntimePackId = new("playback.runtime.packId", "");
         public static readonly SettingKey<bool> PlaybackRuntimeSetupDismissed = new("playback.runtime.dismissed", false);
@@ -360,10 +359,6 @@ public static partial class Platform
         // inventing their own; the string shape is 0.2.9's and is persisted, so it never changes. A key is a struct, so
         // the only allocation is the name, and these are read at mount, never per frame.
 
-        /// <summary>Per-context track-table sort column / direction (`detail.sort.col:&lt;ctxUri&gt;`).</summary>
-        public static SettingKey<int> DetailSortCol(string contextUri) => new("detail.sort.col:" + contextUri, 0);
-        public static SettingKey<bool> DetailSortDesc(string contextUri) => new("detail.sort.desc:" + contextUri, false);
-
         /// <summary>Per-library-kind three-column state (`library.&lt;kind&gt;.*`; kind is "artists"/"albums"/…).</summary>
         public static SettingKey<float> LibraryLeftW(string kind) => new("library." + kind + ".leftw", kind == "artists" ? 280f : 340f);
         public static SettingKey<float> LibraryMidW(string kind) => new("library." + kind + ".midw", 440f);
@@ -377,16 +372,13 @@ public static partial class Platform
         /// <summary>The account's listen-later playlist uri ("Your Episodes") as last discovered (`podcasts.yourEpisodes:&lt;account&gt;`),
         /// so a cold start recognises a pinned Your Episodes before this session has read it. "" = none known.</summary>
         public static SettingKey<string> YourEpisodesUri(string account) => new("podcasts.yourEpisodes:" + account, "");
-        public static SettingKey<bool> LibraryAlbumDesc(string kind) => new("library." + kind + ".album.desc", false);
-        public static SettingKey<int> LibraryAlbumView(string kind) => new("library." + kind + ".album.view", 3);   // Grid
-        public static SettingKey<int> LibraryAlbumSize(string kind) => new("library." + kind + ".album.size", 1);
         /// <summary>The artists reader's scope (0 = in your library · 1 = all releases). Per kind for symmetry with the
         /// other library keys; only "artists" reads it today.</summary>
         public static SettingKey<int> LibraryScope(string kind) => new("library." + kind + ".scope", 0);
-        // LibraryAlbumDesc / LibraryAlbumView / LibraryAlbumSize: ORPHANED by the 2026-09-17 library rework (the
-        // discography grid they drove is gone). Kept and unread — a persisted string never changes — so do not renumber,
-        // repurpose or delete one: a user's store.json still carries them, and LibraryAlbumSort is still read (the
-        // reader's own sort, whose old 0-4 discography values clamp to 0).
+        // RETIRED, never reuse: `library.<kind>.album.desc` / `.album.view` / `.album.size` drove the discography grid the
+        // 2026-09-17 library rework deleted. Nothing reads or writes them, but a user's store.json may still carry them, so a
+        // new key must not take one of those strings. `LibraryAlbumSort` is still read (the reader's own sort, whose old 0-4
+        // discography values clamp to 0).
 
         /// <summary>A deck/player preset's own option (`npv.player.&lt;preset&gt;.&lt;option&gt;`).</summary>
         public static SettingKey<int> NpvOption(string presetSlug, string optionSlug) => new("npv.player." + presetSlug + "." + optionSlug, 0);
@@ -645,8 +637,6 @@ public readonly record struct WaveeLogEntry(
     long Sequence, long UnixMs, WaveeLogLevel Level, string Category, string EventId, string Message,
     string? OperationId, int ThreadId, long ElapsedMs, WaveeLogField[]? Fields, string? Exception)
 {
-    public int FieldCount => Fields?.Length ?? 0;
-
     /// <summary>The one line format, pure and testable:
     /// <c>I [connect] session.start op=x elapsed=12ms - started k=v</c>. The file sink prefixes it with the
     /// seq/tid/t/sid/pid tokens (<see cref="Log.FormatFileLine"/>); the diagnostics page re-reads both halves. Older

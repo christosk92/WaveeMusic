@@ -30,19 +30,15 @@
 //   effect re-syncs it from `FacetPivot.Resolve(words, switch.Target)` — so a Missing→Failed revert, an Unavailable
 //   no-op, a deep link or a Following toggle all move the selection without a write during Render.
 
-using System;
 using System.Collections.Generic;
 using System.Globalization;
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
-using FluentGpu.Scroll.Effects;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
-using Wavee;
 using Wavee.Theming.Contracts;
 using Slots = FluentGpu.Theming.Slots;
 

@@ -9,7 +9,6 @@
 // Budget: 750 lines (inside Shell.cs's 2,100)
 // Spec: ch 18 §8 (ShellResponsiveLayout 247 · MergedChromeLayout 192 · TabWorkspace 246 · WorkspaceTabsPersistence 55)
 
-using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -27,7 +26,6 @@ public static partial class Shell
     public static class Layout
     {
         public const float ToolbarNarrowEnterW = 520f;
-        public const float ToolbarNarrowLeaveW = 560f;
 
         // ── the MERGED chrome row (one 48-DIP title bar: tabs · window-centred search · identity) ────────────────────
         //
@@ -39,7 +37,7 @@ public static partial class Shell
         //
         // Hysteresis: a PROMOTION is re-resolved at (width − reserve) and a DEMOTION happens immediately. That single
         // reserve makes every structural decision sticky without a per-stage current/leave pair. 40 DIP is
-        // deliberately the SAME band width the two-row toolbar used (ToolbarNarrowLeaveW − ToolbarNarrowEnterW).
+        // deliberately the SAME band width the retired two-row toolbar's hysteresis used (520 → 560).
         public const float ChromePromotionHysteresisW = 40f;
 
         /// <summary>The profile NAME beside the avatar — the LOWEST-priority item in the row, and so the first thing to
@@ -81,10 +79,6 @@ public static partial class Shell
         /// <summary>The tab strip's PERMANENTLY reserved "+" slot (32 wide, no margin in text mode). It is mounted at
         /// every width even while invisible — the reason the old hand-tuned keep steps over-evicted.</summary>
         public const float ChromeAddSlotW = 32f;
-
-        /// <summary>The "⌄" tab-overflow plate (7 + a 10 pt chevron + 3 gap + the count + 7). Budgeted ONLY when the
-        /// ladder is actually going to fold a tab away.</summary>
-        public const float ChromeTabOverflowW = 36f;
 
         /// <summary>The profile chip with the avatar alone (4 + a 24-DIP picture + 4). The unread badge is a
         /// zero-footprint overlay, so it never enters the budget.
@@ -161,13 +155,6 @@ public static partial class Shell
         public const float ChromePinnedTabW = 40f;
         public const float ChromeTabViewportMinW = 32f;
 
-        public static bool ToolbarNarrowFor(float width, bool current, bool initialized)
-        {
-            if (width <= 0f) return current;
-            if (!initialized) return width <= ToolbarNarrowEnterW;
-            return current ? width < ToolbarNarrowLeaveW : width <= ToolbarNarrowEnterW;
-        }
-
         public static float DrawerRestingOpacity(bool open) => open ? 1f : 0f;
         public static float DrawerRestingTranslateX(bool open, float width) => open ? 0f : -width;
     }
@@ -192,13 +179,12 @@ public static partial class Shell
     /// <see cref="Layout.ChromeSearchMinW"/> and the tabs beside its own new cost — a threshold is a PERMISSION, not a
     /// decision.</para>
     /// <para><b>Form and width are two different questions (#88).</b> <see cref="SearchMode"/> answers "which shape is
-    /// on screen"; <see cref="SearchWidth"/>/<see cref="FieldWidthFor"/> answer "how wide is it". <see
-    /// cref="LaidOutSearchWidth"/> conflates the two for a caller that re-reads the form fresh on every call, which is
-    /// wrong for a MOUNTED component: the mount/unmount decision (<c>CenterIsland</c>) and the mounted field's own
+    /// on screen"; <see cref="SearchWidth"/>/<see cref="FieldWidthFor"/> answer "how wide is it". Asking both with one
+    /// method that re-reads the form fresh on every call is wrong for a MOUNTED component: the mount/unmount decision (<c>CenterIsland</c>) and the mounted field's own
     /// re-render are driven by different signals and so can observe the allocator a frame apart. A field view must
     /// therefore never be reachable from the icon branch — it asks <see cref="FieldWidthFor"/> directly, which clamps
-    /// the icon form's own 44 back up to the floor instead of trusting it. See <see cref="LaidOutSearchWidth"/> for
-    /// the clipped "Sear" stub this produced when the two questions were asked with one method.</para></summary>
+    /// the icon form's own 44 back up to the floor instead of trusting it (the clipped "Sear" stub of #88 was the two
+    /// questions asked with one method).</para></summary>
     public readonly record struct Chrome(
         bool ShowName,
         bool ShowActions,
@@ -222,14 +208,9 @@ public static partial class Shell
         // never clip a longer title and SHRINKING that must not reclaim space only to hand it straight back.
         float LeadClusterW)
     {
-        /// <summary>Bell · Friends · Pin are in the trailing row together.</summary>
-        public bool ActionsInRow => ShowActions;
-
         /// <summary>Below the threshold: bell and friends become profile-menu rows (pin simply drops — the tab/page
         /// context menu still offers it).</summary>
         public bool ActionsInMenu => !ShowActions;
-
-        public bool BareAvatar => !ShowName && !ShowActions;
 
         /// <summary>The PRE-MEASURE seed only (<c>Shell.Host</c>'s initial <c>ChromeLayout</c> value, and tests):
         /// <see cref="EstimatedTabExtent"/> assumes every tab sits at its 110-DIP floor, which is optimistic by up to
@@ -268,14 +249,6 @@ public static partial class Shell
 
         public float FixedBudgetFor(ChromeBudget? budget = null)
             => FixedBudget(ShowName, ShowActions, ShowForward, ShowBack, ShowNewTab, ShowTrailing, Chip, budget);
-
-        public float FootprintFor(float naturalTabExtent, ChromeBudget? budget = null)
-        {
-            var b = ShellPolicy.BudgetOr(budget);
-            return FixedBudgetFor(b)
-                 + (SearchMode == MergedSearchMode.Field ? SearchWidth : b.SearchIconW)
-                 + RequiredTabExtent(naturalTabExtent, b);
-        }
 
         public static float EstimatedTabExtent(int tabCount, int pinnedCount = 0, ChromeBudget? budget = null)
         {
@@ -355,25 +328,6 @@ public static partial class Shell
             if (float.IsFinite(measuredCentreAvail) && measuredCentreAvail >= b.SearchMinW)
                 w = MathF.Min(w, MathF.Min(measuredCentreAvail, b.SearchMaxW));
             return w;
-        }
-
-        /// <summary>The laid-out width of whichever search FORM this allocation chose — the icon branch is reachable
-        /// only from a call site that is itself the icon form (or a test asserting the allocator's own bookkeeping,
-        /// which is the only remaining caller — <c>Chrome.SearchWidthFor</c> is what actually PUBLISHES the icon's 44
-        /// into <see cref="SearchWidth"/>). Icon mode returns that fixed 44 and ignores the measurement entirely.
-        /// <para><b>A mounted FIELD must never call this.</b> <c>CenterIsland</c> keys its mount/unmount decision on
-        /// <see cref="SearchMode"/>, but the engine only re-invokes it when the bar's <c>ContentVersion</c> changes —
-        /// the still-mounted field's OWN <c>Render()</c> re-runs on every <see cref="Chrome"/> update regardless, and
-        /// if it read this method it would see the new <see cref="SearchMode"/> (Icon) a frame before the host gets a
-        /// chance to unmount it, lay itself out at 44, and render the placeholder as the clipped "Sear" stub. A field
-        /// view calls <see cref="FieldWidthFor"/> directly instead, so the form it is not currently displaying can
-        /// never reach it (#88).</para></summary>
-        public float LaidOutSearchWidth(float measuredCentreAvail, ChromeBudget? budget = null)
-        {
-            var b = ShellPolicy.BudgetOr(budget);
-            return SearchMode == MergedSearchMode.Icon
-                ? b.SearchIconW
-                : FieldWidthFor(SearchWidth, measuredCentreAvail, b);
         }
 
         /// <summary>The row's non-tab, non-search DIPs. <paramref name="actionsInRow"/> reserves THREE nav buttons at

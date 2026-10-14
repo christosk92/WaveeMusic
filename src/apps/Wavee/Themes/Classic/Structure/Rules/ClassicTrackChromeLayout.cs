@@ -7,7 +7,6 @@
 // WHAT IS NOT HERE. The header's height per row style (`TableRules.HeaderHeightFor`), the lane widths and the toolbar row height
 // (`Detail.VerticalLayout`) are the core's: the sticky clip inset, the relief ladder and the hero's band run on them.
 
-using FluentGpu.Animation;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 

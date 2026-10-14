@@ -17,8 +17,6 @@
 // (a plain scroll over built rows; the log is capped at 500), no ScrollKey (returning starts at the top), no skeleton
 // (the whole page is synchronous over an in-memory list), and no undo (Clear all asks first; a row delete does not).
 
-using System;
-
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;

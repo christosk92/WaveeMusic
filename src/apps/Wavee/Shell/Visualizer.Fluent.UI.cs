@@ -30,7 +30,6 @@
 // rest pose, nothing is hidden. Every GPU tier gets the same face (no weak-tier cuts: the measured governor is the only GPU throttle); a preview drops
 // the cover, the glow, the ticks and half the parts.
 
-using System.Collections.Generic;
 using System.Globalization;
 using FluentGpu.Animation;
 using FluentGpu.Controls;

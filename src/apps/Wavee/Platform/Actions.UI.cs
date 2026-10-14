@@ -25,14 +25,12 @@
 //
 // Every builder here runs at MENU-OPEN time (a human-rate thunk), never per frame, so it allocates freely.
 
-using System;
 using System.Collections.Generic;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
-using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -577,7 +575,7 @@ public static partial class Actions
     // ══ 13. THE NOW-PLAYING MENU SEAM (G-195) ══════════════════════════════════════════════════════════════════════════
     //
     // The stage's identity strip and the player bar's title cluster share ONE right-click menu — both call
-    // `Stage.NowPlayingMenu` (`Shell/Stage.UI.cs`, `Shell/Shell.PlayerBar.UI.cs:322`), asked at OPEN time. This file
+    // `Stage.NowPlayingMenu` (`Shell/Stage.UI.cs`, Classic's `ClassicPlayerBar.cs`), asked at OPEN time. This file
     // owns the SEAM, not a composition: what it installs is the REAL track grammar (`Entities/Track.Menu.cs`), so the
     // bar's menu IS the row's menu — the transport strip, Add to playlist ▸ / Move ▸, the navigation rows, Share ▸,
     // View credits, Go to song radio and Video ▸. The thin eight-row duplicate that stood here until owner M's

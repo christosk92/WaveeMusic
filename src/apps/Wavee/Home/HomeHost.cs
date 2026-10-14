@@ -23,7 +23,6 @@ using FluentGpu.Foundation;
 using FluentGpu.Localization;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
-using Wavee;
 
 namespace Wavee.HomeUi;
 

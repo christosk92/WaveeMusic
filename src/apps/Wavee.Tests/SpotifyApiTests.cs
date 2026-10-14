@@ -28,36 +28,6 @@ namespace Wavee.Tests;
 public class SpotifyApiBatchingTests
 {
     [Fact]
-    public void Seven_hundred_uris_are_three_posts_of_three_hundred_three_hundred_and_one_hundred()
-    {
-        Span<Range> runs = stackalloc Range[8];
-        int n = Spotify.Api.Batches(700, runs);
-
-        Assert.Equal(3, n);
-        Assert.Equal(new Range(0, 300), runs[0]);
-        Assert.Equal(new Range(300, 600), runs[1]);
-        Assert.Equal(new Range(600, 700), runs[2]);
-    }
-
-    [Fact]
-    public void Exactly_three_hundred_uris_are_one_post_and_three_hundred_and_one_are_two()
-    {
-        Span<Range> runs = stackalloc Range[8];
-        Assert.Equal(1, Spotify.Api.Batches(300, runs));
-        Assert.Equal(new Range(0, 300), runs[0]);
-
-        Assert.Equal(2, Spotify.Api.Batches(301, runs));
-        Assert.Equal(new Range(300, 301), runs[1]);
-    }
-
-    [Fact]
-    public void No_uris_is_no_posts()
-    {
-        Span<Range> runs = stackalloc Range[4];
-        Assert.Equal(0, Spotify.Api.Batches(0, runs));
-    }
-
-    [Fact]
     public void Several_traits_for_one_uri_are_grouped_into_one_entity_request()
     {
         string[] uris = ["spotify:track:a", "spotify:track:b", "spotify:track:a"];
@@ -319,13 +289,6 @@ public class SpotifyApiRouteTests
         writer.AppendEscaped("12345,abcd");
 
         Assert.Equal("12345%2Cabcd", new string(writer.Written));
-    }
-
-    [Fact]
-    public void The_create_base_revision_is_four_zeroes_and_the_word_root()
-    {
-        ReadOnlySpan<byte> expected = [0, 0, 0, 0, 0x72, 0x6f, 0x6f, 0x74];
-        Assert.True(Spotify.Api.CreateBaseRevision.SequenceEqual(expected));
     }
 
     [Fact]

@@ -82,7 +82,7 @@ internal sealed class ClassicNavRow : Component
 
         Element content = row.Kind switch
         {
-            SidebarRowKind.SectionHeader => HeaderRow(section, in row, index, sel),
+            SidebarRowKind.SectionHeader => HeaderRow(section, index, sel),
             // Only a Divider SECTION plans this row; ordinary section joins are whitespace, never implicit rules.
             SidebarRowKind.Divider => ClassicNavHead.Separator(),
             SidebarRowKind.IconRow => RouteRow(section, row.Key, sel, index),
@@ -90,8 +90,8 @@ internal sealed class ClassicNavRow : Component
                 ? EntryRow(section, _o.Plan.Entries[row.EntryIndex], in row, sel, index) : Nothing,
             SidebarRowKind.FolderHeader => FolderRow(section, in row, index, sel),
             SidebarRowKind.GridStrip => GridStripRow(section, in row, sel),
-            SidebarRowKind.Empty => EmptyRow(section),
-            SidebarRowKind.Skeleton => Sidebar.Skeletons.Row(index, section.Shape,
+            SidebarRowKind.Empty => EmptyRow(),
+            SidebarRowKind.Skeleton => Sidebar.Skeletons.Row(section.Shape,
                 heightOverride: SidebarGeometry.HeightOf(section.Shape), artOverride: SidebarGeometry.ArtOf(section.Shape)),
             SidebarRowKind.TreeEnd => TreeEndRow(in row, index),
             SidebarRowKind.SectionTile => SectionTileRow(section, in row, index, sel),
@@ -138,7 +138,7 @@ internal sealed class ClassicNavRow : Component
     /// permanent after a touch) and the chevron, which always toggles the section's collapse. An open Classic filter
     /// replaces the header's tail with its box. The header is the pill's section anchor (the one-pill rule's third
     /// arm), so the pill is drawn here too.</summary>
-    Element HeaderRow(SidebarSection section, in SidebarRow row, int index, string sel)
+    Element HeaderRow(SidebarSection section, int index, string sel)
     {
         string id = section.Id;
         var owner = _o;
@@ -392,7 +392,7 @@ internal sealed class ClassicNavRow : Component
             // rootlist fact, so the folder's own state never enters the rule.
             Pinned = SidebarPinRules.ShowsPinMark(_o.Layout, section.Kind, row.Depth, false, false),
             DisclosureChevron = Sidebar.Chevron.Disclosure(_folderOpen ??= FolderOpenLive, identity: _folderIdentity ??= FolderIdentity),
-            Trailing = FolderTrailing(section, in snapshot, folderId, rootlistItem),
+            Trailing = FolderTrailing(in snapshot, folderId, rootlistItem),
             Tile = compact,
             OnRealized = compact ? TileRealize : null,
             OnClick = activate,
@@ -580,7 +580,7 @@ internal sealed class ClassicNavRow : Component
     /// <summary>The quiet hint under an empty Playlists section: 40 DIP tall, 11px tertiary, in its 2,2 margin. Its copy
     /// names the header "+" that fixes it, and swaps to the query copy while a search is live. The planner plans no Empty
     /// row in Your Library (the head owns that state, §P3.5).</summary>
-    Element EmptyRow(SidebarSection section)
+    Element EmptyRow()
     {
         string text = _o.SearchText.Length > 0 ? LibraryEmptyText() : Loc.Get(Strings.Sidebar.Empty.Playlists);
         return new BoxEl
@@ -635,7 +635,7 @@ internal sealed class ClassicNavRow : Component
     /// (20 box, glyph 12) — the count is the fact, the "+" the verb. The "+" is keyed inside a row keyed by the entry,
     /// so it remounts when this slot recycles onto another folder, which is what makes capturing the folder id in its
     /// factory safe.</summary>
-    Element? FolderTrailing(SidebarSection section, in SidebarLibraryEntry entry, string folderId, bool rootlistItem)
+    Element? FolderTrailing(in SidebarLibraryEntry entry, string folderId, bool rootlistItem)
     {
         // No count: the "N items" subtitle already says it, and the chevron column is the folder's trailing edge.
         if (!rootlistItem || folderId.Length == 0 || !_o.HasActions) return null;

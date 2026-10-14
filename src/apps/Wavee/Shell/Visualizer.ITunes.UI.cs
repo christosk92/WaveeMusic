@@ -17,7 +17,6 @@
 // FLOW is a feedback box (F6) whose warp turns and zooms about a drifting centre, so the ring wave drawn into it each
 // advance smears into currents.
 
-using System.Collections.Generic;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;

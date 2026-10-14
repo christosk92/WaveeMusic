@@ -191,7 +191,7 @@ internal sealed class ClassicCoverBlend : Component
 }
 
 /// <summary>The artist hero's photography veil — cover-keyed so a late grading does not rebuild the banner. Also the
-/// Home daylist card's veil over its full-bleed header art (`Daylist.UI.cs`).
+/// Home daylist card's veil over its full-bleed header art (`ClassicHomeDaylist.cs`).
 /// <para><b>Two sizing arms.</b> A finite <c>Props.Width</c>/<c>Props.Height</c> is the SIZED arm (the
 /// artist hero hands it its banner's extent). <c>float.NaN</c> for both is the STRETCH arm, for a surface whose height is
 /// its content's (the daylist card): the component anchor mirrors the NaN extent, so a ZStack parent hands it the whole

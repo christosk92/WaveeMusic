@@ -35,14 +35,12 @@
 
 using System.Runtime.InteropServices;
 using System.Text;
-using FluentGpu;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
-using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
 
@@ -209,10 +207,6 @@ public readonly partial struct Playlist
         /// nothing (<c>ListOpenPolicy.Decide</c>: no ask, no stamp, the same hold).</para></summary>
         public static DemandArm DemandArmFor(bool rowValid, bool local)
             => !rowValid ? DemandArm.Bail : local ? DemandArm.Local : DemandArm.Open;
-
-        /// <summary>Does a demand run with this arm REACH the open? <see cref="DemandArm.Local"/> legitimately never
-        /// does: Local Files settles through <c>SettleLocalFiles</c> and has no list to revalidate.</summary>
-        public static bool DemandOpens(DemandArm arm) => arm == DemandArm.Open;
 
         /// <summary>What to ask of the playlist's owner row. Identity unknown ⇒ Ensure (Pathfinder refuses to seal
         /// Identity on a nameless ownerV2, so a page that never Ensures the owner paints a blank name forever).

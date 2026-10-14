@@ -3,8 +3,8 @@
 // Ported from _old/Wavee.Tests/DetailCoverStabilityTests.cs. The page-width estimate and the decode bucket stay on
 // `Detail.Breakpoints` / `Detail.VerticalLayout`; the cover identity rules move from Wavee.Core's `ImageSource`
 // (over an `Image` record) to `Detail.CoverLatch` (over url strings). Two rewrites of the 0.2.9 input, assertions kept:
-//   · a MOSAIC is `CoverLatch.Reduce(coverUrl: "", leadTile)` — the same reduction `ImageSource.ReducedUrl` applied
-//     before comparing, so every mosaic fact survives as a fact about the lead tile's url;
+//   · a MOSAIC is its lead tile's url — the same reduction `ImageSource.ReducedUrl` applied before comparing (and the one
+//     the playlist page applies inline), so every mosaic fact survives as a fact about the lead tile's url;
 //   · `Image` records became urls, so `Assert.Same`/`.Url` compare the url strings.
 // One assertion was rewritten: `PreferVisible_NoPreviewFallback…` used to keep the visible 300 forever when the
 // same-art 640 landed (0.3 dropped 0.2.9's largest-rendition enrich because it assumed decodePx selected size).
@@ -116,7 +116,7 @@ public class DetailCoverStabilityTests
     {
         string[] tiles = [Card300, Hero640, "https://i.scdn.co/image/tile3", "https://i.scdn.co/image/tile4"];
         string[] copy = [.. tiles];   // a distinct array instance, same urls
-        Assert.True(CoverLatch.SameArt(CoverLatch.Reduce("", tiles[0]), CoverLatch.Reduce("", copy[0])));
+        Assert.True(CoverLatch.SameArt(tiles[0], copy[0]));
     }
 
     [Fact]
@@ -124,14 +124,14 @@ public class DetailCoverStabilityTests
     {
         string[] a = [Card300, Hero640];
         string[] b = [OtherArt, Hero640];
-        Assert.False(CoverLatch.SameArt(CoverLatch.Reduce("", a[0]), CoverLatch.Reduce("", b[0])));
+        Assert.False(CoverLatch.SameArt(a[0], b[0]));
     }
 
     [Fact]
     public void SameArt_MosaicReducesToItsLeadTile_MatchesASingleCoverOfThatTile()
     {
         string[] tiles = [Card300, Hero640];
-        string? mosaic = CoverLatch.Reduce("", tiles[0]);
+        string? mosaic = tiles[0];
         const string single = Card300;
         Assert.True(CoverLatch.SameArt(mosaic, single));
         Assert.True(CoverLatch.SameArt(single, mosaic));   // symmetric
@@ -140,25 +140,15 @@ public class DetailCoverStabilityTests
     [Fact]
     public void SameArt_MosaicLeadTile_MatchesADifferentSizeRenditionOfThatTile()
     {
-        string? mosaic = CoverLatch.Reduce("", Card300);
+        string? mosaic = Card300;
         Assert.True(CoverLatch.SameArt(mosaic, Hero640));
     }
 
     [Fact]
     public void SameArt_MosaicLeadTile_DoesNotMatchAnUnrelatedCover()
     {
-        string? mosaic = CoverLatch.Reduce("", Card300);
+        string? mosaic = Card300;
         Assert.False(CoverLatch.SameArt(mosaic, OtherArt));
-    }
-
-    /// <summary>A cover's own url wins over its lead tile; a blank url falls to the tile.</summary>
-    [Fact]
-    public void Reduce_PrefersTheCoverUrlAndFallsToTheLeadTile()
-    {
-        Assert.Equal(OtherArt, CoverLatch.Reduce(OtherArt, Card300));
-        Assert.Equal(Card300, CoverLatch.Reduce("", Card300));
-        Assert.Equal(Card300, CoverLatch.Reduce("  ", Card300));
-        Assert.Equal(Card300, CoverLatch.Reduce(null, Card300));
     }
 
     /// <summary>Null or blank on either side is never the same art; a <c>spotify:image:</c> token normalizes to its CDN url.</summary>
@@ -175,7 +165,7 @@ public class DetailCoverStabilityTests
     public void PreferVisible_MosaicVsSingleTile_UpgradesToTheLargerLeadArt()
     {
         const string visibleSingle = Card300;
-        string? incomingMosaic = CoverLatch.Reduce("", Hero640);
+        string? incomingMosaic = Hero640;
 
         string? chosen = CoverLatch.PreferVisible(incomingMosaic, visibleSingle);
 

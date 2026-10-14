@@ -214,7 +214,7 @@ public class ArtistDecodeTests
         Assert.Equal(EdgeState.Complete, e.ArtistRelated.State(a.Slot));
         Assert.Equal(EdgeState.Complete, e.ArtistPopular.State(a.Slot));
         Assert.Equal(EdgeState.Complete, e.ArtistCompilations.State(a.Slot));
-        Assert.False(Artist.HasFacet(a, DiscoFacet.Albums));
+        Assert.Equal(0, Artist.FacetTotal(a, DiscoFacet.Albums));
     }
 
     [Fact]

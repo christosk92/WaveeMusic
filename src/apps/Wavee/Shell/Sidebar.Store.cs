@@ -14,14 +14,6 @@ using System.Text.Json.Serialization;
 
 namespace Wavee;
 
-/// <summary>Why the last commit did not land (a write fault never latches: the next good commit clears it).</summary>
-public enum SidebarSaveFault : byte
-{
-    None = 0,
-    DocumentTooLarge = 2,   // the serialized file exceeds SidebarFileStore.MaxDocumentBytes (256 KiB)
-    IoFailure = 3,          // directory / fsync / atomic-replace failure
-}
-
 /// <summary>How reading one sidebar file ended. The caller parses; the store only moves bytes.</summary>
 public enum SidebarFileReadOutcome : byte { Missing = 0, Ok = 1, Unreadable = 2 }
 
@@ -41,7 +33,7 @@ public readonly record struct SidebarFileRead(SidebarFileReadOutcome Outcome, by
 public sealed class SidebarFileStore
 {
     /// <summary>The whole-document budget. Checked against the SERIALIZED bytes, before any file is touched: an
-    /// over-budget snapshot is dropped whole and classified <see cref="SidebarSaveFault.DocumentTooLarge"/>.</summary>
+    /// over-budget snapshot is dropped whole and classified <see cref="SidebarPersistenceFault.DocumentTooLarge"/>.</summary>
     public const int MaxDocumentBytes = 256 * 1024;
 
     /// <summary>The coalescing window (named per house style — see <c>Spotify.Connect.cs:199</c>'s
@@ -62,9 +54,6 @@ public sealed class SidebarFileStore
     byte[]? _pendingSnapshot;
     TaskCompletionSource<bool>? _pendingWrite;   // completes when the CURRENTLY-armed cycle's write lands
 
-    volatile SidebarSaveFault _saveFault;
-    volatile string? _saveFaultDetail;
-
     SidebarWriteResult _lastWriteResult = SidebarWriteResult.Healthy;
     Action<SidebarWriteResult>? _writeCompleted;
     SidebarPersistenceFault _lastReportedWriteFault;
@@ -76,17 +65,9 @@ public sealed class SidebarFileStore
     public string TmpPath => _path + ".tmp";
     public string CorruptPath => _path + ".corrupt";
 
-    /// <summary>Why the last write attempt refused the disk, or <c>None</c>. This does NOT latch: the next in-budget
+    /// <summary>The most recent completed write attempt. Readable from any thread. A fault does NOT latch: the next in-budget
     /// commit clears it. The size cap needs the serialized bytes and lands with the debounced write (observable after
     /// <see cref="WaitForWrites"/>).</summary>
-    public SidebarSaveFault SaveFault => _saveFault;
-
-    /// <summary>How many bytes, or the I/O failure, for Settings › Sidebar. Null when <see cref="SaveFault"/> is None.</summary>
-    public string? SaveFaultDetail => _saveFaultDetail;
-
-    public bool SaveFaulted => _saveFault != SidebarSaveFault.None;
-
-    /// <summary>The most recent completed write attempt. Readable from any thread.</summary>
     public SidebarWriteResult LastWriteResult { get { lock (_resultGate) return _lastWriteResult; } }
 
     /// <summary>Completion edge for the UI-thread owner. Invoked on the writing (pool) thread — the caller must marshal
@@ -175,8 +156,6 @@ public sealed class SidebarFileStore
                 if (bytes.Length > MaxDocumentBytes)
                 {
                     string detail = $"Document is {bytes.Length} B, over the {MaxDocumentBytes} B budget.";
-                    _saveFault = SidebarSaveFault.DocumentTooLarge;
-                    _saveFaultDetail = detail;
                     completion = new SidebarWriteResult(
                         false, SidebarPersistenceFault.DocumentTooLarge, bytes.Length, Environment.TickCount64 - start, detail);
                     goto Complete;
@@ -205,15 +184,11 @@ public sealed class SidebarFileStore
                 }
 
                 // A write that landed clears a previous budget fault.
-                _saveFault = SidebarSaveFault.None;
-                _saveFaultDetail = null;
                 completion = new SidebarWriteResult(true, SidebarPersistenceFault.None, bytes.Length, Environment.TickCount64 - start, null);
             }
             catch (Exception ex)
             {
                 const string safe = "The sidebar layout could not be saved.";
-                _saveFault = SidebarSaveFault.IoFailure;
-                _saveFaultDetail = safe;
                 completion = new SidebarWriteResult(false, SidebarPersistenceFault.IoFailure, 0, Environment.TickCount64 - start, safe);
                 Log.Warn("sidebar", "sidebar.layout.write_exception", ex);
                 try { if (File.Exists(TmpPath)) File.Delete(TmpPath); } catch (Exception) { }
@@ -498,7 +473,7 @@ public static class SidebarAccountStore
         {
             var p = data.Pins[i];
             order[i] = p.Id;
-            if (PinSyncRules.IsSyncable(p.Id, ""))
+            if (PinSyncRules.IsSyncable(p.Id))
             {
                 if (p.Name.Length > 0) names[p.Id] = p.Name;
             }
@@ -549,7 +524,7 @@ public static class SidebarAccountStore
                     pins.Add(new SidebarPin(id, kind, rec.Uri ?? "", rec.Name ?? "", rec.AddedAtMs));
                     continue;
                 }
-                if (!PinSyncRules.IsSyncable(id, "")) continue;
+                if (!PinSyncRules.IsSyncable(id)) continue;
                 string name = dto.Names is { } n && n.TryGetValue(id, out var cached) ? cached : "";
                 pins.Add(new SidebarPin(id, SidebarPinId.KindOf(id), SidebarPinId.UriOf(id), name, 0L));
             }

@@ -235,7 +235,7 @@ public static partial class Profile
         kids.Add(Album.CommandCircle(Icons.Share, Loc.Get(Strings.Menu.Share), acts?.Share ?? s_noop));
         kids.Add(acts is null
             ? new BoxEl { Width = Controls.IconButtonSize, Height = Controls.IconButtonSize, Corners = Radii.ControlAll }
-            : Detail.MoreButton(acts.Menu, Controls.IconButtonSize, 16f, round: false) with { Key = "profile-more:" + uri });
+            : Detail.MoreButton(acts.Menu, Controls.IconButtonSize) with { Key = "profile-more:" + uri });
         return new BoxEl
         {
             Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Height = ProfileHeroLayout.ActionRow,
@@ -360,7 +360,7 @@ public static partial class Profile
 
     /// <summary>Public playlists, answered and empty (the only section kept when empty — the page plans the rest away):
     /// your own copy offers the way out, another person's just says so.</summary>
-    internal static Element EmptyShelf(ProfileSection s, bool own) => own
+    internal static Element EmptyShelf(bool own) => own
         ? Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact,
               title: Loc.Get(Strings.Person.Empty.PlaylistsOwn), subtitle: Loc.Get(Strings.Person.Empty.PlaylistsOwnHint))
         : Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact,

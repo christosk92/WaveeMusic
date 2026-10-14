@@ -1,9 +1,6 @@
-using FluentGpu.Controls;
 using FluentGpu.Dsl;
-using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
-using FluentGpu.Signals;
 
 namespace Wavee;
 
@@ -88,10 +85,4 @@ public readonly partial struct User
             return rows;
         }
     }
-}
-
-public static class SavedEpisodeLayout
-{
-    public static bool Compact(float width, bool previous)
-        => width < (previous ? 664f : 616f);
 }

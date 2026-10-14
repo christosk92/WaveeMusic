@@ -138,7 +138,6 @@ public class AlbumPlaylistContractTests
     {
         Assert.Equal(ClassicAlbumLayout.HeroThumbW, Rules.SkelVideoThumbW);
         Assert.Equal(ClassicAlbumLayout.HeroThumbH, Rules.SkelVideoThumbH);
-        Assert.Equal(Rules.SkelVideoH, Spacing.XL + ClassicAlbumLayout.HeroThumbH + 2 * Spacing.M);
         // the shelf arm's cards fit between these two (16:9 cards want more room than the 148-188 square-card range)
         Assert.True(ClassicAlbumLayout.VideoCardMinW < ClassicAlbumLayout.VideoCardMaxW);
         Assert.Equal(16f / 9f, ClassicAlbumLayout.VideoAspect, 0.0001f);

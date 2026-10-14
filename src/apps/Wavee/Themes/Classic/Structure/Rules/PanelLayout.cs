@@ -9,7 +9,6 @@
 // player) are `PanelPolicy`'s, declared by `ClassicPolicies`, because the core's width and fit machines run on them
 // (`Shell.ClampRailWidth`, `Shell.CanFitRail`, `PanelHost.FitWidthTo`). What this file adds is the look of the parts inside.
 
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Foundation;
 

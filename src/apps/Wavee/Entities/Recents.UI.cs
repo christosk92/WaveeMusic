@@ -22,7 +22,6 @@
 // EVERY HANDLER IS THE SLOT'S (`RowActions`, built once per recycled slot, resolving the CURRENT item at invocation), so
 // a rebind allocates no closure; every accent consumer is a bound `Prop` over the page's pre-created thunks.
 
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -191,7 +190,7 @@ public readonly partial struct Recents
     // ══ 4. THE GROUP CARD (W3, W5, W7, W16, W23) ═════════════════════════════════════════════════════════════════════
 
     /// <summary>One card row, and — when this row is the open accordion entry — its drawer under it.</summary>
-    internal static Element Card(PageView page, Shape shape, int r, bool expanded, RowActions h, IOverlayService overlay)
+    internal static Element Card(PageView page, Shape shape, int r, bool expanded, RowActions h)
     {
         var rows = shape.Rows;
         var row = rows.Rows[r];

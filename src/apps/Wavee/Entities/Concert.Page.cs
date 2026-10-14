@@ -21,7 +21,6 @@
 // the ticker's clock exists only mid-tween, the linger clock only while the pill shows.
 
 using System.Globalization;
-using System.Runtime.InteropServices;
 using FluentGpu.Animation;
 using FluentGpu.Scroll.Effects;
 using FluentGpu.Scroll.Runtime;
@@ -30,7 +29,6 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
-using FluentGpu.Scene;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 

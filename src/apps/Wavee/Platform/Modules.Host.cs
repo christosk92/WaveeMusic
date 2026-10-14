@@ -424,7 +424,7 @@ public static partial class Modules
         CancellationTokenSource? _pumpCts;
         ModuleProcessState _state = ModuleProcessState.Stopped;
         string[] _capabilities = [];
-        int _negotiatedProtocol, _consecutiveFailedStarts, _openStreamLeases, _inFlight, _disposed;
+        int _consecutiveFailedStarts, _openStreamLeases, _inFlight, _disposed;
         string? _lastError;
         DateTimeOffset _retryNotBefore = DateTimeOffset.MinValue, _lastUsedUtc;
         long _generation;
@@ -453,7 +453,6 @@ public static partial class Modules
         public int? ProcessId { get { lock (_stateGate) return _channel is { HasExited: false } c ? c.ProcessId : null; } }
         public string? LastError { get { lock (_stateGate) return _lastError; } }
         public IReadOnlyList<string> Capabilities { get { lock (_stateGate) return _capabilities; } }
-        public int NegotiatedProtocol { get { lock (_stateGate) return _negotiatedProtocol; } }
 
         /// <summary>The module's last <c>module/status</c> card, or null.</summary>
         public ModuleStatus? Status { get; internal set; }
@@ -615,7 +614,6 @@ public static partial class Modules
                     _pumpCts = cts;
                     _state = ModuleProcessState.Ready;
                     _capabilities = result.Capabilities ?? [];
-                    _negotiatedProtocol = result.ProtocolVersion;
                     _consecutiveFailedStarts = 0;
                     _retryNotBefore = DateTimeOffset.MinValue;
                     _lastError = null;
@@ -997,20 +995,6 @@ public static partial class Modules
             Registration[] snapshot;
             lock (_gate) { snapshot = new Registration[_services.Count]; _services.Values.CopyTo(snapshot, 0); }
             for (int i = 0; i < snapshot.Length; i++) snapshot[i].Install(module, connection, snapshot[i].Permission);
-        }
-
-        public IReadOnlyList<string> Methods
-        {
-            get
-            {
-                lock (_gate)
-                {
-                    var names = new string[_services.Count];
-                    _services.Keys.CopyTo(names, 0);
-                    Array.Sort(names, StringComparer.Ordinal);
-                    return names;
-                }
-            }
         }
 
         readonly record struct Registration(string Permission, Action<InstalledModule, JsonRpcConnection, string> Install);
@@ -1699,7 +1683,7 @@ public static partial class Modules
         readonly byte[] _buf;
         readonly object _gate = new();   // Monitor.Wait/PulseAll below: a System.Threading.Lock cannot be waited on
         int _head, _count;
-        long _written, _dropped;
+        long _dropped;
         bool _completed, _disposed;
         Exception? _error;
 
@@ -1712,7 +1696,6 @@ public static partial class Modules
         public int Capacity => _buf.Length;
         public int Available { get { lock (_gate) return _count; } }
         public long TotalDropped { get { lock (_gate) return _dropped; } }
-        public long TotalWritten { get { lock (_gate) return _written; } }
 
         public void Write(ReadOnlySpan<byte> data)
         {
@@ -1720,7 +1703,6 @@ public static partial class Modules
             lock (_gate)
             {
                 if (_disposed || _completed) return;
-                _written += data.Length;
                 if (data.Length >= _buf.Length)
                 {
                     _dropped += _count + (data.Length - _buf.Length);
@@ -1919,7 +1901,6 @@ public static partial class Modules
         public string? StationName { get; private set; }
         public int BitrateKbps { get; private set; }
         public int MetaInt { get; private set; }
-        public long DroppedBytes => _ring.TotalDropped;
 
         /// <summary>A station title change (the producer thread).</summary>
         public event Action<string>? TitleChanged;

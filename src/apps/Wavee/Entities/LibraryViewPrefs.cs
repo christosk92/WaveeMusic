@@ -9,9 +9,9 @@
 // string shape is persisted and never changes). The page used to read and write each key by hand in its constructor and
 // its `SaveState`; this is the ONE door, so a library page in any theme seeds and persists the same keys the same way.
 //
-// ORPHANED KEYS (do NOT route them here): `library.<kind>.album.desc` / `.album.view` / `.album.size` are defined in
-// `Platform.Keys` but no longer read or written (the discography grid they steered is deleted). `library.<kind>.album.sort`
-// IS live: it is where `Artist.Reader`'s own sort persists (`AlbumSort` below).
+// RETIRED KEYS (never reuse them): `library.<kind>.album.desc` / `.album.view` / `.album.size` steered the deleted
+// discography grid; nothing reads or writes them (see the note in `Platform.Keys`). `library.<kind>.album.sort` IS live:
+// it is where `Artist.Reader`'s own sort persists (`AlbumSort` below).
 
 namespace Wavee;
 

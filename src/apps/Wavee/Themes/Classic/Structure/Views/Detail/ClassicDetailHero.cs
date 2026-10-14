@@ -280,8 +280,7 @@ internal static partial class ClassicDetailFrame
             // ── INSIGHTS SHEET (additive) ── this gate is what makes the sheet's TWO entry points one control rather
             //    than two. `parts.BandActions` now carries the sheet's toggle beside Find · Filter · Play, and it is
             //    live exactly when `compactCanHit` is true, while the hero's own toolbar toggle (inside `expanded`,
-            //    under `presentation` below) is live exactly when it is false. Never both, never neither — stated as
-            //    Detail.InsightsSheet.BandToggleTakesInput / HeroToggleTakesInput, pinned by DetailInsightsSheetTests.
+            //    under `presentation` below) is live exactly when it is false. Never both, never neither.
             Element compact = new BoxEl
             {
                 ZStack = true, Width = availW, Height = BandLayout.Height,
@@ -327,7 +326,7 @@ internal static partial class ClassicDetailFrame
         if (Detail.ShareActionFor(id) is { } share)
             actions.Add(Detail.Satellite(Icons.Share, Loc.Get(Strings.Menu.Share), share) with { Key = "vhero-share" });
         if (acts.More is { } more)
-            actions.Add(Detail.MoreButton(more, Controls.IconButtonSize, 16f, round: false) with { Key = "vhero-more:" + id.Subject.Text });
+            actions.Add(Detail.MoreButton(more, Controls.IconButtonSize) with { Key = "vhero-more:" + id.Subject.Text });
         return new BoxEl
         {
             Direction = 0, Gap = Spacing.S, Wrap = true,

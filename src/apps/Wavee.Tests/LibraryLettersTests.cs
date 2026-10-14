@@ -134,12 +134,12 @@ public class LibraryLettersTests
         // header 28, row 56: 4 × 28 + 7 × 56 = 504.
         float[] expected = [0f, 28f, 84f, 140f, 168f, 224f, 280f, 308f, 364f, 420f, 448f];
         for (int flat = 0; flat < expected.Length; flat++) Assert.Equal(expected[flat], letters.OffsetOf(flat));
-        Assert.Equal(504f, letters.TotalExtent);
-        Assert.Equal(4 * Header + 7 * RowExtent, letters.TotalExtent);
+        Assert.Equal(504f, letters.OffsetOf(int.MaxValue));
+        Assert.Equal(4 * Header + 7 * RowExtent, letters.OffsetOf(int.MaxValue));
 
         // OffsetOf clamps rather than throwing: the end is the total, and a negative index is the start.
-        Assert.Equal(letters.TotalExtent, letters.OffsetOf(letters.FlatCount));
-        Assert.Equal(letters.TotalExtent, letters.OffsetOf(9_999));
+        Assert.Equal(letters.OffsetOf(int.MaxValue), letters.OffsetOf(letters.FlatCount));
+        Assert.Equal(letters.OffsetOf(int.MaxValue), letters.OffsetOf(9_999));
         Assert.Equal(0f, letters.OffsetOf(-7));
 
         // ExtentOf is the same two numbers the offsets were built from (the list's analytic extents seed).
@@ -151,7 +151,7 @@ public class LibraryLettersTests
     public void Build_AtADifferentRowExtent_ScalesOnlyTheRows()
     {
         var letters = Built(Seven, rowExtent: 40f);
-        Assert.Equal(4 * Header + 7 * 40f, letters.TotalExtent);
+        Assert.Equal(4 * Header + 7 * 40f, letters.OffsetOf(int.MaxValue));
         Assert.Equal(Header, letters.OffsetOf(1));                    // the first row still sits under its header
         Assert.Equal(Header + 40f + 40f, letters.OffsetOf(3));         // …and the A header after the two '#' rows
     }
@@ -172,8 +172,8 @@ public class LibraryLettersTests
         Assert.Equal(44f, User.NavRowCompactExtent);
 
         // …and the grouping arithmetic at those two extents, which is what the page builds every time the sort is a–z.
-        Assert.Equal(4 * Header + 7 * User.NavRowExtent, Built(Seven, User.NavRowExtent).TotalExtent);
-        Assert.Equal(4 * Header + 7 * User.NavRowCompactExtent, Built(Seven, User.NavRowCompactExtent).TotalExtent);
+        Assert.Equal(4 * Header + 7 * User.NavRowExtent, Built(Seven, User.NavRowExtent).OffsetOf(int.MaxValue));
+        Assert.Equal(4 * Header + 7 * User.NavRowCompactExtent, Built(Seven, User.NavRowCompactExtent).OffsetOf(int.MaxValue));
 
         // A band boundary lands on the seed, not on the plate: the A header's top after the two '#' rows.
         Assert.Equal(Header + 2 * User.NavRowExtent, Built(Seven, User.NavRowExtent).OffsetOf(3));
@@ -203,7 +203,7 @@ public class LibraryLettersTests
     {
         var letters = Built([]);
         Assert.Equal(0, letters.FlatCount);
-        Assert.Equal(0f, letters.TotalExtent);
+        Assert.Equal(0f, letters.OffsetOf(int.MaxValue));
         Assert.Equal(0u, letters.Present);
         Assert.Equal(-1, letters.StickyLetterAt(0f));
         Assert.Equal(-1, letters.StickyLetterAt(500f));
@@ -261,15 +261,15 @@ public class LibraryLettersTests
         letters.Build(new TitleRows(titles), RowExtent);
         Assert.Equal(200 + 26, letters.FlatCount);                     // every letter has rows, '#' has none
         Assert.False(letters.Has(0));
-        Assert.Equal(26 * Header + 200 * RowExtent, letters.TotalExtent);
+        Assert.Equal(26 * Header + 200 * RowExtent, letters.OffsetOf(int.MaxValue));
 
         letters.Build(new TitleRows(["Bad", "Thriller"]), RowExtent);
         Assert.Equal(4, letters.FlatCount);
         Assert.Equal(2, letters.Rows);
-        Assert.Equal(2 * Header + 2 * RowExtent, letters.TotalExtent);
+        Assert.Equal(2 * Header + 2 * RowExtent, letters.OffsetOf(int.MaxValue));
         Assert.Equal((1u << L('B')) | (1u << L('T')), letters.Present);
         Assert.Equal(-1, letters.HeaderFlat(L('A')));
-        Assert.Equal(L('T'), letters.StickyLetterAt(letters.TotalExtent - 1f));
+        Assert.Equal(L('T'), letters.StickyLetterAt(letters.OffsetOf(int.MaxValue) - 1f));
     }
 
     [Fact]
@@ -284,7 +284,7 @@ public class LibraryLettersTests
 
         Assert.Equal(titles.Length, letters.Rows);
         Assert.Equal(titles.Length * 2, letters.FlatCount);                     // a header before every row
-        Assert.Equal(titles.Length * (Header + RowExtent), letters.TotalExtent);
+        Assert.Equal(titles.Length * (Header + RowExtent), letters.OffsetOf(int.MaxValue));
     }
 
     [Fact]
@@ -295,6 +295,6 @@ public class LibraryLettersTests
         Assert.Equal(0, letters.HeaderFlat(L('B')));
         Assert.Equal(1u << L('B'), letters.Present);
         Assert.Equal(L('B'), letters.StickyLetterAt(0f));
-        Assert.Equal(Header + 3 * RowExtent, letters.TotalExtent);
+        Assert.Equal(Header + 3 * RowExtent, letters.OffsetOf(int.MaxValue));
     }
 }

@@ -26,7 +26,6 @@
 // remounted by a Key that encodes its form and the "⋯" by a Key over its command set (both in the structure's view; the "⋯"
 // rows are built at OPEN time from live reads through `OverflowItem`, so checked states can never be stale).
 
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 

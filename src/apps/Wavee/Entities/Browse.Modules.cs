@@ -7,7 +7,6 @@
 // other) actually reach are kept; the landing-only geometry (HomeGroupKind columns/heights/row-gaps, the estimator's
 // ContentExtent) went with the rest of the Wave-5 Home UI.
 
-using System.Collections.Generic;
 using System.Globalization;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
@@ -17,7 +16,6 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Reconciler;
 using FluentGpu.Scene;
-using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 

@@ -26,9 +26,7 @@
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
-using FluentGpu.Hooks;
 using FluentGpu.Localization;
-using FluentGpu.Scene;
 using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
@@ -98,7 +96,7 @@ internal static class ClassicEpisodeRow
         {
             Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = ClassicEpisodeRowLayout.CopyGap,
             Opacity = item.Opacity(static r => Episode.PlayedOf(r.Episode) ? Episode.PlayedInk : 1f),
-            Children = [TitleLine(in item, it, tone, narrow, seed), Description(in item, seed), MetaLine(in item, toneInk, seed), Rule(in item, toneInk)],
+            Children = [TitleLine(in item, it, tone, seed), Description(in item, seed), MetaLine(in item, toneInk, seed), Rule(in item, toneInk)],
         };
         var grid = RowGrid(Art(in item, narrow ? Episode.RowArtNarrow : Episode.RowArt), copy, Cluster(in item, it, ctx, narrow, seed));
         var root = new BoxEl
@@ -178,7 +176,7 @@ internal static class ClassicEpisodeRow
     };
 
     /// <summary>The equalizer (now playing) · the title (tone while playing) · the badge chips, on one centred line.</summary>
-    static Element TitleLine(in BoundItemScope<RowItem> item, IReadSignal<RowItem> it, Func<ColorF> tone, bool narrow, bool seed = false) => new BoxEl
+    static Element TitleLine(in BoundItemScope<RowItem> item, IReadSignal<RowItem> it, Func<ColorF> tone, bool seed = false) => new BoxEl
     {
         Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
         Children =

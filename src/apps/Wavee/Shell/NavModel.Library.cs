@@ -60,9 +60,6 @@ public sealed class NavLibrary
     /// <summary>The built order, shared by the input shaper and the head.</summary>
     public SidebarLibraryShaper View { get; } = new();
 
-    /// <summary>Below <see cref="SidebarLibraryMetrics.DrillInWidth"/> (or in the drawer) folders drill instead of disclosing.</summary>
-    public IReadSignal<bool> NarrowFolders => _narrowFolders;
-
     /// <summary>Bumped by every drill, back and reset.</summary>
     public IReadSignal<int> DrillVersion => _drillVersion;
 
@@ -194,9 +191,6 @@ public sealed class NavLibrary
     /// <summary>D10 — the tree shows a SORTED view, so positional drops refuse with "clear sorting to reorder" while Into
     /// stays legal.</summary>
     public bool TreeSortedNonCustom() => !CanReorderCustom();
-
-    /// <summary>No local overlay to clamp: a rootlist move is the server's.</summary>
-    public int ClampReorderSlot(SidebarSectionKind kind, int from, int to) => to;
 
     // ── drill ──────────────────────────────────────────────────────────────────────────────────────────────────────────
     // A STACK of ids AND names: nesting is genuine, and a folder that vanishes mid-session must still label sanely.

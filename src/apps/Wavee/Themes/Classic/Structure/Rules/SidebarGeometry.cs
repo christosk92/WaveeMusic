@@ -103,12 +103,6 @@ public static class SidebarGeometry
     /// "insert here at this depth" lines up with the row it describes. Read backwards by the drop resolver.</summary>
     public static float TreeContentX(int depth) => IndentFor(depth);
 
-    /// <summary>Pane-space rulers (diagnostics, tests).</summary>
-    public const float IconCentreX = PaneEdge + LeadInset + ArtSlot * 0.5f;     // 30
-    public const float LabelX = PaneEdge + IconColumn + LabelGap;               // 54
-    public static float TrailingRight(float paneWidth) => paneWidth - PaneEdge - TrailingPad;   // W − 18
-    public static float ChevronLeft(float paneWidth) => paneWidth - PaneEdge - ChevronColumn;   // W − 44
-
     /// <summary>A subtitle line is drawn only in a two-line row and only when there is text.</summary>
     public static bool SubtitleVisible(SidebarRowShape shape, string? subtitle)
         => shape == SidebarRowShape.EntityTwoLine && subtitle is { Length: > 0 };

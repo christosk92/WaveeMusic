@@ -14,7 +14,6 @@
 // This is NOT a partial of `ReleaseNotes`: `Wavee.ReleaseTool` compiles `ReleaseNotes.cs` + `ReleaseNotes.Model.cs` by name
 // and must not pick up app types (the settings, the wizard, the shell).
 
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace Wavee;

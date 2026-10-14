@@ -11,7 +11,6 @@
 // surface only executes (`Shell.DeviceVerbs.Run`): choosing a this-computer endpoint persists the output and, unless we
 // already own playback, takes playback over (`Playback.TakeOver`, a local claim — never a transfer to ourselves).
 
-using System;
 using System.Collections.Generic;
 
 using FluentGpu.Controls;

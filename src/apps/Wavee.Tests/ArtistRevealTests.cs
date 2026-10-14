@@ -3,7 +3,7 @@
 // Bug F, restored to 0.2.10's model after a same-day regression: the WHOLE artist page — hero photo, hero text
 // (name/verified/bio/stats), magazine, chart — is ONE reveal unit gated on the overview alone; there is no separate
 // hero gate. Bug D: every discography facet's first page asks at the same priority — no facet-identity demotion. Both
-// facts are read straight off the production pure decisions (ArtistReadiness.MagazinePending,
+// facts are read straight off the production pure decisions (ArtistReadiness.Overview,
 // DiscographyRules.FirstPagePriority) with no source-text reads.
 
 using Wavee;
@@ -15,12 +15,9 @@ public class DiscographyRulesTests
 {
     /// <summary>Bug D: Albums, Singles and Compilations are simultaneously on screen (the artist page's tabs are a
     /// scroll-spy, not a view switch) — no facet is demoted below another's priority for its first page.</summary>
-    [Theory]
-    [InlineData(DiscoFacet.Albums)]
-    [InlineData(DiscoFacet.Singles)]
-    [InlineData(DiscoFacet.Compilations)]
-    public void FirstPage_IsAlwaysVisible_RegardlessOfFacetIdentity(DiscoFacet facet)
-        => Assert.Equal(FetchPriority.Visible, DiscographyRules.FirstPagePriority(facet));
+    [Fact]
+    public void FirstPage_IsAlwaysVisible_RegardlessOfFacetIdentity()
+        => Assert.Equal(FetchPriority.Visible, DiscographyRules.FirstPagePriority);
 }
 
 [Collection(EntitiesCollection.Name)]
@@ -30,39 +27,34 @@ public class ArtistPageRevealTests
 
     static Artist ArtistOf() => Entities.Artist(EntityUri.Parse(Uri.AsSpan()));
 
-    /// <summary>Bug F (restored to 0.2.10's model): the page's DATA gate is exactly the overview readiness —
-    /// <see cref="ArtistReadiness.MagazinePending"/> and <see cref="ArtistReadiness.Overview"/> must always disagree
-    /// (one is the other's negation), across the SAME real state transition <c>ArtistReadinessTests</c> pins for
-    /// Overview itself: nothing known ⇒ pending, one overview group short ⇒ still pending, the whole unit landed ⇒
-    /// not pending. The visual swap (<see cref="ArtistReadiness.BodyReady"/>) still waits on that unit, plus a
+    /// <summary>Bug F (restored to 0.2.10's model): the page's DATA gate is exactly the overview readiness
+    /// (<see cref="ArtistReadiness.Overview"/>) across the real state transition: nothing known ⇒ pending, one overview
+    /// group short ⇒ still pending, the whole unit landed ⇒ not pending. The visual swap (<see cref="ArtistReadiness.BodyReady"/>) still waits on that unit, plus a
     /// measured width, the first hero decode, and the chart ready-or-failed, so the page does not flash Wide
     /// geometry, a flat hero, or a second top-tracks wave.</summary>
     [Fact]
-    public void MagazinePending_IsExactlyNotOverview_TheWholePagesOnlyGate()
+    public void TheOverviewIsTheWholePagesOnlyDataGate()
     {
         TestScope.Fresh();
         var a = ArtistOf();
-        Assert.True(ArtistReadiness.MagazinePending(a));                     // nothing known yet ⇒ pending
-        Assert.Equal(!ArtistReadiness.Overview(a), ArtistReadiness.MagazinePending(a));
+        Assert.False(ArtistReadiness.Overview(a));                     // nothing known yet ⇒ pending
 
         var partial = Staging.Rent();
         ref var row = ref partial.Artists.RowFor(new StagedId(partial.Text(Uri)), Authority.Full,
             (uint)(ArtistFields.Overview & ~ArtistFields.Tour));
         row.Name = partial.Text("Page Reveal");
         TestScope.CommitAndPublish(partial);
-        Assert.True(ArtistReadiness.MagazinePending(a));                     // one group short ⇒ still pending
-        Assert.Equal(!ArtistReadiness.Overview(a), ArtistReadiness.MagazinePending(a));
+        Assert.False(ArtistReadiness.Overview(a));                     // one group short ⇒ still pending
 
         var rest = Staging.Rent();
         rest.Artists.RowFor(new StagedId(rest.Text(Uri)), Authority.Full, (uint)ArtistFields.Tour);
         TestScope.CommitAndPublish(rest);
-        Assert.False(ArtistReadiness.MagazinePending(a));                    // the whole unit landed ⇒ not pending
-        Assert.Equal(!ArtistReadiness.Overview(a), ArtistReadiness.MagazinePending(a));
+        Assert.True(ArtistReadiness.Overview(a));                      // the whole unit landed ⇒ not pending
     }
 
-    /// <summary>An invalid artist (no row at all) is pending, same as <see cref="ArtistReadiness.Overview"/> reading
-    /// false for it — the page never shows content for a subject that doesn't exist.</summary>
+    /// <summary>An invalid artist (no row at all) is pending: <see cref="ArtistReadiness.Overview"/> reads false for it —
+    /// the page never shows content for a subject that doesn't exist.</summary>
     [Fact]
-    public void MagazinePending_TrueForAnInvalidArtist()
-        => Assert.True(ArtistReadiness.MagazinePending(default));
+    public void AnInvalidArtistIsPending()
+        => Assert.False(ArtistReadiness.Overview(default));
 }

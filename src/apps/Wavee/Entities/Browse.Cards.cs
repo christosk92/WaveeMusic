@@ -6,14 +6,12 @@
 // the Browse and Search pictures needed no call-site edits (T10a2 moved those into Classic's `Views\Pages`, which call them directly). The CORE half of HomeCardNav (RouteFor,
 // SectionRoute, OneCardOpensCard) stays in Entities/Home.Rules.cs.
 
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Localization;
-using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
 

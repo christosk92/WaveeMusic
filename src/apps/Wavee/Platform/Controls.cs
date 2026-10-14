@@ -1,6 +1,6 @@
 // ── Platform/Controls.cs ───────────────────────────────────────────────────────────────────────────────────────────
 // Surfaces, SearchHighlight, Equalizer, SaveButton/PreSaveButton/FollowButton, SelectionBar, RowSwipe,
-// ExplicitBadge, MoreButton, ExpandChevron, the three dialog helpers, the vacancy grammar, Notify.Say. The envelope
+// ExplicitBadge, MoreButton, the three dialog helpers, the vacancy grammar, Notify.Say. The envelope
 // for the whole file family is ch 00's 4,500-6,000; chapters 02's and 01's shares sit INSIDE it — do not double
 // count
 //
@@ -34,7 +34,6 @@
 // A null seam renders NOTHING rather than a dead affordance — the capability gate, verbatim from 0.2.9: an affordance
 // is gated on the declared capability, never hardcoded.
 
-using System.Collections.Generic;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -42,7 +41,6 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Input;
 using FluentGpu.Localization;
-using FluentGpu.Scene;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
@@ -477,39 +475,6 @@ public static partial class Controls
                 tools ?? new BoxEl(),
             ],
         };
-
-    /// <summary>A "section band": a quiet rounded WASH behind a page section, carrying the accent as a soft tint that
-    /// kisses the top edge and fades into the material by ~45% down.
-    /// <para>NOT a card. It used to be one — a card fill plus a hairline — which put a bordered container around a page
-    /// SECTION whose content was already a row of bordered cards: a box of boxes, and one more stroke than Fluent's
-    /// grouped-content look actually draws. The shell's published material already carries the page's tint, so the
-    /// band's only remaining job is to say "these belong together", and an unbordered wash says it without adding an
-    /// edge.</para></summary>
-    public static BoxEl SectionBand(Element content, ColorF accent)
-        => new()
-        {
-            Direction = 1, Gap = Spacing.M,
-            Padding = Edges4.All(Spacing.L),
-            Corners = CornerRadius4.All(Radii.Card),
-            Gradient = BandGradient(accent),
-            Children = [content],
-        };
-
-    /// <summary>The material layer for an integrated-cover hero: the same gradient <see cref="SectionBand"/> paints,
-    /// exposed on its own so a hero can apply it without the band's padding.</summary>
-    public static GradientSpec HomeHeroBackdrop(ColorF accent) => BandGradient(accent);
-
-    // Kiss the card fill toward the accent at the very top (heavier in dark, where a faint tint would vanish), but HOLD
-    // the card's own alpha so the surface's translucency stays uniform — only the HUE shifts at the top.
-    static GradientSpec BandGradient(ColorF accent)
-    {
-        ColorF card = Tok.FillCardDefault;
-        ColorF top = ColorF.Lerp(card, accent, R.Wash.BandPull) with { A = card.A };
-        return GradientDown(
-            new GradientStop(0f, top),
-            new GradientStop(0.45f, card),
-            new GradientStop(1f, card));
-    }
 
     /// <summary>Semantic copy protection over full-bleed artist photography. Both axes use exactly FOUR stops — the
     /// recorder's limit, so this is a hard ceiling and not a preference — and both release to alpha 0 at the hero seam.
@@ -1094,17 +1059,6 @@ public static partial class Controls
         => IconAction(Icons.More, onClick, requestsContext) with
         {
             Opacity = restOpacity, HoverOpacity = 1f, BlocksDragArm = true,
-        };
-
-    /// <summary>The expand CHEVRON: a 32-square icon button whose glyph ROTATES rather than swapping, so the two states
-    /// are one object at two angles. The disclosure curve is the engine's own, and expand/collapse are DIFFERENT curves
-    /// — WinUI's disclosure pair, not one curve run backwards.</summary>
-    public static BoxEl ExpandChevron(bool expanded, Action? onClick)
-        => IconAction(Icons.ChevronDown, onClick, requestsContext: false) with
-        {
-            Transform = Prop.Of(() => Affine2D.Rotation(expanded ? MathF.PI : 0f)),
-            TransformOriginX = 0.5f, TransformOriginY = 0.5f,
-            BlocksDragArm = true,
         };
 
     // ══ 6. THE SWIPE BELT (touch only) ═══════════════════════════════════════════════════════════════════════════════

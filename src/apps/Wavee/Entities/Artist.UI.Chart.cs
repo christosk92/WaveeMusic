@@ -27,7 +27,6 @@
 // branch, the selection pill is an always-mounted BOUND opacity (selecting is compositor-only) and the per-row playback
 // state sits behind a memo so a skip between two other tracks renders no row (ch 08 §9 traps a-e).
 
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
