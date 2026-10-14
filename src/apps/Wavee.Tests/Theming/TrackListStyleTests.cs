@@ -46,4 +46,11 @@ public sealed class TrackListStyleTests
     [Fact]
     public void The_key_id_is_the_published_one()
         => Assert.Equal("Track.Table", StyleKeys.TrackTable.Id);
+
+    [Fact]
+    public void The_style_carries_the_chrome_of_the_table()
+    {
+        Assert.True(ClassicRegistry().TryGetStyle(StyleKeys.TrackTable, out var style));
+        Assert.NotNull(style.Chrome);
+    }
 }
