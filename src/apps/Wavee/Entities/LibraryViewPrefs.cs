@@ -6,7 +6,9 @@
 // Spec: docs/themes/plan/technical-plan.md §5.1 C16 (X41); library-rework-implementation.md §5.3
 //
 // The persisted shape is `Platform.Keys.Library*(kind)` (`library.<kind>.*`, built per kind by the keys themselves; the
-// string shape is persisted and never changes). The page used to read and write each key by hand in its constructor and
+// string shape is persisted and never changes). The two COLUMN WIDTHS are the exception: they are the active theme's STATE
+// (`theme.<id>.state.library.<kind>.leftw` / `.midw`, M13; owner Q6: pane sizes are per theme), declared below because the page host
+// writes them, clamped to the grip ranges. The page used to read and write each key by hand in its constructor and
 // its `SaveState`; this is the ONE door, so a library page in any theme seeds and persists the same keys the same way.
 //
 // RETIRED KEYS (never reuse them): `library.<kind>.album.desc` / `.album.view` / `.album.size` steered the deleted
@@ -25,13 +27,25 @@ public readonly record struct LibraryViewState(
 
 public static class LibraryViewPrefs
 {
+    /// <summary>The clamp of the persisted column widths: the grip ranges of Classic's library page (`ClassicLibraryRules.LeftMin/LeftMax/MidMin/MidMax`, which a test pins
+    /// equal; core may not name the theme, and the state key must clamp on read).</summary>
+    public const float LeftMin = 240f, LeftMax = 560f, MidMin = 300f, MidMax = 620f;
+
+    /// <summary>The state key of a kind's navigator column width: the artists' reader is narrower by default (280, the rest 340); the range is the grip's.</summary>
+    public static Theming.StateKey<float> LeftWKey(string kind)
+        => new("library." + kind + ".leftw", kind == "artists" ? 280f : 340f, LeftMin, LeftMax);
+
+    /// <summary>The state key of a kind's middle column width (the search shapes' third column).</summary>
+    public static Theming.StateKey<float> MidWKey(string kind)
+        => new("library." + kind + ".midw", 440f, MidMin, MidMax);
+
     /// <summary>The kind's persisted view: every key at its stored value, else the key's own per-kind default.</summary>
     public static LibraryViewState Read(string kind)
     {
         var s = Platform.Settings;
         return new LibraryViewState(
-            LeftW: s.Get(Platform.Keys.LibraryLeftW(kind)),
-            MidW: s.Get(Platform.Keys.LibraryMidW(kind)),
+            LeftW: Theming.ThemeState.Get(LeftWKey(kind)),
+            MidW: Theming.ThemeState.Get(MidWKey(kind)),
             Sort: s.Get(Platform.Keys.LibrarySort(kind)),
             Desc: s.Get(Platform.Keys.LibraryDesc(kind)),
             View: s.Get(Platform.Keys.LibraryView(kind)),
@@ -43,10 +57,10 @@ public static class LibraryViewPrefs
     }
 
     /// <summary>The nav column's width, committed on release of its grip.</summary>
-    public static void SetLeftW(string kind, float width) => Platform.Settings.Set(Platform.Keys.LibraryLeftW(kind), width);
+    public static void SetLeftW(string kind, float width) => Theming.ThemeState.Set(LeftWKey(kind), width);
 
     /// <summary>The middle column's width (the search shapes' third column), committed on release of its grip.</summary>
-    public static void SetMidW(string kind, float width) => Platform.Settings.Set(Platform.Keys.LibraryMidW(kind), width);
+    public static void SetMidW(string kind, float width) => Theming.ThemeState.Set(MidWKey(kind), width);
 
     /// <summary>Persist the view state (sort, direction, view, size, selection). The artists' reader keys (album key,
     /// scope, reader sort) follow only when <paramref name="artists"/> — the other kinds never touch them. The widths are

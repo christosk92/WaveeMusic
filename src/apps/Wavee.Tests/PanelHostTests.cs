@@ -8,6 +8,7 @@
 //   SIZES          what the panel STARTS at is clamped; a committed size is persisted through one service.
 //   NEXT UP        at most five rows, the tracks among the first five upcoming rows.
 
+using Wavee.Theming;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -311,13 +312,15 @@ public sealed class PanelSizesSettingsTests : IDisposable
     public void Dispose() => Platform.UseSettings(null);
 
     [Fact]
-    public void The_shared_sizes_persist_to_the_shell_keys_and_read_back_clamped()
+    public void The_shared_sizes_persist_to_the_theme_state_keys_and_read_back_clamped()
     {
         var sizes = Shell.PanelSizes.Shared;
         sizes.SaveWidth(420f);
         sizes.SaveDockedVideoHeight(250f);
-        Assert.Equal(420f, _store.Get(Platform.Keys.ShellRailWidth));
-        Assert.Equal(250f, _store.Get(Platform.Keys.ShellDockedVideoHeight));
+        Assert.Equal(420f, ThemeState.Get(Shell.PanelSizeKeys.Width));
+        Assert.Equal(250f, ThemeState.Get(Shell.PanelSizeKeys.DockedVideoHeight));
+        Assert.Equal("panelWidth", Shell.PanelSizeKeys.Width.Id);
+        Assert.Equal("dockedVideoHeight", Shell.PanelSizeKeys.DockedVideoHeight.Id);
         Assert.Equal(420f, sizes.LoadWidth());
         Assert.Equal(250f, sizes.LoadDockedVideoHeight(420f));    // above the 16:9 floor of 236.25
 

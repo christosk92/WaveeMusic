@@ -5,6 +5,7 @@
 // that only the artists' reader persists its own three keys, and that a save never writes the widths (a column drag
 // commits those on release).
 
+using Wavee.Theming;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -61,8 +62,8 @@ public sealed class LibraryViewPrefsTests : IDisposable
         Assert.Equal(4, read.AlbumSort);
         Assert.Equal(280f, read.LeftW);                                           // the sample's widths were not written
         Assert.Equal(440f, read.MidW);
-        Assert.False(_store.WasWritten(Platform.Keys.LibraryLeftW("artists")));
-        Assert.False(_store.WasWritten(Platform.Keys.LibraryMidW("artists")));
+        Assert.False(_store.WasWritten(new SettingKey<float>(ThemeState.SettingName(ThemeCatalog.FallbackId, LibraryViewPrefs.LeftWKey("artists").Id), 0f)));
+        Assert.False(_store.WasWritten(new SettingKey<float>(ThemeState.SettingName(ThemeCatalog.FallbackId, LibraryViewPrefs.MidWKey("artists").Id), 0f)));
     }
 
     [Fact]
@@ -104,6 +105,25 @@ public sealed class LibraryViewPrefsTests : IDisposable
         LibraryViewPrefs.Save("albums", Sample(), artists: false);               // the sample carries 1 / 2 as widths
         Assert.Equal(512f, LibraryViewPrefs.Read("albums").LeftW);
         Assert.Equal(333f, LibraryViewPrefs.Read("albums").MidW);
-        Assert.Equal(512f, _store.Get(Platform.Keys.LibraryLeftW("albums")));
+        Assert.Equal(512f, _store.Get(new SettingKey<float>(ThemeState.SettingName(ThemeCatalog.FallbackId, "library.albums.leftw"), 0f)));
+    }
+
+    [Fact]
+    public void The_state_clamp_is_the_classic_grips_range()
+    {
+        Assert.Equal(Themes.Classic.ClassicLibraryRules.LeftMin, LibraryViewPrefs.LeftMin);
+        Assert.Equal(Themes.Classic.ClassicLibraryRules.LeftMax, LibraryViewPrefs.LeftMax);
+        Assert.Equal(Themes.Classic.ClassicLibraryRules.MidMin, LibraryViewPrefs.MidMin);
+        Assert.Equal(Themes.Classic.ClassicLibraryRules.MidMax, LibraryViewPrefs.MidMax);
+    }
+
+    [Fact]
+    public void A_column_width_is_clamped_to_the_grips_range_and_each_kind_has_its_own_key()
+    {
+        LibraryViewPrefs.SetLeftW("albums", 5000f);
+        LibraryViewPrefs.SetMidW("albums", 1f);
+        Assert.Equal(Themes.Classic.ClassicLibraryRules.LeftMax, LibraryViewPrefs.Read("albums").LeftW);
+        Assert.Equal(Themes.Classic.ClassicLibraryRules.MidMin, LibraryViewPrefs.Read("albums").MidW);
+        Assert.Equal(280f, LibraryViewPrefs.Read("artists").LeftW);
     }
 }

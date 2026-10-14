@@ -267,9 +267,24 @@ public sealed class ThemeBootstrapTests
     /// <summary>Runs every order of <paramref name="steps"/> over a copy of <paramref name="seed"/> and returns the distinct end
     /// states. Order independence means the answer has one element. The machinery the M-PRs reuse.</summary>
     static HashSet<string> EndStates(IReadOnlyList<ThemeBootstrapStep> steps, SnapshotSettings seed)
+        => EndStates(Permutations(steps), seed);
+
+    /// <summary>Every order is n! runs: past eight steps (40 320) the shipped set is checked over a fixed sample instead (the given order, its reverse, every
+    /// rotation and a seeded run of shuffles), which still catches any pair of steps that interact: `Disjointness` already rejects the structural cases.</summary>
+    static IEnumerable<ThemeBootstrapStep[]> SampledOrders(IReadOnlyList<ThemeBootstrapStep> steps)
+    {
+        var all = steps.ToArray();
+        yield return all;
+        yield return all.Reverse().ToArray();
+        for (int r = 1; r < all.Length; r++) yield return all.Skip(r).Concat(all.Take(r)).ToArray();
+        var rng = new Random(20261014);
+        for (int i = 0; i < 2000; i++) yield return all.OrderBy(_ => rng.Next()).ToArray();
+    }
+
+    static HashSet<string> EndStates(IEnumerable<ThemeBootstrapStep[]> orders, SnapshotSettings seed)
     {
         var states = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var order in Permutations(steps))
+        foreach (var order in orders)
         {
             var store = seed.Clone();
             ThemeBootstrap.Run(store, order);
@@ -332,7 +347,7 @@ public sealed class ThemeBootstrapTests
                 seed.Set(new SettingKey<int>(key, 0), 1);
                 seed.Set(new SettingKey<bool>(key, false), true);
             }
-        Assert.Single(EndStates(ThemeBootstrap.Steps, seed));
+        Assert.Single(EndStates(ThemeBootstrap.Steps.Count <= 8 ? Permutations(ThemeBootstrap.Steps) : SampledOrders(ThemeBootstrap.Steps), seed));
     }
 
     [Fact]
