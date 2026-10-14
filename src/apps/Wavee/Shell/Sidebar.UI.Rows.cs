@@ -737,42 +737,6 @@ public static partial class Sidebar
         };
     }
 
-    /// <summary>The section header's inline button, kept for the Edit outline's rows (T5d moves them and deletes this copy). The
-    /// 40-px header, the "+" and the separator are Classic's now (<c>Themes/Classic/Structure/Views/Nav/ClassicNavHead.cs</c>); the
-    /// ⋯ the header draws is the same builder over <c>SidebarGeometry.HeaderButton</c>.</summary>
-    internal static class SectionHeader
-    {
-        /// <summary>A header's 24×24 inline button (⋯ / +): consumes its own click, hover plate FillSubtleSecondary.
-        /// <paramref name="reveal"/> = hover-revealed (the ⋯ off touch). The result is an OUTER, handler-less reveal box
-        /// (Opacity / HoverOpacity follow the header's hover) around the INNER interactive button: the plate belongs to the
-        /// inner node alone, so hovering the header text reveals the glyph at its rest look and only hovering the button
-        /// paints the plate (one node carrying both the reveal and <c>Interactive</c> let the container hover drive the
-        /// fill). A <see cref="BoxEl"/> so the caller can attach a context menu to the outer box (a context request walks up
-        /// from the button); <paramref name="requestsContext"/> makes the click re-enter that funnel, anchored at the
-        /// button. <paramref name="onRealized"/> / <paramref name="focusable"/> apply to the INNER button, the real focus
-        /// stop and anchor. The caller wraps the result in <c>ToolTip.Wrap</c> for its tooltip and accessible name.</summary>
-        public static BoxEl InlineButton(string glyph, Action? onClick, bool reveal, Action<NodeHandle>? onRealized = null,
-                                         bool focusable = false, bool requestsContext = false)
-            => new BoxEl
-            {
-                Width = SidebarRowGeometry.HeaderButton, Height = SidebarRowGeometry.HeaderButton, Shrink = 0f,
-                Opacity = reveal ? 0f : 1f, HoverOpacity = 1f,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Width = SidebarRowGeometry.HeaderButton, Height = SidebarRowGeometry.HeaderButton,
-                        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
-                        Role = AutomationRole.Button, Cursor = CursorId.Hand,
-                        OnClick = requestsContext ? null : onClick, ClickRequestsContext = requestsContext,
-                        Focusable = focusable, OnRealized = onRealized,
-                        BlocksDragArm = true,
-                        Children = [Icon(glyph, 12f, Tok.TextSecondary)],
-                    }.Interactive(Interaction.Subtle),
-                ],
-            };
-    }
-
     // ══ 8. THE PANE'S TEXT, LOC AND GLYPH TABLES ═════════════════════════════════════════════════════════════════════
 
     /// <summary>The renderer's display rules: section titles, per-kind subtitles, icon fallbacks and the

@@ -38,15 +38,15 @@ PaneHost(inDrawer)                                  Sidebar.UI.cs
         │   └── ClassicNavHead (section header, "+", count), ClassicNavFilterBox   Views/Nav/ClassicNavHead.cs, ClassicNavFilter.cs
         ├── Shell.NavEmpty (the empty body)         Views/Nav/ClassicNavFilter.cs (ClassicNavEmpty)
         ├── PaneFooter                              Sidebar.UI.Footer.cs
-        ├── EditPane (Edit mode: the Outline and the edit bar)   Sidebar.UI.Edit.cs
+        ├── Shell.NavEdit (Edit mode: the Outline and the edit bar)   Themes/Classic/Structure/Views/Nav/ClassicNavEdit.cs (ClassicEditPane; host: INavEditHost in Sidebar.UI.Host.cs)
         ├── PaneView.OpenSectionFlyout/OpenFolderFlyout  Sidebar.UI.Flyout.cs (opens the collapsed rail's flyouts; panels: Classic's ClassicSectionFlyout / ClassicFolderFlyout, Themes/Classic/Structure/Views/Nav/ClassicNavFlyouts.cs)
         ├── DragPeekWatcher                         Sidebar.UI.cs
         └── SidebarMenus                            Sidebar.UI.Menus.cs (pane ⋯ / header ⋯ / row menus)
 ```
 
 Row content is built from `Sidebar.UI.Rows.cs` (`EntityRow`, `Cover`, `LikedArt`, `Chevron`, `SelectionPill`,
-`Skeletons`; the section header, the "+" and the count are Classic's, `Views/Nav/ClassicNavHead.cs`). `Sidebar.UI.Drop.cs` owns the drag, the drop slot and the commit, and `Sidebar.UI.Edit.cs` owns
-Edit mode. A `PaneView` is one keyed `Component`: its children are not rebuilt by the parent, so parent props freeze
+`Skeletons`; the section header, the "+" and the count are Classic's, `Views/Nav/ClassicNavHead.cs`). `Sidebar.UI.Drop.cs` owns the drag, the drop slot and the commit, and Edit mode is the structure's
+(`Shell.NavEdit`, `ClassicNavEdit.cs`; the model is `NavEditModel`). A `PaneView` is one keyed `Component`: its children are not rebuilt by the parent, so parent props freeze
 at mount (see [pitfalls.md](pitfalls.md)).
 
 ## 3. The layout model (`Shell/Sidebar.Layout.cs`)
@@ -182,7 +182,7 @@ which feeds are needed: Recent and New releases fetch only while their section i
 resolve in this order: the index, then the resident peek (`SidebarResidentPeek`), then the logged title, then skip
 (`SidebarRecentsRules`).
 
-## 9. Edit mode, menus and undo (`Shell/Sidebar.Edit.cs`, `Sidebar.UI.Edit.cs`, `Sidebar.UI.Menus.cs`)
+## 9. Edit mode, menus and undo (`Shell/Sidebar.Edit.cs`, `NavEditModel.cs`, `Views/Nav/ClassicNavEdit.cs`, `Sidebar.UI.Menus.cs`)
 
 - Edit mode swaps the pane contents for the Outline (`SidebarOutlineRow`, `SidebarOutlineRowKind`) and an edit bar. The
   Outline lists sections, items and pins in document order. Keyboard: Space lifts, arrows move the focus, Alt+↑/↓

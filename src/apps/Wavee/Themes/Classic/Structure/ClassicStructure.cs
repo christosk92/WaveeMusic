@@ -66,6 +66,8 @@ public sealed class ClassicStructure : IStructureLayer
         // T5c: the compact rail's flyout panels (a collapsed section's rows, a folder tile's drill-in); the pane opens and dismisses them.
         views.Add(ViewKeys.ShellNavSectionFlyout, ClassicNavFlyouts.SectionTemplate, "classic.shell.nav-section-flyout");
         views.Add(ViewKeys.ShellNavFolderFlyout, ClassicNavFlyouts.FolderTemplate, "classic.shell.nav-folder-flyout");
+        // T5d: the Edit outline (the edit bar, the Show boxes, the reorder bands); the pane decides when it edits, the edit model keeps the ops.
+        views.Add(ViewKeys.ShellNavEdit, ClassicNavEdit.Template, "classic.shell.nav-edit");
         // T6a: the player bar (the podcast transport rides with it).
         views.Add(ViewKeys.PlayerBar, ClassicPlayerBar.Template, "classic.player.bar");
         // T8a: the track table's rows (the Modern and Classic bound grids and skins; the header, chrome and placeholder are T8b's).

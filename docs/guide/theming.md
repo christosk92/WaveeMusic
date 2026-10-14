@@ -307,7 +307,7 @@ cue, the scrim, the HUD only in developer mode), and the cover leaves still publ
 ### The navigation pane's rows (T5a)
 
 The sidebar is one pane over six sub-surfaces (rows, heads, flyouts and menus, the Edit outline, drop cues, the library grid). T5a
-gives the pane its key and moves the **rows**; T5b moves the **heads** (below); T5c moves the rail's flyouts (below); T5d-f move the rest, one sub-surface each.
+gives the pane its key and moves the **rows**; T5b moves the **heads** (below); T5c moves the rail's flyouts (below); T5d moves the Edit outline (below); T5e-f move the rest, one sub-surface each.
 
 | Key | Props | Core host | Classic template |
 |---|---|---|---|
@@ -368,8 +368,7 @@ T5b gives the structure the pane's **heads**: whatever stands above or between t
   choreography flags (`_choreographed`) are the pane's and did not move.
 - **`SidebarRowGeometry` shrank.** The header height, the separator's two numbers and the empty-hint height had no core reader
   left and were deleted; `HeaderTextX` (the Library lane rules) and `HeaderButton` (the Edit outline's inline buttons) stay
-  until T5d / T5f. `Sidebar.SectionHeader.InlineButton` stays in `Sidebar.UI.Rows.cs` as a copy for the Edit outline (T5d deletes
-  it). `PaneMetrics.HeadBandInset`, which nothing read, is gone. `SidebarGeometryParityTests` still pins every member core keeps.
+  until T5d / T5f. The `Sidebar.SectionHeader.InlineButton` copy is gone (T5d: the Edit outline uses `ClassicNavHead.InlineButton`). `PaneMetrics.HeadBandInset`, which nothing read, is gone. `SidebarGeometryParityTests` still pins every member core keeps.
 - **Numbers** the heads carried as literals are `Rules\NavHeadLayout.cs` (`ClassicNavHeadLayout`); the Library lane's are core's
   `SidebarLibraryHeadRules`, which the pure tests pin.
 
@@ -400,6 +399,31 @@ T5c gives the structure the **pictures** of the pane's flyouts; the menu **rows*
 
 **Tests.** `Wavee.ShellTests\NavPaneMountedTests.cs` pins that Classic registers both keys; the drill-in stack stays
 `SidebarFolderFlyoutNavTests` (`NavDropRulesTests.cs`).
+
+### The navigation pane's Edit outline (T5d)
+
+T5d gives the structure the **picture** of edit mode; the edit model, its ops, validation, persistence and verbs stay core (C11).
+
+| Key | Props | Core host | Classic template |
+|---|---|---|---|
+| `Shell.NavEdit` | `NavEditProps` (the pane as `INavEditHost`) | `PaneView.PaneChildren` mounts it while `editing && !compact` (the rail never draws the Outline), mount-stable (`_editPane`) | `ClassicNavEdit.Template` -> `ClassicEditPane` (`Views\Nav\ClassicNavEdit.cs`): the edit bar (title, undo, redo, Reset, Done), the Outline's section band, pins band and Collections band (three `Reorderable`s), the Show checkboxes and locks, the hint rows, the Settings row, the section drag chip, the spoken reorder sentences and the engine-key -> `NavEditKey` mapping |
+
+- **Core keeps the decisions.** `NavEditModel` (`Model.Edit`: the Outline read, `SetSectionShown` / `SetItemShown` (and the "empty section" note Done
+  shows), `MoveSection` / `MoveItem`, undo / redo, `OnPaneKey` / `OnSectionKey` / `OnPinKey` / `OnItemKey`), `SidebarEditRules` (extents, heights,
+  summary and announce keys), the layout store and the Reset and header menus' rows (`NavMenuModel`, `SidebarMenus`).
+- **`INavEditHost`** (`Theming\Contracts\NavEdit.cs`, implemented explicitly by `PaneView` in `Shell\Sidebar.UI.Host.cs`) is the whole surface the
+  view reads: the edit model, the overlay, the pin store and its verbs (move, unpin, name, resolved cover), the Reset and header menus, route
+  titles and glyphs, section and item names and the Settings title. The view never names `Shell`.
+- **Nothing changes in behavior.** The component keeps its hook order (the drag-chip effect, the first-stop layout effect that lands focus
+  in the Outline once per session), its keys (`edit-pane`, `edit-bar`, `block:`, `head:`, `pin:`, `item:`, `check:`), its Reorderables and
+  the focus order. Entering and leaving edit mode is still the pane swapping its head and list for this one element. Numbers are
+  `Rules\NavEditLayout.cs` (`ClassicNavEditLayout`).
+- **Deleted.** `Shell\Sidebar.UI.Edit.cs` (`EditPane`) and the `Sidebar.SectionHeader.InlineButton` copy in `Sidebar.UI.Rows.cs`: the Edit rows
+  use `ClassicNavHead.InlineButton`. `SidebarRowGeometry.HeaderButton` is still pinned by the parity test and goes with the mirror (T5f).
+- Rename-in-place is not part of the Outline: a row's F2 rename and the create flow are the row slots' and the pane's (T5a / T5b), unchanged.
+
+**Tests.** `Wavee.ShellTests\NavPaneMountedTests.cs` pins that Classic registers the key; the edit model's behavior is `NavEditModelTests`,
+the rules `SidebarEditRulesTests`.
 
 ### The player bar (T6a)
 

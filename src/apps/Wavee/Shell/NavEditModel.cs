@@ -5,7 +5,7 @@
 // Role: CORE · Plan: technical-plan.md §5.1 row C11 (BP X28) · design C.3, C.5, Q3, Q6, Q8, V.11
 //
 // Every edit is a `SidebarOp` through `Sidebar.Dispatch` (the one layout mutation path, with the undo ring behind it); this
-// is the layer that decides WHICH op a gesture means. The Classic edit pane (`Sidebar.UI.Edit.cs`) draws the Outline and
+// is the layer that decides WHICH op a gesture means. The Classic edit pane (`Views/Nav/ClassicNavEdit.cs`) draws the Outline and
 // forwards its checkboxes, its reorders and its keys here. A key arrives as a `NavEditKey` plus `NavEditMods`, never an
 // engine event, so the whole table is unit-testable.
 //

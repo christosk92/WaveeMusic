@@ -531,7 +531,7 @@ public static partial class Sidebar
         {
             // Edit mode (expanded only) swaps the head and the list for the Outline; the list is unmounted and its state stays
             // with its element (§P4.5).
-            if (editing && !compact) return [_editPane ??= Embed.Comp(() => new EditPane(this)) with { Key = "edit-pane" }];
+            if (editing && !compact) return [_editPane ??= ViewSlots.View(ViewKeys.ShellNavEdit, new NavEditProps(this)) with { Key = "edit-pane" }];
             Element? modeHead = Config.Head?.Invoke();
 
             // The list is built ONCE: every option it carries is a mount-stable field or delegate, and the count rides

@@ -17,7 +17,7 @@ namespace Wavee;
 
 public static partial class Sidebar
 {
-    internal sealed partial class PaneView : INavRowHost
+    internal sealed partial class PaneView : INavRowHost, INavEditHost
     {
         // ── facts ──
         NavModel INavRowHost.Model => Model;
@@ -100,6 +100,35 @@ public static partial class Sidebar
         bool INavRowHost.IsRailDropActive(string key) => IsRailDropActive(key);
         void INavRowHost.ExpandFolderInPane(string folderId) => ExpandFolderInPane(folderId);
         void INavRowHost.SetTileAnchor(int index, Func<NodeHandle> anchor) => SetTileAnchor(index, anchor);
+
+        // ── the Edit outline (T5d): the pane as `INavEditHost` sees it ──
+        NavEditModel INavEditHost.Edit => Model.Edit;
+        IOverlayService INavEditHost.MenuOverlay => MenuOverlay;
+        SidebarPinStore INavEditHost.Pins => Sidebar.Pins;
+        void INavEditHost.MovePin(int from, int to) => Sidebar.Model.MovePin(from, to);
+        void INavEditHost.Unpin(string pinId, string name) => Sidebar.Model.Unpin(pinId, name);
+        string INavEditHost.PinName(string pinId) => SidebarMenus.PinName(pinId);
+        string INavEditHost.SettingsTitle => Shell.Dest(new Shell.Route(Shell.RouteKind.Settings)).Title;
+        string INavEditHost.SectionName(string sectionId) => SectionName(sectionId);
+        string INavEditHost.ItemName(string itemId) => ItemName(itemId);
+        Func<ContextMenuModel?>? INavEditHost.HeaderMenu(string sectionId) => HeaderMenu(sectionId);
+        (string Title, string Glyph) INavEditHost.DestOf(string routeKey) => Shell.Dest(Shell.Parse(routeKey));
+
+        /// <summary>The Reset menu (§P4.5): this layout (recorded) and everything (confirmed, §P4.6).</summary>
+        ContextMenuModel? INavEditHost.ResetMenu()
+        {
+            SidebarMenus.Overlay = MenuOverlay;
+            return new ContextMenuModel(SidebarMenus.Map(NavMenuModel.Menu(NavMenuTarget.EditReset), null, this));
+        }
+
+        /// <summary>The projection's resolved row for a pin (its cover, its kind), or null until the projection has it.</summary>
+        SidebarLibraryEntry? INavEditHost.ResolvedPin(string pinId)
+        {
+            var pins = Sidebar.Model.PinRows;
+            if (pins is null) return null;
+            for (int i = 0; i < pins.Count; i++) if (pins[i].Id == pinId) return pins[i];
+            return null;
+        }
 
         Element INavRowHost.GridCell(SidebarSection section, in SidebarLibraryEntry entry, float edge, string selectedRoute)
             => Controls.Surface(SidebarCards.Tile(this, section, in entry, edge, selectedRoute), global::Wavee.Shape.SidebarTile);

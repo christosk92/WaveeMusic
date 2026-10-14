@@ -6,8 +6,7 @@
 // row slot hands them; the collapse chevron is the core's shared `Sidebar.Chevron` (the episode discussion draws with it too), the
 // disclosure state machine is the pane's (`INavRowHost.ToggleSection`, `DisclosureOpen`).
 //
-// `Sidebar.SectionHeader.InlineButton` stays in `Shell/Sidebar.UI.Rows.cs` as a copy for the Edit outline's rows (T5d moves them and
-// deletes it); the header's ⋯ button below is the same builder. Numbers are `Rules\SidebarGeometry.cs` and `Rules\NavHeadLayout.cs`
+// The Edit outline's rows (T5d, `ClassicNavEdit.cs`) draw their ⋯ and Unpin buttons with the same `InlineButton` below. Numbers are `Rules\SidebarGeometry.cs` and `Rules\NavHeadLayout.cs`
 // -- WVTH003 allows no literal look here.
 
 using FluentGpu.Animation;

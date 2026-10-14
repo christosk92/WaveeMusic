@@ -481,7 +481,7 @@ public sealed class SidebarUndoRing
 
     /// <summary>Q6: Ctrl+Z / Ctrl+Y act while editing, or — outside Edit — only while a sidebar toast is open; never while a
     /// text editor has focus (its own undo stack wins). Called only from the sidebar's own key handlers (focused routing:
-    /// <c>PaneView.OnPaneKey</c>, <c>EditPane.OnPaneKey</c>, §P4.6), so design V.11's "focus in the pane, the head or the
+    /// <c>PaneView.OnPaneKey</c>, <c>ClassicEditPane.OnPaneKey</c>, §P4.6), so design V.11's "focus in the pane, the head or the
     /// edit bar" is structural, not a parameter: there is no frame-global chord.</summary>
     public static bool KeyAllowed(bool editing, bool sidebarToastOpen, bool textEditorFocused)
         => !textEditorFocused && (editing || sidebarToastOpen);

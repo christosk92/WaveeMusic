@@ -32,4 +32,8 @@ public static partial class ViewKeys
     /// <summary>The compact rail's folder flyout: a folder's children, one drill-in page at a time. Mounted by the core pane inside
     /// the popup it opens. Props: <see cref="NavFolderFlyoutProps"/>.</summary>
     public static readonly ViewKey<NavFolderFlyoutProps> ShellNavFolderFlyout = new("Shell.NavFolderFlyout");
+
+    /// <summary>The pane's Edit outline: the edit bar over the sections' Show boxes, the reorder bands and the Settings row. Mounted
+    /// by the core pane while it edits (expanded only). Props: <see cref="NavEditProps"/>.</summary>
+    public static readonly ViewKey<NavEditProps> ShellNavEdit = new("Shell.NavEdit");
 }

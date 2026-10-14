@@ -167,7 +167,7 @@ never deleted from `settings.json`: the latch stops a second read, and removing 
 
 ## 8. Customizing
 
-**Edit mode** (`Shell/Sidebar.Edit.cs`, `Shell/Sidebar.UI.Edit.cs`) shows an Outline of every section and item and an
+**Edit mode** (`Shell/Sidebar.Edit.cs`, `Themes/Classic/Structure/Views/Nav/ClassicNavEdit.cs`) shows an Outline of every section and item and an
 edit bar. Keyboard: Space lifts a row, arrows move it, Alt+↑ and Alt+↓ move it by one, Enter toggles shown. Focus lands
 in the Outline on enter and returns to the row by its key on Done or Esc. A section header is clickable only to focus
 it in the Outline; it never toggles from there.

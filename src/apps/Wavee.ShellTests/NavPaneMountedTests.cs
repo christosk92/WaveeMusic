@@ -15,6 +15,8 @@
 //                         is the pane's sentence, or the rail's bare spacer
 //
 //   the flyouts (T5c)     Classic registers the rail's two flyout panels (the pane opens and dismisses them; the structure draws them)
+//   the outline (T5d)     Edit swaps the pane for the registered Outline (its bar's Done, its section heads at the edit rules'
+//                         height) and Done swaps the pane back
 //
 // The planner, the diff, the extents, the freeze and the ladder are pure and pinned in `Wavee.Tests` (`SidebarPlannerTests`,
 // `SidebarWiringTests`, `SidebarRowGeometryTests`).
@@ -194,5 +196,49 @@ public sealed class NavPaneMountedTests(ShellHost host)
         {
             Assert.Equal("classic.shell.nav-section-flyout", ThemeHost.Registry.TemplateIdOf(ViewKeys.ShellNavSectionFlyout.Id));
             Assert.Equal("classic.shell.nav-folder-flyout", ThemeHost.Registry.TemplateIdOf(ViewKeys.ShellNavFolderFlyout.Id));
+        });
+
+    // ── the Edit outline (T5d) ───────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Classic_registers_the_edit_outline()
+        => host.Run(() => Assert.Equal("classic.shell.nav-edit", ThemeHost.Registry.TemplateIdOf(ViewKeys.ShellNavEdit.Id)));
+
+    [Fact]
+    public void Edit_mode_swaps_the_pane_for_the_registered_outline_and_done_swaps_it_back()
+        => host.Mounted(shell =>
+        {
+            shell.RunFrames(60);
+            var original = Sidebar.Layout.Peek();
+            try
+            {
+                if (original != SidebarLayoutId.Classic)
+                {
+                    Sidebar.SwitchLayout(SidebarLayoutId.Classic);
+                    shell.RunFrames(60);
+                }
+                Sidebar.EnterEdit();
+                Until(shell, () => !shell.Find("edit-pane").IsNull, "the Outline mounted through Shell.NavEdit");
+                shell.RunFrames(60);
+                Assert.False(shell.Find("edit-done").IsNull, "the edit bar has no Done");
+                var heads = shell.FindPrefix("head:");
+                Assert.NotEmpty(heads);
+                foreach (var (node, key) in heads)
+                    Assert.Equal(SidebarEditRules.SectionHeaderHeight, shell.Host.Scene.AbsoluteRect(node).H, 0.5f);
+
+                Sidebar.ExitEdit();
+                Until(shell, () => shell.Find("edit-pane").IsNull, "Done took the Outline down");
+                Assert.False(shell.Find("sidebar.classic").IsNull, "the pane came back");
+            }
+            finally
+            {
+                if (Sidebar.Editing.Peek()) Sidebar.ExitEdit();
+                shell.RunFrames(30);
+                if (original != SidebarLayoutId.Classic)
+                {
+                    Sidebar.SwitchLayout(original);
+                    shell.RunFrames(60);
+                }
+            }
         });
 }

@@ -102,5 +102,5 @@ tween for the sidebar, and never a `MotionTok.Disclosure*` token (they are delet
 ## Keys
 
 **Ctrl+Z or Ctrl+Y acts outside the sidebar.** Cause: the undo chord is handled above the sidebar, at frame level. Rule:
-Ctrl+Z and Ctrl+Y are taken by the sidebar's own key handlers (`Sidebar.UI.Edit.cs`), and only with focus in the pane,
+Ctrl+Z and Ctrl+Y are taken by the sidebar's own key handlers (`Views/Nav/ClassicNavEdit.cs`; the key table is `NavEditModel`), and only with focus in the pane,
 the head or the edit bar. They are never a frame chord.
