@@ -26,15 +26,6 @@ public readonly partial struct Episode
 
 public static class PodcastReaderRules
 {
-    public static int CurrentLine(ReadOnlySpan<Spotify.Podcasts.TranscriptLine> lines, int positionMs)
-    {
-        if (positionMs < 0) return -1;
-        int current = -1;
-        for (int i = 0; i < lines.Length; i++)
-            if (!lines[i].Heading && lines[i].StartMs <= positionMs && (current < 0 || lines[i].StartMs >= lines[current].StartMs)) current = i;
-        return current;
-    }
-
     public static int CurrentChapter(ReadOnlySpan<Spotify.Podcasts.Chapter> chapters, int positionMs)
     {
         if (positionMs < 0) return -1;

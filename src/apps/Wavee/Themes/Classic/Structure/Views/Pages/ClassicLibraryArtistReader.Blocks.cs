@@ -89,7 +89,7 @@ internal static partial class ClassicLibraryArtistReader
             [
                 new BoxEl
                 {
-                    // `ReaderShape`'s own fields, so `BodyWidth` and `ExtentOf` describe THIS row by identity.
+                    // `ReaderShape`'s own fields, so `ExtentOf` describes THIS row by identity.
                     Direction = 0, Gap = Artist.ReaderShape.BlockCoverGap, AlignItems = FlexAlign.Start, MinWidth = 0f,
                     Padding = new Edges4(Artist.ReaderShape.BlockPadLeft, Artist.ReaderShape.BlockPadTop, Artist.ReaderShape.BlockPadRight, Artist.ReaderShape.BlockPadBottom),
                     Children =
@@ -171,7 +171,7 @@ internal static partial class ClassicLibraryArtistReader
                 titleSlot,                                               // HeadTitleRowH tall, stretched to the body
                 new BoxEl
                 {
-                    // `Justify End`, not a spacer: a spacer would charge the meta one more gap than `ReaderShape.StackedMetaAvailW` says it gets.
+                    // `Justify End`, not a spacer: a spacer would charge the meta one more gap.
                     Direction = 0, Gap = Artist.ReaderShape.HeadGap, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
                     MinWidth = 0f, Height = Artist.ReaderShape.HeadCircle,
                     Margin = new Edges4(0f, Artist.ReaderShape.HeadStackGap, 0f, Artist.ReaderShape.HeadStackPadBottom),

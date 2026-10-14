@@ -444,8 +444,8 @@ internal static class ClassicAlbumTrailing
         return new BoxEl { Direction = 0, Gap = Spacing.M, ClipToBounds = true, Children = cards };
     }
 
-    /// <summary>The rows block: the SEED face of the real rows' own shape (<see cref="Shape.RowTileStill"/>), which is as tall as the live row (its 64 floor —
-    /// <c>PageRules.SkelRowH</c>, pinned by a fact) because every line keeps its box.</summary>
+    /// <summary>The rows block: the SEED face of the real rows' own shape (<see cref="Shape.RowTileStill"/>), which is as tall as the live row (its 64 floor,
+    /// pinned by a fact) because every line keeps its box.</summary>
     static Element RowsSkeleton()
     {
         var rows = new Element[PageRules.SkelRows];

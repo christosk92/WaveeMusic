@@ -218,7 +218,7 @@ public class BrowseAnswerTests
         var band = Entities.Section(SectionUri.AsSpan());
         Assert.True(band.Knows(SectionFields.Identity));                            // answered: the planner seals it
         Assert.True(band.CardSlots.IsEmpty);
-        Assert.Equal(EdgeState.Complete, band.CardState);                           // "nothing here" is an answer
+        Assert.Equal(EdgeState.Complete, Entities.Current.Edges.SectionCards.State(band.Slot));                           // "nothing here" is an answer
         Assert.Equal(SectionPaging.Complete, band.NextOffset);
     }
 
@@ -406,7 +406,7 @@ public class BrowseAnswerTests
         Assert.Equal(40, section.Raw);
         Assert.Equal(SectionPaging.Complete, section.NextOffset);
         Assert.False(section.HasMore);
-        Assert.Equal(EdgeState.Complete, section.CardState);
+        Assert.Equal(EdgeState.Complete, Entities.Current.Edges.SectionCards.State(section.Slot));
     }
 
     [Fact]
@@ -532,7 +532,7 @@ public class BrowseAnswerTests
         Assert.Equal(PlaylistSlot(0), band.CardSlots[0]);
         Assert.Equal(PlaylistSlot(20), band.CardSlots[20]);
         Assert.Equal(PlaylistSlot(44), band.CardSlots[36]);
-        Assert.Equal(EdgeState.Complete, band.CardState);
+        Assert.Equal(EdgeState.Complete, Entities.Current.Edges.SectionCards.State(band.Slot));
         Assert.Equal(37, band.Raw);
         Assert.Equal(SectionPaging.Complete, band.NextOffset);
         Assert.False(band.HasMore);
@@ -576,7 +576,7 @@ public class BrowseAnswerTests
         var band = Entities.Section(SectionUri.AsSpan());
         Assert.True(band.Knows(SectionFields.Identity | SectionFields.Whole));      // answered: sealed, never re-asked
         Assert.True(band.CardSlots.IsEmpty);
-        Assert.Equal(EdgeState.Complete, band.CardState);
+        Assert.Equal(EdgeState.Complete, Entities.Current.Edges.SectionCards.State(band.Slot));
         Assert.Equal(SectionKind.BrowseShelf, band.Kind);
     }
 
@@ -631,7 +631,7 @@ public class BrowseAnswerTests
         Assert.Equal(32, band.CardSlots.Length);                                       // 20 + 9 + 3
         Assert.Equal(PlaylistSlot(0), band.CardSlots[0]);
         Assert.Equal(PlaylistSlot(42), band.CardSlots[31]);
-        Assert.Equal(EdgeState.Complete, band.CardState);
+        Assert.Equal(EdgeState.Complete, Entities.Current.Edges.SectionCards.State(band.Slot));
         Assert.Equal(32, band.Raw);
         Assert.Equal(SectionPaging.Complete, band.NextOffset);
         Assert.False(band.HasMore);
@@ -667,7 +667,7 @@ public class BrowseAnswerTests
         var band = Entities.Section(HomeSectionUri.AsSpan());
         Assert.True(band.Knows(SectionFields.Identity | SectionFields.Whole));
         Assert.True(band.CardSlots.IsEmpty);
-        Assert.Equal(EdgeState.Complete, band.CardState);
+        Assert.Equal(EdgeState.Complete, Entities.Current.Edges.SectionCards.State(band.Slot));
         Assert.Equal(SectionKind.HomeGeneric, band.Kind);
     }
 

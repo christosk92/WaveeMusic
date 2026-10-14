@@ -52,17 +52,17 @@ public class ShowEpisodePagingTests
         edges.ReplacePage(show.Slot, 0, Episodes(0, 300), default, total: Members);
         Asked(ShowUri, 300);
         Assert.Equal(EdgeState.Partial, edges.State(show.Slot));
-        Assert.Equal(300, show.EpisodeSlots.Length);
+        Assert.Equal(300, Entities.Current.Edges.ShowEpisodes.Targets(show.Slot).Length);
         Assert.True(Rules.CanLoadMore(show.EpisodesAsked, 0, show.TotalEpisodes));
 
         edges.ReplacePage(show.Slot, 300, Episodes(300, 300), default, total: Members);
         Asked(ShowUri, 600);
-        Assert.Equal(600, show.EpisodeSlots.Length);
+        Assert.Equal(600, Entities.Current.Edges.ShowEpisodes.Targets(show.Slot).Length);
         Assert.Equal(600, show.EpisodesAsked);
 
         edges.ReplacePage(show.Slot, 600, Episodes(600, 100), default, total: Members);
         Asked(ShowUri, Members);
-        Assert.Equal(Members, show.EpisodeSlots.Length);                // the LAST page is the remainder
+        Assert.Equal(Members, Entities.Current.Edges.ShowEpisodes.Targets(show.Slot).Length);                // the LAST page is the remainder
         Assert.Equal(EdgeState.Complete, edges.State(show.Slot));       // its length reached the stated total
 
         // Past the end there is nothing to ask for — the cursor stays where it is, and the affordance is retired.
@@ -79,7 +79,7 @@ public class ShowEpisodePagingTests
         Entities.Current.Edges.ShowEpisodes.ReplaceRun(show.Slot, Episodes(0, 12), default);
         Asked(ShowUri, 12);
 
-        Assert.Equal(12, show.EpisodeSlots.Length);
+        Assert.Equal(12, Entities.Current.Edges.ShowEpisodes.Targets(show.Slot).Length);
         Assert.Equal(12, show.TotalEpisodes);                          // resident == total ⇒ no affordance
         Assert.Equal(12, show.EpisodesAsked);
         Assert.False(Rules.CanLoadMore(show.EpisodesAsked, 12, show.TotalEpisodes));
@@ -96,13 +96,13 @@ public class ShowEpisodePagingTests
         Entities.Current.Edges.ShowEpisodes.ReplacePage(show.Slot, 0, Episodes(0, 5), default, total: members);
         Asked(ShowUri, 5);                                              // one past the last member that HAS a row
 
-        Assert.Equal(5, show.EpisodeSlots.Length);
+        Assert.Equal(5, Entities.Current.Edges.ShowEpisodes.Targets(show.Slot).Length);
         Assert.Equal(members, show.TotalEpisodes);
         Assert.Equal(5, show.EpisodesAsked);
         Assert.True(Rules.CanLoadMore(show.EpisodesAsked, 0, show.TotalEpisodes));
 
         Asked(ShowUri, members);                                        // the ask walked to the end; nothing landed
-        Assert.Equal(5, show.EpisodeSlots.Length);                      // still five resident — the three are gone
+        Assert.Equal(5, Entities.Current.Edges.ShowEpisodes.Targets(show.Slot).Length);                      // still five resident — the three are gone
         Assert.Equal(members, show.EpisodesAsked);
         Assert.False(Rules.CanLoadMore(show.EpisodesAsked, 0, show.TotalEpisodes));   // retired, not looping forever
     }
