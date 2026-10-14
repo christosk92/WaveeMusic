@@ -275,11 +275,11 @@ internal static class ClassicArtistSections
         => ShelfOf(Items(a.ConcertSlots, EntityKind.Concert, ArtistSections.ConcertCap), s_concertCard,
                    Loc.Get(Strings.Artist.UpcomingConcerts), accent);
 
-    /// <summary>The concert stub is N-C's (ch 08 §9: Concert.UI.cs absorbs 0.2.9's ArtistPage.ConcertStub). No menu.</summary>
+    /// <summary>The concert stub is the concert cells' (`ClassicConcertCells.Stub`, T10b3; ch 08 §9: 0.2.9's ArtistPage.ConcertStub). No menu.</summary>
     static readonly Func<ShelfEntity, int, float, Element> s_concertCard = static (item, _, w) =>
     {
         var c = new Concert(item.Slot);
-        return Concert.Stub(c, () => ArtistVerbs.OpenConcert(c), w);
+        return ClassicConcertCells.Stub(c, () => ArtistVerbs.OpenConcert(c), w);
     };
 
     static Element MerchShelf(Artist a, ColorF accent)

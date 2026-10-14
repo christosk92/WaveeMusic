@@ -100,7 +100,7 @@ public sealed class ClassicColourRolesTests
             Pin("Layer.Badge", layer.Badge, _ => Tok.AccentDefault, kindExact: false),
             // `Design.ArtworkPlaceholder{Dark,Light}`.
             Pin("Layer.ArtPlaceholder", layer.ArtPlaceholder, k => k == ThemeKind.Dark ? ColorF.FromRgba(0x2A, 0x2A, 0x2A) : ColorF.FromRgba(0xF2, 0xF2, 0xF2)),
-            // `Concert.UI.DarkOr(r, g, b)`.
+            // The old `Concert.UI.DarkOr(r, g, b)` (the branches are these two roles since T10b3).
             Pin("Layer.EventPlate", layer.EventPlate, k => k == ThemeKind.Dark ? ColorF.FromRgba(0x1C, 0x1C, 0x1E) : Tok.FillCardSecondary, kindExact: false),
             Pin("Layer.EventHeroPlate", layer.EventHeroPlate, k => k == ThemeKind.Dark ? ColorF.FromRgba(0x1B, 0x1B, 0x1D) : Tok.FillCardSecondary, kindExact: false),
 
