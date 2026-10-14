@@ -772,6 +772,33 @@ and the layout document stay `HomeHostTests`, `FacetDimPlanTests` and `LayoutFil
 the registered template of every key, the real shell draws the page (column, pinned band, zone chapters), the band is the rule's height and the failure bar
 follows the phase, and the customizer's rows stand in document order at the row height.
 
+### Browse and Search (T10a2)
+
+The Browse directory, its Charts band, a category page, the section drill page and the Search results page are registered Classic views (`Themes\Classic\Structure\Views\Pages`); the load verdicts, the layout and ranking rules, the readiness of
+each facet, the demands and retries, the masthead publication and the hit adapters stay core. The omnibar (T4b, `Views\Search`) and the search query model are untouched.
+
+| Key | Props | Core host | Classic template |
+|---|---|---|---|
+| `Pages.Browse` | `BrowseDirectoryProps` (the scroll key, the `BrowseLoad` verdict, the memoized `BrowseTaxonomy.Grouped` bands, Retry) | `Browse.DirectoryPage` (`[CoreHost]`, `Entities\Browse.Page.cs`): the demand, the verdict, the band list rebuilt only when a tile row changed | `ClassicBrowseDirectory`: the masthead spacer over the `StickyClip(84)` column with the `WhileStuck` feather, the skeleton region (`SkelReveal.None`: the bands own the entrance), the six bands in taxonomy order (the 40 ms cascade from index 1), the loading directory over `BrowseDirectorySeeds` |
+| `Browse.Charts` | `BrowseChartsProps` (the `HomeLoad` state, the deck, the tile / header / Retry verbs) | `BrowseChartsBand` (`[CoreHost]`, public: the directory view mounts it as a component) | `ClassicBrowseDirectory.ChartsTemplate`: the Fold deck, its shimmer over the seed deck, the compact empty and the compact error |
+| `Pages.BrowseCategory` | `BrowseCategoryProps` (the verdict, the title, the layout `Mode`, one `BrowseBand` per answered band, the memoized concat list, the verbs) | `Browse.CategoryPage` (`[CoreHost]`): readiness, `BrowsePageLayout`, the card demands, the masthead title | `ClassicBrowseCategory`: shelves, tile blocks, the flattened grid, the empty and error arms (the Explore link on every arm), the non-virtual shimmer |
+| `Pages.BrowseSection` | `HomeSectionProps` | `SectionScreen` (mounts `Pages.HomeSection` for a Home section) | `ClassicHomeSection`, registered under its own template id so a theme may dress the Browse drill apart |
+| `Pages.Search` | `SearchPageProps` (the echo, the tabs, the slide, the verbs, `Pending` / `Failed`, and `Body`: a `Func<SearchBodyModel>`) | `Search.PageHost` (`[CoreHost]`, `Entities\Search.Page.cs`): the query row, the facet strip, the readiness of each facet, the demand and the recheck deadline, the fallback interleave, the rail's items, the column hysteresis | `ClassicSearchPage` (the echo, the facet row and its eleven-pill skeleton, the keyed sliding body, the three loading shapes) and `ClassicSearchBody` (the top result, Best matches, the rail, the Songs grid, the card-grid facets, the lists, the genre links, the related queries, the empty and error vacancies) |
+
+**The shared cells.** The five Browse densities (Word, Name, Link, Bar, Peek), the link grid, the star grid, the category block and the Explore link are `ClassicBrowseCells`; the
+Search page's genre links are the same Link cell over the same grid. The numbers are `Rules\ClassicBrowseRules.cs` and `Rules\ClassicSearchRules.cs`; the three column ladders that
+`BrowseLayout` held (Genres' fixed 720 / 380 bands, Mood's and More's floor-fits) are `Rules\Tiers.Browse.cs` (`ClassicBrowseTiers`) and no Classic view compares a width with a number (WVTH013).
+`BrowseMastheadMetrics` stays core: the Concert page, the module page and the drill page read the same reserve.
+
+**What a Search view may call.** The body is a MODEL the host builds each time the skeleton region asks for its content (`SearchBodyModel`: the hits as `Search.HitItem`s over the live
+handles, the fallback rows, the rail, the genre tiles, the related queries), so a hydrating hit row still re-reads in the region's own binding. A hit is drawn with the core adapters
+(`Search.HitData`, `OpenHit`, `PlayHit`, `MenuOf`, `DragOf`, `TrailingOf`, `TitleOf`, `CoverOf`, `SubtitleOf`, `CardDataOf`, `OpenRelated`) over the one media surface;
+`SearchHitRules` (shape, art, eyebrow, trailing, drag) stays core because the omnibar flyout reads it. Whether track art is hidden rides the hit context (`HitContext.HideTrackArt`).
+
+**Tests.** The ids, Classic's registration and the grid-facet rule are `Wavee.Tests\BrowseSearchContractTests.cs`; the column bands and the star grid are `BrowseLayoutTests`; the load gate, the facet rules and the hit decisions
+stay `BrowseLoadGateTests`, `SearchFacetRulesTests` and `SearchHitDataTests`. The mounted facts are `Wavee.ShellTests\BrowseSearchMountedTests.cs`: Classic is the registered template of every key, a tile block keys
+each tile by its destination's uri, the Search facet row is the skeleton until the first body has answered, and then carries one underline and a body keyed by the facet.
+
 ### The detail frame (T9a)
 
 The shared detail frame is the structure's picture over a core host. Every album, playlist, Liked, show and episode page hands `Detail.Frame` one

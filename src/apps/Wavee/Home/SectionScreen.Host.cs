@@ -115,7 +115,7 @@ public sealed class SectionScreen : Component
         int total = _total.Value;
 
         // The picture is the theme's: the padded body with the "N items" line over the skeleton region and the bound grid.
-        return Slots.View(ViewKeys.HomeSection, new HomeSectionProps
+        return Slots.View(p.Browse ? ViewKeys.BrowseSection : ViewKeys.HomeSection, new HomeSectionProps
         {
             Total = total,
             ScrollKey = _scrollScope + "home:section:" + (_p?.Uri ?? ""),

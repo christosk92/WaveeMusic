@@ -15,7 +15,7 @@
 //
 // The HStack + the 3-px bar form the BAND, exactly `FacetRowH` tall, pinned with `.Sticky(StuckInset, scope: PageScope)` (transparent, no
 // acrylic — the page column names itself `PageScope`, so the pin holds for the whole page and not just this row's own column). The page
-// cuts the content column under it with `.StickyClip(StuckBottom)` + a `WhileStuck` top feather (Browse.Page.cs's masthead idiom); the
+// cuts the content column under it with `.StickyClip(StuckBottom)` + a `WhileStuck` top feather (`ClassicBrowseDirectory`'s masthead idiom); the
 // zones read the same constants for their chapter headers' stick inset. The InfoBar sits BELOW the band, unpinned — it scrolls with the
 // page's flow and, when it grows, pushes the content (never overlays it).
 //

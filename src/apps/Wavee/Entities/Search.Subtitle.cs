@@ -1,6 +1,6 @@
 // ── Entities/Search.Subtitle.cs ────────────────────────────────────────────────────────────────────────────────────
 // The one search-subtitle composer: the kind word, then " · ", then what the target knows. Shared by the search page's
-// rows (Search.UI.SubtitleOf switches to it in WP6) and the omnibar flyout's rows.
+// rows (`Search.SubtitleOf` switches to it, `Search.Hits.cs`) and the omnibar flyout's rows.
 //
 // Role: UI
 // Owner: P

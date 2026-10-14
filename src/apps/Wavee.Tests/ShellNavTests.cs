@@ -172,7 +172,7 @@ public class ShellTrailTests
     [Fact]
     public void A_category_chip_on_a_category_page_keeps_that_page_as_its_parent()
     {
-        // Decades > 00s: the chip's origin is the page it was clicked on (Browse.Page.cs CategoryBlockOf).
+        // Decades > 00s: the chip's origin is the page it was clicked on (`ClassicBrowseCategory.CategoryBlockOf`, origin from `Browse.CategoryPage`).
         var decades = Shell.Parse("browse:spotify:page:decades", "Decades");
         var trail = Shell.Trail(Shell.Parse("browse:spotify:page:00s", "00s"), default, new Shell.NavOrigin("Decades", decades));
         Assert.Equal(3, trail.Count);

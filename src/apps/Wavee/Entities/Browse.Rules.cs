@@ -1,6 +1,6 @@
 // ── Entities/Browse.Rules.cs ───────────────────────────────────────────────────────────────────────────────────────
 // ch 13 §8's Browse rule set, ported verbatim from 0.2.9 Features/Browse/*: BrowseTaxonomy, ChartPages / ChartSections,
-// BrowseDirectorySeeds, BrowsePageLayout, BrowseMastheadMetrics, BrowseLayout, BrowseTiles.ToModel
+// BrowseDirectorySeeds, BrowsePageLayout, BrowseMastheadMetrics, BrowseTiles.ToModel (BrowseLayout's column ladders went to Classic: Rules\Tiers.Browse.cs, its numbers Rules\ClassicBrowseRules.cs)
 //
 // Role: CORE
 // Owner: P
@@ -357,52 +357,6 @@ public static class BrowseMastheadMetrics
     public static Edges4 FamilyUnderBandPad(float bottom) => new(Spacing.PageWide, 0f, Spacing.PageWide, bottom);
 }
 
-/// <summary>Layout constants and the column math for the Browse cells (0.2.9 <c>BrowseTiles.cs:286-358</c>).</summary>
-public static class BrowseLayout
-{
-    public static float FrameTop => Spacing.XXXL;
-    public static float MastheadReserve => BrowseMastheadMetrics.Reserve;
-    public static float FrameX => Spacing.PageWide;
-    public static Edges4 Frame(float bottom) => new(FrameX, FrameTop, FrameX, bottom);
-    /// <summary>First-frame width guess the directory's Responsive grids share before a real measure lands.</summary>
-    public const float DirectoryFallbackWidth = 900f;
-
-    public const float WordChipH = 36f;
-    public const float NameChipH = 32f;
-    public static float ChipGap => Spacing.S;
-    public const float TickW = 3f;
-    public const float TickH = 14f;
-    public const float BarHeight = 52f;
-    public const float MoreHeight = 88f;
-    public const float Peek = 80f;
-    public const float PeekCopyFrac = 0.62f;
-    public const float Pip = 8f;
-
-    /// <summary>The Genres grid's column bands — fixed bands, never a floor-divide that flaps across one pixel.</summary>
-    public static int LinkColumns(float width) => width > 720f ? 3 : width > 380f ? 2 : 1;
-
-    public const float BarColMin = 132f;
-    /// <summary>The Mood grid — plain floor-fit, NO cap.</summary>
-    public static int BarColumns(float width) => Math.Max(1, (int)(width / BarColMin));
-
-    public const float MoreColMin = 168f;
-    const int MoreColMax = 4;
-    /// <summary>The More grid — floor-fit, capped at four.</summary>
-    public static int MoreColumns(float width) => Math.Clamp((int)(width / MoreColMin), 1, MoreColMax);
-
-    /// <summary>A star grid, not a wrapped flex row (a row of Grow cells reports a one-line measure). AlignSelf Stretch
-    /// backfills a 1-column band; zero cells is a bare box.</summary>
-    public static Element StarGrid(int columns, float colGap, float rowGap, IReadOnlyList<Element> cells)
-    {
-        if (cells.Count == 0) return new BoxEl();
-        var tracks = new TrackSize[Math.Max(1, columns)];
-        for (int i = 0; i < tracks.Length; i++) tracks[i] = TrackSize.Star();
-        var children = new Element[cells.Count];
-        for (int i = 0; i < children.Length; i++) children[i] = cells[i];
-        return Ui.Grid(tracks, colGap, rowGap, float.NaN, children) with { AlignSelf = FlexAlign.Stretch };
-    }
-}
-
 /// <summary>One destination a Browse cell renders, wherever it came from — a directory category, a page's related
 /// block, a search genre (0.2.9 <c>BrowseTileModel</c>).</summary>
 public readonly record struct BrowseTileModel(string Title, string Uri, uint? Color, string? Artwork, Action Open);
@@ -416,7 +370,7 @@ public static class BrowseTileOrigin
         => isDirectory ? null : new Shell.NavOrigin(pageTitle, pageRoute);
 }
 
-/// <summary>The cell factories' pure half (the densities themselves are <c>Browse.UI.cs</c>).</summary>
+/// <summary>The cell factories' pure half (the densities themselves are Classic's `ClassicBrowseCells`; the verbs a tile runs are `Browse.Verbs.cs`).</summary>
 public static partial class BrowseTiles
 {
     /// <summary>One category → one tile model. Both handlers null ⇒ the shared inert <see cref="ToModelNoop"/> (the

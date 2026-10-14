@@ -27,8 +27,8 @@
 //
 // WAVE 5 (owner P, stream P3) adds §5 in the named partial Browse.Rules.cs: ch 13 §8's pure rule set, ported VERBATIM from 0.2.9 —
 // `BrowseTaxonomy` (the curated uri→band map, `BandOrder`, `Grouped`), `ChartPages` / `ChartSections`,
-// `BrowseDirectorySeeds`, `BrowsePageLayout`, `BrowseMastheadMetrics`, `BrowseLayout` (the four column functions and
-// `StarGrid`) and `BrowseTiles.ToModel`. Only the INPUT types changed: 0.2.9's `BrowseCategory` / `BrowseSection` /
+// `BrowseDirectorySeeds`, `BrowsePageLayout`, `BrowseMastheadMetrics` and `BrowseTiles.ToModel` (`BrowseLayout`'s four
+// column functions and `StarGrid` went to Classic in T10a2: `Rules\Tiers.Browse.cs`, `Rules\ClassicBrowseRules.cs`, `ClassicBrowseCells`). Only the INPUT types changed: 0.2.9's `BrowseCategory` / `BrowseSection` /
 // `BrowsePageModel` records are the small value facts below (`BrowseCategory`, `BrowseSectionFacts`,
 // `BrowsePageFacts`), which a page projects from the table rows it already reads — the rules never see a table.
 //

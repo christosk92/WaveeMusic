@@ -11,7 +11,7 @@
 // `StyleKeys.TrackTable` style; T8b its chrome, `ClassicTrackChrome.cs`), T8c the other list surfaces (`Lists\ClassicEagerRow.cs`,
 // `ClassicEpisodeRow.cs`, `ClassicSurface.cs`, `ClassicArtistChart.cs`, `ClassicTrackDrawer.cs`, with the shared cells in `ClassicRowCells.cs`:
 // the `StyleKeys.EagerTrackRow`, `EpisodeRow`, `Surface`, `ArtistChart` and `TrackDrawer` styles), T10a1 Home (`Views\Home`: the page, facet row, daylist and clock, zone bodies, the drill page and the
-// customizer), T9a the shared detail frame (`Views\Detail`: the scaffold, the rail and its strip, the show header, the hero, the insights sheet); every other surface is still core code. It
+// customizer), T9a the shared detail frame (`Views\Detail`: the scaffold, the rail and its strip, the show header, the hero, the insights sheet), T10a2 Browse and Search (`Views\Pages`: the directory and its Charts band, a category page, the section drill key, the Search results page); every other surface is still core code. It
 // decides the shell's policies (`Rules\ClassicPolicies.cs`: nav pane, panel and mini player, player bar, chrome row, stage)
 // and offers every capability (T3). Its window tiers (T3b) are `Rules\Tiers.cs`.
 //
@@ -155,6 +155,15 @@ public sealed class ClassicStructure : IStructureLayer
         ClassicLiked.Register(views);
         ClassicShow.Register(views);
         ClassicEpisode.Register(views);
+        // T10a2: Browse and Search (`Views\Pages`). The directory (the clipped masthead column and the six bands), its Charts band (a core host over the chart
+        // deck), a category page (shelves, tile blocks, the flattened grid, the empty and error arms), the section drill page (the Home drill template under
+        // its own key) and the Search results page (the query echo, the facet row, the sliding facet body). The load verdicts, the layout and ranking rules, the
+        // readiness of each facet, the demands and the hit adapters stay core.
+        views.Add(ViewKeys.BrowseDirectory, ClassicBrowseDirectory.Template, "classic.browse.directory");
+        views.Add(ViewKeys.BrowseCharts, ClassicBrowseDirectory.ChartsTemplate, "classic.browse.charts");
+        views.Add(ViewKeys.BrowseCategory, ClassicBrowseCategory.Template, "classic.browse.category");
+        views.Add(ViewKeys.BrowseSection, ClassicHomeSection.Template, "classic.browse.section");
+        views.Add(ViewKeys.SearchPage, ClassicSearchPage.Template, "classic.search.page");
     }
 
     /// <inheritdoc />

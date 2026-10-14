@@ -65,6 +65,5 @@ public class BrowseMastheadMetricsTests
         Assert.Equal(100f, BrowseMastheadMetrics.BodyTop);
         Assert.Equal(84f, BrowseMastheadMetrics.ClipInset);
         Assert.Equal(24f, BrowseMastheadMetrics.ClipFadeBand);
-        Assert.Equal(BrowseMastheadMetrics.Reserve, BrowseLayout.MastheadReserve);
     }
 }

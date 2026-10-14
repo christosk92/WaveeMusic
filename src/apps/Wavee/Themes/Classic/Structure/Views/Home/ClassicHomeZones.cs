@@ -2,7 +2,7 @@
 //
 // From `Home\Zones.UI.cs` (the home rebuild's fifth + sixth + seventh pass), moved with its comments. Nothing here is a card template or a
 // hover recipe of its own: every zone body is composed from exactly the pieces the app's native pages compose — `PagedShelf` +
-// `HomeCards.ShelfCell` + `HomeCardNav` (Entities/Browse.Page.cs's shelf, verbatim), `Controls.Surface` rows (`Shape.Row*`) in a `GridEl`,
+// `HomeCards.ShelfCell` + `HomeCardNav` (`ClassicBrowseCategory`'s shelf, verbatim), `Controls.Surface` rows (`Shape.Row*`) in a `GridEl`,
 // stock `SettingsCard`, `Ui.Card` + `Ui.SectionHeader`, `Controls.Vacancy` — and every header is `HomeModules.ModuleHeader`
 // (Entities/Browse.Modules.cs). Type is `R.Type.*`, rhythm is `Spacing.*`/`Design.Size.*`, radii are `Radii.*`. The data pipeline (`Zone`,
 // `ZoneCluster`, `RecentsCells`, `ReleaseListRules`, `ShelfLead`, `EpisodeCaption`) is core and untouched; the numbers are
@@ -24,7 +24,7 @@
 //              EdgeFade = EdgeFadeSpec(Top, ClipFadeBand) { WhileStuck = true }
 //
 // The header pins under the (transparent) facet row and the body cuts ITSELF at the header's lower edge, feathered only while the clip is
-// engaged — the Browse masthead / Artist band idiom (Browse.Page.cs:24-29,165-173; Artist.Page.cs:525-545). The zone box is the sticky SCOPE,
+// engaged — the Browse masthead / Artist band idiom (`ClassicBrowseDirectory`; Artist.Page.cs:525-545). The zone box is the sticky SCOPE,
 // so the pinned header releases where its own content ends and the next zone's header pushes it out (the engine's stock scope clamp). No
 // acrylic, no band fill, nowhere.
 //
@@ -231,7 +231,7 @@ internal static class ClassicHomeZones
 
     static IOverlayService? HostOf(IOverlayService? overlay) => Controls.IsNullOverlay(overlay) ? null : overlay;
 
-    // ── 2.1 cover shelves: PagedShelf of the house shelf cell, verbatim Browse.Page.cs's Shelf ────────────────────────
+    // ── 2.1 cover shelves: PagedShelf of the house shelf cell, verbatim `ClassicBrowseCategory`'s Shelf ────────────────────────
 
     /// <summary>Three shapes of ONE shelf. A WIDE shelf (WideTiles/VideoTiles) is 16:9 cells — the card's header image
     /// (or its cover) through <c>CardData.CoverAspect</c>, an owner · count meta line, the wide min/max card widths. A

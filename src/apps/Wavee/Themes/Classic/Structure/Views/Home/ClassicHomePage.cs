@@ -1,7 +1,7 @@
 // ── Themes/Classic/Structure/Views/Home/ClassicHomePage.cs — Classic's `Pages.Home` (themes plan 6.1, T10a1) ──────────────────
 //
-// From `Home\HomeScreen.cs`: the render half of the Home page, rebuilt from the app's own page idiom (Artist.Page.cs ~389, Browse.Page.cs
-// ~150): ONE plain `ScrollView` column, no `ItemsView` of zones, no lanes/extents/RowAt/Tail, no width query, no parallax, no overlay
+// From `Home\HomeScreen.cs`: the render half of the Home page, rebuilt from the app's own page idiom (Artist.Page.cs ~389, `ClassicBrowseDirectory`):
+// ONE plain `ScrollView` column, no `ItemsView` of zones, no lanes/extents/RowAt/Tail, no width query, no parallax, no overlay
 // InfoBar.
 //
 //   Pages.Home
@@ -59,7 +59,7 @@ internal static class ClassicHomePage
             Reveal: SkelReveal.None, Style: SkeletonStyle.Default, Group: props.Group, SmoothResize: false);
 
         // THE CLIP IS THE CONTRACT: the band paints nothing, so the content cuts itself at the band's lower edge and
-        // feathers that cut exactly while the clip is engaged (Browse.Page.cs's directory / Artist.Page.cs's magazine).
+        // feathers that cut exactly while the clip is engaged (`ClassicBrowseDirectory`'s directory / Artist.Page.cs's magazine).
         Element content = new BoxEl
         {
             Key = "home:content", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,

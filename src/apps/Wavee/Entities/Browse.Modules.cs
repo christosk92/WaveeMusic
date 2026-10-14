@@ -3,7 +3,7 @@
 // directory, Home's Charts row and Browse's own Charts band shared ONE row factory) and the drill grid (the Home
 // section page's and Browse's FlattenOne body). Split out of the superseded Wave-5 Home UI (Home.UI.cs, Home.Rules.cs
 // §6) when the Home page itself was rebuilt (docs/plans/wavee/home-rebuild-implementation.md §7) — moved UNCHANGED so
-// Browse.Page.cs / Browse.UI.cs / Search.UI.cs need no call-site edits. Only the members those callers (and each
+// the Browse and Search pictures needed no call-site edits (T10a2 moved those into Classic's `Views\Pages`, which call them directly). Only the members those callers (and each
 // other) actually reach are kept; the landing-only geometry (HomeGroupKind columns/heights/row-gaps, the estimator's
 // ContentExtent) went with the rest of the Wave-5 Home UI.
 
