@@ -512,10 +512,10 @@ arrives as facts (`StageTransportFacts`, `StageDeviceFacts`, read inside the tem
 (`IPlayerVerbs`, `IStageSettingsVerbs`: one `Prefs.Stage` setter each, the sync offset also pushes the audio graph's spectrum offset, a face pick also
 writes the `viz.pick` line) or as builders (the bar's own seek rail and time labels, the device picker's rows).
 
-**Layers other lanes own arrive as builders.** `StageRootView.Layers` carries `Func<Element>` over the core components of the backdrop, hero layer, face, face
-scrim, spectrum, now-playing card, identity, artist name and pane host (T7a2; the lyrics pane inside the pane host is T7b's and the queue pane T7d's),
-plus the zero-size machinery (lyric facts, hero facts, the visualizer clock) the template must still place. The root keys and orders them exactly as the stack
-always was.
+**Layers other lanes own arrive as builders.** `StageRootView.Layers` carries `Func<Element>` over the core components of the pane host (the lyrics pane inside
+it is T7b's and the queue pane T7d's), the caption host, plus the zero-size machinery (lyric facts, hero facts, the visualizer clock) the template must still
+place. The backdrop, hero photo, face, scrim, spectrum, now-playing card, identity and artist name were builders here until T7a2 gave them keys (below). The root
+keys and orders them exactly as the stack always was.
 
 **Numbers.** `Rules\StageGeometry.cs` holds the frame's look (the chrome's Enter/Exit offsets, the top bar's selector and brand, the transport card's paddings,
 glyph and disc sizes, the volume slider's alphas); `StageGeometry.Options.cs`, `.Gallery.cs` and `.Caption.cs` hold their views'. The allocator's
@@ -530,6 +530,47 @@ table (`StageInk.Ink`, `GlassHover`, `Card`, `SelectedTileWash`, ...) and never 
 `StageSettingsVerbsTests.cs` pins what the option surfaces write (each verb persists and bumps the stage epoch once, a picked face survives other writes);
 `Wavee.ShellTests\StageFrameMountedTests.cs` opens the real stage under Classic and checks the registered templates, the root's stack and the chrome's
 nodes, then mounts the top bar, the transport card, the options popover and the gallery alone under `ViewHarness` with fixture props.
+
+### The fullscreen stage's layouts (T7a2)
+
+The four layouts (Card, Large art, Centered, Artist) stay a **core choice** (owner Q16: every theme draws all four): which layout is drawn
+(`Stage.Layout.ClassOf/Resolve`, `Stage.LayoutRules`, `Stage.Look`), the allocator's authored extents (the cover's rect, the titles' fonts and widths, the strip
+and ring, the face-safe rect, the pane's rect: `Stage.Layout`) and `StagePolicy` are core. What a theme draws is each layer **for the look the core decided**, in
+every aspect class (Desktop / Compact / Portrait / Ultrawide).
+
+| Key | Props | Core half | Classic template |
+|---|---|---|---|
+| `Stage.Backdrop` | `StageBackdropProps` (`Shown`) | `Stage.BackdropProps` (`Shell\Stage.Layers.cs`) | `ClassicStageBackdrop` (+ `ClassicStageBackdropArt`): the baked cover (old kept under new), the base field, the scrim; one quarter-scale repaint boundary |
+| `Stage.Hero` | `StageHeroProps` (`PrefetchDue`) | `Stage.HeroFacts` (the lookups) | `ClassicStageHero` -> `ClassicStageHeroLayer` / `ClassicStageHeroPhoto`: the Artist layout's photo (Ken Burns on the render thread, the cross-fade on a new artist, the hidden next-track decode) and its two scrims |
+| `Stage.ArtistName` | `StageArtistNameProps` (`Name`) | `Stage.ArtistNameProps` | `ClassicStageArtistName`: the eyebrow and the huge name |
+| `Stage.Face` | `StageLayerProps` | the face pick, `Visualizer.Face` | `ClassicStageFace`: the face on a keyed child (per kind and 8 DIP width bucket), inset while the gallery is open, told its safe rect |
+| `Stage.FaceScrim` | `StageFaceScrimProps` (`Alpha`) | `LayoutRules.BackdropScrim` | `ClassicStageFaceScrim`: the veil over a backdrop face |
+| `Stage.Spectrum` | `StageLayerProps` | `Stage.Layout.StripRect/RingBox` | `ClassicStageSpectrum`: the strip or ring in its own repaint boundary |
+| `Stage.NowPlayingCard` | `StageNowPlayingCardProps` (`Shown`) | `LayoutRules.ShowsNowPlayingCard` | `ClassicStageNowPlayingCard`: the acrylic card behind the Card thumb |
+| `Stage.Identity` | `StageIdentityProps` (`Title`, `Meta`, `Chips`, `NowPlayingMenu`, `OpenArtist`) | `Stage.IdentityProps`, `MetaFacts`, `ChipFacts` | `ClassicStageIdentity` (+ `ClassicStageMetaLink`, `ClassicStageChips`): the cover (`stage:cover`, the **bounds spring**) and the title column (`stage:titles`, the position spring) |
+| `Stage.ArtistPane` | `StageArtistPaneProps` (the facts, the demands, the navigation verbs) | `Stage.ArtistPaneProps`, `Stage.ArtistFacts` (`Shell\Stage.Artist.cs`), `Stage.ArtistRules` | `ClassicStageArtistPane`: the header band, About, This song, Popular, Where people listen, Fans also like |
+
+**The layers read the stage context's signals inside their own renders.** `StageLayerProps` and its siblings carry the `Stage.StageCtx`; a template reads
+`Layout`, `Look`, `Mode`, `Kind`, `Accent`, `Palette`, ... itself, so a layer re-renders on exactly what it read (a track change re-renders the identity and the
+backdrop, never the face). What a theme may not name arrives as a predicate or a fact the template calls inside its render, and a signal read there subscribes
+that layer: `Shown` / `Alpha` / `PrefetchDue` / `Name` / `Title` are `Func`s, the identity's meta line and chips are facts read by their own leaf components
+(the format / device / owner signals re-render the chips row only), the Artist pane's sections each call one fact (`Header`, `About`, `Song`, `Popular`,
+`Cities`, `Fans`) that reads its own tables. The facts are the old components' render bodies, moved verbatim: the same reads in the same order. The props are
+built once per stage context (the pane host caches the pane's), so an equal record re-renders nothing.
+
+**Motion is the stage's, unchanged.** The cover's bounds spring (`SizeMode.ScaleCorrect`) and the titles' position spring are the layout switch's morph; the
+face is remounted per kind and width bucket under a 0.55 s decelerate; the hero photo cross-fades over the old one and is keyed by the artist slot; reduced
+motion rests the pan (`Design.Reduced`) and keeps the fades. A null or empty fact is "no section": the Artist pane shows "Nothing playing" without an artist, an
+empty scroller while the facts land, and a section that has nothing takes no space.
+
+**Numbers.** `Rules\StageGeometry.Layers.cs` holds the identity's chips and cover corners, the card's entrance and the artist name's eyebrow;
+`StageGeometry.Artist.cs` the pane's base DIPs (times `Layout.QueueScale`, rounded by `ClassicStageArtistKit.Px`). The decisions (two columns from 1100 DIP, the
+header's height, the reading measure, how many avatars fit) are `Stage.ArtistRules`, which the pane calls.
+
+**Tests.** `Wavee.Tests\StageLayerContractTests.cs` pins the keys' ids, Classic's registration and the facts' value equality;
+`Wavee.ShellTests\StageLayersMountedTests.cs` opens the real stage and mounts the identity (the cover at the allocator's size, the bounds spring on a layout
+switch), the spectrum, the backdrop and the Artist pane (nothing playing, no facts yet, facts, the demand once per artist and track) under `ViewHarness`.
+`LiveOptionBehaviourTests` keeps pinning the spring on the real stage.
 
 ## 3. Options
 

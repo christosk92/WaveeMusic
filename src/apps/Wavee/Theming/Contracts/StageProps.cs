@@ -13,6 +13,7 @@
 //   `Stage.Gallery`    StageGalleryProps       the visualizer gallery pane
 //   `Stage.Options`    StageOptionsProps       the options popover (it mounts in the overlay layer, outside the stage subtree)
 //   `Stage.Caption`    StageCaptionProps       the lyric caption (its own file)
+//   `Stage.Backdrop` ... `Stage.ArtistPane`   the layout layers (T7a2: `StageLayerProps.cs`)
 //
 // WHY THE ROOT IS MOUNTED THROUGH `Mount`. The surface is a component with hooks that must run in a fixed order whatever theme
 // is active, and its tree is the structure's: so the frame mounts the key, the template calls `props.Mount(Draw)` and the core
@@ -104,32 +105,37 @@ public sealed record StageRootView
 
     public required StageGalleryProps Gallery { get; init; }
 
-    /// <summary>The layers other T-PRs own, as builders until each has a key (layouts, hero, artist pane: T7a2; lyrics: T7b; queue: T7d).</summary>
+    // ── the layout layers' views (T7a2) ──────────────────────────────────────────────────────────────────────────────
+
+    public required StageBackdropProps Backdrop { get; init; }
+
+    /// <summary>The Artist layout's photo and scrims (mounted under <see cref="ShowHeroLayer"/>).</summary>
+    public required StageHeroProps Hero { get; init; }
+
+    public required StageLayerProps Face { get; init; }
+
+    public required StageFaceScrimProps FaceScrim { get; init; }
+
+    public required StageLayerProps Spectrum { get; init; }
+
+    public required StageNowPlayingCardProps NowPlayingCard { get; init; }
+
+    /// <summary>The morphing cover and its title column.</summary>
+    public required StageIdentityProps Identity { get; init; }
+
+    /// <summary>The Artist layout's big name (mounted under <see cref="ShowArtistName"/>).</summary>
+    public required StageArtistNameProps ArtistName { get; init; }
+
+    /// <summary>The layers other T-PRs own, as builders until each has a key (lyrics: T7b; queue: T7d, both inside the pane host).</summary>
     public required StageLayers Layers { get; init; }
 }
 
-/// <summary>Element builders of the stage's layers that are not this PR's. Each is a cached static over the core component; the root
-/// places them (and keys them) at the position the stack has always had.</summary>
+/// <summary>Element builders of the stage's layers that are not the layout layers' (those are views since T7a2: backdrop, hero, face, scrim,
+/// spectrum, card, identity, artist name). Each is a cached static over the core component; the root places them (and keys them) at the
+/// position the stack has always had.</summary>
 public sealed record StageLayers
 {
-    public required Func<Element> Backdrop { get; init; }
-
-    public required Func<Element> HeroLayer { get; init; }
-
-    public required Func<Element> Face { get; init; }
-
-    public required Func<Element> FaceScrim { get; init; }
-
-    public required Func<Element> Spectrum { get; init; }
-
-    public required Func<Element> NowPlayingCard { get; init; }
-
-    /// <summary>The morphing cover and its title column.</summary>
-    public required Func<Element> Identity { get; init; }
-
-    public required Func<Element> ArtistName { get; init; }
-
-    /// <summary>The pane region (lyrics, up next, the artist pane).</summary>
+    /// <summary>The pane region (lyrics, up next; the Artist pane inside it is <see cref="ViewKeys.StageArtistPane"/>).</summary>
     public required Func<Element> Pane { get; init; }
 
     /// <summary>The caption's core host (it mounts <see cref="ViewKeys.StageCaption"/>).</summary>

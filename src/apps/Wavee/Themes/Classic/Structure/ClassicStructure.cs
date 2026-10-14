@@ -5,7 +5,7 @@
 // `Views\Search\ClassicSearch.cs`), T4c the frame's small views (`Views\Masthead`, `Material`, `Drawer`, `Palette`, `FrameBits`),
 // T5a the navigation pane's rows (`Views\Nav\ClassicNavPane.cs`, `ClassicNavRows.cs`, `ClassicNavRow.cs`), T5b its heads
 // (`ClassicNavHead.cs`, `ClassicNavFilter.cs`, `ClassicNavLibraryHead.cs`), T6a the player bar (`Views\Player\ClassicPlayerBar.cs`),
-// T6b the right panel and the player's flyouts (`Views\Panel`, `Views\Player`), T7a1 the fullscreen stage's frame (`Views\Stage`),
+// T6b the right panel and the player's flyouts (`Views\Panel`, `Views\Player`), T7a1 the fullscreen stage's frame and T7a2 its layout layers (`Views\Stage`),
 // T8a the track table's rows (`Lists\ClassicTrackTable.cs`: the Modern and Classic bound-row templates, registered as the
 // `StyleKeys.TrackTable` style); every other surface is still core code. It
 // decides the shell's policies (`Rules\ClassicPolicies.cs`: nav pane, panel and mini player, player bar, chrome row, stage)
@@ -83,6 +83,15 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.StageOptions, ClassicStageOptions.Template, "classic.stage.options");
         views.Add(ViewKeys.StageGallery, ClassicStageGallery.Template, "classic.stage.gallery");
         views.Add(ViewKeys.StageCaption, ClassicStageCaption.Template, "classic.stage.caption");
+        views.Add(ViewKeys.StageBackdrop, ClassicStageBackdrop.Template, "classic.stage.backdrop");
+        views.Add(ViewKeys.StageHero, ClassicStageHero.Template, "classic.stage.hero");
+        views.Add(ViewKeys.StageArtistName, ClassicStageArtistName.Template, "classic.stage.artist-name");
+        views.Add(ViewKeys.StageFace, ClassicStageFace.Template, "classic.stage.face");
+        views.Add(ViewKeys.StageFaceScrim, ClassicStageFaceScrim.Template, "classic.stage.face-scrim");
+        views.Add(ViewKeys.StageSpectrum, ClassicStageSpectrum.Template, "classic.stage.spectrum");
+        views.Add(ViewKeys.StageNowPlayingCard, ClassicStageNowPlayingCard.Template, "classic.stage.now-playing-card");
+        views.Add(ViewKeys.StageIdentity, ClassicStageIdentity.Template, "classic.stage.identity");
+        views.Add(ViewKeys.StageArtistPane, ClassicStageArtistPane.Template, "classic.stage.artist-pane");
     }
 
     /// <inheritdoc />
