@@ -456,7 +456,7 @@ the one coat) and the floating one paints its own ring and elevation.
 re-mounts the deck exactly as it did and a mode switch re-mounts nothing the deck owns. Which face paints is the core's decision
 (`Rail.PlayerPrefs.ResolvedPresentation`, developer-gated as today). Every write goes through `IDeckStyleVerbs` with the surface that made it.
 
-**Builders other lanes still own.** The lyrics header and body (T7b), the video body (T7c), the queue body (T7d), the docked video card, the
+**Builders other lanes still own.** The lyrics header (T7b, not yet a key; the body is `Lyrics.View` since T7b, mounted by the core builder `Lyrics.View()`), the video body (T7c), the queue body (T7d), the docked video card, the
 lyrics peek and the "Next up" rows arrive as `Func<Element>` members on the props; their keys replace them.
 
 **Tests.** The pinned slot, the mode vocabulary and the picker's entries are pure (`Wavee.Tests\PanelContractTests.cs`); the mounted facts are
@@ -563,7 +563,7 @@ arrives as facts (`StageTransportFacts`, `StageDeviceFacts`, read inside the tem
 writes the `viz.pick` line) or as builders (the bar's own seek rail and time labels, the device picker's rows).
 
 **Layers other lanes own arrive as builders.** `StageRootView.Layers` carries `Func<Element>` over the core components of the pane host (the lyrics pane inside
-it is T7b's and the queue pane T7d's), the caption host, plus the zero-size machinery (lyric facts, hero facts, the visualizer clock) the template must still
+it mounts `Lyrics.View` since T7b, below, and the queue pane is T7d's), the caption host, plus the zero-size machinery (lyric facts, hero facts, the visualizer clock) the template must still
 place. The backdrop, hero photo, face, scrim, spectrum, now-playing card, identity and artist name were builders here until T7a2 gave them keys (below). The root
 keys and orders them exactly as the stack always was.
 
@@ -621,6 +621,52 @@ header's height, the reading measure, how many avatars fit) are `Stage.ArtistRul
 `Wavee.ShellTests\StageLayersMountedTests.cs` opens the real stage and mounts the identity (the cover at the allocator's size, the bounds spring on a layout
 switch), the spectrum, the backdrop and the Artist pane (nothing playing, no facts yet, facts, the demand once per artist and track) under `ViewHarness`.
 `LiveOptionBehaviourTests` keeps pinning the spring on the real stage.
+
+### Lyrics (T7b)
+
+| Key | Props / style | Core half | Classic template |
+|---|---|---|---|
+| `Lyrics.View` | `LyricsViewProps` (`Host` is an `ILyricsHost`; `Message`, `Body`, `Ticker`, `Debug`, `Footer`) | `Lyrics.ViewCore` (`Shell\Lyrics.UI.cs`, `Lyrics.Host.UI.cs`; the rail's body, the stage's pane and the podcast reader mount it) | `ClassicLyrics` (`Views\Lyrics\`): the layer stack, the breathing dots, the resync pill and its ring, the "no sync during video" note, the AI disclosure's place under the layers, the stage's capped left-anchored column |
+| `StyleKeys.LyricsLines` | `LyricsLinesStyle` (`Message`, `Shimmer`, `Skeleton`, `Unsynced`, `Lines`, `Peek`) | the host calls it where a document is on screen | `ClassicLyricsLines` (`Lists\`): the state line, the loading bars, the unsynced block, the measured virtual list and its rows (`ClassicLyricsRow`), the podcast peek and its gate |
+
+**The model and the driver stay core.** `LyricsModel` (state, document, the upgrade gate, the clock, the follow and resync machine, the interlude
+reserve, the second line, the AI state, the verbs), `Lyrics.BlurPolicy` / `Lyrics.Prefs.BlurStrength(onStage)` and the frame driver in `ViewCore`
+(the media clock, the active-line latch and the staggered cascade, the depth-of-field ramp, the word wipe and its render-thread keyframes, the halo
+fades, the motion demand, the ticker and stepper, the node handles they write) are untouched; so is the stage's `PaneHost` (`PaneFrame`, the
+KeepAlive, the keyed pane) which still mounts `Lyrics.StagePane`. The core host builds a `LyricsViewProps` each render and mounts
+`Slots.View(ViewKeys.LyricsView, props)`; its `DocHost` (the store sync and the skeleton region) and the transcript host call the lines style for
+a picture and decide which one: a timed document that is not suppressed by a video is `Lines`, any other `Unsynced`, a reader browsing an episode
+that is not playing `Peek`.
+
+**What a theme reaches.** The WVTH002 fence applies: the template and the rows read the core only through `ILyricsHost`, the mount config and facts
+(`Large`, `OnStage`, `TypeScale`, `Ink`, `Accent`, `Band`, `Metrics`, the podcast flags), the live signals a row reads (`EmphasisOf(i)`, `GlowOf(i)`,
+`SecondaryLine`, `HaloScale`, `Now`, `Follow`), the per-line reads the frame driver owns (`DofShownFor`, `SoftnessOfLine`), the node reports
+(`ReportLineNode`, `ReportGlowNode`, `ReportDofNode`, `OnDotsRealized`: the driver writes those nodes by handle) and the verbs (`SeekToLine`,
+`Resync`). A read inside a template's render subscribes THAT render, as it did in the old components: a row re-renders on its own emphasis shape,
+the dots on their flag, the pill on the follow state. `host.EnsureLayout()` hands the list the one `MeasuredLayout` the follow and the dots also read.
+
+**Blur.** The depth blur is the core's: `Lyrics.Prefs.BlurStrength(OnStage)` resolves the stored strength (the stage's is ALWAYS 0; the rail's follows
+the setting) and the frame driver ramps every line's σ toward it; a row only carries the σ the host says (`DofShownFor`) and the active line's halo
+scale (`HaloScale`, which follows the user's setting on the stage too). `LyricsLinesStyle` has no `StageDepthBlur` yet: that field and the 3-argument
+`BlurPolicy.ResolveFor` belong to M14/W4c.
+
+**Motion is the surface's, unchanged.** The row keeps its mount-once fields (the opacity spring retargeted by a signal effect, the scale springs keyed
+by the active flip and reduced motion, the frozen seed opacity), the wipe/glow/σ/cascade handles are the same nodes in the same places, the
+pill, dots and note keep their Enter/Exit. The ink mapping (`Lyrics.Ink`) stays core: the AI footer and the transcript reader share it, and it
+becomes `Roles.Lyrics*` with the colour-role pass.
+
+**Not moved yet.** The panel's lyrics header (`Rail.LyricsHeader`: the globe, the AI sparkle, expand, the inspector button; it shares
+`Rail.HeaderButton`) and the now-playing panel's two-row peek (`Lyrics.NpvPeek`) are still core builders (`PanelProps.LyricsHeader`,
+`NowPlayingHeroProps.LyricsPeek`).
+
+**Numbers.** `Rules\ClassicLyricsRules.cs`: the column's cap and gutter, the state line, the note, the pill, the peek's meta line, the dots' entrance,
+the stage's accent pill and the secondary weight. The metrics (`Lyrics.Surface`: row type and rhythm, the focal band, the halo sigmas, the loading
+bars) are the core's and the views read them by name.
+
+**Tests.** `Wavee.Tests\LyricsViewContractTests.cs` pins the keys' ids, Classic's registration and the style's members;
+`Wavee.ShellTests\LyricsViewMountedTests.cs` opens the real rail on lyrics (nothing playing: the centred line; a fixture track: the keyed rows and
+the layer overlays) and the real stage's column, and `LiveOptionBehaviourTests.Lyrics_blur_strength_reaches_the_rail_lines_and_never_the_stage`
+keeps pinning the blur.
 
 ### Home (T10a1)
 

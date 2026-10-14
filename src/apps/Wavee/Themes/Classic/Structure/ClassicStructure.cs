@@ -6,6 +6,7 @@
 // T5a the navigation pane's rows (`Views\Nav\ClassicNavPane.cs`, `ClassicNavRows.cs`, `ClassicNavRow.cs`), T5b its heads
 // (`ClassicNavHead.cs`, `ClassicNavFilter.cs`, `ClassicNavLibraryHead.cs`), T6a the player bar (`Views\Player\ClassicPlayerBar.cs`),
 // T6b the right panel and the player's flyouts (`Views\Panel`, `Views\Player`), T7a1 the fullscreen stage's frame and T7a2 its layout layers (`Views\Stage`),
+// T7b the lyrics surface (`Views\Lyrics\ClassicLyrics.cs`) and its lines style (`Lists\ClassicLyricsLines.cs`, the `StyleKeys.LyricsLines` style),
 // T8a the track table's rows (`Lists\ClassicTrackTable.cs`: the Modern and Classic bound-row templates, registered as the
 // `StyleKeys.TrackTable` style), T10a1 Home (`Views\Home`: the page, facet row, daylist and clock, zone bodies, the drill page and the
 // customizer); every other surface is still core code. It
@@ -79,8 +80,8 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.DevicePicker, ClassicDevicePicker.Template, "classic.player.device-picker");
         views.Add(ViewKeys.OnMediaTransport, ClassicOnMedia.Template, "classic.player.on-media-transport");
         // T7a1: the fullscreen stage's frame: the root (layer stack, chrome placement, hairline), the top bar, the transport card, the
-        // options popover, the visualizer gallery and the lyric caption. The layouts, hero and artist pane (T7a2), lyrics (T7b), video
-        // (T7c) and the queue pane (T7d) arrive as builders on the root until they have keys.
+        // options popover, the visualizer gallery and the lyric caption. The layouts, hero and artist pane (T7a2) have keys; video
+        // (T7c) and the queue pane (T7d) arrive as builders on the root until they do (the lyrics pane is T7b's, below).
         views.Add(ViewKeys.StageRoot, ClassicStageRoot.Template, "classic.stage.root");
         views.Add(ViewKeys.StageTopBar, ClassicStageTopBar.Template, "classic.stage.top-bar");
         views.Add(ViewKeys.StageTransport, ClassicStageTransport.Template, "classic.stage.transport");
@@ -96,6 +97,11 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.StageNowPlayingCard, ClassicStageNowPlayingCard.Template, "classic.stage.now-playing-card");
         views.Add(ViewKeys.StageIdentity, ClassicStageIdentity.Template, "classic.stage.identity");
         views.Add(ViewKeys.StageArtistPane, ClassicStageArtistPane.Template, "classic.stage.artist-pane");
+        // T7b: the lyrics reading surface (the layer stack, the overlays, the stage's reading column) and its lines style (the state line, the
+        // loading bars, the unsynced block, the synced list and its rows, the podcast peek). The document, the clock, the follow, the cascade,
+        // the depth-of-field ramp and the word wipe stay core (`Lyrics.ViewCore`).
+        views.Add(ViewKeys.LyricsView, ClassicLyrics.Template, "classic.lyrics.view");
+        views.AddStyle(StyleKeys.LyricsLines, ClassicLyricsLines.Style);
         // T10a1: Home. The page (the scroll column, the skeleton region, the zone column and every chapter), the facet row, the daylist card
         // and its clock, the zone bodies (`Home.Zone.<Kind>`: the Recents grid and the Charts block have core hosts, the other fourteen kinds are
         // pure functions of their zone and share one template), the "See all" drill page and the customizer. The facet machine, the model, the
