@@ -387,7 +387,6 @@ public class SettingsDocTests
     {
         var store = DefaultsOnlySettings.Instance;
         Assert.Equal(Platform.Keys.MarqueeEnabled.Default, SettingsDoc.Row(Settings.Tab.Appearance, "marquee").Value(store));
-        Assert.Equal(Platform.Keys.ColorWashesEnabled.Default, SettingsDoc.Row(Settings.Tab.Appearance, "colorWashes").Value(store));
         Assert.Equal(Platform.Keys.RememberVolume.Default, SettingsDoc.Row(Settings.Tab.Playback, "rememberVolume").Value(store));
         Assert.Equal(Platform.Keys.AutoplayEnabled.Default, SettingsDoc.Row(Settings.Tab.Playback, "autoplay").Value(store));
         Assert.Equal(Platform.Keys.AudioBodyCacheEnabled.Default, SettingsDoc.Row(Settings.Tab.Storage, "cacheAudio").Value(store));

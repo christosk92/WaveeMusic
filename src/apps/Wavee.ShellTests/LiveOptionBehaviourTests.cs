@@ -28,7 +28,6 @@ using Wavee;
 using Wavee.Themes.Classic;
 using Wavee.Theming;
 using Wavee.Theming.Roles;
-using Wavee.Themes.Classic;
 using Xunit;
 using static Wavee.ShellTests.ShellProbe;
 

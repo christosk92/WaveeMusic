@@ -274,7 +274,7 @@ public class PlatformSettingsTests
     public void Settings_AbsentKey_ReadsItsDeclaredDefault()
         => WithStore(new MemoryAppSettings(), static () =>
         {
-            Assert.True(Platform.Settings.Get(Platform.Keys.ColorWashesEnabled));
+            Assert.Equal(Platform.Keys.MarqueeEnabled.Default, Platform.Settings.Get(Platform.Keys.MarqueeEnabled));
         });
 
     /// <summary>Every write bumps the epoch `Platform/Prefs.cs` (owner L, Wave 4) hangs its four preference epochs
