@@ -28,7 +28,7 @@ renderer.
 | Change the account swap or signed-out behaviour | `Shell/Sidebar.Accounts.cs` (`EnsureAccount`, `SwapAccount`); `Shell/Sidebar.Store.cs` (`SidebarAccountKey`) | `SidebarAccountStoreTests.cs` |
 | Change re-plan causes or the census line | `Shell/Sidebar.Census.cs` (`SidebarReplanCause`, `SidebarReplanCensus`); the binder revision in `Shell/Sidebar.Host.cs` | `SidebarReplanCensusTests.cs`, `SidebarRevisionTests.cs` |
 | Change the section or folder disclosure | `Shell/Sidebar.Disclosures.cs` (the bookkeeping, in `feat/smooth-reveal`); `Shell/Sidebar.UI.cs` (`PaneView.StartDisclosure`) | `SidebarDisclosuresTests.cs` (in `feat/smooth-reveal`) |
-| Change a collapsed-rail flyout | `Shell/Sidebar.UI.Flyout.cs` | renderer, no unit test |
+| Change a collapsed-rail flyout | `Themes/Classic/Structure/Views/Nav/ClassicNavFlyouts.cs` (panel); `Shell/Sidebar.UI.Flyout.cs` (open/close) | renderer, no unit test |
 | Change a card surface (Home-style tiles in the pane) | `Shell/Sidebar.Cards.cs` (`SidebarCardRules`); `Themes/Classic/Structure/Views/Nav/ClassicNavRow.cs` (the grid strip) and `Shell/Sidebar.UI.Host.cs` (`GridCell`) | `SidebarCardsTests.cs` |
 | Change the footer or the Settings pill | `Shell/Sidebar.UI.Footer.cs` | renderer, no unit test |
 
@@ -56,7 +56,7 @@ Every `Shell/Sidebar*.cs` file, in alphabetical order.
 | `Shell/Sidebar.Store.cs` | The file store (`SidebarFileStore`), the v3 device mapping (`SidebarStoreV3`), the v1 account DTOs and mapping, `SidebarAccountKey`, `SidebarPinLatch`, and `SidebarStoreJsonCtx`. |
 | `Shell/Sidebar.UI.Drop.cs` | The `PaneView` drag path: drop slot publish, the commit, the rootlist move (`PaneView.MoveRootlist`). |
 | `Shell/Sidebar.UI.Edit.cs` | Edit mode's view: `EditPane`, the Outline, the edit bar, and the Edit-mode key handlers (Ctrl+Z / Ctrl+Y included). |
-| `Shell/Sidebar.UI.Flyout.cs` | The collapsed rail's section and folder flyouts (`PaneSectionFlyout`, `PaneFolderFlyout`). |
+| `Shell/Sidebar.UI.Flyout.cs` | Opens and closes the collapsed rail's section and folder flyouts (the panels are `ClassicSectionFlyout` / `ClassicFolderFlyout`). |
 | `Shell/Sidebar.UI.Footer.cs` | `PaneFooter`: the footer row and its Settings pill. |
 | `Shell/Sidebar.UI.Host.cs` | `INavRowHost` implemented by `PaneView`: the explicit forwarders a row slot reads (T5a). The slot itself, `ClassicNavRow`, is `Themes/Classic/Structure/Views/Nav/ClassicNavRow.cs`. |
 | `Shell/Sidebar.UI.Library.cs` | The Library mode's view: `LibraryMode`, `LibrarySession` (pane reference and focus targets around the model's `NavLibrary`; the head's host). The head itself (`ClassicLibraryHead`, `ClassicLibraryChips`, `ClassicLibraryToolbar`, `ClassicLibrarySearchBox`) is `Themes/Classic/Structure/Views/Nav/ClassicNavLibraryHead.cs`. |

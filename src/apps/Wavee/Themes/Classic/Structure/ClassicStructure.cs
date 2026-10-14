@@ -62,6 +62,9 @@ public sealed class ClassicStructure : IStructureLayer
         // T5b: the heads. Your Library's head and the empty body; the section header, the "+" and the filter box ride the row slot.
         views.Add(ViewKeys.ShellNavLibraryHead, ClassicNavLibraryHead.Template, "classic.shell.nav-library-head");
         views.Add(ViewKeys.ShellNavEmpty, ClassicNavEmpty.Template, "classic.shell.nav-empty");
+        // T5c: the compact rail's flyout panels (a collapsed section's rows, a folder tile's drill-in); the pane opens and dismisses them.
+        views.Add(ViewKeys.ShellNavSectionFlyout, ClassicNavFlyouts.SectionTemplate, "classic.shell.nav-section-flyout");
+        views.Add(ViewKeys.ShellNavFolderFlyout, ClassicNavFlyouts.FolderTemplate, "classic.shell.nav-folder-flyout");
         // T6a: the player bar (the podcast transport rides with it).
         views.Add(ViewKeys.PlayerBar, ClassicPlayerBar.Template, "classic.player.bar");
         // T8a: the track table's rows (the Modern and Classic bound grids and skins; the header, chrome and placeholder are T8b's).

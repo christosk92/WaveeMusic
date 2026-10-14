@@ -14,6 +14,8 @@
 //                         the head through its key (Home, the page dropdown and the toolbar stand under it), and the empty body
 //                         is the pane's sentence, or the rail's bare spacer
 //
+//   the flyouts (T5c)     Classic registers the rail's two flyout panels (the pane opens and dismisses them; the structure draws them)
+//
 // The planner, the diff, the extents, the freeze and the ladder are pure and pinned in `Wavee.Tests` (`SidebarPlannerTests`,
 // `SidebarWiringTests`, `SidebarRowGeometryTests`).
 
@@ -182,5 +184,15 @@ public sealed class NavPaneMountedTests(ShellHost host)
                     shell.RunFrames(60);
                 }
             }
+        });
+
+    // ── the rail's flyouts (T5c) ─────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Classic_registers_the_rails_flyout_panels()
+        => host.Run(() =>
+        {
+            Assert.Equal("classic.shell.nav-section-flyout", ThemeHost.Registry.TemplateIdOf(ViewKeys.ShellNavSectionFlyout.Id));
+            Assert.Equal("classic.shell.nav-folder-flyout", ThemeHost.Registry.TemplateIdOf(ViewKeys.ShellNavFolderFlyout.Id));
         });
 }

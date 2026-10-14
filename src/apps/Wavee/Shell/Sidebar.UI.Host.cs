@@ -71,7 +71,7 @@ public static partial class Sidebar
         void INavRowHost.ToggleTreeSelection(string entryId) => ToggleTreeSelection(entryId);
         void INavRowHost.ClearTreeSelection() => ClearTreeSelection();
 
-        // ── menus, drags, drops and flyouts (T5c-f) ──
+        // ── menus, drags, drops and flyouts (T5c moved the flyout panels; T5d-f the rest) ──
         Func<ContextMenuModel?>? INavRowHost.HeaderMenu(string sectionId) => HeaderMenu(sectionId);
         ContextMenuModel? INavRowHost.CreateMenu() => CreateMenu();
         ContextMenuModel? INavRowHost.FolderCreateMenu(string folderId) => FolderCreateMenu(folderId);
@@ -95,6 +95,10 @@ public static partial class Sidebar
         SidebarDropSlot INavRowHost.DropSlotFor(int planIndex) => DropSlotFor(planIndex);
         void INavRowHost.OpenFolderFlyout(string sectionId, in SidebarLibraryEntry folder, Func<NodeHandle> anchor) => OpenFolderFlyout(sectionId, in folder, anchor);
         void INavRowHost.OpenSectionFlyout(string sectionId, Func<NodeHandle> anchor) => OpenSectionFlyout(sectionId, anchor);
+        SidebarRowPlan INavRowHost.PlanSectionExpanded(string sectionId, SidebarPlanBuffers buffers) => PlanSectionExpanded(sectionId, buffers);
+        DropTargetSpec INavRowHost.RailFolderDropSpec(in SidebarLibraryEntry folder, DragPayload target) => RailFolderDropSpec(in folder, target);
+        bool INavRowHost.IsRailDropActive(string key) => IsRailDropActive(key);
+        void INavRowHost.ExpandFolderInPane(string folderId) => ExpandFolderInPane(folderId);
         void INavRowHost.SetTileAnchor(int index, Func<NodeHandle> anchor) => SetTileAnchor(index, anchor);
 
         Element INavRowHost.GridCell(SidebarSection section, in SidebarLibraryEntry entry, float edge, string selectedRoute)

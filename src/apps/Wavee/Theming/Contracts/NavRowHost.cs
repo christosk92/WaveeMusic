@@ -158,7 +158,7 @@ internal interface INavRowHost
     /// <summary>Clear the selection (Esc).</summary>
     void ClearTreeSelection();
 
-    // ── menus, drags, drops and flyouts: the sub-surfaces T5c-f move ─────────────────────────────────────────────────
+    // ── menus, drags, drops and flyouts: the flyout panels are the structure's (T5c); the rest T5d-f move ─────────────────────────────────────────────────
 
     /// <summary>A section header's ⋯ menu, or null for a kind with none.</summary>
     Func<ContextMenuModel?>? HeaderMenu(string sectionId);
@@ -218,6 +218,19 @@ internal interface INavRowHost
 
     /// <summary>Open a collapsed section tile's flyout, anchored on the tile.</summary>
     void OpenSectionFlyout(string sectionId, Func<NodeHandle> anchor);
+
+    /// <summary>A collapsed section's rows for its flyout: the ONE planner over a one-section document with that section expanded
+    /// and presented as a List, against the pane's own input (T5c).</summary>
+    SidebarRowPlan PlanSectionExpanded(string sectionId, SidebarPlanBuffers buffers);
+
+    /// <summary>A sub-folder row of the rail's folder flyout as a drop destination: Into-only filing (T5c).</summary>
+    DropTargetSpec RailFolderDropSpec(in SidebarLibraryEntry folder, DragPayload target);
+
+    /// <summary>Is the rail cue keyed <paramref name="key"/> (an entry id, or a playlist uri) the armed drop destination?</summary>
+    bool IsRailDropActive(string key);
+
+    /// <summary>The folder menu's Expand verb from a flyout: closes the flyout, shows the full pane and discloses the folder there.</summary>
+    void ExpandFolderInPane(string folderId);
 
     /// <summary>Register a rail tile's anchor by plan index, so Enter on the focused tile opens the flyout its click opens.</summary>
     void SetTileAnchor(int index, Func<NodeHandle> anchor);

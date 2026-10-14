@@ -39,7 +39,7 @@ PaneHost(inDrawer)                                  Sidebar.UI.cs
         ├── Shell.NavEmpty (the empty body)         Views/Nav/ClassicNavFilter.cs (ClassicNavEmpty)
         ├── PaneFooter                              Sidebar.UI.Footer.cs
         ├── EditPane (Edit mode: the Outline and the edit bar)   Sidebar.UI.Edit.cs
-        ├── PaneSectionFlyout / PaneFolderFlyout    Sidebar.UI.Flyout.cs (collapsed rail)
+        ├── PaneView.OpenSectionFlyout/OpenFolderFlyout  Sidebar.UI.Flyout.cs (opens the collapsed rail's flyouts; panels: Classic's ClassicSectionFlyout / ClassicFolderFlyout, Themes/Classic/Structure/Views/Nav/ClassicNavFlyouts.cs)
         ├── DragPeekWatcher                         Sidebar.UI.cs
         └── SidebarMenus                            Sidebar.UI.Menus.cs (pane ⋯ / header ⋯ / row menus)
 ```

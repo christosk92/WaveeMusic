@@ -307,7 +307,7 @@ cue, the scrim, the HUD only in developer mode), and the cover leaves still publ
 ### The navigation pane's rows (T5a)
 
 The sidebar is one pane over six sub-surfaces (rows, heads, flyouts and menus, the Edit outline, drop cues, the library grid). T5a
-gives the pane its key and moves the **rows**; T5b moves the **heads** (below); T5c-f move the rest, one sub-surface each.
+gives the pane its key and moves the **rows**; T5b moves the **heads** (below); T5c moves the rail's flyouts (below); T5d-f move the rest, one sub-surface each.
 
 | Key | Props | Core host | Classic template |
 |---|---|---|---|
@@ -376,6 +376,30 @@ T5b gives the structure the pane's **heads**: whatever stands above or between t
 **Tests.** The mounted facts are in `Wavee.ShellTests\NavPaneMountedTests.cs` (Classic registers both keys, the real shell in the
 Library layout draws the head through its key with its ring, dropdown and toolbar standing, and the empty body is the sentence
 or the bare spacer); the Library head's rules stay `SidebarLibraryHeadRulesTests`, `NavLibraryTests`.
+
+### The navigation pane's flyouts and menus (T5c)
+
+T5c gives the structure the **pictures** of the pane's flyouts; the menu **rows** (which commands exist, enablement, invoke) stay core.
+
+| Surface | Contract | Core side | Classic |
+|---|---|---|---|
+| Collapsed section's flyout | `Shell.NavSectionFlyout` (`NavSectionFlyoutProps`: host, section id, close) | `PaneView.OpenSectionFlyout`: one flyout at a time (a second click closes it), anchor, `RightEdgeAlignedTop`, focus trap, light dismiss; `PlanSectionExpanded` | `ClassicSectionFlyout` (`Views\Nav\ClassicNavFlyouts.cs`) |
+| Folder tile's flyout | `Shell.NavFolderFlyout` (`NavFolderFlyoutProps`: host, section id, root folder id and name, close) | `PaneView.OpenFolderFlyout`, the drill-in stack (`SidebarFolderFlyoutNav`, pure), the drop specs, `ExpandFolderInPane` | `ClassicFolderFlyout` (same file): panel, header and back chevron, page slide, the keyboard cursor and its keys |
+
+- **Menus.** A row menu, a header "..." menu, the "+" menus, and the Library head's sort, options and pages menus are
+  `ContextMenuModel` / `MenuFlyoutItem` rows built at open time by `Shell\Sidebar.UI.Menus.cs` (`SidebarMenus`, `NavMenuModel`); the
+  engine's `MenuFlyout` draws them, and the slots already open them (T5a rows, T5b heads). So there was no menu picture left in
+  core to move: menu placement, light dismiss, focus return to the row, arrows / Enter / Escape / Shift+F10, submenus, disabled rows
+  and F2 rename are the engine control's and the row slot's, unchanged. `OpenPaneMenu` (the footer "...", no caller) stays with the rows.
+- **The panels are the structure's.** The two props records carry the pane as `INavRowHost` (internal, so the member is internal;
+  public record, internal member, as `NavLibraryHeadProps`). `INavRowHost` gained `PlanSectionExpanded`, `RailFolderDropSpec`,
+  `IsRailDropActive` and `ExpandFolderInPane`; the panels read the rest (`Model`, `Navigate`, `SelectedRoutePeek`, `EntryMenu`,
+  `FolderMenu`, `PayloadOf`, `ResourceDropSpec`, `MenuOverlay`) from it. Numbers are `Rules\NavFlyoutLayout.cs`.
+- **Nothing was left to delete.** `SidebarRowGeometry`'s ladder members the flyouts read (`PitchOf`, `ArtOf`, `PaneEdge`) still have
+  other core readers (the row primitives, the Edit outline, the drop rules), so the mirror shrinks with T5d / T5f.
+
+**Tests.** `Wavee.ShellTests\NavPaneMountedTests.cs` pins that Classic registers both keys; the drill-in stack stays
+`SidebarFolderFlyoutNavTests` (`NavDropRulesTests.cs`).
 
 ### The player bar (T6a)
 

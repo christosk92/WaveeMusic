@@ -3,8 +3,8 @@
 // T5a publishes the pane's key. The sidebar is one pane over six sub-surfaces; T5a moves the ROWS (the planner, the diff, the
 // extents, the freeze and the row slot) and mounts the pane through the key. T5b moves the HEADS: the section header's chrome and
 // the filter box ride the row slot (no key of their own: they are part of a row), and the two heads that stand beside the list get
-// a key each (Your Library's head, the empty body). The flyouts and menus, the Edit outline, the drop cues and the library grid
-// (T5c-f) stay core and reachable from the row slot through `INavRowHost` until each is given to the structure.
+// a key each (Your Library's head, the empty body). The rail's flyouts (T5c) are keys too (below); the Edit outline, the drop cues and the library grid
+// (T5d-f) stay core and reachable from the row slot through `INavRowHost` until each is given to the structure.
 
 using FluentGpu.Theming;
 
@@ -24,4 +24,12 @@ public static partial class ViewKeys
     /// <summary>The pane body when the plan has no rows: the authored-empty pane, or the rail's spacer. Mounted by the core pane.
     /// Props: <see cref="NavEmptyProps"/>.</summary>
     public static readonly ViewKey<NavEmptyProps> ShellNavEmpty = new("Shell.NavEmpty");
+
+    /// <summary>The compact rail's collapsed-section flyout: that section's rows in a panel beside the tile. Mounted by the core
+    /// pane inside the popup it opens. Props: <see cref="NavSectionFlyoutProps"/>.</summary>
+    public static readonly ViewKey<NavSectionFlyoutProps> ShellNavSectionFlyout = new("Shell.NavSectionFlyout");
+
+    /// <summary>The compact rail's folder flyout: a folder's children, one drill-in page at a time. Mounted by the core pane inside
+    /// the popup it opens. Props: <see cref="NavFolderFlyoutProps"/>.</summary>
+    public static readonly ViewKey<NavFolderFlyoutProps> ShellNavFolderFlyout = new("Shell.NavFolderFlyout");
 }
