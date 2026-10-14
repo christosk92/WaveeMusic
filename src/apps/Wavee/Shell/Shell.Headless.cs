@@ -18,6 +18,7 @@
 // the memory poll.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using FluentGpu;
@@ -71,6 +72,32 @@ public static partial class Shell
             App.BootCore(BootProfile.HeadlessFake);
             Appearance.Seed(options.Theme);   // a fixed kind: no OS read, the token-default accent
             LoadDocuments();
+            // Between mounts there is no host to post into. A post from the UI thread still runs inline (as the boot default
+            // did); one from any other thread waits for the UI thread (the next mount forwards it into its host). Run inline on
+            // the posting thread instead, a pool thread could run the playback drain beside the UI thread's and leave the
+            // inbox's "a wake is queued" latch set for good.
+            Playback.ToUi = ParkOrRun;
+            Spotify.Post = ParkOrRun;
+            Store.Post = ParkOrRun;
+            Wavee.Palette.Post = ParkOrRun;
+            Lyrics.Store.ToUi = ParkOrRun;
+            Diagnostics.StoreShot.ToUi = ParkOrRun;
+        }
+
+        static readonly ConcurrentQueue<Action> s_parked = new();
+
+        /// <summary>The between-mounts poster: inline on the UI thread (after anything parked), parked from any other.</summary>
+        internal static void ParkOrRun(Action action)
+        {
+            if (Environment.CurrentManagedThreadId != s_uiThread) { s_parked.Enqueue(action); return; }
+            RunParked(static a => a());
+            action();
+        }
+
+        /// <summary>Hand everything parked between mounts to <paramref name="post"/> (UI thread).</summary>
+        internal static void RunParked(Action<Action> post)
+        {
+            while (s_parked.TryDequeue(out var a)) post(a);
         }
 
         /// <summary>Mount the frame at <paramref name="widthDip"/> × <paramref name="heightDip"/> (DIP; the window's pixel
@@ -142,6 +169,7 @@ public static partial class Shell
             _seams = PosterSeams.Capture();
             AppHost host = Host;
             AssignPosters(action => host.Post(PublishAfter.Wrap(action)));
+            Headless.RunParked(action => host.Post(PublishAfter.Wrap(action)));   // what pool threads posted between mounts
             Host.FrameCompleted += s_frameTick;
             Palette.ResetPump();   // the pump's deadline and in-flight batch belong to the previous host's clock
             Host.RunFrame();
@@ -208,6 +236,11 @@ public static partial class Shell
             {
                 Host.FrameCompleted -= s_frameTick;
                 _seams.Restore();
+                // A pool thread (the fake audio graph, a ticker) can post between the last frame and Restore: those posts sit in
+                // this host's queue, which Dispose would drop. A dropped playback drain leaves its "a wake is queued" latch set
+                // for the rest of the process, and every later Play / SetShuffle then waits forever. Hand them to the
+                // between-mounts poster: on this (UI) thread they run now, and a pool thread's late post waits for the next mount.
+                Host.HandOffPosts(Headless.ParkOrRun);
                 Host.Dispose();   // unmounts the tree: the frame's cleanup ends its RootScope
                 RootScope.EndMounted();   // belt: a mount never leaves a mounted scope behind, whatever the tree's cleanup did
                 _app.Dispose();

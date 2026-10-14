@@ -17,6 +17,7 @@
 // remounted page lands where a fresh navigation to it lands, and nothing in C17 changes that. The harness stops playback when a
 // mount is disposed, so the playback fact is a mode flag the stop does not touch.
 
+using System.Threading;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -239,6 +240,42 @@ public sealed class RootScopeTests(ShellHost host)
                 Assert.Equal("queen", Shell.SearchText.Peek());                       // the omnibar's typed text (§5.6)
                 Assert.True(Playback.Shuffle.Peek());                                 // playback mode
                 Assert.Equal((int)Stage.VizLayout.LargeArt, Platform.Settings.Get(Platform.Keys.StageLayout));   // a persisted setting
+            }
+        });
+
+    /// <summary>A pool thread that posts playback input while a mount ends (the fake audio graph, a ticker) must not wedge
+    /// playback for the next mount. Posts that land on the ending host's queue used to be dropped with it; a dropped drain
+    /// left the inbox's "a wake is queued" latch set, so every later Play / SetShuffle waited forever (the remount and
+    /// lyrics-blur tests then failed after 10 s in the same process, about once in 25 runs).</summary>
+    [Fact]
+    public void A_post_racing_a_mount_teardown_never_wedges_playback_for_the_next_mount()
+        => host.Run(() =>
+        {
+            RootScope.EndMounted();
+            bool before = Playback.Shuffle.Peek();
+            int stop = 0;
+            Thread poster;
+            using (var a = Shell.Headless.Mount())
+            {
+                a.RunFrames(4);
+                // A stale epoch: the reducer ignores it, but every report is a post that can land on the ending host's queue.
+                poster = new Thread(() => { while (Volatile.Read(ref stop) == 0) { Playback.ReportPosition(0xFFFF_FFFFu, 0); Thread.Yield(); } })
+                { IsBackground = true, Name = "test-teardown-poster" };
+                poster.Start();
+                Thread.Sleep(20);
+            }
+            Volatile.Write(ref stop, 1);
+            poster.Join();
+            try
+            {
+                using var b = Shell.Headless.Mount();
+                b.RunFrames(4);
+                Playback.SetShuffle(!before);
+                UntilBackground(b, () => Playback.Shuffle.Peek() == !before, "the next mount's SetShuffle reached the player", 3_000);
+            }
+            finally
+            {
+                Playback.SetShuffle(before);
             }
         });
 
