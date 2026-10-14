@@ -3,7 +3,12 @@
 // Frame — the 4-mode responsive ladder with both anti-flicker fail-safes, the Hero page-layout override, the per-scope rail
 // prefs + the Splitter grip + resist fade, the page tone plane and shell tint leaves, the accent and the page-body drop
 // target — plus the page-facing builders every detail page and library pane makes its pieces from (NoticeBar,
-// Satellite, the More button, the row helpers, the billed-artist line box and ArtistLine).
+// Satellite, the More button and ArtistLine).
+//
+// T9b (themes plan 6.1): the notice strip (`NoticeBar` is now only the mount of `Detail.Notice`), the vertical arm's trailing body (`Detail.VerticalTrailing`),
+// the keyed rail rows (`Row` / `LateRow` / `ReleaseRow`, their FLIP and fade-up), the eyebrow run and the billed-artist line box are Classic's: they moved to
+// `Themes\Classic\Structure\Views\Detail\ClassicDetailKit.cs` and `ClassicDetailSeam.cs`, with the numbers in `Rules\ClassicDetailKitLayout.cs`.
+// T9c moved the rail satellites (`RailSatellite*`) to `ClassicDetailKit.Satellites.cs` and dropped `PlayButton` (a forward to `Controls.PlayButton`).
 //
 // T9a (themes plan 6.1): the PICTURE of the frame is Classic's. `FrameHost.Render` decides and builds ONE `DetailFrameProps`, and the
 // registered `Detail.Frame` view (`Themes\Classic\Structure\Views\Detail\ClassicDetailFrame.cs`) arranges the notice strip, the content
@@ -881,19 +886,19 @@ public static partial class Detail
         }
 
         /// <summary>The hero arm's body under the rows (W12): the prerelease card and About-this-release move BELOW the
-        /// rows because the hero system has no rail — they are not dropped — then the album trailing.</summary>
+        /// rows because the hero system has no rail — they are not dropped — then the album trailing. The slots are built
+        /// here (the page's); the `Detail.VerticalTrailing` view places them in the rail's keyed rows.</summary>
         Element VerticalTrailing()
         {
             var spec = _latest;
-            if (spec is null) return new BoxEl();
-            var kids = new List<Element>(3);
-            if (spec.Identity.UpcomingAtUnixSeconds > 0 && spec.Slots.PreRelease is { } pre)
-                kids.Add(LateRow("vtrail:prerelease", pre()));
-            if (spec.Config.Badges == BadgeStyle.TypeYear && spec.Slots.ReleasePanel is { } release)
-                kids.Add(Row("vtrail:release", release(true)));
-            if (spec.Config.HasTrailing && spec.Slots.Trailing is { } trailing)
-                kids.Add(Row("vtrail:trailing", trailing()));
-            return new BoxEl { Direction = 1, Children = kids.ToArray() };
+            Element? preRelease = null, releasePanel = null, trailingBand = null;
+            if (spec is not null)
+            {
+                if (spec.Identity.UpcomingAtUnixSeconds > 0 && spec.Slots.PreRelease is { } pre) preRelease = pre();
+                if (spec.Config.Badges == BadgeStyle.TypeYear && spec.Slots.ReleasePanel is { } release) releasePanel = release(true);
+                if (spec.Config.HasTrailing && spec.Slots.Trailing is { } trailing) trailingBand = trailing();
+            }
+            return ViewSlots.View(Contracts.ViewKeys.DetailVerticalTrailing, new Contracts.DetailVerticalTrailingProps(preRelease, releasePanel, trailingBand));
         }
 
         // ── trampolines ──
@@ -1113,120 +1118,9 @@ public static partial class Detail
         return AccentFor(id.PaletteUrl ?? id.CoverUrl, id.CardAccent);
     }
 
-    // ══ 4. THE RAIL FAMILY ═══════════════════════════════════════════════════════════════════════════════════════════
-
-    internal static readonly EnterExit FadeUp = new(Opacity: 0f, Active: true);
-    internal static readonly LayoutTransition Shove = new(TransitionChannels.Position,
-        TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut));
-
-    /// <summary>A keyed row that exists in BOTH models: it only ever gets pushed, so it takes the position-only FLIP.</summary>
-    internal static BoxEl Row(string key, Element child) => new() { Key = key, Direction = 1, Layout = Shove, Children = [child] };
-    // Release facts arrive after the album frame. Keep that late panel from participating in the rail's position
-    // transition; its own content fades in while the rest of the page keeps its settled geometry.
-    internal static BoxEl ReleaseRow(string key, Element child) => new() { Key = key, Direction = 1, Children = [child] };
-
-    /// <summary>A keyed row that can arrive LATE: fades up on insert, FLIPs on later shoves (ch 03 §0.11).</summary>
-    internal static BoxEl LateRow(string key, Element child) => new()
-    {
-        Key = key, Direction = 1, Layout = Shove, Enter = FadeUp, Children = [child],
-    };
-
-    internal static TextEl EyebrowRun(string text) => R.Type.Eyebrow(text) with
-    {
-        Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-    };
-
-    /// <summary>What one render of the billed-artist line paints: the drawn faces (WITHOUT their own click: the whole line is
-    /// ONE trigger), the names, how many billed artists there are (the Medium "+N"), the pile's own overflow frame, and the
-    /// trigger's behaviour. <c>Menu</c> is true when the click opens a list (the chevron shows, Down / F4 open).</summary>
-    internal readonly record struct RailArtistLineSpec(IReadOnlyList<Controls.Face> Faces, string Names, int Count, int Overflow,
-        float Width, string Tip, bool Menu, Action? Click, Action<KeyEventArgs>? OnKey, Action<NodeHandle>? OnRealized);
-
-    const string LocRailMoreArtists = "detail.row.moreArtists";
-
-    /// <summary>The line box's height ease: real layout, so the rows under it reflow with it.</summary>
-    static readonly LayoutTransition ArtistLineReflow = new(TransitionChannels.Size, FluentGpu.Animation.MotionTok.ContentResize.ToDynamics(),
-        Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
-    static readonly EnterExit ArtistFaceFade = new(Opacity: 0f, Active: true);
-
-    /// <summary>The billed-artist line in one mode: the ONE look both the default line and the album's own
-    /// (<c>Album.FacePileHost</c>) paint. The NAME is what survives: <see cref="RailArtistLine"/> drops the faces first
-    /// (Wide: pile + names, Medium: the lead face + names on two lines + "+N", Narrow: names only), and the chevron follows
-    /// the text in every mode. Nothing under the pointer moves on hover (the plate is a fill); a mode change never snaps:
-    /// the line box eases its height, the face slots are keyed per mode and cross-fade in place, and the names glide to
-    /// their new position (<see cref="Shove"/>).</summary>
-    internal static Element RailArtistLineBox(RailArtistMode mode, in RailArtistLineSpec s)
-    {
-        var kids = new List<Element>(4);
-        if (s.Faces.Count > 0)
-        {
-            if (mode == RailArtistMode.Wide)
-                kids.Add(FaceSlot("faces:pile", Controls.FacePile(s.Faces, RailArtistLine.WideFaces, s.Overflow)));
-            else if (mode == RailArtistMode.Medium)
-            {
-                var lead = s.Faces[0];
-                kids.Add(FaceSlot("faces:lead", PersonPicture.Create("", Skeleton.OwnerAvatar, displayName: lead.Name, imageSourcePath: lead.ImageUrl)));
-            }
-        }
-
-        bool wide = mode == RailArtistMode.Wide;
-        kids.Add(new BoxEl
-        {
-            Key = "names", Direction = 0, Shrink = 1f, MinWidth = 0f, Layout = Shove,
-            Children =
-            [
-                new TextEl(s.Names)
-                {
-                    Size = 14f, LineHeight = RailArtistLine.TextLine, Weight = 600, Color = Tok.AccentTextPrimary,
-                    MinWidth = 0f, Shrink = 1f,
-                    MaxLines = wide ? 1 : 2, Wrap = wide ? TextWrap.NoWrap : TextWrap.WrapWholeWords,
-                    Trim = TextTrim.CharacterEllipsis,
-                },
-            ],
-        });
-        int plus = mode == RailArtistMode.Medium ? RailArtistLine.PlusN(s.Count, 1) : 0;
-        if (plus > 0)
-            kids.Add(new TextEl(Loc.Format(LocRailMoreArtists, ("count", plus)))
-            {
-                Key = "plus", Size = 12f, LineHeight = 16f, Weight = 600, Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1,
-            });
-        if (s.Menu) kids.Add(new BoxEl
-        {
-            Key = "chevron", Shrink = 0f, AlignItems = FlexAlign.Center, Layout = Shove,
-            Children = [Icon(Icons.ChevronDownSmall, 8f, Tok.TextTertiary)],
-        });
-
-        bool live = s.Click is not null;
-        Element trigger = new BoxEl
-        {
-            Key = "trigger",
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Shrink = 1f, MinWidth = 0f, MaxWidth = s.Width,
-            Padding = new Edges4(6f, RailArtistLine.PadY, 6f, RailArtistLine.PadY), Corners = CornerRadius4.All(Radii.Card),
-            Fill = ColorF.Transparent,
-            HoverFill = live ? Tok.FillCardDefault : ColorF.Transparent, PressedFill = live ? Tok.FillSubtleTertiary : ColorF.Transparent,
-            Role = !live ? AutomationRole.None : s.Menu ? AutomationRole.Button : AutomationRole.Hyperlink,
-            Focusable = live, Cursor = live ? CursorId.Hand : (CursorId?)null,
-            FocusVisualMargin = Design.FocusInsetRow,
-            OnClick = s.Click, OnKeyDown = s.OnKey, OnRealized = s.OnRealized,
-            Children = kids.ToArray(),
-        };
-        // The tooltip wrapper shrink-wraps to the trigger, whose MaxWidth is the line's measure: it can never outgrow the row.
-        if (s.Menu) trigger = ToolTip.Wrap(trigger, s.Tip);
-
-        return new BoxEl
-        {
-            Key = "artist-line", Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, MaxWidth = s.Width,
-            MinHeight = RailArtistLine.HeightOf(mode), ClipToBounds = true, Animate = ArtistLineReflow,
-            Children = [trigger],
-        };
-    }
-
-    /// <summary>One mode's face slot: keyed per look, so a width step cross-fades the faces in place.</summary>
-    static Element FaceSlot(string key, Element faces) => new BoxEl
-    {
-        Key = key, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [faces],
-        Enter = ArtistFaceFade, Exit = ArtistFaceFade, Transition = FluentGpu.Animation.MotionTok.ControlFaster,   // Design.Motion.Faster (83 ms)
-    };
+    // ══ 4. THE SAVE AND SHARE TARGETS ═══════════════════════════════════════════════════════════════════════════════════
+    //
+    // The rail's keyed rows (`Row` / `LateRow` / `ReleaseRow`), the eyebrow run and the billed-artist line box are Classic's (T9b: `ClassicDetailKit`).
 
     internal static EntityUri SaveTargetOf(Identity id) => id.SaveTarget.IsValid ? id.SaveTarget : id.Subject;
 
@@ -1260,32 +1154,13 @@ public static partial class Detail
 
     // ══ 5. NOTICE, PILL, SATELLITE, FAB, MORE ════════════════════════════════════════════════════════════════════════
 
-    /// <summary>W15: bad news is a strip, never an error page. One Informational bar; zero-height (and hit-test free)
-    /// while there is nothing to say. <paramref name="showMinifiedAlbum"/> is false on the full page, which self-heals a
-    /// thin tracklist; the minified verdict carries no action.</summary>
+    /// <summary>W15: bad news is a strip, never an error page (the `Detail.Notice` view: one Informational bar; zero-height
+    /// and hit-test free while there is nothing to say). <paramref name="showMinifiedAlbum"/> is false on the full page, which
+    /// self-heals a thin tracklist; the minified verdict carries no action; the one action is a way OUT, never a retry. The
+    /// frame host and the library album pane mount it.</summary>
     public static Element NoticeBar(DetailNotice notice, bool showMinifiedAlbum, Action? goLibrary)
-    {
-        if (notice == DetailNotice.None || (notice == DetailNotice.MinifiedAlbum && !showMinifiedAlbum))
-            return new BoxEl { Key = "detail-notice", Height = 0f, HitTestVisible = false };
-
-        string message = notice switch
-        {
-            DetailNotice.Deleted => Loc.Get(Strings.Detail.Notice.Deleted),
-            DetailNotice.AccessRevoked => Loc.Get(Strings.Detail.Notice.AccessRevoked),
-            DetailNotice.MinifiedAlbum => Loc.Get(Strings.Detail.Notice.MinifiedAlbum),
-            _ => Loc.Get(Strings.Detail.Notice.CreateFailed),
-        };
-        // The one action is a way OUT, never a retry. There is no bare "library" destination — the albums section.
-        Element? action = notice == DetailNotice.MinifiedAlbum || goLibrary is null
-            ? null
-            : Button.Create(Loc.Get(Strings.Detail.Notice.GoToLibrary), goLibrary, ButtonAppearance.Subtle, ControlSize.Small);
-        return new BoxEl
-        {
-            Key = "detail-notice",
-            Direction = 1, Padding = new Edges4(16f, 8f, 16f, 4f), Shrink = 0f,
-            Children = [InfoBar.Create(InfoBarSeverity.Informational, message, "", isClosable: false, actionButton: action)],
-        };
-    }
+        => ViewSlots.View(Contracts.ViewKeys.DetailNotice, new Contracts.DetailNoticeProps(notice, showMinifiedAlbum, goLibrary))
+            with { Key = "detail-notice" };
 
     /// <summary>The brush budget every accent consumer shares — a VALUE under reduced motion (0 ⇒ an instant swap).</summary>
     static float AccentTransitionMs => Design.Reduced ? 0f : Design.Motion.Standard;

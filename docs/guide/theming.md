@@ -830,9 +830,11 @@ spec can carry newer page builders; a view that skipped on an "equal" record wou
 to another instance (the view re-runs exactly when the host re-rendered, which is when the tree used to be rebuilt). `DetailHeroProps` is the one
 that compares by data and by the reference of the table's pieces: the table owns that gate.
 
-**What the pages keep calling.** The page-facing builders are still `Detail`'s (`MoreButton`, `ArtistLine`,
-`RailArtistLineBox`, `NoticeBar`, the `Row` / `LateRow` helpers, the band helpers `Band` / `BandTitle` / `Pivot`): the album and show panes, the artist,
-profile and episode pages build from them, so they are T9b / T9c / T10's seam. A view may not name `Shell`, `Playback`, `Entities` or `Store`
+**What the pages keep calling.** The page-facing builders that the profile and artist pages and the library panes still build from are
+`Detail`'s (`Satellite`, `MoreButton`, `ArtistLine`, the band helpers `Band` / `BandTitle` / `Pivot`, and the save / share targets): they move with
+those pages (T10). The ones the album and the playlist, and the frame's own views, used moved in T9b (below): the keyed rail rows, the eyebrow run and
+the billed-artist line box are the shared Classic kit (`ClassicDetailKit.cs`), and `NoticeBar` is a mount of the `Detail.Notice` view. T9c moved the
+rail satellites (`ClassicDetailKit.Satellites.cs`) and dropped `Detail.PlayButton`. A view may not name `Shell`, `Playback`, `Entities` or `Store`
 (WVTH002): what a detail view must do that touches them is `DetailVerbs` (`NavigateKey`, `OpenOwner`, `PlayContext`, `ChartCaptionText`).
 
 **Motion and keys are the host's old tree.** The content column keeps its key across a rail collapse so the table reconciles in place; the grip lives in
@@ -929,6 +931,47 @@ hosts' `Skel.Region`, `Failed` + retry and `Quiet` stay the shared core helpers 
 **Tests.** The ids and Classic's registration are `Wavee.Tests\EpisodeContractTests.cs`; the pure rules stay `DiscussionLayoutTests` and
 `PodcastReactionTests`. The mounted facts (registered templates, the thread's order, the reply rail only when handed a thread, the reader's anchors and
 section order, the chapter rows) are `Wavee.ShellTests\EpisodeMountedTests.cs`.
+
+### The album and playlist sub-contracts (T9b)
+
+The album page and the playlist page hand the frame slots (the attribution, the prerelease card, the release facts, the trailing band; the cover, the inline
+title and description editors, the owner block, the daylist strip, the recommendations section) and open their own panels (the every-artist flyout, the
+collaborator flyout, the invite and access panel, the Tune panel). Each of those pictures has a key (`Theming\Contracts\ViewKeys.DetailAlbumPlaylist.cs`, props in
+`DetailAlbumProps.cs` and `DetailPlaylistProps.cs`); the page's hosts keep every gate, state and verb and mount the key with the plain data the picture shows.
+
+| Key | Core host | Classic template |
+|---|---|---|
+| `Detail.Notice`, `Detail.VerticalTrailing` | `Detail.NoticeBar` (the frame host and the library album pane), `FrameHost.VerticalTrailing` | `ClassicDetailSeam`: the Informational strip (zero-height while there is nothing to say), the prerelease card / release facts / trailing band in the rail's keyed rows |
+| `Album.ArtistLine`, `Album.ArtistFlyout` | `Album.FacePileHost` (`[CoreHost]`): the artist / track / edge gate, the portrait demand, the width mode's hysteresis, the open handle | `ClassicAlbumArtist`: the shared kit's line (Wide pile, Medium lead face and "+N", Narrow names; the chevron follows a list-opening click), the 44-DIP flyout rows |
+| `Album.Countdown`, `Album.ReleasePanel`, `Album.Unresolved` | `Album.CountdownHost` (the clock: one wall-clock sample, then the frame clock's delta), `ReleasePanelHost` (`[CoreHost]`: the stamp, the facts), the page | `ClassicAlbumRelease`: the ring card or its bare body, About this release (facts, ℗ / © notes, Other versions), the unresolvable line |
+| `Album.Trailing`, `Album.Sections`, `Album.TrailStack` | `TrailingHost` (demand, the pending gate with its one swap, the deadline), `SectionsHost` (which sections are present, the video counterparts' demand), `StackHost` (the expand cell) — all `[CoreHost]` | `ClassicAlbumTrailing`: the one skeleton region and its section skeletons, the video hero / shelf, About, Fans also like, the capped stacks and their rows |
+| `Playlist.CoverArt`, `Playlist.CoverEditor` | `Playlist.CoverArt` (which tiles: the server mosaic, the art, four member covers), `CoverEditor` (`[CoreHost]`: the decode bucket, pick / drop / busy verbs) | `ClassicPlaylist` cover: the saturation-1.18 face, the hover / file-drag / saving scrim |
+| `Playlist.Editor` | `InlineEditor` (`[CoreHost]`): the edit mode, the draft, the status 0 / 1 / 2 and its 1.8 s hold, `Begin` / `Commit`, "a create opens in edit mode" | `ClassicPlaylist` editor: the read arm and its pencil, the edit arm (focus without a cue, caret at the end) over Save / Cancel, the status row |
+| `Playlist.Owner`, `Playlist.MembersFlyout` | `OwnerBlock` (`[CoreHost]`): the gate, the collaborator set, `IsOwner` / `CanAdministratePermissions` / `Live`, the two popups' anchors | `ClassicPlaylist` owner: the pile or the owner run in its reserved row, the invite pill (round under 260 DIP), the member rows |
+| `Playlist.Access`, `Playlist.Tune` | `AccessPanel` (`[CoreHost]`: `OptimisticSwitch`, the two cells, the verbs), `OpenTune` | `ClassicPlaylist` panels: the copy-invite call to action and the two switch rows, the Tune choices and reset row |
+| `Playlist.Daylist` | `DaylistHost`: the wall-clock anchor re-anchored on `DaylistCountdown`'s cadence, the interval and expiry timer, the clock-mode decisions | `ClassicPlaylist` daylist: the flip cells, the Rolling ring, the next-update caption |
+| `Playlist.Recs`, `Playlist.RecRow` | `RecsSection` (`[CoreHost]`): the edge's demand and refill, the adding state | `ClassicPlaylist` recs: the header row, one slot per row on the shared media surface |
+
+**The shared Classic detail kit** (`Themes\Classic\Structure\Views\Detail\ClassicDetailKit.cs`) holds the pieces the frame's views, the album and the other lanes
+share: the keyed rail rows (`Row`: a position-only FLIP, `LateRow`: it also fades up on arrival, `ReleaseRow`), the eyebrow run and the billed-artist line
+box. The lanes only ADD to it. `Detail.RailArtistLine` (the width ladder with its hysteresis, the reserved heights, the "+N" arithmetic) is the core's rule.
+
+**Records and keys.** A record that carries closures a host rebuilds per render, or a list the host mutates in place, compares by reference (the host is
+the gate: a stamp that did not move never re-renders it); `PlaylistRecRowProps` is plain data over the section's two stable handlers, so an untouched row
+re-renders nothing. Writable cells travel as `Func<Signal<T>>` (the draft, the two switches). The hover cells of the pencil and of the cover's scrim, and the
+file-drag read, are the pictures' own (`ctx.Hooks`). Keys keep the old tree (`pl-read`, `pl-edit`, `pl-field:<size>`, `pl-status-row`, `release-panel`,
+`trail:<signature>`, `video:<slot>`, `rec:<slot>` ...). The popups' measures (`Playlist.AccessPanelWidth`, `TunePanelWidth`) belong to the hosts that open
+the popup and the dialog, and travel on the props.
+
+**Two hosts are not `[CoreHost]`.** `Album.CountdownHost` and `Playlist.DaylistHost` read the frame clock (`Design.FrameTime`), which WVTH008 fences; their
+presentation is the view's all the same.
+
+**Tests.** The ids, the registration, the equality promises and the numbers the pictures own against the reserves the core's skeleton states
+(`ClassicAlbumLayout` against `Album.PageRules.Skel*`, the reserved owner row, the invite pill's arm) are `Wavee.Tests\AlbumPlaylistContractTests.cs`; the rules stay
+`AlbumPageRulesTests`, `AlbumSurfaceRulesTests`, `PlaylistHeaderRulesTests`, `PlaylistTuneMenuModelTests`, `Daylist*Tests`. The mounted facts are
+`Wavee.ShellTests\AlbumPlaylistMountedTests.cs`: the billed-artist line's three modes and its chevron, the notice strip, About this release (facts, outer padding,
+nothing without a fact), the keyed rows of a stack, the one trailing region, the video hero and the list sections, the vertical arm's trailing rows, the editor's
+read / edit / status states and the keyed field, the copy-invite call to action, the flip cells while counting, and a smoke mount of the views with no keyed output.
 
 ## 3. Options
 

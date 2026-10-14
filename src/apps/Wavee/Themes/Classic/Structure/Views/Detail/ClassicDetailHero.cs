@@ -131,7 +131,7 @@ internal static partial class ClassicDetailFrame
 
             // ── the identity column, block for block (each keyed; late rows fade up, every row FLIPs) ──
             var blocks = new List<Element>(10);
-            if (f.Eyebrow) blocks.Add(Block("hero-eyebrow", Detail.EyebrowRun(id.Eyebrow), late: true));
+            if (f.Eyebrow) blocks.Add(Block("hero-eyebrow", ClassicDetailKit.EyebrowRun(id.Eyebrow), late: true));
             blocks.Add(Block("hero-title", slots.Title is { } editTitle
                 ? editTitle(plan.Size, float.NaN)
                 : R.Type.DetailHero(id.Title) with
@@ -301,7 +301,7 @@ internal static partial class ClassicDetailFrame
     /// <summary>A keyed identity block: a position-only FLIP always, a fade-up entrance when it can arrive late.</summary>
     static BoxEl Block(string key, Element child, bool late = false) => new()
     {
-        Key = key, Direction = 1, Layout = Detail.Shove, Enter = late ? Detail.FadeUp : (EnterExit?)null, Children = [child],
+        Key = key, Direction = 1, Layout = ClassicDetailKit.Shove, Enter = late ? ClassicDetailKit.FadeUp : (EnterExit?)null, Children = [child],
     };
 
     /// <summary>W27: Play 32 + the 32-DIP satellites — Shuffle (when the page offers it) · the heart (DROPPED, not
