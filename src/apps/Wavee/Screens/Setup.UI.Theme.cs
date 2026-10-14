@@ -8,8 +8,8 @@
 // Classic's options (then the page switch is one line in the plate's page table, and the Layout page is deleted). The page is the Layout page's twin on purpose: the same frame
 // (`WizardPage.Layout`, so the hero, the step count and the Back arrow are unchanged), the same body vocabulary, so replacing one with the other moves nothing on the plate.
 //
-// A theme pick here is a theme switch under the wizard plate: the plate is core state (`WizardModel`), the picker is `Settings.ThemePickerView`, the options are the same rows Settings
-// shows (`Settings.WizardThemeOptions`), so a theme gets ONE description of its options for both surfaces.
+// A theme pick here is a theme switch under the wizard plate: the plate is core state (`WizardModel`), the picker is the structure's `Settings.ThemePicker` view, the options are the same
+// rows Settings shows (the `Settings.ThemeOptions` view over `SettingsThemeOptions`), so a theme gets ONE description of its options for both surfaces.
 
 using FluentGpu.Dsl;
 using FluentGpu.Theming;
