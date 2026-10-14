@@ -49,10 +49,10 @@ public sealed class PrefsTests : IDisposable
     {
         // A marquee change must not re-render every mounted lyrics view.
         int lyrics = Prefs.Lyrics.Epoch.Peek();
-        int hero = Prefs.DetailHero.Epoch.Peek();
+        int rails = DetailRailPrefs.Epoch.Peek();
         Prefs.Appearance.Set(Platform.Keys.MarqueeEnabled, false);
         Assert.Equal(lyrics, Prefs.Lyrics.Epoch.Peek());
-        Assert.Equal(hero, Prefs.DetailHero.Epoch.Peek());
+        Assert.Equal(rails, DetailRailPrefs.Epoch.Peek());
     }
 
     // ── the clamps ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -198,17 +198,6 @@ public sealed class PrefsTests : IDisposable
         Prefs.Lyrics.SetBlurStrength(value);
         Assert.Equal(expected, _store.Get(Platform.Keys.LyricsBlurStrength));
         Assert.Equal(expected, Prefs.Lyrics.BlurStrength());
-    }
-
-    // ── the detail layout ────────────────────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void A_page_layout_write_bumps_the_detail_epoch()
-    {
-        int before = Prefs.DetailHero.Epoch.Peek();
-        Prefs.DetailHero.Set(Platform.Keys.DetailPageLayout, Prefs.DetailHero.Hero);
-        Assert.Equal(before + 1, Prefs.DetailHero.Epoch.Peek());
-        Assert.Equal(Prefs.DetailHero.Hero, Prefs.DetailHero.PageLayout());
     }
 
     // ── the now-playing player ───────────────────────────────────────────────────────────────────────────────────────

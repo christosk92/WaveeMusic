@@ -290,8 +290,9 @@ public sealed class ThemeOptionsSectionTests : IDisposable
     }
 
     [Fact]
-    public void A_transaction_option_remounts_the_root_and_a_live_option_does_not()
+    public void Neither_a_transaction_option_nor_a_live_option_remounts_the_root()
     {
+        // A Transaction option applies IN PLACE on the theme transaction (A4.2, plan 5.6); with no window bound it applies at once.
         var live = Fakes.Toggle("live");
         var tx = Fakes.Toggle("tx") with { Apply = ApplyMode.Transaction };
         ThemeHost.Install(Theme("t", Fakes.Schema(live, tx)));
@@ -302,7 +303,8 @@ public sealed class ThemeOptionsSectionTests : IDisposable
         rows[0].Row.Writer.Toggle!(true);
         Assert.Equal(epoch, ThemeHost.RootEpoch.Peek());
         rows[1].Row.Writer.Toggle!(true);
-        Assert.Equal(epoch + 1, ThemeHost.RootEpoch.Peek());
+        Assert.True(ThemeHost.Options.Get(new OptionKey<bool>("tx", false)));
+        Assert.Equal(epoch, ThemeHost.RootEpoch.Peek());
     }
 
     // ── actions and references ───────────────────────────────────────────────────────────────────────────────────────────
@@ -377,7 +379,7 @@ public sealed class ThemeOptionsSectionTests : IDisposable
     }
 
     [Fact]
-    public void Reset_remounts_the_root_once_when_a_transaction_option_changes_back()
+    public void Reset_puts_a_transaction_option_back_in_place_without_a_remount()
     {
         var tx = Fakes.Toggle("tx") with { Apply = ApplyMode.Transaction };
         ThemeHost.Install(Theme("t", Fakes.Schema(tx, Fakes.Toggle("live"))));
@@ -386,11 +388,15 @@ public sealed class ThemeOptionsSectionTests : IDisposable
         rows[1].Row.Writer.Toggle!(true);
         long epoch = ThemeHost.RootEpoch.Peek();
 
-        ThemeHost.ResetOptions("t");
-        Assert.Equal(epoch + 1, ThemeHost.RootEpoch.Peek());
+        Assert.True(ThemeHost.Options.Get(new OptionKey<bool>("tx", false)));
 
-        ThemeHost.ResetOptions("t");   // nothing changes: no second remount
-        Assert.Equal(epoch + 1, ThemeHost.RootEpoch.Peek());
+        ThemeHost.ResetOptions("t");
+        Assert.False(ThemeHost.Options.Get(new OptionKey<bool>("tx", false)));
+        Assert.False(ThemeHost.Options.Get(new OptionKey<bool>("live", false)));
+        Assert.Equal(epoch, ThemeHost.RootEpoch.Peek());
+
+        ThemeHost.ResetOptions("t");   // nothing changes
+        Assert.Equal(epoch, ThemeHost.RootEpoch.Peek());
     }
 
     [Fact]

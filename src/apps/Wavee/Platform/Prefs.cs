@@ -1,5 +1,5 @@
 // ── Platform/Prefs.cs ──────────────────────────────────────────────────────────────────────────────────────────────
-// the four cross-surface preference epochs: AppearancePrefs, LyricsPrefs, DetailHeroPrefs, NpvPlayerPrefs
+// the cross-surface preference epochs: AppearancePrefs, LyricsPrefs, NpvPlayerPrefs
 //
 // Role: CORE
 // Owner: L
@@ -232,43 +232,7 @@ public static partial class Prefs
         }
     }
 
-    // ══ 3. THE DETAIL PAGE'S LAYOUT ══════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The cross-surface DETAIL-LAYOUT epoch: bumped when Settings ▸ Lists ▸ "Track page layout" (or the rail
-    /// uniformity switch, or a rail-width reset) changes, so any mounted — including KeepAlive-parked — detail frame
-    /// re-resolves rail-vs-hero LIVE rather than on its next remount.</summary>
-    public static class DetailHero
-    {
-        /// <inheritdoc cref="DetailHero"/>
-        public static readonly Signal<int> Epoch = new(0);
-        /// <inheritdoc cref="Appearance.Bump"/>
-        public static void Bump() => Epoch.Value = Epoch.Peek() + 1;
-
-        /// <summary>The two page layouts.</summary>
-        public const int Automatic = 0, Hero = 1;
-
-        /// <summary>Reactive read of the page-layout choice, clamped.</summary>
-        public static int PageLayout()
-        {
-            _ = Epoch.Value;
-            return Clamp(Platform.Settings.Get(Platform.Keys.DetailPageLayout), 2);
-        }
-
-        /// <summary>Reactive read of "keep the left rail the same size across kinds". Only meaningful in
-        /// <see cref="Automatic"/>; the Hero layout has no rail to size.</summary>
-        public static bool RailUniform()
-        {
-            _ = Epoch.Value;
-            return Platform.Settings.Get(Platform.Keys.DetailRailUniform);
-        }
-
-        /// <summary>The ONE writer for every row on this epoch.</summary>
-        public static void Set<T>(SettingKey<T> key, T value)
-        {
-            Platform.Settings.Set(key, value);
-            Bump();
-        }
-    }
+    // ══ 3. (the detail page's layout and rails are the structure's: `DetailPolicy`, `DetailRailPrefs`) ══════════════
 
     // ══ 4-5. the now-playing player and the player bar live in the named partial `Prefs.Player.cs` ═════════════════
 

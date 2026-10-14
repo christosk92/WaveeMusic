@@ -844,6 +844,8 @@ public static partial class Shell
     /// push. Each one names what it is for:</summary>
     public static void GoTo(in Route route, NavOrigin? origin = null, NavTransitionKind motion = NavTransitionKind.Forward)
     {
+        // A theme transaction is building the new frame under a frozen one: the navigation waits for its thaw start (plan 4.2 f).
+        if (Theming.ThemeHost.IsTransactionRunning && HoldGoTo(route, origin, motion)) return;
         // History always opens in its OWN tab (a global view — the browser convention).
         if (route.Kind == RouteKind.History && Current.Peek().Kind != RouteKind.History)
         {
@@ -852,6 +854,9 @@ public static partial class Shell
         }
         Commit(route, origin, motion);
     }
+
+    static bool HoldGoTo(Route route, NavOrigin? origin, NavTransitionKind motion)
+        => Theming.ThemeHost.HoldNavigation(() => GoTo(route, origin, motion));
 
     /// <summary>The commit half of <see cref="GoTo"/>, without the own-tab rule — a fresh tab's FIRST route lands
     /// here, or opening History in a new tab would open another new tab, forever.</summary>

@@ -113,19 +113,42 @@ public static class ClassicPolicies
     /// own initializer and never reads this class).</summary>
     public static ThemePolicies Bundle { get; } = new(NavPane, Panel, PlayerBar, Chrome, Stage) { Tiers = ClassicTiers.Policy };
 
-    private static ThemePolicies WithLists(bool artHidden, TrackRowStyle rowStyle) => Bundle with { Lists = new ListPolicy(!artHidden, rowStyle) };
+    // The bundle for each combination of the structure options that reach the core (M7a: the sidebar layout x density; M4: the track artwork hidden; M8: the
+    // detail page layout x the rails' uniformity; M2: the track row style): index = ((((rowClassic * 2) + railUniform) * 2 + pageLayout) * 2 + hideArt) * 4 + layout * 2 + density. The default
+    // combination is `Bundle` itself.
+    private static readonly ThemePolicies[] s_byOptions = BuildByOptions();
 
-    private static readonly ThemePolicies s_artHidden = WithLists(artHidden: true, TrackRowStyle.Modern);
-    private static readonly ThemePolicies s_classicRows = WithLists(artHidden: false, TrackRowStyle.Classic);
-    private static readonly ThemePolicies s_classicRowsArtHidden = WithLists(artHidden: true, TrackRowStyle.Classic);
-
-    /// <summary>The bundle for the track-list options (M4 `hideTrackArt`, M2 `rowStyle`): one of four instances, so republishing the facts for an unchanged option is not a
-    /// change. <c>ClassicStructure.Policies</c> hands them out.</summary>
-    public static ThemePolicies For(bool artHidden, TrackRowStyle rowStyle) => (artHidden, rowStyle) switch
+    private static ThemePolicies[] BuildByOptions()
     {
-        (false, TrackRowStyle.Modern) => Bundle,
-        (true, TrackRowStyle.Modern) => s_artHidden,
-        (false, _) => s_classicRows,
-        _ => s_classicRowsArtHidden,
-    };
+        var all = new ThemePolicies[64];
+        foreach (TrackRowStyle rowStyle in new[] { TrackRowStyle.Modern, TrackRowStyle.Classic })
+         foreach (bool railUniform in new[] { false, true })
+            foreach (DetailPageLayout pageLayout in new[] { DetailPageLayout.Automatic, DetailPageLayout.Hero })
+                foreach (bool hideArt in new[] { false, true })
+                    foreach (SidebarLayoutId layout in new[] { SidebarLayoutId.Classic, SidebarLayoutId.Library })
+                        foreach (SidebarDensity density in new[] { SidebarDensity.Default, SidebarDensity.Compact })
+                        {
+                            bool isDefault = !hideArt && layout == SidebarLayoutId.Classic && density == SidebarDensity.Default
+                                && pageLayout == DetailPageLayout.Automatic && !railUniform && rowStyle == TrackRowStyle.Modern;
+                            all[IndexOf(layout, density, hideArt, pageLayout, railUniform, rowStyle)] = isDefault
+                                ? Bundle
+                                : Bundle with
+                                {
+                                    NavPane = NavPane with { Layout = layout, Density = density },
+                                    Lists = new ListPolicy(!hideArt, rowStyle),
+                                    Detail = new DetailPolicy(pageLayout, railUniform),
+                                };
+                        }
+        return all;
+    }
+
+    private static int IndexOf(SidebarLayoutId layout, SidebarDensity density, bool hideArt, DetailPageLayout pageLayout, bool railUniform, TrackRowStyle rowStyle)
+        => ((((((int)rowStyle * 2 + (railUniform ? 1 : 0)) * 2) + (int)pageLayout) * 2 + (hideArt ? 1 : 0)) * 4) + (int)layout * 2 + (int)density;
+
+    /// <summary>The bundle for the options the structure published: <see cref="Bundle"/> with the pane's <see cref="NavPanePolicy.Layout"/> and
+    /// <see cref="NavPanePolicy.Density"/> set, the track lists' artwork hidden when <paramref name="hideTrackArt"/>, the detail pages' layout and rail
+    /// uniformity, and the track rows' skin (M2). One instance per combination, so republishing the facts is not a change.</summary>
+    public static ThemePolicies For(SidebarLayoutId layout, SidebarDensity density, bool hideTrackArt = false,
+        DetailPageLayout pageLayout = DetailPageLayout.Automatic, bool railUniform = false, TrackRowStyle rowStyle = TrackRowStyle.Modern)
+        => s_byOptions[IndexOf(layout, density, hideTrackArt, pageLayout, railUniform, rowStyle)];
 }

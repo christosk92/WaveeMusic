@@ -150,8 +150,10 @@ engine menu items (`SidebarMenus.Map`) and draws the Outline.
 ## 7. Stores, persistence and the account swap
 
 - **`sidebar.json`** (`SidebarStoreV3`, `Sidebar.Store.cs`, `FileName`): the device document, v3: the two layout overlays
-  only. Unknown section ids are dropped on read, and returned for logging. The active layout, width, userCollapsed,
-  density and Library chip are `Platform.Keys` settings (`sidebar.layout.id`, `sidebar.pane.*`, `sidebar.library.filter`).
+  only. Unknown section ids are dropped on read, and returned for logging. The width, userCollapsed and Library chip are
+  `Platform.Keys` settings (`sidebar.pane.*`, `sidebar.library.filter`); the active layout and the density are Classic's
+  `structure.sidebar` / `structure.libraryDensity` options (M7a), carried into the core by `NavPanePolicy.Layout` / `Density`
+  (`Sidebar.FollowDesign`; the verbs `SwitchLayout` / `SetDensity` store them through `ThemeHost.Request`).
 - **`sidebar.acct-<hash>.json`** (`SidebarAccountStore.FileNameOf(key)`, hash from `SidebarAccountKey.Hash`): the
   per-account document. It holds the pins, folders, first-seen times and the migration latch. Signed-out sessions
   have no account file (`s_accountFile = null`). The signed-out key maps to `sidebar.acct-pending.json`

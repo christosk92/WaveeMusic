@@ -42,6 +42,17 @@ public class AppearanceTests
             Log.Add("kind:" + kind);
         }
 
+        /// <summary>The kinds whose change moves more than colours (a per-kind window material): a test sets it.</summary>
+        public bool Structural;
+
+        public bool KindChangeIsStructural(ThemeKind kind) => Structural;
+
+        public void ApplyKindInTransaction(ThemeKind kind)
+        {
+            Current = kind;
+            Log.Add("transaction:" + kind);
+        }
+
         public void ApplySystemAccent(bool allowPlainFallback)
         {
             AccentSeeds++;
@@ -245,5 +256,26 @@ public class AppearanceTests
         Assert.DoesNotContain(ports.Log, entry => entry.StartsWith("kind:", StringComparison.Ordinal));
         Assert.Empty(fades);
         Assert.Equal(1, ports.AccentSeeds);   // the accent still follows
+    }
+    // ── a kind that changes more than colours (A4.2) ────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_kind_change_that_moves_more_than_colours_goes_through_the_transaction_with_no_live_cross_fade()
+    {
+        var (model, ports, fades) = Make(current: ThemeKind.Dark, stored: 2);
+        ports.Structural = true;
+        model.SetMode(ThemeMode.Light);
+        model.ToggleMode();
+        Assert.Equal(new[] { "transaction:Light", "store:1", "transaction:Dark", "store:2" }, ports.Log);
+        Assert.Empty(fades);   // the transaction dissolves on its own
+    }
+
+    [Fact]
+    public void A_colour_only_kind_change_stays_on_the_live_path()
+    {
+        var (model, ports, fades) = Make(current: ThemeKind.Dark, stored: 2);
+        model.ToggleMode();
+        Assert.Equal(new[] { "kind:Light", "store:1" }, ports.Log);
+        Assert.Equal(new[] { AppearanceModel.TransitionMs }, fades);
     }
 }

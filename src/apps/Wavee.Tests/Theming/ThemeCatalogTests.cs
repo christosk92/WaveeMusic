@@ -422,7 +422,7 @@ public sealed class ThemeCatalogTests : IDisposable
         Assert.True(classic.Registry.Contains(ViewKeys.ShellFrame.Id));
         Assert.True(classic.Registry.Contains(ViewKeys.ShellContentState.Id));
         Assert.True(classic.Registry.Contains(ViewKeys.PlayerBar.Id));
-        Assert.Equal(new[] { "rowStyle", "hideTrackArt", "surfaces", "density" }, classic.ExposedOptions.All.Select(o => o.Id));   // M2, M4 and M6 (structure), M3 (style); each later M-PR adds its own
+        Assert.Equal(new[] { "sidebar", "libraryDensity", "rowStyle", "hideTrackArt", "surfaces", "pageLayout", "railUniform", "clearRememberedSizes", "density" }, classic.ExposedOptions.All.Select(o => o.Id));   // M7a, M2, M4, M6 and M8 (structure), M3 (style); each later M-PR adds its own
 
         var values = Values(classic);
         var definition = classic.Definition(values, AccentRamp.FluentDefault);

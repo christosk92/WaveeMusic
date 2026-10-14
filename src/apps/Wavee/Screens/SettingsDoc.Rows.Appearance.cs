@@ -4,7 +4,7 @@
 // to legacy keys, in their final groups: T1b) · Display (app mode, zoom, marquee) · Lyrics · Fullscreen · Now playing · Home.
 // The rows still point at TODAY'S keys (each moves to a theme option in its M-PR, §2.3, re-binding exactly one row here). Every write goes
 // through the epoch it always bumped (ch 27 W2 "three facts"): marquee /
-// daylist clock → `Prefs.Appearance`; page layout, rail uniform, rail reset → `Prefs.DetailHero`; the lyrics blur →
+// daylist clock → `Prefs.Appearance`; the lyrics blur →
 // `Prefs.Lyrics`; the two Now-playing rows → `Prefs.NpvPlayer` (the tab reads that epoch, no page re-read); the Fullscreen
 // rows → `Prefs.Stage` (raw key writes included — the stage reads that epoch). A verb returns whether the PAGE must re-read.
 
@@ -16,7 +16,7 @@ namespace Wavee;
 
 public static partial class SettingsDoc
 {
-    /// <summary>The Q7 reason a sidebar control gives while the sidebar is being edited (the palette path toasts the same words).</summary>
+    /// <summary>The Q7 reason a sidebar control gives while the sidebar is being edited.</summary>
     public const string FinishEditingKey = "sidebar.pane.finishEditing";
 
     static IReadOnlyList<SettingsSection> AppearanceSections() =>
@@ -31,13 +31,6 @@ public static partial class SettingsDoc
         // The rows the ACTIVE structure still binds to today's keys (T1b). The view lists them by `IStructureLayer.LegacyRows`
         // (id and group are the theme's), so a theme with other options, or none, shows none of them.
         Sect(T.Appearance, "Theme options", Strings.Settings.ThemeOptions.TitleKey, null,
-            Make(T.Appearance, "Theme options", "sidebarDesign", K.Picker, Strings.Settings.Sidebar.Layout,
-                SettingsWriter.OfChoice("sidebar.layout", SettingsVerbs.SwitchSidebarLayout),
-                captionKey: Strings.Settings.Sidebar.LayoutSub, value: _ => (int)Sidebar.Layout.Peek(),
-                enabled: NotWhileEditing),
-            Make(T.Appearance, "Theme options", "sidebarDensity", K.Choice, Strings.Settings.Sidebar.Density,
-                SettingsWriter.OfChoice("sidebar.density", SettingsVerbs.SetSidebarDensity),
-                captionKey: Strings.Settings.Sidebar.DensitySub, value: _ => (int)Sidebar.Density.Peek(), catalog: false),
             Make(T.Appearance, "Theme options", "sidebarReset", K.Action, Strings.Settings.Sidebar.Reset,
                 SettingsWriter.OfAction("sidebar.reset", SettingsVerbs.ResetSidebarLayout),
                 captionKey: Strings.Settings.Sidebar.ResetSub,
@@ -49,24 +42,7 @@ public static partial class SettingsDoc
                 captionKey: "settings.sidebar.editSub", enabled: NotWhileEditing),
             Make(T.Appearance, "Theme options", "sidebarResetEverything", K.Action, "sidebar.menu.resetEverything",
                 SettingsWriter.OfAction("sidebar.resetEverything", SettingsVerbs.ResetSidebarEverything),
-                captionKey: "settings.sidebar.resetEverythingSub", enabled: NotWhileEditing, catalog: false),
-            Make(T.Appearance, "Theme options", "pageLayout", K.Picker, Strings.Settings.Appearance.PageLayout,
-                SettingsWriter.OfChoice("lists.pageLayout", SettingsVerbs.SetPageLayout),
-                captionKey: Strings.Settings.Appearance.PageLayoutSub, value: s => Prefs.Clamp(s.Get(Platform.Keys.DetailPageLayout), 2)),
-            // Both sub-rows exist only for Automatic (Hero composes no rail); "Clear all remembered sizes" is composed AWAY —
-            // not disabled — while "Keep left-rail same size" is on (ch 27 W4, parity 17).
-            Make(T.Appearance, "Theme options", "railUniform", K.Toggle, Strings.Settings.Appearance.RailUniform,
-                SettingsWriter.OfToggle("lists.railUniform", SettingsVerbs.SetRailUniform),
-                captionKey: Strings.Settings.Appearance.RailUniformSub, value: BoolOf(Platform.Keys.DetailRailUniform),
-                visible: f => f.PageLayout == Prefs.DetailHero.Automatic),
-            // The reset's enable gate: a destructive-looking no-op is never offered. The uniform pair is excluded.
-            Make(T.Appearance, "Theme options", "railReset", K.Action, Strings.Settings.Appearance.RailReset,
-                SettingsWriter.OfAction("lists.railReset", SettingsVerbs.ResetRailSizes),
-                captionKey: Strings.Settings.Appearance.RailResetSub,
-                enabled: f => f.RailCustomized ? SettingsEnablement.On : SettingsEnablement.Off(null), silent: true,
-                visible: f => f.PageLayout == Prefs.DetailHero.Automatic && !f.RailUniform,
-                confirm: new SettingsConfirm(Strings.Settings.Appearance.RailResetConfirmTitle,
-                    Strings.Settings.Appearance.RailResetConfirmBody, Strings.Settings.Appearance.RailResetAction))),
+                captionKey: "settings.sidebar.resetEverythingSub", enabled: NotWhileEditing, catalog: false)),
 
         // The core presentation prefs every theme honours (the plan's App mode and Zoom rows; marquee is a core pref, owner Q27).
         Sect(T.Appearance, "Display", Strings.Settings.ThemeOptions.DisplayTitle, null,
@@ -213,29 +189,6 @@ public static partial class SettingsVerbs
         return true;
     }
 
-    // ── Lists ────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    public static bool SetPageLayout(int i)
-    {
-        if ((uint)i >= 2u || Platform.Settings.Get(Platform.Keys.DetailPageLayout) == i) return false;
-        Prefs.DetailHero.Set(Platform.Keys.DetailPageLayout, i);
-        return true;
-    }
-
-    public static bool SetRailUniform(bool on)
-    {
-        Prefs.DetailHero.Set(Platform.Keys.DetailRailUniform, on);
-        return true;
-    }
-
-    /// <summary>Reset the FOUR per-scope pairs to their authored defaults (never the uniform pair), then ONE bump, so an open
-    /// detail page's rail snaps to the reset widths now rather than next launch.</summary>
-    public static bool ResetRailSizes()
-    {
-        DetailRailPrefs.ResetAll();   // the four per-scope pairs, never the uniform pair, ONE bump
-        return true;
-    }
-
     /// <summary>The daylist clock (#185): the index IS the <see cref="DaylistClockMode"/> int. The write goes through the ONE
     /// appearance writer, so the playlist hero strip and the Home card swap their clock live; the page does not re-read.</summary>
     public static bool SetDaylistClock(int i)
@@ -246,21 +199,6 @@ public static partial class SettingsVerbs
     }
 
     // ── Sidebar ──────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The layout cards: Classic · Library. (The cards are disabled while the sidebar is being edited — the row's
-    /// <see cref="SettingsRow.Enabled"/> — so the view never calls this then.)</summary>
-    public static bool SwitchSidebarLayout(int index)
-    {
-        Sidebar.SwitchLayout((SidebarLayoutId)index);
-        return false;
-    }
-
-    /// <summary>Default · Compact (design P.4).</summary>
-    public static bool SetSidebarDensity(int index)
-    {
-        Sidebar.SetDensity(index == 1 ? SidebarDensity.Compact : SidebarDensity.Default);
-        return false;
-    }
 
     /// <summary>Reset the current layout to its authored form, with the sidebar's own undo toast.</summary>
     public static bool ResetSidebarLayout()

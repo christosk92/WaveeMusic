@@ -36,7 +36,7 @@ public enum ApplyMode : byte
 {
     /// <summary>Written to the cell; the views that read it re-render. Only for colour-only or production-behaviour options.</summary>
     Live,
-    /// <summary>Needs the theme transaction (a cut remount until A4.2): the option changes structure or a non-colour role.</summary>
+    /// <summary>Needs the theme transaction (freeze, apply in place, settle, dissolve; A4.2): the option changes structure or a non-colour role.</summary>
     Transaction,
 }
 
@@ -46,8 +46,13 @@ public enum CorePref : byte { AppMode, Zoom, ReducedMotionInfo, Marquee, StageFa
 /// <summary>How a select option is drawn.</summary>
 public enum PickerStyle : byte { Radio, Combo, Cards, Swatches, Toggle /* exactly two choices */ }
 
-/// <summary>The option is visible only while another option of the same layer holds <paramref name="EqualsValue"/>.</summary>
-public sealed record OptionCondition(string OptionId, object EqualsValue);
+/// <summary>The option is visible only while another option of the same layer holds <paramref name="EqualsValue"/> (and, when <see cref="And"/> is set, while
+/// that condition holds too).</summary>
+public sealed record OptionCondition(string OptionId, object EqualsValue)
+{
+    /// <summary>A second condition that must hold as well (M8: the rails' reset shows only with the Automatic page layout AND no uniform size).</summary>
+    public OptionCondition? And { get; init; }
+}
 
 /// <summary>One option a layer or a composition declares. Subclasses are the kinds below; the members the store needs are
 /// internal and non-generic so it can persist any option without knowing its value type.</summary>
@@ -289,10 +294,14 @@ public sealed record ColorOption(string Id, string TitleKey, string? Description
     }
 }
 
-/// <summary>A button in the options section that runs a verb (reset, open a folder...). Holds no value.</summary>
-public sealed record ActionOption(string Id, string TitleKey, string Group, string VerbId)
-    : ThemeOption(Id, TitleKey, null, Group, Command: true)
+/// <summary>A button in the options section that runs a verb (reset, open a folder...). Holds no value. <paramref name="Caption"/> is the loc key of the row's
+/// description; <see cref="Confirm"/>, when set, makes the page ask before the verb runs (a destructive action).</summary>
+public sealed record ActionOption(string Id, string TitleKey, string Group, string VerbId, string? Caption = null)
+    : ThemeOption(Id, TitleKey, Caption, Group, Command: true)
 {
+    /// <summary>The confirmation the page shows before it runs the verb; null runs it at once.</summary>
+    public SettingsConfirm? Confirm { get; init; }
+
     internal override bool HoldsValue => false;
     internal override object? DefaultBoxed => null;
     internal override object? Read(IAppSettings settings, string name, object? fallback) => null;

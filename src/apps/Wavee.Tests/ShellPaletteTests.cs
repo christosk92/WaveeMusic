@@ -17,7 +17,7 @@ namespace Wavee.Tests;
 public class CommandTableShapeTests
 {
     /// <summary>The builtin rows' count; registry and theme rows are appended after them.</summary>
-    internal const int BuiltinCount = 29;
+    internal const int BuiltinCount = 27;
 
     [Fact]
     public void The_builtin_table_is_nav_first_with_the_sidebar_rows_before_library()
@@ -31,9 +31,8 @@ public class CommandTableShapeTests
         Assert.Equal("nav.settings", rows[4].Id);
         Assert.Equal("playback.playPause", rows[5].Id);
         Assert.Equal("sidebar.edit", rows[17].Id);
-        Assert.Equal("sidebar.classic", rows[18].Id);
-        Assert.Equal("sidebar.library", rows[19].Id);
-        Assert.Equal("library.newFolder", rows[21].Id);
+        Assert.Equal("library.newPlaylist", rows[18].Id);   // the two "Use ... layout" rows are the Sidebar option's palette commands now (M7a)
+        Assert.Equal("library.newFolder", rows[19].Id);
     }
 
     [Fact]

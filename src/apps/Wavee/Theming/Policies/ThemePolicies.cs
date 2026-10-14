@@ -1,7 +1,7 @@
 // ── Theming/Policies/ThemePolicies.cs — what a structure decides for the core (themes plan 5.5) ───────────────────────
 //
 //   · `ThemePolicies`      the policy bundle a structure returns: nav pane, panel, player bar, chrome, stage, and the window tiers
-//                          (`Tiers`, T3b, and `Lists`, M4, init properties beside the five). Each member is
+//                          (`Tiers`, T3b, `Lists`, M4, and `Detail`, M8, init properties beside the five). Each member is
 //                          its own file; the core state machines (`SidebarPaneModeRules`, `Shell.Chrome`, `PlayerBarLayout`,
 //                          `Stage.Layout`, `PanelHost`, the mini player) take the member instead of Classic constants.
 //   · `ShellCapabilities`  what the shell offers. `Unrestricted` is "every feature on", which is what Classic is today.
@@ -36,6 +36,9 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
     /// <summary>What the structure decides for the track lists (M4: whether track artwork is drawn). A structure that declares nothing shows it.</summary>
     public ListPolicy Lists { get; init; } = ListPolicy.Default;
 
+    /// <summary>What the structure decides for the detail pages (M8: the page layout and whether the rails share one size). A structure that declares nothing is the shell as it shipped.</summary>
+    public DetailPolicy Detail { get; init; } = DetailPolicy.Default;
+
     /// <summary>Everything wrong with the bundle, empty when every core state machine can run on it.</summary>
     public IReadOnlyList<string> Validate()
     {
@@ -47,6 +50,7 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
         if (Stage is null) problems.Add("Stage is missing"); else problems.AddRange(Stage.Validate());
         if (Tiers is null) problems.Add("Tiers is missing"); else problems.AddRange(Tiers.Validate());
         if (Lists is null) problems.Add("Lists is missing");
+        if (Detail is null) problems.Add("Detail is missing");
         return problems;
     }
 }

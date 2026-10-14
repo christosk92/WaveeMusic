@@ -1166,7 +1166,7 @@ episode) own the per-kind slot builders and their sub-contract keys; the frame p
 | `Detail.InsightsToggle` | `DetailInsightsToggleProps` (the toggle and its `Form`) | the hero's toolbar row, and `Detail.InsightsBandAction` for the table's pinned band | `ToggleTemplate`: the glyph button, or the band's plateless word (its own component) |
 
 **What stays core, and why.** The decisions the frame, the table and the skeleton must agree on row for row are core, pure and unit-tested: the
-breakpoint ladder (`Breakpoints`), the rail's width bands and prefs (`RailPolicy`, `DetailRailPrefs`: M8 moves them into Classic's options),
+breakpoint ladder (`Breakpoints`), the rail's width bands (`RailPolicy`) and the persistence of its remembered sizes (`DetailRailPrefs`, theme state since M8),
 the hero arithmetic (`VerticalLayout`, `BandLayout`, `Skeleton.RailPlanFor`, `RailLayout`, `Detail.FlagsOf`, `Detail.HeroBandHeight`), the notice rules,
 `InsightsSheet` (which arm hosts the facts, the sheet's width), `Identity` / `Config` / `FrameSlots`, the shell-tint and page-tone claims, and the
 accent. No view compares a width with a number (WVTH013): the views are handed the mode, the rail width, the rung and the strip width. The numbers
@@ -1365,8 +1365,7 @@ root-lifetime cell with the deep link (`Settings.Open`, `TabFromSlug`), the page
 |---|---|---|---|
 | `Pages.Settings` | `SettingsPageProps` (the visible tab, the `Revision` that carries the page epoch and the two foreign epochs the Appearance tab reads, the pivot's cell as a `Func<Signal<int>>`, and the Storage census as `SettingsStorageProps` while that tab is visible) | `Settings.PageHost` (`[CoreHost]`, `Screens\Settings.Page.cs`): the context bind, the census trigger and the notices warm read | `ClassicSettings` (`.cs` the template, the pivot, the row grammar and the glyphs; `.General`, `.Appearance`, `.Playback`, `.VideoOverrides`, `.Storage`, `.Privacy`, `.About`, `.AiLyrics`): the masthead, the seven-tab pivot over a per-tab keyed scroll lane, every tab's sections and rows |
 | `Settings.ThemePicker` | `SettingsThemePickerProps` (none) | the Appearance tab, the setup wizard's Theme step | the fixed-size card per `ThemePickerEntry` |
-| `Settings.ThemeOptions` | `SettingsThemeOptionsProps` (`Wizard`) | the Appearance tab (the expander), the wizard (the plate rows, placed only when `SettingsThemeOptions.HasWizardOptions`) | the groups, the generated rows by kind, the legacy rows by document id |
-| `Settings.SidebarLayoutCards` | `SettingsSidebarLayoutProps` (`Active`, `Editing`) | the wizard's Layout step | the two layout cards and their miniatures |
+| `Settings.ThemeOptions` | `SettingsThemeOptionsProps` (`Wizard`) | the Appearance tab (the expander), the wizard (the plate rows, placed only when `SettingsThemeOptions.HasWizardOptions`) | the groups, the generated rows by kind (Classic draws its `structure.sidebar` row as the two layout cards with their miniatures, which refuse while the sidebar is edited), the legacy rows by document id |
 
 **What a Settings view may call.** The WVTH002 fence applies. A row's value is `row.Current` (the live store read through the document), not a settings key; what no row carries is a typed fact on `SettingsFacts` (`EqualizerGainsRaw`,
 `CrossfadeSeconds`, `AudioBudgetBytes`, `CrashInstallId`, `UpdateLastCheckedMs`, `SidebarMigrationDropped`, `AiLyricsEpoch`, `VideoOverrideTitle` / `VideoOverrideArtistLine`); the About receipts are one `Settings.SampleReceipts()` per tick.
@@ -1390,7 +1389,7 @@ The first-run wizard, the sign-in door and the playback runtime card are the str
 | `Setup.Wizard` | `SetupWizardProps` (the `WizardModel`, and the four pages' props) | `Setup.WizardPlate` (`[CoreHost]`, `Screens\Setup.UI.cs`): the overlay's content; keeps the one non-picture effect (the runtime banner stands down on the Local playback page) | `ClassicSetup.WizardTemplate` (`ClassicSetup.cs`): the plate (762 x 490, r8, stroke, dialog elevation), Enter / Backspace chords, the keep-alive page stack (3 entries, nav recipe by direction, no replay on activate), the footer (progress column, primary left, secondary right), Back over the content's corner, the page frame (icon column with the recoloured Lottie hero at 770+, title, scrolling body) |
 | `Setup.Terms` | `SetupTermsProps` (session, privacy verb, `SetupConsent`) | the plate's props | `ClassicSetup.TermsTemplate`; the opt-in crash-reporting card |
 | `Setup.SignIn` | `SetupSignInPageProps` (session, `ISetupSignInHost`) | `Setup.SignInHost` (`Screens\Setup.SignInHost.cs`) | `ClassicSetup.SignInPageTemplate`: the browser / pairing cards, the Busy ladder, "Is this you?", the UIA announcements |
-| `Setup.Theme` | `SetupThemeProps` (the settings' picker and options builders) | `Setup.ThemeStep` (`Screens\Setup.UI.Theme.cs`) | `ClassicSetup.ThemeTemplate`: the Layout page's twin (same frame) |
+| `Setup.Theme` | `SetupThemeProps` (the settings' picker and options builders) | the plate's props (`Setup.ThemeProps`, `Screens\Setup.UI.Theme.cs`); the wizard's second page, `WizardPage.Theme` | `ClassicSetup.ThemeTemplate`: the Layout page's frame |
 | `Setup.LocalPlayback` | `SetupLocalPlaybackProps` (session, signature-sheet verb, reveal-folder verb) | the plate's props | `ClassicSetup.LocalPlaybackTemplate`: the runtime model's phases on the plate |
 | `Setup.SignInDoor` | `SetupSignInDoorProps` (`SetupDialogPart` Body / Footer, `ISetupSignInHost`) | `Setup.SignInDoorView` (the zero-size watcher) and `OpenSignIn` (the ContentDialog) | `ClassicSetup.SignInDoorTemplate` |
 | `Setup.RuntimeCard` | `SetupRuntimeCardProps` (part, signature-sheet verb, "has a diagnostics page") | `Setup.OpenRuntimeCard` (`Screens\Setup.UI.Runtime.cs`) | `ClassicSetup.RuntimeCardTemplate` (`ClassicSetup.Runtime.cs`): the phase bodies, the fact boxes, the version picker, the local-source rows, the wrapping command row |
@@ -1492,13 +1491,39 @@ answer the composition's default.
 keys (its UI state and other themes stay). `ThemeState` keeps small UI state (a panel width, the last tab) under
 `theme.<themeId>.state.<key>`, clamped to the key's range on read and write.
 
-### Apply and switch (a cut, until A4.2)
+### Apply and switch (the theme transaction, A4.2)
 
-`ThemeHost.Switch(id)` persists `theme.id`, activates the composition (new option store, facts, registry), applies its
-definition when it differs from the installed one, and bumps `ThemeHost.RootEpoch`. `ThemeHost.Apply(OptionChange)` validates the
-change (an invalid value, an unknown option or a parameter throws `ArgumentException`), publishes it, republishes the facts
-and re-applies the definition; a Transaction option also bumps the epoch. There is **no freeze, snapshot or dissolve**: the
-engine's theme transaction (A4.2) replaces exactly these two paths later. Nothing is carried across a switch (owner Q26).
+`ThemeHost.Switch(id)` runs on the engine's **theme transaction** (`AppHost.RunThemeTransaction`, engine EP14 / E5): the new
+composition's fonts prewarm with the UI live (the picked picker card shows a busy ring once that takes 100 ms), the window and its
+pop-outs freeze, and in ONE apply flush under the frozen frame `theme.id` is persisted, the composition activated (new option
+store, facts, registry), its definition installed and `ThemeHost.RootEpoch` bumped, so the root remounts; the new frame settles
+(6 passes / 250 ms) and the thaw dissolves to it (250 ms; on the D3D12 backend, which cannot dissolve yet, the settled frame
+replaces the snapshot in one present). The DWM backdrop change, when the material or the dark flag differs, is ordered with the
+dissolve by the engine. `ThemeHost.Apply(OptionChange)` validates the change (an invalid value, an unknown option or a parameter
+throws `ArgumentException`); a **Live** option is published and the definition re-applied live (the cross-fade path, no freeze);
+a **Transaction** option is published inside a transaction **in place**: no remount, so every slot whose template did not change
+keeps its state and the transient hosting the option's control stays open. `ResetOptions` resets the Live options live and the
+Transaction ones in one transaction.
+
+- **Nothing is carried** (owner Q26): the remounted pages mount like a fresh navigation (find text, drawers, disclosures reset;
+  route, panel, stage and every core model stay; scroll lands where `ScrollPositionMemory` puts a fresh navigation).
+  `SwitchResetsStateTests` pins it.
+- **Failure:** a template of the new theme that throws (or an `Apply` that throws) is rolled back under the same freeze: the previous
+  composition is re-activated and the root swapped back, the frame thaws with a cut, and a toast says the theme could not be
+  applied (`Strings.Settings.ThemePicker.SwitchFailed`).
+- **Navigation during a transaction** (`Shell.GoTo`) waits for its thaw start (`ThemeHost.HoldNavigation`; the latest wins).
+- **Appearance:** light/dark stays live. Only when the active definition changes more than colours with the kind (a different
+  window material per kind) does `Appearance` take the transaction (`ThemeHost.SwitchKind`), with no live cross-fade.
+- **The runner:** the frame root binds its window's `InputHooks.RunThemeTransaction` (`ThemeHost.BindTransactions`); with none
+  bound (the boot before the window, unit tests) a change applies at once.
+- **The video presenter** is `Flow.Persist(Video.PresenterPersistKey)` (`"video.presenter"`): the new root adopts the playing
+  picture's subtree (its surface and binding) instead of re-creating it.
+- **Not built yet:** a Transaction-mode slider or colour picker must apply on release (plan 8.2); no such option exists and the
+  engine `Slider` has no release callback, so it lands with the first one.
+- Tests: `ThemeTransactionMountedTests` (the test-only `ClassicAlt` theme, `Wavee.ShellTests/ClassicAlt.cs`, switches live and
+  back; a Transaction option applies in place; navigation waits; 100 switches over Home, Artist, Search, Concert, Browse, Show and
+  the stage with lyrics playing end with 0 settle timeouts), `SwitchResetsStateTests`, `LiveOptionBehaviourTests` (a Live option
+  never freezes), `AppearanceTests`.
 
 `ThemeRoot.Wrap` (called by both `RootHost` and the headless root through `Shell.RootFrame`) provides
 `ViewRegistry.Context`, `OptionStore.Context` and `ThemeFactsContext.Signal` around the frame, and renders the frame in an
@@ -1527,11 +1552,11 @@ no other home yet (lyrics, full screen, now playing, Home). Nothing in it names 
   option changed).
 - **Legacy rows.** A structure lists the options that are still switches in `IStructureLayer.LegacyRows` (a `SettingsDoc` row id and a
   group). The page draws them in the same expander and groups; an M-PR deletes its rows from the list and declares the option, so
-  the tab never changes layout again. Classic lists 8 (M1 deleted one; M2, M3, M4 and M6 moved the track list style, the row density, the hide-art switch and the washes into options).
+  the tab never changes layout again. Classic lists 3 (M1 deleted one; M2, M3, M4, M6, M7a and M8 moved the track list style, the row density, the hide-art switch, the washes, the sidebar layout and density and the page layout with its two rail rows into options; the sidebar's three actions stay rows). Inside a group the generated rows come first, so the layout cards and the density sit above the sidebar's actions, as the rows they replaced did.
 - **Palette.** An option with `Command = true` contributes rows (`ThemeOptionsSection.Commands`): a toggle on/off, a select one per
   choice, an action one. `Shell.CommandTable.BuildIndex` appends them after the builtins (`PaletteKind.ThemeOption`).
-- **Setup.Theme.** `Setup.ThemeStep()` (`Screens\Setup.UI.Theme.cs`) mounts the `Setup.Theme` view (`ClassicSetup.ThemeTemplate`, the Layout page's twin: same frame) with the picker and the options;
-  it replaces Layout in M7a and is mounted by nothing until then.
+- **Setup.Theme.** The wizard's second page (`WizardPage.Theme`, M7a: it replaced the Layout page and its two sidebar cards) mounts the `Setup.Theme` view (`ClassicSetup.ThemeTemplate`, on the Layout page's frame) with the picker and
+  the options (`Setup.ThemeProps`): the wizard plate draws the generated option rows (the layout cards, the density, the surfaces switch), no legacy rows and no actions.
 
 ## 4. Migrating a retired switch (`ThemeBootstrap`)
 
@@ -1572,6 +1597,42 @@ publishes a definite "no colour"), and `Shell.Material` (`ClassicMaterial.Templa
 pages published. The hosts (`Detail`, `Artist`, `Profile`, `Home`, `Recents`) pass no flag: `Palette.PageTonePlane/ArtistBlendWash/ShellTint`
 and the `Cover*Props` records lost their `disabled` parameter, and `ArtistProps.Washes` / `ProfilePageProps.Washes` are gone. The Recents
 binder publishes its wash and page accent whatever the option says (the accent follows the artwork even with the washes off, owner NQ6).
+
+### M7a: the sidebar layout and density became Classic's options
+
+`sidebar.layout.id` (0 Classic, 1 Library) and `sidebar.pane.density` (0 Default, 1 Compact) are now `ClassicStructure.Sidebar` (a `SelectOption<SidebarLayoutId>`,
+Cards, `Command = true`, id `sidebar`) and `ClassicStructure.LibraryDensity` (a `SelectOption<SidebarDensity>`, Combo, id `libraryDensity`), stored as the enum ints under
+`theme.classic.structure.sidebar` / `.libraryDensity`. They are *structure* options (another theme's sidebar is another structure) that use the core enums, so the core can
+name a value. The "SidebarLayout" and "SidebarDensity" steps in `ThemeBootstrap.Steps` copy a stored value of 0 or 1 when the new key is absent, so a Library or Compact user keeps
+it; any other value (2 exists only in profiles that ran the discarded PR 205 branch) is not copied and the default applies. The legacy keys, `Platform.Keys.SidebarLayoutId` and
+`SidebarPaneDensity` are listed in `WVTH010.legacy.txt`. The v2 sidebar migration (`SidebarMigrationHost`, retiring with its own release) now hands its layout and density to the option
+through `ThemeHost.Request` instead of writing the old keys.
+
+How the core follows a choice it may not read (WVTH005): the structure publishes it as **`NavPanePolicy.Layout` / `Density`** (`ClassicPolicies.For(layout, density, hideTrackArt)`, one bundle per combination together with M4's `Lists.TrackArtwork`; one per
+pair, the default pair being `Bundle` itself). `Sidebar.Boot` reads `ShellPolicy.Now.NavPane`; the frame root's effect calls **`Sidebar.FollowDesign(ShellPolicy.Tracked.NavPane)`**, which
+brings the sidebar's live `Layout` / `Density` signals (the layout document, the undo ring and the menus read those) after an option that moved without a verb of the sidebar: the Settings
+cards, the palette's option commands, a theme switch. A layout change that arrives that way while the sidebar is being edited ends the edit first (the verb refuses instead). The verbs
+`Sidebar.SwitchLayout` / `SetDensity` (the pane's menu, the cards, the undo ring) keep their guards and ring records and store the choice with `ThemeHost.Request(NavPaneOptionIds.Layout /
+Density, value)` (a theme without the option ignores it and the choice lasts for the session). Classic's Settings view draws `structure.sidebar` as the two preview cards (the generic Cards
+row is text only) and `structure.libraryDensity` as the narrow combo it always was, and the options kept the icons of the rows they replaced. The density stays visible with either layout
+(the plan said "only with Library", but the density shapes the Classic layout's entity rows too). The wizard's second page is the Theme page; the Layout page, `Settings.SidebarLayoutCards`
+and the palette's "Use ... layout" rows are gone.
+
+### M8: the page layout and the detail rails
+
+`detail.page.layout` (0 Automatic, 1 Hero), `detail.rail.uniform` and the ten remembered rail sizes (`detail.rail.<album|playlist|liked|show|uniform>.width|collapsed`) left the core
+settings. The choice of shape is Classic's *structure* options `ClassicStructure.PageLayout` (a Cards `SelectOption<DetailPageLayout>`, drawn with the two wireframe cards the old row had),
+`RailUniform` (a toggle, shown only with the Automatic layout: the Hero composes no rail to size) and `ClearRememberedSizes` (an `ActionOption` with a confirmation, shown only with
+Automatic and per-kind rails, greyed while nothing is customised), all in the group "Track pages". The **remembered sizes** are Classic's theme *state* (`theme.classic.state.rail.<scope>.width|collapsed`,
+one `StateKey` per scope declared by the core host that writes them, `DetailRailPrefs.WidthKey/CollapsedKey`, clamped to the grip's range on every read and write; owner Q6: sizes are per theme).
+Three `ThemeBootstrap` steps copy the stored values once (`DetailPageLayout`, 0 or 1; `DetailRailUniform`; `DetailRailSizes`, all ten), so an existing user keeps their layout and their rails.
+
+How the core follows without reading an option (WVTH005): the structure publishes **`ThemePolicies.Detail`** (`DetailPolicy(PageLayout, RailUniform)`, `ClassicPolicies.For(..., pageLayout, railUniform)`, one bundle per
+combination). `Detail.FrameHost` reads `ShellPolicy.Tracked.Detail` (Hero forces the vertical arm for a track page; uniform folds every kind into `RailScope.Uniform`) and `DetailRailPrefs.Epoch` (bumped once per
+grip release, re-open or reset, so every mounted and parked frame re-syncs). The reset's behaviour is the core's (`DetailRailPrefs.ResetAll`, registered at boot as the `clearRememberedSizes` theme verb with an enable gate,
+`ThemeVerbs.Register(id, run, enabled)`; `ActionOption.Confirm` makes the page ask first, so the action has no palette row). What stays core: the width ARITHMETIC (`RailPolicy`: the bounds, the page-aware cap, the
+resting width, what a drag commits) because the skeleton and the host agree on it row for row; the plan's "RailPolicy becomes a Classic rule" would need every width through a published policy and moves nothing a second
+theme could not simply reuse. `Prefs.DetailHero`, the twelve `Platform.Keys.Detail*` keys, the three legacy Settings rows, `SettingsVerbs.SetPageLayout/SetRailUniform/ResetRailSizes` and the three `ISettingsFacts` members are gone.
 
 ### Worked example: row density and hide track art (M3, M4)
 

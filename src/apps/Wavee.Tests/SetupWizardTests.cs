@@ -82,7 +82,7 @@ public class SetupWizardLayoutTests
     {
         Assert.Equal("eula", Setup.WizardHeroes.AssetFor(Setup.WizardPage.Terms));
         Assert.Equal("connect", Setup.WizardHeroes.AssetFor(Setup.WizardPage.SignIn));
-        Assert.Equal("connect", Setup.WizardHeroes.AssetFor(Setup.WizardPage.Layout));   // reuses a loaded hero, no new asset
+        Assert.Equal("connect", Setup.WizardHeroes.AssetFor(Setup.WizardPage.Theme));   // reuses a loaded hero, no new asset
         Assert.Equal("patch", Setup.WizardHeroes.AssetFor(Setup.WizardPage.LocalPlayback));
     }
 }
@@ -364,20 +364,20 @@ public class SetupWizardRulesTests
         bool skip = Setup.Gating.SkipSignIn(authed: true);
         while (page != Setup.WizardPage.LocalPlayback)
         {
-            page = Setup.Gating.NextPage(page, skip, skipLayout: false);
+            page = Setup.Gating.NextPage(page, skip, skipTheme: false);
             Assert.NotEqual(Setup.WizardPage.SignIn, page);
         }
     }
 
-    /// <summary>A signed-in first run still offers the Layout step: sign-in skipping never skips it.</summary>
+    /// <summary>A signed-in first run still offers the Theme step: sign-in skipping never skips it.</summary>
     [Fact]
     public void A_signed_in_first_run_walk_stops_on_layout_then_local_playback()
     {
         bool skip = Setup.Gating.SkipSignIn(authed: true);
-        bool skipLayout = !Setup.Gating.ShowsLayout(Setup.WizardEntry.FirstRun);
-        Assert.Equal(Setup.WizardPage.Layout, Setup.Gating.NextPage(Setup.WizardPage.Terms, skip, skipLayout));
-        Assert.Equal(Setup.WizardPage.LocalPlayback, Setup.Gating.NextPage(Setup.WizardPage.Layout, skip, skipLayout));
-        Assert.Equal(Setup.WizardPage.Terms, Setup.Gating.PrevPage(Setup.WizardPage.Layout, skip, skipLayout));
+        bool skipTheme = !Setup.Gating.ShowsTheme(Setup.WizardEntry.FirstRun);
+        Assert.Equal(Setup.WizardPage.Theme, Setup.Gating.NextPage(Setup.WizardPage.Terms, skip, skipTheme));
+        Assert.Equal(Setup.WizardPage.LocalPlayback, Setup.Gating.NextPage(Setup.WizardPage.Theme, skip, skipTheme));
+        Assert.Equal(Setup.WizardPage.Terms, Setup.Gating.PrevPage(Setup.WizardPage.Theme, skip, skipTheme));
     }
 }
 

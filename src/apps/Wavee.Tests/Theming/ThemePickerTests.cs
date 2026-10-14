@@ -169,7 +169,7 @@ public sealed class ThemePickerTests : IDisposable
             Assert.Equal(ThemeOptionsSection.SectionTitle, found.Section);
             Assert.False(string.IsNullOrEmpty(row.Group), row.RowId);
         }
-        Assert.Equal(2, legacy.Select(l => l.Group).Distinct().Count());   // the sidebar rows and the page rows (M2, M3 and M4 took the track-list group)
+        Assert.Single(legacy.Select(l => l.Group).Distinct());   // only the sidebar's three actions are still rows
         // Rows of a group sit together: no group label would ever appear twice.
         var seen = new List<string>();
         foreach (var row in legacy)
@@ -183,18 +183,34 @@ public sealed class ThemePickerTests : IDisposable
         ThemeHost.Install(ClassicTheme.Create());
         var model = ThemeOptionsSection.Current(developerMode: true);
 
-        // M2 (row style), M4 (hide track art) and M6 (surfaces) are structure options, M3 (density) the style's: structure options come first in the schema.
-        Assert.Equal(new[] { "structure.rowStyle", "structure.hideTrackArt", "structure.surfaces", "style.density" }, model.Rows.Select(r => r.QualifiedId));
+        // M2 (row style), M4 (hide track art), M6 (surfaces), M7a (sidebar layout and density) and M8 (page layout, rails' uniformity, their reset) are structure options, M3 (row density) the style's: structure options come first in the schema.
+        Assert.Equal(new[] { "structure.sidebar", "structure.libraryDensity", "structure.rowStyle", "structure.hideTrackArt", "structure.surfaces", "structure.pageLayout", "structure.railUniform", "structure.clearRememberedSizes", "style.density" },
+            model.Rows.Select(r => r.QualifiedId));
+        var layout = model.Rows[0];
+        Assert.Equal(Strings.Settings.ThemeOptions.Group.Sidebar, layout.Group);
+        Assert.Equal(SettingsRowKind.Picker, layout.Row.Kind);   // Cards
+        Assert.Equal(PickerStyle.Cards, layout.Picker);
+        var density = model.Rows[1];
+        Assert.Equal(Strings.Settings.ThemeOptions.Group.Sidebar, density.Group);
+        Assert.Equal(SettingsRowKind.Choice, density.Row.Kind);  // a combo, as the row it replaced
         var surfaces = model.Rows.Single(r => r.QualifiedId == "structure.surfaces");
         Assert.Equal(Strings.Settings.ThemeOptions.Group.Surfaces, surfaces.Group);
         Assert.Equal(SettingsRowKind.Toggle, surfaces.Row.Kind);
         Assert.False(model.IsEmpty);
-        Assert.Equal(8, model.Legacy.Count);   // 12 before the M-PRs: M6 took the washes, M3 the row density, M4 the hide-art row, M2 the track list style (M1 had deleted page motion)
-        Assert.DoesNotContain(model.Legacy, l => l.RowId is "colorWashes" or "rowDensity" or "hideTrackArtwork" or "trackListStyle");
+        Assert.Equal(3, model.Legacy.Count);   // 12 before the M-PRs: M6 took the washes, M3 the row density, M4 the hide-art row, M2 the track list style, M7a the sidebar layout and density, M8 the page layout and the two rail rows (M1 had deleted page motion)
+        Assert.DoesNotContain(model.Legacy, l => l.RowId is "colorWashes" or "rowDensity" or "hideTrackArtwork" or "trackListStyle" or "sidebarDesign" or "sidebarDensity" or "pageLayout" or "railUniform" or "railReset");
+        var pageLayout = model.Rows.Single(r => r.QualifiedId == "structure.pageLayout");
+        Assert.Equal(Strings.Settings.ThemeOptions.Group.TrackPages, pageLayout.Group);
+        Assert.Equal(SettingsRowKind.Picker, pageLayout.Row.Kind);   // the two wireframe cards
+        Assert.Equal(PickerStyle.Cards, pageLayout.Picker);
+        Assert.Equal(SettingsRowKind.Toggle, model.Rows.Single(r => r.QualifiedId == "structure.railUniform").Row.Kind);
+        Assert.Equal(SettingsRowKind.Action, model.Rows.Single(r => r.QualifiedId == "structure.clearRememberedSizes").Row.Kind);
         Assert.NotNull(model.Reset);            // the theme stores options now ...
         Assert.False(model.Reset!.Enabled(SettingsFacts.Live).Enabled);   // ... and none is stored yet, so Reset has nothing to forget
         Assert.Equal("theme.classic.name", model.NameKey);
-        Assert.Empty(ThemeOptionsSection.Commands(true));
+        // Only the layout asks for palette rows: one per choice (the old "Use Classic layout" / "Use Library layout" rows).
+        var commands = ThemeOptionsSection.Commands(true);
+        Assert.Equal(new[] { "theme.structure.sidebar.0", "theme.structure.sidebar.1" }, commands.Select(c => c.Id));
     }
 
     [Fact]

@@ -18,7 +18,8 @@
 // T1b: the options Classic will own (plan 6.1) that are still TODAY's switches are bound to their legacy keys through `SettingsDoc`
 // rows. `LegacyRows` lists them in their FINAL grouping so Settings › Appearance shows Classic's section once, in its
 // final shape; each M-PR deletes its rows from the list and declares the option in `Options` (the generated row takes the
-// same place in the same group). M2 declared `rowStyle`, M4 `hideTrackArt` and M6 `Surfaces` (the colour washes) here; M3's `density` is the style's.
+// same place in the same group). M2 declared `rowStyle`, M4 `hideTrackArt`, M6 `Surfaces` (the colour washes), M7a `Sidebar` and `LibraryDensity` and M8 `PageLayout`, `RailUniform` and
+// `ClearRememberedSizes`; M3's `density` is the style's.
 
 using FluentGpu.Theming;
 using Wavee.Themes.Common;
@@ -334,14 +335,101 @@ public sealed class ClassicStructure : IStructureLayer
     /// <summary>Colour washes are drawn (anything but Off): what the material views and cover leaves read.</summary>
     public static bool WashesOn(SurfaceWash surfaces) => surfaces != SurfaceWash.Off;
 
-    private static readonly ThemeOptionSchema s_options = ThemeOptionSchema.Of(RowStyle, HideTrackArt, Surfaces);
+    /// <summary>Sidebar: which of the two layouts the navigation pane shows (Classic's sections you arrange, Library's one list with filters).
+    /// Stored as the layout's int (`theme.classic.structure.sidebar`: Classic 0, Library 1); the option replaced `sidebar.layout.id` (`ThemeBootstrap`'s
+    /// "SidebarLayout" step copies it). It is a STRUCTURE option: the layout is the navigation pane's shape, and another theme's sidebar is
+    /// another structure. Drawn as the two preview cards (the Settings view of this structure draws them; the generic cards are text only), and offered
+    /// to the command palette. The core sidebar follows it through <see cref="NavPanePolicy.Layout"/> (see <see cref="Policies"/>): it owns the layout
+    /// document, the undo ring and the menus, the structure owns the choice.</summary>
+    public static SelectOption<SidebarLayoutId> Sidebar { get; } = new SelectOption<SidebarLayoutId>(
+        Id: NavPaneOptionIds.Layout, TitleKey: Strings.Settings.Sidebar.Layout, DescriptionKey: Strings.Settings.Sidebar.LayoutSub,
+        Group: Strings.Settings.ThemeOptions.Group.Sidebar, Default: SidebarLayoutId.Classic,
+        Choices:
+        [
+            new SelectChoice<SidebarLayoutId>(SidebarLayoutId.Classic, Strings.Sidebar.LayoutName.Classic),
+            new SelectChoice<SidebarLayoutId>(SidebarLayoutId.Library, Strings.Sidebar.LayoutName.Library),
+        ],
+        Picker: PickerStyle.Cards) with { Command = true };
+
+    /// <summary>Density: two-line (art 32) or one-line (art 24) entity rows, in both layouts. Stored as the int (`theme.classic.structure.libraryDensity`:
+    /// Default 0, Compact 1); the option replaced `sidebar.pane.density` (the "SidebarDensity" step). Always shown: the density shapes the playlist and album
+    /// rows of the Classic layout too, so hiding it while that layout is active would take a working setting away (the plan's "only with the Library layout"
+    /// is not taken for that reason).</summary>
+    public static SelectOption<SidebarDensity> LibraryDensity { get; } = new(
+        Id: NavPaneOptionIds.Density, TitleKey: Strings.Settings.Sidebar.Density, DescriptionKey: Strings.Settings.Sidebar.DensitySub,
+        Group: Strings.Settings.ThemeOptions.Group.Sidebar, Default: SidebarDensity.Default,
+        Choices:
+        [
+            new SelectChoice<SidebarDensity>(SidebarDensity.Default, Strings.Sidebar.Density.Default),
+            new SelectChoice<SidebarDensity>(SidebarDensity.Compact, Strings.Sidebar.Density.Compact),
+        ],
+        Picker: PickerStyle.Combo);
+
+    /// <summary>The layer-qualified ids of the two sidebar options (what <c>GeneratedOptionRow.QualifiedId</c> answers): the Settings view draws the layout
+    /// with its preview cards and the density with its narrow combo.</summary>
+    public const string SidebarOptionId = "structure." + NavPaneOptionIds.Layout;
+
+    /// <inheritdoc cref="SidebarOptionId"/>
+    public const string LibraryDensityOptionId = "structure." + NavPaneOptionIds.Density;
+
+    /// <summary>Page layout (M8): how a TRACK page (album, playlist, Liked) is composed. Automatic keeps the metadata rail beside the list on wide windows and
+    /// the artwork hero on narrow ones; Hero uses the hero composition at every width (no rail). Stored as the enum's int (`theme.classic.structure.pageLayout`:
+    /// Automatic 0, Hero 1); the option replaced `detail.page.layout` (`ThemeBootstrap`'s "DetailPageLayout" step). Drawn as the two wireframe cards of the row it
+    /// replaced (`ClassicSettings.Theme.cs`). The core frame follows it through <see cref="DetailPolicy.PageLayout"/> (see <see cref="Policies"/>).</summary>
+    public static SelectOption<DetailPageLayout> PageLayout { get; } = new(
+        Id: "pageLayout", TitleKey: Strings.Settings.Appearance.PageLayout, DescriptionKey: Strings.Settings.Appearance.PageLayoutSub,
+        Group: Strings.Settings.ThemeOptions.Group.TrackPages, Default: DetailPageLayout.Automatic,
+        Choices:
+        [
+            new SelectChoice<DetailPageLayout>(DetailPageLayout.Automatic, Strings.Settings.Choice.Automatic),
+            new SelectChoice<DetailPageLayout>(DetailPageLayout.Hero, Strings.Settings.Choice.Hero),
+        ],
+        Picker: PickerStyle.Cards);
+
+    /// <summary>"Keep left-rail same size" (M8): every kind's rail rests at one shared remembered size and resizing it once applies everywhere. It replaced
+    /// `detail.rail.uniform` (the "DetailRailUniform" step). Shown only with the Automatic page layout: the Hero composes no rail to size. The core frame follows it
+    /// through <see cref="DetailPolicy.RailUniform"/>.</summary>
+    public static ToggleOption RailUniform { get; } = new ToggleOption(
+        Id: "railUniform", TitleKey: Strings.Settings.Appearance.RailUniform, DescriptionKey: Strings.Settings.Appearance.RailUniformSub,
+        Group: Strings.Settings.ThemeOptions.Group.TrackPages, Default: false)
+        with { VisibleWhen = new OptionCondition(PageLayoutId, DetailPageLayout.Automatic) };
+
+    /// <summary>"Clear all remembered sizes" (M8): the verb forgets every kind's remembered rail width and collapse (the shared uniform size is not touched), after a
+    /// confirmation. It is composed AWAY, not disabled, while the page layout is Hero or the rails share one size (there is no per-kind rail to forget), and greys
+    /// while nothing is customised. The behaviour is the core's (`DetailRailPrefs`, registered as the <see cref="DetailVerbIds.ClearRememberedSizes"/> theme verb); the remembered
+    /// sizes are this theme's state (`rail.&lt;scope&gt;.width` / `.collapsed`).</summary>
+    public static ActionOption ClearRememberedSizes { get; } = new ActionOption(
+        Id: "clearRememberedSizes", TitleKey: Strings.Settings.Appearance.RailReset, Group: Strings.Settings.ThemeOptions.Group.TrackPages,
+        VerbId: DetailVerbIds.ClearRememberedSizes, Caption: Strings.Settings.Appearance.RailResetSub)
+        with
+        {
+            Command = false,   // a destructive action asks first, and the palette has no dialog
+            Confirm = new SettingsConfirm(Strings.Settings.Appearance.RailResetConfirmTitle, Strings.Settings.Appearance.RailResetConfirmBody,
+                Strings.Settings.Appearance.RailResetAction),
+            VisibleWhen = new OptionCondition(PageLayoutId, DetailPageLayout.Automatic) { And = new OptionCondition(RailUniform.Id, false) },
+        };
+
+    private const string PageLayoutId = "pageLayout";
+
+    /// <summary>The layer-qualified ids of the two rail options (the Settings view gives them the icons of the rows they replaced).</summary>
+    public const string RailUniformQualifiedId = "structure.railUniform";
+
+    /// <inheritdoc cref="RailUniformQualifiedId"/>
+    public const string ClearRememberedSizesQualifiedId = "structure.clearRememberedSizes";
+
+    /// <summary>The layer-qualified ids of the page options (what <c>GeneratedOptionRow.QualifiedId</c> answers): the Settings view draws the page layout with its
+    /// wireframe cards.</summary>
+    public const string PageLayoutQualifiedId = "structure." + PageLayoutId;
+
+    private static readonly ThemeOptionSchema s_options = ThemeOptionSchema.Of(Sidebar, LibraryDensity, RowStyle, HideTrackArt, Surfaces, PageLayout, RailUniform, ClearRememberedSizes);
 
     /// <inheritdoc />
     public ThemeOptionSchema Options => s_options;
 
     /// <inheritdoc />
     public ThemePolicies Policies(OptionValues structure, in StyleMetrics metrics)
-        => ClassicPolicies.For(structure.Get(HideTrackArt.Key), structure.Get(RowStyle.Key));
+        => ClassicPolicies.For(structure.Get(Sidebar.Key), structure.Get(LibraryDensity.Key), structure.Get(HideTrackArt.Key),
+            structure.Get(PageLayout.Key), structure.Get(RailUniform.Key), structure.Get(RowStyle.Key));
 
     /// <inheritdoc />
     public ShellCapabilities Capabilities(OptionValues structure) => ShellCapabilities.Unrestricted;
@@ -349,18 +437,14 @@ public sealed class ClassicStructure : IStructureLayer
     /// <inheritdoc />
     public RoleSet RequiredRoles => RoleSet.None;
 
-    /// <summary>Each entry leaves with the M-PR that migrates its switch: sidebar M7a, page layout and rails M8. (Page motion, M1,
-    /// was deleted: it has no row. Washes, M6, became the structure's `surfaces` option; row style, M2, the structure's `rowStyle` option, row density, M3, the style's `density` option and hide art, M4,
-    /// the structure's `hideTrackArt`.)</summary>
+    /// <summary>The legacy rows are the sidebar's three ACTIONS: they are not switches, so no M-PR migrates them. (Page motion, M1,
+    /// was deleted: it has no row. Washes, M6, became the structure's `surfaces` option; row style, M2, the structure's `rowStyle`; row density, M3, the style's `density` option, hide art, M4,
+    /// the structure's `hideTrackArt`; the sidebar layout and density, M7a, the structure's `sidebar` and `libraryDensity`; the page layout, the rails' uniformity and
+    /// their reset, M8, the structure's `pageLayout`, `railUniform` and `clearRememberedSizes`.)</summary>
     public IReadOnlyList<LegacyOptionRow> LegacyRows { get; } =
     [
-        new("sidebarDesign", Strings.Settings.ThemeOptions.Group.Sidebar),
-        new("sidebarDensity", Strings.Settings.ThemeOptions.Group.Sidebar),
         new("sidebarReset", Strings.Settings.ThemeOptions.Group.Sidebar),
         new("sidebarCustomize", Strings.Settings.ThemeOptions.Group.Sidebar),
         new("sidebarResetEverything", Strings.Settings.ThemeOptions.Group.Sidebar),
-        new("pageLayout", Strings.Settings.ThemeOptions.Group.TrackPages),
-        new("railUniform", Strings.Settings.ThemeOptions.Group.TrackPages),
-        new("railReset", Strings.Settings.ThemeOptions.Group.TrackPages),
     ];
 }

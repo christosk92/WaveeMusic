@@ -3,7 +3,7 @@
 // The Live-option pins (themes plan §2.1, LP1), written before any view moves into a theme: per option, change it through
 // TODAY's writer on the real mounted frame and assert the mechanism production uses, on the nodes production keys. A
 // later PR that moves a surface keeps this file green; an M-PR re-points the write from the legacy key to the theme
-// option, and the assertions stay (M3 density and M4 hide art write through `ThemeHost.Apply`, the way the Settings rows and the table's slider do).
+// option, and the assertions stay (M3 density, M4 hide art and M8 page layout write through `ThemeHost.Apply`, the way the Settings rows and the table's slider do).
 //
 //   stage layout    the popover writer and `[` / `]` → the `stage:cover` node's Bounds FLIP spring runs (the keys
 //                   step the face instead wherever the layout keeps its cover)
@@ -46,6 +46,18 @@ public sealed class LiveOptionBehaviourTests(ShellHost host)
         shell.RunFrames(120);   // the entrance and every spring settle
     }
 
+    /// <summary>A Live option keeps production's motion: it never asks for a theme transaction, so no frame of the change is
+    /// frozen (A4.2: only theme switches and Transaction-mode options freeze).</summary>
+    static void RunFramesLive(Shell.HeadlessShell shell, int frames)
+    {
+        for (int i = 0; i < frames; i++)
+        {
+            Assert.False(shell.Host.IsThemeTransactionRunning, "a Live option started a theme transaction");
+            Assert.Equal(FluentGpu.Hosting.FreezePhase.None, shell.Host.FreezeState);
+            shell.RunFrames(1);
+        }
+    }
+
     static void CloseStage(Shell.HeadlessShell shell)
     {
         Stage.Close(null, "test");
@@ -67,7 +79,7 @@ public sealed class LiveOptionBehaviourTests(ShellHost host)
                 Assert.False(shell.Host.Animation.HasTracks(cover), "the cover was still moving before the change");
 
                 Prefs.Stage.SetLayout((int)Stage.VizLayout.LargeArt);   // the options popover's writer (Stage.Options.UI.cs)
-                shell.RunFrames(2);
+                RunFramesLive(shell, 2);
                 cover = Node(shell, "stage:cover");
                 Assert.True(shell.Host.Animation.HasTracks(cover), "Card → Large art snapped the cover instead of springing it");
             }
@@ -144,6 +156,72 @@ public sealed class LiveOptionBehaviourTests(ShellHost host)
         });
 
     [Fact]
+    public void The_sidebar_options_drive_the_pane_like_the_verbs_do_and_a_verb_stores_the_option()
+        => host.Mounted(shell =>
+        {
+            shell.RunFrames(60);
+            var layout = Sidebar.Layout.Peek();
+            var density = Sidebar.Density.Peek();
+            var other = layout == SidebarLayoutId.Library ? SidebarLayoutId.Classic : SidebarLayoutId.Library;
+            string otherKey = other == SidebarLayoutId.Library ? "sidebar.library" : "sidebar.classic";
+            try
+            {
+                // Settings' cards, the palette's option commands and a theme switch write the option; the frame's effect brings the sidebar after it.
+                _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, ClassicStructure.SidebarOptionId, other));
+                shell.RunFrames(2);
+                Assert.Equal(other, Sidebar.Layout.Peek());
+                Assert.Equal(other, ShellPolicy.Now.NavPane.Layout);
+                Node(shell, otherKey);
+
+                // A verb of the sidebar (the pane's menu) stores the choice in the option.
+                Sidebar.SetDensity(SidebarDensity.Compact);
+                Assert.Equal(SidebarDensity.Compact, ThemeHost.Values.Structure.Get(ClassicStructure.LibraryDensity.Key));
+                Assert.Equal(SidebarDensity.Compact, ShellPolicy.Now.NavPane.Density);
+                Sidebar.SwitchLayout(layout);
+                Assert.Equal(layout, ThemeHost.Values.Structure.Get(ClassicStructure.Sidebar.Key));
+
+                // The density option moved without a verb: the pane follows.
+                _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, ClassicStructure.LibraryDensityOptionId, SidebarDensity.Default));
+                shell.RunFrames(2);
+                Assert.Equal(SidebarDensity.Default, Sidebar.Density.Peek());
+            }
+            finally
+            {
+                _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, ClassicStructure.SidebarOptionId, layout));
+                _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, ClassicStructure.LibraryDensityOptionId, density));
+                shell.RunFrames(60);
+            }
+        });
+
+    [Fact]
+    public void A_layout_option_change_while_the_sidebar_is_edited_ends_the_edit_first()
+        => host.Mounted(shell =>
+        {
+            shell.RunFrames(60);
+            var layout = Sidebar.Layout.Peek();
+            var other = layout == SidebarLayoutId.Library ? SidebarLayoutId.Classic : SidebarLayoutId.Library;
+            try
+            {
+                Sidebar.EnterEdit();
+                shell.RunFrames(2);
+                Assert.True(Sidebar.Editing.Peek());
+                Sidebar.SwitchLayout(other);                    // the sidebar's own verb refuses while editing
+                Assert.Equal(layout, Sidebar.Layout.Peek());
+
+                _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, ClassicStructure.SidebarOptionId, other));   // a command-palette row does not
+                shell.RunFrames(2);
+                Assert.False(Sidebar.Editing.Peek());
+                Assert.Equal(other, Sidebar.Layout.Peek());
+            }
+            finally
+            {
+                Sidebar.ExitEdit();
+                _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, ClassicStructure.SidebarOptionId, layout));
+                shell.RunFrames(60);
+            }
+        });
+
+    [Fact]
     public void Sidebar_density_changes_the_library_rows_extent_in_place()
         => host.Mounted(shell =>
         {
@@ -215,7 +293,7 @@ public sealed class LiveOptionBehaviourTests(ShellHost host)
             try
             {
                 ClassicDensity.Request(ThemeHost.Options.RequestForwarder, other);   // Settings › Appearance › Density, or the table's Row size
-                shell.RunFrames(30);
+                RunFramesLive(shell, 30);
                 var (_, next) = Single(shell, "list:");
                 Assert.Contains(":d" + (int)other + ":", next);
             }
@@ -267,26 +345,29 @@ public sealed class LiveOptionBehaviourTests(ShellHost host)
 
     // ── the detail page ───────────────────────────────────────────────────────────────────────────────────────────
 
+    static void SetPageLayout(DetailPageLayout layout)
+        => _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, ClassicStructure.PageLayoutQualifiedId, layout));
+
     [Fact]
     public void Page_layout_swaps_the_detail_arm()
         => host.Mounted(shell =>
         {
-            int before = Platform.Settings.Get(Platform.Keys.DetailPageLayout);
-            Prefs.DetailHero.Set(Platform.Keys.DetailPageLayout, Prefs.DetailHero.Automatic);
+            var before = ThemeHost.Values.Structure.Get(ClassicStructure.PageLayout.Key);
+            SetPageLayout(DetailPageLayout.Automatic);
             try
             {
                 Shell.GoTo(new Shell.Route(Shell.RouteKind.Liked));
                 Until(shell, () => !shell.Find("detail:two-column").IsNull, "the wide liked page mounted its two-column arm");
-                Prefs.DetailHero.Set(Platform.Keys.DetailPageLayout, Prefs.DetailHero.Hero);   // Settings › Appearance › Page layout
+                SetPageLayout(DetailPageLayout.Hero);   // Settings › Appearance › Page layout
                 Until(shell, () => !shell.Find("detail:vertical").IsNull, "Hero swapped the page to its vertical arm");
                 shell.RunFrames(30);
                 Assert.True(shell.Find("detail:two-column").IsNull, "the two-column arm stayed mounted under Hero");
-                Prefs.DetailHero.Set(Platform.Keys.DetailPageLayout, Prefs.DetailHero.Automatic);
+                SetPageLayout(DetailPageLayout.Automatic);
                 Until(shell, () => !shell.Find("detail:two-column").IsNull, "Automatic swapped the wide page back to two columns");
             }
             finally
             {
-                Prefs.DetailHero.Set(Platform.Keys.DetailPageLayout, before);
+                SetPageLayout(before);
                 shell.RunFrames(30);
             }
         });

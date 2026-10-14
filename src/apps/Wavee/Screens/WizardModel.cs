@@ -103,7 +103,7 @@ public static partial class Setup
         public readonly Signal<Design.NavTransitionKind> Direction = new(Design.NavTransitionKind.Neutral);
         public readonly WizardEntry Entry;
         public readonly bool SkipSignIn;
-        public readonly bool SkipLayout;
+        public readonly bool SkipTheme;
         public Action? RequestClose;
 
         /// <summary>The pairing code the Sign in page shows ("" while none is live), as a bound value: reading it inside a bind
@@ -121,7 +121,7 @@ public static partial class Setup
         {
             Entry = entry;
             SkipSignIn = Gating.SkipSignIn(signedIn);
-            SkipLayout = !Gating.ShowsLayout(entry);
+            SkipTheme = !Gating.ShowsTheme(entry);
             _post = post;
             Page = new(WizardRules.StartPage(entry));
             PairingCode = Prop.Of(PairingCodeNow);
@@ -180,14 +180,14 @@ public static partial class Setup
 
         public bool IsBusy => Model?.IsBusy ?? false;
 
-        /// <summary>"Step N of M" (M is 2 when Layout is skipped), or null on Terms ("Pre-setup"). Reads <see cref="Page"/>.</summary>
-        public (int Step, int Total)? StepNumber() => Gating.StepNumber(Page.Value, SkipLayout);
+        /// <summary>"Step N of M" (M is 2 when Theme is skipped), or null on Terms ("Pre-setup"). Reads <see cref="Page"/>.</summary>
+        public (int Step, int Total)? StepNumber() => Gating.StepNumber(Page.Value, SkipTheme);
 
         /// <summary>The number of steps this session shows.</summary>
-        public int Count => SkipLayout ? 2 : Gating.StepTotal;
+        public int Count => SkipTheme ? 2 : Gating.StepTotal;
 
         /// <summary>The footer's progress over the pages this session shows. Reads <see cref="Page"/>.</summary>
-        public float Progress() => Gating.Progress(Page.Value, SkipLayout);
+        public float Progress() => Gating.Progress(Page.Value, SkipTheme);
 
         static string PairingCodeNow()
         {
@@ -214,7 +214,7 @@ public static partial class Setup
             Page.Value = to;
         }
 
-        public void Back() => Advance(Gating.PrevPage(Page.Peek(), SkipSignIn, SkipLayout));
+        public void Back() => Advance(Gating.PrevPage(Page.Peek(), SkipSignIn, SkipTheme));
 
         /// <summary>Ends the runtime session and the sign-in flows (the plate's close).</summary>
         public void End()
@@ -245,10 +245,10 @@ public static partial class Setup
                     Platform.Settings.Set(Platform.Keys.TermsAcceptedVersion, Gating.TermsVersion);
                     WizardRules.MarkConsentAsked(Platform.Settings, Entry);   // crash-diagnostics §F: consent asked iff the card was shown
                     if (Entry == WizardEntry.TermsRearm) Finish();
-                    else Advance(Gating.NextPage(WizardPage.Terms, SkipSignIn, SkipLayout));
+                    else Advance(Gating.NextPage(WizardPage.Terms, SkipSignIn, SkipTheme));
                     break;
-                case WizardPage.Layout:   // the two sidebar layouts apply at once; Next only moves on
-                    Advance(Gating.NextPage(WizardPage.Layout, SkipSignIn, SkipLayout));
+                case WizardPage.Theme:   // the Theme page: a pick and every option apply at once; Next only moves on
+                    Advance(Gating.NextPage(WizardPage.Theme, SkipSignIn, SkipTheme));
                     break;
                 case WizardPage.SignIn:
                     Spotify.SignInState st = Spotify.SignIn.State.Peek();
@@ -257,7 +257,7 @@ public static partial class Setup
                         case SignInFacet.Idle: StartBrowser(); break;
                         case SignInFacet.Done:   // "Is this you?" — moving on is the user's own click, never automatic
                             if (Gating.SkipsLocalPlayback(Entry, Runtime.Status.Peek().IsReady)) Finish();
-                            else Advance(Gating.NextPage(WizardPage.SignIn, SkipSignIn, SkipLayout));
+                            else Advance(Gating.NextPage(WizardPage.SignIn, SkipSignIn, SkipTheme));
                             break;
                         case SignInFacet.Failed: RetryFor(in st)(); break;
                         case SignInFacet.Expired: StartPairing(); break;
@@ -419,7 +419,7 @@ public static partial class Setup
         public static string AssetFor(WizardPage page) => page switch
         {
             WizardPage.Terms => "eula",
-            WizardPage.SignIn or WizardPage.Layout => "connect",
+            WizardPage.SignIn or WizardPage.Theme => "connect",
             _ => "patch",
         };
 

@@ -61,18 +61,21 @@ public sealed class SettingsMountedTests(ShellHost host)
         ViewHarness.With(host, ViewKeys.SettingsThemeOptions, SettingsThemeOptionsProps.WizardPlate, harness =>
         {
             Assert.True(harness.Contains("settings:theme:wizard-options"));
-            // The wizard shows the sidebar layout cards and nothing else Classic still binds to a legacy key.
-            Assert.True(harness.Contains("legacy:sidebarDesign"));
+            // The wizard shows Classic's generated options (the sidebar layout cards first) and nothing it still binds to a legacy key.
+            Assert.True(harness.Contains("opt:structure.sidebar"));
             Assert.False(harness.Contains("legacy:trackListStyle"));
+            Assert.False(harness.Contains("legacy:sidebarReset"));
         });
     }
 
     [Fact]
-    public void The_sidebar_layout_cards_mount_through_their_key()
-        => ViewHarness.With(host, ViewKeys.SettingsSidebarLayoutCards,
-            new SettingsSidebarLayoutProps { Active = SidebarLayoutId.Classic, Editing = false }, harness =>
-            {
-                Assert.True(harness.Contains("classic"));
-                Assert.True(harness.Contains("library"));
-            });
+    public void The_sidebar_layout_option_draws_the_two_preview_cards_and_the_density_its_combo()
+        => ViewHarness.With(host, ViewKeys.SettingsThemeOptions, SettingsThemeOptionsProps.Page, harness =>
+        {
+            Assert.True(harness.Contains("opt:structure.sidebar"));
+            Assert.True(harness.Contains("classic"));
+            Assert.True(harness.Contains("library"));
+            Assert.True(harness.Contains("opt:structure.libraryDensity"));
+            Assert.True(harness.Contains("legacy:sidebarReset"));   // the three sidebar actions stay legacy rows, below the options
+        });
 }

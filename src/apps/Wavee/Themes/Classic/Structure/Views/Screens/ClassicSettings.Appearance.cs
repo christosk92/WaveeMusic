@@ -318,26 +318,13 @@ internal static partial class ClassicSettings
 
     // ══ 5. SIDEBAR (G-182; ch 25 W21 compact cards, ch 27 W2/W29 ②) ═════════════════════════════════════════════════
 
-    /// <summary>Default · Compact (design P.4).</summary>
-    sealed class SidebarDensityPicker : Component
-    {
-        static readonly Signal<int> s_index = new(0);
-        public override Element Render()
-        {
-            int index = (int)Sidebar.Density.Peek();
-            UseEffect(() => s_index.Value = index, DepKey.From(index));
-            return ComboBox.Create([Loc.Get("sidebar.density.default"), Loc.Get("sidebar.density.compact")], s_index, width: ClassicSettingsRules.ZoomComboWidth,
-                onChange: static i => D(Tab.Appearance, "sidebarDensity").Writer.Choose!(i));
-        }
-    }
-
-    /// <summary>The two layout cards (Classic · Library), applied at once; disabled while the sidebar is being edited
-    /// (design Q7). The setup wizard's Layout step mounts them through <see cref="ViewKeys.SettingsSidebarLayoutCards"/> (P4).</summary>
+    /// <summary>The two layout cards (Classic · Library), applied at once through the sidebar's verb (which stores the choice in the structure's option);
+    /// disabled while the sidebar is being edited (design Q7). The setup wizard's Theme step shows them through the options' generated row.</summary>
     static Element SidebarLayoutCards(SidebarLayoutId active, bool editing)
     {
         var strip = Controls.PickerStrip(2, (int)active,
             static (i, on) => SidebarLayoutCardFace((SidebarLayoutId)i, on),
-            editing ? static _ => { } : static i => D(Tab.Appearance, "sidebarDesign").Writer.Choose!(i));
+            editing ? static _ => { } : static i => Sidebar.SwitchLayout((SidebarLayoutId)i));
         if (!editing) return strip;
         // Q7: never a silent dead control — the cards say why they do not switch (the row's reason).
         return new BoxEl

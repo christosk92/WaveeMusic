@@ -246,8 +246,11 @@ public static partial class Shell
                 _scope = RootScope.Begin();
                 // The omnibar model is process state; the facts its mounted forms hold go with this root.
                 _scope.OnDispose(static () => s_omnibar.ResetMountedFacts(SearchFocusRequest.Peek()));
+                // The window's theme-transaction runner goes with this root (a remount binds it again in the new root's render).
+                _scope.OnDispose(static () => Theming.ThemeHost.BindTransactions(null));
             }
             s_hooks = UseContext(InputHooks.Current);
+            Theming.ThemeHost.BindTransactions(s_hooks);
             s_scene = Context.Scene;
             Appearance.BindTransition(UseContext(ThemeControl.Request));
             var post = UsePost();
@@ -293,6 +296,9 @@ public static partial class Shell
                 // Tracked, and also when the band did not move: a policy whose band stopped having an overlay closes it.
                 if (FrameModel.ClosesOverlay(next, ShellPolicy.Tracked.NavPane)) Sidebar.OverlayOpen.SetIfChanged(false);
             });
+            // THE SIDEBAR'S DESIGN (M7a): the layout and the density are the structure's options (published as the pane policy). A change that did
+            // not come through a verb of the sidebar (the Settings options, the palette's option commands, a theme switch) reaches the sidebar here.
+            UseSignalEffect(static () => Sidebar.FollowDesign(ShellPolicy.Tracked.NavPane));
             // The title bar's pane toggle is disabled while the sidebar is being edited (a plain signal mirrored here).
             UseSignalEffect(static () => s_paneToggleEnabled.SetIfChanged(
                 SidebarPaneModeRules.CanTogglePane(Sidebar.Band.Value, Sidebar.Editing.Value, ShellPolicy.Tracked.NavPane)));

@@ -87,6 +87,10 @@ public static partial class Video
     /// it changes long after any surface mounted, so it can only ever reach a child as a signal.</summary>
     public static readonly Signal<JoinVisual> JoinNow = new(JoinVisual.Poster);
 
+    /// <summary>The persistence key of the main window's video presenter (<c>Flow.Persist</c>): a theme switch's new root adopts the
+    /// playing picture's subtree under this key instead of re-creating its surface (plan A4.2).</summary>
+    public const string PresenterPersistKey = "video.presenter";
+
     /// <summary>Last laid-out window-DIP rect of the hollow docked reservation: the overlay's FALLBACK while it has no
     /// live reservation to follow (before the first one is realized, across a remount) and the source of the slot log. The
     /// docked overlay itself follows the reservation NODE (<see cref="s_dockedReservation"/>) in the same frame; this
@@ -921,8 +925,12 @@ public static partial class Video
         /// state pump never depended on this element, F132), and uncovering re-places the same visual with no new slot.</summary>
         static readonly Prop<bool> s_surfaceVisible = Prop.Of(static () => !MainWindowHole.Hidden(PlacementCore.Resolve(State.Surface.Value), Shell.Ui.ImmersiveLyrics.Value));
 
-        /// <summary>The picture: the keyed video area (the player stage over the poster), one component of its own.</summary>
-        static readonly Func<Element> s_videoArea = static () => Embed.Comp(static () => new MainVideoArea()) with { Key = "video-area" };
+        /// <summary>The picture: the keyed video area (the player stage over the poster), one component of its own, PERSISTENT across a
+        /// theme switch (<c>Flow.Persist("video.presenter")</c>, plan A4.2): the switch remounts the root, and the new theme's presenter
+        /// adopts this very subtree (the MediaPlayerElement, its DComp surface and its binding), re-rendered once against the new
+        /// providers, so a playing video never loses its surface or shows a black frame. Without an adopter (the new theme draws no
+        /// presenter) it stays parked, then is released (<c>Flow.PersistParkMs</c>).</summary>
+        static readonly Func<Element> s_videoArea = static () => Flow.Persist(PresenterPersistKey, static () => Embed.Comp(static () => new MainVideoArea())) with { Key = "video-area" };
 
         // The overlay's size and offset per resolved placement are the pure `PipOverlay` (PipGesture.cs); these only adapt the
         // engine's value types to it.

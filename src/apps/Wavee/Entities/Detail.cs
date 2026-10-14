@@ -730,21 +730,11 @@ public static partial class Detail
         public static float ClampStored(float stored, RailScope scope)
             => Math.Clamp(stored, MinWidthFor(scope), MaxWidth);
 
-        /// <summary>The requested scope, or <see cref="RailScope.Uniform"/> when "Keep left-rail same size" is on. The
+        /// <summary>The requested scope, or <see cref="RailScope.Uniform"/> when the structure's "Keep left-rail same size" is on
+        /// (<see cref="Wavee.Theming.DetailPolicy.RailUniform"/>). THE persisted pair a scope reads and writes is one theme-state pair per scope
+        /// (<see cref="DetailRailPrefs.WidthKey"/>), never another scope's by fallthrough (G-190). The
         /// Episode arm is its config's: <see cref="Config.Episode"/> requests <see cref="RailScope.Show"/>.</summary>
         public static RailScope ScopeFor(RailScope requested, bool uniform) => uniform ? RailScope.Uniform : requested;
-
-        /// <summary>THE persisted pair a scope reads and writes — the ten <c>Platform.Keys.Detail*Rail*</c> keys, one
-        /// pair per scope, never another scope's by fallthrough (G-190). An episode page reads the SHOW pair (its scope is
-        /// <see cref="RailScope.Show"/>): the podcast family persists one rail, not two.</summary>
-        public static (SettingKey<float> Width, SettingKey<bool> Collapsed) KeysFor(RailScope scope) => scope switch
-        {
-            RailScope.Album => (Platform.Keys.DetailAlbumRailWidth, Platform.Keys.DetailAlbumRailCollapsed),
-            RailScope.Playlist => (Platform.Keys.DetailPlaylistRailWidth, Platform.Keys.DetailPlaylistRailCollapsed),
-            RailScope.Liked => (Platform.Keys.DetailLikedRailWidth, Platform.Keys.DetailLikedRailCollapsed),
-            RailScope.Show => (Platform.Keys.DetailShowRailWidth, Platform.Keys.DetailShowRailCollapsed),
-            _ => (Platform.Keys.DetailUniformRailWidth, Platform.Keys.DetailUniformRailCollapsed),
-        };
 
         /// <summary>Has any of the four per-scope pairs moved from its authored default? The enable gate for Settings'
         /// "Clear all remembered sizes" (the Uniform pair is excluded on purpose).</summary>

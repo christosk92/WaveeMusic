@@ -1,17 +1,17 @@
 // ── Themes/Classic/Structure/Views/Screens/ClassicSetup.cs — Classic's setup screens (themes plan 6.1, T11c) ───────────────────
 //
 // From `Screens\Setup.UI.cs`, `Setup.UI.Runtime.cs`, `Setup.UI.Theme.cs`: the wizard's plate (`Setup.Wizard`), its footer, the page frame (icon column, title, scrolling body), the Lottie
-// heroes' recolour seam and the five-primitive page vocabulary. The pages are `ClassicSetup.Pages.cs` (Terms, Layout, Theme, Local playback), the sign-in surfaces `ClassicSetup.SignIn.cs`
+// heroes' recolour seam and the five-primitive page vocabulary. The pages are `ClassicSetup.Pages.cs` (Terms, Theme, Local playback), the sign-in surfaces `ClassicSetup.SignIn.cs`
 // (the door, the Sign in page, the pairing card, the QR grid, the Busy ladder) and the runtime card `ClassicSetup.Runtime.cs` (its body, its command row and the pieces the wizard's Local playback
 // page reuses). Every decision is core: `Setup.WizardModel` (page, direction, the footer row, the verbs), `Setup.Gating`, `Setup.SignInRules`, `Setup.RuntimeRules` and the models; this
 // code lays out and wires.
 //
 //   Setup.Wizard   762×490 plate · FillSolidBase · r8 · 1px StrokeSurfaceDefault · Elevation.Dialog · Enter / Backspace
 //   ├ content  FillLayerAlt, pad 24 → Flow.KeepAlive(page; 3 entries; Nav.RecipeFor(Dir.Peek()); no replay on activate)
-//   │   └ Terms | Sign in | Layout | Local playback → WizardFrame = [192 Lottie hero] · Title · ScrollView(body)
+//   │   └ Terms | Sign in | Theme | Local playback → WizardFrame = [192 Lottie hero] · Title · ScrollView(body)
 //   ├ separator 1 StrokeCardDefault
 //   ├ WizardFooter 80 = [210: step label + 162 bar] · PRIMARY (left) · SECONDARY (right)      ← Setup.Commands.ResolveFor
-//   └ [Layout, Local playback] Back 30×30 over the content region's 24-DIP corner
+//   └ [Theme, Local playback] Back 30×30 over the content region's 24-DIP corner
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;
@@ -114,7 +114,7 @@ internal static partial class ClassicSetup
             {
                 Setup.WizardPage.Terms => Slots.View(ViewKeys.SetupTerms, props.Terms) with { Key = "setup:page:terms" },
                 Setup.WizardPage.SignIn => Slots.View(ViewKeys.SetupSignIn, props.SignIn) with { Key = "setup:page:sign-in" },
-                Setup.WizardPage.Layout => Embed.Comp(() => new LayoutPage(props.Layout)) with { Key = "setup:page:layout" },
+                Setup.WizardPage.Theme => Slots.View(ViewKeys.SetupTheme, props.Theme) with { Key = "setup:page:theme" },
                 _ => Slots.View(ViewKeys.SetupLocalPlayback, props.LocalPlayback) with { Key = "setup:page:local-playback" },
             },
         ],
