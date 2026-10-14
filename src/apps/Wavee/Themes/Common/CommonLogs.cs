@@ -1,29 +1,26 @@
-// ── Screens/LogsPage.UI.cs ─────────────────────────────────────────────────────────────────────────────────────────
-// the Logs page (route `logs`): a full page of its own that replaces the Settings › Logs tab's embedded viewer. It re-hosts
-// the working viewer (the `LogView` pure model, the keyed session / category combos, the measured virtualised list, the row
-// anatomy, the 750 ms live poll) under one header, one toolbar and a list card with a column header
+// ── Themes/Common/CommonLogs.cs — the Common `Pages.Logs` block (themes plan 6.5, T11c) ──────────────────────────────────────
 //
-// Role: UI
-// Owner: S
-// Wave: 0.3 privacy-diagnostics-tab (docs/plans/wavee/privacy-diagnostics-tab-implementation.md §3.2, §5.2, §5.7)
+// From `Screens\LogsPage.UI.cs`: the log viewer page (route `logs`), a full page of its own that replaces the Settings › Logs tab's embedded
+// viewer. It re-hosts the working viewer (the `LogView` pure model, the keyed session / category combos, the measured virtualised list, the row
+// anatomy, the 750 ms live poll) under one header, one toolbar and a list card with a column header. One copy of the view for every theme
+// (Classic registers it too).
 //
-// THE RULE THIS FILE KEEPS: it lays out and binds, it never decides. The filter/group/cap is `Diagnostics.LogView`, the
-// capture levels are `LogCapturePolicy`, the strip's labels / the picker's caption / where a selection lands after a
-// re-list are `LogsPage.Rules` (`LogsPage.cs`, tested); the disk walk is `WaveeLogSessions` (`Diagnostics.Host.cs`).
+// THE RULE THIS FILE KEEPS: it lays out and binds, it never decides. The filter/group/cap is `Diagnostics.LogView`, the capture levels are
+// `LogCapturePolicy`, the strip's labels / the picker's caption / where a selection lands after a re-list are `LogsPage.Rules`
+// (`LogsPage.cs`, tested); the session model (the folder walk, the load of a past session, the labels, the export and the verbs) is the core
+// host behind `ILogsHost` (`Screens\LogsPage.Host.cs`).
 //
-// FRAME: the page frame the old sidebar customizer used (deleted in the sidebar rework): a 64-DIP header (Back,
-// eyebrow + title), Esc → back, `Shell.GoBack()` when there is a back stack, else the Privacy & diagnostics tab. The
-// capture level and file level combos left the viewer (they are Settings › Privacy & diagnostics › Logs › Detail
-// level); Verbose stays here as a checkable item of the "…" menu.
+// FRAME: the page frame the old sidebar customizer used (deleted in the sidebar rework): a header (crumbs over the title, the picker cluster),
+// Esc → back (the host's one exit). The capture level and file level combos left the viewer (they are Settings › Privacy & diagnostics › Logs ›
+// Detail level); Verbose stays here as a checkable item of the "…" menu.
 //
-// NOTHING HERE READS A CLOCK PER FRAME (ch 27 N12): the live tail polls at 750 ms and bumps only when `Log.Version` moved
-// (and not at all on a past session). The sessions are re-listed once on mount and once per page activation (a keep-alive
-// return, or the window coming back) — `UseActivation` fires on TRANSITIONS only, which is why the mount walk is its own
-// effect.
+// NOTHING HERE READS A CLOCK PER FRAME (ch 27 N12): the live tail polls at 750 ms and bumps only when `Log.Version` moved (and not at all on a
+// past session). The sessions are re-listed once on mount and once per page activation (a keep-alive return, or the window coming back) —
+// `UseActivation` fires on TRANSITIONS only, which is why the mount walk is its own effect.
 //
-// PROPS FREEZE AT MOUNT: every control whose interesting fields freeze (the session / category combos, the virtualised
-// list) is REMOUNTED through a `Key` that changes exactly when its frozen input does, and every write that tears down the
-// node that was clicked runs through `UsePost` so the click finishes first. No signal is written in render.
+// PROPS FREEZE AT MOUNT: every control whose interesting fields freeze (the session / category combos, the virtualised list) is REMOUNTED
+// through a `Key` that changes exactly when its frozen input does, and every write that tears down the node that was clicked runs through
+// `UsePost` so the click finishes first. No signal is written in render.
 
 using System.Globalization;
 using FluentGpu.Controls;
@@ -33,42 +30,29 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
+using FluentGpu.Theming;
+using Wavee.Theming.Contracts;
 using LogLevelBucket = Wavee.Diagnostics.LogLevelBucket;
 using LogView = Wavee.Diagnostics.LogView;
 using LogViewQuery = Wavee.Diagnostics.LogViewQuery;
 using LogViewResult = Wavee.Diagnostics.LogViewResult;
 using LogViewRow = Wavee.Diagnostics.LogViewRow;
 
-namespace Wavee;
+namespace Wavee.Themes.Common;
 
-public static partial class LogsPage
+/// <summary>The Common log viewer.</summary>
+internal static class CommonLogs
 {
-    /// <summary>The `logs` route's page (registered by <c>Diagnostics.Install</c> through <c>Shell.SetPage</c>).</summary>
-    // MOUNT POINT (stage B contract)
-    public static Element Page() => Embed.Comp(static () => new LogsPageView());
+    /// <summary>Registers `Pages.Logs`.</summary>
+    public static void Register(ViewRegistryBuilder views)
+        => views.Add(ViewKeys.LogsPage, Template, "common.logs.page");
 
-    const float GutterX = 36f, ColumnHeaderHeight = 32f;
-
-    // The row's fixed columns — ONE copy, read by the rows and the column header so they can never drift apart.
-    const float ChevronSlot = 12f, DotSlot = 6f, TimeColumn = 92f, LevelColumn = 58f, CategoryColumn = 96f;
+    /// <summary>The registered template of <see cref="ViewKeys.LogsPage"/>: the viewer is a stateful component the slot embeds (its signals,
+    /// effects and menu are the old page component's, moved).</summary>
+    public static Element Template(LogsPageProps props, in ViewContext ctx)
+        => Embed.Comp(props, static () => new LogsPageView());
 
     static TimeSpan LocalOffset => TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.UtcNow);
-
-    static bool IsActiveRoute => Shell.Current.Peek().Kind == Shell.RouteKind.Logs;
-
-    /// <summary>The ONE exit, shared by Back and Esc: the shell's real Back when there is a stack; a page with none (a deep
-    /// link, a restored tab) lands on the tab that owns it.</summary>
-    static void GoBack()
-    {
-        if (Shell.CanBack.Peek()) Shell.GoBack();
-        else Settings.Open(Settings.Tab.PrivacyDiagnostics);
-    }
-
-    static string LevelName(WaveeLogLevel level) => LogView.LevelNames[Math.Clamp((int)level, 0, LogView.LevelNames.Length - 1)];
-
-    /// <summary>The identity a loaded past session is cached under: its key plus its entry count, so a re-list that grew or
-    /// pruned the same run never serves the stale rows.</summary>
-    static string LoadKey(WaveeLogSessions.Info info) => WaveeLogSessions.KeyOf(info) + "#" + info.EntryCount.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>The viewer. <see cref="_rows"/> and <see cref="_categories"/> are FIELDS, refreshed at the top of every
     /// render, so a command built by an OLDER render (the toolbar does not remount for a plain search edit) still reads the
@@ -78,19 +62,13 @@ public static partial class LogsPage
         readonly Signal<string> _search = new("");
         readonly Signal<int> _level = new((int)LogLevelBucket.All);
         readonly Signal<int> _category = new(0);
-        readonly Signal<int> _session = new(0);
         readonly Signal<int> _newestFirst = new(1);
         readonly Signal<int> _groupRepeats = new(1);
         readonly Signal<int> _wrap = new(0);
-        readonly Signal<int> _refresh = new(0);            // the live poll, a load landing, Clear view, Verbose, a page activation
         readonly Signal<int> _visibleLimit = new(LogView.PageRows);
-        readonly Signal<int> _sessionsRev = new(0);         // ONLY when the session LIST (or its status) changes
         readonly Signal<long> _expandedSeq = new(-1);
 
-        List<WaveeLogSessions.Info>? _sessions;
-        bool _sessionsBusy, _sessionsFailed, _sessionLoadBusy;
-        WaveeLogEntry[]? _sessionEntries;
-        string? _loadedKey;
+        ILogsHost _host = null!;
         LogViewRow[] _rows = [];
         string[] _categories = [];
         readonly ItemsViewController _listCtrl = new();
@@ -98,9 +76,13 @@ public static partial class LogsPage
         OverlayHandle? _menu;
         NodeHandle _moreAnchor = NodeHandle.Null;
         Action<KeyEventArgs>? _onKey;
+        Action<int>? _onCrumb;
+        Action? _openFolder;
+        Action? _exportSession;
 
         public override Element Render()
         {
+            var host = _host = UseProps<LogsPageProps>().Host;
             var hooks = UseContext(InputHooks.Current);
             var post = UsePost();
             var lastVersion = UseRef(-1L);
@@ -109,37 +91,34 @@ public static partial class LogsPage
             // Mount: the first walk. Activation: every later one (a keep-alive return re-reads the folder; it fires on
             // TRANSITIONS only, so it never doubles the mount walk). The footer's capture caption reads levels the Detail
             // level card can change while this page is parked — a bump re-renders it.
-            UseEffect(() => RefreshSessions(post), DepKey.Empty);
+            UseEffect(() => host.RefreshSessions(post), DepKey.Empty);
             UseActivation(onActivated: () =>
             {
-                RefreshSessions(post, force: true);
-                _refresh.Value = _refresh.Peek() + 1;
+                host.RefreshSessions(post, force: true);
+                host.Bump();
             });
             UseSignalEffect(() =>
             {
-                _ = _session.Value;
+                _ = host.Session.Value;
                 _expandedSeq.Value = -1;
                 _visibleLimit.Value = LogView.PageRows;
-                EnsureSessionLoaded(post);
+                host.EnsureSessionLoaded(post);
             });
             // The live tail (session 0 only; auto-pauses while parked): bumps only when the log actually moved.
             UseInterval(() =>
             {
-                long v = Log.Version;
+                long v = host.LogVersion;
                 if (v == lastVersion.Value) return;
                 lastVersion.Value = v;
-                _refresh.Value = _refresh.Peek() + 1;
-            }, 750f, enabled: _session.Value == 0);
-            var logLayout = UseMemo(static () => new MeasuredStackVirtualLayout(estimatedExtent: 36f), DepKey.Empty);
+                host.Bump();
+            }, CommonLogsRules.PollMs, enabled: host.Session.Value == 0);
+            var logLayout = UseMemo(static () => new MeasuredStackVirtualLayout(estimatedExtent: CommonLogsRules.EstimatedRowExtent), DepKey.Empty);
 
-            _ = _refresh.Value; _ = _expandedSeq.Value; _ = _search.Value; _ = _level.Value; _ = _category.Value;
-            _ = _newestFirst.Value; _ = _groupRepeats.Value; _ = _wrap.Value; _ = _visibleLimit.Value; _ = _sessionsRev.Value;
+            _ = host.Refresh.Value; _ = _expandedSeq.Value; _ = _search.Value; _ = _level.Value; _ = _category.Value;
+            _ = _newestFirst.Value; _ = _groupRepeats.Value; _ = _wrap.Value; _ = _visibleLimit.Value; _ = host.SessionsRev.Value;
 
-            bool live = LogsPage.Rules.IsLive(_session.Value);
-            var past = live ? null : SelectedPastSession();
-            WaveeLogEntry[]? entries = live ? Log.Snapshot()
-                : past is not null && _loadedKey is not null && string.Equals(_loadedKey, LoadKey(past), StringComparison.Ordinal) ? _sessionEntries
-                : null;
+            bool live = LogsPage.Rules.IsLive(host.Session.Value);
+            WaveeLogEntry[]? entries = host.EntriesFor(live, out var past);
             _categories = entries is null ? [] : LogView.Categories(entries);
             // The category clamp lives in an effect (a signal write in render is the backwards-write tripwire).
             UseEffect(() => { if (_category.Peek() > _categories.Length) _category.Value = 0; }, _categories.Length);
@@ -159,7 +138,7 @@ public static partial class LogsPage
                     Toolbar(result, live, hooks, post),
                     new BoxEl
                     {
-                        Margin = new Edges4(GutterX, 0f, GutterX, Spacing.L),
+                        Margin = new Edges4(CommonLogsRules.GutterX, 0f, CommonLogsRules.GutterX, Spacing.L),
                         Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1, Corners = CornerRadius4.All(Radii.Card),
                         Fill = Tok.FillCardSecondary, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, ClipToBounds = true,
                         Children =
@@ -181,9 +160,9 @@ public static partial class LogsPage
         /// being cleared) — the same rule as the customizer: only with focus inside the page.</summary>
         void OnPageKey(KeyEventArgs e)
         {
-            if (e.Handled || e.KeyCode != Keys.Escape || !IsActiveRoute) return;
+            if (e.Handled || e.KeyCode != Keys.Escape || !_host.IsActive) return;
             e.Handled = true;
-            GoBack();
+            _host.GoBack();
         }
 
         LogViewQuery Query() => new((LogLevelBucket)_level.Value, CurrentCategory(), _search.Value,
@@ -203,6 +182,7 @@ public static partial class LogsPage
         /// ellipsizes and the picker cluster holds its width.</summary>
         Element HeaderBar()
         {
+            var host = _host;
             // Every child is keyed: the picker caption comes and goes, and a positional diff would otherwise slide the
             // combo's remount key onto the wrong sibling.
             var kids = new List<Element>(4)
@@ -214,25 +194,22 @@ public static partial class LogsPage
                     [
                         // Settings › Privacy & diagnostics › Logs. The first crumb opens Settings on its remembered tab; the
                         // second lands on the tab this page belongs to; the last is this page and does nothing.
-                        BreadcrumbBar.Create([Loc.Get(Strings.Nav.Settings), Loc.Get(Strings.Settings.Tabs.Privacy), Loc.Get(Strings.Logs.Title)], static i =>
-                        {
-                            if (i == 0) Shell.GoTo(new Shell.Route(Shell.RouteKind.Settings));
-                            else if (i == 1) Settings.Open(Settings.Tab.PrivacyDiagnostics);
-                        }),
+                        BreadcrumbBar.Create([Loc.Get(Strings.Nav.Settings), Loc.Get(Strings.Settings.Tabs.Privacy), Loc.Get(Strings.Logs.Title)],
+                            _onCrumb ??= host.OpenCrumb),
                         R.Type.PageHero(Loc.Get(Strings.Logs.Title)) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                     ],
                 },
             };
-            if (PickerCaptionText() is { } caption)
+            if (host.PickerCaption() is { } caption)
                 kids.Add(R.Type.MicroMeta(caption) with
                 {
                     Key = "logs:caption", Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis,
-                    MaxWidth = 200f, Shrink = 1f, MinWidth = 0f,
+                    MaxWidth = CommonLogsRules.CaptionMaxWidth, Shrink = 1f, MinWidth = 0f,
                 });
-            var labels = SessionLabels();
-            kids.Add(ComboBox.Create(labels, _session, width: 320f, onChange: _ => _expandedSeq.Value = -1)
-                with { Key = "logs:session:" + _sessionsRev.Value.ToString(CultureInfo.InvariantCulture) });
-            kids.Add(Button.Create(Loc.Get(Strings.Logs.OpenFolder), static () => Diagnostics.OpenFolder(Path.GetDirectoryName(Log.FilePath ?? "")),
+            var labels = host.SessionLabels();
+            kids.Add(ComboBox.Create(labels, host.Session, width: CommonLogsRules.SessionComboWidth, onChange: _ => _expandedSeq.Value = -1)
+                with { Key = "logs:session:" + host.SessionsRev.Value.ToString(CultureInfo.InvariantCulture) });
+            kids.Add(Button.Create(Loc.Get(Strings.Logs.OpenFolder), _openFolder ??= host.OpenLogFolder,
                 ButtonAppearance.Standard, ControlSize.Small, glyph: Icons.Folder) with { Key = "logs:folder", Shrink = 0f });
 
             return new BoxEl
@@ -245,25 +222,11 @@ public static partial class LogsPage
             };
         }
 
-        /// <summary>The picker's status line (G4: "This session" used to read identically for "still walking", "none on
-        /// disk" and "the walk faulted"). A re-list over an existing list never flashes "reading": a list is on screen.</summary>
-        string? PickerCaptionText()
-        {
-            bool busy = _sessions is null && !_sessionsFailed;
-            int count = _sessions?.Count ?? 0;
-            return LogsPage.Rules.PickerCaption(busy, count, _sessionsFailed) switch
-            {
-                LogsPage.Rules.PickerCaptionKind.Reading => Loc.Get(Strings.Logs.SessionsReading),
-                LogsPage.Rules.PickerCaptionKind.NoneOnDisk => Strings.Logs.SessionsNone(Log.RetentionDays),
-                LogsPage.Rules.PickerCaptionKind.Failed => Loc.Get(Strings.Logs.SessionsFailed),
-                _ => null,
-            };
-        }
-
         // ── the toolbar: filter · level strip (counts inside) · categories · … · copy · export · more ─────────────────
 
         Element Toolbar(LogViewResult result, bool live, InputHooks hooks, Action<Action> post)
         {
+            var host = _host;
             var catLabels = new string[_categories.Length + 1];
             catLabels[0] = Loc.Get(Strings.Logs.AllCategories);
             Array.Copy(_categories, 0, catLabels, 1, _categories.Length);
@@ -281,15 +244,15 @@ public static partial class LogsPage
             return new BoxEl
             {
                 Key = "logs-toolbar", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Wrap = true, Shrink = 0f,
-                Padding = new Edges4(GutterX, Spacing.L, GutterX, Spacing.S),
+                Padding = new Edges4(CommonLogsRules.GutterX, Spacing.L, CommonLogsRules.GutterX, Spacing.S),
                 Children =
                 [
                     AutoSuggestBox.Create(Array.Empty<string>(), placeholder: Loc.Get(Strings.Logs.FilterPlaceholder),
-                        grow: 1f, maxFillWidth: 360f, text: _search, onChange: q => _search.Value = q, onQuerySubmitted: q => _search.Value = q,
-                        minHeight: 34f, cornerRadius: Radii.Control),
+                        grow: 1f, maxFillWidth: CommonLogsRules.FilterMaxFill, text: _search, onChange: q => _search.Value = q, onQuerySubmitted: q => _search.Value = q,
+                        minHeight: CommonLogsRules.FilterMinHeight, cornerRadius: Radii.Control),
                     Segmented.Create(levelItems, _level),
-                    ComboBox.Create(catLabels, _category, width: 180f)
-                        with { Key = "logs:cat:" + _session.Value.ToString(CultureInfo.InvariantCulture) + ":" + _categories.Length.ToString(CultureInfo.InvariantCulture) },
+                    ComboBox.Create(catLabels, _category, width: CommonLogsRules.CategoryComboWidth)
+                        with { Key = "logs:cat:" + host.Session.Value.ToString(CultureInfo.InvariantCulture) + ":" + _categories.Length.ToString(CultureInfo.InvariantCulture) },
                     new BoxEl { Grow = 1f },
                     new BoxEl
                     {
@@ -298,7 +261,7 @@ public static partial class LogsPage
                         [
                             ToolTip.Wrap(IconButton.Create(Icons.Copy, () => hooks.Clipboard?.SetText(LogView.CopyText(_rows))) with { Shrink = 0f },
                                 Loc.Get(Strings.Logs.CopyVisible)),
-                            ToolTip.Wrap(IconButton.Create(Icons.Download, ExportSession) with { Shrink = 0f }, exportTip),
+                            ToolTip.Wrap(IconButton.Create(Icons.Download, _exportSession ??= host.ExportSession) with { Shrink = 0f }, exportTip),
                             ToolTip.Wrap(IconButton.Create(Icons.More, () => OpenMore(post)) with { Shrink = 0f, OnRealized = h => _moreAnchor = h },
                                 Loc.Get(Strings.Logs.More)),
                         ],
@@ -314,9 +277,10 @@ public static partial class LogsPage
             if (_overlay is not { } overlay) return;
             if (_menu is { IsOpen: true } open) { open.Close(); return; }
 
+            var host = _host;
             bool newest = _newestFirst.Peek() != 0, group = _groupRepeats.Peek() != 0, wrap = _wrap.Peek() != 0;
-            bool verbose = LogStore.IsVerbose();
-            bool canClear = LogView.CanClear(_session.Peek());
+            bool verbose = host.Verbose;
+            bool canClear = LogView.CanClear(host.Session.Peek());
             var items = new List<MenuFlyoutItem>(8)
             {
                 MenuFlyoutItem.Toggle(Loc.Get(Strings.Logs.NewestFirst), newest, () => post(() => { _newestFirst.Value = newest ? 0 : 1; _expandedSeq.Value = -1; })),
@@ -324,127 +288,21 @@ public static partial class LogsPage
                 MenuFlyoutItem.Toggle(Loc.Get(Strings.Logs.WrapLines), wrap, () => post(() => _wrap.Value = wrap ? 0 : 1)),
                 MenuFlyoutItem.Toggle(Loc.Get(Strings.Logs.Verbose), verbose, () => post(() =>
                 {
-                    LogStore.SetVerbose(!verbose);
-                    _refresh.Value = _refresh.Peek() + 1;
+                    host.SetVerbose(!verbose);
+                    host.Bump();
                 })),
                 MenuFlyoutItem.Separator,
                 new(Loc.Get(Strings.Logs.ClearView), Icons.ClearText, canClear, () => Controls.Confirm(overlay,
                     Loc.Get(Strings.Logs.ClearView), Loc.Get(Strings.Logs.ClearViewBody), Loc.Get(Strings.Logs.ClearView),
-                    () => { LogStore.ClearRing(); _refresh.Value = _refresh.Peek() + 1; })),
-                new(Loc.Get(Strings.Report.ThisSession), Icons.Attention, true, () => Feedback.Open(Feedback.ReportKind.Bug,
-                    new Feedback.ReportPrefill(PastSessionId: SelectedPastSession() is { } s ? WaveeLogSessions.KeyOf(s) : null))),
+                    () => { host.ClearRing(); host.Bump(); })),
+                new(Loc.Get(Strings.Report.ThisSession), Icons.Attention, true, host.ReportThisSession),
             };
-            // Same anchored-flyout shape as Shell.UI.cs's history menu and Settings.UI.Playback.cs's manager menu.
+            // Same anchored-flyout shape as the history menu and Settings.UI.Playback.cs's manager menu.
             var handle = overlay.Open(() => _moreAnchor, () => MenuFlyout.Create(items, () => _menu?.Close()),
                 FlyoutPlacement.BottomEdgeAlignedRight,
                 new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
             _menu = handle;
             handle.ClosedAction = () => { if (ReferenceEquals(_menu, handle)) _menu = null; };
-        }
-
-        // ── the sessions: discovery, loading, the picker's items ────────────────────────────────────────────────────
-
-        /// <summary>One off-thread walk of the log folder. NEVER latches: the busy flag clears in a <c>finally</c> inside the
-        /// posted continuation AND when the post itself fails, a thrown walk is a caption ("couldn't read the log folder")
-        /// rather than a swallowed fault, and every walk logs one <c>log.sessions.listed</c> line (G4).</summary>
-        void RefreshSessions(Action<Action> post, bool force = false)
-        {
-            if (_sessionsBusy || (!force && _sessions is not null)) return;
-            _sessionsBusy = true;
-            string? basePath = LogStore.BasePath;   // the BASE (wavee.log): the dated live file would glob one day's rolls
-            int pid = Environment.ProcessId;
-            _ = Task.Run(() =>
-            {
-                var outcome = LogStore.Walk(basePath, pid);   // the disk walk and its one `log.sessions.listed` line
-                var walk = outcome.Walk;
-                var fault = outcome.Fault;
-                try
-                {
-                    post(() =>
-                    {
-                        try { ApplyWalk(walk, fault); }
-                        finally { _sessionsBusy = false; }
-                    });
-                }
-                catch { _sessionsBusy = false; }   // the poster itself failed: never leave the page unable to re-list
-            });
-        }
-
-        /// <summary>UI thread. The selection follows the session's KEY across the re-list (indices shift when a run appears
-        /// or is pruned), the combo remounts through <see cref="_sessionsRev"/> so its labels (the live uptime) are fresh,
-        /// and a loaded past session stays cached under its key.</summary>
-        void ApplyWalk(WaveeLogSessions.WalkResult? walk, Exception? fault)
-        {
-            string? keep = SelectedPastSession() is { } selected ? WaveeLogSessions.KeyOf(selected) : null;
-            _sessionsFailed = fault is not null || walk?.Error is not null;
-            if (walk is not null)
-            {
-                _sessions = walk.Sessions;
-                var keys = new string[walk.Sessions.Count];
-                for (int i = 0; i < keys.Length; i++) keys[i] = WaveeLogSessions.KeyOf(walk.Sessions[i]);
-                _session.SetIfChanged(LogsPage.Rules.SelectionAfterRefresh(keep, keys));
-            }
-            _sessionsRev.Value = _sessionsRev.Peek() + 1;
-        }
-
-        void EnsureSessionLoaded(Action<Action> post)
-        {
-            int sel = _session.Peek();
-            if (sel == 0 || _sessionLoadBusy || _sessions is not { } sessions || sel - 1 >= sessions.Count) return;
-            var info = sessions[sel - 1];
-            string key = LoadKey(info);
-            if (string.Equals(_loadedKey, key, StringComparison.Ordinal)) return;
-            _sessionLoadBusy = true;
-            _ = Task.Run(() =>
-            {
-                WaveeLogEntry[]? loaded = LogStore.Load(info);
-                post(() =>
-                {
-                    _sessionEntries = loaded ?? [];
-                    _loadedKey = key;
-                    _sessionLoadBusy = false;
-                    _refresh.Value = _refresh.Peek() + 1;
-                    EnsureSessionLoaded(post);   // the selection may have moved while this one loaded
-                });
-            });
-        }
-
-        /// <summary>The picker's labels: this run first (with its live uptime), then every past run newest first.</summary>
-        string[] SessionLabels()
-        {
-            int n = 1 + (_sessions?.Count ?? 0);
-            var labels = new string[n];
-            labels[0] = Strings.Logs.ThisSession(Environment.ProcessId, LogView.Uptime(TimeSpan.FromMilliseconds(Log.SinceStartMs)));
-            if (_sessions is { } list)
-                for (int i = 0; i < list.Count; i++)
-                    labels[i + 1] = LogView.SessionLabel(list[i].StartUnixMs, list[i].Pid, list[i].EntryCount, LocalOffset);
-            return labels;
-        }
-
-        WaveeLogSessions.Info? SelectedPastSession()
-        {
-            int sel = _session.Peek();
-            return sel == 0 || _sessions is not { } sessions || sel - 1 >= sessions.Count ? null : sessions[sel - 1];
-        }
-
-        /// <summary>Live: the WHOLE ring in the file-line shape (with <c>t=</c>), independent of every filter — "Copy
-        /// visible" is the filtered one. A past session exports its raw lines.</summary>
-        void ExportSession()
-        {
-            bool live = _session.Peek() == 0;
-            var past = live ? null : SelectedPastSession();
-            if (!live && past is null) return;
-            // The Save As dialog runs on its own thread (Pickers, #155); the export happens when it answers, UI thread.
-            Pickers.Pick(
-                PickerRequest.Save(Loc.Get(Strings.Logs.ExportSession),
-                    LogStore.ExportFileName(past),
-                    (Loc.Get(Strings.Logs.ExportLogText), "*.txt"), (Loc.Get(Strings.Logs.ExportAllFiles), "*.*")),
-                done: path =>
-                {
-                    if (path is null) return;
-                    LogStore.Export(path, past);
-                },
-                failed: ex => Log.Warn("log", "the export dialog failed", ex));
         }
 
         // ── the list card: column header · body · footer ────────────────────────────────────────────────────────────
@@ -455,15 +313,15 @@ public static partial class LogsPage
             bool newestFirst = _newestFirst.Value != 0;
             return new BoxEl
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Height = ColumnHeaderHeight, Shrink = 0f,
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Height = CommonLogsRules.ColumnHeaderHeight, Shrink = 0f,
                 Padding = new Edges4(Spacing.M, 0f, Spacing.M, 0f),
                 Children =
                 [
-                    new BoxEl { Width = ChevronSlot, Shrink = 0f },
-                    new BoxEl { Width = DotSlot, Shrink = 0f },
+                    new BoxEl { Width = CommonLogsRules.ChevronSlot, Shrink = 0f },
+                    new BoxEl { Width = CommonLogsRules.DotSlot, Shrink = 0f },
                     TimeHeader(newestFirst, post),
-                    HeaderLabel(Loc.Get(Strings.Logs.ColLevel)) with { Width = LevelColumn, Shrink = 0f },
-                    HeaderLabel(Loc.Get(Strings.Logs.ColCategory)) with { Width = CategoryColumn, Shrink = 0f },
+                    HeaderLabel(Loc.Get(Strings.Logs.ColLevel)) with { Width = CommonLogsRules.LevelColumn, Shrink = 0f },
+                    HeaderLabel(Loc.Get(Strings.Logs.ColCategory)) with { Width = CommonLogsRules.CategoryColumn, Shrink = 0f },
                     HeaderLabel(Loc.Get(Strings.Logs.ColMessage)) with { Grow = 1f, MinWidth = 0f },
                 ],
             };
@@ -474,14 +332,14 @@ public static partial class LogsPage
         /// <summary>The sortable Time header: the arrow shows where the NEWEST row sits. A click flips the order.</summary>
         Element TimeHeader(bool newestFirst, Action<Action> post) => new BoxEl
         {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = 4f, Width = TimeColumn, Shrink = 0f,
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = CommonLogsRules.SortGap, Width = CommonLogsRules.TimeColumn, Shrink = 0f,
             Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
             OnClick = () => post(() => { _newestFirst.Value = newestFirst ? 0 : 1; _expandedSeq.Value = -1; }),
             Children =
             [
                 HeaderLabel(Loc.Get(Strings.Logs.ColTime)) with { HoverColor = Tok.TextPrimary },
                 new TextEl(newestFirst ? Icons.ChevronDown : Icons.ChevronUp)
-                    { Size = 10f, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.TextTertiary, HoverColor = Tok.TextPrimary, Shrink = 0f },
+                    { Size = CommonLogsRules.SortArrowSize, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.TextTertiary, HoverColor = Tok.TextPrimary, Shrink = 0f },
             ],
         };
 
@@ -491,22 +349,22 @@ public static partial class LogsPage
                 return new BoxEl
                 {
                     Grow = 1f, Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Gap = Spacing.M,
-                    Children = [ProgressRing.Indeterminate(), new TextEl(Loc.Get(Strings.Logs.LoadingSession)) { Size = 12f, Color = Tok.TextSecondary }],
+                    Children = [ProgressRing.Indeterminate(), new TextEl(Loc.Get(Strings.Logs.LoadingSession)) { Size = CommonLogsRules.CellSize, Color = Tok.TextSecondary }],
                 };
             if (result.Shown == 0)
                 return new BoxEl
                 {
                     Grow = 1f, Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Gap = Spacing.M,
                     Padding = new Edges4(0f, 64f, 0f, 64f),
-                    Children = [FluentGpu.Dsl.Ui.Icon(Icons.Search, 36f, Tok.TextTertiary), R.Type.PageHero(Loc.Get(Strings.Logs.EmptyFilter))],
+                    Children = [FluentGpu.Dsl.Ui.Icon(Icons.Search, CommonLogsRules.EmptyGlyphSize, Tok.TextTertiary), R.Type.PageHero(Loc.Get(Strings.Logs.EmptyFilter))],
                 };
 
             // The list's ItemCount/template freeze at mount: the visible SET changing remounts it; ScrollKey keeps the offset.
-            string scrollKey = "logs:scroll:" + _session.Value.ToString(CultureInfo.InvariantCulture);
+            string scrollKey = "logs:scroll:" + _host.Session.Value.ToString(CultureInfo.InvariantCulture);
             var rows = result.Rows;
             return new BoxEl
             {
-                Key = "logs:list:" + LogView.RemountKey(_session.Value, query, result.Shown),
+                Key = "logs:list:" + LogView.RemountKey(_host.Session.Value, query, result.Shown),
                 Grow = 1f, Shrink = 1f, MinHeight = 0f,
                 Children =
                 [
@@ -538,17 +396,17 @@ public static partial class LogsPage
             bool wrapAll = expanded || _wrap.Value != 0;
             var line = new BoxEl
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinHeight = 36f, Padding = new Edges4(Spacing.M, 0f, Spacing.M, 0f),
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinHeight = CommonLogsRules.RowMinHeight, Padding = new Edges4(Spacing.M, 0f, Spacing.M, 0f),
                 Grow = 1f, Fill = expanded ? Tok.FillSubtleSecondary : ColorF.Transparent,
                 // The message wraps when expanded: the taller line reveals, never snaps.
                 Animate = Design.Reveal.Resize,
                 Children =
                 [
-                    Sidebar.Chevron.Disclosure(() => _expandedSeq.Value == seq, size: ChevronSlot),
+                    Sidebar.Chevron.Disclosure(() => _expandedSeq.Value == seq, size: CommonLogsRules.ChevronSlot),
                     SeverityDot(e.Level),
-                    new TextEl(LogView.FormatTime(e.UnixMs, LocalOffset)) { Size = 12f, Color = Tok.TextSecondary, FontFamily = "Cascadia Code", Width = TimeColumn, Shrink = 0f },
+                    new TextEl(LogView.FormatTime(e.UnixMs, LocalOffset)) { Size = CommonLogsRules.CellSize, Color = Tok.TextSecondary, FontFamily = "Cascadia Code", Width = CommonLogsRules.TimeColumn, Shrink = 0f },
                     LevelPill(e.Level),
-                    new TextEl(e.Category) { Size = 12f, Color = Tok.TextSecondary, FontFamily = "Cascadia Code", Width = CategoryColumn, Shrink = 0f, Trim = TextTrim.CharacterEllipsis },
+                    new TextEl(e.Category) { Size = CommonLogsRules.CellSize, Color = Tok.TextSecondary, FontFamily = "Cascadia Code", Width = CommonLogsRules.CategoryColumn, Shrink = 0f, Trim = TextTrim.CharacterEllipsis },
                     R.Type.DenseMeta(e.Message) with
                     {
                         Color = Tok.TextPrimary, Grow = 1f, MinWidth = 0f,
@@ -570,7 +428,7 @@ public static partial class LogsPage
                 detail.Add(R.Type.MicroMeta(LogView.MetaLine(in e)) with { Color = Tok.TextTertiary, FontFamily = "Cascadia Code", Margin = new Edges4(44f, 0f, 0f, 0f) });
                 children = [line, new BoxEl
                 {
-                    Key = "details", Direction = 1, Gap = 4f, Padding = new Edges4(0f, 4f, 0f, Spacing.S),
+                    Key = "details", Direction = 1, Gap = CommonLogsRules.DetailGap, Padding = new Edges4(0f, 4f, 0f, Spacing.S),
                     Animate = Design.Reveal.Drawer, Children = detail.ToArray(),
                 }];
             }
@@ -579,8 +437,8 @@ public static partial class LogsPage
 
         static Element DetailSection(string caption, string text) => new BoxEl
         {
-            Direction = 1, Gap = 4f, Padding = new Edges4(44f, 0f, Spacing.M, 4f),
-            Children = [R.Type.MicroMeta(caption) with { Weight = 600, Color = Tok.TextTertiary }, CodeBlock.Create(text, copyable: true, fontSize: 12f)],
+            Direction = 1, Gap = CommonLogsRules.DetailGap, Padding = new Edges4(44f, 0f, Spacing.M, 4f),
+            Children = [R.Type.MicroMeta(caption) with { Weight = 600, Color = Tok.TextTertiary }, CodeBlock.Create(text, copyable: true, fontSize: CommonLogsRules.CellSize)],
         };
 
         /// <summary>A dot only for Warning and ≥ Error; every other level holds the 6-DIP column with a blank spacer.</summary>
@@ -588,7 +446,7 @@ public static partial class LogsPage
         {
             WaveeLogLevel.Warning => InfoBadge.Dot(InfoBadgeSeverity.Caution),
             >= WaveeLogLevel.Error => InfoBadge.Dot(InfoBadgeSeverity.Critical),
-            _ => new BoxEl { Width = DotSlot, Height = DotSlot, Shrink = 0f },
+            _ => new BoxEl { Width = CommonLogsRules.DotSlot, Height = CommonLogsRules.DotSlot, Shrink = 0f },
         };
 
         static Element RepeatBadge(int repeat) => new BoxEl
@@ -608,9 +466,9 @@ public static partial class LogsPage
             };
             return new BoxEl
             {
-                Width = LevelColumn, Height = 22f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = CornerRadius4.All(Radii.Full),
+                Width = CommonLogsRules.LevelColumn, Height = CommonLogsRules.PillHeight, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = CornerRadius4.All(Radii.Full),
                 Fill = color with { A = 0.12f }, BorderWidth = 1f, BorderColor = color with { A = 0.38f },
-                Children = [new TextEl(level.ToString().ToUpperInvariant()) { Size = 10f, Weight = 800, Color = color }],
+                Children = [new TextEl(level.ToString().ToUpperInvariant()) { Size = CommonLogsRules.PillTextSize, Weight = 800, Color = color }],
             };
         }
 
@@ -628,14 +486,13 @@ public static partial class LogsPage
 
             var kids = new List<Element>(3)
             {
-                new TextEl(text) { Size = 12f, Color = Tok.TextSecondary, Grow = 1f, MinWidth = 0f },
+                new TextEl(text) { Size = CommonLogsRules.CellSize, Color = Tok.TextSecondary, Grow = 1f, MinWidth = 0f },
             };
             // The cap stops growing at LogView.MaxRows; past it there is nothing more to load.
             if (result.Truncated && _visibleLimit.Value < LogView.MaxRows)
                 kids.Add(HyperlinkButton.Create(Loc.Get(Strings.Logs.LoadMore), () => _visibleLimit.Value = LogView.NextCap(_visibleLimit.Peek())));
-            var min = Log.MinLevel;
-            var file = LogCapturePolicy.EffectiveFileLevel(min, Log.FileMinLevel);
-            kids.Add(R.Type.MicroMeta(Strings.Logs.CaptureCaption(LevelName(min), LevelName(file))) with { Color = Tok.TextTertiary });
+            var (ring, file) = _host.CaptureLevels();
+            kids.Add(R.Type.MicroMeta(Strings.Logs.CaptureCaption(ring, file)) with { Color = Tok.TextTertiary });
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Padding = new Edges4(Spacing.L, Spacing.S, Spacing.M, Spacing.S),

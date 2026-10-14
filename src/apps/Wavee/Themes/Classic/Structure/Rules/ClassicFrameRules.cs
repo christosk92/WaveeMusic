@@ -47,7 +47,4 @@ internal static class ClassicFrameRules
 
     /// <summary>The offline lane's inset from the content region (16 either side, 12 from the top).</summary>
     public static readonly Edges4 OfflineLanePadding = new(16f, 12f, 16f, 0f);
-
-    /// <summary>The not-found page's glyph size.</summary>
-    public const float NotFoundGlyphSize = 40f;
 }

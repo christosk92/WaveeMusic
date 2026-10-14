@@ -1,10 +1,10 @@
 // ── Themes/Classic/Structure/Rules/ClassicHomeRules.cs — the numbers of Classic's Home (themes plan 6.1, T10a1; P22) ─────────
 //
-// What `Home\Zones.UI.cs` (lines 88-115, the plan's P22), `Facet.UI.cs`, `Daylist.UI.cs`, `SectionScreen.UI.cs` and `Customize.UI.cs` held as
+// What `Home\Zones.UI.cs` (lines 88-115, the plan's P22), `Facet.UI.cs`, `Daylist.UI.cs`, and `SectionScreen.UI.cs` held as
 // file-level constants beside the pictures they size, moved verbatim with those pictures: the pinned facet band's three heights, the chapter's
 // sticky geometry (the header row, the gap, the clip line and its feather), the grid geometry per zone body (the stock auto-fill's minimum
 // column and column cap), the Recents tiles' pieces, the 2-span lead cell, the daylist card's floor, art focus and copy insets, the drill
-// page's card minimum, and the customizer's row. They are data, not decisions (WVTH003 allows literals only in `Rules\**`); the DECISIONS
+// page's card minimum. They are data, not decisions (WVTH003 allows literals only in `Rules\**`); the DECISIONS
 // stay core and pure (`FacetForm`, `DaylistForm`, `DaypartTimeline`, `ShelfLead`, `RecentsPlan`, `FacetDimPlan`...), and the views call them.
 //
 // Public, because the Recents grid's fact (632 DIP fits three columns, 836 four) is pinned by `ControlsTests` over `RecentsMinCol`.
@@ -136,19 +136,4 @@ public static class ClassicHomeRules
 
     /// <summary>The gap between the "N items" line and the grid.</summary>
     public const float SectionBodyGap = 4f;
-
-    // ── the customizer ───────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>One zone row's height, also the reorderable's item extent.</summary>
-    public const float CustomizeRowH = 48f;
-    public const float CustomizeHeaderGap = 16f;
-    public const float CustomizeTitleGap = 4f;
-    public const float CustomizeListTop = 16f;
-    public const float CustomizeRowGap = 8f;
-    public const float CustomizeGripSize = 12f;
-    public const float CustomizeLabelSize = 14f;
-    public const float CustomizeLabelLine = 20f;
-
-    /// <summary>A hidden zone's row dims in place.</summary>
-    public const float CustomizeHiddenOpacity = 0.55f;
 }

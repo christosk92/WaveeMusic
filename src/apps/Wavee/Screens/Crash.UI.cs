@@ -8,7 +8,10 @@
 // Everything here reads Crash.Host.* / Crash.Uploader.* / Crash.Scrubber.* (WP-A/B/C) and never writes a bundle
 // itself — a report is only ever read, scrubbed for preview / copy, enqueued or deleted from here.
 //
-// Role: UI
+// THE PROMPT BODY IS THE THEME'S (T11c): `Dialog.Crash` (`Themes\Classic\Structure\Views\Screens\ClassicCrash.cs`). The dialog chrome, the launch
+// decision, the consent flow and the outcome toasts stay here.
+//
+// Role: CORE host + chrome
 // Owner: WP-E
 // Spec: docs/plans/wavee/crash-diagnostics-implementation.md §D, §F "E · In-app UI", §I "WP-E", §J (erasure, added
 //       2026-09-24); docs/plans/wavee/crash-production-readiness-implementation.md W3b (#165). Copy is verbatim from
@@ -31,7 +34,8 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
-using static FluentGpu.Dsl.Ui;
+using Wavee.Theming.Contracts;
+using Slots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -107,7 +111,7 @@ public static partial class Crash
             d.Title = Loc.Get(fromList ? Strings.Crash.PromptListTitle
                 : bundle.Summary.Kind == Kind.Hang ? Strings.Crash.PromptHangTitle : Strings.Crash.PromptTitle);
             d.DialogWidth = DialogChrome;
-            d.Content = Embed.Comp(() => new CrashPromptBody { Bundle = bundle, Session = session, FromList = fromList })
+            d.Content = Slots.View(ViewKeys.DialogCrash, PromptProps(bundle, fromList, session))
                 with { Key = "crash-prompt:" + bundle.Summary.ReportId };
             d.PrimaryText = Loc.Get(Strings.Crash.Send);
             d.CloseText = Loc.Get(Strings.Crash.NotNow);
@@ -167,167 +171,55 @@ public static partial class Crash
         }
     }
 
-    // ══ 3. THE PROMPT BODY ═════════════════════════════════════════════════════════════════════════════════════════
+    // ══ 3. THE PROMPT BODY (the theme's: `Dialog.Crash`, `Themes\Classic\Structure\Views\Screens\ClassicCrash.cs`) ═══════════════════
 
-    const float DialogChrome = 548f, BodyWidth = 500f, PreviewHeight = 220f;
+    const float DialogChrome = 548f;
 
     /// <summary>The one handshake between <see cref="OpenPrompt"/>'s dialog chrome and the body: the card installs
-    /// its submit + carries the handle it can close itself from (the "Report on GitHub instead" link).</summary>
+    /// its submit + the chrome carries the handle the card can close the dialog from (the "Report on GitHub instead" link).</summary>
     sealed class PromptSession
     {
         public Func<bool>? Submit;
         public OverlayHandle? Handle;
     }
 
-    /// <summary>Width 500; every signal seeded once from <see cref="Bundle"/> at mount (the props freeze — the dialog is
-    /// keyed by report id, and a re-render must not re-seed the user's in-progress choices). <see cref="FromList"/> is
-    /// the Saved reports list's manual send: the bundle may be days old, so the header shows its date and there is no "last
-    /// time" lead and no "always send" switch.</summary>
-    sealed class CrashPromptBody : Component
+    /// <summary>What the body draws and does. The consent flow itself (<see cref="CrashConsent.Submit"/>, the scrubbed preview, the upload queue)
+    /// stays here: the view hands its choices to <see cref="CrashDialogProps.Submit"/>. <paramref name="fromList"/> is the Saved reports list's manual
+    /// send: the bundle may be days old, so the header shows its date and there is no "last time" lead and no "always send" switch.</summary>
+    static CrashDialogProps PromptProps(BundleInfo bundle, bool fromList, PromptSession session)
     {
-        public required BundleInfo Bundle;
-        public required PromptSession Session;
-        public bool FromList;
-
-        public override Element Render()
+        var s = bundle.Summary;
+        string when = fromList
+            ? bundle.StampLocal.ToString("g", CultureInfo.CurrentCulture)
+            : Strings.Crash.PromptWhen(bundle.StampLocal.ToString("t", CultureInfo.CurrentCulture));
+        string message = s.ExceptionType.Length > 0
+            ? when + " · " + s.ExceptionType + (s.ExceptionMessage.Length > 0 ? ": " + s.ExceptionMessage : "")
+            : when;
+        return new CrashDialogProps
         {
-            var showReport = UseSignal(false);
-            var includeDump = UseSignal(Bundle.HasDump && Platform.Settings.Get(Platform.Keys.CrashIncludeDump));
-            var always = UseSignal(false);
-            var preview = UseSignal<string?>(null);
-            var post = UsePost();
-
-            // Off-thread compose: the scrub touches file I/O + the redaction pass, so it never runs on the UI
-            // thread (ReportComposer's pattern, Feedback.UI.cs). Cancelled on unmount.
-            UseEffect(() =>
+            FromList = fromList,
+            HeaderMessage = message,
+            Lead = fromList ? "" : Loc.Get(s.Kind == Kind.Hang ? Strings.Crash.PromptHangLead : Strings.Crash.PromptLead),
+            HasDump = bundle.HasDump,
+            IncludeDumpLabel = bundle.HasDump ? Strings.Crash.PromptIncludeDump(FormatMb(bundle.DumpBytes)) : "",
+            IncludeDumpDefault = bundle.HasDump && Platform.Settings.Get(Platform.Keys.CrashIncludeDump),
+            Configured = Uploader.Configured,
+            PrivacyUrl = PrivacyUrl,
+            // UI thread: reads the live account/device seams, never blocks. The scrub touches file I/O + the redaction pass, so the returned
+            // function runs on a pool thread (ReportComposer's pattern, Feedback.UI.cs).
+            PrepareCompose = () =>
             {
-                var cts = new CancellationTokenSource();
-                var rules = Scrubber.RulesNow();   // UI thread: reads the live account/device seams, never blocks
-                var bundle = Bundle;
-                Task.Run(() =>
-                {
-                    string text = ComposePreview(bundle, rules);
-                    if (!cts.IsCancellationRequested) post(() => { if (!cts.IsCancellationRequested) preview.Value = text; });
-                });
-                return (Action?)(() => cts.Cancel());
-            }, DepKey.Empty);
-
-            UseEffect(() =>
+                var rules = Scrubber.RulesNow();
+                return () => ComposePreview(bundle, rules);
+            },
+            InstallSubmit = submit => session.Submit = submit,
+            Submit = (always, includeDump) => CrashConsent.Submit(bundle, fromList, always, includeDump),
+            NotifyPreparing = static () => Notify.Say(Loc.Get(Strings.Report.Preparing), InfoBarSeverity.Informational),
+            ReportOnGithub = () =>
             {
-                Session.Submit = () =>
-                {
-                    if (preview.Peek() is null)
-                    {
-                        Notify.Say(Loc.Get(Strings.Report.Preparing), InfoBarSeverity.Informational);
-                        return false;
-                    }
-                    CrashConsent.Submit(Bundle, FromList, always.Peek(), includeDump.Peek());
-                    return true;
-                };
-                return (Action?)(() => Session.Submit = null);
-            }, DepKey.Empty);
-
-            var children = new List<Element>(10) { HeaderInfoBar(Bundle, FromList) };
-            if (!FromList) children.Add(Lead(Bundle.Summary.Kind));
-            children.Add(WhatIsSentBox(showReport, preview.Value));
-            if (Bundle.HasDump) children.Add(IncludeDumpRow(includeDump, Bundle.DumpBytes));
-            if (!FromList) children.Add(CheckBox.Create(Loc.Get(Strings.Crash.PromptAlways), always));
-            children.Add(new BoxEl
-            {
-                Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Width = BodyWidth,
-                Children =
-                [
-                    HyperlinkButton.Create(Loc.Get(Strings.Crash.PromptPrivacy), PrivacyUrl),
-                    new TextEl("·") { Color = Tok.TextTertiary },
-                    HyperlinkButton.Create(Loc.Get(Strings.Crash.PromptGithub), () =>
-                    {
-                        Feedback.OpenCrashReport(Bundle);
-                        Session.Handle?.Close();
-                    }),
-                ],
-            });
-            if (!Uploader.Configured)
-                children.Add(new TextEl(Loc.Get(Strings.Crash.PromptNotConfigured)) { Size = 12f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MaxWidth = BodyWidth });
-
-            return new BoxEl { Direction = 1, Gap = Spacing.M, Width = BodyWidth, Children = children.ToArray() };
-        }
-
-        static Element HeaderInfoBar(BundleInfo bundle, bool fromList)
-        {
-            var s = bundle.Summary;
-            string when = fromList
-                ? bundle.StampLocal.ToString("g", CultureInfo.CurrentCulture)
-                : Strings.Crash.PromptWhen(bundle.StampLocal.ToString("t", CultureInfo.CurrentCulture));
-            string message = s.ExceptionType.Length > 0
-                ? when + " · " + s.ExceptionType + (s.ExceptionMessage.Length > 0 ? ": " + s.ExceptionMessage : "")
-                : when;
-            return InfoBar.Create(InfoBarSeverity.Warning, "", message, isClosable: false, availableWidth: BodyWidth);
-        }
-
-        static Element Lead(Kind kind) => new TextEl(Loc.Get(kind == Kind.Hang ? Strings.Crash.PromptHangLead : Strings.Crash.PromptLead))
-        {
-            Size = 14f, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxWidth = BodyWidth,
-        };
-
-        static Element WhatIsSentBox(Signal<bool> showReport, string? preview)
-        {
-            var kids = new List<Element>(8)
-            {
-                new TextEl(Loc.Get(Strings.Crash.PromptWhatIsSent)) { Size = 12f, Weight = 600, Color = Tok.TextSecondary },
-                Bullet(Loc.Get(Strings.Crash.PromptBullet1), positive: true),
-                Bullet(Loc.Get(Strings.Crash.PromptBullet2), positive: true),
-                Bullet(Loc.Get(Strings.Crash.PromptBullet3), positive: true),
-                Bullet(Loc.Get(Strings.Crash.PromptBullet4), positive: false),
-                HyperlinkButton.Create(Loc.Get(showReport.Value ? Strings.Crash.PromptHideFull : Strings.Crash.PromptReadFull),
-                    () => showReport.Value = !showReport.Peek()),
-            };
-            if (showReport.Value)
-                kids.Add(new BoxEl
-                {
-                    Width = BodyWidth - 32f, Height = PreviewHeight, Shrink = 0f, ClipToBounds = true, Fill = Tok.FillSolidBase,
-                    BorderWidth = 1f, BorderColor = Tok.StrokeDividerDefault, Corners = Radii.ControlAll,
-                    Children =
-                    [
-                        new ScrollEl
-                        {
-                            Height = PreviewHeight, ScrollKey = "crash-prompt-preview", EdgeCues = ScrollEdgeCues.None,
-                            Content = new BoxEl
-                            {
-                                Padding = Edges4.All(10f),
-                                Children = [R.Type.MicroMeta(preview ?? Loc.Get(Strings.Report.Preparing))
-                                    with { FontFamily = "Cascadia Code", Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxWidth = BodyWidth - 52f }],
-                            },
-                        },
-                    ],
-                });
-            return new BoxEl
-            {
-                Direction = 1, Gap = Spacing.S, Width = BodyWidth, Shrink = 0f, Padding = Edges4.All(Spacing.M),
-                Fill = Tok.FillSolidSecondary, BorderWidth = 1f, BorderColor = Tok.StrokeDividerDefault, Corners = Radii.CardAll,
-                Children = kids.ToArray(),
-            };
-        }
-
-        static Element Bullet(string text, bool positive) => new BoxEl
-        {
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Start, Width = BodyWidth - 32f,
-            Children =
-            [
-                Icon(positive ? Icons.Check : Icons.Cancel, 14f, positive ? Tok.SystemFillSuccess : Tok.SystemFillCritical)
-                    with { Margin = new Edges4(2f, 0f, 0f, 0f) },
-                new TextEl(text) { Size = 13f, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxWidth = BodyWidth - 56f },
-            ],
-        };
-
-        static Element IncludeDumpRow(Signal<bool> includeDump, long dumpBytes) => new BoxEl
-        {
-            Direction = 1, Gap = 2f, Width = BodyWidth,
-            Children =
-            [
-                CheckBox.Create(Strings.Crash.PromptIncludeDump(FormatMb(dumpBytes)), includeDump),
-                new TextEl(Loc.Get(Strings.Crash.PromptIncludeDumpSub))
-                    { Size = 12f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MaxWidth = BodyWidth - 28f, Margin = new Edges4(28f, 0f, 0f, 0f) },
-            ],
+                Feedback.OpenCrashReport(bundle);
+                session.Handle?.Close();
+            },
         };
     }
 

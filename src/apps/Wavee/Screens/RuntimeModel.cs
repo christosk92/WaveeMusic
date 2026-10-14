@@ -7,7 +7,7 @@
 //
 // Moved out of `Setup.UI.Runtime.cs` unchanged (sections 1-3 of that file) apart from one seam: the model no longer holds
 // an `OverlayHandle`; the standalone dialog hands it `CloseHost` (the handle's Close) instead. The card BODY, the named
-// pieces and the command row stay in `Setup.UI.Runtime.cs`; the wizard's Local-playback page is driven by
+// pieces and the command row are Classic's `Setup.RuntimeCard` view (`ClassicSetup.Runtime.cs`), the dialog is `Setup.UI.Runtime.cs`; the wizard's Local-playback page is driven by
 // `WizardModel` (`Screens/WizardModel.cs`), which owns one of these.
 
 using System.Threading.Tasks;

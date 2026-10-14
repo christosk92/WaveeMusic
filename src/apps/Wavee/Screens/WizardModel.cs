@@ -10,8 +10,8 @@
 // WHAT MOVED. `Setup.UI.cs` used to hold, beside the plate and the pages: the markers (`WizardMarkerEpoch`, `WizardOpen`,
 // `Covering`), the open decision (re-derived from the settings inside the chrome's mount effect, then 1-2 posts), the
 // whole `WizardSession` state machine, `LoadHero` (a disk read on the UI thread at first use), the sign-in start/cancel
-// verbs and the crash-consent write. They are here now; the plate, the footer, the pages and the overlay handle stay in the
-// view file, which reads this model and calls its verbs.
+// verbs and the crash-consent write. They are here now; the overlay handle and the plate host stay in `Setup.UI.cs`, and the plate, the
+// footer and the pages are the `Setup.Wizard` view and its page keys (Classic's `ClassicSetup*.cs`), which read this model and call its verbs.
 //
 // THE OPEN IS DECIDED IN BOOT. `Setup.InstallWizard()` (called from `Settings.InstallScreens()`, after the install
 // bootstrap armed or suppressed the wizard) runs `Wizard.Boot`: the settings and the stored credential decide whether the
@@ -161,7 +161,7 @@ public static partial class Setup
         /// <summary>The plate is up: the shell dims behind it and the wizard owns sign-in.</summary>
         public void Opened()
         {
-            Covering.Value = Layout.CoverFor(shellBehind: true);
+            Covering.Value = Cover.Dim;
             WizardOpen.Value = true;
         }
 
@@ -413,14 +413,22 @@ public static partial class Setup
 
         /// <summary>The asset's full path (<c>assets/lottie/&lt;scene&gt;.json</c> beside the executable).</summary>
         public static string PathFor(WizardPage page)
-            => Path.Combine(AppContext.BaseDirectory, "assets", "lottie", Layout.HeroAsset(page) + ".json");
+            => Path.Combine(AppContext.BaseDirectory, "assets", "lottie", AssetFor(page) + ".json");
+
+        /// <summary>The Lottie scene each page plays (<c>assets/lottie/&lt;name&gt;.json</c>).</summary>
+        public static string AssetFor(WizardPage page) => page switch
+        {
+            WizardPage.Terms => "eula",
+            WizardPage.SignIn or WizardPage.Layout => "connect",
+            _ => "patch",
+        };
 
         static FluentGpu.Lottie.LottieSource? Load(WizardPage page)
         {
             try { return FluentGpu.Lottie.LottieSource.FromFile(PathFor(page)); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                Log.Warn("setup", "wizard hero '" + Layout.HeroAsset(page) + "' is unavailable — the icon column stays empty", ex);
+                Log.Warn("setup", "wizard hero '" + AssetFor(page) + "' is unavailable — the icon column stays empty", ex);
                 return null;
             }
         }

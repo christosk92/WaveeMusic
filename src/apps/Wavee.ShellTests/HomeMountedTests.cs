@@ -14,6 +14,7 @@ using FluentGpu.Signals;
 using Wavee;
 using Wavee.HomeUi;
 using Wavee.Themes.Classic;
+using Wavee.Themes.Common;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Xunit;
@@ -41,7 +42,7 @@ public sealed class HomeMountedTests(ShellHost host)
                 (ViewKeys.HomeCharts.Id, "classic.home.charts"),
                 (ViewKeys.HomeZoneCoverShelf.Id, "classic.home.zone.cover-shelf"),
                 (ViewKeys.HomeSection.Id, "classic.home.section"),
-                (ViewKeys.HomeCustomize.Id, "classic.home.customize"),
+                (ViewKeys.HomeCustomize.Id, "common.customize"),
             ];
             foreach (var (id, template) in expected)
                 Assert.Equal(template, ThemeHost.Registry.TemplateIdOf(id));
@@ -122,7 +123,7 @@ public sealed class HomeMountedTests(ShellHost host)
                 foreach (var entry in doc.Zones)
                 {
                     var bounds = harness.AbsoluteBounds(harness.Node(entry.Kind));
-                    Assert.Equal(ClassicHomeRules.CustomizeRowH, bounds.H, 0.5f);
+                    Assert.Equal(CommonCustomizeRules.CustomizeRowH, bounds.H, 0.5f);
                     Assert.True(bounds.Y > previous, "'" + entry.Kind + "' stands below the row before it");
                     previous = bounds.Y;
                 }

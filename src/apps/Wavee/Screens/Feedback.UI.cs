@@ -1,9 +1,13 @@
 // ── Screens/Feedback.UI.cs ─────────────────────────────────────────────────────────────────────────────────────────
-// the report dialog (Bug / Feature / Question / Idea / Crash), ReportComposer (off-thread compose + redaction),
-// Requests (the monotonic request signal) + Open, the zero-size report chrome (Feedback.Chrome: requests only — the
-// crash prompt and the --crash-probe timer moved to Screens/Crash.UI.cs, WP-E, crash-diagnostics-implementation.md)
+// the report dialog's chrome and doors (Bug / Feature / Question / Idea / Crash), Requests (the monotonic request signal) + Open,
+// the zero-size report chrome (Feedback.Chrome: requests only — the crash prompt and the --crash-probe timer moved to
+// Screens/Crash.UI.cs, WP-E, crash-diagnostics-implementation.md)
 //
-// Role: UI
+// THE BODY IS THE THEME'S (T11c): the stock ContentDialog chrome (title, buttons, the vetoable primary click) is here; the dialog's
+// content is `Dialog.Feedback` (`Themes\Classic\Structure\Views\Screens\ClassicFeedback.cs`), whose core half (the off-thread
+// compose, the preview, the submit gate and the three doors) is `Screens/Feedback.Form.cs`.
+//
+// Role: CORE host + doors
 // Owner: R
 // Wave: 6
 // Budget: 800 lines
@@ -26,7 +30,8 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
-using static FluentGpu.Dsl.Ui;
+using Wavee.Theming.Contracts;
+using Slots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -111,12 +116,8 @@ public static partial class Feedback
 
     // ══ 5. THE DIALOG ══════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>WinUI ContentDialog metrics: MaxWidth 548, Padding 24 — the form gets 500 DIP inside the stock card.</summary>
-    const float DialogWidth = 548f, FieldWidth = DialogWidth - 48f;
-    const float FieldHeight = 72f, BodyFieldHeight = 140f, PreviewHeight = 220f, ComboWidth = 260f;
-
-    /// <summary>New loc keys (batch-loc/WP-6.R-feedback.json): the save picker's filter names, English literals in 0.2.9.</summary>
-    const string LocFilterText = "report.saveFilterText", LocFilterAll = "report.saveFilterAll";
+    /// <summary>The dialog chrome's width: the WinUI ContentDialog maximum (548, padding 24 — the form gets 500 DIP inside the stock card).</summary>
+    const float DialogWidth = 548f;
 
     /// <summary>A crash kind / crash-report prefill forces the fixed Crash form (<see cref="ReportForm.EffectiveKind"/>) —
     /// the crash & diagnostics pipeline (WP-A/B/C, <c>Crash.UI.cs</c>) owns consent and upload; this is only ever the
@@ -130,13 +131,13 @@ public static partial class Feedback
         // Names the kind that ACTUALLY arrived at the one place that decides what the dialog shows.
         Log.Info("report", $"report.open kind={kind} effective={effective} prefill={prefill is not null}");
 
-        var session = new DialogSession();
+        var session = new DialogSession(prefill);
         ContentDialog.Show(overlay, d =>
         {
             d.Title = Loc.Get(Strings.Report.Title);
             d.DialogWidth = DialogWidth;
             // Keyed by the kind shown: every signal in the body is seeded once from an open-time constant.
-            d.Content = Embed.Comp(() => new DialogBody { InitialKind = effective, Prefill = prefill, Session = session })
+            d.Content = Slots.View(ViewKeys.DialogFeedback, new FeedbackDialogProps { InitialKind = effective, Dialog = session })
                 with { Key = "report-body:" + (int)effective };
             d.PrimaryText = Loc.Get(isCrash ? Strings.Report.ReportOnGithub : Strings.Report.OpenGithub);
             d.CloseText = Loc.Get(isCrash ? Strings.Report.NotNow : Strings.Auth.Cancel);
@@ -146,263 +147,11 @@ public static partial class Feedback
         });
     }
 
-    /// <summary>The one handshake between the dialog chrome and the body: the card installs its submit while mounted.</summary>
-    sealed class DialogSession
-    {
-        public Func<bool>? Submit;
-    }
-
     static ReportLabels FormLabels() => new(
         Loc.Get(Strings.Report.TitleLabel), Loc.Get(Strings.Report.When), Loc.Get(Strings.Report.Reproduces),
         Loc.Get(Strings.Report.WhatWereYouDoing), Loc.Get(Strings.Report.WhatHappened), Loc.Get(Strings.Report.Steps),
         Loc.Get(Strings.Report.Expected), Loc.Get(Strings.Report.Area), Loc.Get(Strings.Report.Problem),
         Loc.Get(Strings.Report.Proposal), Loc.Get(Strings.Report.Alternatives), Loc.Get(Strings.Report.Body));
-
-    /// <summary>The subtitle, the kind switch (never in crash mode) and the form. The Segmented selection lives HERE
-    /// because switching kind must REMOUNT the whole form (its answer set is kind-shaped).</summary>
-    sealed class DialogBody : Component
-    {
-        public required ReportKind InitialKind;
-        public required ReportPrefill? Prefill;
-        public required DialogSession Session;
-
-        public override Element Render()
-        {
-            bool isCrash = InitialKind == ReportKind.Crash;
-            var kindIndex = UseSignal(ReportKindIndex.IndexOf(InitialKind));
-            ReportKind kind = isCrash ? ReportKind.Crash : ReportKindIndex.KindAt(kindIndex.Value);
-
-            var children = new List<Element>(3)
-            {
-                new TextEl(Loc.Get(Strings.Report.Subtitle)) { Size = 14f, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxWidth = FieldWidth },
-            };
-            if (!isCrash)
-                children.Add(Segmented.Create(
-                [
-                    new SegmentedItem(Loc.Get(Strings.Report.KindBug)),
-                    new SegmentedItem(Loc.Get(Strings.Report.KindFeature)),
-                    new SegmentedItem(Loc.Get(Strings.Report.KindQuestion)),
-                    new SegmentedItem(Loc.Get(Strings.Report.KindIdea)),
-                ], kindIndex));
-            children.Add(Embed.Comp(() => new DialogCard { Kind = kind, Prefill = Prefill, Session = Session })
-                with { Key = "report-card:" + (int)kind });
-
-            return new BoxEl { Direction = 1, Gap = Spacing.M, Width = FieldWidth, Children = children.ToArray() };
-        }
-    }
-
-    /// <summary>The form for ONE fixed kind — remounted whole on a kind switch, so every signal is seeded once. The
-    /// preview recomputes per keystroke (subscribing reads); submit reads the same signals with Peek so it never goes
-    /// stale.</summary>
-    sealed class DialogCard : Component
-    {
-        public required ReportKind Kind;
-        public required ReportPrefill? Prefill;
-        public required DialogSession Session;
-
-        public override Element Render()
-        {
-            bool isCrash = Kind == ReportKind.Crash;
-            var title = UseSignal(Prefill?.Title ?? "");
-            var f1 = UseSignal("");
-            var f2 = UseSignal("");
-            var f3 = UseSignal("");
-            var when = UseSignal(0);                                     // "On launch"
-            var repro = UseSignal(0);                                    // "Every time"
-            var area = UseSignal(ReportChannels.Areas.Length - 1);       // "Not sure"
-            var includeLogs = UseSignal(ReportForm.IncludesLogsByDefault(Kind));
-            var composed = UseSignal<ComposedReport?>(null);
-            var post = UsePost();
-            var hooks = UseContext(InputHooks.Current);
-
-            // Off-thread compose: file I/O + the whole-text redaction pass over up to ~60 KB. The UI-thread facts
-            // (rules, identity, the diagnostics text) are gathered first; cancelled on unmount (Cancel / a kind switch).
-            UseEffect(() =>
-            {
-                var cts = new CancellationTokenSource();
-                var input = ReportComposer.Gather(Kind, Prefill);
-                Task.Run(() =>
-                {
-                    ComposedReport result;
-                    try { result = ReportComposer.Compose(input); }
-                    catch (Exception ex) { Log.Warn("report", "compose failed", ex); return; }
-                    if (!cts.IsCancellationRequested) post(() => { if (!cts.IsCancellationRequested) composed.Value = result; });
-                });
-                return (Action?)(() => cts.Cancel());
-            }, DepKey.Empty);
-
-            ReportDraft Draft() => new(title.Peek(), f1.Peek(), f2.Peek(), f3.Peek(), when.Peek(), repro.Peek(), area.Peek());
-
-            var channel = ReportChannels.For(Kind);
-            UseEffect(() =>
-            {
-                Session.Submit = () =>
-                {
-                    if (composed.Peek() is not { } c)
-                    {
-                        Notify.Say(Loc.Get(Strings.Report.Preparing), InfoBarSeverity.Informational);
-                        return false;
-                    }
-                    if (!isCrash && title.Peek().Trim().Length == 0)
-                    {
-                        Notify.Say(Loc.Get(Strings.Report.TitleRequired), InfoBarSeverity.Warning);
-                        return false;
-                    }
-                    OpenGithub(c, Draft(), includeLogs.Peek(), channel, hooks);
-                    return true;
-                };
-                return (Action?)(() => Session.Submit = null);
-            }, DepKey.Empty);
-
-            ComposedReport? current = composed.Value;
-            var labels = FormLabels();
-            var draft = new ReportDraft(title.Value, f1.Value, f2.Value, f3.Value, when.Value, repro.Value, area.Value);
-            bool logs = includeLogs.Value;
-
-            var body = new List<Element>(12);
-            if (isCrash)
-                body.Add(new BoxEl { Direction = 1, Shrink = 0f, Width = FieldWidth, Children = [CrashInfoBar(current)] });
-
-            body.Add(TextBox.Create(title, null, new TextBox.TextBoxOptions
-            {
-                Header = labels.Title, Placeholder = Loc.Get(Strings.Report.TitlePlaceholder), Width = FieldWidth,
-            }));
-            AddKindFields(body, labels, f1, f2, f3, when, repro, area);
-            body.Add(CheckBox.Create(Strings.Report.IncludeLogs(isCrash ? ReportBundle.CrashLogLines : ReportBundle.ManualLogLines), includeLogs));
-
-            string preview = current is null
-                ? Loc.Get(Strings.Report.Preparing)
-                : ReportBundle.Preview(BuildBundle(current, labels, draft, logs, DateTimeOffset.Now));
-            body.Add(new BoxEl
-            {
-                Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Width = FieldWidth, Shrink = 0f,
-                Children =
-                [
-                    new TextEl(Loc.Get(Strings.Report.Preview)) { Size = 12f, Weight = 600, Color = Tok.TextSecondary },
-                    Spacer(),
-                    Button.Subtle(Loc.Get(Strings.Report.Copy), () => CopyReport(composed.Peek(), Draft(), includeLogs.Peek(), hooks),
-                        isEnabled: current is not null),
-                    Button.Subtle(Loc.Get(Strings.Report.SaveAs), () => SaveReport(composed.Peek(), Draft(), includeLogs.Peek()),
-                        isEnabled: current is not null),
-                ],
-            });
-            body.Add(new BoxEl
-            {
-                Width = FieldWidth, Height = PreviewHeight, Shrink = 0f, ClipToBounds = true, Fill = Tok.FillSolidBase,
-                BorderWidth = 1f, BorderColor = Tok.StrokeDividerDefault, Corners = Radii.ControlAll,
-                Children =
-                [
-                    new ScrollEl
-                    {
-                        Height = PreviewHeight, ScrollKey = "report-preview", EdgeCues = ScrollEdgeCues.None,
-                        Content = new BoxEl
-                        {
-                            Padding = Edges4.All(10f),
-                            Children = [R.Type.MicroMeta(preview) with { FontFamily = "Cascadia Code", Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxWidth = FieldWidth - 20f }],
-                        },
-                    },
-                ],
-            });
-            body.Add(new TextEl(Loc.Get(Strings.Report.PreviewNote)) { Size = 12f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MaxWidth = FieldWidth });
-
-            return new BoxEl { Direction = 1, Gap = Spacing.M, Width = FieldWidth, Children = body.ToArray() };
-        }
-
-        void AddKindFields(List<Element> body, ReportLabels l, Signal<string> f1, Signal<string> f2, Signal<string> f3,
-            Signal<int> when, Signal<int> repro, Signal<int> area)
-        {
-            switch (Kind)
-            {
-                case ReportKind.Crash:
-                    body.Add(ComboBox.Create(ReportChannels.When, when, header: l.When, width: ComboWidth));
-                    body.Add(ComboBox.Create(ReportChannels.Reproduces, repro, header: l.Reproduces, width: ComboWidth));
-                    body.Add(MultiLine(f1, l.WhatWereYouDoing, FieldHeight));
-                    break;
-                case ReportKind.Bug:
-                    body.Add(MultiLine(f1, l.WhatHappened, FieldHeight));
-                    body.Add(MultiLine(f2, l.Steps, FieldHeight));
-                    body.Add(MultiLine(f3, l.Expected, FieldHeight));
-                    body.Add(ComboBox.Create(ReportChannels.Areas, area, header: l.Area, width: ComboWidth));
-                    break;
-                case ReportKind.Feature:
-                    body.Add(MultiLine(f1, l.Problem, FieldHeight));
-                    body.Add(MultiLine(f2, l.Proposal, FieldHeight));
-                    body.Add(ComboBox.Create(ReportChannels.Areas, area, header: l.Area, width: ComboWidth));
-                    body.Add(MultiLine(f3, l.Alternatives, FieldHeight));
-                    break;
-                default:   // Question, Idea
-                    body.Add(MultiLine(f1, l.Body, BodyFieldHeight));
-                    break;
-            }
-        }
-
-        static Element MultiLine(Signal<string> text, string header, float height) => TextBox.Create(text, null, new TextBox.TextBoxOptions
-        {
-            Header = header, Width = FieldWidth, AcceptsReturn = true, Height = height,
-        });
-
-        /// <summary>Three honest states: still composing (the report is read off the UI thread — "no report was written"
-        /// would be a lie for those first frames), a report with its summary, or genuinely no report.</summary>
-        static Element CrashInfoBar(ComposedReport? c)
-        {
-            string message;
-            var severity = InfoBarSeverity.Error;
-            if (c is null) { message = Loc.Get(Strings.Report.CrashReading); severity = InfoBarSeverity.Informational; }
-            else if (c.CrashSummary.Length > 0)
-                message = c.CrashTime.Length > 0 ? Strings.Report.CrashAt(c.CrashTime) + " · " + c.CrashSummary : c.CrashSummary;
-            else message = Loc.Get(Strings.Report.CrashNoReport);
-            return InfoBar.Create(severity, Loc.Get(Strings.Report.CrashTitle), message, isClosable: false, availableWidth: FieldWidth);
-        }
-
-        string BuildBundle(ComposedReport c, ReportLabels labels, in ReportDraft draft, bool includeLogs, DateTimeOffset now)
-            => ReportComposer.BuildBundle(Kind, c, labels, in draft, includeLogs, now);
-
-        void CopyReport(ComposedReport? c, ReportDraft draft, bool includeLogs, InputHooks hooks)
-        {
-            if (c is null) return;
-            hooks.Clipboard?.SetText(BuildBundle(c, FormLabels(), draft, includeLogs, DateTimeOffset.Now));
-            Notify.Say(Loc.Get(Strings.Report.Copied), InfoBarSeverity.Success);
-        }
-
-        void SaveReport(ComposedReport? c, ReportDraft draft, bool includeLogs)
-        {
-            if (c is null) return;
-            var now = DateTimeOffset.Now;
-            // The Save As dialog runs on its own thread (Pickers, #155); the write happens when it answers, UI thread.
-            Pickers.Pick(
-                PickerRequest.Save(Loc.Get(Strings.Report.SaveAs), ReportBundle.FileName(now),
-                    (Loc.Get(LocFilterText), "*.txt"), (Loc.Get(LocFilterAll), "*.*")),
-                done: path =>
-                {
-                    if (path is null) return;
-                    Exception? failure;
-                    try { failure = ReportComposer.TryWriteFile(path, BuildBundle(c, FormLabels(), draft, includeLogs, now)); }
-                    catch (Exception ex) { failure = ex; }   // the bundle build itself failing is toasted like the write
-                    if (failure is null) Notify.Say(Strings.Report.Saved(path), InfoBarSeverity.Success);
-                    else Notify.Say(failure.Message, InfoBarSeverity.Error);
-                },
-                failed: ex => Notify.Say(ex.Message, InfoBarSeverity.Error));
-        }
-
-        /// <summary>Clipboard + a <c>wavee-report-&lt;stamp&gt;.txt</c> beside the logs + the prefilled form in the browser +
-        /// the 8-second "paste it into the … box" toast. The full report never rides the URL.</summary>
-        void OpenGithub(ComposedReport c, ReportDraft draft, bool includeLogs, ReportChannel channel, InputHooks hooks)
-        {
-            var now = DateTimeOffset.Now;
-            var labels = FormLabels();
-            string bundle = BuildBundle(c, labels, draft, includeLogs, now);
-
-            hooks.Clipboard?.SetText(bundle);
-            ReportComposer.SaveBesideLogs(bundle, now);
-
-            string urlTitle = ReportForm.UrlTitle(draft.Title, c.CrashSummary, Loc.Get(Strings.Report.CrashTitle));
-            string url = IssueFormUrl.Build(Kind, c.Identity, urlTitle,
-                ReportForm.UrlFields(Kind, labels, c.Identity, c.Rules, draft, Prefill?.ReportId), ReportForm.Labels(Kind, c.Identity, draft.Area));
-            OpenUrl(url, hooks);
-
-            Notify.Say(Strings.Report.CopiedPaste(channel.PasteBox), InfoBarSeverity.Success, durationMs: 8000f);
-        }
-    }
 
     /// <summary>The browser door: only an http(s) url with a host ever reaches the shell.</summary>
     static void OpenUrl(string url, InputHooks hooks)

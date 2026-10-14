@@ -1,7 +1,7 @@
 // ── Home/Customize.Host.cs — the Home customizer's CORE HOST over home-layout.json v2 (T10a1) ─────────────────────────────
 //
 // Role: CORE host (the picture — the header with Reset, the reorderable zone rows with their gripper, label, Up/Down and visibility toggle —
-//   is Classic's `Pages.HomeCustomize` view: `Themes\Classic\Structure\Views\Home\ClassicHomeCustomize.cs`)
+//   is the Common `Pages.HomeCustomize` view: `Themes\Common\CommonCustomize.cs`)
 // Owner: B5
 // Wave: 2
 // Spec: docs/plans/wavee/home-redesign-implementation.md — Workstream H, New files table row `Customize.UI.cs`

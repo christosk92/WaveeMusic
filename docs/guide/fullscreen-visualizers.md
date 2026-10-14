@@ -29,7 +29,7 @@ the cover.
 | Kind-237 waveform bands, beat grid | `Entities/Waveform.cs`, `Entities/Edges.cs`, `Spotify/Spotify.Decode.Analysis.cs` | data |
 | Persisted preferences | `Platform/Prefs.Stage.cs` + the keys in `Platform/Platform.Settings.cs` | platform |
 | The engine pulls (`AcquireSpectrum`, `CopySpectrum`, `SetSpectrumOffsetMs`, `SpectrumDiagnostics`) | `Playback/Playback.Audio.cs` | playback |
-| The Diagnostics card | `Screens/Diagnostics.UI.cs` (`RuntimePageView.StageCard`) | UI |
+| The Diagnostics card | `Screens/Diagnostics.Pages.cs` (`Diagnostics.StageCard`, drawn by the Common `Pages.Diagnostics.Playback` view) | UI |
 
 ## How it works, in one paragraph
 
@@ -150,7 +150,7 @@ maximized.
 ## Diagnosing
 
 **The card.** Settings › Privacy & diagnostics › Tools › Playback runtime opens the `playback-diagnostics` page; the
-"Fullscreen & visualizer" card (`RuntimePageView.StageCard`) sits under the updates card and re-renders on every
+"Fullscreen & visualizer" card (`Diagnostics.StageCard`) sits under the updates card and re-renders on every
 `Stage.Diagnostics.Version` bump (Refresh re-reads the FFT figures):
 
 | Row | Reads | Healthy on a real account |

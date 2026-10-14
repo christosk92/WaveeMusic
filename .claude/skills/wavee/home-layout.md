@@ -26,7 +26,7 @@ the current page tree, the daylist wireframe and the root-cause table.
 `Home.DaylistClock`, `Home.Zone.<Kind>`, `Home.Charts`, `Pages.HomeSection`, `Pages.HomeCustomize`, in `Theming/Contracts/ViewKeys.Home.cs`;
 props in `Theming/Contracts/HomeProps.cs`). The trees live in `src/apps/Wavee/Themes/Classic/Structure/Views/Home/` (`ClassicHomePage`,
 `ClassicHomeFacetRow`, `ClassicHomeZones` (the column, chapters, headers and the pure zone bodies), `ClassicHomeRecents`, `ClassicHomeCharts`,
-`ClassicHomeDaylist`, `ClassicHomeDaylistClock`, `ClassicHomeSection`, `ClassicHomeCustomize`) and their numbers in
+`ClassicHomeDaylist`, `ClassicHomeDaylistClock`, `ClassicHomeSection`; the customizer is the Common block `Themes/Common/CommonCustomize.cs`, T11c) and their numbers in
 `Themes/Classic/Structure/Rules/ClassicHomeRules.cs`. What stays under `Home/` is the data, the decisions and the CORE HOSTS that mount the keys
 (`HomeScreen`, `Daylist.Host.cs`, `Zones.Hosts.cs`, `SectionScreen.Host.cs`, `Customize.Host.cs`, `HomeVerbs.cs`). A Home view may not name `Shell`,
 `Playback`, `Entities`, `Spotify`, `Store` or `Prefs` (WVTH002): navigation and playback verbs are `HomeVerbs`, live facts arrive on the props.
@@ -51,7 +51,7 @@ All under `src/apps/Wavee/Home/` (namespace `Wavee.HomeUi`):
 | `RecentsCells.cs` | the Recently-played grid's cell shape (kept as-is across the fifth pass) |
 | `Reveal.cs` | `ScreenLoad` (a facet's `Loadable<ScreenModel>` state) and `WashPick` (shell wash accent source order: daylist accent → first cover accent → fallback) — card open/play routing lives OFF this file now (below) |
 | `SectionScreen.Rules.cs` / `SectionScreen.Host.cs` | the "See all"/charts drill page for a Home or Browse section (`Shell.RouteKind.HomeSection`/`BrowseSection`): the host (`SectionScreen`) owns the demand, the table sync, the card source and the masthead publication and mounts `Pages.HomeSection`; the view (`ClassicHomeSection`) is a bound `ItemsView` over `RepeatLayout.GridFit` (its own grid, unrelated to Home's own zone column). It demands the section WHOLE (`SectionFields.Identity | Whole`, one `Home.EnsureSection`) and renders what the row holds, skeleton while the walk is in flight; the QUERY layer walks `homeSection`/`browseSection` to the server's end (`Spotify/Spotify.Api.Browse.cs`). No near-tail hook, no append, no page-side paging - never add one back |
-| `Customize.Host.cs` | `CustomizeScreen` - the customizer's CORE HOST (`Shell.RouteKind.HomeCustomize`): the `HomeLayout` service, the three verbs and the `Reorderable` behaviour object; it mounts `Pages.HomeCustomize` (`ClassicHomeCustomize`: the header with Reset and a `Reorderable` list of `ZoneRow`s, which wires the reorderable's scene/render request/row extent from its OWN render context) |
+| `Customize.Host.cs` | `CustomizeScreen` - the customizer's CORE HOST (`Shell.RouteKind.HomeCustomize`): the `HomeLayout` service, the three verbs and the `Reorderable` behaviour object; it mounts `Pages.HomeCustomize` (`CommonCustomize` in `Themes/Common`, registered by every theme: the header with Reset and a `Reorderable` list of `ZoneRow`s, which wires the reorderable's scene/render request/row extent from its OWN render context) |
 | `LayoutFile.cs` | the v2 layout document (below) |
 
 **Deleted in the fifth pass, not coming back**: `Forms.cs` (the width-query forms
@@ -153,7 +153,7 @@ non-square covers. Do not add a Home-private hover recipe.
 4. Add it to `LayoutZones.DefaultOrder`/`KindName`/`TryParse` (`LayoutFile.cs`) so
    the customizer can toggle/reorder it; old documents pick a new kind up
    automatically as visible (no migration).
-5. Add a label in the customizer (`ClassicHomeCustomize.ZoneLabel`).
+5. Add a label in the customizer (`CommonCustomize.ZoneLabel`).
 
 Do not hardcode a new zone into a static row table, do not invent a new width-query
 form or a Home-private card template — it goes through the planner and renders

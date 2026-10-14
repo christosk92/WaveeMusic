@@ -9,6 +9,7 @@
 // and the loaders are `ReleaseNotesStoreTests.cs`. Pure: no engine loop, no network, no profile folder.
 
 using Wavee;
+using Wavee.Themes.Classic;
 using Xunit;
 using static Wavee.ReleaseNotes;
 
@@ -602,7 +603,7 @@ public class HighlightVisibilityTests
     }
 }
 
-// ── HighlightCardMetrics ────────────────────────────────────────────────────────────────────────────────────────────
+// ── ClassicReleaseNotesRules.Card (was HighlightCardMetrics) ────────────────────────────────────────────────────────────────────────────────────────────
 // The after-update plate RENDERS from these constants, so the 620-DIP cap asserted here is a real gate.
 public class HighlightCardMetricsTests
 {
@@ -615,7 +616,7 @@ public class HighlightCardMetricsTests
     [InlineData(1, true, 2, 603f)]
     [InlineData(3, false, 1, 486f)]
     public void DialogHeight_MatchesTheBudgetTable(int cardCount, bool store, int taglineLines, float expected)
-        => Assert.Equal(expected, HighlightCardMetrics.DialogHeight(cardCount, store, taglineLines));
+        => Assert.Equal(expected, ClassicReleaseNotesRules.Card.DialogHeight(cardCount, store, taglineLines));
 
     [Theory]
     [InlineData(1, false, 132f)]
@@ -623,14 +624,14 @@ public class HighlightCardMetricsTests
     [InlineData(1, true, 152f)]
     [InlineData(2, true, 170f)]
     public void TextBlockHeight_MatchesTheArithmetic(int titleLines, bool store, float expected)
-        => Assert.Equal(expected, HighlightCardMetrics.TextBlockHeight(titleLines, store));
+        => Assert.Equal(expected, ClassicReleaseNotesRules.Card.TextBlockHeight(titleLines, store));
 
     [Theory]
     [InlineData(3, 216f)]
     [InlineData(2, 329f)]
     [InlineData(1, 356f)]
     public void DialogCardWidth_SplitsTheInnerPlateEvenlyAndCapsTheLoneCard(int cardCount, float expected)
-        => Assert.Equal(expected, HighlightCardMetrics.DialogCardWidth(cardCount));
+        => Assert.Equal(expected, ClassicReleaseNotesRules.Card.DialogCardWidth(cardCount));
 
     [Theory]
     [InlineData(216f, 122f)]
@@ -638,18 +639,18 @@ public class HighlightCardMetricsTests
     [InlineData(356f, 200f)]
     [InlineData(420f, 236f)]
     public void BandHeight_IsTheRounded16By9Band(float cardWidth, float expected)
-        => Assert.Equal(expected, HighlightCardMetrics.BandHeight(cardWidth));
+        => Assert.Equal(expected, ClassicReleaseNotesRules.Card.BandHeight(cardWidth));
 
     [Theory]
     [InlineData(51f)]
     [InlineData(68f)]
     [InlineData(68.5f)]
-    public void Overflows_IsFalseAtOrBelowFourLines(float naturalHeight) => Assert.False(HighlightCardMetrics.Overflows(naturalHeight));
+    public void Overflows_IsFalseAtOrBelowFourLines(float naturalHeight) => Assert.False(ClassicReleaseNotesRules.Card.Overflows(naturalHeight));
 
     [Theory]
     [InlineData(85f)]
     [InlineData(102f)]
-    public void Overflows_IsTrueAboveFourLines(float naturalHeight) => Assert.True(HighlightCardMetrics.Overflows(naturalHeight));
+    public void Overflows_IsTrueAboveFourLines(float naturalHeight) => Assert.True(ClassicReleaseNotesRules.Card.Overflows(naturalHeight));
 
     [Fact]
     public void DialogHeight_NeverExceedsThePlateCap_ForEveryRenderableShape()
@@ -658,14 +659,14 @@ public class HighlightCardMetricsTests
             foreach (bool store in new[] { false, true })
                 for (int taglineLines = 1; taglineLines <= 2; taglineLines++)
                 {
-                    float height = HighlightCardMetrics.DialogHeight(cards, store, taglineLines);
-                    Assert.True(height <= HighlightCardMetrics.PlateMaxHeight,
-                        $"cards={cards} store={store} taglineLines={taglineLines} → {height} > {HighlightCardMetrics.PlateMaxHeight}");
+                    float height = ClassicReleaseNotesRules.Card.DialogHeight(cards, store, taglineLines);
+                    Assert.True(height <= ClassicReleaseNotesRules.Card.PlateMaxHeight,
+                        $"cards={cards} store={store} taglineLines={taglineLines} → {height} > {ClassicReleaseNotesRules.Card.PlateMaxHeight}");
                 }
     }
 }
 
-// ── HighlightViewerLayout ───────────────────────────────────────────────────────────────────────────────────────────
+// ── ClassicReleaseNotesRules.Viewer (the geometry) and HighlightPaging (the stepping) ───────────────────────────────────────────────────────────────────────────────────────────
 public class HighlightViewerLayoutTests
 {
     [Theory]
@@ -675,20 +676,20 @@ public class HighlightViewerLayoutTests
     [InlineData(500f, 420f, 320f)]
     [InlineData(320f, 600f, 224f)]   // the window edge WINS over the floor
     public void PlateWidth_MatchesTheClampLadder(float vpW, float vpH, float expected)
-        => Assert.Equal(expected, HighlightViewerLayout.PlateWidth(vpW, vpH));
+        => Assert.Equal(expected, ClassicReleaseNotesRules.Viewer.PlateWidth(vpW, vpH));
 
     // Issue #89 L4: poster or not, the band is the plate's own w·9/16 (a no-poster slide is tinted, not smaller).
     [Fact]
     public void ImageHeight_IsThe16By9Band()
     {
-        Assert.Equal(540f, HighlightViewerLayout.ImageHeight(960f));
-        Assert.Equal(240f, HighlightViewerLayout.ImageHeight(427f));
+        Assert.Equal(540f, ClassicReleaseNotesRules.Viewer.ImageHeight(960f));
+        Assert.Equal(240f, ClassicReleaseNotesRules.Viewer.ImageHeight(427f));
     }
 
     [Fact]
     public void Chrome_FitsInsideTheSmallestBand()
-        => Assert.True(HighlightViewerLayout.ChromeInset * 2f + HighlightViewerLayout.ChromeCircle
-                       <= HighlightViewerLayout.ImageHeight(HighlightViewerLayout.PlateMinWidth));
+        => Assert.True(ClassicReleaseNotesRules.Viewer.ChromeInset * 2f + ClassicReleaseNotesRules.Viewer.ChromeCircle
+                       <= ClassicReleaseNotesRules.Viewer.ImageHeight(ClassicReleaseNotesRules.Viewer.PlateMinWidth));
 
     [Theory]
     [InlineData(0, 3, HighlightNavKey.Previous, 0, HighlightSlideDirection.None)]
@@ -701,7 +702,7 @@ public class HighlightViewerLayoutTests
     [InlineData(2, 3, HighlightNavKey.Last, 2, HighlightSlideDirection.None)]
     public void Step_IsClampedAndNeverWraps(int current, int count, HighlightNavKey key, int expectedIndex, HighlightSlideDirection expectedDirection)
     {
-        var step = HighlightViewerLayout.Step(current, count, key);
+        var step = HighlightPaging.Step(current, count, key);
         Assert.Equal(expectedIndex, step.Index);
         Assert.Equal(expectedDirection, step.Direction);
     }
@@ -713,7 +714,7 @@ public class HighlightViewerLayoutTests
     [InlineData(HighlightNavKey.Last)]
     public void Step_WithASingleItem_IsAlwaysNone(HighlightNavKey key)
     {
-        var step = HighlightViewerLayout.Step(0, 1, key);
+        var step = HighlightPaging.Step(0, 1, key);
         Assert.Equal(0, step.Index);
         Assert.Equal(HighlightSlideDirection.None, step.Direction);
     }
@@ -724,7 +725,7 @@ public class HighlightViewerLayoutTests
     [InlineData(2, 2, 5, 2, HighlightSlideDirection.None)]
     public void StepTo_DirectionIsTheSignOfTheMove(int current, int target, int count, int expectedIndex, HighlightSlideDirection expectedDirection)
     {
-        var step = HighlightViewerLayout.StepTo(current, target, count);
+        var step = HighlightPaging.StepTo(current, target, count);
         Assert.Equal(expectedIndex, step.Index);
         Assert.Equal(expectedDirection, step.Direction);
     }
@@ -732,13 +733,13 @@ public class HighlightViewerLayoutTests
     [Fact]
     public void StepTo_WithASingleItem_IsAlwaysNone()
     {
-        var step = HighlightViewerLayout.StepTo(0, 0, 1);
+        var step = HighlightPaging.StepTo(0, 0, 1);
         Assert.Equal(0, step.Index);
         Assert.Equal(HighlightSlideDirection.None, step.Direction);
     }
 }
 
-// ── HighlightViewerMotion (UI file, engine-typed, but headless-safe: it builds records, nothing runs) ─────────────────
+// ── HighlightViewerMotion (Classic view file, engine-typed, but headless-safe: it builds records, nothing runs) ─────────────────
 // The engine seeds an orphan's exit from the spec it MOUNTED with, so every recipe must exit the same way.
 public class HighlightViewerMotionTests
 {

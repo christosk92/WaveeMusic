@@ -8,7 +8,7 @@
 // What each level buys: Summary keeps the always-on `scroll.burst` line (Diagnostics.Host.cs — one line per wheel/drag
 // burst, the engine's own `BurstSummary`); Trace additionally records every input, plan and pose, which is what the CSV
 // export (`logs/scroll-<timestamp>.csv`, analyze.py's column layout) is for. The decisions are `ScrollDiagRules` (pure,
-// tested); this file owns the engine calls, the settings writes and the card.
+// tested); this file owns the engine calls, the settings writes and the card's node; the card is the Common view's (`CommonDiagnostics.Widgets.cs`).
 
 using System.Diagnostics;
 using System.Globalization;
@@ -21,6 +21,7 @@ using FluentGpu.Localization;
 using FluentGpu.Scroll.Diag;
 using FluentGpu.Scroll.Motion;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 
 namespace Wavee;
 
@@ -58,47 +59,34 @@ public static class ScrollDiagRules
 
 public static partial class Diagnostics
 {
+    static readonly ScrollHost s_scrollHost = new();
+
     /// <summary>The Diagnostics "Scroll" card: the probe level (Off · Summary · Trace), the feel profile, and the CSV
-    /// export. Every control reads/writes <see cref="ScrollProbePrefs"/>; the card holds no state of its own.</summary>
-    sealed class ScrollCardView : Component
+    /// export. The Common view (`CommonDiagnostics.Widgets.cs`) draws it; every control reads/writes <see cref="ScrollProbePrefs"/>
+    /// through <see cref="s_scrollHost"/>; the card holds no state of its own.</summary>
+    static DiagNode ScrollNode() => new DiagScroll(
+        Loc.Get(Strings.Diagnostics.Scroll.Title), Loc.Get(Strings.Diagnostics.Scroll.ProbeLevel),
+        [Loc.Get(Strings.Diagnostics.Scroll.LevelOff), Loc.Get(Strings.Diagnostics.Scroll.LevelSummary), Loc.Get(Strings.Diagnostics.Scroll.LevelTrace)],
+        Loc.Get(Strings.Diagnostics.Scroll.LevelBody), Loc.Get(Strings.Diagnostics.Scroll.Profile), Loc.Get(Strings.Diagnostics.Scroll.Export),
+        Loc.Get(Strings.Diagnostics.Scroll.Caption), s_scrollHost);
+
+    sealed class ScrollHost : IDiagScrollHost
     {
-        static SegmentedItem[] s_levelItems = [];
+        public Signal<int> Level => ScrollProbePrefs.Level;
 
-        static SegmentedItem[] LevelItems()
+        public Signal<int> Profile => ScrollProbePrefs.Profile;
+
+        public IReadOnlyList<string> ProfileNames => ScrollProbePrefs.ProfileNames;
+
+        public void SetLevel(int level) => ScrollProbePrefs.SetLevel(level);
+
+        public void SetProfile(int index) => ScrollProbePrefs.SetProfile(index);
+
+        public void Export(float deviceScale)
         {
-            if (s_levelItems.Length == 0)   // the launch locale is fixed for the process
-                s_levelItems =
-                [
-                    new(Loc.Get(Strings.Diagnostics.Scroll.LevelOff)), new(Loc.Get(Strings.Diagnostics.Scroll.LevelSummary)),
-                    new(Loc.Get(Strings.Diagnostics.Scroll.LevelTrace)),
-                ];
-            return s_levelItems;
-        }
-
-        public override Element Render() => Card(Loc.Get(Strings.Diagnostics.Scroll.Title),
-            Labeled(Loc.Get(Strings.Diagnostics.Scroll.ProbeLevel),
-                Segmented.Create(LevelItems(), ScrollProbePrefs.Level, onChange: ScrollProbePrefs.SetLevel)),
-            Body(Loc.Get(Strings.Diagnostics.Scroll.LevelBody)),
-            Labeled(Loc.Get(Strings.Diagnostics.Scroll.Profile),
-                ComboBox.Create(ScrollProbePrefs.ProfileNames, ScrollProbePrefs.Profile, width: 220f, onChange: ScrollProbePrefs.SetProfile)),
-            new BoxEl
-            {
-                Direction = 0, Gap = Spacing.S,
-                Children = [Button.Standard(Loc.Get(Strings.Diagnostics.Scroll.Export), Export)],
-            },
-            Caption(Loc.Get(Strings.Diagnostics.Scroll.Caption)));
-
-        void Export()
-        {
-            string? path = ScrollProbePrefs.ExportCsv(Context.Scene?.DeviceScale ?? 1f);
+            string? path = ScrollProbePrefs.ExportCsv(deviceScale);
             if (path is null) Notify.Say(Loc.Get(Strings.Diagnostics.Scroll.ExportFailed), InfoBarSeverity.Error);
             else Notify.Say(Strings.Diagnostics.Scroll.Exported(path), InfoBarSeverity.Success);
         }
-
-        static Element Labeled(string label, Element control) => new BoxEl
-        {
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
-            Children = [new TextEl(label) { Size = 12f, Color = Tok.TextSecondary, Width = RuntimeLabelWidth, Shrink = 0f }, control],
-        };
     }
 }

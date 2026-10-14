@@ -10,8 +10,7 @@
 // T8a the track table's rows (`Lists\ClassicTrackTable.cs`: the Modern and Classic bound-row templates, registered as the
 // `StyleKeys.TrackTable` style; T8b its chrome, `ClassicTrackChrome.cs`), T8c the other list surfaces (`Lists\ClassicEagerRow.cs`,
 // `ClassicEpisodeRow.cs`, `ClassicSurface.cs`, `ClassicArtistChart.cs`, `ClassicTrackDrawer.cs`, with the shared cells in `ClassicRowCells.cs`:
-// the `StyleKeys.EagerTrackRow`, `EpisodeRow`, `Surface`, `ArtistChart` and `TrackDrawer` styles), T10a1 Home (`Views\Home`: the page, facet row, daylist and clock, zone bodies, the drill page and the
-// customizer), T9a the shared detail frame (`Views\Detail`: the scaffold, the rail and its strip, the show header, the hero, the insights sheet), T9b its album and playlist sub-contracts (`Views\Detail\ClassicAlbum*.cs`, `ClassicPlaylist*.cs`, `ClassicDetailSeam.cs`), T10a2 Browse and Search (`Views\Pages`: the directory and its Charts band, a category page, the section drill key, the Search results page), T7d the queue (`Views\Queue`: the rail panel and the stage's Up next column), T7c the video surfaces (`Views\Video`: the docked card, the in-window overlay and its chrome, the pop-out, the fullscreen exit chrome, the poster and join notice, the placement flyout, the panel's video body), T10b1 the artist page (`Views\Pages\ClassicArtist*.cs`: the page, the hero, the sections, the banners, the pick card), T10b2 the rest of the artist family (the gallery lightbox `ClassicArtistLightbox.cs`, the discography page `ClassicDiscographyPage.cs`, the discography style `Lists\ClassicDiscography.cs` and the chart's frame), T10c1 the library (`Views\Pages\ClassicLibrary*.cs`: the master-detail page and its album, show, artist and Your Episodes panes); every other surface is still core code. It
+// the `StyleKeys.EagerTrackRow`, `EpisodeRow`, `Surface`, `ArtistChart` and `TrackDrawer` styles), T10a1 Home (`Views\Home`: the page, facet row, daylist and clock, zone bodies and the drill page; the customizer is Common), T9a the shared detail frame (`Views\Detail`: the scaffold, the rail and its strip, the show header, the hero, the insights sheet), T9b its album and playlist sub-contracts (`Views\Detail\ClassicAlbum*.cs`, `ClassicPlaylist*.cs`, `ClassicDetailSeam.cs`), T10a2 Browse and Search (`Views\Pages`: the directory and its Charts band, a category page, the section drill key, the Search results page), T7d the queue (`Views\Queue`: the rail panel and the stage's Up next column), T7c the video surfaces (`Views\Video`: the docked card, the in-window overlay and its chrome, the pop-out, the fullscreen exit chrome, the poster and join notice, the placement flyout, the panel's video body), T10b1 the artist page (`Views\Pages\ClassicArtist*.cs`: the page, the hero, the sections, the banners, the pick card), T10b2 the rest of the artist family (the gallery lightbox `ClassicArtistLightbox.cs`, the discography page `ClassicDiscographyPage.cs`, the discography style `Lists\ClassicDiscography.cs` and the chart's frame), T10c1 the library (`Views\Pages\ClassicLibrary*.cs`: the master-detail page and its album, show, artist and Your Episodes panes), T11c the screens (`Views\Screens`: the setup wizard, the release notes, the feedback and crash dialogs' bodies) and the Common blocks it registers (`Themes\Common`); every other surface is still core code. It
 // decides the shell's policies (`Rules\ClassicPolicies.cs`: nav pane, panel and mini player, player bar, chrome row, stage)
 // and offers every capability (T3). Its window tiers (T3b) are `Rules\Tiers.cs`.
 //
@@ -21,6 +20,7 @@
 // same place in the same group).
 
 using FluentGpu.Theming;
+using Wavee.Themes.Common;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
@@ -60,7 +60,6 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.ShellFileDrop, ClassicFrameBits.FileDrop, "classic.shell.file-drop");
         views.Add(ViewKeys.ShellDragChip, ClassicFrameBits.DragChip, "classic.shell.drag-chip");
         views.Add(ViewKeys.ShellCoverScrim, ClassicFrameBits.CoverScrim, "classic.shell.cover-scrim");
-        views.Add(ViewKeys.ShellFps, ClassicFrameBits.Fps, "classic.shell.fps");
         // T5a: the navigation pane (the rows: planner, diff, extents, freeze and the row slot; the rest of the pane is T5b-f's).
         views.Add(ViewKeys.ShellNavPane, ClassicNavPane.Template, "classic.shell.nav-pane");
         // T5b: the heads. Your Library's head and the empty body; the section header, the "+" and the filter box ride the row slot.
@@ -152,7 +151,6 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.HomeZonePodcastGroups, ClassicHomeZones.BodyTemplate, "classic.home.zone.podcast-groups");
         views.Add(ViewKeys.HomeZoneEmptyFacet, ClassicHomeZones.BodyTemplate, "classic.home.zone.empty-facet");
         views.Add(ViewKeys.HomeSection, ClassicHomeSection.Template, "classic.home.section");
-        views.Add(ViewKeys.HomeCustomize, ClassicHomeCustomize.Template, "classic.home.customize");
         // T9a: the shared detail frame. The scaffold (notice, content column, rail | grip | content row, the vertical page), the rail and its collapsed
         // strip, the vertical show header, the vertical arm's hero (and its loading band, a style the table reads) and the insights sheet with its two
         // entry points. The mode ladder, the rail cells and prefs, the accent, the tint and tone claims, the table, the drop target and the insights
@@ -220,6 +218,14 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.PlaylistDaylist, ClassicPlaylist.DaylistTemplate, "classic.playlist.daylist");
         views.Add(ViewKeys.PlaylistRecs, ClassicPlaylist.RecsTemplate, "classic.playlist.recs");
         views.Add(ViewKeys.PlaylistRecRow, ClassicPlaylist.RecRowTemplate, "classic.playlist.rec-row");
+
+        // T11c: the Common blocks every theme shares (history, the Home customizer, the frame-rate overlay, diagnostics, logs: today's views
+        // converted, one copy), then Classic's own screens: the setup wizard, the release notes, the feedback and crash dialogs' bodies.
+        CommonBlocks.Register(views);
+        ClassicSetup.Register(views);
+        ClassicReleaseNotes.Register(views);
+        views.Add(ViewKeys.DialogFeedback, ClassicFeedback.Template, "classic.dialog.feedback");
+        views.Add(ViewKeys.DialogCrash, ClassicCrash.Template, "classic.dialog.crash");
     }
 
     /// <inheritdoc />

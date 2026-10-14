@@ -127,7 +127,7 @@ public static partial class Visualizer
         /// <summary>The WHOLE song's kind-237 waveform as 360 buckets — static per track (empty ⇒ all zeros).</summary>
         public readonly SeriesSource TimelineLow = new(Timeline.Points), TimelineMid = new(Timeline.Points), TimelineHigh = new(Timeline.Points);
 
-        /// <summary>Diagnostics (read by Screens/Diagnostics.UI.cs's card).</summary>
+        /// <summary>Diagnostics (read by Screens/Diagnostics.Pages.cs's StageCard).</summary>
         public float LastFftMs; public long LastAlignFrames, LastSequence; public Tier LastTier;
 
         public Slab()

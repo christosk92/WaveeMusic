@@ -1577,7 +1577,7 @@
       "noticesMissing": "Third-party notices are generated at packaging time."
     },
     "diagnostics": {
-      "$comment": "Only the two verbs the Playback runtime and Realtime capture pages still share (Diagnostics.UI.cs, Diagnostics.Capture.UI.cs). The log viewer's own strings live in `logs.*`; the Privacy & diagnostics tab's in `settings.privacy.*`.",
+      "$comment": "Only the two verbs the Playback runtime and Realtime capture pages still share (Screens/Diagnostics.Pages.cs). The log viewer's own strings live in `logs.*`; the Privacy & diagnostics tab's in `settings.privacy.*`.",
       "openLogFolder": "Open log folder",
       "refresh": "Refresh"
     },
@@ -3529,7 +3529,7 @@
     }
   },
   "logs": {
-    "$comment": "The full-page log viewer (route `logs`, Screens/LogsPage.UI.cs; docs/plans/wavee/privacy-diagnostics-tab-implementation.md §3.2). Its Settings entry points (the Log viewer card, Detail level, Log files) are settings.privacy.logs.*; `Report this session…` reuses report.thisSession.",
+    "$comment": "The full-page log viewer (route `logs`, Screens/LogsPage.Host.cs + Themes/Common/CommonLogs.cs; docs/plans/wavee/privacy-diagnostics-tab-implementation.md §3.2). Its Settings entry points (the Log viewer card, Detail level, Log files) are settings.privacy.logs.*; `Report this session…` reuses report.thisSession.",
     "title": "Logs",
     "thisSession": "This session · pid {pid} · running {uptime}",
     "openFolder": "Open folder",

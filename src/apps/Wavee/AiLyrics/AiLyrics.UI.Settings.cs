@@ -11,7 +11,7 @@
 //   • the card's SHAPE (phase, error, sizes, the file label…) is a UseComputed over Current: an equality-gated memo, so
 //     the card re-renders only when what it draws as structure changes;
 //   • the bars bind FloatSignals written by a passive effect (compositor/relayout only, the fill eased by a reflow
-//     PartFill, Setup.UI.cs LoginStepBar precedent);
+//     PartFill, ClassicSetup.SignIn.cs LoginStepBar precedent);
 //   • the "12.3 / 84.0 MB · 4.2 MB/s · 18 s left" line is a TextEl bound to a static Func (relayout of one run).
 //
 // NO LAYOUT JUMPS: every phase is ONE SettingsCard (Ready: ONE SettingsExpander) in a keyed arm that fades in (Dy 4) and

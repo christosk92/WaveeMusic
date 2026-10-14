@@ -11,8 +11,9 @@
 //       G-183, G-197
 //
 // ENGINE-FREE (one Signal for the Connect traces' version). Every decision the Logs page, the two diagnostics pages,
-// the lyrics inspector and the frame watch render is a function here with a fact in Wavee.Tests; `Diagnostics.UI.cs` only
-// lays them out and `Diagnostics.Host.cs` only touches the disk, the process and the engine.
+// the lyrics inspector and the frame watch render is a function here with a fact in Wavee.Tests; `Diagnostics.Pages.cs` only
+// builds the pages' documents (the Common `Pages.Diagnostics.*` views draw them), `Diagnostics.UI.cs` only lays out the lyrics inspector
+// and `Diagnostics.Host.cs` only touches the disk, the process and the engine.
 //
 // NOT HERE, ON PURPOSE: ch 27 §8's `GpuSummary` / `ClassifySharedIgpu` / `FormatBytes` / `FormatUptime` landed first as
 // `Settings.Receipts` (owner R, `Screens/Settings.cs`) — one copy, read by both owners. `LogCapturePolicy` and the pure

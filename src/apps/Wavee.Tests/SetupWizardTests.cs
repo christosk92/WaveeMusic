@@ -7,11 +7,12 @@
 
 using FluentGpu.Foundation;
 using Wavee;
+using Wavee.Themes.Classic;
 using Xunit;
 
 namespace Wavee.Tests;
 
-/// <summary>The Rise reference metrics as arithmetic: the plate clamp, the single 770 breakpoint, the footer split, the
+/// <summary>Classic's wizard plate (`SetupGeometry`): the Rise reference metrics as arithmetic: the plate clamp, the single 770 breakpoint, the footer split, the
 /// 314-of-325 sign-in lane, and the SettingsCard bands of W3b.</summary>
 public class SetupWizardLayoutTests
 {
@@ -22,7 +23,7 @@ public class SetupWizardLayoutTests
     [InlineData(800f, 736f)]    // below 826 (762 + 2×32) the plate shrinks
     [InlineData(300f, 320f)]
     public void Width_clamps_to_the_rise_plate(float viewport, float expected)
-        => Assert.Equal(expected, Setup.Layout.Width(viewport));
+        => Assert.Equal(expected, SetupGeometry.Width(viewport));
 
     [Theory]
     [InlineData(0f, 184f)]
@@ -30,27 +31,20 @@ public class SetupWizardLayoutTests
     [InlineData(500f, 436f)]
     [InlineData(200f, 184f)]
     public void Height_clamps_to_the_rise_plate(float viewport, float expected)
-        => Assert.Equal(expected, Setup.Layout.Height(viewport));
+        => Assert.Equal(expected, SetupGeometry.Height(viewport));
 
     [Theory]
     [InlineData(769f, false)]
     [InlineData(770f, true)]    // one on/off switch, no hysteresis band
     [InlineData(1200f, true)]
     public void The_icon_column_shows_at_the_rise_breakpoint(float viewport, bool expected)
-        => Assert.Equal(expected, Setup.Layout.ShowsIcon(viewport));
+        => Assert.Equal(expected, SetupGeometry.ShowsIcon(viewport));
 
     [Theory]
     [InlineData(true, 210f)]
     [InlineData(false, 0f)]
     public void The_progress_column_collapses_with_the_icon(bool large, float expected)
-        => Assert.Equal(expected, Setup.Layout.ProgressColumnFor(large));
-
-    [Fact]
-    public void A_shell_behind_the_plate_is_dimmed_and_nothing_else_is()
-    {
-        Assert.Equal(Setup.Cover.Dim, Setup.Layout.CoverFor(shellBehind: true));
-        Assert.Equal(Setup.Cover.None, Setup.Layout.CoverFor(shellBehind: false));
-    }
+        => Assert.Equal(expected, SetupGeometry.ProgressColumnFor(large));
 
     /// <summary>W3b: the scan card's QR wraps below its header while the card is narrower than SettingsCard's 476, and every
     /// card drops its icon under 286 — two bands inside the wizard's own clamp ladder.</summary>
@@ -63,33 +57,33 @@ public class SetupWizardLayoutTests
     [InlineData(397f, 285f)]
     [InlineData(398f, 286f)]
     public void The_card_width_bands_land_on_the_settings_card_thresholds(float viewport, float expected)
-        => Assert.Equal(expected, Setup.Layout.CardWidth(viewport));
+        => Assert.Equal(expected, SetupGeometry.CardWidth(viewport));
 
     [Fact]
     public void The_thresholds_the_bands_are_measured_against_are_the_engine_cards()
     {
-        Assert.True(Setup.Layout.CardWidth(803f) < FluentGpu.Controls.SettingsCard.WrapThreshold);
-        Assert.False(Setup.Layout.CardWidth(804f) < FluentGpu.Controls.SettingsCard.WrapThreshold);
-        Assert.True(Setup.Layout.CardWidth(397f) < FluentGpu.Controls.SettingsCard.WrapNoIconThreshold);
-        Assert.False(Setup.Layout.CardWidth(398f) < FluentGpu.Controls.SettingsCard.WrapNoIconThreshold);
+        Assert.True(SetupGeometry.CardWidth(803f) < FluentGpu.Controls.SettingsCard.WrapThreshold);
+        Assert.False(SetupGeometry.CardWidth(804f) < FluentGpu.Controls.SettingsCard.WrapThreshold);
+        Assert.True(SetupGeometry.CardWidth(397f) < FluentGpu.Controls.SettingsCard.WrapNoIconThreshold);
+        Assert.False(SetupGeometry.CardWidth(398f) < FluentGpu.Controls.SettingsCard.WrapNoIconThreshold);
     }
 
     [Fact]
     public void The_back_spacer_applies_only_without_the_icon_column_on_the_page_that_shows_back()
     {
-        Assert.True(Setup.Layout.BackSpacerApplies(Setup.WizardPage.LocalPlayback, iconShown: false));
-        Assert.False(Setup.Layout.BackSpacerApplies(Setup.WizardPage.LocalPlayback, iconShown: true));
-        Assert.False(Setup.Layout.BackSpacerApplies(Setup.WizardPage.Terms, iconShown: false));
-        Assert.False(Setup.Layout.BackSpacerApplies(Setup.WizardPage.SignIn, iconShown: false));
+        Assert.True(SetupGeometry.BackSpacerApplies(Setup.WizardPage.LocalPlayback, iconShown: false));
+        Assert.False(SetupGeometry.BackSpacerApplies(Setup.WizardPage.LocalPlayback, iconShown: true));
+        Assert.False(SetupGeometry.BackSpacerApplies(Setup.WizardPage.Terms, iconShown: false));
+        Assert.False(SetupGeometry.BackSpacerApplies(Setup.WizardPage.SignIn, iconShown: false));
     }
 
     [Fact]
     public void Each_page_plays_its_own_oobe_scene()
     {
-        Assert.Equal("eula", Setup.Layout.HeroAsset(Setup.WizardPage.Terms));
-        Assert.Equal("connect", Setup.Layout.HeroAsset(Setup.WizardPage.SignIn));
-        Assert.Equal("connect", Setup.Layout.HeroAsset(Setup.WizardPage.Layout));   // reuses a loaded hero, no new asset
-        Assert.Equal("patch", Setup.Layout.HeroAsset(Setup.WizardPage.LocalPlayback));
+        Assert.Equal("eula", Setup.WizardHeroes.AssetFor(Setup.WizardPage.Terms));
+        Assert.Equal("connect", Setup.WizardHeroes.AssetFor(Setup.WizardPage.SignIn));
+        Assert.Equal("connect", Setup.WizardHeroes.AssetFor(Setup.WizardPage.Layout));   // reuses a loaded hero, no new asset
+        Assert.Equal("patch", Setup.WizardHeroes.AssetFor(Setup.WizardPage.LocalPlayback));
     }
 }
 
@@ -441,7 +435,7 @@ public class SetupWizardRecolorTests
     public void The_exact_source_accent_maps_to_the_accent_with_the_sources_alpha()
     {
         var c = ColorF.FromRgba(0x00, 0x78, 0xD4, 0x80);
-        var got = Setup.Recolor.Apply(c, Accent, AccentDeep);
+        var got = SetupRecolor.Apply(c, Accent, AccentDeep);
         Assert.Equal(Accent.R, got.R, 3);
         Assert.Equal(Accent.G, got.G, 3);
         Assert.Equal(Accent.B, got.B, 3);
@@ -452,7 +446,7 @@ public class SetupWizardRecolorTests
     public void The_exact_navy_maps_to_the_deep_accent_with_the_sources_alpha()
     {
         var c = ColorF.FromRgba(0x00, 0x2B, 0x67, 0x40);
-        var got = Setup.Recolor.Apply(c, Accent, AccentDeep);
+        var got = SetupRecolor.Apply(c, Accent, AccentDeep);
         Assert.Equal(AccentDeep.R, got.R, 3);
         Assert.Equal(AccentDeep.G, got.G, 3);
         Assert.Equal(AccentDeep.B, got.B, 3);
@@ -467,7 +461,7 @@ public class SetupWizardRecolorTests
         Assert.InRange(h, 195f, 285f);
         Assert.True(s >= 0.35f);
 
-        var (gh, gs, gl) = ColorScience.ToHsl(Setup.Recolor.Apply(c, Accent, AccentDeep));
+        var (gh, gs, gl) = ColorScience.ToHsl(SetupRecolor.Apply(c, Accent, AccentDeep));
         Assert.Equal(s, gs, 2);
         Assert.Equal(l, gl, 2);
         Assert.NotEqual(h, gh, 1);
@@ -481,7 +475,7 @@ public class SetupWizardRecolorTests
                      ColorF.FromRgba(0xFF, 0xFF, 0xFF), ColorF.FromRgba(0xEE, 0xEE, 0xEE), ColorF.FromRgba(0xF1, 0xF0, 0xEF),
                      ColorF.FromRgba(0xE0, 0xDE, 0xDC), ColorF.FromRgba(0, 0, 0),
                  })
-            Assert.Equal(c, Setup.Recolor.Apply(c, Accent, AccentDeep));
+            Assert.Equal(c, SetupRecolor.Apply(c, Accent, AccentDeep));
     }
 
     [Fact]
@@ -490,17 +484,17 @@ public class SetupWizardRecolorTests
         var teal = ColorF.FromRgba(0x96, 0xE9, 0xDC);
         var (h, s, _) = ColorScience.ToHsl(teal);
         Assert.True(h < 195f || s < 0.35f);
-        Assert.Equal(teal, Setup.Recolor.Apply(teal, Accent, AccentDeep));
+        Assert.Equal(teal, SetupRecolor.Apply(teal, Accent, AccentDeep));
     }
 
     [Fact]
     public void Alpha_is_always_the_shapes_own()
     {
         var exact = ColorF.FromRgba(0x00, 0x78, 0xD4, 0x33);
-        Assert.Equal(exact.A, Setup.Recolor.Apply(exact, Accent, AccentDeep).A);
+        Assert.Equal(exact.A, SetupRecolor.Apply(exact, Accent, AccentDeep).A);
         var band = ColorF.FromRgba(0x2E, 0x5D, 0xD3, 0x99);
-        Assert.Equal(band.A, Setup.Recolor.Apply(band, Accent, AccentDeep).A);
+        Assert.Equal(band.A, SetupRecolor.Apply(band, Accent, AccentDeep).A);
         var neutral = ColorF.FromRgba(0xFF, 0xFF, 0xFF, 0xCC);
-        Assert.Equal(neutral.A, Setup.Recolor.Apply(neutral, Accent, AccentDeep).A);
+        Assert.Equal(neutral.A, SetupRecolor.Apply(neutral, Accent, AccentDeep).A);
     }
 }

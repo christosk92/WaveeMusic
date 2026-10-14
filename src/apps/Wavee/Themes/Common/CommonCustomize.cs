@@ -1,6 +1,6 @@
-// ── Themes/Classic/Structure/Views/Home/ClassicHomeCustomize.cs — Classic's `Pages.HomeCustomize` (themes plan 6.1, T10a1) ───
+// ── Themes/Common/CommonCustomize.cs — the Home customizer, one copy for every theme (`Pages.HomeCustomize`, themes plan 6.5, T11c) ───
 //
-// From `Home\Customize.UI.cs`: the Home customizer — a plain scrolling column of rows (the header with Reset, then a `Reorderable` over a fixed
+// From `Home\Customize.UI.cs` (T10a1 drew it in Classic; T11c makes it a Common block, registered by every theme): the Home customizer — a plain scrolling column of rows (the header with Reset, then a `Reorderable` over a fixed
 // row extent), each row a gripper · label · Up/Down (keyboard fallback for drag) · the visibility `ToggleSwitch`. The layout document, the ONE
 // `HomeLayout` instance Home reads too (a toggle/reorder here is visible on Home the same frame it commits), and the three verbs are the core
 // host's (`CustomizeScreen`); this view draws the document it is handed.
@@ -20,10 +20,10 @@ using FluentGpu.Theming;
 using Wavee.HomeUi;
 using Wavee.Theming.Contracts;
 
-namespace Wavee.Themes.Classic;
+namespace Wavee.Themes.Common;
 
-/// <summary>Wavee Classic's Home customizer.</summary>
-internal static class ClassicHomeCustomize
+/// <summary>The Home customizer.</summary>
+internal static class CommonCustomize
 {
     /// <summary>The registered template of <see cref="ViewKeys.HomeCustomize"/>.</summary>
     public static Element Template(HomeCustomizeProps props, in ViewContext ctx)
@@ -34,7 +34,7 @@ internal static class ClassicHomeCustomize
         reorder.Scene = ctx.Hooks.Scene;
         reorder.RequestRender = ctx.Hooks.RequestRerender;
         reorder.ItemCount = n;
-        reorder.ItemExtent = ClassicHomeRules.CustomizeRowH;
+        reorder.ItemExtent = CommonCustomizeRules.CustomizeRowH;
 
         var rows = new Element[n];
         for (int i = 0; i < n; i++)
@@ -54,7 +54,7 @@ internal static class ClassicHomeCustomize
                 new BoxEl
                 {
                     Key = "home-customize-list", Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1,
-                    Padding = new Edges4(Left: Spacing.XXXL, Top: ClassicHomeRules.CustomizeListTop, Right: Spacing.XXXL, Bottom: Spacing.XXL),
+                    Padding = new Edges4(Left: Spacing.XXXL, Top: CommonCustomizeRules.CustomizeListTop, Right: Spacing.XXXL, Bottom: Spacing.XXL),
                     Children = [reorder.List(new BoxEl { Direction = 1, MinWidth = 0f, Grow = 1f, Shrink = 1f, Children = rows })],
                 },
             ],
@@ -63,13 +63,13 @@ internal static class ClassicHomeCustomize
 
     static Element Header(HomeCustomizeProps props) => new BoxEl
     {
-        Key = "home-customize-header", Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicHomeRules.CustomizeHeaderGap,
+        Key = "home-customize-header", Direction = 0, AlignItems = FlexAlign.Center, Gap = CommonCustomizeRules.CustomizeHeaderGap,
         Padding = new Edges4(Left: Spacing.XXXL, Top: Spacing.XXL, Right: Spacing.XXXL, Bottom: 0f),
         Children =
         [
             new BoxEl
             {
-                Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Gap = ClassicHomeRules.CustomizeTitleGap,
+                Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Gap = CommonCustomizeRules.CustomizeTitleGap,
                 Children =
                 [
                     R.Type.PageHero(Loc.Get(Strings.Home.Customizer.Title)) with { Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MaxLines = 1 },
@@ -110,15 +110,15 @@ internal static class ClassicHomeCustomize
 
             return new BoxEl
             {
-                Direction = 0, Height = ClassicHomeRules.CustomizeRowH, AlignItems = FlexAlign.Center, Gap = ClassicHomeRules.CustomizeRowGap,
+                Direction = 0, Height = CommonCustomizeRules.CustomizeRowH, AlignItems = FlexAlign.Center, Gap = CommonCustomizeRules.CustomizeRowGap,
                 Grow = 1f, Shrink = 1f, MinWidth = 0f,
-                Opacity = visible ? 1f : ClassicHomeRules.CustomizeHiddenOpacity,
+                Opacity = visible ? 1f : CommonCustomizeRules.CustomizeHiddenOpacity,
                 Children =
                 [
-                    Ui.Icon(Icons.GripperBar, ClassicHomeRules.CustomizeGripSize, Tok.TextTertiary),
+                    Ui.Icon(Icons.GripperBar, CommonCustomizeRules.CustomizeGripSize, Tok.TextTertiary),
                     new TextEl(label)
                     {
-                        Size = ClassicHomeRules.CustomizeLabelSize, LineHeight = ClassicHomeRules.CustomizeLabelLine, Color = Tok.TextPrimary,
+                        Size = CommonCustomizeRules.CustomizeLabelSize, LineHeight = CommonCustomizeRules.CustomizeLabelLine, Color = Tok.TextPrimary,
                         Grow = 1f, Shrink = 1f, MinWidth = 0f, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MaxLines = 1,
                     },
                     // loc: "Move up" / "Move down" — reuses the app's existing move-row vocabulary (Strings.Menu.*).

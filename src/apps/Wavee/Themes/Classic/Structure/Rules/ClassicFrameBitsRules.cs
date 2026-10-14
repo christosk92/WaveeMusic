@@ -1,7 +1,6 @@
 // ── Themes/Classic/Structure/Rules/ClassicFrameBitsRules.cs — the numbers of Classic's frame bits (themes plan 6.1, T4c) ───
 //
-// What `Shell.Masthead.UI.cs`, `Shell.Palette.cs`, `Shell.UI.cs` (file-drop cue, drawer scrim) and `Diagnostics.UI.cs` (frame-rate
-// overlay) held as file-level constants and inline literals, moved verbatim with their pictures. They are data, not decisions: the
+// What `Shell.Masthead.UI.cs`, `Shell.Palette.cs`, `Shell.UI.cs` (file-drop cue, drawer scrim) held as file-level constants and inline literals, moved verbatim with their pictures. They are data, not decisions: the
 // views under `Views\Masthead`, `Views\Drawer`, `Views\Palette` and `Views\FrameBits` read them (WVTH003 allows literals only
 // here, in `Rules\**`).
 
@@ -11,7 +10,7 @@ using FluentGpu.Foundation;
 
 namespace Wavee.Themes.Classic;
 
-/// <summary>The constants of the masthead, the drawer, the palette, the file-drop cue and the frame-rate overlay.</summary>
+/// <summary>The constants of the masthead, the drawer, the palette, the file-drop cue.</summary>
 internal static class ClassicFrameBitsRules
 {
     // ── the masthead band ───────────────────────────────────────────────────────────────────────────────────────────
@@ -71,30 +70,4 @@ internal static class ClassicFrameBitsRules
 
     /// <summary>The dim's fade, in milliseconds (0 under reduced motion).</summary>
     public const float CoverScrimFadeMs = 250f;
-
-    // ── the frame-rate overlay ──────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The HUD's inset from the window's top right: below the title bar and the first rows, off the scroll bar.</summary>
-    public static readonly Edges4 FpsInset = new(0f, 104f, 14f, 0f);
-
-    /// <summary>The pill's padding.</summary>
-    public static readonly Edges4 FpsPillPadding = new(8f, 4f, 8f, 4f);
-
-    /// <summary>The pill's corner radius.</summary>
-    public const float FpsPillRadius = 6f;
-
-    /// <summary>The pill's gap between its numbers and units.</summary>
-    public const float FpsPillGap = 4f;
-
-    /// <summary>The pill's fill opacity over the shell.</summary>
-    public const float FpsPillFillAlpha = 0.90f;
-
-    /// <summary>The numbers' and units' size.</summary>
-    public const float FpsTextSize = 12f;
-
-    /// <summary>The frame-rate figure's weight.</summary>
-    public const int FpsFigureWeight = 700;
-
-    /// <summary>The unit and frame-time weight.</summary>
-    public const int FpsUnitWeight = 600;
 }

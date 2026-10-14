@@ -218,7 +218,7 @@ shell chords, the file-drop target, the realized-node captures the probes and th
 | Key | Props | Core host | Classic template |
 |---|---|---|---|
 | `Shell.Frame` | `ShellFrameProps` | `Shell.FrameRoot` (`[CoreHost]`, `Shell\Shell.UI.cs`) | `ClassicFrame`: the column (chords, title row, content region, player dock) under the material, the stage, the video and overlay layers, the content region (sidebar column, content card and its stroke, rail gap and reservation, both seams, the rail overlay, the narrow drawer) |
-| `Shell.ContentState` | `ContentStateProps` (`Kind` is a `ContentStateKind`) | `Shell.ContentHost` (`PageBody`, `NotFoundPage`, `OfflineLane`) | `ClassicContentState`: the page and empty-body boxes, the not-found page, the offline lane |
+| `Shell.ContentState` | `ContentStateProps` (`Kind` is a `ContentStateKind`) | `Shell.ContentHost` (`PageBody`, `NotFoundPage`, `OfflineLane`) | `ClassicContentState`: the page and empty-body boxes and the offline lane (its NotFound arm is the Common block `CommonNotFound`, T11c) |
 
 `Shell.ContentState` is also a **pure core decision**: the route's body (`ContentStateKind.Page`, `EmptyBody`, `NotFound`) and
 the offline-lane flag. `Shell.FrameRules.ContentBodyFor(route, hasPage, developerMode)` and `ShowsOfflineStrip(auth)` decide it (a known route
@@ -286,7 +286,7 @@ search form) and the suggestions body alone (the progress slot, the pending heig
 | `Shell.NarrowDrawer` | `NarrowDrawerProps` (`Mounted`, `Open`, and the stable `NarrowDrawerParts`) | `Shell.NarrowDrawer` (`[CoreHost]`, `Shell\Shell.UI.cs`): the Escape key-preview chain, the leaf-navigation close, the mount decision | `ClassicDrawer`: the scrim, the pane, their open/close motion |
 | `Shell.CommandPalette` | `PaletteProps` (the popup control, a session factory, close) | `Shell.CommandPalette()` + `Shell.PaletteSession` (`Shell\Shell.Palette.cs`); the table, the filter and the empty-query order stay `CommandTable` | `ClassicPalette`: the lane, the card, the keyboard navigation |
 | `Shell.HistoryMenu` | `HistoryMenuProps` (the rows, close) | `NavHistoryButton` decides the rows (`FrameRules.HistoryMenu`) | `ClassicFrameBits.HistoryMenu` |
-| `Shell.FileDrop`, `Shell.DragChip`, `Shell.CoverScrim`, `Shell.Fps` | `FileDropProps`, `DragChipProps`, `CoverScrimProps`, `FpsProps` | the frame root (the drop target, `Drag.Preview`, `Setup.Covering`, `Diagnostics.FpsOverlayOn`) | `ClassicFrameBits` |
+| `Shell.FileDrop`, `Shell.DragChip`, `Shell.CoverScrim`, `Shell.Fps` | `FileDropProps`, `DragChipProps`, `CoverScrimProps`, `FpsProps` | the frame root (the drop target, `Drag.Preview`, `Setup.Covering`, `Diagnostics.FpsOverlayOn`) | `ClassicFrameBits` (`Shell.Fps` is the Common block `CommonFps`, T11c) |
 
 **`PageChrome`** (`Theming\Contracts\PageChrome.cs`) is the value the core hands the frame for a page's head: today the title, the trail
 (`PageCrumb`: a label and a navigate verb, none on the current page) and the "Show all" tool's state, built from the masthead publications
@@ -857,7 +857,7 @@ watch frame, the overlay's buttons and zones per placement, the pop-out, the exi
 ### Home (T10a1)
 
 Home is the structure's picture over core hosts. The page, the facet row, the daylist card and its clock, the zone bodies, the "See all" drill
-page and the customizer are registered Classic views; the facet machine, the screen model, the load verdict, the shell-tint claim, the daylist's
+page are registered Classic views (the customizer is a Common block); the facet machine, the screen model, the load verdict, the shell-tint claim, the daylist's
 timers and the layout document stay core.
 
 | Key | Props | Core host | Classic template |
@@ -868,7 +868,7 @@ timers and the layout document stay core.
 | `Home.Zone.<Kind>` ×14 (`HomeZoneKeys.TryKeyOf`) | `HomeZoneProps` (zone, overlay, the shelf pager's controller) | none: a pure function of the zone | `ClassicHomeZones.BodyTemplate` under every kind: shelves, release list, cluster cards, browse tiles, episode rows, the empty facet |
 | `Home.Zone.RecentGrid`, `Home.Charts` | `HomeRecentsProps` (cells, week, `Playing`, `RemoteDeviceName`), `HomeChartsProps` (the pick) | `RecentGrid`, `ChartsBlockView` (`Home\Zones.Hosts.cs`): the Recents subscription, the Featured Charts demand | `ClassicHomeRecents`, `ClassicHomeCharts` |
 | `Pages.HomeSection` | `HomeSectionProps` (total, scroll key, the pending / failed / empty Funcs, the card source, the adapter) | `SectionScreen` (`Home\SectionScreen.Host.cs`): the demand, the table sync, the masthead publication | `ClassicHomeSection`: the "N items" line, the skeleton region, the bound `ItemsView` over `GridFit` |
-| `Pages.HomeCustomize` | `HomeCustomizeProps` (the `LayoutDoc`, the `Reorderable`, the toggle / move / reset verbs) | `CustomizeScreen` (`Home\Customize.Host.cs`) over the one `HomeLayout` | `ClassicHomeCustomize`: the header with Reset, the reorderable rows |
+| `Pages.HomeCustomize` | `HomeCustomizeProps` (the `LayoutDoc`, the `Reorderable`, the toggle / move / reset verbs) | `CustomizeScreen` (`Home\Customize.Host.cs`) over the one `HomeLayout` | `CommonCustomize` (a Common block since T11c, `Themes\Common\CommonCustomize.cs`): the header with Reset, the reorderable rows |
 
 **The chapter is the page's, the body is the key.** A zone's header, its sticky pin, its clipped body, the shelf pager in the header's tools and the
 entrance row are the Classic page's structure (`ClassicHomeZones.Column`, `Chapter`); what another theme swaps per kind is the BODY. A shelf's
@@ -1239,6 +1239,93 @@ presentation is the view's all the same.
 nothing without a fact), the keyed rows of a stack, the one trailing region, the video hero and the list sections, the vertical arm's trailing rows, the editor's
 read / edit / status states and the keyed field, the copy-invite call to action, the flip cells while counting, and a smoke mount of the views with no keyed output.
 
+### The setup screens (T11c)
+
+The first-run wizard, the sign-in door and the playback runtime card are the structure's picture over core models. The plate with its footer and Back button, the four pages (Terms, Sign in, the Theme step, Local playback), the sign-in door's dialog (body and footer) and the runtime card's dialog (body and command row) are registered Classic views (`Themes\Classic\Structure\Views\Screens\ClassicSetup*.cs`, one `ClassicSetup.Register(views)`); the boot decision, the open funnel and the overlay handle, `Setup.WizardModel` (page, direction, the footer row, the verbs), `Setup.RuntimeModel` and its provisioning flows, the sign-in flows, the Lottie hero loader, the crash-consent write and the QR encoder stay core.
+
+| Key | Props | Core host | Classic template |
+|---|---|---|---|
+| `Setup.Wizard` | `SetupWizardProps` (the `WizardModel`, and the four pages' props) | `Setup.WizardPlate` (`[CoreHost]`, `Screens\Setup.UI.cs`): the overlay's content; keeps the one non-picture effect (the runtime banner stands down on the Local playback page) | `ClassicSetup.WizardTemplate` (`ClassicSetup.cs`): the plate (762 x 490, r8, stroke, dialog elevation), Enter / Backspace chords, the keep-alive page stack (3 entries, nav recipe by direction, no replay on activate), the footer (progress column, primary left, secondary right), Back over the content's corner, the page frame (icon column with the recoloured Lottie hero at 770+, title, scrolling body) |
+| `Setup.Terms` | `SetupTermsProps` (session, privacy verb, `SetupConsent`) | the plate's props | `ClassicSetup.TermsTemplate`; the opt-in crash-reporting card |
+| `Setup.SignIn` | `SetupSignInPageProps` (session, `ISetupSignInHost`) | `Setup.SignInHost` (`Screens\Setup.SignInHost.cs`) | `ClassicSetup.SignInPageTemplate`: the browser / pairing cards, the Busy ladder, "Is this you?", the UIA announcements |
+| `Setup.Theme` | `SetupThemeProps` (the settings' picker and options builders) | `Setup.ThemeStep` (`Screens\Setup.UI.Theme.cs`) | `ClassicSetup.ThemeTemplate`: the Layout page's twin (same frame) |
+| `Setup.LocalPlayback` | `SetupLocalPlaybackProps` (session, signature-sheet verb, reveal-folder verb) | the plate's props | `ClassicSetup.LocalPlaybackTemplate`: the runtime model's phases on the plate |
+| `Setup.SignInDoor` | `SetupSignInDoorProps` (`SetupDialogPart` Body / Footer, `ISetupSignInHost`) | `Setup.SignInDoorView` (the zero-size watcher) and `OpenSignIn` (the ContentDialog) | `ClassicSetup.SignInDoorTemplate` |
+| `Setup.RuntimeCard` | `SetupRuntimeCardProps` (part, signature-sheet verb, "has a diagnostics page") | `Setup.OpenRuntimeCard` (`Screens\Setup.UI.Runtime.cs`) | `ClassicSetup.RuntimeCardTemplate` (`ClassicSetup.Runtime.cs`): the phase bodies, the fact boxes, the version picker, the local-source rows, the wrapping command row |
+
+**The sign-in flows reach a view as facts.** A theme may not name `Spotify`, `Shell`, `Entities` or `Prefs` (WVTH002), so `ISetupSignInHost` projects the sign-in state, the session phase and the fault into `SetupSignInFacts` (facet, handed, minting, busy message, failure sentence, needs-a-code), `SetupPairingFacts` (the pairing card reads the sign-in state only, so a phase change never re-renders it), `SetupLoginStepFacts` and `SetupAccountFacts`, and carries the verbs (start the browser or the pairing flow, cancel, retry, not me, close the door, the sign-up and Premium links). Every fact method reads the same signals the old components read, in the same order, inside the view's render: a render subscribes exactly as before. The few shell and settings builders the pages place (the theme picker and options, the sidebar layout cards) and the signature sheet arrive as `Func<Element>` / `Action` members.
+
+**Numbers.** The plate's geometry is `Rules\SetupGeometry.cs` (what `Setup.Layout` held: the plate clamp, the one 770 breakpoint, the footer split, the card-width bands the engine's `SettingsCard` thresholds are measured against); the Lottie recolour is `Rules\SetupRecolor.cs` (what `Setup.Recolor` held); the footer, door and runtime card numbers are `Rules\ClassicSetupRules.cs`. The core keeps `Setup.Cover` (the shell's dim) and `Setup.WizardHeroes.AssetFor` (the hero loader's asset names).
+
+**Motion is the wizard's, unchanged.** The page swap recipe (`Design.Nav.RecipeFor` of the session's direction), the body's 6 / -4 slide, the Busy ladder's staggered rungs and scale-popped marks, the reflow-eased ladder bar, the 1 Hz pairing countdown on its own component (the page and its hero never re-render) are the same elements with the same keys.
+
+**Tests.** `Wavee.Tests\SetupWizardTests.cs` (the plate geometry and the recolour now over `SetupGeometry` and `SetupRecolor`; the footer table, the gating and the folds are unchanged); `Wavee.ShellTests\SetupMountedTests.cs`: Classic is the registered template of the seven keys, the plate shows the session's page with Back only where a page has one, the icon column is the window's breakpoint, the consent card shows on a first run and a terms re-arm and not on a re-auth, the door body keeps one tree for the cards and one each for Busy and Done, the wizard's Sign in page keys its body by facet, and the runtime card's command row asks the host for the diagnostics page. `ThemeOptionsMountedTests` still mounts `Setup.ThemeStep()`.
+
+### The release notes (T11c)
+
+The What's-new page, the highlight viewer and the after-update plate are the structure's picture over core hosts. The page (hero, highlight strip and cards, changelog sections / rows / issue chips / avatars, the release rail, the since banner, the loading and empty states), the viewer (veil, plate, band with its chrome, pager, text) and the plate (welcome, highlight row, footer) are registered Classic views (`Themes\Classic\Structure\Views\Screens\ClassicReleaseNotes*.cs`, numbers in `Rules\ClassicReleaseNotesRules.cs`); the load, last-seen, the issue-state republish, the after-update gate / latch / load, the overlays and every verb stay core.
+
+| Key | Props | Core host | Classic template |
+|---|---|---|---|
+| `Pages.WhatsNew` | `WhatsNewPageProps` (the state `Loading` / `Empty` / `Loaded`, the `ReleaseNotesView`, "only the latest", the running version, and the verbs: show only the latest, copy link, open highlight `i`, open URL, the Store listing, open a release) | `ReleaseNotes.PageHost` (`[CoreHost]`, `Screens\ReleaseNotes.UI.cs`): the signals (view, loaded, onlyLatest), the load off the UI thread with its cancellation, `lastSeen` read BEFORE `MarkSeen`, the budgeted issue-state republish | `ClassicReleaseNotes` (`PageTemplate`: frame, hero, since banner, divider, rail, states), `.Cards` (strip, `CardView`, poster band, kind pill), `.Changelog` (`SectionView` with its local "Show all N", rows, chips, avatars, span bridge) |
+| `ReleaseNotes.Viewer` | `HighlightViewerProps` (items, first index, `Close`, `TryItFor`, `OpenUrl`, `OpenStoreListing`) | `ReleaseNotes.OpenViewer` (anchor-less Modal overlay, LightDismiss, focus trap, `ScrimVisual = false`; builds the props once, "Try it" = navigate, then the host plate's close, then the viewer's) | `ClassicReleaseNotes.ViewerTemplate` (the index, the pager's mirror and the next slide's direction are the template's hook cells) + `HighlightViewerMotion` |
+| `ReleaseNotes.AfterUpdatePlate` | `AfterUpdatePlateProps` (the "from → to" range, the version sentence, the tagline, the cards, open card, "Don't show again", "Full release notes", close, the Store listing) | `ReleaseNotes.AfterUpdateChrome` (zero size: gates, once-per-launch latch, load FIRST, then `OpenPlate` opens the Modal overlay at its final height) | `ClassicReleaseNotes.PlateTemplate` (the checkbox is the template's own cell) |
+
+**Pure rules stay core.** The after-update gate, the range, `HighlightVisibility`, `HighlightMax`, the rail markers, the chip states and `HighlightPaging` (the viewer's clamped, no-wrap stepping and the direction a slide travels) are `Screens\ReleaseNotes.cs` / `.Host.cs`; `Wavee.ReleaseTool` compiles `ReleaseNotes.cs` by name and none of them names an engine type. `ReleaseNotes.Pill` stays a core door because Settings › About and the setup wizard's terms page draw it too (Classic's hero calls it as well).
+
+**Numbers.** The highlight card's geometry and the plate's height budget (was `ReleaseNotes.HighlightCardMetrics`) and the viewer plate's geometry (was the geometry half of `HighlightViewerLayout`) are `ClassicReleaseNotesRules.Card` and `.Viewer`; the plate renders from them and `ReleaseNotesTests` holds the 620 DIP cap against them. The viewer's fixed colours, shadows, pager and the page's sizes are the rest of that file.
+
+**Motion is the surfaces', unchanged.** The viewer's directional enter (±24 DIP + fade, 250 ms) over a direction-free 120 ms exit, the pips' Reflow width tween, the circle chrome's dim-in-place at an end, the sizer ZStack that keeps the plate's box final from frame one, the card's edge fade and press spring are the same elements with the same keys.
+
+**Tests.** The arithmetic and stepping are `Wavee.Tests\ReleaseNotesTests.cs` (`ClassicReleaseNotesRules.Card` / `.Viewer`, `HighlightPaging`, `HighlightViewerMotion`); `Wavee.ShellTests\ReleaseNotesMountedTests.cs` mounts the three keys under Classic: the registered templates, a loading / empty page without a rail, a loaded page with its rail rows and highlight cards, the viewer's stable chrome and one pip per highlight, the plate's cards.
+
+### The diagnostics pages and the log viewer (T11c, Common blocks)
+
+The three diagnostics pages and the log viewer are **Common** blocks (`Themes\Common\CommonDiagnostics.cs`, `CommonDiagnostics.Widgets.cs`, `CommonLogs.cs`, numbers in `Themes\Common\Rules\CommonDiagnosticsRules.cs` / `CommonLogsRules.cs`): one copy of each view for every theme, written from today's code and converted to roles (WVTH003 applies to `Common` like a structure). `CommonBlocks.Register` adds them and Classic's `Register` calls it, so a theme that wants its own simply registers its own template under the same key.
+
+| Key | Props | Core host | Common template |
+|---|---|---|---|
+| `Pages.Diagnostics.Playback` | `DiagnosticsPageProps` (glyph, title, scroll key, `Build`, optional poll gate) | `Diagnostics.RuntimePage` (`Screens\Diagnostics.Pages.cs`): the document of the runtime report, status, modules, updates, the fullscreen card, the health card, the podcast wire check, the buttons | `CommonDiagnostics.Template` (registered as `common.diagnostics.playback`) |
+| `Pages.Diagnostics.Connect` | `DiagnosticsPageProps` | `Diagnostics.ConnectPage`: owner, last cluster, last put, last echo, local host | the same template (`common.diagnostics.connect`) |
+| `Pages.Diagnostics.Capture` | `DiagnosticsPageProps` (poll gate = `RealtimeCaptureHost.Enabled`, 750 ms) | `Diagnostics.CapturePage`: status, anomalies, recent roots with their trees, the footer, and the scroll, tiles and evidence nodes | the same template (`common.diagnostics.capture`) |
+| `Pages.Logs` | `LogsPageProps` (the `ILogsHost` model) | `LogsPage.Host` (`[CoreHost]`, `Screens\LogsPage.Host.cs`) over the `LogsPage.Sessions` model | `CommonLogs` (`common.logs.page`): the viewer component (header with crumbs and session picker, toolbar, column header, measured list, row anatomy, footer, the "…" menu) |
+
+**A diagnostics page is a document.** The core builds `DiagNode`s (`DiagCard`, `DiagRow`, `DiagStatus`, `DiagNamed` with presence chips, `DiagButtons`, `DiagLink`, `DiagRoot` with its tree, ...: plain records over strings, enums and delegates). What a fact is and how it reads (a blank value is the dash, the invariant number formats, the stamps, the tone of a status) is the core's; the view draws the nodes. `Build` runs inside the view's render, so every `.Value` read in it (`Setup.Runtime.Status`, `Notify.Update`, `Stage.Diagnostics.Version`, the owner and phase signals, `Connect.Version`, the capture toggle) subscribes the view exactly as the old page component's reads did. The view owns the refresh counter (the Refresh button), the capture page's expanded root and the poll; a status tone is a `DiagTone` mapped to the system fills in the view (P15: icon roles and hero tones).
+
+**The stateful cards are components the page embeds for a node**: the playback health card (a 1 Hz read of a core delegate), the podcast wire check (text boxes, the Run state, the result table; the walk and the prefill are `IDiagWireHost`), the scroll probe card (`IDiagScrollHost` over `ScrollProbePrefs`), the tiles card (a 750 ms poll and the pass-timing switch's signal over `IDiagTilesHost`) and the evidence card (the pixel boxes, the pick-with-click observer and the poll over `IDiagEvidenceHost`). Their hosts are one core object each, so an unchanged page render re-pushes an equal props record and the card skips.
+
+**The log viewer keeps its picture and its view-only state, the core keeps the session model.** `LogsPage.Sessions` owns the folder walk (never latches, a thrown walk is a caption), the load of a past session, the picker's labels and caption, where a selection lands after a re-list, the export through the Save As picker, Verbose, Clear view and the verbs; it publishes the picker's selection, the refresh bump and the session list's revision as signals. The view owns the filter text, the level strip, the category, the order, the grouping, the wrap, the page cap, the expanded row, the list's controller and the menu, and runs the mount walk, the activation walk and the 750 ms live tail itself (so the effect timing is the old component's).
+
+**What stayed core:** every report and decision (`Diagnostics.cs`: the runtime report text, `LogView`, the frame watch, the lyrics inspector's rules), the capture store and its pure scanners, `TileDiagRules`, `ScrollDiagRules`, `ScrollProbePrefs`, `EvidenceReport`, `LogStore`, `LogsPage.Rules`, the install and the probes. The lyrics inspector dialog stays in `Screens\Diagnostics.UI.cs` (a dialog, not a page).
+
+**Tests.** The ids, Classic's registration of the four keys under the Common template ids and the records' value equality (the widgets' skip) are `Wavee.Tests\CommonDiagnosticsContractTests.cs`; the pure rules are the existing `LogsPageRulesTests`, `TileDiagRulesTests`, `ScrollDiagRulesTests` and `DiagnosticsCoreTests`. `Wavee.ShellTests\CommonDiagnosticsMountedTests.cs` mounts the views under Classic: a page builds its document in the render and the three cards stand under `scroll-card`, `tiles-card` and `evidence-card`, the page poll re-renders only while its gate holds, and the viewer stands its frame, shows the empty and loading states and mounts the keyed list for a session with rows.
+
+### The Common blocks (T11c)
+
+`Themes\Common\` (namespace `Wavee.Themes.Common`) holds the utility views every theme shares: written once from today's code, converted to roles (WVTH003 applies to Common like a structure, so its numbers are `Themes\Common\Rules\Common*Rules.cs`), and registered by **one call** from a structure's `Register`: `CommonBlocks.Register(views)` (WVTH001 lets a structure reference its own theme and Common; Common references only Common). Classic calls it, so there is one copy of each view; a theme that wants its own registers its own template under the same key instead of calling the block.
+
+| Block | Key | Core half | Common template |
+|---|---|---|---|
+| history | `Pages.History` (`HistoryPageProps`: the log's version signal and `Project(search, filterIndex, sortIndex)`; `HistoryPageModel` / `HistorySection` / `HistoryRowFacts` come back) | `Shell.HistoryPage` and `ProjectHistory` (`Shell\Shell.History.UI.cs`) over `Shell.History` (kinds, filter, search, the most-visited fold, date buckets, timestamps, unique count), the store and `HistoryVerbs` | `CommonHistory`: header, search, chips, sort, the date cards or the one most-visited card, the vacancy. The search text, the filter chip and the sort are the view's own signals |
+| Home customizer | `Pages.HomeCustomize` (unchanged key and props; T10a1 drew it in Classic) | `CustomizeScreen` (`Home\Customize.Host.cs`) | `CommonCustomize` |
+| frame-rate overlay | `Shell.Fps` (unchanged key and props; T4c drew it in Classic) | the frame root: `Diagnostics.FpsOverlayOn` | `CommonFps` |
+| not-found | none: the content state's NotFound arm | `Shell.ContentHost` decides | `CommonNotFound.Block(key, glyph, goHome)`, called by a theme's `Shell.ContentState` template (the page box and the offline lane stay the theme's) |
+| diagnostics, logs | see the diagnostics section | | `CommonDiagnostics`, `CommonLogs` |
+| nothing | any key | none | `CommonNothing.Template` (`Common.Nothing`): an empty, zero-size, hit-test-transparent box a theme registers under a key it has no picture for; Classic draws every key it publishes and registers none |
+
+**History keeps today's behaviour.** The page re-renders on the log's version and on its three signals, exactly as the component did; a route this build has no page for stays in the log at 0.6 opacity and inert while its delete stays live; Clear all asks first (Cancel is the default button), a row delete does not; Most recent trims the last row's divider of every card, Most visited keeps every divider. The projection is built per render by the core (at most 500 rows) and carries ready-to-draw facts (title, glyph, kind label, argument, timestamp, visit count, reachability and the two verbs), so the view names no `Shell`.
+
+### The feedback and crash dialogs' bodies (T11c)
+
+The dialog **chrome** (the stock `ContentDialog`: title, buttons, the vetoable primary click) stays core; the **body** is the key's picture. `Dialog.Feedback` (`FeedbackDialogProps`: the opening kind and `IFeedbackDialog`) is Classic's `ClassicFeedback` and `Dialog.Crash` (`CrashDialogProps`) is `ClassicCrash` (`Themes\Classic\Structure\Views\Screens`, numbers in `Rules\ClassicFeedbackRules.cs` and `ClassicCrashRules.cs`). T11a owns the other nine dialog keys.
+
+| Key | Core half | Classic template |
+|---|---|---|
+| `Dialog.Feedback` | `Feedback.OpenDialog` (the chrome and the veto) and `Screens\Feedback.Form.cs`: `FormModel` (one per fixed kind: the off-thread compose, the live preview, the crash form's three header states, the submit gate with its toasts, the GitHub door, Copy, Save As) behind `IFeedbackForm`; `DialogSession` behind `IFeedbackDialog` | `ClassicFeedback`: the subtitle, the kind `Segmented` (never in crash mode) and the card, a nested component keyed by the kind (a switch remounts the form, so every signal is seeded once). The field signals are the view's; the card installs its submit on the dialog while mounted and drops it on unmount |
+| `Dialog.Crash` | `Crash.OpenPrompt` (the chrome, `PromptProps`: the header message, the lead, the dump label, the compose factory, `CrashConsent.Submit`); the launch decision, the upload queue and the outcome toasts | `ClassicCrash`: the header bar, the lead, the "what is sent" box with the scrubbed preview, the dump and always-send boxes, the privacy and GitHub links. Send is vetoed with a "preparing" toast until the pool-thread preview has been posted back |
+
+**Tests.** `Wavee.Tests\CommonBlocksContractTests.cs` pins the ids, Classic's template ids and the empty history model; `Wavee.ShellTests\CommonBlocksMountedTests.cs` mounts the history page over a fixture projection (it projects under its own states and again when the version moves; an empty projection mounts the vacancy), the feedback card over a fixture form (one form, one compose, the submit held while mounted) and the crash card over fixture props (compose prepared, Send waits for the preview).
+
 ## 3. Options
 
 An option is data: a `ToggleOption`, `SelectOption<TEnum>`, `SliderOption`, `ColorOption`, `ActionOption` or
@@ -1302,7 +1389,7 @@ no other home yet (lyrics, full screen, now playing, Home). Nothing in it names 
   the tab never changes layout again. Classic lists 13.
 - **Palette.** An option with `Command = true` contributes rows (`ThemeOptionsSection.Commands`): a toggle on/off, a select one per
   choice, an action one. `Shell.CommandTable.BuildIndex` appends them after the builtins (`PaletteKind.ThemeOption`).
-- **Setup.Theme.** `Setup.ThemeStep()` (`Screens\Setup.UI.Theme.cs`) is the Layout page's twin (same frame) with the picker and the options;
+- **Setup.Theme.** `Setup.ThemeStep()` (`Screens\Setup.UI.Theme.cs`) mounts the `Setup.Theme` view (`ClassicSetup.ThemeTemplate`, the Layout page's twin: same frame) with the picker and the options;
   it replaces Layout in M7a and is mounted by nothing until then.
 
 ## 4. Migrating a retired switch (`ThemeBootstrap`)

@@ -5,10 +5,10 @@
 // Role: CORE (engine-free: files, the log ring and the settings; no element, component or overlay type)
 // Spec: docs/themes/plan/technical-plan.md §5.1 C15 (X38)
 //
-// Moved out of `LogsPage.UI.cs` unchanged: the walk with its one `log.sessions.listed` line (G4), the guarded load of a
+// Moved out of the old `LogsPage.UI.cs` unchanged: the walk with its one `log.sessions.listed` line (G4), the guarded load of a
 // past session, the export write for the live ring or a past session, and the verbose / clear-view verbs. The pure rules
-// stay `LogsPage.Rules` and `Diagnostics.LogView`; the disk walk itself is `WaveeLogSessions`. The page keeps the pickers,
-// the posts back to the UI thread and every signal.
+// stay `LogsPage.Rules` and `Diagnostics.LogView`; the disk walk itself is `WaveeLogSessions`. The core host (`LogsPage.Host.cs`) keeps
+// the session model and its signals; the Common `Pages.Logs` view keeps the pickers and the posts back to the UI thread.
 
 namespace Wavee;
 

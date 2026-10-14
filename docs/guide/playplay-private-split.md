@@ -25,7 +25,7 @@ and outside `--fake` (`App.cs`). It fills four public seams, and the public tree
 |---|---|---|
 | `Spotify.Audio.KeyDeriver` | `Spotify/Spotify.Audio.cs` | the key for a file the AP refused (license request + derivation); null while no runtime is bound, so the app says "unavailable on this build" honestly |
 | `Spotify.Audio.BodyDecryptorFor` | `Spotify/Spotify.Audio.cs` | a native body decryptor a derivation can leave for its file; the body decrypts through it instead of AES-CTR |
-| `Setup.Runtime.Host` (+ `Setup.Runtime.Status`) | `Screens/Setup.UI.Runtime.cs` | the setup card's catalog, download/install, folder registration, remove and refresh verbs, and the published runtime facts |
+| `Setup.Runtime.Host` (+ `Setup.Runtime.Status`) | `Screens/RuntimeModel.cs` | the setup card's catalog, download/install, folder registration, remove and refresh verbs, and the published runtime facts |
 | `Diagnostics.RuntimeReportSource` | `Screens/Diagnostics.cs` | the locate/verify report, computed off the UI thread |
 
 The license route presents the runtime build's client identity through `Spotify.Api.PostAsClient`. With the package

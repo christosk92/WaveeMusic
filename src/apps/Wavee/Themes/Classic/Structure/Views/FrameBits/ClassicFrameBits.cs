@@ -1,16 +1,14 @@
 // ── Themes/Classic/Structure/Views/FrameBits/ClassicFrameBits.cs — Classic's small frame views (themes plan 6.1, T4c) ───────
 //
-// From `Shell.UI.cs` (the file-drop cue, the setup wizard's cover scrim, the Back/Forward history menu, the drag chip mount) and
-// `Diagnostics.UI.cs` (the frame-rate overlay). Each is a picture over a decision the core keeps:
+// From `Shell.UI.cs` (the file-drop cue, the setup wizard's cover scrim, the Back/Forward history menu, the drag chip mount). Each is a picture over a decision the core keeps:
 //
 //   History menu   `MenuFlyout` over the rows the core listed (newest first, a "View all history" tail when the stack is longer).
 //   File drop      the centred drop pill: its opacity is BOUND to the drag-over signal, so a drag hover never re-renders the shell.
 //   Drag chip      the layer that draws the chip following the pointer; the core resolves what the dragged payload is called.
 //   Cover scrim    the setup wizard's dim over the shell (Tok.FillSmoke, 250 ms linear, 0 under reduced motion; nothing ticks while the
 //                  cover holds still, and the box is hit-test transparent whenever it is not dimming).
-//   Frame rate     the developer HUD: a full-bleed, hit-test PASS-THROUGH plain positioner (a component's output would mirror its Grow
-//                  onto the wrapper and swallow every hit: the 0.2.9 bug that killed scrolling) holding a content-sized pill, mounted
-//                  only while developer mode AND the overlay toggle are on (the core decides, `FpsProps.Shown`).
+//
+// (The frame-rate overlay is `Themes\Common\CommonFps`: a developer HUD is one copy for every theme, T11c.)
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;
@@ -69,32 +67,4 @@ internal static class ClassicFrameBits
         mounted.Value = true;
         return new BoxEl { Grow = 1f, Fill = Tok.FillSmoke, Opacity = target, HitTestVisible = dim };
     }
-
-    /// <summary>The registered template of <see cref="ViewKeys.ShellFps"/>: the FPS HUD (ch 27 W26) for the frame's overlay ZStack.</summary>
-    public static Element Fps(FpsProps props, in ViewContext ctx) => new BoxEl
-    {
-        Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, HitTestPassThrough = true,
-        Direction = 1, AlignItems = FlexAlign.End, Padding = ClassicFrameBitsRules.FpsInset,
-        Children = [Flow.Show(props.Shown, Embed.Comp(static () => new ClassicFpsPill()))],
-    };
-}
-
-/// <summary>Renders EXACTLY ONCE: both numbers are retained dynamic-text slots the host refreshes in place, so the HUD never
-/// re-renders per frame and never depresses the rate it displays. First painted frame: two literal "--".</summary>
-internal sealed class ClassicFpsPill : Component
-{
-    public override Element Render() => new BoxEl
-    {
-        Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicFrameBitsRules.FpsPillGap, Padding = ClassicFrameBitsRules.FpsPillPadding,
-        Corners = CornerRadius4.All(ClassicFrameBitsRules.FpsPillRadius),
-        Fill = Tok.FillSolidBase with { A = ClassicFrameBitsRules.FpsPillFillAlpha }, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-        Children =
-        [
-            new TextEl("--") { Size = ClassicFrameBitsRules.FpsTextSize, Weight = ClassicFrameBitsRules.FpsFigureWeight, Color = Tok.AccentTextPrimary, DynamicText = DynamicTextKind.FrameFps },
-            new TextEl("fps") { Size = ClassicFrameBitsRules.FpsTextSize, Weight = ClassicFrameBitsRules.FpsUnitWeight, Color = Tok.TextSecondary },
-            new TextEl("·") { Size = ClassicFrameBitsRules.FpsTextSize, Weight = ClassicFrameBitsRules.FpsUnitWeight, Color = Tok.TextTertiary },
-            new TextEl("--") { Size = ClassicFrameBitsRules.FpsTextSize, Weight = ClassicFrameBitsRules.FpsUnitWeight, Color = Tok.TextSecondary, DynamicText = DynamicTextKind.FrameMs },
-            new TextEl("ms") { Size = ClassicFrameBitsRules.FpsTextSize, Weight = ClassicFrameBitsRules.FpsUnitWeight, Color = Tok.TextTertiary },
-        ],
-    };
 }

@@ -61,7 +61,7 @@ public sealed class FrameBitsMountedTests(ShellHost host)
                 (ViewKeys.ShellFileDrop.Id, "classic.shell.file-drop"),
                 (ViewKeys.ShellDragChip.Id, "classic.shell.drag-chip"),
                 (ViewKeys.ShellCoverScrim.Id, "classic.shell.cover-scrim"),
-                (ViewKeys.ShellFps.Id, "classic.shell.fps"),
+                (ViewKeys.ShellFps.Id, "common.fps"),
             ];
             foreach (var (id, template) in expected)
                 Assert.Equal(template, ThemeHost.Registry.TemplateIdOf(id));
