@@ -14,7 +14,7 @@
 //   · Value rules (BP 1.6): an unknown or out-of-range legacy value becomes the option default (the step simply does not
 //     copy it); a renamed option starts at its default; a removed choice becomes the default.
 //
-// T1 shipped the machinery; each M-PR registers its step in `Steps`. It runs from `Platform.Boot` right after `ZoomAutoPolicy.MigrateMode`
+// T1 shipped the machinery; each M-PR registers its step in `Steps` (M3 row density, M4 hide track art, M6 colour washes, M7a sidebar, M8 detail layout and rails). It runs from `Platform.Boot` right after `ZoomAutoPolicy.MigrateMode`
 // and before anything reads a presentation setting. WVTH010 keeps legacy key names and deleted member names inside this file.
 
 namespace Wavee.Theming;
@@ -28,21 +28,86 @@ public static class ThemeBootstrap
     /// <summary>The prefix of the done markers: <c>theme.bootstrap.done.&lt;Name&gt;</c>.</summary>
     public const string DonePrefix = "theme.bootstrap.done.";
 
-    // ── the retired switches (WVTH010 lists these names; only this file may spell them) ────────────────────────────────────────
+    // -- the retired switches (WVTH010 lists these names; only this file may spell them) and the options that replaced them
 
     /// <summary>M6: the colour-washes switch (default on). Its option is Classic's Surfaces select (`theme.classic.structure.surfaces`,
     /// the enum's int: Off 0, Subtle 1).</summary>
     private static readonly SettingKey<bool> LegacyColorWashes = new("appearance.colorWashes.enabled", true);
     private static readonly SettingKey<int> SurfacesKey = new("theme.classic.structure.surfaces", 1);
 
+    /// <summary>M7a: the sidebar layout (0 Classic · 1 Library) and the entity-row density (0 Default · 1 Compact). Their options are Classic's Sidebar and
+    /// LibraryDensity selects (`theme.classic.structure.sidebar` / `.libraryDensity`, the enums' ints). A value outside 0..1 (2 exists only in profiles that ran
+    /// the discarded PR 205 branch) is not copied: the option default applies.</summary>
+    private static readonly SettingKey<int> LegacySidebarLayout = new("sidebar.layout.id", 0);
+    private static readonly SettingKey<int> SidebarKey = new("theme.classic.structure.sidebar", 0);
+    private static readonly SettingKey<int> LegacySidebarDensity = new("sidebar.pane.density", 0);
+    private static readonly SettingKey<int> LibraryDensityKey = new("theme.classic.structure.libraryDensity", 0);
+    private static readonly SettingKey<int> LegacyRowDensity = new("detail.rowdensity", 1);
+    private static readonly SettingKey<bool> LegacyHideTrackArtwork = new("appearance.trackArtwork.hidden", false);
+    private static readonly SettingKey<int> DensityOptionKey = new("theme.classic.style.density", 1);
+    private static readonly SettingKey<bool> HideArtOptionKey = new("theme.classic.structure.hideTrackArt", false);
+
+    /// <summary>M8: the detail page layout (0 Automatic · 1 Hero) and "keep the left rail the same size", now Classic's `structure.pageLayout` / `structure.railUniform`; and the ten
+    /// remembered rail sizes (a width and a collapsed flag for the album, playlist, Liked and show rails and for the shared uniform rail), now Classic's theme STATE
+    /// (`theme.classic.state.rail.&lt;scope&gt;.width` / `.collapsed`, `DetailRailPrefs`). A width outside the grip's range is copied as it is: the state key clamps on every read, as the old reader did.</summary>
+    private static readonly SettingKey<int> LegacyPageLayout = new("detail.page.layout", 0);
+    private static readonly SettingKey<int> PageLayoutKey = new("theme.classic.structure.pageLayout", 0);
+    private static readonly SettingKey<bool> LegacyRailUniform = new("detail.rail.uniform", false);
+    private static readonly SettingKey<bool> RailUniformKey = new("theme.classic.structure.railUniform", false);
+
+    /// <summary>The scopes of the remembered rail sizes, in the legacy key's spelling (`detail.rail.&lt;scope&gt;.width`) and the state key's (`rail.&lt;scope&gt;.width`).</summary>
+    private static readonly string[] RailScopes = ["album", "playlist", "liked", "show", "uniform"];
+
+    private static string[] RailLegacyKeys() => RailScopes.SelectMany(static x => new[] { "detail.rail." + x + ".width", "detail.rail." + x + ".collapsed" }).ToArray();
+
+    private static string[] RailStateKeys() => RailScopes.SelectMany(static x => new[]
+        { "theme.classic.state.rail." + x + ".width", "theme.classic.state.rail." + x + ".collapsed" }).ToArray();
+
+    private static void CopyRailSizes(IAppSettings s)
+    {
+        foreach (string scope in RailScopes)
+        {
+            Copy(s, new SettingKey<float>("detail.rail." + scope + ".width", 0f), new SettingKey<float>("theme.classic.state.rail." + scope + ".width", 0f),
+                static v => (!float.IsNaN(v), v));
+            Copy(s, new SettingKey<bool>("detail.rail." + scope + ".collapsed", false), new SettingKey<bool>("theme.classic.state.rail." + scope + ".collapsed", false));
+        }
+    }
+
     /// <summary>The steps shipped in this build: each migration PR appends its own.</summary>
     public static IReadOnlyList<ThemeBootstrapStep> Steps { get; } =
     [
-        // M6 washes: false → Off (0), true → Subtle (1, today's wash). A switch the user never touched is absent, so it stays at the
+        // M6 washes: false -> Off (0), true -> Subtle (1, today's wash). A switch the user never touched is absent, so it stays at the
         // option's default (Subtle).
         new ThemeBootstrapStep("ColorWashes",
             ReadsLegacyKeys: ["appearance.colorWashes.enabled"], WritesKeys: ["theme.classic.structure.surfaces"],
             Run: static s => Copy(s, LegacyColorWashes, SurfacesKey, static on => (true, on ? 1 : 0))),
+        // M3: the row density rung (0 Compact, 1 Default, 2 Cozy, 3 Comfortable) is Classic's `style.density`, the same numbers. A hand-edited or
+        // downgraded value outside 0..3 is not copied (the option default applies; the old reader answered Compact).
+        new ThemeBootstrapStep("TrackRowDensity",
+            ReadsLegacyKeys: ["detail.rowdensity"], WritesKeys: ["theme.classic.style.density"],
+            Run: static s => Copy(s, LegacyRowDensity, DensityOptionKey, static v => (v is >= 0 and <= 3, v))),
+        // M4: "always hide track artwork" is Classic's `structure.hideTrackArt`.
+        new ThemeBootstrapStep("HideTrackArtwork",
+            ReadsLegacyKeys: ["appearance.trackArtwork.hidden"], WritesKeys: ["theme.classic.structure.hideTrackArt"],
+            Run: static s => Copy(s, LegacyHideTrackArtwork, HideArtOptionKey)),
+        // M7a sidebar: a stored layout and density carry over as they are, so a Library user stays on Library and a Compact user on Compact.
+        new ThemeBootstrapStep("SidebarLayout",
+            ReadsLegacyKeys: ["sidebar.layout.id"], WritesKeys: ["theme.classic.structure.sidebar"],
+            Run: static s => Copy(s, LegacySidebarLayout, SidebarKey, static v => (v is 0 or 1, v))),
+        new ThemeBootstrapStep("SidebarDensity",
+            ReadsLegacyKeys: ["sidebar.pane.density"], WritesKeys: ["theme.classic.structure.libraryDensity"],
+            Run: static s => Copy(s, LegacySidebarDensity, LibraryDensityKey, static v => (v is 0 or 1, v))),
+        // M8 detail pages: a Hero user stays on Hero, a user who kept the rails one size keeps that, and every remembered rail width and collapse carries over (to the Classic
+        // theme's state, the only theme that has ever run them). A page layout outside 0..1 is not copied (the option default applies).
+        new ThemeBootstrapStep("DetailPageLayout",
+            ReadsLegacyKeys: ["detail.page.layout"], WritesKeys: ["theme.classic.structure.pageLayout"],
+            Run: static s => Copy(s, LegacyPageLayout, PageLayoutKey, static v => (v is 0 or 1, v))),
+        new ThemeBootstrapStep("DetailRailUniform",
+            ReadsLegacyKeys: ["detail.rail.uniform"], WritesKeys: ["theme.classic.structure.railUniform"],
+            Run: static s => Copy(s, LegacyRailUniform, RailUniformKey)),
+        new ThemeBootstrapStep("DetailRailSizes",
+            ReadsLegacyKeys: RailLegacyKeys(), WritesKeys: RailStateKeys(),
+            Run: static s => CopyRailSizes(s)),
     ];
 
     /// <summary>The setting name of a step's done marker.</summary>

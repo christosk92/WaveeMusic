@@ -107,13 +107,13 @@ public sealed class WizardModelTests : IDisposable
     [InlineData(Setup.WizardEntry.FirstRun, Setup.WizardPage.Terms, false, 3)]
     [InlineData(Setup.WizardEntry.TermsRearm, Setup.WizardPage.Terms, true, 2)]
     [InlineData(Setup.WizardEntry.Reauth, Setup.WizardPage.SignIn, true, 2)]
-    public void Each_entry_starts_where_it_should_and_skips_layout_off_a_first_run(
-        Setup.WizardEntry entry, Setup.WizardPage start, bool skipLayout, int count)
+    public void Each_entry_starts_where_it_should_and_skips_theme_off_a_first_run(
+        Setup.WizardEntry entry, Setup.WizardPage start, bool skipTheme, int count)
     {
         var model = Model(entry, signedIn: false);
 
         Assert.Equal(start, model.Page.Peek());
-        Assert.Equal(skipLayout, model.SkipLayout);
+        Assert.Equal(skipTheme, model.SkipTheme);
         Assert.Equal(count, model.Count);
         Assert.Equal(Design.NavTransitionKind.Neutral, model.Direction.Peek());
     }
@@ -226,7 +226,7 @@ public sealed class WizardModelTests : IDisposable
 
         model.Primary();
 
-        Assert.Equal(Setup.WizardPage.Layout, model.Page.Peek());
+        Assert.Equal(Setup.WizardPage.Theme, model.Page.Peek());
     }
 
     [Fact]
@@ -264,7 +264,7 @@ public sealed class WizardModelTests : IDisposable
     public void Back_walks_the_ladder_the_other_way_and_the_direction_says_so()
     {
         var model = Model(Setup.WizardEntry.FirstRun, signedIn: false);
-        model.Advance(Setup.WizardPage.Layout);
+        model.Advance(Setup.WizardPage.Theme);
 
         model.Back();
 
@@ -276,7 +276,7 @@ public sealed class WizardModelTests : IDisposable
     public void Back_skips_the_sign_in_page_for_someone_already_signed_in()
     {
         var model = Model(Setup.WizardEntry.FirstRun, signedIn: true);
-        model.Advance(Setup.WizardPage.Layout);
+        model.Advance(Setup.WizardPage.Theme);
 
         model.Back();
 

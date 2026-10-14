@@ -112,4 +112,42 @@ public static class ClassicPolicies
     /// LAST: static properties initialise in textual order and it reads the five above (`ClassicTiers` builds its policy in its
     /// own initializer and never reads this class).</summary>
     public static ThemePolicies Bundle { get; } = new(NavPane, Panel, PlayerBar, Chrome, Stage) { Tiers = ClassicTiers.Policy };
+
+    // The bundle for each combination of the structure options that reach the core (M7a: the sidebar layout x density; M4: the track artwork hidden; M8: the
+    // detail page layout x the rails' uniformity): index = (((railUniform * 2) + pageLayout) * 2 + hideArt) * 4 + layout * 2 + density. The default
+    // combination is `Bundle` itself.
+    private static readonly ThemePolicies[] s_byOptions = BuildByOptions();
+
+    private static ThemePolicies[] BuildByOptions()
+    {
+        var all = new ThemePolicies[32];
+        foreach (bool railUniform in new[] { false, true })
+            foreach (DetailPageLayout pageLayout in new[] { DetailPageLayout.Automatic, DetailPageLayout.Hero })
+                foreach (bool hideArt in new[] { false, true })
+                    foreach (SidebarLayoutId layout in new[] { SidebarLayoutId.Classic, SidebarLayoutId.Library })
+                        foreach (SidebarDensity density in new[] { SidebarDensity.Default, SidebarDensity.Compact })
+                        {
+                            bool isDefault = !hideArt && layout == SidebarLayoutId.Classic && density == SidebarDensity.Default
+                                && pageLayout == DetailPageLayout.Automatic && !railUniform;
+                            all[IndexOf(layout, density, hideArt, pageLayout, railUniform)] = isDefault
+                                ? Bundle
+                                : Bundle with
+                                {
+                                    NavPane = NavPane with { Layout = layout, Density = density },
+                                    Lists = hideArt ? new ListPolicy(TrackArtwork: false) : Bundle.Lists,
+                                    Detail = new DetailPolicy(pageLayout, railUniform),
+                                };
+                        }
+        return all;
+    }
+
+    private static int IndexOf(SidebarLayoutId layout, SidebarDensity density, bool hideArt, DetailPageLayout pageLayout, bool railUniform)
+        => ((((railUniform ? 2 : 0) + (int)pageLayout) * 2 + (hideArt ? 1 : 0)) * 4) + (int)layout * 2 + (int)density;
+
+    /// <summary>The bundle for the options the structure published: <see cref="Bundle"/> with the pane's <see cref="NavPanePolicy.Layout"/> and
+    /// <see cref="NavPanePolicy.Density"/> set, the track lists' artwork hidden when <paramref name="hideTrackArt"/>, and the detail pages' layout and rail
+    /// uniformity. One instance per combination, so republishing the facts is not a change.</summary>
+    public static ThemePolicies For(SidebarLayoutId layout, SidebarDensity density, bool hideTrackArt = false,
+        DetailPageLayout pageLayout = DetailPageLayout.Automatic, bool railUniform = false)
+        => s_byOptions[IndexOf(layout, density, hideTrackArt, pageLayout, railUniform)];
 }

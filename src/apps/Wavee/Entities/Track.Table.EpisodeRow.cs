@@ -43,7 +43,7 @@ public readonly partial struct Track
         public override Element Render()
         {
             var shape = _host.ShapeValue;
-            bool narrow = shape.Density < 2;
+            bool narrow = shape.NarrowEpisode;
             var bound = new BoundItemScope<Episode.RowItem>(_scope, _item);
             var ctx = new Episode.RowContext
             {

@@ -62,13 +62,3 @@ public sealed record SettingsThemeOptionsProps
     /// <summary>The wizard's options.</summary>
     public static SettingsThemeOptionsProps WizardPlate { get; } = new() { Wizard = true };
 }
-
-/// <summary>The props of <see cref="ViewKeys.SettingsSidebarLayoutCards"/>.</summary>
-public sealed record SettingsSidebarLayoutProps
-{
-    /// <summary>The active layout.</summary>
-    public required SidebarLayoutId Active { get; init; }
-
-    /// <summary>The sidebar is in Edit mode: the cards say why they do not switch (Q7).</summary>
-    public required bool Editing { get; init; }
-}

@@ -643,7 +643,7 @@ column header, the command bar's pictures, the filter card and the placeholder r
 | Piece | Contract | Core half | Classic |
 |---|---|---|---|
 | Column header | `TrackHeaderTemplate(TrackHeaderArgs)`: the lanes, the shared tracks, the sort and its signal, the check lane, the hero arm, `OnSort(column, artistColumn)` | `TableHost.TableHeader` (reads shape, sort and checks, so it re-renders on exactly those), `SortBy` (`TableRules.NextSort`) | the keyed cells, the sort caret (a spring) and the title label's word swap as components over the sort signal, the hairline, the check-lane shift |
-| Command bar | `ITrackCommandKit`: the lane (`Surface`), a measured slot (`Command`), `Bar`, `PlayNext`, `Labeled`, `IconButton`, `Separator`, `Chevron`, `Trail`, `SortCaret`, `FilterCommand`, `FilterFunnel`, `MoreSlot` | which commands exist and fit (`CommandBarLayout`), the bar's hold while the filter card is open, every overlay and its focus, the "…" menu's items, the search field | the 32-DIP buttons, the split button's parts, the count badges, the bar's two motions |
+| Command bar | `ITrackCommandKit`: the lane (`Surface`), a measured slot (`Command`), `Bar`, `PlayNext`, `Labeled`, `IconButton`, `Separator`, `Chevron`, `Trail`, `SortCaret`, `FilterCommand`, `FilterFunnel`, `MoreSlot`, and (M3) `DensityLabel`, `DensityPanel`, `DensityItems` | which commands exist and fit (`CommandBarLayout`), the bar's hold while the filter card is open, every overlay and its focus, the "…" menu's items, the search field | the 32-DIP buttons, the split button's parts, the count badges, the bar's two motions |
 | Selection bar | the same `Surface` (mode `selection`) around `Controls.SelectionBar` | the live selection, the lane's commands, exit and select-all | the lane and the browse / selection swap motion |
 | Filter card | `TrackFilterCardTemplate(TrackFilterCardArgs)`: title, status (the filtered counts, already worded), `Reset`, `TrackFilterFacet` rows (signal, options, commit, `On`) and `TrackFilterToggle` rows | `TableFilterFlyout`: which facets the list can earn, the signals, what each commit writes, the sync from external filter writes | the 360-wide card, the 44-DIP facet rows with the accent-tinted combo, the switches, the scroll fallback |
 | Placeholder | `TrackPlaceholderTemplate(in ColumnSet, tracks, rowH, padX)` | `TableHost.PlaceholderRow`: the count, height and padding are the live row's, so landing data never jumps | a `GridEl` of empty boxes |
@@ -651,7 +651,7 @@ column header, the command bar's pictures, the filter card and the placeholder r
 - **Templates run inside the core component's render.** The header, the filter card and every button are drawn while the core
   component renders, so the signals they read subscribe that component exactly as before; no key, motion, hit-test or tab order changes.
 - **Still core.** The search disclosure's field (`TableSearchHost`, a focus and caret machine; it calls the kit for its glyph button),
-  the row-size slider's panel (M3 moves it with the option write), `Controls.SelectionBar` and the shared selection lane (shared
+  the row-size button's overlay (the panel, the word and the submenu's rows are the kit's since M3, below), `Controls.SelectionBar` and the shared selection lane (shared
   controls) and the chrome stack's own arrangement (`Chrome(...)`, whose sticky clip the hero system measures). `Track.TableHeaderShim` and `Track.ShimmerRow` (the host-free
   statics the library panes and the artist reader called with no registry) moved with those callers in T10c1: the header shim is the album pane's own picture
   (`ClassicLibraryAlbumPane`), and the placeholder row both panes draw is `ClassicTrackChrome.Placeholder`.
@@ -855,8 +855,8 @@ row), `IQueueVerbs` (bound to the surface's own page counters), the player's ver
 (`SlotCount`, `SlotAt`, `ItemAt` under the live drag projection), `Lane` / `List` (the wrapper a row needs and the lane around the body), `OwnDrag` and `Attach`
 (a viewed queue's own drag; the entry's context menu), `Remaining` / `PageSize` ("Show more"), `TextOf` (what a row paints: the entity tables are not a theme's), `Clock`,
 `RowKey` and `SetMetrics`. **A template must call `SetMetrics(rowExtent, extentOf)` before it builds the lane**: the reorder maths needs every slot's height
-EXACT, and the heights are the skin's (a skin or a scale change moves them). The settings the core read arrive as facts (`HairlineRows`, `HideTrackArt`,
-`RepeatOn`, `RepeatTrack`), the two navigations as `Action?` (`OpenPlayingFrom`, `OpenNowPlaying`: null means display-only). The stage's accent, queue scale and
+EXACT, and the heights are the skin's (a skin or a scale change moves them). The settings the core read arrive as facts (`HairlineRows`,
+`RepeatOn`, `RepeatTrack`; "hide track art" is Classic's own option since M4: the panel and the stage pane read `ClassicOptions.HideTrackArt()`), the two navigations as `Action?` (`OpenPlayingFrom`, `OpenNowPlaying`: null means display-only). The stage's accent, queue scale and
 width travel in the stage's ambient context (`Stage.StageContext`), which the view component reads.
 
 **Motion and identity are the old surface's.** Row keys (`i<itemId>` or `e<index>`, plus the skin and art suffix), the lane keys (`lane:upcoming`,
@@ -973,7 +973,7 @@ Search page's genre links are the same Link cell over the same grid. The numbers
 **What a Search view may call.** The body is a MODEL the host builds each time the skeleton region asks for its content (`SearchBodyModel`: the hits as `Search.HitItem`s over the live
 handles, the fallback rows, the rail, the genre tiles, the related queries), so a hydrating hit row still re-reads in the region's own binding. A hit is drawn with the core adapters
 (`Search.HitData`, `OpenHit`, `PlayHit`, `MenuOf`, `DragOf`, `TrailingOf`, `TitleOf`, `CoverOf`, `SubtitleOf`, `CardDataOf`, `OpenRelated`) over the one media surface;
-`SearchHitRules` (shape, art, eyebrow, trailing, drag) stays core because the omnibar flyout reads it. Whether track art is hidden rides the hit context (`HitContext.HideTrackArt`).
+`SearchHitRules` (shape, art, eyebrow, trailing, drag) stays core because the omnibar flyout reads it. Whether track art is hidden is Classic's own option (`ClassicOptions.HideTrackArt()`, M4): the body reads it where a hit row is built and hands it to `Search.HitData`.
 
 **Tests.** The ids, Classic's registration and the grid-facet rule are `Wavee.Tests\BrowseSearchContractTests.cs`; the column bands and the star grid are `BrowseLayoutTests`; the load gate, the facet rules and the hit decisions
 stay `BrowseLoadGateTests`, `SearchFacetRulesTests` and `SearchHitDataTests`. The mounted facts are `Wavee.ShellTests\BrowseSearchMountedTests.cs`: Classic is the registered template of every key, a tile block keys
@@ -986,7 +986,7 @@ The artist page is the structure's picture over a core host. The scroll column, 
 
 | Key | Props | Core host | Classic template |
 |---|---|---|---|
-| `Pages.Artist` | `ArtistPageProps` (the route and scope keys, the artist handle, the pending / failed verdicts and Retry, the measured width and the ONE resolved `ArtistHeroMetrics`, the accent as a value, a live read, an untracked read and a signal, the palette and hero urls, the washes flag, the tint claim leaf, the band's engaged edge, the pivot tabs and the spy's answer, the section slots with their anchor callbacks, the fans pool, the verbs, `RowsClassic` / `ShowTrackArt` for the chart's skeleton) | `Artist.PageHost` (`[CoreHost]`, `Entities\Artist.Page.cs`): the demand effects, `DemandRows`, `Stamp`, readiness and the failure verdict, the hero-photo latch and its decode warm-up, the watched accent, `PlanSections` (the plan and the pivot's membership), the anchor registry and the spy | `ClassicArtistPage`: the keyed column and scroller over the `SkelRegionEl` (Reveal.Soft, Group null), the hero, the sentinel, the clipped magazine and wash, the band's artist arm and the derived shimmer; `ClassicArtistHero`, `ClassicArtistSections`, `ClassicArtistBanners`, `ClassicArtistPick` |
+| `Pages.Artist` | `ArtistPageProps` (the route and scope keys, the artist handle, the pending / failed verdicts and Retry, the measured width and the ONE resolved `ArtistHeroMetrics`, the accent as a value, a live read, an untracked read and a signal, the palette and hero urls, the washes flag, the tint claim leaf, the band's engaged edge, the pivot tabs and the spy's answer, the section slots with their anchor callbacks, the fans pool, the verbs, `RowsClassic` for the chart's skeleton, which reads the hide-art option itself) | `Artist.PageHost` (`[CoreHost]`, `Entities\Artist.Page.cs`): the demand effects, `DemandRows`, `Stamp`, readiness and the failure verdict, the hero-photo latch and its decode warm-up, the watched accent, `PlanSections` (the plan and the pivot's membership), the anchor registry and the spy | `ClassicArtistPage`: the keyed column and scroller over the `SkelRegionEl` (Reveal.Soft, Group null), the hero, the sentinel, the clipped magazine and wash, the band's artist arm and the derived shimmer; `ClassicArtistHero`, `ClassicArtistSections`, `ClassicArtistBanners`, `ClassicArtistPick` |
 
 **There is no hero key.** The hero's pinned, collapsing root has to stay a direct child of the page column (a slot would put a component boundary between the sticky node and its scroll content) and the derived skeleton cannot run a view slot, so the page view builds the hero for the live page and for the shimmer with the same builder
 (`ClassicArtistHero.Build`; the skeleton passes the placeholder facts and null verbs). The tiers (`ArtistHeroLayout`: widths, hysteresis, heights, photo bands, gutters, copy measures, the collapse arithmetic) are **core**, not a Classic rules file: the profile page reads the same tiers and the host decodes the photo at the size they name; the Classic numbers the
@@ -1166,7 +1166,7 @@ episode) own the per-kind slot builders and their sub-contract keys; the frame p
 | `Detail.InsightsToggle` | `DetailInsightsToggleProps` (the toggle and its `Form`) | the hero's toolbar row, and `Detail.InsightsBandAction` for the table's pinned band | `ToggleTemplate`: the glyph button, or the band's plateless word (its own component) |
 
 **What stays core, and why.** The decisions the frame, the table and the skeleton must agree on row for row are core, pure and unit-tested: the
-breakpoint ladder (`Breakpoints`), the rail's width bands and prefs (`RailPolicy`, `DetailRailPrefs`: M8 moves them into Classic's options),
+breakpoint ladder (`Breakpoints`), the rail's width bands (`RailPolicy`) and the persistence of its remembered sizes (`DetailRailPrefs`, theme state since M8),
 the hero arithmetic (`VerticalLayout`, `BandLayout`, `Skeleton.RailPlanFor`, `RailLayout`, `Detail.FlagsOf`, `Detail.HeroBandHeight`), the notice rules,
 `InsightsSheet` (which arm hosts the facts, the sheet's width), `Identity` / `Config` / `FrameSlots`, the shell-tint and page-tone claims, and the
 accent. No view compares a width with a number (WVTH013): the views are handed the mode, the rail width, the rung and the strip width. The numbers
@@ -1365,8 +1365,7 @@ root-lifetime cell with the deep link (`Settings.Open`, `TabFromSlug`), the page
 |---|---|---|---|
 | `Pages.Settings` | `SettingsPageProps` (the visible tab, the `Revision` that carries the page epoch and the two foreign epochs the Appearance tab reads, the pivot's cell as a `Func<Signal<int>>`, and the Storage census as `SettingsStorageProps` while that tab is visible) | `Settings.PageHost` (`[CoreHost]`, `Screens\Settings.Page.cs`): the context bind, the census trigger and the notices warm read | `ClassicSettings` (`.cs` the template, the pivot, the row grammar and the glyphs; `.General`, `.Appearance`, `.Playback`, `.VideoOverrides`, `.Storage`, `.Privacy`, `.About`, `.AiLyrics`): the masthead, the seven-tab pivot over a per-tab keyed scroll lane, every tab's sections and rows |
 | `Settings.ThemePicker` | `SettingsThemePickerProps` (none) | the Appearance tab, the setup wizard's Theme step | the fixed-size card per `ThemePickerEntry` |
-| `Settings.ThemeOptions` | `SettingsThemeOptionsProps` (`Wizard`) | the Appearance tab (the expander), the wizard (the plate rows, placed only when `SettingsThemeOptions.HasWizardOptions`) | the groups, the generated rows by kind, the legacy rows by document id |
-| `Settings.SidebarLayoutCards` | `SettingsSidebarLayoutProps` (`Active`, `Editing`) | the wizard's Layout step | the two layout cards and their miniatures |
+| `Settings.ThemeOptions` | `SettingsThemeOptionsProps` (`Wizard`) | the Appearance tab (the expander), the wizard (the plate rows, placed only when `SettingsThemeOptions.HasWizardOptions`) | the groups, the generated rows by kind (Classic draws its `structure.sidebar` row as the two layout cards with their miniatures, which refuse while the sidebar is edited), the legacy rows by document id |
 
 **What a Settings view may call.** The WVTH002 fence applies. A row's value is `row.Current` (the live store read through the document), not a settings key; what no row carries is a typed fact on `SettingsFacts` (`EqualizerGainsRaw`,
 `CrossfadeSeconds`, `AudioBudgetBytes`, `CrashInstallId`, `UpdateLastCheckedMs`, `SidebarMigrationDropped`, `AiLyricsEpoch`, `VideoOverrideTitle` / `VideoOverrideArtistLine`); the About receipts are one `Settings.SampleReceipts()` per tick.
@@ -1390,7 +1389,7 @@ The first-run wizard, the sign-in door and the playback runtime card are the str
 | `Setup.Wizard` | `SetupWizardProps` (the `WizardModel`, and the four pages' props) | `Setup.WizardPlate` (`[CoreHost]`, `Screens\Setup.UI.cs`): the overlay's content; keeps the one non-picture effect (the runtime banner stands down on the Local playback page) | `ClassicSetup.WizardTemplate` (`ClassicSetup.cs`): the plate (762 x 490, r8, stroke, dialog elevation), Enter / Backspace chords, the keep-alive page stack (3 entries, nav recipe by direction, no replay on activate), the footer (progress column, primary left, secondary right), Back over the content's corner, the page frame (icon column with the recoloured Lottie hero at 770+, title, scrolling body) |
 | `Setup.Terms` | `SetupTermsProps` (session, privacy verb, `SetupConsent`) | the plate's props | `ClassicSetup.TermsTemplate`; the opt-in crash-reporting card |
 | `Setup.SignIn` | `SetupSignInPageProps` (session, `ISetupSignInHost`) | `Setup.SignInHost` (`Screens\Setup.SignInHost.cs`) | `ClassicSetup.SignInPageTemplate`: the browser / pairing cards, the Busy ladder, "Is this you?", the UIA announcements |
-| `Setup.Theme` | `SetupThemeProps` (the settings' picker and options builders) | `Setup.ThemeStep` (`Screens\Setup.UI.Theme.cs`) | `ClassicSetup.ThemeTemplate`: the Layout page's twin (same frame) |
+| `Setup.Theme` | `SetupThemeProps` (the settings' picker and options builders) | the plate's props (`Setup.ThemeProps`, `Screens\Setup.UI.Theme.cs`); the wizard's second page, `WizardPage.Theme` | `ClassicSetup.ThemeTemplate`: the Layout page's frame |
 | `Setup.LocalPlayback` | `SetupLocalPlaybackProps` (session, signature-sheet verb, reveal-folder verb) | the plate's props | `ClassicSetup.LocalPlaybackTemplate`: the runtime model's phases on the plate |
 | `Setup.SignInDoor` | `SetupSignInDoorProps` (`SetupDialogPart` Body / Footer, `ISetupSignInHost`) | `Setup.SignInDoorView` (the zero-size watcher) and `OpenSignIn` (the ContentDialog) | `ClassicSetup.SignInDoorTemplate` |
 | `Setup.RuntimeCard` | `SetupRuntimeCardProps` (part, signature-sheet verb, "has a diagnostics page") | `Setup.OpenRuntimeCard` (`Screens\Setup.UI.Runtime.cs`) | `ClassicSetup.RuntimeCardTemplate` (`ClassicSetup.Runtime.cs`): the phase bodies, the fact boxes, the version picker, the local-source rows, the wrapping command row |
@@ -1553,11 +1552,11 @@ no other home yet (lyrics, full screen, now playing, Home). Nothing in it names 
   option changed).
 - **Legacy rows.** A structure lists the options that are still switches in `IStructureLayer.LegacyRows` (a `SettingsDoc` row id and a
   group). The page draws them in the same expander and groups; an M-PR deletes its rows from the list and declares the option, so
-  the tab never changes layout again. Classic lists 11 (M1 deleted one, M6 moved the washes into the options).
+  the tab never changes layout again. Classic lists 4 (M1 deleted one; M3, M4, M6, M7a and M8 moved the row density, the hide-art switch, the washes, the sidebar layout and density and the page layout with its two rail rows into options; the sidebar's three actions and the track list style stay rows). Inside a group the generated rows come first, so the layout cards and the density sit above the sidebar's actions, as the rows they replaced did.
 - **Palette.** An option with `Command = true` contributes rows (`ThemeOptionsSection.Commands`): a toggle on/off, a select one per
   choice, an action one. `Shell.CommandTable.BuildIndex` appends them after the builtins (`PaletteKind.ThemeOption`).
-- **Setup.Theme.** `Setup.ThemeStep()` (`Screens\Setup.UI.Theme.cs`) mounts the `Setup.Theme` view (`ClassicSetup.ThemeTemplate`, the Layout page's twin: same frame) with the picker and the options;
-  it replaces Layout in M7a and is mounted by nothing until then.
+- **Setup.Theme.** The wizard's second page (`WizardPage.Theme`, M7a: it replaced the Layout page and its two sidebar cards) mounts the `Setup.Theme` view (`ClassicSetup.ThemeTemplate`, on the Layout page's frame) with the picker and
+  the options (`Setup.ThemeProps`): the wizard plate draws the generated option rows (the layout cards, the density, the surfaces switch), no legacy rows and no actions.
 
 ## 4. Migrating a retired switch (`ThemeBootstrap`)
 
@@ -1598,6 +1597,62 @@ publishes a definite "no colour"), and `Shell.Material` (`ClassicMaterial.Templa
 pages published. The hosts (`Detail`, `Artist`, `Profile`, `Home`, `Recents`) pass no flag: `Palette.PageTonePlane/ArtistBlendWash/ShellTint`
 and the `Cover*Props` records lost their `disabled` parameter, and `ArtistProps.Washes` / `ProfilePageProps.Washes` are gone. The Recents
 binder publishes its wash and page accent whatever the option says (the accent follows the artwork even with the washes off, owner NQ6).
+
+### M7a: the sidebar layout and density became Classic's options
+
+`sidebar.layout.id` (0 Classic, 1 Library) and `sidebar.pane.density` (0 Default, 1 Compact) are now `ClassicStructure.Sidebar` (a `SelectOption<SidebarLayoutId>`,
+Cards, `Command = true`, id `sidebar`) and `ClassicStructure.LibraryDensity` (a `SelectOption<SidebarDensity>`, Combo, id `libraryDensity`), stored as the enum ints under
+`theme.classic.structure.sidebar` / `.libraryDensity`. They are *structure* options (another theme's sidebar is another structure) that use the core enums, so the core can
+name a value. The "SidebarLayout" and "SidebarDensity" steps in `ThemeBootstrap.Steps` copy a stored value of 0 or 1 when the new key is absent, so a Library or Compact user keeps
+it; any other value (2 exists only in profiles that ran the discarded PR 205 branch) is not copied and the default applies. The legacy keys, `Platform.Keys.SidebarLayoutId` and
+`SidebarPaneDensity` are listed in `WVTH010.legacy.txt`. The v2 sidebar migration (`SidebarMigrationHost`, retiring with its own release) now hands its layout and density to the option
+through `ThemeHost.Request` instead of writing the old keys.
+
+How the core follows a choice it may not read (WVTH005): the structure publishes it as **`NavPanePolicy.Layout` / `Density`** (`ClassicPolicies.For(layout, density, hideTrackArt)`, one bundle per combination together with M4's `Lists.TrackArtwork`; one per
+pair, the default pair being `Bundle` itself). `Sidebar.Boot` reads `ShellPolicy.Now.NavPane`; the frame root's effect calls **`Sidebar.FollowDesign(ShellPolicy.Tracked.NavPane)`**, which
+brings the sidebar's live `Layout` / `Density` signals (the layout document, the undo ring and the menus read those) after an option that moved without a verb of the sidebar: the Settings
+cards, the palette's option commands, a theme switch. A layout change that arrives that way while the sidebar is being edited ends the edit first (the verb refuses instead). The verbs
+`Sidebar.SwitchLayout` / `SetDensity` (the pane's menu, the cards, the undo ring) keep their guards and ring records and store the choice with `ThemeHost.Request(NavPaneOptionIds.Layout /
+Density, value)` (a theme without the option ignores it and the choice lasts for the session). Classic's Settings view draws `structure.sidebar` as the two preview cards (the generic Cards
+row is text only) and `structure.libraryDensity` as the narrow combo it always was, and the options kept the icons of the rows they replaced. The density stays visible with either layout
+(the plan said "only with Library", but the density shapes the Classic layout's entity rows too). The wizard's second page is the Theme page; the Layout page, `Settings.SidebarLayoutCards`
+and the palette's "Use ... layout" rows are gone.
+
+### M8: the page layout and the detail rails
+
+`detail.page.layout` (0 Automatic, 1 Hero), `detail.rail.uniform` and the ten remembered rail sizes (`detail.rail.<album|playlist|liked|show|uniform>.width|collapsed`) left the core
+settings. The choice of shape is Classic's *structure* options `ClassicStructure.PageLayout` (a Cards `SelectOption<DetailPageLayout>`, drawn with the two wireframe cards the old row had),
+`RailUniform` (a toggle, shown only with the Automatic layout: the Hero composes no rail to size) and `ClearRememberedSizes` (an `ActionOption` with a confirmation, shown only with
+Automatic and per-kind rails, greyed while nothing is customised), all in the group "Track pages". The **remembered sizes** are Classic's theme *state* (`theme.classic.state.rail.<scope>.width|collapsed`,
+one `StateKey` per scope declared by the core host that writes them, `DetailRailPrefs.WidthKey/CollapsedKey`, clamped to the grip's range on every read and write; owner Q6: sizes are per theme).
+Three `ThemeBootstrap` steps copy the stored values once (`DetailPageLayout`, 0 or 1; `DetailRailUniform`; `DetailRailSizes`, all ten), so an existing user keeps their layout and their rails.
+
+How the core follows without reading an option (WVTH005): the structure publishes **`ThemePolicies.Detail`** (`DetailPolicy(PageLayout, RailUniform)`, `ClassicPolicies.For(..., pageLayout, railUniform)`, one bundle per
+combination). `Detail.FrameHost` reads `ShellPolicy.Tracked.Detail` (Hero forces the vertical arm for a track page; uniform folds every kind into `RailScope.Uniform`) and `DetailRailPrefs.Epoch` (bumped once per
+grip release, re-open or reset, so every mounted and parked frame re-syncs). The reset's behaviour is the core's (`DetailRailPrefs.ResetAll`, registered at boot as the `clearRememberedSizes` theme verb with an enable gate,
+`ThemeVerbs.Register(id, run, enabled)`; `ActionOption.Confirm` makes the page ask first, so the action has no palette row). What stays core: the width ARITHMETIC (`RailPolicy`: the bounds, the page-aware cap, the
+resting width, what a drag commits) because the skeleton and the host agree on it row for row; the plan's "RailPolicy becomes a Classic rule" would need every width through a published policy and moves nothing a second
+theme could not simply reuse. `Prefs.DetailHero`, the twelve `Platform.Keys.Detail*` keys, the three legacy Settings rows, `SettingsVerbs.SetPageLayout/SetRailUniform/ResetRailSizes` and the three `ISettingsFacts` members are gone.
+
+### Worked example: row density and hide track art (M3, M4)
+
+Two Classic switches became options in one PR. Row density (`detail.rowdensity`) is the **style's** `density` option (`Themes\Classic\Style\ClassicDensity.cs`:
+a Cards select over `RowDensity` Compact / Default / Cozy / Comfortable, stored as the legacy number so a stored value carries over unchanged). Hide track art
+(`appearance.trackArtwork.hidden`) is the **structure's** `hideTrackArt` toggle (`ClassicStructure.HideTrackArt`). Both live in Settings › Appearance
+through `ThemeOptionsSection` (the group "Track lists"), have no `SettingsDoc` row any more, and left `LegacyRows`; the Classic Settings view draws the density's
+cards as the miniature rows it always drew (`ClassicSettings.OptionChoiceCard`) and gives both rows their glyphs (`OptionGlyph`).
+
+| | Density | Hide track art |
+|---|---|---|
+| What core reads | `StyleMetrics.TrackRows` (`TrackRowMetrics`: both skins' row height and art edge, the episode row, the rung, the episode row's narrow arm), published by `ClassicStyle.Metrics`; `Track.RowMetrics.Rows()` is the tracked read (the shell's Default rung when nothing is published) | `ThemePolicies.Lists.TrackArtwork` (`ListPolicy`), published by `ClassicStructure.Policies`; core models read `ShellPolicy.Tracked.Lists` (the track table's identity lane, the artist chart, the next-up rows, the stage's artist pane) |
+| What a Classic view reads | the table's chrome calls the style's accessors (`ClassicDensity.Current`, `Request`): a structure may not read or request a style key itself (WVTH005, WVTH009) | `ClassicOptions.HideTrackArt()`, a tracked read of the option cell: the queue panel and stage pane, the Recents rows, the library search, the search hits, the artist page's chart skeleton |
+| Where it is written | the Settings picker, the table's "Row size" slider (`ClassicTrackDensity`, through `ThemeHost.Options.RequestForwarder`) and its overflow submenu: all land in `ThemeHost.Apply` | the Settings toggle |
+| Stored value | the legacy rung (0-3) is copied to `theme.classic.style.density` by the step `TrackRowDensity`; a value outside 0-3 is not copied (the default rung applies) | the legacy bool is copied to `theme.classic.structure.hideTrackArt` by the step `HideTrackArtwork` |
+
+The row-size button keeps its overlay in the core (`TableDensityButton`: open, close, the word it holds while the panel is open) and asks the command kit for the
+word, the panel and the radio rows. What the lists draw is unchanged, and so is the live re-key: a density change moves the list key's `d<N>` segment, a hide-art change drops the
+artwork from the rows without re-keying the list (`LiveOptionBehaviourTests`). The facts are in `ClassicDensityAndArtTests`, including every stored value and the
+existing-choice-wins rule. The old keys are listed in `WVTH010.legacy.txt`; `Prefs.Appearance.RowDensity` / `TrackArtworkHidden` and `Platform.Keys.RowDensity` / `HideTrackArtwork` are gone.
 
 ## 5. The analyzers (`Wavee.Analyzers`, WVTH rules)
 

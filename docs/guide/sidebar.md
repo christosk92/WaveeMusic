@@ -121,9 +121,17 @@ Two JSON files and one store class:
 
 - **`sidebar.json`** (v3, device-wide): the two layout overlays (per-section shown/collapsed/limit/hidden items/item
   order, Library's sort, view and Liked toggle). Its DTO is `SidebarDeviceFileDto`.
-- **`settings.json`** keys (device-wide, `Platform.Keys`): the active layout (`sidebar.layout.id`), the pane width
-  (`sidebar.pane.width`), the user's collapse (`sidebar.pane.userCollapsed`), density (`sidebar.pane.density`) and
-  Your Library's chip (`sidebar.library.filter`).
+- **`settings.json`** keys (device-wide, `Platform.Keys`): the pane width
+  (`sidebar.pane.width`), the user's collapse (`sidebar.pane.userCollapsed`) and Your Library's chip
+  (`sidebar.library.filter`).
+- **The layout and the density are the structure's options, not sidebar keys** (M7a): Classic's `structure.sidebar` and
+  `structure.libraryDensity` (`theme.classic.structure.sidebar` / `.libraryDensity` in `settings.json`; the old
+  `sidebar.layout.id` and `sidebar.pane.density` are copied once by `ThemeBootstrap` and then ignored). The structure
+  publishes them as `NavPanePolicy.Layout` / `Density`; `Sidebar.Boot` reads them from the policy and the frame's
+  effect calls `Sidebar.FollowDesign` when they change without a verb of the sidebar (the Settings options, the palette's
+  option commands, a theme switch). `Sidebar.SwitchLayout` and `Sidebar.SetDensity` (the pane menu, the cards, the undo
+  ring) keep their guards and ring records and store the choice with `ThemeHost.Request(NavPaneOptionIds.…)`. A
+  structure that declares no such option ignores the request: the choice then lasts for the session.
 - **`sidebar.acct-<fnv1a64>.json`** (v1, one per account): pins (in the user's order), local pins, the pin name
   cache, expanded folders, the New releases seen stamp, first-seen stamps and the migration latch. Its DTO is
   `SidebarAccountFileDto`. The file name is a hash of the account key; the key itself is stored inside for

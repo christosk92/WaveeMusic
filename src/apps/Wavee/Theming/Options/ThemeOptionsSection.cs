@@ -100,14 +100,17 @@ public sealed record ThemeCommand(string Id, string Label, Action Run);
 /// boot (M8: <c>clearRememberedSizes</c>); an action whose verb is not registered shows greyed.</summary>
 public static class ThemeVerbs
 {
-    private static readonly Dictionary<string, Func<bool>> s_verbs = new(StringComparer.Ordinal);
+    private sealed record Verb(Func<bool> Run, Func<bool>? Enabled);
 
-    /// <summary>Registers (or replaces) the verb <paramref name="verbId"/>. It returns whether the page must re-read.</summary>
-    public static void Register(string verbId, Func<bool> run)
+    private static readonly Dictionary<string, Verb> s_verbs = new(StringComparer.Ordinal);
+
+    /// <summary>Registers (or replaces) the verb <paramref name="verbId"/>. It returns whether the page must re-read. <paramref name="enabled"/>, when given, is
+    /// asked each time the options page is built: an action whose verb is not enabled shows greyed (M8: "Clear all remembered sizes" while nothing is customised).</summary>
+    public static void Register(string verbId, Func<bool> run, Func<bool>? enabled = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(verbId);
         ArgumentNullException.ThrowIfNull(run);
-        s_verbs[verbId] = run;
+        s_verbs[verbId] = new Verb(run, enabled);
     }
 
     /// <summary>Forgets a verb (tests).</summary>
@@ -116,11 +119,23 @@ public static class ThemeVerbs
     /// <summary>True when <paramref name="verbId"/> has a behaviour.</summary>
     public static bool Has(string verbId) => s_verbs.ContainsKey(verbId);
 
+    /// <summary>True when <paramref name="verbId"/> has a behaviour and it is enabled right now (a verb registered without a gate is always enabled).</summary>
+    public static bool IsEnabled(string verbId)
+    {
+        if (!s_verbs.TryGetValue(verbId, out var verb)) return false;
+        try { return verb.Enabled?.Invoke() ?? true; }
+        catch (Exception ex)
+        {
+            Log.Warn("theme", "theme verb '" + verbId + "' gate failed", ex);
+            return false;
+        }
+    }
+
     /// <summary>Runs the verb; a verb that throws is logged and reads as "nothing to re-read". False for an unknown verb.</summary>
     public static bool Run(string verbId)
     {
-        if (!s_verbs.TryGetValue(verbId, out var run)) return false;
-        try { return run(); }
+        if (!s_verbs.TryGetValue(verbId, out var verb)) return false;
+        try { return verb.Run(); }
         catch (Exception ex)
         {
             Log.Warn("theme", "theme verb '" + verbId + "' failed", ex);
@@ -256,10 +271,10 @@ public static class ThemeOptionsSection
 
             case ActionOption action:
             {
-                bool known = ThemeVerbs.Has(action.VerbId);
+                bool known = ThemeVerbs.IsEnabled(action.VerbId);
                 string verb = action.VerbId;
                 SettingsRow row = Make(lo, SettingsRowKind.Action, option,
-                    SettingsWriter.OfAction(Verb(theme, lo), () => ThemeVerbs.Run(verb)), NoValue, enabled: known);
+                    SettingsWriter.OfAction(Verb(theme, lo), () => ThemeVerbs.Run(verb)), NoValue, enabled: known, confirm: action.Confirm);
                 return Generated(lo, option, row, enabled: known);
             }
 
@@ -347,14 +362,14 @@ public static class ThemeOptionsSection
     private static readonly Func<IAppSettings, object?> NoValue = static _ => null;
 
     private static SettingsRow Make(LayerOption lo, SettingsRowKind kind, ThemeOption option, SettingsWriter writer,
-        Func<IAppSettings, object?> value, bool enabled = true)
+        Func<IAppSettings, object?> value, bool enabled = true, SettingsConfirm? confirm = null)
         => new()
         {
             Tab = Settings.Tab.Appearance, Section = SectionTitle, Id = lo.QualifiedId, Kind = kind, TitleKey = option.TitleKey,
             Caption = option.DescriptionKey is { } caption ? _ => caption : static _ => null,
             Value = value, Writer = writer,
             Enabled = enabled ? static _ => SettingsEnablement.On : static _ => SettingsEnablement.Off(null),
-            SilentWhenDisabled = !enabled,
+            SilentWhenDisabled = !enabled, Confirm = confirm,
             Visible = option.Visibility == OptionVisibility.Developer ? static f => f.DeveloperMode : static _ => true,
         };
 
@@ -405,8 +420,12 @@ public static class ThemeOptionsSection
     private static bool ConditionHolds(LayerOption lo, ThemeOptionValues values)
     {
         if (lo.Option.VisibleWhen is not { } condition) return true;
-        object? actual = values.Of(lo.Layer).GetBoxed(condition.OptionId);
-        return actual is null || SameValue(actual, condition.EqualsValue);
+        for (OptionCondition? c = condition; c is not null; c = c.And)
+        {
+            object? actual = values.Of(lo.Layer).GetBoxed(c.OptionId);
+            if (actual is not null && !SameValue(actual, c.EqualsValue)) return false;
+        }
+        return true;
     }
 
     private static bool SameValue(object actual, object expected)

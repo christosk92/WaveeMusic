@@ -11,9 +11,8 @@
 // it never names `Playback`, `Prefs`, `Store` or `Shell` (WVTH002). The chrome components keep their hooks; the templates are plain
 // functions they call during their own render, so subscriptions, keys and effect timing are exactly what they were.
 //
-// NOT HERE. The search disclosure's field (it is a focus and caret machine: `TableSearchHost`, `TableSearchField`) and the density
-// slider's panel (M3 moves it with the option write) stay in `Entities\Track.Table.Chrome.cs`; they call the kit below for their
-// glyph button. `Controls.SelectionBar` (the shared bar several pages mount) and the shared selection lane's commands are the
+// NOT HERE. The search disclosure's field (it is a focus and caret machine: `TableSearchHost`, `TableSearchField`) stays in
+// `Entities\Track.Table.Chrome.cs`; it calls the kit below for its glyph button. `Controls.SelectionBar` (the shared bar several pages mount) and the shared selection lane's commands are the
 // shared control's. The host-free header shim the library's album pane shimmers under is that pane's own picture (`ClassicLibraryAlbumPane`), and the placeholder row it and the
 // artists' reader draw is `ClassicTrackChrome.Placeholder` (T10c1 moved `Track.TableHeaderShim` and `Track.ShimmerRow` with their callers).
 
@@ -99,6 +98,18 @@ internal interface ITrackCommandKit
 
     /// <summary>The "…" button's fixed 32-DIP slot: <paramref name="more"/> with the filter count as a corner badge when one rides here.</summary>
     Element MoreSlot(Element more, int filterCount);
+
+    // The row-size control (M3): the structure owns the density option (the style's), so the word the button wears, the panel it opens and the
+    // submenu's rows come from here; the core owns the button's overlay (open, close, the label held while it is open) and where the command sits.
+
+    /// <summary>The current density's name, the word the "Row size" button wears. A tracked read: the button re-renders when the density changes.</summary>
+    string DensityLabel();
+
+    /// <summary>The panel the "Row size" button opens: the current density's name over a stepped slider across the rungs, live on every step.</summary>
+    Element DensityPanel();
+
+    /// <summary>The "Row size" submenu's radio rows (the overflow menu): one per rung, the current one checked. Read when the menu opens.</summary>
+    IReadOnlyList<MenuFlyoutItem> DensityItems();
 }
 
 // ── the filter card ───────────────────────────────────────────────────────────────────────────────────────────────────

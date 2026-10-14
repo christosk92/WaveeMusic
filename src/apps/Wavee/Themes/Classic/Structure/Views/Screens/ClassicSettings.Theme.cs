@@ -3,7 +3,8 @@
 // From `Screens\Settings.UI.Theme.cs`. Settings › Appearance, the theme half: the THEME PICKER (one card per installed theme, driven by `ThemePickerFacts`) and
 // the ACTIVE THEME'S OPTIONS (one expander: "‹Theme› options", its rows grouped; the grouping, the visibility and the legacy rows a structure still binds are the
 // core's `SettingsThemeOptions`, this file draws them). The setup wizard's Theme step draws the same two views through their own keys
-// (`Settings.ThemePicker`, `Settings.ThemeOptions`), and its Layout step the sidebar layout cards (`Settings.SidebarLayoutCards`).
+// (`Settings.ThemePicker`, `Settings.ThemeOptions`); the sidebar layout is a generated Cards row of the options (M7a), drawn with the preview cards of
+// `ClassicSettings.Appearance.cs`.
 //
 // WHAT THIS FILE NEVER DOES: name a theme. The picker draws `ThemePickerEntry` data; the options expander draws whatever `SettingsOptionsView` holds (a theme
 // with no options gets one quiet row; one with only legacy rows gets them). A legacy row is drawn by its SettingsDoc id (`LegacyItem`): the id is the theme's,
@@ -44,9 +45,6 @@ internal static partial class ClassicSettings
     /// element while the theme has nothing to pick there; the wizard step does not place it then).</summary>
     public static Element ThemeOptionsTemplate(SettingsThemeOptionsProps props, in ViewContext ctx)
         => props.Wizard ? WizardThemeOptions() ?? new BoxEl() : ThemeOptionsExpander();
-
-    /// <summary>The registered template of <see cref="ViewKeys.SettingsSidebarLayoutCards"/>.</summary>
-    public static Element SidebarLayoutCardsTemplate(SettingsSidebarLayoutProps props, in ViewContext ctx) => SidebarLayoutCards(props.Active, props.Editing);
 
     // ══ 1. THE THEME PICKER ═══════════════════════════════════════════════════════════════════════════════════════════
 
@@ -207,9 +205,8 @@ internal static partial class ClassicSettings
     static Element ThemeOptionsExpander() => Embed.Comp(static () => new ThemeOptionsCard());
 
     /// <summary>The wizard's options: the same rows as plate cards under their group labels, without the actions (a wizard step
-    /// resets nothing) and, until M7a makes the sidebar a generated Cards row, with the sidebar layout cards (what the Layout step
-    /// shows today). Null when the theme offers nothing to pick. Call it from a render: it subscribes the caller to the option
-    /// cells, the sidebar and Developer mode, like the expander does.</summary>
+    /// resets nothing) and without the legacy rows. Null when the theme offers nothing to pick. Call it from a render: it subscribes
+    /// the caller to the option cells, the sidebar and Developer mode, like the expander does.</summary>
     static Element? WizardThemeOptions()
     {
         SettingsOptionsView view = SettingsThemeOptions.Current(wizard: true);
@@ -291,7 +288,7 @@ internal static partial class ClassicSettings
                     case SettingsOptionItemKind.Legacy:
                     {
                         SettingsRow row = item.Row!;
-                        if (LegacyItem(row.Id, row, facts, wizard) is { } legacy) group.Rows.Add((item.Key, legacy));
+                        if (LegacyItem(row.Id, row, facts) is { } legacy) group.Rows.Add((item.Key, legacy));
                         break;
                     }
                     default:
@@ -358,7 +355,7 @@ internal static partial class ClassicSettings
 
     /// <summary>The control of a row a structure still binds to a legacy key. An id this page has no control for is left out
     /// (and logged) rather than drawn blank.</summary>
-    static Element? LegacyItem(string id, SettingsRow row, ISettingsFacts facts, bool wizard)
+    static Element? LegacyItem(string id, SettingsRow row, ISettingsFacts facts)
     {
         string title = Loc.Get(row.TitleKey);
         string? sub = row.DescriptionKey(facts) is { } key ? Loc.Get(key) : null;
@@ -366,10 +363,6 @@ internal static partial class ClassicSettings
         bool enabled = row.Enabled(facts).Enabled;
         switch (id)
         {
-            case "sidebarDesign":
-                return Embed.Comp(() => new SidebarLayoutItem(wizard));
-            case "sidebarDensity":
-                return Embed.Comp(static () => new SidebarDensityItem());
             case "sidebarReset":
                 return Embed.Comp(static () => new SidebarActionItem("sidebarReset", Icons.Undo));
             case "sidebarCustomize":
@@ -385,43 +378,16 @@ internal static partial class ClassicSettings
                     if (D(Tab.Appearance, "trackListStyle").Writer.Choose!(i)) Settings.Bump();
                 }), SettingsCard.ContentAlignment.Vertical, icon: icon);
             }
-            case "rowDensity":
-            {
-                int density = row.Current is int current ? current : 0;
-                return Item(title, sub, Controls.PickerStrip(4, density, static (i, on) => DensityCard(i, on), static i => SetDensity(i)),
-                    SettingsCard.ContentAlignment.Vertical, icon: icon);
-            }
-            case "hideTrackArtwork":
-                return Item(title, sub, RowToggle(row, enabled), isEnabled: enabled, icon: icon);
-            case "pageLayout":
-            {
-                int layout = row.Current is int current ? current : 0;
-                return Item(title, sub, Controls.PickerStrip(2, layout, static (i, on) => PageLayoutCard(i, on), static i =>
-                {
-                    if (D(Tab.Appearance, "pageLayout").Writer.Choose!(i)) Settings.Bump();
-                }), SettingsCard.ContentAlignment.Vertical, icon: icon);
-            }
-            case "railUniform":
-                return Item(title, sub, RowToggle(row, enabled), isEnabled: enabled, icon: icon);
-            case "railReset":
-            {
-                var confirm = row.Confirm!;
-                return Item(title, sub, Button.Standard(Loc.Get(confirm.PrimaryKey), static () =>
-                {
-                    var reset = D(Tab.Appearance, "railReset");
-                    ConfirmThen(Loc.Get(reset.Confirm!.TitleKey), Loc.Get(reset.Confirm.BodyKey), Loc.Get(reset.Confirm.PrimaryKey),
-                        () => { if (reset.Writer.Run!()) Settings.Bump(); });
-                }, isEnabled: enabled), icon: icon);
-            }
             default:
                 Log.Warn("settings", "theme options: no control for the legacy row '" + id + "'; it is left out");
                 return null;
         }
     }
 
-    /// <summary>The sidebar layout cards (Classic · Library), drawn under the row's title. Subscribes to the layout signals, so a
-    /// change made on the sidebar itself shows here live; while the sidebar is being edited the cards say why they do not switch.</summary>
-    sealed class SidebarLayoutItem(bool wizard) : Component
+    /// <summary>The sidebar layout option (<see cref="ClassicStructure.Sidebar"/>): the preview cards (Classic · Library) under the row's title instead of the
+    /// generic text cards. Subscribes to the sidebar's layout signals, so a change made on the pane itself shows here live; while the sidebar is being edited the
+    /// cards say why they do not switch.</summary>
+    sealed class SidebarLayoutOption(GeneratedOptionRow g, bool wizard) : Component
     {
         public override Element Render()
         {
@@ -429,23 +395,14 @@ internal static partial class ClassicSettings
             _ = Sidebar.LayoutVersion.Value;
             bool editing = Sidebar.Editing.Value;
             var facts = SettingsFacts.Live;
-            var row = D(Tab.Appearance, "sidebarDesign");
-            return OptionCard(wizard, Loc.Get(row.TitleKey), row.DescriptionKey(facts) is { } key ? Loc.Get(key) : null,
-                SidebarLayoutCards(layout, editing), RowGlyph(Tab.Appearance, "sidebarDesign"), vertical: true);
+            return OptionCard(wizard, Loc.Get(g.Row.TitleKey), g.Row.DescriptionKey(facts) is { } key ? Loc.Get(key) : null,
+                SidebarLayoutCards(layout, editing), Icons.SplitView, vertical: true);
         }
     }
 
-    sealed class SidebarDensityItem : Component
-    {
-        public override Element Render()
-        {
-            var density = Sidebar.Density.Value;
-            var facts = SettingsFacts.Live;
-            var row = D(Tab.Appearance, "sidebarDensity");
-            return Item(Loc.Get(row.TitleKey), row.DescriptionKey(facts) is { } key ? Loc.Get(key) : null,
-                Embed.Comp(static () => new SidebarDensityPicker()) with { Key = "sidebar.density:" + (int)density }, icon: Icons.ViewList);
-        }
-    }
+    /// <summary>The width of an option's combo: the density keeps the narrow combo of the row it replaced.</summary>
+    static float ComboWidthOf(GeneratedOptionRow g)
+        => g.QualifiedId == ClassicStructure.LibraryDensityOptionId ? ClassicSettingsRules.ZoomComboWidth : ClassicSettingsRules.StageComboWidth;
 
     /// <summary>Reset layout · Edit sidebar · Reset everything: clickable rows that grey (with the row's reason) while the
     /// sidebar is being edited or has nothing to reset.</summary>
@@ -472,10 +429,11 @@ internal static partial class ClassicSettings
         SettingsRow row = g.Row;
         string title = Loc.Get(row.TitleKey);
         string? sub = row.DescriptionKey(facts) is { } key ? Loc.Get(key) : null;
-        string? icon = row.GlyphRole is { } glyph ? Glyph(glyph) : null;
+        string? icon = row.GlyphRole is { } glyph ? Glyph(glyph) : OptionGlyph(g.QualifiedId);
         bool enabled = row.Enabled(facts).Enabled;
 
         if (g.Pref is { } pref) return PrefItem(pref, row, title, sub, icon, wizard);
+        if (g.QualifiedId == ClassicStructure.SidebarOptionId) return Embed.Comp(() => new SidebarLayoutOption(g, wizard)) with { Key = "opt:sidebar-layout" };
 
         switch (row.Kind)
         {
@@ -515,6 +473,12 @@ internal static partial class ClassicSettings
                 return OptionCard(wizard, title, sub, Embed.Comp(() => new OptionSlider(g)) with { Key = "opt:slider:" + g.QualifiedId },
                     icon, isEnabled: enabled);
 
+            case SettingsRowKind.Action when row.Confirm is { } confirm:
+                // A destructive action (M8's "Clear all remembered sizes"): a button that asks first, as the row it replaced did.
+                return OptionCard(wizard, title, sub, Button.Standard(Loc.Get(confirm.PrimaryKey), () =>
+                    ConfirmThen(Loc.Get(confirm.TitleKey), Loc.Get(confirm.BodyKey), Loc.Get(confirm.PrimaryKey),
+                        () => { if (row.Writer.Run!()) Settings.Bump(); }), isEnabled: enabled), icon, isEnabled: enabled);
+
             case SettingsRowKind.Action:
                 return OptionCard(wizard, title, sub, null, icon, isEnabled: enabled, clickable: enabled, onClick: () =>
                 {
@@ -524,6 +488,20 @@ internal static partial class ClassicSettings
             default:   // a fact: information only
                 return OptionCard(wizard, title, sub, null, icon, isEnabled: enabled);
         }
+    }
+
+    /// <summary>The glyph of one of Classic's own options (a generated row carries no catalog glyph): row size for the density, the picture for hide track art,
+    /// and the sidebar options kept the icons of the rows they replaced.</summary>
+    static string? OptionGlyph(string qualifiedId)
+    {
+        if (qualifiedId == ClassicStructure.SidebarOptionId) return Icons.SplitView;
+        if (qualifiedId == ClassicStructure.LibraryDensityOptionId) return Icons.ViewList;
+        if (qualifiedId == ClassicDensity.QualifiedId) return Glyph("RowSize");
+        if (qualifiedId == ClassicStructure.HideTrackArtQualifiedId) return Glyph("Picture");
+        if (qualifiedId == ClassicStructure.PageLayoutQualifiedId) return Icons.DockLeft;
+        if (qualifiedId == ClassicStructure.RailUniformQualifiedId) return Icons.Pin;
+        if (qualifiedId == ClassicStructure.ClearRememberedSizesQualifiedId) return Icons.Delete;
+        return null;
     }
 
     static string[] ChoiceLabels(GeneratedOptionRow g)
@@ -537,6 +515,10 @@ internal static partial class ClassicSettings
     /// contract of a later PR), so the card carries the choice's name, wrapped to two lines and cut with an ellipsis.</summary>
     static Element OptionChoiceCard(GeneratedOptionRow g, int index, bool on)
     {
+        // The density's cards are miniature rows at the real spacing (the picture the old Settings row drew), not a word.
+        if (g.QualifiedId == ClassicDensity.QualifiedId) return DensityCard(index, on);
+        // The page layout's cards are the wireframes of the page system each choice selects (the picture the old Settings row drew).
+        if (g.QualifiedId == ClassicStructure.PageLayoutQualifiedId) return PageLayoutCard(index, on);
         Element label = Controls.PickerLabel(Loc.Get(g.ChoiceTitleKeys[index]), on) with
         {
             Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.WordEllipsis, MinWidth = 0f, Shrink = 1f,
@@ -597,7 +579,7 @@ internal static partial class ClassicSettings
             _ = ThemeHost.Options.EpochSignal.Value;
             int at = g.Live() is int live ? live : -1;
             UseEffect(() => _selected.SetIfChanged(at), DepKey.From(at));
-            return ComboBox.Create(ChoiceLabels(g), _selected, width: ClassicSettingsRules.StageComboWidth, onChange: i => g.Row.Writer.Choose!(i));
+            return ComboBox.Create(ChoiceLabels(g), _selected, width: ComboWidthOf(g), onChange: i => g.Row.Writer.Choose!(i));
         }
     }
 

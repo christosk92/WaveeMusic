@@ -225,17 +225,12 @@ internal static partial class ClassicSettings
 
     /// <summary>The miniature's row height and art edge are the REAL Modern ladder × the tested preview scale (N6).</summary>
     static Element DensityCard(int value, bool on)
-        => Controls.PickerTitled(
-            Controls.PickerCard(on, Controls.PickerTile, Controls.PickerDensityRows(
-                Track.TableRules.RowHeightFor(value, classic: false) * Track.TableRules.PreviewScale,
-                Track.TableRules.ArtSizeFor(value, classic: false) * Track.TableRules.PreviewScale, on)),
-            DensityLabel(value), on);
-
-    /// <summary>ch 30 N12, NOT ported: the Settings density write bumps the appearance epoch, so a mounted or parked track
-    /// list re-reads it. Called on every keyboard rove too, so an unchanged value writes nothing.</summary>
-    static void SetDensity(int i)
     {
-        if (D(Tab.Appearance, "rowDensity").Writer.Choose!(i)) Settings.Bump();
+        var rows = ClassicDensity.Rows((RowDensity)value);
+        return Controls.PickerTitled(
+            Controls.PickerCard(on, Controls.PickerTile, Controls.PickerDensityRows(
+                rows.ModernRow * ClassicDensity.PreviewScale, rows.ModernArt * ClassicDensity.PreviewScale, on)),
+            DensityLabel(value), on);
     }
 
     /// <summary>UI-native miniature rows, never screenshots: Modern = the art-led stacked row, Classic = three lanes + a
@@ -323,26 +318,13 @@ internal static partial class ClassicSettings
 
     // ══ 5. SIDEBAR (G-182; ch 25 W21 compact cards, ch 27 W2/W29 ②) ═════════════════════════════════════════════════
 
-    /// <summary>Default · Compact (design P.4).</summary>
-    sealed class SidebarDensityPicker : Component
-    {
-        static readonly Signal<int> s_index = new(0);
-        public override Element Render()
-        {
-            int index = (int)Sidebar.Density.Peek();
-            UseEffect(() => s_index.Value = index, DepKey.From(index));
-            return ComboBox.Create([Loc.Get("sidebar.density.default"), Loc.Get("sidebar.density.compact")], s_index, width: ClassicSettingsRules.ZoomComboWidth,
-                onChange: static i => D(Tab.Appearance, "sidebarDensity").Writer.Choose!(i));
-        }
-    }
-
-    /// <summary>The two layout cards (Classic · Library), applied at once; disabled while the sidebar is being edited
-    /// (design Q7). The setup wizard's Layout step mounts them through <see cref="ViewKeys.SettingsSidebarLayoutCards"/> (P4).</summary>
+    /// <summary>The two layout cards (Classic · Library), applied at once through the sidebar's verb (which stores the choice in the structure's option);
+    /// disabled while the sidebar is being edited (design Q7). The setup wizard's Theme step shows them through the options' generated row.</summary>
     static Element SidebarLayoutCards(SidebarLayoutId active, bool editing)
     {
         var strip = Controls.PickerStrip(2, (int)active,
             static (i, on) => SidebarLayoutCardFace((SidebarLayoutId)i, on),
-            editing ? static _ => { } : static i => D(Tab.Appearance, "sidebarDesign").Writer.Choose!(i));
+            editing ? static _ => { } : static i => Sidebar.SwitchLayout((SidebarLayoutId)i));
         if (!editing) return strip;
         // Q7: never a silent dead control — the cards say why they do not switch (the row's reason).
         return new BoxEl

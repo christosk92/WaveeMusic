@@ -274,7 +274,7 @@ public class PlatformSettingsTests
     public void Settings_AbsentKey_ReadsItsDeclaredDefault()
         => WithStore(new MemoryAppSettings(), static () =>
         {
-            Assert.Equal(1, Platform.Settings.Get(Platform.Keys.RowDensity));                 // Default, not Compact
+            Assert.Equal(Platform.Keys.MarqueeEnabled.Default, Platform.Settings.Get(Platform.Keys.MarqueeEnabled));
         });
 
     /// <summary>Every write bumps the epoch `Platform/Prefs.cs` (owner L, Wave 4) hangs its four preference epochs
@@ -412,8 +412,8 @@ public class PlatformSettingsTests
         Assert.Equal("library.artists.leftw", Platform.Keys.LibraryLeftW("artists").Name);
         Assert.Equal(280f, Platform.Keys.LibraryLeftW("artists").Default);      // artists is the one narrow default
         Assert.Equal(340f, Platform.Keys.LibraryLeftW("albums").Default);
-        Assert.Equal("sidebar.layout.id", Platform.Keys.SidebarLayoutId.Name);
-        Assert.Equal(0, Platform.Keys.SidebarLayoutId.Default);                 // 0 ⇒ Classic
+        Assert.Equal("sidebar.library.filter", Platform.Keys.SidebarLibraryFilter.Name);
+        Assert.Equal(0, Platform.Keys.SidebarLibraryFilter.Default);            // 0 ⇒ no chip
         Assert.Equal("npv.player.ipod.wheel", Platform.Keys.NpvOption("ipod", "wheel").Name);
     }
 

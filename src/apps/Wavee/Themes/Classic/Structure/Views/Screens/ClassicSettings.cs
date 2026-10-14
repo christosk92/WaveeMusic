@@ -35,13 +35,12 @@ namespace Wavee.Themes.Classic;
 /// <summary>Wavee Classic's Settings page.</summary>
 internal static partial class ClassicSettings
 {
-    /// <summary>Registers the Settings page and the three Settings surfaces the setup wizard shares with it.</summary>
+    /// <summary>Registers the Settings page and the two Settings surfaces the setup wizard shares with it.</summary>
     internal static void Register(ViewRegistryBuilder views)
     {
         views.Add(ViewKeys.SettingsPage, Template, "classic.screens.settings");
         views.Add(ViewKeys.SettingsThemePicker, ThemePickerTemplate, "classic.screens.settings.theme-picker");
         views.Add(ViewKeys.SettingsThemeOptions, ThemeOptionsTemplate, "classic.screens.settings.theme-options");
-        views.Add(ViewKeys.SettingsSidebarLayoutCards, SidebarLayoutCardsTemplate, "classic.screens.settings.sidebar-layout-cards");
     }
 
     /// <summary>The registered template of <see cref="ViewKeys.SettingsPage"/>.</summary>

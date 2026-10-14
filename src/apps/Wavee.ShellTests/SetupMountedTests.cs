@@ -61,7 +61,7 @@ public sealed class SetupMountedTests(ShellHost host)
         Session = session,
         Terms = new SetupTermsProps { Session = session, OpenPrivacy = static () => { }, Consent = Consent() },
         SignIn = new SetupSignInPageProps { Session = session, Host = signIn },
-        Layout = new SetupLayoutPageProps { Cards = static () => new BoxEl { Key = "test:layout-cards" } },
+        Theme = new SetupThemeProps { ThemePicker = static () => new BoxEl { Key = "test:theme-picker" }, ThemeOptions = static () => new BoxEl { Key = "test:theme-options" } },
         LocalPlayback = new SetupLocalPlaybackProps { Session = session, OpenSignature = static (_, _) => { }, RevealFolder = static _ => { } },
     };
 
@@ -94,11 +94,12 @@ public sealed class SetupMountedTests(ShellHost host)
                 Assert.True(harness.Contains("setup:frame:" + (int)Setup.WizardPage.Terms));
                 Assert.False(harness.Contains("setup:back"), "Terms has no Back");
 
-                session.Advance(Setup.WizardPage.Layout);
+                session.Advance(Setup.WizardPage.Theme);
                 harness.RunFrames(60);
-                Assert.True(harness.Contains("setup:page:layout"));
-                Assert.True(harness.Contains("test:layout-cards"));
-                Assert.True(harness.Contains("setup:back"), "the Layout page shows Back");
+                Assert.True(harness.Contains("setup:page:theme"));
+                Assert.True(harness.Contains("test:theme-picker"));
+                Assert.True(harness.Contains("test:theme-options"));
+                Assert.True(harness.Contains("setup:back"), "the Theme page shows Back");
 
                 session.Advance(Setup.WizardPage.LocalPlayback);
                 harness.RunFrames(60);

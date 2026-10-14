@@ -1,8 +1,8 @@
 // ── Theming/Contracts/ViewKeys.Screens.cs — the Screens family of published view keys (themes plan 6.0, T11b) ────────────────────
 //
-// T11b publishes the Settings page (`Pages.Settings`) and the three Settings surfaces the setup wizard shares with it: the theme picker
-// (`Settings.ThemePicker`), the active theme's options (`Settings.ThemeOptions`, the expander on the page, the plate rows in the wizard) and the
-// sidebar layout cards (`Settings.SidebarLayoutCards`).
+// T11b publishes the Settings page (`Pages.Settings`) and the two Settings surfaces the setup wizard shares with it: the theme picker
+// (`Settings.ThemePicker`) and the active theme's options (`Settings.ThemeOptions`, the expander on the page, the plate rows in the wizard).
+// (The sidebar layout cards were a third until M7a made the layout a generated option of Classic's.)
 //
 // What stays core: the document (`SettingsDoc`: tabs, sections, rows, their kinds, titles, values, enablement and reasons), every verb
 // (`SettingsVerbs`, the writers: persistence, live apply, DSP pushes, OS registrations, file I/O off the render path), the facts the rows ask
@@ -27,8 +27,4 @@ public static partial class ViewKeys
     /// <summary>The active theme's options (`SettingsThemeOptions.Current`): the "‹Theme› options" expander on the Settings page, the plate rows
     /// under their group labels in the wizard. Props: <see cref="SettingsThemeOptionsProps"/>.</summary>
     public static readonly ViewKey<SettingsThemeOptionsProps> SettingsThemeOptions = new("Settings.ThemeOptions");
-
-    /// <summary>The sidebar layout cards (Classic · Library), applied at once; the setup wizard's Layout step mounts them until the sidebar layout is
-    /// a generated Cards option (M7a). Props: <see cref="SettingsSidebarLayoutProps"/>.</summary>
-    public static readonly ViewKey<SettingsSidebarLayoutProps> SettingsSidebarLayoutCards = new("Settings.SidebarLayoutCards");
 }

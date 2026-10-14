@@ -3,7 +3,7 @@
 // From `Entities/Queue.UI.cs`: the rail's queue panel. The core host (`Queue.RailPanelHost`) keeps what reads and decides: the
 // subscriptions, the section split (`QueueProps`), the page counters, the realized slots, the reorder lane (the drag, the keyboard
 // reorder, the foreign-drop rule), the row's drag payload and context menu, and the verbs. It hands this view the queue, the verbs, the lane
-// and the two settings it read (the row style, hide track art); the view draws.
+// and the setting it read (the row style); the view draws, and reads the hide-track-art option itself (M4).
 //
 //   panel  Pills · ScrollEl[ PlayingFrom · NowPlayingCard · lane[ headers · rows · Show more ] · vacancy ]
 //
@@ -120,7 +120,7 @@ internal sealed class ClassicQueuePanel : Component
         _clear ??= props.Verbs.Clear;
         UseSignalEffect(_closeSwipeOnScroll);
         bool hairline = props.HairlineRows;
-        bool art = !hairline && !props.HideTrackArt;
+        bool art = !hairline && !ClassicOptions.HideTrackArt();
         _rowExtent = ClassicQueueRules.Extent(hairline, ClassicQueueRules.QueueArt);
         lane.SetMetrics(_rowExtent, _extentOf ??= ExtentOf);
         string cover = queue.NowPlaying.IsNone ? "" : lane.TextOf(queue.NowPlaying).Art ?? "";

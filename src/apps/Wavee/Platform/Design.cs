@@ -88,8 +88,8 @@ public static partial class Design
         public const float ArtThumb = 40f, ArtNowPlaying = 64f, ArtPlayerBar = 48f;
 
         /// <summary>Detail-page left-rail widths (the shared playlist/album/single detail surface; liked is
-        /// single-column, so it has no rail). `Platform.Keys.DetailAlbumRailWidth` / `DetailPlaylistRailWidth` carry the
-        /// same two numbers as persisted DEFAULTS — a convergence test pins the pair, which is the
+        /// single-column, so it has no rail). `DetailRailPrefs.WidthKey` (the remembered-size state of the album and
+        /// playlist rails) carries the same two numbers as DEFAULTS — a convergence test pins the pair, which is the
         /// `ZoomAutoPolicy.DesignW` precedent restated for the rails.</summary>
         public const float RailAlbum = 280f, RailPlaylist = 240f;
 

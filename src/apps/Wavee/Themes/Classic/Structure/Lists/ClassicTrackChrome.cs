@@ -421,6 +421,13 @@ internal static class ClassicTrackChrome
 
         public Element Chevron() => Icon(Icons.ChevronDown, ClassicTrackChromeLayout.ChevronGlyph, Tok.TextTertiary);
 
+        // The row-size control (M3): the style's density option.
+        public string DensityLabel() => ClassicTrackDensity.CurrentLabel();
+
+        public Element DensityPanel() => ClassicTrackDensity.Panel();
+
+        public IReadOnlyList<MenuFlyoutItem> DensityItems() => ClassicTrackDensity.Items();
+
         public Element Trail(Element[] parts) => new BoxEl
         {
             Direction = 0, Gap = ClassicTrackChromeLayout.TrailingGap, AlignItems = FlexAlign.Center, Children = parts,

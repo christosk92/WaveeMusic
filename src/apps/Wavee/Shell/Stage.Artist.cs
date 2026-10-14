@@ -174,7 +174,7 @@ public static partial class Stage
             int n = Math.Min(slots.Length, ArtistRules.PopularCount);
             if (n == 0) return new StageArtistPopularFacts(epoch, version, false, Array.Empty<StageArtistPopularRow>());
 
-            bool art = !Prefs.Appearance.TrackArtworkHidden();
+            bool art = ShellPolicy.Tracked.Lists.TrackArtwork;
             var rows = new List<StageArtistPopularRow>(n);
             for (int i = 0; i < n; i++)
             {

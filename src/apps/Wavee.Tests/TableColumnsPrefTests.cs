@@ -29,7 +29,7 @@ public sealed class TableColumnsPrefTests : IDisposable
     public void Switching_tempo_persists_then_bumps_the_appearance_epoch_once()
     {
         int appearance = Prefs.Appearance.Epoch.Peek();
-        int detail = Prefs.DetailHero.Epoch.Peek();
+        int rails = DetailRailPrefs.Epoch.Peek();
 
         TableColumnsPref.SetTempo(true);
 
@@ -39,7 +39,7 @@ public sealed class TableColumnsPrefTests : IDisposable
         Assert.False(TableColumnsPref.Plays());                                  // the other column is untouched
         Assert.False(_store.WasWritten(Platform.Keys.PlaysColumn));
         Assert.Equal(appearance + 1, Prefs.Appearance.Epoch.Peek());
-        Assert.Equal(detail, Prefs.DetailHero.Epoch.Peek());                     // not the detail-layout epoch
+        Assert.Equal(rails, DetailRailPrefs.Epoch.Peek());                       // not the rail epoch
     }
 
     [Fact]

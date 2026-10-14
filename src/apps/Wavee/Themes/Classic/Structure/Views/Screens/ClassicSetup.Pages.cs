@@ -1,9 +1,10 @@
 // ── Themes/Classic/Structure/Views/Screens/ClassicSetup.Pages.cs — Classic's wizard pages (themes plan 6.1, T11c) ────────────────
 //
-// From `Screens\Setup.UI.cs` (TermsPage, CrashConsentCard, LayoutPage, LocalPlaybackPage, DownloadCard) and `Setup.UI.Theme.cs` (ThemePage). The Sign in page is `ClassicSetup.SignIn.cs`.
+// From `Screens\Setup.UI.cs` (TermsPage, CrashConsentCard, LocalPlaybackPage, DownloadCard) and `Setup.UI.Theme.cs` (ThemePage). The Sign in page is `ClassicSetup.SignIn.cs`.
 //
-// The Theme step is the Layout page's twin on purpose: the same frame (`WizardPage.Layout`, so the hero, the step count and the Back arrow are unchanged), the same body vocabulary, so
-// replacing one with the other moves nothing on the plate. A theme pick there is a theme switch under the plate: the picker and the options are the settings' builders the props carry.
+// The Theme step is the wizard's second page (M7a: it replaced the Layout page, whose two sidebar cards are now the first row of Classic's options): the Layout page's frame
+// (the hero, the step count and the Back arrow are unchanged) and body vocabulary. A theme pick there is a theme switch under the plate: the picker and
+// the options are the settings' builders the props carry.
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;
@@ -32,21 +33,7 @@ internal static partial class ClassicSetup
             props.ThemePicker(),
         };
         if (props.ThemeOptions() is { } options) kids.Add(options);
-        return WizardFrame(Setup.WizardPage.Layout, Loc.Get(Strings.Setup.Theme.Title), SetupText.Stack(kids.ToArray()));
-    }
-
-    // ── page · Layout ───────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>Pick a sidebar layout (design C.2 entry 5): the two Settings cards, applied at once.</summary>
-    private sealed class LayoutPage(SetupLayoutPageProps props) : Component
-    {
-        public override Element Render()
-        {
-            var body = SetupText.Stack(
-                SetupText.Body(Loc.Get("setup.layout.body")),
-                props.Cards());
-            return WizardFrame(Setup.WizardPage.Layout, Loc.Get("setup.layout.title"), body);
-        }
+        return WizardFrame(Setup.WizardPage.Theme, Loc.Get(Strings.Setup.Theme.Title), SetupText.Stack(kids.ToArray()));
     }
 
     // ── page 0 · Terms ──────────────────────────────────────────────────────────────────────────────────────────────

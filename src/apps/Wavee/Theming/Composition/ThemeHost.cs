@@ -46,6 +46,7 @@ public static class ThemeHost
     private static readonly Signal<ThemeComposition> s_current = new(null!);
     private static readonly Signal<ThemeFacts> s_facts = new(ThemeFacts.Default);
     private static readonly Signal<ThemePolicies> s_policies = new(ThemePolicies.Default);
+    private static readonly Signal<StyleMetrics> s_metrics = new(StyleMetrics.Unset);
     private static readonly Signal<long> s_rootEpoch = new(0L);
     private static readonly OptionStore s_noOptions = new();
 
@@ -86,6 +87,10 @@ public static class ThemeHost
     /// state machine that reads only its policy is not re-run when another fact (the window tier) moves. Always a bundle the
     /// shell can run on: <see cref="ThemePolicies.Default"/> before <see cref="Install"/> and in place of an invalid one.</summary>
     public static IReadSignal<ThemePolicies> Policies => s_policies;
+
+    /// <summary>The style's metrics (<see cref="ThemeFacts.Metrics"/>) on a signal of their own, for the same reason as <see cref="Policies"/>: a core model that sizes
+    /// its rows from them (the track table, M3) is not re-run when the window tier moves.</summary>
+    public static IReadSignal<StyleMetrics> Metrics => s_metrics;
 
     /// <summary>The option values of the active composition, as the layers' functions see them.</summary>
     public static ThemeOptionValues Values => s_values;
@@ -188,6 +193,7 @@ public static class ThemeHost
         s_current.Value = null!;
         s_facts.Value = ThemeFacts.Default;
         s_policies.Value = ThemePolicies.Default;
+        s_metrics.Value = StyleMetrics.Unset;
         s_rootEpoch.Value = 0L;
         s_pendingSwitch.Value = null;
         s_heldNavigation = null;
@@ -385,6 +391,7 @@ public static class ThemeHost
         }
         s_facts.Value = facts;
         s_policies.Value = facts.Policies;
+        s_metrics.Value = facts.Metrics;
     }
 
     /// <summary>Hands the composition's definition to the engine when it is not the one already installed. For a plain
@@ -422,6 +429,16 @@ public static class ThemeHost
         s_pendingSwitch.Value = null;
         Log.Warn("theme", "switching to theme '" + id + "' failed; the current theme was kept", error);
         Notify.Say(Loc.Get(Strings.Settings.ThemePicker.SwitchFailed), FluentGpu.Controls.InfoBarSeverity.Error, dedupeKey: "theme.switch.failed");
+    }
+
+    /// <summary>A core verb (a pane menu row, a migration, an undo) asks the ACTIVE theme to set one of its options by plain id, without knowing
+    /// which layer declares it or which theme is active (<see cref="NavPaneOptionIds"/> are the ids the sidebar asks for). A theme that declares no such
+    /// option ignores the request (logged); a value the option refuses is logged and changes nothing. A no-op before <see cref="Install"/>.</summary>
+    public static void Request(string optionId, object value)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(optionId);
+        ArgumentNullException.ThrowIfNull(value);
+        OnOptionRequest(optionId, value);
     }
 
     /// <summary>A view asked for an option change through <c>ctx.OptionRequests</c>: the request names the option by its id.</summary>

@@ -26,6 +26,18 @@ public enum NavPaneMode : byte
     None = 3,
 }
 
+/// <summary>The ids of the structure options the core sidebar asks for BY NAME (a verb of the pane's menu, the migration, the undo
+/// ring): a structure that offers the choice declares an option with that id and publishes its value through <see cref="NavPanePolicy.Layout"/> /
+/// <see cref="NavPanePolicy.Density"/>; a structure that does not simply ignores the request.</summary>
+public static class NavPaneOptionIds
+{
+    /// <summary>The sidebar layout choice (a <see cref="SidebarLayoutId"/>).</summary>
+    public const string Layout = "sidebar";
+
+    /// <summary>The entity-row density choice (a <see cref="SidebarDensity"/>).</summary>
+    public const string Density = "libraryDensity";
+}
+
 /// <summary>The navigation pane's policy.</summary>
 /// <param name="ContentFloorW">The content width the docked pane leaves: the expanded pane never presents wider than the
 /// window minus this.</param>
@@ -41,11 +53,15 @@ public enum NavPaneMode : byte
 /// <param name="Seam">The seam strip's width where the pane is docked and resizable.</param>
 /// <param name="RailWidth">The collapsed rail's width: what a compact pane presents, what an overlay leaves visible and the
 /// floor of the seam drag (T5f: the row ladder that used to answer it from core is the structure's).</param>
+/// <param name="Layout">Which of the two sidebar layouts the structure shows (M7a: the structure's choice, `structure.sidebar` in
+/// Classic). The core sidebar state machine (the layout document, the undo ring, the menus) follows it: <c>Sidebar.FollowDesign</c>.</param>
+/// <param name="Density">The entity-row density the structure shows (M7a: `structure.libraryDensity` in Classic).</param>
 public sealed record NavPanePolicy(
     float ContentFloorW,
     float MinWidth, float MaxWidth, float DefaultWidth,
     float CollapseApproach, float CollapseHysteresis,
-    NavPaneMode NarrowMode, NavPaneMode TinyMode, bool Resizable, float Seam, float RailWidth)
+    NavPaneMode NarrowMode, NavPaneMode TinyMode, bool Resizable, float Seam, float RailWidth,
+    SidebarLayoutId Layout = SidebarLayoutId.Classic, SidebarDensity Density = SidebarDensity.Default)
 {
     /// <summary>The shell before themes: a 480 content floor, an expanded
     /// pane of 180-460 (320 fresh), a drag collapse 64 below the minimum with a 24 hold, a forced rail in Narrow and the
@@ -109,6 +125,8 @@ public sealed record NavPanePolicy(
         if (DefaultWidth < MinWidth || DefaultWidth > MaxWidth) problems.Add("NavPane.DefaultWidth must lie inside [MinWidth, MaxWidth]");
         if (!Enum.IsDefined(NarrowMode)) problems.Add("NavPane.NarrowMode is not a NavPaneMode");
         if (!Enum.IsDefined(TinyMode)) problems.Add("NavPane.TinyMode is not a NavPaneMode");
+        if (!Enum.IsDefined(Layout)) problems.Add("NavPane.Layout is not a SidebarLayoutId");
+        if (!Enum.IsDefined(Density)) problems.Add("NavPane.Density is not a SidebarDensity");
         return problems;
     }
 }

@@ -1,5 +1,5 @@
 // ── Platform/Prefs.cs ──────────────────────────────────────────────────────────────────────────────────────────────
-// the four cross-surface preference epochs: AppearancePrefs, LyricsPrefs, DetailHeroPrefs, NpvPlayerPrefs
+// the cross-surface preference epochs: AppearancePrefs, LyricsPrefs, NpvPlayerPrefs
 //
 // Role: CORE
 // Owner: L
@@ -25,7 +25,7 @@
 //
 // `Platform.SettingsChanged` already bumps on EVERY write, and a surface could subscribe to that instead. It would also
 // re-render every mounted lyrics view when the user changed the audio output device. The epochs are the fan-out
-// boundary: one per group of surfaces that genuinely move together, so a row-density change re-reads the track lists
+// boundary: one per group of surfaces that genuinely move together, so a track-list-style change re-reads the track lists
 // and nothing else. A NEW epoch is a design decision, not a convenience — it asserts that a new independent set of
 // surfaces exists.
 //
@@ -48,7 +48,7 @@ public static partial class Prefs
     /// <summary>The cross-surface APPEARANCE epoch. Settings writes bump it once so mounted and KeepAlive-parked
     /// player/detail/artist surfaces re-read their persisted appearance flags on the same frame.
     ///
-    /// <para>WHAT BUMPS IT: marquee text, colour washes, row density, hide-track-artwork, track list style, the animated
+    /// <para>WHAT BUMPS IT: marquee text, track list style, the animated
     /// lyrics backdrop, the liked-cover treatment, and the daylist clock. WHAT DOES NOT: the THEME (the engine's own epoch re-themes every
     /// mounted render in place) and the ZOOM (the host folds it into the window scale, which relayouts everything
     /// anyway).</para></summary>
@@ -61,28 +61,11 @@ public static partial class Prefs
         /// store has it — a bump before the write makes every reader re-read the old value.</summary>
         public static void Bump() => Epoch.Value = Epoch.Peek() + 1;
 
-        /// <summary>Reactive read of the app-wide track-cell ARTWORK policy (Settings ▸ Lists ▸ "Always hide track
-        /// artwork"). Every track surface, the drag insertion preview and the row-density miniature read it.</summary>
-        public static bool TrackArtworkHidden()
-        {
-            _ = Epoch.Value;
-            return Platform.Settings.Get(Platform.Keys.HideTrackArtwork);
-        }
-
         /// <summary>Reactive read of the marquee policy: may an overflowing title scroll under the pointer at all?</summary>
         public static bool Marquee()
         {
             _ = Epoch.Value;
             return Platform.Settings.Get(Platform.Keys.MarqueeEnabled);
-        }
-
-        /// <summary>Reactive read of the row-density rung (0 Compact · 1 Default · 2 Cozy · 3 Comfortable), clamped.
-        /// The LADDERS themselves are owner M's (`Entities/Track.cs`'s table rules); this is only the persisted
-        /// choice.</summary>
-        public static int RowDensity()
-        {
-            _ = Epoch.Value;
-            return Clamp(Platform.Settings.Get(Platform.Keys.RowDensity), 4);
         }
 
         /// <summary>Reactive read of the track-list SKIN (0 Modern · 1 Classic), clamped.</summary>
@@ -256,43 +239,7 @@ public static partial class Prefs
         }
     }
 
-    // ══ 3. THE DETAIL PAGE'S LAYOUT ══════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The cross-surface DETAIL-LAYOUT epoch: bumped when Settings ▸ Lists ▸ "Track page layout" (or the rail
-    /// uniformity switch, or a rail-width reset) changes, so any mounted — including KeepAlive-parked — detail frame
-    /// re-resolves rail-vs-hero LIVE rather than on its next remount.</summary>
-    public static class DetailHero
-    {
-        /// <inheritdoc cref="DetailHero"/>
-        public static readonly Signal<int> Epoch = new(0);
-        /// <inheritdoc cref="Appearance.Bump"/>
-        public static void Bump() => Epoch.Value = Epoch.Peek() + 1;
-
-        /// <summary>The two page layouts.</summary>
-        public const int Automatic = 0, Hero = 1;
-
-        /// <summary>Reactive read of the page-layout choice, clamped.</summary>
-        public static int PageLayout()
-        {
-            _ = Epoch.Value;
-            return Clamp(Platform.Settings.Get(Platform.Keys.DetailPageLayout), 2);
-        }
-
-        /// <summary>Reactive read of "keep the left rail the same size across kinds". Only meaningful in
-        /// <see cref="Automatic"/>; the Hero layout has no rail to size.</summary>
-        public static bool RailUniform()
-        {
-            _ = Epoch.Value;
-            return Platform.Settings.Get(Platform.Keys.DetailRailUniform);
-        }
-
-        /// <summary>The ONE writer for every row on this epoch.</summary>
-        public static void Set<T>(SettingKey<T> key, T value)
-        {
-            Platform.Settings.Set(key, value);
-            Bump();
-        }
-    }
+    // ══ 3. (the detail page's layout and rails are the structure's: `DetailPolicy`, `DetailRailPrefs`) ══════════════
 
     // ══ 4-5. the now-playing player and the player bar live in the named partial `Prefs.Player.cs` ═════════════════
 

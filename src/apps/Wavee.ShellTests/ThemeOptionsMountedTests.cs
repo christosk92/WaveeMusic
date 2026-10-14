@@ -96,12 +96,14 @@ public sealed class ThemeOptionsMountedTests(ShellHost host)
             Assert.Equal(4, shell.FindPrefix("opt:group:").Count);
             foreach (string id in new[]
             {
-                "sidebarDesign", "sidebarDensity", "sidebarReset", "sidebarCustomize", "sidebarResetEverything",
-                "trackListStyle", "rowDensity", "hideTrackArtwork", "pageLayout", "railUniform", "railReset",
+                "sidebarReset", "sidebarCustomize", "sidebarResetEverything",
+                "trackListStyle",
             })
                 Assert.False(shell.Find("legacy:" + id).IsNull, "legacy row '" + id + "' is mounted");
-            Assert.True(shell.Find("legacy:colorWashes").IsNull, "the washes are a generated option since M6");
-            Assert.NotEmpty(shell.FindPrefix("opt:structure.surfaces"));
+            foreach (string id in new[] { "structure.sidebar", "structure.libraryDensity", "structure.hideTrackArt", "structure.surfaces", "structure.pageLayout", "structure.railUniform", "structure.clearRememberedSizes", "style.density" })   // M7a, M4, M6, M8 and M3: generated rows, no legacy row left
+                Assert.False(shell.Find("opt:" + id).IsNull, "generated row '" + id + "' is mounted");
+            foreach (string id in new[] { "colorWashes", "rowDensity", "hideTrackArtwork", "sidebarDesign", "sidebarDensity", "pageLayout", "railUniform", "railReset" })
+                Assert.True(shell.Find("legacy:" + id).IsNull, "'" + id + "' is a generated option now");
         });
 
     [Fact]
@@ -295,13 +297,13 @@ public sealed class ThemeOptionsMountedTests(ShellHost host)
     public void The_wizard_theme_page_is_the_picker_and_the_options_on_the_plate_frame()
         => host.Run(() =>
         {
-            using var shell = Shell.Headless.Mount(static () => Setup.ThemeStep(), 640f, 700f);
+            using var shell = Shell.Headless.Mount(static () => Slots.View(ViewKeys.SetupTheme, Setup.ThemeProps) with { Key = "setup:page:theme" }, 640f, 700f);
             shell.RunFrames(20);
 
-            Assert.False(shell.Find("setup:frame:" + (int)Setup.WizardPage.Layout).IsNull);   // the Layout page's twin frame
+            Assert.False(shell.Find("setup:frame:" + (int)Setup.WizardPage.Theme).IsNull);   // the Layout page's frame, kept
             Assert.Single(shell.FindPrefix("settings:theme:card:"));
-            Assert.False(shell.Find("legacy:sidebarDesign").IsNull);                          // what the Layout step shows today
-            Assert.True(shell.Find("legacy:rowDensity").IsNull);                              // not a first-run decision
+            Assert.False(shell.Find("opt:structure.sidebar").IsNull);                         // the layout cards: what the Layout step showed, now Classic's first option
+            Assert.True(shell.Find("legacy:trackListStyle").IsNull);                          // a legacy row that is not a first-run decision
             ShellHost.AssertNoNetwork();
         });
 }

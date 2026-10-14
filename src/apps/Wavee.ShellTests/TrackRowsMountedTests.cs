@@ -36,8 +36,8 @@ public sealed class TrackRowsMountedTests(ShellHost host)
                 Assert.NotEmpty(shell.FindPrefix(Track.CellKey.Num));
                 Assert.NotEmpty(shell.FindPrefix(Track.CellKey.Title));
 
-                int density = Prefs.Appearance.RowDensity();
-                float expected = Track.TableRules.RowHeightFor(density, rowStyle == 1);
+                var rows = Track.RowMetrics.Rows();   // the style's density
+                float expected = rowStyle == 1 ? rows.ClassicRow : rows.ModernRow;
                 var row = shell.FindPrefix("row").First(r => r.Key == "row").Node;
                 RectF bounds = shell.Host.Scene.Bounds(row);
                 Assert.InRange(bounds.H, expected - 1f, expected + 1f);

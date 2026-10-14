@@ -448,7 +448,6 @@ public static partial class Queue
                 Verbs = Verbs,
                 Player = PlayerVerbs.Default,
                 HairlineRows = Prefs.Appearance.TrackRowStyle() == 1,
-                HideTrackArt = Prefs.Appearance.TrackArtworkHidden(),
                 RepeatOn = Model.Repeat != RepeatMode.Off,
                 RepeatTrack = Model.Repeat == RepeatMode.Track,
                 OpenPlayingFrom = openPlayingFrom,
@@ -529,7 +528,6 @@ public static partial class Queue
                 Queue = Model,
                 Lane = this,
                 Verbs = Verbs,
-                HideTrackArt = Prefs.Appearance.TrackArtworkHidden(),
             });
         }
     }

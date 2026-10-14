@@ -2314,9 +2314,6 @@
       "resetEverything": "Sidebar reset",
       "settingsHidden": "Settings hidden. It stays in the profile menu"
     },
-    "palette": {
-      "useLayout": "Use {layout} layout"
-    },
     "active": "Active",
     "pinned": "Pinned",
     "yourLibrary": "Your Library",
@@ -2675,10 +2672,6 @@
     "theme": {
       "title": "Choose your theme",
       "body": "A theme changes how every page, the player and navigation look. You can switch any time in Settings."
-    },
-    "layout": {
-      "title": "Choose your sidebar",
-      "body": "Classic shows sections you can arrange. Library is one list with filters. You can switch any time in Settings."
     },
     "next": "Next",
     "stepOf": "Step {n} of {total}",

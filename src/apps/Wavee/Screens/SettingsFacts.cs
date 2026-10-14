@@ -49,15 +49,6 @@ public interface ISettingsFacts
     /// <summary>The attached-videos roster store exists.</summary>
     bool VideoOverridesPresent { get; }
 
-    /// <summary>The track page layout (<see cref="Prefs.DetailHero"/>'s Automatic / Hero).</summary>
-    int PageLayout { get; }
-
-    /// <summary>"Keep left-rail same size" is on.</summary>
-    bool RailUniform { get; }
-
-    /// <summary>Some per-scope rail size differs from its authored default.</summary>
-    bool RailCustomized { get; }
-
     /// <summary>The sidebar is in Edit mode (its layout verbs refuse and say so).</summary>
     bool SidebarEditing { get; }
 
@@ -94,9 +85,6 @@ public sealed class LiveSettingsFacts : ISettingsFacts
     public bool EqualizerEnabled => Platform.Settings.Get(Platform.Keys.EqualizerEnabled);
     public bool CrossfadeEnabled => Platform.Settings.Get(Platform.Keys.CrossfadeEnabled);
     public bool VideoOverridesPresent => Video.Overrides.Present;
-    public int PageLayout => Prefs.Clamp(Platform.Settings.Get(Platform.Keys.DetailPageLayout), 2);
-    public bool RailUniform => Platform.Settings.Get(Platform.Keys.DetailRailUniform);
-    public bool RailCustomized => Settings.HasCustomizedRail();
     public bool SidebarEditing => Sidebar.Editing.Value;
     public bool SidebarModified => SidebarLayoutRules.IsModified(Sidebar.State.Of(Sidebar.Layout.Value));
     public bool AudioCacheAvailable => Spotify.Audio.DiskCache.Shared is not null;

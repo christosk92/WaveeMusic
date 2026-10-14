@@ -31,8 +31,8 @@ public sealed record SetupWizardProps
     /// <summary>The Sign in page's props.</summary>
     public required SetupSignInPageProps SignIn { get; init; }
 
-    /// <summary>The Layout page's props (today's second page; the Theme step replaces it with the sidebar layout's move into Classic's options).</summary>
-    public required SetupLayoutPageProps Layout { get; init; }
+    /// <summary>The Theme page's props (the wizard's second page, on the frame of <c>WizardPage.Theme</c>).</summary>
+    public required SetupThemeProps Theme { get; init; }
 
     /// <summary>The Local playback page's props.</summary>
     public required SetupLocalPlaybackProps LocalPlayback { get; init; }
@@ -56,13 +56,6 @@ public sealed record SetupTermsProps
 /// <param name="Seed">The index the card opens on (read once at mount: the stored mode, EFFECTIVE for a build that cannot send).</param>
 /// <param name="Set">Writes the choice the instant it changes (never waits for Continue).</param>
 public sealed record SetupConsent(int Choices, Func<int> Seed, Action<int> Set);
-
-/// <summary>The props of the wizard's Layout page (not a key: the page is drawn by <see cref="ViewKeys.SetupWizard"/>'s template).</summary>
-public sealed record SetupLayoutPageProps
-{
-    /// <summary>The two sidebar layout cards (core: the settings builder). Called from inside the page's render, so the page subscribes to the layout.</summary>
-    public required Func<Element> Cards { get; init; }
-}
 
 /// <summary>The props of <see cref="ViewKeys.SetupSignIn"/>.</summary>
 public sealed record SetupSignInPageProps

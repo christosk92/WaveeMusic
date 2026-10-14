@@ -38,7 +38,7 @@ public static partial class Shell
 
     public enum PaletteKind : byte { Navigate, Playback, Settings, Registry, CatalogSearch, Library, ThemeOption }
     public enum PalettePlaybackVerb : byte { PlayPause, Next, Previous, Shuffle, Repeat }
-    public enum PaletteSettingsVerb : byte { ToggleTheme, ToggleCrossfade, ZoomIn, ZoomOut, ZoomReset, NpvTogglePresentation, NpvNextStyle, HomeFollowingOn, HomeFollowingOff, EditSidebar, SidebarClassic, SidebarLibrary }
+    public enum PaletteSettingsVerb : byte { ToggleTheme, ToggleCrossfade, ZoomIn, ZoomOut, ZoomReset, NpvTogglePresentation, NpvNextStyle, HomeFollowingOn, HomeFollowingOff, EditSidebar }
 
     /// <summary>"New folder" lives here because the only other way to reach it is a right-click on a sidebar row — and
     /// a pane with no folders yet has no such row.</summary>
@@ -99,8 +99,6 @@ public static partial class Shell
             SetRow("settings.npvPresentation", Loc.Get(Strings.Player.PresentationToggle), Icons.Picture, PaletteSettingsVerb.NpvTogglePresentation),
             SetRow("settings.npvNextStyle", Loc.Get(Strings.Player.PlayerStyleNext), Icons.Album, PaletteSettingsVerb.NpvNextStyle),
             SetRow("sidebar.edit", Loc.Get("sidebar.menu.edit"), Icons.Edit, PaletteSettingsVerb.EditSidebar),
-            SetRow("sidebar.classic", Loc.Format("sidebar.palette.useLayout", ("layout", Loc.Get("sidebar.layoutName.classic"))), Icons.List, PaletteSettingsVerb.SidebarClassic),
-            SetRow("sidebar.library", Loc.Format("sidebar.palette.useLayout", ("layout", Loc.Get("sidebar.layoutName.library"))), Icons.Library, PaletteSettingsVerb.SidebarLibrary),
             LibRow("library.newPlaylist", Loc.Get(Strings.Detail.NewPlaylist), Icons.Add, PaletteLibraryVerb.NewPlaylist),
             LibRow("library.newFolder", Loc.Get(Strings.Sidebar.CreateFolder), Icons.Folder, PaletteLibraryVerb.NewFolder),
             // Home C1 (facet history + deep link, plan "Palette commands"): the four facet chip ids are the ones the
@@ -325,16 +323,6 @@ public static partial class Shell
                         break;
                     case PaletteSettingsVerb.EditSidebar:
                         Sidebar.EnterEdit();
-                        break;
-                    case PaletteSettingsVerb.SidebarClassic:
-                    case PaletteSettingsVerb.SidebarLibrary:
-                        // Q7: a layout switch is refused while editing; the palette says why instead of doing nothing.
-                        if (Sidebar.Editing.Peek())
-                        {
-                            Notify.Say(Loc.Get("sidebar.pane.finishEditing"), InfoBarSeverity.Informational, dedupeKey: "sidebar.pane.finish-editing");
-                            break;
-                        }
-                        Sidebar.SwitchLayout(e.SettingsVerb == PaletteSettingsVerb.SidebarLibrary ? SidebarLayoutId.Library : SidebarLayoutId.Classic);
                         break;
                 }
                 break;

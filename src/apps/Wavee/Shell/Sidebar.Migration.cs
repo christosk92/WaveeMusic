@@ -238,7 +238,8 @@ public static class SidebarMigrationV2
 }
 
 /// <summary>The migration's IO half, run by <see cref="Sidebar.Boot"/> before anything else loads. The legacy keys are READ
-/// here and nowhere else, and never written again; <c>sidebar-layout.json</c> is left on disk untouched.</summary>
+/// here and nowhere else, and never written again; <c>sidebar-layout.json</c> is left on disk untouched. The layout and the density it
+/// produces go to the structure's options (<see cref="Theming.ThemeHost.Request"/>).</summary>
 internal static class SidebarMigrationHost
 {
     // The legacy keys exist only here (Platform.Keys no longer declares them).
@@ -276,10 +277,12 @@ internal static class SidebarMigrationHost
             return;
         }
 
-        settings.Set(Platform.Keys.SidebarLayoutId, (int)r.Layout);
+        // The layout and the density are the structure's options now (M7a): the migration hands them to the active theme (ThemeBootstrap already ran for this
+        // profile, so a legacy key written here would never be read).
+        Theming.ThemeHost.Request(Theming.NavPaneOptionIds.Layout, r.Layout);
+        Theming.ThemeHost.Request(Theming.NavPaneOptionIds.Density, r.Density);
         settings.Set(Platform.Keys.SidebarPaneWidth, r.Width);
         settings.Set(Platform.Keys.SidebarPaneUserCollapsed, r.UserCollapsed);
-        settings.Set(Platform.Keys.SidebarPaneDensity, (int)r.Density);
         settings.Set(Platform.Keys.SidebarLibraryFilter, (int)r.Filter);
         settings.Set(Platform.Keys.SidebarMigrationDropped, string.Join(",", r.Dropped));
         settings.Set(Platform.Keys.SidebarBootstrapVersion, 2);

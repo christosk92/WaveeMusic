@@ -202,11 +202,7 @@ public static partial class Setup
                 Consent = new SetupConsent(Crash.ConsentPolicy.Offered(canSend).Count, () => WizardModel.CrashReportingChoice(canSend), WizardModel.SetCrashReporting),
             },
             SignIn = new SetupSignInPageProps { Session = session, Host = SignInHost.Instance },
-            Layout = new SetupLayoutPageProps
-            {
-                Cards = static () => FluentGpu.Theming.Slots.View(ViewKeys.SettingsSidebarLayoutCards,
-                    new SettingsSidebarLayoutProps { Active = Sidebar.Layout.Value, Editing = false }),
-            },
+            Theme = ThemeProps,
             LocalPlayback = new SetupLocalPlaybackProps { Session = session, OpenSignature = OpenSignatureVerb, RevealFolder = RevealFolder },
         };
     }
