@@ -7,7 +7,8 @@
 // (`ClassicNavHead.cs`, `ClassicNavFilter.cs`, `ClassicNavLibraryHead.cs`), T6a the player bar (`Views\Player\ClassicPlayerBar.cs`),
 // T6b the right panel and the player's flyouts (`Views\Panel`, `Views\Player`), T7a1 the fullscreen stage's frame and T7a2 its layout layers (`Views\Stage`),
 // T8a the track table's rows (`Lists\ClassicTrackTable.cs`: the Modern and Classic bound-row templates, registered as the
-// `StyleKeys.TrackTable` style); every other surface is still core code. It
+// `StyleKeys.TrackTable` style), T10a1 Home (`Views\Home`: the page, facet row, daylist and clock, zone bodies, the drill page and the
+// customizer); every other surface is still core code. It
 // decides the shell's policies (`Rules\ClassicPolicies.cs`: nav pane, panel and mini player, player bar, chrome row, stage)
 // and offers every capability (T3). Its window tiers (T3b) are `Rules\Tiers.cs`.
 //
@@ -95,6 +96,32 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.StageNowPlayingCard, ClassicStageNowPlayingCard.Template, "classic.stage.now-playing-card");
         views.Add(ViewKeys.StageIdentity, ClassicStageIdentity.Template, "classic.stage.identity");
         views.Add(ViewKeys.StageArtistPane, ClassicStageArtistPane.Template, "classic.stage.artist-pane");
+        // T10a1: Home. The page (the scroll column, the skeleton region, the zone column and every chapter), the facet row, the daylist card
+        // and its clock, the zone bodies (`Home.Zone.<Kind>`: the Recents grid and the Charts block have core hosts, the other fourteen kinds are
+        // pure functions of their zone and share one template), the "See all" drill page and the customizer. The facet machine, the model, the
+        // load verdict, the wash claim and every timer stay core.
+        views.Add(ViewKeys.HomePage, ClassicHomePage.Template, "classic.home.page");
+        views.Add(ViewKeys.HomeFacetRow, ClassicHomeFacetRow.Template, "classic.home.facet-row");
+        views.Add(ViewKeys.HomeDaylist, ClassicHomeDaylist.Template, "classic.home.daylist");
+        views.Add(ViewKeys.HomeDaylistClock, ClassicHomeDaylistClock.Template, "classic.home.daylist-clock");
+        views.Add(ViewKeys.HomeZoneRecentGrid, ClassicHomeRecents.Template, "classic.home.zone.recent-grid");
+        views.Add(ViewKeys.HomeCharts, ClassicHomeCharts.Template, "classic.home.charts");
+        views.Add(ViewKeys.HomeZoneCoverShelf, ClassicHomeZones.BodyTemplate, "classic.home.zone.cover-shelf");
+        views.Add(ViewKeys.HomeZoneWideTiles, ClassicHomeZones.BodyTemplate, "classic.home.zone.wide-tiles");
+        views.Add(ViewKeys.HomeZoneReleaseList, ClassicHomeZones.BodyTemplate, "classic.home.zone.release-list");
+        views.Add(ViewKeys.HomeZoneClusterCards, ClassicHomeZones.BodyTemplate, "classic.home.zone.cluster-cards");
+        views.Add(ViewKeys.HomeZoneMixedCovers, ClassicHomeZones.BodyTemplate, "classic.home.zone.mixed-covers");
+        views.Add(ViewKeys.HomeZoneRadioShelf, ClassicHomeZones.BodyTemplate, "classic.home.zone.radio-shelf");
+        views.Add(ViewKeys.HomeZoneBrowseTiles, ClassicHomeZones.BodyTemplate, "classic.home.zone.browse-tiles");
+        views.Add(ViewKeys.HomeZoneEpisodeLead, ClassicHomeZones.BodyTemplate, "classic.home.zone.episode-lead");
+        views.Add(ViewKeys.HomeZoneContinueEpisodes, ClassicHomeZones.BodyTemplate, "classic.home.zone.continue-episodes");
+        views.Add(ViewKeys.HomeZoneShowGrid, ClassicHomeZones.BodyTemplate, "classic.home.zone.show-grid");
+        views.Add(ViewKeys.HomeZoneVideoTiles, ClassicHomeZones.BodyTemplate, "classic.home.zone.video-tiles");
+        views.Add(ViewKeys.HomeZoneEpisodeRows, ClassicHomeZones.BodyTemplate, "classic.home.zone.episode-rows");
+        views.Add(ViewKeys.HomeZonePodcastGroups, ClassicHomeZones.BodyTemplate, "classic.home.zone.podcast-groups");
+        views.Add(ViewKeys.HomeZoneEmptyFacet, ClassicHomeZones.BodyTemplate, "classic.home.zone.empty-facet");
+        views.Add(ViewKeys.HomeSection, ClassicHomeSection.Template, "classic.home.section");
+        views.Add(ViewKeys.HomeCustomize, ClassicHomeCustomize.Template, "classic.home.customize");
     }
 
     /// <inheritdoc />

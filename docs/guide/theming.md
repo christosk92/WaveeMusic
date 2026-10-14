@@ -622,6 +622,50 @@ header's height, the reading measure, how many avatars fit) are `Stage.ArtistRul
 switch), the spectrum, the backdrop and the Artist pane (nothing playing, no facts yet, facts, the demand once per artist and track) under `ViewHarness`.
 `LiveOptionBehaviourTests` keeps pinning the spring on the real stage.
 
+### Home (T10a1)
+
+Home is the structure's picture over core hosts. The page, the facet row, the daylist card and its clock, the zone bodies, the "See all" drill
+page and the customizer are registered Classic views; the facet machine, the screen model, the load verdict, the shell-tint claim, the daylist's
+timers and the layout document stay core.
+
+| Key | Props | Core host | Classic template |
+|---|---|---|---|
+| `Pages.Home` | `HomePageProps` (the published facet, the scroll handle and key, the facet row's props, the switch signal, the pending / failed / content / seed Funcs, the wash element) | `HomeScreen` (`[CoreHost]`, `Home\HomeScreen.cs`) over `HomeHost`: the effects, `Compute`, `Verdict`, `Seed`, `BuildWash` | `ClassicHomePage`: the wash over the `ScrollView` column (facet row slot, the sticky-clipped content in a `SkelRegionEl`), the keyed facet content over the dim host |
+| `Home.FacetRow` | `FacetRowProps` (words and switch as read-only signals, `Index` as a `Func<Signal<int>>`, the select / dismiss / following-memory verbs) | `HomeHost.RowProps` (one record per tab) | `ClassicHomeFacetRow`: the `SelectorBar` in the facet-title style, the Following toggle, the busy bar and the failure bar, pinned as a transparent band |
+| `Home.Daylist`, `Home.DaylistClock` | `HomeDaylistProps` (zone, eyebrow, `Pauses`, the keyed clock element), `HomeDaylistClockProps` (a face, the daypart, the lines, the live countdown / elapsed / segment signals) | `DaylistCard`, `DaylistClock`, `DaylistCountingClock` (`Home\Daylist.Host.cs`): the subscribing reads, the window phase, the rollover ladder, the clock mode, the 1-Hz tick | `ClassicHomeDaylist`: art, veil, copy, action row, tag line; `ClassicHomeDaylistClock`: the ring, the two lines, the five-segment timeline |
+| `Home.Zone.<Kind>` ×14 (`HomeZoneKeys.TryKeyOf`) | `HomeZoneProps` (zone, overlay, the shelf pager's controller) | none: a pure function of the zone | `ClassicHomeZones.BodyTemplate` under every kind: shelves, release list, cluster cards, browse tiles, episode rows, the empty facet |
+| `Home.Zone.RecentGrid`, `Home.Charts` | `HomeRecentsProps` (cells, week, `Playing`, `RemoteDeviceName`), `HomeChartsProps` (the pick) | `RecentGrid`, `ChartsBlockView` (`Home\Zones.Hosts.cs`): the Recents subscription, the Featured Charts demand | `ClassicHomeRecents`, `ClassicHomeCharts` |
+| `Pages.HomeSection` | `HomeSectionProps` (total, scroll key, the pending / failed / empty Funcs, the card source, the adapter) | `SectionScreen` (`Home\SectionScreen.Host.cs`): the demand, the table sync, the masthead publication | `ClassicHomeSection`: the "N items" line, the skeleton region, the bound `ItemsView` over `GridFit` |
+| `Pages.HomeCustomize` | `HomeCustomizeProps` (the `LayoutDoc`, the `Reorderable`, the toggle / move / reset verbs) | `CustomizeScreen` (`Home\Customize.Host.cs`) over the one `HomeLayout` | `ClassicHomeCustomize`: the header with Reset, the reorderable rows |
+
+**The chapter is the page's, the body is the key.** A zone's header, its sticky pin, its clipped body, the shelf pager in the header's tools and the
+entrance row are the Classic page's structure (`ClassicHomeZones.Column`, `Chapter`); what another theme swaps per kind is the BODY. A shelf's
+chapter owns the pager controller (`ClassicHomeShelfChapter`) and hands it to the body slot, so the header and the shelf share it as before. Kinds
+that are a pure function of their zone share one template under 14 keys; the daylist and the Recents grid read core state and keep a core host that
+mounts their key.
+
+**Skeletons.** A slot is a component, and the skeleton deriver cannot run a component's render, so the zone column attaches a `SkeletonProxy` to every
+slot and core host it places (`ZoneSlot`, the daylist, the Recents grid, the Charts block): the same static builder the template runs, at neutral live
+facts. The page's `SkelRegionEl` still derives the shimmer from the real zone column over the seed, so a cold load matches the settled heights.
+
+**What a Home view may call.** The WVTH002 fence applies (no `Shell`, `Playback`, `Entities`, `Spotify`, `Store`, `Prefs`). Navigation and playback verbs
+are the static `HomeVerbs` (`OpenRecents`, `OpenBrowse`, `OpenCustomize`, `OpenTag`, `ShuffleContext`, `SeeAll`, `OpenChart`); the shared card
+helpers (`HomeCardNav`, `HomeCards`, `HomeModules`, `Controls.*`) are called directly, as every Classic view does. The pure rules stay core and are
+called by the views (`FacetForm`, `FacetDimPlan`, `DaylistForm`, `DaypartTimeline`, `ShelfLead`, `RecentsPlan`, `EmptyFacetCopy`); there is no raw width
+threshold in a Classic Home view (WVTH013), the existing ones are those rules and the engine's own auto-fill.
+
+**Numbers** (the plan's P22) are `Themes\Classic\Structure\Rules\ClassicHomeRules.cs`: the pinned band's heights, the chapter's sticky geometry, the grid
+minimum columns and caps per body, the Recents tile pieces, the lead span, the daylist card's floor, art focus and copy insets, the drill page's card
+minimum and the customizer's row.
+
+**The customizer's reorderable.** A drag asks for a re-render of the component that built the rows, so the VIEW (the slot's own component) gives the
+host-owned `Reorderable` its scene, its render request and its row extent each render; the host only owns the behaviour object.
+
+**Tests.** The ids, the zone-kind map, Classic's registration and the chapter arithmetic are `Wavee.Tests\HomeContractTests.cs`; the facet machine, the dim plan
+and the layout document stay `HomeHostTests`, `FacetDimPlanTests` and `LayoutFileTests`. The mounted facts are `Wavee.ShellTests\HomeMountedTests.cs`: Classic is
+the registered template of every key, the real shell draws the page (column, pinned band, zone chapters), the band is the rule's height and the failure bar
+follows the phase, and the customizer's rows stand in document order at the row height.
+
 ## 3. Options
 
 An option is data: a `ToggleOption`, `SelectOption<TEnum>`, `SliderOption`, `ColorOption`, `ActionOption` or

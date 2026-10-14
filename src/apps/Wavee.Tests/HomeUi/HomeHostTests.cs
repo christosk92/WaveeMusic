@@ -40,7 +40,7 @@ public sealed class HomeHostTests
         Assert.Same(props, host.RowProps);
         Assert.Same(host.Words, props.Words);
         Assert.Same(host.Switch, props.Switch);
-        Assert.Same(host.FacetIndex, props.Index);
+        Assert.Same(host.FacetIndex, props.Index());
     }
 
     [Fact]

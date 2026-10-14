@@ -54,7 +54,7 @@ public static class DaylistArt
 /// <summary>The daylist card's form (`Daylist.UI.cs`, hero fade variant A): the header art fills the whole card under
 /// the artist hero's horizontal veil, and the copy column (eyebrow · title · tags · meta · actions · clock) sits on the
 /// veil's opaque left side. <c>inner</c> is the card's content width — the card minus the copy's side insets
-/// (<c>Daylist.CopyPadding</c>) — and <see cref="CopyWidth"/> is the copy's text width at it: half of it, held between
+/// (<c>ClassicHomeRules.DaylistCopyPadding</c>) — and <see cref="CopyWidth"/> is the copy's text width at it: half of it, held between
 /// <see cref="TextMin"/> and <see cref="CopyMax"/>, and all of it once it is narrower than <see cref="SplitMin"/>.</summary>
 public static class DaylistForm
 {
