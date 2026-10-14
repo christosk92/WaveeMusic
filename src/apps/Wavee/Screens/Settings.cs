@@ -12,7 +12,7 @@
 //
 // ENGINE-FREE apart from two plain WindowsApi VALUE types the decisions are phrased in (`NetworkCost`,
 // `ToastDeliverySetting`) — no component, no signal, no token. Glyphs are stored as NAMES (the engine's glyphs.json
-// keys) and resolved to `Icons.*` by the UI file, so `SettingsCatalogTests` asserts the no-repeat invariant on plain data.
+// keys) and resolved to `Icons.*` by the structure's Settings view (`ClassicSettings.Glyph`), so `SettingsCatalogTests` asserts the no-repeat invariant on plain data.
 //
 // The About receipts' formatters (`Receipts`) are ch 27 §8's `GpuSummary`/`ClassifySharedIgpu`/`FormatBytes`/
 // `FormatUptime`, which plan §2 files under `Screens/Diagnostics.cs` (owner S). They sit here because the About tab is
@@ -162,7 +162,7 @@ public static partial class Settings
             new(Tab.Playback, "Audio", "autoplay", "Play"),
             // G-132: the normalization switch 0.2.9 persisted but never showed.
             new(Tab.Playback, "Audio", "normalization", "Equalizer"),
-            // D5: the mode combo and album mode. "Speakers"/"Album" are mapped in `Settings.UI.cs`'s `Glyph` and distinct from every
+            // D5: the mode combo and album mode. "Speakers"/"Album" are mapped in `ClassicSettings.Glyph` and distinct from every
             // other row in the section (the Sound section owns "Speakers" as ITS header glyph, which is a different section).
             new(Tab.Playback, "Audio", "normalizationMode", "Speakers"),
             new(Tab.Playback, "Audio", "normalizationAlbum", "Album"),
@@ -235,7 +235,7 @@ public static partial class Settings
         }
 
         /// <summary>Is a row composed at all? The ONE gate the tabs call, so "which rows are developer-only" is a fact of
-        /// this table rather than a condition scattered through the UI files. An unknown row id throws, exactly as
+        /// this table rather than a condition scattered through the view's tabs. An unknown row id throws, exactly as
         /// <see cref="RowGlyph"/> does — a typo must fail loudly, never silently hide a row.</summary>
         public static bool RowVisible(Tab tab, string rowId, bool developerMode)
         {

@@ -1,26 +1,23 @@
-// ── Screens/Settings.UI.Theme.cs ───────────────────────────────────────────────────────────────────────────────────
-// Settings › Appearance, the theme half (themes plan 8.1-8.2, T1b): the THEME PICKER (one card per installed theme, driven
-// by `ThemePickerFacts`) and the ACTIVE THEME'S OPTIONS (one expander: "‹Theme› options", its rows grouped, generated from the
-// theme's schema by `ThemeOptionsSection` and, until each M-PR turns its switch into an option, the legacy SettingsDoc rows the
-// structure lists in `LegacyRows`). The wizard's Theme page (`Setup.UI.Theme.cs`) draws the same two views.
+// ── Themes/Classic/Structure/Views/Screens/ClassicSettings.Theme.cs — the theme picker and the active theme's options (themes plan 8.1-8.2, T1b; T11b) ──
 //
-// Role: UI
-// Spec: technical-plan §8.1 / §8.2, boards C-Settings / C-ThemeOptions
+// From `Screens\Settings.UI.Theme.cs`. Settings › Appearance, the theme half: the THEME PICKER (one card per installed theme, driven by `ThemePickerFacts`) and
+// the ACTIVE THEME'S OPTIONS (one expander: "‹Theme› options", its rows grouped; the grouping, the visibility and the legacy rows a structure still binds are the
+// core's `SettingsThemeOptions`, this file draws them). The setup wizard's Theme step draws the same two views through their own keys
+// (`Settings.ThemePicker`, `Settings.ThemeOptions`), and its Layout step the sidebar layout cards (`Settings.SidebarLayoutCards`).
 //
-// WHAT THIS FILE NEVER DOES: name a theme. The picker draws `ThemePickerEntry` data; the options expander draws whatever
-// `ThemeOptionsModel` holds (a theme with no options gets one quiet row; one with only legacy rows gets them). A legacy row
-// is drawn by its SettingsDoc id (`LegacyItem`): the id is the theme's, the control is the page's.
+// WHAT THIS FILE NEVER DOES: name a theme. The picker draws `ThemePickerEntry` data; the options expander draws whatever `SettingsOptionsView` holds (a theme
+// with no options gets one quiet row; one with only legacy rows gets them). A legacy row is drawn by its SettingsDoc id (`LegacyItem`): the id is the theme's,
+// the control is the page's.
 //
-// NO LAYOUT JUMPS. A picker card has one fixed size whatever its text (name: one line, description: two, ellipsised) and
-// whatever its preview (a miniature when the preview asset is missing, the image over it when present). When a row appears or
-// disappears (the rail rows follow the page layout, a `VisibleWhen` option follows its condition) the group around it tweens
-// its height, so everything below eases instead of snapping; an expander opens and closes on the engine's own motion. Rows carry
-// no Enter/Exit of their own: the engine seeds an Enter on every MOUNT, which would fade the whole tab in on each tab switch
+// NO LAYOUT JUMPS. A picker card has one fixed size whatever its text (name: one line, description: two, ellipsised) and whatever its preview (a miniature when
+// the preview asset is missing, the image over it when present). When a row appears or disappears (the rail rows follow the page layout, a `VisibleWhen`
+// option follows its condition) the group around it tweens its height, so everything below eases instead of snapping; an expander opens and closes on the
+// engine's own motion. Rows carry no Enter/Exit of their own: the engine seeds an Enter on every MOUNT, which would fade the whole tab in on each tab switch
 // (production swaps tab bodies with no transition).
 //
-// FROZEN CONTROL INPUTS. A ComboBox freezes its items, signal and onChange at mount, a Slider its signal: the option combo,
-// slider and colour picker are therefore tiny components that keep one stable signal in step with the live option value
-// through an effect (`GeneratedOptionRow.Live`), exactly as the zoom and player-style combos do.
+// FROZEN CONTROL INPUTS. A ComboBox freezes its items, signal and onChange at mount, a Slider its signal: the option combo, slider and colour picker are
+// therefore tiny components that keep one stable signal in step with the live option value through an effect (`GeneratedOptionRow.Live`), exactly as the zoom and
+// player-style combos do.
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -28,24 +25,38 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using FluentGpu.Theming;
 using Wavee.Theming;
+using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
+using Tab = Wavee.Settings.Tab;
 
-namespace Wavee;
+namespace Wavee.Themes.Classic;
 
-public static partial class Settings
+internal static partial class ClassicSettings
 {
-    // ══ 1. THE THEME PICKER ═══════════════════════════════════════════════════════════════════════════════════════════
+    // ══ 0. THE KEYED VIEWS ════════════════════════════════════════════════════════════════════════════════════════════
 
-    const float ThemeCardWidth = 208f, ThemeCardHeight = 172f, ThemeThumbHeight = 92f;
+    /// <summary>The registered template of <see cref="ViewKeys.SettingsThemePicker"/>.</summary>
+    public static Element ThemePickerTemplate(SettingsThemePickerProps props, in ViewContext ctx) => ThemePickerView();
+
+    /// <summary>The registered template of <see cref="ViewKeys.SettingsThemeOptions"/>: the page's expander, or the wizard's plate rows (an empty
+    /// element while the theme has nothing to pick there; the wizard step does not place it then).</summary>
+    public static Element ThemeOptionsTemplate(SettingsThemeOptionsProps props, in ViewContext ctx)
+        => props.Wizard ? WizardThemeOptions() ?? new BoxEl() : ThemeOptionsExpander();
+
+    /// <summary>The registered template of <see cref="ViewKeys.SettingsSidebarLayoutCards"/>.</summary>
+    public static Element SidebarLayoutCardsTemplate(SettingsSidebarLayoutProps props, in ViewContext ctx) => SidebarLayoutCards(props.Active, props.Editing);
+
+    // ══ 1. THE THEME PICKER ═══════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>A picker card's footprint. The 1-DIP inset is the resting padding a selected card spends on its border growing
     /// 1 → 2, so the thumbnail never shifts by a pixel when the selection moves.</summary>
-    static readonly Controls.PickerShell ThemeCardShell = new(ThemeCardWidth, ThemeCardHeight, 1f, 0f);
+    static readonly Controls.PickerShell ThemeCardShell = new(ClassicSettingsRules.ThemeCardWidth, ClassicSettingsRules.ThemeCardHeight, 1f, 0f);
 
     /// <summary>The picker as a Settings row: a card holding the strip of theme cards. With one installed theme it is one card,
     /// left-aligned, exactly as tall as with five; with more than fit a line the strip wraps to the next line.</summary>
-    public static Element ThemePickerView() => Embed.Comp(static () => new ThemePickerCard());
+    static Element ThemePickerView() => Embed.Comp(static () => new ThemePickerCard());
 
     sealed class ThemePickerCard : Component
     {
@@ -76,13 +87,13 @@ public static partial class Settings
         }
     }
 
-    /// <summary>The pick. The picked theme's root mounts fresh (owner Q26: nothing carried), so the Settings page opens again
-    /// ON Appearance, with the picker as its first row, instead of on General.</summary>
+    /// <summary>The pick. The picked theme's root mounts fresh (owner Q26: nothing carried), so the Settings page opens again ON Appearance, with the
+    /// picker as its first row, instead of on General.</summary>
     static void PickTheme(int index)
     {
         if (SettingsVerbs.ThemeIndex() == index) return;
-        s_pendingTab = (int)Tab.Appearance;
-        if (D(Tab.Appearance, "themePicker").Writer.Choose!(index)) Bump();
+        Settings.OpenNextMountOn(Tab.Appearance);
+        if (D(Tab.Appearance, "themePicker").Writer.Choose!(index)) Settings.Bump();
     }
 
     static Element ThemeCard(ThemePickerEntry entry, bool on)
@@ -121,7 +132,7 @@ public static partial class Settings
     {
         Height = Spacing.L, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
         Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Corners = Radii.PillAll, Fill = Tok.FillSubtleSecondary,
-        Children = [new TextEl(Loc.Get(Strings.Settings.ThemePicker.Developer)) { Size = 9f, Weight = 600, Color = Tok.TextSecondary, MaxLines = 1 }],
+        Children = [new TextEl(Loc.Get(Strings.Settings.ThemePicker.Developer)) { Size = ClassicSettingsRules.TagSize, Weight = 600, Color = Tok.TextSecondary, MaxLines = 1 }],
     };
 
     /// <summary>The preview: the theme's preview image over a UI-native miniature (so a missing asset, the state of every theme
@@ -133,13 +144,13 @@ public static partial class Settings
         if (PreviewPath(asset) is { } path)
             layers.Add(new ImageEl
             {
-                Source = path, Fit = ImageFit.Cover, Height = ThemeThumbHeight, AlignSelf = FlexAlign.Stretch,
-                DecodePx = ThemeCardWidth * 2f, Placeholder = ColorF.Transparent,
-                RevealTransition = ImageTransition.Fade(140f),
+                Source = path, Fit = ImageFit.Cover, Height = ClassicSettingsRules.ThemeThumbHeight, AlignSelf = FlexAlign.Stretch,
+                DecodePx = ClassicSettingsRules.ThemeCardWidth * 2f, Placeholder = ColorF.Transparent,
+                RevealTransition = ImageTransition.Fade(ClassicSettingsRules.PreviewFadeMs),
             });
         return new BoxEl
         {
-            ZStack = true, Height = ThemeThumbHeight, Shrink = 0f, AlignSelf = FlexAlign.Stretch, ClipToBounds = true,
+            ZStack = true, Height = ClassicSettingsRules.ThemeThumbHeight, Shrink = 0f, AlignSelf = FlexAlign.Stretch, ClipToBounds = true,
             Fill = Tok.FillSolidBase, Children = layers.ToArray(),
         };
     }
@@ -173,7 +184,7 @@ public static partial class Settings
         };
         return new BoxEl
         {
-            Direction = 0, Height = ThemeThumbHeight, AlignSelf = FlexAlign.Stretch, Shrink = 0f,
+            Direction = 0, Height = ClassicSettingsRules.ThemeThumbHeight, AlignSelf = FlexAlign.Stretch, Shrink = 0f,
             Children =
             [
                 new BoxEl { Grow = 26f, Basis = 0f, MinWidth = 0f, Fill = Tok.FillLayerAlt },
@@ -196,11 +207,10 @@ public static partial class Settings
     /// resets nothing) and, until M7a makes the sidebar a generated Cards row, with the sidebar layout cards (what the Layout step
     /// shows today). Null when the theme offers nothing to pick. Call it from a render: it subscribes the caller to the option
     /// cells, the sidebar and Developer mode, like the expander does.</summary>
-    public static Element? WizardThemeOptions()
+    static Element? WizardThemeOptions()
     {
-        TrackOptionSignals();
-        ThemeOptionsModel model = ThemeOptionsSection.Current(Platform.Developer.Enabled.Value);
-        List<OptionGroup> groups = OptionGroups(model, SettingsFacts.Live, wizard: true);
+        SettingsOptionsView view = SettingsThemeOptions.Current(wizard: true);
+        List<OptionGroup> groups = DrawGroups(view, SettingsFacts.Live, wizard: true);
         if (groups.Count == 0) return null;
         var kids = new List<Element>(groups.Count * 3);
         foreach (OptionGroup group in groups)
@@ -211,7 +221,7 @@ public static partial class Settings
         }
         return new BoxEl
         {
-            Key = "settings:theme:wizard-options", Direction = 1, Gap = CardSpacing, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+            Key = "settings:theme:wizard-options", Direction = 1, Gap = ClassicSettingsRules.CardSpacing, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
             Layout = MotionRecipes.CardResizeHeight, Children = kids.ToArray(),
         };
     }
@@ -227,12 +237,11 @@ public static partial class Settings
     {
         public override Element Render()
         {
-            TrackOptionSignals();
             var facts = SettingsFacts.Live;
-            ThemeOptionsModel model = ThemeOptionsSection.Current(Platform.Developer.Enabled.Value);
-            string title = Strings.Settings.ThemeOptions.Title(Loc.Get(model.NameKey));
+            SettingsOptionsView view = SettingsThemeOptions.Current(wizard: false);
+            string title = Strings.Settings.ThemeOptions.Title(Loc.Get(view.NameKey));
             string glyph = SectionGlyph(Tab.Appearance, ThemeOptionsSection.SectionTitle);
-            List<OptionGroup> groups = OptionGroups(model, facts, wizard: false);
+            List<OptionGroup> groups = DrawGroups(view, facts, wizard: false);
 
             // A theme with nothing to configure keeps the row (and its height) and says so; no chevron to nowhere.
             if (groups.Count == 0)
@@ -245,7 +254,7 @@ public static partial class Settings
                 titles.Add(group.Title);
                 items.Add(GroupBox(group));
             }
-            if (model.Reset is { } reset) items.Add(ResetItem(reset, facts));
+            if (view.Reset is { } reset) items.Add(ResetItem(reset, facts));
 
             return SettingsExpander.Create(new SettingsExpander.Options
             {
@@ -258,51 +267,36 @@ public static partial class Settings
         }
     }
 
-    /// <summary>Everything an options view re-renders on: the page epoch (legacy writes), the active option cells (a write from
-    /// the palette lands here too), the sidebar's own signals and Developer mode.</summary>
-    static void TrackOptionSignals()
+    /// <summary>The core's grouped options drawn: a row per entry (a legacy row by its document id, a generated row by its kind, the sidebar's two notes).
+    /// A legacy id this page has no control for is left out (and logged once by <see cref="LegacyItem"/>) rather than drawn blank.</summary>
+    static List<OptionGroup> DrawGroups(SettingsOptionsView view, ISettingsFacts facts, bool wizard)
     {
-        _ = s_epoch.Value;
-        _ = ThemeHost.Options.EpochSignal.Value;
-        _ = Sidebar.LayoutVersion.Value;
-        _ = Platform.Developer.Enabled.Value;
-    }
-
-    /// <summary>The rows of the model grouped for display: the legacy rows first (they are the ones that move into the schema,
-    /// in order), then the generated ones, a group per label in the order its first row arrived. A row the facts hide (developer
-    /// only, composed away) does not exist; a group left with no row does not either.</summary>
-    static List<OptionGroup> OptionGroups(ThemeOptionsModel model, ISettingsFacts facts, bool wizard)
-    {
-        var groups = new List<OptionGroup>(4);
-        OptionGroup GroupFor(string key)
+        var groups = new List<OptionGroup>(view.Groups.Count);
+        foreach (SettingsOptionGroup source in view.Groups)
         {
-            string title = ThemeOptionsSection.GroupTitle(key);
-            foreach (OptionGroup g in groups)
-                if (string.Equals(g.Title, title, StringComparison.Ordinal)) return g;
-            var created = new OptionGroup(title);
-            groups.Add(created);
-            return created;
-        }
-
-        foreach (LegacyOptionRow legacy in model.Legacy)
-        {
-            if (wizard && legacy.RowId != "sidebarDesign") continue;   // the wizard's Layout step, until M7a makes it a generated Cards row
-            if (!SettingsDoc.TryRow(Tab.Appearance, legacy.RowId, out SettingsRow row) || !row.Visible(facts)) continue;
-            OptionGroup group = GroupFor(legacy.Group);
-            // The sidebar's two notes (a layout file the app could not read; what a migration dropped) ride the sidebar rows.
-            if (legacy.RowId == "sidebarDesign" && Sidebar.LayoutFileFault && !wizard)
-                group.Rows.Add(("legacy:sidebarFileFault", Item(Loc.Get(Strings.Settings.Sidebar.FileFault), "", null, icon: Icons.Warning)));
-            if (LegacyItem(legacy.RowId, row, facts, wizard) is { } item) group.Rows.Add(("legacy:" + legacy.RowId, item));
-            if (legacy.RowId == "sidebarResetEverything" && Platform.Settings.Get(Platform.Keys.SidebarMigrationDropped) is { Length: > 0 } dropped)
-                group.Rows.Add(("legacy:sidebarWhatChanged", Item(Loc.Get(Strings.Settings.Sidebar.WhatChanged),
-                    Strings.Settings.Sidebar.WhatChangedSub(Sidebar.DroppedNames(dropped.Split(','))), null, icon: Icons.Info)));
-        }
-
-        foreach (GeneratedOptionRow generated in model.Rows)
-        {
-            if (!generated.Row.Visible(facts)) continue;
-            if (wizard && generated.Row.Kind == SettingsRowKind.Action) continue;
-            GroupFor(generated.Group).Rows.Add(("opt:" + generated.QualifiedId, GeneratedItem(generated, facts, wizard)));
+            var group = new OptionGroup(source.Title);
+            foreach (SettingsOptionItem item in source.Items)
+            {
+                switch (item.Kind)
+                {
+                    case SettingsOptionItemKind.SidebarFileFault:
+                        group.Rows.Add((item.Key, Item(Loc.Get(Strings.Settings.Sidebar.FileFault), "", null, icon: Icons.Warning)));
+                        break;
+                    case SettingsOptionItemKind.SidebarWhatChanged:
+                        group.Rows.Add((item.Key, Item(Loc.Get(Strings.Settings.Sidebar.WhatChanged), item.Text, null, icon: Icons.Info)));
+                        break;
+                    case SettingsOptionItemKind.Legacy:
+                    {
+                        SettingsRow row = item.Row!;
+                        if (LegacyItem(row.Id, row, facts, wizard) is { } legacy) group.Rows.Add((item.Key, legacy));
+                        break;
+                    }
+                    default:
+                        group.Rows.Add((item.Key, GeneratedItem(item.Generated!, facts, wizard)));
+                        break;
+                }
+            }
+            groups.Add(group);
         }
         return groups;
     }
@@ -330,7 +324,7 @@ public static partial class Settings
     /// <summary>The group label, aligned with the rows' text column.</summary>
     static Element GroupLabel(string text) => new BoxEl
     {
-        AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Padding = new Edges4(58f, Spacing.M, Spacing.L, Spacing.XS),
+        AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Padding = new Edges4(ClassicSettingsRules.TextColumnInset, Spacing.M, Spacing.L, Spacing.XS),
         Children = [Caption(text) with { Color = Tok.TextSecondary, Weight = 600, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Wrap = TextWrap.NoWrap, MinWidth = 0f }],
     };
 
@@ -342,7 +336,7 @@ public static partial class Settings
         var confirm = reset.Confirm!;
         Element button = Button.Standard(Loc.Get(confirm.PrimaryKey), () =>
             ConfirmThen(Loc.Get(confirm.TitleKey), Loc.Get(confirm.BodyKey), Loc.Get(confirm.PrimaryKey),
-                () => { if (reset.Writer.Run!()) Bump(); }), isEnabled: enabled);
+                () => { if (reset.Writer.Run!()) Settings.Bump(); }), isEnabled: enabled);
         return OptionRowBox("opt:reset", Item(Loc.Get(reset.TitleKey), sub, button, isEnabled: enabled, icon: Icons.Undo), divider: false);
     }
 
@@ -360,7 +354,7 @@ public static partial class Settings
     // ── the legacy rows (SettingsDoc rows bound to today's keys) ────────────────────────────────────────────────────────
 
     /// <summary>The control of a row a structure still binds to a legacy key. An id this page has no control for is left out
-    /// (and logged once by the doc lookup's caller) rather than drawn blank.</summary>
+    /// (and logged) rather than drawn blank.</summary>
     static Element? LegacyItem(string id, SettingsRow row, ISettingsFacts facts, bool wizard)
     {
         string title = Loc.Get(row.TitleKey);
@@ -382,15 +376,15 @@ public static partial class Settings
 
             case "trackListStyle":
             {
-                int style = Prefs.Clamp(Platform.Settings.Get(Platform.Keys.TrackRowStyle), 2);
+                int style = row.Current is int current ? current : 0;
                 return Item(title, sub, Controls.PickerStrip(2, style, static (i, on) => TrackListStyleCard(i, on), static i =>
                 {
-                    if (D(Tab.Appearance, "trackListStyle").Writer.Choose!(i)) Bump();
+                    if (D(Tab.Appearance, "trackListStyle").Writer.Choose!(i)) Settings.Bump();
                 }), SettingsCard.ContentAlignment.Vertical, icon: icon);
             }
             case "rowDensity":
             {
-                int density = Prefs.Clamp(Platform.Settings.Get(Platform.Keys.RowDensity), 4);
+                int density = row.Current is int current ? current : 0;
                 return Item(title, sub, Controls.PickerStrip(4, density, static (i, on) => DensityCard(i, on), static i => SetDensity(i)),
                     SettingsCard.ContentAlignment.Vertical, icon: icon);
             }
@@ -398,10 +392,10 @@ public static partial class Settings
                 return Item(title, sub, RowToggle(row, enabled), isEnabled: enabled, icon: icon);
             case "pageLayout":
             {
-                int layout = Prefs.Clamp(Platform.Settings.Get(Platform.Keys.DetailPageLayout), 2);
+                int layout = row.Current is int current ? current : 0;
                 return Item(title, sub, Controls.PickerStrip(2, layout, static (i, on) => PageLayoutCard(i, on), static i =>
                 {
-                    if (D(Tab.Appearance, "pageLayout").Writer.Choose!(i)) Bump();
+                    if (D(Tab.Appearance, "pageLayout").Writer.Choose!(i)) Settings.Bump();
                 }), SettingsCard.ContentAlignment.Vertical, icon: icon);
             }
             case "railUniform":
@@ -413,14 +407,14 @@ public static partial class Settings
                 {
                     var reset = D(Tab.Appearance, "railReset");
                     ConfirmThen(Loc.Get(reset.Confirm!.TitleKey), Loc.Get(reset.Confirm.BodyKey), Loc.Get(reset.Confirm.PrimaryKey),
-                        () => { if (reset.Writer.Run!()) Bump(); });
+                        () => { if (reset.Writer.Run!()) Settings.Bump(); });
                 }, isEnabled: enabled), icon: icon);
             }
             case "colorWashes":
                 return Item(title, sub, RowToggle(row, enabled), isEnabled: enabled, icon: icon);
             case "pageMotion":
                 return Item(title, sub, SelectorBar.Create(PageMotionLabels(),
-                    new Signal<int>(Prefs.Appearance.PageMotionStyle(Design.PageMotionStyleCount)),
+                    new Signal<int>(row.Current is int motion ? motion : 0),
                     onChange: static i => SetPageMotionStyle(i)), icon: icon);
             default:
                 Log.Warn("settings", "theme options: no control for the legacy row '" + id + "'; it is left out");
@@ -473,8 +467,7 @@ public static partial class Settings
 
     // ── the generated rows ───────────────────────────────────────────────────────────────────────────────────────────────
 
-    const float OptionCardWidth = 116f, OptionCardHeight = 56f;
-    static readonly Controls.PickerShell OptionCardShell = new(OptionCardWidth, OptionCardHeight, 8f, 4f);
+    static readonly Controls.PickerShell OptionCardShell = new(ClassicSettingsRules.OptionCardWidth, ClassicSettingsRules.OptionCardHeight, 8f, 4f);
 
     /// <summary>One generated row as a card: the control for its kind (themes plan 8.2).</summary>
     static Element GeneratedItem(GeneratedOptionRow g, ISettingsFacts facts, bool wizard)
@@ -493,14 +486,14 @@ public static partial class Settings
                 return OptionCard(wizard, title, sub,
                     ToggleSwitch.Create(new Signal<bool>(g.Current is true), onChange: on =>
                     {
-                        if (row.Writer.Toggle!(on)) Bump();
+                        if (row.Writer.Toggle!(on)) Settings.Bump();
                     }, isEnabled: enabled, style: SettingsCard.CompactToggleStyle()), icon, isEnabled: enabled);
 
             case SettingsRowKind.Segmented:
                 return OptionCard(wizard, title, sub,
                     SelectorBar.Create(ChoiceLabels(g), new Signal<int>(g.Current is int at ? at : -1), onChange: i =>
                     {
-                        if (row.Writer.Choose!(i)) Bump();
+                        if (row.Writer.Choose!(i)) Settings.Bump();
                     }), icon, isEnabled: enabled);
 
             case SettingsRowKind.Choice:
@@ -517,7 +510,7 @@ public static partial class Settings
                 return OptionCard(wizard, title, sub,
                     Controls.PickerStrip(g.ChoiceTitleKeys.Count, selected, (i, on) => OptionChoiceCard(g, i, on), i =>
                     {
-                        if (row.Writer.Choose!(i)) Bump();
+                        if (row.Writer.Choose!(i)) Settings.Bump();
                     }), icon, vertical: true, isEnabled: enabled);
             }
 
@@ -528,7 +521,7 @@ public static partial class Settings
             case SettingsRowKind.Action:
                 return OptionCard(wizard, title, sub, null, icon, isEnabled: enabled, clickable: enabled, onClick: () =>
                 {
-                    if (row.Writer.Run!()) Bump();
+                    if (row.Writer.Run!()) Settings.Bump();
                 });
 
             default:   // a fact: information only
@@ -577,7 +570,7 @@ public static partial class Settings
         int selected = g.Current is int packed ? IndexOfSwatch(g.Swatches, packed) : -1;
         return Controls.PickerStrip(g.Swatches.Count, selected, (i, on) => ColorSwatch(g.Swatches[i], on), i =>
         {
-            if ((uint)i < (uint)g.Swatches.Count && g.Row.Writer.Choose!(ThemeOptionsSection.PackColor(g.Swatches[i]))) Bump();
+            if ((uint)i < (uint)g.Swatches.Count && g.Row.Writer.Choose!(ThemeOptionsSection.PackColor(g.Swatches[i]))) Settings.Bump();
         });
     }
 
@@ -591,7 +584,7 @@ public static partial class Settings
     /// <summary>A 30-DIP circle, not a card; the selection survives a colour-blind read through the heavier ring.</summary>
     static Element ColorSwatch(ColorF color, bool on) => new BoxEl
     {
-        Width = 30f, Height = 30f, Shrink = 0f, Corners = Radii.PillAll, Fill = color,
+        Width = ClassicSettingsRules.SwatchSize, Height = ClassicSettingsRules.SwatchSize, Shrink = 0f, Corners = Radii.PillAll, Fill = color,
         BorderWidth = on ? 3f : 1f, BorderColor = on ? Tok.TextPrimary : Tok.StrokeControlDefault,
         HoverScale = R.Motion.ScaleSubtle.Hover, PressScale = R.Motion.ScaleSubtle.Press, Cursor = CursorId.Hand,
     };
@@ -607,7 +600,7 @@ public static partial class Settings
             _ = ThemeHost.Options.EpochSignal.Value;
             int at = g.Live() is int live ? live : -1;
             UseEffect(() => _selected.SetIfChanged(at), DepKey.From(at));
-            return ComboBox.Create(ChoiceLabels(g), _selected, width: 220f, onChange: i => g.Row.Writer.Choose!(i));
+            return ComboBox.Create(ChoiceLabels(g), _selected, width: ClassicSettingsRules.StageComboWidth, onChange: i => g.Row.Writer.Choose!(i));
         }
     }
 
@@ -626,7 +619,7 @@ public static partial class Settings
             _ = ThemeHost.Options.EpochSignal.Value;
             float live = g.Live() is float f ? f : g.Min;
             UseEffect(() => _value.SetIfChanged(live), DepKey.From(live));
-            return Slider.Create(_value, v => g.Row.Writer.Slide!(v), _options, length: 180f);
+            return Slider.Create(_value, v => g.Row.Writer.Slide!(v), _options, length: ClassicSettingsRules.SliderLength);
         }
     }
 
@@ -640,7 +633,7 @@ public static partial class Settings
     /// live write (the colour-only retheme path).</summary>
     sealed class OptionColorPicker(GeneratedOptionRow g) : Component
     {
-        readonly Signal<ColorF> _color = new(g.Live() is int first ? ThemeOptionsSection.UnpackColor(first) : ColorF.FromRgba(0, 0, 0));
+        readonly Signal<ColorF> _color = new(g.Live() is int first ? ThemeOptionsSection.UnpackColor(first) : ClassicSettingsRules.FreePickerSeed);
 
         public override Element Render()
         {

@@ -46,7 +46,7 @@ public static partial class Sidebar
     }
 
     /// <summary>"Classic" / "Classic · modified" (design C.1) is <see cref="NavMenuModel.LayoutName"/>'s rule; this is the name
-    /// <c>Settings.UI.Appearance.cs</c> and the undo labels call.</summary>
+    /// the Settings sidebar cards (`ClassicSettings.Appearance.cs`) and the undo labels call.</summary>
     internal static string LayoutName(SidebarLayoutId layout) => NavMenuModel.LayoutName(layout);
 
     // ══ THE MENU MAPPER (§P4.6) ════════════════════════════════════════════════════════════════════════════════════════

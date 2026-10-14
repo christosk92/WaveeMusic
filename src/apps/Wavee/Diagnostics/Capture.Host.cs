@@ -558,7 +558,7 @@ public static class RealtimeCaptureHost
 
     /// <summary>The live hook: called by the Settings row's `Toggle(Platform.Keys.DealerArchiveEnabled)` afterWrite
     /// (unit 6). Re-reads the persisted value (the store is the truth, never a mirror — same discipline as every
-    /// other `Toggle` in `Settings.UI.cs`) and applies the transition if it actually changed.</summary>
+    /// other settings toggle: `RowToggle` in the Settings view) and applies the transition if it actually changed.</summary>
     public static void OnSettingsChanged()
     {
         bool on = Platform.Settings.Get(Platform.Keys.DealerArchiveEnabled);

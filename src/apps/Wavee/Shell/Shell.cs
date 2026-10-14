@@ -1417,7 +1417,7 @@ public static partial class Shell
     }
 
     /// <summary>The setting's own name for <paramref name="quality"/> — the same four labels the Settings page's
-    /// quality combo offers (<c>Settings.UI.Playback.QualityLabels</c>), so "Lossless unavailable" reads exactly
+    /// quality combo offers (<c>ClassicSettings.QualityLabels</c>), so "Lossless unavailable" reads exactly
     /// like the row the user picked it from.</summary>
     static string AskedQualityLabel(Spotify.Audio.Quality quality) => quality switch
     {

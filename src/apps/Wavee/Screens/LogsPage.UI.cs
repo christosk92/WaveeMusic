@@ -334,7 +334,7 @@ public static partial class LogsPage
                 new(Loc.Get(Strings.Report.ThisSession), Icons.Attention, true, () => Feedback.Open(Feedback.ReportKind.Bug,
                     new Feedback.ReportPrefill(PastSessionId: SelectedPastSession() is { } s ? WaveeLogSessions.KeyOf(s) : null))),
             };
-            // Same anchored-flyout shape as Shell.UI.cs's history menu and Settings.UI.Playback.cs's manager menu.
+            // Same anchored-flyout shape as Shell.UI.cs's history menu and `ClassicSettings.VideoOverrides.cs`'s manager menu.
             var handle = overlay.Open(() => _moreAnchor, () => MenuFlyout.Create(items, () => _menu?.Close()),
                 FlyoutPlacement.BottomEdgeAlignedRight,
                 new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });

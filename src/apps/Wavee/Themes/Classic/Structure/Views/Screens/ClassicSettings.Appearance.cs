@@ -1,32 +1,20 @@
-// ── Screens/Settings.UI.Appearance.cs ──────────────────────────────────────────────────────────────────────────────
-// the Appearance tab (themes plan 8.1, T1b): Theme (the picker) · the active theme's options (one expander; its sidebar, track
-// list and surface rows are in `Settings.UI.Theme.cs`) · App mode · Zoom · Marquee, then what is not a theme option and has no
-// other home yet: Lyrics (blur, the on-device AI lyrics card) · Fullscreen (visualizer, sensitivity, lyrics overlay, sync offset,
-// calm motion, change with the music — the fullscreen stage's gallery settings, mirrored through `Prefs.Stage`) · Now playing
-// (hero*, player style) · Home (the daylist clock)
+// ── Themes/Classic/Structure/Views/Screens/ClassicSettings.Appearance.cs — the Appearance tab (themes plan 8.1, T1b; T11b) ───────────────────
 //
-// * DEVELOPER-ONLY rows (`Catalog.RowVisible`): page motion and the Cover/‹Player› hero switch are composed away while the
-// developer switch is off. "Lyrics second line" and "Animated lyrics backdrop" are not gated but GONE — neither is a
-// setting any more (the backdrop is a fixed constant; the second line is session state the lyrics globe toggles own).
+// From `Screens\Settings.UI.Appearance.cs`. Theme (the picker, `ClassicSettings.Theme.cs`) · the active theme's options (one expander, its rows grouped) ·
+// App mode · Zoom · Marquee, then what is not a theme option and has no other home yet: Lyrics (blur, the on-device AI lyrics card) · Fullscreen (visualizer,
+// layout, sensitivity, lyrics overlay, sync offset, calm motion, change with the music — the fullscreen stage's gallery settings, mirrored through the
+// document) · Now playing (hero*, player style) · Home (the daylist clock). The sidebar, track-list and surface cards (the picture of the legacy rows a structure
+// still binds) are in this file's §4-§5.
 //
-// Role: UI
-// Owner: R
-// Wave: 6
-// Budget: 700 lines
-// Spec: DERIVED (ch 27 §9.3 / ch 30 §9.4); ch 27 §0 N3-N6, §1.2 props-freeze map, W2-W4, W29, §3, §4.2, §5, §6, §10
-// items 12-20; ch 30 §1.1 (which epoch each write bumps) + N12 (the row-density write reaches mounted pages); ch 25 W21
-// (the design cards — no 0.3 `SidebarDesignPicker` exists, so the compact cards are built here on owner L's picker)
+// * DEVELOPER-ONLY rows (`Catalog.RowVisible`, the document's `Visible`): page motion and the Cover/‹Player› hero switch are composed away while the
+// developer switch is off. "Lyrics second line" and "Animated lyrics backdrop" are not gated but GONE — neither is a setting any more.
 //
-// EVERY ROW WRITES THROUGH ITS OWN EPOCH (ch 27 W2 "three facts"): marquee / washes / hide artwork /
-// row density / track list style / daylist clock → `Prefs.Appearance`; page layout, rail uniform, rail reset → `Prefs.DetailHero`;
-// the lyrics blur → `Prefs.Lyrics`; the two Now-playing rows → `Prefs.NpvPlayer` with NO page `Bump()` (the
-// tab reads that epoch); the six Fullscreen rows → `Prefs.Stage` (the page reads that epoch too, so the stage's own
-// gallery writes show here live). The tab body reads the store directly (never a foreign epoch it does not need), so a write
-// re-renders this page once, through `Bump()`.
+// EVERY ROW WRITES THROUGH ITS DOCUMENT ROW'S WRITER (which bumps the epoch it always bumped: ch 27 W2 "three facts"). The tab body reads the document, never a
+// foreign epoch it does not need, so a write re-renders this page once, through `Settings.Bump()`.
 //
-// FROZEN CONTROL INPUTS. A ComboBox freezes its items, its signal AND its onChange at mount: the zoom and player-style
-// combos are therefore tiny child components that keep one stable signal in step through an effect, and every handler
-// reads the store at invocation, never a render local. SelectorBar / Slider / CheckBox re-push their props.
+// FROZEN CONTROL INPUTS. A ComboBox freezes its items, its signal AND its onChange at mount: the zoom and player-style combos are therefore tiny child
+// components that keep one stable signal in step through an effect, and every handler reads the store at invocation (through the row), never a render local.
+// SelectorBar / Slider / CheckBox re-push their props.
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -34,12 +22,14 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using static FluentGpu.Dsl.Ui;
+using Tab = Wavee.Settings.Tab;
 
-namespace Wavee;
+namespace Wavee.Themes.Classic;
 
-public static partial class Settings
+internal static partial class ClassicSettings
 {
-    // ══ 1. STABLE CONTROL STATE (0.2.9's `_lyricsBlurSlider` instance field + the two combo selections) ═════════════
+    // ══ 1. STABLE CONTROL STATE (0.2.9's `_lyricsBlurSlider` instance field + the combo selections) ═════════════════
 
     /// <summary>The lyrics-blur slider's value (the resolved 0..100). A slider binds ONE signal for its life.</summary>
     static readonly FloatSignal s_lyricsBlurSlider = new(Platform.Keys.LyricsBlurStrength.Default);
@@ -58,7 +48,7 @@ public static partial class Settings
     };
 
     // The fullscreen stage's three value controls (a ComboBox and two sliders). Each is bound for the control's life, so a
-    // child component re-seeds it from Prefs.Stage on every epoch (StageVisualizerPicker / StageSensitivitySlider /
+    // child component re-seeds it from the document on every epoch (StageVisualizerPicker / StageSensitivitySlider /
     // StageSyncSlider below) and a pick made in the stage's gallery shows here live. The combo's value is an INDEX into
     // Visualizer.Catalog.Shown (the gallery's order), never the persisted Kind int.
     static readonly Signal<int> s_stageVisualizer = new(Visualizer.Catalog.IndexOf(Visualizer.Catalog.Default));
@@ -79,18 +69,19 @@ public static partial class Settings
     /// <summary>The ladder rungs as labels, hoisted once — digits and '%' never change with culture.</summary>
     static readonly string[] s_zoomRungLabels = BuildZoomRungLabels();
 
-    static partial void SeedAppearance()
+    /// <summary>The page mount: every frozen control's signal from the document's value (`row.Current`).</summary>
+    static void SeedAppearance()
     {
-        s_lyricsBlurSlider.Value = Prefs.Lyrics.BlurStrength();
-        s_stageVisualizer.Value = VisualizerIndex();
-        s_stageLayout.Value = Prefs.Stage.Layout();
-        s_stageSensitivity.Value = Prefs.Stage.Sensitivity();
-        s_stageSyncOffset.Value = Prefs.Stage.SyncOffsetMs();
+        s_lyricsBlurSlider.Value = D(Tab.Appearance, "lyricsBlur").Current is float blur ? blur : s_lyricsBlurSlider.Value;
+        s_stageVisualizer.Value = D(Tab.Appearance, "stageVisualizer").Current is int visualizer ? visualizer : s_stageVisualizer.Value;
+        s_stageLayout.Value = D(Tab.Appearance, "stageLayout").Current is int layout ? layout : s_stageLayout.Value;
+        s_stageSensitivity.Value = D(Tab.Appearance, "stageSensitivity").Current is float sensitivity ? sensitivity : s_stageSensitivity.Value;
+        s_stageSyncOffset.Value = D(Tab.Appearance, "stageSyncOffset").Current is float offset ? offset : s_stageSyncOffset.Value;
     }
 
     // ══ 2. THE TAB ════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    private static partial Element AppearanceTab()
+    private static Element AppearanceTab()
     {
         // The now-playing rows' ONE foreign epoch (ch 27 §7): the header row, the flyout, the art menu and the palette all
         // write it, and these two rows must follow them live.
@@ -99,7 +90,7 @@ public static partial class Settings
         var facts = SettingsFacts.Live;   // developer mode is read reactively here, as the tab always did
 
         // T1b (themes plan 8.1): Theme (the picker) · the active theme's options · App mode · Zoom, then what is not a theme
-        // option and has no other home yet. The picker and the options are components that re-render on their own signals.
+        // option and has no other home yet. The picker and the options are keyed views that re-render on their own signals.
         var kids = new List<Element>(24)
         {
             SectionHeader(Loc.Get(Strings.Settings.Appearance.Title), SectionGlyph(Tab.Appearance, "Theme"),
@@ -119,7 +110,7 @@ public static partial class Settings
         kids.Add(SectionHeader(Loc.Get(Strings.Settings.Lyrics.Title), SectionGlyph(Tab.Appearance, "Lyrics"),
             Loc.Get(Strings.Settings.Lyrics.Subtitle)));
         kids.Add(DocRow(D(Tab.Appearance, "lyricsBlur"), LyricsBlurControl()));
-        kids.Add(AiLyrics.SettingsCard());
+        kids.Add(AiLyricsCard());
 
         // ── the fullscreen stage: the gallery's four settings, mirrored here with the rest of Appearance ──
         kids.Add(SectionHeader(Loc.Get(Strings.Stage.Settings.Title), SectionGlyph(Tab.Appearance, "Fullscreen"), Loc.Get(Strings.Stage.Settings.Subtitle)));
@@ -159,12 +150,11 @@ public static partial class Settings
         Loc.Get(Strings.Settings.Choice.Dark),
     ];
 
-    /// <summary>0 System · 1 Light · 2 Dark: <see cref="Appearance.SetMode"/> swaps the installed Wavee palette IN PLACE
-    /// (System re-reads the OS theme and accent now), persists, and asks the host for the 250 ms re-theme cross-fade
-    /// (ch 27 §5); this page then re-reads its rows.</summary>
+    /// <summary>0 System · 1 Light · 2 Dark: the row's writer swaps the installed Wavee palette IN PLACE (System re-reads the OS theme and
+    /// accent now), persists, and asks the host for the 250 ms re-theme cross-fade (ch 27 §5); this page then re-reads its rows.</summary>
     static void SetTheme(int mode)
     {
-        if (D(Tab.Appearance, "appMode").Writer.Choose!(mode)) Bump();
+        if (D(Tab.Appearance, "appMode").Writer.Choose!(mode)) Settings.Bump();
     }
 
     /// <summary>Ordered to match the stored value (<see cref="Design.PageMotionStyle"/>'s declaration order) — the
@@ -183,7 +173,7 @@ public static partial class Settings
     /// style, same live-apply contract as row density (ch 30 N12).</summary>
     static void SetPageMotionStyle(int i)
     {
-        if (D(Tab.Appearance, "pageMotion").Writer.Choose!(i)) Bump();
+        if (D(Tab.Appearance, "pageMotion").Writer.Choose!(i)) Settings.Bump();
     }
 
     static string[] BuildZoomRungLabels()
@@ -225,14 +215,14 @@ public static partial class Settings
                 Array.Copy(s_zoomRungLabels, 0, _labels, 1, s_zoomRungLabels.Length);
             }
             // The combo's ITEMS freeze at mount: the head label changes only on a plateau change, so re-key on that.
-            return ComboBox.Create(_labels, s_zoomIndex, width: 160f, onChange: Pick) with { Key = "appearance.zoom:" + percent };
+            return ComboBox.Create(_labels, s_zoomIndex, width: ClassicSettingsRules.ZoomComboWidth, onChange: Pick) with { Key = "appearance.zoom:" + percent };
         }
 
         /// <summary>A deliberate pick writes at once (the chords' debounce exists for key repeats). The head item writes
         /// mode = Auto — never Dense — and applies THIS render's suggestion; a rung writes Manual.</summary>
         void Pick(int i)
         {
-            if (D(Tab.Appearance, "zoom").Writer.Choose!(i)) Bump();
+            if (D(Tab.Appearance, "zoom").Writer.Choose!(i)) Settings.Bump();
         }
     }
 
@@ -250,7 +240,7 @@ public static partial class Settings
         => Loc.Get(i == 1 ? Strings.Settings.Appearance.TrackListClassic : Strings.Settings.Appearance.TrackListModern);
 
     static string PageLayoutLabel(int i)
-        => Loc.Get(i == Prefs.DetailHero.Hero ? Strings.Settings.Choice.Hero : Strings.Settings.Choice.Automatic);
+        => Loc.Get(i == ClassicSettingsRules.PageLayoutHero ? Strings.Settings.Choice.Hero : Strings.Settings.Choice.Automatic);
 
     /// <summary>The miniature's row height and art edge are the REAL Modern ladder × the tested preview scale (N6).</summary>
     static Element DensityCard(int value, bool on)
@@ -264,7 +254,7 @@ public static partial class Settings
     /// list re-reads it. Called on every keyboard rove too, so an unchanged value writes nothing.</summary>
     static void SetDensity(int i)
     {
-        if (D(Tab.Appearance, "rowDensity").Writer.Choose!(i)) Bump();
+        if (D(Tab.Appearance, "rowDensity").Writer.Choose!(i)) Settings.Bump();
     }
 
     /// <summary>UI-native miniature rows, never screenshots: Modern = the art-led stacked row, Classic = three lanes + a
@@ -286,20 +276,16 @@ public static partial class Settings
     {
         public override Element Render()
         {
-            UseSignalEffect(static () => s_daylistClock.Value = (int)Prefs.Appearance.DaylistClock());
+            UseSignalEffect(static () => s_daylistClock.Value = D(Tab.Appearance, "daylistClock").Current is int clock ? clock : (int)DaylistClockMode.Both);
             return ComboBox.Create(
                 [
                     Loc.Get(Strings.Settings.Appearance.DaylistClockBoth),
                     Loc.Get(Strings.Settings.Appearance.DaylistClockUpdateTime),
                     Loc.Get(Strings.Settings.Appearance.DaylistClockCountdown),
                 ],
-                s_daylistClock, width: 220f, onChange: static i => D(Tab.Appearance, "daylistClock").Writer.Choose!(i));
+                s_daylistClock, width: ClassicSettingsRules.StageComboWidth, onChange: static i => D(Tab.Appearance, "daylistClock").Writer.Choose!(i));
         }
     }
-
-    /// <summary>The reset's enable gate — a destructive-looking no-op is never offered (DetailRailPrefs owns the rule).
-    /// </summary>
-    internal static bool HasCustomizedRail() => DetailRailPrefs.HasCustomized();
 
     /// <summary>A wireframe of the page SYSTEM each choice selects — Automatic: a narrow metadata rail beside full-width
     /// rows; Hero: an artwork field and compact identity above the rows (ch 27 W4).</summary>
@@ -308,41 +294,41 @@ public static partial class Settings
         var ink = Controls.PickerInk.For(on);
 
         Element Bar(float w, float h) => new BoxEl { Width = w, Height = h, Corners = CornerRadius4.All(h / 2f), Fill = ink.Faint };
-        Element RowBar() => new BoxEl { Height = 4f, AlignSelf = FlexAlign.Stretch, Corners = CornerRadius4.All(2f), Fill = ink.Faint };
+        Element RowBar() => new BoxEl { Height = ClassicSettingsRules.SketchRowBarHeight, AlignSelf = FlexAlign.Stretch, Corners = CornerRadius4.All(2f), Fill = ink.Faint };
         Element Block(float w, float h) => new BoxEl { Width = w, Height = h, Shrink = 0f, Corners = CornerRadius4.All(4f), Fill = ink.Block };
 
-        Element sketch = value == Prefs.DetailHero.Automatic
+        Element sketch = value == ClassicSettingsRules.PageLayoutAutomatic
             ? new BoxEl
             {
-                Direction = 0, Gap = 8f, Grow = 1f, AlignItems = FlexAlign.Stretch,
+                Direction = 0, Gap = ClassicSettingsRules.SketchColumnGap, Grow = 1f, AlignItems = FlexAlign.Stretch,
                 Children =
                 [
                     new BoxEl
                     {
-                        Direction = 1, Gap = 4f, Shrink = 0f, Justify = FlexJustify.Center,
+                        Direction = 1, Gap = ClassicSettingsRules.SketchTightGap, Shrink = 0f, Justify = FlexJustify.Center,
                         Children = [Block(20f, 20f), Bar(30f, 6f), Bar(22f, 4f), Block(20f, 8f)],
                     },
-                    new BoxEl { Direction = 1, Gap = 5f, Grow = 1f, Justify = FlexJustify.Center, Children = [RowBar(), RowBar(), RowBar(), RowBar()] },
+                    new BoxEl { Direction = 1, Gap = ClassicSettingsRules.SketchGap, Grow = 1f, Justify = FlexJustify.Center, Children = [RowBar(), RowBar(), RowBar(), RowBar()] },
                 ],
             }
             : new BoxEl
             {
-                Direction = 1, Gap = 5f, Grow = 1f, Justify = FlexJustify.Center,
+                Direction = 1, Gap = ClassicSettingsRules.SketchGap, Grow = 1f, Justify = FlexJustify.Center,
                 Children =
                 [
                     new BoxEl
                     {
-                        Direction = 1, Gap = 4f, AlignItems = FlexAlign.Stretch,
+                        Direction = 1, Gap = ClassicSettingsRules.SketchTightGap, AlignItems = FlexAlign.Stretch,
                         Children =
                         [
-                            new BoxEl { Height = 24f, AlignSelf = FlexAlign.Stretch, Corners = CornerRadius4.All(4f), Fill = ink.Block },
+                            new BoxEl { Height = ClassicSettingsRules.SketchHeroHeight, AlignSelf = FlexAlign.Stretch, Corners = CornerRadius4.All(4f), Fill = ink.Block },
                             new BoxEl
                             {
-                                Direction = 0, Gap = 5f, AlignItems = FlexAlign.Center,
+                                Direction = 0, Gap = ClassicSettingsRules.SketchGap, AlignItems = FlexAlign.Center,
                                 Children =
                                 [
                                     Bar(48f, 6f), Bar(28f, 4f),
-                                    new BoxEl { Direction = 0, Gap = 4f, Children = [Block(24f, 8f), Block(24f, 8f)] },
+                                    new BoxEl { Direction = 0, Gap = ClassicSettingsRules.SketchTightGap, Children = [Block(24f, 8f), Block(24f, 8f)] },
                                 ],
                             },
                         ],
@@ -364,14 +350,14 @@ public static partial class Settings
         {
             int index = (int)Sidebar.Density.Peek();
             UseEffect(() => s_index.Value = index, DepKey.From(index));
-            return ComboBox.Create([Loc.Get("sidebar.density.default"), Loc.Get("sidebar.density.compact")], s_index, width: 160f,
+            return ComboBox.Create([Loc.Get("sidebar.density.default"), Loc.Get("sidebar.density.compact")], s_index, width: ClassicSettingsRules.ZoomComboWidth,
                 onChange: static i => D(Tab.Appearance, "sidebarDensity").Writer.Choose!(i));
         }
     }
 
     /// <summary>The two layout cards (Classic · Library), applied at once; disabled while the sidebar is being edited
-    /// (design Q7). Public: the setup wizard's Layout step reuses them (P4).</summary>
-    public static Element SidebarLayoutCards(SidebarLayoutId active, bool editing)
+    /// (design Q7). The setup wizard's Layout step mounts them through <see cref="ViewKeys.SettingsSidebarLayoutCards"/> (P4).</summary>
+    static Element SidebarLayoutCards(SidebarLayoutId active, bool editing)
     {
         var strip = Controls.PickerStrip(2, (int)active,
             static (i, on) => SidebarLayoutCardFace((SidebarLayoutId)i, on),
@@ -380,7 +366,7 @@ public static partial class Settings
         // Q7: never a silent dead control — the cards say why they do not switch (the row's reason).
         return new BoxEl
         {
-            Direction = 1, Gap = 6f,
+            Direction = 1, Gap = ClassicSettingsRules.SidebarNoteGap,
             Children = [strip, Ui.Caption(Loc.Get(SettingsDoc.FinishEditingKey)) with { Color = Tok.TextSecondary }],
         };
     }
@@ -391,7 +377,7 @@ public static partial class Settings
         bool library = layout == SidebarLayoutId.Library;
         Element preview = new BoxEl
         {
-            Height = 96f, AlignSelf = FlexAlign.Stretch, Shrink = 0f, Direction = 1, Gap = 3f, ClipToBounds = true,
+            Height = ClassicSettingsRules.SidebarPreviewHeight, AlignSelf = FlexAlign.Stretch, Shrink = 0f, Direction = 1, Gap = ClassicSettingsRules.SidebarPreviewGap, ClipToBounds = true,
             Padding = new Edges4(8f, 7f, 8f, 0f),   // no bottom pad: the miniature continues past the fold, like a pane
             Corners = CornerRadius4.All(6f),
             Fill = on ? Tok.AccentSubtle : Tok.FillLayerDefault,
@@ -401,7 +387,7 @@ public static partial class Settings
         var title = Controls.PickerLabel(Sidebar.LayoutName(layout), on);
         Element titleRow = new BoxEl
         {
-            Direction = 0, Gap = 6f, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.Stretch,
+            Direction = 0, Gap = ClassicSettingsRules.SidebarNoteGap, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.Stretch,
             // The "Active" tag makes the selection survive a colour-blind read.
             Children = on ? [title with { Shrink = 1f }, ActiveTag()] : [title],
         };
@@ -417,7 +403,7 @@ public static partial class Settings
     {
         Height = Spacing.L, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
         Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Corners = Radii.PillAll, Fill = Tok.AccentDefault,
-        Children = [new TextEl(Loc.Get(Strings.Sidebar.Active)) { Size = 9f, Weight = 600, Color = Tok.TextOnAccentPrimary, MaxLines = 1 }],
+        Children = [new TextEl(Loc.Get(Strings.Sidebar.Active)) { Size = ClassicSettingsRules.TagSize, Weight = 600, Color = Tok.TextOnAccentPrimary, MaxLines = 1 }],
     };
 
     /// <summary>Static semantic geometry at quarter scale (the compact counts) — never a mounted sidebar, never text.</summary>
@@ -428,7 +414,7 @@ public static partial class Settings
         {
             kids.Add(new BoxEl
             {
-                Direction = 0, Gap = 4f, Shrink = 0f,
+                Direction = 0, Gap = ClassicSettingsRules.SidebarMiniGap, Shrink = 0f,
                 Children = [MiniBar(26f, 9f, ink.Block), MiniBar(20f, 9f, ink.Faint), MiniBar(24f, 9f, ink.Faint), MiniBar(18f, 9f, ink.Faint)],
             });
             kids.Add(new BoxEl { Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Children = [MiniBar(34f, 8f, ink.Faint)] });
@@ -465,10 +451,10 @@ public static partial class Settings
     /// <summary>One text-free list row: a 10-DIP cover tile plus two metadata bars (compact 52 / 34).</summary>
     static Element MiniArtRow(Controls.PickerInk ink) => new BoxEl
     {
-        Direction = 0, Height = 10f, Shrink = 0f, Gap = 5f, AlignItems = FlexAlign.Center,
+        Direction = 0, Height = ClassicSettingsRules.MiniRowHeight, Shrink = 0f, Gap = ClassicSettingsRules.SketchGap, AlignItems = FlexAlign.Center,
         Children =
         [
-            new BoxEl { Width = 10f, Height = 10f, Shrink = 0f, Corners = CornerRadius4.All(2.5f), Fill = ink.Block },
+            new BoxEl { Width = ClassicSettingsRules.MiniRowHeight, Height = ClassicSettingsRules.MiniRowHeight, Shrink = 0f, Corners = CornerRadius4.All(2.5f), Fill = ink.Block },
             new BoxEl
             {
                 Direction = 1, Gap = Spacing.XXS, Grow = 1f, Basis = 0f, MinWidth = 0f,
@@ -484,15 +470,16 @@ public static partial class Settings
         => new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Shrink = 0f,
-            Children = [Slider.Create(s_lyricsBlurSlider, static v => SetLyricsBlur(v), s_lyricsBlurOptions, length: 180f)],
+            Children = [Slider.Create(s_lyricsBlurSlider, static v => SetLyricsBlur(v), s_lyricsBlurOptions, length: ClassicSettingsRules.SliderLength)],
         };
 
-    /// <summary>Writes the 0..100 value through the row's writer, then re-seeds the slider from the accessor.</summary>
+    /// <summary>Writes the 0..100 value through the row's writer, then re-seeds the slider from the document.</summary>
     static void SetLyricsBlur(float v)
     {
-        if (!D(Tab.Appearance, "lyricsBlur").Writer.Slide!(v)) return;
-        s_lyricsBlurSlider.Value = Prefs.Lyrics.BlurStrength();
-        Bump();
+        var row = D(Tab.Appearance, "lyricsBlur");
+        if (!row.Writer.Slide!(v)) return;
+        if (row.Current is float blur) s_lyricsBlurSlider.Value = blur;
+        Settings.Bump();
     }
 
     /// <summary>The player-style combo: all twelve presets in catalog order, index == id. The selection follows every
@@ -502,11 +489,11 @@ public static partial class Settings
     {
         public override Element Render()
         {
-            UseSignalEffect(static () => s_npvStyle.Value = Rail.PlayerPrefs.Style());
+            UseSignalEffect(static () => s_npvStyle.Value = D(Tab.Appearance, "npvStyle").Current is int style ? style : Rail.PlayerCatalog.DefaultPresetId);
             var presets = Rail.PlayerCatalog.Presets;
             var labels = new string[presets.Length];
             for (int i = 0; i < presets.Length; i++) labels[i] = Loc.Get(presets[i].LabelKey);
-            return ComboBox.Create(labels, s_npvStyle, width: 180f,
+            return ComboBox.Create(labels, s_npvStyle, width: ClassicSettingsRules.NpvComboWidth,
                 onChange: static i => D(Tab.Appearance, "npvStyle").Writer.Choose!(i));
         }
     }
@@ -522,15 +509,13 @@ public static partial class Settings
         return labels;
     }
 
-    /// <summary>The stored face (already migrated by Prefs.Stage) as its index in the combo.</summary>
-    internal static int VisualizerIndex() => Math.Max(0, Visualizer.Catalog.IndexOf((Visualizer.Kind)Prefs.Stage.Visualizer()));
-
     sealed class StageVisualizerPicker : Component
     {
         public override Element Render()
         {
-            UseSignalEffect(static () => s_stageVisualizer.Value = VisualizerIndex());   // the gallery's pick lands here live
-            return ComboBox.Create(VisualizerLabels(), s_stageVisualizer, width: 220f,
+            // the gallery's pick lands here live
+            UseSignalEffect(static () => s_stageVisualizer.Value = D(Tab.Appearance, "stageVisualizer").Current is int index ? index : 0);
+            return ComboBox.Create(VisualizerLabels(), s_stageVisualizer, width: ClassicSettingsRules.StageComboWidth,
                 onChange: static i => D(Tab.Appearance, "stageVisualizer").Writer.Choose!(i));
         }
     }
@@ -543,24 +528,25 @@ public static partial class Settings
     {
         public override Element Render()
         {
-            UseSignalEffect(static () => s_stageLayout.SetIfChanged(Prefs.Stage.Layout()));   // the options popover's and the [ ] keys' picks land here live
-            return ComboBox.Create(LayoutLabels(), s_stageLayout, width: 220f, onChange: static i => D(Tab.Appearance, "stageLayout").Writer.Choose!(i));
+            // the options popover's and the [ ] keys' picks land here live
+            UseSignalEffect(static () => { if (D(Tab.Appearance, "stageLayout").Current is int layout) s_stageLayout.SetIfChanged(layout); });
+            return ComboBox.Create(LayoutLabels(), s_stageLayout, width: ClassicSettingsRules.StageComboWidth, onChange: static i => D(Tab.Appearance, "stageLayout").Writer.Choose!(i));
         }
     }
     sealed class StageSensitivitySlider : Component
     {
         public override Element Render()
         {
-            UseSignalEffect(static () => s_stageSensitivity.SetIfChanged(Prefs.Stage.Sensitivity()));
-            return Slider.Create(s_stageSensitivity, static v => D(Tab.Appearance, "stageSensitivity").Writer.Slide!(v), s_stageSensitivityOptions, length: 180f);
+            UseSignalEffect(static () => { if (D(Tab.Appearance, "stageSensitivity").Current is float sensitivity) s_stageSensitivity.SetIfChanged(sensitivity); });
+            return Slider.Create(s_stageSensitivity, static v => D(Tab.Appearance, "stageSensitivity").Writer.Slide!(v), s_stageSensitivityOptions, length: ClassicSettingsRules.SliderLength);
         }
     }
     sealed class StageSyncSlider : Component
     {
         public override Element Render()
         {
-            UseSignalEffect(static () => s_stageSyncOffset.SetIfChanged(Prefs.Stage.SyncOffsetMs()));
-            return Slider.Create(s_stageSyncOffset, static v => D(Tab.Appearance, "stageSyncOffset").Writer.Slide!(v), s_stageSyncOptions, length: 180f);
+            UseSignalEffect(static () => { if (D(Tab.Appearance, "stageSyncOffset").Current is float offset) s_stageSyncOffset.SetIfChanged(offset); });
+            return Slider.Create(s_stageSyncOffset, static v => D(Tab.Appearance, "stageSyncOffset").Writer.Slide!(v), s_stageSyncOptions, length: ClassicSettingsRules.SliderLength);
         }
     }
 }

@@ -1187,6 +1187,32 @@ presentation is the view's all the same.
 nothing without a fact), the keyed rows of a stack, the one trailing region, the video hero and the list sections, the vertical arm's trailing rows, the editor's
 read / edit / status states and the keyed field, the copy-invite call to action, the flip cells while counting, and a smoke mount of the views with no keyed output.
 
+### The Settings page (T11b)
+
+Settings is the structure's picture over the core's document (`Themes\Classic\Structure\Views\Screens\ClassicSettings*.cs`). `SettingsDoc` (tabs, sections, rows: kind, title, value, writer, enablement and its reason, visibility, glyph name,
+confirmation), every verb (`row.Writer`: persistence, live apply, DSP pushes, OS registrations, file I/O off the render path), the facts the rows ask (`SettingsFacts`), the page epoch (`Settings.Bump`), the Storage census, the pivot's
+root-lifetime cell with the deep link (`Settings.Open`, `TabFromSlug`), the page context the verbs read (`SettingsContext`) and the legacy-row binding (`IStructureLayer.LegacyRows`, left for the M-PRs) stay core.
+
+| Key | Props | Core host | Classic template |
+|---|---|---|---|
+| `Pages.Settings` | `SettingsPageProps` (the visible tab, the `Revision` that carries the page epoch and the two foreign epochs the Appearance tab reads, the pivot's cell as a `Func<Signal<int>>`, and the Storage census as `SettingsStorageProps` while that tab is visible) | `Settings.PageHost` (`[CoreHost]`, `Screens\Settings.Page.cs`): the context bind, the census trigger and the notices warm read | `ClassicSettings` (`.cs` the template, the pivot, the row grammar and the glyphs; `.General`, `.Appearance`, `.Playback`, `.VideoOverrides`, `.Storage`, `.Privacy`, `.About`, `.AiLyrics`): the masthead, the seven-tab pivot over a per-tab keyed scroll lane, every tab's sections and rows |
+| `Settings.ThemePicker` | `SettingsThemePickerProps` (none) | the Appearance tab, the setup wizard's Theme step | the fixed-size card per `ThemePickerEntry` |
+| `Settings.ThemeOptions` | `SettingsThemeOptionsProps` (`Wizard`) | the Appearance tab (the expander), the wizard (the plate rows, placed only when `SettingsThemeOptions.HasWizardOptions`) | the groups, the generated rows by kind, the legacy rows by document id |
+| `Settings.SidebarLayoutCards` | `SettingsSidebarLayoutProps` (`Active`, `Editing`) | the wizard's Layout step | the two layout cards and their miniatures |
+
+**What a Settings view may call.** The WVTH002 fence applies. A row's value is `row.Current` (the live store read through the document), not a settings key; what no row carries is a typed fact on `SettingsFacts` (`EqualizerGainsRaw`,
+`CrossfadeSeconds`, `AudioBudgetBytes`, `CrashInstallId`, `UpdateLastCheckedMs`, `SidebarMigrationDropped`, `AiLyricsEpoch`, `VideoOverrideTitle` / `VideoOverrideArtistLine`); the About receipts are one `Settings.SampleReceipts()` per tick.
+The active theme's options arrive grouped by `SettingsThemeOptions.Current(wizard)` (legacy rows first, then the generated ones, a group per label; developer rows absent; the sidebar's two notes ride the sidebar rows), so the core
+decides what is shown and the view only draws it. The numbers are `Rules\ClassicSettingsRules.cs`; Settings has no tiers: its column is capped (1000 DIP) and never compared with a window width (WVTH013).
+
+**Controls that freeze their inputs stay what they were.** A ComboBox, Slider or NumberBox binds one signal for its life, so each is seeded from the document when the page mounts (the template's mount effect) and re-synced by the child
+component that owns it; the video-override flyout and its anchor are root-lifetime state torn down when the Playback tab is left or the route is parked. The tab body swaps with no transition and only the scroller is keyed, per tab
+(`settings:scroll:<slug>`), so each tab keeps its own offset. The keys the mounted tests read (`settings:theme:picker`, `settings:theme:card:<id>`, `settings:theme:options`, `opt:group:<title>`, `legacy:<row>`, `appearance.zoom:<percent>`,
+`appearance.ai-lyrics`) are unchanged. The tuned canvas's page cross-fade between tabs (Q38) and a row deep link with scroll-into-view are not production behaviour today and are not part of this move.
+
+**Tests.** The ids, Classic's registration, the props' equality, `row.Current` and the option grouping are `Wavee.Tests\SettingsPageContractTests.cs` (the document itself stays `SettingsDocTests`); the mounted facts (a tab opens in
+its own keyed lane, the deep link, and the three shared surfaces mounted through their keys) are `Wavee.ShellTests\SettingsMountedTests.cs`, next to `ThemeOptionsMountedTests` (the Appearance tab and the wizard step).
+
 ## 3. Options
 
 An option is data: a `ToggleOption`, `SelectOption<TEnum>`, `SliderOption`, `ColorOption`, `ActionOption` or
@@ -1233,7 +1259,7 @@ alternating component type from the first switch on, which is how the root remou
 Settings › Appearance is `Theme` (the picker) · `‹Theme› options` · `Display` (app mode, zoom, marquee), then the rows that have
 no other home yet (lyrics, full screen, now playing, Home). Nothing in it names a theme.
 
-- **Picker.** `Screens\Settings.UI.Theme.cs` draws one fixed-size card per `ThemePickerEntry` (`PickerState.Entries(developerMode)`:
+- **Picker.** Classic's `Settings.ThemePicker` view (`ClassicSettings.Theme.cs`) draws one fixed-size card per `ThemePickerEntry` (`PickerState.Entries(developerMode)`:
   install order, Developer themes only in Developer mode but always the active one). Name is one line, description two, the
   preview is a UI-native miniature with the manifest's preview image over it when the asset ships. A pick is
   `SettingsVerbs.PickTheme` → `ThemeHost.Switch`; the remounted page opens on Appearance again. The manifest's

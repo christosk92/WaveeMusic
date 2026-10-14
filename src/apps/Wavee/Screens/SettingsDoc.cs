@@ -2,9 +2,9 @@
 //
 // Role: CORE (themes plan §5.1, PR C13; extraction X34-X36, §8.1). The Settings views used to own, row by row, what the row
 // is called, which glyph it wears, when it is greyed and why, and what writing it DOES (a store write, a DSP push, an OS
-// registration, a toast). That knowledge is this document now; the views (`Settings.UI*.cs`, and each theme's own
-// `Pages.Settings` later) draw it. The decisions stay engine-free, so `SettingsDocTests` drive them over a fake
-// `ISettingsFacts`.
+// registration, a toast). That knowledge is this document now; each theme's `Pages.Settings` view (Classic's
+// `Themes\Classic\Structure\Views\Screens\ClassicSettings*.cs`) draws it. The decisions stay engine-free, so `SettingsDocTests`
+// drive them over a fake `ISettingsFacts`.
 //
 // A ROW is `SettingsRow { Kind, Title, Caption, Value, Writer, Enabled (+ Reason), Visible, GlyphRole }`:
 //   · `Kind`     what a view draws for it (toggle, choice, segmented, slider, picker, action, fact, composite);
@@ -117,6 +117,10 @@ public sealed class SettingsRow
 
     /// <summary>The current value, read from a settings store: a boxed bool, int, float or string; null for a row with no value.</summary>
     public Func<IAppSettings, object?> Value { get; init; } = static _ => null;
+
+    /// <summary>The row's value read NOW from the live settings store: what a view seeds a control from (a theme never reaches the
+    /// store itself, WVTH002). Null for a row with no value.</summary>
+    public object? Current => Value(Platform.Settings);
 
     public required SettingsWriter Writer { get; init; }
 

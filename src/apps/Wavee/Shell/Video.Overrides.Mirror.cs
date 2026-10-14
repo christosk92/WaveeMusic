@@ -47,7 +47,7 @@
 // THREAD. UI thread, and no marshalling — every producer of `Changed` is already on it: the five verbs in
 // `Entities/Track.Menu.Video.cs` (inside a menu invoke, around a modal picker that must run on the window's thread),
 // the two drop paths (`Entities/Playlist.Page.cs`, `Entities/Track.Table.cs`, inside an input handler), the Settings
-// roster (`Screens/Settings.UI.Video.cs`) and the undo callbacks on the notification queue. The roster raises
+// roster (`ClassicSettings.VideoOverrides.cs`) and the undo callbacks on the notification queue. The roster raises
 // `Changed` OUTSIDE its own lock, so a handler that writes columns and publishes cannot deadlock against it.
 // `EntityId.Parse` interns, and the column writes and `Publish` are C1 — a background producer would have to
 // marshal (`Playback.ToUi`) BEFORE it calls the roster, not here, because the roster's own `Persist` writes settings

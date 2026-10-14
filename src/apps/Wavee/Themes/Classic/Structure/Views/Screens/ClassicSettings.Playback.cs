@@ -1,21 +1,11 @@
-// ── Screens/Settings.UI.Playback.cs ────────────────────────────────────────────────────────────────────────────────
-// the Playback tab: the runtime card (ready expander / not-set-up bar / problem bar) · Audio (quality with the D7 lossless
-// rung, the metered cap + its live status line, remember volume, autoplay, normalization) · Sound (the equalizer curve,
-// crossfade — both bound to the live DSP) · Video (quality, the metered cap, the attached-videos row + its "Manage"
-// flyout anchor) · Player bar
+// ── Themes/Classic/Structure/Views/Screens/ClassicSettings.Playback.cs — the Playback tab (themes plan 6.1, T11b) ────────────────────────────
 //
-// Role: UI
-// Owner: R
-// Wave: 6
-// Budget: 800 lines
-// Spec: DERIVED (ch 27 §9.3); ch 27 §0 N3-N5, N10, N11, §1.2 props-freeze map, W7-W11, §3, §4.3, §6.1, §7, §9.1-9.2,
-// §9.6 (Connect diagnostics offered from the READY expander too), §10 items 21-35d; D7; gaps G-130, G-132
+// From `Screens\Settings.UI.Playback.cs`. The runtime card (ready expander / not-set-up bar / problem bar) · Audio (quality with the D7 lossless rung, the metered
+// cap + its live status line, remember volume, autoplay, normalization) · Sound (the equalizer curve, crossfade — both bound to the live DSP) · Video (quality,
+// the metered cap, the attached-videos row + its "Manage" flyout anchor, `ClassicSettings.VideoOverrides.cs`) · Player bar.
 //
-// THE LIVE DSP. Every equalizer / crossfade write persists and then pushes the WHOLE state to `Playback.Audio`
-// (`SetEqualizer`, `SetCrossfade`), so the ear follows the curve while it is dragged; normalization goes through the
-// `ApplyNormalization` seam below until the audio host exposes its own setter.
-//
-// SEAMS: `Settings.ApplyNormalization` (owner B4 assigns `Playback.Audio.SetNormalization`).
+// THE LIVE DSP is the verbs'. Every equalizer / crossfade write persists and then pushes the WHOLE state to the live graph (`SettingsVerbs.SetEqBand`,
+// `CommitCrossfade`), so the ear follows the curve while it is dragged; this view keeps only the mirrors of its frozen controls (a combo's selection signal).
 
 using System.Globalization;
 using FluentGpu.Controls;
@@ -23,17 +13,13 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Tab = Wavee.Settings.Tab;
 
-namespace Wavee;
+namespace Wavee.Themes.Classic;
 
-public static partial class Settings
+internal static partial class ClassicSettings
 {
-    // ══ 1. SEAMS, STABLE CONTROL STATE (0.2.9 `SettingsPage.Playback.cs:31-41`, `VideoOverrides.cs:30-40`) ══════════
-
-    /// <summary><c>Playback.Audio.SetNormalization</c>, assigned at boot (G-132, V-PA27): the three normalization rows (the toggle,
-    /// the mode, album mode) each persist and then call it, and it re-ramps the playing voices to the new setting within 50 ms.
-    /// Null → the key is still written and the next open reads it.</summary>
-    public static Action? ApplyNormalization;
+    // ══ 1. STABLE CONTROL STATE (0.2.9 `SettingsPage.Playback.cs:31-41`, `VideoOverrides.cs:30-40`) ═════════════════
 
     // ComboBox / NumberBox / Slider bind ONE signal instance for their life: these are seeded per page mount.
     static readonly Signal<int> s_quality = new(Platform.Keys.PlaybackQuality.Default);
@@ -47,19 +33,19 @@ public static partial class Settings
     /// <summary>The parsed gain vector, re-parsed only when the stored string moves — a stable array keeps the curve's
     /// props record equal across an unrelated page re-render, so its 240 nodes are not rebuilt.</summary>
     static string? s_eqGainsRaw;
-    static float[] s_eqGains = new float[Eq.BandCount];
+    static float[] s_eqGains = new float[Settings.Eq.BandCount];
     static readonly Action<int, float> s_onEqBand = SetEqBand;
     static readonly Func<string, string> s_locGet = Loc.Get;
 
     static readonly Slider.SliderOptions s_crossSliderOptions = new()
     {
-        Min = 0f, Max = (float)Quality.CrossfadeMaxSeconds, Step = 0.5f, TickFrequency = 2f, IsThumbToolTipEnabled = true,
+        Min = 0f, Max = (float)Settings.Quality.CrossfadeMaxSeconds, Step = 0.5f, TickFrequency = 2f, IsThumbToolTipEnabled = true,
         ThumbToolTipValueConverter = static v => v.ToString("0.#", CultureInfo.InvariantCulture) + " s",
     };
     static readonly NumberBox.NumberBoxOptions s_crossBoxOn = new()
     {
-        Minimum = 0, Maximum = Quality.CrossfadeMaxSeconds, SmallChange = 0.5,
-        SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact, Width = 96f,
+        Minimum = 0, Maximum = Settings.Quality.CrossfadeMaxSeconds, SmallChange = 0.5,
+        SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact, Width = ClassicSettingsRules.CrossBoxWidth,
         Formatter = static v => v.ToString("0.#", CultureInfo.InvariantCulture) + " s",
     };
     static readonly NumberBox.NumberBoxOptions s_crossBoxOff = s_crossBoxOn with { IsEnabled = false };
@@ -71,22 +57,22 @@ public static partial class Settings
     static OverlayHandle? s_voHandle { get => s_voHandleState.Value; set => s_voHandleState.Value = value; }
     static NodeHandle s_voAnchor { get => s_voAnchorState.Value; set => s_voAnchorState.Value = value; }
 
-    static partial void SeedPlayback()
+    /// <summary>The page mount: every frozen control's signal from the document's value.</summary>
+    static void SeedPlayback()
     {
-        var s = Platform.Settings;
-        s_quality.Value = Quality.AudioIndex(s.Get(Platform.Keys.PlaybackQuality), Spotify.Audio.CanDerive);
-        s_normMode.Value = Math.Clamp(s.Get(Platform.Keys.NormalizationMode), 0, 2);
-        s_videoQuality.Value = Quality.VideoIndex(s.Get(Platform.Keys.VideoQuality));
-        s_meteredVideo.Value = Quality.MeteredVideoIndex(s.Get(Platform.Keys.VideoMeteredMaxHeight));
-        s_eqPreset.Value = Eq.PresetIndex(s.Get(Platform.Keys.EqualizerPreset));
-        double seconds = Quality.CrossfadeSeconds(s.Get(Platform.Keys.CrossfadeMs));
+        if (D(Tab.Playback, "audioQuality").Current is int quality) s_quality.Value = quality;
+        if (D(Tab.Playback, "normalizationMode").Current is int normMode) s_normMode.Value = normMode;
+        if (D(Tab.Playback, "videoQuality").Current is int videoQuality) s_videoQuality.Value = videoQuality;
+        if (D(Tab.Playback, "videoMetered").Current is int meteredVideo) s_meteredVideo.Value = meteredVideo;
+        if (D(Tab.Playback, "eqPreset").Current is int eqPreset) s_eqPreset.Value = eqPreset;
+        double seconds = SettingsFacts.CrossfadeSeconds();
         s_crossSecs.Value = seconds;
         s_crossSlider.Value = (float)seconds;
     }
 
     /// <summary>Leaving the tab closes the manager and drops the (about-to-be-destroyed) anchor, but KEEPS an armed deep
     /// link — that request is what flips the page back to this tab.</summary>
-    static partial void EnterPlayback(bool active)
+    static void EnterPlayback(bool active)
     {
         if (active) return;
         s_voAnchor = NodeHandle.Null;
@@ -96,7 +82,7 @@ public static partial class Settings
 
     // ══ 2. THE TAB ════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    private static partial Element PlaybackTab() => TabStack(
+    private static Element PlaybackTab() => TabStack(
         RuntimeCard(),
 
         SectionHeader(Loc.Get(Strings.Settings.Playback.AudioTitle), SectionGlyph(Tab.Playback, "Audio")),
@@ -109,7 +95,7 @@ public static partial class Settings
         DocRow(D(Tab.Playback, "normalization"), RowToggle(D(Tab.Playback, "normalization"))),
         DocRow(D(Tab.Playback, "normalizationMode"),
             ComboBox.Create([Loc.Get(Strings.Settings.Playback.NormQuiet), Loc.Get(Strings.Settings.Playback.NormNormal), Loc.Get(Strings.Settings.Playback.NormLoud)],
-                s_normMode, width: 200f,
+                s_normMode, width: ClassicSettingsRules.NarrowComboWidth,
                 itemDescriptions: [Loc.Get(Strings.Settings.Playback.NormQuietSub), Loc.Get(Strings.Settings.Playback.NormNormalSub), Loc.Get(Strings.Settings.Playback.NormLoudSub)],
                 onChange: static i => D(Tab.Playback, "normalizationMode").Writer.Choose!(i))),
         DocRow(D(Tab.Playback, "normalizationAlbum"), RowToggle(D(Tab.Playback, "normalizationAlbum"))),
@@ -176,16 +162,16 @@ public static partial class Settings
     }
 
     /// <summary>"View diagnostics" (the runtime report) + "Connect diagnostics" (who owns playback — orthogonal to whether
-    /// local playback is provisioned, so it rides the same row in every state).</summary>
+    /// local playback is provisioned, so it rides the same row in every state). The two doors are the Privacy & diagnostics tab's Tools rows.</summary>
     static Element DiagnosticsLinks() => new BoxEl
     {
         Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S,
         Children =
         [
             HyperlinkButton.Create(Loc.Get(Strings.Playback.Runtime.ViewDiagnostics),
-                static () => Shell.GoTo(new Shell.Route(Shell.RouteKind.PlaybackDiagnostics))),
+                static () => D(Tab.PrivacyDiagnostics, "playbackRuntime").Writer.Run!()),
             HyperlinkButton.Create(Loc.Get(Strings.Nav.ConnectDiagnostics),
-                static () => Shell.GoTo(new Shell.Route(Shell.RouteKind.ConnectDiagnostics))),
+                static () => D(Tab.PrivacyDiagnostics, "connectDiagnostics").Writer.Run!()),
         ],
     };
 
@@ -241,12 +227,12 @@ public static partial class Settings
     /// permanently-dead rung is an advert. The combo's items freeze at mount, so the key carries the rung count.</summary>
     static Element QualityCombo()
     {
-        int count = Quality.AudioRungCount(Spotify.Audio.CanDerive);
-        return ComboBox.Create(QualityLabels(count), s_quality, width: 280f, itemDescriptions: QualityDescriptions(count),
+        int count = Settings.Quality.AudioRungCount(SettingsFacts.Live.CanDerive);
+        return ComboBox.Create(QualityLabels(count), s_quality, width: ClassicSettingsRules.WideComboWidth, itemDescriptions: QualityDescriptions(count),
             onChange: static i =>
             {
-                if (D(Tab.Playback, "audioQuality").Writer.Choose!(i)) Bump();
-            }) with { Key = count == Quality.AudioRungCount(true) ? "playback.quality:lossless" : "playback.quality" };
+                if (D(Tab.Playback, "audioQuality").Writer.Choose!(i)) Settings.Bump();
+            }) with { Key = count == Settings.Quality.AudioRungCount(true) ? "playback.quality:lossless" : "playback.quality" };
     }
 
     /// <summary>Reactive: the live cost, the live cap and the chosen quality are all read here, so an NLM push or either
@@ -254,7 +240,7 @@ public static partial class Settings
     static string MeteredStatus()
     {
         bool capInEffect = Platform.Network.MeteredQualityCap.Value < s_quality.Value;
-        return MeteredStatusLine.For(Platform.Network.Cost.Value, capInEffect).Render(s_locGet);
+        return Settings.MeteredStatusLine.For(Platform.Network.Cost.Value, capInEffect).Render(s_locGet);
     }
 
     /// <summary>Bound STRAIGHT to the live cap signal (33b), not a page mirror. The same ladder as the streaming combo
@@ -262,12 +248,12 @@ public static partial class Settings
     /// combo's items freeze at mount.</summary>
     static Element MeteredQualityCombo()
     {
-        int count = Quality.MeteredRungCount(Spotify.Audio.CanDerive);
-        return ComboBox.Create(QualityLabels(count), Platform.Network.MeteredQualityCap, width: 280f,
+        int count = Settings.Quality.MeteredRungCount(SettingsFacts.Live.CanDerive);
+        return ComboBox.Create(QualityLabels(count), Platform.Network.MeteredQualityCap, width: ClassicSettingsRules.WideComboWidth,
             itemDescriptions: QualityDescriptions(count), onChange: static i =>
             {
-                if (D(Tab.Playback, "meteredQuality").Writer.Choose!(i)) Bump();   // persist, then publish
-            }) with { Key = count == Quality.AudioRungCount(true) ? "playback.meteredCap:lossless" : "playback.meteredCap" };
+                if (D(Tab.Playback, "meteredQuality").Writer.Choose!(i)) Settings.Bump();   // persist, then publish
+            }) with { Key = count == Settings.Quality.AudioRungCount(true) ? "playback.meteredCap:lossless" : "playback.meteredCap" };
     }
 
     // ══ 5. SOUND — THE EQUALIZER (W7, W8, N10) ════════════════════════════════════════════════════════════════════════
@@ -300,8 +286,8 @@ public static partial class Settings
     /// (the chart overran the card, and "Reset curve to flat" was cut off at the card's right edge).</para></summary>
     static Element EqualizerGroup()
     {
-        bool eqOn = Platform.Settings.Get(Platform.Keys.EqualizerEnabled);
-        int preset = Math.Clamp(s_eqPreset.Value, 0, Eq.PresetIds.Length - 1);
+        bool eqOn = SettingsFacts.Live.EqualizerEnabled;
+        int preset = Math.Clamp(s_eqPreset.Value, 0, Settings.Eq.PresetIds.Length - 1);
         string[] descriptions = EqPresetDescriptions();
         return SettingsExpander.Create(new SettingsExpander.Options
         {
@@ -314,7 +300,7 @@ public static partial class Settings
             [
                 // The item's own description is the SELECTED preset's sentence.
                 Item(Loc.Get(Strings.Settings.Sound.Preset), descriptions[preset],
-                    ComboBox.Create(EqPresetLabels(), s_eqPreset, width: 200f, itemDescriptions: descriptions,
+                    ComboBox.Create(EqPresetLabels(), s_eqPreset, width: ClassicSettingsRules.NarrowComboWidth, itemDescriptions: descriptions,
                         isEnabled: eqOn, onChange: static i => ApplyEqPreset(i))),
                 Item(Loc.Get(Strings.Settings.Sound.Curve),
                     Loc.Get(eqOn ? Strings.Settings.Sound.CurveOn : Strings.Settings.Sound.CurveOff),
@@ -338,11 +324,11 @@ public static partial class Settings
 
     static float[] EqGains()
     {
-        string raw = Platform.Settings.Get(Platform.Keys.EqualizerGains);
+        string raw = SettingsFacts.EqualizerGainsRaw();
         if (!string.Equals(raw, s_eqGainsRaw, StringComparison.Ordinal))
         {
             s_eqGainsRaw = raw;
-            s_eqGains = Eq.ParseGains(raw);   // a NEW array: the curve's props gate sees the change
+            s_eqGains = Settings.Eq.ParseGains(raw);   // a NEW array: the curve's props gate sees the change
         }
         return s_eqGains;
     }
@@ -351,16 +337,16 @@ public static partial class Settings
     /// on the band's current half-decibel writes nothing (the verb says so).</summary>
     static void SetEqBand(int band, float gain)
     {
-        if (SettingsVerbs.SetEqBand(band, gain)) Bump();
+        if (SettingsVerbs.SetEqBand(band, gain)) Settings.Bump();
     }
 
     /// <summary>A preset: the verb persists and pushes the whole state to the live graph; this view keeps its combo's mirror.</summary>
     static void ApplyEqPreset(int index)
     {
-        int idx = Math.Clamp(index, 0, Eq.PresetIds.Length - 1);
+        int idx = Math.Clamp(index, 0, Settings.Eq.PresetIds.Length - 1);
         s_eqPreset.Value = idx;
         D(Tab.Playback, "eqPreset").Writer.Choose!(idx);
-        Bump();
+        Settings.Bump();
     }
 
     static void ResetEqCurve() => ApplyEqPreset(0);
@@ -371,7 +357,7 @@ public static partial class Settings
     /// switch (ch 27 §1.2's documented NumberBox cure), so both controls follow the toggle on the same frame.</summary>
     static Element CrossfadeGroup()
     {
-        bool crossOn = Platform.Settings.Get(Platform.Keys.CrossfadeEnabled);
+        bool crossOn = SettingsFacts.Live.CrossfadeEnabled;
         string seconds = s_crossSecs.Value.ToString("0.#", CultureInfo.InvariantCulture);
         return SettingsExpander.Create(new SettingsExpander.Options
         {
@@ -388,7 +374,7 @@ public static partial class Settings
                     Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
                     Children =
                     [
-                        Slider.Create(s_crossSlider, static v => CommitCrossfade(v), s_crossSliderOptions, length: 220f, isEnabled: crossOn),
+                        Slider.Create(s_crossSlider, static v => CommitCrossfade(v), s_crossSliderOptions, length: ClassicSettingsRules.CrossSliderLength, isEnabled: crossOn),
                         NumberBox.Create(s_crossSecs, static v => CommitCrossfade(v), crossOn ? s_crossBoxOn : s_crossBoxOff),
                     ],
                 }),
@@ -400,29 +386,29 @@ public static partial class Settings
     /// persisted and pushed only when the millisecond value actually moved (a slider drag reports every sample).</summary>
     static void CommitCrossfade(double seconds)
     {
-        double snapped = Quality.CrossfadeMs(seconds) / 1000.0;
+        double snapped = Settings.Quality.CrossfadeMs(seconds) / 1000.0;
         s_crossSecs.Value = snapped;
         s_crossSlider.Value = (float)snapped;
-        if (SettingsVerbs.CommitCrossfade(seconds)) Bump();
+        if (SettingsVerbs.CommitCrossfade(seconds)) Settings.Bump();
     }
 
     // ══ 7. VIDEO (W11) ════════════════════════════════════════════════════════════════════════════════════════════════
 
     static Element VideoQualityCombo()
         => ComboBox.Create([Loc.Get(Strings.Settings.Playback.VideoQualityAuto), "180p", "240p", "320p", "480p", "720p", "1080p"],
-            s_videoQuality, width: 280f, onChange: static i =>
+            s_videoQuality, width: ClassicSettingsRules.WideComboWidth, onChange: static i =>
             {
                 // Stored as a height (0 = Auto); the verb persists, then pins live: the ABR ceiling + the engine's selection.
-                if (D(Tab.Playback, "videoQuality").Writer.Choose!(i)) Bump();
+                if (D(Tab.Playback, "videoQuality").Writer.Choose!(i)) Settings.Bump();
             });
 
     /// <summary>A stored height that matches nothing reads as 480p (index 1). Persisted and published through the
     /// network policy; the video session folds it on its next quality decision.</summary>
     static Element MeteredVideoCombo()
         => ComboBox.Create([Loc.Get(Strings.Settings.Playback.VideoQualityUnlimited), "480p", "720p", "1080p"],
-            s_meteredVideo, width: 280f, onChange: static i =>
+            s_meteredVideo, width: ClassicSettingsRules.WideComboWidth, onChange: static i =>
             {
-                if (D(Tab.Playback, "videoMetered").Writer.Choose!(i)) Bump();
+                if (D(Tab.Playback, "videoMetered").Writer.Choose!(i)) Settings.Bump();
             });
 
     /// <summary>D15's off switch, DEFAULT ON. On, the video host fetches the licence for the playing video-capable track
@@ -431,62 +417,4 @@ public static partial class Settings
     /// speed. The write persists and then re-decides the keeper's beat immediately, rather than at the next track.</summary>
     static Element VideoPrepareAheadRow()
         => DocRow(D(Tab.Playback, "videoPrepareAhead"), RowToggle(D(Tab.Playback, "videoPrepareAhead")));
-
-    /// <summary>The attached-videos SUMMARY (ch 27 W11's states): no roster store → the whole row greyed with NO control;
-    /// 0 rows → "No videos attached yet" + Manage and no "Remove all"; N rows → the count + Manage + Remove all. The roster
-    /// is warm and synchronous (<see cref="Video.Overrides"/>), so there is no cold-load spinner to show — and the Manage
-    /// wrapper node never swaps out under an open flyout.</summary>
-    static Element VideoOverridesRow()
-    {
-        _ = Video.Overrides.Epoch.Value;   // an attach/remove anywhere (the track menu, an undo toast, the flyout) re-reads
-        string header = Loc.Get(Strings.VideoOverride.SettingsHeader);
-        string sub = Loc.Get(Strings.VideoOverride.SettingsSub);   // the trust disclosure: device-wide, linked not copied
-        string glyph = RowGlyph(Tab.Playback, "videoOverrides");
-        if (!Video.Overrides.Present)
-        {
-            s_voAnchor = NodeHandle.Null;
-            return Row(header, sub, null, glyph, isEnabled: false);
-        }
-
-        int count = Video.Overrides.Count;
-        var kids = new Element[count > 0 ? 3 : 2];
-        kids[0] = new TextEl(count > 0 ? Strings.VideoOverride.SettingsCount(count) : Loc.Get(Strings.VideoOverride.SettingsEmpty))
-        {
-            Size = 12f, Color = Tok.TextSecondary,
-        };
-        kids[1] = new BoxEl
-        {
-            Direction = 0, Shrink = 0f,
-            // The realized wrapper is the anchor.
-            OnRealized = static h => s_voAnchor = h,
-            Children = [Button.Standard(Loc.Get(Strings.VideoOverride.Manage), static () => ToggleVideoOverrideManager())],
-        };
-        if (count > 0)
-            // Bulk detach is the ONE place a confirm earns its keep here: N links at once, no per-row undo (N11).
-            kids[2] = Button.Standard(Loc.Get(Strings.VideoOverride.ClearAll), static () =>
-            {
-                var clear = D(Tab.Playback, "videoOverrides");
-                ConfirmThen(Loc.Get(clear.Confirm!.TitleKey), Loc.Get(clear.Confirm.BodyKey), Loc.Get(clear.Confirm.PrimaryKey),
-                    () => clear.Writer.Run!());
-            });
-
-        return Row(header, sub, new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Children = kids }, glyph);
-    }
-
-    /// <summary>"Manage" is a TOGGLE (35d): a second press closes the flyout. The body is owner K's.</summary>
-    static void ToggleVideoOverrideManager()
-    {
-        if (s_overlay is not { } overlay || !Video.Overrides.Present) return;
-        if (s_voHandle is { IsOpen: true } open) { open.Close(); return; }
-        var handle = overlay.Open(
-            static () => s_voAnchor,
-            static () => VideoOverridesBody(),
-            FlyoutPlacement.BottomEdgeAlignedLeft,
-            new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
-            {
-                ConstrainToRootBounds = true,
-            });
-        s_voHandle = handle;
-        handle.ClosedAction = () => { if (ReferenceEquals(s_voHandle, handle)) s_voHandle = null; };
-    }
 }

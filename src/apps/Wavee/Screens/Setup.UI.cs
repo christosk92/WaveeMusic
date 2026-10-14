@@ -42,6 +42,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -541,7 +542,7 @@ public static partial class Setup
         ],
     };
 
-    /// <summary>Pick a sidebar layout (design C.2 entry 5): the two Settings cards, applied at once.</summary>
+    /// <summary>Pick a sidebar layout (design C.2 entry 5): the two Settings cards (the structure's `Settings.SidebarLayoutCards` view), applied at once.</summary>
     sealed class LayoutPage : Component
     {
         public override Element Render()
@@ -549,7 +550,7 @@ public static partial class Setup
             var layout = Sidebar.Layout.Value;
             var body = SetupText.Stack(
                 SetupText.Body(Loc.Get("setup.layout.body")),
-                Settings.SidebarLayoutCards(layout, editing: false));
+                FluentGpu.Theming.Slots.View(ViewKeys.SettingsSidebarLayoutCards, new SettingsSidebarLayoutProps { Active = layout, Editing = false }));
             return WizardFrame(WizardPage.Layout, Loc.Get("setup.layout.title"), body);
         }
     }

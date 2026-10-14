@@ -151,6 +151,39 @@ public static class SettingsFacts
     /// <summary>The process-wide live facts.</summary>
     public static ISettingsFacts Live { get; } = new LiveSettingsFacts();
 
+    // ── what a view reads that no row carries (a theme never reaches the store, WVTH002) ───────────────────────────────
+
+    /// <summary>The stored equalizer curve (the comma-joined gains the Sound group parses).</summary>
+    public static string EqualizerGainsRaw() => Platform.Settings.Get(Platform.Keys.EqualizerGains);
+
+    /// <summary>The crossfade length in seconds (the Sound group's slider and number box seed from it).</summary>
+    public static double CrossfadeSeconds() => Settings.Quality.CrossfadeSeconds(Platform.Settings.Get(Platform.Keys.CrossfadeMs));
+
+    /// <summary>When the update feed was last checked (unix ms), 0 = never: the About hero's provenance line when the snapshot has no stamp.</summary>
+    public static long UpdateLastCheckedMs() => Platform.Settings.Get(Platform.Keys.UpdateLastCheckedMs);
+
+    /// <summary>The on-device AI lyrics preferences' epoch: a switch flipped anywhere (the lyrics header, the card) re-reads the card's rows.</summary>
+    public static FluentGpu.Signals.IReadSignal<int> AiLyricsEpoch => Prefs.AiLyrics.Epoch;
+
+    /// <summary>The crash service's install id (boot ensures it exists; a render never writes the store).</summary>
+    public static string CrashInstallId() => Crash.InstallId.Peek(Platform.Settings);
+
+    /// <summary>The fixed audio-body budget in bytes, never below the cache's minimum.</summary>
+    public static long AudioBudgetBytes()
+        => Math.Max(Wavee.Sdk.Streams.ChunkDiskCache.MinBudgetBytes, Platform.Settings.Get(Platform.Keys.AudioBodyCacheBudgetBytes));
+
+    /// <summary>The ids the sidebar's last layout migration dropped, comma-joined; "" when it dropped nothing.</summary>
+    public static string SidebarMigrationDropped() => Platform.Settings.Get(Platform.Keys.SidebarMigrationDropped);
+
+    /// <summary>A video-override row's track title: the catalog's when the playable is a known track, else null (the roster shows the uri).</summary>
+    public static string? VideoOverrideTitle(string uri)
+        => Entities.Current.Tracks.TryGetSlot(uri.AsSpan(), out int slot) && new Track(slot).Knows(TrackFields.Title) ? new Track(slot).Title : null;
+
+    /// <summary>A video-override row's artist line, or null when the catalog does not know the track's artists.</summary>
+    public static string? VideoOverrideArtistLine(string uri)
+        => Entities.Current.Tracks.TryGetSlot(uri.AsSpan(), out int slot) && new Track(slot).Knows(TrackFields.Artists)
+            ? Entities.Strings.Resolve(new Track(slot).ArtistLineId) : null;
+
     /// <summary>A packaged build; an unreadable identity reads as unpackaged.</summary>
     public static bool IsPackaged()
     {
