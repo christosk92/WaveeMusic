@@ -144,7 +144,7 @@ internal sealed class ClassicEditPane : Component
                 ToolTip.Wrap(IconButton.Create(Icons.Undo, Edit.Undo, isEnabled: canUndo), Loc.Get("sidebar.undo.undoAction")),
                 ToolTip.Wrap(IconButton.Create(Icons.Redo, Edit.Redo, isEnabled: canRedo), Loc.Get("sidebar.undo.redo")),
                 Button.Create(Loc.Get("sidebar.edit.reset"), static () => { }, ButtonAppearance.Subtle, ControlSize.Small)
-                    .WithContextMenu(owner.MenuOverlay, owner.ResetMenu) with { ClickRequestsContext = true, Key = "edit-reset" },
+                    .WithContextMenu(owner.MenuOverlay, owner.ResetMenu) with { OnClick = null, ClickRequestsContext = true, Key = "edit-reset" },
                 Button.Accent(Loc.Get("sidebar.edit.done"), Edit.Exit) with { Key = "edit-done" },
             ],
         };
