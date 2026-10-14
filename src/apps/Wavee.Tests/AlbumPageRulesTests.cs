@@ -8,6 +8,7 @@
 using FluentGpu.Dsl;
 using FluentGpu.Localization;
 using Wavee;
+using Wavee.Themes.Classic;
 using Xunit;
 using Rules = Wavee.Album.PageRules;
 
@@ -173,9 +174,9 @@ public class AlbumPageRulesTests
         Assert.Equal(Rules.SkelAboutTextH, 16f + 28f + 2 * 18f + 2 * Spacing.XS);             // eyebrow + name + 2-line bio + gaps
         Assert.Equal(Rules.SkelAboutH, Rules.SkelAboutTextH + 2 * Spacing.M);
         Assert.Equal(SurfaceGeometry.ShelfHeight(148f, 1f, captionLines: 1, metaLine: false), Rules.SkelFansH);
-        Assert.Equal(Album.SurfaceMetrics.HeroThumbW, Rules.SkelVideoThumbW);
-        Assert.Equal(Album.SurfaceMetrics.HeroThumbH, Rules.SkelVideoThumbH);
-        Assert.Equal(Rules.SkelVideoH, Spacing.XL + Album.SurfaceMetrics.HeroThumbH + 2 * Spacing.M);
+        Assert.Equal(ClassicAlbumLayout.HeroThumbW, Rules.SkelVideoThumbW);
+        Assert.Equal(ClassicAlbumLayout.HeroThumbH, Rules.SkelVideoThumbH);
+        Assert.Equal(Rules.SkelVideoH, Spacing.XL + ClassicAlbumLayout.HeroThumbH + 2 * Spacing.M);
     }
 
     [Fact]

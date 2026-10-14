@@ -6,9 +6,10 @@
 // `Skeleton.RailPlanFor`), the title rule (`VerticalLayout.RailTitleTypeFor`), the rung that picks the title cap and the description clamp
 // (the host), the accent, the play-all cell and every page slot builder.
 //
-// The page-facing helpers (`Detail.PlayButton`, `RailSatellite*`, `MoreButton`, `ArtistLine`, `RailArtistLineBox`, `NoticeBar`, the row helpers
-// `Row` / `LateRow` and the share / save targets) STAY in `Detail`: the pages, the library panes and the artist page build their own pieces from
-// them, and T9b / T9c consume them as the seam. This file calls them through `Detail`.
+// The page-facing helpers (`Detail.PlayButton`, `RailSatellite*`, `Satellite`, `MoreButton`, `ArtistLine` and the share / save targets) STAY in
+// `Detail`: the pages, the library panes and the artist page build their own pieces from them (T9c / T10 move them with those pages). This file calls
+// them through `Detail`. The keyed rail rows (`Row` / `LateRow` / `ReleaseRow`), the eyebrow run and the billed-artist line box moved to the shared kit
+// (`ClassicDetailKit.cs`, T9b), and the notice strip to `ClassicDetailSeam.cs`.
 //
 // NAME NOTE: `Text`, `Skeleton` and `Config` are nested `Detail` classes; the aliases below keep their short names here.
 
@@ -153,13 +154,13 @@ internal static partial class ClassicDetailFrame
         // The lead. The eyebrow asymmetry (W27): the rail shows it for TypeYear only (a show's badges share its line);
         // OwnerRow gets the owner block instead; an EPISODE is led by its show link (its Attribution slot, W4).
         if (rows.Eyebrow)
-            kids.Add(Detail.LateRow("rail:eyebrow", rows.Badges == RailBadgeRow.BesideEyebrow && slots.Badges is { } badgesBeside
+            kids.Add(ClassicDetailKit.LateRow("rail:eyebrow", rows.Badges == RailBadgeRow.BesideEyebrow && slots.Badges is { } badgesBeside
                 ? EyebrowWithBadges(id.Eyebrow, badgesBeside(), cover)
-                : Detail.EyebrowRun(id.Eyebrow) with { Width = cover }));
+                : ClassicDetailKit.EyebrowRun(id.Eyebrow) with { Width = cover }));
         if (rows.Owner)
             kids.Add(lead && slots.Attribution is { } showLink
-                ? Detail.LateRow("rail:lead", showLink(cover))
-                : Detail.LateRow("rail:owner", slots.Attribution?.Invoke(cover) ?? OwnerBlock(id, cover)));
+                ? ClassicDetailKit.LateRow("rail:lead", showLink(cover))
+                : ClassicDetailKit.LateRow("rail:owner", slots.Attribution?.Invoke(cover) ?? OwnerBlock(id, cover)));
         if (rows.Badges == RailBadgeRow.OwnRow && slots.Badges is { } badgesOwn)
             kids.Add(SlotRow("rail:badges", badgesOwn(), RailLayout.BadgeHeight));
 
@@ -167,7 +168,7 @@ internal static partial class ClassicDetailFrame
         // authored line box (that pairing kept a 36/52 box around 18-DIP glyphs) — wrapping freely in its natural line
         // box, ellipsised only past TitleLineCap.
         var titlePlan = VerticalLayout.RailTitleTypeFor(cover, titleSize, id.Title);
-        kids.Add(Detail.Row("rail:title", slots.Title?.Invoke(titlePlan.Size, float.NaN)
+        kids.Add(ClassicDetailKit.Row("rail:title", slots.Title?.Invoke(titlePlan.Size, float.NaN)
             ?? R.Type.DetailHero(id.Title) with
             {
                 Size = titlePlan.Size, Weight = 600, Width = cover, LineHeight = float.NaN,
@@ -176,19 +177,19 @@ internal static partial class ClassicDetailFrame
 
         // Attribution: an album's billed artists; a podcast's Attribution slot (a show's publisher line).
         if (rows.Artists)
-            kids.Add(Detail.LateRow("rail:artists", slots.Attribution?.Invoke(cover)
+            kids.Add(ClassicDetailKit.LateRow("rail:artists", slots.Attribution?.Invoke(cover)
                 ?? (id.Artists is { Count: > 0 } billed ? BilledArtists(billed, cover) : new BoxEl())));
         if (rows.Rating && slots.Rating is { } rating) kids.Add(SlotRow("rail:rating", rating(cover), RailLayout.RatingHeight));
 
         // Meta: playlist / Liked / the PODCAST family (a show has no facts panel; 0.2.9 built its publisher line and never
         // drew it, ch 09 §9.4; an episode states its date · length).
-        if (rows.Meta) kids.Add(Detail.LateRow("rail:meta", MetaRow(id, cover, maxLines: 2)));
+        if (rows.Meta) kids.Add(ClassicDetailKit.LateRow("rail:meta", MetaRow(id, cover, maxLines: 2)));
         if (rows.Badges == RailBadgeRow.AfterMeta && slots.Badges is { } badgesLate)
             kids.Add(SlotRow("rail:badges", badgesLate(), RailLayout.BadgeHeight));
         if (rows.Ledger && slots.Ledger is { } ledger) kids.Add(SlotRow("rail:ledger", ledger(cover), RailLayout.LedgerHeight));
 
-        if (id.DaylistExpiresAtMs > 0 && slots.Pulse is { } pulse) kids.Add(Detail.LateRow("rail:daylist", pulse()));
-        if (id.ChartNewEntries > 0) kids.Add(Detail.LateRow("rail:chart", ChartCaption(id, slots)));
+        if (id.DaylistExpiresAtMs > 0 && slots.Pulse is { } pulse) kids.Add(ClassicDetailKit.LateRow("rail:daylist", pulse()));
+        if (id.ChartNewEntries > 0) kids.Add(ClassicDetailKit.LateRow("rail:chart", ChartCaption(id, slots)));
 
         // CTA cluster: the primary (the page's, else Play), then the fixed FAB GROUP that wraps as a unit — or the page's
         // satellites, wrapping one by one.
@@ -197,7 +198,7 @@ internal static partial class ClassicDetailFrame
             ? SatelliteCta("rail:cta", primary, satellites, RailLayout.CtaTopMargin)
             : new BoxEl
             {
-                Key = "rail:cta", Layout = Detail.Shove,
+                Key = "rail:cta", Layout = ClassicDetailKit.Shove,
                 Direction = 0, Wrap = true, Gap = RailLayout.CtaGap, AlignItems = FlexAlign.Center,
                 Margin = new Edges4(0f, RailLayout.CtaTopMargin, 0f, 0f),
                 Children =
@@ -207,30 +208,30 @@ internal static partial class ClassicDetailFrame
                 ],
             });
 
-        if (rows.Topics && slots.Topics is { } topics) kids.Add(Detail.LateRow("rail:topics", topics(cover)));
+        if (rows.Topics && slots.Topics is { } topics) kids.Add(ClassicDetailKit.LateRow("rail:topics", topics(cover)));
 
         // The short About block (podcast-episode-peek §1): its own late row, because the description lands after the
         // header facts do — an empty body renders an empty box and reserves nothing.
-        if (slots.About is { } about) kids.Add(Detail.LateRow("rail:about", about(cover)));
+        if (slots.About is { } about) kids.Add(ClassicDetailKit.LateRow("rail:about", about(cover)));
 
-        if (id.UpcomingAtUnixSeconds > 0 && slots.PreRelease is { } pre) kids.Add(Detail.LateRow("rail:prerelease", pre()));
+        if (id.UpcomingAtUnixSeconds > 0 && slots.PreRelease is { } pre) kids.Add(ClassicDetailKit.LateRow("rail:prerelease", pre()));
 
         if (cfg.Badges == BadgeStyle.TypeYear && slots.ReleasePanel is { } release)
-            kids.Add(Detail.ReleaseRow("rail:release", release(false)));
+            kids.Add(ClassicDetailKit.ReleaseRow("rail:release", release(false)));
 
         if (descMaxLines > 0)
         {
             if (id.EditableMetadata && slots.Description is { } editDescription)
-                kids.Add(Detail.LateRow("rail:desc", editDescription(cover)));
+                kids.Add(ClassicDetailKit.LateRow("rail:desc", editDescription(cover)));
             else if (id.DescriptionHtml is { Length: > 0 } html)
                 // Clamped with the inline "… More" the engine shows only when the body overflows (a bare "…" left the
                 // rest unreachable), and the whole text on hover while collapsed (fullTextTip).
-                kids.Add(Detail.LateRow("rail:desc", Controls.ExpandableRichText(html, 12f, Tok.TextSecondary, accentColor, cover,
+                kids.Add(ClassicDetailKit.LateRow("rail:desc", Controls.ExpandableRichText(html, 12f, Tok.TextSecondary, accentColor, cover,
                     descMaxLines, id.Subject.Text, DetailVerbs.NavigateKey, fullTextTip: true)));
         }
 
         // Row, not LateRow: the facts panel owns its own entrance.
-        if (slots.LikedFacts is { } facts) kids.Add(Detail.Row("rail:likedfacts", facts(cover)));
+        if (slots.LikedFacts is { } facts) kids.Add(ClassicDetailKit.Row("rail:likedfacts", facts(cover)));
 
         return RailColumnBox(railW, kids.ToArray());
     }
@@ -271,7 +272,7 @@ internal static partial class ClassicDetailFrame
         Array.Copy(satellites, 0, kids, 1, satellites.Length);
         return new BoxEl
         {
-            Key = key, Layout = Detail.Shove,
+            Key = key, Layout = ClassicDetailKit.Shove,
             Direction = 0, Wrap = true, Gap = RailLayout.SatelliteGap, AlignItems = FlexAlign.Center,
             Margin = new Edges4(0f, topMargin, 0f, 0f),
             Children = kids,
@@ -280,7 +281,7 @@ internal static partial class ClassicDetailFrame
 
     /// <summary>A single-line podcast slot row: a <see cref="Detail.LateRow"/> held at least at its nominal height
     /// (<see cref="RailLayout"/>), so a body shorter than its reservation never pulls the rows under it up on reveal.</summary>
-    static BoxEl SlotRow(string key, Element child, float nominal) => Detail.LateRow(key, child) with { MinHeight = nominal };
+    static BoxEl SlotRow(string key, Element child, float nominal) => ClassicDetailKit.LateRow(key, child) with { MinHeight = nominal };
 
     /// <summary>A show's eyebrow line: the eyebrow run, then the page's badge row in the width the run leaves (a wrapping
     /// chip row wraps inside it, never under the eyebrow). NaN <paramref name="width"/> = the vertical header's column.</summary>
@@ -289,7 +290,7 @@ internal static partial class ClassicDetailFrame
         Direction = 0, Gap = RailLayout.BadgeGap, AlignItems = FlexAlign.Start, Width = width, MinWidth = 0f,
         Children =
         [
-            Detail.EyebrowRun(eyebrow) with { Shrink = 0f },
+            ClassicDetailKit.EyebrowRun(eyebrow) with { Shrink = 0f },
             new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, Shrink = 1f, MinWidth = 0f, Children = [badges] },
         ],
     };
@@ -507,17 +508,17 @@ internal static partial class ClassicDetailFrame
 
         // The info column already clamps (Grow / Basis 0), so the eyebrow run needs no explicit width here.
         if (rows.Eyebrow)
-            info.Add(Detail.LateRow("hdr:eyebrow", rows.Badges == RailBadgeRow.BesideEyebrow && slots.Badges is { } badgesBeside
+            info.Add(ClassicDetailKit.LateRow("hdr:eyebrow", rows.Badges == RailBadgeRow.BesideEyebrow && slots.Badges is { } badgesBeside
                 ? EyebrowWithBadges(id.Eyebrow, badgesBeside(), float.NaN)
-                : Detail.EyebrowRun(id.Eyebrow)));
+                : ClassicDetailKit.EyebrowRun(id.Eyebrow)));
         if (rows.Owner)
             info.Add(lead && slots.Attribution is { } showLink
-                ? Detail.LateRow("hdr:lead", showLink(ClassicDetailLayout.ShowInfoWidth))
-                : Detail.LateRow("hdr:owner", slots.Attribution?.Invoke(ClassicDetailLayout.ShowInfoWidth) ?? OwnerBlock(id, ClassicDetailLayout.ShowInfoWidth)));
+                ? ClassicDetailKit.LateRow("hdr:lead", showLink(ClassicDetailLayout.ShowInfoWidth))
+                : ClassicDetailKit.LateRow("hdr:owner", slots.Attribution?.Invoke(ClassicDetailLayout.ShowInfoWidth) ?? OwnerBlock(id, ClassicDetailLayout.ShowInfoWidth)));
         if (rows.Badges == RailBadgeRow.OwnRow && slots.Badges is { } badgesOwn)
             info.Add(SlotRow("hdr:badges", badgesOwn(), RailLayout.BadgeHeight));
 
-        info.Add(Detail.Row("hdr:title", slots.Title?.Invoke(ClassicDetailLayout.ShowTitleSize, ClassicDetailLayout.ShowTitleLine)
+        info.Add(ClassicDetailKit.Row("hdr:title", slots.Title?.Invoke(ClassicDetailLayout.ShowTitleSize, ClassicDetailLayout.ShowTitleLine)
             ?? R.Type.PageHero(id.Title) with
             {
                 Size = ClassicDetailLayout.ShowTitleSize, LineHeight = ClassicDetailLayout.ShowTitleLine, Weight = 600,
@@ -525,10 +526,10 @@ internal static partial class ClassicDetailFrame
                 Wrap = TextWrap.WrapWholeWords, MaxLines = VerticalLayout.TitleLineCap, Trim = TextTrim.CharacterEllipsis,
             }));
         if (rows.Artists)
-            info.Add(Detail.LateRow("hdr:artists", slots.Attribution?.Invoke(infoW)
+            info.Add(ClassicDetailKit.LateRow("hdr:artists", slots.Attribution?.Invoke(infoW)
                 ?? (id.Artists is { Count: > 0 } billed ? BilledArtists(billed, infoW) : new BoxEl())));
         if (rows.Rating && slots.Rating is { } rating) info.Add(SlotRow("hdr:rating", rating(float.NaN), RailLayout.RatingHeight));
-        if (rows.Meta) info.Add(Detail.LateRow("hdr:meta", MetaRow(id, float.NaN, maxLines: 1)));
+        if (rows.Meta) info.Add(ClassicDetailKit.LateRow("hdr:meta", MetaRow(id, float.NaN, maxLines: 1)));
         if (rows.Badges == RailBadgeRow.AfterMeta && slots.Badges is { } badgesLate)
             info.Add(SlotRow("hdr:badges", badgesLate(), RailLayout.BadgeHeight));
 
@@ -569,7 +570,7 @@ internal static partial class ClassicDetailFrame
             if (Detail.ShareActionFor(id) is { } share) cta.Add(Controls.Named(Detail.Fab(Icons.Share, share), Loc.Get(Strings.Menu.Share)));
             ctaRow = new BoxEl
             {
-                Key = "hdr:play", Layout = Detail.Shove,
+                Key = "hdr:play", Layout = ClassicDetailKit.Shove,
                 Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center, Wrap = true,
                 Children = cta.ToArray(),
             };
@@ -579,8 +580,8 @@ internal static partial class ClassicDetailFrame
         // The ledger spans the header (the narrow pane's full-basis row), above the CTA.
         if (rows.Ledger && slots.Ledger is { } ledger) headerKids.Add(SlotRow("hdr:ledger", ledger(float.NaN), RailLayout.LedgerHeight));
         headerKids.Add(ctaRow);
-        if (id.UpcomingAtUnixSeconds > 0 && slots.PreRelease is { } pre) headerKids.Add(Detail.LateRow("hdr:prerelease", pre()));
-        if (cfg.Badges == BadgeStyle.TypeYear && slots.ReleasePanel is { } release) headerKids.Add(Detail.ReleaseRow("hdr:release", release(false)));
+        if (id.UpcomingAtUnixSeconds > 0 && slots.PreRelease is { } pre) headerKids.Add(ClassicDetailKit.LateRow("hdr:prerelease", pre()));
+        if (cfg.Badges == BadgeStyle.TypeYear && slots.ReleasePanel is { } release) headerKids.Add(ClassicDetailKit.ReleaseRow("hdr:release", release(false)));
 
         return new BoxEl
         {
@@ -671,7 +672,7 @@ internal static partial class ClassicDetailFrame
 
     sealed record RailArtistLineProps(IReadOnlyList<Controls.Face> Artists, float Width);
 
-    /// <summary>Hosts <see cref="Detail.RailArtistLineBox"/> for the default line: <see cref="RailArtistLine.Mode"/> needs the
+    /// <summary>Hosts <see cref="ClassicDetailKit.ArtistLineBox"/> for the default line: <see cref="RailArtistLine.Mode"/> needs the
     /// PREVIOUS mode for its hysteresis, so the mode is a plain field of the component.</summary>
     sealed class RailArtistLineView : Component
     {
@@ -712,7 +713,7 @@ internal static partial class ClassicDetailFrame
                 opened.ClosedAction = () => handle.Value = null;
             }
 
-            return Detail.RailArtistLineBox(mode, new Detail.RailArtistLineSpec(
+            return ClassicDetailKit.ArtistLineBox(mode, new ArtistLineSpec(
                 faces, names.ToString(), artists.Count, RailArtistLine.PlusN(artists.Count, RailArtistLine.WideFaces), p.Width,
                 Loc.Get(Strings.Detail.Rail.ArtistsMenu), menu, menu ? Toggle : artists[0].OnClick,
                 menu ? e => { if (e.KeyCode is Keys.Down or Keys.F4) { Toggle(); e.Handled = true; } } : null,

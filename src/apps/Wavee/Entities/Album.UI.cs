@@ -4,6 +4,11 @@
 // STACK (W12: capped at 5, one-way "Show all N") — plus the LIBRARY PANE STATICS (§4, library rework §5.5): the hero ⋯
 // menu over a handle, the 36-px command circle, PaneHeader and PaneCommands, which Album.Pane and Artist.Reader paint
 //
+// T9b (themes plan 6.1): the PICTURES of the three components are Classic's (`Themes\Classic\Structure\Views\Detail\ClassicAlbumArtist.cs`,
+// `ClassicAlbumRelease.cs`, `ClassicAlbumTrailing.cs`; the keys `Theming\Contracts\ViewKeys.DetailAlbumPlaylist.cs`). What stays here is each host's gate
+// (the stamp over the tables it paints), its demands, its state (the countdown's clock, the stack's expand cell, the flyout's open handle) and its verbs;
+// each builds one props record per render and mounts its key. The library pane's statics below are the pane's own pictures (T10c).
+//
 // Role: UI
 // Owner: M
 // Wave: 5
@@ -28,7 +33,9 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
+using ViewSlots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -36,7 +43,7 @@ public readonly partial struct Album
 {
     // ══ 1. THE FACE PILE (ch 05 §0.5, W16, §6) ═══════════════════════════════════════════════════════════════════════
 
-    /// <summary>The billed-artist row: the rail's ONE artist-line look (<see cref="Detail.RailArtistLineBox"/>) fed from
+    /// <summary>The billed-artist row: the rail's ONE artist-line look (the `Album.ArtistLine` view) fed from
     /// this host's gated stamp. The NAME is what survives the rail's width pressure: Wide paints a three-face pile + the
     /// <c>+N</c> overflow + the billed names, Medium the lead face + names on two lines + <c>+N</c>, Narrow the names alone,
     /// and the chevron follows the text. The whole line is ONE trigger: with more than one artist on the album it opens the
@@ -51,6 +58,7 @@ public readonly partial struct Album
 
     sealed record FacePileProps(int AlbumSlot, float MaxWidth);
 
+    [CoreHost]
     sealed class FacePileHost : Component
     {
         int _albumSlot;
@@ -136,7 +144,7 @@ public readonly partial struct Album
             UseEffect(_demand);
 
             // An album with no resolvable artist has no attribution row at all (§6's empty-box arm).
-            if (stamp.Source == 0) return new BoxEl();
+            if (stamp.Source == 0) return ViewSlots.View(ViewKeys.AlbumArtistLine, new AlbumArtistLineProps(Detail.RailArtistMode.Wide, null));
             var a = new Album(p.AlbumSlot);
             ReadOnlySpan<int> source = _fromBilled ? a.ArtistSlots : _all.AsSpan(0, _allCount);
             int drawn = _drawn, overflow = _overflow;
@@ -155,9 +163,9 @@ public readonly partial struct Album
             bool menu = _allCount > 1;
             var mode = Detail.RailArtistLine.Mode(p.MaxWidth, _mode);
             _mode = mode;
-            return Detail.RailArtistLineBox(mode, new Detail.RailArtistLineSpec(
+            return ViewSlots.View(ViewKeys.AlbumArtistLine, new AlbumArtistLineProps(mode, new ArtistLineSpec(
                 _faces, JoinNames(source), source.Length, overflow, p.MaxWidth, Loc.Get(Strings.Detail.ViewAllArtists), menu,
-                menu ? _toggle : leadLive ? _goLead : null, menu ? _key : null, _realized));
+                menu ? _toggle : leadLive ? _goLead : null, menu ? _key : null, _realized)));
         }
 
         static string JoinNames(ReadOnlySpan<int> artists)
@@ -200,48 +208,19 @@ public readonly partial struct Album
             _handle = handle;
         }
 
-        /// <summary>W16: every DISTINCT artist across the album, 44-DIP rows in a 280 × 360 flyout. Built at OPEN.</summary>
+        /// <summary>W16: every DISTINCT artist across the album (the `Album.ArtistFlyout` view: 44-DIP rows in a 280 × 360 flyout). Built at OPEN.</summary>
         Element Flyout()
         {
-            var rows = new Element[_allCount];
+            var rows = new PersonFlyoutRow[_allCount];
             for (int i = 0; i < rows.Length; i++) rows[i] = FlyoutRow(new Artist(_all[i]), _close);
-            var list = new BoxEl { Direction = 1, Gap = 2f, Width = R.Space.FacePileListW, Children = rows };
-            return new BoxEl
-            {
-                Direction = 1, Width = R.Space.FacePileFlyoutW, MaxHeight = R.Space.FacePileFlyoutH,
-                Padding = Edges4.All(Spacing.S),
-                Children =
-                [
-                    ScrollView(list) with
-                    {
-                        Width = R.Space.FacePileListW, MaxHeight = R.Space.FacePileListH,
-                        ContentSized = true, AutoEdgeFade = true, Grow = 0f,
-                    },
-                ],
-            };
+            return ViewSlots.View(ViewKeys.AlbumArtistFlyout, new PersonFlyoutProps(rows));
         }
 
-        static Element FlyoutRow(Artist artist, Action close)
+        static PersonFlyoutRow FlyoutRow(Artist artist, Action close)
         {
             bool live = artist.IsValid && artist.Uri.IsValid;
             string name = artist.Name;
-            return new BoxEl
-            {
-                Direction = 0, Height = Design.Size.FacePileRowH, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-                Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Corners = CornerRadius4.All(6f),
-                Role = AutomationRole.MenuItem, Focusable = true,
-                Cursor = live ? CursorId.Hand : (CursorId?)null,
-                OnClick = live ? () => { Track.GoToArtist(artist); close(); } : null,
-                Children =
-                [
-                    PersonPicture.Create("", 32f, displayName: name, imageSourcePath: Controls.ArtUrl(artist.ImageId)),
-                    new TextEl(name)
-                    {
-                        Size = 14f, LineHeight = 20f, Weight = 600, Color = Tok.TextPrimary,
-                        Grow = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                    },
-                ],
-            }.Interactive(Interaction.Subtle);
+            return new PersonFlyoutRow(name, Controls.ArtUrl(artist.ImageId), live ? () => { Track.GoToArtist(artist); close(); } : null);
         }
     }
 
@@ -267,7 +246,7 @@ public readonly partial struct Album
 
     sealed class CountdownHost : Component
     {
-        const float RingSize = 34f, TickMs = 1000f;
+        const float TickMs = 1000f;
 
         // ONE wall-clock sample at first render and never again; every later "now" is that sample plus the FRAME clock's
         // own delta (FlipCountdown's fix for the stuck-timer bug — a per-tick wall-clock poll bakes every coarse OS-clock
@@ -298,35 +277,8 @@ public readonly partial struct Album
             // the card on the palette's account.
             ColorF ringAccent = Reactive.Untrack(p.Accent);
 
-            Element body = released
-                ? new TextEl(Loc.Get(Strings.Detail.PreReleaseOut))
-                {
-                    Size = 15f, Weight = 700, Color = Tok.TextPrimary, MaxLines = 1,
-                    Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
-                }
-                : Controls.PreReleaseCountdown(TimeSpan.FromMilliseconds(leftMs));
-            if (p.Bare) return body;
-
-            return new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinWidth = 0f,
-                Padding = Edges4.All(Spacing.M), Corners = CornerRadius4.All(Radii.Card),
-                Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-                Children =
-                [
-                    // isActive: !released — the ring's own Inactive state fades it; it is never removed.
-                    ProgressRing.Indeterminate(size: RingSize, isActive: !released, foreground: ringAccent),
-                    new BoxEl
-                    {
-                        Direction = 1, Gap = Spacing.XS, MinWidth = 0f, Grow = 1f,
-                        Children =
-                        [
-                            R.Type.Eyebrow(Loc.Get(Strings.Detail.PreReleaseEyebrow)) with { Color = Prop.Of(p.Accent), MaxLines = 1 },
-                            body,
-                        ],
-                    },
-                ],
-            };
+            // The card (the ring with "Coming soon" and the four unit tiles, or "Out now") or, Bare, only its body: the `Album.Countdown` view.
+            return ViewSlots.View(ViewKeys.AlbumCountdown, new AlbumCountdownProps(released, TimeSpan.FromMilliseconds(leftMs), p.Bare, p.Accent, ringAccent));
         }
     }
 
@@ -343,6 +295,7 @@ public readonly partial struct Album
 
     sealed record StackProps(string Title, int Count, TrailKind Kind, int Parent);
 
+    [CoreHost]
     sealed class StackHost : Component
     {
         readonly Signal<bool> _expanded = new(false);
@@ -419,26 +372,11 @@ public readonly partial struct Album
             _ = UseComputed(_stamp).Value;
 
             int shown = expanded ? p.Count : Math.Min(p.Count, PageRules.StackCap);
-            var rows = new Element[shown];
+            var rows = new TrailRowData[shown];
             for (int i = 0; i < shown; i++) rows[i] = TrailRow(p.Kind, p.Parent, i);
 
-            Element title = R.Type.RailHeader(p.Title) with
-            {
-                Grow = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-            };
-            Element header = new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
-                Children = p.Count > shown
-                    ? [title, HyperlinkButton.Create(Strings.Home.ShowAllCount(p.Count), _expand, size: ControlSize.Small)]
-                    : [title],
-            };
-            return new BoxEl
-            {
-                Direction = 1, Gap = Spacing.M, Grow = 1f, AlignSelf = FlexAlign.Stretch,
-                // "Show all" lengthens the box in place — the new height reveals.
-                Children = [header, new BoxEl { Direction = 1, Gap = Spacing.XS, Animate = Design.Reveal.Resize, Children = rows }],
-            };
+            // The `Album.TrailStack` view: the title and the one-way "Show all N" over the rows ("Show all" lengthens the box in place — the new height reveals).
+            return ViewSlots.View(ViewKeys.AlbumTrailStack, new AlbumTrailStackProps(p.Title, p.Count, shown, _expand, rows));
         }
     }
 

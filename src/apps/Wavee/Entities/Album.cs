@@ -1069,6 +1069,8 @@ public readonly partial struct Album
         /// pager is taller than the 28 title), the shelf's 12 header gap, then one row of 16:9 <c>Shape.Video</c> cards. The cards fit
         /// 200-280 wide at the live page width; the skeleton has no width, so it reserves the narrowest (under-states, like the rest).</summary>
         public const float SkelVideoShelfHeaderH = 32f, SkelVideoShelfGap = 12f;
+        /// <summary>The video shelf's narrowest card: the skeleton reserves one row of these (the structure's shelf fits its cards from this width up).</summary>
+        public const float VideoCardMinW = 200f;
         public const int SkelVideoShelfCards = 3;
         public static float SkelVideoShelfH => SkelVideoTopPad + SkelVideoShelfHeaderH + SkelVideoShelfGap
                                                + SurfaceGeometry.StackExtent(Shape.Video, VideoCardMinW, 16f / 9f);

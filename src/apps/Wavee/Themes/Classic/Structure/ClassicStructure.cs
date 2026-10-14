@@ -11,7 +11,7 @@
 // `StyleKeys.TrackTable` style; T8b its chrome, `ClassicTrackChrome.cs`), T8c the other list surfaces (`Lists\ClassicEagerRow.cs`,
 // `ClassicEpisodeRow.cs`, `ClassicSurface.cs`, `ClassicArtistChart.cs`, `ClassicTrackDrawer.cs`, with the shared cells in `ClassicRowCells.cs`:
 // the `StyleKeys.EagerTrackRow`, `EpisodeRow`, `Surface`, `ArtistChart` and `TrackDrawer` styles), T10a1 Home (`Views\Home`: the page, facet row, daylist and clock, zone bodies, the drill page and the
-// customizer), T9a the shared detail frame (`Views\Detail`: the scaffold, the rail and its strip, the show header, the hero, the insights sheet); every other surface is still core code. It
+// customizer), T9a the shared detail frame (`Views\Detail`: the scaffold, the rail and its strip, the show header, the hero, the insights sheet), T9b its album and playlist sub-contracts (`Views\Detail\ClassicAlbum*.cs`, `ClassicPlaylist*.cs`, `ClassicDetailSeam.cs`); every other surface is still core code. It
 // decides the shell's policies (`Rules\ClassicPolicies.cs`: nav pane, panel and mini player, player bar, chrome row, stage)
 // and offers every capability (T3). Its window tiers (T3b) are `Rules\Tiers.cs`.
 //
@@ -151,6 +151,30 @@ public sealed class ClassicStructure : IStructureLayer
         views.AddStyle(StyleKeys.DetailHero, ClassicDetailFrame.HeroStyle);
         views.Add(ViewKeys.DetailInsights, ClassicInsights.SheetTemplate, "classic.detail.insights");
         views.Add(ViewKeys.DetailInsightsToggle, ClassicInsights.ToggleTemplate, "classic.detail.insights-toggle");
+        // T9b: the album and playlist sub-contracts of the detail frame. The notice strip and the vertical arm's trailing body (the frame's two leaves only an album or a
+        // playlist fills); the album's billed-artist line and flyout, countdown, release facts, trailing band (region, sections, stack) and unresolved line; the playlist's
+        // cover face and editable cover, inline editor, owner block and collaborator flyout, access panel, Tune panel, daylist strip and recommendations. The models, the
+        // demands, the page and trailing gates, the optimistic switch rule, the edit verbs and the permission decisions stay core.
+        views.Add(ViewKeys.DetailNotice, ClassicDetailSeam.NoticeTemplate, "classic.detail.notice");
+        views.Add(ViewKeys.DetailVerticalTrailing, ClassicDetailSeam.VerticalTrailingTemplate, "classic.detail.vertical-trailing");
+        views.Add(ViewKeys.AlbumArtistLine, ClassicAlbumArtist.LineTemplate, "classic.album.artist-line");
+        views.Add(ViewKeys.AlbumArtistFlyout, ClassicAlbumArtist.FlyoutTemplate, "classic.album.artist-flyout");
+        views.Add(ViewKeys.AlbumCountdown, ClassicAlbumRelease.CountdownTemplate, "classic.album.countdown");
+        views.Add(ViewKeys.AlbumReleasePanel, ClassicAlbumRelease.ReleasePanelTemplate, "classic.album.release-panel");
+        views.Add(ViewKeys.AlbumUnresolved, ClassicAlbumRelease.UnresolvedTemplate, "classic.album.unresolved");
+        views.Add(ViewKeys.AlbumTrailing, ClassicAlbumTrailing.TrailingTemplate, "classic.album.trailing");
+        views.Add(ViewKeys.AlbumSections, ClassicAlbumTrailing.SectionsTemplate, "classic.album.sections");
+        views.Add(ViewKeys.AlbumTrailStack, ClassicAlbumTrailing.StackTemplate, "classic.album.trail-stack");
+        views.Add(ViewKeys.PlaylistCoverArt, ClassicPlaylist.CoverArtTemplate, "classic.playlist.cover-art");
+        views.Add(ViewKeys.PlaylistCoverEditor, ClassicPlaylist.CoverEditorTemplate, "classic.playlist.cover-editor");
+        views.Add(ViewKeys.PlaylistEditor, ClassicPlaylist.EditorTemplate, "classic.playlist.editor");
+        views.Add(ViewKeys.PlaylistOwner, ClassicPlaylist.OwnerTemplate, "classic.playlist.owner");
+        views.Add(ViewKeys.PlaylistMembersFlyout, ClassicPlaylist.MembersFlyoutTemplate, "classic.playlist.members-flyout");
+        views.Add(ViewKeys.PlaylistAccess, ClassicPlaylist.AccessTemplate, "classic.playlist.access");
+        views.Add(ViewKeys.PlaylistTune, ClassicPlaylist.TuneTemplate, "classic.playlist.tune");
+        views.Add(ViewKeys.PlaylistDaylist, ClassicPlaylist.DaylistTemplate, "classic.playlist.daylist");
+        views.Add(ViewKeys.PlaylistRecs, ClassicPlaylist.RecsTemplate, "classic.playlist.recs");
+        views.Add(ViewKeys.PlaylistRecRow, ClassicPlaylist.RecRowTemplate, "classic.playlist.rec-row");
     }
 
     /// <inheritdoc />
