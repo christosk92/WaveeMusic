@@ -131,6 +131,35 @@ public static class SidebarGeometry
     /// <summary>The plate's radius and the accent's alpha behind it (accent at 0.18 with a 1-DIP accent border).</summary>
     public const float DropPlateRadius = 4f, DropPlateAlpha = 0.18f;
 
+    /// <summary>The plate's border width (1 DIP, accent).</summary>
+    public const float DropPlateBorderWidth = 1f;
+
+    // ── the insertion caret (W16) ──
+
+    /// <summary>The caret's stroke (2 DIP).</summary>
+    public const float DropLineThickness = 2f;
+
+    /// <summary>Its corner radius: enough to round a 2-DIP bar's ends without reading as a pill.</summary>
+    public const float DropLineCorner = 1f;
+
+    /// <summary>The terminal dot at the left cap (6 DIP): what makes a hairline read as an insertion caret rather than a divider.</summary>
+    public const float DropDotSize = 6f;
+
+    /// <summary>The caret's width: the row's content lane from <see cref="TreeContentX"/> to the row's right edge. ONE origin with
+    /// the caret's transform and with the resolver's <c>PickDepth</c>.</summary>
+    public static float DropLineWidth(float contentWidth, int depth)
+    {
+        float w = contentWidth - TreeContentX(depth);
+        return w > 0f ? w : 0f;
+    }
+
+    /// <summary>The caret's Y inside its row: the TOP edge for Before (and the tree's end marker, whose whole row is the slot), the
+    /// bottom edge for After.</summary>
+    public static float DropLineY(SidebarDropKind kind, float rowHeight)
+        => kind is SidebarDropKind.Before or SidebarDropKind.EndOfList
+            ? 0f
+            : MathF.Max(0f, rowHeight - DropLineThickness);
+
     // ── grid strip fallback (issue #84) ──
     // The planner owns the column COUNT; re-deriving it from width here would disagree with how the planner already
     // sliced entries into column-wide strips. What the 180-DIP floor (down from 240) broke is that the planned count

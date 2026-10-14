@@ -717,7 +717,7 @@ internal sealed class ClassicNavRow : Component
         // The plate covers the row, not the row's 2-px vertical margin.
         Margin = new Edges4(0f, SidebarGeometry.RowMarginY, 0f, SidebarGeometry.RowMarginY),
         Corners = CornerRadius4.All(SidebarGeometry.DropPlateRadius),
-        BorderWidth = 1f,
+        BorderWidth = SidebarGeometry.DropPlateBorderWidth,
         Fill = Prop.Of(_plateFill ??= CuePlateFill),
         BorderColor = Prop.Of(_plateBorder ??= CuePlateBorder),
         HitTestVisible = false,
@@ -745,9 +745,9 @@ internal sealed class ClassicNavRow : Component
     Element InsertionLine() => new BoxEl
     {
         Key = "drop-line",
-        Height = SidebarDropCue.LineThickness,
+        Height = SidebarGeometry.DropLineThickness,
         Width = Prop.Of(_lineWidth ??= CueLineWidth),
-        Corners = CornerRadius4.All(SidebarDropCue.LineCorner),
+        Corners = CornerRadius4.All(SidebarGeometry.DropLineCorner),
         Fill = Tok.AccentDefault,
         Opacity = Prop.Of(_lineOpacity ??= CueLineOpacity),
         Transform = Prop.Of(_lineTransform ??= CueLineTransform),
@@ -756,9 +756,9 @@ internal sealed class ClassicNavRow : Component
         [
             new BoxEl
             {
-                Width = SidebarDropCue.DotSize, Height = SidebarDropCue.DotSize,
-                Corners = CornerRadius4.All(SidebarDropCue.DotSize * 0.5f),
-                Margin = new Edges4(0f, (SidebarDropCue.LineThickness - SidebarDropCue.DotSize) * 0.5f, 0f, 0f),
+                Width = SidebarGeometry.DropDotSize, Height = SidebarGeometry.DropDotSize,
+                Corners = CornerRadius4.All(SidebarGeometry.DropDotSize * 0.5f),
+                Margin = new Edges4(0f, (SidebarGeometry.DropLineThickness - SidebarGeometry.DropDotSize) * 0.5f, 0f, 0f),
                 Fill = Tok.AccentDefault,
                 HitTestVisible = false,
             },
@@ -769,7 +769,7 @@ internal sealed class ClassicNavRow : Component
     {
         int i = _scope.Index.Value;
         _ = _o.SubscribeRowEpoch(i);
-        return SidebarDropCue.LineWidth(_o.ContentWidth, _o.DropSlotFor(i).Depth);
+        return SidebarGeometry.DropLineWidth(_o.ContentWidth, _o.DropSlotFor(i).Depth);
     }
 
     float CueLineOpacity()
@@ -785,7 +785,7 @@ internal sealed class ClassicNavRow : Component
         _ = _o.SubscribeRowEpoch(i);
         var slot = _o.DropSlotFor(i);
         return Affine2D.Translation(SidebarGeometry.TreeContentX(slot.Depth),
-                                    SidebarDropCue.LineY(slot.Kind, _o.RowExtentOf(i)));
+                                    SidebarGeometry.DropLineY(slot.Kind, _o.RowExtentOf(i)));
     }
 
     /// <summary>The row's STRUCTURAL drop facts, straight off the published plan (<see cref="NavDropRules.TreeRowFacts"/>). The

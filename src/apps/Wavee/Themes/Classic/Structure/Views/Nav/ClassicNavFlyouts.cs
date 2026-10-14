@@ -266,9 +266,14 @@ internal sealed class ClassicFolderFlyout(INavRowHost owner, string sectionId, s
             Menu = menu,
             Drag = payload,
             DropTarget = drop,
-            DropActive = drop is null ? null : () => host.IsRailDropActive(cueKey),
+            DropCue = drop is null ? null : new Sidebar.RowDropCue(
+                () => host.IsRailDropActive(cueKey), s_cueFill, s_cueBorder, SidebarGeometry.DropPlateBorderWidth),
         });
     }
+
+    // The folder flyout row's whole-row cue: the same accent plate the tree's "into" cue paints (`ClassicNavRow.DropPlate`).
+    static readonly Func<ColorF> s_cueFill = static () => Tok.AccentDefault with { A = SidebarGeometry.DropPlateAlpha };
+    static readonly Func<ColorF> s_cueBorder = static () => Tok.AccentDefault;
 
     static Element EmptyHint() => new BoxEl
     {

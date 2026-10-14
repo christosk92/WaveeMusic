@@ -2,11 +2,12 @@
 //
 // What Classic supplies for the pane's list, in one stateless object the template hands the core pane at mount: the planner and
 // its owning-section answer (`SidebarRowPlanner`, X26), the publish diff (`SidebarPlanDiff`), the analytic extents
-// (`SidebarRowExtents`), the mid-drag freeze (`SidebarStageHold<T>`; all in `Rules\SidebarPlanner.cs`) and the row slot
-// (`ClassicNavRow`).
+// (`SidebarRowExtents`), the mid-drag freeze (`SidebarStageHold<T>`; all in `Rules\SidebarPlanner.cs`), the row slot
+// (`ClassicNavRow`, which also draws the drop cues) and the drag presentation (`NavDropLook`, T5e).
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
+using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using Wavee.Theming.Contracts;
 
@@ -43,6 +44,18 @@ public sealed class ClassicNavRows : NavRowKit
     /// <inheritdoc />
     public override float ExtentOf(IReadOnlyList<SidebarRow> rows, int index, SidebarSection? section)
         => SidebarRowExtents.HeightOf(rows, index, section);
+
+    /// <inheritdoc />
+    public override NavDropLook DropLook => s_dropLook;
+
+    // The pane's targets stay lit while the rest of the app dims; a reordered row's source is fully vacated (the vacated slot IS the
+    // gap, the chip is the ONE moving visual) and the engine's own insertion line is off (mixed pitches: the row's caret draws it).
+    static readonly NavDropLook s_dropLook = new()
+    {
+        TargetPolicy = DropTargetVisualPolicy.Spotlight,
+        ReorderDragStyle = new DragVisualStyle { Lift = DragLift.Stationary, Opacity = 0f },
+        ReorderInsertionLine = false,
+    };
 
     /// <inheritdoc />
     public override INavStageHold<TStage> NewStageHold<TStage>() => new SidebarStageHold<TStage>();

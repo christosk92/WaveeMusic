@@ -120,4 +120,37 @@ public sealed class SidebarGeometryParityTests
         Assert.Equal(SidebarGeometry.IndentFor(depth), SidebarRowGeometry.IndentFor(depth));
         Assert.Equal(SidebarGeometry.TreeContentX(depth), SidebarRowGeometry.TreeContentX(depth));
     }
+
+    // ── the insertion caret's geometry (moved from SidebarDropCueTests with the pictures) ──
+
+    [Fact]
+    public void DropLineY_IsTheTopEdgeForBefore_AndTheBottomEdgeForAfter()
+    {
+        Assert.Equal(0f, SidebarGeometry.DropLineY(SidebarDropKind.Before, 44f));
+        Assert.Equal(44f - SidebarGeometry.DropLineThickness, SidebarGeometry.DropLineY(SidebarDropKind.After, 44f));
+        Assert.Equal(0f, SidebarGeometry.DropLineY(SidebarDropKind.EndOfList, SidebarGeometry.TreeEndHeight));
+        // A degenerate row never produces a negative offset.
+        Assert.Equal(0f, SidebarGeometry.DropLineY(SidebarDropKind.After, 1f));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void DropLineWidth_IsTheContentWidthMinusTheDepthIndent(int depth)
+    {
+        const float content = 300f;
+        float expected = content - 31f * depth;
+        Assert.Equal(expected, SidebarGeometry.DropLineWidth(content, depth), 3);
+        // A deeper caret is strictly shorter: that IS the depth cue.
+        if (depth > 0)
+            Assert.True(SidebarGeometry.DropLineWidth(content, depth) < SidebarGeometry.DropLineWidth(content, depth - 1));
+    }
+
+    [Fact]
+    public void DropLineWidth_NeverGoesNegative()
+    {
+        Assert.Equal(0f, SidebarGeometry.DropLineWidth(0f, 0));
+        Assert.Equal(0f, SidebarGeometry.DropLineWidth(4f, 3));
+    }
 }

@@ -132,6 +132,19 @@ public sealed class NavPaneMountedTests(ShellHost host)
             for (int i = 0; i < direct.Rows.Count; i++) Assert.Equal(direct.Rows[i], viaKit.Rows[i]);
         });
 
+    // ── the drop cues (T5e) ──
+
+    [Fact]
+    public void The_kits_drop_look_is_the_production_drag_presentation()
+        => host.Run(() =>
+        {
+            var look = ClassicNavRows.Kit.DropLook;
+            Assert.Equal(DropTargetVisualPolicy.Spotlight, look.TargetPolicy);
+            Assert.False(look.ReorderInsertionLine);
+            Assert.Equal(DragLift.Stationary, look.ReorderDragStyle.Lift);
+            Assert.Equal(0f, look.ReorderDragStyle.Opacity);
+        });
+
     // ── the heads (T5b) ──────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]

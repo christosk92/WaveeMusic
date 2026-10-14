@@ -137,7 +137,7 @@ public static partial class Sidebar
             return Drop.Target<DragPayload>(Drag.Resource,
                 accepts: Compatible, onDrop: CommitDrop, onEnter: Hover, onOver: Hover, onLeave: Leave,
                 transparent: Transparent,
-                visualPolicy: DropTargetVisualPolicy.Spotlight,
+                visualPolicy: Kit.DropLook.TargetPolicy,
                 refusalCaption: WhyRefused,
                 spotlightWhen: SpotlightFor,
                 // A COLLAPSED folder spring-loads open even when it refuses the payload: opening is navigation.
@@ -176,7 +176,7 @@ public static partial class Sidebar
                 onOver: (p, _) => _railDropUri.SetIfChanged(Accepts(p) ? cueKey : null),
                 onLeave: _ => { if (string.Equals(_railDropUri.Peek(), cueKey, StringComparison.Ordinal)) _railDropUri.Value = null; },
                 onDrop: Commit,
-                visualPolicy: DropTargetVisualPolicy.Spotlight,
+                visualPolicy: Kit.DropLook.TargetPolicy,
                 spotlightWhen: SpotlightFor);
         }
 
@@ -332,7 +332,7 @@ public static partial class Sidebar
                         case SidebarCreateDrop.Refused: NavModel.RefuseWrite("header create drop"); break;
                     }
                 },
-                visualPolicy: DropTargetVisualPolicy.Spotlight,
+                visualPolicy: Kit.DropLook.TargetPolicy,
                 spotlightWhen: SpotlightFor);
 
         /// <summary>Playlists dropped on a folder row's "+" ⇒ a new SUB-folder inside it. A track set is transparent: it
@@ -354,7 +354,7 @@ public static partial class Sidebar
                         writes!.NewFolderWith!(folderId, NavDropRules.RefsOf(p));
                     else NavModel.RefuseWrite("folder create drop");
                 },
-                visualPolicy: DropTargetVisualPolicy.Spotlight,
+                visualPolicy: Kit.DropLook.TargetPolicy,
                 spotlightWhen: SpotlightFor);
 
         /// <summary>The "+" plate lights only for a drop that will actually create something.</summary>

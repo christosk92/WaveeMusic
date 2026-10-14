@@ -281,42 +281,20 @@ public static class RootlistSlotResolver
     }
 }
 
-/// <summary>The insertion cue's PURE geometry + its one invariant, in the engine-free layer so a test can drive the
-/// real mapping.
+/// <summary>The insertion cue's FACTS: which slot kinds draw the line and which the plate, in the engine-free layer so a test
+/// can drive the real mapping. The pictures (the caret's stroke, dot, width and Y; the plate) are the structure's
+/// (Classic's <c>SidebarGeometry</c> and <c>ClassicNavRow</c>).
 /// <para><b>The invariant:</b> <b>line ⟺ Before/After/EndOfList, plate ⟺ Into, never both, never
 /// neither-while-armed.</b> Three outcomes used to share one accent plate, so the surface could not say which of them
 /// a drop meant.</para></summary>
 public static class SidebarDropCue
 {
-    /// <summary>The caret's stroke (2 DIP).</summary>
-    public const float LineThickness = 2f;
-    /// <summary>Its corner radius — enough to round a 2-DIP bar's ends without reading as a pill.</summary>
-    public const float LineCorner = 1f;
-    /// <summary>The terminal dot at the left cap (6 DIP): what makes a hairline read as an insertion caret rather
-    /// than a divider.</summary>
-    public const float DotSize = 6f;
-
     /// <summary>Does this slot draw the line? (The one predicate the row's Opacity bind reads.)</summary>
     public static bool DrawsLine(SidebarDropKind kind)
         => kind is SidebarDropKind.Before or SidebarDropKind.After or SidebarDropKind.EndOfList;
 
     /// <summary>Does this slot draw the accent plate? (The one predicate the row's Fill/Border binds read.)</summary>
     public static bool DrawsPlate(SidebarDropKind kind) => kind == SidebarDropKind.Into;
-
-    /// <summary>The caret's width: the row's content lane from <see cref="SidebarRowGeometry.TreeContentX"/> to the
-    /// row's right edge. ONE origin with the caret's transform and with <c>PickDepth</c>.</summary>
-    public static float LineWidth(float contentWidth, int depth)
-    {
-        float w = contentWidth - SidebarRowGeometry.TreeContentX(depth);
-        return w > 0f ? w : 0f;
-    }
-
-    /// <summary>The caret's Y inside its row: the TOP edge for Before (and the tree's end marker, whose whole row is
-    /// the slot), the bottom edge for After.</summary>
-    public static float LineY(SidebarDropKind kind, float rowHeight)
-        => kind is SidebarDropKind.Before or SidebarDropKind.EndOfList
-            ? 0f
-            : MathF.Max(0f, rowHeight - LineThickness);
 }
 
 /// <summary>Where a rootlist item CAME FROM, so a completed move can be offered back as Undo.

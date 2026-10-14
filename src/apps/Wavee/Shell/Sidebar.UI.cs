@@ -1484,16 +1484,16 @@ public static partial class Sidebar
         }
 
         /// <summary>One Reorderable per in-place section, kept for the component's life. LiveProject off (a mid-drag
-        /// projection would swap content under the lifted node), no insertion line (mixed pitches), and a Stationary
-        /// lift at opacity 0 — the vacated slot IS the gap, the chip is the ONE moving visual.</summary>
+        /// projection would swap content under the lifted node); the insertion line and the lifted source's look are the
+        /// structure's (<see cref="NavDropLook"/>).</summary>
         internal Reorderable ReorderFor(string sectionId)
         {
             if (_reorder.TryGetValue(sectionId, out var ro)) return ro;
             ro = new Reorderable(Drag.Resource)
             {
                 LiveProject = false,
-                ShowInsertionLine = false,
-                DragStyle = new DragVisualStyle { Lift = DragLift.Stationary, Opacity = 0f },
+                ShowInsertionLine = Kit.DropLook.ReorderInsertionLine,
+                DragStyle = Kit.DropLook.ReorderDragStyle,
             };
             _reorder[sectionId] = ro;
             return ro;

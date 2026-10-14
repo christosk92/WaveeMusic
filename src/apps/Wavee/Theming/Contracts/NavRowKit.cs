@@ -60,6 +60,10 @@ public abstract class NavRowKit
     /// extent table so a disclosure lands at its final geometry before anything is realized.</summary>
     public abstract float ExtentOf(IReadOnlyList<SidebarRow> rows, int index, SidebarSection? section);
 
+    /// <summary>How the pane presents a drag: the drag-dim policy of its drop targets and the reorder bands' lift (T5e). The cues
+    /// themselves are drawn by the slot.</summary>
+    public abstract NavDropLook DropLook { get; }
+
     /// <summary>A fresh mid-drag parking bay for a plan stage (one per pane).</summary>
     public abstract INavStageHold<TStage> NewStageHold<TStage>() where TStage : class;
 

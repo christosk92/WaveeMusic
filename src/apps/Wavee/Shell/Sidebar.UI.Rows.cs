@@ -39,6 +39,10 @@ public static partial class Sidebar
     // only "you are here"), the WinUI row ladder (40-px icon column, label at pane 48, 31-px depth indent), the slot
     // order, the one key handler and the drag source.
 
+    /// <summary>A whole-row drop cue the structure paints on a row that is rebuilt per open (the rail folder flyout): <c>Active</c>
+    /// says when it is armed, the rest is what it paints while armed (read live, so a theme token swap lands).</summary>
+    internal readonly record struct RowDropCue(Func<bool> Active, Func<ColorF> Fill, Func<ColorF> Border, float BorderWidth);
+
     /// <summary>Everything <see cref="EntityRow.Create"/> needs: a mutable struct filled with an object initializer and
     /// passed by <c>in</c>, so a row costs no allocation beyond its elements. Always <c>new RowSpec { … }</c>, never
     /// <c>default</c> — the defaults below apply only through the constructor.</summary>
@@ -50,7 +54,7 @@ public static partial class Sidebar
             Shape = SidebarRowShape.EntityTwoLine; Tile = false; LabelTooltip = false; Height = float.NaN; Ink = null;
             ArtSize = float.NaN; Leading = null; Glyph = null; DisclosureChevron = null; Pinned = false; Trailing = null;
             Playing = false; PlayingAnimated = false; Track = false; Overflow = false; OnClick = null; OnRealized = null;
-            MenuOverlay = null; Menu = null; Drag = null; DropTarget = null; DropActive = null; Animate = null;
+            MenuOverlay = null; Menu = null; Drag = null; DropTarget = null; DropCue = null; Animate = null;
             Caption = null; CheckLane = null; MultiSelected = false; ChecksVisible = null; Focusable = false;
             OnRename = null; OnMove = null; OnActivate = null; OnEscape = null;
         }
@@ -119,10 +123,10 @@ public static partial class Sidebar
         public DragPayload? Drag;
         /// <summary>Optional drop destination.</summary>
         public DropTargetSpec? DropTarget;
-        /// <summary>WHOLE-ROW cue for surfaces rebuilt per open (the rail folder flyout). A plan row does NOT use this —
-        /// its plate is the slot's own always-mounted DropPlate, because a thunk here is wired at mount and would answer
-        /// for the row this slot first mounted with.</summary>
-        public Func<bool>? DropActive;
+        /// <summary>WHOLE-ROW cue for surfaces rebuilt per open (the rail folder flyout): when it is armed and what it paints
+        /// (the structure's). A plan row does NOT use this — its plate is the slot's own always-mounted DropPlate, because a
+        /// thunk here is wired at mount and would answer for the row this slot first mounted with.</summary>
+        public RowDropCue? DropCue;
         /// <summary>Layout transition. Null inside a Reorderable (it owns position — one transform owner per node).</summary>
         public LayoutTransition? Animate;
         /// <summary>A third text line (11 px tertiary). Nothing sets it today; the shape is free.</summary>
@@ -318,14 +322,14 @@ public static partial class Sidebar
                 DropTarget = spec.DropTarget,
             }).Interactive(NavRow(selected || spec.MultiSelected), isEnabled: enabled);
             // The folder flyout's whole-row cue paints OVER the ramp, so it lands after Interactive (which writes the brushes).
-            if (spec.DropActive is { } plateOn)
+            if (spec.DropCue is { } cue)
             {
                 ColorF rest = NavRow(selected || spec.MultiSelected).Fill.Resting(enabled);
                 row = row with
                 {
-                    Fill = Prop.Of(() => plateOn() ? Tok.AccentDefault with { A = 0.18f } : rest),
-                    BorderWidth = 1f,
-                    BorderColor = Prop.Of(() => plateOn() ? Tok.AccentDefault : ColorF.Transparent),
+                    Fill = Prop.Of(() => cue.Active() ? cue.Fill() : rest),
+                    BorderWidth = cue.BorderWidth,
+                    BorderColor = Prop.Of(() => cue.Active() ? cue.Border() : ColorF.Transparent),
                 };
             }
             if (spec.MenuOverlay is { } svc && spec.Menu is { } factory) row = row.WithContextMenu(svc, factory);

@@ -234,7 +234,9 @@ in it all resolve to one slot and one commit.
   `SidebarLibraryWrites` (`Shell/Sidebar.Host.cs`). The app's implementation owns the server write, the toast and Undo.
   The `wavee-playlist-mutations` skill links here for this contract.
 - **Cue.** The row draws a line (Before, After, or EndOfList, indented to the resolved depth) or a plate (Inside). Never
-  both.
+  both. Which kinds draw which is core's (`SidebarDropCue`); the pictures are Classic's (`ClassicNavRow`: the caret, the plate and the Pinned
+  band's dashed ring; `ClassicNavFlyouts`: the folder flyout row's plate; numbers in `SidebarGeometry`; the drag-dim policy and the reorder
+  lift in `ClassicNavRows.DropLook`, a `NavDropLook`).
 - **Freeze.** While a drag is live, the plan holds its published stage so the dropped row does not snap home. Two
   publishes go through: any disclosure in flight (`_disclosures.Count != 0`; spring-loading a folder exists to
   reveal its children) and the pane's own reorder commit (`_publishThroughFreeze`, a one-shot latch that ends with the

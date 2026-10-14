@@ -307,7 +307,7 @@ cue, the scrim, the HUD only in developer mode), and the cover leaves still publ
 ### The navigation pane's rows (T5a)
 
 The sidebar is one pane over six sub-surfaces (rows, heads, flyouts and menus, the Edit outline, drop cues, the library grid). T5a
-gives the pane its key and moves the **rows**; T5b moves the **heads** (below); T5c moves the rail's flyouts (below); T5d moves the Edit outline (below); T5e-f move the rest, one sub-surface each.
+gives the pane its key and moves the **rows**; T5b moves the **heads** (below); T5c moves the rail's flyouts (below); T5d moves the Edit outline (below); T5e moves the drop cues (below); T5f moves the library grid.
 
 | Key | Props | Core host | Classic template |
 |---|---|---|---|
@@ -424,6 +424,27 @@ T5d gives the structure the **picture** of edit mode; the edit model, its ops, v
 
 **Tests.** `Wavee.ShellTests\NavPaneMountedTests.cs` pins that Classic registers the key; the edit model's behavior is `NavEditModelTests`,
 the rules `SidebarEditRulesTests`.
+
+### The navigation pane's drop cues (T5e)
+
+T5e gives the structure the **pictures** of a drag over the pane and the rail; the drop **facts** stay core (C12). There is no new view key: the
+cues live inside the row slot and the flyout rows that T5a and T5c already moved, plus one small contract on the kit.
+
+| Surface | Core keeps | Classic draws |
+|---|---|---|
+| Tree rows (`ClassicNavRow`) | the published slot (`_dropSlot`) and the resolver, `NavDropRules`, which kinds draw a line or a plate (`SidebarDropCue.DrawsLine` / `DrawsPlate`), the refusal sentences, the spring-load and auto-expand timers, the commit | the insertion caret (stroke, dot, width by depth, Y by kind; `SidebarGeometry.DropLine*`), the "into" plate, the Pinned band's dashed ring and "Drop here to pin", the tree's end caret |
+| Rail folder flyout rows (`ClassicNavFlyouts`) | `_railDropUri`, `RailFolderDropSpec`, the accept / refuse rules | the whole-row plate: `Sidebar.RowDropCue` (armed, fill, border, width) on the row spec, painted by the shared row primitive |
+| Drag presentation | when a collapsed pane peeks open (`DragPeekMs`, `SetDragPeek`), freeze and flush, `SpotlightFor` | `NavRowKit.DropLook` (`NavDropLook`, `Theming\Contracts\NavDropLook.cs`): the drag-dim policy of every pane drop target (the rows, the header and folder "+" plates, the rail tiles), the lifted source's look and the engine insertion line of the reorderable bands |
+
+- **Nothing changes in behavior.** Classic's `DropLook` carries exactly the values core hard-coded (Spotlight, a Stationary lift at opacity 0, no engine
+  line); the caret and plate numbers did not move, only the readers (`SidebarDropCue.LineThickness` / `LineCorner` / `DotSize` / `LineWidth` /
+  `LineY` became `SidebarGeometry.DropLineThickness` / `DropLineCorner` / `DropDotSize` / `DropLineWidth` / `DropLineY`; the flyout plate's 1-DIP
+  border is `SidebarGeometry.DropPlateBorderWidth`).
+- **The depth origin is shared.** The resolver's depth pick (core) and the caret's start (Classic) both read `TreeContentX`; core's copy is the
+  pinned mirror (`SidebarGeometryParityTests`) until T5f deletes it.
+
+**Tests.** The cue invariant is `NavDropRulesTests` (`SidebarDropCueTests`: line iff ordering, plate iff Into); the caret geometry is
+`SidebarRowGeometryTests`; the mounted pane still draws through Classic's kit (`NavPaneMountedTests`).
 
 ### The player bar (T6a)
 

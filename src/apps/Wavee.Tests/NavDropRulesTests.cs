@@ -754,39 +754,6 @@ public class SidebarDropCueTests
             Assert.False(slot.DrawsLine || slot.DrawsPlate);
         }
     }
-
-    // ── the caret's geometry ────────────────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void LineY_IsTheTopEdgeForBefore_AndTheBottomEdgeForAfter()
-    {
-        Assert.Equal(0f, SidebarDropCue.LineY(SidebarDropKind.Before, 44f));
-        Assert.Equal(44f - SidebarDropCue.LineThickness, SidebarDropCue.LineY(SidebarDropKind.After, 44f));
-        Assert.Equal(0f, SidebarDropCue.LineY(SidebarDropKind.EndOfList, RowGeometryLiteral.TreeEndHeight));
-        // A degenerate row never produces a negative offset.
-        Assert.Equal(0f, SidebarDropCue.LineY(SidebarDropKind.After, 1f));
-    }
-
-    [Theory]
-    [InlineData(0)]
-    [InlineData(1)]
-    [InlineData(2)]
-    public void LineWidth_IsTheContentWidthMinusTheDepthIndent(int depth)
-    {
-        const float content = 300f;
-        float expected = content - 31f * depth;
-        Assert.Equal(expected, SidebarDropCue.LineWidth(content, depth), 3);
-        // A deeper caret is strictly shorter — that IS the depth cue.
-        if (depth > 0)
-            Assert.True(SidebarDropCue.LineWidth(content, depth) < SidebarDropCue.LineWidth(content, depth - 1));
-    }
-
-    [Fact]
-    public void LineWidth_NeverGoesNegative()
-    {
-        Assert.Equal(0f, SidebarDropCue.LineWidth(0f, 0));
-        Assert.Equal(0f, SidebarDropCue.LineWidth(4f, 3));
-    }
 }
 
 // ── SidebarDropRefusalText: every refusal always SAYS something ────────────────────────────────────────────────────
