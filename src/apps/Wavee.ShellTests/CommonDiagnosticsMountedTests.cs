@@ -9,6 +9,7 @@
 //   logs         the viewer's frame (header with its picker, toolbar, list card) stands under its keys; a loading session shows the progress state, a filter with
 //                no rows the empty state, and a row the keyed measured list
 
+using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Signals;
 using Wavee;

@@ -60,7 +60,8 @@ public class HomeContractTests
         {
             string template = classic.Registry.TemplateIdOf(id) ?? "";
             Assert.NotEqual("", template);
-            Assert.StartsWith("classic.home.", template, StringComparison.Ordinal);
+            // The customizer is a Common block since T11c (one copy for every theme); the rest of Home is Classic's own.
+            Assert.StartsWith(id == ViewKeys.HomeCustomize.Id ? "common." : "classic.home.", template, StringComparison.Ordinal);
             Assert.True(templates.Add(template), "template id registered twice: " + template);
         }
         Assert.Equal(22, ids.Count);

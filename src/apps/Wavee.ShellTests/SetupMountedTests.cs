@@ -119,11 +119,14 @@ public sealed class SetupMountedTests(ShellHost host)
                 using var harness = ViewHarness.Mount(ViewKeys.SetupWizard, WizardProps(session, new FixtureSignIn(Setup.SignInFacet.Idle)), UnderClassic());
                 harness.RunFrames(30);
                 Assert.True(harness.Contains("setup:layout:wide"), "1180 wide: the icon column shows");
+                // The reconciler reuses the frame's root node across the swap (the key stays the first one), so the picture is read from the
+                // node's first child: the 192 DIP icon column when it shows, the content column when it does not.
+                float FirstChildWidth() => harness.AbsoluteBounds(harness.Shell.Host.Scene.FirstChild(harness.Node("setup:layout:wide"))).W;
+                Assert.Equal(SetupGeometry.IconColumnWidth, FirstChildWidth(), 0.5f);
 
                 harness.Resize(600f, 700f);
                 harness.RunFrames(30);
-                Assert.True(harness.Contains("setup:layout:compact"), "under 770: the compact frame");
-                Assert.False(harness.Contains("setup:layout:wide"));
+                Assert.True(FirstChildWidth() > SetupGeometry.IconColumnWidth + 1f, "under 770: the compact frame, no icon column");
             }
             finally { session.End(); }
         });

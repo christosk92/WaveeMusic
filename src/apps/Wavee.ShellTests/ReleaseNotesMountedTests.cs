@@ -95,8 +95,10 @@ public sealed class ReleaseNotesMountedTests(ShellHost host)
         => ViewHarness.With(host, ViewKeys.WhatsNewPage, PageProps(WhatsNewState.Loaded, LoadedView()), harness =>
         {
             harness.RunFrames(30);
-            Assert.True(harness.Contains("rail:0.3.0"), "the running release's rail row");
-            Assert.True(harness.Contains("rail:0.2.9"), "the older release's rail row");
+            // The rail's rows come from `Flow.For` keyed by version, and that key is the one the row's node carries (the row's own "rail:" key is
+            // the one the For replaces: unchanged from the old page).
+            Assert.True(harness.Contains("0.3.0"), "the running release's rail row");
+            Assert.True(harness.Contains("0.2.9"), "the older release's rail row");
             Assert.True(harness.Contains("hl:0.3.0:h1"), "the first highlight card is keyed by its slide id");
             Assert.True(harness.Contains("hl:0.3.0:h2"), "the second highlight card is keyed by its slide id");
         }, UnderClassic());
