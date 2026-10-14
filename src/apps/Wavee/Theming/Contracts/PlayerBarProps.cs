@@ -256,6 +256,6 @@ public sealed record PlayerBarProps
     public required Func<Element> ArtistsLineCompact { get; init; }
     /// <summary>One "⋯" row, built from live reads when the menu opens. The second argument is the shared-transition begin.</summary>
     public required Func<OverflowCommand, Action<string>?, MenuFlyoutItem> OverflowRow { get; init; }
-    /// <summary>The video placement ladder the split button's chevron opens.</summary>
+    /// <summary>The video placement ladder the split button's chevron opens (the rows are the core's; the flyout that presents them is <see cref="ViewKeys.VideoPlacementMenu"/>).</summary>
     public required Func<IReadOnlyList<MenuFlyoutItem>> VideoPlacementMenu { get; init; }
 }

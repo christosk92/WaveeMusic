@@ -292,7 +292,7 @@ internal static partial class ClassicPlayerBar
             var items = props.VideoPlacementMenu();
             videoMenu.Value = overlay.Open(
                 () => videoAnchor.Value,
-                () => MenuFlyout.Create(items, () => videoMenu.Value?.Close()),
+                () => Slots.View(ViewKeys.VideoPlacementMenu, new VideoPlacementMenuProps { Items = items, Close = () => videoMenu.Value?.Close() }),
                 FlyoutPlacement.TopEdgeAlignedLeft,
                 new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
             videoMenu.Value.ClosedAction = () => videoMenu.Value = null;

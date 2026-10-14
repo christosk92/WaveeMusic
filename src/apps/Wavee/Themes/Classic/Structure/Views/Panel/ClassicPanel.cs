@@ -16,7 +16,7 @@
 //
 // The frame is a Component (as `Rail.FrameCore` was): the slide is a layout effect on the component's rendered root, its
 // seeded-once flag is a field, and the arms are the same elements in the same positions, so a mode switch reconciles exactly as
-// it did. The lyrics header and body, the queue body and the video body are core builders on the props (T7b and T7d's bodies are core hosts that mount their views; the video body waits for T7c); the friends
+// it did. The lyrics header and body and the queue body are core builders on the props (T7b and T7d's bodies are core hosts that mount their views); the video body is `ClassicVideoPanelBody` (T7c); the friends
 // body and the hero are keys of their own.
 
 using FluentGpu.Animation;
@@ -61,7 +61,7 @@ internal static class ClassicPanel
         PanelMode.Lyrics => props.LyricsBody(),
         PanelMode.Queue => props.QueueBody(),
         PanelMode.Friends => Slots.View(ViewKeys.PanelFriends, props.Friends),
-        PanelMode.Video => props.VideoBody(),
+        PanelMode.Video => Embed.Comp(props, static () => new ClassicVideoPanelBody()),
         _ => Embed.Comp(props.NowPlaying, static () => new ClassicNowPlayingBody()),
     };
 
