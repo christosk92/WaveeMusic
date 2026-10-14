@@ -15,10 +15,10 @@
 // decides the shell's policies (`Rules\ClassicPolicies.cs`: nav pane, panel and mini player, player bar, chrome row, stage)
 // and offers every capability (T3). Its window tiers (T3b) are `Rules\Tiers.cs`.
 //
-// T1b: the options Classic will own (plan 6.1) are still TODAY's switches, bound to their legacy keys through `SettingsDoc`
+// T1b: the options Classic will own (plan 6.1) that are still TODAY's switches are bound to their legacy keys through `SettingsDoc`
 // rows. `LegacyRows` lists them in their FINAL grouping so Settings › Appearance shows Classic's section once, in its
 // final shape; each M-PR deletes its rows from the list and declares the option in `Options` (the generated row takes the
-// same place in the same group). M6 is the first: `Surfaces` (the colour washes); M7a adds `Sidebar` and `LibraryDensity`.
+// same place in the same group). M4 declared `hideTrackArt` here, M6 `Surfaces` (the colour washes) and M7a `Sidebar` and `LibraryDensity`; M3's `density` is the style's.
 
 using FluentGpu.Theming;
 using Wavee.Themes.Common;
@@ -281,6 +281,19 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.DialogCrash, ClassicCrash.Template, "classic.dialog.crash");
     }
 
+    /// <summary>Hide track artwork (M4): the track cells of every list drop their cover and give the space to the titles; page heroes, media cards, sidebar covers and the
+    /// player's identity artwork stay. It replaces `appearance.trackArtwork.hidden` (`ThemeBootstrap` step "HideTrackArtwork"). The core reads it as
+    /// `ThemePolicies.Lists` (`ClassicStructure.Policies`); the Classic views that draw the hidden look read it through <see cref="ClassicOptions.HideTrackArt"/>.</summary>
+    public static ToggleOption HideTrackArt { get; } = new(
+        Id: "hideTrackArt",
+        TitleKey: Strings.Settings.Appearance.HideTrackArtwork,
+        DescriptionKey: Strings.Settings.Appearance.HideTrackArtworkSub,
+        Group: Strings.Settings.ThemeOptions.Group.TrackLists,
+        Default: false);
+
+    /// <summary>The layer-qualified id Settings and the palette know the option by (<c>structure.hideTrackArt</c>).</summary>
+    public static string HideTrackArtQualifiedId => "structure." + HideTrackArt.Id;
+
     /// <summary>Surfaces: how much the artwork tints the shell and the pages (the colour washes: chrome tint, page ground, hero
     /// wash). Off paints the neutral ground; Subtle is today's wash. Stored as the enum's int (`theme.classic.structure.surfaces`);
     /// the option replaced the `appearance.colorWashes.enabled` switch (<c>ThemeBootstrap</c>'s "ColorWashes" step copies it).
@@ -337,14 +350,14 @@ public sealed class ClassicStructure : IStructureLayer
     /// <inheritdoc cref="SidebarOptionId"/>
     public const string LibraryDensityOptionId = "structure." + NavPaneOptionIds.Density;
 
-    private static readonly ThemeOptionSchema s_options = ThemeOptionSchema.Of(Sidebar, LibraryDensity, Surfaces);
+    private static readonly ThemeOptionSchema s_options = ThemeOptionSchema.Of(Sidebar, LibraryDensity, HideTrackArt, Surfaces);
 
     /// <inheritdoc />
     public ThemeOptionSchema Options => s_options;
 
     /// <inheritdoc />
     public ThemePolicies Policies(OptionValues structure, in StyleMetrics metrics)
-        => ClassicPolicies.For(structure.Get(Sidebar.Key), structure.Get(LibraryDensity.Key));
+        => ClassicPolicies.For(structure.Get(Sidebar.Key), structure.Get(LibraryDensity.Key), structure.Get(HideTrackArt.Key));
 
     /// <inheritdoc />
     public ShellCapabilities Capabilities(OptionValues structure) => ShellCapabilities.Unrestricted;
@@ -352,17 +365,15 @@ public sealed class ClassicStructure : IStructureLayer
     /// <inheritdoc />
     public RoleSet RequiredRoles => RoleSet.None;
 
-    /// <summary>Each entry leaves with the M-PR that migrates its switch: row style M2, row density M3, hide art M4, page layout and rails M8.
-    /// (Page motion, M1, was deleted: it has no row. Washes, M6, became the Surfaces option; the sidebar layout and density, M7a, the Sidebar and
-    /// LibraryDensity options. The three sidebar ACTIONS stay: they are not switches.)</summary>
+    /// <summary>Each entry leaves with the M-PR that migrates its switch: row style M2, page layout and rails M8. (Page motion, M1,
+    /// was deleted: it has no row. Washes, M6, became the structure's `surfaces` option; row density, M3, the style's `density` option, hide art, M4,
+    /// the structure's `hideTrackArt`; the sidebar layout and density, M7a, the structure's `sidebar` and `libraryDensity`. The three sidebar ACTIONS stay: they are not switches.)</summary>
     public IReadOnlyList<LegacyOptionRow> LegacyRows { get; } =
     [
         new("sidebarReset", Strings.Settings.ThemeOptions.Group.Sidebar),
         new("sidebarCustomize", Strings.Settings.ThemeOptions.Group.Sidebar),
         new("sidebarResetEverything", Strings.Settings.ThemeOptions.Group.Sidebar),
         new("trackListStyle", Strings.Settings.ThemeOptions.Group.TrackLists),
-        new("rowDensity", Strings.Settings.ThemeOptions.Group.TrackLists),
-        new("hideTrackArtwork", Strings.Settings.ThemeOptions.Group.TrackLists),
         new("pageLayout", Strings.Settings.ThemeOptions.Group.TrackPages),
         new("railUniform", Strings.Settings.ThemeOptions.Group.TrackPages),
         new("railReset", Strings.Settings.ThemeOptions.Group.TrackPages),

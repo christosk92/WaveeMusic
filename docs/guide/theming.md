@@ -643,7 +643,7 @@ column header, the command bar's pictures, the filter card and the placeholder r
 | Piece | Contract | Core half | Classic |
 |---|---|---|---|
 | Column header | `TrackHeaderTemplate(TrackHeaderArgs)`: the lanes, the shared tracks, the sort and its signal, the check lane, the hero arm, `OnSort(column, artistColumn)` | `TableHost.TableHeader` (reads shape, sort and checks, so it re-renders on exactly those), `SortBy` (`TableRules.NextSort`) | the keyed cells, the sort caret (a spring) and the title label's word swap as components over the sort signal, the hairline, the check-lane shift |
-| Command bar | `ITrackCommandKit`: the lane (`Surface`), a measured slot (`Command`), `Bar`, `PlayNext`, `Labeled`, `IconButton`, `Separator`, `Chevron`, `Trail`, `SortCaret`, `FilterCommand`, `FilterFunnel`, `MoreSlot` | which commands exist and fit (`CommandBarLayout`), the bar's hold while the filter card is open, every overlay and its focus, the "…" menu's items, the search field | the 32-DIP buttons, the split button's parts, the count badges, the bar's two motions |
+| Command bar | `ITrackCommandKit`: the lane (`Surface`), a measured slot (`Command`), `Bar`, `PlayNext`, `Labeled`, `IconButton`, `Separator`, `Chevron`, `Trail`, `SortCaret`, `FilterCommand`, `FilterFunnel`, `MoreSlot`, and (M3) `DensityLabel`, `DensityPanel`, `DensityItems` | which commands exist and fit (`CommandBarLayout`), the bar's hold while the filter card is open, every overlay and its focus, the "…" menu's items, the search field | the 32-DIP buttons, the split button's parts, the count badges, the bar's two motions |
 | Selection bar | the same `Surface` (mode `selection`) around `Controls.SelectionBar` | the live selection, the lane's commands, exit and select-all | the lane and the browse / selection swap motion |
 | Filter card | `TrackFilterCardTemplate(TrackFilterCardArgs)`: title, status (the filtered counts, already worded), `Reset`, `TrackFilterFacet` rows (signal, options, commit, `On`) and `TrackFilterToggle` rows | `TableFilterFlyout`: which facets the list can earn, the signals, what each commit writes, the sync from external filter writes | the 360-wide card, the 44-DIP facet rows with the accent-tinted combo, the switches, the scroll fallback |
 | Placeholder | `TrackPlaceholderTemplate(in ColumnSet, tracks, rowH, padX)` | `TableHost.PlaceholderRow`: the count, height and padding are the live row's, so landing data never jumps | a `GridEl` of empty boxes |
@@ -651,7 +651,7 @@ column header, the command bar's pictures, the filter card and the placeholder r
 - **Templates run inside the core component's render.** The header, the filter card and every button are drawn while the core
   component renders, so the signals they read subscribe that component exactly as before; no key, motion, hit-test or tab order changes.
 - **Still core.** The search disclosure's field (`TableSearchHost`, a focus and caret machine; it calls the kit for its glyph button),
-  the row-size slider's panel (M3 moves it with the option write), `Controls.SelectionBar` and the shared selection lane (shared
+  the row-size button's overlay (the panel, the word and the submenu's rows are the kit's since M3, below), `Controls.SelectionBar` and the shared selection lane (shared
   controls) and the chrome stack's own arrangement (`Chrome(...)`, whose sticky clip the hero system measures). `Track.TableHeaderShim` and `Track.ShimmerRow` (the host-free
   statics the library panes and the artist reader called with no registry) moved with those callers in T10c1: the header shim is the album pane's own picture
   (`ClassicLibraryAlbumPane`), and the placeholder row both panes draw is `ClassicTrackChrome.Placeholder`.
@@ -855,8 +855,8 @@ row), `IQueueVerbs` (bound to the surface's own page counters), the player's ver
 (`SlotCount`, `SlotAt`, `ItemAt` under the live drag projection), `Lane` / `List` (the wrapper a row needs and the lane around the body), `OwnDrag` and `Attach`
 (a viewed queue's own drag; the entry's context menu), `Remaining` / `PageSize` ("Show more"), `TextOf` (what a row paints: the entity tables are not a theme's), `Clock`,
 `RowKey` and `SetMetrics`. **A template must call `SetMetrics(rowExtent, extentOf)` before it builds the lane**: the reorder maths needs every slot's height
-EXACT, and the heights are the skin's (a skin or a scale change moves them). The settings the core read arrive as facts (`HairlineRows`, `HideTrackArt`,
-`RepeatOn`, `RepeatTrack`), the two navigations as `Action?` (`OpenPlayingFrom`, `OpenNowPlaying`: null means display-only). The stage's accent, queue scale and
+EXACT, and the heights are the skin's (a skin or a scale change moves them). The settings the core read arrive as facts (`HairlineRows`,
+`RepeatOn`, `RepeatTrack`; "hide track art" is Classic's own option since M4: the panel and the stage pane read `ClassicOptions.HideTrackArt()`), the two navigations as `Action?` (`OpenPlayingFrom`, `OpenNowPlaying`: null means display-only). The stage's accent, queue scale and
 width travel in the stage's ambient context (`Stage.StageContext`), which the view component reads.
 
 **Motion and identity are the old surface's.** Row keys (`i<itemId>` or `e<index>`, plus the skin and art suffix), the lane keys (`lane:upcoming`,
@@ -973,7 +973,7 @@ Search page's genre links are the same Link cell over the same grid. The numbers
 **What a Search view may call.** The body is a MODEL the host builds each time the skeleton region asks for its content (`SearchBodyModel`: the hits as `Search.HitItem`s over the live
 handles, the fallback rows, the rail, the genre tiles, the related queries), so a hydrating hit row still re-reads in the region's own binding. A hit is drawn with the core adapters
 (`Search.HitData`, `OpenHit`, `PlayHit`, `MenuOf`, `DragOf`, `TrailingOf`, `TitleOf`, `CoverOf`, `SubtitleOf`, `CardDataOf`, `OpenRelated`) over the one media surface;
-`SearchHitRules` (shape, art, eyebrow, trailing, drag) stays core because the omnibar flyout reads it. Whether track art is hidden rides the hit context (`HitContext.HideTrackArt`).
+`SearchHitRules` (shape, art, eyebrow, trailing, drag) stays core because the omnibar flyout reads it. Whether track art is hidden is Classic's own option (`ClassicOptions.HideTrackArt()`, M4): the body reads it where a hit row is built and hands it to `Search.HitData`.
 
 **Tests.** The ids, Classic's registration and the grid-facet rule are `Wavee.Tests\BrowseSearchContractTests.cs`; the column bands and the star grid are `BrowseLayoutTests`; the load gate, the facet rules and the hit decisions
 stay `BrowseLoadGateTests`, `SearchFacetRulesTests` and `SearchHitDataTests`. The mounted facts are `Wavee.ShellTests\BrowseSearchMountedTests.cs`: Classic is the registered template of every key, a tile block keys
@@ -986,7 +986,7 @@ The artist page is the structure's picture over a core host. The scroll column, 
 
 | Key | Props | Core host | Classic template |
 |---|---|---|---|
-| `Pages.Artist` | `ArtistPageProps` (the route and scope keys, the artist handle, the pending / failed verdicts and Retry, the measured width and the ONE resolved `ArtistHeroMetrics`, the accent as a value, a live read, an untracked read and a signal, the palette and hero urls, the washes flag, the tint claim leaf, the band's engaged edge, the pivot tabs and the spy's answer, the section slots with their anchor callbacks, the fans pool, the verbs, `RowsClassic` / `ShowTrackArt` for the chart's skeleton) | `Artist.PageHost` (`[CoreHost]`, `Entities\Artist.Page.cs`): the demand effects, `DemandRows`, `Stamp`, readiness and the failure verdict, the hero-photo latch and its decode warm-up, the watched accent, `PlanSections` (the plan and the pivot's membership), the anchor registry and the spy | `ClassicArtistPage`: the keyed column and scroller over the `SkelRegionEl` (Reveal.Soft, Group null), the hero, the sentinel, the clipped magazine and wash, the band's artist arm and the derived shimmer; `ClassicArtistHero`, `ClassicArtistSections`, `ClassicArtistBanners`, `ClassicArtistPick` |
+| `Pages.Artist` | `ArtistPageProps` (the route and scope keys, the artist handle, the pending / failed verdicts and Retry, the measured width and the ONE resolved `ArtistHeroMetrics`, the accent as a value, a live read, an untracked read and a signal, the palette and hero urls, the washes flag, the tint claim leaf, the band's engaged edge, the pivot tabs and the spy's answer, the section slots with their anchor callbacks, the fans pool, the verbs, `RowsClassic` for the chart's skeleton, which reads the hide-art option itself) | `Artist.PageHost` (`[CoreHost]`, `Entities\Artist.Page.cs`): the demand effects, `DemandRows`, `Stamp`, readiness and the failure verdict, the hero-photo latch and its decode warm-up, the watched accent, `PlanSections` (the plan and the pivot's membership), the anchor registry and the spy | `ClassicArtistPage`: the keyed column and scroller over the `SkelRegionEl` (Reveal.Soft, Group null), the hero, the sentinel, the clipped magazine and wash, the band's artist arm and the derived shimmer; `ClassicArtistHero`, `ClassicArtistSections`, `ClassicArtistBanners`, `ClassicArtistPick` |
 
 **There is no hero key.** The hero's pinned, collapsing root has to stay a direct child of the page column (a slot would put a component boundary between the sticky node and its scroll content) and the derived skeleton cannot run a view slot, so the page view builds the hero for the live page and for the shimmer with the same builder
 (`ClassicArtistHero.Build`; the skeleton passes the placeholder facts and null verbs). The tiers (`ArtistHeroLayout`: widths, hysteresis, heights, photo bands, gutters, copy measures, the collapse arithmetic) are **core**, not a Classic rules file: the profile page reads the same tiers and the host decodes the photo at the size they name; the Classic numbers the
@@ -1526,7 +1526,7 @@ no other home yet (lyrics, full screen, now playing, Home). Nothing in it names 
   option changed).
 - **Legacy rows.** A structure lists the options that are still switches in `IStructureLayer.LegacyRows` (a `SettingsDoc` row id and a
   group). The page draws them in the same expander and groups; an M-PR deletes its rows from the list and declares the option, so
-  the tab never changes layout again. Classic lists 9 (M1 deleted one, M6 moved the washes into the options, M7a the sidebar layout and density; the sidebar's three actions stay rows). Inside a group the generated rows come first, so the layout cards and the density sit above the sidebar's actions, as the rows they replaced did.
+  the tab never changes layout again. Classic lists 7 (M1 deleted one; M3, M4, M6 and M7a moved the row density, the hide-art switch, the washes and the sidebar layout and density into options; the sidebar's three actions stay rows). Inside a group the generated rows come first, so the layout cards and the density sit above the sidebar's actions, as the rows they replaced did.
 - **Palette.** An option with `Command = true` contributes rows (`ThemeOptionsSection.Commands`): a toggle on/off, a select one per
   choice, an action one. `Shell.CommandTable.BuildIndex` appends them after the builtins (`PaletteKind.ThemeOption`).
 - **Setup.Theme.** The wizard's second page (`WizardPage.Theme`, M7a: it replaced the Layout page and its two sidebar cards) mounts the `Setup.Theme` view (`ClassicSetup.ThemeTemplate`, on the Layout page's frame) with the picker and
@@ -1582,7 +1582,7 @@ it; any other value (2 exists only in profiles that ran the discarded PR 205 bra
 `SidebarPaneDensity` are listed in `WVTH010.legacy.txt`. The v2 sidebar migration (`SidebarMigrationHost`, retiring with its own release) now hands its layout and density to the option
 through `ThemeHost.Request` instead of writing the old keys.
 
-How the core follows a choice it may not read (WVTH005): the structure publishes it as **`NavPanePolicy.Layout` / `Density`** (`ClassicPolicies.For(layout, density)`, one bundle per
+How the core follows a choice it may not read (WVTH005): the structure publishes it as **`NavPanePolicy.Layout` / `Density`** (`ClassicPolicies.For(layout, density, hideTrackArt)`, one bundle per combination together with M4's `Lists.TrackArtwork`; one per
 pair, the default pair being `Bundle` itself). `Sidebar.Boot` reads `ShellPolicy.Now.NavPane`; the frame root's effect calls **`Sidebar.FollowDesign(ShellPolicy.Tracked.NavPane)`**, which
 brings the sidebar's live `Layout` / `Density` signals (the layout document, the undo ring and the menus read those) after an option that moved without a verb of the sidebar: the Settings
 cards, the palette's option commands, a theme switch. A layout change that arrives that way while the sidebar is being edited ends the edit first (the verb refuses instead). The verbs
@@ -1591,6 +1591,26 @@ Density, value)` (a theme without the option ignores it and the choice lasts for
 row is text only) and `structure.libraryDensity` as the narrow combo it always was, and the options kept the icons of the rows they replaced. The density stays visible with either layout
 (the plan said "only with Library", but the density shapes the Classic layout's entity rows too). The wizard's second page is the Theme page; the Layout page, `Settings.SidebarLayoutCards`
 and the palette's "Use ... layout" rows are gone.
+
+### Worked example: row density and hide track art (M3, M4)
+
+Two Classic switches became options in one PR. Row density (`detail.rowdensity`) is the **style's** `density` option (`Themes\Classic\Style\ClassicDensity.cs`:
+a Cards select over `RowDensity` Compact / Default / Cozy / Comfortable, stored as the legacy number so a stored value carries over unchanged). Hide track art
+(`appearance.trackArtwork.hidden`) is the **structure's** `hideTrackArt` toggle (`ClassicStructure.HideTrackArt`). Both live in Settings › Appearance
+through `ThemeOptionsSection` (the group "Track lists"), have no `SettingsDoc` row any more, and left `LegacyRows`; the Classic Settings view draws the density's
+cards as the miniature rows it always drew (`ClassicSettings.OptionChoiceCard`) and gives both rows their glyphs (`OptionGlyph`).
+
+| | Density | Hide track art |
+|---|---|---|
+| What core reads | `StyleMetrics.TrackRows` (`TrackRowMetrics`: both skins' row height and art edge, the episode row, the rung, the episode row's narrow arm), published by `ClassicStyle.Metrics`; `Track.RowMetrics.Rows()` is the tracked read (the shell's Default rung when nothing is published) | `ThemePolicies.Lists.TrackArtwork` (`ListPolicy`), published by `ClassicStructure.Policies`; core models read `ShellPolicy.Tracked.Lists` (the track table's identity lane, the artist chart, the next-up rows, the stage's artist pane) |
+| What a Classic view reads | the table's chrome calls the style's accessors (`ClassicDensity.Current`, `Request`): a structure may not read or request a style key itself (WVTH005, WVTH009) | `ClassicOptions.HideTrackArt()`, a tracked read of the option cell: the queue panel and stage pane, the Recents rows, the library search, the search hits, the artist page's chart skeleton |
+| Where it is written | the Settings picker, the table's "Row size" slider (`ClassicTrackDensity`, through `ThemeHost.Options.RequestForwarder`) and its overflow submenu: all land in `ThemeHost.Apply` | the Settings toggle |
+| Stored value | the legacy rung (0-3) is copied to `theme.classic.style.density` by the step `TrackRowDensity`; a value outside 0-3 is not copied (the default rung applies) | the legacy bool is copied to `theme.classic.structure.hideTrackArt` by the step `HideTrackArtwork` |
+
+The row-size button keeps its overlay in the core (`TableDensityButton`: open, close, the word it holds while the panel is open) and asks the command kit for the
+word, the panel and the radio rows. What the lists draw is unchanged, and so is the live re-key: a density change moves the list key's `d<N>` segment, a hide-art change drops the
+artwork from the rows without re-keying the list (`LiveOptionBehaviourTests`). The facts are in `ClassicDensityAndArtTests`, including every stored value and the
+existing-choice-wins rule. The old keys are listed in `WVTH010.legacy.txt`; `Prefs.Appearance.RowDensity` / `TrackArtworkHidden` and `Platform.Keys.RowDensity` / `HideTrackArtwork` are gone.
 
 ## 5. The analyzers (`Wavee.Analyzers`, WVTH rules)
 

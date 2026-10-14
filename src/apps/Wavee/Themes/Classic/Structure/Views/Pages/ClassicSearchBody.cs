@@ -150,8 +150,9 @@ internal static class ClassicSearchBody
     static Element HitRow(EntityRef hit, SearchHitFlags flags, bool large, in Search.HitContext ctx)
     {
         if (hit.IsNone) return new BoxEl();
-        var shape = SearchHitRules.ShapeOf(large, artHidden: !SearchHitRules.ShowsArt(hit.Kind, ctx.HideTrackArt));
-        return Controls.Surface(Search.HitData(hit, flags, large, in ctx), shape) with { Key = "hit:" + Search.KeyOf(hit) };
+        bool hideTrackArt = ClassicOptions.HideTrackArt();   // tracked: the region's binding re-runs when the option flips
+        var shape = SearchHitRules.ShapeOf(large, artHidden: !SearchHitRules.ShowsArt(hit.Kind, hideTrackArt));
+        return Controls.Surface(Search.HitData(hit, flags, large, in ctx, hideTrackArt), shape) with { Key = "hit:" + Search.KeyOf(hit) };
     }
 
     /// <summary>A column of hit rows at the 8-DIP list gap.</summary>

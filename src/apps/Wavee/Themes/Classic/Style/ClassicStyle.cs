@@ -3,8 +3,8 @@
 // The style IS today's `Design.Definition` (the engine's Neutral palette with Wavee's fonts) carrying Classic's roles
 // (`ClassicRoles`: type, space, motion and case from T2a, the colour roles from T2b), returned as ONE instance for every option set
 // and accent, so the definition the composition resolves is the instance the appearance seed installs and a switch back to Classic
-// adopts by reference. No option exists yet. It publishes Classic's metrics (T3): the row heights, control height, gutter and section gap Classic
-// lays out with.
+// adopts by reference. Its one option is the row density (M3, `ClassicDensity`), a metrics preset. It publishes Classic's metrics (T3): the row heights, control
+// height, gutter and section gap Classic lays out with, and the track rows at the chosen density.
 
 using FluentGpu.Dsl;
 using FluentGpu.Theming;
@@ -26,13 +26,13 @@ public sealed class ClassicStyle : IStyleLayer
     public string Id => LayerId;
 
     /// <inheritdoc />
-    public ThemeOptionSchema Options => ThemeOptionSchema.Empty;
+    public ThemeOptionSchema Options { get; } = ThemeOptionSchema.Of(ClassicDensity.Option);
 
     /// <inheritdoc />
     public ThemeDefinition Definition(OptionValues style, AccentRamp osAccent) => s_definition;
 
     /// <inheritdoc />
-    public StyleMetrics Metrics(OptionValues style) => s_metrics;
+    public StyleMetrics Metrics(OptionValues style) => s_metrics with { TrackRows = ClassicDensity.Rows(style) };
 
     /// <summary>Classic's metrics. A one-line row is the nav item (44), a two-line or art row the track row (56, whose cover is a
     /// 40 thumb); the control is 32; the player bar is ONE 72-DIP row, so its seek line has no row of its own (0) and the

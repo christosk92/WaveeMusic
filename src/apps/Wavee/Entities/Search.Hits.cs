@@ -34,7 +34,7 @@ namespace Wavee;
 public readonly partial struct Search
 {
     /// <summary>What every hit factory needs beyond the hit, resolved ONCE per page render.</summary>
-    public readonly record struct HitContext(string Query, Shell.NavOrigin? Origin, IOverlayService? Overlay, bool HideTrackArt);
+    public readonly record struct HitContext(string Query, Shell.NavOrigin? Origin, IOverlayService? Overlay);
 
     /// <summary>One Best-matches / rail cell: the hit plus its row version and chrome, so the shelf's value snapshot
     /// changes when the row hydrates.</summary>
@@ -167,7 +167,7 @@ public readonly partial struct Search
     /// hidden-artwork look (a play glyph where the cover was — pair it with <see cref="SearchHitRules.ShapeOf"/>) and the
     /// play leg that toggles pause on the playing track. Runs inside a render: a track hit's table read subscribes it, so a
     /// hydrating row re-describes itself.</summary>
-    internal static Controls.CardData HitData(EntityRef hit, SearchHitFlags flags, bool large, in HitContext ctx)
+    internal static Controls.CardData HitData(EntityRef hit, SearchHitFlags flags, bool large, in HitContext ctx, bool hideTrackArt)
     {
         var h = hit;
         var origin = ctx.Origin;
@@ -178,7 +178,7 @@ public readonly partial struct Search
 
         Controls.CardData data = hit.Kind == EntityKind.Track
             ? Track.RowData(new Track(hit.Slot), new Track.RowDataOptions(
-                OnClick: open, OnPlay: play, ShowArtwork: SearchHitRules.ShowsArt(hit.Kind, ctx.HideTrackArt),
+                OnClick: open, OnPlay: play, ShowArtwork: SearchHitRules.ShowsArt(hit.Kind, hideTrackArt),
                 ShowExplicit: false, Draggable: false))
             : new Controls.CardData(uri, title, null, CoverOf(hit), open, play, Circular: RoundArt(hit.Kind));
         return data with

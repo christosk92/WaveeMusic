@@ -191,7 +191,7 @@ public readonly partial struct Album
             var state = AlbumPaneReadiness.Of(
                 knowsIdentity: a.Knows(AlbumFields.Title),
                 tracks: edgeState, edgeFailed: edge.IsFailed(_slot), rows: facts);
-            _rowH = Track.RowMetrics.RowHeightFor(Prefs.Appearance.RowDensity());
+            _rowH = Track.RowMetrics.Rows().ModernRow;
             _shimRows = AlbumPaneReadiness.ShimmerRows(a.Knows(AlbumFields.TrackCount), a.TrackCount, tracks.Length);
             LogState(state, edgeState, tracks.Length, in facts);
 

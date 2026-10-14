@@ -190,9 +190,6 @@ public sealed record LibrarySearchProps
     /// <summary>The selected album's slot (0: none).</summary>
     public required int SelectedAlbum { get; init; }
 
-    /// <summary>Whether a track hit shows its cover (false while track artwork is hidden).</summary>
-    public required bool ShowTrackArt { get; init; }
-
     /// <summary>An artist hit was picked (selects in place).</summary>
     public required Action<int> SelectArtist { get; init; }
 

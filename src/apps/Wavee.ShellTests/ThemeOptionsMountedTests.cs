@@ -97,15 +97,13 @@ public sealed class ThemeOptionsMountedTests(ShellHost host)
             foreach (string id in new[]
             {
                 "sidebarReset", "sidebarCustomize", "sidebarResetEverything",
-                "trackListStyle", "rowDensity", "hideTrackArtwork", "pageLayout", "railUniform", "railReset",
+                "trackListStyle", "pageLayout", "railUniform", "railReset",
             })
                 Assert.False(shell.Find("legacy:" + id).IsNull, "legacy row '" + id + "' is mounted");
-            Assert.True(shell.Find("legacy:colorWashes").IsNull, "the washes are a generated option since M6");
-            Assert.NotEmpty(shell.FindPrefix("opt:structure.surfaces"));
-            Assert.True(shell.Find("legacy:sidebarDesign").IsNull, "the sidebar layout is a generated option since M7a");
-            Assert.True(shell.Find("legacy:sidebarDensity").IsNull, "the sidebar density is a generated option since M7a");
-            Assert.NotEmpty(shell.FindPrefix("opt:structure.sidebar"));
-            Assert.NotEmpty(shell.FindPrefix("opt:structure.libraryDensity"));
+            foreach (string id in new[] { "structure.sidebar", "structure.libraryDensity", "structure.hideTrackArt", "structure.surfaces", "style.density" })   // M7a, M4, M6 and M3: generated rows, no legacy row left
+                Assert.False(shell.Find("opt:" + id).IsNull, "generated row '" + id + "' is mounted");
+            foreach (string id in new[] { "colorWashes", "rowDensity", "hideTrackArtwork", "sidebarDesign", "sidebarDensity" })
+                Assert.True(shell.Find("legacy:" + id).IsNull, "'" + id + "' is a generated option now");
         });
 
     [Fact]
@@ -305,7 +303,7 @@ public sealed class ThemeOptionsMountedTests(ShellHost host)
             Assert.False(shell.Find("setup:frame:" + (int)Setup.WizardPage.Theme).IsNull);   // the Layout page's frame, kept
             Assert.Single(shell.FindPrefix("settings:theme:card:"));
             Assert.False(shell.Find("opt:structure.sidebar").IsNull);                         // the layout cards: what the Layout step showed, now Classic's first option
-            Assert.True(shell.Find("legacy:rowDensity").IsNull);                              // not a first-run decision
+            Assert.True(shell.Find("legacy:trackListStyle").IsNull);                          // a legacy row that is not a first-run decision
             ShellHost.AssertNoNetwork();
         });
 }

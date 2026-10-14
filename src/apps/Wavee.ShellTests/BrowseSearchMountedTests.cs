@@ -96,7 +96,7 @@ public sealed class BrowseSearchMountedTests(ShellHost host)
         Failed = static () => false,
         Body = () => new SearchBodyModel
         {
-            Kind = SearchBodyKind.Empty, Facet = facet, Hits = new Search.HitContext("daft punk", null, null, HideTrackArt: false),
+            Kind = SearchBodyKind.Empty, Facet = facet, Hits = new Search.HitContext("daft punk", null, null),
         },
         Retry = static () => { },
         RetryAll = static () => { },

@@ -14,7 +14,7 @@
 //   · Value rules (BP 1.6): an unknown or out-of-range legacy value becomes the option default (the step simply does not
 //     copy it); a renamed option starts at its default; a removed choice becomes the default.
 //
-// T1 shipped the machinery; each M-PR registers its step in `Steps`. It runs from `Platform.Boot` right after `ZoomAutoPolicy.MigrateMode`
+// T1 shipped the machinery; each M-PR registers its step in `Steps` (M3 row density, M4 hide track art, M6 colour washes). It runs from `Platform.Boot` right after `ZoomAutoPolicy.MigrateMode`
 // and before anything reads a presentation setting. WVTH010 keeps legacy key names and deleted member names inside this file.
 
 namespace Wavee.Theming;
@@ -28,7 +28,7 @@ public static class ThemeBootstrap
     /// <summary>The prefix of the done markers: <c>theme.bootstrap.done.&lt;Name&gt;</c>.</summary>
     public const string DonePrefix = "theme.bootstrap.done.";
 
-    // ── the retired switches (WVTH010 lists these names; only this file may spell them) ────────────────────────────────────────
+    // -- the retired switches (WVTH010 lists these names; only this file may spell them) and the options that replaced them
 
     /// <summary>M6: the colour-washes switch (default on). Its option is Classic's Surfaces select (`theme.classic.structure.surfaces`,
     /// the enum's int: Off 0, Subtle 1).</summary>
@@ -42,15 +42,28 @@ public static class ThemeBootstrap
     private static readonly SettingKey<int> SidebarKey = new("theme.classic.structure.sidebar", 0);
     private static readonly SettingKey<int> LegacySidebarDensity = new("sidebar.pane.density", 0);
     private static readonly SettingKey<int> LibraryDensityKey = new("theme.classic.structure.libraryDensity", 0);
+    private static readonly SettingKey<int> LegacyRowDensity = new("detail.rowdensity", 1);
+    private static readonly SettingKey<bool> LegacyHideTrackArtwork = new("appearance.trackArtwork.hidden", false);
+    private static readonly SettingKey<int> DensityOptionKey = new("theme.classic.style.density", 1);
+    private static readonly SettingKey<bool> HideArtOptionKey = new("theme.classic.structure.hideTrackArt", false);
 
     /// <summary>The steps shipped in this build: each migration PR appends its own.</summary>
     public static IReadOnlyList<ThemeBootstrapStep> Steps { get; } =
     [
-        // M6 washes: false → Off (0), true → Subtle (1, today's wash). A switch the user never touched is absent, so it stays at the
+        // M6 washes: false -> Off (0), true -> Subtle (1, today's wash). A switch the user never touched is absent, so it stays at the
         // option's default (Subtle).
         new ThemeBootstrapStep("ColorWashes",
             ReadsLegacyKeys: ["appearance.colorWashes.enabled"], WritesKeys: ["theme.classic.structure.surfaces"],
             Run: static s => Copy(s, LegacyColorWashes, SurfacesKey, static on => (true, on ? 1 : 0))),
+        // M3: the row density rung (0 Compact, 1 Default, 2 Cozy, 3 Comfortable) is Classic's `style.density`, the same numbers. A hand-edited or
+        // downgraded value outside 0..3 is not copied (the option default applies; the old reader answered Compact).
+        new ThemeBootstrapStep("TrackRowDensity",
+            ReadsLegacyKeys: ["detail.rowdensity"], WritesKeys: ["theme.classic.style.density"],
+            Run: static s => Copy(s, LegacyRowDensity, DensityOptionKey, static v => (v is >= 0 and <= 3, v))),
+        // M4: "always hide track artwork" is Classic's `structure.hideTrackArt`.
+        new ThemeBootstrapStep("HideTrackArtwork",
+            ReadsLegacyKeys: ["appearance.trackArtwork.hidden"], WritesKeys: ["theme.classic.structure.hideTrackArt"],
+            Run: static s => Copy(s, LegacyHideTrackArtwork, HideArtOptionKey)),
         // M7a sidebar: a stored layout and density carry over as they are, so a Library user stays on Library and a Compact user on Compact.
         new ThemeBootstrapStep("SidebarLayout",
             ReadsLegacyKeys: ["sidebar.layout.id"], WritesKeys: ["theme.classic.structure.sidebar"],

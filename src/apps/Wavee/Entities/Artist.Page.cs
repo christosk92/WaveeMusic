@@ -275,9 +275,8 @@ public readonly partial struct Artist
             UseEffect(_republishAccent, DepKey.From(ThemeEpoch()));          // a theme flip or a definition swap re-derives the accent (X44)
             UseEffect(_resolveSpy);                                       // the scroll spy
 
-            // ch 08 §6's settings, each subscribing the appearance epoch. The structure's view draws with them (M2 and M4 move the decisions behind them).
+            // ch 08 §6's settings, each subscribing the appearance epoch. The structure's view draws with them (M2 moves the decisions behind them).
             bool rowsClassic = Prefs.Appearance.TrackRowStyle() == 1;
-            bool showArtwork = !Prefs.Appearance.TrackArtworkHidden();
 
             _ = _layoutEpoch.Value;
             _width = MathF.Max(1f, _heroWidth.Value);
@@ -398,7 +397,6 @@ public readonly partial struct Artist
                 OpenGallery = _openGallery,
                 Overlay = _overlay,
                 RowsClassic = rowsClassic,
-                ShowTrackArt = showArtwork,
             });
         }
 

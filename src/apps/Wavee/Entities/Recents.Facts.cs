@@ -115,7 +115,4 @@ public readonly partial struct Recents
 
     /// <summary>The heat's paint: the accent INK at A_subtle + (ink.A − A_subtle)·level/5 (§4.3).</summary>
     static ColorF DensityFillOf(int level, ColorF ink) => RecentsLayout.DensityFill(level, ink, Tok.AccentSubtle.A);
-
-    /// <summary>The app-wide track-artwork policy (a reactive read).</summary>
-    static bool ShowsTrackArt() => !Prefs.Appearance.TrackArtworkHidden();
 }

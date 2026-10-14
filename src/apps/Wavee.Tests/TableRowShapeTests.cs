@@ -1,9 +1,10 @@
 using Wavee;
+using Wavee.Themes.Classic;
 using Xunit;
 
 namespace Wavee.Tests;
 
-/// <summary>The episode row's density ladder (`Track.RowMetrics.EpisodeRowHeightFor`) — pure, engine-free.</summary>
+/// <summary>The episode row's density ladder (`ClassicDensity.Rows(...).EpisodeRow`, the style's `TrackRowMetrics`) — pure, engine-free.</summary>
 public class TableRowShapeTests
 {
     [Theory]
@@ -13,7 +14,8 @@ public class TableRowShapeTests
     [InlineData(3, 112f)]
     public void The_episode_row_is_density_aware_and_taller_than_a_track_row(int density, float expected)
     {
-        Assert.Equal(expected, Track.RowMetrics.EpisodeRowHeightFor(density));
-        Assert.True(Track.RowMetrics.EpisodeRowHeightFor(density) > Track.TableRules.RowHeightFor(density, classic: false));
+        var rows = ClassicDensity.Rows((RowDensity)density);
+        Assert.Equal(expected, rows.EpisodeRow);
+        Assert.True(rows.EpisodeRow > rows.ModernRow);
     }
 }

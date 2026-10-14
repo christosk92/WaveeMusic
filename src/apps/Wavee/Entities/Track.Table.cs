@@ -559,12 +559,12 @@ public readonly partial struct Track
         /// <summary>The ACTIVE geometry: one column set, one TrackSize[] (the row's per-(set, art) cached instance — header
         /// and rows read the same array), art, row height, density. Tracks compare by VALUE so a cache miss that rebuilt an
         /// identical array does not re-render every row.</summary>
-        internal readonly record struct Shape(ColumnSet Set, TrackSize[] Tracks, float Art, float RowH, int Density, float EpisodeRowH = 0f)
+        internal readonly record struct Shape(ColumnSet Set, TrackSize[] Tracks, float Art, float RowH, int Density, float EpisodeRowH = 0f, bool NarrowEpisode = false)
         {
             public bool Equals(Shape other)
             {
                 if (!Set.Equals(other.Set) || Art != other.Art || RowH != other.RowH || Density != other.Density
-                    || EpisodeRowH != other.EpisodeRowH) return false;
+                    || EpisodeRowH != other.EpisodeRowH || NarrowEpisode != other.NarrowEpisode) return false;
                 var a = Tracks; var b = other.Tracks;
                 if (ReferenceEquals(a, b)) return true;
                 if (a is null || b is null || a.Length != b.Length) return false;
@@ -592,7 +592,7 @@ public readonly partial struct Track
             uint likes = filters.LikedOnly ? Entities.Current.Edges.Liked.Changed.Value : 0u;
             var cfg = ConfigOf(args);
             return new Snapshot(src.Context.Id, src.Version, src.Count, src.State, sort, query.Trim(), filters, data, likes,
-                Prefs.Appearance.TrackRowStyle() == 1, Prefs.Appearance.TrackArtworkHidden(), Prefs.Appearance.Marquee(),
+                Prefs.Appearance.TrackRowStyle() == 1, !ShellPolicy.Tracked.Lists.TrackArtwork, Prefs.Appearance.Marquee(),
                 TableColumnsPref.Tempo(), TableColumnsPref.Plays(), cfg);
         }
 
@@ -624,10 +624,10 @@ public readonly partial struct Track
             // identity lanes cannot pay for. Relief only subtracts, so this can never widen the table.
             var admitted = SetFor(in snap, args, ClampTier(_tier.Value));
             var set = TableRules.ApplyRelief(in admitted, ReliefStepFor(in admitted));
-            int density = Prefs.Appearance.RowDensity();
-            float art = TableRules.ArtSizeFor(density, set.Classic);
-            return new Shape(set, Track.TracksFor(in set, art), art, TableRules.RowHeightFor(density, set.Classic), density,
-                RowMetrics.EpisodeRowHeightFor(density));
+            var rows = RowMetrics.Rows();   // the style's density (M3)
+            float art = set.Classic ? rows.ClassicArt : rows.ModernArt;
+            return new Shape(set, Track.TracksFor(in set, art), art, set.Classic ? rows.ClassicRow : rows.ModernRow, rows.Rung,
+                rows.EpisodeRow, rows.NarrowEpisode);
         }
 
         static ColumnSet SetFor(in Snapshot s, TableArgs args, int tier)
@@ -881,9 +881,6 @@ public readonly partial struct Track
             if (!on) _selection.ClearSelection();
             _multi.Value = on;
         }
-
-        /// <summary>The ONE density writer: persist + bump, so every mounted page re-reads it (ch 30 N12).</summary>
-        static void SetDensity(int density) => Prefs.Appearance.Set(Platform.Keys.RowDensity, Math.Clamp(density, 0, 3));
 
         /// <summary>A context's own view: the persisted sort (−1 sentinel ⇒ the profile default) and a fresh query/filter/
         /// multi-select. From a layout effect keyed on the context — never from Render.</summary>

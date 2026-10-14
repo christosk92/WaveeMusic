@@ -168,7 +168,7 @@ public readonly partial struct Artist
             AccentSignal = p.Accent;
             ColorF accent = p.Accent.Value;
             Classic = Prefs.Appearance.TrackRowStyle() == 1;
-            ShowArtwork = !Prefs.Appearance.TrackArtworkHidden();
+            ShowArtwork = ShellPolicy.Tracked.Lists.TrackArtwork;
 
             // The chart's own asks (the same ones the page makes, so they dedupe to nothing) and the latch behind the
             // failure gate; the deadline re-arms with the artist and the scope, and `Recheck` keeps it alive while a

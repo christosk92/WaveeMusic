@@ -178,13 +178,13 @@ public sealed class ThemePickerTests : IDisposable
     }
 
     [Fact]
-    public void The_options_section_of_the_installed_classic_shows_its_legacy_rows_and_the_generated_option_rows()
+    public void The_options_section_of_the_installed_classic_shows_the_migrated_options_beside_the_legacy_rows()
     {
         ThemeHost.Install(ClassicTheme.Create());
         var model = ThemeOptionsSection.Current(developerMode: true);
 
-        // M6 made the washes Classic's first option, M7a added the sidebar layout and density (schema order).
-        Assert.Equal(new[] { "structure.sidebar", "structure.libraryDensity", "structure.surfaces" }, model.Rows.Select(r => r.QualifiedId));
+        // M4 (hide track art), M6 (surfaces) and M7a (sidebar layout and density) are structure options, M3 (row density) the style's: structure options come first in the schema.
+        Assert.Equal(new[] { "structure.sidebar", "structure.libraryDensity", "structure.hideTrackArt", "structure.surfaces", "style.density" }, model.Rows.Select(r => r.QualifiedId));
         var layout = model.Rows[0];
         Assert.Equal(Strings.Settings.ThemeOptions.Group.Sidebar, layout.Group);
         Assert.Equal(SettingsRowKind.Picker, layout.Row.Kind);   // Cards
@@ -192,14 +192,14 @@ public sealed class ThemePickerTests : IDisposable
         var density = model.Rows[1];
         Assert.Equal(Strings.Settings.ThemeOptions.Group.Sidebar, density.Group);
         Assert.Equal(SettingsRowKind.Choice, density.Row.Kind);  // a combo, as the row it replaced
-        var surfaces = model.Rows[2];
+        var surfaces = model.Rows.Single(r => r.QualifiedId == "structure.surfaces");
         Assert.Equal(Strings.Settings.ThemeOptions.Group.Surfaces, surfaces.Group);
         Assert.Equal(SettingsRowKind.Toggle, surfaces.Row.Kind);
         Assert.False(model.IsEmpty);
-        // M1 deleted the page-motion row, M6 moved the washes into the options, M7a the sidebar layout and density (its three actions stay rows).
-        Assert.Equal(9, model.Legacy.Count);
-        Assert.DoesNotContain(model.Legacy, l => l.RowId is "colorWashes" or "sidebarDesign" or "sidebarDensity");
-        Assert.NotNull(model.Reset);       // the options are stored, so Reset is about something
+        Assert.Equal(7, model.Legacy.Count);   // 12 before the M-PRs: M6 took the washes, M3 the row density, M4 the hide-art row, M7a the sidebar layout and density (M1 had deleted page motion)
+        Assert.DoesNotContain(model.Legacy, l => l.RowId is "colorWashes" or "rowDensity" or "hideTrackArtwork" or "sidebarDesign" or "sidebarDensity");
+        Assert.NotNull(model.Reset);            // the theme stores options now ...
+        Assert.False(model.Reset!.Enabled(SettingsFacts.Live).Enabled);   // ... and none is stored yet, so Reset has nothing to forget
         Assert.Equal("theme.classic.name", model.NameKey);
         // Only the layout asks for palette rows: one per choice (the old "Use Classic layout" / "Use Library layout" rows).
         var commands = ThemeOptionsSection.Commands(true);

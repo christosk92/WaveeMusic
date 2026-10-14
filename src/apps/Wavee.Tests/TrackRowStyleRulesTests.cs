@@ -10,6 +10,7 @@
 // Pure: no scope, no engine.
 
 using FluentGpu.Foundation;
+using Wavee.Themes.Classic;
 using Xunit;
 using RowMetrics = Wavee.Track.RowMetrics;
 using TableRules = Wavee.Track.TableRules;
@@ -68,7 +69,7 @@ public sealed class TrackRowStyleRulesTests
     [InlineData(3, 48f)]
     public void Classic_UsesTightIndependentDensityLadder(int density, float expected)
     {
-        Assert.Equal(expected, TableRules.RowHeightFor(density, classic: true));
+        Assert.Equal(expected, ClassicDensity.Rows((RowDensity)density).ClassicRow);
         Assert.Equal(32f, TableRules.HeaderHeightFor(classic: true));
     }
 
@@ -82,7 +83,7 @@ public sealed class TrackRowStyleRulesTests
     [InlineData(2, 56f)]
     [InlineData(3, 64f)]
     public void Modern_RowHeightLadder(int density, float expected)
-        => Assert.Equal(expected, TableRules.RowHeightFor(density, classic: false));
+        => Assert.Equal(expected, ClassicDensity.Rows((RowDensity)density).ModernRow);
 
     /// <summary>The bug was a CONSTANT art size under a GROWING row. The art never outgrows the row (≥ 8 DIP of combined
     /// breathing room) and never shrinks as density rises — checked against the Modern row for BOTH skins, because
@@ -95,8 +96,9 @@ public sealed class TrackRowStyleRulesTests
         float prevArt = 0f;
         for (int density = 0; density <= 3; density++)
         {
-            float row = TableRules.RowHeightFor(density, classic: false);
-            float art = TableRules.ArtSizeFor(density, classic);
+            var rows = ClassicDensity.Rows((RowDensity)density);
+            float row = rows.ModernRow;
+            float art = classic ? rows.ClassicArt : rows.ModernArt;
 
             Assert.True(art is Design.Size.Thumb32 or Design.Size.Thumb40 or Design.Size.Thumb48,
                 $"density {density} classic={classic}: {art} is not on the 32/40/48 thumbnail ladder");
@@ -108,16 +110,15 @@ public sealed class TrackRowStyleRulesTests
         }
     }
 
-    /// <summary>The Settings density miniature draws its art tile as <c>RowMetrics.ArtSizeFor(density) * PreviewScale</c>,
-    /// and that is a bare forward to <c>ArtSizeFor(density, classic: false)</c> — so pinning this formula pins what the
-    /// preview paints.</summary>
+    /// <summary>The Settings density miniature draws its art tile as the Modern art edge at <c>ClassicDensity.PreviewScale</c> — so
+    /// pinning this formula pins what the preview paints.</summary>
     [Theory]
     [InlineData(0, 8f)]
     [InlineData(1, 8f)]
     [InlineData(2, 10f)]
     [InlineData(3, 12f)]
     public void Preview_MirrorsTrackRow(int density, float expectedEdge)
-        => Assert.Equal(expectedEdge, TableRules.ArtSizeFor(density, classic: false) * TableRules.PreviewScale);
+        => Assert.Equal(expectedEdge, ClassicDensity.Rows((RowDensity)density).ModernArt * ClassicDensity.PreviewScale);
 
     /// <summary>Classic folds VIDEO into the Title line and keeps one trailing command lane — but it keeps the disclosure
     /// chevron, exactly like Modern: what the drawer opens is a property of the TRACK.</summary>

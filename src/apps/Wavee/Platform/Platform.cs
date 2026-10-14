@@ -121,11 +121,7 @@ public static partial class Platform
         /// <summary>"system" asks the startup root to resolve the Windows UI locale; an explicit BCP-47 tag selects the
         /// matching bundled JSON table. Applied before first mount on the NEXT launch.</summary>
         public static readonly SettingKey<string> UiCulture = new("localization.culture", "system");
-        public static readonly SettingKey<int> RowDensity = new("detail.rowdensity", 1);        // 0 Compact · 1 Default · 2 Cozy · 3 Comfortable
         public static readonly SettingKey<int> TrackRowStyle = new("detail.rowstyle", 0);       // 0 Modern · 1 Classic
-        /// <summary>Artwork inside TRACK cells only: page heroes, media cards, sidebar covers and the player's identity
-        /// artwork are deliberately unaffected.</summary>
-        public static readonly SettingKey<bool> HideTrackArtwork = new("appearance.trackArtwork.hidden", false);
         /// <summary>The Liked Songs cover treatment. DEFAULT 1 = LikedCoverStyle.Lens, not Stock: the point of the feature
         /// is that the collection cover is made of the user's own music, and every treatment degrades to the bundled PNG
         /// until the library owns enough distinct artwork — so a fresh install still paints what it painted before.</summary>
@@ -1190,7 +1186,7 @@ public static partial class Platform
         if (!Args.RelaunchBroker && !Args.Headless && !Args.Fake) HostApplyFactoryReset();
         HostOpenSettings();
         ZoomAutoPolicy.MigrateMode(Settings);
-        Wavee.Theming.ThemeBootstrap.Run(Settings);   // themes plan 7.1: named, copy-only, order-independent steps (M6 ships the first: the colour washes); before anything reads a presentation setting
+        Wavee.Theming.ThemeBootstrap.Run(Settings);   // themes plan 7.1: named, copy-only, order-independent steps (M3 density, M4 hide track art, M6 colour washes); before anything reads a presentation setting
         Developer.Load(Settings);
         ScrollProbePrefs.Load(Settings);   // the scroll probe level + feel profile, before the first window
         string osCulture = "";

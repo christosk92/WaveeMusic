@@ -74,6 +74,9 @@ internal static class ClassicTrackChromeLayout
         Enter: new EnterExit(Dx: 10f, Opacity: 0f, Active: true), Exit: new EnterExit(Dx: -8f, Opacity: 0f, Active: true),
         ExitDynamics: TransitionDynamics.Tween(150f, Easing.FluentAccelerate));
 
+    /// <summary>The row-size panel (M3): at least 240 wide, a 216-DIP stepped slider.</summary>
+    public const float DensityPanelMinWidth = 240f, DensitySliderLength = 216f;
+
     // ── the filter card ──────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The card: 360 wide (never under 320), at most 620 tall; the scroll region (at most 500) is the fallback only.</summary>

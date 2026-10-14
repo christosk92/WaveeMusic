@@ -246,14 +246,6 @@ public readonly partial struct Track
             _ => "",
         };
 
-        static string DensityLabel(int d) => d switch
-        {
-            0 => Loc.Get(Strings.Detail.Density.Compact),
-            2 => Loc.Get(Strings.Detail.Density.Cozy),
-            3 => Loc.Get(Strings.Detail.Density.Comfortable),
-            _ => Loc.Get(Strings.Detail.Density.Default),
-        };
-
         /// <summary>The sort FIELDS the surface can honour as a radio group, then the direction pair. Plays is offered only
         /// while its lane is visible — sorting by a column the reader cannot see reorders for no stated reason.</summary>
         List<MenuFlyoutItem> SortItems()
@@ -276,18 +268,6 @@ public readonly partial struct Track
                 () => SetSort(_sort.Peek() with { Descending = false })));
             items.Add(MenuFlyoutItem.RadioItem(Loc.Get(Strings.Detail.Sort.Descending), cur.Descending,
                 () => SetSort(_sort.Peek() with { Descending = true })));
-            return items;
-        }
-
-        static List<MenuFlyoutItem> DensityItems()
-        {
-            int current = Math.Clamp(Platform.Settings.Get(Platform.Keys.RowDensity), 0, 3);
-            var items = new List<MenuFlyoutItem>(4);
-            for (int i = 0; i < 4; i++)
-            {
-                int value = i;
-                items.Add(MenuFlyoutItem.RadioItem(DensityLabel(value), current == value, () => SetDensity(value)));
-            }
             return items;
         }
 
@@ -573,46 +553,16 @@ public readonly partial struct Track
                 var frozen = UseRef<string?>(null);
                 var closedEpoch = UseSignal(0);
                 _ = closedEpoch.Value;   // the close re-renders the button so the frozen label is released
-                int current = Prefs.Appearance.RowDensity();
+                var kit = host.Kit;
+                string current = kit.DensityLabel();   // the style's density, tracked: a change re-renders the button
                 void Toggle()
                 {
-                    if (handle.Value is not { IsOpen: true }) frozen.Value = DensityLabel(Prefs.Appearance.RowDensity());
-                    ToggleOverlay(overlay, anchor, handle, static () => Embed.Comp(static () => new TableDensityPanel()), RichPopup,
+                    if (handle.Value is not { IsOpen: true }) frozen.Value = kit.DensityLabel();
+                    ToggleOverlay(overlay, anchor, handle, kit.DensityPanel, RichPopup,
                         () => { frozen.Value = null; closedEpoch.Value = closedEpoch.Peek() + 1; });
                 }
-                string label = handle.Value is { IsOpen: true } && frozen.Value is { } f ? f : DensityLabel(current);
-                _ = host;
-                return host.Kit.Labeled(Icons.RowSize, label, false, Toggle, n => anchor.Value = n, host.Kit.Chevron());
-            }
-        }
-
-        sealed class TableDensityPanel : Component
-        {
-            public override Element Render()
-            {
-                int d = Prefs.Appearance.RowDensity();
-                // The slider rides a FloatSignal; mirror the int preference into it so an external change moves the thumb.
-                var dv = UseFloatSignal(d);
-                UseEffect(() => { dv.Value = d; }, DepKey.From(d));
-                return Layer(Edges4.All(Spacing.M), new BoxEl
-                {
-                    Direction = 1, Gap = Spacing.S, MinWidth = 240f,
-                    Children =
-                    [
-                        new BoxEl
-                        {
-                            Direction = 0, AlignItems = FlexAlign.Center,
-                            Children = [Ui.BodyStrong(Loc.Get(Strings.Detail.Density.RowSize)) with { Grow = 1f }, Ui.Caption(DensityLabel(d))],
-                        },
-                        Slider.Create(dv, v => SetDensity((int)MathF.Round(v)),
-                            new Slider.SliderOptions
-                            {
-                                Min = 0f, Max = 3f, Step = 1f, TickFrequency = 1f,
-                                ThumbToolTipValueConverter = v => DensityLabel(Math.Clamp((int)MathF.Round(v), 0, 3)),
-                            },
-                            length: 216f),
-                    ],
-                });
+                string label = handle.Value is { IsOpen: true } && frozen.Value is { } f ? f : current;
+                return kit.Labeled(Icons.RowSize, label, false, Toggle, n => anchor.Value = n, kit.Chevron());
             }
         }
 
@@ -657,7 +607,7 @@ public readonly partial struct Track
                     if (filterInMore)
                         items.Add(new MenuFlyoutItem(Loc.Get(Strings.Detail.Filter.MenuItem), Icons.Filter, true, OpenFilter));
                     if ((overflow & InlineCommand.Density) != 0)
-                        items.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Detail.Density.RowSize), DensityItems(), Icons.List));
+                        items.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Detail.Density.RowSize), h.Kit.DensityItems(), Icons.List));
                     if (cfg.ShowTempo)
                     {
                         bool tempoOn = TableColumnsPref.TempoNow();
@@ -959,6 +909,9 @@ public readonly partial struct Track
             public Element FilterCommand(int count, bool labelled, string label, Action onClick, Action<NodeHandle> onRealized) => new BoxEl();
             public Element FilterFunnel(int count, Action onClick, Action<NodeHandle> onRealized) => new BoxEl();
             public Element MoreSlot(Element more, int filterCount) => more;
+            public string DensityLabel() => "";
+            public Element DensityPanel() => new BoxEl();
+            public IReadOnlyList<MenuFlyoutItem> DensityItems() => [];
         }
 
         void SelectAllTracks()

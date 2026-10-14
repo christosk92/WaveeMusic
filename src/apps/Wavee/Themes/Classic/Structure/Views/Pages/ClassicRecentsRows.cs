@@ -207,7 +207,7 @@ internal static class ClassicRecentsRows
     {
         Lanes();
         var target = shape.Rows.Targets[r];
-        bool art = host.ShowTrackArt;
+        bool art = !ClassicOptions.HideTrackArt();
         if (target.Kind == EntityKind.Episode)   // the track grid is Track-only: an episode is the shared media row, same band
             return EpisodeRow(new Episode(target.Slot), SingleEpisodeShape, when: null, h.Play);
         return Track.EagerRow(new Track(target.Slot), r, art ? ChildCols : ChildColsNoArt, art ? s_singleTracks : s_singleTracksNoArt,
@@ -227,7 +227,7 @@ internal static class ClassicRecentsRows
         var entries = RecentsView.DrawerEntries(rows, r);
         var targets = RecentsView.DrawerTargets(rows, r);
         string key = FormatCache.Int(rows.Rows[r].ItemId.Value);
-        bool art = host.ShowTrackArt;
+        bool art = !ClassicOptions.HideTrackArt();
         var rendered = new List<Element>(entries.Length);
         for (int i = 0; i < entries.Length; i++)
         {

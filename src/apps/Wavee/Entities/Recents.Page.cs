@@ -102,8 +102,6 @@ public readonly partial struct Recents
         public DateOnly Today => DateOnly.FromDateTime(Now.DateTime);
         /// <inheritdoc />
         public string ScrollScope { get; private set; } = "";
-        /// <inheritdoc />
-        public bool ShowTrackArt => ShowsTrackArt();
 
         int _expandedRow = -1;
         int _pendingAccentDay = -1;

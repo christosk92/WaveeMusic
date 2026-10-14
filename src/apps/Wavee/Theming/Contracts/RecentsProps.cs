@@ -141,8 +141,6 @@ public interface IRecentsHost
     DateOnly Today { get; }
     /// <summary>The page's scroll-memory prefix (the tab's scope).</summary>
     string ScrollScope { get; }
-    /// <summary>The track-artwork policy (a reactive read): false hides the thumbnail lane.</summary>
-    bool ShowTrackArt { get; }
 
     // ── engine controls the host owns ──
 

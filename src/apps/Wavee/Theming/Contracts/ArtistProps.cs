@@ -159,7 +159,4 @@ public sealed record ArtistPageProps
 
     /// <summary>The Top-tracks rows are the Classic grammar (`detail.rowstyle`); the page's skeleton draws the chart's own skeleton for that form. M2 deletes it.</summary>
     public required bool RowsClassic { get; init; }
-
-    /// <summary>Track artwork is shown in the rows (`appearance.trackArtwork.hidden` off); the chart's skeleton follows it. M4 deletes it.</summary>
-    public required bool ShowTrackArt { get; init; }
 }

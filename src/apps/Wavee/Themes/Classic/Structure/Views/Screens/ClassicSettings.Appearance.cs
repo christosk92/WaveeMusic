@@ -225,17 +225,12 @@ internal static partial class ClassicSettings
 
     /// <summary>The miniature's row height and art edge are the REAL Modern ladder × the tested preview scale (N6).</summary>
     static Element DensityCard(int value, bool on)
-        => Controls.PickerTitled(
-            Controls.PickerCard(on, Controls.PickerTile, Controls.PickerDensityRows(
-                Track.TableRules.RowHeightFor(value, classic: false) * Track.TableRules.PreviewScale,
-                Track.TableRules.ArtSizeFor(value, classic: false) * Track.TableRules.PreviewScale, on)),
-            DensityLabel(value), on);
-
-    /// <summary>ch 30 N12, NOT ported: the Settings density write bumps the appearance epoch, so a mounted or parked track
-    /// list re-reads it. Called on every keyboard rove too, so an unchanged value writes nothing.</summary>
-    static void SetDensity(int i)
     {
-        if (D(Tab.Appearance, "rowDensity").Writer.Choose!(i)) Settings.Bump();
+        var rows = ClassicDensity.Rows((RowDensity)value);
+        return Controls.PickerTitled(
+            Controls.PickerCard(on, Controls.PickerTile, Controls.PickerDensityRows(
+                rows.ModernRow * ClassicDensity.PreviewScale, rows.ModernArt * ClassicDensity.PreviewScale, on)),
+            DensityLabel(value), on);
     }
 
     /// <summary>UI-native miniature rows, never screenshots: Modern = the art-led stacked row, Classic = three lanes + a

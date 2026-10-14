@@ -113,24 +113,33 @@ public static class ClassicPolicies
     /// own initializer and never reads this class).</summary>
     public static ThemePolicies Bundle { get; } = new(NavPane, Panel, PlayerBar, Chrome, Stage) { Tiers = ClassicTiers.Policy };
 
-    // The bundle for each sidebar layout x density the user can choose (M7a): index = layout * 2 + density. The default pair is `Bundle` itself.
-    private static readonly ThemePolicies[] s_byDesign = BuildByDesign();
+    // The bundle for each combination of the structure options that reach the core (M7a: the sidebar layout x density; M4: the track artwork hidden):
+    // index = (hideArt * 4) + layout * 2 + density. The default combination is `Bundle` itself.
+    private static readonly ThemePolicies[] s_byOptions = BuildByOptions();
 
-    private static ThemePolicies[] BuildByDesign()
+    private static ThemePolicies[] BuildByOptions()
     {
-        var all = new ThemePolicies[4];
-        foreach (SidebarLayoutId layout in new[] { SidebarLayoutId.Classic, SidebarLayoutId.Library })
-            foreach (SidebarDensity density in new[] { SidebarDensity.Default, SidebarDensity.Compact })
-                all[IndexOf(layout, density)] = layout == SidebarLayoutId.Classic && density == SidebarDensity.Default
-                    ? Bundle
-                    : Bundle with { NavPane = NavPane with { Layout = layout, Density = density } };
+        var all = new ThemePolicies[8];
+        foreach (bool hideArt in new[] { false, true })
+            foreach (SidebarLayoutId layout in new[] { SidebarLayoutId.Classic, SidebarLayoutId.Library })
+                foreach (SidebarDensity density in new[] { SidebarDensity.Default, SidebarDensity.Compact })
+                {
+                    bool isDefault = !hideArt && layout == SidebarLayoutId.Classic && density == SidebarDensity.Default;
+                    all[IndexOf(layout, density, hideArt)] = isDefault
+                        ? Bundle
+                        : Bundle with
+                        {
+                            NavPane = NavPane with { Layout = layout, Density = density },
+                            Lists = hideArt ? new ListPolicy(TrackArtwork: false) : Bundle.Lists,
+                        };
+                }
         return all;
     }
 
-    private static int IndexOf(SidebarLayoutId layout, SidebarDensity density) => (int)layout * 2 + (int)density;
+    private static int IndexOf(SidebarLayoutId layout, SidebarDensity density, bool hideArt) => (hideArt ? 4 : 0) + (int)layout * 2 + (int)density;
 
-    /// <summary>The bundle for the sidebar layout and density the options chose: <see cref="Bundle"/> with the pane's
-    /// <see cref="NavPanePolicy.Layout"/> and <see cref="NavPanePolicy.Density"/> set. One instance per pair, so republishing the facts is
-    /// not a change.</summary>
-    public static ThemePolicies For(SidebarLayoutId layout, SidebarDensity density) => s_byDesign[IndexOf(layout, density)];
+    /// <summary>The bundle for the options the structure published: <see cref="Bundle"/> with the pane's <see cref="NavPanePolicy.Layout"/> and
+    /// <see cref="NavPanePolicy.Density"/> set, and the track lists' artwork hidden when <paramref name="hideTrackArt"/>. One instance per
+    /// combination, so republishing the facts is not a change.</summary>
+    public static ThemePolicies For(SidebarLayoutId layout, SidebarDensity density, bool hideTrackArt = false) => s_byOptions[IndexOf(layout, density, hideTrackArt)];
 }

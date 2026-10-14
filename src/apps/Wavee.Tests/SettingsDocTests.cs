@@ -387,7 +387,6 @@ public class SettingsDocTests
     {
         var store = DefaultsOnlySettings.Instance;
         Assert.Equal(Platform.Keys.MarqueeEnabled.Default, SettingsDoc.Row(Settings.Tab.Appearance, "marquee").Value(store));
-        Assert.Equal(Platform.Keys.HideTrackArtwork.Default, SettingsDoc.Row(Settings.Tab.Appearance, "hideTrackArtwork").Value(store));
         Assert.Equal(Platform.Keys.RememberVolume.Default, SettingsDoc.Row(Settings.Tab.Playback, "rememberVolume").Value(store));
         Assert.Equal(Platform.Keys.AutoplayEnabled.Default, SettingsDoc.Row(Settings.Tab.Playback, "autoplay").Value(store));
         Assert.Equal(Platform.Keys.AudioBodyCacheEnabled.Default, SettingsDoc.Row(Settings.Tab.Storage, "cacheAudio").Value(store));
@@ -426,7 +425,6 @@ public class SettingsDocTests
         Assert.False(SettingsVerbs.SetLanguage(2));                  // nl: shown but not yet pickable
         Assert.False(SettingsVerbs.SetTrayIconMode(5));
         Assert.False(SettingsVerbs.SetCrashMode(7));
-        Assert.False(SettingsVerbs.SetDensity(9));
         Assert.False(SettingsVerbs.SetTrackListStyle(5));
         Assert.False(SettingsVerbs.SetPageLayout(5));
         Assert.False(SettingsVerbs.SetDaylistClock(99));
