@@ -106,7 +106,6 @@ public class AlbumPageRulesTests
         Assert.Equal(4f, Rules.SkelRowGap);                                                   // the stack's Spacing.XS
         Assert.Equal(Rules.SkelSectionGap, Spacing.M);                                        // header-to-body, Section and Stack alike
         Assert.Equal(Rules.SkelSectionPadV, Spacing.XL + Spacing.L);                          // SectionPad: XL top, L bottom
-        Assert.Equal(Rules.SkelRowH, Shape.RowTileStill.MinHeight);
         Assert.True(Rules.SkelAboutPortrait <= Rules.SkelAboutTextH);
         Assert.Equal(Rules.SkelAboutTextH, 16f + 28f + 2 * 18f + 2 * Spacing.XS);             // eyebrow + name + 2-line bio + gaps
         Assert.Equal(Rules.SkelAboutH, Rules.SkelAboutTextH + 2 * Spacing.M);
@@ -376,29 +375,14 @@ public class AlbumPageRulesTableTests
     //
     // The header used to be content-height, so an album whose title wrapped to two lines was ~9 DIP taller than the one
     // selected before it and every row under it moved. It states one height now — and a stated height is only honest
-    // while what goes in it fits, which is what these two facts are.
+    // while what goes in it fits, which starts with the cover.
 
     /// <summary>The block states the cover plus its own padding, so the cover is never the thing that clips.</summary>
     [Fact]
     public void PaneHeader_StatesTheCoverPlusItsOwnPadding()
     {
         Assert.Equal(160f, ClassicLibraryPaneRules.PaneHeaderHeight);
-        Assert.Equal(ClassicLibraryPaneRules.PaneCover, ClassicLibraryPaneRules.PaneHeaderTextBudget);
+        Assert.Equal(ClassicLibraryPaneRules.PaneCover, ClassicLibraryPaneRules.PaneHeaderHeight - Spacing.XL - Spacing.M);
         Assert.True(ClassicLibraryPaneRules.PaneHeaderHeight > ClassicLibraryPaneRules.PaneCover, "the cover would touch the block's edges");
-    }
-
-    /// <summary>A WRAPPED title fits the budget with room to spare — the fact that keeps the tracklist still. It is the
-    /// title's own metrics that buy it: at the prototype's 34-DIP line two lines alone overran the cover by a DIP.</summary>
-    [Theory]
-    [InlineData(1)]
-    [InlineData(2)]
-    [InlineData(9)]   // clamped to the two lines the title actually paints
-    public void PaneHeader_TextColumnFitsTheBudgetAtEveryTitleLength(int lines)
-    {
-        Assert.True(ClassicLibraryPaneRules.PaneHeaderTextHeight(lines) <= ClassicLibraryPaneRules.PaneHeaderTextBudget,
-            $"{lines}-line title: {ClassicLibraryPaneRules.PaneHeaderTextHeight(lines)} does not fit {ClassicLibraryPaneRules.PaneHeaderTextBudget}");
-        Assert.Equal(ClassicLibraryPaneRules.PaneHeaderTextHeight(ClassicLibraryPaneRules.PaneTitleMaxLines), ClassicLibraryPaneRules.PaneHeaderTextHeight(9));
-        // A two-line title costs exactly one more line than a one-line one: nothing else in the column moves with it.
-        Assert.Equal(ClassicLibraryPaneRules.PaneTitleLine, ClassicLibraryPaneRules.PaneHeaderTextHeight(2) - ClassicLibraryPaneRules.PaneHeaderTextHeight(1));
     }
 }

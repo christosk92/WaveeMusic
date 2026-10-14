@@ -420,15 +420,6 @@ public readonly partial struct Search
         }
     }
 
-    /// <summary>The owner a top-hit playlist's subtitle names: the text after the first <c>" • "</c> (0.2.9
-    /// <c>PlaylistOwnerOf</c>).</summary>
-    public static string PlaylistOwnerOf(string subtitle)
-    {
-        const string sep = " • ";
-        int i = subtitle.IndexOf(sep, StringComparison.Ordinal);
-        return i < 0 ? subtitle : subtitle[(i + sep.Length)..];
-    }
-
     /// <summary>Where a genre result goes (0.2.9 <c>SearchRoutes.OpenGenre</c>): a <c>spotify:genre:</c> or
     /// <c>spotify:page:</c> uri opens its browse page; anything else re-commits the NAME as a search (a blank name is the
     /// Browse directory). UI thread (the route interns).</summary>
@@ -447,11 +438,6 @@ public readonly partial struct Search
     /// <summary>The hero's Play gate (0.2.9: not for a profile, genre or author — none of which 0.3 hits carry but User).</summary>
     public static bool CanPlay(EntityKind kind) => kind is EntityKind.Track or EntityKind.Album or EntityKind.Artist
         or EntityKind.Playlist or EntityKind.Show or EntityKind.Episode;
-
-    /// <summary>The hero's "Open page" gate: a destination with a page (a track's open IS its play). A profile has one
-    /// since the profile pages (#161) — "Open page", and still no Play.</summary>
-    public static bool CanOpen(EntityKind kind) => kind is EntityKind.Album or EntityKind.Artist or EntityKind.Playlist
-        or EntityKind.Show or EntityKind.Episode or EntityKind.User;
 
     /// <summary>Does a hit of this kind resolve a menu (and therefore a "…" button and a right-click)?</summary>
     public static bool HasMenu(EntityKind kind) => kind is EntityKind.Track or EntityKind.Album or EntityKind.Artist
@@ -516,6 +502,4 @@ public readonly partial struct Search
     public static bool KeepsPaging(EdgeState state, int count) => state == EdgeState.Partial && count < FacetHitCeiling;
 
     public static int FacetGridColumns(float w) =>Math.Max(1, (int)MathF.Floor((w + FacetGridGap) / (FacetGridMinCol + FacetGridGap)));
-
-    public static float FacetGridCellWidth(float w, int cols) => MathF.Max(90f, (w - (cols - 1) * FacetGridGap) / Math.Max(1, cols));
 }

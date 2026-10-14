@@ -1019,9 +1019,9 @@ public readonly partial struct Album
         // The skeleton's numbers, derived from the real surfaces (Album.Page.cs) so the reserve equals the paint.
         /// <summary>A section header's line box (<c>R.Type.RailHeader</c> = Subtitle 20/28) and the bone drawn in it.</summary>
         public const float SkelHeaderH = 28f, SkelHeaderBarH = 18f;
-        /// <summary>A related row's floor (pinned to <c>Shape.RowTileStill</c>), the gap between rows, and the rows a block shows
+        /// <summary>The gap between a block's rows (each row is the real <c>Shape.RowTileStill</c>), and the rows a block shows
         /// (<see cref="StackCap"/>).</summary>
-        public const float SkelRowH = 64f, SkelRowGap = 4f;
+        public const float SkelRowGap = 4f;
         public const int SkelRows = StackCap;
         /// <summary>Header-to-body gap and the section padding's vertical sum (Album.Page.cs <c>SectionPad</c>: XL top, L bottom).</summary>
         public const float SkelSectionGap = 12f, SkelSectionPadV = 36f;

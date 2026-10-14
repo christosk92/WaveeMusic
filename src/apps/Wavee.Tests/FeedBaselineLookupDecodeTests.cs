@@ -99,10 +99,10 @@ public class FeedBaselineLookupDecodeTests
         Assert.Equal(2, sec2.PreviewSlots.Length);                 // the SAME card closed both sections
         Assert.Equal(1, sec3.PreviewSlots.Length);
 
-        Assert.Equal((byte)0, sec1.PreviewRanks[0].Rank);
-        Assert.Equal((byte)1, sec1.PreviewRanks[1].Rank);
-
         var t1 = Entities.Track(EntityUri.Parse("spotify:track:fbl-t1".AsSpan()));
+        var t2 = Entities.Track(EntityUri.Parse("spotify:track:fbl-t2".AsSpan()));
+        Assert.Equal(t1.Slot, sec1.PreviewSlots[0]);               // ranked: the run's order is the server's
+        Assert.Equal(t2.Slot, sec1.PreviewSlots[1]);
         Assert.Equal("Track One", t1.Title);
         Assert.Contains("fbl-300.jpg", Entities.Strings.Resolve(t1.ImageId));
 

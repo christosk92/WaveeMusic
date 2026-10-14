@@ -146,8 +146,8 @@ public class AlbumPlaylistContractTests
     [Fact]
     public void A_merch_row_and_a_blank_row_are_the_plated_rows_floor()
     {
-        Assert.Equal(Rules.SkelRowH, ClassicAlbumLayout.MerchRowH);
-        Assert.Equal(Rules.SkelRowH, ClassicAlbumLayout.PlaceholderRowH);
+        Assert.Equal(ClassicAlbumLayout.MerchRowH, Shape.RowTile.MinHeight);
+        Assert.Equal(ClassicAlbumLayout.PlaceholderRowH, Shape.RowTile.MinHeight);
     }
 
     [Fact]

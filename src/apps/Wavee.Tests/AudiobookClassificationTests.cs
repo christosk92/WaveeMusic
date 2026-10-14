@@ -80,7 +80,7 @@ public sealed class AudiobookClassificationTests : IDisposable
         Assert.True(Book.IsAudiobook);
         Assert.False(Book.Knows(ShowFields.Facts));
         Assert.Equal(ShowFlags.None, Book.Flags);
-        Assert.Empty(Book.EpisodeSlots.ToArray()); // works before membership is loaded
+        Assert.Empty(Entities.Current.Edges.ShowEpisodes.Targets(Book.Slot).ToArray()); // works before membership is loaded
 
         var full = Staging.Rent();
         var wire = ShowWire(false); wire.Explicit = true; wire.MediaType = Md.Show.Types.MediaType.Video;

@@ -1,7 +1,7 @@
 // ── Wavee.Tests/SearchFacetRulesTests.cs — ch 13 §8's search rules, extracted from 0.2.9 SearchPage and pinned ─────
 //
 // 0.2.9 kept these decisions private inside `SearchPage.cs` / `SearchAllList.cs` / `SearchHitsGrid.cs`
-// (`FacetsFrom`, `FacetCount`, `FallbackRows`, `ColsFor`, `PlaylistShelfItems`, `PlaylistOwnerOf`, `OpenGenre`) and had
+// (`FacetsFrom`, `FacetCount`, `FallbackRows`, `ColsFor`, `PlaylistShelfItems`, `OpenGenre`) and had
 // no tests for them. 0.3 ports them verbatim onto `Search` (Entities/Search.cs §7) over table-shaped inputs (facet-indexed
 // totals and local counts, `EntityRef` hits, playlist slots) — every expectation below is the 0.2.9 algorithm walked by
 // hand, not a number read back off the port.
@@ -162,7 +162,7 @@ public class SearchFacetRulesTests
     public void MaxColumns_NarrowsAShortList(int cols, int rows, int count, int expected)
         => Assert.Equal(expected, Search.MaxColumns(cols, rows, count));
 
-    // ── the playlist rail (0.2.9 PlaylistShelfItems / PlaylistOwnerOf) ──────────────────────────────────────────────
+    // ── the playlist rail (0.2.9 PlaylistShelfItems) ────────────────────────────────────────────────────────────────
 
     [Fact]
     public void PlaylistShelfItems_TopHitPlaylistsFirst_ThenTheFacet_DedupedAndNeverTheHero()
@@ -189,14 +189,6 @@ public class SearchFacetRulesTests
         Assert.Equal([1, 2], into);
     }
 
-    [Theory]
-    [InlineData("Playlist • Spotify", "Spotify")]
-    [InlineData("Playlist • Big • Owner", "Big • Owner")]      // only the FIRST separator splits
-    [InlineData("Spotify", "Spotify")]
-    [InlineData("", "")]
-    public void PlaylistOwnerOf_IsTheTextAfterTheFirstBullet(string subtitle, string expected)
-        => Assert.Equal(expected, Search.PlaylistOwnerOf(subtitle));
-
     // ── related links, gates, shimmer, slide, keys, the facet grid ──────────────────────────────────────────────────
 
     [Theory]
@@ -207,18 +199,17 @@ public class SearchFacetRulesTests
         => Assert.Equal(expected, Search.KeepsRelated(related.AsSpan(), typed.AsSpan()));
 
     [Theory]
-    [InlineData(EntityKind.Track, true, false, true, false)]
-    [InlineData(EntityKind.Album, true, true, true, false)]
-    [InlineData(EntityKind.Artist, true, true, true, true)]
-    [InlineData(EntityKind.Playlist, true, true, true, false)]
-    [InlineData(EntityKind.Show, true, true, true, false)]
-    [InlineData(EntityKind.Episode, true, true, false, false)]
-    [InlineData(EntityKind.User, false, true, false, true)]      // a profile: "Open page" (#161), still no Play and no menu
-    [InlineData(EntityKind.Unknown, false, false, false, false)]
-    public void TheHitGatesFollowTheKind(EntityKind kind, bool play, bool open, bool menu, bool round)
+    [InlineData(EntityKind.Track, true, true, false)]
+    [InlineData(EntityKind.Album, true, true, false)]
+    [InlineData(EntityKind.Artist, true, true, true)]
+    [InlineData(EntityKind.Playlist, true, true, false)]
+    [InlineData(EntityKind.Show, true, true, false)]
+    [InlineData(EntityKind.Episode, true, false, false)]
+    [InlineData(EntityKind.User, false, false, true)]      // a profile: no Play and no menu
+    [InlineData(EntityKind.Unknown, false, false, false)]
+    public void TheHitGatesFollowTheKind(EntityKind kind, bool play, bool menu, bool round)
     {
         Assert.Equal(play, Search.CanPlay(kind));
-        Assert.Equal(open, Search.CanOpen(kind));
         Assert.Equal(menu, Search.HasMenu(kind));
         Assert.Equal(round, Search.RoundArt(kind));
     }
@@ -270,13 +261,6 @@ public class SearchFacetRulesTests
     [InlineData(1000f, 5)]
     public void FacetGridColumns_FloorFitsAt180PlusTheGap(float width, int expected)
         => Assert.Equal(expected, Search.FacetGridColumns(width));
-
-    [Fact]
-    public void FacetGridCellWidth_SharesTheRowAndNeverCollapses()
-    {
-        Assert.Equal(180f, Search.FacetGridCellWidth(376f, 2));
-        Assert.Equal(90f, Search.FacetGridCellWidth(50f, 3));
-    }
 
     // ── where a genre result goes (0.2.9 SearchRoutes.OpenGenre) ────────────────────────────────────────────────────
 

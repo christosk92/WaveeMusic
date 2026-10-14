@@ -60,7 +60,6 @@ public class LibraryContractTests
     {
         // The album pane and the show pane draw the SAME header, rung for rung, and the loading twin states the same band.
         Assert.Equal(160f, ClassicLibraryPaneRules.PaneHeaderHeight);
-        Assert.Equal(ClassicLibraryPaneRules.PaneCover, ClassicLibraryPaneRules.PaneHeaderTextBudget);
     }
 
     [Theory]
@@ -79,12 +78,4 @@ public class LibraryContractTests
     [InlineData(4, 208f)]
     public void The_shimmer_title_bar_rotates_through_four_lengths(int row, float width)
         => Assert.Equal(width, ClassicLibraryPaneRules.ShimTitleW(row));
-
-    [Theory]
-    [InlineData(616f, false, false)]
-    [InlineData(615f, false, true)]
-    [InlineData(663f, true, true)]
-    [InlineData(664f, true, false)]
-    public void Your_episodes_goes_compact_with_a_48_DIP_hysteresis(float width, bool previous, bool compact)
-        => Assert.Equal(compact, ClassicLibraryTiers.SavedEpisodesCompact(width, previous));
 }

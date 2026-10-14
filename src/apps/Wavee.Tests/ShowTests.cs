@@ -49,7 +49,7 @@ public class ShowTests
 
         var handle = new Show(show);
         Assert.Equal(700, handle.TotalEpisodes);
-        Assert.Equal(2, handle.EpisodeSlots.Length);
+        Assert.Equal(2, Entities.Current.Edges.ShowEpisodes.Targets(handle.Slot).Length);
         Assert.Equal(EdgeState.Partial, Entities.Current.Edges.ShowEpisodes.State(show));
     }
 
@@ -92,7 +92,7 @@ public class ShowTests
         shows.EpisodesAsked[show] = 50;
 
         var handle = new Show(show);
-        Assert.Equal(2, handle.EpisodeSlots.Length);                 // resident count says "keep asking" …
+        Assert.Equal(2, Entities.Current.Edges.ShowEpisodes.Targets(handle.Slot).Length);                 // resident count says "keep asking" …
         Assert.Equal(50, handle.TotalEpisodes);
         Assert.False(handle.EpisodesAsked < handle.TotalEpisodes);   // … and the cursor says, correctly, "nothing left"
     }

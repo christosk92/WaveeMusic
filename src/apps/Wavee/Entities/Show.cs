@@ -230,8 +230,6 @@ public readonly partial struct Show(int slot) : IEquatable<Show>
     /// <inheritdoc cref="ShowTable.Tone"/>
     public uint Tone => T.Tone[Slot];
 
-    /// <summary>The resident episodes, in the provider's order.</summary>
-    public ReadOnlySpan<int> EpisodeSlots => Entities.Current.Edges.ShowEpisodes.Targets(Slot);
     /// <summary>How many episodes the membership baseline has, resident or not — the "N episodes" line and the
     /// shimmer count while the list is partial.</summary>
     public int TotalEpisodes => Entities.Current.Edges.ShowEpisodes.Total(Slot);

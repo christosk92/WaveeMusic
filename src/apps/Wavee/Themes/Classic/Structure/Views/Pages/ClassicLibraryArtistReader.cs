@@ -82,8 +82,8 @@ internal static partial class ClassicLibraryArtistReader
     /// carries it — the band never skeletons as a whole; an unnamed artist shows "…" in the title and nothing else (§5.7, W3).
     ///
     /// <para>UNDER <see cref="Artist.ReaderShape.MediumBelow"/> it STACKS (#158): row 1 is a 56 avatar beside the name column, the name taking up to two lines; row 2 is the SAME verbs as
-    /// the wide arm — an accent play FAB at the band's 36 tier, shuffle, Follow, ↗ — left-aligned in <see cref="Artist.ReaderShape.StackedControlsW"/> (244 DIP: with the padding it
-    /// fits the 300-DIP window floor, which a test pins). The reason is arithmetic rather than taste: one row spends <see cref="Artist.ReaderShape.WideBandFixedW"/> (484 DIP, with the 56-DIP
+    /// the wide arm — an accent play FAB at the band's 36 tier, shuffle, Follow, ↗ — left-aligned (244 DIP: with the padding it
+    /// fits the 300-DIP window floor). The reason is arithmetic rather than taste: one row spends <see cref="Artist.ReaderShape.WideBandFixedW"/> (484 DIP, with the 56-DIP
     /// spine beside it) on what never shrinks, and the name column — the only flexible child — is what pays.</para>
     ///
     /// <para>Each arm's root is KEYED ("band:w" / "band:s") as a CHILD of the slot's root — a single-child slot's own Key is inert — so the swap is a real remount; and each DECLARES
@@ -177,7 +177,7 @@ internal static partial class ClassicLibraryArtistReader
             Wrap = stacked ? TextWrap.Wrap : TextWrap.NoWrap,
             MaxLines = stacked ? Artist.ReaderShape.NameLines : 1,
         };
-        // The ±8 padding and the −8 margins cancel, so the TEXT is exactly the column's width (`ReaderShape.NameAvailW`) while the hover plate overhangs it by 8 on each side.
+        // The ±8 padding and the −8 margins cancel, so the TEXT is exactly the column's width while the hover plate overhangs it by 8 on each side.
         Element link = new BoxEl
         {
             Corners = Radii.ControlAll, Shrink = 1f, MinWidth = 0f,

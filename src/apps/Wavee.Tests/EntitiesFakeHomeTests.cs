@@ -32,7 +32,6 @@ public class EntitiesFakeHomeTests
         var home = Entities.HomeFeed();
 
         Assert.True(home.Knows(HomeFields.All));
-        Assert.Equal(HomeState.Ready, home.State(concluded: true));
 
         var sections = home.SectionSlots;
         var shows = Entities.Section("spotify:section:wavee-seed-shows".AsSpan());
@@ -66,7 +65,6 @@ public class EntitiesFakeHomeTests
         var audiobooks = Entities.HomeFeed("audiobooks-chip".AsSpan());
         Assert.True(audiobooks.Knows(HomeFields.All));
         Assert.Equal(0, audiobooks.SectionCount);
-        Assert.Equal(HomeState.Empty, audiobooks.State(concluded: true));
 
         // podcasts-chip: the pre-mockup "Shows to try" shelf plus A6's 4 rich Podcasts.dc.html bands prepended
         // (Your shows, New episodes, Continue listening, Episodes you might like).

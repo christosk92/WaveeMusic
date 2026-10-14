@@ -1,8 +1,7 @@
 // ── Themes/Classic/Structure/Rules/ClassicLibraryPaneRules.cs — the numbers of Classic's library panes (themes plan 6.1, T10c1; P22) ──────────────
 //
 // What `Entities\Album.UI.cs` §4 (the library pane statics, library rework §5.5), `Album.Pane.cs` and `Album.Page.cs`'s `SurfaceMetrics` held beside the pictures they size: the pane header's STATED height
-// and its type budget (the four lines and the gaps between them are numbers, the header lays itself out FROM them, and `PaneHeaderTextHeight` adds them up — which makes "a two-line title
-// cannot push the tracklist down" a pure assertion rather than a screenshot), the command row, the selection swap, the counted shimmer's bars and the "Also by" strip.
+// and its type (the title and meta lines and the gap between them are numbers the header lays itself out FROM), the command row, the selection swap, the counted shimmer's bars and the "Also by" strip.
 //
 // Public, because `AlbumPageRulesTests` and `AlbumSurfaceRulesTests` pin the arithmetic.
 
@@ -32,29 +31,14 @@ public static class ClassicLibraryPaneRules
     /// <summary>Between the header's text lines.</summary>
     public const float PaneHeaderGap = 3f;
 
-    /// <summary>The eyebrow's line box — <c>R.Type.Eyebrow</c> is <c>Ui.Caption</c>, 12 / 16.</summary>
-    public const float PaneHeaderEyebrowLine = 16f;
-
     /// <summary>The title link. 24 / 30 and not the prototype's 28 / 34: at 34 two lines alone spent 129 of the 128 the cover leaves. A one-line title — the common case — reads the same at either size.</summary>
     public const float PaneTitleSize = 24f, PaneTitleLine = 30f;
 
     /// <summary>The title wraps to two lines and ellipsizes after them.</summary>
     public const int PaneTitleMaxLines = 2;
 
-    /// <summary>The attribution's line box — the artist line sets its names 14 / 20.</summary>
-    public const float PaneHeaderAttributionLine = 20f;
-
     /// <summary>The meta line, 12.5 / 16.</summary>
     public const float PaneHeaderMetaSize = 12.5f, PaneHeaderMetaLine = 16f;
-
-    /// <summary>What the block leaves its text column: everything it states, less its own padding — the cover's 128.</summary>
-    public static float PaneHeaderTextBudget => PaneHeaderHeight - Spacing.XL - Spacing.M;
-
-    /// <summary>The text column's height for a title of <paramref name="titleLines"/> lines: the four line boxes and the three gaps. The title link's 2-DIP inset is cancelled by its own negative
-    /// margin, so it contributes nothing.</summary>
-    public static float PaneHeaderTextHeight(int titleLines)
-        => PaneHeaderEyebrowLine + PaneTitleLine * Math.Clamp(titleLines, 1, PaneTitleMaxLines)
-           + PaneHeaderAttributionLine + PaneHeaderMetaLine + 3f * PaneHeaderGap;
 
     /// <summary>The loading twin's three stand-in bars: widths (eyebrow, title, attribution) and heights (the two small ones, the title).</summary>
     public const float SkeletonEyebrowW = 80f, SkeletonTitleW = 220f, SkeletonAttributionW = 120f, SkeletonSmallBarH = 11f, SkeletonTitleBarH = 26f;

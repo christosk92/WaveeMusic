@@ -24,8 +24,4 @@ public static class ClassicLibraryTiers
         if (w <= 0f) return wasCollapsed;
         return wasCollapsed ? w < CollapseBelow + Hysteresis : w < CollapseBelow;
     }
-
-    /// <summary>Your Episodes' compact rung (`SavedEpisodeLayout.Compact`, verbatim): compact below 616, back out at 664 (a 48 DIP hysteresis).</summary>
-    public static bool SavedEpisodesCompact(float width, bool previous)
-        => width < (previous ? 664f : 616f);
 }
