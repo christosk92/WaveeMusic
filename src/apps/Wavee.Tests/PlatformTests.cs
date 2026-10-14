@@ -412,8 +412,8 @@ public class PlatformSettingsTests
         Assert.Equal("library.artists.leftw", Platform.Keys.LibraryLeftW("artists").Name);
         Assert.Equal(280f, Platform.Keys.LibraryLeftW("artists").Default);      // artists is the one narrow default
         Assert.Equal(340f, Platform.Keys.LibraryLeftW("albums").Default);
-        Assert.Equal("sidebar.layout.id", Platform.Keys.SidebarLayoutId.Name);
-        Assert.Equal(0, Platform.Keys.SidebarLayoutId.Default);                 // 0 ⇒ Classic
+        Assert.Equal("sidebar.library.filter", Platform.Keys.SidebarLibraryFilter.Name);
+        Assert.Equal(0, Platform.Keys.SidebarLibraryFilter.Default);            // 0 ⇒ no chip
         Assert.Equal("npv.player.ipod.wheel", Platform.Keys.NpvOption("ipod", "wheel").Name);
     }
 

@@ -422,7 +422,8 @@ public sealed class ThemeCatalogTests : IDisposable
         Assert.True(classic.Registry.Contains(ViewKeys.ShellFrame.Id));
         Assert.True(classic.Registry.Contains(ViewKeys.ShellContentState.Id));
         Assert.True(classic.Registry.Contains(ViewKeys.PlayerBar.Id));
-        Assert.Equal("surfaces", Assert.Single(classic.ExposedOptions.All).Id);   // M6: the colour washes, Classic's first option
+        // M6: the colour washes, Classic's first option; M7a: the sidebar layout and density.
+        Assert.Equal(new[] { "sidebar", "libraryDensity", "surfaces" }, classic.ExposedOptions.All.Select(o => o.Id));
 
         var values = Values(classic);
         var definition = classic.Definition(values, AccentRamp.FluentDefault);

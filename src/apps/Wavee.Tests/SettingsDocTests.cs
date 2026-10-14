@@ -266,7 +266,7 @@ public class SettingsDocTests
     public void The_sidebar_controls_give_the_finish_editing_reason_while_it_is_being_edited()
     {
         var editing = new Facts { SidebarEditing = true };
-        foreach (var id in new[] { "sidebarDesign", "sidebarCustomize", "sidebarReset", "sidebarResetEverything" })
+        foreach (var id in new[] { "sidebarCustomize", "sidebarReset", "sidebarResetEverything" })
         {
             var row = SettingsDoc.Row(Settings.Tab.Appearance, id);
             Assert.False(row.Enabled(editing).Enabled, id);

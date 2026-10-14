@@ -117,7 +117,6 @@ public static partial class Settings
             // The rows a structure still binds to legacy keys (`IStructureLayer.LegacyRows`); each leaves this section when its
             // M-PR turns the switch into a theme option. A glyph may not repeat inside a section
             // (SettingsCatalogTests.NoGlyph_RepeatsWithinASection).
-            new(Tab.Appearance, "Theme options", "sidebarDesign", "SplitView"),
             new(Tab.Appearance, "Theme options", "sidebarCustomize", "Edit"),
             new(Tab.Appearance, "Theme options", "trackListStyle", "ViewList"),
             new(Tab.Appearance, "Theme options", "rowDensity", "RowSize"),

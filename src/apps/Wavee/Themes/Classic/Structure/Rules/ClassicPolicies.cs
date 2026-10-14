@@ -112,4 +112,25 @@ public static class ClassicPolicies
     /// LAST: static properties initialise in textual order and it reads the five above (`ClassicTiers` builds its policy in its
     /// own initializer and never reads this class).</summary>
     public static ThemePolicies Bundle { get; } = new(NavPane, Panel, PlayerBar, Chrome, Stage) { Tiers = ClassicTiers.Policy };
+
+    // The bundle for each sidebar layout x density the user can choose (M7a): index = layout * 2 + density. The default pair is `Bundle` itself.
+    private static readonly ThemePolicies[] s_byDesign = BuildByDesign();
+
+    private static ThemePolicies[] BuildByDesign()
+    {
+        var all = new ThemePolicies[4];
+        foreach (SidebarLayoutId layout in new[] { SidebarLayoutId.Classic, SidebarLayoutId.Library })
+            foreach (SidebarDensity density in new[] { SidebarDensity.Default, SidebarDensity.Compact })
+                all[IndexOf(layout, density)] = layout == SidebarLayoutId.Classic && density == SidebarDensity.Default
+                    ? Bundle
+                    : Bundle with { NavPane = NavPane with { Layout = layout, Density = density } };
+        return all;
+    }
+
+    private static int IndexOf(SidebarLayoutId layout, SidebarDensity density) => (int)layout * 2 + (int)density;
+
+    /// <summary>The bundle for the sidebar layout and density the options chose: <see cref="Bundle"/> with the pane's
+    /// <see cref="NavPanePolicy.Layout"/> and <see cref="NavPanePolicy.Density"/> set. One instance per pair, so republishing the facts is
+    /// not a change.</summary>
+    public static ThemePolicies For(SidebarLayoutId layout, SidebarDensity density) => s_byDesign[IndexOf(layout, density)];
 }

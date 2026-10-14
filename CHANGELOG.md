@@ -16,7 +16,13 @@ versions separately under `v*` and is not tracked in this file.)
   expandable "Wavee Classic options" card that holds the sidebar, track list, track page and surface settings that used to
   be spread over the Lists, Sidebar and Theme sections, followed by App mode, Zoom and Marquee text. The daylist clock
   moved to its own Home section. Every setting keeps its value; nothing was removed. The command palette (Ctrl+K) lists
-  a theme's options that ask for a command, and the setup wizard has a Theme page ready (not shown yet).
+  a theme's options that ask for a command.
+- **The sidebar layout and density are now Wavee Classic's "Layout" and "Density" options.** They sit at the top of
+  Settings > Appearance > Wavee Classic options > Sidebar (the layout as the same two preview cards, the density as the
+  same drop-down), and the layout and density you had carry over. The command palette's "Use Classic layout" and "Use
+  Library layout" rows are now "Layout: Classic" and "Layout: Library"; picking one while you are editing the sidebar
+  ends the editing instead of being refused. The setup wizard's second page is now the Theme page: the theme cards plus
+  these options (and the colour washes switch), instead of only the two layout cards.
 - **Color washes are now Wavee Classic's "Color washes" option.** Settings > Appearance > Wavee Classic options > Surfaces
   shows the same on/off switch as before (generated with the theme's other options, without the old brush icon), and your
   choice carries over. With the washes off, the Recents page's accent colour now still follows the artwork, like every other

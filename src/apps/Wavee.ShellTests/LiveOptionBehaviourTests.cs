@@ -144,6 +144,72 @@ public sealed class LiveOptionBehaviourTests(ShellHost host)
         });
 
     [Fact]
+    public void The_sidebar_options_drive_the_pane_like_the_verbs_do_and_a_verb_stores_the_option()
+        => host.Mounted(shell =>
+        {
+            shell.RunFrames(60);
+            var layout = Sidebar.Layout.Peek();
+            var density = Sidebar.Density.Peek();
+            var other = layout == SidebarLayoutId.Library ? SidebarLayoutId.Classic : SidebarLayoutId.Library;
+            string otherKey = other == SidebarLayoutId.Library ? "sidebar.library" : "sidebar.classic";
+            try
+            {
+                // Settings' cards, the palette's option commands and a theme switch write the option; the frame's effect brings the sidebar after it.
+                _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, ClassicStructure.SidebarOptionId, other));
+                shell.RunFrames(2);
+                Assert.Equal(other, Sidebar.Layout.Peek());
+                Assert.Equal(other, ShellPolicy.Now.NavPane.Layout);
+                Node(shell, otherKey);
+
+                // A verb of the sidebar (the pane's menu) stores the choice in the option.
+                Sidebar.SetDensity(SidebarDensity.Compact);
+                Assert.Equal(SidebarDensity.Compact, ThemeHost.Values.Structure.Get(ClassicStructure.LibraryDensity.Key));
+                Assert.Equal(SidebarDensity.Compact, ShellPolicy.Now.NavPane.Density);
+                Sidebar.SwitchLayout(layout);
+                Assert.Equal(layout, ThemeHost.Values.Structure.Get(ClassicStructure.Sidebar.Key));
+
+                // The density option moved without a verb: the pane follows.
+                _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, ClassicStructure.LibraryDensityOptionId, SidebarDensity.Default));
+                shell.RunFrames(2);
+                Assert.Equal(SidebarDensity.Default, Sidebar.Density.Peek());
+            }
+            finally
+            {
+                _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, ClassicStructure.SidebarOptionId, layout));
+                _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, ClassicStructure.LibraryDensityOptionId, density));
+                shell.RunFrames(60);
+            }
+        });
+
+    [Fact]
+    public void A_layout_option_change_while_the_sidebar_is_edited_ends_the_edit_first()
+        => host.Mounted(shell =>
+        {
+            shell.RunFrames(60);
+            var layout = Sidebar.Layout.Peek();
+            var other = layout == SidebarLayoutId.Library ? SidebarLayoutId.Classic : SidebarLayoutId.Library;
+            try
+            {
+                Sidebar.EnterEdit();
+                shell.RunFrames(2);
+                Assert.True(Sidebar.Editing.Peek());
+                Sidebar.SwitchLayout(other);                    // the sidebar's own verb refuses while editing
+                Assert.Equal(layout, Sidebar.Layout.Peek());
+
+                _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, ClassicStructure.SidebarOptionId, other));   // a command-palette row does not
+                shell.RunFrames(2);
+                Assert.False(Sidebar.Editing.Peek());
+                Assert.Equal(other, Sidebar.Layout.Peek());
+            }
+            finally
+            {
+                Sidebar.ExitEdit();
+                _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, ClassicStructure.SidebarOptionId, layout));
+                shell.RunFrames(60);
+            }
+        });
+
+    [Fact]
     public void Sidebar_density_changes_the_library_rows_extent_in_place()
         => host.Mounted(shell =>
         {

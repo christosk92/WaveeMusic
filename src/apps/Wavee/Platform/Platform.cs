@@ -92,14 +92,10 @@ public static partial class Platform
         /// <summary>Monotonic "which sidebar startup migrations have run" (0 = never; 2 = the v3 layout migration ran). It
         /// predates <see cref="IAppSettings.Has"/> and stays the latch those migrations read.</summary>
         public static readonly SettingKey<int> SidebarBootstrapVersion = new("sidebar.bootstrap.version", 0);
-        /// <summary>The active sidebar layout: 0 Classic · 1 Library. Written by the one-time v3 migration.</summary>
-        public static readonly SettingKey<int> SidebarLayoutId = new("sidebar.layout.id", 0);
         /// <summary>The expanded pane width, one value for both layouts (180-460).</summary>
         public static readonly SettingKey<float> SidebarPaneWidth = new("sidebar.pane.width", 320f);
         /// <summary>The user's collapse to the 48 rail — written only in the Wide band, never by a forced mode.</summary>
         public static readonly SettingKey<bool> SidebarPaneUserCollapsed = new("sidebar.pane.userCollapsed", false);
-        /// <summary>Entity-row density: 0 Default · 1 Compact.</summary>
-        public static readonly SettingKey<int> SidebarPaneDensity = new("sidebar.pane.density", 0);
         /// <summary>Your Library's chip: 0 none · 1 Playlists · 2 Albums · 3 Artists · 4 Podcasts · 5 Audiobooks.</summary>
         public static readonly SettingKey<int> SidebarLibraryFilter = new("sidebar.library.filter", 0);
         /// <summary>The loc keys of what the v2 migration could not carry over, comma-separated (Settings' "What changed").</summary>

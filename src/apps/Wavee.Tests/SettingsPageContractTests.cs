@@ -4,7 +4,7 @@
 // `SettingsDoc` by `Pages.Settings`; the core host keeps the hooks, the page epoch, the Storage census and the pivot's cell. What is pure about the contract:
 // the ids (a published id never changes), Classic registering every key under a distinct template id, the props record changing when the epoch does (a host rebuilds
 // one per render and an equal record skips the template), a row's value read through `Current` (a theme never reaches the store), and `SettingsThemeOptions`, the
-// grouping of the active theme's options (legacy rows first, one group per label, developer rows absent, the wizard's subset).
+// grouping of the active theme's options (one group per label, a group's generated rows above its legacy rows, developer rows absent, the wizard's subset).
 
 using FluentGpu.Signals;
 using FluentGpu.WindowsApi.Notifications;
@@ -61,7 +61,6 @@ public sealed class SettingsPageContractTests : IDisposable
         Assert.Equal("Pages.Settings", ViewKeys.SettingsPage.Id);
         Assert.Equal("Settings.ThemePicker", ViewKeys.SettingsThemePicker.Id);
         Assert.Equal("Settings.ThemeOptions", ViewKeys.SettingsThemeOptions.Id);
-        Assert.Equal("Settings.SidebarLayoutCards", ViewKeys.SettingsSidebarLayoutCards.Id);
     }
 
     [Fact]
@@ -73,7 +72,6 @@ public sealed class SettingsPageContractTests : IDisposable
             (ViewKeys.SettingsPage.Id, "classic.screens.settings"),
             (ViewKeys.SettingsThemePicker.Id, "classic.screens.settings.theme-picker"),
             (ViewKeys.SettingsThemeOptions.Id, "classic.screens.settings.theme-options"),
-            (ViewKeys.SettingsSidebarLayoutCards.Id, "classic.screens.settings.sidebar-layout-cards"),
         ];
         var templates = new HashSet<string>(StringComparer.Ordinal);
         foreach (var (id, template) in expected)
@@ -128,14 +126,14 @@ public sealed class SettingsPageContractTests : IDisposable
     [Fact]
     public void The_legacy_rows_come_in_order_one_group_per_label()
     {
-        var model = Model(new LegacyOptionRow("trackListStyle", "Lists"), new LegacyOptionRow("sidebarDensity", "Side"),
+        var model = Model(new LegacyOptionRow("trackListStyle", "Lists"), new LegacyOptionRow("sidebarCustomize", "Side"),
             new LegacyOptionRow("rowDensity", "Lists"));
 
         var groups = SettingsThemeOptions.Groups(model, new Facts(false), wizard: false);
 
         Assert.Equal(new[] { "Lists", "Side" }, groups.Select(g => g.Title));
         Assert.Equal(new[] { "legacy:trackListStyle", "legacy:rowDensity" }, groups[0].Items.Select(i => i.Key));
-        Assert.Equal(new[] { "legacy:sidebarDensity" }, groups[1].Items.Select(i => i.Key));
+        Assert.Equal(new[] { "legacy:sidebarCustomize" }, groups[1].Items.Select(i => i.Key));
         Assert.All(groups.SelectMany(g => g.Items), i => Assert.Equal(SettingsOptionItemKind.Legacy, i.Kind));
     }
 
@@ -152,16 +150,41 @@ public sealed class SettingsPageContractTests : IDisposable
     }
 
     [Fact]
-    public void The_wizard_keeps_only_the_sidebar_layout_cards()
+    public void The_wizard_shows_no_legacy_row()
     {
-        var model = Model(new LegacyOptionRow("sidebarDesign", "Side"), new LegacyOptionRow("trackListStyle", "Lists"),
+        var model = Model(new LegacyOptionRow("sidebarCustomize", "Side"), new LegacyOptionRow("trackListStyle", "Lists"),
             new LegacyOptionRow("sidebarReset", "Side"));
+
+        Assert.Empty(SettingsThemeOptions.Groups(model, new Facts(false), wizard: true));
+    }
+
+    [Fact]
+    public void A_groups_generated_rows_come_before_its_legacy_rows_and_the_groups_keep_the_legacy_order()
+    {
+        // Classic's sidebar group: the layout cards and the density (generated) sit above the three sidebar actions (legacy), as the rows they replaced did;
+        // the Surfaces group (generated only) comes after the legacy groups.
+        var theme = ClassicTheme.Create();
+        var model = ThemeOptionsSection.Build(theme, ThemeOptionStore.Load(theme, _settings), developerMode: false);
+
+        var groups = SettingsThemeOptions.Groups(model, new Facts(false), wizard: false);
+
+        Assert.Equal(new[] { Strings.Settings.ThemeOptions.Group.Sidebar, Strings.Settings.ThemeOptions.Group.TrackLists, Strings.Settings.ThemeOptions.Group.TrackPages,
+            Strings.Settings.ThemeOptions.Group.Surfaces }.Select(ThemeOptionsSection.GroupTitle), groups.Select(g => g.Title));
+        Assert.Equal(new[] { "opt:structure.sidebar", "opt:structure.libraryDensity", "legacy:sidebarReset", "legacy:sidebarCustomize", "legacy:sidebarResetEverything" },
+            groups[0].Items.Select(i => i.Key));
+        Assert.Equal(new[] { "opt:structure.surfaces" }, groups[3].Items.Select(i => i.Key));
+    }
+
+    [Fact]
+    public void The_wizard_shows_the_generated_rows_that_are_not_actions()
+    {
+        var theme = ClassicTheme.Create();
+        var model = ThemeOptionsSection.Build(theme, ThemeOptionStore.Load(theme, _settings), developerMode: false);
 
         var groups = SettingsThemeOptions.Groups(model, new Facts(false), wizard: true);
 
-        var group = Assert.Single(groups);
-        var item = Assert.Single(group.Items);
-        Assert.Equal("legacy:sidebarDesign", item.Key);
+        Assert.Equal(new[] { "opt:structure.sidebar", "opt:structure.libraryDensity", "opt:structure.surfaces" }, groups.SelectMany(g => g.Items).Select(i => i.Key));
+        Assert.All(groups.SelectMany(g => g.Items), i => Assert.Equal(SettingsOptionItemKind.Generated, i.Kind));
     }
 
     [Fact]

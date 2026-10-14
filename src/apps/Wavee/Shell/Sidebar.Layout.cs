@@ -12,7 +12,7 @@ using System.Collections.Generic;
 
 namespace Wavee;
 
-/// <summary>The two sidebar layouts. PERSISTED as <c>sidebar.layout.id</c> (0 Classic · 1 Library) — append only.</summary>
+/// <summary>The two sidebar layouts. PERSISTED as the int of Classic's `structure.sidebar` option (0 Classic · 1 Library) — append only.</summary>
 public enum SidebarLayoutId : byte { Classic = 0, Library = 1 }
 
 /// <summary>The closed section catalogue (design C.1). Not persisted by number: the files use <see cref="SidebarCatalogue.IdOf"/>.</summary>
@@ -22,7 +22,7 @@ public enum SidebarSectionKind : byte
 }
 
 /// <summary>Row density for entity rows (design P.4): Default = row C (two lines, art 32), Compact = row B (one line, art
-/// 24). Glyph rows and headers are unaffected. PERSISTED as <c>sidebar.pane.density</c>.</summary>
+/// 24). Glyph rows and headers are unaffected. PERSISTED as the int of Classic's `structure.libraryDensity` option.</summary>
 public enum SidebarDensity : byte { Default = 0, Compact = 1 }
 
 /// <summary>Your Library's list presentation.</summary>

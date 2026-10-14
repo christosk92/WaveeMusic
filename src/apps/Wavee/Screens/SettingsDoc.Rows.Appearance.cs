@@ -16,7 +16,7 @@ namespace Wavee;
 
 public static partial class SettingsDoc
 {
-    /// <summary>The Q7 reason a sidebar control gives while the sidebar is being edited (the palette path toasts the same words).</summary>
+    /// <summary>The Q7 reason a sidebar control gives while the sidebar is being edited.</summary>
     public const string FinishEditingKey = "sidebar.pane.finishEditing";
 
     static IReadOnlyList<SettingsSection> AppearanceSections() =>
@@ -31,13 +31,6 @@ public static partial class SettingsDoc
         // The rows the ACTIVE structure still binds to today's keys (T1b). The view lists them by `IStructureLayer.LegacyRows`
         // (id and group are the theme's), so a theme with other options, or none, shows none of them.
         Sect(T.Appearance, "Theme options", Strings.Settings.ThemeOptions.TitleKey, null,
-            Make(T.Appearance, "Theme options", "sidebarDesign", K.Picker, Strings.Settings.Sidebar.Layout,
-                SettingsWriter.OfChoice("sidebar.layout", SettingsVerbs.SwitchSidebarLayout),
-                captionKey: Strings.Settings.Sidebar.LayoutSub, value: _ => (int)Sidebar.Layout.Peek(),
-                enabled: NotWhileEditing),
-            Make(T.Appearance, "Theme options", "sidebarDensity", K.Choice, Strings.Settings.Sidebar.Density,
-                SettingsWriter.OfChoice("sidebar.density", SettingsVerbs.SetSidebarDensity),
-                captionKey: Strings.Settings.Sidebar.DensitySub, value: _ => (int)Sidebar.Density.Peek(), catalog: false),
             Make(T.Appearance, "Theme options", "sidebarReset", K.Action, Strings.Settings.Sidebar.Reset,
                 SettingsWriter.OfAction("sidebar.reset", SettingsVerbs.ResetSidebarLayout),
                 captionKey: Strings.Settings.Sidebar.ResetSub,
@@ -277,21 +270,6 @@ public static partial class SettingsVerbs
     }
 
     // ── Sidebar ──────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The layout cards: Classic · Library. (The cards are disabled while the sidebar is being edited — the row's
-    /// <see cref="SettingsRow.Enabled"/> — so the view never calls this then.)</summary>
-    public static bool SwitchSidebarLayout(int index)
-    {
-        Sidebar.SwitchLayout((SidebarLayoutId)index);
-        return false;
-    }
-
-    /// <summary>Default · Compact (design P.4).</summary>
-    public static bool SetSidebarDensity(int index)
-    {
-        Sidebar.SetDensity(index == 1 ? SidebarDensity.Compact : SidebarDensity.Default);
-        return false;
-    }
 
     /// <summary>Reset the current layout to its authored form, with the sidebar's own undo toast.</summary>
     public static bool ResetSidebarLayout()

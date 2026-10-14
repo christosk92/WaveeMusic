@@ -1,8 +1,8 @@
 // ── Screens/SettingsThemeOptions.cs — the active theme's options as the page shows them (themes plan 8.1-8.2, T1b; T11b) ───────────────
 //
 // Role: CORE. `ThemeOptionsSection.Current` turns the active composition's exposed schema into rows; THIS file groups them for display: the legacy rows
-// (the `SettingsDoc` rows a structure still binds to today's keys, listed by `IStructureLayer.LegacyRows`) first, in order, then the generated ones, a group
-// per label in the order its first row arrived. A row the facts hide (developer only, composed away) does not exist. The sidebar's two notes (a layout file
+// (the `SettingsDoc` rows a structure still binds to today's keys, listed by `IStructureLayer.LegacyRows`) and the generated ones, a group
+// per label (the groups in the order their first legacy row, else their first generated row, arrives; inside a group the generated rows come first). A row the facts hide (developer only, composed away) does not exist. The sidebar's two notes (a layout file
 // the app could not read; what a migration dropped) ride the sidebar rows. The structure's `Settings.ThemeOptions` view draws what this returns (the Classic
 // expander, the wizard's plate rows); the wizard step asks `HasWizardOptions` to know whether to place it at all.
 //
@@ -31,7 +31,7 @@ public enum SettingsOptionItemKind : byte
 /// <summary>One entry of an options group.</summary>
 public sealed class SettingsOptionItem
 {
-    /// <summary>The entry's identity in its group (<c>legacy:sidebarDesign</c>, <c>opt:style.density</c>): the view keys the row by it.</summary>
+    /// <summary>The entry's identity in its group (<c>legacy:sidebarReset</c>, <c>opt:structure.sidebar</c>): the view keys the row by it.</summary>
     public required string Key { get; init; }
 
     /// <inheritdoc cref="SettingsOptionItemKind"/>
@@ -87,8 +87,10 @@ public static class SettingsThemeOptions
     /// <summary>The wizard's Theme step places its options only when there is something to pick. Subscribes the caller.</summary>
     public static bool HasWizardOptions() => Current(wizard: true).Groups.Count > 0;
 
-    /// <summary>The rows of the model grouped for display (see the file header). The wizard shows only the sidebar layout cards (until M7a makes it a
-    /// generated Cards row) and the generated rows that are not actions (a wizard step resets nothing).</summary>
+    /// <summary>The rows of the model grouped for display (see the file header). A group's generated rows come first, then the legacy rows still bound to
+    /// a key (so a generated row takes the place of the legacy row it replaced: the sidebar's layout and density sit above its three actions); the groups
+    /// keep the order their first row (legacy, else generated) arrives in. The wizard shows only the generated rows that are not actions (a wizard step
+    /// resets nothing, and the legacy rows are not switches).</summary>
     public static IReadOnlyList<SettingsOptionGroup> Groups(ThemeOptionsModel model, ISettingsFacts facts, bool wizard)
     {
         var groups = new List<SettingsOptionGroup>(4);
@@ -102,21 +104,15 @@ public static class SettingsThemeOptions
             return created;
         }
 
-        foreach (LegacyOptionRow legacy in model.Legacy)
+        // The legacy rows that show, with their group created now (so the groups keep the legacy order); they are appended after the group's generated rows.
+        var legacyItems = new List<(SettingsOptionGroup Group, SettingsRow Row, string RowId)>(model.Legacy.Count);
+        if (!wizard)
         {
-            if (wizard && legacy.RowId != "sidebarDesign") continue;   // the wizard's Layout step, until M7a makes it a generated Cards row
-            if (!SettingsDoc.TryRow(Settings.Tab.Appearance, legacy.RowId, out SettingsRow row) || !row.Visible(facts)) continue;
-            SettingsOptionGroup group = GroupFor(legacy.Group);
-            // The sidebar's two notes (a layout file the app could not read; what a migration dropped) ride the sidebar rows.
-            if (legacy.RowId == "sidebarDesign" && Sidebar.LayoutFileFault && !wizard)
-                group.Items.Add(new SettingsOptionItem { Key = "legacy:sidebarFileFault", Kind = SettingsOptionItemKind.SidebarFileFault });
-            group.Items.Add(new SettingsOptionItem { Key = "legacy:" + legacy.RowId, Kind = SettingsOptionItemKind.Legacy, Row = row });
-            if (legacy.RowId == "sidebarResetEverything" && SettingsFacts.SidebarMigrationDropped() is { Length: > 0 } dropped)
-                group.Items.Add(new SettingsOptionItem
-                {
-                    Key = "legacy:sidebarWhatChanged", Kind = SettingsOptionItemKind.SidebarWhatChanged,
-                    Text = Strings.Settings.Sidebar.WhatChangedSub(Sidebar.DroppedNames(dropped.Split(','))),
-                });
+            foreach (LegacyOptionRow legacy in model.Legacy)
+            {
+                if (!SettingsDoc.TryRow(Settings.Tab.Appearance, legacy.RowId, out SettingsRow row) || !row.Visible(facts)) continue;
+                legacyItems.Add((GroupFor(legacy.Group), row, legacy.RowId));
+            }
         }
 
         foreach (GeneratedOptionRow generated in model.Rows)
@@ -124,6 +120,30 @@ public static class SettingsThemeOptions
             if (!generated.Row.Visible(facts)) continue;
             if (wizard && generated.Row.Kind == SettingsRowKind.Action) continue;
             GroupFor(generated.Group).Items.Add(new SettingsOptionItem { Key = "opt:" + generated.QualifiedId, Kind = SettingsOptionItemKind.Generated, Generated = generated });
+        }
+
+        foreach (var (group, row, rowId) in legacyItems)
+        {
+            group.Items.Add(new SettingsOptionItem { Key = "legacy:" + rowId, Kind = SettingsOptionItemKind.Legacy, Row = row });
+            // What a migration dropped rides the sidebar's last row.
+            if (rowId == "sidebarResetEverything" && SettingsFacts.SidebarMigrationDropped() is { Length: > 0 } dropped)
+                group.Items.Add(new SettingsOptionItem
+                {
+                    Key = "legacy:sidebarWhatChanged", Kind = SettingsOptionItemKind.SidebarWhatChanged,
+                    Text = Strings.Settings.Sidebar.WhatChangedSub(Sidebar.DroppedNames(dropped.Split(','))),
+                });
+        }
+
+        // "The sidebar layout file could not be read" opens the sidebar's group, above the layout cards it rides.
+        if (!wizard && Sidebar.LayoutFileFault)
+        {
+            string sidebarTitle = ThemeOptionsSection.GroupTitle(Strings.Settings.ThemeOptions.Group.Sidebar);
+            foreach (SettingsOptionGroup g in groups)
+                if (string.Equals(g.Title, sidebarTitle, StringComparison.Ordinal))
+                {
+                    g.Items.Insert(0, new SettingsOptionItem { Key = "legacy:sidebarFileFault", Kind = SettingsOptionItemKind.SidebarFileFault });
+                    break;
+                }
         }
         return groups;
     }

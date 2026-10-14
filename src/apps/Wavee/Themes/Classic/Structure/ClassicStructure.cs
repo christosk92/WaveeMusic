@@ -18,7 +18,7 @@
 // T1b: the options Classic will own (plan 6.1) are still TODAY's switches, bound to their legacy keys through `SettingsDoc`
 // rows. `LegacyRows` lists them in their FINAL grouping so Settings › Appearance shows Classic's section once, in its
 // final shape; each M-PR deletes its rows from the list and declares the option in `Options` (the generated row takes the
-// same place in the same group). M6 is the first: `Surfaces` (the colour washes).
+// same place in the same group). M6 is the first: `Surfaces` (the colour washes); M7a adds `Sidebar` and `LibraryDensity`.
 
 using FluentGpu.Theming;
 using Wavee.Themes.Common;
@@ -300,13 +300,51 @@ public sealed class ClassicStructure : IStructureLayer
     /// <summary>Colour washes are drawn (anything but Off): what the material views and cover leaves read.</summary>
     public static bool WashesOn(SurfaceWash surfaces) => surfaces != SurfaceWash.Off;
 
-    private static readonly ThemeOptionSchema s_options = ThemeOptionSchema.Of(Surfaces);
+    /// <summary>Sidebar: which of the two layouts the navigation pane shows (Classic's sections you arrange, Library's one list with filters).
+    /// Stored as the layout's int (`theme.classic.structure.sidebar`: Classic 0, Library 1); the option replaced `sidebar.layout.id` (`ThemeBootstrap`'s
+    /// "SidebarLayout" step copies it). It is a STRUCTURE option: the layout is the navigation pane's shape, and another theme's sidebar is
+    /// another structure. Drawn as the two preview cards (the Settings view of this structure draws them; the generic cards are text only), and offered
+    /// to the command palette. The core sidebar follows it through <see cref="NavPanePolicy.Layout"/> (see <see cref="Policies"/>): it owns the layout
+    /// document, the undo ring and the menus, the structure owns the choice.</summary>
+    public static SelectOption<SidebarLayoutId> Sidebar { get; } = new SelectOption<SidebarLayoutId>(
+        Id: NavPaneOptionIds.Layout, TitleKey: Strings.Settings.Sidebar.Layout, DescriptionKey: Strings.Settings.Sidebar.LayoutSub,
+        Group: Strings.Settings.ThemeOptions.Group.Sidebar, Default: SidebarLayoutId.Classic,
+        Choices:
+        [
+            new SelectChoice<SidebarLayoutId>(SidebarLayoutId.Classic, Strings.Sidebar.LayoutName.Classic),
+            new SelectChoice<SidebarLayoutId>(SidebarLayoutId.Library, Strings.Sidebar.LayoutName.Library),
+        ],
+        Picker: PickerStyle.Cards) with { Command = true };
+
+    /// <summary>Density: two-line (art 32) or one-line (art 24) entity rows, in both layouts. Stored as the int (`theme.classic.structure.libraryDensity`:
+    /// Default 0, Compact 1); the option replaced `sidebar.pane.density` (the "SidebarDensity" step). Always shown: the density shapes the playlist and album
+    /// rows of the Classic layout too, so hiding it while that layout is active would take a working setting away (the plan's "only with the Library layout"
+    /// is not taken for that reason).</summary>
+    public static SelectOption<SidebarDensity> LibraryDensity { get; } = new(
+        Id: NavPaneOptionIds.Density, TitleKey: Strings.Settings.Sidebar.Density, DescriptionKey: Strings.Settings.Sidebar.DensitySub,
+        Group: Strings.Settings.ThemeOptions.Group.Sidebar, Default: SidebarDensity.Default,
+        Choices:
+        [
+            new SelectChoice<SidebarDensity>(SidebarDensity.Default, Strings.Sidebar.Density.Default),
+            new SelectChoice<SidebarDensity>(SidebarDensity.Compact, Strings.Sidebar.Density.Compact),
+        ],
+        Picker: PickerStyle.Combo);
+
+    /// <summary>The layer-qualified ids of the two sidebar options (what <c>GeneratedOptionRow.QualifiedId</c> answers): the Settings view draws the layout
+    /// with its preview cards and the density with its narrow combo.</summary>
+    public const string SidebarOptionId = "structure." + NavPaneOptionIds.Layout;
+
+    /// <inheritdoc cref="SidebarOptionId"/>
+    public const string LibraryDensityOptionId = "structure." + NavPaneOptionIds.Density;
+
+    private static readonly ThemeOptionSchema s_options = ThemeOptionSchema.Of(Sidebar, LibraryDensity, Surfaces);
 
     /// <inheritdoc />
     public ThemeOptionSchema Options => s_options;
 
     /// <inheritdoc />
-    public ThemePolicies Policies(OptionValues structure, in StyleMetrics metrics) => ClassicPolicies.Bundle;
+    public ThemePolicies Policies(OptionValues structure, in StyleMetrics metrics)
+        => ClassicPolicies.For(structure.Get(Sidebar.Key), structure.Get(LibraryDensity.Key));
 
     /// <inheritdoc />
     public ShellCapabilities Capabilities(OptionValues structure) => ShellCapabilities.Unrestricted;
@@ -314,12 +352,11 @@ public sealed class ClassicStructure : IStructureLayer
     /// <inheritdoc />
     public RoleSet RequiredRoles => RoleSet.None;
 
-    /// <summary>Each entry leaves with the M-PR that migrates its switch: sidebar M7a, row style M2, row density M3, hide art M4,
-    /// page layout and rails M8. (Page motion, M1, was deleted: it has no row. Washes, M6, became the style's Surfaces option.)</summary>
+    /// <summary>Each entry leaves with the M-PR that migrates its switch: row style M2, row density M3, hide art M4, page layout and rails M8.
+    /// (Page motion, M1, was deleted: it has no row. Washes, M6, became the Surfaces option; the sidebar layout and density, M7a, the Sidebar and
+    /// LibraryDensity options. The three sidebar ACTIONS stay: they are not switches.)</summary>
     public IReadOnlyList<LegacyOptionRow> LegacyRows { get; } =
     [
-        new("sidebarDesign", Strings.Settings.ThemeOptions.Group.Sidebar),
-        new("sidebarDensity", Strings.Settings.ThemeOptions.Group.Sidebar),
         new("sidebarReset", Strings.Settings.ThemeOptions.Group.Sidebar),
         new("sidebarCustomize", Strings.Settings.ThemeOptions.Group.Sidebar),
         new("sidebarResetEverything", Strings.Settings.ThemeOptions.Group.Sidebar),

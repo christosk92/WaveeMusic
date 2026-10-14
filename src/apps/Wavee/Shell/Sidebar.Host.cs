@@ -28,6 +28,7 @@ using System.Globalization;
 using FluentGpu.Controls;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Theming;
 
 namespace Wavee;
 
@@ -74,8 +75,11 @@ public static partial class Sidebar
         SidebarMigrationHost.RunIfNeeded(Platform.Settings, s_profileDir, Entities.Current.Key);
 
         var s = Platform.Settings;
-        Layout.Value = s.Get(Platform.Keys.SidebarLayoutId) == 1 ? SidebarLayoutId.Library : SidebarLayoutId.Classic;
-        Density.Value = s.Get(Platform.Keys.SidebarPaneDensity) == 1 ? SidebarDensity.Compact : SidebarDensity.Default;
+        // The layout and the density are the active structure's choice (M7a: `structure.sidebar` / `structure.libraryDensity` in Classic, copied from the
+        // legacy keys at boot by ThemeBootstrap), published as the pane policy. Read AFTER the migration above, which hands its result to the option.
+        var design = ShellPolicy.Now.NavPane;
+        Layout.Value = design.Layout;
+        Density.Value = design.Density;
         Width.Value = SidebarPaneBounds.Clamp(s.Get(Platform.Keys.SidebarPaneWidth));
         UserCollapsed.Value = s.Get(Platform.Keys.SidebarPaneUserCollapsed);
         Seam.Value = UserCollapsed.Peek() ? ShellPolicy.Now.NavPane.RailWidth : Width.Peek();
@@ -154,10 +158,12 @@ public static partial class Sidebar
 
     // ── the layout ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The active layout (<c>sidebar.layout.id</c>). A switch remounts the mode (fresh hooks, fresh scroll).</summary>
+    /// <summary>The active layout: the layout document, the undo ring and the menus follow this signal. The CHOICE is the structure's (Classic's
+    /// `structure.sidebar` option, published as <see cref="NavPanePolicy.Layout"/>): <see cref="FollowDesign"/> brings the signal after the option, and
+    /// <see cref="SwitchLayout"/> asks the option for a change. A switch remounts the mode (fresh hooks, fresh scroll).</summary>
     public static readonly Signal<SidebarLayoutId> Layout = new(SidebarLayoutId.Classic);
 
-    /// <summary>Entity-row density (<c>sidebar.pane.density</c>), global.</summary>
+    /// <summary>Entity-row density, global (the structure's `structure.libraryDensity` option, followed like <see cref="Layout"/>).</summary>
     public static readonly Signal<SidebarDensity> Density = new(SidebarDensity.Default);
 
     /// <summary>Your Library's active chip (<c>sidebar.library.filter</c>).</summary>
@@ -256,7 +262,8 @@ public static partial class Sidebar
         return false;
     }
 
-    /// <summary>Switch the layout (Settings, the pane menu, the palette). Each layout keeps its own overlay.</summary>
+    /// <summary>Switch the layout (the pane menu, a card in Settings). Each layout keeps its own overlay. The structure's option is asked to
+    /// store the choice (a structure without the option ignores it: the switch then lasts for the session).</summary>
     public static void SwitchLayout(SidebarLayoutId next)
     {
         if (Layout.Peek() == next || Editing.Peek()) return;
@@ -265,11 +272,11 @@ public static partial class Sidebar
         Layout.Value = next;
         s_layoutVersion.Value = s_layoutVersion.Peek() + 1;
         ClearRing();                                                  // the ring is per layout switch (design C.5)
-        Platform.Settings.Set(Platform.Keys.SidebarLayoutId, (int)next);
+        ThemeHost.Request(NavPaneOptionIds.Layout, next);
         Log.Info("sidebar", "layout.changed to=" + next);
     }
 
-    /// <summary>Density (Settings, the pane menu): recorded in the ring, never toasted.</summary>
+    /// <summary>Density (the pane menu, Settings): recorded in the ring, never toasted.</summary>
     public static void SetDensity(SidebarDensity density)
     {
         var before = Density.Peek();
@@ -284,7 +291,22 @@ public static partial class Sidebar
         if (Density.Peek() == density) return;
         Density.Value = density;
         s_layoutVersion.Value = s_layoutVersion.Peek() + 1;
-        Platform.Settings.Set(Platform.Keys.SidebarPaneDensity, (int)density);
+        ThemeHost.Request(NavPaneOptionIds.Density, density);
+    }
+
+    /// <summary>The structure's choice moved without a verb of the sidebar (a card or combo of the Settings options, the palette's option commands, a
+    /// theme switch): bring the sidebar after it. The frame's effect calls this with the tracked pane policy. A layout change while the sidebar is being
+    /// edited ends the edit first (a verb of the sidebar refuses instead: <see cref="SwitchLayout"/>); the density change is recorded in the ring like the
+    /// menu's.</summary>
+    public static void FollowDesign(NavPanePolicy nav)
+    {
+        ArgumentNullException.ThrowIfNull(nav);
+        if (nav.Layout != Layout.Peek())
+        {
+            if (Editing.Peek()) ExitEdit();
+            SwitchLayout(nav.Layout);
+        }
+        if (nav.Density != Density.Peek()) SetDensity(nav.Density);
     }
 
     public static void SetLibraryFilter(SidebarLibraryFilter filter)

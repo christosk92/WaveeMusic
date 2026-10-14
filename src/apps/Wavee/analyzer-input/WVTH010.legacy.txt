@@ -9,3 +9,7 @@ member Platform.Keys.PageMotionStyle
 key appearance.colorWashes.enabled
 member Prefs.Appearance.ColorWashes
 member Platform.Keys.ColorWashesEnabled
+key sidebar.layout.id
+member Platform.Keys.SidebarLayoutId
+key sidebar.pane.density
+member Platform.Keys.SidebarPaneDensity

@@ -263,6 +263,16 @@ public static class ThemeHost
 
     private static void Remount() => s_rootEpoch.Value = s_rootEpoch.Peek() + 1;
 
+    /// <summary>A core verb (a pane menu row, a migration, an undo) asks the ACTIVE theme to set one of its options by plain id, without knowing
+    /// which layer declares it or which theme is active (<see cref="NavPaneOptionIds"/> are the ids the sidebar asks for). A theme that declares no such
+    /// option ignores the request (logged); a value the option refuses is logged and changes nothing. A no-op before <see cref="Install"/>.</summary>
+    public static void Request(string optionId, object value)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(optionId);
+        ArgumentNullException.ThrowIfNull(value);
+        OnOptionRequest(optionId, value);
+    }
+
     /// <summary>A view asked for an option change through <c>ctx.OptionRequests</c>: the request names the option by its id.</summary>
     private static void OnOptionRequest(string optionId, object? raw)
     {

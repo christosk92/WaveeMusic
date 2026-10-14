@@ -35,6 +35,14 @@ public static class ThemeBootstrap
     private static readonly SettingKey<bool> LegacyColorWashes = new("appearance.colorWashes.enabled", true);
     private static readonly SettingKey<int> SurfacesKey = new("theme.classic.structure.surfaces", 1);
 
+    /// <summary>M7a: the sidebar layout (0 Classic · 1 Library) and the entity-row density (0 Default · 1 Compact). Their options are Classic's Sidebar and
+    /// LibraryDensity selects (`theme.classic.structure.sidebar` / `.libraryDensity`, the enums' ints). A value outside 0..1 (2 exists only in profiles that ran
+    /// the discarded PR 205 branch) is not copied: the option default applies.</summary>
+    private static readonly SettingKey<int> LegacySidebarLayout = new("sidebar.layout.id", 0);
+    private static readonly SettingKey<int> SidebarKey = new("theme.classic.structure.sidebar", 0);
+    private static readonly SettingKey<int> LegacySidebarDensity = new("sidebar.pane.density", 0);
+    private static readonly SettingKey<int> LibraryDensityKey = new("theme.classic.structure.libraryDensity", 0);
+
     /// <summary>The steps shipped in this build: each migration PR appends its own.</summary>
     public static IReadOnlyList<ThemeBootstrapStep> Steps { get; } =
     [
@@ -43,6 +51,13 @@ public static class ThemeBootstrap
         new ThemeBootstrapStep("ColorWashes",
             ReadsLegacyKeys: ["appearance.colorWashes.enabled"], WritesKeys: ["theme.classic.structure.surfaces"],
             Run: static s => Copy(s, LegacyColorWashes, SurfacesKey, static on => (true, on ? 1 : 0))),
+        // M7a sidebar: a stored layout and density carry over as they are, so a Library user stays on Library and a Compact user on Compact.
+        new ThemeBootstrapStep("SidebarLayout",
+            ReadsLegacyKeys: ["sidebar.layout.id"], WritesKeys: ["theme.classic.structure.sidebar"],
+            Run: static s => Copy(s, LegacySidebarLayout, SidebarKey, static v => (v is 0 or 1, v))),
+        new ThemeBootstrapStep("SidebarDensity",
+            ReadsLegacyKeys: ["sidebar.pane.density"], WritesKeys: ["theme.classic.structure.libraryDensity"],
+            Run: static s => Copy(s, LegacySidebarDensity, LibraryDensityKey, static v => (v is 0 or 1, v))),
     ];
 
     /// <summary>The setting name of a step's done marker.</summary>
