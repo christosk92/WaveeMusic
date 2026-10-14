@@ -6,6 +6,8 @@
 //
 // Role: UI
 // Wave: A1 (S-reader)
+// T9c: the column's picture (header slot, command row, reader slot) is the structure's `ShowReaderStyle.Pane`; this host keeps the selection, the memo
+//       pair, the swap transition and the keys.
 // Spec: plan §3.5 — the CONTRACT A2 (library) builds against: `Show.Pane : Component` + `Show.PaneProps(int Slot)`,
 //       mounted from User.Page.Library.cs WITHOUT a Key (re-skins in place, Album's own idiom).
 //
@@ -49,6 +51,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -86,6 +89,7 @@ public readonly partial struct Show
         readonly Func<ContextMenuModel?> _more;
         readonly Action _demandShow, _open, _swap;
         readonly Prop<bool> _heartShown;
+        ShowReaderStyle? _style;
 
         public Pane()
         {
@@ -141,6 +145,7 @@ public readonly partial struct Show
             m.Snap = _snap = UseComputed(_snapOf);
             m.Facts = _facts = UseComputed(_factsOf);
             var show = new Show(_slot);
+            _style ??= StyleOf(UseContext(global::FluentGpu.Theming.ViewRegistry.Context));
             UseEffect(_demandShow, DepKey.From(_slot, (int)epoch));
 
             // Gated ONLY on the title (report 2d): never on the episode edge — the navigator that mounted this pane
@@ -172,24 +177,16 @@ public readonly partial struct Show
                 R.Type.DenseMeta(Entities.Strings.Resolve(show.PublisherId))
                     with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                 id.Meta ?? "");
-            Element commands = new BoxEl
+            if (_style is not { } style) return new BoxEl();
+            // The pane hosts the SAME reader the route page mounts (Show.Page.cs) — one list stack, not a
+            // pane-only twin. The scroll key scopes its position per library slot. The column and its command row are the structure's.
+            return style.Pane(new ShowPaneArgs
             {
-                Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Padding = new Edges4(Spacing.XL, Spacing.S, Spacing.XL, Spacing.M),
-                Children =
-                [
-                    Embed.Comp(new SlotProps(m, () => Tok.AccentDefault), static () => new PrimarySlot()) with { Key = "showpane:primary" },
-                    new BoxEl { Visible = _heartShown, Children = [Detail.RailSatelliteSave(_uri, id.Title)] },
-                    Detail.RailSatelliteMore(_more),
-                ],
-            };
-            return new BoxEl
-            {
-                Direction = 1, Grow = 1f, ClipToBounds = true,
-                Children = [header, commands, new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, ClipToBounds = true,
-                    // The pane hosts the SAME reader the route page mounts (Show.Page.cs) — one list stack, not a
-                    // pane-only twin. The scroll key scopes its position per library slot.
-                    Children = [Embed.Comp(new ReaderProps(m, _scrollKey), static () => new ReaderHost()) with { Key = _readerKey }] }],
-            };
+                Header = header,
+                Primary = Embed.Comp(new SlotProps(m, () => Tok.AccentDefault), static () => new PrimarySlot()) with { Key = "showpane:primary" },
+                HeartShown = _heartShown, Uri = _uri, Name = id.Title, More = _more,
+                Reader = Embed.Comp(new ReaderProps(m, _scrollKey), static () => new ReaderHost()) with { Key = _readerKey },
+            });
         }
 
         /// <summary>The snapshot memo's body: it reads <see cref="_model"/> FIRST (so a selection change invalidates it

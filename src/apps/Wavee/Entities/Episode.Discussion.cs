@@ -5,164 +5,26 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Scene;
-using static FluentGpu.Dsl.Ui;
+using Contracts = Wavee.Theming.Contracts;
+using ViewSlots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
+// The discussion's core half (themes plan 6.1, T9c): the thread, a comment card, the reaction flyout and their signals, resources, composer and
+// reaction verbs, the reaction session and the overlay the flyout opens in. The PICTURES are Classic's (`Themes\Classic\Structure\Views\Episode\
+// ClassicDiscussion.cs`: `Episode.Discussion`, `Episode.CommentCard`, `Episode.CommentSeed`, `Episode.LoadMore`, `Episode.ReactionFlyout`,
+// `Episode.ReactionRoster`, `Episode.ReactionPeople`); a host builds one props record per render it makes and mounts the key.
 internal static partial class PodcastReaderUI
 {
     internal sealed record DiscussionProps(string Uri, bool Replies);
     internal sealed record CommentPageProps(string Uri, bool Replies, string Token, int Generation, Action Refresh);
     internal sealed record CommentProps(Spotify.Podcasts.Comment Comment, bool Reply, Action Refresh);
 
-    static readonly Spotify.Podcasts.Comment[] CommentSeed =
-    [new("seed:1", "A thoughtful conversation about this episode.", "Listener", "", "", false, false, false, 0, 0, "", false),
-     new("seed:2", "Thank you for sharing these ideas.", "Listener", "", "", false, false, false, 0, 0, "", false)];
+    /// <summary>The wire row as a template reads it.</summary>
+    static Contracts.DiscussionComment Map(Spotify.Podcasts.Comment c) => new(c.Uri, c.Text, c.Author, c.Avatar, c.Created,
+        c.Pending, c.Sensitive, c.Pinned, c.Replies, c.ReplyAvatars, c.ReplyLimit);
 
-    const float ThreadAvatar = 32, ReplyAvatar = 24;
-    static readonly TemplateParts ConsentParts = ConsentTemplate();
-
-    static TemplateParts ConsentTemplate()
-    {
-        var parts = new TemplateParts
-        {
-            [CheckBox.PartRoot] = root => root with { MinWidth = 0, AlignItems = FlexAlign.Start },
-            [CheckBox.PartBox] = box => box with { Shrink = 0 },
-        };
-        parts.Set<TextEl>(CheckBox.PartLabel, label => label with
-        {
-            Grow = 1, Basis = 0, Shrink = 1, MinWidth = 0, Wrap = TextWrap.Wrap, MaxLines = 3,
-            Size = 12, LineHeight = 18, Color = Tok.TextSecondary,
-        });
-        return parts;
-    }
-
-    static Element CommentBodies(IEnumerable<Spotify.Podcasts.Comment> comments, bool reply) => new BoxEl
-    {
-        Direction = 1, Gap = Spacing.L, MinWidth = 0, MaxWidth = 760,
-        Children = comments.Select(c => CommentFrame(c, reply, [CommentText(c.Text)])).ToArray(),
-    };
-
-    static Element CommentText(string text) => new TextEl(text)
-    { Size = 14, LineHeight = 21, Wrap = TextWrap.Wrap, MinWidth = 0, Color = Tok.TextPrimary };
-
-    // The same avatar/header/body columns supply the live thread and its derived pending geometry.
-    //
-    // ONE LEFT EDGE (podcast-episode-peek §3). This frame IS the comment's grid: an avatar column and one content
-    // column, and every row the card builds — the name/timestamp line, the body, the reaction/Reply row, the replies
-    // disclosure — is a child of that content column. Nothing under the name gets an inset of its own (the actions
-    // row's old -Spacing.S pull is exactly the misalignment this replaces): only the avatar sits outside the edge the
-    // rest of the comment shares.
-    static Element CommentFrame(Spotify.Podcasts.Comment c, bool reply, Element[] body)
-    {
-        float avatar = reply ? ReplyAvatar : ThreadAvatar;
-        var heading = new List<Element>
-        {
-            new TextEl(c.Author.Length == 0 ? Loc.Get(Strings.Podcast.Reader.Anonymous) : c.Author)
-            { Size = 13, LineHeight = 20, Weight = 600, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MinWidth = 0 },
-        };
-        if (DateTimeOffset.TryParse(c.Created, out var date))
-            heading.Add(new TextEl(date.ToLocalTime().ToString("d", System.Globalization.CultureInfo.CurrentCulture))
-                { Size = 12, LineHeight = 20, Color = Tok.TextTertiary, Wrap = TextWrap.NoWrap });
-        if (c.Pinned) heading.Add(Controls.Chip(Loc.Get(Strings.Podcast.Reader.Pinned)));
-        if (c.Pending) heading.Add(Controls.Chip(Loc.Get(Strings.Podcast.Reader.Pending)));
-        var content = new List<Element>
-        {
-            new BoxEl { Direction = 0, Wrap = true, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0, Children = heading.ToArray() },
-        };
-        content.AddRange(body);
-        return new BoxEl
-        {
-            Direction = 0, Gap = Spacing.M, MinWidth = 0, AlignItems = FlexAlign.Start,
-            Padding = new Edges4(0, Spacing.S, 0, Spacing.S), Children =
-            [
-                PersonPicture.Create("", avatar, displayName: c.Author, imageSourcePath: c.Avatar) with { Shrink = 0 },
-                new BoxEl { Direction = 1, Grow = 1, Basis = 0, MinWidth = 0, Gap = Spacing.S, Children = content.ToArray() },
-            ],
-        };
-    }
-
-    static Element ReplyThread(Element content) => new BoxEl
-    {
-        Key = "replies", Animate = Design.Reveal.Drawer,
-        Direction = 0, MinWidth = 0, Gap = Spacing.M, Margin = new Edges4(0, Spacing.S, 0, 0), Children =
-        [
-            new BoxEl { Width = 1, Shrink = 0, AlignSelf = FlexAlign.Stretch, Fill = Tok.StrokeDividerDefault },
-            new BoxEl { Direction = 1, Grow = 1, Basis = 0, MinWidth = 0, Children = [content] },
-        ],
-    };
-
-    const float PillEmojiSize = 14, PillEmojiOverlap = -4, ReplyStackAvatar = 20, ReplyStackOverlap = -7;
-
-    /// <summary>ONE reaction pill (podcast-episode-peek §3), replacing the bare outline heart and its number: a
-    /// rounded filled STANDARD-radius plate carrying the emoji people ACTUALLY used — up to three, most-used first,
-    /// overlapping — and the total after them, tinted with the accent when you are one of them, reading "React" with
-    /// a single neutral face when there are none, and opening the picker either way.
-    /// <para>Which emoji, in what order, what the label says and whether the pill reads as pressed is
-    /// <see cref="PodcastReactionRules.Pill"/>'s decision, not this builder's.</para>
-    /// <para><c>// Workstream B</c>: restyled onto the standard button ladder's radius (<see cref="Radii.ControlAll"/>,
-    /// 4) — was a full capsule (<c>Radii.PillAll</c>); its two-tone accent-pressed fill is a page-specific state this
-    /// custom shape still owns (not a stock <c>ToggleButton</c>: the emoji cluster and the overlap margins have no
-    /// slot on one).</para></summary>
-    static BoxEl ReactionPill(ReactionSession session, Action open)
-    {
-        var pill = PodcastReactionRules.Pill(session.Counts.Value, session.Current.Value, session.Total.Value);
-        var glyphs = new Element[pill.Emoji.Length];
-        for (int i = 0; i < glyphs.Length; i++)
-            glyphs[i] = new TextEl(pill.Emoji[i])
-            {
-                Size = PillEmojiSize, LineHeight = PillEmojiSize + 2, Shrink = 0,
-                Margin = new Edges4(0, 0, i == glyphs.Length - 1 ? 0 : PillEmojiOverlap, 0),
-            };
-        return new BoxEl
-        {
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Shrink = 0,
-            Padding = new Edges4(Spacing.M, Spacing.XS, Spacing.M, Spacing.XS), Corners = Radii.ControlAll,
-            Fill = pill.Pressed ? Tok.AccentDefault with { A = 0.22f } : Tok.FillSubtleSecondary,
-            HoverFill = pill.Pressed ? Tok.AccentDefault with { A = 0.32f } : Tok.FillSubtleTertiary,
-            PressedFill = pill.Pressed ? Tok.AccentDefault with { A = 0.16f } : Tok.FillSubtleSecondary,
-            Cursor = CursorId.Hand, Focusable = true, Role = AutomationRole.Button, OnClick = open,
-            Children =
-            [
-                new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0, Children = glyphs },
-                new TextEl(pill.CallToAction ? Loc.Get(Strings.Podcast.React) : FormatCache.Int(pill.Total))
-                {
-                    Size = 12, LineHeight = 16, Weight = 600, Shrink = 0,
-                    Color = pill.Pressed ? Tok.AccentTextPrimary : Tok.TextSecondary,
-                },
-            ],
-        };
-    }
-
-    /// <summary>The replies DISCLOSURE (podcast-episode-peek §3) under the pill row, on the comment's one left edge:
-    /// up to three repliers' avatars stacked with overlap, "N replies", and a chevron that expands the thread in
-    /// place. The count lives here and nowhere else — "Reply" beside the pill is a plain verb with no number in it.
-    /// The stack is skipped entirely when the answer carried no replier avatars, rather than inventing faces.</summary>
-    static Element RepliesDisclosure(Spotify.Podcasts.Comment c, Signal<bool> expanded)
-    {
-        int faces = DiscussionLayout.ReplyAvatarCount(c.ReplyAvatars.Length, c.Replies);
-        var row = new List<Element>(3);
-        if (faces > 0)
-        {
-            var stack = new Element[faces];
-            for (int i = 0; i < faces; i++)
-                stack[i] = PersonPicture.Create("", ReplyStackAvatar, imageSourcePath: c.ReplyAvatars[i]) with
-                { Shrink = 0, Margin = new Edges4(0, 0, i == faces - 1 ? 0 : ReplyStackOverlap, 0) };
-            row.Add(new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0, Children = stack });
-        }
-        row.Add(new TextEl(Strings.Podcast.RepliesCount(c.Replies))
-            { Size = 13, LineHeight = 18, Weight = 600, Shrink = 0, Color = Tok.TextSecondary });
-        row.Add(Sidebar.Chevron.Section(() => expanded.Value, size: 12f));   // rotates with the thread's reveal
-        return new BoxEl
-        {
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.Start, MinWidth = 0,
-            Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.M, Spacing.XS), Corners = Radii.PillAll,
-            HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
-            Cursor = CursorId.Hand, Focusable = true, Role = AutomationRole.Button,
-            OnClick = () => expanded.Value = !expanded.Peek(),
-            Children = row.ToArray(),
-        };
-    }
+    static Element CommentSeedView(bool replies) => ViewSlots.View(Contracts.ViewKeys.EpisodeCommentSeed, new Contracts.CommentSeedProps(replies));
 
     internal sealed class Discussion : Component
     {
@@ -179,46 +41,34 @@ internal static partial class PodcastReaderUI
             UseEffect(() => _consent.Value = Platform.Settings.Get(consentKey), DepKey.From((int)epoch));
             var resource = UseResource(ct => Platform.Args.Fake ? Task.FromResult(PodcastReaderFixtures.Comments) : Spotify.Podcasts.CommentsAsync(epoch, p.Uri, "", p.Replies, ct),
                 new Spotify.Podcasts.Page<Spotify.Podcasts.Comment>([], "", 0, "", 0), epoch + ":" + p.Uri);
-            return Skel.Region(resource.Loadable, () => CommentBodies(CommentSeed, p.Replies), Build,
+            return Skel.Region(resource.Loadable, () => CommentSeedView(p.Replies), Build,
                 onFailed: () => Failed(Refresh));
 
             Element Build(Spotify.Podcasts.Page<Spotify.Podcasts.Comment> page)
             {
                 if (!page.Ok) return Failed(Refresh);
-                var rows = new List<Element>();
-                if (!p.Replies) rows.Add(Heading(Loc.Get(Strings.Podcast.Reader.Comments) + " (" + page.Total + ")"));
-                foreach (var item in page.Items)
-                    rows.Add(Embed.Comp(new CommentProps(item, p.Replies, Refresh), static () => new CommentCard()) with { Key = item.Uri });
-                if (page.Items.Length == 0) rows.Add(Quiet(Loc.Get(Strings.Podcast.Reader.NoComments)));
-                if (page.NextToken.Length > 0)
-                    rows.Add(Embed.Comp(new CommentPageProps(p.Uri, p.Replies, page.NextToken, _generation.Value, Refresh), static () => new MoreComments())
-                        with { Key = "more:" + _generation.Value + ":" + page.NextToken });
+                var cards = new Element[page.Items.Length];
+                for (int i = 0; i < cards.Length; i++)
+                    cards[i] = Embed.Comp(new CommentProps(page.Items[i], p.Replies, Refresh), static () => new CommentCard()) with { Key = page.Items[i].Uri };
+                Element? more = page.NextToken.Length > 0
+                    ? Embed.Comp(new CommentPageProps(p.Uri, p.Replies, page.NextToken, _generation.Value, Refresh), static () => new MoreComments())
+                        with { Key = "more:" + _generation.Value + ":" + page.NextToken }
+                    : null;
                 bool eligible = DiscussionLayout.ShowComposer(p.Replies, Platform.Args.Fake, page.Eligibility);
+                Contracts.DiscussionComposerProps? composer = null;
+                string? closed = null;
                 if (eligible)
-                {
-                    var composer = new List<Element>
-                    {
-                        TextBox.Create(_text, options: new TextBox.TextBoxOptions
-                        {
-                            Placeholder = Loc.Get(p.Replies ? Strings.Podcast.Reader.ReplyPlaceholder : Strings.Podcast.Reader.CommentPlaceholder),
-                            Width = float.NaN, AcceptsReturn = true, Height = 80,
-                        }),
-                    };
-                    if (DiscussionLayout.ShowConsent(eligible, _consent.Value))
-                        composer.Add(CheckBox.Create(Loc.Get(Strings.Podcast.Reader.Consent), _consent,
-                            onChange: value => Platform.Settings.Set(consentKey, value), parts: ConsentParts));
-                    composer.Add(Button.Standard(Loc.Get(p.Replies ? Strings.Podcast.Reader.PostReply : Strings.Podcast.Reader.Submit), Submit,
-                        isEnabled: DiscussionLayout.CanSubmit(_consent.Value, _busy.Value, _text.Value)) with { AlignSelf = FlexAlign.Start });
-                    rows.Add(new BoxEl
-                    {
-                        Direction = 1, MinWidth = 0, Gap = Spacing.M, Margin = new Edges4(0, Spacing.M, 0, 0),
-                        Children = composer.ToArray(),
-                    });
-                }
-                else rows.Add(Quiet(Loc.Get(DiscussionLayout.AlreadyCommented(page.Eligibility) ? Strings.Podcast.Reader.OneComment
-                    : DiscussionLayout.CommentsDisabled(page.Eligibility) ? Strings.Podcast.CommentsOff : Strings.Podcast.Reader.Eligibility)));
-                if (_error.Value.Length > 0) rows.Add(Quiet(_error.Value));
-                return new BoxEl { Direction = 1, Gap = Spacing.M, MinWidth = 0, MaxWidth = 760, Children = rows.ToArray() };
+                    composer = new Contracts.DiscussionComposerProps(_text,
+                        Loc.Get(p.Replies ? Strings.Podcast.Reader.ReplyPlaceholder : Strings.Podcast.Reader.CommentPlaceholder),
+                        DiscussionLayout.ShowConsent(eligible, _consent.Value), _consent, value => Platform.Settings.Set(consentKey, value),
+                        Loc.Get(p.Replies ? Strings.Podcast.Reader.PostReply : Strings.Podcast.Reader.Submit),
+                        DiscussionLayout.CanSubmit(_consent.Value, _busy.Value, _text.Value), Submit);
+                else closed = Loc.Get(DiscussionLayout.AlreadyCommented(page.Eligibility) ? Strings.Podcast.Reader.OneComment
+                    : DiscussionLayout.CommentsDisabled(page.Eligibility) ? Strings.Podcast.CommentsOff : Strings.Podcast.Reader.Eligibility);
+                return ViewSlots.View(Contracts.ViewKeys.EpisodeDiscussion, new Contracts.DiscussionThreadProps(
+                    p.Replies ? null : Loc.Get(Strings.Podcast.Reader.Comments) + " (" + page.Total + ")", cards,
+                    page.Items.Length == 0 ? Loc.Get(Strings.Podcast.Reader.NoComments) : null, more, composer, closed,
+                    _error.Value.Length > 0 ? _error.Value : null, Continuation: false));
             }
 
             void Refresh()
@@ -255,7 +105,7 @@ internal static partial class PodcastReaderUI
             var p = UseProps<CommentPageProps>();
             return _open.Value
                 ? Embed.Comp(p, static () => new CommentPage())
-                : Button.Subtle(Loc.Get(Strings.Podcast.Reader.LoadMore), () => _open.Value = true) with { AlignSelf = FlexAlign.Start };
+                : ViewSlots.View(Contracts.ViewKeys.EpisodeLoadMore, new Contracts.LoadMoreProps(() => _open.Value = true, AlignStart: true));
         }
     }
 
@@ -266,17 +116,19 @@ internal static partial class PodcastReaderUI
             var p = UseProps<CommentPageProps>(); uint epoch = Entities.ScopeEpoch.Value;
             var resource = UseResource(ct => Platform.Args.Fake ? Task.FromResult(PodcastReaderFixtures.Comments) : Spotify.Podcasts.CommentsAsync(epoch, p.Uri, p.Token, p.Replies, ct),
                 new Spotify.Podcasts.Page<Spotify.Podcasts.Comment>([], "", 0, "", 0), epoch + ":" + p.Uri + ":" + p.Token);
-            return Skel.Region(resource.Loadable, () => CommentBodies(CommentSeed, p.Replies), Build,
+            return Skel.Region(resource.Loadable, () => CommentSeedView(p.Replies), Build,
                 onFailed: () => Failed(resource.Refresh));
             Element Build(Spotify.Podcasts.Page<Spotify.Podcasts.Comment> page)
             {
                 if (!page.Ok) return Failed(resource.Refresh);
-                var rows = new List<Element>();
-                foreach (var item in page.Items)
-                    rows.Add(Embed.Comp(new CommentProps(item, p.Replies, p.Refresh), static () => new CommentCard()) with { Key = item.Uri });
-                if (page.NextToken.Length > 0 && page.NextToken != p.Token)
-                    rows.Add(Embed.Comp(p with { Token = page.NextToken }, static () => new MoreComments()) with { Key = "more:" + page.NextToken });
-                return new BoxEl { Direction = 1, Gap = Spacing.M, MinWidth = 0, Children = rows.ToArray() };
+                var cards = new Element[page.Items.Length];
+                for (int i = 0; i < cards.Length; i++)
+                    cards[i] = Embed.Comp(new CommentProps(page.Items[i], p.Replies, p.Refresh), static () => new CommentCard()) with { Key = page.Items[i].Uri };
+                Element? more = page.NextToken.Length > 0 && page.NextToken != p.Token
+                    ? Embed.Comp(p with { Token = page.NextToken }, static () => new MoreComments()) with { Key = "more:" + page.NextToken }
+                    : null;
+                return ViewSlots.View(Contracts.ViewKeys.EpisodeDiscussion, new Contracts.DiscussionThreadProps(
+                    null, cards, null, more, null, null, null, Continuation: true));
             }
         }
     }
@@ -304,32 +156,17 @@ internal static partial class PodcastReaderUI
                     new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup));
                 handle.Value.ClosedAction = () => handle.Value = null;
             }
-            var rows = new List<Element>();
-            if (c.Sensitive && !_revealed.Value)
-                rows.Add(Button.Subtle(Loc.Get(Strings.Podcast.Reader.Reveal), () => _revealed.Value = true)
-                    with { AlignSelf = FlexAlign.Start });
-            else rows.Add(CommentText(c.Text));
-            var actions = new List<Element>
-            {
-                ToolTip.Wrap(ReactionPill(session, () => Open(reactionAnchor)) with
-                    { OnRealized = h => reactionAnchor.Value = h }, Loc.Get(Strings.Podcast.Reader.Reactions)),
-            };
-            // Reply is the VERB, with no count in it — the count belongs to the disclosure below. It opens the thread
-            // (which is where the reply composer lives); the disclosure toggles the same thread for reading.
-            if (!p.Reply)
-                actions.Add(Button.Subtle(Loc.Get(Strings.Podcast.Reader.Reply),
-                    () => _replies.Value = true, isEnabled: !c.ReplyLimit));
-            rows.Add(new BoxEl
-            {
-                Direction = 0, Gap = Spacing.XS, Wrap = true, MinWidth = 0,
-                AlignItems = FlexAlign.Center, Children = actions.ToArray(),
-            });
-            if (DiscussionLayout.ShowReplies(p.Reply, c.Replies)) rows.Add(RepliesDisclosure(c, _replies));
-            if (_replies.Value && !p.Reply)
-                rows.Add(ReplyThread(c.ReplyLimit
+            var pill = PodcastReactionRules.Pill(session.Counts.Value, session.Current.Value, session.Total.Value);
+            // Reply is the VERB, with no count in it: it opens the thread (where the reply composer lives); the disclosure toggles the same thread
+            // for reading. A reply's own replies render flat, so only a top-level comment mounts one.
+            Element? thread = _replies.Value && !p.Reply
+                ? c.ReplyLimit
                     ? Embed.Comp(new CommentPageProps(c.Uri, true, "", 0, p.Refresh), static () => new CommentPage())
-                    : Embed.Comp(new DiscussionProps(c.Uri, true), static () => new Discussion())));
-            return CommentFrame(c, p.Reply, rows.ToArray());
+                    : Embed.Comp(new DiscussionProps(c.Uri, true), static () => new Discussion())
+                : null;
+            return ViewSlots.View(Contracts.ViewKeys.EpisodeCommentCard, new Contracts.CommentCardProps(
+                Map(c), p.Reply, _revealed.Value, () => _revealed.Value = true, pill, () => Open(reactionAnchor),
+                h => reactionAnchor.Value = h, () => _replies.Value, () => _replies.Value = true, () => _replies.Value = !_replies.Peek(), thread));
         }
     }
 
@@ -376,40 +213,19 @@ internal static partial class PodcastReaderUI
                     session.Counts.Value = page.ReactionCounts;   // the pill's emoji, straight from the roster
                 }
             });
-            var palette = new Element[2];
-            for (int row = 0; row < 2; row++)
+            var palette = new Contracts.ReactionOption[PodcastReactionRules.Palette.Length];
+            for (int index = 0; index < palette.Length; index++)
             {
-                var buttons = new List<Element>();
-                for (int column = 0; column < 4; column++)
-                {
-                    int index = row * 4 + column;
-                    string emoji = PodcastReactionRules.Palette[index];
-                    buttons.Add(ToolTip.Wrap(Button.Subtle(emoji, () => React(emoji), isEnabled: !session.Busy.Value && !Platform.Args.Fake) with
-                    {
-                        Width = 56, Height = 36, Grow = 1, Basis = 0, MinWidth = 0,
-                        Fill = PodcastReactionRules.Remove(session.Current.Value, emoji) ? Tok.FillSubtleSecondary : ColorF.Transparent,
-                        BorderWidth = PodcastReactionRules.Remove(session.Current.Value, emoji) ? 1 : 0, BorderColor = Tok.AccentDefault,
-                    }, ReactionName(index), grow: 1));
-                }
-                palette[row] = new BoxEl { Direction = 0, Gap = Spacing.XS, MinWidth = 0, Children = buttons.ToArray() };
+                string emoji = PodcastReactionRules.Palette[index];
+                palette[index] = new Contracts.ReactionOption(emoji, ReactionName(index),
+                    PodcastReactionRules.Remove(session.Current.Value, emoji), !session.Busy.Value && !Platform.Args.Fake);
             }
-            var body = new List<Element>
-            {
-                new TextEl(Loc.Get(Strings.Podcast.Reader.Reactions)) { Size = 14, Weight = 600, Color = Tok.TextPrimary },
-                new BoxEl { Direction = 1, Gap = Spacing.XS, Shrink = 0, MinWidth = 0, Children = palette },
-            };
-            if (session.Error.Value.Length > 0)
-                body.Add(new TextEl(session.Error.Value) { Size = 12, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0 });
-            body.Add(Skel.Region(resource.Loadable,
+            var roster = Skel.Region(resource.Loadable,
                 () => ReactionRoster(ReactionSeed, filter, session, revision),
                 page => page.Ok ? ReactionRoster(page, filter, session, revision) : Failed(resource.Refresh),
-                onFailed: () => Failed(resource.Refresh)));
-            return new BoxEl
-            {
-                Direction = 1, Width = Math.Min(320, Math.Max(1, viewport.Width - 24)),
-                Height = Math.Min(420, Math.Max(1, viewport.Height - 32)), MinHeight = 0, MinWidth = 0,
-                Padding = Edges4.All(Spacing.M), Gap = Spacing.S, ClipToBounds = true, Children = body.ToArray(),
-            };
+                onFailed: () => Failed(resource.Refresh));
+            return ViewSlots.View(Contracts.ViewKeys.EpisodeReactionFlyout, new Contracts.ReactionFlyoutProps(
+                palette, React, session.Error.Value, roster, viewport.Width, viewport.Height));
 
             async void React(string emoji)
             {
@@ -448,35 +264,21 @@ internal static partial class PodcastReaderUI
 
         Element ReactionRoster(Spotify.Podcasts.Page<Spotify.Podcasts.Reaction> page, string filter, ReactionSession session, int revision)
         {
-            var filters = new List<Element>
+            var filters = new List<Contracts.ReactionFilter>
             {
-                Filter(Loc.Get(Strings.Podcast.Reader.ReactionAll) + " " + page.Total, ""),
+                new(Loc.Get(Strings.Podcast.Reader.ReactionAll) + " " + page.Total, "", filter == ""),
             };
             foreach (var count in page.ReactionCounts)
-                if (count.Count > 0) filters.Add(Filter(count.Emoji + " " + count.Count, count.Emoji));
-            return new BoxEl
-            {
-                Direction = 1, Grow = 1, Basis = 0, MinHeight = 0, MinWidth = 0, Gap = Spacing.S, Children =
-                [
-                    new BoxEl { Direction = 0, Wrap = true, Gap = Spacing.XS, Shrink = 0, MinWidth = 0, Children = filters.ToArray() },
-                    ScrollView(ReactionPeople(page, new ReactionPageProps(session.Uri, "", filter, session.Epoch))) with
-                    {
-                        Grow = 1, Basis = 0, MinHeight = 0, AutoEdgeFade = true,
-                        ScrollKey = "reactions:" + session.Uri + ":" + filter + ":" + revision,
-                        Key = "participants:" + filter + ":" + revision,
-                    },
-                ],
-            };
-            BoxEl Filter(string label, string emoji) => Button.Subtle(label, () => _filter.Value = emoji) with
-            {
-                Fill = filter == emoji ? Tok.FillSubtleSecondary : ColorF.Transparent,
-                BorderWidth = filter == emoji ? 1 : 0, BorderColor = Tok.StrokeControlDefault,
-            };
+                if (count.Count > 0) filters.Add(new(count.Emoji + " " + count.Count, count.Emoji, filter == count.Emoji));
+            return ViewSlots.View(Contracts.ViewKeys.EpisodeReactionRoster, new Contracts.ReactionRosterProps(
+                filters.ToArray(), emoji => _filter.Value = emoji,
+                ReactionPeople(page, new ReactionPageProps(session.Uri, "", filter, session.Epoch)),
+                "reactions:" + session.Uri + ":" + filter + ":" + revision, "participants:" + filter + ":" + revision));
         }
     }
 
     static readonly Spotify.Podcasts.Page<Spotify.Podcasts.Reaction> ReactionSeed = new(
-        [new("\u2764\uFE0F", "Listener", "", ""), new("\uD83D\uDC4D", "Listener", "", "")], "", 2, "", 200);
+        [new("❤️", "Listener", "", ""), new("👍", "Listener", "", "")], "", 2, "", 200);
 
     static Task<Spotify.Podcasts.Page<Spotify.Podcasts.Reaction>> ReadReactionPage(string uri, string token, string emoji, uint epoch, CancellationToken ct)
     {
@@ -487,23 +289,12 @@ internal static partial class PodcastReaderUI
 
     static Element ReactionPeople(Spotify.Podcasts.Page<Spotify.Podcasts.Reaction> page, ReactionPageProps props)
     {
-        var rows = new List<Element>();
-        foreach (var item in page.Items)
-            rows.Add(new BoxEl
-            {
-                Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0,
-                Padding = new Edges4(0, Spacing.S, 0, Spacing.S), Children =
-                [
-                    PersonPicture.Create("", 28, displayName: item.Author, imageSourcePath: item.Avatar) with { Shrink = 0 },
-                    new TextEl(item.Author.Length > 0 ? item.Author : Loc.Get(Strings.Podcast.Reader.Anonymous))
-                        { Size = 13, Grow = 1, Basis = 0, MinWidth = 0, Wrap = TextWrap.Wrap, Color = Tok.TextPrimary },
-                    new TextEl(item.Emoji) { Size = 18 },
-                ],
-            });
-        if (rows.Count == 0) rows.Add(Quiet(Loc.Get(Strings.Podcast.Reader.Empty)));
-        if (page.NextToken.Length > 0 && page.NextToken != props.Token)
-            rows.Add(Embed.Comp(props with { Token = page.NextToken }, static () => new MoreReactions()) with { Key = page.NextToken });
-        return new BoxEl { Direction = 1, Gap = Spacing.XS, MinWidth = 0, Children = rows.ToArray() };
+        var people = new Contracts.ReactionPerson[page.Items.Length];
+        for (int i = 0; i < people.Length; i++) people[i] = new(page.Items[i].Emoji, page.Items[i].Author, page.Items[i].Avatar);
+        Element? more = page.NextToken.Length > 0 && page.NextToken != props.Token
+            ? Embed.Comp(props with { Token = page.NextToken }, static () => new MoreReactions()) with { Key = page.NextToken }
+            : null;
+        return ViewSlots.View(Contracts.ViewKeys.EpisodeReactionPeople, new Contracts.ReactionPeopleProps(people, more));
     }
 
     internal sealed class MoreReactions : Component
@@ -513,7 +304,7 @@ internal static partial class PodcastReaderUI
         {
             var p = UseProps<ReactionPageProps>();
             return _open.Value ? Embed.Comp(p, static () => new ReactionPage())
-                : Button.Subtle(Loc.Get(Strings.Podcast.Reader.LoadMore), () => _open.Value = true);
+                : ViewSlots.View(Contracts.ViewKeys.EpisodeLoadMore, new Contracts.LoadMoreProps(() => _open.Value = true, AlignStart: false));
         }
     }
     internal sealed class ReactionPage : Component

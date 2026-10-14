@@ -10,7 +10,7 @@
 // are DECISIONS the core host and the table both read and the skeleton must agree with row for row, so they stay core, pure and unit-tested
 // (`DetailRailPolicyTests`, `DetailSkeletonGeometryTests`); the views are handed their results through the props, and no view compares a width with
 // a number (WVTH013). M8 moves the rail policy and its state into Classic's own options (plan §5.3); the hero's per-kind knobs
-// (`SlimHead` / `HoverHeart` / `PlainRows`) are Liked's (T9c) and are not on this branch yet.
+// (`SlimHead` / `HoverHeart` / `PlainRows`) were never ported to this branch (T9c found no members to move).
 
 using FluentGpu.Animation;
 using FluentGpu.Dsl;

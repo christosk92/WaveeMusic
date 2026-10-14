@@ -2,8 +2,8 @@
 // THE SHARED DETAIL FRAME (ch 03 §1.2), CORE HALF: Identity (+ Identity.For(Album)), FrameActions, FrameSlots, FrameSpec and
 // Frame — the 4-mode responsive ladder with both anti-flicker fail-safes, the Hero page-layout override, the per-scope rail
 // prefs + the Splitter grip + resist fade, the page tone plane and shell tint leaves, the accent and the page-body drop
-// target — plus the page-facing builders every detail page and library pane makes its pieces from (NoticeBar, PlayButton,
-// RailSatellite*, Satellite, the More button, the row helpers, the billed-artist line box and ArtistLine).
+// target — plus the page-facing builders every detail page and library pane makes its pieces from (NoticeBar,
+// Satellite, the More button, the row helpers, the billed-artist line box and ArtistLine).
 //
 // T9a (themes plan 6.1): the PICTURE of the frame is Classic's. `FrameHost.Render` decides and builds ONE `DetailFrameProps`, and the
 // registered `Detail.Frame` view (`Themes\Classic\Structure\Views\Detail\ClassicDetailFrame.cs`) arranges the notice strip, the content
@@ -15,8 +15,8 @@
 // Podcast rework wave P2 (podcast-show-rework-implementation.md §5.4): six APPENDED FrameSlots (Badges, Rating, Ledger,
 // Primary, Satellites, Topics) with their insertion points in the rail and in the vertical show header, an episode's rail
 // led by its show link (the Attribution slot), and the skeleton twin reserving each declared slot — both columns walk the
-// ONE row model in Detail.cs §8b. The satellite builders (RailSatellite / RailSatelliteSave / RailSatelliteMore) and the
-// labeled PlayButton are what a page's slots are made of.
+// ONE row model in Detail.cs §8b. The satellite builders (`ClassicDetailKit.RailSatellite*`, T9c) and the labeled
+// `Controls.PlayButton` are what a page's slots are made of.
 //
 // Role: UI (the host is core; the picture is the structure's)
 // Owner: M
@@ -304,11 +304,11 @@ public static partial class Detail
         /// <summary>The played ledger (<c>Controls.LedgerBar</c> + its counts line), under the meta line. Reserved 26.</summary>
         public Func<float, Element>? Ledger { get; init; }
         /// <summary>The CTA's primary, called with the page ACCENT thunk; REPLACES the Play button when present (Follow,
-        /// Resume · 17 min left, Play latest, Play preview — build it with <see cref="PlayButton"/>'s label/glyph).</summary>
+        /// Resume · 17 min left, Play latest, Play preview — build it with <c>Controls.PlayButton</c>'s label/glyph).</summary>
         public Func<Func<ColorF>, Element>? Primary { get; init; }
         /// <summary>The CTA's satellites, KEYED; REPLACES the fixed [heart][Share][⋯] group when present, and they wrap one
-        /// by one after the primary, 8 apart (<see cref="RailSatellite"/>, <see cref="RailSatelliteSave"/>,
-        /// <see cref="RailSatelliteMore"/> build them at <see cref="RailLayout.SatelliteSize"/>).</summary>
+        /// by one after the primary, 8 apart (<c>ClassicDetailKit.RailSatellite</c>, <c>RailSatelliteSave</c>,
+        /// <c>RailSatelliteMore</c> build them at <see cref="RailLayout.SatelliteSize"/>).</summary>
         public Func<Element[]>? Satellites { get; init; }
         /// <summary>The topic words (<c>Controls.Words.Links</c>), under the CTA. Two lines reserved; the rail only (the
         /// vertical header has no topics).</summary>
@@ -1289,37 +1289,6 @@ public static partial class Detail
 
     /// <summary>The brush budget every accent consumer shares — a VALUE under reduced motion (0 ⇒ an instant swap).</summary>
     static float AccentTransitionMs => Design.Reduced ? 0f : Design.Motion.Standard;
-
-    /// <summary>THE detail primary (Workstream B): <see cref="Controls.PlayButton(Func{ColorF}, Action, string?, string?)"/>
-    /// at the page's accent thunk — a stock 32/r4 <c>Button</c>, tinted via <c>Button.ButtonPalette.ForAccent</c>, which
-    /// itself re-tints on every render, so a grading landing cross-fades the fill instead of snapping it.
-    /// <paramref name="label"/>/<paramref name="glyph"/> (default "Play" / ▶) make it a page's
-    /// <see cref="FrameSlots.Primary"/>: "Resume · 17 min left", "Play latest", Follow with <c>Icons.Add</c>.
-    /// <para>Renamed from <c>PlayPill</c> (Workstream B migration group C).</para></summary>
-    public static Element PlayButton(Func<ColorF> accent, Action onClick, string? label = null, string? glyph = null)
-        => Controls.PlayButton(accent, onClick, label, glyph);
-
-    /// <summary>A page's SATELLITE icon action (the <see cref="FrameSlots.Satellites"/> building block): the standard
-    /// <see cref="Controls.IconAction"/> at <see cref="RailLayout.SatelliteSize"/>, named for its tooltip. A null
-    /// <paramref name="onClick"/> draws it DISABLED (plan D-10: a write with no captured endpoint ships visible, with
-    /// its reason as the name). Key it at the call site.
-    /// <para>Workstream B: was a round 36/40 FAB (<c>Fab</c>); the satellite ladder is now the standard 32/r4 icon
-    /// button, so it reads as an ordinary rail action rather than media chrome.</para></summary>
-    public static Element RailSatellite(string glyph, string name, Action? onClick)
-    {
-        BoxEl fab = Fab(glyph, onClick, RailLayout.SatelliteSize, 16f);
-        return Controls.Named(onClick is null ? fab with { IsEnabled = false, Cursor = null } : fab, name);
-    }
-
-    /// <summary>The heart as a satellite: <c>Controls.SaveButton</c> at <see cref="RailLayout.SatelliteSize"/>, inked by the
-    /// page's ambient accent (the frame provides it), keyed on the uri (props freeze at mount).</summary>
-    public static Element RailSatelliteSave(string uri, string name)
-        => Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = name, Glyph = 16f, Box = RailLayout.SatelliteSize })
-            with { Key = "save:" + uri };
-
-    /// <summary>The ⋯ as a satellite: the frame's lazily-built More menu at <see cref="RailLayout.SatelliteSize"/>.</summary>
-    public static Element RailSatelliteMore(Func<ContextMenuModel?> menu)
-        => MoreButton(menu, RailLayout.SatelliteSize, 16f, round: true) with { Key = "rail:more" };
 
     /// <summary>The hero's quiet secondary action: the standard 32/r4 <see cref="Controls.IconAction"/>, and a tooltip
     /// naming it. <paramref name="glyphSize"/> is accepted for call-site compatibility; the icon button's own glyph

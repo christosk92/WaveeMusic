@@ -310,7 +310,7 @@ internal static partial class ClassicDetailFrame
     {
         var actions = new List<Element>(5)
         {
-            Detail.PlayButton(spec.Accent, spec.PlayAll ?? DetailVerbs.PlayContext(id.Subject)) with { Key = "vhero-play" },
+            Controls.PlayButton(spec.Accent, spec.PlayAll ?? DetailVerbs.PlayContext(id.Subject)) with { Key = "vhero-play" },
         };
         if (acts.Shuffle is { } shuffle)
             actions.Add(Detail.Satellite(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle) with { Key = "vhero-shuffle" });

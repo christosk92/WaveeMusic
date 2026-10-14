@@ -5,6 +5,8 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
+using Contracts = Wavee.Theming.Contracts;
+using ViewSlots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -75,12 +77,12 @@ internal static partial class PodcastReaderUI
             var read = UseResource(ct => Platform.Args.Fake ? Task.FromResult(new Spotify.Podcasts.Mutation(false, 404)) : Spotify.Podcasts.ReadSavedAsync(ct), new Spotify.Podcasts.Mutation(false, 0), DepKey.From((int)epoch));
             bool pending = read.Loadable.State.Value == (byte)LoadState.Pending || Spotify.Podcasts.SavedBusy;
             if (!Spotify.Podcasts.SavedReady)
-                return Detail.RailSatellite(Icons.Heart, Loc.Get(pending ? Strings.Podcast.Reader.Save : Strings.Podcast.Reader.SaveUnavailable),
-                    pending ? null : read.Refresh);
+                return ViewSlots.View(Contracts.ViewKeys.EpisodeSave, new Contracts.EpisodeSaveProps(Icons.Heart,
+                    Loc.Get(pending ? Strings.Podcast.Reader.Save : Strings.Podcast.Reader.SaveUnavailable), pending ? null : read.Refresh));
             bool saved = e.IsValid && Spotify.Podcasts.IsSaved(e);
-            return Detail.RailSatellite(saved ? Icons.HeartFill : Icons.Heart,
+            return ViewSlots.View(Contracts.ViewKeys.EpisodeSave, new Contracts.EpisodeSaveProps(saved ? Icons.HeartFill : Icons.Heart,
                 Loc.Get(saved ? Strings.Podcast.Reader.RemoveSaved : Strings.Podcast.Reader.Save),
-                e.IsValid && !Spotify.Podcasts.SavedBusy ? () => Spotify.Podcasts.ToggleSaved(e) : null);
+                e.IsValid && !Spotify.Podcasts.SavedBusy ? () => Spotify.Podcasts.ToggleSaved(e) : null));
         }
     }
 
@@ -178,15 +180,9 @@ internal static partial class PodcastReaderUI
             _ = Entities.Current.Shows.Changed.Value;
             var show = Entities.Current.Shows.TryGetSlot(p.Subject.Id, out int slot) ? new Show(slot) : default;
             int rating = show.IsValid ? show.MyRating : 0;
-            return new BoxEl
-            {
-                Direction = 1, Gap = Spacing.S, Width = 250, Padding = Edges4.All(Spacing.M), Children =
-                [
-                    Heading(Strings.Podcast.Rate.Title(show.IsValid ? show.Title : "")),
-                    Controls.StarRow(rating, _busy.Value || Platform.Args.Fake ? null : value => Submit(value), 24, p.Tone),
-                    Quiet(_error.Value),
-                ],
-            };
+            return ViewSlots.View(Contracts.ViewKeys.EpisodeRating, new Contracts.ShowRatingProps(
+                Strings.Podcast.Rate.Title(show.IsValid ? show.Title : ""), rating,
+                _busy.Value || Platform.Args.Fake ? null : value => Submit(value), p.Tone, _error.Value));
             async void Submit(int value)
             {
                 _busy.Value = true; _error.Value = "";

@@ -803,7 +803,7 @@ spec can carry newer page builders; a view that skipped on an "equal" record wou
 to another instance (the view re-runs exactly when the host re-rendered, which is when the tree used to be rebuilt). `DetailHeroProps` is the one
 that compares by data and by the reference of the table's pieces: the table owns that gate.
 
-**What the pages keep calling.** The page-facing builders are still `Detail`'s (`PlayButton`, `RailSatellite*`, `MoreButton`, `ArtistLine`,
+**What the pages keep calling.** The page-facing builders are still `Detail`'s (`MoreButton`, `ArtistLine`,
 `RailArtistLineBox`, `NoticeBar`, the `Row` / `LateRow` helpers, the band helpers `Band` / `BandTitle` / `Pivot`): the album and show panes, the artist,
 profile and episode pages build from them, so they are T9b / T9c / T10's seam. A view may not name `Shell`, `Playback`, `Entities` or `Store`
 (WVTH002): what a detail view must do that touches them is `DetailVerbs` (`NavigateKey`, `OpenOwner`, `PlayContext`, `ChartCaptionText`).
@@ -818,6 +818,90 @@ parallax and band reveal, and the rail's row FLIP and fade-up are unchanged.
 facts are `Wavee.ShellTests\DetailFrameMountedTests.cs`: Classic is the registered template of every key, the real shell draws the two-column arm at a wide
 window and the vertical arm under the overlay at a narrow one, the rail's cover fills the column less the side pads with the rows in the row model's
 order, the collapsed strip is 96 DIP, and the insights toggle's button mounts through its own key.
+
+### The Liked Songs page (T9c)
+
+The Liked page is the shared detail frame (T9a) plus three pictures of its own, each over a core host: the generated cover, the "Cover style" picker with
+its flyout, and the chip rail above the list. `User.LikedPage` keeps what decides (the scope epoch, the demand rules, the identity, the chip memo, the
+table profiles, the verbs), and `User.LikedCover`'s hosts keep the snapshot gate (`LikedSnapshot`: the effective style, the newest-first distinct tiles and
+their content key, the count stated only once the liked edge is Complete), the demand and the persisted pick. The views are handed values, never the edge.
+
+| Key | Props | Core host | Classic template |
+|---|---|---|---|
+| `Liked.Cover` | `LikedCoverProps` (size, radius, morph id, effective style, tiles, tile key, count; equal by scalars and the tile KEY, never the array) | `User.LikedCoverArt` (`Entities\User.Cover.cs`): the snapshot memo and the demand; `LikedCover` / `LikedArtwork` / `LikedChipArt` / `LikedToneAnchorUrl` stay the contract surface | `ClassicLikedCover.CoverTemplate`: the site ladder (`LikedCoverRules.Site`), the nine treatments (`ClassicLikedTreatments`, one 304-DIP authoring canvas scaled to the size), the palette leaves (`ClassicLikedLeaves`: the only nodes that read `Palette.Watch`), the stock PNG and the Wall / Marquee ambient loops (the view owns their hooks: one unconditional order on every path) |
+| `Liked.CoverPicker` | `LikedCoverPickerProps` (size, radius, morph id, the core cover element, the flyout builder) | `User.LikedCover(picker: true)` builds the props | `ClassicLikedCover.PickerTemplate`: the cover under an on-media "Cover style" pill whose reveal is a bound opacity (hover, focus or an open flyout); Down / F4 open the flyout |
+| `Liked.CoverStyleFlyout` | `LikedCoverStyleFlyoutProps` (tiles, tile key, count, the persisted slot, `Apply`) | `User.LikedCoverStyleFlyout`: the snapshot (read even while the style is Stock), the demand, the persisted pick (idempotent: the strip fires on every rove) | `ClassicLikedCover.FlyoutTemplate`: the eyebrow, the three-wide radio grid of LIVE miniatures (an unfed style shows the stock cover at .45 and stays selectable), the note |
+| `Liked.ChipBar` | `LikedChipBarProps` (titles, the evidence prefix, the selected tag, the scroll key, `SelectAll`, `Select`) | `User.LikedChipBar`: the table's live filter (`Track.TableLiveSlot`), the selected tag, the two verbs | `ClassicLikedChipBar.Template`: "All" first, exclusive selection, re-tapping the active chip clears it, an un-evidenced chip disabled as one tail; no titles is a zero-hit placeholder |
+
+**Inks over artwork are the on-media ladder (P21).** The name chip's word and glyph, the lens rim and sheen, the Tone heart and its count are
+`R.OnMedia.Ink`, the scrims `R.OnMedia.ScrimRest`: theme-invariant by design (a Rainbow cover is every luminance at once). The plates and washes
+(`#131318`, the wall's vignette, Marquee's and Stack's ground, the badge disc and its near-black glyph) are artwork, not ink, so they are imagery
+constants in `Rules\ClassicLikedRules.cs`.
+
+**What stays core, and why.** `LikedCoverRules` (styles, tile rule, site ladder, picker order, hue order, minimum tiles), the snapshot and its gate,
+`User.LikedToneAnchorUrl` (the page tone follows the newest tile), the chip set (`LikedFactsRules.ChipSet`), the lens header and the facts panel
+(`User.LensHeader`, `User.FactsPanel`: the playlist page mounts the same two, so they are T9b's seam), the empty state (`Controls.Vacancy`, shared) and
+the table's filter. `Detail.Config.SlimHead` / `HoverHeart` / `PlainRows` (PR 205) are not on this branch, so there was nothing to move.
+
+**Tests.** The ids, the registration and the equality are `Wavee.Tests\LikedContractTests.cs`; the pure rules stay `LikedCoverRulesTests`,
+`LikedPageRulesTests`, `LikedFactsRulesTests`. The mounted facts are `Wavee.ShellTests\LikedMountedTests.cs`: Classic is the registered template of every
+key, a treatment mounts its canvas keyed by its style (and its leaves), an unfed Wall below the floor is not a treatment, the stock cover has no canvas,
+the picker mounts the cover under its pill, and the chip rail stands "All" first in title order.
+
+### The podcast show page (T9c)
+
+The show page is the shared detail frame (T9a) with a rail of podcast slots on the left and the episode reader on the right. Its pictures are ONE style, not views:
+the reader is a bound list with a persistent sticky prefix, a reveal region per head and per row, and skeletons that derive their shimmer from a PURE builder (the
+skeleton deriver cannot run a view slot), so the core hosts keep every hook and call pure templates while they render, exactly as the list surfaces do (T8c).
+
+| Key (id) | Contract | Core half | Classic |
+|---|---|---|---|
+| `StyleKeys.ShowReader` (`Show.Reader`) | `ShowReaderStyle`: the rail slots `Primary`, `Ledger`, `Rating`, `Badges`, `Topics`, `Publisher`, `Satellites`; the library pane's `Pane`; the reader's `Toolbar`, `HeadShell`, `Head`, `EpisodesHeader`, `Group`, `StickyMonth`, `YearStrip`, `YearReserve`, `Foot`, `Seed` | `Show.PageHost` (the frame spec, the demand, the persisted view, the slot sets by presence), the rail slot components (`PrimarySlot`, `LedgerSlot`, `RatingSlot` with the rate flyout's handle, `BadgesSlot`, `TopicsSlot`: tone memo, facts, verbs), `Show.ReaderHost` (the model and its one snapshot, the toolbar stage and its measures, the selection, the date index and sticky month, the analytic extents and `CheckExtent`, the reveal gates), `RailBody`, `VisitHead`, `EpisodesHeader`, `ReaderFoot` (stamps and args), `Show.Pane` (the selection signal, the memo pair, the swap transition, the keys) | `ClassicShow` (`Views\Show\ClassicShowReader.cs`, `ClassicShowHead.cs`, `ClassicShowRail.cs`) over `Rules\ClassicShowRules.cs` |
+
+- **What stayed core, and why.** The decisions the list, the skeleton and the rows must agree on row for row are core, pure and unit-tested: `ShowReaderRules` (the head, the primary, the
+  results mode, the item list with its marks, the head columns, the gutters, the strip's column, the rail / header / month extents and every seed), `ShowToolbarLayout`, `ShowDateIndex`,
+  `ShowCadence`, `ListenNext`, the follow write (`Controls.Library`), the trailer, `Show.MonthWordOf` (culture text shared by the month header and the sticky month) and `Show.MetaOf` (the meta
+  line's words). The sticky root of the toolbar is a RAW element in the host: a sticky root returned from a component never pins.
+- **Skeletons match real heights.** The cold seed (`Seed`: the real filter words, the "episodes" head, eight seed rows) and the head's shimmer (`HeadShell`) are the same builders as the live
+  pictures; the extents they reserve are the core's (`ShowReaderRules.SeedExtent`), and `CheckExtent` holds the arranged month and header heights to them.
+- **Episodes in the head.** The head's doors, hero and up-next cards sit behind `Episode.Reveal` (card once the identity is there, a shimmer while it comes, "unavailable - retry" on a failed ask), and
+  the new-since rows are the episode row style (`StyleKeys.EpisodeRow`) over a fixed scope; both are the core's gate over the structure's pictures.
+- **A host without a registry** logs `no style is registered for Show.Reader` once and draws nothing.
+
+**Tests.** The registration and id are `Wavee.Tests\ShowContractTests.cs`; the arithmetic stays `ShowReaderTests`, `ShowReaderShapeTests`, `PodcastShowToolbarTests`. The mounted facts (one-row toolbar,
+the reserved year strip, the pinned month, the keyed satellites) are `Wavee.ShellTests\ShowMountedTests.cs`.
+
+Also in the T9a section: "What the pages keep calling" no longer lists `PlayButton` (dropped: a one-line forward to `Controls.PlayButton`) or `RailSatellite*` (moved to
+`Views\Detail\ClassicDetailKit.cs`, the shared kit T9b also appends to).
+
+### The episode page, reader and discussion (T9c)
+
+The episode page hands the T9a frame its slots; T9c makes the slots' pictures, the reader and the discussion the structure's. The core hosts keep every
+decision and every cell: the page host and its demand effects, the saved / played / resume decisions (`Episode.Invoke`, `StartAt`, `MarkEpisode`,
+`Spotify.Podcasts.*`), the scroll spy (anchors, viewport, active section), the chapter lease and the active-chapter decision, the transcript view, the
+discussion's signals, resources, composer and reaction verbs, the reaction session and the overlay the flyout opens in, and the pure rules
+(`PodcastReaderRules`, `DiscussionLayout`, `PodcastReactionRules.Pill`). A host builds ONE props record per render it makes and mounts the key through
+`ViewSlots.View`; a template draws and never names `Spotify`, `Playback`, `Entities` or `Shell` (a comment crosses as `DiscussionComment`).
+
+| Key | Props | Core host | Classic template |
+|---|---|---|---|
+| `Episode.Primary` | `EpisodePrimaryProps` (the quiet line of a blocked episode, or label / playing / play) | `Episode.EpisodePrimary` (Resume vs Play vs Pause, blocked, `Invoke`) | `ClassicEpisode.Primary`: the Play button on the APP accent (never the cover tone) or the quiet line |
+| `Episode.Attribution` | `EpisodeAttributionProps` (the escaped anchor, the link verb) | `Episode.EpisodeAttribution` | the inline rich-text link row |
+| `Episode.Actions`, `Episode.Save` | `EpisodeActionsProps`, `EpisodeSaveProps` | `EpisodeActions` (mark played, copy link, the menu), `SaveEpisode` (the saved-state machine) | the rail satellites (`ClassicDetailKit.RailSatellite*`) |
+| `Episode.RailAbout` | `EpisodeRailAboutProps` | `EpisodeRailAbout` (nothing until the description answered) | the label, the divider and the 4-line clamp |
+| `Episode.Reader` | `EpisodeReaderProps` (clicks, the active signal, anchors, the four section bodies, the scroll key and handle) | `Episode.EpisodeReader` (spy, anchors, `GoToSection`) | `ClassicEpisodeReader.ReaderTemplate`: the pivot band over the scroll of stacked sections |
+| `Episode.About`, `Episode.Chapters` | `EpisodeAboutProps` (a `Loadable<string>` and its loading text), `EpisodeChaptersProps` | `AboutProps`, `ChapterReader` (lease, retry, empty, active index) | the description region with its seek list; the chapter rows |
+| `Episode.Discussion`, `.CommentCard`, `.CommentSeed`, `.LoadMore` | `DiscussionThreadProps`, `CommentCardProps`, `CommentSeedProps`, `LoadMoreProps` | `PodcastReaderUI.Discussion` / `CommentPage` / `CommentCard` / `MoreComments` | `ClassicDiscussion`: the avatar / content grid ("one left edge"), the reaction pill, the replies disclosure and rail, the composer, the quiet lines |
+| `Episode.ReactionFlyout`, `.ReactionRoster`, `.ReactionPeople` | `ReactionFlyoutProps`, `ReactionRosterProps`, `ReactionPeopleProps` | `ReactionFlyout`, `ReactionPage`, `MoreReactions` | the palette, the filter chips over the scrolling people |
+| `Episode.Rating` | `ShowRatingProps` | `PodcastReaderUI.RatingEditor` (embedded by the show page's rating slot) | title, stars, error |
+
+**Loading and failure stay the host's.** The seed is the live card's frame (`Episode.CommentSeed`), the thread, the roster and the chapters sit inside the
+hosts' `Skel.Region`, `Failed` + retry and `Quiet` stay the shared core helpers (the lyrics transcript and the saved-episodes page build the same lines).
+**Numbers** are `Themes\Classic\Structure\Rules\ClassicEpisodeRules.cs`.
+
+**Tests.** The ids and Classic's registration are `Wavee.Tests\EpisodeContractTests.cs`; the pure rules stay `DiscussionLayoutTests` and
+`PodcastReactionTests`. The mounted facts (registered templates, the thread's order, the reply rail only when handed a thread, the reader's anchors and
+section order, the chapter rows) are `Wavee.ShellTests\EpisodeMountedTests.cs`.
 
 ## 3. Options
 

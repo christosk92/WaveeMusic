@@ -6,9 +6,10 @@
 // `Skeleton.RailPlanFor`), the title rule (`VerticalLayout.RailTitleTypeFor`), the rung that picks the title cap and the description clamp
 // (the host), the accent, the play-all cell and every page slot builder.
 //
-// The page-facing helpers (`Detail.PlayButton`, `RailSatellite*`, `MoreButton`, `ArtistLine`, `RailArtistLineBox`, `NoticeBar`, the row helpers
+// The page-facing helpers (`MoreButton`, `ArtistLine`, `RailArtistLineBox`, `NoticeBar`, the row helpers
 // `Row` / `LateRow` and the share / save targets) STAY in `Detail`: the pages, the library panes and the artist page build their own pieces from
-// them, and T9b / T9c consume them as the seam. This file calls them through `Detail`.
+// them, and T9b / T9c consume them as the seam. This file calls them through `Detail`. (T9c moved the rail satellites to `ClassicDetailKit`
+// and dropped `Detail.PlayButton`, a one-line forward to `Controls.PlayButton`.)
 //
 // NAME NOTE: `Text`, `Skeleton` and `Config` are nested `Detail` classes; the aliases below keep their short names here.
 

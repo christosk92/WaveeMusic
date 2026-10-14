@@ -30,6 +30,8 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Contracts = Wavee.Theming.Contracts;
+using ViewSlots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -82,7 +84,7 @@ public readonly partial struct User
             _lensActive = () => LensActive(_lens, DetailKind.Liked);
             _computeChips = ComputeChips;
             _chipBar = () => _chips is { } chips
-                ? Embed.Comp(new LikedChipBarProps(chips, _chipScrollKey), static () => new LikedChipBar()) with { Key = "liked-chips" }
+                ? Embed.Comp(new ChipBarHostProps(chips, _chipScrollKey), static () => new LikedChipBar()) with { Key = "liked-chips" }
                 : null;
             _lensHeader = () => LensHeader(_lens, DetailKind.Liked);
             _lens.ChipTitles = () => _chips?.Value.Titles ?? [];
@@ -289,40 +291,40 @@ public readonly partial struct User
         public override int GetHashCode() => HashCode.Combine(Titles.Length, Evidenced);
     }
 
-    sealed record LikedChipBarProps(IReadSignal<LikedChipModel> Chips, string ScrollKey);
+    sealed record ChipBarHostProps(IReadSignal<LikedChipModel> Chips, string ScrollKey);
 
-    /// <summary>ONE line that scrolls (the rail's own edge fade), "All" first, EXCLUSIVE selection (All + at most one),
-    /// re-tapping the active chip clears it, and an un-evidenced curated chip rendered DISABLED as one contiguous tail —
-    /// the evidence is a prefix, so the order IS the state. Reads and writes the table's filter through
-    /// <c>Track.TableLiveSlot</c> (it is built under the table's provider). 0 DIP when there is no set (W19).</summary>
+    /// <summary>The chip rail's CORE HALF (T9c; the picture is the structure's <c>Liked.ChipBar</c>): reads and writes the table's filter
+    /// through <c>Track.TableLiveSlot</c> (it is built under the table's provider) and hands the view the titles, the evidence prefix, the
+    /// selected tag and the two verbs. No titles (no set, or no table above it) is a 0 DIP rail (W19).</summary>
     sealed class LikedChipBar : Component
     {
         Track.TableLive? _live;
         readonly Action _selectAll;
+        readonly Action<string?> _select;
 
-        public LikedChipBar() => _selectAll = () => Select(null);
+        public LikedChipBar()
+        {
+            _selectAll = () => Select(null);
+            _select = Select;
+        }
 
         public override Element Render()
         {
-            var p = UseProps<LikedChipBarProps>();
+            var p = UseProps<ChipBarHostProps>();
             var live = UseContext(Track.TableLiveSlot);
             _live = live;
             var model = p.Chips.Value;
-            if (live is null || model.Titles.Length == 0) return new BoxEl { Key = "chips:off", HitTestVisible = false };
-
-            string? selected = live.View.Value.Filters.Tag;   // subscribe: the selected chip IS filter state
-            var kids = new Element[model.Titles.Length + 1];
-            // AllChip, not AllTracks: a chip beside "Pop" and "K-Pop", where the short word reads as one of the set.
-            kids[0] = Controls.Chip(Loc.Get(Strings.Detail.Filter.AllChip), selected is null, true, _selectAll) with { Key = "chip:all" };
-            for (int i = 0; i < model.Titles.Length; i++)
+            bool on = live is not null && model.Titles.Length > 0;
+            return ViewSlots.View(Contracts.ViewKeys.LikedChipBar, new Contracts.LikedChipBarProps
             {
-                string tag = model.Titles[i];
-                bool on = string.Equals(tag, selected, StringComparison.OrdinalIgnoreCase);
-                bool available = i < model.Evidenced;
-                kids[i + 1] = Controls.Chip(tag, on, available, available ? () => Select(on ? null : tag) : null)
-                    with { Key = "chip:" + tag };
-            }
-            return Controls.ChipRail(kids, p.ScrollKey) with { Key = "chips" };
+                Titles = on ? model.Titles : [],
+                Evidenced = model.Evidenced,
+                // subscribe: the selected chip IS filter state
+                Selected = on ? live!.View.Value.Filters.Tag : null,
+                ScrollKey = p.ScrollKey,
+                SelectAll = _selectAll,
+                Select = _select,
+            });
         }
 
         void Select(string? tag)

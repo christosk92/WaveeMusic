@@ -501,7 +501,7 @@ public class LikedCoverRulesTests
 
     // ── The site ladder: what a cover of size s actually paints ─────────────────────────────────────────────────────
 
-    /// <summary>The composition's treatment floor (User.Cover.cs <c>BadgeMinSize</c>), restated because it is INJECTED
+    /// <summary>The composition's treatment floor (ClassicLikedTreatments <c>BadgeMinSize</c>), restated because it is INJECTED
     /// into <c>Site</c> — the composition owns the floor, the rules own the ladder — so this is a fixture, not a second
     /// definition.</summary>
     const float Floor = 140f;
