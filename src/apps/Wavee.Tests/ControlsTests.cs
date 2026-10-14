@@ -100,10 +100,10 @@ public class ControlsGeometryTests
     [Fact]
     public void The_recents_grid_fits_three_columns_on_a_632_page()
     {
-        Assert.Equal(200f, Wavee.HomeUi.Zones.RecentsMinCol);
-        Assert.Equal(3, GridEl.AutoFillColumnCount(632f, Wavee.HomeUi.Zones.RecentsMinCol, Spacing.M, 4));
-        Assert.Equal(4, GridEl.AutoFillColumnCount(836f, Wavee.HomeUi.Zones.RecentsMinCol, Spacing.M, 4));
-        Assert.Equal(3, GridEl.AutoFillColumnCount(835f, Wavee.HomeUi.Zones.RecentsMinCol, Spacing.M, 4));
+        Assert.Equal(200f, Wavee.Themes.Classic.ClassicHomeRules.RecentsMinCol);
+        Assert.Equal(3, GridEl.AutoFillColumnCount(632f, Wavee.Themes.Classic.ClassicHomeRules.RecentsMinCol, Spacing.M, 4));
+        Assert.Equal(4, GridEl.AutoFillColumnCount(836f, Wavee.Themes.Classic.ClassicHomeRules.RecentsMinCol, Spacing.M, 4));
+        Assert.Equal(3, GridEl.AutoFillColumnCount(835f, Wavee.Themes.Classic.ClassicHomeRules.RecentsMinCol, Spacing.M, 4));
     }
 
     [Theory]

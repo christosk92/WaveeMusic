@@ -1,6 +1,6 @@
-// ── Home/HomeScreen.cs — HomeScreen: the Home page's integration point (home rebuild, fifth pass — stock controls) ──
+// ── Home/HomeScreen.cs — HomeScreen: the Home page's CORE HOST (T10a1; home rebuild, fifth pass — stock controls) ──
 //
-// Role: UI
+// Role: CORE host (the page's picture is Classic's `Pages.Home` view: `Themes\Classic\Structure\Views\Home\ClassicHomePage.cs`)
 // Spec: docs/plans/wavee/home-rebuild-implementation.md "Fifth pass — stock controls" (Page, Sticky headers),
 //       "Seventh pass" (the facet words are the page title; no greeting headline; no pointer handler on the dim host).
 //
@@ -8,32 +8,16 @@
 // LocalizedTitles/Subtitles, Seed, BuildWash, the verdict/content logs) — see git history for why each is shaped the way
 // it is. The facet machine's state and the effects that drive it (the route-arg effect, Demand, the select path,
 // RevertRoute, RememberFollowing, Prefetch, the landing edge, the facet logs) moved to `HomeHost` (C16): this component
-// keeps the hooks and calls one host method per effect. The RENDER
-// half is rebuilt from the app's own page idiom (Artist.Page.cs ~389, Browse.Page.cs ~150): ONE plain `ScrollView`
-// column, no `ItemsView` of zones, no lanes/extents/RowAt/Tail, no width query, no parallax, no overlay InfoBar.
+// keeps the hooks and calls one host method per effect.
 //
-//   HomeScreen
-//   └─ ZStack [ Palette.ShellTint,
-//      ScrollView (Key/ScrollKey per PUBLISHED facet, Handle = _scroll)
-//        └─ centred column  Gap=XL(20)  MaxWidth=PageMaxW  Padding=(PageWide, XXL(24), PageWide, Dock.Reserve+32)
-//           │                ScrollScope=Facet.PageScope
-//           ├─ FacetRow (Facet.UI.cs: SelectorBar in R.Type.FacetTitleStyle — the facet words ARE the page title —
-//           │     · Following ToggleButton · busy ProgressBar · failure InfoBar)
-//           │     its band is `.Sticky(Facet.StuckInset, scope: Facet.PageScope)` — transparent, no acrylic
-//           └─ content  `.StickyClip(Facet.StuckBottom)` + EdgeFade(Top, 24) { WhileStuck }   (the Browse masthead idiom)
-//      (the ScrollView has EdgeCues None: its viewport top feather would fade the pinned rows)
-//                └─ SkelRegionEl(Content: keyed facet column → dim host (Opacity/HitTest binds only) → Zones.Column(model),
-//                                ShimmerSource: Zones.Column(Seed), OnFailed: Controls.Vacancy(Error, retry), Reveal None) ]
+// THE RENDER HALF IS THE THEME'S (T10a1). `Render` runs every hook in the order it always did (the route-arg effect, the demand, the
+// model and verdict computeds, the shown/words record, the selector sync, the landing edge, the following-chip prefetch, the wash claim)
+// and mounts `Pages.Home` with the model's facts: the published facet, the scroll handle and key, the facet row's props, the switch signal,
+// the pending / failed / content / seed Funcs the skeleton region reads, and the wash claim. Everything below (the one plain `ScrollView`
+// column, the facet row, the sticky-clipped zone column, the skeleton region, the zone chapters) is `ClassicHomePage` / `ClassicHomeZones`
+// now, with the same keys, the same sticky idiom and the same entrance rows.
 //
-// NO GREETING HEADLINE (owner, seventh pass): the greeting lives only in the daylist card's eyebrow (Daylist.UI.cs).
-// The page column's own gap is the 20-px facet-row → content step; the 40-px rhythm between zones is Zones.Column's.
-//
-// STICKY WITHOUT A BACKGROUND: the facet band paints nothing (live Mica); the content column under it cuts ITSELF at
-// the band's lower edge (`StickyClip(Facet.StuckBottom)`) with a top feather that arms only while the clip is engaged
-// (`EdgeFadeSpec.WhileStuck`), so content dissolves into the band, is never guillotined, and never softens at rest.
-// Unlike Browse the band is IN the scroll flow (an in-flow `.Sticky(Facet.StuckInset)` row, 12 below the viewport top),
-// so no spacer is needed above the clipped node: the clip engages exactly when the content's top reaches the pinned
-// band's lower edge. Chapter headers inside `Zones.Column` pin at `Facet.StuckBottom` under this band (Zones.UI.cs).
+// NO GREETING HEADLINE (owner, seventh pass): the greeting lives only in the daylist card's eyebrow.
 //
 // ── FACET HISTORY + DEEP LINK (owner decision, v1) ──
 //   A facet switch calls `Shell.GoTo(new Shell.Route(Shell.RouteKind.Home, arg: FacetRoute.ArgOf(facet), Tab: tab))`.
@@ -59,10 +43,12 @@ using FluentGpu.Scroll.Effects;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using Wavee;
-using static FluentGpu.Dsl.Ui;
+using Wavee.Theming.Contracts;
+using Slots = FluentGpu.Theming.Slots;
 
 namespace Wavee.HomeUi;
 
+[CoreHost]
 public sealed class HomeScreen : Component
 {
     /// <summary>F23/W0: the facet arg is a RE-PUSHED PROP, not a read off a Home-only Shell static — the Wave-0
@@ -131,62 +117,27 @@ public sealed class HomeScreen : Component
         // render for nothing.
         var rowProps = _host.RowProps;
 
-        // smoothResize false: a page-level region whose branches differ by hundreds of DIP lands its height at once.
-        // Reveal None: the zones own their entrance (Design.Entrance rows in Zones.Column); the shimmer is the SAME tree
-        // rendered against the seed, so the skeleton is derived from the real page, never authored by hand.
-        Element region = new SkelRegionEl(
-            Pending: () => verdict.Value == LoadState.Pending,
-            Failed: () => verdict.Value == LoadState.Failed,
-            Content: () => FacetContent(model.Value ?? Seed(facetSig.Value, layout.Doc.Value), overlay),
-            ShimmerSource: () => Zones.Column(Seed(facetSig.Value, layout.Doc.Value), facetSig.Value, overlay),
-            OnFailed: () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: _host.RetryFirstLoad),
-            Reveal: SkelReveal.None, Style: SkeletonStyle.Default, Group: this, SmoothResize: false);
-
-        // THE CLIP IS THE CONTRACT: the band paints nothing, so the content cuts itself at the band's lower edge and
-        // feathers that cut exactly while the clip is engaged (Browse.Page.cs's directory / Artist.Page.cs's magazine).
-        Element content = new BoxEl
-        {
-            Key = "home:content", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-            EdgeFade = new EdgeFadeSpec(EdgeMask.Top, Detail.VerticalLayout.StickyFadeBand) { WhileStuck = true },
-            Children = [region],
-        }.StickyClip(Facet.StuckBottom);
-
-        // The centred page column (Artist.Page.cs's Magazine): Grow toward the free width, capped at PageMaxW, the wide
-        // gutter, the dock's reserve under the last section. It NAMES the sticky scope the facet band pins against. The
-        // facet row is the page title, so the column opens 24 below the top and steps 20 to the content (the prototype's
-        // facet-row → first zone step); the zones space themselves at SectionGapWide inside Zones.Column.
+        // The page's picture is the theme's: the scroll column, the facet row, the sticky-clipped zone column and the skeleton region
+        // (Reveal None: the zones own their entrance; the shimmer is the SAME tree rendered against the seed, so the skeleton is derived
+        // from the real page, never authored by hand). The host hands over what it decided; every Func is read inside the region, as before.
         string facet = facetSig.Value;
-        Element column = new BoxEl
+        return Slots.View(ViewKeys.HomePage, new HomePageProps
         {
-            Key = "home:column", Direction = 1, Gap = Spacing.XL,
-            Grow = 1f, Shrink = 1f, MinWidth = 0f, Basis = 0f, MaxWidth = R.Space.PageMaxW,
-            AlignItems = FlexAlign.Stretch, ScrollScope = Facet.PageScope,
-            Padding = new Edges4(Spacing.PageWide, Spacing.XXL, Spacing.PageWide, R.Space.DockReserve + Spacing.XXXL),
-            Children =
-            [
-                Embed.Comp(rowProps, static () => new FacetRow()) with { Key = "home:facet-row" },
-                content,
-            ],
-        };
-
-        // Keyed per PUBLISHED facet (Artist.Page.cs:389 idiom): each facet keeps its own scroll offset under its own
-        // ScrollKey, and the handle feeds the Refreshing swap's at-top test (FacetSwitch.Landed).
-        Element scroll = ScrollView(new BoxEl { Direction = 0, Justify = FlexJustify.Center, MinWidth = 0f, Children = [column] })
-            with
-            {
-                Key = "home:scroll:" + facet, Grow = 1f, MinWidth = 0f,
-                ScrollKey = scope + "home:" + facet,
-                Handle = _scroll,
-                // No viewport edge cue: its 40-DIP top feather would fade the pinned facet band and chapter headers.
-                // The page dissolves its own content under them (StickyClip + WhileStuck), as Artist.Page does.
-                EdgeCues = ScrollEdgeCues.None,
-            };
-
-        return new BoxEl
-        {
-            Grow = 1f, Direction = 1, ZStack = true,
-            Children = [BuildWash(() => model.Value), scroll],
-        };
+            Facet = facet,
+            ScrollKey = scope + "home:" + facet,
+            Scroll = _scroll,
+            Group = this,
+            FacetRow = rowProps,
+            Switch = _host.Switch,
+            Pending = () => verdict.Value == LoadState.Pending,
+            Failed = () => verdict.Value == LoadState.Failed,
+            Content = () => model.Value ?? Seed(facetSig.Value, layout.Doc.Value),
+            Seed = () => Seed(facetSig.Value, layout.Doc.Value),
+            OnContent = NoteContent,
+            RetryFirstLoad = _host.RetryFirstLoad,
+            Overlay = overlay,
+            Wash = BuildWash(() => model.Value),
+        });
     }
 
     // ══ THE SCREEN MODEL (derived, never published by hand) ═══════════════════════════════════════════════════════
@@ -282,45 +233,27 @@ public sealed class HomeScreen : Component
         _ => null,
     };
 
-    // ══ RENDER ═══════════════════════════════════════════════════════════════════════════════════════════════════════
+    // ══ THE FACET CONTENT LOG ═══════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The facet content: one KEYED subtree per published facet — the swap IS the reconciler's keyed
-    /// Exit/Enter reconcile (F13), not a timer — over ONE dim host for the whole zone column (F17/F18): opacity and
-    /// hit-testing are compositor binds on the switch phase, and NOTHING ELSE. The host carries no pointer handler:
-    /// any OnPointerDown/OnHoverMove/… sets the node's PointerBit (Reconciler.cs "hit-testable so it receives
-    /// press/drag AND bare-hover/exit"), which made the whole zone column an interactive hover scope — every
-    /// card → gap → card move flipped it and re-walked hover over the column (seventh pass: the late hover). F35's
+    /// <summary>The page view built the facet content for <paramref name="m"/>: log it on the edge (one line per published facet).
+    /// The content itself is one KEYED subtree per published facet — the swap IS the reconciler's keyed Exit/Enter reconcile (F13), not a
+    /// timer — over ONE dim host for the whole zone column (F17/F18): opacity and hit-testing are compositor binds on the switch phase,
+    /// and NOTHING ELSE. The host carries no pointer handler: any OnPointerDown/OnHoverMove/… sets the node's PointerBit
+    /// (Reconciler.cs "hit-testable so it receives press/drag AND bare-hover/exit"), which made the whole zone column an interactive
+    /// hover scope — every card → gap → card move flipped it and re-walked hover over the column (seventh pass: the late hover). F35's
     /// "interacted" mark went with it; a Refreshing landing swaps on at-top + within-window alone (FacetSwitch.Landed).</summary>
-    Element FacetContent(ScreenModel m, IOverlayService overlay)
+    void NoteContent(ScreenModel m)
     {
-        if (m.Facet != _contentFacet)
-        {
-            _contentFacet = m.Facet;
-            Log.Event(WaveeLogLevel.Info, "home", "facet.content", "facet content facet=" + m.Facet + " zones=" + m.Zones.Count
-                + " first=" + (m.Zones.Count > 0 ? m.Zones[0].Kind.ToString() : "-"));
-        }
-        return new BoxEl
-        {
-            Key = "facet:" + m.Facet, Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-            Enter = new EnterExit(Opacity: 0f, Active: true), Exit = new EnterExit(Opacity: 0f, Active: true),
-            Transition = MotionTokenDef.Eased(Design.Motion.Faster, Easing.FluentStandard, ReducedMotionPolicy.KeepFade),
-            Children =
-            [
-                new BoxEl   // the dim host
-                {
-                    Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-                    Opacity = Prop.Of(() => FacetDimPlan.Of(_host.Switch.Value.Phase).Opacity),      // compositor-only (F18)
-                    HitTestVisible = Prop.Of(() => !_host.Switch.Value.Dim),                          // E15
-                    Children = [Zones.Column(m, m.Facet, overlay)],
-                },
-            ],
-        };
+        if (m.Facet == _contentFacet) return;
+        _contentFacet = m.Facet;
+        Log.Event(WaveeLogLevel.Info, "home", "facet.content", "facet content facet=" + m.Facet + " zones=" + m.Zones.Count
+            + " first=" + (m.Zones.Count > 0 ? m.Zones[0].Kind.ToString() : "-"));
     }
 
     /// <summary>The Pending/shimmer document: the facet's OWN last-known zone shape when this tab has shown it
     /// before this session (F30), else a generic first-paint shape per facet family. All opens on the daylist card
     /// (ZonePlanner.PlanAll is the only planner that emits a Daylist zone) unless the Home layout hides it; the other
-    /// music facets open on the Recents grid; Podcasts on its own lead. Rendered through the SAME `Zones.Column` as the
+    /// music facets open on the Recents grid; Podcasts on its own lead. Rendered through the SAME zone column (the page view's `ClassicHomeZones.Column`) as the
     /// live page, so the skeleton is derived from the real tree (the daylist card's SkeletonProxy draws its silhouette
     /// for the blank seed card).</summary>
     ScreenModel Seed(string facet, LayoutDoc layoutDoc)

@@ -51,7 +51,7 @@ public sealed class HomeHost
 
     /// <summary>The facet row's props: the signals are this tab's own stable fields and the delegates read <see cref="Tab"/>,
     /// so ONE record serves the host's whole life (a fresh record per render would re-push on every parent render for nothing).</summary>
-    public FacetRowProps RowProps => _rowProps ??= new FacetRowProps(Words, Switch, FacetIndex,
+    public FacetRowProps RowProps => _rowProps ??= new FacetRowProps(Words, Switch, Index: () => FacetIndex,
         Select: target => Select(target, Tab),
         Dismiss: () => Switch.Value = FacetSwitch.Dismiss(Switch.Peek()),
         FollowingMemory: id => _followingMemory.TryGetValue(id, out bool on) && on);

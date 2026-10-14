@@ -91,3 +91,17 @@ public static class ShelfLead
     }
 }
 
+/// <summary>Which empty-facet words a zone gets, from the planner's own zone key (<c>home:audiobooks:empty</c>,
+/// <c>podcasts:empty</c>, <c>home:empty:{facet}</c>). Pure, so the mapping is testable without an element; the empty-facet view
+/// (Classic's `Home.Zone.EmptyFacet`) looks the three loc keys up.</summary>
+public static class EmptyFacetCopy
+{
+    public static (string Title, string Body, string Action) Keys(string zoneKey)
+    {
+        if (zoneKey.StartsWith("home:audiobooks", StringComparison.Ordinal))
+            return (Strings.Home.Empty.AudiobooksTitle, Strings.Home.Empty.AudiobooksBody, Strings.Home.Empty.AudiobooksAction);
+        if (zoneKey.StartsWith("podcasts", StringComparison.Ordinal))
+            return (Strings.Home.Empty.PodcastsTitle, Strings.Home.Empty.PodcastsBody, Strings.Home.Empty.PodcastsAction);
+        return (Strings.Home.Empty.GenericTitle, Strings.Home.Empty.GenericBody, Strings.Home.Empty.GenericAction);
+    }
+}

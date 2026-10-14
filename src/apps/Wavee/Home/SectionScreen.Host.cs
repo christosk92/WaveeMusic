@@ -1,4 +1,4 @@
-// ── Home/SectionScreen.UI.cs — the "See all" / charts drill page ──────────────────────────────────────────────────
+// ── Home/SectionScreen.Host.cs — the "See all" / charts drill page: the CORE HOST (T10a1) ─────────────────────────────────────
 //
 // A PAGE DEMANDS ITS WHOLE MODEL; THE QUERY LAYER PAGES IT (the "no page-side fetch windows" rule). The page asks the
 // section row's `SectionFields.Identity | Whole` once (`Home.EnsureSection`); the section's own route walks
@@ -13,7 +13,8 @@
 // `HomeCards.GridCardData` — the plate, hover, play FAB, "…", menu, drag, circle and trim tooltip every other card has,
 // with the slot root owning invoke and the roving tab stop. A blank seed is the surface's own seed face.
 //
-// Role: UI
+// Role: CORE host (the picture — the "N items" line, the skeleton region and the bound card grid — is Classic's `Pages.HomeSection`
+//   view: `Themes\Classic\Structure\Views\Home\ClassicHomeSection.cs`)
 // Owner: B5
 // Wave: 3 (remediated Wave 2E; shared media surface wave 1a)
 // Spec: docs/plans/wavee/home-redesign-remediation.md §3.6 (`SectionScreen.UI.cs`), F9, Appendix L (loc keys);
@@ -28,12 +29,15 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Signals;
 using Wavee;
+using Wavee.Theming.Contracts;
+using Slots = FluentGpu.Theming.Slots;
 
 namespace Wavee.HomeUi;
 
 /// <summary>The "See all" drill page for one section — a Home source section (<c>home-section:</c>) or a Browse
 /// section (<c>browse-section:</c>, <paramref name="Browse"/> = true). It demands the section WHOLE and renders what the
 /// row holds; the query layer walks every page (file header).</summary>
+[CoreHost]
 public sealed class SectionScreen : Component
 {
     public sealed record Props(string Uri, string? Title, bool Browse, Shell.Route Route);
@@ -49,13 +53,6 @@ public sealed class SectionScreen : Component
     public static Element For(string sectionUri, string? title, Shell.Route route, bool browse = false)
         => Embed.Comp(new Props(sectionUri ?? "", title, browse, route), () => new SectionScreen());
 
-    // The grid's fit knobs: a MIN cell width (RepeatLayout.GridFit derives the column count from it and the engine's
-    // own measured cross size — no app-side width/tier math) and a row-height ESTIMATE (the seed before the first
-    // row measures; GridFit corrects to the real measured height itself, this never pins it). The estimate is the
-    // surface's own geometry, never a local sum: an estimate that drifts from the rendered card re-pins the scroll.
-    const float SectionCardMinWidth = 176f;
-    static readonly float SectionCardRowEstimate = SurfaceGeometry.GridRowEstimate(SectionCardMinWidth, Shape.Grid, hasSubtitle: true);
-
     readonly Signal<IReadOnlyList<HomeCard>> _cardsSig = new(SeedCards);
     // The page's state, written ONLY by Sync (a signal effect) and read reactively: the region's Pending/Failed/Content
     // read _load (the walk landing, or a seal that lands while the page is open, swaps the skeleton for the grid / the
@@ -64,10 +61,8 @@ public sealed class SectionScreen : Component
     readonly Signal<string?> _liveTitle = new(null);
     readonly Signal<int> _total = new(0);
     readonly BoundItemsSource<HomeCard> _cardsSource;
-    readonly Func<bool> _pendingFn, _failedFn;
-    readonly Func<Element> _contentFn, _failedPanelFn;
+    readonly Func<bool> _pendingFn, _failedFn, _emptyFn;
     readonly Action _demand, _sync, _retry, _publish;
-    readonly Func<BoundItemScope<HomeCard>, Element> _cardTemplate;
     readonly Func<HomeCard, Controls.CardData?> _adapt;
     readonly Action<int, HomeCard> _onInvoked;
     readonly Func<int, HomeCard, bool> _isEnabled;
@@ -95,11 +90,9 @@ public sealed class SectionScreen : Component
         _publish = Publish;
         _pendingFn = () => _load.Value == SectionScreenLoad.Pending;
         _failedFn = () => _load.Value == SectionScreenLoad.Failed;
-        _contentFn = BodyContent;
+        _emptyFn = () => _load.Value == SectionScreenLoad.Empty;
         _retry = Retry;
-        _failedPanelFn = () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: _retry);
         _cardsSource = BoundItems.From(_cardsSig, HomeCard.Blank());
-        _cardTemplate = CardSlot;
         _adapt = c => HomeCards.GridCardData(in c, _overlay, _charts);
         _onInvoked = static (_, card) => OpenCard(card);
         _isEnabled = static (_, card) => !card.IsBlank;
@@ -121,18 +114,15 @@ public sealed class SectionScreen : Component
         UseEffect(_publish, DepKey.From(StringComparer.Ordinal.GetHashCode(_title)));
         int total = _total.Value;
 
-        return new BoxEl
+        // The picture is the theme's: the padded body with the "N items" line over the skeleton region and the bound grid.
+        return Slots.View(ViewKeys.HomeSection, new HomeSectionProps
         {
-            Key = "home-section-body", Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Gap = 4f,
-            Padding = BrowseMastheadMetrics.FamilyBodyPad(Spacing.XXL),
-            Children =
-            [
-                total > 0
-                    ? R.Type.TrackMeta(Strings.Home.SectionItems(total))
-                    : new BoxEl(),
-                new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1, Children = [Body()] },
-            ],
-        };
+            Total = total,
+            ScrollKey = _scrollScope + "home:section:" + (_p?.Uri ?? ""),
+            Group = this,
+            Pending = _pendingFn, Failed = _failedFn, Empty = _emptyFn, Retry = _retry,
+            Cards = _cardsSource, Adapt = _adapt, OnInvoked = _onInvoked, IsEnabled = _isEnabled,
+        });
     }
 
     /// <summary>One publication per title change (as <c>CategoryPage</c>): a route with no arg — a deep link, a history
@@ -143,56 +133,12 @@ public sealed class SectionScreen : Component
         Shell.Mastheads.Publish(p.Route, new Shell.MastheadPublication(_title.Length > 0 ? _title : null));
     }
 
-    // ── the shimmer/content/failed boundary (Skel — Pending until the whole section has landed) ────────────────────
-
-    Element Body() => new SkelRegionEl(
-        Pending: _pendingFn,
-        Failed: _failedFn,
-        Content: _contentFn,
-        ShimmerSource: null,   // Content(seed) IS the shimmer: while Pending, _cardsSig still holds SeedCards ⇒ blank cards
-        OnFailed: _failedPanelFn,
-        Reveal: SkelReveal.StaggerRows,
-        Style: SkeletonStyle.Default,
-        Group: this,
-        SmoothResize: false);
-
-    Element BodyContent()
-    {
-        if (_load.Value == SectionScreenLoad.Empty) return Controls.Vacancy(Controls.VacancyVoice.Empty);
-        return Grid();
-    }
-
     static readonly HomeCard[] SeedCards =
     [
         HomeCard.Blank(HomeCardKind.Playlist, 0), HomeCard.Blank(HomeCardKind.Album, 1),
         HomeCard.Blank(HomeCardKind.Playlist, 2), HomeCard.Blank(HomeCardKind.Artist, 3),
         HomeCard.Blank(HomeCardKind.Playlist, 4), HomeCard.Blank(HomeCardKind.Album, 5),
     ];
-
-    /// <summary>The grid: a BOUND <c>ItemsView</c> over <c>RepeatLayout.GridFit</c> (F9) — the column count and cell
-    /// width come from the engine's own measured cross size and never from an app-side width read, so there is no
-    /// tier flip and no frozen-at-first-measure column count. <see cref="_cardsSource"/> is the reactive item source
-    /// (<see cref="_cardsSig"/> starts at <see cref="SeedCards"/> and Sync swaps it to the live row's cards once the
-    /// section's WHOLE list has landed); the row template (<see cref="CardSlot"/>) runs ONCE per recycled slot and
-    /// reads the bound item reactively, so a later answer (a feed refresh re-landing the band) just re-skins the slots
-    /// the source already realized — no remount, no re-render of this component. The grid never asks for anything: the
-    /// row holds the whole section (file header). No content-type pools: a circle is <c>CardData.Circular</c>, which
-    /// the one surface re-renders for, so an artist and a playlist share every slot.</summary>
-    Element Grid() => ItemsView.CreateBound(_cardsSource, _cardTemplate,
-        RepeatLayout.GridFit(SectionCardMinWidth, Spacing.Card, SectionCardRowEstimate),
-        new ListOptions<HomeCard>
-        {
-            Grow = 1f, SelectionMode = ItemsSelectionMode.None, Selector = SelectorVisual.None,
-            IsItemInvokedEnabled = true, OnInvokedTyped = _onInvoked, IsItemEnabledTyped = _isEnabled,
-            Scroll = new ScrollOptions { ScrollKey = _scrollScope + "home:section:" + (_p?.Uri ?? "") },
-        });
-
-    /// <summary>The bound cell: the app's ONE surface inside the slot root (<see cref="Controls.BoundSurface{T}"/> — the
-    /// root owns press/Enter/Space through the row's <see cref="RowScope.OnInteraction"/> and the roving tab stop, F21's
-    /// contract). The adapter (<see cref="HomeCards.GridCardData"/>) runs in the slot's render, so a hydrating title or
-    /// cover re-describes the card. A blank seed renders the surface's seed face and is disabled (not invocable, dimmed)
-    /// through <c>ListOptions&lt;HomeCard&gt;.IsItemEnabledTyped</c>.</summary>
-    Element CardSlot(BoundItemScope<HomeCard> item) => Controls.BoundSurface(in item, Shape.Grid, _adapt);
 
     // ── the demand + the table sync ────────────────────────────────────────────────────────────────────────────────
 
