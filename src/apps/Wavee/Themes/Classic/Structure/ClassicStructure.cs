@@ -18,7 +18,7 @@
 // T1b: the options Classic will own (plan 6.1) that are still TODAY's switches are bound to their legacy keys through `SettingsDoc`
 // rows. `LegacyRows` lists them in their FINAL grouping so Settings › Appearance shows Classic's section once, in its
 // final shape; each M-PR deletes its rows from the list and declares the option in `Options` (the generated row takes the
-// same place in the same group). M4 declared `hideTrackArt` here and M6 `Surfaces` (the colour washes); M3's `density` is the style's.
+// same place in the same group). M2 declared `rowStyle`, M4 `hideTrackArt` and M6 `Surfaces` (the colour washes) here; M3's `density` is the style's.
 
 using FluentGpu.Theming;
 using Wavee.Themes.Common;
@@ -294,6 +294,27 @@ public sealed class ClassicStructure : IStructureLayer
     /// <summary>The layer-qualified id Settings and the palette know the option by (<c>structure.hideTrackArt</c>).</summary>
     public static string HideTrackArtQualifiedId => "structure." + HideTrackArt.Id;
 
+    /// <summary>Row style (M2): Modern, the artwork-forward stacked rows, or Classic, the three-lane column table over hairlines (the 0.2.9 look). It replaces
+    /// `detail.rowstyle` (`ThemeBootstrap` step "TrackRowStyle"; the same 0/1 numbers). It is a STRUCTURE option because it picks which of the structure's two row
+    /// templates draws every track list (`TrackListStyle.Modern` / `.Classic`), the queue rows and the artist chart; the core reads it as
+    /// `ThemePolicies.Lists.RowStyle` for the lane sets, the header height and the list key (live: the list re-keys exactly as it did), the Classic views through
+    /// <see cref="ClassicOptions.RowStyle"/>. Drawn as two miniature rows (Cards).</summary>
+    public static SelectOption<TrackRowStyle> RowStyle { get; } = new(
+        Id: "rowStyle",
+        TitleKey: Strings.Settings.Appearance.TrackListStyle,
+        DescriptionKey: Strings.Settings.Appearance.TrackListStyleSub,
+        Group: Strings.Settings.ThemeOptions.Group.TrackLists,
+        Default: TrackRowStyle.Modern,
+        Choices:
+        [
+            new SelectChoice<TrackRowStyle>(TrackRowStyle.Modern, Strings.Settings.Appearance.TrackListModern),
+            new SelectChoice<TrackRowStyle>(TrackRowStyle.Classic, Strings.Settings.Appearance.TrackListClassic),
+        ],
+        Picker: PickerStyle.Cards);
+
+    /// <summary>The layer-qualified id Settings and the palette know the option by (<c>structure.rowStyle</c>).</summary>
+    public static string RowStyleQualifiedId => "structure." + RowStyle.Id;
+
     /// <summary>Surfaces: how much the artwork tints the shell and the pages (the colour washes: chrome tint, page ground, hero
     /// wash). Off paints the neutral ground; Subtle is today's wash. Stored as the enum's int (`theme.classic.structure.surfaces`);
     /// the option replaced the `appearance.colorWashes.enabled` switch (<c>ThemeBootstrap</c>'s "ColorWashes" step copies it).
@@ -313,14 +334,14 @@ public sealed class ClassicStructure : IStructureLayer
     /// <summary>Colour washes are drawn (anything but Off): what the material views and cover leaves read.</summary>
     public static bool WashesOn(SurfaceWash surfaces) => surfaces != SurfaceWash.Off;
 
-    private static readonly ThemeOptionSchema s_options = ThemeOptionSchema.Of(HideTrackArt, Surfaces);
+    private static readonly ThemeOptionSchema s_options = ThemeOptionSchema.Of(RowStyle, HideTrackArt, Surfaces);
 
     /// <inheritdoc />
     public ThemeOptionSchema Options => s_options;
 
     /// <inheritdoc />
     public ThemePolicies Policies(OptionValues structure, in StyleMetrics metrics)
-        => structure.Get(HideTrackArt.Key) ? ClassicPolicies.BundleArtHidden : ClassicPolicies.Bundle;
+        => ClassicPolicies.For(structure.Get(HideTrackArt.Key), structure.Get(RowStyle.Key));
 
     /// <inheritdoc />
     public ShellCapabilities Capabilities(OptionValues structure) => ShellCapabilities.Unrestricted;
@@ -328,8 +349,8 @@ public sealed class ClassicStructure : IStructureLayer
     /// <inheritdoc />
     public RoleSet RequiredRoles => RoleSet.None;
 
-    /// <summary>Each entry leaves with the M-PR that migrates its switch: sidebar M7a, row style M2, page layout and rails M8. (Page motion, M1,
-    /// was deleted: it has no row. Washes, M6, became the structure's `surfaces` option; row density, M3, the style's `density` option and hide art, M4,
+    /// <summary>Each entry leaves with the M-PR that migrates its switch: sidebar M7a, page layout and rails M8. (Page motion, M1,
+    /// was deleted: it has no row. Washes, M6, became the structure's `surfaces` option; row style, M2, the structure's `rowStyle` option, row density, M3, the style's `density` option and hide art, M4,
     /// the structure's `hideTrackArt`.)</summary>
     public IReadOnlyList<LegacyOptionRow> LegacyRows { get; } =
     [
@@ -338,7 +359,6 @@ public sealed class ClassicStructure : IStructureLayer
         new("sidebarReset", Strings.Settings.ThemeOptions.Group.Sidebar),
         new("sidebarCustomize", Strings.Settings.ThemeOptions.Group.Sidebar),
         new("sidebarResetEverything", Strings.Settings.ThemeOptions.Group.Sidebar),
-        new("trackListStyle", Strings.Settings.ThemeOptions.Group.TrackLists),
         new("pageLayout", Strings.Settings.ThemeOptions.Group.TrackPages),
         new("railUniform", Strings.Settings.ThemeOptions.Group.TrackPages),
         new("railReset", Strings.Settings.ThemeOptions.Group.TrackPages),

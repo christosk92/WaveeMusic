@@ -592,7 +592,7 @@ public readonly partial struct Track
             uint likes = filters.LikedOnly ? Entities.Current.Edges.Liked.Changed.Value : 0u;
             var cfg = ConfigOf(args);
             return new Snapshot(src.Context.Id, src.Version, src.Count, src.State, sort, query.Trim(), filters, data, likes,
-                Prefs.Appearance.TrackRowStyle() == 1, !ShellPolicy.Tracked.Lists.TrackArtwork, Prefs.Appearance.Marquee(),
+                ShellPolicy.Tracked.Lists.ClassicRows, !ShellPolicy.Tracked.Lists.TrackArtwork, Prefs.Appearance.Marquee(),
                 TableColumnsPref.Tempo(), TableColumnsPref.Plays(), cfg);
         }
 
@@ -2130,7 +2130,7 @@ public readonly partial struct Track
         internal global::Wavee.Theming.Contracts.EpisodeRowStyle? EpisodeStyle
             => _episodeStyle ??= global::Wavee.Theming.Contracts.ListStyleLookup.Of(_registry, global::Wavee.Theming.Contracts.StyleKeys.EpisodeRow);
 
-        /// <summary>The Modern or the Classic row templates (the row style is today's <see cref="ColumnSet.Classic"/>; the
+        /// <summary>The Modern or the Classic row templates (the row style is the structure's option, read as <see cref="ColumnSet.Classic"/>; the
         /// structure supplies both). Read by the slot components on their rare renders, never per bind. Null when the registry
         /// has no <c>StyleKeys.TrackTable</c>: the row then renders its bare container, and the first miss is logged.</summary>
         internal global::Wavee.Theming.Contracts.TrackRowTemplates? RowTemplatesFor(bool classic)

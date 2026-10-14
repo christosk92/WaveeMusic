@@ -119,7 +119,6 @@ public static partial class Settings
             // (SettingsCatalogTests.NoGlyph_RepeatsWithinASection).
             new(Tab.Appearance, "Theme options", "sidebarDesign", "SplitView"),
             new(Tab.Appearance, "Theme options", "sidebarCustomize", "Edit"),
-            new(Tab.Appearance, "Theme options", "trackListStyle", "ViewList"),
             new(Tab.Appearance, "Theme options", "pageLayout", "DockLeft"),
             new(Tab.Appearance, "Theme options", "railUniform", "Pin"),
             new(Tab.Appearance, "Theme options", "railReset", "Delete"),

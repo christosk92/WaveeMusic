@@ -156,7 +156,7 @@ public sealed class ThemePickerTests : IDisposable
     }
 
     [Fact]
-    public void Classic_lists_exactly_the_rows_of_the_options_section_in_three_groups()
+    public void Classic_lists_exactly_the_rows_of_the_options_section_in_two_groups()
     {
         var legacy = new ClassicStructure().LegacyRows;
         var doc = SettingsDoc.Section(Settings.Tab.Appearance, ThemeOptionsSection.SectionTitle).Rows.Select(r => r.Id).ToArray();
@@ -169,7 +169,7 @@ public sealed class ThemePickerTests : IDisposable
             Assert.Equal(ThemeOptionsSection.SectionTitle, found.Section);
             Assert.False(string.IsNullOrEmpty(row.Group), row.RowId);
         }
-        Assert.Equal(3, legacy.Select(l => l.Group).Distinct().Count());
+        Assert.Equal(2, legacy.Select(l => l.Group).Distinct().Count());   // the sidebar rows and the page rows (M2, M3 and M4 took the track-list group)
         // Rows of a group sit together: no group label would ever appear twice.
         var seen = new List<string>();
         foreach (var row in legacy)
@@ -183,14 +183,14 @@ public sealed class ThemePickerTests : IDisposable
         ThemeHost.Install(ClassicTheme.Create());
         var model = ThemeOptionsSection.Current(developerMode: true);
 
-        // M4 (hide track art) and M6 (surfaces) are structure options, M3 (density) the style's: structure options come first in the schema.
-        Assert.Equal(new[] { "structure.hideTrackArt", "structure.surfaces", "style.density" }, model.Rows.Select(r => r.QualifiedId));
+        // M2 (row style), M4 (hide track art) and M6 (surfaces) are structure options, M3 (density) the style's: structure options come first in the schema.
+        Assert.Equal(new[] { "structure.rowStyle", "structure.hideTrackArt", "structure.surfaces", "style.density" }, model.Rows.Select(r => r.QualifiedId));
         var surfaces = model.Rows.Single(r => r.QualifiedId == "structure.surfaces");
         Assert.Equal(Strings.Settings.ThemeOptions.Group.Surfaces, surfaces.Group);
         Assert.Equal(SettingsRowKind.Toggle, surfaces.Row.Kind);
         Assert.False(model.IsEmpty);
-        Assert.Equal(9, model.Legacy.Count);   // 12 before the M-PRs: M6 took the washes, M3 the row density, M4 the hide-art row (M1 had deleted page motion)
-        Assert.DoesNotContain(model.Legacy, l => l.RowId is "colorWashes" or "rowDensity" or "hideTrackArtwork");
+        Assert.Equal(8, model.Legacy.Count);   // 12 before the M-PRs: M6 took the washes, M3 the row density, M4 the hide-art row, M2 the track list style (M1 had deleted page motion)
+        Assert.DoesNotContain(model.Legacy, l => l.RowId is "colorWashes" or "rowDensity" or "hideTrackArtwork" or "trackListStyle");
         Assert.NotNull(model.Reset);            // the theme stores options now ...
         Assert.False(model.Reset!.Enabled(SettingsFacts.Live).Enabled);   // ... and none is stored yet, so Reset has nothing to forget
         Assert.Equal("theme.classic.name", model.NameKey);

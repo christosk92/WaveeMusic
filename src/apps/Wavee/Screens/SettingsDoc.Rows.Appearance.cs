@@ -3,8 +3,8 @@
 // Role: CORE (PR C13; extraction X35 writers). Theme (the picker) · Theme options (the rows the active structure still binds
 // to legacy keys, in their final groups: T1b) · Display (app mode, zoom, marquee) · Lyrics · Fullscreen · Now playing · Home.
 // The rows still point at TODAY'S keys (each moves to a theme option in its M-PR, §2.3, re-binding exactly one row here). Every write goes
-// through the epoch it always bumped (ch 27 W2 "three facts"): marquee / track list
-// style / daylist clock → `Prefs.Appearance`; page layout, rail uniform, rail reset → `Prefs.DetailHero`; the lyrics blur →
+// through the epoch it always bumped (ch 27 W2 "three facts"): marquee /
+// daylist clock → `Prefs.Appearance`; page layout, rail uniform, rail reset → `Prefs.DetailHero`; the lyrics blur →
 // `Prefs.Lyrics`; the two Now-playing rows → `Prefs.NpvPlayer` (the tab reads that epoch, no page re-read); the Fullscreen
 // rows → `Prefs.Stage` (raw key writes included — the stage reads that epoch). A verb returns whether the PAGE must re-read.
 
@@ -50,9 +50,6 @@ public static partial class SettingsDoc
             Make(T.Appearance, "Theme options", "sidebarResetEverything", K.Action, "sidebar.menu.resetEverything",
                 SettingsWriter.OfAction("sidebar.resetEverything", SettingsVerbs.ResetSidebarEverything),
                 captionKey: "settings.sidebar.resetEverythingSub", enabled: NotWhileEditing, catalog: false),
-            Make(T.Appearance, "Theme options", "trackListStyle", K.Picker, Strings.Settings.Appearance.TrackListStyle,
-                SettingsWriter.OfChoice("lists.trackListStyle", SettingsVerbs.SetTrackListStyle),
-                captionKey: Strings.Settings.Appearance.TrackListStyleSub, value: s => Prefs.Clamp(s.Get(Platform.Keys.TrackRowStyle), 2)),
             Make(T.Appearance, "Theme options", "pageLayout", K.Picker, Strings.Settings.Appearance.PageLayout,
                 SettingsWriter.OfChoice("lists.pageLayout", SettingsVerbs.SetPageLayout),
                 captionKey: Strings.Settings.Appearance.PageLayoutSub, value: s => Prefs.Clamp(s.Get(Platform.Keys.DetailPageLayout), 2)),
@@ -217,13 +214,6 @@ public static partial class SettingsVerbs
     }
 
     // ── Lists ────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    public static bool SetTrackListStyle(int i)
-    {
-        if ((uint)i >= 2u || Platform.Settings.Get(Platform.Keys.TrackRowStyle) == i) return false;
-        Prefs.Appearance.Set(Platform.Keys.TrackRowStyle, i);
-        return true;
-    }
 
     public static bool SetPageLayout(int i)
     {

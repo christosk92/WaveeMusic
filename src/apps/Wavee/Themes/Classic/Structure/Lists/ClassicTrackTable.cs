@@ -11,8 +11,8 @@
 // the context menu. The templates only DRAW what `BoundRow` (the slot's bound inputs) and `TrackRowSkin` (the wired behaviour)
 // carry, and they run exactly when the code they came from ran: once per slot per shape, never per bind, never per scroll.
 //
-// MODERN AND CLASSIC. The row style is the `detail.rowstyle` setting the table still reads into `ColumnSet.Classic` (M2 turns it
-// into the structure's own option); the core picks the template pair by it. The two styles share one body per cell, branching on
+// MODERN AND CLASSIC. The row style is the structure's `rowStyle` option (M2), which the core reads as `ThemePolicies.Lists` into the table's
+// `ColumnSet.Classic` lane decision; the core picks the template pair by it. The two styles share one body per cell, branching on
 // the `classic` argument exactly where the source did, so a row draws the same tree it always drew.
 //
 // The pure decisions (`RowCellRules`: the # cell's rest state and hover reveal, the chart mark, the duration lane's arm, the link

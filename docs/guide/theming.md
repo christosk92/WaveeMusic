@@ -598,8 +598,8 @@ surface, the artist chart and the drawer.
 |---|---|---|---|
 | `StyleKeys.TrackTable` (`StyleKey<TrackListStyle>`, id `Track.Table`) | `TrackListStyle` (`Stamp`, `Modern`, `Classic`: each a `TrackRowTemplates` = the bound grid + the skin); `TrackRowSkin` is what the core wires for a skin | `Track.TableHost` and its slot components `TableSlot` and `TableRowContent` (`Entities\Track.Table.cs`), `Track.BoundRow` / `Track.RowPresentation` / `Track.RowCellRules` (`Entities\Track.UI.Bound.cs`) | `ClassicTrackTable` (`Themes\Classic\Structure\Lists\`): both pairs; numbers and the two motions in `Rules\ClassicTrackRowLayout.cs` |
 
-- **Two templates, one per row style.** The core picks `Modern` or `Classic` by the table's `ColumnSet.Classic` (the `detail.rowstyle`
-  setting, read into the snapshot); M2 deletes that flag and the pick becomes the structure's own option. Classic's two pairs share one
+- **Two templates, one per row style.** The core picks `Modern` or `Classic` by the table's `ColumnSet.Classic`, which the snapshot reads from
+  `ThemePolicies.Lists.RowStyle`: the row style is Classic's own `structure.rowStyle` option since M2 (below). Classic's two pairs share one
   body per cell and branch on a `classic` argument exactly where the source did, so each style draws the tree it always drew.
 - **The grid.** `templates.Grid(row, in set, tracks, rowH, art)` runs once per slot per shape from `TableRowContent` (the code that
   called `Track.BoundGrid`): every per-item value is a bound `Prop` over `row.Presentation`, frequent flips are `Visible` binds, the
@@ -622,7 +622,7 @@ surface, the artist chart and the drawer.
   (the kind switch and the open drawer; the reveal gate, the presentation memo and the like latch), and folding them would add binds
   and `Flow` boundaries to every row. T8a therefore moves the picture and leaves the slot as it is: the per-row cost on a scroll
   frame is unchanged (no extra component, no extra closure per bind). `TrackListStyle.Stamp` is carried for the PR that folds the
-  slot; until then a row-style change re-keys the list (`list:<scroll>:d<N>:classic|modern`), as before.
+  slot; until then a row-style change (the policy) re-keys the list (`list:<scroll>:d<N>:classic|modern`), as before.
 - **A host without a registry.** A table mounted where no registry provides `StyleKeys.TrackTable` logs once
   (`track table: no TrackListStyle is registered`) and draws bare containers. A test that mounts a table outside the real shell
   provides Classic's registry (`new ClassicStructure().Register(builder)`, `Ctx.Provide(ViewRegistry.Context, ...)`), as
@@ -855,8 +855,8 @@ row), `IQueueVerbs` (bound to the surface's own page counters), the player's ver
 (`SlotCount`, `SlotAt`, `ItemAt` under the live drag projection), `Lane` / `List` (the wrapper a row needs and the lane around the body), `OwnDrag` and `Attach`
 (a viewed queue's own drag; the entry's context menu), `Remaining` / `PageSize` ("Show more"), `TextOf` (what a row paints: the entity tables are not a theme's), `Clock`,
 `RowKey` and `SetMetrics`. **A template must call `SetMetrics(rowExtent, extentOf)` before it builds the lane**: the reorder maths needs every slot's height
-EXACT, and the heights are the skin's (a skin or a scale change moves them). The settings the core read arrive as facts (`HairlineRows`,
-`RepeatOn`, `RepeatTrack`; "hide track art" is Classic's own option since M4: the panel and the stage pane read `ClassicOptions.HideTrackArt()`), the two navigations as `Action?` (`OpenPlayingFrom`, `OpenNowPlaying`: null means display-only). The stage's accent, queue scale and
+EXACT, and the heights are the skin's (a skin or a scale change moves them). The settings the core read arrive as facts (`RepeatOn`,
+`RepeatTrack`; the row style and "hide track art" are Classic's own options since M2 and M4: the panel and the stage pane read `ClassicOptions.ClassicRows()` and `ClassicOptions.HideTrackArt()`), the two navigations as `Action?` (`OpenPlayingFrom`, `OpenNowPlaying`: null means display-only). The stage's accent, queue scale and
 width travel in the stage's ambient context (`Stage.StageContext`), which the view component reads.
 
 **Motion and identity are the old surface's.** Row keys (`i<itemId>` or `e<index>`, plus the skin and art suffix), the lane keys (`lane:upcoming`,
@@ -986,7 +986,7 @@ The artist page is the structure's picture over a core host. The scroll column, 
 
 | Key | Props | Core host | Classic template |
 |---|---|---|---|
-| `Pages.Artist` | `ArtistPageProps` (the route and scope keys, the artist handle, the pending / failed verdicts and Retry, the measured width and the ONE resolved `ArtistHeroMetrics`, the accent as a value, a live read, an untracked read and a signal, the palette and hero urls, the washes flag, the tint claim leaf, the band's engaged edge, the pivot tabs and the spy's answer, the section slots with their anchor callbacks, the fans pool, the verbs, `RowsClassic` for the chart's skeleton, which reads the hide-art option itself) | `Artist.PageHost` (`[CoreHost]`, `Entities\Artist.Page.cs`): the demand effects, `DemandRows`, `Stamp`, readiness and the failure verdict, the hero-photo latch and its decode warm-up, the watched accent, `PlanSections` (the plan and the pivot's membership), the anchor registry and the spy | `ClassicArtistPage`: the keyed column and scroller over the `SkelRegionEl` (Reveal.Soft, Group null), the hero, the sentinel, the clipped magazine and wash, the band's artist arm and the derived shimmer; `ClassicArtistHero`, `ClassicArtistSections`, `ClassicArtistBanners`, `ClassicArtistPick` |
+| `Pages.Artist` | `ArtistPageProps` (the route and scope keys, the artist handle, the pending / failed verdicts and Retry, the measured width and the ONE resolved `ArtistHeroMetrics`, the accent as a value, a live read, an untracked read and a signal, the palette and hero urls, the washes flag, the tint claim leaf, the band's engaged edge, the pivot tabs and the spy's answer, the section slots with their anchor callbacks, the fans pool, the verbs; the chart's skeleton reads the row-style and hide-art options itself) | `Artist.PageHost` (`[CoreHost]`, `Entities\Artist.Page.cs`): the demand effects, `DemandRows`, `Stamp`, readiness and the failure verdict, the hero-photo latch and its decode warm-up, the watched accent, `PlanSections` (the plan and the pivot's membership), the anchor registry and the spy | `ClassicArtistPage`: the keyed column and scroller over the `SkelRegionEl` (Reveal.Soft, Group null), the hero, the sentinel, the clipped magazine and wash, the band's artist arm and the derived shimmer; `ClassicArtistHero`, `ClassicArtistSections`, `ClassicArtistBanners`, `ClassicArtistPick` |
 
 **There is no hero key.** The hero's pinned, collapsing root has to stay a direct child of the page column (a slot would put a component boundary between the sticky node and its scroll content) and the derived skeleton cannot run a view slot, so the page view builds the hero for the live page and for the shimmer with the same builder
 (`ClassicArtistHero.Build`; the skeleton passes the placeholder facts and null verbs). The tiers (`ArtistHeroLayout`: widths, hysteresis, heights, photo bands, gutters, copy measures, the collapse arithmetic) are **core**, not a Classic rules file: the profile page reads the same tiers and the host decodes the photo at the size they name; the Classic numbers the
@@ -1527,7 +1527,7 @@ no other home yet (lyrics, full screen, now playing, Home). Nothing in it names 
   option changed).
 - **Legacy rows.** A structure lists the options that are still switches in `IStructureLayer.LegacyRows` (a `SettingsDoc` row id and a
   group). The page draws them in the same expander and groups; an M-PR deletes its rows from the list and declares the option, so
-  the tab never changes layout again. Classic lists 9 (M1 deleted one; M3, M4 and M6 moved the row density, the hide-art switch and the washes into options).
+  the tab never changes layout again. Classic lists 8 (M1 deleted one; M2, M3, M4 and M6 moved the track list style, the row density, the hide-art switch and the washes into options).
 - **Palette.** An option with `Command = true` contributes rows (`ThemeOptionsSection.Commands`): a toggle on/off, a select one per
   choice, an action one. `Shell.CommandTable.BuildIndex` appends them after the builtins (`PaletteKind.ThemeOption`).
 - **Setup.Theme.** `Setup.ThemeStep()` (`Screens\Setup.UI.Theme.cs`) mounts the `Setup.Theme` view (`ClassicSetup.ThemeTemplate`, the Layout page's twin: same frame) with the picker and the options;
@@ -1592,6 +1592,26 @@ The row-size button keeps its overlay in the core (`TableDensityButton`: open, c
 word, the panel and the radio rows. What the lists draw is unchanged, and so is the live re-key: a density change moves the list key's `d<N>` segment, a hide-art change drops the
 artwork from the rows without re-keying the list (`LiveOptionBehaviourTests`). The facts are in `ClassicDensityAndArtTests`, including every stored value and the
 existing-choice-wins rule. The old keys are listed in `WVTH010.legacy.txt`; `Prefs.Appearance.RowDensity` / `TrackArtworkHidden` and `Platform.Keys.RowDensity` / `HideTrackArtwork` are gone.
+
+### Worked example: row style (M2)
+
+The Modern / Classic skin of the track rows (`detail.rowstyle`, Settings "Track list style") is the **structure's** `rowStyle` option (`ClassicStructure.RowStyle`, a
+Cards select over `TrackRowStyle` Modern / Classic, stored as the legacy number; group "Track lists", first in the card). It is a structure option because it picks which
+of the structure's two row templates draws (`TrackListStyle.Modern` / `.Classic`, the queue's hairline rows, the artist chart's rows), and the style layer cannot read a
+structure option (WVTH005), which is why `ClassicDensity.Rows` keeps publishing both skins' ladders and the core picks by the policy. Its `SettingsDoc` row, verb, catalog entry,
+`Platform.Keys.TrackRowStyle`, `Prefs.Appearance.TrackRowStyle` and the props that only carried it (`ArtistPageProps.RowsClassic`, `QueuePanelProps.HairlineRows`) are deleted.
+
+| | Row style |
+|---|---|
+| What core reads | `ThemePolicies.Lists.RowStyle` (`ListPolicy`, `ClassicRows`), published by `ClassicStructure.Policies` (`ClassicPolicies.For`: one instance per artwork x skin pair); the track table's snapshot (`ColumnSet.Classic`: the lane sets, header height, row height, the list key `:classic|:modern`) and the artist chart's metrics and cache keys read `ShellPolicy.Tracked.Lists` |
+| What a Classic view reads | `ClassicOptions.RowStyle()` / `ClassicOptions.ClassicRows()`, tracked reads of the option cell: the queue panel (hairline rows), the artist page's chart skeleton |
+| Where it is written | the generated Settings row (the two miniature rows, `ClassicSettings.TrackListStyleCard`), lands in `ThemeHost.Apply`; "Reset options" forgets it |
+| Stored value | the legacy 0 / 1 is copied to `theme.classic.structure.rowStyle` by the step `TrackRowStyle`; a value outside 0-1 is not copied (Modern applies), a user who never changed it stays Modern |
+
+**Left in the core, on purpose.** `ColumnSet.Classic` and the `classic` arguments of `Track.TableRules` (`IdentityColumns`, `TrailingColumns`, `HeaderHeightFor`, the relief ladder)
+and of `ArtistChartStyle.Metrics` / `Skeleton` are the core's lane decisions over a skin the structure names; the plan's longer-term move of the lane table into the Classic rules
+(a second structure with its own lanes) waits for the structure that needs it. The facts are in `ClassicRowStyleTests`; the re-key and both skins mounted are
+`LiveOptionBehaviourTests`, `TrackRowsMountedTests` and `TrackChromeMountedTests`.
 
 ## 5. The analyzers (`Wavee.Analyzers`, WVTH rules)
 

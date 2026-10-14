@@ -128,13 +128,13 @@ public sealed class SettingsPageContractTests : IDisposable
     [Fact]
     public void The_legacy_rows_come_in_order_one_group_per_label()
     {
-        var model = Model(new LegacyOptionRow("trackListStyle", "Lists"), new LegacyOptionRow("sidebarDensity", "Side"),
+        var model = Model(new LegacyOptionRow("railUniform", "Lists"), new LegacyOptionRow("sidebarDensity", "Side"),
             new LegacyOptionRow("pageLayout", "Lists"));
 
         var groups = SettingsThemeOptions.Groups(model, new Facts(false), wizard: false);
 
         Assert.Equal(new[] { "Lists", "Side" }, groups.Select(g => g.Title));
-        Assert.Equal(new[] { "legacy:trackListStyle", "legacy:pageLayout" }, groups[0].Items.Select(i => i.Key));
+        Assert.Equal(new[] { "legacy:railUniform", "legacy:pageLayout" }, groups[0].Items.Select(i => i.Key));
         Assert.Equal(new[] { "legacy:sidebarDensity" }, groups[1].Items.Select(i => i.Key));
         Assert.All(groups.SelectMany(g => g.Items), i => Assert.Equal(SettingsOptionItemKind.Legacy, i.Kind));
     }
@@ -154,7 +154,7 @@ public sealed class SettingsPageContractTests : IDisposable
     [Fact]
     public void The_wizard_keeps_only_the_sidebar_layout_cards()
     {
-        var model = Model(new LegacyOptionRow("sidebarDesign", "Side"), new LegacyOptionRow("trackListStyle", "Lists"),
+        var model = Model(new LegacyOptionRow("sidebarDesign", "Side"), new LegacyOptionRow("pageLayout", "Lists"),
             new LegacyOptionRow("sidebarReset", "Side"));
 
         var groups = SettingsThemeOptions.Groups(model, new Facts(false), wizard: true);

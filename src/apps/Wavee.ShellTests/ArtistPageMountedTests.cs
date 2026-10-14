@@ -63,7 +63,6 @@ public sealed class ArtistPageMountedTests(ShellHost host)
             Radio = static () => { },
             ScrollToTop = static () => { },
             OpenGallery = static (_, _) => { },
-            RowsClassic = true,
         };
     }
 

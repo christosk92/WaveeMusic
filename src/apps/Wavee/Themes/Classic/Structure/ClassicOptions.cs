@@ -1,4 +1,4 @@
-// ── Themes/Classic/Structure/ClassicOptions.cs — Classic's structure options, read where a view draws with them (themes plan 6.1, M4) ──
+// ── Themes/Classic/Structure/ClassicOptions.cs — Classic's structure options, read where a view draws with them (themes plan 6.1, M4, M2) ──
 //
 // A structure option is read by the structure's own code (WVTH005). Most Classic views are templates with a `ViewContext`, but the picture that needs
 // "are track covers hidden" is often a static builder several calls below one (a queue row, a search hit, a Recents row), run inside a render or a bound
@@ -14,4 +14,10 @@ public static class ClassicOptions
 {
     /// <summary>Track artwork is hidden (the `hideTrackArt` option). A tracked read: call it inside a render or a binding.</summary>
     public static bool HideTrackArt() => ThemeHost.Options.Get(ClassicStructure.HideTrackArt.Key);
+
+    /// <summary>The track rows' skin (the `rowStyle` option). A tracked read: call it inside a render or a binding.</summary>
+    public static TrackRowStyle RowStyle() => ThemeHost.Options.Get(ClassicStructure.RowStyle.Key);
+
+    /// <summary>The Classic row skin is on (the three-lane hairline table, the 0.2.9 look). A tracked read.</summary>
+    public static bool ClassicRows() => RowStyle() == TrackRowStyle.Classic;
 }

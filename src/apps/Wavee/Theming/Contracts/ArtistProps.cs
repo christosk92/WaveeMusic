@@ -156,7 +156,4 @@ public sealed record ArtistPageProps
 
     /// <summary>The overlay service the pick card's menu opens on (null while there is none).</summary>
     public IOverlayService? Overlay { get; init; }
-
-    /// <summary>The Top-tracks rows are the Classic grammar (`detail.rowstyle`); the page's skeleton draws the chart's own skeleton for that form. M2 deletes it.</summary>
-    public required bool RowsClassic { get; init; }
 }

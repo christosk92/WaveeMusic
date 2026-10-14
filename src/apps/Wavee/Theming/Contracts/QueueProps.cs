@@ -8,8 +8,8 @@
 // the structure's template draws the pills or the header, the sections, the rows and the empty states.
 //
 // WHAT A TEMPLATE REACHES. `QueueProps` (what the queue is), `IQueueVerbs` (what a press does) and `IQueueLane` (the reorder lane and the row facts
-// that need the entity tables). It never names `Shell`, `Entities`, `Playback` or `Prefs` (WVTH002): the setting the core read for it
-// (`HairlineRows`; "hide track art" is the structure's own option, M4) and the two navigations it may offer (`OpenPlayingFrom`, `OpenNowPlaying`) arrive on the props.
+// that need the entity tables). It never names `Shell`, `Entities`, `Playback` or `Prefs` (WVTH002): the row style and "hide track art" are the
+// structure's own options (M2, M4: `ClassicOptions`), and the two navigations it may offer (`OpenPlayingFrom`, `OpenNowPlaying`) arrive on the props.
 //
 // A row's LAYOUT (slots, headers, extents) is structure. The template tells the lane how tall each slot is (`IQueueLane.SetMetrics`) before it
 // builds the lane, because the reorder maths needs those heights EXACT.
@@ -189,9 +189,6 @@ public sealed record QueuePanelProps
 
     /// <summary>The player's verbs (the shuffle and repeat pills, the now-playing card's play button).</summary>
     public required IPlayerVerbs Player { get; init; }
-
-    /// <summary>The track row style option is the hairline one (<c>detail.rowstyle</c>; core reads it until the structure owns it).</summary>
-    public required bool HairlineRows { get; init; }
 
     /// <summary>Repeat is on (context or track), and it is the repeat-one mode (the pill's glyph).</summary>
     public required bool RepeatOn { get; init; }

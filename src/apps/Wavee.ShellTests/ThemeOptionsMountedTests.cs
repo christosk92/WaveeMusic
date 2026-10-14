@@ -97,12 +97,12 @@ public sealed class ThemeOptionsMountedTests(ShellHost host)
             foreach (string id in new[]
             {
                 "sidebarDesign", "sidebarDensity", "sidebarReset", "sidebarCustomize", "sidebarResetEverything",
-                "trackListStyle", "pageLayout", "railUniform", "railReset",
+                "pageLayout", "railUniform", "railReset",
             })
                 Assert.False(shell.Find("legacy:" + id).IsNull, "legacy row '" + id + "' is mounted");
-            foreach (string id in new[] { "structure.hideTrackArt", "structure.surfaces", "style.density" })   // M4, M6 and M3: generated rows, no legacy row left
+            foreach (string id in new[] { "structure.rowStyle", "structure.hideTrackArt", "structure.surfaces", "style.density" })   // M2, M4, M6 and M3: generated rows, no legacy row left
                 Assert.False(shell.Find("opt:" + id).IsNull, "generated row '" + id + "' is mounted");
-            foreach (string id in new[] { "colorWashes", "rowDensity", "hideTrackArtwork" })
+            foreach (string id in new[] { "colorWashes", "rowDensity", "hideTrackArtwork", "trackListStyle" })
                 Assert.True(shell.Find("legacy:" + id).IsNull, "'" + id + "' is a generated option now");
         });
 

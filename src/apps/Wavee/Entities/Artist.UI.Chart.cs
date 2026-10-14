@@ -167,7 +167,7 @@ public readonly partial struct Artist
             Owner = p.A;
             AccentSignal = p.Accent;
             ColorF accent = p.Accent.Value;
-            Classic = Prefs.Appearance.TrackRowStyle() == 1;
+            Classic = ShellPolicy.Tracked.Lists.ClassicRows;
             ShowArtwork = ShellPolicy.Tracked.Lists.TrackArtwork;
 
             // The chart's own asks (the same ones the page makes, so they dedupe to nothing) and the latch behind the

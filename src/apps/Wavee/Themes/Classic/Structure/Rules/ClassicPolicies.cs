@@ -113,6 +113,19 @@ public static class ClassicPolicies
     /// own initializer and never reads this class).</summary>
     public static ThemePolicies Bundle { get; } = new(NavPane, Panel, PlayerBar, Chrome, Stage) { Tiers = ClassicTiers.Policy };
 
-    /// <summary>The same bundle with the track lists' artwork hidden (M4, the `hideTrackArt` option on): the other instance <c>ClassicStructure.Policies</c> hands out.</summary>
-    public static ThemePolicies BundleArtHidden { get; } = Bundle with { Lists = new ListPolicy(TrackArtwork: false) };
+    private static ThemePolicies WithLists(bool artHidden, TrackRowStyle rowStyle) => Bundle with { Lists = new ListPolicy(!artHidden, rowStyle) };
+
+    private static readonly ThemePolicies s_artHidden = WithLists(artHidden: true, TrackRowStyle.Modern);
+    private static readonly ThemePolicies s_classicRows = WithLists(artHidden: false, TrackRowStyle.Classic);
+    private static readonly ThemePolicies s_classicRowsArtHidden = WithLists(artHidden: true, TrackRowStyle.Classic);
+
+    /// <summary>The bundle for the track-list options (M4 `hideTrackArt`, M2 `rowStyle`): one of four instances, so republishing the facts for an unchanged option is not a
+    /// change. <c>ClassicStructure.Policies</c> hands them out.</summary>
+    public static ThemePolicies For(bool artHidden, TrackRowStyle rowStyle) => (artHidden, rowStyle) switch
+    {
+        (false, TrackRowStyle.Modern) => Bundle,
+        (true, TrackRowStyle.Modern) => s_artHidden,
+        (false, _) => s_classicRows,
+        _ => s_classicRowsArtHidden,
+    };
 }

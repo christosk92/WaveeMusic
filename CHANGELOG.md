@@ -24,6 +24,9 @@ versions separately under `v*` and is not tracked in this file.)
 - **Lyrics blur: the Auto choice is gone; the intensity slider is the one setting (0 turns it off).** Settings >
   Appearance > Lyrics no longer has an "Auto" link next to the slider. The blur is the 0-100 slider, 100 by default; if
   you had Auto, your lyrics keep the full blur (100) until you move the slider.
+- **"Track list style" (Modern or Classic rows) is now a Wavee Classic option.** It stays the first card of the "Track lists"
+  group of the "Wavee Classic options" card, with the same two miniature rows, and your current choice carries over.
+  "Reset options" now puts it back to Modern together with the card's other options.
 - **Row density and "Always hide track artwork" are now Wavee Classic options.** They stay in the "Track lists" group of the
   "Wavee Classic options" card (the artwork switch now comes before the density cards) and work as before, including the
   Row size slider in a track list's toolbar; your current choices carry over. "Reset options" now puts them back to

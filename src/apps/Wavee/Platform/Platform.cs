@@ -125,7 +125,6 @@ public static partial class Platform
         /// <summary>"system" asks the startup root to resolve the Windows UI locale; an explicit BCP-47 tag selects the
         /// matching bundled JSON table. Applied before first mount on the NEXT launch.</summary>
         public static readonly SettingKey<string> UiCulture = new("localization.culture", "system");
-        public static readonly SettingKey<int> TrackRowStyle = new("detail.rowstyle", 0);       // 0 Modern · 1 Classic
         /// <summary>The Liked Songs cover treatment. DEFAULT 1 = LikedCoverStyle.Lens, not Stock: the point of the feature
         /// is that the collection cover is made of the user's own music, and every treatment degrades to the bundled PNG
         /// until the library owns enough distinct artwork — so a fresh install still paints what it painted before.</summary>

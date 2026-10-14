@@ -374,14 +374,6 @@ internal static partial class ClassicSettings
             case "sidebarResetEverything":
                 return Embed.Comp(static () => new SidebarActionItem("sidebarResetEverything", Icons.Delete));
 
-            case "trackListStyle":
-            {
-                int style = row.Current is int current ? current : 0;
-                return Item(title, sub, Controls.PickerStrip(2, style, static (i, on) => TrackListStyleCard(i, on), static i =>
-                {
-                    if (D(Tab.Appearance, "trackListStyle").Writer.Choose!(i)) Settings.Bump();
-                }), SettingsCard.ContentAlignment.Vertical, icon: icon);
-            }
             case "pageLayout":
             {
                 int layout = row.Current is int current ? current : 0;
@@ -515,10 +507,11 @@ internal static partial class ClassicSettings
         }
     }
 
-    /// <summary>The glyph of one of Classic's own options (a generated row carries no catalog glyph): row size for the density, the picture for hide track art.</summary>
+    /// <summary>The glyph of one of Classic's own options (a generated row carries no catalog glyph): row size for the density, the list for the row style, the picture for hide track art.</summary>
     static string? OptionGlyph(string qualifiedId)
     {
         if (qualifiedId == ClassicDensity.QualifiedId) return Glyph("RowSize");
+        if (qualifiedId == ClassicStructure.RowStyleQualifiedId) return Glyph("ViewList");
         if (qualifiedId == ClassicStructure.HideTrackArtQualifiedId) return Glyph("Picture");
         return null;
     }
@@ -536,6 +529,8 @@ internal static partial class ClassicSettings
     {
         // The density's cards are miniature rows at the real spacing (the picture the old Settings row drew), not a word.
         if (g.QualifiedId == ClassicDensity.QualifiedId) return DensityCard(index, on);
+        // The row style's cards are the two miniature skins (the picture the old Settings row drew).
+        if (g.QualifiedId == ClassicStructure.RowStyleQualifiedId) return TrackListStyleCard(index, on);
         Element label = Controls.PickerLabel(Loc.Get(g.ChoiceTitleKeys[index]), on) with
         {
             Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.WordEllipsis, MinWidth = 0f, Shrink = 1f,

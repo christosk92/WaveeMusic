@@ -9,6 +9,8 @@
 
 using FluentGpu.Foundation;
 using Wavee;
+using Wavee.Themes.Classic;
+using Wavee.Theming;
 using Xunit;
 using static Wavee.ShellTests.ShellProbe;
 
@@ -22,8 +24,8 @@ public sealed class TrackRowsMountedTests(ShellHost host)
     public void The_liked_rows_are_drawn_by_the_registered_templates(int rowStyle)
         => host.Mounted(shell =>
         {
-            int before = Platform.Settings.Get(Platform.Keys.TrackRowStyle);
-            Prefs.Appearance.Set(Platform.Keys.TrackRowStyle, rowStyle);   // Settings › Appearance › Track rows
+            var before = ClassicOptions.RowStyle();
+            _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, ClassicStructure.RowStyleQualifiedId, (TrackRowStyle)rowStyle));   // Settings › Appearance › Row style
             try
             {
                 Shell.GoTo(new Shell.Route(Shell.RouteKind.Liked));
@@ -44,7 +46,7 @@ public sealed class TrackRowsMountedTests(ShellHost host)
             }
             finally
             {
-                Prefs.Appearance.Set(Platform.Keys.TrackRowStyle, before);
+                _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, ClassicStructure.RowStyleQualifiedId, before));
                 shell.RunFrames(30);
             }
         });

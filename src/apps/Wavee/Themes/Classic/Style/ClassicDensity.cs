@@ -4,7 +4,7 @@
 // numbers, so a stored value carries over unchanged: `ThemeBootstrap` step "TrackRowDensity"). A style option is a metrics preset: `ClassicStyle.Metrics`
 // publishes `Rows(density)` as `StyleMetrics.TrackRows`, and the core's track table sizes its rows, art and episode rows from that fact
 // (`Track.RowMetrics.Current`). The ladders are the ones the table always had: Modern 40/48/56/64 with a 32/32/40/48 art edge, Classic 36/40/44/48 with a 32/32/32/40
-// edge, episode rows 88/96/104/112; until M2 turns the row style into a structure option the two skins ride together.
+// edge, episode rows 88/96/104/112; both skins' ladders are published because the row style (M2) is a structure option the style cannot read; the core picks by `ListPolicy.RowStyle`.
 //
 // WHO READS AND WRITES IT. An option belongs to its layer (WVTH005, WVTH009), so the structure's density controls (the track table's "Row size" button, panel and
 // submenu, the Settings picker's cards) go through the accessors here: `Current` is the tracked read, `Request` a request that lands in `ThemeHost.Apply`.

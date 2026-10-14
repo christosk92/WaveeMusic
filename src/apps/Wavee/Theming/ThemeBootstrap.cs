@@ -37,6 +37,8 @@ public static class ThemeBootstrap
 
     private static readonly SettingKey<int> LegacyRowDensity = new("detail.rowdensity", 1);
     private static readonly SettingKey<bool> LegacyHideTrackArtwork = new("appearance.trackArtwork.hidden", false);
+    private static readonly SettingKey<int> LegacyRowStyle = new("detail.rowstyle", 0);
+    private static readonly SettingKey<int> RowStyleOptionKey = new("theme.classic.structure.rowStyle", 0);
     private static readonly SettingKey<int> DensityOptionKey = new("theme.classic.style.density", 1);
     private static readonly SettingKey<bool> HideArtOptionKey = new("theme.classic.structure.hideTrackArt", false);
 
@@ -53,6 +55,11 @@ public static class ThemeBootstrap
         new ThemeBootstrapStep("TrackRowDensity",
             ReadsLegacyKeys: ["detail.rowdensity"], WritesKeys: ["theme.classic.style.density"],
             Run: static s => Copy(s, LegacyRowDensity, DensityOptionKey, static v => (v is >= 0 and <= 3, v))),
+        // M2: the track-list skin (0 Modern, 1 Classic) is Classic's `structure.rowStyle`, the same numbers. A value outside 0..1 is not copied (the option default,
+        // Modern, applies; the old reader clamped to Classic). A user who never touched it has no stored value and stays Modern.
+        new ThemeBootstrapStep("TrackRowStyle",
+            ReadsLegacyKeys: ["detail.rowstyle"], WritesKeys: ["theme.classic.structure.rowStyle"],
+            Run: static s => Copy(s, LegacyRowStyle, RowStyleOptionKey, static v => (v is 0 or 1, v))),
         // M4: "always hide track artwork" is Classic's `structure.hideTrackArt`.
         new ThemeBootstrapStep("HideTrackArtwork",
             ReadsLegacyKeys: ["appearance.trackArtwork.hidden"], WritesKeys: ["theme.classic.structure.hideTrackArt"],

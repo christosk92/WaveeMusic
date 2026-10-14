@@ -185,20 +185,21 @@ public sealed class LiveOptionBehaviourTests(ShellHost host)
     public void Row_style_re_keys_the_track_list()
         => host.Mounted(shell =>
         {
-            int before = Platform.Settings.Get(Platform.Keys.TrackRowStyle);
+            var before = ClassicOptions.RowStyle();
+            bool wasClassic = before == TrackRowStyle.Classic;
             var (_, key) = LikedList(shell);
-            Assert.EndsWith(before == 1 ? "classic" : "modern", SkinSegment(key));
+            Assert.EndsWith(wasClassic ? "classic" : "modern", SkinSegment(key));
             try
             {
-                Prefs.Appearance.Set(Platform.Keys.TrackRowStyle, before == 1 ? 0 : 1);   // Settings › Appearance › Track rows
+                SetRowStyle(wasClassic ? TrackRowStyle.Modern : TrackRowStyle.Classic);   // Settings › Appearance › Row style
                 shell.RunFrames(30);
                 var (_, next) = Single(shell, "list:");
                 Assert.NotEqual(key, next);
-                Assert.EndsWith(before == 1 ? "modern" : "classic", SkinSegment(next));
+                Assert.EndsWith(wasClassic ? "modern" : "classic", SkinSegment(next));
             }
             finally
             {
-                Prefs.Appearance.Set(Platform.Keys.TrackRowStyle, before);
+                SetRowStyle(before);
                 shell.RunFrames(30);
             }
         });
@@ -233,6 +234,9 @@ public sealed class LiveOptionBehaviourTests(ShellHost host)
         Assert.True(d >= 0 && d + 1 < parts.Length, "no density segment in " + key);
         return parts[d + 1];
     }
+
+    static void SetRowStyle(TrackRowStyle style)
+        => _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, ClassicStructure.RowStyleQualifiedId, style));
 
     static void SetHideArt(bool on)
         => _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, ClassicStructure.HideTrackArtQualifiedId, on));

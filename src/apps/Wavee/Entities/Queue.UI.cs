@@ -31,7 +31,7 @@
 //
 // THE DIVIDER: rows after the reducer's cursor while playback is ours, after the NowPlaying row for a remote device's
 // mirror (`Queue.Divider`). Each render subscribes the queue edge, the two row tables, the deck's current row/phase/owner
-// and the settings epoch; the demand for row text is ONE `Entities.Ensure` over the whole queue per publication.
+// (the row style and "hide art" are the structure's options, read by its views); the demand for row text is ONE `Entities.Ensure` over the whole queue per publication.
 
 using System.Buffers;
 using FluentGpu.Controls;
@@ -447,7 +447,6 @@ public static partial class Queue
                 Lane = this,
                 Verbs = Verbs,
                 Player = PlayerVerbs.Default,
-                HairlineRows = Prefs.Appearance.TrackRowStyle() == 1,
                 RepeatOn = Model.Repeat != RepeatMode.Off,
                 RepeatTrack = Model.Repeat == RepeatMode.Track,
                 OpenPlayingFrom = openPlayingFrom,

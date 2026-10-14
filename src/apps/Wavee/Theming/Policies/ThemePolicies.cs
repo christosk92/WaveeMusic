@@ -79,7 +79,7 @@ public readonly record struct StyleMetrics(
 
 /// <summary>The track rows' geometry at the style's current density (M3): what the core's track table sizes its rows, art and episode rows with. A style
 /// whose density is an option publishes the rung the user chose; `default` (every member 0) is "none published", which the core reads as
-/// <see cref="Standard"/>. Until M2 turns the row style into a structure option the two skins' ladders ride together (<c>Modern*</c> and <c>Classic*</c>).</summary>
+/// <see cref="Standard"/>. The style publishes both skins' ladders (<c>Modern*</c> and <c>Classic*</c>) because the row style is a STRUCTURE option the style layer cannot read (WVTH005); the core picks by <see cref="ListPolicy.RowStyle"/>.</summary>
 /// <param name="Rung">The density rung, 0 the tightest: part of the list's re-key and the episode row's "narrow" decision.</param>
 /// <param name="ModernRow">The Modern skin's row height.</param>
 /// <param name="ModernArt">The Modern skin's art edge.</param>

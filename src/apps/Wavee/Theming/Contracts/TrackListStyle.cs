@@ -11,10 +11,10 @@
 // them as `BoundRow` (the slot's bound inputs) and `TrackRowSkin` (the wired behaviour) and only draws. A template is called once
 // per slot per shape, never per bind, exactly as the bound grid always was: a recycle rebinds, it allocates nothing.
 //
-// THE ROW STYLE TODAY. Modern or Classic is still the core's `ColumnSet.Classic` (the `detail.rowstyle` setting, read into the
-// table's snapshot); the core picks `Modern` or `Classic` below by it. M2 deletes that flag and turns the pick into the
-// structure's own option (the stamp then re-keys the list). Both templates are the structure's, so a second theme supplies
-// its own pair and draws another row over the same table.
+// THE ROW STYLE. Modern or Classic is the structure's own option (M2: Classic's `structure.rowStyle`), published to the core as
+// `ThemePolicies.Lists.RowStyle`; the table reads it into its snapshot's `ColumnSet.Classic` and picks `Modern` or `Classic` below
+// by it (a change re-keys the list). Both templates are the structure's, so a second theme supplies its own pair and draws another
+// row over the same table.
 //
 // NOT YET `BoundRowTemplate<RowPresentation>`. The engine's typed bound-row channel (EP6: `ItemsView.CreateBound` over
 // `BoundListProps`, one stamp-driven slot rebuild) wants the WHOLE slot as a plain tree with no component in it. The table's
@@ -69,7 +69,7 @@ public sealed class TrackListStyle
 
     /// <summary>A structure-computed value that changes whenever either template would build a different row (a theme option it
     /// read). Carried for the stamp-driven slot rebuild of the typed bound-row channel; the table re-keys its list on the
-    /// row-style setting itself until then.</summary>
+    /// row-style policy itself until then.</summary>
     public int Stamp { get; }
 
     /// <summary>The Modern row style (the default).</summary>

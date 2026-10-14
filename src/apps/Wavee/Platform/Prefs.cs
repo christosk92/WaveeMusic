@@ -25,7 +25,7 @@
 //
 // `Platform.SettingsChanged` already bumps on EVERY write, and a surface could subscribe to that instead. It would also
 // re-render every mounted lyrics view when the user changed the audio output device. The epochs are the fan-out
-// boundary: one per group of surfaces that genuinely move together, so a track-list-style change re-reads the track lists
+// boundary: one per group of surfaces that genuinely move together, so a marquee change re-reads the track lists
 // and nothing else. A NEW epoch is a design decision, not a convenience — it asserts that a new independent set of
 // surfaces exists.
 //
@@ -48,7 +48,7 @@ public static partial class Prefs
     /// <summary>The cross-surface APPEARANCE epoch. Settings writes bump it once so mounted and KeepAlive-parked
     /// player/detail/artist surfaces re-read their persisted appearance flags on the same frame.
     ///
-    /// <para>WHAT BUMPS IT: marquee text, track list style, the animated
+    /// <para>WHAT BUMPS IT: marquee text, the animated
     /// lyrics backdrop, the liked-cover treatment, and the daylist clock. WHAT DOES NOT: the THEME (the engine's own epoch re-themes every
     /// mounted render in place) and the ZOOM (the host folds it into the window scale, which relayouts everything
     /// anyway).</para></summary>
@@ -66,13 +66,6 @@ public static partial class Prefs
         {
             _ = Epoch.Value;
             return Platform.Settings.Get(Platform.Keys.MarqueeEnabled);
-        }
-
-        /// <summary>Reactive read of the track-list SKIN (0 Modern · 1 Classic), clamped.</summary>
-        public static int TrackRowStyle()
-        {
-            _ = Epoch.Value;
-            return Clamp(Platform.Settings.Get(Platform.Keys.TrackRowStyle), 2);
         }
 
         /// <summary>Reactive read of the Liked Songs cover TREATMENT, as the raw persisted int, clamped against the

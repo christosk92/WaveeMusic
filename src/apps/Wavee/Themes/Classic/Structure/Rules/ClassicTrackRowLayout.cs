@@ -6,7 +6,7 @@
 // shift). They are data, not decisions: `Lists\ClassicTrackTable.cs` reads them (WVTH003 allows literals only here, in `Rules\**`).
 //
 // WHAT IS NOT HERE. The lane widths, the row heights per density and the art ladder are the core's (`Track.Lane`, `Track.TableRules`,
-// `Track.RowMetrics`): the table's relief ladder and the header run on them, and the Classic values are M2's and M3's to move.
+// `Track.RowMetrics`): the table's relief ladder and the header run on them, and the lane tables stay with the core's lane sets (the row style reaches them as `ThemePolicies.Lists`).
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;

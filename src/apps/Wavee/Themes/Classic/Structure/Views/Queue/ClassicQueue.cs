@@ -119,7 +119,7 @@ internal sealed class ClassicQueuePanel : Component
         _toggleAutoplay ??= props.Verbs.ToggleAutoplay;
         _clear ??= props.Verbs.Clear;
         UseSignalEffect(_closeSwipeOnScroll);
-        bool hairline = props.HairlineRows;
+        bool hairline = ClassicOptions.ClassicRows();   // the structure's row-style option (M2); the hairline skin is the Classic one
         bool art = !hairline && !ClassicOptions.HideTrackArt();
         _rowExtent = ClassicQueueRules.Extent(hairline, ClassicQueueRules.QueueArt);
         lane.SetMetrics(_rowExtent, _extentOf ??= ExtentOf);

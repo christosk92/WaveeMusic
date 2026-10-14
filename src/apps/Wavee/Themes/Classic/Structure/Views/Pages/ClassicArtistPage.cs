@@ -320,7 +320,7 @@ internal static class ClassicArtistPage
                 new BoxEl { Direction = 0, Gap = ClassicDiscographyRules.Gap, Children = cells },
             ],
         };
-        Element chartShape = chart is null ? new BoxEl() : chart.Skeleton(ArtistChartSkeletonArgs.For(0, p.RowsClassic, !ClassicOptions.HideTrackArt()));
+        Element chartShape = chart is null ? new BoxEl() : chart.Skeleton(ArtistChartSkeletonArgs.For(0, ClassicOptions.ClassicRows(), !ClassicOptions.HideTrackArt()));
         return Magazine([chartShape, facet], p.Metrics.Gutter);
     }
 }

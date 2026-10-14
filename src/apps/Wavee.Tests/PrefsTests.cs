@@ -47,10 +47,10 @@ public sealed class PrefsTests : IDisposable
     [Fact]
     public void The_epochs_are_independent_fan_out_boundaries()
     {
-        // A track-list-style change must not re-render every mounted lyrics view.
+        // A marquee change must not re-render every mounted lyrics view.
         int lyrics = Prefs.Lyrics.Epoch.Peek();
         int hero = Prefs.DetailHero.Epoch.Peek();
-        Prefs.Appearance.Set(Platform.Keys.TrackRowStyle, 1);
+        Prefs.Appearance.Set(Platform.Keys.MarqueeEnabled, false);
         Assert.Equal(lyrics, Prefs.Lyrics.Epoch.Peek());
         Assert.Equal(hero, Prefs.DetailHero.Epoch.Peek());
     }

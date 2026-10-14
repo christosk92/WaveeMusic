@@ -11,7 +11,10 @@ member Prefs.Appearance.ColorWashes
 member Platform.Keys.ColorWashesEnabled
 key detail.rowdensity
 key appearance.trackArtwork.hidden
+key detail.rowstyle
 member Prefs.Appearance.RowDensity
 member Prefs.Appearance.TrackArtworkHidden
+member Prefs.Appearance.TrackRowStyle
+member Platform.Keys.TrackRowStyle
 member Platform.Keys.RowDensity
 member Platform.Keys.HideTrackArtwork
