@@ -160,9 +160,7 @@ public static partial class Platform
         public static readonly SettingKey<bool> AiLyricsOnBatterySaver = new("lyrics.ai.onBatterySaver", false);
         public static readonly SettingKey<string> AiLyricsLanguages = new("lyrics.ai.languages", "en");   // comma-separated
 
-        // ── shell rail. (The detail pages' rails are Classic's theme state, `DetailRailPrefs`.)
-        public static readonly SettingKey<float> ShellRailWidth = new("shell.rail.width", 340f);
-        public static readonly SettingKey<float> ShellDockedVideoHeight = new("shell.rail.docked-video.height", 0f);
+        // (The right panel's width and docked-video height, the detail pages' rails and the library columns are Classic's theme state.)
 
         // ── shell state ──
         public static readonly SettingKey<bool> PlayerBarShowRemaining = new("playerbar.duration.remaining", true);
@@ -330,9 +328,7 @@ public static partial class Platform
         // inventing their own; the string shape is 0.2.9's and is persisted, so it never changes. A key is a struct, so
         // the only allocation is the name, and these are read at mount, never per frame.
 
-        /// <summary>Per-library-kind three-column state (`library.&lt;kind&gt;.*`; kind is "artists"/"albums"/…).</summary>
-        public static SettingKey<float> LibraryLeftW(string kind) => new("library." + kind + ".leftw", kind == "artists" ? 280f : 340f);
-        public static SettingKey<float> LibraryMidW(string kind) => new("library." + kind + ".midw", 440f);
+        /// <summary>Per-library-kind view state (`library.&lt;kind&gt;.*`; the column widths are theme state, `LibraryViewPrefs`; kind is "artists"/"albums"/…).</summary>
         public static SettingKey<int> LibrarySort(string kind) => new("library." + kind + ".sort", 0);
         public static SettingKey<bool> LibraryDesc(string kind) => new("library." + kind + ".desc", false);
         public static SettingKey<int> LibraryView(string kind) => new("library." + kind + ".view", 1);

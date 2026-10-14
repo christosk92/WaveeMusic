@@ -1079,8 +1079,10 @@ delegates are the host's stable fields.
 **The collapse ladder is the structure's.** `LibraryLayoutBreakpoints` (640 with a 24 DIP hysteresis) is `Rules\Tiers.Library.cs` (`ClassicLibraryTiers.Collapsed`, with Your Episodes' compact rung `SavedEpisodesCompact`). The page view answers
 it from its own measured width and writes the host's collapse signal (`SetCollapsed`), which the selection, the crumbs and the persisted pick read; no Classic view compares a width with a number (WVTH013).
 
-**Column widths (M13).** `library.<kind>.leftw/midw` stay the core's raw keys behind `LibraryViewPrefs` (`Read`, `SetLeftW`, `SetMidW`); the view only receives the two signal instances and the commit verbs and clamps through
-the grips' ranges (`ClassicLibraryRules.LeftMin` / `LeftMax` / `MidMin` / `MidMax`). The M13 migration to `ThemeState` (plan M12/M13, which lists T10c1 as its prerequisite) changes the host's read and write only.
+**Column widths (M13).** `library.<kind>.leftw/midw` are Classic's theme *state* (`theme.classic.state.library.<kind>.leftw|midw`, owner Q6: per theme), one `StateKey` per kind and column declared by the core host that
+writes them (`LibraryViewPrefs.LeftWKey/MidWKey`; default 340, 280 for artists, and 440; clamped on every read and write to the grips' range, which core spells as `LibraryViewPrefs.LeftMin` / `LeftMax` / `MidMin` / `MidMax`
+and a test pins equal to `ClassicLibraryRules`). `LibraryViewPrefs` (`Read`, `SetLeftW`, `SetMidW`) keeps the door; the view only receives the two signal instances and the commit verbs. The `LibraryColumnWidths`
+`ThemeBootstrap` step copies the eight stored widths once.
 
 **What a Library view may call.** The WVTH002 fence applies. The navigator's data adapters stay core and are called by the rows (`LibraryRows`, `User.NavSubtitleText`, `User.ArtOf`, `User.DragOf`, `User.HitDrag`,
 `ClassicLetterKit.StickyLetter` / `JumpStrip` / `LetterPlate` / `LetterText` (`Views\Pages\ClassicLetterKit.cs`, shared with the profile lists), `ClassicDetailKit.MoreButton` / `CommandCircle` / `ArtistLine`); a hit row is the shared media surface over `Search.MenuOf` and `Track.RowData`; the pane's verbs (play, shuffle, open,
@@ -1633,6 +1635,14 @@ grip release, re-open or reset, so every mounted and parked frame re-syncs). The
 `ThemeVerbs.Register(id, run, enabled)`; `ActionOption.Confirm` makes the page ask first, so the action has no palette row). What stays core: the width ARITHMETIC (`RailPolicy`: the bounds, the page-aware cap, the
 resting width, what a drag commits) because the skeleton and the host agree on it row for row; the plan's "RailPolicy becomes a Classic rule" would need every width through a published policy and moves nothing a second
 theme could not simply reuse. `Prefs.DetailHero`, the twelve `Platform.Keys.Detail*` keys, the three legacy Settings rows, `SettingsVerbs.SetPageLayout/SetRailUniform/ResetRailSizes` and the three `ISettingsFacts` members are gone.
+
+### M12: the right panel's sizes
+
+`shell.rail.width` and `shell.rail.docked-video.height` left the core settings. They are Classic's theme *state* (`theme.classic.state.panelWidth` and `.dockedVideoHeight`; the keys are
+`Shell.PanelSizeKeys`, declared in `ShellPanelHost.cs` because the host writes them; width clamped to the shell's baseline bounds, docked height 0..560 with 0 meaning "follow the 16:9 floor"). `Shell.PanelSizes` is the one
+door (`LoadWidth`, `LoadDockedVideoHeight`, `SaveWidth`, `SaveDockedVideoHeight`) over `IPanelSizeStore`, now backed by `ThemeState`; the active `PanelPolicy` still narrows the width on load. Two `ThemeBootstrap` steps copy the
+stored values once (`PanelWidth`, `PanelDockedVideoHeight`). The sizes are read at boot: a live theme switch keeps the committed signals (`FitWidthTo` only fits the width to the new policy, persisting nothing), and the next
+launch loads the new active theme's own state.
 
 ### Worked example: row density and hide track art (M3, M4)
 

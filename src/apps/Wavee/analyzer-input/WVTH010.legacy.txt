@@ -48,3 +48,17 @@ member Platform.Keys.DetailShowRailWidth
 member Platform.Keys.DetailShowRailCollapsed
 member Platform.Keys.DetailUniformRailWidth
 member Platform.Keys.DetailUniformRailCollapsed
+key shell.rail.width
+key shell.rail.docked-video.height
+key library.albums.leftw
+key library.albums.midw
+key library.artists.leftw
+key library.artists.midw
+key library.podcasts.leftw
+key library.podcasts.midw
+key library.audiobooks.leftw
+key library.audiobooks.midw
+member Platform.Keys.ShellRailWidth
+member Platform.Keys.ShellDockedVideoHeight
+member Platform.Keys.LibraryLeftW
+member Platform.Keys.LibraryMidW

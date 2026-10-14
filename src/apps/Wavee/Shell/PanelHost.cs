@@ -59,33 +59,37 @@ public static partial class Shell
     /// <summary>The two sizes the panel persists.</summary>
     public enum PanelSize : byte { RailWidth, DockedVideoHeight }
 
-    /// <summary>Where a size lives. Production is the settings store; the per-theme state keys of the themes plan (M12)
-    /// replace it without touching a caller.</summary>
+    /// <summary>Where a size lives. Production is the ACTIVE THEME's state (<see cref="PanelSizeKeys"/>, owner Q6: panel sizes are per
+    /// theme); a unit fact swaps in a dictionary.</summary>
     public interface IPanelSizeStore
     {
         float Get(PanelSize size);
         void Set(PanelSize size, float value);
     }
 
-    sealed class SettingsPanelSizeStore : IPanelSizeStore
+    /// <summary>The panel's two theme-state keys (`theme.&lt;id&gt;.state.panelWidth` / `.dockedVideoHeight`), declared here because the core host
+    /// writes them. The width is clamped to the shell's baseline bounds on every read and write (the active panel policy narrows it
+    /// further on load); a docked height of 0 means "not set yet: follow the 16:9 floor".</summary>
+    public static class PanelSizeKeys
     {
-        public float Get(PanelSize size) => size == PanelSize.RailWidth
-            ? Platform.Settings.Get(Platform.Keys.ShellRailWidth)
-            : Platform.Settings.Get(Platform.Keys.ShellDockedVideoHeight);
+        public static readonly Theming.StateKey<float> Width = new("panelWidth", RailDefaultW, RailMinW, RailMaxW);
+        public static readonly Theming.StateKey<float> DockedVideoHeight = new("dockedVideoHeight", 0f, 0f, DockedVideoMaxH);
+    }
+
+    sealed class ThemeStatePanelSizeStore : IPanelSizeStore
+    {
+        public float Get(PanelSize size) => Theming.ThemeState.Get(size == PanelSize.RailWidth ? PanelSizeKeys.Width : PanelSizeKeys.DockedVideoHeight);
 
         public void Set(PanelSize size, float value)
-        {
-            if (size == PanelSize.RailWidth) Platform.Settings.Set(Platform.Keys.ShellRailWidth, value);
-            else Platform.Settings.Set(Platform.Keys.ShellDockedVideoHeight, value);
-        }
+            => Theming.ThemeState.Set(size == PanelSize.RailWidth ? PanelSizeKeys.Width : PanelSizeKeys.DockedVideoHeight, value);
     }
 
     /// <summary>The panel's persisted sizes behind one service: what to START at (clamped, so a stale or hand-edited value
     /// never escapes the panel's bounds) and where a committed size goes.</summary>
     public sealed class PanelSizes(IPanelSizeStore store)
     {
-        /// <summary>The settings-backed sizes the shell uses.</summary>
-        public static readonly PanelSizes Shared = new(new SettingsPanelSizeStore());
+        /// <summary>The theme-state-backed sizes the shell uses.</summary>
+        public static readonly PanelSizes Shared = new(new ThemeStatePanelSizeStore());
 
         /// <summary>The width to start at.</summary>
         public float LoadWidth() => ClampRailWidth(store.Get(PanelSize.RailWidth));

@@ -14,7 +14,7 @@
 //   · Value rules (BP 1.6): an unknown or out-of-range legacy value becomes the option default (the step simply does not
 //     copy it); a renamed option starts at its default; a removed choice becomes the default.
 //
-// T1 shipped the machinery; each M-PR registers its step in `Steps` (M3 row density, M4 hide track art, M6 colour washes, M7a sidebar, M8 detail layout and rails, M2 track row style). It runs from `Platform.Boot` right after `ZoomAutoPolicy.MigrateMode`
+// T1 shipped the machinery; each M-PR registers its step in `Steps` (M3 row density, M4 hide track art, M6 colour washes, M7a sidebar, M8 detail layout and rails, M12 panel sizes, M13 library columns, M2 track row style). It runs from `Platform.Boot` right after `ZoomAutoPolicy.MigrateMode`
 // and before anything reads a presentation setting. WVTH010 keeps legacy key names and deleted member names inside this file.
 
 namespace Wavee.Theming;
@@ -75,6 +75,24 @@ public static class ThemeBootstrap
         }
     }
 
+    /// <summary>M12: the right panel's width and its docked video's height, now Classic's theme STATE (`theme.classic.state.panelWidth` / `.dockedVideoHeight`, `Shell.PanelSizeKeys`).
+    /// A stored 0 height ("follow the 16:9 floor") is copied as it is. M13: each library kind's navigator and middle column widths, now Classic's state
+    /// (`theme.classic.state.library.&lt;kind&gt;.leftw` / `.midw`, `LibraryViewPrefs`). A width outside the grip's range is copied as it is: the state key clamps on every read.</summary>
+    private static readonly string[] LibraryKinds = ["albums", "artists", "podcasts", "audiobooks"];
+
+    private static string[] LibraryLegacyKeys() => LibraryKinds.SelectMany(static k => new[] { "library." + k + ".leftw", "library." + k + ".midw" }).ToArray();
+
+    private static string[] LibraryStateKeys() => LibraryKinds.SelectMany(static k => new[]
+        { "theme.classic.state.library." + k + ".leftw", "theme.classic.state.library." + k + ".midw" }).ToArray();
+
+    private static void CopyLibraryWidths(IAppSettings s)
+    {
+        foreach (string kind in LibraryKinds)
+            foreach (string column in new[] { "leftw", "midw" })
+                Copy(s, new SettingKey<float>("library." + kind + "." + column, 0f), new SettingKey<float>("theme.classic.state.library." + kind + "." + column, 0f),
+                    static v => (!float.IsNaN(v), v));
+    }
+
     /// <summary>The steps shipped in this build: each migration PR appends its own.</summary>
     public static IReadOnlyList<ThemeBootstrapStep> Steps { get; } =
     [
@@ -110,6 +128,19 @@ public static class ThemeBootstrap
         new ThemeBootstrapStep("DetailRailSizes",
             ReadsLegacyKeys: RailLegacyKeys(), WritesKeys: RailStateKeys(),
             Run: static s => CopyRailSizes(s)),
+        // M12 panel: the width and the docked video height the user dragged to carry over to Classic's state.
+        new ThemeBootstrapStep("PanelWidth",
+            ReadsLegacyKeys: ["shell.rail.width"], WritesKeys: ["theme.classic.state.panelWidth"],
+            Run: static s => Copy(s, new SettingKey<float>("shell.rail.width", 340f), new SettingKey<float>("theme.classic.state.panelWidth", 340f),
+                static v => (!float.IsNaN(v), v))),
+        new ThemeBootstrapStep("PanelDockedVideoHeight",
+            ReadsLegacyKeys: ["shell.rail.docked-video.height"], WritesKeys: ["theme.classic.state.dockedVideoHeight"],
+            Run: static s => Copy(s, new SettingKey<float>("shell.rail.docked-video.height", 0f), new SettingKey<float>("theme.classic.state.dockedVideoHeight", 0f),
+                static v => (!float.IsNaN(v), v))),
+        // M13 library: every kind's two column widths carry over to Classic's state.
+        new ThemeBootstrapStep("LibraryColumnWidths",
+            ReadsLegacyKeys: LibraryLegacyKeys(), WritesKeys: LibraryStateKeys(),
+            Run: static s => CopyLibraryWidths(s)),
         // M2: the track-list skin (0 Modern, 1 Classic) is Classic's `structure.rowStyle`, the same numbers. A value outside 0..1 is not copied (the option default,
         // Modern, applies; the old reader clamped to Classic). A user who never touched it has no stored value and stays Modern.
         new ThemeBootstrapStep("TrackRowStyle",
