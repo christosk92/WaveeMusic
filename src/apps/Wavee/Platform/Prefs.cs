@@ -254,7 +254,6 @@ public static partial class Prefs
         public static bool Enabled() { _ = Epoch.Value; return Platform.Settings.Get(Platform.Keys.AiLyricsEnabled); }
         public static bool WordSync() { _ = Epoch.Value; return Platform.Settings.Get(Platform.Keys.AiLyricsWordSync); }
         public static bool PlainText() { _ = Epoch.Value; return Platform.Settings.Get(Platform.Keys.AiLyricsPlainText); }
-        public static bool OnBatterySaver() { _ = Epoch.Value; return Platform.Settings.Get(Platform.Keys.AiLyricsOnBatterySaver); }
 
         /// <summary>The installed aligner languages, in order, never empty ("en" when nothing valid is stored).</summary>
         public static IReadOnlyList<string> Languages()

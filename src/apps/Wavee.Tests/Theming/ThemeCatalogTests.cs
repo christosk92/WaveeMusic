@@ -1,8 +1,8 @@
 // ── Wavee.Tests/Theming/ThemeCatalogTests.cs — installing, resolving, switching and composing themes (T1) ────────────
 //
 // Against FAKE layers (ThemingFixtures.cs): the core must behave for any structure and style. The one real theme tested
-// here is Classic, and only for what it promises so far: it installs, registers no view yet and publishes `Design.Definition`
-// carrying its roles (T2a). `Themes` is process state, so the class is in the platform collection and resets it around every fact.
+// here is Classic, for what this file is about: it installs and publishes `Design.Definition` carrying its roles (T2a); its registry
+// is `RegistryCompletenessTests`. `Themes` is process state, so the class is in the platform collection and resets it around every fact.
 
 using System.Collections.Immutable;
 using FluentGpu.Dsl;

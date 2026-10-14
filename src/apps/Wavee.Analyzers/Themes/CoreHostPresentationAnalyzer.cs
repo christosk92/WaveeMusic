@@ -11,9 +11,9 @@ namespace Wavee.Analyzers.Themes;
 /// that arrive as slots; it constructs no element (<c>new BoxEl</c>, <c>new TextEl</c>... any type deriving from
 /// <c>FluentGpu.Dsl.Element</c>, except an element obtained from a slot or a call) and reads no token or role (<c>Tok.*</c>,
 /// <c>Design.*</c>, the style-role facade <c>R.*</c> of <c>Wavee.Theming.Roles</c> and the live stage-ink facade <c>StageInk.*</c> next
-/// to it, the colour roles' static face). The rule shrinks per surface PR: a surface PR puts <c>[CoreHost]</c> on the host it extracts, and the
-/// violations that host still has are listed in <c>analyzer-baseline\WVTH008.txt</c> (path, detail = the constructed type or
-/// the member read) until the PR that moves them out; T13 deletes the baseline. With no type marked, the rule reports nothing.
+/// to it, the colour roles' static face). A surface PR puts <c>[CoreHost]</c> on the host it extracts. The rule is a hard gate
+/// with no baseline (T13 deleted it): an <c>analyzer-baseline\WVTH008.txt</c> is WVTH901. With no type marked, the rule reports
+/// nothing.
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class CoreHostPresentationAnalyzer : ThemeRuleAnalyzer
@@ -27,6 +27,8 @@ public sealed class CoreHostPresentationAnalyzer : ThemeRuleAnalyzer
         "A [CoreHost] type constructs no element and reads no token or role.");
 
     protected override DiagnosticDescriptor Descriptor => Rule;
+
+    protected override bool AllowsBaseline => false;
 
     protected override void OnStart(CompilationStartAnalysisContext start, RuleEnv env)
     {

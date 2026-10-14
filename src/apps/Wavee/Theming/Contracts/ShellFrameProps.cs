@@ -10,14 +10,12 @@
 //     the template binds them with `Prop.Of(...)`, so a resize, a navigation or a theme flip never re-runs the template.
 //   · Behaviour the host wires (the shell chords, the key handler, the file-drop target, the realized-node captures the
 //     probes and the scrim clip read): the template only PLACES them.
-//   · Element builders of the surfaces that are not this PR's: each is a `Func<Element>` over the core builder that exists
-//     today (the overlay layer, the two seams' splitters; the video layers are core hosts that mount their own keys). A later
-//     T-PR gives its surface its own view key and replaces the builder with `ctx.View(...)`; nothing else here changes. The stage
-//     did (T7a1): `StageRoot` carries the props of `Stage.Root`.
-//     T4a draws the FRAME: the column, the window layers, the content region and its seams. T4c gave the material, the
-//     palette, the file-drop cue, the cover scrim, the drag chip and the frame-rate overlay their keys: those members now carry
-//     the child view's PROPS and the frame mounts `ctx.View(key, props)`. T6b did the same for the right panel (`Panel`). (The narrow drawer's props change with the band, so its
-//     core host stays a builder.)
+//   · Element builders of what is behaviour or a core host, not a picture: each is a `Func<Element>` over the core builder (the
+//     content host, the overlay layer, the two seams' splitters, the narrow drawer's host and the video layers, which are core hosts
+//     that mount their own keys).
+//     Every surface with a picture is its own key: those members carry the child view's PROPS (the title bar, the player bar, the
+//     material, the nav pane, the right panel, the stage, the file-drop cue, the cover scrim, the drag chip, the frame-rate overlay...)
+//     and the frame mounts `ctx.View(key, props)`.
 //
 // Members are init-only and every delegate is a cached static or a closure built once at mount (the frame root renders
 // once for the process), so the props are equal across re-pushes and an equal record skips the template.
@@ -103,7 +101,7 @@ public sealed record ShellFrameProps
     /// <summary>The props of the merged title bar row. The frame mounts <see cref="ViewKeys.ShellTitleBar"/> with them.</summary>
     public required ShellTitleBarProps TitleBar { get; init; }
 
-    // ── surfaces that are not T4a's: element builders until each has its own key ────────────────────────────────────
+    // ── the frame's other surfaces: a key's props, or a builder over a core host or a behaviour control ──────────────
 
     /// <summary>The player bar's props: the frame mounts <see cref="ViewKeys.PlayerBar"/> with them (T6a). The bar's hooks and
     /// decisions are the core half the template runs first (<see cref="IPlayerBarHost"/>).</summary>

@@ -4,7 +4,7 @@
 // width, floating or inline, the docked video's height and pin), the width and fit rules (`PanelPolicy`, `Shell.ClampRailWidth`,
 // `Shell.CanFitRail`, `PanelHost.FitWidthTo`), the rail <-> docked-video coupling, the seam's splitter (the frame places it) and
 // the open/close bookkeeping. This record is what the template draws from: ONE decided `PanelView` per read, plus the verbs a
-// click asks for and the builders of the bodies that other lanes still own.
+// click asks for and the builders of the bodies the core hosts.
 //
 // WHAT THE VIEW SAYS. `Read` is called inside the template's render (the panel frame is a component of the theme), so the
 // subscriptions land on it: the panel's cells, the video surface's placement, the stage that may host the docked video, and the
@@ -111,15 +111,15 @@ public sealed record PanelProps
     /// <summary>The video header's full-screen button.</summary>
     public required Action VideoToFullScreen { get; init; }
 
-    // ── bodies other lanes still own ─────────────────────────────────────────────────────────────────────────────────
+    // ── bodies the core builds (core hosts and builders) ─────────────────────────────────────────────────────────────
 
-    /// <summary>The docked video card (the video lane's): zero size and no reflow while the video is not docked.</summary>
+    /// <summary>The docked video card (the core host that mounts <see cref="ViewKeys.VideoDocked"/>): zero size and no reflow while the video is not docked.</summary>
     public required Func<Element> DockedCard { get; init; }
 
-    /// <summary>The lyrics mode's header (title, second-line toggle, AI sparkle, expand, inspector, close). T7b.</summary>
+    /// <summary>The lyrics mode's header (title, second-line toggle, AI sparkle, expand, inspector, close): a core builder.</summary>
     public required Func<Element> LyricsHeader { get; init; }
 
-    /// <summary>The lyrics body. T7b.</summary>
+    /// <summary>The lyrics body: the core host that mounts <see cref="ViewKeys.LyricsView"/>.</summary>
     public required Func<Element> LyricsBody { get; init; }
 
     /// <summary>The queue body (the core host of the queue panel, which mounts <see cref="ViewKeys.QueuePanel"/>, or its empty grammar).</summary>

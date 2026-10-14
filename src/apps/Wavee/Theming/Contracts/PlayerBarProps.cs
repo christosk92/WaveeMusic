@@ -14,8 +14,8 @@
 // `PlayerVerbs.Default`), and live READS and ACTIONS the core built once (delegates over `Playback`, `Entities`, the rail): a
 // template calls a read inside a bound `Prop.Of` thunk or inside its own render, so the subscription lands where it reads.
 // The core pieces a surface shares with the stage and the on-media strip (the seek rail with its chapter decoration, the time
-// labels, the credits line) arrive as element builders, until T7 gives each its own key (the device picker's menu is `Player.DevicePicker`
-// since T6b).
+// labels, the credits line) arrive as element builders: they are `Shell`'s own components, not keys (the device picker's menu is
+// `Player.DevicePicker`).
 //
 // WVTH006: a sealed record with init-only members and no writable signal.
 
@@ -244,7 +244,7 @@ public sealed record PlayerBarProps
     /// <summary>A playback rate as text ("1.5x").</summary>
     public required Func<float, string> RateText { get; init; }
 
-    // ── core pieces shared with the stage and the on-media strip, until each has a key (T6b, T7) ──────────────────────
+    // ── core pieces shared with the stage and the on-media strip (core builders, not keys) ────────────────────────────
 
     /// <summary>The seek rail with its chapter decoration.</summary>
     public required Func<Element> SeekBar { get; init; }

@@ -9,7 +9,7 @@
 //   Shell.Fps              the frame-rate overlay (developer mode)         CommonFps
 //   Pages.Diagnostics.*    the playback, connect and capture pages         CommonDiagnostics
 //   Pages.Logs             the log files page                              CommonLogs
-//   (any key)              "this surface is not drawn" (Common.Nothing)    CommonNothing, registered key by key by the theme that has no picture
+//   Pages.Module           a module's page                                 CommonModulePage
 //
 // The not-found page is a block too (`CommonNotFound`), but the content state draws it: `Shell.ContentState` is a structure's own key (the page box
 // and the offline lane are the theme's), and its NotFound arm calls the one block.

@@ -96,7 +96,7 @@ public sealed record NowPlayingHeroProps
     /// <summary>The "Next up" rows (the track-row family's, shared with the video body).</summary>
     public required Func<Element> NextUp { get; init; }
 
-    /// <summary>The lyrics peek under the track meta (the lyrics lane's).</summary>
+    /// <summary>The lyrics peek under the track meta (a core builder).</summary>
     public required Func<Element> LyricsPeek { get; init; }
 
     /// <summary>Resolve an interned string (a city, a country, a merch name, a price).</summary>

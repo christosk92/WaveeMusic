@@ -173,7 +173,6 @@ public sealed class ConcertMountedTests(ShellHost host)
             Groups = groups,
             Selected = 0,
             Nearby = new HashSet<string>(),
-            SpotlightSlot = 0,
             SpotlightAccent = 0,
             HeroImageUrl = null,
             LocationLabel = "City A",

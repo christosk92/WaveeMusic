@@ -5,7 +5,7 @@
 // lines the surface lists. The lyrics MODEL (`LyricsModel`: state, document, the follow and resync machine, the second line, the AI
 // state, the verbs), the blur policy (`Lyrics.BlurPolicy`, `Lyrics.Prefs.BlurStrength`) and the frame driver (the media clock, the
 // active-line cascade and scroll spring, the depth-of-field ramp, the word wipe: `Lyrics.ViewCore`) stay core. The panel's lyrics
-// header and the now-playing panel's two-row peek are not keys yet.
+// header and the now-playing panel's two-row peek are core builders, not keys (`PanelProps.LyricsHeader`, `NowPlayingHeroProps.LyricsPeek`).
 
 using FluentGpu.Theming;
 

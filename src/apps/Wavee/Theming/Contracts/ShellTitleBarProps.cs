@@ -12,7 +12,7 @@
 //     they are called inside the engine bar's render, so reading a signal there subscribes the bar, exactly as the builders did
 //     before the move. `Layout` subscribes, `PeekLayout` does not (the strip reads it at mount).
 //   · Verbs (the tab and history actions, sign in, the theme toggle, friends, the notification panel).
-//   · Element builders of the surfaces that have no key of their own yet (the profile chip: the overlays PR, T11a).
+//   · Element builders over core hosts (the profile chip: `Shell.ProfileChip`, which mounts `Overlay.ProfileChip`).
 //   · The search's own props (`Shell.Search`), which the row mounts in its centre column and, in the icon form, beside the
 //     theme toggle.
 //
@@ -100,7 +100,7 @@ public sealed record ShellTitleBarProps
 
     // ── the identity cluster ─────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The signed-in profile chip (the overlays PR, T11a, gives it a key).</summary>
+    /// <summary>The signed-in profile chip: its core host, which mounts <see cref="ViewKeys.OverlayProfileChip"/>.</summary>
     public required Func<Element> ProfileChip { get; init; }
 
     /// <summary>"Sign in" / "Reconnect".</summary>

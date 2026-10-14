@@ -28,7 +28,7 @@ internal sealed class TrackDrawerFrameArgs
     /// <summary>The row's identity (<c>MembershipDiff.RowKey</c>): the frame, its presence box and the body are keyed by it.</summary>
     public required string RowKey { get; init; }
 
-    /// <summary>The page's drawer body (<c>TableProfile.Drawer</c>), not yet keyed: the template places it under
+    /// <summary>The page's own drawer body (<c>TableProfile.Drawer</c>, built by the page, not a key): the template places it under
     /// <c>"drawer-body:" + RowKey</c>.</summary>
     public required Element Body { get; init; }
 

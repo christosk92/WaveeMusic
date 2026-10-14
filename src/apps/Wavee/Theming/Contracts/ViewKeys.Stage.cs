@@ -2,8 +2,8 @@
 //
 // T7a1 publishes the stage's frame: the root (the layer stack, the chrome placement, the hairline), the top bar, the transport
 // card, the options popover, the visualizer gallery and the lyric caption. The four layouts, the hero and the artist pane are
-// T7a2's, the lyrics pane T7b's, the queue pane T7d's (`Queue.StagePane`, in ViewKeys.Queue.cs): until they have a key the root places them as builders
-// (`StageLayers`).
+// T7a2's, the lyrics pane T7b's, the queue pane T7d's (`Queue.StagePane`, in ViewKeys.Queue.cs). The core layers (the pane host, the caption host, the
+// zero-size machinery) reach the root as builders (`StageLayers`).
 
 using FluentGpu.Theming;
 

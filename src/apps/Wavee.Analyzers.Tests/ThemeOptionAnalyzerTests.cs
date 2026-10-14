@@ -251,15 +251,15 @@ public sealed class CoreHostPresentationAnalyzerTests
         => Assert.Empty(Flagged("namespace Wavee.X { [Wavee.Theming.Contracts.CoreHost] class Host { int N(int a) => a + 1; } }"));
 
     [Fact]
-    public void Baseline_ExemptsByDetail_AndGoesStaleWhenFixed()
+    public void Baseline_IsDisallowed_AndExemptsNothing()
     {
         string source = "namespace Wavee.X { [Wavee.Theming.Contracts.CoreHost] class Host { object Box() => new FluentGpu.Dsl.BoxEl(); } }";
-        Assert.Empty(Flagged(source, new[] { Baseline("WVTH008", "Shell/Host.cs :: BoxEl") }));
+        Assert.Single(Flagged(source, new[] { Baseline("WVTH008", "Shell/Host.cs :: BoxEl") }));
 
         var diagnostics = Run(new CoreHostPresentationAnalyzer(),
             new[] { Src("Shell/Host.cs", "namespace Wavee.X { [Wavee.Theming.Contracts.CoreHost] class Host { } }") },
             new[] { Baseline("WVTH008", "Shell/Host.cs :: BoxEl") });
-        Assert.Single(Harness.Only(diagnostics, "WVTH900"));
+        Assert.Single(Harness.Only(diagnostics, "WVTH901"));
     }
 }
 

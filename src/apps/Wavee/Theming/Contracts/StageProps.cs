@@ -125,7 +125,7 @@ public sealed record StageRootView
     /// <summary>The Artist layout's big name (mounted under <see cref="ShowArtistName"/>).</summary>
     public required StageArtistNameProps ArtistName { get; init; }
 
-    /// <summary>The layers other T-PRs own, as builders until each has a key (lyrics: T7b, inside the pane host; the queue pane is the `Queue.StagePane` view since T7d, which the pane host mounts).</summary>
+    /// <summary>The core layers, as builders: the pane host (it mounts the lyrics pane, `Queue.StagePane` and <see cref="ViewKeys.StageArtistPane"/>), the caption host and the zero-size machinery.</summary>
     public required StageLayers Layers { get; init; }
 }
 
@@ -157,7 +157,7 @@ public sealed record StageTopBarProps
 }
 
 /// <summary>The props of <see cref="ViewKeys.StageTransport"/>. The facts are read inside the template's render (a signal read in
-/// <see cref="Facts"/> subscribes the card), the rest are verbs and the pieces of the surface the player bar shares until T6b.</summary>
+/// <see cref="Facts"/> subscribes the card), the rest are verbs and the core pieces the player bar shares (the seek rail, the time labels).</summary>
 public sealed record StageTransportProps
 {
     public required Stage.StageCtx Stage { get; init; }

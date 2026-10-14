@@ -148,15 +148,14 @@ public readonly partial struct Concert
             for (int i = 0; i < chronological.Count; i++) if (chronological[i].IsNearUser) near.Add(chronological[i]);
             var nearby = ConcertScheduleShaping.GuardedNearSet(itinerary, near);
 
-            int spotlightSlot = 0;
             uint accent = 0;
             if (!seed)
             {
                 _spotlightSlot = 0;
                 if (spotlight is { } next)
                 {
-                    _spotlightSlot = spotlightSlot = Entities.Current.Concerts.Slot(next.Uri.AsSpan());
-                    accent = new Concert(spotlightSlot).Accent;
+                    _spotlightSlot = Entities.Current.Concerts.Slot(next.Uri.AsSpan());
+                    accent = new Concert(_spotlightSlot).Accent;
                 }
             }
             return new ConcertScheduleModel
@@ -168,7 +167,6 @@ public readonly partial struct Concert
                 Groups = groups,
                 Selected = ConcertScheduleShaping.ResolveMonthIndex(groups, _month.Peek(), spotlight),
                 Nearby = nearby,
-                SpotlightSlot = spotlightSlot,
                 SpotlightAccent = accent,
                 HeroImageUrl = seed ? null : Controls.ArtUrl(_artist.HeaderId),
                 LocationLabel = seed ? " " : LocationLabel(),

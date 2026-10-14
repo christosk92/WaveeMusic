@@ -196,22 +196,26 @@ T4a is the first PR that registers a view. The API was T1's (`IStructureLayer.Re
 |---|---|---|
 | 1. Key | `Theming\Contracts\ViewKeys.<Family>.cs` | `public static readonly ViewKey<XProps> ShellFrame = new("Shell.Frame");` A dotted, constant, unique id (WVTH006); the key is created nowhere else |
 | 2. Props | `Theming\Contracts\XProps.cs` | a **sealed record class**, init-only members (WVTH006: no setter, no `Signal<T>` member: carry `IReadSignal<T>`, a `Func`, a value). Props freeze at mount: **live values reach the template through signals or Funcs it binds with `Prop.Of`**, never through a changing member. Delegates are cached statics or built once, so an equal record skips the template |
-| 3. Core host | the existing component | keeps every hook, effect, state machine and verb; builds the props once; mounts `Slots.View(ViewKeys.X, props)`. Mark it `[CoreHost]` (WVTH008: it then builds no element and reads no `Tok`/`Design`/`R`; what it still does goes in `analyzer-baseline\WVTH008.txt` and shrinks) |
+| 3. Core host | the existing component | keeps every hook, effect, state machine and verb; builds the props once; mounts `Slots.View(ViewKeys.X, props)`. Mark it `[CoreHost]` (WVTH008: it then builds no element and reads no `Tok`/`Design`/`R`; the rule has no baseline, so the presentation moves in the same PR) |
 | 4. Template | `Themes\Classic\Structure\Views\<Family>\ClassicX.cs` | `internal static class ClassicX { public static Element Template(XProps props, in ViewContext ctx) }`: the element tree the core built before, with the same keys, ids, transitions and bound channels. It may not reference `Shell`, `Entities`, `Playback`, `Spotify`, `Store`, `Prefs` (WVTH002): what it needs arrives on the props or as a verb |
 | 5. Numbers | `Themes\Classic\Structure\Rules\` | a literal size, radius, gap or opacity (not 0 or 1) is a rule or a role, not a template literal (WVTH003). The shell-level constants that came with the code (`ClassicFrameRules`) live here |
 | 6. Register | `ClassicStructure.Register` | `views.Add(ViewKeys.ShellFrame, ClassicFrame.Template, "classic.shell.frame");` The template id is the slot's identity: a different id under the same key remounts the slot, the same id with a new registry only re-runs it |
 
-**Surfaces that are not yet their own key arrive as builders.** A moved view often places surfaces another T-PR owns. Until that
-PR gives them a key, the props carry a `Func<Element>` over the core builder that exists (`ShellFrameProps.StageView`, ...); the owning
-PR replaces the member with a `ctx.View(...)` call. Nothing else in the frame changes. The title bar (T4b), the frame's small views (T4c),
-the sidebar pane (T5a), the player bar (T6a) and the right panel (T6b) did: `ShellFrameProps.PlayerBar` carries its props and the frame mounts
-`ctx.View(ViewKeys.PlayerBar, props.PlayerBar)`.
+**Every surface with a picture is a key; builders carry what is not a picture.** A view places another surface by mounting its key with
+the props the parent carries (`ShellFrameProps.PlayerBar` carries its props and the frame mounts `ctx.View(ViewKeys.PlayerBar, props.PlayerBar)`).
+A `Func<Element>` member is a core host that mounts its own keys (the content host, the narrow drawer, the overlay layer, the video layers,
+the panel's lyrics and queue bodies, the profile chip, the stage's pane and caption hosts) or a behaviour control the engine wires (the
+seams' splitters, the zero-size machinery). Since T13 every published key has a Classic or Common picture (`RegistryCompletenessTests`); what
+core still draws itself is listed under "What stays core" below.
 
 **What stays core, and why.** Models, state machines, signals and verbs (the sidebar band and presentation, the tiers, auto zoom,
 the rail and docked-video coupling, the chrome allocator, the material mirror, the route reducer, the auth fold, the page
 transition's recipe) decide and publish; a theme only draws. Behaviour the engine wires as a control (the splitter, the
 shell chords, the file-drop target, the realized-node captures the probes and the scrim clip read) is built by the host and
-**placed** by the template.
+**placed** by the template. A few pieces are still drawn by core components that are not `[CoreHost]` (so WVTH008 does not see them) and
+reach the views as builders: the player bar's seek rail, time labels and credits line (`Shell.SeekBar`, `Shell.TimeText`, `BarArtistsLine`,
+shared with the stage and the on-media strip), the panel's lyrics header, the now-playing hero's "Next up" rows and lyrics peek, the stage's
+pane frame (`Stage.UI.cs`), the sidebar pane's layer (`PaneView`, below) and the album and playlist pages' two frame-clock hosts.
 
 ### The frame and the content states (T4a)
 
@@ -315,8 +319,8 @@ gives the pane its key and moves the **rows**; T5b moves the **heads** (below); 
 
 - **The pane is a core host.** `PaneView` keeps every hook, effect and state machine: the plan -> publish -> per-row epoch pipeline,
   the selection travel and the pill target, disclosures, reorder bands, the tree multi-selection, the drag peek and when the freeze
-  holds or flushes. It is not marked `[CoreHost]` yet: it still builds the pane layer (the layer, root and context-menu shield
-  boxes and the padded list) and the Edit pane, which WVTH008 would list. The filter box and the empty hint left with the heads
+  holds or flushes. It is not marked `[CoreHost]`: it builds the pane layer (the layer, root and context-menu shield
+  boxes and the padded list), which WVTH008 would report. The filter box and the empty hint left with the heads
   (T5b, below).
 - **The structure supplies the list as a `NavRowKit`** (`Theming\Contracts\NavRowKit.cs`; Classic's is `ClassicNavRows`): the planner
   and its owning-section answer, the publish diff (`RowChanged`), the analytic extent that seeds the virtualizing host, the mid-drag
@@ -1398,7 +1402,6 @@ The three diagnostics pages and the log viewer are **Common** blocks (`Themes\Co
 | frame-rate overlay | `Shell.Fps` (unchanged key and props; T4c drew it in Classic) | the frame root: `Diagnostics.FpsOverlayOn` | `CommonFps` |
 | not-found | none: the content state's NotFound arm | `Shell.ContentHost` decides | `CommonNotFound.Block(key, glyph, goHome)`, called by a theme's `Shell.ContentState` template (the page box and the offline lane stay the theme's) |
 | diagnostics, logs | see the diagnostics section | | `CommonDiagnostics`, `CommonLogs` |
-| nothing | any key | none | `CommonNothing.Template` (`Common.Nothing`): an empty, zero-size, hit-test-transparent box a theme registers under a key it has no picture for; Classic draws every key it publishes and registers none |
 
 **History keeps today's behaviour.** The page re-renders on the log's version and on its three signals, exactly as the component did; a route this build has no page for stays in the log at 0.6 opacity and inert while its delete stays live; Clear all asks first (Cancel is the default button), a row delete does not; Most recent trims the last row's divider of every card, Most visited keeps every divider. The projection is built per render by the core (at most 500 rows) and carries ready-to-draw facts (title, glyph, kind label, argument, timestamp, visit count, reachability and the two verbs), so the view names no `Shell`.
 
@@ -1507,12 +1510,12 @@ rule that allows none is WVTH901. Rules that need a list read `src\apps\Wavee\an
 |---|---|---|
 | WVTH001 | `Wavee.Themes.*` referenced only along the allowed edges (App.cs, ThemeCatalog.cs, composition files, structure to Common) | none |
 | WVTH002 | `Themes\**` may not reference `Entities`, `Playback`, `Spotify`, `Store`, `Shell`, `Prefs`, `Platform.Settings` | `Themes/Classic/Structure/LegacyPrefs.cs` only, shrink-only |
-| WVTH003 | no literal looks (a number for a size/radius/gap/opacity, a colour built from components) in `Themes\*\Structure\**` and `Themes\Common\**` outside `Rules\**` | Classic, emptied by P3c |
+| WVTH003 | no literal looks (a number for a size/radius/gap/opacity, a colour built from components) in `Themes\*\Structure\**` and `Themes\Common\**` outside `Rules\**` | Classic only; frozen at T13 with no entry (no file: every Classic and Common view is clean); P3c removes the support |
 | WVTH004 | no identity reads (`ThemeHost.Current`, `ThemeCatalog`, `ThemeComposition.Manifest`, `ThemeManifest` ids, layer ids, `ThemeDefinition.Id`) outside Composition, Options, ThemeBootstrap, App.cs, manifests | none |
 | WVTH005 | an option is read or published only by its own layer (and Options/Composition) | none |
 | WVTH006 | keys created only under `Theming\Contracts`; dotted unique ids; props are sealed records with read-only members | none |
 | WVTH007 | `theme.*` settings minted only in `Theming\Options`, `ThemeBootstrap.cs`, `ThemeHost.cs` (`theme.mode` stays core) | none |
-| WVTH008 | a `[CoreHost]` type builds no element and reads no `Tok.*`/`Design.*`/`R.*` (nor the live `StageInk.*`); every colour-role facade is a member of `R`, so it is fenced with the rest | shrinks per surface PR |
+| WVTH008 | a `[CoreHost]` type builds no element and reads no `Tok.*`/`Design.*`/`R.*` (nor the live `StageInk.*`); every colour-role facade is a member of `R`, so it is fenced with the rest | none (T13 deleted it; a file is WVTH901) |
 | WVTH009 | `ctx.OptionRequests.Set` only with own-layer keys | none |
 | WVTH010 | retired keys and deleted members (listed in `analyzer-input\WVTH010.legacy.txt`) only in `ThemeBootstrap.cs` | empty after F4 |
 | WVTH011 | each hidden structure option has a line with two or more values in `analyzer-input\WVTH011.matrix.txt` | none |
@@ -1597,7 +1600,7 @@ whose result feeds one. A measurement is `Viewport.Size` (read through `UseConte
 clean. That page-level widths come from the layout record is a review rule, not an analyzer rule (an analyzer cannot tell a page-level
 region from a control size). The baseline detail is the measurement kind (`Viewport.Size`, `UseMeasuredWidth`, `UseMeasuredBounds`,
 `Responsive.Of`, `TierFacts.ContentWidth`...), the same for the comparison and its call, so one entry per file and kind covers a site;
-Classic's file is `analyzer-baseline\WVTH013.txt` (no file today: no view has moved into `Themes\**` yet), emptied family by family by the
+Classic's file is `analyzer-baseline\WVTH013.txt` (no file today: every moved view is clean), emptied family by family by the
 Classic tier PRs and deleted by TC10. Where a ladder cannot move without a behaviour change, the move PR lists the file there.
 
 **Zoom and tiers (C1b).** Tiers are measured on the layout viewport, after app zoom, so Auto zoom is clamped against ONE core reference,

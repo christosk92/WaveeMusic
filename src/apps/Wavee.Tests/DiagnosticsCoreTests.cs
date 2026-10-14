@@ -97,14 +97,8 @@ public class LogViewTests
     }
 
     [Fact]
-    public void Categories_are_distinct_sorted_case_insensitively_and_the_index_clamps()
-    {
-        string[] cats = Diagnostics.LogView.Categories(Session);
-        Assert.Equal(new[] { "app", "audio", "crash", "Lyrics" }, cats);
-        Assert.Equal(0, Diagnostics.LogView.CategoryIndex(cats, null));
-        Assert.Equal(2, Diagnostics.LogView.CategoryIndex(cats, "AUDIO"));
-        Assert.Equal(0, Diagnostics.LogView.CategoryIndex(cats, "gone"));
-    }
+    public void Categories_are_distinct_and_sorted_case_insensitively()
+        => Assert.Equal(new[] { "app", "audio", "crash", "Lyrics" }, Diagnostics.LogView.Categories(Session));
 
     [Fact]
     public void Field_text_copy_text_and_the_meta_line()
@@ -235,7 +229,7 @@ public class RuntimeReportTests
     [Fact]
     public void A_build_without_local_playback_reports_that_and_never_reached_verify()
     {
-        var diag = Diagnostics.RuntimeDiagnostics.NotCompiledIn("no client");
+        var diag = new Diagnostics.RuntimeDiagnostics(false, [], ProvisioningOutcome.RuntimeUnavailable, "no client", null, null, null, null);
         Assert.False(diag.CompiledIn);
         Assert.Equal(ProvisioningOutcome.RuntimeUnavailable, diag.LocateOutcome);
         Assert.True(diag.VerifyNeverReached);

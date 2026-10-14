@@ -3,8 +3,8 @@
 // T5a publishes the pane's key. The sidebar is one pane over six sub-surfaces; T5a moves the ROWS (the planner, the diff, the
 // extents, the freeze and the row slot) and mounts the pane through the key. T5b moves the HEADS: the section header's chrome and
 // the filter box ride the row slot (no key of their own: they are part of a row), and the two heads that stand beside the list get
-// a key each (Your Library's head, the empty body). The rail's flyouts (T5c) are keys too (below); the Edit outline, the drop cues and the library grid
-// (T5d-f) stay core and reachable from the row slot through `INavRowHost` until each is given to the structure.
+// a key each (Your Library's head, the empty body). The rail's flyouts (T5c) and the Edit outline (T5d) are keys too (below); the drop cues (T5e) and
+// the library grid's tile (T5f) are the row slot's, which reaches the core through `INavRowHost`.
 
 using FluentGpu.Theming;
 

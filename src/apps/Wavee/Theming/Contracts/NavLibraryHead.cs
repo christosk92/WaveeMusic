@@ -5,7 +5,7 @@
 // rail's form is Home, the search tile and the separator). The core keeps what decides: the model's session (`NavLibrary`: the drill
 // stack, the shaping, the facts and every verb), the head<->list focus ring (the head's focus targets live on the session, because
 // the list's Up-from-the-first-row and the pane's pill rule read them), the pill flag, the signals (document, search, filter) and
-// the menus' rows (T5c moves the menus). The structure draws the head and reaches all of it through `INavLibraryHeadHost`.
+// the menus' rows (the structure's flyouts present them). The structure draws the head and reaches all of it through `INavLibraryHeadHost`.
 //
 // The props carry the host, one cached instance per Library mount (the session is built once at mount and equal across the pane's
 // re-renders, so an equal record skips the template). The host is internal (it speaks `INavRowHost` and the pane's rows), so the
@@ -100,7 +100,7 @@ internal interface INavLibraryHeadHost
     /// <summary>Is the header "+" the armed drop destination?</summary>
     Func<bool> HeaderDropActiveFn { get; }
 
-    // ── the menus (T5c moves them) ───────────────────────────────────────────────────────────────────────────────────
+    // ── the menus' rows ──────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The sort menu's rows for the active chip.</summary>
     IReadOnlyList<MenuFlyoutItem> SortMenu(SidebarLibraryFilter filter);

@@ -217,9 +217,6 @@ public sealed record ConcertScheduleModel
     /// <summary>The guarded near-you set of show uris.</summary>
     public required HashSet<string> Nearby { get; init; }
 
-    /// <summary>The spotlight's concert slot (0 for none or the skeleton): "View event" opens it.</summary>
-    public required int SpotlightSlot { get; init; }
-
     /// <summary>The spotlight's accent (0 for none or the skeleton).</summary>
     public required uint SpotlightAccent { get; init; }
 
