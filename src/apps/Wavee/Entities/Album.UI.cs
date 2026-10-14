@@ -1,7 +1,7 @@
 // ── Entities/Album.UI.cs ───────────────────────────────────────────────────────────────────────────────────────────
 // the album surface's self-subscribing components: the billed-artist FACE PILE and its every-artist flyout (ch 05 §0.5,
 // W16, §6), the prerelease COUNTDOWN card in its three states incl. Bare (W13, §5's clock rule) and the trailing section
-// STACK (W12: capped at 5, one-way "Show all N") — plus the command circle (§4) the library pane, the artists' reader and the profile page share
+// STACK (W12: capped at 5, one-way "Show all N").
 //
 // T9b (themes plan 6.1): the PICTURES of the three components are Classic's (`Themes\Classic\Structure\Views\Detail\ClassicAlbumArtist.cs`,
 // `ClassicAlbumRelease.cs`, `ClassicAlbumTrailing.cs`; the keys `Theming\Contracts\ViewKeys.DetailAlbumPlaylist.cs`). What stays here is each host's gate
@@ -378,17 +378,4 @@ public readonly partial struct Album
             return ViewSlots.View(ViewKeys.AlbumTrailStack, new AlbumTrailStackProps(p.Title, p.Count, shown, _expand, rows));
         }
     }
-
-    // ══ 4. THE COMMAND CIRCLE ═══════════════════════════════════════════════════════════════════════════════════════
-    //
-    // The library pane's header, its loading twin and its command row (`PaneHeader`, `PaneHeaderSkeleton`, `PaneCommands`) and their type budget are Classic's
-    // (T10c1: `Themes\Classic\Structure\Views\Pages\ClassicLibraryPaneKit.cs`, `Rules\ClassicLibraryPaneRules.cs`). What stays is the 32/r4 icon action the
-    // pane, the artists' reader and the profile page share. Every one is a VALUE over its arguments — no hooks, no signals. Accent-NEUTRAL: nothing here reads a palette (ch 15 §0.8).
-
-    /// <summary>The pane's and the reader's secondary verb: the standard 32/r4 <see cref="Controls.IconAction"/>, named
-    /// by its tooltip.
-    /// <para><c>// Workstream B</c>: was a 36-px subtle CIRCLE — the detail rail's round FAB shape. Every non-media icon
-    /// affordance is now this same square ladder, so a pane's Shuffle and the rail's satellites read as one grammar.</para></summary>
-    public static Element CommandCircle(string glyph, string name, Action tap)
-        => Controls.Named(Controls.IconAction(glyph, tap), name);
 }

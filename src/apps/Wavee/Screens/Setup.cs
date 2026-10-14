@@ -394,8 +394,8 @@ public static partial class Setup
         /// <summary>The fact boxes' label lane.</summary>
         public const float DetailLabelWidth = 92f;
 
-        /// <summary>The banner's inner cap, and its lane's top pad (the 48-DIP chrome row + 8).</summary>
-        public const float BannerMaxWidth = 560f, BannerTopPad = 56f;
+        /// <summary>The banner lane's top pad (the 48-DIP chrome row + 8). The banner's own width cap is Classic's (`ClassicOverlayRules`).</summary>
+        public const float BannerTopPad = 56f;
 
         /// <summary>The download bar's fill: clamped 0..1, 0 when the total is unknown.</summary>
         public static float ProgressFraction(long received, long total)

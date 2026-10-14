@@ -173,7 +173,7 @@ public sealed class LibraryMountedTests(ShellHost host)
         Region = Loadable<int>.Pending(), ShimRows = 3, RowHeight = 48f,
         Table = static _ => new BoxEl(), AlsoBy = static () => null,
         Eyebrow = "ALBUM", Title = "Abbey Road", Meta = "17 songs", Uri = "spotify:album:test", SaveKey = "save:spotify:album:test",
-        Attribution = new BoxEl(), Notice = new BoxEl(),
+        Artists = null, Notice = new BoxEl(),
     };
 
     [Fact]

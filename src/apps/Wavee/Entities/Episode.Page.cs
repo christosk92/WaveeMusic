@@ -192,7 +192,7 @@ public readonly partial struct Episode
     /// `ClassicArtistPage`'s BandBar and Artist.Page.cs's ResolveSpy and Detail.UI.Hero.cs use: every section mounts STACKED in one scroll
     /// (no tab switch, no unmount), the pivot's underline follows the scroll position through the engine-free
     /// <see cref="Detail.ScrollSpy.ActiveSectionOf"/>, and a pivot click still reveals its section (bring-into-view).
-    /// Mounted in a <see cref="Detail.Band"/>-geometry row at the top of the Episodes slot, so the header height and
+    /// Mounted in a `ClassicDetailBand.Band`-geometry row at the top of the Episodes slot, so the header height and
     /// pivot metrics are the same tokens Show/Album/Artist's own bands use.</summary>
     sealed class EpisodeReader : Component
     {

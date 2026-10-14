@@ -42,8 +42,8 @@ public sealed record LibraryAlbumPaneProps
     /// <summary>"13 songs · 45 min · saved 2024".</summary>
     public string Meta { get; init; } = "";
 
-    /// <summary>The billed-artist line (a mount of `Album.ArtistLine`); null while the header is a skeleton.</summary>
-    public Element? Attribution { get; init; }
+    /// <summary>The billed artists the attribution line draws (the structure builds the line); null while the header is a skeleton.</summary>
+    public IReadOnlyList<Wavee.Controls.Face>? Artists { get; init; }
 
     /// <summary>The album's uri text (the save button's subject).</summary>
     public string Uri { get; init; } = "";

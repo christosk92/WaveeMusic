@@ -12,7 +12,7 @@
 //   · ProfileGridFit / ProfileLetterRows — the card grid: how many columns fit, and the flat "letter header | row of N cards"
 //                            projection the bound list scrolls over (the Recents / library pattern: PINNED extents, so the
 //                            sticky letter and the jump strip never drift from what is painted).
-// The UI half (Profile.Lists.Page.cs) reads these and paints; it decides nothing.
+// The host (Profile.Lists.Page.cs) reads these and hands them to the structure's view (`ClassicProfileList`), which paints; neither decides anything else.
 
 using System.Globalization;
 

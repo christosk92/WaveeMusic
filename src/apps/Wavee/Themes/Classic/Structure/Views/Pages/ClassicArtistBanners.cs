@@ -1,7 +1,7 @@
 // ── Themes/Classic/Structure/Views/Pages/ClassicArtistBanners.cs — Classic's artist page banners (themes plan 6.1, T10b1) ────────
 //
 // From `Entities\Artist.Page.cs` §3.2-§3.3 (TopTracks.cs:106-253, Shelves.cs:27-51): the date-led upcoming card and its live countdown, the "just dropped"
-// latest-release banner and the tour announcement. The section shell (`Artist.SectionBlock`) stays core: the profile page's sections read it too.
+// latest-release banner and the tour announcement. The section shell is `ClassicArtistSections.SectionBlock` (the profile page's sections draw it too).
 
 using System.Globalization;
 using FluentGpu;

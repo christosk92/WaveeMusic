@@ -481,8 +481,8 @@ public readonly partial struct Track
             // call SITE (file+line) stays fixed every render — only reachability is conditional on `p`, same as the
             // whole-table read it replaces — so relative order among the earlier, always-called hooks is unchanged.
             // The compute closure reads `_latest` (a field), never a value captured at construction — same as
-            // `PlayLatest`/`LikeLatest`/`MenuLatest` below. This is not belt-and-braces: `Recents.Page.cs`'s
-            // `RowSlot` (a virtualized, RECYCLED row scope) calls `SingleRow`/`ChildRow` -> this `EagerRow` with NO
+            // `PlayLatest`/`LikeLatest`/`MenuLatest` below. This is not belt-and-braces: the Recents page's
+            // `ClassicRecentsRowSlot` (a virtualized, RECYCLED row scope) calls `SingleRow`/`ChildRow` -> this `EagerRow` with NO
             // `Key` of its own, so when that scope recycles to a different track `EagerTrackRowHost` is REUSED in
             // place — its props are re-pushed (a new `EagerRowProps`, new `Track.Slot`), never remounted. A slot
             // captured once at this memo's construction would silently keep scoring the row the host was FIRST built

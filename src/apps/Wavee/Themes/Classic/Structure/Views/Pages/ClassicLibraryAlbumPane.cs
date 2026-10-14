@@ -8,7 +8,7 @@
 //
 //  1. SELECTION IS A CROSSFADE, NOT A CUT. The component PERSISTS (the page re-pushes its props, whose equality ignores the callback) and this view returns a ZStack host whose single child is
 //     keyed by slot — a key change is a real unmount, so the engine orphans the leaving pane and fades it UNDER the entering one, which rises 6 DIP in (`ClassicLibraryPaneKit.PaneSwap`,
-//     after Concert.Page.cs's `s_presence`). Nothing reads a frame clock; reduced motion is the engine's.
+//     after `ClassicConcertShyMonthPill`'s `s_presence`). Nothing reads a frame clock; reduced motion is the engine's.
 //  2. LOADING → READY IS A CROSS-DISSOLVE, not a swap. The rows area is one `Skel.Region`: pending ⇒ the engine paints and breathes the DERIVED shimmer of the counted rows; Ready ⇒ it mounts the
 //     real table and blur-reveals it row by row while the shimmer fades out beneath. The two `Loadable<int>` are the host's CACHED instances, one per state, because the region's thunks close over the
 //     instance we hand it — a fresh one per render would re-arm the boundary instead of flipping it.
@@ -83,10 +83,10 @@ internal static class ClassicLibraryAlbumPane
             Direction = 1, Grow = 1f, ClipToBounds = true,
             Children =
             [
-                ClassicLibraryPaneKit.PaneHeader(p.CoverUrl, p.Eyebrow, p.Title, p.Open, p.Attribution!, p.Meta),
+                ClassicLibraryPaneKit.PaneHeader(p.CoverUrl, p.Eyebrow, p.Title, p.Open, ClassicDetailKit.ArtistLine(p.Artists), p.Meta),
                 ClassicLibraryPaneKit.PaneCommands(p.Play, p.Shuffle,
                     Embed.Comp(() => new Controls.SaveButton { Uri = p.Uri, Name = p.Title, Box = ClassicLibraryPaneRules.CommandBox }) with { Key = p.SaveKey },
-                    Detail.MoreButton(p.More, ClassicLibraryPaneRules.CommandBox), p.Open),
+                    ClassicDetailKit.MoreButton(p.More, ClassicLibraryPaneRules.CommandBox), p.Open),
                 p.Notice!,
                 // ONE flex slot, in every state: the shimmer, the Retry strip and the real table all grow into it, so the header and the commands above never move. "Also by" is NOT a
                 // sibling here any more — it is the table's trailing band, inside the table's scroller.
@@ -222,7 +222,7 @@ internal static class ClassicLibraryAlbumPane
             [
                 R.Type.Eyebrow(Strings.Library.AlsoBy(model.ArtistName)) with { Color = Tok.TextTertiary },
                 // The house shape for a horizontal rail: a stated height (the surface's own shelf extent — a ScrollEl is a viewport with no content height to grow from), Grow 0, and the
-                // edge fade instead of a scrollbar rail under 96-px art (Concert.Page.cs:736, Sidebar.UI.Library.cs).
+                // edge fade instead of a scrollbar rail under 96-px art (`ClassicConcertFilterBar`, Sidebar.UI.Library.cs).
                 ScrollView(new BoxEl { Direction = 0, Gap = Spacing.M, Children = tiles }, horizontal: true) with
                 {
                     Grow = 0f, Shrink = 0f, Height = ClassicLibraryPaneRules.AlsoByStripH, SuppressScrollBar = true,

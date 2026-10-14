@@ -8,6 +8,7 @@
 
 using FluentGpu.Pal;
 using Wavee;
+using Wavee.Themes.Classic;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -90,11 +91,11 @@ public sealed class ConcertSchedulePageTests
     [Fact]
     public void ScheduleWide_EntersAtEnterThreshold_LeavesBelowLeaveThreshold()
     {
-        Assert.True(ConcertLayout.ScheduleWide(760f, wasWide: false, initialized: true));
-        Assert.False(ConcertLayout.ScheduleWide(759f, wasWide: false, initialized: true));
-        Assert.True(ConcertLayout.ScheduleWide(720f, wasWide: true, initialized: true));
-        Assert.False(ConcertLayout.ScheduleWide(719f, wasWide: true, initialized: true));
-        Assert.False(ConcertLayout.ScheduleWide(740f, wasWide: false, initialized: true));
+        Assert.True(ClassicConcertTiers.ScheduleWide(760f, wasWide: false, initialized: true));
+        Assert.False(ClassicConcertTiers.ScheduleWide(759f, wasWide: false, initialized: true));
+        Assert.True(ClassicConcertTiers.ScheduleWide(720f, wasWide: true, initialized: true));
+        Assert.False(ClassicConcertTiers.ScheduleWide(719f, wasWide: true, initialized: true));
+        Assert.False(ClassicConcertTiers.ScheduleWide(740f, wasWide: false, initialized: true));
     }
 
     // ── R3 rework: month grouping ────────────────────────────────────────────────────────────────────────────────────

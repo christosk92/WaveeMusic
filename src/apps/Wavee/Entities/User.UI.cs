@@ -1,6 +1,5 @@
 // ── Entities/User.UI.cs ────────────────────────────────────────────────────────────────────────────────────────────
-// the library's CORE facts and the shared small pieces its pictures read: the persisted view / sort codes, the A-Z sticky letter and jump strip (the profile
-// lists share them until T10c2), the navigator row's extents, bound subtitle texts, art url and drag payloads, the drag a search hit carries, and the library
+// the library's CORE facts and the shared small pieces its pictures read: the persisted view / sort codes, the navigator row's extents, bound subtitle texts, art url and drag payloads, the drag a search hit carries, and the library
 // mutation seam (`LibrarySeam`) the shared save/follow affordances read
 //
 // Role: CORE
@@ -69,83 +68,6 @@ public readonly partial struct User
     //
     // The word rails (the navigator's sort rail, the reader's scope and sort rails) and the view toggle with its trimmed panel are Classic's
     // (`Themes\Classic\Structure\Views\Pages\ClassicLibraryRails.cs`, `ClassicLibraryPage.Toolbar.cs`); the rail itself is `Controls.Words`.
-
-    /// <summary>The ink/underline fade the A–Z strip shares with the rail words: the 83-ms WinUI BrushTransition.</summary>
-    static readonly FluentGpu.Animation.MotionTokenDef RailInkFade = FluentGpu.Animation.MotionTok.ControlFaster;
-
-    // ══ 3. THE LETTERS: THE HEADER ITEM, THE STICKY OVERLAY, THE A–Z STRIP (W2) ═══════════════════════════════════════
-
-    static readonly string[] s_letters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
-
-    /// <summary>Letter index (0 = "#", 1..26 = A..Z — <see cref="LibraryLetters.Of"/>'s space) → its glyph.</summary>
-    public static string LetterText(int letter) => letter <= 0 || letter > s_letters.Length ? "#" : s_letters[letter - 1];
-
-    /// <summary>The pinned twin of the navigator's inline letter header (`ClassicLibraryPage.LetterHeader`): a ZStack overlay over the list, pushed by the distance the
-    /// page derives from the scroll geometry (Recents' <c>StickyDayHeader</c> idiom — a bound transform, so a scroll frame
-    /// never re-renders it). Always mounted; before any letter is under the top it is simply transparent, which is cheaper
-    /// than collapsing it (a presence flip would relayout the overlay).</summary>
-    public static Element StickyLetter(IReadSignal<int> letter, IReadSignal<float> push) => new BoxEl
-    {
-        // "nav:sticky" (§3.3 / A1): a stable key on the ROOT so the navigator host can place this overlay as a KEYED
-        // sibling of the keyed list — a key on a component's single-child slot is inert (RC1), but this element is
-        // returned straight into a `Children` array, where `ReconcileChildren` honors it.
-        Key = "nav:sticky",
-        Height = LibraryLetters.HeaderExtent, Direction = 0, AlignItems = FlexAlign.End, HitTestVisible = false,
-        AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
-        Padding = new Edges4(Spacing.S, 0f, Spacing.S, Spacing.XS),
-        Opacity = Prop.Of(() => letter.Value >= 0 ? 1f : 0f),
-        Transform = Prop.Of(() => Affine2D.Translation(0f, push.Value)),
-        Children = [LetterPlate(Prop.Of(() => LetterText(letter.Value)))],
-    };
-
-    internal static Element LetterPlate(Prop<string> text) => new BoxEl
-    {
-        Padding = new Edges4(6f, 1f, 6f, 1f), Corners = CornerRadius4.All(4f), Fill = Tok.FillCardDefault,
-        BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-        Children = [new TextEl(text) { Size = 12f, LineHeight = 16f, Weight = 600, CharSpacing = 60f, Color = Tok.TextTertiary }],
-    };
-
-    /// <summary>The A–Z strip on the navigator's right edge: 27 rows of 18 × 13. A present letter is full ink and the one
-    /// under the viewport top is accent/700 (two stacked runs again — <c>Weight</c> is not bindable); an absent letter sits
-    /// at 30 % and its tap NO-OPS, because <paramref name="jump"/> resolves through <c>LibraryLetters.HeaderFlat</c> and
-    /// finds nothing. <paramref name="present"/> is the letters' bitmask, <paramref name="current"/> the sticky letter.</summary>
-    public static Element JumpStrip(IReadSignal<uint> present, IReadSignal<int> current, Action<int> jump)
-    {
-        var rows = new Element[LibraryLetters.Count];
-        for (int l = 0; l < rows.Length; l++)
-        {
-            int letter = l;
-            Func<bool> here = () => (present.Value & (1u << letter)) != 0;
-            Func<bool> now = () => current.Value == letter;
-            string text = LetterText(letter);
-            rows[l] = new BoxEl
-            {
-                Width = 18f, Height = 13f, ZStack = true, Corners = CornerRadius4.All(3f),
-                // 27 letters must not become 27 tab stops: the strip is a pointer affordance beside a typeahead list.
-                Role = AutomationRole.Button, TabStop = false, Cursor = CursorId.Hand, HoverFill = Tok.FillSubtleSecondary,
-                Opacity = Prop.Of(() => here() ? 1f : 0.3f), Transition = RailInkFade, OnClick = () => jump(letter),
-                Children =
-                [
-                    StripInk(text, 400, Prop.Of(() => now() ? ColorF.Transparent : Tok.TextTertiary)),
-                    StripInk(text, 700, Prop.Of(() => now() ? Tok.AccentTextPrimary : ColorF.Transparent)),
-                ],
-            };
-        }
-        return new BoxEl
-        {
-            // "nav:strip" (§3.3 / A1): same reasoning as StickyLetter's "nav:sticky" — a stable key on the ROOT so
-            // the navigator host can place this strip as a KEYED sibling, not lose it to an inert single-child key.
-            Key = "nav:strip",
-            Direction = 1, Width = 18f, Shrink = 0f, Justify = FlexJustify.Center,
-            Padding = new Edges4(0f, Spacing.XS, 0f, Spacing.XS), Children = rows,
-        };
-    }
-
-    static TextEl StripInk(string text, ushort weight, Prop<ColorF> ink) => R.Type.MicroMeta(text) with
-    {
-        Weight = weight, Color = ink, BrushTransitionMs = Design.Motion.Fast,
-        AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center,
-    };
 
     // ══ 4. THE NAVIGATOR ROW'S FACTS (W1-W5, W19, W22) ═══════════════════════════════════════════════════════════════
 

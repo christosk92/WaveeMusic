@@ -67,7 +67,7 @@ internal static class ClassicArtistPage
         // Rendering it directly painted its own placeholder copy as if it were data: "Artist name", "A first sentence of the biography stands in this line.",
         // "10,000,000 Monthly listeners", "Top track title" (evenworsenow.mp4).
         //
-        // Reveal.Soft - the page-level reveal the rest of the app uses (Concert.Page's Region): the whole tree blur-rises in as ONE (Opacity + TranslateY + Blur
+        // Reveal.Soft - the page-level reveal the rest of the app uses (`ClassicConcertCells.Region`): the whole tree blur-rises in as ONE (Opacity + TranslateY + Blur
         // -> rest) over the shimmer dissolving out beneath it. Not None, which means "the content animates its own entrance" - and this content has none, so the
         // swap landed as a hard cut with nothing moving at all (shitttt.mp4).
         //
@@ -217,13 +217,13 @@ internal static class ClassicArtistPage
         {
             Direction = 1, MinWidth = 0f, Shrink = 1f, MaxWidth = Detail.BandLayout.TitleCap,
             Cursor = CursorId.Hand, OnClick = p.ScrollToTop,
-            Children = [Detail.BandTitle(name)],
+            Children = [ClassicDetailBand.BandTitle(name)],
         };
         // The pivot is the ONLY elastic lane; the title and the actions never drop (W28).
         Element pivot = new BoxEl
         {
             Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, Height = Detail.BandLayout.Height, AlignItems = FlexAlign.Center,
-            Children = [Detail.Pivot(items, p.Active, p.AccentFn)],
+            Children = [ClassicDetailBand.Pivot(items, p.Active, p.AccentFn)],
         };
         Element actions = new BoxEl
         {
@@ -237,7 +237,7 @@ internal static class ClassicArtistPage
             ],
         };
         // The content sits at the page's 1600 measure; the band's extent stays full-bleed.
-        Element row = Detail.Band(MathF.Min(width, R.Space.PageMaxW), gutter, [title, pivot, actions]);
+        Element row = ClassicDetailBand.Band(MathF.Min(width, R.Space.PageMaxW), gutter, [title, pivot, actions]);
         return new BoxEl
         {
             Width = width, Height = Detail.BandLayout.Height, ZStack = true,
@@ -253,7 +253,7 @@ internal static class ClassicArtistPage
                 new BoxEl
                 {
                     Width = width, Height = Detail.BandLayout.Height, Direction = 1, Justify = FlexJustify.End,
-                    HitTestVisible = false, Children = [Detail.BandHairline()],
+                    HitTestVisible = false, Children = [ClassicDetailBand.BandHairline()],
                 },
             ],
         }.Reveal(ArtistHeroLayout.CompactRevealStart(collapse), collapse - ArtistHeroLayout.CompactRevealStart(collapse),

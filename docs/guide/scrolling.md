@@ -23,7 +23,7 @@ to say *which* scroller, *which* restore key, *which* effects.
 
 | Need | Declaration | Example |
 |---|---|---|
-| A scrolling page | `ScrollView(body) with { ScrollKey = UseContext(Shell.PageScrollScope) + key, Handle = _scroll }` | `Themes/Classic/Structure/Views/Pages/ClassicArtistPage.cs`, `Entities/Episode.Page.cs`, `Entities/Concert.Page.cs` |
+| A scrolling page | `ScrollView(body) with { ScrollKey = UseContext(Shell.PageScrollScope) + key, Handle = _scroll }` | `Themes/Classic/Structure/Views/Pages/ClassicArtistPage.cs`, `Entities/Episode.Page.cs`, `Themes/Classic/Structure/Views/Pages/ClassicConcertHub.cs` |
 | A virtualized list | `ItemsView.CreateBound(…, new ListOptions { Scroll = new ScrollOptions { Handle, ScrollKey, AutoEdgeFade } })` | `Entities/Track.Table.cs` |
 | Restore the position on revisit | `ScrollKey` — stable per CONTENT, composed under `Shell.PageScrollScope` (the tab) so two tabs keep two offsets | every content page |
 | Move programmatically | `ScrollHandle.ScrollTo` / `ScrollBy` / `BringIntoView`; `ScrollMove.Glide` (default), `Immediate`, `Follow` | pivots, "jump to now playing" |

@@ -106,9 +106,9 @@ internal static partial class ClassicLibraryArtistReader
                     Avatar(a, named, Artist.ReaderShape.AvatarEdge),
                     NameColumn(host, a, named, band.Shape, stacked: false),
                     Controls.PlayButton(Tok.AccentDefault, host.PlayAll, Loc.Get(Strings.Library.PlayAll)) with { Shrink = 0f },
-                    Album.CommandCircle(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), host.ShuffleAll),
+                    ClassicDetailKit.CommandCircle(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), host.ShuffleAll),
                     Follow(uri, name, FlexJustify.End),
-                    Album.CommandCircle(Icons.OpenInNewWindow, Loc.Get(Strings.Detail.GoToArtist), host.GoArtist),
+                    ClassicDetailKit.CommandCircle(Icons.OpenInNewWindow, Loc.Get(Strings.Detail.GoToArtist), host.GoArtist),
                 ],
             };
         return new BoxEl
@@ -131,9 +131,9 @@ internal static partial class ClassicLibraryArtistReader
                     Children =
                     [
                         Controls.Named(Controls.PlayFab(host.PlayAll, Icons.Play, Artist.ReaderShape.BandCircle), Loc.Get(Strings.Library.PlayAll)),
-                        Album.CommandCircle(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), host.ShuffleAll),
+                        ClassicDetailKit.CommandCircle(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), host.ShuffleAll),
                         Follow(uri, name, FlexJustify.Start),                     // left edge pinned: ↗ never moves on a flip
-                        Album.CommandCircle(Icons.OpenInNewWindow, Loc.Get(Strings.Detail.GoToArtist), host.GoArtist),
+                        ClassicDetailKit.CommandCircle(Icons.OpenInNewWindow, Loc.Get(Strings.Detail.GoToArtist), host.GoArtist),
                     ],
                 },
             ],
