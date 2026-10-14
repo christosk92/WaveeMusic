@@ -1,21 +1,16 @@
-// ── Screens/Settings.UI.Privacy.cs ─────────────────────────────────────────────────────────────────────────────────
-// the Privacy & diagnostics tab: Privacy (what leaves this PC, the crash-report mode with its memory-snapshot switch,
-// the crash-service card, the policy link) · Crash reports (ONE Saved reports expander: the send-queue InfoBar, a row
-// per report with a "…" menu, Open folder / Delete all) · Logs (the viewer card with live counts, the two detail
-// levels, the log-file rule, Report a problem) · Tools (Playback runtime, Spotify Connect, Realtime capture) ·
-// Developer (developer mode and the three items it unlocks)
+// ── Themes/Classic/Structure/Views/Screens/ClassicSettings.Privacy.cs — the Privacy & diagnostics tab (themes plan 6.1, T11b) ───────────────────────
 //
-// Role: UI
-// Owner: R
-// Spec: docs/plans/wavee/privacy-diagnostics-tab-implementation.md §3.1, §5.1, §5.3-§5.6 — the tab replaces Settings ›
-// Logs and absorbs General's Privacy & diagnostics and Developer groups; the decisions it makes are in
-// `Settings.Privacy.cs` (`PrivacyRules`, engine-free and tested).
+// From `Screens\Settings.UI.Privacy.cs`. Privacy (what leaves this PC, the crash-report mode with its memory-snapshot switch, the crash-service card, the policy link) ·
+// Crash reports (ONE Saved reports expander: the send-queue InfoBar, a row per report with a "…" menu, Open folder / Delete all) · Logs (the viewer card with live
+// counts, the two detail levels, the log-file rule, Report a problem) · Tools (Playback runtime, Spotify Connect, Realtime capture) · Developer (developer mode and
+// the three items it unlocks).
 //
-// THE SHAPE: `PrivacyDiagnosticsTab()` is a static body re-run on the page's own epoch (`Bump`), like every other
-// tab. A group that must follow something the page does not bump — the reports folder, the send outbox, the log ring,
-// the logger's levels, the developer signals — is its own component with its own subscriptions, so the page never
-// re-renders for them. Every expander starts COLLAPSED (the header answers); every destructive action confirms
-// through `Controls.Confirm`; every toast goes through `Notify.Say`.
+// Spec: docs/plans/wavee/privacy-diagnostics-tab-implementation.md §3.1, §5.1, §5.3-§5.6 — the tab replaces Settings › Logs and absorbs General's Privacy &
+// diagnostics and Developer groups; the decisions it makes are `Settings.PrivacyRules` (engine-free and tested), the verbs are the rows' writers.
+//
+// THE SHAPE: `PrivacyDiagnosticsTab()` is a static body re-run with the page. A group that must follow something the page does not bump — the reports folder, the
+// send outbox, the log ring, the logger's levels, the developer signals — is its own component with its own subscriptions, so the page never re-renders for them.
+// Every expander starts COLLAPSED (the header answers); every destructive action confirms through `Controls.Confirm`; every toast goes through `Notify.Say`.
 
 using System.Globalization;
 using FluentGpu.Controls;
@@ -25,19 +20,21 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
+using PrivacyRules = Wavee.Settings.PrivacyRules;
 using PvDev = Wavee.Strings.Settings.Privacy.Developer;
 using PvFacts = Wavee.Strings.Settings.Privacy.Facts;
 using PvLogs = Wavee.Strings.Settings.Privacy.Logs;
 using PvReports = Wavee.Strings.Settings.Privacy.Reports;
 using PvTools = Wavee.Strings.Settings.Privacy.Tools;
+using Tab = Wavee.Settings.Tab;
 
-namespace Wavee;
+namespace Wavee.Themes.Classic;
 
-public static partial class Settings
+internal static partial class ClassicSettings
 {
     // ══ 1. THE TAB ════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    private static partial Element PrivacyDiagnosticsTab() => TabStack(
+    private static Element PrivacyDiagnosticsTab() => TabStack(
         SectionHeader(Loc.Get(PvFacts.Title), SectionGlyph(Tab.PrivacyDiagnostics, "Privacy"), Loc.Get(PvFacts.Subtitle)),
         WhatLeavesExpander(),
         CrashReportsExpander(),
@@ -88,7 +85,7 @@ public static partial class Settings
     /// stored Automatic on a build that cannot send behaves as, and shows as, Ask each time.</summary>
     static Element CrashReportsExpander()
     {
-        var stored = (Crash.Reporting)Platform.Settings.Get(Platform.Keys.CrashReporting);
+        var stored = D(Tab.PrivacyDiagnostics, "crashReports").Current is int storedMode ? (Crash.Reporting)storedMode : default;
         bool configured = Crash.Uploader.Configured;
         var effective = Crash.ConsentPolicy.Effective(stored, configured);
         bool reporting = effective != Crash.Reporting.Off;
@@ -129,7 +126,7 @@ public static partial class Settings
                 Caption(sub) with
                 {
                     Color = enabled ? Tok.TextSecondary : Tok.TextDisabled,
-                    Margin = new Edges4(28f, 0f, 0f, 0f), Wrap = TextWrap.Wrap, MaxLines = 2,
+                    Margin = new Edges4(ClassicSettingsRules.RadioCaptionInset, 0f, 0f, 0f), Wrap = TextWrap.Wrap, MaxLines = 2,
                 },
             ],
         }, SettingsCard.ContentAlignment.Left, isEnabled: enabled);
@@ -138,7 +135,7 @@ public static partial class Settings
     /// Automatic really writes Ask.</summary>
     static void SetCrashMode(Crash.Reporting mode)
     {
-        if (D(Tab.PrivacyDiagnostics, "crashReports").Writer.Choose!((int)mode)) Bump();
+        if (D(Tab.PrivacyDiagnostics, "crashReports").Writer.Choose!((int)mode)) Settings.Bump();
     }
 
     /// <summary>"Your data on the crash service": the shortened install id, Copy id, and the confirmed right-to-erasure
@@ -151,7 +148,7 @@ public static partial class Settings
             var overlay = UseContext(Overlay.Service);
             _ = SettingsFacts.CrashDataEpoch.Value;   // subscribed: a rotated install id re-renders
 
-            string fullId = Crash.InstallId.Peek(Platform.Settings);   // boot ensures it; a render never writes the store
+            string fullId = SettingsFacts.CrashInstallId();   // boot ensures it; a render never writes the store
             bool configured = Crash.Uploader.Configured;
 
             // The confirmed erasure is the row's writer (off the UI thread; the answer bumps the epoch above).
@@ -221,7 +218,7 @@ public static partial class Settings
                 ItemsFooter = ExpanderFooter(new BoxEl
                 {
                     Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.Stretch,
-                    Padding = new Edges4(58f, Spacing.S, Spacing.L, Spacing.S),
+                    Padding = new Edges4(ClassicSettingsRules.TextColumnInset, Spacing.S, Spacing.L, Spacing.S),
                     Children =
                     [
                         Caption(PvReports.Retention(Crash.Files.KeepBundles.ToString(CultureInfo.InvariantCulture)))
@@ -260,23 +257,23 @@ public static partial class Settings
             string id = s.ReportId;
             return new BoxEl
             {
-                Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.Stretch, MinHeight = 44f,
-                Padding = new Edges4(58f, Spacing.S, Spacing.L, Spacing.S),
+                Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.Stretch, MinHeight = ClassicSettingsRules.ReportRowHeight,
+                Padding = new Edges4(ClassicSettingsRules.TextColumnInset, Spacing.S, Spacing.L, Spacing.S),
                 Children =
                 [
-                    new BoxEl { Width = 8f, Height = 8f, Corners = Radii.FullAll, Fill = DotFor(s.Kind), Shrink = 0f },
+                    new BoxEl { Width = ClassicSettingsRules.ReportDotSize, Height = ClassicSettingsRules.ReportDotSize, Corners = Radii.FullAll, Fill = DotFor(s.Kind), Shrink = 0f },
                     new BoxEl
                     {
-                        Direction = 1, Gap = 2f, Width = 150f, Shrink = 0f,
+                        Direction = 1, Gap = ClassicSettingsRules.ReportStackGap, Width = ClassicSettingsRules.ReportStampWidth, Shrink = 0f,
                         Children =
                         [
-                            new TextEl(b.StampLocal.ToString("g", CultureInfo.CurrentCulture)) { Size = 12f, Color = Tok.TextSecondary },
-                            new TextEl(PvReports.ReportId(Crash.ShortId(id))) { Size = 11f, Color = Tok.TextTertiary },
+                            new TextEl(b.StampLocal.ToString("g", CultureInfo.CurrentCulture)) { Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextSecondary },
+                            new TextEl(PvReports.ReportId(Crash.ShortId(id))) { Size = ClassicSettingsRules.ReportIdSize, Color = Tok.TextTertiary },
                         ],
                     },
-                    new TextEl(Loc.Get(PrivacyRules.KindKey(s.Kind))) { Size = 13f, Weight = 600, Width = 56f, Shrink = 0f },
-                    new TextEl(WhatText(s)) { Size = 13f, Color = Tok.TextSecondary, Grow = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                    new TextEl(StateText(b)) { Size = 12f, Color = Tok.TextTertiary, Width = 110f, Shrink = 0f },
+                    new TextEl(Loc.Get(PrivacyRules.KindKey(s.Kind))) { Size = ClassicSettingsRules.ReportTextSize, Weight = 600, Width = ClassicSettingsRules.ReportKindWidth, Shrink = 0f },
+                    new TextEl(WhatText(s)) { Size = ClassicSettingsRules.ReportTextSize, Color = Tok.TextSecondary, Grow = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                    new TextEl(StateText(b)) { Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextTertiary, Width = ClassicSettingsRules.ReportStateWidth, Shrink = 0f },
                     ToolTip.Wrap(IconButton.Create(Icons.More, () => OpenRowMenu(b, overlay, configured), size: ControlSize.Small)
                         with { Shrink = 0f, OnRealized = h => _anchors[id] = h }, Loc.Get(PvReports.RowMenu)),
                 ],
@@ -377,7 +374,7 @@ public static partial class Settings
                 _seenVersion = version;
                 _seenMinute = minute;
                 _line.Value = Compose();
-            }, 750f);
+            }, ClassicSettingsRules.LogTickMs);
 
             return SettingsCard.Create(new SettingsCard.Options
             {
@@ -424,11 +421,11 @@ public static partial class Settings
                 Items =
                 [
                     Item(Loc.Get(PvLogs.InViewer), Loc.Get(PvLogs.InViewerSub),
-                        ComboBox.Create(Diagnostics.LogView.LevelNames, new Signal<int>(viewerIndex), width: 160f,
+                        ComboBox.Create(Diagnostics.LogView.LevelNames, new Signal<int>(viewerIndex), width: ClassicSettingsRules.LevelComboWidth,
                             onChange: static i => D(Tab.PrivacyDiagnostics, "logLevelViewer").Writer.Choose!(i))
                             with { Key = "privacy.level.viewer:" + viewerIndex.ToString(CultureInfo.InvariantCulture) }),
                     Item(Loc.Get(PvLogs.InFile), Loc.Get(PvLogs.InFileSub),
-                        ComboBox.Create(Diagnostics.LogView.LevelNames, new Signal<int>(fileIndex), width: 160f,
+                        ComboBox.Create(Diagnostics.LogView.LevelNames, new Signal<int>(fileIndex), width: ClassicSettingsRules.LevelComboWidth,
                             onChange: static i => D(Tab.PrivacyDiagnostics, "logLevelFile").Writer.Choose!(i))
                             with { Key = "privacy.level.file:" + fileIndex.ToString(CultureInfo.InvariantCulture) }),
                 ],
@@ -497,7 +494,7 @@ public static partial class Settings
                 Content = ToggleSwitch.Create(new Signal<bool>(dev), onChange: static on =>
                 {
                     // The Appearance / Notifications developer-only rows are page-composed, so the writer asks the page to re-read.
-                    if (D(Tab.PrivacyDiagnostics, "developerMode").Writer.Toggle!(on)) Bump();
+                    if (D(Tab.PrivacyDiagnostics, "developerMode").Writer.Toggle!(on)) Settings.Bump();
                 }, style: SettingsCard.CompactToggleStyle()),
                 Items =
                 [
@@ -532,7 +529,7 @@ public static partial class Settings
     static Element FooterNote(string text) => new BoxEl
     {
         Direction = 0, AlignSelf = FlexAlign.Stretch,
-        Padding = new Edges4(58f, Spacing.M, Spacing.L, Spacing.M),
+        Padding = new Edges4(ClassicSettingsRules.TextColumnInset, Spacing.M, Spacing.L, Spacing.M),
         Children = [Caption(text) with { Color = Tok.TextTertiary, Grow = 1f, MinWidth = 0f, Wrap = TextWrap.Wrap }],
     };
 }

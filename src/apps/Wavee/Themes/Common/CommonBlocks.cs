@@ -30,5 +30,6 @@ public static class CommonBlocks
         views.Add(ViewKeys.ShellFps, CommonFps.Template, "common.fps");
         CommonDiagnostics.Register(views);
         CommonLogs.Register(views);
+        views.Add(ViewKeys.ModulePage, CommonModulePage.Template, "common.module.page");
     }
 }

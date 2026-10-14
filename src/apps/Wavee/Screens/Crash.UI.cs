@@ -3,7 +3,7 @@
 // for this launch (and arms the hang toast + the --crash-probe timer via Crash.Host.ArmProbe), the crash/hang consent
 // dialog body (also Settings › Privacy & diagnostics › Saved reports' per-row "Send…", through `OpenSendPrompt`) and the
 // outcome toasts. The tab's own rows — the crash-report mode, the saved-reports list, the §J right-to-erasure card —
-// live in Screens/Settings.UI.Privacy.cs and read the internal doors below (`OpenSendPrompt`, `ComposePreview`,
+// live in Classic's Settings view (`ClassicSettings.Privacy.cs`) and read the internal doors below (`OpenSendPrompt`, `ComposePreview`,
 // `PrivacyUrl`, `OutcomeToasts`).
 // Everything here reads Crash.Host.* / Crash.Uploader.* / Crash.Scrubber.* (WP-A/B/C) and never writes a bundle
 // itself — a report is only ever read, scrubbed for preview / copy, enqueued or deleted from here.

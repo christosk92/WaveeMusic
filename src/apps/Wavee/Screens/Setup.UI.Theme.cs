@@ -19,7 +19,13 @@ namespace Wavee;
 
 public static partial class Setup
 {
-    static readonly SetupThemeProps s_themeProps = new() { ThemePicker = Settings.ThemePickerView, ThemeOptions = Settings.WizardThemeOptions };
+    static readonly SetupThemeProps s_themeProps = new()
+    {
+        // The structure's Settings blocks (T11b) — the same picker and options Settings shows, read inside the template's render so a pick shows at once.
+        ThemePicker = static () => Slots.View(ViewKeys.SettingsThemePicker, SettingsThemePickerProps.Instance),
+        ThemeOptions = static () => SettingsThemeOptions.HasWizardOptions()
+            ? Slots.View(ViewKeys.SettingsThemeOptions, SettingsThemeOptionsProps.WizardPlate) : null,
+    };
 
     /// <summary>The Theme page as a mountable element (the wizard's page slot, or a test). Not part of the wizard's page table
     /// yet.</summary>

@@ -149,14 +149,10 @@ public sealed class ProfileListModel
     public int Count => _count;
     public int VisibleCount => _visibleCount;
     public ProfileChipCounts Counts { get; private set; }
-    public ReadOnlySpan<ProfileEntry> Entries => _entries.AsSpan(0, _count);
-    /// <summary>The visible entries as indices into <see cref="Entries"/>, in display order.</summary>
-    public ReadOnlySpan<int> Visible => _visible.AsSpan(0, _visibleCount);
     /// <summary>Per VISIBLE entry: its filing letter (non-decreasing) and whether it is an artist.</summary>
     public ReadOnlySpan<int> VisibleLetters => _letters.AsSpan(0, _visibleCount);
     public ReadOnlySpan<bool> VisibleArtists => _artist.AsSpan(0, _visibleCount);
 
-    public ProfileEntry EntryAt(int entry) => _entries[entry];
     /// <summary>The <paramref name="k"/>-th VISIBLE entry.</summary>
     public ProfileEntry VisibleAt(int k) => _entries[_visible[k]];
 
@@ -175,7 +171,7 @@ public sealed class ProfileListModel
             int size = Math.Max(_count, _order.Length * 2);
             _order = new int[size]; _visible = new int[size]; _letters = new int[size]; _artist = new bool[size];
         }
-        Counts = ProfileListFilter.Counts(Entries);
+        Counts = ProfileListFilter.Counts(_entries.AsSpan(0, _count));
         ProfileListFilter.Order(_entries, _count, _order);
         _visibleCount = 0;
     }

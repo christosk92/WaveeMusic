@@ -46,7 +46,6 @@ public enum SidebarLibraryKinds : byte { None = 0, Albums = 1, Artists = 2, Podc
 public static class SidebarCatalogue
 {
     public const string HomeRoute = "home";
-    public const string SettingsRoute = "settings";
     public const string LikedRoute = "liked";
 
     /// <summary>Recent / New releases row limits.</summary>

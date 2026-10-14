@@ -1,11 +1,11 @@
-// ── AiLyrics/AiLyrics.UI.Settings.cs ─────────────────────────────────────────────────────────────────────────────────
-// AiLyrics.SettingsCard, Settings.AiLyricsCardView (the Appearance › Lyrics card for on-device AI lyrics)
+// ── Themes/Classic/Structure/Views/Screens/ClassicSettings.AiLyrics.cs — the on-device AI lyrics card (themes plan 6.1, T11b) ──────────────────
 //
-// Role: UI (plan docs/plans/wavee/ai-lyrics-sync-implementation.md §4.3)
+// From `AiLyrics\AiLyrics.UI.Settings.cs` (plan docs/plans/wavee/ai-lyrics-sync-implementation.md §4.3): the Appearance › Lyrics card, right after the blur row.
 //
-// ONE component bound to AiLyrics.Current. It only reads signals and calls the host's verbs: no file, no task, no wait.
-// The view is nested in `Settings` so it builds with the tab's own row grammar (Item, RowGlyph, ConfirmThen, CardSpacing)
-// and the catalog's glyphs; the mount point is `AiLyrics.SettingsCard()`.
+// ONE component bound to AiLyrics.Current. It only reads signals and calls the host's verbs: no file, no task, no wait. It is built with the page's own row grammar (Item,
+// RowGlyph, ConfirmThen, CardSpacing) and the catalog's glyphs; the master switch is the AI module's own verb and the three behaviour switches are the document's rows
+// (`aiWordSync`, `aiPlainText`, `aiBatterySaver`), their per-language and per-file verbs stay the module's (`AiLyrics.InstallLanguage` / `RemoveLanguage` /
+// `OpenFolder` / `RemoveFiles`).
 //
 // THREE RATES, THREE BINDINGS (a 10 Hz download never re-renders the page, and never even re-renders this card):
 //   • the card's SHAPE (phase, error, sizes, the file label…) is a UseComputed over Current: an equality-gated memo, so
@@ -29,23 +29,21 @@ using FluentGpu.Localization;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 using AiS = Wavee.Strings.Settings.Lyrics.Ai;
+using Tab = Wavee.Settings.Tab;
 
-namespace Wavee;
+namespace Wavee.Themes.Classic;
 
-public static partial class AiLyrics
+internal static partial class ClassicSettings
 {
     /// <summary>The Settings card (Appearance › Lyrics, right after the blur row). Its own component: progress and phase
     /// changes re-render only the card.</summary>
-    public static Element SettingsCard()
-        => Embed.Comp(static () => new Settings.AiLyricsCardView()) with { Key = "appearance.ai-lyrics" };
-}
+    static Element AiLyricsCard()
+        => Embed.Comp(static () => new AiLyricsCardView()) with { Key = "appearance.ai-lyrics" };
 
-public static partial class Settings
-{
-    /// <summary>The card. Every static it needs lives here, so nothing runs in Settings' own type initializer.</summary>
-    internal sealed class AiLyricsCardView : Component
+    /// <summary>The card. Every static it needs lives here, so nothing runs in the page's own type initializer.</summary>
+    sealed class AiLyricsCardView : Component
     {
-        const float AiBarWidth = 180f;
+        const float AiBarWidth = ClassicSettingsRules.AiBarWidth;
 
         // ── stable statics (no per-render delegate or spec allocation) ─────────────────────────────────────────────────
 
@@ -136,7 +134,7 @@ public static partial class Settings
                 prepare.Value = AiPrepareFraction(s);
             });
             var (details, setDetails) = UseState(false);
-            _ = Prefs.AiLyrics.Epoch.Value;
+            _ = SettingsFacts.AiLyricsEpoch.Value;
             bool deferred = s_aiRemoveDeferred.Value;
 
             // The full status for the values the shape leaves out (read without subscribing: the shape is the trigger).
@@ -163,7 +161,7 @@ public static partial class Settings
 
             return new BoxEl
             {
-                Direction = 1, Gap = CardSpacing, AlignSelf = FlexAlign.Stretch,
+                Direction = 1, Gap = ClassicSettingsRules.CardSpacing, AlignSelf = FlexAlign.Stretch,
                 Layout = shape.Phase == AiLyrics.SetupPhase.Ready ? null : (LayoutTransition?)s_aiHeightReflow,
                 Children = kids,
             };
@@ -250,13 +248,13 @@ public static partial class Settings
                 Items =
                 [
                     Item(Loc.Get(AiS.WordSync), Loc.Get(AiS.WordSyncSub),
-                        AiPrefSwitch(Platform.Keys.AiLyricsWordSync, Prefs.AiLyrics.WordSync()),
+                        AiPrefSwitch(D(Tab.Appearance, "aiWordSync")),
                         icon: RowGlyph(Tab.Appearance, "aiWordSync")),
                     Item(Loc.Get(AiS.PlainText), Loc.Get(AiS.PlainTextSub),
-                        AiPrefSwitch(Platform.Keys.AiLyricsPlainText, Prefs.AiLyrics.PlainText()),
+                        AiPrefSwitch(D(Tab.Appearance, "aiPlainText")),
                         icon: RowGlyph(Tab.Appearance, "aiPlainText")),
                     Item(Loc.Get(AiS.BatterySaver), Loc.Get(AiS.BatterySaverSub),
-                        AiPrefSwitch(Platform.Keys.AiLyricsOnBatterySaver, Prefs.AiLyrics.OnBatterySaver()),
+                        AiPrefSwitch(D(Tab.Appearance, "aiBatterySaver")),
                         icon: RowGlyph(Tab.Appearance, "aiBatterySaver")),
                     Item(Loc.Get(AiS.Languages), AiS.LanguagesSub(AiLyrics.Rules.FormatBytes(AiAverageLanguageBytes())),
                         AiLanguages(st.Languages), icon: RowGlyph(Tab.Appearance, "aiLanguages")),
@@ -299,7 +297,7 @@ public static partial class Settings
         /// <summary>A keyed arm: the phase's one card fades in (rising 4 DIP) and the previous one fades out under it.</summary>
         static Element AiArm(string key, params Element[] body) => new BoxEl
         {
-            Key = key, Direction = 1, Gap = CardSpacing, AlignSelf = FlexAlign.Stretch,
+            Key = key, Direction = 1, Gap = ClassicSettingsRules.CardSpacing, AlignSelf = FlexAlign.Stretch,
             Enter = s_aiEnter, Exit = s_aiExit, Transition = MotionTok.StandardEnter,
             Children = body,
         };
@@ -327,9 +325,9 @@ public static partial class Settings
             => ToggleSwitch.Create(new Signal<bool>(on), onChange: enabled ? s_aiSetEnabled : null, isEnabled: enabled,
                 style: SettingsCard.CompactToggleStyle());
 
-        /// <summary>A behaviour switch: written through <c>Prefs.AiLyrics.Set</c> so the driver's epoch re-evaluates the song.</summary>
-        static Element AiPrefSwitch(SettingKey<bool> key, bool value)
-            => ToggleSwitch.Create(new Signal<bool>(value), onChange: on => Prefs.AiLyrics.Set(key, on),
+        /// <summary>A behaviour switch: the row's writer (written through the AI preferences' one setter, so the driver's epoch re-evaluates the song).</summary>
+        static Element AiPrefSwitch(SettingsRow row)
+            => ToggleSwitch.Create(new Signal<bool>(row.Current is true), onChange: on => row.Writer.Toggle!(on),
                 style: SettingsCard.CompactToggleStyle());
 
         /// <summary>One row per aligner language in the pack: name, Installed (✓) or its size, and Download / Remove. The last
@@ -355,16 +353,16 @@ public static partial class Settings
                 : Button.Standard(Loc.Get(AiS.Lang.Download), () => AiDownloadThen(bytes, () => AiLyrics.InstallLanguage(lang)));
             return new BoxEl
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinHeight = 32f,
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinHeight = ClassicSettingsRules.AiLanguageRowHeight,
                 Children =
                 [
                     new BoxEl
                     {
-                        Width = 88f, Shrink = 0f,
-                        Children = [new TextEl(AiLanguageName(lang)) { Size = 14f, LineHeight = 20f, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }],
+                        Width = ClassicSettingsRules.AiLanguageNameWidth, Shrink = 0f,
+                        Children = [new TextEl(AiLanguageName(lang)) { Size = ClassicSettingsRules.AiLanguageNameSize, LineHeight = ClassicSettingsRules.AiLanguageNameLineHeight, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }],
                     },
-                    new BoxEl { Width = 84f, Shrink = 0f, Children = [status] },
-                    new BoxEl { Width = 96f, Shrink = 0f, Direction = 0, Justify = FlexJustify.End, Children = [action] },
+                    new BoxEl { Width = ClassicSettingsRules.AiLanguageStatusWidth, Shrink = 0f, Children = [status] },
+                    new BoxEl { Width = ClassicSettingsRules.AiLanguageActionWidth, Shrink = 0f, Direction = 0, Justify = FlexJustify.End, Children = [action] },
                 ],
             };
         }

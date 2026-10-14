@@ -1,51 +1,42 @@
-// ── Screens/Settings.UI.About.cs ───────────────────────────────────────────────────────────────────────────────────
-// the About tab: the update panel (the version hero + the W20 state matrix, the status card, channel, install-on-quit,
-// metered download, what's-new auto-show — or the Store card), the links card, the "Wavee right now" receipts (the GPU
-// line, a 5 s interval on a child), the two license expanders. The crash-reports card moved to Settings › General ›
-// Privacy & diagnostics and Settings › Logs › Reports (crash-diagnostics-implementation.md §D, §E — Crash.UI.cs, WP-E).
+// ── Themes/Classic/Structure/Views/Screens/ClassicSettings.About.cs — the About tab (themes plan 6.1, T11b) ──────────────────────────────────────────
 //
-// Role: UI
-// Owner: R
-// Wave: 6
-// Budget: 350 lines
-// Spec: ch 27 §0 N12, W19, W20, §3 (About rows), §5 (receipts tick, update progress), §7 (+ G8-G10, G12), §8, §10 parity
-// 50-56; ch 28 §6.4 (the report entry points)
+// From `Screens\Settings.UI.About.cs`. The update panel (the version hero + the W20 state matrix, the status card, channel, install-on-quit, metered download,
+// what's-new auto-show — or the Store card), the links card, the "Wavee right now" receipts (the GPU line, a 5 s interval on a child), the two license expanders.
+// The crash-reports card moved to Settings › Privacy & diagnostics (crash-diagnostics-implementation.md §D, §E).
 //
-// Everything with LIVE state is an embedded child component (AboutTab is called behind the page's tab switch, so a hook
-// in it would be conditional): `AboutUpdatePanel` reads `Notify.Update`, `ReceiptsCard` owns the interval.
+// Everything with LIVE state is an embedded child component (the tab body is called behind the page's tab switch, so a hook in it would be conditional):
+// `AboutUpdatePanel` reads `Notify.Update`, `ReceiptsCard` owns the interval and asks the core for one sample per tick (`Settings.SampleReceipts`: the process, the GPU,
+// the frame counter; it also keeps the block's text for the diagnostics copy). The hero's state matrix (`Settings.AboutRules`), the verbs (`row.Writer`) and the
+// notices file are the core's.
 
 using System.Globalization;
-using FluentGpu;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
-using FluentGpu.Rhi.D3D12;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
+using AboutRules = Wavee.Settings.AboutRules;
+using Tab = Wavee.Settings.Tab;
 
-namespace Wavee;
+namespace Wavee.Themes.Classic;
 
-public static partial class Settings
+internal static partial class ClassicSettings
 {
-    /// <summary>Page mount: read the shipped notices on a pool thread, so the Licenses expander's first render finds the text
-    /// (disk I/O never sits on the render path).</summary>
-    static partial void SeedAbout() => SettingsFacts.WarmNotices(LoadNotices);
-
     // ══ 1. THE TAB ═════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>Order: update panel, links, the receipts, Licenses. Crash reports moved to Settings › General ›
     /// Privacy &amp; diagnostics and Settings › Logs › Reports (crash-diagnostics-implementation.md §D, §E).</summary>
-    private static partial Element AboutTab() => TabStack(
+    private static Element AboutTab() => TabStack(
         Embed.Comp(static () => new AboutUpdatePanel()) with { Key = "about:update" },
         AboutLinksCard(),
         SectionHeader(Loc.Get(Strings.Settings.About.RightNow), Icons.Info),
         Embed.Comp(static () => new ReceiptsCard()),
         SectionHeader(Loc.Get(Strings.Settings.About.Licenses), Icons.Document),
-        LicenseExpander("Wavee", "MIT", WaveeLicense),
+        LicenseExpander("Wavee", "MIT", Settings.WaveeLicense),
         // ONE expander for everything third-party, read from the generated file rather than restated in code.
-        LicenseExpander(Loc.Get(Strings.Settings.About.ThirdPartyNotices), NoticesFileName, ReadNotices()));
+        LicenseExpander(Loc.Get(Strings.Settings.About.ThirdPartyNotices), Settings.NoticesFileName, Settings.ReadNotices()));
 
     /// <summary>W19's links card: ContentAlignment.Left (no header, glyph or chevron at any width), the link column
     /// pulled flush to the card padding. "Open What's new" carries the unread dot while the running release's notes
@@ -54,28 +45,28 @@ public static partial class Settings
     {
         Element whatsNew = HyperlinkButton.Create(Loc.Get(Strings.Update.About.OpenWhatsNew), static () => D(Tab.About, "whatsNew").Writer.Run!());
         if (ReleaseNotes.RunningNotesUnread())
-            whatsNew = new BoxEl { Direction = 0, Gap = 6f, AlignItems = FlexAlign.Center, Children = [whatsNew, InfoBadge.Dot()] };
+            whatsNew = new BoxEl { Direction = 0, Gap = ClassicSettingsRules.AboutBadgeGap, AlignItems = FlexAlign.Center, Children = [whatsNew, InfoBadge.Dot()] };
 
         return SettingsCard.Create(new SettingsCard.Options
         {
             Alignment = SettingsCard.ContentAlignment.Left,
             Content = new BoxEl
             {
-                Direction = 1, Gap = 4f, Margin = new Edges4(-12f, 0f, 0f, 0f),
+                Direction = 1, Gap = ClassicSettingsRules.CardSpacing, Margin = new Edges4(-12f, 0f, 0f, 0f),
                 Children =
                 [
                     whatsNew,
                     HyperlinkButton.Create(Loc.Get(Strings.Report.AboutReportProblem), static () => D(Tab.About, "reportProblem").Writer.Run!()),
                     HyperlinkButton.Create(Loc.Get(Strings.Report.AboutSuggestFeature), static () => D(Tab.About, "suggestFeature").Writer.Run!()),
-                    HyperlinkButton.Create(Loc.Get(Strings.Report.AboutAllIssues), IssuesUrl),
-                    HyperlinkButton.Create(Loc.Get(Strings.Settings.About.Website), WebsiteUrl),
-                    HyperlinkButton.Create(Loc.Get(Strings.Settings.About.PrivacyPolicy), PrivacyUrl),
+                    HyperlinkButton.Create(Loc.Get(Strings.Report.AboutAllIssues), Settings.IssuesUrl),
+                    HyperlinkButton.Create(Loc.Get(Strings.Settings.About.Website), Settings.WebsiteUrl),
+                    HyperlinkButton.Create(Loc.Get(Strings.Settings.About.PrivacyPolicy), Settings.PrivacyUrl),
                     HyperlinkButton.Create(Loc.Get(Strings.Settings.About.ThirdPartyNotices), static () => D(Tab.About, "thirdPartyNotices").Writer.Run!()),
                     HyperlinkButton.Create(Loc.Get(Strings.Settings.About.CopyDiagnostics), static () => D(Tab.About, "copyDiagnostics").Writer.Run!()),
                     HyperlinkButton.Create(Loc.Get(Strings.Settings.About.OpenDataFolder), static () => D(Tab.About, "openDataFolder").Writer.Run!()),
-                    new TextEl(Loc.Get(Strings.Settings.About.Unofficial)) { Size = 12f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap },
-                    new TextEl(OsDescription) { Size = 12f, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap },
-                    new TextEl(Platform.LocalFolder) { Size = 12f, Color = Tok.TextSecondary, FontFamily = "Cascadia Code", Wrap = TextWrap.Wrap },
+                    new TextEl(Loc.Get(Strings.Settings.About.Unofficial)) { Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap },
+                    new TextEl(Settings.OsDescription) { Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap },
+                    new TextEl(Platform.LocalFolder) { Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextSecondary, FontFamily = "Cascadia Code", Wrap = TextWrap.Wrap },
                 ],
             },
         });
@@ -100,7 +91,7 @@ public static partial class Settings
             Items =
             [
                 SettingsExpander.Item("", null,
-                    new TextEl(body) { Size = 12f, Color = Tok.TextTertiary, FontFamily = "Cascadia Code", Wrap = TextWrap.Wrap },
+                    new TextEl(body) { Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextTertiary, FontFamily = "Cascadia Code", Wrap = TextWrap.Wrap },
                     alignment: SettingsCard.ContentAlignment.Left, style: style),
             ],
         });
@@ -128,12 +119,12 @@ public static partial class Settings
                 kids.Add(UpdateStatusCard(s));
                 // A LINK, not a picker: Beta installs beside Stable, nothing in this app changes when it is clicked.
                 kids.Add(DocRow(D(Tab.About, "channel"),
-                    HyperlinkButton.Create(Loc.Get(Strings.Update.Channel.Beta), BetaFeedUrl), icon: Icons.Devices));
+                    HyperlinkButton.Create(Loc.Get(Strings.Update.Channel.Beta), Settings.BetaFeedUrl), icon: Icons.Devices));
                 kids.Add(DocRow(D(Tab.About, "installOnQuit"), RowToggle(D(Tab.About, "installOnQuit")), icon: Icons.Download));
                 kids.Add(DocRow(D(Tab.About, "updateOnMetered"), RowToggle(D(Tab.About, "updateOnMetered")), icon: Icons.RadioTower));
             }
             kids.Add(DocRow(D(Tab.About, "autoShow"), RowToggle(D(Tab.About, "autoShow")), icon: Icons.RefineSparkle));
-            return new BoxEl { Direction = 1, Gap = 4f, AlignSelf = FlexAlign.Stretch, Children = kids.ToArray() };
+            return new BoxEl { Direction = 1, Gap = ClassicSettingsRules.CardSpacing, AlignSelf = FlexAlign.Stretch, Children = kids.ToArray() };
         }
     }
 
@@ -153,8 +144,8 @@ public static partial class Settings
             _ => Strings.Update.About.ChannelDev,
         })));
         pills.Add(ReleaseNotes.Pill(Loc.Get(shape.PillKey), accent: shape.PillAccent));
-        pills.Add(new TextEl((me.Commit.Length > 0 ? me.Commit + " · " : "") + ArchToken)
-            { Size = 12f, Color = Tok.TextTertiary, FontFamily = "Cascadia Code" });
+        pills.Add(new TextEl((me.Commit.Length > 0 ? me.Commit + " · " : "") + Settings.ArchToken)
+            { Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextTertiary, FontFamily = "Cascadia Code" });
 
         // The verb is the row's writer, chosen from the live state at the press (check · update now · retry · nothing).
         Action act = shape.Verb == AboutRules.HeroVerb.None
@@ -169,34 +160,34 @@ public static partial class Settings
         if (me.Codename.Length > 0)
             right.Add(HyperlinkButton.Create(Strings.Update.About.WhatsNewIn(me.Codename), static () => D(Tab.About, "whatsNew").Writer.Run!()));
         // The after-update plate on demand; a dev build has no update story to summarize.
-        if (s_overlay is not null && ReleaseNotes.CanShowSummaryAgain)
+        if (SettingsContext.Overlay is not null && ReleaseNotes.CanShowSummaryAgain)
             right.Add(HyperlinkButton.Create(Loc.Get(Strings.Update.About.ShowSummaryAgain), static () => D(Tab.About, "showSummaryAgain").Writer.Run!()));
 
-        long lastChecked = s.LastCheckedMs > 0 ? s.LastCheckedMs : Platform.Settings.Get(Platform.Keys.UpdateLastCheckedMs);
+        long lastChecked = s.LastCheckedMs > 0 ? s.LastCheckedMs : SettingsFacts.UpdateLastCheckedMs();
         string provenance = AboutRules.Provenance(me.BuildDate, lastChecked, static d => Strings.Update.About.Built(d),
             static w => Strings.Update.About.LastChecked(w), Loc.Get(Strings.Update.About.NeverChecked));
 
         return new BoxEl
         {
-            Direction = 0, Gap = 18f, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+            Direction = 0, Gap = ClassicSettingsRules.HeroGap, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
             Padding = new Edges4(24f, 22f, 24f, 22f), Corners = CornerRadius4.All(Radii.Card),
             Fill = Tok.FillCardSecondary, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
             Children =
             [
                 new BoxEl
                 {
-                    Width = 64f, Height = 64f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                    Width = ClassicSettingsRules.HeroTile, Height = ClassicSettingsRules.HeroTile, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                     Corners = CornerRadius4.All(16f), Fill = Tok.AccentSubtle,
                     Children = [Icon(Icons.MusicNote, 30f, Tok.AccentTextPrimary)],
                 },
                 new BoxEl
                 {
-                    Direction = 1, Gap = 6f, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                    Direction = 1, Gap = ClassicSettingsRules.HeroTextGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
                     Children =
                     [
-                        new TextEl(ReleaseNotes.VersionDisplayText()) { Size = 24f, Weight = 600, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap },
+                        new TextEl(ReleaseNotes.VersionDisplayText()) { Size = ClassicSettingsRules.HeroVersionSize, Weight = 600, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap },
                         new BoxEl { Direction = 0, Gap = Spacing.S, Wrap = true, AlignItems = FlexAlign.Center, Children = pills.ToArray() },
-                        new TextEl(provenance) { Size = 12f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap },
+                        new TextEl(provenance) { Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap },
                     ],
                 },
                 new BoxEl { Direction = 1, Gap = Spacing.S, Shrink = 0f, AlignItems = FlexAlign.End, Children = right.ToArray() },
@@ -215,9 +206,9 @@ public static partial class Settings
                 Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Shrink = 0f,
                 Children =
                 [
-                    ProgressBar.Determinate(s.ProgressPercent / 100f, 180f),
+                    ProgressBar.Determinate(s.ProgressPercent / 100f, ClassicSettingsRules.UpdateProgressWidth),
                     new TextEl(s.ProgressPercent.ToString(CultureInfo.InvariantCulture) + "%")
-                        { Size = 12f, Color = Tok.TextSecondary, FontFamily = "Cascadia Code" },
+                        { Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextSecondary, FontFamily = "Cascadia Code" },
                 ],
             },
             // The release that FAILED, not the bare listing (`Update.ReleasePageUrl` is the one owner of that rule).
@@ -234,14 +225,14 @@ public static partial class Settings
 
     sealed class ReceiptsCard : Component
     {
-        readonly Signal<string> _gpu = new(Receipts.Dash), _workingSet = new(Receipts.Dash), _managed = new(Receipts.Dash),
-            _uptime = new(Receipts.Dash), _fps = new(Receipts.Dash), _zoom = new(Receipts.Dash), _gpuAssets = new(Receipts.Dash),
-            _appExcl = new(Receipts.Dash), _detail = new(Receipts.Dash);
+        readonly Signal<string> _gpu = new(Settings.Receipts.Dash), _workingSet = new(Settings.Receipts.Dash), _managed = new(Settings.Receipts.Dash),
+            _uptime = new(Settings.Receipts.Dash), _fps = new(Settings.Receipts.Dash), _zoom = new(Settings.Receipts.Dash), _gpuAssets = new(Settings.Receipts.Dash),
+            _appExcl = new(Settings.Receipts.Dash), _detail = new(Settings.Receipts.Dash);
 
         public override Element Render()
         {
             UseEffect(Tick, DepKey.Empty);
-            UseInterval(Tick, 5000f);
+            UseInterval(Tick, ClassicSettingsRules.ReceiptsTickMs);
             return SettingsCard.Create(new SettingsCard.Options
             {
                 Alignment = SettingsCard.ContentAlignment.Left,
@@ -253,7 +244,7 @@ public static partial class Settings
                         Line(_gpu, "GPU"), Line(_workingSet, "Working set"), Line(_managed, "Managed heap"), Line(_uptime, "Uptime"),
                         Line(_fps, "FPS"), Line(_zoom, "Zoom"), Line(_gpuAssets, "GPU assets"),
                         Line(_appExcl, "App memory excl. GPU assets"),
-                        new TextEl(_detail) { Size = 12f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap },
+                        new TextEl(_detail) { Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap },
                     ],
                 },
             });
@@ -264,7 +255,7 @@ public static partial class Settings
             Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
             Children =
             [
-                new TextEl(label) { Size = 12f, Color = Tok.TextSecondary, Shrink = 0f },
+                new TextEl(label) { Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextSecondary, Shrink = 0f },
                 new TextEl(value)
                 {
                     Size = R.Type.DenseTitle("").Size,
@@ -277,42 +268,16 @@ public static partial class Settings
 
         void Tick()
         {
-            using var proc = System.Diagnostics.Process.GetCurrentProcess();
-            long ws = proc.WorkingSet64;
-            var tier = ReceiptsTier(GpuProfile.Tier);
-            var snap = D3D12Device.LastVideoMemory;
-
-            _gpu.Value = ReceiptsGpuLine();
-            _workingSet.Value = Receipts.Mb(ws);
-            _managed.Value = Receipts.Mb(GC.GetTotalMemory(forceFullCollection: false));
-            _uptime.Value = Receipts.Uptime(DateTime.Now - proc.StartTime);
-            _fps.Value = Receipts.Fps(Diagnostics.Probe.Host?.LastStats.Fps ?? 0);
-            // The tick is plenty for a receipt (a fresh Ctrl+= shows within 5 s) — no zoom subscription to unhook.
-            _zoom.Value = ZoomLadder.Percent(FluentApp.Zoom).ToString(CultureInfo.InvariantCulture) + "%";
-
-            if (!snap.Valid)
-            {
-                _gpuAssets.Value = "— (no Present yet)";
-                _appExcl.Value = Receipts.Dash;
-                _detail.Value = "GPU video-memory snapshot publishes on the render thread after the first Present.";
-            }
-            else
-            {
-                bool shared = Receipts.IsSharedIgpu(tier, snap.LocalCurrentUsage, snap.NonLocalCurrentUsage);
-                _gpuAssets.Value = Receipts.Mb((long)snap.LocalCurrentUsage) + " local  ·  " + Receipts.Mb((long)snap.NonLocalCurrentUsage) + " non-local";
-                _appExcl.Value = Receipts.Mb(Receipts.AppExclusive(ws, shared, snap.LocalCurrentUsage, snap.NonLocalCurrentUsage))
-                    + "  (" + (shared ? "shared / iGPU" : "discrete") + ")";
-                var c = CultureInfo.InvariantCulture;
-                _detail.Value = "Local budget " + Receipts.Mb((long)snap.LocalBudget) + "  ·  non-local budget " + Receipts.Mb((long)snap.NonLocalBudget)
-                    + "  ·  tracked D3D12 " + Receipts.Mb(snap.TrackedResourceBytes) + " (" + snap.TrackedResourceCount.ToString(c) + ")"
-                    + "  ·  atlas " + snap.AtlasImages.ToString(c) + "/" + snap.AtlasPages.ToString(c)
-                    + "  ·  glyphs " + snap.CachedGlyphs.ToString(c) + ". App excl. GPU ≈ working set − "
-                    + (shared ? "LOCAL (UMA/shared)" : "NON_LOCAL (system-memory overlap)") + ".";
-            }
-
-            ReceiptsText = "Working set: " + _workingSet.Peek() + "\nManaged heap: " + _managed.Peek() + "\nUptime: " + _uptime.Peek()
-                + "\nFPS: " + _fps.Peek() + "\nZoom: " + _zoom.Peek() + "\nGPU assets: " + _gpuAssets.Peek()
-                + "\nApp memory excl. GPU assets: " + _appExcl.Peek() + "\n" + _detail.Peek();
+            var sample = Settings.SampleReceipts();
+            _gpu.Value = sample.Gpu;
+            _workingSet.Value = sample.WorkingSet;
+            _managed.Value = sample.Managed;
+            _uptime.Value = sample.Uptime;
+            _fps.Value = sample.Fps;
+            _zoom.Value = sample.Zoom;
+            _gpuAssets.Value = sample.GpuAssets;
+            _appExcl.Value = sample.AppExclusive;
+            _detail.Value = sample.Detail;
         }
     }
 }

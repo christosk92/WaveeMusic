@@ -1,19 +1,13 @@
-// ── Screens/Settings.UI.Video.cs ───────────────────────────────────────────────────────────────────────────────────
-// the video-override manager flyout body — written by K in Wave 4, mounted by R's Playback tab in Wave 6
+// ── Themes/Classic/Structure/Views/Screens/ClassicSettings.VideoOverrides.cs — the attached-videos row and its "Manage" flyout (themes plan 6.1, T11b) ────
 //
-// Role: UI
-// Owner: K
-// Wave: 4
-// Budget: 280 lines
-// Spec: ch 24 §9
+// From `Screens\Settings.UI.Playback.cs` §7 (`VideoOverridesRow`, `ToggleVideoOverrideManager`) and `Screens\Settings.UI.Video.cs` (the flyout body, written by K in
+// Wave 4, mounted by R's Playback tab in Wave 6; spec ch 24 §9).
 //
-// ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-// THE "MANAGE" FLYOUT (ch 24 W20-W22, §6). Presentational over `Video.OverrideUx` (every decision) and `Video.Overrides`
-// (the warm roster): a ROOT (search box → the newest few + "Browse all…", or the live results) and a LEAF (the whole
-// roster with the full repair verbs), two views on ONE keyed child riding the page slide. The roster is rebuilt only
-// when its epoch bumps (disk probes run once per load, never per keystroke). The search box stays MOUNTED across every
-// section swap except Empty, so retyping never loses focus. Owner R's Playback tab anchors it
-// (BottomEdgeAlignedLeft, FocusTrap, LightDismiss, PopupChrome.Popup).
+// THE "MANAGE" FLYOUT (ch 24 W20-W22, §6). Presentational over `Video.OverrideUx` (every decision) and `Video.Overrides` (the warm roster): a ROOT (search box →
+// the newest few + "Browse all…", or the live results) and a LEAF (the whole roster with the full repair verbs), two views on ONE keyed child riding the page slide.
+// The roster is rebuilt only when its epoch bumps (disk probes run once per load, never per keystroke). The search box stays MOUNTED across every section swap
+// except Empty, so retyping never loses focus. The Playback tab anchors it (BottomEdgeAlignedLeft, FocusTrap, LightDismiss, PopupChrome.Popup). The repair verbs
+// (replace · locate · show in Explorer · remove) and the track-title adapters are the core's (`SettingsVerbs`, `SettingsFacts`).
 
 using FluentGpu;
 using FluentGpu.Controls;
@@ -23,20 +17,78 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
+using Tab = Wavee.Settings.Tab;
 
-namespace Wavee;
+namespace Wavee.Themes.Classic;
 
-public static partial class Settings
+internal static partial class ClassicSettings
 {
+    /// <summary>The attached-videos SUMMARY (ch 27 W11's states): no roster store → the whole row greyed with NO control;
+    /// 0 rows → "No videos attached yet" + Manage and no "Remove all"; N rows → the count + Manage + Remove all. The roster
+    /// is warm and synchronous (<see cref="Video.Overrides"/>), so there is no cold-load spinner to show — and the Manage
+    /// wrapper node never swaps out under an open flyout.</summary>
+    static Element VideoOverridesRow()
+    {
+        _ = Video.Overrides.Epoch.Value;   // an attach/remove anywhere (the track menu, an undo toast, the flyout) re-reads
+        string header = Loc.Get(Strings.VideoOverride.SettingsHeader);
+        string sub = Loc.Get(Strings.VideoOverride.SettingsSub);   // the trust disclosure: device-wide, linked not copied
+        string glyph = RowGlyph(Tab.Playback, "videoOverrides");
+        if (!Video.Overrides.Present)
+        {
+            s_voAnchor = NodeHandle.Null;
+            return Row(header, sub, null, glyph, isEnabled: false);
+        }
+
+        int count = Video.Overrides.Count;
+        var kids = new Element[count > 0 ? 3 : 2];
+        kids[0] = new TextEl(count > 0 ? Strings.VideoOverride.SettingsCount(count) : Loc.Get(Strings.VideoOverride.SettingsEmpty))
+        {
+            Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextSecondary,
+        };
+        kids[1] = new BoxEl
+        {
+            Direction = 0, Shrink = 0f,
+            // The realized wrapper is the anchor.
+            OnRealized = static h => s_voAnchor = h,
+            Children = [Button.Standard(Loc.Get(Strings.VideoOverride.Manage), static () => ToggleVideoOverrideManager())],
+        };
+        if (count > 0)
+            // Bulk detach is the ONE place a confirm earns its keep here: N links at once, no per-row undo (N11).
+            kids[2] = Button.Standard(Loc.Get(Strings.VideoOverride.ClearAll), static () =>
+            {
+                var clear = D(Tab.Playback, "videoOverrides");
+                ConfirmThen(Loc.Get(clear.Confirm!.TitleKey), Loc.Get(clear.Confirm.BodyKey), Loc.Get(clear.Confirm.PrimaryKey),
+                    () => clear.Writer.Run!());
+            });
+
+        return Row(header, sub, new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Children = kids }, glyph);
+    }
+
+    /// <summary>"Manage" is a TOGGLE (35d): a second press closes the flyout. The body is owner K's.</summary>
+    static void ToggleVideoOverrideManager()
+    {
+        if (SettingsContext.Overlay is not { } overlay || !Video.Overrides.Present) return;
+        if (s_voHandle is { IsOpen: true } open) { open.Close(); return; }
+        var handle = overlay.Open(
+            static () => s_voAnchor,
+            static () => VideoOverridesBody(),
+            FlyoutPlacement.BottomEdgeAlignedLeft,
+            new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
+            {
+                ConstrainToRootBounds = true,
+            });
+        s_voHandle = handle;
+        handle.ClosedAction = () => { if (ReferenceEquals(s_voHandle, handle)) s_voHandle = null; };
+    }
+
     // MOUNT POINT (stage B contract)
     /// <summary>The video-override manager flyout body (420 wide).</summary>
-    public static Element VideoOverridesBody() => Embed.Comp(static () => new VideoOverrideManager());
+    static Element VideoOverridesBody() => Embed.Comp(static () => new VideoOverrideManager());
 
-    /// <summary>The manager component. Every helper is nested here so owner R's later `Settings` partials cannot
-    /// collide with a name.</summary>
+    /// <summary>The manager component. Every helper is nested here so the other tabs' helpers cannot collide with a name.</summary>
     sealed class VideoOverrideManager : Component
     {
-        const float ManagerW = 420f;
+        const float ManagerW = ClassicSettingsRules.ManagerWidth;
         readonly Signal<int> _view = new(0);                               // 0 root · 1 the browse-all leaf
         readonly Signal<string> _query = new("");
         readonly Signal<string?> _focus = new(null);                       // the row a recent-row tap drilled into
@@ -51,7 +103,7 @@ public static partial class Settings
             {
                 _rosterEpoch = epoch;
                 _rows = Video.OverrideUx.BuildRoster(Video.Overrides.All(), Video.Overrides.DecideRecord, Video.Overrides.DirectoryExists,
-                    TitleOf, ArtistLineOf);
+                    SettingsFacts.VideoOverrideTitle, SettingsFacts.VideoOverrideArtistLine);
             }
             int view = _view.Value;
             string query = _query.Value;
@@ -100,11 +152,11 @@ public static partial class Settings
                     break;
                 case Video.ManagerSection.Results:
                     kids.Add(SectionLabel(Strings.VideoOverride.MatchCount(hits.Count)));
-                    kids.Add(RowList(hits, compact: false, 380f));
+                    kids.Add(RowList(hits, compact: false, ClassicSettingsRules.ManagerResultsMaxHeight));
                     break;
                 default:
                     kids.Add(SectionLabel(Loc.Get(Strings.VideoOverride.RecentlyAdded)));
-                    kids.Add(RowList(Video.OverrideUx.RecentlyAdded(_rows), compact: true, 280f));
+                    kids.Add(RowList(Video.OverrideUx.RecentlyAdded(_rows), compact: true, ClassicSettingsRules.ManagerRecentMaxHeight));
                     break;
             }
             if (Video.OverrideUx.ShowsBrowseAll(_rows.Count, query))
@@ -112,7 +164,7 @@ public static partial class Settings
                 kids.Add(new BoxEl { Height = 1f, AlignSelf = FlexAlign.Stretch, Fill = Tok.StrokeSurfaceDefault });
                 kids.Add(new BoxEl
                 {
-                    Direction = 0, MinHeight = 40f, AlignItems = FlexAlign.Center, Gap = Spacing.S,
+                    Direction = 0, MinHeight = ClassicSettingsRules.ManagerBrowseRowHeight, AlignItems = FlexAlign.Center, Gap = Spacing.S,
                     Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, Spacing.XS), Corners = Radii.ControlAll,
                     Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = () => Drill(null),
                     Children =
@@ -134,12 +186,12 @@ public static partial class Settings
             [
                 new BoxEl
                 {
-                    Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinHeight = 36f,
+                    Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinHeight = ClassicSettingsRules.ManagerLeafHeaderHeight,
                     Children =
                     [
                         new BoxEl
                         {
-                            Width = 28f, Height = 28f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
+                            Width = ClassicSettingsRules.ManagerBackSize, Height = ClassicSettingsRules.ManagerBackSize, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
                             Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
                             OnClick = () => { _forward = false; _focus.Value = null; _view.Value = 0; },
                             Children = [Icon(Icons.ChevronLeft, 14f, Tok.TextSecondary)],
@@ -148,7 +200,7 @@ public static partial class Settings
                         Caption(Strings.VideoOverride.SettingsCount(_rows.Count)) with { Color = Tok.TextSecondary, Shrink = 0f },
                     ],
                 },
-                RowList(_rows, compact: false, 400f),
+                RowList(_rows, compact: false, ClassicSettingsRules.ManagerLeafMaxHeight),
             ],
         };
 
@@ -165,13 +217,13 @@ public static partial class Settings
             string? focus = _focus.Value;
             var kids = new Element[rows.Count];
             for (int i = 0; i < rows.Count; i++) kids[i] = compact ? CompactRow(rows[i]) : FullRow(rows[i], focus);
-            return new ScrollEl { ContentSized = true, MaxHeight = maxHeight, Content = new BoxEl { Direction = 1, Gap = compact ? 2f : Spacing.XS, Children = kids } };
+            return new ScrollEl { ContentSized = true, MaxHeight = maxHeight, Content = new BoxEl { Direction = 1, Gap = compact ? ClassicSettingsRules.ManagerCompactGap : Spacing.XS, Children = kids } };
         }
 
         /// <summary>A glance row (title · file · status); a tap drills into the leaf with this row highlighted.</summary>
         Element CompactRow(Video.OverrideRow row) => new BoxEl
         {
-            Key = "vo-recent:" + row.Uri, Direction = 0, MinHeight = 44f, AlignItems = FlexAlign.Center, Gap = Spacing.S,
+            Key = "vo-recent:" + row.Uri, Direction = 0, MinHeight = ClassicSettingsRules.ManagerCompactRowHeight, AlignItems = FlexAlign.Center, Gap = Spacing.S,
             Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, Spacing.XS), Corners = Radii.ControlAll,
             Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = () => Drill(row.Uri),
             Children =
@@ -253,13 +305,13 @@ public static partial class Settings
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Padding = new Edges4(8f, 3f, 8f, 3f), Corners = Radii.FullAll, Fill = bg,
-                Children = [new TextEl(text) { Size = 12f, Weight = 600, Color = fg }],
+                Children = [new TextEl(text) { Size = ClassicSettingsRules.CaptionSize, Weight = 600, Color = fg }],
             };
         }
 
         static Element Hint(string text) => new BoxEl
         {
-            MinHeight = 44f, AlignItems = FlexAlign.Center, MinWidth = 0f, Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f),
+            MinHeight = ClassicSettingsRules.ManagerCompactRowHeight, AlignItems = FlexAlign.Center, MinWidth = 0f, Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f),
             Children = [Body(text) with { Color = Tok.TextSecondary, MinWidth = 0f, Wrap = TextWrap.Wrap, MaxLines = 2 }],
         };
 
@@ -267,13 +319,5 @@ public static partial class Settings
         {
             Color = Tok.TextSecondary, Weight = 600, Margin = new Edges4(Spacing.XS, Spacing.XXS, 0f, 0f), MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
         };
-
-        /// <summary>Row title: the catalog's title when the playable is a known track, else null (the roster shows the uri).</summary>
-        static string? TitleOf(string uri)
-            => Entities.Current.Tracks.TryGetSlot(uri.AsSpan(), out int slot) && new Track(slot).Knows(TrackFields.Title) ? new Track(slot).Title : null;
-
-        static string? ArtistLineOf(string uri)
-            => Entities.Current.Tracks.TryGetSlot(uri.AsSpan(), out int slot) && new Track(slot).Knows(TrackFields.Artists)
-                ? Entities.Strings.Resolve(new Track(slot).ArtistLineId) : null;
     }
 }

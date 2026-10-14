@@ -297,7 +297,7 @@ internal static class CommonLogs
                     () => { host.ClearRing(); host.Bump(); })),
                 new(Loc.Get(Strings.Report.ThisSession), Icons.Attention, true, host.ReportThisSession),
             };
-            // Same anchored-flyout shape as the history menu and Settings.UI.Playback.cs's manager menu.
+            // Same anchored-flyout shape as Shell.UI.cs's history menu and `ClassicSettings.VideoOverrides.cs`'s manager menu.
             var handle = overlay.Open(() => _moreAnchor, () => MenuFlyout.Create(items, () => _menu?.Close()),
                 FlyoutPlacement.BottomEdgeAlignedRight,
                 new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });

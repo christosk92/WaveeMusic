@@ -313,7 +313,7 @@ public sealed class NavMenuModelTests
     [Fact]
     public void Item_Settings_Hide()
     {
-        var rows = SidebarMenuModel.Item(SidebarSectionKind.Settings, SidebarCatalogue.SettingsRoute, 0, 1, false);
+        var rows = SidebarMenuModel.Item(SidebarSectionKind.Settings, SidebarCatalogue.IdOf(SidebarSectionKind.Settings), 0, 1, false);
         Assert.Equal(SidebarMenuAction.HideItem, Assert.Single(rows).Action);
     }
 

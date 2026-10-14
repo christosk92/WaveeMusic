@@ -49,9 +49,9 @@ internal static class ClassicContentState
         [
             new BoxEl
             {
-                MaxWidth = ClassicFrameRules.OfflineLaneMaxWidth, Shrink = 0f, ClipToBounds = true, Corners = CornerRadius4.All(Radii.Control),
+                Key = "offline-card", MaxWidth = ClassicFrameRules.OfflineLaneMaxWidth, Shrink = 0f, ClipToBounds = true, Corners = CornerRadius4.All(Radii.Control),
                 Fill = Prop.Of(static () => Tok.FillSolidBase), Shadow = Elevation.Flyout,
-                Children = [props.OfflineStrip()],
+                Children = [Slots.View(ViewKeys.OverlayOfflineStrip, props.Strip)],
             },
         ],
     };

@@ -10,7 +10,8 @@
 // T8a the track table's rows (`Lists\ClassicTrackTable.cs`: the Modern and Classic bound-row templates, registered as the
 // `StyleKeys.TrackTable` style; T8b its chrome, `ClassicTrackChrome.cs`), T8c the other list surfaces (`Lists\ClassicEagerRow.cs`,
 // `ClassicEpisodeRow.cs`, `ClassicSurface.cs`, `ClassicArtistChart.cs`, `ClassicTrackDrawer.cs`, with the shared cells in `ClassicRowCells.cs`:
-// the `StyleKeys.EagerTrackRow`, `EpisodeRow`, `Surface`, `ArtistChart` and `TrackDrawer` styles), T10a1 Home (`Views\Home`: the page, facet row, daylist and clock, zone bodies and the drill page; the customizer is Common), T9a the shared detail frame (`Views\Detail`: the scaffold, the rail and its strip, the show header, the hero, the insights sheet), T9b its album and playlist sub-contracts (`Views\Detail\ClassicAlbum*.cs`, `ClassicPlaylist*.cs`, `ClassicDetailSeam.cs`), T10a2 Browse and Search (`Views\Pages`: the directory and its Charts band, a category page, the section drill key, the Search results page), T7d the queue (`Views\Queue`: the rail panel and the stage's Up next column), T7c the video surfaces (`Views\Video`: the docked card, the in-window overlay and its chrome, the pop-out, the fullscreen exit chrome, the poster and join notice, the placement flyout, the panel's video body), T10b1 the artist page (`Views\Pages\ClassicArtist*.cs`: the page, the hero, the sections, the banners, the pick card), T10b2 the rest of the artist family (the gallery lightbox `ClassicArtistLightbox.cs`, the discography page `ClassicDiscographyPage.cs`, the discography style `Lists\ClassicDiscography.cs` and the chart's frame), T10c1 the library (`Views\Pages\ClassicLibrary*.cs`: the master-detail page and its album, show, artist and Your Episodes panes), T11c the screens (`Views\Screens`: the setup wizard, the release notes, the feedback and crash dialogs' bodies) and the Common blocks it registers (`Themes\Common`); every other surface is still core code. It
+// the `StyleKeys.EagerTrackRow`, `EpisodeRow`, `Surface`, `ArtistChart` and `TrackDrawer` styles), T10a1 Home (`Views\Home`: the page, facet row, daylist and clock, zone bodies, the drill page and the
+// customizer), T9a the shared detail frame (`Views\Detail`: the scaffold, the rail and its strip, the show header, the hero, the insights sheet), T9b its album and playlist sub-contracts (`Views\Detail\ClassicAlbum*.cs`, `ClassicPlaylist*.cs`, `ClassicDetailSeam.cs`), T10a2 Browse and Search (`Views\Pages`: the directory and its Charts band, a category page, the section drill key, the Search results page), T7d the queue (`Views\Queue`: the rail panel and the stage's Up next column), T7c the video surfaces (`Views\Video`: the docked card, the in-window overlay and its chrome, the pop-out, the fullscreen exit chrome, the poster and join notice, the placement flyout, the panel's video body), T10b1 the artist page (`Views\Pages\ClassicArtist*.cs`: the page, the hero, the sections, the banners, the pick card), T10b2 the rest of the artist family (the gallery lightbox `ClassicArtistLightbox.cs`, the discography page `ClassicDiscographyPage.cs`, the discography style `Lists\ClassicDiscography.cs` and the chart's frame), T10b3 the concert surfaces (`Views\Pages\ClassicConcert*.cs`: the hub with its filter bar, tail and location picker, an artist's tour dashboard, the event page) and the Common module page (`Themes\Common\CommonModulePage.cs`), T10c1 the library (`Views\Pages\ClassicLibrary*.cs`: the master-detail page and its album, show, artist and Your Episodes panes), T11a the overlays and the dialog bodies (`Views\Overlays`: the account chip and menu, the notification panel, the runtime banner, the update toast's card, the offline strip, the context menu's tile; `Views\Dialogs`: the log-out card, the play-a-link card, the signature sheet, the destination picker, the credits sheet), T11b the Settings page (`Views\Screens\ClassicSettings*.cs`: the page, its seven tabs, the theme picker, the options and the sidebar layout cards), T11c the screens (`Views\Screens`: the setup wizard, the release notes, the feedback and crash dialogs' bodies) and the Common blocks it registers (`Themes\Common`); every other surface is still core code. It
 // decides the shell's policies (`Rules\ClassicPolicies.cs`: nav pane, panel and mini player, player bar, chrome row, stage)
 // and offers every capability (T3). Its window tiers (T3b) are `Rules\Tiers.cs`.
 //
@@ -180,6 +181,16 @@ public sealed class ClassicStructure : IStructureLayer
         // magazine (the Top-tracks band, the shelves, the biography band, the upcoming / latest-release / tour banners) and the artist pick card. The demands, the
         // readiness, the section plan, the latched hero metrics, the accent, the scroll spy and the Play / Shuffle / Radio decisions stay core (`Artist.PageHost`).
         views.Add(ViewKeys.ArtistPage, ClassicArtistPage.Template, "classic.artist.page");
+        // T10b3: the concert surfaces (`Views\Pages\ClassicConcert*.cs`): the Concerts hub (header card, pinned filter bar with its when / where flyouts and count ticker, the feed's
+        // shelves, promos and virtualized grid) with the feed's append tail and the location picker's flyout, an artist's tour dashboard (split hero, tour-dates card, month board,
+        // shy month pill) and the event page (split hero with the facts, tickets, lineup, related shelf). The data and its demands, the filter tuple and its feed subject, the
+        // append gate, the schedule shaping and the detail facts stay core (`Concert.HubHost`, `ScheduleHost`, `DetailHost`, `TailHost`, `PlacePickerHost`). The module page is a
+        // Common block (`Themes\Common\CommonModulePage.cs`), registered with the others by `CommonBlocks.Register`.
+        views.Add(ViewKeys.ConcertsHub, ClassicConcertHub.Template, "classic.concerts.hub");
+        views.Add(ViewKeys.ConcertTail, ClassicConcertHub.TailTemplate, "classic.concerts.tail");
+        views.Add(ViewKeys.ConcertPlacePicker, ClassicConcertPicker.Template, "classic.concerts.place-picker");
+        views.Add(ViewKeys.ArtistConcerts, ClassicConcertSchedule.Template, "classic.concerts.artist-schedule");
+        views.Add(ViewKeys.ConcertDetail, ClassicConcertDetail.Template, "classic.concerts.detail");
         // T10b2: the rest of the artist family. The gallery lightbox (the pager, the pan/zoom mode, the auto-hiding chrome, the filmstrip; the overlay, the
         // open index, the Escape veto's wiring and the export stay core in `Artist.GalleryOpen`), the standalone discography page (the crumbs, the title, the
         // facet selector, the scroll column; the route, the demand and the scroll plumbing stay core in `Artist.DiscoPageHost`) and the discography style (the
@@ -190,6 +201,10 @@ public sealed class ClassicStructure : IStructureLayer
         // T10c1: the library page (the navigator, the grips, the detail pane, the search columns, the collapsed drill-in) and its four panes (album, show, artists' reader, Your Episodes).
         // The library data, the shape memo, the selection and its persistence, the search matcher, the collapse state and every pane model and demand stay core.
         ClassicLibrary.Register(views);
+        // T11b: the Settings page (the masthead, the seven-tab pivot, the keyed scroll lane and every tab's sections and rows, drawn from `SettingsDoc`) and the three Settings
+        // surfaces the setup wizard shares with it: the theme picker, the active theme's options and the sidebar layout cards. The document, the verbs, the facts, the page
+        // epoch, the Storage census, the deep link and the legacy-row binding stay core.
+        ClassicSettings.Register(views);
         // T10c2: Recents, the profile page and the Following / Followers list page (`Views\Pages`). The shapes, demands, accents, scroll spies, load rules and every verb stay core.
         views.Add(ViewKeys.RecentsPage, ClassicRecents.Template, "classic.recents.page");
         ClassicProfile.Register(views);
@@ -218,6 +233,22 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.PlaylistDaylist, ClassicPlaylist.DaylistTemplate, "classic.playlist.daylist");
         views.Add(ViewKeys.PlaylistRecs, ClassicPlaylist.RecsTemplate, "classic.playlist.recs");
         views.Add(ViewKeys.PlaylistRecRow, ClassicPlaylist.RecRowTemplate, "classic.playlist.rec-row");
+        // T11a: the overlays (the account chip and its menu, the notification panel, the runtime banner, the update toast's download card, the offline
+        // strip, the context menu's identity tile) and the dialog bodies the app builds (the log-out card, the play-a-link card, the signature sheet, the
+        // destination picker, the credits sheet). Which overlay is open, its dismiss rules and focus trap, the toast queue, the dialog shells and every
+        // verb and decision stay core; the confirm, prompt and reset dialogs are engine ContentDialog configurations with no picture of the app's own.
+        views.Add(ViewKeys.OverlayProfileChip, ClassicProfileChip.Template, "classic.overlay.profile-chip");
+        views.Add(ViewKeys.OverlayProfileMenu, ClassicProfileMenu.Template, "classic.overlay.profile-menu");
+        views.Add(ViewKeys.OverlayNotifications, ClassicNotifications.Template, "classic.overlay.notifications");
+        views.Add(ViewKeys.OverlayRuntimeBanner, ClassicRuntimeBanner.Template, "classic.overlay.runtime-banner");
+        views.Add(ViewKeys.OverlayToast, ClassicToast.Template, "classic.overlay.toast");
+        views.Add(ViewKeys.OverlayOfflineStrip, ClassicOfflineStrip.Template, "classic.overlay.offline-strip");
+        views.Add(ViewKeys.MenuContext, ClassicContextMenuTile.Template, "classic.menu.context-tile");
+        views.Add(ViewKeys.DialogLogoutConfirm, ClassicLogoutConfirm.Template, "classic.dialog.logout-confirm");
+        views.Add(ViewKeys.DialogPlayLink, ClassicPlayLink.Template, "classic.dialog.play-link");
+        views.Add(ViewKeys.DialogSignature, ClassicSignature.Template, "classic.dialog.signature");
+        views.Add(ViewKeys.DialogFolderPicker, ClassicDestinationPicker.Template, "classic.dialog.folder-picker");
+        views.Add(ViewKeys.DialogSheet, ClassicCreditsSheet.Template, "classic.dialog.sheet");
 
         // T11c: the Common blocks every theme shares (history, the Home customizer, the frame-rate overlay, diagnostics, logs: today's views
         // converted, one copy), then Classic's own screens: the setup wizard, the release notes, the feedback and crash dialogs' bodies.

@@ -257,12 +257,12 @@ public sealed class ContentStateMountedTests(ShellHost host)
     [Fact]
     public void The_offline_lane_is_a_card_under_the_inset_no_wider_than_its_maximum()
         => ViewHarness.With(host, ViewKeys.ShellContentState,
-            ContentStateProps.ForOfflineLane(static () => new BoxEl { Key = "test:strip", Width = 900f, Height = 40f }),
+            ContentStateProps.ForOfflineLane(new OfflineStripProps { Message = new string('x', 240) }),   // wider than the card's maximum
             harness =>
             {
-                // The CARD is the strip's parent: a fixed-width child overflows a max-width parent instead of shrinking, and the
+                // The CARD holds the strip: a child wider than its max-width parent overflows instead of shrinking, and the
                 // card's clip is what keeps it inside 720.
-                var card = harness.AbsoluteBounds(harness.Shell.Host.Scene.Parent(harness.Node("test:strip")));
+                var card = harness.AbsoluteBounds(harness.Node("offline-card"));
                 Assert.True(card.W <= 720.5f, $"the card stops at its maximum width (720), was {card.W}");
                 Assert.Equal(12f, card.Y, 0.5f);   // the lane's top inset
                 Assert.Equal(590f, card.X + card.W / 2f, 1f);   // centred in the 1180 window

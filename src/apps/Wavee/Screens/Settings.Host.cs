@@ -10,17 +10,22 @@
 // Spec: ch 27 §9.3, §1.2 (`Settings.Host`: StorageCensus / MetadataCensus / DeleteOldLogs / ClearAudioBodies /
 // ClearLicenseKeys / ClearMetadata / FactoryReset / RelocateCache / OpenFolder); ch 27 §7 (the toast inventory), W20, W27
 //
-// Every side effect lives here, off the UI thread where it touches the disk; the UI files only call in and post the
-// answer back through the page's poster.
+// Every side effect lives here, off the UI thread where it touches the disk; the structure's Settings view
+// (`Themes\Classic\Structure\Views\Screens\ClassicSettings*.cs`) only calls in and the answer is posted back through the page's poster.
 
+using System.Globalization;
 using System.Runtime.InteropServices;
+using FluentGpu;
 using FluentGpu.Controls;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
+using FluentGpu.Rhi.D3D12;
+using FluentGpu.Signals;
 using FluentGpu.WindowsApi.Activation;
 using FluentGpu.WindowsApi.Packaging;
 using Wavee.Sdk.Streams;
+using Wavee.Theming.Contracts;
 
 namespace Wavee;
 
@@ -63,7 +68,18 @@ public static partial class Settings
         }
     }
 
+    /// <summary>The "Clear all remembered sizes" reset's enable gate — a destructive-looking no-op is never offered (DetailRailPrefs owns the rule).</summary>
+    internal static bool HasCustomizedRail() => DetailRailPrefs.HasCustomized();
+
+    /// <summary>The stored fullscreen-stage face (already migrated by Prefs.Stage) as its index in the combo's list (the gallery's order).</summary>
+    internal static int VisualizerIndex() => Math.Max(0, Visualizer.Catalog.IndexOf((Visualizer.Kind)Prefs.Stage.Visualizer()));
+
     // ══ 2. THE SEAMS (null = the chapter's honest absent state, never a throw) ══════════════════════════════════════
+
+    /// <summary><c>Playback.Audio.SetNormalization</c>, assigned at boot (G-132, V-PA27): the three normalization rows (the toggle,
+    /// the mode, album mode) each persist and then call it, and it re-ramps the playing voices to the new setting within 50 ms.
+    /// Null → the key is still written and the next open reads it.</summary>
+    public static Action? ApplyNormalization;
 
     /// <summary>The entities/store owner assigns (G3): the cache-tier census, called OFF the UI thread. Null (or a null
     /// answer) → the Metadata-cache row keeps its generic description.</summary>
@@ -89,6 +105,54 @@ public static partial class Settings
     /// <summary>The "Wavee right now" block as text — the last receipts tick, for the diagnostics copy (0.2.9
     /// <c>WaveeNowReceipts.LastCopyText</c>). "" until the About tab has ticked once.</summary>
     public static string ReceiptsText { get; private set; } = "";
+
+    /// <summary>One tick of the About "Wavee right now" block: the nine values the receipts card shows.</summary>
+    public sealed record ReceiptsSample(string Gpu, string WorkingSet, string Managed, string Uptime, string Fps, string Zoom,
+        string GpuAssets, string AppExclusive, string Detail);
+
+    /// <summary>Read the process, the GPU and the frame counter ONCE (the card calls it from a 5 000 ms interval, never from a
+    /// render) and keep the block's text for the diagnostics copy.</summary>
+    public static ReceiptsSample SampleReceipts()
+    {
+        using var proc = System.Diagnostics.Process.GetCurrentProcess();
+        long ws = proc.WorkingSet64;
+        var tier = ReceiptsTier(GpuProfile.Tier);
+        var snap = D3D12Device.LastVideoMemory;
+
+        string gpu = ReceiptsGpuLine();
+        string workingSet = Receipts.Mb(ws);
+        string managed = Receipts.Mb(GC.GetTotalMemory(forceFullCollection: false));
+        string uptime = Receipts.Uptime(DateTime.Now - proc.StartTime);
+        string fps = Receipts.Fps(Diagnostics.Probe.Host?.LastStats.Fps ?? 0);
+        // The tick is plenty for a receipt (a fresh Ctrl+= shows within 5 s) — no zoom subscription to unhook.
+        string zoom = ZoomLadder.Percent(FluentApp.Zoom).ToString(CultureInfo.InvariantCulture) + "%";
+
+        string gpuAssets, appExcl, detail;
+        if (!snap.Valid)
+        {
+            gpuAssets = "— (no Present yet)";
+            appExcl = Receipts.Dash;
+            detail = "GPU video-memory snapshot publishes on the render thread after the first Present.";
+        }
+        else
+        {
+            bool shared = Receipts.IsSharedIgpu(tier, snap.LocalCurrentUsage, snap.NonLocalCurrentUsage);
+            gpuAssets = Receipts.Mb((long)snap.LocalCurrentUsage) + " local  ·  " + Receipts.Mb((long)snap.NonLocalCurrentUsage) + " non-local";
+            appExcl = Receipts.Mb(Receipts.AppExclusive(ws, shared, snap.LocalCurrentUsage, snap.NonLocalCurrentUsage))
+                + "  (" + (shared ? "shared / iGPU" : "discrete") + ")";
+            var c = CultureInfo.InvariantCulture;
+            detail = "Local budget " + Receipts.Mb((long)snap.LocalBudget) + "  ·  non-local budget " + Receipts.Mb((long)snap.NonLocalBudget)
+                + "  ·  tracked D3D12 " + Receipts.Mb(snap.TrackedResourceBytes) + " (" + snap.TrackedResourceCount.ToString(c) + ")"
+                + "  ·  atlas " + snap.AtlasImages.ToString(c) + "/" + snap.AtlasPages.ToString(c)
+                + "  ·  glyphs " + snap.CachedGlyphs.ToString(c) + ". App excl. GPU ≈ working set − "
+                + (shared ? "LOCAL (UMA/shared)" : "NON_LOCAL (system-memory overlap)") + ".";
+        }
+
+        ReceiptsText = "Working set: " + workingSet + "\nManaged heap: " + managed + "\nUptime: " + uptime
+            + "\nFPS: " + fps + "\nZoom: " + zoom + "\nGPU assets: " + gpuAssets
+            + "\nApp memory excl. GPU assets: " + appExcl + "\n" + detail;
+        return new ReceiptsSample(gpu, workingSet, managed, uptime, fps, zoom, gpuAssets, appExcl, detail);
+    }
 
     // ══ 3. PATHS (every one 0.2.9's, rooted at the profile) ════════════════════════════════════════════════════════
 
@@ -121,6 +185,32 @@ public static partial class Settings
     }
 
     // ══ 4. THE CENSUS (NotStarted → Loading → Ready | Failed) ══════════════════════════════════════════════════════
+
+    static readonly Signal<StorageLoadPhase> s_storageLoad = new(StorageLoadPhase.NotStarted);
+    static StorageSnapshot? s_storage;
+    static string? s_storageError;
+    static AudioBodyCacheStatus? s_audioStatus;
+    static int? s_keyCount;
+    static MetadataCacheSnapshot? s_metaStats;
+    static bool s_recount;
+
+    /// <summary>Page mount: a fresh mount censuses again on its first Storage visit (0.2.9's per-instance phase). A census already
+    /// running is left to finish.</summary>
+    static void SeedCensus()
+    {
+        if (s_storageLoad.Peek() != StorageLoadPhase.Loading) s_storageLoad.Value = StorageLoadPhase.NotStarted;
+    }
+
+    /// <summary>The tab changed: the first visit to Storage starts the census.</summary>
+    static void EnterStorage(bool active)
+    {
+        if (active && s_storageLoad.Peek() == StorageLoadPhase.NotStarted) RefreshStorage();
+    }
+
+    /// <summary>The census as the props carry it. Read from the host's render, so a census that lands re-renders the page (the
+    /// phase is a signal; the rest is posted with it).</summary>
+    static SettingsStorageProps StorageFacts()
+        => new(s_storageLoad.Value, s_storage, s_storageError, s_audioStatus, s_keyCount, s_metaStats, AudioCacheFolder());
 
     /// <summary>Start (or queue) a census. A clear that lands while one is running re-runs it when it finishes, so the
     /// bar never keeps pre-clear numbers (parity 48b). The row cards render throughout; only their sizes wait.</summary>
@@ -368,13 +458,13 @@ public static partial class Settings
 
     /// <summary>Staged beside Wavee.exe by ops/build/generate-third-party-notices.ps1 at publish/pack time; a plain
     /// `dotnet run` has none, which is exactly what <c>settings.about.noticesMissing</c> says.</summary>
-    const string NoticesFileName = "THIRD-PARTY-NOTICES.txt";
+    internal const string NoticesFileName = "THIRD-PARTY-NOTICES.txt";
 
     static string NoticesPath => Path.Combine(AppContext.BaseDirectory, NoticesFileName);
 
     /// <summary>Wavee's OWN license. Everything third-party is enumerated by the generated notices file, never by a list
     /// in code that drifts the moment a PackageReference changes.</summary>
-    const string WaveeLicense =
+    internal const string WaveeLicense =
         "Copyright (c) 2026 Christos Karapasias\n\n" +
         "Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated " +
         "documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation " +
@@ -393,7 +483,7 @@ public static partial class Settings
     static string? s_notices;
 
     /// <summary>The notices text: the page-mount warm read's result when it has finished, else read here (once).</summary>
-    static string ReadNotices() => s_notices ??= SettingsFacts.WarmedNotices ?? LoadNotices();
+    internal static string ReadNotices() => s_notices ??= SettingsFacts.WarmedNotices ?? LoadNotices();
 
     /// <summary>Read the shipped notices (pool-thread safe: the localized "missing" sentence is the only UI-adjacent call).</summary>
     static string LoadNotices()
@@ -442,14 +532,14 @@ public static partial class Settings
            + "\nFeed: " + (Update.Host.FeedUrl is { Length: > 0 } feed ? feed : Receipts.Dash) + "\n" + ReceiptsText;
 
     /// <summary>The machine architecture as the feed names it ("arm64" / "x64").</summary>
-    static string ArchToken => RuntimeInformation.OSArchitecture switch
+    internal static string ArchToken => RuntimeInformation.OSArchitecture switch
     {
         Architecture.Arm64 => "arm64",
         Architecture.X64 => "x64",
         var other => other.ToString().ToLowerInvariant(),
     };
 
-    static string OsDescription => RuntimeInformation.OSDescription + " (" + RuntimeInformation.OSArchitecture + ")";
+    internal static string OsDescription => RuntimeInformation.OSDescription + " (" + RuntimeInformation.OSArchitecture + ")";
 
     /// <summary>The beta channel is a SIDE-BY-SIDE package: the link hands the user to App Installer.</summary>
     internal static string BetaFeedUrl => Update.RepoUrl + "/releases/download/wavee-beta/Wavee.Beta." + ArchToken + ".appinstaller";

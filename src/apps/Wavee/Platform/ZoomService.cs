@@ -2,7 +2,7 @@
 //
 // Role: CORE (themes plan §3.2, PR C1; extraction X18). The zoom logic used to exist twice: the shell frame's
 // large-display control loop plus its debounced persistence (`Shell.UI.cs`) and the Settings > Appearance > Zoom row's
-// picks and "Auto (N%)" label (`Settings.UI.Appearance.cs`). The rules are here now; both call `ZoomService`.
+// picks and "Auto (N%)" label (Classic's Settings Appearance tab, `ClassicSettings.Appearance.cs`). The rules are here now; both call `ZoomService`.
 //
 // THE POLICY (`ZoomAutoPolicy`, `Platform.cs`) stays where it is: it maps a window's BASE extent (client DIP at zoom 1)
 // to a plateau. This file is the control loop around it and the verbs that move the zoom.

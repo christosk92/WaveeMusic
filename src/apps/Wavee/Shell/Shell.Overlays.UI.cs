@@ -1,7 +1,9 @@
 // ── Shell/Shell.Overlays.UI.cs ─────────────────────────────────────────────────────────────────────────────────────
-// profile chip + menu + Play ▸ cascade, logout confirm, play-a-link dialog, the playback-runtime banner and its
-// gate, the digital-signature dialog, teaching tips, the in-app toast decision sites, and the mount of
-// +Screens/Setup.UI.Runtime.cs (the setup card's body is not here — A18)
+// the CORE side of the overlays: the profile chip's host and the account menu's rows (what exists and what each does) + the Play ▸
+// cascade, the logout confirm's popup, the play-a-link card's state, the playback-runtime banner's gate, the digital-signature
+// dialog's opener, the in-app toast decision sites, and the mount of +Screens/Setup.UI.Runtime.cs (the setup card's body is not here
+// — A18). THE PICTURES are the structure's since T11a (`Overlay.ProfileChip`, `.ProfileMenu`, `.RuntimeBanner`, `.Toast`,
+// `Dialog.LogoutConfirm`, `.PlayLink`, `.Signature`; Classic's are `Themes\Classic\Structure\Views\Overlays` and `Views\Dialogs`).
 //
 // Role: UI
 // Owner: I
@@ -33,7 +35,8 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
-using static FluentGpu.Dsl.Ui;
+using Wavee.Theming.Contracts;
+using ViewSlots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -83,7 +86,7 @@ public static partial class Shell
                 Padding = new Edges4(0f, Setup.RuntimeRules.BannerTopPad, 0f, 0f),
                 Children =
                 [
-                    new BoxEl { MaxWidth = Setup.RuntimeRules.BannerMaxWidth, Children = [Embed.Comp(() => new RuntimeBannerChrome())] },
+                    Embed.Comp(() => new RuntimeBannerChrome()),
                     Embed.Comp(() => new UpdateToastWatcher()),
                     Embed.Comp(() => new RuntimeToastWatcher()),
                     Embed.Comp(() => new PlaybackFailureToastWatcher()),
@@ -103,8 +106,9 @@ public static partial class Shell
 
     // ══ 4. THE PLAYBACK-RUNTIME BANNER AND ITS GATE (ch 19 W22/W23, §6.8) ═════════════════════════════════════════
 
-    /// <summary>The banner + the setup-request watcher. Floats; never reflows the page. No motion: gated off it is a bare
-    /// zero-footprint box.</summary>
+    /// <summary>The banner's host + the setup-request watcher. Floats; never reflows the page. No motion: gated off it is a bare
+    /// zero-footprint box (`Overlay.RuntimeBanner` draws both).</summary>
+    [CoreHost]
     sealed class RuntimeBannerChrome : Component
     {
         public override Element Render()
@@ -142,27 +146,16 @@ public static partial class Shell
                 OpenSetup("request");
             }, DepKey.From(request));
 
-            if (!show) return new BoxEl { Shrink = 0f };
-
-            return new BoxEl
+            return ViewSlots.View(ViewKeys.OverlayRuntimeBanner, new RuntimeBannerProps
             {
-                // An opaque base under the InfoBar's translucent caution tint — the banner floats over artwork, not
-                // chrome — plus the overlay elevation InfoBar does not carry itself.
-                Shrink = 0f, Fill = Tok.FillSolidBase, Corners = CornerRadius4.All(Radii.Control),
-                Shadow = Elevation.Flyout, ClipToBounds = true,
-                Children =
-                [
-                    // NO availableWidth: only the 60-character rule decides the orientation (noPack is the one vertical).
-                    InfoBar.Create(
-                        InfoBarSeverity.Warning,
-                        Loc.Get(Strings.Playback.Runtime.Title),
-                        Loc.Get(Setup.RuntimeRules.BannerLocKey(facts.Issue)),
-                        onClose: () => Setup.Runtime.Dismiss("banner"),
-                        isClosable: true,
-                        actionButton: Button.Accent(Loc.Get(Strings.Playback.Runtime.SetUp), () => OpenSetup("banner"))),
-                ],
-            };
+                Show = show,
+                Message = show ? Loc.Get(Setup.RuntimeRules.BannerLocKey(facts.Issue)) : "",
+                Dismiss = s_dismissBanner,
+                SetUp = () => OpenSetup("banner"),
+            });
         }
+
+        static readonly Action s_dismissBanner = static () => Setup.Runtime.Dismiss("banner");
     }
 
     /// <summary>The runtime-missing toast (0.2.9 `LiveSessionHost:637`, the third door): when a track fails because the
@@ -236,51 +229,29 @@ public static partial class Shell
             d.SecondaryText = "";
             d.CloseText = Loc.Get(Strings.Common.Close);
             d.DefaultButton = ContentDialog.DefaultBtn.Close;
-            d.Content = new BoxEl
+            d.Content = ViewSlots.View(ViewKeys.DialogSignature, new SignatureSheetProps
             {
-                Direction = 1, Gap = Spacing.M,
-                Children =
+                Summary = Setup.RuntimeSignatureSummary(facts),
+                Trusted = signature.Trust == Setup.RuntimeTrust.Trusted,
+                Rows =
                 [
-                    new BoxEl
-                    {
-                        Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
-                        Children =
-                        [
-                            InfoBadge.Icon(signature.Trust == Setup.RuntimeTrust.Trusted ? InfoBadgeSeverity.Success : InfoBadgeSeverity.Caution),
-                            new TextEl(Setup.RuntimeSignatureSummary(facts))
-                                { Size = 14f, LineHeight = 20f, Weight = 600, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, Grow = 1f, MinWidth = 0f },
-                        ],
-                    },
-                    new BoxEl { Height = 1f, Fill = Tok.StrokeCardDefault },
-                    SignatureRow(Strings.Runtime.Sig.Publisher, signature.Subject),
-                    SignatureRow(Strings.Runtime.Sig.Issuer, signature.Issuer),
-                    SignatureRow(Strings.Runtime.Sig.Trust, Loc.Get(Setup.RuntimeRules.TrustLocKey(signature.Trust))),
-                    SignatureRow(Strings.Runtime.Sig.Reason, signature.Reason),
-                    SignatureRow(Strings.Runtime.Sig.ValidFrom, Setup.RuntimeRules.SignatureDate(signature.ValidFrom)),
-                    SignatureRow(Strings.Runtime.Sig.ValidTo, Setup.RuntimeRules.SignatureDate(signature.ValidTo)),
-                    SignatureRow(Strings.Runtime.Sig.Thumbprint, signature.Thumbprint),
-                    SignatureRow(Strings.Runtime.Sig.Pinned, Loc.Get(facts.PinnedFingerprint ? Strings.Runtime.Sig.Yes : Strings.Runtime.Sig.No)),
-                    SignatureRow(Strings.Runtime.Sig.File, signature.FilePath),
+                    new(Loc.Get(Strings.Runtime.Sig.Publisher), signature.Subject),
+                    new(Loc.Get(Strings.Runtime.Sig.Issuer), signature.Issuer),
+                    new(Loc.Get(Strings.Runtime.Sig.Trust), Loc.Get(Setup.RuntimeRules.TrustLocKey(signature.Trust))),
+                    new(Loc.Get(Strings.Runtime.Sig.Reason), signature.Reason),
+                    new(Loc.Get(Strings.Runtime.Sig.ValidFrom), Setup.RuntimeRules.SignatureDate(signature.ValidFrom)),
+                    new(Loc.Get(Strings.Runtime.Sig.ValidTo), Setup.RuntimeRules.SignatureDate(signature.ValidTo)),
+                    new(Loc.Get(Strings.Runtime.Sig.Thumbprint), signature.Thumbprint),
+                    new(Loc.Get(Strings.Runtime.Sig.Pinned), Loc.Get(facts.PinnedFingerprint ? Strings.Runtime.Sig.Yes : Strings.Runtime.Sig.No)),
+                    new(Loc.Get(Strings.Runtime.Sig.File), signature.FilePath),
                 ],
-            };
+            });
         });
     }
 
     /// <summary>New loc key (stageB-loc/I3.json): the sheet's title, "Digital signature" — hard-coded English in 0.2.9
     /// (ch 19 §6.10); the rest of the sheet's words already had `runtime.sig.*` keys.</summary>
     const string LocSignatureTitle = "runtime.sig.title";
-
-    /// <summary>A stacked label (11 TextSecondary) over its value (12 TextPrimary, wrapping; "-" when blank).</summary>
-    static Element SignatureRow(string labelKey, string? value) => new BoxEl
-    {
-        Direction = 1, Gap = 2f,
-        Children =
-        [
-            R.Type.MicroMeta(Loc.Get(labelKey)) with { Color = Tok.TextSecondary },
-            new TextEl(string.IsNullOrWhiteSpace(value) ? "-" : value)
-                { Size = 12f, LineHeight = 16f, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap },
-        ],
-    };
 
     // ══ 5. THE UPDATE-LIFECYCLE TOAST (ch 19 §0 #11, W20; the decision is Notify.AppUpdateToasts) ═════════════════
 
@@ -290,8 +261,6 @@ public static partial class Shell
     /// so a card that appears mid-download starts at the right percentage.</summary>
     sealed class UpdateToastWatcher : Component
     {
-        const float UpdateCardBarWidth = 240f;
-
         public override Element Render()
         {
             UseEffect(() =>
@@ -323,15 +292,8 @@ public static partial class Shell
                 customContent: downloading ? () => UpdateProgressCard(title) : null);
         }
 
-        static Element UpdateProgressCard(string title) => new BoxEl
-        {
-            Direction = 1, Gap = Spacing.S, Padding = new Edges4(16f, 14f, 16f, 14f),
-            Children =
-            [
-                R.Type.DenseTitle(title) with { Color = Tok.TextPrimary },
-                ProgressBar.Create(UpdateToastModel.Shared.Progress, UpdateCardBarWidth),
-            ],
-        };
+        static Element UpdateProgressCard(string title)
+            => ViewSlots.View(ViewKeys.OverlayToast, new ToastCardProps { Title = title, Progress = UpdateToastModel.Shared.Progress });
 
         /// <summary>What's new on the toast: the notes of <paramref name="version"/>.</summary>
         static void OpenWhatsNew(string version) => GoTo(Parse("whatsnew", version));
@@ -339,12 +301,9 @@ public static partial class Shell
 
     // ══ 6. THE PROFILE CHIP AND ITS MENU (ch 19 W4–W7, §6.2) ═════════════════════════════════════════════════════
 
-    /// <summary>The premium tier ink — the ONE hand-authored colour in this surface, applied to the star and the badge.
-    /// A property (never a field) so a live theme flip re-resolves it.</summary>
-    static ColorF PremiumInk => Theme.Dark ? ColorF.FromRgba(0xE6, 0xC2, 0x6C) : ColorF.FromRgba(0x8A, 0x63, 0x12);
-
-    const float ProfileMenuWidth = 304f, ChipAvatar = 24f;
-
+    /// <summary>The chip's host: the menu's overlay handle (open, toggle, light dismiss, focus trap), the anchor capture, the chrome
+    /// ladder's flags and the Store-shot presentation switch. The picture is `Overlay.ProfileChip`.</summary>
+    [CoreHost]
     sealed class ProfileChipCore : Component
     {
         public override Element Render()
@@ -362,11 +321,6 @@ public static partial class Shell
             bool presenting = FrameFacts.Presenting.Value;
             if (presenting) identity = new AccountIdentity(true, "", null);
             float nameCap = Actions.ProfileRules.NameCap(Layout.ChromeProfileNameW);
-
-            // The skeleton chip until the account's identity is KNOWN (0.2.9 printed "—"; 0.3 must not).
-            Element picture = identity.Known
-                ? PersonPicture.Create("", ChipAvatar, displayName: identity.Name, imageSourcePath: identity.AvatarUrl)
-                : new BoxEl { Width = ChipAvatar, Height = ChipAvatar, Shrink = 0f, Corners = CornerRadius4.All(ChipAvatar / 2f), Fill = Tok.FillSubtleSecondary };
 
             void Close() => handle.Value?.Close();
 
@@ -394,21 +348,12 @@ public static partial class Shell
                 handle.Value.ClosedAction = () => handle.Value = null;
             }
 
-            Element[] children = !layout.ShowName || presenting
-                ? [picture]
-                : identity.Known
-                    ? [picture, Caption(identity.Name).Primary() with { MaxWidth = nameCap, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }]
-                    : [picture, new BoxEl { Width = nameCap, Height = 12f, Corners = CornerRadius4.All(2f), Fill = Tok.FillSubtleSecondary }];
-
-            return new BoxEl
+            return ViewSlots.View(ViewKeys.OverlayProfileChip, new ProfileChipProps
             {
-                Direction = 0, Gap = 8f, AlignItems = FlexAlign.Center, Height = 32f, Shrink = 0f,
-                // The named form carries 6 extra DIP of right padding — part of the budgeted ChromeProfileNameW.
-                Padding = new Edges4(4f, 0f, layout.ShowName ? 10f : 4f, 0f), Corners = CornerRadius4.All(Radii.Control),
-                Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-                OnClick = OpenMenu, OnRealized = h => anchor.Value = h,
-                Children = children,
-            }.Interactive(Interaction.Subtle);
+                Known = identity.Known, Name = identity.Name, AvatarUrl = identity.AvatarUrl,
+                ShowName = layout.ShowName, Presenting = presenting, NameCap = nameCap,
+                Open = OpenMenu, Realized = h => anchor.Value = h,
+            });
         }
     }
 
@@ -423,7 +368,7 @@ public static partial class Shell
         return new AccountIdentity(true, Entities.Strings.Resolve(me.NameId), Controls.ArtUrl(me.ImageId));
     }
 
-    /// <summary>The account flyout: the header over stock WinUI menu rows, in the row table's order.</summary>
+    /// <summary>The account flyout: the rows in the row table's order (the body, the header over stock WinUI menu rows, is `Overlay.ProfileMenu`).</summary>
     static Element ProfileMenuContent(AccountIdentity identity, Spotify.Tier tier, int unread, bool actionsInMenu,
         IOverlayService overlay, Action close, Action openNotifications)
     {
@@ -472,60 +417,12 @@ public static partial class Shell
             }
         }
 
-        return new BoxEl
+        return ViewSlots.View(ViewKeys.OverlayProfileMenu, new ProfileMenuProps
         {
-            Direction = 1, MinWidth = ProfileMenuWidth, MaxWidth = ProfileMenuWidth,
-            // 6 + the menu presenter's own (0,2,0,2) = the 8-DIP inset this card has always had.
-            Padding = new Edges4(0f, 6f, 0f, 6f),
-            Children =
-            [
-                AccountHeader(identity, tier),
-                new BoxEl { Height = 1f, Margin = new Edges4(8f, 4f, 8f, 4f), Fill = Tok.StrokeDividerDefault },
-                MenuFlyout.Create(items, close, ProfileMenuWidth),
-            ],
-        };
-    }
-
-
-    /// <summary>A 40-DIP avatar beside name (14/600) · tier line · (email — 0.3 carries no email column, so the line is
-    /// omitted, which is also what 0.2.9 did when it had none). Unknown identity keeps the header's height with quiet
-    /// bars; an unknown tier hides its row rather than printing "Spotify Free" speculatively.</summary>
-    static Element AccountHeader(AccountIdentity identity, Spotify.Tier tier)
-    {
-        var lines = new List<Element>(2)
-        {
-            identity.Known
-                ? new TextEl(identity.Name) { Size = 14f, LineHeight = 20f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }
-                : new BoxEl { Width = 140f, Height = 14f, Margin = new Edges4(0f, 3f, 0f, 3f), Corners = CornerRadius4.All(2f), Fill = Tok.FillSubtleSecondary },
-        };
-        if (Actions.ProfileRules.ShowsTier(tier)) lines.Add(TierLine(tier == Spotify.Tier.Premium));
-
-        return new BoxEl
-        {
-            Direction = 0, Gap = 12f, AlignItems = FlexAlign.Center, Padding = new Edges4(14f, 10f, 14f, 10f),
-            Children =
-            [
-                identity.Known
-                    ? PersonPicture.Create("", 40f, displayName: identity.Name, imageSourcePath: identity.AvatarUrl)
-                    : new BoxEl { Width = 40f, Height = 40f, Shrink = 0f, Corners = CornerRadius4.All(20f), Fill = Tok.FillSubtleSecondary },
-                new BoxEl { Direction = 1, Gap = 2f, Grow = 1f, Basis = 0f, MinWidth = 0f, ClipToBounds = true, Children = lines.ToArray() },
-            ],
-        };
-    }
-
-    /// <summary>A 10-DIP star (or an invisible 10-DIP spacer for Free, so both badges share one baseline) + the badge at 12.</summary>
-    static Element TierLine(bool premium)
-    {
-        ColorF ink = premium ? PremiumInk : Tok.TextSecondary;
-        return new BoxEl
-        {
-            Direction = 0, Gap = 5f, AlignItems = FlexAlign.Center,
-            Children =
-            [
-                premium ? Icon(Icons.FavoriteStar, 10f, ink) : new BoxEl { Width = 10f, Shrink = 0f },
-                new TextEl(Loc.Get(premium ? Strings.Auth.PremiumBadge : Strings.Auth.FreeBadge)) { Size = 12f, LineHeight = 16f, Color = ink },
-            ],
-        };
+            Known = identity.Known, Name = identity.Name, AvatarUrl = identity.AvatarUrl,
+            ShowsTier = Actions.ProfileRules.ShowsTier(tier), Premium = tier == Spotify.Tier.Premium,
+            Items = items, Close = close,
+        });
     }
 
     /// <summary>"Play ▸" — File… and Link…, then (behind a separator, only when any qualify) one Globe row per installed
@@ -561,49 +458,27 @@ public static partial class Shell
 
     // ══ 7. THE LOGOUT CONFIRM (ch 19 W8 — off-ladder on purpose) ══════════════════════════════════════════════════
 
-    /// <summary>A bare Modal card, NOT a ContentDialog: no title band, no separator, no command-row fill — 380 wide
-    /// (320..420), padded 24, Cancel / Log out both 96 wide, right-aligned.</summary>
+    /// <summary>A bare Modal card, NOT a ContentDialog: no title band, no separator, no command-row fill (`Dialog.LogoutConfirm`
+    /// draws it). Cancel closes it; Log out closes it, then signs out.</summary>
     static void ConfirmLogout(IOverlayService overlay)
     {
         OverlayHandle? h = null;
         h = overlay.Open(
             () => NodeHandle.Null,
-            () => ModalCard(380f, 320f, 420f,
-            [
-                new TextEl(Loc.Get(Strings.Auth.LogoutConfirmTitle)) { Size = 20f, LineHeight = 28f, Weight = 600, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap },
-                new TextEl(Loc.Get(Strings.Auth.LogoutConfirmBody)) { Size = 14f, LineHeight = 20f, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap },
-                new BoxEl
+            () => ViewSlots.View(ViewKeys.DialogLogoutConfirm, new LogoutConfirmProps
+            {
+                Cancel = () => h?.Close(),
+                Confirm = () =>
                 {
-                    Direction = 0, Gap = Spacing.S, Justify = FlexJustify.End, Margin = new Edges4(0f, Spacing.M, 0f, 0f),
-                    Children =
-                    [
-                        Button.Standard(Loc.Get(Strings.Auth.Cancel), () => h?.Close()) with { MinWidth = 96f },
-                        Button.Accent(Loc.Get(Strings.Auth.LogOut), () =>
-                        {
-                            h?.Close();
-                            FrameVerbs.Shared.LogOut();
-                        }) with { MinWidth = 96f },
-                    ],
+                    h?.Close();
+                    FrameVerbs.Shared.LogOut();
                 },
-            ]),
+            }),
             FlyoutPlacement.BottomCenter,
             new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.Modal, Chrome: PopupChrome.Modal));
     }
 
-    /// <summary>The off-ladder modal plate both this chapter's hand-rolled cards share: FillSolidBase, 1px surface
-    /// stroke, the dialog elevation, r8, padded 24 with a 12 gap.</summary>
-    static Element ModalCard(float width, float min, float max, Element[] children) => new BoxEl
-    {
-        Direction = 1, Width = width, MinWidth = min, MaxWidth = max,
-        Corners = Radii.OverlayAll, Fill = Tok.FillSolidBase, BorderColor = Tok.StrokeSurfaceDefault, BorderWidth = 1f,
-        Shadow = Elevation.Dialog, Padding = Edges4.All(24f), Gap = Spacing.M,
-        Children = children,
-    };
-
     // ══ 8. THE PLAY-A-LINK DIALOG (ch 19 W9–W13, §6.7) ════════════════════════════════════════════════════════════
-
-    const float PlayLinkCardWidth = 420f;
-    const float PlayLinkStatusHeight = 18f;
 
     /// <summary>Open the paste-a-link card. The clipboard is read HERE, once: it is an open-time fact, and a card that
     /// re-read it per render would fight the user's own edits. <paramref name="pinnedModuleId"/> non-null = the user
@@ -624,6 +499,7 @@ public static partial class Shell
 
     /// <summary>The card. Every ctor value is an OPEN-TIME constant, so freezing them at mount is the contract; the only
     /// things that change while it is open are its own signals.</summary>
+    [CoreHost]
     sealed class PlayLinkCardCore(string? pinnedModuleId, string placeholder, string seed, Action close) : Component
     {
         public override Element Render()
@@ -675,32 +551,17 @@ public static partial class Shell
             }
 
             string escape = failedInput.Value;
-            var buttons = new List<Element>(3);
-            if (Actions.PlayLinkRules.IsWebUrl(escape))
-                buttons.Add(Button.Standard(Loc.Get(Strings.Play.OpenInBrowser), () => OpenWeb(escape)));
-            buttons.Add(Button.Standard(Loc.Get(Strings.Auth.Cancel), close) with { MinWidth = 96f });
-            buttons.Add(Button.Accent(Loc.Get(Strings.Play.Start), Submit, isEnabled: canPlay) with { MinWidth = 96f });
-
-            return ModalCard(PlayLinkCardWidth, 360f, 480f,
-            [
-                new TextEl(Loc.Get(Strings.Play.Title)) { Size = 20f, LineHeight = 28f, Weight = 600, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap },
-                // Enter commits: the single-line field raises OnCommit, so the card needs no key handler of its own.
-                TextBox.Create(text, null, new TextBox.TextBoxOptions
-                {
-                    Placeholder = placeholder, Width = PlayLinkCardWidth - 48f, OnCommit = _ => Submit(),
-                }),
-                // 18 DIP reserved even when empty, so the button row never jumps when a status appears.
-                new BoxEl
-                {
-                    MinHeight = PlayLinkStatusHeight, Direction = 0, AlignItems = FlexAlign.Center,
-                    Children = [new TextEl(line) { Size = 12f, LineHeight = 16f, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }],
-                },
-                new BoxEl
-                {
-                    Direction = 0, Gap = Spacing.S, Justify = FlexJustify.End, Margin = new Edges4(0f, Spacing.S, 0f, 0f),
-                    Children = buttons.ToArray(),
-                },
-            ]);
+            return ViewSlots.View(ViewKeys.DialogPlayLink, new PlayLinkProps
+            {
+                Placeholder = placeholder,
+                Text = () => text,
+                Status = line,
+                CanPlay = canPlay,
+                OffersBrowser = Actions.PlayLinkRules.IsWebUrl(escape),
+                OpenInBrowser = () => OpenWeb(escape),
+                Cancel = close,
+                Submit = Submit,
+            });
         }
     }
 }
