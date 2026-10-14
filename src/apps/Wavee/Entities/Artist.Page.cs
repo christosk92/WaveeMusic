@@ -149,6 +149,10 @@ public readonly partial struct Artist
         int _heroDecodeW, _heroDecodeH;
         Element? _body;
         IOverlayService? _overlay;
+        /// <summary>The structure's media-surface templates (T8c): the pick card's clickable shell is the surface's.</summary>
+        global::Wavee.Theming.Contracts.SurfaceStyle? _surfaceStyle;
+        /// <summary>The structure's chart templates (T8c): the page's skeleton draws the chart's own skeleton from them.</summary>
+        global::Wavee.Theming.Contracts.ArtistChartStyle? _chartStyle;
 
         // DemandRows' cached stamps (ch 08 render-cost fix — RowStamp is declared in Album.Page.cs, same namespace):
         // one per relation whose Ensure call walks a growing slot span, so an unrelated table drain that merely wakes
@@ -270,6 +274,9 @@ public readonly partial struct Artist
             }
 
             _overlay = UseContext(Overlay.Service);
+            var registry = UseContext(global::FluentGpu.Theming.ViewRegistry.Context);
+            _surfaceStyle ??= global::Wavee.Theming.Contracts.ListStyleLookup.Of(registry, global::Wavee.Theming.Contracts.StyleKeys.Surface);
+            _chartStyle ??= global::Wavee.Theming.Contracts.ListStyleLookup.Of(registry, global::Wavee.Theming.Contracts.StyleKeys.ArtistChart);
             var shellSlot = UseContext(ShellMaterial.Slot);
             float scale = UseContext(Viewport.Scale);
             var a = _artist;
@@ -737,7 +744,7 @@ public readonly partial struct Artist
                 Element tracks = Chart(a, accentSignal);
                 if (!pick && !upcomingInRail) return new BoxEl { Direction = 1, MinWidth = 0f, Children = [tracks] };
                 Element featured = pick
-                    ? PickCard(a, accentFn, horizontal: !wide, _overlay) with { Key = wide ? "featured:pick:rail" : "featured:pick:band" }
+                    ? PickCard(a, accentFn, horizontal: !wide, _overlay, _surfaceStyle) with { Key = wide ? "featured:pick:rail" : "featured:pick:band" }
                     : SectionBlock(Loc.Get(Strings.Artist.Upcoming), UpcomingCard(a, accentFn, wide), accent)
                         with { Key = wide ? "featured:upcoming:rail" : "featured:upcoming:band" };
                 return new BoxEl
@@ -1138,7 +1145,7 @@ public readonly partial struct Artist
                     new BoxEl { Direction = 0, Gap = DiscoGap, Children = cells },
                 ],
             };
-            return Magazine([ChartSkeleton(0, _classic, _showArtwork), facet], _metrics.Gutter);
+            return Magazine([ChartSkeleton(_chartStyle, 0, _classic, _showArtwork), facet], _metrics.Gutter);
         }
 
         // ── 2.6 the shelves (Shelves.cs, Discography.cs's appears-on; W19) ──────────────────────────────────────────

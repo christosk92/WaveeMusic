@@ -769,7 +769,7 @@ public readonly partial struct Show
             },
         };
         for (int i = 0; i < s.Fresh.Length; i++)
-            kids.Add(Episode.ReaderRow(Episode.Fixed(Episode.RowItem.Of(new Episode(s.Fresh[i]),
+            kids.Add(Episode.ReaderRow(h.EpisodeStyle, Episode.Fixed(Episode.RowItem.Of(new Episode(s.Fresh[i]),
                 Episode.RowMarks.Fresh | (i == 0 ? Episode.RowMarks.NoRule : Episode.RowMarks.None))), h.HeadRowCtx!, narrow));
         return Column(kids, 0f);
     }
@@ -1008,7 +1008,7 @@ public readonly partial struct Show
 
     /// <summary>The cold skeleton's SOURCE: the real filter words, the "episodes" head and eight seed rows — the list's
     /// region derives its shimmer from this one tree. No head (it has its own), no pill, no progress.</summary>
-    static Element SeedList(bool narrow)
+    static Element SeedList(global::Wavee.Theming.Contracts.EpisodeRowStyle? style, bool narrow)
     {
         float pad = narrow ? ReaderPadNarrow : ReaderPad;
         var kids = new Element[SeedRows + 2];
@@ -1019,7 +1019,7 @@ public readonly partial struct Show
                         SeedWord(Strings.Podcast.Filter.InProgress), SeedWord(Strings.Podcast.Filter.Played)],
         };
         kids[1] = new BoxEl { Direction = 1, Padding = new Edges4(0f, HeadTop, 0f, Spacing.M), Children = [Pivot(Loc.Get(Strings.Podcast.Episodes))] };
-        for (int i = 0; i < SeedRows; i++) kids[i + 2] = Episode.SeedReaderRow(narrow);
+        for (int i = 0; i < SeedRows; i++) kids[i + 2] = Episode.SeedReaderRow(style, narrow);
         return new BoxEl { Direction = 1, MinWidth = 0f, Padding = new Edges4(pad, 0f, pad, BottomReserve), Children = kids };
     }
 

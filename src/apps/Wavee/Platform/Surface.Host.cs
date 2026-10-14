@@ -88,6 +88,8 @@ public static partial class Controls
         readonly Action<bool> _selfFocusChanged, _innerFocusChanged;
         readonly Func<object?> _dragPayload;
         readonly Func<ContextMenuModel?> _menu;
+        // The structure's templates for the shell, the bodies and the labels (T8c): resolved once per host from the ambient registry.
+        global::Wavee.Theming.Contracts.SurfaceStyle? _style;
 
         public SurfaceHost()
         {
@@ -115,6 +117,7 @@ public static partial class Controls
             // The context reads come BEFORE the early return, so the hook order never depends on the props being seeded.
             var overlay = UseContext(Overlay.Service);
             RowScope? row = UseContext(ItemsView.SlotRow);
+            var registry = UseContext(global::FluentGpu.Theming.ViewRegistry.Context);
             var p = _props.Value;
             if (p is null) return new BoxEl();
             var d = p.Data;
@@ -123,6 +126,8 @@ public static partial class Controls
             // A seed is the shape's bone face: disabled, no plate, no chrome, no handlers. In a bound slot its owner also
             // disables the row, so the slot root dims and refuses invoke.
             if (d.IsSeed) return SurfaceParts.Seed(in s, p.Width, d.Height, CoverShape.IsCircular(d.Circular, d.CoverAspect));
+            var style = _style ??= global::Wavee.Theming.Contracts.ListStyleLookup.Of(registry, global::Wavee.Theming.Contracts.StyleKeys.Surface);
+            if (style is null) return new BoxEl();
 
             bool slot = row is not null;
             // HOT first, then the relation COARSE-first (the NowPlayingOverlayHost discipline): a hot surface never asks
@@ -142,11 +147,11 @@ public static partial class Controls
             if (!ReferenceEquals(_textFor, p))
             {
                 _textFor = p;
-                _text = s.IsRow ? SurfaceParts.RowText(d, in s) : SurfaceParts.Labels(d, in s, SurfaceParts.InnerOf(p.Width));
+                _text = s.IsRow ? style.RowText(d, in s) : style.Labels(d, in s, SurfaceParts.InnerOf(p.Width));
             }
             Element body = s.IsRow
-                ? SurfaceParts.RowBody(d, in s, overlayOn, chrome, hasMenu, play, _text)
-                : SurfaceParts.StackBody(d, in s, p.Width, overlayOn, chrome, hasMenu, play, _text);
+                ? style.RowBody(d, in s, overlayOn, chrome, hasMenu, play, _text)
+                : style.StackBody(d, in s, p.Width, overlayOn, chrome, hasMenu, play, _text);
             // FOCUS WITHIN, with no scene walk: the dispatcher fires OnFocusChanged on an ancestor as a ROUTED boundary
             // event (focus entering/leaving its SUBTREE), so this NON-focusable wrapper hears a Tab from the shell onto
             // the surface's own FAB as an ENTRY — the very move the shell itself reads as a loss. Layout-transparent (a
@@ -163,7 +168,7 @@ public static partial class Controls
             DragSource? drag = d.Drag is { } ds ? new DragSource(ds.Kind, _dragPayload) { Style = ds.Style } : null;
             // The shell is the surface's outermost hit-testable node, so the hover/exit/focus handlers belong exactly
             // here — the subtree edges the dispatcher delivers them on are this node's.
-            BoxEl shell = SurfaceParts.Shell(within, in s, in mode, d.Uri) with
+            BoxEl shell = style.Shell(within, in s, in mode, d.Uri) with
             {
                 OnClick = mode.OwnsClick ? _onClick : null,
                 OnHoverMove = _enter, OnPointerExit = _exit,
@@ -176,7 +181,7 @@ public static partial class Controls
             // The opened surface wears the accent border + the brighter fill. The accent is read HERE, in this host's
             // render, so a palette landing repaints the one selected surface and no other; the NEWEST pushed thunk is
             // honoured through `_latest`, like every other delegate.
-            if (d.Selected) shell = SurfaceParts.Selected(shell, _latest?.Data.SelectedAccent);
+            if (d.Selected) shell = style.Selected(shell, _latest?.Data.SelectedAccent);
             // The menu rides on the shell in BOTH modes: the right-click funnel is not a gesture owner.
             if (hasMenu) shell = ContextMenu.Attach(shell, overlay!, _menu);
             Element root = s.IsRow || float.IsNaN(p.Width) ? shell : SurfaceParts.Gutter(shell, p.Width);

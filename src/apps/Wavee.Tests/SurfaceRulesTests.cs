@@ -14,6 +14,7 @@ using FluentGpu.Foundation;
 using Wavee;
 using Xunit;
 using Wavee.Theming.Roles;
+using Wavee.Themes.Classic;
 
 namespace Wavee.Tests;
 

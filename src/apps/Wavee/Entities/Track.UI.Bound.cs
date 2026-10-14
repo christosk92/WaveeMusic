@@ -137,6 +137,9 @@ public readonly partial struct Track
 
     internal static long NowUnix => Store.ToUnix(Entities.Now);
 
+    /// <summary>Is the deck playing? The core's signal, for the equalizer a row template draws (a template never names `Playback`).</summary>
+    internal static IReadSignal<bool> DeckPlaying => Playback.IsPlaying;
+
     /// <summary>The ONE not-yet-out / unavailable predicate: the dim, the play gate and the duration lane never disagree.</summary>
     internal static bool Withheld(in RowPresentation p, long now) => p.Track.NotYetOut(now) || p.Track.Unplayable();
 

@@ -704,8 +704,10 @@ public readonly partial struct Artist
     /// width on the band arm) and fading in. While pending the card is just header + comment + footer, and on a real
     /// failure it stays that way: no flat placeholder block ever stands in for a photo that may never come (the grey
     /// slab a stuck decode used to leave behind).</para></summary>
-    internal static Element PickCard(Artist a, Func<ColorF> accent, bool horizontal, IOverlayService? overlay = null)
+    internal static Element PickCard(Artist a, Func<ColorF> accent, bool horizontal, IOverlayService? overlay = null,
+                                     global::Wavee.Theming.Contracts.SurfaceStyle? surface = null)
     {
+        if (surface is null) return new BoxEl();   // no registry: the page logged it (T8c: the panel's clickable shell is the structure's)
         ColorF tint = accent();
         ref readonly ArtistPick pick = ref a.Pick;
         string title = Entities.Strings.Resolve(pick.Title);
@@ -829,12 +831,12 @@ public readonly partial struct Artist
         Element content = horizontal && photo is not null ? new BoxEl { Direction = 0, Children = [copy, photo] } : copy;
 
         // The panel keeps its own tree (a quote over a footer), but its clickable shell is the shared one: the plate's
-        // hover/press reveal, the Button role, the tab stop and the hand cursor all come from `SurfaceParts.Shell` and
+        // hover/press reveal, the Button role, the tab stop and the hand cursor all come from the structure's surface shell and
         // the ownership rule (a clickable, free surface), not from a hand-set copy. The panel's own fill, hairline and
         // card shadow ride on top, and its extent stays the content's (the shell's stack Grow is zeroed).
         var mode = SurfaceRules.Ownership(inSlot: false, hasClick: true);
-        BoxEl panel = SurfaceParts.Shell(new BoxEl { ZStack = true, Grow = 1f, MinWidth = 0f, Children = [wash, content] },
-                                         Shape.Grid, in mode, target) with
+        BoxEl panel = surface.Shell(new BoxEl { ZStack = true, Grow = 1f, MinWidth = 0f, Children = [wash, content] },
+                                    Shape.Grid, in mode, target) with
         {
             Grow = 0f, ClipToBounds = true,
             Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, Shadow = Elevation.Card,

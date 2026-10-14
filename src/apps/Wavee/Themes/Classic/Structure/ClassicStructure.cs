@@ -8,7 +8,9 @@
 // T6b the right panel and the player's flyouts (`Views\Panel`, `Views\Player`), T7a1 the fullscreen stage's frame and T7a2 its layout layers (`Views\Stage`),
 // T7b the lyrics surface (`Views\Lyrics\ClassicLyrics.cs`) and its lines style (`Lists\ClassicLyricsLines.cs`, the `StyleKeys.LyricsLines` style),
 // T8a the track table's rows (`Lists\ClassicTrackTable.cs`: the Modern and Classic bound-row templates, registered as the
-// `StyleKeys.TrackTable` style), T10a1 Home (`Views\Home`: the page, facet row, daylist and clock, zone bodies, the drill page and the
+// `StyleKeys.TrackTable` style; T8b its chrome, `ClassicTrackChrome.cs`), T8c the other list surfaces (`Lists\ClassicEagerRow.cs`,
+// `ClassicEpisodeRow.cs`, `ClassicSurface.cs`, `ClassicArtistChart.cs`, `ClassicTrackDrawer.cs`, with the shared cells in `ClassicRowCells.cs`:
+// the `StyleKeys.EagerTrackRow`, `EpisodeRow`, `Surface`, `ArtistChart` and `TrackDrawer` styles), T10a1 Home (`Views\Home`: the page, facet row, daylist and clock, zone bodies, the drill page and the
 // customizer), T9a the shared detail frame (`Views\Detail`: the scaffold, the rail and its strip, the show header, the hero, the insights sheet); every other surface is still core code. It
 // decides the shell's policies (`Rules\ClassicPolicies.cs`: nav pane, panel and mini player, player bar, chrome row, stage)
 // and offers every capability (T3). Its window tiers (T3b) are `Rules\Tiers.cs`.
@@ -73,6 +75,13 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.PlayerBar, ClassicPlayerBar.Template, "classic.player.bar");
         // T8a: the track table's rows (the Modern and Classic bound grids and skins; the header, chrome and placeholder are T8b's).
         views.AddStyle(StyleKeys.TrackTable, ClassicTrackTable.Style);
+        // T8c: the other list surfaces: the eager track row (grid, title run, hover container), the podcast episode row (content, seed,
+        // failure), the media surface (shell, bodies, labels), the artist's Top-tracks chart and the track drawer (frame, body, format split).
+        views.AddStyle(StyleKeys.EagerTrackRow, ClassicEagerRow.Style);
+        views.AddStyle(StyleKeys.EpisodeRow, ClassicEpisodeRow.Style);
+        views.AddStyle(StyleKeys.Surface, ClassicSurface.Style);
+        views.AddStyle(StyleKeys.ArtistChart, ClassicArtistChart.Style);
+        views.AddStyle(StyleKeys.TrackDrawer, ClassicTrackDrawer.Style);
         // T6b: the right panel (frame, header, arms), its friends body, the now-playing hero, the deck's style flyout, the device
         // picker's menu and the on-media transport.
         views.Add(ViewKeys.ShellPanel, ClassicPanel.Template, "classic.shell.panel");
