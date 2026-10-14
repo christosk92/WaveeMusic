@@ -185,7 +185,7 @@ public sealed class ThemePickerTests : IDisposable
 
         Assert.Empty(model.Rows);          // no Classic option is migrated yet
         Assert.False(model.IsEmpty);
-        Assert.Equal(13, model.Legacy.Count);
+        Assert.Equal(12, model.Legacy.Count);   // M1 deleted the page-motion row
         Assert.Null(model.Reset);          // legacy keys are not the theme's stored options
         Assert.Equal("theme.classic.name", model.NameKey);
         Assert.Empty(ThemeOptionsSection.Commands(true));

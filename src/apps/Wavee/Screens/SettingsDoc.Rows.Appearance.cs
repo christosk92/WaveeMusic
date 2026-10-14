@@ -78,12 +78,7 @@ public static partial class SettingsDoc
                     Strings.Settings.Appearance.RailResetConfirmBody, Strings.Settings.Appearance.RailResetAction)),
             Make(T.Appearance, "Theme options", "colorWashes", K.Toggle, Strings.Settings.Appearance.ColorWashes,
                 SettingsWriter.OfToggle("appearance.colorWashes", on => SettingsVerbs.SetAppearanceToggle(Platform.Keys.ColorWashesEnabled, on)),
-                captionKey: Strings.Settings.Appearance.ColorWashesSub, value: BoolOf(Platform.Keys.ColorWashesEnabled)),
-            // DEVELOPER-ONLY: a normal build navigates at `Design.Nav.DefaultStyle` (Classic) and is offered no choice.
-            Make(T.Appearance, "Theme options", "pageMotion", K.Segmented, Strings.Settings.Appearance.PageMotion,
-                SettingsWriter.OfChoice("appearance.pageMotion", SettingsVerbs.SetPageMotionStyle),
-                captionKey: Strings.Settings.Appearance.PageMotionSub,
-                value: _ => Prefs.Appearance.PageMotionStyle(Design.PageMotionStyleCount))),
+                captionKey: Strings.Settings.Appearance.ColorWashesSub, value: BoolOf(Platform.Keys.ColorWashesEnabled))),
 
         // The core presentation prefs every theme honours (the plan's App mode and Zoom rows; marquee is a core pref, owner Q27).
         Sect(T.Appearance, "Display", Strings.Settings.ThemeOptions.DisplayTitle, null,
@@ -227,15 +222,6 @@ public static partial class SettingsVerbs
     {
         Platform.Settings.Set(key, on);
         Prefs.Appearance.Bump();
-        return true;
-    }
-
-    /// <summary>Page-motion style through the ONE Appearance writer (it bumps the epoch once). Every mounted content host
-    /// re-reads it on its NEXT swap — no restart, no re-navigation required to try a style (ch 30 N12).</summary>
-    public static bool SetPageMotionStyle(int i)
-    {
-        if ((uint)i >= (uint)Design.PageMotionStyleCount || Platform.Settings.Get(Platform.Keys.PageMotionStyle) == i) return false;
-        Prefs.Appearance.Set(Platform.Keys.PageMotionStyle, i);
         return true;
     }
 

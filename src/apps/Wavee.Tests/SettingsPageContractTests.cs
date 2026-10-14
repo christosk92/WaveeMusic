@@ -142,13 +142,13 @@ public sealed class SettingsPageContractTests : IDisposable
     [Fact]
     public void A_developer_only_row_is_absent_until_developer_mode_and_an_unknown_row_is_left_out()
     {
-        var model = Model(new LegacyOptionRow("pageMotion", "Motion"), new LegacyOptionRow("noSuchRow", "Motion"));
+        var model = Model(new LegacyOptionRow("npvPresentation", "Motion"), new LegacyOptionRow("noSuchRow", "Motion"));
 
         Assert.Empty(SettingsThemeOptions.Groups(model, new Facts(false), wizard: false));
 
         var shown = Assert.Single(SettingsThemeOptions.Groups(model, new Facts(true), wizard: false));
         var item = Assert.Single(shown.Items);
-        Assert.Equal("legacy:pageMotion", item.Key);
+        Assert.Equal("legacy:npvPresentation", item.Key);
     }
 
     [Fact]

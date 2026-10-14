@@ -811,11 +811,10 @@ public static partial class Shell
         public static Route LabelRoute(in Route tabRoute, in Route shown)
             => !shown.IsNone && shown.Tab != 0 && shown.Tab == tabRoute.Tab ? shown : tabRoute;
 
-        /// <summary>How long the label lags the commit: the exit leg, exactly. The instant cut
-        /// (<see cref="Design.PageMotionStyle.None"/>) and the OS reduced-motion preference both run no exit leg, so
-        /// there the label lands with the page (the next timer tick).</summary>
-        public static float DelayMs(bool instantCut, bool reducedMotion)
-            => instantCut || reducedMotion ? 0f : Design.Nav.ExitDurationMs;
+        /// <summary>How long the label lags the commit: the exit leg, exactly. The OS reduced-motion
+        /// preference runs no exit leg, so there the label lands with the page (the next timer tick).</summary>
+        public static float DelayMs(bool reducedMotion)
+            => reducedMotion ? 0f : Design.Nav.ExitDurationMs;
     }
 
     // ══ 4. THE PINNED SUBSET'S CODEC ════════════════════════════════════════════════════════════════════════════════

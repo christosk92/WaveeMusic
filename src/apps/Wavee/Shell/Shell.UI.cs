@@ -768,11 +768,11 @@ public static partial class Shell
             // The staged label route (see Shown): armed ONCE from mount so boot's route lands, then RE-ARMED by the effect
             // below for every commit — the effect subscribes to the route, this render body never does. The lag is the
             // exit leg exactly; the instant cut and reduced motion run no exit leg, so there it lands on the next tick.
-            var land = UseTimeout(s_landShown, TabLabelStaging.DelayMs(instantCut: false, reducedMotion: false));
+            var land = UseTimeout(s_landShown, TabLabelStaging.DelayMs(reducedMotion: false));
             UseSignalEffect(() =>
             {
                 _ = Current.Value;
-                land.RestartIn(TabLabelStaging.DelayMs(PageMotionStyle() == Design.PageMotionStyle.None, FgMotion.ReducedMotion));
+                land.RestartIn(TabLabelStaging.DelayMs(FgMotion.ReducedMotion));
             });
 
             // The NEUTRAL half of the material hand-over: claimed for exactly the routes no page tints (disjoint sets,
@@ -829,7 +829,7 @@ public static partial class Shell
         var motion = Motion.Peek();
         bool videoSafe = oldToken is Route prev ? NeedsVideoSafe(prev, next) : next.Kind == RouteKind.Module;
         if (videoSafe) return RecipeForVideoSafe(motion);
-        return oldToken is Route from ? RecipeFor(from, next, motion) : RecipeFor(motion);
+        return RecipeFor(motion);
     }
 
     /// <summary>The body for a route: the content region's state (<see cref="FrameRules.ContentBodyFor"/>) as the props of the

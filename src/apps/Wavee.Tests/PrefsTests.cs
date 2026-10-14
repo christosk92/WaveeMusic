@@ -91,22 +91,6 @@ public sealed class PrefsTests : IDisposable
         Assert.Equal(4, Prefs.Appearance.LikedCover(treatmentCount: 9));
     }
 
-    /// <summary>A profile that never picked a page motion resolves to <see cref="Design.Nav.DefaultStyle"/> — Classic —
-    /// because the KEY takes its default from that same constant. The Settings row is developer-only, so this is what a
-    /// normal build navigates with; a profile that DID pick one keeps its pick, downgrade-clamped like every other rung.</summary>
-    [Fact]
-    public void A_fresh_profile_navigates_at_the_default_page_motion_and_a_chosen_style_survives()
-    {
-        Assert.Equal(Design.PageMotionStyle.Classic, Design.Nav.DefaultStyle);
-        Assert.Equal((int)Design.Nav.DefaultStyle, Prefs.Appearance.PageMotionStyle(Design.PageMotionStyleCount));
-
-        _store.Set(Platform.Keys.PageMotionStyle, (int)Design.PageMotionStyle.Spatial);
-        Assert.Equal((int)Design.PageMotionStyle.Spatial, Prefs.Appearance.PageMotionStyle(Design.PageMotionStyleCount));
-        // A style a downgrade no longer has still reads as a real style, never as nothing.
-        _store.Set(Platform.Keys.PageMotionStyle, 40);
-        Assert.Equal(0, Prefs.Appearance.PageMotionStyle(Design.PageMotionStyleCount));
-    }
-
     /// <summary>#185: a fresh profile shows the countdown AND the update time (what earlier builds showed); a pick is
     /// read back through the appearance epoch the daylist surfaces subscribe to; a value this build cannot show reads as
     /// the default, never as an empty clock.</summary>

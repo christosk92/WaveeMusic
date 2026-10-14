@@ -763,175 +763,40 @@ public class DesignNavMotionTests
     public void The_separator_cannot_occur_in_a_route_or_an_argument()
         => Assert.Contains('\u001F', Design.Nav.SlotKey(new Design.PageSlot(0, "album", "x")));
 
+    /// <summary>THE regression guard: the page swap must finish the exit leg before the enter leg starts, in both
+    /// directions. The enter delay must be AT LEAST the exit duration, or two full-bleed pages are briefly both legible
+    /// (measured: summed opacity peaking at 1.83 for ~130ms). <c>ExitDelayMs</c> must be the explicit 0f, never null (null
+    /// inherits `DelayMs` and pushes the exit out by the same amount, flashing the content card empty).</summary>
     [Fact]
-    public void Sidebar_to_sidebar_is_Entrance_and_list_to_album_is_DrillIn()
+    public void The_page_swap_keeps_enter_and_exit_active_and_finishes_the_exit_before_the_enter_starts()
     {
-        Assert.Equal(Design.NavRelation.Entrance, Design.Nav.RelationOf(
-            Design.NavSurface.TopLevel, Design.NavSurface.TopLevel, sameKind: false, sameIdentity: false,
-            Design.NavTransitionKind.Forward));
-        Assert.Equal(Design.NavRelation.DrillIn, Design.Nav.RelationOf(
-            Design.NavSurface.TopLevel, Design.NavSurface.Detail, sameKind: false, sameIdentity: false,
-            Design.NavTransitionKind.Forward));
-        Assert.Equal(Design.NavRelation.DrillIn, Design.Nav.RelationOf(
-            Design.NavSurface.Detail, Design.NavSurface.TopLevel, sameKind: false, sameIdentity: false,
-            Design.NavTransitionKind.Back));
-    }
-
-    [Fact]
-    public void Same_kind_different_identity_is_Sibling_including_artist_to_artist()
-    {
-        Assert.Equal(Design.NavRelation.Sibling, Design.Nav.RelationOf(
-            Design.NavSurface.Detail, Design.NavSurface.Detail, sameKind: true, sameIdentity: false,
-            Design.NavTransitionKind.Forward));
-        Assert.Equal(Design.NavRelation.Fade, Design.Nav.RelationOf(
-            Design.NavSurface.TopLevel, Design.NavSurface.TopLevel, sameKind: true, sameIdentity: true,
-            Design.NavTransitionKind.Neutral));
-    }
-
-    [Fact]
-    public void Every_directed_recipe_keeps_enter_and_exit_active()
-    {
-        foreach (var relation in new[] { Design.NavRelation.Entrance, Design.NavRelation.DrillIn, Design.NavRelation.Sibling })
         foreach (var kind in new[] { Design.NavTransitionKind.Forward, Design.NavTransitionKind.Back })
         {
-            var r = Design.Nav.RecipeFor(kind, relation);
+            var r = Design.Nav.RecipeFor(kind);
             Assert.True(r.Enter.Active);
-            Assert.True(r.Exit.Active);
-        }
-    }
-
-    /// <summary>THE regression guard: every SEQUENCED style (everything but None) must finish the exit leg before the
-    /// enter leg starts, on every relation and both directions. This is what the old `DelayMs == 0` test got backwards
-    /// — the enter delay must be AT LEAST the exit duration, or two full-bleed pages are briefly both legible (measured:
-    /// summed opacity peaking at 1.83 for ~130ms). <c>ExitDelayMs</c> must be the explicit 0f, never null (null inherits
-    /// `DelayMs` and pushes the exit out by the same amount, flashing the content card empty).</summary>
-    /// <summary>The DEFAULT page motion is Classic — the 0.2.x fade-through — and the default-style overloads really do
-    /// hand it back. The Settings row that offers the other four is developer-only, so this constant is what a normal
-    /// build navigates with, not merely what an untouched profile starts at.</summary>
-    [Fact]
-    public void The_default_page_motion_is_Classic_and_the_default_overloads_use_it()
-    {
-        Assert.Equal(Design.PageMotionStyle.Classic, Design.Nav.DefaultStyle);
-        foreach (var relation in new[] { Design.NavRelation.Entrance, Design.NavRelation.DrillIn, Design.NavRelation.Sibling })
-        foreach (var kind in new[] { Design.NavTransitionKind.Forward, Design.NavTransitionKind.Back })
-            Assert.Equal(Design.Nav.RecipeFor(Design.PageMotionStyle.Classic, kind, relation), Design.Nav.RecipeFor(kind, relation));
-    }
-
-    [Fact]
-    public void Every_sequenced_style_finishes_the_exit_leg_before_the_enter_leg_starts()
-    {
-        foreach (var style in new[] { Design.PageMotionStyle.Fluent, Design.PageMotionStyle.Spatial, Design.PageMotionStyle.WinUi, Design.PageMotionStyle.Classic })
-        foreach (var relation in new[] { Design.NavRelation.Entrance, Design.NavRelation.DrillIn, Design.NavRelation.Sibling })
-        foreach (var kind in new[] { Design.NavTransitionKind.Forward, Design.NavTransitionKind.Back })
-        {
-            var r = Design.Nav.RecipeFor(style, kind, relation);
             Assert.True(r.Exit.Active);
             Assert.NotNull(r.ExitDynamics);
             Assert.Equal(0f, r.ExitDelayMs);
             Assert.True(r.DelayMs >= r.ExitDynamics!.Value.DurationMs,
-                $"{style}/{kind}/{relation}: enter delay {r.DelayMs}ms must be >= the exit duration {r.ExitDynamics!.Value.DurationMs}ms, or the two legs overlap.");
+                $"{kind}: enter delay {r.DelayMs}ms must be >= the exit duration {r.ExitDynamics!.Value.DurationMs}ms, or the two legs overlap.");
         }
     }
 
+    /// <summary>The one page motion is the 0.2.x fade-through: the incoming page travels a badge-twitch against the
+    /// direction the outgoing one leaves, the mirror image going Back, with no vertical motion or scale; Neutral is the
+    /// plain page fade.</summary>
     [Fact]
-    public void Fluent_is_a_plain_crossfade_with_no_geometry_on_any_relation()
+    public void The_page_swap_is_the_old_fade_through_and_neutral_is_the_plain_fade()
     {
-        foreach (var relation in new[] { Design.NavRelation.Entrance, Design.NavRelation.DrillIn, Design.NavRelation.Sibling })
-        foreach (var kind in new[] { Design.NavTransitionKind.Forward, Design.NavTransitionKind.Back })
-        {
-            var r = Design.Nav.RecipeFor(Design.PageMotionStyle.Fluent, kind, relation);
-            Assert.Equal(0f, r.Enter.Dx);
-            Assert.Equal(0f, r.Enter.Dy);
-            Assert.Equal(1f, r.Enter.Sx);
-            Assert.Equal(1f, r.Enter.Sy);
-            Assert.Equal(0f, r.Exit.Dx);
-            Assert.Equal(0f, r.Exit.Dy);
-            Assert.Equal(1f, r.Exit.Sx);
-            Assert.Equal(1f, r.Exit.Sy);
-        }
-    }
-
-    [Fact]
-    public void Spatial_entrance_has_no_translation_but_sibling_and_drillin_do()
-    {
-        var entrance = Design.Nav.RecipeFor(Design.PageMotionStyle.Spatial, Design.NavTransitionKind.Forward, Design.NavRelation.Entrance);
-        Assert.Equal(0f, entrance.Enter.Dx);
-        Assert.Equal(0f, entrance.Enter.Dy);
-        Assert.Equal(1f, entrance.Enter.Sx);
-
-        var drill = Design.Nav.RecipeFor(Design.PageMotionStyle.Spatial, Design.NavTransitionKind.Forward, Design.NavRelation.DrillIn);
-        Assert.True(drill.Enter.Sx is > 0f and < 1f);
-        Assert.True(drill.Exit.Sx > 1f);
-
-        var sibling = Design.Nav.RecipeFor(Design.PageMotionStyle.Spatial, Design.NavTransitionKind.Forward, Design.NavRelation.Sibling);
-        Assert.NotEqual(0f, sibling.Enter.Dx);
-    }
-
-    /// <summary>Spatial's Sibling moves ONLY the incoming page — the outgoing page fades in place instead of sliding
-    /// away with it (the WinUI-style "both pages move" treatment is <see cref="PageMotionStyle.WinUi"/>'s job).</summary>
-    [Fact]
-    public void Spatial_sibling_moves_only_the_incoming_page()
-    {
-        var fwd = Design.Nav.RecipeFor(Design.PageMotionStyle.Spatial, Design.NavTransitionKind.Forward, Design.NavRelation.Sibling);
-        var back = Design.Nav.RecipeFor(Design.PageMotionStyle.Spatial, Design.NavTransitionKind.Back, Design.NavRelation.Sibling);
-        Assert.Equal(0f, fwd.Exit.Dx);
-        Assert.Equal(0f, back.Exit.Dx);
-        Assert.Equal(-fwd.Enter.Dx, back.Enter.Dx);
-    }
-
-    [Fact]
-    public void WinUi_entrance_rises_140_DIP_and_the_outgoing_side_only_fades()
-    {
-        var fwd = Design.Nav.RecipeFor(Design.PageMotionStyle.WinUi, Design.NavTransitionKind.Forward, Design.NavRelation.Entrance);
-        var back = Design.Nav.RecipeFor(Design.PageMotionStyle.WinUi, Design.NavTransitionKind.Back, Design.NavRelation.Entrance);
-        Assert.Equal(140f, fwd.Enter.Dy);
-        Assert.Equal(0f, fwd.Exit.Dy);
-        Assert.Equal(0f, fwd.Exit.Dx);
-        Assert.Equal(-140f, back.Enter.Dy);
-    }
-
-    [Fact]
-    public void WinUi_sibling_moves_both_pages_by_different_amounts()
-    {
-        var fwd = Design.Nav.RecipeFor(Design.PageMotionStyle.WinUi, Design.NavTransitionKind.Forward, Design.NavRelation.Sibling);
-        Assert.Equal(200f, fwd.Enter.Dx);
-        Assert.Equal(-150f, fwd.Exit.Dx);
-    }
-
-    [Fact]
-    public void Classic_is_the_old_fade_through_uniform_across_every_relation()
-    {
-        foreach (var relation in new[] { Design.NavRelation.Entrance, Design.NavRelation.DrillIn, Design.NavRelation.Sibling })
-        {
-            var r = Design.Nav.RecipeFor(Design.PageMotionStyle.Classic, Design.NavTransitionKind.Forward, relation);
-            Assert.Equal(Expressive.DistBase, r.Enter.Dx);
-            Assert.Equal(-Expressive.DistBase, r.Exit.Dx);
-        }
-    }
-
-    [Fact]
-    public void None_is_an_instant_cut_with_exit_still_active()
-    {
-        foreach (var relation in new[] { Design.NavRelation.Entrance, Design.NavRelation.DrillIn, Design.NavRelation.Sibling })
-        {
-            var r = Design.Nav.RecipeFor(Design.PageMotionStyle.None, Design.NavTransitionKind.Forward, relation);
-            Assert.True(r.Exit.Active);
-            Assert.True(r.Dynamics.DurationMs <= 1f);
-            Assert.True(r.ExitDynamics!.Value.DurationMs <= 1f);
-        }
-    }
-
-    /// <summary>Spatial's DrillIn, named explicitly: the DEFAULT style is Classic, whose DrillIn is the uniform
-    /// fade-through, so this fact belongs to the style rather than to <c>Design.Nav.DefaultStyle</c>.</summary>
-    [Fact]
-    public void DrillIn_is_a_semantic_zoom_not_an_eight_DIP_fade()
-    {
-        var fwd = Design.Nav.RecipeFor(Design.PageMotionStyle.Spatial, Design.NavTransitionKind.Forward, Design.NavRelation.DrillIn);
-        var back = Design.Nav.RecipeFor(Design.PageMotionStyle.Spatial, Design.NavTransitionKind.Back, Design.NavRelation.DrillIn);
-        Assert.True(fwd.Enter.Sx is > 0f and < 1f);
-        Assert.True(fwd.Exit.Sx > 1f);
-        Assert.True(back.Enter.Sx > 1f);
-        Assert.True(back.Exit.Sx is > 0f and < 1f);
+        var fwd = Design.Nav.RecipeFor(Design.NavTransitionKind.Forward);
+        var back = Design.Nav.RecipeFor(Design.NavTransitionKind.Back);
+        Assert.Equal(Expressive.DistBase, fwd.Enter.Dx);
+        Assert.Equal(-Expressive.DistBase, fwd.Exit.Dx);
+        Assert.Equal(-Expressive.DistBase, back.Enter.Dx);
+        Assert.Equal(Expressive.DistBase, back.Exit.Dx);
+        Assert.Equal(0f, fwd.Enter.Dy);
+        Assert.Equal(1f, fwd.Enter.Sx);
+        Assert.Equal(FluentGpu.Hooks.MotionRecipes.PageFade, Design.Nav.RecipeFor(Design.NavTransitionKind.Neutral));
     }
 
     [Fact]

@@ -427,7 +427,6 @@ public class SettingsDocTests
         Assert.False(SettingsVerbs.SetLanguage(2));                  // nl: shown but not yet pickable
         Assert.False(SettingsVerbs.SetTrayIconMode(5));
         Assert.False(SettingsVerbs.SetCrashMode(7));
-        Assert.False(SettingsVerbs.SetPageMotionStyle(-1));
         Assert.False(SettingsVerbs.SetDensity(9));
         Assert.False(SettingsVerbs.SetTrackListStyle(5));
         Assert.False(SettingsVerbs.SetPageLayout(5));

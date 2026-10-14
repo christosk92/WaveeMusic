@@ -412,10 +412,6 @@ internal static partial class ClassicSettings
             }
             case "colorWashes":
                 return Item(title, sub, RowToggle(row, enabled), isEnabled: enabled, icon: icon);
-            case "pageMotion":
-                return Item(title, sub, SelectorBar.Create(PageMotionLabels(),
-                    new Signal<int>(row.Current is int motion ? motion : 0),
-                    onChange: static i => SetPageMotionStyle(i)), icon: icon);
             default:
                 Log.Warn("settings", "theme options: no control for the legacy row '" + id + "'; it is left out");
                 return null;
