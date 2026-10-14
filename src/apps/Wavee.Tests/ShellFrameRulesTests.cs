@@ -148,6 +148,8 @@ public class ShellFrameKeyRulesTests
     }
 }
 
+// Shell.Parse interns route args into the process-wide Entities.Strings table, which other suites reset: serial with them.
+[Collection(EntitiesCollection.Name)]
 public class ShellFrameBodyRulesTests
 {
     [Fact]

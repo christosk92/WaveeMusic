@@ -760,6 +760,8 @@ public class MergedChromeLayoutTests
     }
 }
 
+// Shell.Parse interns route args into the process-wide Entities.Strings table, which other suites reset: serial with them.
+[Collection(EntitiesCollection.Name)]
 public class TabWorkspaceTests
 {
     [Fact]
@@ -1239,6 +1241,8 @@ public class ShellTipsCoreTests
     }
 }
 
+// Shell.Parse interns route args into the process-wide Entities.Strings table, which other suites reset: serial with them.
+[Collection(EntitiesCollection.Name)]
 public class ShellHistoryRulesTests
 {
     static Shell.HistoryEntry E(string key, string? arg, DateTime at) => new(Shell.Parse(key, arg ?? ""), at);

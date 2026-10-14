@@ -11,6 +11,8 @@ using Xunit;
 
 namespace Wavee.Tests;
 
+// Shell.Parse interns route args into the process-wide Entities.Strings table, which other suites reset: serial with them.
+[Collection(EntitiesCollection.Name)]
 public class ShellMastheadsTests
 {
     static Shell.Route Route(string arg) => Shell.Parse("search", arg);

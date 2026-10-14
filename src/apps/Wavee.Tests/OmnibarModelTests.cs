@@ -16,6 +16,8 @@ using Xunit;
 
 namespace Wavee.Tests;
 
+// Shell.Parse interns route args into the process-wide Entities.Strings table, which other suites reset: serial with them.
+[Collection(EntitiesCollection.Name)]
 public class OmnibarModelTests
 {
     sealed class Recorder
