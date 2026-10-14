@@ -14,8 +14,8 @@
 // NOT HERE. The search disclosure's field (it is a focus and caret machine: `TableSearchHost`, `TableSearchField`) and the density
 // slider's panel (M3 moves it with the option write) stay in `Entities\Track.Table.Chrome.cs`; they call the kit below for their
 // glyph button. `Controls.SelectionBar` (the shared bar several pages mount) and the shared selection lane's commands are the
-// shared control's. `Track.TableHeaderShim` (the host-free header the library panes shimmer under) is a host-free static, with no
-// registry to read, and stays core; so does `Track.ShimmerRow` for the same hosts (T8c / T10b move them with their callers).
+// shared control's. The host-free header shim the library's album pane shimmers under is that pane's own picture (`ClassicLibraryAlbumPane`), and the placeholder row it and the
+// artists' reader draw is `ClassicTrackChrome.Placeholder` (T10c1 moved `Track.TableHeaderShim` and `Track.ShimmerRow` with their callers).
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;

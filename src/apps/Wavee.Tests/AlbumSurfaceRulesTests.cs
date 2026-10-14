@@ -7,12 +7,12 @@
 // and extents, so a preset moving (a row floor, the Video FAB, the shelf chrome) shows up as a failing fact instead of a
 // skeleton that no longer matches the rows or a strip that clips its tiles.
 //
-// No window, no loop, no element: `Album.SurfaceMetrics` is engine-free by construction. (T9b: the music-video hero's own numbers moved with its picture to
+// No window, no loop, no element: Classic's `ClassicLibraryPaneRules` (the "Also by" strip's numbers, T10c1; they were `Album.SurfaceMetrics`) is engine-free by construction. (T9b: the music-video hero's own numbers moved with its picture to
 // Classic's `ClassicAlbumLayout`; `AlbumPlaylistContractTests` pins them. What stays here is the pane's strip.)
 
 using Wavee;
 using Xunit;
-using AlbumMetrics = Wavee.Album.SurfaceMetrics;
+using AlbumMetrics = Wavee.Themes.Classic.ClassicLibraryPaneRules;
 using Rules = Wavee.Album.PageRules;
 
 namespace Wavee.Tests;

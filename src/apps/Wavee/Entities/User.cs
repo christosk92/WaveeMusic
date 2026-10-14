@@ -4,7 +4,7 @@
 // Owner: O (wave 5; the library-edge core is B's wave-1 / B2's gap-batch work and is kept whole)
 // Wave: 5
 // Budget: 800 lines (+30 % = 1040)
-// Spec: ch 15 §8 (LibraryNavOrder, LibrarySelectionCommit, LibraryLayoutBreakpoints, the library search matcher),
+// Spec: ch 15 §8 (LibraryNavOrder, LibrarySelectionCommit, the library search matcher; the collapse breakpoint moved to Classic's `Rules\Tiers.Library.cs`, T10c1),
 //       ch 07 §7 G4/G10 (the curated chip set's staging + commit), WP-4.5 gap 1 (edge AddedAt is UNIX seconds)
 //
 // THE LIBRARY IS EDGES (G6). No `IsLiked` column, no list objects, no five-collection `LibraryStore`: ONE user row (the
@@ -666,21 +666,6 @@ public sealed class UserShape : KindShape
 }
 
 // ── 8. the library page's small pure rules (ch 15 §8, verbatim) ──────────────────────────────────────────────────────
-
-/// <summary>The library master–detail's collapse breakpoint: below <see cref="CollapseBelow"/> the columns become a
-/// breadcrumb drill-in, with hysteresis so a window on the boundary does not flip-flop.</summary>
-public static class LibraryLayoutBreakpoints
-{
-    public const float CollapseBelow = 640f;   // ~NavigationView.CompactModeThresholdWidth
-    public const float Hysteresis = 24f;
-
-    /// <summary>Collapse when narrow; un-collapse only once comfortably wide. An unmeasured width (≤ 0) keeps the answer.</summary>
-    public static bool Collapsed(float w, bool wasCollapsed)
-    {
-        if (w <= 0f) return wasCollapsed;
-        return wasCollapsed ? w < CollapseBelow + Hysteresis : w < CollapseBelow;
-    }
-}
 
 /// <summary>Which kind of library-search hit is being committed into the browse selection.</summary>
 public enum LibrarySelectKind { Artist, Album }

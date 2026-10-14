@@ -554,10 +554,10 @@ column header, the command bar's pictures, the filter card and the placeholder r
   component renders, so the signals they read subscribe that component exactly as before; no key, motion, hit-test or tab order changes.
 - **Still core.** The search disclosure's field (`TableSearchHost`, a focus and caret machine; it calls the kit for its glyph button),
   the row-size slider's panel (M3 moves it with the option write), `Controls.SelectionBar` and the shared selection lane (shared
-  controls), `Track.TableHeaderShim` and `Track.ShimmerRow` (host-free statics the library panes and the artist reader call with no
-  registry; their callers are the T10c1 / T10b pages, not T8c surfaces, so they move with those), and the chrome stack's own arrangement (`Chrome(...)`, whose sticky clip the
-  hero system measures).
-- **A host without a registry** draws the placeholder as `Track.ShimmerRow` and every chrome piece as an empty box (logged once with the rows).
+  controls) and the chrome stack's own arrangement (`Chrome(...)`, whose sticky clip the hero system measures). `Track.TableHeaderShim` and `Track.ShimmerRow` (the host-free
+  statics the library panes and the artist reader called with no registry) moved with those callers in T10c1: the header shim is the album pane's own picture
+  (`ClassicLibraryAlbumPane`), and the placeholder row both panes draw is `ClassicTrackChrome.Placeholder`.
+- **A host without a registry** draws the placeholder and every chrome piece as an empty box (logged once with the rows).
 
 **Tests.** The chrome's registration is `Wavee.Tests\Theming\TrackListStyleTests.cs`; the mounted facts in both row styles (the keyed header,
 the browse-mode command lane, the "…" slot) are `Wavee.ShellTests\TrackChromeMountedTests.cs`.
@@ -588,7 +588,7 @@ once per key and the host draws nothing), and one rule: a template reads facts a
   its own render; the templates are plain functions.
 - **What stayed core, and why.** `Track.ArtistLinks` / `BuildLinkSpans` / `LinkClick` (the surface's data adapter `Track.RowData` builds the
   subtitle with no registry), `Track.MoreCell`, `ExpandCell` and the lane wrappers (Recents builds its actions cell with them), `Track.Spinner`,
-  `Track.ShimmerRow` / `TableHeaderShim` (the library panes' and the reader's host-free skeletons: T10c1 / T10b), the View-credits sheet (a
+  the View-credits sheet (a
   dialog: T11), and `Controls.Vacancy` and the other shared controls (several pages mount them with no registry). The eager row's title is
   always the plain run (the marquee branch of the old `TitleCell` was unreachable for it; the table's now-playing marquee is
   `ClassicTrackTable`'s).
@@ -860,6 +860,43 @@ are the same elements with the same keys. The view keeps the page's latches (the
 **Tests.** `Wavee.Tests\ArtistPageContractTests.cs` pins the id, Classic's registration and the value types; the plan, the pivot rules, the failure verdict and the hero tiers stay `ArtistPageRulesTests` and `ArtistHeroLayoutTests`. `Wavee.ShellTests\ArtistPageMountedTests.cs` mounts the page under Classic: the keyed column, scroller and body child while pending
 and while failed, no magazine without a body, and the size observer hearing the width.
 
+### The library and its panes (T10c1)
+
+The library page (the albums / artists / podcasts / audiobooks master-detail) and its four panes are registered Classic views (`Themes\Classic\Structure\Views\Pages\ClassicLibrary*.cs`). The data (the relations, the rows, the demands),
+the navigator's shape memo (filter, sort, the letter groups, the a-z gate, the remount identity `LibraryNavMount`), the selection and its persistence (`LibraryViewPrefs`), the search matcher and its selection commit,
+the collapse state and every pane's model, readiness and verbs stay core.
+
+| Key | Props | Core host | Classic template |
+|---|---|---|---|
+| `Pages.Library` | `LibraryPageProps` (the title and kind, the arm facts: collapsed, saved-episodes mode, full search, shimmer, depth and crumbs; the persisted signals `LeftW`, `MidW`, `Sort`, `Desc`, `View`, `Size`, `Filter`, `PodcastsMode` and their commit verbs; the collapse seam `IsCollapsed` / `SetCollapsed`; the pane and Your Episodes slots; `LibraryNavigatorProps`: the load state, the bound source, the mount and the letters' signals; `LibrarySearchProps`: the hit lists as lazy Funcs and the selection) | `User.LibraryPage` (`[CoreHost]`, `Entities\User.Page.Library.cs`): the shape memo, the selection and its re-assert effects, the letters, the demand, the search state, the persistence, the collapse signal; `ResolveMount()` is the one place the mount identity, the selection pre-write and the cached layout and options meet | `ClassicLibraryPage` (`.cs`, `.Toolbar.cs`, `.Nav.cs`, `.Search.cs`): the root with the measured collapse ladder, the wide arm (navigator column, `lib:grip`, the pane column), Your Episodes, the three search columns, the collapsed crumb bar over a depth-keyed drill; the toolbar with the word rail and view toggle; the bound list, rows, cards and letter headers; the hit rows |
+| `Library.AlbumPane` | `LibraryAlbumPaneProps` (the readiness state, the keyed child's key, the header facts, the verbs, the notice, the region's cached `Loadable`, the shimmer count and row height, `Table` and `AlsoBy`) | `Album.Pane` (`[CoreHost]`, `Entities\Album.Pane.cs`): the demand (identity, rows, credits, partial pages), `AlbumPaneReadiness`, the keys, the log, the retry | `ClassicLibraryAlbumPane`: the header and its stated-height skeleton, the command row, the keyed swap with its crossfade, the counted shimmer under the header shim, the failed strip and the "Also by" strip |
+| `Library.ShowPane` | `LibraryShowPaneProps` (the header facts, the primary as a Func over the accent, the heart's presence bind, the menu, the reader element) | `Show.Pane` (`[CoreHost]`, `Entities\Show.Pane.cs`): the selection signal, the memo pair, the demand, the reader's per-show key | `ClassicLibraryShowPane`: the two arm keys (`showpane:body` / `showpane:skel`), the swap, the header, the command row and the reader slot |
+| `Library.SavedEpisodes` | `LibrarySavedEpisodesProps` (pending, failed, the content and failed arms as Funcs) | `SavedEpisodesReader` (`[CoreHost]`, `Entities\User.SavedEpisodes.cs`): the read of the listen-later playlist, the edge demand, the table | `ClassicLibrarySavedEpisodes`: the region with the cold seed of the structure's episode rows and the fade-only reveal |
+| `Library.ArtistReader` | `LibraryArtistReaderProps` (the host seam, the mount's `ListKey`, counts, `RepeatLayout` and `ListOptions`, the page's scope and sort signals, the spine's controller and count, the bounds and mount callbacks; never equal to another instance) | `Artist.Reader` (`[CoreHost]`, `Entities\Artist.Reader.cs`): props channel, shape memo and block order, catalogue gate, demand, `BlockCell` readiness, extent corrections, scroll spy and spine follow, mount key, width arms, verbs; it implements `IArtistReaderHost`, and each block cell `IArtistReaderBlock` | `ClassicLibraryArtistReader` (`Views\Pages`): the lane, the band in both arms, the name column, the pinned sub-rail, the cover spine and dots, the block faces and their counted skeletons, the tail |
+
+**Every branch root is keyed, and the cache is the template's.** The old page kept the picker, the two grips, the sticky letter and the A-Z strip as component fields, and the slot templates and the navigator's thunks as readonly
+delegates, because a key on a branch root is what turns a branch swap into the remount a bound `Width` needs and a fresh delegate would re-arm the skeleton region. A template has no fields, so the same objects live in one
+cache per mounted template (`ctx.Hooks.UseRef`), built lazily: keys, binds and mounts are the old tree's. The host rebuilds ONE props record per render (it compares by reference) and caches the navigator's record, whose
+delegates are the host's stable fields.
+
+**The collapse ladder is the structure's.** `LibraryLayoutBreakpoints` (640 with a 24 DIP hysteresis) is `Rules\Tiers.Library.cs` (`ClassicLibraryTiers.Collapsed`, with Your Episodes' compact rung `SavedEpisodesCompact`). The page view answers
+it from its own measured width and writes the host's collapse signal (`SetCollapsed`), which the selection, the crumbs and the persisted pick read; no Classic view compares a width with a number (WVTH013).
+
+**Column widths (M13).** `library.<kind>.leftw/midw` stay the core's raw keys behind `LibraryViewPrefs` (`Read`, `SetLeftW`, `SetMidW`); the view only receives the two signal instances and the commit verbs and clamps through
+the grips' ranges (`ClassicLibraryRules.LeftMin` / `LeftMax` / `MidMin` / `MidMax`). The M13 migration to `ThemeState` (plan M12/M13, which lists T10c1 as its prerequisite) changes the host's read and write only.
+
+**What a Library view may call.** The WVTH002 fence applies. The navigator's data adapters stay core and are called by the rows (`LibraryRows`, `User.NavSubtitleText`, `User.ArtOf`, `User.DragOf`, `User.HitDrag`,
+`User.StickyLetter` / `JumpStrip` / `LetterPlate`, which the profile lists share until T10c2); a hit row is the shared media surface over `Search.MenuOf` and `Track.RowData`; the pane's verbs (play, shuffle, open,
+retry, the ⋯ menu) arrive as props. The numbers are `Rules\ClassicLibraryRules.cs`, `ClassicLibraryPaneRules.cs` (the pane header's stated height and type budget, the swap, the shimmer, the "Also by" strip),
+`ClassicLibrarySearchRules.cs` and `ClassicLibraryReaderRules.cs`. The pane header, its loading twin, the command row and the swap are shared by the album and the show pane (`ClassicLibraryPaneKit`).
+
+**Skeletons.** The navigator's eight shimmer rows cross-dissolve into the rows (`SkelReveal.StaggerRows`); the album pane's header skeleton states the real header's height, so the crossfade is a dissolve and never a reflow; its
+counted shimmer is the table's own lanes and row pitch under the header shim; Your Episodes seeds with the structure's episode rows; the reader's blocks keep their analytic extents.
+
+**Tests.** The ids, Classic's registration, the by-reference props and the pane arithmetic are `Wavee.Tests\LibraryContractTests.cs`; the collapse ladder `LibraryLayoutBreakpointTests`; the search row shapes `LibrarySearchRowTests`;
+the pane header's budget `AlbumPageRulesTests`; the "Also by" strip `AlbumSurfaceRulesTests`; the reader's chrome `ArtistReaderChromeTests`. The mounted facts (Classic is the registered template of every key, the wide arm's keyed
+columns, the collapse written through the ladder at a narrow window, the crumb bar over the depth-keyed drill, the header skeleton at the stated height, the show pane's arm keys) are `Wavee.ShellTests\LibraryMountedTests.cs`.
+
 ### The detail frame (T9a)
 
 The shared detail frame is the structure's picture over a core host. Every album, playlist, Liked, show and episode page hands `Detail.Frame` one
@@ -891,7 +928,7 @@ spec can carry newer page builders; a view that skipped on an "equal" record wou
 to another instance (the view re-runs exactly when the host re-rendered, which is when the tree used to be rebuilt). `DetailHeroProps` is the one
 that compares by data and by the reference of the table's pieces: the table owns that gate.
 
-**What the pages keep calling.** The page-facing builders that the profile and artist pages and the library panes still build from are
+**What the pages keep calling.** The page-facing builders that the profile and artist pages (and the library's album pane, which mounts `Detail.MoreButton`, `Detail.ArtistLine` and `Detail.NoticeBar`) still build from are
 `Detail`'s (`Satellite`, `MoreButton`, `ArtistLine`, the band helpers `Band` / `BandTitle` / `Pivot`, and the save / share targets): they move with
 those pages (T10). The ones the album and the playlist, and the frame's own views, used moved in T9b (below): the keyed rail rows, the eyebrow run and
 the billed-artist line box are the shared Classic kit (`ClassicDetailKit.cs`), and `NoticeBar` is a mount of the `Detail.Notice` view. T9c moved the
@@ -946,7 +983,7 @@ skeleton deriver cannot run a view slot), so the core hosts keep every hook and 
 
 | Key (id) | Contract | Core half | Classic |
 |---|---|---|---|
-| `StyleKeys.ShowReader` (`Show.Reader`) | `ShowReaderStyle`: the rail slots `Primary`, `Ledger`, `Rating`, `Badges`, `Topics`, `Publisher`, `Satellites`; the library pane's `Pane`; the reader's `Toolbar`, `HeadShell`, `Head`, `EpisodesHeader`, `Group`, `StickyMonth`, `YearStrip`, `YearReserve`, `Foot`, `Seed` | `Show.PageHost` (the frame spec, the demand, the persisted view, the slot sets by presence), the rail slot components (`PrimarySlot`, `LedgerSlot`, `RatingSlot` with the rate flyout's handle, `BadgesSlot`, `TopicsSlot`: tone memo, facts, verbs), `Show.ReaderHost` (the model and its one snapshot, the toolbar stage and its measures, the selection, the date index and sticky month, the analytic extents and `CheckExtent`, the reveal gates), `RailBody`, `VisitHead`, `EpisodesHeader`, `ReaderFoot` (stamps and args), `Show.Pane` (the selection signal, the memo pair, the swap transition, the keys) | `ClassicShow` (`Views\Show\ClassicShowReader.cs`, `ClassicShowHead.cs`, `ClassicShowRail.cs`) over `Rules\ClassicShowRules.cs` |
+| `StyleKeys.ShowReader` (`Show.Reader`) | `ShowReaderStyle`: the rail slots `Primary`, `Ledger`, `Rating`, `Badges`, `Topics`, `Publisher`, `Satellites`; the reader's `Toolbar`, `HeadShell`, `Head`, `EpisodesHeader`, `Group`, `StickyMonth`, `YearStrip`, `YearReserve`, `Foot`, `Seed` | `Show.PageHost` (the frame spec, the demand, the persisted view, the slot sets by presence), the rail slot components (`PrimarySlot`, `LedgerSlot`, `RatingSlot` with the rate flyout's handle, `BadgesSlot`, `TopicsSlot`: tone memo, facts, verbs), `Show.ReaderHost` (the model and its one snapshot, the toolbar stage and its measures, the selection, the date index and sticky month, the analytic extents and `CheckExtent`, the reveal gates), `RailBody`, `VisitHead`, `EpisodesHeader`, `ReaderFoot` (stamps and args), `Show.Pane` (the selection signal, the memo pair, the demand and the reader's key; its picture is the `Library.ShowPane` view, T10c1) | `ClassicShow` (`Views\Show\ClassicShowReader.cs`, `ClassicShowHead.cs`, `ClassicShowRail.cs`) over `Rules\ClassicShowRules.cs` |
 
 - **What stayed core, and why.** The decisions the list, the skeleton and the rows must agree on row for row are core, pure and unit-tested: `ShowReaderRules` (the head, the primary, the
   results mode, the item list with its marks, the head columns, the gutters, the strip's column, the rail / header / month extents and every seed), `ShowToolbarLayout`, `ShowDateIndex`,

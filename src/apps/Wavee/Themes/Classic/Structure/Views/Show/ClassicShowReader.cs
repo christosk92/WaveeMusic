@@ -29,7 +29,7 @@ namespace Wavee.Themes.Classic;
 internal static partial class ClassicShow
 {
     /// <summary>The style Classic registers under <c>StyleKeys.ShowReader</c>. Stateless: every host and a test share it.</summary>
-    public static readonly ShowReaderStyle Style = new(Primary, Ledger, Rating, Badges, Topics, Publisher, Satellites, Pane, Toolbar,
+    public static readonly ShowReaderStyle Style = new(Primary, Ledger, Rating, Badges, Topics, Publisher, Satellites, Toolbar,
         HeadShell, Head, EpisodesHeader, Group, StickyMonth, YearStrip, YearReserve, Foot, Seed);
 
     /// <summary>Registers the show page's style.</summary>

@@ -13,7 +13,7 @@
 // ── ONE RAIL, EVERY SURFACE ──────────────────────────────────────────────────────────────────────────────────────────
 //
 // The library rework drew the rail privately inside `User`; the podcast reader needs the same words for its filter,
-// its sort and (Big) its episode tabs, so the rail lives here and `User.WordRail/ScopeRail/ReaderSortRail` are thin
+// its sort and (Big) its episode tabs, so the rail lives here and Classic's `ClassicLibraryRails.WordRail/ScopeRail/ReaderSortRail` are thin
 // adapters over it. The library's metrics are the rail's metrics (13.5/18, gap 14, height 32, 400 → 600, ink 50 % /
 // 85 % hover / 100 %, a 2-DIP underline 3 DIP under the run): moving the rail must not move a library pixel.
 //

@@ -1,8 +1,8 @@
 // ── Theming/Contracts/ShowReaderStyle.cs — what a structure supplies for the podcast show page (themes plan 6.1, T9c) ──────────────
 //
-// From `Entities\Show.UI.cs` and the rail slots / pane of `Show.Page.cs`, `Show.Pane.cs`, `Show.Podcasts.cs`. The structure registers ONE
+// From `Entities\Show.UI.cs` and the rail slots of `Show.Page.cs`, `Show.Podcasts.cs` (the library pane's column is the `Library.ShowPane` view, T10c1). The structure registers ONE
 // `ShowReaderStyle` under `StyleKeys.ShowReader`; the core hosts (`Show.PageHost`, the rail slot components, `Show.ReaderHost` and its
-// slots, the pane) keep everything that is not a picture and call the templates while they render, so subscriptions, keys, extents and
+// slots) keep everything that is not a picture and call the templates while they render, so subscriptions, keys, extents and
 // effect timing are what they were.
 //
 // WHAT THE CORE KEEPS. The reader model and its one snapshot (filter, sort, find, the visit, the ledger, the cadence, the item list), the
@@ -147,31 +147,6 @@ internal sealed class ShowSatellitesArgs
 
     /// <summary>The ⋯ menu, built lazily at open.</summary>
     public required Func<ContextMenuModel?> More { get; init; }
-}
-
-/// <summary>The library pane's column: the header, the command row and the reader.</summary>
-internal sealed class ShowPaneArgs
-{
-    /// <summary>The pane header (<c>Album.PaneHeader</c>: one geometry for both kinds).</summary>
-    public required Element Header { get; init; }
-
-    /// <summary>The primary slot (a core component keyed "showpane:primary").</summary>
-    public required Element Primary { get; init; }
-
-    /// <summary>The heart's presence bind.</summary>
-    public required Prop<bool> HeartShown { get; init; }
-
-    /// <summary>The show's uri text.</summary>
-    public required string Uri { get; init; }
-
-    /// <summary>The show's title.</summary>
-    public required string Name { get; init; }
-
-    /// <summary>The ⋯ menu, built lazily at open.</summary>
-    public required Func<ContextMenuModel?> More { get; init; }
-
-    /// <summary>The reader (keyed per show by the pane).</summary>
-    public required Element Reader { get; init; }
 }
 
 /// <summary>The sticky toolbar's decisions: the rung of the collapse ladder, the find's state and every bound cell and verb.</summary>
@@ -360,7 +335,6 @@ internal delegate Element ShowBadgesTemplate(ShowBadgesArgs args);
 internal delegate Element ShowTopicsTemplate(ShowTopicsArgs args);
 internal delegate Element ShowPublisherTemplate(string publisher, float width);
 internal delegate Element[] ShowSatellitesTemplate(ShowSatellitesArgs args);
-internal delegate BoxEl ShowPaneTemplate(ShowPaneArgs args);
 internal delegate Element ShowToolbarTemplate(ShowToolbarArgs args);
 internal delegate Element ShowHeadShellTemplate(Func<bool> pending, Func<Element> content);
 internal delegate Element ShowHeadTemplate(ShowHeadArgs args);
@@ -377,7 +351,7 @@ public sealed class ShowReaderStyle
 {
     internal ShowReaderStyle(ShowPrimaryTemplate primary, ShowLedgerTemplate ledger, ShowRatingTemplate rating, ShowBadgesTemplate badges,
                              ShowTopicsTemplate topics, ShowPublisherTemplate publisher, ShowSatellitesTemplate satellites,
-                             ShowPaneTemplate pane, ShowToolbarTemplate toolbar, ShowHeadShellTemplate headShell, ShowHeadTemplate head,
+                             ShowToolbarTemplate toolbar, ShowHeadShellTemplate headShell, ShowHeadTemplate head,
                              ShowEpisodesHeaderTemplate episodesHeader, ShowGroupTemplate group, ShowStickyMonthTemplate stickyMonth,
                              ShowYearStripTemplate yearStrip, ShowYearReserveTemplate yearReserve, ShowFootTemplate foot, ShowSeedTemplate seed)
     {
@@ -388,7 +362,6 @@ public sealed class ShowReaderStyle
         Topics = topics;
         Publisher = publisher;
         Satellites = satellites;
-        Pane = pane;
         Toolbar = toolbar;
         HeadShell = headShell;
         Head = head;
@@ -421,9 +394,6 @@ public sealed class ShowReaderStyle
 
     /// <summary>The CTA's keyed satellites.</summary>
     internal ShowSatellitesTemplate Satellites { get; }
-
-    /// <summary>The library pane's column.</summary>
-    internal ShowPaneTemplate Pane { get; }
 
     /// <summary>The sticky toolbar's body.</summary>
     internal ShowToolbarTemplate Toolbar { get; }

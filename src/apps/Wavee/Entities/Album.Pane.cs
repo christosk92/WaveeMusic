@@ -3,12 +3,13 @@
 // the whole model demanded on mount, four-state readiness (Header · Rows · Failed · Ready), the counted shimmer, and
 // the "Also by … in your library" strip.
 //
-// Role: UI
+// Role: CORE host
 // Owner: M
 // Wave: L2
-// Budget: 320 lines (+30 % = 416); actual 498 — the overrun is comment, not machinery: the 2026-09-18 defect pass added
-//         four short members (the credits demand, the one-walk row facts, the trailing thunk, the state log) and the
-//         notes that say which complaint each one answers.
+// T10c1 (themes plan 6.1): the PICTURE is the structure's `Library.AlbumPane` view (Classic: `Themes\Classic\Structure\Views\Pages\ClassicLibraryAlbumPane.cs`, props in
+//       `Theming\Contracts\LibraryPaneProps.cs`): the header and its skeleton, the command row, the counted shimmer, the keyed swap and its crossfade, the failed strip and the
+//       "Also by" strip. This host keeps the selection, the demand, the readiness verdict (`AlbumPaneReadiness`), the keys, the log and every verb; the notes below that
+//       describe the look describe the structure's view.
 // Spec: library rework §5.5
 //
 // THE RULE THAT KILLS "SKELETON FOREVER": the header paints from AlbumFields.Identity, which the navigator already
@@ -30,7 +31,7 @@
 //     thunks close over the instance we hand it — a fresh one per render would re-arm the boundary instead of flipping it.
 //  3. THE HEADER NEVER SKELETONS once the navigator knows the row: only `AlbumPaneState.Header` paints bars, and the real
 //     header paints at once, its art arriving through `Controls.Artwork`'s own image reveal. It is also one STATED height
-//     (`Album.PaneHeaderHeight`) in both states, so a two-line title cannot push the tracklist down.
+//     (`ClassicLibraryPaneRules.PaneHeaderHeight`) in both states, so a two-line title cannot push the tracklist down.
 //  4. THE PANE SCROLLS ONCE. Header and commands are fixed; everything below — the column header, the rows, then the
 //     "Also by" strip — is the embedded table's own trailing arm: ONE scroller, one scrollbar, one edge fade. The strip
 //     is therefore handed to the table as `TableArgs.Trailing` instead of being laid out beside it, which is what used to
@@ -43,7 +44,9 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
+using Slots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -57,16 +60,9 @@ public readonly partial struct Album
         public override int GetHashCode() => HashCode.Combine(Slot, ShowAlsoBy);
     }
 
+    [CoreHost]
     public sealed class Pane : Component
     {
-        /// <summary>The selection swap: the leaving pane fades out as an exit orphan (drawn UNDER the live tree) while the
-        /// entering one rises 6 DIP into place. Opacity only — a page-sized subtree is the blur-group perf cliff, and the
-        /// fade alone reads as the dissolve. Faster out than in, so the new album never waits for the old one.</summary>
-        static readonly LayoutTransition s_paneSwap = new(
-            TransitionChannels.Opacity, TransitionDynamics.Tween(180f, Easing.SmoothOut),
-            Enter: new EnterExit(Dy: 6f, Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
-            ExitDynamics: TransitionDynamics.Tween(120f, Easing.SmoothOut));
-
         /// <summary>The strip's tile count ceiling: the allocation and the art decodes at a selection edge stay bounded,
         /// and a 13th tile is past the horizontal scroller's reach anyway.</summary>
         const int AlsoByCap = 12;
@@ -89,8 +85,8 @@ public readonly partial struct Album
         readonly Signal<int> _retryEpoch = new(0);
         readonly Action _demand, _demandRows, _play, _shuffle, _open, _retry;
         readonly Func<ContextMenuModel?> _menu;
-        readonly Func<Element> _shimmer, _trailing;
-        readonly Func<int, Element> _rows;
+        readonly Func<LibraryAlsoByModel?> _alsoByModel;
+        readonly Func<Func<Element>?, Element> _table;
         readonly Action<int> _alsoBy;
         // One per state, never mutated: the region reads the State signal of the instance it was handed (§5.5 note 2).
         readonly Loadable<int> _pending = Loadable<int>.Pending();
@@ -134,9 +130,8 @@ public readonly partial struct Album
                 _retryEpoch.Value = _retryEpoch.Peek() + 1;
             };
             _menu = () => { var a = new Album(_slot); return a.IsValid ? HeroMenu(a, _overlay) : null; };   // the page's hero menu, lifted (§5.0)
-            _shimmer = CountedShimmer;
-            _trailing = AlsoByTrailing;
-            _rows = RowsTable;
+            _alsoByModel = AlsoByModel;
+            _table = RowsTable;
             _alsoBy = slot => _onAlsoBy?.Invoke(slot);
         }
 
@@ -176,7 +171,14 @@ public readonly partial struct Album
             Keys(epoch);
 
             var a = new Album(_slot);
-            if (!a.IsValid) return new BoxEl();                             // the page owns the no-selection vacancy (W5)
+            // The page owns the no-selection vacancy (W5): an invalid slot draws nothing.
+            if (!a.IsValid)
+                return Slots.View(ViewKeys.LibraryAlbumPane, new LibraryAlbumPaneProps
+                {
+                    Vacant = true, State = AlbumPaneState.Header, BodyKey = "",
+                    Open = _open, Play = _play, Shuffle = _shuffle, More = _menu, Retry = _retry,
+                    Region = _pending, ShimRows = _shimRows, RowHeight = _rowH, Table = _table, AlsoBy = _alsoByModel,
+                });
 
             var edge = scope.Edges.AlbumTracks;
             var tracks = MemoryMarshal.Cast<int, Track>(a.TrackSlots);
@@ -193,81 +195,99 @@ public readonly partial struct Album
             _shimRows = AlbumPaneReadiness.ShimmerRows(a.Knows(AlbumFields.TrackCount), a.TrackCount, tracks.Length);
             LogState(state, edgeState, tracks.Length, in facts);
 
-            BoxEl child = state == AlbumPaneState.Header ? PaneHeaderSkeleton() : Body(a, state);
-            // The host persists; only the child is keyed, so the swap is an orphaned fade under a rising entrance
-            // instead of a remount of this component (which would lose the table's scroll and re-ask the model).
-            return new BoxEl
+            // The header paints from AlbumFields.Identity (the navigator already demanded it), so only the Header state has nothing to say; the host persists and the VIEW keys
+            // its child by state and slot, so the swap is an orphaned fade under a rising entrance instead of a remount of this component (which would lose the table's scroll
+            // and re-ask the model).
+            string? cover = null;
+            string eyebrow = "", title = "", meta = "";
+            Element? attribution = null, notice = null;
+            if (state != AlbumPaneState.Header)
             {
-                ZStack = true, Grow = 1f, Basis = 0f, MinHeight = 0f, ClipToBounds = true,
-                Children = [child with { Key = state == AlbumPaneState.Header ? _skelKey : _paneKey, Animate = s_paneSwap }],
-            };
+                var id = Detail.Identity.For(a);
+                cover = id.CoverUrl; eyebrow = EyebrowOf(a); title = id.Title; meta = MetaOf(a, id);
+                attribution = Detail.ArtistLine(id.Artists);
+                // The unnamed-credit verdict goes through the page's OWN pipeline rather than the readiness gate: one strip over a rendered list, and — exactly as on the full
+                // page (Detail.UI.cs:572) — suppressed for `MinifiedAlbum`, which self-heals when the credits land. Zero-height and hit-test free while there is nothing to say,
+                // so the rows below it never move.
+                notice = Detail.NoticeBar(Detail.NoticeRules.ForAlbum(MemoryMarshal.Cast<int, Track>(a.TrackSlots)), showMinifiedAlbum: false, goLibrary: null);
+            }
+            return Slots.View(ViewKeys.LibraryAlbumPane, new LibraryAlbumPaneProps
+            {
+                State = state, BodyKey = state == AlbumPaneState.Header ? _skelKey : _paneKey,
+                CoverUrl = cover, Eyebrow = eyebrow, Title = title, Meta = meta, Attribution = attribution, Notice = notice,
+                Uri = _uri, SaveKey = _saveKey, Open = _open, Play = _play, Shuffle = _shuffle, More = _menu, Retry = _retry,
+                // One per state, never mutated: the region reads the State signal of the instance it was handed (§5.5 note 2).
+                Region = state == AlbumPaneState.Ready ? _ready : _pending, ShimRows = _shimRows, RowHeight = _rowH,
+                Table = _table, AlsoBy = _alsoByModel,
+            });
         }
 
-        BoxEl Body(Album a, AlbumPaneState state)
-        {
-            var id = Detail.Identity.For(a);
-            Element rows = state == AlbumPaneState.Failed
-                // The Error voice supplies its own subtitle and Retry label; only the headline is ours.
-                ? Controls.Vacancy(Controls.VacancyVoice.Error, Controls.VacancyScale.Compact,
-                    title: Loc.Get(Strings.Library.SongsFailed), onAction: _retry)
-                // smoothResize off: the rows area is a fixed flex slot (both branches Grow), so there is no height to
-                // ease — and marking a pane-sized region BoundsAnimated would put a Reflow pass on every swap.
-                : Skel.Region(state == AlbumPaneState.Ready ? _ready : _pending, _shimmer, _rows,
-                    SkelReveal.StaggerRows, smoothResize: false);
-            return new BoxEl
-            {
-                Direction = 1, Grow = 1f, ClipToBounds = true,
-                Children =
-                [
-                    PaneHeader(id.CoverUrl, EyebrowOf(a), id.Title, _open, Detail.ArtistLine(id.Artists), MetaOf(a, id)),
-                    PaneCommands(_play, _shuffle,
-                        Embed.Comp(() => new Controls.SaveButton { Uri = _uri, Name = id.Title, Box = 36f }) with { Key = _saveKey },
-                        Detail.MoreButton(_menu, 36f), _open),
-                    // The unnamed-credit verdict goes through the page's OWN pipeline rather than the readiness gate:
-                    // one strip over a rendered list, and — exactly as on the full page (<c>Detail.NoticeBar</c>, <c>showMinifiedAlbum: false</c>) — suppressed
-                    // for `MinifiedAlbum`, which self-heals when the credits land. Zero-height and hit-test free while
-                    // there is nothing to say, so the rows below it never move.
-                    Detail.NoticeBar(Detail.NoticeRules.ForAlbum(MemoryMarshal.Cast<int, Track>(a.TrackSlots)),
-                                     showMinifiedAlbum: false, goLibrary: null),
-                    // ONE flex slot, in every state: the shimmer, the Retry strip and the real table all grow into it,
-                    // so the header and the commands above never move. "Also by" is NOT a sibling here any more — it is
-                    // the table's trailing band, inside the table's scroller (see RowsTable).
-                    new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, ClipToBounds = true, Children = [rows] },
-                ],
-            };
-        }
-
-        /// <summary>The real rows: the embedded table over THIS album, under its own per-album <c>ScrollKey</c>. The region
-        /// hands it the loadable's value, which this surface has no use for — the album is the pane's own state.
+        /// <summary>The real rows: the embedded table over THIS album, under its own per-album <c>ScrollKey</c>. The view's region
+        /// asks for it (<paramref name="trailing"/> is the view's "Also by" band); the album is the pane's own state.
         /// <para>The table carries the "Also by" strip as its TRAILING band. That is the whole of the "5-track EP in its
         /// own little scroller" fix: an embedded table with no trailing band is a <c>Grow 1</c> viewport with a scrollbar
         /// of its own (Track.Table.cs:1048), so a 550-DIP pane showed 3½ rows with the strip pinned under them and a
         /// single left a dead gap. With the band handed over, <c>TrailingBody</c> puts the rows and the strip in ONE
         /// scroller and keeps the column header fixed above it — the pane's own header and command row are outside the
         /// table and never move either way.</para></summary>
-        Element RowsTable(int _)
+        Element RowsTable(Func<Element>? trailing)
         {
             var a = new Album(_slot);
             return Track.Table(new Track.TableArgs
             {
                 Source = Track.TableSource.ForAlbum(a),
                 Profile = Track.TableProfile.From(ConfigFor(a)),
-                ShowToolbar = false, Embedded = true, ScrollKey = _scrollKey, Trailing = _trailing,
+                ShowToolbar = false, Embedded = true, ScrollKey = _scrollKey, Trailing = trailing,
             });
         }
 
-        /// <summary>The trailing band, as the table calls it. It reads the scope signals it depends on ITSELF: the thunk
-        /// runs inside the table host's render, not this component's, so the strip would otherwise never hear a save
-        /// landing — this pane's own subscriptions do not reach it (the host re-renders only when its props change, and
-        /// they do not). Cheap: the reads are the same ones this render already makes, and a saved-album edit is rare.</summary>
-        Element AlsoByTrailing()
+        /// <summary>The "Also by" strip's model, as the table calls its trailing band. It reads the scope signals it depends on ITSELF: the view's thunk runs inside the table host's
+        /// render, not this component's, so the strip would otherwise never hear a save landing — this pane's own subscriptions do not reach it (the host re-renders only when its
+        /// props change, and they do not). Cheap: the reads are the same ones this render already makes, and a saved-album edit is rare.
+        /// <para>The other saved albums billed to this album's FIRST billed artist, in the saved edge's own order, capped (<see cref="AlsoByCap"/>). Null when there are none or the
+        /// strip is off. A tile selects IN PLACE through the page's callback — the one library-internal jump that stays.</para></summary>
+        LibraryAlsoByModel? AlsoByModel()
         {
             var scope = Entities.Current;
             _ = Entities.ScopeEpoch.Value;
             _ = scope.Edges.SavedAlbums.Changed.Value; _ = scope.Edges.AlbumArtists.Changed.Value;
             _ = scope.Albums.Changed.Value; _ = scope.Artists.Changed.Value;
             var a = new Album(_slot);
-            return _showAlsoBy && a.IsValid ? AlsoBy(a) : new BoxEl();
+            if (!_showAlsoBy || !a.IsValid) return null;
+            var billed = a.ArtistSlots;
+            if (billed.Length == 0) return null;
+            int artist = billed[0];
+            int n = User.LibraryAlbumsOf(artist, _also);
+            if (n > _also.Length) { _also = new int[n]; n = User.LibraryAlbumsOf(artist, _also); }   // grows at a selection edge only
+            var tiles = new List<LibraryAlsoByTile>(Math.Min(n, AlsoByCap));
+            for (int i = 0; i < n && tiles.Count < AlsoByCap; i++)
+            {
+                int slot = _also[i];
+                if (slot == a.Slot) continue;
+                tiles.Add(TileOf(new Album(slot)));
+            }
+            return tiles.Count == 0 ? null : new LibraryAlsoByModel(new Artist(artist).Name, tiles);
+        }
+
+        /// <summary>One tile's data: the shared surface's card — the play FAB, the corner "…" with the home card menu, the album drag, the click that selects in place. The plate height
+        /// and the entrance cascade are the structure's.</summary>
+        LibraryAlsoByTile TileOf(Album o)
+        {
+            int slot = o.Slot;
+            string uri = o.Uri.Text;
+            string title = o.Title;
+            string? cover = Controls.ArtUrl(o.ImageId);
+            var id = o.Id;
+            var card = new HomeCard(new EntityRef(EntityKind.Album, slot));
+            var data = new Controls.CardData(uri, title, null, cover,
+                OnClick: () => _alsoBy(slot),
+                OnPlay: () => Playback.PlayOrToggleContext(id),
+                Drag: Drag.Source(() => ResourcePayload(DragKind.Album, EntityKind.Album, slot, uri, title, cover)))
+            {
+                Caption = o.Knows(AlbumFields.Year) && o.Year > 0 ? FormatCache.Int(o.Year) : null,
+                Menu = HomeCardNav.MenuOf(in card),
+            };
+            return new LibraryAlsoByTile(slot, data);
         }
 
         /// <summary>The per-slot strings, rebuilt only when the selection (or the scope that renumbers slots) changes —
@@ -366,126 +386,6 @@ public readonly partial struct Album
                 WaveeLogField.Of("edge", (int)edgeState), WaveeLogField.Of("listed", listed),
                 WaveeLogField.Of("untitled", facts.AnyUntitled ? 1 : 0),
                 WaveeLogField.Of("rowsFailed", facts.AnyFailed ? 1 : 0));
-        }
-
-        // ══ THE COUNTED SHIMMER ══════════════════════════════════════════════════════════════════════════════════════
-        //
-        // This tree is the region's DERIVATION INPUT, never painted as written: the engine maps its leaves to pulsing bars
-        // and cross-dissolves the real table over it. Two consequences shape it.
-        //  · The header is CHROME, not data (W5 paints the real "#  Title  ♥  ⏱" while the rows shimmer), so it goes to
-        //    the deriver as its own override — `Skel(head)` — which returns it verbatim.
-        //  · `Track.ShimmerRow` cannot BE the row: its cells are bare `new BoxEl()`, the table's
-        //    pre-reveal blank — it paints nothing, and the deriver maps a childless box with no declared extent to an
-        //    empty spacer, so the pane would load as a void (the complaint itself). The row below is that row's EXTENT —
-        //    the same tracks, `ColGapFor`/`PadXFor(EmbeddedTier)` and pitch — with three cells that declare a bar.
-
-        Element CountedShimmer()
-        {
-            var head = Track.TableHeaderShim(compact: true);                // pays its own PadXFor: no wrapper padding
-            var kids = new Element[_shimRows + 1];
-            kids[0] = head.Skel(head);
-            for (int i = 0; i < _shimRows; i++) kids[i + 1] = ShimRow(_rowH, i);
-            return new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, ClipToBounds = true, Children = kids };
-        }
-
-        /// <summary>One placeholder row at the real row's pitch and lanes: the # bar, the title bar (four lengths in
-        /// rotation, so a column of rows reads as text and not as a fence) and the clock bar. The ♥ and "…" lanes hold
-        /// nothing — they carry no content to promise.</summary>
-        static Element ShimRow(float rowH, int i)
-        {
-            var set = Track.EmbeddedColumns;
-            var tracks = Track.EmbeddedTracks;
-            var cells = new Element[tracks.Length];
-            int k = 0;
-            cells[k++] = Cell(Controls.PendingBar(14f, 11f), FlexJustify.Center);
-            if (set.Heart && k < cells.Length) cells[k++] = new BoxEl();
-            if (k < cells.Length) cells[k++] = Cell(Controls.PendingBar(TitleBarWidth(i), 11f), FlexJustify.Start);
-            if (k < cells.Length) cells[k++] = Cell(Controls.PendingBar(30f, 11f), FlexJustify.End);
-            while (k < cells.Length) cells[k++] = new BoxEl();
-            float padX = Track.RowMetrics.PadXFor(set.Tier);
-            return new GridEl
-            {
-                Key = "sh:" + FormatCache.Int(i),
-                // NOT Grow (Track.ShimmerRow's own Grow is for a ROW-direction slot): in this column it would hand each
-                // row a share of the slack and the pitch would stop matching the real rows'. Shrink 0 for the same reason
-                // the other way — more rows than fit overflow into the clip, they never squeeze.
-                Columns = tracks, ColGap = Track.RowMetrics.ColGapFor(set.Tier), RowHeight = rowH, Shrink = 0f,
-                Padding = new Edges4(padX, 0f, padX, 0f), Children = cells,
-            };
-        }
-
-        static float TitleBarWidth(int i) => (i & 3) switch { 0 => 208f, 1 => 264f, 2 => 176f, _ => 232f };
-
-        static Element Cell(Element bar, FlexJustify justify) => new BoxEl
-        {
-            Direction = 0, AlignItems = FlexAlign.Center, Justify = justify, MinWidth = 0f, ClipToBounds = true, Children = [bar],
-        };
-
-        // ══ "ALSO BY … IN YOUR LIBRARY" ══════════════════════════════════════════════════════════════════════════════
-
-        /// <summary>The other saved albums billed to this album's FIRST billed artist, as the shared media surface
-        /// (<see cref="Shape.Shelf"/> over a 96-px cover) in the saved edge's own order, each entering on the staggered
-        /// cascade. Absent when there are none. A tile selects IN PLACE through the page's callback — the one
-        /// library-internal jump that stays.</summary>
-        Element AlsoBy(Album a)
-        {
-            var billed = a.ArtistSlots;
-            if (billed.Length == 0) return new BoxEl();
-            int artist = billed[0];
-            int n = User.LibraryAlbumsOf(artist, _also);
-            if (n > _also.Length) { _also = new int[n]; n = User.LibraryAlbumsOf(artist, _also); }   // grows at a selection edge only
-            var tiles = new List<Element>(Math.Min(n, AlsoByCap));
-            for (int i = 0; i < n && tiles.Count < AlsoByCap; i++)
-            {
-                int slot = _also[i];
-                if (slot == a.Slot) continue;
-                tiles.Add(Tile(new Album(slot), tiles.Count));
-            }
-            if (tiles.Count == 0) return new BoxEl();
-            return new BoxEl
-            {
-                Direction = 1, Gap = 10f, Shrink = 0f,
-                Padding = new Edges4(Spacing.XL, Spacing.S, Spacing.XL, Spacing.XL),
-                Children =
-                [
-                    R.Type.Eyebrow(Strings.Library.AlsoBy(new Artist(artist).Name)) with { Color = Tok.TextTertiary },
-                    // The house shape for a horizontal rail: a stated height (the surface's own shelf extent — a
-                    // ScrollEl is a viewport with no content height to grow from), Grow 0, and the edge fade instead
-                    // of a scrollbar rail under 96-px art (Concert.Page.cs:736, Sidebar.UI.Library.cs).
-                    ScrollView(new BoxEl { Direction = 0, Gap = Spacing.M, Children = tiles.ToArray() }, horizontal: true) with
-                    {
-                        Grow = 0f, Shrink = 0f, Height = SurfaceMetrics.AlsoByStripH, SuppressScrollBar = true,
-                        AutoEdgeFade = true, AutoEdgeFadeBand = 24f,
-                    },
-                ],
-            };
-        }
-
-        /// <summary>One tile: the shared surface at <see cref="SurfaceMetrics.AlsoByCardW"/> (its 8-DIP plate padding around
-        /// a 96 cover) — hover plate, play FAB, the corner "…" with the home card menu, the album drag, the hand cursor
-        /// and the focus stop. The entrance cascade rides a wrapper (an element's own `Animate` belongs on a box).</summary>
-        Element Tile(Album o, int i)
-        {
-            int slot = o.Slot;
-            string uri = o.Uri.Text;
-            string title = o.Title;
-            string? cover = Controls.ArtUrl(o.ImageId);
-            var id = o.Id;
-            var card = new HomeCard(new EntityRef(EntityKind.Album, slot));
-            var data = new Controls.CardData(uri, title, null, cover,
-                OnClick: () => _alsoBy(slot),
-                OnPlay: () => Playback.PlayOrToggleContext(id),
-                Drag: Drag.Source(() => ResourcePayload(DragKind.Album, EntityKind.Album, slot, uri, title, cover)))
-            {
-                Height = SurfaceMetrics.AlsoByCardH,   // a year-less tile keeps its neighbours' plate height
-                Caption = o.Knows(AlbumFields.Year) && o.Year > 0 ? FormatCache.Int(o.Year) : null,
-                Menu = HomeCardNav.MenuOf(in card),
-            };
-            return new BoxEl
-            {
-                Key = "also:" + FormatCache.Int(slot), Direction = 1, Shrink = 0f, Animate = Design.Entrance.Row(i),
-                Children = [Controls.Surface(data, Shape.Shelf(), SurfaceMetrics.AlsoByCardW)],
-            };
         }
     }
 }

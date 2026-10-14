@@ -149,26 +149,4 @@ internal static partial class ClassicShow
         ClassicDetailKit.RailSatellite(Icons.Share, Loc.Get(Strings.Menu.Share), a.Share) with { Key = "sat:share" },
         ClassicDetailKit.RailSatelliteMore(a.More),
     ];
-
-    /// <summary>The library pane's column: the header, the command row (the primary, the heart while it is not the primary, the ⋯) and the SAME
-    /// reader the route page mounts. The core roots it with the arm's key and the swap transition.</summary>
-    static BoxEl Pane(ShowPaneArgs a)
-    {
-        Element commands = new BoxEl
-        {
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Padding = new Edges4(Spacing.XL, Spacing.S, Spacing.XL, Spacing.M),
-            Children =
-            [
-                a.Primary,
-                new BoxEl { Visible = a.HeartShown, Children = [ClassicDetailKit.RailSatelliteSave(a.Uri, a.Name)] },
-                ClassicDetailKit.RailSatelliteMore(a.More),
-            ],
-        };
-        return new BoxEl
-        {
-            Direction = 1, Grow = 1f, ClipToBounds = true,
-            Children = [a.Header, commands, new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, ClipToBounds = true,
-                Children = [a.Reader] }],
-        };
-    }
 }

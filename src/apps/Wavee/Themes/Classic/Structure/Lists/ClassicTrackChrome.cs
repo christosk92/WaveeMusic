@@ -48,7 +48,7 @@ internal static class ClassicTrackChrome
     /// is a cross-fade and never a reflow. It stays a <c>GridEl</c> on purpose — the real row mounts inside a
     /// <c>BoxEl</c> crossing wrapper, and the TYPE change is what makes the crossing a remount (ch 01 §9 trap 3).
     /// <paramref name="padX"/> is the grid's resolved inner padding, passed by the core.</summary>
-    static Element Placeholder(in ColumnSet set, TrackSize[] tracks, float rowH, float padX)
+    internal static Element Placeholder(in ColumnSet set, TrackSize[] tracks, float rowH, float padX)
     {
         var cells = new Element[tracks.Length];
         for (int i = 0; i < cells.Length; i++) cells[i] = new BoxEl();

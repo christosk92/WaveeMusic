@@ -1077,18 +1077,6 @@ public readonly partial struct Album
     // click rule for both arms: the card plays the VIDEO — that is, the SONG that owns it, because kind 99 keys a video on its song (Track.Drawer.cs
     // PlayVersion does exactly this).
 
-    /// <summary>The geometry decisions the library pane makes about the shared media surface, engine-free so a fact pins them. The "Also by" tile keeps its
-    /// 96-DIP art: the surface adds its 8-DIP plate padding on every side, so the card is 96 + 16 wide and its strip is the surface's own shelf extent (not
-    /// a stated 134).</summary>
-    public static class SurfaceMetrics
-    {
-        public const float AlsoByArt = 96f;
-        public static float AlsoByCardW => AlsoByArt + 2f * SurfaceGeometry.ShelfPlatePad;
-        public static float AlsoByStripH => SurfaceGeometry.ShelfHeight(AlsoByCardW, 1f, captionLines: 1, metaLine: false);
-        /// <summary>The surface's pinned shell height: the strip less the shelf gutter over and under the plate.</summary>
-        public static float AlsoByCardH => AlsoByStripH - SurfaceGeometry.ShelfGutterTop - SurfaceGeometry.ShelfGutterBottom;
-    }
-
     /// <summary>What a video's card shows and the verbs it runs. A music video is a TRACK (kind 99 keys it on its song): its identity for the now-playing
     /// relation is the song's uri, its menu and its drag are the track's, and a click or the badge WATCHES it (<see cref="WatchVideo"/> — the surface first,
     /// then the song). The duration rides the shelf card's inline caption.</summary>
