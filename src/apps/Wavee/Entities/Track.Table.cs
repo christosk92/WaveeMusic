@@ -2129,6 +2129,11 @@ public readonly partial struct Track
             return null;
         }
 
+        /// <summary>The blank placeholder row of the structure's chrome (T8b): the SAME tracks, gap, height and padding as the live row, so
+        /// the crossing is a cross-fade and never a reflow. A host with no registry draws the host-free <see cref="Track.ShimmerRow"/>.</summary>
+        internal Element PlaceholderRow(in ColumnSet set, TrackSize[] tracks, float rowH, float padX)
+            => _listStyle?.Chrome.Placeholder is { } placeholder ? placeholder(in set, tracks, rowH, padX) : Track.ShimmerRow(in set, tracks, rowH, padX);
+
         /// <summary>The drawer's mount, keying and reveal — its BODY is the profile's. One drawer at a time, keyed by ROW
         /// identity (item id, else uri#@display), continuing the row's zebra parity with square top corners. ONE spec on the
         /// clip box (Design.Reveal.Drawer): the presented height springs, the rows below ride it; the presence box is plain
@@ -2432,7 +2437,7 @@ public readonly partial struct Track
             var set = shape.Set;
             bool real = revealed.Value;
             if (_latch == 0) _latch = real ? (byte)2 : (byte)1;
-            if (!real) return Track.ShimmerRow(in set, shape.Tracks, shape.RowH, RowMetrics.PadXFor(set.Tier)) with { Key = "row:shim" };
+            if (!real) return _host.PlaceholderRow(in set, shape.Tracks, shape.RowH, RowMetrics.PadXFor(set.Tier)) with { Key = "row:shim" };
 
             _row ??= new Track.BoundRow(presentation, likePop, _hovered, Playback.IsPlaying, _host.AccentRead, PlayCurrent, LikeCurrent, ToggleExpandCurrent);
             var row = _row;
@@ -2447,7 +2452,7 @@ public readonly partial struct Track
             // group: a disk-restored row withholds Artists until the credits edge re-lands, and a warm open must not shimmer
             // for a credit line that fills in place.
             Element body = Flow.Show(() => { var t = row.Presentation.Value.Track; return TableRules.RowHasData(t.IsValid, t.Knows(TrackFields.Face)); }, grid,
-                Track.ShimmerRow(in set, shape.Tracks, shape.RowH, RowMetrics.PadXFor(set.Tier)));
+                _host.PlaceholderRow(in set, shape.Tracks, shape.RowH, RowMetrics.PadXFor(set.Tier)));
             return new BoxEl
             {
                 Key = "row:real", Direction = 0, Grow = 1f, Animate = _latch == 1 ? s_rampReveal : null, Children = [body],

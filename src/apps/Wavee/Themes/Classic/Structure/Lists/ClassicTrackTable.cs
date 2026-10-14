@@ -49,7 +49,8 @@ internal static class ClassicTrackTable
     public static readonly TrackListStyle Style = new(
         stamp: 1,
         modern: new TrackRowTemplates(ModernGrid, ModernSkin),
-        classic: new TrackRowTemplates(ClassicGrid, ClassicSkin));
+        classic: new TrackRowTemplates(ClassicGrid, ClassicSkin),
+        chrome: ClassicTrackChrome.Templates);
 
     static Element ModernGrid(BoundRow row, in ColumnSet set, TrackSize[] tracks, float rowH, float art)
         => BoundGrid(row, in set, tracks, rowH, art, classic: false);

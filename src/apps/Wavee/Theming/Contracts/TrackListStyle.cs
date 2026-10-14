@@ -55,12 +55,17 @@ public sealed class TrackRowTemplates
 /// <summary>The structure's style for the track table's rows (<c>StyleKeys.TrackTable</c>).</summary>
 public sealed class TrackListStyle
 {
-    internal TrackListStyle(int stamp, TrackRowTemplates modern, TrackRowTemplates classic)
+    internal TrackListStyle(int stamp, TrackRowTemplates modern, TrackRowTemplates classic, TrackChromeTemplates chrome)
     {
         Stamp = stamp;
         Modern = modern;
         Classic = classic;
+        Chrome = chrome;
     }
+
+    /// <summary>The table's chrome (T8b): the column header, the command bar's buttons and surface, the filter card, the selection
+    /// bar's surface and the placeholder row. One set for both row styles; the header reads the row style from the lanes it draws.</summary>
+    public TrackChromeTemplates Chrome { get; }
 
     /// <summary>A structure-computed value that changes whenever either template would build a different row (a theme option it
     /// read). Carried for the stamp-driven slot rebuild of the typed bound-row channel; the table re-keys its list on the

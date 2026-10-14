@@ -4,6 +4,9 @@
 // (66 → 160…280 over 260 ms, Reflow), the context band's words Find · Filter · Play, the column header (one ColumnSet +
 // one TrackSize[] with the rows, keyed cells, sort carets), the Sort / Row size / More flyouts, the 368-wide filter card
 // and the selection command bar's commands. The TableHost partial of Track.Table.cs.
+// T8b: the PICTURES of the header, the command bar's buttons and surface (the selection bar rides it), the filter card and the
+// placeholder row are the structure's (`TrackListStyle.Chrome`, Classic: `Themes\Classic\Structure\Lists\ClassicTrackChrome.cs`);
+// what stays here is every decision, signal and overlay behind them.
 // Plus, at STRUCT level, the embedded arm's lane constants and its host-free header shim (§6) — what the library's panes
 // shimmer under before a tracklist has answered (library rework §5.5).
 //
@@ -27,6 +30,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -42,6 +46,9 @@ public readonly partial struct Track
 
         Action<Action>? _post;
         InputHooks? _hooks;
+
+        /// <summary>The structure's command-bar kit (T8b); a host with no registry gets one that draws nothing (logged with the rows).</summary>
+        ITrackCommandKit Kit => _listStyle?.Chrome.Commands ?? NoChromeKit.Instance;
         readonly Signal<bool> _searchExpanded = new(false);
         readonly Signal<bool> _searchFocused = new(false);
         bool _restoreSearchFocus;
@@ -80,16 +87,6 @@ public readonly partial struct Track
             _captureSearchButton = CaptureSearchButton;
         }
 
-        static readonly LayoutTransition s_toolbarCommandMotion = new(TransitionChannels.Position | TransitionChannels.Opacity,
-            TransitionDynamics.Tween(220f, Easing.SmoothOut),
-            Enter: new EnterExit(Dx: 8f, Opacity: 0f, Active: true), Exit: new EnterExit(Dx: 8f, Opacity: 0f, Active: true),
-            ExitDynamics: TransitionDynamics.Tween(150f, Easing.FluentAccelerate));
-
-        static readonly LayoutTransition s_toolbarModeMotion = new(TransitionChannels.Position | TransitionChannels.Opacity,
-            TransitionDynamics.Tween(210f, Easing.SmoothOut),
-            Enter: new EnterExit(Dx: 10f, Opacity: 0f, Active: true), Exit: new EnterExit(Dx: -8f, Opacity: 0f, Active: true),
-            ExitDynamics: TransitionDynamics.Tween(150f, Easing.FluentAccelerate));
-
         // Reflow, never Reveal: the field must PUSH its neighbours through real layout. No ExitDynamics — the width runs
         // 260 ms both ways; only the swap and the underline take the 180 ms exit.
         static readonly LayoutTransition s_searchDisclosure = new(TransitionChannels.Position | TransitionChannels.Size,
@@ -99,9 +96,6 @@ public readonly partial struct Track
             TransitionDynamics.Tween(SearchExpandMs, Easing.SmoothOut),
             Enter: new EnterExit(Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
             ExitDynamics: TransitionDynamics.Tween(SearchCollapseMs, Easing.FluentAccelerate));
-
-        static readonly LayoutTransition s_headerShift = new(TransitionChannels.Position,
-            TransitionDynamics.Tween(Design.Motion.Slow, Easing.FluentDecelerate));
 
         internal static PopupOptions MenuPopup => new(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false };
         static PopupOptions RichPopup => new(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
@@ -167,28 +161,18 @@ public readonly partial struct Track
                     new(Loc.Get(Strings.Detail.AddToQueue), ActionIcons.Resolve(ActionIcons.Queue), true,
                         () => RunOnContext(ActionId.AddToQueue)),
                 ];
-                // SplitButton owns its content after mount: the ink rides a binding so a theme flip still reaches it.
-                Element playNext = new BoxEl
-                {
-                    Direction = 0, Gap = 6f, AlignItems = FlexAlign.Center,
-                    Children =
-                    [
-                        new TextEl(WaveeIcons.PlayNext) { Size = 14f, FontFamily = WaveeIcons.Font, Color = Prop.Of(static () => Tok.TextSecondary) },
-                        new TextEl(Loc.Get(Strings.Detail.PlayNext)) { Size = Ui.Caption("").Size, Weight = 600, Color = Prop.Of(static () => Tok.TextSecondary) },
-                    ],
-                };
                 kids.Add(MeasuredCommand(0, "cmd:play-next:" + _contextText,
-                    SplitButton.Create(playNext, () => RunOnContext(ActionId.PlayNext), playItems, parts: s_commandBarSplitParts)));
+                    Kit.PlayNext(Loc.Get(Strings.Detail.PlayNext), () => RunOnContext(ActionId.PlayNext), playItems)));
             }
             if (fit.Has(InlineCommand.Shuffle))
-                kids.Add(MeasuredCommand(2, "cmd:shuffle", LabeledButton(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), false, Shuffle, null)));
+                kids.Add(MeasuredCommand(2, "cmd:shuffle", Kit.Labeled(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), false, Shuffle, null)));
             if (hasTune)
                 kids.Add(MeasuredCommand(1, "cmd:tune", ToolTip.Wrap(
-                    LabeledButton(Icons.RefineSparkle, Loc.Get(Strings.Detail.Tuning.Tune), false, () => _latest.Profile.Tune?.Invoke(), null),
+                    Kit.Labeled(Icons.RefineSparkle, Loc.Get(Strings.Detail.Tuning.Tune), false, () => _latest.Profile.Tune?.Invoke(), null),
                     Loc.Get(Strings.Detail.Tuning.Tooltip))));
 
             bool viewInline = fit.Has(InlineCommand.Filter) || fit.Has(InlineCommand.Sort) || fit.Has(InlineCommand.Density) || fit.Has(InlineCommand.Select);
-            if (viewInline && kids.Count > 0) kids.Add(Separator() with { Key = "cmd:separator" });
+            if (viewInline && kids.Count > 0) kids.Add(Kit.Separator() with { Key = "cmd:separator" });
             if (fit.Has(InlineCommand.Filter))
                 kids.Add(FilterCommandSlot(fit.Has(InlineCommand.FilterLabel)));
             if (fit.Has(InlineCommand.Sort))
@@ -205,41 +189,10 @@ public readonly partial struct Track
 
             Element search = Embed.Comp(new SearchProps(fit.SearchExpanded, fit.SearchWidth, false, Funnel: false), () => new TableSearchHost(this))
                 with { Key = "search-host" };
-            Element normal = new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Grow = 1f, MinWidth = 0f,
-                Children =
-                [
-                    new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f, Children = kids.ToArray() },
-                    new BoxEl { Grow = 1f, MinWidth = 0f },
-                    search,
-                ],
-            };
-            return CommandSurface("normal", normal);
+            return Kit.Surface("normal", Kit.Bar(kids.ToArray(), search));
         }
 
-        /// <summary>The chromeless 44-DIP lane both modes share; the keyed mode box is what animates browse ↔ selection.</summary>
-        static Element CommandSurface(string mode, Element content) => new BoxEl
-        {
-            Direction = 1, Height = Detail.VerticalLayout.ToolbarRowHeight, MinWidth = 0f, ClipToBounds = true,
-            Padding = new Edges4(Detail.VerticalLayout.ToolbarSurfacePadX, Detail.VerticalLayout.ToolbarSurfacePadY,
-                                 Detail.VerticalLayout.ToolbarSurfacePadX, Detail.VerticalLayout.ToolbarSurfacePadY),
-            Children =
-            [
-                new BoxEl
-                {
-                    Key = "commandbar-mode:" + mode, Direction = 1, Grow = 1f, MinWidth = 0f,
-                    Animate = s_toolbarModeMotion, Children = [content],
-                },
-            ],
-        };
-
-        Element MeasuredCommand(int slot, string key, Element command) => new BoxEl
-        {
-            Key = key, Direction = 1, Shrink = 0f, Animate = s_toolbarCommandMotion,
-            OnBoundsChanged = r => MeasureToolbarCommand(slot, r.W),
-            Children = [command],
-        };
+        Element MeasuredCommand(int slot, string key, Element command) => Kit.Command(key, command, w => MeasureToolbarCommand(slot, w));
 
         /// <summary>The pane the bar's fit last resolved against, and the hold that pins it while the filter card is open: a resize that
         /// would evict the Filter button (the card's anchor) re-fits only after the card closes, so the card is never closed by its own
@@ -282,68 +235,6 @@ public readonly partial struct Track
             _toolbarWidths[slot] = width;
             _toolbarEpoch.Value = _toolbarEpoch.Peek() + 1;
         }
-
-        /// <summary>Real SplitButton behaviour (two hit targets, keyboard chords) wearing CommandBar visuals: the joined
-        /// root is ghosted at rest instead of painting the boxed form-control surface.</summary>
-        static readonly TemplateParts s_commandBarSplitParts = new()
-        {
-            [SplitButton.PartRoot] = static e => e with
-            {
-                AlignSelf = FlexAlign.Center, MinHeight = 32f, Fill = ColorF.Transparent, BorderWidth = 0f, BorderBrush = null,
-                Corners = Radii.ControlAll,
-            },
-            [SplitButton.PartPrimaryButton] = static e => e with { Grow = 0f, MinWidth = 0f, Height = 32f, Padding = new Edges4(9f, 0f, 8f, 0f) },
-            [SplitButton.PartSecondaryButton] = static e => e with { Width = 24f, Height = 32f, Padding = default, Justify = FlexJustify.Center },
-            [SplitButton.PartDivider] = static e => e with
-            {
-                Width = 1f, Height = 20f, AlignSelf = FlexAlign.Center, Fill = Prop.Of(static () => Tok.StrokeDividerDefault),
-            },
-        };
-
-        /// <summary>The 32×32 toolbar glyph button: active → the accent@0.11 plate + accent glyph; idle → ghost.</summary>
-        static BoxEl IconButton(string glyph, bool active, Action onClick, Action<NodeHandle>? onRealized) => new()
-        {
-            Width = 32f, Height = 32f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Corners = Radii.ControlAll,
-            Fill = active ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.11f }) : (Prop<ColorF>)ColorF.Transparent,
-            HoverFill = active ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.17f }) : Prop.Of(static () => Tok.FillSubtleSecondary),
-            PressedFill = active ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.08f }) : Prop.Of(static () => Tok.FillSubtleTertiary),
-            HoverDurationMs = Motion.ControlFaster, PressDurationMs = Motion.ControlFaster,
-            Role = AutomationRole.Button, Focusable = true,
-            OnClick = onClick, OnRealized = onRealized,
-            Children = [Icon(glyph, 14f) with { Color = active ? Prop.Of(static () => Tok.AccentTextPrimary) : Prop.Of(static () => Tok.TextSecondary) }],
-        };
-
-        /// <summary>The labeled (icon + text) command — every inline command is labeled; one that does not fit is evicted,
-        /// never shrunk to a glyph (ch 04 §0.10).</summary>
-        static BoxEl LabeledButton(string glyph, string label, bool active, Action onClick, Action<NodeHandle>? onRealized,
-                                   Element? trailing = null)
-        {
-            Prop<ColorF> ink = active ? Prop.Of(static () => Tok.AccentTextPrimary) : Prop.Of(static () => Tok.TextSecondary);
-            Element[] kids = trailing is null
-                ? [Icon(glyph, 14f) with { Color = ink }, Ui.Caption(label) with { Weight = 600, Color = ink }]
-                : [Icon(glyph, 14f) with { Color = ink }, Ui.Caption(label) with { Weight = 600, Color = ink }, trailing];
-            return new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = 6f, Height = 32f, Padding = new Edges4(9f, 0f, 10f, 0f),
-                Corners = Radii.ControlAll,
-                Fill = active ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.11f }) : (Prop<ColorF>)ColorF.Transparent,
-                HoverFill = active ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.17f }) : Prop.Of(static () => Tok.FillSubtleSecondary),
-                PressedFill = active ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.08f }) : Prop.Of(static () => Tok.FillSubtleTertiary),
-                HoverDurationMs = Motion.ControlFaster, PressDurationMs = Motion.ControlFaster,
-                Role = AutomationRole.Button, Focusable = true,
-                OnClick = onClick, OnRealized = onRealized,
-                Children = kids,
-            };
-        }
-
-        static Element Separator() => new BoxEl
-        {
-            Width = 1f, Height = 20f, AlignSelf = FlexAlign.Center, Fill = Prop.Of(static () => Tok.StrokeDividerDefault),
-            Margin = new Edges4(Spacing.XS, 0f, Spacing.XS, 0f),
-        };
-
-        static Element Chevron() => Icon(Icons.ChevronDown, 8f, Tok.TextTertiary);
 
         static string SortLabelFor(SortColumn c) => c switch
         {
@@ -491,7 +382,7 @@ public readonly partial struct Track
                     : new BoxEl
                     {
                         Key = "search:icon", Direction = 1, Width = 32f, Height = 32f, JustifySelf = FlexAlign.Start, Animate = s_searchSwap,
-                        Children = [ToolTip.Wrap(IconButton(Icons.Search, queryActive, h._openSearch, h._captureSearchButton),
+                        Children = [ToolTip.Wrap(h.Kit.IconButton(Icons.Search, queryActive, h._openSearch, h._captureSearchButton),
                                                  Loc.Get(Strings.Detail.Filter.SearchThisList))],
                     };
                 // No explicit row width: it fills the host whose width is the tween, so the funnel rides the right edge
@@ -626,180 +517,20 @@ public readonly partial struct Track
             {
                 var h = host;
                 var shape = h.ShapeValue;
-                var set = shape.Set;
                 var sort = h._sort.Value;
-                bool checks = h._checksVisible?.Value ?? false;
-                bool vertical = h.VerticalArm;
-                bool classic = set.Classic;
-                var cells = new List<Element>(shape.Tracks.Length);
-                void Add(string key, Element cell) => cells.Add(cell with { Key = key });
-
-                // Classic's # cell is EMPTY: no clickable #, no caret slots; Sort → Custom order is the route back (W22).
-                Add(CellKey.Num, classic ? new BoxEl() : IndexSortCell(h, sort));
-                if (set.Heart) Add(CellKey.Heart, new BoxEl());
-                if (set.Thumb) Add(CellKey.Art, new BoxEl());
-                // Title owns Artist while the artist is folded into its subline; with a dedicated Artist lane each cell
-                // runs its own cycle. The label component freezes its flags, so they are in its key.
-                Element title = Embed.Comp(() => new TableSortLabel(h, vertical, set.Artist, classic))
-                    with { Key = "sort-label:" + (classic ? "c" : "m") + (set.Artist ? ":a" : "") + (vertical ? ":song" : "") };
-                Add(CellKey.Title, SortCell(h, title, SortColumn.Title, sort, FlexJustify.Start, set.Artist));
-                if (set.Artist)
-                    Add(CellKey.Artist, SortCell(h, HLabel(Loc.Get(Strings.Detail.Column.Artist), SortColumn.Artist, sort, classic),
-                        SortColumn.Artist, sort, FlexJustify.Start, artistColumn: true));
-                if (set.Album)
-                    Add(CellKey.Album, SortCell(h, HLabel(Loc.Get(Strings.Detail.Column.Album), SortColumn.Album, sort, classic),
-                        SortColumn.Album, sort, FlexJustify.Start));
-                if (set.By) Add(CellKey.By, PlainHeader(Loc.Get(Strings.Detail.Column.AddedBy), FlexJustify.Start, classic));
-                if (set.Date)
-                    Add(CellKey.Date, SortCell(h, HLabel(Loc.Get(Strings.Detail.Column.DateAdded), SortColumn.DateAdded, sort, classic),
-                        SortColumn.DateAdded, sort, FlexJustify.Start));
-                if (set.Plays)
-                    Add(CellKey.Plays, SortCell(h, HLabel(Loc.Get(Strings.Detail.Column.Plays), SortColumn.Plays, sort, classic),
-                        SortColumn.Plays, sort, FlexJustify.End));
-                // BPM · Key is not sortable: tempo lands asynchronously per row, a sort would reorder under the cursor.
-                if (RowMetrics.ShowTempo(in set)) Add(CellKey.Tempo, PlainHeader(Loc.Get(Strings.Detail.Column.Tempo), FlexJustify.End, classic));
-                Add(CellKey.Duration, SortCell(h, vertical
-                        ? HLabel(Loc.Get(Strings.Detail.Column.Time), SortColumn.Duration, sort, classic)
-                        : Icon(Icons.Clock, 14f, sort.Column == SortColumn.Duration ? Tok.TextSecondary : Tok.TextTertiary),
-                    SortColumn.Duration, sort, FlexJustify.End));
-                if (set.Video) Add(CellKey.Video, new BoxEl());
-                if (set.Actions) Add(CellKey.More, new BoxEl());
-                if (set.Expand) Add(CellKey.Expand, new BoxEl());
-
-                return new BoxEl
+                var template = h._listStyle?.Chrome.Header;
+                if (template is null) return new BoxEl();
+                return template(new TrackHeaderArgs
                 {
-                    Direction = 1, ClipToBounds = true,
-                    Padding = new Edges4(checks ? 28f : 0f, 0f, 0f, 0f),
-                    Animate = s_headerShift,
-                    Children =
-                    [
-                        new GridEl
-                        {
-                            Columns = shape.Tracks, ColGap = RowMetrics.ColGapFor(set.Tier),
-                            RowHeight = TableRules.HeaderHeightFor(classic), Children = cells.ToArray(),
-                        },
-                        new BoxEl { Height = 1f, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) },
-                    ],
-                };
-            }
-
-            /// <summary>The owning header brightens — except Index, the default order, which carries no indicator.</summary>
-            static TextEl HLabel(string s, SortColumn col, SortSpec sort, bool classic)
-            {
-                var t = classic ? R.Type.MicroMeta(s) : Ui.Caption(s);
-                return t with
-                {
-                    Weight = 600,
-                    Color = TableRules.HeaderActive(col, sort.Column, false) ? Tok.TextSecondary : Tok.TextTertiary,
-                    MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                };
-            }
-
-            static Element PlainHeader(string label, FlexJustify justify, bool classic)
-            {
-                var t = classic ? R.Type.MicroMeta(label) : Ui.Caption(label);
-                return new BoxEl
-                {
-                    Direction = 0, AlignItems = FlexAlign.Center, Justify = justify, MinWidth = 0f, ClipToBounds = true,
-                    Children =
-                    [
-                        t with
-                        {
-                            Weight = 600, Color = Tok.TextTertiary, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                        },
-                    ],
-                };
-            }
-
-            /// <summary>The # sits at the exact centre of its lane: the SAME caret slot is reserved on both sides and the
-            /// descending caret lives only in the right one, so the indicator never nudges # off the row numbers.</summary>
-            static Element IndexSortCell(TableHost h, SortSpec sort)
-            {
-                bool caret = sort.Column == SortColumn.Index && sort.Descending;
-                Element Side(bool trailing) => new BoxEl
-                {
-                    Width = Lane.NumCaretSlot, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Children = trailing && caret ? [Embed.Comp(() => new TableSortCaret(h))] : [],
-                };
-                return new BoxEl
-                {
-                    Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true,
-                    Corners = Radii.ControlAll, HoverFill = Prop.Of(static () => Tok.FillSubtleSecondary),
-                    Role = AutomationRole.Button,
-                    OnClick = () => h.SetSort(TableRules.NextSort(h._sort.Peek(), SortColumn.Index, false)),
-                    Children =
-                    [
-                        Side(false),
-                        new BoxEl
-                        {
-                            Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                            Children = [HLabel(Loc.Get(Strings.Detail.Column.Number), SortColumn.Index, sort, false)],
-                        },
-                        Side(true),
-                    ],
-                };
-            }
-
-            /// <summary>A clickable header: the NextSort cycle, the caret after the label (before it on an end-aligned
-            /// lane). Shrinkable + clipped, the same squeeze contract as the row cells.</summary>
-            static Element SortCell(TableHost h, Element content, SortColumn col, SortSpec sort, FlexJustify justify,
-                                    bool artistColumn = false)
-            {
-                bool caret = TableRules.HeaderActive(col, sort.Column, artistColumn) && (col != SortColumn.Index || sort.Descending);
-                Element[] kids = !caret ? [content]
-                    : justify == FlexJustify.End ? [Embed.Comp(() => new TableSortCaret(h)), content]
-                    : [content, Embed.Comp(() => new TableSortCaret(h))];
-                return new BoxEl
-                {
-                    Direction = 0, AlignItems = FlexAlign.Center, Justify = justify, Gap = Spacing.XS, MinWidth = 0f, ClipToBounds = true,
-                    Corners = Radii.ControlAll, HoverFill = Prop.Of(static () => Tok.FillSubtleSecondary),
-                    Role = AutomationRole.Button,
-                    OnClick = () => h.SetSort(TableRules.NextSort(h._sort.Peek(), col, artistColumn)),
-                    Children = kids,
-                };
+                    Set = shape.Set, Tracks = shape.Tracks, Sort = sort, SortSignal = h._sort,
+                    Checks = h._checksVisible?.Value ?? false, Vertical = h.VerticalArm,
+                    OnSort = h.SortBy,
+                });
             }
         }
 
-        /// <summary>The caret pops in when its column becomes the sort and SPRINGS its rotation 0°↔180° on every flip, so
-        /// Title↑ → Title↓ → Artist↑ → Artist↓ reads as one continuous rotation, never a glyph swap.</summary>
-        sealed class TableSortCaret(TableHost host) : Component
-        {
-            public override Element Render()
-            {
-                bool desc = host._sort.Value.Descending;
-                UseTransition(AnimChannel.Opacity, 0f, 1f, Expressive.Fast, Easing.EaseInOut, "in");
-                UseTransition(AnimChannel.ScaleX, 0.3f, 1f, Expressive.Fast, Easing.Overshoot, "in");
-                UseTransition(AnimChannel.ScaleY, 0.3f, 1f, Expressive.Fast, Easing.Overshoot, "in");
-                UseSpring(AnimChannel.Rotation, desc ? 180f : 0f, SpringParams.FromResponse(0.30f, 0.7f), desc);
-                return new BoxEl
-                {
-                    AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Children = [Icon(Icons.CaretSolidUp, 9f, Tok.TextSecondary)],
-                };
-            }
-        }
-
-        /// <summary>"Title" (the hero arm's "Song"), or "Artist" while the Title header owns an artist sort; the word swap
-        /// rises 4 DIP and fades, keyed on the text.</summary>
-        sealed class TableSortLabel(TableHost host, bool song, bool artistColumn, bool classic) : Component
-        {
-            public override Element Render()
-            {
-                var col = host._sort.Value.Column;
-                string text = !artistColumn && col == SortColumn.Artist
-                    ? Loc.Get(Strings.Detail.Column.Artist)
-                    : Loc.Get(song ? Strings.Detail.Column.Song : Strings.Detail.Column.Title);
-                UseTransition(AnimChannel.Opacity, 0f, 1f, Expressive.Fast, Easing.SmoothOut, text);
-                UseTransition(AnimChannel.TranslateY, 4f, 0f, Expressive.Fast, Easing.SmoothOut, text);
-                var t = classic ? R.Type.MicroMeta(text) : Ui.Caption(text);
-                return t with
-                {
-                    Weight = 600,
-                    Color = TableRules.HeaderActive(SortColumn.Title, col, artistColumn) ? Tok.TextSecondary : Tok.TextTertiary,
-                    MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                };
-            }
-        }
+        /// <summary>A header was clicked: the sort cycle (<see cref="TableRules.NextSort"/>) is the core's.</summary>
+        void SortBy(SortColumn col, bool artistColumn) => SetSort(TableRules.NextSort(_sort.Peek(), col, artistColumn));
 
         // ══ 5. THE FLYOUT BUTTONS ═══════════════════════════════════════════════════════════════════════════════════
 
@@ -826,12 +557,8 @@ public readonly partial struct Track
                 bool active = current.Column != SortColumn.Index;
                 void Toggle() => ToggleOverlay(overlay, anchor, handle,
                     () => MenuFlyout.Create(h.SortItems(), () => handle.Value?.Close()), MenuPopup);
-                Element trailing = new BoxEl
-                {
-                    Direction = 0, Gap = 3f, AlignItems = FlexAlign.Center,
-                    Children = active ? [Embed.Comp(() => new TableSortCaret(h)), Chevron()] : [Chevron()],
-                };
-                return LabeledButton(Icons.Sort, SortLabelFor(current.Column), active, Toggle, n => anchor.Value = n, trailing);
+                Element trailing = h.Kit.Trail(active ? [h.Kit.SortCaret(h._sort), h.Kit.Chevron()] : [h.Kit.Chevron()]);
+                return h.Kit.Labeled(Icons.Sort, SortLabelFor(current.Column), active, Toggle, n => anchor.Value = n, trailing);
             }
         }
 
@@ -857,7 +584,7 @@ public readonly partial struct Track
                 }
                 string label = handle.Value is { IsOpen: true } && frozen.Value is { } f ? f : DensityLabel(current);
                 _ = host;
-                return LabeledButton(Icons.RowSize, label, false, Toggle, n => anchor.Value = n, Chevron());
+                return host.Kit.Labeled(Icons.RowSize, label, false, Toggle, n => anchor.Value = n, host.Kit.Chevron());
             }
         }
 
@@ -897,7 +624,7 @@ public readonly partial struct Track
             {
                 var h = host;
                 bool on = h._multi.Value;
-                return LabeledButton(Icons.MultiSelect, Loc.Get(Strings.Detail.Select), on, () => h.SetMultiSelect(!h._multi.Peek()), null);
+                return h.Kit.Labeled(Icons.MultiSelect, Loc.Get(Strings.Detail.Select), on, () => h.SetMultiSelect(!h._multi.Peek()), null);
             }
         }
 
@@ -965,15 +692,8 @@ public readonly partial struct Track
                 }
 
                 void Toggle() => ToggleOverlay(overlay, anchor, handle, () => MenuFlyout.Create(Items(), () => handle.Value?.Close()), MenuPopup);
-                Element more = IconButton(Icons.More, false, Toggle, n => anchor.Value = n);
-                // The button's slot never changes size: the badge is an overlay on a fixed 32-DIP box, so a filter turning on moves nothing.
-                return ToolTip.Wrap(new BoxEl
-                {
-                    ZStack = true, Width = 32f, Height = 32f, Shrink = 0f, AlignSelf = FlexAlign.Center,
-                    Children = activeFilters > 0
-                        ? [more, InfoBadge.Count(activeFilters, parts: s_badgeCornerMore) with { HitTestVisible = false, Key = "more:filter-badge" }]
-                        : [more],
-                }, Loc.Get(Strings.Common.More));
+                Element more = h.Kit.IconButton(Icons.More, false, Toggle, n => anchor.Value = n);
+                return ToolTip.Wrap(h.Kit.MoreSlot(more, activeFilters), Loc.Get(Strings.Common.More));
             }
         }
 
@@ -1022,105 +742,10 @@ public readonly partial struct Track
         static PopupOptions FilterPopup => new(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
         { ConstrainToRootBounds = true };
 
-        /// <summary>The count badge's corner placement: top-right of a 32×32 button, ringed in the page's base so it reads over a plate.
-        /// Shared by the funnel and by "…" (an active filter badges the button that now owns "Filter…").</summary>
-        static readonly TemplateParts s_badgeCorner = new()
-        {
-            [InfoBadge.PartRoot] = static b => b with
-            {
-                AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.End, BorderWidth = 1.5f, BorderColor = Tok.FillSolidBase,
-            },
-        };
-
-        /// <summary>The same corner badge nudged out by 3 DIP, so on "…" (a centred row of dots) it clears the glyph.</summary>
-        static readonly TemplateParts s_badgeCornerMore = new()
-        {
-            [InfoBadge.PartRoot] = static b => b with
-            {
-                AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.End, BorderWidth = 1.5f, BorderColor = Tok.FillSolidBase,
-                OffsetX = 3f, OffsetY = -3f,
-            },
-        };
-
         /// <summary>The Filter command's props: <paramref name="Labelled"/> = the button wears its word (else the funnel alone).</summary>
         sealed record FilterCommandProps(bool Labelled);
 
-        /// <summary>The count badge of the command bar's Filter button: 18 DIP round for one digit, accent, growing rightward for two
-        /// (the labelled button's <see cref="CommandBarLayout.FilterBadgeSlot"/> is wide enough). Inline it sits at the slot's left edge.</summary>
-        static readonly TemplateParts s_badgeCommand = new()
-        {
-            [InfoBadge.PartRoot] = static b => b with
-            {
-                MinWidth = 18f, Height = 18f, MaxHeight = 18f, Corners = CornerRadius4.All(9f), Shrink = 0f,
-                AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start,
-            },
-        };
-
-        /// <summary>The same 18-DIP badge on the icon-only button's top-right corner, ringed in the page's base, nudged out by 4 DIP (never past the bar's gap to the next button).</summary>
-        static readonly TemplateParts s_badgeCommandCorner = new()
-        {
-            [InfoBadge.PartRoot] = static b => b with
-            {
-                MinWidth = 18f, Height = 18f, MaxHeight = 18f, Corners = CornerRadius4.All(9f), Shrink = 0f,
-                AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.End, BorderWidth = 1.5f, BorderColor = Tok.FillSolidBase,
-                OffsetX = MathF.Min(4f, CommandBarLayout.Gap), OffsetY = -4f, HitTestVisible = false,
-            },
-        };
-
-        /// <summary>The command bar's Filter button: a subtle button, funnel + "Filter" (<paramref name="labelled"/>) or the funnel alone,
-        /// 32 DIP tall. While <paramref name="count"/> filters are on it takes the accent tint (14% fill, accent border, accent ink) and
-        /// an 18-DIP count badge. The border is always laid (transparent at rest) and the labelled form always reserves the badge's
-        /// slot, so a filter turning on or off changes colour and nothing else: the fit never sees the count.</summary>
-        static Element FilterCommand(int count, bool labelled, Action onClick, Action<NodeHandle> onRealized)
-        {
-            bool active = count > 0;
-            Prop<ColorF> ink = active ? Prop.Of(static () => Tok.AccentTextPrimary) : Prop.Of(static () => Tok.TextSecondary);
-            Element glyph = Icon(Icons.Filter, 14f) with { Color = ink };
-            var box = new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Height = Controls.ButtonHeight, Shrink = 0f,
-                Corners = Radii.ControlAll, BorderWidth = 1f,
-                Fill = active ? Prop.Of(static () => Tok.AccentDefault with { A = 0.14f }) : (Prop<ColorF>)ColorF.Transparent,
-                HoverFill = active ? Prop.Of(static () => Tok.AccentDefault with { A = 0.22f }) : Prop.Of(static () => Tok.FillSubtleSecondary),
-                PressedFill = active ? Prop.Of(static () => Tok.AccentDefault with { A = 0.10f }) : Prop.Of(static () => Tok.FillSubtleTertiary),
-                BorderColor = active ? Prop.Of(static () => Tok.AccentDefault) : (Prop<ColorF>)ColorF.Transparent,
-                HoverDurationMs = Motion.ControlFaster, PressDurationMs = Motion.ControlFaster, BrushTransitionMs = Motion.ControlFaster,
-                Role = AutomationRole.Button, Focusable = true,
-                OnClick = onClick, OnRealized = onRealized,
-            };
-            if (labelled)
-                return box with
-                {
-                    Gap = 6f, Padding = new Edges4(9f, 0f, 6f, 0f),
-                    Children =
-                    [
-                        glyph,
-                        Ui.Caption(Loc.Get(Strings.Detail.Filter.Short)) with { Weight = 600, Color = ink },
-                        new BoxEl
-                        {
-                            Width = CommandBarLayout.FilterBadgeSlot, Height = 18f, Shrink = 0f, AlignItems = FlexAlign.Center,
-                            Children = active ? [InfoBadge.Count(count, parts: s_badgeCommand)] : [],
-                        },
-                    ],
-                };
-            // Icon-only: the funnel carries more ink above its midpoint (+1 optical offset at rest); with a badge it steps (-4, +4) so glyph
-            // and pill never share ink.
-            return box with
-            {
-                ZStack = true, Width = CommandBarLayout.FilterIconWidth, Justify = FlexJustify.Center,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Width = 14f, Height = 14f, AlignSelf = FlexAlign.Center, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                        OffsetX = active ? -4f : 0f, OffsetY = active ? 4f : 1f, Children = [glyph],
-                    },
-                    .. active ? new Element[] { InfoBadge.Count(count, parts: s_badgeCommandCorner) } : [],
-                ],
-            };
-        }
-
-        /// <summary>The Filter affordance: on the command bar (<paramref name="command"/>) the labelled-or-icon <see cref="FilterCommand"/>;
+        /// <summary>The Filter affordance: on the command bar (<paramref name="command"/>) the labelled-or-icon Filter command (the kit's <c>FilterCommand</c>);
         /// otherwise the funnel (32×32, accent plate + corner count badge while any facet is on), or — in the context band —
         /// the plateless word whose accent ink stands in for plate and badge. Same flyout every way.</summary>
         sealed class TableFilterButton(TableHost host, bool textMode, bool command = false) : Component
@@ -1139,7 +764,7 @@ public readonly partial struct Track
                 if (command)
                 {
                     bool labelled = props?.Labelled ?? true;
-                    Element button = FilterCommand(activeCount, labelled, Toggle, n => anchor.Value = n);
+                    Element button = h.Kit.FilterCommand(activeCount, labelled, Loc.Get(Strings.Detail.Filter.Short), Toggle, n => anchor.Value = n);
                     return ToolTip.Wrap(button, Loc.Get(Strings.Detail.Filter.Title));
                 }
 
@@ -1147,37 +772,15 @@ public readonly partial struct Track
                     return ToolTip.Wrap(Controls.TextAction(Loc.Get(Strings.Detail.Filter.Short), Toggle, toggledOn: active)
                         with { OnRealized = n => anchor.Value = n }, Loc.Get(Strings.Detail.Filter.Title));
 
-                ColorF accent = Tok.AccentTextPrimary;
-                // The funnel carries more ink above its midpoint: +1 optical offset at rest; with a badge it steps (−4, +4)
-                // so glyph and pill never share ink. Accent belongs to the plate and badge, never the glyph.
-                Element glyph = new BoxEl
-                {
-                    Width = 14f, Height = 14f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    OffsetX = active ? -4f : 0f, OffsetY = active ? 4f : 1f,
-                    Children = [Icon(Icons.Filter, 14f, active ? Tok.TextPrimary : Tok.TextSecondary)],
-                };
-                return ToolTip.Wrap(new BoxEl
-                {
-                    ZStack = true, Width = 32f, Height = 32f, AlignSelf = FlexAlign.Center,
-                    AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
-                    Fill = active ? accent with { A = 0.16f } : ColorF.Transparent,
-                    HoverFill = active ? accent with { A = 0.24f } : Tok.FillSubtleSecondary,
-                    PressedFill = active ? accent with { A = 0.12f } : Tok.FillSubtleTertiary,
-                    Role = AutomationRole.Button, Focusable = true,
-                    OnClick = Toggle, OnRealized = n => anchor.Value = n,
-                    Children = active ? [glyph, InfoBadge.Count(activeCount, parts: s_badgeCorner)] : [glyph],
-                }, Loc.Get(Strings.Detail.Filter.Title));
+                return ToolTip.Wrap(h.Kit.FilterFunnel(activeCount, Toggle, n => anchor.Value = n), Loc.Get(Strings.Detail.Filter.Title));
             }
         }
 
-        /// <summary>The immediate-apply filter card ("Flyout B"): 360 wide, a header ("Filter", what the list shows against what it has,
-        /// "Reset"), a divider, then ONE 44-DIP row per facet - its word on the left, a 168-DIP <see cref="ComboBox"/> on the right
-        /// (a row off its default tints its combo with the accent and its word turns primary) - a divider, and the two status
-        /// <see cref="ToggleSwitch"/> rows. The card normally fits whole; the scroll region (<= 500) is the fallback only.</summary>
+        /// <summary>The immediate-apply filter card ("Flyout B"): the core decides WHICH facets and switches this list can earn, their
+        /// values and what each commit writes; the structure's <c>FilterCard</c> template draws the card (a header with what the list
+        /// shows against what it has and "Reset", one row per facet with a combo, the status switches).</summary>
         sealed class TableFilterFlyout : Component
         {
-            const float CardWidth = 360f, CardMaxHeight = 620f, ScrollMaxHeight = 500f, RowHeight = 44f, RowPadX = 8f, ComboWidth = 168f;
-
             readonly TableHost _h;
             readonly Signal<int> _scope, _explicit, _video, _duration, _added, _tempo, _origin;
             readonly Signal<bool> _liked, _playable;
@@ -1238,46 +841,6 @@ public readonly partial struct Track
                                     : Strings.Detail.SongCountOf(shown.ToString("N0", CultureInfo.CurrentCulture), total));
                 if (HiddenFacets(current) is { } hidden && total > 0) status = Strings.Detail.MetaLine(status, hidden);
 
-                Element Label(string text, bool on) => new TextEl(text)
-                {
-                    Size = 14f, Color = on ? Tok.TextPrimary : Tok.TextSecondary, Grow = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                };
-
-                BoxEl Row(string key, bool on, string label, Element control) => new()
-                {
-                    Key = key, Direction = 0, Height = RowHeight, AlignItems = FlexAlign.Center, Gap = 8f, Padding = new Edges4(RowPadX, 0f, RowPadX, 0f),
-                    Children = [Label(label, on), control],
-                };
-
-                // One facet: the label and a combo whose tint (accent 14% fill + accent border, laid over the stock field, which has no
-                // style seam) reads "this row is filtering". The overlay is always there (transparent at rest), so a value change
-                // never restructures the row and the combo keeps its focus.
-                Element Pick(string key, string label, Signal<int> signal, string[] options, Action<int> changed, string placeholder = "", bool? tinted = null)
-                {
-                    bool on = tinted ?? signal.Value != 0;
-                    return Row(key, on, label, new BoxEl
-                    {
-                        ZStack = true, Width = ComboWidth, Shrink = 0f,
-                        Children =
-                        [
-                            ComboBox.Create(options, signal, width: ComboWidth, placeholder: placeholder, onChange: changed) with { Key = key + ":combo" },
-                            new BoxEl
-                            {
-                                Width = ComboWidth, AlignSelf = FlexAlign.Stretch, Corners = Radii.ControlAll, HitTestVisible = false, BorderWidth = 1f,
-                                Fill = on ? Prop.Of(static () => Tok.AccentDefault with { A = 0.14f }) : (Prop<ColorF>)ColorF.Transparent,
-                                BorderColor = on ? Prop.Of(static () => Tok.AccentDefault) : (Prop<ColorF>)ColorF.Transparent,
-                            },
-                        ],
-                    });
-                }
-
-                Element Switch(string key, string label, Signal<bool> signal, FilterFlags flag)
-                    => Row(key, signal.Value, label, ToggleSwitch.Create(signal, onChange: on =>
-                    {
-                        var f = Current;
-                        Set(f with { Flags = on ? f.Flags | flag : f.Flags & ~flag });
-                    }, style: ToggleSwitch.DefaultStyle with { MinWidth = 0f }) with { Key = key + ":switch" });
-
                 void ClearAll()
                 {
                     _scope.Value = 0; _explicit.Value = 0; _video.Value = 0; _liked.Value = false; _playable.Value = false;
@@ -1285,7 +848,19 @@ public readonly partial struct Track
                     Set(FilterState.Default);
                 }
 
-                var rows = new List<Element>(7);
+                // One facet: the signal, its words and what a commit writes; `On` (off its default) is read here so this component
+                // subscribes to the signal exactly as the inline rows did.
+                TrackFilterFacet Pick(string key, string label, Signal<int> signal, string[] options, Action<int> changed, string placeholder = "", bool? tinted = null)
+                    => new(key, label, signal, options, changed, placeholder, tinted ?? signal.Value != 0);
+
+                TrackFilterToggle Switch(string key, string label, Signal<bool> signal, FilterFlags flag)
+                    => new(key, label, signal, on =>
+                    {
+                        var f = Current;
+                        Set(f with { Flags = on ? f.Flags | flag : f.Flags & ~flag });
+                    }, signal.Value);
+
+                var rows = new List<TrackFilterFacet>(7);
                 if (caps.HasDateAdded || current.Added != AddedRange.Any || current.AddedAfterMs != 0L || current.AddedBeforeMs != 0L)
                     rows.Add(Pick("filter:added", Loc.Get(Strings.Detail.Filter.DateAdded), _added,
                         [Loc.Get(Strings.Detail.Filter.AnyTime), Loc.Get(Strings.Detail.Filter.LastSevenDays), Loc.Get(Strings.Detail.Filter.LastThirtyDays),
@@ -1321,47 +896,20 @@ public readonly partial struct Track
                     v => Set(Current with { SearchScope = (SearchScope)v }),
                     tinted: _scope.Value != 0 && _h._query.Value.Length > 0));
 
-                var toggles = new List<Element>(2);
+                var toggles = new List<TrackFilterToggle>(2);
                 if (caps.HasLibrary || current.LikedOnly)
                     toggles.Add(Switch("filter:liked", Loc.Get(Strings.Detail.Filter.OnlyLiked), _liked, FilterFlags.LikedOnly));
                 if (caps.HasUnavailable || current.PlayableOnly)
                     toggles.Add(Switch("filter:playable", Loc.Get(Strings.Detail.Filter.HideUnplayable), _playable, FilterFlags.PlayableOnly));
 
-                static BoxEl Divider() => new() { Height = 1f, Fill = Tok.StrokeDividerDefault };
-                var body = new List<Element>(3)
+                var template = _h._listStyle?.Chrome.FilterCard;
+                if (template is null) return new BoxEl();
+                return template(new TrackFilterCardArgs
                 {
-                    new BoxEl { Direction = 1, MinWidth = 0f, Padding = new Edges4(8f, 4f, 8f, toggles.Count > 0 ? 4f : 8f), Children = rows.ToArray() },
-                };
-                if (toggles.Count > 0)
-                {
-                    body.Add(Divider());
-                    body.Add(new BoxEl { Direction = 1, MinWidth = 0f, Padding = new Edges4(8f, 4f, 8f, 8f), Children = toggles.ToArray() });
-                }
-
-                return new BoxEl
-                {
-                    Direction = 1, Width = CardWidth, MinWidth = 320f, MaxWidth = CardWidth, MaxHeight = CardMaxHeight, MinHeight = 0f,
-                    ClipToBounds = true,
-                    Children =
-                    [
-                        new BoxEl
-                        {
-                            Direction = 0, AlignItems = FlexAlign.Center, Gap = 8f, Height = 48f, Padding = new Edges4(16f, 0f, 8f, 0f),
-                            Children =
-                            [
-                                new TextEl(Loc.Get(Strings.Detail.Filter.Short)) { Size = 16f, Weight = 600, Color = Tok.TextPrimary },
-                                Ui.Caption(status) with { Color = Tok.TextSecondary, Grow = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                                HyperlinkButton.Create(Loc.Get(Strings.Detail.Filter.Reset), ClearAll, isEnabled: !current.IsDefault),
-                            ],
-                        },
-                        Divider(),
-                        new ScrollEl
-                        {
-                            ContentSized = true, Grow = 1f, MinHeight = 0f, MaxHeight = ScrollMaxHeight,
-                            Content = new BoxEl { Direction = 1, MinWidth = 0f, Children = body.ToArray() },
-                        },
-                    ],
-                };
+                    Title = Loc.Get(Strings.Detail.Filter.Short), Status = status,
+                    ResetLabel = Loc.Get(Strings.Detail.Filter.Reset), CanReset = !current.IsDefault, Reset = ClearAll,
+                    Facets = rows, Toggles = toggles,
+                });
             }
         }
 
@@ -1371,7 +919,7 @@ public readonly partial struct Track
         /// <summary>The selection mode of the command lane. Count 0 + minCount 0: the bar's props never change, and its
         /// commands read the live selection themselves — so "1 selected" can never sit beside "Play 4 next".</summary>
         Element SelectionSurface(string mode)
-            => CommandSurface(mode, Controls.SelectionBar(0, _selectionCommands, minCount: 0));
+            => Kit.Surface(mode, Controls.SelectionBar(0, _selectionCommands, minCount: 0));
 
         /// <summary>The table's host for the shared lane (<see cref="Track.SelectionLane"/>): the live selection picks the
         /// variant (an episode-capable source may select episode rows, track rows, or both), plus the table's exit and
@@ -1393,6 +941,26 @@ public readonly partial struct Track
             }
             var args = new SelectionLaneArgs(kind, count, _laneTracks, _laneEpisodes, _laneHost, _exitSelection, _selectAllTracks, wasVisible);
             return Track.SelectionLane(fit, in args);
+        }
+
+        /// <summary>The kit of a host mounted where no registry provides <c>StyleKeys.TrackTable</c>: every command draws an empty box.</summary>
+        sealed class NoChromeKit : ITrackCommandKit
+        {
+            public static readonly NoChromeKit Instance = new();
+
+            public Element Surface(string mode, Element content) => content;
+            public Element Command(string key, Element command, Action<float> onWidth) => new BoxEl { Key = key };
+            public Element Bar(Element[] commands, Element search) => new BoxEl();
+            public Element PlayNext(string label, Action onPlay, IReadOnlyList<MenuFlyoutItem> items) => new BoxEl();
+            public Element Labeled(string glyph, string label, bool active, Action onClick, Action<NodeHandle>? onRealized, Element? trailing) => new BoxEl();
+            public Element IconButton(string glyph, bool active, Action onClick, Action<NodeHandle>? onRealized) => new BoxEl();
+            public Element Separator() => new BoxEl();
+            public Element Chevron() => new BoxEl();
+            public Element Trail(Element[] parts) => new BoxEl();
+            public Element SortCaret(IReadSignal<SortSpec> sort) => new BoxEl();
+            public Element FilterCommand(int count, bool labelled, string label, Action onClick, Action<NodeHandle> onRealized) => new BoxEl();
+            public Element FilterFunnel(int count, Action onClick, Action<NodeHandle> onRealized) => new BoxEl();
+            public Element MoreSlot(Element more, int filterCount) => more;
         }
 
         void SelectAllTracks()

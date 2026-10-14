@@ -487,6 +487,32 @@ mounted facts in both row styles (the skin's pill and divider, the number and ti
 are `Wavee.ShellTests\TrackRowsMountedTests.cs`; the re-keying on the setting, the density and the hidden art stay
 `LiveOptionBehaviourTests`.
 
+### The track table's chrome (T8b)
+
+The other half of `StyleKeys.TrackTable` (no new key): `TrackListStyle.Chrome` (`TrackChromeTemplates`, `Theming\Contracts\TrackChromeStyle.cs`) is the
+column header, the command bar's pictures, the filter card and the placeholder row. Classic: `ClassicTrackChrome`
+(`Themes\Classic\Structure\Lists\`), numbers in `Rules\ClassicTrackChromeLayout.cs`.
+
+| Piece | Contract | Core half | Classic |
+|---|---|---|---|
+| Column header | `TrackHeaderTemplate(TrackHeaderArgs)`: the lanes, the shared tracks, the sort and its signal, the check lane, the hero arm, `OnSort(column, artistColumn)` | `TableHost.TableHeader` (reads shape, sort and checks, so it re-renders on exactly those), `SortBy` (`TableRules.NextSort`) | the keyed cells, the sort caret (a spring) and the title label's word swap as components over the sort signal, the hairline, the check-lane shift |
+| Command bar | `ITrackCommandKit`: the lane (`Surface`), a measured slot (`Command`), `Bar`, `PlayNext`, `Labeled`, `IconButton`, `Separator`, `Chevron`, `Trail`, `SortCaret`, `FilterCommand`, `FilterFunnel`, `MoreSlot` | which commands exist and fit (`CommandBarLayout`), the bar's hold while the filter card is open, every overlay and its focus, the "…" menu's items, the search field | the 32-DIP buttons, the split button's parts, the count badges, the bar's two motions |
+| Selection bar | the same `Surface` (mode `selection`) around `Controls.SelectionBar` | the live selection, the lane's commands, exit and select-all | the lane and the browse / selection swap motion |
+| Filter card | `TrackFilterCardTemplate(TrackFilterCardArgs)`: title, status (the filtered counts, already worded), `Reset`, `TrackFilterFacet` rows (signal, options, commit, `On`) and `TrackFilterToggle` rows | `TableFilterFlyout`: which facets the list can earn, the signals, what each commit writes, the sync from external filter writes | the 360-wide card, the 44-DIP facet rows with the accent-tinted combo, the switches, the scroll fallback |
+| Placeholder | `TrackPlaceholderTemplate(in ColumnSet, tracks, rowH, padX)` | `TableHost.PlaceholderRow`: the count, height and padding are the live row's, so landing data never jumps | a `GridEl` of empty boxes |
+
+- **Templates run inside the core component's render.** The header, the filter card and every button are drawn while the core
+  component renders, so the signals they read subscribe that component exactly as before; no key, motion, hit-test or tab order changes.
+- **Still core.** The search disclosure's field (`TableSearchHost`, a focus and caret machine; it calls the kit for its glyph button),
+  the row-size slider's panel (M3 moves it with the option write), `Controls.SelectionBar` and the shared selection lane (shared
+  controls), `Track.TableHeaderShim` and `Track.ShimmerRow` (host-free statics the library panes and the artist reader call with no
+  registry; T8c / T10b move them with their callers), and the chrome stack's own arrangement (`Chrome(...)`, whose sticky clip the
+  hero system measures).
+- **A host without a registry** draws the placeholder as `Track.ShimmerRow` and every chrome piece as an empty box (logged once with the rows).
+
+**Tests.** The chrome's registration is `Wavee.Tests\Theming\TrackListStyleTests.cs`; the mounted facts in both row styles (the keyed header,
+the browse-mode command lane, the "…" slot) are `Wavee.ShellTests\TrackChromeMountedTests.cs`.
+
 ### The fullscreen stage's frame (T7a1)
 
 | Key | Props | Core half | Classic template |
