@@ -217,7 +217,7 @@ internal static class ClassicTrackTable
                     Visible = Prop.Of(() => RestOf(r, false) == RowCellRules.Rest.Number),
                     Children =
                     [
-                        new TextEl(Prop.Of(() => Track.RowNumberLabel(r.P.Display + 1))) { Size = ClassicTrackRowLayout.CaptionSize, LineHeight = ClassicTrackRowLayout.CaptionLine, Color = Tok.TextTertiary },
+                        new TextEl(Prop.Of(() => ClassicRowCells.RowNumberLabel(r.P.Display + 1))) { Size = ClassicTrackRowLayout.CaptionSize, LineHeight = ClassicTrackRowLayout.CaptionLine, Color = Tok.TextTertiary },
                         new TextEl(Prop.Of(() => ChartMarkText(RowCellRules.ChartMarkOf(r.P.Chart))))
                         {
                             Size = ClassicTrackRowLayout.ChartMarkSize, LineHeight = ClassicTrackRowLayout.ChartMarkLine, Weight = 700,
@@ -271,7 +271,7 @@ internal static class ClassicTrackTable
                     Children = [Icon(Icons.HeartFill, 14f, onInk)],
                 },
                 Flow.Show(() => r.P.State.Saved && r.LikePop.Value,
-                    new BoxEl { Animate = Track.s_heartPopIn, Children = [Icon(Icons.HeartFill, 14f, onInk)] }),
+                    new BoxEl { Animate = ClassicRowCells.s_heartPopIn, Children = [Icon(Icons.HeartFill, 14f, onInk)] }),
                 new BoxEl
                 {
                     Visible = Prop.Of(() => !r.P.State.Saved),

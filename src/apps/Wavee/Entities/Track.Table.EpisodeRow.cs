@@ -53,7 +53,7 @@ public readonly partial struct Track
                 Menu = _host.EpisodeMenuFor,
                 Selection = _host.EpisodeSelection,
             };
-            return Episode.ReaderRow(in bound, ctx, narrow);
+            return Episode.ReaderRow(_host.EpisodeStyle, in bound, ctx, narrow);
         }
     }
 }

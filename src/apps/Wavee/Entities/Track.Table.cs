@@ -922,6 +922,10 @@ public readonly partial struct Track
             var registry = UseContext(global::FluentGpu.Theming.ViewRegistry.Context);
             _listStyle = registry is not null && registry.TryGetStyle(global::Wavee.Theming.Contracts.StyleKeys.TrackTable, out var listStyle)
                 ? listStyle : null;
+            // The eager row's grid (T8c): the counted shimmer draws the REAL row's shape from it.
+            _registry = registry;
+            _eagerStyle ??= global::Wavee.Theming.Contracts.ListStyleLookup.Of(registry, global::Wavee.Theming.Contracts.StyleKeys.EagerTrackRow);
+            _drawerStyle ??= global::Wavee.Theming.Contracts.ListStyleLookup.Of(registry, global::Wavee.Theming.Contracts.StyleKeys.TrackDrawer);
 
             _snapshot = UseComputed(ComputeSnapshot);
             _shape = UseComputed(ComputeShape);
@@ -1519,10 +1523,11 @@ public readonly partial struct Track
             var set = shape.Set;
             var state = default(RowState);
             var options = new GridOptions(Art: shape.Art, MoreEnabled: false);
+            var eager = _eagerStyle;
             for (int i = 0; i < rows.Length; i++)
             {
                 Element title = new TextEl("") { Size = 14f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
-                rows[i] = Track.Grid(default, i, in state, in set, shape.Tracks, shape.RowH, title, in options);
+                rows[i] = eager is null ? new BoxEl() : eager.Grid(default, i, in state, in set, shape.Tracks, shape.RowH, title, in options);
             }
             return new BoxEl { Direction = 1, Children = rows };
         }
@@ -2114,6 +2119,19 @@ public readonly partial struct Track
         global::Wavee.Theming.Contracts.TrackListStyle? _listStyle;
         bool _listStyleReported;
 
+        /// <summary>The eager row's style (T8c), for the counted shimmer that draws the real row's grid over an empty track.</summary>
+        global::Wavee.Theming.Contracts.EagerRowStyle? _eagerStyle;
+
+        /// <summary>The drawer's style (T8c): the frame the open row mounts under itself.</summary>
+        global::Wavee.Theming.Contracts.TrackDrawerStyle? _drawerStyle;
+
+        global::FluentGpu.Theming.ViewRegistry? _registry;
+        global::Wavee.Theming.Contracts.EpisodeRowStyle? _episodeStyle;
+
+        /// <summary>The episode row's style (T8c), resolved when the first episode-kind row renders (a table of tracks never asks).</summary>
+        internal global::Wavee.Theming.Contracts.EpisodeRowStyle? EpisodeStyle
+            => _episodeStyle ??= global::Wavee.Theming.Contracts.ListStyleLookup.Of(_registry, global::Wavee.Theming.Contracts.StyleKeys.EpisodeRow);
+
         /// <summary>The Modern or the Classic row templates (the row style is today's <see cref="ColumnSet.Classic"/>; the
         /// structure supplies both). Read by the slot components on their rare renders, never per bind. Null when the registry
         /// has no <c>StyleKeys.TrackTable</c>: the row then renders its bare container, and the first miss is logged.</summary>
@@ -2143,25 +2161,15 @@ public readonly partial struct Track
             string rowKey = MembershipDiff.RowKey(t, ItemIdAt(display), display);
             bool classic = shape.Set.Classic;
             Element body = P.Drawer?.Invoke(t, display) ?? new BoxEl();
-            return new BoxEl
+            // The structure's frame (T8c): the clip box with the drawer's open / close motion, the zebra continuation and the indent. The
+            // core keeps the reveal wiring (the node the keyboard and the scroll anchor read) and the decisions it draws from.
+            if (_drawerStyle is null) return new BoxEl();
+            return _drawerStyle.Frame(new global::Wavee.Theming.Contracts.TrackDrawerFrameArgs
             {
-                Key = "drawer:" + rowKey, Direction = 1, MinWidth = 0f, ClipToBounds = true, Animate = Design.Reveal.Drawer,
+                RowKey = rowKey, Body = body, Indent = RowMetrics.DrawerIndent(shape.Set, shape.Art), Classic = classic,
+                Odd = () => Math.Max(0, index.Value - start) % 2 != 0,
                 OnRealized = h => { _drawerNode = h; _drawerNodeKey = rowKey; },
-                Fill = classic ? (Prop<ColorF>)ColorF.Transparent
-                    : Prop.Of(() => Math.Max(0, index.Value - start) % 2 != 0 ? R.Layer.RowZebra : ColorF.Transparent),
-                Margin = classic ? default : new Edges4(RowMetrics.RowInset, 0f, RowMetrics.RowInset, 0f),
-                Corners = classic ? CornerRadius4.All(0f) : new CornerRadius4(0f, 0f, 6f, 6f),
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Key = "drawer-presence:" + rowKey, Direction = 1, MinWidth = 0f,
-                        // The rail lands on the ROW'S ARTWORK CENTRE: indent = ArtCentreIndent − the rail's own offset.
-                        Padding = new Edges4(RowMetrics.DrawerIndent(shape.Set, shape.Art), 0f, Spacing.L, Spacing.S),
-                        Children = [body with { Key = "drawer-body:" + rowKey }],
-                    },
-                ],
-            };
+            });
         }
 
         internal RowPresentation Present(Track t, int display)

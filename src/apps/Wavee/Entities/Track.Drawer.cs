@@ -36,6 +36,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -77,17 +78,6 @@ public readonly partial struct Track
     sealed record DrawerProps(Track Track, DrawerOptions Options);
 
     const int MaxVersionRows = 16;
-    static float StatGap => Spacing.XL;
-    static readonly EnterExit? s_fadeUp = new EnterExit(Opacity: 0f, Active: true);
-    static readonly LayoutTransition s_shove = new(TransitionChannels.Position,
-        TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut));
-
-    // Stable per-KIND fact keys in FactKind order (a changed value cross-swaps in place; a NEW fact fades up).
-    static readonly string[] s_factKeys =
-    [
-        "fact:plays", "fact:bpm", "fact:key", "fact:added", "fact:duration", "fact:album", "fact:released",
-        "fact:addedby", "fact:isrc", "fact:descriptors", "fact:explicit", "fact:video", "fact:local", "fact:unavailable",
-    ];
 
     sealed class DrawerHost : Component
     {
@@ -99,13 +89,24 @@ public readonly partial struct Track
         // False until the first body is built: what the drawer opens WITH rides its clip reveal as part of the drawer;
         // only a fact that lands while it is open fades up (a second motion on top of the reveal read as a fade-pop).
         bool _opened;
+        // The structure's drawer templates (T8c), resolved once per host from the ambient registry.
+        TrackDrawerStyle? _style;
+        // The core's format split button for one version (a component with the radio ladder and its overlay), handed to the body template.
+        readonly Func<Track, Track, byte, Element> _formatButton;
 
-        public DrawerHost() { _demand = Demand; _demandVersions = DemandVersions; }
+        public DrawerHost()
+        {
+            _demand = Demand;
+            _demandVersions = DemandVersions;
+            _formatButton = (version, parent, kind) =>
+                Embed.Comp(new FormatProps(_style!, version, parent, kind), static () => new FormatSplitHost()) with { Key = "fmt:" + version.Uri.Text };
+        }
 
         public override Element Render()
         {
             var p = UseProps<DrawerProps>();
             _latest = p;
+            var registry = UseContext(global::FluentGpu.Theming.ViewRegistry.Context);
             uint epoch = Entities.ScopeEpoch.Value;        // FIRST: a scope switch re-points every table below
             var scope = Entities.Current;
             var edges = scope.Edges;
@@ -120,6 +121,8 @@ public readonly partial struct Track
             UseEffect(_demand, DepKey.From(t.Slot, (int)epoch));
             UseEffect(_demandVersions);
             if (!t.IsValid) return new BoxEl();
+            var style = _style ??= ListStyleLookup.Of(registry, StyleKeys.TrackDrawer);
+            if (style is null) return new BoxEl();
 
             // Flat, in order: the GUARANTEED self row, the music video (reserved before the relation answers), then every
             // alternate audio — no group headings; the kind label leads each meta line instead (ch 01 W14).
@@ -138,25 +141,24 @@ public readonly partial struct Track
             }
             for (int i = edgeVideo ? 1 : 0; i < ordered; i++) entries.Add((DrawerRules.AudioKind, new Track(targets[order[i]])));
 
-            var body = new Element[2 + entries.Count];
-            body[0] = FactsStrip(FactsFor(t, p.Options), arriving: _opened);
+            var facts = FactsFor(t, p.Options);
+            bool arriving = _opened;
             _opened = true;
-            // A whole step of top air, not a hairline: the eyebrow heads the ROWS, not the flat strip above it.
-            body[1] = R.Type.Eyebrow(Loc.Get(Strings.Detail.Versions.VersionsAndFormats)) with
-            {
-                Key = "versions-head", Color = Tok.TextTertiary, Margin = new Edges4(0f, Spacing.M, 0f, 2f),
-            };
             float[]? peaks = PeaksFor(edges, t.Slot, epoch);
+            var drawn = new TrackDrawerEntry[entries.Count];
             for (int i = 0; i < entries.Count; i++)
             {
                 var (kind, version) = entries[i];
                 bool reserved = kind == DrawerRules.VideoKind && !version.IsValid;
                 string rowKey = kind == DrawerRules.VideoKind ? DrawerRules.VideoRowKey : version.Uri.Text;
                 bool isNow = !reserved && !playing.IsEmpty && playing == version.Id;
-                Element row = reserved ? PendingVersionRow() : VersionRow(version, t, kind, rowKey, isNow, i == 0 ? peaks : null);
-                body[2 + i] = ConnectedRow(rowKey, row, isLast: i == entries.Count - 1);
+                drawn[i] = new TrackDrawerEntry(kind, version, rowKey, isNow, reserved, i == 0 ? peaks : null);
             }
-            return new BoxEl { Direction = 1, MinWidth = 0f, Children = body };
+            return style.Body(new TrackDrawerBodyArgs
+            {
+                Track = t, Facts = facts, Arriving = arriving, Entries = drawn,
+                FormatButton = _formatButton, PlayVersion = PlayVersion,
+            });
         }
 
         void Demand()
@@ -218,278 +220,10 @@ public readonly partial struct Track
             MajorWord: Loc.Get(Strings.Detail.TrackFacts.Major), MinorWord: Loc.Get(Strings.Detail.TrackFacts.Minor)));
     }
 
-    // Three lines of flat typography and no chrome: the hero figures, the middot prose line, the genre/flag line. A track
-    // that states nothing yields a bare box (W26).
-    static Element FactsStrip(IReadOnlyList<Fact> facts, bool arriving)
-    {
-        if (facts.Count == 0) return new BoxEl { Key = "facts" };
-        var heroes = new List<Element>(4);
-        var prose = new List<Element>(10);
-        var genres = new List<Element>(10);
-        for (int i = 0; i < facts.Count; i++)
-        {
-            var f = facts[i];
-            if (f.Form == FactForm.Chips && f.Chips is { Count: > 0 } tags)
-                for (int k = 0; k < tags.Count; k++) Join(genres, GenreRun(tags[k]));
-            else if (f.Form == FactForm.Flag) Join(genres, FlagRun(f.Kind));
-            else if (f.Form == FactForm.Chips) continue;
-            else if (Facts.IsHeroFact(f.Kind)) heroes.Add(Stat(in f, arriving));
-            else Join(prose, ProseRun(in f));
-        }
-        var lines = new List<Element>(3);
-        if (heroes.Count > 0)
-            lines.Add(new BoxEl
-            {
-                Key = "facts-hero", Direction = 0, Wrap = true, Gap = StatGap, MinWidth = 0f,
-                Stagger = Design.Reduced || !arriving ? 0f : R.Motion.MastheadStaggerMs,   // reduced motion is a VALUE
-                Children = heroes.ToArray(),
-            });
-        if (prose.Count > 0) lines.Add(FactLine("facts-prose", prose, arriving));
-        if (genres.Count > 0) lines.Add(FactLine("facts-genres", genres, arriving));
-        return new BoxEl
-        {
-            Key = "facts", Direction = 1, Gap = Spacing.M, MinWidth = 0f, Padding = new Edges4(0f, Spacing.XS, 0f, Spacing.S),
-            Children = lines.ToArray(),
-        };
-    }
-
-    // A whole line fades and FLIPs as one — a middot sentence staggered word by word reads as a teleprompter.
-    static BoxEl FactLine(string key, List<Element> runs, bool arriving) => new()
-    {
-        Key = key, Enter = arriving ? s_fadeUp : null, Layout = s_shove, Direction = 0, Wrap = true, AlignItems = FlexAlign.Center,
-        Gap = Spacing.XS, MinWidth = 0f, Children = runs.ToArray(),
-    };
-
-    // One hero figure over its caption, keyed by KIND. A pending fact is its own dash at 0.6.
-    static Element Stat(in Fact f, bool arriving)
-    {
-        bool pending = f.Form == FactForm.Pending;
-        var split = pending ? new FactSplit(f.Value, null) : Facts.HeroSplit(in f);
-        return new BoxEl
-        {
-            Key = s_factKeys[(int)f.Kind], Enter = arriving ? s_fadeUp : null, Layout = s_shove, Direction = 1, Gap = 0f, Shrink = 0f,
-            MinWidth = 0f, Margin = new Edges4(0f, 0f, StatGap, 0f), Opacity = pending ? 0.6f : 1f,
-            Children =
-            [
-                R.Type.StatHero(split.Value, split.Unit),
-                Caption(Loc.Get(Facts.LabelKey(f.Kind))) with
-                {
-                    Weight = 600, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                },
-            ],
-        };
-    }
-
-    static Element ProseRun(in Fact f)
-    {
-        if (f.Form == FactForm.Link) return LinkValue(f.Value, f.LinkUri);
-        if (f.Kind == FactKind.AddedBy && f.Person.IsValid) return AddedByChip(f.Person, f.Value);
-        if (!DrawerRules.NeedsLabel(f.Kind)) return OneLine(Caption(f.Value).Secondary());
-        // Label and value shape as ONE paragraph, so a wrap can never strand "Released" on the line above its date.
-        return CaptionSpans(new TextSpan[]
-        {
-            new(Loc.Get(Facts.LabelKey(f.Kind)) + " ", Color: Tok.TextTertiary), new(f.Value, Color: Tok.TextSecondary),
-        });
-    }
-
-    static TextEl OneLine(TextEl t) => t with { Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MaxLines = 1, MinWidth = 0f, Shrink = 1f };
-
-    static SpanTextEl CaptionSpans(TextSpan[] spans)
-    {
-        var caption = Caption("");
-        return new SpanTextEl(spans)
-        {
-            Size = caption.Size, Weight = caption.ResolvedWeight, LineHeight = caption.LineHeight, LineStacking = caption.LineStacking,
-            LineBounds = caption.LineBounds, Color = Tok.TextSecondary,
-            Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MaxLines = 1, MinWidth = 0f, Shrink = 1f,
-        };
-    }
-
-    // The album as a quiet link (no accent, no underline — the hand cursor is the affordance).
-    static Element LinkValue(string name, EntityUri uri)
-    {
-        Action? open = uri.IsValid ? () => Shell.GoTo(Shell.For(uri, name)) : null;
-        return CaptionSpans(new TextSpan[] { new(name, OnClick: open) });
-    }
-
-    // The resolved adder: lead-in, the Added-by lane's avatar at the strip's 20, the name. No click — no user route.
-    static Element AddedByChip(User person, string name) => new BoxEl
-    {
-        Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XXS, Shrink = 0f, MinWidth = 0f,
-        Children =
-        [
-            Caption(Loc.Get(Facts.LabelKey(FactKind.AddedBy)) + " ").Tertiary() with { Wrap = TextWrap.NoWrap, MaxLines = 1, Shrink = 0f },
-            PersonPicture.Create("", 20f, displayName: name, imageSourcePath: Controls.ArtUrl(person.ImageId)),
-            OneLine(Caption(name).Secondary()),
-        ],
-    };
-
-    static Element GenreRun(string label) => OneLine(Caption(label).Tertiary());
-
-    // A flag with its mark leading as an inline pair; Explicit has no glyph (the row carries the E badge).
-    static Element FlagRun(FactKind kind)
-    {
-        string label = Loc.Get(Facts.LabelKey(kind));
-        string? glyph = kind switch
-        {
-            FactKind.Video => Icons.Movie, FactKind.LocalFile => Icons.Folder, FactKind.Unavailable => Icons.Info, _ => null,
-        };
-        if (glyph is null) return GenreRun(label);
-        return new BoxEl
-        {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XXS, Shrink = 0f, MinWidth = 0f,
-            Children = [Icon(glyph, 11f, Tok.TextTertiary), GenreRun(label)],
-        };
-    }
-
-    // Separators are CHILDREN, so the wrap row measures them and a line packs honestly.
-    static void Join(List<Element> line, Element run)
-    {
-        if (line.Count > 0) line.Add(Caption("·").Tertiary() with { Wrap = TextWrap.NoWrap, MaxLines = 1, Shrink = 0f });
-        line.Add(run);
-    }
-
     // ══ 4. VERSIONS AND FORMATS (ch 01 W14/W15, ch 05 W14, ch 04 item 68) ════════════════════════════════════════════
 
-    // One entry hung off the connector rail. The last entry's rail stops at its own stub (an elbow).
-    // StrokeDividerDefault, NOT StrokeCardDefault: the card stroke is black in both themes and the spine vanished on dark.
-    static Element ConnectedRow(string rowKey, Element body, bool isLast) => new BoxEl
-    {
-        Key = "cv:" + rowKey, Direction = 0, AlignItems = FlexAlign.Stretch, MinWidth = 0f,
-        Children =
-        [
-            new BoxEl
-            {
-                Width = DrawerRules.GutterW, Shrink = 0f, ZStack = true, HitTestPassThrough = true,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Width = 1f, Shrink = 0f, AlignSelf = FlexAlign.Start, Height = isLast ? DrawerRules.RowH / 2f : float.NaN,
-                        Margin = new Edges4(DrawerRules.RailX, 0f, 0f, 0f), Fill = Prop.Of(static () => Tok.StrokeDividerDefault),
-                    },
-                    new BoxEl
-                    {
-                        Width = DrawerRules.StubW, Height = 1f, Shrink = 0f, AlignSelf = FlexAlign.Start,
-                        Margin = new Edges4(DrawerRules.RailX, DrawerRules.RowH / 2f, 0f, 0f),
-                        Fill = Prop.Of(static () => Tok.StrokeDividerDefault),
-                    },
-                ],
-            },
-            body,
-        ],
-    };
-
-    // W15: the reserved music-video row — the real row's geometry and key, placeholder blocks, deliberately inert (a row
-    // that cannot say which video it is must not offer to play one).
-    static Element PendingVersionRow() => new BoxEl
-    {
-        Key = "ver:" + DrawerRules.VideoRowKey, Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
-        Grow = 1f, Height = DrawerRules.RowH, Padding = new Edges4(Spacing.XS, 0f, Spacing.XS, 0f),
-        Corners = CornerRadius4.All(Radii.Control), HitTestPassThrough = true,
-        Children =
-        [
-            new BoxEl
-            {
-                Width = DrawerRules.VideoThumbW, Height = DrawerRules.VideoThumbH, Shrink = 0f,
-                Corners = CornerRadius4.All(Radii.Control), Fill = Tok.FillSubtleSecondary,
-            },
-            new BoxEl
-            {
-                Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = 6f, Children = [Controls.PendingBar(132f, 11f), Controls.PendingBar(84f, 9f)],
-            },
-        ],
-    };
-
-    static Element VersionRow(Track version, Track parent, byte kind, string rowKey, bool isNow, float[]? peaks)
-    {
-        var meta = new List<Element>(6) { Caption(KindLabel(kind)).Tertiary() };
-        if (version.Knows(TrackFields.Audio) && version.Tempo > 0)
-        {
-            // The swatch leads the tempo exactly as the row's own tempo lane does (Track.TempoCell) — one idiom, two places.
-            if (version.CamelotColor != 0)
-                meta.Add(new BoxEl
-                {
-                    Width = 6f, Height = 6f, Corners = CornerRadius4.All(1.5f), Opacity = 0.85f, Shrink = 0f, AlignSelf = FlexAlign.Center,
-                    Fill = R.Ink.DataDot(version.CamelotColor),
-                });
-            meta.Add(Caption(Format.TempoLabel(version.Tempo)));
-            if (Facts.KeyLabel(Format.CamelotLabel(version.Camelot), Format.KeyLabel(version.Key)) is { Length: > 0 } key)
-            {
-                meta.Add(Caption("·").Tertiary());
-                meta.Add(Caption(key).Tertiary());
-            }
-        }
-        if (version.DurationMs > 0) meta.Add(Caption(Format.DurationCell(version.DurationMs)).Tertiary());
-
-        return new BoxEl
-        {
-            Key = "ver:" + rowKey, Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f, Grow = 1f,
-            Height = DrawerRules.RowH, Padding = new Edges4(Spacing.XS, 0f, Spacing.XS, 0f), Corners = CornerRadius4.All(Radii.Control),
-            Fill = kind == DrawerRules.SelfRow ? Tok.FillSubtleSecondary : ColorF.Transparent,   // rows, not cards: only self is plated
-            Children =
-            [
-                Thumb(version, parent, kind, isNow),
-                new BoxEl
-                {
-                    Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = 2f,
-                    Children =
-                    [
-                        // 13.5 / 540 is 0.2.9's own version-title cut (TrackVersionsPanel.cs:311-316), ported as pixels.
-                        R.Type.DenseTitle(version.Knows(TrackFields.Title) ? version.Title : "") with
-                        {
-                            Weight = 540, Color = isNow ? Tok.AccentTextPrimary : Tok.TextPrimary,
-                            MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                        },
-                        new BoxEl { Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Children = meta.ToArray() },
-                    ],
-                },
-                peaks is null ? new BoxEl() : Waveform.Create(new WaveformModel(peaks, DrawerRules.WaveBars), key: "waveform"),
-                Embed.Comp(new FormatProps(version, parent, kind), static () => new FormatSplitHost()) with { Key = "fmt:" + version.Uri.Text },
-            ],
-        }.Interactive(Interaction.Subtle);
-    }
-
-    // 16:9 with a play badge for the video, the bare square otherwise — and the now-playing overlay on the version that IS
-    // the deck's item (ch 01 W14, item 73).
-    static Element Thumb(Track version, Track parent, byte kind, bool isNow)
-    {
-        bool video = kind == DrawerRules.VideoKind;
-        float w = video ? DrawerRules.VideoThumbW : DrawerRules.AudioThumb;
-        float h = video ? DrawerRules.VideoThumbH : DrawerRules.AudioThumb;
-        string? url = Controls.ArtUrl(video && !parent.VideoImageId.IsEmpty ? parent.VideoImageId : version.ImageId);
-        Element art = Controls.Artwork(url, w, h, Radii.Control);
-        if (!isNow && !video) return art;
-        Element layer = isNow
-            ? Controls.NowPlayingOverlay(version.Uri.Text, () => PlayVersion(version, parent, kind),
-                                         fab: Math.Clamp(MathF.Min(w, h) * 0.62f, 22f, 28f), centred: true).Skeletonized(false)
-            : new BoxEl
-            {
-                Width = w, Height = h, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HitTestPassThrough = true,
-                Fill = new ColorF(0f, 0f, 0f, 0.28f),
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Width = 22f, Height = 22f, Corners = CornerRadius4.All(11f), Shrink = 0f, AlignItems = FlexAlign.Center,
-                        Justify = FlexJustify.Center, Fill = new ColorF(1f, 1f, 1f, 0.92f),
-                        Children = [Icon(Icons.Play, 11f, ColorF.FromRgba(17, 17, 17))],
-                    },
-                ],
-            };
-        return new BoxEl
-        {
-            Width = w, Height = h, Shrink = 0f, ZStack = true, Corners = CornerRadius4.All(Radii.Control), ClipToBounds = true,
-            Children = [art, layer],
-        };
-    }
-
-    static string KindLabel(byte kind) => kind switch
-    {
-        DrawerRules.VideoKind => Loc.Get(Strings.Detail.Versions.MusicVideo),
-        DrawerRules.AudioKind => Loc.Get(Strings.Detail.Versions.AlternateAudio),
-        _ => Loc.Get(Strings.Detail.Versions.ThisTrack),
-    };
+    /// <summary>Open an entity's page by uri: the quiet album link of the facts strip (a template never names <c>Shell</c>).</summary>
+    internal static void OpenEntity(EntityUri uri, string name) => Shell.GoTo(Shell.For(uri, name));
 
     // Play the FORM the user clicked: a music video plays through the PARENT song (kind 99 keys the video on the song —
     // DetailTracks.cs:3329-3342); an alternate recording plays itself. The deck's own item toggles.
@@ -501,7 +235,7 @@ public readonly partial struct Track
 
     // ── the format split button: [30 × 28 play | 20 × 28 caret] keyed "fmt:" + uri ──
 
-    sealed record FormatProps(Track Version, Track Parent, byte Kind);
+    sealed record FormatProps(TrackDrawerStyle Style, Track Version, Track Parent, byte Kind);
 
     sealed class FormatSplitHost : Component
     {
@@ -528,24 +262,8 @@ public readonly partial struct Track
             _overlay = UseContext(Overlay.Service);
             _anchor = UseRef<NodeHandle>(default);
             _handle = UseRef<OverlayHandle?>(null);
-            return new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Stretch, Shrink = 0f, OnRealized = _capture,
-                Children =
-                [
-                    Half(Icons.Play, 11f, Tok.TextPrimary, 30f, new CornerRadius4(Radii.Control, 0f, 0f, Radii.Control), _play),
-                    Half(Icons.ChevronDown, 9f, Tok.TextSecondary, 20f, new CornerRadius4(0f, Radii.Control, Radii.Control, 0f), _open),
-                ],
-            };
+            return _latest.Style.FormatSplit(new TrackDrawerFormatArgs { Play = _play, Open = _open, OnRealized = _capture });
         }
-
-        static BoxEl Half(string glyph, float glyphSize, ColorF ink, float width, CornerRadius4 corners, Action onClick) => new()
-        {
-            Width = width, Height = 28f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = corners,
-            Fill = Tok.FillControlDefault, HoverFill = Tok.AccentDefault, BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault,
-            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, BlocksDragArm = true, OnClick = onClick,
-            Children = [Icon(glyph, glyphSize, ink)],
-        };
 
         // The radio ladder the account was actually offered (best first) + "Use my default quality". ZERO rungs ⇒ the caret
         // does nothing at all — an empty menu is a dead end (W14). Built at click, never per frame.

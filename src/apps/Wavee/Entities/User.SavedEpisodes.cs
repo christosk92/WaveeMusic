@@ -38,6 +38,9 @@ public readonly partial struct User
         public override Element Render()
         {
             uint epoch = Entities.ScopeEpoch.Value;
+            // The structure's episode row (T8c): the cold skeleton's rows are its seed.
+            var episodeStyle = global::Wavee.Theming.Contracts.ListStyleLookup.Of(
+                UseContext(global::FluentGpu.Theming.ViewRegistry.Context), global::Wavee.Theming.Contracts.StyleKeys.EpisodeRow);
             var read = UseResource(ct => Platform.Args.Fake
                 ? Task.FromResult(new Spotify.Podcasts.Mutation(true, 200))
                 : Spotify.Podcasts.ReadSavedAsync(ct), new Spotify.Podcasts.Mutation(false, 0), DepKey.From((int)epoch));
@@ -64,7 +67,7 @@ public readonly partial struct User
                 Content: () => state == Spotify.Podcasts.SavedReadState.Ready && slot > Table.None
                     ? TableOf(slot)
                     : PodcastReaderUI.Quiet(Loc.Get(Strings.Podcast.Reader.SavedEmpty)),
-                ShimmerSource: () => new BoxEl { Direction = 1, Children = SeedRows() },
+                ShimmerSource: () => new BoxEl { Direction = 1, Children = SeedRows(episodeStyle) },
                 OnFailed: () => PodcastReaderUI.Failed(read.Refresh),
                 Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null);
         }
@@ -78,10 +81,10 @@ public readonly partial struct User
             ScrollKey = "saved-episodes:" + slot,
         });
 
-        static Element[] SeedRows()
+        static Element[] SeedRows(global::Wavee.Theming.Contracts.EpisodeRowStyle? style)
         {
             var rows = new Element[6];
-            for (int i = 0; i < rows.Length; i++) rows[i] = Episode.SeedReaderRow(false);
+            for (int i = 0; i < rows.Length; i++) rows[i] = Episode.SeedReaderRow(style, false);
             return rows;
         }
     }

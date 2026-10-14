@@ -711,6 +711,9 @@ public readonly partial struct Show
         /// <summary>The list rows' context (it carries <see cref="EpisodeSelection"/>) and the HEAD's — the visit head's
         /// "new since" rows render over a fixed scope that owns no selection state, so they never wear a check lane.</summary>
         internal Episode.RowContext? RowCtx, HeadRowCtx;
+        /// <summary>The structure's episode row (T8c): resolved once per host from the ambient registry; the list rows, the visit head's rows and the
+        /// cold skeleton all draw from it.</summary>
+        internal global::Wavee.Theming.Contracts.EpisodeRowStyle? EpisodeStyle;
         internal Controls.Words.Word[]? FilterWords, SortWords;
         /// <summary>The show's tone as a live read (a memo, so a bind re-fires only when the colour moves).</summary>
         internal readonly Func<ColorF> Tone;
@@ -796,7 +799,7 @@ public readonly partial struct Show
             // Slot 0 — the persistent prefix — is the RAW sticky rail; every other slot a component (file header).
             _template = scope => scope.Row.Index.Peek() == 0 ? (_rail ??= RailElement()) : Embed.Comp(() => new ReaderSlot(this, scope));
             _content = () => ItemsView.CreateBound(_items!, _template, _layout, OptionsFor(_latest?.RouteKey ?? ""));
-            _shimmer = () => SeedList(Narrow?.Peek() ?? false);
+            _shimmer = () => SeedList(EpisodeStyle, Narrow?.Peek() ?? false);
             _retry = () =>
             {
                 if (_m?.Peek().Show is { IsValid: true } show) Entities.RefreshEdge(FetchEdge.ShowEpisodes, show.Slot);
@@ -949,6 +952,8 @@ public readonly partial struct Show
         {
             _ = _props.Value;
             var overlay = UseContext(Overlay.Service);
+            var registry = UseContext(global::FluentGpu.Theming.ViewRegistry.Context);
+            EpisodeStyle ??= global::Wavee.Theming.Contracts.ListStyleLookup.Of(registry, global::Wavee.Theming.Contracts.StyleKeys.EpisodeRow);
             _accent = UseContext(Design.AccentCtx.Slot);
             _scrollScope = UseContext(Shell.PageScrollScope);
             _width = UseMeasuredWidth(4f);
@@ -1098,7 +1103,7 @@ public readonly partial struct Show
                 ShowReaderShape.ItemKind.Head => Embed.Comp(() => new VisitHead(host)) with { Key = "rd:head" },
                 ShowReaderShape.ItemKind.Header => Embed.Comp(() => new EpisodesHeader(host)) with { Key = "rd:header" },
                 ShowReaderShape.ItemKind.Group => GroupLabel(new BoundItemScope<ReaderItem>(_row, _item)) with { Key = "rd:group" },
-                ShowReaderShape.ItemKind.Row => Episode.ReaderRow(new BoundItemScope<Episode.RowItem>(_row, row), host.RowCtx!, narrow) with { Key = "rd:row" },
+                ShowReaderShape.ItemKind.Row => Episode.ReaderRow(host.EpisodeStyle, new BoundItemScope<Episode.RowItem>(_row, row), host.RowCtx!, narrow) with { Key = "rd:row" },
                 ShowReaderShape.ItemKind.Foot => Embed.Comp(() => new ReaderFoot(host)) with { Key = "rd:foot" },
                 _ => new BoxEl(),
             };

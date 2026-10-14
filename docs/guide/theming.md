@@ -493,7 +493,7 @@ surface, the artist chart and the drawer.
   its equality gate, the like-edge latch, the drawer (`DrawerBox`, T8c), column sets and widths (`ColumnSet`, `TracksFor`, the relief
   ladder), row height and density, the selection model, the keyboard map, the menu and the pure decisions (`RowCellRules`, pinned by
   `TrackRowCellRulesTests`). The cell wrappers and navigation the eager row shares (`Track.RowCenterCell`, `MoreCell`,
-  `GoToArtistAt`, ...) are `internal` on `Track` until T8c moves that row.
+  `GoToArtistAt`, ...) were `internal` on `Track` until T8c moved that row: the cells are `ClassicRowCells` now (see "The list surfaces (T8c)"), and `MoreCell`, `ExpandCell` and the three lane wrappers stay on `Track` because Recents passes them in.
 - **Not yet the engine's typed channel.** EP6 (`ItemsView.CreateBound` over `BoundListProps`, a stamp-driven rebuild of every slot, the
   FGTH003 ban on components in a row template) wants the whole slot as a plain tree. The table's slot is two components today
   (the kind switch and the open drawer; the reveal gate, the presentation memo and the like latch), and folding them would add binds
@@ -530,12 +530,48 @@ column header, the command bar's pictures, the filter card and the placeholder r
 - **Still core.** The search disclosure's field (`TableSearchHost`, a focus and caret machine; it calls the kit for its glyph button),
   the row-size slider's panel (M3 moves it with the option write), `Controls.SelectionBar` and the shared selection lane (shared
   controls), `Track.TableHeaderShim` and `Track.ShimmerRow` (host-free statics the library panes and the artist reader call with no
-  registry; T8c / T10b move them with their callers), and the chrome stack's own arrangement (`Chrome(...)`, whose sticky clip the
+  registry; their callers are the T10c1 / T10b pages, not T8c surfaces, so they move with those), and the chrome stack's own arrangement (`Chrome(...)`, whose sticky clip the
   hero system measures).
 - **A host without a registry** draws the placeholder as `Track.ShimmerRow` and every chrome piece as an empty box (logged once with the rows).
 
 **Tests.** The chrome's registration is `Wavee.Tests\Theming\TrackListStyleTests.cs`; the mounted facts in both row styles (the keyed header,
 the browse-mode command lane, the "…" slot) are `Wavee.ShellTests\TrackChromeMountedTests.cs`.
+
+### The list surfaces (T8c)
+
+Five more list-shaped surfaces are styles, not views, for the same reason the table is: each has a core host that keeps hooks, state and
+decisions (a recycled slot, a shelf, a bound list) and calls the structure's templates while it renders, so subscriptions, keys, motion and
+effect timing are what they were. They share one lookup, `ListStyleLookup.Of(registry, key)` (the ambient `ViewRegistry`; a miss is logged
+once per key and the host draws nothing), and one rule: a template reads facts and verbs from its args and never names `Playback`,
+`Entities`, `Store`, `Shell` or `Prefs` (WVTH002).
+
+| Key (id) | Contract | Core half | Classic |
+|---|---|---|---|
+| `StyleKeys.EagerTrackRow` (`Track.EagerRow`) | `EagerRowStyle`: `Grid` (the lanes of the one-shot row), `Title` (the plain run with its full-text tooltip), `Skin(EagerRowSkin)` (the hover container) | `Track.EagerRow`'s host (the stamp memo that re-renders a row only when ITS track moved, the like edge, the hover signal, the drag payload, click, menu), `TableHost`'s counted shimmer and the discography drawer's rows (they draw the same grid over an empty track) | `ClassicEagerRow` (skin, title) and `ClassicRowCells` (`Grid` and every cell: the # state machine, heart, trailing film / "..." lane, metadata line, album link, Added-by, tempo, the Classic title line and explicit word-mark) |
+| `StyleKeys.EpisodeRow` (`Episode.Row`) | `EpisodeRowStyle`: `Content(item, ctx, narrow)`, `Seed(narrow)`, `Failure(episode, narrow)` | `Episode.ReaderRow` / `SeedReaderRow` (the reveal gate over `ReaderLoadState`: pending shows the seed, failed the failure row with `RetryRow`), the row's decisions (`PlayedOf`, `InProgressOf`, `LeftOf`, `IsNew`, `ShownTitle`, the completion rule `ReaderPct`), `RowContext` (tone, disc verb, open, menu, selection) | `ClassicEpisodeRow`: art, title line, blurb, meta line, the rule, the hover cluster and tone disc, the now-playing bar, the check lane |
+| `StyleKeys.Surface` (`Media.Surface`) | `SurfaceStyle`: `Shell`, `Selected`, `StackBody`, `RowBody`, `Labels`, `RowText` | `Controls.SurfaceHost` (the hot fold, what is mounted when, click / focus / tab-stop ownership, drag, drop, menu, title tooltip, trampolines), the seed face, the gutter, the drag barrier, `InnerOf`, `RowTitleStyle` (`SurfaceParts`: host-free, and the seed IS the live extent in bones) | `ClassicSurface`: the plate table (`SurfacePlate`), the shell, the selected skin, both bodies, the "..." overlay and lane, the labels |
+| `StyleKeys.ArtistChart` (`Artist.Chart`) | `ArtistChartStyle`: `Metrics`, `Header`, `Row(ArtistChartRowArgs)`, `Cell(ArtistChartCellArgs)`, `Skeleton`, `Failed`, `Pager` | `Artist.ChartHost` (readiness gate and failure latch, asks, items and row keys, selection model, drag payload, menu, play-from-here), the per-row memo, the tier decision (`ArtistPopularLayout.Decide`), the standard selection bar, the pager's controlled pips | `ClassicArtistChart`: the prototype row (rank cell, art, title, sub line, heart, duration), the credit line, the selection pill, the pager chevrons, the skeleton, the failed panel |
+| `StyleKeys.TrackDrawer` (`Track.Drawer`) | `TrackDrawerStyle`: `Frame(TrackDrawerFrameArgs)`, `Body(TrackDrawerBodyArgs)`, `FormatSplit(TrackDrawerFormatArgs)` | `TableHost.DrawerBox` (the keyed mount, the reveal wiring `OnRealized`, the zebra parity, the indent), `DrawerHost` (demand, relations, the facts, the version entries and their order, the reserved video row, the peaks, the "arriving" latch), `FormatSplitHost` (the radio ladder and the override), the View-credits sheet | `ClassicTrackDrawer`: the clip box with `Design.Reveal.Drawer` (the open and close motion), the facts strip, the connector rail and version rows, the split button's halves |
+
+- **Rank and plays at every width (chart).** The tier (`ArtistPopularLayout.Tier`: art edge, whether the duration shows, whether the sub line
+  stacks) is the core's decision per cell width, with hysteresis, and rides as a PROP, never a key; the template draws the # cell, the compact
+  count in the sub line (the exact count is its tooltip) and, in a stacking tier with a credit AND a count, the exact count on a third line.
+- **Skeletons match real heights.** The chart's skeleton is the SAME row template over a representative shape at the real column count; the
+  episode seed is the real row's geometry in figure-space bars; the surface's seed face is core and pinned to the live extent
+  (`SurfaceGeometry`), so a hydrating card never re-measures its list.
+- **Hooks stay in the host.** Each host resolves its style with one unconditional `UseContext(ViewRegistry.Context)` and calls the templates from
+  its own render; the templates are plain functions.
+- **What stayed core, and why.** `Track.ArtistLinks` / `BuildLinkSpans` / `LinkClick` (the surface's data adapter `Track.RowData` builds the
+  subtitle with no registry), `Track.MoreCell`, `ExpandCell` and the lane wrappers (Recents builds its actions cell with them), `Track.Spinner`,
+  `Track.ShimmerRow` / `TableHeaderShim` (the library panes' and the reader's host-free skeletons: T10c1 / T10b), the View-credits sheet (a
+  dialog: T11), and `Controls.Vacancy` and the other shared controls (several pages mount them with no registry). The eager row's title is
+  always the plain run (the marquee branch of the old `TitleCell` was unreachable for it; the table's now-playing marquee is
+  `ClassicTrackTable`'s).
+- **A host without a registry** logs `no style is registered for <id>` once and draws nothing (the surface's seed face still draws: it is core).
+
+**Tests.** Registration, ids and the lookup are `Wavee.Tests\Theming\ListSurfaceStylesTests.cs`; the mounted facts (the eager row's lanes and
+hover container, a live surface row and its seed at one height, the cold episode row at the row's geometry, and each host drawing nothing
+without a registry) are `Wavee.ShellTests\ListSurfacesMountedTests.cs`.
 
 ### The fullscreen stage's frame (T7a1)
 

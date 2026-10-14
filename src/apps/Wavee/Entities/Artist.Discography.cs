@@ -1611,7 +1611,11 @@ public readonly partial struct Artist
         public override Element Render()
         {
             var p = UsePropsOrDefault<DrawerRowProps>();
+            // The structure's eager-row grid (T8c): the drawer's rows are the SAME row `Track.EagerRow` draws.
+            var registry = UseContext(global::FluentGpu.Theming.ViewRegistry.Context);
             if (p is null) return new BoxEl();
+            var style = _style ??= global::Wavee.Theming.Contracts.ListStyleLookup.Of(registry, global::Wavee.Theming.Contracts.StyleKeys.EagerTrackRow);
+            if (style is null) return new BoxEl();
             _p = p;
             _ = Entities.Current.Tracks.Changed.Value;
             _ = Entities.Current.Edges.AlbumTracks.Changed.Value;
@@ -1624,9 +1628,11 @@ public readonly partial struct Artist
                     Color = st.IsNow ? Tok.AccentTextPrimary : Tok.TextPrimary,
                     MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 };
-            return Track.Grid(t, p.Index, in st, in s_drawerCols, s_drawerColumns, DrawerRowContentH, title,
+            return style.Grid(t, p.Index, in st, in s_drawerCols, s_drawerColumns, DrawerRowContentH, title,
                               new Track.GridOptions(OnPlay: _play, OnLike: _like, ActionsCell: Controls.MoreButton(null)));
         }
+
+        global::Wavee.Theming.Contracts.EagerRowStyle? _style;
     }
 
     // ══ 9. THE DISCOGRAPHY PAGE (UI, ch 08 W22; 0.2.9 DiscographyPage) ═══════════════════════════════════════════════
