@@ -922,6 +922,9 @@ public readonly partial struct Track
             var registry = UseContext(global::FluentGpu.Theming.ViewRegistry.Context);
             _listStyle = registry is not null && registry.TryGetStyle(global::Wavee.Theming.Contracts.StyleKeys.TrackTable, out var listStyle)
                 ? listStyle : null;
+            // The structure's hero loading band (T9a): a pure builder, because the skeleton deriver cannot run a view slot.
+            _heroStyle = registry is not null && registry.TryGetStyle(global::Wavee.Theming.Contracts.StyleKeys.DetailHero, out var heroStyle)
+                ? heroStyle : null;
 
             _snapshot = UseComputed(ComputeSnapshot);
             _shape = UseComputed(ComputeShape);
@@ -1537,7 +1540,7 @@ public readonly partial struct Track
                 Direction = 1,
                 Children =
                 [
-                    Detail.HeroSkeleton(spec, ColumnWidth(), RowMetrics.PadXFor(shape.Set.Tier)),
+                    _heroStyle?.Skeleton(spec, ColumnWidth(), RowMetrics.PadXFor(shape.Set.Tier)) ?? new BoxEl(),
                     Chrome(in shape, chips, lens),
                     RowsShimmer(in shape),
                 ],
@@ -2113,6 +2116,10 @@ public readonly partial struct Track
         /// switch remounts the root, so a mounted host never sees it change). Null when no registry provides one.</summary>
         global::Wavee.Theming.Contracts.TrackListStyle? _listStyle;
         bool _listStyleReported;
+
+        /// <summary>The structure's hero loading band (<c>StyleKeys.DetailHero</c>), resolved with <see cref="_listStyle"/>. Null when no registry
+        /// provides one: the vertical shimmer then reserves nothing for the hero band.</summary>
+        global::Wavee.Theming.Contracts.DetailHeroStyle? _heroStyle;
 
         /// <summary>The Modern or the Classic row templates (the row style is today's <see cref="ColumnSet.Classic"/>; the
         /// structure supplies both). Read by the slot components on their rare renders, never per bind. Null when the registry
