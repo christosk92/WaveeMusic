@@ -380,7 +380,8 @@ public sealed class LiveOptionBehaviourTests(ShellHost host)
                 Play("spotify:track:tr40", fromMs: 20_000);
                 if (!(Shell.Ui.RailOpen.Peek() && Shell.Ui.Mode.Peek() == Shell.RailMode.Lyrics))
                     Shell.Ui.Toggle(Shell.RailMode.Lyrics);   // the lyrics button's writer
-                Until(shell, () => MaxSigmaUnder(shell, "lyrics:rail") > 0f, "a rail lyrics line painted a blur at strength 100", 900);
+                // The fixture's lyrics load off the UI thread: a frame budget races that worker on a busy machine (slow runs failed here).
+                UntilBackground(shell, () => MaxSigmaUnder(shell, "lyrics:rail") > 0f, "a rail lyrics line painted a blur at strength 100");
 
                 Lyrics.Prefs.SetBlurStrength(0);
                 Until(shell, () => MaxSigmaUnder(shell, "lyrics:rail") == 0f, "every rail lyrics line dropped its blur at strength 0", 900);
