@@ -1,8 +1,9 @@
 // ── Shell/Stage.UI.cs ──────────────────────────────────────────────────────────────────────────────────────────────
-// StageCtx (the stage's signals), SurfaceCore (fullscreen, focus scope, idle, accent, the track-key signal), Backdrop, Hero
-// (the morphing cover), PaneHost (Lyrics · Up next · Artist under KeepAlive), the layer builders the structure's root places,
-// the TeachingTip, Open/Close. The frame's PICTURE (the layer stack, the chrome's placement, the top bar, the transport card, the
-// gallery, the options popover, the caption) is the structure's since T7a1: `Stage.Root` and its siblings (`ViewKeys.Stage*`).
+// StageCtx (the stage's signals), SurfaceCore (fullscreen, focus scope, idle, accent, the track-key signal), PaneHost (Lyrics · Up next ·
+// Artist under KeepAlive), the layer builders the structure's root places, the TeachingTip, Open/Close. The frame's PICTURE (the layer
+// stack, the chrome's placement, the top bar, the transport card, the gallery, the options popover, the caption) is the structure's since
+// T7a1: `Stage.Root` and its siblings; so are the layout layers since T7a2 (backdrop, hero photo, face, scrim, spectrum, card, identity,
+// artist name, the Artist pane: `ViewKeys.Stage*`; their props and facts are `Stage.Layers.cs` and `Stage.Artist.cs`).
 //
 // Role: UI
 // Owner: K
@@ -56,6 +57,7 @@ using static FluentGpu.Dsl.Ui;
 using Wavee.Theming.Contracts;
 
 using Ink = Wavee.Theming.Roles.StageInk;
+using ViewSlots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
@@ -178,7 +180,6 @@ public static partial class Stage
         Diagnostics.NoteExit(cause);
     }
 
-    static ColorF Shade(float a) => Ink.Veil with { A = a };
     const string DisplayFace = "Segoe UI Variable Display";
 
     /// <summary>A full-bleed, pass-through ZStack LAYER — every Flow.Show child and every layer component's ROOT is one. The
@@ -263,6 +264,14 @@ public static partial class Stage
                 TopBar = new StageTopBarProps { Stage = ctx },
                 Transport = TransportProps(ctx),
                 Gallery = new StageGalleryProps { Stage = ctx, Verbs = StageSettingsVerbs.Shared },
+                Backdrop = BackdropProps(ctx),
+                Hero = HeroProps(ctx),
+                Face = new StageLayerProps { Stage = ctx },
+                FaceScrim = FaceScrimProps(ctx),
+                Spectrum = new StageLayerProps { Stage = ctx },
+                NowPlayingCard = NowPlayingCardProps(ctx),
+                Identity = IdentityProps(ctx),
+                ArtistName = ArtistNameProps(ctx),
                 Layers = s_layers,
             };
         }
@@ -524,185 +533,15 @@ public static partial class Stage
         double Now() => _wake.NowMs;
     }
 
-    // ══ 1b. THE LAYERS (each a component on the context's SIGNALS — SurfaceCore's tree is static, V-U50) ═════════════
-
-    /// <summary>Backdrop: the baked cover (old layer kept under the new), the base Field (the palette's roles, cross-fading
-    /// with it), the scrim (deeper under Verse — Tone.ScrimFor).</summary>
-    sealed class Backdrop : Component
-    {
-        public override Element Render()
-        {
-            var ctx = UseContext(StageContext)!;
-            var L = ctx.Layout.Value;
-            var mode = ctx.Mode.Value;
-            var kind = ctx.Kind.Value;
-            var eff = ctx.Look.Value.Eff;
-            var track = ctx.RowValue();
-            string url = track.IsValid ? Controls.ArtUrl(track.ImageId) ?? "" : "";
-            return Layer with   // full height from Grow, not from whichever child happens to declare L.H
-            {
-                // ONE quarter-scale repaint boundary for the whole backdrop: the floor, the cover under an 80-DIP baked blur, the
-                // Field's radial blobs and the flat scrim are all soft or flat, so they raster together into one small surface
-                // and composite as ONE upsampled quad. Separately they were three window-sized layers composited every frame
-                // (the Field drifts under all of them), and the bars' acrylic re-blurred all three.
-                ClipToBounds = true, HitTestVisible = false, HitTestPassThrough = false, Fill = Ink.Floor,
-                RepaintBoundary = true, RasterScale = 0.25f,
-                // under an opaque header photo the quarter-scale blobs would raster for nothing: hide the whole backdrop (Artist layout, Visualizer mode, photo known)
-                Visible = Prop.Of(() => !(ctx.Mode.Value == Mode.Visualizer && ctx.Look.Value.Eff == VizLayout.Artist && ctx.HeroFact.Value == HeroState.Header)),
-                Children =
-                [
-                    Embed.Comp(new BackdropArt.Props(url), static () => new BackdropArt()),
-                    Visualizer.BackdropField(ctx.Slab, L.W, L.H, Prop.Bind(ctx.Slab.BaseFieldOp), boundary: false) with { Key = "stage:field" },
-                    new BoxEl
-                    {
-                        AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,
-                        Fill = Shade(LayoutRules.ScrimFor(mode, eff, kind)), BrushTransitionMs = Tone.CrossFadeMs,   // a static fill cross-fades; a bound one would snap
-                    },
-                ],
-            };
-        }
-    }
-
-    /// <summary>The morphing hero + its title column (one node each, Layout FLIP). The wrapper is PASS-THROUGH, not
-    /// hit-invisible: the MetaLink inside must stay clickable (V-U8).</summary>
-    sealed class Hero : Component
-    {
-        public override Element Render()
-        {
-            var ctx = UseContext(StageContext)!;
-            var overlay = UseContext(Overlay.Service);
-            var L = ctx.Layout.Value;
-            var mode = ctx.Mode.Value;
-            var set = ctx.Accent.Value;
-            var track = ctx.RowValue();
-            var k = ctx.Look.Value;                       // what is drawn: Card (the thumb) or a layout's cover + titles
-            string url = track.IsValid ? Controls.ArtUrl(track.ImageId) ?? "" : "";
-            float size = L.CoverSize(in k);
-            float corners = CoverCorners(in k);
-            int decode = size > 400f ? 1024 : 512;    // Spotify's largest cover is 640: the big covers decode at 1024, the rest at 512
-            var flip = new LayoutTransition(TransitionChannels.Bounds, TransitionDynamics.Spring(0.45f, 0.90f), SizeMode.ScaleCorrect);
-            var move = new LayoutTransition(TransitionChannels.Position, TransitionDynamics.Spring(0.45f, 0.90f));
-            var (ts, tl) = L.TitleFont(in k);
-            var meta = L.MetaFont(in k);
-            int titleLines = L.TitleMaxLines(in k);       // two under the hero when the block clears the transport, one in the card
-            bool center = L.TitlesCentered(in k);
-            float titleW = L.TitleW(in k);
-            int heroArtist = k.Eff == VizLayout.Artist && !k.HeroLyrics ? ctx.HeroArtist.Value : 0;
-            string uri = track.IsValid ? track.Uri.Text : "";
-            string title = track.IsValid ? track.Title : "";
-            string shown = Transport.UsesTitle(title, uri) ? title : Loc.Get(Strings.Player.NothingPlaying);
-            var titleKids = new List<Element>(3)
-            {
-                new TextEl(shown)
-                {
-                    Size = ts, LineHeight = tl, Weight = k.Eff is VizLayout.LargeArt or VizLayout.Centered ? (ushort)700 : (ushort)600, FontFamily = DisplayFace, Color = Ink.Ink,
-                    Wrap = titleLines > 1 ? TextWrap.Wrap : TextWrap.NoWrap, MaxLines = titleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                    MaxWidth = center ? titleW : float.NaN,
-                },
-                Embed.Comp(new MetaLink.Props(meta.Size, meta.Line, set.Text, center, heroArtist), static () => new MetaLink()),
-            };
-            if (L.ShowChipsFor(in k)) titleKids.Add(Embed.Comp(static () => new Chips()) with { Key = "stage:chips" });
-            // FULL HEIGHT (Layer: Grow + Basis 0). Content-sized, this ZStack was only as tall as the cover, so the titles'
-            // slot (H − TitleY) arranged to 0 and the MetaLink — the one Shrink = 1 child of that column — shrank to nothing.
-            return Layer with
-            {
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Key = "stage:cover", Width = size, Height = size, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
-                        Margin = new Edges4(L.CoverX(in k), L.CoverY(in k), 0f, 0f), Corners = CornerRadius4.All(corners), Shadow = Elevation.Dialog, ClipToBounds = true,
-                        Layout = flip, HitTestVisible = false,
-                        Children = [Controls.Artwork(url.Length > 0 ? url : null, size, size, corners, morphKey: Entry.MorphKey, decodePx: decode)],
-                    },
-                    // The placed column fills its slot down to the stage's foot (a Start-aligned auto-height ZStack child does), so it
-                    // is PASS-THROUGH; the identity block itself is the content-height inner column — title · meta · chips FLOW,
-                    // so a two-line title pushes the meta and chips down instead of overlapping them.
-                    new BoxEl
-                    {
-                        Key = "stage:titles", Direction = 1, Width = titleW, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
-                        Margin = new Edges4(L.TitleX(in k), L.TitleY(in k), 0f, 0f), Layout = move, HitTestPassThrough = true,
-                        Children =
-                        [
-                            new BoxEl { Direction = 1, Gap = L.TitleGapFor(in k), MinWidth = 0f, AlignItems = center ? FlexAlign.Center : FlexAlign.Stretch, Children = titleKids.ToArray() }
-                                .WithContextMenu(overlay,                                        // right-click the identity = the "…" menu, as the old stage had
-                                    () => { var m = NowPlayingMenu?.Invoke(); if (m is { } model && ContextMenu.HasAnyEnabled(model)) ctx.MenuOpen(true); return m; },
-                                    new ContextMenuOptions { OnClosed = _ => ctx.MenuOpen(false) }),
-                        ],
-                    },
-                ],
-            };
-        }
-    }
-
-    /// <summary>The cover's corner radius per look: the board's 14 (Large art), 18 (Centered), 8 / 6 (the Artist hero's identity row); Card keeps
-    /// the Mode's (the thumb's control radius, the hero's card radius).</summary>
-    static float CoverCorners(in Look k) => k.Eff switch
-    {
-        VizLayout.LargeArt => Radii.Card,
-        VizLayout.Centered => 18f,
-        VizLayout.Artist => k.HeroLyrics ? 6f : 8f,
-        _ => k.Mode == Mode.Visualizer ? Radii.Control : Radii.Card,
-    };
-
-    /// <summary>The format chip, "Synced lyrics", and (outside Visualizer mode) BPM from the Audio group. Its own component so
-    /// the format / device / owner signals re-render THIS row only (V-U50).</summary>
-    sealed class Chips : Component
-    {
-        public override Element Render()
-        {
-            var ctx = UseContext(StageContext)!;
-            var mode = ctx.Mode.Value;
-            var track = ctx.RowValue();
-            bool hasTimed = ctx.HasTimedLyrics.Value;
-            var kids = new List<Element>(4);
-            var fmt = Playback.StreamFormat.Value;
-            _ = Playback.Devices.Changed.Value;                   // the roster is part of the remote verdict
-            bool remote = Shell.DevicePicker.IsRemote(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, Playback.Devices.Rows);
-            if (Transport.ShowsQualityBadge(!fmt.IsEmpty, remote)) kids.Add(Chip(Icons.Equalizer, Entities.Strings.Resolve(fmt)));
-            if (hasTimed) kids.Add(Chip(Icons.Document, Loc.Get(Strings.Stage.SyncedLyrics)));
-            if (mode != Mode.Visualizer && track.IsValid && track.Knows(TrackFields.Audio) && track.Tempo > 0)
-                kids.Add(Chip(null, Strings.Stage.Bpm(((track.Tempo + 5) / 10).ToString(System.Globalization.CultureInfo.InvariantCulture))));   // a formatted key: the generated method already formats (V-D15)
-            return new BoxEl { Direction = 0, Gap = Spacing.S, Wrap = true, Margin = new Edges4(0f, Spacing.S, 0f, 0f), HitTestVisible = false, Children = kids.ToArray() };
-        }
-
-        static BoxEl Chip(string? glyph, string text) => new()
-        {
-            Height = 24f, Direction = 0, AlignItems = FlexAlign.Center, Gap = 6f, Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Shrink = 0f,
-            Corners = Radii.ControlAll, Fill = Ink.GlassRest, BorderWidth = 1f, BorderColor = Ink.Stroke,
-            Children = glyph is null
-                ? [new TextEl(text) { Size = 12f, LineHeight = 16f, Color = Ink.InkSecondary }]
-                : [new TextEl(glyph) { Size = 12f, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.InkSecondary }, new TextEl(text) { Size = 12f, LineHeight = 16f, Color = Ink.InkSecondary }],
-        };
-    }
-
-    /// <summary>The acrylic now-playing card behind the thumb (Visualizer mode): TOP-LEFT (AlignSelf Start · JustifySelf Start).</summary>
-    sealed class NowPlayingCard : Component
-    {
-        public override Element Render()
-        {
-            var ctx = UseContext(StageContext)!;
-            return new BoxEl
-            {
-                AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, ZStack = true, HitTestVisible = false,   // a ZStack, so the card's Align/Justify mean something
-                Children =
-                [
-                    Flow.Show(() => ctx.Mode.Value == Mode.Visualizer && ctx.Layout.Value.ShowChips && LayoutRules.ShowsNowPlayingCard(ctx.Look.Value.Eff), new BoxEl
-                    {
-                        Width = Layout.NowPlayingCardW, Height = Layout.NowPlayingCardH, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
-                        Margin = new Edges4(Layout.NowPlayingCardX, Layout.NowPlayingCardY, 0f, 0f), Corners = Radii.CardAll,
-                        Acrylic = Ink.Card, Shadow = Elevation.Card, HitTestVisible = false,
-                        Enter = new EnterExit(Dy: -8f, Opacity: 0f, Active: true, DelayMs: 150f), Exit = new EnterExit(Opacity: 0f, Active: true), Transition = MotionTok.StandardEnter,
-                    }),
-                ],
-            };
-        }
-    }
+    // ══ 1b. THE CORE LAYERS (each a component on the context's SIGNALS — SurfaceCore's tree is static, V-U50) ═════════
+    // The backdrop, hero photo, face, scrim, spectrum, card, identity and artist name are the structure's since T7a2 (`Shell\Stage.Layers.cs`
+    // builds their props); what stays here are the pane region (T7b / T7d own what it holds) and the zero-size machinery.
 
     /// <summary>The pane region: KeepAlive keeps the lyrics view's state across mode switches. TOP-LEFT at (PaneX, PaneTop).</summary>
     sealed class PaneHost : Component
     {
         static readonly LayoutTransition s_move = new(TransitionChannels.Position, TransitionDynamics.Spring(0.45f, 0.90f));
+        StageArtistPaneProps? _artist;   // the Artist pane's props: built once per pane host (the facts hold the bio length cache)
         public override Element Render()
         {
             var ctx = UseContext(StageContext)!;
@@ -723,7 +562,7 @@ public static partial class Stage
                     {
                         PaneKind.Lyrics => PaneFrame(Lyrics.StagePane(slab.Accent)),
                         PaneKind.Queue => PaneFrame(Embed.Comp(static () => new QueuePane())),
-                        PaneKind.Artist => PaneFrame(Embed.Comp(static () => new ArtistStage())),
+                        PaneKind.Artist => PaneFrame(ViewSlots.View(ViewKeys.StageArtistPane, _artist ??= ArtistPaneProps(ctx))),
                         _ => new BoxEl { HitTestVisible = false },
                     }),
                 ],
@@ -752,177 +591,6 @@ public static partial class Stage
             UseEffect(() => ctx.HasTimedLyrics.SetIfChanged(hasTimed), DepKey.From(hasTimed));
             UseEffect(() => { if (track.IsValid) Lyrics.Store.Ensure(track); }, DepKey.From(track.Slot));
             return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
-        }
-    }
-
-    // ══ 2. THE BACKDROP ART (the crisp-flash fix) ═══════════════════════════════════════════════════════════════════
-
-    /// <summary>The blurred cover is baked ONCE per track (BakedBlurSpec) and the PREVIOUS cover stays mounted under
-    /// the new one, so a track change fades blur-to-blur and never shows a crisp placeholder.</summary>
-    sealed class BackdropArt : Component
-    {
-        public sealed record Props(string Url);
-        string _shown = "", _previous = "";
-        public override Element Render()
-        {
-            var p = UseProps<Props>();
-            if (p.Url != _shown) { _previous = _shown; _shown = p.Url; }
-            var kids = new List<Element>(2);
-            if (_previous.Length > 0) kids.Add(Cover(_previous) with { Key = "bd:" + _previous });
-            if (_shown.Length > 0) kids.Add(Cover(_shown) with { Key = "bd:" + _shown });
-            return Layer with { HitTestVisible = false, HitTestPassThrough = false, Children = kids.ToArray() };   // full height (Grow), so the stretched art fills the stage
-        }
-        static ImageEl Cover(string url) => Ui.Image(url, ImageFit.Cover, aspect: float.NaN, decodePx: 512f, corners: 0f, placeholder: Ink.ArtStandIn(url),
-                                                      transition: ImageTransition.Fade(Tone.CrossFadeMs)) with
-        {
-            AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, BakedBlur = new BakedBlurSpec(80f, 0.5f),
-        };
-    }
-
-    // ══ 3. THE FACE HOST ════════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The chosen face, remounted per (kind, 8-DIP width bucket) on a KEYED CHILD (a Key on a component's root is inert in a
-    /// single-child slot — V-U11; the width is in the key so opening or closing the gallery re-centres the subject under the
-    /// same 0.55 s FluentDecelerate instead of jumping), inset on the right while the gallery is open. The face is told its
-    /// SAFE rect (Layout.FaceSafe: clear of the now-playing card, the caption when it shows, the transport). Reads the
-    /// context's signals only (O8); the live palette re-renders it once per landed fade, never per tick.</summary>
-    sealed class FaceHost : Component
-    {
-        public override Element Render()
-        {
-            var ctx = UseContext(StageContext)!;
-            var L = ctx.Layout.Value;
-            var look = ctx.Look.Value;
-            bool backdrop = LayoutRules.FaceIsBackdrop(look.Eff);       // Large art / Centered: the face runs behind the cover and lyrics
-            var kind = LayoutRules.BackdropKind(look.Eff, ctx.Kind.Value);   // atmosphere only there: a now-playing face falls back to Bloom
-            var pal = ctx.Palette.Value;
-            bool galleryOpen = ctx.GalleryShown.Value;                  // open AND room AND the Card layout: the inset follows what is on screen
-            float w = L.W - L.FaceRight(galleryOpen);
-            bool caption = ctx.CaptionOn.Value;                         // in Card + Visualizer mode exactly ModeRules.ShowsCaption(...)
-            var safe = backdrop ? new FaceSafeRect(0f, 0f, w, L.H) : L.FaceSafe(galleryOpen, caption);   // a backdrop subject centres on the whole stage
-            var track = ctx.RowValue();
-            string url = track.IsValid ? Controls.ArtUrl(track.ImageId) ?? "" : "";
-            // the stage face is a scope reader while its kind draws the slab's scope series (Scope, Flow)
-            Visualizer.UseScopeReader(Context, ctx.Slab, Visualizer.Catalog.UsesScope(kind));
-            return new BoxEl
-            {
-                Width = w, Height = L.H, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, HitTestVisible = false,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        // the width in the key is quantised to 8 DIP: the gallery's open/close still remounts (re-centres)
-                        // the face, a window drag no longer rebuilds it (and its sims) on every pixel
-                        Key = "viz:" + (int)kind + ":" + ((int)w >> 3), Width = w, Height = L.H,
-                        Animate = new LayoutTransition(TransitionChannels.Bounds, TransitionDynamics.Tween(550f, Easing.FluentDecelerate),
-                            Enter: new EnterExit(Sx: 0.97f, Sy: 0.97f, Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true)),
-                        Children = [Visualizer.Face(kind, ctx.Slab, in pal, new Visualizer.FaceSpec(w, L.H, Preview: false, CoverUrl: url.Length > 0 ? url : null,
-                            SafeLeft: safe.X, SafeTop: safe.Y, SafeRight: safe.Right, SafeBottom: safe.Bottom, Ambient: LayoutRules.FaceAmbient(look.Eff)))],
-                    },
-                ],
-            };
-        }
-    }
-
-    /// <summary>The scrim above the backdrop face (Large art, Centered): the stage veil at <see cref="LayoutRules.BackdropScrim"/>.
-    /// Reads the look and the face kind only — it re-renders on a layout or face change, never per tick.</summary>
-    sealed class FaceScrim : Component
-    {
-        public override Element Render()
-        {
-            var ctx = UseContext(StageContext)!;
-            var eff = ctx.Look.Value.Eff;
-            float a = ctx.Mode.Value == Mode.Visualizer ? LayoutRules.BackdropScrim(eff, ctx.Kind.Value) : 0f;
-            return Layer with { HitTestVisible = false, HitTestPassThrough = false, Fill = Shade(a), BrushTransitionMs = Tone.CrossFadeMs };
-        }
-    }
-
-    /// <summary>"Artist · Album" (the previous stage's MetaLink with re-pushed type + colour). Subscribed to ITS row through the
-    /// context's key (V-U34) and to Albums.Changed for the album title. Navigation CLOSES the stage first (V-U29).</summary>
-    sealed class MetaLink : Component
-    {
-        /// <summary><paramref name="Center"/> centres the line (a TextEl has no text-align); <paramref name="HeroArtist"/> = the artist SLOT the
-        /// Artist hero shows as its big name — the line then lists the OTHER billed artists ("with Cheat Codes · Sex"), 0 = every artist.</summary>
-        public sealed record Props(float Size, float Line, ColorF Accent, bool Center = false, int HeroArtist = 0);
-        readonly Action _go;
-        Action<string>? _begin;
-        public MetaLink() => _go = Go;
-        public override Element Render()
-        {
-            var ctx = UseContext(StageContext)!;
-            _begin = UseContext(SharedTransition.Begin);
-            var p = UseProps<Props>();
-            var hover = UseSignal(false);
-            _ = Entities.ScopeEpoch.Value;                    // FIRST: a scope switch re-points the table reads below
-            var track = ctx.RowValue();
-            _ = Entities.Current.Albums.Changed.Value;
-            _ = Entities.Current.Artists.Changed.Value;       // the names land after the credits
-            _ = Entities.Current.Edges.TrackArtists.Changed.Value;
-            string album = track.IsValid && track.Album.IsValid ? track.Album.Title : "";
-            string line;
-            if (p.HeroArtist > 0 && track.IsValid)
-            {
-                // the big name is the artist whose header shows: this line carries the OTHERS (never the same name twice)
-                string others = OtherArtistNames(track, p.HeroArtist);
-                string with = others.Length > 0 ? Strings.Stage.WithArtists(others) : "";
-                line = with.Length > 0 && album.Length > 0 ? with + " · " + album : with.Length > 0 ? with : album;
-            }
-            else
-            {
-                string artists = track.IsValid ? ArtistNames(track) : "";
-                line = artists.Length > 0 && album.Length > 0 ? artists + " · " + album : artists.Length > 0 ? artists : album;
-            }
-            if (line.Length == 0) return new BoxEl { Height = 0f, HitTestVisible = false };
-            bool enabled = Shell.LinkFor(track, Shell.LinkSlot.Artist).Kind != Shell.RouteKind.NotFound;
-            bool lit = enabled && hover.Value;
-            return new BoxEl
-            {
-                // Shrink 0: this box sits in the identity COLUMN, where Shrink is VERTICAL — Shrink 1 let a short slot squeeze the
-                // artist line to zero height under ClipToBounds. The width is the column's (cross-axis stretch); the TEXT shrinks.
-                MinWidth = 0f, Shrink = 0f, Direction = 0, ClipToBounds = true, Cursor = enabled ? CursorId.Hand : (CursorId?)null, OnClick = enabled ? _go : null,
-                Justify = p.Center ? FlexJustify.Center : FlexJustify.Start,
-                OnHoverMove = enabled ? _ => { if (!hover.Peek()) hover.Value = true; } : null, OnPointerExit = enabled ? () => { if (hover.Peek()) hover.Value = false; } : null,
-                Role = enabled ? AutomationRole.Hyperlink : AutomationRole.Text, Focusable = enabled, AllowFocusOnInteraction = false,
-                Children = [new TextEl(line) { Size = p.Size, LineHeight = p.Line, Color = lit ? p.Accent : Ink.InkSecondary, Underline = lit, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f }],
-            };
-        }
-
-        /// <summary>The billed artists but <paramref name="exceptSlot"/>, ", " joined (the Artist hero's "with …" line).</summary>
-        static string OtherArtistNames(Track track, int exceptSlot)
-        {
-            var slots = track.ArtistSlots;
-            string joined = "";
-            for (int i = 0; i < slots.Length; i++)
-            {
-                if (slots[i] == exceptSlot) continue;
-                string name = new Artist(slots[i]).Name;
-                if (name.Length == 0) continue;
-                joined = joined.Length == 0 ? name : joined + ", " + name;
-            }
-            return joined;
-        }
-
-        /// <summary>The billed artists, ", " joined, from the track's credits (Edges.TrackArtists — the player bar's source,
-        /// Track.UI.cs MetadataLine: never the flat line first); the flat <c>ArtistLineId</c> only when no credit has a name yet.</summary>
-        static string ArtistNames(Track track)
-        {
-            var slots = track.ArtistSlots;
-            string joined = "";
-            for (int i = 0; i < slots.Length; i++)
-            {
-                string name = new Artist(slots[i]).Name;
-                if (name.Length == 0) continue;
-                joined = joined.Length == 0 ? name : joined + ", " + name;
-            }
-            return joined.Length > 0 ? joined : Entities.Strings.Resolve(track.ArtistLineId);
-        }
-        void Go()
-        {
-            var r = Playback.Current.Peek();
-            if (r.Kind != EntityKind.Track) return;
-            var route = Shell.LinkFor(new Track(r.Slot), Shell.LinkSlot.Artist);
-            if (route.Kind == Shell.RouteKind.NotFound) return;
-            StageVerbs.NavigateClosingStage(_begin, route);          // leave the stage BEFORE navigating (V-U29): the shell body is collapsed under it
         }
     }
 

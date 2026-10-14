@@ -23,19 +23,11 @@ namespace Wavee;
 
 public static partial class Stage
 {
-    /// <summary>The layers the root places that other T-PRs own, as cached builders over their core components (T7a2: backdrop, hero,
-    /// face, spectrum, identity, pane; T7b: the lyrics pane inside PaneHost; T7d: the queue pane inside PaneHost). The caption host is
-    /// this PR's core half; the lyric facts, the artist-header lookups and the visualizer clock are zero-size machinery.</summary>
+    /// <summary>The layers the root places that are not the layout layers' (those are views since T7a2, `Shell\Stage.Layers.cs`), as cached
+    /// builders over their core components (T7b: the lyrics pane inside PaneHost; T7d: the queue pane inside PaneHost). The caption host is
+    /// T7a1's core half; the lyric facts, the artist-header lookups and the visualizer clock are zero-size machinery.</summary>
     static readonly StageLayers s_layers = new()
     {
-        Backdrop = static () => Embed.Comp(static () => new Backdrop()),
-        HeroLayer = static () => Embed.Comp(static () => new HeroLayer()),
-        Face = static () => Embed.Comp(static () => new FaceHost()),
-        FaceScrim = static () => Embed.Comp(static () => new FaceScrim()),
-        Spectrum = static () => Embed.Comp(static () => new SpectrumLayer()),
-        NowPlayingCard = static () => Embed.Comp(static () => new NowPlayingCard()),
-        Identity = static () => Embed.Comp(static () => new Hero()),
-        ArtistName = static () => Embed.Comp(static () => new ArtistNameLayer()),
         Pane = static () => Embed.Comp(static () => new PaneHost()),
         Caption = static () => Embed.Comp(static () => new CaptionHost()),
         LyricFacts = static () => Embed.Comp(static () => new LyricFacts()),

@@ -15,9 +15,10 @@
 //   transparent ANCHORS (default flex COLUMNS), so every Show's child is a full-bleed `Stage.Layer` and the placed box sits one level
 //   down; see `Stage.Layer` for why.
 //
-// The layers other T-PRs own (backdrop, hero, face, spectrum, identity, pane: T7a2, with the lyrics pane T7b and the queue pane T7d inside
-// the pane host) arrive as builders on `StageRootView.Layers`; the zero-size machinery (lyric facts, hero facts, the visualizer clock)
-// is placed at the position it has always had. Nothing here decides: every predicate is the core surface's.
+// The layout layers (T7a2: backdrop, hero photo, face, face scrim, spectrum, now-playing card, identity, artist name) are views of their own
+// (`ViewKeys.Stage*`, mounted here at the position the stack has always had, each under the same keys). The pane host (with the lyrics pane
+// T7b and the queue pane T7d inside it), the caption host and the zero-size machinery (lyric facts, hero facts, the visualizer clock) arrive
+// as builders on `StageRootView.Layers`. Nothing here decides: every predicate is the core surface's.
 
 using FluentGpu.Animation;
 using FluentGpu.Dsl;
@@ -55,13 +56,13 @@ internal static class ClassicStageRoot
             OnFocusChanged = v.OnFocusChanged,
             Children =
             [
-                layers.Backdrop() with { Key = "stage:backdrop" },
+                Slots.View(ViewKeys.StageBackdrop, v.Backdrop) with { Key = "stage:backdrop" },
                 // the Artist layout's photo + scrims (the backdrop is hidden under an opaque header, see Backdrop)
                 Flow.Show(v.ShowHeroLayer, Stage.Layer with
                 {
                     Key = "stage:hero", HitTestVisible = false, HitTestPassThrough = false,
                     Enter = fade, Exit = fade, Transition = MotionTok.StandardEnter,
-                    Children = [layers.HeroLayer()],
+                    Children = [Slots.View(ViewKeys.StageHero, v.Hero)],
                 }),
                 // the face: the Show's child carries its own Enter/Exit (the bare-ComponentEl rule, §1.8 — V-U31); FaceHost keys a CHILD per kind
                 Flow.Show(v.ShowFace, new BoxEl
@@ -69,7 +70,7 @@ internal static class ClassicStageRoot
                     Key = "stage:face", AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,
                     Enter = new EnterExit(Sx: ClassicStageGeometry.FaceEnterScale, Sy: ClassicStageGeometry.FaceEnterScale, Opacity: 0f, Active: true),
                     Exit = fade, Transition = MotionTok.StandardEnter,
-                    Children = [layers.Face()],
+                    Children = [Slots.View(ViewKeys.StageFace, v.Face)],
                 }),
                 // bottom smoke under the face: BOTTOM (AlignSelf) across the width (JustifySelf) — V-U9
                 new BoxEl
@@ -80,16 +81,16 @@ internal static class ClassicStageRoot
                 },
                 // the legibility scrim between a BACKDROP face (Large art, Centered) and the cover / lyrics: the stage veil, deeper over
                 // the cover-carrying faces (LayoutRules.BackdropScrim); a static fill, so a face change cross-fades it
-                layers.FaceScrim() with { Key = "stage:facescrim" },
+                Slots.View(ViewKeys.StageFaceScrim, v.FaceScrim) with { Key = "stage:facescrim" },
                 // the layouts' spectrum: a strip / ring in its own small RepaintBoundary (Card draws none — the face is the picture)
-                layers.Spectrum() with { Key = "stage:spectrum" },
-                layers.NowPlayingCard() with { Key = "stage:npc" },
-                layers.Identity() with { Key = "stage:identity" },
+                Slots.View(ViewKeys.StageSpectrum, v.Spectrum) with { Key = "stage:spectrum" },
+                Slots.View(ViewKeys.StageNowPlayingCard, v.NowPlayingCard) with { Key = "stage:npc" },
+                Slots.View(ViewKeys.StageIdentity, v.Identity) with { Key = "stage:identity" },
                 Flow.Show(v.ShowArtistName, Stage.Layer with
                 {
                     Key = "stage:artistname", HitTestVisible = false, HitTestPassThrough = false,
                     Enter = fade, Exit = fade, Transition = MotionTok.StandardEnter,
-                    Children = [layers.ArtistName()],
+                    Children = [Slots.View(ViewKeys.StageArtistName, v.ArtistName)],
                 }),
                 layers.Pane() with { Key = "stage:pane" },
                 // the lyric caption: a full-bleed LAYER (the Show's child carries the fade); the caption host places its block from the
