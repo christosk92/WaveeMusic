@@ -81,7 +81,7 @@ public sealed class PanelMountedTests(ShellHost host)
         Flyout = new DeckStyleFlyoutProps { Verbs = new FixtureStyleVerbs(), NowArtUrl = static () => null },
         SubscribeEntities = static () => { },
         DemandNowPlaying = static (_, _) => { },
-        HasNextUp = static () => false,
+        HasNextUp = static () => true,   // the video body (the structure's since T7c) places the "Next up" rows: their fixture is what says it mounted
         NextUp = static () => new BoxEl { Key = "test:next-up", Height = 20f },
         LyricsPeek = static () => new BoxEl { Key = "test:peek", Height = 20f },
         ResolveString = static _ => "",
@@ -117,7 +117,7 @@ public sealed class PanelMountedTests(ShellHost host)
         LyricsHeader = static () => new BoxEl { Key = "test:lyrics-header", Height = 40f },
         LyricsBody = static () => new BoxEl { Key = "test:lyrics", Grow = 1f },
         QueueBody = static () => new BoxEl { Key = "test:queue", Grow = 1f },
-        VideoBody = static () => new BoxEl { Key = "test:video", Grow = 1f },
+        SubscribeVideoBody = static () => { },
         NowPlaying = HeroProps(),
         Friends = FriendsFixture(friends ?? new Signal<Rail.Friends.FeedState>(Rail.Friends.FeedState.Offline), active),
     };
@@ -257,7 +257,7 @@ public sealed class PanelMountedTests(ShellHost host)
         {
             Assert.True(harness.Contains("test:queue"));
             Assert.False(harness.Contains("test:lyrics"));
-            Assert.False(harness.Contains("test:video"));
+            Assert.False(harness.Contains("test:next-up"));
             Assert.True(harness.Contains("test:docked"));                               // the card's own gate hides it: it mounts unconditionally
             Assert.Equal(1, Buttons(harness));                                          // the close button
 
@@ -271,7 +271,7 @@ public sealed class PanelMountedTests(ShellHost host)
 
             view.Value = View(PanelMode.Video);
             harness.RunFrames(3);
-            Assert.True(harness.Contains("test:video"));
+            Assert.True(harness.Contains("test:next-up"));
             Assert.False(harness.Contains("test:lyrics"));
             Assert.False(harness.Contains("test:lyrics-header"));
             Assert.Equal(3, Buttons(harness));                                          // mini player, full screen and close: all three stay

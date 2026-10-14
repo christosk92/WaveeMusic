@@ -1,6 +1,6 @@
 // ── Shell/Rail.UI.cs ───────────────────────────────────────────────────────────────────────────────────────────────
-// what the right rail still builds in the core: the lyrics header (until T7b), the video body (until T7c), the "Next up" rows
-// the now-playing body and the video body share, and the shared reads (the playing track, its cover, the hero wash)
+// what the right rail still builds in the core: the lyrics header (until T7b), the "Next up" rows the now-playing body and the video
+// body share, and the shared reads (the playing track, its cover, the hero wash)
 //
 // Role: UI
 // Owner: K
@@ -16,12 +16,15 @@
 // (`ClassicDeckFlyout.cs`, `Rules\DeckThumbnails.cs`). The core half (what each view reads, what each click asks for) is
 // `RailWiring` (`Shell/Rail.Wiring.cs`); the state machine stays `Shell.PanelHost` and the decisions stay `Rail.VideoCoupling`.
 //
+// T7c MOVED THE VIDEO BODY (the track meta, the "Up next" eyebrow, the "no video for this song" placeholder) to the structure
+// (`ClassicVideoPanelBody`, `Themes\Classic\Structure\Views\Video`); the docked card is the `Video.Docked` key.
+//
 // WHAT IS STILL HERE is what other lanes own and the panel receives as builders: `Rail.LyricsHeader()` (T7b: the lyrics lane owns
-// its header, with the AI sparkle and the inspector button, both of which call `Rail.HeaderButton`), `Rail.VideoBody()` (T7c) and
-// the track-row "Next up" list (T8a), which Classic's now-playing body places too. The queue body is the core host
+// its header, with the AI sparkle and the inspector button, both of which call `Rail.HeaderButton`) and the track-row "Next up" list
+// (T8a), which Classic's now-playing and video bodies place. The queue body is the core host
 // `Queue.RailPanelHost` (`Entities/Queue.UI.cs`), which installs itself through `Rail.QueueBody` and mounts the `Queue.Panel` view (T7d).
 //
-// Mounted from other stage-B files: `Video.DockedCap()` (K3), `Deck.View()` (K2), `Lyrics.NpvPeek()` and `Lyrics.View()` (K3).
+// Mounted from other stage-B files: `Deck.View()` (K2), `Lyrics.NpvPeek()` and `Lyrics.View()` (K3).
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;
@@ -51,9 +54,6 @@ public static partial class Rail
 
     /// <summary>The lyrics mode's header.</summary>
     internal static Element LyricsHeaderElement() => Embed.Comp(static () => new LyricsHeader());
-
-    /// <summary>The video mode's body (everything BELOW the pinned card).</summary>
-    internal static Element VideoBodyElement() => Embed.Comp(static () => new VideoBody());
 
     static BoxEl HeaderBox(Element[] kids) => new()
     {
@@ -209,63 +209,4 @@ public static partial class Rail
             Key = (itemId != 0 ? "vrp:i" + itemId : "vrp:e" + queueIndex) + (art ? ":art" : ":noart"),
         };
     }
-
-    // ── the Video body (RailMode.Video — everything BELOW the pinned card) ──────────────────────────────────────────
-
-    sealed class VideoBody : Component
-    {
-        public override Element Render()
-        {
-            var track = NowTrack();
-            _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table read below
-            _ = Entities.Current.Edges.Queue.Changed.Value;
-            _ = Entities.Current.Albums.Changed.Value;
-            var content = new List<Element>(8);
-            // B10: the card upstream collapses; the rail does NOT close. Never flash "no video" while Video is unknown.
-            if (track.IsValid && track.Knows(TrackFields.Video) && !track.HasVideo) content.Add(NoVideoPlaceholder(track));
-            if (track.IsValid)
-            {
-                content.Add(R.Type.NowPlayingTitle(track.Title) with { MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis });
-                string artists = Entities.Strings.Resolve(track.ArtistLineId), album = track.Album.IsValid ? track.Album.Title : "";
-                string meta = artists.Length == 0 ? album : album.Length == 0 ? artists : artists + " · " + album;
-                if (meta.Length > 0) content.Add(R.Type.TrackMeta(meta) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis });
-            }
-            content.Add(new BoxEl { Height = 1f, Shrink = 0f, Fill = Tok.StrokeCardDefault });
-            content.Add(R.Type.Eyebrow(Loc.Get(Strings.Player.VideoUpNext)) with { Color = Tok.TextTertiary });
-            content.Add(Shell.NextUpWindow.Any()
-                ? NextUpList()
-                : Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact, title: Loc.Get(Strings.Player.QueueEmpty), subtitle: ""));
-            return ScrollView(new BoxEl
-            {
-                Direction = 1, Gap = Spacing.S, Padding = new Edges4(Spacing.M, Spacing.S, Spacing.M, Spacing.M),
-                Children = content.ToArray(),
-            }) with { Grow = 1f, MinHeight = 0f, AutoEdgeFade = true };
-        }
-    }
-
-    /// <summary>The card's poster composition minus the spinner — the answer is already known. On-media INK, not
-    /// <c>TextOnAccentPrimary</c> (which is black in dark theme).</summary>
-    /// <para>The 16:9 sits on a PLAIN column box and the layers on a ZStack inside it (G-256): a ZStack's measure ignores
-    /// <c>AspectRatio</c> and reports its tallest layer — here the square cover — so the placeholder rendered square.</para>
-    static Element NoVideoPlaceholder(Track track) => new BoxEl
-    {
-        Shrink = 0f, AspectRatio = 16f / 9f, Direction = 1, ClipToBounds = true, Corners = Radii.CardAll, Fill = Tok.MediaLetterbox,
-        Children =
-        [
-            new BoxEl
-            {
-                // Basis 0: the layers' own measure never becomes the height; the ratio's height is handed out by Grow.
-                ZStack = true, Grow = 1f, Basis = 0f, MinHeight = 0f, ClipToBounds = true,
-                Children =
-                [
-                    new BoxEl { Grow = 1f, Opacity = 0.4f, ClipToBounds = true, Children = [Controls.ArtworkFill(Controls.ArtUrl(track.ImageId), 0f)] },
-                    new BoxEl
-                    {
-                        Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Padding = Edges4.All(Spacing.S),
-                        Children = [new TextEl(Loc.Get(Strings.Player.NoVideoForThisSong)) { Size = 12f, Weight = 600, Color = Tok.OnMediaPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
-                    },
-                ],
-            },
-        ],
-    };
 }

@@ -20,8 +20,10 @@
 //     content region = ZStack[ row(sidebar column · content card · rail gap · rail reservation) · sidebar seam ·
 //                              rail overlay · rail seam · narrow drawer ]
 //
-// The surfaces that are not yet a key of their own (video and overlays) arrive as element builders on the props
-// (`ShellFrameProps`); T7c and T11 give each its own key and replace the builder with a `ctx.View` call here. The title bar (T4b) is
+// The surfaces that are not yet a key of their own (the overlays) arrive as element builders on the props (`ShellFrameProps`); T11 gives
+// each its own key and replaces the builder with a `ctx.View` call here. The two video layers are builders for good: they are the core
+// hosts of the stay-mounted presenter, the pop-out's owner, the host observer, the join fold and the fullscreen mode, and they mount the
+// `Video.*` keys (T7c) themselves; the frame only places them. The title bar (T4b) is
 // mounted as `Shell.TitleBar`, the sidebar pane (T5a) as `Shell.NavPane`, the player bar (T6a) as `Player.Bar`, the right panel
 // (T6b) as `Shell.Panel` (its seam stays a builder: the splitter is behaviour the host wires and the template places) and the stage
 // (T7a1) as `Stage.Root`; T4c did the same for

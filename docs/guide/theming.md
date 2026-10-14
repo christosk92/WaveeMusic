@@ -501,8 +501,9 @@ the one coat) and the floating one paints its own ring and elevation.
 re-mounts the deck exactly as it did and a mode switch re-mounts nothing the deck owns. Which face paints is the core's decision
 (`Rail.PlayerPrefs.ResolvedPresentation`, developer-gated as today). Every write goes through `IDeckStyleVerbs` with the surface that made it.
 
-**Builders other lanes still own.** The lyrics header (T7b, not yet a key; the body is `Lyrics.View` since T7b, mounted by the core builder `Lyrics.View()`), the video body (T7c), the docked video card, the
-lyrics peek and the "Next up" rows arrive as `Func<Element>` members on the props; their keys replace them. The queue body (`PanelProps.QueueBody`) is the core host's builder
+**Builders other lanes still own.** The lyrics header (T7b, not yet a key; the body is `Lyrics.View` since T7b, mounted by the core builder `Lyrics.View()`), the docked video card (a core host that
+mounts `Video.Docked` since T7c), the lyrics peek and the "Next up" rows arrive as `Func<Element>` members on the props; their keys replace them. The video body is the template's since T7c
+(`ClassicVideoPanelBody`; `PanelProps.SubscribeVideoBody` carries its subscriptions). The queue body (`PanelProps.QueueBody`) is the core host's builder
 (`Queue.RailPanelHost` inside its slot pin), which mounts the `Queue.Panel` key since T7d.
 
 **Tests.** The pinned slot, the mode vocabulary and the picker's entries are pure (`Wavee.Tests\PanelContractTests.cs`); the mounted facts are
@@ -785,6 +786,38 @@ diagnostic line and its capture stay in the rail host.
 **Tests.** `Wavee.Tests\QueueContractTests.cs` pins the ids, Classic's registration and the section tags; `QueueModelTests.cs` the projection (and `TryRow`), the
 paging and the verbs; `QueueRowRulesTests.cs` the core's decisions (the ✕, the row's own drag, no "..." button) and `ClassicQueueRulesTests.cs` the structure's
 (extents, dim, adapter, card click). `Wavee.ShellTests\QueueMountedTests.cs` mounts the real rail on the queue and the real stage's column.
+
+### The video surfaces (T7c)
+
+Six keys, all drawn by `Themes\Classic\Structure\Views\Video`: `Video.Docked` (`VideoDockedProps`: the docked card, or with `PageFrame` the watch page's in-page stage frame), `Video.Pip`
+(`VideoPipProps`: the in-window overlay's box and the chrome over the picture), `Video.PopOut` (`VideoPopOutProps`), `Video.Fullscreen` (`VideoFullscreenProps`), `Video.JoinPoster`
+(`VideoJoinPosterProps`: the poster and the join notice) and `Video.PlacementMenu` (`VideoPlacementMenuProps`: the player bar's chevron flyout). The panel's video body is
+`ClassicVideoPanelBody` (not a key: the panel mounts it through `PanelProps`). The numbers are `Rules\ClassicVideoRules.cs`.
+
+**The media pipeline and the rules stay core.** `Shell\Video.UI.cs` keeps the hosts: `DockedSurface` (the mount decision, the fit and the log lines, `ReportLive`, the hollow reservation's
+node and last rect, which the stay-mounted presenter FOLLOWS through the engine's `FollowRect`), `PipSurface` (the ONE presenter the docked card, the mini player and fullscreen are geometry
+modes of: the three bound geometry thunks, the remembered rect, the make-before-break mount, and the gestures as `IVideoPipGestures` over `PipGesture` and the panel policy's `PipBounds`),
+`PlayerStage` / `MainVideoArea` (the engine `MediaPlayerElement`, its keys and handles, the idle machine, the chrome feed), `JoinWatch` (the one fold of the host's switch events into
+`Video.JoinNow`), `PopOutContent` (the viewport, the caption regions at `Video.PopOutBand.HeightDip`, the move-loop hold, the band's fade) and `FullscreenSurface` (OS fullscreen, the focus scope,
+Escape / F at the root). `Video.cs` and `PipGesture.cs` keep the placement, hosting, join and PiP rules. Each host mounts its key with a props record.
+
+**The hole rule binds every theme.** The picture is a hole erased from the swapchain: no layout transition, opacity, offscreen effect or scale Enter/Exit on ANY ancestor of it. Chrome is a
+SIBLING (a hover- or idle-revealed strip). `VideoPipProps.Visible`, `Width`, `Height`, `Transform` and `FollowRect` are the engine's geometry for the hole: a template puts them on the box it
+returns and nothing between that box and `Area()`. The poster's notice is the one place an opacity channel is legal (a poster is mounted only while no player is bound). Hover chrome costs
+no signal: `Opacity 0 / HoverOpacity 1` under a container that earns hover with a no-op `OnPointerExit`; the on-media transport (`Player.OnMediaTransport`) and the pop-out's band ride the
+surface's idle machine instead (the pop-out's tree has no pointer handler above the stage). The pop-out's band height is `Video.PopOutBand.HeightDip` (the OS caption region and the band
+must agree on it).
+
+**The pop-out is its own window.** A detached window builds its own `AppHost`, so `PopOutRoot` wraps its content in `ThemeRoot.Wrap` (the view registry, the option cells, the facts): without
+it none of the keys that draw in that window (the pop-out's, the poster, the on-media strip) would resolve. A theme switch re-renders that root through the same epoch as the main window's.
+
+**What reads the six keys.** `Video.PlacementMenu(includeFullscreen)` (core) still builds the rows (the radio checks, the reasons, the always-on-top toggle): the bar's overflow cascade and
+the on-media "more" menu nest the same rows with the aspect, quality and speed cascades (`OnMedia.MoreMenu`, core: the fit and aspect picker is T6b's on-media strip, whose rows are decided from live reads); the
+chevron's flyout is the key's presenter.
+
+**Tests.** `Wavee.Tests\VideoContractTests.cs` pins the ids, Classic's registration and the band's height; `VideoRulesTests`, `VideoSurfaceViewRulesTests`, `VideoJoinPhaseTests`,
+`PlacementMenuTests` and `RailSurfaceTests` pin the rules that stayed. `Wavee.ShellTests\VideoMountedTests.cs` mounts each view alone (the poster's states, the cap's height and reservation, the
+watch frame, the overlay's buttons and zones per placement, the pop-out, the exit chrome, the flyout).
 
 ### Home (T10a1)
 
