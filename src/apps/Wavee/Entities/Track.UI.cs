@@ -199,7 +199,7 @@ public readonly partial struct Track
     internal const int RowArtDecodePx = 96;
 
     /// <summary>The cover a row paints: its OWN image, else its album's (ch 01 GAP, the same fallback
-    /// <c>Track.Table.Chrome.cs</c>'s pane thumbs and <c>Artist.Page.cs</c>'s video rail already make). A track row is
+    /// <c>Track.Table.Chrome.cs</c>'s pane thumbs and <c>ClassicArtistSections</c>'s video rail already make). A track row is
     /// an entry in an album, and a producer that staged the row without a cover — a playlist item, a search hit, a
     /// terminal "unavailable" verdict — leaves nothing but the flat placeholder tint behind otherwise. The album handle
     /// is checked for validity first: <c>Column&lt;T&gt;</c> is an unguarded slab, so <c>Album.ImageId</c> on

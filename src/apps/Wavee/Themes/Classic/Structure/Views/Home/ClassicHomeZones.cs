@@ -24,7 +24,7 @@
 //              EdgeFade = EdgeFadeSpec(Top, ClipFadeBand) { WhileStuck = true }
 //
 // The header pins under the (transparent) facet row and the body cuts ITSELF at the header's lower edge, feathered only while the clip is
-// engaged — the Browse masthead / Artist band idiom (`ClassicBrowseDirectory`; Artist.Page.cs:525-545). The zone box is the sticky SCOPE,
+// engaged — the Browse masthead / Artist band idiom (`ClassicBrowseDirectory`; `ClassicArtistPage`). The zone box is the sticky SCOPE,
 // so the pinned header releases where its own content ends and the next zone's header pushes it out (the engine's stock scope clamp). No
 // acrylic, no band fill, nowhere.
 //

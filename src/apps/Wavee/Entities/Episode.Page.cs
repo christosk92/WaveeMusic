@@ -191,7 +191,7 @@ public readonly partial struct Episode
     }
 
     /// <summary>About · Chapters · Transcript · Comments as ONE scroll-spy pivot (plan §5.1), the same shape
-    /// Artist.Page.cs's BandBar/ResolveSpy and Detail.UI.Hero.cs use: every section mounts STACKED in one scroll
+    /// `ClassicArtistPage`'s BandBar and Artist.Page.cs's ResolveSpy and Detail.UI.Hero.cs use: every section mounts STACKED in one scroll
     /// (no tab switch, no unmount), the pivot's underline follows the scroll position through the engine-free
     /// <see cref="Detail.ScrollSpy.ActiveSectionOf"/>, and a pivot click still reveals its section (bring-into-view).
     /// Mounted in a <see cref="Detail.Band"/>-geometry row at the top of the Episodes slot, so the header height and

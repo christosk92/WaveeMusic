@@ -76,7 +76,7 @@ content.StickyClip(stickyInset, engaged: _bodyClipEngaged);        // rows guill
 presentation.Parallax(0.0, cd, 0f, -cd).Fade(VerticalLayout.ExpandedFadeStart(cd), cd, 1f, 0f);
 compactBand.Reveal(VerticalLayout.CompactRevealStart(cd), cd - VerticalLayout.CompactRevealStart(cd), dy);
 
-// Entities/Artist.UI.cs — the stretchy artist photo
+// Themes/Classic/Structure/Views/Pages/ClassicArtistHero.cs — the stretchy artist photo
 photo.StretchFromTop().ParallaxY(ArtistHeroLayout.PhotoParallaxFraction, photoH);
 ```
 

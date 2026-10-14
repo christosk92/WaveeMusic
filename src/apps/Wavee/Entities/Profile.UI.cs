@@ -4,7 +4,7 @@
 // host that composes them (demand, load faces, band, spy, sections) is Profile.Page.cs; the pure decisions are
 // Profile.Rules.cs.
 //
-// Role: UI   Owner: U2   Template: Artist.UI.cs §4.1 (HeroBanner / HeroIdentity / HeroActions), Artist.Page.cs §2.6 (shelves)
+// Role: UI   Owner: U2   Template: Classic's artist hero and shelves (`ClassicArtistHero`, `ClassicArtistSections`)
 // Spec: docs/plans/wavee/profile-pages-implementation.md Appendix U §4 + "Reconciliation, round 2"
 //
 // TYPE (Design.cs "THE TYPE RAMP" — no new alias, no raw TextEl size): the name is ArtistDisplay / ArtistTitle /
@@ -50,7 +50,7 @@ public static partial class Profile
     /// (shapes only).</summary>
     internal sealed record HeroActs(Action Share, Func<ContextMenuModel?> Menu, Action<ProfileStat> OpenStat);
 
-    /// <summary>The round-avatar hero and its collapse into the 56-DIP band (Artist.HeroBanner's pinning, verbatim):
+    /// <summary>The round-avatar hero and its collapse into the 56-DIP band (`ClassicArtistHero`'s pinning, verbatim):
     /// horizontal tiers put avatar | copy bottom-aligned; stacked tiers put avatar over copy. Content sits on the hero's
     /// bottom edge inside a fixed tier height, so the sticky collapse is exact.</summary>
     internal static Element HeroBanner(in HeroText t, string uri, float width, in ProfileHeroMetrics m, bool compactCanHit,
@@ -92,7 +92,7 @@ public static partial class Profile
                 },
             ],
         };
-        // Pinned at the viewport top and COLLAPSING into the compact band (Artist.HeroBanner's contract): the Leading
+        // Pinned at the viewport top and COLLAPSING into the compact band (`ClassicArtistHero`'s contract): the Leading
         // collapse cuts the expanded presentation at that edge by itself — paint and input — so no ClipToBounds here.
         return new BoxEl
         {
@@ -101,7 +101,7 @@ public static partial class Profile
         }.Sticky(0f).Collapse(collapse, ArtistHeroLayout.CompactIdentityHeight, CollapseAnchor.Leading);
     }
 
-    /// <summary>The photo in a clipped circle (Artist.UI's pick-avatar precedent: <c>Controls.Artwork</c>, so the tile is
+    /// <summary>The photo in a clipped circle (`ClassicArtistPick`'s pick-avatar precedent: <c>Controls.Artwork</c>, so the tile is
     /// the WATCHED placeholder, not PersonPicture's frozen fill); no photo → PersonPicture initials on the person's own
     /// colour.</summary>
     static Element Avatar(in HeroText t, float edge)
@@ -215,7 +215,7 @@ public static partial class Profile
         _ => Strings.Person.Stat.Playlists(c.Value),
     };
 
-    /// <summary>[FollowToggle (others only)] [Share] [⋯] — the normal grammar (Artist.HeroActions' family). Never
+    /// <summary>[FollowToggle (others only)] [Share] [⋯] — the normal grammar (`ClassicArtistHero`'s action family). Never
     /// skeleton content: <c>Skeletonized(false)</c> leaves a same-size blank in the shimmer.</summary>
     static Element HeroActions(in HeroText t, string uri, HeroActs? acts)
     {
@@ -295,7 +295,7 @@ public static partial class Profile
         return new BoxEl { Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
     }
 
-    // The artist shelf's geometry (Artist.Page.ShelfOf = PagedShelf's defaults) at a ONE-line caption.
+    // The artist shelf's geometry (`ClassicArtistSections.ShelfOf` = PagedShelf's defaults) at a ONE-line caption.
     const float ShelfMinCard = 150f, ShelfMaxCard = 200f, ShelfGap = 12f, ShelfHeaderGap = 12f, ShelfChevron = 32f;
     /// <summary>The rank numeral's column beside a top-artist card.</summary>
     internal const float RankColumn = 36f;
