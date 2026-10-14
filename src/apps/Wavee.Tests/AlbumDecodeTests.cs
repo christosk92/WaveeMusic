@@ -167,7 +167,7 @@ public class AlbumDecodeTests
         var billed = new Artist(Assert.Single(main.ArtistSlots.ToArray()));
         Assert.Equal("spotify:artist:LEAD", billed.Uri.Text);
 
-        var more = new Album(Assert.Single(main.MoreBySlots.ToArray()));   // the self-reference is excluded
+        var more = new Album(Assert.Single(Entities.Current.Edges.AlbumMoreBy.Targets(main.Slot).ToArray()));   // the self-reference is excluded
         Assert.Equal("spotify:album:OTHER", more.Uri.Text);
         Assert.Equal("Earlier", more.Title);
 
@@ -358,7 +358,7 @@ public class AlbumDecodeTests
         var lone = AlbumOf("spotify:album:LONE");
         Assert.Equal(EdgeState.Complete, Entities.Current.Edges.AlbumMoreBy.State(lone.Slot));
         Assert.Equal(EdgeState.Complete, Entities.Current.Edges.AlbumVersions.State(lone.Slot));
-        Assert.Equal(0, lone.MoreBySlots.Length + lone.VersionSlots.Length);
+        Assert.Equal(0, Entities.Current.Edges.AlbumMoreBy.Targets(lone.Slot).Length + lone.VersionSlots.Length);
     }
 
     [Fact]

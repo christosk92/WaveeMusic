@@ -980,7 +980,6 @@ public readonly partial struct Recents
 
         public override Element Render()
         {
-            var overlay = UseContext(Overlay.Service);
             var flat = _scope.Item.Value;
             _ = _scope.Index.Value;
             _ = _page.Epoch.Value;
@@ -999,7 +998,7 @@ public readonly partial struct Recents
             if (RecentsLayout.UsesTrackArm(shape.Rows, r)) return SingleRow(shape, r, _actions);
             var id = shape.Rows.Rows[r].ItemId;
             bool expanded = !id.IsEmpty && _page.ExpandedRow.Value == id;
-            return Card(_page, shape, r, expanded, _actions, overlay);
+            return Card(_page, shape, r, expanded, _actions);
         }
     }
 

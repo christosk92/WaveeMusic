@@ -23,9 +23,6 @@ public static class ShellPolicy
     /// <summary>The active policies, read inside an effect or a render so it subscribes to a change.</summary>
     public static ThemePolicies Tracked => ThemeHost.Policies.Value;
 
-    /// <summary>The active capabilities, read without subscribing.</summary>
-    public static ShellCapabilities CapabilitiesNow => ThemeHost.Facts.Peek().Capabilities;
-
     internal static NavPanePolicy NavOr(NavPanePolicy? given) => given ?? Now.NavPane;
 
     internal static PanelPolicy PanelOr(PanelPolicy? given) => given ?? Now.Panel;

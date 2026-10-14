@@ -97,7 +97,7 @@ public class TrackFilterModelTests
             Added: Track.AddedRange.LastSevenDays);
 
         Assert.False(Matches(song, "", filter, now.ToUnixTimeSeconds()));
-        Assert.Equal(3, filter.ActiveCount);
+        Assert.Equal(3, filter.ActiveCountFor(searching: true));
     }
 
     [Theory]
@@ -259,7 +259,7 @@ public class TrackFilterModelTests
         if (artist) filter = filter.WithArtist(7, "New Order");
         if (nameOnly) filter = filter with { ArtistName = "New Order" };
 
-        Assert.Equal(expected, filter.ActiveCount);
+        Assert.Equal(expected, filter.ActiveCountFor(searching: true));
     }
 
     [Fact]
@@ -271,8 +271,8 @@ public class TrackFilterModelTests
 
         Assert.False(Matches(song, "", filter, Now));
         Assert.True(Matches(dated, "", filter, Now));
-        Assert.Equal(1, filter.ActiveCount);
-        Assert.Equal(0, filter.WithReleaseYear(0, 0).ActiveCount);
+        Assert.Equal(1, filter.ActiveCountFor(searching: true));
+        Assert.Equal(0, filter.WithReleaseYear(0, 0).ActiveCountFor(searching: true));
     }
 
     // ── FilterRow.Of over a real handle ─────────────────────────────────────────────────────────────────────────────

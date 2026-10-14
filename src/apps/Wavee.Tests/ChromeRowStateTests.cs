@@ -64,7 +64,7 @@ public class ChromeRowStateTests
         var c = Resolve(width);
         var s = Shell.RowStateOf(c);
         Assert.Equal(c.ShowName, s.ShowName);
-        Assert.Equal(c.ActionsInRow, s.ShowActions);
+        Assert.Equal(c.ShowActions, s.ShowActions);
         Assert.Equal(c.ShowForward, s.ShowForward);
         Assert.Equal(c.ShowBack, s.ShowBack);
         Assert.Equal(c.ShowNewTab, s.ShowNewTab);

@@ -999,7 +999,7 @@ public readonly partial struct Show
     }
 
     /// <summary>The standard (never accent) 32/r4 button. While a page is out the label reads "Loading…" and a tap is a
-    /// no-op. <c>// Workstream B</c>: was <c>Controls.Pill</c>'s capsule.</summary>
+    /// no-op.</summary>
     static Element LoadMorePill(bool paging, Action page)
         => Button.Create(Loc.Get(paging ? Strings.Podcast.LoadingMore : Strings.Podcast.LoadMore), paging ? s_noop : page,
                          ButtonAppearance.Standard);

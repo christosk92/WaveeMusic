@@ -19,9 +19,7 @@
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
-using FluentGpu.Hooks;
 using FluentGpu.Localization;
-using FluentGpu.Scene;
 using FluentGpu.Signals;
 using System.Globalization;
 using static FluentGpu.Dsl.Ui;
@@ -151,27 +149,12 @@ public static partial class Sidebar
 
         // ══ THE PANE MENU ══════════════════════════════════════════════════════════════════════════════════════════════
 
-        /// <summary>The global pane menu (the footer ⋯, the seam's and the background's right-click): Layout ▸ · Show section ▸
+        /// <summary>The global pane menu (the seam's and the background's right-click): Layout ▸ · Show section ▸
         /// · [Library: Hide pinned · Unpin all shortcuts] · Density ▸ · Edit sidebar… · ─ · Reset everything….</summary>
         internal ContextMenuModel? PaneMenu()
         {
             SidebarMenus.Overlay = MenuOverlay;
             return new ContextMenuModel(SidebarMenus.Map(NavMenuModel.Menu(NavMenuTarget.Pane)));
-        }
-
-        OverlayHandle? _paneMenu;
-
-        /// <summary>Toggle the pane menu from the footer's ⋯: a second press closes it.</summary>
-        internal void OpenPaneMenu(Func<NodeHandle> anchor)
-        {
-            if (Controls.IsNullOverlay(MenuOverlay)) return;
-            if (_paneMenu is { IsOpen: true } open) { open.Close(); return; }
-            var items = PaneMenu()?.Rows ?? [];
-            _paneMenu = MenuOverlay.Open(anchor, () => MenuFlyout.Create(items, () => _paneMenu?.Close()),
-                FlyoutPlacement.TopEdgeAlignedLeft,
-                new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
-                { ConstrainToRootBounds = true });
-            _paneMenu.ClosedAction = () => _paneMenu = null;
         }
 
         // ══ ROW MENUS ══════════════════════════════════════════════════════════════════════════════════════════════

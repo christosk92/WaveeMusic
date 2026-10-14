@@ -7,7 +7,7 @@
 // hand-built section list.
 //
 // The kept classes test types that survive in shape: the pure plan geometry (`SidebarRowGeometry`), the analytic row
-// extents (`SidebarRowExtents`), the row diff (`SidebarRowDiff`) and the pane invariant (`SidebarPaneInvariant`).
+// extents (`SidebarRowExtents`) and the pane invariant (`SidebarPaneInvariant`).
 
 using System;
 using System.Collections.Generic;
@@ -596,43 +596,6 @@ public sealed class SidebarPlanGeometryTests
 
     // ── 2. pure plan geometry ────────────────────────────────────────────────────────────────────────────────────────
 
-    static readonly float[] MixedExtents = [30f, 44f, 44f, 16f, 30f, 48f, 48f];   // header · 2 rows · divider · header · 2 rows
-
-    static Func<int, float> Extents(float[] e) => i => (uint)i < (uint)e.Length ? e[i] : 0f;
-
-    [Fact]
-    public void ContentYOf_IsThePrefixSumOfEveryEarlierRow()
-    {
-        var extentOf = Extents(MixedExtents);
-        int n = MixedExtents.Length;
-        Assert.Equal(0f, SidebarRowGeometry.ContentYOf(0, n, extentOf));
-        Assert.Equal(30f, SidebarRowGeometry.ContentYOf(1, n, extentOf));
-        Assert.Equal(74f, SidebarRowGeometry.ContentYOf(2, n, extentOf));
-        Assert.Equal(118f, SidebarRowGeometry.ContentYOf(3, n, extentOf));
-        Assert.Equal(134f, SidebarRowGeometry.ContentYOf(4, n, extentOf));
-        Assert.Equal(164f, SidebarRowGeometry.ContentYOf(5, n, extentOf));
-        Assert.Equal(212f, SidebarRowGeometry.ContentYOf(6, n, extentOf));
-    }
-
-    [Fact]
-    public void ContentYOf_ClampsBothEnds()
-    {
-        var extentOf = Extents(MixedExtents);
-        int n = MixedExtents.Length;
-        float total = 260f;   // the whole MixedExtents sum
-        Assert.Equal(0f, SidebarRowGeometry.ContentYOf(-5, n, extentOf));
-        Assert.Equal(total, SidebarRowGeometry.ContentYOf(n, n, extentOf));
-        Assert.Equal(total, SidebarRowGeometry.ContentYOf(n + 99, n, extentOf));
-    }
-
-    [Fact]
-    public void ContentYOf_SkipsDegenerateExtents()
-    {
-        // A zero-height row and a NaN (an unmeasured slot) must contribute nothing rather than poisoning every later offset.
-        float[] e = [44f, 0f, float.NaN, 44f];
-        Assert.Equal(88f, SidebarRowGeometry.ContentYOf(4, e.Length, Extents(e)));
-    }
-
     [Fact]
     public void IndexOfRoute_FindsTheFirstMatchAndIgnoresNonTargets()
     {
@@ -645,16 +608,6 @@ public sealed class SidebarPlanGeometryTests
         // Ordinal, never culture- or case-insensitive: route keys are identifiers.
         Assert.Equal(-1, SidebarRowGeometry.IndexOfRoute(routes.Length, i => routes[i], "Albums"));
     }
-
-    [Theory]
-    [InlineData(1, 5, 1)]     // moved down the plan
-    [InlineData(5, 1, -1)]    // moved up
-    [InlineData(3, 3, 0)]     // same row — nothing travelled
-    [InlineData(-1, 4, 0)]    // arriving from off-plan (deep link / collapsed section): direction is unknowable
-    [InlineData(4, -1, 0)]    // leaving to off-plan
-    [InlineData(-1, -1, 0)]
-    public void DirectionOf_IsSignedOnlyWhenBothRowsAreOnThePlan(int from, int to, int expected)
-        => Assert.Equal(expected, SidebarRowGeometry.DirectionOf(from, to));
 
     // ── grid strip fallback (issue #84) ──────────────────────────────────────────────────────────────────────────────
 
@@ -736,106 +689,6 @@ public sealed class SidebarRowExtentsTests
         Assert.Equal(40f, SidebarRowExtents.HeightOf(rows, 3, section));
         Assert.Equal(40f, SidebarRowExtents.HeightOf(rows, 4, section));
     }
-}
-#endregion
-
-#region ROW DIFF — SidebarRowDiffTests
-// The per-row change marks the pane uses to decide which slots re-realize. A row is changed when its record moved, OR when
-// the entry it addresses changed under an identical record (the regression this type exists for).
-public sealed class SidebarRowDiffTests
-{
-    static SidebarRow Row(string key, int entryIndex = -1, string section = "s",
-                          SidebarRowKind kind = SidebarRowKind.EntityRow)
-        => new(kind, section, 0, entryIndex, 0, key);
-
-    static SidebarLibraryEntry Entry(string id, string name = "n", string uri = "spotify:playlist:x")
-        => new(id, SidebarEntryKind.Playlist, uri, name, "", default, null, 0, 0, 0, 0, 0, 0, false,
-               SidebarPlaylistFlavor.None);
-
-    static readonly IReadOnlyList<SidebarLibraryEntry> NoEntries = Array.Empty<SidebarLibraryEntry>();
-
-    [Fact]
-    public void IdenticalPlans_ChangeNothing()
-    {
-        var rows = new[] { Row("a"), Row("b"), Row("c") };
-        var next = new[] { Row("a"), Row("b"), Row("c") };
-        Span<bool> changed = new bool[3];
-        SidebarRowDiff.Diff(rows, NoEntries, next, NoEntries, changed);
-        Assert.Equal(new[] { false, false, false }, changed.ToArray());
-    }
-
-    [Fact]
-    public void OnlyTheRowsWhoseRecordMoved_AreMarked()
-    {
-        var rows = new[] { Row("a"), Row("b"), Row("c") };
-        var next = new[] { Row("a"), Row("B!"), Row("c") };
-        Span<bool> changed = new bool[3];
-        SidebarRowDiff.Diff(rows, NoEntries, next, NoEntries, changed);
-        Assert.Equal(new[] { false, true, false }, changed.ToArray());
-    }
-
-    [Fact]
-    public void RowsBeyondTheOldPlan_AreAlwaysMarked()
-    {
-        var rows = new[] { Row("a") };
-        var next = new[] { Row("a"), Row("b") };
-        Span<bool> changed = new bool[2];
-        SidebarRowDiff.Diff(rows, NoEntries, next, NoEntries, changed);
-        Assert.Equal(new[] { false, true }, changed.ToArray());
-    }
-
-    [Fact]
-    public void AShrunkPlan_OnlyReportsTheRowsItStillHas()
-    {
-        var rows = new[] { Row("a"), Row("b"), Row("c") };
-        var next = new[] { Row("a") };
-        Span<bool> changed = new bool[3];
-        changed[1] = changed[2] = false;
-        SidebarRowDiff.Diff(rows, NoEntries, next, NoEntries, changed);
-        Assert.False(changed[0]);
-        // Indices past the new plan are left alone — the pane never bumps an epoch no slot can legally address.
-        Assert.False(changed[1]);
-        Assert.False(changed[2]);
-    }
-
-    // The regression this type exists for: same row records, different entity behind one of them.
-    [Fact]
-    public void AChangedEntry_MarksTheRowThatAddressesIt_EvenWithAnIdenticalRowRecord()
-    {
-        var rows = new[] { Row("a", entryIndex: 0), Row("b", entryIndex: 1) };
-        var oldEntries = new[] { Entry("p1", "Old name"), Entry("p2") };
-        var newEntries = new[] { Entry("p1", "New name"), Entry("p2") };
-        Span<bool> changed = new bool[2];
-        SidebarRowDiff.Diff(rows, oldEntries, rows, newEntries, changed);
-        Assert.Equal(new[] { true, false }, changed.ToArray());
-    }
-
-    [Fact]
-    public void AnEntryIndexThatBecomesOutOfRange_MarksTheRow()
-    {
-        var rows = new[] { Row("a", entryIndex: 1) };
-        var oldEntries = new[] { Entry("p1"), Entry("p2") };
-        var newEntries = new[] { Entry("p1") };
-        Span<bool> changed = new bool[1];
-        SidebarRowDiff.Diff(rows, oldEntries, rows, newEntries, changed);
-        Assert.True(changed[0]);
-    }
-
-    [Fact]
-    public void EntrylessRows_IgnoreTheEntryListEntirely()
-    {
-        // A header/divider/skeleton carries EntryIndex -1: nothing behind it can go stale, so a wholesale entry-list
-        // churn must not re-render it.
-        var rows = new[] { Row("h", entryIndex: -1, kind: SidebarRowKind.SectionHeader) };
-        Span<bool> changed = new bool[1];
-        SidebarRowDiff.Diff(rows, new[] { Entry("p1") }, rows, new[] { Entry("p9", "different") }, changed);
-        Assert.False(changed[0]);
-    }
-
-    [Fact]
-    public void RowChanged_IsFalseOutsideTheNewPlan()
-        => Assert.False(SidebarRowDiff.RowChanged(
-            new[] { Row("a") }, NoEntries, new[] { Row("a") }, NoEntries, index: 5));
 }
 #endregion
 

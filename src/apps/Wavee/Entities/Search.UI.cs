@@ -352,7 +352,7 @@ public readonly partial struct Search
 
     /// <summary>The trailing control: Follow for an artist / playlist / show, the heart for a track / album, none else.
     /// Keyed on the uri — the embed's props freeze by design (Controls.cs §4).</summary>
-    internal static Element? TrailingOf(EntityRef hit, string uri, string name, bool compact)
+    internal static Element? TrailingOf(EntityRef hit, string uri, string name)
         => SearchHitRules.TrailingOf(hit.Kind, hasUri: uri.Length > 0) switch
         {
             SearchHitRules.Trailing.Follow
@@ -392,7 +392,7 @@ public readonly partial struct Search
             Eyebrow = SearchHitRules.LyricsEyebrow(large, flags)
                 ? R.Type.Eyebrow(Loc.Get(Strings.Search.LyricsMatch)) with { Color = Tok.AccentTextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }
                 : null,
-            Trailing = TrailingOf(hit, uri, title, compact: true),
+            Trailing = TrailingOf(hit, uri, title),
             Menu = MenuOf(hit),
             Drag = DragOf(hit),
         };
@@ -435,7 +435,7 @@ public readonly partial struct Search
 
         var actions = new List<Element>(4);
         if (CanPlay(hit.Kind)) actions.Add(Controls.PlayButton(accent, () => PlayHit(h)) with { Shrink = 0f });
-        if (TrailingOf(hit, uri, title, compact: false) is { } trailing) actions.Add(trailing);
+        if (TrailingOf(hit, uri, title) is { } trailing) actions.Add(trailing);
         // The "…" is a hover/focus REVEAL on the card (the Surface host's own mechanism, which a hand-built card does not
         // get for free): the wrapper is NON-interactive, so the engine's hover cascade resolves to the card and the pointer
         // anywhere on it reveals the button (HoverOpacity); keyboard focus within the card reveals it through the folded

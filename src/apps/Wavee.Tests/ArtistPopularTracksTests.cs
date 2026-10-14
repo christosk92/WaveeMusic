@@ -5,7 +5,6 @@
 // keeps its order at the head, extension-only tracks append, duplicates collapse with the seed winning, cap 50. The
 // commit facts pin the reason the rule moved into the commit: the overview (seed) and the extended list (extension) can
 // share one batch or land in either order, and `CommitEdges` rides after `CommitArtists`.
-// `WithPlayCounts`' "returns the same instance" became "reports no change": a span has no identity to compare.
 
 using System.Text;
 using Wavee;
@@ -56,28 +55,6 @@ public class ArtistPopularTracksTests
         int n = ArtistPopularTracks.Merge([7], extension, into);
         Assert.Equal(ArtistPopularTracks.ExtendedCap, n);
         Assert.Equal(7, into[0]);
-    }
-
-    [Fact]
-    public void WithPlayCounts_fills_only_the_countless_rows_and_keeps_the_head()
-    {
-        uint[] chart = [500, 0, 0, 0];
-        uint[] incoming = [1, 300, 0, 0];                     // a count for the head is ignored; 0 is never applied
-        var into = new uint[4];
-        Assert.True(ArtistPopularTracks.WithPlayCounts(chart, incoming, into));
-        Assert.Equal(new uint[] { 500, 300, 0, 0 }, into);
-
-        Span<int> need = stackalloc int[4];
-        int n = ArtistPopularTracks.WithoutPlayCount([11, 12, 13, 14], into, need);
-        Assert.Equal(new[] { 13, 14 }, need[..n].ToArray());
-    }
-
-    [Fact]
-    public void WithPlayCounts_with_nothing_to_apply_reports_no_change()
-    {
-        var into = new uint[2];
-        Assert.False(ArtistPopularTracks.WithPlayCounts([500, 0], [], into));
-        Assert.False(ArtistPopularTracks.WithPlayCounts([500, 0], [9, 0], into));
     }
 
     [Fact]

@@ -59,7 +59,7 @@ public class ProfileHeroLayoutTests
 
     [Theory, MemberData(nameof(Tiers))]
     public void Gutter_IsThePageGutter(float width, ArtistHeroTier previous)
-        => Assert.Equal(ArtistHeroLayout.PageGutterFor(width), ProfileHeroLayout.For(width, previous).Gutter);
+        => Assert.Equal(ArtistHeroLayout.For(width, previous).Gutter, ProfileHeroLayout.For(width, previous).Gutter);
 
     [Theory, MemberData(nameof(Tiers))]
     public void Wash_CoversTheHeroPlusTheTail(float width, ArtistHeroTier previous)

@@ -348,7 +348,7 @@ public class DetailSkeletonGeometryTests
     public void HeroBand_IsExactlyTheCompositionItDeclares(float w, bool rowFlow)
     {
         var plan = VerticalLayout.TitleTypeFor(w, rowFlow, title: null, true, true, true);
-        float identity = VerticalLayout.IdentityHeightFor(plan, rowFlow, true, true, true);
+        float identity = VerticalLayout.IdentityHeightFor(plan, true, true, true);
         float art = VerticalLayout.ArtworkFor(w, rowFlow);
         float hero = rowFlow ? MathF.Max(art, identity) : art + VerticalLayout.HeroGapFor(w, rowFlow) + identity;
         float expected = VerticalLayout.HeroPadFor(w, rowFlow) + hero
@@ -372,7 +372,7 @@ public class DetailSkeletonGeometryTests
         // A fresh PESSIMISTIC plan per flag combination (the budget's chrome sum moves with the flags, even though the
         // null-title SIZE does not at these widths — the fluid cap binds, not the height budget).
         var barePlan = VerticalLayout.TitleTypeFor(w, rowFlow, title: null, false, false, false);
-        float bare = VerticalLayout.IdentityHeightFor(barePlan, rowFlow, false, false, false);
+        float bare = VerticalLayout.IdentityHeightFor(barePlan, false, false, false);
         Assert.Equal(
             barePlan.BlockHeight
             + VerticalLayout.AccentRuleRowHeight
@@ -382,24 +382,24 @@ public class DetailSkeletonGeometryTests
 
         var eyebrowPlan = VerticalLayout.TitleTypeFor(w, rowFlow, title: null, true, false, false);
         Assert.Equal(bare + VerticalLayout.EyebrowRowHeight + VerticalLayout.IdentityGap,
-            VerticalLayout.IdentityHeightFor(eyebrowPlan, rowFlow, true, false, false));
+            VerticalLayout.IdentityHeightFor(eyebrowPlan, true, false, false));
 
         var attributionPlan = VerticalLayout.TitleTypeFor(w, rowFlow, title: null, false, true, false);
         Assert.Equal(bare + VerticalLayout.AttributionRowHeight + VerticalLayout.IdentityGap,
-            VerticalLayout.IdentityHeightFor(attributionPlan, rowFlow, false, true, false));
+            VerticalLayout.IdentityHeightFor(attributionPlan, false, true, false));
 
         var metaPlan = VerticalLayout.TitleTypeFor(w, rowFlow, title: null, false, false, true);
         Assert.Equal(bare + VerticalLayout.MetaRowHeight + VerticalLayout.IdentityGap,
-            VerticalLayout.IdentityHeightFor(metaPlan, rowFlow, false, false, true));
+            VerticalLayout.IdentityHeightFor(metaPlan, false, false, true));
 
         var pulsePlan = VerticalLayout.TitleTypeFor(w, rowFlow, title: null, false, false, false, pulse: true);
         Assert.Equal(bare + VerticalLayout.PulseRowHeight + VerticalLayout.IdentityGap,
-            VerticalLayout.IdentityHeightFor(pulsePlan, rowFlow, false, false, false, pulse: true));
+            VerticalLayout.IdentityHeightFor(pulsePlan, false, false, false, pulse: true));
 
         // W28: the chart caption is a block like every other — its row plus one gap.
         var chartPlan = VerticalLayout.TitleTypeFor(w, rowFlow, title: null, false, false, false, chart: true);
         Assert.Equal(bare + VerticalLayout.ChartRowHeight + VerticalLayout.IdentityGap,
-            VerticalLayout.IdentityHeightFor(chartPlan, rowFlow, false, false, false, chart: true));
+            VerticalLayout.IdentityHeightFor(chartPlan, false, false, false, chart: true));
     }
 
     /// <summary>W28 end to end: a chart playlist's reserved band IS the composition with the caption in it — the band
@@ -418,7 +418,7 @@ public class DetailSkeletonGeometryTests
 
         // The reserved band is exactly the composition WITH the caption (the pessimistic null-title plan, chart flag on).
         var plan = VerticalLayout.TitleTypeFor(w, rowFlow, title: null, true, true, true, chart: true);
-        float identity = VerticalLayout.IdentityHeightFor(plan, rowFlow, true, true, true, chart: true);
+        float identity = VerticalLayout.IdentityHeightFor(plan, true, true, true, chart: true);
         float art = VerticalLayout.ArtworkFor(w, rowFlow);
         float hero = rowFlow ? MathF.Max(art, identity) : art + VerticalLayout.HeroGapFor(w, rowFlow) + identity;
         float expected = VerticalLayout.HeroPadFor(w, rowFlow) + hero
@@ -430,8 +430,8 @@ public class DetailSkeletonGeometryTests
 
         // For the SAME title plan, the caption costs exactly its row plus one gap.
         Assert.Equal(VerticalLayout.ChartRowHeight + VerticalLayout.IdentityGap,
-            VerticalLayout.IdentityHeightFor(plan, rowFlow, true, true, true, chart: true)
-            - VerticalLayout.IdentityHeightFor(plan, rowFlow, true, true, true, chart: false));
+            VerticalLayout.IdentityHeightFor(plan, true, true, true, chart: true)
+            - VerticalLayout.IdentityHeightFor(plan, true, true, true, chart: false));
 
         float plainBand = VerticalLayout.HeroBandHeight(w, rowFlow, true, true, true, true, pulse: false, chart: false);
         float chartBand = VerticalLayout.HeroBandHeight(w, rowFlow, true, true, true, true, pulse: false, chart: true);
@@ -443,8 +443,8 @@ public class DetailSkeletonGeometryTests
                               - VerticalLayout.ChartRowHeight - VerticalLayout.IdentityGap),
                 VerticalLayout.TitleHeightBudgetFor(w, rowFlow, true, true, true, chart: true));
 
-        var (plainChrome, plainBlocks) = VerticalLayout.IdentityChrome(true, true, true, false, rowFlow);
-        var (chartChrome, chartBlocks) = VerticalLayout.IdentityChrome(true, true, true, false, rowFlow, chart: true);
+        var (plainChrome, plainBlocks) = VerticalLayout.IdentityChrome(true, true, true, false);
+        var (chartChrome, chartBlocks) = VerticalLayout.IdentityChrome(true, true, true, false, chart: true);
         Assert.Equal(plainChrome + VerticalLayout.ChartRowHeight, chartChrome);
         Assert.Equal(plainBlocks + 1, chartBlocks);
     }
@@ -452,13 +452,10 @@ public class DetailSkeletonGeometryTests
     /// <summary>The ALL-flags case, so a new hero row cannot join the column without its own flag: the chrome is the sum
     /// of every row, over eight blocks (the title + seven). The description is no longer among them — it moved out of
     /// the column entirely.</summary>
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void IdentityChrome_EnumeratesEveryHeroBlock(bool rowFlow)
+    [Fact]
+    public void IdentityChrome_EnumeratesEveryHeroBlock()
     {
-        var (h, blocks) = VerticalLayout.IdentityChrome(eyebrow: true, attribution: true, meta: true, pulse: true,
-                                                         rowFlow, chart: true);
+        var (h, blocks) = VerticalLayout.IdentityChrome(eyebrow: true, attribution: true, meta: true, pulse: true, chart: true);
         Assert.Equal(VerticalLayout.EyebrowRowHeight + VerticalLayout.AccentRuleRowHeight + VerticalLayout.AttributionRowHeight
                      + VerticalLayout.MetaRowHeight + VerticalLayout.PulseRowHeight + VerticalLayout.ChartRowHeight
                      + VerticalLayout.ActionRowHeight, h);
@@ -511,7 +508,7 @@ public class DetailSkeletonGeometryTests
         const bool rowFlow = true;
         float art = VerticalLayout.ArtworkFor(w, rowFlow);
         var plan = VerticalLayout.TitleTypeFor(w, rowFlow, title: null, false, false, false);
-        float identity = VerticalLayout.IdentityHeightFor(plan, rowFlow, false, false, false);
+        float identity = VerticalLayout.IdentityHeightFor(plan, false, false, false);
         Assert.True(identity < art, $"fixture assumption broken: identity {identity} is not shorter than art {art}");
 
         // The column reports NO MinHeight — never forced taller than its own content, in either flow.
@@ -547,7 +544,7 @@ public class DetailSkeletonGeometryTests
             {
                 float art = VerticalLayout.ArtworkFor(w, rowFlow);
                 var plan = VerticalLayout.TitleTypeFor(w, rowFlow, title: null, true, true, true);
-                float identity = VerticalLayout.IdentityHeightFor(plan, rowFlow, true, true, true);
+                float identity = VerticalLayout.IdentityHeightFor(plan, true, true, true);
                 float hero = rowFlow
                     ? MathF.Max(art, identity)
                     : art + VerticalLayout.HeroGapFor(w, rowFlow) + identity;

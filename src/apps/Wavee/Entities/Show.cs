@@ -84,7 +84,7 @@ public enum ShowFlags : uint
 
 /// <summary>How a show means to be heard (<c>Show.consumption_order</c>, field 75). The numbers ARE the wire's —
 /// metadata.proto numbers the enum from 1 (SEQUENTIAL) — so the decoder stores what came and 0 is "the show did not
-/// say". <c>Show.Rules</c> (listen-next, the ledger, neighbours) reads it: a serial walks forward from the newest
+/// say". <c>Show.Rules</c> (listen-next, the ledger) reads it: a serial walks forward from the newest
 /// finished episode, everything else takes the newest unplayed.</summary>
 public enum ConsumptionOrder : byte { Unknown = 0, Sequential = 1, Episodic = 2, Recent = 3 }
 

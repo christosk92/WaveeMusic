@@ -7,7 +7,6 @@
 // them (WVTH003 allows literals only here, in `Rules\**`). The tiers themselves (the art edge, whether the duration shows, whether the
 // sub line stacks, per cell width, with hysteresis) are the core's: `ArtistPopularLayout`.
 
-using FluentGpu.Animation;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 

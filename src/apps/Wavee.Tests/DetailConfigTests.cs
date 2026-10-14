@@ -307,8 +307,7 @@ public class DetailConfigTests
 
         var col = SortKeys.Column(album);
         Assert.Equal("detail.sort.col:" + album.Text, col.Name);
-        Assert.Equal(-1, col.Default);                       // −1 = never chosen ⇒ the profile's default sort
-        Assert.NotEqual(Platform.Keys.DetailSortCol(album.Text).Default, col.Default);   // column 0 is a REAL column
+        Assert.Equal(-1, col.Default);                       // −1 = never chosen ⇒ the profile's default sort (column 0 is REAL)
 
         var desc = SortKeys.Descending(album);
         Assert.Equal("detail.sort.desc:" + album.Text, desc.Name);
@@ -316,8 +315,5 @@ public class DetailConfigTests
 
         Assert.NotEqual(SortKeys.Column(album).Name, SortKeys.Column(playlist).Name);
         Assert.NotEqual(SortKeys.Descending(album).Name, SortKeys.Descending(playlist).Name);
-        // The persisted spelling is 0.2.9's, byte for byte — a rename is a user who lost every sort they chose.
-        Assert.Equal(Platform.Keys.DetailSortCol(album.Text).Name, col.Name);
-        Assert.Equal(Platform.Keys.DetailSortDesc(album.Text).Name, desc.Name);
     }
 }

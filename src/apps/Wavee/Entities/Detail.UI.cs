@@ -516,7 +516,6 @@ public static partial class Detail
         //    per mounted frame: the open state is a signal, so the toolbar button and the pane cannot disagree and
         //    neither costs the page a render. `_sheetRoute` closes it on any route swap the host survives.
         readonly InsightsToggle _insights = new();
-        readonly Action _closeInsights;
         readonly Action _returnInsightsFocus;
         readonly Action _syncInsightsArm;
         InputHooks? _inputHooks;
@@ -543,7 +542,7 @@ public static partial class Detail
         readonly Func<ContextMenuModel?> _tMore;
         readonly Func<object?> _tCoverDrag;
         readonly Func<DragPayload, int?, bool> _tDeposit;
-        readonly Func<float, Element> _sCover, _sCompactCover, _sAttribution, _sDescription, _sLikedFacts,
+        readonly Func<float, Element> _sCover, _sCompactCover, _sAttribution, _sDescription,
                                       _sRating, _sLedger, _sTopics;
         readonly Func<float, float, Element> _sTitle;
         readonly Func<Element> _sPulse, _sChart, _sPreRelease, _sTrailing, _sTrailingVertical, _sBadges;
@@ -594,7 +593,6 @@ public static partial class Detail
             _sCompactCover = e => _latest?.Slots.CompactCover?.Invoke(e) ?? new BoxEl();
             _sAttribution = w => _latest?.Slots.Attribution?.Invoke(w) ?? new BoxEl();
             _sDescription = w => _latest?.Slots.Description?.Invoke(w) ?? new BoxEl();
-            _sLikedFacts = w => _latest?.Slots.LikedFacts?.Invoke(w) ?? new BoxEl();
             _sTitle = (s, lh) => _latest?.Slots.Title?.Invoke(s, lh) ?? new BoxEl();
             _sPulse = () => _latest?.Slots.Pulse?.Invoke() ?? new BoxEl();
             _sChart = () => _latest?.Slots.Chart?.Invoke() ?? new BoxEl();
@@ -611,7 +609,6 @@ public static partial class Detail
             _sSatellites = () => _latest?.Slots.Satellites?.Invoke() ?? Array.Empty<Element>();
 
             // ── INSIGHTS SHEET (additive) ──
-            _closeInsights = _insights.Close;
             _returnInsightsFocus = ReturnInsightsFocus;
             _syncInsightsArm = () => { if (!_sheetHosts) _insights.Close(); };
         }
@@ -636,7 +633,7 @@ public static partial class Detail
             _latest = spec;
             // ── INSIGHTS SHEET (additive) ── the sheet never survives a route change. The frame is keyed by subject, so
             //    a different subject remounts this host outright; a SAME-subject route swap reuses it, and this is the
-            //    edge that closes the sheet there (Detail.InsightsSheet.SurvivesRouteChange).
+            //    edge that closes the sheet there.
             if (!string.Equals(_sheetRoute, spec.RouteKey, StringComparison.Ordinal))
             {
                 _sheetRoute = spec.RouteKey;
@@ -1307,7 +1304,7 @@ public static partial class Detail
     /// button, so it reads as an ordinary rail action rather than media chrome.</para></summary>
     public static Element RailSatellite(string glyph, string name, Action? onClick)
     {
-        BoxEl fab = Fab(glyph, onClick, RailLayout.SatelliteSize, 16f);
+        BoxEl fab = Fab(glyph, onClick, RailLayout.SatelliteSize);
         return Controls.Named(onClick is null ? fab with { IsEnabled = false, Cursor = null } : fab, name);
     }
 
@@ -1319,16 +1316,12 @@ public static partial class Detail
 
     /// <summary>The ⋯ as a satellite: the frame's lazily-built More menu at <see cref="RailLayout.SatelliteSize"/>.</summary>
     public static Element RailSatelliteMore(Func<ContextMenuModel?> menu)
-        => MoreButton(menu, RailLayout.SatelliteSize, 16f, round: true) with { Key = "rail:more" };
+        => MoreButton(menu, RailLayout.SatelliteSize) with { Key = "rail:more" };
 
-    /// <summary>The hero's quiet secondary action: the standard 32/r4 <see cref="Controls.IconAction"/>, and a tooltip
-    /// naming it. <paramref name="glyphSize"/> is accepted for call-site compatibility; the icon button's own glyph
-    /// rung (16) is what actually paints — Workstream B drops the bespoke 14-px satellite glyph.</summary>
-    public static Element Satellite(string glyph, string tooltip, Action? onClick, float size = 32f, float glyphSize = 14f)
-        => ToolTip.Wrap(SatelliteBox(glyph, onClick, size, glyphSize), tooltip);
-
-    static BoxEl SatelliteBox(string glyph, Action? onClick, float size, float glyphSize)
-        => Controls.IconAction(glyph, onClick, size: size);
+    /// <summary>The hero's quiet secondary action: the standard 32/r4 <see cref="Controls.IconAction"/> (its own 16-DIP
+    /// glyph rung), and a tooltip naming it.</summary>
+    public static Element Satellite(string glyph, string tooltip, Action? onClick, float size = 32f)
+        => ToolTip.Wrap(Controls.IconAction(glyph, onClick, size: size), tooltip);
 
     /// <summary>The rail's icon action, on the standard 32/r4 ladder (<see cref="Controls.IconAction"/>). <paramref name="size"/>
     /// is the rail's edge by default; the library panes ask for their own 32 so the ⋯ matches the standard icon buttons
@@ -1336,19 +1329,19 @@ public static partial class Detail
     /// <para>Workstream B: was a round FAB (the Emphatic scale tier, the Subtle interaction fill); every non-media FAB
     /// on the rail is now this same standard icon button — the round plate stays reserved for media exceptions
     /// (<see cref="Controls.PlayFab"/>, <see cref="Controls.CoverActionFab"/>).</para></summary>
-    internal static BoxEl Fab(string glyph, Action? onClick, float size = RailFabSize, float glyphSize = 16f)
+    internal static BoxEl Fab(string glyph, Action? onClick, float size = RailFabSize)
         => Controls.IconAction(glyph, onClick, size: size);
 
     /// <summary>The More button: its flyout is built lazily AT OPEN from the newest menu factory. <c>internal</c> because the
     /// library's panes (<c>Album.Pane</c>, <c>Artist.Reader</c>) head their command rows with the SAME ⋯ — one menu host, so
     /// a surface never grows a second one (library rework §5.0).</summary>
-    internal static Element MoreButton(Func<ContextMenuModel?> menu, float size, float glyphSize, bool round)
-        => Embed.Comp(new MoreProps(size, glyphSize, round, menu), static () => new MoreHost());
+    internal static Element MoreButton(Func<ContextMenuModel?> menu, float size)
+        => Embed.Comp(new MoreProps(size, menu), static () => new MoreHost());
 
-    sealed record MoreProps(float Size, float Glyph, bool Round, Func<ContextMenuModel?> Menu)
+    sealed record MoreProps(float Size, Func<ContextMenuModel?> Menu)
     {
-        public bool Equals(MoreProps? o) => o is not null && Size == o.Size && Glyph == o.Glyph && Round == o.Round;
-        public override int GetHashCode() => HashCode.Combine(Size, Glyph, Round);
+        public bool Equals(MoreProps? o) => o is not null && Size == o.Size;
+        public override int GetHashCode() => Size.GetHashCode();
     }
 
     static readonly ContextMenuOptions s_moreMenu = new()
@@ -1376,8 +1369,7 @@ public static partial class Detail
             _ = _props.Value;
             var p = _latest!;
             var overlay = UseContext(Overlay.Service);
-            // Workstream B: the ⋯ is the standard 32/r4 IconAction everywhere now — `p.Round` is kept on MoreProps only
-            // for call-site compatibility with callers outside this migration group; it is no longer read here.
+            // Workstream B: the ⋯ is the standard 32/r4 IconAction everywhere.
             BoxEl button = Controls.IconAction(Icons.More, null, requestsContext: true, size: p.Size);
             if (!Controls.IsNullOverlay(overlay)) button = ContextMenu.Attach(button, overlay, _menu, s_moreMenu);
             return ToolTip.Wrap(button, Loc.Get(Strings.Common.More));

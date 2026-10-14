@@ -255,21 +255,13 @@ public readonly partial struct User(int slot) : IEquatable<User>
 
     /// <summary>Liked tracks, newest first (the order the cover mosaic and the Liked page both assume).</summary>
     public ReadOnlySpan<int> LikedTrackSlots => E.Liked.Targets(Slot);
-    /// <summary>Per-row <c>AddedAt</c> (UNIX seconds) for the liked list — an EDGE payload, not a Known bit (ch 07 §7).</summary>
-    public ReadOnlySpan<LibraryEdge> LikedEdges => E.Liked.Payload(Slot);
     public ReadOnlySpan<int> SavedAlbumSlots => E.SavedAlbums.Targets(Slot);
     public ReadOnlySpan<int> FollowedArtistSlots => E.FollowedArtists.Targets(Slot);
     public ReadOnlySpan<int> SavedShowSlots => E.SavedShows.Targets(Slot);
-    /// <summary>The pinned rows' targets. CROSS-KIND: read each WITH its <see cref="PinKindAt"/> (a folder is no slot).</summary>
+    /// <summary>The pinned rows' targets. CROSS-KIND: read each WITH its kind byte (<see cref="PinEdges"/>; a folder is no slot).</summary>
     public ReadOnlySpan<int> PinSlots => E.Pins.Targets(Slot);
     /// <summary>The pins' payloads, parallel to <see cref="PinSlots"/>: the added-at instant and the kind byte.</summary>
     public ReadOnlySpan<LibraryEdge> PinEdges => E.Pins.Payload(Slot);
-    /// <summary>What the pin at <paramref name="index"/> is.</summary>
-    public PinKind PinKindAt(int index)
-    {
-        var rows = E.Pins.Payload(Slot);
-        return (uint)index < (uint)rows.Length ? (PinKind)rows[index].Flags : PinKind.Unknown;
-    }
 
     /// <summary>The pin kind a row of <paramref name="kind"/> pins as; Unknown for a kind the sidebar never pins. PURE.</summary>
     public static PinKind PinKindFor(EntityKind kind) => kind switch
@@ -444,7 +436,6 @@ public readonly partial struct User
     public void Save(Album album) => Add(LibraryEdgeKind.SavedAlbums, album.Slot, album.Id);
     public void Unsave(Album album) => Remove(LibraryEdgeKind.SavedAlbums, album.Slot, album.Id);
     public void Follow(Artist artist) => Add(LibraryEdgeKind.FollowedArtists, artist.Slot, artist.Id);
-    public void Unfollow(Artist artist) => Remove(LibraryEdgeKind.FollowedArtists, artist.Slot, artist.Id);
     public void Save(Show show) => Add(LibraryEdgeKind.SavedShows, show.Slot, show.Id);
     public void Unsave(Show show) => Remove(LibraryEdgeKind.SavedShows, show.Slot, show.Id);
 }
@@ -769,9 +760,7 @@ public static class LibraryWordRail
         return LibraryNavSort.Recents;
     }
 
-    /// <summary>The rail word's loc KEY per code. The rail has its OWN keys (<c>library.rail.*</c>, the lowercase words)
-    /// rather than the pill's sentence-case <c>library.sort.*</c> labels, because the sidebar's Library V3 shares those for
-    /// codes 0-3 and its pills would have gone lowercase with them (plan §5.9's decision).</summary>
+    /// <summary>The rail word's loc KEY per code: the rail's own lowercase words (<c>library.rail.*</c>, plan §5.9).</summary>
     public static string WordKey(LibraryNavSort sort) => sort switch
     {
         LibraryNavSort.RecentlyAdded => Strings.Library.Rail.RecentlyAdded,   // "recently added"
@@ -1160,7 +1149,6 @@ public sealed class LibraryLetters
     public bool Has(int letter) => (uint)letter < Count && (_present & (1u << letter)) != 0;
     public int HeaderFlat(int letter) => JumpIndex.Resolve(_groups.AsSpan(0, _groupCount), letter);
     public float OffsetOf(int flat) => _offset[Math.Clamp(flat, 0, _flatCount)];
-    public float TotalExtent => _offset[_flatCount];
     /// <summary>"Which letters exist" as ONE value: bit i = letter i has rows. The jump strip renders its 27 cells from
     /// it without a second pass over the rows, and a test pins a whole grouping in one comparison.</summary>
     public uint Present => _present;
@@ -1247,10 +1235,8 @@ public sealed class LibraryLetters
 /// defect A.</summary>
 public enum AlbumPaneState : byte { Header, Rows, Failed, Ready }
 
-/// <summary>The two ROW-level facts the readiness rule takes, as one value so the richer
-/// <see cref="AlbumPaneReadiness.Of(bool,EdgeState,bool,AlbumRowFacts)"/> is a real overload of the five-argument one
-/// (five bools in the same positions could not be). They travel together because they are asked of the same rows in the
-/// same walk.</summary>
+/// <summary>The two ROW-level facts the readiness rule (<see cref="AlbumPaneReadiness.Of"/>) takes. They travel together
+/// because they are asked of the same rows in the same walk.</summary>
 /// <param name="AnyUntitled">A listed row whose own TITLE has not landed — the only row fact that still gates: a
 /// tracklist with a blank line in it is loading, not ready.</param>
 /// <param name="AnyFailed">A listed row whose <c>TrackFields.Row</c> batch is <c>Table.Failed</c>.</param>
@@ -1284,14 +1270,6 @@ public static class AlbumPaneReadiness
         if (!rows.AnyUntitled) return AlbumPaneState.Ready;
         return rows.AnyFailed ? AlbumPaneState.Failed : AlbumPaneState.Rows;
     }
-
-    /// <summary>The five-argument shape the pane and the reader call today, kept so their call sites (named argument
-    /// <c>anyUnnamed:</c> included) keep compiling — with the corrected semantics: <paramref name="anyUnnamed"/> is
-    /// ACCEPTED AND IGNORED, because it mixes "this row has no title" with "a credited artist of this row has no name"
-    /// and only the first of those may hold a pane in its skeleton (see the overload's remarks). A caller that can tell
-    /// the two apart passes <see cref="AlbumRowFacts"/> instead and gets the untitled gate back.</summary>
-    public static AlbumPaneState Of(bool knowsIdentity, EdgeState tracks, bool edgeFailed, bool anyUnnamed, bool rowsFailed)
-        => Of(knowsIdentity, tracks, edgeFailed, new AlbumRowFacts(AnyUntitled: false, AnyFailed: rowsFailed));
 
     /// <summary>The COUNTED shimmer: the album's own track count when it knows it, the listed edge length when it does
     /// not, 6 when neither has answered — never 0, because a zero-row shimmer is a blank pane, and a blank pane reads as

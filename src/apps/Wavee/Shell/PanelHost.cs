@@ -15,8 +15,6 @@
 // for a unit fact. Everything the host reaches OUTSIDE its cells (the video model, the stage, the entity demand, the friends
 // feed) goes through `IPanelEnv`, so `PanelHostTests` drives the real host with a recording env and no engine.
 
-using System;
-
 using FluentGpu.Signals;
 
 namespace Wavee;

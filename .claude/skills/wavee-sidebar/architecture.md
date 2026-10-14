@@ -37,11 +37,10 @@ PaneHost(inDrawer)                                  Sidebar.UI.cs
         ├── ClassicNavRow (one per visible row)     Themes/Classic/Structure/Views/Nav/ClassicNavRow.cs (via NavRowKit.Slot)
         │   └── ClassicNavHead (section header, "+", count), ClassicNavFilterBox   Views/Nav/ClassicNavHead.cs, ClassicNavFilter.cs
         ├── Shell.NavEmpty (the empty body)         Views/Nav/ClassicNavFilter.cs (ClassicNavEmpty)
-        ├── PaneFooter                              Sidebar.UI.Footer.cs
         ├── Shell.NavEdit (Edit mode: the Outline and the edit bar)   Themes/Classic/Structure/Views/Nav/ClassicNavEdit.cs (ClassicEditPane; host: INavEditHost in Sidebar.UI.Host.cs)
         ├── PaneView.OpenSectionFlyout/OpenFolderFlyout  Sidebar.UI.Flyout.cs (opens the collapsed rail's flyouts; panels: Classic's ClassicSectionFlyout / ClassicFolderFlyout, Themes/Classic/Structure/Views/Nav/ClassicNavFlyouts.cs)
         ├── DragPeekWatcher                         Sidebar.UI.cs
-        └── SidebarMenus                            Sidebar.UI.Menus.cs (pane ⋯ / header ⋯ / row menus)
+        └── SidebarMenus                            Sidebar.UI.Menus.cs (pane right-click / header ⋯ / row menus)
 ```
 
 Row content is built from `Sidebar.UI.Rows.cs` (`EntityRow`, `Cover`, `LikedArt`, `Chevron`, `SelectionPill`,
@@ -124,7 +123,7 @@ read moves; `SidebarReplanCensus` names which planner input moved (see [testing.
 
 `Sidebar.Model` (a `NavModel`, constructed by `Sidebar.Boot`) is what the views read and the verbs they call. It owns the
 projection binder (the pane's effects run `Model.Pump()` and `Model.SyncAccount()`), and exposes the binder's output as typed
-facts without any row planning: `Destinations` (+ counts), `Pins` / `PinRows`, `Rootlist`, `LibraryItems`, `Feeds`,
+facts without any row planning: `Counts`, `Pins` / `PinRows`, `Rootlist`, `LibraryItems`, `Feeds`,
 `Selected`, `ReadPlaying()`, `Readiness` (`NavReadiness` Pending / Ready / **Failed**, per source), `Account`, `Editing`,
 `PersistenceHealth` and `Layout`. `INavVerbs` is its verb set: `Navigate`, `Play`, `ToggleSection`, `ToggleFolder`,
 `ActivateFolder`, `CreatePlaylist`, `CreateFolder`, `Pin`, `Unpin`, `MovePin`. The stored state (layout file, pin store, folder
@@ -187,7 +186,7 @@ resolve in this order: the index, then the resident peek (`SidebarResidentPeek`)
 - Edit mode swaps the pane contents for the Outline (`SidebarOutlineRow`, `SidebarOutlineRowKind`) and an edit bar. The
   Outline lists sections, items and pins in document order. Keyboard: Space lifts, arrows move the focus, Alt+↑/↓
   moves the row, Enter toggles shown. A header in the Outline only takes focus; it never toggles.
-- **`SidebarMenuModel`** builds the menu rows (`SidebarMenuRow`) for the pane ⋯ menu, the header ⋯ menu and the row menus
+- **`SidebarMenuModel`** builds the menu rows (`SidebarMenuRow`) for the pane menu (right-click), the header ⋯ menu and the row menus
   from `SidebarMenuAction` values. **`SidebarMenus.Run`** (`Sidebar.UI.Menus.cs`) executes them. A new menu entry is one
   enum member, one model row and one `Run` case.
 - **`SidebarUndoRing`** holds 50 `SidebarUndoEntry` records (`Layout`, `Density`, `Pin`, `Batch`). One user action pushes

@@ -52,8 +52,7 @@ public static class PodcastPlanner
     /// scale (Entities/Home.cs `StagedCardFact.PlayedState`), repeated here as named constants for readability.</summary>
     const byte PlayedInProgress = 2;
 
-    const int NewEpisodesCap = 5;          // rule 1: 1 lead + 4 rows
-    const int NewEpisodesRowCap = 4;
+    const int NewEpisodesRowCap = 4;       // rule 1: 1 lead + 4 rows
     const int VideoCap = 4;                // rule 3
     const int EpisodeRowsCap = 6;          // rule 4: 3 × 2-col
     const int GroupRowCap = 4;             // rule 8: 4 rows max per card

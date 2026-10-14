@@ -321,16 +321,4 @@ public static partial class Prefs
     /// <summary>THE clamp every persisted enum-ish int goes through: in range, or 0. One function, so a hand-edited
     /// registry value, a downgrade, and a future build's value all resolve the same way everywhere.</summary>
     public static int Clamp(int value, int count) => (uint)value < (uint)count ? value : 0;
-
-    /// <summary>Bump EVERY epoch. For the two moments where the store changed underneath the app rather than through a
-    /// writer: a settings import, and a scope switch that re-pointed the store at a different account.</summary>
-    public static void BumpAll()
-    {
-        Appearance.Bump();
-        Lyrics.Bump();
-        DetailHero.Bump();
-        NpvPlayer.Bump();
-        PlayerBar.Bump();
-        Stage.Bump();
-    }
 }

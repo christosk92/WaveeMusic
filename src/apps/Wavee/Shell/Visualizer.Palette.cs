@@ -18,8 +18,8 @@
 //   Deep  BackgroundBase, clamped deep on the dark arm and pale on the light one (the backdrop's floor tone)
 //
 // Every paint colour (A, B, C) clears `StrokeContrast` (3:1) against the arm's veil: on the light arm it is darkened, on
-// the dark arm lifted, at constant hue — a light stage never gets a highlighter. Large soft washes may go under the floor
-// but cap their alpha at `WashA`. Two colours are DISTINCT when they are ≥ 20° of hue apart OR ≥ 0.1 of value apart.
+// the dark arm lifted, at constant hue — a light stage never gets a highlighter. Two colours are DISTINCT when they are
+// ≥ 20° of hue apart OR ≥ 0.1 of value apart.
 //
 // Rules: pure — no signal, no entity read, no theme read (the arm is a parameter), no allocation (spans are stackalloc'd).
 
@@ -42,11 +42,6 @@ public static partial class Visualizer
         public const float MinHueGap = 28f;
         /// <summary>Two colours are distinct when this far apart in hue OR in value.</summary>
         public const float DistinctHue = 20f, DistinctValue = 0.1f;
-        /// <summary>A large soft fill's alpha cap (blobs, nebulae, washes — exempt from the contrast floor).</summary>
-        public const float WashAlphaDark = 0.75f, WashAlphaLight = 0.6f;
-
-        public float WashA => Dark ? WashAlphaDark : WashAlphaLight;
-
         /// <summary>A, B, C by index (a face colouring its parts "by index" cycles the three).</summary>
         public ColorF Pick(int i)
         {

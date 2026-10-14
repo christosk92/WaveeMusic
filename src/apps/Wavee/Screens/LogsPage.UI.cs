@@ -26,7 +26,6 @@
 // node that was clicked runs through `UsePost` so the click finishes first. No signal is written in render.
 
 using System.Globalization;
-using FluentGpu;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;

@@ -18,14 +18,12 @@
 // A11Y (ch 06 §9, fixed not ported): every clickable node here declares Role + Cursor + a name.
 
 using System.Globalization;
-using FluentGpu;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
-using FluentGpu.Scene;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 

@@ -5,11 +5,10 @@
 // Role: CORE · Plan: technical-plan.md §5.1 row C12 (BP X31)
 //
 // A row reads these instead of reaching into `Spotify`, the entity tables or the wall clock. The Classic view draws them
-// (`Sidebar.UI.Slot.cs`, `Sidebar.UI.Rows.cs`): the label's words, the number's pixels and the mosaic's tiles are its.
+// (`ClassicNavRow.cs`, `Sidebar.UI.Rows.cs`): the label's words, the number's pixels and the mosaic's tiles are its.
 
 using FluentGpu.Foundation;
 using FluentGpu.Localization;
-using FluentGpu.Signals;
 
 namespace Wavee;
 

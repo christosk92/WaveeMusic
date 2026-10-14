@@ -188,7 +188,7 @@ public static partial class Spotify
         /// <summary>Unix ms after which <see cref="ClientToken"/> must be re-minted. 0 = none held.</summary>
         public long ClientTokenExpiresAtMs;
 
-        // the server clock (the ownership fence reads it): serverNow = localNow + ClockOffsetMs, iff ClockSynced.
+        // the server clock: serverNow = localNow + ClockOffsetMs, iff ClockSynced (the drift check reads it).
         public long ClockOffsetMs, ClockRttMs;
         public bool ClockSynced, ClockProbed;
 
@@ -198,9 +198,6 @@ public static partial class Spotify
         /// <summary>Signed in with the dealer up — see <see cref="SessionPhase.Online"/>. The AP may be reconnecting (B4):
         /// read <see cref="Ap"/> for that.</summary>
         public readonly bool IsOnline => Phase == SessionPhase.Online;
-
-        /// <summary>Requests may be built: a bearer is held and has not expired as of <paramref name="nowMs"/>.</summary>
-        public readonly bool CanRequest(long nowMs) => !AccessToken.IsEmpty && nowMs < AccessExpiresAtMs;
     }
 
     /// <summary>What happened, as a value (C2). Everything a shell learns becomes one of these and is folded on the
@@ -918,10 +915,6 @@ public static partial class Spotify
         s.ClockProbed = true;
     }
 
-    /// <summary>Server "now" in unix ms, or 0 — the unsynced sentinel the ownership fold reads to skip the
-    /// offset-dependent term (it still applies the always-safe server-side delta).</summary>
-    public static long ServerNowMs(in Session s, long localNowMs) => s.ClockSynced ? localNowMs + s.ClockOffsetMs : 0L;
-
     // ── 3. Shannon (the AP packet cipher) ────────────────────────────────────────────────────────────────────────────
     //
     // LIFTED protocol mechanic: a fixed spec that must match librespot's shannon crate bit for bit, pinned by the
@@ -1503,7 +1496,6 @@ public static partial class Spotify
             Truncated = truncated;
         }
 
-        public bool IsPing => Kind == DealerFrameKind.Ping;
         public bool IsRequest => Kind == DealerFrameKind.Request;
         /// <summary>A Connect cluster push — the frame `Spotify.Connect` folds into <c>Input.Cluster</c> (plan §4.10).</summary>
         public bool IsClusterUpdate => Kind == DealerFrameKind.Message && Uri.StartsWith("hm://connect-state/v1/cluster"u8);
@@ -1718,12 +1710,6 @@ public static partial class Spotify
                 default: return false;
             }
         }
-
-        /// <summary>The pong the server's ping wants.</summary>
-        public static int WritePong(Span<byte> dst) => Write("{\"type\":\"pong\"}"u8, dst);
-
-        /// <summary>Our own 30 s keepalive ping (P10 names the timer).</summary>
-        public static int WritePing(Span<byte> dst) => Write("{\"type\":\"ping\"}"u8, dst);
 
         /// <summary>The REQUEST ack. The key is escaped, never concatenated raw.</summary>
         public static int WriteReply(Span<byte> dst, ReadOnlySpan<byte> key, bool ok)
@@ -1983,9 +1969,9 @@ public static partial class Spotify
         }
     }
 
-    /// <summary>THE fold: (session, kind, args) ⇒ the request. Pure — no clock, no socket, no allocation — so every
-    /// route in <c>Spotify.Api.cs</c> is pinned by a test that asserts the verb, the path and the header set.</summary>
-    public static Request Build(in Session s, RequestKind kind, in RequestArgs args, Span<char> path)
+    /// <summary>THE fold: (kind, args) ⇒ the request. Pure — no clock, no socket, no allocation — so every route in
+    /// <c>Spotify.Api.cs</c> is pinned by a test that asserts the verb, the path and the header set.</summary>
+    public static Request Build(RequestKind kind, in RequestArgs args, Span<char> path)
     {
         // The session is the RUNNER's business (which host answers, which bearer is stamped); the fold reads only the
         // kind and the args, which is what makes every route's test one line with no session to build.

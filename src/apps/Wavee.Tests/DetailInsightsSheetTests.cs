@@ -3,16 +3,13 @@
 // The vertical (hero/stacked) arm has no rail, so the facts bento used to be appended under the rows as a page footer
 // nobody scrolled to. It is now a dismissable sheet laid OVER the content, opened from the vertical arm's chrome.
 // `Detail.InsightsSheet` is the whole decision, extracted so it can be tested without an engine: WHICH arm hosts the
-// bento, WHETHER a toggle exists there and WHICH of its two entry points owns input at a given scroll position, what
-// the sheet's resolved width is for a page of a given width, what the band's action cluster then claims, and what
-// happens to an open sheet when the page stops being able to show it.
+// bento, WHETHER a toggle exists there, what the sheet's resolved width is for a page of a given width and what the
+// band's action cluster then claims.
 //
 // The facts that must not regress:
 //   · a two-column arm is untouched — the rail hosts the bento and no toggle is composed;
 //   · the two hosts are MUTUALLY EXCLUSIVE at every mode, and there is no third (page-body) host any more;
 //   · the toggle is gated on the facts actually being there, so a page with none shows no button;
-//   · the hero toolbar and the pinned band each carry that one toggle, and EXACTLY ONE of them is live at any
-//     scroll position — the hero before the band sticks, the band after;
 //   · an absent facts slot means "not answered yet", not "no facts": the frame latches it for the route.
 
 using Xunit;
@@ -86,21 +83,7 @@ public class DetailInsightsSheetTests
 
     // ── which arm hosts the bento ──
 
-    /// <summary>The two-column arms are UNCHANGED: the rail hosts the bento, as it always has.</summary>
-    [Theory]
-    [InlineData(0, true)]
-    [InlineData(1, true)]
-    [InlineData(2, true)]
-    [InlineData(Breakpoints.VerticalMode, false)]
-    [InlineData(7, false)]     // off the ladder: no rail composed
-    [InlineData(-1, false)]
-    public void TheRailHostsTheBentoInEveryTwoColumnArm(int mode, bool expected)
-    {
-        Assert.Equal(expected, InsightsSheet.RailHostsFacts(mode, DetailKind.Liked, factsSlot: true));
-        Assert.Equal(expected, InsightsSheet.RailHostsFacts(mode, DetailKind.Playlist, factsSlot: true));
-    }
-
-    /// <summary>…and the sheet hosts it in the single-column arm, there and nowhere else.</summary>
+    /// <summary>The sheet hosts the bento in the single-column arm, there and nowhere else.</summary>
     [Theory]
     [InlineData(0, false)]
     [InlineData(1, false)]
@@ -123,11 +106,9 @@ public class DetailInsightsSheetTests
         foreach (var kind in new[] { DetailKind.Liked, DetailKind.Playlist, DetailKind.Album, DetailKind.Show, DetailKind.Episode })
             foreach (bool slot in new[] { false, true })
             {
-                bool rail = InsightsSheet.RailHostsFacts(mode, kind, slot);
+                bool rail = Wavee.Detail.RailPolicy.ComposesRail(mode);
                 bool sheet = InsightsSheet.SheetHostsFacts(mode, kind, slot);
                 Assert.False(rail && sheet, $"{kind} at mode {mode} (slot {slot}) claimed BOTH hosts");
-                // …and the page body is never a host again: the footer that nobody scrolled to is gone for good.
-                Assert.False(InsightsSheet.AppendsFactsToPageBody(mode, kind, slot));
             }
     }
 
@@ -138,7 +119,6 @@ public class DetailInsightsSheetTests
     [InlineData(Breakpoints.VerticalMode)]
     public void NoFactsMeansNoHostAndNoButton(int mode)
     {
-        Assert.False(InsightsSheet.RailHostsFacts(mode, DetailKind.Liked, factsSlot: false));
         Assert.False(InsightsSheet.SheetHostsFacts(mode, DetailKind.Liked, factsSlot: false));
         Assert.False(InsightsSheet.ShowsToggle(mode, DetailKind.Liked, factsSlot: false, DetailContent.Tracks));
     }
@@ -169,58 +149,6 @@ public class DetailInsightsSheetTests
     public void TheToggleFollowsTheSheetHost(int mode)
         => Assert.Equal(InsightsSheet.SheetHostsFacts(mode, DetailKind.Playlist, factsSlot: true),
                         InsightsSheet.ShowsToggle(mode, DetailKind.Playlist, factsSlot: true, DetailContent.Tracks));
-
-    // ── the live open state ──
-
-    /// <summary>An open sheet SURVIVES only while its toggle does. Widening the window back into a two-column arm (or
-    /// losing the facts) closes it, so re-narrowing never restores a sheet the user cannot remember leaving open.</summary>
-    [Fact]
-    public void WideningThePageClosesAnOpenSheet()
-    {
-        Assert.True(InsightsSheet.OpenFor(true, Breakpoints.VerticalMode, DetailKind.Liked, true, DetailContent.Tracks));
-        Assert.False(InsightsSheet.OpenFor(true, 2, DetailKind.Liked, true, DetailContent.Tracks));
-        Assert.False(InsightsSheet.OpenFor(true, 0, DetailKind.Liked, true, DetailContent.Tracks));
-    }
-
-    [Fact]
-    public void LosingTheFactsClosesAnOpenSheet()
-        => Assert.False(InsightsSheet.OpenFor(true, Breakpoints.VerticalMode, DetailKind.Liked, false, DetailContent.Tracks));
-
-    /// <summary>A closed sheet is never opened by the arm alone.</summary>
-    [Theory]
-    [InlineData(0)]
-    [InlineData(2)]
-    [InlineData(Breakpoints.VerticalMode)]
-    public void AClosedSheetStaysClosed(int mode)
-        => Assert.False(InsightsSheet.OpenFor(false, mode, DetailKind.Liked, true, DetailContent.Tracks));
-
-    /// <summary>It never survives a route change: the frame is keyed by subject, so a different subject remounts the
-    /// host outright, and the host closes the sheet itself on a same-subject route swap.</summary>
-    [Fact]
-    public void TheSheetNeverSurvivesARouteChange() => Assert.False(InsightsSheet.SurvivesRouteChange);
-
-    // ── the two entry points: the hero toolbar and the pinned band ──
-
-    /// <summary>The hero collapses; the pinned band does not. Neither entry point alone covers the whole scroll range,
-    /// so the sheet has BOTH — and the handoff is EXCLUSIVE, which is what keeps two buttons from reading as two
-    /// controls: at every scroll position exactly one of them takes hits.</summary>
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void ExactlyOneEntryPointOwnsInputAtEveryScrollPosition(bool bandStuck)
-    {
-        bool band = InsightsSheet.BandToggleTakesInput(bandStuck);
-        bool hero = InsightsSheet.HeroToggleTakesInput(bandStuck);
-        Assert.NotEqual(band, hero);                                   // never both, never neither
-        Assert.Equal(bandStuck, band);                                 // the band is live exactly once it is stuck…
-        Assert.True(hero || bandStuck, "the hero must own input for the whole pre-stuck range");
-    }
-
-    /// <summary>Dropping the hero's toggle would leave the top of the page — where the band is transparent and owns no
-    /// input — with no way to open the sheet at all. Stated as a fact so removing it fails here first.</summary>
-    [Fact]
-    public void TheHeroKeepsTheToggleBecauseTheBandIsNotYetLive()
-        => Assert.True(InsightsSheet.HeroToggleTakesInput(bandStuck: false));
 
     /// <summary>The band's cluster claims one more word when this arm hosts the sheet, and the compact search field
     /// derives its width from exactly that — so the toggle narrows the field instead of shoving Find · Filter · Play
@@ -273,9 +201,8 @@ public class DetailInsightsSheetTests
         bool settled = InsightsSheet.FactsSettled(everSeen: true, slotNow: false);
         Assert.True(InsightsSheet.ShowsToggle(Breakpoints.VerticalMode, DetailKind.Liked, settled, DetailContent.Tracks));
         Assert.True(InsightsSheet.SheetHostsFacts(Breakpoints.VerticalMode, DetailKind.Liked, settled));
-        // …and a latched page in a TWO-COLUMN arm is still the rail's, with no toggle: the latch never moves the host.
+        // …and a latched page in a TWO-COLUMN arm gets no toggle: the latch never moves the host.
         Assert.False(InsightsSheet.ShowsToggle(0, DetailKind.Liked, settled, DetailContent.Tracks));
-        Assert.True(InsightsSheet.RailHostsFacts(0, DetailKind.Liked, settled));
     }
 
     /// <summary>An album never gains a toggle from the latch either — the kind gate is ahead of it.</summary>

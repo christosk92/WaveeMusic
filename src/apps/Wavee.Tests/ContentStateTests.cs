@@ -1,7 +1,8 @@
 // ── Wavee.Tests/ContentStateTests.cs — which state the content region is in (themes plan 6.0, T4a) ────────────────────────
 //
-// `Shell.ContentState` is a pure core value: the route's BODY (a page, an empty body, the not-found page) and whether the OFFLINE
-// LANE floats over it. The core decides it (`Shell.FrameRules.ContentFor`), the structure's view draws it (the mounted facts are
+// `Shell.ContentState` is two pure core decisions: the route's BODY (a page, an empty body, the not-found page;
+// `Shell.FrameRules.ContentBodyFor`) and whether the OFFLINE LANE floats over it (`Shell.FrameRules.ShowsOfflineStrip`). The
+// structure's view draws them (the mounted facts are
 // `Wavee.ShellTests\ContentStateMountedTests.cs`). Everything here is the decision and its edges, engine-free:
 //
 //   body              known + page -> Page; known, no page yet -> EmptyBody (never the not-found page); unknown -> NotFound; a
@@ -22,8 +23,9 @@ public class ContentStateTests
 {
     static Shell.Route Of(Shell.RouteKind kind) => new(kind);
 
-    static ContentState For(Shell.Route route, bool hasPage = true, bool developer = false, Shell.AuthState auth = Shell.AuthState.Live)
-        => Shell.FrameRules.ContentFor(route, hasPage, developer, auth);
+    static (ContentStateKind Body, bool OfflineLane) For(Shell.Route route, bool hasPage = true, bool developer = false,
+                                                          Shell.AuthState auth = Shell.AuthState.Live)
+        => (Shell.FrameRules.ContentBodyFor(route, hasPage, developer), Shell.FrameRules.ShowsOfflineStrip(auth));
 
     // ── the body ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -101,15 +103,13 @@ public class ContentStateTests
     public void The_lane_floats_over_a_page_an_empty_body_and_the_not_found_page_alike()
     {
         var onPage = For(Of(Shell.RouteKind.Liked), auth: Shell.AuthState.Offline);
-        Assert.Equal(new ContentState(ContentStateKind.Page, true), onPage);
-        Assert.True(onPage.Shows(ContentStateKind.Page));
-        Assert.True(onPage.Shows(ContentStateKind.OfflineLane));
+        Assert.Equal((ContentStateKind.Page, true), onPage);
 
         var onEmpty = For(Of(Shell.RouteKind.Liked), hasPage: false, auth: Shell.AuthState.Offline);
-        Assert.Equal(new ContentState(ContentStateKind.EmptyBody, true), onEmpty);
+        Assert.Equal((ContentStateKind.EmptyBody, true), onEmpty);
 
         var onMissing = For(Shell.Route.None, auth: Shell.AuthState.Offline);
-        Assert.Equal(new ContentState(ContentStateKind.NotFound, true), onMissing);
+        Assert.Equal((ContentStateKind.NotFound, true), onMissing);
     }
 
     [Fact]
@@ -137,8 +137,8 @@ public class ContentStateTests
             Of(Shell.RouteKind.Settings), Of(Shell.RouteKind.PlaybackDiagnostics), Of(Shell.RouteKind.Home),
         ];
 
-        ContentState[] forward = run.Select(r => For(r)).ToArray();
-        ContentState[] backward = Enumerable.Reverse(Enumerable.Reverse(run).Select(r => For(r))).ToArray();
+        var forward = run.Select(r => For(r)).ToArray();
+        var backward = Enumerable.Reverse(Enumerable.Reverse(run).Select(r => For(r))).ToArray();
 
         Assert.Equal(forward, backward);   // no memory of the route before
         Assert.Equal(forward[0], forward[6]);   // Home, then the rest of the run, then Home again
@@ -161,33 +161,8 @@ public class ContentStateTests
         ];
 
         foreach (var step in steps)
-            Assert.Equal(new ContentState(step.Body, step.Lane), For(Of(step.Kind), auth: step.Auth));
+            Assert.Equal((step.Body, step.Lane), For(Of(step.Kind), auth: step.Auth));
     }
-
-    // ── what each state says about itself ────────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void A_state_shows_its_body_and_the_lane_only_when_it_is_up()
-    {
-        var empty = new ContentState(ContentStateKind.EmptyBody, false);
-        Assert.True(empty.Shows(ContentStateKind.EmptyBody));
-        Assert.False(empty.Shows(ContentStateKind.Page));
-        Assert.False(empty.Shows(ContentStateKind.NotFound));
-        Assert.False(empty.Shows(ContentStateKind.OfflineLane));
-
-        var missing = new ContentState(ContentStateKind.NotFound, true);
-        Assert.True(missing.Shows(ContentStateKind.NotFound));
-        Assert.True(missing.Shows(ContentStateKind.OfflineLane));
-        Assert.False(missing.Shows(ContentStateKind.Page));
-    }
-
-    [Theory]
-    [InlineData(ContentStateKind.Page, true)]
-    [InlineData(ContentStateKind.EmptyBody, true)]
-    [InlineData(ContentStateKind.NotFound, true)]
-    [InlineData(ContentStateKind.OfflineLane, false)]
-    public void The_lane_is_not_a_body(ContentStateKind kind, bool expected)
-        => Assert.Equal(expected, ContentState.IsBody(kind));
 
     // ── the node keys ────────────────────────────────────────────────────────────────────────────────────────────────────────
 

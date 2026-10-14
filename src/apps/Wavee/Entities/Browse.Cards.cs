@@ -6,14 +6,12 @@
 // Browse.Page.cs / Browse.UI.cs / Search.UI.cs need no call-site edits. The CORE half of HomeCardNav (RouteFor,
 // SectionRoute, OneCardOpensCard) stays in Entities/Home.Rules.cs.
 
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Localization;
-using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
 

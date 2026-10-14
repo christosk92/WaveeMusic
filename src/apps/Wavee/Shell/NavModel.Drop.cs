@@ -10,7 +10,6 @@
 // no-op are the same for a menu, a key and a drop.
 
 using FluentGpu.Controls;
-using FluentGpu.Foundation;
 using FluentGpu.Localization;
 
 namespace Wavee;

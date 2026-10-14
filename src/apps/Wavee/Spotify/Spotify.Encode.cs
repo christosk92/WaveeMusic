@@ -816,9 +816,6 @@ public enum LibraryPush : byte
 /// (<c>Spotify.Library.Lists.cs</c>, <see cref="ListPush"/>). PURE, allocation-free.</summary>
 public static class LibraryPushRules
 {
-    /// <summary>The per-playlist topic's prefix.</summary>
-    public const string PlaylistTopicPrefix = "hm://playlist/v2/playlist/";
-
     /// <summary>A Spotify base62 id's length (128 bits).</summary>
     public const int PlaylistIdChars = 22;
 
@@ -1016,10 +1013,6 @@ public sealed class LibraryPinSync : IDisposable
         _pins.OnLocalPinChanged = _onLocal;
     }
 
-    /// <summary>Has the loaded account's one-time local → server migration run? Re-read every time (no cached copy:
-    /// an account swap changes it).</summary>
-    public bool Migrated => _latch.Get();
-
     /// <summary>Converge the store onto the server set. <paramref name="converged"/>: the set has been walked whole at
     /// least once this scope (the edge is Complete) — an empty or partial mirror must never read as "unpin everything".
     /// Returns false (and changes nothing) when the store holds another account's pins: the swap has not run yet for this
@@ -1057,12 +1050,12 @@ public sealed class LibraryPinSync : IDisposable
     }
 
     bool IsSweepable(string pinId)
-        => PinSyncRules.TryWireUri(pinId, "") is { } uri && !_hasPending(uri);
+        => PinSyncRules.TryWireUri(pinId) is { } uri && !_hasPending(uri);
 
     void OnLocalPinChanged(SidebarPin pin, bool pinned)
     {
         if (!_latch.Matches) return;                                      // never write account A's change to account B
-        if (PinSyncRules.TryWireUri(pin.Id, "") is not { } uri) return;   // not syncable — a silent local pin
+        if (PinSyncRules.TryWireUri(pin.Id) is not { } uri) return;   // not syncable — a silent local pin
         _write(uri, pinned);
     }
 
@@ -1074,7 +1067,7 @@ public sealed class LibraryPinSync : IDisposable
         {
             var pin = _pins[i];
             if (onServer.Contains(pin.Id)) continue;
-            if (PinSyncRules.TryWireUri(pin.Id, "") is not { } uri) continue;
+            if (PinSyncRules.TryWireUri(pin.Id) is not { } uri) continue;
             _write(uri, true);
         }
         _latch.Set(true);

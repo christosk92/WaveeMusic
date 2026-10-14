@@ -105,7 +105,7 @@ public sealed class ThemePickerTests : IDisposable
         var row = SettingsDoc.Row(Settings.Tab.Appearance, "themePicker");
         Assert.Equal(SettingsRowKind.Picker, row.Kind);
         Assert.NotNull(row.Writer.Choose);
-        Assert.Equal(1, row.Writer.ArmCount);
+        Assert.Equal(1, SettingsDocTests.Arms(row.Writer));
         Assert.Equal(0, SettingsVerbs.ThemeIndex());
 
         long epoch = ThemeHost.RootEpoch.Peek();
@@ -216,9 +216,9 @@ public sealed class ThemePickerTests : IDisposable
         };
 
         var index = Shell.CommandTable.BuildIndex(null, null, commands);
-        Assert.Equal(Shell.CommandTable.BuiltinCount + 2, index.Length);
+        Assert.Equal(CommandTableShapeTests.BuiltinCount + 2, index.Length);
         Assert.Equal("nav.home", index[0].Id);
-        var themeRows = index.Skip(Shell.CommandTable.BuiltinCount).ToArray();
+        var themeRows = index.Skip(CommandTableShapeTests.BuiltinCount).ToArray();
         Assert.All(themeRows, r => Assert.Equal(Shell.PaletteKind.ThemeOption, r.Kind));
         Assert.Equal(new[] { "Rail: on", "Rail: off" }, themeRows.Select(r => r.Label));
         Assert.Equal(new[] { "rail: on", "rail: off" }, themeRows.Select(r => r.LabelLower));
@@ -234,7 +234,7 @@ public sealed class ThemePickerTests : IDisposable
     [Fact]
     public void Without_theme_commands_the_index_is_exactly_the_builtins()
     {
-        Assert.Equal(Shell.CommandTable.BuiltinCount, Shell.CommandTable.BuildIndex(null, null).Length);
-        Assert.Equal(Shell.CommandTable.BuiltinCount, Shell.CommandTable.BuildIndex(null, null, Array.Empty<ThemeCommand>()).Length);
+        Assert.Equal(CommandTableShapeTests.BuiltinCount, Shell.CommandTable.BuildIndex(null, null).Length);
+        Assert.Equal(CommandTableShapeTests.BuiltinCount, Shell.CommandTable.BuildIndex(null, null, Array.Empty<ThemeCommand>()).Length);
     }
 }

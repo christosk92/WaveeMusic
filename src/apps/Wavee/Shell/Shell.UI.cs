@@ -26,7 +26,7 @@
 // T4a (themes plan 6.1): the frame's PICTURE moved to the structure. `FrameRoot` below is the core host (hooks, effects, state
 // machines; [CoreHost]) and mounts `Shell.Frame`; the column, the layers and the content region are
 // `Themes\Classic\Structure\Views\Frame\ClassicFrame.cs`. The content region's four states (a page, an empty body, the not-found
-// page, the offline lane) are decided here (`FrameRules.ContentFor`) and drawn by `Shell.ContentState`
+// page, the offline lane) are decided here (`FrameRules.ContentBodyFor` / `ShowsOfflineStrip`) and drawn by `Shell.ContentState`
 // (`ClassicContentState.cs`); the keep-alive boundary and its page transition stay in `ContentHost`.
 //
 // T4c: the frame's small views are the structure's too. The material, the file-drop cue, the command palette, the setup cover
@@ -43,7 +43,6 @@
 
 using System.Globalization;
 using FluentGpu;
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -450,7 +449,7 @@ public static partial class Shell
                 _hostWas = host;
 
                 RailMode? dockMode = state.Requested == Video.SurfacePlacement.Docked && prev.Requested != Video.SurfacePlacement.Docked
-                    ? Rail.VideoCoupling.ModeOnDock(railOpen, Ui.Mode.Peek(), host) : null;
+                    ? Rail.VideoCoupling.ModeOnDock(railOpen, host) : null;
                 var demoteTo = !railOpen && wasOpen ? Rail.VideoCoupling.OnRailClosed(state, host) : Video.SurfacePlacement.None;
                 bool reDock = railOpen && !wasOpen && Rail.VideoCoupling.ReDockOnRailOpen(state);
                 bool leftDock = prev.Requested == Video.SurfacePlacement.Docked && state.Requested != Video.SurfacePlacement.Docked;

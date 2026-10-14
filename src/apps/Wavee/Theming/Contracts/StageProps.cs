@@ -29,7 +29,6 @@
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
-using FluentGpu.Signals;
 
 namespace Wavee.Theming.Contracts;
 

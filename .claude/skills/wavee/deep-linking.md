@@ -64,7 +64,7 @@ Probes / `--screenshot` / `--frames` skip this entire block.
 
 ## Drain (shell consumer)
 
-`Pending` is a monotonic `Signal<int>` (same shape as `OpenVideoOverrides` / `_searchFocusRequest`). Read `.Value` so
+`Pending` is a monotonic `Signal<int>`. Read `.Value` so
 the effect re-runs; drain on the **first** tick too (cold-start verbs are already queued before the shell mounts).
 
 ```csharp

@@ -35,7 +35,6 @@
 // the slab; no allocation on the tick path; the live track is read INSIDE thunks and leaf components, never in a face
 // body (that would rebuild the face on every track change).
 
-using System.Collections.Generic;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;

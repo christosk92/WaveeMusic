@@ -23,13 +23,8 @@
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
-using FluentGpu.Localization;
 
 namespace Wavee;
-
-/// <summary>The sidebar's media card: a Grid-presentation cell. (The rows, the folder tile and the glyph tiles are the
-/// sidebar's own grammar, not media.)</summary>
-public enum SidebarCardSurface : byte { Tile }
 
 /// <summary>What activating a projected entry does: a track PLAYS (it has no detail route), everything with a route
 /// NAVIGATES, a folder (it expands in place) and a route-less entry do nothing — their surface carries NO click, so it is
@@ -60,7 +55,7 @@ public static class SidebarCardRules
 
     /// <summary>A playlist is the one drop destination a card can be. An editable one takes a track deposit; a read-only one
     /// REFUSES with a reason — exactly what <c>EntityRow</c> does.</summary>
-    public static SidebarCardDrop Drop(SidebarCardSurface surface, in SidebarLibraryEntry entry)
+    public static SidebarCardDrop Drop(in SidebarLibraryEntry entry)
         => entry.Kind != SidebarEntryKind.Playlist ? SidebarCardDrop.None
          : entry.CanEdit ? SidebarCardDrop.Deposit
          : SidebarCardDrop.Refuse;
@@ -125,7 +120,7 @@ public static partial class Sidebar
             {
                 Selected = SidebarCardRules.Selected(in e, sel),
                 Menu = o.GridCellMenu(in e),
-                Drop = DropOf(o, SidebarCardSurface.Tile, section.Id, in e),
+                Drop = DropOf(o, section.Id, in e),
             };
         }
 
@@ -198,9 +193,9 @@ public static partial class Sidebar
         }
 
         /// <summary>The pane's own drop spec — one resolver, one commit.</summary>
-        static DropTargetSpec? DropOf(PaneView o, SidebarCardSurface surface, string sectionId, in SidebarLibraryEntry entry)
+        static DropTargetSpec? DropOf(PaneView o, string sectionId, in SidebarLibraryEntry entry)
         {
-            switch (SidebarCardRules.Drop(surface, in entry))
+            switch (SidebarCardRules.Drop(in entry))
             {
                 case SidebarCardDrop.Deposit:
                     return o.ResourceDropSpec(sectionId, slot: -1, entry.Uri, entry.Name, isPlaylistRow: true);

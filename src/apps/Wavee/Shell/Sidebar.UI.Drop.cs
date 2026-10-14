@@ -19,9 +19,7 @@
 // the rootlist itself.
 
 using FluentGpu.Controls;
-using FluentGpu.Dsl;
 using FluentGpu.Foundation;
-using FluentGpu.Input;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 
@@ -205,7 +203,7 @@ public static partial class Sidebar
         }
 
         /// <summary>The content-space top of a plan row — a closure-free prefix sum over the live extents (this runs on
-        /// every Over while a drag is live, so it must not allocate a delegate the way a <c>ContentYOf</c> call would).</summary>
+        /// every Over while a drag is live, so it must not allocate).</summary>
         float RowTopOf(int planIndex)
         {
             int stop = Math.Min(planIndex, Plan.Rows.Count);

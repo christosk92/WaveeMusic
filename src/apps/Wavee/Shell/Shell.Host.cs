@@ -1,6 +1,6 @@
 // ── Shell/Shell.Host.cs ────────────────────────────────────────────────────────────────────────────────────────────
-// window, activation, session snapshot, history.json / play-log.json / play-recency.json (ch 16), the WaveeTips host
-// (A10), the file-drop hook
+// window, activation, session snapshot, history.json / play-log.json / play-recency.json (ch 16), the file-drop
+// hook
 //
 // Role: SHELL
 // Owner: I
@@ -24,18 +24,15 @@
 // from its own boot, before `Run` is called; until then the loop paints an empty content region, which is exactly what
 // the Wave-4 gate's "`--fake` shows the shell frame with an empty content host" describes.
 
-using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Threading;
 using System.Threading.Tasks;
 
 using FluentGpu;
 using FluentGpu.Controls;     // ToolTip.CloseOpen — a parked page's bubble must not outlive the route
 using FluentGpu.Dsl;
-using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Hosting;      // FrameStats — the one-shot `boot.firstframe` mark's FrameCompleted payload
 using FluentGpu.Signals;
@@ -303,7 +300,7 @@ public static partial class Shell
         }
     }
 
-    /// <summary>The documents the first render reads (the session, history, play log, the restored route, tips), then
+    /// <summary>The documents the first render reads (the session, history, play log, the restored route), then
     /// the play log and the deck document meet playback and the launch restore — before the first frame, after the session
     /// document is loaded (G-078, G-079; Shell.Host.Deck.cs). <see cref="Run"/>'s and the headless host's shared prelude,
     /// after the theme seed.</summary>
@@ -313,7 +310,6 @@ public static partial class Shell
         History.Store.Load();
         PlayLog.Load();
         RestoreNav();
-        Tips.Load();
         Log.Event(WaveeLogLevel.Info, "app", "boot.documents", "", null, Log.SinceStartMs);
         AttachPlayback();
     }
@@ -1607,18 +1603,6 @@ public static partial class Shell
             return true;
         }
 
-        /// <summary>Fold externally-known plays in (a server recents snapshot). Only a NEWER stamp changes anything,
-        /// so a revalidation that returned the same history costs no re-render.</summary>
-        public static bool MergeRecency(IReadOnlyDictionary<string, long> stamps)
-        {
-            bool changed = false;
-            foreach (var kv in stamps) changed |= Stamp(kv.Key, kv.Value);
-            if (!changed) return false;
-            s_version.Value++;
-            ScheduleSave();
-            return true;
-        }
-
         /// <summary>The jump list's play-log half: the newest distinct CONTEXTS, newest first. Composes the SAME route
         /// key the history half does, so one <c>seen</c> set covers both.</summary>
         public static Playback.Os.JumpRow[] RecentContexts(int max)
@@ -1772,55 +1756,6 @@ public static partial class Shell
                 WriteThenRename(path, file => JsonSerializer.Serialize(file, ring, PlayLogJson.Default.PlayEntryDtoArray), "play-log");
                 if (recencyPath is not null) WriteThenRename(recencyPath, file => WriteRecency(file, recency), "play-recency");
             });
-        }
-    }
-
-    // ══ 9. THE TEACHING-TIP HOST (A10) ══════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The IMPERATIVE half of the teaching-tip service: the persisted set, the per-session arm and the
-    /// one-at-a-time latch. Every DECISION is <see cref="TipsCore"/>'s.</summary>
-    public static class Tips
-    {
-        static string s_seen = "";
-        static readonly HashSet<string> s_armedThisSession = new(StringComparer.Ordinal);
-
-        /// <summary>The tip currently on screen, or "" — ONE at a time, process-wide. Two callouts up together read as
-        /// an error state.</summary>
-        public static readonly Signal<string> Active = new("");
-
-        internal static void Load() => s_seen = Platform.Settings.Get(Platform.Keys.TipsSeen);
-
-        /// <summary>May this tip appear right now? <paramref name="canPresent"/> is the caller's "I have an anchor and
-        /// somewhere to draw it".</summary>
-        public static bool ShouldShow(string tipId, bool canPresent)
-            => TipsCore.ShouldShow(s_seen, tipId, s_armedThisSession.Contains(tipId), Active.Peek().Length > 0, canPresent);
-
-        /// <summary>Arm a tip for this session and mark it on screen. Returns false when the gate refuses.</summary>
-        public static bool Arm(string tipId, bool canPresent)
-        {
-            if (!ShouldShow(tipId, canPresent)) return false;
-            s_armedThisSession.Add(tipId);
-            Active.Value = tipId;
-            return true;
-        }
-
-        /// <summary>The user acknowledged it — the DURABLE "don't show again".</summary>
-        public static void Acknowledge(string tipId)
-        {
-            string next = TipsCore.Add(s_seen, tipId);
-            if (!string.Equals(next, s_seen, StringComparison.Ordinal))
-            {
-                s_seen = next;
-                Platform.Settings.Set(Platform.Keys.TipsSeen, next);
-            }
-            if (string.Equals(Active.Peek(), tipId, StringComparison.Ordinal)) Active.Value = "";
-        }
-
-        /// <summary>Dismissed WITHOUT acknowledging: it stays armed for this session (so it does not re-open on the
-        /// next page that hosts it) but is not written to the durable set.</summary>
-        public static void Dismiss(string tipId)
-        {
-            if (string.Equals(Active.Peek(), tipId, StringComparison.Ordinal)) Active.Value = "";
         }
     }
 

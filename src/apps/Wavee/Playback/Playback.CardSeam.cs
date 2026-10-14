@@ -4,7 +4,6 @@
 // press on its play button pauses instead of starting). The seam was declared with the card rework but never installed,
 // so no card ever lit up (#160). The decision is the pure CardRelation below; Install wires it to Playback's signals.
 
-using FluentGpu.Foundation;
 using FluentGpu.Signals;
 
 namespace Wavee;

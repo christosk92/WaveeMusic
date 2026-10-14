@@ -177,7 +177,7 @@ public class SettingsCatalogTests
     {
         Assert.Equal(Enum.GetValues<Settings.Tab>().Length, Settings.TabSlugs.Length);
         foreach (var tab in Enum.GetValues<Settings.Tab>())
-            Assert.Equal(tab, Settings.TabFromSlug(Settings.SlugOf(tab)));
+            Assert.Equal(tab, Settings.TabFromSlug(Settings.TabSlugs[(int)tab]));
         Assert.Equal(Settings.Tab.General, Settings.TabFromSlug("no-such-tab"));
         Assert.Equal(Settings.Tab.Storage, Settings.TabFromSlug("STORAGE"));
         Assert.Equal(Settings.Tab.General, Settings.TabFromSlug(null));
@@ -186,7 +186,7 @@ public class SettingsCatalogTests
         Assert.Equal(new[] { "general", "appearance", "playback", "notifications", "storage", "privacy", "about" }, Settings.TabSlugs);
         Assert.Equal(Settings.Tab.PrivacyDiagnostics, Settings.TabFromSlug("privacy"));
         Assert.Equal(Settings.Tab.PrivacyDiagnostics, Settings.TabFromSlug("PRIVACY"));
-        Assert.Equal("privacy", Settings.SlugOf(Settings.Tab.PrivacyDiagnostics));
+        Assert.Equal("privacy", Settings.TabSlugs[(int)Settings.Tab.PrivacyDiagnostics]);
         Assert.DoesNotContain("logs", Settings.TabSlugs);
         Assert.Equal(Settings.Tab.General, Settings.TabFromSlug("logs"));   // an old `settings` + `logs` link lands on the page, never nowhere
     }
@@ -315,8 +315,8 @@ public class SettingsRulesTests
     {
         Assert.Equal(3, Settings.Quality.AudioRungCount(canDerive: false));
         Assert.Equal(4, Settings.Quality.AudioRungCount(canDerive: true));
-        Assert.False(Settings.Quality.IsWritableAudio(Settings.Quality.LosslessRung, canDerive: false));
-        Assert.True(Settings.Quality.IsWritableAudio(Settings.Quality.LosslessRung, canDerive: true));
+        Assert.False(Settings.Quality.IsWritableAudio(3, canDerive: false));
+        Assert.True(Settings.Quality.IsWritableAudio(3, canDerive: true));
         Assert.False(Settings.Quality.IsWritableAudio(-1, canDerive: true));
         // flac plan §5.4: the metered cap is the same ladder, under the same gate
         Assert.Equal(Settings.Quality.AudioRungCount(false), Settings.Quality.MeteredRungCount(false));
@@ -372,10 +372,6 @@ public class SettingsRulesTests
     public void BudgetLadders_PickTheNearestPreset_AndCustomWhenInexact()
     {
         Assert.Equal(Settings.StorageFormat.BodyBudgetBytes.Length + 1, Settings.StorageFormat.BodyBudgetLabels.Length);
-        Assert.Equal(5, Settings.StorageFormat.BodyBudgetIndex(32L << 30));
-        Assert.Equal(5, Settings.StorageFormat.BodyBudgetIndex(30L << 30));
-        Assert.Equal(0, Settings.StorageFormat.BodyBudgetIndex(1));
-        Assert.Equal(10, Settings.StorageFormat.BodyBudgetIndex(long.MaxValue));
         Assert.Equal(3, Settings.StorageFormat.BodyBudgetExactIndex(8L << 30));
         Assert.Equal(Settings.StorageFormat.CustomBudgetIndex, Settings.StorageFormat.BodyBudgetExactIndex(9L << 30));
         Assert.Equal(2, Settings.StorageFormat.MetaBudgetIndex(128L << 20));

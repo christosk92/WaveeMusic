@@ -2,7 +2,7 @@
 //
 // A theme is built against ONE contract version (`ThemeManifest.ContractMajor/ContractMinor`). The contract is the set of
 // published view keys and style keys with their props records, the verbs and state enums those props carry, and the
-// role vocabulary (`Wavee.Theming.Roles.RoleVersion`). Version 1.0 is the key list of themes plan section 6.0.
+// role vocabulary (`Wavee.Theming.Roles.WaveeStyleRoles`). Version 1.0 is the key list of themes plan section 6.0.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a

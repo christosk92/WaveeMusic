@@ -32,15 +32,11 @@ public sealed class SidebarRowGeometryTests
     }
 
     [Fact]
-    public void Rulers_IconCentre30_Label54_Trailing18_Chevron44()
+    public void TheSectionTitle_StartsOnTheCovers_AndTheCoverClearsThePill()
     {
-        Assert.Equal(30f, SidebarGeometry.IconCentreX);
-        Assert.Equal(54f, SidebarGeometry.LabelX);
         // The section title starts on the covers' left edge, and the cover clears the 3-px pill by 7.
         Assert.Equal(SidebarGeometry.LeadInset, SidebarGeometry.HeaderTextX);
         Assert.Equal(7f, SidebarGeometry.LeadInset - SidebarGeometry.PillX(0) - SidebarGeometry.PillW);
-        Assert.Equal(302f, SidebarGeometry.TrailingRight(320f));
-        Assert.Equal(276f, SidebarGeometry.ChevronLeft(320f));
     }
 
     [Theory]
@@ -124,10 +120,4 @@ public sealed class SidebarGeometryParityTests
         Assert.Equal(SidebarGeometry.IndentFor(depth), SidebarRowGeometry.IndentFor(depth));
         Assert.Equal(SidebarGeometry.TreeContentX(depth), SidebarRowGeometry.TreeContentX(depth));
     }
-
-    [Theory]
-    [InlineData(36f)]
-    [InlineData(40f)]
-    public void The_pill_top_agrees(float rowHeight)
-        => Assert.Equal(SidebarGeometry.PillTop(rowHeight), SidebarRowGeometry.PillTop(rowHeight));
 }

@@ -3,8 +3,8 @@
 // What `Video.UI.cs` used to switch over inline: the aspect policy's two vocabularies (`AspectMapping`), the docked cap's
 // fit effect (`DockedFit`), the overlay surface's size and offset per placement (`PipOverlay`), and the PiP geometry as
 // rules over explicit bounds (`PipBounds`). The shipped numbers (`Pip`, `PipGesture`) are pinned in
-// VideoSurfaceRulesTests / VideoSurfaceGestureTests; these facts pin that the bounds overloads agree with them and that
-// other bounds move the geometry the way a theme's tier policy will need. (The playback-side video rules live in
+// VideoSurfaceRulesTests / VideoSurfaceGestureTests (at `PipBounds.Classic`); these facts pin that other bounds move the
+// geometry the way a theme's tier policy needs. (The playback-side video rules live in
 // VideoRulesTests.)
 
 using FluentGpu.Media;
@@ -135,21 +135,6 @@ public class VideoPipBoundsTests
     }
 
     [Fact]
-    public void Every_bounds_overload_agrees_with_the_original_signature_at_the_classic_bounds()
-    {
-        var b = PipBounds.Classic;
-
-        Assert.Equal(Pip.FitHeight(360f, 9f / 16f, 900f), Pip.FitHeight(360f, 9f / 16f, 900f, in b));
-        Assert.Equal(Pip.Anchor(360f, 202f, VpW, VpH), Pip.Anchor(360f, 202f, VpW, VpH, in b));
-        Assert.Equal(PipGesture.ClampX(5000f, VpW, 360f), PipGesture.ClampX(5000f, VpW, 360f, in b));
-        Assert.Equal(PipGesture.ClampY(-40f, VpH, 202f), PipGesture.ClampY(-40f, VpH, 202f, in b));
-        Assert.Equal(PipGesture.Reserve(true, false, 202f), PipGesture.Reserve(true, false, 202f, in b));
-        Assert.Equal(
-            PipGesture.Resize(PipEdge.Left | PipEdge.Top, 1064f, 610f, 360f, 202f, -100f, -50f, VpW, VpH),
-            PipGesture.Resize(PipEdge.Left | PipEdge.Top, 1064f, 610f, 360f, 202f, -100f, -50f, VpW, VpH, in b));
-    }
-
-    [Fact]
     public void A_bigger_margin_and_player_bar_move_the_anchor_and_the_clamps_with_them()
     {
         var roomy = new PipBounds(MinW: 300f, MinH: 170f, ReserveBottom: 100f, ReserveTop: 32f, Margin: 24f);
@@ -192,7 +177,7 @@ public class VideoPipOverlayTests
         Assert.Equal(1440f, PipOverlay.Width(SurfacePlacement.Fullscreen, 1440f, 360f, 500f));
         Assert.Equal(900f, PipOverlay.Height(SurfacePlacement.Fullscreen, 900f, 202f, 300f));
 
-        var o = PipOverlay.Offset(SurfacePlacement.Fullscreen, 1440f, 900f, placed: true, 10f, 20f, 360f, 202f, 40f, 50f);
+        var o = PipOverlay.Offset(SurfacePlacement.Fullscreen, 1440f, 900f, placed: true, 10f, 20f, 360f, 202f, 40f, 50f, PipBounds.Classic);
 
         Assert.True(o.Identity);
     }
@@ -203,7 +188,7 @@ public class VideoPipOverlayTests
         Assert.Equal(500f, PipOverlay.Width(SurfacePlacement.Docked, 1440f, 360f, 500f));
         Assert.Equal(300f, PipOverlay.Height(SurfacePlacement.Docked, 900f, 202f, 300f));
 
-        var o = PipOverlay.Offset(SurfacePlacement.Docked, 1440f, 900f, placed: false, 10f, 20f, 360f, 202f, 40f, 50f);
+        var o = PipOverlay.Offset(SurfacePlacement.Docked, 1440f, 900f, placed: false, 10f, 20f, 360f, 202f, 40f, 50f, PipBounds.Classic);
 
         Assert.False(o.Identity);
         Assert.Equal(40f, o.X);
@@ -223,22 +208,22 @@ public class VideoPipOverlayTests
     [Fact]
     public void An_unplaced_card_parks_at_the_anchored_corner()
     {
-        var o = PipOverlay.Offset(SurfacePlacement.Floating, 1440f, 900f, placed: false, 0f, 0f, 360f, 202f, 0f, 0f);
+        var o = PipOverlay.Offset(SurfacePlacement.Floating, 1440f, 900f, placed: false, 0f, 0f, 360f, 202f, 0f, 0f, PipBounds.Classic);
 
-        var anchor = Pip.Anchor(360f, 202f, 1440f, 900f);
+        var anchor = Pip.Anchor(360f, 202f, 1440f, 900f, PipBounds.Classic);
         Assert.False(o.Identity);
-        Assert.Equal(PipGesture.ClampX(anchor.X, 1440f, 360f), o.X);
-        Assert.Equal(PipGesture.ClampY(anchor.Y, 900f, 202f), o.Y);
+        Assert.Equal(PipGesture.ClampX(anchor.X, 1440f, 360f, PipBounds.Classic), o.X);
+        Assert.Equal(PipGesture.ClampY(anchor.Y, 900f, 202f, PipBounds.Classic), o.Y);
     }
 
     [Fact]
     public void A_placed_card_stays_where_the_user_left_it_clamped_inside_the_viewport()
     {
-        var inside = PipOverlay.Offset(SurfacePlacement.Floating, 1440f, 900f, placed: true, 300f, 200f, 360f, 202f, 0f, 0f);
+        var inside = PipOverlay.Offset(SurfacePlacement.Floating, 1440f, 900f, placed: true, 300f, 200f, 360f, 202f, 0f, 0f, PipBounds.Classic);
         Assert.Equal(300f, inside.X);
         Assert.Equal(200f, inside.Y);
 
-        var offscreen = PipOverlay.Offset(SurfacePlacement.Floating, 1440f, 900f, placed: true, 5000f, -40f, 360f, 202f, 0f, 0f);
+        var offscreen = PipOverlay.Offset(SurfacePlacement.Floating, 1440f, 900f, placed: true, 5000f, -40f, 360f, 202f, 0f, 0f, PipBounds.Classic);
         Assert.Equal(1440f - 360f - 16f, offscreen.X);
         Assert.Equal(16f, offscreen.Y);
     }

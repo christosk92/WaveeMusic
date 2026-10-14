@@ -9,7 +9,6 @@
 // component keeps the hooks (the effects, the ticker mount) and calls this. Every preference the tick needs is a PEEK of a
 // context signal (O8); the faces stay content renderers over the slab. Faces and the gallery are unchanged.
 
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
@@ -37,7 +36,7 @@ public static partial class Visualizer
         readonly float[] _tlLow = new float[Timeline.Points], _tlMid = new float[Timeline.Points], _tlHigh = new float[Timeline.Points];
         internal readonly Action _tick, _tickCore, _write, _onPosition, _demandEdges, _onTimeline, _onBasePalette;
         internal readonly Func<Action?> _lease;
-        internal readonly Signal<bool> _settled = new(true);   // the deck's mirror (Deck.UI.cs:233, :378-379): the gate reads a SIGNAL, never _model.IsSettled
+        internal readonly Signal<bool> _settled = new(true);   // the deck's mirror (Deck.UI.cs's `_settled`): the gate reads a SIGNAL, never _model.IsSettled
         Stage.StageCtx? _ctx;
         InputHooks? _hooks;                           // captured in Render (V-U42), read by the lease effect
         Action<Action>? _batch;                       // the runtime's Batch, bound by the component (null headless: the write runs inline)
@@ -381,7 +380,7 @@ public static partial class Visualizer
                 }
             }
             bool settled = m.IsSettled && !_fade.Active && _fadeStartMs <= 0;
-            if (_settled.Peek() != settled) _settled.Value = settled;   // the gate's mirror (Deck.UI.cs:378-379)
+            if (_settled.Peek() != settled) _settled.Value = settled;   // the gate's mirror (Deck.UI.cs's `_settled`)
         }
 
         static void Set(FloatSignal s, float v) { if (v != s.Peek()) s.Value = v; }

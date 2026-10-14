@@ -43,7 +43,8 @@ public class DiscographyRouteTests
     public void The_key_is_one_digit_then_the_whole_uri_and_it_round_trips(DiscoFacet facet, string key)
     {
         Assert.Equal(key, DiscoRoute.Key(facet, "spotify:artist:04gDigrS5kc9YWfZHwBETP"));
-        Assert.True(DiscoRoute.TryParseKey(key, out var parsed, out var uri));
+        Assert.StartsWith(DiscoRoute.Prefix, key, StringComparison.Ordinal);
+        Assert.True(DiscoRoute.TryParseArg(key.AsSpan(DiscoRoute.Prefix.Length), out var parsed, out var uri));
         Assert.Equal(facet, parsed);
         Assert.Equal("spotify:artist:04gDigrS5kc9YWfZHwBETP", uri.ToString());
     }
@@ -56,7 +57,8 @@ public class DiscographyRouteTests
     [InlineData("disco:x:spotify:artist:x")]
     [InlineData("album:1:spotify:artist:x")]
     public void A_key_without_a_facet_digit_and_a_uri_is_not_a_route(string key)
-        => Assert.False(DiscoRoute.TryParseKey(key, out _, out _));
+        => Assert.False(key.StartsWith(DiscoRoute.Prefix, StringComparison.Ordinal)
+                        && DiscoRoute.TryParseArg(key.AsSpan(DiscoRoute.Prefix.Length), out _, out _));
 
     [Fact]
     public void KindMatches_SinglesFacet_IncludesSingleAndEp_ExcludesAlbum()
@@ -127,7 +129,7 @@ public class DiscographyPaginationTests
         var artist = ArtistOf();
         var albums = Entities.Current.Edges.ArtistAlbums;
         Assert.Equal(EdgeState.Partial, albums.State(artist.Slot));        // more pages to come …
-        Assert.True(Artist.HasFacet(artist, DiscoFacet.Albums));            // … and the section is present at its total
+        Assert.True(Artist.FacetTotal(artist, DiscoFacet.Albums) > 0);      // … and the section is present at its total
         Assert.Equal(EdgeState.Complete, Entities.Current.Edges.ArtistCompilations.State(artist.Slot));   // 2 of 2
     }
 
@@ -195,7 +197,7 @@ public class DiscographyPaginationTests
 
         var artist = ArtistOf();
         Assert.Equal(EdgeState.Complete, Entities.Current.Edges.ArtistCompilations.State(artist.Slot));
-        Assert.False(Artist.HasFacet(artist, DiscoFacet.Compilations));
+        Assert.Equal(0, Artist.FacetTotal(artist, DiscoFacet.Compilations));
     }
 
     [Fact]

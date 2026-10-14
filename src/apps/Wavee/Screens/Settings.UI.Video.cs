@@ -15,7 +15,6 @@
 // section swap except Empty, so retyping never loses focus. Owner R's Playback tab anchors it
 // (BottomEdgeAlignedLeft, FocusTrap, LightDismiss, PopupChrome.Popup).
 
-using System.Collections.Generic;
 using FluentGpu;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;

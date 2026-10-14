@@ -6,7 +6,7 @@
 // and the art-placeholder blend of `Design`. Every member here is a PURE function: a theme KIND, a card surface, a fallback colour
 // and a token set arrive as ARGUMENTS, and nothing here reads `Tok.*` or an entity. That is what lets the value tests drive both
 // kinds without mutating global theme state, and what lets a style (`R.Wash.PageToneFromHue`, `R.Layer.ShellGround`) choose a recipe
-// without the core knowing which theme runs it. The members that bind the maths to the ACTIVE theme (`Design.Palette.Hairline(seed)`,
+// without the core knowing which theme runs it. The members that bind the maths to the ACTIVE theme (`Design.Palette.TextInk(seed)`,
 // `ChromeAccent(scheme)`) are thin and stay in `Design.Palette`.
 //
 // A style that wants another answer gives another ROLE (`WashRoles.PageToneFromHue`, a `ColorRole` recipe); it does not edit
@@ -97,9 +97,6 @@ public static class ColorScience
     /// <summary>The quiet identity hairline's contrast against its card (the 22-iteration solve's target).</summary>
     public const float HairlineContrast = 3.25f;
 
-    /// <summary>The hovered card's slightly stronger identity cue; below the 4.5:1 text threshold on purpose.</summary>
-    public const float HairlineHoverContrast = 3.55f;
-
     /// <summary>Below this HSV saturation a colour has no hue worth amplifying — grading a genuinely greyscale cover
     /// would just produce a random tint. Callers fall back to the semantic accent instead.</summary>
     public const float NeutralS = 0.08f;
@@ -144,7 +141,7 @@ public static class ColorScience
     /// <summary>A quiet identity hairline solved against the actual card surface. Saturation is capped, then value is
     /// binary-solved to a contrast ratio in the theme-appropriate direction. Deliberately separate from
     /// <see cref="Lift"/>/<see cref="Vivid"/>: chrome fills want brightness and chroma; a 2-DIP rule does not.
-    /// <para>The caller supplies the kind and the flattened card surface (<c>Design.Palette.Hairline</c> reads them from the active
+    /// <para>The caller supplies the kind and the flattened card surface (<c>Design.Palette.TextInk</c> reads them from the active
     /// theme and its layer roles); the contrast tests drive both kinds without mutating global theme state.</para>
     /// <para>THE 22 ITERATIONS ARE THE CONTRAST SOLVE (rule 3 of the old Design header). Contrast is monotonic along V for a
     /// fixed hue/saturation, so a bisection converges; a cheaper approximation changes every identity hairline and
@@ -422,11 +419,6 @@ public static class ColorScience
     public static Scheme Neutral { get; } =
         new(BackgroundBase: 0xFF1C1C1C, BackgroundTintedBase: 0xFF2A2A2A, TextBase: 0xFFFFFFFF,
             TextSubdued: 0xFFB3B3B3, TextBrightAccent: 0xFFFFFFFF);
-
-    /// <summary>The player bar's neutral dark base — the surface the album hue is only faintly lifted from. WinUI's
-    /// subtlety came from acrylic over a real blurred desktop; we have neither, so the bar is a flat neutral fill
-    /// with a capped hue instead of a saturated tint.</summary>
-    public static ColorF BarSurface { get; } = ColorF.FromRgba(0x1A, 0x1B, 0x1E, 0xFF);
 }
 
 // ── the accent ladder (moved here from Platform/AccentLadder.cs; the types are unchanged) ─────────────────────────────────

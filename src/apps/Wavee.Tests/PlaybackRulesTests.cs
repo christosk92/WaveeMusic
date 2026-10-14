@@ -180,16 +180,6 @@ public class LiveRailTests
         Assert.Equal(0.5, Playback.LiveRail.Frac(in w), 6);
         Assert.Equal(31_000L, Playback.LiveRail.Seek(in w, 0.5));
     }
-
-    [Fact]
-    public void BehindAt_reports_the_distance_to_the_edge_for_a_drag_in_flight()
-    {
-        // What "GO LIVE −m:ss" reads BEFORE anything is committed.
-        var w = Window(0, 60_000, 60_000, 60_000);
-        Assert.Equal(30_000L, Playback.LiveRail.BehindAt(in w, 0.5));
-        Assert.Equal(0L, Playback.LiveRail.BehindAt(in w, 1.0));
-        Assert.Equal(0L, Playback.LiveRail.BehindAt(in w, 2.0));
-    }
 }
 
 public class LiveEdgeStateTests
@@ -333,9 +323,8 @@ public class SmtcTimelineCoalescerTests
     public void The_first_push_schedules_a_flush()
     {
         var c = default(Playback.SmtcTimelineCoalescer);
-        Assert.False(c.FlushQueued);
         Assert.True(c.Push(1_000));
-        Assert.True(c.FlushQueued);
+        Assert.False(c.Push(1_000));                                         // the flush is now outstanding
     }
 
     [Fact]
@@ -364,7 +353,6 @@ public class SmtcTimelineCoalescerTests
         var c = default(Playback.SmtcTimelineCoalescer);
         c.Push(1_000);
         Assert.True(c.TryTake(180_000, out _));
-        Assert.False(c.FlushQueued);
         Assert.True(c.Push(2_000));
     }
 
@@ -424,9 +412,7 @@ public class SmtcTimelineCoalescerTests
         // the rest of the process, with no error anywhere.
         var c = default(Playback.SmtcTimelineCoalescer);
         c.Push(5_000);
-        Assert.True(c.FlushQueued);
         Assert.False(c.TryTake(0, out _));
-        Assert.False(c.FlushQueued);
         Assert.True(c.Push(6_000));                                          // and it can be armed again
     }
 }

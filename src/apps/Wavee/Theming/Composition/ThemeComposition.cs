@@ -17,7 +17,6 @@ using System.Runtime.CompilerServices;
 using FluentGpu.Dsl;
 using FluentGpu.Theming;
 using Wavee.Theming.Contracts;
-using Wavee.Theming.Roles;
 
 namespace Wavee.Theming;
 

@@ -1,7 +1,7 @@
 // ── Themes/Classic/Structure/Rules/SidebarPlanner.cs — Classic's row planner, row diff, analytic extents and mid-drag freeze ─
 //
 // Moved out of core by T5a (themes plan 5.1 X25/X26, 6.1; BP P5), from `Shell/Sidebar.Planner.cs` (the planner), `Shell/Sidebar.cs`
-// (`SidebarRowExtents`, `SidebarRowDiff`, `SidebarStageHold`) and `Shell/Sidebar.UI.cs` (`PlanDiff.RowChanged` / `Changed`).
+// (`SidebarRowExtents`, `SidebarStageHold`) and `Shell/Sidebar.UI.cs` (`PlanDiff.RowChanged` / `Changed`).
 // The pane (core) owns WHEN a plan is built, published and held (the binder's revision, the drag session, the disclosure
 // channel); WHAT the rows are, which of them re-render, how tall they are before anything measures, and that a re-projection
 // arriving mid-gesture is parked until the session ends, are the structure's. The pane reaches all of it through
@@ -13,11 +13,10 @@
 //                                      and ALIAS.
 //   OWNING       `SidebarRowPlanner.OwningSection`  which section would hold a route if it were expanded (X26: the layout branch
 //                                      that used to sit in the "one renderer" is the planner's, next to `PlanLibrary`).
-//   DIFF         `SidebarPlanDiff`, `SidebarRowDiff`  which realized rows a republish must re-skin.
+//   DIFF         `SidebarPlanDiff`     which realized rows a republish must re-skin.
 //   EXTENTS      `SidebarRowExtents`   the analytic row extent that seeds the virtualizing host's extent table.
 //   FREEZE       `SidebarStageHold<T>` the mid-drag parking bay: no row jumps while a list is frozen during a drag.
 
-using System.Collections.Generic;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
@@ -67,7 +66,7 @@ public static class SidebarRowPlanner
         bool titled = s.Kind != SidebarSectionKind.Home;
         if (s.Collapsed && titled)
         {
-            if (!HasRows(s, in input, in o, in st)) return;
+            if (!HasRows(s, in input)) return;
             if (st.Rows.Count > 0) st.Rows.Add(Chrome(SidebarRowKind.Divider, s));
             st.Rows.Add(Chrome(st.Compact ? SidebarRowKind.SectionTile : SidebarRowKind.SectionHeader, s));
             return;
@@ -98,7 +97,7 @@ public static class SidebarRowPlanner
 
     /// <summary>Would the section plan any body row? Cheap: it counts, it never plans (a collapsed 10k Playlists costs a
     /// branch, not a walk).</summary>
-    static bool HasRows(SidebarSection s, in SidebarProjectionInput input, in SidebarPlanOptions o, in PlanState st) => s.Kind switch
+    static bool HasRows(SidebarSection s, in SidebarProjectionInput input) => s.Kind switch
     {
         SidebarSectionKind.Pinned => input.Pins is { Count: > 0 },
         SidebarSectionKind.Collections => s.Items.Count > 0,
@@ -441,9 +440,8 @@ public static class SidebarRowPlanner
 }
 
 /// <summary>THE PANE'S PUBLISH DIFF (W3-A2): which realized rows a republish must re-skin, and whether a plan moved at
-/// all. The shape rule is <see cref="SidebarRowDiff"/>'s — a row is new at its slot, its record differs, or the entry
-/// it addresses differs — with ONE correction: the entry compare is <see cref="SidebarEntriesShadow.SameEntry"/>,
-/// whose <c>MosaicTiles</c> leg is BY VALUE. The projection materialises a folder's (and a cover-less playlist's)
+/// all. The shape rule: a row is new at its slot, its record differs, or the entry it addresses differs — and the entry
+/// compare is <see cref="SidebarEntriesShadow.SameEntry"/>, whose <c>MosaicTiles</c> leg is BY VALUE. The projection materialises a folder's (and a cover-less playlist's)
 /// tile list fresh on every rebuild, so the record's compiler equality — a REFERENCE compare on that one member — read
 /// every folder row and every mosaic row as changed on every re-plan that followed a rebuild: two slots, a disclosure
 /// chevron and a selection pill re-rendered per publication with nothing about them moved (the <c>PaneSlot×2</c> /
@@ -480,53 +478,6 @@ public static class SidebarPlanDiff
         for (int i = 0; i < newRows.Count; i++)
             if (RowChanged(oldRows, oldEntries, newRows, newEntries, i)) return true;
         return false;
-    }
-}
-
-/// <summary>The per-row change detector behind the pane's row epochs. A bound row slot is a FROZEN child — a
-/// re-plan does not re-render it — so this is what lets a publish bump only the indices whose rendered content can
-/// actually have changed, instead of every realized row every time. Pure and engine-free.</summary>
-public static class SidebarRowDiff
-{
-    /// <summary>Fill <paramref name="changed"/> with "row i must re-render". The row RECORD is not enough on its
-    /// own: a row addresses its entry by INDEX, so a library refresh can leave every row record identical while the
-    /// entry behind it gained a name, a cover or a child count — both are therefore compared. A row present in the
-    /// new plan but not the old one always counts as changed, and so does a row whose entry index is valid in one
-    /// plan and not the other.</summary>
-    /// <param name="changed">Written for indices [0, newRows.Count); the caller sizes it. Any excess is left alone.</param>
-    public static void Diff(
-        IReadOnlyList<SidebarRow> oldRows, IReadOnlyList<SidebarLibraryEntry> oldEntries,
-        IReadOnlyList<SidebarRow> newRows, IReadOnlyList<SidebarLibraryEntry> newEntries,
-        Span<bool> changed)
-    {
-        int n = Math.Min(newRows.Count, changed.Length);
-        for (int i = 0; i < n; i++)
-            changed[i] = RowChanged(oldRows, oldEntries, newRows, newEntries, i);
-    }
-
-    /// <summary>Does row <paramref name="index"/> render differently between the two plans?</summary>
-    public static bool RowChanged(
-        IReadOnlyList<SidebarRow> oldRows, IReadOnlyList<SidebarLibraryEntry> oldEntries,
-        IReadOnlyList<SidebarRow> newRows, IReadOnlyList<SidebarLibraryEntry> newEntries,
-        int index)
-    {
-        if ((uint)index >= (uint)newRows.Count) return false;
-        if (index >= oldRows.Count) return true;              // the row is new at this slot
-        var row = newRows[index];
-        if (!row.Equals(oldRows[index])) return true;
-        return !SameEntry(oldEntries, newEntries, row.EntryIndex);
-    }
-
-    /// <summary>Compare the entry both plans' row addresses. An out-of-range index on BOTH sides is equal — the row
-    /// carries no entry (a header, a divider, a skeleton) and nothing behind it can go stale.</summary>
-    static bool SameEntry(IReadOnlyList<SidebarLibraryEntry> oldEntries, IReadOnlyList<SidebarLibraryEntry> newEntries,
-                          int entryIndex)
-    {
-        if (entryIndex < 0) return true;
-        bool inOld = entryIndex < oldEntries.Count;
-        bool inNew = entryIndex < newEntries.Count;
-        if (inOld != inNew) return false;
-        return !inNew || oldEntries[entryIndex].Equals(newEntries[entryIndex]);
     }
 }
 

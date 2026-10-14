@@ -32,12 +32,10 @@
 // NOT here: the layout document and its rules (`Sidebar.Layout.cs`), the planner (`Sidebar.Planner.cs`), the stores
 // and the binder pump (`Sidebar.Store.cs`, `Sidebar.Host.cs`), and every `Element` (`Sidebar.UI*.cs`).
 
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 using FluentGpu.Foundation;
-using FluentGpu.Signals;
 
 namespace Wavee;
 
@@ -323,8 +321,8 @@ public enum SidebarRowShape : byte
     EntityOneLine = 2,
 }
 
-/// <summary>THE PLAN QUERIES of the row ladder (which rows a disclosure owns, where a folder header or a route sits, which way a
-/// selection travelled) and the TRANSITIONAL MIRROR of its numbers (T5a). The ladder is the structure's:
+/// <summary>THE PLAN QUERIES of the row ladder (which rows a disclosure owns, where a folder header or a route sits) and
+/// the TRANSITIONAL MIRROR of its numbers (T5a). The ladder is the structure's:
 /// <c>Themes/Classic/Structure/Rules/SidebarGeometry.cs</c> (drawn to WinUI NavigationView, "TR": 36-px rows in a 4,2 margin, a
 /// 40-px icon column, 31-px folder indents, the 3×16 r2 pill). What is left here are exactly the members the sub-surfaces that are
 /// still core read -- the shared row primitives (<c>Sidebar.UI.Rows.cs</c>), the heads, the flyouts, the Edit outline, the drop
@@ -373,8 +371,6 @@ public static class SidebarRowGeometry
     // rules and the Edit outline's inline buttons still read.)
     /// <summary>The header title's x: the rows' <see cref="LeadInset"/> (pane 14), so a title starts where the covers do.</summary>
     public const float HeaderTextX = LeadInset;
-    /// <summary>A header's inline button (chevron, ⋯, +): 24×24.</summary>
-    public const float HeaderButton = 24f;
     // ── the pill ──
     public const float PillW = 3f, PillH = 16f, PillRadius = 2f;
 
@@ -398,10 +394,6 @@ public static class SidebarRowGeometry
     /// pill, icon and label move (NavigationViewItem.cpp:894-902).</summary>
     public static float IndentFor(int depth) => IndentStep * ClampDepth(depth);
 
-    /// <summary>The pill's y inside a slot whose row is <paramref name="rowHeight"/> tall: centred on the row, below its
-    /// 2-px top margin.</summary>
-    public static float PillTop(float rowHeight) => RowMarginY + (rowHeight - PillH) * 0.5f;
-
     /// <summary>Where the drop caret for depth <paramref name="depth"/> starts (slot space): the same x as the pill, so
     /// "insert here at this depth" lines up with the row it describes. Read backwards by the drop resolver.</summary>
     public static float TreeContentX(int depth) => IndentFor(depth);
@@ -411,25 +403,6 @@ public static class SidebarRowGeometry
         => shape == SidebarRowShape.EntityTwoLine && subtitle is { Length: > 0 };
 
     // ── pure plan geometry ──
-
-    /// <summary>The CONTENT-SPACE top of plan row <paramref name="index"/>: the prefix sum of every earlier row's
-    /// extent (the pane's rows are contiguous inside one virtualized list, so this IS the row's Y). Returns 0 for a
-    /// negative index and clamps an index past the end. <paramref name="extentOf"/> must report the row's MEASURED
-    /// height including any rhythm padding, or the result drifts from the rendered layout row by row.</summary>
-    public static float ContentYOf(int index, int count, Func<int, float> extentOf)
-    {
-        if (extentOf is null) throw new ArgumentNullException(nameof(extentOf));
-        if (index <= 0) return 0f;
-        int stop = index < count ? index : count;
-        float y = 0f;
-        for (int i = 0; i < stop; i++)
-        {
-            float e = extentOf(i);
-            if (float.IsNaN(e) || e <= 0f) continue;   // a zero/degenerate row contributes nothing
-            y += e;
-        }
-        return y;
-    }
 
     /// <summary>The first plan index whose row resolves to <paramref name="route"/>, or -1. <paramref name="routeAt"/>
     /// is the caller's row→route projection; null/empty means "this row is not a navigation target".</summary>
@@ -443,16 +416,6 @@ public static class SidebarRowGeometry
             if (r is { Length: > 0 } && string.Equals(r, route, StringComparison.Ordinal)) return i;
         }
         return -1;
-    }
-
-    /// <summary>Which way the selection TRAVELLED: +1 when the new row sits below the old one, -1 above, 0 when the
-    /// direction is unknowable (either row off-plan, or the same row). 0 is a first-class answer: a selection
-    /// arriving from off-plan (a deep link, a row inside a collapsed section, the first paint) must simply fade in
-    /// rather than slide from an invented side.</summary>
-    public static int DirectionOf(int fromIndex, int toIndex)
-    {
-        if (fromIndex < 0 || toIndex < 0 || fromIndex == toIndex) return 0;
-        return toIndex > fromIndex ? 1 : -1;
     }
 
     /// <summary>The plan index of a <c>PlaylistTree</c> folder's header row, or −1. Addressed by the folder's OWN
@@ -665,28 +628,6 @@ public readonly record struct SidebarPillState(
         => this with { Selected = rowSelectsRoute && Lit(Route, liveRoute) };
 }
 
-/// <summary>The displacement hint for a reorder gesture whose destination was CLAMPED.
-///
-/// Normally the engine's own <c>ReorderList.OffsetFor</c> answers this — and still does everywhere no clamp is
-/// configured. But a clamp says "the gap opens HERE, not where the pointer is", and the engine's hint is computed
-/// from the target it holds internally, which the app cannot set without reaching into the control's gesture state.
-/// So the one clamped case reproduces the hint from the snapped destination instead: the sidebar's bands lift ONE
-/// row at one uniform band extent with no inter-row spacing — exactly the shape <c>ReorderList.OffsetFor</c>
-/// reduces to there. Engine-free, so a test can pin the gap against the same fixture the slot clamp uses.</summary>
-public static class SidebarReorderClamp
-{
-    /// <summary>Where sibling <paramref name="slot"/> sits while the row at <paramref name="from"/> is heading for
-    /// <paramref name="to"/>: the rows between the two close the gap the lift left (or part to make room),
-    /// everything else — and the lifted row itself — stays put.</summary>
-    public static float Offset(int slot, int from, int to, float extent)
-    {
-        if (slot < 0 || from < 0 || to < 0 || from == to || slot == from) return 0f;
-        if (to > from && slot > from && slot <= to) return -extent;
-        if (to < from && slot >= to && slot < from) return extent;
-        return 0f;
-    }
-}
-
 /// <summary>A settled pane observation (the presentation as decided, plus the column's laid-out width).</summary>
 public readonly record struct SidebarPaneFrameSnapshot(
     SidebarLayoutId Layout,
@@ -838,8 +779,8 @@ public static class SidebarEntryKinds
 /// The positional members are the projection's own vocabulary. The trailing <c>init</c> members are display facts a
 /// surface needs but cannot derive (owner flags, the containing folder, an album's first artist) plus
 /// <see cref="IsPinned"/>, which the pin projection stamps. Everything else is computed, so the consumer names
-/// (<c>RouteKey</c>, <c>TrackCount</c>, <c>OwnerName</c>, <c>Publisher</c>, <c>FolderDepth</c>, <c>IsFolder</c>,
-/// <c>PinKey</c>) resolve without a second parallel record.
+/// (<c>RouteKey</c>, <c>TrackCount</c>, <c>OwnerName</c>, <c>Publisher</c>, <c>IsFolder</c>) resolve without a second
+/// parallel record.
 /// </summary>
 public readonly record struct SidebarLibraryEntry(
     string Id,                             // the pin/route id — also the recency key and the custom-order key
@@ -883,7 +824,7 @@ public readonly record struct SidebarLibraryEntry(
     /// "0 songs". <c>Sidebar.PaneText.SubtitleOf</c> (Sidebar.UI.Rows.cs) gates the "N songs" subtitle on this bit
     /// for a playlist. For a FOLDER pin awaiting the rootlist's first answer this session
     /// (<see cref="SidebarProjection.ResolveFolderPinState"/>, trap 5) this is also stamped false — the data side is
-    /// correct, and <c>Sidebar.UI.Slot.cs</c>'s <c>FolderRow</c> gates its "N items" subtitle on it too.
+    /// correct, and <c>ClassicNavRow.cs</c>'s <c>FolderRow</c> gates its "N items" subtitle on it too.
     /// <para>The MEMBERSHIP fallback in <see cref="SidebarProjection.PlaylistCount"/> only counts when it carries a
     /// real number: a Partial page with no total and a Failed edge are both "resident" while knowing no length, and
     /// reading either as a count is what painted "0 songs" on every playlist.</para>
@@ -951,18 +892,9 @@ public readonly record struct SidebarLibraryEntry(
     /// in place; never navigates) and for a track (it plays).</summary>
     public string? RouteKey => IsFolder || IsTrack ? null : Id;
 
-    /// <summary>The pin-store key for this row. The id IS the pin id for every pinnable kind.</summary>
-    public string PinKey => Id;
-
     public int TrackCount => Kind is SidebarEntryKind.Playlist or SidebarEntryKind.Album ? ChildCount : 0;
     public string OwnerName => Kind == SidebarEntryKind.Playlist ? Creator : "";
     public string Publisher => Kind == SidebarEntryKind.Show ? Creator : "";
-    public int FolderDepth => Depth;
-
-    /// <summary>Qualifier-chip match. A qualifier of 0 (Any/Unknown) matches everything; the non-zero values of the
-    /// Your Library chips are byte-identical to <see cref="SidebarPlaylistFlavor"/>, so one byte
-    /// comparison serves them all.</summary>
-    public bool MatchesQualifier(byte qualifier) => qualifier == 0 || (byte)Flavor == qualifier;
 
     /// <summary>An APP-ROUTE row (Home / Search / Liked / ...). Authored by the surface, never produced by the
     /// projection: the label + glyph are engine-bound and resolved by the renderer. The route key IS the id.</summary>
@@ -1491,12 +1423,8 @@ public sealed class SidebarTreeSelection
     /// <summary>The Shift-range anchor (WinUI <c>SelectionModel.AnchorIndex</c>, by key). Null = none.</summary>
     public string? Anchor => _anchor;
 
-    /// <summary>Is the user in explicit CHECK MODE (entered from the row menu's "Select")? Distinct from
-    /// <see cref="CheckLaneVisible"/>: check mode survives the selection emptying, which lets a user turn the lane on
-    /// and then pick their first row.</summary>
-    public bool CheckMode => _checkMode;
-
-    /// <summary>Is the checkbox lane on screen? Explicit check mode, OR two or more rows selected — one selected row
+    /// <summary>Is the checkbox lane on screen? Explicit CHECK MODE (entered from the row menu's "Select"; it survives the
+    /// selection emptying, which lets a user turn the lane on and then pick their first row), OR two or more rows selected — one selected row
     /// is still "the row I clicked", two is a set and needs a visible handle.</summary>
     public bool CheckLaneVisible => _checkMode || _ids.Count >= 2;
 
@@ -1633,9 +1561,6 @@ public static class SidebarSort
     public static StringComparer NameComparer =>
         s_name ??= StringComparer.Create(CultureInfo.CurrentUICulture, ignoreCase: true);
 
-    /// <summary>Test/culture-switch hook: drop the cached collator so the next access rebuilds it.</summary>
-    public static void ResetCollator() => s_name = null;
-
     static readonly Comparison<SidebarLibraryEntry> s_recentsAsc = static (a, b) => Recents(in a, in b, desc: false);
     static readonly Comparison<SidebarLibraryEntry> s_recentsDesc = static (a, b) => Recents(in a, in b, desc: true);
     static readonly Comparison<SidebarLibraryEntry> s_addedAsc = static (a, b) => RecentlyAdded(in a, in b, desc: false);
@@ -1676,9 +1601,6 @@ public static class SidebarSort
     /// while the persisted preference is left untouched.</summary>
     public static SidebarLibrarySort Effective(SidebarLibrarySort sort, SidebarLibraryFilter filter) =>
         sort == SidebarLibrarySort.CustomOrder && filter != SidebarLibraryFilter.Playlists ? SidebarLibrarySort.Alphabetical : sort;
-
-    /// <summary>True when the direction affordance should be shown at all (Custom has no inverse).</summary>
-    public static bool SupportsDirection(SidebarLibrarySort sort) => sort != SidebarLibrarySort.CustomOrder;
 
     public static Dictionary<string, int> BuildRanks(IReadOnlyList<string>? order)
     {
@@ -1890,7 +1812,7 @@ public static class SidebarProjection
     public const int MosaicTrackPrefix = 8;
 
     /// <summary>G-059: a cover-less playlist's own 2×2 mosaic — the first ≤4 distinct member-track album covers, in
-    /// membership order, THE SAME RULE as <see cref="Playlist.MosaicTiles"/> (Entities/Playlist.UI.cs:95, the
+    /// membership order, THE SAME RULE as <see cref="Playlist.MosaicTiles"/> (Entities/Playlist.UI.cs, the
     /// playlist DETAIL page's own cover rule) — keep the two aligned if either changes. That rule resolves each
     /// track's image to a URL (its two other callers want one, for a palette/deposit-art fallback); this one does
     /// NOT — it collects the tracks' own <see cref="Track.ImageId"/> directly, already-interned StringIds with no
@@ -2851,33 +2773,6 @@ public sealed class SidebarSourceIndex
         entry = default;
         return false;
     }
-
-    /// <summary>The IReadOnlyDictionary face the planner wants, without materialising a second map.</summary>
-    public IReadOnlyDictionary<string, SidebarLibraryEntry> AsLookup() => _view ??= new View(this);
-    View? _view;
-
-    sealed class View(SidebarSourceIndex owner) : IReadOnlyDictionary<string, SidebarLibraryEntry>
-    {
-        public bool TryGetValue(string key, out SidebarLibraryEntry value) => owner.TryGet(key, out value);
-        public bool ContainsKey(string key) => owner._byKey.ContainsKey(key);
-        public SidebarLibraryEntry this[string key] =>
-            owner.TryGet(key, out var v) ? v : throw new KeyNotFoundException(key);
-        public int Count => owner._byKey.Count;
-        public IEnumerable<string> Keys => owner._byKey.Keys;
-
-        public IEnumerable<SidebarLibraryEntry> Values
-        {
-            get { foreach (var kv in owner._byKey) yield return owner._entries[kv.Value]; }
-        }
-
-        public IEnumerator<KeyValuePair<string, SidebarLibraryEntry>> GetEnumerator()
-        {
-            foreach (var kv in owner._byKey)
-                yield return new KeyValuePair<string, SidebarLibraryEntry>(kv.Key, owner._entries[kv.Value]);
-        }
-
-        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
-    }
 }
 
 // ── PINS, THE PIN MENU ROW AND THE EDIT PLAN ─────────────────────────────────────────────────────────────────────────
@@ -3032,8 +2927,6 @@ public static class SidebarPinId
         return null;
     }
 
-    public static bool IsPinnableRoute(string? routeKey) => FromRoute(routeKey) is not null;
-
     /// <summary>A rootlist group id → its pin id. Folders are pinnable even though they never navigate.</summary>
     public static string ForFolder(string folderId) => FolderPrefix + folderId;
 
@@ -3067,11 +2960,6 @@ public static class SidebarPinId
     public static string FolderIdOf(string pinId) =>
         KindOf(pinId) == SidebarEntryKind.Folder ? pinId.Substring(FolderPrefix.Length) : "";
 
-    /// <summary>Whether a <see cref="SidebarEntryKind"/> can ever back a pin. <see cref="SidebarEntryKind.Track"/> is
-    /// the ONE refusal — every other kind is either a real navigable library entity or the bare-route family. Call
-    /// this at every pin-CREATION boundary rather than inferring pinnability from a fallback.</summary>
-    public static bool IsPinnable(SidebarEntryKind kind) => kind != SidebarEntryKind.Track;
-
     /// <summary>The pin id for a projected entry — the entry Id already IS the pin id, so this is the identity with
     /// the not-pinnable kinds screened out: internal routes and TRACK rows (queue / now playing / artist top tracks)
     /// are never pinnable.</summary>
@@ -3095,7 +2983,7 @@ public static class SidebarPinId
 public static class PinSyncRules
 {
     /// <summary>pin id → the collection2v2 item uri, or null when this pin is local-only.</summary>
-    public static string? TryWireUri(string? pinId, string username)
+    public static string? TryWireUri(string? pinId)
     {
         if (string.IsNullOrEmpty(pinId)) return null;
         if (SidebarPinRules.IsFixedRoute(pinId)) return null;
@@ -3125,7 +3013,7 @@ public static class PinSyncRules
         return id is null || SidebarPinRules.IsFixedRoute(id) ? null : id;
     }
 
-    public static bool IsSyncable(string? pinId, string username) => TryWireUri(pinId, username) is not null;
+    public static bool IsSyncable(string? pinId) => TryWireUri(pinId) is not null;
 }
 
 // ── 7. the pin menu-row decision ─────────────────────────────────────────────────────────────────────────────────────

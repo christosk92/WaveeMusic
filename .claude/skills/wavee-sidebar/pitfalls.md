@@ -65,7 +65,7 @@ routes, never pins, and never written to the server pin set.
 **A write over the live file leaves a half-written `sidebar.json`.** Cause: a direct write that bypasses the store. Rule: `SidebarFileStore` writes a
 temp file, rotates the previous file to `.bak`, and sets an unreadable file aside as `.corrupt`. Route every write
 through the store. A document over `MaxDocumentBytes` (256 KiB) is dropped whole and reported as
-`SidebarSaveFault.DocumentTooLarge`; the file is not touched.
+`SidebarPersistenceFault.DocumentTooLarge` (`LastWriteResult`); the file is not touched.
 
 **A downgrade loses the user's layout.** Cause: the migration deleted the old settings values. Rule: keep the old values
 in `settings.json`. The `sidebar.bootstrap.version = 2` latch prevents a second read.

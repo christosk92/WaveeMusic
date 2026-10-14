@@ -23,14 +23,12 @@
 //
 // Mounted from other stage-B files: `Video.DockedCap()` (K3), `Deck.View()` (K2), `Lyrics.NpvPeek()` and `Lyrics.View()` (K3).
 
-using System.Collections.Generic;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
-using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;

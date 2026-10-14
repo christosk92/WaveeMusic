@@ -485,12 +485,6 @@ public sealed class LyricsModelTests : IDisposable
         Assert.False(jumped);
     }
 
-    // ── the AI state and the verbs ──────────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void With_the_feature_off_the_sparkle_is_hidden()
-        => Assert.False(Model().AiState().Visible);
-
     private sealed class RecordingSink : ILyricsSceneSink
     {
         public readonly List<string> Calls = [];

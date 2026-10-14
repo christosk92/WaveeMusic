@@ -350,12 +350,12 @@ public class DetailRailPolicyTests
     {
         foreach (var (w, mode) in ReachableTwoColumnStates())
         {
-            float content = RailPolicy.CollapsedContentWidthFor(w);
+            float content = RailPolicy.ContentWidthFor(w, RailPolicy.CompactStripW, RailPolicy.CollapsedGripW);
             Assert.True(content >= Breakpoints.ContentMinWidthForMode(mode),
                 $"mode {mode} at {w}: collapsing leaves the content column {content}");
         }
         // The narrowest two-column page there is: 540 − 96 − 20 = 424.
-        Assert.Equal(424f, RailPolicy.CollapsedContentWidthFor(540f));
+        Assert.Equal(424f, RailPolicy.ContentWidthFor(540f, RailPolicy.CompactStripW, RailPolicy.CollapsedGripW));
     }
 
     /// <summary>The two breakpoint rails and the seam are ONE number each, shared by the policy and the frame.</summary>
@@ -433,9 +433,6 @@ public class DetailRailPolicyTests
         Assert.Equal(RailArtistLine.WideHeight, RailArtistLine.HeightOf(RailArtistMode.Wide));
         Assert.Equal(RailArtistLine.MediumHeight, RailArtistLine.HeightOf(RailArtistMode.Medium));
         Assert.Equal(RailArtistLine.NarrowHeight, RailArtistLine.HeightOf(RailArtistMode.Narrow));
-        // The tallest RENDERED look (two wrapped lines) is covered by every wrapping mode and by the global reserve.
-        Assert.True(RailArtistLine.TallestHeight >= twoLines);
-        Assert.True(RailArtistLine.TallestHeight >= RailArtistLine.WideHeight);
         // A medium lead face (24) fits its box.
         Assert.True(RailArtistLine.MediumHeight >= Detail.Skeleton.OwnerAvatar + 2f * RailArtistLine.PadY);
     }

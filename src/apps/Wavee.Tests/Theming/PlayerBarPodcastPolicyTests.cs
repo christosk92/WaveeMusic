@@ -52,7 +52,7 @@ public sealed class PlayerBarPodcastPolicyTests
         for (int i = 0; i < PlayerBarPolicy.TierCount; i++)
         {
             Assert.Equal(PlayerBarPolicy.Default.Tiers[i].PodcastSet, Classic.Tiers[i].PodcastSet);
-            Assert.Equal(PlayerBarPolicy.Default.Tiers[i].PodcastLeft, Classic.Tiers[i].PodcastLeft);
+            Assert.Equal(PlayerBarPolicy.Default.Tiers[i].PodcastLeftW, Classic.Tiers[i].PodcastLeftW);
         }
     }
 

@@ -119,7 +119,7 @@ float s = R.Lyrics.BloomScale                                      // the lyrics
 | Ink | `InkRoles` | `R.Ink` | `AccentAction`, `AccentSelection`, `AccentDecor`, `PremiumText`, `DataDot(argb)` |
 | On-media | `OnMediaLadder` | `R.OnMedia` | scrim plates, `Stroke`, the three inks, glass and glass-plate rungs, `BackdropDim`, the spotlight stops, the light-button ramp and its two drops |
 | Stage arm | `StageArmTable` | `R.StageArm` (the table), `StageInk` (the live arm) | `IsDark`, `Veil`, `Floor`, ink, glass, scrim, `Stroke`, the play disc, `SkeletonBar`, the quiet plates, `Card`, `AccentFrom`, `SelectedTileWash`, `ScrimBaseA` |
-| Wash | `WashRoles` | `R.Wash` | `NeutralGround`, the strengths (`HeroAlpha`, `ShelfAlpha`, `BandPull`, `HeroVeilPull`, `HeroVeilPeak`, `CoverMix`, `ConcertMediaMix`, `PageTonePlaneAlpha`, `BlendWashTop`, `BlendWashBoundary`, `ShellTintAlpha`) and the recipes (`PageToneFromHue`, `ShellTintFromScheme`, `BlendWashLadder`) |
+| Wash | `WashRoles` | `R.Wash` | `NeutralGround`, the strengths (`HeroAlpha`, `ShelfAlpha`, `HeroVeilPull`, `HeroVeilPeak`, `CoverMix`, `ConcertMediaMix`, `PageTonePlaneAlpha`, `BlendWashTop`, `BlendWashBoundary`, `ShellTintAlpha`) and the recipes (`PageToneFromHue`, `ShellTintFromScheme`, `BlendWashLadder`) |
 | Lyrics | `LyricsInkRoles` | `R.Lyrics` | `ThemePlateAlpha`, `RingTrackThemeAlpha`, `RingTrackOnMediaAlpha`, `BloomOnMedia`, `BloomScale` |
 
 **A colour role is a pair or a function of the theme kind** (`ColorRole.cs`). `ColorRole.Pair(light, dark)` / `Fixed(c)` hold values and
@@ -140,7 +140,7 @@ asked for, and reads everything else as live as the call. The numbers a style gi
 **The maths is `Platform\ColorScience.cs`.** Lift, vivid, the hairline and text-ink contrast solves (the 22-iteration bisection stays 22), the page-tone
 clamp, the data-hue ink, the shell ground and content step, the placeholder blend and the accent ladder take the theme **kind**, the card surface and
 the fallback colour as arguments and read no token. A recipe in a style calls it; `Design.Palette` is the thin face that binds it to the active kind
-and accent (`Hairline(seed)`, `HairlineHover`, `TextInk`, `ChromeAccent(scheme)`, `ChromeFromPayload`).
+and accent (`TextInk`, `ChromeAccent(scheme)`, `ChromeFromPayload`).
 
 **Classic's colour table** is the `Layer()`, `Ink()`, `OnMedia()`, `StageArm()`, `Wash()` and `Lyrics()` recipes in `ClassicRoles.cs`: each is the body
 of the `Design` expression it replaced with the kind passed in. They are pinned against the formulas written out in the test
@@ -220,8 +220,8 @@ shell chords, the file-drop target, the realized-node captures the probes and th
 | `Shell.Frame` | `ShellFrameProps` | `Shell.FrameRoot` (`[CoreHost]`, `Shell\Shell.UI.cs`) | `ClassicFrame`: the column (chords, title row, content region, player dock) under the material, the stage, the video and overlay layers, the content region (sidebar column, content card and its stroke, rail gap and reservation, both seams, the rail overlay, the narrow drawer) |
 | `Shell.ContentState` | `ContentStateProps` (`Kind` is a `ContentStateKind`) | `Shell.ContentHost` (`PageBody`, `NotFoundPage`, `OfflineLane`) | `ClassicContentState`: the page and empty-body boxes, the not-found page, the offline lane |
 
-`Shell.ContentState` is also a **pure core value**: `Theming\Contracts\ContentState` = the route's body (`Page`, `EmptyBody`,
-`NotFound`) and the offline-lane flag. `Shell.FrameRules.ContentFor(route, hasPage, developerMode, auth)` decides it (a known route
+`Shell.ContentState` is also a **pure core decision**: the route's body (`ContentStateKind.Page`, `EmptyBody`, `NotFound`) and
+the offline-lane flag. `Shell.FrameRules.ContentBodyFor(route, hasPage, developerMode)` and `ShowsOfflineStrip(auth)` decide it (a known route
 with a page is a page; a known route whose page is not registered is an empty body, never the not-found page; an unknown route, or a
 developer-only route while developer mode is off, is the not-found page; the lane is up exactly while the session is `Offline`,
 over any body) and `Shell.FrameRules.ContentKey` names the body's node key (`page:<route>`, `page-empty:<route>`,
@@ -322,7 +322,7 @@ gives the pane its key and moves the **rows**; T5b moves the **heads** (below); 
   and its owning-section answer, the publish diff (`RowChanged`), the analytic extent that seeds the virtualizing host, the mid-drag
   parking bay (`INavStageHold<T>`: no row jumps while a list is frozen during a drag, the newest stage flushes once at session end)
   and the row **slot**. The template calls `props.Mount(kit)` and the core builds the pane around it, so core never names a structure.
-- **Classic's files.** `Rules\SidebarPlanner.cs` (`SidebarRowPlanner`, `SidebarPlanDiff`, `SidebarRowDiff`, `SidebarRowExtents`,
+- **Classic's files.** `Rules\SidebarPlanner.cs` (`SidebarRowPlanner`, `SidebarPlanDiff`, `SidebarRowExtents`,
   `SidebarStageHold<T>`), `Rules\SidebarGeometry.cs` (the row ladder: heights, the icon column, indent, pill, the grid and cue
   numbers), `Views\Nav\ClassicNavRow.cs` (the bound slot: header, route, entity and folder rows, rail tiles, grid strips, the empty
   hint, the tree's end gutter, the drop band, the selection pill and the drop cues), `ClassicNavRows.cs` (the kit),
@@ -389,7 +389,7 @@ T5c gives the structure the **pictures** of the pane's flyouts; the menu **rows*
   `ContextMenuModel` / `MenuFlyoutItem` rows built at open time by `Shell\Sidebar.UI.Menus.cs` (`SidebarMenus`, `NavMenuModel`); the
   engine's `MenuFlyout` draws them, and the slots already open them (T5a rows, T5b heads). So there was no menu picture left in
   core to move: menu placement, light dismiss, focus return to the row, arrows / Enter / Escape / Shift+F10, submenus, disabled rows
-  and F2 rename are the engine control's and the row slot's, unchanged. `OpenPaneMenu` (the footer "...", no caller) stays with the rows.
+  and F2 rename are the engine control's and the row slot's, unchanged.
 - **The panels are the structure's.** The two props records carry the pane as `INavRowHost` (internal, so the member is internal;
   public record, internal member, as `NavLibraryHeadProps`). `INavRowHost` gained `PlanSectionExpanded`, `RailFolderDropSpec`,
   `IsRailDropActive` and `ExpandFolderInPane`; the panels read the rest (`Model`, `Navigate`, `SelectedRoutePeek`, `EntryMenu`,
@@ -419,7 +419,7 @@ T5d gives the structure the **picture** of edit mode; the edit model, its ops, v
   the focus order. Entering and leaving edit mode is still the pane swapping its head and list for this one element. Numbers are
   `Rules\NavEditLayout.cs` (`ClassicNavEditLayout`).
 - **Deleted.** `Shell\Sidebar.UI.Edit.cs` (`EditPane`) and the `Sidebar.SectionHeader.InlineButton` copy in `Sidebar.UI.Rows.cs`: the Edit rows
-  use `ClassicNavHead.InlineButton`. `SidebarRowGeometry.HeaderButton` is still pinned by the parity test and goes with the mirror (T5f).
+  use `ClassicNavHead.InlineButton`.
 - Rename-in-place is not part of the Outline: a row's F2 rename and the create flow are the row slots' and the pane's (T5a / T5b), unchanged.
 
 **Tests.** `Wavee.ShellTests\NavPaneMountedTests.cs` pins that Classic registers the key; the edit model's behavior is `NavEditModelTests`,

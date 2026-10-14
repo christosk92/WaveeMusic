@@ -62,7 +62,7 @@ public class SpotifyLibraryTests
 
         Assert.Equal(4, me.PinSlots.Length);
         Assert.Equal(new[] { PinKind.Playlist, PinKind.Album, PinKind.Liked, PinKind.Folder },
-                     Enumerable.Range(0, 4).Select(i => me.PinKindAt(i)).ToArray());
+                     Enumerable.Range(0, 4).Select(i => (PinKind)me.PinEdges[i].Flags).ToArray());
         Assert.Equal(Entities.Playlist(Gid(EntityKind.Playlist, 10)).Slot, me.PinSlots[0]);
         Assert.Equal(Entities.Album(Gid(EntityKind.Album, 20)).Slot, me.PinSlots[1]);
         Assert.Equal(Table.None, me.PinSlots[2]);
@@ -104,7 +104,7 @@ public class SpotifyLibraryTests
         var album = Gid(EntityKind.Album, 20);
         me.Add(LibraryEdgeKind.Pins, Entities.Album(album).Slot, album);   // a fake scope: the model half only, no network
 
-        Assert.Equal(PinKind.Album, me.PinKindAt(0));
+        Assert.Equal(PinKind.Album, (PinKind)me.PinEdges[0].Flags);
         Assert.Equal(EdgePending.Add, me.PendingOf(LibraryEdgeKind.Pins, Entities.Album(album).Slot));
     }
 

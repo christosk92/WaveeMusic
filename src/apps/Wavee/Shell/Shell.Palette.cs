@@ -19,14 +19,12 @@
 // 0.2.9 names: `WaveeCommands` (the table) and `WaveeCommandPalette`/`WaveePaletteContent` (the card). Nothing here is
 // named `Palette`: inside `Shell` a nested `Palette` would shadow `Wavee.Palette`, the cover-colour table.
 
-using System;
 using System.Collections.Generic;
 
 using FluentGpu;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
-using FluentGpu.Hooks;
 using FluentGpu.Input;
 using FluentGpu.Localization;
 using Wavee.Theming.Contracts;
@@ -75,9 +73,6 @@ public static partial class Shell
     {
         /// <summary>The list never scrolls and never exceeds eight rows (ch 19 §0 item 3).</summary>
         public const int MaxResults = 8;
-
-        /// <summary>Builtin rows; registry rows are appended after them.</summary>
-        public const int BuiltinCount = 29;
 
         public const string CatalogId = "search.query";
 

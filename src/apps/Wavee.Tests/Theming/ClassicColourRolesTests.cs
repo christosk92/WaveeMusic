@@ -273,7 +273,6 @@ public sealed class ClassicColourRolesTests
         var w = ClassicRoles.Table.Wash;
         Assert.Equal(new ModePair<float>(0.055f, 0.10f), w.HeroAlpha);        // Design.Wash.HeroAlphaLight / HeroAlphaDark
         Assert.Equal(new ModePair<float>(0.05f, 0.085f), w.ShelfAlpha);       // ShelfAlphaLight / ShelfAlphaDark
-        Assert.Equal(new ModePair<float>(0.06f, 0.10f), w.BandPull);          // Controls.BandGradient: dark ? 0.10 : 0.06
         Assert.Equal(new ModePair<float>(0.16f, 0.24f), w.HeroVeilPull);      // Controls.ArtistHeroVeil: light ? 0.16 : 0.24
         Assert.Equal(new ModePair<float>(0.42f, 0.78f), w.HeroVeilPeak);      // light ? 0.42 : 0.78
         Assert.Equal(new ModePair<float>(0.10f, 0.18f), w.CoverMix);          // Deck.Wash / Rail.HeroWashColor: dark ? 0.18 : 0.10

@@ -218,14 +218,10 @@ internal static class ClassicNavCounts
 
     sealed class CountHost : Component
     {
-        readonly LibraryEdgeKind _kind;
         readonly Func<Sidebar.ShortcutCount.Stamp> _stamp;
 
         public CountHost(NavModel model, LibraryEdgeKind kind)
-        {
-            _kind = kind;
-            _stamp = () => model.ReadShortcutCount(kind);   // the scope epoch first, then the relation's wake: the model's read
-        }
+            => _stamp = () => model.ReadShortcutCount(kind);   // the scope epoch first, then the relation's wake: the model's read
 
         public override Element Render() => Badge(Sidebar.ShortcutCount.Shown(UseComputed(_stamp).Value));
     }

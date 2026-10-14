@@ -26,16 +26,13 @@
 // gradient lands with the republished palette). Nothing here decides: the tick's inputs and every constant come from
 // `Visualizer` (CORE) and `Stage` (CORE).
 
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
-using FluentGpu.Media;
 using FluentGpu.Signals;
-using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
 
@@ -239,15 +236,7 @@ public static partial class Visualizer
     /// the now-playing card, the caption and the transport; 0/0/0/0 (a preview) means the whole box. <see cref="Ambient"/>: the
     /// face runs BEHIND a layout that owns the cover and titles, so it drops its own now-playing parts (<see cref="Catalog.HasAmbient"/>).</summary>
     public readonly record struct FaceSpec(float W, float H, bool Preview, string? CoverUrl,
-        bool Poster = false, float SafeLeft = 0f, float SafeTop = 0f, float SafeRight = 0f, float SafeBottom = 0f, bool Ambient = false)
-    {
-        public float SafeX1 => SafeRight > SafeLeft ? MathF.Min(SafeRight, W) : W;
-        public float SafeY1 => SafeBottom > SafeTop ? MathF.Min(SafeBottom, H) : H;
-        public float SafeW => MathF.Max(1f, SafeX1 - SafeLeft);
-        public float SafeH => MathF.Max(1f, SafeY1 - SafeTop);
-        public float SafeCx => SafeLeft + SafeW * 0.5f;
-        public float SafeCy => SafeTop + SafeH * 0.5f;
-    }
+        bool Poster = false, float SafeLeft = 0f, float SafeTop = 0f, float SafeRight = 0f, float SafeBottom = 0f, bool Ambient = false);
 
     /// <summary>Build a face ONCE for a slab; everything that moves is a bound prop over it. The stage remounts per (kind,
     /// width) on a keyed CHILD box; the gallery mounts the shown faces at preview scale. A legacy kind draws its successor
@@ -267,8 +256,8 @@ public static partial class Visualizer
         Kind.Kaleido => KaleidoFace(slab, in pal, in spec),
         Kind.Scope => ScopeFace(slab, in pal, in spec),
         Kind.Drift => DriftFace(slab, in pal, in spec),
-        Kind.Type => TypeFace(slab, in pal, in spec),
-        Kind.Mosaic => MosaicFace(slab, in pal, in spec),
+        Kind.Type => TypeFace(slab, in spec),
+        Kind.Mosaic => MosaicFace(slab, in spec),
         Kind.Spotlight => SpotlightFace(slab, in pal, in spec),
         Kind.Magneto => MagnetoFace(slab, in pal, in spec),
         Kind.Flow => FlowFace(slab, in pal, in spec),

@@ -11,8 +11,6 @@
 // Before this, five surfaces called `Rail.PlayerPrefs.Set*` with a string they picked (`NpvDiagnostics.SourceFlyout`, …) and
 // the style flyout wrote the open flag and built its per-row mirror signals inline.
 
-using System;
-
 using FluentGpu.Signals;
 
 namespace Wavee;

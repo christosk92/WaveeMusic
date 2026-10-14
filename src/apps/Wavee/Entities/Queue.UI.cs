@@ -36,7 +36,6 @@
 // and the settings epoch; the demand for row text is ONE `Entities.Ensure` over the whole queue per publication.
 
 using System.Buffers;
-using System.Collections.Generic;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -44,7 +43,6 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
-using static FluentGpu.Dsl.Ui;
 
 using Ink = Wavee.Theming.Roles.StageInk;
 using RepeatMode = Wavee.Spotify.Decode.RepeatMode;
@@ -357,8 +355,8 @@ public static partial class Queue
         protected Element Lane(int item, Element row, string key)
             => Viewer ? row : (BoxEl)Reorder.Item(item, row, key: key) with { Direction = 1 };
 
-        protected static DragSource? OwnDrag(bool viewer, ulong itemId, int index, EntityRef row)
-            => QueueRowRules.RowDrags(viewer) ? Drag.Source(() => PayloadFor(itemId, index, row)) : null;
+        protected static DragSource? OwnDrag(bool viewer, ulong itemId, EntityRef row)
+            => QueueRowRules.RowDrags(viewer) ? Drag.Source(() => PayloadFor(itemId, row)) : null;
 
         protected Element Attach(BoxEl row, ulong itemId, int index, EntityRef r)
         {
@@ -372,7 +370,7 @@ public static partial class Queue
         {
             if ((uint)i >= (uint)View.SlotCount || !View.Slots[i].IsRow) return null;
             int index = View.FlatIndex(View.Slots[i].Section, View.Slots[i].Pos);
-            return index < 0 ? null : PayloadFor(Queue.Rows[index].ItemId, index, RefAt(index));
+            return index < 0 ? null : PayloadFor(Queue.Rows[index].ItemId, RefAt(index));
         }
 
         void CommitMove(int from, int to)
@@ -388,7 +386,7 @@ public static partial class Queue
 
     /// <summary>The queue row as a drag: its track travels for the chip, and <c>SourceQueueItemId</c> marks it a reorder
     /// that no playlist, tab or player-bar surface may deposit.</summary>
-    static DragPayload? PayloadFor(ulong itemId, int index, EntityRef row)
+    static DragPayload? PayloadFor(ulong itemId, EntityRef row)
     {
         if (row.IsNone) return null;
         var text = TextOf(row);
@@ -630,7 +628,7 @@ public static partial class Queue
             var row = new BoxEl
             {
                 Key = RowKey("", itemId, index) + ":classic",
-                Draggable = OwnDrag(Viewer, itemId, index, r),
+                Draggable = OwnDrag(Viewer, itemId, r),
                 ZStack = true, MinHeight = ClassicExtent, ClipToBounds = true,
                 Corners = CornerRadius4.All(0f),
                 Fill = ColorF.Transparent, HoverFill = R.Layer.RowHover, PressedFill = R.Layer.RowPressed,
@@ -1060,7 +1058,7 @@ public static partial class Queue
             var row = new BoxEl
             {
                 Key = RowKey("s", itemId, index) + ":art=" + art + ":s=" + Px(100f),
-                Draggable = OwnDrag(Viewer, itemId, index, r),
+                Draggable = OwnDrag(Viewer, itemId, r),
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Px(Spacing.M), MinHeight = Px(RowH), Height = Px(RowH),
                 Padding = new Edges4(Px(Spacing.S), 0f, Px(Spacing.S), 0f), Corners = Radii.ControlAll,
                 Fill = Ink.GlassRest, HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed, BrushTransitionMs = Design.Motion.Faster,
@@ -1097,7 +1095,7 @@ public static partial class Queue
             var row = new BoxEl
             {
                 Key = RowKey("s", itemId, index) + ":next:art=" + art + ":s=" + Px(100f),
-                Draggable = OwnDrag(Viewer, itemId, index, r),
+                Draggable = OwnDrag(Viewer, itemId, r),
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Px(Spacing.L), Height = Px(NextH),
                 Margin = new Edges4(0f, 0f, 0f, Px(NextGap)),
                 Padding = new Edges4(Px(Spacing.M), 0f, Px(Spacing.S), 0f), Corners = Radii.CardAll,

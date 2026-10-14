@@ -11,7 +11,6 @@
 // owns it, the chrome never dips to neutral between two coloured pages, and nothing here writes. This view only paints what the
 // slot holds, so the handoff between pages (no flash on navigation) is exactly what it was.
 
-using FluentGpu.Animation;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;

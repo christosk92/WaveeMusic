@@ -1,7 +1,7 @@
 // ── Themes/Classic/Structure/Views/Frame/ClassicContentState.cs — Classic's `Shell.ContentState` (themes plan 6.1, T4a) ────
 //
 // From `Shell.UI.cs`: `PageBody`'s body box, `NotFoundPage`, `OfflineLane`. The core content host decides WHICH state the
-// content region is in (`Shell.FrameRules.ContentFor`: a page, an empty body, the not-found page, the offline lane) and builds
+// content region is in (`Shell.FrameRules.ContentBodyFor` / `ShowsOfflineStrip`: a page, an empty body, the not-found page, the offline lane) and builds
 // the page; this template DRAWS the state it was handed. The elements, keys and numbers are what the shell built before the move:
 //
 //   Page / EmptyBody   one body box keyed `props.Key` (`page:<route>` / `page-empty:<route>`) that fills the card; the page, when

@@ -48,15 +48,11 @@ public static partial class Setup
         public const float FooterHeight = 80f, FooterPadding = 24f, FooterColumnGap = 6f;
         public const float ProgressColumnWidth = 210f, ProgressColumnRightPad = 48f, ProgressStackGap = 6f, ProgressWidth = 162f;
         public const float BackButtonSize = 30f, BackGlyphSize = 12f;
-        public const float HeaderLineHeight = 36f, SeparatorHeight = 1f;
-        public const float QrSize = 80f, BodyLineHeight = 20f, CardMinHeight = 68f, CardPadding = 16f, LinkRowHeight = 32f;
+        public const float SeparatorHeight = 1f;
+        public const float QrSize = 80f;
 
         /// <summary>The hero's zoom over its authored fit — Wavee's one deliberate deviation from a literal Rise readout.</summary>
         public const float HeroZoom = 1.2f;
-
-        /// <summary>A v4 (33-module) pairing symbol asked for at <see cref="QrSize"/> PAINTS at 82; the budget charges the
-        /// paint, not the ask.</summary>
-        public static readonly float QrPlateBudget = QrPlate.PlateFor(QrSize, 33);
 
         public static float Width(float viewportW) => Math.Clamp(PlateWidth, MinPlateWidth, MathF.Max(MinPlateWidth, viewportW - 2f * ViewportMargin));
         public static float Height(float viewportH) => Math.Clamp(PlateHeight, MinPlateHeight, MathF.Max(MinPlateHeight, viewportH - 2f * ViewportMargin));
@@ -66,25 +62,7 @@ public static partial class Setup
 
         public static float ProgressColumnFor(bool large) => large ? ProgressColumnWidth : 0f;
 
-        /// <summary>The two stretch buttons' width once the padding, the progress column and both gaps come out.</summary>
-        public static float FooterButtonWidth(float plateW, bool large) =>
-            (plateW - 2f * FooterPadding - ProgressColumnFor(large) - 2f * FooterColumnGap) / 2f;
-
         public static Cover CoverFor(bool shellBehind) => shellBehind ? Cover.Dim : Cover.None;
-
-        /// <summary>The page body's lane: the plate less the footer, the separator, the 24 padding top+bottom and the
-        /// one-line title with its 0,-4,0,4 margin (325 at the reference plate).</summary>
-        public static float BodyLaneHeight(float plateH) =>
-            plateH - FooterHeight - SeparatorHeight - 2f * PlatePadding - (HeaderLineHeight - HeaderTopPull + HeaderBottomGap);
-
-        /// <summary>The sign-in Idle body for a lead of <paramref name="leadLines"/> lines: lead · browser card · scan card
-        /// (the painted QR + 16 padding) · the one-row premium line, 20 apart (314 for two lines). It does NOT model the
-        /// SettingsCard wrap bands (W3b) — the persistent scrollbar covers those.</summary>
-        public static float SignInIdleBodyHeight(int leadLines) =>
-            leadLines * BodyLineHeight + BodySpacing
-            + CardMinHeight + BodySpacing
-            + (QrPlateBudget + 2f * CardPadding) + BodySpacing
-            + LinkRowHeight;
 
         /// <summary>A body card's width at a viewport (W3b): the plate less its padding, less the icon column and its gap
         /// when shown — what `SettingsCard`'s two thresholds (content wrap 476, icon drop 286) are measured against.</summary>
@@ -419,13 +397,6 @@ public static partial class Setup
         /// <summary>The banner's inner cap, and its lane's top pad (the 48-DIP chrome row + 8).</summary>
         public const float BannerMaxWidth = 560f, BannerTopPad = 56f;
 
-        /// <summary>Whether the command row's two groups (the links, the buttons) no longer share one line of the dialog's
-        /// <see cref="ProgressWidth"/> and the footer wraps the buttons onto a second line. It is the engine's own wrap-line
-        /// break rule (a gap between the groups, a 0.01 slack), restated so the Failed footer's "wraps" is a fact, not a
-        /// guess. An empty group (no links, or no buttons) never wraps.</summary>
-        public static bool FooterWraps(float linksW, float buttonsW, float lineW = ProgressWidth)
-            => linksW > 0f && buttonsW > 0f && linksW + FluentGpu.Dsl.Spacing.S + buttonsW > lineW + 0.01f;
-
         /// <summary>The download bar's fill: clamped 0..1, 0 when the total is unknown.</summary>
         public static float ProgressFraction(long received, long total)
             => total <= 0 ? 0f : Math.Clamp((float)((double)received / total), 0f, 1f);
@@ -450,9 +421,8 @@ public static partial class Setup
         /// <summary>A fact the card does not know prints an em dash, never an empty cell.</summary>
         public static string OrDash(string? value) => string.IsNullOrWhiteSpace(value) ? "—" : value;
 
-        /// <summary>Dismissal (Escape, programmatic) is blocked while the card is working.</summary>
-        /// <summary>A provisioning outcome as the banner's issue. Ready and never-attempted say nothing; a wrong-arch
-        /// runtime and a catalog with nothing for this build are named; a pack that failed its hash or signature gate is
+        /// <summary>A provisioning outcome as the banner's issue (read by the private PlayPlay provisioner). Ready and never-attempted say nothing; a
+        /// wrong-arch runtime and a catalog with nothing for this build are named; a pack that failed its hash or signature gate is
         /// unsupported; everything else is a missing runtime.</summary>
         public static RuntimeIssue IssueFor(ProvisioningOutcome outcome) => outcome switch
         {
@@ -672,12 +642,6 @@ public static partial class Setup
 
         /// <summary>A re-auth on an install whose runtime is already Ready has nothing left to do after Sign in.</summary>
         public static bool SkipsLocalPlayback(WizardEntry entry, bool runtimeReady) => entry == WizardEntry.Reauth && runtimeReady;
-
-        /// <summary>The runtime banner/toast stay silent while the wizard is armed or open — it asks the same question.</summary>
-        public static bool SuppressesRuntimePrompts(bool pending, bool sessionOpen) => pending || sessionOpen;
-
-        /// <summary>The entry a sign-in-required launch opens: a completed install re-authenticates, anything else is a first run.</summary>
-        public static WizardEntry EntryFor(bool completed) => completed ? WizardEntry.Reauth : WizardEntry.FirstRun;
     }
 
     /// <summary>The "this app has run before" witnesses on disk, probed by <c>Setup.Host.cs</c> BEFORE <c>library.db</c> is

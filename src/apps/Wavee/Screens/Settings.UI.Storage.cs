@@ -19,7 +19,6 @@ using FluentGpu.Foundation;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using Wavee.Sdk.Streams;
-using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
 

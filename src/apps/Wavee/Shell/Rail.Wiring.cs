@@ -21,12 +21,10 @@
 // WVTH008: this type builds no element and reads no token or role. The pieces that still draw (the lyrics header, the video body,
 // the "Next up" rows, the seek rail, the time labels) are the core's own builders; the views place them.
 
-using System;
 using System.Collections.Generic;
 
 using FluentGpu.Controls;
 using FluentGpu.Controls.Media;
-using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Signals;
 

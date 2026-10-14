@@ -11,7 +11,6 @@
 // deposit, the pin, the refusal toast — is `NavModel.Drop` (NavModel.Drop.cs). The block between the two rules banners
 // below is the unchanged 0.3 drop authority, moved here from Sidebar.cs and Sidebar.Host.cs (the types keep their names).
 
-using FluentGpu.Foundation;
 using FluentGpu.Localization;
 
 namespace Wavee;

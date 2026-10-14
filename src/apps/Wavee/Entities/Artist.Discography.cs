@@ -32,7 +32,6 @@
 
 using System.Globalization;
 using System.Runtime.InteropServices;
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -282,15 +281,6 @@ public static class DiscoRoute
     public static string Key(DiscoFacet facet, ReadOnlySpan<char> artistUri)
         => string.Concat(Prefix, ((int)facet).ToString(CultureInfo.InvariantCulture), ":", artistUri);
 
-    /// <summary>Parse a whole key. False for anything that is not <c>disco:&lt;0-2&gt;:&lt;non-empty uri&gt;</c>.</summary>
-    public static bool TryParseKey(ReadOnlySpan<char> key, out DiscoFacet facet, out ReadOnlySpan<char> artistUri)
-    {
-        facet = DiscoFacet.Albums;
-        artistUri = default;
-        if (!key.StartsWith(Prefix, StringComparison.Ordinal)) return false;
-        return TryParseArg(key[Prefix.Length..], out facet, out artistUri);
-    }
-
     /// <summary>Parse the suffix a route's <c>Arg</c> carries: <c>&lt;digit&gt;:&lt;uri&gt;</c>.</summary>
     public static bool TryParseArg(ReadOnlySpan<char> suffix, out DiscoFacet facet, out ReadOnlySpan<char> artistUri)
     {
@@ -318,7 +308,7 @@ public static class DiscoRoute
     }
 }
 
-// ══ 4. THE CARD TEXT (ch 08 §8: DiscoGrid.AlbumMeta / ReleaseDateLabel / ReleaseYearLabel, ArtistPage.KindLabel) ═════
+// ══ 4. THE CARD TEXT (ch 08 §8: DiscoGrid.AlbumMeta / ReleaseDateLabel, ArtistPage.KindLabel) ════════════════════
 
 /// <summary>A discography card's subtitle ("Jun 12, 2026 · 17 tracks") — the ONE rule shared by the grid card and the
 /// drawer head, so the two can never read different metadata for one album. Ch 08 §8 names <c>Album.cs</c> as its
@@ -361,13 +351,6 @@ public static class DiscoCardText
             1 => date.ToString("MMM yyyy", culture),
             _ => date.ToString("MMM d, yyyy", culture),
         };
-    }
-
-    /// <summary>The year alone — the appears-on card's subtitle (the kind label stands in when it is 0).</summary>
-    public static string ReleaseYearLabel(ushort year, string? iso)
-    {
-        if (year > 0) return year.ToString(CultureInfo.InvariantCulture);
-        return iso is { Length: >= 4 } ? iso[..4] : "";
     }
 
     /// <summary>ArtistPage.KindLabel: the localized badge word. ONE table — Detail.Text owns it for the album eyebrow, and
@@ -450,14 +433,6 @@ public readonly partial struct Artist
         _ => FetchEdge.ArtistAlbums,
     };
 
-    /// <summary>Is the facet's section present? Somebody answered, and the server says it has releases.</summary>
-    public static bool HasFacet(Artist a, DiscoFacet facet)
-    {
-        if (!a.IsValid) return false;
-        var edge = FacetEdge(facet);
-        return edge.State(a.Slot) != EdgeState.Unknown && edge.Total(a.Slot) > 0;
-    }
-
     /// <summary>Whether the facet keeps a stable section shell while its edge is being answered. Unknown, Partial and
     /// Failed remain present so a later edge answer cannot insert a whole section into the middle of the page; a
     /// complete empty answer removes it permanently.</summary>
@@ -487,9 +462,9 @@ public readonly partial struct Artist
     /// window) — that part was always correct and is unrelated to this demotion.</summary>
     public static void DemandDiscography(Artist a)
     {
-        DemandFacet(a, DiscoFacet.Albums, DiscographyRules.FirstPagePriority(DiscoFacet.Albums));
-        DemandFacet(a, DiscoFacet.Singles, DiscographyRules.FirstPagePriority(DiscoFacet.Singles));
-        DemandFacet(a, DiscoFacet.Compilations, DiscographyRules.FirstPagePriority(DiscoFacet.Compilations));
+        DemandFacet(a, DiscoFacet.Albums, DiscographyRules.FirstPagePriority);
+        DemandFacet(a, DiscoFacet.Singles, DiscographyRules.FirstPagePriority);
+        DemandFacet(a, DiscoFacet.Compilations, DiscographyRules.FirstPagePriority);
     }
 
     /// <summary>One facet's page ONE: while nobody has answered (and the last ask did not fail — a failed facet waits
@@ -656,7 +631,7 @@ public readonly partial struct Artist
             if (!FacetPresent(a, p.Facet)) return new BoxEl();
 
             // A failed facet must leave the shimmer.  The edge can retain a positive server total from the failed
-            // page, so HasFacet alone is insufficient here: without this branch the grid has an extent but no targets
+            // page, so its total alone is insufficient here: without this branch the grid has an extent but no targets
             // and renders placeholder cards indefinitely, which looks like a navigation/rendering failure.
             if (edge.IsFailed(a.Slot))
                 return Controls.Vacancy(Controls.VacancyVoice.Error, Controls.VacancyScale.Compact,

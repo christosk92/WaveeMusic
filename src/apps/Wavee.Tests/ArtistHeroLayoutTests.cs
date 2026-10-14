@@ -85,10 +85,10 @@ public class ArtistHeroLayoutTests
     [Fact]
     public void PageGutter_UsesOnlySemanticSpacingTokens()
     {
-        Assert.Equal(Spacing.PageNarrow, ArtistHeroLayout.PageGutterFor(320f));
-        Assert.Equal(Spacing.L, ArtistHeroLayout.PageGutterFor(420f));
-        Assert.Equal(Spacing.XXXL, ArtistHeroLayout.PageGutterFor(700f));
-        Assert.Equal(Spacing.PageWide, ArtistHeroLayout.PageGutterFor(1200f));
+        Assert.Equal(Spacing.PageNarrow, ArtistHeroLayout.For(320f, ArtistHeroTier.Narrow).Gutter);
+        Assert.Equal(Spacing.L, ArtistHeroLayout.For(420f, ArtistHeroTier.Compact).Gutter);
+        Assert.Equal(Spacing.XXXL, ArtistHeroLayout.For(700f, ArtistHeroTier.Medium).Gutter);
+        Assert.Equal(Spacing.PageWide, ArtistHeroLayout.For(1200f, ArtistHeroTier.Wide).Gutter);
     }
 
     [Fact]

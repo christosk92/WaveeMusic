@@ -39,8 +39,6 @@ public static partial class Stage
         public const int Count = 4;
         /// <summary>A stored/hand-edited int → a real mode; anything else is Lyrics.</summary>
         public static int Coerce(int stored) => (uint)stored < (uint)Count ? stored : (int)Mode.Lyrics;
-        /// <summary>Visualizer mode has no pane: the face takes the stage and the caption shows the lyric.</summary>
-        public static bool ShowsPane(Mode m) => m != Mode.Visualizer;
         /// <summary>The gallery is a Visualizer-mode affordance: toggled from another mode it first switches the mode (the
         /// prototype's <c>togglePane</c>, Flagship.dc.html:555).</summary>
         public static (Mode Mode, bool Open) ToggleGallery(Mode current, bool open)
@@ -80,8 +78,6 @@ public static partial class Stage
         public const float Pad = 24f;
         public const float NowPlayingCardX = 24f, NowPlayingCardY = 64f, NowPlayingCardW = 460f, NowPlayingCardH = 136f;
         public const float GalleryDesktopW = 444f, GalleryTop = 64f, GalleryBottom = 160f, GalleryRight = 24f;
-        /// <summary>How far the face is inset on the right while the gallery pane is open (pane + 2 × 24).</summary>
-        public const float GalleryInset = GalleryDesktopW + 2f * Pad;
         public const float HairlineH = 3f;
         public const float SelectorItemW = 128f, SelectorIconOnlyW = 44f;
         public const float ThumbDesktop = 96f, ThumbSmall = 64f;
@@ -371,8 +367,6 @@ public static partial class Stage
     {
         public float Right => X + W;
         public float Bottom => Y + H;
-        public float CentreX => X + W * 0.5f;
-        public float CentreY => Y + H * 0.5f;
     }
 
     // ── 3. what the transport may do (unchanged from the previous stage) ────────────────────────────────────────────
@@ -426,7 +420,7 @@ public static partial class Stage
         /// engine captures only image nodes, ConnectedAnimation.cs:246-250).</summary>
         public const string MorphKey = "stage:art";
         /// <summary>Never over a fullscreen VIDEO (F11 owns that). Nothing playing is NOT a bar: the rail ⛶ opens an empty
-        /// stage today (Rail.UI.cs:253-255, "a track with no lyrics still opens a full stage") and so does every door here (V-U53).</summary>
+        /// stage today (the rail's ⛶: "a track with no lyrics still opens a full stage") and so does every door here (V-U53).</summary>
         public static bool CanEnter(bool videoFullscreen) => !videoFullscreen;
     }
 }

@@ -30,7 +30,6 @@ renderer.
 | Change the section or folder disclosure | `Shell/Sidebar.Disclosures.cs` (the bookkeeping, in `feat/smooth-reveal`); `Shell/Sidebar.UI.cs` (`PaneView.StartDisclosure`) | `SidebarDisclosuresTests.cs` (in `feat/smooth-reveal`) |
 | Change a collapsed-rail flyout | `Themes/Classic/Structure/Views/Nav/ClassicNavFlyouts.cs` (panel); `Shell/Sidebar.UI.Flyout.cs` (open/close) | renderer, no unit test |
 | Change a card surface (Home-style tiles in the pane) | `Shell/Sidebar.Cards.cs` (`SidebarCardRules`); `Themes/Classic/Structure/Views/Nav/ClassicNavRow.cs` (the grid strip) and `Shell/Sidebar.UI.Host.cs` (`GridCell`) | `SidebarCardsTests.cs` |
-| Change the footer or the Settings pill | `Shell/Sidebar.UI.Footer.cs` | renderer, no unit test |
 
 ## One line per file
 
@@ -57,7 +56,6 @@ Every `Shell/Sidebar*.cs` file, in alphabetical order.
 | `Shell/Sidebar.UI.Drop.cs` | The `PaneView` drag path: drop slot publish, the commit, the rootlist move (`PaneView.MoveRootlist`). |
 | `Themes/Classic/Structure/Views/Nav/ClassicNavEdit.cs` | Edit mode's view (T5d): `ClassicEditPane`, the Outline, the edit bar, and the Edit-mode key handlers (Ctrl+Z / Ctrl+Y included). |
 | `Shell/Sidebar.UI.Flyout.cs` | Opens and closes the collapsed rail's section and folder flyouts (the panels are `ClassicSectionFlyout` / `ClassicFolderFlyout`). |
-| `Shell/Sidebar.UI.Footer.cs` | `PaneFooter`: the footer row and its Settings pill. |
 | `Shell/Sidebar.UI.Host.cs` | `INavRowHost` implemented by `PaneView`: the explicit forwarders a row slot reads (T5a). The slot itself, `ClassicNavRow`, is `Themes/Classic/Structure/Views/Nav/ClassicNavRow.cs`. |
 | `Shell/Sidebar.UI.Library.cs` | The Library mode's view: `LibraryMode`, `LibrarySession` (pane reference and focus targets around the model's `NavLibrary`; the head's host). The head itself (`ClassicLibraryHead`, `ClassicLibraryChips`, `ClassicLibraryToolbar`, `ClassicLibrarySearchBox`) is `Themes/Classic/Structure/Views/Nav/ClassicNavLibraryHead.cs`. |
 | `Shell/Sidebar.UI.Menus.cs` | `SidebarMenus` (the menu run and labels) and the `PaneView` menu entry points. |

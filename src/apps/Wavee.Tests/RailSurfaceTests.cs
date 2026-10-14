@@ -20,13 +20,6 @@ public class RailHeroTests
     [InlineData(500f, 484f)]
     public void The_side_is_the_W7b_ladder(float railWidth, float side) => Assert.Equal(side, H.Side(railWidth));
 
-    [Theory]
-    [InlineData(200f, 236f)]
-    [InlineData(340f, 376f)]
-    [InlineData(500f, 536f)]
-    public void The_pinned_block_is_art_top_plus_the_side(float railWidth, float block)
-        => Assert.Equal(block, H.PinnedBlockH(railWidth));
-
     [Fact]
     public void Art_top_is_derived_from_the_strip() => Assert.Equal(H.Inset + H.HeaderRowH + H.Inset, H.ArtTop);
 

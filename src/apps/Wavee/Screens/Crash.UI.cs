@@ -25,14 +25,12 @@
 // before: a launch that surfaced a crash defers the plate to the next launch.
 
 using System.Globalization;
-using FluentGpu;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
-using FluentGpu.WindowsApi.Network;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;

@@ -17,8 +17,6 @@
 // the leave debounce, the scrub / menu / keyboard / window-move holds and the accessibility override, and already the
 // thing that decides when the cursor hides. Two timers could not agree; one cannot disagree.
 
-using System.Collections.Generic;
-
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Controls.Media;
@@ -34,8 +32,6 @@ namespace Wavee;
 
 public static class OnMedia
 {
-    public const string TransportId = Video.OnMediaTransport.Id;
-
     static readonly float[] s_rates = [0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f];
 
     /// <summary>The on-media transport over a video hole. Ink, seek bar and time labels are Stage's / the player bar's.

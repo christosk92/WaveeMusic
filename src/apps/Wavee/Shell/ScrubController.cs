@@ -15,8 +15,6 @@
 // `ScrubControllerTests` drives the same controller and ladder with a fake source and a fake clock, so the dwell, the
 // generation hold and the key ladder are unit facts with no reducer and no engine.
 
-using System;
-
 using FluentGpu.Signals;
 
 namespace Wavee;

@@ -9,7 +9,6 @@
 // names the shell. Stateless: a handler, never a decision a view makes.
 
 using FluentGpu.Localization;
-using Wavee;
 
 namespace Wavee.HomeUi;
 

@@ -137,11 +137,6 @@ public enum TrackFlags : uint
     /// <summary>The USER attached a local mp4 (ch 01 GAP 7, ch 04's "user-attached local video override", ch 05 D11).
     /// Its own bit, so <c>Track.HasVideo</c> stays ONE ordinal probe over the OR of both planes.</summary>
     VideoOverride = 1 << 17,
-    /// <summary>The video source is a LIVE broadcast (ch 24 DATA GAP 1, G-058): the LIVE chip, Go live and the DVR rail,
-    /// and a re-watch that opens live-shaped before the manifest lands. Written by the VIDEO HOST when the resolving
-    /// source says so — never by a catalogue answer, which is why it is outside <see cref="VideoMask"/> and survives a
-    /// kind-99 commit. The default is "finite": a wrong guess the other way rendered a six-hour broadcast as 0:03.</summary>
-    LiveVideo = 1 << 18,
 
     // Files group (FLAC plan §5.2). The ladder itself is `Edges.TrackFormats`; these two are the cheap read every
     // surface that only wants a BADGE takes — one load and one mask, no edge walk, for a versions row or a list lane.
@@ -376,8 +371,6 @@ public readonly partial struct Track(int slot) : IEquatable<Track>
     public ushort VideoWidth => T.VideoW[Slot];
     /// <inheritdoc cref="TrackTable.VideoW"/>
     public ushort VideoHeight => T.VideoH[Slot];
-    /// <inheritdoc cref="TrackFlags.LiveVideo"/>
-    public bool IsLiveVideo => (T.Flags[Slot] & (uint)TrackFlags.LiveVideo) != 0;
     /// <summary>Tempo ×10 (1284 = 128.4 BPM).</summary>
     public ushort Tempo => T.Tempo[Slot];
     public byte Key => T.Key[Slot];

@@ -104,8 +104,6 @@ public class SessionStepTests
         Assert.Equal(new Spotify.TokenRef(12, 4), s.AccessToken);
         Assert.Equal(new Spotify.TokenRef(16, 4), s.ConnectionId);
         Assert.Equal(2_000, s.AccessExpiresAtMs);
-        Assert.True(s.CanRequest(1_999));
-        Assert.False(s.CanRequest(2_000));
     }
 
     [Fact]
@@ -1018,10 +1016,9 @@ public class RequestFoldTests
     static (string Path, Spotify.Verb Verb, Spotify.ApiHost Host, Spotify.HeaderSet Headers, string SyncReason)
         Fold(Spotify.RequestKind kind, string id = "", string id2 = "", bool flag = false)
     {
-        var session = default(Spotify.Session);
         var args = new Spotify.RequestArgs { Id = id, Id2 = id2, Flag = flag };
         Span<char> path = stackalloc char[512];
-        var request = Spotify.Build(session, kind, args, path);
+        var request = Spotify.Build(kind, args, path);
         return (new string(request.Path), request.Verb, request.Host, request.Headers, new string(request.SyncReason));
     }
 
@@ -1167,7 +1164,6 @@ public class RequestFoldTests
     [Fact]
     public void A_custom_request_is_taken_verbatim()
     {
-        var session = default(Spotify.Session);
         var args = new Spotify.RequestArgs
         {
             Path = "/some/new/route?x=1",
@@ -1176,7 +1172,7 @@ public class RequestFoldTests
             Headers = Spotify.HeaderSet.Bearer | Spotify.HeaderSet.AcceptJson,
         };
         Span<char> path = stackalloc char[256];
-        var request = Spotify.Build(session, Spotify.RequestKind.Custom, args, path);
+        var request = Spotify.Build(Spotify.RequestKind.Custom, args, path);
 
         Assert.Equal("/some/new/route?x=1", new string(request.Path));
         Assert.Equal(Spotify.ApiHost.SpclientWg, request.Host);
@@ -1187,11 +1183,10 @@ public class RequestFoldTests
     [Fact]
     public void The_body_the_caller_passed_is_the_body_that_comes_back()
     {
-        var session = default(Spotify.Session);
         byte[] body = [1, 2, 3];
         var args = new Spotify.RequestArgs { Body = body };
         Span<char> path = stackalloc char[128];
-        var request = Spotify.Build(session, Spotify.RequestKind.ExtendedMetadata, args, path);
+        var request = Spotify.Build(Spotify.RequestKind.ExtendedMetadata, args, path);
         Assert.Equal(body, request.Body.ToArray());
     }
 }

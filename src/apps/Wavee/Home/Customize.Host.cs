@@ -21,12 +21,9 @@
 // view wires the reorderable's scene and render request from its OWN render context, because a drag asks for a re-render of the component
 // that builds the rows; it also gives the reorderable its row extent (the picture's number).
 
-using System;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
-using FluentGpu.Foundation;
 using FluentGpu.Hooks;
-using FluentGpu.Signals;
 using Wavee;
 using Wavee.Theming.Contracts;
 using Slots = FluentGpu.Theming.Slots;
@@ -80,8 +77,4 @@ public sealed class CustomizeScreen : Component
             Doc = layout.Doc.Value, Reorder = _reorder, Toggle = _onToggle, Move = _onReorder, Reset = _onReset,
         });
     }
-
-    /// <summary>The palette command's action ("Home: Customize" — C1 registers the command itself in Wave 4's
-    /// palette wiring; this is the one line it calls).</summary>
-    public static void GoToCustomize() => HomeVerbs.OpenCustomize();
 }

@@ -45,45 +45,12 @@ public class SetupWizardLayoutTests
     public void The_progress_column_collapses_with_the_icon(bool large, float expected)
         => Assert.Equal(expected, Setup.Layout.ProgressColumnFor(large));
 
-    [Theory]
-    [InlineData(762f, true, 246f)]    // (762 − 48 − 210 − 12) / 2
-    [InlineData(762f, false, 351f)]
-    [InlineData(706f, true, 218f)]    // viewport 770: the icon column on a shrunken plate
-    [InlineData(636f, false, 288f)]   // viewport 700
-    public void The_footer_splits_the_remainder_equally(float plateW, bool large, float expected)
-        => Assert.Equal(expected, Setup.Layout.FooterButtonWidth(plateW, large));
-
     [Fact]
     public void A_shell_behind_the_plate_is_dimmed_and_nothing_else_is()
     {
         Assert.Equal(Setup.Cover.Dim, Setup.Layout.CoverFor(shellBehind: true));
         Assert.Equal(Setup.Cover.None, Setup.Layout.CoverFor(shellBehind: false));
     }
-
-    // 490 − 80 footer − 1 separator − 48 padding − 36 title = 325
-    [Fact]
-    public void The_body_lane_at_the_reference_plate_is_325()
-        => Assert.Equal(325f, Setup.Layout.BodyLaneHeight(Setup.Layout.PlateHeight));
-
-    // 40 + 20 + 68 + 20 + (82 + 32) + 20 + 32 = 314 ≤ 325 — the old 96-DIP QR and two stacked link rows summed to 388.
-    [Theory]
-    [InlineData(1)]
-    [InlineData(2)]
-    public void The_sign_in_idle_body_fits_the_reference_lane(int leadLines)
-        => Assert.True(Setup.Layout.SignInIdleBodyHeight(leadLines) <= Setup.Layout.BodyLaneHeight(Setup.Layout.PlateHeight),
-            $"{Setup.Layout.SignInIdleBodyHeight(leadLines)} > {Setup.Layout.BodyLaneHeight(Setup.Layout.PlateHeight)}");
-
-    [Fact]
-    public void A_two_line_lead_sums_to_314_and_a_three_line_lead_overflows_so_the_scrollbar_must_show()
-    {
-        Assert.Equal(314f, Setup.Layout.SignInIdleBodyHeight(2));
-        Assert.True(Setup.Layout.SignInIdleBodyHeight(3) > Setup.Layout.BodyLaneHeight(Setup.Layout.PlateHeight) - Setup.Layout.BodySpacing);
-    }
-
-    /// <summary>The budget charges the PAINTED v4 symbol at 80 DIP (82), never the request.</summary>
-    [Fact]
-    public void The_qr_budget_is_the_v4_symbol_painted_at_80()
-        => Assert.Equal(82f, Setup.Layout.QrPlateBudget);
 
     /// <summary>W3b: the scan card's QR wraps below its header while the card is narrower than SettingsCard's 476, and every
     /// card drops its icon under 286 — two bands inside the wizard's own clamp ladder.</summary>

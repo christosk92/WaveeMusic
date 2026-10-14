@@ -21,7 +21,6 @@
 //       docs/plans/wavee/library-reader-narrow-heads-implementation.md §3.3-§3.6
 
 using System.Globalization;
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -1335,7 +1334,6 @@ public readonly partial struct Artist
         sealed class SpineDot(Reader owner, RowScope scope) : Component
         {
             readonly Reader _r = owner;
-            readonly RowScope _scope = scope;
             readonly Func<(int Index, int Slot, uint Ver)> _watch = () => Watch(owner, scope);
 
             /// <summary>The triple this dot re-renders on: the flat index (a recycle always changes it), the album
@@ -1538,7 +1536,7 @@ public readonly partial struct Artist
                             continue;
                         }
                         int trackSlot = tracks[r];
-                        // ZERO-based: `Track.NumberCell` prints `displayIndex + 1` (Track.UI.cs:387). Passing r + 1 here
+                        // ZERO-based: `Track.NumberCell` prints `displayIndex + 1`. Passing r + 1 here
                         // numbered every block from 2.
                         kids[r] = Track.EagerRow(new Track(trackSlot), r, in ReaderCols, ReaderTracks, ReaderShape.RowH,
                             () => Playback.PlayContext(LibraryRows.IdOf(EntityKind.Album, slot),
@@ -1664,7 +1662,7 @@ public readonly partial struct Artist
                                               Strings.Library.PlayAlbum(title));
                 Element save = Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Glyph = ReaderShape.HeadGlyph, Box = ReaderShape.HeadCircle })
                                with { Key = "save:" + uri };
-                Element more = Detail.MoreButton(_menu, ReaderShape.HeadCircle, ReaderShape.HeadGlyph, round: true);
+                Element more = Detail.MoreButton(_menu, ReaderShape.HeadCircle);
                 Element titleSlot = TitleSlot(title, go, narrow);
                 if (!narrow)
                     return new BoxEl

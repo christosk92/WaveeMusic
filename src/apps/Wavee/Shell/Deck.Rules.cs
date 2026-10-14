@@ -7,8 +7,6 @@
 // MOVED VERBATIM from `Deck.UI.cs`: `Deck.SpectrumFold` keeps its name and its static state (one fold per process, shared by
 // every analyser deck mounted). The wash colour mixing half of X17 becomes style roles later (themes plan T2b); it is not here.
 
-using FluentGpu.Signals;
-
 namespace Wavee;
 
 public static partial class Deck

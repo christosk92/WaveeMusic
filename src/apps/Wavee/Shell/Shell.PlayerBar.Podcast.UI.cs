@@ -1,6 +1,5 @@
 using System.Globalization;
 using FluentGpu.Dsl;
-using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 
 namespace Wavee;

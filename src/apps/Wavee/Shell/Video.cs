@@ -392,9 +392,6 @@ public static partial class Video
             _ => TransportOwner.GlobalBar,
         };
 
-        /// <summary><see cref="TransportOwnerFor"/> against a whole state (resolves first).</summary>
-        public static TransportOwner TransportOwnerOf(in PlacementState s) => TransportOwnerFor(Resolve(s));
-
         /// <summary>The ONE question every transport-bearing component asks: "am I the owner right now?".</summary>
         public static bool OwnsTransport(TransportOwner claimant, SurfacePlacement resolved)
             => claimant == TransportOwnerFor(resolved);
@@ -433,11 +430,6 @@ public static partial class Video
         /// placement is resolved, and closes whenever it is not — including when a DIFFERENT placement won.</summary>
         public static MountAction DecideOwned(SurfacePlacement resolved, SurfacePlacement owned, bool alive)
             => DecideMount(resolved == owned ? owned : SurfacePlacement.None, alive ? owned : SurfacePlacement.None);
-
-        /// <summary>The async-resolve fence: an in-flight content resolve may only publish if the generation it
-        /// captured when it started is still current — otherwise a superseded track's result overwrites the current
-        /// one ("changed track, got the previous video").</summary>
-        public static bool IsCurrentGeneration(long capturedGen, long currentGen) => capturedGen == currentGen;
 
         // ── data-driven driver (property tests) ─────────────────────────────────────────────────────────────────────
 
@@ -795,22 +787,12 @@ public static partial class Video
         /// the moment fullscreen is the placement: F11 and double-click then re-request the state the user is already
         /// in and read as dead buttons. The action stays constant; the DECISION is taken per press, here.</summary>
         public static bool FullscreenAffordanceExits(SurfacePlacement resolved) => resolved == SurfacePlacement.Fullscreen;
-
-        public static TransportOwner OwnerFor(SurfacePlacement resolved) => resolved switch
-        {
-            SurfacePlacement.Fullscreen => TransportOwner.Fullscreen,
-            SurfacePlacement.Floating => TransportOwner.Docked,
-            SurfacePlacement.Docked => TransportOwner.Docked,
-            _ => TransportOwner.GlobalBar,
-        };
     }
 
     /// <summary>Stage and every video overlay draw the same on-media transport. Engine MediaPlayerElement chrome is off.</summary>
     public static class OnMediaTransport
     {
         public const string Id = "onmedia.transport";
-        public static bool UsesSharedPlayer(SurfacePlacement resolved)
-            => resolved is not SurfacePlacement.None;
     }
 
     // ── persistence codecs ──────────────────────────────────────────────────────────────────────────────────────────
@@ -956,8 +938,6 @@ public static partial class Video
     public readonly record struct OverrideDecision(OverrideTier Tier, OverrideRecord Override)
     {
         public static OverrideDecision None => new(OverrideTier.None, default);
-        /// <summary>True when the resolver should stop here and play <see cref="Override"/>.</summary>
-        public bool Wins => Tier == OverrideTier.UseOverride;
     }
 
     /// <summary>The status chip a curated attachment shows in Settings (and the badge language the toasts reuse).</summary>
@@ -1071,17 +1051,6 @@ public static partial class Video
         /// <summary>Extension test (case-insensitive, culture-invariant — a path is not prose).</summary>
         public static bool IsMp4(string? path)
             => path is { Length: > 0 } && path.EndsWith(Extension, StringComparison.OrdinalIgnoreCase);
-
-        /// <summary>Is this a file the AUDIO host can play? The format list is the local-file resolver's, restated
-        /// here as ONE predicate so a surface can never accept a file the resolver would then refuse. It is kept in
-        /// step with <see cref="PlayableFilter"/> by the one test that reads both.</summary>
-        public static bool IsAudioFile(string? path)
-        {
-            if (path is not { Length: > 0 }) return false;
-            return path.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase)
-                || path.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase)
-                || path.EndsWith(".flac", StringComparison.OrdinalIgnoreCase);
-        }
 
         /// <summary>Validate a picked/dropped path before it becomes an attachment: the right container, and actually
         /// there. <paramref name="fileExists"/> is injected so the rule is testable without a disk.</summary>
@@ -1309,61 +1278,6 @@ public static partial class Video
     /// <summary>What the warm override roster just did to one playable.</summary>
     public enum OverrideMutationKind : byte { Attach = 0, Replace = 1, Remove = 2 }
 
-    /// <summary>The pure plan for one override mutation — latch clears, whether to commit a has-video upgrade, whether
-    /// to force a same-kind video reload, and whether a reveal may <c>OpenAt</c> after the commit.</summary>
-    public readonly record struct OverrideMutationPlan(
-        bool ClearHasVideoLatch,
-        bool ClearDeadVideoLatch,
-        bool CommitHasVideoUpgrade,
-        bool ForceReloadIfVideo,
-        bool RevealSurfaceIfCurrent);
-
-    /// <summary>Engine-free decision layer for local video-override mutations and the track-boundary / reveal rules.</summary>
-    public static class OverrideMutation
-    {
-        /// <summary>Plan the side-effects for one attach/replace/remove.</summary>
-        /// <param name="kind">What the roster just did.</param>
-        /// <param name="isCurrentPlayable">Is the mutated uri the now-playing track?</param>
-        /// <param name="videoAlreadyActive">Is the video surface already resolved?</param>
-        /// <param name="previousSourceKey">The resolved source key before this mutation (null = none published).</param>
-        /// <param name="nextSourceKey">The override's source key after the mutation (null on remove).</param>
-        public static OverrideMutationPlan Plan(
-            OverrideMutationKind kind,
-            bool isCurrentPlayable,
-            bool videoAlreadyActive,
-            string? previousSourceKey,
-            string? nextSourceKey)
-        {
-            bool remove = kind == OverrideMutationKind.Remove;
-            // Attach must NOT clear the has-video latch — that latch absorbs transient has=false / null-uri glitches so
-            // we do not pay a Video→Audio→Video round trip. Only a real user removal ends it.
-            bool clearHas = remove;
-            // Dead latch always clears: attach/replace re-arms a prior failed open; remove drops the playable entirely.
-            bool clearDead = true;
-            bool commitUpgrade = true;   // override mutations are explicit user actions — never deferred
-            // Force only when video is already live AND the source identity really changed (a replace). A first attach
-            // that flips Audio→Video is handled by the availability edge alone — forcing would double-load.
-            bool sourceChanged = nextSourceKey is { Length: > 0 }
-                && !string.Equals(previousSourceKey, nextSourceKey, StringComparison.Ordinal);
-            bool force = !remove && isCurrentPlayable && videoAlreadyActive && sourceChanged;
-            // Reveal after the has-video commit so OpenAt never runs against Available=None.
-            bool reveal = !remove && isCurrentPlayable;
-            return new OverrideMutationPlan(clearHas, clearDead, commitUpgrade, force, reveal);
-        }
-
-        /// <summary>Real track boundary for latch teardown. A null/empty next (or previous) uri is a mid-push glitch —
-        /// the has-video latch's own null-suppression only works if we do NOT clear the latch first.</summary>
-        public static bool IsRealTrackBoundary(string? previousUri, string? nextUri)
-            => previousUri is { Length: > 0 }
-               && nextUri is { Length: > 0 }
-               && !string.Equals(previousUri, nextUri, StringComparison.Ordinal);
-
-        /// <summary>Whether a reveal may <c>OpenAt</c>: the playable is current, has-video is already committed, and
-        /// the surface is not already active (opening an already-active surface is a no-op for media).</summary>
-        public static bool CanReveal(bool isCurrent, bool hasVideoCommitted, bool alreadyActive)
-            => isCurrent && hasVideoCommitted && !alreadyActive;
-    }
-
     // ── the aspect policy's two vocabularies (C6, X16) ──────────────────────────────────────────────────────────────
 
     /// <summary>The app's storage-stable aspect names (<see cref="AspectPreference"/>) and the control kit's engine enum
@@ -1437,15 +1351,6 @@ public static partial class Video
     /// release is.</summary>
     public static class Scrub
     {
-        /// <summary>Where a preview lands for <paramref name="plan"/>.</summary>
-        public static long PreviewTargetMs(in Playback.Video.SeekPlan plan, long targetMs, long segmentLengthMs)
-            => plan.Verb switch
-            {
-                Playback.Video.SeekVerb.Fetch => segmentLengthMs > 0 ? plan.KeyframeMs : targetMs,
-                Playback.Video.SeekVerb.Ride => targetMs,
-                _ => plan.KeyframeMs >= 0 ? plan.KeyframeMs : targetMs,
-            };
-
         /// <summary>A preview never asks for decode-to-exact-PTS.</summary>
         public const bool PreviewAccurate = false;
     }
@@ -1526,11 +1431,7 @@ public static partial class Video
     /// already Fullscreen and the RESOLVE is only now catching up" (availability returned after a video-less track).</summary>
     public static class FullscreenEntry
     {
-        /// <summary>Did the resolved placement just become fullscreen?</summary>
-        public static bool Entered(in PlacementState before, in PlacementState after)
-            => PlacementCore.Resolve(after) == SurfacePlacement.Fullscreen && PlacementCore.Resolve(before) != SurfacePlacement.Fullscreen;
-
-        /// <summary>…and was it the user asking (so the surface may take focus)?</summary>
+        /// <summary>Did the user just ask for fullscreen (so the surface may take focus)?</summary>
         public static bool UserInitiated(in PlacementState before, in PlacementState after)
             => after.Requested == SurfacePlacement.Fullscreen && before.Requested != SurfacePlacement.Fullscreen;
     }

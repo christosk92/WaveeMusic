@@ -154,6 +154,6 @@ public class DetailTrackCommandBarLayoutTests
         var f = Track.FilterState.Default with { SearchScope = Track.SearchScope.Title };
         Assert.Equal(0, f.ActiveCountFor(searching: false));
         Assert.Equal(1, f.ActiveCountFor(searching: true));
-        Assert.Equal(1, f.ActiveCount);
+        Assert.Equal(1, f.ActiveCountFor(searching: true));
     }
 }

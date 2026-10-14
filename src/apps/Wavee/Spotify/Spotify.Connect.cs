@@ -123,7 +123,7 @@ public static partial class Spotify
         public static Action? Wake { get; set; }
 
         /// <summary>How many pushes were dropped because nobody drained. Non-zero is a bug in the host, not in the
-        /// network, and the diagnostics page shows it.</summary>
+        /// network; every overflow is also logged where it happens.</summary>
         public static int DroppedItems => Volatile.Read(ref s_droppedItems);
 
         public static int Pending => Volatile.Read(ref s_inboxCount);
@@ -446,9 +446,8 @@ public static partial class Spotify
             /// waiting on (newest wins — the caller's job). A held <see cref="PutReason.BecameInactive"/> would be this
             /// session's FIRST word to a connection it never said hello to — 0.2.9 never sent one either, and holding it
             /// here would resurrect it for whichever account is signed in when the NEXT connection id arrives, which is
-            /// exactly the sign-out race this file must not reopen. <paramref name="hasHeld"/> decides nothing here — the
-            /// caller reads it for its OWN "log once, not per call" rule.</summary>
-            public static PublishOutcome Decide(bool hasConnectionId, PutReason reason, bool hasHeld)
+            /// exactly the sign-out race this file must not reopen.</summary>
+            public static PublishOutcome Decide(bool hasConnectionId, PutReason reason)
                 => hasConnectionId ? PublishOutcome.Send
                  : reason == PutReason.BecameInactive ? PublishOutcome.Drop
                  : PublishOutcome.Hold;
@@ -464,7 +463,7 @@ public static partial class Spotify
         /// announce was HELD (stored, logged once) or DROPPED; false means proceed to send.</summary>
         static bool GateOrHold(in Playback.Snapshot snapshot, PutReason reason, bool hasConnectionId)
         {
-            PublishOutcome outcome = PublishGate.Decide(hasConnectionId, reason, s_hasHeld);
+            PublishOutcome outcome = PublishGate.Decide(hasConnectionId, reason);
             if (outcome == PublishOutcome.Send) return false;
             if (outcome == PublishOutcome.Hold)
             {

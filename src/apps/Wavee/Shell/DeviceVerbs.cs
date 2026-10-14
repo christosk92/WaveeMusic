@@ -10,8 +10,6 @@
 // lived in `Shell.PlayerBar.UI.cs` and the stage's "Playing on" flyout. A picker view of any theme maps rows to its own
 // look and calls `DeviceVerbs.Run` / `DeviceVerbs.PickerOpened`; it never touches `Playback` or `Platform.Settings` itself.
 
-using System;
-
 namespace Wavee;
 
 public static partial class Shell

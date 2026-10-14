@@ -202,51 +202,6 @@ public sealed class SidebarLibraryShaperTests
     }
 
     [Fact]
-    public void SameParent_ClampsADragAcrossAFolderBoundary()
-    {
-        var published = new[] { Folder("outer"), Playlist("mid", folderId: "outer"), Playlist("top") };
-        var view = new SidebarLibraryShaper();
-        view.Build(published, 0, Tree(), 1, null, group: true);
-
-        // 0 = the folder row (top level), 1 = its child, 2 = a top-level playlist.
-        Assert.Equal("", view.ParentOf(0));
-        Assert.Equal("outer", view.ParentOf(1));
-        Assert.True(view.SameParent(0, 2));
-        Assert.False(view.SameParent(1, 2));
-    }
-
-    [Fact]
-    public void MaterializeOrder_WritesTheWholeVisibleOrder_WithTheRowMoved()
-    {
-        var published = new[] { Playlist("a"), Playlist("b"), Playlist("c") };
-        var view = new SidebarLibraryShaper();
-        view.Build(published, 0, Tree(), 1, null, group: false);
-
-        var into = new List<string>();
-        view.MaterializeOrder(into, 0, 2);
-        Assert.Equal(new[] { view.KeyAt(1), view.KeyAt(2), view.KeyAt(0) }, into);
-
-        view.MaterializeOrder(into, 2, 0);
-        Assert.Equal(new[] { view.KeyAt(2), view.KeyAt(0), view.KeyAt(1) }, into);
-
-        view.MaterializeOrder(into, 1, 1);
-        Assert.Equal(new[] { view.KeyAt(0), view.KeyAt(1), view.KeyAt(2) }, into);
-    }
-
-    [Fact]
-    public void MaterializeOrder_SkipsRowsThatArePartOfNoPlaylistOrder()
-    {
-        // An authored route row (Liked Songs, a pinned route) has no place in a playlist order.
-        var published = new[] { SidebarLibraryEntry.ForRoute("liked", "Liked Songs"), Playlist("a"), Playlist("b") };
-        var view = new SidebarLibraryShaper();
-        view.Build(published, 0, Tree(), 1, null, group: false);
-
-        var into = new List<string>();
-        view.MaterializeOrder(into, 1, 2);
-        Assert.Equal(new[] { view.KeyAt(2), view.KeyAt(1) }, into);
-    }
-
-    [Fact]
     public void ARebuild_ReusesItsBuffers_AndNeverLeaksTheOldOrder()
     {
         var view = new SidebarLibraryShaper();

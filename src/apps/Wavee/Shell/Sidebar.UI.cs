@@ -15,9 +15,10 @@
 // multi-selection and drag peek.
 //
 // NAMED PARTIALS (the J1 split — each carries its own header): `Sidebar.UI.Drop.cs` (every drop spec + the rootlist
-// slot commit), `Sidebar.UI.Menus.cs` (row menus, the quick layout menu, "Move to folder…"), `Sidebar.UI.Slot.cs` (the
-// bound row slot), `Sidebar.UI.Rows.cs` (row primitives), `Sidebar.UI.Flyout.cs` (the compact section and folder
-// flyouts), `Sidebar.UI.Footer.cs` (the pane footer), `Sidebar.UI.Library.cs` (Library's mode, session and head).
+// slot commit), `Sidebar.UI.Menus.cs` (row menus, the quick layout menu, "Move to folder…"), `Sidebar.UI.Rows.cs` (row
+// primitives), `Sidebar.UI.Flyout.cs` (the compact section and folder flyouts), `Sidebar.UI.Host.cs` (the row host the
+// structure's views call), `Sidebar.UI.Library.cs` (Library's mode, session and head). The bound row slot is Classic's
+// `ClassicNavRow.cs`.
 
 using System.Threading;
 using System.Threading.Tasks;
@@ -179,8 +180,6 @@ public static partial class Sidebar
         /// <summary>A live probe: a non-custom sort refuses positional drops with "clear sorting to reorder".</summary>
         public Func<bool>? TreeSortedNonCustom { get; init; }
         public Action? SortedListRefusalAction { get; init; }
-        /// <summary>(kind, from, requested) ⇒ reachable slot. Allocation-free: it runs on the displacement path.</summary>
-        public Func<SidebarSectionKind, int, int, int>? ClampReorderSlot { get; init; }
         public Action<PaneReorder>? CommitReorder { get; init; }
         /// <summary>Arrow navigation ran off an END of the list (−1 above the first row, +1 below the last). Return true when
         /// the mode took focus (Library: Up from the first row lands on the page dropdown, design V.11).</summary>
@@ -1545,20 +1544,7 @@ public static partial class Sidebar
             if (!TryBandOf(planIndex, out var band)) return (0f, 0f);
             var ro = ReorderFor(band.SectionId);
             if (!ro.IsLifted) return (0f, 0f);
-            int slot = planIndex - band.Start;
-            int from = ro.LiftedIndex;
-            int shown = ro.TargetIndex;
-            int reachable = ClampReorderSlot(band.SectionId, from, shown);
-            if (reachable == shown) return (0f, ro.OffsetFor(slot));
-            return (0f, SidebarReorderClamp.Offset(slot, from, reachable, band.Extent));
-        }
-
-        /// <summary>The ONE clamp chokepoint for both the gap and the commit, so the gap never opens where the drop
-        /// will not land.</summary>
-        int ClampReorderSlot(string sectionId, int from, int to)
-        {
-            if (Config.ClampReorderSlot is not { } clamp || from < 0 || to < 0) return to;
-            return SectionOf(sectionId) is { } section ? clamp(section.Kind, from, to) : to;
+            return (0f, ro.OffsetFor(planIndex - band.Start));
         }
 
         object? PayloadAt(string sectionId, int slot)
@@ -1589,7 +1575,6 @@ public static partial class Sidebar
         {
             var section = SectionOf(sectionId);
             if (section is null) return;
-            to = ClampReorderSlot(sectionId, from, to);
             if (from == to) return;
             _publishThroughFreeze = true;
             var band = BandFor(sectionId);
@@ -1622,8 +1607,6 @@ public static partial class Sidebar
         }
 
         // ── the tree multi-selection ───────────────────────────────────────────────────────────────────────────────
-
-        internal IReadOnlyList<string> TreeVisibleOrder => _treeVisibleOrder;
 
         void RebuildTreeSelectionOrder(SidebarRowPlan plan)
         {

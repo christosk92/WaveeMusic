@@ -35,15 +35,12 @@
 // interactive ancestor — the row skin — and survives the pointer crossing onto the button inside it (parity 10-11).
 // A click target inside a reveal is its own child box. Every in-row affordance sets `BlocksDragArm` (ch 01 §0.12).
 
-using System.Globalization;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
-using FluentGpu.Input;
 using FluentGpu.Localization;
-using FluentGpu.Scene;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
@@ -525,7 +522,7 @@ public readonly partial struct Track
             //    back to a whole-table read.
             // Now-playing / liked state need NO addition: `StateOf` (used below) already carries its own narrow
             // subscriptions (`Playback.CurrentId` always; `IsPlaying`/`Buffering`/`Pending.Load` only on the
-            // now-playing row) and `LikedNow` reads the Liked EDGE's own `Changed` (Track.UI.cs:108-113) — the heart
+            // now-playing row) and `LikedNow` reads the Liked EDGE's own `Changed` — the heart
             // was already independent of this whole-table read, not something this change has to preserve.
             var stamp = UseComputed(() =>
             {

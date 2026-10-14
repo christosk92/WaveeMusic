@@ -42,14 +42,12 @@
 // deviation, kept). The shimmer is an explicit, NON-virtual stand-in (a PagedShelf yields zero rows against an
 // unmeasured viewport — must-not-simplify 11), revealed FadeOnly.
 
-using FluentGpu.Animation;
 using FluentGpu.Scroll.Effects;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
-using FluentGpu.Scene;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 

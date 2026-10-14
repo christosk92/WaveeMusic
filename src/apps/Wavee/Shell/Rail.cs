@@ -8,7 +8,8 @@
 // Spec: ch 21 §9.5
 //
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-// The right rail's four engine-free decisions. `Rail.UI.cs` / `Rail.Styles.UI.cs` (stage 2) render what these decide.
+// The right rail's four engine-free decisions. `Rail.UI.cs` and Classic's panel views (`ClassicPanel.cs`,
+// `ClassicDeckFlyout.cs`) render what these decide.
 //
 //   • `Rail.VideoCoupling` — the two-way coupling between the rail's own open/closed + mode and the
 //     video surface's placement (`Shell/Video.cs`). Four rules that are each an edge case, collected here so they are
@@ -51,7 +52,7 @@ public static partial class Rail
         /// Rail-only: when the watch page's in-page stage is what will host the video, opening the rail into the
         /// video-first body would open a rail whose card is mounted somewhere else entirely — an empty takeover body
         /// next to the real picture.</param>
-        public static Shell.RailMode? ModeOnDock(bool railOpen, Shell.RailMode current, Video.DockedHost host)
+        public static Shell.RailMode? ModeOnDock(bool railOpen, Video.DockedHost host)
             => host != Video.DockedHost.Rail || railOpen ? null : Shell.RailMode.Video;
 
         /// <summary>The user closed the rail. What should happen to a docked video? Returns the DEMOTE target, or
@@ -369,9 +370,6 @@ public static partial class Rail
         /// <summary>The art / deck side: <c>round((railW − 2·S) / 4) · 4</c> — 184 / 324 / 484 at 200 / 340 / 500.</summary>
         public static float Side(float railWidth)
             => MathF.Round(MathF.Max(1f, railWidth - 2f * Inset) / SideQuantum) * SideQuantum;
-
-        /// <summary>The whole pinned block: 236 / 376 / 536 at 200 / 340 / 500.</summary>
-        public static float PinnedBlockH(float railWidth) => ArtTop + Side(railWidth);
     }
 
     // ── 6. the friends feed (stage B; FriendsPanel.cs, FriendsBridge.cs; ch 21 G6, §9.6 Q5) ─────────────────────────

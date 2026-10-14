@@ -5,8 +5,8 @@
 // that hosts the page's own bento, and the two entry points — the hero toolbar's glyph button and the pinned band's plateless word.
 //
 // WHAT STAYS CORE (`Entities\Detail.Insights.cs`): the toggle object (`InsightsToggle`: the open signal and the verbs that move it, one instance
-// per mounted frame), the arm / width / open rules (`InsightsSheet`: `ShowsToggle`, `WidthFor`, `FactsSettled`, `BandToggleTakesInput`,
-// `HeroToggleTakesInput`, `BandActionsWidth`), the facts latch and the focus return (the frame host), and the band's width claim
+// per mounted frame), the arm / width / open rules (`InsightsSheet`: `ShowsToggle`, `WidthFor`, `FactsSettled`,
+// `BandActionsWidth`), the facts latch and the focus return (the frame host), and the band's width claim
 // (`Detail.BandActionsClaim`, called by the table's chrome).
 //
 // ── WHAT IS ENGINE, AND WHAT IS OURS ───────────────────────────────────────────────────────────────────────────────────────────

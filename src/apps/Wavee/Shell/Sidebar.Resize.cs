@@ -131,9 +131,7 @@ public static class SidebarPaneModeRules
 /// only toggles. Like the mode rules, every method takes a trailing policy (null = the active one).</summary>
 public static class SidebarResizeRules
 {
-    /// <summary>The shell's baseline bounds and approach; <c>NavPanePolicy.Default</c> is built from them.</summary>
-    public const float ExpandedMinW = SidebarPaneBounds.NavPaneMinW;             // 180
-    public const float ExpandedMaxW = SidebarPaneBounds.NavPaneMaxW;             // 460
+    /// <summary>The shell's baseline collapse approach; <c>NavPanePolicy.Default</c> is built from it.</summary>
     public const float RegimePush = 64f;
     public const float RegimeHysteresis = SidebarPaneBounds.NavPaneHysteresisDip; // 24
     public const float MinFade = 0.35f;

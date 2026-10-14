@@ -14,7 +14,6 @@ using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
-using FluentGpu.Input;
 using FluentGpu.Localization;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;

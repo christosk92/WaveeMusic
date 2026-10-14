@@ -10,17 +10,13 @@
 // (so `Wavee.Tests/StageArtistRulesTests.cs` and the gallery / caption suites pin them unchanged), now in a file that holds
 // no tree. A theme's stage view calls them; it does not own them.
 
-using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using FluentGpu.Animation;
-using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
-using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
-using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
 using Ink = Wavee.Theming.Roles.StageInk;

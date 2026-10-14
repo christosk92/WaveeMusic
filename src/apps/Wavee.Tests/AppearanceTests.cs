@@ -20,7 +20,7 @@ public class AppearanceTests
         public int Stored;
         public bool OsLight;
         public int OsReads;
-        public int AccentSeeds, PlainFallbackSeeds, IconFaceSeeds;
+        public int AccentSeeds, PlainFallbackSeeds;
 
         public ThemeKind CurrentKind => Current;
 
@@ -47,12 +47,6 @@ public class AppearanceTests
             AccentSeeds++;
             if (allowPlainFallback) PlainFallbackSeeds++;
             Log.Add("accent:" + (allowPlainFallback ? "ramp-or-plain" : "ramp"));
-        }
-
-        public void SeedIconFace()
-        {
-            IconFaceSeeds++;
-            Log.Add("icons");
         }
     }
 
@@ -120,7 +114,6 @@ public class AppearanceTests
         model.Seed(ThemeMode.System);
         Assert.Equal(1, ports.AccentSeeds);
         Assert.Equal(1, ports.PlainFallbackSeeds);
-        Assert.Equal(1, ports.IconFaceSeeds);
     }
 
     [Fact]
@@ -165,7 +158,6 @@ public class AppearanceTests
         Assert.Equal(kind, ports.Current);
         Assert.Equal(0, ports.OsReads);
         Assert.Equal(0, ports.AccentSeeds);
-        Assert.Equal(1, ports.IconFaceSeeds);
         Assert.Equal(0, ports.Stored);   // the persisted mode is neither read nor written
     }
 

@@ -6,18 +6,15 @@
 // structure's (`Shell.NavLibraryHead`, Classic's is `Themes/Classic/Structure/Views/Nav/ClassicNavLibraryHead.cs`). The session is
 // its host (`INavLibraryHeadHost`, Theming/Contracts/NavLibraryHead.cs): the head draws, the session keeps what decides.
 
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
-using FluentGpu.Input;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
-using static FluentGpu.Dsl.Ui;
 using ViewSlots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
@@ -66,7 +63,6 @@ public static partial class Sidebar
                 Head = s.Head,
                 TreeSortedNonCustom = s.Lib.TreeSortedNonCustom,
                 SortedListRefusalAction = s.Lib.ShowCustomOrder,
-                ClampReorderSlot = s.Lib.ClampReorderSlot,
                 CommitReorder = s.CommitReorder,
                 ActivateFolder = s.Lib.ActivateFolder,
                 DisclosesFoldersInline = s.Lib.DisclosesFoldersInline,

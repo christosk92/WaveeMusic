@@ -158,12 +158,4 @@ public sealed record TierPolicy(
         }
         return problems;
     }
-
-    /// <summary>The ladder a rung is measured on.</summary>
-    public TierLadder LadderOf(RungAxis axis) => axis switch
-    {
-        RungAxis.Content => Content,
-        RungAxis.Height => Height,
-        _ => Window,
-    };
 }

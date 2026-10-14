@@ -40,10 +40,6 @@ public sealed class NavEditModel
     /// <summary>Done / Esc: back to the sidebar, focus restored to the row that had it before Edit. The undo ring is KEPT.</summary>
     public void Exit() => Sidebar.ExitEdit();
 
-    /// <summary>How the LAST exit from Edit ended: the pane restores focus on the editing true → false edge only when this is
-    /// true (Done / Esc), never for an account switch.</summary>
-    public bool ExitRestoresFocus => Sidebar.EditExitRestoresFocus;
-
     /// <summary>The layout state both overlays live in.</summary>
     public SidebarLayoutState State => Sidebar.State;
 

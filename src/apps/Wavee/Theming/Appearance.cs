@@ -11,7 +11,7 @@
 //
 // WHAT EACH VERB DOES (exactly what the four routines did; C1 moves it, it does not change it):
 //   Seed(mode)              before the window: kind from the mode (System reads the OS), palette, the OS accent ONCE
-//                           (ramp, else the plain accent colour), the icon face.
+//                           (ramp, else the plain accent colour).
 //   Seed(kind)              the shell test host: a fixed kind, NO OS read, the token-default accent.
 //   SetMode(mode)           the Settings selector: palette; System re-reads the OS accent; persist; cross-fade.
 //   ToggleMode()            the flip verb (palette row, profile menu, title-bar button): the other kind, persist the
@@ -45,9 +45,6 @@ public interface IAppearancePorts
     /// <summary>Push the OS accent into the tokens: the accent ramp when the OS has one; the plain accent colour only
     /// when <paramref name="allowPlainFallback"/> (the boot and the Settings selector fall back, the OS listener does not).</summary>
     void ApplySystemAccent(bool allowPlainFallback);
-
-    /// <summary>The icon face is the bundled Segoe Fluent Icons file, not the system family of the same name.</summary>
-    void SeedIconFace();
 }
 
 /// <summary>The mode -> kind decisions and the verbs that apply them. Engine-free: every effect goes through
@@ -75,21 +72,17 @@ public sealed class AppearanceModel
     /// <summary>The host's re-theme trigger (<c>ThemeControl.Request</c>); null = the swap simply does not animate.</summary>
     public void BindTransition(Action<float>? request) => _transition = request;
 
-    /// <summary>Before the window: kind from <paramref name="mode"/> (System reads the OS), the OS accent once, the icon face.</summary>
+    /// <summary>Before the window: kind from <paramref name="mode"/> (System reads the OS), the OS accent once. The icon face
+    /// travels in Wavee's definition (<c>Design.Definition</c>, installed by the kind's palette seed).</summary>
     public void Seed(ThemeMode mode)
     {
         _ports.ApplyKind(KindOf(mode));
         _ports.ApplySystemAccent(allowPlainFallback: true);
-        _ports.SeedIconFace();
     }
 
     /// <summary>A fixed kind with no OS read at all (the shell test host): the persisted mode is ignored and the accent is
     /// the token default.</summary>
-    public void Seed(ThemeKind fixedKind)
-    {
-        _ports.ApplyKind(fixedKind);
-        _ports.SeedIconFace();
-    }
+    public void Seed(ThemeKind fixedKind) => _ports.ApplyKind(fixedKind);
 
     /// <summary>The Settings selector: swap in place (System re-reads the OS theme and accent now), persist, cross-fade.</summary>
     public void SetMode(ThemeMode mode)
@@ -193,7 +186,4 @@ sealed class LiveAppearancePorts : IAppearancePorts
         if (FluentApp.SystemAccentRamp() is { } ramp) Tok.SetAccent(in ramp);
         else if (allowPlainFallback && FluentApp.SystemAccent() is { } accent) Tok.SetAccent(accent);
     }
-
-    // The icon face travels in Wavee's definition (Design.Definition, installed by SeedPalette): nothing to set here.
-    public void SeedIconFace() { }
 }

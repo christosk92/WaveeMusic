@@ -20,7 +20,6 @@
 // were (one for a first run / re-auth, so the plate appears WITH the window; two for a terms re-arm, so it rises over an
 // already painted shell).
 
-using System.Threading;
 using System.Threading.Tasks;
 using FluentGpu.Signals;
 
@@ -189,16 +188,6 @@ public static partial class Setup
 
         /// <summary>The footer's progress over the pages this session shows. Reads <see cref="Page"/>.</summary>
         public float Progress() => Gating.Progress(Page.Value, SkipLayout);
-
-        /// <summary>The sign-in facet over the live sign-in state, the session phase and the fault. Subscribing when rendered.</summary>
-        public SignInFacet SignInFacetNow()
-        {
-            Spotify.SignInState st = Spotify.SignIn.State.Value;
-            return SignInRules.Project(in st, Spotify.Status.Value, Spotify.Fault.Value);
-        }
-
-        /// <summary>The Local playback phase, or null while there is no provisioning model. Subscribing when rendered.</summary>
-        public RuntimePhase? RuntimePhaseNow() => Model is { } m ? m.Phase.Value : null;
 
         static string PairingCodeNow()
         {

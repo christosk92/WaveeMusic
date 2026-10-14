@@ -250,18 +250,6 @@ public class ShellPlayLogTests : IDisposable
     }
 
     [Fact]
-    public void The_recency_index_is_max_merge_so_a_stale_server_history_cannot_demote_a_local_play()
-    {
-        var track = Track("x");
-        Shell.PlayLog.Append(track, default, atMs: 9000);
-        Assert.False(Shell.PlayLog.MergeRecency(new Dictionary<string, long> { [track.Text] = 1000 }));
-        Assert.Equal(9000L, Shell.PlayLog.Recency[track.Text]);
-
-        Assert.True(Shell.PlayLog.MergeRecency(new Dictionary<string, long> { [track.Text] = 12_000 }));
-        Assert.Equal(12_000L, Shell.PlayLog.Recency[track.Text]);
-    }
-
-    [Fact]
     public void Recent_contexts_collapse_to_the_context_newest_first_and_deduped()
     {
         Shell.PlayLog.Append(Track("t1"), Album("a"), atMs: 1000);
@@ -292,8 +280,8 @@ public class ShellPlayLogTests : IDisposable
     [Fact]
     public void Clear_drops_both_halves_because_they_can_diverge()
     {
-        Shell.PlayLog.Append(Track("x"), default, atMs: 1000);
-        Shell.PlayLog.MergeRecency(new Dictionary<string, long> { ["spotify:artist:4tZwfgrHOc3mvqYlEYSvVi"] = 2000 });
+        // The artist is stamped into the recency index without an entry of its own.
+        Shell.PlayLog.Append(Track("x"), default, atMs: 1000, artists: [EntityUri.Parse("spotify:artist:4tZwfgrHOc3mvqYlEYSvVi")]);
         Shell.PlayLog.Clear();
         Assert.Empty(Shell.PlayLog.Entries);
         Assert.Empty(Shell.PlayLog.Recency);

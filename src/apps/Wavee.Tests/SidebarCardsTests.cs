@@ -24,8 +24,6 @@ public class SidebarCardsTests
         => new(id ?? ("route:" + kind), kind, uri, name, "", StringId.Empty, null, 0, 0, 0, 0, 0, 0, false,
                SidebarPlaylistFlavor.None) { CanEdit = canEdit, IdentityKnown = identityKnown };
 
-    static readonly SidebarCardSurface[] AllSurfaces = [SidebarCardSurface.Tile];
-
     // ── selected ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
@@ -77,11 +75,10 @@ public class SidebarCardsTests
     // ── drop ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void An_editable_playlist_is_a_track_deposit_on_every_surface()
+    public void An_editable_playlist_is_a_track_deposit()
     {
         var e = Entry(SidebarEntryKind.Playlist, canEdit: true);
-        foreach (var surface in AllSurfaces)
-            Assert.Equal(SidebarCardDrop.Deposit, SidebarCardRules.Drop(surface, in e));
+        Assert.Equal(SidebarCardDrop.Deposit, SidebarCardRules.Drop(in e));
     }
 
     [Theory]
@@ -95,8 +92,7 @@ public class SidebarCardsTests
     {
         // `canEdit` is stamped for playlists only, but even a stray flag must not make another kind a deposit.
         var e = Entry(kind, canEdit: true);
-        foreach (var surface in AllSurfaces)
-            Assert.Equal(SidebarCardDrop.None, SidebarCardRules.Drop(surface, in e));
+        Assert.Equal(SidebarCardDrop.None, SidebarCardRules.Drop(in e));
     }
 
     // ── drag ─────────────────────────────────────────────────────────────────────────────────────────────────────────

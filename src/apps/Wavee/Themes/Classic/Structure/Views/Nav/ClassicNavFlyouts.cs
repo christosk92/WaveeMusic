@@ -8,17 +8,13 @@
 // the one focus stop and the one key handler (up/down rove, Enter activates, Right drills in, Left/Backspace goes back; Escape is the
 // popup's light dismiss). Numbers are `Rules\SidebarGeometry.cs` and `Rules\NavFlyoutLayout.cs`.
 
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
-using FluentGpu.Input;
 using FluentGpu.Localization;
-using FluentGpu.Scene;
 using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
-using static FluentGpu.Dsl.Ui;
 
 namespace Wavee.Themes.Classic;
 

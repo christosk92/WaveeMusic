@@ -152,7 +152,6 @@ public sealed class NavLibraryTests : IDisposable
 
         lib.SetNarrow(true);
         Assert.False(lib.DisclosesFoldersInline());
-        Assert.True(lib.NarrowFolders.Peek());
 
         lib.SetNarrow(false);
         Sidebar.SetLibraryView(SidebarLibraryView.Grid);
@@ -270,7 +269,6 @@ public sealed class NavLibraryTests : IDisposable
 
         lib.Drill("aa", "A");                                // a folder level is one folder's children
         Assert.True(lib.TreeSortedNonCustom());
-        Assert.Equal(2, lib.ClampReorderSlot(SidebarSectionKind.Library, 0, 2));   // no local overlay to clamp
     }
 
     // ── find: open, Esc, blur, close ───────────────────────────────────────────────────────────────────────────────

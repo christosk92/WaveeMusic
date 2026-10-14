@@ -21,7 +21,6 @@ using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Theming.Contracts;
-using Wavee.Theming.Roles;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee.Themes.Classic;

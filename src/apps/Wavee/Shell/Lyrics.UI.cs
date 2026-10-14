@@ -181,11 +181,8 @@ public static partial class Lyrics
         internal int ProbeActiveLine => _activeLine.Peek();
         internal int ProbeLineCount => _doc?.Lines.Count ?? 0;
         internal long ProbeLineStartMs(int i) => _doc is { } d && (uint)i < (uint)d.Lines.Count ? d.Lines[i].StartMs : 0L;
-        internal NodeHandle ProbeDofNode(int i) => (uint)i < (uint)_dofNodes.Length ? _dofNodes[i] : default;
         internal float ProbeCascadeComp(int i) => (uint)i < (uint)_casComp.Length ? _casComp[i] : 0f;
-        internal float ProbeCascadeDelayMs(int i) => (uint)i < (uint)_casDelay.Length ? _casDelay[i] : 0f;
         internal bool ProbeCascadeActive => _cascadePending;
-        internal bool ProbeScrollSnapped => _scrollSnapped;
 
         // ── mount config (frozen at mount — correct: one instance per surface for the app's life) ────────────────────
         internal readonly bool Large;
@@ -1586,7 +1583,8 @@ public static partial class Lyrics
         // ── 2.13 the halo cross-fade ────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>Arm the voice hand-off. Each fade starts from the LIVE alpha; a THIRD in-flight out-fade is finished
-        /// instantly — at most <see cref="Wipe.MaxGlowFades"/> halos ever animate.</summary>
+        /// instantly — at most TWO halos ever animate (a general fade pool would put a blurred layer on
+        /// every recently-sung row).</summary>
         void BeginGlowFades(SceneStore scene, int prev, int next, long nowMs)
         {
             if (_glowOutLine >= 0 && _glowOutLine != prev && _glowOutLine != next) FinishGlowOut(scene, _glowOutLine);
@@ -1703,7 +1701,6 @@ public static partial class Lyrics
             return s;
         }
 
-        public static bool IsActive(int shape) => (shape & ActiveBit) != 0;
         public static bool IsNear(int shape) => (shape & NearBit) != 0;
         public static bool HasReserve(int shape) => (shape & ReserveBit) != 0;
     }

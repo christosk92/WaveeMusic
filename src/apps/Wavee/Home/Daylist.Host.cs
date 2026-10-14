@@ -19,7 +19,6 @@
 // The card's pure rules stay core: `DaylistForm` / `DaypartTimeline` / `DaylistCountdownLine` / `DaylistArt` (Items.Rules.cs) and
 // `DaypartRules` / `DaylistCountdown` / `DaylistNext` / `DaylistClockFace`.
 
-using System;
 using System.Globalization;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -27,7 +26,6 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
-using Wavee;
 using Wavee.Theming.Contracts;
 using Slots = FluentGpu.Theming.Slots;
 

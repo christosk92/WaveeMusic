@@ -1075,7 +1075,6 @@ public class HeadlessStoreTests
         Assert.Equal(3, overlay.Get(Platform.Keys.PlaybackQuality));
         Assert.Equal(0, inner.Writes);
         Assert.Equal(Platform.Keys.PlaybackQuality.Default, inner.Get(Platform.Keys.PlaybackQuality));
-        Assert.Equal(1, overlay.WriteCount);
     }
 
     [Fact]

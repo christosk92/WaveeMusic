@@ -475,19 +475,11 @@ public class ZoomTierTests
     // ── the Manual floor ────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
-    [InlineData(1000f, 3.333333f)]
-    [InlineData(300f, 1f)]
-    [InlineData(600f, 2f)]
-    public void The_most_a_manual_zoom_may_reach_is_the_width_over_the_floor(float baseWidth, float expected)
-        => Assert.Equal(expected, ZoomTierReference.MaxManualZoom(baseWidth), 4);
-
-    [Theory]
     [InlineData(0f)]
     [InlineData(float.NaN)]
     [InlineData(-10f)]
     public void An_unknown_width_bounds_nothing(float baseWidth)
     {
-        Assert.Equal(float.PositiveInfinity, ZoomTierReference.MaxManualZoom(baseWidth));
         Assert.Equal(2.5f, ZoomService.ManualStep(2f, +1, baseWidth));
         Assert.Equal(2.5f, ZoomTierReference.FloorManual(2.5f, baseWidth));
     }

@@ -1588,10 +1588,8 @@ public static partial class ReleaseNotes
 
         /// <summary>The 16:9 band height, from the plate's OWN width — always, poster or not. L4 (issue #89): a
         /// no-poster slide used to get a flat 120 DIP band regardless of plate width; the prototype keeps the same
-        /// <c>w·9/16</c> rule either way (a tinted band, not a smaller one), which is also just this formula with
-        /// <paramref name="hasPoster"/> dropped — kept as a parameter for the call-site's own poster-presence branch on
-        /// the band's FILL, not its height.</summary>
-        public static float ImageHeight(float plateWidth, bool hasPoster) => MathF.Round(plateWidth / PosterAspect);
+        /// <c>w·9/16</c> rule either way (a tinted band, not a smaller one).</summary>
+        public static float ImageHeight(float plateWidth) => MathF.Round(plateWidth / PosterAspect);
 
         public static float PlateMaxHeight(float vpH) => vpH - PlateMarginY;
 

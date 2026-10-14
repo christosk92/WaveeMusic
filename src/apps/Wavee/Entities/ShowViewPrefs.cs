@@ -33,10 +33,6 @@ public static class ShowViewPrefs
     /// <summary>The stored blob (every show's view at once; "" when none was ever written).</summary>
     public static string Blob() => Platform.Settings.Get(Platform.Keys.PodcastViews);
 
-    /// <summary>The show's stored (status, order) read from the settings store; (0, 0) when absent, malformed or the id
-    /// is invalid. The caller clamps to the values its enums define.</summary>
-    public static (int Status, int Order) Stored(ReadOnlySpan<char> showId) => Read(Blob(), showId);
-
     /// <summary>Persist this show's view: the show moves to the front of the blob and the store is written ONLY when the
     /// blob actually changed (re-saving the front entry costs no settings write). Returns whether it wrote. An invalid id
     /// leaves the blob unchanged and writes nothing.</summary>

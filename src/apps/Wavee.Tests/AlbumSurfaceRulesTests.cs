@@ -23,7 +23,7 @@ public class AlbumSurfaceRulesTests
     [Fact]
     public void SkeletonRow_is_as_tall_as_the_real_related_row()
     {
-        // The skeleton draws `Surface(Seed, Shape.RowTile)` and `PageRules.SkeletonHeight` sums `SkelRowH` per row: the
+        // The skeleton draws `Surface(Seed, Shape.RowTile)` and reserves `SkelRowH` per row: the
         // two agree only while the real rows' shape floor IS that number (48 art + 2 × 8 padding = the 64 row floor).
         Assert.Equal(Rules.SkelRowH, Shape.RowTile.MinHeight);
         Assert.Equal(Rules.SkelRowH, Shape.RowTile.ArtEdge + 2f * SurfaceGeometry.RowPad);

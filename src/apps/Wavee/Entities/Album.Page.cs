@@ -38,7 +38,6 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
-using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
 
@@ -684,9 +683,8 @@ public readonly partial struct Album
                     videoCount = PageRules.VideoDecided(known) ? PageRules.SelectVideos(known, probe) : 0;
                 }
                 _shape = a.IsValid
-                    ? PageRules.SkeletonShape(a.Knows(AlbumFields.Kind), a.Kind, a.TrackCount, videoKnown: videoCount > 0,
-                                              videoShelf: PageRules.ArmFor(videoCount) == PageRules.VideoArm.Shelf)
-                    : PageRules.SkeletonShape(knowsKind: false, AlbumKind.Album, 0);
+                    ? PageRules.SkeletonShape(videoKnown: videoCount > 0, videoShelf: PageRules.ArmFor(videoCount) == PageRules.VideoArm.Shelf)
+                    : PageRules.SkeletonShape();
                 int hash = (_shape.About ? 1 : 0) | (_shape.Fans ? 2 : 0) | (_shape.Video ? 4 : 0) | (_shape.VideoShelf ? 8 : 0)
                            | (_shape.RowBlocks << 4);
                 _skelKey = "trailing-skel:" + hash.ToString(CultureInfo.InvariantCulture);
@@ -1523,8 +1521,8 @@ public readonly partial struct Album
 
     // ── the trailing skeleton (W7): the section skeletons PageRules.SkeletonShape names, in the loaded band's own order ──
     // Video (when known), About (no header), Fans also like (header + a clipped row of circular cards), then the
-    // list-section blocks. The sizes are PageRules.Skel* (derived from the real builders above, pinned by facts) so
-    // PageRules.SkeletonHeight equals what is drawn and the reveal is a dissolve, not a snap. It deliberately
+    // list-section blocks. The sizes are PageRules.Skel* (derived from the real builders above, pinned by facts) so the
+    // skeleton matches what is drawn and the reveal is a dissolve, not a snap. It deliberately
     // UNDER-states (no "show all", merch or two-video shelf placeholder).
 
     static Element TrailingSkeleton(in PageRules.TrailingShape shape)

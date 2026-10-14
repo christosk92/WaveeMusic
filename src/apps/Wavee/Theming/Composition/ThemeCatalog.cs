@@ -59,9 +59,6 @@ public static class ThemeCatalog
         return null;
     }
 
-    /// <summary>The compositions themselves (not the manifests).</summary>
-    internal static IReadOnlyList<ThemeComposition> Compositions => s_installed;
-
     /// <summary>Replaces the installed set. Validated by the caller.</summary>
     internal static void Set(ThemeComposition[] installed) => s_installed = installed;
 

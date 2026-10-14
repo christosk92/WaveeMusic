@@ -93,7 +93,7 @@ Read [wiring-discipline.md](wiring-discipline.md) before any seam/composition-ro
 - **The window frame and the content states are the structure's** (themes plan T4a): `Shell.FrameRoot` (`Shell/Shell.UI.cs`)
   is a `[CoreHost]` that wires the window and mounts `Shell.Frame`; the column, the layers and the content region are
   `Themes/Classic/Structure/Views/Frame/ClassicFrame.cs`. `ContentHost` decides the page / empty body / not-found / offline-lane
-  state (`Shell.FrameRules.ContentFor`) and mounts `Shell.ContentState` (`ClassicContentState.cs`). Edit the picture there,
+  state (`Shell.FrameRules.ContentBodyFor` / `ShowsOfflineStrip`) and mounts `Shell.ContentState` (`ClassicContentState.cs`). Edit the picture there,
   the decision and the wiring in `Shell.UI.cs`; a new surface follows the six steps of `docs/guide/theming.md` section 2b.
 - **The frame's small views are the structure's too** (themes plan T4c): the masthead band + `Page.Head` (`Shell.MastheadBand` in
   `Shell/Shell.Masthead.UI.cs` is the core host, it publishes a `PageChrome`), the material layer and the four cover leaves

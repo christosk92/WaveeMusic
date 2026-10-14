@@ -20,7 +20,7 @@ public sealed class ShowViewPrefsStoreTests : IDisposable
     public void A_show_nobody_filtered_reads_the_defaults()
     {
         Assert.Equal("", ShowViewPrefs.Blob());
-        Assert.Equal((0, 0), ShowViewPrefs.Stored("4rOoJ6Egrf8K2IrywzwOMk"));
+        Assert.Equal((0, 0), ShowViewPrefs.Read(ShowViewPrefs.Blob(), "4rOoJ6Egrf8K2IrywzwOMk"));
     }
 
     [Fact]
@@ -30,7 +30,7 @@ public sealed class ShowViewPrefsStoreTests : IDisposable
 
         Assert.Equal("abc:2:1", _store.Get(Platform.Keys.PodcastViews));
         Assert.Equal("abc:2:1", ShowViewPrefs.Blob());
-        Assert.Equal((2, 1), ShowViewPrefs.Stored("abc"));
+        Assert.Equal((2, 1), ShowViewPrefs.Read(ShowViewPrefs.Blob(), "abc"));
     }
 
     [Fact]
@@ -51,7 +51,7 @@ public sealed class ShowViewPrefsStoreTests : IDisposable
         ShowViewPrefs.Save("xyz", 3, 1);
 
         Assert.Equal("xyz:3:1;abc:1:0", ShowViewPrefs.Blob());
-        Assert.Equal((1, 0), ShowViewPrefs.Stored("abc"));
+        Assert.Equal((1, 0), ShowViewPrefs.Read(ShowViewPrefs.Blob(), "abc"));
     }
 
     [Theory]
@@ -62,6 +62,6 @@ public sealed class ShowViewPrefsStoreTests : IDisposable
     {
         Assert.False(ShowViewPrefs.Save(id, 3, 1));
         Assert.False(_store.WasWritten(Platform.Keys.PodcastViews));
-        Assert.Equal((0, 0), ShowViewPrefs.Stored(id));
+        Assert.Equal((0, 0), ShowViewPrefs.Read(ShowViewPrefs.Blob(), id));
     }
 }

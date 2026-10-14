@@ -13,8 +13,6 @@
 //
 // The window, the focus scope and the idle machine's lifetime are `ImmersiveService` (`ImmersiveService.cs`).
 
-using System;
-
 namespace Wavee;
 
 /// <summary>The stage, as a view draws it.</summary>

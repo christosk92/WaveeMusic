@@ -495,8 +495,6 @@ public class ListOpenPolicyTests
         Assert.Equal(Playlist.DemandArm.Bail, bailed);
         Assert.Equal(Playlist.DemandArm.Open, opens);
         Assert.NotEqual(bailed, opens);                       // ⇒ the dep key moves when the row lands ⇒ the effect re-runs
-        Assert.False(Playlist.PageRules.DemandOpens(bailed));
-        Assert.True(Playlist.PageRules.DemandOpens(opens));
     }
 
     /// <summary>Local Files legitimately never opens a list — it is settled on this device — and its arm must still
@@ -509,7 +507,6 @@ public class ListOpenPolicyTests
         Assert.Equal(Playlist.DemandArm.Bail, bailed);
         Assert.Equal(Playlist.DemandArm.Local, local);
         Assert.NotEqual(bailed, local);
-        Assert.False(Playlist.PageRules.DemandOpens(local));
     }
 
     /// <summary>The three arms are pairwise DISTINCT — a dep key is compared by value, so two arms that collided
@@ -522,15 +519,5 @@ public class ListOpenPolicyTests
         Assert.NotEqual(Playlist.DemandArm.Bail, Playlist.DemandArm.Local);
         Assert.NotEqual(Playlist.DemandArm.Bail, Playlist.DemandArm.Open);
         Assert.NotEqual(Playlist.DemandArm.Local, Playlist.DemandArm.Open);
-    }
-
-    /// <summary>Exactly one arm reaches the open — the invariant the whole key exists for.</summary>
-    [Fact]
-    public void Exactly_one_arm_reaches_the_open()
-    {
-        int opens = 0;
-        foreach (var arm in new[] { Playlist.DemandArm.Bail, Playlist.DemandArm.Local, Playlist.DemandArm.Open })
-            if (Playlist.PageRules.DemandOpens(arm)) opens++;
-        Assert.Equal(1, opens);
     }
 }

@@ -40,7 +40,6 @@
 
 using System.Globalization;
 using System.Runtime.InteropServices;
-using FluentGpu.Animation;
 using FluentGpu.Scroll.Effects;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Controls;
@@ -584,7 +583,7 @@ public readonly partial struct Artist
         {
             ArtistSection.Popular => TopBand(a, accent),
             ArtistSection.Upcoming => SectionBlock(Loc.Get(Strings.Artist.Upcoming), UpcomingCard(a, _accentFn, wide: false), accent),
-            ArtistSection.LatestRelease => SectionBlock(Loc.Get(Strings.Artist.LatestRelease), LatestBanner(a.Latest, accent), accent),
+            ArtistSection.LatestRelease => SectionBlock(Loc.Get(Strings.Artist.LatestRelease), LatestBanner(a.Latest), accent),
             ArtistSection.Albums => FacetSection(a, DiscoFacet.Albums, _accentFn, Detail.BandLayout.Height, ArtistSections.FacetExpandedTopInset),
             ArtistSection.Singles => FacetSection(a, DiscoFacet.Singles, _accentFn, Detail.BandLayout.Height, ArtistSections.FacetExpandedTopInset),
             ArtistSection.Compilations => FacetSection(a, DiscoFacet.Compilations, _accentFn, Detail.BandLayout.Height, ArtistSections.FacetExpandedTopInset),
@@ -730,8 +729,7 @@ public readonly partial struct Artist
         // ── 2.3 the Top-tracks band (TopTracks.cs:17-104) ──────────────────────────────────────────────────────────
 
         /// <summary>The chart beside ONE featured object — the pick, or (no pick) the upcoming card — at ≥ 760 (736 once
-        /// wide), stacked below it otherwise. Decided at the 900-DIP pre-measure width on the first composed frame
-        /// (parity 90); the featured child's key folds the arm (props freeze at mount).</summary>
+        /// wide), stacked below it otherwise; the featured child's key folds the arm (props freeze at mount).</summary>
         Element TopBand(Artist a, ColorF accent)
         {
             bool pick = a.HasPick;
@@ -1717,7 +1715,7 @@ public readonly partial struct Artist
     /// (<see cref="Track.GoToAlbum"/>), the hover play affordance toggles its context
     /// (<see cref="Playback.PlayOrToggleContext(EntityId, string)"/>), the "…" is the container menu, and the row is a drag
     /// source. There is no separate View button.</summary>
-    internal static Element LatestBanner(Album al, ColorF accent)
+    internal static Element LatestBanner(Album al)
     {
         string title = al.Title;
         string uri = al.Uri.Text;

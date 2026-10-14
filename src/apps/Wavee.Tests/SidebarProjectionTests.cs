@@ -267,8 +267,6 @@ public class SidebarSortFacts
         Assert.Equal(SidebarLibrarySort.Alphabetical, SidebarSort.Effective(SidebarLibrarySort.CustomOrder, SidebarLibraryFilter.None));
         Assert.Equal(SidebarLibrarySort.Alphabetical, SidebarSort.Effective(SidebarLibrarySort.CustomOrder, SidebarLibraryFilter.Albums));
         Assert.Equal(SidebarLibrarySort.Recents, SidebarSort.Effective(SidebarLibrarySort.Recents, SidebarLibraryFilter.Albums));
-        Assert.False(SidebarSort.SupportsDirection(SidebarLibrarySort.CustomOrder));
-        Assert.True(SidebarSort.SupportsDirection(SidebarLibrarySort.Recents));
     }
 
     [Fact]
@@ -754,7 +752,7 @@ public class SidebarProjectionEdgeFacts
         var p = StagePlaylist(s, "spotify:playlist:mix", "Roadtrip", null, 0, PlaylistCaps.None);   // no image
         var t1 = StageTrack(s, "spotify:track:t1", "spotify:album:a1", "spotify:image:cover1");
         var t2 = StageTrack(s, "spotify:track:t2", "spotify:album:a2", "spotify:image:cover2");
-        // Two tracks off the SAME album: one tile, not two (the detail page's own dedupe, Playlist.UI.cs:104).
+        // Two tracks off the SAME album: one tile, not two (the detail page's own dedupe, Playlist.UI.cs).
         var t2b = StageTrack(s, "spotify:track:t2b", "spotify:album:a2", "spotify:image:cover2b");
         var t3 = StageTrack(s, "spotify:track:t3", "spotify:album:a3", "spotify:image:cover3");
         var t4 = StageTrack(s, "spotify:track:t4", "spotify:album:a4", "spotify:image:cover4");
@@ -2027,9 +2025,9 @@ public class SidebarPaneTextSubtitleFacts
         Assert.Null(Sidebar.PaneText.SubtitleOf(in e));
     }
 
-    // ── FOLDER — Trap 5: SidebarPane's FolderRow (Sidebar.UI.Slot.cs) now renders its subtitle through THIS SAME
+    // ── FOLDER — Trap 5: the pane's FolderRow (ClassicNavRow.cs) now renders its subtitle through THIS SAME
     //    pure decision (`Subtitle = section.Opts.Subtitles ? PaneText.SubtitleOf(in entry) : null`), so driving the
-    //    folder branch here — not by reading Sidebar.UI.Slot.cs's source — pins the real, live rendering decision.
+    //    folder branch here — not by reading ClassicNavRow.cs's source — pins the real, live rendering decision.
 
     static SidebarLibraryEntry Folder(int childCount, bool countKnown) =>
         new("folder:abc", SidebarEntryKind.Folder, "", "My Folder", "",

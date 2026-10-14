@@ -85,9 +85,6 @@ public sealed class SettingsWriter
     /// <summary>A read-only row has no writer.</summary>
     public bool IsReadOnly => !IsOwned && Toggle is null && Choose is null && Slide is null && Run is null;
 
-    /// <summary>How many delegates are set (a writable row has exactly one).</summary>
-    public int ArmCount => (Toggle is null ? 0 : 1) + (Choose is null ? 0 : 1) + (Slide is null ? 0 : 1) + (Run is null ? 0 : 1);
-
     public static readonly SettingsWriter ReadOnly = new("readonly");
 
     /// <summary>The row's verbs are the owning module's (<paramref name="owner"/> names them): a card with its own state machine.</summary>
@@ -260,9 +257,8 @@ public static partial class SettingsDoc
 
     static Func<IAppSettings, object?> BoolOf(SettingKey<bool> key) => s => s.Get(key);
     static Func<IAppSettings, object?> IntOf(SettingKey<int> key) => s => s.Get(key);
-    static Func<IAppSettings, object?> FloatOf(SettingKey<float> key) => s => s.Get(key);
 
-    /// <summary>Write a bool key, then <paramref name="after"/>; the page re-reads (the old <c>Toggle</c> helper's contract).</summary>
+    /// <summary>Write a bool key, then <paramref name="after"/>; the page re-reads.</summary>
     static Func<bool, bool> WriteBool(SettingKey<bool> key, Action<bool>? after = null) => on =>
     {
         Platform.Settings.Set(key, on);

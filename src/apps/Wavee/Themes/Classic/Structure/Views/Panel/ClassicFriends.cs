@@ -9,7 +9,6 @@
 // when the host can retry), and the empty vacancy. The feed's rows and state, the clock and every navigation come through the
 // props; the rows themselves are entity handles the template reads.
 
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -17,7 +16,6 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Theming;
 using Wavee.Theming.Contracts;
-using Wavee.Theming.Roles;
 
 namespace Wavee.Themes.Classic;
 

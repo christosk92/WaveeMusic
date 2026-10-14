@@ -18,13 +18,10 @@
 // patches into it), the waveform's peaks, the "arriving" latch, the format override and its overlay and the play verb. A template draws
 // and never names `Playback`, `Entities`, `Store` or `Shell` (WVTH002); numbers are `Rules\ClassicTrackDrawerLayout.cs` (WVTH003).
 
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
-using FluentGpu.Hooks;
 using FluentGpu.Localization;
-using FluentGpu.Scene;
 using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;

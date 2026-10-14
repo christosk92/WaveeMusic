@@ -184,18 +184,6 @@ public static class ArtistReadiness
     /// render their skeleton, vacancy or first page).</summary>
     public static bool ShelfPresent(EdgeState readiness, int count) => readiness != EdgeState.Complete || count > 0;
 
-    /// <summary>Bug F (2026-09-15 handoff §4), restored to 0.2.10's model after a same-day regression: the WHOLE
-    /// artist page — hero photo, hero text (name, verified badge, bio lead, stats), the magazine and the chart — is
-    /// ONE reveal unit, pending until the OVERVIEW is known (Artist.Rules.cs:43's "renders as a UNIT" contract). There
-    /// is no separate hero gate any more: an intermediate fix OR'd in the hero's own latched-art usability
-    /// (<c>Detail.CoverLatch.IsUsable(_heroUrl)</c>) so the hero photo would show before the rest of the page, but
-    /// that let the hero's TEXT (verified/bio/stats, all Overview-sourced) render with whatever was known at that
-    /// moment and then pop in piecemeal as the live answer landed — the exact "renders as a UNIT" violation this bug
-    /// is about, just moved inside the hero instead of below it. This is the DATA half of the page gate (overview
-    /// known ⇔ not pending). The visual half — measured width + the first hero decode, and never returning to the
-    /// page shimmer — is <see cref="BodyReady"/>.</summary>
-    public static bool MagazinePending(Artist a) => !Overview(a);
-
     /// <summary>When the page-level skeleton may swap to the real body: the overview (the data unit), a measured
     /// page width, and the chart ready-or-failed. NOT the hero photograph - a slow download would hold an otherwise
     /// fully-known page at a shimmer, and the photo owns its own scale-and-fade entrance when its bitmap lands
@@ -262,7 +250,7 @@ public static class DiscographyRules
     /// <summary>Every facet's page-ONE priority. Uniformly <see cref="FetchPriority.Visible"/> — no facet-identity
     /// demotion (bug D). Page-2+ paging (<c>DemandNextPage</c>) is a SEPARATE, scroll-paced decision and keeps its
     /// own priority argument; this rule covers only the first page every facet asks for on demand.</summary>
-    public static FetchPriority FirstPagePriority(DiscoFacet facet) => FetchPriority.Visible;
+    public const FetchPriority FirstPagePriority = FetchPriority.Visible;
 }
 
 // ══ 2. TEXT ══════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -400,34 +388,6 @@ public static class ArtistPopularTracks
             if (extension[i] > Table.None && into[..n].IndexOf(extension[i]) < 0) into[n++] = extension[i];
         return n;
     }
-
-    /// <summary>Step three (kind 185): hand the rows with NO count the incoming count, parallel by index. A row that
-    /// already carries a positive count is never touched (the overview head stays authoritative), and a non-positive
-    /// incoming count is never applied. Returns false — and writes nothing new — when nothing changes.</summary>
-    public static bool WithPlayCounts(ReadOnlySpan<uint> chart, ReadOnlySpan<uint> incoming, Span<uint> into)
-    {
-        bool changed = false;
-        for (int i = 0; i < chart.Length && i < into.Length; i++)
-        {
-            uint have = chart[i];
-            uint next = have == 0 && i < incoming.Length && incoming[i] > 0 ? incoming[i] : have;
-            changed |= next != have;
-            into[i] = next;
-        }
-        return changed;
-    }
-
-    /// <summary>The rows that still have no play count — what step three asks kind 185 for. Returns the count written.</summary>
-    public static int WithoutPlayCount(ReadOnlySpan<int> slots, ReadOnlySpan<uint> counts, Span<int> into)
-    {
-        int n = 0;
-        for (int i = 0; i < slots.Length && i < counts.Length && n < into.Length; i++)
-            if (counts[i] == 0 && slots[i] > Table.None) into[n++] = slots[i];
-        return n;
-    }
-
-    /// <summary>How many of <paramref name="merged"/> came from beyond the seed.</summary>
-    public static int AppendedCount(int seedCount, int mergedCount) => Math.Max(0, mergedCount - seedCount);
 
     /// <summary><c>FakeData.TopTracksOf</c> (ch 31 §8): the highest-played, TITLE-deduped rows, play-count descending —
     /// the one ordered set the chart and the artist play context share. <paramref name="titleKeys"/> is any stable

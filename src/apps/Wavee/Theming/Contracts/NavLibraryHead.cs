@@ -16,7 +16,6 @@
 // WVTH006: a sealed record with no writable member.
 
 using FluentGpu.Controls;
-using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Signals;

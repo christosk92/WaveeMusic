@@ -13,7 +13,6 @@
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
-using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Theming;
 using Wavee.Theming.Contracts;

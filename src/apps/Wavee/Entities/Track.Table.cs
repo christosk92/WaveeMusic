@@ -369,11 +369,6 @@ public readonly partial struct Track
         public float WidthSeed { get; init; }
         /// <summary>Route identity for ScrollMemory / list keys.</summary>
         public string ScrollKey { get; init; } = "";
-        /// <summary>Item 5: handed the table's OWN <see cref="ItemsViewController"/> once, at mount, so a caller can
-        /// drive <c>StartBringItemIntoView</c> without the table exposing the controller as a stored field of its own
-        /// record (which would break <see cref="TableArgs"/>'s data-only equality). Never invoked again after the
-        /// first successful call — the controller instance is mount-stable for the table's life.</summary>
-        public Action<ItemsViewController>? OnController { get; init; }
 
         public bool Equals(TableArgs? other)
             => other is not null && (ReferenceEquals(this, other)

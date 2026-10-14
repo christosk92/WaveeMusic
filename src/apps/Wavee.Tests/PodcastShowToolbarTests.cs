@@ -16,6 +16,10 @@ public sealed class PodcastShowToolbarTests
     // chips ≈ 300, the two sort words ≈ 90, the selected chip ("Unplayed 320") ≈ 70 — what the rails report
     static readonly ToolbarNeeds Needs = new(Filters: 300f, Sort: 90f, SelectedWord: 70f);
 
+    /// <summary>The room the chips get beside the right group: the toolbar's inner width less the gap and that group.</summary>
+    static float LeftRoom(float width, bool narrowPad, ToolbarStage stage)
+        => ShowToolbarLayout.InnerWidth(width, narrowPad) - ShowToolbarLayout.Gap - ShowToolbarLayout.RightGroup(stage, in Needs);
+
     static float WidthFor(ToolbarStage stage, bool narrowPad = false, ToolbarNeeds? needs = null)
         => ShowToolbarLayout.NeedOf(stage, needs ?? Needs) + 2f * (narrowPad ? ShowToolbarLayout.PadNarrow : ShowToolbarLayout.Pad);
 
@@ -105,7 +109,7 @@ public sealed class PodcastShowToolbarTests
         {
             var stage = ShowToolbarLayout.For(width, Needs, narrowPad);
             if (stage == ToolbarStage.FilterMenu) continue;
-            float room = ShowToolbarLayout.LeftRoom(width, narrowPad, stage, Needs);
+            float room = LeftRoom(width, narrowPad, stage);
             Assert.True(room >= Needs.Filters, $"width {width}: stage {stage} leaves the chips {room} < {Needs.Filters}");
         }
     }
@@ -125,7 +129,7 @@ public sealed class PodcastShowToolbarTests
         {
             var stage = ShowToolbarLayout.For(w, Needs, narrow, prev);
             if (stage != ToolbarStage.FilterMenu)
-                Assert.True(ShowToolbarLayout.LeftRoom(w, narrow, stage, Needs) >= Needs.Filters, $"width {w}: stage {stage}");
+                Assert.True(LeftRoom(w, narrow, stage) >= Needs.Filters, $"width {w}: stage {stage}");
             return stage;
         }
     }

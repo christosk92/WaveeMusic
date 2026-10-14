@@ -22,7 +22,6 @@ namespace Wavee.Theming.Roles;
 /// <param name="NeutralGround">The ground the material layer paints when no page has a colour. NEVER <c>ColorF.Transparent</c>: transparent is premultiplied BLACK, and cross-fading into or out of it drags the interpolated colour toward black for the whole ramp.</param>
 /// <param name="HeroAlpha">Alpha at the origin of Home's hero wash.</param>
 /// <param name="ShelfAlpha">Alpha at the origin of Home's two shelf washes.</param>
-/// <param name="BandPull">How far the card fill is kissed toward the accent at the very top of a grouped-content band (the card's own alpha is held).</param>
 /// <param name="HeroVeilPull">How far the artist hero veil's layer colour is pulled toward the accent.</param>
 /// <param name="HeroVeilPeak">The vertical hero veil's peak alpha, where copy stacks at a photo's bottom seam (the softened peak).</param>
 /// <param name="CoverMix">How far the card ground is lerped toward a cover's lifted accent in a hero cover wash (the deck faces' art, the flyout swatch, every undecoded cover slot).</param>
@@ -37,7 +36,7 @@ namespace Wavee.Theming.Roles;
 public sealed record WashRoles(
     ColorRole NeutralGround,
     ModePair<float> HeroAlpha, ModePair<float> ShelfAlpha,
-    ModePair<float> BandPull, ModePair<float> HeroVeilPull, ModePair<float> HeroVeilPeak,
+    ModePair<float> HeroVeilPull, ModePair<float> HeroVeilPeak,
     ModePair<float> CoverMix, ModePair<float> ConcertMediaMix,
     ModePair<float> PageTonePlaneAlpha, ModePair<float> BlendWashTop, ModePair<float> BlendWashBoundary,
     ModePair<float> ShellTintAlpha,
@@ -62,8 +61,6 @@ public readonly struct WashReads
     public float HeroAlpha => _roles.HeroAlpha.Now;
     /// <inheritdoc cref="WashRoles.ShelfAlpha"/>
     public float ShelfAlpha => _roles.ShelfAlpha.Now;
-    /// <inheritdoc cref="WashRoles.BandPull"/>
-    public float BandPull => _roles.BandPull.Now;
     /// <inheritdoc cref="WashRoles.HeroVeilPull"/>
     public float HeroVeilPull => _roles.HeroVeilPull.Now;
     /// <inheritdoc cref="WashRoles.HeroVeilPeak"/>

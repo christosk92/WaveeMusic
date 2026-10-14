@@ -137,17 +137,21 @@ public class SettingsDocTests
             Assert.NotNull(w);
             switch (row.Kind)
             {
-                case SettingsRowKind.Toggle: Assert.True(w.Toggle is not null && w.ArmCount == 1, where); break;
+                case SettingsRowKind.Toggle: Assert.True(w.Toggle is not null && Arms(w) == 1, where); break;
                 case SettingsRowKind.Choice or SettingsRowKind.Segmented or SettingsRowKind.Picker:
-                    Assert.True(w.Choose is not null && w.ArmCount == 1, where); break;
-                case SettingsRowKind.Slider: Assert.True(w.Slide is not null && w.ArmCount == 1, where); break;
-                case SettingsRowKind.Action: Assert.True(w.Run is not null && w.ArmCount == 1, where); break;
+                    Assert.True(w.Choose is not null && Arms(w) == 1, where); break;
+                case SettingsRowKind.Slider: Assert.True(w.Slide is not null && Arms(w) == 1, where); break;
+                case SettingsRowKind.Action: Assert.True(w.Run is not null && Arms(w) == 1, where); break;
                 case SettingsRowKind.Fact: Assert.True(w.IsReadOnly, where); break;
-                case SettingsRowKind.Composite: Assert.True(w.IsOwned && w.ArmCount == 0, where); break;
+                case SettingsRowKind.Composite: Assert.True(w.IsOwned && Arms(w) == 0, where); break;
             }
             Assert.False(string.IsNullOrEmpty(w.Verb), where);
         }
     }
+
+    /// <summary>How many delegates a writer has set (a writable row has exactly one).</summary>
+    internal static int Arms(SettingsWriter w)
+        => (w.Toggle is null ? 0 : 1) + (w.Choose is null ? 0 : 1) + (w.Slide is null ? 0 : 1) + (w.Run is null ? 0 : 1);
 
     [Fact]
     public void Only_the_facts_are_read_only_and_the_owned_cards_name_their_owner()

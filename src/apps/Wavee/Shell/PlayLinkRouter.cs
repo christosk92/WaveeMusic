@@ -8,7 +8,6 @@
 // texts), so the tests drive the real flow: a miss is an Informational toast, a failure the shared-key Error toast with
 // "Try again", a cancellation says nothing.
 
-using System.Threading;
 using System.Threading.Tasks;
 using FluentGpu.Controls;
 using FluentGpu.Localization;

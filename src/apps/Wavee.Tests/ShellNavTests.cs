@@ -2,7 +2,7 @@
 //
 // Wave 4's gate for the rest of `Shell/Shell.cs` + `Shell/Shell.Chrome.cs`. Ported from _old/Wavee.Tests's
 // {ShellNavTests, DrillTrailTests, ContentHostPageTransitionTests, ShellResponsiveLayoutTests, MergedChromeLayoutTests,
-// TabWorkspaceTests, PlayerBarResponsiveLayoutTests, DevicePickerItemsTests, WaveeTipsCoreTests}.cs (G6), plus the
+// TabWorkspaceTests, PlayerBarResponsiveLayoutTests, DevicePickerItemsTests}.cs (G6), plus the
 // four decisions ch 16 and ch 18 record as untested in 0.2.9: the history log's most-visited fold, its filter/search,
 // the tint hand-over and the auth fold.
 //
@@ -350,8 +350,8 @@ public class MergedChromeLayoutTests
     {
         Assert.False(Shell.Chrome.FromWidth(1100f, 2).ShowName);
         Assert.True(Shell.Chrome.FromWidth(1400f, 2).ShowName);
-        Assert.False(Shell.Chrome.FromWidth(1100f, 2).ActionsInRow);
-        Assert.True(Shell.Chrome.FromWidth(1400f, 2).ActionsInRow);
+        Assert.False(Shell.Chrome.FromWidth(1100f, 2).ShowActions);
+        Assert.True(Shell.Chrome.FromWidth(1400f, 2).ShowActions);
         // Below the stage every one of the four FOLDS rather than vanishing.
         Assert.True(Shell.Chrome.FromWidth(1100f, 2).ActionsInMenu);
     }
@@ -492,8 +492,8 @@ public class MergedChromeLayoutTests
                     continue;
                 }
                 // 1. the row's own arithmetic seats it, tabs and the chip form ON SCREEN included…
-                Assert.True(c.FootprintFor(extent) <= w,
-                    $"Field at width {w} (extent {extent}, chip {chip}) needs {c.FootprintFor(extent)} DIP.");
+                float footprint = c.FixedBudgetFor() + c.SearchWidth + Shell.Chrome.RequiredTabExtent(extent);
+                Assert.True(footprint <= w, $"Field at width {w} (extent {extent}, chip {chip}) needs {footprint} DIP.");
                 // …which is the same statement as a non-negative lane.
                 Assert.True(Shell.Chrome.SearchLane(w, extent, c.ShowName, c.ShowActions, c.ShowForward, c.ShowBack,
                     c.ShowNewTab, c.ShowTrailing, c.Chip) >= c.SearchWidth);
@@ -548,16 +548,16 @@ public class MergedChromeLayoutTests
         var field = Shell.Chrome.Resolve(1600f, 220f);
         Assert.Equal(Shell.MergedSearchMode.Field, field.SearchMode);
 
-        float laid = field.LaidOutSearchWidth(measured);
+        float laid = Shell.Chrome.FieldWidthFor(field.SearchWidth, measured);
         Assert.InRange(laid, Shell.Layout.ChromeSearchMinW, Shell.Layout.ChromeSearchMaxW);
         Assert.True(laid <= field.SearchWidth);                 // a measurement only ever trims
         if (measured >= Shell.Layout.ChromeSearchMinW) Assert.Equal(MathF.Min(field.SearchWidth, measured), laid, 3);
         else Assert.Equal(field.SearchWidth, laid, 3);          // below the minimum the MEASUREMENT is what is wrong
 
-        // Icon mode ignores the measurement outright — the magnifier is a fixed 44.
+        // Icon mode publishes the magnifier's fixed 44, whatever was measured.
         var icon = Shell.Chrome.Resolve(700f, 220f);
         Assert.Equal(Shell.MergedSearchMode.Icon, icon.SearchMode);
-        Assert.Equal(Shell.Layout.ChromeSearchIconW, icon.LaidOutSearchWidth(measured));
+        Assert.Equal(Shell.Layout.ChromeSearchIconW, icon.SearchWidth);
     }
 
     [Fact]
@@ -567,7 +567,7 @@ public class MergedChromeLayoutTests
         // field asked for this frame. Feeding the output back in is therefore the real loop — it must settle, not decay.
         var field = Shell.Chrome.Resolve(1600f, 220f);
         float w = 40f;                                          // seeded by one bad frame
-        for (int i = 0; i < 16; i++) w = field.LaidOutSearchWidth(w);
+        for (int i = 0; i < 16; i++) w = Shell.Chrome.FieldWidthFor(field.SearchWidth, w);
         Assert.Equal(field.SearchWidth, w, 3);
         Assert.True(w >= Shell.Layout.ChromeSearchMinW);
     }
@@ -1151,14 +1151,6 @@ public class ShellTintOwnershipTests
     }
 
     [Fact]
-    public void A_grading_for_a_page_the_user_has_left_is_refused()
-    {
-        var owner = Shell.Claim(Shell.TintOwner.Neutral, "album:b", 0u, definite: false);
-        Assert.False(Shell.AcceptsRefresh(owner, "album:a"));
-        Assert.True(Shell.AcceptsRefresh(owner, "album:b"));
-    }
-
-    [Fact]
     public void An_empty_claimant_is_the_neutral_value()
         => Assert.True(Shell.Claim(Shell.TintOwner.Neutral, "", 0u, true).IsNeutral);
 
@@ -1204,41 +1196,6 @@ public class ShellAuthFoldTests
     public void Online_with_a_credential_is_live()
         => Assert.Equal(Shell.AuthState.Live,
             Shell.FoldAuth(Spotify.SessionPhase.Online, Spotify.SessionFault.None, true));
-}
-
-public class ShellTipsCoreTests
-{
-    [Fact]
-    public void The_codec_is_idempotent_and_order_preserving()
-    {
-        string set = Shell.TipsCore.Add(null, "a.b");
-        Assert.Equal("a.b", set);
-        Assert.Same(set, Shell.TipsCore.Add(set, "a.b"));
-        set = Shell.TipsCore.Add(set, "c.d");
-        Assert.Equal(["a.b", "c.d"], Shell.TipsCore.Parse(set));
-    }
-
-    [Fact]
-    public void Contains_scans_in_place_and_does_not_match_a_prefix()
-    {
-        Assert.True(Shell.TipsCore.Contains("a.b\nc.d", "c.d"));
-        Assert.False(Shell.TipsCore.Contains("a.bc", "a.b"));
-        Assert.False(Shell.TipsCore.Contains(null, "a.b"));
-    }
-
-    [Fact]
-    public void A_tip_whose_acknowledgement_cannot_be_persisted_is_never_shown()
-        => Assert.False(Shell.TipsCore.ShouldShow("", "a.b", armedThisSession: false, anotherTipActive: false,
-            canPresent: false));
-
-    [Fact]
-    public void One_tip_at_a_time_and_one_appearance_per_launch()
-    {
-        Assert.True(Shell.TipsCore.ShouldShow("", "a.b", false, false, true));
-        Assert.False(Shell.TipsCore.ShouldShow("", "a.b", armedThisSession: true, false, true));
-        Assert.False(Shell.TipsCore.ShouldShow("", "a.b", false, anotherTipActive: true, true));
-        Assert.False(Shell.TipsCore.ShouldShow("a.b", "a.b", false, false, true));
-    }
 }
 
 // Shell.Parse interns route args into the process-wide Entities.Strings table, which other suites reset: serial with them.

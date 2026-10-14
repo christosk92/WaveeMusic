@@ -1,7 +1,7 @@
 // ── Wavee.Tests/HomeUi/HomeLayoutServiceTests.cs — the HomeLayout service: one document, one Dispatch path ────────────
 //
 // Wave 2, F29 (docs/plans/wavee/home-redesign-remediation.md §3.7). Exercises the INSTANCE api only — never the
-// process-lifetime `HomeLayout.Instance`/`UseInstance` singleton, which is shared, boot-owned global state that other
+// process-lifetime `HomeLayout.Instance` singleton, which is shared, boot-owned global state that other
 // test classes may touch concurrently (xunit parallelizes across classes by default). Every fact here constructs its
 // own `HomeLayout` over its own temp-directory `LayoutStore`, the same discipline `LayoutFileTests` uses for the
 // store beneath it.

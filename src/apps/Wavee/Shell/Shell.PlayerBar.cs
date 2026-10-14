@@ -15,7 +15,6 @@
 // the OWNER (0.3's active slot also names a device that just left), the remaining label never prints "−0:00" for a
 // sub-second remainder, and the transport enablement ANDs the model's folded skip restrictions.
 
-using System;
 using System.Globalization;
 
 using FluentGpu.Controls;
@@ -441,7 +440,7 @@ public static partial class Shell
         };
 
     /// <summary>The podcast pressure map prioritizes its time-step and speed controls over secondary commands. WHAT the podcast bar
-    /// carries at a level is the level's (<c>PlayerTier.PodcastSet</c>, <c>PodcastLeft</c>: the structure's policy), not a
+    /// carries at a level is the level's (<c>PlayerTier.PodcastSet</c>, <c>PodcastLeftW</c>: the structure's policy), not a
     /// comparison against the level ordinals: the bar stays one pressure machine and a structure states its own podcast map.
     /// <paramref name="policy"/> null is the active one.</summary>
     public static PlayerBarLayout PodcastBarLayout(in PlayerBarLayout layout, Theming.PlayerBarPolicy? policy = null)

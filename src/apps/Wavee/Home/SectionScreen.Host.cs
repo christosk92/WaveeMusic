@@ -20,15 +20,12 @@
 // Spec: docs/plans/wavee/home-redesign-remediation.md §3.6 (`SectionScreen.UI.cs`), F9, Appendix L (loc keys);
 //       docs/plans/wavee/shared-media-surface-implementation.md Appendix A.4.
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
-using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Signals;
-using Wavee;
 using Wavee.Theming.Contracts;
 using Slots = FluentGpu.Theming.Slots;
 

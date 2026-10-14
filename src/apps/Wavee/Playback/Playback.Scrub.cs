@@ -61,7 +61,7 @@ public struct ScrubModel
     }
 
     /// <summary>Pointer up at <paramref name="ms"/>: a live gesture commits ONCE and returns to Idle at once (a click — Down then Up — commits too); Idle is inert.</summary>
-    public Effects Up(long ms, long now) { if (Current == State.Idle) return default; Current = State.Idle; PositionMs = ms; return new(false, false, Commit: true, false, ms, 0); }
+    public Effects Up(long ms) { if (Current == State.Idle) return default; Current = State.Idle; PositionMs = ms; return new(false, false, Commit: true, false, ms, 0); }
 
     /// <summary>Capture lost / Escape / unmount: a live gesture returns to Idle and reports <see cref="Effects.Cancel"/> at the last position; Idle is inert. <see cref="Audible"/>
     /// is cleared either way.</summary>

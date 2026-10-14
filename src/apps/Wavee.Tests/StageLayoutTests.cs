@@ -210,7 +210,7 @@ public class StageLayoutTests
     {
         var desktop = L.Seed(1920f, 1080f);
         Assert.Equal(444f + 48f, desktop.FaceRight(true));
-        Assert.Equal(L.GalleryInset, desktop.FaceRight(true));
+        Assert.Equal(L.GalleryDesktopW + 2f * L.Pad, desktop.FaceRight(true));
 
         var ultra = L.Seed(3440f, 1440f);                    // the docked column is 19 % of W, not 444 (V-U45)
         Assert.Equal(ultra.GalleryW + 48f, ultra.FaceRight(true));
@@ -725,11 +725,6 @@ public class StageLayoutTests
         Assert.Equal(2, (int)M.Queue);
         Assert.Equal(3, (int)M.Artist);
 
-        Assert.True(Stage.ModeRules.ShowsPane(M.Lyrics));
-        Assert.True(Stage.ModeRules.ShowsPane(M.Queue));
-        Assert.True(Stage.ModeRules.ShowsPane(M.Artist));
-        Assert.False(Stage.ModeRules.ShowsPane(M.Visualizer));
-
         // The gallery toggle from another mode first switches to Visualizer and opens; from Visualizer it flips.
         var (m1, open1) = Stage.ModeRules.ToggleGallery(M.Lyrics, false);
         Assert.Equal(M.Visualizer, m1);
@@ -792,7 +787,6 @@ public class StageLayoutTests
         var captioned = l.FaceSafe(galleryOpen: false, captionShown: true);
         Assert.Equal(l.CaptionTopMin - L.Pad, captioned.Bottom);                           // the subject never sits under the words
         Assert.True(captioned.Bottom < closed.Bottom);
-        Assert.Equal(captioned.Y + captioned.H * 0.5f, captioned.CentreY);
     }
 
     [Theory]

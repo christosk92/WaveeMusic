@@ -12,7 +12,6 @@
 // the policy does not carry: the look of the parts inside a level.
 
 using FluentGpu.Animation;
-using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 
 namespace Wavee.Themes.Classic;

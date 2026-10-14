@@ -677,25 +677,18 @@ public class HighlightViewerLayoutTests
     public void PlateWidth_MatchesTheClampLadder(float vpW, float vpH, float expected)
         => Assert.Equal(expected, HighlightViewerLayout.PlateWidth(vpW, vpH));
 
+    // Issue #89 L4: poster or not, the band is the plate's own w·9/16 (a no-poster slide is tinted, not smaller).
     [Fact]
-    public void ImageHeight_IsThe16By9BandWhenAPosterExists()
+    public void ImageHeight_IsThe16By9Band()
     {
-        Assert.Equal(540f, HighlightViewerLayout.ImageHeight(960f, hasPoster: true));
-        Assert.Equal(240f, HighlightViewerLayout.ImageHeight(427f, hasPoster: true));
+        Assert.Equal(540f, HighlightViewerLayout.ImageHeight(960f));
+        Assert.Equal(240f, HighlightViewerLayout.ImageHeight(427f));
     }
-
-    // Issue #89 L4: a no-poster slide keeps the SAME w·9/16 band (tinted, not smaller).
-    [Theory]
-    [InlineData(960f)]
-    [InlineData(427f)]
-    [InlineData(320f)]
-    public void ImageHeight_IsTheSame16By9BandWithOrWithoutAPoster(float plateWidth)
-        => Assert.Equal(HighlightViewerLayout.ImageHeight(plateWidth, hasPoster: true), HighlightViewerLayout.ImageHeight(plateWidth, hasPoster: false));
 
     [Fact]
     public void Chrome_FitsInsideTheSmallestBand()
         => Assert.True(HighlightViewerLayout.ChromeInset * 2f + HighlightViewerLayout.ChromeCircle
-                       <= HighlightViewerLayout.ImageHeight(HighlightViewerLayout.PlateMinWidth, hasPoster: false));
+                       <= HighlightViewerLayout.ImageHeight(HighlightViewerLayout.PlateMinWidth));
 
     [Theory]
     [InlineData(0, 3, HighlightNavKey.Previous, 0, HighlightSlideDirection.None)]

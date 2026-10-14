@@ -43,7 +43,6 @@
 // the prefix is guillotined at the rail's lower edge by ONE shared clip (`ItemClipTopInset` + the 24-DIP fade band), so
 // the rail needs no plate of its own — the page's tone ground shows through, as in the prototype.
 
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -743,7 +742,6 @@ public readonly partial struct Show
         // the month pinned at the list's top
         JumpGroup[] _groups = new JumpGroup[ShowDateIndex.MaxGroups];
         int _groupCount;
-        int[] _years = [];
         readonly Signal<int> _stickyMonth = new(-1);
         readonly Action<int> _jumpYear;
         readonly Func<int[]> _yearsOf;
@@ -1158,7 +1156,7 @@ public readonly partial struct Show
             _m = p.Model;
             var f = _m.Facts?.Value ?? default;
             // Reports 11c/11d: the APP accent (never the show tone) and a label that WRAPS — Workstream B's
-            // Controls.PrimaryButton(wrap: true), not a bespoke pill (was Show.PrimaryPill).
+            // Controls.PrimaryButton(wrap: true), not a bespoke pill.
             Element pill = f.Primary switch
             {
                 ShowReaderRules.Primary.Follow => Controls.PrimaryButton(Loc.Get(Strings.Artist.Follow), _follow, Tok.AccentDefault, Icons.Add, wrap: true),

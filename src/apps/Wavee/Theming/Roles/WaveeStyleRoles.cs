@@ -15,16 +15,6 @@ using FluentGpu.Theming;
 
 namespace Wavee.Theming.Roles;
 
-/// <summary>The version of the role vocabulary a style must define completely (themes plan 5.4, S2).</summary>
-public static class RoleVersion
-{
-    /// <summary>Breaking change to a role's meaning or removal of a role.</summary>
-    public const int Major = 1;
-
-    /// <summary>A role added.</summary>
-    public const int Minor = 0;
-}
-
 /// <summary>The roles of one style: everything a view reads as "how big, which colour, which radius, which casing" and
 /// never as "which theme". Implements the engine's <see cref="IAppRoles"/> so a definition swap can tell a colour-only
 /// change (cross-fade on the live path) from one that needs a transaction. Equality is by value: a style that publishes an

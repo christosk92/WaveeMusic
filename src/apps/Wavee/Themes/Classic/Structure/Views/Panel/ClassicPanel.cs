@@ -28,7 +28,6 @@ using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Theming.Contracts;
-using Wavee.Theming.Roles;
 
 namespace Wavee.Themes.Classic;
 

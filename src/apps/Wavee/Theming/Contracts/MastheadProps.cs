@@ -6,8 +6,6 @@
 // it is live, and the tool verb; the theme draws the band. `Page.Head` is the trail-as-title row the band places (Classic) and
 // that a page may place itself (a theme that draws its head in-page).
 
-using FluentGpu.Dsl;
-
 namespace Wavee.Theming.Contracts;
 
 /// <summary>The props of <see cref="ViewKeys.ShellMasthead"/>.</summary>

@@ -520,7 +520,7 @@ public static partial class Spotify
         /// never persisted: the relation is asked for again, and with no ledger entry surviving, that next ask is a
         /// FULL walk — never a second delta stacked on an unverified one.</para></summary>
         internal static void ApplyCollectionDelta(LibraryEdgeKind set, string username, List<CollectionDeltaItem> items,
-            int baselineCount, int added, int removed, string newSyncToken)
+            int baselineCount, string newSyncToken)
         {
             var scope = Entities.Current;
             if (!IsAccountScope(scope) || !string.Equals(scope.Key.Account, username, StringComparison.Ordinal)) return;
@@ -538,8 +538,7 @@ public static partial class Spotify
             // Counted over what THIS relation can hold, never over the raw answer: `collection` is ONE wire set for
             // two relations (liked tracks, saved albums), so a delta asked for one carries the other's items too, and
             // counting those made every such delta "fail to reconcile" (2026-09-18).
-            added = 0;
-            removed = 0;
+            int added = 0, removed = 0;
             foreach (var item in items)
             {
                 if (!TryResolveDeltaTarget(scope, set, item.Uri, out int targetSlot, out byte flags)) continue;

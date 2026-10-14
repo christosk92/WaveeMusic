@@ -56,13 +56,11 @@
 //     readiness bit (A5).
 
 using FluentGpu.Animation;
-using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Signals;
 using FgMotion = FluentGpu.Dsl.Motion;
-using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
 
@@ -85,7 +83,7 @@ public static partial class Design
     public static class Size
     {
         public const float ControlH = 32f, NavItemH = 44f, TrackRowH = 56f, PlayerBarH = 72f;   // taller dock: room for the seek row. Classic's bar height and the core fallback's (`PlayerBarPolicy.Default`); the ACTIVE height is `PlayerBarPolicy.Height`
-        public const float RailCard = 180f, NavPaneW = 240f, NavCompactW = 56f;   // NavPaneW 240 = WinUI OpenPaneLength (flush, no inset gap)
+        public const float NavPaneW = 240f, NavCompactW = 56f;   // NavPaneW 240 = WinUI OpenPaneLength (flush, no inset gap)
         public const float ArtThumb = 40f, ArtNowPlaying = 64f, ArtPlayerBar = 48f;
 
         /// <summary>Detail-page left-rail widths (the shared playlist/album/single detail surface; liked is
@@ -194,16 +192,8 @@ public static partial class Design
         /// <summary>The card surface an identity cue is solved against: the card fill flattened onto the floating pane.</summary>
         static ColorF CardGround(ColorF cardFill) => ColorContrast.Flatten(cardFill, R.Layer.FloatingPane);
 
-        /// <summary>A quiet identity hairline solved against the actual card surface of the ACTIVE theme (3.25:1).</summary>
-        public static ColorF Hairline(ColorF seed)
-            => ColorScience.Hairline(seed, R.Kind, CardGround(Tok.FillCardDefault), ColorScience.HairlineContrast);
-
-        /// <summary>The hovered card's slightly stronger identity cue; 3.55:1 remains below the 4.5:1 text threshold —
-        /// on purpose.</summary>
-        public static ColorF HairlineHover(ColorF seed)
-            => ColorScience.Hairline(seed, R.Kind, CardGround(Tok.FillCardSecondary), ColorScience.HairlineHoverContrast);
-
-        /// <summary>Accent as TEXT on a card-like surface of the ACTIVE theme. Same hue as <see cref="Hairline(ColorF)"/>, solved to
+        /// <summary>Accent as TEXT on a card-like surface of the ACTIVE theme: the identity-hairline hue
+        /// (<see cref="ColorScience.Hairline(ColorF, ThemeKind, ColorF, float)"/>), solved to
         /// <see cref="ColorScience.TextContrast"/>.</summary>
         public static ColorF TextInk(ColorF seed)
             => ColorScience.TextInk(seed, R.Kind, CardGround(Tok.FillCardDefault));
@@ -450,37 +440,6 @@ public static partial class Design
         /// <summary>Assign to the item's own wrapper box (never to a node whose Opacity is already bound — a bound
         /// channel and an Enter opacity track fight over the same row).</summary>
         public static LayoutTransition Row(int index) => Rise with { DelayMs = DelayMs(index) };
-    }
-
-    /// <summary>Arms once the pointer has demonstrably MOVED — never on the first sample. A card's hover-driven effects
-    /// (scale, fill, FAB reveal) must not light from the engine's own stationary-cursor hover RE-RESOLVE: that path
-    /// re-fires a node's move-within at the SAME on-screen point whenever new content lands under a cursor that never
-    /// actually moved — exactly the back-navigation case, where a grid mounts fresh cards under a mouse that has been
-    /// resting there the whole time. With nothing to distinguish it from a genuine hover-enter, the card used to scale
-    /// up the instant it appeared, with no pointer edge behind it at all.
-    /// <para>ONE gate per card INSTANCE (a field on a stateful <c>Component</c>). The FIRST sample it ever sees is
-    /// always recorded as a baseline, never treated as a hover — only a LATER sample landing somewhere else proves the
-    /// pointer is genuinely in motion. Once armed it stays armed for the component's lifetime: a one-shot "has real
-    /// input happened since mount" latch, not a per-hover-cycle re-check — a page the user is already interacting with
-    /// must not re-litigate every hover-out/in.</para></summary>
-    public struct HoverMotionGate
-    {
-        Point2 _baseline;
-        bool _hasBaseline;
-        bool _armed;
-
-        /// <summary>Feed every move-within sample. Returns whether the card may now treat itself as genuinely hovered —
-        /// false while every sample so far has been a single stationary re-hover.</summary>
-        public bool Observe(Point2 pos)
-        {
-            if (_armed) return true;
-            // Sub-pixel jitter from re-hit-testing the same float geometry must not itself read as "moved".
-            if (_hasBaseline && (MathF.Abs(pos.X - _baseline.X) > 0.5f || MathF.Abs(pos.Y - _baseline.Y) > 0.5f))
-            { _armed = true; return true; }
-            _baseline = pos;
-            _hasBaseline = true;
-            return false;
-        }
     }
 
     // ── the ONE app-side motion clock ────────────────────────────────────────────────────────────────────────────────

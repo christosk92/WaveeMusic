@@ -15,7 +15,7 @@ Code: `Wavee.Core/Notifications/NotificationPolicy.cs` (the rules, engine-free +
 
 ## Why the dials are finer than the centre's pills
 
-The centre groups for *browsing*: its "New" pill holds albums **and** podcast episodes, its "Spotify" pill holds concerts **and** followers. Those two lumps are the reason people turn a whole feature off instead of the one part that was too loud — a podcast listener gets an order of magnitude more episodes than albums. So the dials key on `NotifyTopic` (8 topics), and `NotificationPrefs.TopicOf(notification)` is the mapping from a concrete row to its topic. `ShowsCategory` maps back the other way for pill visibility, and a category stays visible while **any** of its topics is above Off.
+The centre groups for *browsing*: its "New" pill holds albums **and** podcast episodes, its "Spotify" pill holds concerts **and** followers. Those two lumps are the reason people turn a whole feature off instead of the one part that was too loud — a podcast listener gets an order of magnitude more episodes than albums. So the dials key on `NotifyTopic` (8 topics), and `NotificationPrefs.TopicOf(notification)` is the mapping from a concrete row to its topic; the centre filters rows by their topic's level.
 
 ## The topics
 
@@ -62,7 +62,7 @@ A scheduled toast outlives the process, so both notifiers reconcile rather than 
 
 1. Add to `NotifyTopic` (**append** — the values are persisted) and give it a default in `NotificationPolicy.DefaultFor`; set `CeilingFor` / `IsScheduled` if it is not an ordinary live topic.
 2. Add a `SettingKey<int>` and map it in `NotificationPrefs.KeyFor`, then add the topic to `AllTopics` (that list **is** the UI order — one list, so a topic cannot be added and forgotten in the tab).
-3. Map concrete rows to it in `TopicOf`, and fold it into `ShowsCategory`.
+3. Map concrete rows to it in `TopicOf`.
 4. Give it a label/sub/glyph in `SettingsPage.Notifications.cs` and loc keys under `settings.notify.*`.
 5. Live topic? `ToastEscalator.Present` needs a banner shape. Scheduled? It needs its own notifier with a reconcile.
 

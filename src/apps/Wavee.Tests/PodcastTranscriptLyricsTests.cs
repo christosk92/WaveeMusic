@@ -167,13 +167,6 @@ public sealed class PodcastTranscriptLyricsTests
         Assert.NotEqual(identity, identity with { Key = key with { ReadAlong = false } });
         Assert.NotEqual(identity, identity with { Key = key with { Episode = EntityId.ForGid(EntityKind.Episode, (UInt128)2) } });
     }
-    [Theory]
-    [InlineData(600, false, true)]
-    [InlineData(640, false, false)]
-    [InlineData(640, true, true)]
-    [InlineData(700, true, false)]
-    public void SavedRowsUseHysteresisAcrossCompactBoundary(float width, bool previous, bool expected)
-        => Assert.Equal(expected, SavedEpisodeLayout.Compact(width, previous));
     [Fact]
     public void TranscriptPublishesReadyOnlyAfterOwnerRowsArePrepared()
     {

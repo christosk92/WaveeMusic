@@ -26,14 +26,12 @@
 // WVTH008: this type builds no element and reads no token or role. The pieces that still draw (the credits line, the seek rail)
 // are `Shell`'s own components; the host hands the template builders for them.
 
-using System;
 using System.Collections.Generic;
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
-using FluentGpu.Signals;
 
 using Wavee.Theming.Contracts;
 
@@ -219,7 +217,7 @@ public static partial class Shell
             }
             var widths = L;   // a copy the width function closes over (an `in` parameter cannot be captured)
 
-            // A load that has only just begun shows NO sweep; `NowPlayingFace.LoadingSinceMs` is stamped by the layout
+            // A load that has only just begun shows NO sweep; `NowPlayingFace.ObserveLoading` stamps the window in the layout
             // effect above, so the render that OPENS the window reads 0 here and the wake timer brings the sweep in
             // at SweepDelayMs if the load is still running.
             float msInPhase = nowPlayingFace.MsInLoading(loadingNow, Playback.FrameNowMs());

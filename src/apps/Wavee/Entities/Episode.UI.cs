@@ -380,18 +380,6 @@ public readonly partial struct Episode
     internal static Element SeedReaderRow(global::Wavee.Theming.Contracts.EpisodeRowStyle? style, bool narrow)
         => style is null ? new BoxEl() : style.Seed(narrow);
 
-    /// <summary>A progress track in the tone (the hero's 4 DIP): two flex halves, so the fill is exact at any width.</summary>
-    public static Element ProgressRule(float pct, Func<ColorF> tone, float height = RuleHeight) => new BoxEl
-    {
-        Direction = 0, Height = height, Corners = CornerRadius4.All(height / 2f), Fill = Tok.FillSubtleTertiary,
-        ClipToBounds = true, Shrink = 0f,
-        Children =
-        [
-            new BoxEl { Grow = MathF.Max(0.001f, pct), Fill = Prop.Of(tone) },
-            new BoxEl { Grow = MathF.Max(0.001f, 1f - pct) },
-        ],
-    };
-
     // ══ 6. THE MEDIA ROW — what `Controls.Surface(RowData(…), Shape.EpisodeRow)` is fed ═════════════════════════════
     //
     // The reader row above is the show page's own list row. Everywhere else an episode is one more media row on the

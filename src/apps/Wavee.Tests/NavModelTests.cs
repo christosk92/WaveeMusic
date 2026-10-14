@@ -4,7 +4,6 @@
 //
 //   READINESS RULES     NavReadinessRules / NavReadinessFacts: edge state in, readiness out, the planner's two-state
 //                       projection of it. PURE.
-//   DESTINATIONS        NavDestinationRules: the fixed destinations and their counts. PURE.
 //   PROJECTION PARITY   The model over a REAL SidebarProjectionBinder on six fixture libraries (empty, small, folders,
 //                       many pins, never loaded, failed load): every typed read the model offers agrees with what the
 //                       binder publishes, the literal values are the ones today's binder produces, and a failed ask is
@@ -66,53 +65,13 @@ public class NavReadinessRulesTests
     {
         Assert.Equal(new NavReadinessFacts(NavReadiness.Pending, NavReadiness.Pending), NavReadinessFacts.Pending);
         Assert.Equal(NavReadinessFacts.Pending, default(NavReadinessFacts));
-        Assert.Equal(NavReadiness.Pending, NavReadinessFacts.Pending.Overall);
+        Assert.Equal(NavReadiness.Pending, NavReadinessRules.Worst(NavReadiness.Pending, NavReadiness.Pending));
         Assert.False(NavReadinessFacts.Pending.AnyFailed);
 
         var half = new NavReadinessFacts(NavReadiness.Ready, NavReadiness.Failed);
         Assert.True(half.AnyFailed);
-        Assert.Equal(NavReadiness.Failed, half.Overall);
-        Assert.Equal(NavReadiness.Ready, new NavReadinessFacts(NavReadiness.Ready, NavReadiness.Ready).Overall);
-    }
-}
-
-// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-// ── DESTINATIONS ───────────────────────────────────────────────────────────────────────────────────────────────────
-// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-public class NavDestinationRulesTests
-{
-    static string[] Routes(NavDestination[] all)
-    {
-        var routes = new string[all.Length];
-        for (int i = 0; i < all.Length; i++) routes[i] = all[i].RouteKey;
-        return routes;
-    }
-
-    [Fact]
-    public void The_destinations_are_home_the_collection_pages_and_settings_in_catalogue_order()
-    {
-        var all = NavDestinationRules.Build(default(SidebarLibraryCounts));
-        Assert.Equal(new[] { "home", "liked", "albums", "artists", "podcasts", "audiobooks", "settings" }, Routes(all));
-    }
-
-    [Fact]
-    public void Unknown_counts_show_no_number_never_zero()
-    {
-        var all = NavDestinationRules.Build(default(SidebarLibraryCounts));
-        for (int i = 0; i < all.Length; i++) Assert.Null(all[i].Count);
-    }
-
-    [Fact]
-    public void Known_counts_land_on_their_library_pages_only()
-    {
-        var all = NavDestinationRules.Build(new SidebarLibraryCounts(Albums: 4, Artists: 3, Podcasts: 2, Audiobooks: 1, Known: true));
-        Assert.Null(all[0].Count);   // home
-        Assert.Null(all[1].Count);   // liked songs: its count is the shortcut badge's, not the kind counts'
-        Assert.Equal(4, all[2].Count);
-        Assert.Equal(3, all[3].Count);
-        Assert.Equal(2, all[4].Count);
-        Assert.Equal(1, all[5].Count);
-        Assert.Null(all[6].Count);   // settings
+        Assert.Equal(NavReadiness.Failed, NavReadinessRules.Worst(half.Tree, half.Library));
+        Assert.Equal(NavReadiness.Ready, NavReadinessRules.Worst(NavReadiness.Ready, NavReadiness.Ready));
     }
 }
 
@@ -219,10 +178,8 @@ public sealed class NavModelProjectionTests : IDisposable
         Assert.Null(model.RootlistMarkers);
 
         Assert.True(model.Counts.Known);
-        var destinations = model.Destinations;
-        Assert.Equal(7, destinations.Count);
-        Assert.Equal((int?)0, destinations[2].Count);    // a known zero, not "unknown"
-        Assert.Equal((int?)0, destinations[5].Count);
+        Assert.Equal(0, model.Counts.Albums);    // a known zero, not "unknown"
+        Assert.Equal(0, model.Counts.Audiobooks);
         Assert.Equal(SidebarSourceState.Ready, model.Projection.TreeState);
         Assert.Equal(SidebarSourceState.Ready, model.Projection.LibraryState);
     }
@@ -255,12 +212,6 @@ public sealed class NavModelProjectionTests : IDisposable
         Assert.True(model.RootlistLoaded);
         Assert.Equal(new NavReadinessFacts(NavReadiness.Ready, NavReadiness.Ready), model.Readiness.Peek());
         Assert.Equal(new SidebarLibraryCounts(Albums: 2, Artists: 1, Podcasts: 1, Audiobooks: 1, Known: true), model.Counts);
-
-        var destinations = model.Destinations;
-        Assert.Equal(new int?[] { null, null, 2, 1, 1, 1, null },
-                     new[] { destinations[0].Count, destinations[1].Count, destinations[2].Count, destinations[3].Count,
-                             destinations[4].Count, destinations[5].Count, destinations[6].Count });
-        Assert.Same(destinations, model.Destinations);   // a read with the counts unmoved allocates nothing
 
         // The planner input is the binder's, with Liked Songs' title, and honest once the binder has built.
         var planner = model.PlannerInput();
@@ -370,7 +321,6 @@ public sealed class NavModelProjectionTests : IDisposable
         AssertWiredToTheBinder(model, binder);
         Assert.Equal(NavReadinessFacts.Pending, model.Readiness.Peek());
         Assert.False(model.Counts.Known);
-        foreach (var destination in model.Destinations) Assert.Null(destination.Count);
         Assert.False(model.RootlistLoaded);
         Assert.Equal(SidebarSourceState.Pending, model.Projection.TreeState);
     }
@@ -424,7 +374,7 @@ public sealed class NavModelProjectionTests : IDisposable
         model.Start();
 
         Assert.Equal(new NavReadinessFacts(NavReadiness.Ready, NavReadiness.Failed), model.Readiness.Peek());
-        Assert.Equal(NavReadiness.Failed, model.Readiness.Peek().Overall);
+        Assert.Equal(NavReadiness.Failed, NavReadinessRules.Worst(model.Readiness.Peek().Tree, model.Readiness.Peek().Library));
         Assert.Equal(SidebarSourceState.Ready, model.Projection.TreeState);
         Assert.Equal(SidebarSourceState.Pending, model.Projection.LibraryState);
     }
@@ -492,7 +442,6 @@ public sealed class NavModelVerbTests : IDisposable
         Assert.Same(Sidebar.Editing, _model.Editing);
         Assert.Same(Sidebar.DragPeek, _model.DragPeek);
         Assert.Same(Sidebar.PersistenceHealth, _model.PersistenceHealth);
-        Assert.Same(Sidebar.Layout, _model.LayoutId);
         Assert.Same(Sidebar.Pins, _model.Pins);
         Assert.Same(Sidebar.Doc, _model.Layout);
         Assert.Same(Sidebar.Doc, _model.ReadLayout());

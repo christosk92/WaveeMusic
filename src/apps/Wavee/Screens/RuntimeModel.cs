@@ -10,7 +10,6 @@
 // pieces and the command row stay in `Setup.UI.Runtime.cs`; the wizard's Local-playback page is driven by
 // `WizardModel` (`Screens/WizardModel.cs`), which owns one of these.
 
-using System.Threading;
 using System.Threading.Tasks;
 using FluentGpu.Controls;
 using FluentGpu.Localization;
@@ -169,8 +168,6 @@ public static partial class Setup
         public void Cancel() => _cts?.Cancel();
 
         public void Retry() => StartDownload();
-
-        public void CheckForUpdate() => StartDownload();
 
         CancellationTokenSource NewCts()
         {

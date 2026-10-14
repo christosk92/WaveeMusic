@@ -87,7 +87,6 @@ public class ModuleProcessLifecycleTests
 
         await Resolve(h.Process);
 
-        Assert.Equal(1, h.Process.NegotiatedProtocol);
         Assert.True(h.Process.Declares("playback"));
         Assert.False(h.Process.Declares("match"));   // the EFFECTIVE list narrows the manifest's
     }

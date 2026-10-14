@@ -45,7 +45,6 @@
 // Every decision is `Video.cs`'s (placement, hosting, stage input, persistence, the PiP maths, the scrub preview, the
 // join delay, the fullscreen entry) — this file lays out and forwards.
 
-using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Controls.Media;
 using FluentGpu.Dsl;
@@ -55,7 +54,6 @@ using FluentGpu.Input;
 using FluentGpu.Localization;
 using FluentGpu.Media;
 using FluentGpu.Pal;
-using FluentGpu.Scene;
 using FluentGpu.Signals;
 
 namespace Wavee;

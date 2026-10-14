@@ -29,17 +29,15 @@ public class RailVideoCouplingTests
     [Fact]
     public void Docking_a_closed_rail_opens_video_mode_and_an_open_rail_is_left_alone()
     {
-        Assert.Equal(RailMode.Video, Rail.VideoCoupling.ModeOnDock(false, RailMode.Lyrics, V.DockedHost.Rail));
-        Assert.Null(Rail.VideoCoupling.ModeOnDock(true, RailMode.Lyrics, V.DockedHost.Rail));
-        Assert.Null(Rail.VideoCoupling.ModeOnDock(true, RailMode.Video, V.DockedHost.Rail));
+        Assert.Equal(RailMode.Video, Rail.VideoCoupling.ModeOnDock(false, V.DockedHost.Rail));
+        Assert.Null(Rail.VideoCoupling.ModeOnDock(true, V.DockedHost.Rail));
     }
 
     [Fact]
     public void Docking_never_opens_video_mode_when_the_page_stage_will_host_it()
     {
-        Assert.Null(Rail.VideoCoupling.ModeOnDock(false, RailMode.Lyrics, V.DockedHost.PageStage));
-        Assert.Null(Rail.VideoCoupling.ModeOnDock(false, RailMode.Queue, V.DockedHost.PageStage));
-        Assert.Null(Rail.VideoCoupling.ModeOnDock(true, RailMode.Lyrics, V.DockedHost.PageStage));
+        Assert.Null(Rail.VideoCoupling.ModeOnDock(false, V.DockedHost.PageStage));
+        Assert.Null(Rail.VideoCoupling.ModeOnDock(true, V.DockedHost.PageStage));
     }
 
     [Fact]

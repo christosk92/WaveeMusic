@@ -21,10 +21,9 @@
 //
 // ONE MODEL PER MOUNTED SURFACE (the rail's body, the stage's column, a podcast reader's transcript): `Surface` says which.
 // A theme's lyrics view reads the signals (`State`, `ActiveLine`, `Follow`, `ResyncNeeded`, `DotsShown`, `SecondLine`),
-// the pure facts (`WordProgress`, `AiState`) and calls `Verbs`; it never reaches into `Playback` or the stores itself.
+// the pure facts (`WordProgress`) and calls `Verbs`; it never reaches into `Playback` or the stores itself.
 
 using System.Diagnostics;
-using FluentGpu.Foundation;
 using FluentGpu.Signals;
 using FrameTime = Wavee.Design.FrameTime;
 
@@ -461,16 +460,6 @@ public sealed class LyricsModel
     public void PublishSecondaryAvailability(Lyrics.Doc? doc)
     {
         if (!ReaderEpisode.IsValid) Lyrics.Prefs.Available.Value = doc is not null && Lyrics.IsTimed(doc) ? doc.SecondaryAvailable : 0;
-    }
-
-    // ══ 6. THE AI STATE ══════════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The AI sparkle's verdict for the song on screen: whether it shows, whether it is lit, its tooltip key, and
-    /// whether a press toggles the per-song preference or opens settings. Subscribing when read in a render.</summary>
-    public AiLyrics.HeaderState AiState()
-    {
-        string id = ReaderEpisode.IsValid ? "" : PlayingTrackId();
-        return AiLyrics.Rules.Header(AiLyrics.Current.Value, AiLyrics.Track.Value, Playback.CurrentId.Value.Kind, AiLyrics.PrefersAi(id));
     }
 
     // ══ 7. THE VERBS THAT NEED THIS MODEL ════════════════════════════════════════════════════════════════════════════

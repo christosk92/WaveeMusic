@@ -857,10 +857,6 @@ public static partial class Lyrics
         public static float GlowSigma(float rowDofSigma, float glowAlpha, bool large, float blurScale)
             => rowDofSigma > 0.01f ? 0f : (large ? 4.5f : 3f) * blurScale * glowAlpha;
 
-        /// <summary>At most TWO glow layers are ever animating: a third in-flight out-fade is finished instantly. A
-        /// general fade pool would put a blurred layer on every recently-sung row.</summary>
-        public const int MaxGlowFades = 2;
-
         /// <summary>The write gates. A tick that moves nothing writes nothing, the draw list stays byte-identical, and
         /// the host's skip-submit elides the frame entirely — which is what makes a 30 Hz surface free.</summary>
         public const float SplitEps = 0.0008f, SoftnessEps = 0.002f, DotAlphaEps = 0.004f;
@@ -981,7 +977,7 @@ public static partial class Lyrics
         }
 
         /// <summary>Step every in-flight line by <paramref name="dtMs"/> (already clamped to
-        /// <see cref="DtMaxMs"/> by <see cref="ClampDt"/>). A settled line — zero compensation and no delay left —
+        /// <see cref="DtMaxMs"/> by the ticker). A settled line — zero compensation and no delay left —
         /// costs one comparison and no write, which is what lets the out-of-band retirement above make the per-frame
         /// cost a function of the band rather than of the document length.
         /// <returns>Whether anything is still moving.</returns></summary>
@@ -1018,11 +1014,6 @@ public static partial class Lyrics
             }
             return moving;
         }
-
-        /// <summary>The ticker-gap clamp. The wall stamp is refreshed on EVERY call — even when nothing is pending —
-        /// so a long gap can never be spent as one giant integration step.</summary>
-        public static float ClampDt(float rawDtMs, float fallbackMs)
-            => rawDtMs <= 0f ? fallbackMs : Math.Clamp(rawDtMs, 0f, DtMaxMs);
 
         /// <summary>Should this line's translate actually reach the scene? The landing write is exempt from the gate
         /// because it must be exact.</summary>

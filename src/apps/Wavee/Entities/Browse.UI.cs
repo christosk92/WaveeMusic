@@ -38,7 +38,6 @@ using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Localization;
-using FluentGpu.Scene;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;

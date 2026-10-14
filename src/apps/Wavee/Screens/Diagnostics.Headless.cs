@@ -925,8 +925,6 @@ public static partial class Diagnostics
             {
                 lock (_gate) _writes[name] = Tombstone;
             }
-
-            public int WriteCount { get { lock (_gate) return _writes.Count; } }
         }
 
         /// <summary>The credential blob may be read and refreshed but never removed; the device id is namespaced so the

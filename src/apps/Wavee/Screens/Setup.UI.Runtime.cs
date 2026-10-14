@@ -26,7 +26,6 @@
 // opens. The wizard (Wave 6) calls `Setup.Runtime.Begin(post, onClose, onWizardExit)` and mounts the body and the
 // named pieces (`RuntimeVersionPicker`, `RuntimeVerifyFacts`, `RuntimeReadyFacts`, `RuntimeLocalSourceRows`, …).
 
-using System.Threading;
 using System.Threading.Tasks;
 using FluentGpu;
 using FluentGpu.Controls;
@@ -34,7 +33,6 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
-using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -430,7 +428,7 @@ public static partial class Setup
 
         /// <summary>A WRAPPING command row: [links?][buttons group, Grow 1, Justify End]. The group takes the line's leftover
         /// and right-aligns its buttons, so a footer that fits (Offer, Ready) is one line exactly as before; the Failed
-        /// footer (2 links + 2 buttons, wider than the 412 slot: <see cref="RuntimeRules.FooterWraps"/>) drops the buttons
+        /// footer (2 links + 2 buttons, wider than the 412 slot) drops the buttons
         /// onto a second, right-aligned line instead of clipping "Try again". The engine's wrap line gap is the row's Gap.</summary>
         static Element Row(Element? left, params Element[] right)
         {

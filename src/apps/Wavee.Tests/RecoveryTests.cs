@@ -17,14 +17,14 @@ public class RecoveryActionsTests
     [Fact]
     public void No_bundle_no_ingest_offers_start_reset_open_folder_quit_only()
     {
-        var a = Recovery.Actions.For(Recovery.Reason.BootLoop, hasBundle: false, hasIngest: false);
+        var a = Recovery.Actions.For(hasBundle: false, hasIngest: false);
         Assert.Equal(new[] { Recovery.ActionKind.Start, Recovery.ActionKind.Reset, Recovery.ActionKind.OpenFolder, Recovery.ActionKind.Quit }, a);
     }
 
     [Fact]
     public void Bundle_without_ingest_adds_view_and_copy_but_never_send()
     {
-        var a = Recovery.Actions.For(Recovery.Reason.BootLoop, hasBundle: true, hasIngest: false);
+        var a = Recovery.Actions.For(hasBundle: true, hasIngest: false);
         Assert.Equal(new[]
         {
             Recovery.ActionKind.Start, Recovery.ActionKind.Reset, Recovery.ActionKind.View,
@@ -36,14 +36,14 @@ public class RecoveryActionsTests
     [Fact]
     public void Ingest_alone_never_offers_send_without_a_bundle()
     {
-        var a = Recovery.Actions.For(Recovery.Reason.BootFailed, hasBundle: false, hasIngest: true);
+        var a = Recovery.Actions.For(hasBundle: false, hasIngest: true);
         Assert.DoesNotContain(Recovery.ActionKind.Send, a);
     }
 
     [Fact]
     public void Bundle_and_ingest_together_add_send_right_after_start()
     {
-        var a = Recovery.Actions.For(Recovery.Reason.Switch, hasBundle: true, hasIngest: true);
+        var a = Recovery.Actions.For(hasBundle: true, hasIngest: true);
         Assert.Equal(new[]
         {
             Recovery.ActionKind.Start, Recovery.ActionKind.Send, Recovery.ActionKind.Reset, Recovery.ActionKind.View,
@@ -58,15 +58,12 @@ public class RecoveryActionsTests
     [InlineData(true, true)]
     public void Start_is_always_first_reset_is_always_offered_and_quit_is_always_last(bool hasBundle, bool hasIngest)
     {
-        foreach (var reason in Enum.GetValues<Recovery.Reason>())
-        {
-            var a = Recovery.Actions.For(reason, hasBundle, hasIngest);
-            Assert.Equal(Recovery.ActionKind.Start, a[0]);
-            Assert.Contains(Recovery.ActionKind.Reset, a);
-            Assert.Equal(Recovery.ActionKind.Quit, a[^1]);
-            // Open folder never needs a bundle (it opens the crash root as a fallback).
-            Assert.Contains(Recovery.ActionKind.OpenFolder, a);
-        }
+        var a = Recovery.Actions.For(hasBundle, hasIngest);
+        Assert.Equal(Recovery.ActionKind.Start, a[0]);
+        Assert.Contains(Recovery.ActionKind.Reset, a);
+        Assert.Equal(Recovery.ActionKind.Quit, a[^1]);
+        // Open folder never needs a bundle (it opens the crash root as a fallback).
+        Assert.Contains(Recovery.ActionKind.OpenFolder, a);
     }
 }
 
