@@ -8,7 +8,7 @@
 //
 // `Stage.Caption` MOVED VERBATIM from `Stage.cs` (same name, so the caption suites pin it unchanged). `CaptionClock` is what
 // `CaptionHost` kept in five fields: the position interpolator, whether it has been anchored, whether the transport advances,
-// the last report and the edge wake. It takes the frame clock as an argument (`Design.FrameTime.NowMs` in production), so
+// the last report and the edge wake. It takes the frame clock as an argument (`FrameTime.NowMs` in production), so
 // `CaptionClockTests` drives it with a fake one.
 
 namespace Wavee;

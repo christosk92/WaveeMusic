@@ -13,9 +13,10 @@
 // WHAT THE RECORD CARRIES. Nothing that changes: the host (one cached instance), the verbs (`IPlayerVerbs`, the production
 // `PlayerVerbs.Default`), and live READS and ACTIONS the core built once (delegates over `Playback`, `Entities`, the rail): a
 // template calls a read inside a bound `Prop.Of` thunk or inside its own render, so the subscription lands where it reads.
-// The core pieces a surface shares with the stage and the on-media strip (the seek rail with its chapter decoration, the time
-// labels, the credits line) arrive as element builders: they are `Shell`'s own components, not keys (the device picker's menu is
-// `Player.DevicePicker`).
+// The pieces the bar shares with the stage and the on-media strip (the seek rail with its chapter decoration, the time labels)
+// arrive as builders: each is a core host (the scrub controller, the label's bind) that mounts its own key (`Player.SeekRail`,
+// `Player.TimeLabel`, `PlayerTransportProps.cs`). The credits line under the title is the bar's own picture over the facts
+// `Credits` states (the device picker's menu is `Player.DevicePicker`).
 //
 // WVTH006: a sealed record with init-only members and no writable signal.
 
@@ -244,16 +245,21 @@ public sealed record PlayerBarProps
     /// <summary>A playback rate as text ("1.5x").</summary>
     public required Func<float, string> RateText { get; init; }
 
-    // ── core pieces shared with the stage and the on-media strip (core builders, not keys) ────────────────────────────
+    // ── the pieces shared with the stage and the on-media strip (core hosts that mount their own keys) ───────────────────
 
-    /// <summary>The seek rail with its chapter decoration.</summary>
+    /// <summary>The seek rail's core host (it mounts <see cref="ViewKeys.SeekRail"/>, with its chapter decoration).</summary>
     public required Func<Element> SeekBar { get; init; }
-    /// <summary>A transport time label: the argument picks the right-hand (remaining / live) slot.</summary>
+    /// <summary>A transport time label's core host (it mounts <see cref="ViewKeys.TimeLabel"/>): the argument picks the right-hand
+    /// (remaining / live) slot.</summary>
     public required Func<bool, Element> TimeText { get; init; }
-    /// <summary>The credits line for a marquee (full names).</summary>
-    public required Func<Component> ArtistsLineFull { get; init; }
-    /// <summary>The credits line, compact: the first name and the "+N" chip.</summary>
-    public required Func<Element> ArtistsLineCompact { get; init; }
+
+    // ── the credits line (the bar's own picture) ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>The credits line's stamp: the face's row version folded with its credited artists' (or its show's). The line reads it
+    /// through a memo, so it re-renders only when THESE rows change.</summary>
+    public required Func<long> CreditsStamp { get; init; }
+    /// <summary>What the credits line states, read inside the line's render (the face read subscribes it).</summary>
+    public required Func<PlayerCredits> Credits { get; init; }
     /// <summary>One "⋯" row, built from live reads when the menu opens. The second argument is the shared-transition begin.</summary>
     public required Func<OverflowCommand, Action<string>?, MenuFlyoutItem> OverflowRow { get; init; }
     /// <summary>The video placement ladder the split button's chevron opens (the rows are the core's; the flyout that presents them is <see cref="ViewKeys.VideoPlacementMenu"/>).</summary>

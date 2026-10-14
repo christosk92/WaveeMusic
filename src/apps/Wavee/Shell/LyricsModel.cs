@@ -25,7 +25,6 @@
 
 using System.Diagnostics;
 using FluentGpu.Signals;
-using FrameTime = Wavee.Design.FrameTime;
 
 namespace Wavee;
 

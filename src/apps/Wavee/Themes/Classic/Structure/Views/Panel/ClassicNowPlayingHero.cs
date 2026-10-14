@@ -10,7 +10,8 @@
 // presentation while developer mode is on, the cover otherwise).
 //
 // THE BODY (scrolls under the pinned hero) is the panel's now-playing arm: title · artist links · album link · heart, the lyrics
-// peek, then About the artist, the cities, merch and Next up. It subscribes the entity tables through `props.SubscribeEntities` and
+// peek (the core host `props.LyricsPeek`, which mounts `Player.LyricsPeek`), then About the artist, the cities, merch and Next up
+// (the `Panel.NextUp` view). It subscribes the entity tables through `props.SubscribeEntities` and
 // asks for the playing track's demand (the rail is not a page and never mounts on a route).
 
 using FluentGpu.Controls;
@@ -378,7 +379,7 @@ internal sealed class ClassicNowPlayingBody : Component
             var merch = track.Album.MerchSlots.Length > 0 ? track.Album.MerchSlots : artist.MerchSlots;
             if (merch.Length > 0) sections.Add(ClassicNowPlayingHero.MerchSection(props, merch));
         }
-        if (props.HasNextUp()) sections.Add(ClassicNowPlayingHero.Section(Loc.Get(Strings.Player.NextUp), props.NextUp()));
+        if (props.HasNextUp()) sections.Add(ClassicNowPlayingHero.Section(Loc.Get(Strings.Player.NextUp), Slots.View(ViewKeys.PanelNextUp, props.NextUp)));
 
         return ScrollView(new BoxEl
         {

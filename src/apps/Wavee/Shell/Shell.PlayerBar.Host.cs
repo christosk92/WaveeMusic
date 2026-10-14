@@ -23,8 +23,9 @@
 // in the old order (the effects in particular: saved demand, the three observers, the two timers), and the template's own effects
 // (the like pop, the face cross-fade) follow them, as they followed them in the single component.
 //
-// WVTH008: this type builds no element and reads no token or role. The pieces that still draw (the credits line, the seek rail)
-// are `Shell`'s own components; the host hands the template builders for them.
+// WVTH008: this type builds no element and reads no token or role. The seek rail and the time labels it hands the template as
+// builders are core hosts too (`[CoreHost]`, `Shell.PlayerBar.UI.cs`: they mount `Player.SeekRail` / `Player.TimeLabel`); the
+// credits line is the template's own picture over the facts `BarCredits` states.
 
 using System.Collections.Generic;
 
@@ -92,8 +93,8 @@ public static partial class Shell
             RateText = EpisodeRateText,
             SeekBar = static () => SeekBar(),
             TimeText = static remaining => TimeText(remaining),
-            ArtistsLineFull = static () => new BarArtistsLine(compact: false),
-            ArtistsLineCompact = static () => ArtistsLineCompactElement(),
+            CreditsStamp = static () => BarCreditsStamp(),
+            Credits = static () => BarCredits(),
             OverflowRow = OverflowItem,
             VideoPlacementMenu = static () => Video.PlacementMenu(includeFullscreen: true),
         };
@@ -301,7 +302,4 @@ public static partial class Shell
             }
         }
     }
-
-    /// <summary>The credits line, compact (the first name and the "+N" chip), as a mounted element.</summary>
-    static Element ArtistsLineCompactElement() => Embed.Comp(static () => new BarArtistsLine(compact: true));
 }

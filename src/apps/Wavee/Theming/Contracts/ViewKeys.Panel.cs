@@ -3,7 +3,8 @@
 // T6b publishes the panel (the right rail's body: the frame, the header, the arm per mode), the panel's friends body, the
 // now-playing hero (the pinned tile with the Cover / Player switch and its art menu), the deck's style flyout, the device
 // picker's menu and the on-media transport (the video overlays' strip). The lyrics and queue bodies are core hosts that mount their
-// own keys (`Lyrics.View`, `Queue.Panel`), handed to the panel as builders; the video body is the template's own.
+// own keys (`Lyrics.View`, `Queue.Panel`), handed to the panel as builders; the video body is the template's own. The leftovers lane (P3)
+// adds the lyrics header, the "Next up" rows and the lyrics peek (props in `PanelBitsProps.cs`).
 
 using FluentGpu.Theming;
 
@@ -30,4 +31,15 @@ public static partial class ViewKeys
 
     /// <summary>The on-media transport: the strip over a video hole (play, skip, seek, times, mute, volume, more). Props: <see cref="OnMediaTransportProps"/>.</summary>
     public static readonly ViewKey<OnMediaTransportProps> OnMediaTransport = new("Player.OnMediaTransport");
+
+    /// <summary>The panel's lyrics header: the title, the second-line toggle, the AI sparkle, expand, the developer inspector, close.
+    /// Mounted by the panel's lyrics arm. Props: <see cref="PanelLyricsHeaderProps"/>.</summary>
+    public static readonly ViewKey<PanelLyricsHeaderProps> PanelLyricsHeader = new("Panel.LyricsHeader");
+
+    /// <summary>The "Next up" rows on the shared media surface (the now-playing body and the video body place them). Props: <see cref="NextUpProps"/>.</summary>
+    public static readonly ViewKey<NextUpProps> PanelNextUp = new("Panel.NextUp");
+
+    /// <summary>The now-playing body's two-row lyrics peek (or the video note, or nothing). Mounted by the core hosts <c>Lyrics.PeekHost</c> /
+    /// <c>PeekReel</c>. Props: <see cref="LyricsPeekProps"/>.</summary>
+    public static readonly ViewKey<LyricsPeekProps> LyricsPeek = new("Player.LyricsPeek");
 }

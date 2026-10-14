@@ -17,7 +17,7 @@
 //      per-frame driver writes value-gated FloatSignals the word nodes BIND (opacity, transform — compositor-only) and
 //      three scene columns directly (a landing word's σ, a word's glyph-wipe split), allocation-free.
 //   2. MOTION SAMPLES THE FRAME CLOCK. "Now" is `Lyrics.MediaClock` fed the host's (position, stamp) sample and queried at
-//      `Design.FrameTime.NowQpc` — the lyrics view's clock, verbatim in shape.
+//      `FrameTime.NowQpc` — the lyrics view's clock, verbatim in shape.
 //   3. THE TICKER MOUNTS ONLY WHILE A LANE MOVES (`Verse.Lanes`): a sung line (its hairline), a landing word, a held word,
 //      a chorus echo. Between lines and through a break the face is asleep and a one-shot timeout wakes it at the next
 //      media instant (a hand-off, a count-in dot). Audio coupling (kick, bass, level, the cloud's bands) is NOT in the
@@ -43,7 +43,6 @@ using FluentGpu.Signals;
 using FluentGpu.Text;
 
 using Ink = Wavee.Theming.Roles.StageInk;
-using FrameTime = Wavee.Design.FrameTime;
 
 namespace Wavee;
 

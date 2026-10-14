@@ -9,6 +9,7 @@
 // player) are `PanelPolicy`'s, declared by `ClassicPolicies`, because the core's width and fit machines run on them
 // (`Shell.ClampRailWidth`, `Shell.CanFitRail`, `PanelHost.FitWidthTo`). What this file adds is the look of the parts inside.
 
+using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Foundation;
 
@@ -34,6 +35,18 @@ internal static class ClassicPanelLayout
 
     /// <summary>The selected half's plate alpha.</summary>
     public const float TogglePressedAlpha = 0.16f;
+
+    // ── the lyrics header's AI sparkle (from `AiLyrics.AiHeaderButton`, P3) ──
+
+    /// <summary>One breath while the track is being timed.</summary>
+    public const float SparklePulseMs = 1800f;
+
+    /// <summary>1.0 → 0.55 → 1.0, eased both ways: a quiet breath, not a blink.</summary>
+    public static readonly Keyframe[] SparklePulse =
+        [new Keyframe(0f, 1f), new Keyframe(0.5f, 0.55f, Easing.EaseInOut), new Keyframe(1f, 1f, Easing.EaseInOut)];
+
+    /// <summary>Back to full opacity from wherever the loop was, critically damped (never overshoots 1).</summary>
+    public static readonly SpringParams SparkleSettle = SpringParams.FromResponse(0.35f, 1f);
 }
 
 /// <summary>The constants of Classic's now-playing hero and body.</summary>
@@ -60,6 +73,20 @@ internal static class ClassicHeroLayout
     public const int MerchRows = 4;
     public const float MerchArt = 56f, MerchTextGap = 2f;
     public const float MerchNameSize = 14f, MerchNameLine = 20f, MerchPriceSize = 12f, MerchPriceLine = 16f;
+
+    // ── "Next up" (from `Rail.NextUpRow`, P3) ──
+
+    /// <summary>A "Next up" row's floor: 52 — the media surface's row shape's 8-DIP padding lifts the 40-art row to 56, and the
+    /// hidden-artwork row (the 32 play glyph) stays on this floor. The rows stack 2 DIP apart.</summary>
+    public const float NextUpRowH = 52f, NextUpGap = 2f;
+
+    // ── the lyrics peek (from `Lyrics.PeekReel`, P3) ──
+
+    /// <summary>One peek row, the reel (two rows), the accent spine's width and corner, the note's half-height spine.</summary>
+    public const float PeekRowH = 56f, PeekReelH = PeekRowH * 2f, PeekSpineW = 3f, PeekSpineRadius = 1.5f, PeekNoteSpineH = PeekRowH * 0.5f;
+
+    /// <summary>The faded peek row's opacity, and the note's text size.</summary>
+    public const float PeekOpacity = 0.38f, PeekNoteText = 12f;
 
     // ── the pending About card ───────────────────────────────────────────────────────────────────────────────────────
     public const float LoadingTitleH = 18f, LoadingTitleW = 180f, LoadingLineH = 12f, LoadingLineAW = 240f, LoadingLineBW = 210f;

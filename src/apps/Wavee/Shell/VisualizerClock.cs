@@ -93,7 +93,7 @@ public static partial class Visualizer
             _accentTarget = target;
             if (_fadeStartMs < 0 || !_run) { ctx.Slab.Accent.Value = target; _fadeStartMs = 0; return; }   // mount, or the clock is not running: snap
             _fadeFrom = ctx.Slab.Accent.Peek();
-            _fadeStartMs = Design.FrameTime.NowMs;
+            _fadeStartMs = FrameTime.NowMs;
         }
 
         /// <summary>The clock stopped mid-fade (settled / occluded / reduced): land both fades on their targets.</summary>
@@ -141,7 +141,7 @@ public static partial class Visualizer
             bool advancing = playing && !buffering;
             if (pos != _lastReportMs || !_anchored || advancing != _advancing)
             {
-                _pos.Anchor(Design.FrameTime.NowMs, pos);
+                _pos.Anchor(FrameTime.NowMs, pos);
                 _anchored = true;
                 _lastReportMs = pos;
             }
@@ -226,7 +226,7 @@ public static partial class Visualizer
         {
             var s = _ctx!.Slab;
             var from = new Palette(_live.Accent, s.A.Peek(), s.B.Peek(), s.C.Peek(), s.Deep.Peek(), _live.Dark);
-            _fade.Begin(from, target, Design.FrameTime.NowMs, durationMs, moment);
+            _fade.Begin(from, target, FrameTime.NowMs, durationMs, moment);
             _live = target;
             _fadeSignalsPending = true;
         }
@@ -250,7 +250,7 @@ public static partial class Visualizer
         {
             var ctx = _ctx!;
             var slab = ctx.Slab;
-            long now = Design.FrameTime.NowMs;
+            long now = FrameTime.NowMs;
             if (!_anchored) { _pos.Anchor(now, Playback.PositionMs.Peek()); _anchored = true; }
             float dt = DeltaSec(_lastTickMs, now);
             _lastTickMs = now;

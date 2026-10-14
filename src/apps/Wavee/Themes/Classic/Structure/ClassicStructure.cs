@@ -73,6 +73,12 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.ShellNavEdit, ClassicNavEdit.Template, "classic.shell.nav-edit");
         // T6a: the player bar (the podcast transport rides with it).
         views.Add(ViewKeys.PlayerBar, ClassicPlayerBar.Template, "classic.player.bar");
+        // Leftovers P3: the transport pieces the bar, the stage's transport card and the on-media strip share (`Views\Player\ClassicTransport.cs`).
+        views.Add(ViewKeys.SeekRail, ClassicTransport.SeekRail, "classic.player.seek-rail");
+        views.Add(ViewKeys.SeekChapters, ClassicTransport.SeekChapters, "classic.player.seek-chapters");
+        views.Add(ViewKeys.ChapterTip, ClassicTransport.ChapterTip, "classic.player.chapter-tip");
+        views.Add(ViewKeys.SeekReadout, ClassicTransport.SeekReadout, "classic.player.seek-readout");
+        views.Add(ViewKeys.TimeLabel, ClassicTransport.TimeLabel, "classic.player.time-label");
         // T8a: the track table's rows (the Modern and Classic bound grids and skins; the header, chrome and placeholder are T8b's).
         views.AddStyle(StyleKeys.TrackTable, ClassicTrackTable.Style);
         // T8c: the other list surfaces: the eager track row (grid, title run, hover container), the podcast episode row (content, seed,
@@ -90,6 +96,11 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.DeckStyleFlyout, ClassicDeckFlyout.Template, "classic.player.deck-style-flyout");
         views.Add(ViewKeys.DevicePicker, ClassicDevicePicker.Template, "classic.player.device-picker");
         views.Add(ViewKeys.OnMediaTransport, ClassicOnMedia.Template, "classic.player.on-media-transport");
+        // P3: the panel's lyrics header (with the AI sparkle and the developer inspector), the "Next up" rows and the lyrics peek; their facts,
+        // verbs, the rows' data and the peek's clock stay core (`RailWiring`, `AiLyrics.HeaderFacts`, `Rail.NextUpRows`, `Lyrics.PeekReel`).
+        views.Add(ViewKeys.PanelLyricsHeader, ClassicLyricsHeader.Template, "classic.panel.lyrics-header");
+        views.Add(ViewKeys.PanelNextUp, ClassicNextUp.Template, "classic.panel.next-up");
+        views.Add(ViewKeys.LyricsPeek, ClassicLyricsPeek.Template, "classic.player.lyrics-peek");
         // T7a1: the fullscreen stage's frame: the root (layer stack, chrome placement, hairline), the top bar, the transport card, the
         // options popover, the visualizer gallery and the lyric caption. The layouts, hero and artist pane (T7a2) have keys (the lyrics pane
         // is T7b's and the queue pane T7d's, below), and so do the video surfaces (T7c, after the queue's).
@@ -108,6 +119,8 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.StageNowPlayingCard, ClassicStageNowPlayingCard.Template, "classic.stage.now-playing-card");
         views.Add(ViewKeys.StageIdentity, ClassicStageIdentity.Template, "classic.stage.identity");
         views.Add(ViewKeys.StageArtistPane, ClassicStageArtistPane.Template, "classic.stage.artist-pane");
+        // P3: the stage's pane region (its rect, move, clip and the frame each pane enters in); the KeepAlive and which pane is shown stay core (`Stage.PaneHost`).
+        views.Add(ViewKeys.StagePane, ClassicStagePane.Template, "classic.stage.pane");
         // T7b: the lyrics reading surface (the layer stack, the overlays, the stage's reading column) and its lines style (the state line, the
         // loading bars, the unsynced block, the synced list and its rows, the podcast peek). The document, the clock, the follow, the cascade,
         // the depth-of-field ramp and the word wipe stay core (`Lyrics.ViewCore`).

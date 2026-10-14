@@ -94,7 +94,8 @@ the shell) `R` falls back to a registered baseline. `ClassicRoles` registers its
 a theme and no read lands on an empty table. A test that needs other roles installs a definition carrying them in the shell
 test process (`Wavee.ShellTests\StyleRolesTests.cs`), the one process where `Tok` may change.
 
-**What stayed in `Design`.** The behaviour (`Entrance`, `Reveal`, `Nav`, `FrameTime`, `Cadence`, `Reduced`), the Fluent duration ladder
+**What stayed in `Design`.** The behaviour (`Entrance`, `Reveal`, `Nav`, `Cadence`, `Reduced`; the frame clock left for `Platform\FrameTime.cs`,
+a clock and not a token, so a `[CoreHost]` may read it), the Fluent duration ladder
 (`Design.Motion.Faster` .. `Slow`, WinUI constants that `MotionTok` mirrors and a few `static readonly` transitions bake in), the
 structural geometry whose consumers need compile-time numbers (`Design.Size`: control, row, pane, rail, thumb and player-bar sizes) and the
 focus insets (`Design.FocusInsetBordered` / `FocusInsetRow`, an `Edges4` of the shape family: they leave with the shape roles). From T2b
@@ -212,10 +213,14 @@ core still draws itself is listed under "What stays core" below.
 the rail and docked-video coupling, the chrome allocator, the material mirror, the route reducer, the auth fold, the page
 transition's recipe) decide and publish; a theme only draws. Behaviour the engine wires as a control (the splitter, the
 shell chords, the file-drop target, the realized-node captures the probes and the scrim clip read) is built by the host and
-**placed** by the template. A few pieces are still drawn by core components that are not `[CoreHost]` (so WVTH008 does not see them) and
-reach the views as builders: the player bar's seek rail, time labels and credits line (`Shell.SeekBar`, `Shell.TimeText`, `BarArtistsLine`,
-shared with the stage and the on-media strip), the panel's lyrics header, the now-playing hero's "Next up" rows and lyrics peek, the stage's
-pane frame (`Stage.UI.cs`), the sidebar pane's layer (`PaneView`, below) and the album and playlist pages' two frame-clock hosts.
+**placed** by the template. Since the leftovers lane P3 no picture is drawn by a core component: the seek rail, time labels and credits
+line (`Player.SeekRail`, `Player.TimeLabel`, ..., T6a), the panel's lyrics header, the "Next up" rows and the lyrics peek (`Panel.LyricsHeader`,
+`Panel.NextUp`, `Player.LyricsPeek`, T6b), the stage's pane region (`Stage.Pane`, T7a1), the sidebar pane's layer (`NavRowKit.Frame`, T5a) are
+Classic's, and their hosts, `PaneView` and the album and playlist pages' two clock hosts (the frame clock is `Platform\FrameTime.cs`, not a
+`Design` token) are `[CoreHost]`. One deliberate exception is left: `Video.HoleBoxes` (`Shell\Video.UI.cs`, T7c below) builds the video
+hole's ancestor chain (transparent layout boxes, the fullscreen focus root, empty placeholders) in core, because the hole rule binds every
+theme and keeping that chain out of a template means no theme can put an effect between the picture and the swapchain. Zero-size
+machinery (the key ladder's tick, the drag-peek watcher) returns a bare 0×0 box from a behaviour component and is not a picture.
 
 ### The frame and the content states (T4a)
 
@@ -319,9 +324,13 @@ gives the pane its key and moves the **rows**; T5b moves the **heads** (below); 
 
 - **The pane is a core host.** `PaneView` keeps every hook, effect and state machine: the plan -> publish -> per-row epoch pipeline,
   the selection travel and the pill target, disclosures, reorder bands, the tree multi-selection, the drag peek and when the freeze
-  holds or flushes. It is not marked `[CoreHost]`: it builds the pane layer (the layer, root and context-menu shield
-  boxes and the padded list), which WVTH008 would report. The filter box and the empty hint left with the heads
-  (T5b, below).
+  holds or flushes. Since P3 it is a `[CoreHost]` (as are `PaneHost` and `ClassicMode`): the boxes it is built in are the kit's
+  (`NavRowKit.Frame` over a `NavPaneFrameArgs`: the layer at the open width, the root, the context-menu shell and its childless
+  `sidebar:context-shield`; `ListBox`: the `plan-pad` inset; `ModeHost`: the layout host's box and the mode switch's fade), while the
+  pane decides what they hold and every flag on them (inert behind a pinned overlay, the drag peek's waypoint, the key handler, the menu,
+  no shell without an overlay). The drag watcher is zero-size machinery beside the pane (`Sidebar.DragPeekWatcher`), placed by the frame.
+  `LibraryMode` stays unmarked: it draws nothing, but its drill-in width rule (`SidebarLibraryMetrics.DrillInWidth` against the
+  viewport) is not a tier and WVTH013 would report it. The filter box and the empty hint left with the heads (T5b, below).
 - **The structure supplies the list as a `NavRowKit`** (`Theming\Contracts\NavRowKit.cs`; Classic's is `ClassicNavRows`): the planner
   and its owning-section answer, the publish diff (`RowChanged`), the analytic extent that seeds the virtualizing host, the mid-drag
   parking bay (`INavStageHold<T>`: no row jumps while a list is frozen during a drag, the newest stage flushes once at session end)
@@ -330,7 +339,7 @@ gives the pane its key and moves the **rows**; T5b moves the **heads** (below); 
   `SidebarStageHold<T>`), `Rules\SidebarGeometry.cs` (the row ladder: heights, the icon column, indent, pill, the grid and cue
   numbers), `Views\Nav\ClassicNavRow.cs` (the bound slot: header, route, entity and folder rows, rail tiles, grid strips, the empty
   hint, the tree's end gutter, the drop band, the selection pill and the drop cues), `ClassicNavRows.cs` (the kit),
-  `ClassicNavPane.cs` (the template).
+  `ClassicNavFrame.cs` (the pane's boxes, P3), `ClassicNavPane.cs` (the template).
 - **`INavRowHost`** (`Theming\Contracts\NavRowHost.cs`, implemented explicitly by `PaneView` in `Shell\Sidebar.UI.Host.cs`) is what a
   slot may ask of the pane: the published plan, what the pane resolved once for every row (selected route, playing rows, the pill
   target, the reorder band), the verbs, and the pieces core decides for the structure's surfaces (menus' rows, drop specs).
@@ -345,7 +354,8 @@ gives the pane its key and moves the **rows**; T5b moves the **heads** (below); 
 **Tests.** The planner, the diff, the extents, the freeze and the ladder are pure (`SidebarPlannerTests`, `SidebarWiringTests`,
 `NavDropRulesTests`, `SidebarRowGeometryTests`, `NavModelTests` for the owning section); the mounted facts are
 `Wavee.ShellTests\NavPaneMountedTests.cs` (the registered template is Classic's, the real shell draws the pane through the key and
-its Home row stands at the ladder's row height, and the kit plans with Classic's planner).
+its Home row stands at the ladder's row height, the kit plans with Classic's planner, and the pane's boxes are the kit's: the menu
+shell over a childless shield only with an overlay, the inset, the mode's fade, and in the real shell the list in the layer beside the one shield).
 
 ### The navigation pane's heads (T5b)
 
@@ -506,10 +516,28 @@ what the podcast bar carries at each level to the same record (`PlayerTier.Podca
 replacing the level-ordinal comparisons `Shell.PodcastBarLayout` made. `R.Space.DockReserve` (what a page reserves under its last
 row) answers the active policy's height; the style table's own 72 is the value it equals in Classic.
 
-**What stayed core, and why.** The seek rail with its chapter decoration, the time labels and the credits line are shared with the
-stage and the on-media strip (or have no key yet) and arrive as builders on the props until T7 gives them keys (the device picker's
-menu is `Player.DevicePicker` since T6b, below); the "⋯" rows (`OverflowItem`: labels and what a row does, built from live reads at
-open time) and the key map (`PlayerKey`) are decisions.
+**What stayed core, and why.** The "⋯" rows (`OverflowItem`: labels and what a row does, built from live reads at open time) and the
+key map (`PlayerKey`) are decisions; the device picker's menu is `Player.DevicePicker` since T6b, below. The credits line under the title
+is the template's own picture (`ClassicPlayerBar.Credits.cs`: the links, the ", " runs, the "+N" chip and where its menu opens) over
+two core reads on the props: `Credits` (a `PlayerCredits`: the face's show or credited artists as `PlayerCreditLink`s, an inert name
+carrying no verb, the chip's key and its menu rows built at open time) and `CreditsStamp` (the row versions the line's memo watches).
+
+**The transport pieces the bar shares (leftovers P3).** The seek rail and the time labels are placed by the bar, the stage's transport
+card and the on-media strip, each over its own core host: `PlayerBarProps.SeekBar` / `TimeText` (and the stage's and the strip's
+builders) return `Shell.BarSeekRail` / `Shell.BarTimeText` (`[CoreHost]`, `Shell\Shell.PlayerBar.UI.cs`), because the per-surface
+arguments (the chrome feed, the stage's scrub edge, the strip's reveal, the ink) are core objects. The hosts keep the scrub controller
+and every hook (the report effect, the pixel-due stepper, the unmount abort), open and close the readout and the chapter tip, own the
+chapter lease and the markers' arithmetic (`BarChapterTimeline`, `[CoreHost]`), format the digits and decide the live slot; they mount:
+
+| Key | Props | Classic (`Views\Player\ClassicTransport.cs`, numbers in `Rules\PlayerTransportLayout.cs`) |
+|---|---|---|
+| `Player.SeekRail` | `SeekRailProps` (`Enabled`, `Dvr`, `Line`, `ChapterRail`, the chapter host; `Host` is an `ISeekRailHost`: the fill and thumb binds, the handlers, the thumb's node report, the playing flag, the keyboard ladder's zero-size clock) | the 32-DIP hit box (Slider role) over the track, the fill, the DVR live edge, the chapter layer, the thumb ring and its disc; the breathing live line when there is nothing to rewind |
+| `Player.SeekChapters` | `SeekChaptersProps` (the markers, the rail width, the tip's fraction and anchor report) | the ticks and the tip's invisible anchor |
+| `Player.ChapterTip`, `Player.SeekReadout` | `ChapterTipProps`, `SeekReadoutProps` (bound text) | the two bubbles, mounted inside the host's overlays |
+| `Player.TimeLabel` | `TimeLabelProps` (`Remaining`, `Ink`, `IsLive`, `LiveSlot`, the bound label, the verbs) | the 44-DIP digits slot (a floor while live) and the 104-DIP live slot (LIVE, or GO LIVE behind the edge) |
+
+The slot widths (`TimeLabel.SlotW` / `LiveSlotW`) only the picture read, so they moved with it (`ClassicTransportLayout.TimeSlotWidth` /
+`LiveSlotWidth`); `SeekRail.ThumbX` stays a core rule the host's thumb bind runs for the ring diameter the view asks for.
 
 ### The right panel and the Player family's other views (T6b)
 
@@ -520,7 +548,7 @@ open time) and the key map (`PlayerKey`) are decisions.
 | `Player.NowPlayingHero` | `NowPlayingHeroProps` | `RailWiring` (the playing track and cover, the deck, the entity subscriptions, the demand) | `ClassicNowPlayingHero`: the pinned tile (header strip, cover or the hosted deck, the art menu) and the now-playing body under it (credits, About, cities, merch, Next up) |
 | `Player.DeckStyleFlyout` | `DeckStyleFlyoutProps` (`IDeckStyleVerbs`) | `Shell.DeckPrefs` behind `RailWiring`'s verbs object | `ClassicDeckFlyout` and `Rules\DeckThumbnails.cs`: the preset shelves, the option rows, the swatches, the twelve mini-arts |
 | `Player.DevicePicker` | `DevicePickerProps` (`DevicePickerView`: `DevicePickerEntry` rows and a stamp; built per open) | `Shell.DevicePicker.Entries`, `RailWiring.ReadDevicePicker`; the overlay stays the bar's `ToggleDevicePicker` | `ClassicDevicePicker`: the menu over the entries, scrolled to the window |
-| `Player.OnMediaTransport` | `OnMediaTransportProps` (`OnMediaFacts`; a surface adds its idle signal and chrome feed) | `OnMedia.Transport` mounts it (`RailWiring.OnMediaProps`); `OnMedia.MoreMenu` and `FadeChrome` stay | `ClassicOnMedia`: previous / play / next, the seek rail, the times, mute, the volume popup, "⋯" |
+| `Player.OnMediaTransport` | `OnMediaTransportProps` (`OnMediaFacts`; a surface adds its idle signal and chrome feed) | `OnMedia.Transport` mounts it (`RailWiring.OnMediaProps`); `OnMedia.MoreMenu` and `FadeChrome` stay | `ClassicOnMedia`: previous / play / next, the seek rail's and the times' places (their core hosts mount `Player.SeekRail` / `Player.TimeLabel`, above), mute, the volume popup, "⋯" |
 
 **The state machine and the coupling stay core.** `Shell.PanelHost` (open, mode, committed width, floats, the docked video's height and pin),
 the width and fit rules (`PanelPolicy`, `Shell.ClampRailWidth`, `Shell.CanFitRail`, `PanelHost.FitWidthTo`), the rail <-> docked-video
@@ -540,8 +568,17 @@ the one coat) and the floating one paints its own ring and elevation.
 re-mounts the deck exactly as it did and a mode switch re-mounts nothing the deck owns. Which face paints is the core's decision
 (`Rail.PlayerPrefs.ResolvedPresentation`, developer-gated as today). Every write goes through `IDeckStyleVerbs` with the surface that made it.
 
-**Builders other lanes still own.** The lyrics header (T7b, not yet a key; the body is `Lyrics.View` since T7b, mounted by the core builder `Lyrics.View()`), the docked video card (a core host that
-mounts `Video.Docked` since T7c), the lyrics peek and the "Next up" rows arrive as `Func<Element>` members on the props; their keys replace them. The video body is the template's since T7c
+**Bodies the core hosts, and the small views (P3).** The lyrics body (the core builder `Lyrics.View()`, which mounts `Lyrics.View` since T7b), the docked video card (a core host that
+mounts `Video.Docked` since T7c) and the lyrics peek (`NowPlayingHeroProps.LyricsPeek`: the core hosts `Lyrics.PeekHost` / `PeekReel`, `[CoreHost]`, keep the
+document, the 100 ms clock and the active / peek pair and mount `Player.LyricsPeek` with the decided face) arrive as `Func<Element>` members on the props. Three
+pictures got keys in the leftovers lane (P3; props in `Theming\Contracts\PanelBitsProps.cs`, Classic in `Views\Panel\`): `Panel.LyricsHeader`
+(`PanelProps.LyricsHeader`; `ClassicLyricsHeader`: the title, the globe toggle, the AI sparkle and its breath, expand, the developer inspector, close, on the panel
+header's own row and glyph buttons; the facts and verbs are `RailWiring`'s, the sparkle's verdict and click `AiLyrics.HeaderFacts` / `HeaderClick`, the inspector's gate
+`Diagnostics.StoreShot.DeveloperSurfaces`), `Panel.NextUp` (`NowPlayingHeroProps.NextUp`; `ClassicNextUp`: the media-surface rows at the 52-DIP floor; the window, the
+row data, each row's verbs and key are `Rail.NextUpRows`) and `Player.LyricsPeek` (`ClassicLyricsPeek`: the accent spine, the two clipped rows and their flip, the video
+note). Each read is a `Func` the template calls inside its render, so the subscriptions land on the view's slot as they landed on the core component; the sparkle
+and the inspector are components of their own, so only they subscribe the AI status and the developer setting. `Rail.HeaderButton` and the core header, row and
+reel pictures are gone. The video body is the template's since T7c
 (`ClassicVideoPanelBody`; `PanelProps.SubscribeVideoBody` carries its subscriptions). The queue body (`PanelProps.QueueBody`) is the core host's builder
 (`Queue.RailPanelHost` inside its slot pin), which mounts the `Queue.Panel` key since T7d.
 
@@ -665,10 +702,11 @@ without a registry) are `Wavee.ShellTests\ListSurfacesMountedTests.cs`.
 |---|---|---|---|
 | `Stage.Root` | `StageRootProps` (`Mount`), drawn from a `StageRootView` | `Stage.SurfaceCore` (`Shell\Stage.UI.cs`), mounted through `ShellFrameProps.StageRoot` (replacing the `StageView` builder) | `ClassicStageRoot`: the root box, the layer stack, the chrome's placement and its Enter/Exit, the smoke, the hairline |
 | `Stage.TopBar` | `StageTopBarProps` | the stage context's verbs (`SetMode`, `OpenOptions`, `Exit`, `OverControls`) | `ClassicStageTopBar`: brand, the mode `SelectorBar`, the options glyph (the TeachingTip's anchor), exit |
-| `Stage.Transport` | `StageTransportProps` (`Facts`, `Verbs`, the bar's seek and time pieces) | `Stage.TransportFacts` and friends (`Shell\Stage.Frame.cs`) | `ClassicStageTransport`: the card, the seek row, the clusters, the mute button, the volume slider, the device button |
+| `Stage.Transport` | `StageTransportProps` (`Facts`, `Verbs`, the bar's seek and time hosts, which mount `Player.SeekRail` / `Player.TimeLabel`) | `Stage.TransportFacts` and friends (`Shell\Stage.Frame.cs`) | `ClassicStageTransport`: the card, the seek row, the clusters, the mute button, the volume slider, the device button |
 | `Stage.Options` | `StageOptionsProps` (`Verbs` is an `IStageSettingsVerbs`) | `Stage.OptionsContent` (the opener re-provides the stage context in the overlay layer), `SurfaceCore._openOptions` | `ClassicStageOptions`: the tabs, the visualizer grid, the layout rows, the hero options |
 | `Stage.Gallery` | `StageGalleryProps` | the root mounts it under the chrome's Show; `Visualizer.Gallery.UI.cs` keeps the words | `ClassicStageGallery` (+ `ClassicStageGalleryTiles`): the pane, the live/poster tiles, the settings rows |
 | `Stage.Caption` | `StageCaptionProps` (what one render of the host decided) | `Stage.CaptionHost` (`Shell\Stage.Caption.UI.cs`): the playhead clock, the edge wake, the render-thread wipe, the dots' driver | `ClassicStageCaption`: the veil, the keyed previous/active/next slots, the bloom and the dots |
+| `Stage.Pane` (P3) | `StagePaneProps` (`Stage`, `Panes`) | `Stage.PaneHost` (`[CoreHost]`, `Shell\Stage.UI.cs`): which pane is shown, the KeepAlive (`pane:<kind>`) and the Artist pane's props cache | `ClassicStagePane`: the region at the allocator's `PaneRect` (clip, the position spring that slides it with the cover, shown while the layout has a pane and one is chosen) and the frame each pane's body enters in (rise 40 DIP and fade in over 500 ms FluentDecelerate, fade out in place) |
 
 **The surface stays a component; the structure draws its root.** The stage is one component with hooks that must run in a fixed order
 whatever the theme (the window and the focus scope are `ImmersiveService`'s, the idle machine and the cursor, the ONE layout signal and its
@@ -682,15 +720,18 @@ the dock) and the open/close choreography (`Stage.EnterTerminal` / `ExitTerminal
 preference mirrors) plus its verbs as actions. It names no `Shell` type, so the props carry it; what a theme may not name (`Prefs`, `Playback`, `Shell`)
 arrives as facts (`StageTransportFacts`, `StageDeviceFacts`, read inside the template's render so a signal read subscribes it), as verbs
 (`IPlayerVerbs`, `IStageSettingsVerbs`: one `Prefs.Stage` setter each, the sync offset also pushes the audio graph's spectrum offset, a face pick also
-writes the `viz.pick` line) or as builders (the bar's own seek rail and time labels, the device picker's rows).
+writes the `viz.pick` line) or as builders (the core hosts of the bar's own seek rail and time labels, which mount `Player.SeekRail` / `Player.TimeLabel` (T6a, above), the device picker's rows).
 
 **Layers other lanes own arrive as builders.** `StageRootView.Layers` carries `Func<Element>` over the core components of the pane host (the lyrics pane inside
 it mounts `Lyrics.View` since T7b, below, and the queue pane mounts `Queue.StagePane` since T7d, below), the caption host, plus the zero-size machinery (lyric facts, hero facts, the visualizer clock) the template must still
 place. The backdrop, hero photo, face, scrim, spectrum, now-playing card, identity and artist name were builders here until T7a2 gave them keys (below). The root
-keys and orders them exactly as the stack always was.
+keys and orders them exactly as the stack always was. The pane host builds no picture since P3: it mounts `Stage.Pane` and hands the template its KeepAlive as
+`StagePaneProps.Panes(frame, empty)`, so the template wraps each pane's body in its own frame while the core keeps the pane's identity and state; the props are
+built once per stage context, and the template reads the layout, the look and the shown pane itself (it re-renders on them, as the host did).
 
 **Numbers.** `Rules\StageGeometry.cs` holds the frame's look (the chrome's Enter/Exit offsets, the top bar's selector and brand, the transport card's paddings,
-glyph and disc sizes, the volume slider's alphas); `StageGeometry.Options.cs`, `.Gallery.cs` and `.Caption.cs` hold their views'. The allocator's
+glyph and disc sizes, the volume slider's alphas, the pane region's move spring and its panes' entrance: `PaneMoveResponse` / `PaneMoveDamping`, `PaneEnterDy`,
+`PaneFadeMs`); `StageGeometry.Options.cs`, `.Gallery.cs` and `.Caption.cs` hold their views'. The allocator's
 authored extents (`Stage.Layout.TopBarH`, `TransportDesktopH`, `Pad`, the gallery column, the caption block) stay in `Stage.Layout`: the core budgets
 the face-safe rect, the caption and the pane from them, so the views read them by name. The aspect thresholds are `StagePolicy`'s.
 
@@ -701,7 +742,8 @@ table (`StageInk.Ink`, `GlassHover`, `Card`, `SelectedTileWash`, ...) and never 
 **Tests.** `Wavee.Tests\StageFrameContractTests.cs` pins the keys' ids, Classic's registration and the props' cached equality;
 `StageSettingsVerbsTests.cs` pins what the option surfaces write (each verb persists and bumps the stage epoch once, a picked face survives other writes);
 `Wavee.ShellTests\StageFrameMountedTests.cs` opens the real stage under Classic and checks the registered templates, the root's stack and the chrome's
-nodes, then mounts the top bar, the transport card, the options popover and the gallery alone under `ViewHarness` with fixture props.
+nodes, then mounts the top bar, the transport card, the options popover and the gallery alone under `ViewHarness` with fixture props, and the pane region
+(`Stage.Pane`) with a fixture KeepAlive: the region at the allocator's pane rect, the frame's entrance run out, the empty arm.
 
 ### The fullscreen stage's layouts (T7a2)
 
@@ -754,8 +796,8 @@ switch), the spectrum, the backdrop and the Artist pane (nothing playing, no fac
 **The model and the driver stay core.** `LyricsModel` (state, document, the upgrade gate, the clock, the follow and resync machine, the interlude
 reserve, the second line, the AI state, the verbs), `Lyrics.BlurPolicy` / `Lyrics.Prefs.BlurStrength(onStage)` and the frame driver in `ViewCore`
 (the media clock, the active-line latch and the staggered cascade, the depth-of-field ramp, the word wipe and its render-thread keyframes, the halo
-fades, the motion demand, the ticker and stepper, the node handles they write) are untouched; so is the stage's `PaneHost` (`PaneFrame`, the
-KeepAlive, the keyed pane) which still mounts `Lyrics.StagePane`. The core host builds a `LyricsViewProps` each render and mounts
+fades, the motion demand, the ticker and stepper, the node handles they write) are untouched; so is the stage's `PaneHost` (the
+KeepAlive, the keyed pane) which still mounts `Lyrics.StagePane`, inside the frame of the `Stage.Pane` view (T7a1's table, P3). The core host builds a `LyricsViewProps` each render and mounts
 `Slots.View(ViewKeys.LyricsView, props)`; its `DocHost` (the store sync and the skeleton region) and the transcript host call the lines style for
 a picture and decide which one: a timed document that is not suppressed by a video is `Lines`, any other `Unsynced`, a reader browsing an episode
 that is not playing `Peek`.
@@ -777,9 +819,9 @@ by the active flip and reduced motion, the frozen seed opacity), the wipe/glow/�
 pill, dots and note keep their Enter/Exit. The ink mapping (`Lyrics.Ink`) stays core: the AI footer and the transcript reader share it, and it
 becomes `Roles.Lyrics*` with the colour-role pass.
 
-**Not moved yet.** The panel's lyrics header (`Rail.LyricsHeader`: the globe, the AI sparkle, expand, the inspector button; it shares
-`Rail.HeaderButton`) and the now-playing panel's two-row peek (`Lyrics.NpvPeek`) are still core builders (`PanelProps.LyricsHeader`,
-`NowPlayingHeroProps.LyricsPeek`).
+**The header and the peek.** The panel's lyrics header (the globe, the AI sparkle, expand, the inspector) and the now-playing panel's two-row peek
+are the panel family's keys since the leftovers lane (`Panel.LyricsHeader`, `Player.LyricsPeek`; see "The right panel and the Player family's other
+views (T6b)" above). The second line, the AI verdict and the peek's document and clock stay core.
 
 **Numbers.** `Rules\ClassicLyricsRules.cs`: the column's cap and gutter, the state line, the note, the pill, the peek's meta line, the dots' entrance,
 the stage's accent pill and the secondary weight. The metrics (`Lyrics.Surface`: row type and rhythm, the focal band, the halo sigmas, the loading
@@ -839,6 +881,14 @@ modes of: the three bound geometry thunks, the remembered rect, the make-before-
 `PlayerStage` / `MainVideoArea` (the engine `MediaPlayerElement`, its keys and handles, the idle machine, the chrome feed), `JoinWatch` (the one fold of the host's switch events into
 `Video.JoinNow`), `PopOutContent` (the viewport, the caption regions at `Video.PopOutBand.HeightDip`, the move-loop hold, the band's fade) and `FullscreenSurface` (OS fullscreen, the focus scope,
 Escape / F at the root). `Video.cs` and `PipGesture.cs` keep the placement, hosting, join and PiP rules. Each host mounts its key with a props record.
+
+**Every host is a `[CoreHost]`; the hole's boxes stay core on purpose (P3).** The nine hosts of `Video.UI.cs` (`JoinWatch`, `PlayerStage`, `DockedSurface`, `MainVideoArea`, `PipSurface`,
+`PopOutRoot`, `PopOutContent`, `FullscreenHost`, `FullscreenSurface`) build no element: the few boxes they place come from ONE core helper, `Video.HoleBoxes` — the shell's video layer
+(`PipLayer`), the presenter's pass-through column around the `Video.Pip` box, the video area's stack (stage over poster), the stage box that holds the `MediaPlayerElement` and the on-media strip,
+the fullscreen layer's column and the fullscreen mode's focus-scope root (the Escape / F keys and the focus rule are wired on it), plus the empty box of a surface whose mount decision is false and
+the join fold's zero-size node. They are not presentation: no colour but transparent (an erasable plate), no size but 0 and Grow, no motion. They stay core because they are the picture's
+ancestors (or the fullscreen mode's behaviour), and the hole rule above binds every theme: keeping that chain core means no theme can put a transition, an opacity or an effect between the
+picture and the window. What a theme draws around and over the hole is a key placed inside them.
 
 **The hole rule binds every theme.** The picture is a hole erased from the swapchain: no layout transition, opacity, offscreen effect or scale Enter/Exit on ANY ancestor of it. Chrome is a
 SIBLING (a hover- or idle-revealed strip). `VideoPipProps.Visible`, `Width`, `Height`, `Transform` and `FollowRect` are the engine's geometry for the hole: a template puts them on the box it
@@ -1240,13 +1290,13 @@ collaborator flyout, the invite and access panel, the Tune panel). Each of those
 |---|---|---|
 | `Detail.Notice`, `Detail.VerticalTrailing` | `Detail.NoticeBar` (the frame host and the library album pane), `FrameHost.VerticalTrailing` | `ClassicDetailSeam`: the Informational strip (zero-height while there is nothing to say), the prerelease card / release facts / trailing band in the rail's keyed rows |
 | `Album.ArtistLine`, `Album.ArtistFlyout` | `Album.FacePileHost` (`[CoreHost]`): the artist / track / edge gate, the portrait demand, the width mode's hysteresis, the open handle | `ClassicAlbumArtist`: the shared kit's line (Wide pile, Medium lead face and "+N", Narrow names; the chevron follows a list-opening click), the 44-DIP flyout rows |
-| `Album.Countdown`, `Album.ReleasePanel`, `Album.Unresolved` | `Album.CountdownHost` (the clock: one wall-clock sample, then the frame clock's delta), `ReleasePanelHost` (`[CoreHost]`: the stamp, the facts), the page | `ClassicAlbumRelease`: the ring card or its bare body, About this release (facts, ℗ / © notes, Other versions), the unresolvable line |
+| `Album.Countdown`, `Album.ReleasePanel`, `Album.Unresolved` | `Album.CountdownHost` (`[CoreHost]`; the clock: one wall-clock sample, then the frame clock's delta), `ReleasePanelHost` (`[CoreHost]`: the stamp, the facts), the page | `ClassicAlbumRelease`: the ring card or its bare body, About this release (facts, ℗ / © notes, Other versions), the unresolvable line |
 | `Album.Trailing`, `Album.Sections`, `Album.TrailStack` | `TrailingHost` (demand, the pending gate with its one swap, the deadline), `SectionsHost` (which sections are present, the video counterparts' demand), `StackHost` (the expand cell) — all `[CoreHost]` | `ClassicAlbumTrailing`: the one skeleton region and its section skeletons, the video hero / shelf, About, Fans also like, the capped stacks and their rows |
 | `Playlist.CoverArt`, `Playlist.CoverEditor` | `Playlist.CoverArt` (which tiles: the server mosaic, the art, four member covers), `CoverEditor` (`[CoreHost]`: the decode bucket, pick / drop / busy verbs) | `ClassicPlaylist` cover: the saturation-1.18 face, the hover / file-drag / saving scrim |
 | `Playlist.Editor` | `InlineEditor` (`[CoreHost]`): the edit mode, the draft, the status 0 / 1 / 2 and its 1.8 s hold, `Begin` / `Commit`, "a create opens in edit mode" | `ClassicPlaylist` editor: the read arm and its pencil, the edit arm (focus without a cue, caret at the end) over Save / Cancel, the status row |
 | `Playlist.Owner`, `Playlist.MembersFlyout` | `OwnerBlock` (`[CoreHost]`): the gate, the collaborator set, `IsOwner` / `CanAdministratePermissions` / `Live`, the two popups' anchors | `ClassicPlaylist` owner: the pile or the owner run in its reserved row, the invite pill (round under 260 DIP), the member rows |
 | `Playlist.Access`, `Playlist.Tune` | `AccessPanel` (`[CoreHost]`: `OptimisticSwitch`, the two cells, the verbs), `OpenTune` | `ClassicPlaylist` panels: the copy-invite call to action and the two switch rows, the Tune choices and reset row |
-| `Playlist.Daylist` | `DaylistHost`: the wall-clock anchor re-anchored on `DaylistCountdown`'s cadence, the interval and expiry timer, the clock-mode decisions | `ClassicPlaylist` daylist: the flip cells, the Rolling ring, the next-update caption |
+| `Playlist.Daylist` | `DaylistHost` (`[CoreHost]`): the wall-clock anchor re-anchored on `DaylistCountdown`'s cadence, the interval and expiry timer, the clock-mode decisions | `ClassicPlaylist` daylist: the flip cells, the Rolling ring, the next-update caption |
 | `Playlist.Recs`, `Playlist.RecRow` | `RecsSection` (`[CoreHost]`): the edge's demand and refill, the adding state | `ClassicPlaylist` recs: the header row, one slot per row on the shared media surface |
 
 **The shared Classic detail kit** (`Themes\Classic\Structure\Views\Detail\ClassicDetailKit.cs`) holds the pieces the frame's views, the album and the other lanes
@@ -1260,8 +1310,9 @@ file-drag read, are the pictures' own (`ctx.Hooks`). Keys keep the old tree (`pl
 `trail:<signature>`, `video:<slot>`, `rec:<slot>` ...). The popups' measures (`Playlist.AccessPanelWidth`, `TunePanelWidth`) belong to the hosts that open
 the popup and the dialog, and travel on the props.
 
-**Two hosts are not `[CoreHost]`.** `Album.CountdownHost` and `Playlist.DaylistHost` read the frame clock (`Design.FrameTime`), which WVTH008 fences; their
-presentation is the view's all the same.
+**The two clock hosts are `[CoreHost]`.** `Album.CountdownHost` and `Playlist.DaylistHost` read the frame clock, which was `Design.FrameTime` until the
+leftovers lane P3 and kept them off WVTH008 (the rule fences every `Design.*` read). The clock is a platform fact, not a token: it is `FrameTime`
+(`Platform\FrameTime.cs`) now, the same clock every model and per-frame driver reads, and both hosts are guarded like the rest.
 
 **Tests.** The ids, the registration, the equality promises and the numbers the pictures own against the reserves the core's skeleton states
 (`ClassicAlbumLayout` against `Album.PageRules.Skel*`, the reserved owner row, the invite pill's arm) are `Wavee.Tests\AlbumPlaylistContractTests.cs`; the rules stay

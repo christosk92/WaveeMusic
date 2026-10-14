@@ -5,7 +5,7 @@
 // hero, the friends body, the deck's style flyout, the device picker's menu and the on-media strip are keys of their own. What only a
 // mounted tree can say:
 //
-//   the registered views   Classic registers all six keys
+//   the registered views   Classic registers all nine keys
 //   the real shell         the panel opened on the now-playing mode draws the hero's cover at the window's right edge at the side the
 //                          width derives; switching modes keeps the tile where it was; a window too narrow to keep the content wide enough
 //                          floats the panel, still at the right edge; the friends body is mounted exactly while it is on show
@@ -14,6 +14,8 @@
 //                          slot of the now-playing arm only when the video is docked; a closed panel is seeded off-canvas (no fly-in)
 //   the faces              the friends body's skeleton, offline, error (Retry only when the host can retry) and empty faces; the device
 //                          picker's rows follow its entries and re-key on a change; the on-media strip's buttons stand
+//   the small views        the lyrics header composes its toggle, sparkle and inspector from the facts and the gates (leftovers P3);
+//                          the "Next up" view draws a row per published row; the lyrics peek is nothing, the note or the reel
 //
 // The decisions themselves (the pinned slot's occupant, the picker's entries) are `Wavee.Tests\PanelContractTests.cs`.
 
@@ -82,7 +84,7 @@ public sealed class PanelMountedTests(ShellHost host)
         SubscribeEntities = static () => { },
         DemandNowPlaying = static (_, _) => { },
         HasNextUp = static () => true,   // the video body (the structure's since T7c) places the "Next up" rows: their fixture is what says it mounted
-        NextUp = static () => new BoxEl { Key = "test:next-up", Height = 20f },
+        NextUp = new NextUpProps { Read = static () => [] },
         LyricsPeek = static () => new BoxEl { Key = "test:peek", Height = 20f },
         ResolveString = static _ => "",
         GoTo = static (_, _) => { },
@@ -114,12 +116,25 @@ public sealed class PanelMountedTests(ShellHost host)
         VideoToMiniPlayer = static () => { },
         VideoToFullScreen = static () => { },
         DockedCard = static () => new BoxEl { Key = "test:docked", Height = 10f },
-        LyricsHeader = static () => new BoxEl { Key = "test:lyrics-header", Height = 40f },
+        LyricsHeader = HeaderFixture(),
         LyricsBody = static () => new BoxEl { Key = "test:lyrics", Grow = 1f },
         QueueBody = static () => new BoxEl { Key = "test:queue", Grow = 1f },
         SubscribeVideoBody = static () => { },
         NowPlaying = HeroProps(),
         Friends = FriendsFixture(friends ?? new Signal<Rail.Friends.FeedState>(Rail.Friends.FeedState.Offline), active),
+    };
+
+    static PanelLyricsHeaderProps HeaderFixture(Signal<LyricsHeaderFacts>? facts = null, Signal<LyricsSparkleFacts>? sparkle = null,
+        Signal<bool>? inspector = null) => new()
+    {
+        Read = facts is null ? static () => new LyricsHeaderFacts("Lyrics", false, false, "", "Expand") : () => facts.Value,
+        ToggleSecondLine = static () => { },
+        Expand = static _ => { },
+        Sparkle = sparkle is null ? static () => new LyricsSparkleFacts(false, false, false, "", "", false, false, false) : () => sparkle.Value,
+        SparkleClick = static _ => { },
+        InspectorShown = inspector is null ? static () => false : () => inspector.Value,
+        OpenInspector = static _ => { },
+        Close = static () => { },
     };
 
     static PanelView View(PanelMode body, bool open = true, bool dockedHere = false, PanelPinned pinned = PanelPinned.Art) => new()
@@ -141,6 +156,9 @@ public sealed class PanelMountedTests(ShellHost host)
                 (ViewKeys.DeckStyleFlyout.Id, "classic.player.deck-style-flyout"),
                 (ViewKeys.DevicePicker.Id, "classic.player.device-picker"),
                 (ViewKeys.OnMediaTransport.Id, "classic.player.on-media-transport"),
+                (ViewKeys.PanelLyricsHeader.Id, "classic.panel.lyrics-header"),
+                (ViewKeys.PanelNextUp.Id, "classic.panel.next-up"),
+                (ViewKeys.LyricsPeek.Id, "classic.player.lyrics-peek"),
             ];
             foreach (var (id, template) in expected)
                 Assert.Equal(template, ThemeHost.Registry.TemplateIdOf(id));
@@ -257,23 +275,19 @@ public sealed class PanelMountedTests(ShellHost host)
         {
             Assert.True(harness.Contains("test:queue"));
             Assert.False(harness.Contains("test:lyrics"));
-            Assert.False(harness.Contains("test:next-up"));
             Assert.True(harness.Contains("test:docked"));                               // the card's own gate hides it: it mounts unconditionally
             Assert.Equal(1, Buttons(harness));                                          // the close button
 
             view.Value = View(PanelMode.Lyrics);                                        // a mode switch: the bodies swap, the card stays
             harness.RunFrames(3);
             Assert.True(harness.Contains("test:lyrics"));
-            Assert.True(harness.Contains("test:lyrics-header"));
             Assert.False(harness.Contains("test:queue"));
             Assert.True(harness.Contains("test:docked"));
-            Assert.Equal(0, Buttons(harness));                                          // the lyrics lane owns its header's buttons
+            Assert.Equal(2, Buttons(harness));                                          // the lyrics header (`Panel.LyricsHeader`): expand and close
 
             view.Value = View(PanelMode.Video);
             harness.RunFrames(3);
-            Assert.True(harness.Contains("test:next-up"));
             Assert.False(harness.Contains("test:lyrics"));
-            Assert.False(harness.Contains("test:lyrics-header"));
             Assert.Equal(3, Buttons(harness));                                          // mini player, full screen and close: all three stay
         }, UnderClassic());
     }
@@ -323,6 +337,85 @@ public sealed class PanelMountedTests(ShellHost host)
         ViewHarness.With(host, ViewKeys.ShellPanel, Props(new Signal<PanelView>(View(PanelMode.Queue, open: true))), harness =>
         {
             Assert.Equal(0f, harness.AbsoluteBounds(harness.Node("test:queue")).X, 0.5f);
+        }, UnderClassic());
+    }
+
+    // ── the small views (leftovers P3) ───────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_lyrics_header_composes_the_toggle_the_sparkle_and_the_inspector_from_its_facts_and_gates()
+    {
+        var facts = new Signal<LyricsHeaderFacts>(new LyricsHeaderFacts("Lyrics", false, false, "", "Expand"));
+        var sparkle = new Signal<LyricsSparkleFacts>(new LyricsSparkleFacts(false, false, false, "", "", false, false, false));
+        var inspector = new Signal<bool>(false);
+        ViewHarness.With(host, ViewKeys.PanelLyricsHeader, HeaderFixture(facts, sparkle, inspector), harness =>
+        {
+            Assert.Equal(2, Buttons(harness));                                           // expand and close
+
+            facts.Value = new LyricsHeaderFacts("Lyrics", true, true, "Romanization", "Expand");
+            harness.RunFrames(3);
+            Assert.Equal(3, Buttons(harness));                                           // the globe joins when the document has a second layer
+
+            sparkle.Value = new LyricsSparkleFacts(true, false, false, "Timed by AI", "t", false, false, true);
+            harness.RunFrames(3);
+            Assert.Equal(4, Buttons(harness));                                           // the sparkle shows while the feature can run
+
+            inspector.Value = true;
+            harness.RunFrames(3);
+            Assert.Equal(5, Buttons(harness));                                           // the developer inspector, gated live
+
+            sparkle.Value = new LyricsSparkleFacts(false, false, false, "", "", false, false, false);
+            inspector.Value = false;
+            harness.RunFrames(3);
+            Assert.Equal(3, Buttons(harness));
+        }, UnderClassic());
+    }
+
+    [Fact]
+    public void The_next_up_view_draws_a_row_per_published_row()
+    {
+        static NextUpRow Row(int i) => new("vrp:e" + i + ":noart", false,
+            new Controls.CardData("spotify:track:fixture" + i, "Title " + i, null, null, static () => { }));
+        var rows = new Signal<NextUpRow[]>([Row(0)]);
+        ViewHarness.With(host, ViewKeys.PanelNextUp, new NextUpProps { Read = () => rows.Value }, harness =>
+        {
+            int one = Buttons(harness);
+            Assert.True(one > 0, "a row is a pressable surface");
+
+            rows.Value = [Row(0), Row(1)];
+            harness.RunFrames(3);
+            Assert.Equal(2 * one, Buttons(harness));
+
+            rows.Value = [];
+            harness.RunFrames(3);
+            Assert.Equal(0, Buttons(harness));
+        }, UnderClassic());
+    }
+
+    [Fact]
+    public void The_lyrics_peek_is_nothing_the_note_or_the_reel()
+    {
+        Action open = static () => { };
+        ViewHarness.With(host, ViewKeys.LyricsPeek, new LyricsPeekProps { Face = LyricsPeekFace.None, OpenLyrics = open }, harness =>
+        {
+            Assert.Equal(0, Buttons(harness));
+            Assert.Empty(harness.FindPrefix("l:"));
+        }, UnderClassic());
+
+        ViewHarness.With(host, ViewKeys.LyricsPeek, new LyricsPeekProps { Face = LyricsPeekFace.Note, OpenLyrics = open }, harness =>
+        {
+            Assert.Equal(1, Buttons(harness));                                           // the note still opens the panel on lyrics
+            Assert.Empty(harness.FindPrefix("l:"));
+        }, UnderClassic());
+
+        var reel = new LyricsPeekProps { Face = LyricsPeekFace.Reel, Active = 3, ActiveText = "the sung line", Peek = 4, PeekText = "the next", OpenLyrics = open };
+        ViewHarness.With(host, ViewKeys.LyricsPeek, reel, harness =>
+        {
+            harness.RunFrames(30);                                                       // run the rows' flip-in out
+            Assert.Equal(1, Buttons(harness));
+            Assert.True(harness.Contains("l:3"));
+            Assert.True(harness.Contains("l:4"));
+            Assert.Equal(56f, harness.AbsoluteBounds(harness.Node("l:3")).H, 0.5f);       // one peek row (ClassicHeroLayout.PeekRowH)
         }, UnderClassic());
     }
 

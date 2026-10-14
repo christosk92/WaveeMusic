@@ -1,6 +1,6 @@
 // ── Shell/Stage.UI.cs ──────────────────────────────────────────────────────────────────────────────────────────────
-// StageCtx (the stage's signals), SurfaceCore (fullscreen, focus scope, idle, accent, the track-key signal), PaneHost (Lyrics · Up next ·
-// Artist under KeepAlive), the layer builders the structure's root places, the TeachingTip, Open/Close. The frame's PICTURE (the layer
+// StageCtx (the stage's signals), SurfaceCore (fullscreen, focus scope, idle, accent, the track-key signal), PaneHost (which of Lyrics · Up next ·
+// Artist is shown, under KeepAlive; the region and each pane's frame are `Stage.Pane`), the layer builders the structure's root places, the TeachingTip, Open/Close. The frame's PICTURE (the layer
 // stack, the chrome's placement, the top bar, the transport card, the gallery, the options popover, the caption) is the structure's since
 // T7a1: `Stage.Root` and its siblings; so are the layout layers since T7a2 (backdrop, hero photo, face, scrim, spectrum, card, identity,
 // artist name, the Artist pane: `ViewKeys.Stage*`; their props and facts are `Stage.Layers.cs` and `Stage.Artist.cs`).
@@ -39,7 +39,8 @@
 //     views' props, the builders of the layers T7a2/T7b still own) and mounts what comes back under the context provider.
 //
 // Mounted from other files: `Lyrics.StagePane(accent)` (the reading column), `Queue.StagePane()` (the Up next column: Queue.UI.cs, the `Queue.StagePane` view),
-// `Stage.NowPlayingMenu` (installed by `Actions.InstallUi`), `Shell.SeekBar(onScrubbing:)`/`Shell.TimeText` (the bar's own seek — never a fork),
+// `Stage.NowPlayingMenu` (installed by `Actions.InstallUi`), `Shell.SeekBar(onScrubbing:)`/`Shell.TimeText` (the bar's own seek hosts, which
+// mount `Player.SeekRail` / `Player.TimeLabel` — never a fork),
 // `Shell.PlayerKey`/`Shell.ScrubController.KeyStep` (the bar's key map and its keyboard seek ladder).
 
 using FluentGpu.Animation;
@@ -529,47 +530,37 @@ public static partial class Stage
 
     // ══ 1b. THE CORE LAYERS (each a component on the context's SIGNALS — SurfaceCore's tree is static, V-U50) ═════════
     // The backdrop, hero photo, face, scrim, spectrum, card, identity and artist name are the structure's since T7a2 (`Shell\Stage.Layers.cs`
-    // builds their props); what stays here are the pane region (it mounts the lyrics view, T7b, and the `Queue.StagePane` view, T7d) and the zero-size machinery.
+    // builds their props); what stays here are the pane region's host (which pane, the KeepAlive; it mounts `Stage.Pane`, the lyrics view, T7b, and the `Queue.StagePane`
+    // view, T7d) and the zero-size machinery.
 
-    /// <summary>The pane region: KeepAlive keeps the lyrics view's state across mode switches. TOP-LEFT at (PaneX, PaneTop).</summary>
+    /// <summary>The pane region's core host: WHICH pane is shown and the KeepAlive that keeps each pane's state (the lyrics view's scroll,
+    /// follow and measured rows) across mode switches, and the Artist pane's props cache. The region (its rect at (PaneX, PaneTop), its move
+    /// with the cover, its clip, when it shows) and the frame each pane enters in are the structure's (<c>Stage.Pane</c>,
+    /// <c>ClassicStagePane</c>).</summary>
+    [CoreHost]
     sealed class PaneHost : Component
     {
-        static readonly LayoutTransition s_move = new(TransitionChannels.Position, TransitionDynamics.Spring(0.45f, 0.90f));
         StageArtistPaneProps? _artist;   // the Artist pane's props: built once per pane host (the facts hold the bio length cache)
+        StagePaneProps? _props;          // built once per stage context: the template re-renders on the context's signals it reads
+
         public override Element Render()
         {
             var ctx = UseContext(StageContext)!;
-            var L = ctx.Layout.Value;
-            var k = ctx.Look.Value;
-            var slab = ctx.Slab;
-            var pane = L.PaneRect(in k);
-            return new BoxEl
-            {
-                AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = pane.W, Height = pane.H, ClipToBounds = true,
-                Margin = new Edges4(pane.X, pane.Y, 0f, 0f), Layout = s_move,   // the pane slides to its new rect with the cover (Lyrics ⇄ Large art)
-                Visible = Prop.Of(() => ctx.Layout.Value.ShowPane && ctx.Pane.Value != PaneKind.None),
-                Children =
-                [
-                    // keyed by the PANE, not the mode: Lyrics mode and Large art share "pane:1", so ONE lyrics view (its scroll, follow
-                    // and measured rows) serves both and a switch between them re-keys nothing
-                    Flow.KeepAlive(() => ctx.Pane.Value, static p => "pane:" + (int)p, p => p switch
-                    {
-                        PaneKind.Lyrics => PaneFrame(Lyrics.StagePane(slab.Accent)),
-                        PaneKind.Queue => PaneFrame(Queue.StagePane()),
-                        PaneKind.Artist => PaneFrame(ViewSlots.View(ViewKeys.StageArtistPane, _artist ??= ArtistPaneProps(ctx))),
-                        _ => new BoxEl { HitTestVisible = false },
-                    }),
-                ],
-            };
+            if (_props is null || !ReferenceEquals(_props.Stage, ctx))
+                _props = new StagePaneProps { Stage = ctx, Panes = (frame, empty) => Panes(ctx, frame, empty) };
+            return ViewSlots.View(ViewKeys.StagePane, _props);
         }
 
-        static Element PaneFrame(Element body) => new BoxEl
-        {
-            Grow = 1f, Direction = 1, MinWidth = 0f, MinHeight = 0f,
-            Animate = new LayoutTransition(TransitionChannels.Opacity, TransitionDynamics.Tween(500f, Easing.FluentDecelerate),
-                Enter: new EnterExit(Dy: 40f, Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true)),
-            Children = [body],
-        };
+        // keyed by the PANE, not the mode: Lyrics mode and Large art share "pane:1", so ONE lyrics view (its scroll, follow
+        // and measured rows) serves both and a switch between them re-keys nothing
+        Element Panes(StageCtx ctx, Func<Element, Element> frame, Func<Element> empty)
+            => Flow.KeepAlive(() => ctx.Pane.Value, static p => "pane:" + (int)p, p => p switch
+            {
+                PaneKind.Lyrics => frame(Lyrics.StagePane(ctx.Slab.Accent)),
+                PaneKind.Queue => frame(Queue.StagePane()),
+                PaneKind.Artist => frame(ViewSlots.View(ViewKeys.StageArtistPane, _artist ??= ArtistPaneProps(ctx))),
+                _ => empty(),
+            });
     }
 
     /// <summary>Writes <c>ctx.HasTimedLyrics</c> and keeps the playing track's lyrics ensured — the ONE reader of

@@ -592,12 +592,6 @@ public static partial class Shell
 
     public static class TimeLabel
     {
-        /// <summary>The track slot: wide enough for "-59:59", so 0:09 → 0:10 moves nothing.</summary>
-        public const float SlotW = 44f;
-
-        /// <summary>The live slot, sized once for "GO LIVE −99:59", so the mark ↔ action swap moves nothing.</summary>
-        public const float LiveSlotW = 104f;
-
         /// <summary>Elapsed since TUNE-IN — what "elapsed" means for a broadcast. Before the stamp lands it falls back
         /// to the reported POSITION, never to 0, so the label cannot blink to 0:00 on the way in.</summary>
         public static long ElapsedSinceTuneIn(long tunedInAtUnixMs, long positionMs, long nowUnixMs)

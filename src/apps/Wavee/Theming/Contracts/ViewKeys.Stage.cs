@@ -3,7 +3,7 @@
 // T7a1 publishes the stage's frame: the root (the layer stack, the chrome placement, the hairline), the top bar, the transport
 // card, the options popover, the visualizer gallery and the lyric caption. The four layouts, the hero and the artist pane are
 // T7a2's, the lyrics pane T7b's, the queue pane T7d's (`Queue.StagePane`, in ViewKeys.Queue.cs). The core layers (the pane host, the caption host, the
-// zero-size machinery) reach the root as builders (`StageLayers`).
+// zero-size machinery) reach the root as builders (`StageLayers`); the pane host mounts `Stage.Pane` (the region and each pane's frame, P3).
 
 using FluentGpu.Theming;
 
@@ -36,4 +36,8 @@ public static partial class ViewKeys
     /// by the core caption host, which keeps the playhead clock, the edge wake and the render-thread wipe. Props:
     /// <see cref="StageCaptionProps"/>.</summary>
     public static readonly ViewKey<StageCaptionProps> StageCaption = new("Stage.Caption");
+
+    /// <summary>The pane region (Lyrics, Up next, Artist): the region's rect, move and clip, and the frame every pane's body enters in.
+    /// Mounted by the core pane host, which keeps the KeepAlive and which pane is shown. Props: <see cref="StagePaneProps"/>.</summary>
+    public static readonly ViewKey<StagePaneProps> StagePane = new("Stage.Pane");
 }

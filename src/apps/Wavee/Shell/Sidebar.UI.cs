@@ -72,7 +72,9 @@ public static partial class Sidebar
     // runs the model's two effects.
 
     /// <summary>The ONE mount seam: re-renders only on a layout switch and mounts that layout under its own Key, so a
-    /// switch REMOUNTS (fresh hooks, section and scroll state) with a 150 ms fade.</summary>
+    /// switch REMOUNTS (fresh hooks, section and scroll state). The box around it and the switch's fade are the structure's
+    /// (<see cref="NavRowKit.ModeHost"/>).</summary>
+    [CoreHost]
     internal sealed class PaneHost : Component
     {
         readonly bool _inDrawer;
@@ -95,18 +97,8 @@ public static partial class Sidebar
             Element mode = layout == SidebarLayoutId.Library
                 ? Embed.Comp(() => new LibraryMode(_inDrawer, _kit))
                 : Embed.Comp(() => new ClassicMode(_inDrawer, _kit));
-            return new BoxEl
-            {
-                Grow = 1f, Direction = 1,
-                // Key is mandatory: without it two mode components that share a type would reuse hooks across a
-                // switch. A quick fade only — the shell's width transition owns spatial motion.
-                Children = [mode with
-                {
-                    Key = layout == SidebarLayoutId.Library ? "sidebar.library" : "sidebar.classic",
-                    Enter = new EnterExit(Opacity: 0f, Active: true),
-                    Transition = MotionTok.ControlFast,
-                }],
-            };
+            // Key is mandatory: without it two mode components that share a type would reuse hooks across a switch.
+            return _kit.ModeHost(mode with { Key = layout == SidebarLayoutId.Library ? "sidebar.library" : "sidebar.classic" });
         }
     }
 
@@ -137,6 +129,7 @@ public static partial class Sidebar
 
     /// <summary>Classic: the catalogue's sectioned list, one scroller (design P.1). Its document is the live
     /// <see cref="Doc"/> — the user's layout overlay resolved by <see cref="SidebarLayoutRules.Resolve"/>.</summary>
+    [CoreHost]
     internal sealed class ClassicMode : Component
     {
         readonly bool _inDrawer;
@@ -214,6 +207,29 @@ public static partial class Sidebar
         public bool Contains(int planIndex) => Count > 0 && planIndex >= Start && planIndex < Start + Count;
     }
 
+    /// <summary>Owns the docked pane's ONE UseDragState() subscription that ends a peek, disarms the cue and flushes the freeze —
+    /// on SESSION END (drop, cancel and Escape alike), in a layout effect keyed on the active EDGE. Zero-size machinery, not a
+    /// picture: it lives beside <see cref="PaneView"/> (a [CoreHost], which builds no element) and the structure's frame places it
+    /// (<see cref="NavPaneFrameArgs.DragWatcher"/>).</summary>
+    internal sealed class DragPeekWatcher(PaneView owner) : Component
+    {
+        public override Element Render()
+        {
+            bool active = UseDragState().Active;
+            // The Pinned band's cue follows the drag: armed while a pinnable drag is live, so it appears and leaves with it.
+            UseLayoutEffect(() => { owner.ArmPinDrop(Drag.LivePinnable()); }, active ? 1 : 0);
+            UseLayoutEffect(() =>
+            {
+                if (active) return;
+                owner.SetDragPeek(false);
+                owner.ClearDropSlot();
+                owner.FlushDeferredStage();
+            }, active ? 1 : 0);
+            UseEffect(() => (Action?)(() => owner.DiscardDeferredStage()), DepKey.Empty);
+            return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
+        }
+    }
+
     // ══ 5. THE PANE ════════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>THE ONE SIDEBAR PANE RENDERER (0.2.9 <c>SidebarPane</c>).
@@ -228,7 +244,11 @@ public static partial class Sidebar
     /// second time for the publish it caused.</para>
     ///
     /// <para>Route and playback are read ONCE here on behalf of every row (two signal effects that bump only the rows
-    /// that flipped) — replacing them with per-row reads restores the Slot×52 + Pill×44 storm per navigation.</para></summary>
+    /// that flipped) — replacing them with per-row reads restores the Slot×52 + Pill×44 storm per navigation.</para>
+    ///
+    /// <para>A core host: every box the pane is built in (the layer, the root, the context-menu shield, the list's inset) is the
+    /// structure's (<see cref="NavRowKit.Frame"/>, <see cref="NavRowKit.ListBox"/>); the pane hands it what it decided.</para></summary>
+    [CoreHost]
     internal sealed partial class PaneView : Component
     {
         // ── frozen-at-mount wiring ──
@@ -331,9 +351,6 @@ public static partial class Sidebar
         /// <summary>The Pinned band's drop cue is armed while a pinnable drag is live (design V.3): <see cref="Render"/> builds
         /// the plan options with it, and the drag watcher writes it on every drag edge.</summary>
         readonly Signal<bool> _pinDropArmed = new(false);
-
-        /// <summary>The context-menu SHIELD's key — the node MUST stay childless (see Render).</summary>
-        internal const string ContextShieldKey = "sidebar:context-shield";
 
         // ── published to the bound slots (PLAIN FIELDS; seeded with real empty plans, never default) ──
         internal SidebarRowPlan Plan = new(Array.Empty<SidebarRow>(), Array.Empty<SidebarLibraryEntry>(), 0);
@@ -468,50 +485,23 @@ public static partial class Sidebar
                 });
             }, DepKey.From(editing ? 1 : 0));
 
-            // ONE layer: the rail is the SAME list planned compact (design V.9), clipped to the frame's presented column. The
-            // layer is measured at the OPEN width even while presented compact, so text never reflows through the rail width.
-            var layer = new BoxEl
+            // The frame is the structure's (`NavRowKit.Frame`: the ONE layer measured at the open width, the root, the context-menu
+            // shell and its childless shield); what it holds and every flag on it are decided here.
+            return Kit.Frame(new NavPaneFrameArgs
             {
-                Key = "pane-layer", Direction = 1, Grow = 1f, Shrink = 0f, ClipToBounds = true,
                 Width = _expandedWidth,
                 // The docked rail is inert behind a pinned overlay (design C.3); the drawer IS that overlay, so it stays live.
                 HitTestVisible = InDrawer || !SidebarPaneModeRules.OverlayPinned(Sidebar.Band.Value, editing),
                 // DRAG PEEK: a spring-load waypoint over the whole rail (never a destination).
                 DropTarget = compact ? RailPeekDropSpec() : null,
-                Children = PaneChildren(rows, compact, editing),
-            };
-
-            var children = new List<Element>(2) { layer };
-            // Owns the ONE UseDragState() subscription that ends a peek (2 flips per drag, not the drag epoch).
-            if (!InDrawer) children.Add(_dragPeekWatcher ??= Embed.Comp(() => new DragPeekWatcher(this)) with { Key = "drag-peek" });
-
-            var root = new BoxEl
-            {
-                // No fill, no corners: the sidebar is flush frame chrome over Mica (ch 25 §4).
-                Grow = 1f, Direction = 1, ZStack = true, ClipToBounds = true,
+                Layer = PaneChildren(rows, compact, editing),
+                // Owns the ONE UseDragState() subscription that ends a peek (2 flips per drag, not the drag epoch).
+                DragWatcher = InDrawer ? null : (_dragPeekWatcher ??= Embed.Comp(() => new DragPeekWatcher(this)) with { Key = "drag-peek" }),
                 OnKeyDown = _paneKey ??= OnPaneKey,
-                Children = [.. children],
-            };
-
-            // THE CONTEXT-MENU SHIELD. A context flyout makes an element a hit target (ContextBit), so hanging the menu
-            // off the root made every dead spot resolve the WHOLE sidebar as the press/hover owner. The menu goes on a
-            // ZStack SHELL plus a CHILDLESS full-bleed shield beneath the content: content wins wherever it hits, the
-            // shield takes the rest, and a cascade from a childless node reaches nothing.
-            if (!Controls.IsNullOverlay(MenuOverlay))
-            {
-                var svc = MenuOverlay;
-                Func<ContextMenuModel?> menu = _paneMenuFn ??= PaneMenu;
-                root = new BoxEl
-                {
-                    Grow = 1f, Direction = 1, ZStack = true, ClipToBounds = true,
-                    Children =
-                    [
-                        new BoxEl { Key = ContextShieldKey }.WithContextMenu(svc, menu),
-                        root with { Grow = 0f, Shrink = 0f },
-                    ],
-                }.WithContextMenu(svc, menu);
-            }
-            return root;
+                // No overlay (a headless mount): no menu shell.
+                MenuOverlay = Controls.IsNullOverlay(MenuOverlay) ? null : MenuOverlay,
+                Menu = _paneMenuFn ??= PaneMenu,
+            });
         }
 
         // ── the pane layer's children ──────────────────────────────────────────────────────────────────────────────
@@ -542,13 +532,8 @@ public static partial class Sidebar
             return -1;
         }
 
-        /// <summary>THE PANE'S ONE INSET: the structure's list inset (<see cref="NavRowKit.ListInset"/>; Classic's is 4,3,4,0) around
-        /// the virtualized list, and nowhere else.</summary>
-        Element PaddedList() => new BoxEl
-        {
-            Key = "plan-pad", Direction = 1, Grow = 1f, Padding = Kit.ListInset,
-            Children = [PlanList()],
-        };
+        /// <summary>The virtualized list in the structure's inset box (<see cref="NavRowKit.ListBox"/>: the pane's one inset).</summary>
+        Element PaddedList() => Kit.ListBox(PlanList());
 
         Element PlanList() => ItemsView.CreateBound(
             Plan.Rows.Count,
@@ -1724,26 +1709,8 @@ public static partial class Sidebar
             if (_railDropUri.Peek() is not null) _railDropUri.Value = null;
         }
 
-        /// <summary>Owns the ONE UseDragState() subscription that ends a peek, disarms the cue and flushes the freeze —
-        /// on SESSION END (drop, cancel and Escape alike), in a layout effect keyed on the active EDGE.</summary>
-        sealed class DragPeekWatcher(PaneView owner) : Component
-        {
-            public override Element Render()
-            {
-                bool active = UseDragState().Active;
-                // The Pinned band's cue follows the drag: armed while a pinnable drag is live, so it appears and leaves with it.
-                UseLayoutEffect(() => { owner._pinDropArmed.SetIfChanged(Drag.LivePinnable()); }, active ? 1 : 0);
-                UseLayoutEffect(() =>
-                {
-                    if (active) return;
-                    owner.SetDragPeek(false);
-                    owner.ClearDropSlot();
-                    owner.FlushDeferredStage();
-                }, active ? 1 : 0);
-                UseEffect(() => (Action?)(() => owner.DiscardDeferredStage()), DepKey.Empty);
-                return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
-            }
-        }
+        /// <summary>The Pinned band's cue follows the drag (<see cref="DragPeekWatcher"/>): armed while a pinnable drag is live.</summary>
+        internal void ArmPinDrop(bool armed) => _pinDropArmed.SetIfChanged(armed);
 
         // ── commands the rows raise ────────────────────────────────────────────────────────────────────────────────
 

@@ -52,7 +52,7 @@ public static partial class Palette
     /// (the read path still answers from whatever kind 179 has seeded).</summary>
     public static Func<string[], CancellationToken, Task<Graded?[]>>? Filler { get; set; }
 
-    // The debounce, measured on the FRAME clock. `Design.FrameTime.NowMs` is the frame's predicted present time, which
+    // The debounce, measured on the FRAME clock. `FrameTime.NowMs` is the frame's predicted present time, which
     // is the same epoch every other timed decision in the app compares against; `Environment.TickCount64` would be a
     // second epoch for no gain.
     static long s_dueMs;
@@ -66,7 +66,7 @@ public static partial class Palette
     /// flew past — and <see cref="MaxQueue"/> bounds the backlog regardless.</para></summary>
     static partial void PalettePump()
     {
-        s_dueMs = Design.FrameTime.NowMs + PumpDebounceMs;
+        s_dueMs = FrameTime.NowMs + PumpDebounceMs;
         s_armed = true;
     }
 
@@ -98,7 +98,7 @@ public static partial class Palette
     public static void Tick()
     {
         if (!s_armed || s_inFlight) return;
-        if (Design.FrameTime.NowMs < s_dueMs) return;
+        if (FrameTime.NowMs < s_dueMs) return;
         s_armed = false;
         if (Filler is not { } fill) { DrainUnqueued(); return; }
 

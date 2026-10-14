@@ -96,7 +96,7 @@ public static partial class Stage
                 bool advancing = Playback.IsPlaying.Value && !Playback.Buffering.Value;
                 // re-anchor on every report AND on a play/pause edge (Deck.PositionInterpolator.Anchor): a resume must not
                 // extrapolate across the paused gap for a tick
-                _clock.Report(pos, advancing, Design.FrameTime.NowMs);
+                _clock.Report(pos, advancing, FrameTime.NowMs);
                 // a report (or a play/pause edge) re-times the render-thread wipe and the edge wake; never on the mount run,
                 // which runs inside this render
                 if (!_reportSubscribed) { _reportSubscribed = true; return; }
@@ -170,7 +170,7 @@ public static partial class Stage
         /// <summary>The caption's per-frame tick (<see cref="Controls.FrameTicker"/>), named for the <c>[wake]</c> census.</summary>
         sealed class CaptionFrames(Action tick) : Controls.FrameTicker(tick);
 
-        long Now() => _clock.Now(Design.FrameTime.NowMs, Playback.DurationMs.Peek());
+        long Now() => _clock.Now(FrameTime.NowMs, Playback.DurationMs.Peek());
 
         /// <summary>The packed view at <paramref name="now"/> (<see cref="Caption.ViewAt"/>).</summary>
         static int ComputeView(Lyrics.Doc d, long now, out long gapStart, out long gapEnd) => Caption.ViewAt(d, now, out gapStart, out gapEnd);
@@ -195,7 +195,7 @@ public static partial class Stage
             var main = _mainNode;
             if (!main.IsNull && scene.IsLive(main) && float.IsNaN(_runLen)) _runLen = MeasureRun(scene, main, line.Text);
             if (_clock.Advancing && Context.Anim is { RenderOwnsCompositor: true } anim
-                && _rows.Seed(anim, scene, line, anchor, main, _glowNode, now, Design.FrameTime.NowMs, _runLen)) return;
+                && _rows.Seed(anim, scene, line, anchor, main, _glowNode, now, FrameTime.NowMs, _runLen)) return;
             _rows.Cancel(Context.Anim);   // the UI owns the split (paused, buffering, a host whose render thread does not own the compositor)
             CaptionWipeRows.DriveUi(scene, main, _glowNode, line, now, _runLen);
         }
@@ -204,7 +204,7 @@ public static partial class Stage
         /// none) through <see cref="Caption.EdgeWake"/>, in the frame clock's one domain.</summary>
         void ArmEdge(long atMs, long now)
         {
-            if (_clock.ArmEdge(atMs, now, Design.FrameTime.NowMs, out float delay))
+            if (_clock.ArmEdge(atMs, now, FrameTime.NowMs, out float delay))
                 _edgeWake.Value = new Lyrics.MotionWake(++_edgeSeq, delay);
         }
 

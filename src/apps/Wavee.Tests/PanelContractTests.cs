@@ -8,8 +8,11 @@
 //   THE PICKER        the items as the contract's entries: a separator, information rows (headers, the quality echo, "no devices"),
 //                     this computer's commands (inert while local playback is unsupported) and Connect radios (checked when active),
 //                     each with the glyph and the verb the roster rules give it.
+//   THE TRANSPORT     the seek rail's, the chapter decoration's, the readout's and the time label's keys (leftovers P3) are published under
+//                     their ids and Classic draws each; the credits line's empty value is safe to read.
 
 using FluentGpu.Controls;
+using Wavee.Themes.Classic;
 using Wavee.Theming.Contracts;
 using Xunit;
 
@@ -133,4 +136,43 @@ public class DevicePickerEntriesTests
         Assert.Equal(3, tail.Length);
         Assert.All(tail, e => Assert.Equal(DevicePickerEntryKind.Info, e.Kind));
     }
+}
+
+public class PlayerTransportContractTests
+{
+    [Theory]
+    [InlineData("Player.SeekRail", "classic.player.seek-rail")]
+    [InlineData("Player.SeekChapters", "classic.player.seek-chapters")]
+    [InlineData("Player.ChapterTip", "classic.player.chapter-tip")]
+    [InlineData("Player.SeekReadout", "classic.player.seek-readout")]
+    [InlineData("Player.TimeLabel", "classic.player.time-label")]
+    public void Classic_draws_every_transport_piece(string id, string template)
+        => Assert.Equal(template, ClassicTheme.Create().Registry.TemplateIdOf(id));
+
+    [Fact]
+    public void The_keys_carry_their_published_ids()
+    {
+        Assert.Equal("Player.SeekRail", ViewKeys.SeekRail.Id);
+        Assert.Equal("Player.SeekChapters", ViewKeys.SeekChapters.Id);
+        Assert.Equal("Player.ChapterTip", ViewKeys.ChapterTip.Id);
+        Assert.Equal("Player.SeekReadout", ViewKeys.SeekReadout.Id);
+        Assert.Equal("Player.TimeLabel", ViewKeys.TimeLabel.Id);
+    }
+
+    [Fact]
+    public void The_empty_credits_line_is_safe_to_read()
+    {
+        var none = PlayerCredits.None;
+        Assert.Null(none.Show);
+        Assert.Empty(none.Artists);
+        Assert.Equal("", none.OverflowKey);
+        Assert.Empty(none.OverflowRows());
+    }
+
+    [Theory]
+    [InlineData(true, true, true)]      // the right slot while live: the LIVE mark / GO LIVE
+    [InlineData(true, false, false)]    // the right slot of a track: digits
+    [InlineData(false, true, false)]    // the elapsed slot is digits even while live (since tune-in)
+    public void Only_the_right_slot_turns_into_the_live_slot(bool right, bool live, bool expected)
+        => Assert.Equal(expected, Shell.TimeLabel.RightSlotIsLive(right, live));
 }

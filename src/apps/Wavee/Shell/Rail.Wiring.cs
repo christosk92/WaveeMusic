@@ -18,14 +18,15 @@
 //   the picker       the roster, owner, active device and outputs composed into entries, each with its glyph and its verb
 //   the on-media     the playback facts and verbs the strip draws and presses, over the surface's own idle signal and chrome feed
 //
-// WVTH008: this type builds no element and reads no token or role. The pieces that still draw (the lyrics header,
-// the "Next up" rows, the seek rail, the time labels) are the core's own builders; the views place them.
+// WVTH008: this type builds no element and reads no token or role. The lyrics header (`Panel.LyricsHeader`) and the "Next up" rows
+// (`Panel.NextUp`) are keys whose facts and verbs are read here; the lyrics peek is the core host `Lyrics.NpvPeek()`.
 
 using System.Collections.Generic;
 
 using FluentGpu.Controls;
 using FluentGpu.Controls.Media;
 using FluentGpu.Foundation;
+using FluentGpu.Localization;
 using FluentGpu.Signals;
 
 using Wavee.Theming.Contracts;
@@ -113,10 +114,43 @@ internal static class RailWiring
         },
         DemandNowPlaying = static (trackSlot, artistSlot) => Shell.PanelHost.Shared.DemandNowPlaying(trackSlot, artistSlot),
         HasNextUp = static () => Shell.NextUpWindow.Any(),
-        NextUp = static () => Rail.NextUpList(),
+        NextUp = new NextUpProps { Read = static () => Rail.NextUpRows() },
         LyricsPeek = static () => Lyrics.NpvPeek(),
         ResolveString = static id => Entities.Strings.Resolve(id),
         GoTo = static (uri, name) => Shell.GoTo(Shell.For(uri, name)),
+    };
+
+    // ══ THE LYRICS HEADER ════════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The lyrics header's facts, read inside the `Panel.LyricsHeader` view's render (so the capability and the prefs epoch
+    /// subscribe the HEADER, not the whole rail). The toggle is composed only when the document on screen carries a second layer; the
+    /// expand button shows in both arms (a track with no lyrics still opens a full stage).</summary>
+    static LyricsHeaderFacts ReadLyricsHeader()
+    {
+        int available = Prefs.Lyrics.Available.Value;
+        int secondary = Prefs.Lyrics.SecondaryLine();
+        string title = Loc.Get(Playback.CurrentId.Value.Kind == EntityKind.Episode ? Strings.Podcast.Reader.Transcript : Strings.Player.Lyrics);
+        bool second = available != 0;
+        string secondTip = second ? Prefs.Lyrics.Tooltip(secondary) : "";
+        bool secondActive = second && (available & Prefs.Lyrics.BitFor(secondary)) != 0;
+        string expandTip = Loc.Get(Playback.CurrentId.Value.Kind == EntityKind.Episode ? Strings.Podcast.Reader.Transcript : Strings.Player.ExpandLyrics);
+        return new LyricsHeaderFacts(title, second, secondActive, secondTip, expandTip);
+    }
+
+    static PanelLyricsHeaderProps BuildLyricsHeader() => new()
+    {
+        Read = static () => ReadLyricsHeader(),
+        ToggleSecondLine = static () => LyricsVerbs.Global.ToggleSecondLine(),
+        Expand = static begin => LyricsVerbs.Global.ExpandToStage(begin, "rail-header"),
+        Sparkle = static () => AiLyrics.HeaderFacts(),
+        SparkleClick = static facts => AiLyrics.HeaderClick(facts),
+        InspectorShown = static () => Diagnostics.StoreShot.DeveloperSurfaces(),
+        OpenInspector = static overlay =>
+        {
+            if (Controls.IsNullOverlay(overlay)) return;
+            Diagnostics.LyricsInspector.Open(overlay, Diagnostics.LyricsInspector.CurrentTrackId());
+        },
+        Close = static () => Shell.PanelHost.Shared.Close(),
     };
 
     // ══ THE FRIENDS PANEL ════════════════════════════════════════════════════════════════════════════════════════════
@@ -245,7 +279,7 @@ internal static class RailWiring
         VideoToMiniPlayer = static () => Shell.PanelHost.Shared.ShowVideoAt(Video.SurfacePlacement.Floating),
         VideoToFullScreen = static () => Shell.PanelHost.Shared.ShowVideoAt(Video.SurfacePlacement.Fullscreen),
         DockedCard = static () => Video.DockedCap(),
-        LyricsHeader = static () => Rail.LyricsHeaderElement(),
+        LyricsHeader = BuildLyricsHeader(),
         LyricsBody = static () => Lyrics.View(),
         QueueBody = static () => Rail.QueueBodyOrEmpty(),
         SubscribeVideoBody = static () =>
