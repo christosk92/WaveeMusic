@@ -1,0 +1,244 @@
+// ── Themes/Classic/Structure/Views/Pages/ClassicConcertFlyouts.cs — Classic's concert filter flyouts (themes plan 6.1, T10b3) ────────────────────
+//
+// From `Entities\Concert.UI.cs` §4-§6 (0.2.9 `Features/Concerts/ConcertDateFlyout.cs`): the flyout row and divider, the WHEN flyout (the date drill-down) and the
+// WHERE flyout (the radius). Both mount fresh per open inside the overlay the filter bar opens, and hand every choice to a callback; the date range rules are
+// core (`ConcertHub`, `ConcertWhen`). The overlay options are `Concert.FlyoutOptions` (focus-trapped, light-dismiss).
+
+using System.Globalization;
+using FluentGpu.Animation;
+using FluentGpu.Controls;
+using FluentGpu.Dsl;
+using FluentGpu.Foundation;
+using FluentGpu.Hooks;
+using FluentGpu.Localization;
+using FluentGpu.Signals;
+using static FluentGpu.Dsl.Ui;
+using Rules = Wavee.Themes.Classic.ClassicConcertRules;
+
+namespace Wavee.Themes.Classic;
+
+/// <summary>The flyout pieces the when and where flyouts share.</summary>
+internal static class ClassicConcertFlyoutCells
+{
+    /// <summary>A flyout row: MinH 40, pad (12,4,12,4), r4, Body label, an optional lead 16 / trailing 14 glyph, Subtle.
+    /// A radio row (<paramref name="toggle"/>) reserves its 14×14 check box, so the labels never shift.</summary>
+    public static Element FlyoutRow(string label, Action onClick, string? lead = null, string? trailing = null,
+                                    bool toggle = false, bool active = false)
+    {
+        var kids = new List<Element>(3);
+        if (lead is not null) kids.Add(Icon(lead, Rules.FlyoutLead, Tok.TextSecondary) with { Shrink = 0f });
+        kids.Add(Body(label) with
+        {
+            Color = active ? Tok.AccentTextPrimary : Tok.TextPrimary, Weight = (ushort)(active ? 600 : 400),
+            Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+        });
+        if (trailing is not null) kids.Add(Icon(trailing, Rules.FlyoutTrailing, Tok.TextSecondary) with { Shrink = 0f });
+        if (toggle) kids.Add(active ? Icon(Icons.Check, Rules.FlyoutTrailing, Tok.AccentTextPrimary) with { Shrink = 0f } : new BoxEl { Width = Rules.FlyoutCheck, Height = Rules.FlyoutCheck, Shrink = 0f });
+        return new BoxEl
+        {
+            Direction = 0, MinHeight = Rules.FlyoutRowMinH, AlignItems = FlexAlign.Center, Gap = Spacing.S,
+            Padding = new Edges4(Spacing.M, Spacing.XS, Spacing.M, Spacing.XS), Corners = Radii.ControlAll,
+            Role = toggle ? AutomationRole.ToggleButton : AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
+            OnClick = onClick, Children = kids.ToArray(),
+        }.Interactive(Interaction.Subtle);
+    }
+
+    public static Element FlyoutDivider() => new BoxEl
+    {
+        AlignSelf = FlexAlign.Stretch, Padding = new Edges4(0f, Spacing.XS, 0f, Spacing.XS),
+        Children = [new BoxEl { Height = 1f, AlignSelf = FlexAlign.Stretch, Fill = Tok.StrokeSurfaceDefault }],
+    };
+}
+
+/// <summary>The when-area drill-down (0.2.9 <c>ConcertDateFlyout</c>): ROOT (Anytime / Today / This weekend / Next
+/// weekend, a divider, this month + 3 drilling in) ⇄ MONTH LEAF (back, All of {month}, each Fri–Sun weekend, the Su–Sa
+/// calendar, Clear / Show events). The swap is keyed per view and slides forward on a drill, back on a return (250 ms,
+/// folded to instant under reduced motion). Mounts fresh per open; hands every choice to <c>onPick</c>.</summary>
+internal sealed class ClassicConcertWhenFlyout(Action<ConcertWhen> onPick) : Component
+{
+    readonly Signal<int> _view = new(-1);            // -1 root; 0..3 = the month leaf's offset from this month
+    readonly Signal<DateOnly?> _start = new(null), _end = new(null);
+    bool _forward = true;
+
+    public override Element Render()
+    {
+        int view = _view.Value;
+        var culture = CultureInfo.CurrentCulture;
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        var first = new DateOnly(today.Year, today.Month, 1);
+        return new BoxEl
+        {
+            Direction = 1, Width = Rules.WhenFlyoutW, ClipToBounds = true, Padding = Edges4.All(Spacing.S),
+            Children =
+            [
+                new BoxEl
+                {
+                    Key = view < 0 ? "when-view:root" : "when-view:month:" + view.ToString(CultureInfo.InvariantCulture),
+                    Animate = _forward ? MotionRecipes.PageSlideForward : MotionRecipes.PageSlideBack,
+                    Direction = 1, MinWidth = 0f,
+                    Children = [view < 0 ? Root(first, culture) : Month(first.AddMonths(view), today, culture)],
+                },
+            ],
+        };
+    }
+
+    Element Root(DateOnly first, CultureInfo culture)
+    {
+        var rows = new Element[9];
+        rows[0] = ClassicConcertFlyoutCells.FlyoutRow(Loc.Get(Strings.Concerts.Filter.Anytime), () => onPick(ConcertWhen.Any));
+        rows[1] = ClassicConcertFlyoutCells.FlyoutRow(Loc.Get(Strings.Concerts.Filter.Today), () => Preset(ConcertWhenKind.Today, Strings.Concerts.Filter.Today));
+        rows[2] = ClassicConcertFlyoutCells.FlyoutRow(Loc.Get(Strings.Concerts.Filter.ThisWeekend), () => Preset(ConcertWhenKind.ThisWeekend, Strings.Concerts.Filter.ThisWeekend));
+        rows[3] = ClassicConcertFlyoutCells.FlyoutRow(Loc.Get(Strings.Concerts.Filter.NextWeekend), () => Preset(ConcertWhenKind.NextWeekend, Strings.Concerts.Filter.NextWeekend));
+        rows[4] = ClassicConcertFlyoutCells.FlyoutDivider();
+        for (int i = 0; i < 4; i++)
+        {
+            int index = i;
+            rows[5 + i] = ClassicConcertFlyoutCells.FlyoutRow(first.AddMonths(i).ToString("MMMM yyyy", culture),
+                () => { _forward = true; _view.Value = index; }, trailing: Icons.ChevronRight);
+        }
+        return new BoxEl { Direction = 1, Gap = Rules.FlyoutGap, Children = rows };
+    }
+
+    void Preset(ConcertWhenKind kind, string key)
+        => onPick(new ConcertWhen(kind, Loc.Get(key), ConcertHub.PresetRange(kind, DateTimeOffset.Now)));
+
+    Element Month(DateOnly first, DateOnly today, CultureInfo culture)
+    {
+        var start = _start.Value;
+        var end = _end.Value;
+        string monthName = first.ToString("MMMM", culture);
+        var last = new DateOnly(first.Year, first.Month, DateTime.DaysInMonth(first.Year, first.Month));
+        var rows = new List<Element>(12)
+        {
+            new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinHeight = Rules.MonthHeadMinH,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Width = Rules.MonthBackBox, Height = Rules.MonthBackBox, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                        Corners = Radii.ControlAll, Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
+                        OnClick = () => { _forward = false; _view.Value = -1; },
+                        Children = [Icon(Icons.ChevronLeft, Rules.FlyoutTrailing, Tok.TextSecondary)],
+                    }.Interactive(Interaction.Subtle),
+                    BodyStrong(first.ToString("MMMM yyyy", culture)) with { Color = Tok.TextPrimary, MaxLines = 1 },
+                ],
+            },
+            ClassicConcertFlyoutCells.FlyoutRow(Strings.Concerts.Filter.AllOf(monthName),
+                () => onPick(new ConcertWhen(ConcertWhenKind.Custom, monthName, new ConcertDateRange(first, last)))),
+        };
+        // Every Fri–Sun of the month (a weekend spilling past month-end keeps its Sunday).
+        var friday = first;
+        while (friday.DayOfWeek != DayOfWeek.Friday) friday = friday.AddDays(1);
+        for (; friday.Month == first.Month; friday = friday.AddDays(7))
+        {
+            var range = new ConcertDateRange(friday, friday.AddDays(2));
+            string weekend = Loc.Get(Strings.Concerts.Filter.Weekend);
+            rows.Add(ClassicConcertFlyoutCells.FlyoutRow(weekend + " · " + ConcertHub.WhenLabel(range, culture),
+                () => onPick(new ConcertWhen(ConcertWhenKind.Custom, weekend, range))));
+        }
+        rows.Add(Calendar(first, today, start, end, culture));
+        rows.Add(new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinHeight = Rules.MonthFootMinH,
+            Padding = new Edges4(Spacing.XS, Spacing.XS, Spacing.XS, 0f),
+            Children =
+            [
+                Button.Standard(Loc.Get(Strings.Concerts.Filter.Clear), () => { _start.Value = null; _end.Value = null; }),
+                new BoxEl { Grow = 1f },
+                Button.Accent(Loc.Get(Strings.Concerts.Filter.ShowEvents), Apply, isEnabled: start is not null),
+            ],
+        });
+        return new ScrollEl
+        {
+            ContentSized = true, MaxHeight = Rules.MonthMaxH,
+            Content = new BoxEl { Direction = 1, Gap = Spacing.XS, Children = rows.ToArray() },
+        };
+    }
+
+    void Apply()
+    {
+        if (_start.Peek() is not { } s) return;
+        onPick(new ConcertWhen(ConcertWhenKind.Custom, Loc.Get(Strings.Concerts.Filter.Custom),
+            new ConcertDateRange(s, _end.Peek() ?? s)));
+    }
+
+    /// <summary>The Su–Sa grid: 38×20 two-letter headers, 38×32 days with 4-DIP gaps; past days inert and disabled
+    /// ink; the chosen ends on the accent plate, the days between on <c>AccentSubtle</c> (W8).</summary>
+    Element Calendar(DateOnly first, DateOnly today, DateOnly? start, DateOnly? end, CultureInfo culture)
+    {
+        int days = DateTime.DaysInMonth(first.Year, first.Month), lead = (int)first.DayOfWeek;
+        var names = culture.DateTimeFormat.AbbreviatedDayNames;
+        var grid = new List<Element>(7);
+        var header = new Element[7];
+        for (int i = 0; i < 7; i++)
+            header[i] = new BoxEl
+            {
+                Width = Rules.CalendarCellW, Height = Rules.CalendarHeadH, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Children = [Caption(names[i].Length <= 2 ? names[i] : names[i][..2]) with { Color = Tok.TextSecondary, MaxLines = 1 }],
+            };
+        grid.Add(new BoxEl { Direction = 0, Gap = Rules.CalendarGap, Children = header });
+        var week = new List<Element>(7);
+        for (int i = 0; i < lead; i++) week.Add(new BoxEl { Width = Rules.CalendarCellW, Height = Rules.CalendarCellH, Shrink = 0f });
+        for (int d = 1; d <= days; d++)
+        {
+            var day = new DateOnly(first.Year, first.Month, d);
+            bool past = day < today;
+            bool selected = day == start || day == end;
+            bool inRange = start is { } s && end is { } e && day > s && day < e;
+            var cell = new BoxEl
+            {
+                Width = Rules.CalendarCellW, Height = Rules.CalendarCellH, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Corners = Radii.ControlAll, Fill = selected ? Tok.AccentDefault : inRange ? Tok.AccentSubtle : ColorF.Transparent,
+                Children = [Body(d.ToString(culture)) with { Color = selected ? Tok.TextOnAccentPrimary : past ? Tok.TextDisabled : Tok.TextPrimary, MaxLines = 1 }],
+            };
+            week.Add(past
+                ? cell with { HitTestVisible = false }
+                : cell with
+                {
+                    HoverFill = selected ? Tok.AccentSecondary : Tok.FillSubtleSecondary,
+                    PressedFill = selected ? Tok.AccentTertiary : Tok.FillSubtleTertiary,
+                    Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = () => TapDay(day),
+                });
+            if (week.Count == 7) { grid.Add(new BoxEl { Direction = 0, Gap = Rules.CalendarGap, Children = week.ToArray() }); week.Clear(); }
+        }
+        if (week.Count > 0)
+        {
+            while (week.Count < 7) week.Add(new BoxEl { Width = Rules.CalendarCellW, Height = Rules.CalendarCellH, Shrink = 0f });
+            grid.Add(new BoxEl { Direction = 0, Gap = Rules.CalendarGap, Children = week.ToArray() });
+        }
+        return new BoxEl { Direction = 1, Gap = Rules.CalendarGap, Children = grid.ToArray() };
+    }
+
+    /// <summary>First tap = start; a second tap ≥ start closes the range; a tap before the start restarts it; a third
+    /// tap starts fresh (ch 17 §6).</summary>
+    void TapDay(DateOnly day)
+    {
+        var s = _start.Peek();
+        if (s is null || _end.Peek() is not null) { _start.Value = day; _end.Value = null; }
+        else if (day < s) _start.Value = day;
+        else _end.Value = day;
+    }
+}
+
+/// <summary>264 wide: Search cities ›, Use my location, a divider, the 25 / 50 / 100 km radios. A radius pick KEEPS the
+/// flyout open (the check moves, the pill re-labels); the two location rows close it and hand off.</summary>
+internal sealed class ClassicConcertWhereFlyout(IReadSignal<int> radius, Action<int> onRadius, Action onSearch, Action onUseMine) : Component
+{
+    public override Element Render()
+    {
+        int current = radius.Value;
+        var options = ConcertHub.RadiusOptionsKm;
+        var kids = new Element[3 + options.Length];
+        kids[0] = ClassicConcertFlyoutCells.FlyoutRow(Loc.Get(Strings.Concerts.Location.SearchCities), onSearch, lead: Icons.MapPin, trailing: Icons.ChevronRight);
+        kids[1] = ClassicConcertFlyoutCells.FlyoutRow(Loc.Get(Strings.Concerts.Location.UseMine), onUseMine, lead: Icons.MapPin);
+        kids[2] = ClassicConcertFlyoutCells.FlyoutDivider();
+        for (int i = 0; i < options.Length; i++)
+        {
+            int km = options[i];
+            kids[3 + i] = ClassicConcertFlyoutCells.FlyoutRow(Strings.Concerts.Filter.WithinKm(km), () => onRadius(km), toggle: true, active: km == current);
+        }
+        return new BoxEl { Direction = 1, Width = Rules.WhereFlyoutW, Gap = Rules.FlyoutGap, Padding = Edges4.All(Spacing.S), Children = kids };
+    }
+}

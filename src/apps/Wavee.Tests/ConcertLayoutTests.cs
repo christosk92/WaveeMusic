@@ -1,9 +1,10 @@
 // ── Wavee.Tests/ConcertLayoutTests.cs — concert layout hysteresis and the editorial art geometry, ported from 0.2.9 ───
 //
 // Ported VERBATIM from `_old/Wavee.Tests/ConcertLayoutTests.cs` (9 facts). Home's editorial cards consume
-// `EditorialArtGeometry` (ch 11); the rules live in `Entities/Concert.Rules.cs`.
+// `EditorialArtGeometry` (ch 11); the geometry lives in `Entities/Concert.Rules.cs`, the width ladders (T10b3) in Classic's `Rules/Tiers.Concert.cs`.
 
 using Wavee;
+using Wavee.Themes.Classic;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -13,19 +14,19 @@ public class ConcertLayoutTests
     [Fact]
     public void ScheduleWide_UsesSeparateEnterAndLeaveThresholds()
     {
-        Assert.False(ConcertLayout.ScheduleWide(740f, wasWide: false));
-        Assert.True(ConcertLayout.ScheduleWide(760f, wasWide: false));
-        Assert.True(ConcertLayout.ScheduleWide(740f, wasWide: true));
-        Assert.False(ConcertLayout.ScheduleWide(719f, wasWide: true));
+        Assert.False(ClassicConcertTiers.ScheduleWide(740f, wasWide: false));
+        Assert.True(ClassicConcertTiers.ScheduleWide(760f, wasWide: false));
+        Assert.True(ClassicConcertTiers.ScheduleWide(740f, wasWide: true));
+        Assert.False(ClassicConcertTiers.ScheduleWide(719f, wasWide: true));
     }
 
     [Fact]
     public void DetailWide_UsesSeparateEnterAndLeaveThresholds()
     {
-        Assert.False(ConcertLayout.DetailWide(900f, wasWide: false));
-        Assert.True(ConcertLayout.DetailWide(920f, wasWide: false));
-        Assert.True(ConcertLayout.DetailWide(880f, wasWide: true));
-        Assert.False(ConcertLayout.DetailWide(859f, wasWide: true));
+        Assert.False(ClassicConcertTiers.DetailWide(900f, wasWide: false));
+        Assert.True(ClassicConcertTiers.DetailWide(920f, wasWide: false));
+        Assert.True(ClassicConcertTiers.DetailWide(880f, wasWide: true));
+        Assert.False(ClassicConcertTiers.DetailWide(859f, wasWide: true));
     }
 
     [Theory]
@@ -35,7 +36,7 @@ public class ConcertLayoutTests
     public void WideEditorial_ChangesMetricsWithoutChangingComposition(
         float width, float expectedHeight, float expectedPadding, int expectedLines)
     {
-        var metrics = ConcertLayout.WideEditorial(width);
+        var metrics = ClassicConcertTiers.WideEditorial(width);
 
         Assert.Equal(expectedHeight, metrics.Height);
         Assert.Equal(expectedPadding, metrics.Padding);

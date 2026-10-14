@@ -305,8 +305,8 @@ public sealed partial class Scope
 
 // ── the handle ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
-/// <summary>A concert: one <c>int</c>. Partial because <c>Concert.UI.cs</c> and <c>Concert.Page.cs</c> (Wave 5) add
-/// the hub, the boards and the detail surface.</summary>
+/// <summary>A concert: one <c>int</c>. Partial because <c>Concert.Page.cs</c>, <c>Concert.Hub.cs</c>, <c>Concert.Schedule.cs</c>,
+/// <c>Concert.Detail.cs</c> and <c>Concert.Picker.cs</c> (the core hosts of the hub, the boards and the detail surface) and <c>Concert.Verbs.cs</c> hang off it.</summary>
 public readonly partial struct Concert(int slot) : IEquatable<Concert>
 {
     static ConcertTable T => Entities.Current.Concerts;

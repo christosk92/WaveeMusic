@@ -67,7 +67,7 @@ internal static class ClassicArtistPage
         // Rendering it directly painted its own placeholder copy as if it were data: "Artist name", "A first sentence of the biography stands in this line.",
         // "10,000,000 Monthly listeners", "Top track title" (evenworsenow.mp4).
         //
-        // Reveal.Soft - the page-level reveal the rest of the app uses (Concert.Page's Region): the whole tree blur-rises in as ONE (Opacity + TranslateY + Blur
+        // Reveal.Soft - the page-level reveal the rest of the app uses (`ClassicConcertCells.Region`): the whole tree blur-rises in as ONE (Opacity + TranslateY + Blur
         // -> rest) over the shimmer dissolving out beneath it. Not None, which means "the content animates its own entrance" - and this content has none, so the
         // swap landed as a hard cut with nothing moving at all (shitttt.mp4).
         //

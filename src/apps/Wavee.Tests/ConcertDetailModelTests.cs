@@ -6,6 +6,7 @@
 
 using System.Globalization;
 using Wavee;
+using Wavee.Themes.Classic;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -121,10 +122,10 @@ public sealed class ConcertDetailModelTests
     [Fact]
     public void DetailWide_EntersAtEnterThreshold_LeavesBelowLeaveThreshold()
     {
-        Assert.True(ConcertLayout.DetailWide(920f, wasWide: false, initialized: true));
-        Assert.False(ConcertLayout.DetailWide(919f, wasWide: false, initialized: true));
-        Assert.True(ConcertLayout.DetailWide(860f, wasWide: true, initialized: true));
-        Assert.False(ConcertLayout.DetailWide(859f, wasWide: true, initialized: true));
-        Assert.False(ConcertLayout.DetailWide(900f, wasWide: false, initialized: true));
+        Assert.True(ClassicConcertTiers.DetailWide(920f, wasWide: false, initialized: true));
+        Assert.False(ClassicConcertTiers.DetailWide(919f, wasWide: false, initialized: true));
+        Assert.True(ClassicConcertTiers.DetailWide(860f, wasWide: true, initialized: true));
+        Assert.False(ClassicConcertTiers.DetailWide(859f, wasWide: true, initialized: true));
+        Assert.False(ClassicConcertTiers.DetailWide(900f, wasWide: false, initialized: true));
     }
 }

@@ -11,7 +11,7 @@
 // `StyleKeys.TrackTable` style; T8b its chrome, `ClassicTrackChrome.cs`), T8c the other list surfaces (`Lists\ClassicEagerRow.cs`,
 // `ClassicEpisodeRow.cs`, `ClassicSurface.cs`, `ClassicArtistChart.cs`, `ClassicTrackDrawer.cs`, with the shared cells in `ClassicRowCells.cs`:
 // the `StyleKeys.EagerTrackRow`, `EpisodeRow`, `Surface`, `ArtistChart` and `TrackDrawer` styles), T10a1 Home (`Views\Home`: the page, facet row, daylist and clock, zone bodies, the drill page and the
-// customizer), T9a the shared detail frame (`Views\Detail`: the scaffold, the rail and its strip, the show header, the hero, the insights sheet), T9b its album and playlist sub-contracts (`Views\Detail\ClassicAlbum*.cs`, `ClassicPlaylist*.cs`, `ClassicDetailSeam.cs`), T10a2 Browse and Search (`Views\Pages`: the directory and its Charts band, a category page, the section drill key, the Search results page), T7d the queue (`Views\Queue`: the rail panel and the stage's Up next column), T10b1 the artist page (`Views\Pages\ClassicArtist*.cs`: the page, the hero, the sections, the banners, the pick card), T10c1 the library (`Views\Pages\ClassicLibrary*.cs`: the master-detail page and its album, show, artist and Your Episodes panes); every other surface is still core code. It
+// customizer), T9a the shared detail frame (`Views\Detail`: the scaffold, the rail and its strip, the show header, the hero, the insights sheet), T9b its album and playlist sub-contracts (`Views\Detail\ClassicAlbum*.cs`, `ClassicPlaylist*.cs`, `ClassicDetailSeam.cs`), T10a2 Browse and Search (`Views\Pages`: the directory and its Charts band, a category page, the section drill key, the Search results page), T7d the queue (`Views\Queue`: the rail panel and the stage's Up next column), T10b1 the artist page (`Views\Pages\ClassicArtist*.cs`: the page, the hero, the sections, the banners, the pick card), T10c1 the library (`Views\Pages\ClassicLibrary*.cs`: the master-detail page and its album, show, artist and Your Episodes panes), T10b3 the concert surfaces (`Views\Pages\ClassicConcert*.cs`: the hub with its filter bar, tail and location picker, an artist's tour dashboard, the event page) and the Common module page (`Themes\Common\CommonModulePage.cs`); every other surface is still core code. It
 // decides the shell's policies (`Rules\ClassicPolicies.cs`: nav pane, panel and mini player, player bar, chrome row, stage)
 // and offers every capability (T3). Its window tiers (T3b) are `Rules\Tiers.cs`.
 //
@@ -21,6 +21,7 @@
 // same place in the same group).
 
 using FluentGpu.Theming;
+using Wavee.Themes.Common;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
@@ -174,6 +175,17 @@ public sealed class ClassicStructure : IStructureLayer
         // magazine (the Top-tracks band, the shelves, the biography band, the upcoming / latest-release / tour banners) and the artist pick card. The demands, the
         // readiness, the section plan, the latched hero metrics, the accent, the scroll spy and the Play / Shuffle / Radio decisions stay core (`Artist.PageHost`).
         views.Add(ViewKeys.ArtistPage, ClassicArtistPage.Template, "classic.artist.page");
+        // T10b3: the concert surfaces (`Views\Pages\ClassicConcert*.cs`): the Concerts hub (header card, pinned filter bar with its when / where flyouts and count ticker, the feed's
+        // shelves, promos and virtualized grid) with the feed's append tail and the location picker's flyout, an artist's tour dashboard (split hero, tour-dates card, month board,
+        // shy month pill) and the event page (split hero with the facts, tickets, lineup, related shelf). The data and its demands, the filter tuple and its feed subject, the
+        // append gate, the schedule shaping and the detail facts stay core (`Concert.HubHost`, `ScheduleHost`, `DetailHost`, `TailHost`, `PlacePickerHost`). The module page is a
+        // Common block (`Themes\Common\CommonModulePage.cs`) that Classic registers like its own views.
+        views.Add(ViewKeys.ConcertsHub, ClassicConcertHub.Template, "classic.concerts.hub");
+        views.Add(ViewKeys.ConcertTail, ClassicConcertHub.TailTemplate, "classic.concerts.tail");
+        views.Add(ViewKeys.ConcertPlacePicker, ClassicConcertPicker.Template, "classic.concerts.place-picker");
+        views.Add(ViewKeys.ArtistConcerts, ClassicConcertSchedule.Template, "classic.concerts.artist-schedule");
+        views.Add(ViewKeys.ConcertDetail, ClassicConcertDetail.Template, "classic.concerts.detail");
+        views.Add(ViewKeys.ModulePage, CommonModulePage.Template, "common.module.page");
         // T10c1: the library page (the navigator, the grips, the detail pane, the search columns, the collapsed drill-in) and its four panes (album, show, artists' reader, Your Episodes).
         // The library data, the shape memo, the selection and its persistence, the search matcher, the collapse state and every pane model and demand stay core.
         ClassicLibrary.Register(views);

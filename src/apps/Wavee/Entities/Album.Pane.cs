@@ -24,7 +24,7 @@
 //  1. SELECTION IS A CROSSFADE, NOT A CUT. The component PERSISTS (the page re-pushes `PaneProps`, whose equality
 //     ignores the callback) and its render returns a ZStack host whose single child is keyed by slot — a key change is a
 //     real unmount, so the engine orphans the leaving pane and fades it UNDER the entering one, which rises 6 DIP in
-//     (`s_paneSwap`, after Concert.Page.cs's `s_presence`). Nothing reads a frame clock; reduced motion is the engine's.
+//     (`s_paneSwap`, after `ClassicConcertShyMonthPill`'s `s_presence`). Nothing reads a frame clock; reduced motion is the engine's.
 //  2. LOADING → READY IS A CROSS-DISSOLVE, not a swap. The rows area is one `Skel.Region`: pending ⇒ the engine paints
 //     and breathes the DERIVED shimmer of the counted rows; Ready ⇒ it mounts the real table and blur-reveals it row by
 //     row while the shimmer fades out beneath. The two `Loadable<int>` are CACHED, one per state, because the region's

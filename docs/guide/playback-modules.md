@@ -579,7 +579,7 @@ script packs this repo's three modules and the playplay repo's Spotify module.
 |---|---|
 | The wire (a method, a DTO, framing) | `src/apps/Wavee.Sdk/Protocol/**` — and both sides at once; they share this code |
 | The author surface (`WaveeModule`, `IModuleHost`) | `src/apps/Wavee.Sdk/{WaveeModule,IModuleHost,ModuleRunner}.cs` |
-| The page document (a section kind, a budget) | `src/apps/Wavee.Sdk/ModulePage.cs` — and the app renderer in `src/apps/Wavee/Platform/Modules.UI.cs` |
+| The page document (a section kind, a budget) | `src/apps/Wavee.Sdk/ModulePage.cs` — and the app renderer, the Common block `src/apps/Wavee/Themes/Common/CommonModulePage.cs` (mounted by `Modules.PageHost`, `Platform/Modules.Page.cs`) |
 | Discovery / process lifecycle / routing / host services | `src/apps/Wavee/Platform/Modules.Host.cs` (+ the pure rules in `Platform/Modules.cs`) |
 | A bundled module's behaviour | `src/apps/modules/Wavee.Module.<Name>/**` (+ fixtures in `src/apps/Wavee.Tests/Modules/`) |
 | The dev copy layout | `CopyBundledModules` in `src/apps/Wavee/Wavee.csproj` |
