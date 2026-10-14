@@ -120,8 +120,7 @@ public class ProfileListRulesTests
     static string[] Names(ProfileListModel m, ProfileChip chip = ProfileChip.All, string? query = null)
     {
         m.Filter(chip, query);
-        var visible = m.Visible.ToArray();
-        return visible.Select(i => m.EntryAt(i).Name).ToArray();
+        return Enumerable.Range(0, m.VisibleCount).Select(k => m.VisibleAt(k).Name).ToArray();
     }
 
     static readonly ProfileEntry[] Mixed =
@@ -144,7 +143,7 @@ public class ProfileListRulesTests
         var entries = new[] { Artist("Same", 7), Artist("Same", 3), Person("Same", 1) };
         var m = Model(entries);
         m.Filter(ProfileChip.All, null);
-        Assert.Equal([3, 7, 1], m.Visible.ToArray().Select(i => m.EntryAt(i).Slot).ToArray());
+        Assert.Equal([3, 7, 1], Enumerable.Range(0, m.VisibleCount).Select(k => m.VisibleAt(k).Slot).ToArray());
     }
 
     [Fact]
@@ -187,7 +186,7 @@ public class ProfileListRulesTests
         // #, #, A, A, P, P, Z — non-decreasing, the grouping's one input.
         Assert.Equal([0, 0, 1, 1, 16, 16, 26], m.VisibleLetters.ToArray());
         Assert.Equal([true, false, true, false, false, true, false], m.VisibleArtists.ToArray());
-        Assert.Equal(m.Visible.ToArray().Length, m.VisibleCount);
+        Assert.Equal(Mixed.Length, m.VisibleCount);
     }
 
     [Fact]

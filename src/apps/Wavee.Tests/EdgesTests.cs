@@ -117,19 +117,18 @@ public class EdgesTests
     // ── membership ──────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void A_short_list_answers_membership_by_scanning_and_builds_no_index()
+    public void A_short_list_answers_membership_by_scanning()
     {
         var edges = new EdgeTable<LibraryEdge>();
         edges.ReplaceRun(Parent, Three, []);
         Assert.True(edges.Contains(Parent, 22));
         Assert.False(edges.Contains(Parent, 44));
-        Assert.False(edges.Indexed);                                        // a hash set for three ints is pure overhead
         Assert.Equal(1, edges.IndexOf(Parent, 22));
         Assert.Equal(-1, edges.IndexOf(Parent, 44));
     }
 
     [Fact]
-    public void A_long_list_builds_an_index_that_stays_coherent_through_every_mutation()
+    public void A_long_list_answers_membership_coherently_through_every_mutation()
     {
         var edges = new EdgeTable<LibraryEdge>();
         var liked = new int[500];
@@ -137,7 +136,6 @@ public class EdgesTests
         edges.ReplaceRun(Parent, liked, []);
 
         Assert.True(edges.Contains(Parent, 1_250));
-        Assert.True(edges.Indexed);                                         // 500 liked songs: worth an index
         Assert.False(edges.Contains(Parent, 9_999));
 
         edges.Insert(Parent, 9_999, new LibraryEdge(7, 0), at: 0);
@@ -265,53 +263,27 @@ public class EdgesTests
 
     // ── the arena ───────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The span rule, demonstrated: a rewrite that outgrows the parent's range MOVES it, so a span taken
-    /// before the write points at the old bytes. This is why no caller may hold one across a drain.</summary>
+    /// <summary>A rewrite that outgrows the parent's range moves it to the arena tail; reading through the table
+    /// still answers the new list, and the neighbour that was written before it is untouched.</summary>
     [Fact]
-    public void A_rewrite_that_outgrows_the_range_moves_it()
+    public void A_rewrite_that_outgrows_the_range_still_reads_right()
     {
         var edges = new EdgeTable<NoEdge>();
         edges.ReplaceRun(Parent, [1, 2], []);
-        int firstRange = edges.ArenaUsed;                                    // two edges plus the minimum slack
-        Assert.Equal(0, edges.ArenaDead);
+        edges.ReplaceRun(9, [7, 8], []);
 
         edges.ReplaceRun(Parent, [1, 2, 3, 4, 5, 6], []);
-        Assert.True(edges.ArenaUsed > firstRange);                           // the range moved to the tail…
-        Assert.Equal(firstRange, edges.ArenaDead);                           // …and abandoned its old home
-        Assert.True(edges.Targets(Parent).SequenceEqual([1, 2, 3, 4, 5, 6])); // reading through the table is always right
+        Assert.True(edges.Targets(Parent).SequenceEqual([1, 2, 3, 4, 5, 6]));
+        Assert.True(edges.Targets(9).SequenceEqual([7, 8]));
     }
 
     [Fact]
-    public void Repeated_inserts_reuse_the_slack_instead_of_copying_every_time()
+    public void Repeated_inserts_keep_every_edge()
     {
         var edges = new EdgeTable<NoEdge>();
-        edges.Insert(Parent, 1, default);
-        int afterFirst = edges.ArenaUsed;
-        for (int i = 2; i <= 4; i++) edges.Insert(Parent, i, default);
-        Assert.Equal(afterFirst, edges.ArenaUsed);                           // ×2 slack absorbed the next three
-        Assert.Equal(4, edges.Count(Parent));
-    }
-
-    [Fact]
-    public void Compact_reclaims_the_arena_the_regrows_abandoned()
-    {
-        var edges = new EdgeTable<NoEdge>();
-        for (int n = 1; n <= 40; n++)
-        {
-            var targets = new int[n];
-            for (int i = 0; i < n; i++) targets[i] = i + 1;
-            edges.ReplaceRun(7, targets, []);
-        }
-        edges.ReplaceRun(9, [1, 2, 3], []);
-
-        Assert.True(edges.ArenaDead > 0);
-        int reclaimed = edges.Compact();
-        Assert.True(reclaimed > 0);
-        Assert.Equal(0, edges.ArenaDead);
-        Assert.Equal(43, edges.ArenaUsed);                                   // 40 + 3, exactly the live edges
-        Assert.Equal(40, edges.Count(7));
-        Assert.True(edges.Targets(9).SequenceEqual([1, 2, 3]));
-        Assert.Equal(0, edges.Compact());                                    // nothing left to do
+        for (int i = 1; i <= 6; i++) edges.Insert(Parent, i, default);
+        Assert.Equal(6, edges.Count(Parent));
+        for (int i = 1; i <= 6; i++) Assert.True(edges.Contains(Parent, i));
     }
 
     // ── the payloads and the merch side table ───────────────────────────────────────────────────────────────────────
