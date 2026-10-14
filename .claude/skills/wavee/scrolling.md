@@ -92,9 +92,9 @@ photo.StretchFromTop().ParallaxY(ArtistHeroLayout.PhotoParallaxFraction, photoH)
 - **`StretchFromTop`** composes with a parallax on the same node (the engine folds a node's transform rows into one
   matrix).
 
-## Lyrics: Follow + MeasureAll (`Shell/Lyrics.UI.cs`)
+## Lyrics: Follow + MeasureAll (`Shell/Lyrics.UI.cs`, the list in `Themes/Classic/Structure/Lists/ClassicLyricsLines.cs`)
 
-- The line list sets `MeasureAll = lines.Count <= Surface.MeasureAllCap` (400, `Shell/Lyrics.cs`): every line is
+- The line list (the `StyleKeys.LyricsLines` style, T7b) sets `MeasureAll = lines.Count <= Surface.MeasureAllCap` (400, `Shell/Lyrics.cs`): every line is
   realized and measured, so the follow target for a line that was never on screen is its REAL offset, not an estimate.
 - Following playback is `_scroll.ScrollTo(target, ScrollMove.Follow)` — the engine's velocity-continuous glide that is
   **ignored while a user-driven plan (wheel/drag/fling/thumb) is live**, so a user grab always wins and the next resync
