@@ -1,11 +1,11 @@
 // ── Theming/Policies/ThemePolicies.cs — what a structure decides for the core (themes plan 5.5) ───────────────────────
 //
 //   · `ThemePolicies`      the policy bundle a structure returns: nav pane, panel, player bar, chrome, stage, and the window tiers
-//                          (`Tiers`, T3b, an init property beside the five). Each member is
+//                          (`Tiers`, T3b, and `Lists`, M4, init properties beside the five). Each member is
 //                          its own file; the core state machines (`SidebarPaneModeRules`, `Shell.Chrome`, `PlayerBarLayout`,
 //                          `Stage.Layout`, `PanelHost`, the mini player) take the member instead of Classic constants.
 //   · `ShellCapabilities`  what the shell offers. `Unrestricted` is "every feature on", which is what Classic is today.
-//   · `StyleMetrics`       the style's row heights and gutters. A style publishes them; `Unset` (all zero) means "none".
+//   · `StyleMetrics`       the style's row heights and gutters (and the track rows at its density, `TrackRowMetrics`). A style publishes them; `Unset` (all zero) means "none".
 //   · `TierFacts`          the window-tier fact (T3b): `Theming/Policies/TierFacts.cs`, with `TierPolicy` beside it.
 //   · `ThemeFacts`         the bundle `ThemeHost.Facts` publishes and `ThemeFactsContext` mirrors for templates.
 
@@ -33,6 +33,9 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
     /// names a theme, so <see cref="Default"/> carries <see cref="TierPolicy.Standard"/> and Classic's bundle replaces it.</summary>
     public TierPolicy Tiers { get; init; } = TierPolicy.Standard;
 
+    /// <summary>What the structure decides for the track lists (M4: whether track artwork is drawn). A structure that declares nothing shows it.</summary>
+    public ListPolicy Lists { get; init; } = ListPolicy.Default;
+
     /// <summary>Everything wrong with the bundle, empty when every core state machine can run on it.</summary>
     public IReadOnlyList<string> Validate()
     {
@@ -43,6 +46,7 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
         if (Chrome is null) problems.Add("Chrome is missing"); else problems.AddRange(Chrome.Validate());
         if (Stage is null) problems.Add("Stage is missing"); else problems.AddRange(Stage.Validate());
         if (Tiers is null) problems.Add("Tiers is missing"); else problems.AddRange(Tiers.Validate());
+        if (Lists is null) problems.Add("Lists is missing");
         return problems;
     }
 }
@@ -65,11 +69,32 @@ public sealed record ShellCapabilities(bool Tabs, bool NavTree, bool FriendsPane
 public readonly record struct StyleMetrics(
     float RowSingle, float RowDouble, float RowWithArt, float ControlHeight,
     float PivotRow, float SubPivotRow, float SeekRow, float TransportRow, float SearchWidth,
-    float Gutter, float Section, float MinPageColumn, float PanoramaCompactBelow)
+    float Gutter, float Section, float MinPageColumn, float PanoramaCompactBelow,
+    TrackRowMetrics TrackRows = default)
 {
     /// <summary>No metric published (every member 0): what a style that publishes none answers. Wavee Classic publishes its own
     /// (<c>ClassicStyle.Metrics</c>).</summary>
     public static StyleMetrics Unset => default;
+}
+
+/// <summary>The track rows' geometry at the style's current density (M3): what the core's track table sizes its rows, art and episode rows with. A style
+/// whose density is an option publishes the rung the user chose; `default` (every member 0) is "none published", which the core reads as
+/// <see cref="Standard"/>. Until M2 turns the row style into a structure option the two skins' ladders ride together (<c>Modern*</c> and <c>Classic*</c>).</summary>
+/// <param name="Rung">The density rung, 0 the tightest: part of the list's re-key and the episode row's "narrow" decision.</param>
+/// <param name="ModernRow">The Modern skin's row height.</param>
+/// <param name="ModernArt">The Modern skin's art edge.</param>
+/// <param name="ClassicRow">The Classic skin's row height.</param>
+/// <param name="ClassicArt">The Classic skin's art edge.</param>
+/// <param name="EpisodeRow">The episode row's height (two title lines, a clamped description and the meta line).</param>
+/// <param name="NarrowEpisode">The episode row drops to its narrow arm at this rung.</param>
+public readonly record struct TrackRowMetrics(int Rung, float ModernRow, float ModernArt, float ClassicRow, float ClassicArt, float EpisodeRow, bool NarrowEpisode)
+{
+    /// <summary>Nothing published (every member 0).</summary>
+    public bool IsUnset => ModernRow <= 0f;
+
+    /// <summary>The shell's rows before themes, at the Default rung (48 / 32 Modern, 40 / 32 Classic, 96 episode): what the core uses while no composition
+    /// publishes any. `TrackFormatTests` pins Classic's Default rung equal to it.</summary>
+    public static TrackRowMetrics Standard { get; } = new(Rung: 1, ModernRow: 48f, ModernArt: 32f, ClassicRow: 40f, ClassicArt: 32f, EpisodeRow: 96f, NarrowEpisode: true);
 }
 
 /// <summary>What the active composition publishes for the core: policies, capabilities, metrics and tiers. Core models

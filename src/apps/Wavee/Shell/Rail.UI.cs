@@ -172,7 +172,7 @@ public static partial class Rail
         {
             _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table reads below
             _ = Entities.Current.Edges.Queue.Changed.Value;
-            bool art = !Prefs.Appearance.TrackArtworkHidden();
+            bool art = ShellPolicy.Tracked.Lists.TrackArtwork;
             Span<int> window = stackalloc int[Shell.NextUpWindow.Max];
             int n = Shell.NextUpWindow.Fill(window);
             var rows = new Element[n];

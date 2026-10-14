@@ -14,7 +14,7 @@
 //   · Value rules (BP 1.6): an unknown or out-of-range legacy value becomes the option default (the step simply does not
 //     copy it); a renamed option starts at its default; a removed choice becomes the default.
 //
-// T1 ships the machinery with NO step registered. It runs from `Platform.Boot` right after `ZoomAutoPolicy.MigrateMode`
+// T1 shipped the machinery with no step; the M-PRs add theirs to `Steps` (M3 row density, M4 hide track art). It runs from `Platform.Boot` right after `ZoomAutoPolicy.MigrateMode`
 // and before anything reads a presentation setting. WVTH010 keeps legacy key names and deleted member names inside this file.
 
 namespace Wavee.Theming;
@@ -28,8 +28,26 @@ public static class ThemeBootstrap
     /// <summary>The prefix of the done markers: <c>theme.bootstrap.done.&lt;Name&gt;</c>.</summary>
     public const string DonePrefix = "theme.bootstrap.done.";
 
-    /// <summary>The steps shipped in this build. Empty in T1: each migration PR appends its own.</summary>
-    public static IReadOnlyList<ThemeBootstrapStep> Steps { get; } = [];
+    // ── the retired switches' keys (WVTH010 lists the names; only this file may spell them) and the options that replaced them ──────────
+
+    private static readonly SettingKey<int> LegacyRowDensity = new("detail.rowdensity", 1);
+    private static readonly SettingKey<bool> LegacyHideTrackArtwork = new("appearance.trackArtwork.hidden", false);
+    private static readonly SettingKey<int> DensityOptionKey = new("theme.classic.style.density", 1);
+    private static readonly SettingKey<bool> HideArtOptionKey = new("theme.classic.structure.hideTrackArt", false);
+
+    /// <summary>The steps shipped in this build; each migration PR appends its own.</summary>
+    public static IReadOnlyList<ThemeBootstrapStep> Steps { get; } =
+    [
+        // M3: the row density rung (0 Compact · 1 Default · 2 Cozy · 3 Comfortable) is Classic's `style.density`, the same numbers. A hand-edited or
+        // downgraded value outside 0..3 is not copied (the option default applies; the old reader answered Compact).
+        new ThemeBootstrapStep("TrackRowDensity",
+            ReadsLegacyKeys: ["detail.rowdensity"], WritesKeys: ["theme.classic.style.density"],
+            Run: static s => Copy(s, LegacyRowDensity, DensityOptionKey, static v => (v is >= 0 and <= 3, v))),
+        // M4: "always hide track artwork" is Classic's `structure.hideTrackArt`.
+        new ThemeBootstrapStep("HideTrackArtwork",
+            ReadsLegacyKeys: ["appearance.trackArtwork.hidden"], WritesKeys: ["theme.classic.structure.hideTrackArt"],
+            Run: static s => Copy(s, LegacyHideTrackArtwork, HideArtOptionKey)),
+    ];
 
     /// <summary>The setting name of a step's done marker.</summary>
     public static string DoneKey(string stepName) => DonePrefix + stepName;

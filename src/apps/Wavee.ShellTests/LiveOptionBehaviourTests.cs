@@ -3,7 +3,7 @@
 // The Live-option pins (themes plan §2.1, LP1), written before any view moves into a theme: per option, change it through
 // TODAY's writer on the real mounted frame and assert the mechanism production uses, on the nodes production keys. A
 // later PR that moves a surface keeps this file green; an M-PR re-points the write from the legacy key to the theme
-// option, and the assertions stay.
+// option, and the assertions stay (M3 density and M4 hide art write through `ThemeHost.Apply`, the way the Settings rows and the table's slider do).
 //
 //   stage layout    the popover writer and `[` / `]` → the `stage:cover` node's Bounds FLIP spring runs (the keys
 //                   step the face instead wherever the layout keeps its cover)
@@ -25,6 +25,8 @@ using FluentGpu.Animation;
 using FluentGpu.Foundation;
 using FluentGpu.Scene;
 using Wavee;
+using Wavee.Themes.Classic;
+using Wavee.Theming;
 using Wavee.Theming.Roles;
 using Xunit;
 using static Wavee.ShellTests.ShellProbe;
@@ -205,20 +207,20 @@ public sealed class LiveOptionBehaviourTests(ShellHost host)
     public void Row_density_re_keys_the_track_list()
         => host.Mounted(shell =>
         {
-            int before = Platform.Settings.Get(Platform.Keys.RowDensity);
-            int other = before == 0 ? 2 : 0;
+            var before = ClassicDensity.Current(ThemeHost.Options);
+            var other = before == RowDensity.Compact ? RowDensity.Cozy : RowDensity.Compact;
             var (_, key) = LikedList(shell);
-            Assert.Contains(":d" + before + ":", key);
+            Assert.Contains(":d" + (int)before + ":", key);
             try
             {
-                Prefs.Appearance.Set(Platform.Keys.RowDensity, other);   // Settings › Appearance › Density
+                ClassicDensity.Request(ThemeHost.Options.RequestForwarder, other);   // Settings › Appearance › Density, or the table's Row size
                 shell.RunFrames(30);
                 var (_, next) = Single(shell, "list:");
-                Assert.Contains(":d" + other + ":", next);
+                Assert.Contains(":d" + (int)other + ":", next);
             }
             finally
             {
-                Prefs.Appearance.Set(Platform.Keys.RowDensity, before);
+                ClassicDensity.Request(ThemeHost.Options.RequestForwarder, before);
                 shell.RunFrames(30);
             }
         });
@@ -232,17 +234,20 @@ public sealed class LiveOptionBehaviourTests(ShellHost host)
         return parts[d + 1];
     }
 
+    static void SetHideArt(bool on)
+        => _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, ClassicStructure.HideTrackArtQualifiedId, on));
+
     [Fact]
     public void Hide_art_removes_the_artwork_from_the_rows_of_the_keyed_list()
         => host.Mounted(shell =>
         {
-            bool before = Platform.Settings.Get(Platform.Keys.HideTrackArtwork);
-            Prefs.Appearance.Set(Platform.Keys.HideTrackArtwork, false);
+            bool before = ClassicOptions.HideTrackArt();
+            SetHideArt(false);
             try
             {
                 var (shownList, shownKey) = LikedList(shell);
                 int shown = CountUnder(shell, shownList);
-                Prefs.Appearance.Set(Platform.Keys.HideTrackArtwork, true);   // Settings › Appearance › Track artwork
+                SetHideArt(true);   // Settings › Appearance › Track artwork
                 shell.RunFrames(30);
                 var (hiddenList, hiddenKey) = Single(shell, "list:");
                 int hidden = CountUnder(shell, hiddenList);
@@ -251,7 +256,7 @@ public sealed class LiveOptionBehaviourTests(ShellHost host)
             }
             finally
             {
-                Prefs.Appearance.Set(Platform.Keys.HideTrackArtwork, before);
+                SetHideArt(before);
                 shell.RunFrames(30);
             }
         });

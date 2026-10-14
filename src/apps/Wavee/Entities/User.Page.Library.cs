@@ -1172,7 +1172,7 @@ public readonly partial struct User
         LibrarySearchProps SearchPropsOf() => new()
         {
             ArtistHits = _artistHitRows, AlbumHits = _albumHitRows, ArtistAlbumHits = _artistAlbumHitRows, TrackHits = _trackHitRows,
-            SelectedArtist = _sArtist.Value, SelectedAlbum = _sAlbum.Value, ShowTrackArt = !Prefs.Appearance.TrackArtworkHidden(),
+            SelectedArtist = _sArtist.Value, SelectedAlbum = _sAlbum.Value,
             SelectArtist = _selectArtist, SelectAlbum = _selectAlbum,
         };
 

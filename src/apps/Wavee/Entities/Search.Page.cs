@@ -135,7 +135,6 @@ public readonly partial struct Search
             var scope = Entities.Current;
             Subscribe(scope);
             _ = _recheck.Value;
-            bool hideArt = Prefs.Appearance.TrackArtworkHidden();
             var overlay = UseContext(Overlay.Service);
             string scrollScope = UseContext(Shell.PageScrollScope);
 
@@ -151,7 +150,7 @@ public readonly partial struct Search
                 _hadChips = false;
                 _bodyAnswered = false;
             }
-            _ctx = new HitContext(_query, _origin, overlay, hideArt);
+            _ctx = new HitContext(_query, _origin, overlay);
 
             // The facet list: the All row's chip strip once it has ever landed; before that, the lone All tab (behind the
             // eleven-pill skeleton while the first answer is pending).

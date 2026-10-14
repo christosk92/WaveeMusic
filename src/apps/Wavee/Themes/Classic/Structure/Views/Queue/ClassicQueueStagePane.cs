@@ -67,7 +67,7 @@ internal sealed class ClassicQueueStagePane : Component
         var layout = ctx.Layout.Value;
         _s = layout.QueueScale;
         lane.SetMetrics(ClassicQueueRules.StageRowH * _s, _extentOf ??= ExtentOf);
-        bool art = !props.HideTrackArt;
+        bool art = !ClassicOptions.HideTrackArt();
 
         var kids = new List<Element>(2);
         if (lane.SlotCount > 0)

@@ -112,4 +112,7 @@ public static class ClassicPolicies
     /// LAST: static properties initialise in textual order and it reads the five above (`ClassicTiers` builds its policy in its
     /// own initializer and never reads this class).</summary>
     public static ThemePolicies Bundle { get; } = new(NavPane, Panel, PlayerBar, Chrome, Stage) { Tiers = ClassicTiers.Policy };
+
+    /// <summary>The same bundle with the track lists' artwork hidden (M4, the `hideTrackArt` option on): the other instance <c>ClassicStructure.Policies</c> hands out.</summary>
+    public static ThemePolicies BundleArtHidden { get; } = Bundle with { Lists = new ListPolicy(TrackArtwork: false) };
 }

@@ -15,10 +15,10 @@
 // decides the shell's policies (`Rules\ClassicPolicies.cs`: nav pane, panel and mini player, player bar, chrome row, stage)
 // and offers every capability (T3). Its window tiers (T3b) are `Rules\Tiers.cs`.
 //
-// T1b: the options Classic will own (plan 6.1) are still TODAY's switches, bound to their legacy keys through `SettingsDoc`
+// T1b: the options Classic will own (plan 6.1) that are still TODAY's switches are bound to their legacy keys through `SettingsDoc`
 // rows. `LegacyRows` lists them in their FINAL grouping so Settings › Appearance shows Classic's section once, in its
 // final shape; each M-PR deletes its rows from the list and declares the option in `Options` (the generated row takes the
-// same place in the same group).
+// same place in the same group). M4 declared `hideTrackArt` here; M3's `density` is the style's.
 
 using FluentGpu.Theming;
 using Wavee.Themes.Common;
@@ -259,11 +259,25 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.DialogCrash, ClassicCrash.Template, "classic.dialog.crash");
     }
 
-    /// <inheritdoc />
-    public ThemeOptionSchema Options => ThemeOptionSchema.Empty;
+    /// <summary>Hide track artwork (M4): the track cells of every list drop their cover and give the space to the titles; page heroes, media cards, sidebar covers and the
+    /// player's identity artwork stay. It replaces `appearance.trackArtwork.hidden` (`ThemeBootstrap` step "HideTrackArtwork"). The core reads it as
+    /// `ThemePolicies.Lists` (`ClassicStructure.Policies`); the Classic views that draw the hidden look read it through <see cref="ClassicOptions.HideTrackArt"/>.</summary>
+    public static ToggleOption HideTrackArt { get; } = new(
+        Id: "hideTrackArt",
+        TitleKey: Strings.Settings.Appearance.HideTrackArtwork,
+        DescriptionKey: Strings.Settings.Appearance.HideTrackArtworkSub,
+        Group: Strings.Settings.ThemeOptions.Group.TrackLists,
+        Default: false);
+
+    /// <summary>The layer-qualified id Settings and the palette know the option by (<c>structure.hideTrackArt</c>).</summary>
+    public static string HideTrackArtQualifiedId => "structure." + HideTrackArt.Id;
 
     /// <inheritdoc />
-    public ThemePolicies Policies(OptionValues structure, in StyleMetrics metrics) => ClassicPolicies.Bundle;
+    public ThemeOptionSchema Options { get; } = ThemeOptionSchema.Of(HideTrackArt);
+
+    /// <inheritdoc />
+    public ThemePolicies Policies(OptionValues structure, in StyleMetrics metrics)
+        => structure.Get(HideTrackArt.Key) ? ClassicPolicies.BundleArtHidden : ClassicPolicies.Bundle;
 
     /// <inheritdoc />
     public ShellCapabilities Capabilities(OptionValues structure) => ShellCapabilities.Unrestricted;
@@ -271,8 +285,8 @@ public sealed class ClassicStructure : IStructureLayer
     /// <inheritdoc />
     public RoleSet RequiredRoles => RoleSet.None;
 
-    /// <summary>Each entry leaves with the M-PR that migrates its switch: sidebar M7a, row style M2, row density M3, hide art M4,
-    /// washes M6, page layout and rails M8. (Page motion, M1, was deleted: it has no row.)</summary>
+    /// <summary>Each entry leaves with the M-PR that migrates its switch: sidebar M7a, row style M2, washes M6, page layout and rails M8.
+    /// (Page motion, M1, was deleted: it has no row; row density, M3, is the style's `density` option and hide art, M4, the structure's `hideTrackArt`.)</summary>
     public IReadOnlyList<LegacyOptionRow> LegacyRows { get; } =
     [
         new("sidebarDesign", Strings.Settings.ThemeOptions.Group.Sidebar),
@@ -281,8 +295,6 @@ public sealed class ClassicStructure : IStructureLayer
         new("sidebarCustomize", Strings.Settings.ThemeOptions.Group.Sidebar),
         new("sidebarResetEverything", Strings.Settings.ThemeOptions.Group.Sidebar),
         new("trackListStyle", Strings.Settings.ThemeOptions.Group.TrackLists),
-        new("rowDensity", Strings.Settings.ThemeOptions.Group.TrackLists),
-        new("hideTrackArtwork", Strings.Settings.ThemeOptions.Group.TrackLists),
         new("pageLayout", Strings.Settings.ThemeOptions.Group.TrackPages),
         new("railUniform", Strings.Settings.ThemeOptions.Group.TrackPages),
         new("railReset", Strings.Settings.ThemeOptions.Group.TrackPages),

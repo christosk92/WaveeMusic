@@ -1,5 +1,5 @@
 // ── Entities/Track.Rules.cs ────────────────────────────────────────────────────────────────────────────────────────
-// every pure rule of the track surface: the lane table, the tier + relief ladders, the density and art ladders, the
+// every pure rule of the track surface: the lane table, the tier + relief ladders (the density ladders are the style's, M3), the
 // sort cycle, the command-bar fit, the filter model, the expanded-row facts, the shared number formats (incl. the exact
 // key / camelot tables), the membership diff, the reorder rules, the right-click target resolver, not-yet-out
 //
@@ -30,6 +30,7 @@ using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Localization;
+using Wavee.Theming;
 
 namespace Wavee;
 
@@ -143,9 +144,6 @@ public readonly partial struct Track
         /// <summary>Classic's Artist lane survives one tier longer than Album and folds below 440 DIP (tier 4).</summary>
         public const int ClassicArtistFoldTier = 4;
         public const float ClassicHeaderHeight = 32f;
-        /// <summary>The scale the Settings row-density MINIATURE draws the real row geometry at — here, not in the
-        /// picker, so "the preview mirrors the real row" is a tested number.</summary>
-        public const float PreviewScale = 0.25f;
         /// <summary>Relief steps; step 0 is "none", each later step drops exactly one more lane (<see cref="Relieve"/>).</summary>
         public const int MaxRelief = 8;
         /// <summary>How much width a yielded lane must re-earn — the tier ladder's band and asymmetry: yield at once,
@@ -161,11 +159,6 @@ public readonly partial struct Track
                 Artist: artist,
                 ArtistInTitle: showTrackArtist && !artist);
         }
-
-        /// <summary>Classic maps density onto the tighter legacy ladder (36/40/44/48); Modern keeps 40/48/56/64.</summary>
-        public static float RowHeightFor(int density, bool classic) => classic
-            ? density switch { 0 => 36f, 2 => 44f, 3 => 48f, _ => 40f }
-            : density switch { 0 => 40f, 2 => 56f, 3 => 64f, _ => 48f };
 
         public static float HeaderHeightFor(bool classic) => classic ? ClassicHeaderHeight : 36f;
 
@@ -209,12 +202,6 @@ public readonly partial struct Track
         /// placeholder of the same extent (the rows past the hot band that a later batch fills, a row scrolled to
         /// before its page arrived). The one rule the row component reads.</summary>
         public static bool RowHasData(bool isValid, bool knowsFace) => isValid && knowsFace;
-
-        /// <summary>Art edge per density on the thumbnail ladder, keeping row − art ≥ 16 (Compact 40 → 32 · Default 48 → 32
-        /// · Cozy 56 → 40 · Comfortable 64 → 48); Classic stays on 32 except Comfortable → 40.</summary>
-        public static float ArtSizeFor(int density, bool classic) => classic
-            ? (density == 3 ? Design.Size.Thumb40 : Design.Size.Thumb32)
-            : density switch { 2 => Design.Size.Thumb40, 3 => Design.Size.Thumb48, _ => Design.Size.Thumb32 };
 
         /// <summary>Classic folds VIDEO into the Title line and keeps ONE trailing command lane; both skins keep the
         /// disclosure chevron (the drawer restates what relief took away — a row affordance, not a skin flourish), under
@@ -378,16 +365,15 @@ public readonly partial struct Track
         /// caller subtracts it so the RAIL, not the gutter's edge, lands on the art centre.</summary>
         public const float RailOffset = 7f;
 
-        /// <summary>0 Compact · 1 Default · 2 Cozy · 3 Comfortable (the Modern ladder).</summary>
-        public static float RowHeightFor(int density) => density switch { 0 => 40f, 2 => 56f, 3 => 64f, _ => RowHeight };
-
-        /// <summary>Forwards to the one decision so every Modern row agrees on 32/40/48.</summary>
-        public static float ArtSizeFor(int density) => TableRules.ArtSizeFor(density, classic: false);
-
-        /// <summary>The episode row template's height, density-aware (B2, plan §3.2): two title lines + a clamped two-line
-        /// description + the meta line need more than a track row's single line, so the ladder sits a band above
-        /// <see cref="RowHeightFor(int)"/> at every density rather than sharing its numbers.</summary>
-        public static float EpisodeRowHeightFor(int density) => density switch { 0 => 88f, 2 => 104f, 3 => 112f, _ => 96f };
+        /// <summary>The track rows' geometry at the active style's density (M3): the row heights of both skins, their art edges and the episode row's height (two title
+        /// lines + a clamped two-line description + the meta line need more than a track row's single line, so its ladder sits a band above the track rows'). A
+        /// TRACKED read of the style's metrics (`ThemeHost.Metrics`, which a window-tier change does not move): a density change re-runs whoever read it. The style publishes the ladders (`StyleMetrics.TrackRows`); before a
+        /// composition publishes any it is <see cref="TrackRowMetrics.Standard"/>, the shell as it shipped.</summary>
+        public static TrackRowMetrics Rows()
+        {
+            var rows = ThemeHost.Metrics.Value.TrackRows;
+            return rows.IsUnset ? TrackRowMetrics.Standard : rows;
+        }
 
         /// <summary>Full at wide tiers, tighter as the pane narrows; tier 0 is the unchanged constants.</summary>
         public static float PadXFor(int tier) => tier <= 3 ? PadX : tier <= 5 ? Spacing.M : Spacing.S;

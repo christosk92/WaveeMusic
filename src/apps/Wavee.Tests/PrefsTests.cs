@@ -45,20 +45,12 @@ public sealed class PrefsTests : IDisposable
     }
 
     [Fact]
-    public void An_absent_store_answers_every_key_with_its_default()
-    {
-        Platform.UseSettings(null);
-        Assert.Equal(Platform.Keys.RowDensity.Default, Prefs.Appearance.RowDensity());
-        Assert.Equal(Platform.Keys.HideTrackArtwork.Default, Prefs.Appearance.TrackArtworkHidden());
-    }
-
-    [Fact]
     public void The_epochs_are_independent_fan_out_boundaries()
     {
-        // A row-density change must not re-render every mounted lyrics view.
+        // A track-list-style change must not re-render every mounted lyrics view.
         int lyrics = Prefs.Lyrics.Epoch.Peek();
         int hero = Prefs.DetailHero.Epoch.Peek();
-        Prefs.Appearance.Set(Platform.Keys.RowDensity, 2);
+        Prefs.Appearance.Set(Platform.Keys.TrackRowStyle, 1);
         Assert.Equal(lyrics, Prefs.Lyrics.Epoch.Peek());
         Assert.Equal(hero, Prefs.DetailHero.Epoch.Peek());
     }
@@ -73,13 +65,6 @@ public sealed class PrefsTests : IDisposable
     [InlineData(7, 2, 0)]
     public void An_out_of_range_int_reads_as_the_first_rung(int value, int count, int expected)
         => Assert.Equal(expected, Prefs.Clamp(value, count));
-
-    [Fact]
-    public void A_hand_edited_density_reads_as_compact_rather_than_as_nothing()
-    {
-        _store.Set(Platform.Keys.RowDensity, 99);
-        Assert.Equal(0, Prefs.Appearance.RowDensity());
-    }
 
     [Fact]
     public void A_downgraded_liked_cover_treatment_reads_as_stock()

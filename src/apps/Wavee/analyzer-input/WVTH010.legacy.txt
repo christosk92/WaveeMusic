@@ -6,3 +6,9 @@
 key appearance.pageMotion.style
 member Prefs.Appearance.PageMotionStyle
 member Platform.Keys.PageMotionStyle
+key detail.rowdensity
+key appearance.trackArtwork.hidden
+member Prefs.Appearance.RowDensity
+member Prefs.Appearance.TrackArtworkHidden
+member Platform.Keys.RowDensity
+member Platform.Keys.HideTrackArtwork

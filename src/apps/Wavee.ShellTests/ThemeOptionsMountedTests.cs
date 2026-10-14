@@ -97,9 +97,13 @@ public sealed class ThemeOptionsMountedTests(ShellHost host)
             foreach (string id in new[]
             {
                 "sidebarDesign", "sidebarDensity", "sidebarReset", "sidebarCustomize", "sidebarResetEverything",
-                "trackListStyle", "rowDensity", "hideTrackArtwork", "pageLayout", "railUniform", "railReset", "colorWashes",
+                "trackListStyle", "pageLayout", "railUniform", "railReset", "colorWashes",
             })
                 Assert.False(shell.Find("legacy:" + id).IsNull, "legacy row '" + id + "' is mounted");
+            foreach (string id in new[] { "structure.hideTrackArt", "style.density" })   // M4 and M3: generated rows in the same group, no legacy row left
+                Assert.False(shell.Find("opt:" + id).IsNull, "generated row '" + id + "' is mounted");
+            Assert.True(shell.Find("legacy:rowDensity").IsNull);
+            Assert.True(shell.Find("legacy:hideTrackArtwork").IsNull);
         });
 
     [Fact]
@@ -299,7 +303,7 @@ public sealed class ThemeOptionsMountedTests(ShellHost host)
             Assert.False(shell.Find("setup:frame:" + (int)Setup.WizardPage.Layout).IsNull);   // the Layout page's twin frame
             Assert.Single(shell.FindPrefix("settings:theme:card:"));
             Assert.False(shell.Find("legacy:sidebarDesign").IsNull);                          // what the Layout step shows today
-            Assert.True(shell.Find("legacy:rowDensity").IsNull);                              // not a first-run decision
+            Assert.True(shell.Find("legacy:trackListStyle").IsNull);                          // a legacy row that is not a first-run decision
             ShellHost.AssertNoNetwork();
         });
 }

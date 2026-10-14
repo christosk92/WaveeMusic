@@ -382,14 +382,6 @@ internal static partial class ClassicSettings
                     if (D(Tab.Appearance, "trackListStyle").Writer.Choose!(i)) Settings.Bump();
                 }), SettingsCard.ContentAlignment.Vertical, icon: icon);
             }
-            case "rowDensity":
-            {
-                int density = row.Current is int current ? current : 0;
-                return Item(title, sub, Controls.PickerStrip(4, density, static (i, on) => DensityCard(i, on), static i => SetDensity(i)),
-                    SettingsCard.ContentAlignment.Vertical, icon: icon);
-            }
-            case "hideTrackArtwork":
-                return Item(title, sub, RowToggle(row, enabled), isEnabled: enabled, icon: icon);
             case "pageLayout":
             {
                 int layout = row.Current is int current ? current : 0;
@@ -471,7 +463,7 @@ internal static partial class ClassicSettings
         SettingsRow row = g.Row;
         string title = Loc.Get(row.TitleKey);
         string? sub = row.DescriptionKey(facts) is { } key ? Loc.Get(key) : null;
-        string? icon = row.GlyphRole is { } glyph ? Glyph(glyph) : null;
+        string? icon = row.GlyphRole is { } glyph ? Glyph(glyph) : OptionGlyph(g.QualifiedId);
         bool enabled = row.Enabled(facts).Enabled;
 
         if (g.Pref is { } pref) return PrefItem(pref, row, title, sub, icon, wizard);
@@ -525,6 +517,14 @@ internal static partial class ClassicSettings
         }
     }
 
+    /// <summary>The glyph of one of Classic's own options (a generated row carries no catalog glyph): row size for the density, the picture for hide track art.</summary>
+    static string? OptionGlyph(string qualifiedId)
+    {
+        if (qualifiedId == ClassicDensity.QualifiedId) return Glyph("RowSize");
+        if (qualifiedId == ClassicStructure.HideTrackArtQualifiedId) return Glyph("Picture");
+        return null;
+    }
+
     static string[] ChoiceLabels(GeneratedOptionRow g)
     {
         var labels = new string[g.ChoiceTitleKeys.Count];
@@ -536,6 +536,8 @@ internal static partial class ClassicSettings
     /// contract of a later PR), so the card carries the choice's name, wrapped to two lines and cut with an ellipsis.</summary>
     static Element OptionChoiceCard(GeneratedOptionRow g, int index, bool on)
     {
+        // The density's cards are miniature rows at the real spacing (the picture the old Settings row drew), not a word.
+        if (g.QualifiedId == ClassicDensity.QualifiedId) return DensityCard(index, on);
         Element label = Controls.PickerLabel(Loc.Get(g.ChoiceTitleKeys[index]), on) with
         {
             Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.WordEllipsis, MinWidth = 0f, Shrink = 1f,

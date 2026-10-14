@@ -65,7 +65,6 @@ public sealed class ArtistPageMountedTests(ShellHost host)
             ScrollToTop = static () => { },
             OpenGallery = static (_, _) => { },
             RowsClassic = true,
-            ShowTrackArt = true,
         };
     }
 

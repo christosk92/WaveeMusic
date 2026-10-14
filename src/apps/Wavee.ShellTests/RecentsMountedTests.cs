@@ -65,7 +65,6 @@ public sealed class RecentsMountedTests(ShellHost host)
         public CultureInfo Culture => CultureInfo.CurrentCulture;
         public DateOnly Today => DateOnly.FromDateTime(DateTime.Now);
         public string ScrollScope => "test:recents:";
-        public bool ShowTrackArt => true;
         public ItemsViewController ListController { get; } = new();
         public ItemsViewController CalendarController { get; } = new();
         public AnnotatedScrollBarController ScrollController { get; } = new();

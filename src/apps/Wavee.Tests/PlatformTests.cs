@@ -274,7 +274,6 @@ public class PlatformSettingsTests
     public void Settings_AbsentKey_ReadsItsDeclaredDefault()
         => WithStore(new MemoryAppSettings(), static () =>
         {
-            Assert.Equal(1, Platform.Settings.Get(Platform.Keys.RowDensity));                 // Default, not Compact
             Assert.True(Platform.Settings.Get(Platform.Keys.ColorWashesEnabled));
         });
 

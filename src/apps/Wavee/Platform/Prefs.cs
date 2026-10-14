@@ -25,7 +25,7 @@
 //
 // `Platform.SettingsChanged` already bumps on EVERY write, and a surface could subscribe to that instead. It would also
 // re-render every mounted lyrics view when the user changed the audio output device. The epochs are the fan-out
-// boundary: one per group of surfaces that genuinely move together, so a row-density change re-reads the track lists
+// boundary: one per group of surfaces that genuinely move together, so a track-list-style change re-reads the track lists
 // and nothing else. A NEW epoch is a design decision, not a convenience — it asserts that a new independent set of
 // surfaces exists.
 //
@@ -48,7 +48,7 @@ public static partial class Prefs
     /// <summary>The cross-surface APPEARANCE epoch. Settings writes bump it once so mounted and KeepAlive-parked
     /// player/detail/artist surfaces re-read their persisted appearance flags on the same frame.
     ///
-    /// <para>WHAT BUMPS IT: marquee text, colour washes, row density, hide-track-artwork, track list style, the animated
+    /// <para>WHAT BUMPS IT: marquee text, colour washes, track list style, the animated
     /// lyrics backdrop, the liked-cover treatment, and the daylist clock. WHAT DOES NOT: the THEME (the engine's own epoch re-themes every
     /// mounted render in place) and the ZOOM (the host folds it into the window scale, which relayouts everything
     /// anyway).</para></summary>
@@ -60,14 +60,6 @@ public static partial class Prefs
         /// <summary>Announce that an appearance preference changed. Called ONCE per write, by the writer, AFTER the
         /// store has it — a bump before the write makes every reader re-read the old value.</summary>
         public static void Bump() => Epoch.Value = Epoch.Peek() + 1;
-
-        /// <summary>Reactive read of the app-wide track-cell ARTWORK policy (Settings ▸ Lists ▸ "Always hide track
-        /// artwork"). Every track surface, the drag insertion preview and the row-density miniature read it.</summary>
-        public static bool TrackArtworkHidden()
-        {
-            _ = Epoch.Value;
-            return Platform.Settings.Get(Platform.Keys.HideTrackArtwork);
-        }
 
         /// <summary>Reactive read of the marquee policy: may an overflowing title scroll under the pointer at all?</summary>
         public static bool Marquee()
@@ -83,15 +75,6 @@ public static partial class Prefs
         {
             _ = Epoch.Value;
             return Platform.Settings.Get(Platform.Keys.ColorWashesEnabled);
-        }
-
-        /// <summary>Reactive read of the row-density rung (0 Compact · 1 Default · 2 Cozy · 3 Comfortable), clamped.
-        /// The LADDERS themselves are owner M's (`Entities/Track.cs`'s table rules); this is only the persisted
-        /// choice.</summary>
-        public static int RowDensity()
-        {
-            _ = Epoch.Value;
-            return Clamp(Platform.Settings.Get(Platform.Keys.RowDensity), 4);
         }
 
         /// <summary>Reactive read of the track-list SKIN (0 Modern · 1 Classic), clamped.</summary>

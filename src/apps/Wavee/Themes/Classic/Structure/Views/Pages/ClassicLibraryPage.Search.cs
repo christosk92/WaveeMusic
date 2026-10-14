@@ -115,11 +115,12 @@ internal static partial class ClassicLibraryPage
     static Element[] TrackRows(LibrarySearchProps search)
     {
         var tracks = search.TrackHits();
+        bool showArt = !ClassicOptions.HideTrackArt();
         var rows = new Element[tracks.Count];
         for (int i = 0; i < rows.Length; i++)
         {
             var t = tracks[i];
-            rows[i] = TrackHitRow("search:t" + t.TrackSlot, t.TrackSlot, t.MatchStart, t.MatchLen, search.ShowTrackArt, t.Play);
+            rows[i] = TrackHitRow("search:t" + t.TrackSlot, t.TrackSlot, t.MatchStart, t.MatchLen, showArt, t.Play);
         }
         return rows;
     }

@@ -36,6 +36,7 @@ public static class ThemeHost
     private static readonly Signal<ThemeComposition> s_current = new(null!);
     private static readonly Signal<ThemeFacts> s_facts = new(ThemeFacts.Default);
     private static readonly Signal<ThemePolicies> s_policies = new(ThemePolicies.Default);
+    private static readonly Signal<StyleMetrics> s_metrics = new(StyleMetrics.Unset);
     private static readonly Signal<long> s_rootEpoch = new(0L);
     private static readonly OptionStore s_noOptions = new();
 
@@ -68,6 +69,10 @@ public static class ThemeHost
     /// state machine that reads only its policy is not re-run when another fact (the window tier) moves. Always a bundle the
     /// shell can run on: <see cref="ThemePolicies.Default"/> before <see cref="Install"/> and in place of an invalid one.</summary>
     public static IReadSignal<ThemePolicies> Policies => s_policies;
+
+    /// <summary>The style's metrics (<see cref="ThemeFacts.Metrics"/>) on a signal of their own, for the same reason as <see cref="Policies"/>: a core model that sizes
+    /// its rows from them (the track table, M3) is not re-run when the window tier moves.</summary>
+    public static IReadSignal<StyleMetrics> Metrics => s_metrics;
 
     /// <summary>The option values of the active composition, as the layers' functions see them.</summary>
     public static ThemeOptionValues Values => s_values;
@@ -131,6 +136,7 @@ public static class ThemeHost
         s_current.Value = null!;
         s_facts.Value = ThemeFacts.Default;
         s_policies.Value = ThemePolicies.Default;
+        s_metrics.Value = StyleMetrics.Unset;
         s_rootEpoch.Value = 0L;
         ThemePickerFacts.Publish(PickerState.Empty);
         ThemeState.Bind(ThemeCatalog.FallbackId);
@@ -251,6 +257,7 @@ public static class ThemeHost
         }
         s_facts.Value = facts;
         s_policies.Value = facts.Policies;
+        s_metrics.Value = facts.Metrics;
     }
 
     /// <summary>Hands the composition's definition to the engine when it is not the one already installed. For a plain

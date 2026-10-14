@@ -178,15 +178,17 @@ public sealed class ThemePickerTests : IDisposable
     }
 
     [Fact]
-    public void The_options_section_of_the_installed_classic_shows_every_legacy_row_with_nothing_generated()
+    public void The_options_section_of_the_installed_classic_shows_the_migrated_options_beside_the_legacy_rows()
     {
         ThemeHost.Install(ClassicTheme.Create());
         var model = ThemeOptionsSection.Current(developerMode: true);
 
-        Assert.Empty(model.Rows);          // no Classic option is migrated yet
+        // M4 (hide track art, structure) and M3 (density, style): structure options come first in the schema.
+        Assert.Equal(new[] { "structure.hideTrackArt", "style.density" }, model.Rows.Select(r => r.QualifiedId));
         Assert.False(model.IsEmpty);
-        Assert.Equal(12, model.Legacy.Count);   // M1 deleted the page-motion row
-        Assert.Null(model.Reset);          // legacy keys are not the theme's stored options
+        Assert.Equal(10, model.Legacy.Count);   // M1 deleted the page-motion row, M3 the row-density row, M4 the hide-art row
+        Assert.NotNull(model.Reset);            // the theme stores options now ...
+        Assert.False(model.Reset!.Enabled(SettingsFacts.Live).Enabled);   // ... and none is stored yet, so Reset has nothing to forget
         Assert.Equal("theme.classic.name", model.NameKey);
         Assert.Empty(ThemeOptionsSection.Commands(true));
     }

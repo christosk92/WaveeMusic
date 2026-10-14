@@ -129,12 +129,12 @@ public sealed class SettingsPageContractTests : IDisposable
     public void The_legacy_rows_come_in_order_one_group_per_label()
     {
         var model = Model(new LegacyOptionRow("trackListStyle", "Lists"), new LegacyOptionRow("sidebarDensity", "Side"),
-            new LegacyOptionRow("rowDensity", "Lists"));
+            new LegacyOptionRow("pageLayout", "Lists"));
 
         var groups = SettingsThemeOptions.Groups(model, new Facts(false), wizard: false);
 
         Assert.Equal(new[] { "Lists", "Side" }, groups.Select(g => g.Title));
-        Assert.Equal(new[] { "legacy:trackListStyle", "legacy:rowDensity" }, groups[0].Items.Select(i => i.Key));
+        Assert.Equal(new[] { "legacy:trackListStyle", "legacy:pageLayout" }, groups[0].Items.Select(i => i.Key));
         Assert.Equal(new[] { "legacy:sidebarDensity" }, groups[1].Items.Select(i => i.Key));
         Assert.All(groups.SelectMany(g => g.Items), i => Assert.Equal(SettingsOptionItemKind.Legacy, i.Kind));
     }
