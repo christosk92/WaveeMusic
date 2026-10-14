@@ -211,18 +211,18 @@ public class ContentStateTests
         Assert.Equal("", forMissing.Glyph);
         Assert.Same(home, forMissing.GoHome);
 
-        Func<Element> strip = static () => new BoxEl();
+        var strip = new OfflineStripProps();
         var forLane = ContentStateProps.ForOfflineLane(strip);
         Assert.Equal(ContentStateKind.OfflineLane, forLane.Kind);
         Assert.Equal("", forLane.Key);
-        Assert.Same(strip, forLane.OfflineStrip);
+        Assert.Same(strip, forLane.Strip);
     }
 
     [Fact]
     public void Equal_inputs_make_equal_props_so_an_unchanged_state_skips_the_template()
     {
         Action home = static () => { };
-        Func<Element> strip = static () => new BoxEl();
+        var strip = new OfflineStripProps();
 
         Assert.Equal(ContentStateProps.ForEmptyBody("page-empty:a"), ContentStateProps.ForEmptyBody("page-empty:a"));
         Assert.Equal(ContentStateProps.ForNotFound("page-notfound:a|", "g", home), ContentStateProps.ForNotFound("page-notfound:a|", "g", home));

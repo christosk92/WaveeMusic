@@ -1,6 +1,6 @@
 // ── Shell/Shell.UI.cs ──────────────────────────────────────────────────────────────────────────────────────────────
 // window frame (T4a: the host of `Shell.Frame`), the core side of the merged chrome row (T4b: the picture is `Shell.TitleBar`), drill trail,
-// narrow drawer (host), not-found page, network chrome, file-drop target + cue (LocalFileActions), the notification panel and its rows (A9)
+// narrow drawer (host), not-found page, network chrome, file-drop target + cue (LocalFileActions), the notification panel's host and verbs (A9; its rows are `Overlay.Notifications`)
 //
 // Role: UI
 // Owner: I
@@ -870,11 +870,12 @@ public static partial class Shell
 
     /// <summary>The page-scale offline strip (ch 29 W9 C / W10) floated over the kept content while a stored credential
     /// exists but the session is down. The chrome's accent Reconnect is the loud layer; the lane the theme draws is
-    /// caution-tinted. Core hands over the strip's builder (its own surface, <c>Controls.OfflineStrip</c>).</summary>
+    /// caution-tinted. Core hands over the strip's props (its own view, <c>Overlay.OfflineStrip</c>).</summary>
     static Element OfflineLane() => ViewSlots.View(ViewKeys.ShellContentState, s_offlineLane);
 
-    static readonly ContentStateProps s_offlineLane = ContentStateProps.ForOfflineLane(
-        static () => Controls.OfflineStrip(onRetry: static () => Spotify.Login()));
+    static readonly OfflineStripProps s_offlineStrip = new() { OnRetry = static () => Spotify.Login() };
+
+    static readonly ContentStateProps s_offlineLane = ContentStateProps.ForOfflineLane(s_offlineStrip);
 
     // ══ 4. THE MERGED CHROME ROW (the core side) ═════════════════════════════════════════════════════════════════
     //
@@ -1134,11 +1135,15 @@ public static partial class Shell
         Notify.PanelOpened(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
     }
 
+    /// <summary>The panel's host: the feed's signals, the filter, the expanded row, the relative-time tick and the update-progress mirror.
+    /// The picture is `Overlay.Notifications`; every click it makes is a verb on <see cref="NotificationsHost"/>.</summary>
+    [CoreHost]
     sealed class NotificationPanelView : Component
     {
+        NotificationsHost? _host;
+
         public override Element Render()
         {
-            var overlay = UseContext(Overlay.Service);   // the release rows' album menu host
             var expanded = UseSignal("");
             var tick = UseSignal(0);
             // Relative times advance while open; a frame-clock interval that auto-pauses when parked.
@@ -1154,378 +1159,65 @@ public static partial class Shell
             string expandedId = expanded.Value;
             long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-            var rows = new List<Element>(feed.Items.Count);
+            var rows = new List<Notification>(feed.Items.Count);
             for (int i = 0; i < feed.Items.Count; i++)
             {
                 var n = feed.Items[i];
-                if (Notify.PassesFilter(n, filter)) rows.Add(NotificationRow(n, now, expanded, expandedId, overlay));
+                if (Notify.PassesFilter(n, filter)) rows.Add(n);
             }
 
-            Element body = rows.Count > 0
-                ? new ScrollEl
-                {
-                    MaxHeight = Notify.FeedMaxHeight, ContentSized = true, AutoEdgeFade = true, ScrollKey = "notifications",
-                    Content = new BoxEl
-                    {
-                        Direction = 1, Width = Notify.PanelWidth, Padding = new Edges4(6f, 4f, 6f, 8f), Gap = 2f,
-                        Children = rows.ToArray(),
-                    },
-                }
-                : PanelEmpty(Loc.Get(Notify.EmptyMessageKey(filter, social, releases)));
-
-            return new BoxEl
+            return ViewSlots.View(ViewKeys.OverlayNotifications, new NotificationsProps
             {
-                Direction = 1, Width = Notify.PanelWidth, MinWidth = Notify.PanelWidth, MaxHeight = Notify.PanelMaxHeight,
-                Children =
-                [
-                    PanelHeader(filter),
-                    FilterPills(filter),
-                    Embed.Comp(static () => new PendingSyncRow()) with { Key = "nc-pending-sync" },
-                    body,
-                ],
-            };
-        }
-    }
-
-    /// <summary>"n playlist changes still syncing" — the app-wide answer to "did that actually happen?". Its own component
-    /// so the outbox draining never re-renders the feed; nothing at 0, which is nearly always.</summary>
-    sealed class PendingSyncRow : Component
-    {
-        public override Element Render()
-        {
-            int pending = Notify.PendingEdits.Value;
-            if (pending <= 0) return new BoxEl { Height = 0f, HitTestVisible = false };
-            return new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = 8f, Padding = new Edges4(14f, 4f, 14f, 8f),
-                Children =
-                [
-                    Icon(Icons.Refresh, 12f, Tok.TextTertiary),
-                    new TextEl(Strings.Notifications.PendingSync(pending)) { Size = 12f, Color = Tok.TextSecondary, Grow = 1f },
-                ],
-            };
-        }
-    }
-
-    static Element PanelHeader(NotifyFilter filter)
-    {
-        var kids = new List<Element>(3)
-        {
-            new TextEl(Loc.Get(Strings.Notifications.Title)) { Size = 15f, Weight = 700, Color = Tok.TextPrimary, Grow = 1f },
-            // G-090: Mark all read must also clear the OS banners it acknowledges — otherwise every live toast this
-            // session raised keeps sitting in the Action Center after the in-app centre says everything is read.
-            PanelLink(Loc.Get(Strings.Notifications.MarkAllRead), static () => NotificationVerbs.Shared.MarkAllRead()),
-        };
-        if (Notify.ShowsClear(filter) && Notify.ClearActivity is { } clear)
-            kids.Add(PanelLink(Loc.Get(Strings.Notifications.Clear), clear));
-        return new BoxEl
-        {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = 8f, Padding = new Edges4(14f, 12f, 8f, 8f),
-            Children = kids.ToArray(),
-        };
-    }
-
-    /// <summary>The filter chips on the shared one-line rail (it scrolls with an edge fade if the flyout is too narrow).</summary>
-    static Element FilterPills(NotifyFilter current) => new BoxEl
-    {
-        Padding = new Edges4(12f, 2f, 12f, 0f),
-        Children =
-        [
-            Controls.ChipRail(
-            [
-                FilterPill(Strings.Notifications.Filter.All, NotifyFilter.All, current),
-                FilterPill(Strings.Notifications.Filter.Updates, NotifyFilter.Updates, current),
-                FilterPill(Strings.Notifications.Filter.Spotify, NotifyFilter.Spotify, current),
-                FilterPill(Strings.Notifications.Filter.New, NotifyFilter.New, current),
-                FilterPill(Strings.Notifications.Filter.Activity, NotifyFilter.Activity, current),
-            ], "notify.filters"),
-        ],
-    };
-
-    /// <summary>The app's one filter chip (<see cref="Controls.Chip"/>); exclusive, so a click on the active one is a no-op.</summary>
-    static Element FilterPill(string labelKey, NotifyFilter pill, NotifyFilter current)
-        => Controls.Chip(Loc.Get(labelKey), pill == current, true, () => Notify.Filter.Value = pill) with { Key = "notify-filter:" + (int)pill };
-
-    static Element NotificationRow(Notification n, long now, Signal<string> expanded, string expandedId, IOverlayService? overlay) => n.Category switch
-    {
-        NotifyCategory.AppUpdate => NotificationCard("ntf:" + n.Id, UpdateRow(n.Update ?? AppUpdateSnapshot.Idle), n.IsUnread, null),
-        NotifyCategory.Social => NotificationCard("ntf:" + n.Id, SocialRow(n, now), n.IsUnread, () => PanelVerbs.OpenSocial(n)),
-        NotifyCategory.NewRelease => ReleaseCard(n, overlay),
-        _ => ActivityCard(n, now, expanded, expandedId),
-    };
-
-    /// <summary>A new-release row: click opens it; an ALBUM release also answers a right-click with the one album menu
-    /// (the cards' own — Play next, Add to queue, Save, Go to artist…). An episode release has no container menu.</summary>
-    static Element ReleaseCard(Notification n, IOverlayService? overlay)
-    {
-        var card = NotificationCard("ntf:" + n.Id, ReleaseRow(n), n.IsUnread, () => PanelVerbs.OpenRelease(n));
-        if (n.ReleaseKind != NewReleaseKind.Album || !n.Subject.IsValid || overlay is null || Controls.IsNullOverlay(overlay)) return card;
-        var target = ActionTarget.ForAlbum(n.Subject, n.Title);
-        string? art = n.ImageUrl, creator = n.Creator;
-        return card.WithContextMenu(overlay, () => Menus.Container(in target, art, creator));
-    }
-
-    /// <summary>The generic row frame: 56 min, r8, the hover rung, the unread dot, and the enter/exit/slide choreography.</summary>
-    static BoxEl NotificationCard(string key, Element content, bool unread, Action? onClick) => new BoxEl
-    {
-        Key = key,
-        Direction = 0, AlignItems = FlexAlign.Center, Gap = 10f, MinHeight = 56f,
-        Padding = new Edges4(10f, 8f, 10f, 8f), Corners = CornerRadius4.All(8f),
-        HoverFill = onClick is not null ? R.Layer.RowHover : ColorF.Transparent,
-        PressedFill = onClick is not null ? R.Layer.RowPressed : ColorF.Transparent,
-        Role = onClick is not null ? AutomationRole.Button : AutomationRole.None,
-        Cursor = onClick is not null ? CursorId.Hand : CursorId.Arrow,
-        Focusable = onClick is not null,
-        OnClick = onClick,
-        Enter = new EnterExit(Dy: 6f, Opacity: 0f, Active: true),
-        Exit = new EnterExit(Dy: -4f, Opacity: 0f, Active: true),
-        Layout = LayoutTransition.Slide,
-        Children = [content, UnreadDot(unread)],
-    };
-
-    static Element UnreadDot(bool unread) => unread
-        ? new BoxEl { Width = 8f, Height = 8f, Shrink = 0f, Corners = CornerRadius4.All(4f), Fill = Tok.AccentDefault }
-        : new BoxEl { Width = 8f, Shrink = 0f };
-
-    /// <summary>ONE row per update state, from the WHOLE published snapshot; the sentence under the title is the one
-    /// Settings ▸ About prints. While a download runs the row shows progress instead of buttons.</summary>
-    static Element UpdateRow(AppUpdateSnapshot s)
-    {
-        var arm = Notify.UpdateRow(s.State);
-        var (glyph, tint) = arm.Glyph switch
-        {
-            UpdateRowGlyph.Download => (Icons.Download, Tok.AccentDefault),
-            UpdateRowGlyph.Refresh => (Icons.Refresh, Tok.AccentDefault),
-            UpdateRowGlyph.Success => (Icons.StatusSuccess, Tok.SystemFillSuccess),
-            UpdateRowGlyph.Error => (Icons.StatusError, Tok.SystemFillCritical),
-            _ => (Icons.StatusInfo, Tok.TextSecondary),
-        };
-        Element trailing;
-        if (arm.ShowsProgress)
-        {
-            trailing = new BoxEl
-            {
-                Direction = 0, Gap = 8f, AlignItems = FlexAlign.Center, Margin = new Edges4(0f, 6f, 0f, 0f),
-                Children =
-                [
-                    ProgressBar.Create(Notify.UpdateProgress, 200f),
-                    R.Type.MicroMeta(s.ProgressPercent.ToString(CultureInfo.InvariantCulture) + "%") with
-                        { Color = Tok.TextTertiary, FontFamily = "Cascadia Code" },
-                ],
-            };
-        }
-        else if (arm.Actions.Length > 0)
-        {
-            var buttons = new Element[arm.Actions.Length];
-            for (int i = 0; i < buttons.Length; i++)
-            {
-                var verb = arm.Actions[i];
-                buttons[i] = PanelPill(UpdateVerbLabel(verb), () => PanelVerbs.RunUpdateRow(verb, s), accent: i == 0);
-            }
-            trailing = new BoxEl { Direction = 0, Gap = 6f, Wrap = true, Margin = new Edges4(0f, 4f, 0f, 0f), Children = buttons };
-        }
-        else trailing = new BoxEl();
-
-        string title = arm.TitleLocKey.Length > 0 ? Loc.Get(arm.TitleLocKey) : "";
-        string body = Notify.AppUpdateToasts.StateSentence(s);
-        return new BoxEl
-        {
-            Direction = 0, Grow = 1f, Basis = 0f, Gap = 10f, AlignItems = FlexAlign.Start,
-            Children =
-            [
-                GlyphChip(glyph, tint),
-                new BoxEl
-                {
-                    Direction = 1, Grow = 1f, Basis = 0f, Gap = 3f, MinWidth = 0f,
-                    Children =
-                    [
-                        R.Type.DenseTitle(title) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                        body.Length > 0 ? new TextEl(body) { Size = 12f, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 3 } : new BoxEl(),
-                        trailing,
-                    ],
-                },
-            ],
-        };
-    }
-
-    static string UpdateVerbLabel(UpdateRowAction verb) => Loc.Get(verb switch
-    {
-        UpdateRowAction.UpdateNow => Strings.Update.Action.UpdateNow,
-        UpdateRowAction.WhatsNew => Strings.Update.Action.WhatsNew,
-        UpdateRowAction.Later => Strings.Update.Action.Later,
-        UpdateRowAction.Retry => Strings.Update.Action.Retry,
-        UpdateRowAction.OpenReleasePage => Strings.Update.Action.OpenReleasePage,
-        _ => Strings.Update.Action.Dismiss,
-    });
-
-    static Element SocialRow(in Notification n, long now)
-    {
-        var text = new List<Element>(2)
-        {
-            R.Type.DenseMeta(SpotifyUpdates.CleanTitle(n.Title)) with { Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MaxLines = 2 },
-        };
-        if (n.TimestampMs > 0 && n.TimestampMs != NotifyRows.UpdatePin)
-            text.Add(R.Type.MicroMeta(RelativeTime(now - n.TimestampMs)) with { Weight = 600, Color = Tok.TextTertiary });
-        return new BoxEl
-        {
-            Direction = 0, Grow = 1f, Basis = 0f, Gap = 10f, AlignItems = FlexAlign.Center,
-            Children =
-            [
-                new BoxEl
-                {
-                    Width = 40f, Height = 40f, Shrink = 0f, Corners = CornerRadius4.All(20f), ClipToBounds = true,
-                    Children = [Controls.Artwork(n.ImageUrl, 40f, 40f, 20f)],
-                },
-                new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, Gap = 2f, Children = text.ToArray() },
-            ],
-        };
-    }
-
-    static Element ReleaseRow(in Notification n) => new BoxEl
-    {
-        Direction = 0, Grow = 1f, Basis = 0f, Gap = 10f, AlignItems = FlexAlign.Center,
-        Children =
-        [
-            new BoxEl
-            {
-                Width = 44f, Height = 44f, Shrink = 0f, Corners = CornerRadius4.All(5f), ClipToBounds = true,
-                Children = [Controls.Artwork(n.ImageUrl, 44f, 44f, 5f)],
-            },
-            new BoxEl
-            {
-                Direction = 1, Grow = 1f, Basis = 0f, Gap = 2f, MinWidth = 0f,
-                Children =
-                [
-                    R.Type.DenseTitle(n.Title) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                    new TextEl(n.Creator ?? "") { Size = 12f, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                ],
-            },
-            PanelTypePill(Loc.Get(Notify.ReleaseTypeKey(n.ReleaseKind, n.AlbumType))),
-        ],
-    };
-
-    /// <summary>A local library mutation: summary + age + Undo (when the journal offers it); a click expands the detail
-    /// (swapping the card's KEY, so the expansion is a keyed remount the slide choreography carries).</summary>
-    static Element ActivityCard(Notification n, long now, Signal<string> expanded, string expandedId)
-    {
-        bool isExpanded = expandedId == n.Id;
-        var right = new List<Element>(2)
-        {
-            R.Type.MicroMeta(RelativeTime(now - n.TimestampMs)) with { Weight = 600, Color = Tok.TextTertiary, Shrink = 0f },
-        };
-        if (Notify.UndoActivity is { } undo)
-            right.Add(PanelPill(Loc.Get(Strings.Notifications.Undo), () => _ = PanelVerbs.UndoActivityAsync(undo, n), accent: false));
-
-        var card = new BoxEl
-        {
-            Key = "ntf:act:" + n.Id,
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = 10f, MinHeight = 56f,
-            Padding = new Edges4(10f, 8f, 10f, 8f), Corners = CornerRadius4.All(8f),
-            HoverFill = R.Layer.RowHover, PressedFill = R.Layer.RowPressed,
-            Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true,
-            OnClick = () => { Notify.MarkRead(n.Id); expanded.Value = isExpanded ? "" : n.Id; },
-            Enter = new EnterExit(Dy: 6f, Opacity: 0f, Active: true),
-            Exit = new EnterExit(Dy: -4f, Opacity: 0f, Active: true),
-            Layout = LayoutTransition.Slide,
-            Children =
-            [
-                new BoxEl
-                {
-                    Direction = 0, Grow = 1f, Basis = 0f, Gap = 10f, AlignItems = FlexAlign.Center,
-                    Children =
-                    [
-                        GlyphChip(Icons.StatusInfo, Tok.TextSecondary),
-                        R.Type.DenseMeta(n.Title) with { Grow = 1f, Basis = 0f, MaxLines = 2, Wrap = TextWrap.Wrap, Color = Tok.TextPrimary },
-                        new BoxEl { Direction = 1, Shrink = 0f, AlignItems = FlexAlign.End, Gap = 4f, Children = right.ToArray() },
-                    ],
-                },
-                UnreadDot(n.IsUnread),
-            ],
-        };
-        if (!isExpanded) return card;
-        return new BoxEl
-        {
-            Key = "ntf:actwrap:" + n.Id, Direction = 1, Gap = 2f,
-            Children = [card, ActivityDetail(n)],
-        };
-    }
-
-    /// <summary>The target line (always present, so expanding is never a visual no-op) with an Open jump when the
-    /// subject routes, then the journal's detail sentence.</summary>
-    static Element ActivityDetail(in Notification n)
-    {
-        var subject = n.Subject;
-        var route = subject.IsValid ? For(subject) : Route.None;
-        string target = subject.IsValid ? (route.IsNone ? subject.Text : Dest(route).Title) : "";
-        var kids = new List<Element>(2);
-        if (target.Length > 0)
-            kids.Add(new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = 8f,
-                Children =
-                [
-                    new TextEl(target) { Size = 12f, Weight = 600, Color = Tok.TextSecondary, Grow = 1f, Basis = 0f, MaxLines = 2, Wrap = TextWrap.Wrap },
-                    route.IsNone
-                        ? new BoxEl()
-                        : PanelPill(Loc.Get(Strings.Notifications.Activity.Detail.Open), () => PanelVerbs.OpenRoute(route), accent: false),
-                ],
+                Filter = filter,
+                Rows = rows,
+                Now = now,
+                ExpandedId = expandedId,
+                EmptyText = rows.Count == 0 ? Loc.Get(Notify.EmptyMessageKey(filter, social, releases)) : "",
+                Clear = Notify.ShowsClear(filter) ? Notify.ClearActivity : null,
+                CanUndo = Notify.UndoActivity is not null,
+                UpdateProgress = Notify.UpdateProgress,
+                PendingEdits = Notify.PendingEdits,
+                Host = _host ??= new NotificationsHost(expanded),
             });
-        if (n.Body.Length > 0)
-            kids.Add(new TextEl(n.Body) { Size = 12f, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap });
-        return new BoxEl { Direction = 1, Gap = 3f, Margin = new Edges4(46f, 0f, 12f, 6f), Children = kids.ToArray() };
+        }
     }
 
-    static string RelativeTime(long ageMs)
+    /// <summary>What a click in the panel reaches: the model's state (filter, read marks, the activity journal's undo) and the verbs.</summary>
+    sealed class NotificationsHost(Signal<string> expanded) : INotificationsHost
     {
-        var (unit, count) = Notify.RelativeAge(ageMs);
-        return unit switch
+        public INotificationVerbs Verbs => PanelVerbs;
+
+        public void SetFilter(NotifyFilter filter) => Notify.Filter.Value = filter;
+
+        public void ToggleActivity(in Notification n)
         {
-            RelativeUnit.Now => Loc.Get(Strings.Friends.Now),
-            RelativeUnit.Minutes => Strings.Friends.MinAgo(count),
-            RelativeUnit.Hours => Strings.Friends.HrAgo(count),
-            _ => Strings.Friends.DAgo(count),
-        };
+            Notify.MarkRead(n.Id);
+            expanded.Value = expanded.Peek() == n.Id ? "" : n.Id;
+        }
+
+        public void Undo(in Notification n)
+        {
+            if (Notify.UndoActivity is { } undo) _ = PanelVerbs.UndoActivityAsync(undo, n);
+        }
+
+        public NotificationActivityTarget? ActivityTarget(in Notification n)
+        {
+            var subject = n.Subject;
+            if (!subject.IsValid) return null;
+            var route = For(subject);
+            string text = route.IsNone ? subject.Text : Dest(route).Title;
+            if (text.Length == 0) return null;
+            return new NotificationActivityTarget(text, route.IsNone ? null : () => PanelVerbs.OpenRoute(route));
+        }
+
+        /// <summary>An ALBUM release answers a right-click with the one album menu (the cards' own — Play next, Add to queue, Save, Go to
+        /// artist…). An episode release has no container menu.</summary>
+        public Func<ContextMenuModel?>? ReleaseMenu(in Notification n)
+        {
+            if (n.ReleaseKind != NewReleaseKind.Album || !n.Subject.IsValid) return null;
+            var target = ActionTarget.ForAlbum(n.Subject, n.Title);
+            string? art = n.ImageUrl, creator = n.Creator;
+            return () => Menus.Container(in target, art, creator);
+        }
     }
-
-    static Element PanelEmpty(string message) => new BoxEl
-    {
-        Direction = 1, Width = Notify.PanelWidth, MinHeight = 120f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        Padding = Edges4.All(24f),
-        Children = [R.Type.DenseTitle(message) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxWidth = 300f }],
-    };
-
-    static Element GlyphChip(string glyph, ColorF tint) => new BoxEl
-    {
-        Width = 36f, Height = 36f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        Corners = CornerRadius4.All(18f), Fill = Tok.FillSubtleSecondary,
-        Children = [Icon(glyph, 16f, tint)],
-    };
-
-    static Element PanelTypePill(string label) => new BoxEl
-    {
-        Shrink = 0f, Padding = new Edges4(9f, 2f, 9f, 2f), Corners = CornerRadius4.All(10f), Fill = Tok.FillSubtleSecondary,
-        Children = [R.Type.Eyebrow(label) with { Color = Tok.TextTertiary }],
-    };
-
-    static Element PanelPill(string label, Action onClick, bool accent) => new BoxEl
-    {
-        Shrink = 0f, MinHeight = 28f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        Padding = new Edges4(12f, 4f, 12f, 4f), Corners = CornerRadius4.All(14f),
-        Fill = accent ? Tok.AccentDefault : Tok.FillControlDefault,
-        HoverFill = accent ? Tok.AccentSecondary : Tok.FillControlSecondary,
-        PressedFill = accent ? Tok.AccentTertiary : Tok.FillControlTertiary,
-        BorderWidth = accent ? 0f : 1f, BorderColor = Tok.StrokeControlDefault,
-        Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true,
-        OnClick = onClick,
-        Children = [new TextEl(label) { Size = 12f, Weight = 600, Color = accent ? Tok.TextOnAccentPrimary : Tok.TextPrimary }],
-    };
-
-    static Element PanelLink(string label, Action onClick) => new BoxEl
-    {
-        Shrink = 0f, MinHeight = 28f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        Padding = new Edges4(8f, 3f, 8f, 3f), Corners = CornerRadius4.All(6f),
-        HoverFill = R.Layer.RowHover, PressedFill = R.Layer.RowPressed,
-        Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, OnClick = onClick,
-        Children = [new TextEl(label) { Size = 12f, Weight = 600, Color = Tok.AccentTextPrimary }],
-    };
 }

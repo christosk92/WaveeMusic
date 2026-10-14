@@ -1234,26 +1234,6 @@ public static partial class Controls
         };
     }
 
-    /// <summary>The OFFLINE STRIP — the fourth voice's other shape. A notice over KEPT content, not a replacement of the
-    /// page: an offline surface that still has cached rows shows them, with this above.</summary>
-    public static Element OfflineStrip(string? message = null, Action? onRetry = null)
-    {
-        var kids = new List<Element>(4)
-        {
-            Icon(Icons.InfoBarBackgroundCircle, 16f, Tok.SystemFillCaution),
-            R.Type.TrackMeta(message ?? Loc.Get(Strings.Common.Offline)),
-            new BoxEl { Grow = 1 },
-        };
-        if (onRetry is not null) kids.Add(Button.Standard(Loc.Get(Strings.Common.Retry), onRetry));
-        return new BoxEl
-        {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-            Padding = new Edges4(Spacing.L, Spacing.S, Spacing.L, Spacing.S),
-            Fill = Tok.SystemFillCautionBackground, Corners = CornerRadius4.All(Radii.Control),
-            Children = kids.ToArray(),
-        };
-    }
-
     // ══ 9. THE THREE DIALOG HELPERS ══════════════════════════════════════════════════════════════════════════════════
     //
     // THE WIDTH LADDER (ch 29 W22). 320 is the engine dialog's own minimum and the default whenever fewer than three
