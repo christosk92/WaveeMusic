@@ -16,7 +16,7 @@
 // An earlier pass of this port DROPPED every fact above that touched a type Sidebar.cs declared WITHOUT `public`
 // (`SidebarTreeSelection`, `SidebarFolderFlyoutNav`, `SidebarFolderTree`,
 // `SidebarStageHold<T>`, `RootlistDropDecision`, `RootlistSlotMapper`,
-// `SidebarRowGeometry`) — this assembly reaches Sidebar.cs only via an ordinary `ProjectReference` and the solution
+// the former core row-geometry class) — this assembly reaches Sidebar.cs only via an ordinary `ProjectReference` and the solution
 // carries no `InternalsVisibleTo` anywhere, so none of them were reachable from `Wavee.Tests`, contradicting
 // Sidebar.cs's own file header ("source-visible to `Wavee.Tests`"). That was confirmed to be an artifact of how the
 // file was assembled, not a design decision, and has since been fixed upstream — every type above is now `public`,
@@ -40,6 +40,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Localization;
 using Wavee;
 using Wavee.Themes.Classic;
+using Wavee.Theming.Contracts;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -147,19 +148,18 @@ static class SidebarTreeFixture
     public static string Fo(string groupId) => SidebarPinId.FolderPrefix + groupId;
 }
 
-/// <summary><c>SidebarRowGeometry</c>'s ladder constants this suite needs, reproduced as literals: the class is
-/// declared <c>internal</c> in Sidebar.cs (no <c>public</c> modifier) and this assembly carries no
-/// <c>InternalsVisibleTo</c>, so its own values are not reachable from here — see the porting report's MISMATCH
-/// note. Kept in one place so every region that needs the ladder cites the same numbers.</summary>
-static class RowGeometryLiteral
+/// <summary>The tree ladder the resolver's depth pick reads: the pane hands it the structure's (<c>NavRowKit.TreeLadder</c>), so the
+/// suite drives it with Classic's, the one the rows and the caret are drawn on. Kept in one place so every region that needs the
+/// ladder cites the same numbers.</summary>
+static class DropLadder
 {
-    /// <summary>TreeContentX(0) = IndentFor(0) = 0: a tree row starts at the row origin.</summary>
-    public const float TreeContentX0 = 0f;
-    /// <summary>== IndentStep.</summary>
-    public const float TreeGuideStep = 31f;
-    public const float TreeEndHeight = 24f;
+    public static NavTreeLadder Tree => ClassicNavRows.Kit.TreeLadder;
 
-    public static float TreeContentX(int depth) => TreeContentX0 + depth * TreeGuideStep;
+    /// <summary>The tree's closing drop gutter.</summary>
+    public const float TreeEndHeight = SidebarGeometry.TreeEndHeight;
+
+    /// <summary>Where a row at <paramref name="depth"/> starts drawing: the origin plus one step per level.</summary>
+    public static float TreeContentX(int depth) => Tree.OriginX + depth * Tree.IndentStep;
 }
 
 // ── RootlistOps: the ONE legality authority every surface shares ───────────────────────────────────────────────────
@@ -289,7 +289,7 @@ public class RootlistSlotResolverTests
     /// <summary>Resolve with the pointer parked over the row's LABEL (x far past the indent ladder) — the default
     /// position, and therefore the one that must mean "stay at this row's depth".</summary>
     static SidebarDropSlot At(float t, in SidebarRowFacts f, float h = 44f, float x = 200f)
-        => RootlistSlotResolver.Resolve(3, t, x, h, in f, SidebarDropSlot.None);
+        => RootlistSlotResolver.Resolve(3, t, x, h, in f, SidebarDropSlot.None, DropLadder.Tree);
 
     // ── the edge band ───────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -434,8 +434,8 @@ public class RootlistSlotResolverTests
         // Parked on the row's own content origin the pick is that depth; half a step plus 5 DIP to the LEFT of it —
         // a deliberate slide, still inside the row — it is one shallower. depth 1: 31 → 10.5. depth 2: 62 → 41.5.
         var f = Leaf(depth: depth, nextDepth: 0);
-        float here = RowGeometryLiteral.TreeContentX(depth);
-        float outdent = here - RowGeometryLiteral.TreeGuideStep / 2f - 5f;
+        float here = DropLadder.TreeContentX(depth);
+        float outdent = here - DropLadder.Tree.IndentStep / 2f - 5f;
         Assert.Equal(depth, At(0.9f, in f, x: here).Depth);
         Assert.Equal(depth - 1, At(0.9f, in f, x: outdent).Depth);
     }
@@ -445,12 +445,12 @@ public class RootlistSlotResolverTests
     {
         var f = Leaf(depth: 2, nextDepth: 0);
         var previous = new SidebarDropSlot(3, SidebarDropKind.After, 1, SidebarDropRefusal.None);
-        // The 1→2 boundary sits at TreeContentX(1) + 0.5·TreeGuideStep = 46.5. Inside 4 DIP of it the previous holds…
-        Assert.Equal(1, RootlistSlotResolver.Resolve(3, 0.9f, 47f, 44f, in f, in previous).Depth);
+        // The 1→2 boundary sits at TreeContentX(1) + 0.5·IndentStep = 46.5. Inside 4 DIP of it the previous holds…
+        Assert.Equal(1, RootlistSlotResolver.Resolve(3, 0.9f, 47f, 44f, in f, in previous, DropLadder.Tree).Depth);
         // …and past it the pick commits.
-        Assert.Equal(2, RootlistSlotResolver.Resolve(3, 0.9f, 51f, 44f, in f, in previous).Depth);
+        Assert.Equal(2, RootlistSlotResolver.Resolve(3, 0.9f, 51f, 44f, in f, in previous, DropLadder.Tree).Depth);
         // With no previous slot there is nothing to hold: the raw pick wins.
-        Assert.Equal(2, RootlistSlotResolver.Resolve(3, 0.9f, 47f, 44f, in f, SidebarDropSlot.None).Depth);
+        Assert.Equal(2, RootlistSlotResolver.Resolve(3, 0.9f, 47f, 44f, in f, SidebarDropSlot.None, DropLadder.Tree).Depth);
     }
 
     [Fact]
@@ -478,8 +478,8 @@ public class RootlistSlotResolverTests
         var f = Leaf() with { IsListEnd = true };
         foreach (float t in new[] { 0f, 0.25f, 0.5f, 0.75f, 1f })
         {
-            var slot = RootlistSlotResolver.Resolve(9, t, 200f, RowGeometryLiteral.TreeEndHeight, in f,
-                                                    SidebarDropSlot.None);
+            var slot = RootlistSlotResolver.Resolve(9, t, 200f, DropLadder.TreeEndHeight, in f,
+                                                    SidebarDropSlot.None, DropLadder.Tree);
             Assert.Equal(SidebarDropKind.EndOfList, slot.Kind);
             Assert.Equal(0, slot.Depth);
         }
@@ -493,7 +493,7 @@ public class RootlistSlotResolverTests
     [InlineData(3, float.NaN, 44f)]  // no viewport ⇒ no resolvable t
     public void DegenerateGeometry_RefusesWithAReason_NeverGuesses(int planIndex, float t, float h)
     {
-        var slot = RootlistSlotResolver.Resolve(planIndex, t, 100f, h, Leaf(), SidebarDropSlot.None);
+        var slot = RootlistSlotResolver.Resolve(planIndex, t, 100f, h, Leaf(), SidebarDropSlot.None, DropLadder.Tree);
         Assert.Equal(SidebarDropKind.None, slot.Kind);
         Assert.Equal(SidebarDropRefusal.Unavailable, slot.Refusal);
     }
@@ -530,7 +530,7 @@ public class RootlistSlotResolverTests
         Assert.Equal(SidebarDropKind.Into, into.Kind);
 
         var end = RootlistSlotResolver.Resolve(2, 0.5f, 200f, 24f,
-            Row(sorted: true) with { IsListEnd = true }, SidebarDropSlot.None);
+            Row(sorted: true) with { IsListEnd = true }, SidebarDropSlot.None, DropLadder.Tree);
         Assert.Equal(SidebarDropRefusal.SortedList, end.Refusal);
     }
 
@@ -546,7 +546,7 @@ public class RootlistSlotResolverTests
     public void Unavailable_IsTheDegenerateGeometryRefusal()
     {
         Assert.Equal(SidebarDropRefusal.Unavailable,
-            RootlistSlotResolver.Resolve(-1, 0.5f, 200f, 44f, Row(), SidebarDropSlot.None).Refusal);
+            RootlistSlotResolver.Resolve(-1, 0.5f, 200f, 44f, Row(), SidebarDropSlot.None, DropLadder.Tree).Refusal);
     }
 
     // ── the undo anchor ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -680,7 +680,7 @@ public class RootlistSlotResolverTests
 
 // ── SidebarDropCue: line ⟺ ordering, plate ⟺ Into, never both, never neither-while-armed ────────────────────────────
 //
-// Full port of SidebarDropCueTests.cs. SidebarRowGeometry references replaced with RowGeometryLiteral (see its doc).
+// Full port of SidebarDropCueTests.cs. The ladder is the structure's (`DropLadder`).
 public class SidebarDropCueTests
 {
     static SidebarDropSlot Slot(SidebarDropKind kind, int depth = 0)
@@ -749,7 +749,7 @@ public class SidebarDropCueTests
             CenterAccepts: true, SourceIsSelf: true, SortedNonCustom: true, RootlistLoaded: true);
         foreach (float t in new[] { 0f, 0.2f, 0.5f, 0.8f, 1f })
         {
-            var slot = RootlistSlotResolver.Resolve(4, t, 100f, 44f, in facts, SidebarDropSlot.None);
+            var slot = RootlistSlotResolver.Resolve(4, t, 100f, 44f, in facts, SidebarDropSlot.None, DropLadder.Tree);
             Assert.NotEqual(SidebarDropRefusal.None, slot.Refusal);
             Assert.False(slot.DrawsLine || slot.DrawsPlate);
         }

@@ -89,7 +89,7 @@ internal sealed class ClassicSectionFlyout(INavRowHost owner, string sectionId, 
         if (row.EntryIndex < 0 && row.Kind == SidebarRowKind.IconRow)
         {
             var dest = host.DestOf(row.Key);
-            return Sidebar.EntityRow.Create(new Sidebar.RowSpec
+            return ClassicEntityRow.Create(new ClassicRowSpec
             {
                 Key = row.Key, Label = dest.Title, Shape = SidebarRowShape.Glyph, Glyph = dest.Glyph,
                 Selected = string.Equals(row.Key, host.SelectedRoutePeek, StringComparison.Ordinal),
@@ -103,7 +103,7 @@ internal sealed class ClassicSectionFlyout(INavRowHost owner, string sectionId, 
         Action? click = e.IsFolder && folderId.Length > 0 ? () => model.ToggleFolder(folderId)
             : e.RouteKey is { Length: > 0 } r ? () => { host.Navigate(r, e.Name); closeFlyout(); }
             : null;
-        return Sidebar.EntityRow.Create(new Sidebar.RowSpec
+        return ClassicEntityRow.Create(new ClassicRowSpec
         {
             Key = row.Key, Label = e.Name.Length > 0 ? e.Name : NavRowFacts.ShortUri(e.Uri),
             Subtitle = Sidebar.PaneText.SubtitleOf(in e), Shape = SidebarRowShape.EntityTwoLine, Depth = row.Depth,
@@ -241,7 +241,7 @@ internal sealed class ClassicFolderFlyout(INavRowHost owner, string sectionId, s
                 : null;
         string cueKey = folder ? entry.Id : entry.Uri;
 
-        return Sidebar.EntityRow.Create(new Sidebar.RowSpec
+        return ClassicEntityRow.Create(new ClassicRowSpec
         {
             Key = entry.Id,
             // Same gate as EntryRow's (Trap 5). A FOLDER has no entity identity to wait for, so it keeps the
@@ -266,7 +266,7 @@ internal sealed class ClassicFolderFlyout(INavRowHost owner, string sectionId, s
             Menu = menu,
             Drag = payload,
             DropTarget = drop,
-            DropCue = drop is null ? null : new Sidebar.RowDropCue(
+            DropCue = drop is null ? null : new ClassicRowDropCue(
                 () => host.IsRailDropActive(cueKey), s_cueFill, s_cueBorder, SidebarGeometry.DropPlateBorderWidth),
         });
     }

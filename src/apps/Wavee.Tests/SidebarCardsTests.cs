@@ -11,6 +11,7 @@
 
 using FluentGpu.Foundation;
 using Wavee;
+using Wavee.Themes.Classic;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -148,8 +149,8 @@ public class SidebarCardsTests
     [Fact]
     public void The_tile_cover_is_the_cell_less_the_plate_padding_on_both_sides()
     {
-        Assert.Equal(53f, SidebarCardRules.TileCover(69f));
-        Assert.Equal(24f, SidebarCardRules.TileCover(40f));
-        Assert.Equal(0f, SidebarCardRules.TileCover(10f));
+        Assert.Equal(53f, SidebarGeometry.TileCover(69f));
+        Assert.Equal(24f, SidebarGeometry.TileCover(40f));
+        Assert.Equal(0f, SidebarGeometry.TileCover(10f));
     }
 }

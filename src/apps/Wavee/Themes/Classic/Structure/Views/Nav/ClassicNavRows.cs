@@ -3,7 +3,9 @@
 // What Classic supplies for the pane's list, in one stateless object the template hands the core pane at mount: the planner and
 // its owning-section answer (`SidebarRowPlanner`, X26), the publish diff (`SidebarPlanDiff`), the analytic extents
 // (`SidebarRowExtents`), the mid-drag freeze (`SidebarStageHold<T>`; all in `Rules\SidebarPlanner.cs`), the row slot
-// (`ClassicNavRow`, which also draws the drop cues) and the drag presentation (`NavDropLook`, T5e).
+// (`ClassicNavRow`, which also draws the drop cues), the drag presentation (`NavDropLook`, T5e) and, since T5f, the ladder answers core's pane
+// still needs (the drop resolver's depth ladder, the list's inset, a row's pitch, the pill's height, the Library grid's columns): the
+// core keeps no copy of `SidebarGeometry`.
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -20,6 +22,21 @@ public sealed class ClassicNavRows : NavRowKit
     public static readonly ClassicNavRows Kit = new();
 
     ClassicNavRows() { }
+
+    /// <inheritdoc />
+    public override NavTreeLadder TreeLadder => new(SidebarGeometry.TreeContentX(0), SidebarGeometry.IndentStep);
+
+    /// <inheritdoc />
+    public override Edges4 ListInset => SidebarGeometry.ListInset;
+
+    /// <inheritdoc />
+    public override float PitchOf(SidebarRowShape shape) => SidebarGeometry.PitchOf(shape);
+
+    /// <inheritdoc />
+    public override float PillHeight => SidebarGeometry.PillH;
+
+    /// <inheritdoc />
+    public override int GridColumns(float paneWidth) => SidebarGeometry.GridColumns(paneWidth);
 
     /// <inheritdoc />
     public override SidebarRowPlan Plan(SidebarLayoutDoc doc, in SidebarProjectionInput input, in SidebarPlanOptions options,

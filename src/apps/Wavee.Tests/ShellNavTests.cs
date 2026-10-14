@@ -297,7 +297,7 @@ public class ShellResponsiveLayoutTests
     {
         // The preference is clamped to the pane bounds, then capped so a rail's worth of page stays visible.
         Assert.Equal(SidebarPaneBounds.NavPaneMinW, SidebarPaneModeRules.OverlayWidth(100f, 1200f));
-        Assert.Equal(320f - SidebarRowGeometry.RailWidth, SidebarPaneModeRules.OverlayWidth(400f, 320f));
+        Assert.Equal(320f - SidebarPaneBounds.RailWidth, SidebarPaneModeRules.OverlayWidth(400f, 320f));
         Assert.Equal(0f, SidebarPaneModeRules.OverlayWidth(320f, 40f));
     }
 

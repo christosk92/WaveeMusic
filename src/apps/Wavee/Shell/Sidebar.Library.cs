@@ -1,6 +1,7 @@
 // ── Shell/Sidebar.Library.cs ───────────────────────────────────────────────────────────────────────────────────────
 // Your Library's head (design P.2a) and list shaping: the page dropdown, the chips, the toolbar's search state, the
-// grid's columns, the head↔list keyboard handoff — and the list shaper (ex LibraryV3View) and the pin window
+// head↔list keyboard handoff — and the list shaper (ex LibraryV3View) and the pin window. The head's heights, insets and
+// toolbar widths and the grid's columns are the structure's (`ClassicLibraryHeadLayout`, `SidebarGeometry.GridColumns`, T5f).
 //
 // Role: CORE · Spec: sidebar-rework-implementation.md §P5.1 · design P.2, P.2a, V.11, Q11-Q13
 
@@ -29,37 +30,6 @@ public readonly record struct SidebarLibraryCounts(int Albums, int Artists, int 
 
 public static class SidebarLibraryHeadRules
 {
-    public const float HomeRowHeight = 40f;       // row A 36 + 2·2 margin
-    public const float SeparatorHeight = 8f;
-    public const float DropdownRowHeight = 40f;
-    public const float ChipRowHeight = 40f;
-    public const float ChipHeight = 32f;
-    public const float ChipGap = 8f;
-    public const float ToolbarHeight = 40f;
-    public const float ToolbarControl = 32f;
-    public const float RuleHeight = 1f;
-    /// <summary>The dropdown title's x in pane space (design P.2a: "at the header's x", pane 14) and its 8-px hit inset.</summary>
-    public const float TitleX = SidebarRowGeometry.PaneEdge + SidebarRowGeometry.HeaderTextX;
-    public const float TitleHitInset = 8f;
-    public const float TitleChevron = 10f;
-    /// <summary>The chip row's and the toolbar's lead/trail inset in pane space (the chips' first edge sits under the title).</summary>
-    public const float BandInsetX = 12f;
-    /// <summary>The whole head above the list: 3 (top inset) + 40 + 8 + 40 + 40 + 40 + 1 = 172.</summary>
-    public const float HeadHeight = SidebarRowGeometry.PaneTopInset + HomeRowHeight + SeparatorHeight + DropdownRowHeight
-                                    + ChipRowHeight + ToolbarHeight + RuleHeight;
-
-    /// <summary>The grid's columns (design P.2: 2–4 from the pane width, no size picker): as many 116-px cells with 8-px
-    /// gaps as the lane fits, clamped to [2, 4]. The lane is the pane minus the list's 4+4 pad and the 8+8 strip inset.</summary>
-    public const float GridMinCell = 116f;
-    public const float GridGap = 8f;
-    public static int GridColumns(float paneWidth)
-    {
-        float lane = paneWidth - 8f - 16f;
-        if (!float.IsFinite(lane) || lane <= 0f) return 2;
-        int n = (int)System.MathF.Floor((lane + GridGap) / (GridMinCell + GridGap));
-        return System.Math.Clamp(n, 2, 4);
-    }
-
     /// <summary>The kind items in their catalogue order ("albums", "artists", "podcasts", "audiobooks").</summary>
     static readonly string[] Items = ["albums", "artists", "podcasts", "audiobooks"];
     static readonly string[] TitleKeys = ["nav.albums", "nav.artists", "nav.podcasts", "nav.audiobooks"];
@@ -141,41 +111,12 @@ public static class SidebarLibraryHeadRules
     public static SidebarLibrarySort Effective(SidebarLibrarySort stored, SidebarLibraryFilter filter)
         => stored == SidebarLibrarySort.CustomOrder && !CustomOrderOffered(filter) ? SidebarLibrarySort.Recents : stored;
 
-    // ── the toolbar's shape at the pane width (design: the sort/view row keeps icons only below 240) ─────────────────
-
-    /// <summary>IconButton's <c>ControlSize.Small</c> box (search, the icon-only sort, ⋯).</summary>
-    public const float ToolbarIconButton = 28f;
-    public const float ToolbarGap = 4f;
-    /// <summary>The labelled sort button's chrome around its label: 8 + 16 glyph + 8 gap + 8.</summary>
-    public const float SortButtonChrome = 40f;
-    /// <summary>Below this pane width List/Grid leave the toolbar (they stay in ⋯ › View, which LibraryOptions always has).</summary>
-    public const float FoldViewBelow = 240f;
+    // ── the toolbar's shape (design: the sort/view row keeps icons only below 240; the widths that decide it are the structure's) ──
 
     /// <summary>Full: [⌕][⇅ label] · [≡][▦][+][⋯]. IconSort: the sort button is icon-only (as while searching). Folded:
     /// icon-only sort AND no List/Grid toggles — the ⋯ (which holds Filters, View and Show Liked Songs) must never be the
     /// control that gets clipped.</summary>
     public enum ToolbarShape : byte { Full = 0, IconSort = 1, Folded = 2 }
-
-    /// <summary>The toolbar's content lane: the pane minus the head's 4+4 pad and the toolbar's own lead inset (8).</summary>
-    public static float ToolbarLane(float paneWidth) => paneWidth - 2f * SidebarRowGeometry.PaneEdge - (BandInsetX - SidebarRowGeometry.PaneEdge);
-
-    /// <summary>The summed control widths plus gaps for a shape (the spacer is 0 at the minimum). The label is measured
-    /// with the row label's estimate (<see cref="SidebarLabelFit.AverageCharWidth"/>).</summary>
-    public static float ToolbarWidth(ToolbarShape shape, string sortLabel)
-    {
-        float sort = shape == ToolbarShape.Full ? SortButtonChrome + sortLabel.Length * SidebarLabelFit.AverageCharWidth : ToolbarIconButton;
-        float view = shape == ToolbarShape.Folded ? 0f : 2f * ToolbarControl;
-        int controls = shape == ToolbarShape.Folded ? 4 : 6;   // search, sort, [List, Grid,] +, ⋯
-        return ToolbarIconButton + sort + view + ToolbarControl + ToolbarIconButton + (controls - 1) * ToolbarGap;
-    }
-
-    /// <summary>The widest shape that fits: Folded below <see cref="FoldViewBelow"/>; the label only when the whole row
-    /// with it fits the lane ("Recently added" at the 320 default does not: icon-only there).</summary>
-    public static ToolbarShape ShapeOf(float paneWidth, string sortLabel)
-    {
-        if (!float.IsFinite(paneWidth) || paneWidth < FoldViewBelow) return ToolbarShape.Folded;
-        return ToolbarWidth(ToolbarShape.Full, sortLabel) <= ToolbarLane(paneWidth) ? ToolbarShape.Full : ToolbarShape.IconSort;
-    }
 
     // ── the keyboard ring (design V.11, P.2a) ────────────────────────────────────────────────────────────────────────
 
