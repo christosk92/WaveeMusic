@@ -14,7 +14,7 @@
 //   Host     the layout firewall (Width = Height = side, ClipToBounds, IsolateLayout, 8-DIP corners, 320 ms entrance)
 //            holding exactly two children: the face (built once per render of the host, all binds) and the Clock.
 //   Clock    a 0×0 component that owns the only timer. It samples `Playback.PositionMs` against the FRAME clock
-//            (`Design.FrameTime`), folds the transport into a `Deck.Input`, ticks the model and diff-writes one frame
+//            (`FrameTime`), folds the transport into a `Deck.Input`, ticks the model and diff-writes one frame
 //            into the `Slab` inside ONE batch, value-gated at a perceptual quantum. `ClockRules.ShouldTick` decides
 //            whether the timer runs at all: a paused, settled, ended, reduced-motion or rail-closed deck runs none and
 //            requests no frame; a transport CHANGE is then the clock.
@@ -172,7 +172,7 @@ public static partial class Deck
             if (!_built || !string.Equals(option, _modelOption, StringComparison.Ordinal))
             {
                 var facts = ReadFacts(Sig, Rpm(), null);
-                Model = Models.Create(in Preset, LevelTap, Seed(in facts, Design.FrameTime.NowMs), SpectrumTap);
+                Model = Models.Create(in Preset, LevelTap, Seed(in facts, FrameTime.NowMs), SpectrumTap);
                 _modelOption = option;
                 _built = true;
             }
@@ -320,7 +320,7 @@ public static partial class Deck
             bool railOpen = Shell.Ui.RailOpen.Value;
             bool settled = _settled.Value;
             bool active = _active?.Value ?? true;
-            long now = Design.FrameTime.NowMs;
+            long now = FrameTime.NowMs;
 
             RowsOf(cur, out int row, out int album);
             bool fold = false, rowMoved = row != _row;
@@ -356,7 +356,7 @@ public static partial class Deck
         {
             var h = Host;
             var sig = h.Sig;
-            long now = Design.FrameTime.NowMs;
+            long now = FrameTime.NowMs;
             if (!_anchored) { _pos.Anchor(now, Playback.PositionMs.Peek()); _anchored = true; }
             float dt = ClockRules.DeltaSec(_lastTickMs, now);
             _lastTickMs = now;
@@ -470,7 +470,7 @@ public static partial class Deck
             if (!IsCurrent()) { Release(); return; }
             long target = GripRules.Clamp(ms, Playback.DurationMs.Peek());
             _sig.SeekTargetMs.Value = target;      // the deck keeps the medium on the target until the report lands
-            _sig.SeekCommittedAtMs = Design.FrameTime.NowMs;
+            _sig.SeekCommittedAtMs = FrameTime.NowMs;
             Playback.SeekTo((int)target);
             Release();
         }

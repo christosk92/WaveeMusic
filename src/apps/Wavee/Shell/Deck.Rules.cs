@@ -37,7 +37,7 @@ public static partial class Deck
         public static void Pull(float gain)
         {
             int n = Playback.Audio.CopySpectrum(s_db, out var info);
-            long now = Design.FrameTime.NowMs;
+            long now = FrameTime.NowMs;
             if (n < Visualizer.Bands.Count || !info.Live || info.Muted)
             {
                 if (now != s_decayedAtMs)                                                              // once per frame, however many decks pull

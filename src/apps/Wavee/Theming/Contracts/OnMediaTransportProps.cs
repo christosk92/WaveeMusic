@@ -6,8 +6,8 @@
 // pointer handler above the stage), and the pointer sitting on the strip counts as chrome activity (`Feed`).
 //
 // WHAT STAYED CORE. The facts the strip draws (is it playing, can it skip, is it muted: <see cref="OnMediaFacts"/>), every verb a
-// button asks for, the seek rail (the scrub controller's, shared with the player bar and the stage) and the time labels (the
-// bar's), and the "more" menu's rows: where the video plays, then the aspect, quality and speed cascades are decisions built from
+// button asks for, the seek rail's and the time labels' core hosts (the scrub controller and the labels' binds, shared with the
+// player bar and the stage; they mount `Player.SeekRail` / `Player.TimeLabel`), and the "more" menu's rows: where the video plays, then the aspect, quality and speed cascades are decisions built from
 // live reads when the menu opens (`OnMedia.MoreMenu`). The chrome fade's imperative seed is the core's `OnMedia.FadeChrome` (the
 // video band shares it).
 //
@@ -72,10 +72,10 @@ public sealed record OnMediaTransportProps
     /// <summary>The "⋯" rows, built from live reads when the menu opens.</summary>
     public required Func<IReadOnlyList<MenuFlyoutItem>> MoreMenu { get; init; }
 
-    /// <summary>The seek rail over the surface's feed, live only while <c>reveal</c> holds.</summary>
+    /// <summary>The seek rail's core host over the surface's feed (it mounts <see cref="ViewKeys.SeekRail"/>), live only while <c>reveal</c> holds.</summary>
     public required Func<PlayerChromeFeed, IReadSignal<bool>, Element> SeekBar { get; init; }
 
-    /// <summary>A time label: (right-hand remaining slot, the ink, <c>reveal</c>).</summary>
+    /// <summary>A time label's core host (it mounts <see cref="ViewKeys.TimeLabel"/>): (right-hand remaining slot, the ink, <c>reveal</c>).</summary>
     public required Func<bool, ColorF, IReadSignal<bool>, Element> TimeText { get; init; }
 
     /// <summary>Seed the eased chrome fade on a captured node: (the hook context, the node, show). Skip the mount run: chrome is born

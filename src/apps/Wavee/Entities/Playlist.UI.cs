@@ -651,6 +651,7 @@ public readonly partial struct Playlist
     /// ONE-SHOT at the window's end (<see cref="DaylistClockShows.ExpiryDelayMs"/>) is what still swaps in the Rolling face
     /// on time. It re-arms when the mode changes, and re-checks the wall clock when it fires, so a timer that landed early
     /// re-arms rather than leaving the caption up past the window.</para></summary>
+    [CoreHost]
     sealed class DaylistHost : Component
     {
         readonly Signal<int> _tick = new(0);
@@ -684,7 +685,7 @@ public readonly partial struct Playlist
             var props = UseProps<DaylistProps>();
             var mode = Prefs.Appearance.DaylistClock();
             int tick = _tick.Value;
-            long frameNow = Design.FrameTime.NowMs;
+            long frameNow = FrameTime.NowMs;
             long sinceTick = frameNow - _lastTickFrameMs;
             if (tick != _lastTick) { _lastTick = tick; _lastTickFrameMs = frameNow; }
             if (!_anchored || DaylistCountdown.NeedsReanchor(tick, sinceTick))

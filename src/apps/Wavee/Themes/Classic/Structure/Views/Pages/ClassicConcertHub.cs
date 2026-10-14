@@ -221,7 +221,7 @@ internal static class ClassicConcertHub
 }
 
 /// <summary>The events figure: a FIXED 64-DIP right-aligned number box + " events". A new target eases the shown value
-/// 380 ms cubic-out on the FRAME clock (<see cref="Design.FrameTime.NowQpc"/> — 0.2.9 sampled the wall clock); the
+/// 380 ms cubic-out on the FRAME clock (<see cref="FrameTime.NowQpc"/> — 0.2.9 sampled the wall clock); the
 /// per-frame clock child mounts only while a tween runs (keyed per target, so a retarget restarts cleanly).</summary>
 internal sealed class ClassicConcertCountTicker : Component
 {
@@ -260,7 +260,7 @@ internal sealed class ClassicConcertCountTicker : Component
 
     void Step()
     {
-        long now = Design.FrameTime.NowQpc;
+        long now = FrameTime.NowQpc;
         if (_startQpc == 0) _startQpc = now;
         double p = Math.Min(1.0, (now - _startQpc) * 1000.0 / System.Diagnostics.Stopwatch.Frequency / TweenMs);
         p = 1.0 - Math.Pow(1.0 - p, 3);

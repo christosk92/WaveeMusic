@@ -9,7 +9,10 @@
 //   the level machine     widening commits at once and narrowing holds through the policy's 24 DIP dip, on the mounted bar (the
 //                         pure rule is `ThemePoliciesTests`; this is the host driving it from the viewport)
 //   the picture           `ViewHarness` mounts the view alone with a fixture host: the music bar's slots, the podcast bar's
-//                         transport, the podcast bar's narrowest level (the cover alone), a video track's split, the error state
+//                         transport, the podcast bar's narrowest level (the cover alone), a video track's split, the error state,
+//                         the credits line (compact with its "+N" chip, full names under the marquee, inert names)
+//   the transport pieces  `Player.SeekRail` (enabled, disabled, the DVR edge, the live line), `Player.SeekChapters`, the two bubbles and
+//                         `Player.TimeLabel` (the digits' slot, the live slot's LIVE mark and GO LIVE action), each alone with fixture props
 //
 // The decisions themselves (the fold, the face hold, the slots, the overflow rows, the podcast map) are `Wavee.Tests`.
 
@@ -104,16 +107,11 @@ public sealed class PlayerBarMountedTests(ShellHost host)
         RateText = static r => r.ToString("0.0"),
         SeekBar = static () => new BoxEl { Key = "test:seek-rail", Grow = 1f, Height = 32f },
         TimeText = static remaining => new BoxEl { Key = remaining ? "test:remaining" : "test:elapsed", Width = 44f, Height = 16f },
-        ArtistsLineFull = static () => new FixtureLine(),
-        ArtistsLineCompact = static () => new BoxEl { Key = "test:credits", Height = 14f },
+        CreditsStamp = static () => 0L,
+        Credits = static () => PlayerCredits.None,
         OverflowRow = static (_, _) => new FluentGpu.Controls.MenuFlyoutItem("row", default, true),
         VideoPlacementMenu = static () => [],
     };
-
-    sealed class FixtureLine : Component
-    {
-        public override Element Render() => new BoxEl { Key = "test:credits", Height = 14f };
-    }
 
     // ── the registered view ────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -293,5 +291,162 @@ public sealed class PlayerBarMountedTests(ShellHost host)
                 var glyph = harness.Shell.Host.Scene.FirstChild(primary);
                 Assert.False(glyph.IsNull);
                 Assert.True(harness.AbsoluteBounds(primary).W > 0f);
+            }, UnderClassic());
+
+    // ── the credits line (the bar's own picture over the facts the core states) ─────────────────────────────────────────────
+
+    static PlayerCredits TwoArtists() => new()
+    {
+        Artists = [new PlayerCreditLink("Ann", static () => { }, "artist:1"), new PlayerCreditLink("Bob", null, "artist:2")],
+        OverflowKey = "npmore:1:2",
+    };
+
+    static int WithRole(ViewHarness harness, AutomationRole role)
+    {
+        var scene = harness.Shell.Host.Scene;
+        return harness.Subtree(scene.Root).Count(n => scene.Interaction(n).Role == role);
+    }
+
+    [Fact]
+    public void The_compact_credits_line_is_the_first_name_and_the_more_chip()
+        => ViewHarness.With(host, ViewKeys.PlayerBar,
+            Props(MusicView()) with { Credits = static () => TwoArtists() },
+            harness =>
+            {
+                Assert.True(harness.Contains("artist:1:Ann"));
+                Assert.True(harness.Contains("npmore:1:2"));
+                Assert.False(harness.Contains("artist:2:Bob"));
+                Assert.Equal(1, WithRole(harness, AutomationRole.Hyperlink));   // the first name links; the title has no route here
+            }, UnderClassic());
+
+    [Fact]
+    public void The_marquee_credits_line_lists_every_name_and_an_inert_name_is_text()
+        => ViewHarness.With(host, ViewKeys.PlayerBar,
+            Props(MusicView() with { Marquee = true }) with { Credits = static () => TwoArtists() },
+            harness =>
+            {
+                Assert.True(harness.Contains("artist:1:Ann"));
+                Assert.True(harness.Contains("artist:2:Bob"));
+                Assert.False(harness.Contains("npmore:1:2"));
+                Assert.Equal(1, WithRole(harness, AutomationRole.Hyperlink));   // Bob has no route: inert, not a dead link
+            }, UnderClassic());
+
+    // ── the transport pieces, each alone ────────────────────────────────────────────────────────────────────────────────────
+
+    sealed class FixtureRail : ISeekRailHost
+    {
+        public Prop<Affine2D> FillTransform => Affine2D.Identity;
+        public Prop<Affine2D> ThumbTransform(float ringDiameter) => Affine2D.Identity;
+        public Action<Point2> PointerDown { get; } = static _ => { };
+        public Action<Point2> DragMove { get; } = static _ => { };
+        public Action Commit { get; } = static () => { };
+        public Action Cancel { get; } = static () => { };
+        public Action<Point2> HoverMove { get; } = static _ => { };
+        public Action PointerExit { get; } = static () => { };
+        public Action<RectF> BoundsChanged { get; } = static _ => { };
+        public Action<NodeHandle> ThumbRealized { get; } = static _ => { };
+        public IReadSignal<bool> Playing { get; } = new Signal<bool>(false);
+        public Element KeyLadderTick() => new BoxEl { Key = "test:key-ladder", Width = 0f, Height = 0f };
+    }
+
+    [Fact]
+    public void Classic_draws_every_transport_piece()
+        => host.Run(() =>
+        {
+            Assert.Equal("classic.player.seek-rail", ThemeHost.Registry.TemplateIdOf(ViewKeys.SeekRail.Id));
+            Assert.Equal("classic.player.seek-chapters", ThemeHost.Registry.TemplateIdOf(ViewKeys.SeekChapters.Id));
+            Assert.Equal("classic.player.chapter-tip", ThemeHost.Registry.TemplateIdOf(ViewKeys.ChapterTip.Id));
+            Assert.Equal("classic.player.seek-readout", ThemeHost.Registry.TemplateIdOf(ViewKeys.SeekReadout.Id));
+            Assert.Equal("classic.player.time-label", ThemeHost.Registry.TemplateIdOf(ViewKeys.TimeLabel.Id));
+        });
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public void The_seek_rail_is_one_32_dip_slider_with_its_chapter_layer_and_the_ladder_clock(bool enabled, bool dvr)
+        => ViewHarness.With(host, ViewKeys.SeekRail,
+            new SeekRailProps { Host = new FixtureRail(), Enabled = enabled, Dvr = dvr, Chapters = new BoxEl { Key = "test:chapters" } },
+            harness =>
+            {
+                var scene = harness.Shell.Host.Scene;
+                var sliders = harness.Subtree(scene.Root).Where(n => scene.Interaction(n).Role == AutomationRole.Slider).ToList();
+                Assert.Single(sliders);
+                Assert.Equal(32f, harness.AbsoluteBounds(sliders[0]).H, 0.5f);
+                Assert.True(harness.Contains("test:chapters"));
+                Assert.True(harness.Contains("test:key-ladder"));
+            }, UnderClassic());
+
+    [Fact]
+    public void With_nothing_to_rewind_the_rail_is_the_live_line_with_no_role()
+        => ViewHarness.With(host, ViewKeys.SeekRail,
+            new SeekRailProps { Host = new FixtureRail(), Enabled = true, Line = true },
+            harness =>
+            {
+                Assert.Equal(0, WithRole(harness, AutomationRole.Slider));
+                Assert.False(harness.Contains("test:key-ladder"));
+            }, UnderClassic());
+
+    [Fact]
+    public void The_chapter_layer_keys_a_tick_per_chapter_and_the_tips_anchor()
+        => ViewHarness.With(host, ViewKeys.SeekChapters,
+            new SeekChaptersProps { Fractions = [0.25f, 0.5f], Width = new FloatSignal(400f), TipFraction = static () => 0.3f, TipAnchorRealized = static _ => { } },
+            harness =>
+            {
+                Assert.True(harness.Contains("chapter-tick:0"));
+                Assert.True(harness.Contains("chapter-tick:1"));
+                Assert.False(harness.Contains("chapter-tick:2"));
+                Assert.True(harness.Contains("chapter-tip-anchor"));
+            }, UnderClassic());
+
+    [Fact]
+    public void The_chapter_tip_is_the_260_dip_bubble()
+        => ViewHarness.With(host, ViewKeys.ChapterTip,
+            new ChapterTipProps { Time = static () => "1:00", Title = static () => "Intro", Range = static () => "0:00 – 2:00", HasChapter = static () => true },
+            harness =>
+            {
+                var scene = harness.Shell.Host.Scene;
+                Assert.Contains(harness.Subtree(scene.Root), n => Math.Abs(harness.AbsoluteBounds(n).W - 260f) < 0.5f);
+            }, UnderClassic());
+
+    [Fact]
+    public void The_readout_mounts_its_bubble()
+        => ViewHarness.With(host, ViewKeys.SeekReadout, new SeekReadoutProps { Text = static () => "1:23" },
+            harness =>
+            {
+                var scene = harness.Shell.Host.Scene;
+                Assert.Contains(harness.Subtree(scene.Root), n => harness.AbsoluteBounds(n).H > 0f && harness.AbsoluteBounds(n).W < 200f);
+            }, UnderClassic());
+
+    static TimeLabelProps Label(bool remaining, bool live = false, bool liveSlot = false, bool offers = false) => new()
+    {
+        Remaining = remaining, IsLive = live, LiveSlot = liveSlot,
+        Label = static () => "1:23", ToggleRemaining = static () => { },
+        OffersGoLive = offers ? static () => true : static () => false,
+        GoLiveText = static () => "GO LIVE", GoLive = static () => { },
+    };
+
+    static bool HasWidth(ViewHarness harness, float width)
+    {
+        var scene = harness.Shell.Host.Scene;
+        return harness.Subtree(scene.Root).Any(n => Math.Abs(harness.AbsoluteBounds(n).W - width) < 0.5f);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_time_label_is_the_44_dip_slot(bool remaining)
+        => ViewHarness.With(host, ViewKeys.TimeLabel, Label(remaining),
+            harness => Assert.True(HasWidth(harness, 44f)), UnderClassic());
+
+    [Theory]
+    [InlineData(false, 0)]     // at the live edge: the LIVE word-mark, no action
+    [InlineData(true, 1)]      // behind a rewindable window: the GO LIVE text button
+    public void The_live_slot_is_104_dip_and_offers_go_live_only_behind_the_edge(bool offers, int buttons)
+        => ViewHarness.With(host, ViewKeys.TimeLabel, Label(remaining: true, live: true, liveSlot: true, offers: offers),
+            harness =>
+            {
+                Assert.True(HasWidth(harness, 104f));
+                Assert.Equal(buttons, WithRole(harness, AutomationRole.Button));
             }, UnderClassic());
 }

@@ -150,6 +150,20 @@ public sealed record StageLayers
     public required Func<Element> Clock { get; init; }
 }
 
+/// <summary>The props of <see cref="ViewKeys.StagePane"/>: the pane region (Lyrics, Up next, Artist) the core pane host mounts. The template
+/// draws the region (its rect from <c>Stage.Layout.PaneRect</c>, its move, its clip and when it shows) and the frame each pane's body stands in;
+/// WHICH pane is shown and the KeepAlive that keeps each one's state across mode switches are the core's (<see cref="Panes"/>). Built once per
+/// stage context, so an equal record re-renders nothing: the template re-renders on the context's signals it reads.</summary>
+public sealed record StagePaneProps
+{
+    /// <summary>The ambient signal bag (the layout, the look, the shown pane).</summary>
+    public required Stage.StageCtx Stage { get; init; }
+
+    /// <summary>The core's KeepAlive over the shown pane, keyed <c>pane:&lt;kind&gt;</c>: it wraps each pane's body in <c>frame</c> (the theme's
+    /// frame: its entrance and exit) and mounts <c>empty</c> for no pane. Call it from the template's render and place what comes back.</summary>
+    public required Func<Func<Element, Element>, Func<Element>, Element> Panes { get; init; }
+}
+
 /// <summary>The props of <see cref="ViewKeys.StageTopBar"/>.</summary>
 public sealed record StageTopBarProps
 {
@@ -168,10 +182,10 @@ public sealed record StageTransportProps
     /// <summary>TogglePlay, Previous, Next, ToggleShuffle, CycleRepeat.</summary>
     public required IPlayerVerbs Verbs { get; init; }
 
-    /// <summary>The bar's own seek rail; the argument is the scrub edge that holds the chrome.</summary>
+    /// <summary>The bar's own seek rail (the core host that mounts <see cref="ViewKeys.SeekRail"/>); the argument is the scrub edge that holds the chrome.</summary>
     public required Func<Action<bool>, Element> SeekBar { get; init; }
 
-    /// <summary>The bar's elapsed / remaining time label in the given ink.</summary>
+    /// <summary>The bar's elapsed / remaining time label (the core host that mounts <see cref="ViewKeys.TimeLabel"/>) in the given ink.</summary>
     public required Func<bool, ColorF, Element> TimeText { get; init; }
 
     /// <summary>Is playback muted (read inside the mute button's own render).</summary>

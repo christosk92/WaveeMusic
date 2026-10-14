@@ -3,8 +3,9 @@
 // The pane is a core host and a theme view. The core pane (`Sidebar.PaneHost` -> the layout mode -> `PaneView`) keeps every hook,
 // effect and state machine of the sidebar (see `NavPaneProps`); the structure supplies the LIST, and this template is where it
 // does: it hands the core builder Classic's `NavRowKit` (`ClassicNavRows`: the planner, the diff, the analytic extents, the
-// mid-drag freeze and the row slot) and returns what the core builds around it. Nothing is drawn here -- the rows are
-// `ClassicNavRow`, the pane's layer, head and footer are still the core's until T5b-f give them to the structure.
+// mid-drag freeze, the row slot and the boxes the pane is built in) and returns what the core builds around it. Nothing is drawn
+// here -- the rows are `ClassicNavRow`, the heads `ClassicNavHead` / `ClassicNavLibraryHead`, the pane's layer, root, context-menu
+// shield and list inset `ClassicNavFrame`.
 
 using FluentGpu.Dsl;
 using FluentGpu.Theming;

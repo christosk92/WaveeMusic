@@ -5,7 +5,8 @@
 // (`SidebarRowExtents`), the mid-drag freeze (`SidebarStageHold<T>`; all in `Rules\SidebarPlanner.cs`), the row slot
 // (`ClassicNavRow`, which also draws the drop cues), the drag presentation (`NavDropLook`, T5e) and, since T5f, the ladder answers core's pane
 // still needs (the drop resolver's depth ladder, the list's inset, a row's pitch, the pill's height, the Library grid's columns): the
-// core keeps no copy of `SidebarGeometry`.
+// core keeps no copy of `SidebarGeometry`. Since P3 it also hands the core the boxes the pane is built in (`ClassicNavFrame`: the layout
+// host's box, the pane's frame and context-menu shield, the list's inset box).
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -79,4 +80,13 @@ public sealed class ClassicNavRows : NavRowKit
 
     /// <inheritdoc />
     internal override Element Slot(INavRowHost host, RowScope scope) => Embed.Comp(() => new ClassicNavRow(host, scope));
+
+    /// <inheritdoc />
+    public override Element ModeHost(Element mode) => ClassicNavFrame.ModeHost(mode);
+
+    /// <inheritdoc />
+    public override Element Frame(in NavPaneFrameArgs args) => ClassicNavFrame.Frame(in args);
+
+    /// <inheritdoc />
+    public override Element ListBox(Element list) => ClassicNavFrame.ListBox(list);
 }

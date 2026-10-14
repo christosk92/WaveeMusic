@@ -1,5 +1,5 @@
 ﻿// ── Shell/Lyrics.UI.cs ─────────────────────────────────────────────────────────────────────────────────────────────
-// the view, the row, the frame driver, ticker/stepper, the NPV peek — and the lyrics pane inside the stage (A12);
+// the view, the row, the frame driver, ticker/stepper, the NPV peek's hosts — and the lyrics pane inside the stage (A12);
 // Lyrics.Stage.UI.cs is dropped
 //
 // Role: UI
@@ -30,7 +30,7 @@
 //      says a lane is moving, and a quiescent surface (no media-clock lane live, a line-synced line on its glow plateau)
 //      re-arms from a one-shot timeout at the next media instant instead.
 //   3. Motion samples the frame clock. The media position is the playback host's (position, stamp) sample mapped onto
-//      `Design.FrameTime.NowQpc` through `MediaClock` + `SampleClock`; `Environment.TickCount64` appears nowhere.
+//      `FrameTime.NowQpc` through `MediaClock` + `SampleClock`; `Environment.TickCount64` appears nowhere.
 //   4. Two indices. `_activeLine` (lead-shifted: emphasis + follow) and `_voiceLine` (true time: wipe + glow); neither
 //      drives the other.
 //   5. A line hand-off is N springs on the LINES: the viewport LATCHES and every line carries a compensating translate
@@ -52,7 +52,6 @@ using FluentGpu.Scene;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using FluentGpu.Text;
-using FrameTime = Wavee.Design.FrameTime;
 using LyricsContracts = Wavee.Theming.Contracts;
 using ViewRegistry = FluentGpu.Theming.ViewRegistry;
 using ViewSlots = FluentGpu.Theming.Slots;
@@ -75,7 +74,7 @@ public static partial class Lyrics
 
     // MOUNT POINT (stage B contract)
     /// <summary>The rail's lyrics body (`RailMode.Lyrics`): the reading surface at rail metrics on theme ink. The header
-    /// (title · 🌐 · ✦ · ⛶ · &lt;/&gt; · ✕) is the rail frame's; the AI disclosure under the reading layers is
+    /// (title · 🌐 · ✦ · ⛶ · &lt;/&gt; · ✕) is the panel's `Panel.LyricsHeader` view; the AI disclosure under the reading layers is
     /// <see cref="AiLyrics.Footer"/>.</summary>
     public static Element View()
         => Embed.Comp(static () => new ViewCore(large: false, onMedia: false, visible: s_railVisible)) with { Key = "lyrics:rail" };
@@ -1930,27 +1929,36 @@ public static partial class Lyrics
 
     // ══ 7. THE NPV LYRICS PEEK ═══════════════════════════════════════════════════════════════════════════════════════
 
+    // The peek's PICTURE (the accent spine, the two clipped rows and their flip, the faded peek, the video note) is the `Player.LyricsPeek`
+    // view (`Themes\Classic\Structure\Views\Panel\ClassicLyricsPeek.cs`). The hosts below keep the document, the clock and the pair.
+
+    static readonly Action s_openLyrics = static () => Shell.Ui.Toggle(Shell.RailMode.Lyrics);
+
+    /// <summary>Nothing to peek at (no track, an episode): the view's bare zero-size box.</summary>
+    static readonly LyricsContracts.LyricsPeekProps s_peekNone = new() { Face = LyricsContracts.LyricsPeekFace.None, OpenLyrics = s_openLyrics };
+
     /// <summary>The peek's per-track key: the reel remounts per track (<c>"npv-lyrics:" + id</c>), so its pair and its
     /// seed never carry across a change.</summary>
+    [LyricsContracts.CoreHost]
     sealed class PeekHost : Component
     {
         public override Element Render()
         {
             var current = Playback.Current.Value;
             string trackId = current.Kind == EntityKind.Track && !current.IsNone ? Store.IdOf(new Track(current.Slot)) : "";
-            if (trackId.Length == 0) return new BoxEl();
+            if (trackId.Length == 0) return ViewSlots.View(LyricsContracts.ViewKeys.LyricsPeek, s_peekNone);
             return Embed.Comp(() => new PeekReel(trackId)) with { Key = "npv-lyrics:" + trackId };
         }
     }
 
-    /// <summary>The two-row reel: the sung line over a faded peek at the next, on a 3-DIP accent spine. It plans NO
-    /// fetch of its own — it reads the ONE store document — and ticks on its own 100 ms interval, which runs only while
-    /// the reel shows: stopping the clock IS the suppression.</summary>
+    /// <summary>The two-row reel's host: the sung line over a faded peek at the next. It plans NO fetch of its own — it reads the ONE
+    /// store document — and ticks on its own 100 ms interval, which runs only while the reel shows: stopping the clock IS the
+    /// suppression. It decides the face (nothing over an unsynced or absent document, the note while a video plays, else the reel) and
+    /// the pair, and mounts `Player.LyricsPeek` with them.</summary>
+    [LyricsContracts.CoreHost]
     sealed class PeekReel(string trackId) : Component
     {
-        const float RowH = 56f, SpineW = 3f, PeekOpacity = 0.38f, TickMs = 100f;
-        static readonly EnterExit FlipIn = new(Dy: RowH, Opacity: 0f, Active: true);
-        static readonly EnterExit FlipOut = new(Dy: -RowH, Opacity: 0f, Active: true);
+        const float TickMs = 100f;
 
         readonly Signal<(int Active, int Peek)> _pair = new((int.MinValue, int.MinValue));
         Doc? _doc;
@@ -1972,8 +1980,8 @@ public static partial class Lyrics
             var pair = _pair.Value;
             // ORDER matters: the `!show` early-out runs BEFORE the video branch — over an unsynced or absent document a
             // video shows NOTHING (the note is a state of a synced document, never a stand-in for a missing one).
-            if (!show) return new BoxEl();
-            if (syncOff) return UnsyncedNote();
+            if (!show) return ViewSlots.View(LyricsContracts.ViewKeys.LyricsPeek, s_peekNone);
+            if (syncOff) return ViewSlots.View(LyricsContracts.ViewKeys.LyricsPeek, new LyricsContracts.LyricsPeekProps { Face = LyricsContracts.LyricsPeekFace.Note, OpenLyrics = s_openLyrics });
             if (pair.Active == int.MinValue)
             {
                 // Seed synchronously, so the reel never shows an empty pair for a tick.
@@ -1982,46 +1990,19 @@ public static partial class Lyrics
             }
 
             var lines = doc!.Lines;
-            return new BoxEl
+            return ViewSlots.View(LyricsContracts.ViewKeys.LyricsPeek, new LyricsContracts.LyricsPeekProps
             {
-                Direction = 0, AlignItems = FlexAlign.Stretch, Gap = Spacing.S,
-                Height = RowH * 2f,
-                Cursor = CursorId.Hand,
-                OnClick = static () => Shell.Ui.Toggle(Shell.RailMode.Lyrics),
-                Role = AutomationRole.Button,
-                Focusable = true,
-                Children =
-                [
-                    new BoxEl { Width = SpineW, Shrink = 0f, Corners = CornerRadius4.All(1.5f), Fill = Tok.AccentDefault },
-                    new BoxEl
-                    {
-                        Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                        Height = RowH * 2f, ClipToBounds = true,
-                        Children = [Slot(pair.Active, lines, faded: false), Slot(pair.Peek, lines, faded: true)],
-                    },
-                ],
-            };
+                Face = LyricsContracts.LyricsPeekFace.Reel,
+                Active = pair.Active,
+                ActiveText = TextAt(pair.Active, lines),
+                Peek = pair.Peek,
+                PeekText = TextAt(pair.Peek, lines),
+                OpenLyrics = s_openLyrics,
+            });
         }
 
-        /// <summary>One 56-DIP row: the spine at tertiary, half height, and the sync note — still opening the rail.</summary>
-        static Element UnsyncedNote() => new BoxEl
-        {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S,
-            Height = RowH,
-            Cursor = CursorId.Hand,
-            OnClick = static () => Shell.Ui.Toggle(Shell.RailMode.Lyrics),
-            Role = AutomationRole.Button,
-            Focusable = true,
-            Children =
-            [
-                new BoxEl { Width = SpineW, Shrink = 0f, Height = RowH * 0.5f, Corners = CornerRadius4.All(1.5f), Fill = Tok.TextTertiary },
-                new TextEl(Loc.Get(Strings.Player.LyricsSyncUnavailableDuringVideo))
-                {
-                    Size = 12f, Color = Tok.TextTertiary, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                    Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                },
-            ],
-        };
+        /// <summary>A line's text, or null when the index names no line (the view's empty row).</summary>
+        static string? TextAt(int index, IReadOnlyList<Line> lines) => (uint)index < (uint)lines.Count ? lines[index].Text : null;
 
         /// <summary>The playback position at the host's frame clock: the last authoritative sample extrapolated (the
         /// reducer's own <c>State.Position</c>), so the reel does not wait on the ~1 Hz position publication.</summary>
@@ -2033,34 +2014,6 @@ public static partial class Lyrics
             if (doc is null) { _pair.SetIfChanged((-1, -1)); return; }
             var next = PeekClock.ActiveAndPeek(doc, PositionNow());
             _pair.SetIfChanged((next.Active, next.Peek));
-        }
-
-        static Element Slot(int index, IReadOnlyList<Line> lines, bool faded)
-        {
-            Element inner = (uint)index < (uint)lines.Count
-                ? new BoxEl
-                {
-                    Key = "l:" + index.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    Height = RowH, MinWidth = 0f, Grow = 1f, Basis = 0f,
-                    Direction = 1, Justify = FlexJustify.Center,
-                    Enter = FlipIn, Exit = FlipOut,
-                    Transition = MotionTok.ControlFast,
-                    Children =
-                    [
-                        R.Type.NpvLyric(lines[index].Text) with
-                        {
-                            Color = Tok.TextPrimary, MaxLines = 2, MinWidth = 0f,
-                            Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis,
-                        },
-                    ],
-                }
-                : new BoxEl { Height = RowH };
-            return new BoxEl
-            {
-                Height = RowH, ClipToBounds = true, MinWidth = 0f,
-                Opacity = faded ? PeekOpacity : 1f,
-                Children = [inner],
-            };
         }
     }
 }

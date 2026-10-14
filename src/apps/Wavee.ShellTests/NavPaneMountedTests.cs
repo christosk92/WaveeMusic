@@ -17,12 +17,17 @@
 //   the flyouts (T5c)     Classic registers the rail's two flyout panels (the pane opens and dismisses them; the structure draws them)
 //   the outline (T5d)     Edit swaps the pane for the registered Outline (its bar's Done, its section heads at the edit rules'
 //                         height) and Done swaps the pane back
+//   the frame (P3)        the kit's frame, list box and mode host are the boxes the core pane used to build (the layer, the menu
+//                         shell over a childless shield only with an overlay, the inset, the mode's fade); in the real shell the
+//                         list stands in the layer beside the one childless shield
 //
 // The planner, the diff, the extents, the freeze and the ladder are pure and pinned in `Wavee.Tests` (`SidebarPlannerTests`,
 // `SidebarWiringTests`, `SidebarRowGeometryTests`).
 
+using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Scene;
+using FluentGpu.Signals;
 using Wavee;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
@@ -161,6 +166,89 @@ public sealed class NavPaneMountedTests(ShellHost host)
             var direct = SidebarRowPlanner.Build(doc, in input, in options, new SidebarPlanBuffers());
             Assert.Equal(direct.Rows.Count, viaKit.Rows.Count);
             for (int i = 0; i < direct.Rows.Count; i++) Assert.Equal(direct.Rows[i], viaKit.Rows[i]);
+        });
+
+    // ── the pane's frame (P3) ────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_kits_frame_puts_the_menu_on_a_shell_over_a_childless_shield_only_when_there_is_an_overlay()
+        => host.Run(() =>
+        {
+            Element[] layerKids = [new BoxEl { Key = "test:body" }];
+            var watcher = new BoxEl { Key = "test:watcher" };
+            var args = new NavPaneFrameArgs
+            {
+                Width = Prop.Of(static () => 240f), HitTestVisible = true, Layer = layerKids, DragWatcher = watcher,
+                OnKeyDown = static _ => { }, Menu = static () => null,
+            };
+
+            // No overlay (a headless mount): the root is the frame, the layer first and the watcher beside it.
+            var bare = Assert.IsType<BoxEl>(ClassicNavRows.Kit.Frame(in args));
+            Assert.True(bare.ZStack);
+            Assert.Equal(2, bare.Children.Length);
+            var layer = Assert.IsType<BoxEl>(bare.Children[0]);
+            Assert.Equal("pane-layer", layer.Key);
+            Assert.Same(layerKids, layer.Children);
+            Assert.Same(watcher, bare.Children[1]);
+            Assert.NotNull(bare.OnKeyDown);
+
+            // With an overlay: a ZStack shell over the childless shield, the root (no longer growing) on top of it.
+            var shell = Assert.IsType<BoxEl>(ClassicNavRows.Kit.Frame(args with { MenuOverlay = FluentGpu.Controls.Overlay.Service.Default }));
+            Assert.Equal(2, shell.Children.Length);
+            var shield = Assert.IsType<BoxEl>(shell.Children[0]);
+            Assert.Equal(ClassicNavFrame.ContextShieldKey, shield.Key);
+            Assert.Empty(shield.Children);
+            var root = Assert.IsType<BoxEl>(shell.Children[1]);
+            Assert.Equal(0f, root.Grow);
+            Assert.Equal("pane-layer", root.Children[0].Key);
+        });
+
+    [Fact]
+    public void The_kits_list_box_is_the_inset_and_its_mode_host_fades_the_keyed_mode_in()
+        => host.Run(() =>
+        {
+            var list = new BoxEl { Key = "test:list" };
+            var pad = Assert.IsType<BoxEl>(ClassicNavRows.Kit.ListBox(list));
+            Assert.Equal("plan-pad", pad.Key);
+            Assert.Equal(ClassicNavRows.Kit.ListInset, pad.Padding);
+            Assert.Same(list, Assert.Single(pad.Children));
+
+            var modeHost = Assert.IsType<BoxEl>(ClassicNavRows.Kit.ModeHost(new BoxEl { Key = "sidebar.classic" }));
+            var mode = Assert.Single(modeHost.Children);
+            Assert.Equal("sidebar.classic", mode.Key);
+            Assert.Equal(new EnterExit(Opacity: 0f, Active: true), mode.Enter);
+        });
+
+    [Fact]
+    public void The_mounted_pane_stands_in_the_kits_layer_beside_its_childless_shield()
+        => host.Mounted(shell =>
+        {
+            shell.RunFrames(60);
+            var original = Sidebar.Layout.Peek();
+            try
+            {
+                if (original != SidebarLayoutId.Classic)
+                {
+                    Sidebar.SwitchLayout(SidebarLayoutId.Classic);
+                    shell.RunFrames(60);
+                }
+                var mode = Node(shell, "sidebar.classic");
+                var inMode = Subtree(shell.Host.Scene, mode).ToHashSet();
+                var layers = shell.FindPrefix("pane-layer").Where(f => f.Key == "pane-layer" && inMode.Contains(f.Node)).ToList();
+                Assert.Single(layers);
+                Assert.Contains(Node(shell, "plan-pad"), Subtree(shell.Host.Scene, layers[0].Node).ToHashSet());
+                var shields = shell.FindPrefix(ClassicNavFrame.ContextShieldKey).Where(f => inMode.Contains(f.Node)).ToList();
+                var shield = Assert.Single(shields);
+                Assert.Single(Subtree(shell.Host.Scene, shield.Node));   // childless: a menu cascade from it reaches nothing
+            }
+            finally
+            {
+                if (original != SidebarLayoutId.Classic)
+                {
+                    Sidebar.SwitchLayout(original);
+                    shell.RunFrames(60);
+                }
+            }
         });
 
     // ── the drop cues (T5e) ──

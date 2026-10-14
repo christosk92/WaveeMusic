@@ -1,7 +1,7 @@
 // ── Themes/Classic/Structure/Views/Video/ClassicVideoPanelBody.cs — Classic's video body of the right panel (themes plan 6.1, T7c) ──
 //
 // From `Shell/Rail.UI.cs` (`VideoBody` and `NoVideoPlaceholder`): the panel's Video mode, everything BELOW the pinned docked card: the
-// track's title and its artists + album line, the hairline, the "Up next" eyebrow over the shared "Next up" rows (the track-row family's,
+// track's title and its artists + album line, the hairline, the "Up next" eyebrow over the shared "Next up" rows (the `Panel.NextUp` view,
 // which the now-playing body places too) or the empty queue's vacancy, scrolling under an edge fade.
 //
 // B10: the card upstream collapses; the rail does NOT close. Never flash "no video" while Video is unknown: the placeholder shows only
@@ -17,6 +17,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
+using FluentGpu.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
@@ -43,7 +44,7 @@ internal sealed class ClassicVideoPanelBody : Component
         content.Add(new BoxEl { Height = 1f, Shrink = 0f, Fill = Tok.StrokeCardDefault });
         content.Add(R.Type.Eyebrow(Loc.Get(Strings.Player.VideoUpNext)) with { Color = Tok.TextTertiary });
         content.Add(now.HasNextUp()
-            ? now.NextUp()
+            ? Slots.View(ViewKeys.PanelNextUp, now.NextUp)
             : Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact, title: Loc.Get(Strings.Player.QueueEmpty), subtitle: ""));
         return ScrollView(new BoxEl
         {

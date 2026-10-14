@@ -280,7 +280,7 @@ public static partial class Sidebar
             var rows = new List<MenuFlyoutItem>(9);
             if (toggle is not null)
                 rows.Add(new MenuFlyoutItem(Loc.Get(expanded ? "sidebar.item.collapseFolder" : "sidebar.item.expandFolder"),
-                    new IconRef { Glyph = expanded ? Icons.ChevronUp : Icons.ChevronDown, Font = Tok.Definition.Fonts.Icon }, true, toggle));
+                    expanded ? Icons.ChevronUp : Icons.ChevronDown, true, toggle));
             rows.Add(new MenuFlyoutItem(Loc.Get("sidebar.newPlaylistHere"), ActionIcons.Resolve(ActionIcons.Add),
                 writes?.CreatePlaylist is not null && folderId.Length > 0, () => Model.CreatePlaylist(folderId, true)));
             rows.Add(new MenuFlyoutItem(Loc.Get("sidebar.newFolderInside"), ActionIcons.Resolve(ActionIcons.Folder),
@@ -390,7 +390,7 @@ public static partial class Sidebar
             // SELECT — the one pointer entry into check mode (a permanent lane would cost every row 24 DIP).
             if (!TreeSelection.CheckLaneVisible)
                 rows.Add(new MenuFlyoutItem(Loc.Get("sidebar.select"),
-                    new IconRef { Glyph = Icons.Check, Font = Tok.Definition.Fonts.Icon }, true, () => BeginTreeCheckMode(entryId)));
+                    Icons.Check, true, () => BeginTreeCheckMode(entryId)));
 
             return new Actions.Menu.Extras(rows.Count > 0 ? rows : null, null);
         }

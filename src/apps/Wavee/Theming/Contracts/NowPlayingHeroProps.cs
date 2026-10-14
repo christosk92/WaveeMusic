@@ -8,8 +8,9 @@
 // HOSTS it and never builds it, so a mode or theme switch re-mounts nothing the deck owns. Which face the hero paints is the
 // core's decision (`Rail.PlayerPrefs.ResolvedPresentation()`, developer-gated as today); the preset table and its reactive reads are
 // `Rail.PlayerCatalog` / `Rail.PlayerPrefs`. Every WRITE a view makes (a style, an option, the presentation, the flyout's open
-// flag) goes through <see cref="IDeckStyleVerbs"/>, attributed to the surface that made it. The rows that are the track-row family's
-// (Next up) and the lyrics peek arrive as builders; the entity subscriptions, the demand and the string table are verbs.
+// flag) goes through <see cref="IDeckStyleVerbs"/>, attributed to the surface that made it. The "Next up" rows are the `Panel.NextUp` key
+// (`NextUp`); the lyrics peek is a core host that mounts `Player.LyricsPeek`, handed over as a builder; the entity subscriptions, the
+// demand and the string table are verbs.
 //
 // WVTH006: sealed records with init-only members; the verbs object is one cached instance.
 
@@ -93,10 +94,10 @@ public sealed record NowPlayingHeroProps
     /// <summary>Is there any "Next up" row? The body decides whether the section mounts at all.</summary>
     public required Func<bool> HasNextUp { get; init; }
 
-    /// <summary>The "Next up" rows (the track-row family's, shared with the video body).</summary>
-    public required Func<Element> NextUp { get; init; }
+    /// <summary>The "Next up" rows (shared with the video body): the props the body mounts <see cref="ViewKeys.PanelNextUp"/> with.</summary>
+    public required NextUpProps NextUp { get; init; }
 
-    /// <summary>The lyrics peek under the track meta (a core builder).</summary>
+    /// <summary>The lyrics peek under the track meta: the core host (the document, the clock, the pair) that mounts <see cref="ViewKeys.LyricsPeek"/>.</summary>
     public required Func<Element> LyricsPeek { get; init; }
 
     /// <summary>Resolve an interned string (a city, a country, a merch name, a price).</summary>

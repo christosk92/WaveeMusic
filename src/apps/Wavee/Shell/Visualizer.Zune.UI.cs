@@ -104,7 +104,7 @@ public static partial class Visualizer
     /// fresh start, never a jump.</summary>
     static float ZuneDeltaMs(ref long last)
     {
-        long now = Design.FrameTime.NowMs;
+        long now = FrameTime.NowMs;
         long gap = last == 0 ? 0 : now - last;
         last = now;
         return gap is <= 0 or > 100 ? 0f : gap;

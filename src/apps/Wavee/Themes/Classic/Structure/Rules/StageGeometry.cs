@@ -38,6 +38,17 @@ internal static class ClassicStageGeometry
     /// <summary>The gallery slides in from the right (or up from the foot on Portrait's sheet) by this much.</summary>
     public const float GallerySlide = 32f;
 
+    // ── the pane region (Lyrics, Up next, Artist: `Stage.Pane`) ──
+
+    /// <summary>The region slides to its new rect with the cover (Lyrics ⇄ Large art) on this position spring: response, damping.</summary>
+    public const float PaneMoveResponse = 0.45f, PaneMoveDamping = 0.90f;
+
+    /// <summary>A pane's body enters rising from this far below, fading in over <see cref="PaneFadeMs"/> (FluentDecelerate); it exits
+    /// fading out in place.</summary>
+    public const float PaneEnterDy = 40f;
+
+    public const float PaneFadeMs = 500f;
+
     /// <summary>Portrait's gallery sheet parks above the transport card and its two gutters.</summary>
     public const float SheetGutters = 2f;
 

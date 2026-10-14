@@ -11,7 +11,8 @@
 //                gallery), the gallery a right-docked column on the desktop class and a full-width sheet on Portrait
 //   keys         Escape and F11 close the stage; the shell body is collapsed while it is up and back after
 //   fixtures     `ViewHarness` mounts the top bar, the transport card (the play disc follows the class), the options popover, the gallery
-//                (one keyed tile per shown face) and the caption (its keyed slots) alone with fixture props
+//                (one keyed tile per shown face), the caption (its keyed slots) and the pane region (P3: at the allocator's rect, its frame
+//                rising in, the empty arm) alone with fixture props
 
 using System.Text.RegularExpressions;
 using FluentGpu.Controls;
@@ -75,6 +76,7 @@ public sealed class StageFrameMountedTests(ShellHost host)
                 (ViewKeys.StageOptions.Id, "classic.stage.options"),
                 (ViewKeys.StageGallery.Id, "classic.stage.gallery"),
                 (ViewKeys.StageCaption.Id, "classic.stage.caption"),
+                (ViewKeys.StagePane.Id, "classic.stage.pane"),
             ];
             foreach (var (id, template) in expected)
                 Assert.Equal(template, ThemeHost.Registry.TemplateIdOf(id));
@@ -248,6 +250,45 @@ public sealed class StageFrameMountedTests(ShellHost host)
             Assert.True(Boxes(harness, Stage.Layout.GalleryDesktopW, stage.Layout.Peek().GalleryH) >= 1, "the pane is this layout's gallery size");
         }, UnderClassic());
     }
+
+    /// <summary>The pane region with a fixture body in the theme's frame, or (<paramref name="empty"/>) the empty arm.</summary>
+    static StagePaneProps Pane(Stage.StageCtx stage, bool empty = false) => new()
+    {
+        Stage = stage,
+        Panes = empty ? s_noPane : s_fixturePane,
+    };
+
+    static readonly Func<Func<Element, Element>, Func<Element>, Element> s_noPane = static (_, nothing) => nothing();
+    static readonly Func<Func<Element, Element>, Func<Element>, Element> s_fixturePane =
+        static (frame, _) => frame(new BoxEl { Key = "fixture:pane-body", Grow = 1f });
+
+    [Fact]
+    public void The_pane_region_stands_at_the_allocators_rect_and_its_frame_rises_in()
+    {
+        var stage = new Stage.StageCtx();
+        var look = stage.Look.Peek();
+        var rect = stage.Layout.Peek().PaneRect(in look);
+        ViewHarness.With(host, ViewKeys.StagePane, Pane(stage), harness =>
+        {
+            harness.RunFrames(2);
+            var body = harness.Node("fixture:pane-body");
+            var region = harness.Shell.Host.Scene.Parent(harness.Shell.Host.Scene.Parent(body));   // body -> the pane's frame -> the region
+            float settledY = harness.AbsoluteBounds(region).Y;
+            Assert.True(harness.AbsoluteBounds(body).Y > settledY + 1f, "two frames in, the pane's body is still rising into the region");
+
+            harness.RunFrames(60);   // the 500 ms entrance runs out
+            var r = harness.AbsoluteBounds(region);
+            Assert.Equal(rect.W, r.W, 0.5f);
+            Assert.Equal(rect.H, r.H, 0.5f);
+            Assert.Equal(r.Y, harness.AbsoluteBounds(body).Y, 0.5f);
+            Assert.Equal(rect.W, harness.AbsoluteBounds(body).W, 0.5f);
+        }, UnderClassic());
+    }
+
+    [Fact]
+    public void With_no_pane_the_region_mounts_the_empty_arm()
+        => ViewHarness.With(host, ViewKeys.StagePane, Pane(new Stage.StageCtx(), empty: true), harness =>
+            Assert.False(harness.Contains("fixture:pane-body")), UnderClassic());
 
     static StageCaptionProps Caption(bool dots) => new()
     {

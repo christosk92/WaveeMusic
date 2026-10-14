@@ -1,5 +1,5 @@
 ﻿// ── Platform/Design.cs ─────────────────────────────────────────────────────────────────────────────────────────────
-// tokens, type ramp, colour, materials, motion, wash geometry, page-nav motion, reveal ramp, frame time, MorphKeys,
+// tokens, type ramp, colour, materials, motion, wash geometry, page-nav motion, reveal ramp, MorphKeys,
 // image decode scale, WaveeAccentCtx, the focus insets (FocusInsetBordered 2f /
 // FocusInsetRow 1f), the ambient cadence block. Not ContextBandLayout (A1) and not the palette plane (A5)
 //
@@ -13,7 +13,8 @@
 // not here any more: they are the active style's roles, read as `R.Type.*`, `R.Space.*` and `R.Motion.*` (Theming\Roles), with
 // Classic's values in Themes\Classic\Style\ClassicRoles.cs. What this file keeps is the structural geometry that needs
 // compile-time numbers, the Fluent duration ladder, the colour ladders (T2b), the behaviour (entrance, reveal, page-nav
-// motion, frame time). The shell material channel and the four cover leaves left in T4c (see the pointer at the end of the file).
+// motion). The shell material channel and the four cover leaves left in T4c (see the pointer at the end of the file); the frame
+// clock is `FrameTime` (`Platform\FrameTime.cs`) since the leftovers lane P3: a clock, not a token.
 //
 // THEMES PLAN T2b. The COLOUR ladders are not here any more either: the surfaces and row ladders (`Design.Colors`), the accent budget
 // (`Design.Accent`), the on-media ladder (`Design.OnMedia`), the immersive stage's polarity (`Design.StageArm` / `Design.StageInk`),
@@ -30,9 +31,9 @@
 // engine-only: it reads `Tok.*` and the reduced-motion flag and never an entity. That is why it ports as `static class`
 // SECTIONS rather than as components (the four that were Components, the cover leaves, are Classic's material views since T4c).
 //
-// Ported from 0.2.9's `Design/*` (2,980 lines) plus six files that had no home of their own:
+// Ported from 0.2.9's `Design/*` (2,980 lines) plus five files that had no home of their own:
 // `Features/Shell/PageNavMotion.cs`, `Features/Shell/ShellWashGeometry.cs`, `App/ShellMaterial.cs`,
-// `Features/Detail/DetailRevealRamp.cs`, `Features/Player/FrameTime.cs`, `Components/MorphKeys.cs`, and
+// `Features/Detail/DetailRevealRamp.cs`, `Components/MorphKeys.cs`, and
 // `SpotifyLive/CoverColorPlane.cs`'s `ShellTintOwnership` half.
 //
 // ── THE FOUR RULES THIS LAYER IS WRITTEN UNDER (ch 00 §9.1) ──────────────────────────────────────────────────────────
@@ -440,30 +441,6 @@ public static partial class Design
         /// <summary>Assign to the item's own wrapper box (never to a node whose Opacity is already bound — a bound
         /// channel and an Enter opacity track fight over the same row).</summary>
         public static LayoutTransition Row(int index) => Rise with { DelayMs = DelayMs(index) };
-    }
-
-    // ── the ONE app-side motion clock ────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>THE app-side motion clock: sample per-frame animation against the frame's own PRESENT time, never
-    /// <c>Environment.TickCount64</c>. TickCount64 only advances in ~15.6 ms system-timer quanta, so at the 120 Hz+ a
-    /// modern panel produces frames at, its per-frame delta alternates 0 / 15.6 ms — which steps or freezes anything
-    /// driven off it instead of gliding. Reference engines agree: Flutter hands every ticker the frame's vsync
-    /// timestamp; Chromium animates on the begin-frame time.
-    ///
-    /// <para><see cref="NowQpc"/> is the engine's present clock — the predicted vblank the frame CURRENTLY being
-    /// produced will land on — falling back to a live QPC read only before the first frame. Every wall-clock stamp two
-    /// per-frame writers compare against each other must come from here, or the comparison silently spans two different
-    /// epochs. <b>There are no exceptions to this rule in this layer.</b></para></summary>
-    public static class FrameTime
-    {
-        /// <summary>The current frame's present time, in QPC units.</summary>
-        public static long NowQpc => FrameClock.PresentQpc > 0
-            ? FrameClock.PresentQpc
-            : System.Diagnostics.Stopwatch.GetTimestamp();
-
-        /// <summary><see cref="NowQpc"/> in milliseconds. Comparable with any other frame-time-derived stamp; NOT with
-        /// <c>Environment.TickCount64</c> — the two are different epochs entirely.</summary>
-        public static long NowMs => (long)(NowQpc * (1000.0 / System.Diagnostics.Stopwatch.Frequency));
     }
 
     // ── the ambient cadence block (ch 29 W25) ────────────────────────────────────────────────────────────────────────

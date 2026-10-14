@@ -1,7 +1,7 @@
 // ── Wavee.Tests/StageFrameContractTests.cs — the stage frame's published keys and props (themes plan 6.0, T7a1) ────────────────
 //
 // The fullscreen stage's frame is the structure's: `Stage.Root`, `Stage.TopBar`, `Stage.Transport`, `Stage.Options`, `Stage.Gallery` and
-// `Stage.Caption`. What is pure about the contract: the keys' ids (a published id never changes), Classic registering all six under its
+// `Stage.Caption`, and the pane region `Stage.Pane` (P3). What is pure about the contract: the keys' ids (a published id never changes), Classic registering all seven under its
 // template ids, the root's props being one cached object (so the frame's props stay equal across re-pushes and an equal record skips the
 // template), and the caption's props comparing by value (the host rebuilds one per render; a render that decided the same thing skips the
 // template, a changed line or generation does not). The mounted facts are `Wavee.ShellTests\StageFrameMountedTests.cs`.
@@ -26,10 +26,11 @@ public class StageFrameContractTests
         Assert.Equal("Stage.Options", ViewKeys.StageOptions.Id);
         Assert.Equal("Stage.Gallery", ViewKeys.StageGallery.Id);
         Assert.Equal("Stage.Caption", ViewKeys.StageCaption.Id);
+        Assert.Equal("Stage.Pane", ViewKeys.StagePane.Id);
     }
 
     [Fact]
-    public void Classic_registers_the_six_stage_keys_under_its_template_ids()
+    public void Classic_registers_the_stage_frame_keys_under_its_template_ids()
     {
         var classic = ClassicTheme.Create();
 
@@ -39,6 +40,7 @@ public class StageFrameContractTests
         Assert.Equal("classic.stage.options", classic.Registry.TemplateIdOf(ViewKeys.StageOptions.Id));
         Assert.Equal("classic.stage.gallery", classic.Registry.TemplateIdOf(ViewKeys.StageGallery.Id));
         Assert.Equal("classic.stage.caption", classic.Registry.TemplateIdOf(ViewKeys.StageCaption.Id));
+        Assert.Equal("classic.stage.pane", classic.Registry.TemplateIdOf(ViewKeys.StagePane.Id));
         Assert.Empty(classic.Validate());
     }
 
