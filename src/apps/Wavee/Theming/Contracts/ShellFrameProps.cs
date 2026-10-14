@@ -11,7 +11,7 @@
 //   · Behaviour the host wires (the shell chords, the key handler, the file-drop target, the realized-node captures the
 //     probes and the scrim clip read): the template only PLACES them.
 //   · Element builders of the surfaces that are not this PR's: each is a `Func<Element>` over the core builder that exists
-//     today (the video and overlay layers, the two seams' splitters). A later
+//     today (the overlay layer, the two seams' splitters; the video layers are core hosts that mount their own keys). A later
 //     T-PR gives its surface its own view key and replaces the builder with `ctx.View(...)`; nothing else here changes. The stage
 //     did (T7a1): `StageRoot` carries the props of `Stage.Root`.
 //     T4a draws the FRAME: the column, the window layers, the content region and its seams. T4c gave the material, the
@@ -139,10 +139,12 @@ public sealed record ShellFrameProps
     /// (<see cref="StageRootProps.Mount"/>).</summary>
     public required StageRootProps StageRoot { get; init; }
 
-    /// <summary>The floating video layer.</summary>
+    /// <summary>The video layer: the core hosts of the stay-mounted presenter (which mounts <see cref="ViewKeys.VideoPip"/>), the pop-out's
+    /// owner (<see cref="ViewKeys.VideoPopOut"/>), the host observer and the join fold. A builder for good (T7c): these are lifecycle, not picture.</summary>
     public required Func<Element> VideoPipLayer { get; init; }
 
-    /// <summary>The fullscreen video layer.</summary>
+    /// <summary>The fullscreen video layer: the core host of the fullscreen mode (the OS window, the focus scope, Escape / F), which mounts
+    /// <see cref="ViewKeys.VideoFullscreen"/> for its chrome. A builder for good (T7c).</summary>
     public required Func<Element> VideoFullscreenLayer { get; init; }
 
     /// <summary>The overlay layer (banner, toast cues) (T11a).</summary>

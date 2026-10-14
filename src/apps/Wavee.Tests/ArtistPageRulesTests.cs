@@ -105,6 +105,18 @@ public class ArtistPageRulesTests
     public void ChartColumns_ClampByRowCount(int total, int expected)
         => Assert.Equal(expected, ArtistSections.ChartColumns(total));
 
+    /// <summary>W5: the chart skeleton stands at the real layout's counts — an empty edge assumes the overview's ten (2 x 5), a known chart
+    /// shows its own length up to that seed, at the columns the chart itself would offer.</summary>
+    [Theory]
+    [InlineData(0, 10, 2, 5)]
+    [InlineData(3, 3, 1, 3)]
+    [InlineData(5, 5, 1, 5)]
+    [InlineData(7, 7, 2, 4)]
+    [InlineData(10, 10, 2, 5)]
+    [InlineData(40, 10, 2, 5)]
+    public void ChartSkeletonShape_IsTheRealLayoutsCounts(int known, int total, int columns, int perColumn)
+        => Assert.Equal((total, columns, perColumn), ArtistSections.ChartSkeletonShape(known));
+
     /// <summary>W18: the tiles keep their order and a zero stat drops its WHOLE tile.</summary>
     [Fact]
     public void FactTiles_DropZeroStats_KeepTheOrder()

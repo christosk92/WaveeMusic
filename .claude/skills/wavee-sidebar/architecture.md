@@ -10,7 +10,7 @@ plan in `docs/plans/wavee/sidebar-rework-implementation.md`.
 |---|---|---|
 | Layout model: catalogue, overlays, ops, rules | `Shell/Sidebar.Layout.cs` | yes |
 | Pane modes, window bands, resize | `Shell/Sidebar.Resize.cs` | yes |
-| Planner, row diff, extents, freeze, row ladder (the structure's since T5a) | `Themes/Classic/Structure/Rules/SidebarPlanner.cs`, `SidebarGeometry.cs`; the plan's vocabulary stays core: `Shell/Sidebar.Planner.cs` (`SidebarPlanOptions`), `Shell/Sidebar.cs` (`SidebarRowPlan`, `SidebarRowShape`, the `SidebarRowGeometry` plan queries and its pinned mirror) | yes |
+| Planner, row diff, extents, freeze, row ladder (the structure's since T5a) | `Themes/Classic/Structure/Rules/SidebarPlanner.cs`, `SidebarGeometry.cs`; the plan's vocabulary stays core: `Shell/Sidebar.Planner.cs` (`SidebarPlanOptions`), `Shell/Sidebar.cs` (`SidebarRowPlan`, `SidebarRowShape`, the `SidebarPlanQueries` plan queries) | yes |
 | Rules: pills, type-ahead, subtitles, label fit, pin rules | `Shell/Sidebar.Rules.cs`, `Shell/Sidebar.cs` (`RootlistOps`, `RootlistSlotResolver`) | yes |
 | Library head rules and shaper | `Shell/Sidebar.Library.cs` | yes |
 | Edit rules, menu model, undo ring | `Shell/Sidebar.Edit.cs` | yes |
@@ -71,8 +71,9 @@ at mount (see [pitfalls.md](pitfalls.md)).
   is pure and POD. It emits the visible subtree of an expanded pinned folder at relative depth, honours nested
   disclosure state, and shares the section cap.
 - **`SidebarRowPlan`** is the list plus the measured geometry. **`SidebarGeometry`** (Classic, `Rules/SidebarGeometry.cs`) is the one metrics ladder
-  (row height 36 / two-line 40, icon column 40, label gap 4, trailing pad 14, pane edge 4, rail 48, tile 40). Core's `SidebarRowGeometry`
-  keeps the plan queries and a pinned copy of the members the still-core surfaces read (`SidebarGeometryParityTests`) until T5b-f move them.
+  (row height 36 / two-line 40, icon column 40, label gap 4, trailing pad 14, pane edge 4, rail 48, tile 40). Core has no copy of it:
+  the pane asks the kit (`NavRowKit.TreeLadder`, `ListInset`, `PitchOf`, `PillHeight`, `GridColumns`) and the rail's width is `NavPanePolicy.RailWidth`;
+  `SidebarPlanQueries` keeps the plan queries (no pixels).
   **`SidebarRowShape`** says which of the shapes a row takes.
 - **`SidebarRowExtents`** (Classic, `SidebarPlanner.cs`) turns a plan into the extents `ItemsView` virtualizes over; the diff (`SidebarPlanDiff`)
   and the mid-drag parking bay (`SidebarStageHold<T>`) live beside it. `SidebarRowPlanner.OwningSection` answers which section holds a route (X26).

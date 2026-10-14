@@ -7,10 +7,9 @@
 // The sections, in file order:
 //
 //   CORE       `SidebarPaneBounds` — the expanded width's clamp pair and its default.
-//   GEOMETRY   `SidebarRowGeometry` — the plan queries (which rows a disclosure owns) and the TRANSITIONAL MIRROR of the ladder the
-//              not-yet-moved core surfaces still read. The ladder itself, `SidebarRowExtents` and the planner are the
-//              structure's since T5a (`Themes/Classic/Structure/Rules/SidebarGeometry.cs`, `SidebarPlanner.cs`). Art starts at pane
-//              centre x = 24 and the label at x = 48 on EVERY row shape; one height per SECTION, never per row (a mixed
+//   QUERIES    `SidebarPlanQueries` — the plan queries (which rows a disclosure owns). The row ladder, `SidebarRowExtents` and the
+//              planner are the structure's (`Themes/Classic/Structure/Rules/SidebarGeometry.cs`, `SidebarPlanner.cs`): art starts
+//              at pane centre x = 24 and the label at x = 48 on EVERY row shape; one height per SECTION, never per row (a mixed
 //              band breaks both the `Reorderable` slot pitch and the virtualizing host's extent table).
 //   ROWS       `SidebarRowKind`, `SidebarRow`/`SidebarRowPlan`, `SidebarProjectionInput`, `SidebarPlanBuffers` — the
 //              plan's vocabulary. The planner itself is `Sidebar.Planner.cs`: (document × projection) flattened into ONE
@@ -49,12 +48,16 @@ namespace Wavee;
 // `Sidebar.Resize.cs`.
 
 /// <summary>The expanded sidebar column's bounds. Issue #84 lowered the floor from 240 to 180 so the pane can go
-/// genuinely narrow; 460 is the ceiling. The collapsed rail is 48 DIP (`SidebarRowGeometry.RailWidth`), the same list
+/// genuinely narrow; 460 is the ceiling. The collapsed rail is 48 DIP (`NavPanePolicy.RailWidth`), the same list
 /// planned compact.</summary>
 public static class SidebarPaneBounds
 {
     /// <summary>THE clamp pair. Every writer goes through it.</summary>
     public const float NavPaneMinW = 180f, NavPaneMaxW = 460f;
+
+    /// <summary>The collapsed rail's width (WinUI NavigationViewCompactPaneLength). The shell's baseline: the structure's
+    /// answer is <c>NavPanePolicy.RailWidth</c>, which <c>NavPanePolicy.Default</c> is built from this.</summary>
+    public const float RailWidth = 48f;
 
     /// <summary>The width a fresh pane opens at, and the width Reset returns to.</summary>
     public const float DefaultWidth = 320f;
@@ -301,13 +304,12 @@ public static class RootlistMarkerStream
     }
 }
 
-// ── GEOMETRY, RESOLVE, PILL, REORDER, MENUS, DIAG ───────────────────────────────────────────────────────────────
+// ── PLAN QUERIES, RESOLVE, PILL, REORDER, MENUS, DIAG ───────────────────────────────────────────────────────────
 //
-// The sidebar pane's pure per-row bookkeeping: the plan geometry helpers and the ladder mirror the core surfaces still read;
-// the row→route selection join; the accent-pill lit rule; the reorder-clamp displacement hint; context-menu verb layout; and
-// the docked-pane terminal-state invariant. The analytic row extent, the publish diff and the mid-drag stage-hold parking bay
-// moved to the structure with the planner (T5a). Every number here is a fact verified against a screenshot ruler — port it
-// exactly, never re-derive it.
+// The sidebar pane's pure per-row bookkeeping: the plan queries (which rows a disclosure owns); the row→route selection join; the
+// accent-pill lit rule; the reorder-clamp displacement hint; context-menu verb layout; and the docked-pane terminal-state
+// invariant. The row ladder, the analytic row extent, the publish diff and the mid-drag stage-hold parking bay are the
+// structure's (T5a, T5f): core asks the kit.
 
 /// <summary>Which of the three WinUI row shapes a section's rows take (design V.3). One shape per SECTION, never per
 /// row: a band's reorder pitch and the virtualizing host's extent table both assume it.</summary>
@@ -321,89 +323,11 @@ public enum SidebarRowShape : byte
     EntityOneLine = 2,
 }
 
-/// <summary>THE PLAN QUERIES of the row ladder (which rows a disclosure owns, where a folder header or a route sits) and
-/// the TRANSITIONAL MIRROR of its numbers (T5a). The ladder is the structure's:
-/// <c>Themes/Classic/Structure/Rules/SidebarGeometry.cs</c> (drawn to WinUI NavigationView, "TR": 36-px rows in a 4,2 margin, a
-/// 40-px icon column, 31-px folder indents, the 3×16 r2 pill). What is left here are exactly the members the sub-surfaces that are
-/// still core read -- the shared row primitives (<c>Sidebar.UI.Rows.cs</c>), the heads, the flyouts, the Edit outline, the drop
-/// rules, the resize rules -- each a copy of Classic's value, pinned equal by <c>SidebarGeometryParityTests</c>. The last of those
-/// readers to move (T5f) deletes the copy. Numbers are SLOT space (the list's one 4-px inset is <see cref="PaneEdge"/>).
-/// Engine-free so Wavee.Tests pins every one.</summary>
-public static class SidebarRowGeometry
+/// <summary>THE PLAN QUERIES: which rows a disclosure owns, where a folder header or a route sits in a plan. No pixels: the row
+/// ladder (heights, columns, indents, the pill) is the structure's (<c>Themes/Classic/Structure/Rules/SidebarGeometry.cs</c>) and
+/// core reads it only through the kit (<c>NavRowKit</c>) and the nav-pane policy. Engine-free so Wavee.Tests pins every one.</summary>
+public static class SidebarPlanQueries
 {
-    // ── the pane ──
-    /// <summary>The list's horizontal inset (4) — WinUI's item margin X, applied ONCE around the list
-    /// (<c>PaneMetrics.PanePad</c>), never per row.</summary>
-    public const float PaneEdge = 4f;
-    /// <summary>The pane content grid's top margin (TR:233's −1,3 with the −1 dropped: no content border to tuck under).</summary>
-    public const float PaneTopInset = 3f;
-    /// <summary>The vertical half of the 4,2 item margin, carried by every row.</summary>
-    public const float RowMarginY = 2f;
-    /// <summary>The compact rail (TR:208 NavigationViewCompactPaneLength).</summary>
-    public const float RailWidth = 48f;
-    /// <summary>A compact-rail row: the 48 rail less the two 4-px insets.</summary>
-    public const float TileWidth = 40f;
-
-    // ── rows ──
-    public const float RowHeight = 36f;
-    public const float TwoLineRowHeight = 40f;
-    /// <summary>The leading visual's box: the widest art (32); a glyph or the compact 24 art is centred in it.</summary>
-    public const float ArtSlot = 32f;
-    /// <summary>Slot x of the art's left edge: 7 clear of the 3-px selection pill, and the x the section headers' titles
-    /// share, so a header, a cover and a glyph's column start on one line.</summary>
-    public const float LeadInset = 10f;
-    public const float IconColumn = LeadInset + ArtSlot;                         // 42
-    public const float GlyphSize = 16f;
-    /// <summary>Between the icon column and the label: 8, so a glyph's label sits 16 past the glyph (as WinUI's 48-column
-    /// item) and a cover's 8 past the cover.</summary>
-    public const float LabelGap = 8f;
-    /// <summary>The ContentGrid's 14-px right margin (TR:604): trailing content ends at pane W − 18.</summary>
-    public const float TrailingPad = 14f;
-    /// <summary>The chevron column (TR:617): its −14 margin cancels <see cref="TrailingPad"/>.</summary>
-    public const float ChevronColumn = 40f;
-    public const float IndentStep = 31f;
-    public const int MaxIndentDepth = 3;
-    /// <summary>The trailing cluster's gap (count · pin mark · equalizer).</summary>
-    public const float TrailingGap = 6f;
-
-    // ── chrome rows ──
-    // (T5b: the header's height, the separator and the empty hint are Classic's alone now; core keeps the two the Library lane
-    // rules and the Edit outline's inline buttons still read.)
-    /// <summary>The header title's x: the rows' <see cref="LeadInset"/> (pane 14), so a title starts where the covers do.</summary>
-    public const float HeaderTextX = LeadInset;
-    // ── the pill ──
-    public const float PillW = 3f, PillH = 16f, PillRadius = 2f;
-
-    public static float HeightOf(SidebarRowShape shape)
-        => shape == SidebarRowShape.EntityTwoLine ? TwoLineRowHeight : RowHeight;
-
-    /// <summary>A row's slot extent: its height plus the 2 + 2 margin (40 / 44 / 40).</summary>
-    public static float PitchOf(SidebarRowShape shape) => HeightOf(shape) + 2f * RowMarginY;
-
-    /// <summary>The leading visual's edge: glyph 16 · art 32 (Default) · art 24 (Compact).</summary>
-    public static float ArtOf(SidebarRowShape shape) => shape switch
-    {
-        SidebarRowShape.Glyph => GlyphSize,
-        SidebarRowShape.EntityTwoLine => 32f,
-        _ => 24f,
-    };
-
-    public static int ClampDepth(int depth) => depth < 0 ? 0 : depth > MaxIndentDepth ? MaxIndentDepth : depth;
-
-    /// <summary>The content indent for a nesting depth: 31 per level, capped at 3 (93). The FILL stays full width; only
-    /// pill, icon and label move (NavigationViewItem.cpp:894-902).</summary>
-    public static float IndentFor(int depth) => IndentStep * ClampDepth(depth);
-
-    /// <summary>Where the drop caret for depth <paramref name="depth"/> starts (slot space): the same x as the pill, so
-    /// "insert here at this depth" lines up with the row it describes. Read backwards by the drop resolver.</summary>
-    public static float TreeContentX(int depth) => IndentFor(depth);
-
-    /// <summary>A subtitle line is drawn only in a two-line row and only when there is text.</summary>
-    public static bool SubtitleVisible(SidebarRowShape shape, string? subtitle)
-        => shape == SidebarRowShape.EntityTwoLine && subtitle is { Length: > 0 };
-
-    // ── pure plan geometry ──
-
     /// <summary>The first plan index whose row resolves to <paramref name="route"/>, or -1. <paramref name="routeAt"/>
     /// is the caller's row→route projection; null/empty means "this row is not a navigation target".</summary>
     public static int IndexOfRoute(int count, Func<int, string?> routeAt, string? route)
@@ -661,7 +585,9 @@ public static class SidebarPaneInvariant
 {
     public const float Tolerance = 0.5f;
 
-    public static SidebarPaneInvariantFault Inspect(in SidebarPaneFrameSnapshot s)
+    /// <summary>Inspect one settled observation. <paramref name="policy"/> is the nav-pane policy the pane ran under (null = the
+    /// active one): the rail's width is the structure's.</summary>
+    public static SidebarPaneInvariantFault Inspect(in SidebarPaneFrameSnapshot s, Theming.NavPanePolicy? policy = null)
     {
         if (!float.IsFinite(s.PreferredExpandedWidth) || !float.IsFinite(s.PresentedWidth) || !float.IsFinite(s.RenderedPaneWidth))
             return SidebarPaneInvariantFault.NonFiniteValue;
@@ -674,7 +600,7 @@ public static class SidebarPaneInvariant
         switch (s.Mode)
         {
             case SidebarPaneMode.Compact:
-                if (!Near(s.RenderedPaneWidth, SidebarRowGeometry.RailWidth)) fault |= SidebarPaneInvariantFault.RailWidthMismatch;
+                if (!Near(s.RenderedPaneWidth, ShellPolicy.NavOr(policy).RailWidth)) fault |= SidebarPaneInvariantFault.RailWidthMismatch;
                 break;
             case SidebarPaneMode.Minimal:
                 if (!Near(s.RenderedPaneWidth, 0f)) fault |= SidebarPaneInvariantFault.MinimalNotEmpty;

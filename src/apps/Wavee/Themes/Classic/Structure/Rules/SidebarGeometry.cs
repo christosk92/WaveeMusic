@@ -4,12 +4,12 @@
 // edits them HERE. Literals are allowed in this file (WVTH003 exempts `Rules\**`), so the row slot (`Views\Nav\ClassicNavRow.cs`),
 // the planner's analytic extents (`SidebarPlanner.cs`) and the pill read their sizes from this class and never inline them.
 //
-// TRANSITIONAL MIRROR. The pane's other sub-surfaces are still core until T5c-f (the flyouts and menus, the Edit outline, the
-// drop cues, the library grid; T5b moved the heads) and so are the shared row primitives in `Shell/Sidebar.UI.Rows.cs`, and they cannot
-// name a structure. Core keeps `SidebarRowGeometry`: the plan queries (which are no pixels: `TrySectionBodyRange`,
-// `FolderHeaderIndexOf`, ...) and a copy of exactly the ladder members those readers still use. `SidebarGeometryParityTests` pins
-// every shared member equal, so the two cannot drift; the last core reader to move (T5f) deletes the copy. The band widths are
-// not here: they are `NavPanePolicy` (T3).
+// THERE IS NO CORE COPY (T5f ended the T5a mirror). Core's pane asks the kit for the few ladder answers it needs
+// (`NavRowKit.TreeLadder`, `ListInset`, `PitchOf`, `PillHeight`, `GridColumns`; `ClassicNavRows` answers from here) and the nav-pane policy
+// for the rail's width (`NavPanePolicy.RailWidth`, `ClassicPolicies.NavPane`). What stayed in core is no pixels: the plan queries
+// (`SidebarPlanQueries`). The band widths are not here either: they are `NavPanePolicy` (T3).
+
+using FluentGpu.Foundation;
 
 namespace Wavee.Themes.Classic;
 
@@ -22,7 +22,7 @@ public static class SidebarGeometry
 {
     // ── the pane ──
     /// <summary>The list's horizontal inset (4) — WinUI's item margin X, applied ONCE around the list
-    /// (<c>PaneMetrics.PanePad</c>), never per row.</summary>
+    /// (<see cref="ListInset"/>), never per row.</summary>
     public const float PaneEdge = 4f;
     /// <summary>The pane content grid's top margin (TR:233's −1,3 with the −1 dropped: no content border to tuck under).</summary>
     public const float PaneTopInset = 3f;
@@ -109,6 +109,10 @@ public static class SidebarGeometry
 
     // ── pane-level numbers the row slot and the grid strip read ──
 
+    /// <summary>THE PANE'S ONE INSET: the list's 4-px WinUI item margin and the 3-px content-grid top, around the virtualized list and
+    /// nowhere else. Every band above or below the list reproduces its horizontal 4. Core reads it as <c>NavRowKit.ListInset</c>.</summary>
+    public static readonly Edges4 ListInset = new(PaneEdge, PaneTopInset, PaneEdge, 0f);
+
     /// <summary>The list's two horizontal insets (4 + 4): the width a row's content has less than the pane.</summary>
     public const float PaneInsetH = PaneEdge * 2f;
 
@@ -120,6 +124,39 @@ public static class SidebarGeometry
 
     /// <summary>A folder's 40-px chevron column replaces the 14-px trailing pad: the trailing width its label gives up.</summary>
     public const float FolderTrail = ChevronColumn - TrailingPad;
+
+    // ── the row primitive (`ClassicEntityRow`) ──
+
+    /// <summary>The hover "…" box. It overlays the row and costs the label nothing: a trailing count or pin mark fades out under it on
+    /// hover. Its radius is half its edge; its glyph is 14.</summary>
+    public const float OverflowButton = 26f, OverflowButtonCorner = 13f, OverflowGlyph = 14f;
+
+    /// <summary>A disabled row fades as a whole (TR:501).</summary>
+    public const float DisabledOpacity = 0.3f;
+
+    /// <summary>The title's line height in a two-line row.</summary>
+    public const float TwoLineLabelHeight = 18f;
+
+    /// <summary>The quiet pin mark beside a pinned entry's count.</summary>
+    public const float PinMarkSize = 12f;
+
+    /// <summary>A track row's cover scrim and its ▶: the scrim is dark in BOTH themes, so the glyph is literal white (never
+    /// <c>TextOnAccentPrimary</c>, which is black in dark). The glyph is 14, 10 in a Compact (one-line) row.</summary>
+    public static ColorF TrackScrim => new(0f, 0f, 0f, 0.55f);
+    public static ColorF TrackPlayInk => ColorF.FromRgba(0xFF, 0xFF, 0xFF);
+    public const float TrackPlayGlyph = 14f, TrackPlayGlyphCompact = 10f;
+
+    // ── the pending row (`ClassicSkeletons`) ──
+
+    /// <summary>The bars: 140×12 (+ 80×10 at gap 4 in a two-line row), r4.</summary>
+    public const float SkeletonTitleW = 140f, SkeletonTitleH = 12f, SkeletonSubtitleW = 80f, SkeletonSubtitleH = 10f,
+        SkeletonGap = 4f, SkeletonBarRadius = 4f;
+
+    /// <summary>The label column of a row in a pane <paramref name="paneWidth"/> wide at <paramref name="depth"/>, with
+    /// <paramref name="trailing"/> DIP of trailing content: the pane less its list insets, the row's indent, icon column, label gap and
+    /// trailing pad. The row decides from it whether to carry its label as a tooltip (<c>SidebarLabelFit.Overflows</c>).</summary>
+    public static float LabelWidth(float paneWidth, int depth, float trailing)
+        => paneWidth - PaneInsetH - IndentFor(depth) - IconColumn - LabelGap - TrailingPad - trailing;
 
     // ── the pinned band's drop cue (the empty Pinned band while a pinnable drag is live) ──
 
@@ -159,6 +196,29 @@ public static class SidebarGeometry
         => kind is SidebarDropKind.Before or SidebarDropKind.EndOfList
             ? 0f
             : MathF.Max(0f, rowHeight - DropLineThickness);
+
+    // ── the Library grid's columns (design P.2) ──
+
+    /// <summary>2–4 columns from the presented pane width, no size picker: as many <see cref="GridMinCell"/>-wide cells with
+    /// <see cref="GridGap"/> gaps as the lane fits, clamped to [2, 4]. The lane is the pane less the list's 4+4 pad and the strip's 8+8
+    /// inset. Core asks it through <c>NavRowKit.GridColumns</c> and hands the count to the planner.</summary>
+    public const float GridMinCell = 116f, GridGap = 8f, GridStripInsetH = 16f;
+    public const int GridMinColumns = 2, GridMaxColumns = 4;
+
+    public static int GridColumns(float paneWidth)
+    {
+        float lane = paneWidth - PaneInsetH - GridStripInsetH;
+        if (!float.IsFinite(lane) || lane <= 0f) return GridMinColumns;
+        int n = (int)MathF.Floor((lane + GridGap) / (GridMinCell + GridGap));
+        return Math.Clamp(n, GridMinColumns, GridMaxColumns);
+    }
+
+    /// <summary>A grid tile's cover: the cell less the shared grid card's plate padding on both sides. The cover is a fixed
+    /// square (it is built from a <c>Cover</c> factory, not a fluid image), so it is sized from the cell the strip derived.</summary>
+    public static float TileCover(float cell) => MathF.Max(0f, cell - 2f * SurfaceGeometry.ShelfPlatePad);
+
+    /// <summary>The glyph a no-art tile's cover carries.</summary>
+    public const float GridTileGlyph = 24f;
 
     // ── grid strip fallback (issue #84) ──
     // The planner owns the column COUNT; re-deriving it from width here would disagree with how the planner already

@@ -6,7 +6,7 @@
 // real overlay rules (`SidebarLayoutRules.Resolve`), so a default, an op and a plan are pinned together, never a
 // hand-built section list.
 //
-// The kept classes test types that survive in shape: the pure plan geometry (`SidebarRowGeometry`), the analytic row
+// The kept classes test types that survive in shape: the pure plan queries (`SidebarPlanQueries`), the analytic row
 // extents (`SidebarRowExtents`) and the pane invariant (`SidebarPaneInvariant`).
 
 using System;
@@ -538,7 +538,7 @@ public sealed class SidebarRowPlannerTests
 #endregion
 
 #region ROW GEOMETRY — SidebarPlanGeometryTests
-// SidebarRowGeometry is the engine-free half of the sidebar's row ladder. The plan helpers under test are the pure geometry
+// SidebarPlanQueries is the engine-free half of the sidebar's row plan (the ladder is the structure's). The plan helpers under test are the pure geometry
 // the selection cue and the drop caret need: the tree's content origin, the row ladder's heights, the cumulative content-space
 // Y, the route → index lookup, the travel direction, the grid fallback and the pin glyph.
 public sealed class SidebarPlanGeometryTests
@@ -600,13 +600,13 @@ public sealed class SidebarPlanGeometryTests
     public void IndexOfRoute_FindsTheFirstMatchAndIgnoresNonTargets()
     {
         string?[] routes = [null, "albums", "", "liked", "albums"];
-        Assert.Equal(1, SidebarRowGeometry.IndexOfRoute(routes.Length, i => routes[i], "albums"));
-        Assert.Equal(3, SidebarRowGeometry.IndexOfRoute(routes.Length, i => routes[i], "liked"));
-        Assert.Equal(-1, SidebarRowGeometry.IndexOfRoute(routes.Length, i => routes[i], "podcasts"));
-        Assert.Equal(-1, SidebarRowGeometry.IndexOfRoute(routes.Length, i => routes[i], ""));
-        Assert.Equal(-1, SidebarRowGeometry.IndexOfRoute(routes.Length, i => routes[i], null));
+        Assert.Equal(1, SidebarPlanQueries.IndexOfRoute(routes.Length, i => routes[i], "albums"));
+        Assert.Equal(3, SidebarPlanQueries.IndexOfRoute(routes.Length, i => routes[i], "liked"));
+        Assert.Equal(-1, SidebarPlanQueries.IndexOfRoute(routes.Length, i => routes[i], "podcasts"));
+        Assert.Equal(-1, SidebarPlanQueries.IndexOfRoute(routes.Length, i => routes[i], ""));
+        Assert.Equal(-1, SidebarPlanQueries.IndexOfRoute(routes.Length, i => routes[i], null));
         // Ordinal, never culture- or case-insensitive: route keys are identifiers.
-        Assert.Equal(-1, SidebarRowGeometry.IndexOfRoute(routes.Length, i => routes[i], "Albums"));
+        Assert.Equal(-1, SidebarPlanQueries.IndexOfRoute(routes.Length, i => routes[i], "Albums"));
     }
 
     // ── grid strip fallback (issue #84) ──────────────────────────────────────────────────────────────────────────────
@@ -657,7 +657,7 @@ public sealed class SidebarPlanGeometryTests
     [InlineData(true, true, false)]    // a track is never pinnable (locked decision) even if IsPinned is somehow set
     [InlineData(false, true, false)]
     public void ShowsPinGlyph_IsPinnedAndNeverATrack(bool isPinned, bool isTrack, bool expected)
-        => Assert.Equal(expected, SidebarRowGeometry.ShowsPinGlyph(isPinned, isTrack));
+        => Assert.Equal(expected, SidebarPlanQueries.ShowsPinGlyph(isPinned, isTrack));
 }
 #endregion
 

@@ -18,7 +18,7 @@
 //   the picker       the roster, owner, active device and outputs composed into entries, each with its glyph and its verb
 //   the on-media     the playback facts and verbs the strip draws and presses, over the surface's own idle signal and chrome feed
 //
-// WVTH008: this type builds no element and reads no token or role. The pieces that still draw (the lyrics header, the video body,
+// WVTH008: this type builds no element and reads no token or role. The pieces that still draw (the lyrics header,
 // the "Next up" rows, the seek rail, the time labels) are the core's own builders; the views place them.
 
 using System.Collections.Generic;
@@ -248,7 +248,12 @@ internal static class RailWiring
         LyricsHeader = static () => Rail.LyricsHeaderElement(),
         LyricsBody = static () => Lyrics.View(),
         QueueBody = static () => Rail.QueueBodyOrEmpty(),
-        VideoBody = static () => Rail.VideoBodyElement(),
+        SubscribeVideoBody = static () =>
+        {
+            _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table read below
+            _ = Entities.Current.Edges.Queue.Changed.Value;
+            _ = Entities.Current.Albums.Changed.Value;
+        },
         NowPlaying = BuildNowPlaying(),
         Friends = BuildFriends(),
     };

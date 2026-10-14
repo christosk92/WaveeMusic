@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using Wavee;
+using Wavee.Themes.Classic;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -30,9 +31,9 @@ public sealed class SidebarTypeAheadRulesTests
 
     [Fact]
     public void Overflows_ALongPlaylistNameInANarrowColumn()
-        => Assert.True(SidebarLabelFit.Overflows("A very long playlist name that cannot fit", SidebarLabelFit.LabelWidth(240, 0, 0)));
+        => Assert.True(SidebarLabelFit.Overflows("A very long playlist name that cannot fit", SidebarGeometry.LabelWidth(240, 0, 0)));
 
     [Fact]
     public void Overflows_AShortTitleWithTrailingContent_DoesNot()
-        => Assert.False(SidebarLabelFit.Overflows("Jazz", SidebarLabelFit.LabelWidth(320, 0, 28)));
+        => Assert.False(SidebarLabelFit.Overflows("Jazz", SidebarGeometry.LabelWidth(320, 0, 28)));
 }

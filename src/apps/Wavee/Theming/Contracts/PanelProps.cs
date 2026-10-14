@@ -13,8 +13,9 @@
 // NowPlaying bodies for the queue), whether the docked card is up, and what occupies the now-playing arm's pinned slot.
 //
 // THE BODIES. The now-playing body is this PR's (`NowPlaying`); the friends body is the `Panel.Friends` key. The lyrics header and
-// body, the queue body and the video body are `Func<Element>` builders (the lyrics body and the queue body are core hosts that mount
-// `Lyrics.View` (T7b) and `Queue.Panel` (T7d); the video body waits for T7c); the docked video card is the video lane's (`Video.DockedCap`).
+// body and the queue body are `Func<Element>` builders (the lyrics body and the queue body are core hosts that mount `Lyrics.View` (T7b)
+// and `Queue.Panel` (T7d)); the docked video card is a core host that mounts `Video.Docked` (`Video.DockedCap`). The video body (T7c) is
+// the template's own: it reads the playing track and the "Next up" rows through `NowPlaying` and subscribes through `SubscribeVideoBody`.
 //
 // WVTH006: a sealed record with init-only members and no writable signal. The record is built once (`RailWiring.Panel`), so an
 // equal re-push skips the template.
@@ -124,8 +125,9 @@ public sealed record PanelProps
     /// <summary>The queue body (the core host of the queue panel, which mounts <see cref="ViewKeys.QueuePanel"/>, or its empty grammar).</summary>
     public required Func<Element> QueueBody { get; init; }
 
-    /// <summary>The video mode's body under the docked card (track meta, up next). T7c.</summary>
-    public required Func<Element> VideoBody { get; init; }
+    /// <summary>Subscribe what the video mode's body reads of the entity tables (the scope epoch, the queue edge, the album table); call it
+    /// inside the body's render, after the playing track. The body itself (the track meta, "Next up") is the template's.</summary>
+    public required Action SubscribeVideoBody { get; init; }
 
     // ── the surfaces this PR gave their own keys ─────────────────────────────────────────────────────────────────────
 

@@ -13,6 +13,7 @@
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
+using FluentGpu.Foundation;
 
 namespace Wavee.Theming.Contracts;
 
@@ -34,9 +35,33 @@ public interface INavStageHold<TStage> where TStage : class
     void Discard();
 }
 
+/// <summary>Where a tree row's content starts, as the drop resolver reads it (T5f): the x of a row at depth 0 in slot space and the
+/// width of one indent level. The depth pick (<c>RootlistSlotResolver</c>) turns a pointer x into a depth with exactly the ladder
+/// the structure draws its rows and its insertion caret on, so "one step left" is one outdent.</summary>
+/// <param name="OriginX">Slot x of a depth-0 row's content (its pill's x).</param>
+/// <param name="IndentStep">The x one nesting level adds.</param>
+public readonly record struct NavTreeLadder(float OriginX, float IndentStep);
+
 /// <summary>What a structure supplies for the pane's list (see the file header). One instance per structure, stateless.</summary>
 public abstract class NavRowKit
 {
+    /// <summary>The ladder the drop resolver's depth pick reads (T5f).</summary>
+    public abstract NavTreeLadder TreeLadder { get; }
+
+    /// <summary>The pane's one inset around the virtualized list: the structure's item margin and top inset. The horizontal sum is what a
+    /// row's content has less than the pane (T5f).</summary>
+    public abstract Edges4 ListInset { get; }
+
+    /// <summary>A row's slot extent for a section's row shape: its height plus its margins. It seeds the virtualizing host's estimate
+    /// and the reorder bands' pitch (T5f).</summary>
+    public abstract float PitchOf(SidebarRowShape shape);
+
+    /// <summary>The selection indicator's height: the selection flight's travel pivots on it (T5f).</summary>
+    public abstract float PillHeight { get; }
+
+    /// <summary>The Library grid's column count at a presented pane width: the planner cuts its strips with it (T5f).</summary>
+    public abstract int GridColumns(float paneWidth);
+
     /// <summary>(layout document x projection) -> ONE flat row list, for the expanded pane or the rail. The buffers are the
     /// CALLER's and the plan ALIASES them.</summary>
     public abstract SidebarRowPlan Plan(SidebarLayoutDoc doc, in SidebarProjectionInput input, in SidebarPlanOptions options,

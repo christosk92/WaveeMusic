@@ -11,7 +11,7 @@
 // `StyleKeys.TrackTable` style; T8b its chrome, `ClassicTrackChrome.cs`), T8c the other list surfaces (`Lists\ClassicEagerRow.cs`,
 // `ClassicEpisodeRow.cs`, `ClassicSurface.cs`, `ClassicArtistChart.cs`, `ClassicTrackDrawer.cs`, with the shared cells in `ClassicRowCells.cs`:
 // the `StyleKeys.EagerTrackRow`, `EpisodeRow`, `Surface`, `ArtistChart` and `TrackDrawer` styles), T10a1 Home (`Views\Home`: the page, facet row, daylist and clock, zone bodies, the drill page and the
-// customizer), T9a the shared detail frame (`Views\Detail`: the scaffold, the rail and its strip, the show header, the hero, the insights sheet), T9b its album and playlist sub-contracts (`Views\Detail\ClassicAlbum*.cs`, `ClassicPlaylist*.cs`, `ClassicDetailSeam.cs`), T10a2 Browse and Search (`Views\Pages`: the directory and its Charts band, a category page, the section drill key, the Search results page), T7d the queue (`Views\Queue`: the rail panel and the stage's Up next column), T10b1 the artist page (`Views\Pages\ClassicArtist*.cs`: the page, the hero, the sections, the banners, the pick card), T10c1 the library (`Views\Pages\ClassicLibrary*.cs`: the master-detail page and its album, show, artist and Your Episodes panes), T10b3 the concert surfaces (`Views\Pages\ClassicConcert*.cs`: the hub with its filter bar, tail and location picker, an artist's tour dashboard, the event page) and the Common module page (`Themes\Common\CommonModulePage.cs`); every other surface is still core code. It
+// customizer), T9a the shared detail frame (`Views\Detail`: the scaffold, the rail and its strip, the show header, the hero, the insights sheet), T9b its album and playlist sub-contracts (`Views\Detail\ClassicAlbum*.cs`, `ClassicPlaylist*.cs`, `ClassicDetailSeam.cs`), T10a2 Browse and Search (`Views\Pages`: the directory and its Charts band, a category page, the section drill key, the Search results page), T7d the queue (`Views\Queue`: the rail panel and the stage's Up next column), T7c the video surfaces (`Views\Video`: the docked card, the in-window overlay and its chrome, the pop-out, the fullscreen exit chrome, the poster and join notice, the placement flyout, the panel's video body), T10b1 the artist page (`Views\Pages\ClassicArtist*.cs`: the page, the hero, the sections, the banners, the pick card), T10b2 the rest of the artist family (the gallery lightbox `ClassicArtistLightbox.cs`, the discography page `ClassicDiscographyPage.cs`, the discography style `Lists\ClassicDiscography.cs` and the chart's frame), T10b3 the concert surfaces (`Views\Pages\ClassicConcert*.cs`: the hub with its filter bar, tail and location picker, an artist's tour dashboard, the event page) and the Common module page (`Themes\Common\CommonModulePage.cs`), T10c1 the library (`Views\Pages\ClassicLibrary*.cs`: the master-detail page and its album, show, artist and Your Episodes panes); every other surface is still core code. It
 // decides the shell's policies (`Rules\ClassicPolicies.cs`: nav pane, panel and mini player, player bar, chrome row, stage)
 // and offers every capability (T3). Its window tiers (T3b) are `Rules\Tiers.cs`.
 //
@@ -92,8 +92,8 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.DevicePicker, ClassicDevicePicker.Template, "classic.player.device-picker");
         views.Add(ViewKeys.OnMediaTransport, ClassicOnMedia.Template, "classic.player.on-media-transport");
         // T7a1: the fullscreen stage's frame: the root (layer stack, chrome placement, hairline), the top bar, the transport card, the
-        // options popover, the visualizer gallery and the lyric caption. The layouts, hero and artist pane (T7a2) have keys; video
-        // (T7c) arrives as a builder on the root until it does (the lyrics pane is T7b's and the queue pane T7d's, below).
+        // options popover, the visualizer gallery and the lyric caption. The layouts, hero and artist pane (T7a2) have keys (the lyrics pane
+        // is T7b's and the queue pane T7d's, below), and so do the video surfaces (T7c, after the queue's).
         views.Add(ViewKeys.StageRoot, ClassicStageRoot.Template, "classic.stage.root");
         views.Add(ViewKeys.StageTopBar, ClassicStageTopBar.Template, "classic.stage.top-bar");
         views.Add(ViewKeys.StageTransport, ClassicStageTransport.Template, "classic.stage.transport");
@@ -120,6 +120,14 @@ public sealed class ClassicStructure : IStructureLayer
         // `Queue.StagePaneHost`).
         views.Add(ViewKeys.QueuePanel, ClassicQueue.PanelTemplate, "classic.queue.panel");
         views.Add(ViewKeys.QueueStagePane, ClassicQueue.StagePaneTemplate, "classic.queue.stage-pane");
+        // T7c: the video surfaces' pictures: the docked card (and the watch page's stage frame), the in-window overlay and its chrome, the pop-out's
+        // content, the fullscreen exit chrome, the poster with the join notice and the placement flyout. The media pipeline stays core.
+        views.Add(ViewKeys.VideoDocked, ClassicVideoDocked.Template, "classic.video.docked");
+        views.Add(ViewKeys.VideoPip, ClassicVideoPip.Template, "classic.video.pip");
+        views.Add(ViewKeys.VideoPopOut, ClassicVideoPopOut.Template, "classic.video.pop-out");
+        views.Add(ViewKeys.VideoFullscreen, ClassicVideoFullscreen.Template, "classic.video.fullscreen");
+        views.Add(ViewKeys.VideoJoinPoster, ClassicVideoPoster.Template, "classic.video.join-poster");
+        views.Add(ViewKeys.VideoPlacementMenu, ClassicVideoPlacementMenu.Template, "classic.video.placement-menu");
         // T10a1: Home. The page (the scroll column, the skeleton region, the zone column and every chapter), the facet row, the daylist card
         // and its clock, the zone bodies (`Home.Zone.<Kind>`: the Recents grid and the Charts block have core hosts, the other fourteen kinds are
         // pure functions of their zone and share one template), the "See all" drill page and the customizer. The facet machine, the model, the
@@ -186,6 +194,13 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.ArtistConcerts, ClassicConcertSchedule.Template, "classic.concerts.artist-schedule");
         views.Add(ViewKeys.ConcertDetail, ClassicConcertDetail.Template, "classic.concerts.detail");
         views.Add(ViewKeys.ModulePage, CommonModulePage.Template, "common.module.page");
+        // T10b2: the rest of the artist family. The gallery lightbox (the pager, the pan/zoom mode, the auto-hiding chrome, the filmstrip; the overlay, the
+        // open index, the Escape veto's wiring and the export stay core in `Artist.GalleryOpen`), the standalone discography page (the crumbs, the title, the
+        // facet selector, the scroll column; the route, the demand and the scroll plumbing stay core in `Artist.DiscoPageHost`) and the discography style (the
+        // facet section, the cards, the album drawer's frame, panel, slots and rows; the demands, the verdicts, the memos and the selection stay core).
+        views.Add(ViewKeys.ArtistLightbox, ClassicArtistLightbox.Template, "classic.artist.lightbox");
+        views.Add(ViewKeys.Discography, ClassicDiscographyPage.Template, "classic.discography.page");
+        views.AddStyle(StyleKeys.Discography, ClassicDiscography.Style);
         // T10c1: the library page (the navigator, the grips, the detail pane, the search columns, the collapsed drill-in) and its four panes (album, show, artists' reader, Your Episodes).
         // The library data, the shape memo, the selection and its persistence, the search matcher, the collapse state and every pane model and demand stay core.
         ClassicLibrary.Register(views);

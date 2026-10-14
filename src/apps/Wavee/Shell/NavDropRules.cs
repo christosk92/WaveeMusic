@@ -12,6 +12,7 @@
 // below is the unchanged 0.3 drop authority, moved here from Sidebar.cs and Sidebar.Host.cs (the types keep their names).
 
 using FluentGpu.Localization;
+using Wavee.Theming.Contracts;
 
 namespace Wavee;
 
@@ -183,14 +184,16 @@ public static class RootlistSlotResolver
     /// <param name="rowHeight">The row's measured extent.</param>
     /// <param name="previous">The slot published on the previous move, for depth hysteresis. Pass
     /// <see cref="SidebarDropSlot.None"/> when there is none.</param>
+    /// <param name="ladder">The structure's tree ladder (<see cref="NavRowKit.TreeLadder"/>): where a depth-0 row's content
+    /// starts and how far one nesting level moves it. The depth pick reads exactly what the rows and the caret are drawn on.</param>
     public static SidebarDropSlot Resolve(int planIndex, float t, float xInRow, float rowHeight,
-                                          in SidebarRowFacts f, in SidebarDropSlot previous)
+                                          in SidebarRowFacts f, in SidebarDropSlot previous, in NavTreeLadder ladder)
     {
         if (planIndex < 0 || !float.IsFinite(t) || !float.IsFinite(rowHeight) || rowHeight <= 0f)
             return new SidebarDropSlot(planIndex, SidebarDropKind.None, 0, SidebarDropRefusal.Unavailable);
 
         // The zone first: two refusals below (IntoItself, SortedList) depend on WHICH zone was picked.
-        var (kind, depth) = Zone(t, xInRow, rowHeight, in f, in previous);
+        var (kind, depth) = Zone(t, xInRow, rowHeight, in f, in previous, in ladder);
 
         var refusal = Refuse(kind, in f);
         return refusal == SidebarDropRefusal.None
@@ -211,7 +214,7 @@ public static class RootlistSlotResolver
     }
 
     static (SidebarDropKind Kind, int Depth) Zone(float t, float xInRow, float rowHeight,
-                                                  in SidebarRowFacts f, in SidebarDropSlot previous)
+                                                  in SidebarRowFacts f, in SidebarDropSlot previous, in NavTreeLadder ladder)
     {
         // The tree's END: one whole-row slot at the root level. No bands — there is nothing below it to be "after".
         if (f.IsListEnd) return (SidebarDropKind.EndOfList, 0);
@@ -230,7 +233,7 @@ public static class RootlistSlotResolver
                 // and the drop lands ahead of the folder's current first child.
                 return f.FolderExpanded && f.FolderHasChildren
                     ? (SidebarDropKind.Before, depth + 1)
-                    : (SidebarDropKind.After, PickDepth(xInRow, in f, in previous));
+                    : (SidebarDropKind.After, PickDepth(xInRow, in f, in previous, in ladder));
             return (SidebarDropKind.Into, depth);
         }
 
@@ -239,7 +242,7 @@ public static class RootlistSlotResolver
             // The retained copy gesture: an editable playlist's centre deposits the payload's tracks. Survives only
             // because the PLATE now distinguishes it from the two edge bands, which draw a line.
             if (t < top) return (SidebarDropKind.Before, depth);
-            if (t > bottom) return (SidebarDropKind.After, PickDepth(xInRow, in f, in previous));
+            if (t > bottom) return (SidebarDropKind.After, PickDepth(xInRow, in f, in previous, in ladder));
             return (SidebarDropKind.Into, depth);
         }
 
@@ -247,22 +250,22 @@ public static class RootlistSlotResolver
         // height for one.
         return t < 0.5f
             ? (SidebarDropKind.Before, depth)
-            : (SidebarDropKind.After, PickDepth(xInRow, in f, in previous));
+            : (SidebarDropKind.After, PickDepth(xInRow, in f, in previous, in ladder));
     }
 
     /// <summary>The DEPTH channel: only an <see cref="SidebarDropKind.After"/> slot spanning more than one depth
     /// reads the pointer's X at all. The default — pointer over the row's LABEL — is <c>Max</c> ("stay at this row's
     /// depth"); travelling LEFT outdents one step per indent level.</summary>
-    static int PickDepth(float xInRow, in SidebarRowFacts f, in SidebarDropSlot previous)
+    static int PickDepth(float xInRow, in SidebarRowFacts f, in SidebarDropSlot previous, in NavTreeLadder ladder)
     {
         var (min, max) = DepthRange(in f);
         if (min >= max) return max;
         if (!float.IsFinite(xInRow)) return max;
 
-        // THE LADDER IS THE ROW'S OWN. `TreeContentX(d)` is where a tree row at depth d starts drawing (31 per level
-        // from the row origin, the pill's x) — so one step left is one outdent. There is no reserved disclosure cell
-        // (the folder chevron is trailing).
-        float steps = (xInRow - SidebarRowGeometry.TreeContentX(0)) / SidebarRowGeometry.IndentStep;
+        // THE LADDER IS THE ROW'S OWN, and the structure's (`NavRowKit.TreeLadder`). Its origin plus one step per depth is where a
+        // tree row at depth d starts drawing (Classic: 31 per level from the row origin, the pill's x) — so one step left is one
+        // outdent. There is no reserved disclosure cell (the folder chevron is trailing).
+        float steps = (xInRow - ladder.OriginX) / ladder.IndentStep;
         int picked = (int)MathF.Round(steps);
         if (picked < min) picked = min;
         if (picked > max) picked = max;
@@ -272,8 +275,8 @@ public static class RootlistSlotResolver
         if (previous.Kind == SidebarDropKind.After && previous.Depth >= min && previous.Depth <= max
             && previous.Depth != picked)
         {
-            float boundary = SidebarRowGeometry.TreeContentX(0)
-                + (previous.Depth + (picked > previous.Depth ? 0.5f : -0.5f)) * SidebarRowGeometry.IndentStep;
+            float boundary = ladder.OriginX
+                + (previous.Depth + (picked > previous.Depth ? 0.5f : -0.5f)) * ladder.IndentStep;
             float travelled = MathF.Abs(xInRow - boundary);
             if (travelled < DepthHysteresis) return previous.Depth;
         }

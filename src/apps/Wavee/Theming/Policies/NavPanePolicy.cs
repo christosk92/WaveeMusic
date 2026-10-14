@@ -39,11 +39,13 @@ public enum NavPaneMode : byte
 /// <param name="Resizable">The user can drag, step and set the expanded width. False: the pane presents
 /// <see cref="DefaultWidth"/> and the seam does not exist.</param>
 /// <param name="Seam">The seam strip's width where the pane is docked and resizable.</param>
+/// <param name="RailWidth">The collapsed rail's width: what a compact pane presents, what an overlay leaves visible and the
+/// floor of the seam drag (T5f: the row ladder that used to answer it from core is the structure's).</param>
 public sealed record NavPanePolicy(
     float ContentFloorW,
     float MinWidth, float MaxWidth, float DefaultWidth,
     float CollapseApproach, float CollapseHysteresis,
-    NavPaneMode NarrowMode, NavPaneMode TinyMode, bool Resizable, float Seam)
+    NavPaneMode NarrowMode, NavPaneMode TinyMode, bool Resizable, float Seam, float RailWidth)
 {
     /// <summary>The shell before themes: a 480 content floor, an expanded
     /// pane of 180-460 (320 fresh), a drag collapse 64 below the minimum with a 24 hold, a forced rail in Narrow and the
@@ -52,7 +54,8 @@ public sealed record NavPanePolicy(
         ContentFloorW: SidebarPaneModeRules.ContentFloorW,
         MinWidth: SidebarPaneBounds.NavPaneMinW, MaxWidth: SidebarPaneBounds.NavPaneMaxW, DefaultWidth: SidebarPaneBounds.DefaultWidth,
         CollapseApproach: SidebarResizeRules.RegimePush, CollapseHysteresis: SidebarResizeRules.RegimeHysteresis,
-        NarrowMode: NavPaneMode.Compact, TinyMode: NavPaneMode.Overlay, Resizable: true, Seam: Shell.FrameRules.SeamStripW);
+        NarrowMode: NavPaneMode.Compact, TinyMode: NavPaneMode.Overlay, Resizable: true, Seam: Shell.FrameRules.SeamStripW,
+        RailWidth: SidebarPaneBounds.RailWidth);
 
     /// <summary>The width a collapsed pane's drag falls to the rail at: <see cref="MinWidth"/> − <see cref="CollapseApproach"/>.</summary>
     public float RailEnterW => MinWidth - CollapseApproach;
@@ -100,6 +103,7 @@ public sealed record NavPanePolicy(
         Finite(nameof(CollapseApproach), CollapseApproach, true);
         Finite(nameof(CollapseHysteresis), CollapseHysteresis, true);
         Finite(nameof(Seam), Seam, true);
+        Finite(nameof(RailWidth), RailWidth, false);
         if (problems.Count > 0) return problems;
         if (MinWidth > MaxWidth) problems.Add("NavPane.MinWidth must not exceed MaxWidth");
         if (DefaultWidth < MinWidth || DefaultWidth > MaxWidth) problems.Add("NavPane.DefaultWidth must lie inside [MinWidth, MaxWidth]");

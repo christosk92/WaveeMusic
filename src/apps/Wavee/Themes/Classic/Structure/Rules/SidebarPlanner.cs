@@ -302,7 +302,7 @@ public static class SidebarRowPlanner
         if (count == 0) return;
         if (options.View == SidebarLibraryView.Grid && !st.Compact)
         {
-            int cols = System.Math.Clamp(o.GridColumns, 2, 4);
+            int cols = System.Math.Clamp(o.GridColumns, SidebarGeometry.GridMinColumns, SidebarGeometry.GridMaxColumns);
             for (int i = 0; i < count; i += cols)
                 st.Rows.Add(new SidebarRow(SidebarRowKind.GridStrip, lib.Id, 0, start + i, System.Math.Min(cols, count - i), lib.Id));
             return;

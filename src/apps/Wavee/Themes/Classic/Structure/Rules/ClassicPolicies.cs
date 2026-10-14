@@ -22,12 +22,13 @@ public static class ClassicPolicies
 {
     /// <summary>The pane: the Wide band lets the user collapse; Narrow forces the 48-DIP rail with an overlay pane; Tiny is the
     /// drawer (where the bands begin is the window ladder's, 528 and 660 in <c>ClassicTiers</c>). An expanded pane is 180-460
-    /// (320 fresh) and leaves 480 of content; a drag 64 below 180 collapses it, 24 back expands it. The seam strip is 16 wide.</summary>
+    /// (320 fresh) and leaves 480 of content; a drag 64 below 180 collapses it, 24 back expands it. The seam strip is 16 wide and the collapsed rail 48.</summary>
     public static NavPanePolicy NavPane { get; } = new(
         ContentFloorW: 480f,
         MinWidth: 180f, MaxWidth: 460f, DefaultWidth: 320f,
         CollapseApproach: 64f, CollapseHysteresis: 24f,
-        NarrowMode: NavPaneMode.Compact, TinyMode: NavPaneMode.Overlay, Resizable: true, Seam: 16f);
+        NarrowMode: NavPaneMode.Compact, TinyMode: NavPaneMode.Overlay, Resizable: true, Seam: 16f,
+        RailWidth: SidebarGeometry.RailWidth);
 
     /// <summary>The panel: 200-500 wide, inline while 480 of content remains (otherwise it floats), beside the content row. The
     /// mini player keeps the 0.2.9 numbers: 240 x 135 at the least, 72 clear below (the player bar) and 32 above (the chrome),

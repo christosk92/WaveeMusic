@@ -12,7 +12,7 @@ namespace Wavee.Theming.Contracts;
 public static partial class StyleKeys
 {
     /// <summary>The eager track row's templates: the grid, the title run and the hover container (<see cref="EagerRowStyle"/>). Read by
-    /// <c>Track.EagerRow</c>'s component, the table's counted shimmer and the discography drawer's rows.</summary>
+    /// <c>Track.EagerRow</c>'s component and the table's counted shimmer (Classic's discography style draws its drawer rows with the same grid).</summary>
     public static readonly StyleKey<EagerRowStyle> EagerTrackRow = new("Track.EagerRow");
 
     /// <summary>The episode row's templates: the bound content, the cold seed and the failure row (<see cref="EpisodeRowStyle"/>). Read by

@@ -161,7 +161,7 @@ A structure decides the numbers the core state machines run on; the machines the
 
 | Record | What the structure decides | Core machine that takes it |
 |---|---|---|
-| `NavPanePolicy` | what the Narrow and Tiny bands force (`NavPaneMode`: Expanded, Compact rail, Overlay drawer, None; `ModeFor(WidthTier)`), the expanded width bounds and default, the content floor, the seam collapse rule, whether the pane is resizable. The bands themselves are the window tiers (section 7): Compact is Tiny, Small is Narrow, Standard and up are Wide | `SidebarPaneModeRules`, `SidebarResizeRules`, `FrameModel`, `SidebarPaneBounds.Clamp` |
+| `NavPanePolicy` | what the Narrow and Tiny bands force (`NavPaneMode`: Expanded, Compact rail, Overlay drawer, None; `ModeFor(WidthTier)`), the expanded width bounds and default, the content floor, the seam collapse rule, the collapsed rail's width (`RailWidth`), whether the pane is resizable. The bands themselves are the window tiers (section 7): Compact is Tiny, Small is Narrow, Standard and up are Wide | `SidebarPaneModeRules`, `SidebarResizeRules`, `FrameModel`, `SidebarPaneBounds.Clamp` |
 | `PanelPolicy` | the panel's min and max width, the content it must leave to stay inline, full height (on `PanelView.FullHeight` since T6b), the mini player's `Video.PipBounds` | `Shell.ClampRailWidth`, `Shell.CanFitRail`, `PanelHost.FitWidthTo`, `Video.PipGesture` |
 | `PlayerBarPolicy` | six pressure levels (start width, `PlayerBarSlots`, spacing, art, hit targets, and what the podcast bar carries at the level: `PodcastSlots`, `PodcastLeftW`), the narrowing hold and the bar height | `Shell.PlayerBar`, `Shell.PlayerBarLayout.ForTier`, `Shell.PodcastBarLayout` (so `PlayerBarRules.Overflow` and `RightWidth` follow); `R.Space.DockReserve` answers the bar's height |
 | `ChromePolicy` | the title-bar row's `ChromeBudget`: where the actions, name and forward button may appear, what each affordance costs, the search and tab widths | `Shell.Chrome` (the allocator) |
@@ -329,15 +329,14 @@ gives the pane its key and moves the **rows**; T5b moves the **heads** (below); 
   `ClassicNavPane.cs` (the template).
 - **`INavRowHost`** (`Theming\Contracts\NavRowHost.cs`, implemented explicitly by `PaneView` in `Shell\Sidebar.UI.Host.cs`) is what a
   slot may ask of the pane: the published plan, what the pane resolved once for every row (selected route, playing rows, the pill
-  target, the reorder band), the verbs, and the pieces of the surfaces T5c-f still own (menus, drop specs, flyouts, the grid cell).
+  target, the reorder band), the verbs, and the pieces core decides for the structure's surfaces (menus' rows, drop specs).
   A slot never reaches into `Shell`.
 - **X26 is gone.** `OwningSection` (which section would hold a route: the pill's header or folder anchor) was a layout branch inside
   the "one renderer"; it is `SidebarRowPlanner.OwningSection`, next to the Library plan, and `NavModel` no longer answers it.
-- **A transitional mirror.** The row ladder is Classic's. Core keeps `SidebarRowGeometry`: the plan queries (`TrySectionBodyRange`,
-  `FolderHeaderIndexOf`, ... no pixels) and a copy of exactly the ladder members the still-core readers use (the shared row
-  primitives in `Sidebar.UI.Rows.cs`, the Library head, the flyouts, the Edit outline, the drop rules, the resize rules).
-  `SidebarGeometryParityTests` pins every shared member equal; the last reader to move (T5f) deletes the copy. The band widths are
-  `NavPanePolicy`'s (section 2a).
+- **No core copy of the ladder.** The row ladder is Classic's alone. T5a kept a pinned mirror (`SidebarRowGeometry`, with
+  `SidebarGeometryParityTests`) for the sub-surfaces that were still core; T5f, the last sidebar lane, deleted both (see "The navigation
+  pane's Library grid (T5f)" below). What core keeps is no pixels: the plan queries (`SidebarPlanQueries`: `TrySectionBodyRange`,
+  `FolderHeaderIndexOf`, ...). The band widths are `NavPanePolicy`'s (section 2a).
 
 **Tests.** The planner, the diff, the extents, the freeze and the ladder are pure (`SidebarPlannerTests`, `SidebarWiringTests`,
 `NavDropRulesTests`, `SidebarRowGeometryTests`, `NavModelTests` for the owning section); the mounted facts are
@@ -366,11 +365,12 @@ T5b gives the structure the pane's **heads**: whatever stands above or between t
 - **The collapse chevron is core's** (`Sidebar.Chevron`, in `Sidebar.UI.Rows.cs`): its spring rotation is the disclosure band's
   own `Reveal`, and the episode discussion draws with it too. The section-collapse animation, its persistence and the
   choreography flags (`_choreographed`) are the pane's and did not move.
-- **`SidebarRowGeometry` shrank.** The header height, the separator's two numbers and the empty-hint height had no core reader
-  left and were deleted; `HeaderTextX` (the Library lane rules) and `HeaderButton` (the Edit outline's inline buttons) stay
-  until T5d / T5f. The `Sidebar.SectionHeader.InlineButton` copy is gone (T5d: the Edit outline uses `ClassicNavHead.InlineButton`). `PaneMetrics.HeadBandInset`, which nothing read, is gone. `SidebarGeometryParityTests` still pins every member core keeps.
-- **Numbers** the heads carried as literals are `Rules\NavHeadLayout.cs` (`ClassicNavHeadLayout`); the Library lane's are core's
-  `SidebarLibraryHeadRules`, which the pure tests pin.
+- **The mirror shrank.** The header height, the separator's two numbers and the empty-hint height had no core reader left and were
+  deleted. The `Sidebar.SectionHeader.InlineButton` copy is gone (T5d: the Edit outline uses `ClassicNavHead.InlineButton`).
+  `PaneMetrics.HeadBandInset`, which nothing read, is gone; the rest of the mirror went with T5f.
+- **Numbers** the heads carried as literals are `Rules\NavHeadLayout.cs` (`ClassicNavHeadLayout`); the Library head's heights, insets and
+  toolbar widths are `Rules\NavLibraryHeadLayout.cs` (`ClassicLibraryHeadLayout`, T5f: they moved out of core's `SidebarLibraryHeadRules`,
+  which keeps the decisions the pure tests pin).
 
 **Tests.** The mounted facts are in `Wavee.ShellTests\NavPaneMountedTests.cs` (Classic registers both keys, the real shell in the
 Library layout draws the head through its key with its ring, dropdown and toolbar standing, and the empty body is the sentence
@@ -394,8 +394,8 @@ T5c gives the structure the **pictures** of the pane's flyouts; the menu **rows*
   public record, internal member, as `NavLibraryHeadProps`). `INavRowHost` gained `PlanSectionExpanded`, `RailFolderDropSpec`,
   `IsRailDropActive` and `ExpandFolderInPane`; the panels read the rest (`Model`, `Navigate`, `SelectedRoutePeek`, `EntryMenu`,
   `FolderMenu`, `PayloadOf`, `ResourceDropSpec`, `MenuOverlay`) from it. Numbers are `Rules\NavFlyoutLayout.cs`.
-- **Nothing was left to delete.** `SidebarRowGeometry`'s ladder members the flyouts read (`PitchOf`, `ArtOf`, `PaneEdge`) still have
-  other core readers (the row primitives, the Edit outline, the drop rules), so the mirror shrinks with T5d / T5f.
+- **Nothing was left to delete.** The ladder members the flyouts read (`PitchOf`, `ArtOf`, `PaneEdge`) had other core readers (the row
+  primitives, the drop rules), so the mirror went with T5f.
 
 **Tests.** `Wavee.ShellTests\NavPaneMountedTests.cs` pins that Classic registers both keys; the drill-in stack stays
 `SidebarFolderFlyoutNavTests` (`NavDropRulesTests.cs`).
@@ -440,11 +440,46 @@ cues live inside the row slot and the flyout rows that T5a and T5c already moved
   line); the caret and plate numbers did not move, only the readers (`SidebarDropCue.LineThickness` / `LineCorner` / `DotSize` / `LineWidth` /
   `LineY` became `SidebarGeometry.DropLineThickness` / `DropLineCorner` / `DropDotSize` / `DropLineWidth` / `DropLineY`; the flyout plate's 1-DIP
   border is `SidebarGeometry.DropPlateBorderWidth`).
-- **The depth origin is shared.** The resolver's depth pick (core) and the caret's start (Classic) both read `TreeContentX`; core's copy is the
-  pinned mirror (`SidebarGeometryParityTests`) until T5f deletes it.
+- **The depth origin is shared.** The resolver's depth pick (core) and the caret's start (Classic) both read `TreeContentX`: the pane hands
+  the resolver the kit's `NavRowKit.TreeLadder` (T5f), so there is no core copy.
 
 **Tests.** The cue invariant is `NavDropRulesTests` (`SidebarDropCueTests`: line iff ordering, plate iff Into); the caret geometry is
 `SidebarRowGeometryTests`; the mounted pane still draws through Classic's kit (`NavPaneMountedTests`).
+
+### The navigation pane's Library grid (T5f)
+
+T5f is the last sidebar lane. It gives the structure the Library layout's grid tile and ends the T5a mirror: **core reads the row ladder
+through the kit and the policy, and `SidebarRowGeometry` and `SidebarGeometryParityTests` are deleted.** Library data, the layout
+choice, persistence and the demands stay core (`NavLibrary`, the layout store, the binder).
+
+| Surface | Core keeps | Classic draws |
+|---|---|---|
+| The grid tile (one cell of a `GridStrip`) | `SidebarCardRules` (selected, activation, play, drop, drag, the title gate, pending, circular: pure facts, `SidebarCardsTests`), the verbs and specs through `INavRowHost` (`Navigate`, `Play`, `GridCellMenu`, `ResourceDropSpec`, `PayloadOf`, `DestOf`) | `Views\Nav\ClassicNavGridCell.cs`: the `CardData` the media surface renders (the cover box a no-art entry gets, its kind glyph, the subtitle's look, the cover's size in the card's plate, `SidebarGeometry.TileCover`) at `Shape.SidebarTile` |
+| The strip, its columns and cells | the presented pane width; `INavRowHost.GridColumns` (the planned count) | `ClassicNavRow.GridStripRow` (unchanged), `SidebarGeometry.GridColumns` / `GridFallbackColumns` / `GridCellMax` |
+| The head's rows, chips and toolbar | the session, the pages, chips, sort rules, the Tab order and ring (`SidebarLibraryHeadRules`, incl. the `ToolbarShape` vocabulary) | their heights, insets and the toolbar widths that choose the shape: `Rules\NavLibraryHeadLayout.cs` (`ClassicLibraryHeadLayout`: `ShapeOf`, `ToolbarWidth`, `ToolbarLane`) |
+
+- **The mirror is gone; the structure answers.** Each remaining core reader asks for what it needs:
+  - the drop resolver's depth pick takes the kit's `NavTreeLadder` (`NavRowKit.TreeLadder`: origin and indent step; `RootlistSlotResolver.Resolve`
+    gained a trailing `in NavTreeLadder`);
+  - the pane's list inset, a row's pitch (the virtualizing host's estimate, the reorder bands, the live-extent fallback) and the selection
+    indicator's height are `NavRowKit.ListInset`, `PitchOf(SidebarRowShape)` and `PillHeight`; the Library grid's column count is
+    `NavRowKit.GridColumns(paneWidth)` (the mode asks it and hands the planner the count);
+  - the rail's width is `NavPanePolicy.RailWidth` (Classic 48, `ClassicPolicies.NavPane`; core's baseline is `SidebarPaneBounds.RailWidth`),
+    read by the resize and mode rules, the seam's floor, the boot seed and `SidebarPaneInvariant.Inspect`.
+- **The row primitives moved with the ladder they are drawn on.** `Sidebar.EntityRow` / `RowSpec` / `RowDropCue` are
+  `ClassicEntityRow` / `ClassicRowSpec` / `ClassicRowDropCue` (`Views\Nav\ClassicNavEntityRow.cs`), `Sidebar.SelectionPill` and
+  `Sidebar.Skeletons` are `ClassicSelectionPill` and `ClassicSkeletons` (`ClassicNavRowParts.cs`); their literals are `SidebarGeometry`
+  members. What stays in `Shell\Sidebar.UI.Rows.cs` is shared with the pages: `Sidebar.Cover` (Recents, Home), `Sidebar.Chevron` (the track
+  table, the episode discussion, the logs page), the pane text, loc and glyph tables.
+- **What `SidebarRowGeometry` became.** The plan queries (no pixels) are `SidebarPlanQueries` in `Shell\Sidebar.cs`; `SidebarLabelFit.LabelWidth`
+  is `SidebarGeometry.LabelWidth`; every other member was Classic's already.
+- **Nothing changes in behavior.** The tile's data, its closures, its menu, drag and drop spec and the strip's column math are the code that
+  was in `SidebarCards`, moved; the layout switch, the rail form, selection and the playing indicator, drag reorder, the chips, the empty
+  and signed-out states, keyboard navigation and every accessible name are untouched.
+
+**Tests.** `SidebarGeometryKitTests` (`SidebarRowGeometryTests.cs`) pins the kit's answers, the rail width, the grid columns and the label
+width; `SidebarCardsTests` the card facts; `NavDropRulesTests` drives the resolver with Classic's ladder (`DropLadder`);
+`SidebarLibraryHeadRulesTests` the head's rules and Classic's toolbar shape; `NavPaneMountedTests` that the list stands inside the kit's inset.
 
 ### The player bar (T6a)
 
@@ -501,8 +536,9 @@ the one coat) and the floating one paints its own ring and elevation.
 re-mounts the deck exactly as it did and a mode switch re-mounts nothing the deck owns. Which face paints is the core's decision
 (`Rail.PlayerPrefs.ResolvedPresentation`, developer-gated as today). Every write goes through `IDeckStyleVerbs` with the surface that made it.
 
-**Builders other lanes still own.** The lyrics header (T7b, not yet a key; the body is `Lyrics.View` since T7b, mounted by the core builder `Lyrics.View()`), the video body (T7c), the docked video card, the
-lyrics peek and the "Next up" rows arrive as `Func<Element>` members on the props; their keys replace them. The queue body (`PanelProps.QueueBody`) is the core host's builder
+**Builders other lanes still own.** The lyrics header (T7b, not yet a key; the body is `Lyrics.View` since T7b, mounted by the core builder `Lyrics.View()`), the docked video card (a core host that
+mounts `Video.Docked` since T7c), the lyrics peek and the "Next up" rows arrive as `Func<Element>` members on the props; their keys replace them. The video body is the template's since T7c
+(`ClassicVideoPanelBody`; `PanelProps.SubscribeVideoBody` carries its subscriptions). The queue body (`PanelProps.QueueBody`) is the core host's builder
 (`Queue.RailPanelHost` inside its slot pin), which mounts the `Queue.Panel` key since T7d.
 
 **Tests.** The pinned slot, the mode vocabulary and the picker's entries are pure (`Wavee.Tests\PanelContractTests.cs`); the mounted facts are
@@ -593,10 +629,10 @@ once per key and the host draws nothing), and one rule: a template reads facts a
 
 | Key (id) | Contract | Core half | Classic |
 |---|---|---|---|
-| `StyleKeys.EagerTrackRow` (`Track.EagerRow`) | `EagerRowStyle`: `Grid` (the lanes of the one-shot row), `Title` (the plain run with its full-text tooltip), `Skin(EagerRowSkin)` (the hover container) | `Track.EagerRow`'s host (the stamp memo that re-renders a row only when ITS track moved, the like edge, the hover signal, the drag payload, click, menu), `TableHost`'s counted shimmer and the discography drawer's rows (they draw the same grid over an empty track) | `ClassicEagerRow` (skin, title) and `ClassicRowCells` (`Grid` and every cell: the # state machine, heart, trailing film / "..." lane, metadata line, album link, Added-by, tempo, the Classic title line and explicit word-mark) |
+| `StyleKeys.EagerTrackRow` (`Track.EagerRow`) | `EagerRowStyle`: `Grid` (the lanes of the one-shot row), `Title` (the plain run with its full-text tooltip), `Skin(EagerRowSkin)` (the hover container) | `Track.EagerRow`'s host (the stamp memo that re-renders a row only when ITS track moved, the like edge, the hover signal, the drag payload, click, menu), `TableHost`'s counted shimmer (it draws the same grid over an empty track; since T10b2 Classic's discography style draws its drawer rows with Classic's own grid) | `ClassicEagerRow` (skin, title) and `ClassicRowCells` (`Grid` and every cell: the # state machine, heart, trailing film / "..." lane, metadata line, album link, Added-by, tempo, the Classic title line and explicit word-mark) |
 | `StyleKeys.EpisodeRow` (`Episode.Row`) | `EpisodeRowStyle`: `Content(item, ctx, narrow)`, `Seed(narrow)`, `Failure(episode, narrow)` | `Episode.ReaderRow` / `SeedReaderRow` (the reveal gate over `ReaderLoadState`: pending shows the seed, failed the failure row with `RetryRow`), the row's decisions (`PlayedOf`, `InProgressOf`, `LeftOf`, `IsNew`, `ShownTitle`, the completion rule `ReaderPct`), `RowContext` (tone, disc verb, open, menu, selection) | `ClassicEpisodeRow`: art, title line, blurb, meta line, the rule, the hover cluster and tone disc, the now-playing bar, the check lane |
 | `StyleKeys.Surface` (`Media.Surface`) | `SurfaceStyle`: `Shell`, `Selected`, `StackBody`, `RowBody`, `Labels`, `RowText` | `Controls.SurfaceHost` (the hot fold, what is mounted when, click / focus / tab-stop ownership, drag, drop, menu, title tooltip, trampolines), the seed face, the gutter, the drag barrier, `InnerOf`, `RowTitleStyle` (`SurfaceParts`: host-free, and the seed IS the live extent in bones) | `ClassicSurface`: the plate table (`SurfacePlate`), the shell, the selected skin, both bodies, the "..." overlay and lane, the labels |
-| `StyleKeys.ArtistChart` (`Artist.Chart`) | `ArtistChartStyle`: `Metrics`, `Header`, `Row(ArtistChartRowArgs)`, `Cell(ArtistChartCellArgs)`, `Skeleton`, `Failed`, `Pager` | `Artist.ChartHost` (readiness gate and failure latch, asks, items and row keys, selection model, drag payload, menu, play-from-here), the per-row memo, the tier decision (`ArtistPopularLayout.Decide`), the standard selection bar, the pager's controlled pips | `ClassicArtistChart`: the prototype row (rank cell, art, title, sub line, heart, duration), the credit line, the selection pill, the pager chevrons, the skeleton, the failed panel |
+| `StyleKeys.ArtistChart` (`Artist.Chart`) | `ArtistChartStyle`: `Metrics`, `Frame(ArtistChartFrameArgs)`, `Shelf`, `Bar`, `Header`, `Row(ArtistChartRowArgs)`, `Cell(ArtistChartCellArgs)`, `Skeleton`, `Failed`, `Pager` | `Artist.ChartHost` (readiness gate and failure latch, asks, items and row keys, selection model, drag payload, menu, play-from-here), the per-row memo, the tier decision (`ArtistPopularLayout.Decide`), the skeleton's counts (`ArtistSections.ChartSkeletonShape`, through `ArtistChartSkeletonArgs.For`), the selection bar's count and lane, the pager's controlled pips | `ClassicArtistChart`: the prototype row (rank cell, art, title, sub line, heart, duration), the credit line, the selection pill, the pager chevrons, the skeleton, the failed panel; since T10b2 the frame (the column, the readiness region and the floating bar), the shelf's pass-through holder and the selection bar |
 | `StyleKeys.TrackDrawer` (`Track.Drawer`) | `TrackDrawerStyle`: `Frame(TrackDrawerFrameArgs)`, `Body(TrackDrawerBodyArgs)`, `FormatSplit(TrackDrawerFormatArgs)` | `TableHost.DrawerBox` (the keyed mount, the reveal wiring `OnRealized`, the zebra parity, the indent), `DrawerHost` (demand, relations, the facts, the version entries and their order, the reserved video row, the peaks, the "arriving" latch), `FormatSplitHost` (the radio ladder and the override), the View-credits sheet | `ClassicTrackDrawer`: the clip box with `Design.Reveal.Drawer` (the open and close motion), the facts strip, the connector rail and version rows, the split button's halves |
 
 - **Rank and plays at every width (chart).** The tier (`ArtistPopularLayout.Tier`: art edge, whether the duration shows, whether the sub line
@@ -786,6 +822,38 @@ diagnostic line and its capture stay in the rail host.
 paging and the verbs; `QueueRowRulesTests.cs` the core's decisions (the ✕, the row's own drag, no "..." button) and `ClassicQueueRulesTests.cs` the structure's
 (extents, dim, adapter, card click). `Wavee.ShellTests\QueueMountedTests.cs` mounts the real rail on the queue and the real stage's column.
 
+### The video surfaces (T7c)
+
+Six keys, all drawn by `Themes\Classic\Structure\Views\Video`: `Video.Docked` (`VideoDockedProps`: the docked card, or with `PageFrame` the watch page's in-page stage frame), `Video.Pip`
+(`VideoPipProps`: the in-window overlay's box and the chrome over the picture), `Video.PopOut` (`VideoPopOutProps`), `Video.Fullscreen` (`VideoFullscreenProps`), `Video.JoinPoster`
+(`VideoJoinPosterProps`: the poster and the join notice) and `Video.PlacementMenu` (`VideoPlacementMenuProps`: the player bar's chevron flyout). The panel's video body is
+`ClassicVideoPanelBody` (not a key: the panel mounts it through `PanelProps`). The numbers are `Rules\ClassicVideoRules.cs`.
+
+**The media pipeline and the rules stay core.** `Shell\Video.UI.cs` keeps the hosts: `DockedSurface` (the mount decision, the fit and the log lines, `ReportLive`, the hollow reservation's
+node and last rect, which the stay-mounted presenter FOLLOWS through the engine's `FollowRect`), `PipSurface` (the ONE presenter the docked card, the mini player and fullscreen are geometry
+modes of: the three bound geometry thunks, the remembered rect, the make-before-break mount, and the gestures as `IVideoPipGestures` over `PipGesture` and the panel policy's `PipBounds`),
+`PlayerStage` / `MainVideoArea` (the engine `MediaPlayerElement`, its keys and handles, the idle machine, the chrome feed), `JoinWatch` (the one fold of the host's switch events into
+`Video.JoinNow`), `PopOutContent` (the viewport, the caption regions at `Video.PopOutBand.HeightDip`, the move-loop hold, the band's fade) and `FullscreenSurface` (OS fullscreen, the focus scope,
+Escape / F at the root). `Video.cs` and `PipGesture.cs` keep the placement, hosting, join and PiP rules. Each host mounts its key with a props record.
+
+**The hole rule binds every theme.** The picture is a hole erased from the swapchain: no layout transition, opacity, offscreen effect or scale Enter/Exit on ANY ancestor of it. Chrome is a
+SIBLING (a hover- or idle-revealed strip). `VideoPipProps.Visible`, `Width`, `Height`, `Transform` and `FollowRect` are the engine's geometry for the hole: a template puts them on the box it
+returns and nothing between that box and `Area()`. The poster's notice is the one place an opacity channel is legal (a poster is mounted only while no player is bound). Hover chrome costs
+no signal: `Opacity 0 / HoverOpacity 1` under a container that earns hover with a no-op `OnPointerExit`; the on-media transport (`Player.OnMediaTransport`) and the pop-out's band ride the
+surface's idle machine instead (the pop-out's tree has no pointer handler above the stage). The pop-out's band height is `Video.PopOutBand.HeightDip` (the OS caption region and the band
+must agree on it).
+
+**The pop-out is its own window.** A detached window builds its own `AppHost`, so `PopOutRoot` wraps its content in `ThemeRoot.Wrap` (the view registry, the option cells, the facts): without
+it none of the keys that draw in that window (the pop-out's, the poster, the on-media strip) would resolve. A theme switch re-renders that root through the same epoch as the main window's.
+
+**What reads the six keys.** `Video.PlacementMenu(includeFullscreen)` (core) still builds the rows (the radio checks, the reasons, the always-on-top toggle): the bar's overflow cascade and
+the on-media "more" menu nest the same rows with the aspect, quality and speed cascades (`OnMedia.MoreMenu`, core: the fit and aspect picker is T6b's on-media strip, whose rows are decided from live reads); the
+chevron's flyout is the key's presenter.
+
+**Tests.** `Wavee.Tests\VideoContractTests.cs` pins the ids, Classic's registration and the band's height; `VideoRulesTests`, `VideoSurfaceViewRulesTests`, `VideoJoinPhaseTests`,
+`PlacementMenuTests` and `RailSurfaceTests` pin the rules that stayed. `Wavee.ShellTests\VideoMountedTests.cs` mounts each view alone (the poster's states, the cap's height and reservation, the
+watch frame, the overlay's buttons and zones per placement, the pop-out, the exit chrome, the flyout).
+
 ### Home (T10a1)
 
 Home is the structure's picture over core hosts. The page, the facet row, the daylist card and its clock, the zone bodies, the "See all" drill
@@ -871,7 +939,7 @@ The artist page is the structure's picture over a core host. The scroll column, 
 pictures own (the pick card's pieces, the magazine's dock reserve, the biography band and city bars, the banners) are `Rules\ClassicArtistRules.cs`.
 
 **What the view may call.** The WVTH002 fence applies. What a card opens, plays or puts in its menu, an interned string and an external link are the static `ArtistVerbs` (`Entities\Artist.Verbs.cs`: `Text`, `OpenRoute`, `OpenEntity`, `OpenPlaylist`, `OpenConcert`, `OpenSchedule`, `PlayOrToggle`, `Play`, `PickMenu`, `OpenLink`); the handles' own commands (`Track.GoToAlbum`, `Menus.Container`, `Drag.Source`) and the shared builders
-(`Controls.*`, `Detail.Band` / `Pivot`, `Artist.SectionBlock`, the chart and the discography facets as core hosts) are called directly. The chart is still `StyleKeys.ArtistChart` and the facets `Artist.FacetSection`; the Top band mounts the chart as a component. The gallery lightbox opens through the host (`OpenGallery`).
+(`Controls.*`, `Detail.Band` / `Pivot`, `Artist.SectionBlock`, the chart and the discography facets as core hosts) are called directly. The chart is `StyleKeys.ArtistChart` and the facets `Artist.FacetSection` (drawn by `StyleKeys.Discography` since T10b2); the Top band mounts the chart as a component, and the page's skeleton draws the chart's skeleton at `ArtistChartSkeletonArgs.For(0, ..)`. The gallery lightbox opens through the host (`OpenGallery`) and is `Artist.Lightbox` since T10b2.
 
 **Motion is the page's, unchanged.** The hero photo's zoom-in and fade on its own ready edge, the parallax and stretch, the collapse into the band (the Leading collapse with no `ClipToBounds`), the band's reveal over the last 44 DIP, the magazine's `WhileStuck` feather, the pick photo's grow-open, the soft reveal over the shimmer and the reduced-motion arms
 are the same elements with the same keys. The view keeps the page's latches (the Top band's wide arm, the biography band's mode, the resolved styles) in one hook cell of its slot; the host keeps the tier latch.
@@ -880,6 +948,33 @@ are the same elements with the same keys. The view keeps the page's latches (the
 
 **Tests.** `Wavee.Tests\ArtistPageContractTests.cs` pins the id, Classic's registration and the value types; the plan, the pivot rules, the failure verdict and the hero tiers stay `ArtistPageRulesTests` and `ArtistHeroLayoutTests`. `Wavee.ShellTests\ArtistPageMountedTests.cs` mounts the page under Classic: the keyed column, scroller and body child while pending
 and while failed, no magazine without a body, and the size observer hearing the width.
+
+### The rest of the artist family (T10b2)
+
+T10b2 moves what T10b1 left in core: the Top-tracks chart host's remaining picture, the discography (the artist page's inline facets and the standalone
+`disco:` page), the gallery lightbox and the chart's skeleton entry point. (The plan's "reader" is the library's artist reader, which T10c1 already moved:
+`Library.ArtistReader`.)
+
+| Key | Props / style | Core half | Classic |
+|---|---|---|---|
+| `Artist.Lightbox` | `ArtistLightboxProps` (the photos, the selected index as a read signal and its `Select`, the export's `Saving` flag and `Export(index, post)`, `Close`, and `Attach(consumeEscape, closed)`; one record per open) | `Artist.GalleryOpen` (`Entities\Artist.UI.cs` §4.2): the modal overlay (focus-trapped, no light dismiss), the index signal clamped on open, the close, the Escape veto (the overlay asks the view's `consumeEscape`: a zoomed photo unzooms and VETOES the close), the closed hook, and `GalleryExport` (the Save As picker, the download or copy, the notice) | `ClassicArtistLightbox`: the FlipView pager, the pan/zoom surface that REPLACES the pager and the filmstrip (anim-channel writes, the spring home, the frame-clock unzoom settle), the auto-hiding top chrome over its scrim and the filmstrip; numbers in `Rules\ClassicArtistLightboxRules.cs` |
+| `Pages.Discography` | `DiscographyPageProps` (parsed, the crumbs' name and title, the facet, the crumb and selector verbs, the grid as `Func<float, Element>`, the scroll key and handle) | `Artist.DiscoPageHost` (`[CoreHost]`): the route parse, the artist handle and its demand, the scroll handle and its 24-DIP floor provided to the grid (`LazyScroll.Slot`, around the slot), the navigation | `ClassicDiscographyPage`: the vacancy for an unparsed route, the crumbs, the title, the facet selector (a fresh signal per render: the route is the truth), the padded scroll column, the grid at the page's 28-DIP reveal inset |
+| `StyleKeys.Discography` (`Artist.Discography`) | `DiscographyStyle`: `Metrics`, `Facet(DiscoFacetArgs)`, `FacetFailed`, `Card(DiscoCardArgs)`, `Opened`, `Seed`, `Cell`, `DrawerFrame`, `DrawerPanel`, `DrawerBar`, `DrawerSlot`, `ShowAll`, `DrawerTrack` | `FacetHost` (demand, presence and failure, the era plan and its year-fold memo, the visible range), `DiscoGridHost` (the count memo, the expanded ALBUM SLOT, the drawer's ONE verdict, the tracklist demand and Retry, the LazyGrid mount), `DiscoCell` (the row stamp, the cached card data, the toggle / play / drag / menu), `DrawerPanel` (the selection model, the geometry-keyed list mount, invoke / menu / drag, play-from-here), `DrawerSlot` (the interaction funnel), `DrawerRowHost` | `ClassicDiscography` (`Lists\`): the spined, pinned facet header (an expander with content resize off) and the pinned label that follows the visible era, the grid's sticky clip and its `WhileStuck` feather, the card data and its disclosure chevron, the drawer's revealed slot and caret, the panel, its head, the shimmer and the empty note, the selection bar, the track slot's skin and pill, "Show all", the track cell; numbers in `Rules\ClassicDiscographyRules.cs` |
+
+**The hosts resolve the style once.** `FacetHost` and `DiscoGridHost` each read the registry with one unconditional `UseContext(ViewRegistry.Context)`; the grid
+hands its style to the cells (`DiscoCellProps.Style`, never compared) and to the drawer (`DrawerProps.Style`), and the drawer's slots and rows read it off
+their panel, so no cell adds a hook. The card data the structure builds is still cached by the cell per (slot, version, height), so a seed hydrating is a
+props re-push and an expanded cell re-pushes one reference.
+
+**What stayed core, and why.** `Artist.SectionBlock` and `Detail.Band` / `BandTitle` / `Pivot` (the profile page still builds from them until T10c2), the
+facet's selection and demand state, the gallery's open and index state, the chart's skeleton counts (`ArtistSections.ChartSkeletonShape`), and the drawer's
+verdict and geometry (`Album.DrawerVerdict`: the structure reads its row pitch and top gap). `Artist.ChartSkeleton` and `Artist.DiscoGap` are gone: the
+page's skeleton calls the chart style's `Skeleton` with `ArtistChartSkeletonArgs.For`, and the gap is `ClassicDiscographyRules.Gap`.
+
+**Tests.** `Wavee.Tests\ArtistMoreContractTests.cs` pins the two ids, Classic's registration and the reference-only props equality;
+`Theming\ListSurfaceStylesTests` the discography style; `ArtistPageRulesTests` the skeleton's counts; `DiscoCellPropsTests` the cell's gate (the style is
+not data). `Wavee.ShellTests\ArtistMoreMountedTests.cs` mounts the lightbox (the Escape veto wired on mount, the selected photo keyed in the pager, a core
+selection reaching it) and the discography page (no grid for an unparsed route, the core's grid at the 28-DIP inset).
 
 ### The concert surfaces and the module page (T10b3)
 

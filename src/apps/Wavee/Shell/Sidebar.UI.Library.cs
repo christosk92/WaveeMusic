@@ -37,7 +37,7 @@ public static partial class Sidebar
 
             // MEMOS, not raw width reads: a seam drag writes Width every frame; the column count / folder mode flip rarely.
             var vp = UseContextSignal(Viewport.Size);
-            s.Lib.Columns = UseComputed(() => SidebarLibraryHeadRules.GridColumns(NavLibrary.PresentedWidth(inDrawer, vp.Value.Width)));
+            s.Lib.Columns = UseComputed(() => kit.GridColumns(NavLibrary.PresentedWidth(inDrawer, vp.Value.Width)));
             // The drawer always drills; a docked pane drills below 240 px (design P.2) and shows the inline tree from 240 up.
             bool narrow = UseComputed(() => inDrawer || NavLibrary.PresentedWidth(false, vp.Value.Width) < SidebarLibraryMetrics.DrillInWidth).Value;
             // Inline disclosure and a drill stack answer the same question, so only one may be live. Signal writes ⇒ effect.

@@ -197,7 +197,7 @@ public static partial class Sidebar
             float t = Math.Clamp((contentY - top) / extent, 0f, 1f);
             // The list is the padded box's only child, so the viewport's left edge IS the row's left edge.
             float xInRow = pointer.X - rect.X;
-            var cue = RootlistSlotResolver.Resolve(planIndex, t, xInRow, extent, in facts, _dropSlot.Peek());
+            var cue = RootlistSlotResolver.Resolve(planIndex, t, xInRow, extent, in facts, _dropSlot.Peek(), Kit.TreeLadder);
             TryDecide(in cue, source, out _, out var refined);
             return refined;
         }
