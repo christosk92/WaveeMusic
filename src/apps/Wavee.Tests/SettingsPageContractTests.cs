@@ -183,7 +183,9 @@ public sealed class SettingsPageContractTests : IDisposable
 
         var groups = SettingsThemeOptions.Groups(model, new Facts(false), wizard: true);
 
-        Assert.Equal(new[] { "opt:structure.sidebar", "opt:structure.libraryDensity", "opt:structure.surfaces" }, groups.SelectMany(g => g.Items).Select(i => i.Key));
+        var keys = groups.SelectMany(g => g.Items).Select(i => i.Key).ToArray();
+        Assert.Equal(new[] { "opt:structure.sidebar", "opt:structure.libraryDensity" }, keys.Take(2));   // the sidebar group opens the page
+        Assert.Equal(new[] { "opt:structure.hideTrackArt", "opt:structure.libraryDensity", "opt:structure.sidebar", "opt:structure.surfaces", "opt:style.density" }, keys.OrderBy(k => k, StringComparer.Ordinal));
         Assert.All(groups.SelectMany(g => g.Items), i => Assert.Equal(SettingsOptionItemKind.Generated, i.Kind));
     }
 
