@@ -8,7 +8,7 @@
 // T6b the right panel and the player's flyouts (`Views\Panel`, `Views\Player`), T7a1 the fullscreen stage's frame and T7a2 its layout layers (`Views\Stage`),
 // T8a the track table's rows (`Lists\ClassicTrackTable.cs`: the Modern and Classic bound-row templates, registered as the
 // `StyleKeys.TrackTable` style), T10a1 Home (`Views\Home`: the page, facet row, daylist and clock, zone bodies, the drill page and the
-// customizer); every other surface is still core code. It
+// customizer), T9a the shared detail frame (`Views\Detail`: the scaffold, the rail and its strip, the show header, the hero, the insights sheet); every other surface is still core code. It
 // decides the shell's policies (`Rules\ClassicPolicies.cs`: nav pane, panel and mini player, player bar, chrome row, stage)
 // and offers every capability (T3). Its window tiers (T3b) are `Rules\Tiers.cs`.
 //
@@ -122,6 +122,18 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.HomeZoneEmptyFacet, ClassicHomeZones.BodyTemplate, "classic.home.zone.empty-facet");
         views.Add(ViewKeys.HomeSection, ClassicHomeSection.Template, "classic.home.section");
         views.Add(ViewKeys.HomeCustomize, ClassicHomeCustomize.Template, "classic.home.customize");
+        // T9a: the shared detail frame. The scaffold (notice, content column, rail | grip | content row, the vertical page), the rail and its collapsed
+        // strip, the vertical show header, the vertical arm's hero (and its loading band, a style the table reads) and the insights sheet with its two
+        // entry points. The mode ladder, the rail cells and prefs, the accent, the tint and tone claims, the table, the drop target and the insights
+        // toggle stay core (`Detail.FrameHost`); the per-kind pages (T9b, T9c) hand the frame their slots.
+        views.Add(ViewKeys.DetailFrame, ClassicDetailFrame.Template, "classic.detail.frame");
+        views.Add(ViewKeys.DetailRail, ClassicDetailFrame.RailTemplate, "classic.detail.rail");
+        views.Add(ViewKeys.DetailCompactRail, ClassicDetailFrame.CompactRailTemplate, "classic.detail.compact-rail");
+        views.Add(ViewKeys.DetailShowHeader, ClassicDetailFrame.ShowHeaderTemplate, "classic.detail.show-header");
+        views.Add(ViewKeys.DetailHero, ClassicDetailFrame.HeroTemplate, "classic.detail.hero");
+        views.AddStyle(StyleKeys.DetailHero, ClassicDetailFrame.HeroStyle);
+        views.Add(ViewKeys.DetailInsights, ClassicInsights.SheetTemplate, "classic.detail.insights");
+        views.Add(ViewKeys.DetailInsightsToggle, ClassicInsights.ToggleTemplate, "classic.detail.insights-toggle");
     }
 
     /// <inheritdoc />

@@ -72,7 +72,7 @@ Detail.Hero(…).Sticky(0f, TableScope)
 Chrome(…).Sticky(Detail.VerticalLayout.CompactIdentityHeight, TableScope, engaged: _compactInteractive);
 content.StickyClip(stickyInset, engaged: _bodyClipEngaged);        // rows guillotined under the pinned band
 
-// Entities/Detail.UI.Hero.cs — the expanded hero rides away and fades; the compact band reveals
+// Themes/Classic/Structure/Views/Detail/ClassicDetailHero.cs — the expanded hero rides away and fades; the compact band reveals
 presentation.Parallax(0.0, cd, 0f, -cd).Fade(VerticalLayout.ExpandedFadeStart(cd), cd, 1f, 0f);
 compactBand.Reveal(VerticalLayout.CompactRevealStart(cd), cd - VerticalLayout.CompactRevealStart(cd), dy);
 

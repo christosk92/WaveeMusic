@@ -666,6 +666,53 @@ and the layout document stay `HomeHostTests`, `FacetDimPlanTests` and `LayoutFil
 the registered template of every key, the real shell draws the page (column, pinned band, zone chapters), the band is the rule's height and the failure bar
 follows the phase, and the customizer's rows stand in document order at the row height.
 
+### The detail frame (T9a)
+
+The shared detail frame is the structure's picture over a core host. Every album, playlist, Liked, show and episode page hands `Detail.Frame` one
+`FrameSpec` (identity, config, verbs and slots); `Detail.FrameHost` decides and the registered views draw. T9b (album, playlist) and T9c (Liked, show,
+episode) own the per-kind slot builders and their sub-contract keys; the frame places whatever the slots return, so they plug in without moving it.
+
+| Key | Props | Core host | Classic template |
+|---|---|---|---|
+| `Detail.Frame` | `DetailFrameProps` (the arm, the page accent, the measure callback, the tint / tone / notice leaves, the keyed content column and its floor, the drop target, then per arm: the show header, the sheet, or `DetailTwoColumnProps`) | `Detail.FrameHost` (`Entities\Detail.UI.cs`): the mode ladder and both anti-flicker fail-safes, the Hero page-layout override, the per-scope rail cells, the accent, the data gate, the table mount | `ClassicDetailFrame.Template`: the vertical page (notice over the content, always inside the insights overlay for a track page) or the centred rail \| content row with the grip in its seam layer |
+| `Detail.Rail` | `DetailRailProps` (spec, trampolined verbs, the rail width, the title cap and description clamp the window rung picked, the accent thunk, play-all, the pending flag) | the frame host | `ClassicDetailFrame.RailTemplate`: the layer fill and scroller around one skeleton boundary; the column and its loading twin walk the same row model |
+| `Detail.CompactRail` | `DetailCompactRailProps` | the frame host | `CompactRailTemplate`: the 96-DIP strip (cover, two-line title, expand chevron) |
+| `Detail.ShowHeader` | `DetailShowHeaderProps` | the frame host (a non-track page's vertical arm) | `ShowHeaderTemplate`: cover 140, the info column, the CTA cluster |
+| `Detail.Hero` | `DetailHeroProps` (the `VerticalSpec` and the table's `HeroParts`, compared by data) | `Detail.Hero` (`Detail.UI.Hero.cs`) is a plain box the TABLE pins and collapses, around the slot | `HeroTemplate`: the expanded hero and the pinned 56-DIP context band, scroll-bound |
+| `StyleKeys.DetailHero` | `DetailHeroStyle` (`Skeleton`) | the table reads it through the registry, like `TrackListStyle` | `ClassicDetailFrame.HeroStyle`: the loading band is a PURE builder because the skeleton deriver cannot run a view slot |
+| `Detail.Insights` | `DetailInsightsProps` (the page, the toggle, the latched facts builder, the page width, the route key, the close edge) | the frame host: the toggle, the facts latch, the focus return | `ClassicInsights.SheetTemplate`: the engine `SplitView` (Overlay x Right) with the scrim, the cast, the frosted pane |
+| `Detail.InsightsToggle` | `DetailInsightsToggleProps` (the toggle and its `Form`) | the hero's toolbar row, and `Detail.InsightsBandAction` for the table's pinned band | `ToggleTemplate`: the glyph button, or the band's plateless word (its own component) |
+
+**What stays core, and why.** The decisions the frame, the table and the skeleton must agree on row for row are core, pure and unit-tested: the
+breakpoint ladder (`Breakpoints`), the rail's width bands and prefs (`RailPolicy`, `DetailRailPrefs`: M8 moves them into Classic's options),
+the hero arithmetic (`VerticalLayout`, `BandLayout`, `Skeleton.RailPlanFor`, `RailLayout`, `Detail.FlagsOf`, `Detail.HeroBandHeight`), the notice rules,
+`InsightsSheet` (which arm hosts the facts, the sheet's width), `Identity` / `Config` / `FrameSlots`, the shell-tint and page-tone claims, and the
+accent. No view compares a width with a number (WVTH013): the views are handed the mode, the rail width, the rung and the strip width. The numbers
+the pictures own (the cover bucket and floors, the show header's cover and measure, the sheet's grip, toggle, shadow and spline) are
+`Themes\Classic\Structure\Rules\DetailLayout.cs` (`ClassicDetailLayout`). `Config.SlimHead` / `HoverHeart` / `PlainRows` (PR 205) are not on this
+branch; they leave `Config` for Liked's view in T9c.
+
+**The records compare by reference.** The host builds a props record on every render, and `FrameSlots` equality is PRESENCE only, so a data-equal
+spec can carry newer page builders; a view that skipped on an "equal" record would keep the old ones. The frame's records therefore never compare equal
+to another instance (the view re-runs exactly when the host re-rendered, which is when the tree used to be rebuilt). `DetailHeroProps` is the one
+that compares by data and by the reference of the table's pieces: the table owns that gate.
+
+**What the pages keep calling.** The page-facing builders are still `Detail`'s (`PlayButton`, `RailSatellite*`, `MoreButton`, `ArtistLine`,
+`RailArtistLineBox`, `NoticeBar`, the `Row` / `LateRow` helpers, the band helpers `Band` / `BandTitle` / `Pivot`): the album and show panes, the artist,
+profile and episode pages build from them, so they are T9b / T9c / T10's seam. A view may not name `Shell`, `Playback`, `Entities` or `Store`
+(WVTH002): what a detail view must do that touches them is `DetailVerbs` (`NavigateKey`, `OpenOwner`, `PlayContext`, `ChartCaptionText`).
+
+**Motion and keys are the host's old tree.** The content column keeps its key across a rail collapse so the table reconciles in place; the grip lives in
+the seam layer in both arms (a drag collapses and re-opens mid-gesture); the track page's vertical arm is always wrapped in the sheet's overlay so the
+facts arriving never remount the list; the sheet's slide (350 ms open, 120 ms close, reduced motion snaps), its focus trap and return, the hero's
+parallax and band reveal, and the rail's row FLIP and fade-up are unchanged.
+
+**Tests.** The ids, the registration (every key and the hero style, distinct template ids), the equality promises and the shared toggle are
+`Wavee.Tests\DetailContractTests.cs`; the arithmetic stays `DetailRailPolicyTests`, `DetailSkeletonGeometryTests`, `DetailInsightsSheetTests`. The mounted
+facts are `Wavee.ShellTests\DetailFrameMountedTests.cs`: Classic is the registered template of every key, the real shell draws the two-column arm at a wide
+window and the vertical arm under the overlay at a narrow one, the rail's cover fills the column less the side pads with the rows in the row model's
+order, the collapsed strip is 96 DIP, and the insights toggle's button mounts through its own key.
+
 ## 3. Options
 
 An option is data: a `ToggleOption`, `SelectOption<TEnum>`, `SliderOption`, `ColorOption`, `ActionOption` or

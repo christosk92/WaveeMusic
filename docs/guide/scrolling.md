@@ -31,7 +31,7 @@ to say *which* scroller, *which* restore key, *which* effects.
 | Pin a header | `.Sticky(top, scope, engaged: signal)` + `ScrollScope = scope` on the containing box | Track.Table chrome |
 | Cut rows under a pinned band | `.StickyClip(inset, engaged: signal)` | Track.Table body |
 | Collapse a hero into a band | `.Sticky(0f, scope).Collapse(distance, minH, CollapseAnchor.Leading)` | Track.Table hero |
-| Slide / fade / reveal with scroll | `.Parallax(…)`, `.ParallaxY(fraction, over)`, `.Fade(…)`, `.Reveal(…)` | `Entities/Detail.UI.Hero.cs` |
+| Slide / fade / reveal with scroll | `.Parallax(…)`, `.ParallaxY(fraction, over)`, `.Fade(…)`, `.Reveal(…)` | `Themes/Classic/Structure/Views/Detail/ClassicDetailHero.cs` |
 | Stretch on overscroll | `.StretchFromTop()` (composes with a parallax) | `Entities/Artist.UI.cs` |
 | Collapse AND stretch one hero | the two compose: the `Leading` collapse cuts at its presented edge by itself, so put NO `ClipToBounds` on the collapsing root (a box clip there cuts the photo's stretch above the root's top) | `Entities/Artist.UI.cs` `HeroBanner` |
 | Exact targets for rows never on screen | `MeasureAll = true` (bounded — lyrics cap it at 400 lines) | `Shell/Lyrics.UI.cs` |
