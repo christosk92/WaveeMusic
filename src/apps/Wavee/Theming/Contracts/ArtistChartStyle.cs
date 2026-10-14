@@ -10,8 +10,10 @@
 // the shelf key columns x art x style: `maxColumns` and `cardHeight` are PagedShelf ctor configuration), the selection model (a chart
 // row selection survives the page flips that slide the realized window), the drag payload, the menu, the play-from-here queue, the
 // per-row memo over (slot, version, row state) that is the row's render gate, the tier decision (`ArtistPopularLayout.Decide`: rank and
-// play-count columns at every width), the standard selection bar (`Controls.SelectionBar`) and the pager's controlled-pips state. A
-// template receives the facts and the verbs as args and draws: it never names `Playback`, `Entities`, `Prefs` or `Shell` (WVTH002).
+// play-count columns at every width), the skeleton's counts (`ArtistSections.ChartSkeletonShape`), the selection bar's count and lane and the
+// pager's controlled-pips state. A template receives the facts and the verbs as args and draws: it never names `Playback`, `Entities`,
+// `Prefs` or `Shell` (WVTH002). T10b2 moved the host's remaining picture here: the chart's frame (the column, the readiness region over its
+// three arms and the floating selection bar), the pass-through column that keeps the shelf's key a CHILD, and the selection bar itself.
 //
 // A host mounted where no registry provides the key draws nothing (logged once, `ListStyleLookup`).
 
@@ -107,6 +109,17 @@ internal sealed class ArtistChartCellArgs
 /// <summary>What the core decided for the chart's skeleton: the real layout's counts.</summary>
 internal sealed class ArtistChartSkeletonArgs
 {
+    /// <summary>The skeleton for a known chart length (0: the overview's seed), at the core's counts (<see cref="ArtistSections.ChartSkeletonShape"/>):
+    /// the chart host's shimmer and the artist page's derived skeleton read the same answer.</summary>
+    public static ArtistChartSkeletonArgs For(int knownCount, bool classic, bool showArtwork)
+    {
+        var (total, columns, perColumn) = ArtistSections.ChartSkeletonShape(knownCount);
+        return new ArtistChartSkeletonArgs
+        {
+            Total = total, Columns = columns, PerColumn = perColumn, Classic = classic, ShowArtwork = showArtwork,
+        };
+    }
+
     /// <summary>Charted rows shown (the known count, else the overview's seed cap).</summary>
     public required int Total { get; init; }
 
@@ -154,8 +167,39 @@ internal sealed class ArtistChartPagerArgs
     public required Signal<int> Selected { get; init; }
 }
 
+/// <summary>What the core hands the chart's frame: the readiness region's arms (stable delegates, read live) and the floating bar.</summary>
+internal sealed class ArtistChartFrameArgs
+{
+    /// <summary>The region's verdicts: pending (the shimmer), failed (the failed panel), else the content.</summary>
+    public required Func<bool> Pending { get; init; }
+
+    /// <inheritdoc cref="Pending"/>
+    public required Func<bool> Failed { get; init; }
+
+    /// <summary>The region's arms: the shelf (as the shelf holder returned it), the shimmer source and the failed panel.</summary>
+    public required Func<Element> Content { get; init; }
+
+    /// <inheritdoc cref="Content"/>
+    public required Func<Element> Shimmer { get; init; }
+
+    /// <inheritdoc cref="Content"/>
+    public required Func<Element> OnFailed { get; init; }
+
+    /// <summary>The floating selection bar (the core's keyed component: selecting re-renders it alone).</summary>
+    public required Element Bar { get; init; }
+}
+
 /// <summary>The chart's shelf configuration for a row style.</summary>
 internal delegate ArtistChartMetrics ArtistChartMetricsTemplate(bool classic);
+
+/// <summary>Draws the chart's frame: the readiness region over the content, the shimmer and the failed panel, with the selection bar over it.</summary>
+internal delegate Element ArtistChartFrameTemplate(ArtistChartFrameArgs args);
+
+/// <summary>Holds the keyed shelf: a key on a component's ROOT is inert, so the shelf's remount key must sit on a CHILD.</summary>
+internal delegate Element ArtistChartShelfTemplate(Element keyedShelf);
+
+/// <summary>Draws the chart's floating selection bar at a count (0: hidden) over the core's lane.</summary>
+internal delegate Element ArtistChartBarTemplate(int count, Func<int, Element> lane);
 
 /// <summary>Draws the chart's header (the accent rule and the "Top tracks" title).</summary>
 internal delegate Element ArtistChartHeaderTemplate(string title, ColorF accent);
@@ -178,11 +222,15 @@ internal delegate Element ArtistChartPagerTemplate(ArtistChartPagerArgs args);
 /// <summary>The structure's style for the artist chart (<c>StyleKeys.ArtistChart</c>).</summary>
 public sealed class ArtistChartStyle
 {
-    internal ArtistChartStyle(ArtistChartMetricsTemplate metrics, ArtistChartHeaderTemplate header, ArtistChartRowTemplate row,
+    internal ArtistChartStyle(ArtistChartMetricsTemplate metrics, ArtistChartFrameTemplate frame, ArtistChartShelfTemplate shelf,
+                              ArtistChartBarTemplate bar, ArtistChartHeaderTemplate header, ArtistChartRowTemplate row,
                               ArtistChartCellTemplate cell, ArtistChartSkeletonTemplate skeleton, ArtistChartFailedTemplate failed,
                               ArtistChartPagerTemplate pager)
     {
         Metrics = metrics;
+        Frame = frame;
+        Shelf = shelf;
+        Bar = bar;
         Header = header;
         Row = row;
         Cell = cell;
@@ -193,6 +241,15 @@ public sealed class ArtistChartStyle
 
     /// <summary>The shelf configuration.</summary>
     internal ArtistChartMetricsTemplate Metrics { get; }
+
+    /// <summary>The frame.</summary>
+    internal ArtistChartFrameTemplate Frame { get; }
+
+    /// <summary>The shelf's holder.</summary>
+    internal ArtistChartShelfTemplate Shelf { get; }
+
+    /// <summary>The selection bar.</summary>
+    internal ArtistChartBarTemplate Bar { get; }
 
     /// <summary>The header.</summary>
     internal ArtistChartHeaderTemplate Header { get; }

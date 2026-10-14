@@ -18,8 +18,8 @@ using FluentGpu.Foundation;
 namespace Wavee.Theming.Contracts;
 
 /// <summary>Draws the eager grid of one row: the lanes of <paramref name="set"/> over the shared <paramref name="tracks"/>, every
-/// cell keyed. Called from the host's render, and from the two cores that shimmer or drawer the SAME row (the table's counted
-/// shimmer, the artist discography's drawer rows).</summary>
+/// cell keyed. Called from the host's render and from the table's counted shimmer, which draws the SAME row (a structure's discography
+/// style may draw its drawer rows with it too: Classic's does).</summary>
 internal delegate Element EagerRowGridTemplate(Track t, int displayIndex, in Track.RowState st, in Track.ColumnSet set,
                                                TrackSize[] tracks, float rowH, Element title, in Track.GridOptions o);
 
