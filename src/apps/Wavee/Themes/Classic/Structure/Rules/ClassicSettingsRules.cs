@@ -1,10 +1,11 @@
 // ── Themes/Classic/Structure/Rules/ClassicSettingsRules.cs — the numbers the Settings page owns (themes plan 6.1, T11b) ───────────────────────────
 //
-// From `Screens\Settings.UI*.cs`: the page's measures (the 1000-DIP left-aligned column, the 4-DIP card spacing, the masthead and section glyphs), the widths of
+// From `Screens\Settings.UI*.cs`: the page's measures (the 1000-DIP left-aligned column, the 4-DIP card spacing, the section glyphs, the tab swap), the widths of
 // the combos and number boxes, the theme picker's fixed card, the miniatures the sidebar, track-list and page-layout cards draw, the Storage tab's hues and meter,
 // the Privacy tab's report rows, the About hero, the attached-videos manager. WVTH003 allows literal looks only here. Settings has no tiers: its column is capped
 // (`ContentMaxWidth`), never compared with a window width (WVTH013).
 
+using FluentGpu.Animation;
 using FluentGpu.Foundation;
 
 namespace Wavee.Themes.Classic;
@@ -20,8 +21,9 @@ internal static class ClassicSettingsRules
     /// <summary>N2: cards 4 DIP apart.</summary>
     public const float CardSpacing = 4f;
 
-    /// <summary>W1's masthead gear.</summary>
-    public const float HeaderGlyph = 24f;
+    /// <summary>A tab switch swaps the tab's body with the page cross-fade (the neutral page swap's recipe), the leaving body fading under the
+    /// arriving one.</summary>
+    public static LayoutTransition TabSwap => Design.Nav.RecipeFor(Design.NavTransitionKind.Neutral);
 
     /// <summary>A section header's glyph and how far it drops to sit on the title's first line.</summary>
     public const float SectionGlyph = 16f, SectionGlyphDrop = 2f;

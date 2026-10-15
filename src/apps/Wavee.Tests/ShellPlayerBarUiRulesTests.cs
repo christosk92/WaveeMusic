@@ -335,7 +335,7 @@ public class PlayerBarOverflowTests
         Assert.Equal(new[]
         {
             OverflowCommand.Previous, OverflowCommand.Next, OverflowCommand.Shuffle,
-            OverflowCommand.Repeat, OverflowCommand.Lyrics, OverflowCommand.Queue,
+            OverflowCommand.Repeat, OverflowCommand.Lyrics,
             OverflowCommand.NowPlaying, OverflowCommand.FullScreen, OverflowCommand.Video,
             OverflowCommand.Mute,
         }, Build(Shell.PlayerBarTier.Compact, video: true));
@@ -509,7 +509,7 @@ public class PlayerBarSlotReservationTests
             var with = Shell.PlayerBarRules.RightSlots(L, hasVideo: true);
             float delta = Shell.PlayerBarRules.RightWidth(L, hasVideo: true) - Shell.PlayerBarRules.RightWidth(L, hasVideo: false);
             Assert.Equal(RightSlot.None, without & RightSlot.Video);
-            if (L.ShowQueue)
+            if (L.ShowVideoSplit)
             {
                 Assert.Equal(without | RightSlot.Video, with);
                 Assert.Equal(L.ButtonBox + Shell.PlayerBarLayout.SplitChevronW + L.RightGap, delta);
@@ -547,8 +547,8 @@ public class PlayerBarSlotReservationTests
             Assert.Equal(L.ShowVolumeSlider, (slots & RightSlot.VolumeSlider) != 0);
             // Lyrics stays a face-only slot: RESERVED wherever the tier shows it, whatever plays.
             Assert.Equal(L.ShowLyrics, (slots & RightSlot.Lyrics) != 0);
-            // The video split is the ONE slot with a state input: the queue tier AND a video.
-            Assert.Equal(L.ShowQueue && video, (slots & RightSlot.Video) != 0);
+            // The video split is the ONE slot with a state input: a level that carries it AND a video.
+            Assert.Equal(L.ShowVideoSplit && video, (slots & RightSlot.Video) != 0);
             Assert.Equal(L.ShowQueue, (slots & RightSlot.Queue) != 0);
             Assert.Equal(L.ShowDevices, (slots & RightSlot.Devices) != 0);
             Assert.Equal(L.ShowExpand, (slots & RightSlot.Expand) != 0);

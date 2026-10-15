@@ -7,7 +7,7 @@
 // ── THE SHAPE ────────────────────────────────────────────────────────────────────────────────────────────────────────
 //
 //  column
-//  ├─ HEAD (always real, outside the region): BreadcrumbBar [name › facet] · PageHero(facet) · SelectorBar (a change NAVIGATES — the route is the truth, not the control;
+//  ├─ HEAD (always real, outside the region): the trail [name] over the 40/52 title (facet) · SelectorBar (a change NAVIGATES — the route is the truth, not the control;
 //  │        Discography's head)
 //  └─ BODY (PageWide gutters) └─ measured box (the host's body width, floored to 8 DIP) └─ ONE SkelRegionEl (Soft; no outer ScrollView — the bound list OWNS the scroll)
 //          Pending     → the derived shimmer (tool bones + two rows of circular seed cards; stateful leaves never mount)
@@ -110,8 +110,16 @@ internal static partial class ClassicProfileList
             Padding = new Edges4(Spacing.PageWide, Spacing.XXL, Spacing.PageWide, Spacing.M),
             Children =
             [
-                BreadcrumbBar.Create([head.Name, head.Title], i => { if (i == 0) head.OpenProfile?.Invoke(); }),
-                R.Type.PageHero(head.Title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                // Breadcrumb B: the profile is the one ancestor, the list is the title (never repeated in the trail).
+                new BoxEl
+                {
+                    Direction = 1, Gap = ClassicPageHeadRules.TrailTitleGap, MinWidth = 0f,
+                    Children =
+                    [
+                        ClassicPageHead.Trail([new PageCrumb(head.Name, head.OpenProfile)]),
+                        R.Type.SurfaceDisplay(head.Title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                    ],
+                },
                 // A FRESH signal per render: the ROUTE, not the control, is the truth; a change navigates and the next
                 // route re-seeds it (Discography's head).
                 SelectorBar.Create(head.Labels, new Signal<int>(ProfileListFacets.IndexOf(head.Facet)), onChange: head.PickFacet),

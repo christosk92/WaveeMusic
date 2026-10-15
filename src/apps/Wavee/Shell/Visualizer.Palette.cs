@@ -33,8 +33,11 @@ public static partial class Visualizer
     /// <summary>The colours a face paints with, derived once per (cover, theme) in Stage.UI.cs (<c>StageCtx.BasePalette</c>)
     /// and rotated by the moments clock (<c>StageCtx.Palette</c>, the live one). Faces bind the slab's cross-faded
     /// <c>A/B/C/Deep</c> signals for solid fills; a value of this record is for what cannot bind (gradient stops), keyed by
-    /// <c>Slab.PaletteEpoch</c>.</summary>
-    public readonly record struct Palette(ColorF Accent, ColorF A, ColorF B, ColorF C, ColorF Deep, bool Dark)
+    /// <c>Slab.PaletteEpoch</c>.
+    /// <para>The palette carries NO polarity (tuned R5): it is derived FOR an arm, but a face that needs to know which arm it paints on
+    /// reads the one source every face and ink reads, <c>StageInk.IsDark</c> (a palette's own flag lagged the live arm through half a
+    /// cross-fade, so faces read light / dark from two sources).</para></summary>
+    public readonly record struct Palette(ColorF Accent, ColorF A, ColorF B, ColorF C, ColorF Deep)
     {
         /// <summary>The paint contrast floor over the veil (bars, strokes, caps).</summary>
         public const float StrokeContrast = 3f;
@@ -57,7 +60,7 @@ public static partial class Visualizer
             if (!(t > 0f)) return a;                         // the ends are EXACT (a fade lands on its target, bit for bit)
             if (t >= 1f) return b;
             return new Palette(ColorF.Lerp(a.Accent, b.Accent, t), ColorF.Lerp(a.A, b.A, t), ColorF.Lerp(a.B, b.B, t),
-                ColorF.Lerp(a.C, b.C, t), ColorF.Lerp(a.Deep, b.Deep, t), t < 0.5f ? a.Dark : b.Dark);
+                ColorF.Lerp(a.C, b.C, t), ColorF.Lerp(a.Deep, b.Deep, t));
         }
 
         /// <summary>Derive from the stage accent and the cover's graded scheme (null/empty = no grading yet) for one arm.</summary>
@@ -99,7 +102,7 @@ public static partial class Visualizer
             }
             if (!haveC) c = Separate(Mid(a, b), ground, dark, a, b);
 
-            return new Palette(accent, a, b, c, DeepOf(scheme, a, dark), dark);
+            return new Palette(accent, a, b, c, DeepOf(scheme, a, dark));
         }
 
         // ── the arithmetic (public for Wavee.Tests) ─────────────────────────────────────────────────────────────────

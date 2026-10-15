@@ -89,16 +89,20 @@ public static partial class Lyrics
 
     /// <summary>The stage's reading column. It reads the stage layout ITSELF (the pane KeepAlive may cache its builder)
     /// for <see cref="Stage.Layout.LyricsTypeScale"/>: the type grows with a big stage, and the column's cap with it (the cap and the
-    /// gutter are the structure's, `Lyrics.View`). The view is KEYED by the type size, so a size step remounts it with fresh
-    /// measured extents and run lengths (the view freezes its metrics per mount) instead of re-flowing rows whose measurements were
-    /// taken at the old size.</summary>
+    /// gutter are the structure's, `Lyrics.View`). The scale reaches the view as a VALUE-GATED signal (tuned R1): a size step keeps the
+    /// column MOUNTED — the rows re-render at the new type in place, the run lengths and extents are re-measured and the follow re-latches
+    /// the active line at the band — instead of re-keying the view, which remounted it and made the text jump.</summary>
     sealed class StageColumn(IReadSignal<ColorF> accent) : Component
     {
+        readonly Signal<float> _typeScale = new(1f);
+
         public override Element Render()
         {
             float scale = UseContext(Stage.StageContext)?.Layout.Value.LyricsTypeScale ?? 1f;
-            return Embed.Comp(() => new ViewCore(large: true, onMedia: true, visible: s_stageVisible, accent: accent, onStage: true, typeScale: scale))
-                with { Key = "lyrics:stage:" + ((int)MathF.Round(scale * Stage.Layout.LyricsTypeMin)).ToString(System.Globalization.CultureInfo.InvariantCulture) };
+            _typeScale.SetIfChanged(scale > 0f && float.IsFinite(scale) ? scale : 1f);
+            var typeScale = _typeScale;
+            return Embed.Comp(() => new ViewCore(large: true, onMedia: true, visible: s_stageVisible, accent: accent, onStage: true, typeScale: typeScale))
+                with { Key = "lyrics:stage" };
         }
     }
 
@@ -196,9 +200,11 @@ public static partial class Lyrics
         // The rail/stage survives song-to-episode switches. Resolve type from the current subject rather than
         // freezing music metrics in the constructor; ClearDocument resets measured extents/run lengths on switch.
         internal RowMetrics Metrics => Surface.Timed(Large, IsPodcast).Scaled(TypeScale);
-        /// <summary>The stage's type scale over the authored stage metrics (<see cref="Stage.Layout.LyricsTypeScale"/>,
-        /// frozen at mount — the stage re-keys the view on a step); 1 on the rail and the reader.</summary>
-        internal readonly float TypeScale;
+        /// <summary>The stage's type scale over the authored stage metrics (<see cref="Stage.Layout.LyricsTypeScale"/>); 1 on the rail and
+        /// the reader. LIVE (tuned R1): a read inside a render subscribes it, so a row reading <see cref="Metrics"/> re-renders at the new
+        /// type on a stage step while the view stays mounted.</summary>
+        internal float TypeScale => _typeScale?.Value ?? 1f;
+        readonly IReadSignal<float>? _typeScale;
         readonly float _band;
 
         /// <summary>The surface's MODEL (C5): the document slot, the clock, the active / voice lines, the follow state machine,
@@ -216,11 +222,11 @@ public static partial class Lyrics
         // `accent` and `onStage` are APPENDED after `readerEpisode`: `Lyrics.Transcript.cs` calls this POSITIONALLY with four
         // arguments (`new ViewCore(false, false, static () => true, episode)`).
         internal ViewCore(bool large, bool onMedia, Func<bool> visible, EntityId readerEpisode = default,
-            IReadSignal<ColorF>? accent = null, bool onStage = false, float typeScale = 1f)
+            IReadSignal<ColorF>? accent = null, bool onStage = false, IReadSignal<float>? typeScale = null)
         {
             _readerEpisode = readerEpisode;
             Large = large;
-            TypeScale = typeScale > 0f && float.IsFinite(typeScale) ? typeScale : 1f;
+            _typeScale = typeScale;
             InkMode = new Ink(onMedia);
             Accent = accent;
             OnStage = onStage;
@@ -228,7 +234,7 @@ public static partial class Lyrics
             _band = readerEpisode.IsValid ? 0.05f : Surface.FocalBand(large);
             _wakeTick = WakeTick;
             _reseedOwnership = ReseedForOwnership;
-            M = new LyricsModel(new LyricsSurface(large, onMedia, onStage, TypeScale), readerEpisode) { Sink = this };
+            M = new LyricsModel(new LyricsSurface(large, onMedia, onStage, typeScale?.Peek() ?? 1f), readerEpisode) { Sink = this };
             _activeLine = M.ActiveLine;
             _voiceLine = M.VoiceLine;
             NowMs = M.NowMs;
@@ -421,6 +427,18 @@ public static partial class Lyrics
                     sc.Mark(_viewportNode, NodeFlags.LayoutDirty | NodeFlags.VirtualRangeDirty);
                 ResetScrollSnap();
             }, DepKey.From(secondary));
+            // A stage TYPE step (tuned R1) is the same edge: the rows re-render at the new type in place (they read the live scale),
+            // the wipe's run lengths were measured at the old size and are re-measured lazily, and the follow re-latches the active
+            // line at the band from the re-arranged extents — the column never remounts, so the text does not jump.
+            float typeScale = TypeScale;
+            UseEffect(() =>
+            {
+                Array.Fill(_lineRunLen, float.NaN);
+                _runLenWrapW = float.NaN;
+                if (Context.Scene is { } sc && !_viewportNode.IsNull && sc.IsLive(_viewportNode))
+                    sc.Mark(_viewportNode, NodeFlags.LayoutDirty | NodeFlags.VirtualRangeDirty);
+                ResetScrollSnap();
+            }, DepKey.From(BitConverter.SingleToInt32Bits(typeScale)));
 
             // ── what is playing ─────────────────────────────────────────────────────────────────────────────────────
             var current = Playback.Current.Value;
@@ -499,15 +517,18 @@ public static partial class Lyrics
                     _ = Store.Changed.Value;   // subscribe → every publication re-syncs
                     owner.SyncFromStore(trackId, _loadable);
                 });
+                // An offline miss asks again when the connection is back (the offline voice says the lyrics will appear): the read of
+                // the store's online signal is this effect's subscription.
+                UseSignalEffect(() => Store.RetryWhenOnline(trackId));
 
                 return Skel.Region<Doc?>(
                     _loadable,
                     shimmerSource: () => owner.Shimmer(),
-                    content: d => d is { Lines.Count: > 0 } ready ? owner.LyricsContent(ready) : owner.Message(Loc.Get(Strings.Lyrics.NoLyrics)),
+                    content: d => d is { Lines.Count: > 0 } ready ? owner.LyricsContent(ready) : owner.EmptyFace(trackId),
                     reveal: SkelReveal.FadeOnly,
-                    onFailed: () => owner.Message(Loc.Get(Strings.Lyrics.NoLyrics)),
+                    onFailed: () => owner.EmptyFace(trackId),
                     isEmpty: static d => d is not { Lines.Count: > 0 },
-                    onEmpty: () => owner.Message(Loc.Get(Strings.Lyrics.NoLyrics)),
+                    onEmpty: () => owner.EmptyFace(trackId),
                     // The derived-shimmer style is INERT under a custom shimmerSource — the visible gap is Shimmer()'s own.
                     style: owner.SkeletonStyleOf(),
                     smoothResize: false);
@@ -534,7 +555,7 @@ public static partial class Lyrics
                 if (doc is { Lines.Count: > 0 }) PrepareDocument(doc, Playback.PositionMs.Peek());
                 else PublishSecondaryAvailability(null);
                 loadable.SetReady(doc);
-                M.PublishState(LyricsModel.ClassifyReady(doc, IsPodcast));
+                M.PublishState(LyricsModel.ClassifyReady(doc, IsPodcast, Store.AnsweredOffline(trackId)));
                 return;
             }
             if (doc is null || ReferenceEquals(doc, loadable.Value.Peek())) return;
@@ -777,6 +798,17 @@ public static partial class Lyrics
 
         /// <summary>A centred one-line state ("No lyrics available", "Nothing playing"): the structure's picture.</summary>
         internal Element Message(string text) => _linesStyle?.Message(this, text) ?? NoLines();
+
+        /// <summary>An answered track with nothing to read: the OFFLINE voice with its Retry when the answer was an offline miss
+        /// (<see cref="Store.AnsweredOffline"/>, tuned R2), else "No lyrics available". A style without the offline picture (contract
+        /// 1.0) says the offline sentence in its one-line state.</summary>
+        internal Element EmptyFace(string trackId)
+        {
+            if (!Store.AnsweredOffline(trackId)) return Message(Loc.Get(Strings.Lyrics.NoLyrics));
+            return _linesStyle?.Offline is { } offline
+                ? offline(this, () => Store.Retry(trackId))
+                : Message(Loc.Get(Strings.Lyrics.Offline.Title));
+        }
 
         internal SkeletonStyle SkeletonStyleOf() => _linesStyle?.Skeleton(this) ?? SkeletonStyle.Default;
 

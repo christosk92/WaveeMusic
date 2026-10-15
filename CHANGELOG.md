@@ -12,6 +12,13 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **Page heads have one title and a small breadcrumb.** A Browse category or section, a Home section and the Concerts pages
+  no longer spell their parents out in large dimmed text: the page shows one 40-point title with a small "Home › Browse" trail
+  of its parents above it (none when the page is only two levels deep), and the Concerts hub and a concert's page no longer
+  repeat their title above their own header card. The discography and profile list pages ("Followers", "Albums") get the
+  same small trail instead of repeating the title twice. Library, Settings and What's new use the same large page title
+  as Browse and Search, and the library's album pane shows its title one size up on one line. Settings drops the gear
+  next to its title and the empty gap above the first section, and switching Settings tabs now cross-fades like a page.
 - **Settings > Appearance is regrouped.** The tab now starts with a Theme picker (one card per installed theme), then one
   expandable "Wavee Classic options" card that holds the sidebar, track list, track page and surface settings that used to
   be spread over the Lists, Sidebar and Theme sections, followed by App mode, Zoom and Marquee text. The daylist clock
@@ -83,6 +90,13 @@ versions separately under `v*` and is not tracked in this file.)
   window to another monitor, instead of half a second later; only a quick series of resizes still waits for the last
   one. Zoom picked by hand (the Zoom row, Ctrl+Plus/Minus, Ctrl+wheel) now stops before the page would get narrower than
   300, instead of zooming a small window into a sliver.
+- **The player bar keeps the Queue button from the compact width up.** From a 440-wide window the Queue button sits in
+  the bar, ahead of Lyrics, Volume and Shuffle/Repeat (it used to appear only from 1100 wide, after the volume slider); the
+  seek bar gives up the room, the buttons stay 32 wide. Lyrics, Queue, Devices and the video button now share one "on"
+  plate, and the video button's plate covers its arrow too.
+- **Player style is hidden until it changes Now playing.** The gear above the Now playing art, the art's "Player style…"
+  menu, the Settings > Appearance > Now playing section and the command palette's two player-style commands are only
+  offered in developer mode, where the styles actually show; elsewhere Now playing shows the cover, as it already did. (#199)
 
 ### Removed
 
@@ -105,6 +119,21 @@ versions separately under `v*` and is not tracked in this file.)
 - **The window opens on a finished frame.** Wavee now shows its window only once the first frame has been drawn, so you no
   longer see an empty window background first, and on a first start (or when you need to sign in again) the setup screen
   is already up when the window appears. Pages and their animations start on the first frame you actually see.
+- **The sidebar says what it cannot show.** A sidebar name cut short by the pane now shows in full as a tooltip, also when a
+  pin mark or a count stands beside it, and in the rail's folder and section flyouts. A pinned playlist, album, artist or
+  podcast that cannot load while you are offline keeps its last name and cover, dimmed, with a "Not available offline"
+  mark in place of the pin, instead of turning into a grey "Playlist". When Your Library cannot be refreshed, a banner
+  under its toolbar says "Couldn't refresh your library. Showing what was loaded." with a Retry button (or, if nothing
+  loaded, the error state with Retry), instead of loading forever; the grid view now shows placeholder tiles while it
+  loads instead of an empty pane.
+- **Lyrics say when they need a connection.** Offline, a song whose lyrics are not saved on this PC now shows "Lyrics need
+  a connection" with a Retry button instead of "No lyrics available", and the lyrics appear by themselves when you are back
+  online. Saved lyrics still show offline.
+- **Full-screen lyrics no longer jump when the text size steps.** Resizing the full-screen view so the lyrics grow or shrink
+  now reflows the lines in place and keeps the current line where it was, instead of rebuilding the whole column.
+- **Full-screen visualizers read one light/dark setting.** Every visualizer face now picks its light or dark look from the
+  same place as the rest of the full-screen view, and the darkening over a face behind the cover or lyrics now depends on
+  the face (deeper behind Bloom and Ring, lighter behind the others) instead of one flat value.
 - **Pages you return to no longer re-flow on their first frame.** When a page is opened again after it left the page
   cache, its width-dependent parts (the artist page's top and biography bands, Home's daylist, facet row and recents grid,
   Browse and Search grids, the concert pages, the track list's command bar and similar) now appear at their final layout

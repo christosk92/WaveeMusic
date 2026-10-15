@@ -30,7 +30,7 @@ public static partial class Shell
     // ══ 1. THE MASTHEAD BAND (ch 18 W13) ═══════════════════════════════════════════════════════════════════════════
     //
     // T4c: the band's PICTURE is the structure's (`Shell.Masthead`, `Themes\Classic\Structure\Views\Masthead\ClassicMasthead.cs`; the
-    // trail-as-title row is `Page.Head`, `ClassicPageHead.cs`). This host keeps the state machine and hands the theme a `PageChrome`.
+    // page head is `Page.Head`, `ClassicPageHead.cs`). This host keeps the state machine and hands the theme a `PageChrome`.
 
     /// <summary>The one masthead, mounted by the content host as an overlay on its page-swap boundary.</summary>
     // MOUNT POINT (stage B contract)
@@ -54,7 +54,7 @@ public static partial class Shell
             bool live = TryMasthead(route, published?.Title, origin, out var title, out var trail);
             if (live)
             {
-                _held = ChromeFor(title!, trail, published);
+                _held = ChromeFor(title!, trail, published, HeadFormOf(route));
                 _heldRoute = route;
             }
 
@@ -71,9 +71,11 @@ public static partial class Shell
         void RunTools() => Mastheads.Peek(_heldRoute)?.ToolsAction?.Invoke();
     }
 
-    /// <summary>The chrome a masthead-family route publishes (T4c): its title, its trail as navigable crumbs and the "Show all" tool's
-    /// state. A crumb with a route navigates to it; the current page (no route) is not clickable. Pure but for the verbs it captures.</summary>
-    public static PageChrome ChromeFor(string title, IReadOnlyList<Crumb> trail, MastheadPublication? published)
+    /// <summary>The chrome a masthead-family route publishes (T4c): its title, its trail as navigable crumbs, the "Show all" tool's
+    /// state and what its head holds (<see cref="HeadFormOf"/>). A crumb with a route navigates to it; the current page (no route) is not
+    /// clickable. Pure but for the verbs it captures.</summary>
+    public static PageChrome ChromeFor(string title, IReadOnlyList<Crumb> trail, MastheadPublication? published,
+        PageHeadForm form = PageHeadForm.Title)
     {
         var crumbs = new PageCrumb[trail.Count];
         for (int i = 0; i < crumbs.Length; i++)
@@ -81,7 +83,7 @@ public static partial class Shell
             var crumb = trail[i];
             crumbs[i] = new PageCrumb(crumb.Label, crumb.Route is { } target ? () => GoTo(target) : null);
         }
-        return new PageChrome(title, crumbs, published is { ToolsVisible: true }, published is { ToolsLoading: true });
+        return new PageChrome(title, crumbs, published is { ToolsVisible: true }, published is { ToolsLoading: true }, form);
     }
 
     // ══ 2. THE MATERIAL LAYER (ch 00 §material, ch 18 W12) ════════════════════════════════════════════════════════

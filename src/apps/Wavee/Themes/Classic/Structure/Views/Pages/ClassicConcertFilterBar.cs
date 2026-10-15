@@ -2,7 +2,7 @@
 //
 // From `Entities\Concert.Page.cs` §6 (0.2.9 `ConcertFilterBar`): the pinned filter card: the "FILTER BY" caption + the ticker, then ONE horizontally scrolling row
 // [where ▾] │ [when] │ [All · top 3 · +N]. It owns NO queries — every edit is a verb of the host's `ConcertFilterBarProps`, which writes one of the page's signals,
-// and the host's effect turns the new tuple into a new subject. Pinned under the masthead at 84 (§0 #2). The bar keeps view state only: whether the genre strip
+// and the host's effect turns the new tuple into a new subject. Pinned under the masthead's trail (§0 #2). The bar keeps view state only: whether the genre strip
 // is expanded and the two flyouts' overlay handles (the when and where flyouts are `ClassicConcertFlyouts`; "Search cities" and "Use my location" hand off to the
 // host's picker through `OpenPicker`).
 
@@ -99,7 +99,7 @@ internal sealed class ClassicConcertFilterBar : Component
             Direction = 1, Gap = Spacing.XS, MinWidth = 0f, Padding = new Edges4(Spacing.M, Spacing.S, Spacing.M, Spacing.S),
             Corners = Radii.CardAll, Fill = Tok.FillLayerDefault, BorderWidth = 1f, BorderColor = Tok.StrokeSurfaceDefault,
             Children = [caption, scroller],
-        }.Sticky(BrowseMastheadMetrics.Reserve);
+        }.Sticky(ClassicPageHeadRules.HeadReserve(PageHeadForm.Hero));
     }
 
     /// <summary>Rest: [📅 Dates ▾] + the "This weekend" chip. Active: the SAME "when-pill" node fused (§0 #3).</summary>

@@ -320,6 +320,53 @@ public sealed class NavPaneMountedTests(ShellHost host)
             }
         });
 
+    [Fact]
+    public void A_failed_library_source_draws_the_boards_retry_banner_over_what_loaded()
+        => host.Mounted(shell =>
+        {
+            // S10 (board `C-Sidebar`, state failed): a source whose last ask failed, with rows still loaded, puts the caution
+            // banner under the head's rule, 8 in from the pane edges, with a 24-tall standard Retry, and its rows stay.
+            shell.RunFrames(60);
+            var original = Sidebar.Layout.Peek();
+            var scope = Entities.Current;
+            int me = scope.MeSlot;
+            var shows = scope.Edges.SavedShows;
+            int[] targets = shows.Targets(me).ToArray();
+            var payload = shows.Payload(me).ToArray();
+            try
+            {
+                if (original != SidebarLayoutId.Library)
+                {
+                    Sidebar.SwitchLayout(SidebarLayoutId.Library);
+                    shell.RunFrames(60);
+                }
+                shows.Clear(me);
+                shows.MarkFailed(me, 0, 503);
+                Until(shell, () => !shell.Find("library-error-banner").IsNull, "the library's retry banner");
+
+                var scene = shell.Host.Scene;
+                var head = scene.AbsoluteRect(Node(shell, "library-head"));
+                var banner = scene.AbsoluteRect(Node(shell, "library-error-banner"));
+                float inset = SidebarGeometry.PaneEdge + ClassicNavHeadLayout.BannerInsetX;
+                Assert.Equal(head.X + inset, banner.X, 0.5f);
+                Assert.Equal(head.W - 2f * inset, banner.W, 0.5f);
+                Assert.True(banner.H >= 2f * ClassicNavHeadLayout.BannerPadY + 24f, "the banner holds the 24-tall Retry inside its 8 padding");
+                Assert.Contains(Subtree(scene, Node(shell, "library-error-banner")),
+                    n => MathF.Abs(scene.AbsoluteRect(n).H - 24f) < 0.5f && scene.AbsoluteRect(n).W > 24f);
+            }
+            finally
+            {
+                scope.Edges.SavedShows.Replace(me, targets, payload, EdgeState.Complete, targets.Length);
+                scope.Edges.SavedShows.MarkAnswered(me);
+                Until(shell, () => shell.Find("library-error-banner").IsNull, "the banner leaving once the source answers");
+                if (original != SidebarLayoutId.Library)
+                {
+                    Sidebar.SwitchLayout(original);
+                    shell.RunFrames(60);
+                }
+            }
+        });
+
     // ── the rail's flyouts (T5c) ─────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]

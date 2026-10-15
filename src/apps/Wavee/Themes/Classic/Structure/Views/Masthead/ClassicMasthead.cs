@@ -6,11 +6,12 @@
 // publication is live, the trail it HELD while an unknown family fades, and the "Show all" delegate resolved at click time. This
 // template draws what it was handed:
 //
-//   live + held    the band: the title row (`Page.Head`, `ClassicPageHead.cs`) and the "Show all" tool in one row on the browse
-//                  surfaces' own frame, keyed on the head it shows. A NEW head swaps with the page swap's own clock (tuning F7,
-//                  `ClassicFrameBitsRules.MastheadSwap`): the old band leaves on the 90 ms exit leg with the leaving body, the new one
-//                  waits out that leg and arrives on the 210 ms enter leg with the new body, so a new title never paints over the
-//                  old body. A re-publish of the same head (the tool's state) updates it in place
+//   live + held    the band: the page head (`Page.Head`, `ClassicPageHead.cs`: the title, the ancestors' trail, or both by the route's
+//                  form) and the "Show all" tool on the title's baseline, in one row on the browse surfaces' own frame, keyed on the
+//                  head it shows. A NEW head swaps with the page swap's own clock (tuning F7, `ClassicFrameBitsRules.MastheadSwap`):
+//                  the old band leaves on the 90 ms exit leg with the leaving body, the new one waits out that leg and arrives on the
+//                  210 ms enter leg with the new body, so a new title never paints over the old body. A re-publish of the same head
+//                  (the tool's state) updates it in place
 //   otherwise      no band: a live one leaving finishes its exit leg as an orphan, the old trail still drawn
 
 using FluentGpu.Controls;
@@ -55,11 +56,11 @@ internal static class ClassicMasthead
         };
     }
 
-    /// <summary>The band's identity: the head it shows (the trail and the title). A different head is a different band, so it swaps
-    /// with the page; the same head re-published stays the same node.</summary>
+    /// <summary>The band's identity: the head it shows (its form, the trail and the title). A different head is a different band, so it
+    /// swaps with the page; the same head re-published stays the same node.</summary>
     internal static string BandKey(PageChrome chrome)
     {
-        var key = new System.Text.StringBuilder("shell.masthead:");
+        var key = new System.Text.StringBuilder("shell.masthead:").Append((int)chrome.Form).Append(':');
         foreach (var crumb in chrome.Crumbs) key.Append(crumb.Label).Append('›');
         return key.Append(chrome.Title).ToString();
     }

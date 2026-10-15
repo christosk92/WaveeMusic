@@ -46,7 +46,7 @@ internal static class ClassicHomeSection
         {
             Key = "home-section-body", Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
             Gap = ClassicHomeRules.SectionBodyGap,
-            Padding = BrowseMastheadMetrics.FamilyBodyPad(Spacing.XXL),
+            Padding = ClassicPageHeadRules.DrillBodyPad(Spacing.XXL),
             Children =
             [
                 props.Total > 0

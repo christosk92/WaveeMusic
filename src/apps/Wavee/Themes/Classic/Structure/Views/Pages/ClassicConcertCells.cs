@@ -21,6 +21,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Scroll.Effects;
+using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 using Rules = Wavee.Themes.Classic.ClassicConcertRules;
 
@@ -400,22 +401,22 @@ internal static class ClassicConcertCells
 
     // ══ 4. THE PAGE FRAME (Concert.Page.cs §2) ═══════════════════════════════════════════════════════════════════════
 
-    /// <summary>A node that scrolls under the masthead: cut at the reserve's lower edge, feathered 24 DIP only while the cut
+    /// <summary>A node that scrolls under the masthead: cut at the trail's reserve (the Concerts pages' heads hold the trail only), feathered 24 DIP only while the cut
     /// is engaged (§4 row 10: nothing is softened at rest) — the clip's own composite-time feather (EdgeFadeSpec.WhileStuck),
     /// switched on the render turn that poses the cut. It used to be a re-render off the clip's engaged signal, which lands
     /// two presents after the cut (RCA 2026-09-25 F(ii)).</summary>
     public static Element UnderBand(BoxEl node)
         => (node with { EdgeFade = new EdgeFadeSpec(EdgeMask.Top, BrowseMastheadMetrics.ClipFadeBand) { WhileStuck = true } })
-            .StickyClip(BrowseMastheadMetrics.ClipInset);
+            .StickyClip(ClassicPageHeadRules.HeadReserve(PageHeadForm.Hero));
 
-    /// <summary>The schedule/detail page frame (§1.2, §1.3): the 84 + 40 reserve as a SPACER, then the 32-gutter body cut
-    /// under the band, one vertical viewport.</summary>
+    /// <summary>The schedule/detail page frame (§1.2, §1.3): the trail's reserve + 12 as a SPACER (the page's hero is its title), then
+    /// the 32-gutter body cut under the band, one vertical viewport.</summary>
     public static ScrollEl SubPageScroll(string scrollKey, Element region) => ScrollView(new BoxEl
     {
         Direction = 1,
         Children =
         [
-            new BoxEl { Height = BrowseMastheadMetrics.Reserve + Rules.SubPageReserveExtra, HitTestVisible = false },
+            new BoxEl { Height = ClassicPageHeadRules.HeadReserve(PageHeadForm.Hero) + ClassicPageHeadRules.HeroGap, HitTestVisible = false },
             UnderBand(new BoxEl
             {
                 Direction = 1, MinWidth = 0f,

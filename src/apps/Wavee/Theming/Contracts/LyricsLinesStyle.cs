@@ -47,4 +47,9 @@ public sealed class LyricsLinesStyle
 
     /// <summary>The podcast peek: the transcript's opening lines dissolving under the gate.</summary>
     public Func<ILyricsHost, Lyrics.Doc, Element> Peek { get; }
+
+    /// <summary>Contract 1.1 (optional): the OFFLINE voice, for a track whose lyrics are not saved on this PC and could not be fetched
+    /// because the app is offline (<c>LyricsState.Offline</c>). The action retries the fetch. Null = the core falls back to
+    /// <see cref="Message"/> with the offline sentence (a 1.0 style keeps working).</summary>
+    public Func<ILyricsHost, Action, Element>? Offline { get; init; }
 }

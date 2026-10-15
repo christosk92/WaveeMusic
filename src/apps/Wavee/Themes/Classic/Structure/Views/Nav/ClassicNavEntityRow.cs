@@ -322,6 +322,15 @@ internal static class ClassicEntityRow
         return row;
     }
 
+    /// <summary>S8: <paramref name="row"/> wearing its full <paramref name="label"/> as a tooltip when the label would truncate in a
+    /// lane <paramref name="laneWidth"/> wide (a pane, a flyout panel) at <paramref name="depth"/> with <paramref name="trailing"/>
+    /// DIP of trailing content (<see cref="SidebarGeometry.TrailingWidth"/>); the row itself otherwise. The plan rows decide this
+    /// in their slot (<c>ClassicNavRow.Tipped</c>); the flyouts' rows, built outside a slot, use this.</summary>
+    public static Element TipIfCut(Element row, string label, float laneWidth, int depth, float trailing)
+        => SidebarLabelFit.Overflows(label, SidebarGeometry.LabelWidth(laneWidth, depth, trailing))
+            ? ToolTip.Wrap(row, label, grow: 1f)
+            : row;
+
     /// <summary>Names a TRACK row's activation ("Play track"): a tooltip is the only non-visual name channel.
     /// <c>grow: 1f</c> because ToolTip.Wrap's wrapper is a flex ROW — without it the wrapped row's plate shrank to
     /// its own title, visibly narrower than the rows around it.</summary>

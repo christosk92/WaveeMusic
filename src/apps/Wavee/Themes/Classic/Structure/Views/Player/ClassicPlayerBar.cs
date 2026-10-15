@@ -330,19 +330,25 @@ internal static partial class ClassicPlayerBar
                 case RightSlot.Video:
                     // Only built while hasVideo holds (the slot is in `slots` iff the track has a video); the face
                     // additionally needs an Active playable, so it stays dark through Loading/Reconnecting/Error.
+                    // Latched, the SPLIT wears the one checked plate across both halves (tuned P2: the same plate Lyrics, Queue and
+                    // Devices take, never a 32 plate beside an unplated chevron); both glyphs take the latched ink.
+                    var (videoPlate, videoPlateHover) = CheckedPlate(v.VideoLive && lit);
                     return Slot("video", w, box, lit, new BoxEl
                     {
                         Direction = 0, AlignItems = FlexAlign.Center,
+                        Corners = Radii.ControlAll, Fill = videoPlate, HoverFill = videoPlateHover, PressedFill = videoPlate,
+                        BrushTransitionMs = Design.Motion.Faster,
                         OnRealized = h => videoAnchor.Value = h,
                         OnContextRequested = _ => OpenVideoMenu(),
                         Children =
                         [
                             ToolTip.Wrap(
-                                BarButton(Icons.Movie, () => verbs.ToggleVideo(), lit, v.VideoLive, box, glyph),
+                                BarButton(Icons.Movie, () => verbs.ToggleVideo(), lit, v.VideoLive, box, glyph, platedWhenLatched: false),
                                 Loc.Get(v.VideoLive ? Strings.Player.SwitchToAudio : Strings.Player.SwitchToVideo)),
-                            // A disclosure never lights. Narrow but FULL-HEIGHT, so the two glyphs share one centre line.
+                            // Narrow but FULL-HEIGHT, so the two glyphs share one centre line.
                             ToolTip.Wrap(
-                                BarButton(Icons.ChevronDownSmall, OpenVideoMenu, lit, false, m.SplitChevronW, ClassicPlayerBarLayout.SplitChevronGlyph, boxHeight: box),
+                                BarButton(Icons.ChevronDownSmall, OpenVideoMenu, lit, v.VideoLive, m.SplitChevronW, ClassicPlayerBarLayout.SplitChevronGlyph,
+                                    boxHeight: box, platedWhenLatched: false),
                                 Loc.Get(Strings.Player.VideoOptions)),
                         ],
                     });
@@ -424,16 +430,15 @@ internal static partial class ClassicPlayerBar
     /// unpainted (a row of resting plates would re-plate the dock). Flat 32/16 at every level.
     /// <para><paramref name="platedWhenLatched"/> false is the HEART: its saved state is already said twice — the glyph
     /// swaps to the filled heart and takes the accent — so a checked plate behind it is a third, boxy signal next to the
-    /// title. It keeps the accent ink and stays unpainted, latched or not.</para></summary>
+    /// title. It keeps the accent ink and stays unpainted, latched or not. The video split's halves pass false too: the split
+    /// wears <see cref="CheckedPlate"/> across both of them.</para></summary>
     private static BoxEl BarButton(string glyphText, Action onClick, bool enabled, bool latched, float box, float glyphSize,
         Action<NodeHandle>? onRealized = null, string? font = null, float boxHeight = float.NaN,
         bool platedWhenLatched = true)
     {
         ColorF ink = !enabled ? Tok.TextDisabled : latched ? Tok.AccentDefault : Tok.TextSecondary;
         ColorF inkHover = !enabled ? Tok.TextDisabled : latched ? Tok.AccentDefault : Tok.TextPrimary;
-        bool plated = latched && enabled && platedWhenLatched;
-        ColorF plate = plated ? Tok.FillSubtleSecondary : ColorF.Transparent;
-        ColorF plateHover = plated ? Tok.FillSubtleTertiary : ColorF.Transparent;
+        var (plate, plateHover) = CheckedPlate(latched && enabled && platedWhenLatched);
         return new BoxEl
         {
             Width = box, Height = float.IsNaN(boxHeight) ? box : boxHeight,
@@ -449,6 +454,11 @@ internal static partial class ClassicPlayerBar
             Children = [new TextEl(glyphText) { Size = glyphSize, FontFamily = font ?? Tok.Definition.Fonts.Icon, Color = ink, HoverColor = inkHover }],
         };
     }
+
+    /// <summary>THE checked plate (tuned P2): the one "on" plate every latched right-cluster button shares (Lyrics, Queue, Devices
+    /// and the whole video split), its rest and hover fills; an unlatched button is unpainted.</summary>
+    private static (ColorF Fill, ColorF Hover) CheckedPlate(bool on)
+        => on ? (Tok.FillSubtleSecondary, Tok.FillSubtleTertiary) : (ColorF.Transparent, ColorF.Transparent);
 
     /// <summary>A RESERVED slot in the bar's row: a fixed <paramref name="w"/>×<paramref name="h"/> box the level owns,
     /// whose <paramref name="face"/> is either lit (opaque, hit-testable) or dark (transparent, inert) — cross-faded over

@@ -22,6 +22,11 @@ internal static class ClassicLyricsRules
     /// <summary>A centred one-line state ("No lyrics available", "Nothing playing").</summary>
     public const float MessageSize = 14f, MessageLineHeight = 20f;
 
+    // ── the offline voice (tuned R2) ───────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The offline voice's caption wraps at this width (the board's 240), under the 20/28 headline.</summary>
+    public const float OfflineCaptionMaxW = 240f;
+
     // ── the video note ─────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The note a video raises while it suppresses timed sync.</summary>

@@ -14,8 +14,8 @@
 // THE SHAPE. ONE template whose hooks are above the tab switch: the mount effect re-seeds the controls' stable signals (a ComboBox / Slider / NumberBox binds ONE
 // signal for its life), the deactivation edge and the tab change tear down what only the visible Playback tab may own (the video-override flyout and its anchor).
 // The tab bodies are static functions over the document, re-run when the template re-runs (the props' `Revision`, or any signal a body reads); a control that
-// needs a hook is an embedded child component. N7: the body swaps with no transition; only the scroller is keyed, per tab, so each tab keeps its own offset.
-// The numbers are `Rules\ClassicSettingsRules.cs`.
+// needs a hook is an embedded child component. The body swaps with the page cross-fade (Q38, `ClassicSettingsRules.TabSwap`); only the scroller is keyed, per
+// tab, so each tab keeps its own offset. The numbers are `Rules\ClassicSettingsRules.cs`.
 
 using FluentGpu;
 using FluentGpu.Controls;
@@ -74,15 +74,22 @@ internal static partial class ClassicSettings
         };
 
         string slug = Settings.TabSlugs[tab];
-        // N7: the body swaps with no transition; only the scroller is keyed, per tab, so each tab keeps its own
-        // offset. Every tab is an ordinary scrolling lane (N8's unscrolled Logs lane is retired: the viewer is the
-        // route `logs`).
-        Element content = ScrollView(new BoxEl
+        // The body swaps with the page cross-fade (Q38): the lane is keyed per tab, so a switch is a real unmount the
+        // engine fades out under the arriving tab, and each tab keeps its own offset. Every tab is an ordinary scrolling
+        // lane (N8's unscrolled Logs lane is retired: the viewer is the route `logs`).
+        Element content = new BoxEl
         {
-            Direction = 1,
-            Padding = new Edges4(Spacing.PageWide, Spacing.L, Spacing.PageWide, Spacing.PageWide),
-            Children = [ContentColumn(body)],
-        }) with { Grow = 1f, ScrollKey = "settings:" + slug, Key = "settings:scroll:" + slug };
+            Key = "settings:tab:" + slug, Direction = 1, Grow = 1f, MinHeight = 0f, Animate = ClassicSettingsRules.TabSwap,
+            Children =
+            [
+                ScrollView(new BoxEl
+                {
+                    Direction = 1,
+                    Padding = new Edges4(Spacing.PageWide, Spacing.L, Spacing.PageWide, Spacing.PageWide),
+                    Children = [ContentColumn(body)],
+                }) with { Grow = 1f, ScrollKey = "settings:" + slug, Key = "settings:scroll:" + slug },
+            ],
+        };
 
         // W28: the masthead and the strip are SIBLINGS of the scroller — nothing compacts, sticks or gains a shadow.
         return new BoxEl
@@ -127,16 +134,12 @@ internal static partial class ClassicSettings
     /// <summary>The section header's margin: a 32-DIP gap above, the 8-DIP breath under.</summary>
     static Edges4 SectionHeaderMargin => new(0f, Spacing.XXXL, 0f, Spacing.S);
 
-    /// <summary>W1's masthead: a 24-DIP gear + the 28/36/600 title, padded (36, 16, 36, 12).</summary>
+    /// <summary>The page head: the page title alone (40/52 display, no glyph and no meta line), padded (36, 16, 36, 12).</summary>
     static Element Header() => new BoxEl
     {
-        Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
+        Direction = 0, AlignItems = FlexAlign.End,
         Padding = new Edges4(Spacing.PageWide, Spacing.L, Spacing.PageWide, Spacing.M),
-        Children =
-        [
-            Icon(Icons.Settings, ClassicSettingsRules.HeaderGlyph, Tok.TextPrimary),
-            R.Type.PageHero(Loc.Get(Strings.Settings.Title)) with { Grow = 1f },
-        ],
+        Children = [R.Type.SurfaceDisplay(Loc.Get(Strings.Settings.Title)) with { Key = "settings:title", Grow = 1f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
     };
 
     /// <summary>N1: a LEFT-aligned 1000-DIP column — never centred, never full-bleed.</summary>
@@ -145,11 +148,17 @@ internal static partial class ClassicSettings
         Direction = 1, MaxWidth = ClassicSettingsRules.ContentMaxWidth, AlignSelf = FlexAlign.Stretch, Children = [body],
     };
 
-    /// <summary>N2: cards 4 DIP apart.</summary>
-    static Element TabStack(params Element[] children) => new BoxEl
+    /// <summary>N2: cards 4 DIP apart. The tab's first child sits on the column's top edge: a section header that opens the tab drops its
+    /// 32-DIP top margin (the gap above a section separates it from the one before; the first has none).</summary>
+    static Element TabStack(params Element[] children)
     {
-        Direction = 1, Gap = ClassicSettingsRules.CardSpacing, AlignSelf = FlexAlign.Stretch, Children = children,
-    };
+        if (children.Length > 0 && children[0] is BoxEl { Margin.Top: > 0f } first)
+            children[0] = first with { Margin = first.Margin with { Top = 0f } };
+        return new BoxEl
+        {
+            Direction = 1, Gap = ClassicSettingsRules.CardSpacing, AlignSelf = FlexAlign.Stretch, Children = children,
+        };
+    }
 
     /// <summary>A group eyebrow: 16-DIP glyph + BodyStrong title, optionally a ≤ 2-line caption in the SAME column as
     /// the title; margin (0, 32, 0, 8). One line centres on the glyph; two lines hang from the top.</summary>
@@ -170,6 +179,7 @@ internal static partial class ClassicSettings
 
         return new BoxEl
         {
+            Key = "settings:section:" + title,
             Direction = 0, Gap = Spacing.S,
             AlignItems = hasSub ? FlexAlign.Start : FlexAlign.Center,
             Margin = SectionHeaderMargin,

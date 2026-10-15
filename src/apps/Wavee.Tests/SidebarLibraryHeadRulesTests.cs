@@ -227,6 +227,21 @@ public sealed class SidebarLibraryHeadRulesTests
         Assert.Equal(SidebarLibraryEmpty.Failed, SidebarLibraryEmptyRules.Of(0, LoadState.Failed, false, SidebarLibraryFilter.Albums, true));
         Assert.Equal(SidebarLibraryEmpty.Search, SidebarLibraryEmptyRules.Of(0, LoadState.Ready, false, SidebarLibraryFilter.Albums, true));
         Assert.Equal(SidebarLibraryEmpty.None, SidebarLibraryEmptyRules.Of(3, LoadState.Failed, false, SidebarLibraryFilter.None, false));
+        // S10: a failure with nothing to show is the Error vacancy even while another kind is still pending (the planner
+        // draws no skeleton for a failed source, so "loading" would be a blank pane).
+        Assert.Equal(SidebarLibraryEmpty.Failed, SidebarLibraryEmptyRules.Of(0, LoadState.Failed, true, SidebarLibraryFilter.None, false));
+    }
+
+    [Fact]
+    public void Load_a_failed_kind_is_failed_with_or_without_rows_and_an_empty_pending_list_is_pending()
+    {
+        // S10: Failed publishes whatever loaded (the head's banner) or nothing (its Error vacancy); never a skeleton.
+        Assert.Equal(LoadState.Failed, SidebarLibraryEmptyRules.LoadOf(0, anyPending: false, anyFailed: true));
+        Assert.Equal(LoadState.Failed, SidebarLibraryEmptyRules.LoadOf(12, anyPending: false, anyFailed: true));
+        Assert.Equal(LoadState.Failed, SidebarLibraryEmptyRules.LoadOf(0, anyPending: true, anyFailed: true));
+        Assert.Equal(LoadState.Pending, SidebarLibraryEmptyRules.LoadOf(0, anyPending: true, anyFailed: false));
+        Assert.Equal(LoadState.Ready, SidebarLibraryEmptyRules.LoadOf(4, anyPending: true, anyFailed: false));
+        Assert.Equal(LoadState.Ready, SidebarLibraryEmptyRules.LoadOf(0, anyPending: false, anyFailed: false));
     }
 
     [Fact]

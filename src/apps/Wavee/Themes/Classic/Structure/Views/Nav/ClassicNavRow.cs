@@ -91,6 +91,7 @@ internal sealed class ClassicNavRow : Component
             SidebarRowKind.FolderHeader => FolderRow(section, in row, index, sel),
             SidebarRowKind.GridStrip => GridStripRow(section, in row, sel),
             SidebarRowKind.Empty => EmptyRow(),
+            SidebarRowKind.Skeleton when row.ItemCount > 0 => GridSkeletonRow(row.ItemCount),
             SidebarRowKind.Skeleton => ClassicSkeletons.Row(section.Shape,
                 heightOverride: SidebarGeometry.HeightOf(section.Shape), artOverride: SidebarGeometry.ArtOf(section.Shape)),
             SidebarRowKind.TreeEnd => TreeEndRow(in row, index),
@@ -243,6 +244,8 @@ internal sealed class ClassicNavRow : Component
         // non-pin row keeps the identity gate (Trap 5) on its uri fallback.
         var labelFacts = _o.Model.LabelOf(in entry);
         bool unavailable = labelFacts.PinState == SidebarPinState.Unavailable;
+        // S9: an offline pin keeps its last title and cover, quieted, and wears the offline mark where the pin mark sat.
+        bool offline = labelFacts.PinState == SidebarPinState.Offline;
         string label = labelFacts.Label;
         bool placeholderTitle = labelFacts.PlaceholderTitle;
         // Resolved pane-side by the SAME rule the selection sweep uses, so the row that draws the plate and the row
@@ -300,12 +303,15 @@ internal sealed class ClassicNavRow : Component
             Shape = shape,
             Height = height,   // UNIFORM per section: a band's slot pitch and the extent table both assume one height
             ArtSize = SidebarGeometry.ArtOf(shape),
-            Ink = placeholderTitle || unavailable ? Tok.TextTertiary : null,
-            Leading = routeGlyph ? null : Sidebar.Cover.ForEntry(in snapshot, SidebarGeometry.ArtOf(shape)),
+            Ink = placeholderTitle || unavailable || offline ? Tok.TextTertiary : null,
+            Leading = routeGlyph ? null : Quieted(Sidebar.Cover.ForEntry(in snapshot, SidebarGeometry.ArtOf(shape)), offline),
             Glyph = routeGlyph ? _o.DestOf(entry.Id).Glyph : null,
-            // The warning mark is the unavailable pin's trailing mark, so it shows in every row shape.
-            Trailing = unavailable ? Icon(Icons.Warning, 12f, Tok.TextTertiary) : TrailingBadge(section, in snapshot),
-            Pinned = SidebarPinRules.ShowsPinMark(_o.Layout, section.Kind, row.Depth, snapshot.IsPinned, track),   // #85
+            // The warning mark is the unavailable pin's trailing mark, the offline mark the offline pin's, so both show in
+            // every row shape.
+            Trailing = unavailable ? Icon(Icons.Warning, SidebarGeometry.PinMarkSize, Tok.TextTertiary)
+                : offline ? OfflineMark()
+                : TrailingBadge(section, in snapshot),
+            Pinned = !offline && SidebarPinRules.ShowsPinMark(_o.Layout, section.Kind, row.Depth, snapshot.IsPinned, track),   // #85
             Playing = playing,
             PlayingAnimated = animated,
             Track = track,
@@ -319,11 +325,36 @@ internal sealed class ClassicNavRow : Component
             DropTarget = drop,
         };
         if (treeRow && rootlistItem) ApplyTreeSelection(ref spec, snapshot.Id, click);
-        spec.LabelTooltip = LabelOverflows(label, row.Depth, spec.Trailing is null ? 0f : SidebarGeometry.CountTrail);
+        float trailing = unavailable ? SidebarGeometry.PinMarkSize
+            : offline ? SidebarGeometry.OfflineMarkBox
+            : spec.Trailing is null ? 0f : SidebarGeometry.CountSlot;
+        spec.LabelTooltip = LabelOverflows(label, row.Depth, SidebarGeometry.TrailingWidth(playing, spec.Pinned, trailing));
         Element built = ClassicEntityRow.Create(in spec);
         if (track) built = ClassicEntityRow.WithPlayTrackHint(built);
-        // The pill stays in the row's own indent (31 per depth level), never the drop caret's gutter.
-        return Indicator(Tipped(built, spec.LabelTooltip, label), selected, IndentOf(in row), height, route);
+        // The pill stays in the row's own indent (31 per depth level), never the drop caret's gutter. An offline pin always
+        // carries its reason as the tooltip (with the name when the name is cut).
+        string tip = offline ? OfflineTip(label, spec.LabelTooltip || compact) : label;
+        return Indicator(Tipped(built, spec.LabelTooltip || offline, tip), selected, IndentOf(in row), height, route);
+    }
+
+    /// <summary>The offline pin's mark (S9): the cloud-off glyph, 12 in a 24 box, tertiary, in the pin mark's place.</summary>
+    static Element OfflineMark() => new BoxEl
+    {
+        Width = SidebarGeometry.OfflineMarkBox, Height = SidebarGeometry.OfflineMarkBox, Shrink = 0f,
+        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        Children = [Icon(SidebarGeometry.OfflineGlyph, SidebarGeometry.OfflineMarkGlyph, Tok.TextTertiary)],
+    };
+
+    /// <summary>An offline pin keeps its cover, at <see cref="SidebarGeometry.OfflineArtOpacity"/>.</summary>
+    static Element? Quieted(Element? cover, bool offline)
+        => !offline || cover is null ? cover
+            : new BoxEl { Shrink = 0f, Opacity = SidebarGeometry.OfflineArtOpacity, Children = [cover] };
+
+    /// <summary>"Not available offline", led by the name when the row cuts it.</summary>
+    static string OfflineTip(string label, bool labelCut)
+    {
+        string reason = Loc.Get("sidebar.pin.offline");
+        return labelCut ? label + " · " + reason : reason;
     }
 
     /// <summary>A rootlist FOLDER: entity-row geometry, the folder mark, and the disclosure chevron in the TRAILING
@@ -405,7 +436,9 @@ internal sealed class ClassicNavRow : Component
             DropTarget = drop,
         };
         if (rootlistItem) ApplyTreeSelection(ref spec, folderId.Length > 0 ? snapshot.Id : "", activate);
-        spec.LabelTooltip = LabelOverflows(label, row.Depth, SidebarGeometry.FolderTrail);
+        // The chevron column replaces the trailing pad; the "+" and the pin mark are laid out before it (S8).
+        spec.LabelTooltip = LabelOverflows(label, row.Depth, SidebarGeometry.FolderTrail
+            + SidebarGeometry.TrailingWidth(false, spec.Pinned, spec.Trailing is null ? 0f : SidebarGeometry.FolderPlusBox));
         // A folder is a pill anchor when it is the deepest visible ancestor of the route (rule 2 of §P1.2). Both drop
         // cues stay: the bottom band of an expanded header IS the "first child" slot, and the whole outdent gesture
         // happens on folder rows.
@@ -514,7 +547,8 @@ internal sealed class ClassicNavRow : Component
             Drag = drag,
             DropTarget = PinSpec(section, section.Id, index),
         };
-        spec.LabelTooltip = LabelOverflows(title, 0, spec.Trailing is null ? 0f : SidebarGeometry.CountTrail);
+        spec.LabelTooltip = LabelOverflows(title, 0,
+            SidebarGeometry.TrailingWidth(false, false, spec.Trailing is null ? 0f : SidebarGeometry.CountSlot));
         return Indicator(Tipped(ClassicEntityRow.Create(in spec), spec.LabelTooltip, title), selected, 0, height, key);
     }
 
@@ -541,13 +575,7 @@ internal sealed class ClassicNavRow : Component
     /// plate padding (<see cref="SidebarGeometry.TileCover"/>), so the chosen column count is honoured down to the floor.</para></summary>
     Element GridStripRow(SidebarSection section, in SidebarRow row, string sel)
     {
-        float pane = _o.ExpandedWidth.Value;
-        int cols = Math.Clamp(_o.GridColumns, SidebarGeometry.GridMinColumns, SidebarGeometry.GridMaxColumns);
-        float gap = Spacing.S;
-        float avail = pane - SidebarGeometry.PaneInsetH;
-        int fitCols = SidebarGeometry.GridFallbackColumns(cols, avail, gap, Sidebar.Cover.S40);
-        float edge = MathF.Min(SidebarGeometry.GridCellMax, MathF.Max(Sidebar.Cover.S40, (avail - gap * (fitCols - 1)) / fitCols));
-
+        float edge = GridCellEdge();
         var entries = _o.Plan.Entries;
         int start = row.EntryIndex;
         int count = row.ItemCount;
@@ -556,13 +584,41 @@ internal sealed class ClassicNavRow : Component
 
         var cells = new Element[count];
         for (int i = 0; i < count; i++) cells[i] = GridCell(section, entries[start + i], edge, sel);
-        return new BoxEl
-        {
-            Direction = 0, Wrap = true, Gap = gap,
-            Padding = new Edges4(0f, 0f, 0f, Spacing.S),
-            Children = cells,
-        };
+        return GridStrip(cells);
     }
+
+    /// <summary>A grid skeleton strip (S10): <paramref name="tiles"/> seed faces of the sidebar tile — the media surface's own
+    /// bone layout — in cells of the edge a real strip derives, so the tiles that replace them land at the same size.</summary>
+    Element GridSkeletonRow(int tiles)
+    {
+        float edge = GridCellEdge();
+        var cells = new Element[tiles];
+        for (int i = 0; i < tiles; i++)
+            cells[i] = new BoxEl
+            {
+                Direction = 1, Width = edge, Shrink = 0f,
+                Children = [SurfaceParts.Seed(global::Wavee.Shape.SidebarTile, float.NaN)],
+            };
+        return GridStrip(cells);
+    }
+
+    /// <summary>One grid cell's edge at the pane's CURRENT width (subscribed, so the cell re-flows with the seam).</summary>
+    float GridCellEdge()
+    {
+        float pane = _o.ExpandedWidth.Value;
+        int cols = Math.Clamp(_o.GridColumns, SidebarGeometry.GridMinColumns, SidebarGeometry.GridMaxColumns);
+        float gap = Spacing.S;
+        float avail = pane - SidebarGeometry.PaneInsetH;
+        int fitCols = SidebarGeometry.GridFallbackColumns(cols, avail, gap, Sidebar.Cover.S40);
+        return MathF.Min(SidebarGeometry.GridCellMax, MathF.Max(Sidebar.Cover.S40, (avail - gap * (fitCols - 1)) / fitCols));
+    }
+
+    static Element GridStrip(Element[] cells) => new BoxEl
+    {
+        Direction = 0, Wrap = true, Gap = Spacing.S,
+        Padding = new Edges4(0f, 0f, 0f, Spacing.S),
+        Children = cells,
+    };
 
     /// <summary>One cell of a grid strip: the shared media surface at the tile shape, in a column of the strip's derived
     /// width (a component anchor mirrors its rendered child's size rather than carrying flex props, so the width lands on
@@ -651,7 +707,7 @@ internal sealed class ClassicNavRow : Component
             drop: owner.FolderCreateDropSpec(folderId, name, active),
             dropActive: () => active.Value,
             revealOpacity: reveal,
-            box: 20f, glyph: 12f)) with { Key = "folder-create" };
+            box: SidebarGeometry.FolderPlusBox, glyph: SidebarGeometry.FolderPlusGlyph)) with { Key = "folder-create" };
         return plus;
     }
 

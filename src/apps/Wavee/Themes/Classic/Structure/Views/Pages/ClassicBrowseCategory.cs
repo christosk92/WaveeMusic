@@ -4,8 +4,8 @@
 // SHIMMER, W21): the category page's picture. The host decided the load verdict, the body's SHAPE (`BrowsePageLayout`) and each band's rows; this draws
 // them.
 //
-// The outer column owns the frame: the family gutters and the overlay masthead's reserve (the band takes no in-flow height), with Spacing.L under the
-// body; only the region below it ever shimmers. FadeOnly: this body owns no entrance, and None would floor the shimmer's exit at 400 ms and leave a ghost
+// The outer column owns the frame: the family gutters and the overlay masthead's drill-in reserve (the trail's slot over the title; the band takes no
+// in-flow height), with Spacing.L under the body; only the region below it ever shimmers. FadeOnly: this body owns no entrance, and None would floor the shimmer's exit at 400 ms and leave a ghost
 // under real content (must-not-simplify 12). smoothResize false (must-not-simplify 2).
 //
 // SHELVES: the page owns a ScrollView (keyed by the page uri); every section keyed by its own uri, then the Explore link; the dock clearance lives INSIDE the
@@ -59,7 +59,7 @@ internal static class ClassicBrowseCategory
         return new BoxEl
         {
             Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-            Padding = BrowseMastheadMetrics.FamilyBodyPad(Spacing.L),
+            Padding = ClassicPageHeadRules.DrillBodyPad(Spacing.L),
             Children =
             [
                 new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Children = [region] },

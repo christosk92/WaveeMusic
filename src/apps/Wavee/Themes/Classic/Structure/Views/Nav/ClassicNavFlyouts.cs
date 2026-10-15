@@ -103,14 +103,15 @@ internal sealed class ClassicSectionFlyout(INavRowHost owner, string sectionId, 
         Action? click = e.IsFolder && folderId.Length > 0 ? () => model.ToggleFolder(folderId)
             : e.RouteKey is { Length: > 0 } r ? () => { host.Navigate(r, e.Name); closeFlyout(); }
             : null;
-        return ClassicEntityRow.Create(new ClassicRowSpec
+        string label = e.Name.Length > 0 ? e.Name : NavRowFacts.ShortUri(e.Uri);
+        return ClassicEntityRow.TipIfCut(ClassicEntityRow.Create(new ClassicRowSpec
         {
-            Key = row.Key, Label = e.Name.Length > 0 ? e.Name : NavRowFacts.ShortUri(e.Uri),
+            Key = row.Key, Label = label,
             Subtitle = Sidebar.PaneText.SubtitleOf(in e), Shape = SidebarRowShape.EntityTwoLine, Depth = row.Depth,
             Leading = Sidebar.Cover.ForEntry(in e, SidebarGeometry.ArtOf(SidebarRowShape.EntityTwoLine)),
             Selected = string.Equals(e.RouteKey, host.SelectedRoutePeek, StringComparison.Ordinal),
             OnClick = click,
-        });
+        }), label, ClassicNavFlyoutLayout.PanelWidth, row.Depth, 0f);
     }
 }
 
@@ -241,15 +242,18 @@ internal sealed class ClassicFolderFlyout(INavRowHost owner, string sectionId, s
                 : null;
         string cueKey = folder ? entry.Id : entry.Uri;
 
-        return ClassicEntityRow.Create(new ClassicRowSpec
+        // Same gate as EntryRow's (Trap 5). A FOLDER has no entity identity to wait for, so it keeps the
+        // honest short form; an entity row that has not resolved shows nothing.
+        string label = entry.Name.Length > 0 ? entry.Name
+            : folder || SidebarProjection.ShouldShowUriFallbackTitle(entry.IsPinned, entry.IdentityKnown)
+                ? NavRowFacts.ShortUri(entry.Id)
+                : "";
+        // S8: a cut name wears its tooltip; a sub-folder's drill chevron is its trailing content.
+        float trailing = SidebarGeometry.TrailingWidth(false, false, folder ? ClassicNavFlyoutLayout.DrillGlyph : 0f);
+        return ClassicEntityRow.TipIfCut(ClassicEntityRow.Create(new ClassicRowSpec
         {
             Key = entry.Id,
-            // Same gate as EntryRow's (Trap 5). A FOLDER has no entity identity to wait for, so it keeps the
-            // honest short form; an entity row that has not resolved shows nothing.
-            Label = entry.Name.Length > 0 ? entry.Name
-                : folder || SidebarProjection.ShouldShowUriFallbackTitle(entry.IsPinned, entry.IdentityKnown)
-                    ? NavRowFacts.ShortUri(entry.Id)
-                    : "",
+            Label = label,
             // A sub-folder's count is the count of the very list a drill-in shows (ParentFolderId containment), never
             // the projection's ChildCount — the second definition that once rendered a full folder as "0 items".
             Subtitle = folder
@@ -268,7 +272,7 @@ internal sealed class ClassicFolderFlyout(INavRowHost owner, string sectionId, s
             DropTarget = drop,
             DropCue = drop is null ? null : new ClassicRowDropCue(
                 () => host.IsRailDropActive(cueKey), s_cueFill, s_cueBorder, SidebarGeometry.DropPlateBorderWidth),
-        });
+        }), label, ClassicNavFlyoutLayout.PanelWidth, 0, trailing);
     }
 
     // The folder flyout row's whole-row cue: the same accent plate the tree's "into" cue paints (`ClassicNavRow.DropPlate`).

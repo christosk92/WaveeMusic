@@ -5,7 +5,7 @@
 //   Pages.Discography
 //   └─ ScrollView  ScrollKey = the tab's scope + the route key, Handle = the host's (the host provides LazyScroll above the slot)
 //      └─ Column  (page padding, the dock reserve under it)
-//         ├─ head: BreadcrumbBar [artist · facet] · the page title · the facet SelectorBar
+//         ├─ head: the artist as the ancestors' trail (breadcrumb B, `ClassicPageHead.Trail`) over the 40/52 page title · the facet SelectorBar
 //         └─ the core's grid + drawer (the SAME one the artist page's facets use), at the page's reveal inset
 //
 // Deliberately NO cover palette (the system accent) and NO shell tint (ch 08 W22, parity 88-89). The route parse, the demand, the scroll plumbing and the
@@ -40,8 +40,16 @@ internal static class ClassicDiscographyPage
             Direction = 1, Gap = Spacing.S, MinWidth = 0f,
             Children =
             [
-                BreadcrumbBar.Create([p.Name, p.Title], p.OnCrumb),
-                R.Type.PageHero(p.Title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                // Breadcrumb B: the artist is the one ancestor, the facet is the title (never repeated in the trail).
+                new BoxEl
+                {
+                    Direction = 1, Gap = ClassicPageHeadRules.TrailTitleGap, MinWidth = 0f,
+                    Children =
+                    [
+                        ClassicPageHead.Trail([new PageCrumb(p.Name, () => p.OnCrumb(0))]),
+                        R.Type.SurfaceDisplay(p.Title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                    ],
+                },
                 // A FRESH signal per render: the ROUTE, not the control, is the truth; a change navigates and the next
                 // route re-seeds it (0.2.9 DiscographyPage.cs:120-125).
                 SelectorBar.Create(labels, new Signal<int>((int)p.Facet), onChange: p.OnFacet),

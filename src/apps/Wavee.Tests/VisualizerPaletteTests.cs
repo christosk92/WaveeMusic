@@ -44,7 +44,6 @@ public class VisualizerPaletteTests
                 Assert.True(P.Distinct(p.A, p.B), $"A/B {s} dark={dark}: {p.A} {p.B}");
                 Assert.True(P.Distinct(p.B, p.C), $"B/C {s} dark={dark}: {p.B} {p.C}");
                 Assert.True(P.Distinct(p.A, p.C), $"A/C {s} dark={dark}: {p.A} {p.C}");
-                Assert.Equal(dark, p.Dark);
             }
     }
 

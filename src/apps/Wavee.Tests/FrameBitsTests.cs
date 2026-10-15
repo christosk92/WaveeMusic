@@ -65,6 +65,25 @@ public class FrameBitsTests
     }
 
     [Fact]
+    public void The_chrome_carries_its_routes_head_form_and_a_bare_chrome_is_a_title()
+    {
+        Assert.Equal(PageHeadForm.Title, Shell.ChromeFor("Pop", Trail(), null).Form);
+        Assert.Equal(PageHeadForm.Drill, Shell.ChromeFor("Pop", Trail(), null, PageHeadForm.Drill).Form);
+    }
+
+    // Breadcrumb B (Classic tuning F5): what a head holds is decided by the route's kind alone, so a head keeps one height on its route.
+    [Theory]
+    [InlineData(Shell.RouteKind.Browse, PageHeadForm.Title)]
+    [InlineData(Shell.RouteKind.BrowseCategory, PageHeadForm.Drill)]
+    [InlineData(Shell.RouteKind.BrowseSection, PageHeadForm.Drill)]
+    [InlineData(Shell.RouteKind.HomeSection, PageHeadForm.Drill)]
+    [InlineData(Shell.RouteKind.Concerts, PageHeadForm.Hero)]
+    [InlineData(Shell.RouteKind.ArtistConcerts, PageHeadForm.Hero)]
+    [InlineData(Shell.RouteKind.Concert, PageHeadForm.Hero)]
+    public void A_masthead_routes_head_form_follows_its_kind(Shell.RouteKind kind, PageHeadForm form)
+        => Assert.Equal(form, Shell.HeadFormOf(new Shell.Route(kind)));
+
+    [Fact]
     public void A_route_that_published_nothing_offers_no_tool()
     {
         var chrome = Shell.ChromeFor("Pop", Trail(), null);

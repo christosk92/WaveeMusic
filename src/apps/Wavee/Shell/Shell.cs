@@ -24,6 +24,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 
 namespace Wavee;
 
@@ -956,6 +957,17 @@ public static partial class Shell
         return !string.IsNullOrWhiteSpace(title);
     }
 
+    /// <summary>What a masthead route's head holds (<see cref="PageHeadForm"/>), by the route's kind alone, so the head keeps one height
+    /// on its route whatever its trail turns out to be: Browse is a root (its title only); the Concerts family's pages carry their
+    /// title in their own hero (the head holds the trail only); every other masthead route is a drill-in page (the trail over the
+    /// title).</summary>
+    public static PageHeadForm HeadFormOf(in Route route) => route.Kind switch
+    {
+        RouteKind.Browse => PageHeadForm.Title,
+        RouteKind.Concerts or RouteKind.ArtistConcerts or RouteKind.Concert => PageHeadForm.Hero,
+        _ => PageHeadForm.Drill,
+    };
+
     static string? MastheadStaticTitle(in Route route)
     {
         if (route.Kind == RouteKind.Browse) return Loc.Get(Strings.Browse.Title);
@@ -1204,7 +1216,7 @@ public static partial class Shell
         float ButtonBox, float ButtonGlyph, float PrimaryBox, float PrimaryGlyph,
         float LeftW, float ArtSize, float RowGap, float RowPad, float ClusterGap, float LeftGap, float SeekGap,
         float RightGap, float TopEdgeWidth, float RightWMax,
-        bool ShowTitleBlock = true)
+        bool ShowTitleBlock = true, bool ShowVideoSplit = false)
     {
         static bool Has(Theming.PlayerBarSlots set, Theming.PlayerBarSlots slot) => (set & slot) != 0;
 
@@ -1269,7 +1281,8 @@ public static partial class Shell
                 SeekGap: level.SeekGap,
                 RightGap: level.RightGap,
                 TopEdgeWidth: MathF.Max(TopEdgeWidthFloor, width),
-                RightWMax: 0f);
+                RightWMax: 0f,
+                ShowVideoSplit: Has(slots, Theming.PlayerBarSlots.VideoSplit));
             // The right cluster's WIDEST width at this tier — the slot sum WITH the video split (PlayerBarRules.RightWidth,
             // hasVideo: true). The live cluster is that or the same less the split (the one state input, user decision
             // 2026-09-16); the 300-DIP seek-bar floor and any arithmetic that must hold in the widest case use this.

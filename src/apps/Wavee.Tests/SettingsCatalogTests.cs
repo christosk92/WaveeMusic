@@ -72,12 +72,13 @@ public class SettingsCatalogTests
     /// The two Developer items that used to be gated here (Simulate an update, Send a test crash report) are greyed on
     /// the Privacy &amp; diagnostics tab instead, so only the NPV presentation row remains.</summary>
     [Fact]
-    public void Only_the_npv_presentation_row_is_developer_only()
+    public void Only_the_npv_presentation_and_style_rows_are_developer_only()
     {
         var gated = Settings.Catalog.Rows.Where(r => !Settings.Catalog.RowVisible(r.Tab, r.RowId, developerMode: false))
                                          .Select(r => r.Tab + "/" + r.RowId)
                                          .OrderBy(s => s, StringComparer.Ordinal).ToArray();
-        Assert.Equal(new[] { "Appearance/npvPresentation" }, gated);
+        // The player style is hidden until it affects Now playing, which only the developer-only switch makes it do (#199).
+        Assert.Equal(new[] { "Appearance/npvPresentation", "Appearance/npvStyle" }, gated);
         foreach (var row in Settings.Catalog.Rows)
             Assert.True(Settings.Catalog.RowVisible(row.Tab, row.RowId, developerMode: true));
     }

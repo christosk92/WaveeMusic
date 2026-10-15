@@ -587,6 +587,9 @@
       "playlists": "Nog geen playlists — gebruik + om er een te maken"
     },
     "newPlaylist": "Mijn playlist",
+    "library": {
+      "refreshFailed": "Je bibliotheek kon niet worden vernieuwd. Wat al geladen was, blijft zichtbaar."
+    },
     "seam": {
       "announceWidth": "Breedte zijbalk {width}"
     },
@@ -594,7 +597,8 @@
       "pinTo": "Vastmaken aan zijbalk",
       "unpin": "Losmaken van zijbalk",
       "undo": "Ongedaan maken",
-      "emptyHint": "Of gebruik de pin-actie op elk bibliotheekitem."
+      "emptyHint": "Of gebruik de pin-actie op elk bibliotheekitem.",
+      "offline": "Niet offline beschikbaar"
     },
     "section": {
       "recentlyPlayed": "Onlangs afgespeeld",

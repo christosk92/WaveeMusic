@@ -26,7 +26,7 @@ public enum PlayerBarSlots : ushort
     Expand = 1 << 0,
     /// <summary>The device picker button: the only route to another output, so every level carries it.</summary>
     Devices = 1 << 1,
-    /// <summary>The queue button (and the video split button beside it).</summary>
+    /// <summary>The queue button.</summary>
     Queue = 1 << 2,
     /// <summary>The inline volume rail.</summary>
     VolumeSlider = 1 << 3,
@@ -51,6 +51,9 @@ public enum PlayerBarSlots : ushort
     /// <summary>The title and artist text beside the cover. Every level of the music bar carries it; the podcast bar's narrowest
     /// level drops it and shows the cover alone.</summary>
     Title = 1 << 13,
+    /// <summary>The video split button (the video toggle and its placement chevron), present only while the track has a video. A
+    /// level without it carries the video verb in the overflow menu. Contract 1.1: it used to ride the <see cref="Queue"/> bit.</summary>
+    VideoSplit = 1 << 14,
 }
 
 /// <summary>One pressure level of the player bar: where it starts, what it carries and how it spaces it.</summary>
@@ -103,45 +106,45 @@ public sealed record PlayerBarPolicy(ImmutableArray<PlayerTier> Tiers, float Hys
                 LeftW: 132f, ArtSize: 40f, RowGap: 3f, RowPad: 6f, ClusterGap: 2f, LeftGap: 4f, SeekGap: 4f, RightGap: 0f,
                 ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: 36f, PrimaryGlyph: 18f,
                 PodcastSlots: PlayerBarSlots.Devices | PlayerBarSlots.Subtitle, PodcastLeftW: 40f),
-            // Compact: the remaining time joins.
-            new PlayerTier(440f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.TimesRemaining,
+            // Compact: the remaining time and the queue join (the queue stays from here up; its room comes from the seek bar).
+            new PlayerTier(440f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.Queue | PlayerBarSlots.TimesRemaining,
                 LeftW: 172f, ArtSize: 40f, RowGap: 4f, RowPad: 8f, ClusterGap: 3f, LeftGap: 6f, SeekGap: 5f, RightGap: 1f,
                 ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: 36f, PrimaryGlyph: 18f,
-                PodcastSlots: PlayerBarSlots.Devices | PlayerBarSlots.Subtitle | PlayerBarSlots.Title, PodcastLeftW: 120f),
+                PodcastSlots: PlayerBarSlots.Devices | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.Queue, PodcastLeftW: 120f),
             // Medium: the 48 cover, the roomy play button, previous / next, elapsed time, lyrics and the volume button.
-            new PlayerTier(760f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.TimesRemaining
+            new PlayerTier(760f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.Queue | PlayerBarSlots.TimesRemaining
                     | PlayerBarSlots.VolumeButton | PlayerBarSlots.Lyrics | PlayerBarSlots.TimesElapsed | PlayerBarSlots.PrevNext,
                 LeftW: 220f, ArtSize: Design.Size.ArtPlayerBar, RowGap: 6f, RowPad: 8f, ClusterGap: 4f, LeftGap: 8f, SeekGap: 6f, RightGap: 2f,
                 ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: 40f, PrimaryGlyph: 20f,
-                PodcastSlots: PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.VolumeButton
+                PodcastSlots: PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.Queue | PlayerBarSlots.VolumeButton
                     | PlayerBarSlots.Lyrics),
             // Comfortable: shuffle / repeat and the remote-device line join.
-            new PlayerTier(900f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.TimesRemaining
+            new PlayerTier(900f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.Queue | PlayerBarSlots.TimesRemaining
                     | PlayerBarSlots.VolumeButton | PlayerBarSlots.Lyrics | PlayerBarSlots.TimesElapsed | PlayerBarSlots.PrevNext
                     | PlayerBarSlots.ShuffleRepeat | PlayerBarSlots.RemoteDeviceLine,
                 LeftW: 230f, ArtSize: Design.Size.ArtPlayerBar, RowGap: 6f, RowPad: 8f, ClusterGap: 4f, LeftGap: 8f, SeekGap: 6f, RightGap: 2f,
                 ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: 40f, PrimaryGlyph: 20f,
-                PodcastSlots: PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.TimesRemaining
+                PodcastSlots: PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.Queue | PlayerBarSlots.TimesRemaining
                     | PlayerBarSlots.VolumeButton | PlayerBarSlots.Lyrics | PlayerBarSlots.TimesElapsed | PlayerBarSlots.RemoteDeviceLine),
-            // Wide: the queue and the inline volume rail join; the row breathes (gap 8, pad 12).
+            // Wide: the inline volume rail and the video split join; the row breathes (gap 8, pad 12).
             new PlayerTier(1100f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.TimesRemaining
                     | PlayerBarSlots.VolumeButton | PlayerBarSlots.Lyrics | PlayerBarSlots.TimesElapsed | PlayerBarSlots.PrevNext
-                    | PlayerBarSlots.ShuffleRepeat | PlayerBarSlots.RemoteDeviceLine | PlayerBarSlots.Queue | PlayerBarSlots.VolumeSlider,
+                    | PlayerBarSlots.ShuffleRepeat | PlayerBarSlots.RemoteDeviceLine | PlayerBarSlots.Queue | PlayerBarSlots.VideoSplit | PlayerBarSlots.VolumeSlider,
                 LeftW: 240f, ArtSize: Design.Size.ArtPlayerBar, RowGap: 8f, RowPad: 12f, ClusterGap: 4f, LeftGap: 8f, SeekGap: 6f, RightGap: 2f,
                 ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: 40f, PrimaryGlyph: 20f,
                 PodcastSlots: PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.TimesRemaining
                     | PlayerBarSlots.VolumeButton | PlayerBarSlots.Lyrics | PlayerBarSlots.TimesElapsed | PlayerBarSlots.PrevNext
-                    | PlayerBarSlots.RemoteDeviceLine | PlayerBarSlots.Queue),
+                    | PlayerBarSlots.RemoteDeviceLine | PlayerBarSlots.Queue | PlayerBarSlots.VideoSplit),
             // Full: the expand button joins; the widest identity block.
             new PlayerTier(1240f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.TimesRemaining
                     | PlayerBarSlots.VolumeButton | PlayerBarSlots.Lyrics | PlayerBarSlots.TimesElapsed | PlayerBarSlots.PrevNext
-                    | PlayerBarSlots.ShuffleRepeat | PlayerBarSlots.RemoteDeviceLine | PlayerBarSlots.Queue | PlayerBarSlots.VolumeSlider
+                    | PlayerBarSlots.ShuffleRepeat | PlayerBarSlots.RemoteDeviceLine | PlayerBarSlots.Queue | PlayerBarSlots.VideoSplit | PlayerBarSlots.VolumeSlider
                     | PlayerBarSlots.Expand,
                 LeftW: 260f, ArtSize: Design.Size.ArtPlayerBar, RowGap: 8f, RowPad: 12f, ClusterGap: 4f, LeftGap: 8f, SeekGap: 6f, RightGap: 2f,
                 ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: 40f, PrimaryGlyph: 20f,
                 PodcastSlots: PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.TimesRemaining
                     | PlayerBarSlots.VolumeButton | PlayerBarSlots.Lyrics | PlayerBarSlots.TimesElapsed | PlayerBarSlots.PrevNext
-                    | PlayerBarSlots.RemoteDeviceLine | PlayerBarSlots.Queue | PlayerBarSlots.Expand),
+                    | PlayerBarSlots.RemoteDeviceLine | PlayerBarSlots.Queue | PlayerBarSlots.VideoSplit | PlayerBarSlots.Expand),
         ],
         Hysteresis: 24f, Height: Design.Size.PlayerBarH);
 

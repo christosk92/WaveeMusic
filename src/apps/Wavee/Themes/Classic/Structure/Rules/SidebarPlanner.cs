@@ -26,6 +26,9 @@ public static class SidebarRowPlanner
     /// <summary>The one finite guard on a projected section (a 10k library plans in full).</summary>
     public const int DynamicSectionRowCap = 20_000;
     const int SkeletonRows = 3;
+    /// <summary>The grid view's pending tiles (S10, board `C-Sidebar` state loading): eight skeleton tiles, in strips of the
+    /// planned column count, so the grid reads as loading at its real cell size instead of an empty pane.</summary>
+    const int SkeletonGridTiles = 8;
 
     /// <summary>Deterministic: same inputs → identical plan.</summary>
     public static SidebarRowPlan Build(SidebarLayoutDoc doc, in SidebarProjectionInput input, in SidebarPlanOptions options,
@@ -142,7 +145,9 @@ public static class SidebarRowPlanner
     static void PlanPlaylists(SidebarSection s, in SidebarProjectionInput input, ref PlanState st)
     {
         var tree = input.PlaylistTree;
-        if (input.TreeState == SidebarSourceState.Pending && (tree is null || tree.Count == 0))
+        // A FAILED rootlist keeps the skeleton here: the Classic layout has no failure voice of its own (the board draws it
+        // only in Your Library's head), and an Empty row would claim "no playlists".
+        if (input.TreeState != SidebarSourceState.Ready && (tree is null || tree.Count == 0))
         {
             if (!st.Compact) EmitSkeletons(s, ref st);
             return;
@@ -282,9 +287,12 @@ public static class SidebarRowPlanner
         var list = input.Library;
         if (input.LibraryState == SidebarSourceState.Pending && (list is null || list.Count == 0))
         {
-            // Nothing published yet: the list view shows its skeletons; the grid shows nothing (no grey placeholder
-            // tiles). Loaded rows never take this branch, so a pending edge never blanks them.
-            if (!st.Compact && options.View == SidebarLibraryView.List) EmitSkeletons(lib, ref st);
+            // Nothing published yet: the list view shows its skeleton rows, the grid its skeleton tiles at the real cell
+            // size (S10). Loaded rows never take this branch, so a pending edge never blanks them. A FAILED source
+            // (`SidebarSourceState.Error`) plans neither: the head draws the failure.
+            if (st.Compact) return;
+            if (options.View == SidebarLibraryView.List) EmitSkeletons(lib, ref st);
+            else EmitGridSkeletons(lib, o.GridColumns, ref st);
             return;
         }
         int start = st.Entries.Count;
@@ -387,6 +395,15 @@ public static class SidebarRowPlanner
     static void EmitSkeletons(SidebarSection s, ref PlanState st)
     {
         for (int i = 0; i < SkeletonRows; i++) st.Rows.Add(Chrome(SidebarRowKind.Skeleton, s));
+    }
+
+    /// <summary>The grid's pending strips: <see cref="SkeletonGridTiles"/> tiles as Skeleton rows whose <c>ItemCount</c> is the
+    /// strip's tile count (a list skeleton carries 0), in the planned column count, exactly like the strips that replace them.</summary>
+    static void EmitGridSkeletons(SidebarSection s, int gridColumns, ref PlanState st)
+    {
+        int cols = System.Math.Clamp(gridColumns, SidebarGeometry.GridMinColumns, SidebarGeometry.GridMaxColumns);
+        for (int i = 0; i < SkeletonGridTiles; i += cols)
+            st.Rows.Add(new SidebarRow(SidebarRowKind.Skeleton, s.Id, 0, -1, System.Math.Min(cols, SkeletonGridTiles - i), s.Id));
     }
 
     /// <summary>Expand one pinned folder against the canonical flattened rootlist (unchanged rule: descendants keep their
@@ -503,6 +520,8 @@ public static class SidebarRowExtents
             SidebarRowKind.SectionHeader => SidebarGeometry.HeaderHeight,
             SidebarRowKind.Divider => SidebarGeometry.SeparatorHeight,
             SidebarRowKind.IconRow or SidebarRowKind.SectionTile => SidebarGeometry.PitchOf(SidebarRowShape.Glyph),
+            // A grid skeleton strip (ItemCount > 0) is measured like the strip it stands for.
+            SidebarRowKind.Skeleton when rows[index].ItemCount > 0 => float.NaN,
             SidebarRowKind.EntityRow or SidebarRowKind.FolderHeader or SidebarRowKind.Skeleton => SidebarGeometry.PitchOf(section.Shape),
             SidebarRowKind.Empty => SidebarGeometry.EmptyHintHeight + 2f * SidebarGeometry.RowMarginY,
             SidebarRowKind.DropBand => SidebarGeometry.PitchOf(SidebarRowShape.Glyph),
