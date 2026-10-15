@@ -38,7 +38,6 @@ using Format = global::Wavee.Track.Format;
 using RowCellRules = global::Wavee.Track.RowCellRules;
 using RowMetrics = global::Wavee.Track.RowMetrics;
 using RowPresentation = global::Wavee.Track.RowPresentation;
-using TableRules = global::Wavee.Track.TableRules;
 
 /// <summary>Classic's row templates for the track table: the Modern pair and the Classic pair of (bound grid, skin).</summary>
 internal static class ClassicTrackTable
@@ -93,7 +92,7 @@ internal static class ClassicTrackTable
         int i = 0;
 
         cells[i++] = BoundNumberCell(r, classic);
-        if (set.Heart) cells[i++] = Track.RowCenterCell(BoundHeart(r, classic), CellKey.Heart);
+        if (set.Heart) cells[i++] = Track.RowCenterCell(BoundHeartReveal(r, classic), CellKey.Heart);
         if (set.Thumb) cells[i++] = Track.RowCenterCell(BoundArtwork(r, artSize), CellKey.Art);
         cells[i++] = BoundTitleCell(r, in set, classic);
         if (set.Artist) cells[i++] = Track.RowLeftCell(BoundArtistLinks(r, classic), CellKey.Artist);
@@ -103,7 +102,6 @@ internal static class ClassicTrackTable
         if (set.Plays) cells[i++] = Track.RowEndCell(BoundPlaysCell(r, classic), CellKey.Plays);
         if (RowMetrics.ShowTempo(in set)) cells[i++] = Track.RowEndCell(BoundTempoCell(r, classic), CellKey.Tempo);
         cells[i++] = Track.RowEndCell(BoundDurationCell(r, classic), CellKey.Duration);
-        if (set.Video) cells[i++] = Track.RowCenterCell(BoundVideoMoreCell(r), CellKey.Video);
         if (set.Actions) cells[i++] = Track.MoreCell(true, classic, CellKey.More);
         if (set.Expand) cells[i++] = BoundExpandCell(r);
 
@@ -248,6 +246,17 @@ internal static class ClassicTrackTable
 
     // ── heart · art ──────────────────────────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>The heart lane's row reveal (tuned Classic L2): a liked row keeps its filled heart at rest, an unliked one
+    /// shows nothing until the ROW is hovered and then fades its outline in. The reveal rides a NON-interactive wrapper
+    /// around the heart's own click target, so the hover it reads is the row skin's (the same idiom as the # cell's
+    /// layers); the rest opacity is bound to the presentation, so a like re-resolves it with no rebuild.</summary>
+    static Element BoundHeartReveal(BoundRow r, bool classic) => new BoxEl
+    {
+        Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        Opacity = Prop.Of(() => r.P.State.Saved ? 1f : 0f), HoverOpacity = 1f,
+        Children = [BoundHeart(r, classic)],
+    };
+
     /// <summary>The heart (ch 01 §0.3) as three glyphs under one circle: the resting filled heart, the popping filled
     /// heart (a real mount on the like EDGE, so the Enter spring replays exactly once) and the outline.</summary>
     static Element BoundHeart(BoundRow r, bool classic)
@@ -315,17 +324,41 @@ internal static class ClassicTrackTable
     // ── title · metadata ─────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The plain ellipsis title and, on the now-playing row when the setting allows, the marquee — swapped by a
-    /// real mount so the marquee host only exists on that one row.</summary>
-    static Element[] BoundTitleRuns(BoundRow r)
+    /// real mount so the marquee host only exists on that one row. <paramref name="inlineVideo"/> (the Modern row) makes the
+    /// plain title one span run that carries the small film glyph right after the title when the track has a video
+    /// (tuned Classic L3: a video is marked there, never in a trailing lane).</summary>
+    static Element[] BoundTitleRuns(BoundRow r, bool inlineVideo)
     {
-        // R.Type.TrackTitle's rung (BodyStrong 14/20/600), constructed once with its binds.
-        var plain = new TextEl(Prop.Of(() => r.P.Track.ForDisplay.Title))
+        Prop<bool> plainVisible = Prop.Of(() => !(r.P.State.IsNow && r.P.Marquee));
+        Element plain;
+        if (inlineVideo)
         {
-            Size = ClassicTrackRowLayout.BodySize, LineHeight = ClassicTrackRowLayout.BodyLine, Weight = 600,
-            Color = Prop.Of(() => r.P.State.IsNow ? Tok.AccentTextPrimary : Tok.TextPrimary),
-            Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-            Visible = Prop.Of(() => !(r.P.State.IsNow && r.P.Marquee)),
-        };
+            var buffer = new SpanBuffer();
+            plain = new SpanTextEl(Prop.Of(() =>
+            {
+                buffer.Clear();
+                var p = r.P;
+                bool now = p.State.IsNow;
+                FillClassicSpans(buffer, p.Track.ForDisplay, 0, p.Track.HasVideo,
+                    now ? Tok.AccentTextPrimary : Tok.TextPrimary, Tok.TextSecondary, now ? Tok.AccentTextPrimary : Tok.TextTertiary);
+                return buffer.Current;
+            }))
+            {
+                Size = ClassicTrackRowLayout.BodySize, LineHeight = ClassicTrackRowLayout.BodyLine,
+                Color = Tok.TextPrimary,   // SpanTextEl.Color is a value: the spans carry the live inks and the 600 weight
+                Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                Visible = plainVisible,
+            };
+        }
+        else
+            // R.Type.TrackTitle's rung (BodyStrong 14/20/600), constructed once with its binds.
+            plain = new TextEl(Prop.Of(() => r.P.Track.ForDisplay.Title))
+            {
+                Size = ClassicTrackRowLayout.BodySize, LineHeight = ClassicTrackRowLayout.BodyLine, Weight = 600,
+                Color = Prop.Of(() => r.P.State.IsNow ? Tok.AccentTextPrimary : Tok.TextPrimary),
+                Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                Visible = plainVisible,
+            };
         var marquee = Flow.Show(() => r.P.State.IsNow && r.P.Marquee,
             Marquee.Of(Prop.Of(() => r.P.Track.ForDisplay.Title), Track.s_rowMarqueeStyle));
         return [plain, marquee];
@@ -334,10 +367,9 @@ internal static class ClassicTrackTable
     static Element BoundTitleCell(BoundRow r, in ColumnSet set, bool classic)
     {
         bool setArtist = set.Artist, setAlbum = set.Album;
-        int tier = set.Tier;
-        var runs = BoundTitleRuns(r);
+        var runs = BoundTitleRuns(r, inlineVideo: !classic);
         Element[] column;
-        if (classic) column = [BoundClassicTitleLine(r, runs, setArtist, tier)];
+        if (classic) column = [BoundClassicTitleLine(r, runs, setArtist)];
         else column = [runs[0], runs[1], BoundMetadataLine(r, setArtist, setAlbum)];
         var titleCol = new BoxEl
         {
@@ -422,10 +454,10 @@ internal static class ClassicTrackTable
 
     /// <summary>Classic's one-line title (ch 01 W8): the folded span run (artists in the title) or the plain title plus
     /// the film glyph, then the EXPLICIT word-mark pinned trailing. Both arms stay mounted; the fold flag picks one.</summary>
-    static Element BoundClassicTitleLine(BoundRow r, Element[] runs, bool setArtist, int tier)
+    static Element BoundClassicTitleLine(BoundRow r, Element[] runs, bool setArtist)
     {
         var buffer = new SpanBuffer();
-        bool ShowVideo(in RowPresentation p) => TableRules.ShowClassicInlineVideo(true, p.Track.HasVideo, tier);
+        static bool ShowVideo(in RowPresentation p) => p.Track.HasVideo;
         Prop<ColorF> Ink(Func<ColorF> plain) => Prop.Of(() => r.P.State.IsNow ? Tok.AccentTextPrimary : plain());
 
         Element folded = new SpanTextEl(Prop.Of(() =>
@@ -618,65 +650,40 @@ internal static class ClassicTrackTable
         };
     }
 
-    /// <summary>"Unavailable" for a ruled-unavailable row, the release date for a pending one, else the clock.</summary>
+    /// <summary>The clock, or for a withheld row its short reason ("Unavailable", the release date) at the reason rung with
+    /// the long reason as its tooltip (tuned Classic L4). The reason arm is a real mount (<c>Flow.Show</c>) on the rare
+    /// withheld flip, so a playable row carries no tooltip host.</summary>
     static Element BoundDurationCell(BoundRow r, bool classic)
-        => Factual(classic,
-            Prop.Of(() =>
-            {
-                var t = r.P.Track;
-                long now = Track.NowUnix;
-                return RowCellRules.DurationKindOf(t.Unplayable(), t.NotYetOut(now), t.AvailableAt, now) switch
-                {
-                    RowCellRules.DurationKind.Unavailable => Loc.Get(Strings.Detail.TrackFacts.Unavailable),
-                    RowCellRules.DurationKind.ReleaseDate => Format.ReleaseDateLabel(t.AvailableAt, now),
-                    RowCellRules.DurationKind.Dash => Format.Dash,
-                    _ => Format.DurationCell(t.ForDisplay.DurationMs),
-                };
-            }),
-            Prop.Of(() =>
-            {
-                var p = r.P;
-                if (classic && p.State.IsNow) return Tok.AccentTextPrimary;
-                return Track.Withheld(in p, Track.NowUnix) ? Tok.TextTertiary : Tok.TextSecondary;
-            }));
+    {
+        Func<bool> withheld = () =>
+        {
+            var p = r.P;
+            return Track.Withheld(in p, Track.NowUnix);
+        };
+        var label = Prop.Of(() => Track.DurationLabel(r.P.Track, Track.NowUnix));
+        var clock = Factual(classic, label, LaneInk(r, classic, static () => Tok.TextSecondary), Prop.Of(() => !withheld()));
+        var reason = new TextEl(label)
+        {
+            Size = ClassicTrackRowLayout.ReasonSize, LineHeight = classic ? ClassicTrackRowLayout.BodyLine : ClassicTrackRowLayout.CaptionLine,
+            Color = Tok.TextTertiary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+        };
+        return new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, MinWidth = 0f,
+            Children =
+            [
+                clock,
+                Flow.Show(withheld, ToolTip.Wrap(reason, Prop.Of<string?>(() => Track.WithheldReason(r.P.Track, Track.NowUnix)))),
+            ],
+        };
+    }
 
     // ── trailing chrome ──────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary><c>VideoMoreCell</c> bound: the film glyph at rest on a row with a video, the quiet "…" on one
-    /// without; the full-strength "…" on row hover either way.</summary>
-    static Element BoundVideoMoreCell(BoundRow r)
-        => new BoxEl
-        {
-            ZStack = true, MinWidth = 0f,
-            Children =
-            [
-                new BoxEl
-                {
-                    Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HoverOpacity = 0f,
-                    Children = [Glyph(Icons.Movie, 13f, Tok.TextTertiary, Prop.Of(() => r.P.Track.HasVideo))],
-                },
-                new BoxEl
-                {
-                    Direction = 0, Grow = 1f, AlignItems = FlexAlign.Stretch,
-                    Opacity = Prop.Of(() => r.P.Track.HasVideo ? 0f : Controls.MoreRestOpacity),
-                    HoverOpacity = 1f,
-                    Children =
-                    [
-                        new BoxEl
-                        {
-                            Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                            Cursor = CursorId.Hand, ClickRequestsContext = true, HitTestVisible = true,
-                            Role = AutomationRole.Button, BlocksDragArm = true,
-                            Children = [Icon(Icons.More, 16f, Tok.TextSecondary)],
-                        },
-                    ],
-                },
-            ],
-        };
-
-    /// <summary><c>ExpandCell</c> bound: the chevron ROTATES (ChevronRight → down) on the reveal spring with the drawer,
-    /// inked accent while open; a recycle onto another track re-seeds it without spinning. An episode row (no versions)
-    /// collapses the chevron.</summary>
+    /// <summary><c>ExpandCell</c> bound: a chevron-down that ROTATES open on the reveal spring with the drawer, inked
+    /// accent while open; a recycle onto another track re-seeds it without spinning. Only a row with versions shows it
+    /// (tuned Classic L1, <c>Track.HasVersions</c>); every other row keeps the lane empty and reaches its drawer through the
+    /// menu's "Track details".</summary>
     static Element BoundExpandCell(BoundRow r)
         => Track.RowCenterCell(new BoxEl
         {
@@ -686,10 +693,10 @@ internal static class ClassicTrackTable
             FocusVisualMargin = Edges4.All(1f),
             OnClick = r.ToggleExpand,
             BlocksDragArm = true,
-            Visible = Prop.Of(() => r.P.Track.Uri.Kind == EntityKind.Track),
+            Visible = Prop.Of(() => r.P.Track.HasVersions()),
             Children =
             [
-                Sidebar.Chevron.Disclosure(() => r.P.Open, size: ClassicTrackRowLayout.ChevronSize, identity: () => r.P.Track.Slot, accentWhenOpen: true),
+                Sidebar.Chevron.Section(() => r.P.Open, size: ClassicTrackRowLayout.ChevronSize, identity: () => r.P.Track.Slot, accentWhenOpen: true),
             ],
         }, CellKey.Expand);
 

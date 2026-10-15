@@ -56,7 +56,7 @@ public readonly partial struct Track
     public static class CellKey
     {
         public const string Num = "c.num", Heart = "c.heart", Art = "c.art", Title = "c.title", Artist = "c.artist",
-            Album = "c.album", By = "c.by", Date = "c.date", Video = "c.video", Plays = "c.plays", Tempo = "c.tempo",
+            Album = "c.album", By = "c.by", Date = "c.date", Plays = "c.plays", Tempo = "c.tempo",
             Duration = "c.dur", More = "c.more", Expand = "c.expand";
         /// <summary>The TRAILING ♥ lane. Its OWN key, not <see cref="Heart"/>'s: the two are mutually exclusive, so
         /// reusing one key would let the keyed diff MOVE the leading heart's node into the trailing ordinal instead of
@@ -116,8 +116,8 @@ public readonly partial struct Track
 
     /// <summary>THE width tracks for a column set, cached per (set, art): the header and the rows read the SAME array
     /// instance (ch 04 §0.1), and a scroll frame never rebuilds one (ch 01 §9, "Where the plan is wrong" 7). Order:
-    /// # · ♥ · art · Title* · Artist* · Album* · By · Date · Plays · Tempo · ♥(trailing) · Duration · Video · Actions ·
-    /// Expand. The key space is finite (a dozen flags × seven tiers × four art rungs), so the cache is never trimmed —
+    /// # · ♥ · art · Title* · Artist* · Album* · By · Date · Plays · Tempo · ♥(trailing) · Duration · Actions · Expand.
+    /// The key space is finite (a dozen flags × seven tiers × four art rungs), so the cache is never trimmed —
     /// trimming would hand the header and the rows two different instances for one shape. The KEY is the whole
     /// <see cref="ColumnSet"/>, so <see cref="ColumnSet.HeartTrailing"/> forks the cache by construction.</summary>
     public static TrackSize[] TracksFor(in ColumnSet set, float art)
@@ -142,7 +142,6 @@ public readonly partial struct Track
         // 28 | 1fr | 32 | 52), never after it: the duration is the row's last fact, and a heart past it reads as chrome.
         if (RowMetrics.ShowHeartTrailing(in set)) arr[i++] = TrackSize.Px(Lane.HeartTrailing);
         arr[i++] = TrackSize.Px(Lane.Duration);
-        if (set.Video) arr[i++] = TrackSize.Px(Lane.Video);
         if (set.Actions) arr[i++] = TrackSize.Px(Lane.Actions);
         if (set.Expand) arr[i++] = TrackSize.Px(Lane.Expand);
         s_rowTrackCache[key] = arr;
@@ -160,7 +159,7 @@ public readonly partial struct Track
         => 3 + (set.Heart ? 1 : 0) + (set.Thumb ? 1 : 0) + (set.Artist ? 1 : 0) + (set.Album ? 1 : 0)
            + (set.By ? 1 : 0) + (set.Date ? 1 : 0) + (set.Plays ? 1 : 0) + (RowMetrics.ShowTempo(in set) ? 1 : 0)
            + (RowMetrics.ShowHeartTrailing(in set) ? 1 : 0)
-           + (set.Video ? 1 : 0) + (set.Actions ? 1 : 0) + (set.Expand ? 1 : 0);
+           + (set.Actions ? 1 : 0) + (set.Expand ? 1 : 0);
 
     // ══ 2. THE GRID ══════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -171,15 +170,13 @@ public readonly partial struct Track
     /// same reason.</para>
     /// <para><see cref="AddedAt"/> and <see cref="NowUnixSeconds"/> are UNIX seconds; <see cref="NowUnixSeconds"/> 0
     /// resolves the live clock (<c>Store.ToUnix(Entities.Now)</c> — <c>Entities.Now</c> itself is APP seconds).</para>
-    /// <para><see cref="HeartRevealOnHover"/> applies to the TRAILING heart lane only
-    /// (<see cref="ColumnSet.HeartTrailing"/>): a liked row paints its heart at rest, an unliked one reveals the outline
-    /// on ROW hover. The leading ♥ lane is unaffected — it is painted at rest on every row, which is ch 01 §0.3.</para></summary>
+    /// <para>Both ♥ lanes wear the row reveal (tuned Classic L2): a liked row paints its filled heart at rest, an unliked
+    /// one shows its outline only on ROW hover.</para></summary>
     public readonly record struct GridOptions(
         bool ShowTrackArtist = false, float Art = RowMetrics.ThumbSize, Action? OnPlay = null, Action? OnLike = null,
         int AddedAt = 0, User AddedBy = default, byte ChartStatus = 0, bool LikePop = false, Element? ActionsCell = null,
         bool ShowAlbumInMeta = false, bool ShowListBadges = false, Element? ExpandCell = null, bool MoreEnabled = true,
-        IReadSignal<bool>? HoverPaused = null, Func<ColorF>? Accent = null, long NowUnixSeconds = 0,
-        bool HeartRevealOnHover = false);
+        IReadSignal<bool>? HoverPaused = null, Func<ColorF>? Accent = null, long NowUnixSeconds = 0);
 
     internal const float RowNotYetOutOpacity = 0.45f;   // ch 01 §0.7: the whole title column steps back, not a colour swap
     internal const float RowEqualizerHeight = 13f;
@@ -226,10 +223,10 @@ public readonly partial struct Track
         return edge;
     }
 
-    /// <summary>The dedicated "…" lane (sets with Video off): <c>Controls.MoreButton</c> — the shared affordance with its
+    /// <summary>The row's "…" lane: <c>Controls.MoreButton</c> — the shared affordance with its
     /// <c>ClickRequestsContext</c> and <c>BlocksDragArm</c> — at the row's 28-DIP circle (Modern, Emphatic hover/press) or
-    /// a square with no scale (Classic, ch 01 W8). The rest opacity rides a NON-interactive wrapper so it follows the ROW's
-    /// hover: 0.45 Modern, 0 Classic. <paramref name="enabled"/> false is an invisible, inert placeholder that reserves the
+    /// a square with no scale (Classic, ch 01 W8). It is invisible at rest in both row styles and appears on ROW hover
+    /// (tuned Classic L2): the reveal rides a NON-interactive wrapper so it follows the row. <paramref name="enabled"/> false is an invisible, inert placeholder that reserves the
     /// lane (a skeleton / overscan row). Not a tab stop — the list owns the one roving stop.</summary>
     public static Element MoreCell(bool enabled, bool classic, string? key = null)
     {
@@ -251,7 +248,7 @@ public readonly partial struct Track
                 new BoxEl
                 {
                     Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Opacity = enabled ? (classic ? 0f : Controls.MoreRestOpacity) : 0f,
+                    Opacity = 0f,
                     HoverOpacity = enabled ? 1f : 0f,
                     Children = [button],
                 },
@@ -414,12 +411,9 @@ public readonly partial struct Track
     // ══ 4. THE EAGER ROW ═════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>What an eager row varies. Construct with a named argument (see <see cref="GridOptions"/>'s record-struct
-    /// note): <c>default</c> would read <see cref="ShowTrackArtist"/> false.
-    /// <para><see cref="HeartRevealOnHover"/> is forwarded verbatim to <see cref="GridOptions.HeartRevealOnHover"/>: it
-    /// reaches the TRAILING ♥ lane only, and false (the default) leaves every existing caller's row untouched.</para></summary>
+    /// note): <c>default</c> would read <see cref="ShowTrackArtist"/> false.</summary>
     public readonly record struct EagerRowOptions(bool ShowTrackArtist = true, bool Zebra = false, Element? ActionsCell = null,
-                                                  Action? OnLike = null, Func<ContextMenuModel?>? Menu = null,
-                                                  bool HeartRevealOnHover = false);
+                                                  Action? OnLike = null, Func<ContextMenuModel?>? Menu = null);
 
     /// <summary>A self-contained, EAGER interactive row for short preview lists (Home "Top tracks", Recents) — the SAME
     /// <c>Grid</c> inside a hover container that is the interactive ancestor, so the transport reveal, the
@@ -441,7 +435,6 @@ public readonly partial struct Track
             => other is not null && other.Track == Track && other.DisplayIndex == DisplayIndex && other.Set == Set
                && ReferenceEquals(other.Tracks, Tracks) && other.RowH.Equals(RowH)
                && other.Options.ShowTrackArtist == Options.ShowTrackArtist && other.Options.Zebra == Options.Zebra
-               && other.Options.HeartRevealOnHover == Options.HeartRevealOnHover
                && ReferenceEquals(other.Options.ActionsCell, Options.ActionsCell);
 
         public override int GetHashCode() => HashCode.Combine(Track.Slot, DisplayIndex, Set, RowH);
@@ -527,14 +520,14 @@ public readonly partial struct Track
                 ShowTrackArtist: p.Options.ShowTrackArtist, Art: RowMetrics.ThumbSize,
                 OnPlay: play, OnLike: like, LikePop: pop,
                 ActionsCell: p.Options.ActionsCell ?? (set.Actions ? MoreCell(true, set.Classic) : null),
-                MoreEnabled: true, HoverPaused: hovered, HeartRevealOnHover: p.Options.HeartRevealOnHover);
+                MoreEnabled: true, HoverPaused: hovered);
             // The title carries the full-text tooltip while it is cut (the plain run only; the marquee scrolls instead).
             Element title = style.Title(t, st.IsNow);
             var grid = style.Grid(t, p.DisplayIndex, in st, in set, p.Tracks, p.RowH, title, in options);
 
-            // A row whose column set has no "…" lane (no Actions, no Video lane) still offers the menu: the standard "…" as
-            // a hover overlay at the row's end over an opaque chip, reserving no width.
-            bool overlayMore = !set.Actions && !set.Video && p.Options.ActionsCell is null && !Controls.IsNullOverlay(svc);
+            // A row whose column set has no "…" lane still offers the menu: the standard "…" as a hover overlay at the
+            // row's end over an opaque chip, reserving no width.
+            bool overlayMore = !set.Actions && p.Options.ActionsCell is null && !Controls.IsNullOverlay(svc);
 
             var row = style.Skin(new global::Wavee.Theming.Contracts.EagerRowSkin
             {

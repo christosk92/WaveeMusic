@@ -2,7 +2,7 @@
 //
 // From `Entities/Track.UI.cs` (sections 2 and 3, "the grid" and "the cells"): the ONE-SHOT row the eager lists build (Home's top
 // tracks, the library reader's blocks, Recents, the album drawer's rows, the chart's # and ♥ cells) and the cells it is made of —
-// the # state machine, the heart, the trailing film / "…" lane, the metadata line, the artist and album links, the Added-by name,
+// the # state machine, the heart and its row reveal, the metadata line, the artist and album links, the Added-by name,
 // the tempo lane, the Classic title line and its explicit word-mark. `ClassicEagerRow` draws the eager row's container around
 // `Grid`; `ClassicArtistChart` reuses `NumberCell`, `Heart` and `ClassicExplicitBadge`; `ClassicTrackTable` reuses `RowNumberLabel`
 // and the heart's pop. They were `Track.Grid`, `Track.NumberCell`... and moved here verbatim.
@@ -38,7 +38,6 @@ using Format = global::Wavee.Track.Format;
 using GridOptions = global::Wavee.Track.GridOptions;
 using RowMetrics = global::Wavee.Track.RowMetrics;
 using RowState = global::Wavee.Track.RowState;
-using TableRules = global::Wavee.Track.TableRules;
 
 /// <summary>Classic's eager grid and the track-row cells it is made of.</summary>
 internal static class ClassicRowCells
@@ -52,12 +51,10 @@ internal static class ClassicRowCells
                                float rowH, Element title, in GridOptions o)
     {
         long now = o.NowUnixSeconds > 0 ? o.NowUnixSeconds : Track.NowUnix;
-        // The ONE not-yet-out predicate: the dim here, the play gate and the facts strip must never disagree (ch 01 W6).
-        bool notYetOut = t.NotYetOut(now);
-        // Ruled unavailable with NO release instant (a terminal envelope verdict): the same dim and play gate as a
-        // pending row, but the duration cell states "Unavailable" — there is no WHEN to state. The heart stays: it IS liked.
-        bool unplayable = t.Unplayable();
-        bool withheld = notYetOut || unplayable;
+        // The ONE withheld predicate — not out yet, or ruled unavailable with no release instant (a terminal envelope
+        // verdict): the dim here, the play gate and the facts strip must never disagree (ch 01 W6). The duration lane
+        // states which (`Track.DurationLabel`); the heart stays: it IS liked.
+        bool withheld = t.NotYetOut(now) || t.Unplayable();
         // THE DISPLAY ROW (Track.ForDisplay): a relinked id paints its canonical track's title, credits, album, art,
         // duration and explicit mark. Everything that IS this row — the heart, the play target, the verdicts above, the
         // plays and tempo lanes, the video chrome — keeps reading `t`.
@@ -82,17 +79,17 @@ internal static class ClassicRowCells
                                 o.Accent, CellKey.Num);
 
         if (set.Heart)
-            cells[i++] = Track.RowCenterCell(Heart(st.Saved, o.OnLike, o.LikePop, classic), CellKey.Heart);
+            cells[i++] = Track.RowCenterCell(HeartReveal(t, Heart(st.Saved, o.OnLike, o.LikePop, classic)), CellKey.Heart);
 
         if (set.Thumb)
             cells[i++] = Track.RowCenterCell(Controls.Artwork(Track.RowArtUrl(d), art, art, Radii.Control,
                                                         decodePx: Track.RowArtDecodePx), CellKey.Art);
 
         bool showMeta = !classic && (artistInTitle || o.ShowAlbumInMeta || badge);
+        // A video is the small film glyph right after the title in both row styles, never a trailing lane (tuned Classic L3).
         Element titleLine = classic
-            ? ClassicTitleLine(d, title, artistInTitle, TableRules.ShowClassicInlineVideo(classic, t.HasVideo, set.Tier),
-                               badge, classicNow)
-            : title;
+            ? ClassicTitleLine(d, title, artistInTitle, t.HasVideo, badge, classicNow)
+            : t.HasVideo ? ModernTitleWithVideo(title, st.IsNow) : title;
         var titleCol = new BoxEl
         {
             // MinWidth 0: the STAR track collapses first under pressure; without the floor override the stack keeps its
@@ -129,21 +126,20 @@ internal static class ClassicRowCells
         // The TRAILING ♥ — the same heart, on the right, immediately before the duration (the library reader's
         // 28 | 1fr | 32 | 52). Mutually exclusive with the leading lane; the gate is shared with the width track.
         if (RowMetrics.ShowHeartTrailing(in set))
-            cells[i++] = Track.RowCenterCell(TrailingHeart(t, in st, in o, classic), CellKey.HeartTrailing);
+            cells[i++] = Track.RowCenterCell(HeartReveal(t, Heart(st.Saved, o.OnLike, o.LikePop, classic)), CellKey.HeartTrailing);
 
-        // A ruled-unavailable row with no instant states "Unavailable"; a pending track states WHEN (the live instant)
-        // rather than a dash; 0 ms is the same unknown as a zero count. Unplayable is tested FIRST: with no instant the
-        // not-yet-out predicate also holds, and it would print a dash where the verdict has a word.
-        string durationText = unplayable ? Loc.Get(Strings.Detail.TrackFacts.Unavailable)
-            : notYetOut ? (t.AvailableAt > now ? Format.ShortDate(t.AvailableAt, now) : Format.Dash)
-            : Format.DurationCell(d.DurationMs);
-        cells[i++] = Track.RowEndCell(RowFactualText(durationText, classic,
-            classicNow ? Tok.AccentTextPrimary : withheld ? Tok.TextTertiary : Tok.TextSecondary), CellKey.Duration);
+        // The clock, or a withheld row's SHORT reason ("Unavailable", the release date) at the reason rung with the LONG
+        // reason as its tooltip (tuned Classic L4) — the bound table's lane, word for word (`Track.DurationLabel`).
+        string durationText = Track.DurationLabel(t, now);
+        cells[i++] = Track.RowEndCell(withheld
+            ? ToolTip.Wrap(new TextEl(durationText)
+              {
+                  Size = ClassicTrackRowLayout.ReasonSize, LineHeight = classic ? ClassicTrackRowLayout.BodyLine : ClassicTrackRowLayout.CaptionLine,
+                  Color = Tok.TextTertiary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+              }, Track.WithheldReason(t, now) ?? "")
+            : RowFactualText(durationText, classic, classicNow ? Tok.AccentTextPrimary : Tok.TextSecondary), CellKey.Duration);
 
-        // Trailing chrome AFTER Duration so the film / "…" never wedges between Album and Tempo. Video carries the "…"
-        // on hover; Actions is its exact complement (the lane is reserved once — the ColumnSet decides that).
-        if (set.Video)
-            cells[i++] = Track.RowCenterCell(VideoMoreCell(t.HasVideo, o.MoreEnabled), CellKey.Video);
+        // Trailing chrome AFTER Duration so the "…" never wedges between Album and Tempo.
         // A caller-supplied cell that already carries the lane's key (the table row builds it once with `CellKey.More` /
         // `CellKey.Expand`) is used as-is; any other is keyed here so the contract "every cell is keyed" still holds.
         if (set.Actions)
@@ -312,23 +308,19 @@ internal static class ClassicRowCells
             ],
         }.Interactive(Interaction.Subtle);
 
-    /// <summary>The TRAILING ♥ cell's content (<see cref="ColumnSet.HeartTrailing"/>). At
-    /// <see cref="GridOptions.HeartRevealOnHover"/> false it is the plain <see cref="Heart"/> — painted at rest either
-    /// way, exactly like the leading lane. At true it wears the library reader's reveal: a LIKED row keeps its filled
-    /// heart at rest, an UNLIKED one is invisible until the ROW is hovered and then fades its outline in.
+    /// <summary>The heart lanes' row reveal (tuned Classic L2), both the leading and the TRAILING lane: a LIKED row keeps
+    /// its filled heart at rest, an UNLIKED one is invisible until the ROW is hovered and then fades its outline in.
     /// <para>The reveal rides a NON-interactive wrapper around the heart's own click target, so the hover progress it
     /// reads is the ROW skin's (the PointerBit every <c>HoverOpacity</c> descendant inherits — the same idiom
     /// <see cref="NumberCell"/>'s rest/reveal layers use, and the reason the reveal survives the pointer crossing onto
     /// the heart itself). <c>HoverOpacity</c> is 1 in BOTH states, so the one thing that differs is the REST opacity:
     /// 1 → 1 is a liked heart that does not move, 0 → 1 is the reveal.</para>
     /// <para>That rest opacity is a BOUND <c>Prop</c> over <c>Track.LikedNow</c> — the same subscribing read
-    /// <c>Track.StateOf</c> makes — and not <c>st.Saved</c>, which is a value frozen when this element record was
-    /// built. An optimistic like writes the Liked edge and the bound channel re-resolves in the same frame, with no
+    /// <c>Track.StateOf</c> makes — and not the row state's <c>Saved</c>, which is a value frozen when this element record
+    /// was built. An optimistic like writes the Liked edge and the bound channel re-resolves in the same frame, with no
     /// render and no dependence on whoever owns this row re-running.</para></summary>
-    static Element TrailingHeart(Track t, in RowState st, in GridOptions o, bool classic)
+    static Element HeartReveal(Track t, Element heart)
     {
-        Element heart = Heart(st.Saved, o.OnLike, o.LikePop, classic);
-        if (!o.HeartRevealOnHover) return heart;
         var track = t;
         return new BoxEl
         {
@@ -338,40 +330,17 @@ internal static class ClassicRowCells
         };
     }
 
-    /// <summary>The trailing lane that doubles as the row's More affordance (ch 01 §0.5): the film glyph at rest on a row
-    /// that HAS a video, the quiet "…" at <c>Controls.MoreRestOpacity</c> on one that does not; the full-strength "…"
-    /// on row hover either way. A click raises <c>ClickRequestsContext</c>, so the row's own context menu opens
-    /// byte-identically to a right-click, anchored here.</summary>
-    public static Element VideoMoreCell(bool hasVideo, bool moreEnabled)
+    /// <summary>A Modern title with a video: the caller's title, then the small film glyph right after it (tuned Classic
+    /// L3). The title yields first under pressure; the glyph keeps its size.</summary>
+    static Element ModernTitleWithVideo(Element title, bool nowPlaying) => new BoxEl
     {
-        Element rest = hasVideo ? Icon(Icons.Movie, 13f, Tok.TextTertiary) : new BoxEl();
-        Element more = new BoxEl
-        {
-            Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Cursor = moreEnabled ? CursorId.Hand : null,
-            ClickRequestsContext = moreEnabled,
-            HitTestVisible = moreEnabled,
-            Role = AutomationRole.Button,
-            BlocksDragArm = true,
-            Children = [Icon(Icons.More, 16f, Tok.TextSecondary)],
-        };
-        return new BoxEl
-        {
-            ZStack = true, MinWidth = 0f,
-            Children =
-            [
-                new BoxEl { Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HoverOpacity = 0f, Children = [rest] },
-                new BoxEl
-                {
-                    Direction = 0, Grow = 1f, AlignItems = FlexAlign.Stretch,
-                    // Only a row with no film to show spends its resting slot on the quiet menu glyph.
-                    Opacity = moreEnabled && !hasVideo ? Controls.MoreRestOpacity : 0f,
-                    HoverOpacity = moreEnabled ? 1f : 0f,
-                    Children = [more],
-                },
-            ],
-        };
-    }
+        Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f, ClipToBounds = true,
+        Children =
+        [
+            new BoxEl { Direction = 0, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [title] },
+            Icon(Icons.Movie, ClassicTrackRowLayout.FilmGlyphSize, nowPlaying ? Tok.AccentTextPrimary : Tok.TextTertiary) with { Shrink = 0f },
+        ],
+    };
 
     /// <summary>The responsive metadata subline (ch 01 §1.1): [EPISODE eyebrow] · [E] · artists · album, one ellipsized
     /// run whose artist and album parts are separate LINKS. Artists come from <c>Edges.TrackArtists</c> — one span per

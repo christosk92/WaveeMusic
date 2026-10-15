@@ -140,6 +140,28 @@ public readonly partial struct Track
     /// <summary>The ONE not-yet-out / unavailable predicate: the dim, the play gate and the duration lane never disagree.</summary>
     internal static bool Withheld(in RowPresentation p, long now) => p.Track.NotYetOut(now) || p.Track.Unplayable();
 
+    /// <summary>The duration lane's text, both row builders (the bound table and the eager grid): the clock, or for a
+    /// withheld row its SHORT reason — "Unavailable" for a ruled-unavailable row, the release date for a pending one.</summary>
+    internal static string DurationLabel(Track t, long now)
+        => RowCellRules.DurationKindOf(t.Unplayable(), t.NotYetOut(now), t.AvailableAt, now) switch
+        {
+            RowCellRules.DurationKind.Unavailable => Loc.Get(Strings.Detail.TrackFacts.UnavailableShort),
+            RowCellRules.DurationKind.ReleaseDate => Format.ReleaseDateLabel(t.AvailableAt, now),
+            RowCellRules.DurationKind.Dash => Format.Dash,
+            _ => Format.DurationCell(t.ForDisplay.DurationMs),
+        };
+
+    /// <summary>A withheld row's LONG reason, the tooltip over its duration lane (tuned Classic L4): "This song isn't
+    /// available to play" (a terminal verdict names no cause the client could state honestly) or "Releases {date}".
+    /// Null for a playable row.</summary>
+    internal static string? WithheldReason(Track t, long now)
+        => RowCellRules.DurationKindOf(t.Unplayable(), t.NotYetOut(now), t.AvailableAt, now) switch
+        {
+            RowCellRules.DurationKind.Unavailable => Loc.Get(Strings.Detail.TrackFacts.UnavailableReason),
+            RowCellRules.DurationKind.ReleaseDate => Strings.Detail.ReleasesOn(Format.ReleaseDateLabel(t.AvailableAt, now)),
+            _ => null,
+        };
+
     internal static bool ArtistInTitle(in RowPresentation p, bool setArtist) => p.ShowTrackArtist && !setArtist;
 
     internal static bool ShowAlbumInMeta(in RowPresentation p, bool classic, bool setAlbum)

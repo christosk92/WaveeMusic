@@ -292,6 +292,8 @@
       "video": "Music video",
       "localFile": "Local file",
       "unavailable": "Audio unavailable",
+      "unavailableShort": "Unavailable",
+      "unavailableReason": "This song isn’t available to play",
       "$comment2": "Camelot encodes mode in its own suffix — the B ring is major, the A ring minor — so these two words are the only key wording we can state honestly. They are lowercase because they follow a tonic: \"8B · C major\".",
       "major": "major",
       "minor": "minor"
