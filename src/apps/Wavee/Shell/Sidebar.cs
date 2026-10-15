@@ -321,6 +321,9 @@ public enum SidebarRowShape : byte
     EntityTwoLine = 1,
     /// <summary>Row B — an entity row at Compact density: 36 tall, 24-px art, title only.</summary>
     EntityOneLine = 2,
+    /// <summary>Row D — an entity row as TEXT (the structure's covers are off, the Classic layout only): 36 tall, no art, title
+    /// only; a folder keeps its glyph. Appended (contract 1.2).</summary>
+    EntityText = 3,
 }
 
 /// <summary>THE PLAN QUERIES: which rows a disclosure owns, where a folder header or a route sits in a plan. No pixels: the row

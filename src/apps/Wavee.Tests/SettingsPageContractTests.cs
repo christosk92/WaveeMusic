@@ -158,7 +158,7 @@ public sealed class SettingsPageContractTests : IDisposable
     [Fact]
     public void A_groups_generated_rows_come_before_its_legacy_rows_and_the_groups_keep_the_legacy_order()
     {
-        // Classic's sidebar group: the layout cards and the density (generated) sit above the three sidebar actions (legacy), as the rows they replaced did;
+        // Classic's sidebar group: the layout cards, the density and the covers toggle (generated) sit above the three sidebar actions (legacy), as the rows they replaced did;
         // the groups that hold generated rows only (Surfaces, then the track pages' layout and rails) come after the legacy groups, in schema order.
         var theme = ClassicTheme.Create();
         var model = ThemeOptionsSection.Build(theme, ThemeOptionStore.Load(theme, _settings), developerMode: false);
@@ -167,7 +167,7 @@ public sealed class SettingsPageContractTests : IDisposable
 
         Assert.Equal(new[] { Strings.Settings.ThemeOptions.Group.Sidebar, Strings.Settings.ThemeOptions.Group.TrackLists,
             Strings.Settings.ThemeOptions.Group.Surfaces, Strings.Settings.ThemeOptions.Group.TrackPages }.Select(ThemeOptionsSection.GroupTitle), groups.Select(g => g.Title));
-        Assert.Equal(new[] { "opt:structure.sidebar", "opt:structure.libraryDensity", "legacy:sidebarReset", "legacy:sidebarCustomize", "legacy:sidebarResetEverything" },
+        Assert.Equal(new[] { "opt:structure.sidebar", "opt:structure.libraryDensity", "opt:structure.showCovers", "legacy:sidebarReset", "legacy:sidebarCustomize", "legacy:sidebarResetEverything" },
             groups[0].Items.Select(i => i.Key));
         Assert.Equal(new[] { "opt:structure.surfaces" }, groups[2].Items.Select(i => i.Key));
         Assert.Equal(new[] { "opt:structure.pageLayout", "opt:structure.railUniform", "opt:structure.clearRememberedSizes" }, groups[3].Items.Select(i => i.Key));
@@ -183,7 +183,7 @@ public sealed class SettingsPageContractTests : IDisposable
 
         var keys = groups.SelectMany(g => g.Items).Select(i => i.Key).ToArray();
         Assert.Equal(new[] { "opt:structure.sidebar", "opt:structure.libraryDensity" }, keys.Take(2));   // the sidebar group opens the page
-        Assert.Equal(new[] { "opt:structure.hideTrackArt", "opt:structure.libraryDensity", "opt:structure.pageLayout", "opt:structure.railUniform", "opt:structure.rowStyle", "opt:structure.sidebar", "opt:structure.surfaces", "opt:style.density" },
+        Assert.Equal(new[] { "opt:structure.hideTrackArt", "opt:structure.libraryDensity", "opt:structure.pageLayout", "opt:structure.railUniform", "opt:structure.rowStyle", "opt:structure.showCovers", "opt:structure.sidebar", "opt:structure.surfaces", "opt:style.density" },
             keys.OrderBy(k => k, StringComparer.Ordinal));
         Assert.All(groups.SelectMany(g => g.Items), i => Assert.Equal(SettingsOptionItemKind.Generated, i.Kind));
     }

@@ -108,11 +108,14 @@ public readonly record struct ContainerExtras
     /// <summary>Replaces the registered Add to playlist row — a page that already holds the tracks passes the track
     /// menu's own deposit submenu (immediate, no resolve round-trip).</summary>
     public MenuFlyoutItem? Deposit { get; init; }
-    /// <summary>Fills the Pin/Unpin slot when set (the sidebar's pin lives in its Organize ▸ submenu, and its pin ids are
-    /// its own). The function is the answer, including null = no row.</summary>
+    /// <summary>Fills the Pin/Unpin slot when set (the sidebar's pin ids are its own). The function is the answer, including
+    /// null = no row.</summary>
     public Func<MenuFlyoutItem?>? Pin { get; init; }
-    /// <summary>Open a separator group in front of the <see cref="Pin"/> slot (the sidebar's Organize ▸ stands apart).</summary>
+    /// <summary>Open a separator group in front of the <see cref="Pin"/> slot (the sidebar's pin and Organize ▸ stand apart).</summary>
     public bool PinStartsGroup { get; init; }
+    /// <summary>A row that follows the Pin slot in its group (the sidebar's Organize ▸; read only with <see cref="PinStartsGroup"/>).
+    /// The function is the answer, including null = no row.</summary>
+    public Func<MenuFlyoutItem?>? Organize { get; init; }
     /// <summary>Page- or surface-only rows, appended after Share behind a separator (owner pair, Rename, Delete…).</summary>
     public IReadOnlyList<MenuFlyoutItem>? Tail { get; init; }
     /// <summary>Replaces the header tile (the Liked Songs treatment).</summary>
@@ -139,9 +142,12 @@ public static partial class Menus
         foreach (var verb in plan.Rows)
         {
             if (verb == ContainerVerb.Share) { sharePending = true; continue; }   // Share is its own group
-            if (verb == ContainerVerb.Pin && x.PinStartsGroup && x.Pin is { } grouped)
+            if (verb == ContainerVerb.Pin && x.PinStartsGroup)
             {
-                Actions.Menu.Group(rows, grouped());
+                var pinRow = x.Pin is { } pin ? pin() : PinRow(in ctx);
+                var organize = x.Organize?.Invoke();
+                Actions.Menu.Group(rows, pinRow ?? organize);
+                if (pinRow is not null && organize is { } organizeRow) rows.Add(organizeRow);
                 continue;
             }
             if (RowFor(verb, in ctx, in x) is { } row) rows.Add(row);

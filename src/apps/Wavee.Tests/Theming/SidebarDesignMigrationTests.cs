@@ -148,6 +148,29 @@ public sealed class SidebarDesignMigrationTests
     }
 
     [Fact]
+    public void Show_covers_is_a_classic_layout_toggle_on_by_default()
+    {
+        // S0 (owner NQ6: covers On), shown only with the Classic layout (the Library layout always shows covers).
+        var covers = ClassicStructure.ShowCovers;
+        Assert.Equal("showCovers", covers.Id);
+        Assert.True(covers.Default);
+        Assert.Equal(new OptionCondition(NavPaneOptionIds.Layout, SidebarLayoutId.Classic), covers.VisibleWhen);
+        Assert.Equal(ClassicStructure.ShowCoversQualifiedId, "structure." + covers.Id);
+        Assert.Same(covers, new ClassicStructure().Options.Find("showCovers"));
+    }
+
+    [Fact]
+    public void Covers_off_reaches_the_pane_policy_and_on_is_the_bundle()
+    {
+        Assert.Same(ClassicPolicies.Bundle, ClassicPolicies.For(SidebarLayoutId.Classic, SidebarDensity.Default, showCovers: true));
+        Assert.True(ClassicPolicies.Bundle.NavPane.ShowCovers);
+        var off = ClassicPolicies.For(SidebarLayoutId.Classic, SidebarDensity.Default, showCovers: false);
+        Assert.Same(off, ClassicPolicies.For(SidebarLayoutId.Classic, SidebarDensity.Default, showCovers: false));
+        Assert.Equal(ClassicPolicies.NavPane with { ShowCovers = false }, off.NavPane);
+        Assert.Empty(off.Validate());
+    }
+
+    [Fact]
     public void The_policy_for_the_default_pair_is_the_bundle_itself_and_each_other_pair_differs_only_in_the_pane()
     {
         Assert.Same(ClassicPolicies.Bundle, ClassicPolicies.For(SidebarLayoutId.Classic, SidebarDensity.Default));

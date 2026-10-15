@@ -124,10 +124,71 @@ public sealed class SidebarGeometryKitTests
         // S8: the cluster is a 6 lead margin, its parts and a 6 gap between them; nothing laid out takes nothing.
         Assert.Equal(0f, SidebarGeometry.TrailingWidth(false, false, 0f));
         Assert.Equal(6f + 26f, SidebarGeometry.TrailingWidth(false, false, SidebarGeometry.CountSlot));        // a count slot
-        Assert.Equal(6f + 12f, SidebarGeometry.TrailingWidth(false, true, 0f));                                // the pin mark alone
-        Assert.Equal(6f + 12f + 6f + 26f, SidebarGeometry.TrailingWidth(false, true, SidebarGeometry.CountSlot)); // pin + count
-        Assert.Equal(6f + 12f + 6f + 12f + 6f + 24f,
-            SidebarGeometry.TrailingWidth(true, true, SidebarGeometry.OfflineMarkBox));                        // eq + pin + a mark
+        Assert.Equal(6f + 24f, SidebarGeometry.TrailingWidth(false, true, 0f));                                // the Unpin button alone (S5)
+        Assert.Equal(6f + 24f + 6f + 26f, SidebarGeometry.TrailingWidth(false, true, SidebarGeometry.CountSlot)); // Unpin + count
+        Assert.Equal(6f + 12f + 6f + 24f + 6f + 24f,
+            SidebarGeometry.TrailingWidth(true, true, SidebarGeometry.OfflineMarkBox));                        // eq + Unpin + a mark
+    }
+
+    // ── CT3a: the text rows (S0, S3, S4), the shared count slot (S2) and the Unpin button (S5), board `C-Sidebar` ──
+
+    [Fact]
+    public void Text_rows_are_36_tall_at_pitch_40_and_their_rail_tile_keeps_the_compact_cover()
+    {
+        // S3 (board covers false: `rowBase(k, 36)` in a 2 + 2 margin).
+        Assert.Equal(36f, SidebarGeometry.HeightOf(SidebarRowShape.EntityText));
+        Assert.Equal(40f, SidebarGeometry.PitchOf(SidebarRowShape.EntityText));
+        Assert.Equal(24f, SidebarGeometry.ArtOf(SidebarRowShape.EntityText));
+        Assert.False(SidebarGeometry.SubtitleVisible(SidebarRowShape.EntityText, "Playlist · Chris"));
+        Assert.True(SidebarGeometry.IsText(SidebarRowShape.EntityText));
+        Assert.False(SidebarGeometry.IsText(SidebarRowShape.EntityOneLine));
+    }
+
+    [Fact]
+    public void A_text_rows_folder_glyph_sits_at_pane_16_its_label_at_pane_40_and_a_child_at_pane_47()
+    {
+        // S4 (board: `padding-left: 12` (child 43) in the 4-px row margin, the folder's 16 glyph box then `margin-right: 8`).
+        float pane(float slotX) => SidebarGeometry.PaneEdge + slotX;
+        Assert.Equal(16f, pane(SidebarGeometry.TextLead));                                                // the folder glyph
+        Assert.Equal(16f, SidebarGeometry.TextGlyph);
+        Assert.Equal(40f, pane(SidebarGeometry.LabelX(SidebarRowShape.EntityText, glyph: true)));         // a folder's label
+        Assert.Equal(16f, pane(SidebarGeometry.LabelX(SidebarRowShape.EntityText, glyph: false)));        // a playlist's label
+        Assert.Equal(43f, SidebarGeometry.IndentFor(1) + SidebarGeometry.TextLead);                       // the child indent
+        // A cover row keeps its icon column (slot 50), whatever it carries.
+        Assert.Equal(50f, SidebarGeometry.LabelX(SidebarRowShape.EntityTwoLine, glyph: false));
+        Assert.Equal(50f, SidebarGeometry.LabelX(SidebarRowShape.Glyph, glyph: true));
+    }
+
+    [Fact]
+    public void A_text_rows_label_is_wider_than_a_cover_rows_by_the_icon_column_it_does_not_draw()
+    {
+        float cover = SidebarGeometry.LabelWidth(320f, 0, 0f);
+        float text = SidebarGeometry.LabelWidth(320f, 0, 0f, SidebarGeometry.LabelX(SidebarRowShape.EntityText, glyph: false));
+        Assert.Equal(cover, SidebarGeometry.LabelWidth(320f, 0, 0f, SidebarGeometry.LabelX(SidebarRowShape.EntityTwoLine, false)));
+        Assert.Equal(50f - 12f, text - cover);
+    }
+
+    [Fact]
+    public void The_count_and_the_hover_dots_share_one_26_slot_and_a_pin_or_equalizer_keeps_it_empty()
+    {
+        // S2: the count slot is the "…" button's edge, so the two cross-fade in one place.
+        Assert.Equal(SidebarGeometry.OverflowButton, SidebarGeometry.CountSlot);
+        Assert.Equal(26f, SidebarGeometry.CountSlot);
+        // S5: the "…" never lands on the Unpin button (or the equalizer): such a row keeps an empty slot for it.
+        Assert.True(SidebarGeometry.ReservesSlot(overflow: true, hasTrailing: false, pinned: true, playing: false));
+        Assert.True(SidebarGeometry.ReservesSlot(overflow: true, hasTrailing: false, pinned: false, playing: true));
+        Assert.False(SidebarGeometry.ReservesSlot(overflow: true, hasTrailing: true, pinned: true, playing: false));   // the count is the slot
+        Assert.False(SidebarGeometry.ReservesSlot(overflow: false, hasTrailing: false, pinned: true, playing: true));  // no "…", no slot
+        Assert.False(SidebarGeometry.ReservesSlot(overflow: true, hasTrailing: false, pinned: false, playing: false)); // the "…" costs the label nothing
+    }
+
+    [Fact]
+    public void The_pin_is_a_24_unpin_button_with_the_12_glyph()
+    {
+        // S5 (board `s.pin`: width 24, height 24, the 12 svg) — the offline mark takes the same box.
+        Assert.Equal(24f, SidebarGeometry.PinButton);
+        Assert.Equal(12f, SidebarGeometry.PinGlyph);
+        Assert.Equal(SidebarGeometry.PinButton, SidebarGeometry.OfflineMarkBox);
     }
 
     [Fact]
