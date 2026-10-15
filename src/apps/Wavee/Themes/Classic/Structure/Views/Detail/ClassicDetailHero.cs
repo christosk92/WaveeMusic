@@ -394,7 +394,7 @@ internal static partial class ClassicDetailFrame
         if (f.Meta) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.MetaFraction), VerticalLayout.MetaRowHeight));
         if (f.Pulse) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.PulseFraction), VerticalLayout.PulseRowHeight));
         if (f.Chart) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.ChartFraction), VerticalLayout.ChartRowHeight));
-        blocks.Add(SkeletonActionRow());
+        blocks.Add(SkeletonActionRow(spec));
 
         Element identity = new BoxEl
         {
@@ -437,7 +437,7 @@ internal static partial class ClassicDetailFrame
                     Direction = 1,
                     Padding = new Edges4(compactLeft, VerticalLayout.ExpandedToolbarTopPad,
                                          compactLeft, VerticalLayout.ExpandedToolbarBottomPad),
-                    Children = [SkeletonToolbarRow()],
+                    Children = [SkeletonToolbarRow(spec, w - 2f * compactLeft)],
                 },
             ],
         };
@@ -457,49 +457,63 @@ internal static partial class ClassicDetailFrame
         return new BoxEl { Direction = 1, Gap = 0f, Children = kids };
     }
 
-    static Element SkeletonActionRow()
+    /// <summary>The hero's action row while loading (tuned Classic X2): the loaded row's own shape, the Play split then exactly the buttons
+    /// <see cref="ClassicDetailKit.FixedActions"/> will lay out for this page (<see cref="ClassicDetailKit.FixedActionCount"/>), in the same
+    /// wrapping row. It used to reserve four squares on every page, one too many where the heart or Share is dropped.</summary>
+    static Element SkeletonActionRow(VerticalSpec spec)
     {
-        var kids = new Element[1 + Skeleton.SatelliteCount];
-        kids[0] = new BoxEl
+        var fabs = new Element[ClassicDetailKit.FixedActionCount(spec.Identity, spec.Config.Heart != HeartMode.None, spec.Actions)];
+        for (int i = 0; i < fabs.Length; i++)
+            fabs[i] = new BoxEl { Width = RailLayout.FabSize, Height = RailLayout.FabSize, Shrink = 0f, Corners = Radii.ControlAll };
+        Element split = new BoxEl
         {
-            Width = RailLayout.PlaySplitWidth, Height = Controls.ButtonHeight,
+            Width = RailLayout.PlaySplitWidth, Height = Controls.ButtonHeight, Shrink = 0f,
             Corners = Radii.ControlAll, Margin = new Edges4(0f, 0f, RailLayout.SplitTrail, 0f),
         };
-        for (int i = 1; i < kids.Length; i++)
-            kids[i] = new BoxEl
-            {
-                Width = Controls.IconButtonSize, Height = Controls.IconButtonSize, Shrink = 0f, Corners = Radii.ControlAll,
-            };
+        return ClassicDetailKit.ActionRow("vhero-skel-actions", split, fabs, Spacing.XS);
+    }
+
+    /// <summary>The list bar's reserved box (tuned Classic X2): the 44 band the arithmetic charges, inset 6/5, holding the bar the vertical arm
+    /// lays out (CT5b): the commands the same fit (<see cref="Track.CommandBarLayout.Resolve"/> over the first-frame widths) keeps inline at
+    /// this width (Filter, labelled or not, and Sort), then Find, Insights on a facts page and "…", 2 apart. The left group is empty: the
+    /// vertical arm's Play and Shuffle are the hero's. It used to draw three pills on the left and a 240 search field on the right.</summary>
+    static Element SkeletonToolbarRow(VerticalSpec spec, float rowWidth)
+    {
+        bool insights = spec.Insights is not null;
+        float pane = MathF.Max(0f, rowWidth - 2f * VerticalLayout.ToolbarSurfacePadX);
+        var fit = Track.CommandBarLayout.Resolve(pane, Track.CommandBarLayout.Nominal, vertical: true, hasTune: false,
+                                                 hasInsights: insights, explicitSearch: false);
+        var right = new List<Element>(5);
+        if (fit.Has(Track.InlineCommand.Filter))
+            right.Add(ToolbarPill(fit.Has(Track.InlineCommand.FilterLabel) ? Track.CommandBarLayout.Nominal.Filter : Track.CommandBarLayout.FilterIconWidth));
+        if (fit.Has(Track.InlineCommand.Sort)) right.Add(ToolbarPill(Track.CommandBarLayout.Nominal.Sort));
+        right.Add(ToolbarPill(Track.CommandBarLayout.SearchIconWidth) with
+        {
+            Margin = new Edges4(Track.CommandBarLayout.SearchGap - Track.CommandBarLayout.Gap, 0f, 0f, 0f),
+        });
+        if (insights) right.Add(ToolbarPill(Track.CommandBarLayout.InsightsWidth));
+        right.Add(ToolbarPill(Track.CommandBarLayout.MoreWidth));
         return new BoxEl
         {
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
-            Margin = new Edges4(0f, Spacing.XS, 0f, 0f), Height = Controls.ButtonHeight,
-            Children = kids,
+            Direction = 1, Height = VerticalLayout.ToolbarRowHeight,
+            Padding = new Edges4(VerticalLayout.ToolbarSurfacePadX, VerticalLayout.ToolbarSurfacePadY,
+                                 VerticalLayout.ToolbarSurfacePadX, VerticalLayout.ToolbarSurfacePadY),
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center, Grow = 1f, MinWidth = 0f,
+                    Children =
+                    [
+                        new BoxEl { Grow = 1f, Height = 1f },
+                        new BoxEl { Direction = 0, Gap = Track.CommandBarLayout.Gap, AlignItems = FlexAlign.Center, Children = right.ToArray() },
+                    ],
+                },
+            ],
         };
     }
 
-    /// <summary>The command bar's reserved box: the 44 band the arithmetic charges, pills at control height inset 6/5.</summary>
-    static Element SkeletonToolbarRow() => new BoxEl
-    {
-        Direction = 1, Height = VerticalLayout.ToolbarRowHeight,
-        Padding = new Edges4(VerticalLayout.ToolbarSurfacePadX, VerticalLayout.ToolbarSurfacePadY,
-                             VerticalLayout.ToolbarSurfacePadX, VerticalLayout.ToolbarSurfacePadY),
-        Children =
-        [
-            new BoxEl
-            {
-                Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Grow = 1f, MinWidth = 0f,
-                Children =
-                [
-                    ToolbarPill(Skeleton.ToolbarPillA), ToolbarPill(Skeleton.ToolbarPillB), ToolbarPill(Skeleton.ToolbarPillC),
-                    new BoxEl { Grow = 1f, Height = 1f },
-                    ToolbarPill(Track.CommandBarLayout.SearchPreferred),
-                ],
-            },
-        ],
-    };
-
-    static Element ToolbarPill(float width) => new BoxEl
+    static BoxEl ToolbarPill(float width) => new BoxEl
     {
         Width = width, Height = VerticalLayout.ToolbarPillHeight, Shrink = 0f, Corners = Radii.ControlAll,
     };

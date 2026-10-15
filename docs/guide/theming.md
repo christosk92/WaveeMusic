@@ -22,10 +22,10 @@
 - **A structure** registers views (`IStructureLayer.Register`), declares its options, and returns the shell's policies and
   capabilities for its option values. **A style** returns the engine's `ThemeDefinition` and the style metrics for its option
   values. Neither knows the other; the **composition** pairs them and adds counted overrides.
-- **Contract version 1.1** (`Contracts\ContractVersion.cs`): the published view keys and style keys, their props records
+- **Contract version 1.8** (`Contracts\ContractVersion.cs`, which keeps the history): the published view keys and style keys, their props records
   and the role vocabulary. A theme records the version it was built against in its manifest; `ThemeHost.Install` refuses a
   composition whose major differs or whose minor is newer than the core's. 1.1 (CT4) appended `LyricsState.Offline`, the
-  optional `LyricsLinesStyle.Offline` picture and `PlayerBarSlots.VideoSplit`.
+  optional `LyricsLinesStyle.Offline` picture and `PlayerBarSlots.VideoSplit`; 1.6 (CT6b) added `CoverVeilProps.Hold`; 1.7 (CT9) `ThemePolicies.Artwork` and `WashRoles.Rich`; 1.8 (CT8) `Overlay.OfflineVacancy`.
 - Keys live only in `Contracts\ViewKeys*.cs` and `StyleKeys.cs` (WVTH006). T1 declares none; each extraction PR adds its
   family in its own partial file (`ViewKeys.Shell.cs`: T4a's `Shell.Frame` and `Shell.ContentState`). How a surface becomes a
   registered view is section 2b.
@@ -1333,7 +1333,8 @@ read / edit / status states and the keyed field, the copy-invite call to action,
 | `Overlay.Notifications` | `NotificationsProps` (the rows that pass the filter, `Now`, the expanded id, the empty line, `Clear`, `CanUndo`, the progress and pending-sync signals, `INotificationsHost`) | `Shell.NotificationPanelView` (`[CoreHost]`, `Shell\Shell.UI.cs`) over the feed, the filter, the 30 s tick and `NotificationsHost` (filter, read marks, undo, the activity target, the release menu); the popup is `Shell.OpenNotificationPanel`, the verbs `INotificationVerbs` | `ClassicNotifications`: header, filter pills, pending-sync line, the update / social / release / activity rows with their enter, exit and slide choreography |
 | `Overlay.RuntimeBanner` | `RuntimeBannerProps` (`Show`, the issue's text, `Dismiss`, `SetUp`) | `Shell.RuntimeBannerChrome` (`[CoreHost]`): the gate (`OverlayGates.ShowsRuntimeBanner`), the setup-request watcher, the one-card-at-a-time rule; the lane's top pad stays core | `ClassicRuntimeBanner`: the width cap, the opaque base and elevation under the warning InfoBar |
 | `Overlay.Toast` | `ToastCardProps` (title, a bound `FloatSignal`) | `UpdateToastWatcher` and `UpdateToastModel` (what a toast is and when it is planned); `Notify.Say` is the one door | `ClassicToast`: the update toast's download card |
-| `Overlay.OfflineStrip` | `OfflineStripProps` (message, `OnRetry`) | `Shell.OfflineLane` hands the content state's lane its builder; `FrameRules.ShowsOfflineStrip` decides | `ClassicOfflineStrip` |
+| `Overlay.OfflineStrip` | `OfflineStripProps` (message, `OnRetry`) | `Shell.OfflineLane` hands the content state's lane its builder; `FrameRules.ShowsOfflineStrip` decides; the lane stands in the flow above the page (1.8) | `ClassicOfflineStrip` |
+| `Overlay.OfflineVacancy` | `OfflineVacancyProps` (the page's name, `OnRetry`, `GoToLibrary`) | `Controls.Vacancy`: a page-scale Error vacancy mounts it while `FrameRules.VoiceFor` says Offline (1.8) | `ClassicOfflineVacancy` |
 | `Menu.Context` | `ContextMenuTileProps` (art url, circular) | `Actions.Menu.Header` | `ClassicContextMenuTile`: the 38 DIP tile (a rounded square, or a circle for an artist) |
 | `Dialog.LogoutConfirm` | `LogoutConfirmProps` (`Cancel`, `Confirm`) | `Shell.ConfirmLogout`: the modal popup, what the buttons do | `ClassicLogoutConfirm` on `ClassicModalCard` |
 | `Dialog.PlayLink` | `PlayLinkProps` (placeholder, the text cell, the status, `CanPlay`, the browser escape, the verbs) | `Shell.PlayLinkCardCore` (`[CoreHost]`): the field's text, the lookup, the status, the failed input, the failure toast | `ClassicPlayLink` on `ClassicModalCard` |
@@ -1606,7 +1607,7 @@ the reads take the level, `R.Wash.HeroAlphaAt(rich)` and siblings, `ShellTintFro
 strength. The tone plane stays at Subtle in the light theme while the navigation pane is docked (`ClassicStructure.RichTonePlane`, tuned item F2): the
 frame provides the core's `SidebarPaneDocked` predicate as `ClassicMaterial.PaneDockedSlot`, read inside the plane's bound fill. Off also turns the
 photo veil (`ClassicCoverVeil`) to the ladder's neutral rung. `accentFromArtwork` and `nowPlayingColors` are structure toggles in the same group; the core
-follows them through `ThemePolicies.Artwork` (`ArtworkColorPolicy`, contract 1.6): `Detail.AccentFor` (every page accent, so Play, Follow, hearts, the
+follows them through `ThemePolicies.Artwork` (`ArtworkColorPolicy`, contract 1.7): `Detail.AccentFor` (every page accent, so Play, Follow, hearts, the
 accent rule and links) and `Recents`' accent answer the system accent when the first is off; `StageInk.Accent` / `ArtStandIn`, the stage's visualizer
 palette and the deck faces drop the cover's colour when the second is off. Classic's own reads (`ClassicOptions.AccentFromArtwork()` /
 `NowPlayingColors()`) gate the search's top-result Play, the queue's now-playing chip and the panel's cover placeholder (`ClassicHeroWash`).

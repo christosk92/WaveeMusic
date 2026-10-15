@@ -8,8 +8,9 @@
 //                      there is one, is its only child.
 //   NotFound           the Common not-found page (`Themes\Common\CommonNotFound`, T11c): a centred column keyed
 //                      `page-notfound:<route>|<arg>` with the destination's own glyph, the not-found line and Go home.
-//   OfflineLane        the strip floated over the kept content (pass-through, so the page below stays live); caution-tinted, the
-//                      chrome's accent Reconnect is the loud layer.
+//   OfflineLane        the strip in the flow ABOVE the kept content (tuned Classic X1, board C-Offline): the core stacks the lane over the
+//                      page column, so the page opens under the strip instead of under a floating card; caution-tinted, the chrome's
+//                      accent Reconnect is the loud layer.
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -40,19 +41,13 @@ internal static class ClassicContentState
         Children = page is null ? [] : [page],
     };
 
-    /// <summary>The page-scale offline strip (ch 29 W9 C / W10) floated over the kept content.</summary>
+    /// <summary>The page-scale offline strip (ch 29 W9 C / W10) in the flow above the kept content: the page gutter either side, 16 from the
+    /// card's top (tuned Classic X1).</summary>
     private static BoxEl OfflineLane(ContentStateProps props) => new()
     {
-        Grow = 1f, Direction = 1, Justify = FlexJustify.Start, AlignItems = FlexAlign.Center, HitTestPassThrough = true,
+        Key = "offline-lane",
+        Direction = 1, AlignItems = FlexAlign.Stretch, MinWidth = 0f, Shrink = 0f,
         Padding = ClassicFrameRules.OfflineLanePadding,
-        Children =
-        [
-            new BoxEl
-            {
-                Key = "offline-card", MaxWidth = ClassicFrameRules.OfflineLaneMaxWidth, Shrink = 0f, ClipToBounds = true, Corners = CornerRadius4.All(Radii.Control),
-                Fill = Prop.Of(static () => Tok.FillSolidBase), Shadow = Elevation.Flyout,
-                Children = [Slots.View(ViewKeys.OverlayOfflineStrip, props.Strip)],
-            },
-        ],
+        Children = [Slots.View(ViewKeys.OverlayOfflineStrip, props.Strip)],
     };
 }

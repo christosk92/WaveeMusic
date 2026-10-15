@@ -684,6 +684,10 @@ public readonly partial struct Track
     /// stay. Never returns a layout wider than its input.</summary>
     public static class CommandBarLayout
     {
+        /// <summary>The conservative first-frame LABELLED widths (Play next · Tune · Shuffle · Sort · Filter) the fit resolves against before the
+        /// commands are measured; the vertical hero's skeleton resolves the same fit over them (tuned Classic X2).</summary>
+        public static readonly CommandWidths Nominal = new(120f, 92f, 96f, 156f, FilterLabelledNominal);
+
         public const float MoreWidth = 32f;
         /// <summary>At rest the search affordance is ONE 32-DIP button; the field opens only when invoked. The Filter command is its own
         /// button before Sort; "Filter…" in "…" (badged while a filter is on) is where a narrow bar puts it.</summary>

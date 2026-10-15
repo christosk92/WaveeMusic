@@ -91,11 +91,25 @@ public sealed record ToastCardProps
 /// <summary>The props of <see cref="ViewKeys.OverlayOfflineStrip"/>.</summary>
 public sealed record OfflineStripProps
 {
-    /// <summary>The notice (null: the localized "Offline").</summary>
+    /// <summary>The notice (null: the localized "You're offline · showing saved content.").</summary>
     public string? Message { get; init; }
 
     /// <summary>Retry (null: no button).</summary>
     public Action? OnRetry { get; init; }
+}
+
+/// <summary>The props of <see cref="ViewKeys.OverlayOfflineVacancy"/> (contract 1.6, tuned Classic X1): a page that has nothing saved to show
+/// while the session is offline.</summary>
+public sealed record OfflineVacancyProps
+{
+    /// <summary>The page's own name ("Browse"), for "Browse needs a connection." Empty: the generic sentence.</summary>
+    public string Page { get; init; } = "";
+
+    /// <summary>Retry: reconnect and load the page again (null: no button).</summary>
+    public Action? OnRetry { get; init; }
+
+    /// <summary>Go to the saved library, which works offline (null: no link).</summary>
+    public Action? GoToLibrary { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.MenuContext"/>.</summary>

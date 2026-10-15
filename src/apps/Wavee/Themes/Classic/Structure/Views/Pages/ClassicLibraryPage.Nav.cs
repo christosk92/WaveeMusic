@@ -27,20 +27,49 @@ internal static partial class ClassicLibraryPage
     /// <summary>The navigator, as ONE skeleton boundary: eight shimmer rows while the relation has not answered, the no-match vacancy for a filter that matched nothing, otherwise the
     /// bound list.</summary>
     static Element ListBody(LibraryPageProps p, PageCache c)
-        => Skel.Region(p.Navigator.Load, s_navShimmer, c.NavContent!, SkelReveal.StaggerRows,
+        => Skel.Region(p.Navigator.Load, c.NavShimmer!, c.NavContent!, SkelReveal.StaggerRows,
                        isEmpty: static n => n == 0, onEmpty: c.NavNoMatch!, group: p.SkelGroup);
 
-    static readonly Func<Element> s_navShimmer = static () =>
+    /// <summary>The navigator's shimmer (tuned Classic X2): the bound list row's own geometry, so the rows land where the bars stood: the plate (56, or 40
+    /// compact) at the 60 / 44 pitch, the 40 art at the row's corner and the title and subtitle lines on their rungs. Before, the stock list-item
+    /// shape stood 66 apart and drifted 6 DIP a row.</summary>
+    internal static Element NavShimmer(bool compact)
     {
         var rows = new Element[ClassicLibraryRules.NavSkelRows];
-        for (int i = 0; i < rows.Length; i++)
-            rows[i] = Skeletons.ListItemRow(withThumbnail: true, ClassicLibraryRules.NavSkelRowHeight) with { Key = "navskel:" + i };
+        for (int i = 0; i < rows.Length; i++) rows[i] = NavShimmerRow(compact) with { Key = "navskel:" + i };
+        return new BoxEl { Key = "navskel", Direction = 1, Children = rows };
+    }
+
+    static Element NavShimmerRow(bool compact)
+    {
+        Element title = new TextEl("Loading title")   // loc-allow: skeleton shimmer template — the leaf only sizes the bar
+        {
+            Size = ClassicLibraryRules.RowTitleSize, LineHeight = ClassicLibraryRules.RowTitleLine, Width = ClassicLibraryRules.NavSkelTitleW,
+        };
+        Element text = new BoxEl
+        {
+            Direction = 1, Grow = 1f, Basis = 0f, Gap = 1f, MinWidth = 0f,
+            Children = compact
+                ? [title]
+                : [title, new TextEl("Loading subtitle")   // loc-allow: skeleton shimmer template
+                {
+                    Size = ClassicLibraryRules.RowSubtitleSize, LineHeight = ClassicLibraryRules.RowSubtitleLine, Width = ClassicLibraryRules.NavSkelSubtitleW,
+                }],
+        };
         return new BoxEl
         {
-            Direction = 1, Gap = Spacing.S, Padding = new Edges4(Spacing.M, Spacing.XS, Spacing.M, Spacing.XS),
-            Children = rows,
+            Height = compact ? User.NavRowCompactPlate : User.NavRowPlate,
+            Margin = new Edges4(ClassicLibraryRules.NavSkelPlateMarginX, User.NavRowMarginY, ClassicLibraryRules.NavSkelPlateMarginX, User.NavRowMarginY),
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Padding = ClassicLibraryRules.NavSkelContentPad,
+            Children = compact
+                ? [text]
+                : [new BoxEl
+                {
+                    Width = ClassicLibraryRules.RowArt, Height = ClassicLibraryRules.RowArt, Shrink = 0f,
+                    Corners = CornerRadius4.All(ClassicLibraryRules.RowArtCorner), Fill = Tok.FillSubtleSecondary,
+                }, text],
         };
-    };
+    }
 
     /// <summary>The real navigator (library-stabilization-plan §3.3, A1). The ROOT returned here is the region's single-child slot — UNKEYED and the SAME shape (a plain row `BoxEl`) every
     /// single render, forever, because a `Key` in that slot is INERT (RC1: <c>ReconcileSkeletonRegion</c> pairs a region's content root by <c>ElementTypeId</c> alone, never by

@@ -6,10 +6,13 @@
 //
 //   registered   Classic registers every Home key, and the real shell draws the Home page through them (the column, the pinned facet band, the
 //                zone chapters)
-//   facet row    the band is exactly the rule's height, and the failure bar comes and goes with the switch phase
+//   facet row    the band is exactly the rule's height and holds no failure bar
+//   failure      a failed switch lays its InfoBar over the content's top edge in a slot of its own: the content keeps its place (H1)
 //   customizer   the rows stand in the document's order at the rule's row height
 
 using FluentGpu.Controls;
+using FluentGpu.Dsl;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using Wavee;
 using Wavee.HomeUi;
@@ -91,16 +94,51 @@ public sealed class HomeMountedTests(ShellHost host)
             }, UnderClassic());
 
     [Fact]
-    public void A_failed_switch_draws_the_failure_bar_below_the_band()
+    public void A_failed_switch_draws_no_failure_bar_in_the_facet_row()
         => ViewHarness.With(host, ViewKeys.HomeFacetRow,
             RowProps(new FacetSwitchState(FacetPhase.Failed, "", "", StartedAtMs: 0, FailedTarget: "podcasts-chip")),
             harness =>
             {
-                harness.RunFrames(60);   // the bar slides in from above (its Enter Dy): measure where it lands, not mid-entrance
-                var band = harness.AbsoluteBounds(harness.Node("home:facet:band"));
-                var failure = harness.AbsoluteBounds(harness.Node("home:facet:failure"));
-                Assert.True(failure.Y >= band.Y + band.H - 0.5f, "the failure bar sits below the pinned band and scrolls with the page");
+                harness.RunFrames(10);
+                Assert.Equal(ClassicHomeRules.FacetRowH, harness.AbsoluteBounds(harness.Node("home:facet")).H, 0.5f);
+                Assert.False(harness.Contains("home:facet:failure"), "the page lays the bar in its own slot");
             }, UnderClassic());
+
+    // ── the failure slot (tuned Classic H1) ──────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_failed_switch_lays_its_failure_bar_over_the_contents_top_and_the_content_keeps_its_place()
+    {
+        var sw = new Signal<FacetSwitchState>(FacetSwitchState.Initial(""));
+        var index = new Signal<int>(0);
+        var row = new FacetRowProps(new Signal<FacetWord[]>(Words), sw, () => index, static _ => { }, static () => { }, static _ => false);
+        var model = new ScreenModel("", Array.Empty<Zone>(), "", Array.Empty<ChipInput>());
+        var props = new HomePageProps
+        {
+            Facet = "", ScrollKey = "test:home", Scroll = new ScrollHandle(), Group = new object(), FacetRow = row, Switch = sw,
+            Pending = static () => false, Failed = static () => false, Content = () => model, Seed = () => model,
+            OnContent = static _ => { }, RetryFirstLoad = static () => { }, Wash = new BoxEl(),
+        };
+        ViewHarness.With(host, ViewKeys.HomePage, props, harness =>
+        {
+            harness.RunFrames(10);
+            float rest = harness.AbsoluteBounds(harness.Node("home:content")).Y;
+            Assert.False(harness.Contains("home:facet:failure"), "no bar at rest");
+
+            sw.Value = new FacetSwitchState(FacetPhase.Failed, "", "", StartedAtMs: 0, FailedTarget: "podcasts-chip");
+            harness.RunFrames(60);   // the bar slides in from above (its Enter Dy): measure where it lands, not mid-entrance
+            var band = harness.AbsoluteBounds(harness.Node("home:facet:band"));
+            var content = harness.AbsoluteBounds(harness.Node("home:content"));
+            var failure = harness.AbsoluteBounds(harness.Node("home:facet:failure"));
+            Assert.Equal(rest, content.Y, 0.5f);                 // the content never moves
+            Assert.Equal(content.Y, failure.Y, 0.5f);            // the bar lies on the content's top edge
+            Assert.True(failure.Y >= band.Y + band.H - 0.5f, "the bar sits below the pinned band");
+
+            sw.Value = FacetSwitchState.Initial("");
+            harness.RunFrames(60);
+            Assert.Equal(rest, harness.AbsoluteBounds(harness.Node("home:content")).Y, 0.5f);
+        }, UnderClassic());
+    }
 
     // ── the customizer ───────────────────────────────────────────────────────────────────────────────────────────────────
 

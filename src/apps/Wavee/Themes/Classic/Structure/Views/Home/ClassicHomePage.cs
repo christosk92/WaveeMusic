@@ -10,12 +10,14 @@
 //        └─ centred column  Gap=XL(20)  MaxWidth=PageMaxW  Padding=(PageWide, XXL(24), PageWide, Dock.Reserve+32)
 //           │                ScrollScope=PageScope
 //           ├─ Home.FacetRow (the SelectorBar in R.Type.FacetTitleStyle — the facet words ARE the page title —
-//           │     · Following ToggleButton · busy ProgressBar · failure InfoBar)
+//           │     · Following ToggleButton · busy ProgressBar)
 //           │     its band is `.Sticky(StuckInset, scope: PageScope)` — transparent, no acrylic
-//           └─ content  `.StickyClip(StuckBottom)` + EdgeFade(Top, 24) { WhileStuck }   (the Browse masthead idiom)
+//           └─ content  ZStack `.StickyClip(StuckBottom)` + EdgeFade(Top, 24) { WhileStuck }   (the Browse masthead idiom)
 //      (the ScrollView has EdgeCues None: its viewport top feather would fade the pinned rows)
 //                └─ SkelRegionEl(Content: keyed facet column → dim host (Opacity/HitTest binds only) → the zone column,
-//                                ShimmerSource: the zone column over the seed, OnFailed: Controls.Vacancy(Error, retry), Reveal None) ]
+//                                ShimmerSource: the zone column over the seed, OnFailed: Controls.Vacancy(Error, retry), Reveal None)
+//                + the facet failure layer (pass-through; the InfoBar of a failed switch lies over the content's top edge, so the
+//                  zones never move when it comes or goes: tuning H1) ]
 //
 // NO GREETING HEADLINE (owner, seventh pass): the greeting lives only in the daylist card's eyebrow. The page column's own gap is the 20-px
 // facet-row → content step; the 40-px rhythm between zones is the zone column's.
@@ -60,11 +62,13 @@ internal static class ClassicHomePage
 
         // THE CLIP IS THE CONTRACT: the band paints nothing, so the content cuts itself at the band's lower edge and
         // feathers that cut exactly while the clip is engaged (`ClassicBrowseDirectory`'s directory / `ClassicArtistPage`'s magazine).
+        // The facet failure's InfoBar has its own slot (tuning H1): a layer stacked over the content's top edge, so the zones keep their
+        // place when a switch fails and when the bar closes.
         Element content = new BoxEl
         {
-            Key = "home:content", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+            Key = "home:content", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ZStack = true,
             EdgeFade = new EdgeFadeSpec(EdgeMask.Top, Detail.VerticalLayout.StickyFadeBand) { WhileStuck = true },
-            Children = [region],
+            Children = [region, ClassicHomeFacetRow.FailureLayer(props.FacetRow)],
         }.StickyClip(ClassicHomeRules.StuckBottom);
 
         // The centred page column (`ClassicArtistPage`'s Magazine): Grow toward the free width, capped at PageMaxW, the wide

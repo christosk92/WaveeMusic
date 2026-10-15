@@ -55,7 +55,8 @@ public readonly partial struct Track
         // Conservative first-frame LABELED widths (Play next · Tune · Shuffle · Sort · Filter), refined by the measured commands; the
         // fit resolves against these and the pane.
         readonly Signal<int> _toolbarEpoch = new(0);
-        readonly float[] _toolbarWidths = [120f, 92f, 96f, 156f, CommandBarLayout.FilterLabelledNominal];
+        readonly float[] _toolbarWidths =
+            [CommandBarLayout.Nominal.Play, CommandBarLayout.Nominal.Tune, CommandBarLayout.Nominal.Shuffle, CommandBarLayout.Nominal.Sort, CommandBarLayout.Nominal.Filter];
         CommandBarFit? _toolbarFit;
         // The fit LATCHED when search opened, with the pane it resolved against: promoting/evicting mid-flight re-measures,
         // bumps the epoch and would hand the width tween a new target. A genuine pane resize drops the latch.

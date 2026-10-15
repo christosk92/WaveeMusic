@@ -25,6 +25,7 @@ public class OverlayContractTests
         Assert.Equal("Overlay.RuntimeBanner", ViewKeys.OverlayRuntimeBanner.Id);
         Assert.Equal("Overlay.Toast", ViewKeys.OverlayToast.Id);
         Assert.Equal("Overlay.OfflineStrip", ViewKeys.OverlayOfflineStrip.Id);
+        Assert.Equal("Overlay.OfflineVacancy", ViewKeys.OverlayOfflineVacancy.Id);
         Assert.Equal("Menu.Context", ViewKeys.MenuContext.Id);
         Assert.Equal("Dialog.LogoutConfirm", ViewKeys.DialogLogoutConfirm.Id);
         Assert.Equal("Dialog.PlayLink", ViewKeys.DialogPlayLink.Id);
@@ -44,6 +45,7 @@ public class OverlayContractTests
         Assert.Equal("classic.overlay.runtime-banner", classic.Registry.TemplateIdOf(ViewKeys.OverlayRuntimeBanner.Id));
         Assert.Equal("classic.overlay.toast", classic.Registry.TemplateIdOf(ViewKeys.OverlayToast.Id));
         Assert.Equal("classic.overlay.offline-strip", classic.Registry.TemplateIdOf(ViewKeys.OverlayOfflineStrip.Id));
+        Assert.Equal("classic.overlay.offline-vacancy", classic.Registry.TemplateIdOf(ViewKeys.OverlayOfflineVacancy.Id));
         Assert.Equal("classic.menu.context-tile", classic.Registry.TemplateIdOf(ViewKeys.MenuContext.Id));
         Assert.Equal("classic.dialog.logout-confirm", classic.Registry.TemplateIdOf(ViewKeys.DialogLogoutConfirm.Id));
         Assert.Equal("classic.dialog.play-link", classic.Registry.TemplateIdOf(ViewKeys.DialogPlayLink.Id));

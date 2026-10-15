@@ -87,7 +87,7 @@ internal static partial class ClassicLibraryPage
         public Element? Picker, LeftGrip, MidGrip, Sticky, Strip;
         public Action<RectF>? OnBounds;
         public Func<int, Element>? NavContent;
-        public Func<Element>? NavNoMatch;
+        public Func<Element>? NavNoMatch, NavShimmer;
         Func<BoundItemScope<LibraryNavItem>, Element>? _slotT, _slotCompactT, _cardT, _cardCompactT;
 
         public void Prepare()
@@ -95,6 +95,8 @@ internal static partial class ClassicLibraryPage
             OnBounds ??= Measured;
             NavContent ??= _ => NavList(this);
             NavNoMatch ??= (static () => EmptyCompact(Loc.Get(Strings.Library.NoMatch)));
+            // The persisted view cell, never the mount: a pending navigator is never asked for its mount.
+            NavShimmer ??= () => ClassicLibraryPage.NavShimmer(User.IsCompactView(Props.View().Value));
         }
 
         /// <summary>The page's measured bounds: the structure's ladder decides, the host's signal records it.</summary>

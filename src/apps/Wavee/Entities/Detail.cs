@@ -1085,9 +1085,6 @@ public static partial class Detail
         /// The default Play is the split, <see cref="RailLayout.PlaySplitWidth"/>. Renamed from <c>PlayPillWidth</c>
         /// (Workstream B migration group C).</summary>
         public const float PlayButtonWidth = 120f;
-        public const int SatelliteCount = 4;
-        /// <summary>The toolbar band's three leading pills (the search pill is the command bar's SearchPreferred 240).</summary>
-        public const float ToolbarPillA = 72f, ToolbarPillB = 88f, ToolbarPillC = 64f;
 
         public static float BarWidth(float measure, float fraction) => MathF.Max(BarFloor, MathF.Round(measure * fraction));
 

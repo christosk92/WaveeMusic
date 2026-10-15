@@ -818,24 +818,35 @@ public static partial class Shell
                 if (FrameRules.ClearsStagePlayable(r, Ui.ActiveStagePlayable.Peek())) Ui.ActiveStagePlayable.Value = "";
             });
 
+            // The offline lane stands IN THE FLOW above the page and its masthead (tuned Classic X1): the page opens under the strip
+            // instead of under a floating card. The lane slot is always the column's first child, so the keep-alive boundary below it
+            // keeps its place (and its cached pages) when the session drops or comes back.
             return new BoxEl
             {
-                Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1, ZStack = true,
+                Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1,
                 Padding = new Edges4(0f, 0f, 0f, reserve),
                 Children =
                 [
-                    // Clips exiting pages; FILLS the card (the masthead overlays it and never steals column height).
-                    new BoxEl
-                    {
-                        Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true,
-                        Children = [Flow.KeepAlive(static () => Current.Value, static r => SlotKey(r), static r => PageBody(r), s_keepAlive)],
-                    },
-                    new BoxEl
-                    {
-                        Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1, HitTestPassThrough = true,
-                        Children = [Masthead()],
-                    },
                     Flow.Show(static () => FrameRules.ShowsOfflineStrip(Auth.Value), OfflineLane()),
+                    new BoxEl
+                    {
+                        Key = "shell:content-stack",
+                        Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1, ZStack = true,
+                        Children =
+                        [
+                            // Clips exiting pages; FILLS the card (the masthead overlays it and never steals column height).
+                            new BoxEl
+                            {
+                                Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true,
+                                Children = [Flow.KeepAlive(static () => Current.Value, static r => SlotKey(r), static r => PageBody(r), s_keepAlive)],
+                            },
+                            new BoxEl
+                            {
+                                Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1, HitTestPassThrough = true,
+                                Children = [Masthead()],
+                            },
+                        ],
+                    },
                 ],
             };
         }
@@ -896,7 +907,7 @@ public static partial class Shell
             ContentStateProps.ForNotFound(FrameRules.ContentKey(ContentStateKind.NotFound, name, arg), glyph, s_goHome));
     }
 
-    /// <summary>The page-scale offline strip (ch 29 W9 C / W10) floated over the kept content while a stored credential
+    /// <summary>The page-scale offline strip (ch 29 W9 C / W10) in the flow above the kept content while a stored credential
     /// exists but the session is down. The chrome's accent Reconnect is the loud layer; the lane the theme draws is
     /// caution-tinted. Core hands over the strip's props (its own view, <c>Overlay.OfflineStrip</c>).</summary>
     static Element OfflineLane() => ViewSlots.View(ViewKeys.ShellContentState, s_offlineLane);
@@ -904,6 +915,18 @@ public static partial class Shell
     static readonly OfflineStripProps s_offlineStrip = new() { OnRetry = static () => Spotify.Login() };
 
     static readonly ContentStateProps s_offlineLane = ContentStateProps.ForOfflineLane(s_offlineStrip);
+
+    static readonly Action s_reconnect = static () => Spotify.Login();
+    static readonly Action s_goToLibrary = static () => GoTo(new Route(RouteKind.Liked));
+
+    /// <summary>Retry while offline (tuned Classic X1): reconnect, then the page's own retry (null: reconnect alone).</summary>
+    public static Action ReconnectThen(Action? retry)
+        => retry is null ? s_reconnect : () => { Spotify.Login(); retry(); };
+
+    /// <summary>The offline vacancy of the page on screen (tuned Classic X1): its own name, the reconnecting Retry and the way to the saved
+    /// library (the palette's "Your Library" destination).</summary>
+    public static OfflineVacancyProps OfflineVacancyFor(Action? retry)
+        => new() { Page = Dest(Current.Peek()).Title, OnRetry = ReconnectThen(retry), GoToLibrary = s_goToLibrary };
 
     // ══ 4. THE MERGED CHROME ROW (the core side) ═════════════════════════════════════════════════════════════════
     //

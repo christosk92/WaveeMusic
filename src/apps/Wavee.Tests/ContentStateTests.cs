@@ -218,6 +218,26 @@ public class ContentStateTests
         Assert.Same(strip, forLane.Strip);
     }
 
+    // ── the offline voice (tuned Classic X1) ─────────────────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(Shell.AuthState.Live, Controls.VacancyVoice.Error)]
+    [InlineData(Shell.AuthState.Connecting, Controls.VacancyVoice.Error)]
+    [InlineData(Shell.AuthState.SignInRequired, Controls.VacancyVoice.Error)]
+    [InlineData(Shell.AuthState.Offline, Controls.VacancyVoice.Offline)]
+    public void A_failure_speaks_the_offline_voice_exactly_while_the_session_is_offline(Shell.AuthState auth, Controls.VacancyVoice expected)
+        => Assert.Equal(expected, Shell.FrameRules.VoiceFor(Controls.VacancyVoice.Error, auth));
+
+    [Theory]
+    [InlineData(Controls.VacancyVoice.Empty)]
+    [InlineData(Controls.VacancyVoice.NoMatch)]
+    [InlineData(Controls.VacancyVoice.Offline)]
+    public void Every_other_voice_is_unchanged_offline_or_not(Controls.VacancyVoice voice)
+    {
+        Assert.Equal(voice, Shell.FrameRules.VoiceFor(voice, Shell.AuthState.Offline));
+        Assert.Equal(voice, Shell.FrameRules.VoiceFor(voice, Shell.AuthState.Live));
+    }
+
     [Fact]
     public void Equal_inputs_make_equal_props_so_an_unchanged_state_skips_the_template()
     {

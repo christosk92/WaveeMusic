@@ -57,6 +57,7 @@ public sealed class OverlaysMountedTests(ShellHost host)
                 (ViewKeys.OverlayRuntimeBanner.Id, "classic.overlay.runtime-banner"),
                 (ViewKeys.OverlayToast.Id, "classic.overlay.toast"),
                 (ViewKeys.OverlayOfflineStrip.Id, "classic.overlay.offline-strip"),
+                (ViewKeys.OverlayOfflineVacancy.Id, "classic.overlay.offline-vacancy"),
                 (ViewKeys.MenuContext.Id, "classic.menu.context-tile"),
                 (ViewKeys.DialogLogoutConfirm.Id, "classic.dialog.logout-confirm"),
                 (ViewKeys.DialogPlayLink.Id, "classic.dialog.play-link"),
@@ -219,6 +220,34 @@ public sealed class OverlaysMountedTests(ShellHost host)
         Assert.Equal(1, with);
         Assert.Equal(0, without);
     }
+
+    [Fact]
+    public void The_offline_strip_is_the_boards_36_tall_bar()
+        => ViewHarness.With(host, ViewKeys.OverlayOfflineStrip, new OfflineStripProps { OnRetry = static () => { } },
+            h => Assert.Equal(ClassicOverlayRules.OfflineStripH, h.AbsoluteBounds(h.Node("offline-strip")).H, 0.5f), UnderClassic());
+
+    [Fact]
+    public void The_offline_vacancy_is_a_centred_column_with_retry_and_the_library_link()
+        => ViewHarness.With(host, ViewKeys.OverlayOfflineVacancy,
+            new OfflineVacancyProps { Page = "Browse", OnRetry = static () => { }, GoToLibrary = static () => { } },
+            h =>
+            {
+                var scene = h.Shell.Host.Scene;
+                var root = h.AbsoluteBounds(h.Node("offline-vacancy"));
+                var actions = h.Node("offline-vacancy:actions");
+                int count = 0;
+                for (var c = scene.FirstChild(actions); !c.IsNull; c = scene.NextSibling(c)) count++;
+                Assert.Equal(2, count);   // Retry and "Go to Your Library"
+                var row = h.AbsoluteBounds(actions);
+                Assert.Equal(root.X + root.W / 2f, row.X + row.W / 2f, 1f);                       // centred across the card
+                Assert.True(row.Y + row.H < root.Y + root.H / 2f + ClassicOverlayRules.OfflineVacancyLift,
+                    "the column sits lifted above the card's centre");
+            }, UnderClassic());
+
+    [Fact]
+    public void The_offline_vacancy_draws_no_actions_when_the_host_offers_none()
+        => ViewHarness.With(host, ViewKeys.OverlayOfflineVacancy, new OfflineVacancyProps(),
+            h => Assert.False(h.Contains("offline-vacancy:actions")), UnderClassic());
 
     // ── the cards ────────────────────────────────────────────────────────────────────────────────────────────────────────────
 

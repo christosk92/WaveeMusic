@@ -1541,9 +1541,12 @@ public readonly partial struct Track
         };
 
         /// <summary>12 copies of the REAL row grid over an empty track — the deriver shimmers the row's own shape (one
-        /// source; the shimmer can never drift from the rows).</summary>
+        /// source; the shimmer can never drift from the rows). A two-column Modern row sits inside its skin's plate inset
+        /// (<see cref="RowMetrics.RowInset"/> either side), so its copy does too (tuned Classic X2: the bars used to start 8 DIP
+        /// left of the cells and run 16 wider).</summary>
         Element RowsShimmer(in Shape shape)
         {
+            Edges4 inset = !shape.Set.Classic && !VerticalArm ? new Edges4(RowMetrics.RowInset, 0f, RowMetrics.RowInset, 0f) : default;
             var rows = new Element[Design.RevealRamp.Chunk];
             var set = shape.Set;
             var state = default(RowState);
@@ -1553,6 +1556,7 @@ public readonly partial struct Track
             {
                 Element title = new TextEl("") { Size = 14f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
                 rows[i] = eager is null ? new BoxEl() : eager.Grid(default, i, in state, in set, shape.Tracks, shape.RowH, title, in options);
+                if (inset != default) rows[i] = new BoxEl { Direction = 1, Margin = inset, Children = [rows[i]] };
             }
             return new BoxEl { Direction = 1, Children = rows };
         }

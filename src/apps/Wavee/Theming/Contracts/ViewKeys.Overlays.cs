@@ -40,6 +40,11 @@ public static partial class ViewKeys
     /// <summary>The strip over kept content while the session is down. Mounted by the content state's offline lane. Props: <see cref="OfflineStripProps"/>.</summary>
     public static readonly ViewKey<OfflineStripProps> OverlayOfflineStrip = new("Overlay.OfflineStrip");
 
+    /// <summary>The offline vacancy (contract 1.6): what a page with nothing saved shows while the session is offline, in place of its
+    /// error vacancy. Mounted by the core vacancy (<c>Controls.Vacancy</c>, Error voice, page scale) while
+    /// <c>Shell.FrameRules.OfflineVoice</c> holds. Props: <see cref="OfflineVacancyProps"/>.</summary>
+    public static readonly ViewKey<OfflineVacancyProps> OverlayOfflineVacancy = new("Overlay.OfflineVacancy");
+
     /// <summary>The identity tile of a context menu's header (the art: a rounded square, or a circle for an artist). The menu is the engine's.
     /// Props: <see cref="ContextMenuTileProps"/>.</summary>
     public static readonly ViewKey<ContextMenuTileProps> MenuContext = new("Menu.Context");

@@ -68,8 +68,9 @@ internal static class ClassicLibraryPaneKit
         ],
     }.Interactive(Interaction.Subtle);
 
-    /// <summary><see cref="PaneHeader"/>'s loading twin, for the album pane AND the show pane (both render <see cref="PaneHeader"/>, rung for rung): the cover square and three stand-in
-    /// bars — eyebrow, title, attribution — in the SAME stated <see cref="ClassicLibraryPaneRules.PaneHeaderHeight"/>, padding, gap and bottom alignment, so the crossfade into the real
+    /// <summary><see cref="PaneHeader"/>'s loading twin, for the album pane AND the show pane (both render <see cref="PaneHeader"/>, rung for rung): the cover square and four stand-in
+    /// bars — eyebrow, title, attribution, meta — each centred in its real line's slot at the real 3-DIP gap (tuned Classic X2: the three bars at an 8 gap stood 33 DIP below the
+    /// words and the meta had none), in the SAME stated <see cref="ClassicLibraryPaneRules.PaneHeaderHeight"/>, padding, gap and bottom alignment, so the crossfade into the real
     /// header is a dissolve and never a reflow. The header's STATED height, not this tree's content height, is the point: the two must occupy the same band. Inert — no click, no role, no
     /// focus (a header that cannot say what it opens offers nothing).</summary>
     public static BoxEl HeaderSkeleton() => new()
@@ -81,15 +82,23 @@ internal static class ClassicLibraryPaneKit
             new BoxEl { Width = ClassicLibraryPaneRules.PaneCover, Height = ClassicLibraryPaneRules.PaneCover, Shrink = 0f, Corners = Radii.CardAll, Fill = Tok.FillSubtleSecondary },
             new BoxEl
             {
-                Direction = 1, Gap = Spacing.S, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                Direction = 1, Gap = ClassicLibraryPaneRules.PaneHeaderGap, Grow = 1f, Basis = 0f, MinWidth = 0f,
                 Children =
                 [
-                    Controls.PendingBar(ClassicLibraryPaneRules.SkeletonEyebrowW, ClassicLibraryPaneRules.SkeletonSmallBarH),
-                    Controls.PendingBar(ClassicLibraryPaneRules.SkeletonTitleW, ClassicLibraryPaneRules.SkeletonTitleBarH),
-                    Controls.PendingBar(ClassicLibraryPaneRules.SkeletonAttributionW, ClassicLibraryPaneRules.SkeletonSmallBarH),
+                    SkeletonLine(ClassicLibraryPaneRules.SkeletonEyebrowLine, ClassicLibraryPaneRules.SkeletonEyebrowW, ClassicLibraryPaneRules.SkeletonSmallBarH),
+                    SkeletonLine(ClassicLibraryPaneRules.SkeletonTitleLine, ClassicLibraryPaneRules.SkeletonTitleW, ClassicLibraryPaneRules.SkeletonTitleBarH),
+                    SkeletonLine(ClassicLibraryPaneRules.SkeletonAttributionLine, ClassicLibraryPaneRules.SkeletonAttributionW, ClassicLibraryPaneRules.SkeletonSmallBarH),
+                    SkeletonLine(ClassicLibraryPaneRules.PaneHeaderMetaLine, ClassicLibraryPaneRules.SkeletonMetaW, ClassicLibraryPaneRules.SkeletonSmallBarH),
                 ],
             },
         ],
+    };
+
+    /// <summary>One header line's slot with its bar centred in it.</summary>
+    static BoxEl SkeletonLine(float line, float width, float bar) => new()
+    {
+        Height = line, Direction = 1, Justify = FlexJustify.Center, AlignItems = FlexAlign.Start,
+        Children = [Controls.PendingBar(width, bar)],
     };
 
     /// <summary>Play (the SYSTEM accent — the one stated exception) · shuffle · save · more (32/r4 icon actions each) · spacer · "Open album ↗" (a 13-px accent text link with the

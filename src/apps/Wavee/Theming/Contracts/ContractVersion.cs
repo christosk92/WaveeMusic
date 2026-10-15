@@ -32,6 +32,9 @@
 // follow the artwork) and the optional `WashRoles.Rich` (`WashStrength`: a stronger wash level's hero, shelf, tone-plane and tint pairs). The
 // wash reads take the level (`R.Wash.HeroAlphaAt(rich)` and its siblings, `ShellTintFromScheme(scheme, rich)`); the level-less reads
 // `HeroAlpha`, `ShelfAlpha`, `PageTonePlaneAlpha`, `ShellTintAlpha` and `ShellTintFromScheme(scheme)` are removed before any external theme existed.
+// 1.8 (tuned Classic CT8): the `Overlay.OfflineVacancy` key and its `OfflineVacancyProps` (the offline voice of a page with nothing
+// saved: a page-scale error vacancy speaks it while the session is offline). The offline lane (`ContentStateKind.OfflineLane`) now
+// stands in the flow above the page instead of floating over it.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -47,7 +50,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 7;
+    public const int Minor = 8;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;
