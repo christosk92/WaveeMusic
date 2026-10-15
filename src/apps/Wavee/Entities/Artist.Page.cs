@@ -872,11 +872,11 @@ public readonly partial struct Artist
     // the theme epoch the accent follows, the decode scale of the hero photo's warm-up and reduced motion's choice of a scroll move — kept out of the host type.
 
     /// <summary>The last remembered page accent, else the default: the first paint never shows the default over a held colour.</summary>
-    static ColorF HeldAccent() => AccentHold.Last ?? Tok.AccentDefault;
+    static ColorF HeldAccent() => Detail.HeldAccent ?? Tok.AccentDefault;
 
     /// <summary>The page accent before the first publish (the held colour for both inks).</summary>
     static Design.PageAccent InitialPageAccent()
-        => new(AccentHold.Last ?? Tok.AccentTextPrimary, AccentHold.Last ?? Tok.AccentDefault, "");
+        => new(Detail.HeldAccent ?? Tok.AccentTextPrimary, Detail.HeldAccent ?? Tok.AccentDefault, "");
 
     /// <summary>The page accent the page provides to its subtree, for a route.</summary>
     static Design.PageAccent PageAccentOf(ColorF accent, string routeKey) => new(accent, accent, routeKey);
@@ -895,7 +895,7 @@ public readonly partial struct Artist
     /// effect, so either grading landing re-derives the accent.</summary>
     static ColorF AccentFor(Artist a)
     {
-        if (!a.IsValid) return AccentHold.Last ?? Tok.AccentDefault;
+        if (!a.IsValid) return Detail.HeldAccent ?? Tok.AccentDefault;
         string? url = Controls.ArtUrl(a.PaletteImageId);
         string? avatar = Controls.ArtUrl(a.ImageId);
         if (url is { Length: > 0 }) _ = Palette.Watch(url).Value;

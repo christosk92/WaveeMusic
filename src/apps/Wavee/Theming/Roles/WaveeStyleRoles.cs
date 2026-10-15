@@ -25,7 +25,7 @@ namespace Wavee.Theming.Roles;
 /// <param name="Space">The page-rhythm, shelf and flyout geometry.</param>
 /// <param name="OnMedia">Everything that paints on top of artwork or video (<c>R.OnMedia.ScrimRest</c>).</param>
 /// <param name="StageArm">The immersive stage's polarity (<c>StageInk.Ink</c>, <c>R.StageArm.For(kind)</c>).</param>
-/// <param name="Wash">How strongly artwork colours a surface (<c>R.Wash.HeroAlpha</c>).</param>
+/// <param name="Wash">How strongly artwork colours a surface (<c>R.Wash.CoverMix</c>).</param>
 /// <param name="Lyrics">The lyrics surface's ink decisions (<c>R.Lyrics.BloomScale</c>).</param>
 /// <param name="Motion">The interaction scale tiers and stagger rungs.</param>
 /// <param name="Case">How the style cases the words it writes.</param>

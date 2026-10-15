@@ -1,7 +1,7 @@
 // ── Theming/Roles/R.cs — the facade every view reads its style roles through (themes plan 5.4) ─────────────────────────
 //
 // `R.Type.MicroMeta(text)`, `R.Space.SectionGap`, `R.Motion.ScaleSubtle.Hover`, `R.Case.For(kind)`, and (T2b) the colour roles
-// `R.Layer.RowHover`, `R.Ink.AccentDecor`, `R.OnMedia.ScrimRest`, `R.Wash.HeroAlpha`, `R.StageArm.For(kind)`: the active style's
+// `R.Layer.RowHover`, `R.Ink.AccentDecor`, `R.OnMedia.ScrimRest`, `R.Wash.CoverMix`, `R.StageArm.For(kind)`: the active style's
 // roles, read where the element is built. The roles are `Tok.Definition.AppRoles`, the table the active `ThemeDefinition` carries, so
 //   · a definition swap (`Tok.Use`, a theme switch, a Live option that moves a role) reaches the NEXT read: nothing is cached
 //     here, and the engine re-renders every mounted component on the epoch bump that comes with the swap;

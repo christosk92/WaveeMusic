@@ -119,14 +119,17 @@ public static class ClassicPolicies
     public static ThemePolicies Bundle { get; } = new(NavPane, Panel, PlayerBar, Chrome, Stage) { Tiers = ClassicTiers.Policy };
 
     // The bundle for each combination of the structure options that reach the core (M7a: the sidebar layout x density; M4: the track artwork hidden; M8: the
-    // detail page layout x the rails' uniformity; M2: the track row style; S0: the sidebar covers): index = coversOff * 64 + ((((rowClassic * 2) + railUniform) * 2
-    // + pageLayout) * 2 + hideArt) * 4 + layout * 2 + density. The default combination is `Bundle` itself.
+    // detail page layout x the rails' uniformity; M2: the track row style; S0: the sidebar covers; CT9: the accent from artwork and the now-playing colours):
+    // index = (nowPlayingOff * 2 + accentOff) * 128 + coversOff * 64 + ((((rowClassic * 2) + railUniform) * 2 + pageLayout) * 2 + hideArt) * 4 + layout * 2 + density.
+    // The default combination is `Bundle` itself.
     private static readonly ThemePolicies[] s_byOptions = BuildByOptions();
 
     private static ThemePolicies[] BuildByOptions()
     {
-        var all = new ThemePolicies[128];
-        foreach (bool showCovers in new[] { true, false })
+        var all = new ThemePolicies[512];
+        foreach (bool accentFromArtwork in new[] { true, false })
+         foreach (bool nowPlayingColors in new[] { true, false })
+         foreach (bool showCovers in new[] { true, false })
          foreach (TrackRowStyle rowStyle in new[] { TrackRowStyle.Modern, TrackRowStyle.Classic })
          foreach (bool railUniform in new[] { false, true })
             foreach (DetailPageLayout pageLayout in new[] { DetailPageLayout.Automatic, DetailPageLayout.Hero })
@@ -135,28 +138,32 @@ public static class ClassicPolicies
                         foreach (SidebarDensity density in new[] { SidebarDensity.Default, SidebarDensity.Compact })
                         {
                             bool isDefault = !hideArt && layout == SidebarLayoutId.Classic && density == SidebarDensity.Default
-                                && pageLayout == DetailPageLayout.Automatic && !railUniform && rowStyle == TrackRowStyle.Modern && showCovers;
-                            all[IndexOf(layout, density, hideArt, pageLayout, railUniform, rowStyle, showCovers)] = isDefault
+                                && pageLayout == DetailPageLayout.Automatic && !railUniform && rowStyle == TrackRowStyle.Modern && showCovers
+                                && accentFromArtwork && nowPlayingColors;
+                            all[IndexOf(layout, density, hideArt, pageLayout, railUniform, rowStyle, showCovers, accentFromArtwork, nowPlayingColors)] = isDefault
                                 ? Bundle
                                 : Bundle with
                                 {
                                     NavPane = NavPane with { Layout = layout, Density = density, ShowCovers = showCovers },
                                     Lists = new ListPolicy(!hideArt, rowStyle),
                                     Detail = new DetailPolicy(pageLayout, railUniform),
+                                    Artwork = accentFromArtwork && nowPlayingColors ? ArtworkColorPolicy.Default : new ArtworkColorPolicy(accentFromArtwork, nowPlayingColors),
                                 };
                         }
         return all;
     }
 
     private static int IndexOf(SidebarLayoutId layout, SidebarDensity density, bool hideArt, DetailPageLayout pageLayout, bool railUniform, TrackRowStyle rowStyle,
-        bool showCovers)
-        => (showCovers ? 0 : 64) + ((((((int)rowStyle * 2 + (railUniform ? 1 : 0)) * 2) + (int)pageLayout) * 2 + (hideArt ? 1 : 0)) * 4) + (int)layout * 2 + (int)density;
+        bool showCovers, bool accentFromArtwork, bool nowPlayingColors)
+        => ((nowPlayingColors ? 0 : 2) + (accentFromArtwork ? 0 : 1)) * 128 + (showCovers ? 0 : 64)
+            + ((((((int)rowStyle * 2 + (railUniform ? 1 : 0)) * 2) + (int)pageLayout) * 2 + (hideArt ? 1 : 0)) * 4) + (int)layout * 2 + (int)density;
 
     /// <summary>The bundle for the options the structure published: <see cref="Bundle"/> with the pane's <see cref="NavPanePolicy.Layout"/> and
     /// <see cref="NavPanePolicy.Density"/> set (and <see cref="NavPanePolicy.ShowCovers"/>, S0), the track lists' artwork hidden when <paramref name="hideTrackArt"/>, the detail pages' layout and rail
-    /// uniformity, and the track rows' skin (M2). One instance per combination, so republishing the facts is not a change.</summary>
+    /// uniformity, the track rows' skin (M2) and whether the page accent and the now-playing colours follow the artwork (CT9). One instance per combination, so
+    /// republishing the facts is not a change.</summary>
     public static ThemePolicies For(SidebarLayoutId layout, SidebarDensity density, bool hideTrackArt = false,
         DetailPageLayout pageLayout = DetailPageLayout.Automatic, bool railUniform = false, TrackRowStyle rowStyle = TrackRowStyle.Modern,
-        bool showCovers = true)
-        => s_byOptions[IndexOf(layout, density, hideTrackArt, pageLayout, railUniform, rowStyle, showCovers)];
+        bool showCovers = true, bool accentFromArtwork = true, bool nowPlayingColors = true)
+        => s_byOptions[IndexOf(layout, density, hideTrackArt, pageLayout, railUniform, rowStyle, showCovers, accentFromArtwork, nowPlayingColors)];
 }

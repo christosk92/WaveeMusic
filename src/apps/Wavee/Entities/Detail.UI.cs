@@ -1101,9 +1101,12 @@ public static partial class Detail
     /// url's), else the payload hex, else the last remembered page accent while this page's grading is still pending,
     /// else the system accent. Never the now-playing track. Cached probes only — a miss enqueues elsewhere and the
     /// caller's tracked effect re-runs when it lands. The answer carries the theme's contrast floor
-    /// (<see cref="Design.Palette.Floor"/>, D13): the hold remembers the graded colour, the floor is re-applied per theme.</summary>
+    /// (<see cref="Design.Palette.Floor"/>, D13): the hold remembers the graded colour, the floor is re-applied per theme.
+    /// <para>With the structure's "Accent from artwork" off (<see cref="ArtworkColorPolicy.AccentFromArtwork"/>, CT9 U2) it is the system
+    /// accent whatever the cover, and nothing is remembered. A tracked read: flipping the option re-runs the caller's effect.</para></summary>
     public static ColorF AccentFor(string? paletteUrl, uint payloadAccent, string? fallbackUrl = null)
     {
+        if (!ShellPolicy.Tracked.Artwork.AccentFromArtwork) return Tok.AccentDefault;
         var scheme = Design.ChromeSchemeFor(paletteUrl) ?? Design.ChromeSchemeFor(fallbackUrl);
         ColorF? graded = scheme is { } cp ? Design.Palette.ChromeAccent(cp) : null;
         // Nothing better can arrive: no payload and a url the endpoint cannot grade (or has already refused).
@@ -1114,6 +1117,10 @@ public static partial class Detail
         AccentHold.Remember(result);
         return Design.Palette.Floor(result.Color);
     }
+
+    /// <summary>The last remembered page accent a page seeds its first frame with, or null when the accent does not follow the artwork (a held
+    /// cover colour would paint one frame of artwork accent with the option off). An untracked read: it seeds a page, the effect then follows.</summary>
+    public static ColorF? HeldAccent => ShellPolicy.Now.Artwork.AccentFromArtwork ? AccentHold.Last : null;
 
     static ColorF ComputeAccent(FrameSpec spec)
     {

@@ -20,4 +20,10 @@ public static class ClassicOptions
 
     /// <summary>The Classic row skin is on (the three-lane hairline table, the 0.2.9 look). A tracked read.</summary>
     public static bool ClassicRows() => RowStyle() == TrackRowStyle.Classic;
+
+    /// <summary>The page accent follows the artwork (the `accentFromArtwork` option, CT9). A tracked read.</summary>
+    public static bool AccentFromArtwork() => ThemeHost.Options.Get(ClassicStructure.AccentFromArtwork.Key);
+
+    /// <summary>The now-playing surfaces take the playing cover's colour (the `nowPlayingColors` option, CT9). A tracked read.</summary>
+    public static bool NowPlayingColors() => ThemeHost.Options.Get(ClassicStructure.NowPlayingColors.Key);
 }

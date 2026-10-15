@@ -45,7 +45,7 @@
 //  3. THE 22-ITERATION BISECTION IN `ColorScience.Hairline` STAYS 22 ITERATIONS. It is the contrast solve; a cheaper
 //     approximation changes every identity hairline and every accent-ink digit in the app.
 //  4. THE CLAMP CONSTANTS ARE NOT TUNING KNOBS. If a page should take more colour, raise the PLANE ALPHA pair
-//     (`R.Wash.PageTonePlaneAlpha`), never the page-tone clamp.
+//     (`R.Wash.PageTonePlaneAlphaAt`), never the page-tone clamp.
 //
 // ── THE TWO NAME COLLISIONS, STATED ONCE ─────────────────────────────────────────────────────────────────────────────
 //
@@ -749,7 +749,7 @@ public static partial class Design
         public static readonly ShellWashPlacement Mix =
             Resolve(new Point2(0.58f, 1.00f), new Point2(0.90f, 0.70f), 0.66f);
 
-        // The wash STRENGTHS (alpha at the origin, light and dark) are the style's `R.Wash.HeroAlpha` / `R.Wash.ShelfAlpha`: DARK carries roughly
+        // The wash STRENGTHS (alpha at the origin, light and dark) are the style's `R.Wash.HeroAlphaAt` / `R.Wash.ShelfAlphaAt`: DARK carries roughly
         // TWICE the light strength, since the same colour reads far weaker over the dark ground and the light ground has less headroom before
         // a wash turns into a smudge. What stays here is GEOMETRY and the paint budget.
 

@@ -69,9 +69,14 @@ public sealed class ColourRolesTests(ShellHost host)
                     Assert.Equal(k == ThemeKind.Dark ? ColorF.FromRgba(0x2A, 0x2A, 0x2A) : ColorF.FromRgba(0xF2, 0xF2, 0xF2), R.Layer.ArtPlaceholder);
                     Assert.Equal(k == ThemeKind.Dark, StageInk.IsDark);
                     Assert.Equal(k == ThemeKind.Dark ? Tok.MediaStage : ColorScience.PageToneNeutralLight, StageInk.Veil);
-                    Assert.Equal(k == ThemeKind.Dark ? 0.10f : 0.055f, R.Wash.HeroAlpha);
-                    Assert.Equal(k == ThemeKind.Dark ? 0.085f : 0.05f, R.Wash.ShelfAlpha);
-                    Assert.Equal(k == ThemeKind.Dark ? 0.20f : 0.30f, R.Wash.PageTonePlaneAlpha);
+                    Assert.Equal(k == ThemeKind.Dark ? 0.10f : 0.055f, R.Wash.HeroAlphaAt(rich: false));
+                    Assert.Equal(k == ThemeKind.Dark ? 0.085f : 0.05f, R.Wash.ShelfAlphaAt(rich: false));
+                    Assert.Equal(k == ThemeKind.Dark ? 0.20f : 0.30f, R.Wash.PageTonePlaneAlphaAt(rich: false));
+                    // the Surfaces option's Rich level (CT9) reads the style's stronger pairs
+                    Assert.Equal(k == ThemeKind.Dark ? 0.15f : 0.08f, R.Wash.HeroAlphaAt(rich: true));
+                    Assert.Equal(k == ThemeKind.Dark ? 0.13f : 0.075f, R.Wash.ShelfAlphaAt(rich: true));
+                    Assert.Equal(k == ThemeKind.Dark ? 0.30f : 0.45f, R.Wash.PageTonePlaneAlphaAt(rich: true));
+                    Assert.Equal(k == ThemeKind.Dark ? 0.22f : 0.10f, R.Wash.ShellTintAlphaAt(rich: true));
                     Assert.Equal(k == ThemeKind.Dark ? 1f : 0.5f, R.Lyrics.BloomScale);
                     Assert.Equal(k == ThemeKind.Dark ? Tok.OnMediaPrimary : ColorScience.PageToneNeutralLight, R.Lyrics.BloomOnMedia);
                 }
@@ -126,7 +131,7 @@ public sealed class ColourRolesTests(ShellHost host)
                 Assert.Equal(style, Tok.StyleEpoch);   // colours only: the live cross-fade path
                 Assert.Equal(ColorF.FromRgba(0xAA, 0x11, 0x22), R.Layer.RowHover);
                 Assert.Equal(kind == ThemeKind.Light ? ColorF.FromRgba(1, 2, 3) : ColorF.FromRgba(4, 5, 6), R.OnMedia.ScrimRest);
-                Assert.Equal(kind == ThemeKind.Light ? 0.31f : 0.32f, R.Wash.HeroAlpha);
+                Assert.Equal(kind == ThemeKind.Light ? 0.31f : 0.32f, R.Wash.HeroAlphaAt(rich: false));
                 Assert.Equal(0.5f, R.Lyrics.ThemePlateAlpha);
 
                 Tok.Use(original, kind);

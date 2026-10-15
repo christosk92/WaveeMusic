@@ -745,7 +745,8 @@ public readonly partial struct Recents
     /// quantized <c>AccentDay</c>) and when an identity or a grading lands; publishes the page accent
     /// and ONE Hero leg of the shell wash — claim on the first publish and on reactivation, refresh while owner, never
     /// clear (§4.2). It publishes DATA only: whether the wash is drawn is the theme's (Classic's material layer reads its
-    /// Surfaces option), and the page accent follows the artwork whatever that option says (owner NQ6).</summary>
+    /// Surfaces option), and the page accent follows the artwork whatever that option says (owner NQ6): only the structure's separate
+    /// "Accent from artwork" (CT9) turns it to the system accent.</summary>
     internal sealed class AccentBinder(PageView page) : Component
     {
         static readonly Func<string?, Scheme?> s_chromeScheme = static url => Design.ChromeSchemeFor(url.AsSpan());
@@ -767,7 +768,8 @@ public readonly partial struct Recents
             string? url = target.Slot > 0 ? FactsOf(target).Cover : null;
 
             var resolved = FallbackAccent();
-            if (url is { Length: > 0 })
+            // The page accent follows the artwork unless the structure's "Accent from artwork" is off (CT9 U2; a tracked read, so a flip re-renders).
+            if (url is { Length: > 0 } && ShellPolicy.Tracked.Artwork.AccentFromArtwork)
             {
                 _ = Palette.Watch(url).Value;
                 if (Design.ChromeSchemeFor(url) is { } scheme)

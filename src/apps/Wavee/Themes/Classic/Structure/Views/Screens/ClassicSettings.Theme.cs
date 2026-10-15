@@ -495,6 +495,9 @@ internal static partial class ClassicSettings
         if (qualifiedId == ClassicStructure.PageLayoutQualifiedId) return Icons.DockLeft;
         if (qualifiedId == ClassicStructure.RailUniformQualifiedId) return Icons.Pin;
         if (qualifiedId == ClassicStructure.ClearRememberedSizesQualifiedId) return Icons.Delete;
+        if (qualifiedId == ClassicStructure.SurfacesQualifiedId) return Icons.Brush;
+        if (qualifiedId == ClassicStructure.AccentFromArtworkQualifiedId) return Icons.Design;
+        if (qualifiedId == ClassicStructure.NowPlayingColorsQualifiedId) return Icons.MusicNote;
         return null;
     }
 
@@ -515,6 +518,10 @@ internal static partial class ClassicSettings
         if (g.QualifiedId == ClassicStructure.RowStyleQualifiedId) return TrackListStyleCard(index, on);
         // The page layout's cards are the wireframes of the page system each choice selects (the picture the old Settings row drew).
         if (g.QualifiedId == ClassicStructure.PageLayoutQualifiedId) return PageLayoutCard(index, on);
+        // The Surfaces cards preview the level's chrome tint (CT9).
+        if (g.QualifiedId == ClassicStructure.SurfacesQualifiedId)
+            return SurfacesCard(index, Loc.Get(g.ChoiceTitleKeys[index]), on)
+                with { Key = "opt:card:" + g.QualifiedId + ":" + index.ToString(System.Globalization.CultureInfo.InvariantCulture) };
         Element label = Controls.PickerLabel(Loc.Get(g.ChoiceTitleKeys[index]), on) with
         {
             Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.WordEllipsis, MinWidth = 0f, Shrink = 1f,

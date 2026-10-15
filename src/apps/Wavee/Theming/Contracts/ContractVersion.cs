@@ -28,6 +28,10 @@
 // header rule, the plates and the dividers share one left edge, V10). No external theme exists yet.
 //
 // 1.6 (tuned Classic CT6b): the optional `CoverVeilProps.Hold` (where a horizontal veil's hold ends: the artist hero's copy edge).
+// 1.7 (tuned Classic CT9): the optional `ThemePolicies.Artwork` (`ArtworkColorPolicy`: whether the page accent and the now-playing colours
+// follow the artwork) and the optional `WashRoles.Rich` (`WashStrength`: a stronger wash level's hero, shelf, tone-plane and tint pairs). The
+// wash reads take the level (`R.Wash.HeroAlphaAt(rich)` and its siblings, `ShellTintFromScheme(scheme, rich)`); the level-less reads
+// `HeroAlpha`, `ShelfAlpha`, `PageTonePlaneAlpha`, `ShellTintAlpha` and `ShellTintFromScheme(scheme)` are removed before any external theme existed.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -43,7 +47,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 6;
+    public const int Minor = 7;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

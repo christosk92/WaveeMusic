@@ -18,7 +18,7 @@
 // T1b: the options Classic will own (plan 6.1) that are still TODAY's switches are bound to their legacy keys through `SettingsDoc`
 // rows. `LegacyRows` lists them in their FINAL grouping so Settings › Appearance shows Classic's section once, in its
 // final shape; each M-PR deletes its rows from the list and declares the option in `Options` (the generated row takes the
-// same place in the same group). M2 declared `rowStyle`, M4 `hideTrackArt`, M6 `Surfaces` (the colour washes), M7a `Sidebar` and `LibraryDensity` and M8 `PageLayout`, `RailUniform` and
+// same place in the same group). M2 declared `rowStyle`, M4 `hideTrackArt`, M6 `Surfaces` (the colour washes; CT9 added Rich and the `AccentFromArtwork` / `NowPlayingColors` toggles), M7a `Sidebar` and `LibraryDensity` and M8 `PageLayout`, `RailUniform` and
 // `ClearRememberedSizes`; M3's `density` is the style's.
 
 using FluentGpu.Theming;
@@ -35,6 +35,8 @@ public enum SurfaceWash
     Off = 0,
     /// <summary>Today's washes.</summary>
     Subtle = 1,
+    /// <summary>Stronger washes (the style's `R.Wash.Rich` strengths); the tone plane stays Subtle in light beside a docked pane (F2).</summary>
+    Rich = 2,
 }
 
 /// <summary>The structure of Wavee Classic.</summary>
@@ -317,23 +319,56 @@ public sealed class ClassicStructure : IStructureLayer
     public static string RowStyleQualifiedId => "structure." + RowStyle.Id;
 
     /// <summary>Surfaces: how much the artwork tints the shell and the pages (the colour washes: chrome tint, page ground, hero
-    /// wash). Off paints the neutral ground; Subtle is today's wash. Stored as the enum's int (`theme.classic.structure.surfaces`);
-    /// the option replaced the `appearance.colorWashes.enabled` switch (<c>ThemeBootstrap</c>'s "ColorWashes" step copies it).
-    /// Drawn as a switch (Subtle is "on"); a Rich choice joins in CT9. Live: the wash fades exactly as the switch did. It is a
-    /// STRUCTURE option because the structure's material views and cover leaves read it (WVTH005: an option is read only by its
-    /// own layer; the style's roles do not change with it).</summary>
+    /// wash, photo veils). Off paints the neutral ground and a hue-less veil; Subtle is today's wash; Rich (CT9) takes the style's stronger
+    /// pair for each wash. Stored as the enum's int (`theme.classic.structure.surfaces`); the option replaced the `appearance.colorWashes.enabled`
+    /// switch (<c>ThemeBootstrap</c>'s "ColorWashes" step copies it). Drawn as three preview cards (`ClassicSettings.SurfacesCard`). Live: the
+    /// wash fades exactly as the switch did. It is a STRUCTURE option because the structure's material views and cover leaves read it
+    /// (WVTH005: an option is read only by its own layer; the style publishes both strengths and the structure picks one).</summary>
     public static SelectOption<SurfaceWash> Surfaces { get; } = new(
-        Id: "surfaces", TitleKey: Strings.Settings.Appearance.ColorWashes, DescriptionKey: Strings.Settings.Appearance.ColorWashesSub,
+        Id: "surfaces", TitleKey: Strings.Settings.ThemeOptions.Surfaces, DescriptionKey: Strings.Settings.ThemeOptions.SurfacesSub,
         Group: Strings.Settings.ThemeOptions.Group.Surfaces, Default: SurfaceWash.Subtle,
         Choices:
         [
             new SelectChoice<SurfaceWash>(SurfaceWash.Off, Strings.Settings.ThemeOptions.SurfacesOff),
             new SelectChoice<SurfaceWash>(SurfaceWash.Subtle, Strings.Settings.ThemeOptions.SurfacesSubtle),
+            new SelectChoice<SurfaceWash>(SurfaceWash.Rich, Strings.Settings.ThemeOptions.SurfacesRich),
         ],
-        Picker: PickerStyle.Toggle);
+        Picker: PickerStyle.Cards);
+
+    /// <summary>The layer-qualified id of <see cref="Surfaces"/> (the Settings view draws its preview cards).</summary>
+    public const string SurfacesQualifiedId = "structure.surfaces";
+
+    /// <summary>Accent from artwork (CT9, U2): the detail pages' Play, Follow, hearts, accent rule and links take the cover's colour (floored at
+    /// 4.5 : 1, D13); off, the system accent everywhere. Stored as `theme.classic.structure.accentFromArtwork`; new, so no legacy key. The core
+    /// accent ladder follows it through <see cref="ArtworkColorPolicy.AccentFromArtwork"/> (see <see cref="Policies"/>); the structure's own
+    /// accent reads (the search's top result) read the option.</summary>
+    public static ToggleOption AccentFromArtwork { get; } = new(
+        Id: "accentFromArtwork", TitleKey: Strings.Settings.ThemeOptions.AccentFromArtwork, DescriptionKey: Strings.Settings.ThemeOptions.AccentFromArtworkSub,
+        Group: Strings.Settings.ThemeOptions.Group.Surfaces, Default: true);
+
+    /// <summary>Now playing colours (CT9, U3): the fullscreen stage, its lyrics, the deck faces, the queue's now-playing chip and the now-playing
+    /// cover placeholders take the playing cover's colour; off, a neutral stage and the system accent. Stored as
+    /// `theme.classic.structure.nowPlayingColors`; new, so no legacy key. The core stage and deck follow it through
+    /// <see cref="ArtworkColorPolicy.NowPlayingColors"/>; the structure's queue and panel read the option.</summary>
+    public static ToggleOption NowPlayingColors { get; } = new(
+        Id: "nowPlayingColors", TitleKey: Strings.Settings.ThemeOptions.NowPlayingColors, DescriptionKey: Strings.Settings.ThemeOptions.NowPlayingColorsSub,
+        Group: Strings.Settings.ThemeOptions.Group.Surfaces, Default: true);
+
+    /// <summary>The layer-qualified ids of the two artwork-colour toggles (the Settings view gives them their glyphs).</summary>
+    public const string AccentFromArtworkQualifiedId = "structure.accentFromArtwork";
+
+    /// <inheritdoc cref="AccentFromArtworkQualifiedId"/>
+    public const string NowPlayingColorsQualifiedId = "structure.nowPlayingColors";
 
     /// <summary>Colour washes are drawn (anything but Off): what the material views and cover leaves read.</summary>
     public static bool WashesOn(SurfaceWash surfaces) => surfaces != SurfaceWash.Off;
+
+    /// <summary>The washes take the style's Rich strengths (Home's washes, the chrome tint).</summary>
+    public static bool RichWashes(SurfaceWash surfaces) => surfaces == SurfaceWash.Rich;
+
+    /// <summary>The detail page's tone plane takes the Rich strength (tuned item F2): Rich, except in the LIGHT theme while the navigation pane is
+    /// docked beside the content card, where the plane stays at Subtle so the card stays one step lighter than the tinted chrome next to it.</summary>
+    public static bool RichTonePlane(SurfaceWash surfaces, bool light, bool paneDocked) => surfaces == SurfaceWash.Rich && !(light && paneDocked);
 
     /// <summary>Sidebar: which of the two layouts the navigation pane shows (Classic's sections you arrange, Library's one list with filters).
     /// Stored as the layout's int (`theme.classic.structure.sidebar`: Classic 0, Library 1); the option replaced `sidebar.layout.id` (`ThemeBootstrap`'s
@@ -433,7 +468,8 @@ public sealed class ClassicStructure : IStructureLayer
     /// wireframe cards.</summary>
     public const string PageLayoutQualifiedId = "structure." + PageLayoutId;
 
-    private static readonly ThemeOptionSchema s_options = ThemeOptionSchema.Of(Sidebar, LibraryDensity, ShowCovers, RowStyle, HideTrackArt, Surfaces, PageLayout, RailUniform, ClearRememberedSizes);
+    private static readonly ThemeOptionSchema s_options = ThemeOptionSchema.Of(Sidebar, LibraryDensity, ShowCovers, RowStyle, HideTrackArt, Surfaces,
+        AccentFromArtwork, NowPlayingColors, PageLayout, RailUniform, ClearRememberedSizes);
 
     /// <inheritdoc />
     public ThemeOptionSchema Options => s_options;
@@ -441,7 +477,8 @@ public sealed class ClassicStructure : IStructureLayer
     /// <inheritdoc />
     public ThemePolicies Policies(OptionValues structure, in StyleMetrics metrics)
         => ClassicPolicies.For(structure.Get(Sidebar.Key), structure.Get(LibraryDensity.Key), structure.Get(HideTrackArt.Key),
-            structure.Get(PageLayout.Key), structure.Get(RailUniform.Key), structure.Get(RowStyle.Key), structure.Get(ShowCovers.Key));
+            structure.Get(PageLayout.Key), structure.Get(RailUniform.Key), structure.Get(RowStyle.Key), structure.Get(ShowCovers.Key),
+            structure.Get(AccentFromArtwork.Key), structure.Get(NowPlayingColors.Key));
 
     /// <inheritdoc />
     public ShellCapabilities Capabilities(OptionValues structure) => ShellCapabilities.Unrestricted;

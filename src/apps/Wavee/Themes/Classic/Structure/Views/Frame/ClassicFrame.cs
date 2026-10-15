@@ -74,7 +74,9 @@ internal static class ClassicFrame
             Children = [ctx.View(ViewKeys.ShellMaterialLayer, props.Material), column],
         };
 
-        return ZStack(
+        // The cover leaves under every page ask whether the navigation pane is docked beside the content card (the Rich tone plane's light cap,
+        // tuned item F2), so the frame provides the core's predicate to its whole subtree. A stable reference: providing it never re-renders a page.
+        return Ctx.Provide(ClassicMaterial.PaneDockedSlot, props.SidebarPaneDocked, ZStack(
             tinted,
             // The immersive stage covers the content, the sidebar and the rail, and sits below the banner, the drop cue
             // and the toast lane. A predicate, not a render read; Direction 1 so an oversized measure is cross-clamped.
@@ -94,7 +96,7 @@ internal static class ClassicFrame
             ctx.View(ViewKeys.ShellCommandPalette, props.CommandPalette),
             ctx.View(ViewKeys.ShellCoverScrim, props.CoverScrim),
             ctx.View(ViewKeys.ShellDragChip, props.DragChip),
-            ctx.View(ViewKeys.ShellFps, props.Fps)) with { Grow = 1f };
+            ctx.View(ViewKeys.ShellFps, props.Fps)) with { Grow = 1f });
     }
 
     private static Element ContentRegion(ShellFrameProps props, in ViewContext ctx) => ZStack(

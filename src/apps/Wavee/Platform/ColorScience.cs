@@ -11,7 +11,7 @@
 //
 // A style that wants another answer gives another ROLE (`WashRoles.PageToneFromHue`, a `ColorRole` recipe); it does not edit
 // the maths below. The clamp constants here are the Classic recipe's constants, not tuning knobs: if a page should take more colour,
-// raise the PLANE ALPHA pair (`R.Wash.PageTonePlaneAlpha`), never the page-tone clamp.
+// raise the PLANE ALPHA pair (`R.Wash.PageTonePlaneAlphaAt`), never the page-tone clamp.
 //
 // THE RULE THAT SURVIVES THE MOVE: the 22-iteration bisection in `Hairline` stays 22 iterations. It is the contrast solve; a
 // cheaper approximation changes every identity hairline and every accent-ink digit in the app.
