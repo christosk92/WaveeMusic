@@ -44,19 +44,19 @@ public class DetailSkeletonGeometryTests
         Assert.False(plan.Artists);
         Assert.True(plan.Meta);
         Assert.Equal(Skeleton.RailTitleLines, plan.TitleLines);
-        Assert.Equal(3, plan.Fabs);                       // heart · Share · ⋯
+        Assert.Equal(4, plan.Fabs);                       // Shuffle · heart · Share · ⋯ (tuned Classic D1)
         Assert.Equal(Skeleton.RailDescriptionLines, plan.DescriptionLines);
     }
 
     [Fact]
-    public void RailPlan_Album_EyebrowArtistsNoMetaNoBlurbNoMore()
+    public void RailPlan_Album_EyebrowArtistsNoMetaNoBlurb()
     {
         var plan = Skeleton.RailPlanFor(DetailKind.Album, BadgeStyle.TypeYear, heart: true, descriptionMaxLines: 6);
         Assert.True(plan.Eyebrow);
         Assert.False(plan.Owner);
         Assert.True(plan.Artists);
         Assert.False(plan.Meta);
-        Assert.Equal(2, plan.Fabs);                       // heart · Share — an album's rail has no ⋯ (ch 05 parity 15)
+        Assert.Equal(4, plan.Fabs);                       // Shuffle · heart · Share · ⋯ (D1: the album's rail has its ⋯ now)
         Assert.Equal(0, plan.DescriptionLines);
     }
 
@@ -74,7 +74,7 @@ public class DetailSkeletonGeometryTests
         var plan = Skeleton.RailPlanFor(DetailKind.Liked, BadgeStyle.None, heart: false, descriptionMaxLines: 6);
         Assert.False(plan.Owner);
         Assert.True(plan.Meta);
-        Assert.Equal(2, plan.Fabs);                       // Share · ⋯
+        Assert.Equal(2, plan.Fabs);                       // Shuffle · Share (Liked has no heart and no ⋯)
         Assert.Equal(0, plan.DescriptionLines);
     }
 
@@ -104,7 +104,8 @@ public class DetailSkeletonGeometryTests
         var before = new Skeleton.RailPlan(
             Eyebrow: typeYear, Owner: badges == BadgeStyle.OwnerRow, Artists: typeYear,
             Meta: !typeYear || kind == DetailKind.Show, TitleLines: Skeleton.RailTitleLines,
-            Fabs: (heart ? 1 : 0) + 1 + (kind != DetailKind.Album ? 1 : 0),
+            Fabs: (kind is DetailKind.Album or DetailKind.Playlist or DetailKind.Liked ? 1 : 0) + (heart ? 1 : 0) + 1
+                  + (kind != DetailKind.Liked ? 1 : 0),
             DescriptionLines: kind is DetailKind.Playlist or DetailKind.Show ? Math.Min(Skeleton.RailDescriptionLines, descMax) : 0);
 
         // An album-family artists row IS the artist line (the page's own Attribution slot paints the same look), whose
@@ -119,29 +120,33 @@ public class DetailSkeletonGeometryTests
     }
 
     /// <summary>The nominal height of the pre-podcast skeleton columns, by hand: 24 above, the rows, 14 between, 24 below —
-    /// the CTA line wrapping exactly as the engine's flex wrap wraps [PlayButton 120][the icon-action group].
+    /// the CTA wrapping exactly as the engine's flex wrap wraps [Play split 121 + its 4][each 32 action, 8 apart] (tuned Classic D1).
     /// <para>Workstream B geometry: <c>RailLayout.PillHeight</c> (the primary's height) and <c>FabSize</c>/<c>SatelliteSize</c>
     /// are all 32 now (were 36/40/36); <c>Skeleton.PlayButtonWidth</c> is 120 (was <c>PlayPillWidth</c> 104).</para></summary>
     [Fact]
     public void RailHeight_OfThePrePodcastColumns_IsTheirRowSum()
     {
-        // Album, 280 rail (cover 256), 36 title line: cover · eyebrow 16 · title 2 × 36 · artists 16 · CTA 4 + 32 (PlayButton
-        // 120 + 12 + [heart · Share] 72 = 204 ≤ 256: one line, max(PillHeight 32, FabSize 32) = 32). Five rows, four gaps.
+        // Album, 280 rail (cover 256), 36 title line: cover · eyebrow 16 · title 2 × 36 · artists 16 · CTA 4 + 32 + 8 + 32 (the
+        // split 121 + 4, then Shuffle, heart, Share at 8 + 32 each = 245 ≤ 256; the ⋯ (285) wraps, as the board's flex row
+        // does). Five rows, four gaps.
         var album = Skeleton.RailPlanFor(DetailKind.Album, BadgeStyle.TypeYear, heart: true, descriptionMaxLines: 6);
         // The artists row is the artist line's height for the look the rail's width gives it (Wide at 256: the 32 pile
         // frame + its 4 + 4 plate = 40, not 16); the same plan declared with the album's own Attribution slot is the same height.
-        Assert.Equal(24f + 256f + 16f + 72f + 40f + 36f + 4 * 14f + 24f, RailLayout.HeightOf(album, 256f, 36f));
+        Assert.Equal(24f + 256f + 16f + 72f + 40f + 76f + 4 * 14f + 24f, RailLayout.HeightOf(album, 256f, 36f));
         var albumWithSlot = Skeleton.RailPlanFor(DetailKind.Album, BadgeStyle.TypeYear, heart: true, descriptionMaxLines: 6,
             new RailSlotSet(Attribution: true));
         Assert.Equal(RailLayout.HeightOf(album, 256f, 36f), RailLayout.HeightOf(albumWithSlot, 256f, 36f));
         // A narrower rail (cover 200 is Medium) reserves the two-text-line look (48), whatever the names will be.
-        // (200 also wraps the CTA: 80 instead of 36)
-        Assert.Equal(24f + 200f + 16f + 72f + 48f + 80f + 4 * 14f + 24f, RailLayout.HeightOf(album, 200f, 36f));
+        // (200 wraps the CTA after Shuffle: still two lines, 76)
+        Assert.Equal(24f + 200f + 16f + 72f + 48f + 76f + 4 * 14f + 24f, RailLayout.HeightOf(album, 200f, 36f));
 
-        // Playlist, 240 rail (cover 216): cover · owner 24 · title 72 · meta 16 · CTA wrapped (120 + 12 + 112 > 216):
-        // 4 + 32 + 12 + 32 · blurb 3 × 18. Six rows, five gaps.
+        // Playlist, 240 rail (cover 216): cover · owner 24 · title 72 · meta 16 · CTA wrapped after the heart (125 + 40 + 40 =
+        // 205 ≤ 216, Share would reach 245): 4 + 32 + 8 + 32 · blurb 3 × 18. Six rows, five gaps.
         var playlist = Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, heart: true, descriptionMaxLines: 6);
-        Assert.Equal(24f + 216f + 24f + 72f + 16f + 80f + 54f + 5 * 14f + 24f, RailLayout.HeightOf(playlist, 216f, 36f));
+        Assert.Equal(24f + 216f + 24f + 72f + 16f + 76f + 54f + 5 * 14f + 24f, RailLayout.HeightOf(playlist, 216f, 36f));
+
+        // A wide rail (cover 300) holds the whole row on one line: 125 + 4 × 40 = 285.
+        Assert.Equal(4f + 32f, RailLayout.CtaHeight(album, 300f));
     }
 
     const int PodcastDescMax = 3;

@@ -3,6 +3,8 @@
   "$comment": "Nederlandse overrides. Ontbrekende sleutels vallen per sleutel terug op en-US.",
   "detail": {
     "play": "Afspelen",
+    "moreWaysToPlay": "Meer manieren om af te spelen",
+    "startRadio": "Radio starten",
     "likedSongs": "Nummers die je leuk vindt",
     "filter": {
       "find": "Zoeken",

@@ -116,6 +116,47 @@ public sealed class DetailFrameMountedTests(ShellHost host)
             Assert.True(cta.Y >= meta.Y + meta.H - 0.5f, "the call to action stands under the meta line");
         }, UnderClassic());
 
+    /// <summary>Tuned Classic D1 / D2: the rail's call to action is the Play split, [Play 88 | 1 | menu 32] under ONE border, then the
+    /// actions 12 after it and 8 apart (Shuffle on the control plate, Share), one row at a 296 column.</summary>
+    [Fact]
+    public void The_rail_leads_with_the_play_split_and_its_actions_follow_12_then_8_apart()
+        => ViewHarness.With(host, ViewKeys.DetailRail, new DetailRailProps
+        {
+            Spec = new Detail.FrameSpec
+            {
+                Identity = new Detail.Identity
+                {
+                    Subject = default, Kind = DetailKind.Liked, Title = "Fixture", Meta = "2 songs · 6 min",
+                    ShareUrl = "https://open.spotify.com/collection/tracks",
+                },
+                Config = Detail.Config.Liked,
+            },
+            Actions = new Detail.FrameActions { Shuffle = static () => { } }, RailWidth = 320f,
+            TitleSize = 28f, DescriptionLines = 3, Accent = static () => default, Play = static () => { }, Pending = static () => false,
+        }, harness =>
+        {
+            harness.RunFrames(60);
+            var halves = harness.AbsoluteBounds(harness.Node("split:halves"));
+            var play = harness.AbsoluteBounds(harness.Node("split:play"));
+            var menu = harness.AbsoluteBounds(harness.Node("split:menu"));
+            var border = harness.AbsoluteBounds(harness.Node("split:border"));
+            Assert.Equal(Detail.RailLayout.PlaySplitWidth, halves.W, 0.5f);   // 121
+            Assert.Equal(32f, halves.H, 0.5f);
+            Assert.Equal(88f, play.W, 0.5f);
+            Assert.Equal(32f, menu.W, 0.5f);
+            Assert.Equal(play.X + 88f + 1f, menu.X, 0.5f);                     // the 1-DIP divider between the halves
+            Assert.Equal(halves, border);                                     // one border round the whole control
+
+            var shuffle = harness.AbsoluteBounds(harness.Node("rail:shuffle:button"));
+            var share = harness.AbsoluteBounds(harness.Node("rail:share:button"));
+            Assert.Equal(32f, shuffle.W, 0.5f);
+            Assert.Equal(32f, shuffle.H, 0.5f);
+            Assert.Equal(halves.X + halves.W + 12f, shuffle.X, 0.5f);
+            Assert.Equal(halves.Y, shuffle.Y, 0.5f);                          // one row
+            Assert.Equal(shuffle.X + 32f + 8f, share.X, 0.5f);
+            Assert.True(harness.Find("rail:more").IsNull, "Liked carries no menu, so no ⋯");
+        }, UnderClassic());
+
     // ── the strip ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]

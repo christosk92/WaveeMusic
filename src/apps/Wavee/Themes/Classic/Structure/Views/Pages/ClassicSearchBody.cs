@@ -173,7 +173,7 @@ internal static class ClassicSearchBody
         string? url = Search.CoverOf(hit);
         if (url is { Length: > 0 }) _ = Palette.Watch(url).Value;                 // a landed grading re-renders the page
         Scheme? scheme = url is { Length: > 0 } ? Design.ChromeSchemeFor(url) : null;
-        ColorF accent = scheme is { } s ? Design.Palette.ChromeAccent(s) : Tok.AccentDefault;
+        ColorF accent = scheme is { } s ? Design.Palette.Floor(Design.Palette.ChromeAccent(s)) : Tok.AccentDefault;
 
         var h = hit;
         var origin = ctx.Origin;

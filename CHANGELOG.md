@@ -19,6 +19,14 @@ versions separately under `v*` and is not tracked in this file.)
   Play all used to be a round button). The sidebar library's sort reads "Recents ⌄" (one label and a chevron, no arrows)
   and keeps its label at the default sidebar width more often. Browse's Top and For you links use the same square-cornered
   chips as every filter in the app, and Search's "matched title" / "lyrics match" tags use the same small badge as podcasts.
+- **Album, playlist and Liked Songs pages lead with one Play split.** The rail (and the narrow-window header) now starts with
+  one accent control, Play with a small ⌄ beside it ("More ways to play": Add to queue, Play next, Start radio), followed
+  by Shuffle, the heart, Share and ⋯. Albums get their ⋯ in the rail too, and your own playlists no longer show a heart
+  (a playlist you follow keeps it, to unfollow). The split reads as one button: one border, a quiet divider and a
+  12-point chevron. Every Play button in the app now uses the colour it is given instead of a paler shade of it, and a
+  colour taken from the artwork always keeps 4.5:1 contrast for the Play label, the hearts and accent text: a colour
+  that is too light or too dark steps to a darker or lighter shade, and falls back to your system accent when none fits.
+  The "Add to playlist" item in a playlist's list menu reads "Copy to playlist" for every playlist.
 - **The title bar search widens while you use it, and its suggestions line up with it.** Clicking into the search box
   widens it by up to 80 points, box and text together, without ever covering a tab or your profile picture; it eases back
   when you leave it. The suggestions list is now exactly as wide as the search box and starts at its left edge, instead of
