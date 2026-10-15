@@ -70,21 +70,20 @@ internal sealed class ClassicCoverTone : Component
         var paneDocked = UseContext(ClassicMaterial.PaneDockedSlot);
 
         // The watch subscriptions, resolved ONCE per render and read here. Hoisting them out of the Fill closure
-        // matters: a bound brush is re-evaluated on the PAINT path. Render still has to subscribe (not just the brush)
-        // because the ARRIVAL of a grading is what decides whether this node exists at all — a page with no tone paints
-        // nothing.
+        // matters: a bound brush is re-evaluated on the PAINT path. A landed grading re-renders this leaf, and the
+        // re-render re-wires the bound Fill below onto the new thunk, which now resolves the cover's tone.
         if (p.Url is { Length: > 0 } url) _ = Palette.Watch(url).Value;
         if (p.FallbackUrl is { Length: > 0 } fb && !string.Equals(fb, p.Url, StringComparison.Ordinal))
             _ = Palette.Watch(fb).Value;
 
-        ColorF? resolved = washes ? Resolve(p) : null;
-        if (!washes || resolved is null)
-            return new BoxEl { Grow = 1f, HitTestVisible = false };
-
         // At most ONE child, and only in hero-only mode: the tone BAND that fades back to the neutral surface. The
         // default arm paints the plane's own flat fill and nothing else.
-        Element[] kids = p.HeroOnly && HeroOnlyVeil(p, PlaneAlpha(level, paneDocked)) is { } veil ? [veil] : [];
+        Element[] kids = washes && p.HeroOnly && HeroOnlyVeil(p, PlaneAlpha(level, paneDocked)) is { } veil ? [veil] : [];
 
+        // ONE SHAPE IN EVERY ARM: the root's Fill is bound even while there is no tone yet (no grading, no payload accent) or Surfaces is
+        // Off, where the thunk paints Transparent. The engine wires a binding at mount and only re-wires bound→bound; a Fill that flips
+        // static→bound on this reused node is never wired (and bound→static leaves the old binding painting). A page whose cover's grading
+        // landed AFTER it mounted therefore kept a neutral ground, and Surfaces Off left the last tone on screen.
         return new BoxEl
         {
             ZStack = true, Grow = 1f, HitTestVisible = false,
@@ -92,7 +91,7 @@ internal sealed class ClassicCoverTone : Component
             // BOUND: the brush stays a compositor value, so a theme/preset re-fire lands without this subtree being
             // rebuilt, and the 250 ms ramp CROSS-FADES a grading arrival instead of snapping to it.
             // The docked-pane read sits inside the thunk: a pane docking or undocking under Rich re-paints the plane's alpha, never this leaf.
-            Fill = Prop.Of(() => !p.HeroOnly && Resolve(p) is { } t
+            Fill = Prop.Of(() => washes && !p.HeroOnly && Resolve(p) is { } t
                 ? t with { A = PlaneAlpha(level, paneDocked) }
                 : ColorF.Transparent),
             BrushTransitionMs = Design.Motion.Standard,

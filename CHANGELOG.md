@@ -179,6 +179,9 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **An album or playlist page takes its cover's colour when the colour arrives after the page opened.** The page ground
+  used to stay neutral until you opened the page again whenever the cover's colour was not known yet (in Classic), and
+  turning Surfaces off with a page open left that page's colour behind it.
 - **Page changes move as one.** The Browse and Concerts title (the masthead) now leaves with the page it belongs to and
   fades in with the next one, instead of the new title appearing over the old page for a moment. The window colour taken
   from a page's artwork changes when the new page arrives instead of under the leaving one, and an album opened from

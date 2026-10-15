@@ -4,7 +4,8 @@
 // `Wavee.Tests\Theming\ClassicSurfacesTests.cs`. What only a mounted tree can say:
 //
 //   tone plane   Rich paints the style's Rich plane alpha; in the real frame, light Rich beside the docked pane stays at Subtle (F2) and
-//                a window too narrow for a docked pane takes Rich again
+//                a window too narrow for a docked pane takes Rich again; a grading that lands after the page opened still colours it,
+//                and Surfaces Off with the page open clears it
 //   tint         the tint binder publishes the Rich tint alpha
 //   veil         Surfaces Off keeps the photo veil but on the ladder's neutral rung (no hue)
 //   Settings     the Surfaces row is three preview cards of the picker tile's size; the strip carries the sample hue at Subtle's 25 % and
@@ -72,13 +73,15 @@ public sealed class ClassicSurfacesMountedTests(ShellHost host)
         Assert.True(rich > subtle);
     }
 
+    /// <summary>What <see cref="AlbumPlaneUnderRich"/> read off the mounted album page.</summary>
+    readonly record struct AlbumPlane(float Alpha, bool Docked, float Subtle, float Rich, float BeforeGrading, float AfterOff);
+
     /// <summary>Mounts the real shell at <paramref name="width"/>, sets Surfaces to Rich in <paramref name="kind"/>, opens an album and reads its
-    /// tone plane's alpha once the cover's colour has landed.</summary>
-    float AlbumPlaneUnderRich(ThemeKind kind, float width, out bool docked, out float subtle, out float rich)
+    /// tone plane's alpha once the cover's colour has landed. <paramref name="late"/>: the grading lands AFTER the page mounted (as a network
+    /// grading does), and Surfaces is then turned Off with the page still mounted; otherwise it is cached before the page opens.</summary>
+    AlbumPlane AlbumPlaneUnderRich(ThemeKind kind, float width, bool late = false)
     {
-        float alpha = 0f;
-        bool dockedSeen = false;
-        float s = 0f, r = 0f;
+        AlbumPlane result = default;
         host.Mounted(shell =>
         {
             ThemeKind before = Tok.Theme;
@@ -88,20 +91,36 @@ public sealed class ClassicSurfacesMountedTests(ShellHost host)
                 Design.SeedPalette(kind);
                 _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, "structure.surfaces", SurfaceWash.Rich));
                 shell.RunFrames(60);
+                // The fake album carries no payload accent, so only the cover's grading colours its plane; the headless shell grades no
+                // artwork itself. The palette table is process-wide: a fresh NEGATIVE first makes the late arm start from "no colour".
                 var album = EntityUri.Parse("spotify:album:al2");
-                // The headless shell grades no artwork: give the fake album's cover a grading before the page mounts, as a cached
-                // grading would be (the seeded catalogue knows the cover from boot).
                 string cover = Assert.IsType<string>(Controls.ArtUrl(Entities.Album(album).ImageId));
                 var scheme = new Scheme(0xFF191414, 0xFF1DB954, 0xFFFFFFFF, 0xFFB3B3B3, 0xFFFFFFFF);
-                Palette.SetGraded(cover.AsSpan(), dark: scheme, light: scheme, hasLight: true, bestFitIsLight: false);
+                if (late) Palette.SetNegative(cover.AsSpan());
+                else Palette.SetGraded(cover.AsSpan(), dark: scheme, light: scheme, hasLight: true, bestFitIsLight: false);
                 Shell.GoTo(Shell.For(album, "Album"));
                 UntilBackground(shell, () => shell.FindPrefix("detail-tone:").Count == 1, "the album page");
-                Until(shell, () => PlaneAlpha(shell.Host.Scene, Subtree(shell.Host.Scene, shell.FindPrefix("detail-tone:")[0].Node)) > 0f, "the album's tone plane");
+                float Plane() => PlaneAlpha(shell.Host.Scene, Subtree(shell.Host.Scene, shell.FindPrefix("detail-tone:")[0].Node));
+                float beforeGrading = 0f;
+                if (late)
+                {
+                    shell.RunFrames(40);
+                    beforeGrading = Plane();
+                    Palette.SetGraded(cover.AsSpan(), dark: scheme, light: scheme, hasLight: true, bestFitIsLight: false);
+                }
+                Until(shell, () => Plane() > 0f, "the album's tone plane");
                 shell.RunFrames(40);   // any brush ramp has settled
-                alpha = PlaneAlpha(shell.Host.Scene, Subtree(shell.Host.Scene, shell.FindPrefix("detail-tone:")[0].Node));
-                dockedSeen = Sidebar.Mode.Peek() != SidebarPaneMode.Minimal;
-                s = R.Wash.PageTonePlaneAlphaAt(rich: false);
-                r = R.Wash.PageTonePlaneAlphaAt(rich: true);
+                float alpha = Plane();
+                bool docked = Sidebar.Mode.Peek() != SidebarPaneMode.Minimal;
+                float afterOff = 0f;
+                if (late)
+                {
+                    _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, "structure.surfaces", SurfaceWash.Off));
+                    shell.RunFrames(40);
+                    afterOff = Plane();
+                }
+                result = new AlbumPlane(alpha, docked, R.Wash.PageTonePlaneAlphaAt(rich: false), R.Wash.PageTonePlaneAlphaAt(rich: true),
+                                        beforeGrading, afterOff);
             }
             finally
             {
@@ -110,27 +129,33 @@ public sealed class ClassicSurfacesMountedTests(ShellHost host)
                 shell.RunFrames(20);
             }
         }, width, 760f);
-        docked = dockedSeen;
-        subtle = s;
-        rich = r;
-        return alpha;
+        return result;
     }
 
     [Fact]
     public void Light_Rich_beside_the_docked_pane_keeps_the_card_at_Subtle_so_it_stays_lighter_than_the_chrome()
     {
-        float alpha = AlbumPlaneUnderRich(ThemeKind.Light, 1180f, out bool docked, out float subtle, out float rich);
-        Assert.True(docked, "the pane is docked at 1180 DIP");
-        Assert.True(rich > subtle);
-        Assert.Equal(subtle, alpha, 3);   // F2
+        var plane = AlbumPlaneUnderRich(ThemeKind.Light, 1180f);
+        Assert.True(plane.Docked, "the pane is docked at 1180 DIP");
+        Assert.True(plane.Rich > plane.Subtle);
+        Assert.Equal(plane.Subtle, plane.Alpha, 3);   // F2
     }
 
     [Fact]
     public void Light_Rich_with_no_docked_pane_takes_the_Rich_plane()
     {
-        float alpha = AlbumPlaneUnderRich(ThemeKind.Light, 400f, out bool docked, out _, out float rich);
-        Assert.False(docked, "a 400 DIP window has no docked pane");
-        Assert.Equal(rich, alpha, 3);
+        var plane = AlbumPlaneUnderRich(ThemeKind.Light, 400f);
+        Assert.False(plane.Docked, "a 400 DIP window has no docked pane");
+        Assert.Equal(plane.Rich, plane.Alpha, 3);
+    }
+
+    [Fact]
+    public void A_grading_that_lands_after_the_album_opened_colours_its_tone_plane_and_Off_clears_it()
+    {
+        var plane = AlbumPlaneUnderRich(ThemeKind.Light, 400f, late: true);
+        Assert.Equal(0f, plane.BeforeGrading);           // no colour known yet: the ground is neutral
+        Assert.Equal(plane.Rich, plane.Alpha, 3);         // the late grading reached the mounted plane
+        Assert.Equal(0f, plane.AfterOff);                 // Surfaces Off with the page still open takes the tone away
     }
 
     // ── the tint and the veil ────────────────────────────────────────────────────────────────────────────────────────
