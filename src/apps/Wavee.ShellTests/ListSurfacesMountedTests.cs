@@ -33,8 +33,10 @@ public sealed class ListSurfacesMountedTests(ShellHost host)
     static Element Hosted(string key, float width, Element content)
         => new BoxEl { Key = key, Direction = 1, Width = width, Children = [content] };
 
+    static readonly Track.ColumnSet s_lanes = Track.EmbeddedColumns(classic: false, showTrackArtist: false);
+
     static Element EagerRow()
-        => Hosted("eager:host", 600f, Track.EagerRow(default, 0, Track.EmbeddedColumns, Track.EmbeddedTracks, RowH,
+        => Hosted("eager:host", 600f, Track.EagerRow(default, 0, s_lanes, Track.EmbeddedTracks(in s_lanes), RowH,
                                                      static () => { }, new Track.EagerRowOptions()));
 
     // ── the eager row ────────────────────────────────────────────────────────────────────────────────────────────────────

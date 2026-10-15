@@ -135,6 +135,10 @@ internal static class ClassicArtistHero
     static Element Identity(in Artist.HeroText text, string uri, float w, in ArtistHeroMetrics m, ColorF accent,
                             Action? play, Action? shuffle, Action? radio)
     {
+        // The skeleton arm (no play) states every text run as its LINES: the deriver turns a text leaf into a bar 0.72 of its size tall, so the
+        // copy came out ~70 DIP short of the loaded one at Wide (an 84/96 name became a 60 bar, each 14/20 line a 10 one) and, centred on the
+        // photo, every bar and the action row stood off the words (tuned Classic X2).
+        bool shimmer = play is null;
         Element verified = text.Verified
             ? new BoxEl
             {
@@ -142,7 +146,7 @@ internal static class ClassicArtistHero
                 Children =
                 [
                     InfoBadge.Icon(Icons.Accept, color: accent),
-                    Caption(Loc.Get(Strings.Artist.Verified)) with { Color = Tok.TextSecondary },
+                    Lines(Caption(Loc.Get(Strings.Artist.Verified)) with { Color = Tok.TextSecondary }, 1, shimmer),
                 ],
             }
             : new BoxEl();
@@ -154,15 +158,16 @@ internal static class ClassicArtistHero
             _ => R.Type.ArtistCompactTitle(text.Name),
         };
         name = name with { Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MaxLines = 2, MinWidth = 0f };
+        Element nameLine = Lines(name, 1, shimmer);
 
         // The lead is a COMMIT-computed column (ch 08 GAP 3): the hero never strips HTML on a render.
         Element bio = text.Lead.Length == 0
             ? new BoxEl()
-            : Body(text.Lead) with
+            : Lines(Body(text.Lead) with
             {
                 Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis,
                 MinWidth = 0f,
-            };
+            }, ClassicArtistRules.HeroLeadSkeletonLines, shimmer);
 
         return new BoxEl
         {
@@ -178,7 +183,7 @@ internal static class ClassicArtistHero
                 {
                     Direction = 1, Gap = Spacing.S, MinWidth = 0f,
                     // Meta stays ONE horizontal row at Compact; only Narrow stacks it.
-                    Children = [verified, name, bio, Meta(in text, m.Tier == ArtistHeroTier.Narrow)],
+                    Children = [verified, nameLine, bio, Meta(in text, m.Tier == ArtistHeroTier.Narrow, shimmer)],
                 },
                 Actions(text.Name, uri, accent, play, shuffle, radio, m.Tier),
             ],
@@ -186,18 +191,18 @@ internal static class ClassicArtistHero
     }
 
     /// <summary>"#N in the world" (accent) · monthly listeners · followers — a zero stat drops its run (Hero.cs:236-259).</summary>
-    static Element Meta(in Artist.HeroText text, bool stacked)
+    static Element Meta(in Artist.HeroText text, bool stacked, bool shimmer)
     {
         int count = (text.Rank > 0 ? 1 : 0) + (text.Monthly > 0 ? 1 : 0) + (text.Followers > 0 ? 1 : 0);
         var kids = new Element[count];
         int k = 0;
         if (text.Rank > 0)
-            kids[k++] = BodyStrong(Strings.Artist.WorldRank(text.Rank.ToString(CultureInfo.CurrentCulture)))
-                with { Color = Tok.AccentTextPrimary };
+            kids[k++] = Lines(BodyStrong(Strings.Artist.WorldRank(text.Rank.ToString(CultureInfo.CurrentCulture)))
+                with { Color = Tok.AccentTextPrimary }, 1, shimmer);
         if (text.Monthly > 0)
-            kids[k++] = Body(CountLabel(text.Monthly) + " " + Loc.Get(Strings.Artist.MetaMonthly)) with { Color = Tok.TextSecondary };
+            kids[k++] = Lines(Body(CountLabel(text.Monthly) + " " + Loc.Get(Strings.Artist.MetaMonthly)) with { Color = Tok.TextSecondary }, 1, shimmer);
         if (text.Followers > 0)
-            kids[k++] = Body(CountLabel(text.Followers) + " " + Loc.Get(Strings.Artist.MetaFollowers)) with { Color = Tok.TextSecondary };
+            kids[k++] = Lines(Body(CountLabel(text.Followers) + " " + Loc.Get(Strings.Artist.MetaFollowers)) with { Color = Tok.TextSecondary }, 1, shimmer);
         return new BoxEl
         {
             Direction = (byte)(stacked ? 1 : 0),
@@ -242,6 +247,21 @@ internal static class ClassicArtistHero
             Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
             Children = [playButton, shuffleButton, follow, radioButton],
         }.Skeletonized(false);
+    }
+
+    /// <summary>A text run as the loaded hero lays it out, for the skeleton arm: <paramref name="lines"/> line boxes of the run's own line height,
+    /// one bar each. The live arm (and a run with no stated line height) is the run itself.</summary>
+    static Element Lines(TextEl run, int lines, bool shimmer)
+    {
+        if (!shimmer || !(run.LineHeight > 0f)) return run;
+        var boxes = new Element[Math.Max(1, lines)];
+        for (int i = 0; i < boxes.Length; i++)
+            boxes[i] = new BoxEl
+            {
+                Height = run.LineHeight, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                Children = [run with { MaxLines = 1, Wrap = TextWrap.NoWrap }],
+            };
+        return boxes.Length == 1 ? boxes[0] : new BoxEl { Direction = 1, MinWidth = 0f, Children = boxes };
     }
 
     static readonly Func<Element> s_followShape = static () => Controls.FollowToggle.SkeletonShape();

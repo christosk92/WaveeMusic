@@ -75,8 +75,12 @@ public sealed record LibraryAlbumPaneProps
     /// <summary>The counted shimmer's row count (never zero).</summary>
     public required int ShimRows { get; init; }
 
-    /// <summary>The shimmer row's height (the table's row height at the current density).</summary>
+    /// <summary>The shimmer row's height (the table's row height for the row style at the current density).</summary>
     public required float RowHeight { get; init; }
+
+    /// <summary>The lanes the embedded table will lay out (<see cref="Track.EmbeddedColumns"/>: the row style's own set, with a Classic compilation's Artist
+    /// lane): the counted shimmer and its header shim stand on these, so the rows land where the bars stood (tuned Classic X2). Modern's set when unset.</summary>
+    public Track.ColumnSet Columns { get; init; } = Track.EmbeddedColumns(classic: false, showTrackArtist: false);
 
     /// <summary>The embedded table over this album; the argument is the table's trailing band (the "Also by" strip), or null for none.</summary>
     public required Func<Func<Element>?, Element> Table { get; init; }

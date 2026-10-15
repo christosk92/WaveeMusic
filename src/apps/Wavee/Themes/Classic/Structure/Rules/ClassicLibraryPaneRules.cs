@@ -56,8 +56,9 @@ public static class ClassicLibraryPaneRules
 
     // ── the counted shimmer ───────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The # bar (width), the clock bar (width) and the bars' height; and the clock glyph of the header shim.</summary>
-    public const float ShimNumW = 14f, ShimClockW = 30f, ShimBarH = 11f, ShimClockGlyph = 14f;
+    /// <summary>The # bar (width), the clock bar (width), a Classic compilation's artist bar (width) and the bars' height; and the clock glyph of the
+    /// header shim.</summary>
+    public const float ShimNumW = 14f, ShimClockW = 30f, ShimArtistW = 120f, ShimBarH = 11f, ShimClockGlyph = 14f;
 
     /// <summary>The title bar in four lengths in rotation, so a column of rows reads as text and not as a fence.</summary>
     public static float ShimTitleW(int i) => (i & 3) switch { 0 => 208f, 1 => 264f, 2 => 176f, _ => 232f };

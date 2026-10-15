@@ -38,7 +38,7 @@ public class DetailSkeletonGeometryTests
     [Fact]
     public void RailPlan_Playlist_OwnerRowTitleMetaCtaAndBlurb()
     {
-        var plan = Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, heart: true, descriptionMaxLines: 6);
+        var plan = Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, fixedActions: 4, descriptionMaxLines: 6);
         Assert.False(plan.Eyebrow);
         Assert.True(plan.Owner);
         Assert.False(plan.Artists);
@@ -51,7 +51,7 @@ public class DetailSkeletonGeometryTests
     [Fact]
     public void RailPlan_Album_EyebrowArtistsNoMetaNoBlurb()
     {
-        var plan = Skeleton.RailPlanFor(DetailKind.Album, BadgeStyle.TypeYear, heart: true, descriptionMaxLines: 6);
+        var plan = Skeleton.RailPlanFor(DetailKind.Album, BadgeStyle.TypeYear, fixedActions: 4, descriptionMaxLines: 6);
         Assert.True(plan.Eyebrow);
         Assert.False(plan.Owner);
         Assert.True(plan.Artists);
@@ -63,7 +63,7 @@ public class DetailSkeletonGeometryTests
     [Fact]
     public void RailPlan_Show_StatesItsPublisherLineAndBlurb()
     {
-        var plan = Skeleton.RailPlanFor(DetailKind.Show, BadgeStyle.TypeYear, heart: true, descriptionMaxLines: 3);
+        var plan = Skeleton.RailPlanFor(DetailKind.Show, BadgeStyle.TypeYear, fixedActions: 3, descriptionMaxLines: 3);
         Assert.True(plan.Meta);
         Assert.Equal(3, plan.DescriptionLines);
     }
@@ -71,9 +71,9 @@ public class DetailSkeletonGeometryTests
     [Fact]
     public void RailPlan_BlurbClampsToTheRailsOwnLines()
     {
-        Assert.Equal(2, Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, heart: true, descriptionMaxLines: 2).DescriptionLines);
-        Assert.Equal(0, Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, heart: true, descriptionMaxLines: 0).DescriptionLines);
-        Assert.Equal(0, Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, heart: true, descriptionMaxLines: -1).DescriptionLines);
+        Assert.Equal(2, Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, fixedActions: 4, descriptionMaxLines: 2).DescriptionLines);
+        Assert.Equal(0, Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, fixedActions: 4, descriptionMaxLines: 0).DescriptionLines);
+        Assert.Equal(0, Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, fixedActions: 4, descriptionMaxLines: -1).DescriptionLines);
     }
 
     // ── the podcast seams (podcast rework §5.4): the rail's row model ────────────────────────────────────────────────
@@ -90,19 +90,20 @@ public class DetailSkeletonGeometryTests
     public void RailPlan_WithoutPodcastSlots_IsThePrePodcastPlan(DetailKind kind, BadgeStyle badges, bool heart, int descMax)
     {
         bool typeYear = badges == BadgeStyle.TypeYear;
+        int fabs = (kind is DetailKind.Album or DetailKind.Playlist ? 1 : 0) + (heart ? 1 : 0) + 2;   // Shuffle on a track page · heart · Share · ⋯
         var before = new Skeleton.RailPlan(
             Eyebrow: typeYear, Owner: badges == BadgeStyle.OwnerRow, Artists: typeYear,
             Meta: !typeYear || kind == DetailKind.Show, TitleLines: Skeleton.RailTitleLines,
-            Fabs: (kind is DetailKind.Album or DetailKind.Playlist ? 1 : 0) + (heart ? 1 : 0) + 2,
+            Fabs: fabs,
             DescriptionLines: kind is DetailKind.Playlist or DetailKind.Show ? Math.Min(Skeleton.RailDescriptionLines, descMax) : 0);
 
         // An album-family artists row IS the artist line (the page's own Attribution slot paints the same look), whose
         // reserved row is the look's height; a podcast's attribution row is the publisher line and stays a text row.
         var faces = before with { ArtistFaces = before.Artists && kind != DetailKind.Show };
 
-        Assert.Equal(faces, Skeleton.RailPlanFor(kind, badges, heart, descMax));
-        Assert.Equal(faces, Skeleton.RailPlanFor(kind, badges, heart, descMax, default));
-        Assert.Equal(faces, Skeleton.RailPlanFor(kind, badges, heart, descMax, new RailSlotSet(Attribution: true)));
+        Assert.Equal(faces, Skeleton.RailPlanFor(kind, badges, fabs, descMax));
+        Assert.Equal(faces, Skeleton.RailPlanFor(kind, badges, fabs, descMax, default));
+        Assert.Equal(faces, Skeleton.RailPlanFor(kind, badges, fabs, descMax, new RailSlotSet(Attribution: true)));
         Assert.Equal(RailBadgeRow.None, before.Badges);
         Assert.False(before.Rating || before.Ledger || before.Satellites || before.Topics);
     }
@@ -117,11 +118,11 @@ public class DetailSkeletonGeometryTests
         // Album, 280 rail (cover 256), 36 title line: cover · eyebrow 16 · title 2 × 36 · artists 16 · CTA 4 + 32 + 8 + 32 (the
         // split 121 + 4, then Shuffle, heart, Share at 8 + 32 each = 245 ≤ 256; the ⋯ (285) wraps, as the board's flex row
         // does). Five rows, four gaps.
-        var album = Skeleton.RailPlanFor(DetailKind.Album, BadgeStyle.TypeYear, heart: true, descriptionMaxLines: 6);
+        var album = Skeleton.RailPlanFor(DetailKind.Album, BadgeStyle.TypeYear, fixedActions: 4, descriptionMaxLines: 6);
         // The artists row is the artist line's height for the look the rail's width gives it (Wide at 256: the 32 pile
         // frame + its 4 + 4 plate = 40, not 16); the same plan declared with the album's own Attribution slot is the same height.
         Assert.Equal(24f + 256f + 16f + 72f + 40f + 76f + 4 * 14f + 24f, RailLayout.HeightOf(album, 256f, 36f));
-        var albumWithSlot = Skeleton.RailPlanFor(DetailKind.Album, BadgeStyle.TypeYear, heart: true, descriptionMaxLines: 6,
+        var albumWithSlot = Skeleton.RailPlanFor(DetailKind.Album, BadgeStyle.TypeYear, fixedActions: 4, descriptionMaxLines: 6,
             new RailSlotSet(Attribution: true));
         Assert.Equal(RailLayout.HeightOf(album, 256f, 36f), RailLayout.HeightOf(albumWithSlot, 256f, 36f));
         // A narrower rail (cover 200 is Medium) reserves the two-text-line look (48), whatever the names will be.
@@ -130,7 +131,7 @@ public class DetailSkeletonGeometryTests
 
         // Playlist, 240 rail (cover 216): cover · owner 24 · title 72 · meta 16 · CTA wrapped after the heart (125 + 40 + 40 =
         // 205 ≤ 216, Share would reach 245): 4 + 32 + 8 + 32 · blurb 3 × 18. Six rows, five gaps.
-        var playlist = Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, heart: true, descriptionMaxLines: 6);
+        var playlist = Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, fixedActions: 4, descriptionMaxLines: 6);
         Assert.Equal(24f + 216f + 24f + 72f + 16f + 76f + 54f + 5 * 14f + 24f, RailLayout.HeightOf(playlist, 216f, 36f));
 
         // A wide rail (cover 300) holds the whole row on one line: 125 + 4 × 40 = 285.
@@ -165,7 +166,7 @@ public class DetailSkeletonGeometryTests
     static Skeleton.RailPlan Reserved(DetailKind kind, RailSlotSet slots)
     {
         var cfg = Config.For(kind, AlbumKind.Album);
-        return Skeleton.RailPlanFor(kind, cfg.Badges, cfg.Heart != HeartMode.None, PodcastDescMax, slots);
+        return Skeleton.RailPlanFor(kind, cfg.Badges, (cfg.Heart != HeartMode.None ? 1 : 0) + 2, PodcastDescMax, slots);
     }
 
     /// <summary>With each slot a podcast page declares, the skeleton RESERVES exactly the rows the loaded rail LAYS OUT:

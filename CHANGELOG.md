@@ -35,6 +35,12 @@ versions separately under `v*` and is not tracked in this file.)
   the library list's rows stand at the real rows' spacing, the narrow album/playlist header shows exactly the buttons the
   page will have and the song list's bar in its real shape, and the library's album and show header placeholders line
   up with the title and add the missing details line.
+- **More loading placeholders now match what replaces them.** In Your Library, an album's song list in the Classic row style
+  shimmers at the Classic rows' height under the Classic column header (it used to shimmer the taller Modern rows), and the
+  grid views shimmer cards in the grid's own columns instead of list rows. An album or playlist that has no web link (a
+  local one) no longer shows a placeholder square for Share. Liked Songs' loading rows start below the first date
+  heading's space, so the songs no longer land lower than their placeholders, and the artist header's placeholder text
+  lines are as tall as the name, bio and stats they stand for.
 - **Liked Songs is a list with a title, not a cover and a rail.** At a normal window the page is the title, the song count and one
   bar: Play (with its ⌄ for more ways to play), Shuffle, then the genre chips inline, fading out where more wait, and on the
   right Filter, Date added, Find, Insights and ⋯. The rows run the full width without stripes, titles are regular weight,

@@ -58,8 +58,12 @@ public static class ClassicLibraryRules
 
     // ── the navigator ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The loading state's shimmer rows.</summary>
-    public const int NavSkelRows = 8;
+    /// <summary>The loading state's shimmer rows (a list view), and its shimmer cards (a grid view: enough to fill a full-width navigator's first rows at
+    /// the smallest cell; the rest clip).</summary>
+    public const int NavSkelRows = 8, NavSkelCards = 24;
+
+    /// <summary>The grid shimmer card's title bar width: inside the narrowest card's text measure (the 116 cell less the round cover's 16 + 16).</summary>
+    public const float NavSkelCardTitleW = 64f;
 
     /// <summary>The shimmer row mirrors the bound row (tuned Classic X2): the stock list plate's 4-DIP side margin (its 2-DIP top and bottom are
     /// <c>User.NavRowMarginY</c>), the content lane's inset (the plate's own 16 / 12 plus the row's 8 either side), and the bar widths of the
