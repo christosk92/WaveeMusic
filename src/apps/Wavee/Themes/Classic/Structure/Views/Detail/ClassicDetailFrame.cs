@@ -6,7 +6,7 @@
 //     or the table that hosts the hero), and a TRACK page's vertical arm is ALWAYS wrapped in the insights sheet, open or not and facts or not, so
 //     the page's tree shape never changes underneath the list (the facts arriving must not remount the table and lose its scroll position);
 //   · the TWO-COLUMN arm: the centred row (MaxWidth `R.Space.PageMaxW`) of [rail | content] with the grip in a seam layer above it, and the
-//     collapsed 96-DIP identity strip in the rail's place.
+//     collapsed 96-DIP identity strip in the rail's place; a TRACK page's content column carries the insights sheet over its list (I1).
 //
 // WHAT THE HOST DECIDED (core, `Detail.FrameHost`): the page mode and both anti-flicker fail-safes, the Hero page-layout override, which rail cell
 // and its live width and collapsed flag, the page-aware cap, the rung that picks the title cap and the description clamp, the accent, the tint and
@@ -35,7 +35,7 @@ internal static partial class ClassicDetailFrame
     public static Element Template(DetailFrameProps p, in ViewContext ctx)
     {
         // The content column. Its Key is the host's (`right:tracks` / `right:eps`) and survives a rail collapse.
-        Element right = new BoxEl
+        BoxEl right = new BoxEl
         {
             Key = p.ContentKey, Grow = 1f, Shrink = 1f, MinWidth = p.ContentMinWidth, MinHeight = 0f, Direction = 1,
             Children = [p.Content],
@@ -70,6 +70,28 @@ internal static partial class ClassicDetailFrame
         }
 
         // ── the centred two-column row [rail | grip | right] ──
+        // A TRACK page lays the insights sheet over its list column, below the list bar (tuned Classic I1, board C-Liked): composed open or
+        // not, so the list never remounts; the layer takes hits only while the sheet is open (its light-dismiss closes it on a list click),
+        // so a closed sheet leaves every row and the bar reachable.
+        if (p.Sheet is { } listSheet)
+        {
+            var open = listSheet.Toggle.Open;
+            right = right with
+            {
+                ZStack = true,
+                Children =
+                [
+                    p.Content,
+                    new BoxEl
+                    {
+                        Key = "insights:layer", Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f,
+                        Padding = new Edges4(0f, ClassicDetailLayout.SheetListTop, 0f, 0f),
+                        HitTestVisible = Prop.Of(() => open.Value),
+                        Children = [ctx.View(ViewKeys.DetailInsights, listSheet with { Page = new BoxEl { Grow = 1f, HitTestVisible = false } })],
+                    },
+                ],
+            };
+        }
         var tc = p.TwoColumn!;
         Element[] rowKids;
         Element seam = SeamOff;

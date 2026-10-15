@@ -517,7 +517,7 @@ public static partial class Detail
         IReadSignal<Size2>? _viewport;
         bool _accentSeeded;
 
-        // ── INSIGHTS SHEET (additive; Detail.Insights.cs) ── the vertical arm's host for the facts bento. One toggle
+        // ── INSIGHTS SHEET (additive; Detail.Insights.cs) ── the host of the facts bento on every facts page (I1). One toggle
         //    per mounted frame: the open state is a signal, so the toolbar button and the pane cannot disagree and
         //    neither costs the page a render. `_sheetRoute` closes it on any route swap the host survives.
         readonly InsightsToggle _insights = new();
@@ -530,6 +530,8 @@ public static partial class Detail
         //    source, which reads empty while the list's open holds its reveal — so an absent slot is "not answered yet",
         //    not "no facts". Latched per ROUTE and dropped with it, beside the open state.
         Func<float, Element>? _factsLatched;
+        // What the list shows against what it has: the table publishes it, the rail's count line reads it (tuned Classic D4).
+        readonly Signal<ListCount> _listCount = new(default);
 
         // ── cached delegates (zero per-render allocation for the handlers the tree carries) ──
         readonly Action<RectF> _measure;
@@ -703,10 +705,8 @@ public static partial class Detail
             bool vertical = mode == Breakpoints.VerticalMode;
             bool verticalTracks = vertical && cfg.Content == DetailContent.Tracks;
 
-            // ── INSIGHTS SHEET (additive; Detail.Insights.cs) ── which arm HOSTS the facts bento. A two-column arm is
-            //    unchanged (the rail row, below). The vertical arm has no rail, so the bento is a sheet over the
-            //    content and the toolbar carries its toggle — and, because the toggle is gated on the same slot
-            //    presence, the bento is never appended to the page body again (Detail.InsightsSheet).
+            // ── INSIGHTS SHEET (additive; Detail.Insights.cs) ── tuned Classic I1: the facts bento is a sheet over the list on every
+            //    facts page, in every arm, toggled from the list bar — never a rail row, never appended to the page body.
             //
             //    The slot is LATCHED for the route first (InsightsSheet.FactsSettled): a page derives its bento slot
             //    from a scan of the live row source, which reads empty while the list's open holds its reveal, so an
@@ -716,9 +716,8 @@ public static partial class Detail
             bool factsNow = spec.Slots.LikedFacts is not null;
             bool factsSettled = InsightsSheet.FactsSettled(_factsLatched is not null, factsNow);
             if (factsNow) _factsLatched = spec.Slots.LikedFacts;      // a plain field, not a signal: no render write
-            _sheetHosts = InsightsSheet.ShowsToggle(mode, id.Kind, factsSettled, cfg.Content);
-            // Widening back into a two-column arm (or losing the facts) CLOSES the sheet — a signal write belongs in an
-            // effect, never in a render (rule 6).
+            _sheetHosts = InsightsSheet.ShowsToggle(id.Kind, factsSettled, cfg.Content);
+            // Losing the facts CLOSES the sheet — a signal write belongs in an effect, never in a render (rule 6).
             UseEffect(_syncInsightsArm, DepKey.From(_sheetHosts ? 1 : 0));
 
             // ── the leaves: shell tint (a hand-over, never a clear) and the page tone plane (the ONE ground) ──
@@ -767,11 +766,7 @@ public static partial class Detail
                     //    vertical arm is left exactly as it was. The LATCHED builder, not the live slot: the toggle and the
                     //    pane must never disagree, and the builder closes over the page's own live source, so a latched
                     //    one is never stale data.
-                    Sheet = verticalTracks ? new Contracts.DetailInsightsProps
-                    {
-                        Toggle = _insights, Facts = _sheetHosts ? _factsLatched : null,
-                        PageWidth = _measuredW, RouteKey = routeKey, OnClosed = _returnInsightsFocus,
-                    } : null,
+                    Sheet = verticalTracks ? SheetProps(routeKey) : null,
                 });
             }
 
@@ -819,7 +814,7 @@ public static partial class Detail
                     Rail = new Contracts.DetailRailProps
                     {
                         Spec = spec, Actions = acts, RailWidth = railW, TitleSize = titleSize, DescriptionLines = descLines,
-                        Accent = _accentFn, Play = _playAll, Pending = _railPending,
+                        Accent = _accentFn, Play = _playAll, Pending = _railPending, Shown = _listCount,
                     },
                 };
             }
@@ -829,8 +824,18 @@ public static partial class Detail
                 Tint = tint, Tone = tone, Notice = notice,
                 ContentKey = contentKey, Content = content, ContentMinWidth = rightMin, Drop = drop,
                 TwoColumn = twoColumn,
+                // ── INSIGHTS SHEET ── a TRACK page's two-column arm lays the sheet over its list column (I1), composed open or not.
+                Sheet = episodes ? null : SheetProps(routeKey),
             });
         }
+
+        /// <summary>The sheet's props for this render: the LATCHED facts builder (null while this page hosts no facts, so the pane renders
+        /// nothing and the toggle can never open it).</summary>
+        Contracts.DetailInsightsProps SheetProps(string routeKey) => new()
+        {
+            Toggle = _insights, Facts = _sheetHosts ? _factsLatched : null,
+            PageWidth = _measuredW, RouteKey = routeKey, OnClosed = _returnInsightsFocus,
+        };
 
         /// <summary>The engine splitter wired to the scope's cell: width writes are direct during the drag (bounded by the
         /// page-aware Max, so a drag can never squeeze the content column out); RELEASE commits width + collapsed to THIS
@@ -862,6 +867,8 @@ public static partial class Detail
                     { PlayAll = _playAll, Insights = _sheetHosts ? _insights : null }
                     : null,
                 ShowToolbar = cfg.Content == DetailContent.Tracks || !vertical,
+                Insights = !verticalTracks && _sheetHosts ? _insights : null,
+                ListCount = _listCount,
                 Trailing = trailing,
                 PlayAllCell = _playAllCell,
                 HeroHeight = _heroHeight,

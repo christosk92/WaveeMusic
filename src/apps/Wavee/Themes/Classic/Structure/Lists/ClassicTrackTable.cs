@@ -746,7 +746,6 @@ internal static class ClassicTrackTable
         var odd = a.Odd;
         var checks = a.ChecksVisible;
         var accent = a.Accent;
-        float pad = a.PadX;
 
         return new BoxEl
         {
@@ -801,7 +800,6 @@ internal static class ClassicTrackTable
                 {
                     Key = "row-divider", AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Stretch, Height = 1f,
                     Fill = classic ? Prop.Of(static () => Tok.StrokeDividerDefault) : (Prop<ColorF>)ColorF.Transparent,
-                    Margin = classic ? new Edges4(pad, 0f, pad, 0f) : default,
                     HitTestVisible = false,
                 },
             ],

@@ -1,19 +1,17 @@
-// ── Wavee.Tests/DetailInsightsSheetTests.cs — which arm hosts the facts bento, and how wide its sheet is ────────────
+// ── Wavee.Tests/DetailInsightsSheetTests.cs — where the facts bento lives, and how wide its sheet is ─────────────────
 //
-// The vertical (hero/stacked) arm has no rail, so the facts bento used to be appended under the rows as a page footer
-// nobody scrolled to. It is now a dismissable sheet laid OVER the content, opened from the vertical arm's chrome.
-// `Detail.InsightsSheet` is the whole decision, extracted so it can be tested without an engine: WHICH arm hosts the
-// bento, WHETHER a toggle exists there, what the sheet's resolved width is for a page of a given width and what the
-// band's action cluster then claims.
+// Tuned Classic I1: on EVERY facts page (Liked and every playlist, followed ones included — owner NQ6) and in every arm the
+// facts bento is a sheet laid over the list, closed by default, never opening by itself, toggled from the list bar. The rail
+// no longer carries it. `Detail.InsightsSheet` is the core decision (WHETHER a toggle exists, the facts latch, the band's
+// claim); the sheet's width is Classic's (`ClassicDetailLayout.SheetWidthFor`, the board's 320).
 //
 // The facts that must not regress:
-//   · a two-column arm is untouched — the rail hosts the bento and no toggle is composed;
-//   · the two hosts are MUTUALLY EXCLUSIVE at every mode, and there is no third (page-body) host any more;
+//   · the sheet is the ONE host, in every arm (no rail row, no page-body footer);
 //   · the toggle is gated on the facts actually being there, so a page with none shows no button;
 //   · an absent facts slot means "not answered yet", not "no facts": the frame latches it for the route.
 
 using Xunit;
-using Breakpoints = Wavee.Detail.Breakpoints;
+using Wavee.Themes.Classic;
 using InsightsSheet = Wavee.Detail.InsightsSheet;
 using BandLayout = Wavee.Detail.BandLayout;
 
@@ -21,54 +19,50 @@ namespace Wavee.Tests;
 
 public class DetailInsightsSheetTests
 {
-    // ── the resolved width ──
+    // ── the resolved width (Classic's) ──
 
-    /// <summary>An UNMEASURED page answers the preferred width — the pre-measure seed the first bounds callback
-    /// corrects, exactly like the rail's page-aware ceiling.</summary>
+    /// <summary>An UNMEASURED page answers the board's 320 — the pre-measure seed the first bounds callback corrects.</summary>
     [Theory]
     [InlineData(0f)]
     [InlineData(-1f)]
     [InlineData(float.NaN)]
-    public void AnUnmeasuredPageTakesThePreferredWidth(float pageWidth)
-        => Assert.Equal(InsightsSheet.PreferredWidth, InsightsSheet.WidthFor(pageWidth));
+    public void AnUnmeasuredPageTakesTheBoardWidth(float pageWidth)
+        => Assert.Equal(320f, ClassicDetailLayout.SheetWidthFor(pageWidth));
 
-    /// <summary>A page wide enough for the preferred width gets it outright; the fraction only ever narrows.</summary>
+    /// <summary>A page wide enough gets 320 outright (production's 390 sheet is gone); the fraction only ever narrows.</summary>
     [Theory]
     [InlineData(2000f)]
     [InlineData(1024f)]
-    [InlineData(579f)]      // the widest page the vertical arm can still be (VerticalExitW - 1)
-    [InlineData(514f)]      // 514 × 0.76 = 390.64 → the preferred width is the smaller of the two
-    public void AWidePageGetsThePreferredWidth(float pageWidth)
-        => Assert.Equal(InsightsSheet.PreferredWidth, InsightsSheet.WidthFor(pageWidth));
+    [InlineData(579f)]
+    [InlineData(422f)]      // 422 × 0.76 = 320.72 → 320 is the smaller of the two
+    public void AWidePageGetsTheBoardWidth(float pageWidth)
+        => Assert.Equal(320f, ClassicDetailLayout.SheetWidthFor(pageWidth));
 
-    /// <summary>Below that, the sheet is a SHARE of the page, so a strip of the list always stays visible behind it.</summary>
+    /// <summary>Below that, the sheet is a SHARE of the page, so a strip of the list always stays visible beside it.</summary>
     [Theory]
-    [InlineData(500f, 380f)]     // 500 × 0.76 = 380
     [InlineData(400f, 304f)]
     [InlineData(360f, 273f)]     // 273.6 → floored to whole DIP
     [InlineData(320f, 243f)]     // 243.2
     public void ANarrowPageGetsTheFraction(float pageWidth, float expected)
-        => Assert.Equal(expected, InsightsSheet.WidthFor(pageWidth));
+        => Assert.Equal(expected, ClassicDetailLayout.SheetWidthFor(pageWidth));
 
     [Theory]
     [InlineData(2000f)]
-    [InlineData(514f)]
     [InlineData(400f)]
     [InlineData(300f)]
     [InlineData(120f)]
     public void TheSheetNeverCoversTheWholePage(float pageWidth)
     {
-        float w = InsightsSheet.WidthFor(pageWidth);
+        float w = ClassicDetailLayout.SheetWidthFor(pageWidth);
         Assert.True(w > 0f);
-        Assert.True(w <= InsightsSheet.PreferredWidth);
+        Assert.True(w <= ClassicDetailLayout.SheetWidth);
         Assert.True(w < pageWidth, $"the sheet must leave a strip of the list at {pageWidth}");
     }
 
-    /// <summary>A degenerate page still answers a positive width — the pane is composed before it is ever opened, and a
-    /// zero-width pane would be a layout hole rather than a closed sheet.</summary>
+    /// <summary>A degenerate page still answers a positive width — the pane is composed before it is ever opened.</summary>
     [Fact]
     public void AnAbsurdlyNarrowPageStillAnswersAPositiveWidth()
-        => Assert.True(InsightsSheet.WidthFor(1f) > 0f);
+        => Assert.True(ClassicDetailLayout.SheetWidthFor(1f) > 0f);
 
     // ── which kinds carry facts at all ──
 
@@ -81,74 +75,47 @@ public class DetailInsightsSheetTests
     public void OnlyTheTwoListLikeSurfacesCarryFacts(DetailKind kind, bool expected)
         => Assert.Equal(expected, InsightsSheet.KindHasFacts(kind));
 
-    // ── which arm hosts the bento ──
+    // ── the sheet is the one host ──
 
-    /// <summary>The sheet hosts the bento in the single-column arm, there and nowhere else.</summary>
+    /// <summary>The sheet hosts the bento of every facts page, whatever the arm (the mode no longer enters the decision).</summary>
     [Theory]
-    [InlineData(0, false)]
-    [InlineData(1, false)]
-    [InlineData(2, false)]
-    [InlineData(Breakpoints.VerticalMode, true)]
-    [InlineData(7, false)]
-    [InlineData(-1, false)]
-    public void TheSheetHostsTheBentoInTheVerticalArmOnly(int mode, bool expected)
-        => Assert.Equal(expected, InsightsSheet.SheetHostsFacts(mode, DetailKind.Liked, factsSlot: true));
-
-    /// <summary>ONE host per mode, never two — the bug the sheet exists to prevent is a page showing its facts twice.</summary>
-    [Theory]
-    [InlineData(0)]
-    [InlineData(1)]
-    [InlineData(2)]
-    [InlineData(Breakpoints.VerticalMode)]
-    [InlineData(7)]
-    public void TheTwoHostsAreMutuallyExclusive(int mode)
-    {
-        foreach (var kind in new[] { DetailKind.Liked, DetailKind.Playlist, DetailKind.Album, DetailKind.Show, DetailKind.Episode })
-            foreach (bool slot in new[] { false, true })
-            {
-                bool rail = Wavee.Detail.RailPolicy.ComposesRail(mode);
-                bool sheet = InsightsSheet.SheetHostsFacts(mode, kind, slot);
-                Assert.False(rail && sheet, $"{kind} at mode {mode} (slot {slot}) claimed BOTH hosts");
-            }
-    }
+    [InlineData(DetailKind.Liked, true)]
+    [InlineData(DetailKind.Playlist, true)]
+    [InlineData(DetailKind.Album, false)]
+    public void TheSheetHostsTheBentoOfEveryFactsPage(DetailKind kind, bool expected)
+        => Assert.Equal(expected, InsightsSheet.SheetHostsFacts(kind, factsSlot: true));
 
     /// <summary>A page whose facts have not arrived has no host at all — never an empty panel, and never a button that
     /// opens one (<c>User.FactsHas</c> answers the slot, and the slot answers this).</summary>
-    [Theory]
-    [InlineData(0)]
-    [InlineData(Breakpoints.VerticalMode)]
-    public void NoFactsMeansNoHostAndNoButton(int mode)
+    [Fact]
+    public void NoFactsMeansNoHostAndNoButton()
     {
-        Assert.False(InsightsSheet.SheetHostsFacts(mode, DetailKind.Liked, factsSlot: false));
-        Assert.False(InsightsSheet.ShowsToggle(mode, DetailKind.Liked, factsSlot: false, DetailContent.Tracks));
+        Assert.False(InsightsSheet.SheetHostsFacts(DetailKind.Liked, factsSlot: false));
+        Assert.False(InsightsSheet.ShowsToggle(DetailKind.Liked, factsSlot: false, DetailContent.Tracks));
     }
 
-    // ── the toolbar toggle ──
+    // ── the list bar's toggle ──
 
-    /// <summary>The toggle exists in the vertical arm of a facts-bearing TRACK page, and nowhere else. A two-column arm
-    /// shows no button at all: its bento is already on screen beside the list.</summary>
+    /// <summary>The toggle exists on every facts-bearing TRACK page (Liked, owned and followed playlists), never on an album or an
+    /// episode list.</summary>
     [Theory]
-    [InlineData(0, DetailKind.Liked, true, DetailContent.Tracks, false)]
-    [InlineData(2, DetailKind.Liked, true, DetailContent.Tracks, false)]
-    [InlineData(Breakpoints.VerticalMode, DetailKind.Liked, true, DetailContent.Tracks, true)]
-    [InlineData(Breakpoints.VerticalMode, DetailKind.Playlist, true, DetailContent.Tracks, true)]
-    [InlineData(Breakpoints.VerticalMode, DetailKind.Album, true, DetailContent.Tracks, false)]
-    [InlineData(Breakpoints.VerticalMode, DetailKind.Liked, false, DetailContent.Tracks, false)]
-    // an episode list's vertical arm has no bento — and no command bar of its own to hang a toggle on
-    [InlineData(Breakpoints.VerticalMode, DetailKind.Show, true, DetailContent.Episodes, false)]
-    [InlineData(Breakpoints.VerticalMode, DetailKind.Playlist, true, DetailContent.Episodes, false)]
-    public void TheToggleIsTheVerticalArmsAlone(int mode, DetailKind kind, bool slot, DetailContent content, bool expected)
-        => Assert.Equal(expected, InsightsSheet.ShowsToggle(mode, kind, slot, content));
+    [InlineData(DetailKind.Liked, true, DetailContent.Tracks, true)]
+    [InlineData(DetailKind.Playlist, true, DetailContent.Tracks, true)]
+    [InlineData(DetailKind.Album, true, DetailContent.Tracks, false)]
+    [InlineData(DetailKind.Liked, false, DetailContent.Tracks, false)]
+    [InlineData(DetailKind.Show, true, DetailContent.Episodes, false)]
+    [InlineData(DetailKind.Playlist, true, DetailContent.Episodes, false)]
+    public void TheToggleIsEveryFactsPagesListBars(DetailKind kind, bool slot, DetailContent content, bool expected)
+        => Assert.Equal(expected, InsightsSheet.ShowsToggle(kind, slot, content));
 
-    /// <summary>The toggle is composed exactly where the sheet is the host — one predicate, two readers.</summary>
+    /// <summary>The toggle is composed exactly where the sheet is the host — one predicate, every reader.</summary>
     [Theory]
-    [InlineData(0)]
-    [InlineData(1)]
-    [InlineData(2)]
-    [InlineData(Breakpoints.VerticalMode)]
-    public void TheToggleFollowsTheSheetHost(int mode)
-        => Assert.Equal(InsightsSheet.SheetHostsFacts(mode, DetailKind.Playlist, factsSlot: true),
-                        InsightsSheet.ShowsToggle(mode, DetailKind.Playlist, factsSlot: true, DetailContent.Tracks));
+    [InlineData(DetailKind.Liked)]
+    [InlineData(DetailKind.Playlist)]
+    [InlineData(DetailKind.Album)]
+    public void TheToggleFollowsTheSheetHost(DetailKind kind)
+        => Assert.Equal(InsightsSheet.SheetHostsFacts(kind, factsSlot: true),
+                        InsightsSheet.ShowsToggle(kind, factsSlot: true, DetailContent.Tracks));
 
     /// <summary>The band's cluster claims one more word when this arm hosts the sheet, and the compact search field
     /// derives its width from exactly that — so the toggle narrows the field instead of shoving Find · Filter · Play
@@ -199,15 +166,13 @@ public class DetailInsightsSheetTests
     public void TheLatchFeedsTheOneToggleRule()
     {
         bool settled = InsightsSheet.FactsSettled(everSeen: true, slotNow: false);
-        Assert.True(InsightsSheet.ShowsToggle(Breakpoints.VerticalMode, DetailKind.Liked, settled, DetailContent.Tracks));
-        Assert.True(InsightsSheet.SheetHostsFacts(Breakpoints.VerticalMode, DetailKind.Liked, settled));
-        // …and a latched page in a TWO-COLUMN arm gets no toggle: the latch never moves the host.
-        Assert.False(InsightsSheet.ShowsToggle(0, DetailKind.Liked, settled, DetailContent.Tracks));
+        Assert.True(InsightsSheet.ShowsToggle(DetailKind.Liked, settled, DetailContent.Tracks));
+        Assert.True(InsightsSheet.SheetHostsFacts(DetailKind.Liked, settled));
     }
 
     /// <summary>An album never gains a toggle from the latch either — the kind gate is ahead of it.</summary>
     [Fact]
     public void TheLatchNeverGivesTheAlbumFamilyAToggle()
-        => Assert.False(InsightsSheet.ShowsToggle(Breakpoints.VerticalMode, DetailKind.Album,
+        => Assert.False(InsightsSheet.ShowsToggle(DetailKind.Album,
                                                   InsightsSheet.FactsSettled(everSeen: true, slotNow: true), DetailContent.Tracks));
 }

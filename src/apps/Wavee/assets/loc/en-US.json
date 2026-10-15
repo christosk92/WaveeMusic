@@ -130,6 +130,7 @@
     },
     "sort": {
       "customOrder": "Custom order",
+      "albumOrder": "Album order",
       "title": "Title",
       "artist": "Artist",
       "album": "Album",
@@ -402,6 +403,7 @@
     "collabView": "View collaborators",
     "queueUnavailable": "Can’t add to queue right now",
     "songCountOf": "{shown} of {count, plural, one {# song} other {# songs}}",
+    "filteredMark": "(filtered)",
     "episodeCountOf": "{shown} of {count, plural, one {# episode} other {# episodes}}",
     "rail": {
       "artistsMenu": "Artists"

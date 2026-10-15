@@ -144,7 +144,7 @@ internal static class ClassicLibraryAlbumPane
     /// <summary>The embedded table's column header, WITHOUT a host: <c>#</c> (centred between the same two caret slots the real <c>IndexSortCell</c> reserves, so it sits over the row numbers),
     /// an empty ♥ lane, "Title", the clock and an empty "…" lane, then the band's single 1-DIP hairline. Inert on purpose — there is nothing to sort yet.
     /// <para><paramref name="compact"/> is the register: true = the pane's (no air above the header, because no toolbar sits over it — the embedded arm), false = the full table's two-column
-    /// chrome, which pays <c>Spacing.S</c> above it. The horizontal padding is the chrome's own <c>PadXFor(tier)</c> in both cases, so a caller adds NONE of its own.</para>
+    /// chrome, which pays <c>Spacing.S</c> above it. The horizontal padding is the real header's (the rule at the plates' inset, the cells at <c>PadXFor(tier)</c>) in both cases, so a caller adds NONE of its own.</para>
     /// <para>The colours are the default sort's (Index): the <c>#</c> reads as the active header, everything else as tertiary — exactly what the real header paints the instant it replaces
     /// this one.</para></summary>
     static Element TableHeaderShim(bool compact)
@@ -182,15 +182,18 @@ internal static class ClassicLibraryAlbumPane
         if (set.Actions) cells.Add(new BoxEl { Key = Track.CellKey.More });
 
         float padX = Track.RowMetrics.PadXFor(set.Tier);
+        // The real header's ONE left edge (V10): the rule at the Modern plates' inset, the cells at the rows' gutter.
+        float edge = ClassicTrackChromeLayout.HeaderRuleInset(classicRows: false, vertical: false, padX);
         return new BoxEl
         {
             Key = "header:shim", Direction = 1, ClipToBounds = true,
-            Padding = new Edges4(padX, compact ? 0f : Spacing.S, padX, 0f),
+            Padding = new Edges4(edge, compact ? 0f : Spacing.S, edge, 0f),
             Children =
             [
                 new GridEl
                 {
                     Columns = tracks, ColGap = Track.RowMetrics.ColGapFor(set.Tier),
+                    Padding = new Edges4(padX - edge, 0f, padX - edge, 0f),
                     RowHeight = Track.TableRules.HeaderHeightFor(classic: false), Children = cells.ToArray(),
                 },
                 new BoxEl { Height = 1f, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) },

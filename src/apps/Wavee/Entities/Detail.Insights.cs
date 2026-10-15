@@ -1,24 +1,24 @@
 // ── Entities/Detail.Insights.cs ────────────────────────────────────────────────────────────────────────────────────
-// THE INSIGHTS SHEET, CORE HALF — the vertical arm's host for the facts bento (approved prototype "Insights Sheet").
+// THE INSIGHTS SHEET, CORE HALF — the host of the facts bento on every facts page (approved prototype "Insights Sheet"; tuned Classic I1).
 //
 // Role: UI (the toggle, the band wrapper and the band's width claim are core; the sheet and its two entry points are the structure's)
 // Owner: M
 // Wave: 4.5
 // Spec: the approved HTML prototype; the arm/width/open rules are Detail.InsightsSheet (Detail.cs §3b).
 //
-// T9a (themes plan 6.1): the sheet itself (the engine SplitView overlay, its frosted pane, the scrim and cast, the header and the body),
-// the hero toolbar's glyph button and the pinned band's word are CLASSIC'S (`Themes\Classic\Structure\Views\Detail\ClassicInsights.cs`, keys
+// T9a (themes plan 6.1): the sheet itself (the engine SplitView overlay, its frosted pane, the cast, the header and the body),
+// the list bar's glyph button and the pinned band's word are CLASSIC'S (`Themes\Classic\Structure\Views\Detail\ClassicInsights.cs`, keys
 // `Detail.Insights` and `Detail.InsightsToggle`). What stays here: `InsightsToggle` (the open state and its verbs, one per mounted frame),
-// `InsightsBandAction` (the band's keyed slot, called by the table), `BandActionsClaim` (the band's width claim) and the reasoning below.
+// `InsightsBarButton` / `InsightsBandAction` (the bar's and the band's keyed slots, called by the table), `BandActionsClaim` (the band's width claim) and the reasoning below.
 //
 // ── WHY THIS EXISTS ──────────────────────────────────────────────────────────────────────────────────────────────────
 //
-// A two-column detail page puts the facts bento in its left rail, beside the list. The VERTICAL (hero/stacked) arm has
-// no rail, so the bento used to be appended under the rows as a page footer nobody scrolled to. Here it becomes a
-// right-anchored sheet laid OVER the content, dismissed by Escape, the scrim, the close button, the toggle again, or
-// navigating away.
+// The facts bento used to sit in a two-column page's left rail and, in the VERTICAL (hero/stacked) arm, under the rows as a
+// page footer nobody scrolled to. Tuned Classic I1 makes it ONE thing everywhere: a right-anchored sheet laid OVER the list,
+// closed by default and never opening by itself, toggled from the list bar, dismissed by Escape, a click on the list, the
+// close button, the toggle again, or navigating away.
 //
-// TWO ENTRY POINTS, ONE CONTROL: the hero's toolbar row (§6) carries it while the reader is at the top of the page, and
+// ONE CONTROL: the two-column arm's list bar carries it. In the vertical arm there are TWO entry points: the hero's bar (§6) carries it while the reader is at the top of the page, and
 // the pinned 56-DIP context band (§7) carries it for the whole of the rest of the page — because the hero COLLAPSES,
 // and a sheet meant to be read ALONGSIDE the list cannot be opened from chrome that scrolls away. They are never both
 // legible (the band crossfades in exactly as the hero fades out) and never both interactive (input crosses with the
@@ -135,6 +135,12 @@ public static partial class Detail
     public static Element InsightsBandAction(InsightsToggle toggle)
         => ViewSlots.View(Contracts.ViewKeys.DetailInsightsToggle,
                new Contracts.DetailInsightsToggleProps(toggle, Contracts.DetailInsightsToggleForm.BandWord)) with { Key = "band:insights" };
+
+    /// <summary>The LIST BAR's entry point (tuned Classic I1): the sheet's toggle as the bar's 32-DIP glyph button between Find and "…" —
+    /// the two-column arm's bar and the vertical arm's hero bar alike. The structure draws it (the <c>HeroButton</c> form).</summary>
+    public static Element InsightsBarButton(InsightsToggle toggle)
+        => ViewSlots.View(Contracts.ViewKeys.DetailInsightsToggle,
+               new Contracts.DetailInsightsToggleProps(toggle, Contracts.DetailInsightsToggleForm.HeroButton)) with { Key = "cmd:insights" };
 
     /// <summary>What the band's search field must leave for the cluster once the toggle joins it — the label widths the
     /// band estimates, routed through the one pure rule so the field narrows instead of shoving the words off the

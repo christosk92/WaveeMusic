@@ -38,7 +38,6 @@ using FrameActions = Wavee.Detail.FrameActions;
 using FrameSlots = Wavee.Detail.FrameSlots;
 using HeroParts = Wavee.Detail.HeroParts;
 using Identity = Wavee.Detail.Identity;
-using InsightsToggle = Wavee.Detail.InsightsToggle;
 using RailLayout = Wavee.Detail.RailLayout;
 using Skeleton = Wavee.Detail.Skeleton;
 using Text = Wavee.Detail.Text;
@@ -216,12 +215,9 @@ internal static partial class ClassicDetailFrame
                         Direction = 1,
                         Padding = new Edges4(parts.CompactLeft, VerticalLayout.ExpandedToolbarTopPad,
                                              parts.CompactLeft, VerticalLayout.ExpandedToolbarBottomPad),
-                        // ── INSIGHTS SHEET (additive) ── the toolbar ROW: the table's command bar, plus the sheet's
-                        //    toggle pinned to its trailing end when this page has facts and no rail to show them in
-                        //    (Detail.Insights.cs). The bar keeps the whole row when there is no toggle, so a page
-                        //    without facts composes exactly the tree it composed before. This is the PRE-STUCK half of
-                        //    the control: once the hero collapses the pinned band's word (§7) is the reachable one.
-                        Children = [ToolbarRow(parts, spec.Insights)],
+                        // The table's list bar. On a facts page it carries the insights toggle itself (tuned Classic I1) —
+                        //    the PRE-STUCK half of the control: once the hero collapses the pinned band's word (§7) is the reachable one.
+                        Children = [parts.Toolbar ?? new BoxEl { Height = VerticalLayout.ToolbarRowHeight }],
                     },
                 ],
             };
@@ -507,26 +503,4 @@ internal static partial class ClassicDetailFrame
     {
         Width = width, Height = VerticalLayout.ToolbarPillHeight, Shrink = 0f, Corners = Radii.ControlAll,
     };
-
-    // ══ 5. THE HERO TOOLBAR'S ROW ═══════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The vertical arm's toolbar ROW: the table's own command bar and, trailing it, the sheet's toggle. With
-    /// no toggle the bar IS the row — a page without facts composes exactly the tree it composed before.</summary>
-    static Element ToolbarRow(in HeroParts parts, InsightsToggle? insights)
-    {
-        Element bar = parts.Toolbar ?? new BoxEl { Height = VerticalLayout.ToolbarRowHeight };
-        if (insights is null) return bar;
-        return new BoxEl
-        {
-            Key = "vhero:toolbar-row", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f,
-            Children =
-            [
-                // Direction 1 on the wrapper: a single-child row wrapper shrink-wraps its child on the MAIN axis, and
-                // the command bar must keep the whole remaining width to resolve its own promote/evict fit.
-                new BoxEl { Key = "vhero:toolbar", Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Children = [bar] },
-                Slots.View(ViewKeys.DetailInsightsToggle, new DetailInsightsToggleProps(insights, DetailInsightsToggleForm.HeroButton))
-                    with { Key = "insights:toggle-tip" },
-            ],
-        };
-    }
 }

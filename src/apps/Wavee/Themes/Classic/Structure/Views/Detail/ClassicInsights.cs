@@ -1,23 +1,25 @@
-// ── Themes/Classic/Structure/Views/Detail/ClassicInsights.cs — Classic's insights sheet and its two entry points (themes plan 6.1, T9a) ──
+// ── Themes/Classic/Structure/Views/Detail/ClassicInsights.cs — Classic's insights sheet and its entry points (themes plan 6.1, T9a; tuned I1) ──
 //
-// From `Entities\Detail.Insights.cs`: THE INSIGHTS SHEET, the vertical arm's host for the facts bento (approved prototype "Insights Sheet"):
-// the engine `SplitView` in Overlay × Right, its frosted pane, the scrim and its left-edge cast, the header row with the ×, the scrolling body
-// that hosts the page's own bento, and the two entry points — the hero toolbar's glyph button and the pinned band's plateless word.
+// From `Entities\Detail.Insights.cs`: THE INSIGHTS SHEET, the host of the facts bento on every facts page (tuned Classic I1, board C-Liked): the
+// engine `SplitView` in Overlay × Right, its frosted 320-DIP pane, the cast under its left edge, the header row with the ×, the scrolling body that
+// hosts the page's own bento, and the entry points — the list bar's glyph button and the vertical arm's pinned-band word.
+//
+// WHERE IT SITS. The vertical arm's page is wrapped in it (the sheet covers the page, hero included; the hero bar and the pinned band carry the
+// toggle). The two-column arm lays it over the LIST column below the list bar (`ClassicDetailFrame`), so the bar's Insights button stays reachable
+// and reads pressed while the sheet is open, as the board draws it.
 //
 // WHAT STAYS CORE (`Entities\Detail.Insights.cs`): the toggle object (`InsightsToggle`: the open signal and the verbs that move it, one instance
-// per mounted frame), the arm / width / open rules (`InsightsSheet`: `ShowsToggle`, `WidthFor`, `FactsSettled`,
-// `BandActionsWidth`), the facts latch and the focus return (the frame host), and the band's width claim
-// (`Detail.BandActionsClaim`, called by the table's chrome).
+// per mounted frame), the arm / open rules (`InsightsSheet`: `ShowsToggle`, `FactsSettled`, `BandActionsWidth`), the facts latch and the focus
+// return (the frame host), and the band's width claim (`Detail.BandActionsClaim`, called by the table's chrome).
 //
 // ── WHAT IS ENGINE, AND WHAT IS OURS ───────────────────────────────────────────────────────────────────────────────────────────
 //
 // The overlay itself is the engine's `SplitView` in Overlay × Right: it owns the WinUI slide (350 ms open / 120 ms close on the 0.1,0.9 0.2,1.0
-// spline — reduced motion snaps it, because a LayoutTransition's position channel is KeepFade), the light-dismiss layer, Escape, the host-resize
-// dismiss and the whole FOCUS contract (save the focused node, move focus into the pane, trap Tab inside it, restore on close). We add only what
-// a SplitView has no opinion about: the SCRIM and its edge shadow (drawn inside the content slot, below the control's own dismiss layer), the
-// pane's surface styling through `TemplateParts`, the header row, the scrollable body and the (deliberately inert) left-edge grip.
-//
-// NOT WIRED, ON PURPOSE: the grip is a visual only. An edge-swipe to open/close is undecided and the right edge is contested by the transcript rail.
+// spline — reduced motion snaps it, because a LayoutTransition's position channel is KeepFade), the light-dismiss layer (a click on the list closes
+// it), Escape, the host-resize dismiss and the whole FOCUS contract (save the focused node, move focus into the pane, trap Tab inside it, restore
+// on close). We add only what a SplitView has no opinion about: the cast under the pane's left edge (drawn inside the content slot, below the
+// control's own dismiss layer; the board has no dimming scrim), the pane's surface styling through `TemplateParts`, the header row and the
+// scrollable body.
 //
 // NAME NOTE: `Text`, `Skeleton` and `Config` are nested `Detail` classes; text runs here are `new TextEl(...)` / `Ui.*`.
 
@@ -33,7 +35,6 @@ using FluentGpu.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 using BandLayout = Wavee.Detail.BandLayout;
-using InsightsSheet = Wavee.Detail.InsightsSheet;
 using InsightsToggle = Wavee.Detail.InsightsToggle;
 
 namespace Wavee.Themes.Classic;
@@ -41,19 +42,19 @@ namespace Wavee.Themes.Classic;
 /// <summary>Classic's insights sheet (<see cref="ViewKeys.DetailInsights"/>) and its entry points (<see cref="ViewKeys.DetailInsightsToggle"/>).</summary>
 internal static class ClassicInsights
 {
-    /// <summary>The registered template of <see cref="ViewKeys.DetailInsights"/>: the vertical arm's page, wrapped in the sheet's overlay. ALWAYS
-    /// composed for a track page's vertical arm (the host decides), open or not.</summary>
+    /// <summary>The registered template of <see cref="ViewKeys.DetailInsights"/>: what it covers (the vertical arm's page, or the two-column arm's
+    /// pass-through layer over the list), wrapped in the sheet's overlay. ALWAYS composed for a track page (the host decides), open or not.</summary>
     public static Element SheetTemplate(DetailInsightsProps p, in ViewContext ctx)
         => Sheet(p.Page ?? new BoxEl(), p.Toggle, p.Facts, p.PageWidth, p.RouteKey, p.OnClosed);
 
-    /// <summary>The registered template of <see cref="ViewKeys.DetailInsightsToggle"/>: the hero toolbar's button, or the pinned band's word (its
-    /// own component, so that opening or closing the sheet re-renders ONE word).</summary>
+    /// <summary>The registered template of <see cref="ViewKeys.DetailInsightsToggle"/>: the list bar's glyph button, or the pinned band's word.
+    /// Each is its own component, so opening or closing the sheet re-renders ONE button.</summary>
     public static Element ToggleTemplate(DetailInsightsToggleProps p, in ViewContext ctx)
     {
         var toggle = p.Toggle;
         return p.Form == DetailInsightsToggleForm.BandWord
             ? Embed.Comp(() => new InsightsBandWord(toggle))
-            : ToggleButton(toggle);
+            : ToolTip.Wrap(Embed.Comp(() => new InsightsBarButton(toggle)), Loc.Get(Strings.Detail.LikedFacts.SheetOpen)) with { Key = "insights:toggle-tip" };
     }
 
     // ══ 2. THE GLYPH AND THE TOKENS ══════════════════════════════════════════════════════════════════════════════════
@@ -63,36 +64,30 @@ internal static class ClassicInsights
     static readonly PathData s_insightsGlyph =
         PathDataParser.Parse("M4 20h16M7.5 20v-7M12 20V6M16.5 20v-4", PathContentEpoch.Mint(), FillRule.NonZero);
 
-    static float SheetHeaderPadY => ClassicDetailLayout.SheetHeaderPadY;          // 12
-    static float SheetPadX => ClassicDetailLayout.SheetPadX;                      // 16
-    static float SheetBodyPadTop => ClassicDetailLayout.SheetBodyPadTop;          // 12
-    static float SheetBodyPadBottom => ClassicDetailLayout.SheetBodyPadBottom;    // 20
-    const float SheetGripW = ClassicDetailLayout.SheetGripW, SheetGripH = ClassicDetailLayout.SheetGripH;
+    static float SheetPad => ClassicDetailLayout.SheetPad;      // 16
+    static float SheetGap => ClassicDetailLayout.SheetGap;      // 12
     const float SheetToggleEdge = ClassicDetailLayout.SheetToggleEdge, SheetToggleGlyph = ClassicDetailLayout.SheetToggleGlyph;
     const float SheetCloseEdge = ClassicDetailLayout.SheetCloseEdge, SheetCloseGlyph = ClassicDetailLayout.SheetCloseGlyph;
-    /// <summary>The scrim's cast under the sheet's left edge — the prototype's <c>-18px 0 48px</c>, as a gradient band
-    /// (a real drop shadow on the pane would be clipped by the control's own pane clip).</summary>
     const float SheetShadowW = ClassicDetailLayout.SheetShadowW;
 
     static readonly EasingSpec SheetSpline = ClassicDetailLayout.SheetSpline;
 
     // ══ 3. THE FRAME SEAM ════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>Wrap the vertical arm's page in the sheet's overlay. ALWAYS composed for a track page's vertical arm —
-    /// open or not, facts or not — so the page's own tree shape never changes when the facts arrive or the sheet opens
-    /// (the list keeps its scroll position and the hero keeps its measured height).
+    /// <summary>Wrap <paramref name="page"/> in the sheet's overlay. ALWAYS composed for a track page — open or not, facts or not — so the
+    /// tree under it never changes when the facts arrive or the sheet opens (the list keeps its scroll position and the hero its height).
     /// <para><paramref name="facts"/> null ⇒ the pane renders nothing and the toggle can never open it.</para></summary>
     static Element Sheet(Element page, InsightsToggle toggle, Func<float, Element>? facts,
                          float pageWidth, string routeKey, Action? onClosed)
     {
-        float paneW = InsightsSheet.WidthFor(pageWidth);
+        float paneW = ClassicDetailLayout.SheetWidthFor(pageWidth);
         var open = toggle.Open;
         return SplitView.Create(
             pane: SheetPane(toggle, facts, paneW, routeKey),
             content: new BoxEl
             {
                 Key = "insights:content", ZStack = true, Grow = 1f,
-                Children = [page, SheetScrim(open, paneW)],
+                Children = [page, SheetCast(open, paneW)],
             },
             paneWidth: paneW,
             isPaneOpen: open,
@@ -102,22 +97,16 @@ internal static class ClassicInsights
             parts: s_sheetParts);
     }
 
-    /// <summary>The pane surface: FROSTED GLASS over the page, and no shadow — the cast lives in the scrim layer,
-    /// because the control clips its pane to the pane rect.
+    /// <summary>The pane surface: FROSTED GLASS over the list, and no shadow — the cast lives in the content layer, because the control clips
+    /// its pane to the pane rect.
     ///
-    /// <para><b>Why not a layer token.</b> This part used to author <c>Tok.FillLayerAlt</c>, which is WinUI's
-    /// <c>LayerFillColorAltBrush</c>: opaque white in light theme but <c>#FFFFFF @ 0x0D</c> (5%) in DARK
-    /// (<c>PaletteBuilder.cs</c>) — a veil, not a surface. The control DOES paint what this part returns; the fill it
-    /// was handed simply had almost no coverage, so in dark theme the page read straight through the open sheet (the
-    /// hero title, the list's Date added / Time lanes and the rows all legible over the bento's cards).</para>
+    /// <para><b>Why not a layer token.</b> <c>Tok.FillLayerAlt</c> is WinUI's <c>LayerFillColorAltBrush</c>: opaque white in light theme but
+    /// <c>#FFFFFF @ 0x0D</c> (5%) in DARK — a veil, not a surface, and the list read straight through the open sheet.</para>
     ///
-    /// <para><b>The recipe is the engine's frosted-flyout plate</b>, authored exactly as <c>OverlayHost.FlyoutSurface</c>
-    /// does it: the acrylic SPEC on the node, and the SAME spec's <see cref="AcrylicSpec.Fallback"/> as the node's own
-    /// fill UNDERNEATH it. Both, always — where the acrylic layer runs it composites opaquely and the fill under it
-    /// costs nothing; where it cannot run (<c>Materials.AcrylicEnabled</c> off for transparency/energy-saver, a
-    /// non-primary swapchain, a video hole) the fallback is the only thing between the reader and floating text. The
-    /// fill is a BOUND prop so a live theme flip re-reads it; the spec is read when the part is applied, which happens
-    /// on every frame render (the frame re-renders on a theme flip).</para></summary>
+    /// <para><b>The recipe is the engine's frosted-flyout plate</b>, authored exactly as <c>OverlayHost.FlyoutSurface</c> does it: the acrylic
+    /// SPEC on the node, and the SAME spec's <see cref="AcrylicSpec.Fallback"/> as the node's own fill UNDERNEATH it, so where the acrylic layer
+    /// cannot run (transparency or energy saver off, a non-primary swapchain, a video hole) the fallback is still an opaque surface. The fill is
+    /// a BOUND prop so a live theme flip re-reads it.</para></summary>
     static readonly TemplateParts s_sheetParts = BuildSheetParts();
 
     static TemplateParts BuildSheetParts()
@@ -132,28 +121,18 @@ internal static class ClassicInsights
         return parts;
     }
 
-    // ══ 4. THE SCRIM ═════════════════════════════════════════════════════════════════════════════════════════════════
+    // ══ 4. THE CAST ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The dim over the content plus the sheet's left-edge cast. Both are PAINT only — the control's own
-    /// light-dismiss layer sits above this and takes the click — and both are mounted only while the sheet is open, so
-    /// a closed sheet costs the page nothing.</summary>
+    /// <summary>The sheet's left-edge cast (the board's shadow; there is no dimming scrim). PAINT only — the control's own light-dismiss layer
+    /// sits above it and takes the click — and mounted only while the sheet is open, so a closed sheet costs the page nothing.</summary>
     // NOTE: no Key on the Show's content root — that root is a single-child slot whose Key is inert (and reported by
-    // ReuseGuard.KeyIgnoredInSingleChildSlot); the two layers inside it carry the keys instead.
-    static Element SheetScrim(IReadSignal<bool> open, float paneW) => Flow.Show(() => open.Value, new BoxEl
+    // ReuseGuard.KeyIgnoredInSingleChildSlot); the layer inside it carries the key instead.
+    static Element SheetCast(IReadSignal<bool> open, float paneW) => Flow.Show(() => open.Value, new BoxEl
     {
         ZStack = true, Grow = 1f, HitTestVisible = false,
         Children =
         [
-            new BoxEl
-            {
-                Key = "insights:scrim", Grow = 1f, HitTestVisible = false,
-                Fill = Prop.Of(static () => Tok.FillSmoke),
-                Animate = new LayoutTransition(TransitionChannels.Opacity,
-                    TransitionDynamics.Tween(160f, SheetSpline),
-                    Enter: new EnterExit(Opacity: 0f, Active: true),
-                    Exit: new EnterExit(Opacity: 0f, Active: true)),
-            },
-            // The cast: a band immediately left of the sheet, sliding in WITH it so the shadow never arrives early.
+            // A band immediately left of the sheet, sliding in WITH it so the shadow never arrives early.
             new BoxEl
             {
                 Key = "insights:cast", Direction = 0, Grow = 1f, Justify = FlexJustify.End, HitTestVisible = false,
@@ -178,65 +157,32 @@ internal static class ClassicInsights
 
     // ══ 5. THE PANE ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The sheet: a left rule, the inert grip, the header row (title + ×) and the scrolling body that hosts the
-    /// SHARED bento at the sheet's own content width. The bento is not redesigned here — it is the same
-    /// <c>User.FactsPanel</c> the rail composes, at a different measure.</summary>
+    /// <summary>The sheet (board C-Liked): 16 in on every side, the header row (title + ×) and, 12 below it, the scrolling body that hosts the
+    /// SHARED bento at the sheet's content width. The bento is not redesigned here — it is the same <c>User.FactsPanel</c> the rail used to
+    /// compose.</summary>
     static Element SheetPane(InsightsToggle toggle, Func<float, Element>? facts, float paneW, string routeKey)
     {
-        float contentW = MathF.Max(0f, paneW - SheetPadX * 2f);
+        float contentW = MathF.Max(0f, paneW - SheetPad * 2f);
         Element body = facts is null ? new BoxEl() : facts(contentW);
-
-        var column = new BoxEl
+        return new BoxEl
         {
-            Key = "insights:column", Direction = 1, Grow = 1f, MinHeight = 0f,
+            Key = "insights:column", Direction = 1, Grow = 1f, MinHeight = 0f, Gap = SheetGap,
+            Padding = new Edges4(SheetPad, SheetPad, SheetPad, 0f),
             Children =
             [
                 SheetHeader(toggle),
                 ScrollView(new BoxEl
                 {
-                    Direction = 1, MinWidth = 0f,
-                    Padding = new Edges4(SheetPadX, SheetBodyPadTop, SheetPadX, SheetBodyPadBottom),
+                    Direction = 1, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, SheetPad),
                     Children = [body],
                 }) with { Key = "insights:body:" + routeKey, Grow = 1f, Shrink = 1f, MinHeight = 0f },
             ],
         };
-
-        return new BoxEl
-        {
-            Key = "insights:pane", ZStack = true, Grow = 1f,
-            Children = [column, SheetLeftEdge()],
-        };
     }
-
-    /// <summary>The 1-DIP left rule and the grip that rides it. The grip is DRAWN, never wired: an edge gesture is
-    /// undecided and the right edge is contested by the transcript rail.</summary>
-    static Element SheetLeftEdge() => new BoxEl
-    {
-        Key = "insights:edge", Direction = 0, Grow = 1f, AlignItems = FlexAlign.Stretch, HitTestVisible = false,
-        Children =
-        [
-            new BoxEl { Width = 1f, Shrink = 0f, Fill = Prop.Of(static () => Tok.StrokeCardDefault) },
-            new BoxEl
-            {
-                Width = SheetGripW + Spacing.XS, Shrink = 0f, Direction = 1, Justify = FlexJustify.Center,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Width = SheetGripW, Height = SheetGripH, Corners = CornerRadius4.All(SheetGripW / 2f),
-                        Margin = new Edges4(Spacing.XXS, 0f, 0f, 0f), Opacity = ClassicDetailLayout.SheetGripOpacity,
-                        Fill = Prop.Of(static () => Tok.TextTertiary),
-                    },
-                ],
-            },
-        ],
-    };
 
     static Element SheetHeader(InsightsToggle toggle) => new BoxEl
     {
-        Key = "insights:header", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Shrink = 0f,
-        Padding = new Edges4(SheetPadX, SheetHeaderPadY, Spacing.S, SheetHeaderPadY),
-        BorderWidth = 0f,
+        Key = "insights:header", Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
         Children =
         [
             Ui.BodyStrong(Loc.Get(Strings.Detail.LikedFacts.SheetTitle)) with
@@ -261,36 +207,42 @@ internal static class ClassicInsights
         Children = [Icon(Icons.ChromeClose, SheetCloseGlyph, Tok.TextSecondary)],
     };
 
-    /// <summary>The vertical arm's toolbar button — reachable while the hero is expanded, which is precisely the range
-    /// the pinned band cannot serve (there it is transparent and owns no input). Its tint is BOUND to the open signal
-    /// (a compositor-only repaint), so opening and closing the sheet never re-renders the hero that hosts it.</summary>
-    static Element ToggleButton(InsightsToggle toggle)
+    // ══ 6. THE LIST BAR'S TOGGLE ═════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The list bar's 32-DIP glyph button (the two-column arm's bar, and the vertical arm's hero bar while the hero is expanded — the
+    /// range the pinned band cannot serve). Pressed, it takes the accent plate and accent ink (board C-Liked: <c>aria-pressed</c>). Its own
+    /// component: the open signal is the only thing it reads, so a toggle never re-renders the bar that hosts it.</summary>
+    sealed class InsightsBarButton(InsightsToggle toggle) : Component
     {
-        var open = toggle.Open;
-        var button = new BoxEl
+        public override Element Render()
         {
-            Key = "insights:toggle",
-            Width = SheetToggleEdge, Height = SheetToggleEdge, Shrink = 0f,
-            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
-            Fill = Prop.Of(() => open.Value ? Tok.AccentTextPrimary with { A = 0.11f } : ColorF.Transparent),
-            HoverFill = Prop.Of(() => open.Value ? Tok.AccentTextPrimary with { A = 0.17f } : Tok.FillSubtleSecondary),
-            PressedFill = Prop.Of(() => open.Value ? Tok.AccentTextPrimary with { A = 0.08f } : Tok.FillSubtleTertiary),
-            HoverDurationMs = MotionTok.ControlFaster.DurationMs, PressDurationMs = MotionTok.ControlFaster.DurationMs,
-            // ToggleButton, not Button: the pressed/unpressed state IS the control's meaning (the prototype's
-            // aria-pressed), and the accent plate is the same state in paint.
-            Role = AutomationRole.ToggleButton, Focusable = true, Cursor = CursorId.Hand,
-            OnClick = toggle.Toggle, OnRealized = toggle.CaptureButton,
-            Children =
-            [
-                new PathEl
-                {
-                    Geometry = s_insightsGlyph, Width = SheetToggleGlyph, Height = SheetToggleGlyph,
-                    ViewBoxW = 24f, ViewBoxH = 24f, Shrink = 0f,
-                    StrokeColor = Tok.TextSecondary, Stroke = new StrokeStyle(2.2f, LineCap.Round, LineJoin.Round),
-                },
-            ],
-        };
-        return ToolTip.Wrap(button, Loc.Get(Strings.Detail.LikedFacts.SheetOpen)) with { Key = "insights:toggle-tip" };
+            var t = toggle;
+            bool open = t.Open.Value;
+            return new BoxEl
+            {
+                Key = "insights:toggle",
+                Width = SheetToggleEdge, Height = SheetToggleEdge, Shrink = 0f,
+                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
+                Fill = open ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.11f }) : (Prop<ColorF>)ColorF.Transparent,
+                HoverFill = open ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.17f }) : Prop.Of(static () => Tok.FillSubtleSecondary),
+                PressedFill = open ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.08f }) : Prop.Of(static () => Tok.FillSubtleTertiary),
+                HoverDurationMs = MotionTok.ControlFaster.DurationMs, PressDurationMs = MotionTok.ControlFaster.DurationMs,
+                // ToggleButton, not Button: the pressed/unpressed state IS the control's meaning (the board's aria-pressed), and the accent
+                // plate is the same state in paint.
+                Role = AutomationRole.ToggleButton, Focusable = true, Cursor = CursorId.Hand,
+                OnClick = t.Toggle, OnRealized = t.CaptureButton,
+                Children =
+                [
+                    new PathEl
+                    {
+                        Geometry = s_insightsGlyph, Width = SheetToggleGlyph, Height = SheetToggleGlyph,
+                        ViewBoxW = 24f, ViewBoxH = 24f, Shrink = 0f,
+                        StrokeColor = open ? Tok.AccentTextPrimary : Tok.TextSecondary,
+                        Stroke = new StrokeStyle(2.2f, LineCap.Round, LineJoin.Round),
+                    },
+                ],
+            };
+        }
     }
 
     // ══ 7. THE PINNED BAND'S TOGGLE ════════════════════════════════════════════════════════════════════════════════
@@ -308,7 +260,7 @@ internal static class ClassicInsights
             return Controls.TextAction(Loc.Get(Strings.Detail.LikedFacts.SheetOpen), t.ToggleFromBand, toggledOn: open,
                                        padX: BandLayout.ActionPadX) with
             {
-                // ToggleButton, not Button: pressed/unpressed IS the control's meaning, exactly as in the hero (§6).
+                // ToggleButton, not Button: pressed/unpressed IS the control's meaning, exactly as on the bar.
                 Role = AutomationRole.ToggleButton,
                 OnRealized = t.CaptureBandButton,
             };

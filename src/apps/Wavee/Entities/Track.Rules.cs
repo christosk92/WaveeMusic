@@ -234,6 +234,10 @@ public readonly partial struct Track
         public static bool ShowVersionsMenuItem(bool showVersions, bool expandLane, bool singleTrack) =>
             showVersions && singleTrack && !expandLane;
 
+        /// <summary>Does the list bar's Sort button wear the accent (tuned Classic D6)? Only while the sort differs from the PAGE'S
+        /// default (an album's or playlist's own order, Liked's Date added newest first), the direction included.</summary>
+        public static bool SortDiffersFromDefault(SortSpec current, SortSpec pageDefault) => !current.Equals(pageDefault);
+
         /// <summary>A Title header owns Artist only while Artist is folded into its subline.</summary>
         public static bool HeaderActive(SortColumn header, SortColumn active, bool artistColumn) =>
             header == active || (!artistColumn && header == SortColumn.Title && active == SortColumn.Artist);
@@ -653,14 +657,15 @@ public readonly partial struct Track
     // ══ 6. THE COMMAND BAR FIT ═══════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary><see cref="Filter"/> is the Filter button being inline at all (a 32-DIP funnel), <see cref="FilterLabel"/>
-    /// additionally its word (it always comes with <see cref="Filter"/>).</summary>
+    /// additionally its word (it always comes with <see cref="Filter"/>). Row size, Select and the column opt-ins are never on
+    /// the bar: they live in "…" (tuned Classic D3, decisions D-6 / D-10).</summary>
     [Flags]
-    public enum InlineCommand : byte { None = 0, Shuffle = 1, Sort = 2, Density = 4, Select = 8, Filter = 16, FilterLabel = 32 }
+    public enum InlineCommand : byte { None = 0, Shuffle = 1, Sort = 2, Filter = 16, FilterLabel = 32 }
 
     /// <summary>Measured LABELED widths of the commands whose presence the resolver controls. <paramref name="Filter"/> is the
     /// LABELLED Filter button (its badge slot included); its icon-only form is the fixed
     /// <see cref="CommandBarLayout.FilterIconWidth"/>.</summary>
-    public readonly record struct CommandWidths(float Play, float Tune, float Shuffle, float Sort, float Density, float Select,
+    public readonly record struct CommandWidths(float Play, float Tune, float Shuffle, float Sort,
                                                 float Filter = CommandBarLayout.FilterLabelledNominal);
 
     public readonly record struct CommandBarFit(InlineCommand Inline, bool SearchExpanded, float SearchWidth)
@@ -671,15 +676,15 @@ public readonly partial struct Track
             + (Has(InlineCommand.Shuffle) ? 32 : 0)
             + (Has(InlineCommand.Sort) ? 16 : 0)
             + (Has(InlineCommand.Filter) ? 8 : 0)
-            + (Has(InlineCommand.FilterLabel) ? 4 : 0)
-            + (Has(InlineCommand.Density) ? 2 : 0)
-            + (Has(InlineCommand.Select) ? 1 : 0);
+            + (Has(InlineCommand.FilterLabel) ? 4 : 0);
     }
 
-    /// <summary>The command bar PROMOTES, it does not shrink: every inline command is icon + label, and one that does not
-    /// fit is evicted into "…". Filter leads the view commands and is the one command with a middle rung: Filter + Sort
-    /// labelled, then Filter loses its word, then Sort moves into "…", then Filter moves into "…" ("Filter…", the badge
-    /// returning to "…"). Never returns a layout wider than its input.</summary>
+    /// <summary>The list bar (tuned Classic D3): a LEFT group [Play next │ ⌄] [Shuffle] [Tune] and a RIGHT group [Filter (n)]
+    /// [Sort ⌄] [Find] [Insights] [⋯] with a flexible gap between them. The bar PROMOTES, it does not shrink: every inline command
+    /// is icon + label, and one that does not fit is evicted into "…". Filter is the one command with a middle rung: Filter + Sort
+    /// labelled, then Filter loses its word, then Sort moves into "…", then Filter moves into "…" ("Filter…", the badge returning
+    /// to "…"); Shuffle is offered before the ladder, so it is the last to go. Play next, Tune, Find, Insights and "…" always
+    /// stay. Never returns a layout wider than its input.</summary>
     public static class CommandBarLayout
     {
         public const float MoreWidth = 32f;
@@ -690,6 +695,8 @@ public readonly partial struct Track
         public const float SearchWithFilterWidth = 66f;
         /// <summary>The Filter button without its word (the funnel; the count badge overlays its corner, so it never changes width).</summary>
         public const float FilterIconWidth = 32f;
+        /// <summary>The Insights toggle (the facts sheet's glyph button), on the bar of a facts page only.</summary>
+        public const float InsightsWidth = 32f;
         /// <summary>The labelled Filter button's reserved badge slot: the 18-DIP round badge sits at its left edge and a two-digit
         /// count ("12": 14 + 4 + 4 margin) grows rightward into the rest, so no count ever changes the button's width.</summary>
         public const float FilterBadgeSlot = 22f;
@@ -699,74 +706,63 @@ public readonly partial struct Track
         public const float SearchPreferred = 240f;
         public const float SearchMax = 280f;
         public const float Gap = 2f;
+        /// <summary>The air before Find: the bar's gap plus Find's own 6-DIP lead.</summary>
         public const float SearchGap = 8f;
-        public const float GroupSeparatorWidth = 17f;
+        /// <summary>The least the flexible gap between the left and the right group may shrink to.</summary>
+        public const float GroupGap = 8f;
         public const float PromotionHysteresis = 16f;
 
         /// <summary>Hysteresis applies in EVERY mode — it used to be skipped while search was open, exactly when evicted
         /// commands re-measure mid-animation and the promoted set oscillated. Narrowing stays immediate.</summary>
         public static CommandBarFit Resolve(float available, in CommandWidths widths, bool vertical, bool hasTune,
-                                            bool hasSelect, bool explicitSearch, CommandBarFit? previous = null)
+                                            bool hasInsights, bool explicitSearch, CommandBarFit? previous = null)
         {
             available = MathF.Max(0f, available);
-            var candidate = ResolveCore(available, widths, vertical, hasTune, hasSelect, explicitSearch);
+            var candidate = ResolveCore(available, widths, vertical, hasTune, hasInsights, explicitSearch);
             if (previous is not { } old || candidate.Richness <= old.Richness)
                 return candidate;
-            return ResolveCore(MathF.Max(0f, available - PromotionHysteresis), widths, vertical, hasTune, hasSelect,
+            return ResolveCore(MathF.Max(0f, available - PromotionHysteresis), widths, vertical, hasTune, hasInsights,
                                explicitSearch);
         }
 
         static CommandBarFit ResolveCore(float available, in CommandWidths widths, bool vertical, bool hasTune,
-                                         bool hasSelect, bool explicitSearch)
+                                         bool hasInsights, bool explicitSearch)
         {
-            float mandatory = MoreWidth;
-            int mandatoryCount = 1; // More
-            if (!vertical) { mandatory += widths.Play; mandatoryCount++; }
-            if (hasTune) { mandatory += widths.Tune; mandatoryCount++; }
-            mandatory += MathF.Max(0, mandatoryCount - 1) * Gap;
-
             bool expanded = explicitSearch;
             float reservedSearch = expanded ? SearchMinExplicit : SearchIconWidth;
 
+            // The right group's fixed tail: Find, [Insights,] "…".
+            float used = SearchGap + reservedSearch + (hasInsights ? Gap + InsightsWidth : 0f) + Gap + MoreWidth;
+            // The left group's fixed head: Play next (the two-column arm), Tune; then the least gap between the groups.
+            int left = 0;
+            if (!vertical) { used += widths.Play; left++; }
+            if (hasTune) { used += (left > 0 ? Gap : 0f) + widths.Tune; left++; }
+            if (left > 0) used += GroupGap;
+
             InlineCommand inline = InlineCommand.None;
-            float used = mandatory + SearchGap + reservedSearch;
-
-            void Add(InlineCommand command, float width, bool viewCommand)
+            if (!vertical && used + Gap + widths.Shuffle <= available)
             {
-                float extra = Gap + width;
-                bool firstView = viewCommand
-                    && (inline & (InlineCommand.Filter | InlineCommand.Sort | InlineCommand.Density | InlineCommand.Select)) == 0;
-                if (firstView && (!vertical || hasTune || mandatoryCount > 1)) extra += GroupSeparatorWidth;
-                if (used + extra > available) return;
-                used += extra;
-                inline |= command;
+                used += Gap + widths.Shuffle;
+                inline |= InlineCommand.Shuffle;
             }
-
-            if (!vertical) Add(InlineCommand.Shuffle, widths.Shuffle, viewCommand: false);
 
             // Filter and Sort share one ladder, richest first: the first rung whose extra width fits wins.
+            float labelled = Gap + widths.Filter, icon = Gap + FilterIconWidth, sortExtra = Gap + widths.Sort;
+            if (used + labelled + sortExtra <= available)
             {
-                float sep = (!vertical || hasTune || mandatoryCount > 1) ? GroupSeparatorWidth : 0f;
-                float labelled = Gap + widths.Filter, icon = Gap + FilterIconWidth, sortExtra = Gap + widths.Sort;
-                if (used + sep + labelled + sortExtra <= available)
-                {
-                    used += sep + labelled + sortExtra;
-                    inline |= InlineCommand.Filter | InlineCommand.FilterLabel | InlineCommand.Sort;
-                }
-                else if (used + sep + icon + sortExtra <= available)
-                {
-                    used += sep + icon + sortExtra;
-                    inline |= InlineCommand.Filter | InlineCommand.Sort;
-                }
-                else if (used + sep + icon <= available)
-                {
-                    used += sep + icon;
-                    inline |= InlineCommand.Filter;
-                }
-                else Add(InlineCommand.Sort, widths.Sort, viewCommand: true);   // (Sort never fits where the icon did not, but stay greedy-safe)
+                used += labelled + sortExtra;
+                inline |= InlineCommand.Filter | InlineCommand.FilterLabel | InlineCommand.Sort;
             }
-            Add(InlineCommand.Density, widths.Density, viewCommand: true);
-            if (hasSelect) Add(InlineCommand.Select, widths.Select, viewCommand: true);
+            else if (used + icon + sortExtra <= available)
+            {
+                used += icon + sortExtra;
+                inline |= InlineCommand.Filter | InlineCommand.Sort;
+            }
+            else if (used + icon <= available)
+            {
+                used += icon;
+                inline |= InlineCommand.Filter;
+            }
 
             float searchWidth = reservedSearch;
             if (expanded)

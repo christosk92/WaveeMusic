@@ -194,4 +194,87 @@ public sealed class DetailFrameMountedTests(ShellHost host)
                 Assert.Equal(ClassicDetailLayout.SheetToggleEdge, button.H, 0.5f);
             }, UnderClassic());
     }
+
+    // ── the list bar and the insights sheet (tuned Classic D3, I1) ───────────────────────────────────────────────────────────
+
+    /// <summary>D3 / I1 on the real Liked page at a wide window: the list bar carries [Filter] [Sort] [Find] [Insights] [⋯] on its right and
+    /// never Row size or Select (they live in "…"); the facts are the sheet's, laid over the list column, never a rail row.</summary>
+    [Fact]
+    public void The_two_column_list_bar_carries_insights_and_the_facts_live_in_the_sheet_over_the_list()
+        => host.Mounted(shell =>
+        {
+            Shell.GoTo(new Shell.Route(Shell.RouteKind.Liked));
+            Until(shell, () => !shell.Find("detail:two-column").IsNull, "the two-column arm");
+            Until(shell, () => shell.FindPrefix("list:").Count == 1, "the liked list mounted");
+            Until(shell, () => !shell.Find("cmd:insights").IsNull, "the facts settled and the bar grew its Insights button");
+            shell.RunFrames(30);
+
+            Assert.NotEmpty(shell.FindPrefix("cmd:sort"));
+            Assert.NotEmpty(shell.FindPrefix("cmd:more:"));
+            Assert.False(shell.Find("search-host").IsNull, "Find");
+            Assert.Empty(shell.FindPrefix("cmd:density"));
+            Assert.Empty(shell.FindPrefix("cmd:select"));
+            Assert.Empty(shell.FindPrefix("cmd:separator"));
+
+            // the right group's order: Sort, Find, Insights, "…"
+            float sortX = shell.Host.Scene.PresentedAbsoluteRect(shell.FindPrefix("cmd:sort")[0].Node).X;
+            float findX = shell.Host.Scene.PresentedAbsoluteRect(Node(shell, "search-host")).X;
+            float insightsX = shell.Host.Scene.PresentedAbsoluteRect(Node(shell, "insights:toggle")).X;
+            float moreX = shell.Host.Scene.PresentedAbsoluteRect(shell.FindPrefix("cmd:more:")[0].Node).X;
+            Assert.True(sortX < findX && findX < insightsX && insightsX < moreX, $"sort {sortX} < find {findX} < insights {insightsX} < more {moreX}");
+
+            // the sheet is composed over the list (closed), and the rail no longer hosts the facts
+            Assert.False(shell.Find("insights:layer").IsNull, "the sheet's layer over the list column");
+            Assert.False(shell.Find("insights:content").IsNull, "the overlay's content slot");
+            Assert.True(shell.Find("rail:likedfacts").IsNull, "the rail never carries the facts (I1)");
+            Assert.True(shell.Find("insights:column").IsNull, "closed by default, never opening by itself");
+        }, widthDip: 1600f, heightDip: 900f);
+
+    /// <summary>I1 / board C-Liked: the open sheet is 320 wide, 16 in on every side (the bento gets 288), with a 32-DIP close button.</summary>
+    [Fact]
+    public void The_open_sheet_is_320_wide_and_hands_the_bento_288()
+    {
+        var toggle = new Detail.InsightsToggle();
+        toggle.Open.Value = true;
+        ViewHarness.With(host, ViewKeys.DetailInsights, new DetailInsightsProps
+        {
+            Toggle = toggle, PageWidth = 1200f, RouteKey = "probe",
+            Facts = w => new FluentGpu.Dsl.BoxEl { Key = "facts:probe", Width = w, Height = 40f },
+            Page = new FluentGpu.Dsl.BoxEl { Grow = 1f },
+        }, harness =>
+        {
+            harness.RunFrames(60);
+            var column = harness.AbsoluteBounds(harness.Node("insights:column"));
+            var facts = harness.AbsoluteBounds(harness.Node("facts:probe"));
+            var close = harness.AbsoluteBounds(harness.Node("insights:close"));
+            Assert.Equal(320f, column.W, 0.5f);
+            Assert.Equal(288f, facts.W, 0.5f);
+            Assert.Equal(column.X + 16f, facts.X, 0.5f);
+            Assert.Equal(32f, close.W, 0.5f);
+            Assert.Equal(column.Y + 16f, close.Y, 0.5f);
+        }, UnderClassic());
+    }
+
+    /// <summary>D4 (D-10): while the list is narrowed the rail's count line reads "3 of 48 songs · 11 min (filtered)" in the meta slot — one
+    /// line at the rail's measure, so the call to action under it does not move.</summary>
+    [Fact]
+    public void The_rail_count_line_states_the_filtered_count_on_one_line()
+    {
+        var shown = new FluentGpu.Signals.Signal<Detail.ListCount>(new Detail.ListCount(3, 48, 11L * 60_000L, true, true));
+        ViewHarness.With(host, ViewKeys.DetailRail, new DetailRailProps
+        {
+            Spec = Fixture(meta: "48 songs · 2 hr 36 min"), Actions = new Detail.FrameActions(), RailWidth = 240f,
+            TitleSize = 28f, DescriptionLines = 3, Accent = static () => default, Play = static () => { }, Pending = static () => false,
+            Shown = shown,
+        }, harness =>
+        {
+            harness.RunFrames(60);
+            var filtered = harness.AbsoluteBounds(harness.Node("rail:meta"));
+            Assert.True(filtered.H <= 20f, $"one line, got {filtered.H}");
+            shown.Value = default;
+            harness.RunFrames(30);
+            var plain = harness.AbsoluteBounds(harness.Node("rail:meta"));
+            Assert.Equal(plain.H, filtered.H, 0.5f);
+        }, UnderClassic());
+    }
 }

@@ -20,6 +20,14 @@ versions separately under `v*` and is not tracked in this file.)
   colour taken from the artwork always keeps 4.5:1 contrast for the Play label, the hearts and accent text: a colour
   that is too light or too dark steps to a darker or lighter shade, and falls back to your system accent when none fits.
   The "Add to playlist" item in a playlist's list menu reads "Copy to playlist" for every playlist.
+- **The song list's bar is simpler, and Insights opens over the list on every page that has it.** Above an album's, a playlist's
+  or Liked Songs' songs the bar now holds Play next and Shuffle on the left and Filter, the sort, Find, Insights and ⋯ on the
+  right; Row size, Select and the column switches moved into ⋯. The sort shows one name and one chevron ("Album order" on an
+  album) and is highlighted only when you changed it from the page's own order. While a find or a filter narrows the list,
+  the count under the title reads "3 of 48 songs · 11 min (filtered)". Insights (the "This week", tempo and rediscover
+  cards) is now a 320-point sheet over the list on every playlist, followed ones included, and on Liked Songs, at every
+  window size: it stays closed until you press Insights and no longer sits in the left column. The column header's line
+  now starts exactly where the song rows' highlight starts.
 - **The title bar search widens while you use it, and its suggestions line up with it.** Clicking into the search box
   widens it by up to 80 points, box and text together, without ever covering a tab or your profile picture; it eases back
   when you leave it. The suggestions list is now exactly as wide as the search box and starts at its left edge, instead of

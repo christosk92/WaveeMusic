@@ -60,7 +60,8 @@ public sealed record DetailFrameProps
     /// <summary>The vertical arm of a show / episode page: the fixed header above the episodes (null on a track page).</summary>
     public DetailShowHeaderProps? ShowHeader { get; init; }
 
-    /// <summary>The vertical arm of a TRACK page: the insights sheet laid over the page (its <c>Page</c> is set by the view).</summary>
+    /// <summary>A TRACK page's insights sheet (null for a show / episode page): laid over the vertical arm's page, or over the two-column
+    /// arm's list column (tuned Classic I1, contract 1.6). Its <c>Page</c> is set by the view.</summary>
     public DetailInsightsProps? Sheet { get; init; }
 
     /// <summary>The two-column arm: the rail, its grip and the collapsed strip.</summary>
@@ -131,6 +132,10 @@ public sealed record DetailRailProps
 
     /// <summary>The header has not answered yet: the whole rail shimmers and cross-dissolves once when this drops.</summary>
     public required Func<bool> Pending { get; init; }
+
+    /// <summary>What the list shows against what it has (the table publishes it): while a find or a filter narrows the list the count line
+    /// reads "3 of 48 songs · 11 min (filtered)" (<c>Detail.Text.FilteredMeta</c>; tuned Classic D4). Null: the page's meta only. Appended (contract 1.6).</summary>
+    public IReadSignal<Detail.ListCount>? Shown { get; init; }
 
     /// <inheritdoc />
     public bool Equals(DetailRailProps? other) => ReferenceEquals(this, other);
@@ -220,10 +225,11 @@ public sealed class DetailHeroStyle
     public required Func<Detail.VerticalSpec, float, float, Element> Skeleton { get; init; }
 }
 
-/// <summary>The props of <see cref="ViewKeys.DetailInsights"/>: the insights sheet over the vertical arm's page.</summary>
+/// <summary>The props of <see cref="ViewKeys.DetailInsights"/>: the insights sheet over a track page's list (either arm).</summary>
 public sealed record DetailInsightsProps
 {
-    /// <summary>The page the sheet is laid over (the view sets it; the host leaves it null).</summary>
+    /// <summary>What the sheet is laid over (the view sets it; the host leaves it null): the vertical arm's page, or an empty pass-through
+    /// layer over the two-column arm's list.</summary>
     public Element? Page { get; init; }
 
     /// <summary>The frame's one toggle for this mounted page (the open state and the verbs that move it).</summary>
@@ -251,7 +257,8 @@ public sealed record DetailInsightsProps
 /// <summary>Which entry point of the insights sheet a <see cref="DetailInsightsToggleProps"/> draws.</summary>
 public enum DetailInsightsToggleForm : byte
 {
-    /// <summary>The hero toolbar's glyph button: reachable while the hero is expanded (the band is transparent then).</summary>
+    /// <summary>The list bar's glyph button (tuned Classic I1): the two-column arm's bar, and the vertical arm's hero bar, reachable while the
+    /// hero is expanded (the band is transparent then).</summary>
     HeroButton,
 
     /// <summary>The pinned band's plateless word in the Find · Filter · Play cluster: reachable once the band is stuck.</summary>

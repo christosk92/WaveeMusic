@@ -99,9 +99,6 @@ internal sealed class TrackRowSkin
     /// <summary>The row's height (density already applied).</summary>
     public required float RowHeight { get; init; }
 
-    /// <summary>The table's horizontal padding at the current tier (<c>RowMetrics.PadXFor</c>).</summary>
-    public required float PadX { get; init; }
-
     /// <summary>The hero system's STACKED flow: plain full-bleed rows (Modern only; never true for Classic).</summary>
     public required bool Plain { get; init; }
 

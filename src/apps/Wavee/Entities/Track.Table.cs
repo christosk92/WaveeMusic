@@ -365,6 +365,11 @@ public readonly partial struct Track
         public Action?[]? PlayAllCell { get; init; }
         /// <summary>Vertical arm: the table publishes the measured hero band height (from an effect).</summary>
         public Signal<float>? HeroHeight { get; init; }
+        /// <summary>The two-column arm's facts-sheet toggle (tuned Classic I1): non-null ⇒ the list bar carries the Insights button. The
+        /// vertical arm's rides its <see cref="Vertical"/> spec.</summary>
+        public Detail.InsightsToggle? Insights { get; init; }
+        /// <summary>The table publishes what it shows against what it has (from an effect), for the rail's count line (tuned Classic D4).</summary>
+        public Signal<Detail.ListCount>? ListCount { get; init; }
         /// <summary>Pre-measure column width estimate (Detail.Breakpoints.EstimatePageWidthFromViewport).</summary>
         public float WidthSeed { get; init; }
         /// <summary>Route identity for ScrollMemory / list keys.</summary>
@@ -376,6 +381,7 @@ public readonly partial struct Track
                    && (Accent is null) == (other.Accent is null) && ShowToolbar == other.ShowToolbar
                    && Embedded == other.Embedded && (Trailing is null) == (other.Trailing is null)
                    && ReferenceEquals(PlayAllCell, other.PlayAllCell) && ReferenceEquals(HeroHeight, other.HeroHeight)
+                   && ReferenceEquals(Insights, other.Insights) && ReferenceEquals(ListCount, other.ListCount)
                    && WidthSeed == other.WidthSeed && string.Equals(ScrollKey, other.ScrollKey, StringComparison.Ordinal)));
 
         public override int GetHashCode()
@@ -1024,6 +1030,10 @@ public readonly partial struct Track
                 _verticalItemCount.Value = Detail.VerticalLayout.ItemCount(visible, hasFacts);
             }, DepKey.From(visible, listTotal, hasFacts ? 1 : 0, 0));
             UseEffect(PublishHeroHeight);
+            var listCount = CountNow(in snap, visible);
+            UseEffect(() => { if (_latest.ListCount is { } target) target.Value = listCount; },
+                      DepKey.From(listCount.Shown, listCount.Total, (int)(listCount.ShownMs / 1000L),
+                                  (listCount.Filtered ? 1 : 0) | (listCount.DurationsKnown ? 2 : 0)));
             UseEffect(InstallBenchHook, DepKey.Empty);
 
             float rowH = shape.RowH;
@@ -1137,6 +1147,33 @@ public readonly partial struct Track
             if (_rampPending) reveal = Design.RevealRamp.Chunk;
             return Design.RevealRamp.Revealed(displayIndex, reveal);
         }
+
+        /// <summary>What the list shows against what it has (tuned Classic D4): the shown rows' length is summed only while a find or a
+        /// filter narrows the list (the page's own meta speaks otherwise), once per snapshot.</summary>
+        Detail.ListCount CountNow(in Snapshot snap, int shown)
+        {
+            var src = _latest.Source;
+            int total = Math.Max(src.Total, src.Count);
+            bool filtered = snap.Query.Length > 0 || snap.Filters.ActiveCountFor(snap.Query.Length > 0) > 0;
+            if (!filtered || Cfg.Content == DetailContent.Episodes) return new Detail.ListCount(shown, total, 0L, false, false);
+            if (!_countValid || !_countKey.Equals(snap))
+            {
+                long ms = 0L;
+                bool known = true;
+                foreach (int i in ViewOf(in snap))
+                {
+                    var t = src.At(i);
+                    if (t.DurationMs <= 0) known = false;
+                    ms += t.DurationMs;
+                }
+                _countMs = ms; _countKnown = known; _countKey = snap; _countValid = true;
+            }
+            return new Detail.ListCount(shown, total, _countMs, _countKnown, true);
+        }
+
+        Snapshot _countKey;
+        bool _countValid, _countKnown;
+        long _countMs;
 
         void PublishHeroHeight()
         {
@@ -2073,7 +2110,6 @@ public readonly partial struct Track
                 Content = content,
                 CheckLane = SelectorVisualsBound.BoundCheckLane(_checksRead, isSel, interact, leftMargin: 4f),
                 RowHeight = shape.RowH,
-                PadX = RowMetrics.PadXFor(shape.Set.Tier),
                 Plain = plain,
                 Squared = squared,
                 Entrance = entrance,

@@ -65,8 +65,10 @@ internal interface ITrackCommandKit
     /// <summary>One measured command slot: the keyed box that enters and exits on the bar's motion and reports its width.</summary>
     Element Command(string key, Element command, Action<float> onWidth);
 
-    /// <summary>The bar's row of commands: <paramref name="commands"/> left, a flexible gap, then the search host.</summary>
-    Element Bar(Element[] commands, Element search);
+    /// <summary>The list bar (tuned Classic D3): the <paramref name="left"/> group (Play next, Shuffle, Tune), a flexible gap, then the
+    /// right group: the <paramref name="view"/> commands (Filter, Sort), the search host (Find, led by
+    /// <c>CommandBarLayout.SearchGap</c>) and the <paramref name="tail"/> (Insights, "…").</summary>
+    Element Bar(Element[] left, Element[] view, Element search, Element[] tail);
 
     /// <summary>The split "Play next" command (primary action + flyout of <paramref name="items"/>) wearing CommandBar visuals.</summary>
     Element PlayNext(string label, Action onPlay, IReadOnlyList<MenuFlyoutItem> items);
@@ -77,17 +79,8 @@ internal interface ITrackCommandKit
     /// <summary>The 32 x 32 glyph button: active takes the accent plate, idle is ghost.</summary>
     Element IconButton(string glyph, bool active, Action onClick, Action<NodeHandle>? onRealized);
 
-    /// <summary>The hairline between the bar's clusters.</summary>
-    Element Separator();
-
-    /// <summary>The disclosure chevron after a command that opens a flyout.</summary>
+    /// <summary>The disclosure chevron after a command that opens a flyout (the Sort button's one chevron, tuned Classic D6).</summary>
     Element Chevron();
-
-    /// <summary>A command's trailing cluster (the Sort button's caret and chevron): <paramref name="parts"/> in a tight row.</summary>
-    Element Trail(Element[] parts);
-
-    /// <summary>The sort direction caret (pops in, springs its rotation on every flip) on the core's live sort.</summary>
-    Element SortCaret(IReadSignal<Track.SortSpec> sort);
 
     /// <summary>The Filter command: the funnel + <paramref name="label"/> or the funnel alone, with the count badge while filters are on.
     /// The button's slot never changes size with the count, so a filter turning on moves nothing.</summary>
@@ -99,14 +92,8 @@ internal interface ITrackCommandKit
     /// <summary>The "…" button's fixed 32-DIP slot: <paramref name="more"/> with the filter count as a corner badge when one rides here.</summary>
     Element MoreSlot(Element more, int filterCount);
 
-    // The row-size control (M3): the structure owns the density option (the style's), so the word the button wears, the panel it opens and the
-    // submenu's rows come from here; the core owns the button's overlay (open, close, the label held while it is open) and where the command sits.
-
-    /// <summary>The current density's name, the word the "Row size" button wears. A tracked read: the button re-renders when the density changes.</summary>
-    string DensityLabel();
-
-    /// <summary>The panel the "Row size" button opens: the current density's name over a stepped slider across the rungs, live on every step.</summary>
-    Element DensityPanel();
+    // The row-size control (M3): the structure owns the density option (the style's), so the "…" menu's "Row size" rows come from here (tuned
+    // Classic D3 keeps Row size in "…" only); the core owns where the submenu sits.
 
     /// <summary>The "Row size" submenu's radio rows (the overflow menu): one per rung, the current one checked. Read when the menu opens.</summary>
     IReadOnlyList<MenuFlyoutItem> DensityItems();

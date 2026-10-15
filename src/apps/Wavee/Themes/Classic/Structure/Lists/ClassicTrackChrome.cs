@@ -65,7 +65,8 @@ internal static class ClassicTrackChrome
 
     /// <summary>The header grid over the SAME TrackSize[] the rows use, keyed exactly like the row cells so a lane that
     /// leaves at a breakpoint is removed rather than reconciled against its neighbour. Shifts +28 while the check lane
-    /// is in (333 ms), with a 1-DIP divider as the band's single hairline.</summary>
+    /// is in (333 ms), with a 1-DIP divider as the band's single hairline. It pays its own horizontal padding (the core's
+    /// chrome adds none), so the rule can share the row plates' left edge.</summary>
     static Element Header(TrackHeaderArgs a)
     {
         var set = a.Set;
@@ -110,19 +111,31 @@ internal static class ClassicTrackChrome
         if (set.Actions) Add(CellKey.More, new BoxEl());
         if (set.Expand) Add(CellKey.Expand, new BoxEl());
 
+        // ONE left edge (tuned Classic D9 / V10): the rule starts where the row plates start (a Modern row's RowInset margin, a Classic
+        // row's 0), and the cells sit at the rows' own gutter inside it, so "#" stays over the numbers.
+        float padX = RowMetrics.PadXFor(set.Tier);
+        float edge = ClassicTrackChromeLayout.HeaderRuleInset(classic, vertical, padX);
         return new BoxEl
         {
-            Direction = 1, ClipToBounds = true,
-            Padding = new Edges4(checks ? ClassicTrackChromeLayout.CheckLaneShift : 0f, 0f, 0f, 0f),
-            Animate = ClassicTrackChromeLayout.HeaderShift,
+            Direction = 1, MinWidth = 0f, Padding = new Edges4(edge, 0f, edge, 0f),
             Children =
             [
-                new GridEl
+                new BoxEl
                 {
-                    Columns = a.Tracks, ColGap = RowMetrics.ColGapFor(set.Tier),
-                    RowHeight = TableRules.HeaderHeightFor(classic), Children = cells.ToArray(),
+                    Direction = 1, ClipToBounds = true,
+                    Padding = new Edges4(checks ? ClassicTrackChromeLayout.CheckLaneShift : 0f, 0f, 0f, 0f),
+                    Animate = ClassicTrackChromeLayout.HeaderShift,
+                    Children =
+                    [
+                        new GridEl
+                        {
+                            Columns = a.Tracks, ColGap = RowMetrics.ColGapFor(set.Tier),
+                            Padding = new Edges4(padX - edge, 0f, padX - edge, 0f),
+                            RowHeight = TableRules.HeaderHeightFor(classic), Children = cells.ToArray(),
+                        },
+                        new BoxEl { Height = 1f, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) },
+                    ],
                 },
-                new BoxEl { Height = 1f, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) },
             ],
         };
     }
@@ -344,14 +357,29 @@ internal static class ClassicTrackChrome
             Children = [command],
         };
 
-        public Element Bar(Element[] commands, Element search) => new BoxEl
+        /// <summary>The 44 list bar (tuned Classic D3, board <c>C-Album</c> / <c>C-Playlist</c>): [Play next │ ⌄] [Shuffle] [Tune], the flexible
+        /// gap, then [Filter (n)] [Sort ⌄], Find led by its own 6 DIP, [Insights] [⋯] — every command 2 DIP from the next.</summary>
+        public Element Bar(Element[] left, Element[] view, Element search, Element[] tail) => new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Grow = 1f, MinWidth = 0f,
             Children =
             [
-                new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f, Children = commands },
-                new BoxEl { Grow = 1f, MinWidth = 0f },
-                search,
+                new BoxEl { Key = "bar:left", Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f, Children = left },
+                new BoxEl { Key = "bar:gap", Grow = 1f, MinWidth = CommandBarLayout.GroupGap },
+                new BoxEl
+                {
+                    Key = "bar:right", Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f,
+                    Children =
+                    [
+                        .. view,
+                        new BoxEl
+                        {
+                            Key = "bar:find", Direction = 1, Shrink = 0f,
+                            Margin = new Edges4(CommandBarLayout.SearchGap - CommandBarLayout.Gap, 0f, 0f, 0f), Children = [search],
+                        },
+                        .. tail,
+                    ],
+                },
             ],
         };
 
@@ -412,28 +440,10 @@ internal static class ClassicTrackChrome
             Children = [Icon(glyph, ClassicTrackChromeLayout.CommandGlyph) with { Color = active ? Prop.Of(static () => Tok.AccentTextPrimary) : Prop.Of(static () => Tok.TextSecondary) }],
         };
 
-        public Element Separator() => new BoxEl
-        {
-            Width = 1f, Height = ClassicTrackChromeLayout.SeparatorHeight, AlignSelf = FlexAlign.Center,
-            Fill = Prop.Of(static () => Tok.StrokeDividerDefault),
-            Margin = new Edges4(Spacing.XS, 0f, Spacing.XS, 0f),
-        };
-
         public Element Chevron() => Icon(Icons.ChevronDown, ClassicTrackChromeLayout.ChevronGlyph, Tok.TextTertiary);
 
-        // The row-size control (M3): the style's density option.
-        public string DensityLabel() => ClassicTrackDensity.CurrentLabel();
-
-        public Element DensityPanel() => ClassicTrackDensity.Panel();
-
+        // The row-size control (M3): the style's density option, in "…" only (D3).
         public IReadOnlyList<MenuFlyoutItem> DensityItems() => ClassicTrackDensity.Items();
-
-        public Element Trail(Element[] parts) => new BoxEl
-        {
-            Direction = 0, Gap = ClassicTrackChromeLayout.TrailingGap, AlignItems = FlexAlign.Center, Children = parts,
-        };
-
-        public Element SortCaret(IReadSignal<SortSpec> sort) => Embed.Comp(() => new CaretComponent(sort));
 
         /// <summary>The command bar's Filter button: a subtle button, funnel + "Filter" (<paramref name="labelled"/>) or the funnel alone,
         /// 32 DIP tall. While <paramref name="count"/> filters are on it takes the accent tint (14% fill, accent border, accent ink) and

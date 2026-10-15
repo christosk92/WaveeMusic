@@ -751,46 +751,26 @@ public static partial class Detail
 
     // ══ 3b. THE INSIGHTS SHEET ═══════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>WHERE the facts bento lives, per arm, and how wide the vertical arm's sheet is.
-    /// <para>The two-column arms are unchanged: the bento is a rail row, on screen with the list beside it. The
-    /// VERTICAL arm has no rail, and the bento used to fall to the bottom of the page as a footer nobody scrolled to —
-    /// so there it becomes a dismissable sheet laid OVER the content, reached only through the toolbar toggle. The two
-    /// hosts are mutually exclusive by construction (<see cref="RailPolicy.ComposesRail"/> / <see cref="SheetHostsFacts"/>
-    /// read the same mode ladder from opposite ends), and there is no third, inline host any more.</para></summary>
+    /// <summary>WHERE the facts bento lives (tuned Classic I1): on EVERY facts page and in every arm it is a sheet laid over the list,
+    /// closed by default, never opening by itself, toggled from the list bar (the two-column arm's bar, the vertical arm's hero bar
+    /// and its pinned band). The rail no longer carries it, and there is no inline host. How wide the sheet is and where it sits are
+    /// the structure's.</summary>
     public static class InsightsSheet
     {
-        /// <summary>The sheet's preferred width — one step wider than the rail's own comfortable measure.</summary>
-        public const float PreferredWidth = 390f;
-
-        /// <summary>…or this share of the page when the page is narrower, so a strip of the list stays visible behind
-        /// the sheet and it never reads as a full-screen route change.</summary>
-        public const float PageFraction = 0.76f;
-
-        /// <summary>The resolved sheet width for a page this wide. An UNMEASURED page (width ≤ 0) answers the preferred
-        /// width — the pre-measure seed, corrected by the first bounds callback, exactly like the rail's ceiling.
-        /// Quantized to whole DIP so a per-pixel window resize cannot churn the pane's layout.</summary>
-        public static float WidthFor(float pageWidth)
-            // `!(w > 0)` and not `w <= 0`: a NaN width is an unmeasured page too (the pre-measure seed), never a NaN
-            // pane that would take the layout with it.
-            => !(pageWidth > 0f)
-                ? PreferredWidth
-                : MathF.Max(1f, MathF.Min(PreferredWidth, MathF.Floor(pageWidth * PageFraction)));
-
         /// <summary>Only the two list-like surfaces carry facts at all (<c>User.FactsHas</c> answers false for any
-        /// other kind — this is the same gate, one step earlier).</summary>
+        /// other kind — this is the same gate, one step earlier). Followed playlists included (owner NQ6).</summary>
         public static bool KindHasFacts(DetailKind kind) => kind is DetailKind.Liked or DetailKind.Playlist;
 
-        /// <summary>The vertical arm: the bento is reachable ONLY through the sheet.</summary>
-        public static bool SheetHostsFacts(int mode, DetailKind kind, bool factsSlot)
-            => factsSlot && KindHasFacts(kind) && mode == Breakpoints.VerticalMode;
+        /// <summary>The bento is reachable ONLY through the sheet, whatever the arm.</summary>
+        public static bool SheetHostsFacts(DetailKind kind, bool factsSlot) => factsSlot && KindHasFacts(kind);
 
-        /// <summary>Is the toggle composed at all? The vertical arm only, on a facts-bearing page whose facts have
-        /// actually arrived, and only on a TRACK page (an episode list's vertical arm has no bento).
-        /// <para>ONE predicate, THREE readers: the hero's toolbar button, the pinned band's word, and the sheet itself.
-        /// The band does not re-derive it — the frame threads the answer down as the presence of the toggle object
-        /// (<c>VerticalSpec.Insights</c>), so the two entry points cannot disagree about whether they exist.</para></summary>
-        public static bool ShowsToggle(int mode, DetailKind kind, bool factsSlot, DetailContent content)
-            => content == DetailContent.Tracks && SheetHostsFacts(mode, kind, factsSlot);
+        /// <summary>Is the toggle composed at all? A facts-bearing page whose facts have actually arrived, and only a TRACK page (an
+        /// episode list has no bento).
+        /// <para>ONE predicate, every reader: the list bar's button, the pinned band's word, and the sheet itself. The table does not
+        /// re-derive it — the frame threads the answer down as the presence of the toggle object (<c>TableArgs.Insights</c>,
+        /// <c>VerticalSpec.Insights</c>), so the entry points cannot disagree about whether they exist.</para></summary>
+        public static bool ShowsToggle(DetailKind kind, bool factsSlot, DetailContent content)
+            => content == DetailContent.Tracks && SheetHostsFacts(kind, factsSlot);
 
         // ── the two entry points (Detail.Insights.cs §6/§7) ──
 
@@ -1468,6 +1448,11 @@ public static partial class Detail
 
     /// <summary>The identity strings every arm shows — ONE composition, so a release is never worded two ways across a
     /// layout cross. Built at map time, never per frame.</summary>
+    /// <summary>What a track page's list shows against what it has, published by the table for the rail's count line (tuned Classic D4):
+    /// the shown rows, the membership total, the shown rows' summed length (<paramref name="DurationsKnown"/> false while any is thin)
+    /// and whether a find or a filter narrows it. <c>default</c> = nothing narrows it.</summary>
+    public readonly record struct ListCount(int Shown, int Total, long ShownMs, bool DurationsKnown, bool Filtered);
+
     public static class Text
     {
         /// <summary>The release-kind badge ("ALBUM" / "EP" / "SINGLE" / "COMPILATION").</summary>
@@ -1540,6 +1525,17 @@ public static partial class Detail
             return saves > 0
                 ? Strings.Detail.MetaLineSaved(songs, SaveCountText(saves), total)
                 : Strings.Detail.MetaLine(songs, total);
+        }
+
+        /// <summary>The rail's count line while a find or a filter narrows the list (tuned Classic D4, decision D-10): "3 of 48 songs ·
+        /// 11 min" and the quiet "(filtered)" mark, as two runs. Null while nothing narrows it (the page's own meta stands). The length
+        /// is the SHOWN rows' sum, dropped while any of them is still thin.</summary>
+        public static (string Count, string Mark)? FilteredMeta(in ListCount c)
+        {
+            if (!c.Filtered || c.Total <= 0) return null;
+            string count = Strings.Detail.SongCountOf(c.Shown.ToString("N0", System.Globalization.CultureInfo.CurrentCulture), c.Total);
+            if (c.DurationsKnown && c.Shown > 0) count = Strings.Detail.MetaLine(count, Track.Format.TotalTime(c.ShownMs));
+            return (count, Loc.Get(Strings.Detail.FilteredMark));
         }
 
         /// <summary>"1,204 songs · 71 hr 3 min".</summary>

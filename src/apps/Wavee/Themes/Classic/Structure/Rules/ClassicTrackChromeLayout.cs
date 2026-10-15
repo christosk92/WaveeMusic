@@ -13,7 +13,7 @@ using FluentGpu.Foundation;
 namespace Wavee.Themes.Classic;
 
 /// <summary>The constants of Classic's track table chrome.</summary>
-internal static class ClassicTrackChromeLayout
+public static class ClassicTrackChromeLayout
 {
     // ── the column header ────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -26,6 +26,12 @@ internal static class ClassicTrackChromeLayout
     /// <summary>The sort caret's glyph, its pop-in scale seed, and the word swap's rise.</summary>
     public const float CaretGlyph = 9f, CaretSeedScale = 0.3f, LabelRise = 4f;
 
+    /// <summary>Where the header's rule starts (tuned Classic D9 / V10): at the row PLATES' left edge — a Modern row's
+    /// <see cref="Track.RowMetrics.RowInset"/> skin margin, a Classic row's 0 (its plate and divider run full width). The hero arm keeps
+    /// the rows' gutter (its stacked rows are plain).</summary>
+    public static float HeaderRuleInset(bool classicRows, bool vertical, float padX)
+        => vertical ? padX : classicRows ? 0f : Track.RowMetrics.RowInset;
+
     /// <summary>The header shifting over for the check lane: the slow beat.</summary>
     public static readonly LayoutTransition HeaderShift = new(TransitionChannels.Position,
         TransitionDynamics.Tween(Design.Motion.Slow, Easing.FluentDecelerate));
@@ -36,13 +42,10 @@ internal static class ClassicTrackChromeLayout
     public const float CommandHeight = 32f;
 
     /// <summary>The command glyph and the gap between a glyph, its word and its trailing mark.</summary>
-    public const float CommandGlyph = 14f, CommandGap = 6f, TrailingGap = 3f;
+    public const float CommandGlyph = 14f, CommandGap = 6f;
 
     /// <summary>The split button's secondary (chevron) half and the divider between the halves.</summary>
     public const float SplitSecondaryWidth = 24f, SplitDividerHeight = 20f;
-
-    /// <summary>The separator between the bar's clusters.</summary>
-    public const float SeparatorHeight = 20f;
 
     /// <summary>The disclosure chevron after a flyout command.</summary>
     public const float ChevronGlyph = 8f;
@@ -73,9 +76,6 @@ internal static class ClassicTrackChromeLayout
         TransitionDynamics.Tween(210f, Easing.SmoothOut),
         Enter: new EnterExit(Dx: 10f, Opacity: 0f, Active: true), Exit: new EnterExit(Dx: -8f, Opacity: 0f, Active: true),
         ExitDynamics: TransitionDynamics.Tween(150f, Easing.FluentAccelerate));
-
-    /// <summary>The row-size panel (M3): at least 240 wide, a 216-DIP stepped slider.</summary>
-    public const float DensityPanelMinWidth = 240f, DensitySliderLength = 216f;
 
     // ── the filter card ──────────────────────────────────────────────────────────────────────────────────────────────
 

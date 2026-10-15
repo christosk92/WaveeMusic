@@ -2,7 +2,7 @@
 // the detail track table's CHROME: the command bar (labeled commands promoted into the measured pane, the rest evicted
 // into "…" with 16-DIP promotion hysteresis and a fit latch while search is open), the in-list search disclosure
 // (66 → 160…280 over 260 ms, Reflow), the context band's words Find · Filter · Play, the column header (one ColumnSet +
-// one TrackSize[] with the rows, keyed cells, sort carets), the Sort / Row size / More flyouts, the 368-wide filter card
+// one TrackSize[] with the rows, keyed cells, sort carets), the Sort / More flyouts (Row size lives in "…"), the 368-wide filter card
 // and the selection command bar's commands. The TableHost partial of Track.Table.cs.
 // T8b: the PICTURES of the header, the command bar's buttons and surface (the selection bar rides it), the filter card and the
 // placeholder row are the structure's (`TrackListStyle.Chrome`, Classic: `Themes\Classic\Structure\Lists\ClassicTrackChrome.cs`);
@@ -52,10 +52,10 @@ public readonly partial struct Track
         bool _restoreSearchFocus;
         NodeHandle _searchButtonNode;
 
-        // Conservative first-frame LABELED widths (Play next · Tune · Shuffle · Sort · Row size · Select · Filter), refined by the
-        // measured commands; the fit resolves against these and the pane.
+        // Conservative first-frame LABELED widths (Play next · Tune · Shuffle · Sort · Filter), refined by the measured commands; the
+        // fit resolves against these and the pane.
         readonly Signal<int> _toolbarEpoch = new(0);
-        readonly float[] _toolbarWidths = [120f, 92f, 96f, 156f, 144f, 82f, CommandBarLayout.FilterLabelledNominal];
+        readonly float[] _toolbarWidths = [120f, 92f, 96f, 156f, CommandBarLayout.FilterLabelledNominal];
         CommandBarFit? _toolbarFit;
         // The fit LATCHED when search opened, with the pane it resolved against: promoting/evicting mid-flight re-measures,
         // bumps the epoch and would hand the width tween a new target. A genuine pane resize drops the latch.
@@ -96,8 +96,6 @@ public readonly partial struct Track
             ExitDynamics: TransitionDynamics.Tween(SearchCollapseMs, Easing.FluentAccelerate));
 
         internal static PopupOptions MenuPopup => new(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false };
-        static PopupOptions RichPopup => new(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
-        { ConstrainToRootBounds = false };
 
         // ══ 1. THE CHROME STACK ══════════════════════════════════════════════════════════════════════════════════════
 
@@ -109,13 +107,23 @@ public readonly partial struct Track
         {
             float padX = RowMetrics.PadXFor(shape.Set.Tier);
             bool vertical = VerticalArm;
+            bool toolbar = !vertical && _latest.ShowToolbar;
+            // The header pays its OWN horizontal padding (the structure's header template insets its rule to the row plates' left
+            // edge, tuned Classic D9 / V10); the toolbar sits at the plates' edge less the bar's own 6-DIP inset and keeps the
+            // rows' right inset (the list bar's 6 / 14, board C-Album); the chips and the lens keep the rows' gutter.
+            Element Gutter(Element e) => new BoxEl { Direction = 1, MinWidth = 0f, Padding = new Edges4(padX, 0f, padX, 0f), Children = [e] };
             Element header = Embed.Comp(() => new TableHeader(this)) with { Key = "header" };
             var stack = new List<Element>(4);
-            if (!vertical && _latest.ShowToolbar) stack.Add(Toolbar());
-            if (chips is not null && (vertical || _latest.ShowToolbar)) stack.Add(chips);
-            if (lens is not null) stack.Add(lens);
+            if (toolbar)
+                stack.Add(new BoxEl
+                {
+                    Key = "chrome:bar", Direction = 1, MinWidth = 0f,
+                    Padding = new Edges4(0f, 0f, RowMetrics.RowInset, 0f), Children = [Toolbar()],
+                });
+            if (chips is not null && (vertical || _latest.ShowToolbar)) stack.Add(Gutter(chips) with { Key = "chrome:chips" });
+            if (lens is not null) stack.Add(Gutter(lens) with { Key = "chrome:lens" });
             stack.Add(header);
-            Element[] children = !vertical && _latest.ShowToolbar
+            Element[] children = toolbar
                 ? [new BoxEl { Direction = 1, MinWidth = 0f, Margin = new Edges4(0f, 0f, 0f, Spacing.XS), Children = stack.ToArray() }]
                 : stack.ToArray();
             // The 8 DIP above the header is AIR UNDER THE TOOLBAR, so an arm with no toolbar must not pay it: the
@@ -124,7 +132,7 @@ public readonly partial struct Track
             return new BoxEl
             {
                 Key = "chrome", Direction = 1,
-                Padding = new Edges4(padX, vertical || !_latest.ShowToolbar ? 0f : Spacing.S, padX, 0f),
+                Padding = new Edges4(0f, toolbar ? Spacing.S : 0f, 0f, 0f),
                 Children = children,
             };
         }
@@ -133,6 +141,12 @@ public readonly partial struct Track
 
         // ══ 2. THE COMMAND BAR ══════════════════════════════════════════════════════════════════════════════════════
 
+        /// <summary>The facts sheet's toggle this table's bar carries (tuned Classic I1): the frame's own answer, threaded down as
+        /// the presence of the toggle object — the vertical arm's through its spec, the two-column arm's through the args.</summary>
+        Detail.InsightsToggle? BarInsights => VerticalArm ? _latest.Vertical?.Insights : _latest.Insights;
+
+        /// <summary>The list bar (tuned Classic D3, decisions D-6 / D-10): left [Play next │ ⌄] [Shuffle] [Tune]; right [Filter (n)]
+        /// [Sort ⌄] [Find] [Insights] [⋯]. Row size, Select and the column opt-ins live in "…" only.</summary>
         Element BuildToolbar(float available)
         {
             _ = _toolbarEpoch.Value;   // measured labeled widths refine the first-frame budgets
@@ -140,18 +154,18 @@ public readonly partial struct Track
 
             bool vertical = VerticalArm;
             bool hasTune = P.Tune is not null;
-            bool hasSelect = Cfg.Selection != ItemsSelectionMode.None;
+            var insights = BarInsights;
             bool explicitSearch = _searchExpanded.Value;
             var w = _toolbarWidths;
-            var widths = new CommandWidths(w[0], w[1], w[2], w[3], w[4], w[5], w[6]);
+            var widths = new CommandWidths(w[0], w[1], w[2], w[3], w[4]);
             float pane = HeldPane(MathF.Max(0f, available - ToolbarPaneInset));
-            var fit = CommandBarLayout.Resolve(pane, in widths, vertical, hasTune, hasSelect, explicitSearch, _toolbarFit);
+            var fit = CommandBarLayout.Resolve(pane, in widths, vertical, hasTune, insights is not null, explicitSearch, _toolbarFit);
             if (!explicitSearch) _searchOpenFit = null;
             else if (_searchOpenFit is { } latched && MathF.Abs(latched.Available - pane) <= 0.5f) fit = latched.Fit;
             else _searchOpenFit = (pane, fit);
             _toolbarFit = fit;
 
-            var kids = new List<Element>(9);
+            var left = new List<Element>(3);
             if (!vertical)
             {
                 IReadOnlyList<MenuFlyoutItem> playItems =
@@ -159,35 +173,30 @@ public readonly partial struct Track
                     new(Loc.Get(Strings.Detail.AddToQueue), ActionIcons.Resolve(ActionIcons.Queue), true,
                         () => RunOnContext(ActionId.AddToQueue)),
                 ];
-                kids.Add(MeasuredCommand(0, "cmd:play-next:" + _contextText,
+                left.Add(MeasuredCommand(0, "cmd:play-next:" + _contextText,
                     Kit.PlayNext(Loc.Get(Strings.Detail.PlayNext), () => RunOnContext(ActionId.PlayNext), playItems)));
             }
             if (fit.Has(InlineCommand.Shuffle))
-                kids.Add(MeasuredCommand(2, "cmd:shuffle", Kit.Labeled(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), false, Shuffle, null)));
+                left.Add(MeasuredCommand(2, "cmd:shuffle", Kit.Labeled(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), false, Shuffle, null)));
             if (hasTune)
-                kids.Add(MeasuredCommand(1, "cmd:tune", ToolTip.Wrap(
+                left.Add(MeasuredCommand(1, "cmd:tune", ToolTip.Wrap(
                     Kit.Labeled(Icons.RefineSparkle, Loc.Get(Strings.Detail.Tuning.Tune), false, () => _latest.Profile.Tune?.Invoke(), null),
                     Loc.Get(Strings.Detail.Tuning.Tooltip))));
 
-            bool viewInline = fit.Has(InlineCommand.Filter) || fit.Has(InlineCommand.Sort) || fit.Has(InlineCommand.Density) || fit.Has(InlineCommand.Select);
-            if (viewInline && kids.Count > 0) kids.Add(Kit.Separator() with { Key = "cmd:separator" });
+            var view = new List<Element>(2);
             if (fit.Has(InlineCommand.Filter))
-                kids.Add(FilterCommandSlot(fit.Has(InlineCommand.FilterLabel)));
+                view.Add(FilterCommandSlot(fit.Has(InlineCommand.FilterLabel)));
             if (fit.Has(InlineCommand.Sort))
-                kids.Add(MeasuredCommand(3, "cmd:sort", Embed.Comp(() => new TableSortButton(this))));
-            if (fit.Has(InlineCommand.Density))
-                kids.Add(MeasuredCommand(4, "cmd:density", Embed.Comp(() => new TableDensityButton(this))));
-            if (fit.Has(InlineCommand.Select))
-                kids.Add(MeasuredCommand(5, "cmd:select", Embed.Comp(() => new TableSelectButton(this))));
+                view.Add(MeasuredCommand(3, "cmd:sort", Embed.Comp(() => new TableSortButton(this))));
 
-            var overflow = InlineCommand.Shuffle | InlineCommand.Filter | InlineCommand.Sort | InlineCommand.Density | (hasSelect ? InlineCommand.Select : InlineCommand.None);
-            overflow &= ~fit.Inline;
-            kids.Add(Embed.Comp(() => new TableMoreButton(this, overflow))
-                with { Key = "cmd:more:" + (int)overflow + ":" + _contextText });
+            var overflow = (InlineCommand.Shuffle | InlineCommand.Filter | InlineCommand.Sort) & ~fit.Inline;
+            Element more = Embed.Comp(() => new TableMoreButton(this, overflow))
+                with { Key = "cmd:more:" + (int)overflow + ":" + _contextText };
+            Element[] tail = insights is null ? [more] : [Detail.InsightsBarButton(insights), more];
 
             Element search = Embed.Comp(new SearchProps(fit.SearchExpanded, fit.SearchWidth, false, Funnel: false), () => new TableSearchHost(this))
                 with { Key = "search-host" };
-            return Kit.Surface("normal", Kit.Bar(kids.ToArray(), search));
+            return Kit.Surface("normal", Kit.Bar(left.ToArray(), view.ToArray(), search, tail));
         }
 
         Element MeasuredCommand(int slot, string key, Element command) => Kit.Command(key, command, w => MeasureToolbarCommand(slot, w));
@@ -223,7 +232,7 @@ public readonly partial struct Track
         /// <summary>The inline Filter command of the bar. Its props carry the label, so a rung that drops the word re-renders the SAME
         /// button (an open card keeps its anchor and handle); only the labelled form reports its width to the fit.</summary>
         Element FilterCommandSlot(bool labelled)
-            => MeasuredCommand(labelled ? 6 : -1, "cmd:filter",
+            => MeasuredCommand(labelled ? 4 : -1, "cmd:filter",
                 Embed.Comp(new FilterCommandProps(labelled), () => new TableFilterButton(this, textMode: false, command: true)));
 
         void MeasureToolbarCommand(int slot, float width)
@@ -234,9 +243,10 @@ public readonly partial struct Track
             _toolbarEpoch.Value = _toolbarEpoch.Peek() + 1;
         }
 
-        static string SortLabelFor(SortColumn c) => c switch
+        /// <summary>The sort's one word: the list's own order reads "Album order" on an album and "Custom order" elsewhere.</summary>
+        string SortLabelFor(SortColumn c) => c switch
         {
-            SortColumn.Index => Loc.Get(Strings.Detail.Sort.CustomOrder),
+            SortColumn.Index => Loc.Get(Cfg.Kind == DetailKind.Album ? Strings.Detail.Sort.AlbumOrder : Strings.Detail.Sort.CustomOrder),
             SortColumn.Title => Loc.Get(Strings.Detail.Sort.Title),
             SortColumn.Artist => Loc.Get(Strings.Detail.Sort.Artist),
             SortColumn.Album => Loc.Get(Strings.Detail.Sort.Album),
@@ -532,52 +542,15 @@ public readonly partial struct Track
                 var anchor = UseRef<NodeHandle>(default);
                 var handle = UseRef<OverlayHandle?>(null);
                 var current = h._sort.Value;
-                bool active = current.Column != SortColumn.Index;
+                bool active = TableRules.SortDiffersFromDefault(current, h.P.DefaultSort);
                 void Toggle() => ToggleOverlay(overlay, anchor, handle,
                     () => MenuFlyout.Create(h.SortItems(), () => handle.Value?.Close()), MenuPopup);
-                Element trailing = h.Kit.Trail(active ? [h.Kit.SortCaret(h._sort), h.Kit.Chevron()] : [h.Kit.Chevron()]);
-                return h.Kit.Labeled(Icons.Sort, SortLabelFor(current.Column), active, Toggle, n => anchor.Value = n, trailing);
+                return h.Kit.Labeled(Icons.Sort, h.SortLabelFor(current.Column), active, Toggle, n => anchor.Value = n, h.Kit.Chevron());
             }
         }
 
-        /// <summary>Row size: a stepped slider in a rich popup. While the popup is open the button keeps the label it OPENED
-        /// with — relabelling mid-drag would move its right edge and re-anchor the popup under the pointer. Never accent:
-        /// density is a view preference, not an active filter.</summary>
-        sealed class TableDensityButton(TableHost host) : Component
-        {
-            public override Element Render()
-            {
-                var overlay = UseContext(Overlay.Service);
-                var anchor = UseRef<NodeHandle>(default);
-                var handle = UseRef<OverlayHandle?>(null);
-                var frozen = UseRef<string?>(null);
-                var closedEpoch = UseSignal(0);
-                _ = closedEpoch.Value;   // the close re-renders the button so the frozen label is released
-                var kit = host.Kit;
-                string current = kit.DensityLabel();   // the style's density, tracked: a change re-renders the button
-                void Toggle()
-                {
-                    if (handle.Value is not { IsOpen: true }) frozen.Value = kit.DensityLabel();
-                    ToggleOverlay(overlay, anchor, handle, kit.DensityPanel, RichPopup,
-                        () => { frozen.Value = null; closedEpoch.Value = closedEpoch.Peek() + 1; });
-                }
-                string label = handle.Value is { IsOpen: true } && frozen.Value is { } f ? f : current;
-                return kit.Labeled(Icons.RowSize, label, false, Toggle, n => anchor.Value = n, kit.Chevron());
-            }
-        }
-
-        sealed class TableSelectButton(TableHost host) : Component
-        {
-            public override Element Render()
-            {
-                var h = host;
-                bool on = h._multi.Value;
-                return h.Kit.Labeled(Icons.MultiSelect, Loc.Get(Strings.Detail.Select), on, () => h.SetMultiSelect(!h._multi.Peek()), null);
-            }
-        }
-
-        /// <summary>"…": the evicted commands first (Shuffle · Sort ▸ · Row size ▸), the two column opt-ins, the Select
-        /// toggle, then — only if anything above exists — a separator and the playlist deposit ("Copy to playlist" on a
+        /// <summary>"…": the evicted commands first (Shuffle · Sort ▸ · Filter…), then what the bar never carries (tuned Classic D3):
+        /// Row size ▸, the two column opt-ins and the Select toggle; then a separator and the playlist deposit ("Copy to playlist" on a
         /// playlist/Liked, "Add to playlist" on an album). Never accent-lit (W21).</summary>
         sealed class TableMoreButton(TableHost host, InlineCommand overflow) : Component
         {
@@ -606,8 +579,7 @@ public readonly partial struct Track
                         items.Add(MenuFlyoutItem.SubMenu(Loc.Get("detail.sort.menu"), h.SortItems(), Icons.Sort));   // key from batch-loc WP-4.5-U2a.json; a literal so the build does not wait on the merge
                     if (filterInMore)
                         items.Add(new MenuFlyoutItem(Loc.Get(Strings.Detail.Filter.MenuItem), Icons.Filter, true, OpenFilter));
-                    if ((overflow & InlineCommand.Density) != 0)
-                        items.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Detail.Density.RowSize), h.Kit.DensityItems(), Icons.List));
+                    items.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Detail.Density.RowSize), h.Kit.DensityItems(), Icons.List));
                     if (cfg.ShowTempo)
                     {
                         bool tempoOn = TableColumnsPref.TempoNow();
@@ -620,12 +592,12 @@ public readonly partial struct Track
                         items.Add(MenuFlyoutItem.Toggle(Loc.Get(Strings.Detail.PlaysColumn), playsOn,
                             () => TableColumnsPref.SetPlays(!playsOn)));
                     }
-                    if ((overflow & InlineCommand.Select) != 0)
+                    if (cfg.Selection != ItemsSelectionMode.None)
                     {
                         bool selecting = h._multi.Peek();
                         items.Add(MenuFlyoutItem.Toggle(Loc.Get(Strings.Detail.Select), selecting, () => h.SetMultiSelect(!selecting)));
                     }
-                    if (items.Count > 0) items.Add(MenuFlyoutItem.Separator);
+                    items.Add(MenuFlyoutItem.Separator);
 
                     var src = h._latest.Source;
                     var tracks = new Track[src.Count];
@@ -898,19 +870,14 @@ public readonly partial struct Track
 
             public Element Surface(string mode, Element content) => content;
             public Element Command(string key, Element command, Action<float> onWidth) => new BoxEl { Key = key };
-            public Element Bar(Element[] commands, Element search) => new BoxEl();
+            public Element Bar(Element[] left, Element[] view, Element search, Element[] tail) => new BoxEl();
             public Element PlayNext(string label, Action onPlay, IReadOnlyList<MenuFlyoutItem> items) => new BoxEl();
             public Element Labeled(string glyph, string label, bool active, Action onClick, Action<NodeHandle>? onRealized, Element? trailing) => new BoxEl();
             public Element IconButton(string glyph, bool active, Action onClick, Action<NodeHandle>? onRealized) => new BoxEl();
-            public Element Separator() => new BoxEl();
             public Element Chevron() => new BoxEl();
-            public Element Trail(Element[] parts) => new BoxEl();
-            public Element SortCaret(IReadSignal<SortSpec> sort) => new BoxEl();
             public Element FilterCommand(int count, bool labelled, string label, Action onClick, Action<NodeHandle> onRealized) => new BoxEl();
             public Element FilterFunnel(int count, Action onClick, Action<NodeHandle> onRealized) => new BoxEl();
             public Element MoreSlot(Element more, int filterCount) => more;
-            public string DensityLabel() => "";
-            public Element DensityPanel() => new BoxEl();
             public IReadOnlyList<MenuFlyoutItem> DensityItems() => [];
         }
 

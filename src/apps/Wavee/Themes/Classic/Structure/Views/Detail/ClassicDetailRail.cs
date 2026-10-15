@@ -65,7 +65,7 @@ internal static partial class ClassicDetailFrame
     public static Element RailTemplate(DetailRailProps p, in ViewContext ctx)
         => RailFrame(p.Spec.Identity.Kind, p.RailWidth, new SkelRegionEl(
             Pending: p.Pending, Failed: s_false,
-            Content: () => RailColumn(p.Spec, p.Actions, p.RailWidth, p.TitleSize, p.DescriptionLines, p.Accent, p.Play),
+            Content: () => RailColumn(p.Spec, p.Actions, p.RailWidth, p.TitleSize, p.DescriptionLines, p.Accent, p.Play, p.Shown),
             ShimmerSource: () => RailSkeletonColumn(p.Spec, p.RailWidth, p.TitleSize, p.DescriptionLines),
             OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false));
 
@@ -114,12 +114,12 @@ internal static partial class ClassicDetailFrame
 
     /// <summary>The rail's loaded column: cover · eyebrow (+ a show's badges) / owner / an episode's show link · title ·
     /// attribution · rating · meta · an episode's badges · ledger · daylist · chart · CTA (primary + the fixed group or the
-    /// page's satellites) · topics · prerelease · release panel · description · liked facts. The identity rows are
+    /// page's satellites) · topics · prerelease · release panel · description (the facts bento is the insights sheet's, I1). The identity rows are
     /// <see cref="RailLayout.RowsFor"/>'s decisions; <see cref="RailSkeletonColumn"/> reserves the same rows
     /// (<see cref="Skeleton.RailPlanFor"/>) in the same order at the same widths, so the swap is a dissolve and never a
     /// reflow. With none of the podcast slots declared the column is exactly the pre-podcast one.</summary>
     static Element RailColumn(FrameSpec spec, FrameActions acts, float railW, float titleSize,
-                              int descMaxLines, Func<ColorF> accent, Action play)
+                              int descMaxLines, Func<ColorF> accent, Action play, IReadSignal<Detail.ListCount>? shown)
     {
         var id = spec.Identity;
         var cfg = spec.Config;
@@ -182,8 +182,12 @@ internal static partial class ClassicDetailFrame
         if (rows.Rating && slots.Rating is { } rating) kids.Add(SlotRow("rail:rating", rating(cover), RailLayout.RatingHeight));
 
         // Meta: playlist / Liked / the PODCAST family (a show has no facts panel; 0.2.9 built its publisher line and never
-        // drew it, ch 09 §9.4; an episode states its date · length).
-        if (rows.Meta) kids.Add(ClassicDetailKit.LateRow("rail:meta", MetaRow(id, cover, maxLines: 2)));
+        // drew it, ch 09 §9.4; an episode states its date · length). While a find or a filter narrows the list it reads
+        // "3 of 48 songs · 11 min (filtered)" (tuned Classic D4, D-10) — its own component, so a keystroke re-renders one line.
+        if (rows.Meta)
+            kids.Add(ClassicDetailKit.LateRow("rail:meta", shown is null
+                ? MetaRow(id, cover, maxLines: 2)
+                : Embed.Comp(new RailMetaProps(id, cover), () => new RailMetaLine(shown))));
         if (rows.Badges == RailBadgeRow.AfterMeta && slots.Badges is { } badgesLate)
             kids.Add(SlotRow("rail:badges", badgesLate(), RailLayout.BadgeHeight));
         if (rows.Ledger && slots.Ledger is { } ledger) kids.Add(SlotRow("rail:ledger", ledger(cover), RailLayout.LedgerHeight));
@@ -219,9 +223,6 @@ internal static partial class ClassicDetailFrame
                 kids.Add(ClassicDetailKit.LateRow("rail:desc", Controls.ExpandableRichText(html, 12f, Tok.TextSecondary, accentColor, cover,
                     descMaxLines, id.Subject.Text, DetailVerbs.NavigateKey, fullTextTip: true)));
         }
-
-        // Row, not LateRow: the facts panel owns its own entrance.
-        if (slots.LikedFacts is { } facts) kids.Add(ClassicDetailKit.Row("rail:likedfacts", facts(cover)));
 
         return RailColumnBox(railW, kids.ToArray());
     }
@@ -547,6 +548,29 @@ internal static partial class ClassicDetailFrame
     /// caption's SHAPE in the same slot ("0 songs · 1 min" is a count the page does not have).</summary>
     static Element MetaRow(Identity id, float width, int maxLines)
         => MetaLine(id, width, maxWidth: float.NaN, maxLines);
+
+    sealed record RailMetaProps(Identity Id, float Width);
+
+    /// <summary>The rail's count line (tuned Classic D4): the page's meta, or — while the list's find or filter narrows it — "3 of 48 songs ·
+    /// 11 min" and the quiet "(filtered)" mark (<see cref="Detail.Text.FilteredMeta"/>), in the same slot at the same width.</summary>
+    sealed class RailMetaLine(IReadSignal<Detail.ListCount> shown) : Component
+    {
+        public override Element Render()
+        {
+            var p = UseProps<RailMetaProps>();
+            var count = shown.Value;
+            if (Detail.Text.FilteredMeta(in count) is not { } filtered) return MetaLine(p.Id, p.Width, maxWidth: float.NaN, maxLines: 2);
+            return new BoxEl
+            {
+                Direction = 0, Wrap = true, Width = p.Width, Gap = Spacing.XS, AlignItems = FlexAlign.Center,
+                Children =
+                [
+                    R.Type.TrackMeta(filtered.Count) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f },
+                    R.Type.TrackMeta(filtered.Mark) with { MaxLines = 1, Color = Tok.TextTertiary, Shrink = 0f },
+                ],
+            };
+        }
+    }
 
     /// <summary>The meta caption: ONE TrackMeta run ("2 songs · 6 min"), whole-word wrapped to
     /// <paramref name="maxLines"/> — or its loading shimmer. An album's year is not on it (the eyebrow and the release
