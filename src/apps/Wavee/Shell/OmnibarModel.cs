@@ -386,6 +386,29 @@ public sealed class OmnibarModel : IOmnibarVerbs
     /// <summary>The icon-mode flyout is open — read with <see cref="SearchFocused"/> by the allocator.</summary>
     public Signal<bool> FlyoutOpen { get; } = new(false);
 
+    /// <summary>The field form's suggestions list is mounted (open). It keeps the field at its focused width across a row press,
+    /// which can take focus off the editor until the list closes (tuned F6).</summary>
+    public Signal<bool> SuggestionsOpen { get; } = new(false);
+
+    /// <summary>The field is at its FOCUSED width (tuned F6): it has focus or its suggestions are open. Read tracked.</summary>
+    public bool FieldExpanded => SearchFocused.Value || SuggestionsOpen.Value;
+
+    /// <summary>Bumped once each time the field's laid-out width SETTLES on the width it was asked for. The title bar folds it
+    /// into its content version, so the non-client regions are pushed at the settled width, not at the first frame of the
+    /// field's width motion (a widened field would otherwise be part drag band).</summary>
+    public Signal<int> FieldSettled { get; } = new(0);
+
+    float _settledTarget = -1f;
+
+    /// <summary>The field box reported its laid-out width <paramref name="laidOut"/> while it is asked to be
+    /// <paramref name="target"/> wide: counts a settle the first time it is within half a DIP of that target.</summary>
+    public void ReportFieldWidth(float laidOut, float target)
+    {
+        if (MathF.Abs(laidOut - target) > 0.5f || _settledTarget == target) return;
+        _settledTarget = target;
+        FieldSettled.Value = FieldSettled.Peek() + 1;
+    }
+
     // ── what a theme's view reads (T4b): the members below name no `Shell` type, so a view in Themes\** can use them ─────
 
     /// <summary>The generation the current query is on (<c>Shell.Omnibar.Query.Generation</c>): the fetch edge settles on it.</summary>
@@ -444,6 +467,7 @@ public sealed class OmnibarModel : IOmnibarVerbs
     {
         SearchFocused.SetIfChanged(false);
         FlyoutOpen.SetIfChanged(false);
+        SuggestionsOpen.SetIfChanged(false);
         Highlight.SetIfChanged(-1);
         if (currentTicket > _focusTicketHandled) _focusTicketHandled = currentTicket;
     }

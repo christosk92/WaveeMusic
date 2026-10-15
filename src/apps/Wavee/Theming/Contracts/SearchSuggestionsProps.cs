@@ -128,7 +128,4 @@ public sealed record SearchSuggestionsProps
 
     /// <summary>Close the popup, or null.</summary>
     public Action? Close { get; init; }
-
-    /// <summary>The icon-mode flyout is narrower than 400: the popup does not floor its width.</summary>
-    public bool AllowNarrow { get; init; }
 }

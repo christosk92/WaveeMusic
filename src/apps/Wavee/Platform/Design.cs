@@ -510,11 +510,6 @@ public static partial class Design
         /// <summary>The enter leg's own duration. <see cref="ExitDurationMs"/> + this = 300ms total.</summary>
         public const float EnterDurationMs = 210f;
 
-        /// <summary>The masthead band shares this window with the page swap (ch 18 §4's "one gesture" comment) so a
-        /// drill-in reads as one motion — it IS the page's real exit window, not an independent constant that can
-        /// drift from it.</summary>
-        public const float FadeThroughExitMs = ExitDurationMs;
-
         /// <summary>The video-safe pair's travel, so a module page does not twitch <see cref="Expressive.DistBase"/> DIP
         /// when it must slide instead of cross-fade.</summary>
         public const float SiblingDx = 80f;

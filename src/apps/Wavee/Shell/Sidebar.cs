@@ -322,7 +322,7 @@ public enum SidebarRowShape : byte
     /// <summary>Row B — an entity row at Compact density: 36 tall, 24-px art, title only.</summary>
     EntityOneLine = 2,
     /// <summary>Row D — an entity row as TEXT (the structure's covers are off, the Classic layout only): 36 tall, no art, title
-    /// only; a folder keeps its glyph. Appended (contract 1.2).</summary>
+    /// only; a folder keeps its glyph. Appended (contract 1.3).</summary>
     EntityText = 3,
 }
 

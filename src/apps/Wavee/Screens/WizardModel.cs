@@ -73,6 +73,10 @@ public static partial class Setup
             return Due;
         }
 
+        /// <summary>The window's reveal predicate (<c>AppOptions.FirstFrameReady</c>, tuning F9): false while a due first run or
+        /// re-auth has not opened its plate yet (<see cref="WizardRules.HoldsReveal"/>). UI thread, every frame until the reveal.</summary>
+        public static bool FirstFrameReady() => !WizardRules.HoldsReveal(Due?.Entry, s_wizardShown);
+
         /// <summary>Forget the boot decision and the shown flag (tests; a harness that boots more than once).</summary>
         public static void ResetForTests()
         {

@@ -10,7 +10,7 @@
 //   ├─ band  (Sticky) column h=FacetRowH
 //   │  ├─ HStack h=SelectorH(40) [ SelectorBar.Create(labels, Index, onChange, style: R.Type.FacetTitleStyle) · spacer
 //   │  │                           · Flow.Show(hasSub, ToggleButton.Controlled) ]
-//   │  └─ 3-px box  { ProgressBar.Indeterminate(width: NaN) }   Opacity ← Switch.Bar (compositor bind, no re-render)
+//   │  └─ 3-px slot { Flow.Show(Switch.Bar, ProgressBar.Indeterminate(width: NaN) fading in and out) }   (the slot never moves)
 //   └─ Flow.Show(Phase == Failed, InfoBar.Create(Error, "Couldn't load <facet>", …, Retry))
 //
 // The HStack + the 3-px bar form the BAND, exactly `FacetRowH` tall, pinned with `.Sticky(StuckInset, scope: PageScope)` (transparent, no
@@ -93,15 +93,25 @@ internal static class ClassicHomeFacetRow
             ],
         }, fallback: FacetForm.TitleMinWidth);
 
-        // The stretched indeterminate bar, always mounted: its opacity is a compositor bind on Switch.Bar so the fade
-        // plays both ways without a re-render.
+        // The busy bar (tuning F7): a FIXED 3-px slot, always laid out, so the band never moves; the stretched indeterminate bar
+        // inside it only FADES in and out with Switch.Bar (a Show swap with an opacity Enter/Exit: a bound opacity would snap),
+        // without re-rendering the row.
         var busy = new BoxEl
         {
             Key = "home:facet:bar",
-            Height = ClassicHomeRules.BarH, MinWidth = 0f, HitTestVisible = false,
-            Opacity = Prop.Of(() => p.Switch.Value.Bar ? 1f : 0f),
-            Transition = s_fade,
-            Children = [ProgressBar.Indeterminate(width: float.NaN)],
+            Height = ClassicHomeRules.BarH, MinWidth = 0f, HitTestVisible = false, Direction = 1,
+            Children =
+            [
+                Flow.Show(() => p.Switch.Value.Bar, new BoxEl
+                {
+                    Key = "home:facet:bar:busy",
+                    Height = ClassicHomeRules.BarH, MinWidth = 0f, HitTestVisible = false,
+                    Enter = new EnterExit(Opacity: 0f, Active: true),
+                    Exit = new EnterExit(Opacity: 0f, Active: true),
+                    Transition = s_fade,
+                    Children = [ProgressBar.Indeterminate(width: float.NaN)],
+                }),
+            ],
         };
 
         string failedLabel = state.FailedTarget is { } ft ? LabelOf(words, ft) ?? ft : "";

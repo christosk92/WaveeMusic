@@ -47,14 +47,16 @@ internal static class ClassicChromeLayout
     /// <summary>The field's height: a 32-DIP field at the control corner radius with the control-default chrome.</summary>
     public const float FieldMinHeight = 32f;
 
+    /// <summary>The field's width motion between its rest and its focused width (tuned F6): a REFLOW on the width axis, so the box
+    /// and its text move together and the drag bands either side are pushed through real layout. Standard / FluentStandard; the
+    /// call site passes null under reduced motion and when the rest width moves without a focus change.</summary>
+    public static readonly LayoutTransition FieldWidthMotion = new(TransitionChannels.Size | TransitionChannels.Position,
+        TransitionDynamics.Tween(Design.Motion.Standard, Easing.FluentStandard), Size: SizeMode.Reflow, Axes: SizeAxes.Width);
+
     // ── the suggestions popup ────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The popup's width before the anchor reports one.</summary>
     public const float FallbackPopupWidth = 720f;
-
-    /// <summary>The popup's width floor in the field form (the icon-mode anchor can be 44 DIP wide, and a popup may be wider than
-    /// its anchor).</summary>
-    public const float PopupMinWidth = 400f;
 
     /// <summary>The popup root's padding.</summary>
     public static readonly Edges4 PopupPadding = new(0f, 2f, 0f, 2f);

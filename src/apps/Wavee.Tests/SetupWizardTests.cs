@@ -317,6 +317,17 @@ public class SetupWizardRulesTests
         Assert.Equal(2, Setup.WizardRules.OpenPosts(Setup.WizardEntry.TermsRearm));
     }
 
+    [Fact]
+    public void A_due_first_run_or_reauth_holds_the_window_reveal_until_its_plate_is_up()
+    {
+        // Classic tuning F9: the first frame the user sees is final, so it never shows the bare shell the plate then covers.
+        Assert.True(Setup.WizardRules.HoldsReveal(Setup.WizardEntry.FirstRun, shownThisLaunch: false));
+        Assert.True(Setup.WizardRules.HoldsReveal(Setup.WizardEntry.Reauth, shownThisLaunch: false));
+        Assert.False(Setup.WizardRules.HoldsReveal(Setup.WizardEntry.FirstRun, shownThisLaunch: true));
+        Assert.False(Setup.WizardRules.HoldsReveal(Setup.WizardEntry.TermsRearm, shownThisLaunch: false));   // rises over the shell
+        Assert.False(Setup.WizardRules.HoldsReveal(null, shownThisLaunch: false));                            // not due
+    }
+
     [Theory]
     [InlineData(false, true, true, true)]     // the plate is up
     [InlineData(true, false, false, true)]    // armed, about to open

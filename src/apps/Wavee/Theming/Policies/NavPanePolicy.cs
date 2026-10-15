@@ -58,7 +58,7 @@ public static class NavPaneOptionIds
 /// <param name="Density">The entity-row density the structure shows (M7a: `structure.libraryDensity` in Classic).</param>
 /// <param name="ShowCovers">The Classic layout's entity rows show their covers (tuned item S0: `structure.showCovers` in Classic). False
 /// resolves those sections as text rows (<see cref="SidebarRowShape.EntityText"/>); the Library layout always shows covers.
-/// Appended (contract 1.2).</param>
+/// Appended (contract 1.3).</param>
 public sealed record NavPanePolicy(
     float ContentFloorW,
     float MinWidth, float MaxWidth, float DefaultWidth,

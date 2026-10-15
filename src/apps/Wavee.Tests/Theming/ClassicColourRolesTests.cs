@@ -456,11 +456,10 @@ public sealed class ClassicColourRolesTests
     }
 
     [Fact]
-    public void The_tone_key_moves_with_the_epoch_and_the_route_and_nothing_else()
+    public void The_tone_key_is_the_pages_surface_and_never_the_theme()
     {
-        Assert.Equal(Palette.ToneKey("album:1", 7), Palette.ToneKey("album:1", 7));
-        Assert.NotEqual(Palette.ToneKey("album:1", 7), Palette.ToneKey("album:1", 8));
-        Assert.NotEqual(Palette.ToneKey("album:1", 7), Palette.ToneKey("album:2", 7));
-        Assert.StartsWith("detail-tone:album:1", Palette.ToneKey("album:1", 7));
+        // Classic tuning F10: a light/dark flip keeps the plane's node, so its bound fill fades with every other colour (EP20).
+        Assert.Equal("detail-tone:album:1", Palette.ToneKey("album:1"));
+        Assert.NotEqual(Palette.ToneKey("album:1"), Palette.ToneKey("album:2"));
     }
 }
