@@ -5,16 +5,16 @@
 // the tabs are, with its promotion hysteresis), the tab workspace (the tabs, their pins, the reorder and the drag payloads
 // are `TabViewItem` data and verbs), the auth fold, the history stacks and every verb. The theme DRAWS the row: the engine's
 // `TitleBar` (drag regions and the three caption buttons are the control's, reported to Win32 as the non-client regions), the
-// tabs island, the history buttons, the identity cluster, the theme toggle and the search.
+// tabs island, the history buttons, the identity cluster and the search (Classic draws no theme toggle since tuned F13).
 //
 // WHAT THE RECORD CARRIES. One shared, frozen instance for the process (the frame props hold it); no member changes:
 //   · `Func`s the title bar's render READS (the allocation, the version stamps, the tab items, the unread count, the pin):
 //     they are called inside the engine bar's render, so reading a signal there subscribes the bar, exactly as the builders did
 //     before the move. `Layout` subscribes, `PeekLayout` does not (the strip reads it at mount).
-//   · Verbs (the tab and history actions, sign in, the theme toggle, friends, the notification panel).
+//   · Verbs (the tab and history actions, sign in, friends, the notification panel).
 //   · Element builders over core hosts (the profile chip: `Shell.ProfileChip`, which mounts `Overlay.ProfileChip`).
-//   · The search's own props (`Shell.Search`), which the row mounts in its centre column and, in the icon form, beside the
-//     theme toggle.
+//   · The search's own props (`Shell.Search`), which the row mounts in its centre column and, in the icon form, before the
+//     caption buttons.
 //
 // Writable cells the engine's controls bind (the tab strip's selection) arrive as a `Func` returning the cell: WVTH006 keeps a
 // writable `Signal<T>` out of a props member, and this is not state travelling in props but the control's own binding.
@@ -117,9 +117,6 @@ public sealed record ShellTitleBarProps
 
     /// <summary>The direct Pin / Unpin for the destination on screen, or null when it is not pinnable; read tracked.</summary>
     public required Func<TitleBarPin?> Pin { get; init; }
-
-    /// <summary>Toggle the light / dark theme mode.</summary>
-    public required Action ToggleTheme { get; init; }
 
     // ── the search ───────────────────────────────────────────────────────────────────────────────────────────────────
 

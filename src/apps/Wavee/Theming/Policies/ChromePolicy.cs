@@ -23,7 +23,6 @@ namespace Wavee.Theming;
 /// <param name="ProfileNameW">What showing the display name adds to the avatar chip.</param>
 /// <param name="MinDragStripW">The grabbable seam kept before the caption-adjacent search icon.</param>
 /// <param name="CaptionClusterW">The native caption buttons.</param>
-/// <param name="ThemeToggleW">The theme toggle before the caption buttons.</param>
 /// <param name="GutterMinW">Reserved on each flank of the centre island.</param>
 /// <param name="WidthQuantumW">Search and tab widths snap down to this, so a pixel of resize re-renders nothing.</param>
 /// <param name="SearchMaxW">The widest the search field grows.</param>
@@ -38,7 +37,7 @@ public sealed record ChromeBudget(
     float NameEnterW, float ActionsEnterW, float ForwardEnterW, float PromotionHysteresisW,
     float BarLeadW, float NavButtonW, float AddSlotW,
     float ProfileChipW, float ConnectingChipW, float SignInChipW, float ReconnectChipW, float ProfileNameW,
-    float MinDragStripW, float CaptionClusterW, float ThemeToggleW, float GutterMinW,
+    float MinDragStripW, float CaptionClusterW, float GutterMinW,
     float WidthQuantumW, float SearchMaxW, float SearchMinW, float SearchWidthRatio, float SearchIconW,
     float TabMaxW, float TabMinW, float PinnedTabW, float TabViewportMinW)
 {
@@ -49,11 +48,22 @@ public sealed record ChromeBudget(
         Shell.Layout.ChromeBarLeadW, Shell.Layout.ChromeNavButtonW, Shell.Layout.ChromeAddSlotW,
         Shell.Layout.ChromeProfileChipW, Shell.Layout.ChromeConnectingChipW, Shell.Layout.ChromeSignInChipW,
         Shell.Layout.ChromeReconnectChipW, Shell.Layout.ChromeProfileNameW,
-        Shell.Layout.ChromeMinDragStripW, Shell.Layout.ChromeCaptionClusterW, Shell.Layout.ChromeThemeToggleW,
-        Shell.Layout.ChromeGutterMinW,
+        Shell.Layout.ChromeMinDragStripW, Shell.Layout.ChromeCaptionClusterW, Shell.Layout.ChromeGutterMinW,
         Shell.Layout.ChromeWidthQuantumW, Shell.Layout.ChromeSearchMaxW, Shell.Layout.ChromeSearchMinW,
         Shell.Layout.ChromeSearchWidthRatio, Shell.Layout.ChromeSearchIconW,
-        Shell.Layout.ChromeTabMaxW, Shell.Layout.ChromeTabMinW, Shell.Layout.ChromePinnedTabW, Shell.Layout.ChromeTabViewportMinW);
+        Shell.Layout.ChromeTabMaxW, Shell.Layout.ChromeTabMinW, Shell.Layout.ChromePinnedTabW, Shell.Layout.ChromeTabViewportMinW)
+    {
+        SearchFocusGrowW = Shell.Layout.ChromeSearchFocusGrowW, SearchFocusClearW = Shell.Layout.ChromeSearchFocusClearW,
+    };
+
+    /// <summary>What the search field GROWS by while it has focus (or its suggestions are open): the focused field is
+    /// <c>min(rest + this, room − <see cref="SearchFocusClearW"/>)</c>, where the room is the span between the tabs island and the
+    /// trailing island. 0 (the default) keeps the field at its rest width.</summary>
+    public float SearchFocusGrowW { get; init; }
+
+    /// <summary>The clearance the FOCUSED field keeps inside the room between the tabs island and the trailing island (split
+    /// evenly by the two drag bands either side), so a widened field never covers a tab or the avatar.</summary>
+    public float SearchFocusClearW { get; init; }
 
     /// <summary>Everything wrong with the budget, empty when the allocator can run on it.</summary>
     public IReadOnlyList<string> Validate()
@@ -77,8 +87,9 @@ public sealed record ChromeBudget(
         NonNegative(nameof(ProfileNameW), ProfileNameW);
         NonNegative(nameof(MinDragStripW), MinDragStripW);
         NonNegative(nameof(CaptionClusterW), CaptionClusterW);
-        NonNegative(nameof(ThemeToggleW), ThemeToggleW);
         NonNegative(nameof(GutterMinW), GutterMinW);
+        NonNegative(nameof(SearchFocusGrowW), SearchFocusGrowW);
+        NonNegative(nameof(SearchFocusClearW), SearchFocusClearW);
         NonNegative(nameof(SearchIconW), SearchIconW);
         NonNegative(nameof(TabViewportMinW), TabViewportMinW);
         NonNegative(nameof(PinnedTabW), PinnedTabW);

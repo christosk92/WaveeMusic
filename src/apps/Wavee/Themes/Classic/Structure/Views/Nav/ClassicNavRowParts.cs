@@ -82,8 +82,8 @@ internal sealed class ClassicSelectionPill : Component
 internal static class ClassicSkeletons
 {
     /// <summary>One pending row in the row's own ladder: the row's icon column (the art centred in its 32 slot at slot
-    /// x 10), the label at slot x 50, bars 140×12 (+ 80×10 at gap 4 in a two-line row), r4. Uniform by design (every
-    /// position draws the same row).</summary>
+    /// x 10), the label at slot x 50, bars 140×12 (+ 80×10 at gap 4 in a two-line row), r4; a text row (covers off) draws no art and its bar
+    /// at the text lead. Uniform by design (every position draws the same row).</summary>
     public static Element Row(SidebarRowShape shape, float heightOverride = float.NaN,
                               float artOverride = float.NaN)
     {
@@ -93,6 +93,14 @@ internal static class ClassicSkeletons
         Element text = subtitle
             ? new BoxEl { Direction = 1, Grow = 1f, Gap = SidebarGeometry.SkeletonGap, Children = [Bar(SidebarGeometry.SkeletonTitleW, SidebarGeometry.SkeletonTitleH), Bar(SidebarGeometry.SkeletonSubtitleW, SidebarGeometry.SkeletonSubtitleH)] }
             : new BoxEl { Direction = 1, Grow = 1f, Children = [Bar(SidebarGeometry.SkeletonTitleW, SidebarGeometry.SkeletonTitleH)] };
+        if (SidebarGeometry.IsText(shape))
+            return new BoxEl
+            {
+                Direction = 0, Height = height, AlignItems = FlexAlign.Center,
+                Margin = new Edges4(0f, SidebarGeometry.RowMarginY, 0f, SidebarGeometry.RowMarginY),
+                Padding = new Edges4(SidebarGeometry.TextLead, 0f, SidebarGeometry.TrailingPad, 0f),
+                Children = [text],
+            };
         return new BoxEl
         {
             Direction = 0, Height = height, AlignItems = FlexAlign.Center, Gap = SidebarGeometry.LabelGap,

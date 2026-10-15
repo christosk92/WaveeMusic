@@ -631,7 +631,7 @@ public readonly partial struct Track
                     var tracks = new Track[src.Count];
                     for (int i = 0; i < tracks.Length; i++) tracks[i] = src.At(i);
                     var ctx = new ActionContext(ActionTarget.ForTracks(tracks), Actions.Services);
-                    bool copy = cfg.Heart == HeartMode.Follow || cfg.Kind == DetailKind.Liked;
+                    bool copy = cfg.Kind is DetailKind.Playlist or DetailKind.Liked;
                     items.Add(AddToPlaylistItem(in ctx, overlay) with
                     {
                         Label = Loc.Get(copy ? Strings.Detail.CopyToPlaylist : Strings.Detail.AddToPlaylist),

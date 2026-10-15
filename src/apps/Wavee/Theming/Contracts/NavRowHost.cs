@@ -184,6 +184,10 @@ internal interface INavRowHost
     /// <summary>F2 on a row that can really be renamed.</summary>
     Action? RenameAction(in SidebarLibraryEntry entry);
 
+    /// <summary>The row's Unpin button (tuned item S5): the menu's Unpin for a pinned entry, or null when the entry is not a pin the store
+    /// can drop.</summary>
+    Action? UnpinAction(in SidebarLibraryEntry entry);
+
     /// <summary>Alt+Up / Alt+Down on a tree row.</summary>
     Action<int>? TreeMoveAction(in SidebarLibraryEntry entry);
 

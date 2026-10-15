@@ -266,8 +266,8 @@ internal sealed class ClassicCoverTint : Component
         var coverArt = p.Ready ? Design.SchemeFor(p.Url) : null;
         var artPalette = coverArt ?? (p.Ready ? Design.SchemeFor(p.FallbackUrl) : null);
         // DEFINITE "no colour": the page has DECIDED to opt out (Surfaces Off in Settings, or this layout applies
-        // no tint) — as opposed to simply not having a grading YET, which is transient and HOLDS the current colour
-        // rather than dipping to neutral and back.
+        // no tint) — as opposed to simply not having a grading YET, which is transient: the claim shows the neutral
+        // ground and an ordinary refresh writes nothing until the grading lands (TintOwnership, D15).
         bool definite = !washes || !p.Apply;
         ColorF? known = null;
         if (!definite)

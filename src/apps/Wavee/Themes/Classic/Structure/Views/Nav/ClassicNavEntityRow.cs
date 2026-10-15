@@ -42,7 +42,7 @@ internal struct ClassicRowSpec
     {
         Key = ""; Label = ""; Subtitle = null; Selected = false; Enabled = true; Depth = 0;
         Shape = SidebarRowShape.EntityTwoLine; Tile = false; LabelTooltip = false; Height = float.NaN; Ink = null;
-        ArtSize = float.NaN; Leading = null; Glyph = null; DisclosureChevron = null; Pinned = false; Trailing = null;
+        ArtSize = float.NaN; Leading = null; Glyph = null; DisclosureChevron = null; Pinned = false; OnUnpin = null; Trailing = null;
         Playing = false; PlayingAnimated = false; Track = false; Overflow = false; OnClick = null; OnRealized = null;
         MenuOverlay = null; Menu = null; Drag = null; DropTarget = null; DropCue = null; Animate = null;
         Caption = null; CheckLane = null; MultiSelected = false; ChecksVisible = null; Focusable = false;
@@ -82,12 +82,15 @@ internal struct ClassicRowSpec
     // ── slots ──
     /// <summary>The leading visual (build it with <see cref="Sidebar.Cover"/>). Null falls back to <see cref="Glyph"/>.</summary>
     public Element? Leading;
-    /// <summary>A 16-DIP glyph centred in an art-wide column when <see cref="Leading"/> is null.</summary>
+    /// <summary>A 16-DIP glyph centred in an art-wide column when <see cref="Leading"/> is null; in a text row (covers off) it leads the label
+    /// at the text lead, and a text row without one starts with its label.</summary>
     public string? Glyph;
     /// <summary>A folder's <see cref="Chevron.Disclosure"/> — the FIRST trailing element, never in the leading lane.</summary>
     public Element? DisclosureChevron;
-    /// <summary>A pinned library entry (#85): a quiet 12-DIP pin glyph beside the count. Never on a track.</summary>
+    /// <summary>A pinned library entry (#85): the 24-px Unpin button (S5) before the equalizer and the count. Never on a track.</summary>
     public bool Pinned;
+    /// <summary>What the Unpin button does (S5). Null draws the same 24 box as a quiet mark (no pin store to drop it from).</summary>
+    public Action? OnUnpin;
     /// <summary>Trailing content (a count badge, a "+").</summary>
     public Element? Trailing;
     /// <summary>This row's context is the playing one: the accent equalizer (<see cref="Controls.EqualizerH"/>).</summary>
@@ -176,13 +179,23 @@ internal static class ClassicEntityRow
         Element visual = spec.Leading
             ?? (spec.Glyph is { Length: > 0 } g ? Icon(g, SidebarGeometry.GlyphSize, ink) : new BoxEl { Width = art, Height = art });
         if (spec.Track && spec.Leading is not null) visual = TrackArt(visual, art, spec.Shape);
-        Element iconColumn = new BoxEl
-        {
-            Width = spec.Tile ? SidebarGeometry.TileWidth : SidebarGeometry.IconColumn, Height = height, Shrink = 0f,
-            Padding = new Edges4(spec.Tile ? 0f : SidebarGeometry.LeadInset, 0f, 0f, 0f),
-            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Children = [visual],
-        };
+        // A text row (S0/S4) has no art column: the folder glyph (16) at the text lead and the 8 gap, or the label right at the lead.
+        bool textRow = !spec.Tile && SidebarGeometry.IsText(spec.Shape);
+        bool textGlyph = textRow && spec.Leading is null && spec.Glyph is { Length: > 0 };
+        Element iconColumn = textRow
+            ? new BoxEl
+            {
+                Width = SidebarGeometry.LabelX(spec.Shape, textGlyph) - (textGlyph ? SidebarGeometry.LabelGap : 0f), Height = height, Shrink = 0f,
+                Padding = new Edges4(SidebarGeometry.TextLead, 0f, 0f, 0f), AlignItems = FlexAlign.Center,
+                Children = textGlyph ? [visual] : [],
+            }
+            : new BoxEl
+            {
+                Width = spec.Tile ? SidebarGeometry.TileWidth : SidebarGeometry.IconColumn, Height = height, Shrink = 0f,
+                Padding = new Edges4(spec.Tile ? 0f : SidebarGeometry.LeadInset, 0f, 0f, 0f),
+                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Children = [visual],
+            };
         if (spec.Tile)
             return Finish(in spec, new BoxEl
             {
@@ -223,30 +236,36 @@ internal static class ClassicEntityRow
             };
         }
 
-        // ── trailing: equalizer · pin mark · count/badge, ending at W − 18; the chevron column replaces the 14 pad ──
+        // ── trailing: Unpin button · equalizer · count slot, ending at W − 18; the chevron column replaces the 14 pad ──
         bool overflow = spec.Overflow && enabled && spec.MenuOverlay is not null && spec.Menu is not null;
-        int trailingCount = (spec.Playing ? 1 : 0) + (spec.Pinned ? 1 : 0) + (spec.Trailing is null ? 0 : 1);
+        // The count slot: the row's trailing content, or (S2/S5) an empty slot the "…" lands in when the row has none but carries the
+        // Unpin button or the equalizer.
+        Element? slot = spec.Trailing
+            ?? (SidebarGeometry.ReservesSlot(overflow, false, spec.Pinned, spec.Playing)
+                ? new BoxEl { Width = SidebarGeometry.CountSlot, Height = SidebarGeometry.CountSlot, Shrink = 0f }
+                : null);
+        int trailingCount = (spec.Playing ? 1 : 0) + (spec.Pinned ? 1 : 0) + (slot is null ? 0 : 1);
         var kids = new List<Element>(6);
         // The check lane is a gapless sibling BEFORE the icon column: while the checks show it pushes the whole row
         // right (WinUI's multi-select content offset) instead of crushing the 40-px column.
         if (spec.CheckLane is { } lane) kids.Add(lane);
         kids.Add(iconColumn);
-        kids.Add(new BoxEl { Width = SidebarGeometry.LabelGap, Shrink = 0f });
+        if (!textRow || textGlyph) kids.Add(new BoxEl { Width = SidebarGeometry.LabelGap, Shrink = 0f });
         kids.Add(text);
         if (trailingCount > 0)
         {
             var parts = new Element[trailingCount];
             int t = 0;
+            if (spec.Pinned) parts[t++] = UnpinButton(spec.OnUnpin, enabled);
             if (spec.Playing) parts[t++] = Controls.Equalizer(spec.PlayingAnimated, Tok.AccentDefault, Controls.EqualizerH);
-            if (spec.Pinned) parts[t++] = Icon(Icons.Pin, SidebarGeometry.PinMarkSize, Tok.TextTertiary);
-            if (spec.Trailing is { } trailingContent) parts[t] = trailingContent;
-            // With a hover "…" the cluster hands its place over: it fades out as the button fades in over it, so the
-            // count ends at W − 18 at rest instead of leaving a button-wide hole beside it.
+            // With a hover "…" the count slot hands its place over (S2): it fades out as the button fades in over it, so the count
+            // ends at W − 18 at rest instead of leaving a button-wide hole beside it. The Unpin button and the equalizer stay.
+            if (slot is not null)
+                parts[t] = overflow ? new BoxEl { Shrink = 0f, HoverOpacity = 0f, Children = [slot] } : slot;
             kids.Add(new BoxEl
             {
                 Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = SidebarGeometry.TrailingGap,
                 Margin = new Edges4(SidebarGeometry.TrailingGap, 0f, 0f, 0f), Children = parts,
-                HoverOpacity = overflow ? 0f : float.NaN,
             });
         }
         bool chevron = spec.DisclosureChevron is not null;
@@ -363,6 +382,29 @@ internal static class ClassicEntityRow
         if (e.KeyCode == Keys.Up) { e.Handled = true; move(-1); }
         else if (e.KeyCode == Keys.Down) { e.Handled = true; move(1); }
     };
+
+    /// <summary>S5: the pin as a real 24-px "Unpin" button (board `C-Sidebar` `s.pin`: 24 box, r4, the 12 pin glyph, tertiary) with its
+    /// tooltip; it drops the pin on click and never arms the row's drag. Without <paramref name="unpin"/> (no pin store) the same box is a
+    /// quiet mark, so the row's geometry does not change with the store.</summary>
+    static Element UnpinButton(Action? unpin, bool enabled)
+    {
+        Element glyph = Icon(Icons.Pin, SidebarGeometry.PinGlyph, Tok.TextTertiary);
+        if (unpin is null || !enabled)
+            return new BoxEl
+            {
+                Width = SidebarGeometry.PinButton, Height = SidebarGeometry.PinButton, Shrink = 0f,
+                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Children = [glyph],
+            };
+        var button = new BoxEl
+        {
+            Width = SidebarGeometry.PinButton, Height = SidebarGeometry.PinButton, Shrink = 0f,
+            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
+            Role = AutomationRole.Button, Cursor = CursorId.Hand, BlocksDragArm = true,
+            OnClick = unpin,
+            Children = [glyph],
+        }.Interactive(Interaction.Subtle);
+        return ToolTip.Wrap(button, Loc.Get(Strings.Sidebar.Pin.UnpinShort));
+    }
 
     /// <summary>The hover "…" parked against the row's trailing edge (JustifySelf End) inside the row's ZStack,
     /// <paramref name="trailingInset"/> short of it on a folder so it clears the chevron column. ClickRequestsContext

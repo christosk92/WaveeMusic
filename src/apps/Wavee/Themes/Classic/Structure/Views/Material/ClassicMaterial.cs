@@ -8,8 +8,8 @@
 // and the implicit brush transition arms only on a re-rendered STATIC fill, so the tint cross-fades page to page.
 //
 // THE HAND-OVER IS CORE (`ShellMaterial.Publish` / `TintOwnership`, `Platform/ShellMaterial.cs`): the page that last CLAIMED the slot
-// owns it, the chrome never dips to neutral between two coloured pages, and nothing here writes. This view only paints what the
-// slot holds, so the handoff between pages (no flash on navigation) is exactly what it was.
+// owns it, and nothing here writes. The state this view is handed is the slot AS OF THE PAGE ON SCREEN (`Shell.PresentedMaterial`,
+// tuning D15): a navigation's new colour arrives when its page does, and the tint cross-fades there.
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;

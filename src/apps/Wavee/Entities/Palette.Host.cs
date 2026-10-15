@@ -276,11 +276,10 @@ public static partial class Palette
     // it happens to be showing — a page that re-keyed on the url would remount (and therefore re-fade) its own ground
     // every time the hero swapped covers, which is the opposite of the 250 ms cross-fade the bound Fill already gives.
 
-    /// <summary>The key of a detail page's tone plane (themes plan X44). It carries <see cref="Tok.Epoch"/>, which moves for a light/dark flip AND for
-    /// a definition swap that changes a wash or layer role, so the plane is rebuilt in the same publication as the theme. A key on the
-    /// light/dark flag alone would keep the old plane across a swap that leaves the kind where it was.</summary>
-    public static string ToneKey(string routeKey, int epoch)
-        => "detail-tone:" + routeKey + ":e" + epoch.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    /// <summary>The key of a detail page's tone plane: the page's surface, never the theme. A light/dark flip or a definition swap that
+    /// moves a wash role keeps the node and re-runs its bound fill inside the live cross-fade (EP20, Classic tuning F10), so the plane
+    /// fades with every other colour; a key on <c>Tok.Epoch</c> remounted it, which snapped it to the new colour.</summary>
+    public static string ToneKey(string routeKey) => "detail-tone:" + routeKey;
 
     /// <summary>THE detail page's ground: one flat, translucent art-derived plane behind both hero arms.
     /// <para>Mount it as a page-root SIBLING of the scrolling page, never as a child of it.</para></summary>

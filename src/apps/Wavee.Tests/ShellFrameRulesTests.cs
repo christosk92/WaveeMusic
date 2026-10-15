@@ -188,6 +188,18 @@ public class ShellFrameBodyRulesTests
         Assert.False(Shell.FrameRules.ClearsStagePlayable(new Shell.Route(Shell.RouteKind.Module), "spotify:track:x"));
     }
 
+    [Fact]
+    public void A_swap_lands_when_the_shown_route_catches_up_and_at_once_before_the_first_commit()
+    {
+        // Classic tuning D15: the shell material is painted as of this edge, so its colour changes with the page.
+        var home = new Shell.Route(Shell.RouteKind.Home, Tab: 1);
+        var browse = new Shell.Route(Shell.RouteKind.Browse, Tab: 1);
+        Assert.False(Shell.FrameRules.SwapLanded(shown: home, current: browse));               // the leaving page's exit leg
+        Assert.True(Shell.FrameRules.SwapLanded(shown: browse, current: browse));              // the exit leg has run
+        Assert.True(Shell.FrameRules.SwapLanded(shown: Shell.Route.None, current: browse));    // boot: the first frame is final
+        Assert.True(Shell.FrameRules.SwapLanded(shown: home, current: home));                  // a swap reversed inside its exit leg
+    }
+
     [Theory]
     [InlineData(Shell.AuthState.Live, Shell.FrameRules.ChipForm.Profile, false)]
     [InlineData(Shell.AuthState.Connecting, Shell.FrameRules.ChipForm.Connecting, false)]
@@ -279,27 +291,19 @@ public class ShellChromeSearchFieldWidthTests
         Shell.FrameRules.ChipForm.Reconnect, Shell.FrameRules.ChipForm.SignIn,
     ];
 
-    // A field view's own candidate measurements: the stub value the bug actually produced, degenerate inputs a bad
-    // frame could hand back, and a spread either side of the floor and the ceiling.
-    static readonly float[] Measurements =
-        [float.NaN, float.PositiveInfinity, float.NegativeInfinity, -50f, 0f, 40f, 44f, 279f, 280f, 320f, 420f, 10_000f];
-
     [Fact]
     public void A_field_view_is_never_laid_out_below_the_floor_for_any_allocation_the_pressure_allocator_can_produce()
     {
         // Sweeps every width band the allocator resolves to — including the ones that land on `MergedSearchMode.Icon`,
         // exactly the allocation that used to hand a still-mounted `SearchField` the 44-DIP magnifier width. The test
         // calls `Chrome.FieldWidthFor` the same way `SearchField.Render()` now does: it is never told the mode, only
-        // the allocation's own `SearchWidth` and a candidate measurement.
+        // the allocation's own `SearchWidth`.
         foreach (var chip in Chips)
         for (float w = 200f; w <= 2600f; w += 25f)
         {
             var c = Shell.Chrome.Resolve(w, 220f, null, chip);
-            foreach (float measured in Measurements)
-            {
-                float fieldWidth = Shell.Chrome.FieldWidthFor(c.SearchWidth, measured);
-                Assert.InRange(fieldWidth, Shell.Layout.ChromeSearchMinW, Shell.Layout.ChromeSearchMaxW);
-            }
+            float fieldWidth = Shell.Chrome.FieldWidthFor(c.SearchWidth);
+            Assert.InRange(fieldWidth, Shell.Layout.ChromeSearchMinW, Shell.Layout.ChromeSearchMaxW);
         }
     }
 
@@ -315,7 +319,7 @@ public class ShellChromeSearchFieldWidthTests
         Assert.Equal(Shell.MergedSearchMode.Icon, icon.SearchMode);
         Assert.Equal(Shell.Layout.ChromeSearchIconW, icon.SearchWidth);
 
-        float fieldWidth = Shell.Chrome.FieldWidthFor(icon.SearchWidth, measuredCentreAvail: icon.SearchWidth);
+        float fieldWidth = Shell.Chrome.FieldWidthFor(icon.SearchWidth);
         Assert.Equal(Shell.Layout.ChromeSearchMinW, fieldWidth);
     }
 

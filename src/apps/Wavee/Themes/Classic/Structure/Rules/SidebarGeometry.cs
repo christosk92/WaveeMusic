@@ -52,8 +52,16 @@ public static class SidebarGeometry
     public const float ChevronColumn = 40f;
     public const float IndentStep = 31f;
     public const int MaxIndentDepth = 3;
-    /// <summary>The trailing cluster's gap (count · pin mark · equalizer).</summary>
+    /// <summary>The trailing cluster's gap (Unpin button · equalizer · count).</summary>
     public const float TrailingGap = 6f;
+
+    // ── text rows (S0, S3, S4: covers off, board `C-Sidebar` covers false) ──
+    /// <summary>A text row's lead inset: the folder glyph, or the label of a row without one, starts at slot x 12 (pane 16). A text row is
+    /// <see cref="RowHeight"/> tall at pitch 40 (S3).</summary>
+    public const float TextLead = 12f;
+    /// <summary>A text row's leading glyph (a folder): 16, then the <see cref="LabelGap"/> 8, so its label sits at slot x 36 (pane 40). A child
+    /// row is indented <see cref="IndentStep"/> per level, so depth 1 starts at slot x 43 (S4).</summary>
+    public const float TextGlyph = GlyphSize;
 
     // ── chrome rows ──
     public const float HeaderHeight = 40f;
@@ -78,7 +86,8 @@ public static class SidebarGeometry
     /// <summary>A row's slot extent: its height plus the 2 + 2 margin (40 / 44 / 40).</summary>
     public static float PitchOf(SidebarRowShape shape) => HeightOf(shape) + 2f * RowMarginY;
 
-    /// <summary>The leading visual's edge: glyph 16 · art 32 (Default) · art 24 (Compact).</summary>
+    /// <summary>The leading visual's edge: glyph 16 · art 32 (Default) · art 24 (Compact, and a text row's rail tile: the rail always shows
+    /// covers).</summary>
     public static float ArtOf(SidebarRowShape shape) => shape switch
     {
         SidebarRowShape.Glyph => GlyphSize,
@@ -102,6 +111,14 @@ public static class SidebarGeometry
     /// <summary>Where the drop caret for depth <paramref name="depth"/> starts (slot space): the same x as the pill, so
     /// "insert here at this depth" lines up with the row it describes. Read backwards by the drop resolver.</summary>
     public static float TreeContentX(int depth) => IndentFor(depth);
+
+    /// <summary>A text row (covers off): no art in the pane, a glyph only on a folder or a route pin.</summary>
+    public static bool IsText(SidebarRowShape shape) => shape == SidebarRowShape.EntityText;
+
+    /// <summary>The label's slot x at depth 0: a text row's lead (+ its glyph and gap when it has one), every other row's icon column and
+    /// gap (slot 50).</summary>
+    public static float LabelX(SidebarRowShape shape, bool glyph)
+        => IsText(shape) ? TextLead + (glyph ? TextGlyph + LabelGap : 0f) : IconColumn + LabelGap;
 
     /// <summary>A subtitle line is drawn only in a two-line row and only when there is text.</summary>
     public static bool SubtitleVisible(SidebarRowShape shape, string? subtitle)
@@ -129,23 +146,28 @@ public static class SidebarGeometry
     public const float FolderPlusBox = 20f, FolderPlusGlyph = 12f;
 
     /// <summary>The width the trailing cluster takes from the label (S8: the tooltip estimate counts every part the row lays out,
-    /// the pin mark and the count slot included): the cluster's lead margin, each part, and the gaps between them. 0 for no
+    /// the Unpin button and the count slot included): the cluster's lead margin, each part, and the gaps between them. 0 for no
     /// part. <paramref name="trailing"/> is the width of the row's own trailing content (a count slot, a mark), 0 for none.</summary>
     public static float TrailingWidth(bool playing, bool pinned, float trailing)
     {
         int parts = (playing ? 1 : 0) + (pinned ? 1 : 0) + (trailing > 0f ? 1 : 0);
         if (parts == 0) return 0f;
         return TrailingGap * parts                       // the lead margin + the gaps between the parts
-               + (playing ? EqualizerWidth : 0f) + (pinned ? PinMarkSize : 0f) + MathF.Max(0f, trailing);
+               + (playing ? EqualizerWidth : 0f) + (pinned ? PinButton : 0f) + MathF.Max(0f, trailing);
     }
+
+    /// <summary>S2/S5: does a row with a hover "…" keep an EMPTY count slot? The "…" takes the 26-wide count slot on hover; a row with no
+    /// count but an Unpin button or an equalizer keeps the slot anyway, so the "…" never lands on them (the button must stay clickable).</summary>
+    public static bool ReservesSlot(bool overflow, bool hasTrailing, bool pinned, bool playing)
+        => overflow && !hasTrailing && (pinned || playing);
 
     /// <summary>A folder's 40-px chevron column replaces the 14-px trailing pad: the trailing width its label gives up.</summary>
     public const float FolderTrail = ChevronColumn - TrailingPad;
 
     // ── the row primitive (`ClassicEntityRow`) ──
 
-    /// <summary>The hover "…" box. It overlays the row and costs the label nothing: a trailing count or pin mark fades out under it on
-    /// hover. Its radius is half its edge; its glyph is 14.</summary>
+    /// <summary>The hover "…" box. It overlays the row's count slot and costs the label nothing: the count (or a trailing mark) cross-fades
+    /// with it on hover (S2); the Unpin button and the equalizer stay. Its radius is half its edge; its glyph is 14.</summary>
     public const float OverflowButton = 26f, OverflowButtonCorner = 13f, OverflowGlyph = 14f;
 
     /// <summary>A disabled row fades as a whole (TR:501).</summary>
@@ -154,13 +176,17 @@ public static class SidebarGeometry
     /// <summary>The title's line height in a two-line row.</summary>
     public const float TwoLineLabelHeight = 18f;
 
-    /// <summary>The quiet pin mark beside a pinned entry's count.</summary>
-    public const float PinMarkSize = 12f;
+    /// <summary>S5: a pinned entry's pin is a real 24-px "Unpin" button (board `C-Sidebar` `s.pin`: 24 box, r4, 12 glyph, tertiary) before
+    /// the equalizer and the count slot.</summary>
+    public const float PinButton = 24f, PinGlyph = 12f;
+
+    /// <summary>An unavailable pin's warning mark (its trailing content, in the count slot).</summary>
+    public const float WarningMark = 12f;
 
     // ── the offline pin (S9, board `C-Sidebar` state offline) ──
 
     /// <summary>An offline pin's mark: the cloud-off glyph (Segoe Fluent Icons U+EC9C, absent from the engine's glyph table) in a
-    /// 24 box, 12 glyph, tertiary. It takes the pin mark's place.</summary>
+    /// 24 box, 12 glyph, tertiary. It takes the Unpin button's place.</summary>
     public const string OfflineGlyph = "";
     public const float OfflineMarkBox = 24f, OfflineMarkGlyph = 12f;
     /// <summary>An offline pin's cover is kept, quieted (board: opacity 0.45); its title is tertiary.</summary>
@@ -179,10 +205,11 @@ public static class SidebarGeometry
         SkeletonGap = 4f, SkeletonBarRadius = 4f;
 
     /// <summary>The label column of a row in a pane <paramref name="paneWidth"/> wide at <paramref name="depth"/>, with
-    /// <paramref name="trailing"/> DIP of trailing content: the pane less its list insets, the row's indent, icon column, label gap and
-    /// trailing pad. The row decides from it whether to carry its label as a tooltip (<c>SidebarLabelFit.Overflows</c>).</summary>
-    public static float LabelWidth(float paneWidth, int depth, float trailing)
-        => paneWidth - PaneInsetH - IndentFor(depth) - IconColumn - LabelGap - TrailingPad - trailing;
+    /// <paramref name="trailing"/> DIP of trailing content: the pane less its list insets, the row's indent, its label x (<see cref="LabelX"/>:
+    /// the icon column and label gap, or a text row's lead) and trailing pad. The row decides from it whether to carry its label as a tooltip
+    /// (<c>SidebarLabelFit.Overflows</c>).</summary>
+    public static float LabelWidth(float paneWidth, int depth, float trailing, float labelX = IconColumn + LabelGap)
+        => paneWidth - PaneInsetH - IndentFor(depth) - labelX - TrailingPad - trailing;
 
     // ── the pinned band's drop cue (the empty Pinned band while a pinnable drag is live) ──
 

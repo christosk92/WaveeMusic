@@ -7,6 +7,9 @@
 // Role: CORE
 // Spec: docs/themes/plan/technical-plan.md §6.1 (T9a)
 
+using FluentGpu.Controls;
+using FluentGpu.Localization;
+
 namespace Wavee;
 
 /// <summary>The navigation, playback and text verbs the structure's detail views call.</summary>
@@ -25,6 +28,15 @@ public static class DetailVerbs
 
     /// <summary>The page subject's default play: pause / resume the context when it is already the one playing, else start it.</summary>
     public static Action PlayContext(EntityUri subject) => () => Playback.PlayOrToggleContext(subject.Id);
+
+    /// <summary>The Play split's "More ways to play" menu (tuned Classic D2), always these three on the page subject: Add to queue,
+    /// Play next (its members, through the container verbs' path) and Start radio (seeded by its first song).</summary>
+    public static IReadOnlyList<MenuFlyoutItem> PlayMenu(EntityUri subject) =>
+    [
+        new(Loc.Get(Strings.Detail.AddToQueue), ActionIcons.Resolve(ActionIcons.Queue), true, () => Queue.QueueContext(subject, next: false)),
+        new(Loc.Get(Strings.Detail.PlayNext), ActionIcons.Resolve(ActionIcons.PlayNext), true, () => Queue.QueueContext(subject, next: true)),
+        new(Loc.Get(Strings.Detail.StartRadio), ActionIcons.Resolve(ActionIcons.Radio), true, () => Queue.StartContextRadio(subject)),
+    ];
 
     /// <summary>The chart playlist's default caption: "N new entries · date" (W28).</summary>
     public static string ChartCaptionText(Detail.Identity id)

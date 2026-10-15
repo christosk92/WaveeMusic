@@ -301,20 +301,15 @@ public static partial class Actions
 
         // ── Organize ▸ / Access ▸ / the pin pair ────────────────────────────────────────────────────────────────────
 
-        /// <summary><b>Organize ▸</b> — every verb that changes where a sidebar row LIVES: the pane's positional moves,
-        /// then "Move out of {parent}", then (behind a separator — the pinned list is a different list) the pin row.
+        /// <summary><b>Organize ▸</b> — every verb that changes where a sidebar row LIVES in its list: the pane's positional moves,
+        /// then "Move out of {parent}". The pin pair is NOT in it: "Pin to sidebar / Unpin" is a top-level row (tuned item S5).
         /// Null when none apply, so the row is absent rather than an empty cascade.</summary>
-        public static MenuFlyoutItem? Organize(IReadOnlyList<MenuFlyoutItem>? moves, MenuFlyoutItem? moveOut, MenuFlyoutItem? pin)
+        public static MenuFlyoutItem? Organize(IReadOnlyList<MenuFlyoutItem>? moves, MenuFlyoutItem? moveOut)
         {
-            var items = new List<MenuFlyoutItem>(6);
+            var items = new List<MenuFlyoutItem>(5);
             if (moves is { Count: > 0 })
                 for (int i = 0; i < moves.Count; i++) items.Add(moves[i]);
             if (moveOut is { } lift) items.Add(lift);
-            if (pin is { } pinRow)
-            {
-                if (items.Count > 0) items.Add(Separator);
-                items.Add(pinRow);
-            }
             return items.Count == 0 ? null : SubMenu(Loc.Get(Strings.Menu.Organize), items, ActionIcons.Folder);
         }
 

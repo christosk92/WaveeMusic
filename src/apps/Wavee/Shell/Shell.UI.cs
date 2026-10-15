@@ -133,6 +133,13 @@ public static partial class Shell
     internal static readonly Signal<ShellMaterialState> MaterialState = new(default);
     static readonly object s_neutralMaterialOwner = new();
 
+    /// <summary>The material ON SCREEN: <see cref="MaterialState"/> as of the page that is shown (Classic tuning D15). A page swap
+    /// decides the new page's claim on the route commit, but the material layer paints it when the swap lands
+    /// (<see cref="FrameRules.SwapLanded"/>), so the old page's tint leaves with the old page and the new one cross-fades in with the
+    /// new page's enter, never under the leaving body or the skeleton. Inside a page (a grading arriving, a theme flip, an option)
+    /// it follows the channel at once.</summary>
+    static readonly Signal<ShellMaterialState> PresentedMaterial = new(default);
+
     static bool s_frameSeeded;
 
     /// <summary>The persisted chrome state the frame's first layout must already have (no startup animation). Runs once,
@@ -167,6 +174,10 @@ public static partial class Shell
     static readonly KeyAccelerator NewTabChord = new(Keys.T, KeyModifiers.Ctrl);
     static readonly KeyAccelerator PaletteChord = new(Keys.K, KeyModifiers.Ctrl);
     static readonly KeyAccelerator FindChord = new(Keys.F, KeyModifiers.Ctrl);
+    // Ctrl+, opens Settings (tuned S1). VK_OEM_COMMA: the engine's key table names no comma key, and the comma sits on this VK on
+    // every Windows layout that has one on the main row.
+    const int OemCommaVk = 0xBC;
+    static readonly KeyAccelerator SettingsChord = new(OemCommaVk, KeyModifiers.Ctrl);
     static readonly KeyAccelerator BackChord = new(Keys.Left, KeyModifiers.Alt);
     static readonly KeyAccelerator ForwardChord = new(Keys.Right, KeyModifiers.Alt);
     static readonly KeyAccelerator FullscreenChord = new(Keys.F11, KeyModifiers.None);
@@ -182,13 +193,14 @@ public static partial class Shell
     static BoxEl Chord(KeyAccelerator chord, Action onFire)
         => new() { Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false, Accelerator = chord, OnClick = onFire };
 
-    /// <summary>The fourteen chord boxes the frame's column mounts first, in this order. Behaviour the shell owns (what a chord
+    /// <summary>The fifteen chord boxes the frame's column mounts first, in this order. Behaviour the shell owns (what a chord
     /// DOES is <see cref="FrameVerbs"/>), built once; the structure's frame places them (<c>ShellFrameProps.Chords</c>).</summary>
     static readonly IReadOnlyList<Element> s_chords =
     [
         Chord(NewTabChord, static () => FrameVerbs.Shared.NewTab()),
         Chord(PaletteChord, static () => FrameVerbs.Shared.TogglePalette()),
         Chord(FindChord, static () => FrameVerbs.Shared.FocusSearch()),
+        Chord(SettingsChord, static () => FrameVerbs.Shared.OpenSettings()),
         Chord(BackChord, static () => FrameVerbs.Shared.GoBack()),
         Chord(ForwardChord, static () => FrameVerbs.Shared.GoForward()),
         Chord(FullscreenChord, static () => FrameVerbs.Shared.ToggleFullscreen()),
@@ -488,10 +500,17 @@ public static partial class Shell
                 ChromeLayout.SetIfChanged(next);
             });
 
-            // ── the material mirror: the page channel → the model's TintOwner (the chrome's settled colour fact) ──
+            // ── the material on screen: the page channel as of the shown page (D15) ──
             UseSignalEffect(static () =>
             {
                 var m = MaterialState.Value;
+                if (FrameRules.SwapLanded(Shown.Value, Current.Peek())) PresentedMaterial.Value = m;
+            });
+
+            // ── the material mirror: the material on screen → the model's TintOwner (the chrome's settled colour fact) ──
+            UseSignalEffect(static () =>
+            {
+                var m = PresentedMaterial.Value;
                 bool neutral = m.Owner is null || ReferenceEquals(m.Owner, s_neutralMaterialOwner) || (m.Tint is null && m.Wash is null);
                 Material.SetIfChanged(neutral
                     ? TintOwner.Neutral
@@ -550,7 +569,7 @@ public static partial class Shell
             OnContentRegionBounds = static _ => PublishScrimClip(),
             TitleBar = TitleBarProps(),
             PlayerBar = PlayerBarHost.Props,
-            Material = new MaterialProps { State = MaterialState },
+            Material = new MaterialProps { State = PresentedMaterial },
             ContentHost = static () => Embed.Comp(static () => new ContentHost()),
             NavPane = Sidebar.DockedPaneProps,
             SidebarSeam = () => Splitter.Create(Sidebar.Seam, () => Sidebar.CommitSeam(), SidebarSeamOptionsFor(policies.NavPane),
@@ -921,8 +940,9 @@ public static partial class Shell
         // l.Chip is the form the trailing island actually BUILDS from (the view's AuthChip); Auth.Value alone is not enough:
         // the allocator effect publishes the new Chip after Auth flips, so the bar can render once with the stale chip
         // and the version must move again when ChromeLayout lands, or TitleBar's render memo returns the stale tree.
+        // FieldSettled: the search field eases to its focused width and back (F6); the regions are pushed once it has SETTLED.
         return HashCode.Combine(flags, (int)l.SearchWidth, (int)l.LeadClusterW, TitleBarTabsVersion(), (int)Auth.Value,
-            HashCode.Combine(r.Kind, r.Subject, r.Arg), Sidebar.PinsVersion.Value, (int)l.Chip);
+            HashCode.Combine(r.Kind, r.Subject, r.Arg), Sidebar.PinsVersion.Value, HashCode.Combine((int)l.Chip, s_omnibar.FieldSettled.Value));
     }
 
     // Both fold Shown: the strip's labels come from the staged route, so it must rebuild when that route LANDS (the

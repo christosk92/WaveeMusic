@@ -365,6 +365,18 @@ public sealed class ClassicStructure : IStructureLayer
         ],
         Picker: PickerStyle.Combo);
 
+    /// <summary>Show covers (tuned item S0): the Classic layout's playlist, album and pin rows carry their cover (today's 40-px two-line or 36-px
+    /// one-line rows, by <see cref="LibraryDensity"/>); off, they are 36-px text rows with a folder glyph on folders (board `C-Sidebar`, covers
+    /// false). Stored as `theme.classic.structure.showCovers`; new, so no legacy key. Shown only with the Classic layout: the Library layout always
+    /// shows covers. Live: the core sidebar follows it through <see cref="NavPanePolicy.ShowCovers"/> and re-plans the pane.</summary>
+    public static ToggleOption ShowCovers { get; } = new ToggleOption(
+        Id: "showCovers", TitleKey: Strings.Settings.Sidebar.ShowCovers, DescriptionKey: Strings.Settings.Sidebar.ShowCoversSub,
+        Group: Strings.Settings.ThemeOptions.Group.Sidebar, Default: true)
+        with { VisibleWhen = new OptionCondition(NavPaneOptionIds.Layout, SidebarLayoutId.Classic) };
+
+    /// <summary>The layer-qualified id of <see cref="ShowCovers"/> (the Settings view gives it the picture glyph).</summary>
+    public const string ShowCoversQualifiedId = "structure.showCovers";
+
     /// <summary>The layer-qualified ids of the two sidebar options (what <c>GeneratedOptionRow.QualifiedId</c> answers): the Settings view draws the layout
     /// with its preview cards and the density with its narrow combo.</summary>
     public const string SidebarOptionId = "structure." + NavPaneOptionIds.Layout;
@@ -421,7 +433,7 @@ public sealed class ClassicStructure : IStructureLayer
     /// wireframe cards.</summary>
     public const string PageLayoutQualifiedId = "structure." + PageLayoutId;
 
-    private static readonly ThemeOptionSchema s_options = ThemeOptionSchema.Of(Sidebar, LibraryDensity, RowStyle, HideTrackArt, Surfaces, PageLayout, RailUniform, ClearRememberedSizes);
+    private static readonly ThemeOptionSchema s_options = ThemeOptionSchema.Of(Sidebar, LibraryDensity, ShowCovers, RowStyle, HideTrackArt, Surfaces, PageLayout, RailUniform, ClearRememberedSizes);
 
     /// <inheritdoc />
     public ThemeOptionSchema Options => s_options;
@@ -429,7 +441,7 @@ public sealed class ClassicStructure : IStructureLayer
     /// <inheritdoc />
     public ThemePolicies Policies(OptionValues structure, in StyleMetrics metrics)
         => ClassicPolicies.For(structure.Get(Sidebar.Key), structure.Get(LibraryDensity.Key), structure.Get(HideTrackArt.Key),
-            structure.Get(PageLayout.Key), structure.Get(RailUniform.Key), structure.Get(RowStyle.Key));
+            structure.Get(PageLayout.Key), structure.Get(RailUniform.Key), structure.Get(RowStyle.Key), structure.Get(ShowCovers.Key));
 
     /// <inheritdoc />
     public ShellCapabilities Capabilities(OptionValues structure) => ShellCapabilities.Unrestricted;
@@ -439,7 +451,7 @@ public sealed class ClassicStructure : IStructureLayer
 
     /// <summary>The legacy rows are the sidebar's three ACTIONS: they are not switches, so no M-PR migrates them. (Page motion, M1,
     /// was deleted: it has no row. Washes, M6, became the structure's `surfaces` option; row style, M2, the structure's `rowStyle`; row density, M3, the style's `density` option, hide art, M4,
-    /// the structure's `hideTrackArt`; the sidebar layout and density, M7a, the structure's `sidebar` and `libraryDensity`; the page layout, the rails' uniformity and
+    /// the structure's `hideTrackArt`; the sidebar layout and density, M7a, the structure's `sidebar` and `libraryDensity` (and the new `showCovers`, CT3a); the page layout, the rails' uniformity and
     /// their reset, M8, the structure's `pageLayout`, `railUniform` and `clearRememberedSizes`.)</summary>
     public IReadOnlyList<LegacyOptionRow> LegacyRows { get; } =
     [

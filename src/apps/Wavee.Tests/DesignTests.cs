@@ -818,7 +818,7 @@ public class DesignNavMotionTests
 
     [Fact]
     public void AccentFor_a_coverless_page_is_the_payload_hex_not_a_live_track()
-        => Assert.Equal(Design.Palette.ChromeFromPayload(0xFFC2185Bu), Detail.AccentFor(null, 0xFFC2185Bu));
+        => Assert.Equal(Design.Palette.Floor(Design.Palette.ChromeFromPayload(0xFFC2185Bu)), Detail.AccentFor(null, 0xFFC2185Bu));
 }
 
 public class DesignWashTests
@@ -886,10 +886,11 @@ public class DesignTintOwnershipTests
     }
 
     [Fact]
-    public void A_claim_with_no_colour_yet_HOLDS_what_is_showing()
+    public void A_claim_with_no_colour_yet_is_the_neutral_ground_never_the_previous_pages_colour()
     {
-        // THE hand-over. This is what stops the chrome dipping to neutral and back between two coloured pages.
-        Assert.Equal(TintOwnership.Outcome.WriteHeldColor,
+        // Classic tuning D15: an album's skeleton must not wear the album before it. The claim is the new page's; its grading
+        // cross-fades in when it lands (a refresh from the owner, below).
+        Assert.Equal(TintOwnership.Outcome.WriteNeutral,
             TintOwnership.Resolve(PageA, new TintOwnership.Request(PageB, IsClaim: true, Definite: false, HasColor: false)));
     }
 
@@ -935,16 +936,6 @@ public class DesignTintOwnershipTests
         // artist's colour for that whole stretch. The gate only needs to know the claim HAS a colour.
         Assert.Equal(TintOwnership.Outcome.WriteKnownColor,
             TintOwnership.Resolve(PageA, new TintOwnership.Request(PageB, IsClaim: true, Definite: false, HasColor: true)));
-    }
-
-    [Fact]
-    public void A_claim_with_no_cached_grading_still_HOLDS_even_when_the_overview_is_still_unknown()
-    {
-        // The other half of the same fix: an artist whose art has never been graded yet must not dip the chrome to
-        // neutral while its overview is still in flight — the hold is exactly what an overview-agnostic gate needs,
-        // so it must survive moving the gate off Knows(Overview).
-        Assert.Equal(TintOwnership.Outcome.WriteHeldColor,
-            TintOwnership.Resolve(PageA, new TintOwnership.Request(PageB, IsClaim: true, Definite: false, HasColor: false)));
     }
 }
 

@@ -244,7 +244,7 @@ internal sealed class ClassicNavRow : Component
         // non-pin row keeps the identity gate (Trap 5) on its uri fallback.
         var labelFacts = _o.Model.LabelOf(in entry);
         bool unavailable = labelFacts.PinState == SidebarPinState.Unavailable;
-        // S9: an offline pin keeps its last title and cover, quieted, and wears the offline mark where the pin mark sat.
+        // S9: an offline pin keeps its last title and cover, quieted, and wears the offline mark where the Unpin button sat.
         bool offline = labelFacts.PinState == SidebarPinState.Offline;
         string label = labelFacts.Label;
         bool placeholderTitle = labelFacts.PlaceholderTitle;
@@ -255,6 +255,8 @@ internal sealed class ClassicNavRow : Component
         var (playing, animated) = _o.RowPlayState(index);
         var shape = section.Shape;
         float height = SidebarGeometry.HeightOf(shape);
+        // A text row (covers off, S0) draws no cover in the pane; the rail's tile keeps it.
+        bool textRow = SidebarGeometry.IsText(shape) && !compact;
 
         var snapshot = entry;   // an `in` parameter cannot be captured — copy the record struct for the closures
         Action? click = null;
@@ -304,11 +306,11 @@ internal sealed class ClassicNavRow : Component
             Height = height,   // UNIFORM per section: a band's slot pitch and the extent table both assume one height
             ArtSize = SidebarGeometry.ArtOf(shape),
             Ink = placeholderTitle || unavailable || offline ? Tok.TextTertiary : null,
-            Leading = routeGlyph ? null : Quieted(Sidebar.Cover.ForEntry(in snapshot, SidebarGeometry.ArtOf(shape)), offline),
+            Leading = routeGlyph || textRow ? null : Quieted(Sidebar.Cover.ForEntry(in snapshot, SidebarGeometry.ArtOf(shape)), offline),
             Glyph = routeGlyph ? _o.DestOf(entry.Id).Glyph : null,
             // The warning mark is the unavailable pin's trailing mark, the offline mark the offline pin's, so both show in
             // every row shape.
-            Trailing = unavailable ? Icon(Icons.Warning, SidebarGeometry.PinMarkSize, Tok.TextTertiary)
+            Trailing = unavailable ? Icon(Icons.Warning, SidebarGeometry.WarningMark, Tok.TextTertiary)
                 : offline ? OfflineMark()
                 : TrailingBadge(section, in snapshot),
             Pinned = !offline && SidebarPinRules.ShowsPinMark(_o.Layout, section.Kind, row.Depth, snapshot.IsPinned, track),   // #85
@@ -325,10 +327,13 @@ internal sealed class ClassicNavRow : Component
             DropTarget = drop,
         };
         if (treeRow && rootlistItem) ApplyTreeSelection(ref spec, snapshot.Id, click);
-        float trailing = unavailable ? SidebarGeometry.PinMarkSize
+        if (spec.Pinned) spec.OnUnpin = _o.UnpinAction(in snapshot);   // S5: the pin is a real Unpin button
+        float trailing = unavailable ? SidebarGeometry.WarningMark
             : offline ? SidebarGeometry.OfflineMarkBox
-            : spec.Trailing is null ? 0f : SidebarGeometry.CountSlot;
-        spec.LabelTooltip = LabelOverflows(label, row.Depth, SidebarGeometry.TrailingWidth(playing, spec.Pinned, trailing));
+            : spec.Trailing is not null || SidebarGeometry.ReservesSlot(spec.Overflow, false, spec.Pinned, playing) ? SidebarGeometry.CountSlot
+            : 0f;
+        spec.LabelTooltip = LabelOverflows(label, row.Depth, SidebarGeometry.TrailingWidth(playing, spec.Pinned, trailing),
+            SidebarGeometry.LabelX(shape, glyph: routeGlyph));
         Element built = ClassicEntityRow.Create(in spec);
         if (track) built = ClassicEntityRow.WithPlayTrackHint(built);
         // The pill stays in the row's own indent (31 per depth level), never the drop caret's gutter. An offline pin always
@@ -337,7 +342,7 @@ internal sealed class ClassicNavRow : Component
         return Indicator(Tipped(built, spec.LabelTooltip || offline, tip), selected, IndentOf(in row), height, route);
     }
 
-    /// <summary>The offline pin's mark (S9): the cloud-off glyph, 12 in a 24 box, tertiary, in the pin mark's place.</summary>
+    /// <summary>The offline pin's mark (S9): the cloud-off glyph, 12 in a 24 box, tertiary, in the Unpin button's place.</summary>
     static Element OfflineMark() => new BoxEl
     {
         Width = SidebarGeometry.OfflineMarkBox, Height = SidebarGeometry.OfflineMarkBox, Shrink = 0f,
@@ -377,6 +382,8 @@ internal sealed class ClassicNavRow : Component
         float art = SidebarGeometry.ArtOf(shape);
         string label = entry.Name.Length > 0 ? entry.Name : NavRowFacts.ShortUri(entry.Id);
         bool compact = _o.CompactPlan;
+        // A text row (covers off, S0/S4) wears the folder as its 16 glyph at the text lead, never the art-sized folder tile.
+        bool textRow = SidebarGeometry.IsText(shape) && !compact;
         if (compact) _o.SetTileAnchor(index, TileAnchor);   // Enter on the focused tile opens the flyout from here
         string sectionId = row.SectionId;
 
@@ -418,7 +425,8 @@ internal sealed class ClassicNavRow : Component
             Shape = shape,
             Height = height,
             ArtSize = art,
-            Leading = Sidebar.Cover.Folder(art, expanded),
+            Leading = textRow ? null : Sidebar.Cover.Folder(art, expanded),
+            Glyph = textRow ? FolderGlyph(expanded) : null,
             // A pinned folder shows the mark LEFT of its chevron (Library's depth-0 pins; §P5.6). Its IsPinned is not a
             // rootlist fact, so the folder's own state never enters the rule.
             Pinned = SidebarPinRules.ShowsPinMark(_o.Layout, section.Kind, row.Depth, false, false),
@@ -436,9 +444,12 @@ internal sealed class ClassicNavRow : Component
             DropTarget = drop,
         };
         if (rootlistItem) ApplyTreeSelection(ref spec, folderId.Length > 0 ? snapshot.Id : "", activate);
-        // The chevron column replaces the trailing pad; the "+" and the pin mark are laid out before it (S8).
+        if (spec.Pinned) spec.OnUnpin = _o.UnpinAction(in snapshot);   // S5
+        // The chevron column replaces the trailing pad; the "+", the Unpin button and the reserved count slot are laid out before it (S8).
+        float folderSlot = spec.Trailing is not null ? SidebarGeometry.FolderPlusBox
+            : SidebarGeometry.ReservesSlot(spec.Overflow, false, spec.Pinned, false) ? SidebarGeometry.CountSlot : 0f;
         spec.LabelTooltip = LabelOverflows(label, row.Depth, SidebarGeometry.FolderTrail
-            + SidebarGeometry.TrailingWidth(false, spec.Pinned, spec.Trailing is null ? 0f : SidebarGeometry.FolderPlusBox));
+            + SidebarGeometry.TrailingWidth(false, spec.Pinned, folderSlot), SidebarGeometry.LabelX(shape, glyph: true));
         // A folder is a pill anchor when it is the deepest visible ancestor of the route (rule 2 of §P1.2). Both drop
         // cues stay: the bottom band of an expanded header IS the "first child" slot, and the whole outdent gesture
         // happens on folder rows.
@@ -452,6 +463,7 @@ internal sealed class ClassicNavRow : Component
     {
         string reason = Loc.Get(Strings.Sidebar.Pin.FolderMissing);
         float art = SidebarGeometry.ArtOf(section.Shape);
+        bool textRow = SidebarGeometry.IsText(section.Shape) && !_o.CompactPlan;
         var menu = _o.MissingFolderMenu(in entry);
         var spec = new ClassicRowSpec
         {
@@ -464,7 +476,8 @@ internal sealed class ClassicNavRow : Component
             Shape = section.Shape,
             Height = height,
             ArtSize = art,
-            Leading = Sidebar.Cover.Folder(art, expanded: false),
+            Leading = textRow ? null : Sidebar.Cover.Folder(art, expanded: false),
+            Glyph = textRow ? FolderGlyph(expanded: false) : null,
             Pinned = SidebarPinRules.ShowsPinMark(_o.Layout, section.Kind, row.Depth, false, false),
             Overflow = menu is not null,
             MenuOverlay = _o.MenuOverlay,
@@ -474,9 +487,13 @@ internal sealed class ClassicNavRow : Component
     }
 
     /// <summary>Does the one-line label truncate in this row? The pane's CURRENT width (peeked: a tooltip decision, not a
-    /// subscription) minus the row's own ladder, through the one estimate <see cref="SidebarLabelFit"/> owns.</summary>
-    bool LabelOverflows(string label, int depth, float trailing)
-        => SidebarLabelFit.Overflows(label, SidebarGeometry.LabelWidth(_o.ExpandedWidth.Peek(), depth, trailing));
+    /// subscription) minus the row's own ladder (its label x: <see cref="SidebarGeometry.LabelX"/>), through the one estimate
+    /// <see cref="SidebarLabelFit"/> owns.</summary>
+    bool LabelOverflows(string label, int depth, float trailing, float labelX)
+        => SidebarLabelFit.Overflows(label, SidebarGeometry.LabelWidth(_o.ExpandedWidth.Peek(), depth, trailing, labelX));
+
+    /// <summary>A text row's folder glyph (S4): the open folder while it is expanded, as the cover tile does.</summary>
+    static string FolderGlyph(bool expanded) => expanded ? Icons.FolderOpen : Icons.Folder;
 
     /// <summary>A row whose full label would truncate wears it as a tooltip. The slot owns the wrap, so the tooltip is the
     /// row's wrapper and a sibling of the drop cues, never a child of the row. A compact TILE always wears its label (the
@@ -548,7 +565,8 @@ internal sealed class ClassicNavRow : Component
             DropTarget = PinSpec(section, section.Id, index),
         };
         spec.LabelTooltip = LabelOverflows(title, 0,
-            SidebarGeometry.TrailingWidth(false, false, spec.Trailing is null ? 0f : SidebarGeometry.CountSlot));
+            SidebarGeometry.TrailingWidth(false, false, spec.Trailing is null ? 0f : SidebarGeometry.CountSlot),
+            SidebarGeometry.LabelX(section.Shape, glyph: true));
         return Indicator(Tipped(ClassicEntityRow.Create(in spec), spec.LabelTooltip, title), selected, 0, height, key);
     }
 
@@ -745,7 +763,12 @@ internal sealed class ClassicNavRow : Component
     Element? CountBadge(SidebarSection section, string routeKey)
     {
         if (section.Kind != SidebarSectionKind.Collections || Sidebar.ShortcutCount.KindOf(routeKey) is not { } kind) return null;
-        return ClassicNavCounts.Live(_o.Model, kind);
+        // S2: the count sits right-aligned in the 26-wide slot the hover "…" takes over (a wider number widens it).
+        return new BoxEl
+        {
+            MinWidth = SidebarGeometry.CountSlot, Shrink = 0f, Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center,
+            Children = [ClassicNavCounts.Live(_o.Model, kind)],
+        };
     }
 
     /// <summary>Attach the item-owned selection pill and both drop cues. Shape-stable for recycling: a slot never

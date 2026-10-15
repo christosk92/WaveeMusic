@@ -12,6 +12,19 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **Album, playlist and Liked Songs pages lead with one Play split.** The rail (and the narrow-window header) now starts with
+  one accent control, Play with a small ⌄ beside it ("More ways to play": Add to queue, Play next, Start radio), followed
+  by Shuffle, the heart, Share and ⋯. Albums get their ⋯ in the rail too, and your own playlists no longer show a heart
+  (a playlist you follow keeps it, to unfollow). The split reads as one button: one border, a quiet divider and a
+  12-point chevron. Every Play button in the app now uses the colour it is given instead of a paler shade of it, and a
+  colour taken from the artwork always keeps 4.5:1 contrast for the Play label, the hearts and accent text: a colour
+  that is too light or too dark steps to a darker or lighter shade, and falls back to your system accent when none fits.
+  The "Add to playlist" item in a playlist's list menu reads "Copy to playlist" for every playlist.
+- **The title bar search widens while you use it, and its suggestions line up with it.** Clicking into the search box
+  widens it by up to 80 points, box and text together, without ever covering a tab or your profile picture; it eases back
+  when you leave it. The suggestions list is now exactly as wide as the search box and starts at its left edge, instead of
+  overhanging a narrow box. The light/dark button left the title bar: switch with Settings > Appearance > App mode or the
+  theme row in the profile menu. **Ctrl+,** opens Settings.
 - **Page heads have one title and a small breadcrumb.** A Browse category or section, a Home section and the Concerts pages
   no longer spell their parents out in large dimmed text: the page shows one 40-point title with a small "Home › Browse" trail
   of its parents above it (none when the page is only two levels deep), and the Concerts hub and a concert's page no longer
@@ -79,6 +92,13 @@ versions separately under `v*` and is not tracked in this file.)
 - **A tidier sidebar.** Covers, glyphs and section titles start on one line, a cover no longer touches the selection
   bar, the "+" sits beside its section's chevron, and a count or pin mark ends at the row's edge instead of leaving a
   gap; pointing at the row swaps it for the row's ⋯ button.
+- **The sidebar can show its playlists as plain text rows, and a pin is a button.** A new "Show covers" switch in Settings >
+  Appearance > Wavee Classic options > Sidebar (on by default, Classic layout only) turns the playlist, album and pin rows
+  into compact 36-high text rows when you switch it off: no cover, the name 16 from the edge, a folder icon on folders with
+  their name at 40, child rows indented. The rail keeps its covers. A pinned row's pin is now a real 24-wide "Unpin" button
+  that unpins it in one click (it stays visible when you point at the row; only the count gives way to the ⋯ button, in
+  the same spot), and "Pin to sidebar" / "Unpin from sidebar" is a top-level item of a playlist's or folder's right-click
+  menu instead of sitting inside "Organize".
 - **Less space between a page's side column and its songs.** The gap beside a resizable album or playlist column is
   half as wide, the same as everywhere else; the column still resizes from that edge.
 - **Auto zoom is smaller on some large monitors, and it applies at once.** With Zoom on Auto, a window at least 1920
@@ -108,6 +128,17 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **Page changes move as one.** The Browse and Concerts title (the masthead) now leaves with the page it belongs to and
+  fades in with the next one, instead of the new title appearing over the old page for a moment. The window colour taken
+  from a page's artwork changes when the new page arrives instead of under the leaving one, and an album opened from
+  another album no longer shows the previous album's colour behind its loading placeholders. Home's loading bar now fades
+  in and out in its fixed place under the facet titles instead of popping on and off. The page change itself (90 ms out,
+  210 ms in) is unchanged.
+- **Switching between light and dark fades the album and playlist page colour too.** The tinted ground behind a track
+  page used to jump to the new mode while everything else faded; it now takes the same 250 ms fade.
+- **The window opens on a finished frame.** Wavee now shows its window only once the first frame has been drawn, so you no
+  longer see an empty window background first, and on a first start (or when you need to sign in again) the setup screen
+  is already up when the window appears. Pages and their animations start on the first frame you actually see.
 - **The sidebar says what it cannot show.** A sidebar name cut short by the pane now shows in full as a tooltip, also when a
   pin mark or a count stands beside it, and in the rail's folder and section flyouts. A pinned playlist, album, artist or
   podcast that cannot load while you are offline keeps its last name and cover, dimmed, with a "Not available offline"

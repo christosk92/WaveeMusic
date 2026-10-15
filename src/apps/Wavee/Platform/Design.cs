@@ -206,6 +206,11 @@ public static partial class Design
         /// <summary>THE page's chrome accent (see <see cref="ColorScience.ChromeAccent"/>); greyscale art falls back to the active
         /// semantic accent rather than shipping a grey Play button.</summary>
         public static ColorF ChromeAccent(in Scheme s) => ColorScience.ChromeAccent(s, Tok.AccentDefault);
+
+        /// <summary>A page accent with the ACTIVE theme's contrast floor (<see cref="ColorScience.AccentFloor"/>, tuned Classic D13): it
+        /// passes 4.5:1 as ink on the card ground and under its own label, else steps a rung, else is the system accent.</summary>
+        public static ColorF Floor(ColorF accent)
+            => ColorScience.AccentFloor(accent, R.Kind, CardGround(Tok.FillCardDefault), Tok.AccentDefault);
     }
 
     // ══ 7. THE TWO GRADING HALVES, AND THE ART PLACEHOLDER ═══════════════════════════════════════════════════════════
@@ -509,11 +514,6 @@ public static partial class Design
         public const float EnterDelayMs = ExitDurationMs;
         /// <summary>The enter leg's own duration. <see cref="ExitDurationMs"/> + this = 300ms total.</summary>
         public const float EnterDurationMs = 210f;
-
-        /// <summary>The masthead band shares this window with the page swap (ch 18 §4's "one gesture" comment) so a
-        /// drill-in reads as one motion — it IS the page's real exit window, not an independent constant that can
-        /// drift from it.</summary>
-        public const float FadeThroughExitMs = ExitDurationMs;
 
         /// <summary>The video-safe pair's travel, so a module page does not twitch <see cref="Expressive.DistBase"/> DIP
         /// when it must slide instead of cross-fade.</summary>

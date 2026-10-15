@@ -482,12 +482,13 @@ internal static partial class ClassicSettings
         }
     }
 
-    /// <summary>The glyph of one of Classic's own options (a generated row carries no catalog glyph): row size for the density, the list for the row style, the picture for hide track art,
-    /// and the sidebar options kept the icons of the rows they replaced.</summary>
+    /// <summary>The glyph of one of Classic's own options (a generated row carries no catalog glyph): row size for the density, the list for the row style, the picture for hide track art
+    /// and the sidebar's covers, and the sidebar options kept the icons of the rows they replaced.</summary>
     static string? OptionGlyph(string qualifiedId)
     {
         if (qualifiedId == ClassicStructure.SidebarOptionId) return Icons.SplitView;
         if (qualifiedId == ClassicStructure.LibraryDensityOptionId) return Icons.ViewList;
+        if (qualifiedId == ClassicStructure.ShowCoversQualifiedId) return Icons.Picture;
         if (qualifiedId == ClassicDensity.QualifiedId) return Glyph("RowSize");
         if (qualifiedId == ClassicStructure.RowStyleQualifiedId) return Glyph("ViewList");
         if (qualifiedId == ClassicStructure.HideTrackArtQualifiedId) return Glyph("Picture");

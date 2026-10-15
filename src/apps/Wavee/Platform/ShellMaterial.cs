@@ -54,10 +54,11 @@ public static class ShellMaterial
     /// <summary>THE one way anything writes the material — a HAND-OVER, never a clear. A page CLAIMS the slot on its
     /// first publish and on a KeepAlive reactivation; any other publish is a refresh that lands only while that page is
     /// still the owner, so the exit tail of a page that was navigated away from can never paint over its successor. A
-    /// page that parks or unmounts writes NOTHING: its material stays until the next page claims, and a claim whose
-    /// colour is not graded yet KEEPS whatever is showing.
-    /// <para>The consequence that matters visually: <b>the chrome never dips to neutral and back between two coloured
-    /// pages.</b></para></summary>
+    /// page that parks or unmounts writes NOTHING: its material stays until the next page claims. A claim whose colour is
+    /// not graded yet is the neutral ground (Classic tuning D15): the claim is the new page's, so the previous page's
+    /// colour never sits under the new page's skeleton; the grading cross-fades in when it lands.
+    /// <para>The shell paints the slot as of the page on screen (<c>Shell.PresentedMaterial</c>), so a claim lands with the
+    /// page swap: the chrome changes colour once per navigation when the colour is known, never under the leaving page.</para></summary>
     /// <param name="definite">The page has DECIDED it carries no colour (washes off, or this layout applies no tint) —
     /// as opposed to simply not having graded a cover YET, which is transient.</param>
     public static void Publish(Signal<ShellMaterialState>? slot, object owner, bool isClaim, bool definite,
@@ -73,18 +74,20 @@ public static class ShellMaterial
         {
             case TintOwnership.Outcome.WriteKnownColor: slot.Value = new ShellMaterialState(owner, tint, wash); break;
             case TintOwnership.Outcome.WriteNeutral: slot.Value = new ShellMaterialState(owner, null, null); break;
-            case TintOwnership.Outcome.WriteHeldColor: slot.Value = cur with { Owner = owner }; break;
         }
     }
 }
 
-/// <summary>The material hand-over protocol, as a pure decision table. Two shipped bugs are encoded here and neither is
-/// re-derivable from the call sites:
+/// <summary>The material hand-over protocol, as a pure decision table. Two shipped bugs and one tuning item are encoded here
+/// and none is re-derivable from the call sites:
 /// <list type="number">
-/// <item><b>The neutral dip.</b> A page that deactivated used to CLEAR the slot, and the page claiming it did not yet
-/// know its own colour (the grading was still in flight) — so every navigation dipped to "no colour" and then popped to
-/// the real one. The fix is a HAND-OVER: a deactivating page never writes at all (there is no "clear" request in this
-/// API), and a page that is CLAIMING but does not yet know its colour keeps whatever is already there.</item>
+/// <item><b>The neutral dip.</b> A page that deactivated used to CLEAR the slot, so every navigation dipped to "no colour"
+/// and then popped to the real one, even between two pages whose colours were known. The fix is a HAND-OVER: a
+/// deactivating page never writes at all (there is no "clear" request in this API); the claiming page writes its own
+/// colour, and the shell paints the slot as of the page on screen, so a known colour replaces the old one in one fade.</item>
+/// <item><b>The borrowed tone (Classic tuning D15).</b> A claim that does not know its colour yet used to HOLD the previous
+/// page's, so an album's skeleton wore the album before it and its own tone faded in after the page had landed. A claim
+/// is the new page's: without a colour it is the neutral ground, and the grading cross-fades in when it lands.</item>
 /// <item><b>The two-publisher race.</b> KeepAlive keeps an outgoing page mounted and drawing for the length of its exit
 /// transition, so its effects can still fire — and unconditionally re-publish its own colour — WHILE the incoming page
 /// is already current. The fix is single ownership: once a page has CLAIMED, every other page's ordinary publish is
@@ -111,10 +114,9 @@ public static class TintOwnership
         NoWrite,
         /// <summary>Write the caller's own known colour as this page's tint.</summary>
         WriteKnownColor,
-        /// <summary>Write the neutral ground — this page has DEFINITELY decided it carries no colour.</summary>
+        /// <summary>Write the neutral ground: this page has DEFINITELY decided it carries no colour, or it claims before its
+        /// colour is known.</summary>
         WriteNeutral,
-        /// <summary>Take ownership, but keep painting whatever the slot already shows (the hand-over).</summary>
-        WriteHeldColor,
     }
 
     /// <summary>The one decision every shell-tint publish goes through.</summary>
@@ -127,9 +129,10 @@ public static class TintOwnership
         if (req.Definite) return req.HasColor ? Outcome.WriteKnownColor : Outcome.WriteNeutral;
         if (req.HasColor) return Outcome.WriteKnownColor;
 
-        // Colour genuinely not known yet: a claim hands over silently; an ordinary refresh from the already-current
-        // owner has nothing new to say, so it writes nothing rather than repeat itself.
-        return req.IsClaim ? Outcome.WriteHeldColor : Outcome.NoWrite;
+        // Colour genuinely not known yet: a claim is the new page's, so it shows the neutral ground (never the previous
+        // page's colour, D15); an ordinary refresh from the already-current owner has nothing new to say, so it writes
+        // nothing rather than repeat itself.
+        return req.IsClaim ? Outcome.WriteNeutral : Outcome.NoWrite;
     }
 }
 
