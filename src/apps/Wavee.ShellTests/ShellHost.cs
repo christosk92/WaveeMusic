@@ -4,15 +4,24 @@
 // settings assert (`Platform.UiThreadId`) tears the whole testhost down on a write from any other. So the assembly
 // fixture owns one dedicated thread: it boots the host there, and every fact marshals its body onto it with `Run`.
 // Facts never run in parallel (assembly attribute below): one mount at a time is the host's own rule.
+//
+// ISOLATION. xUnit v3 runs the classes in a different order on every run, and the host is ONE process: whatever a fact
+// leaves in process state is what the next fact starts from. `FactIsolation` (assembly attribute below) puts back,
+// before every fact, the process state a fact cannot be expected to restore because production keeps it on purpose:
+// the navigation (a remount opens on the page the last root showed) and, as a guard, Classic's option values.
 
 using System.Collections.Concurrent;
+using System.Reflection;
 using System.Runtime.ExceptionServices;
 using Wavee;
+using Wavee.Themes.Classic;
+using Wavee.Theming;
 using Wavee.ShellTests;
 using Xunit;
 
 [assembly: AssemblyFixture(typeof(ShellHost))]
 [assembly: CollectionBehavior(DisableTestParallelization = true)]
+[assembly: FactIsolation]
 
 namespace Wavee.ShellTests;
 
@@ -23,6 +32,12 @@ public sealed class ShellHost : IDisposable
 
     /// <summary>The temporary profile the host booted against.</summary>
     public string ProfileDir { get; } = Path.Combine(Path.GetTempPath(), "wavee-shell-tests", Guid.NewGuid().ToString("n"));
+
+    /// <summary>The assembly fixture, once constructed (<see cref="FactIsolationAttribute"/> reaches the UI thread through it).</summary>
+    internal static ShellHost? Instance { get; private set; }
+
+    /// <summary>Classic's option values as the boot left them (the stamps of <see cref="ThemeHost.Values"/>).</summary>
+    (int Structure, int Style, int Composition) _bootOptions;
 
     public ShellHost()
     {
@@ -36,8 +51,25 @@ public sealed class ShellHost : IDisposable
             // colours itself from artwork (the shell washes, the tints) would exist. The fixture grades every cover one
             // colour, from the first frame on: a cover asked while no grader exists is marked failed for good.
             Palette.Filler = static (uris, _) => Task.FromResult(Array.ConvertAll(uris, static _ => (Palette.Graded?)FixtureGrade));
+            _bootOptions = OptionStamps();
         });
+        Instance = this;
     }
+
+    static (int, int, int) OptionStamps()
+        => (ThemeHost.Values.Structure.Stamp, ThemeHost.Values.Style.Stamp, ThemeHost.Values.Composition.Stamp);
+
+    /// <summary>Between facts (UI thread, nothing mounted): the navigation back to a fresh session's Home, and Classic, alone
+    /// and with the options the boot left, as the active theme. Every fact that changes an option or installs a theme puts it
+    /// back itself; the theme half only catches one that did not.</summary>
+    internal void ResetBetweenFacts()
+        => Run(() =>
+        {
+            Shell.Headless.ResetNavigation();
+            if (!ThemeHost.Current.Peek().Manifest.Id.Equals(ClassicTheme.Id, StringComparison.Ordinal) || ThemeCatalog.Installed.Count != 1)
+                ClassicAlt.RestoreClassic();
+            if (OptionStamps() != _bootOptions) ThemeHost.ResetOptions(ClassicTheme.Id);
+        });
 
     static readonly Scheme FixtureScheme = new(0xFF2E4A7Au, 0xFF3D5F99u, 0xFFFFFFFFu, 0xFFB3C2DDu, 0xFF8FB8FFu);
     static readonly Palette.Graded FixtureGrade = new(FixtureScheme, FixtureScheme, HasLight: true, BestFitIsLight: false);
@@ -87,4 +119,12 @@ public sealed class ShellHost : IDisposable
         _thread.Join(TimeSpan.FromSeconds(10));
         try { Directory.Delete(ProfileDir, recursive: true); } catch (Exception) { }
     }
+}
+
+/// <summary>Runs <see cref="ShellHost.ResetBetweenFacts"/> before every fact of the assembly.</summary>
+[AttributeUsage(AttributeTargets.Assembly)]
+public sealed class FactIsolationAttribute : Xunit.v3.BeforeAfterTestAttribute
+{
+    public override void Before(MethodInfo methodUnderTest, Xunit.v3.IXunitTest test)
+        => (ShellHost.Instance ?? throw new InvalidOperationException("The shell test host has not booted.")).ResetBetweenFacts();
 }
