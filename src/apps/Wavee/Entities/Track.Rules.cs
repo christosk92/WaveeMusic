@@ -71,16 +71,10 @@ public readonly partial struct Track
         public const float Tempo = 80f;
         /// <summary>"1:59:59" (an episode in a playlist), not just "59:59".</summary>
         public const float Duration = 52f;
-        /// <summary>The trailing "…" lane when Video is off (a 28-DIP button + air).</summary>
+        /// <summary>The trailing "…" lane (a 28-DIP button + air), revealed on row hover. There is no film lane any more
+        /// (tuned Classic L3): a video is the small film glyph after the title, so the trailing lane is the same on a
+        /// release with a video and one without.</summary>
         public const float Actions = 40f;
-        /// <summary>The trailing film / hover-"…" lane — the SAME number as <see cref="Actions"/>, and that is the point.
-        /// A set carries exactly ONE of the two (<see cref="TableRules.TrailingColumns"/> trades them), so two widths made
-        /// the trailing lane a function of whether any row on THIS release happens to carry a video: the duration clock
-        /// (and every header left of it) sat 12 DIP further right on an album with a video than on the one selected before
-        /// it, which in the library pane is a visible jump on every selection. It was 28 because 28 is the film glyph's
-        /// hit target; the lane also has to hold the hover "…", which is the 40 the other arm reserves. One width, so the
-        /// swap is a glyph change and never a reflow.</summary>
-        public const float Video = Actions;
         /// <summary>The expand chevron's hit target.</summary>
         public const float Expand = 26f;
 
@@ -97,11 +91,10 @@ public readonly partial struct Track
     }
 
     /// <summary>Which optional lanes a track row shows; #, Title and Duration are always present. Cell (and track) order:
-    /// # · ♥ · thumb · Title · Artist · Album · AddedBy · DateAdded · Plays · Tempo · ♥(trailing) · Duration · Video ·
-    /// Actions · Expand.
+    /// # · ♥ · thumb · Title · Artist · Album · AddedBy · DateAdded · Plays · Tempo · ♥(trailing) · Duration · Actions ·
+    /// Expand.
     /// SHARED by the header and every row builder, and it is the width-track CACHE KEY (ch 01 §9): a value record with no
-    /// mutable field, or the cache forks. <paramref name="Actions"/> is the "…" lane when Video is off (Video carries the
-    /// "…" on hover when on — the lane is reserved once); <paramref name="Tier"/> is the width tier the set was built for,
+    /// mutable field, or the cache forks. <paramref name="Actions"/> is the hover "…" lane; <paramref name="Tier"/> is the width tier the set was built for,
     /// so header, rows and tracks derive the SAME padding/gap; <paramref name="Tempo"/> means "this surface wants BPM·Key"
     /// (the tier gate is <see cref="RowMetrics.ShowTempo"/>); <paramref name="Artist"/> is Classic's dedicated lane;
     /// <paramref name="Classic"/> rides with the shape so persistent rows re-skin live.
@@ -111,7 +104,7 @@ public readonly partial struct Track
     /// <see cref="RowMetrics.ShowHeartTrailing"/>, which normalizes a set that asks for both by keeping the LEADING
     /// heart (the lane every existing surface already reserves). It is NOT on the relief ladder: the ladder yields
     /// trailing lanes for the tiered TABLE, and the only surface that sets this builds one fixed set at one width.</para></summary>
-    public readonly record struct ColumnSet(bool Album, bool By, bool Date, bool Video, bool Plays, bool Heart, bool Thumb,
+    public readonly record struct ColumnSet(bool Album, bool By, bool Date, bool Plays, bool Heart, bool Thumb,
                                             bool Actions = true, int Tier = 0, bool Tempo = false, bool Expand = false,
                                             bool Artist = false, bool Classic = false, bool HeartTrailing = false);
 
@@ -128,13 +121,13 @@ public readonly partial struct Track
     /// <summary>The identity lanes a row style selects.</summary>
     public readonly record struct IdentityColumns(bool Thumb, bool Artist, bool ArtistInTitle);
 
-    /// <summary>The trailing lanes a row style selects: Classic folds media facts into Title and exposes one command lane.</summary>
-    public readonly record struct TrailingColumns(bool Video, bool Actions, bool Expand);
+    /// <summary>The trailing lanes: the one command lane ("…") and the versions chevron's lane.</summary>
+    public readonly record struct TrailingColumns(bool Actions, bool Expand);
 
     /// <summary>The lanes a table draws, as pure geometry — the relief ladder's whole input beside the gap and inset.</summary>
     public readonly record struct Lanes(
         bool Heart, bool Thumb, bool Artist, bool Album, bool By, bool Date, bool Plays, bool Tempo,
-        bool Video, bool Actions, bool Expand);
+        bool Actions, bool Expand);
 
     // ══ 2. THE TABLE RULES: skins, ladders, the sort cycle, the relief ladder ════════════════════════════════════════
 
@@ -203,36 +196,29 @@ public readonly partial struct Track
         /// before its page arrived). The one rule the row component reads.</summary>
         public static bool RowHasData(bool isValid, bool knowsFace) => isValid && knowsFace;
 
-        /// <summary>Classic folds VIDEO into the Title line and keeps ONE trailing command lane; both skins keep the
-        /// disclosure chevron (the drawer restates what relief took away — a row affordance, not a skin flourish), under
-        /// the same width gate as the "…" lane.
-        /// <para>Modern trades the "…" lane for the film lane when any row has a video — a trade of CELL, never of
-        /// width: both lanes are <see cref="Lane.Actions"/> wide (see <see cref="Lane.Video"/>), so a release with a
-        /// video and one without lay their duration column out on the same DIP.</para></summary>
-        public static TrailingColumns TrailingColumns(bool classic, bool hasVideo, bool showVersions, int tier)
+        /// <summary>Both row styles keep ONE trailing command lane (the hover "…") and the versions chevron's lane (the
+        /// drawer restates what relief took away — a row affordance, not a skin flourish), under the same width gate.
+        /// A video is never a lane (tuned Classic L3): it is the film glyph after the title, so the trailing lanes do not
+        /// depend on what the rows carry and a release with a video lays its duration column out on the same DIP as one
+        /// without.</summary>
+        public static TrailingColumns TrailingColumns(bool showVersions, int tier)
         {
             bool hasTrailingRoom = tier < 6;
-            bool expand = showVersions && hasTrailingRoom;
-            if (classic) return new TrailingColumns(false, hasTrailingRoom, expand);
-            bool video = hasVideo && hasTrailingRoom;
-            return new TrailingColumns(video, hasTrailingRoom && !video, expand);
+            return new TrailingColumns(hasTrailingRoom, showVersions && hasTrailingRoom);
         }
 
-        /// <summary>Classic's ONLY video indicator, and it is no longer width-gated. `TrailingColumns` refuses the
-        /// film lane to Classic outright, so this inline glyph is all Classic has - and dropping it from tier 4 up
-        /// (a sidebar and a now-playing rail are enough to reach tier 4) left a Classic playlist with NO video
-        /// indicator anywhere, while the artist chart beside it still showed one. The glyph is 12 DIP in a line that
-        /// already ellipsizes; it costs nothing the narrow tiers cannot afford.</summary>
-        public static bool ShowClassicInlineVideo(bool classic, bool hasVideo, int tier)
-        {
-            _ = tier;
-            return classic && hasVideo;
-        }
+        /// <summary>Does a row SHOW the versions chevron (tuned Classic L1)? Only a track that has another rendition to
+        /// open: its music video (the catalogue's kind-99 flag or a user override, or the counterpart it already resolved)
+        /// or a known alternate in <c>Edges.TrackVersions</c>. Every other row keeps the lane empty — a chevron on every
+        /// row read as navigation — and reaches its drawer through the menu's "Track details"
+        /// (<see cref="ShowVersionsMenuItem"/>).</summary>
+        public static bool HasVersionsOf(bool isTrack, bool hasVideo, bool hasCounterpart, int alternates) =>
+            isTrack && (hasVideo || hasCounterpart || alternates > 0);
 
-        /// <summary>"Track details" in the menu is a FALLBACK for a missing chevron lane, in either skin — never a second
-        /// control beside a visible one.</summary>
-        public static bool ShowVersionsMenuItem(bool showVersions, bool expandLane, bool singleTrack) =>
-            showVersions && singleTrack && !expandLane;
+        /// <summary>"Track details" in the menu is a FALLBACK for a row with no visible chevron (no chevron lane, or a
+        /// row with no versions to show in it), in either skin — never a second control beside a visible one.</summary>
+        public static bool ShowVersionsMenuItem(bool showVersions, bool chevronShown, bool singleTrack) =>
+            showVersions && singleTrack && !chevronShown;
 
         /// <summary>Does the list bar's Sort button wear the accent (tuned Classic D6)? Only while the sort differs from the PAGE'S
         /// default (an album's or playlist's own order, Liked's Date added newest first), the direction included.</summary>
@@ -281,7 +267,7 @@ public readonly partial struct Track
             Date: l.Date && step < 4,
             Plays: l.Plays && step < 1,
             Tempo: l.Tempo && step < 2,
-            Video: l.Video, Actions: l.Actions, Expand: l.Expand);
+            Actions: l.Actions, Expand: l.Expand);
 
         /// <summary>The narrowest width at which <paramref name="l"/> still clears the identity floors: fixed lanes at
         /// their <see cref="Lane"/> widths, identity lanes at their FLOORS, one gap between each pair and the grid's own
@@ -298,7 +284,6 @@ public readonly partial struct Track
             if (l.Date) { w += Lane.Date; cols++; }
             if (l.Plays) { w += Lane.Plays; cols++; }
             if (l.Tempo) { w += Lane.Tempo; cols++; }
-            if (l.Video) { w += Lane.Video; cols++; }
             if (l.Actions) { w += Lane.Actions; cols++; }
             if (l.Expand) { w += Lane.Expand; cols++; }
             return w + (cols - 1) * colGap + padX * 2f;
@@ -330,7 +315,7 @@ public readonly partial struct Track
         /// metric measures the lane the grid will actually build (DetailTracks.cs:626).</summary>
         public static Lanes LanesOf(in ColumnSet s) => new(
             Heart: s.Heart, Thumb: s.Thumb, Artist: s.Artist, Album: s.Album, By: s.By, Date: s.Date,
-            Plays: s.Plays, Tempo: RowMetrics.ShowTempo(in s), Video: s.Video, Actions: s.Actions, Expand: s.Expand);
+            Plays: s.Plays, Tempo: RowMetrics.ShowTempo(in s), Actions: s.Actions, Expand: s.Expand);
 
         /// <summary>The set with <paramref name="step"/> lanes yielded, applied in ONE place so header, rows, shimmer and
         /// tracks agree. Tempo is cleared only where the lane was actually up: the flag also means "this surface wants
@@ -644,6 +629,18 @@ public readonly partial struct Track
     /// <inheritdoc cref="Unplayable(bool,bool,int)"/>
     public bool Unplayable()
         => Unplayable(Knows(TrackFields.Availability), (FlagBits & (uint)TrackFlags.Unavailable) != 0, AvailableAt);
+
+    /// <summary>Does this row show the versions chevron (<see cref="TableRules.HasVersionsOf"/>)? Subscribes the versions
+    /// relation's own <c>Changed</c>, so a bound read re-resolves when a drawer's fetch lands an alternate; the video
+    /// flag and the counterpart are track columns the row's presentation stamp already follows.</summary>
+    public bool HasVersions()
+    {
+        if (!IsValid) return false;
+        var versions = Entities.Current.Edges.TrackVersions;
+        _ = versions.Changed.Value;
+        return TableRules.HasVersionsOf(Uri.Kind == EntityKind.Track, HasVideo, VideoCounterpart.IsValid,
+                                        versions.Targets(Slot).Length);
+    }
 
     // ══ 5b. FOR DISPLAY — the relink redirection ═════════════════════════════════════════════════════════════════════
 

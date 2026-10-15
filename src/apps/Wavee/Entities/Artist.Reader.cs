@@ -147,7 +147,7 @@ namespace Wavee;
 //   9. TWO reader-width edges, not the plan's one at 1200 (the reader is 344-650 DIP in a non-maximized window, so a
 //      1200-DIP arm was never seen), both decided by `ReaderShape` (#158): under `NarrowBelow` (640) the block cover
 //      drops 120 → 88 and the album head STACKS (`_narrow` — the arm the extents and the list mount key read); under
-//      `MediumBelow` (772, derived) the spine is gone and the band STACKS (`_stacked` — not a mount input; the band's
+//      `MediumBelow` (748, derived) the spine is gone and the band STACKS (`_stacked` — not a mount input; the band's
 //      extent is corrected in place). One 24-DIP hysteresis band each, `SetIfChanged` from `OnBoundsChanged`. W6's
 //      one-row compact band, which this replaced, crushed the name to "Tro…" at 391 DIP.
 //  10. The SPINE is `ItemsView.CreateBound` with a `SpineDot` component per slot, not the plain `ItemsView.Create` over
@@ -202,7 +202,7 @@ public readonly partial struct Artist
         /// <c>ItemsView.CreateBound</c>.</para></summary>
         const int Prefix = ReaderShape.Prefix;
 
-        /// <summary>The sub-rail's STATED height; the band's two are <see cref="ReaderShape.BandHeight"/> (100 wide, 168
+        /// <summary>The sub-rail's STATED height; the band's two are <see cref="ReaderShape.BandHeight"/> (100 wide, 164
         /// stacked). Constants rather than measurements because <see cref="_extentOf"/> has to answer indices 0 and 1
         /// BEFORE either item renders (the same contract <see cref="ReaderShape.ExtentOf"/> is under), and because a
         /// pinned rail whose analytic extent disagrees with its measured one leaves a seam between the rail and the first
@@ -284,7 +284,7 @@ public readonly partial struct Artist
         /// <see cref="OnBounds"/>. ONE signal for both, because both sit on the same 640-DIP edge and two signals could
         /// disagree for a frame; it is the list's mount input, so a flip reseeds every block extent.</summary>
         readonly Signal<bool> _narrowBand = new(false);
-        /// <summary>The MEDIUM arm (<see cref="ReaderShape.Medium"/>, the wider 772 edge): the spine is GONE and the band
+        /// <summary>The MEDIUM arm (<see cref="ReaderShape.Medium"/>, the wider 748 edge): the spine is GONE and the band
         /// STACKS. One signal for both, because the wide band shares the lane with the spine — the edge is derived from
         /// that sum. NOT a mount input: the band's extent is corrected in place (<see cref="Settle"/>).</summary>
         readonly Signal<bool> _medium = new(false);
@@ -741,7 +741,7 @@ public readonly partial struct Artist
             float tail = TailHeight(TailKind());
             if (tail != _tailExtent && (_ctl.CorrectMeasuredExtent(Prefix + _count, tail) || _ctl.Viewport.IsNull))
                 _tailExtent = tail;
-            // The BAND has two heights too — 100 wide, 168 stacked — and the MEDIUM arm that picks one is deliberately
+            // The BAND has two heights too — 100 wide, 164 stacked — and the MEDIUM arm that picks one is deliberately
             // not a mount input (a 24-DIP grip drag must not remount the list), so a flip reaches the table HERE, as a
             // correction, exactly like a block whose row count landed. Item 0 is a persistent-prefix row, but a real row
             // of the same extent table — `ArrangeVirtual` measures and commits it on every pass like any realized row —
@@ -816,7 +816,7 @@ public readonly partial struct Artist
 
         /// <summary>The two arms off the READER's own width (deviation 9), both DECIDED by <see cref="ReaderShape"/> —
         /// <see cref="ReaderShape.Narrow"/> (640: cover 88 + the stacked album head) and <see cref="ReaderShape.Medium"/>
-        /// (772: no spine + the stacked band) — so the edges, their 24-DIP hysteresis and the unmeasured-width rule are
+        /// (748: no spine + the stacked band) — so the edges, their 24-DIP hysteresis and the unmeasured-width rule are
         /// the tested ones, and this only feeds them the arranged width.</summary>
         void OnBounds(RectF r)
         {

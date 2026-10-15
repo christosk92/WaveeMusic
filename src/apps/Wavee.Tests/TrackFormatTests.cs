@@ -343,7 +343,7 @@ public class TrackFormatTests
     // ── row metrics: the alignment invariant and the drawer's rail ───────────────────────────────────────────────────
 
     static Track.ColumnSet Set(int tier, bool heart, bool thumb, bool classic = false)
-        => new(Album: false, By: false, Date: false, Video: false, Plays: false, Heart: heart, Thumb: thumb,
+        => new(Album: false, By: false, Date: false, Plays: false, Heart: heart, Thumb: thumb,
                Tier: tier, Classic: classic);
 
     [Theory]
@@ -377,7 +377,7 @@ public class TrackFormatTests
     [Fact]
     public void ColumnSet_defaults_keep_the_overflow_lane_and_tier_zero()
     {
-        var set = new Track.ColumnSet(false, false, false, false, false, false, false);
+        var set = new Track.ColumnSet(false, false, false, false, false, false);
 
         Assert.True(set.Actions);
         Assert.Equal(0, set.Tier);
@@ -390,7 +390,7 @@ public class TrackFormatTests
     [InlineData(true, 4, false)]
     [InlineData(false, 0, false)]
     public void ShowTempo_is_the_wish_and_the_tier(bool tempo, int tier, bool expected)
-        => Assert.Equal(expected, RowMetrics.ShowTempo(new Track.ColumnSet(false, false, false, false, false, false, false,
+        => Assert.Equal(expected, RowMetrics.ShowTempo(new Track.ColumnSet(false, false, false, false, false, false,
                                                                            Tier: tier, Tempo: tempo)));
 
     /// <summary>The rail drops from the ART CENTRE: Modern pays <c>PadX − RowInset</c> (its skin margin supplies the rest),

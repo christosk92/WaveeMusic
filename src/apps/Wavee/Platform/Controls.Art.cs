@@ -571,6 +571,35 @@ public static partial class Controls
             // flex compresses every chip to fit the viewport and the labels ellipsise instead of the rail
             // overflowing, which is the opposite of what the scroller is for. Callers passing their own parts keep it.
 
+    /// <summary>A chip that NAVIGATES (Browse's Top and For you): the UNCHECKED face of <see cref="Chip"/> — the stock
+    /// ToggleButton's own off plate, padding, 32 floor, r4, stroke and brush ramp, read from <see cref="ToggleButton.DefaultStyle"/>
+    /// so a theme's ToggleButton entry restyles both — on a link (Role Hyperlink, the hand). A destination is never
+    /// "checked", so this is not a toggle; it exists so a link chip is not a private box with its own look (D7).
+    /// <paramref name="lead"/> sits <see cref="ToggleButton.Style.GlyphGap"/> before the label (Browse's identity pip);
+    /// <paramref name="strong"/> sets the label at 600. Shrink 0: on a wrapping row the row breaks rather than every chip
+    /// ellipsising.</summary>
+    public static Element LinkChip(string key, string label, Action onClick, Element? lead = null, bool strong = false)
+    {
+        var s = ToggleButton.DefaultStyle;
+        var text = new TextEl(label)
+        {
+            Size = s.FontSize, Weight = (ushort)(strong ? 600 : 400), Color = s.OffForeground, PressedColor = s.OffPressedForeground,
+            MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+        };
+        return new BoxEl
+        {
+            Key = key,
+            Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand, FocusVisualMargin = s.FocusVisualMargin,
+            OnClick = onClick,
+            Direction = 0, Gap = lead is null ? 0f : s.GlyphGap, AlignItems = FlexAlign.Center, Shrink = 0f, MinWidth = 0f,
+            MinHeight = s.MinHeight, Padding = s.Padding, Corners = CornerRadius4.All(s.CornerRadius),
+            Fill = s.OffBackground, HoverFill = s.OffHover, PressedFill = s.OffPressed,
+            BorderWidth = s.BorderWidth, BorderBrush = s.OffBorder, HoverBorderBrush = s.OffHoverBorder, PressedBorderBrush = s.OffPressedBorder,
+            BrushTransitionMs = s.BrushTransitionMs,
+            Children = lead is null ? [text] : [lead, text],
+        };
+    }
+
     /// <summary>The chip RAIL: ONE line that scrolls, never a wrapped block. A curated set runs to 15+ concepts, which
     /// wrapped into a second and third row and pushed the list down the page.
     /// <para>The EDGE FADE is the overflow affordance — offset-driven and live per frame, so it says "more this way"

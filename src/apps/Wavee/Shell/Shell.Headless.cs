@@ -118,6 +118,25 @@ public static partial class Shell
             return shell;
         }
 
+        /// <summary>Put the navigation back where a fresh session starts: Home, with no back or forward step and the omnibar
+        /// empty. Between mounts only. The route is PROCESS state (a remount opens on the page the last root showed, which
+        /// <c>RootScopeTests</c> pins), so the shell test host calls this between FACTS: a fact that starts on the page the
+        /// previous fact left would mount that page and park it in the KeepAlive on its first navigation, and the parked
+        /// page's keyed nodes (its track list, its find box) would stand beside the ones the fact asks for.</summary>
+        public static void ResetNavigation()
+        {
+            RequireUiThread();
+            if (s_mounted is not null) throw new InvalidOperationException("Reset the navigation between mounts, not under one.");
+            var home = new Route(RouteKind.Home, Tab: Tabs.ActiveId);
+            s_nav = new Nav(home);
+            Motion.Value = NavTransitionKind.Neutral;
+            Current.Value = home;
+            CanBack.Value = false;
+            CanForward.Value = false;
+            SyncActiveTab(home);
+            SyncOmnibar(home);
+        }
+
         internal static void Unmounted(HeadlessShell shell)
         {
             if (ReferenceEquals(s_mounted, shell)) s_mounted = null;

@@ -78,13 +78,12 @@ internal static partial class ClassicLibraryArtistReader
 
     // ── the band ─────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>72 avatar · the name LINK · "In your library: 3 albums · 35 songs" · Play all · shuffle · Follow · ↗. Painted from `ArtistFields.Identity` the moment the navigator's row
-    /// carries it — the band never skeletons as a whole; an unnamed artist shows "…" in the title and nothing else (§5.7, W3).
+    /// <summary>72 avatar · the name LINK · "In your library: 3 albums · 35 songs" · the verbs. Painted from `ArtistFields.Identity` the moment the navigator's row carries it — the band never
+    /// skeletons as a whole; an unnamed artist shows "…" in the title and nothing else (§5.7, W3).
     ///
-    /// <para>UNDER <see cref="Artist.ReaderShape.MediumBelow"/> it STACKS (#158): row 1 is a 56 avatar beside the name column, the name taking up to two lines; row 2 is the SAME verbs as
-    /// the wide arm — an accent play FAB at the band's 36 tier, shuffle, Follow, ↗ — left-aligned (244 DIP: with the padding it
-    /// fits the 300-DIP window floor). The reason is arithmetic rather than taste: one row spends <see cref="Artist.ReaderShape.WideBandFixedW"/> (484 DIP, with the 56-DIP
-    /// spine beside it) on what never shrinks, and the name column — the only flexible child — is what pays.</para>
+    /// <para>UNDER <see cref="Artist.ReaderShape.MediumBelow"/> it STACKS (#158): row 1 is a 56 avatar beside the name column, the name taking up to two lines; row 2 is the SAME verb row as
+    /// the wide arm, left-aligned. The reason is arithmetic rather than taste: one row spends <see cref="Artist.ReaderShape.WideBandFixedW"/> (460 DIP, with the 56-DIP spine beside it) on what
+    /// never shrinks, and the name column — the only flexible child — is what pays.</para>
     ///
     /// <para>Each arm's root is KEYED ("band:w" / "band:s") as a CHILD of the slot's root — a single-child slot's own Key is inert — so the swap is a real remount; and each DECLARES
     /// <see cref="Artist.ReaderShape.BandHeight"/>, the number the extent table seeds and the core corrects to. With stated heights inside, the declaration restates the measurement rather
@@ -105,10 +104,7 @@ internal static partial class ClassicLibraryArtistReader
                 [
                     Avatar(a, named, Artist.ReaderShape.AvatarEdge),
                     NameColumn(host, a, named, band.Shape, stacked: false),
-                    Controls.PlayButton(Tok.AccentDefault, host.PlayAll, Loc.Get(Strings.Library.PlayAll)) with { Shrink = 0f },
-                    ClassicDetailKit.CommandCircle(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), host.ShuffleAll),
-                    Follow(uri, name, FlexJustify.End),
-                    ClassicDetailKit.CommandCircle(Icons.OpenInNewWindow, Loc.Get(Strings.Detail.GoToArtist), host.GoArtist),
+                    Verbs(host, uri, name, stacked: false),
                 ],
             };
         return new BoxEl
@@ -124,21 +120,51 @@ internal static partial class ClassicLibraryArtistReader
                     Height = Artist.ReaderShape.NameColumnH,
                     Children = [Avatar(a, named, Artist.ReaderShape.AvatarEdgeStacked), NameColumn(host, a, named, band.Shape, stacked: true)],
                 },
-                new BoxEl
-                {
-                    Direction = 0, Gap = Artist.ReaderShape.BandStackGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
-                    Height = Artist.ReaderShape.BandCircle,
-                    Children =
-                    [
-                        Controls.Named(Controls.PlayFab(host.PlayAll, Icons.Play, Artist.ReaderShape.BandCircle), Loc.Get(Strings.Library.PlayAll)),
-                        ClassicDetailKit.CommandCircle(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), host.ShuffleAll),
-                        Follow(uri, name, FlexJustify.Start),                     // left edge pinned: ↗ never moves on a flip
-                        ClassicDetailKit.CommandCircle(Icons.OpenInNewWindow, Loc.Get(Strings.Detail.GoToArtist), host.GoArtist),
-                    ],
-                },
+                Verbs(host, uri, name, stacked: true),
             ],
         };
     }
+
+    /// <summary>The band's ONE verb row (Y3): the accent Play all, the Follow toggle, then the quiet 32/r4 shuffle and ↗ icon buttons named by their tooltips,
+    /// <see cref="Artist.ReaderShape.ActionGap"/> apart. WIDE it always fits (the medium edge is derived from it). STACKED it measures its own lane and, where the whole
+    /// row would not fit (<see cref="ClassicLibraryTiers.FoldVerbs"/>), folds shuffle and ↗ into one ⋯ menu and lets Play all drop its 120 floor — so it never clips.</summary>
+    static Element Verbs(IArtistReaderHost host, string uri, string? name, bool stacked)
+        => stacked
+            ? Responsive.Of("reader:verbs", w => VerbRow(host, uri, name, folded: ClassicLibraryTiers.FoldVerbs(w)))
+            : VerbRow(host, uri, name, folded: false);
+
+    static Element VerbRow(IArtistReaderHost host, string uri, string? name, bool folded)
+    {
+        var play = Controls.PlayButton(Tok.AccentDefault, host.PlayAll, Loc.Get(Strings.Library.PlayAll)) with { Shrink = 0f };
+        Element[] kids = folded
+            ?
+            [
+                play with { MinWidth = 0f },
+                Follow(uri, name),
+                Controls.Named(ClassicDetailKit.MoreButton(() => FoldedMenu(host), Artist.ReaderShape.IconActionW),
+                               Loc.Get(Strings.Common.More)),
+            ]
+            :
+            [
+                play,
+                Follow(uri, name),
+                ClassicDetailKit.CommandCircle(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), host.ShuffleAll),
+                ClassicDetailKit.CommandCircle(Icons.OpenInNewWindow, Loc.Get(Strings.Detail.GoToArtist), host.GoArtist),
+            ];
+        return new BoxEl
+        {
+            Key = folded ? "verbs:folded" : "verbs:row",
+            Direction = 0, Gap = Artist.ReaderShape.ActionGap, AlignItems = FlexAlign.Center, Shrink = 0f,
+            Height = Artist.ReaderShape.ActionH, Children = kids,
+        };
+    }
+
+    /// <summary>The folded row's ⋯: the two verbs it took in, in the row's order.</summary>
+    static ContextMenuModel FoldedMenu(IArtistReaderHost host) => new(
+    [
+        new MenuFlyoutItem(Loc.Get(Strings.Detail.Shuffle), Icons.Shuffle, Invoke: host.ShuffleAll),
+        new MenuFlyoutItem(Loc.Get(Strings.Detail.GoToArtist), Icons.OpenInNewWindow, Invoke: host.GoArtist),
+    ]);
 
     static Element Avatar(Artist a, bool named, float edge) => new BoxEl
     {
@@ -149,12 +175,12 @@ internal static partial class ClassicLibraryArtistReader
 
     /// <summary>The Follow toggle in a `Shrink 0` slot: a `ComponentEl` has no layout knobs of its own (`Shrink` is a `BoxEl` field), so the one box is what keeps the toggle out of the name
     /// column's width.
-    /// <para>The slot is as wide as the LONGER face (<see cref="Artist.ReaderShape.FollowSlotW"/>), so nothing beside it shifts ~9 DIP between a followed and an unfollowed artist on every
-    /// navigator click: the wide arm right-aligns the toggle (Play all and shuffle sit to its left), the stacked arm left-aligns it (↗ sits to its right). A MinWidth, not a Width: a locale
-    /// whose label is longer still grows it.</para></summary>
-    static Element Follow(string uri, string? name, FlexJustify justify) => new BoxEl
+    /// <para>The slot is as wide as the LONGER face (<see cref="Artist.ReaderShape.FollowSlotW"/>) and the toggle FILLS it (a column that stretches its child), so shuffle and ↗ after it never
+    /// shift ~9 DIP between a followed and an unfollowed artist on every navigator click, and the gap after it stays the row's one gap. A MinWidth, not a Width: a locale whose label is longer
+    /// still grows it.</para></summary>
+    static Element Follow(string uri, string? name) => new BoxEl
     {
-        Shrink = 0f, MinWidth = Artist.ReaderShape.FollowSlotW, Direction = 0, Justify = justify,
+        Shrink = 0f, MinWidth = Artist.ReaderShape.FollowSlotW, Direction = 1, AlignItems = FlexAlign.Stretch,
         Children = [Embed.Comp(() => new Controls.FollowToggle { Uri = uri, Name = name }) with { Key = "follow:" + uri }],
     };
 
@@ -232,9 +258,9 @@ internal static partial class ClassicLibraryArtistReader
         return h.SubRail = SubRail(p.Host, scope, sort);
     }
 
-    /// <summary>The two word rails — scope (in your library · all releases · N) — spacer — sort (newest · oldest · a–z), over the page's own Signal INSTANCES, PINNED at the viewport top. Its card fill is
-    /// load-bearing: a pinned direct child of the content paints ABOVE the blocks sliding under it (<c>NodeFlags.StickyPinned</c>), so the 48-DIP row's fill plus the 1-DIP divider is what stops a track row
-    /// showing through — the item clip is the belt, this is the braces.</summary>
+    /// <summary>The two word rails — scope (in your library · all releases · N) — spacer — sort (newest · oldest · a–z), over the page's own Signal INSTANCES, PINNED at the viewport top. A PLAIN
+    /// section on the content card (Y1): no band fill, the 1-DIP divider under it is the edge. A pinned direct child of the content paints ABOVE the blocks sliding under it
+    /// (<c>NodeFlags.StickyPinned</c>); what stops a track row showing through it is the list's pinned clip inset (<see cref="Artist.ReaderShape.SubRailH"/>).</summary>
     static Element SubRail(IArtistReaderHost host, Signal<int> scope, Signal<int> sort) => new BoxEl
     {
         Direction = 1, Shrink = 0f, Height = Artist.ReaderShape.SubRailH, MinWidth = 0f,
@@ -242,7 +268,7 @@ internal static partial class ClassicLibraryArtistReader
         [
             new BoxEl
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, MinWidth = 0f, Fill = Tok.FillCardDefault,
+                Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, MinWidth = 0f,
                 Padding = new Edges4(Spacing.XL, Artist.ReaderShape.SubRailPadTop, Spacing.XL, Artist.ReaderShape.SubRailPadBottom),
                 Children =
                 [

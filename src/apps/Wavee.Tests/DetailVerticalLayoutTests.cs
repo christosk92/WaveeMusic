@@ -503,6 +503,16 @@ public class DetailVerticalLayoutTests
         Assert.Equal(VerticalItemRole.Empty, VerticalLayout.ItemRole(2 + visibleTracks, visibleTracks));
     }
 
+    /// <summary>The viewport holds the two prefix items and the row slots — an empty / loading list keeps ONE (the placeholder) — and
+    /// nothing after them: the facts are the insights sheet's (tuned Classic I1), never a list footer.</summary>
+    [Theory]
+    [InlineData(0, 3)]
+    [InlineData(1, 3)]
+    [InlineData(50, 52)]
+    [InlineData(10_000, 10_002)]
+    public void VerticalViewport_HoldsThePrefixAndTheRowSlotsOnly(int visible, int count)
+        => Assert.Equal(count, VerticalLayout.ItemCount(visible));
+
     [Theory]
     [InlineData(260f, 204f)]
     [InlineData(56f, 1f)]

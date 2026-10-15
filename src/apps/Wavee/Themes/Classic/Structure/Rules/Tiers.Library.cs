@@ -24,4 +24,9 @@ public static class ClassicLibraryTiers
         if (w <= 0f) return wasCollapsed;
         return wasCollapsed ? w < CollapseBelow + Hysteresis : w < CollapseBelow;
     }
+
+    /// <summary>The artist reader's STACKED verb row (Y3) folds shuffle and ↗ into one ⋯ menu when its measured lane is narrower than the whole
+    /// row (<see cref="Artist.ReaderShape.ActionsW"/>, 316), so the row never clips (the Small board's "More: Shuffle, Open artist page").
+    /// An unmeasured lane (≤ 0) folds: the first frame never overflows.</summary>
+    public static bool FoldVerbs(float laneWidth) => laneWidth < Artist.ReaderShape.ActionsW;
 }

@@ -213,10 +213,8 @@ public readonly partial struct Track
         public override bool HasDateAdded => _playlist.HasDateAddedColumn;
         public override bool HasAddedBy => _playlist.HasAddedByColumn;
         // NOT the commit-time flag. `HasVideoColumn` is folded while the MEMBERSHIP lands, and kind 99 (the video
-        // association) is asked for the rows only AFTER that - so the fold always saw hasVideo:false, the column was
-        // decided "no" forever, and a playlist full of music videos showed not one film glyph. The album table has
-        // read the live rows through `CachedVideo` all along ("kind 99 lands after the rows paint, and the film lane
-        // must appear when it does"); the playlist table now reads them the same way.
+        // association) is asked for the rows only AFTER that - so the fold always saw hasVideo:false and the filter's
+        // video row was decided "no" forever. The live rows are read through `CachedVideo`, as the album table does.
         public override bool HasVideo => CachedVideo(Edge.Targets(_playlist.Slot), Version);
         public override void Subscribe()
         {
@@ -459,8 +457,7 @@ public readonly partial struct Track
         // publishes): the compact band's input hand-off. (The body clip's feather is the clip's own composite-time
         // parameter, EdgeFadeSpec.WhileStuck — no engaged signal, no re-render; RCA 2026-09-25 F(ii).)
         readonly Signal<bool> _compactInteractive = new(false);
-        readonly Signal<bool> _verticalFacts = new(false);
-        readonly Signal<int> _verticalItemCount = new(Detail.VerticalLayout.ItemCount(0, false));
+        readonly Signal<int> _verticalItemCount = new(Detail.VerticalLayout.ItemCount(0));
 
         // ── selection · list controller · counts ───────────────────────────────────────────────────────────────────
         readonly SelectionModel _selection = new();
@@ -546,8 +543,8 @@ public readonly partial struct Track
             InitChrome();
         }
 
-        /// <summary>ROW slots only: the seeds are keyed by DISPLAY index, and the placeholder/footer slots sit past the live
-        /// row count, where a stale seed would make the footer rise like a track that moved.</summary>
+        /// <summary>ROW slots only: the seeds are keyed by DISPLAY index, and the placeholder slot sits past the live
+        /// row count, where a stale seed would make it rise like a track that moved.</summary>
         bool IsVerticalRow(int itemIndex)
         {
             int display = itemIndex - Detail.VerticalLayout.PrefixCount;
@@ -642,12 +639,11 @@ public readonly partial struct Track
             var src = args.Source;
             var identity = TableRules.IdentityColumns(s.Classic, cfg.ShowArtThumb, s.ArtHidden, cfg.ShowTrackArtist, tier);
             // A null Drawer seam is "no chevron lane" (the contract), so it folds into ShowVersions before the tier gate.
-            var trailing = TableRules.TrailingColumns(s.Classic, src.HasVideo, cfg.ShowVersions && args.Profile.Drawer is not null, tier);
+            var trailing = TableRules.TrailingColumns(cfg.ShowVersions && args.Profile.Drawer is not null, tier);
             return new ColumnSet(
                 Album: cfg.ShowAlbumColumn && tier < 2,
                 By: src.HasAddedBy && tier < 1,
                 Date: src.HasDateAdded && tier < 3,
-                Video: trailing.Video,
                 Plays: TableColumnsPref.PlaysVisible(cfg.ShowPlays, cfg.PlaysColumnOptIn, s.PlaysColumn) && tier < 3,
                 Heart: tier < 5,
                 Thumb: identity.Thumb,
@@ -1018,7 +1014,6 @@ public readonly partial struct Track
             UseLayoutEffect(() => ApplyItemBand(stickyInset), DepKey.From(stickyInset, (float)_resetEpoch));
 
             bool recsCapable = cfg.Recommendations && !args.Embedded && !vertical && P.Recommendations is not null;
-            bool hasFacts = vertical && !trailing && args.Vertical!.Slots.LikedFacts is not null;
             var listState = Playlist.RowsStateOf(snap.State is EdgeState.Partial or EdgeState.Complete, snap.Count, visible);
             bool recsLive = recsCapable && listState is PlaylistRowsState.Rows or PlaylistRowsState.Empty;
             int listTotal = visible + (recsLive ? 1 : 0);
@@ -1026,9 +1021,8 @@ public readonly partial struct Track
             {
                 _visible.Value = visible;
                 _listCount.Value = listTotal;
-                _verticalFacts.Value = hasFacts;
-                _verticalItemCount.Value = Detail.VerticalLayout.ItemCount(visible, hasFacts);
-            }, DepKey.From(visible, listTotal, hasFacts ? 1 : 0, 0));
+                _verticalItemCount.Value = Detail.VerticalLayout.ItemCount(visible);
+            }, DepKey.From(visible, listTotal));
             UseEffect(PublishHeroHeight);
             var listCount = CountNow(in snap, visible);
             UseEffect(() => { if (_latest.ListCount is { } target) target.Value = listCount; },
@@ -1047,7 +1041,7 @@ public readonly partial struct Track
                 DepKey.From(variableRows ? 1f : 0f, rowH, shape.EpisodeRowH, 0f));
 
             Element realList =
-                vertical && !trailing ? VerticalList(visible, layout, stickyInset, hasFacts, narrate)
+                vertical && !trailing ? VerticalList(visible, layout, stickyInset, narrate)
                 : recsLive ? RecsList(listTotal, layout, trailing, narrate)
                 : listState == PlaylistRowsState.Rows ? FlatList(layout, trailing, narrate)
                 : Placeholder(listState, in shape);
@@ -1213,9 +1207,16 @@ public readonly partial struct Track
         /// <summary>The album arm's outer scroller's restore key: <see cref="ListScrollKey"/>'s identity, its own lane.</summary>
         string TrailScrollKey => _scrollScope + _latest.ScrollKey + ":trail:r" + _resetEpoch;
 
+        /// <summary>The slot ROOT every list path returns. The list's roving focus lands on the slot root, and a component's
+        /// node (its anchor) cannot carry a handler, so the root is this box: it hears the focus edge and feeds the slot's
+        /// focus fact (<c>RowScope.IsFocused</c>: the keyboard-current tracking and the row's focus reveals, tuned Classic L2).
+        /// Without it the skin's own edge never fired — the focus sits on its ancestor.</summary>
+        static Element FocusRoot(Element slot, Action<bool> focusEdge)
+            => new BoxEl { Direction = 1, MinWidth = 0f, OnFocusChanged = focusEdge, Children = [slot] };
+
         Element FlatList(RepeatLayout layout, bool trailing, bool narrate)
             => ItemsView.CreateBound(_rowItems!,
-                scope => Embed.Comp(() => new TableSlot(this, scope.Row, 0, narrate)),
+                scope => FocusRoot(Embed.Comp(() => new TableSlot(this, scope.Row, 0, narrate)), scope.Row.OnFocusChanged),
                 layout,
                 new ListOptions<Track>
                 {
@@ -1238,7 +1239,7 @@ public readonly partial struct Track
         /// included). The COUNT carries the section only while the page has rows or is empty — never over a shimmer.</summary>
         Element RecsList(int total, RepeatLayout layout, bool trailing, bool narrate)
             => ItemsView.CreateBound(total,
-                scope => Embed.Comp(() => new TableRecItem(this, scope, narrate)),
+                scope => FocusRoot(Embed.Comp(() => new TableRecItem(this, scope, narrate)), scope.OnFocusChanged),
                 layout,
                 new ListOptions
                 {
@@ -1269,11 +1270,11 @@ public readonly partial struct Track
         /// inset with a 24-DIP feather, and no stock scroll-edge cue (ch 03 §0.16). The two prefix items pin from their
         /// component's own rendered root (<see cref="HeroItem"/>, <see cref="ChromeItem"/>) against the declared
         /// <see cref="TableScope"/> — a named scope, so no raw wrapper is needed around the item component.</summary>
-        Element VerticalList(int visible, RepeatLayout layout, float stickyInset, bool facts, bool narrate)
+        Element VerticalList(int visible, RepeatLayout layout, float stickyInset, bool narrate)
         {
             int prefix = Detail.VerticalLayout.PrefixCount;
-            return ItemsView.CreateBound(Detail.VerticalLayout.ItemCount(visible, facts),
-                scope => Embed.Comp(() => new TableVerticalItem(this, scope, narrate)),
+            return ItemsView.CreateBound(Detail.VerticalLayout.ItemCount(visible),
+                scope => FocusRoot(Embed.Comp(() => new TableVerticalItem(this, scope, narrate)), scope.OnFocusChanged),
                 layout,
                 new ListOptions
                 {
@@ -1483,20 +1484,6 @@ public readonly partial struct Track
             return Chrome(in shape, chips, lens).Sticky(Detail.VerticalLayout.CompactIdentityHeight, TableScope, engaged: _compactInteractive);
         }
 
-        internal Element FooterItem()
-        {
-            var shape = _shape!.Value;
-            float pad = RowMetrics.PadXFor(shape.Set.Tier);
-            float colW = ColumnWidth();
-            Element? facts = _latest.Vertical?.Slots.LikedFacts?.Invoke(MathF.Max(0f, colW - pad * 2f));
-            return new BoxEl
-            {
-                Key = "vitem:facts", Direction = 1,
-                Padding = new Edges4(pad, Spacing.XXL, pad, Spacing.XXL),
-                Children = facts is null ? [] : [facts],
-            };
-        }
-
         internal Element EmptyItem()
         {
             var snap = _snapshot!.Value;
@@ -1507,7 +1494,6 @@ public readonly partial struct Track
         }
 
         internal int VisibleCountValue => _rowItems!.Count.Value;
-        internal bool FactsValue => _verticalFacts.Value;
         internal Shape ShapeValue => _shape!.Value;
         internal Func<ColorF> AccentRead => _accent;
         internal Element? RecommendationsElement() => P.Recommendations?.Invoke();
@@ -1759,7 +1745,8 @@ public readonly partial struct Track
         }
 
         /// <summary>Explorer semantics, settled BEFORE the host rows are read: a right-click outside the selection collapses it
-        /// to the clicked row. "Track details" exists only where the chevron lane does not (ShowVersionsMenuItem).</summary>
+        /// to the clicked row. "Track details" exists only where the row shows no chevron: no chevron lane, or a row with no
+        /// versions to put in it (ShowVersionsMenuItem).</summary>
         /// <summary>Track rows only — an episode row is never wrapped by <see cref="Skin"/> (<see cref="TableSlot"/>
         /// hands it straight to <see cref="Episode.ReaderRow"/>, which dispatches its own "…" to
         /// <see cref="Episode.Menu"/> through the <see cref="Episode.RowContext"/> the table builds).</summary>
@@ -1775,7 +1762,8 @@ public readonly partial struct Track
                 _selection.Select(slotIndex);
             }
             Action? details = null;
-            if (TableRules.ShowVersionsMenuItem(Cfg.ShowVersions && P.Drawer is not null, expandLane, t.Uri.Kind == EntityKind.Track))
+            if (TableRules.ShowVersionsMenuItem(Cfg.ShowVersions && P.Drawer is not null, expandLane && t.HasVersions(),
+                                                t.Uri.Kind == EntityKind.Track))
             {
                 string key = MembershipDiff.RowKey(t, ItemIdAt(display), display);
                 details = () => ToggleExpanded(key, t);
@@ -1925,7 +1913,7 @@ public readonly partial struct Track
             SpotlightWhen = session => !IsSameList(session.Payload),
             SourceIndices = SourceDisplayRows,
             DraggedCount = payload => Drag.Unwrap(payload) is { Tracks.Length: > 0 } d ? d.Tracks!.Length : 1,
-            // The insertable sub-range: TRACK rows only — never the hero/chrome prefix, the recs section or the footer.
+            // The insertable sub-range: TRACK rows only — never the hero/chrome prefix or the recs section.
             Range = () => (TrackStart, _visible.Peek()),
             OnDeposit = DepositAt,
             Caption = Caption,
@@ -2489,7 +2477,7 @@ public readonly partial struct Track
             if (_latch == 0) _latch = real ? (byte)2 : (byte)1;
             if (!real) return _host.PlaceholderRow(in set, shape.Tracks, shape.RowH, RowMetrics.PadXFor(set.Tier)) with { Key = "row:shim" };
 
-            _row ??= new Track.BoundRow(presentation, likePop, _hovered, Playback.IsPlaying, _host.AccentRead, PlayCurrent, LikeCurrent, ToggleExpandCurrent);
+            _row ??= new Track.BoundRow(presentation, likePop, _hovered, _scope.IsFocused, Playback.IsPlaying, _host.AccentRead, PlayCurrent, LikeCurrent, ToggleExpandCurrent);
             var row = _row;
             // The structure draws the grid (Modern or Classic template); built ONCE per slot per shape, like it always was.
             var templates = _host.RowTemplatesFor(set.Classic);
@@ -2510,7 +2498,7 @@ public readonly partial struct Track
         }
     }
 
-    /// <summary>One slot of the hero-system viewport: hero · chrome (persistent prefix) · rows · the facts footer · the
+    /// <summary>One slot of the hero-system viewport: hero · chrome (persistent prefix) · rows · the
     /// empty/loading placeholder. Constructor values are shape-only.</summary>
     sealed class TableVerticalItem(TableHost host, RowScope scope, bool narrate) : Component
     {
@@ -2530,7 +2518,7 @@ public readonly partial struct Track
             var slot = UseComputed(() =>
             {
                 int i = _scope.Index.Value;
-                return new Slot(Detail.VerticalLayout.ItemRole(i, _host.VisibleCountValue, _host.FactsValue), i == prefix);
+                return new Slot(Detail.VerticalLayout.ItemRole(i, _host.VisibleCountValue), i == prefix);
             }).Value;
             switch (slot.Role)
             {
@@ -2549,8 +2537,6 @@ public readonly partial struct Track
                         Children = [Embed.Comp(() => new TableSlot(host, scope, prefix, narrate))],
                     };
                 }
-                case VerticalItemRole.Footer:
-                    return _host.FooterItem();
                 default:
                     return slot.First ? _host.EmptyItem() : new BoxEl { Key = "vitem:blank" };
             }

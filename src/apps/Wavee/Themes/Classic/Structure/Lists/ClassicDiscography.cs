@@ -432,7 +432,7 @@ internal static class ClassicDiscography
     };
 
     /// <summary># 26 · ♥ 28 · title ★ · time 44 · … 32 at the 32-DIP <c>DrawerVerdict.RowPitch</c> (content 28).</summary>
-    static readonly Track.ColumnSet s_drawerCols = new(Album: false, By: false, Date: false, Video: false, Plays: false,
+    static readonly Track.ColumnSet s_drawerCols = new(Album: false, By: false, Date: false, Plays: false,
                                                         Heart: true, Thumb: false);
     static readonly TrackSize[] s_drawerColumns =
         [TrackSize.Px(Rules.RankCol), TrackSize.Px(Track.RowMetrics.HeartCol), TrackSize.Star(), TrackSize.Px(Rules.TimeCol), TrackSize.Px(Rules.MoreCol)];

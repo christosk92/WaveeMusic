@@ -30,7 +30,11 @@ internal static class ClassicTrackRowLayout
     /// <summary>The Classic explicit word-mark's text: 9 on a 12 line.</summary>
     public const float ClassicBadgeSize = 9f, ClassicBadgeLine = 12f;
 
-    /// <summary>The film glyph after a Classic title that has a video.</summary>
+    /// <summary>A withheld row's short reason in the duration lane ("Unavailable", the release date): 11, on the lane's own line
+    /// (tuned Classic L4).</summary>
+    public const float ReasonSize = 11f;
+
+    /// <summary>The film glyph after a title that has a video (both row styles, tuned Classic L3).</summary>
     public const float FilmGlyphSize = 12f;
 
     /// <summary>The expand lane's disclosure chevron.</summary>

@@ -927,10 +927,8 @@ public static partial class Detail
             return _trampActions;
         }
 
-        /// <summary>The VERTICAL arm's view of the page's slots. ── INSIGHTS SHEET (additive) ── <c>LikedFacts</c> is
-        /// deliberately DROPPED here: in this arm the bento belongs to the sheet, and the table's own facts FOOTER
-        /// (its <c>hasFacts</c> reads exactly this slot) is what used to push it to the bottom of the page. The frame
-        /// still hands the page's own builder to the sheet, so nothing is lost — only the host changed.</summary>
+        /// <summary>The VERTICAL arm's view of the page's slots. <c>LikedFacts</c> is not carried: the bento is the insights sheet's (tuned
+        /// Classic I1), which the frame hands the page's own builder.</summary>
         FrameSlots TrampolineSlots(FrameSlots s)
         {
             int mask = s.Mask();
@@ -948,7 +946,6 @@ public static partial class Detail
                     Chart = s.Chart is null ? null : _sChart,
                     PreRelease = s.PreRelease is null ? null : _sPreRelease,
                     ReleasePanel = s.ReleasePanel is null ? null : _sReleasePanel,
-                    LikedFacts = null,   // ── INSIGHTS SHEET ── the sheet hosts it in this arm; never the list footer.
                     Trailing = s.Trailing is null ? null : _sTrailing,
                     Episodes = s.Episodes is null ? null : _sEpisodes,
                     Badges = s.Badges is null ? null : _sBadges,

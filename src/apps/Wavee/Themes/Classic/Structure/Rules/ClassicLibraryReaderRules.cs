@@ -32,16 +32,16 @@ internal static class ClassicLibraryReaderRules
     /// <para>The lane width is <c>Track.Lane.HeartTrailing</c> (32), not <c>Track.Lane.Heart</c> (28): the latter is the INLINE heart's slot inside the full table's lane
     /// ladder, and the trailing slot is the wider one. The two are mutually exclusive by construction (<c>Track.RowMetrics.ShowHeartTrailing</c>), which is why
     /// <c>Heart</c> is explicitly false here rather than merely omitted.</para></summary>
-    public static readonly Track.ColumnSet Cols = new(Album: false, By: false, Date: false, Video: false, Plays: false,
+    public static readonly Track.ColumnSet Cols = new(Album: false, By: false, Date: false, Plays: false,
                                                       Heart: false, Thumb: false, Actions: false, HeartTrailing: true);
 
     /// <summary>The lane widths of <see cref="Cols"/>: the number, the title, the trailing heart and the duration.</summary>
     public static readonly TrackSize[] Tracks =
         [TrackSize.Px(28f), TrackSize.Star(1f), TrackSize.Px(Track.Lane.HeartTrailing), TrackSize.Px(52f)];
 
-    /// <summary>The row's options, hoisted: the reader never prints a track's artist (the block IS the credit) and the trailing heart is revealed by ROW HOVER — a liked row
-    /// states itself on hover, an unliked one offers the affordance there and nowhere else, so a block of twelve rows is not twelve hearts.</summary>
-    public static readonly Track.EagerRowOptions RowOptions = new(ShowTrackArtist: false, HeartRevealOnHover: true);
+    /// <summary>The row's options, hoisted: the reader never prints a track's artist (the block IS the credit). The trailing heart wears every row's ROW-HOVER reveal
+    /// (tuned Classic L2), so a block of twelve rows is not twelve hearts.</summary>
+    public static readonly Track.EagerRowOptions RowOptions = new(ShowTrackArtist: false);
 
     // ── the album head ────────────────────────────────────────────────────────────────────────────────────────────
 

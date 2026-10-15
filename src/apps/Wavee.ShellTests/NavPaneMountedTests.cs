@@ -12,7 +12,7 @@
 //                         through the planner)
 //   the heads (T5b)       Classic registers Your Library's head and the empty body; the real shell in the Library layout draws
 //                         the head through its key (Home, the page dropdown and the toolbar stand under it), and the empty body
-//                         is the pane's sentence, or the rail's bare spacer
+//                         is the pane's sentence, or the rail's bare spacer; the toolbar's sort is "Recents ⌄", 28 tall (Y2)
 //
 //   the flyouts (T5c)     Classic registers the rail's two flyout panels (the pane opens and dismisses them; the structure draws them)
 //   the outline (T5d)     Edit swaps the pane for the registered Outline (its bar's Done, its section heads at the edit rules'
@@ -309,6 +309,39 @@ public sealed class NavPaneMountedTests(ShellHost host)
                 Assert.Contains(Node(shell, "library-dropdown-row"), inHead);
                 Assert.Contains(Node(shell, "library-toolbar"), inHead);
                 Assert.Contains(head, Subtree(shell.Host.Scene, mode).ToHashSet());
+            }
+            finally
+            {
+                if (original != SidebarLayoutId.Library)
+                {
+                    Sidebar.SwitchLayout(original);
+                    shell.RunFrames(60);
+                }
+            }
+        });
+
+    [Fact]
+    public void The_library_toolbars_sort_is_one_label_and_one_chevron_28_tall()
+        => host.Mounted(shell =>
+        {
+            shell.RunFrames(60);
+            var original = Sidebar.Layout.Peek();
+            try
+            {
+                if (original != SidebarLayoutId.Library)
+                {
+                    Sidebar.SwitchLayout(SidebarLayoutId.Library);
+                    shell.RunFrames(60);
+                }
+                // Y2 ("Recents ⌄"): at the default pane width the labelled sort stands, 28 tall, its two children the label and the chevron.
+                var scene = shell.Host.Scene;
+                var sort = Node(shell, "lib-sort");
+                Assert.Equal(ClassicLibraryHeadLayout.ToolbarIconButton, scene.Bounds(sort).H, 0.5f);
+                var kids = new List<NodeHandle>();
+                for (var c = scene.FirstChild(sort); !c.IsNull; c = scene.NextSibling(c)) kids.Add(c);
+                Assert.Equal(2, kids.Count);
+                Assert.Equal(VisualKind.Text, scene.Paint(kids[0]).VisualKind);
+                Assert.Equal(FluentGpu.Controls.Icons.ChevronDown, Entities.Strings.Resolve(scene.Paint(kids[1]).Text));   // no ⇅ sort glyph
             }
             finally
             {

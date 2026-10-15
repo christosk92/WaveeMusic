@@ -107,7 +107,6 @@ internal static class ClassicTrackChrome
                 ? HLabel(Loc.Get(Strings.Detail.Column.Time), SortColumn.Duration, sort, classic)
                 : Icon(Icons.Clock, ClassicTrackChromeLayout.ClockGlyph, sort.Column == SortColumn.Duration ? Tok.TextSecondary : Tok.TextTertiary),
             SortColumn.Duration, sort, FlexJustify.End));
-        if (set.Video) Add(CellKey.Video, new BoxEl());
         if (set.Actions) Add(CellKey.More, new BoxEl());
         if (set.Expand) Add(CellKey.Expand, new BoxEl());
 

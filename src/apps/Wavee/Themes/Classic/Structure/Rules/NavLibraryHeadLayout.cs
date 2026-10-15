@@ -39,8 +39,12 @@ public static class ClassicLibraryHeadLayout
     public const float ToolbarIconButton = 28f;
     public const float ToolbarGap = 4f;
 
-    /// <summary>The labelled sort button's chrome around its label: 8 + 16 glyph + 8 gap + 8.</summary>
-    public const float SortButtonChrome = 40f;
+    /// <summary>The labelled sort ("Recents ⌄", Y2): 28 tall (<see cref="ToolbarIconButton"/>), 8 in from each side, the
+    /// 12/600 label, a 6 gap and a 10-DIP chevron.</summary>
+    public const float SortPadX = 8f, SortTextSize = 12f, SortChevronGap = 6f, SortChevron = 10f;
+
+    /// <summary>The labelled sort's chrome around its label: 8 + 6 gap + 10 chevron + 8.</summary>
+    public const float SortButtonChrome = 2f * SortPadX + SortChevronGap + SortChevron;
 
     /// <summary>Below this pane width List/Grid leave the toolbar (they stay in ⋯ › View, which LibraryOptions always has).</summary>
     public const float FoldViewBelow = 240f;

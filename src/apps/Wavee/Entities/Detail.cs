@@ -62,7 +62,7 @@ public enum HeartMode : byte { None, Save, Follow }
 public enum RailScope : byte { Album, Playlist, Liked, Show, Uniform }
 
 /// <summary>Identity of one slot in the vertical (hero-system) list viewport.</summary>
-public enum VerticalItemRole : byte { Hero, Chrome, ExpandableTrack, Footer, Empty }
+public enum VerticalItemRole : byte { Hero, Chrome, ExpandableTrack, Empty }
 
 public static partial class Detail
 {
@@ -573,27 +573,22 @@ public static partial class Detail
         /// named separately so a caller states what it means, not <see cref="StickyClipInset"/>'s.</summary>
         public static float TrailingClipInset => CompactIdentityHeight;
 
-        // ── the vertical viewport's slot map: hero, pinned chrome, the recycled rows, then (hero system only) the facts
-        //    FOOTER — a slot, not a block in the identity column, so the page opens on its songs, not on charts.
+        // ── the vertical viewport's slot map: hero, pinned chrome, the recycled rows. The facts are the insights sheet's (tuned
+        //    Classic I1), never a list footer.
         public const int PrefixCount = 2;
 
         /// <summary>Row slots held open; an empty / loading list keeps ONE (the placeholder).</summary>
         public static int RowSlots(int visibleTracks) => Math.Max(1, visibleTracks);
 
-        /// <summary>The facts footer: immediately after the last row slot.</summary>
-        public static int FooterIndex(int visibleTracks) => PrefixCount + RowSlots(visibleTracks);
+        /// <summary>The viewport's item total: the prefix and the row slots.</summary>
+        public static int ItemCount(int visibleTracks) => PrefixCount + RowSlots(visibleTracks);
 
-        /// <summary>The viewport's item total; the footer is ONE extra item.</summary>
-        public static int ItemCount(int visibleTracks, bool hasFacts)
-            => PrefixCount + RowSlots(visibleTracks) + (hasFacts ? 1 : 0);
-
-        public static VerticalItemRole ItemRole(int itemIndex, int visibleTracks, bool hasFacts = false)
+        public static VerticalItemRole ItemRole(int itemIndex, int visibleTracks)
         {
             if (itemIndex == 0) return VerticalItemRole.Hero;
             if (itemIndex == 1) return VerticalItemRole.Chrome;
             int display = itemIndex - PrefixCount;
             if (display >= 0 && display < Math.Max(0, visibleTracks)) return VerticalItemRole.ExpandableTrack;
-            if (hasFacts && itemIndex == FooterIndex(visibleTracks)) return VerticalItemRole.Footer;
             return VerticalItemRole.Empty;
         }
 
