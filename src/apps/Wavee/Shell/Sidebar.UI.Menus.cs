@@ -240,9 +240,9 @@ public static partial class Sidebar
             return Actions.Menu.WithLayoutExtras(menu, extras.Flat());
         }
 
-        /// <summary>The playlist card menu (<c>Menus.Container</c>) with the sidebar's own rows as extras: Organize ▸ takes
-        /// the Pin slot (pin lives inside it), and the owner's Rename · Delete trail behind a separator. Liked Songs drops
-        /// Save exactly as a card does.</summary>
+        /// <summary>The playlist card menu (<c>Menus.Container</c>) with the sidebar's own rows as extras: the Pin slot opens a group of
+        /// its own, "Pin to sidebar / Unpin" at the top level (S5) with Organize ▸ after it, and the owner's Rename · Delete trail behind a
+        /// separator. Liked Songs drops Save exactly as a card does.</summary>
         ContextMenuModel PlaylistModel(ActionServices s, in SidebarLibraryEntry e, IReadOnlyList<MenuFlyoutItem>? organize)
         {
             var caps = PlaylistCaps.CanView
@@ -265,8 +265,9 @@ public static partial class Sidebar
             {
                 Services = s,
                 Liked = EntityUri.IsLikedCollection(e.Uri),
-                Pin = () => Actions.Menu.Organize(organize, MoveOutRow(in entry), PinRow(in entry)),
+                Pin = () => PinRow(in entry),
                 PinStartsGroup = true,
+                Organize = () => Actions.Menu.Organize(organize, MoveOutRow(in entry)),
                 Tail = tail,
             }) ?? new ContextMenuModel(tail, Actions.Menu.Header(ArtOf(in e), e.Name, subtitle));
         }
@@ -287,7 +288,11 @@ public static partial class Sidebar
                 writes?.NewFolderWith is not null && folderId.Length > 0,
                 () => Model.CreateFolder(folderId)));
             rows.Add(MenuFlyoutItem.Separator);
-            Actions.Menu.Group(rows, Actions.Menu.Organize(organize, MoveOutRow(in e), PinRow(in e)));
+            // S5: Pin to sidebar / Unpin is a top-level row, Organize ▸ (the moves) beside it in one group.
+            var pin = PinRow(in e);
+            var organizeRow = Actions.Menu.Organize(organize, MoveOutRow(in e));
+            Actions.Menu.Group(rows, pin ?? organizeRow);
+            if (pin is not null && organizeRow is { } organizeItem) rows.Add(organizeItem);
             rows.Add(new MenuFlyoutItem(Loc.Get("sidebar.renameFolder"), ActionIcons.Resolve(ActionIcons.Rename),
                 NavMenuModel.CanRenameFolder(folderId), () => PromptRenameFolder(folderId, name)));
             rows.Add(MenuFlyoutItem.Separator);
@@ -598,6 +603,16 @@ public static partial class Sidebar
                 new(Loc.Get("sidebar.newFolderInside"), ActionIcons.Resolve(ActionIcons.Folder), writes.NewFolderWith is not null,
                     () => Model.CreateFolder(folderId)),
             });
+        }
+
+        /// <summary>The row's Unpin button (S5) — the same Unpin the row menu offers (<see cref="PinRowRule"/>), or null when the entry is
+        /// not a pin the store can drop.</summary>
+        internal Action? UnpinAction(in SidebarLibraryEntry entry)
+        {
+            string? id = SidebarPinId.FromEntry(in entry);
+            if (id is null || PinRowRule.Decide(true, id, IsPinned(id)) != PinRowKind.Unpin) return null;
+            string name = entry.Name;
+            return () => Model.Unpin(id, name);
         }
 
         /// <summary>F2 — the same Rename the row menu offers (a folder through the seam; a playlist through its

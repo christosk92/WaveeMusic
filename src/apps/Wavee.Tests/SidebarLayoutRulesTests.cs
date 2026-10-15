@@ -412,4 +412,22 @@ public sealed class SidebarLayoutRulesTests
         var shown = Then(S(), new SetSectionShown(SidebarLayoutId.Classic, recent, true));
         Assert.False(Doc(Then(shown, new SetSectionLimit(SidebarLayoutId.Classic, recent, SidebarCatalogue.DefaultLimit(SidebarSectionKind.Recent) == 20 ? 10 : 20))).SameExceptCollapsed(Doc(shown)));
     }
+
+    [Fact]
+    public void Covers_off_resolves_the_classic_layouts_entity_sections_as_text_rows_and_leaves_glyphs_and_library_alone()
+    {
+        // S0: covers off is the Classic layout's text rows; glyph sections keep row A and the Library layout always shows covers.
+        foreach (var density in new[] { SidebarDensity.Default, SidebarDensity.Compact })
+        {
+            var text = SidebarLayoutRules.Resolve(S(), SidebarLayoutId.Classic, density, covers: false);
+            Assert.Equal(SidebarRowShape.EntityText, text.Find(SidebarSectionKind.Playlists)!.Shape);
+            Assert.Equal(SidebarRowShape.EntityText, text.Find(SidebarSectionKind.Pinned)!.Shape);
+            Assert.Equal(SidebarRowShape.Glyph, text.Find(SidebarSectionKind.Collections)!.Shape);
+            Assert.Equal(SidebarRowShape.Glyph, text.Find(SidebarSectionKind.Home)!.Shape);
+            var library = SidebarLayoutRules.Resolve(S(), SidebarLayoutId.Library, density, covers: false);
+            Assert.Equal(SidebarSection.ShapeFor(SidebarSectionKind.Library, density), library.Find(SidebarSectionKind.Library)!.Shape);
+        }
+        Assert.Equal(SidebarRowShape.EntityTwoLine,
+            SidebarLayoutRules.Resolve(S(), SidebarLayoutId.Classic, SidebarDensity.Default).Find(SidebarSectionKind.Playlists)!.Shape);
+    }
 }

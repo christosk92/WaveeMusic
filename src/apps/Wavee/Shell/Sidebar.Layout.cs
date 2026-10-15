@@ -548,10 +548,13 @@ public static class SidebarLayoutRules
         return false;
     }
 
-    /// <summary>The resolved document for a layout (§P3.3). <paramref name="view"/> is the theme's list/grid state (not part of the overlay).</summary>
+    /// <summary>The resolved document for a layout (§P3.3). <paramref name="view"/> is the theme's list/grid state (not part of the overlay).
+    /// <paramref name="covers"/> is the structure's covers choice (<see cref="Theming.NavPanePolicy.ShowCovers"/>): off turns the Classic layout's
+    /// entity sections into text rows.</summary>
     public static SidebarLayoutDoc Resolve(SidebarLayoutState state, SidebarLayoutId layout, SidebarDensity density,
-                                           SidebarLibraryView view = SidebarLibraryView.List)
+                                           SidebarLibraryView view = SidebarLibraryView.List, bool covers = true)
     {
+        bool textRows = !covers && layout == SidebarLayoutId.Classic;
         var overlay = state.Of(layout);
         var sections = new SidebarSection[overlay.Sections.Count];
         var lib = SidebarLibraryOptions.Default;
@@ -563,7 +566,7 @@ public static class SidebarLayoutRules
             var visible = new List<string>(order.Count);
             for (int k = 0; k < order.Count; k++) if (!Contains(s.HiddenList, order[k])) visible.Add(order[k]);
             sections[i] = new SidebarSection(kind, s.Hidden, s.Collapsed, s.Limit ?? SidebarCatalogue.DefaultLimit(kind),
-                SidebarSection.ShapeFor(kind, density), visible.ToArray());
+                SidebarSection.ShapeFor(kind, density, textRows), visible.ToArray());
             if (kind == SidebarSectionKind.Library)
             {
                 var hiddenKinds = SidebarLibraryKinds.None;
@@ -589,10 +592,12 @@ public sealed record SidebarSection(
 {
     public string Id => SidebarCatalogue.IdOf(Kind);
 
-    /// <summary>The one row shape per section (design V.3): glyph sections are row A; entity sections follow the density.</summary>
-    public static SidebarRowShape ShapeFor(SidebarSectionKind kind, SidebarDensity density)
+    /// <summary>The one row shape per section (design V.3): glyph sections are row A; entity sections are text rows when
+    /// <paramref name="textRows"/> (covers off), else they follow the density.</summary>
+    public static SidebarRowShape ShapeFor(SidebarSectionKind kind, SidebarDensity density, bool textRows = false)
         => kind is SidebarSectionKind.Home or SidebarSectionKind.Collections or SidebarSectionKind.Settings
             ? SidebarRowShape.Glyph
+            : textRows ? SidebarRowShape.EntityText
             : density == SidebarDensity.Compact ? SidebarRowShape.EntityOneLine : SidebarRowShape.EntityTwoLine;
 }
 

@@ -507,7 +507,8 @@ public sealed class ChromeBudgetRulesTests
         Assert.True(wide.ShowActions);
         Assert.True(wide.ShowName);
         Assert.Equal(Shell.MergedSearchMode.Field, wide.SearchMode);
-        Assert.Equal(306f, Shell.Chrome.FixedBudget(false, false, false, false, false, false, Profile, Classic));
+        // No theme toggle (tuned F13): the bare row is the lead column, the two gutters, the drag strip and the captions.
+        Assert.Equal(262f, Shell.Chrome.FixedBudget(false, false, false, false, false, false, Profile, Classic));
     }
 
     [Fact]
@@ -516,9 +517,9 @@ public sealed class ChromeBudgetRulesTests
         var sooner = Classic with { ActionsEnterW = 500f };
         Assert.Empty((ThemePolicies.Default with { Chrome = new ChromePolicy(sooner) }).Validate());
         Assert.False(Shell.Chrome.Resolve(1000f, 110f, null, Profile, Classic).ShowActions);
-        Assert.True(Shell.Chrome.Resolve(1000f, 110f, null, Profile, sooner).ShowActions);   // 1000 - 590 - 110 = 300 >= 280
+        Assert.True(Shell.Chrome.Resolve(1000f, 110f, null, Profile, sooner).ShowActions);   // 1000 - 546 - 110 = 344 >= 280
         // A threshold is a permission, never a decision: an edge below what the row can afford changes nothing.
-        Assert.False(Shell.Chrome.Resolve(700f, 110f, null, Profile, sooner).ShowActions);   // 700 - 590 - 110 = 0 < 280
+        Assert.False(Shell.Chrome.Resolve(700f, 110f, null, Profile, sooner).ShowActions);   // 700 - 546 - 110 = 44 < 280
     }
 
     [Fact]
@@ -533,16 +534,16 @@ public sealed class ChromeBudgetRulesTests
     public void Costs_and_quantum_are_the_budgets()
     {
         var wider = Classic with { BarLeadW = 100f };
-        Assert.Equal(346f, Shell.Chrome.FixedBudget(false, false, false, false, false, false, Profile, wider));
+        Assert.Equal(302f, Shell.Chrome.FixedBudget(false, false, false, false, false, false, Profile, wider));
         Assert.Equal(Classic.ProfileChipW, Shell.Chrome.ChipWidth(Profile, Classic));
         Assert.Equal(Classic.SignInChipW, Shell.Chrome.ChipWidth(Shell.FrameRules.ChipForm.SignIn, Classic));
         Assert.Equal(60f, Shell.Chrome.EstimatedTabExtent(1, 0, Classic with { TabMinW = 60f }));
         Assert.Equal(150f, Shell.Chrome.EstimatedTabExtent(2, 1, Classic));    // two tabs, one pinned: 40 + 110
         // The search field's floor and ceiling.
-        Assert.Equal(280f, Shell.Chrome.FieldWidthFor(100f, float.NaN, Classic));
-        Assert.Equal(420f, Shell.Chrome.FieldWidthFor(9999f, float.NaN, Classic));
-        Assert.Equal(300f, Shell.Chrome.FieldWidthFor(100f, float.NaN, Classic with { SearchMinW = 300f }));
-        Assert.Equal(200f, Shell.Chrome.FieldWidthFor(9999f, float.NaN, Classic with { SearchMaxW = 200f, SearchMinW = 100f }));
+        Assert.Equal(280f, Shell.Chrome.FieldWidthFor(100f, Classic));
+        Assert.Equal(420f, Shell.Chrome.FieldWidthFor(9999f, Classic));
+        Assert.Equal(300f, Shell.Chrome.FieldWidthFor(100f, Classic with { SearchMinW = 300f }));
+        Assert.Equal(200f, Shell.Chrome.FieldWidthFor(9999f, Classic with { SearchMaxW = 200f, SearchMinW = 100f }));
         Assert.Equal(Classic.SearchIconW, Shell.Chrome.Resolve(500f, 110f, null, Profile, Classic).SearchWidth);
     }
 

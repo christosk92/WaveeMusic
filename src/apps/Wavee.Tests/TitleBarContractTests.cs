@@ -63,7 +63,7 @@ public class TitleBarContractTests
             Model = model,
             TextCell = () => text,
             FocusTicket = static () => 0,
-            FieldWidth = static measured => measured,
+            FieldWidth = static () => 330f,
             Suggestions = Source(),
         };
 

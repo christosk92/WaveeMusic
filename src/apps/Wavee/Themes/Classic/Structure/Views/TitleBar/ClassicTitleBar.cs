@@ -8,7 +8,9 @@
 //
 //   ONE 48-DIP engine TitleBar in merged mode:
 //     [pane toggle][tabs island: back · forward · text-first tab strip][drag band][CENTRE: the omnibar field][drag band]
-//     [trailing island: identity chip · bell · friends · pin][48 drag strip][caption-leading: theme toggle · search icon][min/max/close]
+//     [trailing island: identity chip · bell · friends · pin][48 drag strip][caption-leading: the search icon][min/max/close]
+//
+//   No theme toggle (tuned F13): light and dark live in Settings › App mode and the profile menu, and its width left the budget.
 //
 //   The drag regions and the three caption buttons are the engine control's: it reports the interactive islands as Client regions
 //   (first match wins), the caption buttons as HTMIN / HTMAX / HTCLOSE and the whole bar as the Caption catch-all to the Win32 hit
@@ -46,7 +48,7 @@ internal static class ClassicTitleBar
             Trailing = () => TrailingIsland(props), CaptionLeading = () => CaptionLeadingIsland(props),
             ContentVersion = props.ContentVersion,
         };
-        bar.CenterContent = _ => CenterIsland(props, bar.CenterAvail);
+        bar.CenterContent = _ => CenterIsland(props);
         return bar;
     });
 
@@ -66,16 +68,16 @@ internal static class ClassicTitleBar
     // ── the centre column ────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The bar's flexible centre column: the field in Field mode, nothing in Icon mode (the icon sits in the
-    /// caption-leading island). <paramref name="avail"/> is the bar's LIVE centre measurement.
+    /// caption-leading island).
     /// <para>This is the ONE mount/unmount decision for the field, and it reads the same search form the allocator used to decide
     /// the FORM (the form-vs-width split, #88), never a width. It is, however, only re-evaluated when the engine's
     /// <c>TitleBar</c> re-invokes the bar's centre content, which is gated on <c>ContentVersion</c>, not on every allocation publish;
     /// a mode flip can therefore be visible to the already-mounted field's own <c>Render()</c> a frame before it reaches here. That
     /// is why the field asks only for a FIELD width (<see cref="ShellSearchProps.FieldWidth"/>) and never for "whichever form is
     /// current": the still-mounted field can never be laid out at the icon's 44.</para></summary>
-    private static Element CenterIsland(ShellTitleBarProps props, IReadSignal<float> avail)
+    private static Element CenterIsland(ShellTitleBarProps props)
         => props.Layout().Search == SearchForm.Field
-            ? ViewSlots.View(ViewKeys.ShellSearch, props.Search with { Form = SearchForm.Field, Avail = avail }) with { Key = "chrome-search-host" }
+            ? ViewSlots.View(ViewKeys.ShellSearch, props.Search with { Form = SearchForm.Field }) with { Key = "chrome-search-host" }
             : new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
 
     // ── the tabs island ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -137,20 +139,13 @@ internal static class ClassicTitleBar
     private static Element ChromeButton(string glyph, Action onClick, string tooltip, string key)
         => ToolTip.Wrap(IconButton.Create(glyph, onClick, ChromeButtonStyle) with { Key = key, Margin = ClassicChromeLayout.ButtonMargin }, tooltip);
 
+    /// <summary>The magnifier in the icon form; nothing otherwise.</summary>
     private static Element CaptionLeadingIsland(ShellTitleBarProps props)
-    {
-        var l = props.Layout();
-        bool dark = Theme.Dark;
-        var theme = ToolTip.Wrap(
-            IconButton.Create(dark ? Icons.Sun : Icons.Moon, props.ToggleTheme, ChromeButtonStyle)
-                with { Key = "chrome-theme-toggle", Margin = ClassicChromeLayout.ButtonMargin },
-            Loc.Get(dark ? Strings.Shell.LightTheme : Strings.Shell.DarkTheme));
-        return new BoxEl
+        => new BoxEl
         {
             Direction = 0, Height = TitleBar.ExpandedHeight, Shrink = 0f, AlignItems = FlexAlign.Center,
-            Children = l.Search == SearchForm.Icon ? [theme, SearchFlyoutButton(props)] : [theme],
+            Children = props.Layout().Search == SearchForm.Icon ? [SearchFlyoutButton(props)] : [],
         };
-    }
 
     private static Element SearchFlyoutButton(ShellTitleBarProps props)
         => ViewSlots.View(ViewKeys.ShellSearch, props.Search with { Form = SearchForm.Icon }) with { Key = "chrome-search-button-host" };

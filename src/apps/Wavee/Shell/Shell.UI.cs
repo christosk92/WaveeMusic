@@ -174,6 +174,10 @@ public static partial class Shell
     static readonly KeyAccelerator NewTabChord = new(Keys.T, KeyModifiers.Ctrl);
     static readonly KeyAccelerator PaletteChord = new(Keys.K, KeyModifiers.Ctrl);
     static readonly KeyAccelerator FindChord = new(Keys.F, KeyModifiers.Ctrl);
+    // Ctrl+, opens Settings (tuned S1). VK_OEM_COMMA: the engine's key table names no comma key, and the comma sits on this VK on
+    // every Windows layout that has one on the main row.
+    const int OemCommaVk = 0xBC;
+    static readonly KeyAccelerator SettingsChord = new(OemCommaVk, KeyModifiers.Ctrl);
     static readonly KeyAccelerator BackChord = new(Keys.Left, KeyModifiers.Alt);
     static readonly KeyAccelerator ForwardChord = new(Keys.Right, KeyModifiers.Alt);
     static readonly KeyAccelerator FullscreenChord = new(Keys.F11, KeyModifiers.None);
@@ -189,13 +193,14 @@ public static partial class Shell
     static BoxEl Chord(KeyAccelerator chord, Action onFire)
         => new() { Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false, Accelerator = chord, OnClick = onFire };
 
-    /// <summary>The fourteen chord boxes the frame's column mounts first, in this order. Behaviour the shell owns (what a chord
+    /// <summary>The fifteen chord boxes the frame's column mounts first, in this order. Behaviour the shell owns (what a chord
     /// DOES is <see cref="FrameVerbs"/>), built once; the structure's frame places them (<c>ShellFrameProps.Chords</c>).</summary>
     static readonly IReadOnlyList<Element> s_chords =
     [
         Chord(NewTabChord, static () => FrameVerbs.Shared.NewTab()),
         Chord(PaletteChord, static () => FrameVerbs.Shared.TogglePalette()),
         Chord(FindChord, static () => FrameVerbs.Shared.FocusSearch()),
+        Chord(SettingsChord, static () => FrameVerbs.Shared.OpenSettings()),
         Chord(BackChord, static () => FrameVerbs.Shared.GoBack()),
         Chord(ForwardChord, static () => FrameVerbs.Shared.GoForward()),
         Chord(FullscreenChord, static () => FrameVerbs.Shared.ToggleFullscreen()),
@@ -935,8 +940,9 @@ public static partial class Shell
         // l.Chip is the form the trailing island actually BUILDS from (the view's AuthChip); Auth.Value alone is not enough:
         // the allocator effect publishes the new Chip after Auth flips, so the bar can render once with the stale chip
         // and the version must move again when ChromeLayout lands, or TitleBar's render memo returns the stale tree.
+        // FieldSettled: the search field eases to its focused width and back (F6); the regions are pushed once it has SETTLED.
         return HashCode.Combine(flags, (int)l.SearchWidth, (int)l.LeadClusterW, TitleBarTabsVersion(), (int)Auth.Value,
-            HashCode.Combine(r.Kind, r.Subject, r.Arg), Sidebar.PinsVersion.Value, (int)l.Chip);
+            HashCode.Combine(r.Kind, r.Subject, r.Arg), Sidebar.PinsVersion.Value, HashCode.Combine((int)l.Chip, s_omnibar.FieldSettled.Value));
     }
 
     // Both fold Shown: the strip's labels come from the staged route, so it must rebuild when that route LANDS (the

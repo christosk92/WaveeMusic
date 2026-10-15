@@ -342,6 +342,9 @@ public sealed class NavPaneMountedTests(ShellHost host)
                 }
                 shows.Clear(me);
                 shows.MarkFailed(me, 0, 503);
+                // A real failed answer lands in a posted drain whose wrapper publishes the dirty tables (`PublishAfter`); this write runs
+                // outside one, so it ends the drain itself instead of waiting for some unrelated post to publish it.
+                Entities.Publish();
                 Until(shell, () => !shell.Find("library-error-banner").IsNull, "the library's retry banner");
 
                 var scene = shell.Host.Scene;
@@ -358,6 +361,7 @@ public sealed class NavPaneMountedTests(ShellHost host)
             {
                 scope.Edges.SavedShows.Replace(me, targets, payload, EdgeState.Complete, targets.Length);
                 scope.Edges.SavedShows.MarkAnswered(me);
+                Entities.Publish();
                 Until(shell, () => shell.Find("library-error-banner").IsNull, "the banner leaving once the source answers");
                 if (original != SidebarLayoutId.Library)
                 {
@@ -366,6 +370,99 @@ public sealed class NavPaneMountedTests(ShellHost host)
                 }
             }
         });
+
+    // ── the tuned rows (CT3a: S0, S3, S5; board `C-Sidebar`) ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Covers_off_redraws_the_classic_layouts_playlists_as_36_tall_text_rows_in_place()
+        => host.Mounted(shell =>
+        {
+            // S0 + S3: the option re-plans the pane where it stands; a playlist row is 36 tall (pitch 40) instead of the 40-tall
+            // two-line cover row, so the list gets shorter; covers on brings the two-line rows back.
+            shell.RunFrames(60);
+            var layout = Sidebar.Layout.Peek();
+            var density = Sidebar.Density.Peek();
+            bool covers = Sidebar.ShowCovers.Peek();
+            try
+            {
+                SetPane(shell, SidebarLayoutId.Classic, SidebarDensity.Default, covers: true);
+                var mode = Node(shell, "sidebar.classic");
+                Until(shell, () => PlaylistRowHeights(shell, mode).Contains(SidebarGeometry.TwoLineRowHeight), "a two-line cover row");
+                var list = ScrollUnder(shell, mode);
+                Assert.True(shell.Host.Scene.TryGetScroll(list, out var withCovers));
+
+                _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, ClassicStructure.ShowCoversQualifiedId, false));
+                shell.RunFrames(30);
+                Assert.False(Sidebar.ShowCovers.Peek());
+                Assert.False(ShellPolicy.Now.NavPane.ShowCovers);
+                Assert.Equal(SidebarRowShape.EntityText, Sidebar.Doc.Find(SidebarSectionKind.Playlists)!.Shape);
+                Assert.Equal(mode, Node(shell, "sidebar.classic"));   // the same pane: the option never remounts it
+                Until(shell, () => PlaylistRowHeights(shell, mode) is { Count: > 0 } h && !h.Contains(SidebarGeometry.TwoLineRowHeight)
+                    && h.Contains(SidebarGeometry.RowHeight), "36-tall text rows");
+                Assert.True(shell.Host.Scene.TryGetScroll(list, out var text));
+                Assert.True(text.ContentH < withCovers.ContentH, $"text rows did not shrink the list: {withCovers.ContentH} → {text.ContentH}");
+
+                _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, ClassicStructure.ShowCoversQualifiedId, true));
+                Until(shell, () => PlaylistRowHeights(shell, mode).Contains(SidebarGeometry.TwoLineRowHeight), "the cover rows back");
+            }
+            finally
+            {
+                SetPane(shell, layout, density, covers);
+            }
+        });
+
+    [Fact]
+    public void A_pinned_row_carries_the_24_unpin_button_and_the_menu_keeps_pin_at_the_top_level()
+        => host.Mounted(shell =>
+        {
+            // S5: the pin is a real 24×24 Unpin button in the pinned row, not the 12-px mark.
+            shell.RunFrames(60);
+            var layout = Sidebar.Layout.Peek();
+            var density = Sidebar.Density.Peek();
+            bool covers = Sidebar.ShowCovers.Peek();
+            string? pinned = null;
+            try
+            {
+                SetPane(shell, SidebarLayoutId.Classic, SidebarDensity.Default, covers: true);
+                var mode = Node(shell, "sidebar.classic");
+                Until(shell, () => PlaylistRows(shell, mode).Count > 0, "a playlist row");
+                string key = PlaylistRows(shell, mode)[0].Key;
+                if (!Sidebar.IsPinned(key))
+                {
+                    Assert.True(Sidebar.Model.Pin(key, SidebarEntryKind.Playlist, key[SidebarPinId.PlaylistPrefix.Length..], null));
+                    pinned = key;
+                }
+                var scene = shell.Host.Scene;
+                Until(shell, () => PlaylistRows(shell, mode).Count(r => r.Key == key) >= 2, "the pinned copy of the row");
+                // The pinned copy is the one whose subtree holds a 24×24 box: the Unpin button.
+                Assert.Contains(PlaylistRows(shell, mode).Where(r => r.Key == key), r => Subtree(scene, r.Node).Any(n =>
+                    MathF.Abs(scene.AbsoluteRect(n).W - SidebarGeometry.PinButton) < 0.5f
+                    && MathF.Abs(scene.AbsoluteRect(n).H - SidebarGeometry.PinButton) < 0.5f));
+            }
+            finally
+            {
+                if (pinned is not null) Sidebar.Model.Unpin(pinned);
+                SetPane(shell, layout, density, covers);
+            }
+        });
+
+    static void SetPane(Shell.HeadlessShell shell, SidebarLayoutId layout, SidebarDensity density, bool covers)
+    {
+        _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, ClassicStructure.SidebarOptionId, layout));
+        _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, ClassicStructure.LibraryDensityOptionId, density));
+        _ = ThemeHost.Apply(new OptionChange(ClassicTheme.Id, ClassicStructure.ShowCoversQualifiedId, covers));
+        shell.RunFrames(60);
+    }
+
+    /// <summary>The playlist rows inside the pane (keyed by their `pl:` pin-id spelling), their own row boxes only.</summary>
+    static List<(NodeHandle Node, string Key)> PlaylistRows(Shell.HeadlessShell shell, NodeHandle mode)
+    {
+        var inPane = Subtree(shell.Host.Scene, mode).ToHashSet();
+        return shell.FindPrefix(SidebarPinId.PlaylistPrefix).Where(f => inPane.Contains(f.Node)).ToList();
+    }
+
+    static HashSet<float> PlaylistRowHeights(Shell.HeadlessShell shell, NodeHandle mode)
+        => PlaylistRows(shell, mode).Select(r => MathF.Round(shell.Host.Scene.AbsoluteRect(r.Node).H)).Where(h => h > 0f).ToHashSet();
 
     // ── the rail's flyouts (T5c) ─────────────────────────────────────────────────────────────────────────────────────────
 
