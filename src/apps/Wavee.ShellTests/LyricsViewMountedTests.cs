@@ -6,7 +6,8 @@
 // `LiveOptionBehaviourTests` pins the blur on the rail's rows and the stage's rule). What only a mounted tree can say:
 //
 //   rail         the rail's lyrics body (`lyrics:rail`) draws one keyed row per line of the fixture's document, through the style
-//   stage        the stage's lyrics pane (`lyrics:stage:<size>`) draws the same rows
+//   stage        the stage's lyrics pane (`lyrics:stage`) draws the same rows
+//   type step    a stage type-size step keeps the column and its rows MOUNTED (tuned R1: it used to re-key the view, the text jumped)
 
 using FluentGpu.Foundation;
 using Wavee;
@@ -61,12 +62,45 @@ public sealed class LyricsViewMountedTests(ShellHost host)
                 Prefs.Stage.SetMode((int)Stage.Mode.Lyrics);
                 Play("spotify:track:tr40", fromMs: 20_000);
                 Stage.Open(null, "test");
-                Until(shell, () => shell.FindPrefix("lyrics:stage:").Count == 1, "the stage's lyrics column mounted", 900);
-                var column = shell.FindPrefix("lyrics:stage:")[0].Node;
+                Until(shell, () => !shell.Find("lyrics:stage").IsNull, "the stage's lyrics column mounted", 900);
+                var column = shell.Find("lyrics:stage");
                 Until(shell, () => RowsUnder(shell, column).Count > 1, "the stage's lyrics rows were realized", 900);
                 shell.RunFrames(60);
 
                 Assert.True(RowsUnder(shell, column).Count > 1);
+            }
+            finally
+            {
+                Stage.Close(null, "test");
+                shell.RunFrames(60);
+                Prefs.Stage.SetMode(Platform.Keys.StageMode.Default);
+            }
+        });
+
+    [Fact]
+    public void A_stage_type_step_keeps_the_column_and_its_rows_mounted()
+        => host.Mounted(shell =>
+        {
+            try
+            {
+                Prefs.Stage.SetMode((int)Stage.Mode.Lyrics);
+                Play("spotify:track:tr40", fromMs: 20_000);
+                Stage.Open(null, "test");
+                Until(shell, () => !shell.Find("lyrics:stage").IsNull, "the stage's lyrics column mounted", 900);
+                var column = shell.Find("lyrics:stage");
+                Until(shell, () => RowsUnder(shell, column).Count > 1, "the stage's lyrics rows were realized", 900);
+                shell.RunFrames(60);
+                var rowsBefore = RowsUnder(shell, column);
+
+                // 760 tall pins the type at its 36 floor; 1440 tall grows it (0.046 x height, capped by the pane): a type step.
+                shell.Resize(2560f, 1440f);
+                shell.RunFrames(90);
+
+                Assert.Equal(column, shell.Find("lyrics:stage"));
+                Assert.True(shell.Host.Scene.IsLive(column));
+                var rowsAfter = RowsUnder(shell, column);
+                Assert.True(rowsAfter.Count > 1);
+                Assert.Contains(rowsBefore, rowsAfter.Contains);   // the rows re-render in place, never remount
             }
             finally
             {

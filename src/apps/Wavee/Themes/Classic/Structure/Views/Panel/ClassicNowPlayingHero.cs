@@ -37,15 +37,15 @@ internal static class ClassicNowPlayingHero
 
     /// <summary>Cover / ‹Player› as ONE mutually exclusive radio choice, a separator, then "Player style…" opening the SAME
     /// popup the gear owns (one controlled signal, one flyout instance — never a second copy).
-    /// <para>The radio PAIR is the header's switch in menu form, so it follows the same developer-only gate
-    /// (<paramref name="switchVisible"/>): outside developer mode the menu is "Player style…" alone, never a choice that
-    /// cannot change the face.</para></summary>
-    internal static ContextMenuModel? ArtMenu(NowPlayingHeroProps props, int presentation, in Rail.PlayerCatalog.Preset preset, bool switchVisible)
+    /// <para>The whole menu follows the developer-only gate (<paramref name="styleVisible"/>, <c>Rail.PlayerPrefs.StyleChoiceVisible</c>):
+    /// outside developer mode a player style cannot change the face, so the art has no menu at all (#199) rather than a
+    /// "Player style…" that does nothing.</para></summary>
+    internal static ContextMenuModel? ArtMenu(NowPlayingHeroProps props, int presentation, in Rail.PlayerCatalog.Preset preset, bool styleVisible)
     {
+        if (!styleVisible) return null;
         var verbs = props.Style;
         var style = new MenuFlyoutItem(Loc.Get(Strings.Player.PlayerStyleEllipsis), Icons.Settings,
             Invoke: () => verbs.OpenStyleFlyout());
-        if (!switchVisible) return new ContextMenuModel([style]);
         return new ContextMenuModel(
         [
             MenuFlyoutItem.RadioItem(Loc.Get(Strings.Player.PresentationCover), presentation == Rail.PlayerPrefs.Cover,
@@ -231,7 +231,7 @@ internal sealed class ClassicHeroTile : Component
         // The RESOLVED face, not the stored one: the Cover/‹Player› switch is developer-only, so a normal build paints
         // the cover whatever is stored (and a stored ‹Player› is waiting, intact, for developer mode to come back).
         int presentation = Rail.PlayerPrefs.ResolvedPresentation();
-        bool devSwitch = Rail.PlayerPrefs.PresentationSwitchVisible();
+        bool styleVisible = Rail.PlayerPrefs.StyleChoiceVisible();
         var preset = Rail.PlayerPrefs.CurrentPreset();
         float side = Rail.Hero.Side(props.RailWidth.Value);
         if (!track.IsValid) return new BoxEl();                        // nothing playing: no square, no strip
@@ -250,7 +250,7 @@ internal sealed class ClassicHeroTile : Component
             };
 
         var heroBox = new BoxEl { Direction = 1, Shrink = 0f, Children = [hero] }
-            .WithContextMenu(overlay, () => ClassicNowPlayingHero.ArtMenu(props, presentation, preset, devSwitch));
+            .WithContextMenu(overlay, () => ClassicNowPlayingHero.ArtMenu(props, presentation, preset, styleVisible));
 
         return new BoxEl
         {
@@ -303,7 +303,7 @@ internal sealed class ClassicHeroHeaderRow : Component
         var presentation = UseSignal(stored);
         UseEffect(() => { presentation.SetIfChanged(stored); }, DepKey.From(epoch));
         bool open = Rail.PlayerPrefs.StyleFlyoutOpen.Value;              // the gear lights wherever the flyout was opened from
-        bool devSwitch = Rail.PlayerPrefs.PresentationSwitchVisible();
+        bool styleVisible = Rail.PlayerPrefs.StyleChoiceVisible();     // the switch AND the gear: developer-only (#199)
 
         string[] items = [Loc.Get(Strings.Player.PresentationCover), Loc.Get(preset.ShortLabelKey)];
         var verbs = props.Style;
@@ -333,7 +333,8 @@ internal sealed class ClassicHeroHeaderRow : Component
         return new BoxEl
         {
             Direction = 0, Height = Rail.Hero.HeaderRowH, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.XS,
-            Children = devSwitch
+            // Outside developer mode the row is the eyebrow alone: no switch, and no gear for a style that cannot change the face (#199).
+            Children = styleVisible
                 ? [
                     eyebrow,
                     SelectorBar.Create(items, presentation,
@@ -341,7 +342,7 @@ internal sealed class ClassicHeroHeaderRow : Component
                         parts: CompactBar, icons: ModeIcons),
                     gearBox,
                   ]
-                : [eyebrow, gearBox],
+                : [eyebrow],
         };
     }
 }

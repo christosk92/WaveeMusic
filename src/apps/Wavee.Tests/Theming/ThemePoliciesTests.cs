@@ -348,7 +348,8 @@ public sealed class PlayerBarPolicyRulesTests
         width >= 440f ? Shell.PlayerBarTier.Compact :
         Shell.PlayerBarTier.Minimal;
 
-    // ForTier before T3, restated: every flag and metric was an expression of the level.
+    // ForTier before T3, restated: every flag and metric was an expression of the level. Tuned Classic P1 (CT4): the queue joins at
+    // Compact (it was Wide's), and the video split keeps Wide as its own bit.
     static Shell.PlayerBarLayout OldForTier(Shell.PlayerBarTier tier, float width = 0f)
     {
         bool full = tier == Shell.PlayerBarTier.Full;
@@ -358,7 +359,7 @@ public sealed class PlayerBarPolicyRulesTests
         bool compact = tier >= Shell.PlayerBarTier.Compact;
         var layout = new Shell.PlayerBarLayout(
             Tier: tier,
-            ShowExpand: full, ShowDevices: true, ShowQueue: wide, ShowVolumeSlider: wide, ShowShuffleRepeat: comfortable,
+            ShowExpand: full, ShowDevices: true, ShowQueue: compact, ShowVolumeSlider: wide, ShowShuffleRepeat: comfortable,
             ShowLikeSlot: true, ShowVolumeButton: medium, ShowLyrics: medium, ShowRemoteDeviceLine: comfortable,
             ShowTimesElapsed: medium, ShowTimesRemaining: compact, ShowPrevNext: medium, ShowSubtitle: true,
             ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: medium ? 40f : 36f, PrimaryGlyph: medium ? 20f : 18f,
@@ -379,7 +380,8 @@ public sealed class PlayerBarPolicyRulesTests
             SeekGap: medium ? 6f : compact ? 5f : 4f,
             RightGap: medium ? 2f : compact ? 1f : 0f,
             TopEdgeWidth: MathF.Max(Shell.PlayerBarLayout.TopEdgeWidthFloor, width),
-            RightWMax: 0f);
+            RightWMax: 0f,
+            ShowVideoSplit: wide);
         return layout with { RightWMax = Shell.PlayerBarRules.RightWidth(in layout, hasVideo: true) };
     }
 

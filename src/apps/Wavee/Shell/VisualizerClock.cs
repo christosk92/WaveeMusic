@@ -225,7 +225,7 @@ public static partial class Visualizer
         void BeginFade(in Palette target, float durationMs, bool moment)
         {
             var s = _ctx!.Slab;
-            var from = new Palette(_live.Accent, s.A.Peek(), s.B.Peek(), s.C.Peek(), s.Deep.Peek(), _live.Dark);
+            var from = new Palette(_live.Accent, s.A.Peek(), s.B.Peek(), s.C.Peek(), s.Deep.Peek());
             _fade.Begin(from, target, FrameTime.NowMs, durationMs, moment);
             _live = target;
             _fadeSignalsPending = true;

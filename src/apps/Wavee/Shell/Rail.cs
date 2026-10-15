@@ -273,6 +273,11 @@ public static partial class Rail
         /// live, and so does the Store shot's presentation mode, which hides it.</summary>
         public static bool PresentationSwitchVisible() => Platform.Developer.Enabled.Value && !Diagnostics.StoreShot.Presenting.Value;
 
+        /// <summary>Are the player-style entries offered (the gear, the art menu, the Settings row, the palette rows)? Only where a style
+        /// can change Now playing: the presets drive the hero only through the Cover/‹Player› switch, which is developer-only, so outside
+        /// it the entries are hidden rather than inert (#199). The presets themselves stay. Reactive, like the switch.</summary>
+        public static bool StyleChoiceVisible() => PresentationSwitchVisible();
+
         /// <summary>Reactive read of the chosen preset id, clamped against the catalog.</summary>
         public static int Style() => ClampStyle(Prefs.NpvPlayer.Style(PlayerCatalog.Presets.Length));
 

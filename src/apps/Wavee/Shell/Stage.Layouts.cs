@@ -90,8 +90,13 @@ public static partial class Stage
         public static bool FaceAmbient(VizLayout eff) => FaceIsBackdrop(eff);
 
         /// <summary>The legibility scrim ABOVE the backdrop face, under the cover / lyrics (Stage's StageInk veil, so it follows
-        /// light / dark): 0.42 behind Large art and Centered (no cover-carrying face runs there any more), 0 elsewhere.</summary>
-        public static float BackdropScrim(VizLayout eff) => FaceIsBackdrop(eff) ? 0.42f : 0f;
+        /// light / dark), PER FACE (tuned R5; it was one flat 0.42 for every face): the face that actually runs there
+        /// (<see cref="BackdropKind"/>) sets the depth. A cover-carrying face running ambient (Bloom, Ring: broad, bright colour where the
+        /// cover would be) takes the deep <see cref="Tone.BackdropScrimCoverA"/>; a face that draws no now-playing part (sparse marks on
+        /// the floor) the lighter <see cref="Tone.BackdropScrimAtmosphereA"/>. 0 outside Large art and Centered.</summary>
+        public static float BackdropScrim(VizLayout eff, Visualizer.Kind kind)
+            => !FaceIsBackdrop(eff) ? 0f
+            : Visualizer.Catalog.DrawsNowPlaying(BackdropKind(eff, kind)) ? Tone.BackdropScrimCoverA : Tone.BackdropScrimAtmosphereA;
 
         /// <summary>[ / ] step the FACE in every layout that draws one (the backdrop changes); only Artist steps layouts.</summary>
         public static bool KeysStepFaces(VizLayout eff) => eff != VizLayout.Artist;

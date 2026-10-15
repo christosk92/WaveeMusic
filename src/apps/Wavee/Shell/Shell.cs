@@ -1208,7 +1208,7 @@ public static partial class Shell
         float ButtonBox, float ButtonGlyph, float PrimaryBox, float PrimaryGlyph,
         float LeftW, float ArtSize, float RowGap, float RowPad, float ClusterGap, float LeftGap, float SeekGap,
         float RightGap, float TopEdgeWidth, float RightWMax,
-        bool ShowTitleBlock = true)
+        bool ShowTitleBlock = true, bool ShowVideoSplit = false)
     {
         static bool Has(Theming.PlayerBarSlots set, Theming.PlayerBarSlots slot) => (set & slot) != 0;
 
@@ -1273,7 +1273,8 @@ public static partial class Shell
                 SeekGap: level.SeekGap,
                 RightGap: level.RightGap,
                 TopEdgeWidth: MathF.Max(TopEdgeWidthFloor, width),
-                RightWMax: 0f);
+                RightWMax: 0f,
+                ShowVideoSplit: Has(slots, Theming.PlayerBarSlots.VideoSplit));
             // The right cluster's WIDEST width at this tier — the slot sum WITH the video split (PlayerBarRules.RightWidth,
             // hasVideo: true). The live cluster is that or the same less the split (the one state input, user decision
             // 2026-09-16); the 300-DIP seek-bar floor and any arithmetic that must hold in the widest case use this.

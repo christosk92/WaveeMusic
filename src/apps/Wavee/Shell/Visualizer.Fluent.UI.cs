@@ -58,7 +58,7 @@ public static partial class Visualizer
     public static Element BloomFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
         float w = spec.W, h = spec.H, m = MathF.Min(w, h);
-        bool pv = spec.Preview, dark = pal.Dark;
+        bool pv = spec.Preview, dark = Ink.IsDark;
         float motion = FluentMotion;
         var to = pal.Rotated();
         float a0 = dark ? 0.75f : 0.6f, a1 = dark ? 0.25f : 0.18f, k = pv ? 0.9f : 1f;
@@ -162,12 +162,12 @@ public static partial class Visualizer
     public static Element BarsFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
         float w = spec.W, h = spec.H;
-        bool pv = spec.Preview, glow = !pv && pal.Dark;
+        bool pv = spec.Preview, glow = !pv && Ink.IsDark;
         float motion = FluentMotion;
         int n = pv ? 20 : 40;
         float gap = pv ? 3f : MathF.Max(4f, 0.0066f * w), x0 = 0.11f * w;
         float bw = MathF.Max(1f, (0.78f * w - gap * (n - 1)) / n), mid = 0.5f * h, maxH = (pv ? 0.42f : 0.30f) * h;
-        ColorF dotInk = Ink.Ink with { A = pal.Dark ? 0.85f : 0.7f };
+        ColorF dotInk = Ink.Ink with { A = Ink.IsDark ? 0.85f : 0.7f };
         var map = new int[n];
         for (int k = 0; k < n; k++) map[k] = Geo.BarBand(k, n);
         // layout of the buffer: [glow × n][bodies × n][dots × n] — glow under everything, dots over
@@ -208,7 +208,7 @@ public static partial class Visualizer
     public static Element RingFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
         float w = spec.W, h = spec.H, m = MathF.Min(w, h);
-        bool pv = spec.Preview, dark = pal.Dark;
+        bool pv = spec.Preview, dark = Ink.IsDark;
         float motion = FluentMotion;
         float cx = 0.5f * w, cy = 0.5f * h - (pv ? 0f : 0.04f * h), r = (pv ? 0.26f : 0.19f) * m;
         int n = pv ? 36 : 96;
@@ -311,7 +311,7 @@ public static partial class Visualizer
     public static Element OrbitFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
         float w = spec.W, h = spec.H, m = MathF.Min(w, h);
-        bool pv = spec.Preview, glow = !pv, dark = pal.Dark;
+        bool pv = spec.Preview, glow = !pv, dark = Ink.IsDark;
         float motion = FluentMotion;
         float cx = 0.5f * w, cy = 0.5f * h - (pv ? 0f : 0.04f * h);
         float t = pv ? MathF.Max(2f, 0.06f * m) : MathF.Max(6f, 0.024f * m), g = 1.55f * t, half = pv ? 0.2f : 0.07f;
@@ -411,7 +411,7 @@ public static partial class Visualizer
     public static Element AuroraFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
         float w = spec.W, h = spec.H;
-        bool pv = spec.Preview, dark = pal.Dark;
+        bool pv = spec.Preview, dark = Ink.IsDark;
         int points = pv ? 48 : 256;
         var to = pal.Rotated();
         float alpha = dark ? 0.6f : 0.55f, motion = FluentMotion;
@@ -465,7 +465,7 @@ public static partial class Visualizer
     public static Element TimelineFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
         float w = spec.W, h = spec.H;
-        bool pv = spec.Preview, dark = pal.Dark, glow = !pv;
+        bool pv = spec.Preview, dark = Ink.IsDark, glow = !pv;
         float motion = FluentMotion;
         int p = pv ? 90 : 360;
         float x0 = 0.06f * w, tw = 0.88f * w, mid = 0.5f * h, amp = (pv ? 0.36f : 0.2f) * h, bw = MathF.Max(1f, tw / p * 0.62f);

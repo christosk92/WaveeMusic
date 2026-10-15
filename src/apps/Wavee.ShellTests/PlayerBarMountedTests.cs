@@ -259,6 +259,50 @@ public sealed class PlayerBarMountedTests(ShellHost host)
             }, UnderClassic());
 
     [Fact]
+    public void A_latched_video_split_wears_one_checked_plate_across_both_halves()
+        => ViewHarness.With(host, ViewKeys.PlayerBar,
+            Props(MusicView(RightSlot.Lyrics | RightSlot.Video | RightSlot.Queue | RightSlot.Devices | RightSlot.More)
+                with { HasVideo = true, VideoLive = true, LyricsOpen = true }),
+            harness =>
+            {
+                // tuned P2: the one checked plate — a latched Lyrics plate is its 32 box, the latched video split's spans the 52 split
+                var scene = harness.Shell.Host.Scene;
+                List<RectF> Plates(string slot)
+                {
+                    var plates = new List<RectF>();
+                    foreach (var node in harness.Subtree(harness.Node(slot)))
+                        if (scene.Paint(node).Fill.A > 0f) plates.Add(harness.AbsoluteBounds(node));
+                    return plates;
+                }
+                var video = Plates("video");
+                Assert.Single(video);
+                Assert.Equal(52f, video[0].W, 0.5f);
+                Assert.Equal(32f, video[0].H, 0.5f);
+                var lyrics = Plates("lyrics");
+                Assert.Single(lyrics);
+                Assert.Equal(32f, lyrics[0].W, 0.5f);
+                Assert.Equal(scene.Paint(harness.Subtree(harness.Node("lyrics")).First(n => scene.Paint(n).Fill.A > 0f)).Fill,
+                    scene.Paint(harness.Subtree(harness.Node("video")).First(n => scene.Paint(n).Fill.A > 0f)).Fill);
+                Assert.Empty(Plates("queue"));   // an unlatched button is unpainted
+            }, UnderClassic());
+
+    [Fact]
+    public void At_the_compact_level_the_queue_is_in_the_row_and_the_seek_bar_gives_the_room()
+        => host.Mounted(shell =>
+        {
+            // tuned P1: 600 DIP is the Compact level (440-759): the queue stays, lyrics / volume / shuffle / repeat fold into the "⋯"
+            shell.RunFrames(10);
+            var scene = shell.Host.Scene;
+            Assert.False(shell.Find("queue").IsNull, "queue slot");
+            foreach (string gone in new[] { "lyrics", "volume", "shuffle", "repeat", "volume-slider", "expand" })
+                Assert.True(shell.Find(gone).IsNull, gone + " folded");
+            var queue = scene.PresentedAbsoluteRect(Node(shell, "queue"));
+            Assert.Equal(32f, queue.W, 0.5f);   // never a smaller button
+            Assert.Equal(32f, queue.H, 0.5f);
+            Assert.True(scene.PresentedAbsoluteRect(Node(shell, "seek")).W >= 40f, "the seek rail keeps the board's 40 floor");
+        }, widthDip: 600f);
+
+    [Fact]
     public void The_overflow_button_is_remounted_by_its_command_set()
     {
         string KeyOf(params OverflowCommand[] commands)

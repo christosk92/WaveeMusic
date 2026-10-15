@@ -221,12 +221,13 @@ public static partial class Shell
         public static bool OwnsTransport(Video.TransportOwner owner)
             => owner is Video.TransportOwner.GlobalBar or Video.TransportOwner.PopOut or Video.TransportOwner.Docked;
 
-        /// <summary>The video split button's slot exists on the queue tier AND only while the current track has a video:
+        /// <summary>The video split button's slot exists on a level that carries it (<c>PlayerBarSlots.VideoSplit</c>: its own bit since
+        /// the queue moved down to Compact, tuned Classic P1) AND only while the current track has a video:
         /// with no video the cluster RECLAIMS the 52 DIP rather than carrying an unlit hole beside lyrics (user decision
         /// 2026-09-16, narrowing the earlier tier-only rule). <paramref name="hasVideo"/> is the ONE state input to the
         /// right cluster's width; <c>active</c> is still not one (§0 item 12) — a track starting without a video widens
         /// nothing. Whether the face is lit is separate: <see cref="SlotFaceVisible"/>.</summary>
-        public static bool VideoSlotReserved(in PlayerBarLayout layout, bool hasVideo) => layout.ShowQueue && hasVideo;
+        public static bool VideoSlotReserved(in PlayerBarLayout layout, bool hasVideo) => layout.ShowVideoSplit && hasVideo;
 
         /// <summary>The "⋯" slot is reserved wherever the IDLE bar already has rows in its menu — the tier-only rows
         /// (shuffle/repeat, queue, now-playing). Every state-dependent row (lyrics, video, mute) only ever ADDS to a menu
@@ -326,7 +327,7 @@ public static partial class Shell
             dest[n++] = OverflowCommand.NowPlaying;
             if (!layout.ShowExpand) dest[n++] = OverflowCommand.FullScreen;
             // A tier WITHOUT the inline split carries the verb here instead — and like the slot: no video, no row.
-            if (!layout.ShowQueue && active && hasVideo) dest[n++] = OverflowCommand.Video;
+            if (!layout.ShowVideoSplit && active && hasVideo) dest[n++] = OverflowCommand.Video;
             if (VolumeInOverflow(layout, active)) dest[n++] = OverflowCommand.Mute;
             return n;
         }
@@ -453,6 +454,7 @@ public static partial class Shell
             ShowExpand = Has(slots, Theming.PlayerBarSlots.Expand),
             ShowDevices = Has(slots, Theming.PlayerBarSlots.Devices),
             ShowQueue = Has(slots, Theming.PlayerBarSlots.Queue),
+            ShowVideoSplit = Has(slots, Theming.PlayerBarSlots.VideoSplit),
             ShowVolumeSlider = Has(slots, Theming.PlayerBarSlots.VolumeSlider),
             ShowShuffleRepeat = Has(slots, Theming.PlayerBarSlots.ShuffleRepeat),
             ShowLikeSlot = Has(slots, Theming.PlayerBarSlots.LikeSlot),

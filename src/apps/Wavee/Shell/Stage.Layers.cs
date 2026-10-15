@@ -36,14 +36,14 @@ public static partial class Stage
         PrefetchDue = static () => HeroRules.PrefetchDue(Playback.PositionMs.Value, Playback.DurationMs.Value),
     };
 
-    /// <summary>The face scrim's props: the stage veil at <see cref="LayoutRules.BackdropScrim"/> over a backdrop face, none outside Visualizer mode.</summary>
+    /// <summary>The face scrim's props: the stage veil at <see cref="LayoutRules.BackdropScrim"/> (per face) over a backdrop face, none outside Visualizer mode.</summary>
     static StageFaceScrimProps FaceScrimProps(StageCtx ctx) => new()
     {
         Stage = ctx,
         Alpha = () =>
         {
             var eff = ctx.Look.Value.Eff;
-            return ctx.Mode.Value == Mode.Visualizer ? LayoutRules.BackdropScrim(eff) : 0f;
+            return ctx.Mode.Value == Mode.Visualizer ? LayoutRules.BackdropScrim(eff, ctx.Kind.Value) : 0f;
         },
     };
 

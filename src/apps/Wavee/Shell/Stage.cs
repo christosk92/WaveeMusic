@@ -392,6 +392,9 @@ public static partial class Stage
         /// <summary>The scrim over the backdrop: deep under lyrics/queue/artist, light under a face, between the two under
         /// Verse (big words over a bright cover need it — verse-plan D4).</summary>
         public const float ScrimA = 0.56f, ScrimVisualizerA = 0.22f, ScrimVerseA = 0.40f;
+        /// <summary>The scrim ABOVE a backdrop face (Large art, Centered) per face (<see cref="LayoutRules.BackdropScrim"/>): deep over a
+        /// cover-carrying face running ambient, lighter over a face that draws no now-playing part.</summary>
+        public const float BackdropScrimCoverA = 0.42f, BackdropScrimAtmosphereA = 0.30f;
         /// <summary>The scrim for a mode and the selected face.</summary>
         public static float ScrimFor(Mode mode, Visualizer.Kind kind)
             => mode != Mode.Visualizer ? ScrimA : kind == Visualizer.Kind.Verse ? ScrimVerseA : ScrimVisualizerA;

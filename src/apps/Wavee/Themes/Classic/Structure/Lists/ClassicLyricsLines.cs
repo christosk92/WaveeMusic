@@ -42,7 +42,7 @@ namespace Wavee.Themes.Classic;
 internal static class ClassicLyricsLines
 {
     /// <summary>The style Classic registers under <c>StyleKeys.LyricsLines</c>. Stateless: the rail, the stage and the reader share it.</summary>
-    public static LyricsLinesStyle Style { get; } = new(Message, Shimmer, Skeleton, Unsynced, Lines, Peek);
+    public static LyricsLinesStyle Style { get; } = new(Message, Shimmer, Skeleton, Unsynced, Lines, Peek) { Offline = Offline };
 
     // ── the state line and the loading bars ─────────────────────────────────────────────────────────────────────────
 
@@ -59,6 +59,25 @@ internal static class ClassicLyricsLines
                 Size = ClassicLyricsRules.MessageSize, LineHeight = ClassicLyricsRules.MessageLineHeight,
                 Color = host.Ink.Secondary, Wrap = TextWrap.Wrap,
             },
+        ],
+    };
+
+    /// <summary>The OFFLINE voice (tuned R2, board C-Rail state=offline): "Lyrics need a connection", the one-sentence reason and a quiet
+    /// Retry, centred in the reading surface on the surface's own ink (the rail's theme rungs, the stage's ladder). The vacancy grammar:
+    /// headline, caption, at most one Standard action.</summary>
+    static Element Offline(ILyricsHost host, Action retry) => new BoxEl
+    {
+        Grow = 1f, Shrink = 1f, MinHeight = 0f, Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        Gap = Spacing.XS, Padding = Edges4.All(Spacing.XXL),
+        Children =
+        [
+            Ui.Subtitle(Loc.Get(Strings.Lyrics.Offline.Title)) with { Color = host.Ink.Primary, Wrap = TextWrap.Wrap },
+            R.Type.TrackMeta(Loc.Get(Strings.Lyrics.Offline.Body)) with
+            {
+                Color = host.Ink.Secondary, Wrap = TextWrap.Wrap, MaxWidth = ClassicLyricsRules.OfflineCaptionMaxW,
+            },
+            new BoxEl { Height = Spacing.L },
+            Button.Standard(Loc.Get(Strings.Common.Retry), retry),
         ],
     };
 
