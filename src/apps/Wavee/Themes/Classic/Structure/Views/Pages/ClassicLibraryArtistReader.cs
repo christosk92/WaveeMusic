@@ -125,24 +125,46 @@ internal static partial class ClassicLibraryArtistReader
         };
     }
 
-    /// <summary>The band's ONE verb row (Y3), the same in both arms: the accent Play all, the Follow toggle, then the quiet 32/r4 shuffle and ↗ icon buttons named by their tooltips,
-    /// <see cref="Artist.ReaderShape.ActionGap"/> apart. STACKED, Play all drops its 120 floor (its natural width) so the row fits a narrow reader.</summary>
+    /// <summary>The band's ONE verb row (Y3): the accent Play all, the Follow toggle, then the quiet 32/r4 shuffle and ↗ icon buttons named by their tooltips,
+    /// <see cref="Artist.ReaderShape.ActionGap"/> apart. WIDE it always fits (the medium edge is derived from it). STACKED it measures its own lane and, where the whole
+    /// row would not fit (<see cref="ClassicLibraryTiers.FoldVerbs"/>), folds shuffle and ↗ into one ⋯ menu and lets Play all drop its 120 floor — so it never clips.</summary>
     static Element Verbs(IArtistReaderHost host, string uri, string? name, bool stacked)
+        => stacked
+            ? Responsive.Of("reader:verbs", w => VerbRow(host, uri, name, folded: ClassicLibraryTiers.FoldVerbs(w)))
+            : VerbRow(host, uri, name, folded: false);
+
+    static Element VerbRow(IArtistReaderHost host, string uri, string? name, bool folded)
     {
         var play = Controls.PlayButton(Tok.AccentDefault, host.PlayAll, Loc.Get(Strings.Library.PlayAll)) with { Shrink = 0f };
-        return new BoxEl
-        {
-            Direction = 0, Gap = Artist.ReaderShape.ActionGap, AlignItems = FlexAlign.Center, Shrink = 0f,
-            Height = Artist.ReaderShape.ActionH,
-            Children =
+        Element[] kids = folded
+            ?
             [
-                stacked ? play with { MinWidth = 0f } : play,
+                play with { MinWidth = 0f },
+                Follow(uri, name),
+                Controls.Named(ClassicDetailKit.MoreButton(() => FoldedMenu(host), Artist.ReaderShape.IconActionW),
+                               Loc.Get(Strings.Common.More)),
+            ]
+            :
+            [
+                play,
                 Follow(uri, name),
                 ClassicDetailKit.CommandCircle(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), host.ShuffleAll),
                 ClassicDetailKit.CommandCircle(Icons.OpenInNewWindow, Loc.Get(Strings.Detail.GoToArtist), host.GoArtist),
-            ],
+            ];
+        return new BoxEl
+        {
+            Key = folded ? "verbs:folded" : "verbs:row",
+            Direction = 0, Gap = Artist.ReaderShape.ActionGap, AlignItems = FlexAlign.Center, Shrink = 0f,
+            Height = Artist.ReaderShape.ActionH, Children = kids,
         };
     }
+
+    /// <summary>The folded row's ⋯: the two verbs it took in, in the row's order.</summary>
+    static ContextMenuModel FoldedMenu(IArtistReaderHost host) => new(
+    [
+        new MenuFlyoutItem(Loc.Get(Strings.Detail.Shuffle), Icons.Shuffle, Invoke: host.ShuffleAll),
+        new MenuFlyoutItem(Loc.Get(Strings.Detail.GoToArtist), Icons.OpenInNewWindow, Invoke: host.GoArtist),
+    ]);
 
     static Element Avatar(Artist a, bool named, float edge) => new BoxEl
     {

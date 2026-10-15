@@ -9,6 +9,7 @@
 // The edge facts mirror LibraryLayoutBreakpointTests. `TextFit` (the trimmed-text proxies the tooltips use) is tested in
 // SurfaceRulesTests, beside the rule itself.
 
+using Wavee.Themes.Classic;
 using Xunit;
 using ReaderBlock = Wavee.Artist.ReaderBlock;
 using RS = Wavee.Artist.ReaderShape;
@@ -77,6 +78,21 @@ public class ArtistReaderHeadLayoutTests
         Assert.Equal(Controls.PrimaryMinWidth, RS.PlayButtonMinW);
         Assert.Equal(Controls.IconButtonSize, RS.IconActionW);
         Assert.Equal(Controls.ButtonHeight, RS.ActionH);           // Y3: one row of stock 32-tall controls in both arms
+    }
+
+    [Fact]
+    public void The_stacked_verb_row_folds_shuffle_and_open_into_a_menu_before_it_would_clip()
+    {
+        // Y3 follow-up: the stacked row measures its lane (the band less 2 × 16) and folds wherever the whole row does not fit — so the 300-DIP
+        // window floor (a ~268-DIP lane) is folded, a 391-DIP reader (359 lane) is not, and an unmeasured lane folds.
+        Assert.True(ClassicLibraryTiers.FoldVerbs(0f));
+        Assert.True(ClassicLibraryTiers.FoldVerbs(RS.ActionsW - 1f));
+        Assert.False(ClassicLibraryTiers.FoldVerbs(RS.ActionsW));
+        Assert.True(ClassicLibraryTiers.FoldVerbs(300f - 2f * RS.BandStackPadX));
+        Assert.False(ClassicLibraryTiers.FoldVerbs(391f - 2f * RS.BandStackPadX));
+        // Folded, what is left without Play all's label (Follow's slot, ⋯, two gaps) leaves Play all ≥ 100 DIP at the window floor.
+        float rest = RS.FollowSlotW + RS.IconActionW + 2f * RS.ActionGap;
+        Assert.True(300f - 2f * RS.BandStackPadX - rest >= 100f);
     }
 
     // ── 3. the stated heights (what the tree declares and the estimator reads) ────────────────────────────────────

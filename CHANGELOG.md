@@ -16,7 +16,7 @@ versions separately under `v*` and is not tracked in this file.)
   artist detail beside it now sit on the same content card, split only by a thin divider, instead of three differently
   tinted panels; the artist list's "in your library · newest" bar is a plain section too. The artist header's buttons are
   one row: Play all, Follow, then Shuffle and Open artist page as quiet icon buttons, the same in a narrow window (where
-  Play all used to be a round button). The sidebar library's sort reads "Recents ⌄" (one label and a chevron, no arrows)
+  Play all used to be a round button); when the row would not fit, Shuffle and Open artist page fold into a ⋯ menu. The sidebar library's sort reads "Recents ⌄" (one label and a chevron, no arrows)
   and keeps its label at the default sidebar width more often. Browse's Top and For you links use the same square-cornered
   chips as every filter in the app, and Search's "matched title" / "lyrics match" tags use the same small badge as podcasts.
 - **Album, playlist and Liked Songs pages lead with one Play split.** The rail (and the narrow-window header) now starts with
