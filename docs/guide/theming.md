@@ -1499,8 +1499,8 @@ keys (its UI state and other themes stay). `ThemeState` keeps small UI state (a 
 composition's fonts prewarm with the UI live (the picked picker card shows a busy ring once that takes 100 ms), the window and its
 pop-outs freeze, and in ONE apply flush under the frozen frame `theme.id` is persisted, the composition activated (new option
 store, facts, registry), its definition installed and `ThemeHost.RootEpoch` bumped, so the root remounts; the new frame settles
-(6 passes / 250 ms) and the thaw dissolves to it (250 ms; on the D3D12 backend, which cannot dissolve yet, the settled frame
-replaces the snapshot in one present). The DWM backdrop change, when the material or the dark flag differs, is ordered with the
+(6 passes / 250 ms) and the thaw dissolves to it (250 ms, a premultiplied cross-dissolve over the live DWM backdrop, on D3D12
+as on the headless backend). The DWM backdrop change, when the material or the dark flag differs, is ordered with the
 dissolve by the engine. `ThemeHost.Apply(OptionChange)` validates the change (an invalid value, an unknown option or a parameter
 throws `ArgumentException`); a **Live** option is published and the definition re-applied live (the cross-fade path, no freeze);
 a **Transaction** option is published inside a transaction **in place**: no remount, so every slot whose template did not change
