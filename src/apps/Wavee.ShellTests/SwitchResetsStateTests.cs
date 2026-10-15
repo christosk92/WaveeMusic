@@ -144,6 +144,52 @@ public sealed class SwitchResetsStateTests(ShellHost host)
             finally { Platform.Settings.Set(Platform.Keys.CrossfadeEnabled, crossfade); }
         }, heightDip: 1600f);
 
+    [Fact]
+    public void An_expanded_ai_lyrics_card_is_collapsed_after_a_switch()
+        => WithAlt(shell =>
+        {
+            var before = AiLyrics.Current.Peek();
+            try
+            {
+                AiLyrics.Current.Value = AiLyrics.Status.Unknown with
+                {
+                    Phase = AiLyrics.SetupPhase.Ready, Availability = AiLyrics.Availability.Available, Enabled = true,
+                };
+                shell.RunFrames(10);
+                Settings.Open(Settings.Tab.Appearance);
+                Until(shell, () => !shell.Find("ai:ready").IsNull, "the ready AI lyrics card");
+                shell.RunFrames(60);
+                var card = RevealAiCard(shell);
+                float collapsed = shell.Host.Scene.PresentedAbsoluteRect(card).H;
+                Click(shell, shell.Host.Scene.FirstChild(card), dx: 60f);
+                shell.RunFrames(60);
+                Assert.True(shell.Host.Scene.PresentedAbsoluteRect(Node(shell, "ai:ready")).H > collapsed + 20f, "the AI card expanded");
+
+                SwitchTo(shell, ClassicAlt.Id);
+                shell.RunFrames(10);
+                Settings.Open(Settings.Tab.Appearance);
+                Until(shell, () => !shell.Find("ai:ready").IsNull, "the remounted AI lyrics card");
+                shell.RunFrames(60);
+                RevealAiCard(shell);
+                Assert.Equal(collapsed, shell.Host.Scene.PresentedAbsoluteRect(Node(shell, "ai:ready")).H, 1f);
+            }
+            finally { AiLyrics.Current.Value = before; }
+        }, heightDip: 1600f);
+
+    /// <summary>The Ready AI card sits below the fold of the Appearance tab: scroll the page until it is on screen.</summary>
+    static NodeHandle RevealAiCard(Shell.HeadlessShell shell)
+    {
+        var scene = shell.Host.Scene;
+        var card = Node(shell, "ai:ready");
+        var scroller = scene.Parent(card);
+        while (!scroller.IsNull && !scene.HasScroll(scroller)) scroller = scene.Parent(scroller);
+        Assert.False(scroller.IsNull, "the Settings page scrolls");
+        var handle = shell.Host.TryGetScrollHandle(scroller) ?? throw new InvalidOperationException("no scroll handle on the Settings page");
+        handle.ScrollTo(handle.OffsetNow + scene.PresentedAbsoluteRect(card).Y - scene.PresentedAbsoluteRect(scroller).Y - 100.0, ScrollMove.Immediate);
+        shell.RunFrames(10);
+        return Node(shell, "ai:ready");
+    }
+
     // ── scroll ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]

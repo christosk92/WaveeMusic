@@ -16,9 +16,8 @@ namespace Wavee.Analyzers.Themes;
 /// (<c>Width</c>, <c>Height</c>, <c>Padding</c>, <c>Gap</c>, <c>CornerRadius</c>, <c>FontSize</c>, <c>Opacity</c>...);</item>
 /// <item>a colour built from components: <c>new ColorF(...)</c>, <c>ColorF.FromRgba/FromHsv(...)</c>.</item>
 /// </list>
-/// Classic's grandfathered files would be listed in <c>analyzer-baseline\WVTH003.txt</c> (detail: the member name, <c>Width</c>,
-/// or <c>ColorF</c>). The baseline is frozen at T13 with no entry, so no file exists: every Classic and Common view is clean,
-/// and a new entry is a review finding. P3c deletes the baseline support and makes the rule a hard gate.
+/// A hard gate with no baseline (P3c): every Classic and Common view is clean, so an <c>analyzer-baseline\WVTH003.txt</c> is
+/// WVTH901 and a new literal look is fixed in the same change (a role, a metric or a <c>Rules\**</c> constant).
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class LiteralLookAnalyzer : ThemeRuleAnalyzer
@@ -40,6 +39,8 @@ public sealed class LiteralLookAnalyzer : ThemeRuleAnalyzer
     };
 
     protected override DiagnosticDescriptor Descriptor => Rule;
+
+    protected override bool AllowsBaseline => false;
 
     protected override void OnStart(CompilationStartAnalysisContext start, RuleEnv env)
     {

@@ -107,10 +107,18 @@ public sealed class LiteralLookAnalyzerTests
             "namespace Wavee.Themes.Zune { class Rail { object M() => new FluentGpu.Dsl.BoxEl { Width = 0f, Opacity = 1f, Padding = Wavee.Design.Gutter, Grow = 3f }; } }"));
 
     [Fact]
-    public void Baseline_ExemptsByMemberDetail()
-        => Assert.Equal(new[] { "0.5f" }, Flagged("Themes/Classic/Structure/Rail.cs",
-            Literals.Replace("Zune", "Classic"),
+    public void Baseline_IsDisallowed_AndExemptsNothing()
+    {
+        string source = Literals.Replace("Zune", "Classic");
+        string[] unbaselined = Flagged("Themes/Classic/Structure/Rail.cs", source);
+        Assert.Equal(unbaselined, Flagged("Themes/Classic/Structure/Rail.cs", source,
             new[] { Baseline("WVTH003", "Themes/Classic/Structure/Rail.cs :: Width") }));
+
+        var diagnostics = Run(new LiteralLookAnalyzer(),
+            new[] { Src("Themes/Classic/Structure/Rail.cs", "namespace Wavee.Themes.Classic { class Rail { } }") },
+            new[] { Baseline("WVTH003", "Themes/Classic/Structure/Rail.cs :: Width") });
+        Assert.Single(Harness.Only(diagnostics, "WVTH901"));
+    }
 }
 
 /// <summary>WVTH004 (S4): no identity reads outside the composition layer.</summary>

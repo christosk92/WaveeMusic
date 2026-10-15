@@ -281,7 +281,7 @@ internal static class RailWiring
         DockedCard = static () => Video.DockedCap(),
         LyricsHeader = BuildLyricsHeader(),
         LyricsBody = static () => Lyrics.View(),
-        QueueBody = static () => Rail.QueueBodyOrEmpty(),
+        QueueBody = static () => Rail.QueueBody!(),
         SubscribeVideoBody = static () =>
         {
             _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table read below

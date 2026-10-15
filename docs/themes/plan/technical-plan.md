@@ -373,7 +373,7 @@ family (M7a/M7b together; M2/M3/M4 together).
 |---|---|---|---|
 | WVTH001 | `Wavee.Themes.*` referenced only by `App.cs`, `Theming\Composition\ThemeCatalog.cs`, and inside themes along these edges: a composition file (`Themes\<X>\<X>Theme.cs`) may reference any layer and `Themes\Common`; a structure may reference `Themes\Common` | – | none |
 | WVTH002 | `Themes\**` may not reference `Entities`, `Playback`, `Spotify`, `Store`, `Shell` state, `Platform.Settings`, `Prefs` | `Wavee.Theming.*`, engine, `Loc`/`Strings`, `Icons`, `ColorScience`, content-renderer catalogues (as `MediaSlot`s), `Platform\Controls*` builders moved with Classic (converted into Classic views by P3c) | `Themes\Classic\Structure\LegacyPrefs.cs` only, shrink-only, deleted by the last M-PR |
-| WVTH003 (S1) | no literal looks in `Themes\*\Structure\**` and `Themes\Common\**` outside `Rules\**` | – | Classic only, emptied by P3c |
+| WVTH003 (S1) | no literal looks in `Themes\*\Structure\**` and `Themes\Common\**` outside `Rules\**` | – | none (P3c done: hard gate, a baseline file is WVTH901) |
 | WVTH004 (S4) | no identity reads | `Theming\Composition\**` (incl. `ThemePickerFacts`, the one API for "installed + current"), `App.cs`, `ThemeBootstrap.cs`, manifests in `Themes\<X>\<X>Theme.cs`, the feedback diagnostics line (id + option stamp as data) | none |
 | WVTH005 | theme options read/written only by their own layer, `Theming\Options\**` (store, generated section, reset) | – | none |
 | WVTH006 | key ids and props record shape | – | none |

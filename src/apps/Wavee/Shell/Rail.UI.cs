@@ -1,6 +1,6 @@
 // ── Shell/Rail.UI.cs ───────────────────────────────────────────────────────────────────────────────────────────────
 // what the right rail still keeps in the core: the "Next up" rows' data the now-playing body and the video body share, the queue
-// body's seam and the shared reads (the playing track, its cover, the hero wash)
+// body's seam and the shared reads (the playing track, its cover)
 //
 // Role: UI
 // Owner: K
@@ -30,21 +30,15 @@
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
-using FluentGpu.Localization;
 using Wavee.Theming.Contracts;
 
 namespace Wavee;
 
 public static partial class Rail
 {
-    /// <summary>The Queue body — the core host of the rail's queue panel (`Entities/Queue.UI.cs`, `Queue.RailPanelHost`) installs
-    /// itself here at composition. Until then the rail shows the queue's empty grammar.</summary>
+    /// <summary>The Queue body — the rail's queue panel, installed once at composition by <c>Queue.InstallUi</c> (`Entities/Queue.UI.cs`),
+    /// which App.cs runs unconditionally before the first frame. A headless host that mounts the queue mode installs it first.</summary>
     public static Func<Element>? QueueBody { get; set; }
-
-    /// <summary>The queue mode's body: the installed queue panel, or the queue's empty grammar.</summary>
-    internal static Element QueueBodyOrEmpty() => QueueBody?.Invoke()
-        ?? Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact,
-                            title: Loc.Get(Strings.Player.QueueEmpty), subtitle: "");
 
     // ── shared reads ─────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -65,16 +59,6 @@ public static partial class Rail
         _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table read below
         _ = Entities.Current.Tracks.Changed.Value;
         return r.Kind == EntityKind.Track ? Controls.ArtUrl(new Track(r.Slot).ImageId) : null;
-    }
-
-    /// <summary>THE hero wash — one function, three surfaces (the cover placeholder, the deck faces' art and the flyout's
-    /// "Album colour" swatch), so the three can never grade the artwork differently. The palette watch is read INSIDE, so
-    /// a late grading repaints a bound placeholder without re-rendering anything.</summary>
-    public static ColorF HeroWashColor(string? url)
-    {
-        if (url is { Length: > 0 }) _ = Palette.Watch(url).Value;
-        ColorF accent = Design.SchemeFor(url) is { } s ? ColorScience.Lift(ColorScience.Accent(s)) : Tok.AccentDefault;
-        return ColorF.Lerp(Tok.FillCardSecondary, accent, R.Wash.CoverMix);
     }
 
     /// <summary>The track's FIRST credited artist — the one the rail's About card and the fullscreen stage's Artist pane

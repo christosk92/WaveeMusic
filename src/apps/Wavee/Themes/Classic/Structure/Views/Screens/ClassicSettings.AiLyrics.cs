@@ -87,9 +87,6 @@ internal static partial class ClassicSettings
         static readonly Action<bool> s_aiOnRemoved = static deferred => { if (deferred) s_aiRemoveDeferred.Value = true; };
         static readonly Action s_aiDismissDeferred = static () => s_aiRemoveDeferred.Value = false;
 
-        /// <summary>The Ready expander's open state survives a remount (a language download swaps the arm out and back).</summary>
-        static readonly Signal<bool> s_aiExpanded = new(false);
-
         static string[]? s_aiLangOrder;
         static long[]? s_aiLangBytes;
 
@@ -134,6 +131,9 @@ internal static partial class ClassicSettings
                 prepare.Value = AiPrepareFraction(s);
             });
             var (details, setDetails) = UseState(false);
+            // The Ready expander's open state lives with this card: it survives the arm swap (a language download swaps the arm out
+            // and back) but not a remount, so a theme switch mounts the page collapsed like a fresh navigation (Q26).
+            var expanded = UseSignal(false);
             _ = SettingsFacts.AiLyricsEpoch.Value;
             bool deferred = s_aiRemoveDeferred.Value;
 
@@ -146,7 +146,7 @@ internal static partial class ClassicSettings
                 AiLyrics.SetupPhase.Downloading => AiArm("ai:download", DownloadingCard(shape, st, download)),
                 AiLyrics.SetupPhase.Paused => AiArm("ai:paused", PausedCard(st, download)),
                 AiLyrics.SetupPhase.Preparing => AiArm("ai:prepare", PreparingCard(shape, prepare)),
-                AiLyrics.SetupPhase.Ready => AiArm("ai:ready", ReadyExpander(st)),
+                AiLyrics.SetupPhase.Ready => AiArm("ai:ready", ReadyExpander(st, expanded)),
                 AiLyrics.SetupPhase.Error => AiArm("ai:error", ErrorBar(st, details, setDetails), MasterCard(st, on: true)),
                 // Unknown (before the boot scan), Unavailable and Off share one shape: the switch only changes state.
                 _ => AiArm("ai:off", MasterCard(st, on: false)),
@@ -231,7 +231,7 @@ internal static partial class ClassicSettings
         }
 
         /// <summary>Ready: the switch on, and inside the three behaviour switches, the languages and the files.</summary>
-        static Element ReadyExpander(in AiLyrics.Status st)
+        static Element ReadyExpander(in AiLyrics.Status st, Signal<bool> expanded)
         {
             string ready = Loc.Get(AiS.Ready.Title);
             string description = st.NpuName.Length > 0
@@ -244,7 +244,7 @@ internal static partial class ClassicSettings
                 Description = description,
                 HeaderIcon = RowGlyph(Tab.Appearance, "aiLyrics"),
                 Content = AiSwitch(true, enabled: true),
-                IsExpanded = s_aiExpanded,
+                IsExpanded = expanded,
                 Items =
                 [
                     Item(Loc.Get(AiS.WordSync), Loc.Get(AiS.WordSyncSub),

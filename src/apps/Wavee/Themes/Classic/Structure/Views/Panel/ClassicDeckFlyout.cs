@@ -116,7 +116,7 @@ internal static class ClassicDeckFlyout
             var choice = option.Choices[i];
             bool selected = index == current;
             Prop<ColorF> fill = choice.Swatch == Rail.PlayerCatalog.FromCover
-                ? Prop.Of(() => Rail.HeroWashColor(props.NowArtUrl()))
+                ? Prop.Of(() => ClassicHeroWash.Of(props.NowArtUrl()))
                 : ColorScience.ToColor(choice.Swatch);
             dots[i] = ToolTip.Wrap(new BoxEl
             {

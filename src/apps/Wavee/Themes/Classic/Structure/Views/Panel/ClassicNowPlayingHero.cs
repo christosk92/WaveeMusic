@@ -237,7 +237,7 @@ internal sealed class ClassicHeroTile : Component
         if (!track.IsValid) return new BoxEl();                        // nothing playing: no square, no strip
 
         _source ??= () => props.NowArtUrl() ?? "";
-        _placeholder ??= () => Rail.HeroWashColor(props.NowArtUrl());
+        _placeholder ??= () => ClassicHeroWash.Of(props.NowArtUrl());
 
         Element hero = presentation == Rail.PlayerPrefs.Player
             ? new BoxEl { Key = preset.Slug + "@" + (int)side, Direction = 1, Shrink = 0f, Children = [props.Deck()] }
