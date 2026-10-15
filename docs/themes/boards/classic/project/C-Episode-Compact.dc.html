@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Compact Episode</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 400px; height: 860px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="podcast:Coffee &amp; Code|episodes:#127 Building a GPU renderer" sel="1" w="400" tier="compact" hint-size="400px,48px"></dc-import>
+  <main style="height: 756px; flex-shrink: 0; box-sizing: border-box; background: linear-gradient(180deg, rgba(74,88,56,0.36), rgba(58,58,58,0.298) 360px); border-top: 1px solid rgba(0,0,0,0.098); padding-top: 16px; display: flex; flex-direction: column; overflow: hidden">
+    <header style="padding: 0 16px; display: flex; flex-direction: column; gap: 8px; flex-shrink: 0">
+      <div style="display: flex; gap: 16px; align-items: flex-end">
+        <span role="img" aria-label="Coffee &amp; Code cover" style="width: 120px; height: 120px; flex-shrink: 0; border-radius: 8px; background: linear-gradient(135deg, #4a5b3b, #9bb36b); box-shadow: 0 2px 8px rgba(0,0,0,0.33)"></span>
+        <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+          <a href="#" style="display: flex; align-items: center; gap: 4px; height: 28px; font-size: 12px; font-weight: 600; color: #d6e8a8">Coffee &amp; Code<svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg></a>
+          <span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">#127 · Oct 2 · 31 min · <span style="font-size: 10px; padding: 0 5px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px">video</span></span>
+        </div>
+      </div>
+      <h1 style="margin: 4px 0 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600; letter-spacing: -0.02em">Building a GPU renderer in .NET</h1>
+      <div style="display: flex; align-items: center; gap: 4px; margin-top: 4px">
+        <button style="flex-grow: 1; height: 40px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 4px; background: #b6d27a; color: #000; font: inherit; font-size: 14px; font-weight: 600; box-shadow: inset 0 -1px 0 rgba(0,0,0,0.22); margin-right: 4px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10l8-5z" fill="currentColor"></path></svg>Resume · 17 min left</button>
+        <sc-for list="{{sats}}" as="s" hint-placeholder-count="4"><button aria-label="{{s.l}}" title="{{s.l}}" style="width: 40px; height: 40px; flex-shrink: 0; border: 0; border-radius: 4px; background: transparent; color: #fff; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{s.g}}" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></sc-for>
+      </div>
+      <span style="font-size: 13px; line-height: 18px; color: rgba(255,255,255,0.773); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden">We take a renderer from an empty window to a presented frame: device setup, a scene graph, damage tracking and what it takes to never draw a wrong frame.</span>
+    </header>
+    <nav aria-label="Sections" style="margin-top: 12px; height: 48px; flex-shrink: 0; display: flex; align-items: stretch; padding: 0 4px; border-bottom: 1px solid rgba(255,255,255,0.082); overflow: hidden; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent)"><sc-for list="{{tabs}}" as="t" hint-placeholder-count="4"><a href="#" style="{{t.s}}">{{t.l}}<span style="{{t.bar}}"></span></a></sc-for></nav>
+    <section aria-label="Chapters" style="padding: 16px 8px 0; display: flex; flex-direction: column; gap: 4px; flex-shrink: 0">
+      <h2 style="margin: 0 8px 6px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Chapters</h2>
+      <sc-for list="{{chapters}}" as="c" hint-placeholder-count="6"><a href="#" style="{{c.row}}"><span style="{{c.time}}">{{c.at}}</span><span style="flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.t}}</span><span style="{{c.now}}">Now playing</span></a></sc-for>
+    </section>
+  </main>
+  <dc-import name="C-PlayerBar" theme="dark" variant="podcast" w="400" tier="mini" hint-size="400px,56px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const sats = [['Save to Your Episodes', 'M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z'], ['Mark as played', 'M3 8.5l3 3 7-7'], ['Copy link', 'M6.5 9.5l3-3M7 4.5l1-1a2.5 2.5 0 0 1 3.5 3.5l-1 1M9 11.5l-1 1A2.5 2.5 0 0 1 4.5 9l1-1'], ['More', 'M3 8h.01M8 8h.01M13 8h.01']].map(s => ({ l: s[0], g: s[1] }));
+  const tabs = ['About this episode', 'Chapters', 'Transcript', 'Comments (14)'].map((l, i) => ({ l, s: 'position: relative; flex-shrink: 0; display: flex; align-items: center; padding: 0 12px; font-size: 14px; font-weight: 600; white-space: nowrap; color: ' + (i === 1 ? '#fff' : 'rgba(255,255,255,0.6)'), bar: i === 1 ? 'position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; background: #b6d27a' : 'display: none' }));
+  const C = [['0:00', 'Cold open'], ['3:40', 'Why a GPU renderer at all'], ['9:12', 'The scene graph', 1], ['15:30', 'Damage tracking and the first frame'], ['22:05', 'Text, fonts and DirectWrite'], ['27:48', 'Listener questions']];
+  const chapters = C.map(c => ({ at: c[0], t: c[1],
+    row: 'height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-radius: 6px; font-size: 14px' + (c[2] ? '; background: rgba(182,210,122,0.12); color: #e6f2c8; font-weight: 600' : ''),
+    time: 'width: 44px; flex-shrink: 0; font-size: 12px; font-variant-numeric: tabular-nums; color: ' + (c[2] ? '#b6d27a' : 'rgba(255,255,255,0.529)'),
+    now: c[2] ? 'flex-shrink: 0; font-size: 11px; font-weight: 600; color: #b6d27a' : 'display: none' }));
+  return { sats, tabs, chapters };
+}
+}
+</script>
+</body>
+</html>

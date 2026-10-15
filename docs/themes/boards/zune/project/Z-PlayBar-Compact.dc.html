@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune play bar, compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative; padding-top: 12px; gap: 8px">
+  <div style="font-size: 13px; line-height: 18px; color: #7a7a7a; padding: 0 16px">music · mini 64 · tap or swipe up opens now playing</div>
+  <dc-import name="Z-Part-PlayBar" tier="mini" kind="music" title="Nightcall" artist="Kavinsky · OutRun" art="#6b2f4a" progress="29" accent="{{accent}}" hint-size="400px,64px"></dc-import>
+  <div style="font-size: 13px; line-height: 18px; color: #7a7a7a; padding: 4px 16px 0 16px">podcast · +10 takes the place of next</div>
+  <dc-import name="Z-Part-PlayBar" tier="mini" kind="podcast" title="Why the Premier League keeps changing" artist="The Rest Is Football · 9 oct" art="#2f4a3b" progress="49" accent="{{accent}}" hint-size="400px,64px"></dc-import>
+  <div style="font-size: 13px; line-height: 18px; color: #7a7a7a; padding: 4px 16px 0 16px">loading · past 450 ms the seek line becomes a sweep</div>
+  <div style="height: 64px; flex-shrink: 0; background: #111111; position: relative; display: flex; align-items: center; gap: 12px; padding: 0 8px 0 16px">
+    <div style="position: absolute; left: 0; top: 0; right: 0; height: 2px; background: rgba(255,255,255,0.12)"><div style="{{sweep}}"></div></div>
+    <span style="width: 44px; height: 44px; border-radius: 2px; background: #2a2a2a; flex-shrink: 0; display: block"></span>
+    <span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-size: 15px; line-height: 20px; color: #a8a8a8">loading…</span><span style="font-size: 13px; line-height: 18px; color: #7a7a7a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Resonance · HOME</span></span>
+    <span style="display: flex; align-items: center; gap: 4px; flex-shrink: 0">
+      <button aria-label="play" style="{{disc}}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg></button>
+      <button aria-label="next" style="width: 40px; height: 40px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M11 3h2v10h-2zM3 3l7 5-7 5z"/></svg></button>
+    </span>
+  </div>
+  <div style="font-size: 13px; line-height: 18px; color: #7a7a7a; padding: 4px 16px 0 16px">playing on living room · the device line rides in the accent</div>
+  <div style="height: 64px; flex-shrink: 0; background: #111111; position: relative; display: flex; align-items: center; gap: 12px; padding: 0 8px 0 16px">
+    <div style="position: absolute; left: 0; top: 0; right: 0; height: 2px; background: rgba(255,255,255,0.12)"><div style="{{progress}}"></div></div>
+    <span style="width: 44px; height: 44px; border-radius: 2px; background: #6b2f4a; flex-shrink: 0; display: block"></span>
+    <span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="{{onLine}}">playing on living room</span><span style="font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Nightcall</span><span style="font-size: 13px; line-height: 16px; color: #a8a8a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Kavinsky · OutRun</span></span>
+    <span style="display: flex; align-items: center; gap: 4px; flex-shrink: 0">
+      <button aria-label="pause" style="{{disc}}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg></button>
+      <button aria-label="next" style="width: 40px; height: 40px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M11 3h2v10h-2zM3 3l7 5-7 5z"/></svg></button>
+    </span>
+  </div>
+  <div style="font-size: 13px; line-height: 18px; color: #7a7a7a; padding: 8px 16px 0 16px">⋯ in now playing · a bottom sheet over the dimmed page · drag down to close</div>
+  <div style="flex-grow: 1; min-height: 0; background: #242424; box-shadow: 0 -12px 32px rgba(0,0,0,0.5); display: flex; flex-direction: column; padding: 0 16px 8px 16px; overflow: hidden">
+    <div style="height: 20px; flex-shrink: 0; display: flex; align-items: center; justify-content: center"><span style="width: 36px; height: 4px; background: #7a7a7a; display: block"></span></div>
+    <div style="height: 48px; flex-shrink: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; align-items: center">
+      <button style="{{toggleOn}}">⇄ shuffle</button>
+      <button style="{{toggle}}">↻ repeat</button>
+      <button style="{{toggle}}">mute</button>
+    </div>
+    <div style="height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 14px; font-size: 13px; color: #a8a8a8">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#ffffff" stroke-width="1.5" aria-hidden="true"><path d="M2 6h3l4-3v10l-4-3H2z"/><path d="M11.5 5.5a3.5 3.5 0 0 1 0 5"/></svg>
+      <span style="flex-grow: 1; height: 2px; background: rgba(255,255,255,0.18); position: relative; display: block"><span style="position: absolute; left: 0; top: 0; width: 70%; height: 2px; background: #ffffff; display: block"></span><span style="position: absolute; left: 70%; top: -9px; width: 20px; height: 20px; margin-left: -10px; border-radius: 10px; background: #ffffff; display: block"></span></span>
+      <span style="width: 28px; text-align: right; font-variant-numeric: tabular-nums">70</span>
+    </div>
+    <div style="height: 1px; flex-shrink: 0; background: rgba(255,255,255,0.08); margin: 2px 0 4px 0"></div>
+    <sc-for list="{{items}}" as="i" hint-placeholder-count="7"><a href="#" style="{{i.style}}"><span>{{i.name}}</span><span style="{{i.trailStyle}}">{{i.trail}}</span></a></sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const items = [['now playing', ''], ['queue', ''], ['lyrics', ''], ['friends', ''], ['devices', 'this pc'], ['switch to video', '▸'], ['full screen', '⤢']].map((d) => ({
+    name: d[0], trail: d[1],
+    style: 'height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; text-decoration: none; color: #ffffff; font-family: ' + D + '; font-size: 20px; font-weight: 300; line-height: 28px',
+    trailStyle: 'font-family: \'Segoe UI Variable Text\', \'Segoe UI\', sans-serif; font-size: 13px; color: #7a7a7a',
+  }));
+  const tg = (on) => 'height: 40px; box-sizing: border-box; border: 0; background: ' + (on ? accent : 'rgba(255,255,255,0.06)') + '; color: ' + (on ? '#000000' : '#ffffff') + '; font: inherit; font-size: 14px; padding: 0 8px; white-space: nowrap';
+  return {
+    accent, items,
+    toggle: tg(false), toggleOn: tg(true),
+    progress: 'width: 29%; height: 2px; background: ' + accent,
+    sweep: 'width: 22%; height: 2px; margin-left: 38%; background: linear-gradient(90deg, transparent, ' + accent + ', transparent)',
+    onLine: 'font-size: 11px; line-height: 14px; color: ' + accent,
+    disc: 'width: 40px; height: 40px; border-radius: 20px; border: 0; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0',
+  };
+}
+}
+</script>
+</body>
+</html>

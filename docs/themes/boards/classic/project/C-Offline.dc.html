@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Offline</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a6d8ff;text-decoration:none}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="home:Home|browse:Browse" sel="1" w="1440" hint-size="1440px,48px"></dc-import>
+  <div style="display: flex; height: 780px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="classic" covers="{{true}}" state="offline" sel="home" h="780" hint-size="280px,780px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; padding: 16px 36px 0; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+      <div role="status" style="height: 36px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-radius: 4px; background: #433519; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="color: #fce100"><path d="M4.5 12h7a2.5 2.5 0 0 0 .5-5 4 4 0 0 0-7.5-1A3 3 0 0 0 4.5 12zM2 2l12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg><span style="flex-grow: 1">You’re offline · showing saved content.</span><span style="font-size: 12px; color: rgba(255,255,255,0.7)">Reconnecting…</span></div>
+      <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em">Browse</h1>
+      <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 4px; padding-bottom: 120px">
+        <svg width="40" height="40" viewBox="0 0 16 16" aria-hidden="true" style="color: rgba(255,255,255,0.529)"><path d="M4.5 12h7a2.5 2.5 0 0 0 .5-5 4 4 0 0 0-7.5-1A3 3 0 0 0 4.5 12zM2 2l12 12" fill="none" stroke="currentColor" stroke-width="0.8" stroke-linecap="round"></path></svg>
+        <span style="font-size: 28px; line-height: 36px; font-weight: 600; margin-top: 12px">You’re offline</span>
+        <span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773); max-width: 360px">Browse needs a connection. Your downloads and the pages you opened recently still work.</span>
+        <div style="display: flex; gap: 12px; align-items: center; margin-top: 16px"><button style="height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px">Retry</button><a href="#" style="font-size: 14px">Go to Your Library</a></div>
+      </div>
+    </main>
+    <span style="width: 8px; flex-shrink: 0"></span>
+    <dc-import name="C-Rail" theme="dark" mode="lyrics" state="offline" h="780" hint-size="340px,780px"></dc-import>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" panel="lyrics" w="1440" hint-size="1440px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

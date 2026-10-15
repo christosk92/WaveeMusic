@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Row states</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: hidden; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <sc-for list="{{cols}}" as="c" hint-placeholder-count="2">
+    <section aria-label="{{c.name}}" style="{{c.vars}} background: var(--layer); color: var(--t1); padding: 28px 36px; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px">
+      <h2 style="margin: 0 0 12px 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">{{c.name}}</h2>
+      <sc-for list="{{c.rows}}" as="r" hint-placeholder-count="9">
+        <div style="display: grid; grid-template-columns: 120px minmax(0, 1fr); align-items: center; gap: 12px">
+          <span style="font-size: 12px; line-height: 16px; color: var(--t2)">{{r.label}}</span>
+          <div role="row" style="{{r.row}}">
+            <sc-if value="{{r.pill}}" hint-placeholder-val="{{ false }}"><span style="position: absolute; left: 0; top: 12px; width: 3px; height: 16px; border-radius: 2px; background: var(--acc)"></span></sc-if>
+            <span style="{{r.num}}"><sc-if value="{{r.check}}" hint-placeholder-val="{{ false }}"><span style="width: 18px; height: 18px; border-radius: 4px; background: var(--acc); color: var(--onacc); display: flex; align-items: center; justify-content: center"><svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.5 6 12l7.5-7.5" fill="none" stroke="currentColor" stroke-width="1.8"></path></svg></span></sc-if><sc-if value="{{r.playing}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-label="Playing" role="img"><path d="M3 13V7M6.5 13V3M10 13V8M13.5 13V5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg></sc-if><sc-if value="{{r.showNum}}" hint-placeholder-val="{{ true }}">{{r.n}}</sc-if></span>
+            <span style="display: flex; align-items: center; gap: 8px; min-width: 0"><span style="{{r.title}}">{{r.t}}</span><sc-if value="{{r.explicit}}" hint-placeholder-val="{{ false }}"><span style="width: 16px; height: 16px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 2px; font-size: 10px; font-weight: 600; background: var(--t2); color: var(--layer)">E</span></sc-if></span>
+            <span style="display: flex; justify-content: center"><sc-if value="{{r.tools}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></sc-if></span>
+            <span style="{{r.time}}">{{r.d}}</span>
+            <span style="display: flex; justify-content: center"><sc-if value="{{r.tools}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></sc-if></span>
+          </div>
+        </div>
+      </sc-for>
+      <h2 style="margin: 20px 0 8px 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Density</h2>
+      <sc-for list="{{c.dens}}" as="r" hint-placeholder-count="3">
+        <div style="display: grid; grid-template-columns: 120px minmax(0, 1fr); align-items: center; gap: 12px">
+          <span style="font-size: 12px; line-height: 16px; color: var(--t2)">{{r.label}}</span>
+          <div style="{{r.row}}"><span style="{{r.num}}">{{r.n}}</span><span style="font-size: 14px">{{r.t}}</span><span></span><span style="text-align: right; padding-right: 8px; font-size: 14px; color: var(--t2)">{{r.d}}</span><span></span></div>
+        </div>
+      </sc-for>
+    </section>
+  </sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const pink = (this.props.accent ?? 'windows') === 'pink';
+  const D = { layer: '#282828', sub: 'rgba(255,255,255,0.0605)', sub2: 'rgba(255,255,255,0.0419)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', fo: '#ffffff', fi: '#000000', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' };
+  const L = { layer: '#f9f9f9', sub: 'rgba(0,0,0,0.0373)', sub2: 'rgba(0,0,0,0.0241)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', fo: '#000000', fi: '#ffffff', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const v = (T) => Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const grid = 'position: relative; display: grid; grid-template-columns: 44px minmax(0, 1fr) 40px 56px 32px; align-items: center; border-radius: 4px; box-sizing: border-box; ';
+  const states = [
+    ['Rest', {}], ['Hover', { bg: 'var(--sub)', tools: true }], ['Pressed', { bg: 'var(--sub2)', dim: true }], ['Selected', { bg: 'var(--sub)', pill: true }],
+    ['Multi-select', { bg: 'var(--sub)', check: true }], ['Playing', { playing: true }], ['Keyboard focus', { focus: true }], ['Explicit', { explicit: true }], ['Unavailable', { unavailable: true }]
+  ];
+  const mkRows = () => states.map((s, i) => { const f = s[1]; return { label: s[0], n: String(i + 1), t: ['Give Life Back to Music', 'Instant Crush', 'Within', 'Touch', 'Beyond', 'Get Lucky', 'Motherboard', 'Doin’ It Right', 'Contact'][i], d: f.unavailable ? 'Unavailable' : ['4:34', '5:37', '3:48', '8:18', '4:50', '6:09', '5:41', '4:11', '6:21'][i],
+    pill: !!f.pill, check: !!f.check, playing: !!f.playing, showNum: !f.playing && !f.check, explicit: !!f.explicit, tools: !!f.tools,
+    row: grid + 'height: 40px; ' + (f.bg ? 'background: ' + f.bg + '; ' : '') + (f.focus ? 'outline: 2px solid var(--fo); outline-offset: 0; box-shadow: inset 0 0 0 1px var(--fi); ' : '') + (f.unavailable ? 'opacity: 0.45; ' : ''),
+    num: 'padding-left: 12px; display: flex; align-items: center; font-family: \'Segoe UI Variable Display\', \'Segoe UI\', sans-serif; font-size: 20px; line-height: 28px; font-variant-numeric: tabular-nums; color: ' + (f.playing ? 'var(--acct)' : 'var(--t3)'),
+    title: 'font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (f.playing ? 'var(--acct)' : (f.dim ? 'var(--t2)' : 'var(--t1)')),
+    time: 'text-align: right; padding-right: 8px; font-size: ' + (f.unavailable ? '12px' : '14px') + '; font-variant-numeric: tabular-nums; color: ' + (f.playing ? 'var(--acct)' : 'var(--t2)') }; });
+  const mkDens = () => [['Compact · 32', 32, 14], ['Standard · 40', 40, 20], ['Comfortable · 48', 48, 20]].map((d, i) => ({ label: d[0], n: String(i + 1), t: ['Fragments of Time', 'Lose Yourself to Dance', 'The Game of Love'][i], d: ['4:39', '5:53', '5:21'][i],
+    row: grid + 'height: ' + d[1] + 'px; background: ' + (i === 1 ? 'transparent' : 'transparent'),
+    num: 'padding-left: 12px; font-family: \'Segoe UI Variable Display\', \'Segoe UI\', sans-serif; font-size: ' + d[2] + 'px; color: var(--t3); font-variant-numeric: tabular-nums' }));
+  const cols = [{ name: 'Dark', vars: v(D), rows: mkRows(), dens: mkDens() }, { name: 'Light', vars: v(L), rows: mkRows(), dens: mkDens() }];
+  return { cols };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Library artists, small window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 800px; height: 600px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tier="small" width="800" tabs="home:Home|artists:Artists" sel="1" hint-size="800px,88px"></dc-import>
+  <div style="display: flex; height: 440px; flex-shrink: 0">
+    <dc-import name="Shell-Nav" theme="dark" mode="compact" sel="artists" height="440" hint-size="48px,440px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); border-left: 1px solid rgba(255,255,255,0.0837); border-top-left-radius: 8px; padding: 20px 24px 0 24px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+      <div style="display: flex; align-items: flex-end; gap: 24px; flex-shrink: 0; border-bottom: 1px solid rgba(255,255,255,0.0837)">
+        <h1 style="margin: 0 0 2px 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600; flex-shrink: 0">Library</h1>
+        <div role="tablist" aria-label="Library views" style="display: flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden">
+          <sc-for list="{{views}}" as="v" hint-placeholder-count="5"><button role="tab" aria-selected="{{v.on}}" style="{{v.style}}">{{v.label}}<span style="{{v.bar}}"></span></button></sc-for>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0">
+        <label style="width: 260px; height: 32px; display: flex; align-items: center; padding: 0 10px 0 12px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-bottom-color: rgba(255,255,255,0.5442); font-size: 14px; color: #9e9e9e"><span style="flex-grow: 1">Filter artists</span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14" fill="none" stroke="#c5c5c5" stroke-width="1" stroke-linecap="round"></path></svg></label>
+        <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); color: #fff; font: inherit; font-size: 14px">A–Z<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+        <span style="flex-grow: 1; font-size: 12px; color: #c5c5c5; text-align: right; padding-right: 8px">18 artists</span>
+      </div>
+      <div style="display: flex; flex-direction: column; margin: -4px -8px 0 -8px">
+        <sc-for list="{{list}}" as="r" hint-placeholder-count="10">
+          <sc-if value="{{r.header}}" hint-placeholder-val="{{ false }}"><div style="height: 28px; display: flex; align-items: flex-end; padding: 0 0 4px 12px; font-size: 12px; font-weight: 600; color: #c5c5c5">{{r.label}}</div></sc-if>
+          <sc-if value="{{r.item}}" hint-placeholder-val="{{ true }}">
+            <div style="{{r.style}}">
+              <a href="#" style="display: flex; align-items: center; gap: 12px; flex-grow: 1; min-width: 0; height: 48px; color: #fff"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.label}}</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5">{{r.sub}}</span></span></a>
+              <sc-if value="{{r.hover}}" hint-placeholder-val="{{ false }}"><button aria-label="Play {{r.label}}" style="width: 32px; height: 32px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 16px; background: #60cdff; color: #000; font: inherit"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg></button></sc-if>
+              <span style="width: 32px; height: 32px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: #c5c5c5"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+            </div>
+          </sc-if>
+        </sc-for>
+      </div>
+    </main>
+  </div>
+  <dc-import name="Shell-Player" theme="dark" tier="compact" width="800" variant="music" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const vs = (l, s) => ({ label: l, on: s ? 'true' : 'false', style: 'position: relative; height: 40px; flex-shrink: 0; padding: 0 12px; border: 0; background: transparent; font: inherit; font-size: 14px; color: ' + (s ? '#ffffff' : '#c5c5c5'), bar: s ? 'position: absolute; left: 12px; right: 12px; bottom: 4px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' });
+  const views = [vs('Playlists', false), vs('Albums', false), vs('Artists', true), vs('Podcasts', false), vs('Audiobooks', false)];
+  const h = (l) => ({ header: true, item: false, label: l });
+  const it = (l, s, c, hov) => ({ header: false, item: true, hover: !!hov, label: l, sub: s, art: 'width: 36px; height: 36px; flex-shrink: 0; border-radius: 18px; background: ' + c,
+    style: 'display: flex; align-items: center; gap: 4px; height: 48px; margin: 1px 0; padding: 0 4px 0 12px; border-radius: 4px; ' + (hov ? 'background: rgba(255,255,255,0.0605)' : '') });
+  const list = [h('A'), it('aespa', '2 albums · 9 songs', '#5b2f6b'), it('Arash', '3 albums · 12 songs', '#4a3b2f', true), it('Arcane', '1 album · 4 songs', '#2f4a6b'), h('E'), it('Edward Maya', '1 album · 15 songs', '#3b5b7a'), h('H'), it('HOME', '1 album · 2 songs', '#2f5b6b')];
+  return { views, list };
+}
+}
+</script>
+</body>
+</html>

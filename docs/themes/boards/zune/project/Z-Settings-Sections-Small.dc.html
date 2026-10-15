@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune settings: sections · small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 800px; height: 600px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; padding: 20px 24px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); gap: 20px 32px; overflow: hidden">
+  <div style="display: flex; flex-direction: column; gap: 8px; min-width: 0">
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">account</span>
+    <span style="display: flex; align-items: center; gap: 12px"><span style="width: 40px; height: 40px; border-radius: 20px; background: #5b6b3b; flex-shrink: 0"></span><span style="display: flex; flex-direction: column"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; font-weight: 300; line-height: 26px">christos</span><span style="{{plan}}">spotify premium · individual</span></span></span>
+    <span style="font-size: 12px; color: #a8a8a8">signed in on this pc since sep 2 · country nl</span>
+    <span style="display: flex; gap: 16px; font-size: 13px"><a href="#">manage on spotify.com</a><a href="#">switch account</a><a href="#">sign out</a></span>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0">
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">lyrics</span>
+    <sc-for list="{{lyrics}}" as="r" hint-placeholder-count="3"><span style="display: grid; grid-template-columns: minmax(0, 1fr) 40px; gap: 12px; align-items: center; min-height: 34px"><span style="display: flex; flex-direction: column"><span style="font-size: 14px">{{r.label}}</span><span style="font-size: 11px; color: #7a7a7a">{{r.hint}}</span></span><span style="{{r.sw}}"><span style="{{r.knob}}"></span></span></span></sc-for>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 8px; min-width: 0">
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">devices &amp; connect</span>
+    <label style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; color: #a8a8a8">this pc shows up as</span><input type="text" value="christos’s desktop" style="border: 0; border-bottom: 1px solid rgba(255,255,255,0.18); background: transparent; color: #fff; font: inherit; font-size: 14px; padding: 4px 0; outline: none"></label>
+    <sc-for list="{{devices}}" as="r" hint-placeholder-count="2"><span style="display: grid; grid-template-columns: minmax(0, 1fr) 40px; gap: 12px; align-items: center; min-height: 34px"><span style="display: flex; flex-direction: column"><span style="font-size: 14px">{{r.label}}</span><span style="font-size: 11px; color: #7a7a7a">{{r.hint}}</span></span><span style="{{r.sw}}"><span style="{{r.knob}}"></span></span></span></sc-for>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 8px; min-width: 0">
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">storage</span>
+    <span style="display: flex; height: 10px; width: 100%"><span style="{{storeCache}}"></span><span style="flex-grow: 1; height: 10px; background: rgba(255,255,255,0.08); display: block"></span></span>
+    <span style="display: flex; gap: 16px; font-size: 12px; color: #a8a8a8"><span><span style="color: #ffffff">1.1 gb</span> cache</span><span>limit 2 gb</span><span>on drive c:</span></span>
+    <span style="display: flex; align-items: center; gap: 6px; font-size: 13px"><span style="color: #a8a8a8; margin-right: 4px; font-size: 12px">cache limit</span><sc-for list="{{cache}}" as="c" hint-placeholder-count="4"><button style="{{c.style}}">{{c.label}}</button></sc-for></span>
+    <span style="display: flex; gap: 16px; font-size: 13px"><a href="#">clear cache</a><a href="#">move…</a></span>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+    <span style="display: flex; align-items: baseline; gap: 12px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">keyboard</span><a href="#" style="font-size: 12px">change a shortcut</a></span>
+    <sc-for list="{{keys}}" as="k" hint-placeholder-count="4"><span style="display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; height: 26px; font-size: 13px"><span>{{k.label}}</span><span style="font-size: 11px; color: #a8a8a8; border: 1px solid rgba(255,255,255,0.14); padding: 1px 6px">{{k.key}}</span></span></sc-for>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0">
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">find a setting</span>
+    <label style="display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; box-sizing: border-box; padding: 0 12px; border-radius: 16px; border: 1px solid #ffffff; color: #a8a8a8"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><input type="search" value="cross" style="border: 0; background: transparent; color: #fff; font: inherit; font-size: 13px; width: 100%; outline: none; min-width: 0"></label>
+    <a href="#" style="display: flex; flex-direction: column; padding: 6px 12px; margin: 0 -12px; background: rgba(255,255,255,0.05); color: #ffffff"><span style="font-size: 14px"><span style="{{hit}}">cross</span>fade</span><span style="font-size: 11px; color: #7a7a7a">playback</span></a>
+    <a href="#" style="display: flex; flex-direction: column; padding: 6px 12px; margin: 0 -12px; color: #ffffff"><span style="font-size: 14px">automix and <span style="{{hit}}">cross</span>fade on playlists</span><span style="font-size: 11px; color: #7a7a7a">playback</span></a>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const sw = (d) => ({ label: d[0], hint: d[1],
+    sw: 'width: 40px; height: 20px; position: relative; display: block; background: ' + (d[2] ? accent : 'rgba(255,255,255,0.14)'),
+    knob: 'position: absolute; top: 2px; width: 16px; height: 16px; display: block; ' + (d[2] ? 'right: 2px; background: #000000' : 'left: 2px; background: #ffffff'),
+  });
+  const chips = (labels, on) => labels.map((l, i) => ({ label: l, style: 'height: 28px; padding: 0 9px; border: 0; font: inherit; font-size: 12px; white-space: nowrap; ' + (i === on ? 'background: ' + accent + '; color: #000000' : 'background: rgba(255,255,255,0.06); color: #ffffff') }));
+  return {
+    accent,
+    plan: 'font-size: 12px; color: ' + accent,
+    lyrics: [['show lyrics', 'in the panel and full screen', true], ['translation line', 'under each line, when spotify has one', false], ['romanisation', 'for korean and japanese', true]].map(sw),
+    devices: [['visible on your network', 'phones and speakers can play here', true], ['only show devices on this network', '', false]].map(sw),
+    keys: [['play or pause', 'space'], ['next song', 'ctrl →'], ['search', 'ctrl f'], ['go back', 'alt ←']].map((d) => ({ label: d[0], key: d[1] })),
+    cache: chips(['1 gb', '2 gb', '5 gb', 'no limit'], 1),
+    storeCache: 'width: 55%; height: 10px; display: block; background: ' + accent,
+    hit: 'color: ' + accent,
+  };
+}
+}
+</script>
+</body>
+</html>

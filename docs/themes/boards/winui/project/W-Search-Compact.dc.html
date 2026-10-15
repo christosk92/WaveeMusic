@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Search results, compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tier="compact" width="400" tabs="home:Home|search:stereo love" sel="1" hint-size="400px,88px"></dc-import>
+  <main style="flex-grow: 1; min-height: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); padding: 16px 16px 0 16px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+    <label style="height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 4px 0 12px; box-sizing: border-box; border-radius: 4px; background: #1f1f1f; border: 1px solid rgba(255,255,255,0.0698); border-bottom: 2px solid #60cdff; font-size: 14px; color: #ffffff">
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14" fill="none" stroke="#c5c5c5" stroke-width="1" stroke-linecap="round"></path></svg>
+      <span style="flex-grow: 1; min-width: 0">stereo love</span>
+      <button aria-label="Clear search" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #c5c5c5; font: inherit"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg></button>
+    </label>
+    <div role="tablist" aria-label="Result types" style="display: flex; align-items: center; gap: 4px; margin-right: -16px; overflow: hidden; flex-shrink: 0; border-bottom: 1px solid rgba(255,255,255,0.0837)">
+      <sc-for list="{{facets}}" as="f" hint-placeholder-count="11"><button role="tab" aria-selected="{{f.on}}" style="{{f.style}}">{{f.label}}<span style="{{f.bar}}"></span></button></sc-for>
+    </div>
+    <section style="display: flex; flex-direction: column; gap: 12px; flex-shrink: 0">
+      <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Top result</h2>
+      <div style="display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)">
+        <a href="#" style="display: flex; align-items: center; gap: 16px; color: #fff; min-width: 0">
+          <span style="width: 72px; height: 72px; flex-shrink: 0; border-radius: 4px; background: #3b5b7a"></span>
+          <span style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Stereo Love</span>
+            <span style="font-size: 12px; line-height: 16px; color: #c5c5c5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Song · Edward Maya, Vika Jigulina</span>
+            <span style="display: flex; gap: 6px"><span style="height: 20px; display: inline-flex; align-items: center; padding: 0 6px; border-radius: 4px; font-size: 12px; background: rgba(255,255,255,0.0605)">Matched title</span><span style="height: 20px; display: inline-flex; align-items: center; padding: 0 6px; border-radius: 4px; font-size: 12px; background: rgba(255,255,255,0.0605)">Lyrics match</span></span>
+          </span>
+        </a>
+        <div style="display: flex; gap: 8px">
+          <button style="height: 40px; display: inline-flex; align-items: center; gap: 8px; padding: 0 18px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg>Play</button>
+          <a href="#" style="height: 40px; display: inline-flex; align-items: center; padding: 0 14px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font-size: 14px">Go to album</a>
+          <span style="flex-grow: 1"></span>
+          <button aria-label="More options for Stereo Love" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+        </div>
+      </div>
+    </section>
+    <section style="display: flex; flex-direction: column; gap: 4px; flex-shrink: 0">
+      <div style="display: flex; align-items: center; gap: 12px; height: 32px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; flex-grow: 1">Songs</h2><a href="#" style="font-size: 14px; line-height: 40px; padding: 0 4px">See all</a></div>
+      <div role="list" style="display: flex; flex-direction: column">
+        <sc-for list="{{songs}}" as="r" hint-placeholder-count="4">
+          <div role="listitem" style="{{r.style}}">
+            <span style="{{r.art}}"></span>
+            <span style="display: flex; flex-direction: column; min-width: 0"><span style="display: flex; align-items: center; gap: 6px; min-width: 0"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.title}}</span><span style="{{r.explicit}}">E</span></span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.sub}}</span></span>
+            <span style="text-align: right; font-size: 14px; color: #c5c5c5; font-variant-numeric: tabular-nums">{{r.time}}</span>
+            <button aria-label="More options for {{r.title}}" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+    <section style="display: flex; flex-direction: column; gap: 12px; flex-shrink: 0">
+      <div style="display: flex; align-items: center; gap: 12px; height: 32px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; flex-grow: 1">Artists</h2><a href="#" style="font-size: 14px; line-height: 40px; padding: 0 4px">See all</a></div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 12px">
+        <sc-for list="{{artists}}" as="c" hint-placeholder-count="4"><a href="#" style="display: flex; flex-direction: column; gap: 8px; align-items: center; color: #fff; text-align: center"><span style="{{c.art}}"></span><span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 14px; line-height: 20px; font-weight: 600">{{c.title}}</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5">Artist</span></span></a></sc-for>
+      </div>
+    </section>
+  </main>
+  <dc-import name="Shell-Player" theme="dark" tier="mini" width="400" variant="music" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const fs = (l, s) => ({ label: l, on: s ? 'true' : 'false', style: 'position: relative; height: 40px; flex-shrink: 0; padding: 0 12px; border: 0; background: transparent; font: inherit; font-size: 14px; white-space: nowrap; color: ' + (s ? '#ffffff' : '#c5c5c5'), bar: s ? 'position: absolute; left: 12px; right: 12px; bottom: 4px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' });
+  const facets = ['All', 'Songs', 'Albums', 'Playlists', 'Artists', 'Podcasts & shows', 'Episodes', 'Audiobooks', 'Authors', 'Profiles', 'Genres'].map((l, i) => fs(l, i === 0));
+  const sd = [['Stereo Love - Radio Edit', 'Edward Maya, Vika Jigulina', 'Stereo Love', '#3b5b7a', '3:05', false], ['Stereo Love (Molella Remix)', 'Edward Maya, Vika Jigulina', 'Stereo Love Remixes', '#4a5b7a', '5:49', true], ['Stereo Love', 'Gigi D’Agostino', 'Stereo Love', '#5b4a3b', '3:12', false], ['Stereo Hearts (feat. Adam Levine)', 'Gym Class Heroes', 'The Papercut Chronicles II', '#6b3b3b', '3:30', true]];
+  const songs = sd.map(d => ({ title: d[0], sub: d[1] + ' · ' + d[2], time: d[4],
+    style: 'display: grid; grid-template-columns: 40px minmax(0, 1fr) 36px 40px; gap: 0 12px; align-items: center; height: 56px; margin: 2px -8px 0 -8px; padding: 0 0 0 8px; border-radius: 4px',
+    art: 'width: 40px; height: 40px; border-radius: 4px; background: ' + d[3],
+    explicit: (d[5] ? 'display: inline-flex' : 'display: none') + '; width: 16px; height: 16px; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 2px; font-size: 10px; font-weight: 600; background: #c5c5c5; color: #000' }));
+  const artists = [['Edward Maya', '#3b5b7a'], ['Vika Jigulina', '#5b3b6b'], ['Gigi D’Agostino', '#5b4a3b'], ['Akcent', '#2f5b6b']].map(a => ({ title: a[0], art: 'display: block; width: 100%; aspect-ratio: 1 / 1; border-radius: 50%; background: ' + a[1] }));
+  return { facets, songs, artists };
+}
+}
+</script>
+</body>
+</html>

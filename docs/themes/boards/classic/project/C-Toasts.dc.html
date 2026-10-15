@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Toasts and notifications</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a6d8ff;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 1440px; height: 900px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="home:Home" sel="0" w="1440" hint-size="1440px,48px"></dc-import>
+  <div style="display: flex; height: 780px; flex-shrink: 0"><dc-import name="C-Sidebar" theme="dark" layout="classic" sel="home" h="780" hint-size="280px,780px"></dc-import><main style="flex-grow: 1; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; padding: 24px 36px; box-sizing: border-box"><div style="display: flex; gap: 24px; margin-left: -8px"><span style="padding: 2px 8px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">All</span><span style="padding: 2px 8px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; color: rgba(255,255,255,0.773)">Music</span><span style="padding: 2px 8px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; color: rgba(255,255,255,0.773)">Podcasts</span></div><div style="margin-top: 20px; height: 320px; border-radius: 8px; background: linear-gradient(115deg, #7a5a38, #8a4e7a 55%, #9b6ac0); opacity: 0.85"></div></main></div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="1440" hint-size="1440px,72px"></dc-import>
+  <div aria-live="polite" style="position: absolute; left: 50%; transform: translateX(-30%); bottom: 88px; display: flex; flex-direction: column; gap: 8px; align-items: center">
+    <div role="status" style="height: 48px; box-sizing: border-box; display: flex; align-items: center; gap: 16px; padding: 0 8px 0 16px; border-radius: 8px; background: #2c2c2c; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 16px rgba(0,0,0,0.26); font-size: 14px"><span>Added to Liked Songs</span><a href="#" style="font-weight: 600; padding: 0 8px">Change</a></div>
+    <div role="status" style="height: 48px; box-sizing: border-box; display: flex; align-items: center; gap: 16px; padding: 0 8px 0 16px; border-radius: 8px; background: #2c2c2c; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 16px rgba(0,0,0,0.26); font-size: 14px"><span>Unpinned “Summer Songs 2026” from the sidebar</span><a href="#" style="font-weight: 600; padding: 0 8px">Undo</a></div>
+  </div>
+  <section aria-label="Notifications" style="position: absolute; right: 236px; top: 44px; width: 360px; box-sizing: border-box; border-radius: 8px; background: #2c2c2c; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 16px rgba(0,0,0,0.26); padding: 4px 4px 8px">
+    <div style="height: 44px; display: flex; align-items: center; padding: 0 12px"><span style="font-size: 16px; font-weight: 600; flex-grow: 1">Notifications</span><a href="#" style="font-size: 13px">Mark all read</a></div>
+    <sc-for list="{{items}}" as="n" hint-placeholder-count="3"><div style="{{n.s}}"><span style="{{n.dot}}"></span><span style="{{n.a}}"></span><span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0"><span style="font-size: 14px; line-height: 20px">{{n.t}}</span><span style="font-size: 12px; color: rgba(255,255,255,0.529)">{{n.w}}</span></span></div></sc-for>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const items = [['Billie Eilish released WILDFLOWER (Live)', '5 min ago', '#3b5b7a', 1, 1], ['Your daylist refreshed: k-indie sunday night', '1 h ago', 'linear-gradient(135deg,#c08a3e,#8a4ab0)', 0, 0], ['Wavee 0.3 is ready. It installs when you quit.', 'Yesterday', '#60cdff', 0, 0]].map(n => ({ t: n[0], w: n[1],
+    s: 'display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 4px' + (n[3] ? '; background: rgba(255,255,255,0.059)' : ''),
+    dot: 'width: 6px; height: 6px; flex-shrink: 0; border-radius: 3px; background: ' + (n[4] ? '#60cdff' : 'transparent'),
+    a: 'width: 40px; height: 40px; flex-shrink: 0; border-radius: 4px; background: ' + n[2] }));
+  return { items };
+}
+}
+</script>
+</body>
+</html>

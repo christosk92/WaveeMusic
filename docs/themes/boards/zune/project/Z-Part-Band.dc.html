@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune part: pivot band</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<nav aria-label="sections" style="{{root}}">
+  <div style="{{row1}}">
+    <span style="{{pivotRun}}">
+      <sc-for list="{{pivots}}" as="p" hint-placeholder-count="4"><a href="#" style="{{p.style}}">{{p.name}}</a></sc-for>
+    </span>
+    <sc-if value="{{showPins}}" hint-placeholder-val="{{ true }}">
+      <span style="display: flex; align-items: flex-start; gap: 8px; flex-shrink: 0; padding-right: 16px">
+        <span style="font-size: 11px; line-height: 32px; color: #7a7a7a; margin-right: 4px">pinned</span>
+        <sc-for list="{{pins}}" as="p" hint-placeholder-count="6"><span style="display: flex; flex-direction: column; align-items: center; gap: 2px"><span style="{{p.tile}}"></span><span style="{{p.dot}}"></span></span></sc-for>
+      </span>
+    </sc-if>
+  </div>
+  <sc-if value="{{hasRow2}}" hint-placeholder-val="{{ true }}">
+    <div style="{{row2}}">
+      <sc-if value="{{hasTitle}}" hint-placeholder-val="{{ false }}"><span style="{{titleStyle}}">{{title}}</span><span style="width: 1px; height: 16px; background: rgba(255,255,255,0.14); flex-shrink: 0"></span></sc-if>
+      <sc-for list="{{subs}}" as="s" hint-placeholder-count="4"><a href="#" style="{{s.style}}">{{s.name}}</a></sc-for>
+      <sc-if value="{{hasActions}}" hint-placeholder-val="{{ false }}">
+        <span style="flex-grow: 1"></span>
+        <span style="display: flex; gap: 14px; align-items: center; flex-shrink: 0"><button aria-label="play" style="{{miniPlay}}">▶</button><button aria-label="shuffle" style="{{miniRing}}">⇄</button><button style="{{pill}}">{{actions}}</button></span>
+      </sc-if>
+    </div>
+  </sc-if>
+</nav>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"tier":{"editor":"enum","default":"standard","options":["compact","small","standard","huge","4k"]},"section":{"editor":null},"sub":{"editor":null},"on":{"editor":null},"title":{"editor":null},"actions":{"editor":null},"collapsed":{"editor":null},"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":1440,"height":84}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const tier = this.props.tier ?? 'standard';
+  const section = this.props.section ?? 'home';
+  const subRaw = this.props.sub ?? 'all,music,podcasts,audiobooks';
+  const on = this.props.on ?? (this.props.title ? '' : 'all');
+  const title = this.props.title ?? '';
+  const actions = this.props.actions ?? '';
+  const collapsed = String(this.props.collapsed ?? 'false') === 'true';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const compact = tier === 'compact', small = tier === 'small', big = tier === '4k';
+  const pad = compact ? 16 : small ? 24 : big ? 64 : 48;
+  const r1 = big ? 64 : 44, r2 = compact ? 40 : big ? 40 : 32;
+  const pivotSize = big ? 40 : 28;
+  let order = ['home', 'browse', 'library', 'recents'];
+  if (compact && order.indexOf(section) > 0) { const i = order.indexOf(section); order = order.slice(i).concat(order.slice(0, i)); }
+  const pivots = order.map((n) => ({ name: n, style: 'flex-shrink: 0; text-decoration: none; color: ' + (n === section ? '#ffffff; font-weight: 600' : '#7a7a7a; font-weight: 350') }));
+  const fade = (compact || small) ? '; -webkit-mask-image: linear-gradient(90deg, #000 84%, transparent); mask-image: linear-gradient(90deg, #000 84%, transparent)' : '';
+  const subs = subRaw.split(',').filter((s) => s.length > 0).map((s) => {
+    const sel = s === on;
+    const tab = title.length > 0;
+    return { name: s, style: 'flex-shrink: 0; white-space: nowrap; text-decoration: none; height: ' + r2 + 'px; display: flex; align-items: center; color: ' + (sel ? '#ffffff' : '#a8a8a8') + (sel && !tab ? '; font-weight: 600' : '') + (sel && tab ? '; box-shadow: inset 0 -2px 0 ' + accent : '') };
+  });
+  const pins = ['#3b4a6b', '#6b2f4a', '#2f5b6b', '#5b3b6b', '#6b4a2f', '#4a6b2f'].map((c, i) => ({ tile: 'width: ' + (big ? 40 : 32) + 'px; height: ' + (big ? 40 : 32) + 'px; border-radius: 4px; background: ' + c + '; display: block', dot: 'width: 4px; height: 4px; border-radius: 2px; display: block; background: ' + (i === 1 ? accent : 'transparent') }));
+  const hasRow2 = !collapsed && subs.length > 0;
+  const h = r1 + (hasRow2 ? r2 : 0) + 8;
+  return {
+    pivots, subs, pins, title, actions,
+    showPins: !compact && !small,
+    hasRow2, hasTitle: title.length > 0 && !compact, hasActions: actions.length > 0 && !compact,
+    root: 'width: 100%; height: ' + h + 'px; box-sizing: border-box; flex-shrink: 0; display: flex; flex-direction: column; padding: 0 0 0 ' + pad + 'px; color: #ffffff; font-family: \'Segoe UI Variable Text\', \'Segoe UI\', system-ui, sans-serif; overflow: hidden',
+    row1: 'height: ' + r1 + 'px; box-sizing: border-box; display: flex; align-items: center; gap: 24px; flex-shrink: 0',
+    pivotRun: 'flex-grow: 1; min-width: 0; display: flex; align-items: center; gap: ' + (big ? 32 : 24) + 'px; overflow: hidden; white-space: nowrap; font-family: ' + D + '; font-size: ' + pivotSize + 'px; line-height: ' + (big ? 48 : 36) + 'px; letter-spacing: -0.3px' + fade,
+    row2: 'height: ' + r2 + 'px; display: flex; align-items: center; gap: ' + (compact ? 22 : 20) + 'px; font-size: ' + (big ? 15 : 14) + 'px; line-height: 20px; padding-right: ' + (compact ? 0 : 32) + 'px; overflow: hidden; white-space: nowrap' + fade,
+    titleStyle: 'color: #ffffff; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px; flex-shrink: 1',
+    miniPlay: 'width: 28px; height: 28px; border-radius: 14px; border: 0; background: ' + accent + '; color: #000; font-size: 11px; display: flex; align-items: center; justify-content: center; padding: 0',
+    miniRing: 'width: 28px; height: 28px; box-sizing: border-box; border-radius: 14px; border: 2px solid #ffffff; background: transparent; color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; padding: 0',
+    pill: 'height: 28px; padding: 0 12px; box-sizing: border-box; border-radius: 14px; border: 2px solid ' + accent + '; background: transparent; color: ' + accent + '; font: inherit; font-size: 13px',
+  };
+}
+}
+</script>
+</body>
+</html>

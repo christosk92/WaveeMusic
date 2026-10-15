@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune collection: audiobooks · compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="compact" accent="{{accent}}" hint-size="400px,48px"></dc-import>
+  <dc-import name="Z-Part-Band" tier="compact" section="library" sub="liked,playlists,albums,artists,podcasts,audiobooks" on="audiobooks" accent="{{accent}}" hint-size="400px,92px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 16px; overflow: hidden">
+    <div style="height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 4px">
+      <button style="height: 40px; border: 0; background: transparent; color: #ffffff; font: inherit; font-size: 15px; padding: 0; display: flex; align-items: center; gap: 6px">recently played <span style="font-size: 11px; color: #a8a8a8">▾</span></button>
+      <span style="flex-grow: 1"></span>
+      <span style="font-size: 13px; color: #7a7a7a">6 books</span>
+    </div>
+    <div style="flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; margin: 0 -16px; background: #1b1b1b">
+      <span style="display: flex; align-items: baseline; gap: 8px; font-size: 13px; color: #a8a8a8"><span>listening time this month</span><span style="flex-grow: 1"></span><span style="color: #ffffff">9 hr 20 min</span><span>of 15 hr left</span></span>
+      <span style="height: 2px; background: rgba(255,255,255,0.14); display: block"><span style="display: block; height: 2px; width: 62%; background: #ffffff"></span></span>
+      <span style="font-size: 12px; color: #7a7a7a">resets nov 1</span>
+    </div>
+    <sc-for list="{{groups}}" as="g" hint-placeholder-count="3">
+      <div style="display: flex; flex-direction: column; flex-shrink: 0">
+        <span style="height: 44px; display: flex; align-items: flex-end; gap: 10px; padding-bottom: 4px; box-sizing: border-box"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">{{g.label}}</span><span style="font-size: 13px; color: #7a7a7a; line-height: 24px">{{g.count}}</span></span>
+        <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="2">
+          <a href="#" style="display: grid; grid-template-columns: 76px minmax(0, 1fr) 40px; align-items: center; height: 84px; flex-shrink: 0; color: #ffffff">
+            <span style="{{r.art}}"></span>
+            <span style="display: flex; flex-direction: column; min-width: 0; gap: 2px">
+              <span style="{{r.name}}">{{r.n}}</span>
+              <span style="font-size: 13px; line-height: 18px; color: #9c9c9c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.by}}</span>
+              <span style="{{r.metaStyle}}">{{r.meta}}</span>
+              <span style="{{r.track}}"><span style="{{r.fill}}"></span></span>
+            </span>
+            <span style="{{r.trail}}">{{r.t}}</span>
+          </a>
+        </sc-for>
+      </div>
+    </sc-for>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="mini" kind="podcast" title="Chapter 14" artist="Project Hail Mary · Andy Weir" art="#1f3a4a" progress="36" accent="{{accent}}" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const book = (d) => {
+    const open = d[5] === 'open', done = d[5] === 'done';
+    return {
+      n: d[0], by: d[1], meta: d[3], t: open ? '▮▮▮' : '⋯',
+      art: 'width: 64px; height: 64px; border-radius: 2px; display: block; background: ' + d[2] + (done ? '; opacity: 0.6' : ''),
+      name: 'font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (open ? accent : (done ? '#a8a8a8' : '#ffffff')),
+      metaStyle: 'font-size: 12px; line-height: 16px; color: ' + (open ? '#ffffff' : '#7a7a7a'),
+      track: 'width: 140px; height: 2px; margin-top: 3px; display: ' + (d[4] > 0 && !done ? 'block' : 'none') + '; background: rgba(255,255,255,0.14)',
+      fill: 'display: block; height: 2px; width: ' + d[4] + '%; background: ' + (open ? accent : '#a8a8a8'),
+      trail: 'width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: ' + (open ? '10px; letter-spacing: 1px' : '16px') + '; color: ' + (open ? accent : '#a8a8a8'),
+    };
+  };
+  const groups = [
+    { label: 'in progress', count: '2', rows: [['Project Hail Mary', 'Andy Weir · read by Ray Porter', 'linear-gradient(160deg, #1f3a4a, #0f1f2a)', '6 hr 12 min left · chapter 14 of 30', 62, 'open'], ['Dune', 'Frank Herbert · full cast', '#6b4a2a', '14 hr 5 min left', 33, '']].map(book) },
+    { label: 'not started', count: '3', rows: [['Atomic Habits', 'James Clear · read by the author', '#c8b48a', '5 hr 35 min', 0, ''], ['Sapiens', 'Yuval Noah Harari · read by Derek Perkins', '#8a2a2a', '15 hr 17 min', 0, ''], ['Tomorrow, and Tomorrow, and Tomorrow', 'Gabrielle Zevin', '#2a5a7a', '12 hr 26 min', 0, '']].map(book) },
+    { label: 'finished', count: '1', rows: [['The Hobbit', 'J.R.R. Tolkien · read by Andy Serkis', '#3a4a2a', 'finished in august', 100, 'done']].map(book) },
+  ];
+  return { accent, groups };
+}
+}
+</script>
+</body>
+</html>

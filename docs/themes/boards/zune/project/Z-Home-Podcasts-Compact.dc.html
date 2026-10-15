@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune home podcasts: compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="compact" accent="{{accent}}" hint-size="400px,48px"></dc-import>
+  <dc-import name="Z-Part-Band" tier="compact" section="home" sub="all,music,podcasts,audiobooks" on="podcasts" accent="{{accent}}" hint-size="400px,92px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; gap: 22px; padding: 8px 16px 0 16px; overflow: hidden">
+    <div style="display: flex; flex-direction: column">
+      <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">new episodes</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 13px">following only</a></div>
+      <sc-for list="{{fresh}}" as="e" hint-placeholder-count="3">
+        <a href="#" style="display: grid; grid-template-columns: 56px minmax(0, 1fr) 40px; align-items: center; min-height: 72px; color: #ffffff">
+          <span style="{{e.art}}"></span>
+          <span style="display: flex; flex-direction: column; min-width: 0; gap: 2px"><span style="font-size: 15px; line-height: 20px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical">{{e.title}}</span><span style="font-size: 13px; color: #9c9c9c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{e.meta}}</span></span>
+          <span style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; color: #a8a8a8; font-size: 16px">⋯</span>
+        </a>
+      </sc-for>
+    </div>
+    <div style="display: flex; flex-direction: column">
+      <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">continue listening</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 13px">see all</a></div>
+      <sc-for list="{{resume}}" as="e" hint-placeholder-count="3">
+        <div style="display: grid; grid-template-columns: 56px minmax(0, 1fr) 48px; align-items: center; min-height: 72px">
+          <span style="{{e.art}}"></span>
+          <span style="display: flex; flex-direction: column; min-width: 0; gap: 3px"><span style="{{e.titleStyle}}">{{e.title}}</span><span style="{{e.metaStyle}}">{{e.meta}}</span><span style="display: flex; align-items: center; gap: 10px"><span style="flex-grow: 1; height: 3px; background: rgba(255,255,255,0.12); display: block"><span style="{{e.bar}}"></span></span><span style="{{e.left}}">{{e.leftText}}</span></span></span>
+          <button aria-label="{{e.label}}" style="{{e.play}}">{{e.glyph}}</button>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">your shows</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 13px">see all</a></div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+        <sc-for list="{{shows}}" as="s" hint-placeholder-count="2"><a href="#" style="display: flex; flex-direction: column; gap: 6px; min-width: 0"><span style="{{s.art}}"></span><span style="font-size: 13px; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.name}}</span><span style="font-size: 12px; color: #a8a8a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.sub}}</span></a></sc-for>
+      </div>
+    </div>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="mini" kind="podcast" title="Why the Premier League keeps changing" artist="The Rest Is Football" art="#2f4a3b" progress="49" accent="{{accent}}" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const a44 = (c) => 'width: 44px; height: 44px; border-radius: 2px; background: ' + c + '; display: block';
+  const fresh = [['Why the Premier League keeps changing, and what it means for the rest of the table', 'The Rest Is Football · 48 min · today', '#2f4a3b'], ['The hidden history of the synthesizer', 'Twenty Thousand Hertz · 32 min · today', '#4a2f3b'], ['Episode 312: slow mornings', 'Hurry Slowly · 54 min · yesterday', '#3b3b2f']].map((d) => ({ title: d[0], meta: d[1], art: a44(d[2]) }));
+  const ring = (filled) => 'width: 40px; height: 40px; box-sizing: border-box; border-radius: 20px; border: ' + (filled ? '0' : '2px solid #ffffff') + '; background: ' + (filled ? accent : 'transparent') + '; color: ' + (filled ? '#000' : '#fff') + '; font-size: 12px; display: flex; align-items: center; justify-content: center; padding: 0; justify-self: end';
+  const resume = [['Why the Premier League keeps changing', 'The Rest Is Football · playing', '#2f4a3b', 0.49, '24 min left', true], ['The hidden history of the synthesizer', 'Twenty Thousand Hertz', '#4a2f3b', 0.62, '12 min left', false], ['Episode 311: the long way round', 'Hurry Slowly', '#3b3b2f', 0.21, '41 min left', false]].map((d) => ({
+    title: d[0], meta: d[1], art: a44(d[2]), leftText: d[4],
+    titleStyle: 'font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (d[5] ? accent : '#ffffff'),
+    metaStyle: 'font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (d[5] ? accent : '#9c9c9c'),
+    bar: 'display: block; width: ' + Math.round(d[3] * 100) + '%; height: 3px; background: ' + accent,
+    left: 'font-size: 12px; color: ' + accent + '; white-space: nowrap',
+    label: d[5] ? 'pause' : 'play', glyph: d[5] ? '▮▮' : '▶', play: ring(false),
+  }));
+  const shows = [['The Rest Is Football', 'goalhanger', '#2f4a3b'], ['Twenty Thousand Hertz', 'dallas taylor', '#4a2f3b']].map((d) => ({ name: d[0], sub: d[1], art: 'width: 100%; aspect-ratio: 1 / 1; border-radius: 2px; background: ' + d[2] + '; display: block' }));
+  return { accent, fresh, resume, shows };
+}
+}
+</script>
+</body>
+</html>

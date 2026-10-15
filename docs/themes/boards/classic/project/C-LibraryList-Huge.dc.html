@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Library, Artists, Huge</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 2560px; height: 1440px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="home:Home|artists:Artists" sel="1" w="2560" tier="huge" hint-size="2560px,48px"></dc-import>
+  <div style="display: flex; height: 1320px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="classic" sel="artists" w="320" h="1320" hint-size="320px,1320px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; display: flex; overflow: hidden">
+      <section aria-label="Artists" style="position: relative; width: 400px; flex-shrink: 0; box-sizing: border-box; padding: 24px 16px 0; display: flex; flex-direction: column; gap: 10px; background: rgba(255,255,255,0.02); border-top-left-radius: 8px">
+        <div style="display: flex; align-items: baseline; gap: 10px"><h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em">Artists</h1><span style="font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.529)">86</span></div>
+        <div style="display: flex; gap: 14px; height: 32px; align-items: center"><sc-for list="{{words}}" as="w" hint-placeholder-count="3"><button style="{{w.s}}">{{w.l}}<span style="{{w.bar}}"></span></button></sc-for></div>
+        <label style="height: 32px; box-sizing: border-box; display: flex; align-items: center; padding: 0 10px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); border-bottom-color: rgba(255,255,255,0.545)"><input aria-label="Filter artists" placeholder="Filter" style="flex-grow: 1; min-width: 0; border: 0; background: transparent; color: #fff; font: inherit; font-size: 14px; outline: none"></label>
+        <div role="list" style="display: flex; flex-direction: column; padding-right: 22px">
+          <sc-for list="{{list}}" as="r" hint-placeholder-count="20">
+            <sc-if value="{{r.h}}" hint-placeholder-val="{{false}}"><div role="heading" aria-level="2" style="height: 28px; flex-shrink: 0; display: flex; align-items: center; padding: 0 8px; margin-top: 4px; border-radius: 4px; background: rgba(255,255,255,0.031); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; color: rgba(255,255,255,0.529)">{{r.l}}</div></sc-if>
+            <sc-if value="{{r.row}}" hint-placeholder-val="{{true}}"><a href="#" role="listitem" style="{{r.s}}"><span style="{{r.pill}}"></span><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.l}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">{{r.sub}}</span></span></a></sc-if>
+          </sc-for>
+        </div>
+        <div role="navigation" aria-label="Jump to letter" style="position: absolute; right: 2px; top: 168px; width: 18px; display: flex; flex-direction: column; align-items: center; font-size: 10px; line-height: 15px; color: rgba(255,255,255,0.529)"><sc-for list="{{az}}" as="a" hint-placeholder-count="26"><span style="{{a.s}}">{{a.l}}</span></sc-for></div>
+      </section>
+      <span aria-hidden="true" style="width: 16px; flex-shrink: 0; display: flex; justify-content: center"><span style="width: 1px; background: rgba(255,255,255,0.082)"></span></span>
+      <section aria-label="Daft Punk" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+        <div style="height: 100px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 36px 0 8px">
+          <span role="img" aria-label="Daft Punk" style="width: 72px; height: 72px; flex-shrink: 0; border-radius: 36px; background: linear-gradient(135deg, #2f2f2f, #6b5b2f)"></span>
+          <span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 32px; line-height: 40px; font-weight: 700; letter-spacing: -0.012em">Daft Punk</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">In your library: 4 albums</span></span>
+          <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px; font-weight: 600"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10l8-5z" fill="currentColor"></path></svg>Play all</button>
+          <button aria-label="Shuffle" title="Shuffle" style="width: 32px; height: 32px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4.5h2.5c3 0 4 7 7 7H14M2 11.5h2.5c1.2 0 2-1 2.6-2.2M9 6.7c.6-1.2 1.4-2.2 2.5-2.2H14M12 2.5l2 2-2 2M12 9.5l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+          <button aria-pressed="true" style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(96,205,255,0.16); border: 1px solid rgba(96,205,255,0.5); color: #a6d8ff; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 7.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM2 13.5c0-2.5 2-4 4.5-4M10 11.5l1.8 1.8 3-3.3" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg>Following</button>
+          <a href="#" aria-label="Open artist page" title="Open artist page" style="width: 32px; height: 32px; border-radius: 4px; color: #fff; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 2.5h3.5V6M13.5 2.5 8 8M6 3.5H3v9.5h9.5V10" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></a>
+        </div>
+        <div style="height: 49px; flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 0 36px 0 8px; border-bottom: 1px solid rgba(255,255,255,0.082); font-size: 13.5px"><span style="font-weight: 600">in your library</span><span style="color: rgba(255,255,255,0.5)">all releases · 142</span><span style="flex-grow: 1"></span><span style="font-weight: 600">newest</span><span style="color: rgba(255,255,255,0.5)">oldest</span><span style="color: rgba(255,255,255,0.5)">alphabetical</span></div>
+        <div style="display: flex; flex-grow: 1; min-height: 0">
+          <div aria-hidden="true" style="position: relative; width: 56px; flex-shrink: 0; border-right: 1px solid rgba(255,255,255,0.06)">
+            <sc-for list="{{spine}}" as="s" hint-placeholder-count="4"><span style="{{s.s}}"><span style="{{s.dot}}"></span>{{s.y}}</span></sc-for>
+          </div>
+          <div style="flex-grow: 1; min-width: 0; padding: 0 36px 0 24px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 48px; align-content: start">
+            <sc-for list="{{blocks}}" as="b" hint-placeholder-count="4">
+              <div style="display: flex; gap: 20px; padding-top: 24px">
+                <span style="display: flex; flex-direction: column; gap: 6px"><span style="{{b.art}}"></span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">{{b.y}}</span></span>
+                <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+                  <div style="display: flex; align-items: center; gap: 4px; height: 44px"><span style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0"><span style="font-size: 20px; line-height: 26px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{b.t}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">{{b.m}}</span></span><button aria-label="Play {{b.t}}" style="width: 32px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: #fff; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10l8-5z" fill="currentColor"></path></svg></button><button aria-label="Remove {{b.t}} from Your Library" style="width: 32px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: #60cdff; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor"></path></svg></button><button aria-label="More options for {{b.t}}" style="width: 32px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: #fff; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h.01M8 8h.01M13 8h.01" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path></svg></button></div>
+                  <sc-for list="{{b.rows}}" as="r" hint-placeholder-count="6"><div style="height: 36px; display: grid; grid-template-columns: 28px minmax(0, 1fr) 52px; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 14px"><span style="font-size: 12px; color: rgba(255,255,255,0.529); text-align: center; font-variant-numeric: tabular-nums">{{r.n}}</span><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.t}}</span><span style="font-size: 12px; text-align: right; color: rgba(255,255,255,0.773); font-variant-numeric: tabular-nums">{{r.d}}</span></div></sc-for>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="2560" tier="huge" panel="none" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const words = ['recents', 'alphabetical', 'albums'].map((l, i) => ({ l, s: 'position: relative; padding: 0; border: 0; background: transparent; font: inherit; font-size: 13.5px; line-height: 18px; font-weight: ' + (i === 1 ? 600 : 400) + '; color: ' + (i === 1 ? '#fff' : 'rgba(255,255,255,0.5)'), bar: i === 1 ? 'position: absolute; left: 0; right: 0; bottom: -6px; height: 2px; background: #60cdff' : 'display: none' }));
+  const L = [['A'], ['aespa', '2 albums · 21 songs', '#8a8a9b'], ['Alex Warren', '4 songs', '#9b8a6a'], ['Ariana Grande', '1 album · 6 songs', '#3a3a3a'], ['B'], ['Bad Bunny', '1 album · 5 songs', '#3a6a4a'], ['Billie Eilish', '4 albums · 52 songs', '#2f4a6b'], ['Bruno Mars', '3 songs', '#d06070'], ['C'], ['Chappell Roan', '1 album · 14 songs', '#c06a8a'], ['Conan Gray', '2 albums · 8 songs', '#8aa0b0'], ['D'], ['Daft Punk', '4 albums', '#6b5b2f', 1], ['Dominic Fike', '1 album · 3 songs', '#c0a080'], ['E'], ['Edward Maya', '1 album · 12 songs', '#3b5b7a'], ['EMIN', '4 songs', '#3a3a4a'], ['F'], ['FINNEAS', '1 album · 9 songs', '#5b4a3b']];
+  const list = L.map(r => r.length === 1 ? { h: true, row: false, l: r[0] } : { h: false, row: true, l: r[0], sub: r[1],
+    s: 'position: relative; height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 8px; border-radius: 4px' + (r[3] ? '; background: rgba(255,255,255,0.059)' : ''),
+    pill: r[3] ? 'position: absolute; left: 0; top: 20px; width: 3px; height: 16px; border-radius: 2px; background: #60cdff' : 'display: none',
+    art: 'width: 40px; height: 40px; flex-shrink: 0; border-radius: 20px; background: ' + r[2] });
+  const az = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(l => ({ l, s: l === 'D' ? 'color: #60cdff; font-weight: 700' : ('GJQXZ'.indexOf(l) >= 0 ? 'opacity: 0.3' : '') }));
+  const spine = [['2013', 24, 1], ['2005', 24, 0], ['2001', 330, 0], ['1997', 330, 0]].map((s, i) => ({ y: s[0], s: 'position: absolute; left: 0; right: 0; top: ' + (s[1] + (i % 2 ? 0 : 0) + (i >= 2 ? 0 : 0)) + 'px; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; color: ' + (s[2] ? '#60cdff' : 'rgba(255,255,255,0.529)'), dot: 'width: 8px; height: 8px; border-radius: 4px; background: ' + (s[2] ? '#60cdff' : 'rgba(255,255,255,0.3)') }));
+  const tr = (arr) => arr.map((r, i) => ({ n: i + 1, t: r[0], d: r[1] }));
+  const art = (c) => 'width: 120px; height: 120px; border-radius: 6px; background: ' + c;
+  const blocks = [
+    { t: 'Random Access Memories', y: '2013 · Album', m: '13 songs · 1 hr 14 min', art: art('linear-gradient(135deg,#111,#bdbdbd 52%,#111)'), rows: tr([['Give Life Back to Music', '4:34'], ['Instant Crush', '5:37'], ['Lose Yourself to Dance', '5:53'], ['Get Lucky', '6:09'], ['Doin’ it Right', '4:11'], ['Contact', '6:21']]) },
+    { t: 'Human After All', y: '2005 · Album', m: '10 songs · 45 min', art: art('#8a2f2f'), rows: tr([['Human After All', '5:19'], ['Robot Rock', '4:47'], ['Technologic', '4:44'], ['Television Rules the Nation', '4:47']]) },
+    { t: 'Discovery', y: '2001 · Album', m: '14 songs · 1 hr 1 min', art: art('#6b5b2f'), rows: tr([['One More Time', '5:20'], ['Aerodynamic', '3:27'], ['Digital Love', '4:58'], ['Harder, Better, Faster, Stronger', '3:44'], ['Something About Us', '3:51'], ['Veridis Quo', '5:44']]) },
+    { t: 'Homework', y: '1997 · Album', m: '16 songs · 1 hr 13 min', art: art('#2f2f2f'), rows: tr([['Revolution 909', '5:26'], ['Da Funk', '5:28'], ['Around the World', '7:09'], ['Rollin’ & Scratchin’', '7:26']]) }
+  ];
+  return { words, list, az, spine, blocks };
+}
+}
+</script>
+</body>
+</html>

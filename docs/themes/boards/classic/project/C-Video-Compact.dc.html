@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Compact video, picture-in-picture</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 400px; height: 860px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="heart:Liked Songs" sel="0" w="400" tier="compact" hint-size="400px,48px"></dc-import>
+  <main style="height: 756px; flex-shrink: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); padding-top: 16px; display: flex; flex-direction: column; gap: 12px; overflow: hidden">
+    <header style="padding: 0 16px; display: flex; flex-direction: column; gap: 4px; flex-shrink: 0">
+      <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600; letter-spacing: -0.02em">Liked Songs</h1>
+      <span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">1,284 songs · 71 hr 3 min</span>
+    </header>
+    <div style="display: flex; align-items: center; gap: 4px; padding: 0 16px; height: 40px; flex-shrink: 0">
+      <span style="display: inline-flex; align-items: center; height: 40px; border-radius: 4px; background: #60cdff; color: #000; box-shadow: inset 0 -1px 0 rgba(0,0,0,0.22); margin-right: 8px"><button style="width: 96px; height: 40px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; background: transparent; color: #000; font: inherit; font-size: 14px; font-weight: 600"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 3h2.4v10H4.5zM9.1 3h2.4v10H9.1z" fill="currentColor"></path></svg>Pause</button><span style="width: 1px; height: 20px; background: rgba(0,0,0,0.2)"></span><button aria-label="More ways to play" style="width: 40px; height: 40px; border: 0; background: transparent; color: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="1.6"></path></svg></button></span>
+      <button style="height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4.5h2.5c3 0 4 7 7 7H14M2 11.5h2.5c1.2 0 2-1 2.6-2.2M9 6.7c.6-1.2 1.4-2.2 2.5-2.2H14M12 2.5l2 2-2 2M12 9.5l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg>Shuffle</button>
+    </div>
+    <div style="display: flex; flex-direction: column; flex-shrink: 0">
+      <div role="toolbar" aria-label="List tools" style="height: 48px; flex-shrink: 0; padding: 0 4px 0 8px; display: flex; align-items: center; gap: 2px; border-bottom: 1px solid rgba(255,255,255,0.082); font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.773)">
+        <button style="height: 40px; display: flex; align-items: center; gap: 6px; padding: 0 8px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10M3 5l2-2 2 2M11 13V3M9 11l2 2 2-2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>Date added<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="color: rgba(255,255,255,0.529)"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></button>
+        <span style="flex-grow: 1"></span>
+        <button aria-label="Filter" style="width: 40px; height: 40px; border: 0; border-radius: 4px; background: transparent; color: inherit; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12l-4.5 5.2V13l-3-1.5V8.2z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"></path></svg></button>
+        <button aria-label="Find in Liked Songs" style="width: 40px; height: 40px; border: 0; border-radius: 4px; background: transparent; color: inherit; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3l3.2 3.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg></button>
+        <button aria-label="More list options" style="width: 40px; height: 40px; border: 0; border-radius: 4px; background: transparent; color: inherit; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h.01M8 8h.01M13 8h.01" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path></svg></button>
+      </div>
+      <dc-import name="C-TrackList" theme="dark" rs="modern" set="liked" tier="compact" n="10" marks="5:playing" hint-size="100%,560px"></dc-import>
+    </div>
+  </main>
+  <dc-import name="C-PlayerBar" theme="dark" variant="video" w="400" tier="mini" hint-size="400px,56px"></dc-import>
+  <section aria-label="Video: Strawberries &amp; Cigarettes" style="position: absolute; right: 8px; bottom: 64px; width: 240px; height: 135px; border-radius: 8px; overflow: hidden; background: linear-gradient(160deg, #3b6b9b, #0e1828); border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 24px rgba(0,0,0,0.45)">
+    <span aria-hidden="true" style="position: absolute; left: 0; right: 0; top: 0; height: 30px; background: linear-gradient(180deg, rgba(0,0,0,0.6), rgba(0,0,0,0))"></span>
+    <button aria-label="Expand video to full screen" style="position: absolute; left: 0; top: 0; width: 40px; height: 40px; border: 0; background: transparent; color: #fff; display: flex; align-items: flex-start; justify-content: flex-start; padding: 7px 0 0 8px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    <button aria-label="Close video" style="position: absolute; right: 0; top: 0; width: 40px; height: 40px; border: 0; background: transparent; color: #fff; display: flex; align-items: flex-start; justify-content: flex-end; padding: 7px 8px 0 0"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg></button>
+    <span aria-hidden="true" style="position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255,255,255,0.25)"><span style="display: block; width: 36%; height: 3px; background: #60cdff"></span></span>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  return {};
+}
+}
+</script>
+</body>
+</html>

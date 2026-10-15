@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings, appearance</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} width: 1440px; height: 960px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" sel="none" crumb="Settings" ctx="Settings" items="General|Appearance|Playback|Notifications|Storage &amp; cache|Privacy|About" sub-sel="{{one}}" hint-size="1440px,136px"></dc-import>
+  <main style="height: 740px; flex-shrink: 0; box-sizing: border-box; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke); padding: 20px 36px 0 36px">
+    <div style="max-width: 1040px; display: flex; flex-direction: column; gap: 4px">
+      <h1 style="margin: 0 0 16px 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Appearance</h1>
+      <div style="border-radius: 4px; background: var(--card); border: 1px solid var(--cardb)">
+        <div style="min-height: 68px; display: flex; align-items: center; gap: 16px; padding: 0 16px">
+          <svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5a6.5 6.5 0 1 0 0 13c1 0 1.3-.8.9-1.5-.5-.9 0-2 1.1-2h1.5a3 3 0 0 0 3-3C14.5 4.3 11.6 1.5 8 1.5zM4.5 8a1 1 0 1 0 0-.01M6.5 4.8a1 1 0 1 0 0-.01M10 4.8a1 1 0 1 0 0-.01" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg>
+          <span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 14px; line-height: 20px">Theme</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Changes everything you see: pages, navigation and the player. Your library and settings stay the same.</span></span>
+          <span style="font-size: 14px; color: var(--t2)">Zune Fluent</span>
+          <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 10 8 5.5l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        </div>
+        <div role="radiogroup" aria-label="Theme" style="border-top: 1px solid var(--div); padding: 16px 16px 16px 52px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px">
+          <label style="{{s.tile}}"><span aria-hidden="true" style="height: 96px; border-radius: 4px; overflow: hidden; display: flex; background: #121212"><span style="width: 34px; background: #000000; display: flex; flex-direction: column; gap: 5px; padding: 8px 6px; box-sizing: border-box"><span style="height: 4px; border-radius: 2px; background: #1db954"></span><span style="height: 4px; border-radius: 2px; background: #3a3a3a"></span><span style="height: 4px; border-radius: 2px; background: #3a3a3a"></span></span><span style="flex-grow: 1; margin: 4px; border-radius: 4px; background: #1e1e1e; display: flex; flex-direction: column; gap: 5px; padding: 8px; box-sizing: border-box"><span style="width: 60%; height: 6px; border-radius: 2px; background: #5a5a5a"></span><span style="display: flex; gap: 4px"><span style="width: 22px; height: 22px; border-radius: 3px; background: #3b4a6b"></span><span style="width: 22px; height: 22px; border-radius: 3px; background: #6b2f4a"></span><span style="width: 22px; height: 22px; border-radius: 3px; background: #2f5b6b"></span></span></span></span><span style="display: flex; align-items: center; gap: 8px"><span style="{{s.radioOff}}"></span><span style="font-size: 14px">Wavee Classic</span></span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Today’s Wavee</span></label>
+          <label style="{{s.tile}}"><span aria-hidden="true" style="height: 96px; border-radius: 4px; overflow: hidden; display: flex; flex-direction: column; background: #202020"><span style="height: 12px; background: #1c1c1c"></span><span style="flex-grow: 1; display: flex"><span style="width: 32px; display: flex; flex-direction: column; gap: 5px; padding: 6px 5px; box-sizing: border-box"><span style="height: 4px; border-radius: 2px; background: #3a3a3a; position: relative"><span style="position: absolute; left: -3px; top: 0; width: 2px; height: 4px; background: #60cdff"></span></span><span style="height: 4px; border-radius: 2px; background: #3a3a3a"></span></span><span style="flex-grow: 1; border-top-left-radius: 6px; background: #282828; border: 1px solid rgba(255,255,255,0.0837); padding: 8px; box-sizing: border-box; display: flex; flex-direction: column; gap: 5px"><span style="width: 55%; height: 6px; border-radius: 2px; background: #6a6a6a"></span><span style="width: 30px; height: 8px; border-radius: 2px; background: #60cdff"></span></span></span></span><span style="display: flex; align-items: center; gap: 8px"><span style="{{s.radioOff}}"></span><span style="font-size: 14px">WinUI</span></span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Windows 11, sidebar</span></label>
+          <label style="{{s.tile}}"><span aria-hidden="true" style="height: 96px; border-radius: 4px; overflow: hidden; display: flex; flex-direction: column; gap: 6px; padding: 10px; box-sizing: border-box; background: #161616"><span style="display: flex; gap: 6px; align-items: flex-end"><span style="width: 30px; height: 8px; background: #ffffff"></span><span style="width: 26px; height: 6px; background: #5a5a5a"></span><span style="width: 26px; height: 6px; background: #5a5a5a"></span></span><span style="width: 120px; height: 18px; background: rgba(255,255,255,0.7)"></span><span style="display: flex; gap: 6px"><span style="width: 16px; height: 16px; border-radius: 8px; background: #ff3ca6"></span><span style="width: 16px; height: 16px; border-radius: 8px; border: 2px solid #ffffff; box-sizing: border-box"></span></span></span><span style="display: flex; align-items: center; gap: 8px"><span style="{{s.radioOff}}"></span><span style="font-size: 14px">Zune</span></span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Metro, lowercase, pink</span></label>
+          <label style="{{s.tileOn}}"><span aria-hidden="true" style="height: 96px; border-radius: 4px; overflow: hidden; display: flex; flex-direction: column; background: #202020"><span style="padding: 7px 8px 0 8px; display: flex; gap: 6px; align-items: flex-end"><span style="position: relative; width: 28px; height: 8px; border-radius: 2px; background: #ffffff"><span style="position: absolute; left: 6px; right: 6px; bottom: -4px; height: 2px; border-radius: 1px; background: #60cdff"></span></span><span style="width: 26px; height: 8px; border-radius: 2px; background: #6a6a6a"></span><span style="width: 26px; height: 8px; border-radius: 2px; background: #6a6a6a"></span></span><span style="padding: 7px 8px; display: flex; gap: 5px"><span style="width: 14px; height: 4px; border-radius: 2px; background: #c5c5c5"></span><span style="width: 14px; height: 4px; border-radius: 2px; background: #5a5a5a"></span><span style="width: 14px; height: 4px; border-radius: 2px; background: #5a5a5a"></span></span><span style="flex-grow: 1; display: flex"><span style="flex-grow: 1; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); border-right: 1px solid rgba(255,255,255,0.0837); border-top-right-radius: 6px; padding: 6px 8px; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px"><span style="width: 80%; height: 10px; border-radius: 2px; background: #8a8a8a"></span><span style="width: 30px; height: 7px; border-radius: 2px; background: #60cdff"></span></span><span style="width: 34px"></span></span></span><span style="display: flex; align-items: center; gap: 8px"><span style="{{s.radioOn}}"><span style="width: 8px; height: 8px; border-radius: 4px; background: var(--onacc)"></span></span><span style="font-size: 14px; font-weight: 600">Zune Fluent</span></span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Zune layout, Windows 11 look</span></label>
+          <a href="#" style="{{s.tileDash}}"><span aria-hidden="true" style="height: 96px; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: var(--t2)"><svg width="24" height="24" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></span><span style="font-size: 14px; color: var(--acct)">Get community themes</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Installed: 1 · Neon Night</span></a>
+        </div>
+      </div>
+      <a href="#" style="min-height: 68px; display: flex; align-items: center; gap: 16px; padding: 0 16px; border-radius: 4px; background: var(--card); border: 1px solid var(--cardb); color: var(--t1)">
+        <svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h8M12 4h2M2 8h3M7 8h7M2 12h9M13 12h1M10 2.5v3M5 6.5v3M11 10.5v3" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg>
+        <span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 14px; line-height: 20px">Zune Fluent options</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Accent, backdrop, navigation casing, panorama titles, track numbers, density, right panel</span></span>
+        <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </a>
+      <div style="min-height: 68px; display: flex; align-items: center; gap: 16px; padding: 0 16px; border-radius: 4px; background: var(--card); border: 1px solid var(--cardb)">
+        <svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5a6.5 6.5 0 1 0 0 13zM8 1.5a6.5 6.5 0 0 1 0 13" fill="none" stroke="currentColor" stroke-width="1"></path><path d="M8 1.5a6.5 6.5 0 0 1 0 13z" fill="currentColor"></path></svg>
+        <span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 14px; line-height: 20px">App mode</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Light or dark; the theme draws both</span></span>
+        <button style="width: 200px; height: 32px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px">Use system setting<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      </div>
+      <div style="min-height: 68px; display: flex; align-items: center; gap: 16px; padding: 0 16px; border-radius: 4px; background: var(--card); border: 1px solid var(--cardb)">
+        <svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14M5 7h4M7 5v4" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg>
+        <span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 14px; line-height: 20px">Zoom</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Ctrl + plus and Ctrl + minus also work</span></span>
+        <button style="width: 200px; height: 32px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px">100%<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      </div>
+      <div style="min-height: 68px; display: flex; align-items: center; gap: 16px; padding: 0 16px; border-radius: 4px; background: var(--card); border: 1px solid var(--cardb)">
+        <svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8h3l2-5 2 10 2-5h3" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        <span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 14px; line-height: 20px">Animation effects</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Follows Windows; turn off to keep motion to fades</span></span>
+        <span style="font-size: 14px; color: var(--t2)">On</span>
+        <span role="switch" aria-checked="true" aria-label="Animation effects" style="width: 40px; height: 20px; border-radius: 10px; background: var(--acc); position: relative; display: block; flex-shrink: 0"><span style="position: absolute; top: 4px; left: 24px; width: 12px; height: 12px; border-radius: 6px; background: var(--onacc)"></span></span>
+      </div>
+    </div>
+  </main>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" variant="music" pane="none" hint-size="1440px,84px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', div: 'rgba(255,255,255,0.0837)', card: 'rgba(255,255,255,0.0512)', cardb: 'rgba(0,0,0,0.1)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', strong: 'rgba(255,255,255,0.5442)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', div: 'rgba(0,0,0,0.0803)', card: '#fbfbfb', cardb: 'rgba(0,0,0,0.0578)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', strong: 'rgba(0,0,0,0.4458)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const tileBase = 'display: flex; flex-direction: column; gap: 8px; padding: 8px; border-radius: 8px; box-sizing: border-box; color: var(--t1); ';
+  const s = {
+    tile: tileBase + 'border: 1px solid var(--div)',
+    tileOn: tileBase + 'border: 2px solid var(--acc); padding: 7px',
+    tileDash: tileBase + 'border: 1px dashed var(--strong)',
+    radioOff: 'width: 20px; height: 20px; border-radius: 10px; box-sizing: border-box; border: 1px solid var(--strong); flex-shrink: 0',
+    radioOn: 'width: 20px; height: 20px; border-radius: 10px; background: var(--acc); display: flex; align-items: center; justify-content: center; flex-shrink: 0'
+  };
+  return { vars, theme, accent, s, one: 1 };
+}
+}
+</script>
+</body>
+</html>

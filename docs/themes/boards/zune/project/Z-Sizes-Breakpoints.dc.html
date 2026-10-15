@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune breakpoints</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1700px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; padding: 40px 48px; display: flex; flex-direction: column; gap: 18px; overflow: hidden">
+  <div style="display: flex; align-items: baseline; gap: 20px">
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px">breakpoints</span>
+    <span style="font-size: 13px; color: #a8a8a8">window width in dip · widening commits at the line, narrowing holds 24 dip below it (the app's player-bar hysteresis, used for every tier) · floor 300 wide (Shell.Host.cs:258)</span>
+  </div>
+  <div style="position: relative; height: 92px; flex-shrink: 0">
+    <div style="position: absolute; left: 0; right: 0; top: 34px; height: 2px; background: rgba(255,255,255,0.12)"></div>
+    <sc-for list="{{bands}}" as="b" hint-placeholder-count="5"><div style="{{b.style}}"><span style="{{b.nameStyle}}">{{b.name}}</span><span style="font-size: 12px; color: #a8a8a8; white-space: nowrap">{{b.range}}</span></div></sc-for>
+    <sc-for list="{{ticks}}" as="t" hint-placeholder-count="6"><span style="{{t.style}}">{{t.label}}</span></sc-for>
+  </div>
+  <div style="display: grid; grid-template-columns: 150px repeat(4, minmax(0, 1fr)); column-gap: 20px; font-size: 13px; line-height: 18px">
+    <span></span>
+    <sc-for list="{{heads}}" as="h" hint-placeholder-count="4"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px; padding-bottom: 6px">{{h}}</span></sc-for>
+    <sc-for list="{{rules}}" as="r" hint-placeholder-count="12">
+      <span style="color: #7a7a7a; padding: 7px 0; border-top: 1px solid rgba(255,255,255,0.06)">{{r.part}}</span>
+      <span style="color: #c8c8c8; padding: 7px 0; border-top: 1px solid rgba(255,255,255,0.06)">{{r.c}}</span>
+      <span style="color: #c8c8c8; padding: 7px 0; border-top: 1px solid rgba(255,255,255,0.06)">{{r.s}}</span>
+      <span style="color: #c8c8c8; padding: 7px 0; border-top: 1px solid rgba(255,255,255,0.06)">{{r.st}}</span>
+      <span style="color: #c8c8c8; padding: 7px 0; border-top: 1px solid rgba(255,255,255,0.06)">{{r.h}}</span>
+    </sc-for>
+  </div>
+  <div style="display: flex; gap: 48px; margin-top: 6px; min-height: 0">
+    <div style="flex: 2 1 0; min-width: 0; display: flex; flex-direction: column">
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px; margin-bottom: 6px">per page · what moves first</span>
+      <sc-for list="{{pages}}" as="p" hint-placeholder-count="20"><div style="display: grid; grid-template-columns: 150px minmax(0, 1fr); column-gap: 20px; font-size: 12px; line-height: 17px; padding: 4px 0; border-top: 1px solid rgba(255,255,255,0.06)"><span style="color: #ffffff">{{p.n}}</span><span style="color: #a8a8a8">{{p.t}}</span></div></sc-for>
+    </div>
+    <div style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 8px">
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">how it moves</span>
+      <sc-for list="{{motion}}" as="m" hint-placeholder-count="8"><div style="display: flex; flex-direction: column; gap: 2px; padding: 6px 0; border-top: 1px solid rgba(255,255,255,0.06)"><span style="font-size: 14px">{{m.t}}</span><span style="font-size: 12px; line-height: 17px; color: #a8a8a8">{{m.d}}</span></div></sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":1440,"height":1700}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const W = 1344, x = (v) => Math.round((v - 300) / (3840 - 300) * W);
+  const bands = [['compact', '300 – 639', 300, 640], ['small', '640 – 1007', 640, 1008], ['standard', '1008 – 1919', 1008, 1920], ['huge', '1920 – 3199', 1920, 3200], ['huge 4k', '3200 and up', 3200, 3840]].map((d, i) => ({
+    name: d[0], range: d[1],
+    style: 'position: absolute; top: 0; left: ' + x(d[2]) + 'px; width: ' + (x(d[3]) - x(d[2]) - 4) + 'px; display: flex; flex-direction: column; gap: 14px; overflow: hidden',
+    nameStyle: 'font-family: \'Segoe UI Variable Display\', \'Segoe UI\', sans-serif; font-size: 20px; line-height: 24px; font-weight: ' + (i === 2 ? 600 : 350) + '; color: ' + (i === 2 ? '#ffffff' : '#c8c8c8') + '; white-space: nowrap',
+  }));
+  const ticks = [[640, 'window'], [760, 'bar medium'], [1008, 'window'], [1240, 'bar full'], [1920, 'window'], [3200, 'window']].map((d) => ({ label: d[0] + ' · ' + d[1], style: 'position: absolute; top: 30px; left: ' + x(d[0]) + 'px; padding-top: 28px; font-size: 11px; color: ' + (d[1] === 'window' ? accent : '#7a7a7a') + '; white-space: nowrap; border-left: 2px solid ' + (d[1] === 'window' ? accent : '#4f4f4f') + '; padding-left: 6px; height: 14px' }));
+  const heads = ['compact · < 640', 'small · 640 – 1007', 'standard · 1008 – 1919', 'huge · 1920 and up'];
+  const rules = [
+    ['gutter', '16', '24', '48', '48 · 4k 64 · the band inset and every title keep sharing this x'],
+    ['title bar', '48 · back, search and account as 40 icons, no crumb', '48 · wavee, back, crumb, search icon', '48 · search pill 220, name, bell', '48 · pill 320 · 4k 56 tall, pill 400'],
+    ['pivot band row 1', 'rotating pivot: the current word leads, the rest follow and run off the edge (windows phone pivot); tap the lead word for the hub list', 'pivots scroll under an edge fade; no pins', 'pivots + up to 6 pins', 'pivots + 6 pins · 4k pivots at 40'],
+    ['band row 2', '40 tall touch row; context title moves into the page; tabs become real pivots, one pane each', '32 · scrolls under a fade', '32 · title · tabs · actions', '32 · same, actions keep their words'],
+    ['band on scroll', 'collapses to 52 (row 1 only); scrolling up brings row 2 back', 'collapses to 52 at the first scroll (short height)', 'collapses to 52 on detail pages', 'never collapses; there is room'],
+    ['panorama title', '64 · 200, still bleeds off the edge; drifts a third of the swipe between pivot panes', '64 when the window is under 700 tall, else 120', '120 / 130 · 200', '150 (the now playing step) · 4k 300 on now playing only'],
+    ['hero name', '40', '40 under 700 tall, else 64', '64', '120 · weight 200, it becomes a panorama word'],
+    ['play bar', 'mini 64: art, title, play, next; swipe up or tap for the now playing sheet', 'narrow 640–759 (volume, ⋯) · medium 760+ (lyrics, devices, ⋯)', 'medium below 1240 · full from 1240', 'huge 72 with "playing from", video, friends · 4k 88'],
+    ['right panel', 'full-width sheet from the right; pivots queue · lyrics · friends at 40', 'overlay 340 with a shadow; content does not move', 'inline 340 beside the page', 'docked 720: queue | lyrics · friends · 4k docked 1080: queue | lyrics | friends'],
+    ['track rows', '56 two-line: number or art · title · "artist · 4:18" · ⋯ always shown', '52: number · art · title/artist · time · ⋯; album from 900', '52 with album and added', '52 with album, added, plays · 4k comfortable 60'],
+    ['grids', '2 columns, 16 gap', '4 columns (min 150)', 'as drawn (154 cards)', 'auto-fill min 200 · 4k min 220'],
+    ['short height < 700', 'n/a (860 tall)', 'heroes shrink first, then the daylist strip, then the art column 240 → 160', 'rare: same order', 'n/a'],
+  ].map((r) => ({ part: r[0], c: r[1], s: r[2], st: r[3], h: r[4] }));
+  const pages = [
+    ['home', 'compact: quickplay becomes 2-column pins, history and new as rows · small: daylist strip 150 → 112 · huge: 3 quickplay groups + zones in two columns'],
+    ['home · podcasts', 'compact: new episodes and continue listening stack · huge: three lists side by side'],
+    ['browse', 'row 2 is top · for you · genres · charts · concerts at every size; compact: one list per pivot pane · huge: genres in 8 columns'],
+    ['browse category', 'colour field 200 → 140 compact, 120 small; shelves become 2-column grids in compact'],
+    ['search', 'compact: field takes the title bar, facets become pivots, top result stacks · huge: best matches 3 columns'],
+    ['artist', 'compact: hero 220 with name at 64, tabs become pivots · huge: popular + latest release + about side by side'],
+    ['album', 'compact: art 160 left of the facts, tabs as pivots · small: art column 160 · huge: songs + more by + credits + about'],
+    ['playlist', 'compact: cover 120, title 40, owner line wraps · huge: header + recommended column'],
+    ['liked songs', 'compact: hero 40, chips scroll, day groups keep · huge: insights column'],
+    ['collection', 'zune columns: compact = one column at a time (artist → album → songs, a pivot each) · small: two columns · huge: four'],
+    ['recents', 'compact: overview heatmap moves above the day groups, 7 × 5 at 40 · huge: overview column 420'],
+    ['profile', 'compact: avatar 96 · top artists as a ranked list · huge: 10 top artists'],
+    ['show · episode', 'compact: rail stacks above the list · huge: chapters and transcript side by side with the list'],
+    ['concert', 'compact: date numeral 64 above the facts, tickets slab full width · huge: lineup grid'],
+    ['now playing', 'compact: the play bar sheet · small: caption 64 · huge: layout + face, lyrics column · 4k: everything docked'],
+    ['up next · lyrics', 'compact: lyrics 26 lines, art strip · huge: lyrics 72 lines with up next column'],
+    ['video', 'compact: 16:9 at the top, controls below the picture · huge: picture + up next rail'],
+    ['settings · options', 'compact: section list is its own pane (a pivot back), one section per page · huge: list + section + preview'],
+    ['setup · dialogs', 'compact: full-screen plates, step column becomes a top strip · huge: plate stays 762, centred, art fills the sides'],
+    ['release notes', 'compact: releases rail becomes a picker in row 2 · huge: two releases side by side'],
+  ].map((d) => ({ n: d[0], t: d[1] }));
+  const motion = [
+    ['pivots slide, never jump', 'crossing 640 the rotating pivot reorders with the 250 ms pivot slide; crossing back it settles in place'],
+    ['panels morph', 'sheet → overlay → inline → docked: the panel animates its width; the page column eases with it, no reflow snap'],
+    ['columns fade, then give way', 'a track-row column that drops fades out over 120 ms before its width collapses; adding one reserves the width first'],
+    ['titles scale', 'panorama 64 ↔ 120 ↔ 150 scales from the left edge over 200 ms; line height is reserved for the larger size'],
+    ['play bar keeps its height', '72 at every desktop tier; mini 64 ↔ 72 crossfades, the page reserves 72 so nothing below moves'],
+    ['grids reflow by fading', 'column count changes crossfade the grid; cards never slide across the window'],
+    ['scroll position survives', 'a tier change keeps the row under the pointer where it was; the page anchors on it, not on the top'],
+  ].map((d) => ({ t: d[0], d: d[1] }));
+  return { bands, ticks, heads, rules, pages, motion };
+}
+}
+</script>
+</body>
+</html>

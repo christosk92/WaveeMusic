@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Video, compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} position: relative; width: 400px; height: 860px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; color: #ffffff; background: #141014; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <div style="height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding-left: 4px">
+    <button aria-label="Close video" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #ffffff"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    <span style="flex-grow: 1; min-width: 0; font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.78)">Video</span>
+    <button style="height: 40px; padding: 0 12px; border: 0; border-radius: 4px; background: transparent; color: #ffffff; font: inherit; font-size: 14px">Switch to audio</button>
+  </div>
+  <div role="img" aria-label="Nightcall (Official Video), playing" style="position: relative; width: 400px; height: 225px; flex-shrink: 0; overflow: hidden; background: linear-gradient(180deg, #0b1220 0%, #1b2a3a 48%, #3a1f3a 62%, #120c16 100%)">
+    <span aria-hidden="true" style="position: absolute; left: 50px; top: 100px; width: 300px; height: 60px; border-radius: 50%; background: radial-gradient(closest-side, rgba(255,92,170,0.45), rgba(255,92,170,0))"></span>
+    <span aria-hidden="true" style="position: absolute; left: 0; right: 0; top: 140px; height: 1px; background: rgba(255,150,210,0.35)"></span>
+    <span aria-hidden="true" style="position: absolute; left: 170px; top: 158px; width: 60px; height: 20px; border-radius: 9px 9px 3px 3px; background: #0a0a10"></span>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 8px; padding: 14px 16px 0 16px; flex-shrink: 0">
+    <div style="display: flex; align-items: center; gap: 8px">
+      <span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden">Nightcall</span><span style="font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.86)">Official video · <a href="#" style="color: inherit">Kavinsky</a></span></span>
+      <button aria-label="Save to Liked Songs" style="width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #ffffff"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 4px">
+      <div role="slider" aria-label="Seek" aria-valuemin="0" aria-valuemax="258" aria-valuenow="74" aria-valuetext="1:14 of 4:18" style="position: relative; height: 18px; display: flex; align-items: center"><div style="width: 100%; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.5442)"></div><div style="position: absolute; left: 0; width: 29%; height: 4px; border-radius: 2px; background: var(--acc)"></div><div style="position: absolute; left: calc(29% - 9px); width: 18px; height: 18px; border-radius: 9px; box-sizing: border-box; border: 1px solid rgba(255,255,255,0.0698); background: #454545; display: flex; align-items: center; justify-content: center"><span style="width: 12px; height: 12px; border-radius: 6px; background: var(--acc)"></span></div></div>
+      <span style="display: flex; justify-content: space-between; font-size: 12px; color: #c5c5c5; font-variant-numeric: tabular-nums"><span>1:14</span><span>-3:04</span></span>
+    </div>
+    <div style="display: flex; align-items: center; justify-content: space-between">
+      <button aria-label="Volume" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #ffffff"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6v4h2.5L8 13V3L5 6zM10.5 5.5a3.5 3.5 0 0 1 0 5M12.5 3.5a6 6 0 0 1 0 9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      <button aria-label="Previous" style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #ffffff"><svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3v10M13 3.5v9L5.5 8z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+      <button aria-label="Pause" style="width: 64px; height: 64px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 32px; background: var(--acc); color: #000000"><svg width="22" height="22" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3v10M10.5 3v10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg></button>
+      <button aria-label="Next" style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #ffffff"><svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 3v10M3 3.5v9L10.5 8z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+      <button aria-label="Rotate to landscape" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #ffffff"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2.5V6H2.5M10 2.5V6h3.5M13.5 10H10v3.5M2.5 10H6v3.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    </div>
+  </div>
+  <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; margin: 12px 0 0 0; padding: 4px 16px 0 16px; border-radius: 8px 8px 0 0; background: rgba(255,255,255,0.0512); border-top: 1px solid rgba(255,255,255,0.0837); overflow: hidden">
+    <h2 style="margin: 0; height: 44px; flex-shrink: 0; display: flex; align-items: flex-end; padding-bottom: 6px; box-sizing: border-box; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Play video</h2>
+    <div role="radiogroup" aria-label="Play video" style="display: flex; flex-direction: column; flex-shrink: 0">
+      <sc-for list="{{modes}}" as="m" hint-placeholder-count="4"><button role="radio" aria-checked="{{m.checked}}" style="{{m.row}}"><span style="{{m.radio}}"><sc-if value="{{m.on}}" hint-placeholder-val="{{ false }}"><span style="width: 8px; height: 8px; border-radius: 4px; background: #000000"></span></sc-if></span><span style="flex-grow: 1">{{m.label}}</span></button></sc-for>
+    </div>
+    <span style="height: 1px; margin: 6px 0; flex-shrink: 0; background: rgba(255,255,255,0.0837)"></span>
+    <sc-for list="{{opts}}" as="o" hint-placeholder-count="3"><button style="height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0; border: 0; background: transparent; color: #ffffff; font: inherit; font-size: 14px; text-align: left"><span style="flex-grow: 1">{{o.label}}</span><span style="color: #c5c5c5">{{o.value}}</span><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></sc-for>
+    <button style="height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0; border: 0; background: transparent; color: #ffffff; font: inherit; font-size: 14px; text-align: left"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 4h9v8h-9zM10.5 7l4-2.5v7l-4-2.5M2 2l12 12" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg>Turn off video</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const pink = (this.props.accent ?? 'windows') === 'pink';
+  const T = { acc: pink ? '#ff7ac3' : '#60cdff', acct: pink ? '#ffb3dd' : '#99ebff' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const modes = [['Dock in the panel', false], ['Play in the mini player', false], ['Play in a separate window', false], ['Full screen', true]].map((m) => ({ label: m[0], on: m[1], checked: m[1] ? 'true' : 'false',
+    row: 'height: 48px; display: flex; align-items: center; gap: 12px; padding: 0; border: 0; background: transparent; color: #ffffff; font: inherit; font-size: 14px; text-align: left; ' + (m[1] ? 'font-weight: 600' : ''),
+    radio: 'width: 20px; height: 20px; flex-shrink: 0; border-radius: 10px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; ' + (m[1] ? 'background: var(--acc)' : 'border: 1px solid rgba(255,255,255,0.5442)') }));
+  const opts = [['Aspect ratio', 'Fit'], ['Quality', 'Auto'], ['Playback speed', '1×']].map((o) => ({ label: o[0], value: o[1] }));
+  return { vars, modes, opts };
+}
+}
+</script>
+</body>
+</html>

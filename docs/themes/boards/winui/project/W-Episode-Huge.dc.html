@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Episode, huge window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 2560px; height: 1440px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tier="huge" width="2560" tabs="home:Home|episode:Latency, Honestly:#4a5b3b" sel="1" hint-size="2560px,88px"></dc-import>
+  <div style="display: flex; height: 1280px; flex-shrink: 0">
+    <dc-import name="Shell-Nav" theme="dark" mode="open" sel="podcasts" height="1280" hint-size="280px,1280px"></dc-import>
+    <div style="flex-grow: 1; min-width: 0; display: flex; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); border-left: 1px solid rgba(255,255,255,0.0837); border-top-left-radius: 8px; overflow: hidden">
+      <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; padding: 32px 48px 0 48px; display: flex; flex-direction: column; gap: 24px; overflow: hidden">
+        <div style="display: flex; gap: 32px; align-items: flex-end">
+          <div style="width: 232px; height: 232px; border-radius: 8px; background: #4a5b3b; flex-shrink: 0"></div>
+          <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0; flex-grow: 1">
+            <div style="font-size: 12px; line-height: 16px; color: #c5c5c5">Episode · <a href="#">Coffee &amp; Code</a></div>
+            <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600">Latency, Honestly</h1>
+            <div style="font-size: 18px; line-height: 24px; color: #c5c5c5">23 Sep 2026 · 54 min · #42 · with Theo Vance</div>
+            <div style="display: flex; align-items: center; gap: 8px; padding-top: 4px; font-size: 12px; color: #c5c5c5"><span style="width: 360px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.0837)"><span style="display: block; width: 43%; height: 4px; border-radius: 2px; background: #60cdff"></span></span><span>23:41 of 54:43 · 31 min left</span></div>
+            <div style="display: flex; gap: 8px; align-items: center; padding-top: 12px">
+              <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3v10M10.5 3v10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>Pause</button>
+              <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.5 6 12l7.5-7.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg>Mark as played</button>
+              <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px">Save to Your Episodes</button>
+              <button aria-label="Copy link" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M5 5.5l3-3 3 3M3.5 9v3.5h9V9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+              <button aria-label="More" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 4px; border-bottom: 1px solid rgba(255,255,255,0.0837)">
+          <sc-for list="{{pivot}}" as="v" hint-placeholder-count="4"><button style="{{v.style}}">{{v.label}}<span style="{{v.bar}}"></span></button></sc-for>
+        </div>
+        <div style="display: grid; grid-template-columns: 760px minmax(0, 1fr); gap: 48px; min-height: 0">
+          <section style="display: flex; flex-direction: column; gap: 12px; min-width: 0">
+            <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">About this episode</h2>
+            <p style="margin: 0; font-size: 14px; line-height: 20px; color: #c5c5c5">Theo Vance joins us to talk about why p99 latency is a story rather than a number, what dashboards hide, and the time a single retry loop took down a payments cluster. We start with the basics at <a href="#">02:14</a>, get into tail amplification at <a href="#">18:40</a>, and close with a postmortem reading list at <a href="#">47:05</a>.</p>
+            <a href="#" style="font-size: 14px">Read more</a>
+            <h2 style="margin: 0; padding-top: 12px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Chapters</h2>
+            <div style="display: flex; flex-direction: column">
+              <sc-for list="{{chapters}}" as="c" hint-placeholder-count="6">
+                <a href="#" style="{{c.style}}"><span style="{{c.timeStyle}}">{{c.time}}</span><span style="font-size: 14px; flex-grow: 1; color: #fff">{{c.title}}</span><span style="{{c.eq}}"></span></a>
+              </sc-for>
+            </div>
+            <h2 style="margin: 0; padding-top: 12px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">More from Coffee &amp; Code</h2>
+            <sc-for list="{{more}}" as="e" hint-placeholder-count="3">
+              <a href="#" style="{{e.style}}"><span style="width: 48px; height: 48px; flex-shrink: 0; border-radius: 4px; background: #4a5b3b"></span><span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-size: 14px; line-height: 20px; font-weight: 600">{{e.t}}</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{e.b}}</span></span><span style="font-size: 12px; color: #9e9e9e; white-space: nowrap">{{e.m}}</span></a>
+            </sc-for>
+          </section>
+          <section style="display: flex; flex-direction: column; gap: 12px; min-width: 0">
+            <div style="display: flex; align-items: center; gap: 8px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; flex-grow: 1">Transcript</h2><span style="font-size: 12px; color: #c5c5c5">follows playback · click a sentence to jump there</span></div>
+            <label style="height: 32px; max-width: 520px; display: flex; align-items: center; padding: 0 10px 0 12px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-bottom-color: rgba(255,255,255,0.5442); font-size: 14px; color: #9e9e9e"><span style="flex-grow: 1">Search the transcript</span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14" fill="none" stroke="#c5c5c5" stroke-width="1" stroke-linecap="round"></path></svg></label>
+            <div style="display: flex; flex-direction: column; gap: 14px; padding: 20px 24px; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1); font-size: 18px; line-height: 28px">
+              <sc-for list="{{lines}}" as="l" hint-placeholder-count="12">
+                <p style="{{l.style}}"><span style="{{l.who}}">{{l.speaker}}</span><span style="{{l.timeStyle}}">{{l.time}}</span> {{l.text}}</p>
+              </sc-for>
+            </div>
+          </section>
+        </div>
+      </main>
+      <aside aria-label="Queue" style="width: 340px; flex-shrink: 0; border-left: 1px solid rgba(255,255,255,0.0837); display: flex; flex-direction: column; overflow: hidden">
+        <div style="height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 0 4px 0 8px; border-bottom: 1px solid rgba(255,255,255,0.0837)">
+          <sc-for list="{{paneTabs}}" as="t" hint-placeholder-count="2"><button style="{{t.style}}">{{t.label}}<span style="{{t.bar}}"></span></button></sc-for>
+          <span style="flex-grow: 1"></span>
+          <button aria-label="Close pane" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg></button>
+        </div>
+        <div style="padding: 12px 12px 0 12px; display: flex; flex-direction: column; gap: 8px; overflow: hidden">
+          <span style="font-size: 12px; color: #c5c5c5; padding: 0 4px">Playing from <a href="#">Coffee &amp; Code</a></span>
+          <div style="display: flex; flex-direction: column; gap: 8px; padding: 8px; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)">
+            <div style="display: flex; gap: 12px; align-items: center">
+              <span style="width: 48px; height: 48px; flex-shrink: 0; border-radius: 4px; background: #4a5b3b"></span>
+              <span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-size: 14px; font-weight: 600; color: #99ebff">Latency, Honestly</span><span style="font-size: 12px; color: #c5c5c5">Chapter 4 · Fine for whom?</span></span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #9e9e9e"><span style="flex-grow: 1; height: 3px; border-radius: 2px; background: rgba(255,255,255,0.0837)"><span style="display: block; width: 43%; height: 3px; border-radius: 2px; background: #60cdff"></span></span><span>31 min left</span></div>
+          </div>
+          <div style="display: flex; align-items: center; height: 36px; padding: 0 4px"><span style="font-size: 14px; font-weight: 600; flex-grow: 1">Next in queue</span><a href="#" style="font-size: 12px">Clear</a></div>
+          <sc-for list="{{queued}}" as="q" hint-placeholder-count="2">
+            <div style="display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 4px; border-radius: 4px"><span style="{{q.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{q.t}}</span><span style="font-size: 12px; color: #c5c5c5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{q.a}}</span></span></div>
+          </sc-for>
+          <div style="display: flex; align-items: center; gap: 12px; padding: 8px 4px; border-top: 1px solid rgba(255,255,255,0.0837)"><span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 14px; font-weight: 600">Autoplay</span><span style="font-size: 12px; color: #c5c5c5">Keep playing unplayed episodes</span></span><span style="width: 40px; height: 20px; border-radius: 10px; background: #60cdff; position: relative; display: block; flex-shrink: 0"><span style="position: absolute; top: 4px; left: 24px; width: 12px; height: 12px; border-radius: 6px; background: #000"></span></span></div>
+        </div>
+      </aside>
+    </div>
+  </div>
+  <dc-import name="Shell-Player" theme="dark" tier="huge" width="2560" variant="podcast" pane="queue" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const vs = (l, s, pad) => ({ label: l, style: 'position: relative; height: 40px; padding: 0 ' + pad + 'px; border: 0; background: transparent; font: inherit; font-size: 14px; white-space: nowrap; color: ' + (s ? '#ffffff' : '#c5c5c5'), bar: s ? 'position: absolute; left: ' + pad + 'px; right: ' + pad + 'px; bottom: ' + (pad === 12 ? 4 : 2) + 'px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' });
+  const pivot = [vs('About', true, 12), vs('Chapters', false, 12), vs('Transcript', false, 12), vs('Comments', false, 12)];
+  const paneTabs = [vs('Queue', true, 10), vs('Now playing', false, 10)];
+  const ch = [['00:00', 'Cold open'], ['02:14', 'What a percentile actually says'], ['18:40', 'Tail amplification'], ['23:41', 'Fine for whom?'], ['35:02', 'The retry loop that took down payments'], ['47:05', 'Postmortem reading list']];
+  const chapters = ch.map((c, i) => ({ time: c[0], title: c[1],
+    timeStyle: 'width: 56px; font-size: 14px; font-variant-numeric: tabular-nums; color: ' + (i === 3 ? '#99ebff' : '#9e9e9e'),
+    style: 'display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-radius: 4px; ' + (i === 3 ? 'background: rgba(255,255,255,0.0605)' : ''),
+    eq: i === 3 ? 'width: 12px; height: 12px; border-radius: 2px; background: #60cdff' : 'display: none' }));
+  const more = [['The Build Trap', 'Shipping features nobody asked for, and how to climb out.', '#41 · 41 min'], ['On Craft', 'A conversation with Mara Ellison about taste, tools and time.', '#40 · 48 min'], ['Edge Cases', 'Every bug is an edge case until it’s the main case.', '#39 · 37 min']].map(e => ({ t: e[0], b: e[1], m: e[2], style: 'display: flex; align-items: center; gap: 12px; height: 64px; padding: 0 8px; border-radius: 4px; color: #fff' }));
+  const tl = [
+    ['Host', '22:58', 'We keep coming back to the dashboard, so let’s stay there for a second.', 'past'],
+    ['Theo', '23:05', 'Sure. The dashboard shows you a line, and the line looks calm.', 'past'],
+    ['Theo', '23:12', '…and that is the thing about percentiles: they summarise, and summaries forget.', 'past'],
+    ['Theo', '23:41', 'So when someone says the p99 is fine, my first question is: fine for whom?', 'now'],
+    ['Theo', '23:58', 'Because one in a hundred requests is one in a hundred people.', 'next'],
+    ['Host', '24:10', 'Right, and those people tend to be the ones with the biggest carts.', 'next'],
+    ['Theo', '24:16', 'Exactly. The heavy users touch more services, so they roll the dice more often.', 'next'],
+    ['Host', '24:29', 'Which is the tail amplification we talked about earlier.', 'next'],
+    ['Theo', '24:35', 'Yes. Ten calls at p99 each, and suddenly one page in ten is slow.', 'next'],
+    ['Host', '24:48', 'So what do you actually put on the wall instead?', 'next'],
+    ['Theo', '24:53', 'The slowest real requests, with names attached. Stories, not numbers.', 'next']
+  ];
+  const lines = tl.map(l => ({ speaker: l[0], time: l[1], text: l[2],
+    style: 'margin: 0; display: flex; gap: 12px; align-items: baseline; ' + (l[3] === 'now' ? 'color: #ffffff; font-weight: 600' : (l[3] === 'past' ? 'color: #9e9e9e' : 'color: #c5c5c5')),
+    who: 'width: 48px; flex-shrink: 0; font-size: 12px; font-weight: 400; color: #9e9e9e',
+    timeStyle: 'width: 44px; flex-shrink: 0; font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; color: ' + (l[3] === 'now' ? '#99ebff' : '#9e9e9e') }));
+  const queued = [['Tape Loops', 'Slow Static Sessions · 14 min left', '#5b4a3b'], ['The Build Trap', 'Coffee & Code · #41 · 41 min', '#4a5b3b']].map(q => ({ t: q[0], a: q[1], art: 'width: 40px; height: 40px; flex-shrink: 0; border-radius: 4px; background: ' + q[2] }));
+  return { pivot, paneTabs, chapters, more, lines, queued };
+}
+}
+</script>
+</body>
+</html>

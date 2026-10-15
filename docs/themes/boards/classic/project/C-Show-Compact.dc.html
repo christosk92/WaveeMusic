@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Compact Podcast show</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 400px; height: 860px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="podcast:Coffee &amp; Code" sel="0" w="400" tier="compact" hint-size="400px,48px"></dc-import>
+  <main style="height: 756px; flex-shrink: 0; box-sizing: border-box; background: linear-gradient(180deg, rgba(74,88,56,0.36), rgba(58,58,58,0.298) 360px); border-top: 1px solid rgba(0,0,0,0.098); padding-top: 16px; display: flex; flex-direction: column; overflow: hidden">
+    <header style="padding: 0 16px; display: flex; flex-direction: column; gap: 8px; flex-shrink: 0">
+      <div style="display: flex; gap: 16px; align-items: flex-end">
+        <span role="img" aria-label="Coffee &amp; Code cover" style="width: 144px; height: 144px; flex-shrink: 0; border-radius: 8px; background: linear-gradient(135deg, #4a5b3b, #9bb36b); box-shadow: 0 2px 8px rgba(0,0,0,0.33)"></span>
+        <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+          <span style="display: flex; gap: 6px; align-items: center; font-size: 12px; line-height: 16px; font-weight: 600; color: rgba(255,255,255,0.529)">Podcast<span style="font-size: 10px; line-height: 14px; padding: 0 5px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px">video</span></span>
+          <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600; letter-spacing: -0.02em">Coffee &amp; Code</h1>
+          <span style="font-size: 13px; line-height: 18px; color: rgba(255,255,255,0.773)">Two developers, one mic</span>
+          <span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)"><b style="color: #fff">4.8</b> ★ · 1,234 ratings</span>
+        </div>
+      </div>
+      <span style="margin-top: 4px; font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">128 episodes · weekly · since 2019</span>
+      <span style="display: flex; flex-direction: column; gap: 4px"><span style="display: flex; height: 4px; border-radius: 2px; overflow: hidden; gap: 2px"><span style="flex: 84; background: rgba(255,255,255,0.4)"></span><span style="flex: 3; background: #b6d27a"></span><span style="flex: 41; background: rgba(255,255,255,0.12)"></span></span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">84 played · 3 in progress · 41 to go · <b style="color: #b6d27a">5 new</b></span></span>
+      <div style="display: flex; align-items: center; gap: 4px; margin-top: 4px">
+        <button style="flex-grow: 1; height: 40px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 4px; background: #b6d27a; color: #000; font: inherit; font-size: 14px; font-weight: 600; box-shadow: inset 0 -1px 0 rgba(0,0,0,0.22); margin-right: 4px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10l8-5z" fill="currentColor"></path></svg>Resume · 23 min left</button>
+        <sc-for list="{{sats}}" as="s" hint-placeholder-count="4"><button aria-label="{{s.l}}" title="{{s.t}}" style="{{s.st}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{s.g}}" fill="{{s.f}}" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></sc-for>
+      </div>
+    </header>
+    <div role="toolbar" aria-label="Episodes" style="margin-top: 12px; height: 48px; flex-shrink: 0; display: flex; align-items: stretch; border-bottom: 1px solid rgba(255,255,255,0.082)">
+      <div role="tablist" aria-label="Filter episodes" style="flex-grow: 1; min-width: 0; display: flex; padding-left: 4px; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent)"><sc-for list="{{filters}}" as="f" hint-placeholder-count="4"><button role="tab" aria-selected="{{f.sel}}" style="{{f.s}}">{{f.l}} <span style="color: rgba(255,255,255,0.529); font-weight: 400">{{f.c}}</span><span style="{{f.bar}}"></span></button></sc-for></div>
+      <button aria-label="Find in this show" style="width: 40px; height: 40px; align-self: center; flex-shrink: 0; border: 0; border-radius: 4px; background: transparent; color: rgba(255,255,255,0.773); display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3l3.2 3.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg></button>
+      <button aria-label="Sort: Newest" style="height: 40px; align-self: center; flex-shrink: 0; margin-right: 4px; display: flex; align-items: center; gap: 4px; padding: 0 8px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit; font-size: 13.5px; font-weight: 600">Newest<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="color: rgba(255,255,255,0.529)"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></button>
+    </div>
+    <div style="margin: 12px 16px 0; display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); flex-shrink: 0">
+      <span style="width: 64px; height: 64px; flex-shrink: 0; border-radius: 6px; background: linear-gradient(135deg, #4a5b3b, #9bb36b)"></span>
+      <span style="display: flex; flex-direction: column; gap: 4px; flex-grow: 1; min-width: 0"><span style="font-size: 12px; line-height: 16px; font-weight: 600; color: rgba(255,255,255,0.773)">continue</span><span style="font-size: 14px; line-height: 19px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">#127 · Building a GPU renderer in .NET</span><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 26px; font-weight: 300"><b style="font-weight: 600">17 min</b> left of 31 min</span><span style="height: 4px; border-radius: 2px; background: rgba(255,255,255,0.12); position: relative"><span style="position: absolute; left: 0; top: 0; bottom: 0; width: 45%; border-radius: 2px; background: #b6d27a"></span></span></span>
+      <button aria-label="Resume #127" style="width: 40px; height: 40px; flex-shrink: 0; border: 0; border-radius: 20px; background: #b6d27a; color: #000; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10l8-5z" fill="currentColor"></path></svg></button>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px; margin: 14px 16px 0; height: 40px; flex-shrink: 0"><span style="font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.773)">new since you were here</span><span style="font-size: 12px; font-weight: 600; color: #b6d27a">5</span><span style="flex-grow: 1"></span><a href="#" style="font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.773); padding: 12px 0">Mark all played</a></div>
+    <span style="margin: 0 16px 2px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 18px; line-height: 24px; font-weight: 300; flex-shrink: 0">october</span>
+    <div role="list" style="display: flex; flex-direction: column; padding: 0 4px 0 16px">
+      <sc-for list="{{eps}}" as="e" hint-placeholder-count="3">
+        <div role="listitem" style="{{e.row}}"><span style="{{e.bar}}"></span><span style="{{e.art}}"></span><span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0"><span style="{{e.ts}}">{{e.t}}</span><span style="font-size: 13px; line-height: 18px; color: rgba(255,255,255,0.773); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden">{{e.b}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.529)"><span style="{{e.newS}}">New · </span>{{e.m}}<span style="{{e.stS}}">{{e.st}}</span></span></span><span style="display: flex; flex-direction: column; align-items: center; flex-shrink: 0"><button aria-label="Play {{e.t}}" style="width: 40px; height: 40px; border: 0; border-radius: 20px; background: #b6d27a; color: #000; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="{{e.pd}}" fill="currentColor"></path></svg></button><button aria-label="More options for {{e.t}}" style="width: 40px; height: 40px; border: 0; border-radius: 4px; background: transparent; color: rgba(255,255,255,0.529); display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h.01M8 8h.01M13 8h.01" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path></svg></button></span></div>
+      </sc-for>
+    </div>
+  </main>
+  <dc-import name="C-PlayerBar" theme="dark" variant="podcast" w="400" tier="mini" hint-size="400px,56px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const sb = 'width: 40px; height: 40px; flex-shrink: 0; border: 0; border-radius: 4px; background: transparent; font: inherit; display: flex; align-items: center; justify-content: center; color: ';
+  const sats = [['Follow', 'Following', 'M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z', '#b6d27a', 'currentColor'], ['Play trailer', 'Trailer', 'M2.5 3.5h11v9h-11zM6.5 6v4l3.5-2z', '#fff'], ['Share', 'Share', 'M10 2.5h3.5V6M13.5 2.5 8 8M6 3.5H3v9.5h9.5V10', '#fff'], ['More', 'More', 'M3 8h.01M8 8h.01M13 8h.01', '#fff']].map(s => ({ l: s[0], t: s[1], g: s[2], f: s[4] || 'none', st: sb + s[3] }));
+  const filters = [['All', '128', 1], ['Unplayed', '41'], ['In progress', '3'], ['Played', '84']].map(f => ({ l: f[0], c: f[1], sel: f[2] ? 'true' : 'false', s: 'position: relative; flex-shrink: 0; height: 48px; padding: 0 10px; border: 0; background: transparent; font: inherit; font-size: 13.5px; font-weight: ' + (f[2] ? 600 : 400) + '; color: ' + (f[2] ? '#fff' : 'rgba(255,255,255,0.6)'), bar: f[2] ? 'position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px; background: #b6d27a' : 'display: none' }));
+  const E = [['#128 · Shipping a theme engine without a single if', 'How to keep themes out of components: views, styles and options.', 'Oct 9 · 42 min', 'new'], ['#127 · Building a GPU renderer in .NET', 'Scene graphs, damage tracking and the first presented frame.', 'Oct 2 · 31 min', 'playing'], ['#126 · Motion that respects the reader', 'Durations, easing and why a fade should be seen.', 'Sep 25 · 38 min', 'progress']];
+  const eps = E.map(e => ({ t: e[0], b: e[1], m: e[2],
+    row: 'position: relative; display: flex; align-items: flex-start; gap: 12px; padding: 11px 0; border-top: 1px solid rgba(255,255,255,0.05)',
+    bar: e[3] === 'playing' ? 'position: absolute; left: -10px; top: 14px; height: 40px; width: 3px; border-radius: 2px; background: #b6d27a' : 'display: none',
+    art: 'width: 48px; height: 48px; flex-shrink: 0; border-radius: 6px; background: linear-gradient(135deg, #4a5b3b, #9bb36b)',
+    ts: 'font-size: 14px; line-height: 19px; font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: ' + (e[3] === 'playing' ? '#b6d27a' : '#fff'),
+    newS: e[3] === 'new' ? 'font-size: 11px; font-weight: 700; color: #b6d27a' : 'display: none',
+    st: e[3] === 'progress' ? ' · 23 min left' : '',
+    stS: e[3] === 'progress' ? 'font-weight: 600; color: #b6d27a' : '',
+    pd: e[3] === 'playing' ? 'M4.5 3h2.4v10H4.5zM9.1 3h2.4v10H9.1z' : 'M5 3v10l8-5z' }));
+  return { sats, filters, eps };
+}
+}
+</script>
+</body>
+</html>

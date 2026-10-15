@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Recents, Huge</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 2560px; height: 1440px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="home:Home|recents:Recents" sel="1" w="2560" tier="huge" hint-size="2560px,48px"></dc-import>
+  <div style="display: flex; height: 1320px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="classic" sel="none" w="320" h="1320" hint-size="320px,1320px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; padding: 24px 36px 0; display: flex; gap: 48px; overflow: hidden">
+      <div style="flex: 1 1 1100px; max-width: 1100px; min-width: 0; display: flex; flex-direction: column">
+        <header style="display: flex; flex-direction: column; gap: 4px; padding-bottom: 16px; flex-shrink: 0">
+          <div style="display: flex; align-items: center; gap: 12px"><h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em">Recents</h1><button aria-pressed="true" style="height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border: 0; border-radius: 4px; background: rgba(96,205,255,0.16); color: #a6d8ff; font: inherit; font-size: 12px"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v10h-11zM2.5 6.5h11M5.5 2v3M10.5 2v3" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg>Overview</button></div>
+          <span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.529)">84 items · Monday – Today · grouped from 212 plays</span>
+          <div role="tablist" aria-label="Kinds" style="display: flex; gap: 20px; margin-top: 12px"><sc-for list="{{pivots}}" as="p" hint-placeholder-count="4"><button role="tab" aria-selected="{{p.sel}}" style="{{p.s}}">{{p.l}}<span style="{{p.bar}}"></span></button></sc-for></div>
+        </header>
+        <sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+          <div style="height: 48px; display: flex; align-items: center; gap: 12px; flex-shrink: 0"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">{{g.l}}</h2><span style="flex-grow: 1; height: 1px; background: rgba(255,255,255,0.082)"></span><span style="font-size: 12px; color: rgba(255,255,255,0.529)">{{g.c}}</span></div>
+          <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="5">
+            <div style="{{r.s}}"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-size: 14px; line-height: 20px; font-weight: 600">{{r.t}}</span><span style="{{r.subS}}">{{r.sub}}</span></span><span style="font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: rgba(255,255,255,0.059); color: rgba(255,255,255,0.773)">{{r.k}}</span><span style="width: 52px; text-align: right; font-size: 12px; color: rgba(255,255,255,0.529); font-variant-numeric: tabular-nums">{{r.time}}</span><button aria-label="{{r.cl}}" aria-expanded="{{r.ex}}" style="width: 32px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: rgba(255,255,255,0.773); display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="{{r.cd}}" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></button><button aria-label="More options for {{r.t}}" style="{{r.more}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h.01M8 8h.01M13 8h.01" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path></svg></button></div>
+            <sc-if value="{{r.open}}" hint-placeholder-val="{{false}}"><div style="margin: 0 0 8px 32px; padding-left: 16px; border-left: 1px solid #60cdff; display: flex; flex-direction: column"><sc-for list="{{r.kids}}" as="k" hint-placeholder-count="3"><div style="height: 40px; display: flex; align-items: center; gap: 12px; font-size: 14px"><span style="width: 32px; height: 32px; border-radius: 4px; background: #4a4a4a"></span><span style="flex-grow: 1">{{k.t}} <span style="color: rgba(255,255,255,0.773)">· {{k.a}}</span></span><span style="font-size: 12px; color: rgba(255,255,255,0.529); padding-right: 76px; font-variant-numeric: tabular-nums">{{k.d}}</span></div></sc-for></div></sc-if>
+          </sc-for>
+        </sc-for>
+      </div>
+      <aside aria-label="Overview" style="flex: 0 0 auto; display: flex; flex-direction: column; gap: 16px; padding-top: 4px">
+        <div style="display: flex; align-items: center; gap: 12px"><h2 style="margin: 0; flex-grow: 1; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Overview</h2><span style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: rgba(255,255,255,0.773)">Quieter<sc-for list="{{legend}}" as="l" hint-placeholder-count="5"><span style="{{l}}"></span></sc-for>Busier</span></div>
+        <div style="display: grid; grid-template-columns: repeat(2, auto); gap: 16px">
+          <sc-for list="{{months}}" as="m" hint-placeholder-count="4">
+            <section aria-label="{{m.l}}" style="padding: 14px 16px 16px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); display: flex; flex-direction: column; gap: 8px">
+              <div style="display: flex; align-items: baseline; gap: 8px"><span style="font-size: 14px; line-height: 20px; font-weight: 600; flex-grow: 1">{{m.l}}</span><span style="font-size: 12px; color: rgba(255,255,255,0.529)">{{m.c}}</span></div>
+              <div style="display: grid; grid-template-columns: repeat(7, 38px); gap: 4px">
+                <sc-for list="{{wd}}" as="w" hint-placeholder-count="7"><span style="height: 16px; font-size: 11px; line-height: 16px; text-align: center; color: rgba(255,255,255,0.529)">{{w}}</span></sc-for>
+                <sc-for list="{{m.cells}}" as="c" hint-placeholder-count="35"><span style="{{c.s}}">{{c.d}}</span></sc-for>
+              </div>
+            </section>
+          </sc-for>
+        </div>
+      </aside>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="2560" tier="huge" panel="none" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const pivots = ['All', 'Music', 'Podcasts', 'Artists'].map((l, i) => ({ l, sel: i === 0 ? 'true' : 'false', s: "position: relative; padding: 0 0 6px; border: 0; background: transparent; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 19px; line-height: 25px; font-weight: 350; color: " + (i === 0 ? '#fff' : 'rgba(255,255,255,0.6)'), bar: i === 0 ? 'position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: #60cdff' : 'display: none' }));
+  const kids = [{ t: 'Get Lucky', a: 'Daft Punk, Pharrell Williams', d: '14:32' }, { t: 'Instant Crush', a: 'Daft Punk, Julian Casablancas', d: '14:26' }, { t: 'Lose Yourself to Dance', a: 'Daft Punk', d: '14:20' }];
+  const mk = (R, sel) => R.map((r, i) => ({ t: r[0], sub: r[1], k: r[2], time: r[3], open: !!r[5], ex: r[5] ? 'true' : 'false', cl: (r[5] ? 'Collapse ' : 'Expand ') + r[0], kids,
+    s: 'height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 8px; border-radius: 8px; flex-shrink: 0' + (sel && i === 0 ? '; background: rgba(255,255,255,0.059)' : ''),
+    art: 'width: 48px; height: 48px; flex-shrink: 0; border-radius: ' + (r[7] ? 24 : 4) + 'px; background: ' + r[4],
+    subS: 'font-size: 12px; line-height: 16px; color: ' + (r[6] ? '#6ccb5f' : 'rgba(255,255,255,0.773)'),
+    cd: r[5] ? 'M4 10l4-4 4 4' : 'M4 6l4 4 4-4',
+    more: 'width: 32px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: rgba(255,255,255,0.773); display: flex; align-items: center; justify-content: center; opacity: ' + (sel && i === 0 ? 1 : 0) }));
+  const today = [['Random Access Memories', 'Played 6 tracks · Daft Punk', 'Album', '14:32', 'linear-gradient(135deg,#111,#bdbdbd 52%,#111)', 1, 0], ['Liked Songs', '✓ 3 songs added', 'Playlist', '13:05', 'linear-gradient(135deg,#4a3b8a,#6fa3c8)', 0, 1], ['Billie Eilish', 'Played 4 tracks', 'Artist', '11:48', '#2f4a6b', 0, 0, 1], ['Coffee & Code', 'Played 1 episode · 23 min left', 'Podcast', '09:12', '#4a5b3b'], ['K-Pop Duets (러블리 듀엣)', 'Played 9 tracks · Chris', 'Playlist', '08:40', '#6b3b4a']];
+  const yday = [['Today’s Top Hits', 'Played 12 tracks · Spotify', 'Playlist', '22:10', '#3b5a2f'], ['HIT ME HARD AND SOFT', 'Played 10 tracks · Billie Eilish', 'Album', '19:44', '#2f4a6b'], ['aespa', 'Played 5 tracks', 'Artist', '17:02', '#8a8a9b', 0, 0, 1], ['Summer Songs 2026', '✓ 2 songs added · Chris', 'Playlist', '15:30', '#b8862f', 0, 1], ['korean r&b k-indie sunday evening', 'Played 8 tracks · Spotify', 'Playlist', '11:15', 'linear-gradient(115deg,#7a5a38,#9b6ac0)']];
+  const groups = [{ l: 'Today', c: '6 items', rows: mk(today, true) }, { l: 'Yesterday', c: '11 items', rows: mk(yday, false) }];
+  const ramp = ['rgba(255,255,255,0.05)', 'rgba(96,205,255,0.2)', 'rgba(96,205,255,0.4)', 'rgba(96,205,255,0.65)', '#60cdff'];
+  const legend = ramp.map(c => 'width: 12px; height: 12px; border-radius: 2px; background: ' + c);
+  const wd = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  const month = (l, offset, days, upTo, c) => {
+    const cells = [];
+    for (let i = 0; i < offset; i++) cells.push({ d: '', s: 'height: 32px' });
+    for (let d = 1; d <= days; d++) {
+      const future = upTo && d > upTo;
+      const lvl = future ? -1 : Math.abs(Math.round(Math.sin(d * 1.7 + days + offset) * 2.2 + Math.cos(d * 0.6) * 1.6)) % 5;
+      const today = upTo && d === upTo;
+      cells.push({ d: String(d), s: 'height: 32px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-variant-numeric: tabular-nums; ' + (future ? 'border: 1px dashed rgba(255,255,255,0.08); color: rgba(255,255,255,0.3)' : 'background: ' + ramp[lvl] + '; color: ' + (lvl >= 3 ? '#000' : 'rgba(255,255,255,0.773)')) + (today ? '; box-shadow: 0 0 0 2px #fff' : '') });
+    }
+    return { l, c, cells };
+  };
+  const months = [month('October 2026', 3, 31, 11, '212 plays so far'), month('September 2026', 1, 30, 0, ''), month('August 2026', 5, 31, 0, ''), month('July 2026', 2, 31, 0, '')];
+  return { pivots, groups, legend, wd, months };
+}
+}
+</script>
+</body>
+</html>

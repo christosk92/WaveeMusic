@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Now playing, huge: Artist layout on Spotlight</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="position: relative; width: 2560px; height: 1440px; box-sizing: border-box; overflow: hidden; background: #141414; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <div role="img" aria-label="Edward Maya, artist photo 2 of 6" style="position: absolute; inset: 0; background: #2a3b4c; transform: scale(1.04); transform-origin: 30% 40%"></div>
+  <div aria-hidden="true" style="position: absolute; left: 0; right: 0; bottom: 0; height: 820px; background: linear-gradient(rgba(20,20,20,0), rgba(20,20,20,0.9))"></div>
+
+  <div style="position: absolute; left: 0; right: 0; top: 0; height: 56px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; padding: 0 12px 0 24px; box-sizing: border-box">
+    <div style="display: flex; align-items: center; gap: 12px; font-size: 12px"><span style="width: 16px; height: 16px; border-radius: 4px; background: #60cdff"></span><span>Wavee</span><span style="color: #c5c5c5">Now playing · full screen</span></div>
+    <div style="display: flex; gap: 4px; height: 40px; padding: 0 4px; border-radius: 8px; background: rgba(44,44,44,0.75); border: 1px solid rgba(0,0,0,0.2)">
+      <sc-for list="{{modes}}" as="m" hint-placeholder-count="4"><button style="{{m.style}}">{{m.label}}<span style="{{m.bar}}"></span></button></sc-for>
+    </div>
+    <div style="display: flex; justify-content: flex-end; gap: 4px">
+      <button aria-label="Face: Spotlight" style="height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 4px; background: rgba(44,44,44,0.75); color: #fff; font: inherit; font-size: 12px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.5h12v9H2zM2 10l3.5-3 3 2.5L11 7l3 2.5M10.5 5.5a.8.8 0 1 1 0 .01" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"></path></svg>Spotlight<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      <button aria-label="Layout: Artist" style="height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 4px; background: rgba(44,44,44,0.75); color: #fff; font: inherit; font-size: 12px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2.5h12v11H2zM2 10h12M4 12h5" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"></path></svg>Artist<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      <button aria-label="Full screen options" style="width: 40px; height: 36px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4.5h12M2 8h12M2 11.5h12M5 3v3M11 6.5v3M7 10v3" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></button>
+      <button aria-label="Exit full screen" style="width: 40px; height: 36px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2.5V6H2.5M10 2.5V6h3.5M6 13.5V10H2.5M10 13.5V10h3.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    </div>
+  </div>
+
+  <div style="position: absolute; left: 96px; top: 88px; display: flex; align-items: center; gap: 12px; height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(44,44,44,0.6); font-size: 12px; color: #c5c5c5">
+    <span>Photo 2 of 6</span>
+    <span aria-hidden="true" style="display: flex; gap: 4px"><sc-for list="{{dots}}" as="d" hint-placeholder-count="6"><span style="{{d.style}}"></span></sc-for></span>
+    <button aria-label="Pause photo rotation" style="width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3v10M10.5 3v10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg></button>
+  </div>
+
+  <div style="position: absolute; left: 1100px; width: 760px; top: 120px; bottom: 640px; display: flex; flex-direction: column; justify-content: center; gap: 20px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 36px; line-height: 48px; font-weight: 600">
+    <sc-for list="{{lines}}" as="l" hint-placeholder-count="7">
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <span style="{{l.style}}"><span style="color: {{l.doneColor}}">{{l.done}}</span><span>{{l.rest}}</span></span>
+        <sc-if value="{{l.second}}" hint-placeholder-val="{{ false }}"><span style="font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 400; color: rgba(255,255,255,0.7)">{{l.secondText}}</span></sc-if>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="position: absolute; left: 96px; right: 720px; bottom: 216px; display: flex; flex-direction: column; gap: 4px">
+    <span style="display: flex; align-items: center; gap: 8px; font-size: 18px; line-height: 24px"><svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 9.6 3l2.2-.2.4 2.2 1.9 1.1-.9 2 .9 2-1.9 1.1-.4 2.2-2.2-.2L8 14.5 6.4 13l-2.2.2-.4-2.2-1.9-1.1.9-2-.9-2 1.9-1.1.4-2.2 2.2.2z" fill="#60cdff"></path><path d="M5.5 8 7.2 9.7 10.5 6.4" fill="none" stroke="#000" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>Verified artist · 4,812,330 monthly listeners</span>
+    <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 168px; line-height: 176px; font-weight: 600; letter-spacing: -2px; white-space: nowrap">Edward Maya</h1>
+    <div style="display: flex; align-items: center; gap: 20px; padding-top: 16px">
+      <span role="img" aria-label="The Stereo Love Show cover" style="width: 96px; height: 96px; flex-shrink: 0; border-radius: 4px; background: #3b5b7a; box-shadow: 0 8px 16px rgba(0,0,0,0.26)"></span>
+      <span style="display: flex; flex-direction: column; min-width: 0"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Stereo Love</span><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; color: #c5c5c5"><a href="#">Edward Maya</a>, <a href="#">Vika Jigulina</a> · <a href="#">The Stereo Love Show</a></span></span>
+    </div>
+  </div>
+
+  <aside aria-label="About Edward Maya" style="position: absolute; right: 32px; top: 80px; bottom: 192px; width: 560px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px; padding: 24px; border-radius: 8px; background: rgba(44,44,44,0.72); backdrop-filter: blur(30px); border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 16px rgba(0,0,0,0.26); overflow: hidden">
+    <div style="display: flex; align-items: center; gap: 16px">
+      <span role="img" aria-label="Edward Maya" style="width: 72px; height: 72px; flex-shrink: 0; border-radius: 36px; background: #3b5b7a"></span>
+      <span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Edward Maya</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5">4,812,330 monthly listeners</span></span>
+      <button aria-pressed="true" style="height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0837); border: 1px solid rgba(255,255,255,0.0698); color: #fff; font: inherit; font-size: 14px">Following</button>
+      <button aria-label="Open artist page" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 2.5h4.5V7M13.5 2.5 8 8M6 3.5H2.5v10h10V10" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    </div>
+    <p style="margin: 0; font-size: 14px; line-height: 20px; color: #c5c5c5">Romanian producer, songwriter and DJ from Bucharest. His 2009 single Stereo Love with Vika Jigulina went to number one across Europe and made the accordion hook one of the sounds of that summer.</p>
+
+    <section aria-label="Popular" style="display: flex; flex-direction: column; gap: 2px">
+      <h2 style="margin: 0 0 6px 0; font-size: 14px; line-height: 20px; font-weight: 600">Popular</h2>
+      <sc-for list="{{popular}}" as="p" hint-placeholder-count="5">
+        <div style="{{p.style}}"><span style="{{p.num}}">{{p.n}}</span><span style="{{p.art}}"></span><span style="{{p.title}}">{{p.t}}</span><span style="font-size: 12px; color: #c5c5c5; font-variant-numeric: tabular-nums">{{p.plays}}</span><span style="width: 40px; text-align: right; font-size: 12px; color: #c5c5c5; font-variant-numeric: tabular-nums">{{p.time}}</span></div>
+      </sc-for>
+    </section>
+
+    <section aria-label="Discography" style="display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; align-items: baseline"><h2 style="margin: 0; flex-grow: 1; font-size: 14px; line-height: 20px; font-weight: 600">Discography</h2><a href="#" style="font-size: 12px">Show all 9</a></div>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+        <sc-for list="{{albums}}" as="a" hint-placeholder-count="3"><a href="#" style="display: flex; flex-direction: column; gap: 6px; color: #fff; min-width: 0"><span style="{{a.art}}"></span><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{a.t}}</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5">{{a.s}}</span></a></sc-for>
+      </div>
+    </section>
+
+    <section aria-label="Fans also like" style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600">Fans also like</h2>
+      <div style="display: flex; gap: 16px">
+        <sc-for list="{{fans}}" as="f" hint-placeholder-count="4"><a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 6px; width: 104px; color: #fff"><span style="{{f.art}}"></span><span style="font-size: 12px; line-height: 16px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 104px">{{f.t}}</span></a></sc-for>
+      </div>
+    </section>
+  </aside>
+
+  <div style="position: absolute; left: 32px; right: 32px; bottom: 32px; height: 128px; box-sizing: border-box; padding: 16px 24px; border-radius: 8px; background: rgba(44,44,44,0.8); border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 16px rgba(0,0,0,0.26); display: grid; grid-template-columns: minmax(0, 1fr) 720px minmax(0, 1fr); align-items: center; gap: 24px">
+    <div style="display: flex; align-items: center; gap: 12px; min-width: 0">
+      <button aria-label="Saved to Liked Songs" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #60cdff; font: inherit"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor"></path></svg></button>
+      <span style="display: flex; flex-direction: column; gap: 6px; min-width: 0"><span style="font-size: 14px; line-height: 20px; color: #c5c5c5">Playing from <a href="#">The Stereo Love Show</a></span><span style="display: flex; gap: 6px"><span style="height: 24px; display: inline-flex; align-items: center; padding: 0 8px; border-radius: 4px; font-size: 12px; background: rgba(255,255,255,0.0605); color: #c5c5c5">Synced lyrics</span><span style="height: 24px; display: inline-flex; align-items: center; padding: 0 8px; border-radius: 4px; font-size: 12px; background: rgba(255,255,255,0.0605); color: #c5c5c5">128 BPM</span></span></span>
+    </div>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 6px">
+      <div style="display: flex; align-items: center; gap: 16px">
+        <button aria-label="Shuffle" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h2.5c1.4 0 2.3.7 3.2 1.9l1.6 2.2c.9 1.2 1.8 1.9 3.2 1.9H14M2 12h2.5c1.4 0 2.3-.7 3.2-1.9M8.3 5.9c.9-1.2 1.8-1.9 3.2-1.9H14M12 2l2 2-2 2M12 8l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+        <button aria-label="Previous" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3v10M13 3.5v9L5.5 8z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+        <button aria-label="Pause" style="width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 28px; background: #60cdff; color: #000; font: inherit"><svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3v10M10.5 3v10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg></button>
+        <button aria-label="Next" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 3v10M3 3.5v9L10.5 8z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+        <button aria-label="Repeat" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 7V5.5A1.5 1.5 0 0 1 4.5 4H13M11 2l2 2-2 2M13 9v1.5a1.5 1.5 0 0 1-1.5 1.5H3M5 14l-2-2 2-2" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; width: 100%; font-size: 12px; color: #c5c5c5"><span style="width: 40px; text-align: right; font-variant-numeric: tabular-nums">1:59</span><div style="position: relative; flex-grow: 1; height: 18px; display: flex; align-items: center"><div style="width: 100%; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.5442)"></div><div style="position: absolute; left: 0; width: 48%; height: 4px; border-radius: 2px; background: #60cdff"></div></div><span style="width: 40px; font-variant-numeric: tabular-nums">-2:08</span></div>
+    </div>
+    <div style="display: flex; justify-content: flex-end; align-items: center; gap: 4px">
+      <button aria-label="Mute" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6v4h2.5L8 13V3L5 6zM10.5 5.5a3.5 3.5 0 0 1 0 5M12.5 3.5a6 6 0 0 1 0 9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      <div style="position: relative; width: 128px; height: 18px; display: flex; align-items: center"><div style="width: 100%; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.5442)"></div><div style="position: absolute; left: 0; width: 70%; height: 4px; border-radius: 2px; background: #60cdff"></div></div>
+      <button style="height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit; font-size: 14px; margin-left: 8px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 3h13v8h-13zM6 13.5h4M8 11v2.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg>This PC<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      <button aria-label="More" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const mode = (l, s) => ({ label: l, style: 'position: relative; height: 38px; padding: 0 16px; border: 0; background: transparent; font: inherit; font-size: 14px; color: ' + (s ? '#ffffff' : '#c5c5c5'), bar: s ? 'position: absolute; left: 16px; right: 16px; bottom: 3px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' });
+  const modes = [mode('Lyrics', false), mode('Visualizer', false), mode('Up next', false), mode('Artist', true)];
+  const dots = [0, 1, 2, 3, 4, 5].map(i => ({ style: 'display: block; height: 6px; border-radius: 3px; width: ' + (i === 1 ? '16px' : '6px') + '; background: ' + (i === 1 ? '#ffffff' : 'rgba(255,255,255,0.4)') }));
+  const src = [['When you gonna stop breaking my heart', -3], ['I don’t wanna be another one', -2], ['Paying for the things I never done', -1], ['Don’t let go, don’t let go', 0, 'Don’t let go,', ' don’t let go', 'Nu mă lăsa, nu mă lăsa'], ['To my love', 1], ['Can I get to your soul', 2], ['Can you get to my thought', 3]];
+  const lines = src.map(s => {
+    const d = s[1], active = d === 0;
+    const a = Math.max(0.3, 1 - Math.abs(d) * 0.22);
+    return { done: active ? s[2] : s[0], rest: active ? s[3] : '', doneColor: active ? '#ffffff' : 'rgba(255,255,255,' + a.toFixed(2) + ')',
+      style: active ? 'color: rgba(255,255,255,0.5); font-size: 44px; line-height: 56px' : 'color: rgba(255,255,255,' + a.toFixed(2) + ')',
+      second: active, secondText: s[4] || '' };
+  });
+  const pd = [['Stereo Love', '598,912,004', '4:07', '#3b5b7a', true], ['This Is My Life', '62,904,118', '3:50', '#3b5b7a'], ['Desert Rain', '41,220,567', '3:46', '#6b5b3b'], ['Mono in Love', '5,108,442', '3:17', '#3b5b7a'], ['Love of My Life', '3,877,201', '3:28', '#5b3b4a']];
+  const popular = pd.map((d, i) => ({ n: d[4] ? '▮▮▮' : String(i + 1), t: d[0], plays: d[1], time: d[2],
+    style: 'display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 8px; border-radius: 4px; ' + (d[4] ? 'background: rgba(255,255,255,0.0605)' : ''),
+    num: 'width: 20px; flex-shrink: 0; text-align: right; font-variant-numeric: tabular-nums; font-size: ' + (d[4] ? '10px' : '14px') + '; color: ' + (d[4] ? '#60cdff' : '#9e9e9e'),
+    art: 'width: 36px; height: 36px; flex-shrink: 0; border-radius: 4px; background: ' + d[3],
+    title: 'flex-grow: 1; min-width: 0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (d[4] ? '#99ebff' : '#ffffff') }));
+  const albums = [['The Stereo Love Show', 'Album · 2012', '#3b5b7a'], ['Stereo Love', 'Single · 2009', '#4a5b7a'], ['Stereo Love Remixes', 'Album · 2010', '#3b4a6b']].map(a => ({ t: a[0], s: a[1], art: 'display: block; width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; background: ' + a[2] }));
+  const fans = [['Vika Jigulina', '#5b3b6b'], ['Inna', '#6b2f3b'], ['Akcent', '#2f5b6b'], ['Arash', '#4a3b2f']].map(f => ({ t: f[0], art: 'width: 88px; height: 88px; border-radius: 44px; background: ' + f[1] }));
+  return { modes, dots, lines, popular, albums, fans };
+}
+}
+</script>
+</body>
+</html>

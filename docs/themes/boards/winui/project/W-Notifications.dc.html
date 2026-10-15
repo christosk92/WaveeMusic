@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>InfoBars, toasts and notifications</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="position: relative; width: 1440px; height: 960px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tabs="home:Home|playlist:K-Pop Duets (러블리 듀엣):#6b3b4a" sel="1" badge="2" hint-size="1440px,88px"></dc-import>
+  <div style="display: flex; height: 800px; flex-shrink: 0">
+    <dc-import name="Shell-Nav" theme="dark" mode="open" sel="kpop" hint-size="280px,800px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); border-left: 1px solid rgba(255,255,255,0.0837); border-top-left-radius: 8px; padding: 16px 36px 0 36px; display: flex; flex-direction: column; gap: 20px; overflow: hidden">
+      <div role="status" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 8px 0 16px; box-sizing: border-box; border-radius: 4px; background: #433519; border: 1px solid rgba(0,0,0,0.1)">
+        <span style="width: 16px; height: 16px; border-radius: 8px; background: #fce100; color: #000; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 11px; font-weight: 700">!</span>
+        <span style="font-size: 14px; font-weight: 600; white-space: nowrap">Local playback needs a one-time setup</span>
+        <span style="font-size: 14px; color: #ffffff; flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Play tracks directly on this device. Wavee downloads a small one-time playback component.</span>
+        <button style="height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px; white-space: nowrap">Set up</button>
+        <button aria-label="Close" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg></button>
+      </div>
+      <div style="display: flex; gap: 24px; align-items: flex-end">
+        <div style="width: 168px; height: 168px; border-radius: 8px; background: #6b3b4a; flex-shrink: 0"></div>
+        <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0; flex-grow: 1">
+          <div style="font-size: 12px; line-height: 16px; color: #c5c5c5">Playlist · Public</div>
+          <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600">K-Pop Duets (러블리 듀엣)</h1>
+          <div style="font-size: 14px; line-height: 20px; color: #c5c5c5"><a href="#">Chris</a> · 312 songs · 17 hr 40 min</div>
+          <div style="display: flex; gap: 8px; align-items: center; padding-top: 12px">
+            <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg>Play</button>
+            <button style="height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px">Shuffle</button>
+            <button style="height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px">Invite</button>
+          </div>
+        </div>
+      </div>
+      <div role="table" aria-label="Tracks" style="display: flex; flex-direction: column">
+        <div role="row" style="display: grid; grid-template-columns: 48px minmax(0, 1.6fr) minmax(0, 1fr) 140px 72px; align-items: center; height: 36px; border-bottom: 1px solid rgba(255,255,255,0.0837); font-size: 12px; color: #c5c5c5"><span style="padding-left: 14px">#</span><span>Title</span><span>Album</span><span>Date added</span><span style="text-align: right; padding-right: 8px">Time</span></div>
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="7">
+          <div role="row" style="display: grid; grid-template-columns: 48px minmax(0, 1.6fr) minmax(0, 1fr) 140px 72px; align-items: center; height: 48px; margin-top: 2px; border-radius: 4px">
+            <span style="padding-left: 14px; font-size: 14px; color: #9e9e9e; font-variant-numeric: tabular-nums">{{r.n}}</span>
+            <span style="display: flex; align-items: center; gap: 12px; min-width: 0"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.t}}</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.a}}</span></span></span>
+            <span style="font-size: 14px; color: #c5c5c5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 12px">{{r.album}}</span>
+            <span style="font-size: 14px; color: #c5c5c5">{{r.added}}</span>
+            <span style="text-align: right; padding-right: 8px; font-size: 14px; color: #c5c5c5; font-variant-numeric: tabular-nums">{{r.time}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </main>
+  </div>
+  <dc-import name="Shell-Player" theme="dark" variant="music" pane="none" hint-size="1440px,72px"></dc-import>
+  <div aria-label="Notifications" role="dialog" style="position: absolute; right: 52px; top: 84px; width: 380px; box-sizing: border-box; border-radius: 8px; background: #2c2c2c; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 16px rgba(0,0,0,0.26); display: flex; flex-direction: column; overflow: hidden">
+    <div style="height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 16px; border-bottom: 1px solid rgba(255,255,255,0.0837)"><span style="flex-grow: 1; font-size: 14px; font-weight: 600">Notifications</span><a href="#" style="font-size: 12px">Mark all as read</a><button aria-label="Notification settings" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 5.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></button></div>
+    <div style="padding: 4px; display: flex; flex-direction: column">
+      <sc-for list="{{notes}}" as="n" hint-placeholder-count="4">
+        <a href="#" style="{{n.style}}"><span style="{{n.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-size: 14px; line-height: 20px; color: #fff">{{n.t}}</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5">{{n.s}}</span></span><span style="{{n.dot}}"></span></a>
+      </sc-for>
+    </div>
+  </div>
+  <div aria-live="polite" style="position: absolute; right: 24px; bottom: 96px; width: 380px; display: flex; flex-direction: column; gap: 8px">
+    <div role="status" style="display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 8px 0 16px; box-sizing: border-box; border-radius: 8px; background: #2c2c2c; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 16px rgba(0,0,0,0.26)">
+      <span style="width: 16px; height: 16px; border-radius: 8px; background: #60cdff; color: #000; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 11px; font-weight: 700">i</span>
+      <span style="flex-grow: 1; font-size: 14px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Playing on Living room speaker</span>
+      <button style="height: 32px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #99ebff; font: inherit; font-size: 14px">Play here</button>
+    </div>
+    <div role="status" style="display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 8px 0 16px; box-sizing: border-box; border-radius: 8px; background: #393d1b; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 16px rgba(0,0,0,0.26)">
+      <span style="width: 16px; height: 16px; border-radius: 8px; background: #6ccb5f; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.5 6 12l7.5-7.5" fill="none" stroke="#000" stroke-width="2"></path></svg></span>
+      <span style="flex-grow: 1; font-size: 14px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Added 3 songs to K-Pop Duets</span>
+      <button style="height: 32px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #99ebff; font: inherit; font-size: 14px">Undo</button>
+      <button aria-label="Dismiss" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg></button>
+    </div>
+    <div role="alert" style="display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 8px 0 16px; box-sizing: border-box; border-radius: 8px; background: #442726; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 16px rgba(0,0,0,0.26)">
+      <span style="width: 16px; height: 16px; border-radius: 8px; background: #ff99a4; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="8" height="8" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="#000" stroke-width="2.6" stroke-linecap="round"></path></svg></span>
+      <span style="flex-grow: 1; font-size: 14px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Can’t play — check your connection</span>
+      <button style="height: 32px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #99ebff; font: inherit; font-size: 14px">Retry</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+  const data = [['Love wins all', 'IU', 'The Winning', '12 Feb 2026', '4:31', '#7a6a5a'], ['Some', 'SOYOU, JUNGGIGO', 'Some', '12 Feb 2026', '3:23', '#6b4a5b'], ['Dream', 'Suzy, BAEKHYUN', 'Dream', '3 Mar 2026', '3:31', '#5b6b7a'], ['Bad Boy, Sad Girl', 'Kiki, Ash Island', 'Bad Boy, Sad Girl', '3 Mar 2026', '3:12', '#4a3b6b'], ['Lean on Me', 'HYOLYN, Changmo', 'Lean on Me', '18 Apr 2026', '3:38', '#6b5b2f'], ['Sweet Night', 'V', 'Itaewon Class OST', '2 Jun 2026', '3:34', '#2f4a5b'], ['Like a Star', 'Taeyeon, The One', 'Like a Star', '2 Jun 2026', '4:06', '#3b2f4a']];
+  const rows = data.map((d, i) => ({ n: String(i + 1), t: d[0], a: d[1], album: d[2], added: d[3], time: d[4], art: 'width: 40px; height: 40px; flex-shrink: 0; border-radius: 4px; background: ' + d[5] }));
+  const nt = [['New release from aespa: Whiplash', 'EP · 2 h ago', '#4a2f5b', 4, true], ['Arash announced a show in Amsterdam', 'Concert · 14 Nov · Ziggo Dome', '#4a3b2f', 16, true], ['Daniel added 4 songs to K-Pop Duets', 'Collaborative playlist · Yesterday', '#6b3b4a', 4, false], ['Your daylist changed to friday evening', 'Playlist · Yesterday', '#6b3b5b', 4, false]];
+  const notes = nt.map(n => ({ t: n[0], s: n[1], art: 'width: 40px; height: 40px; flex-shrink: 0; border-radius: ' + n[3] + 'px; background: ' + n[2],
+    dot: n[4] ? 'width: 8px; height: 8px; border-radius: 4px; background: #60cdff; flex-shrink: 0' : 'display: none',
+    style: 'display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 12px; box-sizing: border-box; border-radius: 4px; color: #fff' }));
+  return { rows, notes };
+}
+}
+</script>
+</body>
+</html>

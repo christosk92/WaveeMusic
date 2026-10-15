@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shell, Compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1840px; height: 1000px; box-sizing: border-box; padding: 24px 24px 0 24px; display: grid; grid-template-columns: repeat(4, 400px); gap: 48px; overflow: hidden; background: #141414; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+
+  <div style="display: flex; flex-direction: column; gap: 8px">
+    <span style="height: 64px; font-size: 12px; line-height: 16px; color: #9e9e9e">1 · At rest, tabs On. LeftMinimal: no rail; hamburger, Back, Search button, bell and avatar in the toolbar. Selected tab keeps its label; the rest are icon tabs. Mini player 64 with a 2 px progress edge.</span>
+    <div style="position: relative; width: 400px; height: 860px; display: flex; flex-direction: column; border-radius: 8px; overflow: hidden; background: #202020; border: 1px solid rgba(255,255,255,0.0837)">
+      <dc-import name="Shell-Top" theme="dark" tier="compact" width="400" tabs="home:Home|album:The Stereo Love Show:#3b5b7a|artist:Arash:#4a3b2f" sel="0" badge="2" hint-size="400px,88px"></dc-import>
+      <main style="flex-grow: 1; min-height: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); padding: 16px 16px 0 16px; display: flex; flex-direction: column; gap: 12px; overflow: hidden">
+        <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Good evening, Chris</h1>
+        <div style="display: flex; gap: 4px; overflow: hidden; margin-right: -16px"><sc-for list="{{facets}}" as="f" hint-placeholder-count="4"><button style="{{f.style}}">{{f.label}}<span style="{{f.bar}}"></span></button></sc-for></div>
+        <h2 style="margin: 4px 0 0 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Jump back in</h2>
+        <div style="display: flex; flex-direction: column; gap: 4px">
+          <sc-for list="{{recent}}" as="r" hint-placeholder-count="6"><a href="#" style="display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 8px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1); color: #fff"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.t}}</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5">{{r.s}}</span></span></a></sc-for>
+        </div>
+      </main>
+      <dc-import name="Shell-Player" theme="dark" tier="mini" width="400" hint-size="400px,64px"></dc-import>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 8px">
+    <span style="height: 64px; font-size: 12px; line-height: 16px; color: #9e9e9e">2 · Hamburger pressed. The 280 pane slides in over the page (acrylic, flyout shadow, scrim). Light dismiss: tap outside, Esc or Back. The page never moves.</span>
+    <div style="position: relative; width: 400px; height: 860px; display: flex; flex-direction: column; border-radius: 8px; overflow: hidden; background: #202020; border: 1px solid rgba(255,255,255,0.0837)">
+      <dc-import name="Shell-Top" theme="dark" tier="compact" width="400" tabs="home:Home|album:The Stereo Love Show:#3b5b7a|artist:Arash:#4a3b2f" sel="0" badge="2" hint-size="400px,88px"></dc-import>
+      <main style="flex-grow: 1; min-height: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); padding: 16px 16px 0 16px; display: flex; flex-direction: column; gap: 12px; overflow: hidden">
+        <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Good evening, Chris</h1>
+        <div style="display: flex; flex-direction: column; gap: 4px; padding-top: 52px">
+          <sc-for list="{{recent}}" as="r" hint-placeholder-count="6"><a href="#" style="display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 8px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1); color: #fff"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.t}}</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5">{{r.s}}</span></span></a></sc-for>
+        </div>
+      </main>
+      <dc-import name="Shell-Player" theme="dark" tier="mini" width="400" hint-size="400px,64px"></dc-import>
+      <div aria-hidden="true" style="position: absolute; left: 0; right: 0; top: 88px; bottom: 0; background: rgba(0,0,0,0.3)"></div>
+      <div style="position: absolute; left: 0; top: 88px; bottom: 0; width: 280px; overflow: hidden; background: #2c2c2c; border-right: 1px solid rgba(0,0,0,0.2); border-top-right-radius: 8px; box-shadow: 0 8px 16px rgba(0,0,0,0.26)">
+        <dc-import name="Shell-Nav" theme="dark" mode="open" sel="home" height="772" hint-size="280px,772px"></dc-import>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 8px">
+    <span style="height: 64px; font-size: 12px; line-height: 16px; color: #9e9e9e">3 · Side panes are bottom sheets: 85 % high, grabber, the pane tabs on top. Queue, Lyrics, Now playing and Friends share one sheet that remembers its last tab. Swipe down or Esc closes it.</span>
+    <div style="position: relative; width: 400px; height: 860px; display: flex; flex-direction: column; border-radius: 8px; overflow: hidden; background: #202020; border: 1px solid rgba(255,255,255,0.0837)">
+      <dc-import name="Shell-Top" theme="dark" tier="compact" width="400" tabs="home:Home|album:The Stereo Love Show:#3b5b7a|artist:Arash:#4a3b2f" sel="1" hint-size="400px,88px"></dc-import>
+      <main style="flex-grow: 1; min-height: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 12px; overflow: hidden">
+        <div style="width: 160px; height: 160px; border-radius: 8px; background: #3b5b7a"></div>
+        <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">The Stereo Love Show</span>
+      </main>
+      <dc-import name="Shell-Player" theme="dark" tier="mini" width="400" hint-size="400px,64px"></dc-import>
+      <div aria-hidden="true" style="position: absolute; left: 0; right: 0; top: 0; bottom: 0; background: rgba(0,0,0,0.3)"></div>
+      <div role="dialog" aria-label="Queue" style="position: absolute; left: 0; right: 0; bottom: 0; height: 731px; box-sizing: border-box; display: flex; flex-direction: column; background: #2c2c2c; border: 1px solid rgba(0,0,0,0.2); border-bottom: 0; border-radius: 8px 8px 0 0; box-shadow: 0 -8px 16px rgba(0,0,0,0.26); overflow: hidden">
+        <span aria-hidden="true" style="align-self: center; width: 32px; height: 4px; margin-top: 8px; border-radius: 2px; background: rgba(255,255,255,0.3)"></span>
+        <div style="height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 0 4px 0 8px; border-bottom: 1px solid rgba(255,255,255,0.0837)">
+          <sc-for list="{{sheetTabs}}" as="t" hint-placeholder-count="4"><button style="{{t.style}}">{{t.label}}<span style="{{t.bar}}"></span></button></sc-for>
+          <span style="flex-grow: 1"></span>
+          <button aria-label="Close" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg></button>
+        </div>
+        <div style="padding: 12px 12px 0 12px; display: flex; flex-direction: column; gap: 4px; overflow: hidden">
+          <span style="font-size: 12px; color: #c5c5c5; padding: 0 4px 4px 4px">Playing from <a href="#">The Stereo Love Show</a></span>
+          <div style="display: flex; gap: 12px; align-items: center; padding: 8px; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)"><span style="width: 48px; height: 48px; border-radius: 4px; background: #3b5b7a"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; font-weight: 600; color: #99ebff">Stereo Love</span><span style="font-size: 12px; color: #c5c5c5">Edward Maya, Vika Jigulina</span></span></div>
+          <div style="display: flex; align-items: center; height: 40px; padding: 0 4px"><span style="font-size: 14px; font-weight: 600; flex-grow: 1">Next in queue</span><a href="#" style="font-size: 14px">Clear</a></div>
+          <sc-for list="{{queue}}" as="q" hint-placeholder-count="7"><div style="display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 0 0 8px; border-radius: 4px"><span style="{{q.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{q.t}}</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5">{{q.a}}</span></span><button aria-label="Reorder {{q.t}}" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #c5c5c5; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 6h10M3 10h10" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></button></div></sc-for>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 8px">
+    <span style="height: 64px; font-size: 12px; line-height: 16px; color: #9e9e9e">4 · Tabs Off: one 48 px bar, captions on the right, the other tabs kept for later (Q4). ⋯ on the mini player lists every control the bar no longer shows, in the same order as the full bar.</span>
+    <div style="position: relative; width: 400px; height: 860px; display: flex; flex-direction: column; border-radius: 8px; overflow: hidden; background: #202020; border: 1px solid rgba(255,255,255,0.0837)">
+      <dc-import name="Shell-Top" theme="dark" tier="compact" width="400" tabsOn="{{off}}" tabs="home:Home" sel="0" badge="2" hint-size="400px,48px"></dc-import>
+      <main style="flex-grow: 1; min-height: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); padding: 16px 16px 0 16px; display: flex; flex-direction: column; gap: 12px; overflow: hidden">
+        <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Good evening, Chris</h1>
+        <div style="display: flex; gap: 4px; overflow: hidden; margin-right: -16px"><sc-for list="{{facets}}" as="f" hint-placeholder-count="4"><button style="{{f.style}}">{{f.label}}<span style="{{f.bar}}"></span></button></sc-for></div>
+        <div style="display: flex; flex-direction: column; gap: 4px; padding-top: 8px">
+          <sc-for list="{{recent}}" as="r" hint-placeholder-count="6"><a href="#" style="display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 8px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1); color: #fff"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.t}}</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5">{{r.s}}</span></span></a></sc-for>
+        </div>
+      </main>
+      <dc-import name="Shell-Player" theme="dark" tier="mini" width="400" hint-size="400px,64px"></dc-import>
+      <div role="menu" aria-label="More player controls" style="position: absolute; right: 8px; bottom: 68px; width: 272px; box-sizing: border-box; padding: 4px; border-radius: 8px; background: #2c2c2c; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 16px rgba(0,0,0,0.26); display: flex; flex-direction: column">
+        <sc-for list="{{menu}}" as="m" hint-placeholder-count="9">
+          <sc-if value="{{m.sep}}" hint-placeholder-val="{{ false }}"><span style="display: block; height: 1px; margin: 4px -4px; background: rgba(255,255,255,0.0837)"></span></sc-if>
+          <sc-if value="{{m.item}}" hint-placeholder-val="{{ true }}"><button role="menuitem" style="height: 40px; display: flex; align-items: center; gap: 12px; padding: 0 12px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="{{m.d}}" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="flex-grow: 1; text-align: left">{{m.label}}</span><span style="font-size: 12px; color: #9e9e9e">{{m.note}}</span></button></sc-if>
+          <sc-if value="{{m.vol}}" hint-placeholder-val="{{ false }}"><div style="height: 40px; display: flex; align-items: center; gap: 12px; padding: 0 12px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6v4h2.5L8 13V3L5 6zM10.5 5.5a3.5 3.5 0 0 1 0 5M12.5 3.5a6 6 0 0 1 0 9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="position: relative; flex-grow: 1; height: 18px; display: flex; align-items: center"><span style="width: 100%; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.5442)"></span><span style="position: absolute; left: 0; width: 70%; height: 4px; border-radius: 2px; background: #60cdff"></span><span style="position: absolute; left: calc(70% - 9px); width: 18px; height: 18px; border-radius: 9px; background: #454545; display: flex; align-items: center; justify-content: center"><span style="width: 12px; height: 12px; border-radius: 6px; background: #60cdff"></span></span></span></div></sc-if>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1840,"height":1000}}'>
+class Component extends DCLogic {
+renderVals() {
+  const fs = (l, s) => ({ label: l, style: 'position: relative; height: 40px; flex-shrink: 0; padding: 0 12px; border: 0; background: transparent; font: inherit; font-size: 14px; color: ' + (s ? '#ffffff' : '#c5c5c5'), bar: s ? 'position: absolute; left: 12px; right: 12px; bottom: 4px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' });
+  const facets = [fs('All', true), fs('Music', false), fs('Podcasts', false), fs('Audiobooks', false)];
+  const rec = [['The Stereo Love Show', 'Album · Edward Maya', '#3b5b7a', false], ['LoL Worlds Songs 2014–2026', 'Playlist · 70 songs', '#5b5b5b', false], ['Arash', 'Artist', '#4a3b2f', true], ['K-Pop Duets (러블리 듀엣)', 'Playlist · 312 songs', '#6b3b4a', false], ['Liked Songs', '1,284 songs', '#4a3b6b', false], ['Coffee & Code', 'Podcast', '#4a5b3b', false]];
+  const recent = rec.map(r => ({ t: r[0], s: r[1], art: 'width: 40px; height: 40px; flex-shrink: 0; border-radius: ' + (r[3] ? '20px' : '4px') + '; background: ' + r[2] }));
+  const tab = (l, s) => ({ label: l, style: 'position: relative; height: 40px; padding: 0 10px; border: 0; background: transparent; font: inherit; font-size: 14px; white-space: nowrap; color: ' + (s ? '#ffffff' : '#c5c5c5'), bar: s ? 'position: absolute; left: 10px; right: 10px; bottom: 2px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' });
+  const sheetTabs = [tab('Queue', true), tab('Lyrics', false), tab('Now playing', false), tab('Friends', false)];
+  const qr = (t, a, c) => ({ t, a, art: 'width: 40px; height: 40px; flex-shrink: 0; border-radius: 4px; background: ' + c });
+  const queue = [qr('Supernova', 'aespa', '#5b2f6b'), qr('Days of Thunder', 'The Midnight', '#6b4a2f'), qr('This Is My Life', 'Edward Maya', '#3b5b7a'), qr('Mono in Love', 'Edward Maya, Andreea Banica', '#3b5b7a'), qr('Happy for You', 'Edward Maya', '#3b5b7a'), qr('Friends Forever', 'Edward Maya', '#3b5b7a'), qr('Twinheart', 'Edward Maya', '#3b5b7a')];
+  const I = { prev: 'M3 3v10M13 3.5v9L5.5 8z', shuffle: 'M2 4h2.5c1.4 0 2.3.7 3.2 1.9l1.6 2.2c.9 1.2 1.8 1.9 3.2 1.9H14M2 12h2.5c1.4 0 2.3-.7 3.2-1.9M8.3 5.9c.9-1.2 1.8-1.9 3.2-1.9H14M12 2l2 2-2 2M12 8l2 2-2 2', repeat: 'M3 7V5.5A1.5 1.5 0 0 1 4.5 4H13M11 2l2 2-2 2M13 9v1.5a1.5 1.5 0 0 1-1.5 1.5H3M5 14l-2-2 2-2', lyrics: 'M3 9.5V7a3 3 0 0 1 3-3M3 9.5h3v3H3zM10 9.5V7a3 3 0 0 1 3-3M10 9.5h3v3h-3z', queue: 'M2.5 4h11M2.5 8h7M2.5 12h7M11.5 9.5v4.5l3.5-2.25z', dev: 'M2 3.5h8.5v6H2zM4.5 12.5h3.5M12 6h2.5v7H12z', full: 'M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10' };
+  const it = (label, d, note) => ({ item: true, sep: false, vol: false, label, d, note: note || '' });
+  const menu = [it('Previous', I.prev), it('Shuffle', I.shuffle, 'Off'), it('Repeat', I.repeat, 'All'), { item: false, sep: true, vol: false }, it('Lyrics', I.lyrics), it('Queue', I.queue), it('Devices', I.dev, 'This PC'), { item: false, sep: false, vol: true }, { item: false, sep: true, vol: false }, it('Full screen', I.full, 'F11')];
+  return { facets, recent, sheetTabs, queue, menu, off: false };
+}
+}
+</script>
+</body>
+</html>

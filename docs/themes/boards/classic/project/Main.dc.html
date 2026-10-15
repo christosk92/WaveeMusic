@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>What changed in Classic</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;background:#202020}
+a{color:#a6d8ff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="min-height: 100vh; box-sizing: border-box; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; padding: 48px 16px 96px">
+  <div style="max-width: 1360px; margin: 0 auto; display: flex; flex-direction: column; gap: 32px">
+    <header style="display: flex; flex-direction: column; gap: 12px; max-width: 980px">
+      <div style="font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.03em; color: rgba(255,255,255,0.773)">Wavee themes · 1 of 4 · the default theme</div>
+      <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em">Wavee Classic, tuned</h1>
+      <p style="margin: 0; font-size: 16px; line-height: 24px; color: rgba(255,255,255,0.773)">Classic is the app people run today: Mica shell, the sidebar, the content card, tabs in the title bar, the one-row player bar, colour washes and the production motion. It is not a redesign. This board lists every change the theme makes to today’s app: bugs it fixes, gaps it fills, and the owner-approved decisions that are not on main yet (PR 205). Everything else stays exactly as production draws it.</p>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; line-height: 16px">
+        <span style="display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071)"><span style="width: 8px; height: 8px; border-radius: 2px; background: #60cdff"></span>Fix: a bug on main</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071)"><span style="width: 8px; height: 8px; border-radius: 2px; background: #6ccb5f"></span>Gap: a missing state, now drawn</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071)"><span style="width: 8px; height: 8px; border-radius: 2px; background: #fce100"></span>Decided: owner-approved, not on main yet</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071)"><span style="width: 8px; height: 8px; border-radius: 4px; border: 1.5px solid #ff99a4; box-sizing: border-box"></span>Owner check: changes a recognisable trait</span>
+      </div>
+    </header>
+
+    <section aria-label="Rules every fix follows" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px">
+      <div style="padding: 16px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098)"><div style="font-size: 14px; line-height: 20px; font-weight: 600">No layout jumps</div><div style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773); margin-top: 4px">Every new state reserves its height (InfoBars, facts, badges, skeletons) or animates its height. Nothing pushes content.</div></div>
+      <div style="padding: 16px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098)"><div style="font-size: 14px; line-height: 20px; font-weight: 600">Production motion is kept</div><div style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773); margin-top: 4px">Page swap 90 / 90 / 210, the artist photo arriving after the copy, Home zone rises: unchanged. Fixes only make them render on time.</div></div>
+      <div style="padding: 16px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098)"><div style="font-size: 14px; line-height: 20px; font-weight: 600">No feature is switched off</div><div style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773); margin-top: 4px">Pinned de-dup, washes, marquee, row styles, Liked covers and the artist bleed (Zune) all stay; a fix repairs them. The one hide (#199) is the owner’s own call.</div></div>
+    </section>
+
+    <sc-for list="{{groups}}" as="g" hint-placeholder-count="10">
+      <section aria-label="{{g.name}}" style="display: flex; flex-direction: column; gap: 8px">
+        <div style="display: flex; align-items: baseline; gap: 12px; padding-bottom: 4px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.006em">{{g.name}}</h2><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.529)">{{g.count}}</span></div>
+        <div style="overflow-x: auto; border-radius: 8px; border: 1px solid rgba(255,255,255,0.082); background: rgba(58,58,58,0.298)">
+          <div style="min-width: 980px">
+            <div style="display: grid; grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1.25fr) 230px; gap: 16px; padding: 10px 16px; font-size: 11px; line-height: 15px; font-weight: 600; color: rgba(255,255,255,0.529); border-bottom: 1px solid rgba(255,255,255,0.082)"><span>ID</span><span>Today (bug or gap)</span><span>Classic now</span><span>Source</span></div>
+            <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="5">
+              <div style="display: grid; grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1.25fr) 230px; gap: 16px; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px; line-height: 19px">
+                <span style="display: flex; flex-direction: column; gap: 6px; align-items: flex-start"><span style="{{r.idStyle}}">{{r.id}}</span><sc-if value="{{r.chk}}" hint-placeholder-val="{{false}}"><span style="font-size: 10px; line-height: 14px; color: #ff99a4; border: 1px solid rgba(255,153,164,0.5); border-radius: 3px; padding: 0 4px">owner check</span></sc-if></span>
+                <span style="color: rgba(255,255,255,0.773)">{{r.today}}</span>
+                <span>{{r.now}}</span>
+                <span style="font-size: 12px; line-height: 17px; color: rgba(255,255,255,0.62); font-family: 'Cascadia Mono', Consolas, monospace">{{r.src}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </section>
+    </sc-for>
+
+    <section aria-label="What deliberately stays" style="display: flex; flex-direction: column; gap: 12px">
+      <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">What deliberately stays (Classic identity)</h2>
+      <p style="margin: 0; font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.773); max-width: 900px">The WinUI audit flags some of these as Fluent breaks. In Classic they are the look, so they stay exactly as production draws them.</p>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px">
+        <sc-for list="{{keeps}}" as="k" hint-placeholder-count="8">
+          <div style="padding: 14px 16px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); display: flex; flex-direction: column; gap: 4px"><div style="font-size: 14px; line-height: 20px; font-weight: 600">{{k.t}}</div><div style="font-size: 12px; line-height: 17px; color: rgba(255,255,255,0.773)">{{k.d}}</div></div>
+        </sc-for>
+      </div>
+    </section>
+
+    <section aria-label="Not in Classic" style="display: flex; flex-direction: column; gap: 8px; max-width: 980px">
+      <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Left out on purpose</h2>
+      <ul style="margin: 0; padding-left: 20px; font-size: 13px; line-height: 20px; color: rgba(255,255,255,0.773)">
+        <li>Zune-only work (artist full bleed, pivot band, row 2, D-3, D-8): it belongs to the Zune theme, not Classic.</li>
+        <li>Purely behavioural bugs with no drawable change: title-bar hit regions after a switch (G2), the first click lost in the hidden scrollbar lane (D2), FLIP capture order, audio lag (#113). They still get fixed, in core or the engine.</li>
+        <li>New features asked for in issues: custom palettes (#184, a future theme option), waveform timecode (#154), mixes (#48), a mini player (#197 follow-up).</li>
+        <li>Sortable column headers (WinUI audit §7): a feature, not a fix; the Sort menu covers it.</li>
+      </ul>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":5200}}'>
+class Component extends DCLogic {
+renderVals() {
+  const C = { fix: '#60cdff', gap: '#6ccb5f', dec: '#fce100' };
+  const row = (id, kind, today, now, src, chk) => ({ id, today, now, src, chk: !!chk,
+    idStyle: 'display: inline-flex; align-items: center; height: 22px; padding: 0 7px; border-radius: 4px; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; color: #000; background: ' + C[kind] });
+  const G = (name, rows) => ({ name, rows, count: rows.length + (rows.length === 1 ? ' change' : ' changes') });
+  const groups = [
+    G('Frame and shell', [
+      row('F1', 'fix', 'The content card’s hairline stopped rendering (CardStroke measured 0 tall), so Classic reads as one flat surface.', 'Card keeps its top-left r8 and a 1 px StrokeCardDefault on the left and top edges. Classic only; geometry always laid out, so a theme switch only recolours it.', 'round4 I1-A · D-1 · c8e1f487'),
+      row('F2', 'fix', 'Light theme on artwork pages: the cover tone plane (Rich 0.45) darkens the lifted card back to chrome luminance; card and chrome merge.', 'Tone plane alpha capped at Subtle while a pane is docked: the card always sits one step lighter than the chrome.', 'round4 I1-B'),
+      row('F3', 'fix', 'Page margins vary: ~24 in the sidebar, 32 in master panes, 40–48 in detail pages.', 'One page gutter 36 / 32 / 16 by width (24 hysteresis), one pane inset 16. Head rhythm: title → meta 4, head → body 24.', 'WinUI audit §9 · PR 205 PageGeometry'),
+      row('F4', 'fix', 'Three title styles on one screen (Library: Light “Albums”, Bold “Arash”, Semibold cards).', 'One style per level: page title 40/52 Display 400 (Browse, Search, Recents, Library, Settings, Liked), pane title 28/36/600, card title 20/28/600. Artist display keeps 700.', 'WinUI audit §4', true),
+      row('F5', 'dec', 'Browse sub-pages draw display-size dimmed crumbs; the Concerts hub repeats its title under its own hero.', 'Breadcrumb B: the sidebar parent stays selected; one page title plus a small trail of only the ancestors (12/16/600 links, › separators). Depth ≤ 2 has no trail. A hero is the title. Head height is fixed per route.', 'EQEH Crumb-B · shell decisions 10 Oct · Fable G'),
+      row('F6', 'fix', 'Search box snaps narrow on blur while its text slides (3 frames under the avatar); the flyout opens as a 20–40 px strip then jumps; Esc closes it with no exit.', 'Box width and content animate together and never cover tabs or avatar (min(expand, room − 12)). Flyout = box width and left edge, opens with skeleton rows reserving its height (max 560), fades its busy bar in a fixed slot, leaves with the flyout exit.', 'round4 C1–C4 · 011f7deb · 16419a60'),
+      row('F7', 'fix', 'Page swap: the new crumb head paints over the old body; a leaving Home re-renders without its daylist; Home’s 3 px busy bar slides across under the facets.', 'A leaving page is frozen for its 90 ms exit; the new head arrives with its body on the 210 ms enter leg; the busy bar has a fixed 3 px slot and only fades. 90 / 90 / 210 unchanged.', 'round4 A2, A3, A5 · Fable B.4'),
+      row('F8', 'fix', 'At short heights the window condenses until title bar, content and player overlap (719 × 350 screenshot). Only MinWidth 300 exists.', 'Window MinHeight so title bar 48 + a usable content area + player 72 always fit.', 'issue #197'),
+      row('F9', 'fix', 'Start-up: the shell paints, then the setup plate opens 1–2 frames later; auto-zoom rescales the UI ~500 ms after launch; bare Mica before the first frame; width tiers paint the default tier for one frame.', 'The first presented frame is final: wizard-or-shell, zoom and width tier are decided before it, and the window is revealed on it.', 'map-shell §0.2(a)(d) · map-engine §4.4 #1, #9'),
+      row('F10', 'fix', 'Light/dark switch: caption ink and backdrop snap while colours cross-fade; cached list chrome and parked pages keep old colours for a few frames.', 'One 250 ms cross-fade for every colour, caption ink included; cached chrome and parked pages re-theme with everything else.', 'map-engine §4.4 #4–6'),
+      row('F11', 'fix', 'Entrance tracks start mid-way on their first presented frame, so the 250 ms fades and 400 ms rises show up as 1–2 frame pops.', 'Every reveal starts on its first presented frame. The choreography itself is unchanged; it is finally seen as designed.', 'Fable B.7, F.2'),
+      row('F12', 'fix', 'After a KeepAlive drop or a style switch a page can paint one frame at the top, then jump to its saved offset.', 'Scroll offset is applied in the first layout pass.', 'abstraction-map E8'),
+      row('F13', 'dec', 'A sun/moon toggle sits in the title bar beside the caption buttons.', 'Light/dark lives in Settings › Appearance and the profile menu; the caption-side island keeps search-collapsed and bell only.', 'abstraction-map §4 #1 · PR 205')
+    ]),
+    G('Sidebar', [
+      row('S1', 'dec', 'A footer row (Settings + ⋯) at the bottom of the pane and the rail; the owner calls it pointless.', 'No footer in the pane or the rail; the height goes to the scroller. Pane menu: right-click empty space or the seam, Shift+F10. Settings: profile menu, Ctrl+K, new Ctrl+,.', 'D-5 · D-11 · c8e1f487'),
+      row('S2', 'fix', 'Row counts and the hover ⋯ collide; a 26 px reserve wastes the row end.', 'Count right-aligned in one ⋯-wide slot; on hover the ⋯ cross-fades into the same slot. Pin and equalizer stay left.', 'round4 I2 · ba8583d1'),
+      row('S3', 'fix', 'Playlist text rows are 28 tall (Zune compaction leaked into Classic).', 'Text rows 36 tall, 40 pitch, the same as Collections.', 'round4 I3'),
+      row('S4', 'dec', 'Text-row labels at x 16, folder and collection labels at x 48.', 'Folder glyph at x 16 with an 8 gap: label at x 40.', 'D-2'),
+      row('S5', 'fix', 'The pin mark is a bare glyph; Pin is buried in Organize ▸.', 'Pin is a real 24 px button with the tooltip “Unpin”; Pin to sidebar / Unpin is a top-level item in the playlist and folder menu.', 'round4 J1, J2 · 37557e55'),
+      row('S6', 'fix', 'Hovering a section title lights the ⋯ and + buttons’ hover plates.', 'Header hover reveals ⋯ and + at their rest look; only the button under the pointer lights.', 'round4 J3'),
+      row('S7', 'fix', 'Collapsing Pinned makes the Collections header vanish; expand pops (333 ms, infinite slope), collapse snaps (167 ms); the scroll offset jumps; a second toggle snaps the first.', 'Headers never vanish; the pinned de-dup move animates (FLIP + fade). A symmetric slide, ~250 ms open / ~200 ms close on one curve, over the visible extent only; interruptible; scroll held; a second toggle queues.', 'round4 S1–S4 · expander memory'),
+      row('S8', 'fix', 'Long names truncate with no way to read them (“90s rock perm…”).', 'Every truncated row has a tooltip with the full name; overflow estimates include the pin button and count slot.', 'WinUI audit §2'),
+      row('S9', 'gap', 'Offline pins render like pending placeholders (a grey kind noun).', 'Offline pins keep their last title and cover at tertiary emphasis with the tooltip “Not available offline”.', 'map-shell P3 §2 (SidebarPinState.Offline)'),
+      row('S10', 'gap', 'A failed library load never shows its error UI (Failed is never published); the Library grid shows nothing while loading.', 'Failed with rows: a banner + Retry above the list. Failed with none: the Error vacancy + Retry. Grid view: skeleton tiles at the real cell size.', 'map-shell P3 §2 (Sidebar.Host.cs:1773)')
+    ]),
+    G('Player bar', [
+      row('P1', 'fix', 'Queue appears only at the Wide tier (≥ 1100), after the inline volume slider.', 'Queue shows from the Compact tier up, ahead of Lyrics, Volume and Shuffle/Repeat. Space comes from the seek bar and gaps, never from button sizes.', 'round4 L2 · d20fe9bf'),
+      row('P2', 'fix', 'Right-cluster buttons mix sizes and stroke weights; Devices is boxed differently when latched.', 'One 32 box with a 16 glyph for every right-cluster button; latched Lyrics, Queue, Devices and Video share one checked plate.', 'WinUI audit §8'),
+      row('P3', 'dec', 'Player style (Cassette, iPod, Zune…) is selectable in three places but has no effect on Now Playing.', 'The Player style entries are hidden until the presets drive Now Playing; the presets themselves stay in the code and on this canvas.', 'issue #199 (owner)')
+    ]),
+    G('Side panel, lyrics, full screen', [
+      row('R1', 'fix', 'A lyrics type-size step re-keys the column: the text jumps.', 'The column stays mounted; lines reflow with an animation and the active line stays anchored.', 'map-shell P4 (Lyrics.UI.cs:107)'),
+      row('R2', 'gap', 'Offline reads as “No lyrics available” or an endless shimmer.', 'Cached lyrics still show. Uncached: the offline voice “Lyrics need a connection” with Retry.', 'map-shell P4 §2'),
+      row('R3', 'fix', 'The now-playing equalizer can freeze as three full-height bars until pause/resume.', 'The equalizer always animates, after KeepAlive returns and structural snaps too.', 'round4 K1 · engine c9c43183'),
+      row('R4', 'dec', 'On PR 205 the artist photo bleeds under the title bar above the Classic panel.', 'Classic’s panel stays a card under the title bar; no bleed in Classic.', 'round4 G4 · D-4'),
+      row('R5', 'fix', 'Full screen: one flat 0.42 scrim for every face; faces read light/dark ink from two sources.', 'Per-face scrim depth as documented; one ink polarity for every face.', 'map-shell P4 · §0.2 #8')
+    ]),
+    G('Home', [
+      row('H1', 'fix', 'A failed facet inserts an InfoBar under the facet row and pushes everything down.', 'The InfoBar has a reserved slot under the facets; the content below never moves.', 'map-pages §3.1'),
+      row('H2', 'fix', 'Episode captions are literal English (“27 min”, “… left”).', 'Localised captions.', 'map-pages §5 (EpisodeCaption.cs:19)')
+    ]),
+    G('Album, playlist, artist, Liked Songs', [
+      row('D1', 'dec', 'Rail CTA: Play pill + ♥ + Share; Shuffle lives only in the list bar.', 'Rail action row: [Play │ ⌄] accent split (121) · Shuffle (32 icon) · quiet ♥ · Share · ⋯ (Download, Add to folder, Copy link).', 'Detail-Bar board, option C (round 3)'),
+      row('D2', 'fix', 'The split shows a bright line between halves, a separate outline on the chevron, an 8 px chevron.', 'One accent control: one elevation border, an opaque divider with a 20 px ink hairline at 20 %, 12 px chevron, tooltip “More ways to play”: Add to queue · Play next · Start radio.', 'round4 N1 · f33984ae'),
+      row('D3', 'dec', 'List bar: Play next, Shuffle, Sort, Row size, Select, ⋯, find, funnel, in one crowded run.', 'Left: production’s [Play next │ ⌄] [Shuffle]. Right: [Filter (n)] [Sort ⌄] [Find] [Insights] [⋯]. Row size, Select and Columns move into ⋯.', 'D-6 · D-10 · shell decisions 10 Oct'),
+      row('D4', 'dec', 'Albums show no song count or length anywhere; the bar’s left side was going to be empty.', '“13 songs · 1 hr 14 min” in the rail meta under title and artist (albums too); a find or filter shows “3 of 13 songs”. Width reserved.', 'D-7 · D-10'),
+      row('D5', 'dec', 'Filtering hides behind a bare funnel icon; the flyout is a long form of collapsibles.', 'Filter is a labelled action with a count badge in a reserved slot. Flyout B: “Filter · 32 of 69 songs · Reset”, one row per filter with a 168 px ComboBox, toggles for liked and playable, changes apply at once.', 'EQEH Filter-B · shell decisions'),
+      row('D6', 'fix', 'Sort shows two direction marks (“⇅ Date added ▼ ⌄”) and is accent-lit even at the default.', 'One label and one chevron; Ascending/Descending are radio items in the menu; accent only when the sort differs from the page default.', 'round4 D4 · WinUI audit §6'),
+      row('D7', 'dec', 'Five chip vocabularies; Liked’s unselected chips are invisible on dark.', 'One chip: the stock ToggleButton, 32 tall, r4, checked = accent. Liked, Search filters, Profile lists, Concerts, Library head.', 'shell decisions · 5a3154fe'),
+      row('D8', 'fix', 'The chip rail’s fade runs into the sort button (“Soundtra|⇅”).', '8 px trailing margin and a 24 px edge fade before the tools.', 'round4 D3'),
+      row('D9', 'fix', 'Rows sit ~8 px from the rail; plates start ~13 px left of the header rule (two left edges).', 'Rail panel ends 16 before the plates; header rule and row plates share one left edge.', 'round4 B1 · V10'),
+      row('D10', 'fix', 'Album skeleton shows chips and bars, then snaps to About + Fans + Featured on.', 'The skeleton draws the real order and heights: About card ~110, Fans shelf ~198, Featured on (always reserved), video.', 'round4 B2'),
+      row('D11', 'fix', 'A rail scrollbar line pops in after load.', 'Thumb hidden until hover, from frame one.', 'round4 B3'),
+      row('D12', 'fix', '“Featured on” wears a 50 % accent outline that reads as a stuck focus ring.', 'Plain tile; the playing outline is for Home Recents and the queue only.', 'round4 B4'),
+      row('D13', 'fix', 'Some artwork-tinted Play buttons are pale blue with dark text and look disabled.', 'Artwork accent always passes 4.5 : 1: step to a darker or lighter rung, else the system accent.', 'WinUI audit §5'),
+      row('D14', 'fix', 'Under width pressure the rail’s artist faces stay and the names truncate.', 'Wide: faces + names. Medium: lead face, names wrap to 2 lines. Narrow: no faces. Steps with hysteresis.', 'round4 L1'),
+      row('D15', 'fix', 'Album → album: the skeleton wears the previous page’s tone; the tone cross-fades after the page lands.', 'The tone claim lands on the route commit and cross-fades with the page enter.', 'Fable A.9, F.7'),
+      row('D16', 'dec', 'Liked Songs: mosaic rail, hearts on every row, striping, insights open in the rail.', 'Approved redesign: no rail, slim head “Liked Songs · 387 songs · 23 hr 54 min”, one bar (split Play, Shuffle, chips, Filter, Sort, Find, Insights, ⋯), hover heart, no striping, date groups, Insights a sheet closed by default, full-width header rule.', 'round 3 (a20702ed) · D-9'),
+      row('D17', 'dec', 'PR 205 leaked the artist bleed into Classic.', 'Classic artist header is the pre-bleed production header: photo inside the card, normal chrome ink, every tier.', 'D-4 · G1 · G5'),
+      row('D18', 'fix', 'Medium tier: the bio runs over the dark half of the photo (copy 95 % wide, veil gone at 62 %).', 'Copy width min(CopyMax, max(360, 0.56w − gutter)); the veil hold follows the copy edge.', 'round4c V4'),
+      row('D19', 'fix', 'Top tracks reveals in a second wave after the rest of the body.', 'Top tracks is part of the body reveal; sections below keep reserved skeleton heights.', 'round4c (chart gate)'),
+      row('D20', 'fix', 'Five Play forms: circles, rectangles, pale splits.', 'One header Play: accent r4 32, split where a menu exists. Circles stay for overlay FABs and the player bar.', 'WinUI audit §6', true),
+      row('D21', 'fix', 'Follow uses a heart, the same glyph as Like.', 'Follow toggle with a person glyph: “Follow” / “Following” (check).', 'WinUI audit §6', true)
+    ]),
+    G('Library', [
+      row('Y1', 'fix', 'Four tints side by side: sidebar, navigator, detail pane, inner bands.', 'Navigator and detail on the one content card, split by a 1 px divider and a 16 grip; inner bands become plain sections.', 'WinUI audit §3', true),
+      row('Y2', 'fix', 'The library sort control shows two direction marks (“↑↓ Recents ▲”).', '“Recents ⌄”: one label and chevron; direction inside the menu. Word rails stay for scope.', 'WinUI audit §6 · round4 D4'),
+      row('Y3', 'fix', 'Artist reader: bare shuffle/share glyphs beside a bordered heart “Follow”.', 'Accent Play all · Follow toggle · quiet icon buttons with tooltips, 8 apart.', 'WinUI audit §6')
+    ]),
+    G('Track rows', [
+      row('L1', 'fix', 'A “›” chevron on every row (it opens versions) reads as navigation.', 'Only rows with versions show a chevron-down that rotates open; other rows keep the lane empty.', 'WinUI audit §7'),
+      row('L2', 'fix', 'Every Modern row shows an outline heart, ⋯ and a chevron at rest.', 'Rest: a filled heart only when liked. Outline heart and ⋯ on hover or focus, in reserved lanes.', 'WinUI audit §7', true),
+      row('L3', 'fix', 'Liked rows show a film glyph in the ⋯ slot that reads as a checkbox.', 'No glyph at rest; ⋯ on hover/focus; video marked by a small film glyph after the title.', 'round4 D6'),
+      row('L4', 'gap', 'Unavailable rows are just dimmed, with no reason.', 'Dimmed title plus the reason (“Not available in your country”, “Releases Nov 14”) in the duration lane and a tooltip; “Hide songs I can’t play” in Filter B.', 'map-pages §5 · EQEH Filter-B')
+    ]),
+    G('Settings', [
+      row('T1', 'fix', '70–90 px of empty space between “Settings” and the first card.', 'Head without meta (120 → 100); the first section header has no top margin.', 'round4 E2, F4 · e285b89e'),
+      row('T2', 'fix', 'Switching Settings sections swaps with no transition.', 'The standard page cross-fade.', 'map-shell P6 N7', true),
+      row('T3', 'gap', 'Presentation switches are scattered (row style, density, sidebar layout, washes, marquee, rail sizes, stage layout).', 'Appearance › Theme: a picker (Classic, WinUI, Zune, Zune Fluent, community) and “Classic options”, the options this theme defines.', 'BRIEF · abstraction-map §4, §6.1')
+    ]),
+    G('States', [
+      row('X1', 'gap', 'VacancyVoice.Offline is never used: offline shows cached rows or a generic error.', 'Cached pages: the offline strip “You’re offline · showing saved content”. Nothing cached: the Offline vacancy with Retry. Sidebar pins (S9) and lyrics (R2) follow.', 'map-pages §2.5'),
+      row('X2', 'fix', 'Skeletons whose shapes differ from the content snap on load.', 'Rule: every skeleton mirrors final shapes and heights (album, library grid, search flyout).', 'no-layout-jumps · round4 B2'),
+      row('X3', 'fix', 'Local playback dialog, Failed: the footer (~490 px) overflows the 460 dialog; “Try again” is clipped.', 'Footer wraps: links on their own row, buttons right-aligned.', 'round4 E1 · e285b89e')
+    ])
+  ];
+  const keeps = [
+    { t: 'Mica shell, one card', d: 'Title row, sidebar and player bar are unpainted Mica; only the content card (FileArea, top-left r8) and docked panels are painted.' },
+    { t: 'Title bar', d: 'Pane toggle, back/forward, tabs with the sliding 2 px accent underline, the centred search field, bell and friends.' },
+    { t: 'Sidebar', d: 'Classic and Library layouts, collapsible section headers, pinned de-dup out of Playlists, counts, density, Show covers, the 180–460 resizable pane and the compact rail.' },
+    { t: 'Player bar', d: 'One 72 px row, accent circular play, marquee title, seek thumb on hover, “-m:ss” remaining, the six width tiers.' },
+    { t: 'System accent and washes', d: 'Windows accent (no picker), artwork-derived accent on detail pages, Home radial washes, page tone planes, the daylist hero.' },
+    { t: 'Row styles', d: 'Modern (zebra, r6 plates, art, # numbers, equalizer) and Classic (hairlines, one line, the whole playing row in accent), four densities.' },
+    { t: 'Detail frame', d: 'Cover rail beside the list (Automatic) and the vertical hero (narrow or Hero option), resizable rail.' },
+    { t: 'Side panel', d: 'Lyrics with depth-of-field blur, Queue in two skins, Now playing; no tabs, opened from the player bar.' },
+    { t: 'Motion', d: 'Page swap 90 / 90 / 210, album FadeOnly 250, Home zones Rise 400 with 40 ms stagger, artist copy first then the photo (250 fade + 1.03 zoom).' },
+    { t: 'Home', d: 'Facet words as the title, the daylist card, zones, Recently played grid with the history tile.' },
+    { t: 'Library and Recents', d: 'Navigator + pane, lower-case word rails for scope, Recents pivots and calendar.' },
+    { t: 'Full screen', d: 'Four stage layouts, 19 visualizer faces, transport card, gallery, options popover.' }
+  ];
+  return { groups, keeps };
+}
+}
+</script>
+</body>
+</html>

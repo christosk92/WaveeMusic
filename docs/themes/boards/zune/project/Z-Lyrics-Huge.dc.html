@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune lyrics, full screen: huge window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 2560px; height: 1440px; box-sizing: border-box; background: #0f0f0f; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <div aria-hidden="true" style="position: absolute; left: -200px; top: 200px; width: 1100px; height: 1100px; border-radius: 550px; background: #6b2f4a; filter: blur(220px); opacity: 0.45"></div>
+  <div style="position: relative; height: 56px; flex-shrink: 0; display: flex; align-items: center; padding: 0 24px 0 64px; gap: 28px; font-size: 14px; color: #a8a8a8">
+    <span>now playing · full screen</span>
+    <span style="flex-grow: 1"></span>
+    <span style="display: flex; gap: 28px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; line-height: 28px; font-weight: 350"><a href="#" style="color: #ffffff; font-weight: 600">lyrics</a><a href="#">visualizer</a><a href="#">up next</a><a href="#">artist</a></span>
+    <span style="flex-grow: 1"></span>
+    <a href="#">translate</a><a href="#">resync</a><a href="#" style="color: #ffffff">exit full screen</a>
+  </div>
+  <div style="position: relative; flex-grow: 1; min-height: 0; display: flex; gap: 96px; padding: 40px 64px 0 64px; overflow: hidden">
+    <div style="width: 440px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px">
+      <span role="img" aria-label="OutRun cover" style="width: 440px; height: 440px; border-radius: 2px; background: #6b2f4a; display: block"></span>
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; margin-top: 18px">nightcall</span>
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; line-height: 28px; color: {{accent}}">Kavinsky · OutRun</span>
+      <span style="font-size: 13px; color: #7a7a7a; margin-top: 8px">synced lyrics · musixmatch</span>
+    </div>
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 26px; padding-bottom: 80px; -webkit-mask-image: linear-gradient(180deg, transparent, #000 16%, #000 84%, transparent); mask-image: linear-gradient(180deg, transparent, #000 16%, #000 84%, transparent)">
+      <sc-for list="{{lines}}" as="l" hint-placeholder-count="9">
+        <span style="{{l.style}}">{{l.text}}</span>
+        <sc-if value="{{l.hasSub}}" hint-placeholder-val="{{ false }}"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 32px; line-height: 40px; font-weight: 300; color: #a8a8a8; margin-top: -12px">{{l.sub}}</span></sc-if>
+      </sc-for>
+    </div>
+    <div style="width: 440px; flex-shrink: 0; display: flex; flex-direction: column">
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px; height: 48px">up next</span>
+      <sc-for list="{{next}}" as="r" hint-placeholder-count="6"><a href="#" style="display: grid; grid-template-columns: 64px minmax(0, 1fr) 52px; align-items: center; height: 64px; color: #ffffff"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.title}}</span><span style="font-size: 13px; color: #9c9c9c">{{r.artist}}</span></span><span style="font-size: 13px; color: #7a7a7a; text-align: right; font-variant-numeric: tabular-nums">{{r.time}}</span></a></sc-for>
+      <a href="#" style="font-size: 13px; margin-top: 12px">see the whole queue</a>
+    </div>
+  </div>
+  <div style="position: relative; height: 120px; flex-shrink: 0; background: rgba(10,10,10,0.9); display: flex; flex-direction: column; padding: 0 64px">
+    <div style="display: flex; align-items: center; gap: 16px; height: 40px; font-size: 13px; color: #a8a8a8; font-variant-numeric: tabular-nums"><span>1:14</span><span style="flex-grow: 1; height: 2px; background: rgba(255,255,255,0.12); display: block"><span style="{{progress}}"></span></span><span>-3:04</span></div>
+    <div style="display: flex; align-items: center; height: 80px; gap: 24px">
+      <span style="width: 480px; font-size: 14px; color: #7a7a7a">playing from playlist · <span style="color: #ffffff">late night drive</span></span>
+      <span style="flex-grow: 1; display: flex; align-items: center; justify-content: center; gap: 28px">
+        <button aria-label="shuffle" style="width: 44px; height: 44px; border: 0; background: transparent; color: {{accent}}; font-size: 20px; padding: 0">⇄</button>
+        <button aria-label="previous" style="width: 44px; height: 44px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="22" height="22" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 3h2v10H3zM13 3 6 8l7 5z"/></svg></button>
+        <button aria-label="pause" style="{{playDisc}}"><svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg></button>
+        <button aria-label="next" style="width: 44px; height: 44px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="22" height="22" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M11 3h2v10h-2zM3 3l7 5-7 5z"/></svg></button>
+        <button aria-label="repeat" style="width: 44px; height: 44px; border: 0; background: transparent; color: #a8a8a8; font-size: 20px; padding: 0">↻</button>
+      </span>
+      <span style="width: 480px; display: flex; align-items: center; justify-content: flex-end; gap: 8px; font-size: 14px">
+        <button aria-label="save to liked songs" style="width: 44px; height: 44px; border: 0; background: transparent; color: #ffffff; font-size: 20px; padding: 0">♡</button>
+        <span style="width: 160px; height: 2px; background: rgba(255,255,255,0.18); display: block"><span style="display: block; width: 70%; height: 2px; background: #ffffff"></span></span>
+        <button style="height: 44px; border: 0; background: transparent; color: #a8a8a8; font: inherit; padding: 0 10px">this computer ▾</button>
+        <button aria-label="more" style="width: 44px; height: 44px; border: 0; background: transparent; color: #a8a8a8; font-size: 20px; padding: 0">⋯</button>
+      </span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const src = [['[THREE LINES BACK]', 0.1], ['[THE LINE TWO BACK]', 0.16], ['[THE LINE JUST SUNG]', 0.28], ['[THE LINE BEING SUNG NOW]', 1, '[its translation, when translate is on]'], ['[THE NEXT LINE]', 0.56], ['[THE LINE AFTER THAT]', 0.34], ['[TWO LINES AHEAD]', 0.2], ['[THREE LINES AHEAD]', 0.12]];
+  const lines = src.map((d) => ({
+    text: d[0], hasSub: !!d[2], sub: d[2] || '',
+    style: 'font-family: ' + D + '; font-size: ' + (d[1] === 1 ? 72 : 56) + 'px; line-height: ' + (d[1] === 1 ? 80 : 64) + 'px; font-weight: 300; letter-spacing: -1px; white-space: nowrap; color: ' + (d[1] === 1 ? accent : '#ffffff') + '; opacity: ' + d[1],
+  }));
+  const next = [['Get Lucky', 'Daft Punk', '6:09', '#3a2f22'], ['Instant Crush', 'Daft Punk', '5:37', '#3a2f22'], ['Resonance', 'HOME', '3:32', '#2f5b6b'], ['Tech Noir', 'Gunship', '4:56', '#5b3b6b'], ['Sunset', 'The Midnight', '5:07', '#6b4a2f'], ['Turbo Killer', 'Carpenter Brut', '3:16', '#6b2f2f']].map((d) => ({ title: d[0], artist: d[1], time: d[2], art: 'width: 52px; height: 52px; border-radius: 2px; background: ' + d[3] + '; display: block' }));
+  return {
+    accent, lines, next,
+    progress: 'display: block; width: 29%; height: 2px; background: ' + accent,
+    playDisc: 'width: 64px; height: 64px; border-radius: 32px; border: 0; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; padding: 0',
+  };
+}
+}
+</script>
+</body>
+</html>

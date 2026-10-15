@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune album: small window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 800px; height: 600px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <div style="position: absolute; left: 0; top: 0; right: 0; height: 420px; background: linear-gradient(180deg, #3a2f22 0%, #2a241c 45%, #161616 100%)"></div>
+  <div style="position: relative; flex-shrink: 0; display: flex; flex-direction: column">
+    <dc-import name="Z-Part-TitleBar" tier="small" crumb="daft punk › random access memories" accent="{{accent}}" hint-size="800px,48px"></dc-import>
+    <dc-import name="Z-Part-Band" tier="small" section="library" sub="songs,more by daft punk,credits,fans also like" on="songs" title="random access memories" actions="saved" collapsed="true" accent="{{accent}}" hint-size="800px,52px"></dc-import>
+  </div>
+  <div style="position: relative; flex-grow: 1; min-height: 0; overflow: hidden">
+    <div style="position: absolute; left: 18px; top: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 200; line-height: 72px; letter-spacing: -1px; white-space: nowrap; color: #ffffff; opacity: 0.92">random access memories</div>
+    <div style="position: absolute; left: 24px; right: 24px; top: 80px; bottom: 0; display: flex; gap: 32px">
+      <div style="width: 160px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px">
+        <span style="width: 160px; height: 160px; border-radius: 2px; background: #3a2f22; display: block; box-shadow: 0 0 0 1px rgba(255,255,255,0.06); margin-bottom: 4px"></span>
+        <a href="#" style="font-size: 18px; line-height: 24px; color: #ffffff">Daft Punk</a>
+        <span style="font-size: 13px; line-height: 18px; color: #a8a8a8">album · may 17, 2013 · 13 songs · 74 min</span>
+        <div style="display: flex; gap: 12px; padding-top: 6px">
+          <button aria-label="play" style="{{playRing}}">▶</button>
+          <button aria-label="saved" style="{{ringOn}}">♥</button>
+          <button aria-label="share" style="{{ring}}">↗</button>
+        </div>
+      </div>
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+        <div style="height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 16px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">songs</span><span style="font-size: 13px; color: #7a7a7a">13 · 74 min</span><span style="flex-grow: 1"></span><span style="font-size: 12px; color: #7a7a7a; width: 56px; text-align: right; padding-right: 44px">time</span></div>
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="7">
+          <div style="{{r.rowStyle}}">
+            <span style="{{r.numStyle}}">{{r.num}}</span>
+            <span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="{{r.titleStyle}}">{{r.title}}</span><span style="{{r.subStyle}}">{{r.sub}}</span></span>
+            <span style="{{r.timeStyle}}">{{r.time}}</span>
+            <button aria-label="more" style="{{r.moreStyle}}">⋯</button>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="medium" title="Get Lucky" artist="Daft Punk" art="#3a2f22" progress="41" saved="false" accent="{{accent}}" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const data = [['Give Life Back to Music', 'Daft Punk', '4:34'], ['The Game of Love', 'Daft Punk', '5:21'], ['Giorgio by Moroder', 'Daft Punk', '9:04'], ['Within', 'Daft Punk', '3:48'], ['Instant Crush', 'Daft Punk, Julian Casablancas', '5:37'], ['Lose Yourself to Dance', 'Daft Punk, Pharrell Williams', '5:53'], ['Touch', 'Daft Punk, Paul Williams', '8:18']];
+  const rows = data.map((d, i) => {
+    const hover = i === 4;
+    return {
+      num: String(i + 1), title: d[0], sub: d[1], time: hover ? '♡' : d[2],
+      rowStyle: 'display: grid; grid-template-columns: 48px minmax(0, 1fr) 56px 40px; align-items: center; height: 52px; flex-shrink: 0; ' + (hover ? 'background: rgba(255,255,255,0.05)' : ''),
+      numStyle: 'font-family: ' + D + '; font-weight: 300; font-size: 22px; line-height: 28px; padding-left: 4px; color: #7a7a7a; font-variant-numeric: tabular-nums',
+      titleStyle: 'font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #ffffff',
+      subStyle: 'font-size: 13px; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #9c9c9c',
+      timeStyle: 'font-size: ' + (hover ? 16 : 13) + 'px; text-align: right; font-variant-numeric: tabular-nums; color: ' + (hover ? '#ffffff' : '#9c9c9c'),
+      moreStyle: 'width: 40px; height: 40px; border: 0; background: transparent; color: ' + (hover ? '#ffffff' : '#7a7a7a') + '; font-size: 16px; padding: 0; opacity: ' + (hover ? 1 : 0),
+    };
+  });
+  return {
+    accent, rows,
+    playRing: 'width: 36px; height: 36px; border-radius: 18px; border: 0; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; font-size: 13px; padding: 0',
+    ringOn: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid ' + accent + '; background: transparent; color: ' + accent + '; display: flex; align-items: center; justify-content: center; font-size: 13px; padding: 0',
+    ring: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #ffffff; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 13px; padding: 0',
+  };
+}
+}
+</script>
+</body>
+</html>

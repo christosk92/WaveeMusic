@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Multi-select</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="heart:Liked Songs" sel="0" w="1440" hint-size="1440px,48px"></dc-import>
+  <div style="display: flex; height: 780px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="classic" sel="liked" h="780" hint-size="280px,780px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; display: flex; flex-direction: column; overflow: hidden">
+      <header style="height: 156px; flex-shrink: 0; box-sizing: border-box; padding: 24px 36px 4px; display: flex; flex-direction: column">
+        <h1 style="margin: 0; height: 52px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em">Liked Songs</h1>
+        <span style="margin-top: 4px; height: 16px; font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">1,284 songs · 71 hr 3 min</span>
+        <div role="toolbar" aria-label="Selection" style="margin-top: 12px; height: 44px; box-sizing: border-box; padding: 6px 8px; display: flex; align-items: center; gap: 4px; border-radius: 4px; background: rgba(96,205,255,0.10)">
+          <button aria-label="Cancel selection" style="width: 32px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: #fff">✕</button>
+          <span style="font-size: 14px; font-weight: 600; padding: 0 8px 0 2px">3 selected</span>
+          <span style="width: 1px; height: 20px; background: rgba(255,255,255,0.15); margin: 0 6px"></span>
+          <button style="height: 32px; padding: 0 12px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px; font-weight: 600">▶ Play</button>
+          <button style="height: 32px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit; font-size: 14px">Add to queue</button>
+          <button style="height: 32px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit; font-size: 14px">Add to playlist ⌄</button>
+          <button style="height: 32px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit; font-size: 14px">Remove from Liked Songs</button>
+          <span style="flex-grow: 1"></span>
+          <button style="height: 32px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #a6d8ff; font: inherit; font-size: 14px; font-weight: 600">Select all 1,284</button>
+        </div>
+      </header>
+      <div style="padding: 0 28px">
+        <dc-import name="C-TrackList" theme="dark" rs="modern" set="liked" n="10" check="{{true}}" marks="2:checked,3:checked,5:checked,4:hover" hint-size="100%,520px"></dc-import>
+      </div>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="1440" hint-size="1440px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

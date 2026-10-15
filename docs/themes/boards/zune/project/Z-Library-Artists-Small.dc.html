@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune collection: artists · small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 800px; height: 600px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="small" crumb="library › artists › kavinsky" accent="{{accent}}" hint-size="800px,48px"></dc-import>
+  <dc-import name="Z-Part-Band" tier="small" section="library" sub="liked,playlists,albums,artists,podcasts,audiobooks" on="artists" accent="{{accent}}" hint-size="800px,84px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; padding: 4px 24px 0 24px; gap: 12px; overflow: hidden">
+    <div style="display: flex; align-items: center; gap: 20px; font-size: 13px; color: #a8a8a8; height: 28px; flex-shrink: 0">
+      <button style="height: 28px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0; display: flex; align-items: center; gap: 6px">alphabetical <span style="font-size: 10px; color: #a8a8a8">▾</span></button>
+      <span style="width: 1px; height: 14px; background: rgba(255,255,255,0.14)"></span>
+      <a href="#" style="color: #ffffff">all</a><a href="#">followed only</a>
+      <span style="flex-grow: 1"></span>
+      <label style="display: flex; align-items: center; gap: 8px; color: #7a7a7a"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><input type="search" placeholder="find in artists" style="border: 0; border-bottom: 1px solid rgba(255,255,255,0.18); background: transparent; color: #fff; font: inherit; font-size: 13px; width: 120px; outline: none; padding: 2px 0"></label>
+      <span>184 artists</span>
+    </div>
+    <div style="flex-grow: 1; min-height: 0; display: flex; gap: 24px">
+      <div style="width: 200px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden">
+        <sc-for list="{{artists}}" as="a" hint-placeholder-count="10">
+          <a href="#" style="{{a.row}}"><span style="{{a.letter}}">{{a.l}}</span><span style="{{a.name}}">{{a.n}}</span><span style="font-size: 12px; color: #7a7a7a; text-align: right; padding-right: 4px">{{a.count}}</span></a>
+        </sc-for>
+      </div>
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; overflow: hidden">
+        <div style="flex-shrink: 0; position: relative; overflow: hidden; display: flex; flex-direction: column; gap: 4px; padding: 14px 20px 14px 20px; background: linear-gradient(180deg, #4a2436 0%, #2a1c24 75%, #161616 100%)">
+          <span style="position: absolute; right: -40px; top: -40px; width: 220px; height: 220px; border-radius: 110px; background: #5c2a40; opacity: 0.55"></span>
+          <span style="position: relative; font-size: 12px; color: #c8c8c8">artist · following · 2 albums and 1 single in your library</span>
+          <span style="position: relative; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 200; line-height: 68px; letter-spacing: -1.5px; margin-left: -4px; white-space: nowrap">kavinsky</span>
+          <span style="position: relative; display: flex; gap: 18px; align-items: center; font-size: 14px; padding-top: 4px">
+            <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #fff; font: inherit; padding: 0"><span style="{{playRing}}">▶</span>play all</button>
+            <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #fff; font: inherit; padding: 0"><span style="{{ring}}">⇄</span>shuffle</button>
+            <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #fff; font: inherit; padding: 0"><span style="{{ring}}">→</span>go to artist</button>
+          </span>
+        </div>
+        <div style="display: flex; align-items: baseline; gap: 12px; flex-shrink: 0"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">albums</span><span style="font-size: 13px; color: #7a7a7a">in your library · <a href="#">discography</a></span></div>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+          <sc-for list="{{albums}}" as="al" hint-placeholder-count="3">
+            <a href="#" style="display: flex; flex-direction: column; gap: 6px; min-width: 0"><span style="{{al.art}}"></span><span style="{{al.name}}">{{al.n}}</span><span style="font-size: 12px; color: #a8a8a8">{{al.sub}}</span></a>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="medium" title="Nightcall" artist="Kavinsky" art="#6b2f4a" progress="29" accent="{{accent}}" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const list = [['h', 'HOME', 2], ['i', 'ILLIT', 1], ['j', 'Justice', 3], ['k', 'Kavinsky', 3, true], ['', 'KISS OF LIFE', 1], ['m', 'M83', 4], ['n', 'NewJeans', 2], ['t', 'The Midnight', 5], ['', 'The Weeknd', 4], ['', 'Timecop1983', 2]];
+  const artists = list.map((d) => ({
+    l: d[0], n: d[1], count: String(d[2]),
+    row: 'display: grid; grid-template-columns: 28px minmax(0, 1fr) 28px; align-items: center; height: 34px; flex-shrink: 0; ' + (d[3] ? 'background: rgba(255,255,255,0.05)' : ''),
+    letter: 'font-family: ' + D + '; font-size: 20px; font-weight: 300; color: #7a7a7a; padding-left: 2px',
+    name: 'font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (d[3] ? '#ffffff; font-weight: 600' : '#c8c8c8'),
+  }));
+  const albums = [['OutRun', 'album · 2013', '#6b2f4a', true], ['Reborn', 'album · 2022', '#2f3b5b', false], ['Nightcall', 'single · 2010', '#3b2a4a', false]].map((d) => ({
+    n: d[0], sub: d[1],
+    art: 'width: 100%; aspect-ratio: 1 / 1; border-radius: 2px; background: ' + d[2] + '; display: block; box-sizing: border-box' + (d[3] ? '; outline: 2px solid ' + accent + '; outline-offset: 2px' : ''),
+    name: 'font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (d[3] ? accent : '#ffffff'),
+  }));
+  return {
+    accent, artists, albums,
+    playRing: 'width: 36px; height: 36px; border-radius: 18px; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; font-size: 13px',
+    ring: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #ffffff; display: flex; align-items: center; justify-content: center; font-size: 13px',
+  };
+}
+}
+</script>
+</body>
+</html>

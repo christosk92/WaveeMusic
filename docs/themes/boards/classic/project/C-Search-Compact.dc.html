@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Compact Search</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 400px; height: 860px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="search:daft punk" sel="0" w="400" tier="compact" search="focus" query="daft punk" hint-size="400px,48px"></dc-import>
+  <main style="height: 756px; flex-shrink: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); padding: 12px 0 0; display: flex; flex-direction: column; gap: 8px; overflow: hidden">
+    <h1 style="margin: 0 16px; flex-shrink: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em">daft punk</h1>
+    <div role="tablist" aria-label="Result types" style="display: flex; flex-shrink: 0; gap: 0; padding: 0 4px; border-bottom: 1px solid rgba(255,255,255,0.082); overflow: hidden; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent)">
+      <sc-for list="{{tabs}}" as="t" hint-placeholder-count="6"><button role="tab" aria-selected="{{t.sel}}" style="{{t.style}}">{{t.l}}<span style="font-size: 12px; color: rgba(255,255,255,0.529); margin-left: 6px">{{t.c}}</span><span style="{{t.bar}}"></span></button></sc-for>
+    </div>
+    <div role="list" aria-label="Songs" style="display: flex; flex-direction: column">
+      <sc-for list="{{songs}}" as="s" hint-placeholder-count="10"><div role="listitem" style="{{s.row}}"><span style="{{s.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="{{s.ts}}">{{s.t}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Song · {{s.a}}</span></span><button aria-label="{{s.sl}}" style="{{s.save}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{s.sd}}" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"></path></svg></button><button aria-label="More options for {{s.t}}" style="width: 40px; height: 40px; flex-shrink: 0; border: 0; border-radius: 4px; background: transparent; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.529)"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h.01M8 8h.01M13 8h.01" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path></svg></button></div></sc-for>
+    </div>
+  </main>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="400" tier="mini" hint-size="400px,56px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const tabs = [['All', ''], ['Songs', '612'], ['Albums', '48'], ['Playlists', '1000'], ['Artists', '24'], ['Podcasts & shows', '31']].map((t, i) => ({ l: t[0], c: t[1], sel: i === 1 ? 'true' : 'false',
+    style: 'position: relative; flex-shrink: 0; height: 44px; padding: 0 12px; border: 0; background: transparent; font: inherit; font-size: 14px; color: ' + (i === 1 ? '#fff' : 'rgba(255,255,255,0.773)'),
+    bar: i === 1 ? 'position: absolute; left: 12px; right: 12px; bottom: -1px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' }));
+  const S = [['Get Lucky', 'Daft Punk, Pharrell Williams, Nile Rodgers', 1], ['One More Time', 'Daft Punk', 0], ['Instant Crush', 'Daft Punk, Julian Casablancas', 1], ['Harder, Better, Faster, Stronger', 'Daft Punk', 0], ['Around the World', 'Daft Punk', 0], ['Lose Yourself to Dance', 'Daft Punk, Pharrell Williams', 0], ['Starboy', 'The Weeknd, Daft Punk', 1], ['Digital Love', 'Daft Punk', 0], ['Something About Us', 'Daft Punk', 0], ['Derezzed', 'Daft Punk', 0], ['Veridis Quo', 'Daft Punk', 0]];
+  const pal = ['#6d6d6d', '#3b3b6b', '#555', '#6b5b2f', '#2f2f2f', '#4a4a4a', '#8a2f2f', '#3b5b9b', '#5b3b6b', '#1d3a5a', '#3b6b4a'];
+  const songs = S.map((s, i) => ({ t: s[0], a: s[1], sl: s[2] ? 'Saved to Liked Songs' : 'Save to Liked Songs', sd: s[2] ? 'M3 8.5l3 3 7-7' : 'M8 3v10M3 8h10',
+    row: 'height: 60px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 4px 0 16px' + (i === 0 ? '; background: rgba(255,255,255,0.059)' : ''),
+    art: 'width: 44px; height: 44px; flex-shrink: 0; border-radius: 4px; background: ' + pal[i],
+    ts: 'font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis' + (i === 0 ? '; color: #a6d8ff' : ''),
+    save: 'width: 40px; height: 40px; flex-shrink: 0; border: 0; border-radius: 4px; background: transparent; display: flex; align-items: center; justify-content: center; color: ' + (s[2] ? '#60cdff' : 'rgba(255,255,255,0.773)') }));
+  return { tabs, songs };
+}
+}
+</script>
+</body>
+</html>

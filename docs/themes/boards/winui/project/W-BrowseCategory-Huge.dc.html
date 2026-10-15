@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Browse category Pop, Huge</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 2560px; height: 1440px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tier="huge" width="2560" tabs="home:Home|browse:Pop" sel="1" hint-size="2560px,88px"></dc-import>
+  <div style="display: flex; height: 1280px; flex-shrink: 0">
+    <dc-import name="Shell-Nav" theme="dark" mode="open" sel="browse" height="1280" hint-size="280px,1280px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); border-left: 1px solid rgba(255,255,255,0.0837); border-top-left-radius: 8px; padding: 24px 48px 0 48px; display: flex; flex-direction: column; gap: 24px; overflow: hidden">
+      <nav aria-label="Breadcrumb" style="display: flex; align-items: center; gap: 4px; height: 32px; font-size: 14px; flex-shrink: 0">
+        <a href="#" style="color: #c5c5c5; padding: 4px 4px; border-radius: 4px">Browse</a>
+        <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="color: #9e9e9e"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        <span style="padding: 4px 4px; font-weight: 600">Pop</span>
+      </nav>
+      <div style="display: flex; align-items: flex-end; gap: 32px; flex-shrink: 0">
+        <span style="width: 192px; height: 192px; border-radius: 8px; background: #E8115B; flex-shrink: 0"></span>
+        <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0; max-width: 760px">
+          <span style="font-size: 12px; line-height: 16px; color: #c5c5c5">Genre</span>
+          <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 68px; line-height: 80px; font-weight: 600">Pop</h1>
+          <span style="font-size: 14px; line-height: 20px; color: #c5c5c5">Official playlists, new albums and the charts, updated weekly.</span>
+        </div>
+        <span style="flex-grow: 1"></span>
+        <div style="display: flex; gap: 8px; align-items: center">
+          <sc-for list="{{chips}}" as="c" hint-placeholder-count="4"><a href="#" style="{{c.style}}">{{c.label}}</a></sc-for>
+        </div>
+      </div>
+      <sc-for list="{{shelves}}" as="sh" hint-placeholder-count="2">
+        <section style="display: flex; flex-direction: column; gap: 12px; flex-shrink: 0">
+          <div style="display: flex; align-items: baseline; gap: 12px"><h2 style="margin: 0; flex-grow: 1; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">{{sh.title}}</h2><a href="#" style="font-size: 14px">See all</a></div>
+          <div style="display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 20px">
+            <sc-for list="{{sh.cards}}" as="c" hint-placeholder-count="10"><a href="#" style="display: flex; flex-direction: column; gap: 8px; color: #fff; min-width: 0"><span style="{{c.art}}"></span><span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.title}}</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.sub}}</span></span></a></sc-for>
+          </div>
+        </section>
+      </sc-for>
+      <section style="display: flex; flex-direction: column; gap: 12px; flex-shrink: 0">
+        <div style="display: flex; align-items: baseline; gap: 12px"><h2 style="margin: 0; flex-grow: 1; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Pop artists</h2><a href="#" style="font-size: 14px">See all</a></div>
+        <div style="display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 20px">
+          <sc-for list="{{artists}}" as="c" hint-placeholder-count="10"><a href="#" style="display: flex; flex-direction: column; gap: 8px; align-items: center; color: #fff; text-align: center; min-width: 0"><span style="{{c.art}}"></span><span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 14px; line-height: 20px; font-weight: 600">{{c.title}}</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5">Artist</span></span></a></sc-for>
+        </div>
+      </section>
+      <section style="display: flex; flex-direction: column; gap: 12px; flex-shrink: 0">
+        <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Explore more genres</h2>
+        <div style="display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 20px">
+          <sc-for list="{{more}}" as="t" hint-placeholder-count="10"><a href="#" style="{{t.style}}">{{t.label}}</a></sc-for>
+        </div>
+      </section>
+    </main>
+  </div>
+  <dc-import name="Shell-Player" theme="dark" tier="huge" width="2560" variant="music" pane="none" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const card = (c) => ({ title: c[0], sub: c[1], art: 'display: block; width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; background: ' + c[2] });
+  const playlists = [['Today’s Top Hits', 'Spotify · 50 songs', '#6b2f3b'], ['Pop Rising', 'Spotify · 80 songs', '#2f5b6b'], ['Fresh Pop', 'Spotify · 60 songs', '#6b5b2f'], ['Teen Beats', 'Spotify · 75 songs', '#5b2f6b'], ['Pop Remix', 'Spotify · 50 songs', '#2f6b5b'], ['Soft Pop Hits', 'Spotify · 100 songs', '#6b4a2f'], ['Pop Sauce', 'Spotify · 75 songs', '#3b4a6b'], ['Pop All Day', 'Spotify · 100 songs', '#6b3b4a'], ['Feel-Good Pop', 'Spotify · 80 songs', '#2f6b4a'], ['Pop Up', 'Spotify · 60 songs', '#4a4a6b']].map(card);
+  const albums = [['Armageddon', 'aespa · 2024', '#5b2f6b'], ['How Sweet', 'NewJeans · 2024', '#6b2f3b'], ['SUPER REAL ME', 'ILLIT · 2024', '#6b5b2f'], ['Sticky', 'KISS OF LIFE · 2024', '#2f6b5b'], ['Odyssey', 'HOME · 2014', '#2f5b6b'], ['Endless Summer', 'The Midnight · 2016', '#6b4a2f'], ['Whiplash', 'aespa · 2024', '#4a2f5b'], ['I’VE MINE', 'IVE · 2023', '#6b3b4a'], ['The Stereo Love Show', 'Edward Maya · 2012', '#3b5b7a'], ['Superman', 'Arash · 2014', '#6b8f8a']].map(card);
+  const shelves = [{ title: 'Popular Pop playlists', cards: playlists }, { title: 'Pop albums', cards: albums }];
+  const artists = [['aespa', '#5b2f6b'], ['NewJeans', '#6b2f3b'], ['ILLIT', '#6b5b2f'], ['IVE', '#6b3b4a'], ['KISS OF LIFE', '#2f6b5b'], ['Red Velvet', '#5b3b6b'], ['Henry Moodie', '#6b5b2f'], ['Edward Maya', '#3b5b7a'], ['Inna', '#6b2f3b'], ['Akcent', '#2f5b6b']].map(a => ({ title: a[0], art: 'display: block; width: 100%; aspect-ratio: 1 / 1; border-radius: 50%; background: ' + a[1] }));
+  const more = [['K-pop', '#8D67AB'], ['Dance/Electronic', '#0D73EC'], ['Indie', '#148A08'], ['R&B', '#503750'], ['Hip-Hop', '#BA5D07'], ['Rock', '#E91429'], ['Latin', '#E13300'], ['Soul', '#DC148C'], ['Dutch music', '#27856A'], ['Chill', '#477D95']].map(t => ({ label: t[0], style: 'display: flex; align-items: flex-end; height: 120px; padding: 16px; box-sizing: border-box; border-radius: 8px; background: ' + t[1] + '; color: #fff; font-size: 16px; line-height: 20px; font-weight: 600; min-width: 0' }));
+  const ch = (l, s) => ({ label: l, style: 'height: 32px; display: inline-flex; align-items: center; padding: 0 12px; box-sizing: border-box; border-radius: 4px; font-size: 14px; white-space: nowrap; ' + (s ? 'background: rgba(255,255,255,0.0837); color: #fff; border: 1px solid rgba(255,255,255,0.0698)' : 'background: rgba(255,255,255,0.0605); color: #fff; border: 1px solid rgba(255,255,255,0.0698)') });
+  const chips = [ch('Playlists', false), ch('Albums', false), ch('Artists', false), ch('New releases', false)];
+  return { shelves, artists, more, chips };
+}
+}
+</script>
+</body>
+</html>

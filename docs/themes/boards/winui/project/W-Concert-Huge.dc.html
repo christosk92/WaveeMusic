@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Concert, huge window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 2560px; height: 1440px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tier="huge" width="2560" tabs="home:Home|concert:Arash · Paradiso" sel="1" hint-size="2560px,88px"></dc-import>
+  <div style="display: flex; height: 1280px; flex-shrink: 0">
+    <dc-import name="Shell-Nav" theme="dark" mode="open" sel="" height="1280" hint-size="280px,1280px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); border-left: 1px solid rgba(255,255,255,0.0837); border-top-left-radius: 8px; padding: 24px 48px 0 48px; display: flex; flex-direction: column; gap: 24px; overflow: hidden">
+      <nav aria-label="Breadcrumb" style="display: flex; align-items: center; gap: 4px; height: 32px; font-size: 14px">
+        <a href="#" style="color: #c5c5c5; padding: 4px">Concerts</a>
+        <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="color: #9e9e9e"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        <a href="#" style="color: #c5c5c5; padding: 4px">Arash</a>
+        <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="color: #9e9e9e"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        <span style="padding: 4px; font-weight: 600">Paradiso</span>
+      </nav>
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 48px; min-height: 0">
+        <div style="display: flex; flex-direction: column; gap: 32px; min-width: 0">
+          <div style="display: flex; gap: 32px; align-items: flex-end">
+            <div style="width: 232px; height: 232px; border-radius: 8px; background: #4a3b2f; flex-shrink: 0"></div>
+            <div style="display: flex; flex-direction: column; gap: 8px; min-width: 0; flex-grow: 1">
+              <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 16px; color: #c5c5c5"><span>Concert</span><span style="height: 20px; display: inline-flex; align-items: center; padding: 0 6px; border-radius: 4px; background: #393d1b; color: #6ccb5f">On sale</span></div>
+              <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600">Arash — Amsterdam</h1>
+              <div style="display: flex; align-items: center; gap: 24px; font-size: 18px; line-height: 24px; color: #c5c5c5">
+                <span style="display: flex; align-items: center; gap: 8px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v10h-11zM2.5 6.5h11M5 2v3M11 2v3" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg>Saturday 14 November 2026 · 20:00</span>
+                <span style="display: flex; align-items: center; gap: 8px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14s-4.5-4.2-4.5-7.5a4.5 4.5 0 0 1 9 0C12.5 9.8 8 14 8 14zM8 8a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg><a href="#">Paradiso</a> · Weteringschans 6, Amsterdam</span>
+                <span style="display: flex; align-items: center; gap: 8px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13zM8 4.5V8l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg>Doors open 19:00 · Ages 16+</span>
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center; padding-top: 12px">
+                <a href="#" style="height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 16px; border-radius: 4px; background: #60cdff; color: #000; font-size: 14px">Buy tickets<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 2.5h4.5V7M13.5 2.5 7 9M6 3.5H2.5v10h10V10" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></a>
+                <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg>Interested</button>
+                <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px">Add to calendar</button>
+                <button aria-label="Share" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M5 5.5l3-3 3 3M3.5 9v3.5h9V9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+              </div>
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 48px">
+            <section aria-label="Lineup" style="display: flex; flex-direction: column; gap: 8px; min-width: 0">
+              <div style="display: flex; align-items: baseline; gap: 8px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Lineup</h2><span style="font-size: 12px; color: #c5c5c5">3 artists</span></div>
+              <sc-for list="{{lineup}}" as="l" hint-placeholder-count="3">
+                <a href="#" style="display: flex; align-items: center; gap: 16px; height: 72px; padding: 0 8px; border-radius: 4px; color: #fff"><span style="{{l.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-size: 14px; line-height: 20px; font-weight: 600">{{l.name}}</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5">{{l.sub}}</span></span><span style="height: 32px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); font-size: 14px">{{l.btn}}</span></a>
+              </sc-for>
+            </section>
+            <section aria-label="Warm up: popular from Arash" style="display: flex; flex-direction: column; gap: 8px; min-width: 0">
+              <div style="display: flex; align-items: baseline; gap: 12px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; flex-grow: 1">Warm up: popular from Arash</h2><a href="#" style="font-size: 14px">Play all</a></div>
+              <div role="table" aria-label="Popular tracks" style="display: flex; flex-direction: column">
+                <sc-for list="{{popular}}" as="r" hint-placeholder-count="5">
+                  <div role="row" style="display: grid; grid-template-columns: 40px 40px minmax(0, 1fr) 160px 56px; gap: 12px; align-items: center; height: 48px; margin-top: 2px; border-radius: 4px"><span style="padding-left: 12px; font-size: 14px; color: #9e9e9e; font-variant-numeric: tabular-nums">{{r.num}}</span><span style="width: 40px; height: 40px; border-radius: 4px; background: #4a3b2f"></span><span style="font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.title}}</span><span style="text-align: right; font-size: 14px; color: #c5c5c5; font-variant-numeric: tabular-nums">{{r.plays}}</span><span style="text-align: right; padding-right: 8px; font-size: 14px; color: #c5c5c5; font-variant-numeric: tabular-nums">{{r.time}}</span></div>
+                </sc-for>
+              </div>
+            </section>
+          </div>
+          <section aria-label="Related concerts" style="display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; align-items: baseline; gap: 12px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; flex-grow: 1">Related concerts</h2><a href="#" style="font-size: 14px">See all</a></div>
+            <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px">
+              <sc-for list="{{related}}" as="r" hint-placeholder-count="3">
+                <a href="#" style="display: flex; flex-direction: column; gap: 12px; color: #fff">
+                  <span style="{{r.art}}"><span style="position: absolute; left: 12px; top: 12px; width: 56px; height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 4px; background: rgba(0,0,0,0.6)"><span style="font-size: 12px; color: #c5c5c5">{{r.mon}}</span><span style="font-size: 20px; font-weight: 600; line-height: 24px">{{r.day}}</span></span></span>
+                  <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 14px; line-height: 20px; font-weight: 600">{{r.name}}</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5">{{r.venue}}</span></span>
+                </a>
+              </sc-for>
+            </div>
+          </section>
+        </div>
+        <aside aria-label="Tickets and venue" style="display: flex; flex-direction: column; gap: 8px">
+          <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Tickets</h2>
+          <sc-for list="{{tickets}}" as="t" hint-placeholder-count="3">
+            <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)">
+              <div style="display: flex; align-items: center; gap: 8px"><span style="font-size: 14px; font-weight: 600; flex-grow: 1">{{t.name}}</span><span style="{{t.badge}}">{{t.status}}</span></div>
+              <div style="font-size: 12px; color: #c5c5c5">{{t.detail}}</div>
+              <a href="#" style="{{t.btn}}">{{t.cta}}</a>
+            </div>
+          </sc-for>
+          <span style="font-size: 12px; color: #9e9e9e; padding: 4px 0">Prices and availability come from each provider.</span>
+          <h2 style="margin: 0; padding-top: 16px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Venue</h2>
+          <div style="display: flex; flex-direction: column; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)">
+            <sc-for list="{{venue}}" as="v" hint-placeholder-count="4"><div style="{{v.style}}"><span style="color: #c5c5c5">{{v.k}}</span><span style="text-align: right">{{v.v}}</span></div></sc-for>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+  <dc-import name="Shell-Player" theme="dark" tier="huge" width="2560" variant="music" pane="none" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const lineup = [['Arash', 'Headliner · 20,577,457 monthly listeners', '#4a3b2f', 'Following'], ['The Openers', 'Support', '#3b5b6b', 'Follow'], ['Band of Silver', 'Support', '#6b5b2f', 'Follow']].map(l => ({ name: l[0], sub: l[1], btn: l[3], art: 'width: 56px; height: 56px; flex-shrink: 0; border-radius: 28px; background: ' + l[2] }));
+  const pd = [['One Day (feat. Helena) - Radio Edit', '214,018,301', '3:33'], ['Broken Angel (feat. Helena)', '402,776,114', '3:11'], ['Dooset Daram (feat. Helena)', '12,340,882', '3:24'], ['Boro Boro', '88,201,540', '3:47'], ['Temptation (feat. Rebecca)', '61,998,003', '3:20']];
+  const popular = pd.map((d, i) => ({ num: String(i + 1), title: d[0], plays: d[1], time: d[2] }));
+  const tickets = [
+    { name: 'Ticketmaster', status: 'Available', ok: true, detail: 'From €45 · on sale from 3 Oct', cta: 'Buy tickets' },
+    { name: 'Box office', status: 'Sold out', ok: false, detail: 'Paradiso box office · in person only', cta: 'Sold out or unavailable' },
+    { name: 'Resale partner', status: 'Available', ok: true, detail: 'From €89 · verified resale', cta: 'Buy tickets' }
+  ].map(t => ({ name: t.name, status: t.status, detail: t.detail, cta: t.cta,
+    badge: 'height: 20px; display: inline-flex; align-items: center; padding: 0 6px; border-radius: 4px; font-size: 12px; ' + (t.ok ? 'background: #393d1b; color: #6ccb5f' : 'background: rgba(255,255,255,0.0605); color: #c5c5c5'),
+    btn: 'height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; font-size: 14px; ' + (t.ok ? 'background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); color: #fff' : 'background: transparent; border: 1px solid rgba(255,255,255,0.0698); color: #5d5d5d') }));
+  const related = [['Nov', '15', 'Arash — Rotterdam', 'Ahoy · Rotterdam', '#4a3b2f'], ['Nov', '21', 'Inna — Amsterdam', 'AFAS Live · Amsterdam', '#5b3b4a'], ['Dec', '2', 'Edward Maya — Paris', 'Le Zénith · Paris', '#3b5b7a']].map(r => ({ mon: r[0], day: r[1], name: r[2], venue: r[3], art: 'position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 8px; background: ' + r[4] }));
+  const vd = [['Venue', 'Paradiso'], ['Address', 'Weteringschans 6, Amsterdam'], ['Doors', '19:00 · show 20:00'], ['Ages', '16+']];
+  const venue = vd.map((d, i) => ({ k: d[0], v: d[1], style: 'display: flex; justify-content: space-between; gap: 12px; height: 40px; align-items: center; padding: 0 16px; font-size: 14px; ' + (i ? 'border-top: 1px solid rgba(255,255,255,0.0837)' : '') }));
+  return { lineup, popular, tickets, related, venue };
+}
+}
+</script>
+</body>
+</html>

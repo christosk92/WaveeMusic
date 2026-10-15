@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Right panel</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}
+</style>
+</helmet>
+<aside aria-label="Now playing panel" style="{{vars}} {{s.root}}">
+  <sc-if value="{{isSheet}}" hint-placeholder-val="{{ false }}"><div aria-hidden="true" style="height: 12px; flex-shrink: 0; display: flex; align-items: flex-start; justify-content: center"><span style="width: 32px; height: 4px; border-radius: 2px; background: var(--t3)"></span></div></sc-if>
+  <div style="height: 40px; flex-shrink: 0; display: flex; align-items: center; margin-bottom: 4px">
+    <sc-for list="{{tabs}}" as="t" hint-placeholder-count="3">
+      <a href="#" style="{{t.style}}">{{t.label}}<sc-if value="{{t.on}}" hint-placeholder-val="{{ false }}"><span style="position: absolute; left: 12px; right: 12px; bottom: 4px; height: 3px; border-radius: 2px; background: var(--acc)"></span></sc-if></a>
+    </sc-for>
+    <span style="flex-grow: 1"></span>
+    <button aria-label="Close panel" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg></button>
+  </div>
+  <sc-if value="{{isQueue}}" hint-placeholder-val="{{ true }}">
+    <div style="display: flex; flex-direction: column; min-height: 0">
+      <div style="display: flex; gap: 4px; padding: 0 4px 8px 4px">
+        <button aria-pressed="true" style="height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border: 0; border-radius: 4px; background: var(--sub); color: var(--t1); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="color: var(--acct)"><path d="M2 4h2.5c1.4 0 2.3.7 3.2 1.9l1.6 2.2c.9 1.2 1.8 1.9 3.2 1.9H14M2 12h2.5c1.4 0 2.3-.7 3.2-1.9M8.3 5.9c.9-1.2 1.8-1.9 3.2-1.9H14M12 2l2 2-2 2M12 8l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg>Shuffle</button>
+        <button style="height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: var(--t1); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 7V5.5A1.5 1.5 0 0 1 4.5 4H13M11 2l2 2-2 2M13 9v1.5a1.5 1.5 0 0 1-1.5 1.5H3M5 14l-2-2 2-2" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg>Repeat</button>
+        <span style="flex-grow: 1"></span>
+        <button aria-label="Save queue as playlist" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></button>
+      </div>
+      <div style="font-size: 12px; line-height: 16px; color: var(--t2); padding: 4px 4px 4px 4px">Playing from <a href="#" style="color: var(--acct)">late night drive</a></div>
+      <div style="display: grid; grid-template-columns: 56px minmax(0, 1fr) 24px; align-items: center; height: 64px; padding: 0 4px">
+        <span style="width: 48px; height: 48px; border-radius: 4px; background: #6b2f4a"></span>
+        <span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; line-height: 20px; font-weight: 600; color: var(--acct)">Nightcall</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Kavinsky</span></span>
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="color: var(--acct)"><path d="M3 13V7M6.5 13V3M10 13V8M13.5 13V5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>
+      </div>
+      <div style="height: 36px; display: flex; align-items: flex-end; justify-content: space-between; padding: 0 4px 4px 4px"><span style="font-size: 14px; line-height: 20px; font-weight: 600">Next in queue</span><button style="height: 28px; padding: 0 8px; border: 0; border-radius: 4px; background: transparent; color: var(--acct); font: inherit; font-size: 14px">Clear</button></div>
+      <sc-for list="{{queued}}" as="r" hint-placeholder-count="2">
+        <div style="{{r.row}}"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.t}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.a}}</span></span><sc-if value="{{r.hover}}" hint-placeholder-val="{{ false }}"><button aria-label="Remove from queue" style="width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg></button></sc-if></div>
+      </sc-for>
+      <div style="height: 36px; display: flex; align-items: flex-end; padding: 0 4px 4px 4px"><span style="font-size: 14px; line-height: 20px; font-weight: 600">Next up from late night drive</span></div>
+      <sc-for list="{{upNext}}" as="r" hint-placeholder-count="4">
+        <div style="{{r.row}}"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.t}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.a}}</span></span><span></span></div>
+      </sc-for>
+      <div style="display: flex; align-items: center; gap: 12px; margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: var(--card); border: 1px solid var(--cardb)">
+        <span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 14px; line-height: 20px">Autoplay</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Similar music keeps playing</span></span>
+        <span role="switch" aria-checked="true" aria-label="Autoplay" style="width: 40px; height: 20px; border-radius: 10px; background: var(--acc); position: relative; display: block; flex-shrink: 0"><span style="position: absolute; top: 4px; left: 24px; width: 12px; height: 12px; border-radius: 6px; background: var(--onacc)"></span></span>
+      </div>
+    </div>
+  </sc-if>
+  <sc-if value="{{isLyrics}}" hint-placeholder-val="{{ false }}">
+    <div style="display: flex; flex-direction: column; gap: 14px; padding: 12px 8px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">
+      <span style="color: var(--t3)">I'm giving you a night call</span>
+      <span style="color: var(--t3)">to tell you how I feel</span>
+      <span style="color: var(--t1)">I want to drive you through the night</span>
+      <span style="font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif; font-size: 12px; line-height: 16px; font-weight: 400; color: var(--t2); margin-top: -10px">Synced lyrics · line follows playback</span>
+      <span style="color: var(--t2)">down the hills</span>
+      <span style="color: var(--t2)">I'm gonna tell you something</span>
+      <span style="color: var(--t2)">you don't want to hear</span>
+      <span style="color: var(--t2)">I'm gonna show you where it's dark</span>
+      <span style="color: var(--t2)">but have no fear</span>
+      <span style="font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif; font-size: 12px; line-height: 16px; font-weight: 400; color: var(--t3); margin-top: 8px">Lyrics provided by Musixmatch</span>
+    </div>
+  </sc-if>
+  <sc-if value="{{isDetails}}" hint-placeholder-val="{{ false }}">
+    <div style="display: flex; flex-direction: column; gap: 10px; padding: 4px">
+      <span style="width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; background: #6b2f4a; display: block"></span>
+      <span style="display: flex; flex-direction: column"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Nightcall</span><span style="font-size: 14px; line-height: 20px"><a href="#" style="color: var(--acct)">Kavinsky</a> · <a href="#" style="color: var(--acct)">OutRun</a></span></span>
+      <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 8px; background: var(--card); border: 1px solid var(--cardb); font-size: 12px; line-height: 16px">
+        <span style="font-size: 14px; line-height: 20px; font-weight: 600">Credits</span>
+        <span style="display: flex; justify-content: space-between"><span>Kavinsky</span><span style="color: var(--t2)">Main artist, composer</span></span>
+        <span style="display: flex; justify-content: space-between"><span>Lovefoxxx</span><span style="color: var(--t2)">Vocals</span></span>
+        <span style="display: flex; justify-content: space-between"><span>Guy-Manuel de Homem-Christo</span><span style="color: var(--t2)">Producer</span></span>
+      </div>
+    </div>
+  </sc-if>
+  <sc-if value="{{isFriends}}" hint-placeholder-val="{{ false }}">
+    <div style="display: flex; flex-direction: column; padding: 0 4px">
+      <div style="height: 36px; display: flex; align-items: flex-end; padding-bottom: 4px"><span style="font-size: 14px; line-height: 20px; font-weight: 600">Friend activity</span></div>
+      <sc-for list="{{friendRows}}" as="f" hint-placeholder-count="5">
+        <a href="#" style="display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; height: 60px; margin-top: 2px; border-radius: 4px; color: var(--t1)"><span style="{{f.avatar}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{f.name}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{f.track}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{f.ctx}}</span></span><span style="{{f.whenStyle}}">{{f.when}}</span></a>
+      </sc-for>
+      <span style="font-size: 12px; line-height: 16px; color: var(--t2); padding: 12px 0 0 0">Friends see what you play when Share my listening is on in Settings › Privacy.</span>
+    </div>
+  </sc-if>
+</aside>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"tab":{"editor":"enum","options":["queue","lyrics","details","friends"],"default":"queue"},"h":{"editor":"int","default":680,"min":300,"max":2100},"overlay":{"editor":"boolean","default":false},"mode":{"editor":"enum","options":["auto","inline","overlay","sheet"],"default":"auto"},"w":{"editor":"int","default":340,"min":300,"max":480},"friends":{"editor":"boolean","default":false},"$preview":{"width":340,"height":680}}'>
+class Component extends DCLogic {
+renderVals() {
+  const dark = (this.props.theme ?? 'dark') !== 'light';
+  const pink = (this.props.accent ?? 'windows') === 'pink';
+  const T = dark
+    ? { mica: '#202020', fly: '#2c2c2c', flyb: 'rgba(0,0,0,0.2)', div: 'rgba(255,255,255,0.0837)', card: 'rgba(255,255,255,0.0512)', cardb: 'rgba(0,0,0,0.1)', sub: 'rgba(255,255,255,0.0605)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff', shadow: '0 8px 16px rgba(0,0,0,0.26)' }
+    : { mica: '#f3f3f3', fly: '#fcfcfc', flyb: 'rgba(0,0,0,0.0578)', div: 'rgba(0,0,0,0.0803)', card: '#fbfbfb', cardb: 'rgba(0,0,0,0.0578)', sub: 'rgba(0,0,0,0.0373)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92', shadow: '0 8px 16px rgba(0,0,0,0.14)' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const tab = this.props.tab ?? 'queue';
+  const h = Number(this.props.h ?? 680);
+  const m0 = this.props.mode ?? 'auto';
+  const mode = m0 === 'auto' ? (this.props.overlay ? 'overlay' : 'inline') : m0;
+  const overlay = mode === 'overlay';
+  const isSheet = mode === 'sheet';
+  const w = Number(this.props.w ?? 340);
+  const friends = !!(this.props.friends ?? false);
+  const tabList = [['queue', 'Queue'], ['lyrics', 'Lyrics'], ['details', 'Details']].concat(friends ? [['friends', 'Friends']] : []);
+  const tabs = tabList.map((t) => ({ label: t[1], on: t[0] === tab,
+    style: 'position: relative; height: 40px; display: flex; align-items: center; padding: 0 12px; font-size: 14px; line-height: 20px; color: ' + (t[0] === tab ? 'var(--t1)' : 'var(--t2)') }));
+  const row = (hover) => 'display: grid; grid-template-columns: 48px minmax(0, 1fr) 28px; align-items: center; height: 52px; padding: 0 4px; margin-top: 2px; border-radius: 4px; background: ' + (hover ? 'var(--sub)' : 'transparent');
+  const art = (c) => 'width: 40px; height: 40px; border-radius: 4px; background: ' + c;
+  const queued = [['Get Lucky', 'Daft Punk, Pharrell Williams', '#3a2f22', false], ['Instant Crush', 'Daft Punk, Julian Casablancas', '#3a2f22', true]].map((d) => ({ t: d[0], a: d[1], art: art(d[2]), hover: d[3], row: row(d[3]) }));
+  const upNext = [['Resonance', 'HOME', '#2f5b6b'], ['Tech Noir', 'Gunship', '#5b3b6b'], ['Sunset', 'The Midnight', '#6b4a2f'], ['Turbo Killer', 'Carpenter Brut', '#6b2f2f']].map((d) => ({ t: d[0], a: d[1], art: art(d[2]), row: row(false) }));
+  const s = {
+    root: 'width: ' + w + 'px; height: ' + h + 'px; box-sizing: border-box; display: flex; flex-direction: column; padding: ' + (isSheet ? '8px 12px 12px 12px' : '8px 12px 12px 12px') + '; overflow: hidden; color: var(--t1); font-family: \'Segoe UI Variable Text\', \'Segoe UI\', system-ui, sans-serif; ' +
+      (isSheet ? 'background: var(--fly); border: 1px solid var(--flyb); border-bottom: 0; border-radius: 8px 8px 0 0; box-shadow: var(--shadow)' : overlay ? 'background: var(--fly); border: 1px solid var(--flyb); border-radius: 8px 0 0 8px; box-shadow: var(--shadow)' : 'background: var(--mica)')
+  };
+  const friendRows = [['emma.k', 'Midnight City · M83', 'late night drive', 'Now', '#6b4a7a', true], ['Jonas Visser', 'Tech Noir · Gunship', 'GUNSHIP', '12 min', '#2f5b6b', false], ['Sanne de Vries', 'How Sweet · NewJeans', 'Daily Mix 2', '1 h', '#6b3b5b', false], ['Daan Bakker', 'Blinding Lights · The Weeknd', 'After Hours', '3 h', '#5b6b3b', false], ['Mila', 'Resonance · HOME', 'Chill Mix', 'Yesterday', '#3b4a6b', false]].map((f) => ({ name: f[0], track: f[1], ctx: f[2], when: f[3],
+    avatar: 'width: 36px; height: 36px; border-radius: 18px; background: ' + f[4],
+    whenStyle: 'font-size: 12px; padding-right: 4px; color: ' + (f[5] ? 'var(--acct)' : 'var(--t3)') }));
+  return { vars, s, tabs, queued, upNext, friendRows, isSheet, isQueue: tab === 'queue', isLyrics: tab === 'lyrics', isDetails: tab === 'details', isFriends: tab === 'friends' };
+}
+}
+</script>
+</body>
+</html>

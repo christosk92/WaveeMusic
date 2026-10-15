@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Playlist followed, huge window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 2560px; height: 1440px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tier="huge" width="2560" tabs="home:Home|playlist:Today’s Top Hits:#6b2f3b|album:Armageddon:#5b2f6b" sel="1" hint-size="2560px,88px"></dc-import>
+  <div style="display: flex; height: 1280px; flex-shrink: 0">
+    <dc-import name="Shell-Nav" theme="dark" mode="open" sel="" height="1280" hint-size="280px,1280px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); border-left: 1px solid rgba(255,255,255,0.0837); border-top-left-radius: 8px; padding: 32px 48px 0 48px; display: flex; flex-direction: column; gap: 24px; overflow: hidden">
+      <div style="display: flex; gap: 32px; align-items: flex-end; flex-shrink: 0">
+        <div style="width: 232px; height: 232px; border-radius: 8px; background: #6b2f3b; flex-shrink: 0; box-shadow: 0 8px 16px rgba(0,0,0,0.26)"></div>
+        <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0; flex-grow: 1">
+          <div style="font-size: 14px; line-height: 20px; color: #c5c5c5">Playlist</div>
+          <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600">Today’s Top Hits</h1>
+          <div style="max-width: 760px; font-size: 14px; line-height: 20px; color: #c5c5c5">The hottest 50. Cover: aespa.</div>
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 14px; line-height: 20px; color: #c5c5c5"><span style="width: 24px; height: 24px; border-radius: 12px; background: #1db954"></span><span><a href="#">Spotify</a> · 50 songs · 36,201,114 saves · 2 hr 41 min</span></div>
+          <div style="display: flex; gap: 8px; align-items: center; padding-top: 16px">
+            <div style="display: flex; height: 32px; border-radius: 4px; overflow: hidden; background: #60cdff; color: #000; font-size: 14px"><button style="display: flex; align-items: center; gap: 8px; padding: 0 14px; border: 0; background: transparent; color: #000; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg>Play</button><span style="width: 1px; background: rgba(0,0,0,0.2)"></span><button aria-label="More play options" style="width: 32px; border: 0; background: transparent; color: #000; font: inherit; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></div>
+            <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h2.5c1.4 0 2.3.7 3.2 1.9l1.6 2.2c.9 1.2 1.8 1.9 3.2 1.9H14M2 12h2.5c1.4 0 2.3-.7 3.2-1.9M8.3 5.9c.9-1.2 1.8-1.9 3.2-1.9H14M12 2l2 2-2 2M12 8l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg>Shuffle</button>
+            <button aria-pressed="true" style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0837); border: 1px solid rgba(255,255,255,0.0698); color: #fff; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor" stroke="none"></path></svg>Following</button>
+            <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px">Copy to playlist</button>
+            <button aria-label="Share" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M5 5.5l3-3 3 3M3.5 9v3.5h9V9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+            <button aria-label="More" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+          </div>
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 48px; flex-grow: 1; min-height: 0">
+        <div role="table" aria-label="Tracks" style="display: flex; flex-direction: column; min-width: 0">
+          <div role="row" style="display: grid; grid-template-columns: 56px minmax(0, 1.6fr) minmax(0, 1fr) 160px 48px 80px 48px; align-items: center; height: 36px; flex-shrink: 0; border-bottom: 1px solid rgba(255,255,255,0.0837); font-size: 12px; color: #c5c5c5">
+            <span style="padding-left: 16px">#</span><span>Title</span><span>Album</span><span>Date added</span><span></span><span style="text-align: right; padding-right: 8px">Time</span><span></span>
+          </div>
+          <sc-for list="{{rows}}" as="r" hint-placeholder-count="12">
+            <div role="row" style="{{r.style}}">
+              <span style="{{r.num}}">{{r.n}}</span>
+              <span style="display: flex; align-items: center; gap: 16px; min-width: 0"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="{{r.title}}">{{r.t}}</span><a href="#" style="font-size: 14px; line-height: 20px; color: #c5c5c5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.a}}</a></span></span>
+              <a href="#" style="font-size: 14px; color: #c5c5c5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 16px">{{r.album}}</a>
+              <span style="font-size: 14px; color: #c5c5c5">{{r.added}}</span>
+              <span style="display: flex; align-items: center; justify-content: center; color: #fff">{{r.heart}}</span>
+              <span style="text-align: right; padding-right: 8px; font-size: 14px; color: #c5c5c5; font-variant-numeric: tabular-nums">{{r.time}}</span>
+              <span style="display: flex; align-items: center; justify-content: center; color: #fff">{{r.more}}</span>
+            </div>
+          </sc-for>
+        </div>
+        <aside aria-label="About this playlist" style="display: flex; flex-direction: column; gap: 24px; min-width: 0">
+          <section style="display: flex; flex-direction: column; gap: 8px">
+            <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">About this playlist</h2>
+            <div style="display: flex; flex-direction: column; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)">
+              <sc-for list="{{facts}}" as="f" hint-placeholder-count="4">
+                <div style="{{f.style}}"><span style="width: 120px; flex-shrink: 0; font-size: 12px; color: #9e9e9e">{{f.k}}</span><span style="font-size: 14px">{{f.v}}</span></div>
+              </sc-for>
+            </div>
+          </section>
+          <section style="display: flex; flex-direction: column; gap: 8px">
+            <div style="display: flex; flex-direction: column"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Recommended songs</h2><span style="font-size: 12px; line-height: 16px; color: #c5c5c5">Based on what’s in this playlist</span></div>
+            <div style="display: flex; flex-direction: column; padding: 8px 16px; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)">
+              <sc-for list="{{recs}}" as="r" hint-placeholder-count="4">
+                <div style="display: flex; align-items: center; gap: 12px; height: 56px"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.t}}</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.a}}</span></span><button aria-label="Copy {{r.t}} to a playlist" style="height: 32px; flex-shrink: 0; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px">Add</button></div>
+              </sc-for>
+            </div>
+          </section>
+          <section style="display: flex; flex-direction: column; gap: 8px">
+            <h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Artists in this playlist</h2>
+            <sc-for list="{{artists}}" as="a" hint-placeholder-count="3">
+              <div style="display: flex; align-items: center; gap: 12px; height: 64px; padding: 0 12px; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)"><span style="{{a.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><a href="#" style="font-size: 14px; line-height: 20px; font-weight: 600; color: #fff">{{a.t}}</a><span style="font-size: 12px; line-height: 16px; color: #c5c5c5">{{a.s}}</span></span><button aria-pressed="{{a.on}}" style="{{a.btn}}">{{a.label}}</button></div>
+            </sc-for>
+          </section>
+        </aside>
+      </div>
+    </main>
+  </div>
+  <dc-import name="Shell-Player" theme="dark" tier="huge" width="2560" variant="music" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const data = [['Supernova', 'aespa', 'Armageddon', '3 days ago', '2:58', '#5b2f6b', true, 'playing'], ['How Sweet', 'NewJeans', 'How Sweet', '5 days ago', '3:39', '#6b2f3b', false, ''], ['Magnetic', 'ILLIT', 'SUPER REAL ME', '1 week ago', '2:41', '#6b5b2f', false, 'hover'], ['Sticky', 'KISS OF LIFE', 'Sticky', '1 week ago', '2:52', '#2f6b5b', false, ''], ['Espresso', 'Sabrina Carpenter', 'Short n’ Sweet', '2 weeks ago', '2:55', '#6b4a2f', true, ''], ['Birds of a Feather', 'Billie Eilish', 'HIT ME HARD AND SOFT', '2 weeks ago', '3:30', '#2f5b6b', false, ''], ['Please Please Please', 'Sabrina Carpenter', 'Short n’ Sweet', '2 weeks ago', '3:06', '#6b4a2f', false, ''], ['Whiplash', 'aespa', 'Whiplash', '3 weeks ago', '3:03', '#2f3b5b', true, ''], ['APT.', 'ROSÉ, Bruno Mars', 'APT.', '3 weeks ago', '2:49', '#7a3b4a', false, ''], ['Die With A Smile', 'Lady Gaga, Bruno Mars', 'Die With A Smile', '4 weeks ago', '4:11', '#4a3b3b', false, ''], ['Good Luck, Babe!', 'Chappell Roan', 'Good Luck, Babe!', '1 month ago', '3:38', '#6b3b5b', false, ''], ['Cherish (My Love)', 'ILLIT', 'I’LL LIKE YOU', '1 month ago', '2:22', '#6b5b4a', false, '']];
+  const cols = 'grid-template-columns: 56px minmax(0, 1.6fr) minmax(0, 1fr) 160px 48px 80px 48px';
+  const rows = data.map((d, i) => { const p = d[7] === 'playing', h = d[7] === 'hover';
+    return { n: p ? '▮▮▮' : (h ? '▶' : String(i + 1)), t: d[0], a: d[1], album: d[2], added: d[3], time: d[4], heart: d[6] ? '♥' : (h ? '♡' : ''), more: h ? '⋯' : '',
+      style: 'display: grid; ' + cols + '; align-items: center; height: 72px; flex-shrink: 0; margin-top: 2px; border-radius: 4px; ' + (p || h ? 'background: rgba(255,255,255,0.0605)' : ''),
+      num: 'padding-left: 16px; font-variant-numeric: tabular-nums; font-size: ' + (p ? '10px' : '14px') + '; color: ' + (p ? '#60cdff' : (h ? '#ffffff' : '#9e9e9e')),
+      art: 'width: 64px; height: 64px; flex-shrink: 0; border-radius: 4px; background: ' + d[5],
+      title: 'font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (p ? '#99ebff' : '#ffffff') }; });
+  const fd = [['Made by', 'Spotify'], ['Length', '50 songs · 2 hr 41 min'], ['Saves', '36,201,114'], ['Cover', 'aespa']];
+  const facts = fd.map((f, i) => ({ k: f[0], v: f[1], style: 'display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 16px; ' + (i > 0 ? 'border-top: 1px solid rgba(255,255,255,0.0837)' : '') }));
+  const recs = [['Armageddon', 'aespa · Armageddon', '#5b2f6b'], ['Bubble Gum', 'NewJeans · How Sweet', '#6b2f3b'], ['Lucky Girl Syndrome', 'ILLIT · SUPER REAL ME', '#6b5b2f'], ['Taste', 'Sabrina Carpenter · Short n’ Sweet', '#6b4a2f']].map(r => ({ t: r[0], a: r[1], art: 'width: 40px; height: 40px; flex-shrink: 0; border-radius: 4px; background: ' + r[2] }));
+  const artists = [['aespa', '3 songs in this playlist', '#5b2f6b', true], ['Sabrina Carpenter', '3 songs in this playlist', '#6b4a2f', false], ['ILLIT', '2 songs in this playlist', '#6b5b2f', false]].map(a => ({ t: a[0], s: a[1], on: a[3] ? 'true' : 'false', label: a[3] ? 'Following' : 'Follow',
+    art: 'width: 44px; height: 44px; flex-shrink: 0; border-radius: 22px; background: ' + a[2],
+    btn: 'height: 32px; padding: 0 12px; border-radius: 4px; color: #fff; font: inherit; font-size: 14px; border: 1px solid rgba(255,255,255,0.0698); background: ' + (a[3] ? 'rgba(255,255,255,0.0837)' : 'rgba(255,255,255,0.0605)') }));
+  return { rows, facts, recs, artists };
+}
+}
+</script>
+</body>
+</html>

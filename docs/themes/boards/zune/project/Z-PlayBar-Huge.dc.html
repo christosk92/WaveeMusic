@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune play bar: huge and 4k</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 2560px; height: 720px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; gap: 14px; padding: 32px 0 0 0; overflow: hidden; position: relative">
+  <span style="font-size: 13px; color: #a8a8a8; padding-left: 48px">music · huge tier (1920 and wider) · 72 tall, title column 420 · "playing from" rides above the title in the accent · video and friends get their own words</span>
+  <dc-import name="Z-Part-PlayBar" tier="huge" title="Nightcall" artist="Kavinsky · OutRun" art="#6b2f4a" progress="29" from="playing from late night drive" active="friends" saved="true" accent="{{accent}}" hint-size="2560px,72px"></dc-import>
+  <span style="font-size: 13px; color: #a8a8a8; padding-left: 48px; margin-top: 18px">podcast · huge · −10 / +10 and the speed word replace shuffle and repeat · chapter ticks on the seek line · transcript replaces lyrics</span>
+  <dc-import name="Z-Part-PlayBar" tier="huge" kind="podcast" title="Why the Premier League keeps changing" artist="The Rest Is Football · 9 oct" art="#2f4a3b" progress="49" time="23:40 · -24:12" from="playing from the rest is football" active="queue" accent="{{accent}}" hint-size="2560px,72px"></dc-import>
+  <span style="font-size: 13px; color: #a8a8a8; padding-left: 48px; margin-top: 18px">huge 4k (3200 and wider) · 88 tall, art 64, title 17, disc 48 · drawn here at two thirds</span>
+  <div style="height: 57px; flex-shrink: 0; overflow: hidden; position: relative">
+    <div style="width: 3840px; height: 88px; transform: scale(0.6667); transform-origin: 0 0">
+      <dc-import name="Z-Part-PlayBar" tier="4k" title="Get Lucky" artist="Daft Punk · Random Access Memories" art="#3a2f22" progress="41" from="playing from random access memories" active="lyrics" accent="{{accent}}" hint-size="3840px,88px"></dc-import>
+    </div>
+  </div>
+  <div style="position: relative; flex-grow: 1; min-height: 0; margin-top: 18px">
+    <span style="position: absolute; left: 48px; top: 0; font-size: 13px; color: #a8a8a8">flyouts open upward from their word and stay inside the bar's column; the bar never changes height</span>
+    <div style="position: absolute; left: 1556px; bottom: 80px; width: 300px; background: #242424; box-shadow: 0 16px 40px rgba(0,0,0,0.5); padding: 8px 0; display: flex; flex-direction: column; font-size: 14px">
+      <span style="height: 32px; display: flex; align-items: center; padding: 0 16px; font-size: 12px; color: #7a7a7a">video</span>
+      <sc-for list="{{video}}" as="m" hint-placeholder-count="5"><a href="#" style="{{m.row}}"><span>{{m.name}}</span><span style="color: #7a7a7a; font-size: 12px">{{m.trail}}</span></a></sc-for>
+    </div>
+    <div style="position: absolute; left: 2040px; bottom: 80px; width: 340px; background: #242424; box-shadow: 0 16px 40px rgba(0,0,0,0.5); padding: 8px 0; display: flex; flex-direction: column; font-size: 14px">
+      <span style="height: 32px; display: flex; align-items: center; padding: 0 16px; font-size: 12px; color: #7a7a7a">play on</span>
+      <sc-for list="{{devices}}" as="d" hint-placeholder-count="3"><a href="#" style="{{d.row}}"><span style="{{d.icon}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="{{d.nameStyle}}">{{d.name}}</span><span style="font-size: 12px; color: #7a7a7a">{{d.sub}}</span></span></a></sc-for>
+    </div>
+    <div style="position: absolute; left: 0; right: 0; bottom: 0">
+      <dc-import name="Z-Part-PlayBar" tier="huge" title="Nightcall" artist="Kavinsky · OutRun" art="#6b2f4a" progress="29" from="playing from late night drive" active="devices" accent="{{accent}}" hint-size="2560px,72px"></dc-import>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":2560,"height":720}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const video = [['dock in panel', ''], ['play in a mini player', ''], ['play in a separate window', ''], ['full screen', 'f11'], ['turn off video', '']].map((d) => ({ name: d[0], trail: d[1], row: 'height: 40px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; color: #ffffff' }));
+  const devices = [['this computer', 'playing', true], ['living room', 'speaker · spotify connect', false], ['christos’s phone', 'phone', false]].map((d) => ({
+    name: d[0], sub: d[1],
+    row: 'height: 52px; display: flex; align-items: center; gap: 12px; padding: 0 16px; color: #ffffff',
+    icon: 'width: 8px; height: 8px; border-radius: 4px; display: block; flex-shrink: 0; background: ' + (d[2] ? accent : 'rgba(255,255,255,0.24)'),
+    nameStyle: 'font-size: 14px; color: ' + (d[2] ? accent : '#ffffff'),
+  }));
+  return { accent, video, devices };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Track list</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div role="table" aria-label="Songs" style="{{s.root}}">
+  <sc-if value="{{header}}" hint-placeholder-val="{{true}}">
+    <div role="row" style="{{s.head}}">
+      <sc-for list="{{heads}}" as="hd" hint-placeholder-count="6"><span role="columnheader" style="{{hd.style}}">{{hd.l}}<sc-if value="{{hd.clock}}" hint-placeholder-val="{{false}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-label="Duration"><path d="M8 2a6 6 0 1 1 0 12A6 6 0 0 1 8 2zM8 4.5V8l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"></path></svg></sc-if></span></sc-for>
+    </div>
+  </sc-if>
+  <sc-for list="{{rows}}" as="r" hint-placeholder-count="10">
+    <sc-if value="{{r.grp}}" hint-placeholder-val="{{false}}"><div style="{{s.grp}}"><span style="{{s.grpL}}">{{r.label}}</span><span style="{{s.grpC}}">{{r.count}}</span></div></sc-if>
+    <sc-if value="{{r.row}}" hint-placeholder-val="{{true}}">
+      <div role="row" title="{{r.tip}}" style="{{r.style}}">
+        <span style="{{r.pill}}"></span>
+        <sc-if value="{{check}}" hint-placeholder-val="{{false}}"><span style="display: flex; align-items: center; justify-content: center"><span style="{{r.box}}"><sc-if value="{{r.on}}" hint-placeholder-val="{{false}}"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" stroke-width="2"></path></svg></sc-if></span></span></sc-if>
+        <span style="{{r.numStyle}}"><sc-if value="{{r.isNum}}" hint-placeholder-val="{{true}}">{{r.n}}</sc-if><sc-if value="{{r.isEq}}" hint-placeholder-val="{{false}}"><span style="display: flex; align-items: flex-end; gap: 2px; height: 12px"><span style="{{s.e1}}"></span><span style="{{s.e2}}"></span><span style="{{s.e3}}"></span></span></sc-if><sc-if value="{{r.isPlay}}" hint-placeholder-val="{{false}}"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11L13 8z" fill="currentColor"></path></svg></sc-if><sc-if value="{{r.isVol}}" hint-placeholder-val="{{false}}"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6h2.5L8.5 3v10L5 10H2.5zM11 5.5a3.5 3.5 0 0 1 0 5" fill="none" stroke="currentColor" stroke-width="1.3"></path></svg></sc-if></span>
+        <sc-if value="{{leadHeart}}" hint-placeholder-val="{{true}}"><span style="{{r.heartCell}}"><sc-if value="{{r.heart}}" hint-placeholder-val="{{true}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="{{r.heartFill}}" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"></path></svg></sc-if></span></sc-if>
+        <sc-if value="{{art}}" hint-placeholder-val="{{true}}"><span style="{{r.art}}"></span></sc-if>
+        <span style="{{r.titleCell}}">
+          <span style="{{r.titleStyle}}">{{r.t}}<sc-if value="{{r.film}}" hint-placeholder-val="{{false}}"><svg width="12" height="12" viewBox="0 0 16 16" aria-label="Has a music video" style="margin-left: 6px; vertical-align: -1px"><path d="M2.5 3.5h11v9h-11zM5 3.5v9M11 3.5v9" fill="none" stroke="currentColor" stroke-width="1.2"></path></svg></sc-if><sc-if value="{{r.inlineA}}" hint-placeholder-val="{{false}}"><span style="{{s.inlineA}}">  ·  {{r.a}}</span></sc-if><sc-if value="{{r.exWord}}" hint-placeholder-val="{{false}}"><span style="{{s.exWord}}">Explicit</span></sc-if></span>
+          <sc-if value="{{r.subline}}" hint-placeholder-val="{{true}}"><span style="{{s.sub}}"><sc-if value="{{r.e}}" hint-placeholder-val="{{false}}"><span style="{{s.ebadge}}">E</span></sc-if>{{r.sa}}</span></sc-if>
+        </span>
+        <sc-for list="{{r.cells}}" as="c" hint-placeholder-count="3"><span style="{{c.style}}">{{c.t}}</span></sc-for>
+        <sc-if value="{{tailHeart}}" hint-placeholder-val="{{false}}"><span style="{{r.heartCell}}"><sc-if value="{{r.heart}}" hint-placeholder-val="{{false}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="{{r.heartFill}}" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"></path></svg></sc-if></span></sc-if>
+        <span style="{{r.durStyle}}">{{r.dur}}</span>
+        <span style="{{r.moreStyle}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h.01M8 8h.01M13 8h.01" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path></svg></span>
+        <span style="{{r.chevStyle}}"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg></span>
+      </div>
+    </sc-if>
+  </sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"rs":{"editor":"enum","options":["modern","classic"],"default":"modern"},"set":{"editor":"enum","options":["album","playlist","liked","followed"],"default":"playlist"},"density":{"editor":"enum","options":["compact","default","cozy","comfortable"],"default":"default"},"n":{"editor":"int","default":10},"marks":{"editor":"text","default":"2:playing,4:hover"},"check":{"editor":"boolean","default":false},"header":{"editor":"boolean","default":true},"groups":{"editor":"boolean","default":false},"accent":{"editor":"color","default":""},"tier":{"editor":"enum","options":["auto","small","compact"],"default":"auto"},"$preview":{"width":1100,"height":620}}'>
+class Component extends DCLogic {
+renderVals() {
+  const p = this.props;
+  const dark = (p.theme ?? 'dark') !== 'light';
+  const T = dark
+    ? { t1: '#ffffff', t2: 'rgba(255,255,255,0.773)', t3: 'rgba(255,255,255,0.529)', div: 'rgba(255,255,255,0.082)', zebra: 'rgba(255,255,255,0.039)', hover: 'rgba(255,255,255,0.059)', hz: 'rgba(255,255,255,0.094)', pressed: 'rgba(255,255,255,0.039)', cs: 'rgba(0,0,0,0.098)', acc: '#60cdff', accT: '#a6d8ff', accS: 'rgba(96,205,255,0.16)', onAcc: '#000', ctlS: 'rgba(255,255,255,0.545)', tert: 'rgba(255,255,255,0.529)', ph: '#2a2a2a' }
+    : { t1: 'rgba(0,0,0,0.894)', t2: 'rgba(0,0,0,0.62)', t3: 'rgba(0,0,0,0.447)', div: 'rgba(0,0,0,0.059)', zebra: 'rgba(0,0,0,0.031)', hover: 'rgba(0,0,0,0.051)', hz: 'rgba(0,0,0,0.082)', pressed: 'rgba(0,0,0,0.071)', cs: 'rgba(0,0,0,0.059)', acc: '#005fb8', accT: '#004275', accS: 'rgba(0,95,184,0.14)', onAcc: '#fff', ctlS: 'rgba(0,0,0,0.447)', tert: 'rgba(0,0,0,0.447)', ph: '#f2f2f2' };
+  const acc = p.accent || T.acc, accT = p.accent || T.accT;
+  const classic = (p.rs ?? 'modern') === 'classic', modern = !classic;
+  const set = p.set ?? 'playlist', liked = set === 'liked', album = set === 'album';
+  const tier = p.tier ?? 'auto', compact = tier === 'compact', small = tier === 'small';
+  const di = ['compact', 'default', 'cozy', 'comfortable'].indexOf(p.density ?? 'default');
+  const H = compact ? (classic ? 44 : 56) : (classic ? [36, 40, 44, 48] : [40, 48, 56, 64])[Math.max(0, di)];
+  const A = compact ? 40 : [32, 32, 40, 48][Math.max(0, di)];
+  const check = p.check === true || p.check === 'true';
+  const marks = {};
+  String(p.marks ?? '').split(',').filter(Boolean).forEach(x => { const a = x.split(':'); (marks[Number(a[0])] = marks[Number(a[0])] || []).push(a[1]); });
+  const D = {
+    album: [['Give Life Back to Music', 'Daft Punk', '', '', '4:34', '268.1M', '#3a3a3a'], ['The Game of Love', 'Daft Punk', '', '', '5:21', '190.4M'], ['Giorgio by Moroder', 'Daft Punk', '', '', '9:04', '201.7M'], ['Within', 'Daft Punk', '', '', '3:48', '142.0M'], ['Instant Crush', 'Daft Punk, Julian Casablancas', '', '', '5:37', '1.1B', '', 1], ['Lose Yourself to Dance', 'Daft Punk, Pharrell Williams', '', '', '5:53', '501.9M'], ['Touch', 'Daft Punk, Paul Williams', '', '', '8:18', '120.6M'], ['Get Lucky', 'Daft Punk, Pharrell Williams, Nile Rodgers', '', '', '6:09', '1.9B', '', 1], ['Beyond', 'Daft Punk', '', '', '4:50', '98.3M'], ['Motherboard', 'Daft Punk', '', '', '5:41', '87.0M'], ['Fragments of Time', 'Daft Punk, Todd Edwards', '', '', '4:39', '110.2M'], ['Doin’ it Right', 'Daft Punk, Panda Bear', '', '', '4:11', '236.5M'], ['Contact', 'Daft Punk', '', '', '6:21', '95.8M']],
+    playlist: [['stupid song', 'Olivia Rodrigo', 'you seem pretty sad…', 'Jun 12', '3:29', '', '#8a6a5a'], ['Earrings', 'Malcolm Todd', 'Sweet Boy', 'Apr 3', '2:31', '', '#a05a5a'], ['hate that i made you love me', 'Ariana Grande', 'hate that i made you love me', 'May 29', '3:17', '', '#3a3a3a'], ['Loser', 'Tame Impala', 'Deadbeat', 'Aug 7', '3:43', '', '#b0b0b0', 0, 1], ['Dai Dai', 'Shakira, Burna Boy', 'Dai Dai', 'May 29', '3:43', '', '#c08a6a'], ['Animal', 'KATSEYE', 'Animal', 'Jul 24', '2:38', '', '#b03030'], ['Babydoll', 'Dominic Fike', 'Don’t Forget About Me', 'Mar 13', '1:37', '', '#c0a080'], ['Ain’t In LA', 'ADÉLA', 'Ain’t In LA', 'Jul 31', '3:04', '', '#d06080', 0, 1], ['Choosin’ Texas', 'Ella Langley', 'Choosin’ Texas', 'Nov 28, 2025', '3:52', '', '#5a7aa0'], ['Golden Hour', 'JVKE', 'this is what ____ feels like', 'Oct 2, 2025', '3:29', '', '#d0a040'], ['Espresso', 'Sabrina Carpenter', 'Short n’ Sweet', 'Sep 30, 2025', '2:55', '', '#4a7ab0', 1], ['Too Sweet', 'Hozier', 'Unheard', 'Jun 2', '4:11', '', '#3a5a4a'], ['Pink Pony Club', 'Chappell Roan', 'The Rise and Fall of a Midwest Princess', 'Jun 9', '4:18', '', '#c06a8a'], ['Messy', 'Lola Young', 'This Wasn’t Meant For You Anyway', 'Jun 20', '4:19', '', '#8a7a6a', 0, 1], ['Abracadabra', 'Lady Gaga', 'MAYHEM', 'Jul 1', '3:43', '', '#2a2a2a'], ['WILDFLOWER', 'Billie Eilish', 'HIT ME HARD AND SOFT', 'Jul 3', '4:21', '', '#3b5b7a'], ['Ordinary', 'Alex Warren', 'You’ll Be Alright, Kid', 'Jul 9', '3:06', '', '#9b8a6a'], ['Manchild', 'Sabrina Carpenter', 'Man’s Best Friend', 'Jul 14', '3:33', '', '#4a7ab0', 0, 1], ['luther', 'Kendrick Lamar, SZA', 'GNX', 'Jul 18', '2:57', '', '#5a3a3a', 0, 1], ['Sports car', 'Tate McRae', 'So Close To What', 'Jul 22', '2:45', '', '#b03030', 1], ['DtMF', 'Bad Bunny', 'DeBÍ TiRAR MáS FOToS', 'Aug 1', '3:57', '', '#3a6a4a'], ['Good Luck, Babe!', 'Chappell Roan', 'Good Luck, Babe!', 'Aug 12', '3:38', '', '#c06a8a'], ['APT.', 'ROSÉ, Bruno Mars', 'rosie', 'Aug 19', '2:49', '', '#d06070'], ['Die With A Smile', 'Lady Gaga, Bruno Mars', 'Die With A Smile', 'Aug 25', '4:11', '', '#3a3a3a']],
+    liked: [['Камин (feat. JONY)', 'EMIN, JONY', 'Камин', 'Today', '3:07', '', '#3a3a4a'], ['나였으면', 'Na Yoon Kwon', '중독', 'Today', '4:22', '', '#4a3a5a'], ['I Want To Fall In Love', 'Johan Kim', 'I Want To Fall In Love', 'Today', '3:52', '', '#6a5a4a'], ['She is', 'OVAN, SHAUN', 'She is', '2 days ago', '3:39', '', '#8a7a6a'], ['Strawberries & Cigarettes', 'Troye Sivan', 'Blue Neighbourhood', '3 days ago', '3:21', '', '#5a8ab0', 1], ['Never Not', 'LAUV', 'I met you when I was 18.', 'Sep 29', '3:28', '', '#e0e0e0'], ['are you sure?', 'Loote', 'lost', 'Sep 27', '3:24', '', '#3a5a7a'], ['carpool', 'Zachary Knowles', 'tendency to be lonely', 'Sep 26', '2:44', '', '#c0c0b0'], ['Lights Down Low', 'MAX, gnash', 'Hell’s Kitchen Angel', 'Sep 21', '3:43', '', '#7a5a8a'], ['Heather', 'Conan Gray', 'Kid Krow', 'Sep 18', '3:18', '', '#8aa0b0'], ['Snooze', 'SZA', 'SOS', 'Sep 14', '3:21', '', '#5a7a9a', 0, 1], ['Supernova', 'aespa', 'Armageddon', 'Sep 12', '2:58', '', '#9b7a3b'], ['Magnetic', 'ILLIT', 'SUPER REAL ME', 'Sep 10', '2:40', '', '#d0a0c0'], ['ocean eyes', 'Billie Eilish', 'dont smile at me', 'Sep 8', '3:20', '', '#3b6b8a'], ['Glimpse of Us', 'Joji', 'SMITHEREENS', 'Sep 6', '3:53', '', '#6b6b6b'], ['Instant Crush', 'Daft Punk, Julian Casablancas', 'Random Access Memories', 'Sep 3', '5:37', '', '#6d6d6d', 1], ['Midnight City', 'M83', 'Hurry Up, We’re Dreaming', 'Aug 30', '4:03', '', '#4a3b8a'], ['Blinding Lights', 'The Weeknd', 'After Hours', 'Aug 28', '3:20', '', '#8a3b2f'], ['Whiplash', 'aespa', 'Whiplash', 'Aug 25', '3:03', '', '#8a8a9b'], ['How Sweet', 'NewJeans', 'How Sweet', 'Aug 21', '3:39', '', '#c0a0b0'], ['Ditto', 'NewJeans', 'OMG', 'Aug 18', '3:05', '', '#a0b0c0'], ['BIRDS OF A FEATHER', 'Billie Eilish', 'HIT ME HARD AND SOFT', 'Aug 14', '3:30', '', '#2f4a6b'], ['Robot Rock', 'Daft Punk', 'Human After All', 'Aug 11', '4:47', '', '#6b5b2f'], ['Lose Yourself to Dance', 'Daft Punk, Pharrell Williams', 'Random Access Memories', 'Aug 9', '5:53', '', '#555555']]
+  };
+  D.followed = D.playlist;
+  const data = D[set] || D.playlist;
+  const n = Math.min(Number(p.n ?? 10), data.length + (p.groups ? 3 : 0));
+  const showArt = modern && !album;
+  const leadHeart = !liked && !compact, tailHeart = liked || compact;
+  const showNum = !compact || album || classic;
+  const colArtist = classic && !compact, colAlbum = !album && !compact && !small, colDate = !album && !compact && (!small || liked), colPlays = album && !compact && !small;
+  const durLane = !(compact && modern), chevLane = !compact;
+  const lanes = [];
+  if (check) lanes.push(['', '28px']);
+  if (showNum) lanes.push([classic ? '' : '#', compact ? '24px' : '28px', 'center']);
+  if (leadHeart) lanes.push(['', '28px']);
+  if (showArt) lanes.push(['', A + 'px']);
+  lanes.push(['Title', 'minmax(120px, 1fr)']);
+  if (colArtist) lanes.push(['Artist', 'minmax(90px, 0.75fr)']);
+  if (colAlbum) lanes.push(['Album', 'minmax(90px, 0.75fr)']);
+  if (colDate) lanes.push([liked ? 'Added' : 'Date added', '88px']);
+  if (colPlays) lanes.push(['Plays', '64px', 'end']);
+  if (tailHeart) lanes.push(['', compact ? '28px' : '32px']);
+  if (durLane) lanes.push(['@clock', compact ? '40px' : '52px', 'end']);
+  lanes.push(['', '40px']);
+  if (chevLane) lanes.push(['', '26px']);
+  const cols = lanes.map(l => l[1]).join(' ');
+  const hs = classic ? 'font-size: 11px; line-height: 15px; font-weight: 600' : 'font-size: 12px; line-height: 16px; font-weight: 600';
+  const heads = lanes.map(l => ({ l: l[0] === '@clock' ? '' : l[0], clock: l[0] === '@clock', style: hs + '; display: flex; align-items: center; min-width: 0; color: ' + (l[0] === (liked ? 'Added' : '') ? T.t2 : T.t3) + (l[2] === 'end' ? '; justify-content: flex-end' : l[2] === 'center' ? '; justify-content: center' : '') }));
+  const inset = modern && !liked && !compact ? 8 : 0, pad = 8;
+  const rowPad = compact ? '0 8px 0 16px' : '0 ' + (pad + (modern && !liked ? 0 : 8)) + 'px';
+  const rows = [];
+  const grpAt = liked && p.groups ? { 0: ['This week', '12 songs'], 5: ['September', '41 songs'], 16: ['August', '38 songs'] } : {};
+  for (let i = 0; i < data.length && rows.length < n; i++) {
+    if (grpAt[i]) rows.push({ grp: true, row: false, label: grpAt[i][0], count: grpAt[i][1] });
+    if (rows.length >= n) break;
+    const d = data[i], idx = i + 1, m = marks[idx] || [];
+    const has = x => m.indexOf(x) >= 0;
+    const playing = has('playing'), hover = has('hover'), sel = has('selected'), un = has('unavailable') || has('unreleased'), pressed = has('pressed'), focus = has('focus'), versions = !!d[7] || has('versions'), on = has('checked');
+    const zebra = modern && !liked && !compact && i % 2 === 1;
+    let bg = 'transparent', border = '1px solid transparent';
+    if (zebra) { bg = T.zebra; border = '1px solid ' + T.cs; }
+    if (hover || (check && on && classic)) { bg = zebra ? T.hz : T.hover; if (modern && !liked && !compact) border = '1px solid ' + T.cs; }
+    if (pressed) bg = T.pressed;
+    if (sel) bg = modern ? T.accS : T.hover;
+    if (check && on && modern) bg = T.accS;
+    const shape = compact ? 'border: 0; margin: 0' + (classic ? '; border-bottom: 1px solid ' + T.div : '') : modern ? 'margin: 0 ' + inset + 'px; border-radius: ' + (liked ? 4 : 6) + 'px; border: ' + border : 'border: 0; border-bottom: 1px solid ' + T.div + '; margin: 0';
+    const ring = focus ? '; box-shadow: 0 0 0 2px ' + (dark ? '#fff' : 'rgba(0,0,0,0.894)') + ', inset 0 0 0 1px ' + (dark ? '#000' : '#fff') : '';
+    const ink = classic && playing ? accT : T.t1;
+    const sec = classic && playing ? accT : T.t2;
+    const showHover = hover || focus;
+    const heartOn = !!d[9] || liked || has('liked') || (!album && (i === 1 || i === 4));
+    const heartVisible = liked ? showHover : (heartOn || showHover);
+    const cells = [];
+    const cellS = (al) => (classic ? 'font-size: 14px; line-height: 20px' : 'font-size: 12px; line-height: 16px') + '; color: ' + sec + '; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0' + (al ? '; text-align: right' : '');
+    if (colArtist) cells.push({ t: d[1], style: cellS() });
+    if (colAlbum) cells.push({ t: d[2], style: cellS() });
+    if (colDate) cells.push({ t: d[3], style: cellS() });
+    if (colPlays) cells.push({ t: d[5], style: cellS(true) + '; color: ' + (classic && playing ? accT : T.t3) });
+    const reason = has('unreleased') ? 'Nov 14' : 'Unavailable';
+    const reasonLong = has('unreleased') ? 'Releases Nov 14' : 'Not available in your country';
+    const sa = compact ? (un ? reasonLong : d[1] + ' · ' + d[4]) : d[1];
+    rows.push({ grp: false, row: true, n: String(idx),
+      tip: un ? (has('unreleased') ? 'Releases on November 14' : 'Not available in your country') : '',
+      style: 'position: relative; display: grid; grid-template-columns: ' + cols + '; column-gap: 12px; align-items: center; height: ' + H + 'px; box-sizing: border-box; padding: ' + rowPad + '; background: ' + bg + '; ' + shape + ring + (un ? '; opacity: 0.45' : '') + '; color: ' + ink,
+      pill: sel && modern ? 'position: absolute; left: 2px; top: 50%; margin-top: -8px; width: 3px; height: 16px; border-radius: 1.5px; background: ' + acc : 'display: none',
+      box: 'width: 18px; height: 18px; box-sizing: border-box; border-radius: 4px; display: flex; align-items: center; justify-content: center; ' + (on ? 'background: ' + acc + '; color: ' + T.onAcc : 'border: 1px solid ' + T.ctlS),
+      on,
+      numStyle: showNum ? 'display: flex; align-items: center; justify-content: center; font-size: 12px; font-variant-numeric: tabular-nums; color: ' + (playing ? acc : T.t3) : 'display: none',
+      isNum: !playing && !showHover && !(classic), isEq: playing && modern, isPlay: showHover && !playing && !un, isVol: playing && classic,
+      heart: heartVisible && !un, heartFill: heartOn ? 'currentColor' : 'none',
+      heartCell: 'display: flex; align-items: center; justify-content: center; color: ' + (heartOn ? acc : T.t3),
+      art: 'width: ' + A + 'px; height: ' + A + 'px; border-radius: 4px; background: ' + (d[6] || T.ph),
+      titleCell: 'display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0',
+      titleStyle: 'font-size: 14px; line-height: 20px; font-weight: ' + (liked ? 400 : 600) + '; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (playing ? accT : ink),
+      t: d[0], a: d[1], sa, e: !!d[8] && !album, film: liked && !!d[7], inlineA: classic, exWord: classic && !!d[8] && !compact,
+      subline: modern && H >= 44,
+      cells,
+      durStyle: durLane ? cellS(true) + (un ? '; font-size: 11px' : '') : 'display: none', dur: un ? reason : d[4],
+      moreStyle: 'display: flex; align-items: center; justify-content: center;' + (compact ? ' height: 40px;' : '') + ' color: ' + (compact ? T.t3 : T.t2) + '; opacity: ' + (showHover || compact ? 1 : 0),
+      chevStyle: chevLane ? 'display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 4px; color: ' + T.t2 + '; opacity: ' + (versions ? 1 : 0) : 'display: none'
+    });
+  }
+  const eqb = (h, o) => 'width: 3px; height: ' + h + 'px; border-radius: 1px; background: ' + acc + '; opacity: ' + o;
+  const s = {
+    root: 'width: 100%; display: flex; flex-direction: column; gap: ' + (modern && !liked && !compact ? 2 : 0) + 'px; color: ' + T.t1 + "; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif",
+    head: 'display: grid; grid-template-columns: ' + cols + '; column-gap: 12px; align-items: center; height: ' + (classic ? 32 : 36) + 'px; padding: 0 ' + (pad + (modern && !liked ? 0 : 8)) + 'px; margin: 0 ' + inset + 'px 4px; border-bottom: 1px solid ' + T.div,
+    grp: 'height: 40px; display: flex; align-items: flex-end; gap: 8px; padding: 0 16px 6px; box-sizing: border-box',
+    grpL: 'font-size: 13px; line-height: 18px; font-weight: 600',
+    grpC: 'font-size: 13px; line-height: 18px; color: ' + T.t2,
+    sub: 'display: flex; align-items: center; gap: 4px; font-size: 12px; line-height: 16px; color: ' + T.t2 + '; white-space: nowrap; overflow: hidden; text-overflow: ellipsis',
+    ebadge: 'width: 14px; height: 14px; flex-shrink: 0; border-radius: 2px; background: ' + T.tert + '; color: ' + (dark ? '#000' : '#fff') + '; font-size: 9.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center',
+    inlineA: 'font-weight: 400; color: ' + T.t2,
+    exWord: 'margin-left: 8px; font-size: 9px; line-height: 12px; font-weight: 600; padding: 0 3px; border: 1px solid currentColor; border-radius: 2px; opacity: 0.6; vertical-align: 2px',
+    e1: eqb(8, 1), e2: eqb(12, 0.85), e3: eqb(5, 1)
+  };
+  return { s, heads, rows, header: !compact && p.header !== false && p.header !== 'false', check, leadHeart, tailHeart, art: showArt };
+}
+}
+</script>
+</body>
+</html>

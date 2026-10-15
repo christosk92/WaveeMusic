@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Classic options, Small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 800px; height: 600px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="settings:Settings" sel="0" w="800" hint-size="800px,48px"></dc-import>
+  <div style="display: flex; height: 480px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="rail" sel="none" h="480" hint-size="48px,480px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; padding: 16px 32px 0; display: flex; flex-direction: column; gap: 12px; overflow: hidden">
+      <header style="display: flex; flex-direction: column; flex-shrink: 0">
+        <nav aria-label="Breadcrumb" style="height: 20px; display: flex; align-items: flex-end; gap: 6px; font-size: 12px; line-height: 16px; font-weight: 600"><a href="#" style="color: rgba(255,255,255,0.773)">Settings</a><span aria-hidden="true" style="color: rgba(255,255,255,0.529)">›</span><a href="#" style="color: rgba(255,255,255,0.773)">Appearance</a></nav>
+        <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em">Classic options</h1>
+      </header>
+      <div style="display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; line-height: 16px; flex-shrink: 0"><span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 10px; height: 10px; border-radius: 2px; background: #60cdff"></span>Structure: which views Classic builds</span><span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 10px; height: 10px; border-radius: 2px; background: #c08ab0"></span>Style: how Classic paints them</span><span style="display: inline-flex; align-items: center; gap: 6px; color: rgba(255,255,255,0.62)">Bold value = default</span></div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px">
+        <sc-for list="{{opts}}" as="o" hint-placeholder-count="8">
+          <div style="padding: 12px 14px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); display: flex; flex-direction: column; gap: 8px; min-width: 0">
+            <div style="display: flex; align-items: center; gap: 8px; min-width: 0"><span style="{{o.tag}}"></span><span style="font-size: 14px; line-height: 20px; font-weight: 600; flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{o.n}}</span></div>
+            <div role="radiogroup" aria-label="{{o.n}}" style="display: flex; flex-wrap: wrap; gap: 4px"><sc-for list="{{o.vals}}" as="v" hint-placeholder-count="3"><button role="radio" aria-checked="{{v.on}}" style="{{v.s}}">{{v.l}}</button></sc-for></div>
+            <div style="font-size: 12px; line-height: 17px; color: rgba(255,255,255,0.773); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden">{{o.d}}</div>
+          </div>
+        </sc-for>
+      </div>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="800" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const S = '#60cdff', Y = '#c08ab0';
+  const O = [
+    [S, 'Sidebar layout', ['*Classic', 'Library'], 'Classic: Home, Pinned, Collections and Playlists sections you show, hide and reorder. Library: Home, Pinned and one “Your Library” list with chips, sort and list/grid.'],
+    [S, 'Show covers', ['Off', '*On'], 'Classic layout only. Off: 36 px text rows (folder glyph at 16, label at 40). On: 40 px rows with a 32 cover and a second line.'],
+    [S, 'Library density', ['*Default', 'Compact'], 'Library layout rows: two lines with a 32 cover, or one line with a 24 cover at 36 px.'],
+    [S, 'Row style', ['*Modern', 'Classic'], 'Modern: inset r6 plates, zebra, artwork, numbers and equalizer. Classic: full-bleed hairline rows, one “Title · Artists” line, the whole playing row in accent.'],
+    [S, 'Hide track artwork', ['*Off', 'On'], 'Removes the artwork lane in track tables, the artist chart, the queue, search song rows, Recents and full-screen lists.'],
+    [S, 'Marquee text', ['*On', 'Off'], 'Long titles of the playing row and the player bar scroll. Off: they trim with a tooltip. Reduced motion always stops them.'],
+    [Y, 'Density', ['Compact', '*Default', 'Cozy', 'Comfortable'], 'Track rows: Modern 40 / 48 / 56 / 64, Classic 36 / 40 / 44 / 48, with art 32 / 32 / 40 / 48.'],
+    [Y, 'Surfaces', ['Off', '*Subtle', 'Rich'], 'Replaces “Color washes”: Home’s radial washes, the page tone plane under detail pages, the artist and profile blend. Off is flat Mica.']
+  ];
+  const opts = O.map(o => ({ n: o[1], d: o[3],
+    tag: 'width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; background: ' + o[0],
+    vals: o[2].map(v => { const def = v[0] === '*'; return { l: def ? v.slice(1) : v, on: def ? 'true' : 'false', s: 'height: 24px; display: inline-flex; align-items: center; padding: 0 8px; border-radius: 4px; font: inherit; font-size: 12px; ' + (def ? 'font-weight: 600; background: rgba(96,205,255,0.16); border: 1px solid #60cdff; color: #a6d8ff' : 'background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: rgba(255,255,255,0.85)') }; }) }));
+  return { opts };
+}
+}
+</script>
+</body>
+</html>

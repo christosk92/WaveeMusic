@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Show</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} width: 1440px; height: 960px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" sel="library" crumb="Library › Podcasts" ctx="The Rest Is Football" items="Episodes|About" sub-sel="{{zero}}" lower="{{lower}}" hint-size="1440px,136px"></dc-import>
+  <main style="height: 740px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke)">
+    <h1 title="The Rest Is Football" style="margin: 0; padding: 12px 36px 0 36px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 68px; line-height: 92px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">The Rest Is Football</h1>
+    <div style="display: flex; gap: 48px; padding: 8px 0 0 36px; min-height: 0; flex-grow: 1">
+      <section aria-label="Show" style="width: 260px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px">
+        <span aria-hidden="true" style="position: relative; width: 260px; height: 260px; border-radius: 8px; overflow: hidden; background: linear-gradient(160deg, #3b6b4a, #1f3a2a); display: block"><span style="position: absolute; left: 18px; bottom: 16px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 32px; font-weight: 600; color: #ffffff">The Rest Is Football</span></span>
+        <a href="#" style="font-size: 18px; line-height: 24px; color: var(--acct)">Goalhanger</a>
+        <span style="font-size: 12px; line-height: 16px; color: var(--t2)">Podcast · 812 episodes · weekdays · since 2023</span>
+        <span style="display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; color: var(--t2)"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8l1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.6l-3.8 2 .7-4.3-3.1-3 4.3-.6z" fill="currentColor"></path></svg>4.8 · 12K ratings · you rated 5</span>
+        <span style="display: flex; gap: 8px; align-items: center; padding-top: 6px">
+          <button aria-pressed="true" style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="color: var(--acct)"><path d="M3.5 8.5 6.5 11.5 12.5 4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>Following</button>
+          <button aria-label="Notify me about new episodes" aria-pressed="true" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 11V7a4 4 0 0 1 8 0v4l1 1H3z" fill="currentColor"></path><path d="M6.5 13.5a1.5 1.5 0 0 0 3 0" fill="none" stroke="currentColor" stroke-width="1"></path></svg></button>
+          <button aria-label="Share" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M5 5.5l3-3 3 3M3.5 9v3.5h9V9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+          <button aria-label="More" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+        </span>
+        <span style="display: flex; flex-wrap: wrap; gap: 12px; font-size: 14px; padding-top: 4px"><a href="#" style="color: var(--acct)">Football</a><a href="#" style="color: var(--acct)">Sports</a><a href="#" style="color: var(--acct)">Comedy</a></span>
+      </section>
+      <section aria-label="Episodes" style="width: 640px; flex-shrink: 0; display: flex; flex-direction: column">
+        <div style="display: flex; align-items: center; gap: 8px; height: 40px; flex-shrink: 0">
+          <div role="group" aria-label="Filter episodes" style="display: flex; gap: 8px">
+            <sc-for list="{{chips}}" as="c" hint-placeholder-count="3"><button aria-pressed="{{c.pressed}}" style="{{c.style}}">{{c.label}}</button></sc-for>
+          </div>
+          <span style="flex-grow: 1"></span>
+          <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: var(--t1); font: inherit; font-size: 14px">Newest first<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+          <button aria-label="Find episodes" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></button>
+        </div>
+        <div style="display: flex; align-items: baseline; gap: 10px; height: 32px; border-bottom: 1px solid var(--div)"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">October</h2><span style="font-size: 12px; color: var(--t2)">9 episodes</span></div>
+        <sc-for list="{{episodes}}" as="e" hint-placeholder-count="6">
+          <div role="row" style="{{e.row}}">
+            <span style="{{e.art}}"></span>
+            <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+              <a href="#" style="{{e.title}}">{{e.name}}</a>
+              <span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{e.blurb}}</span>
+              <span style="display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 16px; color: var(--t2); font-variant-numeric: tabular-nums"><sc-if value="{{e.isNew}}" hint-placeholder-val="{{ false }}"><span style="color: var(--acct); font-weight: 600">New</span></sc-if>{{e.meta}}<sc-if value="{{e.hasBar}}" hint-placeholder-val="{{ false }}"><span style="width: 64px; height: 3px; border-radius: 2px; background: var(--div); display: block"><span style="{{e.fill}}"></span></span></sc-if><span style="{{e.stateStyle}}">{{e.state}}</span><sc-if value="{{e.cached}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-label="On this PC" role="img"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.2"></circle><path d="M8 4.8v5.4M5.8 8.2 8 10.4l2.2-2.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></sc-if></span>
+            </span>
+            <button aria-label="{{e.actionLabel}}" style="{{e.btn}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{e.icon}}" fill="currentColor"></path></svg></button>
+          </div>
+        </sc-for>
+      </section>
+      <section aria-label="About" style="width: 360px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px">
+        <div style="height: 40px; display: flex; align-items: center"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">About</h2></div>
+        <div style="padding: 16px; border-radius: 8px; background: var(--card); border: 1px solid var(--cardb); font-size: 14px; line-height: 20px; color: var(--t2)">Gary Lineker, Alan Shearer and Micah Richards talk about the game they love: the big matches, the fallouts and the stories from the dressing room. New episodes every weekday, deep dives on Fridays. <a href="#" style="color: var(--acct)">More</a></div>
+        <h3 style="margin: 8px 0 0 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Hosts</h3>
+        <div style="display: flex; flex-direction: column">
+          <sc-for list="{{hosts}}" as="h" hint-placeholder-count="3"><a href="#" style="display: grid; grid-template-columns: 52px minmax(0, 1fr); align-items: center; height: 52px; padding: 0 8px; border-radius: 4px; color: var(--t1)"><span style="{{h.avatar}}"></span><span style="font-size: 14px; line-height: 20px">{{h.name}}</span></a></sc-for>
+        </div>
+        <h3 style="margin: 8px 0 0 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Listeners also follow</h3>
+        <div style="display: flex; flex-direction: column">
+          <sc-for list="{{similar}}" as="s" hint-placeholder-count="2"><a href="#" style="display: grid; grid-template-columns: 52px minmax(0, 1fr); align-items: center; height: 52px; padding: 0 8px; border-radius: 4px; color: var(--t1)"><span style="{{s.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; line-height: 20px">{{s.name}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">{{s.sub}}</span></span></a></sc-for>
+        </div>
+      </section>
+    </div>
+    <div aria-hidden="true" style="height: 14px; flex-shrink: 0; position: relative"><span style="position: absolute; left: 36px; bottom: 6px; width: 72%; height: 2px; border-radius: 1px; background: var(--t3); opacity: 0.6"></span></div>
+  </main>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" variant="podcast" pane="none" hint-size="1440px,84px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"lower":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', div: 'rgba(255,255,255,0.0837)', card: 'rgba(255,255,255,0.0512)', cardb: 'rgba(0,0,0,0.1)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', div: 'rgba(0,0,0,0.0803)', card: '#fbfbfb', cardb: 'rgba(0,0,0,0.0578)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', sub: 'rgba(0,0,0,0.0373)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const PLAY = 'M4.5 2.8v10.4L13 8z', PAUSE = 'M4 3h3v10H4zM9 3h3v10H9z';
+  const chips = [['All', '812'], ['Unplayed', '690'], ['Played', '120']].map((c, i) => ({ label: c[0] + ' · ' + c[1], pressed: i === 0 ? 'true' : 'false',
+    style: 'height: 32px; padding: 0 12px; border-radius: 4px; font: inherit; font-size: 14px; ' + (i === 0 ? 'border: 1px solid transparent; background: var(--acc); color: var(--onacc)' : 'background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1)') }));
+  const eps = [
+    ['Why the Premier League keeps changing', 'Gary, Alan and Micah on the rule changes nobody asked for, and the ones that worked.', '#812 · Thu 9 Oct · 48 min', 'playing', 49, '24 min left', true],
+    ['The north London derby, revisited', 'Ninety minutes, three red cards and a press conference to remember.', '#811 · Wed 8 Oct · 52 min', 'new', 0, '', true],
+    ['Q&A: the best away ends in England', 'Your nominations, ranked by people who should know better.', '#810 · Wed 8 Oct · 39 min', 'none', 0, '', false],
+    ['Deep dive: the 1993 title race', 'Manchester United, Aston Villa and the season the Premier League began.', '#808 · Tue 7 Oct · 47 min', 'started', 87, '6 min left', false],
+    ['Mailbag: your questions, our excuses', 'A full hour of listener questions, and very few answers.', '#807 · Mon 6 Oct · 61 min', 'played', 100, 'Played', false],
+    ['Transfer window verdicts', 'Who overspent, who got lucky, who should be worried.', '#806 · Sun 5 Oct · 44 min', 'none', 0, '', false]
+  ];
+  const episodes = eps.map((d) => { const st = d[3]; const playing = st === 'playing'; const played = st === 'played'; return { name: d[0], blurb: d[1], meta: d[2], state: d[5], isNew: st === 'new', hasBar: playing || st === 'started', cached: d[6],
+    actionLabel: (playing ? 'Pause ' : played ? 'Play again ' : 'Play ') + d[0], icon: playing ? PAUSE : PLAY,
+    row: 'display: grid; grid-template-columns: 72px minmax(0, 1fr) 48px; align-items: center; height: 80px; margin-top: 2px; padding-left: 8px; border-radius: 4px; ' + (playing ? 'background: var(--sub)' : '') + (played ? '; opacity: 0.62' : ''),
+    art: 'width: 56px; height: 56px; border-radius: 4px; display: block; background: linear-gradient(160deg, #3b6b4a, #1f3a2a)',
+    title: 'font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (playing ? 'var(--acct)' : 'var(--t1)'),
+    fill: 'display: block; height: 3px; border-radius: 2px; background: var(--acc); width: ' + d[4] + '%',
+    stateStyle: 'color: ' + (playing ? 'var(--acct)' : 'var(--t2)'),
+    btn: 'width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; border-radius: 18px; font: inherit; ' + (playing ? 'border: 0; background: var(--acc); color: var(--onacc)' : 'background: var(--ctrl); border: 1px solid var(--ctrlb); color: var(--t1)') }; });
+  const hosts = [['Gary Lineker', '#4a5b3b'], ['Alan Shearer', '#3b4a5b'], ['Micah Richards', '#5b3b3b']].map((d) => ({ name: d[0], avatar: 'width: 40px; height: 40px; border-radius: 20px; display: block; background: ' + d[1] }));
+  const similar = [['The Rest Is History', 'Podcast · Goalhanger', '#4a3b2f'], ['The Rest Is Politics', 'Podcast · Goalhanger', '#3b3b5b']].map((d) => ({ name: d[0], sub: d[1], art: 'width: 40px; height: 40px; border-radius: 4px; display: block; background: ' + d[2] }));
+  return { vars, theme, accent, chips, episodes, hosts, similar, zero: 0, lower: !!(this.props.lower ?? false) };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Wavee redesign: Home</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1440px; height: 960px; box-sizing: border-box; background: #1a1a1a; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden">
+  <div style="height: 40px; flex-shrink: 0; display: flex; align-items: flex-end; padding-left: 8px; gap: 2px">
+    <sc-for list="{{tabs}}" as="t" hint-placeholder-count="3">
+      <div style="{{t.style}}"><span style="{{t.iconStyle}}"></span><span style="flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.label}}</span><span style="font-size: 10px; color: #c5c5c5">✕</span></div>
+    </sc-for>
+    <button aria-label="New tab" style="width: 32px; height: 32px; margin: 0 0 4px 2px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit; font-size: 16px">+</button>
+    <div style="flex-grow: 1"></div>
+    <span style="width: 46px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #c5c5c5">—</span>
+    <span style="width: 46px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #c5c5c5">▢</span>
+    <span style="width: 46px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #c5c5c5">✕</span>
+  </div>
+  <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; background: #282828">
+    <div style="height: 48px; flex-shrink: 0; display: grid; grid-template-columns: 320px minmax(0, 1fr) 320px; align-items: center; padding: 0 8px; box-sizing: border-box">
+      <div style="display: flex; gap: 4px">
+        <button aria-label="Toggle navigation" style="width: 40px; height: 36px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit">☰</button>
+        <button aria-label="Back" style="width: 40px; height: 36px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit">←</button>
+        <button aria-label="Forward" disabled="" style="width: 40px; height: 36px; border: 0; border-radius: 4px; background: transparent; color: #5d5d5d; font: inherit">→</button>
+      </div>
+      <label style="justify-self: center; width: 100%; max-width: 600px; height: 32px; display: flex; align-items: center; padding: 0 10px 0 12px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.061); border: 1px solid rgba(255,255,255,0.07); border-bottom-color: rgba(255,255,255,0.14); font-size: 14px; color: #9e9e9e"><span style="flex-grow: 1">Search songs, artists, podcasts</span><span>⌕</span></label>
+      <div style="display: flex; justify-content: flex-end; align-items: center; gap: 4px">
+        <button aria-label="Now playing pane" style="width: 40px; height: 36px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit">▤</button>
+        <span style="width: 32px; height: 32px; border-radius: 16px; background: #6b5b4a; margin: 0 4px"></span>
+      </div>
+    </div>
+    <div style="flex-grow: 1; min-height: 0; display: flex; border-top: 1px solid rgba(255,255,255,0.06)">
+      <nav aria-label="Main" style="width: 280px; flex-shrink: 0; padding: 8px 0; box-sizing: border-box; display: flex; flex-direction: column; border-right: 1px solid rgba(255,255,255,0.06)">
+        <sc-for list="{{nav}}" as="n" hint-placeholder-count="12">
+          <sc-if value="{{n.header}}" hint-placeholder-val="{{ false }}"><div style="height: 40px; display: flex; align-items: flex-end; padding: 0 0 8px 20px; box-sizing: border-box; font-size: 14px; font-weight: 600">{{n.label}}</div></sc-if>
+          <sc-if value="{{n.item}}" hint-placeholder-val="{{ true }}">
+            <a href="#" style="{{n.style}}"><span style="{{n.pillStyle}}"></span><span style="{{n.iconStyle}}"></span><span style="flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{n.label}}</span></a>
+          </sc-if>
+        </sc-for>
+        <div style="flex-grow: 1"></div>
+        <a href="#" style="height: 36px; margin: 2px 4px; padding: 0 16px; display: flex; align-items: center; gap: 16px; border-radius: 4px; font-size: 14px; color: #fff"><span style="width: 16px; height: 16px; box-sizing: border-box; border: 1px solid #c5c5c5; border-radius: 8px"></span>Settings</a>
+      </nav>
+      <main style="flex-grow: 1; min-width: 0; padding: 24px 36px; box-sizing: border-box; display: flex; flex-direction: column; gap: 28px; overflow: hidden">
+        <div style="display: flex; flex-direction: column; gap: 4px">
+          <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600">Good evening, Chris</h1>
+          <div style="display: flex; gap: 4px; padding-top: 8px">
+            <sc-for list="{{views}}" as="v" hint-placeholder-count="4"><button style="{{v.style}}">{{v.label}}<span style="{{v.barStyle}}"></span></button></sc-for>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px">
+          <div style="display: flex; gap: 20px; padding: 20px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.2)">
+            <div style="width: 176px; height: 176px; border-radius: 4px; background: #6b3b5b; flex-shrink: 0"></div>
+            <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0">
+              <div style="font-size: 12px; color: #c5c5c5">Your daylist · changes at 22:00</div>
+              <div style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">90s rock permanent wave saturday evening</div>
+              <div style="font-size: 14px; color: #c5c5c5">90s rock · permanent wave · emo phase · 50 songs</div>
+              <div style="flex-grow: 1"></div>
+              <div style="display: flex; gap: 8px">
+                <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px">▷ Play</button>
+                <button style="height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.061); border: 1px solid rgba(255,255,255,0.07); color: #fff; font: inherit; font-size: 14px">Shuffle</button>
+                <button aria-label="Save" style="width: 32px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit">♡</button>
+              </div>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.2)">
+            <div style="font-size: 14px; font-weight: 600; padding: 4px 4px 8px 4px">Jump back in</div>
+            <sc-for list="{{recent}}" as="r" hint-placeholder-count="4">
+              <a href="#" style="display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 4px; border-radius: 4px; color: #fff">
+                <span style="{{r.artStyle}}"></span>
+                <span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.title}}</span><span style="font-size: 12px; color: #c5c5c5">{{r.sub}}</span></span>
+              </a>
+            </sc-for>
+          </div>
+        </div>
+        <sc-for list="{{shelves}}" as="s" hint-placeholder-count="2">
+          <section style="display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; align-items: baseline; gap: 12px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; flex-grow: 1">{{s.title}}</h2><a href="#" style="font-size: 14px">See all</a></div>
+            <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px">
+              <sc-for list="{{s.cards}}" as="c" hint-placeholder-count="6">
+                <a href="#" style="display: flex; flex-direction: column; gap: 8px; color: #fff">
+                  <span style="{{c.artStyle}}"></span>
+                  <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.title}}</span><span style="font-size: 12px; color: #c5c5c5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.sub}}</span></span>
+                </a>
+              </sc-for>
+            </div>
+          </section>
+        </sc-for>
+      </main>
+    </div>
+    <div style="height: 72px; flex-shrink: 0; display: grid; grid-template-columns: 1fr 520px 1fr; align-items: center; padding: 0 16px; box-sizing: border-box; border-top: 1px solid rgba(255,255,255,0.06); background: #202020">
+      <div style="display: flex; align-items: center; gap: 12px; min-width: 0">
+        <span style="width: 48px; height: 48px; border-radius: 4px; background: #3b5b7a"></span>
+        <span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; font-weight: 600">Stereo Love</span><span style="font-size: 12px; color: #c5c5c5">Edward Maya, Vika Jigulina</span></span>
+        <button aria-label="Liked" style="width: 40px; height: 40px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit">♥</button>
+      </div>
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 2px">
+        <div style="display: flex; gap: 8px; align-items: center">
+          <button aria-label="Shuffle" style="width: 40px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit">⇄</button>
+          <button aria-label="Previous" style="width: 40px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit">⏮</button>
+          <button aria-label="Pause" style="width: 36px; height: 36px; border: 0; border-radius: 18px; background: #60cdff; color: #000; font: inherit; font-size: 11px">❚❚</button>
+          <button aria-label="Next" style="width: 40px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit">⏭</button>
+          <button aria-label="Repeat" style="width: 40px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit">↻</button>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; width: 100%; font-size: 12px; color: #c5c5c5"><span>1:59</span><div style="position: relative; flex-grow: 1; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.54)"><div style="width: 48%; height: 4px; border-radius: 2px; background: #60cdff"></div></div><span>4:07</span></div>
+      </div>
+      <div style="display: flex; justify-content: flex-end; align-items: center; gap: 4px; font-size: 12px; color: #c5c5c5">
+        <span style="padding-right: 8px">▭ iPhone</span>
+        <button aria-label="Lyrics" style="width: 40px; height: 40px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit">❝</button>
+        <button aria-label="Volume" style="width: 40px; height: 40px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit">🔉︎</button>
+        <div style="width: 96px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.54)"><div style="width: 70%; height: 4px; border-radius: 2px; background: #60cdff"></div></div>
+        <button aria-label="More" style="width: 40px; height: 40px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit">⋯</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+  const tab = (label, sel, color) => ({ label,
+    style: 'height: 36px; width: 220px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 10px 0 12px; font-size: 12px; border-radius: 8px 8px 0 0; ' + (sel ? 'background: #282828; color: #ffffff' : 'color: #c5c5c5'),
+    iconStyle: 'width: 16px; height: 16px; border-radius: 3px; background: ' + color });
+  const tabs = [tab('Home', true, '#60cdff'), tab('The Stereo Love Show', false, '#3b5b7a'), tab('LoL Worlds Songs 2014–2026', false, '#6b6b6b')];
+  const navItem = (label, sel) => ({ item: true, header: false, label,
+    style: 'position: relative; height: 36px; margin: 2px 4px; padding: 0 12px 0 16px; display: flex; align-items: center; gap: 16px; border-radius: 4px; font-size: 14px; color: #ffffff; ' + (sel ? 'background: rgba(255,255,255,0.061)' : ''),
+    pillStyle: sel ? 'position: absolute; left: 0; top: 10px; width: 3px; height: 16px; border-radius: 2px; background: #60cdff' : 'display: none',
+    iconStyle: 'width: 16px; height: 16px; flex-shrink: 0; box-sizing: border-box; border: 1px solid #c5c5c5; border-radius: 3px' });
+  const head = (label) => ({ item: false, header: true, label });
+  const nav = [navItem('Home', true), navItem('Browse', false), head('Library'), navItem('Liked Songs', false), navItem('Albums', false), navItem('Artists', false), navItem('Podcasts', false), head('Playlists'), navItem('K-Pop Duets (러블리 듀엣)', false), navItem('LoL Worlds Songs 2014–2026', false), navItem('90’s Nederlandstalig', false)];
+  const vstyle = (sel) => ({ style: 'position: relative; height: 40px; padding: 0 12px; border: 0; background: transparent; font: inherit; font-size: 14px; color: ' + (sel ? '#ffffff' : '#c5c5c5'), barStyle: sel ? 'position: absolute; left: 12px; right: 12px; bottom: 4px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' });
+  const views = [{ label: 'All', ...vstyle(true) }, { label: 'Music', ...vstyle(false) }, { label: 'Podcasts', ...vstyle(false) }, { label: 'Audiobooks', ...vstyle(false) }];
+  const art = (c, s) => 'width: ' + s + 'px; height: ' + s + 'px; border-radius: 4px; flex-shrink: 0; background: ' + c;
+  const recent = [['The Stereo Love Show', 'Album · Edward Maya', '#3b5b7a'], ['LoL Worlds Songs 2014–2026', 'Playlist · Luhkas', '#5b5b5b'], ['Arash', 'Artist', '#4a3b2f'], ['K-Pop Duets', 'Playlist · you', '#6b3b4a']].map(r => ({ title: r[0], sub: r[1], artStyle: art(r[2], 40) }));
+  const card = (t, s, c) => ({ title: t, sub: s, artStyle: 'width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; background: ' + c });
+  const shelves = [
+    { title: 'Made for you', cards: [card('Daily Mix 1', 'Arash, Helena, Inna', '#5b3b6b'), card('Daily Mix 2', 'aespa, ILLIT', '#3b5b6b'), card('Discover Weekly', 'Updated Monday', '#2f6b4a'), card('Release Radar', 'Updated Friday', '#6b4a2f'), card('On Repeat', 'Songs you love', '#6b2f3b'), card('Time Capsule', 'From your past', '#4a4a6b')] },
+    { title: 'New releases for you', cards: [card('Armageddon', 'aespa · Album', '#5b2f6b'), card('SUPER REAL ME', 'ILLIT · EP', '#6b5b2f'), card('Sticky', 'KISS OF LIFE · Single', '#2f6b5b'), card('How Sweet', 'NewJeans · Single', '#6b2f3b'), card('Odyssey', 'HOME · Album', '#2f5b6b'), card('Endless Summer', 'The Midnight', '#6b4a2f')] },
+  ];
+  return { tabs, nav, views, recent, shelves };
+}
+}
+</script>
+</body>
+</html>

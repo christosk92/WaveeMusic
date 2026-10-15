@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune collection: audiobooks · small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 800px; height: 600px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="small" crumb="library › audiobooks › project hail mary" accent="{{accent}}" hint-size="800px,48px"></dc-import>
+  <dc-import name="Z-Part-Band" tier="small" section="library" sub="liked,playlists,albums,artists,podcasts,audiobooks" on="audiobooks" accent="{{accent}}" hint-size="800px,84px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; padding: 4px 24px 0 24px; gap: 10px; overflow: hidden">
+    <div style="display: flex; align-items: center; gap: 16px; font-size: 13px; color: #a8a8a8; height: 28px; flex-shrink: 0">
+      <button style="height: 28px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0; display: flex; align-items: center; gap: 6px">recently played <span style="font-size: 10px; color: #a8a8a8">▾</span></button>
+      <span style="flex-grow: 1"></span>
+      <span>this month · <span style="color: #ffffff">9 hr 20 min</span> of 15 hr left</span>
+      <span style="width: 96px; height: 2px; background: rgba(255,255,255,0.14); display: block"><span style="display: block; height: 2px; width: 62%; background: #ffffff"></span></span>
+    </div>
+    <div style="flex-grow: 1; min-height: 0; display: flex; gap: 24px">
+      <div style="width: 250px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden">
+        <sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+          <div style="display: flex; flex-direction: column; flex-shrink: 0">
+            <span style="display: flex; align-items: baseline; gap: 8px; height: 30px; padding-top: 4px; box-sizing: border-box"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; font-weight: 300">{{g.label}}</span><span style="font-size: 12px; color: #7a7a7a">{{g.count}}</span></span>
+            <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="2">
+              <a href="#" style="{{r.row}}"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="{{r.name}}">{{r.n}}</span><span style="{{r.metaStyle}}">{{r.meta}}</span><span style="{{r.track}}"><span style="{{r.fill}}"></span></span></span></a>
+            </sc-for>
+          </div>
+        </sc-for>
+      </div>
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden">
+        <div style="display: flex; gap: 18px; align-items: flex-end; flex-shrink: 0">
+          <span style="width: 112px; height: 112px; flex-shrink: 0; border-radius: 2px; background: linear-gradient(160deg, #1f3a4a, #0f1f2a); display: block"></span>
+          <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0; flex-grow: 1">
+            <span style="font-size: 12px; color: #a8a8a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">audiobook · <a href="#" style="color: #ffffff">Andy Weir</a> · read by Ray Porter</span>
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 44px; letter-spacing: -0.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Project Hail Mary</span>
+            <span style="display: flex; align-items: center; gap: 10px; font-size: 12px; color: #9c9c9c"><span style="width: 120px; height: 2px; background: rgba(255,255,255,0.14); display: block; flex-shrink: 0"><span style="{{bookFill}}"></span></span><span style="white-space: nowrap"><span style="color: #ffffff">6 hr 12 min left</span> · chapter 14 of 30</span></span>
+            <span style="display: flex; gap: 12px; align-items: center; padding-top: 4px; font-size: 14px">
+              <button style="display: flex; align-items: center; gap: 8px; border: 0; background: transparent; color: #fff; font: inherit; padding: 0"><span style="{{playRing}}">▶</span>resume</button>
+              <button aria-label="start over" style="{{ringBtn}}">↺</button>
+              <button aria-label="mark finished" style="{{ringBtn}}">✓</button>
+              <button aria-label="more" style="{{ringBtn}}">⋯</button>
+            </span>
+          </div>
+        </div>
+        <div style="display: flex; align-items: baseline; gap: 12px; height: 40px; margin-top: 8px; flex-shrink: 0"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px">chapters</span><span style="flex-grow: 1"></span><span style="font-size: 12px; color: #7a7a7a">speed <span style="color: #ffffff">1.2×</span> · sleep timer <span style="color: #ffffff">off</span></span></div>
+        <sc-for list="{{chapters}}" as="c" hint-placeholder-count="5">
+          <div style="{{c.row}}"><span style="{{c.num}}">{{c.n}}</span><span style="display: flex; flex-direction: column; min-width: 0; gap: 3px"><span style="{{c.title}}">{{c.t}}</span><span style="{{c.track}}"><span style="{{c.fill}}"></span></span></span><span style="{{c.state}}">{{c.s}}</span><span style="{{c.time}}">{{c.d}}</span></div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="medium" kind="podcast" title="Chapter 14" artist="Project Hail Mary" art="#1f3a4a" progress="36" accent="{{accent}}" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const book = (d) => {
+    const open = d[4] === 'open';
+    return {
+      n: d[0], meta: d[2],
+      row: 'display: grid; grid-template-columns: 60px minmax(0, 1fr); align-items: center; height: 64px; flex-shrink: 0; ' + (open ? 'background: rgba(255,255,255,0.05)' : ''),
+      art: 'width: 48px; height: 48px; border-radius: 2px; display: block; margin-left: 4px; background: ' + d[1],
+      name: 'font-size: 14px; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (open ? accent : '#ffffff'),
+      metaStyle: 'font-size: 12px; color: ' + (open ? '#ffffff' : '#7a7a7a'),
+      track: 'width: 120px; height: 2px; margin-top: 2px; display: ' + (d[3] > 0 ? 'block' : 'none') + '; background: rgba(255,255,255,0.14)',
+      fill: 'display: block; height: 2px; width: ' + d[3] + '%; background: ' + (open ? accent : '#a8a8a8'),
+    };
+  };
+  const groups = [
+    { label: 'in progress', count: '2', rows: [['Project Hail Mary', 'linear-gradient(160deg, #1f3a4a, #0f1f2a)', '6 hr 12 min left', 62, 'open'], ['Dune', '#6b4a2a', '14 hr 5 min left', 33, '']].map(book) },
+    { label: 'not started', count: '3', rows: [['Atomic Habits', '#c8b48a', '5 hr 35 min', 0, ''], ['Sapiens', '#8a2a2a', '15 hr 17 min', 0, ''], ['Tomorrow, and Tomorrow, and Tomorrow', '#2a5a7a', '12 hr 26 min', 0, '']].map(book) },
+  ];
+  const ch = [['13', 'Chapter 13', 'finished', '27:58', 100], ['14', 'Chapter 14', '19 min left', '30:43', 36, true], ['15', 'Chapter 15', '', '31:05', 0], ['16', 'Chapter 16', '', '35:20', 0], ['17', 'Chapter 17', '', '28:14', 0]];
+  const chapters = ch.map((d) => { const cur = !!d[5], done = d[4] === 100; return {
+    n: d[0], t: d[1], s: d[2], d: d[3],
+    row: 'display: grid; grid-template-columns: 48px minmax(0, 1fr) 96px 52px; align-items: center; height: 44px; flex-shrink: 0',
+    num: 'font-family: ' + D + '; font-weight: 300; font-size: 22px; padding-left: 4px; font-variant-numeric: tabular-nums; color: ' + (cur ? accent : (done ? '#4f4f4f' : '#7a7a7a')),
+    title: 'font-size: 15px; color: ' + (cur ? accent : (done ? '#7a7a7a' : '#ffffff')),
+    track: 'width: 160px; height: 2px; display: ' + (cur ? 'block' : 'none') + '; background: rgba(255,255,255,0.14)',
+    fill: 'display: block; height: 2px; width: ' + d[4] + '%; background: ' + accent,
+    state: 'font-size: 12px; color: ' + (cur ? accent : '#7a7a7a'),
+    time: 'font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; color: ' + (cur ? accent : '#9c9c9c'),
+  }; });
+  return {
+    accent, groups, chapters,
+    bookFill: 'display: block; height: 2px; width: 62%; background: ' + accent,
+    playRing: 'width: 36px; height: 36px; border-radius: 18px; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; font-size: 13px',
+    ringBtn: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #ffffff; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 13px; padding: 0',
+  };
+}
+}
+</script>
+</body>
+</html>

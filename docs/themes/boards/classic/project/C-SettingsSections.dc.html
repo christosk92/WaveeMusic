@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings sections</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="settings:Settings" sel="0" w="1440" hint-size="1440px,48px"></dc-import>
+  <div style="display: flex; height: 780px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="classic" sel="none" h="780" hint-size="280px,780px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; padding: 24px 36px 0; display: flex; flex-direction: column; overflow: hidden">
+      <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em">Settings</h1>
+      <div role="tablist" aria-label="Settings sections" style="display: flex; gap: 4px; margin: 12px 0 0 -12px; border-bottom: 1px solid rgba(255,255,255,0.082)"><sc-for list="{{tabs}}" as="t" hint-placeholder-count="7"><button role="tab" aria-selected="{{t.sel}}" style="{{t.s}}">{{t.l}}<span style="{{t.bar}}"></span></button></sc-for></div>
+      <div style="max-width: 1000px; display: flex; flex-direction: column; gap: 4px; padding-top: 16px">
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="10">
+          <sc-if value="{{r.h}}" hint-placeholder-val="{{false}}"><div style="{{r.hs}}"><span style="font-size: 14px; font-weight: 600">{{r.l}}</span><span style="font-size: 12px; color: rgba(255,255,255,0.773)">{{r.d}}</span></div></sc-if>
+          <sc-if value="{{r.card}}" hint-placeholder-val="{{true}}"><div style="min-height: 68px; box-sizing: border-box; padding: 12px 16px; border-radius: 4px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); display: flex; align-items: center; gap: 16px"><span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 14px">{{r.l}}</span><span style="font-size: 12px; color: rgba(255,255,255,0.773)">{{r.d}}</span></span><sc-if value="{{r.tog}}" hint-placeholder-val="{{false}}"><span style="font-size: 14px; color: rgba(255,255,255,0.773)">{{r.state}}</span><span style="{{r.track}}"><span style="{{r.knob}}"></span></span></sc-if><sc-if value="{{r.combo}}" hint-placeholder-val="{{false}}"><span style="width: 200px; height: 32px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); font-size: 14px">{{r.v}} <span style="color: rgba(255,255,255,0.6)">⌄</span></span></sc-if></div></sc-if>
+        </sc-for>
+      </div>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="1440" hint-size="1440px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const tabs = ['General', 'Appearance', 'Playback', 'Notifications', 'Storage & cache', 'Privacy & diagnostics', 'About'].map((l, i) => ({ l, sel: i === 2 ? 'true' : 'false', s: 'position: relative; height: 40px; padding: 0 12px; border: 0; background: transparent; font: inherit; font-size: 14px; color: ' + (i === 2 ? '#fff' : 'rgba(255,255,255,0.773)'), bar: i === 2 ? 'position: absolute; left: 12px; right: 12px; bottom: -1px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' }));
+  let first = true;
+  const H = (l, d) => { const r = { h: true, card: false, l, d, hs: 'display: flex; align-items: baseline; gap: 8px; margin: ' + (first ? 0 : 24) + 'px 0 8px' }; first = false; return r; };
+  const tog = (l, d, on) => ({ h: false, card: true, tog: true, combo: false, l, d, state: on ? 'On' : 'Off', track: 'width: 40px; height: 20px; box-sizing: border-box; border-radius: 10px; position: relative; ' + (on ? 'background: #60cdff' : 'border: 1px solid rgba(255,255,255,0.6)'), knob: 'position: absolute; top: ' + (on ? 4 : 3) + 'px; left: ' + (on ? 24 : 4) + 'px; width: 12px; height: 12px; border-radius: 6px; background: ' + (on ? '#000' : 'rgba(255,255,255,0.773)') });
+  const cb = (l, d, v) => ({ h: false, card: true, tog: false, combo: true, l, d, v });
+  const rows = [H('Audio', 'Quality, volume and loudness'), cb('Audio quality', 'Very high needs Premium', 'Very high'), cb('On metered connections', 'Quality while on a metered network', 'Normal'), tog('Remember volume', 'Start at the last volume you used', true), tog('Autoplay', 'Keep playing similar music when your queue ends', true), tog('Audio normalization', 'Play every song at a similar loudness', true), H('Sound', 'Equalizer and crossfade'), cb('Equalizer', '10 bands with presets', 'Flat'), cb('Crossfade', 'Blend the end of one song into the next', 'Off'), H('Player bar', ''), tog('Show remaining time', 'Show “-m:ss” instead of the total length', true)];
+  return { tabs, rows };
+}
+}
+</script>
+</body>
+</html>

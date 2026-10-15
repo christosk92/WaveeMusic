@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Compact now-playing sheet</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 400px; height: 860px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="home:Home|album:Random Access Memories" sel="1" w="400" tier="compact" hint-size="400px,48px"></dc-import>
+  <main style="height: 812px; flex-shrink: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098)"></main>
+  <div aria-hidden="true" style="position: absolute; left: 0; right: 0; top: 48px; bottom: 0; background: rgba(0,0,0,0.4)"></div>
+  <section role="dialog" aria-label="Now playing" style="position: absolute; left: 0; right: 0; top: 56px; bottom: 0; box-sizing: border-box; border-top-left-radius: 8px; border-top-right-radius: 8px; border-top: 1px solid rgba(255,255,255,0.08); overflow: hidden; background: linear-gradient(180deg, rgba(92,92,92,0.55) 0%, rgba(40,40,40,0) 52%), #282828; box-shadow: 0 -8px 24px rgba(0,0,0,0.35); display: flex; flex-direction: column; align-items: stretch; padding: 0 16px">
+    <div aria-hidden="true" style="height: 16px; flex-shrink: 0; display: flex; align-items: center; justify-content: center"><span style="width: 32px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.3)"></span></div>
+    <div style="height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; margin: 0 -8px">
+      <button aria-label="Close now playing" style="width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      <a href="#" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; text-align: center"><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">Playing from album</span><span style="font-size: 12px; line-height: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%">Random Access Memories</span></a>
+      <button aria-label="More" style="width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h.01M8 8h.01M13 8h.01" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path></svg></button>
+    </div>
+    <span role="img" aria-label="Random Access Memories cover" style="width: 320px; height: 320px; margin: 12px auto 0; flex-shrink: 0; border-radius: 8px; background: linear-gradient(135deg, #111 0%, #3a3a3a 40%, #bdbdbd 52%, #3a3a3a 64%, #111 100%); box-shadow: 0 12px 32px rgba(0,0,0,0.45)"></span>
+    <div style="margin-top: 20px; display: flex; align-items: flex-start; gap: 8px; flex-shrink: 0">
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+        <span style="font-size: 20px; line-height: 28px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Get Lucky (feat. Pharrell Williams &amp; Nile Rodgers)</span>
+        <a href="#" style="font-size: 14px; line-height: 20px; color: rgba(255,255,255,0.773); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Daft Punk, Pharrell Williams, Nile Rodgers</a>
+      </div>
+      <button aria-label="Remove from Liked Songs" style="width: 40px; height: 40px; flex-shrink: 0; margin-right: -8px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #60cdff"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor"></path></svg></button>
+    </div>
+    <div style="margin-top: 14px; flex-shrink: 0; display: flex; flex-direction: column; gap: 4px">
+      <div role="slider" aria-label="Seek" aria-valuenow="43" style="position: relative; height: 20px; display: flex; align-items: center"><span style="position: absolute; left: 0; right: 0; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.545)"></span><span style="position: absolute; left: 0; width: 43%; height: 4px; border-radius: 2px; background: #60cdff"></span><span style="position: absolute; left: calc(43% - 10px); width: 20px; height: 20px; border-radius: 10px; background: #454545; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.094); display: flex; align-items: center; justify-content: center"><span style="width: 10px; height: 10px; border-radius: 5px; background: #60cdff"></span></span></div>
+      <div style="display: flex; justify-content: space-between; font-size: 12px; line-height: 16px; font-variant-numeric: tabular-nums; color: rgba(255,255,255,0.773)"><span>2:40</span><span>-3:29</span></div>
+    </div>
+    <div style="margin-top: 10px; height: 56px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between">
+      <button aria-label="Shuffle" aria-pressed="true" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: rgba(255,255,255,0.059); color: #60cdff"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4.5h2.5c3 0 4 7 7 7H14M2 11.5h2.5c1.2 0 2-1 2.6-2.2M9 6.7c.6-1.2 1.4-2.2 2.5-2.2H14M12 2.5l2 2-2 2M12 9.5l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      <button aria-label="Previous" style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff"><svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3v10M13 3 6 8l7 5z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      <button aria-label="Pause" style="width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 28px; background: #60cdff; color: #000"><svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 3h2.4v10H4.5zM9.1 3h2.4v10H9.1z" fill="currentColor"></path></svg></button>
+      <button aria-label="Next" style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff"><svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true"><path d="M12 3v10M3 3l7 5-7 5z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      <button aria-label="Repeat" aria-pressed="false" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: rgba(255,255,255,0.773)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 7V6a2 2 0 0 1 2-2h8l-2-2M13 9v1a2 2 0 0 1-2 2H3l2 2" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    </div>
+    <div style="margin-top: 14px; flex-shrink: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+      <sc-for list="{{acts}}" as="a" hint-placeholder-count="3"><button aria-label="{{a.label}}" style="{{a.s}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{a.d}}" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="font-size: 12px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{a.l}}</span></button></sc-for>
+    </div>
+    <a href="#" style="margin-top: 16px; flex-shrink: 0; display: flex; gap: 12px; padding: 12px 14px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098)">
+      <span style="width: 3px; flex-shrink: 0; border-radius: 2px; background: #60cdff"></span>
+      <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 350">a light left on in the hall</span><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 350; color: rgba(255,255,255,0.529)">so the morning finds us here</span></span>
+    </a>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const b = (on) => 'height: 48px; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border: 0; border-radius: 4px; font: inherit; background: ' + (on ? 'rgba(255,255,255,0.059)' : 'transparent') + '; color: ' + (on ? '#60cdff' : 'rgba(255,255,255,0.773)');
+  const acts = [
+    ['Lyrics', 'Lyrics', 'M3 3.5h10v7H7l-3 2.5v-2.5H3zM5.5 6h5M5.5 8h3', false],
+    ['This computer', 'Devices: playing on this computer', 'M2.5 3.5h8v6h-8zM5 12h3M12 5.5h2v7h-2z', false],
+    ['Queue', 'Queue', 'M2.5 4h11M2.5 8h11M2.5 12h6M11.5 10.5l3 1.5-3 1.5z', false]
+  ].map(a => ({ l: a[0], label: a[1], d: a[2], s: b(a[3]) }));
+  return { acts };
+}
+}
+</script>
+</body>
+</html>

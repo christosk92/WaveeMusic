@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Playlist followed, small window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 800px; height: 600px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tier="small" width="800" tabs="home:Home|playlist:Today’s Top Hits:#6b2f3b" sel="1" hint-size="800px,88px"></dc-import>
+  <div style="display: flex; height: 440px; flex-shrink: 0">
+    <dc-import name="Shell-Nav" theme="dark" mode="compact" sel="" height="440" hint-size="48px,440px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); border-left: 1px solid rgba(255,255,255,0.0837); border-top-left-radius: 8px; padding: 20px 24px 0 24px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+      <div style="display: flex; gap: 20px; align-items: flex-end; flex-shrink: 0">
+        <div style="width: 128px; height: 128px; border-radius: 8px; background: #6b2f3b; flex-shrink: 0"></div>
+        <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0; flex-grow: 1">
+          <div style="font-size: 12px; line-height: 16px; color: #c5c5c5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Playlist · The hottest 50. Cover: aespa.</div>
+          <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Today’s Top Hits</h1>
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 14px; line-height: 20px; color: #c5c5c5"><span style="width: 20px; height: 20px; border-radius: 10px; background: #1db954; flex-shrink: 0"></span><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis"><a href="#">Spotify</a> · 50 songs · 36,201,114 saves · 2 hr 41 min</span></div>
+          <div style="display: flex; gap: 8px; align-items: center; padding-top: 10px">
+            <div style="display: flex; height: 32px; border-radius: 4px; overflow: hidden; background: #60cdff; color: #000; font-size: 14px"><button style="display: flex; align-items: center; gap: 8px; padding: 0 14px; border: 0; background: transparent; color: #000; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg>Play</button><span style="width: 1px; background: rgba(0,0,0,0.2)"></span><button aria-label="More play options" style="width: 32px; border: 0; background: transparent; color: #000; font: inherit; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></div>
+            <button style="height: 32px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px">Shuffle</button>
+            <button aria-pressed="true" style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0837); border: 1px solid rgba(255,255,255,0.0698); color: #fff; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor" stroke="none"></path></svg>Following</button>
+            <button aria-label="More: copy to playlist, share" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+          </div>
+        </div>
+      </div>
+      <div role="table" aria-label="Tracks" style="display: flex; flex-direction: column; flex-shrink: 0">
+        <div role="row" style="display: grid; grid-template-columns: 44px minmax(0, 1fr) 40px 56px 40px; align-items: center; height: 32px; border-bottom: 1px solid rgba(255,255,255,0.0837); font-size: 12px; color: #c5c5c5">
+          <span style="padding-left: 14px">#</span><span>Title</span><span></span><span style="text-align: right; padding-right: 8px">Time</span><span></span>
+        </div>
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+          <div role="row" style="{{r.style}}">
+            <span style="{{r.num}}">{{r.n}}</span>
+            <span style="display: flex; align-items: center; gap: 12px; min-width: 0"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.t}}</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.a}}</span></span></span>
+            <span style="display: flex; align-items: center; justify-content: center">{{r.heart}}</span>
+            <span style="text-align: right; padding-right: 8px; font-size: 14px; color: #c5c5c5; font-variant-numeric: tabular-nums">{{r.time}}</span>
+            <span style="display: flex; align-items: center; justify-content: center">{{r.more}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </main>
+  </div>
+  <dc-import name="Shell-Player" theme="dark" tier="compact" width="800" variant="music" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const data = [['Supernova', 'aespa', '2:58', '#5b2f6b', true, false], ['How Sweet', 'NewJeans', '3:39', '#6b2f3b', false, true], ['Magnetic', 'ILLIT', '2:41', '#6b5b2f', false, false], ['Sticky', 'KISS OF LIFE', '2:52', '#2f6b5b', false, false], ['Espresso', 'Sabrina Carpenter', '2:55', '#6b4a2f', true, false]];
+  const rows = data.map((d, i) => ({ n: d[5] ? '▶' : String(i + 1), t: d[0], a: d[1], time: d[2], heart: d[4] ? '♥' : (d[5] ? '♡' : ''), more: d[5] ? '⋯' : '',
+    style: 'display: grid; grid-template-columns: 44px minmax(0, 1fr) 40px 56px 40px; align-items: center; height: 48px; margin-top: 2px; border-radius: 4px; ' + (d[5] ? 'background: rgba(255,255,255,0.0605)' : ''),
+    num: 'padding-left: 14px; font-size: 14px; font-variant-numeric: tabular-nums; color: ' + (d[5] ? '#ffffff' : '#9e9e9e'),
+    art: 'width: 40px; height: 40px; flex-shrink: 0; border-radius: 4px; background: ' + d[3] }));
+  return { rows };
+}
+}
+</script>
+</body>
+</html>

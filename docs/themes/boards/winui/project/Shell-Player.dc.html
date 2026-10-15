@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shell part: player bar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<sc-if value="{{isMini}}" hint-placeholder-val="{{ false }}">
+<div style="{{s.miniRoot}}">
+  <span style="{{s.edgeFill}}"></span>
+  <button aria-label="Open now playing" style="{{s.miniOpen}}">
+    <span style="{{s.miniArt}}"><sc-if value="{{isVideo}}" hint-placeholder-val="{{ false }}"><span style="{{s.filmBadge}}"><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12v10H2zM2 6h12M2 10h12M5 3v10M11 3v10" fill="none" stroke="currentColor" stroke-width="1.2"></path></svg></span></sc-if></span>
+    <span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1; text-align: left">
+      <span style="{{s.title}}">{{title}}</span>
+      <span style="{{s.miniSub}}"><sc-if value="{{isRemote}}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="M4 1.5h8v13H4zM8 4.5a1 1 0 1 1 0 2 1 1 0 0 1 0-2zM8 8.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4z" fill="none" stroke="currentColor" stroke-width="1.2"></path></svg></sc-if><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{miniSubText}}</span></span>
+    </span>
+  </button>
+  <sc-if value="{{isMusic}}" hint-placeholder-val="{{ true }}"><button aria-label="Saved to Liked Songs" style="{{s.sub40}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="{{heartFill}}" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button></sc-if>
+  <button aria-label="Pause" style="{{s.play}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3v10M10.5 3v10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg></button>
+  <sc-if value="{{isMusic}}" hint-placeholder-val="{{ true }}"><button aria-label="Next" style="{{s.sub40}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 3v10M3 3.5v9L10.5 8z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button></sc-if>
+  <sc-if value="{{isPodcast}}" hint-placeholder-val="{{ false }}"><button aria-label="Forward 10 seconds" style="{{s.sub40}}"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M9 2.5a6.5 6.5 0 1 0 6.2 4.5M15.5 2.5v4.5H11" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path><text x="9" y="12.2" text-anchor="middle" font-size="6.5" font-family="Segoe UI Variable Small, Segoe UI, sans-serif" fill="currentColor">10</text></svg></button></sc-if>
+  <button aria-label="More player controls" style="{{s.sub40}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+</div>
+</sc-if>
+<sc-if value="{{isBar}}" hint-placeholder-val="{{ true }}">
+<div style="{{s.root}}">
+  <div style="display: flex; align-items: center; gap: 12px; min-width: 0">
+    <span style="{{s.art}}"><sc-if value="{{isVideo}}" hint-placeholder-val="{{ false }}"><span style="{{s.filmBadge}}"><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12v10H2zM2 6h12M2 10h12M5 3v10M11 3v10" fill="none" stroke="currentColor" stroke-width="1.2"></path></svg></span></sc-if></span>
+    <span style="display: flex; flex-direction: column; min-width: 0">
+      <span style="{{s.title}}">{{title}}</span>
+      <span style="{{s.sub}}">{{sub}}</span>
+      <sc-if value="{{remoteLine}}" hint-placeholder-val="{{ false }}"><span style="{{s.remote}}"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.5h8v13H4zM8 4.5a1 1 0 1 1 0 2 1 1 0 0 1 0-2zM8 8.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4z" fill="none" stroke="currentColor" stroke-width="1.2"></path></svg>Playing on Living room speaker</span></sc-if>
+    </span>
+    <button aria-label="Saved to Liked Songs" style="{{s.sub40}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="{{heartFill}}" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+  </div>
+  <div style="display: flex; flex-direction: column; align-items: center; gap: 0">
+    <div style="display: flex; align-items: center; gap: 8px; height: 36px">
+      <sc-if value="{{podPrev}}" hint-placeholder-val="{{ false }}"><button aria-label="Previous" style="{{s.sub32}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3v10M13 3.5v9L5.5 8z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button></sc-if>
+      <sc-if value="{{isPodcast}}" hint-placeholder-val="{{ false }}"><button aria-label="Back 10 seconds" style="{{s.sub32}}"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M9 2.5a6.5 6.5 0 1 1-6.2 4.5M2.5 2.5v4.5H7" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path><text x="9" y="12.2" text-anchor="middle" font-size="6.5" font-family="Segoe UI Variable Small, Segoe UI, sans-serif" fill="currentColor">10</text></svg></button></sc-if>
+      <sc-if value="{{showShuffle}}" hint-placeholder-val="{{ true }}"><button aria-label="Shuffle" style="{{s.sub32}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h2.5c1.4 0 2.3.7 3.2 1.9l1.6 2.2c.9 1.2 1.8 1.9 3.2 1.9H14M2 12h2.5c1.4 0 2.3-.7 3.2-1.9M8.3 5.9c.9-1.2 1.8-1.9 3.2-1.9H14M12 2l2 2-2 2M12 8l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></sc-if>
+      <sc-if value="{{isMusic}}" hint-placeholder-val="{{ true }}"><button aria-label="Previous" style="{{s.sub32}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3v10M13 3.5v9L5.5 8z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button></sc-if>
+      <button aria-label="Pause" style="{{s.play}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3v10M10.5 3v10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg></button>
+      <sc-if value="{{isPodcast}}" hint-placeholder-val="{{ false }}"><button aria-label="Forward 10 seconds" style="{{s.sub32}}"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M9 2.5a6.5 6.5 0 1 0 6.2 4.5M15.5 2.5v4.5H11" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path><text x="9" y="12.2" text-anchor="middle" font-size="6.5" font-family="Segoe UI Variable Small, Segoe UI, sans-serif" fill="currentColor">10</text></svg></button></sc-if>
+      <sc-if value="{{podPrev}}" hint-placeholder-val="{{ false }}"><button aria-label="Next" style="{{s.sub32}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 3v10M3 3.5v9L10.5 8z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button></sc-if>
+      <sc-if value="{{isMusic}}" hint-placeholder-val="{{ true }}"><button aria-label="Next" style="{{s.sub32}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 3v10M3 3.5v9L10.5 8z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button></sc-if>
+      <sc-if value="{{showShuffle}}" hint-placeholder-val="{{ true }}"><button aria-label="Repeat" style="{{s.sub32}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 7V5.5A1.5 1.5 0 0 1 4.5 4H13M11 2l2 2-2 2M13 9v1.5a1.5 1.5 0 0 1-1.5 1.5H3M5 14l-2-2 2-2" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></sc-if>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px; width: 100%; height: 24px">
+      <span style="{{s.time}}">{{elapsed}}</span>
+      <div style="position: relative; flex-grow: 1; height: 18px; display: flex; align-items: center">
+        <div style="{{s.trackRest}}"></div>
+        <div style="{{s.trackFill}}"></div>
+        <sc-for list="{{ticks}}" as="k" hint-placeholder-count="0"><span style="{{k.style}}"></span></sc-for>
+        <sc-if value="{{thumb}}" hint-placeholder-val="{{ true }}"><div style="{{s.thumb}}"><span style="{{s.thumbIn}}"></span></div></sc-if>
+      </div>
+      <span style="{{s.time}}">{{total}}</span>
+    </div>
+  </div>
+  <div style="display: flex; align-items: center; justify-content: flex-end; gap: 4px">
+    <sc-if value="{{showSpeed}}" hint-placeholder-val="{{ false }}"><button aria-label="Playback speed" style="{{s.speed}}">1.0×</button></sc-if>
+    <sc-if value="{{showPanes}}" hint-placeholder-val="{{ true }}"><button aria-label="{{lyricsLabel}}" style="{{s.lyricsBtn}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 9.5V7a3 3 0 0 1 3-3M3 9.5h3v3H3zM10 9.5V7a3 3 0 0 1 3-3M10 9.5h3v3h-3z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+    <button aria-label="Queue" style="{{s.queueBtn}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h7M2.5 12h7M11.5 9.5v4.5l3.5-2.25z" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></sc-if>
+    <sc-if value="{{devLabel}}" hint-placeholder-val="{{ false }}"><button aria-label="Devices" style="{{s.devWide}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.5h8.5v6H2zM4.5 12.5h3.5M12 6h2.5v7H12z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg>{{devText}}</button></sc-if>
+    <sc-if value="{{devIcon}}" hint-placeholder-val="{{ true }}"><button aria-label="Devices" style="{{s.devBtn}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.5h8.5v6H2zM4.5 12.5h3.5M12 6h2.5v7H12z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button></sc-if>
+    <button aria-label="Mute" style="{{s.sub40}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6v4h2.5L8 13V3L5 6zM10.5 5.5a3.5 3.5 0 0 1 0 5M12.5 3.5a6 6 0 0 1 0 9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    <sc-if value="{{showVol}}" hint-placeholder-val="{{ true }}"><div style="{{s.volBox}}"><div style="{{s.volRest}}"></div><div style="{{s.volFill}}"></div></div></sc-if>
+    <sc-if value="{{videoCtl}}" hint-placeholder-val="{{ false }}"><span style="{{s.split}}"><button aria-label="Switch to audio" style="{{s.splitMain}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12v10H2zM2 6h12M2 10h12M5 3v10M11 3v10" fill="none" stroke="currentColor" stroke-width="1"></path></svg></button><span style="{{s.splitDiv}}"></span><button aria-label="Where to play the video" style="{{s.splitChev}}"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></span></sc-if>
+    <sc-if value="{{videoMini}}" hint-placeholder-val="{{ false }}"><button aria-label="Play in a mini player" style="{{s.sub40}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 3.5h13v9h-13zM8 8h5v3.5H8z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button></sc-if>
+    <sc-if value="{{showFull}}" hint-placeholder-val="{{ true }}"><button aria-label="Full screen" style="{{s.sub40}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></sc-if>
+    <button aria-label="More" style="{{s.sub40}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+  </div>
+</div>
+</sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"variant":{"editor":"enum","options":["music","podcast","video","remote"],"default":"music"},"tier":{"editor":"enum","options":["mini","compact","medium","full","huge"],"default":"full"},"width":{"editor":"int","default":1440,"min":320,"max":3840},"pane":{"editor":"enum","options":["none","lyrics","queue","lyrics,queue"],"default":"none"},"liked":{"editor":"boolean","default":true},"thumb":{"editor":"boolean","default":true},"$preview":{"width":1440,"height":72}}'>
+class Component extends DCLogic {
+renderVals() {
+  const dark = (this.props.theme ?? 'dark') !== 'light';
+  const v = this.props.variant ?? 'music';
+  const panes = String(this.props.pane ?? 'none').split(/[\s,|+]+/).filter(Boolean), hasPane = k => panes.includes(k);
+  const tier = String(this.props.tier ?? 'full');
+  const W = Number(this.props.width ?? 1440);
+  const rank = { mini: 0, compact: 1, medium: 2, full: 3, huge: 4 }[tier] ?? 3;
+  const T = dark
+    ? { mica: '#202020', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', sub: 'rgba(255,255,255,0.0605)', div: 'rgba(255,255,255,0.0837)', acc: '#60cdff', onAcc: '#000000', strong: 'rgba(255,255,255,0.5442)', solid: '#454545', ctrlB: 'rgba(255,255,255,0.0698)' }
+    : { mica: '#f3f3f3', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', sub: 'rgba(0,0,0,0.0373)', div: 'rgba(0,0,0,0.0803)', acc: '#005fb8', onAcc: '#ffffff', strong: 'rgba(0,0,0,0.4458)', solid: '#ffffff', ctrlB: 'rgba(0,0,0,0.0578)' };
+  const isPodcast = v === 'podcast', isVideo = v === 'video', isRemote = v === 'remote', isMusic = !isPodcast;
+  const btn = (w, h, on) => 'width: ' + w + 'px; height: ' + h + 'px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; font: inherit; cursor: default; color: ' + T.t1 + '; background: ' + (on ? T.sub : 'transparent');
+  const content = isPodcast
+    ? { title: 'Latency, Honestly', sub: 'Coffee & Code · Episode 42', art: '#4a5b3b', elapsed: '23:41', total: '-31:02', pct: 43 }
+    : isVideo
+    ? { title: 'Stereo Love (Official Video)', sub: 'Edward Maya, Vika Jigulina', art: '#3b5b7a', elapsed: '1:59', total: '4:07', pct: 48 }
+    : { title: 'Stereo Love', sub: 'Edward Maya, Vika Jigulina', art: '#3b5b7a', elapsed: '1:59', total: '4:07', pct: 48 };
+  const ticks = isPodcast ? [12, 27, 43, 61, 84].map(p => ({ style: 'position: absolute; left: ' + p + '%; top: 5px; width: 2px; height: 8px; border-radius: 1px; background: ' + (p < content.pct ? T.onAcc : T.t1) + '; opacity: 0.6' })) : [];
+  const cols = rank === 1 ? 'minmax(0, 1fr) 300px auto' : (rank === 2 ? 'minmax(0, 1fr) 420px minmax(0, 1fr)' : (rank === 4 ? 'minmax(0, 1fr) 720px minmax(0, 1fr)' : 'minmax(0, 1fr) 520px minmax(0, 1fr)'));
+  const s = {
+    root: 'width: ' + W + 'px; height: 72px; box-sizing: border-box; display: grid; grid-template-columns: ' + cols + '; gap: ' + (rank === 1 ? '16px' : '0') + '; align-items: center; padding: 0 16px; border-top: 1px solid ' + T.div + '; font-family: \'Segoe UI Variable Text\', \'Segoe UI\', system-ui, sans-serif; color: ' + T.t1 + '; background: ' + T.mica,
+    miniRoot: 'position: relative; width: ' + W + 'px; height: 64px; box-sizing: border-box; display: flex; align-items: center; gap: 4px; padding: 0 8px 0 12px; border-top: 1px solid ' + T.div + '; font-family: \'Segoe UI Variable Text\', \'Segoe UI\', system-ui, sans-serif; color: ' + T.t1 + '; background: ' + T.mica,
+    edgeFill: 'position: absolute; left: 0; top: -1px; width: ' + content.pct + '%; height: 2px; background: ' + T.acc,
+    miniOpen: 'flex-grow: 1; min-width: 0; height: 56px; display: flex; align-items: center; gap: 12px; padding: 0 8px 0 0; border: 0; border-radius: 4px; background: transparent; color: ' + T.t1 + '; font: inherit; cursor: default',
+    miniArt: 'position: relative; width: 40px; height: 40px; flex-shrink: 0; border-radius: 4px; background: ' + content.art,
+    miniSub: 'display: flex; align-items: center; gap: 4px; min-width: 0; font-size: 12px; line-height: 16px; color: ' + (isRemote ? (dark ? '#99ebff' : '#003e92') : T.t2),
+    art: 'position: relative; width: 48px; height: 48px; flex-shrink: 0; border-radius: 4px; background: ' + content.art,
+    filmBadge: 'position: absolute; right: 2px; bottom: 2px; width: 16px; height: 16px; border-radius: 3px; background: rgba(0,0,0,0.6); color: #fff; display: flex; align-items: center; justify-content: center',
+    title: 'font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis',
+    sub: 'font-size: 12px; line-height: 16px; color: ' + T.t2 + '; white-space: nowrap; overflow: hidden; text-overflow: ellipsis',
+    remote: 'display: flex; align-items: center; gap: 4px; font-size: 12px; line-height: 16px; color: ' + T.t2,
+    sub40: btn(40, 40, false), sub32: btn(40, 32, false),
+    play: 'width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 18px; font: inherit; color: ' + T.onAcc + '; background: ' + T.acc,
+    time: 'width: 40px; flex-shrink: 0; font-size: 12px; color: ' + T.t2 + '; font-variant-numeric: tabular-nums; text-align: center',
+    trackRest: 'width: 100%; height: 4px; border-radius: 2px; background: ' + T.strong,
+    trackFill: 'position: absolute; left: 0; width: ' + content.pct + '%; height: 4px; border-radius: 2px; background: ' + T.acc,
+    thumb: 'position: absolute; left: calc(' + content.pct + '% - 9px); width: 18px; height: 18px; border-radius: 9px; box-sizing: border-box; border: 1px solid ' + T.ctrlB + '; background: ' + T.solid + '; display: flex; align-items: center; justify-content: center',
+    thumbIn: 'width: 12px; height: 12px; border-radius: 6px; background: ' + T.acc,
+    speed: 'width: 40px; height: 32px; border: 0; border-radius: 4px; background: transparent; font: inherit; font-size: 12px; font-weight: 600; color: ' + T.t1,
+    lyricsBtn: btn(40, 40, hasPane('lyrics')), queueBtn: btn(40, 40, hasPane('queue')), devBtn: btn(40, 40, isRemote).replace('color: ' + T.t1, 'color: ' + (isRemote ? (dark ? '#99ebff' : '#003e92') : T.t1)),
+    devWide: 'height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 4px; font: inherit; font-size: 14px; white-space: nowrap; color: ' + (isRemote ? (dark ? '#99ebff' : '#003e92') : T.t1) + '; background: ' + (isRemote ? T.sub : 'transparent'),
+    volBox: 'position: relative; width: ' + (rank === 4 ? 128 : 96) + 'px; height: 18px; display: flex; align-items: center',
+    volRest: 'width: 100%; height: 4px; border-radius: 2px; background: ' + T.strong,
+    volFill: 'position: absolute; left: 0; width: 70%; height: 4px; border-radius: 2px; background: ' + T.acc,
+    split: 'display: flex; height: 32px; border-radius: 4px; overflow: hidden; background: ' + T.sub + '; border: 1px solid ' + T.ctrlB,
+    splitMain: 'width: 36px; height: 30px; border: 0; background: transparent; font: inherit; color: ' + T.t1 + '; display: flex; align-items: center; justify-content: center',
+    splitDiv: 'width: 1px; margin: 6px 0; background: ' + T.div,
+    splitChev: 'width: 24px; height: 30px; border: 0; background: transparent; font: inherit; color: ' + T.t1 + '; display: flex; align-items: center; justify-content: center'
+  };
+  return { s, isMini: rank === 0, isBar: rank > 0, isPodcast, isVideo, isRemote, isMusic, title: content.title, sub: content.sub, elapsed: content.elapsed, total: content.total, ticks,
+    miniSubText: isRemote ? 'Playing on Living room speaker' : content.sub,
+    remoteLine: isRemote && rank >= 2,
+    podPrev: isPodcast && rank >= 2, showShuffle: isMusic && rank >= 2, showSpeed: isPodcast && rank >= 2, showPanes: rank >= 2,
+    devLabel: rank === 4, devIcon: rank < 4, devText: isRemote ? 'Living room speaker' : 'This PC',
+    showVol: rank >= 3, videoCtl: isVideo && rank >= 2, videoMini: isVideo && rank >= 3, showFull: rank >= 3,
+    thumb: (this.props.thumb ?? true) && !isPodcast, heartFill: (this.props.liked ?? true) ? 'currentColor' : 'none', lyricsLabel: isPodcast ? 'Transcript' : 'Lyrics' };
+}
+}
+</script>
+</body>
+</html>

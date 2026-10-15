@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Crash report prompt</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="position: relative; width: 1440px; height: 960px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tabs="home:Home" sel="0" hint-size="1440px,88px"></dc-import>
+  <div style="display: flex; height: 800px; flex-shrink: 0">
+    <dc-import name="Shell-Nav" theme="dark" mode="open" sel="home" hint-size="280px,800px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); border-left: 1px solid rgba(255,255,255,0.0837); border-top-left-radius: 8px; padding: 24px 36px 0 36px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+      <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600">Good evening, Chris</h1>
+    </main>
+  </div>
+  <dc-import name="Shell-Player" theme="dark" variant="music" pane="none" hint-size="1440px,72px"></dc-import>
+  <div style="position: absolute; left: 0; right: 0; top: 40px; bottom: 0; background: rgba(0,0,0,0.3)"></div>
+  <div role="dialog" aria-label="Wavee closed unexpectedly" style="position: absolute; left: 446px; top: 200px; width: 548px; box-sizing: border-box; border-radius: 8px; overflow: hidden; background: #2b2b2b; border: 1px solid rgba(117,117,117,0.4); box-shadow: 0 32px 64px rgba(0,0,0,0.4); display: flex; flex-direction: column">
+    <div style="padding: 24px; display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; flex-direction: column; gap: 2px"><h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Wavee closed unexpectedly</h1><span style="font-size: 12px; color: #c5c5c5">Last run ended 2 minutes ago</span></div>
+      <p style="margin: 0; font-size: 14px; line-height: 20px">Last time, Wavee crashed. Send a report so it can be fixed?</p>
+      <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px 16px; border-radius: 4px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)">
+        <span style="font-size: 14px; font-weight: 600">What’s in the report</span>
+        <sc-for list="{{bullets}}" as="b" hint-placeholder-count="4"><span style="display: flex; align-items: flex-start; gap: 8px; font-size: 14px; line-height: 20px; color: #c5c5c5"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0; margin-top: 2px; color: {{b.color}}"><path d="{{b.d}}" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg>{{b.text}}</span></sc-for>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 16px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1); font-size: 14px"><span style="flex-grow: 1">Read the full report</span><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="color: #c5c5c5"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></div>
+      <label style="display: flex; align-items: center; gap: 8px; font-size: 14px"><span style="width: 20px; height: 20px; border-radius: 4px; box-sizing: border-box; border: 1px solid rgba(255,255,255,0.5442)"></span>Include a memory snapshot (38 MB)</label>
+      <label style="display: flex; align-items: center; gap: 8px; font-size: 14px"><span style="width: 20px; height: 20px; border-radius: 4px; box-sizing: border-box; border: 1px solid rgba(255,255,255,0.5442)"></span>Always send reports, don’t ask again</label>
+      <div style="display: flex; gap: 16px; font-size: 14px"><a href="#">Report on GitHub instead</a><a href="#">Privacy</a></div>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 24px; background: #202020; border-top: 1px solid rgba(255,255,255,0.0837)">
+      <button style="height: 32px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px">Send report</button>
+      <button style="height: 32px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); color: #fff; font: inherit; font-size: 14px">Not now</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+  const check = 'M2.5 8.5 6 12l7.5-7.5', cross = 'M3.5 3.5l9 9M12.5 3.5l-9 9';
+  const bullets = [{ text: 'The error and where in Wavee it happened', d: check, color: '#6ccb5f' }, { text: 'Wavee and Windows version, and your graphics card', d: check, color: '#6ccb5f' }, { text: 'The recent log, with personal details removed', d: check, color: '#6ccb5f' }, { text: 'Never your Spotify account, password, name or files', d: cross, color: '#ff99a4' }];
+  return { bullets };
+}
+}
+</script>
+</body>
+</html>

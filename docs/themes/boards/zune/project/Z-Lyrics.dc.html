@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune full screen lyrics</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; background: #0f0f0f; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <div style="height: 48px; flex-shrink: 0; display: flex; align-items: center; padding: 0 24px 0 48px; gap: 24px; font-size: 13px; color: #7a7a7a">
+    <span>now playing · full screen</span>
+    <span style="flex-grow: 1"></span>
+    <span style="display: flex; gap: 24px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 350"><a href="#" style="color: #ffffff; font-weight: 600">lyrics</a><a href="#">visualizer</a><a href="#">up next</a><a href="#">artist</a></span>
+    <span style="flex-grow: 1"></span>
+    <a href="#">translate</a><a href="#">resync</a><a href="#" style="color: #ffffff">exit full screen</a>
+  </div>
+  <div style="flex-grow: 1; min-height: 0; display: flex; gap: 80px; padding: 24px 48px 0 48px; overflow: hidden">
+    <div style="width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 14px; padding-top: 120px">
+      <span style="width: 300px; height: 300px; background: #6b2f4a; display: block"></span>
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">nightcall</span>
+      <span style="font-size: 15px; color: {{accent}}">Kavinsky · OutRun</span>
+      <span style="font-size: 12px; color: #7a7a7a">synced lyrics · musixmatch</span>
+    </div>
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 6px; max-width: 1000px">
+      <sc-for list="{{lines}}" as="l" hint-placeholder-count="8">
+        <span style="{{l.style}}">{{l.text}}</span>
+        <sc-if value="{{l.hasSub}}" hint-placeholder-val="{{ false }}"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 35px; line-height: 44px; font-weight: 300; color: #a8a8a8; margin: -4px 0 8px 0">{{l.sub}}</span></sc-if>
+      </sc-for>
+    </div>
+  </div>
+  <div style="height: 112px; flex-shrink: 0; background: #0a0a0a; display: flex; flex-direction: column; padding: 0 48px">
+    <div style="display: flex; align-items: center; gap: 16px; height: 36px; font-size: 12px; color: #a8a8a8; font-variant-numeric: tabular-nums"><span>1:14</span><span style="flex-grow: 1; height: 2px; background: rgba(255,255,255,0.12); display: block"><span style="{{progress}}"></span></span><span>-3:04</span></div>
+    <div style="display: flex; align-items: center; height: 76px; gap: 24px">
+      <span style="width: 360px; font-size: 13px; color: #7a7a7a">playing from playlist · <span style="color: #ffffff">late night drive</span></span>
+      <span style="flex-grow: 1; display: flex; align-items: center; justify-content: center; gap: 24px">
+        <button aria-label="shuffle" style="width: 36px; height: 36px; border: 0; background: transparent; color: {{accent}}; font-size: 18px; padding: 0">⇄</button>
+        <button aria-label="previous" style="width: 36px; height: 36px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 3h2v10H3zM13 3 6 8l7 5z"/></svg></button>
+        <button aria-label="pause" style="{{playDisc}}"><svg width="22" height="22" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg></button>
+        <button aria-label="next" style="width: 36px; height: 36px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M11 3h2v10h-2zM3 3l7 5-7 5z"/></svg></button>
+        <button aria-label="repeat" style="width: 36px; height: 36px; border: 0; background: transparent; color: #a8a8a8; font-size: 18px; padding: 0">↻</button>
+      </span>
+      <span style="width: 360px; display: flex; align-items: center; justify-content: flex-end; gap: 8px; font-size: 13px">
+        <button aria-label="save to liked songs" style="width: 36px; height: 36px; border: 0; background: transparent; color: #ffffff; font-size: 18px; padding: 0">♡</button>
+        <button aria-label="mute" style="width: 36px; height: 36px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 6h3l4-3v10l-4-3H2z"/><path d="M11.5 5.5a3.5 3.5 0 0 1 0 5"/></svg></button>
+        <span style="width: 128px; height: 2px; background: rgba(255,255,255,0.18); display: block"><span style="display: block; width: 70%; height: 2px; background: #ffffff"></span></span>
+        <button style="height: 36px; border: 0; background: transparent; color: #a8a8a8; font: inherit; font-size: 13px; padding: 0 8px">this computer ▾</button>
+        <button aria-label="more" style="width: 36px; height: 36px; border: 0; background: transparent; color: #a8a8a8; font-size: 18px; padding: 0">⋯</button>
+      </span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const src = [
+    ['[THE LINE THREE BACK]', 0.10], ['[THE LINE TWO BACK]', 0.13], ['[THE LINE JUST SUNG]', 0.19],
+    ['[THE LINE BEING SUNG NOW]', 1, '[its translation, when translate is on]'],
+    ['[THE NEXT LINE]', 0.45], ['[THE LINE AFTER THAT]', 0.24], ['[TWO LINES AHEAD]', 0.14], ['[THREE LINES AHEAD]', 0.11],
+  ];
+  const lines = src.map((d) => ({
+    text: d[0], hasSub: !!d[2], sub: d[2] || '',
+    style: 'font-family: \'Segoe UI Variable Display\', \'Segoe UI\', sans-serif; font-size: 56px; line-height: 68px; font-weight: 300; letter-spacing: -0.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (d[1] === 1 ? accent : '#ffffff') + '; opacity: ' + d[1],
+  }));
+  return { accent, lines, progress: 'display: block; width: 29%; height: 2px; background: ' + accent, playDisc: 'width: 56px; height: 56px; border-radius: 28px; border: 0; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; padding: 0' };
+}
+}
+</script>
+</body>
+</html>

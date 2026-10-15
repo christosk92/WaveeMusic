@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Compact setup wizard</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a6d8ff;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 400px; height: 860px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="home:Home" sel="0" w="400" tier="compact" hint-size="400px,48px"></dc-import>
+  <section role="dialog" aria-label="Sign in to Spotify" style="height: 812px; flex-shrink: 0; box-sizing: border-box; background: #202020; border-top: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; overflow: hidden">
+    <div style="flex-grow: 1; min-height: 0; padding: 24px 16px 16px; display: flex; flex-direction: column; gap: 12px; overflow: hidden">
+      <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Sign in to Spotify</h1>
+      <button role="radio" aria-checked="true" style="padding: 16px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 2px solid #60cdff; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; color: #fff; font: inherit; text-align: left"><svg width="24" height="24" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2a6 6 0 1 1 0 12A6 6 0 0 1 8 2zM2 8h12M8 2c-2 2-2 10 0 12M8 2c2 2 2 10 0 12" fill="none" stroke="#60cdff" stroke-width="1"></path></svg><span style="font-size: 14px; line-height: 20px; font-weight: 600">Continue in your browser</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">Sign in on spotify.com, then come back here.</span></button>
+      <button role="radio" aria-checked="false" style="padding: 16px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(255,255,255,0.082); display: flex; align-items: flex-start; gap: 12px; color: #fff; font: inherit; text-align: left"><span aria-hidden="true" style="width: 80px; height: 80px; flex-shrink: 0; border-radius: 4px; background: repeating-conic-gradient(#fff 0 25%, #111 0 50%) 0 0 / 10px 10px"></span><span style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 14px; line-height: 20px; font-weight: 600">Scan the code with your phone</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">WAVE-4K7P · spotify.com/pair · Expires in 04:12</span></span></button>
+      <span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">Wavee needs Spotify Premium. Don’t have a Spotify account? <a href="#">Sign up</a></span>
+    </div>
+    <footer style="flex-shrink: 0; box-sizing: border-box; padding: 16px; display: flex; flex-direction: column; gap: 12px; background: rgba(255,255,255,0.03); border-top: 1px solid rgba(255,255,255,0.06)">
+      <div style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">Step 2 of 4</span><span role="progressbar" aria-label="Setup progress" aria-valuenow="2" aria-valuemin="0" aria-valuemax="4" style="height: 4px; border-radius: 2px; background: rgba(255,255,255,0.12); position: relative"><span style="position: absolute; left: 0; top: 0; bottom: 0; width: 50%; border-radius: 2px; background: #60cdff"></span></span></div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px">
+        <button style="height: 40px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px; font-weight: 600; box-shadow: inset 0 -1px 0 rgba(0,0,0,0.22)">Log in</button>
+        <button style="height: 40px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px">Close</button>
+      </div>
+    </footer>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

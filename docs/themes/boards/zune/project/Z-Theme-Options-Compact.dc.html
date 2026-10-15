@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune theme options · compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="compact" crumb="settings › appearance › zune" accent="{{accent}}" hint-size="400px,48px"></dc-import>
+  <dc-import name="Z-Part-Band" tier="compact" section="none" sub="" collapsed="true" accent="{{accent}}" hint-size="400px,52px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 16px; overflow: hidden">
+    <div style="height: 40px; flex-shrink: 0; display: flex; align-items: center">
+      <a href="#" style="height: 40px; display: flex; align-items: center; gap: 6px; font-size: 14px; color: #a8a8a8; padding-right: 12px"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10 3 5 8l5 5"/></svg>appearance</a>
+      <span style="flex-grow: 1"></span>
+      <button style="height: 40px; border: 0; background: transparent; color: #a8a8a8; font: inherit; font-size: 13px; padding: 0 0 0 12px">reset</button>
+    </div>
+    <div style="height: 72px; flex-shrink: 0; margin: -6px -16px 0 -4px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 200; line-height: 72px; letter-spacing: -1px; white-space: nowrap; overflow: hidden">zune options</div>
+    <div style="height: 150px; flex-shrink: 0; margin-top: 10px; background: #161616; box-shadow: 0 0 0 1px rgba(255,255,255,0.08); position: relative; overflow: hidden">
+      <div style="position: absolute; left: 0; top: 0; right: 0; height: 96px; background: linear-gradient(180deg, #3a2f22 0%, #161616 100%)"></div>
+      <div style="position: absolute; left: 12px; top: 8px; display: flex; gap: 8px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 11px"><span style="color: #ffffff; font-weight: 600">library</span><span style="color: #7a7a7a">recents</span><span style="color: #7a7a7a">home</span></div>
+      <div style="position: absolute; left: 8px; top: 20px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 34px; font-weight: 200; line-height: 40px; white-space: nowrap; letter-spacing: -0.5px">random access memories</div>
+      <span style="position: absolute; left: 12px; top: 66px; width: 52px; height: 52px; border-radius: 2px; background: #3a2f22; box-shadow: 0 0 0 1px rgba(255,255,255,0.08)"></span>
+      <div style="position: absolute; left: 76px; top: 64px; right: 12px; display: flex; flex-direction: column">
+        <sc-for list="{{previewRows}}" as="r" hint-placeholder-count="3"><span style="{{r.row}}"><span style="{{r.num}}">{{r.n}}</span><span style="{{r.title}}">{{r.t}}</span></span></sc-for>
+      </div>
+      <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 22px; background: #111111"><span style="{{previewProgress}}"></span><span style="position: absolute; left: 10px; top: 5px; font-size: 9px; color: #a8a8a8">Get Lucky · Daft Punk</span><span style="{{previewDisc}}"></span></div>
+    </div>
+    <span style="font-size: 12px; color: #7a7a7a; margin-top: 6px; flex-shrink: 0">preview · changes apply at once</span>
+    <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 16px; flex-shrink: 0">
+      <span style="display: flex; flex-direction: column"><span style="font-size: 15px; line-height: 20px">accent</span><span style="font-size: 12px; line-height: 16px; color: #7a7a7a">play, the playing row, selection</span></span>
+      <span style="display: flex; align-items: center; gap: 12px"><sc-for list="{{accents}}" as="a" hint-placeholder-count="5"><button aria-label="{{a.name}}" style="{{a.style}}"></button></sc-for></span>
+      <a href="#" style="font-size: 13px; height: 32px; display: flex; align-items: center">use the windows accent</a>
+    </div>
+    <sc-for list="{{groups}}" as="g" hint-placeholder-count="4">
+      <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 14px; flex-shrink: 0">
+        <span style="display: flex; flex-direction: column"><span style="font-size: 15px; line-height: 20px">{{g.label}}</span><span style="font-size: 12px; line-height: 16px; color: #7a7a7a">{{g.hint}}</span></span>
+        <span style="display: flex; flex-wrap: wrap; gap: 8px"><sc-for list="{{g.chips}}" as="c" hint-placeholder-count="3"><button style="{{c.style}}">{{c.label}}</button></sc-for></span>
+      </div>
+    </sc-for>
+    <label style="display: flex; align-items: center; gap: 16px; min-height: 64px; margin-top: 6px; flex-shrink: 0">
+      <span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 15px; line-height: 20px">track numbers</span><span style="font-size: 12px; line-height: 16px; color: #7a7a7a">big light numbers on albums, artists, the queue</span></span>
+      <span style="{{switchOn}}"><span style="position: absolute; right: 2px; top: 2px; width: 16px; height: 16px; background: #000000; display: block"></span></span>
+    </label>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="mini" title="Get Lucky" artist="Daft Punk · Random Access Memories" art="#3a2f22" progress="41" accent="{{accent}}" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const accents = [['pink', '#ff3ca6'], ['orange', '#ff7a1a'], ['blue', '#60cdff'], ['green', '#8fd14f'], ['purple', '#b983ff']].map((d) => ({ name: d[0], style: 'width: 40px; height: 40px; border: 0; padding: 0; flex-shrink: 0; background: ' + d[1] + (d[1] === accent ? '; outline: 2px solid #ffffff; outline-offset: 2px' : '') }));
+  const chips = (labels, on) => labels.map((l, i) => ({ label: l, style: 'height: 40px; padding: 0 14px; border: 0; font: inherit; font-size: 14px; white-space: nowrap; ' + (i === on ? 'background: ' + accent + '; color: #000000' : 'background: rgba(255,255,255,0.06); color: #ffffff') }));
+  const groups = [
+    ['ground', 'the page colour', ['dark', 'light', 'follow windows'], 0],
+    ['background', 'what sits behind page titles', ['artwork wash', 'mix', 'none'], 0],
+    ['panorama titles', 'page titles bleed off the edge', ['bleed off the edge', 'fit the window'], 0],
+    ['row size', 'every song list', ['compact 44', 'standard 52', 'comfortable 60'], 1],
+    ['now playing', 'the full screen face', ['bloom', 'mosaic', 'type', 'spotlight'], 0],
+  ].map((d) => ({ label: d[0], hint: d[1], chips: chips(d[2], d[3]) }));
+  const previewRows = [['3', 'Giorgio by Moroder'], ['▮▮▮', 'Get Lucky'], ['9', 'Beyond']].map((d) => { const play = d[0] === '▮▮▮'; return {
+    n: d[0], t: d[1], row: 'display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; height: 18px',
+    num: 'font-family: ' + D + '; font-weight: 300; font-size: ' + (play ? 7 : 12) + 'px; color: ' + (play ? accent : '#7a7a7a'),
+    title: 'font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (play ? accent : '#ffffff'),
+  }; });
+  return {
+    accent, accents, groups, previewRows,
+    switchOn: 'width: 40px; height: 20px; background: ' + accent + '; position: relative; display: block; flex-shrink: 0',
+    previewProgress: 'position: absolute; left: 0; top: 0; width: 41%; height: 1px; background: ' + accent,
+    previewDisc: 'position: absolute; left: 50%; top: 3px; width: 16px; height: 16px; margin-left: -8px; border-radius: 8px; background: ' + accent,
+  };
+}
+}
+</script>
+</body>
+</html>

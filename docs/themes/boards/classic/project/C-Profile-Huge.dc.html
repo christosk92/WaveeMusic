@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Profile, Huge</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 2560px; height: 1440px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="home:Home|profile:Chris" sel="1" w="2560" tier="huge" hint-size="2560px,48px"></dc-import>
+  <div style="display: flex; height: 1320px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="classic" sel="none" w="320" h="1320" hint-size="320px,1320px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: linear-gradient(180deg, rgba(110,80,60,0.32), rgba(58,58,58,0.298) 420px); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; display: flex; flex-direction: column; overflow: hidden">
+      <section aria-label="Chris" style="height: 320px; flex-shrink: 0; box-sizing: border-box; padding: 0 36px 32px; display: flex; align-items: flex-end; gap: 40px">
+        <span role="img" aria-label="Chris" style="width: 240px; height: 240px; flex-shrink: 0; border-radius: 120px; background: linear-gradient(135deg, #8a5a44, #3b5b7a); border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 4px 16px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; font-size: 80px; font-weight: 600">C</span>
+        <div style="display: flex; flex-direction: column; gap: 12px; padding-bottom: 8px">
+          <span style="font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.03em; color: rgba(255,255,255,0.773)">Profile</span>
+          <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 84px; line-height: 96px; font-weight: 700; letter-spacing: -0.028em">Chris</h1>
+          <div style="display: flex; align-items: flex-end; gap: 32px"><sc-for list="{{stats}}" as="s" hint-placeholder-count="3"><a href="#" style="display: flex; flex-direction: column; padding: 2px 6px; margin: 0 -6px; border-radius: 4px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 350">{{s.n}}</span><span style="font-size: 12px; line-height: 16px; font-weight: 600; color: rgba(255,255,255,0.529)">{{s.l}}</span></a></sc-for></div>
+        </div>
+        <span style="flex-grow: 1"></span>
+        <div style="display: flex; gap: 8px; padding-bottom: 8px">
+          <a href="#" style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); font-size: 14px">Open account<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 2.5h3.5V6M13.5 2.5 8 8M6 3.5H3v9.5h9.5V10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"></path></svg></a>
+          <button aria-label="Share" style="width: 32px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: #fff; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 2.5h3.5V6M13.5 2.5 8 8M6 3.5H3v9.5h9.5V10" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+          <button aria-label="More" style="width: 32px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: #fff; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h.01M8 8h.01M13 8h.01" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path></svg></button>
+        </div>
+      </section>
+      <nav aria-label="Sections" style="height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 24px; padding: 0 36px; border-bottom: 1px solid rgba(255,255,255,0.082)"><sc-for list="{{pivots}}" as="p" hint-placeholder-count="5"><a href="#" style="{{p.s}}">{{p.l}}<span style="{{p.bar}}"></span></a></sc-for></nav>
+      <div style="padding: 24px 36px 0; display: flex; flex-direction: column; gap: 28px">
+        <sc-for list="{{sections}}" as="sec" hint-placeholder-count="3">
+          <section aria-label="{{sec.t}}" style="display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; align-items: center; gap: 10px"><span style="display: flex; flex-direction: column; gap: 2px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.006em">{{sec.t}}</h2><span style="width: 20px; height: 2px; background: #60cdff"></span></span><sc-if value="{{sec.priv}}" hint-placeholder-val="{{false}}"><span style="font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: rgba(255,255,255,0.059); color: rgba(255,255,255,0.773)">Only visible to you</span></sc-if><span style="flex-grow: 1"></span><sc-if value="{{sec.all}}" hint-placeholder-val="{{false}}"><a href="#" style="font-size: 14px; color: #a6d8ff">See all</a></sc-if></div>
+            <div style="display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 16px; margin: 0 -8px">
+              <sc-for list="{{sec.items}}" as="a" hint-placeholder-count="10"><a href="#" style="{{a.plate}}"><span style="{{a.art}}"></span><span style="{{a.ns}}">{{a.n}}</span><span style="{{a.ss}}">{{a.sub}}</span><sc-if value="{{a.rank}}" hint-placeholder-val="{{false}}"><span style="position: absolute; left: 10px; top: 4px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 350; text-shadow: 0 2px 6px rgba(0,0,0,0.6)">{{a.r}}</span></sc-if></a></sc-for>
+            </div>
+          </section>
+        </sc-for>
+      </div>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="2560" tier="huge" panel="none" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const stats = [['42', 'Followers'], ['118', 'Following'], ['23', 'Public playlists']].map(s => ({ n: s[0], l: s[1] }));
+  const pivots = ['Top artists', 'Playlists', 'Artists', 'Following', 'Followers'].map((l, i) => ({ l, s: 'position: relative; font-size: 14px; font-weight: 600; color: ' + (i === 0 ? '#fff' : 'rgba(255,255,255,0.6)'), bar: i === 0 ? 'position: absolute; left: 0; right: 0; bottom: -18px; height: 2px; background: #60cdff' : 'display: none' }));
+  const item = (n, sub, c, round, rank) => ({ n, sub, rank: !!rank, r: rank || '',
+    plate: 'position: relative; display: flex; flex-direction: column; align-items: ' + (round ? 'center' : 'stretch') + '; gap: 4px; padding: 8px; border-radius: 8px; min-width: 0',
+    art: 'display: block; width: 100%; aspect-ratio: 1 / 1; margin-bottom: 6px; border-radius: ' + (round ? '50%' : '8px') + '; background: linear-gradient(160deg, ' + c + ', #1a1a1a)',
+    ns: 'font-size: 14px; line-height: 20px; font-weight: 600; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis',
+    ss: 'font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis' });
+  const top = [['Daft Punk', '#5b5b5b'], ['Billie Eilish', '#2f4a6b'], ['aespa', '#8a8a9b'], ['Troye Sivan', '#5a8ab0'], ['LAUV', '#c0c0b0'], ['Conan Gray', '#8aa0b0'], ['ILLIT', '#d0a0c0'], ['NewJeans', '#a0b0c0'], ['SZA', '#5a7a9a'], ['Chappell Roan', '#c06a8a']].map((a, i) => item(a[0], 'Artist', a[1], true, i + 1));
+  const pls = [['Summer Songs 2026', '#b8862f'], ['K-Pop Duets (러블리 듀엣)', '#6b3b4a'], ['Running 170 BPM', '#3b6b4a'], ['LoL Worlds Songs 2014–2026', '#5b5b5b'], ['90’s Nederlandstalig', '#2f5b6b'], ['Vacation Mix', '#5b7a3b'], ['Hype Cleaning Mix', '#3b4a9b'], ['Coffee & Code', '#6b4a2f'], ['New Playlist #4', '#3a3a3a'], ['K-R&B Nights', '#4a3b8a']].map(p => item(p[0], 'Playlist · Chris', p[1], false, 0));
+  const fol = [['Billie Eilish', '#2f4a6b'], ['Daft Punk', '#5b5b5b'], ['aespa', '#8a8a9b'], ['Troye Sivan', '#5a8ab0'], ['ILLIT', '#d0a0c0'], ['Pharrell Williams', '#6b5b3b'], ['Nile Rodgers', '#4a3b2f'], ['Julian Casablancas', '#3b3b4a'], ['Tame Impala', '#b0b0b0'], ['Olivia Rodrigo', '#8a6a5a']].map(a => item(a[0], 'Artist', a[1], true, 0));
+  const sections = [{ t: 'Top artists this month', priv: true, all: false, items: top }, { t: 'Public playlists', priv: false, all: false, items: pls }, { t: 'Following', priv: false, all: true, items: fol }];
+  return { stats, pivots, sections };
+}
+}
+</script>
+</body>
+</html>

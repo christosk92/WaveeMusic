@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Recents, huge</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} width: 2560px; height: 1440px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" tier="huge" sel="recents" items="All|Music|Podcasts|Artists" sub-sel="{{zero}}" lower="{{lower}}" back="{{no}}" hint-size="2560px,136px"></dc-import>
+  <div style="height: 1220px; flex-shrink: 0; display: flex; min-height: 0">
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; display: flex; gap: 48px; padding: 20px 36px 0 36px; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke); border-right: 1px solid var(--stroke); border-top-right-radius: 8px">
+      <section aria-label="History" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+        <div style="display: flex; align-items: center; gap: 12px; height: 40px; flex-shrink: 0"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">History</h2><span style="font-size: 12px; color: var(--t2)">Grouped by what you played from · every device on your account</span><span style="flex-grow: 1"></span>
+          <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: var(--t1); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg>Find</button>
+          <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: var(--t1); font: inherit; font-size: 14px">Grouped<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+          <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: var(--t1); font: inherit; font-size: 14px">All devices<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+        </div>
+        <div role="row" style="display: grid; grid-template-columns: 52px minmax(0, 1fr) 110px 150px 96px 64px 40px; align-items: center; height: 32px; padding-left: 4px; font-size: 12px; color: var(--t2)"><span></span><span>Played from</span><span>Type</span><span>Device</span><span style="text-align: right">Listened</span><span style="text-align: right">At</span><span></span></div>
+        <sc-for list="{{days}}" as="d" hint-placeholder-count="4">
+          <div style="display: flex; flex-direction: column; padding-top: 8px">
+            <div style="display: flex; align-items: baseline; gap: 10px; height: 36px; border-bottom: 1px solid var(--div)"><h3 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">{{d.label}}</h3><span style="font-size: 12px; color: var(--t2)">{{d.date}}</span><span style="flex-grow: 1"></span><span style="font-size: 12px; color: var(--t2); font-variant-numeric: tabular-nums; padding-right: 8px">{{d.count}}</span></div>
+            <sc-for list="{{d.rows}}" as="r" hint-placeholder-count="3">
+              <div role="row" style="{{r.row}}">
+                <span style="{{r.art}}"></span>
+                <span style="display: flex; flex-direction: column; min-width: 0"><a href="#" style="{{r.title}}">{{r.name}}</a><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.caption}}</span></span>
+                <span style="font-size: 14px; color: var(--t2)">{{r.kind}}</span>
+                <span style="font-size: 14px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.device}}</span>
+                <span style="text-align: right; font-size: 14px; color: var(--t2); font-variant-numeric: tabular-nums">{{r.dur}}</span>
+                <span style="text-align: right; font-size: 14px; color: var(--t2); font-variant-numeric: tabular-nums">{{r.time}}</span>
+                <button aria-label="{{r.toggleLabel}}" aria-expanded="{{r.expanded}}" style="width: 32px; height: 32px; justify-self: end; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{r.chev}}" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+              </div>
+              <sc-if value="{{r.open}}" hint-placeholder-val="{{ false }}">
+                <div role="table" aria-label="{{r.tracksLabel}}" style="display: flex; flex-direction: column; padding: 0 0 6px 56px">
+                  <sc-for list="{{r.tracks}}" as="t" hint-placeholder-count="6"><div role="row" style="{{t.row}}"><span style="{{t.num}}"><sc-if value="{{t.playing}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-label="Playing" role="img"><path d="M3 13V7M6.5 13V3M10 13V8M13.5 13V5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg></sc-if><sc-if value="{{t.showNum}}" hint-placeholder-val="{{ true }}">{{t.n}}</sc-if></span><span style="{{t.title}}">{{t.name}}</span><span style="font-size: 14px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.artist}}</span><span style="font-size: 14px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.album}}</span><span style="display: flex; justify-content: center"><sc-if value="{{t.liked}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-label="Liked" role="img"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor"></path></svg></sc-if></span><span style="text-align: right; font-size: 12px; color: var(--t2); font-variant-numeric: tabular-nums">{{t.at}}</span><span style="text-align: right; padding-right: 48px; font-size: 14px; color: var(--t2); font-variant-numeric: tabular-nums">{{t.d}}</span></div></sc-for>
+                </div>
+              </sc-if>
+            </sc-for>
+          </div>
+        </sc-for>
+      </section>
+      <aside aria-label="Overview" style="width: 440px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: center; gap: 8px; height: 40px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Overview</h2><span style="flex-grow: 1"></span><a href="#" style="font-size: 14px; color: var(--acct)">Jump to today</a></div>
+        <sc-for list="{{months}}" as="m" hint-placeholder-count="2">
+          <div style="display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px">
+            <span style="font-size: 14px; line-height: 20px; color: var(--t2)"><span style="color: var(--t1); font-weight: 600">{{m.name}}</span> · {{m.total}}</span>
+            <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px">
+              <sc-for list="{{m.week}}" as="w" hint-placeholder-count="7"><span style="font-size: 12px; line-height: 16px; color: var(--t3); padding-left: 2px">{{w.d}}</span></sc-for>
+              <sc-for list="{{m.cells}}" as="c" hint-placeholder-count="35"><button aria-label="{{c.label}}" style="{{c.style}}">{{c.day}}</button></sc-for>
+            </div>
+          </div>
+        </sc-for>
+        <span style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--t2)">Quieter<sc-for list="{{legend}}" as="l" hint-placeholder-count="4"><span style="{{l.style}}"></span></sc-for>Busier</span>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding-top: 6px">
+          <sc-for list="{{stats}}" as="s" hint-placeholder-count="3"><span style="display: flex; flex-direction: column; padding: 10px 12px; border-radius: 8px; background: var(--card); border: 1px solid var(--cardb)"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; font-variant-numeric: tabular-nums">{{s.v}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">{{s.k}}</span></span></sc-for>
+        </div>
+        <div style="display: flex; align-items: baseline; gap: 12px; height: 32px; padding-top: 8px"><h3 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Most played</h3><span style="font-size: 12px; color: var(--t2)">October</span></div>
+        <div style="display: flex; flex-direction: column">
+          <sc-for list="{{top}}" as="t" hint-placeholder-count="5"><a href="#" style="display: grid; grid-template-columns: 32px 52px minmax(0, 1fr) auto; align-items: center; height: 52px; margin-top: 2px; padding: 0 8px; border-radius: 4px; color: var(--t1)"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; color: var(--t3); font-variant-numeric: tabular-nums">{{t.n}}</span><span style="{{t.art}}"></span><span style="font-size: 14px; line-height: 20px">{{t.name}}</span><span style="font-size: 12px; color: var(--t2); font-variant-numeric: tabular-nums">{{t.plays}}</span></a></sc-for>
+        </div>
+      </aside>
+    </main>
+    <dc-import name="ZF-Panel" theme="{{theme}}" accent="{{accent}}" tab="friends" friends="{{yes}}" mode="inline" w="{{panelW}}" h="{{midH}}" hint-size="380px,1220px"></dc-import>
+    <div style="display: flex; border-left: 1px solid var(--stroke)">
+      <dc-import name="ZF-Panel" theme="{{theme}}" accent="{{accent}}" tab="queue" friends="{{yes}}" mode="inline" w="{{panelW}}" h="{{midH}}" hint-size="380px,1220px"></dc-import>
+    </div>
+  </div>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" tier="huge" variant="music" pane="queue" hint-size="2560px,84px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"lower":{"editor":"boolean","default":false},"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', div: 'rgba(255,255,255,0.0837)', card: 'rgba(255,255,255,0.0512)', cardb: 'rgba(0,0,0,0.1)', sub: 'rgba(255,255,255,0.0605)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', div: 'rgba(0,0,0,0.0803)', card: '#fbfbfb', cardb: 'rgba(0,0,0,0.0578)', sub: 'rgba(0,0,0,0.0373)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const UP = 'M3.5 10 8 5.5l4.5 4.5', DOWN = 'M3.5 6 8 10.5 12.5 6';
+  const trackList = [['Nightcall', 'Kavinsky', 'OutRun', '14:32', '4:18', true, true], ['Midnight City', 'M83', 'Hurry Up, We’re Dreaming', '14:28', '4:03', false, false], ['Resonance', 'HOME', 'Odyssey', '14:24', '3:32', false, false], ['A Real Hero', 'College, Electric Youth', 'Drive (Original Motion Picture Soundtrack)', '14:20', '4:28', false, true], ['Tech Noir', 'Gunship', 'GUNSHIP', '14:15', '4:57', false, false], ['Sunset', 'The Midnight', 'Endless Summer', '14:10', '5:20', false, true]];
+  const row = (kind, name, caption, device, dur, time, color, open, playing, round, hover) => ({ kind, name, caption, device, dur, time, open, expanded: open ? 'true' : 'false', chev: open ? UP : DOWN,
+    toggleLabel: (open ? 'Hide songs played from ' : 'Show songs played from ') + name, tracksLabel: 'Songs played from ' + name,
+    row: 'display: grid; grid-template-columns: 52px minmax(0, 1fr) 110px 150px 96px 64px 40px; align-items: center; height: 52px; margin-top: 2px; padding-left: 4px; border-radius: 4px; ' + ((open || hover) ? 'background: var(--sub)' : ''),
+    art: 'width: 40px; height: 40px; display: block; background: ' + color + '; border-radius: ' + (round ? '20px' : '4px'),
+    title: 'font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (playing ? 'var(--acct)' : 'var(--t1)'),
+    tracks: open ? trackList.map((t, i) => ({ n: String(i + 1), name: t[0], artist: t[1], album: t[2], at: t[3], d: t[4], playing: t[5], showNum: !t[5], liked: t[6],
+      row: 'display: grid; grid-template-columns: 40px minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.2fr) 40px 64px 104px; align-items: center; height: 40px; border-radius: 4px',
+      num: 'display: flex; align-items: center; font-size: 14px; font-variant-numeric: tabular-nums; color: ' + (t[5] ? 'var(--acct)' : 'var(--t3)'),
+      title: 'font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 16px; color: ' + (t[5] ? 'var(--acct)' : 'var(--t1)') })) : [] });
+  const days = [
+    { label: 'Today', date: 'Saturday 11 Oct', count: '12 plays', rows: [row('Playlist', 'late night drive', 'Christos and emma.k · 6 songs, grouped from 9 plays', 'This PC', '26 min', '14:32', '#3b4a6b', true, true, false, false), row('Album', 'Random Access Memories', 'Daft Punk · 3 songs', 'Living room', '17 min', '11:05', '#3a2f22', false, false, false, true), row('Podcast', 'The Rest Is Football', 'Why the Premier League keeps changing · 23 of 47 min', 'Phone', '23 min', '08:40', '#2f4a3b', false, false, false, false)] },
+    { label: 'Yesterday', date: 'Friday 10 Oct', count: '31 plays', rows: [row('Artist', 'The Midnight', '8 songs', 'This PC', '41 min', '22:18', '#6b4a2f', false, false, true, false), row('Playlist', 'Liked Songs', '12 songs, shuffled', 'This PC', '48 min', '19:02', '#4a3b8b', false, false, false, false), row('Song', 'Supernova', 'aespa · Armageddon', 'Phone', '3 min', '17:44', '#5b2f6b', false, false, false, false), row('Album', 'Hurry Up Tomorrow', 'The Weeknd · 7 songs', 'Living room', '29 min', '09:12', '#4a2a2a', false, false, false, false)] },
+    { label: 'Thursday', date: '9 Oct', count: '18 plays', rows: [row('Album', 'OutRun', 'Kavinsky · 9 songs', 'This PC', '38 min', '21:10', '#6b2f4a', false, false, false, false), row('Podcast', 'The Rest Is History', 'The fall of Constantinople, part 2 · finished', 'Phone', '58 min', '07:55', '#4a3b2f', false, false, false, false), row('Playlist', 'Synthwave Essentials', 'Spotify · 6 songs', 'This PC', '27 min', '18:40', '#2f5b6b', false, false, false, false)] },
+    { label: 'Wednesday', date: '8 Oct', count: '20 plays', rows: [row('Artist', 'Gunship', '7 songs', 'This PC', '33 min', '20:05', '#5b3b6b', false, false, true, false), row('Playlist', 'Daily Mix 2', 'Spotify · 11 songs', 'Phone', '44 min', '08:30', '#6b3b5b', false, false, false, false)] }
+  ];
+  const lvl = (n) => n === 0 ? 0 : n < 12 ? 1 : n < 24 ? 2 : 3;
+  const mix = ['var(--card)', 'color-mix(in srgb, var(--acc) 30%, transparent)', 'color-mix(in srgb, var(--acc) 58%, transparent)', 'var(--acc)'];
+  const week = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => ({ d }));
+  const build = (monthName, offset, len, plays, today, last) => {
+    const cells = [];
+    for (let i = 0; i < 35; i++) {
+      const day = i - offset + 1;
+      const inMonth = day >= 1 && day <= len;
+      const past = inMonth && day <= last;
+      const n = past ? plays[day - 1] : 0;
+      const v = lvl(n);
+      cells.push({ day: inMonth ? String(day) : '', label: !inMonth ? 'Outside ' + monthName : past ? day + ' ' + monthName + ', ' + n + ' plays' : day + ' ' + monthName + ', no plays yet',
+        style: 'height: 44px; box-sizing: border-box; display: flex; align-items: flex-start; justify-content: flex-start; padding: 4px 6px; border-radius: 4px; font: inherit; font-size: 12px; line-height: 16px; font-variant-numeric: tabular-nums; background: ' + (inMonth ? mix[v] : 'transparent') + '; color: ' + (v === 3 ? 'var(--onacc)' : past ? 'var(--t1)' : 'var(--t3)') + '; border: ' + (day === today ? '2px solid var(--t1)' : inMonth && !past ? '1px dashed var(--div)' : '1px solid transparent') });
+    }
+    return cells;
+  };
+  const oct = [14, 9, 22, 27, 16, 24, 19, 20, 18, 31, 12];
+  const sep = [14, 18, 9, 22, 25, 31, 12, 16, 20, 11, 15, 19, 28, 24, 8, 13, 17, 21, 26, 14, 10, 16, 19, 23, 18, 12, 22, 27, 15, 11];
+  const months = [{ name: 'October 2025', total: '212 plays so far', week, cells: build('October', 2, 31, oct, 11, 11) }, { name: 'September 2025', total: '536 plays', week, cells: build('September', 0, 30, sep, 0, 30) }];
+  const legend = [0, 1, 2, 3].map((v) => ({ style: 'width: 12px; height: 12px; border-radius: 2px; display: block; background: ' + mix[v] }));
+  const stats = [['212', 'plays'], ['14 h 20 min', 'listening'], ['63', 'artists']].map((d) => ({ v: d[0], k: d[1] }));
+  const top = [['Kavinsky', '47 plays', '#6b2f4a'], ['The Midnight', '31 plays', '#6b4a2f'], ['Daft Punk', '24 plays', '#3a2f22'], ['Gunship', '19 plays', '#5b3b6b'], ['The Weeknd', '16 plays', '#3a2f4a']].map((d, i) => ({ n: String(i + 1), name: d[0], plays: d[1], art: 'width: 40px; height: 40px; border-radius: 20px; display: block; background: ' + d[2] }));
+  return { vars, theme, accent, days, months, legend, stats, top, zero: 0, no: false, yes: true, panelW: 380, midH: 1220, lower: !!(this.props.lower ?? false) };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Now playing presets</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; padding: 32px; display: flex; gap: 32px; background: #202020; color: #fff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; overflow: hidden">
+  <div style="display: flex; flex-direction: column; gap: 10px; flex-shrink: 0">
+    <div style="font-size: 14px; line-height: 20px; font-weight: 600">Now playing panel (Cover hero)</div>
+    <dc-import name="C-Rail" theme="dark" mode="np" h="790" hint-size="340px,790px"></dc-import>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 12px; width: 540px; flex-shrink: 0">
+    <div style="display: flex; flex-direction: column; gap: 4px"><div style="font-size: 20px; line-height: 28px; font-weight: 600">Player styles (12 deck presets)</div><div style="display: flex; gap: 8px; align-items: flex-start; padding: 8px 12px; border-radius: 4px; background: #433519; font-size: 12px; line-height: 16px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0; color: #fce100"><path d="M8 2l6.5 11.5h-13zM8 6.5v3M8 11.5v.01" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg><span>Kept in the code and on this canvas, hidden in Settings, the gear and the cover menu until a preset drives Now playing (P3, issue #199). The panel shows the Cover hero meanwhile.</span></div></div>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+      <sc-for list="{{decks}}" as="d" hint-placeholder-count="12">
+        <div style="display: flex; flex-direction: column; gap: 6px"><div style="{{d.plate}}"><span style="{{d.a}}"></span><span style="{{d.b}}"></span><span style="{{d.c}}"></span></div><span style="font-size: 12px; line-height: 16px; font-weight: 600">{{d.n}}</span></div>
+      </sc-for>
+    </div>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 12px; flex-grow: 1; min-width: 0">
+    <div style="font-size: 20px; line-height: 28px; font-weight: 600">Full-screen faces (19, default Bloom)</div>
+    <sc-for list="{{groups}}" as="g" hint-placeholder-count="5">
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.03em; color: rgba(255,255,255,0.773)">{{g.n}}</span>
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
+          <sc-for list="{{g.f}}" as="f" hint-placeholder-count="4"><div style="display: flex; flex-direction: column; gap: 4px"><span style="{{f.p}}"></span><span style="font-size: 12px; line-height: 16px; font-weight: 600">{{f.n}}<span style="font-weight: 400; color: rgba(255,255,255,0.6)"> · {{f.k}}</span></span></div></sc-for>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const P = 'position: relative; height: 120px; border-radius: 8px; background: #2a2a2a; border: 1px solid rgba(0,0,0,0.098); overflow: hidden; display: flex; align-items: center; justify-content: center';
+  const ab = 'position: absolute; ';
+  const decks = [
+    ['Record (default)', ab + 'width: 92px; height: 92px; border-radius: 50%; background: repeating-radial-gradient(#111 0 2px, #1b1b1b 2px 4px)', ab + 'width: 30px; height: 30px; border-radius: 50%; background: #c9c9c9', ab + 'display: none'],
+    ['Cassette', ab + 'width: 120px; height: 76px; border-radius: 6px; background: #3a3a3a; border: 2px solid #555', ab + 'width: 22px; height: 22px; border-radius: 50%; border: 3px solid #ddd; left: 58px; top: 44px', ab + 'width: 22px; height: 22px; border-radius: 50%; border: 3px solid #ddd; right: 58px; top: 44px'],
+    ['Reel', ab + 'width: 60px; height: 60px; border-radius: 50%; border: 4px solid #bbb; left: 24px', ab + 'width: 60px; height: 60px; border-radius: 50%; border: 4px solid #bbb; right: 24px', ab + 'width: 70px; height: 2px; background: #888; top: 92px'],
+    ['CD', ab + 'width: 92px; height: 92px; border-radius: 50%; background: conic-gradient(#c0d8f0, #f0c0e0, #c0f0d8, #f0e8c0, #c0d8f0)', ab + 'width: 16px; height: 16px; border-radius: 50%; background: #2a2a2a', ab + 'display: none'],
+    ['Turntable', ab + 'width: 130px; height: 96px; border-radius: 6px; background: #4a3a2a', ab + 'width: 80px; height: 80px; border-radius: 50%; background: #151515; left: 30px', ab + 'width: 4px; height: 56px; background: #ccc; right: 34px; top: 22px; transform: rotate(18deg)'],
+    ['iPod', ab + 'width: 64px; height: 104px; border-radius: 10px; background: #e8e8e8', ab + 'width: 50px; height: 36px; border-radius: 3px; background: #4a6a9b; top: 14px', ab + 'width: 34px; height: 34px; border-radius: 50%; border: 8px solid #cfcfcf; box-sizing: border-box; bottom: 14px'],
+    ['Winamp', ab + 'width: 140px; height: 70px; border-radius: 2px; background: #1a1f2a; border: 1px solid #556', ab + 'width: 70px; height: 10px; background: #2f2; left: 34px; top: 46px; opacity: 0.8', ab + 'width: 90px; height: 16px; left: 34px; top: 64px; background: repeating-linear-gradient(90deg, #3c3 0 4px, transparent 4px 7px)'],
+    ['VU meters', ab + 'width: 56px; height: 56px; border-radius: 6px; background: #e8dcc0; left: 30px', ab + 'width: 56px; height: 56px; border-radius: 6px; background: #e8dcc0; right: 30px', ab + 'width: 2px; height: 34px; background: #c33; left: 64px; top: 44px; transform: rotate(-24deg)'],
+    ['Zune', ab + 'width: 70px; height: 96px; border-radius: 14px; background: #2b2b2b; border: 2px solid #ff3ca6', ab + 'width: 28px; height: 28px; border-radius: 8px; border: 2px solid #888; bottom: 22px', ab + 'display: none'],
+    ['WMP', ab + 'width: 120px; height: 84px; border-radius: 12px; background: linear-gradient(160deg, #3d6fb5, #12305e)', ab + 'width: 30px; height: 30px; border-radius: 50%; background: rgba(255,255,255,0.85)', ab + 'display: none'],
+    ['Canvas (video loop)', ab + 'width: 64px; height: 108px; border-radius: 6px; background: linear-gradient(180deg, #5b3b6b, #c08a3e)', ab + 'display: none', ab + 'display: none'],
+    ['Picture', ab + 'width: 100px; height: 84px; background: #ddd; border: 6px solid #fff; box-sizing: border-box', ab + 'width: 60px; height: 30px; background: linear-gradient(160deg, #6a9be0, #2f4a6b); top: 50px', ab + 'display: none']
+  ].map(d => ({ n: d[0], plate: P, a: d[1], b: d[2], c: d[3] }));
+  const pv = (g) => 'display: block; height: 58px; border-radius: 6px; background: ' + g;
+  const F = (n, k, g) => ({ n, k, p: pv(g) });
+  const groups = [
+    { n: 'Lyrics', f: [F('Verse', 'Calm', 'linear-gradient(135deg,#1d2d45,#3b5574)')] },
+    { n: 'Fluent', f: [F('Bloom', 'Calm', 'radial-gradient(circle at 50% 50%, #c0613e, #8a4e7a 40%, #202020 75%)'), F('Bars', 'Lively', 'repeating-linear-gradient(90deg,#60cdff 0 4px,#202020 4px 8px)'), F('Ring', 'Lively', 'radial-gradient(circle, #202020 30%, #60cdff 32%, #202020 40%)'), F('Orbit', 'Calm', 'radial-gradient(circle at 30% 40%, #9b6ac0, #202020 50%)'), F('Aurora', 'Calm', 'linear-gradient(160deg,#2f6b4a,#3b4a8a,#202020)'), F('Timeline', 'Calm', 'linear-gradient(90deg,#60cdff 0 40%,#3a3a3a 40%)')] },
+    { n: 'Classics', f: [F('Classic', 'Lively', 'linear-gradient(135deg,#202060,#602060)'), F('Warp', 'Lively', 'radial-gradient(circle,#fff 2%,#203060 30%,#000)'), F('Tunnel', 'Lively', 'repeating-radial-gradient(#3b4a8a 0 6px,#111 6px 12px)'), F('Ambience', 'Calm', 'linear-gradient(135deg,#4a3b2f,#2f4a6b)'), F('Kaleido', 'Lively', 'conic-gradient(#c0613e,#60cdff,#9b6ac0,#c0613e)'), F('Scope', 'Lively', 'linear-gradient(180deg,#000 45%,#3c3 48%,#000 52%)'), F('Drift', 'Calm', 'linear-gradient(135deg,#2a2a3a,#4a4a6b)')] },
+    { n: 'Zune', f: [F('Type', 'Calm', 'linear-gradient(135deg,#ff3ca6,#2b2b2b 60%)'), F('Mosaic', 'Calm', 'repeating-conic-gradient(#5b3b6b 0 25%,#3b5b6b 0 50%)'), F('Spotlight', 'Calm', 'radial-gradient(circle at 70% 30%,#ddd,#222 50%)')] },
+    { n: 'iTunes', f: [F('Magneto', 'Lively', 'radial-gradient(circle,#60cdff,#3b2f8a 40%,#000)'), F('Flow', 'Calm', 'linear-gradient(120deg,#3b6b9b,#9b3b6b)')] }
+  ];
+  return { decks, groups };
+}
+}
+</script>
+</body>
+</html>

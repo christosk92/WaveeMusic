@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Row states</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; padding: 20px 24px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; background: #181818; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; overflow: hidden">
+  <sc-for list="{{panels}}" as="p" hint-placeholder-count="4">
+    <section aria-label="{{p.t}}" style="{{p.box}}">
+      <div style="display: flex; align-items: baseline; gap: 10px; padding: 0 8px 6px"><span style="{{p.ts}}">{{p.t}}</span><span style="{{p.ds}}">rows: 1 playing · 2 hover · 3 pressed · 4 selected · 5 focus · 6 unavailable · 7 has versions</span></div>
+      <dc-import name="C-TrackList" theme="{{p.theme}}" rs="{{p.rs}}" set="playlist" n="7" marks="1:playing,2:hover,3:pressed,4:selected,5:focus,6:unavailable,7:versions" hint-size="100%,380px"></dc-import>
+    </section>
+  </sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const P = [['Modern, dark', 'dark', 'modern'], ['Classic, dark', 'dark', 'classic'], ['Modern, light', 'light', 'modern'], ['Classic, light', 'light', 'classic']];
+  const panels = P.map(p => { const d = p[1] === 'dark'; return { t: p[0], theme: p[1], rs: p[2],
+    box: 'padding: 12px 4px 8px; border-radius: 8px 0 0 0; overflow: hidden; background: ' + (d ? '#282828' : '#f9f9f9') + '; border-top: 1px solid ' + (d ? 'rgba(0,0,0,0.098)' : 'rgba(0,0,0,0.059)') + '; border-left: 1px solid ' + (d ? 'rgba(0,0,0,0.098)' : 'rgba(0,0,0,0.059)'),
+    ts: 'font-size: 14px; font-weight: 600; color: ' + (d ? '#fff' : 'rgba(0,0,0,0.894)'), ds: 'font-size: 11px; color: ' + (d ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.55)') }; });
+  return { panels };
+}
+}
+</script>
+</body>
+</html>

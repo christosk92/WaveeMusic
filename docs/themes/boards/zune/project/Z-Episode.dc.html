@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune episode page</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1000px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <div style="height: 48px; flex-shrink: 0; display: flex; align-items: center; padding: 0 0 0 48px; gap: 12px">
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 350; letter-spacing: -0.2px; color: #a8a8a8">wavee</span>
+    <button aria-label="back" style="width: 32px; height: 32px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10 3 5 8l5 5"/></svg></button>
+    <span style="font-size: 13px; color: #7a7a7a">the rest is football › <span style="color: #a8a8a8">episode 812</span></span>
+    <span style="flex-grow: 1"></span>
+    <label style="display: flex; align-items: center; gap: 8px; width: 220px; height: 32px; box-sizing: border-box; padding: 0 10px 0 12px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.18); color: #7a7a7a"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><input type="search" placeholder="search" style="border: 0; background: transparent; color: #fff; font: inherit; font-size: 13px; width: 100%; outline: none; min-width: 0"><span style="font-size: 10px; color: #7a7a7a; border: 1px solid rgba(255,255,255,0.14); padding: 1px 4px; white-space: nowrap">ctrl f</span></label>
+    <button style="display: flex; align-items: center; gap: 8px; height: 32px; border: 0; background: transparent; color: #ffffff; font: inherit; font-size: 13px; padding: 0 8px; margin-left: 8px"><span style="width: 24px; height: 24px; border-radius: 12px; background: #5b6b3b; display: block"></span>christos</button>
+    <button aria-label="notifications" style="width: 32px; height: 32px; border: 0; background: transparent; color: #a8a8a8; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 11V7a4 4 0 0 1 8 0v4l1 1H3z"/><path d="M6.5 13.5a1.5 1.5 0 0 0 3 0"/></svg></button>
+    <span style="display: flex; color: #a8a8a8; font-size: 12px; margin-left: 8px"><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">─</span><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">☐</span><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">✕</span></span>
+  </div>
+  <div style="height: 84px; flex-shrink: 0; display: flex; flex-direction: column; padding: 0 16px 0 48px">
+    <div style="height: 44px; box-sizing: border-box; padding: 4px 0; display: flex; align-items: center; gap: 24px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; letter-spacing: -0.3px">
+      <a href="#" style="color: #7a7a7a; font-weight: 350">home</a><a href="#" style="color: #7a7a7a; font-weight: 350">browse</a><a href="#" style="color: #ffffff; font-weight: 600">library</a><a href="#" style="color: #7a7a7a; font-weight: 350">recents</a>
+      <span style="flex-grow: 1"></span>
+      <span style="display: flex; align-items: flex-start; gap: 8px; font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif"><span style="font-size: 11px; line-height: 32px; color: #7a7a7a; margin-right: 4px">pinned</span>
+        <sc-for list="{{pins}}" as="p" hint-placeholder-count="6"><span style="display: flex; flex-direction: column; align-items: center; gap: 2px"><span style="{{p.tile}}"></span><span style="{{p.dot}}"></span></span></sc-for>
+      </span>
+    </div>
+    <div style="height: 32px; display: flex; align-items: center; gap: 20px; font-size: 14px; line-height: 20px; padding-right: 32px">
+      <span style="color: #ffffff; font-weight: 600; max-width: 360px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">why the premier league keeps changing</span><span style="width: 1px; height: 16px; background: rgba(255,255,255,0.14)"></span>
+      <a href="#" style="{{tabOn}}">about</a><a href="#" style="height: 32px; display: flex; align-items: center">chapters</a><a href="#" style="height: 32px; display: flex; align-items: center">transcript</a><a href="#" style="height: 32px; display: flex; align-items: center">comments</a>
+    </div>
+  </div>
+  <div style="flex-grow: 1; min-height: 0; display: flex; gap: 48px; padding: 8px 48px 0 48px; overflow: hidden">
+    <div style="width: 280px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px">
+      <div style="width: 280px; height: 280px; background: #2f4a3b"></div>
+      <a href="#" style="font-size: 14px; color: #ffffff">The Rest Is Football</a>
+      <span style="font-size: 13px; color: #a8a8a8">#812 · 9 october · 48 min · new</span>
+      <span style="display: flex; gap: 18px; align-items: center; padding-top: 6px; font-size: 14px"><button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{playRing}}">▶</span><span style="display: flex; flex-direction: column; align-items: flex-start"><span>resume</span><span style="font-size: 12px; color: #a8a8a8">23 min left</span></span></button><button aria-label="save to your episodes" style="display: flex; align-items: center; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{ring}}">♡</span></button><button aria-label="share" style="display: flex; align-items: center; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{ring}}">↗</span></button></span>
+      <span style="height: 3px; background: rgba(255,255,255,0.12); display: block; margin-top: 4px"><span style="{{bar}}"></span></span>
+      <a href="#" style="font-size: 14px; height: 32px; display: flex; align-items: center">mark as played</a>
+      <a href="#" style="font-size: 14px; height: 32px; display: flex; align-items: center; margin-top: -12px">play from beginning</a>
+      <a href="#" style="font-size: 14px; height: 32px; display: flex; align-items: center; margin-top: -12px">go to show</a>
+    </div>
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px">why the premier league keeps changing</span>
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px; margin-top: 8px">about</span>
+      <span style="font-size: 15px; line-height: 22px; color: #c8c8c8; max-width: 760px">Gary, Alan and Micah on the rule changes nobody asked for, the ones that quietly worked, and why the league keeps rewriting itself every August. Plus: a listener question about the best pitch in the country. <a href="#" style="color: #ffffff">more</a></span>
+      <div style="display: flex; gap: 48px; margin-top: 8px">
+        <div style="display: flex; flex-direction: column; min-width: 0; flex: 1 1 0">
+          <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px; margin-bottom: 6px">chapters</span>
+          <sc-for list="{{chapters}}" as="c" hint-placeholder-count="5">
+            <a href="#" style="{{c.row}}"><span style="{{c.num}}">{{c.n}}</span><span style="display: flex; flex-direction: column; min-width: 0"><span style="{{c.title}}">{{c.name}}</span><span style="font-size: 12px; color: #7a7a7a; font-variant-numeric: tabular-nums">{{c.time}}</span></span></a>
+          </sc-for>
+        </div>
+        <div style="display: flex; flex-direction: column; min-width: 0; flex: 1 1 0">
+          <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px; margin-bottom: 2px">transcript</span>
+          <span style="font-size: 12px; color: #7a7a7a; margin-bottom: 8px">follows playback · click a sentence to jump there · <a href="#">search the transcript</a></span>
+          <sc-for list="{{lines}}" as="l" hint-placeholder-count="6"><span style="{{l.style}}">{{l.text}}</span></sc-for>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div style="height: 72px; flex-shrink: 0; background: #111111; position: relative; display: flex; align-items: center; padding: 0 12px 0 24px; gap: 24px">
+    <div style="position: absolute; left: 0; top: 0; right: 0; height: 2px; background: rgba(255,255,255,0.12)"><div style="{{progress}}"></div></div>
+    <span style="position: absolute; left: 9%; top: 0; width: 1px; height: 8px; background: #ffffff; opacity: 0.6"></span><span style="position: absolute; left: 28%; top: 0; width: 1px; height: 8px; background: #ffffff; opacity: 0.6"></span><span style="position: absolute; left: 55%; top: 0; width: 1px; height: 8px; background: #ffffff; opacity: 0.6"></span><span style="position: absolute; left: 81%; top: 0; width: 1px; height: 8px; background: #ffffff; opacity: 0.6"></span>
+    <div style="display: flex; align-items: center; gap: 12px; width: 320px; flex-shrink: 0"><span style="width: 48px; height: 48px; border-radius: 2px; background: #2f4a3b; flex-shrink: 0"></span><span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Why the Premier League keeps changing</span><span style="font-size: 13px; line-height: 18px; color: #a8a8a8">The Rest Is Football</span></span><button aria-label="save to your episodes" style="width: 32px; height: 32px; border: 0; background: transparent; color: #ffffff; font-size: 16px; padding: 0">♡</button></div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; gap: 2px"><div style="display: flex; align-items: center; gap: 16px"><button style="height: 32px; border: 0; background: transparent; color: #ffffff; font: inherit; font-size: 13px; padding: 0 6px">−10</button><button aria-label="pause" style="{{playDisc}}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg></button><button style="height: 32px; border: 0; background: transparent; color: #ffffff; font: inherit; font-size: 13px; padding: 0 6px">+10</button><button style="height: 32px; width: 48px; border: 0; background: transparent; color: #a8a8a8; font: inherit; font-size: 13px; padding: 0">1.0×</button></div><span style="font-size: 12px; color: #a8a8a8; font-variant-numeric: tabular-nums">24:40 · -23:12</span></div>
+    <div style="display: flex; align-items: center; gap: 2px; width: 440px; flex-shrink: 0; justify-content: flex-end; font-size: 13px"><button aria-label="mute" style="width: 32px; height: 32px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 6h3l4-3v10l-4-3H2z"/><path d="M11.5 5.5a3.5 3.5 0 0 1 0 5"/></svg></button><button style="height: 32px; border: 0; background: transparent; color: {{accent}}; font: inherit; font-size: 13px; padding: 0 8px">transcript</button><button style="height: 32px; border: 0; background: transparent; color: #a8a8a8; font: inherit; font-size: 13px; padding: 0 8px">queue</button><button style="height: 32px; border: 0; background: transparent; color: #a8a8a8; font: inherit; font-size: 13px; padding: 0 8px">devices</button><button aria-label="full screen" style="width: 32px; height: 32px; border: 0; background: transparent; color: #a8a8a8; font-size: 16px; padding: 0">⤢</button><button aria-label="more" style="width: 32px; height: 32px; border: 0; background: transparent; color: #a8a8a8; font-size: 16px; padding: 0">⋯</button></div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const pins = ['#3b4a6b', '#6b2f4a', '#2f5b6b', '#5b3b6b', '#6b4a2f', '#4a6b2f'].map((c, i) => ({ tile: 'width: 32px; height: 32px; border-radius: 4px; background: ' + c + '; display: block', dot: 'width: 4px; height: 4px; border-radius: 2px; display: block; background: ' + (i === 1 ? accent : 'transparent') }));
+  const chapters = [['Intro', '00:00', false], ['The rule changes nobody asked for', '04:12', false], ['What quietly worked', '13:30', true], ['The best pitch in the country', '26:08', false], ['Listener questions', '38:45', false]].map((d, i) => ({
+    n: String(i + 1), name: d[0], time: d[1],
+    row: 'display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center; height: 56px; ' + (d[2] ? 'background: rgba(255,255,255,0.05)' : ''),
+    num: 'font-family: \'Segoe UI Variable Display\', \'Segoe UI\', sans-serif; font-size: 22px; font-weight: 300; padding-left: 4px; color: ' + (d[2] ? accent : '#7a7a7a'),
+    title: 'font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (d[2] ? accent : '#ffffff'),
+  }));
+  const lines = [
+    ['…and that is the thing about the back-pass rule, it changed how every keeper in the country was coached.', 0.35],
+    ['Right, but nobody asked for it. It came from the 1990 World Cup being so dull.', 0.55],
+    ['Which is exactly the pattern. The league reacts to a tournament, then spends five years adjusting.', 1],
+    ['So which of the changes actually worked, quietly, without anyone noticing?', 0.45],
+    ['Five substitutes. Everyone hated it and now nobody would go back.', 0.3],
+    ['Stoppage time being honest. That one too.', 0.2],
+  ].map((d) => ({ text: d[0], style: 'font-size: 15px; line-height: 24px; padding: 4px 0; color: ' + (d[1] === 1 ? accent : '#ffffff') + '; opacity: ' + (d[1] === 1 ? 1 : d[1]) }));
+  return {
+    accent, pins, chapters, lines,
+    tabOn: 'height: 32px; display: flex; align-items: center; color: #ffffff; box-shadow: inset 0 -2px 0 ' + accent,
+    playRing: 'width: 36px; height: 36px; border-radius: 18px; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0',
+    ring: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #ffffff; display: flex; align-items: center; justify-content: center; font-size: 13px',
+    bar: 'display: block; width: 52%; height: 3px; background: ' + accent,
+    progress: 'width: 52%; height: 2px; background: ' + accent,
+    playDisc: 'width: 40px; height: 40px; border-radius: 20px; border: 0; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; padding: 0',
+  };
+}
+}
+</script>
+</body>
+</html>

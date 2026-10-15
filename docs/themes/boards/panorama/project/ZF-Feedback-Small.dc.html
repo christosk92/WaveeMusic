@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings, feedback and help, small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} width: 800px; height: 600px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" tier="small" sel="none" crumb="Settings › Feedback and help" ctx="Settings" items="General|Appearance|Playback|Notifications|Storage &amp; cache|Privacy|Feedback &amp; help|About" sub-sel="{{six}}" lower="{{lower}}" hint-size="800px,136px"></dc-import>
+  <main style="height: 380px; flex-shrink: 0; box-sizing: border-box; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke); padding: 14px 24px 0 24px; display: flex; gap: 28px">
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; overflow: hidden">
+      <h1 style="margin: 0; flex-shrink: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Feedback and help</h1>
+      <p style="margin: 0 0 8px 0; flex-shrink: 0; font-size: 12px; line-height: 16px; color: var(--t2)">Wavee is made by one person. Reports go to GitHub, where you can follow what happens to them.</p>
+      <sc-for list="{{verbs}}" as="v" hint-placeholder-count="3">
+        <a href="#" style="min-height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 6px 14px; box-sizing: border-box; border-radius: 4px; background: var(--card); border: 1px solid var(--cardb); color: var(--t1)"><span style="{{v.ring}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="{{v.d}}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path></svg></span><span style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0"><span style="font-size: 14px; line-height: 20px">{{v.title}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{v.hint}}</span></span><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></a>
+      </sc-for>
+      <h2 style="margin: 12px 0 0 0; flex-shrink: 0; display: flex; align-items: baseline; gap: 10px; font-size: 14px; line-height: 20px; font-weight: 600">Sent from this PC<span style="font-size: 12px; font-weight: 400; color: var(--t2)">2</span></h2>
+      <sc-for list="{{sent}}" as="s" hint-placeholder-count="2">
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) 96px 110px; align-items: center; min-height: 48px; flex-shrink: 0; border-top: 1px solid var(--div); font-size: 14px; line-height: 20px"><span style="display: flex; flex-direction: column; min-width: 0"><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.title}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">{{s.kind}}</span></span><span style="{{s.stateStyle}}">{{s.state}}</span><a href="#" style="text-align: right; color: var(--acct)">Open on GitHub</a></div>
+      </sc-for>
+    </div>
+    <aside aria-label="About reports" style="width: 236px; flex-shrink: 0; display: flex; flex-direction: column; gap: 6px; padding-top: 4px; overflow: hidden">
+      <h2 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600">What a report holds</h2>
+      <sc-for list="{{holds}}" as="h" hint-placeholder-count="4"><span style="display: flex; gap: 8px; align-items: flex-start; font-size: 12px; line-height: 16px"><span style="{{h.mark}}"><sc-if value="{{h.yes}}" hint-placeholder-val="{{ true }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-label="Included" role="img"><path d="M2.5 8.5 6 12l7.5-7.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg></sc-if><sc-if value="{{h.no}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-label="Never included" role="img"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg></sc-if></span>{{h.t}}</span></sc-for>
+      <span style="font-size: 12px; line-height: 16px; color: var(--t2)">You see the whole report before anything leaves this PC.</span>
+      <h2 style="margin: 12px 0 0 0; font-size: 14px; line-height: 20px; font-weight: 600">Diagnostics</h2>
+      <span role="radiogroup" aria-label="Log detail" style="align-self: flex-start; display: flex; gap: 2px; padding: 2px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb)"><sc-for list="{{logs}}" as="c" hint-placeholder-count="2"><button role="radio" aria-checked="{{c.on}}" style="{{c.style}}">{{c.label}}</button></sc-for></span>
+      <span style="display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 14px; line-height: 20px"><a href="#" style="color: var(--acct)">Copy diagnostics</a><a href="#" style="color: var(--acct)">Open logs folder</a></span>
+    </aside>
+  </main>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" tier="small" variant="music" pane="none" hint-size="800px,84px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"lower":{"editor":"boolean","default":false},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', div: 'rgba(255,255,255,0.0837)', card: 'rgba(255,255,255,0.0512)', cardb: 'rgba(0,0,0,0.1)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff', ok: '#6ccb5f', bad: '#ff99a4' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', div: 'rgba(0,0,0,0.0803)', card: '#fbfbfb', cardb: 'rgba(0,0,0,0.0578)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', sub: 'rgba(0,0,0,0.0373)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92', ok: '#0f7b0f', bad: '#c42b1c' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const verbs = [['Report a problem', 'Something broke or looks wrong · opens with diagnostics', 'M8 4v5M8 11.5v.5', true], ['Suggest something', 'A feature or a change you want', 'M8 3v10M3 8h10', false], ['Ask a question', 'How something works', 'M6 6a2 2 0 1 1 2.8 1.8c-.5.3-.8.7-.8 1.3v.4M8 11.6v.4', false]].map((d) => ({ title: d[0], hint: d[1], d: d[2],
+    ring: 'width: 32px; height: 32px; flex-shrink: 0; border-radius: 16px; display: flex; align-items: center; justify-content: center; ' + (d[3] ? 'background: var(--acc); color: var(--onacc)' : 'background: var(--sub); color: var(--acct)') }));
+  const sent = [['Lyrics stop following after a seek in long songs', 'Problem · 3 Oct', 'Fixed in 1.6', true], ['Let me pin a show to the band', 'Suggestion · 19 Sep', 'Open', false]].map((d) => ({ title: d[0], kind: d[1], state: d[2], stateStyle: 'font-size: 14px; color: ' + (d[3] ? 'var(--ok)' : 'var(--t2)') }));
+  const holds = [['What you write, and the steps', true], ['Wavee and Windows versions, your GPU', true], ['The last 200 log lines, if you tick it', true], ['Never your account, password or files', false]].map((d) => ({ t: d[0], yes: d[1], no: !d[1],
+    mark: 'width: 16px; height: 16px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: ' + (d[1] ? 'var(--ok)' : 'var(--bad)') }));
+  const logs = ['Normal', 'Detailed'].map((l, i) => ({ label: l, on: i === 0 ? 'true' : 'false',
+    style: 'height: 28px; padding: 0 12px; border: 0; border-radius: 3px; font: inherit; font-size: 14px; ' + (i === 0 ? 'background: var(--acc); color: var(--onacc)' : 'background: transparent; color: var(--t1)') }));
+  return { vars, theme, accent, verbs, sent, holds, logs, six: 6, lower: !!(this.props.lower ?? false) };
+}
+}
+</script>
+</body>
+</html>

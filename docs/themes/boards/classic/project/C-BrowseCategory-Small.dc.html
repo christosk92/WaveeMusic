@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Browse category, Small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 800px; height: 600px; display: flex; flex-direction: column; overflow: hidden; background: radial-gradient(74% 92% at 6% 0%, rgba(192,138,176,0.10), rgba(192,138,176,0) 62%), #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="browse:K-Pop" sel="0" w="800" hint-size="800px,48px"></dc-import>
+  <div style="display: flex; height: 480px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="rail" sel="home" h="480" hint-size="48px,480px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; padding: 16px 32px 0; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+      <header style="display: flex; flex-direction: column; gap: 2px; flex-shrink: 0">
+        <nav aria-label="Breadcrumb" style="height: 16px; display: flex; align-items: flex-end; gap: 6px; font-size: 12px; line-height: 16px; font-weight: 600"><a href="#" style="color: rgba(255,255,255,0.773)">Browse</a><span style="color: rgba(255,255,255,0.529)">›</span><a href="#" style="color: rgba(255,255,255,0.773)">Genres</a></nav>
+        <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em">K-Pop</h1>
+      </header>
+      <sc-for list="{{shelves}}" as="sh" hint-placeholder-count="2">
+        <section aria-label="{{sh.t}}" style="display: flex; flex-direction: column; gap: 4px; flex-shrink: 0">
+          <div style="height: 32px; display: flex; align-items: center; gap: 4px"><a href="#" style="display: flex; align-items: center; gap: 6px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">{{sh.t}}<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></a><span style="flex-grow: 1"></span><button aria-label="Previous" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: rgba(255,255,255,0.365)"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 4l-4 4 4 4" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></button><button aria-label="Next" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></button></div>
+          <div style="display: flex; gap: 4px; margin: 0 -32px 0 -8px; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent)">
+            <sc-for list="{{sh.cards}}" as="c" hint-placeholder-count="5"><a href="#" style="width: 176px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px; padding: 8px; border-radius: 8px"><span style="{{c.art}}"></span><span style="font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.t}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.s}}</span></a></sc-for>
+          </div>
+        </section>
+      </sc-for>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="800" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const pal = ['#c08ab0', '#5b3b6b', '#3b5b6b', '#9b7a3b', '#6b2f3b', '#2f6b6b', '#4a4a6b'];
+  const S = [['Popular K-Pop playlists', ['K-Pop ON! (온)', 'K-Pop Daebak', 'Girl Power', 'K-Pop Rising', 'Kpop Dance']], ['New releases', ['Whiplash', 'MAGNETIC', 'How Sweet', 'Supernova', 'Armageddon']]];
+  const subs = [['Playlist · Spotify', 'Playlist · Spotify', 'Playlist · Spotify', 'Playlist · Spotify', 'Playlist · Spotify'], ['EP · aespa', 'Single · ILLIT', 'Single · NewJeans', 'Single · aespa', 'Album · aespa']];
+  const shelves = S.map((s, si) => ({ t: s[0], cards: s[1].map((t, i) => ({ t, s: subs[si][i], art: 'display: block; width: 160px; height: 160px; margin-bottom: 6px; border-radius: 8px; background: linear-gradient(160deg, ' + pal[(i + si) % 7] + ', #1a1a1a)' })) }));
+  return { shelves };
+}
+}
+</script>
+</body>
+</html>

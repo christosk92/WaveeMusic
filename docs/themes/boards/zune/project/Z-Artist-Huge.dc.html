@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune artist: huge window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 2560px; height: 1440px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="huge" crumb="search › the weeknd" accent="{{accent}}" hint-size="2560px,48px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex">
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+      <dc-import name="Z-Part-Band" tier="huge" section="home" sub="popular,albums,singles &amp; eps,details" on="popular" title="the weeknd" actions="following" collapsed="false" accent="{{accent}}" hint-size="1840px,84px"></dc-import>
+      <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden">
+        <div style="height: 400px; flex-shrink: 0; position: relative; overflow: hidden; background: linear-gradient(180deg, #3a2f4a 0%, #2a2433 70%, #161616 100%)">
+          <div style="position: absolute; left: 48px; top: 40px; font-size: 14px; color: #a8a8a8">verified artist</div>
+          <div style="position: absolute; left: 38px; bottom: 96px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 150px; font-weight: 200; line-height: 160px; letter-spacing: -3px; white-space: nowrap; color: #ffffff">the weeknd</div>
+          <div style="position: absolute; left: 48px; bottom: 60px; font-size: 14px; color: #c8c8c8"><span style="{{accentInk}}">#3 in the world</span> · 118m monthly listeners · 92m followers</div>
+          <div style="position: absolute; left: 48px; bottom: 8px; display: flex; gap: 22px; align-items: center; font-size: 14px">
+            <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{playRing}}">▶</span>play</button>
+            <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{ring}}">⇄</span>shuffle</button>
+            <button style="{{followPill}}">following</button>
+            <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{ring}}">◉</span>artist radio</button>
+            <button aria-label="more" style="{{ringBtn}}">⋯</button>
+          </div>
+        </div>
+        <div style="display: flex; gap: 48px; padding: 28px 48px 0 48px; flex-shrink: 0">
+          <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+            <div style="display: flex; align-items: baseline; gap: 20px; height: 40px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">popular</span><a href="#" style="font-size: 13px">see all 10</a></div>
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 48px">
+              <sc-for list="{{rows}}" as="r" hint-placeholder-count="10">
+                <div style="{{r.rowStyle}}"><span style="{{r.numStyle}}">{{r.num}}</span><span style="{{r.artStyle}}"></span><span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="{{r.titleStyle}}">{{r.title}}</span><span style="{{r.albumStyle}}">{{r.album}}</span></span><span style="{{r.playsStyle}}">{{r.plays}}</span><span style="{{r.timeStyle}}">{{r.time}}</span><button aria-label="more" style="{{r.moreStyle}}">⋯</button></div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="width: 360px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px">
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px; height: 40px; display: flex; align-items: center">latest release</span>
+            <a href="#" style="display: flex; gap: 16px; align-items: center"><span style="width: 128px; height: 128px; border-radius: 2px; background: #4a2a2a; display: block; flex-shrink: 0"></span><span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-size: 17px; color: #ffffff">Hurry Up Tomorrow</span><span style="font-size: 13px; color: #a8a8a8">album · 2025 · 22 songs</span><span style="font-size: 12px; color: #7a7a7a">out now</span></span></a>
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px; margin-top: 16px">artist pick</span>
+            <a href="#" style="display: flex; gap: 14px; align-items: center"><span style="width: 72px; height: 72px; border-radius: 2px; background: #2a3a4a; display: block; flex-shrink: 0"></span><span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-size: 15px; color: #ffffff">After Hours (Deluxe)</span><span style="font-size: 13px; color: #a8a8a8">"the whole story, in order."</span></span></a>
+          </div>
+          <div style="width: 400px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px">
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px; height: 40px; display: flex; align-items: center">about</span>
+            <a href="#" style="display: block; height: 160px; background: linear-gradient(120deg, #2a2433 0%, #4a3a5a 55%, #6a4a7a 100%); position: relative; overflow: hidden"><span style="position: absolute; left: 16px; bottom: 12px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; color: #ffffff">the weeknd</span></a>
+            <span style="font-size: 14px; line-height: 21px; color: #c8c8c8; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden">Abel Tesfaye went from anonymous mixtapes in Toronto to the biggest stages in the world, trading the haze of House of Balloons for the neon of After Hours. <a href="#" style="color: #ffffff">more</a></span>
+            <span style="font-size: 13px; color: #a8a8a8">Toronto · <a href="#" style="color: #ffffff">tour dates</a></span>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px; padding: 36px 48px 0 48px">
+          <div style="display: flex; align-items: baseline; gap: 20px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">albums</span><a href="#" style="font-size: 13px">discography</a></div>
+          <div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 16px">
+            <sc-for list="{{albums}}" as="a" hint-placeholder-count="8"><a href="#" style="display: flex; flex-direction: column; gap: 6px; min-width: 0"><span style="{{a.art}}"></span><span style="font-size: 15px; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{a.name}}</span><span style="font-size: 13px; color: #a8a8a8">{{a.sub}}</span></a></sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+    <dc-import name="Z-Part-Panel" tier="docked2" pivot="lyrics" h="1320" accent="{{accent}}" hint-size="720px,1320px"></dc-import>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="huge" title="Save Your Tears" artist="The Weeknd · After Hours" art="#3a2a5a" progress="56" saved="false" from="playing from the weeknd" active="lyrics" accent="{{accent}}" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const data = [['Blinding Lights', 'After Hours', '4,912,118,206', '3:20', '#7a2a2a'], ['Starboy', 'Starboy', '3,804,402,551', '3:50', '#5a2a3a'], ['Save Your Tears', 'After Hours', '3,211,770,140', '3:35', '#3a2a5a'], ['The Hills', 'Beauty Behind the Madness', '2,640,045,893', '4:02', '#2a2a2a'], ['Die For You', 'Starboy', '2,412,662,018', '4:20', '#4a3a2a'], ['Call Out My Name', 'My Dear Melancholy,', '1,904,219,377', '3:48', '#2a3a4a'], ['I Feel It Coming', 'Starboy', '1,830,330,412', '4:29', '#3a4a2a'], ['Can’t Feel My Face', 'Beauty Behind the Madness', '1,640,887,925', '3:33', '#5a3a2a'], ['Earned It', 'Fifty Shades of Grey', '1,412,512,604', '4:37', '#2a4a4a'], ['Often', 'Beauty Behind the Madness', '1,104,004,118', '4:09', '#4a2a4a']];
+  const order = [0, 5, 1, 6, 2, 7, 3, 8, 4, 9];
+  const rows = order.map((i) => {
+    const d = data[i];
+    const play = i === 2, hover = i === 6;
+    const ink = play ? accent : '#9c9c9c';
+    return {
+      num: play ? '▮▮▮' : String(i + 1), title: d[0], album: d[1], plays: d[2], time: d[3],
+      rowStyle: 'display: grid; grid-template-columns: 52px 56px minmax(0, 1fr) 130px 56px 44px; align-items: center; height: 56px; ' + (hover ? 'background: rgba(255,255,255,0.05)' : ''),
+      numStyle: 'font-family: ' + D + '; font-weight: 300; font-size: ' + (play ? 11 : 28) + 'px; letter-spacing: ' + (play ? '1px' : '0') + '; padding-left: 4px; color: ' + (play ? accent : '#7a7a7a') + '; font-variant-numeric: tabular-nums',
+      artStyle: 'width: 44px; height: 44px; border-radius: 2px; background: ' + d[4] + '; display: block',
+      titleStyle: 'font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (play ? accent : '#ffffff'),
+      albumStyle: 'font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + ink,
+      playsStyle: 'font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; color: ' + (play ? accent : '#7a7a7a'),
+      timeStyle: 'font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; color: ' + ink,
+      moreStyle: 'width: 40px; height: 40px; justify-self: center; border: 0; background: transparent; color: #ffffff; font-size: 16px; padding: 0; opacity: ' + (hover ? 1 : 0),
+    };
+  });
+  const sq = (c) => 'width: 100%; aspect-ratio: 1 / 1; border-radius: 2px; background: ' + c + '; display: block';
+  const albums = [['Hurry Up Tomorrow', 'album · 2025', '#4a2a2a'], ['Dawn FM', 'album · 2022', '#2a4a5a'], ['After Hours', 'album · 2020', '#7a2a2a'], ['My Dear Melancholy,', 'ep · 2018', '#2a2a3a'], ['Starboy', 'album · 2016', '#5a2a3a'], ['Beauty Behind the Madness', 'album · 2015', '#2a2a2a'], ['Kiss Land', 'album · 2013', '#3a2a4a'], ['Trilogy', 'compilation · 2012', '#3a3a3a']].map((d) => ({ name: d[0], sub: d[1], art: sq(d[2]) }));
+  return {
+    accent, rows, albums,
+    accentInk: 'color: ' + accent,
+    playRing: 'width: 36px; height: 36px; border-radius: 18px; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; font-size: 13px',
+    ring: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #ffffff; display: flex; align-items: center; justify-content: center; font-size: 13px',
+    ringBtn: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #ffffff; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; font: inherit; font-size: 13px; padding: 0',
+    followPill: 'height: 36px; padding: 0 16px; box-sizing: border-box; border-radius: 18px; border: 2px solid ' + accent + '; background: transparent; color: ' + accent + '; font: inherit; font-size: 13px',
+  };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune collection: artists · huge</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 2560px; height: 1440px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="huge" crumb="library › artists › kavinsky" accent="{{accent}}" hint-size="2560px,48px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex">
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+      <dc-import name="Z-Part-Band" tier="huge" section="library" sub="liked,playlists,albums,artists,podcasts,audiobooks" on="artists" accent="{{accent}}" hint-size="1840px,84px"></dc-import>
+      <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; padding: 8px 48px 0 48px; gap: 20px; overflow: hidden">
+        <div style="display: flex; align-items: center; gap: 24px; font-size: 13px; color: #a8a8a8; height: 28px; flex-shrink: 0">
+          <span>sort</span><a href="#" style="color: #ffffff">alphabetical</a><a href="#">recently added</a><a href="#">most played</a>
+          <span style="width: 1px; height: 14px; background: rgba(255,255,255,0.14)"></span>
+          <span>show</span><a href="#" style="color: #ffffff">artists you follow and save from</a><a href="#">followed only</a>
+          <span style="flex-grow: 1"></span>
+          <label style="display: flex; align-items: center; gap: 8px; color: #7a7a7a"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><input type="search" placeholder="find in artists" style="border: 0; border-bottom: 1px solid rgba(255,255,255,0.18); background: transparent; color: #fff; font: inherit; font-size: 13px; width: 220px; outline: none; padding: 2px 0"></label>
+          <span>184 artists</span>
+        </div>
+        <div style="flex-grow: 1; min-height: 0; display: flex; gap: 48px">
+          <div style="width: 280px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden">
+            <sc-for list="{{artists}}" as="a" hint-placeholder-count="26">
+              <a href="#" style="{{a.row}}"><span style="{{a.letter}}">{{a.l}}</span><span style="{{a.art}}"></span><span style="{{a.name}}">{{a.n}}</span><span style="font-size: 12px; color: #7a7a7a; text-align: right; padding-right: 8px">{{a.count}}</span></a>
+            </sc-for>
+          </div>
+          <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+            <div style="height: 380px; flex-shrink: 0; position: relative; overflow: hidden; background: linear-gradient(180deg, #4a2436 0%, #2a1c24 70%, #161616 100%)">
+              <span style="position: absolute; right: -80px; top: -60px; width: 480px; height: 480px; border-radius: 240px; background: #5c2a40; opacity: 0.55"></span>
+              <div style="position: absolute; left: 32px; top: 28px; font-size: 13px; color: #c8c8c8">artist · following · 2 albums and 1 single in your library</div>
+              <div style="position: absolute; left: 22px; bottom: 84px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 150px; font-weight: 200; line-height: 150px; letter-spacing: -3px; white-space: nowrap">kavinsky</div>
+              <div style="position: absolute; left: 32px; bottom: 26px; display: flex; gap: 22px; align-items: center; font-size: 14px">
+                <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #fff; font: inherit; padding: 0"><span style="{{playRing}}">▶</span>play all</button>
+                <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #fff; font: inherit; padding: 0"><span style="{{ring}}">⇄</span>shuffle</button>
+                <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #fff; font: inherit; padding: 0"><span style="{{ring}}">→</span>go to artist</button>
+                <span style="font-size: 13px; color: #a8a8a8; margin-left: 12px">3.1 m monthly listeners · 47 plays from you this month</span>
+              </div>
+            </div>
+            <div style="display: flex; align-items: baseline; gap: 12px; flex-shrink: 0"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">in your library</span><span style="font-size: 13px; color: #7a7a7a">3 releases</span></div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 24px 16px; flex-shrink: 0">
+              <sc-for list="{{albums}}" as="al" hint-placeholder-count="4">
+                <a href="#" style="display: flex; flex-direction: column; gap: 6px; min-width: 0"><span style="{{al.art}}"></span><span style="{{al.name}}">{{al.n}}</span><span style="font-size: 12px; color: #a8a8a8">{{al.sub}}</span></a>
+              </sc-for>
+            </div>
+            <div style="display: flex; align-items: baseline; gap: 12px; margin-top: 8px; flex-shrink: 0"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px; color: #a8a8a8">more by kavinsky</span><a href="#" style="font-size: 13px">discography</a></div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; flex-shrink: 0">
+              <sc-for list="{{more}}" as="m" hint-placeholder-count="4">
+                <a href="#" style="display: flex; gap: 12px; align-items: center; min-width: 0"><span style="{{m.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; color: #c8c8c8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{m.n}}</span><span style="font-size: 12px; color: #7a7a7a">{{m.sub}}</span></span></a>
+              </sc-for>
+            </div>
+          </div>
+          <div style="width: 580px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden">
+            <div style="display: flex; gap: 20px; align-items: flex-end; padding-bottom: 14px; flex-shrink: 0">
+              <span style="width: 120px; height: 120px; border-radius: 2px; background: #6b2f4a; display: block; flex-shrink: 0"></span>
+              <span style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+                <span style="font-size: 13px; color: #a8a8a8">album · Kavinsky</span>
+                <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 48px; letter-spacing: -0.5px">OutRun</span>
+                <span style="font-size: 13px; color: #7a7a7a">2013 · 13 songs · 53 min · <a href="#">open album</a> · <a href="#">add to queue</a></span>
+              </span>
+            </div>
+            <div style="display: grid; grid-template-columns: 52px minmax(0, 1fr) 84px 72px 56px; align-items: center; height: 28px; font-size: 12px; color: #7a7a7a; flex-shrink: 0"><span></span><span>title</span><span>added</span><span style="text-align: right">your plays</span><span style="text-align: right">time</span></div>
+            <sc-for list="{{songs}}" as="s" hint-placeholder-count="13">
+              <div style="display: grid; grid-template-columns: 52px minmax(0, 1fr) 84px 72px 56px; align-items: center; height: 52px; flex-shrink: 0"><span style="{{s.num}}">{{s.n}}</span><span style="{{s.title}}">{{s.t}}</span><span style="font-size: 13px; color: #9c9c9c">{{s.added}}</span><span style="font-size: 13px; color: #9c9c9c; text-align: right; font-variant-numeric: tabular-nums">{{s.plays}}</span><span style="{{s.time}}">{{s.d}}</span></div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+    <dc-import name="Z-Part-Panel" tier="docked2" pivot="friends" h="1320" accent="{{accent}}" hint-size="720px,1320px"></dc-import>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="huge" title="Nightcall" artist="Kavinsky · OutRun" art="#6b2f4a" progress="29" from="playing from outrun" active="friends" accent="{{accent}}" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const list = [['a', 'aespa', 3, '#5b3b6b'], ['', 'Arcade Fire', 2, '#4a3b2f'], ['c', 'Carpenter Brut', 4, '#6b2f2f'], ['', 'College', 1, '#2f4a5b'], ['d', 'Daft Punk', 6, '#3a2f22'], ['', 'Depeche Mode', 5, '#2a2a2a'], ['f', 'FM-84', 2, '#4a3b2f'], ['g', 'Gunship', 3, '#2f4a3b'], ['h', 'HOME', 2, '#2f5b6b'], ['i', 'ILLIT', 1, '#6b3b5b'], ['j', 'Justice', 3, '#2f2f3b'], ['k', 'Kavinsky', 3, '#6b2f4a', true], ['', 'KISS OF LIFE', 1, '#5b2f4a'], ['m', 'M83', 4, '#3b4a6b'], ['n', 'NewJeans', 2, '#4a5b6b'], ['t', 'The Midnight', 5, '#6b4a2f'], ['', 'The Weeknd', 4, '#5a2a2a'], ['', 'Timecop1983', 2, '#2f3b4a'], ['', 'Tycho', 3, '#6b5b3b'], ['', 'Twice', 2, '#6b3b4a']];
+  const artists = list.map((d) => ({
+    l: d[0], n: d[1], count: String(d[2]),
+    row: 'display: grid; grid-template-columns: 32px 40px minmax(0, 1fr) 32px; align-items: center; height: 52px; flex-shrink: 0; ' + (d[4] ? 'background: rgba(255,255,255,0.05)' : ''),
+    letter: 'font-family: ' + D + '; font-size: 22px; font-weight: 300; color: #7a7a7a; padding-left: 4px',
+    art: 'width: 32px; height: 32px; border-radius: 16px; display: block; background: ' + d[3],
+    name: 'font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (d[4] ? '#ffffff; font-weight: 600' : '#c8c8c8'),
+  }));
+  const albums = [['OutRun', 'album · 2013', '#6b2f4a', true], ['Reborn', 'album · 2022', '#2f3b5b', false], ['Nightcall', 'single · 2010', '#3b2a4a', false]].map((d) => ({
+    n: d[0], sub: d[1], art: 'width: 100%; aspect-ratio: 1 / 1; border-radius: 2px; background: ' + d[2] + '; display: block; box-sizing: border-box; ' + (d[3] ? 'outline: 2px solid ' + accent + '; outline-offset: 2px' : ''),
+    name: 'font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (d[3] ? accent : '#ffffff'),
+  }));
+  const more = [['1986', 'ep · 2007', '#4a3a2a'], ['Teddy Boy', 'ep · 2006', '#2a3a3a'], ['Zenith', 'single · 2022', '#3a2a3a'], ['Cameo', 'single · 2022', '#2a2a3a']].map((d) => ({ n: d[0], sub: d[1], art: 'width: 64px; height: 64px; border-radius: 2px; background: ' + d[2] + '; display: block; flex-shrink: 0; opacity: 0.8' }));
+  const tracks = [['Prelude', '1:52', 4], ['Blizzard', '3:46', 9], ['ProtoVision', '4:47', 12], ['Odd Look', '4:11', 18], ['Rampage', '3:33', 6], ['Suburbia', '4:41', 8], ['Testarossa Autodrive', '4:12', 15], ['Nightcall', '4:18', 61], ['Grand Canyon', '3:38', 5], ['First Blood', '4:30', 7], ['Deadcruiser', '4:30', 4], ['Roadgame', '4:20', 9], ['Endless', '4:53', 3]];
+  const songs = tracks.map((d, i) => { const play = i === 7; return {
+    n: play ? '▮▮▮' : String(i + 1), t: d[0], d: d[1], plays: String(d[2]), added: 'Jun 2023',
+    num: 'font-family: ' + D + '; font-weight: 300; font-size: ' + (play ? 11 : 22) + 'px; letter-spacing: ' + (play ? '1px' : '0') + '; padding-left: 4px; color: ' + (play ? accent : '#7a7a7a'),
+    title: 'font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (play ? accent : '#ffffff'),
+    time: 'font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; color: ' + (play ? accent : '#9c9c9c'),
+  }; });
+  return {
+    accent, artists, albums, more, songs,
+    playRing: 'width: 36px; height: 36px; border-radius: 18px; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; font-size: 13px',
+    ring: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #ffffff; display: flex; align-items: center; justify-content: center; font-size: 13px',
+  };
+}
+}
+</script>
+</body>
+</html>

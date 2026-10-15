@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shell, Huge</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 2560px; height: 1440px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tier="huge" width="2560" tabs="home:Home|albums:Albums|album:The Stereo Love Show:#3b5b7a|artist:Arash:#4a3b2f|playlist:LoL Worlds Songs 2014–2026:#5b5b5b|show:Coffee &amp; Code:#4a5b3b" sel="1" badge="2" hint-size="2560px,88px"></dc-import>
+  <div style="display: flex; height: 1280px; flex-shrink: 0">
+    <dc-import name="Shell-Nav" theme="dark" mode="open" sel="albums" height="1280" hint-size="280px,1280px"></dc-import>
+    <div style="flex-grow: 1; min-width: 0; display: flex; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); border-left: 1px solid rgba(255,255,255,0.0837); border-top-left-radius: 8px; overflow: hidden">
+      <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; padding: 32px 48px 0 48px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+        <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600">Library</h1>
+        <div style="display: flex; align-items: center; gap: 4px; border-bottom: 1px solid rgba(255,255,255,0.0837)">
+          <sc-for list="{{views}}" as="v" hint-placeholder-count="5"><button style="{{v.style}}">{{v.label}}<span style="{{v.bar}}"></span></button></sc-for>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px">
+          <label style="width: 320px; height: 32px; display: flex; align-items: center; padding: 0 10px 0 12px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-bottom-color: rgba(255,255,255,0.5442); font-size: 14px; color: #9e9e9e"><span style="flex-grow: 1">Filter albums</span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14" fill="none" stroke="#c5c5c5" stroke-width="1" stroke-linecap="round"></path></svg></label>
+          <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); color: #fff; font: inherit; font-size: 14px">Recently added<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+          <span style="flex-grow: 1; font-size: 12px; color: #c5c5c5; text-align: right; padding-right: 8px">42 albums</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 24px 20px; padding-top: 4px">
+          <sc-for list="{{albums}}" as="a" hint-placeholder-count="21"><a href="#" style="display: flex; flex-direction: column; gap: 6px; color: #fff; min-width: 0"><span style="{{a.art}}"></span><span style="{{a.title}}">{{a.t}}</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{a.s}}</span></a></sc-for>
+        </div>
+      </main>
+      <aside aria-label="Queue" style="width: 340px; flex-shrink: 0; border-left: 1px solid rgba(255,255,255,0.0837); display: flex; flex-direction: column; overflow: hidden">
+        <div style="height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 0 4px 0 8px; border-bottom: 1px solid rgba(255,255,255,0.0837)">
+          <button style="position: relative; height: 40px; padding: 0 10px; border: 0; background: transparent; font: inherit; font-size: 14px; color: #ffffff">Queue<span style="position: absolute; left: 10px; right: 10px; bottom: 2px; height: 3px; border-radius: 2px; background: #60cdff"></span></button>
+          <button style="height: 40px; padding: 0 10px; border: 0; background: transparent; font: inherit; font-size: 14px; color: #c5c5c5">Now playing</button>
+          <span style="flex-grow: 1"></span>
+          <button aria-label="Close queue" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg></button>
+        </div>
+        <div style="padding: 12px; display: flex; flex-direction: column; gap: 8px">
+          <span style="font-size: 12px; color: #c5c5c5; padding: 0 4px">Playing from <a href="#">The Stereo Love Show</a></span>
+          <div style="display: flex; gap: 12px; align-items: center; padding: 8px; border-radius: 8px; background: rgba(255,255,255,0.0512); border: 1px solid rgba(0,0,0,0.1)"><span style="width: 48px; height: 48px; border-radius: 4px; background: #3b5b7a"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; font-weight: 600; color: #99ebff">Stereo Love</span><span style="font-size: 12px; color: #c5c5c5">Edward Maya, Vika Jigulina</span></span></div>
+          <div style="display: flex; align-items: center; height: 36px; padding: 0 4px"><span style="font-size: 14px; font-weight: 600; flex-grow: 1">Next in queue</span><a href="#" style="font-size: 12px">Clear</a></div>
+          <sc-for list="{{queued}}" as="q" hint-placeholder-count="2"><div style="display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 4px 0 8px; border-radius: 4px"><span style="{{q.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{q.t}}</span><span style="font-size: 12px; color: #c5c5c5">{{q.a}}</span></span><span style="font-size: 12px; color: #c5c5c5; font-variant-numeric: tabular-nums">{{q.d}}</span></div></sc-for>
+          <div style="display: flex; align-items: center; height: 36px; padding: 0 4px"><span style="font-size: 14px; font-weight: 600; flex-grow: 1">Next up</span><span style="font-size: 12px; color: #c5c5c5">13 more</span></div>
+          <sc-for list="{{next}}" as="q" hint-placeholder-count="8"><div style="display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 4px 0 8px; border-radius: 4px"><span style="{{q.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{q.t}}</span><span style="font-size: 12px; color: #c5c5c5">{{q.a}}</span></span><span style="font-size: 12px; color: #c5c5c5; font-variant-numeric: tabular-nums">{{q.d}}</span></div></sc-for>
+          <div style="display: flex; align-items: center; gap: 12px; padding: 8px 4px; border-top: 1px solid rgba(255,255,255,0.0837)"><span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 14px; font-weight: 600">Autoplay</span><span style="font-size: 12px; color: #c5c5c5">Similar music will keep playing</span></span><span style="width: 40px; height: 20px; border-radius: 10px; background: #60cdff; position: relative; display: block; flex-shrink: 0"><span style="position: absolute; top: 4px; left: 24px; width: 12px; height: 12px; border-radius: 6px; background: #000"></span></span></div>
+        </div>
+      </aside>
+      <aside aria-label="Lyrics" style="width: 340px; flex-shrink: 0; border-left: 1px solid rgba(255,255,255,0.0837); display: flex; flex-direction: column; overflow: hidden">
+        <div style="height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 0 4px 0 8px; border-bottom: 1px solid rgba(255,255,255,0.0837)">
+          <button style="position: relative; height: 40px; padding: 0 10px; border: 0; background: transparent; font: inherit; font-size: 14px; color: #ffffff">Lyrics<span style="position: absolute; left: 10px; right: 10px; bottom: 2px; height: 3px; border-radius: 2px; background: #60cdff"></span></button>
+          <button style="height: 40px; padding: 0 10px; border: 0; background: transparent; font: inherit; font-size: 14px; color: #c5c5c5">Friends</button>
+          <span style="flex-grow: 1"></span>
+          <button aria-label="Close lyrics" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg></button>
+        </div>
+        <div style="height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding: 0 8px 0 16px">
+          <span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-size: 14px; line-height: 20px; font-weight: 600">Stereo Love</span><span style="font-size: 12px; line-height: 16px; color: #c5c5c5">Synced · word by word</span></span>
+          <button aria-pressed="true" style="height: 32px; padding: 0 10px; border: 0; border-radius: 4px; background: rgba(255,255,255,0.0605); color: #fff; font: inherit; font-size: 12px">Translate</button>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 16px; padding: 24px 24px 0 24px">
+          <sc-for list="{{lines}}" as="l" hint-placeholder-count="9"><div style="{{l.style}}"><span style="{{l.doneStyle}}">{{l.done}}</span><span style="color: #9e9e9e">{{l.rest}}</span><sc-if value="{{l.second}}" hint-placeholder-val="{{ false }}"><span style="display: block; margin-top: 4px; font-size: 14px; line-height: 20px; font-weight: 400; color: #c5c5c5">{{l.secondText}}</span></sc-if></div></sc-for>
+        </div>
+      </aside>
+    </div>
+  </div>
+  <dc-import name="Shell-Player" theme="dark" tier="huge" width="2560" variant="music" pane="lyrics,queue" hint-size="2560px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+renderVals() {
+  const vs = (l, s) => ({ label: l, style: 'position: relative; height: 40px; padding: 0 12px; border: 0; background: transparent; font: inherit; font-size: 14px; color: ' + (s ? '#ffffff' : '#c5c5c5'), bar: s ? 'position: absolute; left: 12px; right: 12px; bottom: 4px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' });
+  const views = [vs('Playlists', false), vs('Albums', true), vs('Artists', false), vs('Podcasts', false), vs('Audiobooks', false)];
+  const al = [['FINE', 'Jukjae · 2017', '#7a6a5a'], ['ARE YOU EVER COMING BACK?', 'vaultboy · 2026', '#5a6a7a'], ['STARTING OVER', 'Yu Takahashi · 2018', '#4a4a4a'], ['WLUWD', 'Tristam · 2021', '#3b4a7a'], ['2024 World Championship Theme', 'League of Legends · 2024', '#7a5a3b'], ['Arcane League of Legends: Season 2', 'Arcane · 2024', '#2f4a6b'], ['Sacrifice', 'League of Legends · 2025', '#6b3b2f'], ['The Stereo Love Show', 'Edward Maya · 2012', '#3b5b7a', true], ['Superman', 'Arash · 2014', '#6b8f8a'], ['Armageddon', 'aespa · 2024', '#5b2f6b'], ['Odyssey', 'HOME · 2014', '#2f5b6b'], ['Endless Summer', 'The Midnight · 2016', '#6b4a2f'], ['Donya', 'Arash · 2008', '#5b4a3b'], ['SUPER REAL ME', 'ILLIT · 2024', '#6b5b2f'], ['Whiplash', 'aespa · 2024', '#4a2f5b'], ['Days of Thunder', 'The Midnight · 2014', '#7a4a2f'], ['I’VE MINE', 'IVE · 2023', '#6b3b4a'], ['Arash', 'Arash · 2005', '#3b4a5b'], ['How Sweet', 'NewJeans · 2024', '#6b2f3b'], ['Sticky', 'KISS OF LIFE · 2024', '#2f6b5b'], ['From Zero', 'Linkin Park · 2024', '#5b4a3b']];
+  const albums = al.map(a => ({ t: a[0], s: a[1], art: 'display: block; width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; background: ' + a[2], title: 'font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (a[3] ? '#99ebff' : '#ffffff') }));
+  const q = (t, a, c, d) => ({ t, a, d, art: 'width: 32px; height: 32px; flex-shrink: 0; border-radius: 4px; background: ' + c });
+  const queued = [q('Supernova', 'aespa', '#5b2f6b', '2:58'), q('Days of Thunder', 'The Midnight', '#6b4a2f', '4:37')];
+  const next = [q('This Is My Life', 'Edward Maya', '#3b5b7a', '3:50'), q('Mono in Love', 'Edward Maya, Andreea Banica', '#3b5b7a', '3:17'), q('Happy for You', 'Edward Maya', '#3b5b7a', '3:51'), q('Friends Forever', 'Edward Maya', '#3b5b7a', '3:35'), q('Twinheart', 'Edward Maya', '#3b5b7a', '3:59'), q('Nostalgy', 'Edward Maya', '#3b5b7a', '3:30'), q('Stay Longer', 'Edward Maya', '#3b5b7a', '3:40'), q('Close Your Eyes', 'Edward Maya', '#3b5b7a', '4:30')];
+  const src = [['When you gonna stop breaking my heart', -3], ['I don’t wanna be another one', -2], ['Paying for the things I never done', -1], ['Don’t let go,', 0, ' don’t let go', 'Nu mă lăsa, nu mă lăsa'], ['To my love', 1], ['Can I get to your soul', 2], ['Can you get to my thought', 3]];
+  const lines = src.map(s => { const d = s[1], active = d === 0; return { done: s[0], rest: active ? s[2] : '', second: active, secondText: s[3] || '',
+    style: active ? 'font-family: \'Segoe UI Variable Display\', \'Segoe UI\', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600' : 'font-size: 18px; line-height: 24px; font-weight: 600',
+    doneStyle: 'color: ' + (active ? '#ffffff' : (d < 0 ? '#9e9e9e' : '#c5c5c5')) }; });
+  return { views, albums, queued, next, lines };
+}
+}
+</script>
+</body>
+</html>

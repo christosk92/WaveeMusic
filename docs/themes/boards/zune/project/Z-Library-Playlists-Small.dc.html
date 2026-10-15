@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune collection: playlists · small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 800px; height: 600px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="small" crumb="library › playlists › late night drive" accent="{{accent}}" hint-size="800px,48px"></dc-import>
+  <dc-import name="Z-Part-Band" tier="small" section="library" sub="liked,playlists,albums,artists,podcasts,audiobooks" on="playlists" accent="{{accent}}" hint-size="800px,84px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; padding: 4px 24px 0 24px; gap: 10px; overflow: hidden">
+    <div style="display: flex; align-items: center; gap: 20px; font-size: 13px; color: #a8a8a8; height: 28px; flex-shrink: 0">
+      <button style="height: 28px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0; display: flex; align-items: center; gap: 6px">recently played <span style="font-size: 10px; color: #a8a8a8">▾</span></button>
+      <span style="width: 1px; height: 14px; background: rgba(255,255,255,0.14)"></span>
+      <a href="#" style="color: #ffffff">+ new playlist</a><a href="#">+ new folder</a>
+      <span style="flex-grow: 1"></span>
+      <label style="display: flex; align-items: center; gap: 8px; color: #7a7a7a"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><input type="search" placeholder="find in playlists" style="border: 0; border-bottom: 1px solid rgba(255,255,255,0.18); background: transparent; color: #fff; font: inherit; font-size: 13px; width: 120px; outline: none; padding: 2px 0"></label>
+      <span>27 playlists</span>
+    </div>
+    <div style="flex-grow: 1; min-height: 0; display: flex; gap: 24px">
+      <div style="width: 240px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden">
+        <sc-for list="{{lists}}" as="g" hint-placeholder-count="2">
+          <div style="display: flex; flex-direction: column; flex-shrink: 0">
+            <span style="font-size: 12px; color: #7a7a7a; height: 26px; display: flex; align-items: flex-end; padding-bottom: 4px; box-sizing: border-box">{{g.label}}</span>
+            <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="4">
+              <a href="#" style="{{r.row}}"><span style="{{r.art}}">{{r.glyph}}</span><span style="display: flex; flex-direction: column; min-width: 0"><span style="{{r.name}}">{{r.n}}</span><span style="font-size: 12px; color: #7a7a7a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.sub}}</span></span><span style="{{r.trail}}">{{r.t}}</span></a>
+            </sc-for>
+          </div>
+        </sc-for>
+      </div>
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden">
+        <div style="display: flex; gap: 18px; align-items: flex-end; padding-bottom: 10px; flex-shrink: 0">
+          <div style="width: 112px; height: 112px; flex-shrink: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-radius: 2px; overflow: hidden"><span style="background: #3b4a6b"></span><span style="background: #6b2f4a"></span><span style="background: #2f5b6b"></span><span style="background: #5b3b6b"></span></div>
+          <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0; flex-grow: 1">
+            <span style="font-size: 12px; color: #a8a8a8">playlist · yours · collaborative</span>
+            <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; font-weight: 300; line-height: 44px; letter-spacing: -0.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">late night drive</span>
+            <span style="font-size: 12px; color: #9c9c9c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">christos and 2 others · 42 songs · 2 hr 31 min</span>
+            <span style="display: flex; gap: 12px; align-items: center; padding-top: 4px">
+              <button aria-label="play late night drive" style="{{playRing}}">▶</button>
+              <button aria-label="shuffle" style="{{ring}}">⇄</button>
+              <button aria-label="open playlist" style="{{ring}}">→</button>
+              <button aria-label="more" style="{{ring}}">⋯</button>
+            </span>
+          </div>
+        </div>
+        <sc-for list="{{songs}}" as="s" hint-placeholder-count="5">
+          <div style="display: grid; grid-template-columns: 44px 48px minmax(0, 1fr) 48px 32px; align-items: center; height: 52px; flex-shrink: 0">
+            <span style="{{s.num}}">{{s.n}}</span>
+            <span style="{{s.art}}"></span>
+            <span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="{{s.title}}">{{s.t}}</span><span style="{{s.sub}}">{{s.a}}</span></span>
+            <span style="{{s.time}}">{{s.d}}</span>
+            <button aria-label="more" style="width: 32px; height: 32px; border: 0; background: transparent; color: #a8a8a8; font-size: 15px; padding: 0">⋯</button>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="medium" title="Nightcall" artist="Kavinsky" art="#6b2f4a" progress="29" accent="{{accent}}" hint-size="800px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const row = (d) => {
+    const on = d[3] === 'open', folder = d[3] === 'folder', child = d[3] === 'child';
+    return {
+      n: d[0], sub: d[1], t: folder ? '▾' : (on ? '▮▮▮' : ''), glyph: folder ? '▤' : '',
+      row: 'display: grid; grid-template-columns: ' + (child ? '56px' : '44px') + ' minmax(0, 1fr) 32px; align-items: center; height: 44px; flex-shrink: 0; ' + (on ? 'background: rgba(255,255,255,0.05)' : ''),
+      art: 'width: 34px; height: 34px; border-radius: 2px; display: flex; align-items: center; justify-content: center; color: #a8a8a8; font-size: 14px; box-sizing: border-box; ' + (child ? 'margin-left: 12px; ' : '') + (folder ? 'border: 1px solid rgba(255,255,255,0.18)' : 'background: ' + d[2]),
+      name: 'font-size: 14px; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (on ? accent + '; font-weight: 600' : '#ffffff'),
+      trail: 'font-size: ' + (on ? '10px; letter-spacing: 1px' : '12px') + '; text-align: right; padding-right: 6px; color: ' + (on ? accent : '#7a7a7a'),
+    };
+  };
+  const lists = [
+    { label: 'made by you', rows: [['late night drive', 'christos · 42 songs', '#3b4a6b', 'open'], ['k-pop gym', 'christos · 64 songs', '#5b2f6b', ''], ['moods', 'folder · 3 playlists', '', 'folder'], ['focus flow', '88 songs', '#2f5b4a', 'child'], ['rainy sunday', '31 songs', '#3b4a5b', 'child']].map(row) },
+    { label: 'made for you', rows: [['Daily Mix 1', 'Spotify · The Midnight, FM-84', '#4a3b6b', ''], ['Discover Weekly', 'Spotify · updated monday', '#2f5b4a', ''], ['Release Radar', 'Spotify · updated friday', '#5b4a2f', '']].map(row) },
+  ];
+  const data = [['Nightcall', 'Kavinsky', '4:18', '#6b2f4a', true], ['Midnight City', 'M83', '4:03', '#3b4a6b'], ['Resonance', 'HOME', '3:32', '#2f5b6b'], ['A Real Hero', 'College, Electric Youth', '4:27', '#4a6b2f'], ['Tech Noir', 'Gunship', '4:55', '#5b3b6b'], ['Sunset', 'The Midnight', '5:36', '#6b4a2f']];
+  const songs = data.map((d, i) => { const play = !!d[4]; return {
+    n: play ? '▮▮▮' : String(i + 1), t: d[0], a: d[1], d: d[2],
+    art: 'width: 36px; height: 36px; border-radius: 2px; display: block; background: ' + d[3],
+    num: 'font-family: ' + D + '; font-weight: 300; font-size: ' + (play ? 11 : 22) + 'px; letter-spacing: ' + (play ? '1px' : '0') + '; padding-left: 4px; color: ' + (play ? accent : '#7a7a7a'),
+    title: 'font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (play ? accent : '#ffffff'),
+    sub: 'font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (play ? accent : '#9c9c9c'),
+    time: 'font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; color: ' + (play ? accent : '#9c9c9c'),
+  }; });
+  const ringBase = 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 13px; padding: 0; flex-shrink: 0; ';
+  return {
+    accent, lists, songs,
+    playRing: ringBase + 'border: 0; background: ' + accent + '; color: #000',
+    ring: ringBase + 'border: 2px solid #ffffff; background: transparent; color: #ffffff',
+  };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Compact unavailable tracks</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a6d8ff;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 400px; height: 860px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="playlist:Today’s Top Hits" sel="0" w="400" tier="compact" hint-size="400px,48px"></dc-import>
+  <main style="height: 756px; flex-shrink: 0; box-sizing: border-box; background: linear-gradient(180deg, rgba(72,96,58,0.36), rgba(58,58,58,0.298) 300px); border-top: 1px solid rgba(0,0,0,0.098); padding-top: 16px; display: flex; flex-direction: column; gap: 12px; overflow: hidden">
+    <header style="padding: 0 16px; display: flex; gap: 16px; align-items: flex-end; flex-shrink: 0">
+      <span role="img" aria-label="Today’s Top Hits cover" style="width: 120px; height: 120px; flex-shrink: 0; border-radius: 8px; background: linear-gradient(180deg, #6b8a5a, #3b5a2f); box-shadow: 0 2px 8px rgba(0,0,0,0.33)"></span>
+      <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+        <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600; letter-spacing: -0.02em">Today’s Top Hits</h1>
+        <span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">50 songs · 2 hr 36 min</span>
+      </div>
+    </header>
+    <div role="status" style="margin: 0 16px; display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border-radius: 4px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); font-size: 14px; line-height: 20px; flex-shrink: 0"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0; color: #60cdff"><path d="M8 2a6 6 0 1 1 0 12A6 6 0 0 1 8 2zM8 7.5v3.5M8 5v.01" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"></path></svg><span style="flex-grow: 1; min-width: 0">2 songs here can’t be played.</span><button style="height: 40px; flex-shrink: 0; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px">Hide them</button></div>
+    <dc-import name="C-TrackList" theme="dark" rs="modern" set="playlist" tier="compact" n="10" marks="3:unavailable,6:unreleased,1:playing" accent="#9bd67a" hint-size="100%,560px"></dc-import>
+  </main>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="400" tier="mini" hint-size="400px,56px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

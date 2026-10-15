@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Artist, scrolled</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="home:Home|artist:Billie Eilish" sel="1" w="1440" hint-size="1440px,48px"></dc-import>
+  <div style="display: flex; height: 780px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="classic" sel="artists" h="780" hint-size="280px,780px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: linear-gradient(180deg, rgba(46,64,92,0.30), rgba(58,58,58,0.298) 340px); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; display: flex; flex-direction: column; overflow: hidden">
+      <div style="height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 28px; padding: 0 36px; border-bottom: 1px solid rgba(255,255,255,0.082)">
+        <span style="font-size: 14px; line-height: 20px; font-weight: 600; max-width: 280px">Billie Eilish</span>
+        <nav aria-label="Sections" style="display: flex; gap: 20px; flex-grow: 1"><sc-for list="{{pivots}}" as="p" hint-placeholder-count="4"><a href="#" style="{{p.s}}">{{p.l}}<span style="{{p.bar}}"></span></a></sc-for></nav>
+        <a href="#" style="font-size: 14px; font-weight: 600; color: #a6d8ff; padding: 0 10px">Play</a><a href="#" style="font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.773); padding: 0 10px">Follow</a>
+      </div>
+      <div style="padding: 12px 36px 0; display: flex; flex-direction: column; gap: 32px">
+        <div style="display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 32px">
+          <section aria-label="Top tracks" style="display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; align-items: flex-start"><div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1"><h2 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600">Top tracks</h2><span style="width: 20px; height: 2px; background: #6a9be0"></span></div><span style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: rgba(255,255,255,0.6)"><span style="width: 28px; height: 28px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.12); display: flex; align-items: center; justify-content: center">‹</span>● ○ ○ ○ ○<span style="width: 28px; height: 28px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.12); display: flex; align-items: center; justify-content: center">›</span></span></div>
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px">
+              <sc-for list="{{tracks}}" as="t" hint-placeholder-count="10"><div style="{{t.style}}"><span style="{{t.ns}}">{{t.n}}</span><span style="{{t.art}}"></span><span style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0"><span style="{{t.ts}}">{{t.t}}</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">{{t.p}}</span></span><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" style="{{t.heart}}"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor"></path></svg><span style="width: 36px; text-align: right; font-size: 13px; color: rgba(255,255,255,0.773)">{{t.d}}</span></div></sc-for>
+            </div>
+          </section>
+          <section aria-label="Artist pick" style="display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; flex-direction: column; gap: 2px"><h2 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600">Artist pick</h2><span style="width: 20px; height: 2px; background: #6a9be0"></span></div>
+            <div style="border-radius: 8px; overflow: hidden; background: linear-gradient(160deg, rgba(106,155,224,0.16), rgba(255,255,255,0.051) 60%); border: 1px solid rgba(0,0,0,0.098); box-shadow: 0 2px 8px rgba(0,0,0,0.2); display: flex; flex-direction: column">
+              <div style="padding: 14px; display: flex; flex-direction: column; gap: 10px"><div style="display: flex; align-items: center; gap: 10px"><span style="width: 32px; height: 32px; border-radius: 16px; background: #1d2d45"></span><span style="display: flex; flex-direction: column"><span style="font-size: 14px; line-height: 20px; font-weight: 600">Billie Eilish</span><span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773)">Artist pick</span></span></div><div style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 400; letter-spacing: -0.012em">“the whole album, front to back”</div></div>
+              <span style="height: 150px; background: linear-gradient(160deg, #3b5574, #0e1828)"></span>
+              <div style="padding: 10px 14px; display: flex; align-items: center; gap: 10px"><span style="width: 44px; height: 44px; border-radius: 4px; background: #2f4a6b"></span><span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 14px; font-weight: 600">HIT ME HARD AND SOFT</span><span style="font-size: 12px; color: rgba(255,255,255,0.773)">Album</span></span><span style="height: 32px; padding: 0 12px; border-radius: 4px; background: #6a9be0; color: #000; font-size: 14px; font-weight: 600; display: flex; align-items: center">Play</span></div>
+            </div>
+          </section>
+        </div>
+        <section aria-label="Latest release" style="display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; flex-direction: column; gap: 2px"><h2 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600">Latest release</h2><span style="width: 20px; height: 2px; background: #6a9be0"></span></div>
+          <a href="#" style="display: flex; align-items: center; gap: 16px; padding: 8px; border-radius: 8px; background: rgba(255,255,255,0.051); border: 1px solid rgba(0,0,0,0.098); max-width: 640px"><span style="width: 72px; height: 72px; border-radius: 4px; background: #3b5b7a"></span><span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.03em; color: rgba(255,255,255,0.773)">Single · Jun 12, 2026 · 2 tracks</span><span style="font-size: 20px; line-height: 28px; font-weight: 600">WILDFLOWER (Live)</span></span></a>
+        </section>
+      </div>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="1440" hint-size="1440px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const pivots = ['Albums', 'Singles & EPs', 'Compilations', 'Details'].map((l, i) => ({ l, s: 'position: relative; font-size: 14px; line-height: 20px; font-weight: 600; color: ' + (i === 0 ? '#fff' : 'rgba(255,255,255,0.6)'), bar: i === 0 ? 'position: absolute; left: 0; right: 0; bottom: -6px; height: 2px; border-radius: 1px; background: #6a9be0' : 'display: none' }));
+  const T = [['BIRDS OF A FEATHER', '3,948,721,698 plays', '3:30', '#2f4a6b', 1], ['WILDFLOWER', '2,231,004,512 plays', '4:21', '#3b5b7a', 0], ['lovely (with Khalid)', '3,102,557,890 plays', '3:20', '#c0c0b0', 0], ['What Was I Made For?', '1,281,447,203 plays', '3:42', '#d0c060', 1], ['ocean eyes', '1,402,889,120 plays', '3:20', '#3b6b8a', 0], ['bad guy', '2,890,110,447 plays', '3:14', '#d0c030', 1], ['when the party’s over', '1,770,302,915 plays', '3:16', '#2a2a2a', 0], ['CHIHIRO', '901,442,016 plays', '5:03', '#2f4a6b', 0], ['Happier Than Ever', '1,523,906,778 plays', '4:58', '#c0a080', 0], ['LUNCH', '611,083,449 plays', '3:00', '#2f4a6b', 0]];
+  const tracks = T.map((t, i) => ({ n: i + 1, t: t[0], p: t[1], d: t[2],
+    style: 'height: 56px; display: flex; align-items: center; gap: 12px; padding: 0 8px; border-radius: 6px; border: 1px solid ' + (i === 2 ? 'rgba(0,0,0,0.098)' : 'transparent') + (i === 2 ? '; background: rgba(255,255,255,0.059)' : ''),
+    ns: 'width: 24px; text-align: center; font-size: 12px; color: ' + (i === 0 ? '#6a9be0' : 'rgba(255,255,255,0.529)'),
+    ts: 'font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (i === 0 ? '#a6d8ff' : '#fff'),
+    art: 'width: 44px; height: 44px; flex-shrink: 0; border-radius: 4px; background: ' + t[3], heart: 'flex-shrink: 0; color: #6a9be0; opacity: ' + (t[4] ? 1 : 0) }));
+  return { pivots, tracks };
+}
+}
+</script>
+</body>
+</html>

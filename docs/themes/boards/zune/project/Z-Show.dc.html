@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune podcast show page</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1000px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <div style="height: 48px; flex-shrink: 0; display: flex; align-items: center; padding: 0 0 0 48px; gap: 12px">
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 350; letter-spacing: -0.2px; color: #a8a8a8">wavee</span>
+    <button aria-label="back" style="width: 32px; height: 32px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10 3 5 8l5 5"/></svg></button>
+    <span style="font-size: 13px; color: #7a7a7a">library › podcasts › <span style="color: #a8a8a8">the rest is football</span></span>
+    <span style="flex-grow: 1"></span>
+    <label style="display: flex; align-items: center; gap: 8px; width: 220px; height: 32px; box-sizing: border-box; padding: 0 10px 0 12px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.18); color: #7a7a7a"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><input type="search" placeholder="search" style="border: 0; background: transparent; color: #fff; font: inherit; font-size: 13px; width: 100%; outline: none; min-width: 0"><span style="font-size: 10px; color: #7a7a7a; border: 1px solid rgba(255,255,255,0.14); padding: 1px 4px; white-space: nowrap">ctrl f</span></label>
+    <button style="display: flex; align-items: center; gap: 8px; height: 32px; border: 0; background: transparent; color: #ffffff; font: inherit; font-size: 13px; padding: 0 8px; margin-left: 8px"><span style="width: 24px; height: 24px; border-radius: 12px; background: #5b6b3b; display: block"></span>christos</button>
+    <button aria-label="notifications" style="width: 32px; height: 32px; border: 0; background: transparent; color: #a8a8a8; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 11V7a4 4 0 0 1 8 0v4l1 1H3z"/><path d="M6.5 13.5a1.5 1.5 0 0 0 3 0"/></svg></button>
+    <span style="display: flex; color: #a8a8a8; font-size: 12px; margin-left: 8px"><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">─</span><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">☐</span><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">✕</span></span>
+  </div>
+  <div style="height: 84px; flex-shrink: 0; display: flex; flex-direction: column; padding: 0 16px 0 48px">
+    <div style="height: 44px; box-sizing: border-box; padding: 4px 0; display: flex; align-items: center; gap: 24px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; letter-spacing: -0.3px">
+      <a href="#" style="color: #7a7a7a; font-weight: 350">home</a><a href="#" style="color: #7a7a7a; font-weight: 350">browse</a><a href="#" style="color: #ffffff; font-weight: 600">library</a><a href="#" style="color: #7a7a7a; font-weight: 350">recents</a>
+      <span style="flex-grow: 1"></span>
+      <span style="display: flex; align-items: flex-start; gap: 8px; font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif"><span style="font-size: 11px; line-height: 32px; color: #7a7a7a; margin-right: 4px">pinned</span>
+        <sc-for list="{{pins}}" as="p" hint-placeholder-count="6"><span style="display: flex; flex-direction: column; align-items: center; gap: 2px"><span style="{{p.tile}}"></span><span style="{{p.dot}}"></span></span></sc-for>
+      </span>
+    </div>
+    <div style="height: 32px; display: flex; align-items: center; gap: 20px; font-size: 14px; line-height: 20px; padding-right: 32px">
+      <span style="color: #ffffff; font-weight: 600">the rest is football</span><span style="width: 1px; height: 16px; background: rgba(255,255,255,0.14)"></span>
+      <a href="#" style="{{tabOn}}">episodes</a><a href="#" style="height: 32px; display: flex; align-items: center">about</a>
+      <span style="flex-grow: 1"></span>
+      <span style="display: flex; gap: 14px; align-items: center"><button style="height: 28px; padding: 0 12px; box-sizing: border-box; border-radius: 14px; border: 2px solid {{accent}}; background: transparent; color: {{accent}}; font: inherit; font-size: 13px">following</button><button aria-label="more" style="{{miniRing}}">⋯</button></span>
+    </div>
+  </div>
+  <div style="flex-grow: 1; min-height: 0; display: flex; gap: 48px; padding: 8px 48px 0 48px; overflow: hidden">
+    <div style="width: 280px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px">
+      <div style="width: 280px; height: 280px; background: #2f4a3b"></div>
+      <span style="font-size: 12px; color: #7a7a7a">podcast · exclusive</span>
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 30px; font-weight: 300; line-height: 36px">the rest is football</span>
+      <a href="#" style="font-size: 14px; color: #ffffff">Goalhanger</a>
+      <span style="font-size: 13px; color: #a8a8a8">4.8 · 12k ratings · yours 5</span>
+      <span style="font-size: 13px; color: #a8a8a8">812 episodes · daily · since 2023</span>
+      <span style="display: flex; flex-direction: column; gap: 6px; padding-top: 6px"><span style="height: 3px; background: rgba(255,255,255,0.12); display: flex"><span style="{{playedBar}}"></span><span style="{{progressBar}}"></span></span><span style="font-size: 12px; color: #7a7a7a">120 played · 2 in progress · 690 to go</span></span>
+      <span style="display: flex; gap: 18px; align-items: center; padding-top: 8px; font-size: 14px"><button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{playRing}}">▶</span><span style="display: flex; flex-direction: column; align-items: flex-start"><span>resume</span><span style="font-size: 12px; color: #a8a8a8">23 min left</span></span></button><button aria-label="save" style="display: flex; align-items: center; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{ring}}">♡</span></button><button aria-label="share" style="display: flex; align-items: center; border: 0; background: transparent; color: #ffffff; font: inherit; padding: 0"><span style="{{ring}}">↗</span></button></span>
+      <span style="display: flex; gap: 14px; font-size: 13px; padding-top: 6px"><a href="#">football</a><a href="#">sports</a><a href="#">comedy</a></span>
+    </div>
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px">
+      <div style="display: flex; align-items: center; gap: 20px; height: 36px; font-size: 14px"><a href="#" style="color: #ffffff; font-weight: 600">all <span style="color: #7a7a7a; font-weight: 400">812</span></a><a href="#">unplayed <span style="color: #7a7a7a">690</span></a><a href="#">in progress <span style="color: #7a7a7a">2</span></a><a href="#">played <span style="color: #7a7a7a">120</span></a><span style="flex-grow: 1"></span><a href="#">find in this show</a><a href="#">newest</a></div>
+      <div style="display: flex; gap: 32px; padding: 8px 0 14px 0">
+        <div style="display: flex; gap: 14px; align-items: center; flex: 1 1 0; min-width: 0"><span style="width: 72px; height: 72px; background: #2f4a3b; flex-shrink: 0; display: block"></span><span style="display: flex; flex-direction: column; gap: 3px; min-width: 0"><span style="font-size: 12px; color: {{accent}}">continue</span><span style="font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Deep dive: the 1993 title race</span><span style="font-size: 13px; color: #a8a8a8">6 min left · #808</span></span></div>
+        <div style="display: flex; gap: 14px; align-items: center; flex: 1 1 0; min-width: 0"><span style="width: 72px; height: 72px; background: #3b4a2f; flex-shrink: 0; display: block"></span><span style="display: flex; flex-direction: column; gap: 3px; min-width: 0"><span style="font-size: 12px; color: #a8a8a8">up next from your progress</span><span style="font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Why the Premier League keeps changing</span><span style="font-size: 13px; color: #a8a8a8">48 min · #812 · new</span></span></div>
+      </div>
+      <div style="display: flex; align-items: baseline; gap: 12px; height: 40px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300">episodes</span><span style="font-size: 13px; color: #7a7a7a">812</span></div>
+      <div style="display: flex; align-items: baseline; gap: 12px; height: 36px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300">october</span><span style="font-size: 13px; color: #7a7a7a">9</span></div>
+      <sc-for list="{{episodes}}" as="e" hint-placeholder-count="4">
+        <div style="{{e.row}}">
+          <span style="{{e.art}}"></span>
+          <span style="display: flex; flex-direction: column; min-width: 0; gap: 3px"><span style="{{e.title}}">{{e.name}}</span><span style="font-size: 13px; color: #a8a8a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{e.blurb}}</span><span style="display: flex; align-items: center; gap: 10px; font-size: 12px; color: #7a7a7a"><span>{{e.meta}}</span><span style="{{e.state}}">{{e.stateText}}</span></span></span>
+          <span style="{{e.action}}">{{e.actionGlyph}}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+  <div style="height: 72px; flex-shrink: 0; background: #111111; position: relative; display: flex; align-items: center; padding: 0 12px 0 24px; gap: 24px">
+    <div style="position: absolute; left: 0; top: 0; right: 0; height: 2px; background: rgba(255,255,255,0.12)"><div style="{{progress}}"></div></div>
+    <div style="display: flex; align-items: center; gap: 12px; width: 320px; flex-shrink: 0"><span style="width: 48px; height: 48px; border-radius: 2px; background: #2f4a3b; flex-shrink: 0"></span><span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Deep dive: the 1993 title race</span><span style="font-size: 13px; line-height: 18px; color: #a8a8a8">The Rest Is Football</span></span><button aria-label="save to your episodes" style="width: 32px; height: 32px; border: 0; background: transparent; color: #ffffff; font-size: 16px; padding: 0">♡</button></div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; gap: 2px"><div style="display: flex; align-items: center; gap: 16px"><button style="height: 32px; border: 0; background: transparent; color: #ffffff; font: inherit; font-size: 13px; padding: 0 6px">−10</button><button aria-label="pause" style="{{playDisc}}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg></button><button style="height: 32px; border: 0; background: transparent; color: #ffffff; font: inherit; font-size: 13px; padding: 0 6px">+10</button><button style="height: 32px; width: 48px; border: 0; background: transparent; color: #a8a8a8; font: inherit; font-size: 13px; padding: 0">1.0×</button></div><span style="font-size: 12px; color: #a8a8a8; font-variant-numeric: tabular-nums">41:12 · -6:03</span></div>
+    <div style="display: flex; align-items: center; gap: 2px; width: 440px; flex-shrink: 0; justify-content: flex-end; font-size: 13px"><button aria-label="mute" style="width: 32px; height: 32px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 6h3l4-3v10l-4-3H2z"/><path d="M11.5 5.5a3.5 3.5 0 0 1 0 5"/></svg></button><button style="height: 32px; border: 0; background: transparent; color: #a8a8a8; font: inherit; font-size: 13px; padding: 0 8px">transcript</button><button style="height: 32px; border: 0; background: transparent; color: #a8a8a8; font: inherit; font-size: 13px; padding: 0 8px">queue</button><button style="height: 32px; border: 0; background: transparent; color: #a8a8a8; font: inherit; font-size: 13px; padding: 0 8px">devices</button><button aria-label="full screen" style="width: 32px; height: 32px; border: 0; background: transparent; color: #a8a8a8; font-size: 16px; padding: 0">⤢</button><button aria-label="more" style="width: 32px; height: 32px; border: 0; background: transparent; color: #a8a8a8; font-size: 16px; padding: 0">⋯</button></div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const pins = ['#3b4a6b', '#6b2f4a', '#2f5b6b', '#5b3b6b', '#6b4a2f', '#4a6b2f'].map((c, i) => ({ tile: 'width: 32px; height: 32px; border-radius: 4px; background: ' + c + '; display: block', dot: 'width: 4px; height: 4px; border-radius: 2px; display: block; background: ' + (i === 1 ? accent : 'transparent') }));
+  const eps = [
+    ['Why the Premier League keeps changing', 'Gary, Alan and Micah on the rule changes nobody asked for, and the ones that worked.', '#812 · 9 oct · 48 min', 'new', 'new', '▶', false],
+    ['Deep dive: the 1993 title race', 'The season that decided the shape of the modern game.', '#808 · 7 oct · 47 min', 'progress', '6 min left', '▶', true],
+    ['Mailbag: your questions, our excuses', 'A full hour of listener questions.', '#807 · 6 oct · 61 min', 'played', '✓ played', '', false],
+    ['Transfer window verdicts', 'Who overspent, who got lucky, who should be worried.', '#806 · 5 oct · 44 min', 'none', '', '▶', false],
+  ];
+  const episodes = eps.map((d) => ({
+    name: d[0], blurb: d[1], meta: d[2], stateText: d[4], actionGlyph: d[5],
+    row: 'display: grid; grid-template-columns: 56px minmax(0, 1fr) 44px; gap: 14px; align-items: center; min-height: 84px; ' + (d[3] === 'played' ? 'opacity: 0.58' : '') + (d[6] ? 'background: rgba(255,255,255,0.05)' : ''),
+    art: 'width: 56px; height: 56px; border-radius: 2px; background: #2f4a3b; display: block',
+    title: 'font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (d[3] === 'progress' ? accent : '#ffffff'),
+    state: 'color: ' + (d[3] === 'progress' || d[3] === 'new' ? accent : '#7a7a7a'),
+    action: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 12px; ' + (d[5] ? 'border: 2px solid #ffffff; color: #ffffff' : ''),
+  }));
+  return {
+    accent, pins, episodes,
+    tabOn: 'height: 32px; display: flex; align-items: center; color: #ffffff; box-shadow: inset 0 -2px 0 ' + accent,
+    miniRing: 'width: 28px; height: 28px; box-sizing: border-box; border-radius: 14px; border: 2px solid #ffffff; background: transparent; color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; padding: 0',
+    playRing: 'width: 36px; height: 36px; border-radius: 18px; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0',
+    ring: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #ffffff; display: flex; align-items: center; justify-content: center; font-size: 13px',
+    playedBar: 'width: 15%; height: 3px; background: #ffffff; display: block', progressBar: 'width: 1%; height: 3px; background: ' + accent + '; display: block',
+    progress: 'width: 87%; height: 2px; background: ' + accent,
+    playDisc: 'width: 40px; height: 40px; border-radius: 20px; border: 0; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; padding: 0',
+  };
+}
+}
+</script>
+</body>
+</html>

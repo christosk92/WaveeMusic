@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune release notes · compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <dc-import name="Z-Part-TitleBar" tier="compact" crumb="settings › about › what's new" accent="{{accent}}" hint-size="400px,48px"></dc-import>
+  <dc-import name="Z-Part-Band" tier="compact" section="none" sub="1.6.0 ▾" on="1.6.0 ▾" accent="{{accent}}" hint-size="400px,92px"></dc-import>
+  <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; padding: 0 16px 0 16px; overflow: hidden; position: relative">
+    <div style="height: 72px; flex-shrink: 0; margin-left: -8px; margin-right: -16px; overflow: hidden; white-space: nowrap; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 64px; font-weight: 200; line-height: 72px; letter-spacing: -1px; opacity: 0.9">what's new in aurora</div>
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <span style="font-size: 13px; line-height: 18px; color: #a8a8a8">since you last looked: 3 releases · 1.4.0 → 1.6.0</span>
+      <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">wavee 1.6.0 "aurora"</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <sc-for list="{{highlights}}" as="h" hint-placeholder-count="3">
+        <a href="#" style="background: #1b1b1b; padding: 14px 8px 14px 16px; display: grid; grid-template-columns: 24px minmax(0, 1fr) 40px; column-gap: 14px; align-items: center; color: #ffffff">
+          <span style="{{h.swatch}}"></span>
+          <span style="display: flex; flex-direction: column; gap: 3px; min-width: 0"><span style="font-size: 15px; line-height: 20px">{{h.title}}</span><span style="font-size: 12px; color: #a8a8a8; line-height: 17px">{{h.text}}</span></span>
+          <span style="{{h.go}}">→</span>
+        </a>
+      </sc-for>
+    </div>
+    <sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+      <div style="display: flex; flex-direction: column">
+        <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px; height: 36px; display: flex; align-items: flex-end; padding-bottom: 4px">{{g.title}}</span>
+        <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="3">
+          <div style="display: flex; flex-direction: column; justify-content: center; gap: 4px; min-height: 56px; padding: 6px 0; box-sizing: border-box">
+            <span style="font-size: 14px; line-height: 19px; color: #c8c8c8">{{r.text}}</span>
+            <span style="display: flex; align-items: center; gap: 8px"><span style="{{r.chip}}">{{r.issue}}</span><span style="{{r.avatar}}"></span><span style="font-size: 12px; color: #7a7a7a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.who}}</span></span>
+          </div>
+        </sc-for>
+      </div>
+    </sc-for>
+  </div>
+  <dc-import name="Z-Part-PlayBar" tier="mini" title="Nightcall" artist="Kavinsky · OutRun" art="#6b2f4a" progress="29" accent="{{accent}}" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const go = 'width: 40px; height: 40px; box-sizing: border-box; border-radius: 20px; border: 2px solid ' + accent + '; color: ' + accent + '; display: flex; align-items: center; justify-content: center; font-size: 14px';
+  const highlights = [['themes', 'classic, winui and zune: one app, three looks, each with its own options.', accent], ['the zune band', 'pivots across the top, your pins beside them, no sidebar.', '#60cdff'], ['liked songs, grouped', 'this week, last week, then the months.', '#8fd14f']].map((d) => ({ title: d[0], text: d[1], go, swatch: 'width: 24px; height: 24px; background: ' + d[2] + '; display: block; align-self: start; margin-top: 2px' }));
+  const chip = (state) => 'font-size: 11px; padding: 2px 6px; white-space: nowrap; flex-shrink: 0; color: ' + (state === 'closed' ? '#8fd14f' : state === 'open' ? '#60cdff' : '#a8a8a8') + '; background: rgba(255,255,255,0.06)';
+  const avatar = (c) => 'width: 18px; height: 18px; border-radius: 9px; background: ' + c + '; display: block; flex-shrink: 0';
+  const groups = [
+    { title: 'added', rows: [['Themes: Classic, WinUI and Zune, each with its own options', '#210 closed', 'christosk92', '#5b6b3b', 'closed'], ['Liked Songs groups by week and month when sorted by date added', '#203 closed', 'christosk92', '#5b6b3b', 'closed'], ['The Zune band shows up to six pins beside the pivots', '#205 closed', 'fable · first contribution', '#6b2f4a', 'closed']] },
+    { title: 'changed', rows: [['The right panel sits inline from 820 wide and floats below that', '#198 closed', 'christosk92', '#5b6b3b', 'closed'], ['Track rows: the playing song is drawn in the accent, with no plate', '#201 closed', 'christosk92', '#5b6b3b', 'closed']] },
+  ].map((g) => ({ title: g.title, rows: g.rows.map((r) => ({ text: r[0], issue: r[1], who: r[2], avatar: avatar(r[3]), chip: chip(r[4]) })) }));
+  return { accent, highlights, groups };
+}
+}
+</script>
+</body>
+</html>

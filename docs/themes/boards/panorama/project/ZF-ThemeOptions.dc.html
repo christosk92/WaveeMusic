@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Theme options</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="{{vars}} width: 1440px; height: 820px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" sel="none" crumb="Settings › Appearance" ctx="Settings" items="General|Appearance|Playback|Notifications|Storage &amp; cache|Privacy|About" sub-sel="{{one}}" hint-size="1440px,136px"></dc-import>
+  <main style="height: 600px; flex-shrink: 0; box-sizing: border-box; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke); padding: 16px 36px 0 36px; display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; align-items: baseline; gap: 12px"><h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Zune Fluent options</h1><span style="font-size: 12px; color: var(--t2)">Defined by the theme; every theme lists its own</span></div>
+    <div style="display: flex; gap: 24px">
+      <div style="flex-grow: 1; min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; align-content: start">
+        <div style="{{s.card}}"><span style="display: flex; flex-direction: column; gap: 8px; flex-grow: 1"><span style="font-size: 14px; line-height: 20px">Accent colour</span><span style="display: flex; gap: 16px; font-size: 14px"><span style="display: flex; align-items: center; gap: 8px"><span style="{{s.radioOn}}"><span style="width: 8px; height: 8px; border-radius: 4px; background: var(--onacc)"></span></span>Windows accent<span style="width: 16px; height: 16px; border-radius: 4px; background: #60cdff"></span></span><span style="display: flex; align-items: center; gap: 8px"><span style="{{s.radioOff}}"></span>Zune magenta<span style="width: 16px; height: 16px; border-radius: 4px; background: #ff7ac3"></span></span><span style="display: flex; align-items: center; gap: 8px"><span style="{{s.radioOff}}"></span>Custom</span></span></span></div>
+        <div style="{{s.card}}"><span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 14px; line-height: 20px">Backdrop</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">The base layer under the band, panel and play bar</span></span><button style="{{s.combo}}">Mica<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></div>
+        <div style="{{s.card}}"><span style="display: flex; flex-direction: column; gap: 8px; flex-grow: 1"><span style="font-size: 14px; line-height: 20px">Navigation casing</span><span style="display: flex; gap: 16px; font-size: 14px"><span style="display: flex; align-items: center; gap: 8px"><span style="{{s.radioOn}}"><span style="width: 8px; height: 8px; border-radius: 4px; background: var(--onacc)"></span></span>Sentence case</span><span style="display: flex; align-items: center; gap: 8px"><span style="{{s.radioOff}}"></span>lowercase, like Zune</span></span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Applies to the two pivot rows only; names are never re-cased</span></span></div>
+        <div style="{{s.card}}"><span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 14px; line-height: 20px">Panorama titles</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Album, playlist, artist and Liked Songs</span></span><button style="{{s.combo}}">Display (68)<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></div>
+        <div style="{{s.card}}"><span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 14px; line-height: 20px">Big track numbers</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Off uses Body 14 numbers in Text 3</span></span><span style="font-size: 14px; color: var(--t2)">On</span><span style="{{s.switchOn}}"><span style="position: absolute; top: 4px; left: 24px; width: 12px; height: 12px; border-radius: 6px; background: var(--onacc)"></span></span></div>
+        <div style="{{s.card}}"><span style="display: flex; flex-direction: column; gap: 8px; flex-grow: 1"><span style="font-size: 14px; line-height: 20px">Row density</span><span style="display: flex; gap: 16px; font-size: 14px"><span style="display: flex; align-items: center; gap: 8px"><span style="{{s.radioOff}}"></span>Compact (32)</span><span style="display: flex; align-items: center; gap: 8px"><span style="{{s.radioOn}}"><span style="width: 8px; height: 8px; border-radius: 4px; background: var(--onacc)"></span></span>Standard (40)</span><span style="display: flex; align-items: center; gap: 8px"><span style="{{s.radioOff}}"></span>Comfortable (48)</span></span></span></div>
+        <div style="{{s.card}}"><span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 14px; line-height: 20px">Right panel</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Queue, lyrics and details</span></span><button style="{{s.combo}}">Inline when there's room<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></div>
+        <div style="{{s.card}}"><span style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 14px; line-height: 20px">Pins in the band</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">Up to six, right of the sections</span></span><span style="font-size: 14px; color: var(--t2)">On</span><span style="{{s.switchOn}}"><span style="position: absolute; top: 4px; left: 24px; width: 12px; height: 12px; border-radius: 6px; background: var(--onacc)"></span></span></div>
+      </div>
+      <aside aria-label="Preview" style="width: 340px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 12px; color: var(--t2)">Preview</span>
+        <div style="border-radius: 8px; overflow: hidden; border: 1px solid var(--div); background: var(--mica)">
+          <div style="display: flex; padding: 8px 4px 0 4px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600"><span style="position: relative; padding: 0 8px 8px 8px">Home<span style="position: absolute; left: 8px; right: 8px; bottom: 2px; height: 3px; border-radius: 2px; background: var(--acc)"></span></span><span style="padding: 0 8px 8px 8px; color: var(--t3)">Browse</span><span style="padding: 0 8px 8px 8px; color: var(--t3)">Library</span></div>
+          <div style="display: flex; padding: 0 4px 4px 4px; font-size: 12px"><span style="padding: 4px 8px">All</span><span style="padding: 4px 8px; color: var(--t2)">Music</span><span style="padding: 4px 8px; color: var(--t2)">Podcasts</span></div>
+          <div style="background: var(--layer); border-top: 1px solid var(--stroke); padding: 10px 8px; display: flex; flex-direction: column; gap: 2px">
+            <span style="padding: 0 4px 6px 4px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Discovery</span>
+            <span style="display: grid; grid-template-columns: 32px minmax(0, 1fr) 40px; align-items: center; height: 40px; padding: 0 4px; font-size: 14px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; color: var(--t3)">1</span>One More Time<span style="font-size: 12px; color: var(--t2)">5:20</span></span>
+            <span style="position: relative; display: grid; grid-template-columns: 32px minmax(0, 1fr) 40px; align-items: center; height: 40px; padding: 0 4px; border-radius: 4px; background: var(--sub); font-size: 14px"><span style="position: absolute; left: 0; top: 12px; width: 3px; height: 16px; border-radius: 2px; background: var(--acc)"></span><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; color: var(--t3)">2</span>Aerodynamic<span style="font-size: 12px; color: var(--t2)">3:27</span></span>
+            <span style="display: grid; grid-template-columns: 32px minmax(0, 1fr) 40px; align-items: center; height: 40px; padding: 0 4px; font-size: 14px; color: var(--acct)"><span><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 13V7M6.5 13V3M10 13V8M13.5 13V5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg></span>Digital Love<span style="font-size: 12px">5:01</span></span>
+            <span style="padding: 8px 4px 0 4px"><button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 4px; background: var(--acc); color: var(--onacc); font: inherit; font-size: 14px">Play</button></span>
+          </div>
+        </div>
+        <span style="font-size: 12px; line-height: 16px; color: var(--t2)">Changes apply at once and cross-fade in one frame; nothing reflows except the rows when density changes.</span>
+      </aside>
+    </div>
+  </main>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" variant="music" pane="none" hint-size="1440px,84px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"$preview":{"width":1440,"height":820}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', div: 'rgba(255,255,255,0.0837)', card: 'rgba(255,255,255,0.0512)', cardb: 'rgba(0,0,0,0.1)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)', strong: 'rgba(255,255,255,0.5442)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', div: 'rgba(0,0,0,0.0803)', card: '#fbfbfb', cardb: 'rgba(0,0,0,0.0578)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', sub: 'rgba(0,0,0,0.0373)', strong: 'rgba(0,0,0,0.4458)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const s = {
+    card: 'min-height: 76px; box-sizing: border-box; display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 4px; background: var(--card); border: 1px solid var(--cardb)',
+    combo: 'min-width: 200px; height: 32px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 10px 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px',
+    radioOff: 'width: 20px; height: 20px; border-radius: 10px; box-sizing: border-box; border: 1px solid var(--strong); flex-shrink: 0',
+    radioOn: 'width: 20px; height: 20px; border-radius: 10px; background: var(--acc); display: flex; align-items: center; justify-content: center; flex-shrink: 0',
+    switchOn: 'width: 40px; height: 20px; border-radius: 10px; background: var(--acc); position: relative; display: block; flex-shrink: 0'
+  };
+  return { vars, theme, accent, s, one: 1 };
+}
+}
+</script>
+</body>
+</html>

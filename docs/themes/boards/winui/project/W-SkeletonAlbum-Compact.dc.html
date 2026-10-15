@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Album skeleton, compact</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 400px; height: 860px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tier="compact" width="400" tabs="home:Home|album:Armageddon:#5b2f6b" sel="1" hint-size="400px,88px"></dc-import>
+  <main aria-busy="true" style="flex-grow: 1; min-height: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); padding: 16px 16px 0 16px; display: flex; flex-direction: column; gap: 12px; overflow: hidden">
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 12px">
+      <div style="width: 160px; height: 160px; border-radius: 8px; background: #5b2f6b; flex-shrink: 0; box-shadow: 0 8px 16px rgba(0,0,0,0.26)"></div>
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center">
+        <div style="height: 16px; display: flex; align-items: center"><span style="{{sk.meta}}"></span></div>
+        <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">Armageddon</h1>
+        <div style="height: 20px; display: flex; align-items: center"><span style="{{sk.byline}}"></span></div>
+        <div style="height: 16px; display: flex; align-items: center"><span style="{{sk.count}}"></span></div>
+      </div>
+      <div style="display: flex; gap: 8px; align-items: center; height: 40px">
+        <span style="{{sk.play}}"></span><span style="{{sk.btn}}"></span><span style="{{sk.btn}}"></span><span style="{{sk.btn}}"></span>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; border-top: 1px solid rgba(255,255,255,0.0837); padding-top: 4px">
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="8">
+        <div style="display: grid; grid-template-columns: 32px minmax(0, 1fr) auto 40px 40px; align-items: center; column-gap: 4px; height: 56px; opacity: {{r.o}}">
+          <span style="padding-left: 4px"><span style="display: block; width: 14px; height: 12px; border-radius: 2px; background: rgba(255,255,255,0.0605)"></span></span>
+          <span style="display: flex; flex-direction: column; gap: 8px; min-width: 0"><span style="{{r.title}}"></span><span style="{{r.sub}}"></span></span>
+          <span></span>
+          <span style="display: flex; justify-content: flex-end"><span style="display: block; width: 28px; height: 10px; border-radius: 2px; background: rgba(255,255,255,0.0605)"></span></span>
+          <span></span>
+        </div>
+      </sc-for>
+    </div>
+  </main>
+  <dc-import name="Shell-Player" theme="dark" tier="mini" width="400" variant="music" hint-size="400px,64px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+  const f = 'rgba(255,255,255,0.0605)';
+  const bar = (w, h, r) => 'display: block; flex-shrink: 0; max-width: 100%; width: ' + w + 'px; height: ' + h + 'px; border-radius: ' + (r || 2) + 'px; background: ' + f;
+  const sk = { meta: bar(132, 12), byline: bar(110, 14), count: bar(96, 10), play: bar(144, 40, 4), btn: bar(40, 40, 4) };
+  const widths = [130, 176, 118, 150, 140, 190, 112, 160];
+  const rows = widths.map((w, i) => ({ title: bar(w, 14), sub: bar(Math.round(w * 1.15), 10), o: (i < 5 ? 1 : 1 - (i - 4) * 0.24).toFixed(2) }));
+  return { sk, rows };
+}
+}
+</script>
+</body>
+</html>

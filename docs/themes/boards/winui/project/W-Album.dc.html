@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Album</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1440px; height: 960px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="Shell-Top" theme="dark" tabs="home:Home|album:The Stereo Love Show:#3b5b7a" sel="1" hint-size="1440px,88px"></dc-import>
+  <div style="display: flex; height: 800px; flex-shrink: 0">
+    <dc-import name="Shell-Nav" theme="dark" mode="open" sel="albums" hint-size="280px,800px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: #282828; border-top: 1px solid rgba(255,255,255,0.0837); border-left: 1px solid rgba(255,255,255,0.0837); border-top-left-radius: 8px; padding: 24px 36px 0 36px; display: flex; flex-direction: column; gap: 20px; overflow: hidden">
+      <div style="display: flex; gap: 24px; align-items: flex-end">
+        <div style="width: 168px; height: 168px; border-radius: 8px; background: #3b5b7a; flex-shrink: 0"></div>
+        <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0; flex-grow: 1">
+          <div style="font-size: 12px; line-height: 16px; color: #c5c5c5">Album · 2012 · Cat Music</div>
+          <h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600">The Stereo Love Show</h1>
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 14px; line-height: 20px; color: #c5c5c5"><span style="display: flex"><span style="width: 24px; height: 24px; border-radius: 12px; background: #3b5b7a; border: 2px solid #282828"></span><span style="width: 24px; height: 24px; border-radius: 12px; background: #5b3b6b; border: 2px solid #282828; margin-left: -8px"></span></span><span><a href="#">Edward Maya</a>, <a href="#">Vika Jigulina</a> · 15 songs · 57 min</span></div>
+          <div style="display: flex; gap: 8px; align-items: center; padding-top: 12px">
+            <div style="display: flex; height: 32px; border-radius: 4px; overflow: hidden; background: #60cdff; color: #000; font-size: 14px"><button style="display: flex; align-items: center; gap: 8px; padding: 0 14px; border: 0; background: transparent; color: #000; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"></path></svg>Play</button><span style="width: 1px; background: rgba(0,0,0,0.2)"></span><button aria-label="More play options" style="width: 32px; border: 0; background: transparent; color: #000; font: inherit; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></div>
+            <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h2.5c1.4 0 2.3.7 3.2 1.9l1.6 2.2c.9 1.2 1.8 1.9 3.2 1.9H14M2 12h2.5c1.4 0 2.3-.7 3.2-1.9M8.3 5.9c.9-1.2 1.8-1.9 3.2-1.9H14M12 2l2 2-2 2M12 8l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg>Shuffle</button>
+            <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: rgba(255,255,255,0.0605); border: 1px solid rgba(255,255,255,0.0698); border-top-color: rgba(255,255,255,0.093); color: #fff; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg>Save</button>
+            <button aria-label="Share" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M5 5.5l3-3 3 3M3.5 9v3.5h9V9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+            <button aria-label="More" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+          </div>
+        </div>
+      </div>
+      <div role="table" aria-label="Tracks" style="display: flex; flex-direction: column">
+        <div style="display: flex; align-items: center; gap: 8px; height: 40px">
+          <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3 14 14" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg>Find</button>
+          <span style="flex-grow: 1"></span>
+          <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit; font-size: 14px">Album order<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+          <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.5h12M4.5 8h7M7 12.5h2" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg>Filter</button>
+          <button style="height: 32px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit; font-size: 14px">Select</button>
+        </div>
+        <div role="row" style="display: grid; grid-template-columns: 48px minmax(0, 1fr) 120px 40px 72px 40px 32px; align-items: center; height: 36px; border-bottom: 1px solid rgba(255,255,255,0.0837); font-size: 12px; color: #c5c5c5">
+          <span style="padding-left: 14px">#</span><button style="justify-self: start; border: 0; background: transparent; color: #c5c5c5; font: inherit; font-size: 12px; padding: 0">Title</button><button style="justify-self: end; border: 0; background: transparent; color: #c5c5c5; font: inherit; font-size: 12px; padding: 0">Plays</button><span></span><button style="justify-self: end; border: 0; background: transparent; color: #c5c5c5; font: inherit; font-size: 12px; padding: 0 8px 0 0">Time</button><span></span><span></span>
+        </div>
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="10">
+          <div role="row" style="{{r.style}}">
+            <span style="{{r.num}}">{{r.n}}</span>
+            <span style="display: flex; align-items: center; gap: 8px; min-width: 0"><span style="{{r.title}}">{{r.t}}</span><span style="{{r.explicit}}">E</span></span>
+            <span style="text-align: right; font-size: 14px; color: #c5c5c5; font-variant-numeric: tabular-nums">{{r.plays}}</span>
+            <span style="display: flex; align-items: center; justify-content: center; color: #fff">{{r.heart}}</span>
+            <span style="{{r.timeStyle}}">{{r.time}}</span>
+            <span style="display: flex; align-items: center; justify-content: center; color: #fff">{{r.more}}</span>
+            <span style="display: flex; align-items: center; justify-content: center; color: #c5c5c5">{{r.chev}}</span>
+          </div>
+        </sc-for>
+      </div>
+      <section style="display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; align-items: baseline; gap: 12px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600; flex-grow: 1">More by Edward Maya</h2><a href="#" style="font-size: 14px">Show all 9</a></div>
+      </section>
+    </main>
+  </div>
+  <dc-import name="Shell-Player" theme="dark" variant="music" pane="none" hint-size="1440px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+  const data = [['Stereo Love', '598.9M', '4:07', { playing: true, liked: true, explicit: false, versions: true }], ['This Is My Life', '62.9M', '3:50', { explicit: true, versions: true }], ['Mono in Love', '5.1M', '3:17', { versions: true }], ['Happy for You', '2.1M', '3:51', {}], ['Friends Forever', '1.3M', '3:35', { hover: true }], ['Twinheart', '780.7K', '3:59', {}], ['Nostalgy', '603.4K', '3:30', {}], ['Stay Longer', '602.9K', '3:40', {}], ['Back Home', '1.6M', '3:37', { unavailable: true }], ['Close Your Eyes', '1M', '4:30', {}]];
+  const rows = data.map((d, i) => {
+    const f = d[3];
+    return { n: f.playing ? '▮▮▮' : (f.hover ? '▶' : String(i + 1)), t: d[0], plays: d[1], time: f.unavailable ? 'Unavailable' : d[2],
+      style: 'display: grid; grid-template-columns: 48px minmax(0, 1fr) 120px 40px 72px 40px 32px; align-items: center; height: 40px; margin-top: 2px; border-radius: 4px; ' + (f.hover ? 'background: rgba(255,255,255,0.0605);' : '') + (f.unavailable ? 'opacity: 0.45;' : ''),
+      num: 'padding-left: 14px; font-variant-numeric: tabular-nums; font-size: ' + (f.playing ? '10px' : '14px') + '; color: ' + (f.playing ? '#60cdff' : (f.hover ? '#ffffff' : '#9e9e9e')),
+      title: 'font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (f.playing ? '#99ebff' : '#ffffff'),
+      explicit: (f.explicit ? 'display: inline-flex' : 'display: none') + '; width: 16px; height: 16px; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 2px; font-size: 10px; font-weight: 600; background: #c5c5c5; color: #000',
+      heart: f.liked ? '♥' : (f.hover ? '♡' : ''), more: f.hover ? '⋯' : '', chev: f.versions ? '⌄' : '',
+      timeStyle: 'text-align: right; padding-right: 8px; font-size: ' + (f.unavailable ? '12px' : '14px') + '; color: #c5c5c5; font-variant-numeric: tabular-nums' };
+  });
+  return { rows };
+}
+}
+</script>
+</body>
+</html>

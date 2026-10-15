@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Loading</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="{{vars}} width: 1440px; height: 960px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" sel="library" crumb="Library › Albums" ctx="Loading album" items="Songs|More by the artist|Details" sub-sel="{{zero}}" hint-size="1440px,136px"></dc-import>
+  <main aria-busy="true" style="position: relative; height: 740px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke)">
+    <div role="progressbar" aria-label="Loading" style="position: absolute; left: 0; right: 0; top: 0; height: 3px; overflow: hidden"><span style="position: absolute; left: 22%; width: 30%; height: 3px; border-radius: 2px; background: var(--acc)"></span></div>
+    <div style="padding: 30px 36px 0 36px"><span style="{{s.sk}} width: 620px; height: 60px; border-radius: 4px"></span></div>
+    <div style="display: flex; gap: 48px; padding: 30px 0 0 36px">
+      <div style="width: 260px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px">
+        <span style="{{s.sk}} width: 260px; height: 260px; border-radius: 8px"></span>
+        <span style="{{s.sk}} width: 140px; height: 20px; border-radius: 4px"></span>
+        <span style="{{s.sk}} width: 200px; height: 12px; border-radius: 4px"></span>
+        <span style="display: flex; gap: 8px; padding-top: 6px"><span style="{{s.sk}} width: 84px; height: 32px; border-radius: 4px"></span><span style="{{s.sk}} width: 84px; height: 32px; border-radius: 4px"></span><span style="{{s.sk}} width: 32px; height: 32px; border-radius: 4px"></span></span>
+      </div>
+      <div style="width: 600px; flex-shrink: 0; display: flex; flex-direction: column">
+        <span style="{{s.sk}} width: 90px; height: 20px; border-radius: 4px; margin: 6px 0 10px 0"></span>
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="11">
+          <div style="display: grid; grid-template-columns: 44px minmax(0, 1fr) 64px; align-items: center; height: 40px; margin-top: 2px"><span style="{{r.num}}"></span><span style="{{r.title}}"></span><span style="{{r.time}}"></span></div>
+        </sc-for>
+      </div>
+      <div style="width: 420px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px">
+        <span style="{{s.sk}} width: 180px; height: 20px; border-radius: 4px; margin: 6px 0 4px 0"></span>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+          <span style="{{s.sk}} aspect-ratio: 1 / 1; border-radius: 8px"></span><span style="{{s.sk}} aspect-ratio: 1 / 1; border-radius: 8px"></span>
+        </div>
+      </div>
+    </div>
+  </main>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" variant="music" pane="none" hint-size="1440px,84px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', sk: 'rgba(255,255,255,0.0605)', skhi: 'rgba(255,255,255,0.0837)', t1: '#ffffff', acc: pink ? '#ff7ac3' : '#60cdff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', sk: 'rgba(0,0,0,0.0578)', skhi: 'rgba(0,0,0,0.0241)', t1: '#1b1b1b', acc: pink ? '#c4007a' : '#005fb8' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const sk = 'display: block; background: linear-gradient(90deg, var(--sk) 0%, var(--skhi) 40%, var(--sk) 70%);';
+  const widths = [62, 48, 70, 34, 55, 74, 30, 44, 38, 58, 49];
+  const rows = widths.map((w) => ({
+    num: sk + ' width: 14px; height: 18px; border-radius: 4px; margin-left: 12px',
+    title: sk + ' width: ' + w + '%; height: 14px; border-radius: 4px',
+    time: sk + ' width: 32px; height: 14px; border-radius: 4px; justify-self: end; margin-right: 8px' }));
+  return { vars, theme, accent, rows, s: { sk }, zero: 0 };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune collection: artists</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1000px; box-sizing: border-box; background: #161616; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <div style="height: 48px; flex-shrink: 0; display: flex; align-items: center; padding: 0 0 0 48px; gap: 12px">
+    <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 350; letter-spacing: -0.2px; color: #a8a8a8">wavee</span>
+    <button aria-label="back" style="width: 32px; height: 32px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10 3 5 8l5 5"/></svg></button>
+    <span style="flex-grow: 1"></span>
+    <label style="display: flex; align-items: center; gap: 8px; width: 220px; height: 32px; box-sizing: border-box; padding: 0 10px 0 12px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.18); color: #7a7a7a"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><input type="search" placeholder="search" style="border: 0; background: transparent; color: #fff; font: inherit; font-size: 13px; width: 100%; outline: none; min-width: 0"><span style="font-size: 10px; color: #7a7a7a; border: 1px solid rgba(255,255,255,0.14); padding: 1px 4px; white-space: nowrap">ctrl f</span></label>
+    <button style="display: flex; align-items: center; gap: 8px; height: 32px; border: 0; background: transparent; color: #ffffff; font: inherit; font-size: 13px; padding: 0 8px; margin-left: 8px"><span style="width: 24px; height: 24px; border-radius: 12px; background: #5b6b3b; display: block"></span>christos</button>
+    <button aria-label="notifications" style="width: 32px; height: 32px; border: 0; background: transparent; color: #a8a8a8; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 11V7a4 4 0 0 1 8 0v4l1 1H3z"/><path d="M6.5 13.5a1.5 1.5 0 0 0 3 0"/></svg></button>
+    <span style="display: flex; color: #a8a8a8; font-size: 12px; margin-left: 8px"><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">─</span><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">☐</span><span style="width: 46px; height: 48px; display: flex; align-items: center; justify-content: center">✕</span></span>
+  </div>
+  <div style="height: 84px; flex-shrink: 0; display: flex; flex-direction: column; padding: 0 16px 0 48px">
+    <div style="height: 44px; box-sizing: border-box; padding: 4px 0; display: flex; align-items: center; gap: 24px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; letter-spacing: -0.3px">
+      <a href="#" style="color: #7a7a7a; font-weight: 350">home</a><a href="#" style="color: #7a7a7a; font-weight: 350">browse</a><a href="#" style="color: #ffffff; font-weight: 600">library</a><a href="#" style="color: #7a7a7a; font-weight: 350">recents</a>
+      <span style="flex-grow: 1"></span>
+      <span style="display: flex; align-items: flex-start; gap: 8px; font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif"><span style="font-size: 11px; line-height: 32px; color: #7a7a7a; margin-right: 4px">pinned</span>
+        <sc-for list="{{pins}}" as="p" hint-placeholder-count="6"><span style="display: flex; flex-direction: column; align-items: center; gap: 2px"><span style="{{p.tile}}"></span><span style="{{p.dot}}"></span></span></sc-for>
+      </span>
+    </div>
+    <div style="height: 32px; display: flex; align-items: center; gap: 20px; font-size: 14px; line-height: 20px">
+      <a href="#">liked</a><a href="#">playlists</a><a href="#">albums</a><a href="#" style="color: #ffffff; font-weight: 600">artists</a><a href="#">podcasts</a><a href="#">audiobooks</a>
+    </div>
+  </div>
+  <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; padding: 8px 48px 0 48px; gap: 16px; overflow: hidden">
+    <div style="display: flex; align-items: center; gap: 24px; font-size: 13px; color: #a8a8a8; height: 28px">
+      <span>sort</span><a href="#" style="color: #ffffff">alphabetical</a><a href="#">recently added</a><a href="#">most played</a>
+      <span style="width: 1px; height: 14px; background: rgba(255,255,255,0.14)"></span>
+      <span>show</span><a href="#" style="color: #ffffff">artists you follow and save from</a><a href="#">followed only</a>
+      <span style="flex-grow: 1"></span>
+      <label style="display: flex; align-items: center; gap: 8px; color: #7a7a7a"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><input type="search" placeholder="find in artists" style="border: 0; border-bottom: 1px solid rgba(255,255,255,0.18); background: transparent; color: #fff; font: inherit; font-size: 13px; width: 160px; outline: none; padding: 2px 0"></label>
+      <span>184 artists</span>
+    </div>
+    <div style="flex-grow: 1; min-height: 0; display: flex; gap: 40px">
+      <div style="width: 220px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden">
+        <sc-for list="{{artists}}" as="a" hint-placeholder-count="18">
+          <a href="#" style="{{a.row}}"><span style="{{a.letter}}">{{a.l}}</span><span style="{{a.name}}">{{a.n}}</span><span style="font-size: 12px; color: #7a7a7a; text-align: right">{{a.count}}</span></a>
+        </sc-for>
+      </div>
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; overflow: hidden">
+        <div style="height: 196px; flex-shrink: 0; position: relative; overflow: hidden; background: linear-gradient(180deg, #4a2436 0%, #2a1c24 70%, #161616 100%)">
+          <span style="position: absolute; right: -40px; top: -20px; width: 300px; height: 300px; border-radius: 150px; background: #5c2a40; opacity: 0.55"></span>
+          <div style="position: absolute; left: 24px; top: 20px; font-size: 13px; color: #c8c8c8">artist · following · 2 albums and 1 single in your library</div>
+          <div style="position: absolute; left: 18px; bottom: 58px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 72px; font-weight: 200; line-height: 80px; letter-spacing: -1.5px; white-space: nowrap">kavinsky</div>
+          <div style="position: absolute; left: 24px; bottom: 14px; display: flex; gap: 20px; align-items: center; font-size: 14px">
+            <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #fff; font: inherit; padding: 0"><span style="{{playRing}}">▶</span>play all</button>
+            <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #fff; font: inherit; padding: 0"><span style="{{ring}}">⇄</span>shuffle</button>
+            <button style="display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: #fff; font: inherit; padding: 0"><span style="{{ring}}">→</span>go to artist</button>
+          </div>
+        </div>
+        <div style="display: flex; align-items: baseline; gap: 12px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 26px; font-weight: 300; line-height: 32px">albums</span><span style="font-size: 13px; color: #7a7a7a">in your library</span></div>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+          <sc-for list="{{albums}}" as="al" hint-placeholder-count="3">
+            <a href="#" style="display: flex; flex-direction: column; gap: 6px; min-width: 0"><span style="{{al.art}}"></span><span style="{{al.name}}">{{al.n}}</span><span style="font-size: 12px; color: #a8a8a8">{{al.sub}}</span></a>
+          </sc-for>
+        </div>
+        <div style="display: flex; align-items: baseline; gap: 12px; margin-top: 4px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300; line-height: 28px; color: #a8a8a8">more by kavinsky</span><a href="#" style="font-size: 13px">discography</a></div>
+        <div style="display: flex; gap: 16px">
+          <sc-for list="{{more}}" as="m" hint-placeholder-count="3">
+            <a href="#" style="display: flex; gap: 10px; align-items: center; min-width: 0"><span style="{{m.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 13px; color: #c8c8c8; white-space: nowrap">{{m.n}}</span><span style="font-size: 12px; color: #7a7a7a">{{m.sub}}</span></span></a>
+          </sc-for>
+        </div>
+      </div>
+      <div style="width: 380px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden">
+        <div style="display: flex; align-items: baseline; gap: 12px; height: 40px"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 22px; font-weight: 300">outrun</span><span style="font-size: 12px; color: #7a7a7a">songs</span></div>
+        <span style="font-size: 12px; color: #7a7a7a; margin-bottom: 6px">2013 · 13 songs · 53 min · <a href="#">open album</a> · <a href="#">add to queue</a></span>
+        <sc-for list="{{songs}}" as="s" hint-placeholder-count="13">
+          <div style="{{s.row}}"><span style="{{s.num}}">{{s.n}}</span><span style="{{s.title}}">{{s.t}}</span><span style="{{s.time}}">{{s.d}}</span></div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+  <div style="height: 72px; flex-shrink: 0; background: #111111; position: relative; display: flex; align-items: center; padding: 0 12px 0 24px; gap: 24px">
+    <div style="position: absolute; left: 0; top: 0; right: 0; height: 2px; background: rgba(255,255,255,0.12)"><div style="{{progress}}"></div></div>
+    <div style="display: flex; align-items: center; gap: 12px; width: 320px; flex-shrink: 0"><span style="width: 48px; height: 48px; border-radius: 2px; background: #6b2f4a; flex-shrink: 0"></span><span style="display: flex; flex-direction: column; min-width: 0; gap: 1px"><span style="font-size: 15px; line-height: 20px">Nightcall</span><span style="font-size: 13px; line-height: 18px; color: #a8a8a8">Kavinsky · OutRun</span></span><button aria-label="save to liked songs" style="width: 32px; height: 32px; border: 0; background: transparent; color: #ffffff; font-size: 16px; padding: 0">♡</button></div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; gap: 2px"><div style="display: flex; align-items: center; gap: 16px"><button aria-label="previous" style="width: 32px; height: 32px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 3h2v10H3zM13 3 6 8l7 5z"/></svg></button><button aria-label="pause" style="{{playDisc}}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg></button><button aria-label="next" style="width: 32px; height: 32px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M11 3h2v10h-2zM3 3l7 5-7 5z"/></svg></button></div><span style="font-size: 12px; color: #a8a8a8; font-variant-numeric: tabular-nums">1:14 · -3:04</span></div>
+    <div style="display: flex; align-items: center; gap: 2px; width: 440px; flex-shrink: 0; justify-content: flex-end; font-size: 13px"><button aria-label="shuffle" style="width: 32px; height: 32px; border: 0; background: transparent; color: {{accent}}; font-size: 16px; padding: 0">⇄</button><button aria-label="repeat" style="width: 32px; height: 32px; border: 0; background: transparent; color: #a8a8a8; font-size: 16px; padding: 0">↻</button><button aria-label="mute" style="width: 32px; height: 32px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 6h3l4-3v10l-4-3H2z"/><path d="M11.5 5.5a3.5 3.5 0 0 1 0 5"/></svg></button><span style="width: 96px; height: 2px; background: rgba(255,255,255,0.18); margin: 0 10px 0 2px; display: block"><span style="display: block; width: 70%; height: 2px; background: #ffffff"></span></span><button style="height: 32px; border: 0; background: transparent; color: #a8a8a8; font: inherit; font-size: 13px; padding: 0 8px">lyrics</button><button style="height: 32px; border: 0; background: transparent; color: #a8a8a8; font: inherit; font-size: 13px; padding: 0 8px">queue</button><button style="height: 32px; border: 0; background: transparent; color: #a8a8a8; font: inherit; font-size: 13px; padding: 0 8px">devices</button><button aria-label="full screen" style="width: 32px; height: 32px; border: 0; background: transparent; color: #a8a8a8; font-size: 16px; padding: 0">⤢</button><button aria-label="more" style="width: 32px; height: 32px; border: 0; background: transparent; color: #a8a8a8; font-size: 16px; padding: 0">⋯</button></div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f","#b983ff"]},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  const D = '\'Segoe UI Variable Display\', \'Segoe UI\', sans-serif';
+  const pins = ['#3b4a6b', '#6b2f4a', '#2f5b6b', '#5b3b6b', '#6b4a2f', '#4a6b2f'].map((c, i) => ({ tile: 'width: 32px; height: 32px; border-radius: 4px; background: ' + c + '; display: block', dot: 'width: 4px; height: 4px; border-radius: 2px; display: block; background: ' + (i === 1 ? accent : 'transparent') }));
+  const list = [['a', 'aespa', 3], ['', 'Arcade Fire', 2], ['c', 'Carpenter Brut', 4], ['', 'College', 1], ['d', 'Daft Punk', 6], ['', 'Depeche Mode', 5], ['f', 'FM-84', 2], ['g', 'Gunship', 3], ['h', 'HOME', 2], ['i', 'ILLIT', 1], ['j', 'Justice', 3], ['k', 'Kavinsky', 3, true], ['', 'KISS OF LIFE', 1], ['m', 'M83', 4], ['n', 'NewJeans', 2], ['t', 'The Midnight', 5], ['', 'The Weeknd', 4], ['', 'Timecop1983', 2]];
+  const artists = list.map((d) => ({
+    l: d[0], n: d[1], count: String(d[2]),
+    row: 'display: grid; grid-template-columns: 28px minmax(0, 1fr) 24px; align-items: center; height: 34px; flex-shrink: 0; ' + (d[3] ? 'background: rgba(255,255,255,0.05)' : ''),
+    letter: 'font-family: ' + D + '; font-size: 20px; font-weight: 300; color: #7a7a7a',
+    name: 'font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (d[3] ? '#ffffff; font-weight: 600' : '#c8c8c8'),
+  }));
+  const albums = [['OutRun', 'album · 2013', '#6b2f4a', true], ['Reborn', 'album · 2022', '#2f3b5b', false], ['Nightcall', 'single · 2010', '#3b2a4a', false]].map((d) => ({
+    n: d[0], sub: d[1], art: 'width: 100%; aspect-ratio: 1 / 1; border-radius: 2px; background: ' + d[2] + '; display: block; box-sizing: border-box; ' + (d[3] ? 'outline: 2px solid ' + accent + '; outline-offset: 2px' : ''),
+    name: 'font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (d[3] ? accent : '#ffffff'),
+  }));
+  const more = [['1986', 'ep · 2007', '#4a3a2a'], ['Teddy Boy', 'ep · 2006', '#2a3a3a'], ['Zenith', 'single · 2022', '#3a2a3a']].map((d) => ({ n: d[0], sub: d[1], art: 'width: 48px; height: 48px; border-radius: 2px; background: ' + d[2] + '; display: block; flex-shrink: 0; opacity: 0.8' }));
+  const tracks = [['Prelude', '1:52'], ['Blizzard', '3:46'], ['ProtoVision', '4:47'], ['Odd Look', '4:11'], ['Rampage', '3:33'], ['Suburbia', '4:41'], ['Testarossa Autodrive', '4:12'], ['Nightcall', '4:18'], ['Grand Canyon', '3:38'], ['First Blood', '4:30'], ['Deadcruiser', '4:30'], ['Roadgame', '4:20'], ['Endless', '4:53']];
+  const songs = tracks.map((d, i) => { const play = i === 7, hover = i === 3; return {
+    n: play ? '▮▮▮' : String(i + 1), t: d[0], d: hover ? '⋯' : d[1],
+    row: 'display: grid; grid-template-columns: 44px minmax(0, 1fr) 48px; align-items: center; height: 40px; flex-shrink: 0; ' + (hover ? 'background: rgba(255,255,255,0.05)' : ''),
+    num: 'font-family: ' + D + '; font-weight: 300; font-size: ' + (play ? 10 : 20) + 'px; letter-spacing: ' + (play ? '1px' : '0') + '; padding-left: 4px; color: ' + (play ? accent : '#7a7a7a'),
+    title: 'font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (play ? accent : '#ffffff'),
+    time: 'font-size: 12px; text-align: right; padding-right: 4px; font-variant-numeric: tabular-nums; color: ' + (play ? accent : (hover ? '#ffffff' : '#9c9c9c')),
+  }; });
+  return {
+    accent, pins, artists, albums, more, songs,
+    playRing: 'width: 36px; height: 36px; border-radius: 18px; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; font-size: 13px',
+    ring: 'width: 36px; height: 36px; box-sizing: border-box; border-radius: 18px; border: 2px solid #ffffff; display: flex; align-items: center; justify-content: center; font-size: 13px',
+    progress: 'width: 29%; height: 2px; background: ' + accent,
+    playDisc: 'width: 40px; height: 40px; border-radius: 20px; border: 0; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; padding: 0',
+  };
+}
+}
+</script>
+</body>
+</html>

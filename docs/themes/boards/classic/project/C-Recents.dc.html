@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Recents</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="recents:Recents" sel="0" w="1440" hint-size="1440px,48px"></dc-import>
+  <div style="display: flex; height: 780px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="classic" sel="none" h="780" hint-size="280px,780px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; display: flex; flex-direction: column; overflow: hidden">
+      <header style="padding: 24px 36px 16px; display: flex; flex-direction: column; gap: 4px; flex-shrink: 0">
+        <div style="display: flex; align-items: center; gap: 12px"><h1 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 400; letter-spacing: -0.012em">Recents</h1><button style="height: 24px; display: flex; align-items: center; gap: 6px; padding: 0 8px; border: 0; border-radius: 4px; background: transparent; color: rgba(255,255,255,0.773); font: inherit; font-size: 12px"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v10h-11zM2.5 6.5h11M5.5 2v3M10.5 2v3" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg>Overview</button></div>
+        <span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.529)">84 items · Monday – Today · grouped from 212 plays</span>
+        <div role="tablist" aria-label="Kinds" style="display: flex; gap: 20px; margin-top: 12px"><sc-for list="{{pivots}}" as="p" hint-placeholder-count="4"><button role="tab" aria-selected="{{p.sel}}" style="{{p.s}}">{{p.l}}<span style="{{p.bar}}"></span></button></sc-for></div>
+      </header>
+      <div style="display: flex; flex-grow: 1; min-height: 0">
+        <div style="flex-grow: 1; min-width: 0; padding: 0 0 0 36px; display: flex; flex-direction: column">
+          <div style="height: 48px; display: flex; align-items: center; gap: 12px; flex-shrink: 0"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Today</span><span style="flex-grow: 1; height: 1px; background: rgba(255,255,255,0.082)"></span><span style="font-size: 12px; color: rgba(255,255,255,0.529)">6 items</span></div>
+          <sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+            <div style="{{r.s}}"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0; flex-grow: 1"><span style="font-size: 14px; line-height: 20px; font-weight: 600">{{r.t}}</span><span style="{{r.subS}}">{{r.sub}}</span></span><span style="font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: rgba(255,255,255,0.059); color: rgba(255,255,255,0.773)">{{r.k}}</span><span style="width: 52px; text-align: right; font-size: 12px; color: rgba(255,255,255,0.529)">{{r.time}}</span><span style="{{r.chev}}"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="{{r.cd}}" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></span><span style="width: 32px; text-align: center; color: rgba(255,255,255,0.773); opacity: {{r.mo}}">⋯</span></div>
+            <sc-if value="{{r.open}}" hint-placeholder-val="{{false}}"><div style="margin: 0 0 8px 32px; padding-left: 16px; border-left: 1px solid #60cdff; display: flex; flex-direction: column"><sc-for list="{{r.kids}}" as="k" hint-placeholder-count="3"><div style="height: 40px; display: flex; align-items: center; gap: 12px; font-size: 14px"><span style="width: 32px; height: 32px; border-radius: 4px; background: #4a4a4a"></span><span style="flex-grow: 1">{{k.t}} <span style="color: rgba(255,255,255,0.773)">· {{k.a}}</span></span><span style="font-size: 12px; color: rgba(255,255,255,0.529); padding-right: 76px">{{k.d}}</span></div></sc-for></div></sc-if>
+          </sc-for>
+          <div style="height: 48px; display: flex; align-items: center; gap: 12px; flex-shrink: 0"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Yesterday</span><span style="flex-grow: 1; height: 1px; background: rgba(255,255,255,0.082)"></span><span style="font-size: 12px; color: rgba(255,255,255,0.529)">11 items</span></div>
+        </div>
+        <div aria-hidden="true" style="width: 44px; flex-shrink: 0; position: relative; margin-right: 8px"><span style="position: absolute; right: 6px; top: 8px; width: 3px; height: 120px; border-radius: 2px; background: rgba(255,255,255,0.545)"></span><span style="position: absolute; right: 14px; top: 4px; font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.773)">OCT</span><span style="position: absolute; right: 14px; top: 300px; font-size: 10px; color: rgba(255,255,255,0.529)">SEP</span><span style="position: absolute; right: 14px; top: 560px; font-size: 10px; color: rgba(255,255,255,0.529)">AUG</span></div>
+      </div>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="1440" hint-size="1440px,72px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const pivots = ['All', 'Music', 'Podcasts', 'Artists'].map((l, i) => ({ l, sel: i === 0 ? 'true' : 'false', s: "position: relative; padding: 0 0 6px; border: 0; background: transparent; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 19px; line-height: 25px; font-weight: 350; color: " + (i === 0 ? '#fff' : 'rgba(255,255,255,0.6)'), bar: i === 0 ? 'position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: #60cdff' : 'display: none' }));
+  const R = [['Random Access Memories', 'Played 6 tracks · Daft Punk', 'Album', '14:32', 'linear-gradient(135deg,#111,#bdbdbd 52%,#111)', 1, 0], ['Liked Songs', '✓ 3 songs added', 'Playlist', '13:05', 'linear-gradient(135deg,#4a3b8a,#6fa3c8)', 0, 1], ['Billie Eilish', 'Played 4 tracks', 'Artist', '11:48', '#2f4a6b', 0, 0, 1], ['Coffee & Code', 'Played 1 episode · 23 min left', 'Podcast', '09:12', '#4a5b3b'], ['K-Pop Duets (러블리 듀엣)', 'Played 9 tracks · Chris', 'Playlist', '08:40', '#6b3b4a']];
+  const rows = R.map((r, i) => ({ t: r[0], sub: r[1], k: r[2], time: r[3], open: !!r[5], mo: i === 0 ? 1 : 0,
+    s: 'height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 8px; border-radius: 8px; flex-shrink: 0' + (i === 0 ? '; background: rgba(255,255,255,0.059)' : ''),
+    art: 'width: 48px; height: 48px; flex-shrink: 0; border-radius: ' + (r[7] ? 24 : 4) + 'px; background: ' + r[4],
+    subS: 'font-size: 12px; line-height: 16px; color: ' + (r[6] ? '#6ccb5f' : 'rgba(255,255,255,0.773)'),
+    chev: 'width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.773)', cd: r[5] ? 'M4 10l4-4 4 4' : 'M4 6l4 4 4-4',
+    kids: [{ t: 'Get Lucky', a: 'Daft Punk, Pharrell Williams', d: '14:32' }, { t: 'Instant Crush', a: 'Daft Punk, Julian Casablancas', d: '14:26' }, { t: 'Lose Yourself to Dance', a: 'Daft Punk', d: '14:20' }] }));
+  return { pivots, rows };
+}
+}
+</script>
+</body>
+</html>

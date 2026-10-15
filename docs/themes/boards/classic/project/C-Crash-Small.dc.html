@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Crash prompt, Small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a6d8ff;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 800px; height: 600px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="home:Home" sel="0" w="800" hint-size="800px,48px"></dc-import>
+  <div style="display: flex; height: 480px; flex-shrink: 0"><dc-import name="C-Sidebar" theme="dark" layout="rail" sel="home" h="480" hint-size="48px,480px"></dc-import><main style="flex-grow: 1; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px"></main></div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="idle" w="800" hint-size="800px,72px"></dc-import>
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(0,0,0,0.3)"></div>
+  <section role="dialog" aria-modal="true" aria-label="Wavee closed unexpectedly" style="position: absolute; left: 126px; top: 60px; width: 548px; box-sizing: border-box; border-radius: 8px; background: #2b2b2b; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 16px 64px rgba(0,0,0,0.4); overflow: hidden">
+    <div style="padding: 24px; display: flex; flex-direction: column; gap: 14px">
+      <h1 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600">Wavee closed unexpectedly</h1>
+      <div role="status" style="display: flex; gap: 10px; padding: 12px; border-radius: 4px; background: #433519; font-size: 14px; line-height: 20px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0; margin-top: 2px; color: #fce100"><path d="M8 2l6.5 11.5h-13zM8 6.5v3M8 11.5v.01" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg><span>Sending the report helps fix it. You can read everything in it first.</span></div>
+      <div style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 20px">
+        <span style="font-weight: 600">What’s in the report</span>
+        <sc-for list="{{items}}" as="i" hint-placeholder-count="4"><span style="{{i.s}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="{{i.g}}" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>{{i.l}}</span></sc-for>
+        <a href="#" style="font-size: 14px">Read the full report</a>
+      </div>
+      <label style="display: flex; align-items: center; gap: 10px; font-size: 14px; line-height: 20px"><span role="checkbox" aria-checked="false" style="width: 20px; height: 20px; flex-shrink: 0; box-sizing: border-box; border-radius: 4px; border: 1px solid rgba(255,255,255,0.6)"></span>Include a memory snapshot</label>
+      <label style="display: flex; align-items: center; gap: 10px; font-size: 14px; line-height: 20px"><span role="checkbox" aria-checked="false" style="width: 20px; height: 20px; flex-shrink: 0; box-sizing: border-box; border-radius: 4px; border: 1px solid rgba(255,255,255,0.6)"></span>Always send reports, don’t ask again</label>
+    </div>
+    <footer style="height: 80px; box-sizing: border-box; padding: 0 24px; display: flex; align-items: center; gap: 8px; background: rgba(32,32,32,0.6); border-top: 1px solid rgba(255,255,255,0.06)"><button style="flex: 1; height: 32px; border: 0; border-radius: 4px; background: #60cdff; color: #000; font: inherit; font-size: 14px; font-weight: 600">Send report</button><button style="flex: 1; height: 32px; border-radius: 4px; background: rgba(255,255,255,0.059); border: 1px solid rgba(255,255,255,0.071); color: #fff; font: inherit; font-size: 14px">Not now</button></footer>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const ok = 'M3 8.5l3 3 7-7', no = 'M4 4l8 8M12 4l-8 8';
+  const items = [['What Wavee was doing and the error', 1], ['Your Windows version and graphics adapter', 1], ['The last log lines', 1], ['No account details, no listening history', 0]].map(i => ({ l: i[0], g: i[1] ? ok : no, s: 'display: flex; align-items: center; gap: 8px; color: ' + (i[1] ? '#fff' : 'rgba(255,255,255,0.773)') }));
+  return { items };
+}
+}
+</script>
+</body>
+</html>

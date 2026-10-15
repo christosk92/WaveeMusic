@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zune video player</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#a8a8a8;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; background: #000000; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; overflow: hidden; position: relative">
+  <div style="position: absolute; left: 0; top: 45px; width: 1440px; height: 810px; background: linear-gradient(135deg, #0b1220 0%, #1b2a3a 50%, #2a1b3a 100%)"></div>
+  <div style="position: absolute; left: 0; top: 0; width: 1440px; height: 48px; box-sizing: border-box; display: flex; align-items: center; padding: 0 24px 0 48px; gap: 24px; font-size: 13px; color: #a8a8a8; background: linear-gradient(180deg, rgba(0,0,0,0.6), rgba(0,0,0,0))">
+    <span>video · full screen</span>
+    <span style="flex-grow: 1"></span>
+    <span style="font-size: 15px; color: #ffffff">Nightcall <span style="color: #a8a8a8">· official video · Kavinsky</span></span>
+    <span style="flex-grow: 1"></span>
+    <a href="#">switch to audio</a><a href="#" style="color: #ffffff">exit full screen</a>
+  </div>
+  <div style="position: absolute; left: 0; bottom: 0; width: 1440px; height: 160px; background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.85) 100%)"></div>
+  <div style="position: absolute; left: 48px; right: 48px; bottom: 24px; display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; align-items: center; gap: 16px; font-size: 12px; color: #a8a8a8; font-variant-numeric: tabular-nums"><span>1:14</span><span style="flex-grow: 1; height: 2px; background: rgba(255,255,255,0.2); display: block; position: relative"><span style="{{progress}}"></span><span style="{{knob}}"></span></span><span>-3:04</span></div>
+    <div style="display: flex; align-items: center; gap: 16px">
+      <button aria-label="previous" style="width: 36px; height: 36px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 3h2v10H3zM13 3 6 8l7 5z"/></svg></button>
+      <button aria-label="pause" style="{{playDisc}}"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg></button>
+      <button aria-label="next" style="width: 36px; height: 36px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M11 3h2v10h-2zM3 3l7 5-7 5z"/></svg></button>
+      <button aria-label="mute" style="width: 36px; height: 36px; border: 0; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 6h3l4-3v10l-4-3H2z"/><path d="M11.5 5.5a3.5 3.5 0 0 1 0 5"/></svg></button>
+      <span style="width: 96px; height: 2px; background: rgba(255,255,255,0.2); display: block"><span style="display: block; width: 70%; height: 2px; background: #ffffff"></span></span>
+      <span style="flex-grow: 1"></span>
+      <span style="font-size: 13px; color: #a8a8a8">1080p · fit</span>
+      <button style="height: 36px; border: 0; background: transparent; color: #a8a8a8; font: inherit; font-size: 13px; padding: 0 8px">mini player</button>
+      <button aria-label="more" style="width: 36px; height: 36px; border: 0; background: transparent; color: #ffffff; font-size: 18px; padding: 0">⋯</button>
+    </div>
+  </div>
+  <div style="position: absolute; right: 48px; bottom: 100px; width: 280px; background: #242424; box-shadow: 0 16px 40px rgba(0,0,0,0.5); padding: 8px 0; display: flex; flex-direction: column; font-size: 14px">
+    <a href="#" style="height: 36px; display: flex; align-items: center; gap: 12px; padding: 0 16px; color: #ffffff"><span style="width: 8px; height: 8px; border-radius: 4px; border: 1px solid #7a7a7a; box-sizing: border-box"></span>dock in panel</a>
+    <a href="#" style="height: 36px; display: flex; align-items: center; gap: 12px; padding: 0 16px; color: #ffffff"><span style="width: 8px; height: 8px; border-radius: 4px; border: 1px solid #7a7a7a; box-sizing: border-box"></span>play in a mini player</a>
+    <a href="#" style="height: 36px; display: flex; align-items: center; gap: 12px; padding: 0 16px; color: #ffffff"><span style="width: 8px; height: 8px; border-radius: 4px; border: 1px solid #7a7a7a; box-sizing: border-box"></span>play in a separate window</a>
+    <a href="#" style="{{menuOn}}"><span style="{{dotOn}}"></span>full screen <span style="margin-left: auto; font-size: 12px; opacity: 0.7">f11</span></a>
+    <span style="height: 1px; background: rgba(255,255,255,0.08); margin: 6px 16px"></span>
+    <a href="#" style="height: 36px; display: flex; align-items: center; padding: 0 16px; color: #ffffff; justify-content: space-between">aspect ratio <span style="color: #7a7a7a">fit ▸</span></a>
+    <a href="#" style="height: 36px; display: flex; align-items: center; padding: 0 16px; color: #ffffff; justify-content: space-between">quality <span style="color: #7a7a7a">auto ▸</span></a>
+    <a href="#" style="height: 36px; display: flex; align-items: center; padding: 0 16px; color: #ffffff; justify-content: space-between">playback speed <span style="color: #7a7a7a">1× ▸</span></a>
+    <span style="height: 1px; background: rgba(255,255,255,0.08); margin: 6px 16px"></span>
+    <a href="#" style="height: 36px; display: flex; align-items: center; padding: 0 16px; color: #ffffff">turn off video</a>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ff3ca6","options":["#ff3ca6","#ff7a1a","#60cdff","#8fd14f"]},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+  const accent = this.props.accent ?? '#ff3ca6';
+  return {
+    accent,
+    progress: 'display: block; width: 29%; height: 2px; background: ' + accent,
+    knob: 'position: absolute; left: 29%; top: -5px; width: 12px; height: 12px; border-radius: 6px; background: ' + accent + '; margin-left: -6px; display: block',
+    playDisc: 'width: 44px; height: 44px; border-radius: 22px; border: 0; background: ' + accent + '; color: #000; display: flex; align-items: center; justify-content: center; padding: 0',
+    menuOn: 'height: 36px; display: flex; align-items: center; gap: 12px; padding: 0 16px; color: ' + accent,
+    dotOn: 'width: 8px; height: 8px; border-radius: 4px; background: ' + accent,
+  };
+}
+}
+</script>
+</body>
+</html>

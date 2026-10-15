@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Profile, small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} width: 800px; height: 600px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" tier="small" sel="none" ctx="Christos" items="Top artists|Playlists|Following|Followers" sub-sel="{{zero}}" lower="{{lower}}" hint-size="800px,136px"></dc-import>
+  <main style="height: 380px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px; padding: 16px 24px 0 24px; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke)">
+    <div style="display: flex; gap: 20px; align-items: flex-end; flex-shrink: 0">
+      <span aria-hidden="true" style="width: 112px; height: 112px; flex-shrink: 0; border-radius: 56px; background: radial-gradient(120% 120% at 35% 25%, #7a8b4a, #3b4a2a)"></span>
+      <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0; flex-grow: 1">
+        <span style="font-size: 12px; line-height: 16px; color: var(--t2)">Profile · Spotify Premium · <a href="#" style="color: var(--acct)">12 followers</a> · <a href="#" style="color: var(--acct)">48 following</a> · 6 public playlists</span>
+        <h1 title="Christos" style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 40px; line-height: 52px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Christos</h1>
+        <span style="display: flex; gap: 8px; align-items: center">
+          <button style="height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 4px; background: var(--ctrl); border: 1px solid var(--ctrlb); border-top-color: var(--ctrlbt); border-bottom-color: var(--ctrlbb); color: var(--t1); font: inherit; font-size: 14px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 2.5l3 3-8 8H2.5v-3z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg>Edit profile</button>
+          <a href="#" style="height: 32px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 4px; color: var(--t1); font-size: 14px">Open account</a>
+          <button aria-label="Share profile" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M5 5.5l3-3 3 3M3.5 9v3.5h9V9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+          <button aria-label="More" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+        </span>
+      </div>
+    </div>
+    <div style="display: flex; gap: 32px; min-height: 0">
+      <section aria-label="Top artists this month" style="width: 300px; flex-shrink: 0; display: flex; flex-direction: column">
+        <div style="display: flex; align-items: baseline; gap: 10px; height: 32px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">This month</h2><span style="font-size: 12px; color: var(--t2)">Only visible to you</span></div>
+        <sc-for list="{{top}}" as="t" hint-placeholder-count="3"><a href="#" style="{{t.row}}"><span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; color: var(--t3); font-variant-numeric: tabular-nums">{{t.n}}</span><span style="{{t.art}}"></span><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.name}}</span><span style="font-size: 12px; color: var(--t2); font-variant-numeric: tabular-nums">{{t.plays}}</span></a></sc-for>
+      </section>
+      <section aria-label="Public playlists" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+        <div style="display: flex; align-items: baseline; gap: 12px; height: 32px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">Public playlists</h2><span style="flex-grow: 1"></span><a href="#" style="font-size: 14px; color: var(--acct)">See all 6</a></div>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+          <sc-for list="{{lists}}" as="l" hint-placeholder-count="3"><a href="#" style="display: flex; flex-direction: column; gap: 6px; min-width: 0; color: var(--t1)"><span style="{{l.art}}"></span><span style="font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{l.name}}</span><span style="font-size: 12px; line-height: 16px; color: var(--t2)">{{l.sub}}</span></a></sc-for>
+        </div>
+      </section>
+    </div>
+  </main>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" tier="small" variant="music" hint-size="800px,84px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"lower":{"editor":"boolean","default":false},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', ctrl: 'rgba(255,255,255,0.0605)', ctrlb: 'rgba(255,255,255,0.0698)', ctrlbt: 'rgba(255,255,255,0.093)', ctrlbb: 'rgba(255,255,255,0.0698)', sub: 'rgba(255,255,255,0.0605)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', ctrl: '#fdfdfd', ctrlb: 'rgba(0,0,0,0.0578)', ctrlbt: 'rgba(0,0,0,0.0578)', ctrlbb: 'rgba(0,0,0,0.1622)', sub: 'rgba(0,0,0,0.0373)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const top = [['Kavinsky', '47 plays', '#6b2f4a'], ['The Midnight', '31 plays', '#6b4a2f'], ['Daft Punk', '24 plays', '#3a2f22']].map((d, i) => ({ n: String(i + 1), name: d[0], plays: d[1],
+    row: 'display: grid; grid-template-columns: 28px 52px minmax(0, 1fr) auto; align-items: center; height: 52px; margin-top: 2px; padding: 0 8px; border-radius: 4px; color: var(--t1); ' + (i === 1 ? 'background: var(--sub)' : ''),
+    art: 'width: 40px; height: 40px; border-radius: 20px; display: block; background: ' + d[2] }));
+  const lists = [['late night drive', '42 songs', '#3b4a6b'], ['sunday slow', '31 songs', '#2f5b4a'], ['k-pop on repeat', '120 songs', '#5b2f6b']].map((d) => ({ name: d[0], sub: d[1], art: 'width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; display: block; background: ' + d[2] }));
+  return { vars, theme, accent, top, lists, zero: 0, lower: !!(this.props.lower ?? false) };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Queue panel, Small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="position: relative; width: 800px; height: 600px; display: flex; flex-direction: column; overflow: hidden; background: #202020; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="C-TitleBar" theme="dark" tabs="home:Home|album:Random Access Memories" sel="1" w="800" hint-size="800px,48px"></dc-import>
+  <div style="display: flex; height: 480px; flex-shrink: 0">
+    <dc-import name="C-Sidebar" theme="dark" layout="rail" sel="albums" h="480" hint-size="48px,480px"></dc-import>
+    <main style="flex-grow: 1; min-width: 0; box-sizing: border-box; background: rgba(58,58,58,0.298); border-top: 1px solid rgba(0,0,0,0.098); border-left: 1px solid rgba(0,0,0,0.098); border-top-left-radius: 8px; display: flex; overflow: hidden">
+      <aside aria-label="About this album" style="width: 224px; flex-shrink: 0; box-sizing: border-box; padding: 16px 12px; display: flex; flex-direction: column; gap: 10px; background: rgba(58,58,58,0.298); border-top-left-radius: 8px; overflow: hidden">
+        <span role="img" aria-label="Random Access Memories cover" style="width: 200px; height: 200px; flex-shrink: 0; border-radius: 8px; background: linear-gradient(135deg, #111 0%, #3a3a3a 40%, #bdbdbd 52%, #3a3a3a 64%, #111 100%); box-shadow: 0 2px 8px rgba(0,0,0,0.33)"></span>
+        <span style="font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.03em; color: rgba(255,255,255,0.529); margin-top: 2px">Album · 2013</span>
+        <h1 style="margin: -6px 0 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600; letter-spacing: -0.02em">Random Access Memories</h1>
+        <a href="#" style="display: flex; align-items: center; gap: 8px; margin-top: -2px"><span style="width: 24px; height: 24px; flex-shrink: 0; border-radius: 12px; background: #2f2f2f; box-shadow: 0 0 0 2px #2b2b2b"></span><span style="font-size: 14px; line-height: 20px; font-weight: 700; color: #a6d8ff">Daft Punk</span></a>
+        <span style="font-size: 12px; line-height: 16px; color: rgba(255,255,255,0.773); margin-top: -4px">13 songs · 1 hr 14 min</span>
+        <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 2px">
+          <span style="display: inline-flex; align-items: center; height: 32px; border-radius: 4px; background: #60cdff; color: #000; box-shadow: inset 0 -1px 0 rgba(0,0,0,0.22)"><button style="width: 88px; height: 32px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; background: transparent; color: #000; font: inherit; font-size: 14px; font-weight: 600"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10l8-5z" fill="currentColor"></path></svg>Play</button><span style="width: 1px; height: 20px; background: rgba(0,0,0,0.2)"></span><button aria-label="More ways to play" style="width: 32px; height: 32px; border: 0; background: transparent; color: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="1.6"></path></svg></button></span>
+        </div>
+      </aside>
+      <span aria-hidden="true" style="width: 16px; flex-shrink: 0"></span>
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; padding-top: 12px">
+        <div role="toolbar" aria-label="List tools" style="height: 44px; flex-shrink: 0; box-sizing: border-box; padding: 6px 8px 6px 6px; display: flex; align-items: center; gap: 2px">
+          <button style="height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 9px; border: 0; border-radius: 4px; background: transparent; color: rgba(255,255,255,0.773); font: inherit; font-size: 12px; font-weight: 600"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h7M2.5 8h7M2.5 12h4M12 6v7M9.5 10.5l2.5 2.5 2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg>Play next</button>
+          <button style="height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 9px; border: 0; border-radius: 4px; background: transparent; color: rgba(255,255,255,0.773); font: inherit; font-size: 12px; font-weight: 600"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4.5h2.5c3 0 4 7 7 7H14M2 11.5h2.5c1.2 0 2-1 2.6-2.2M9 6.7c.6-1.2 1.4-2.2 2.5-2.2H14M12 2.5l2 2-2 2M12 9.5l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>Shuffle</button>
+        </div>
+        <div style="padding-right: 8px">
+          <dc-import name="C-TrackList" theme="dark" rs="modern" set="album" tier="small" n="9" marks="8:playing,8:liked,2:liked" hint-size="100%,470px"></dc-import>
+        </div>
+      </div>
+    </main>
+  </div>
+  <dc-import name="C-PlayerBar" theme="dark" variant="music" w="800" panel="queue" hint-size="800px,72px"></dc-import>
+  <section aria-label="Queue" style="position: absolute; right: 8px; top: 56px; bottom: 80px; width: 340px; border-radius: 8px; overflow: hidden; background: #282828; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 24px rgba(0,0,0,0.35)">
+    <dc-import name="C-Rail" theme="dark" mode="queue" w="340" h="464" hint-size="340px,464px"></dc-import>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

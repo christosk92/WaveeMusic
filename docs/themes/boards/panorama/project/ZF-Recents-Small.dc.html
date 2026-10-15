@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Recents, small</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="{{vars}} width: 800px; height: 600px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--mica); color: var(--t1); font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <dc-import name="ZF-Chrome" theme="{{theme}}" accent="{{accent}}" tier="small" sel="recents" items="All|Music|Podcasts|Artists" sub-sel="{{zero}}" lower="{{lower}}" back="{{no}}" hint-size="800px,136px"></dc-import>
+  <main style="height: 380px; flex-shrink: 0; box-sizing: border-box; display: flex; gap: 32px; padding: 8px 24px 0 24px; overflow: hidden; background: var(--layer); border-top: 1px solid var(--stroke)">
+    <section aria-label="History" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+      <sc-for list="{{days}}" as="d" hint-placeholder-count="2">
+        <div style="display: flex; flex-direction: column; padding-top: 4px">
+          <div style="display: flex; align-items: baseline; gap: 10px; height: 36px; border-bottom: 1px solid var(--div)"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">{{d.label}}</h2><span style="font-size: 12px; color: var(--t2)">{{d.date}}</span><span style="flex-grow: 1"></span><span style="font-size: 12px; color: var(--t2); padding-right: 8px">{{d.count}}</span></div>
+          <sc-for list="{{d.rows}}" as="r" hint-placeholder-count="3">
+            <div role="row" style="{{r.row}}"><span style="{{r.art}}"></span><span style="display: flex; flex-direction: column; min-width: 0"><a href="#" style="{{r.title}}">{{r.name}}</a><span style="font-size: 12px; line-height: 16px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.caption}}</span></span><span style="text-align: right; font-size: 14px; color: var(--t2); font-variant-numeric: tabular-nums">{{r.time}}</span><button aria-label="{{r.toggleLabel}}" aria-expanded="{{r.expanded}}" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--t1)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="{{r.chev}}" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></div>
+            <sc-if value="{{r.open}}" hint-placeholder-val="{{ false }}">
+              <div role="table" aria-label="{{r.tracksLabel}}" style="display: flex; flex-direction: column; padding-left: 52px">
+                <sc-for list="{{r.tracks}}" as="t" hint-placeholder-count="3"><div role="row" style="display: grid; grid-template-columns: 32px minmax(0, 1fr) 140px 56px; align-items: center; height: 40px"><span style="{{t.num}}"><sc-if value="{{t.playing}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-label="Playing" role="img"><path d="M3 13V7M6.5 13V3M10 13V8M13.5 13V5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg></sc-if><sc-if value="{{t.showNum}}" hint-placeholder-val="{{ true }}">{{t.n}}</sc-if></span><span style="{{t.title}}">{{t.name}}</span><span style="font-size: 14px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.artist}}</span><span style="text-align: right; padding-right: 8px; font-size: 12px; color: var(--t2); font-variant-numeric: tabular-nums">{{t.at}}</span></div></sc-for>
+              </div>
+            </sc-if>
+          </sc-for>
+        </div>
+      </sc-for>
+    </section>
+    <aside aria-label="Overview" style="width: 248px; flex-shrink: 0; display: flex; flex-direction: column; gap: 6px; padding-top: 4px">
+      <div style="display: flex; align-items: baseline; gap: 8px; height: 36px"><h2 style="margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 20px; line-height: 28px; font-weight: 600">October</h2><span style="font-size: 12px; color: var(--t2)">212 plays so far</span></div>
+      <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px">
+        <sc-for list="{{week}}" as="w" hint-placeholder-count="7"><span style="font-size: 11px; line-height: 14px; color: var(--t3); text-align: center">{{w.d}}</span></sc-for>
+        <sc-for list="{{cells}}" as="c" hint-placeholder-count="35"><button aria-label="{{c.label}}" style="{{c.style}}">{{c.day}}</button></sc-for>
+      </div>
+      <span style="display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--t2)">Quieter<sc-for list="{{legend}}" as="l" hint-placeholder-count="4"><span style="{{l.style}}"></span></sc-for>Busier</span>
+      <span style="display: flex; gap: 16px; font-size: 14px"><a href="#" style="color: var(--acct)">September</a><a href="#" style="color: var(--acct)">Jump to today</a></span>
+      <div style="display: grid; grid-template-columns: 104px minmax(0, 1fr); row-gap: 2px; font-size: 12px; line-height: 18px; padding-top: 4px">
+        <span style="color: var(--t2)">Most played</span><span>Kavinsky</span>
+        <span style="color: var(--t2)">Busiest day</span><span>10 Oct · 31 plays</span>
+        <span style="color: var(--t2)">Listening time</span><span>14 h 20 min</span>
+      </div>
+    </aside>
+  </main>
+  <dc-import name="ZF-PlayBar" theme="{{theme}}" accent="{{accent}}" tier="small" variant="music" hint-size="800px,84px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"enum","options":["windows","pink"],"default":"windows"},"lower":{"editor":"boolean","default":false},"$preview":{"width":800,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+  const theme = this.props.theme ?? 'dark';
+  const dark = theme !== 'light';
+  const accent = this.props.accent ?? 'windows';
+  const pink = accent === 'pink';
+  const T = dark
+    ? { mica: '#202020', layer: '#282828', stroke: 'rgba(255,255,255,0.0837)', div: 'rgba(255,255,255,0.0837)', card: 'rgba(255,255,255,0.0512)', cardb: 'rgba(0,0,0,0.1)', sub: 'rgba(255,255,255,0.0605)', t1: '#ffffff', t2: '#c5c5c5', t3: '#9e9e9e', acc: pink ? '#ff7ac3' : '#60cdff', onacc: '#000000', acct: pink ? '#ffb3dd' : '#99ebff' }
+    : { mica: '#f3f3f3', layer: '#f9f9f9', stroke: 'rgba(0,0,0,0.0578)', div: 'rgba(0,0,0,0.0803)', card: '#fbfbfb', cardb: 'rgba(0,0,0,0.0578)', sub: 'rgba(0,0,0,0.0373)', t1: '#1b1b1b', t2: '#626262', t3: '#8a8a8a', acc: pink ? '#c4007a' : '#005fb8', onacc: '#ffffff', acct: pink ? '#9b0062' : '#003e92' };
+  const vars = Object.keys(T).map((k) => '--' + k + ': ' + T[k]).join('; ') + ';';
+  const UP = 'M3.5 10 8 5.5l4.5 4.5', DOWN = 'M3.5 6 8 10.5 12.5 6';
+  const trackList = [['Nightcall', 'Kavinsky', '14:32', true], ['Midnight City', 'M83', '14:28'], ['Resonance', 'HOME', '14:24']];
+  const row = (name, caption, time, color, open, playing, round) => ({ name, caption, time, open, expanded: open ? 'true' : 'false', chev: open ? UP : DOWN,
+    toggleLabel: (open ? 'Hide songs played from ' : 'Show songs played from ') + name, tracksLabel: 'Songs played from ' + name,
+    row: 'display: grid; grid-template-columns: 52px minmax(0, 1fr) 52px 40px; align-items: center; height: 52px; margin-top: 2px; padding-left: 4px; border-radius: 4px; ' + (open ? 'background: var(--sub)' : ''),
+    art: 'width: 40px; height: 40px; display: block; background: ' + color + '; border-radius: ' + (round ? '20px' : '4px'),
+    title: 'font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ' + (playing ? 'var(--acct)' : 'var(--t1)'),
+    tracks: open ? trackList.map((t, i) => ({ n: String(i + 1), name: t[0], artist: t[1], at: t[2], playing: !!t[3], showNum: !t[3],
+      num: 'display: flex; align-items: center; font-size: 14px; font-variant-numeric: tabular-nums; color: ' + (t[3] ? 'var(--acct)' : 'var(--t3)'),
+      title: 'font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 12px; color: ' + (t[3] ? 'var(--acct)' : 'var(--t1)') })) : [] });
+  const days = [
+    { label: 'Today', date: 'Saturday 11 Oct', count: '12 plays', rows: [row('late night drive', 'Playlist · Christos and emma.k · 6 songs', '14:32', '#3b4a6b', true, true, false), row('Random Access Memories', 'Album · Daft Punk · 3 songs', '11:05', '#3a2f22', false, false, false), row('The Rest Is Football', 'Podcast · Why the Premier League keeps changing', '08:40', '#2f4a3b', false, false, false)] },
+    { label: 'Yesterday', date: 'Friday 10 Oct', count: '31 plays', rows: [row('The Midnight', 'Artist · 8 songs', '22:18', '#6b4a2f', false, false, true)] }
+  ];
+  const plays = { 1: 14, 2: 9, 3: 22, 4: 27, 5: 16, 6: 24, 7: 19, 8: 20, 9: 18, 10: 31, 11: 12 };
+  const lvl = (n) => n === 0 ? 0 : n < 12 ? 1 : n < 24 ? 2 : 3;
+  const mix = ['var(--card)', 'color-mix(in srgb, var(--acc) 30%, transparent)', 'color-mix(in srgb, var(--acc) 58%, transparent)', 'var(--acc)'];
+  const cells = [];
+  for (let i = 0; i < 35; i++) {
+    const day = i - 1;
+    const inMonth = day >= 1 && day <= 31;
+    const past = inMonth && day <= 11;
+    const n = past ? plays[day] : 0;
+    const v = lvl(n);
+    cells.push({ day: inMonth ? String(day) : '', label: !inMonth ? 'Outside October' : past ? day + ' October, ' + n + ' plays' : day + ' October, no plays yet',
+      style: 'height: 26px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 0; border-radius: 3px; font: inherit; font-size: 11px; font-variant-numeric: tabular-nums; background: ' + (inMonth ? mix[v] : 'transparent') + '; color: ' + (v === 3 ? 'var(--onacc)' : past ? 'var(--t1)' : 'var(--t3)') + '; border: ' + (day === 11 ? '2px solid var(--t1)' : inMonth && !past ? '1px dashed var(--div)' : '1px solid transparent') });
+  }
+  const week = ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d) => ({ d }));
+  const legend = [0, 1, 2, 3].map((v) => ({ style: 'width: 9px; height: 9px; border-radius: 2px; display: block; background: ' + mix[v] }));
+  return { vars, theme, accent, days, cells, week, legend, zero: 0, no: false, lower: !!(this.props.lower ?? false) };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Now playing, full screen: lyrics</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#99ebff;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="position: relative; width: 1440px; height: 960px; box-sizing: border-box; overflow: hidden; background: #141414; color: #ffffff; font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif">
+  <div aria-hidden="true" style="position: absolute; inset: 0; overflow: hidden">
+    <span style="position: absolute; left: -160px; top: 120px; width: 760px; height: 760px; border-radius: 380px; background: #3b5b7a; filter: blur(160px); opacity: 0.9"></span>
+    <span style="position: absolute; left: 860px; top: -140px; width: 700px; height: 700px; border-radius: 350px; background: #60cdff; filter: blur(180px); opacity: 0.26"></span>
+    <span style="position: absolute; left: 640px; top: 520px; width: 820px; height: 620px; border-radius: 410px; background: #2f4a6b; filter: blur(160px); opacity: 0.85"></span>
+    <span style="position: absolute; inset: 0; background: rgba(0,0,0,0.5)"></span>
+  </div>
+  <div style="position: absolute; left: 0; right: 0; top: 0; height: 48px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; padding: 0 8px 0 16px; box-sizing: border-box">
+    <div style="display: flex; align-items: center; gap: 12px; font-size: 12px"><span style="width: 16px; height: 16px; border-radius: 4px; background: #60cdff"></span><span>Wavee</span><span style="color: #9e9e9e">Now playing · full screen</span></div>
+    <div style="display: flex; gap: 4px; height: 40px; padding: 0 4px; border-radius: 8px; background: rgba(44,44,44,0.7); border: 1px solid rgba(0,0,0,0.2)">
+      <sc-for list="{{modes}}" as="m" hint-placeholder-count="4"><button style="{{m.style}}">{{m.label}}<span style="{{m.bar}}"></span></button></sc-for>
+    </div>
+    <div style="display: flex; justify-content: flex-end; gap: 4px">
+      <button aria-label="Second line: romanization" style="height: 36px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border: 0; border-radius: 4px; background: rgba(255,255,255,0.0605); color: #fff; font: inherit; font-size: 12px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13zM1.5 8h13M8 1.5c-2.5 2-2.5 11 0 13M8 1.5c2.5 2 2.5 11 0 13" fill="none" stroke="currentColor" stroke-width="1"></path></svg>Romanization</button>
+      <button aria-label="Words timed on this PC by AI" style="width: 40px; height: 36px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l1.4 3.6L13 7l-3.6 1.4L8 12l-1.4-3.6L3 7l3.6-1.4zM12.5 11l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+      <button aria-label="Full screen options" style="width: 40px; height: 36px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4.5h12M2 8h12M2 11.5h12M5 3v3M11 6.5v3M7 10v3" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg></button>
+      <button aria-label="Exit full screen" style="width: 40px; height: 36px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2.5V6H2.5M10 2.5V6h3.5M6 13.5V10H2.5M10 13.5V10h3.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    </div>
+  </div>
+  <div style="position: absolute; left: 96px; top: 48px; bottom: 160px; width: 440px; display: flex; align-items: center">
+    <span style="width: 440px; height: 440px; border-radius: 8px; background: #3b5b7a; box-shadow: 0 16px 32px rgba(0,0,0,0.4)"></span>
+  </div>
+  <div style="position: absolute; left: 616px; right: 96px; top: 48px; bottom: 160px; display: flex; flex-direction: column; justify-content: center; gap: 14px; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 28px; line-height: 36px; font-weight: 600">
+    <sc-for list="{{lines}}" as="l" hint-placeholder-count="7">
+      <div style="display: flex; flex-direction: column; gap: 2px">
+        <span style="{{l.style}}"><span style="color: {{l.doneColor}}">{{l.done}}</span><span>{{l.rest}}</span></span>
+        <sc-if value="{{l.second}}" hint-placeholder-val="{{ false }}"><span style="font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif; font-size: 16px; line-height: 22px; font-weight: 400; color: rgba(255,255,255,0.6)">{{l.secondText}}</span></sc-if>
+      </div>
+    </sc-for>
+    <span style="font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif; font-size: 12px; line-height: 16px; font-weight: 400; color: #9e9e9e; padding-top: 12px">Word timing generated on this PC by AI. It can be off by a moment.</span>
+  </div>
+  <div style="position: absolute; left: 24px; right: 24px; bottom: 24px; height: 112px; box-sizing: border-box; padding: 12px 16px; border-radius: 8px; background: rgba(44,44,44,0.75); border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 8px 16px rgba(0,0,0,0.26); display: grid; grid-template-columns: minmax(0, 1fr) 560px minmax(0, 1fr); align-items: center; gap: 16px">
+    <div style="display: flex; align-items: center; gap: 12px; min-width: 0">
+      <span style="width: 56px; height: 56px; border-radius: 4px; background: #3b5b7a; flex-shrink: 0"></span>
+      <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-size: 14px; line-height: 20px; font-weight: 600">Stereo Love</span><span style="font-size: 12px; color: #c5c5c5">Edward Maya, Vika Jigulina</span><span style="font-size: 12px; color: #9e9e9e">Playing from <a href="#">The Stereo Love Show</a></span></span>
+    </div>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px">
+      <div style="display: flex; align-items: center; gap: 12px">
+        <button aria-label="Shuffle" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h2.5c1.4 0 2.3.7 3.2 1.9l1.6 2.2c.9 1.2 1.8 1.9 3.2 1.9H14M2 12h2.5c1.4 0 2.3-.7 3.2-1.9M8.3 5.9c.9-1.2 1.8-1.9 3.2-1.9H14M12 2l2 2-2 2M12 8l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+        <button aria-label="Previous" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3v10M13 3.5v9L5.5 8z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+        <button aria-label="Pause" style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 24px; background: #60cdff; color: #000; font: inherit"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3v10M10.5 3v10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg></button>
+        <button aria-label="Next" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 3v10M3 3.5v9L10.5 8z" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg></button>
+        <button aria-label="Repeat" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 7V5.5A1.5 1.5 0 0 1 4.5 4H13M11 2l2 2-2 2M13 9v1.5a1.5 1.5 0 0 1-1.5 1.5H3M5 14l-2-2 2-2" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; width: 100%; font-size: 12px; color: #c5c5c5"><span style="width: 36px; text-align: right; font-variant-numeric: tabular-nums">1:59</span><div style="position: relative; flex-grow: 1; height: 18px; display: flex; align-items: center"><div style="width: 100%; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.5442)"></div><div style="position: absolute; left: 0; width: 48%; height: 4px; border-radius: 2px; background: #60cdff"></div></div><span style="width: 36px; font-variant-numeric: tabular-nums">-2:08</span></div>
+    </div>
+    <div style="display: flex; justify-content: flex-end; align-items: center; gap: 4px">
+      <button aria-label="Saved" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13.5 3 8.7a3 3 0 0 1 4.2-4.3l.8.8.8-.8A3 3 0 0 1 13 8.7z" fill="currentColor"></path></svg></button>
+      <button aria-label="Mute" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6v4h2.5L8 13V3L5 6zM10.5 5.5a3.5 3.5 0 0 1 0 5M12.5 3.5a6 6 0 0 1 0 9" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      <div style="position: relative; width: 96px; height: 18px; display: flex; align-items: center"><div style="width: 100%; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.5442)"></div><div style="position: absolute; left: 0; width: 70%; height: 4px; border-radius: 2px; background: #60cdff"></div></div>
+      <button style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit; font-size: 14px; margin-left: 4px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 3h13v8h-13zM6 13.5h4M8 11v2.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path></svg>This PC<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      <button aria-label="More" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #fff; font: inherit"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="13" cy="8" r="1.1" fill="currentColor"></circle></svg></button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+  const mode = (l, s) => ({ label: l, style: 'position: relative; height: 38px; padding: 0 14px; border: 0; background: transparent; font: inherit; font-size: 14px; color: ' + (s ? '#ffffff' : '#c5c5c5'), bar: s ? 'position: absolute; left: 14px; right: 14px; bottom: 3px; height: 3px; border-radius: 2px; background: #60cdff' : 'display: none' });
+  const modes = [mode('Lyrics', true), mode('Visualizer', false), mode('Up next', false), mode('Artist', false)];
+  const src = [['When you gonna stop breaking my heart', -3], ['I don’t wanna be another one', -2], ['Paying for the things I never done', -1], ['Don’t let go, don’t let go', 0, 'Don’t let go,', ' don’t let go', 'Nu mă lăsa, nu mă lăsa'], ['To my love', 1], ['Can I get to your soul', 2], ['Can you get to my thought', 3]];
+  const lines = src.map(s => {
+    const d = s[1], active = d === 0;
+    const a = Math.max(0.25, 1 - Math.abs(d) * 0.22);
+    return { done: active ? s[2] : s[0], rest: active ? s[3] : '', doneColor: active ? '#ffffff' : 'rgba(255,255,255,' + a.toFixed(2) + ')',
+      style: active ? 'color: rgba(255,255,255,0.45); font-size: 34px; line-height: 44px' : 'color: rgba(255,255,255,' + a.toFixed(2) + '); filter: blur(' + (Math.abs(d) * 0.4).toFixed(1) + 'px)',
+      second: active, secondText: s[4] || '' };
+  });
+  return { modes, lines };
+}
+}
+</script>
+</body>
+</html>
