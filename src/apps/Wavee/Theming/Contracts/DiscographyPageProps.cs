@@ -17,10 +17,10 @@ public sealed record DiscographyPageProps
     /// <summary>The route parsed as a discography route; false draws the error vacancy and nothing else.</summary>
     public required bool Parsed { get; init; }
 
-    /// <summary>The artist's name (the fallback name until it lands): the crumbs' first item.</summary>
+    /// <summary>The artist's name (the fallback name until it lands): the page's one ancestor crumb.</summary>
     public required string Name { get; init; }
 
-    /// <summary>The facet's title: the crumbs' second item and the page title.</summary>
+    /// <summary>The facet's title: the page title.</summary>
     public required string Title { get; init; }
 
     /// <summary>The route's facet: the selector's selection (a FRESH signal per render: the route, not the control, is the truth).</summary>

@@ -115,7 +115,7 @@ internal static partial class ClassicReleaseNotes
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
                 Padding = new Edges4(Spacing.PageWide, Spacing.L, Spacing.PageWide, Spacing.M),
-                Children = [Icon(Icons.Tag, 22f, Tok.TextPrimary), R.Type.PageHero(Loc.Get(Strings.WhatsNew.Title)) with { Grow = 1f }],
+                Children = [Icon(Icons.Tag, 22f, Tok.TextPrimary), R.Type.SurfaceDisplay(Loc.Get(Strings.WhatsNew.Title)) with { Grow = 1f }],
             },
             new BoxEl
             {

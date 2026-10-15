@@ -226,6 +226,9 @@ internal static class ClassicFrame
         OnBoundsChanged = props.OnContentRegionBounds,
     };
 
+    /// <summary>The content card's hairline: the top-left card radius and a 1-DIP stroke on the left and top edges (the right and bottom ones
+    /// overhang the clip). ALWAYS laid out with the card's own size, and its colour a bound brush, so a theme or light/dark switch only recolours
+    /// it; the stroke box is keyed so a test can hold it to that.</summary>
     private static Element ContentRegionStroke() => new BoxEl
     {
         ZStack = true, ClipToBounds = true, HitTestVisible = false,
@@ -233,7 +236,7 @@ internal static class ClassicFrame
         [
             new BoxEl
             {
-                Margin = ClassicFrameRules.StrokeOverhang, BorderWidth = 1f, BorderColor = Prop.Of(static () => Tok.StrokeCardDefault),
+                Key = "shell.content.stroke", Margin = ClassicFrameRules.StrokeOverhang, BorderWidth = 1f, BorderColor = Prop.Of(static () => Tok.StrokeCardDefault),
                 Corners = Design.Size.ContentPaneCorners,
             },
         ],

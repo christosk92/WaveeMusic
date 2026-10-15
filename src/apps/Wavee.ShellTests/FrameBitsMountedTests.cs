@@ -5,8 +5,8 @@
 // and decisions (`Wavee.Tests\FrameBitsTests.cs` pins the pure ones). What only a mounted tree can say:
 //
 //   registered      Classic registers every key, and the real shell draws the masthead and the material through them
-//   masthead        the title row stands on the browse surfaces' frame; a held chrome stays drawn while the band is not live; a
-//                   chrome that was never shown draws nothing; a trail without a parent has no prefix
+//   masthead        breadcrumb B on the browse surfaces' frame: the ancestors' trail slot over one title (drill), the title alone, the
+//                   trail alone under a hero; a held chrome stays drawn while the band is not live; a chrome never shown draws nothing
 //   material        the tint node stays the SAME node across a change (the brush fades; nothing flashes), the washes are keyed on
 //                   their artwork, and the tint binder leaf still claims the shell material through its port
 //   drawer          the pane stays mounted, closed included, while the shell is narrow, and nothing is mounted otherwise; in the real
@@ -86,35 +86,83 @@ public sealed class FrameBitsMountedTests(ShellHost host)
             Shell.GoTo(new Shell.Route(Shell.RouteKind.Home));
         });
 
+    // Classic tuning F1: the content card's hairline is always laid out at the card's own size (never 0 tall), so a switch only recolours it.
+    [Fact]
+    public void The_content_cards_hairline_is_laid_out_at_the_cards_size()
+        => host.Mounted(shell =>
+        {
+            shell.RunFrames(5);
+            var stroke = Node(shell, "shell.content.stroke");
+            var box = shell.Host.Scene.PresentedAbsoluteRect(stroke);
+            Assert.True(box.W > 100f && box.H > 100f, $"the hairline box is {box.W}x{box.H}");
+        });
+
     // ── the masthead ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    static PageChrome Chrome(params string[] trail)
+    static PageChrome Chrome(PageHeadForm form, params string[] trail)
     {
         var crumbs = new PageCrumb[trail.Length];
         for (int i = 0; i < crumbs.Length; i++)
             crumbs[i] = new PageCrumb(trail[i], i < crumbs.Length - 1 ? static () => { } : null);
-        return new PageChrome(trail[^1], crumbs);
+        return new PageChrome(trail[^1], crumbs, Form: form);
     }
 
+    static PageChrome Chrome(params string[] trail) => Chrome(PageHeadForm.Drill, trail);
+
+    // Breadcrumb B (Classic tuning F5, `C-BrowseCategory`): the ancestors' trail on a 28 slot, 4 above ONE 40/52 title; the current page is
+    // never a crumb.
     [Fact]
-    public void The_masthead_draws_the_trail_as_a_title_row_on_the_browse_surfaces_frame()
-        => ViewHarness.With(host, ViewKeys.ShellMasthead, new MastheadProps { Held = Chrome("Browse", "Pop"), Live = true },
+    public void A_drill_in_head_draws_its_ancestors_on_a_28_slot_over_one_40_52_title()
+        => ViewHarness.With(host, ViewKeys.ShellMasthead, new MastheadProps { Held = Chrome("Home", "Browse", "Pop"), Live = true },
             harness =>
             {
-                var prefix = harness.AbsoluteBounds(harness.Node("masthead-prefix:Browse"));
-                Assert.Equal(36f, prefix.X, 0.5f);   // the band's frame: the page's own column
-                Assert.True(prefix.Y >= 32f, "the band's top inset sits above the title row");
-                var current = harness.AbsoluteBounds(harness.Node("masthead-current"));
-                Assert.True(current.X > prefix.X + prefix.W - 0.5f, "the current title follows its parent crumbs");
+                var trail = harness.AbsoluteBounds(harness.Node("masthead-trail"));
+                Assert.Equal(36f, trail.X, 0.5f);   // the band's frame: the page's own column
+                Assert.Equal(32f, trail.Y, 0.5f);   // the band's top inset
+                Assert.Equal(ClassicPageHeadRules.TrailSlotHeight, trail.H, 0.5f);
+                Assert.True(harness.Contains("masthead-crumb:Home"));
+                Assert.True(harness.Contains("masthead-crumb:Browse"));
+                Assert.False(harness.Contains("masthead-crumb:Pop"), "the current page is the title, never a crumb");
+
+                var title = harness.Node("masthead-current");
+                var box = harness.AbsoluteBounds(title);
+                Assert.Equal(36f, box.X, 0.5f);
+                Assert.Equal(trail.Y + trail.H + ClassicPageHeadRules.TrailTitleGap, box.Y, 0.5f);
+                // The title's 52 line ends on the drill reserve (the laid-out box may add the face's overhang below it).
+                Assert.Equal(ClassicPageHeadRules.HeadReserve(PageHeadForm.Drill) - BrowseMastheadMetrics.TitleLine, box.Y, 0.5f);
             }, UnderClassic());
 
     [Fact]
-    public void A_trail_without_a_parent_has_no_prefix_and_the_title_starts_on_the_frame()
-        => ViewHarness.With(host, ViewKeys.ShellMasthead, new MastheadProps { Held = Chrome("Browse"), Live = true },
+    public void A_drill_in_head_two_deep_keeps_the_empty_trail_slot_so_its_title_does_not_move()
+        => ViewHarness.With(host, ViewKeys.ShellMasthead, new MastheadProps { Held = Chrome("Browse", "Pop"), Live = true },
             harness =>
             {
-                Assert.Empty(harness.FindPrefix("masthead-prefix:"));
-                Assert.Equal(36f, harness.AbsoluteBounds(harness.Node("masthead-current")).X, 0.5f);
+                Assert.Empty(harness.FindPrefix("masthead-crumb:"));
+                var box = harness.AbsoluteBounds(harness.Node("masthead-current"));
+                Assert.Equal(ClassicPageHeadRules.HeadReserve(PageHeadForm.Drill) - BrowseMastheadMetrics.TitleLine, box.Y, 0.5f);
+            }, UnderClassic());
+
+    [Fact]
+    public void A_title_head_is_the_title_alone_on_the_frame()
+        => ViewHarness.With(host, ViewKeys.ShellMasthead, new MastheadProps { Held = Chrome(PageHeadForm.Title, "Browse"), Live = true },
+            harness =>
+            {
+                Assert.False(harness.Contains("masthead-trail"));
+                var box = harness.AbsoluteBounds(harness.Node("masthead-current"));
+                Assert.Equal(36f, box.X, 0.5f);
+                Assert.Equal(32f, box.Y, 0.5f);   // the band's top inset
+            }, UnderClassic());
+
+    // "A hero is the title" (the Concerts hub repeated its title under its own hero).
+    [Fact]
+    public void A_hero_head_draws_the_trail_and_never_the_title()
+        => ViewHarness.With(host, ViewKeys.ShellMasthead, new MastheadProps { Held = Chrome(PageHeadForm.Hero, "Browse", "Concerts", "Tour"), Live = true },
+            harness =>
+            {
+                Assert.False(harness.Contains("masthead-current"), "the page's hero carries the title");
+                Assert.True(harness.Contains("masthead-crumb:Concerts"));
+                var trail = harness.AbsoluteBounds(harness.Node("masthead-trail"));
+                Assert.Equal(ClassicPageHeadRules.HeadReserve(PageHeadForm.Hero), trail.Y + trail.H, 0.5f);
             }, UnderClassic());
 
     [Fact]

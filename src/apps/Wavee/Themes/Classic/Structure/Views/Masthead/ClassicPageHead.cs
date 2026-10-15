@@ -1,14 +1,22 @@
-// ── Themes/Classic/Structure/Views/Masthead/ClassicPageHead.cs — Classic's `Page.Head` (themes plan 6.1, T4c) ───────────────
+// ── Themes/Classic/Structure/Views/Masthead/ClassicPageHead.cs — Classic's `Page.Head` (themes plan 6.1, T4c; breadcrumb B) ──────
 //
-// From `Shell.Masthead.UI.cs`: the trail-as-title row. Every crumb but the last is dimmed and clickable, a chevron follows each,
-// then the CURRENT title under a stable key (Browse-home -> category does not remount it). No parent means no prefix child at all
-// (a zero-width first sibling still padded the row a rung right). Classic places it inside the masthead band; a theme that draws its
-// head in the page mounts the same key from the page.
+// Breadcrumb B: ONE page title (40/52 display, `R.Type.SurfaceDisplay`) under a small trail of only its ANCESTORS (12/16/600 links in the
+// secondary ink, a tertiary `›` between two, 6 apart, on the bottom of a 28-DIP slot, 4 above the title). The current page is never a crumb,
+// and a trail two deep has no ancestors to show (the sidebar's selected parent already says where the page lives). What the head holds is the
+// route's `PageHeadForm`, never the trail's length, so a head keeps its height on its route:
+//
+//   Title   the title alone (Browse)
+//   Drill   the trail's slot (empty or not) over the title (a Browse category or section, a Home section)
+//   Hero    the trail's slot alone: the page's own hero is its title, so the title is never drawn twice (the Concerts pages)
+//
+// The title stands under a stable key (`masthead-current`), so Browse-home -> category does not remount it. Classic places the head inside the
+// masthead band; a page that draws its own head (the discography page) builds the same trail with `Trail`.
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Theming;
 using Wavee.Theming.Contracts;
+using Rules = Wavee.Themes.Classic.ClassicPageHeadRules;
 
 namespace Wavee.Themes.Classic;
 
@@ -16,47 +24,69 @@ namespace Wavee.Themes.Classic;
 internal static class ClassicPageHead
 {
     /// <summary>The registered template of <see cref="ViewKeys.PageHead"/>.</summary>
-    public static Element Template(PageHeadProps props, in ViewContext ctx) => TitleRow(props.Chrome.Crumbs, props.Chrome.Title);
+    public static Element Template(PageHeadProps props, in ViewContext ctx) => Head(props.Chrome);
 
-    static Element TitleRow(IReadOnlyList<PageCrumb> trail, string title)
+    static Element Head(PageChrome chrome)
     {
-        int last = trail.Count - 1;
-        var segs = new List<Element>(Math.Max(0, last) * 2);
-        for (int i = 0; i < last; i++)
+        switch (chrome.Form)
         {
-            var crumb = trail[i];
-            segs.Add(new BoxEl
+            case PageHeadForm.Hero:
+                return Trail(Ancestors(chrome.Crumbs));
+            case PageHeadForm.Drill:
+                return new BoxEl
+                {
+                    Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Rules.TrailTitleGap,
+                    Children = [Trail(Ancestors(chrome.Crumbs)), Title(chrome.Title)],
+                };
+            default:
+                return new BoxEl { Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.End, Children = [Title(chrome.Title)] };
+        }
+    }
+
+    /// <summary>The ancestors a trail draws: every crumb but the current page, and none while the trail is shorter than
+    /// <see cref="ClassicPageHeadRules.TrailMinDepth"/>.</summary>
+    public static IReadOnlyList<PageCrumb> Ancestors(IReadOnlyList<PageCrumb> crumbs)
+    {
+        if (crumbs.Count < Rules.TrailMinDepth) return [];
+        var ancestors = new PageCrumb[crumbs.Count - 1];
+        for (int i = 0; i < ancestors.Length; i++) ancestors[i] = crumbs[i];
+        return ancestors;
+    }
+
+    /// <summary>The page title: the display face at 40/52, regular weight, one line.</summary>
+    static Element Title(string title) => R.Type.SurfaceDisplay(title) with
+    {
+        Key = "masthead-current", MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
+    };
+
+    /// <summary>The trail's 28-DIP slot holding <paramref name="ancestors"/> (each a link, a <c>›</c> between two) on the slot's bottom
+    /// edge. An empty trail keeps its slot, so the head's height never depends on it. The last ancestor gives way first.</summary>
+    public static Element Trail(IReadOnlyList<PageCrumb> ancestors)
+    {
+        var links = new Element[Math.Max(0, ancestors.Count * 2 - 1)];
+        for (int i = 0; i < ancestors.Count; i++)
+        {
+            var crumb = ancestors[i];
+            if (i > 0) links[i * 2 - 1] = Ui.Caption("›") with { Weight = Rules.TrailWeight, Color = Tok.TextTertiary, Shrink = 0f };
+            links[i * 2] = new BoxEl
             {
-                Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-                OnClick = crumb.Go,
+                Key = "masthead-crumb:" + crumb.Label,
+                Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = crumb.Go,
+                MinWidth = 0f, Shrink = i == ancestors.Count - 1 ? 1f : 0f,
                 Children =
                 [
-                    R.Type.SurfaceDisplay(crumb.Label) with
+                    Ui.Caption(crumb.Label) with
                     {
-                        Color = Tok.TextTertiary, HoverColor = Tok.TextSecondary, PressedColor = Tok.TextTertiary,
-                        MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 0f,
+                        Weight = Rules.TrailWeight, Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary, PressedColor = Tok.TextSecondary,
+                        MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                     },
                 ],
-            });
-            segs.Add(R.Type.SurfaceDisplay("›") with { Color = Tok.TextTertiary, Shrink = 0f });
+            };
         }
-        var current = R.Type.SurfaceDisplay(title) with
-        {
-            Key = "masthead-current", MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-            Grow = 1f, Basis = 0f, Shrink = 1f,
-        };
-        if (segs.Count == 0)
-            return new BoxEl { Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.End, Children = [current] };
-        var prefix = new BoxEl
-        {
-            Key = "masthead-prefix:" + trail[0].Label,
-            Direction = 0, AlignItems = FlexAlign.End, Gap = Spacing.S, Shrink = 0f,
-            Children = segs.ToArray(),
-        };
         return new BoxEl
         {
-            Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.End, Gap = Spacing.S,
-            Children = [prefix, current],
+            Key = "masthead-trail", Direction = 0, Height = Rules.TrailSlotHeight, Shrink = 0f, MinWidth = 0f,
+            AlignItems = FlexAlign.End, Gap = Rules.TrailLinkGap, Children = links,
         };
     }
 }

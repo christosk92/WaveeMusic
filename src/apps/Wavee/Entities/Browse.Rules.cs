@@ -336,8 +336,9 @@ public static class BrowsePageLayout
     };
 }
 
-/// <summary>The overlay masthead's layout reserve — <c>FrameTop</c> + the SurfaceDisplay line. A CONSTANT, never a live
-/// measure: parked family pages must not re-pad when the overlay fades out.</summary>
+/// <summary>The overlay masthead's layout reserve for a head that is its title alone (Browse) — <c>FrameTop</c> + the SurfaceDisplay
+/// line. A CONSTANT, never a live measure: parked family pages must not re-pad when the overlay fades out. A theme whose heads also
+/// hold a trail adds its slot on top (Classic: <c>ClassicFrameBitsRules.HeadReserve</c>).</summary>
 public static class BrowseMastheadMetrics
 {
     public const float TitleLine = 52f;
@@ -349,8 +350,6 @@ public static class BrowseMastheadMetrics
     public static float ClipInset => Reserve;
     /// <summary>The feather at that cut — the band every detail surface uses.</summary>
     public const float ClipFadeBand = Detail.VerticalLayout.StickyFadeBand;
-
-    public static Edges4 FamilyBodyPad(float bottom) => new(Spacing.PageWide, BodyTop, Spacing.PageWide, bottom);
 
     /// <summary>Padding for a page that clips under the band: the reserve is a SPACER above the clipped node (so the cut
     /// engages when content reaches the band, not at rest), leaving the gutters and the bottom on the node.</summary>

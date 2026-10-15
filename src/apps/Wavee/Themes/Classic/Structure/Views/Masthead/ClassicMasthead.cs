@@ -7,8 +7,9 @@
 // "Show all" delegate resolved at click time. This template draws what it was handed:
 //
 //   held == null   nothing has ever been shown: an invisible, hit-test-free box
-//   held           the title row (`Page.Head`, `ClassicPageHead.cs`) and the "Show all" tool in one row on the browse surfaces' own
-//                  frame; live -> opaque and hit-testable with the Show motion, not live -> transparent and inert with the Hide motion
+//   held           the page head (`Page.Head`, `ClassicPageHead.cs`: the title, the ancestors' trail, or both by the route's form) and
+//                  the "Show all" tool on the title's baseline, in one row on the browse surfaces' own frame; live -> opaque and
+//                  hit-testable with the Show motion, not live -> transparent and inert with the Hide motion
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;

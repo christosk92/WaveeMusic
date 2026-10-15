@@ -24,6 +24,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
 
 namespace Wavee;
 
@@ -955,6 +956,17 @@ public static partial class Shell
         title = live ?? (trail.Count > 0 ? trail[^1].Label : MastheadStaticTitle(route));
         return !string.IsNullOrWhiteSpace(title);
     }
+
+    /// <summary>What a masthead route's head holds (<see cref="PageHeadForm"/>), by the route's kind alone, so the head keeps one height
+    /// on its route whatever its trail turns out to be: Browse is a root (its title only); the Concerts family's pages carry their
+    /// title in their own hero (the head holds the trail only); every other masthead route is a drill-in page (the trail over the
+    /// title).</summary>
+    public static PageHeadForm HeadFormOf(in Route route) => route.Kind switch
+    {
+        RouteKind.Browse => PageHeadForm.Title,
+        RouteKind.Concerts or RouteKind.ArtistConcerts or RouteKind.Concert => PageHeadForm.Hero,
+        _ => PageHeadForm.Drill,
+    };
 
     static string? MastheadStaticTitle(in Route route)
     {

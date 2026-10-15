@@ -12,6 +12,13 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **Page heads have one title and a small breadcrumb.** A Browse category or section, a Home section and the Concerts pages
+  no longer spell their parents out in large dimmed text: the page shows one 40-point title with a small "Home › Browse" trail
+  of its parents above it (none when the page is only two levels deep), and the Concerts hub and a concert's page no longer
+  repeat their title above their own header card. The discography and profile list pages ("Followers", "Albums") get the
+  same small trail instead of repeating the title twice. Library, Settings and What's new use the same large page title
+  as Browse and Search, and the library's album pane shows its title one size up on one line. Settings drops the gear
+  next to its title and the empty gap above the first section, and switching Settings tabs now cross-fades like a page.
 - **Settings > Appearance is regrouped.** The tab now starts with a Theme picker (one card per installed theme), then one
   expandable "Wavee Classic options" card that holds the sidebar, track list, track page and surface settings that used to
   be spread over the Lists, Sidebar and Theme sections, followed by App mode, Zoom and Marquee text. The daylist clock

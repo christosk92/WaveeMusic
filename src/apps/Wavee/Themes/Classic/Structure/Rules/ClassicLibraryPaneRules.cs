@@ -31,12 +31,6 @@ public static class ClassicLibraryPaneRules
     /// <summary>Between the header's text lines.</summary>
     public const float PaneHeaderGap = 3f;
 
-    /// <summary>The title link. 24 / 30 and not the prototype's 28 / 34: at 34 two lines alone spent 129 of the 128 the cover leaves. A one-line title — the common case — reads the same at either size.</summary>
-    public const float PaneTitleSize = 24f, PaneTitleLine = 30f;
-
-    /// <summary>The title wraps to two lines and ellipsizes after them.</summary>
-    public const int PaneTitleMaxLines = 2;
-
     /// <summary>The meta line, 12.5 / 16.</summary>
     public const float PaneHeaderMetaSize = 12.5f, PaneHeaderMetaLine = 16f;
 

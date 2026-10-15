@@ -5,6 +5,7 @@
 // keys. The Appearance tab's picker, options and legacy rows are `ThemeOptionsMountedTests`'; the Storage, Privacy & diagnostics and About tabs read the disk, the crash
 // reports and the process on mount, so they are left to the live app.
 
+using FluentGpu.Foundation;
 using Wavee;
 using Wavee.Theming.Contracts;
 using Xunit;
@@ -27,9 +28,46 @@ public sealed class SettingsMountedTests(ShellHost host)
 
             string slug = Settings.TabSlugs[(int)tab];
             Node(shell, "settings:scroll:" + slug);
-            // The other tabs' lanes are not mounted: the body swaps with no transition, only the scroller is keyed per tab.
+            // The other tabs' lanes are not mounted once the cross-fade settles: only the lane is keyed per tab.
             foreach (string other in Settings.TabSlugs)
                 if (other != slug) Assert.True(shell.Find("settings:scroll:" + other).IsNull, "the '" + other + "' lane is mounted beside '" + slug + "'");
+        });
+
+    // Classic tuning T2 (Q38): a tab switch is the page cross-fade. The arriving lane declares the page's neutral swap and fades in.
+    [Fact]
+    public void A_tab_switch_cross_fades_the_lane_like_a_page()
+        => host.Mounted(shell =>
+        {
+            Settings.Open(Settings.Tab.General);
+            shell.RunFrames(60);
+
+            Settings.Open(Settings.Tab.Appearance);
+            shell.RunFrames(1);
+            var lane = Node(shell, "settings:tab:appearance");
+            Assert.True(shell.Host.Animation.TryGetTransition(lane, out LayoutTransition swap), "the tab lane declares no transition");
+            Assert.Equal(Design.Nav.RecipeFor(Design.NavTransitionKind.Neutral), swap);
+            Assert.True(shell.Host.Animation.HasTracks(lane), "the arriving tab snapped in instead of fading");
+            shell.RunFrames(60);
+        });
+
+    // Classic tuning T1 + F4: the head is the 40/52 page title alone (no glyph, no meta line), and the first section header has no top margin:
+    // the tab lane's own 16 is the whole gap above it.
+    [Fact]
+    public void The_head_is_the_page_title_alone_and_the_first_section_sits_on_the_lanes_top()
+        => host.Mounted(shell =>
+        {
+            Settings.Open(Settings.Tab.General);
+            shell.RunFrames(60);
+
+            var scene = shell.Host.Scene;
+            var title = scene.PresentedAbsoluteRect(Node(shell, "settings:title"));
+            Assert.True(title.H >= 52f, $"the title is {title.H} tall: not the 40/52 page title");
+
+            var lane = Node(shell, "settings:scroll:general");
+            var laneBox = scene.PresentedAbsoluteRect(lane);
+            // The first section header sits 16 under the lane's top edge (the lane's own padding), not 16 + 32.
+            float first = shell.FindPrefix("settings:section:").Min(s => scene.PresentedAbsoluteRect(s.Node).Y);
+            Assert.Equal(16f, first - laneBox.Y, 0.5f);
         });
 
     [Fact]

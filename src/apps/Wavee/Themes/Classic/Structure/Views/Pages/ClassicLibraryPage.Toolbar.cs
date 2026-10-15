@@ -54,12 +54,12 @@ internal static partial class ClassicLibraryPage
             };
         Element titleRow = new BoxEl
         {
-            // FlexAlign.End, not Baseline: the engine's FlexAlign has no baseline arm (Foundation/LayoutTypes.cs), and END puts the 20-line count's bottom on the 36-line hero's, which
-            // is the prototype's reading.
+            // FlexAlign.End, not Baseline: the engine's FlexAlign has no baseline arm (Foundation/LayoutTypes.cs), and END puts the 20-line count's bottom on the 52-line title's, which
+            // is the prototype's reading. The title is the page title's one style (40/52 display, regular weight).
             Direction = 0, AlignItems = FlexAlign.End, Gap = Spacing.S, MinWidth = 0f,
             Children =
             [
-                R.Type.PageHero(p.Title) with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f },
+                R.Type.SurfaceDisplay(p.Title) with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f },
                 new TextEl(p.CountText)
                 {
                     Size = ClassicLibraryRules.CountSize, LineHeight = ClassicLibraryRules.CountLine, Color = Tok.TextTertiary, Shrink = 0f,

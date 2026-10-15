@@ -99,8 +99,8 @@ internal static class ClassicConcertRules
     public const float PickerW = 360f, PickerFieldW = 340f, PickerFieldH = 32f, PickerResultsMaxH = 248f, PickerRowH = 48f, PickerPin = 18f;
 
     // ── the sub-page frame (the schedule and the event page) ──
-    /// <summary>The spacer under the masthead reserve, the body's side gutter and the extra bottom padding past the player dock.</summary>
-    public const float SubPageReserveExtra = 40f, SubPageGutter = 32f, SubPageBottomExtra = 40f;
+    /// <summary>The body's side gutter and the extra bottom padding past the player dock.</summary>
+    public const float SubPageGutter = 32f, SubPageBottomExtra = 40f;
 
     /// <summary>The measured-width fallbacks of the two dashboards before their first measure.</summary>
     public const float ScheduleFallbackWidth = 900f, DetailFallbackWidth = 1000f;

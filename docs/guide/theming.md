@@ -289,7 +289,7 @@ search form) and the suggestions body alone (the progress slot, the pending heig
 | Key | Props | Core host | Classic template |
 |---|---|---|---|
 | `Shell.Masthead` | `MastheadProps` (a held `PageChrome`, `Live`, the tool verb) | `Shell.MastheadBand` (`[CoreHost]`, `Shell\Shell.Masthead.UI.cs`): which route's publication is live, the trail it holds while an unknown family fades | `ClassicMasthead`: the band row, its frame insets, the Show/Hide fade |
-| `Page.Head` | `PageHeadProps` (a `PageChrome`) | placed by the masthead; a page that draws its own head mounts it | `ClassicPageHead`: the trail-as-title row (dim clickable crumbs, chevrons, the current title under a stable key) |
+| `Page.Head` | `PageHeadProps` (a `PageChrome`) | placed by the masthead; a page that draws its own head mounts it | `ClassicPageHead`: breadcrumb B (Classic tuning F5): one 40/52 title under a stable key and a 12/16/600 trail of only its ancestors on a 28-DIP slot (none at depth ≤ 2); what it holds is the route's `PageHeadForm` (Title, Drill, Hero), so the head keeps one height per route (`Rules\ClassicPageHeadRules.cs`) |
 | `Shell.Material` | `MaterialProps` (the published `ShellMaterialState` as a read-only signal) | the frame; the channel is `Platform\ShellMaterial.cs` | `ClassicMaterial`: the flat tint with its brush fade, Home's three radial washes |
 | `Shell.Material.PageTone`, `.ArtistBlend`, `.ArtistVeil`, `.TintBinder` | `CoverToneProps`, `CoverBlendProps`, `CoverVeilProps`, `CoverTintProps` | the mounts in `Entities\Palette.Host.cs` (pages never write `Slots.View`) | `ClassicCoverLeaves`: the four cover leaves, moved from `Design.cs` |
 | `Shell.NarrowDrawer` | `NarrowDrawerProps` (`Mounted`, `Open`, and the stable `NarrowDrawerParts`) | `Shell.NarrowDrawer` (`[CoreHost]`, `Shell\Shell.UI.cs`): the Escape key-preview chain, the leaf-navigation close, the mount decision | `ClassicDrawer`: the scrim, the pane, their open/close motion |
@@ -298,7 +298,7 @@ search form) and the suggestions body alone (the progress slot, the pending heig
 | `Shell.FileDrop`, `Shell.DragChip`, `Shell.CoverScrim`, `Shell.Fps` | `FileDropProps`, `DragChipProps`, `CoverScrimProps`, `FpsProps` | the frame root (the drop target, `Drag.Preview`, `Setup.Covering`, `Diagnostics.FpsOverlayOn`) | `ClassicFrameBits` (`Shell.Fps` is the Common block `CommonFps`, T11c) |
 
 **`PageChrome`** (`Theming\Contracts\PageChrome.cs`) is the value the core hands the frame for a page's head: today the title, the trail
-(`PageCrumb`: a label and a navigate verb, none on the current page) and the "Show all" tool's state, built from the masthead publications
+(`PageCrumb`: a label and a navigate verb, none on the current page), the "Show all" tool's state and the head's form (`PageHeadForm`, `Shell.HeadFormOf`: by the route's kind), built from the masthead publications
 (`Shell.Mastheads`, the nav origins, `Shell.TryMasthead`). Views, band pivots, actions, the material claim and the backdrop join it as additive members
 with the lanes that have data for them.
 
@@ -1375,9 +1375,9 @@ The active theme's options arrive grouped by `SettingsThemeOptions.Current(wizar
 decides what is shown and the view only draws it. The numbers are `Rules\ClassicSettingsRules.cs`; Settings has no tiers: its column is capped (1000 DIP) and never compared with a window width (WVTH013).
 
 **Controls that freeze their inputs stay what they were.** A ComboBox, Slider or NumberBox binds one signal for its life, so each is seeded from the document when the page mounts (the template's mount effect) and re-synced by the child
-component that owns it; the video-override flyout and its anchor are root-lifetime state torn down when the Playback tab is left or the route is parked. The tab body swaps with no transition and only the scroller is keyed, per tab
+component that owns it; the video-override flyout and its anchor are root-lifetime state torn down when the Playback tab is left or the route is parked. The tab body swaps with the page cross-fade (Classic tuning T2, Q38: the lane `settings:tab:<slug>` carries the neutral page swap) and the scroller is keyed, per tab
 (`settings:scroll:<slug>`), so each tab keeps its own offset. The keys the mounted tests read (`settings:theme:picker`, `settings:theme:card:<id>`, `settings:theme:options`, `opt:group:<title>`, `legacy:<row>`, `appearance.zoom:<percent>`,
-`appearance.ai-lyrics`) are unchanged. The tuned canvas's page cross-fade between tabs (Q38) and a row deep link with scroll-into-view are not production behaviour today and are not part of this move.
+`appearance.ai-lyrics`) are unchanged. A row deep link with scroll-into-view is not production behaviour today and is not part of this move.
 
 **Tests.** The ids, Classic's registration, the props' equality, `row.Current` and the option grouping are `Wavee.Tests\SettingsPageContractTests.cs` (the document itself stays `SettingsDocTests`); the mounted facts (a tab opens in
 its own keyed lane, the deep link, and the three shared surfaces mounted through their keys) are `Wavee.ShellTests\SettingsMountedTests.cs`, next to `ThemeOptionsMountedTests` (the Appearance tab and the wizard step).

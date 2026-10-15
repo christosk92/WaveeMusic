@@ -24,13 +24,12 @@ internal static class ClassicLibraryPaneKit
         Enter: new EnterExit(Dy: ClassicLibraryPaneRules.SwapDy, Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
         ExitDynamics: TransitionDynamics.Tween(ClassicLibraryPaneRules.SwapOutMs, Easing.SmoothOut));
 
-    /// <summary>Cover 128 (r 6, <c>Elevation.Card</c>) · eyebrow · the title LINK 24/30/600 (2 lines, accent on hover) · the attribution (<c>ClassicDetailKit.ArtistLine(id.Artists)</c>, or a show's
-    /// publisher line) · meta 12.5/16. <c>AlignItems End</c>: the text block sits on the cover's baseline, the prototype's stance.
-    /// <para>The block is <see cref="ClassicLibraryPaneRules.PaneHeaderHeight"/> tall, ALWAYS, and the text column is budgeted to fit inside the 128 the cover leaves: 16 eyebrow + 60 title
-    /// (two 30-DIP lines; the 2-DIP link inset is cancelled by its own negative margin) + 20 attribution + 16 meta + three 3-DIP gaps = 121. That budget is why the title is 24/30 and not the
-    /// prototype's 28/34 — at 34 a two-line title alone put the column at 129 and pushed the whole tracklist down. A one-line title is the common case and reads the same; a wrapped one now
-    /// costs nothing below it. The <c>MinHeight 0</c> / <c>ClipToBounds</c> on the column and on the block are the BACKSTOP for a locale whose metrics overrun the budget anyway: it clips, it
-    /// never reflows.</para></summary>
+    /// <summary>Cover 128 (r 6, <c>Elevation.Card</c>) · eyebrow · the title LINK in the pane title's one style (<c>R.Type.PageHero</c>, 28/36/600; one line, accent on hover) · the
+    /// attribution (<c>ClassicDetailKit.ArtistLine(id.Artists)</c>, or a show's publisher line) · meta 12.5/16. <c>AlignItems End</c>: the text block sits on the cover's baseline, the
+    /// prototype's stance.
+    /// <para>The block is <see cref="ClassicLibraryPaneRules.PaneHeaderHeight"/> tall, ALWAYS, and the text column is budgeted to fit inside the 128 the cover leaves: 16 eyebrow + 36 title
+    /// + 20 attribution + 16 meta + three 3-DIP gaps = 97. A second 36-DIP title line would put the column at 133 and push the whole tracklist down, so the title ellipsizes on its one line.
+    /// The <c>MinHeight 0</c> / <c>ClipToBounds</c> on the column and on the block are the BACKSTOP for a locale whose metrics overrun the budget anyway: it clips, it never reflows.</para></summary>
     public static Element PaneHeader(string? cover, string eyebrow, string title, Action open, Element attribution, string meta) => new BoxEl
     {
         // ONE target: cover + eyebrow + title + attribution + meta open the album (the show pane's: the show). A title-only hyperlink left the cover inert in the library pane.
@@ -51,12 +50,10 @@ internal static class ClassicLibraryPaneKit
                 Children =
                 [
                     R.Type.Eyebrow(eyebrow) with { Color = Tok.TextTertiary },
-                    new TextEl(title)
+                    R.Type.PageHero(title) with
                     {
-                        Size = ClassicLibraryPaneRules.PaneTitleSize, LineHeight = ClassicLibraryPaneRules.PaneTitleLine, Weight = 600,
                         Color = Tok.TextPrimary, HoverColor = Tok.AccentTextPrimary,
-                        BrushTransitionMs = Design.Motion.Faster, MaxLines = ClassicLibraryPaneRules.PaneTitleMaxLines,
-                        Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                        BrushTransitionMs = Design.Motion.Faster, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                     },
                     attribution,
                     // The SAME rung for the show pane, which renders this header: "one geometry for both kinds, so a selection crossing album -> show moves nothing but the words".

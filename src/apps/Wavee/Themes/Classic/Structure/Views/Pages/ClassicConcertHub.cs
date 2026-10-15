@@ -52,9 +52,9 @@ internal static class ClassicConcertHub
             Direction = 1,
             Children =
             [
-                // The reserve + 24 as a SPACER: the clipped nodes start where the content does, so each cut engages
-                // only once it scrolls (BrowseMastheadMetrics.FamilyUnderBandPad).
-                new BoxEl { Height = BrowseMastheadMetrics.Reserve + Spacing.XXL, HitTestVisible = false },
+                // The trail's reserve + 12 as a SPACER (the header card is the hub's hero and its title): the clipped nodes start where the
+                // content does, so each cut engages only once it scrolls (BrowseMastheadMetrics.FamilyUnderBandPad).
+                new BoxEl { Height = ClassicPageHeadRules.HeadReserve(PageHeadForm.Hero) + ClassicPageHeadRules.HeroGap, HitTestVisible = false },
                 new BoxEl
                 {
                     Direction = 1, Gap = Spacing.L,
