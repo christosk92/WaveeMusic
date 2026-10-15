@@ -254,9 +254,6 @@ public class DesignSizeTests
     public void An_icon_button_is_control_height_by_construction()
         => Assert.Equal(Design.Size.ControlH, Controls.IconButtonSize);
 
-    [Fact]
-    public void The_follow_pill_is_one_step_above_the_control_ladder()
-        => Assert.Equal(36f, Controls.PillHeight);
 
     [Fact]
     public void The_dock_reserves_exactly_its_own_height()

@@ -301,11 +301,11 @@ public static partial class Palette
     /// is the header row's raw accent (the ladder's payload rung) — 0 when the caller has none.
     /// <para><paramref name="width"/>/<paramref name="height"/> finite = the veil at that size (the artist hero);
     /// <c>float.NaN</c> for both = the STRETCH arm: the veil takes its ZStack slot, for a surface whose height is its
-    /// content's (<see cref="CoverVeilProps"/>).</para></summary>
+    /// content's (<see cref="CoverVeilProps"/>). <paramref name="hold"/>: <see cref="CoverVeilProps.Hold"/>.</para></summary>
     public static Element ArtistHeroVeil(string? url, bool vertical, float width, float height, string key,
-                                          uint payloadAccent = 0)
+                                          uint payloadAccent = 0, float hold = float.NaN)
         => ViewSlots.View(ViewKeys.ShellCoverVeil,
-            new CoverVeilProps(url, vertical, width, height, payloadAccent)) with { Key = key };
+            new CoverVeilProps(url, vertical, width, height, payloadAccent, hold)) with { Key = key };
 
     /// <summary>Publishes the page-scoped shell-material tint when THIS cover is graded — with no page re-render. Every
     /// detail page must mount one, or the window chrome stays neutral while the page is coloured, which is the single

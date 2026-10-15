@@ -1,5 +1,5 @@
 // ── Platform/Controls.cs ───────────────────────────────────────────────────────────────────────────────────────────
-// Surfaces, SearchHighlight, Equalizer, SaveButton/PreSaveButton/FollowButton, SelectionBar, RowSwipe,
+// Surfaces, SearchHighlight, Equalizer, SaveButton/PreSaveButton/FollowToggle, SelectionBar, RowSwipe,
 // ExplicitBadge, MoreButton, the three dialog helpers, the vacancy grammar, Notify.Say. The envelope
 // for the whole file family is ch 00's 4,500-6,000; chapters 02's and 01's shares sit INSIDE it — do not double
 // count
@@ -483,8 +483,11 @@ public static partial class Controls
     /// on a real surface and the photography lives in the right half. A softened pass made the plate a whisper in light
     /// themes so the always-on bottom photo fade read as "the" fade; it was restored by explicit ruling. The VERTICAL
     /// arm keeps the softened peaks: it underlays copy stacked at a photo's bottom seam, where a 0.96 band flattened the
-    /// image into a painted plate.</para></summary>
-    public static GradientSpec ArtistHeroVeil(ColorF accent, bool vertical)
+    /// image into a painted plate.</para>
+    /// <para><paramref name="hold"/> moves the horizontal plate's hold stop (0.30 by default) to where the caller's copy column
+    /// ends, and the 0.35 shoulder keeps its distance after it (tuned Classic D18): the copy stays on the plate at every width.
+    /// NaN (or a hold left of the default) keeps the default stops.</para></summary>
+    public static GradientSpec ArtistHeroVeil(ColorF accent, bool vertical, float hold = float.NaN)
     {
         ColorF layer = Tok.FillLayerDefault;
         var wash = R.Wash;
@@ -499,12 +502,17 @@ public static partial class Controls
                 new GradientStop(0.82f, veil with { A = top }),
                 new GradientStop(1f, veil with { A = 0f }));
         }
+        float h = float.IsNaN(hold) ? HeroVeilHold : Math.Clamp(hold, HeroVeilHold, 1f - HeroVeilShoulder - HeroVeilTail);
         return GradientRight(
             new GradientStop(0f, veil with { A = 0.96f }),
-            new GradientStop(0.30f, veil with { A = 0.92f }),
-            new GradientStop(0.62f, veil with { A = 0.35f }),
+            new GradientStop(h, veil with { A = 0.92f }),
+            new GradientStop(h + HeroVeilShoulder, veil with { A = 0.35f }),
             new GradientStop(1f, veil with { A = 0f }));
     }
+
+    /// <summary>The horizontal veil's default hold stop, the distance from the hold to the 0.35 shoulder, and the least room the
+    /// shoulder keeps before the veil's clear edge.</summary>
+    const float HeroVeilHold = 0.30f, HeroVeilShoulder = 0.32f, HeroVeilTail = 0.04f;
 
     // ══ 2. SEARCH HIGHLIGHT ══════════════════════════════════════════════════════════════════════════════════════════
 
@@ -901,72 +909,13 @@ public static partial class Controls
         }
     }
 
-    /// <summary>A Follow / Following PILL — for artists and playlists (the "save" verb for a profile). Accent border +
-    /// ink when followed: "you follow this" is a STATE, and the border carries it (accent role 2).
-    /// <para>Geometry is the media capsule's (36 tall, fully rounded, the Standard hover/press rung) because a Follow
-    /// pill stood beside a Play capsule on every artist hero — they had to be the same object at two jobs.</para>
-    /// <para><c>// DELETE in Wave 5 (buttons)</c> — replaced by <see cref="FollowToggle"/> below, the 32/r4 toggle
-    /// from `docs/plans/wavee/home-redesign-implementation.md` Workstream B. Migration groups B–D move their call
-    /// sites first; this class stays compiling until every caller has moved.</para></summary>
-    public sealed class FollowButton : Component
-    {
-        public required string Uri { get; init; }
-        public string? Name { get; init; }
-        /// <summary>An on-media ink for a pill floated over photography; null takes the theme ink.</summary>
-        public ColorF? Foreground { get; init; }
-
-        public override Element Render()
-        {
-            var lib = Library;
-            if (lib is null) return new BoxEl();                 // capability gate
-            bool following = lib.IsSaved(Uri);                   // subscribe
-            ColorF idleInk = Foreground ?? Tok.TextPrimary;
-            return new BoxEl
-            {
-                Direction = 0, Height = PillHeight, Gap = Spacing.XS,
-                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                Padding = new Edges4(Spacing.M, 0f, Spacing.M, 0f), Corners = Radii.FullAll,
-                BorderWidth = 1f,
-                BorderColor = following ? Tok.AccentDefault
-                    : Foreground is { } fg ? fg with { A = 0.42f } : Tok.StrokeControlDefault,
-                HoverFill = Foreground is { } hover ? hover with { A = 0.12f } : Tok.FillSubtleSecondary,
-                PressedFill = Foreground is { } press ? press with { A = 0.18f } : Tok.FillSubtleTertiary,
-                HoverScale = R.Motion.ScaleStandard.Hover, PressScale = R.Motion.ScaleStandard.Press,
-                Role = AutomationRole.Button, Cursor = CursorId.Hand,
-                OnClick = () => lib.ToggleSaved(Uri, Name),
-                Children =
-                [
-                    Icon(following ? Icons.HeartFill : Icons.Heart, 14f,
-                         following ? Tok.AccentTextPrimary : idleInk),
-                    Body(Loc.Get(following ? Strings.Artist.Following : Strings.Artist.Follow)) with
-                        { Weight = 600, Color = following ? Tok.AccentTextPrimary : idleInk },
-                ],
-            };
-        }
-
-        /// <summary>The skeleton SHAPE the deriver walks: the real pill, so it shimmers as a bordered pill rather than
-        /// as a full-width default bar stretched across the actions row.</summary>
-        public static Element SkeletonShape() => new BoxEl
-        {
-            Direction = 0, Height = PillHeight, Gap = Spacing.XS,
-            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Padding = new Edges4(Spacing.M, 0f, Spacing.M, 0f), Corners = Radii.FullAll,
-            BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault,
-            Children =
-            [
-                Icon(Icons.Heart, 14f, Tok.TextPrimary),
-                Body(Loc.Get(Strings.Artist.Follow)) with { Weight = 600, Color = Tok.TextPrimary },
-            ],
-        };
-    }
-
     /// <summary>Which pair of words a <see cref="FollowToggle"/> speaks — the "save" verb differs between an ordinary
     /// entity (artist, playlist) and a release that has not dropped yet.</summary>
     public enum FollowVerb : byte { Follow, PreSave }
 
     /// <summary>THE Follow / Pre-save toggle (Workstream B) — a stock <c>ToggleButton</c> tinted by the PAGE accent,
-    /// replacing both <see cref="FollowButton"/> and the old <see cref="PreSaveButton"/> pill. 32/r4, heart glyph that
-    /// swaps <see cref="Icons.Heart"/>/<see cref="Icons.HeartFill"/> and pops on a USER click only (never on a
+    /// replacing the old Follow pill and the old <see cref="PreSaveButton"/> pill. 32/r4, a glyph that swaps on the
+    /// checked edge (<see cref="Glyph"/>: the person for Follow, the heart for Pre-save) and pops on a USER click only (never on a
     /// data-driven load — <see cref="ToggleButton.Controlled"/>'s own <c>userFlip</c> bookkeeping), a checked-label
     /// swap ("Follow" → "Following"/"Pre-save" → "Pre-saved") and a root reflow to match. See the plan's state table
     /// (`docs/plans/wavee/home-redesign-implementation.md` Workstream B) for the tint ramp; <see cref="ButtonRules.FollowStyle"/>
@@ -993,7 +942,7 @@ public static partial class Controls
             bool light = R.IsLight;
 
             return ToggleButton.Controlled(Label(Verb, false), on, _ => lib.ToggleSaved(Uri, Name),
-                glyph: Icons.Heart, checkedGlyph: Icons.HeartFill, checkedLabel: Label(Verb, true),
+                glyph: Glyph(Verb, false), checkedGlyph: Glyph(Verb, true), checkedLabel: Label(Verb, true),
                 style: ButtonRules.FollowStyle(a, light), parts: RootNoShrink);
         }
 
@@ -1003,10 +952,19 @@ public static partial class Controls
             _ => on ? Strings.Artist.Following : Strings.Artist.Follow,
         });
 
+        /// <summary>The toggle's glyph. Following someone is not liking something (tuned Classic D21, owner Q38): Follow wears
+        /// a person, "add" at rest and the plain person once followed, so it never reads as the Like heart beside it.
+        /// Pre-save is a save, so it keeps the heart.</summary>
+        public static string Glyph(FollowVerb verb, bool on) => verb switch
+        {
+            FollowVerb.PreSave => on ? Icons.HeartFill : Icons.Heart,
+            _ => on ? Icons.Contact : SegoeGlyphs.AddFriend,
+        };
+
         /// <summary>The skeleton SHAPE the deriver walks: the real toggle at rest (unchecked, the semantic accent),
         /// off the live theme, so it shimmers as itself rather than a stretched default bar.</summary>
         public static Element SkeletonShape(FollowVerb verb = FollowVerb.Follow) => ToggleButton.Controlled(
-            Label(verb, false), false, static _ => { }, glyph: Icons.Heart,
+            Label(verb, false), false, static _ => { }, glyph: Glyph(verb, false),
             style: ButtonRules.FollowStyle(Tok.AccentDefault, R.IsLight), parts: RootNoShrink);
     }
 

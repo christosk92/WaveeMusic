@@ -12,6 +12,12 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **The artist page's header reads better at ordinary window sizes, and Top tracks arrives with the page.** The name, bio
+  and stats now end a little past the middle of the header (they used to run across nine-tenths of it, over the bright
+  half of the photo at a medium or 1440-wide window), and the dark side of the photo now reaches exactly as far as the
+  text before fading out. Follow (on artists, profiles and search results) shows a person instead of a heart, so it no longer
+  looks like Like: a person with a plus before you follow, the person once you do. Top tracks now appears together with
+  the rest of the page instead of fading in a moment after it.
 - **The library page is one surface, and its controls match the rest of the app.** The library list and the album or
   artist detail beside it now sit on the same content card, split only by a thin divider, instead of three differently
   tinted panels; the artist list's "in your library · newest" bar is a plain section too. The artist header's buttons are

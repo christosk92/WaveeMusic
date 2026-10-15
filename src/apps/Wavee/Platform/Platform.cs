@@ -811,6 +811,17 @@ public static class WaveeIcons
         Path.Combine(AppContext.BaseDirectory, "assets", "fonts", "wavee-icons.otf") + "#WaveeIcons";
 }
 
+/// <summary>Segoe Fluent Icons marks the engine's generated <c>Icons.*</c> table does not carry yet. They draw in the
+/// default icon face (the bundled Segoe Fluent Icons, <see cref="WaveeFonts.Icons"/>), unlike <see cref="WaveeIcons"/>;
+/// a mark moves to the engine's <c>glyphs.json</c> with its next change. Same ASCII-safe <c>Of(0x____)</c> convention.</summary>
+public static class SegoeGlyphs
+{
+    static string Of(int cp) => ((char)cp).ToString();
+
+    /// <summary>A person with a plus (Segoe "AddFriend"): the Follow toggle at rest (tuned Classic D21).</summary>
+    public static readonly string AddFriend = Of(0xE8FA);
+}
+
 /// <summary>The app's font FILES, resolved next to the exe (assets/fonts/*, shipped by the csproj's assets Content
 /// glob and the MSIX layout's recursive copy of the publish dir). Every entry is the engine's "path#Family" form: the
 /// renderer splits at '#', loads the PATH through DirectWrite's font-file reference and never hands the family name

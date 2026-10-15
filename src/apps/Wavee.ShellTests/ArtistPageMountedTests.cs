@@ -8,6 +8,8 @@
 //   pending      the page is the keyed column over its keyed scroller and a body child, the body is NOT composed (no magazine) and the host's size observer
 //                hears the page's width
 //   failed       the error arm keeps the same column and composes no body
+//   hero copy    tuned Classic D18: on the photo tiers the hero's copy column is min(CopyMax, max(360, 0.56 w - gutter)) wide at the gutter, so it ends
+//                near 56 % of the hero (it ran to ~90 % at Medium and ~94 % at a 1440 window's Wide)
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -25,7 +27,8 @@ public sealed class ArtistPageMountedTests(ShellHost host)
 {
     static ViewHarnessOptions UnderClassic() => new() { Composition = ClassicTheme.Create() };
 
-    static ArtistPageProps Props(bool pending, bool failed, Action<RectF>? measure = null)
+    static ArtistPageProps Props(bool pending, bool failed, Action<RectF>? measure = null, float width = ArtistHeroLayout.WideWidth,
+                                 bool bodyReady = false)
     {
         var accent = ColorF.FromRgba(30, 144, 255, 255);
         var compact = new Signal<bool>(false);
@@ -38,9 +41,9 @@ public sealed class ArtistPageMountedTests(ShellHost host)
             Pending = () => pending,
             Failed = () => failed,
             Retry = static () => { },
-            BodyReady = false,
-            Width = ArtistHeroLayout.WideWidth,
-            Metrics = ArtistHeroLayout.For(ArtistHeroLayout.WideWidth, ArtistHeroTier.Wide),
+            BodyReady = bodyReady,
+            Width = width,
+            Metrics = ArtistHeroLayout.For(width, ArtistHeroTier.Wide),
             Measure = measure ?? (static _ => { }),
             Accent = accent,
             AccentFn = () => accent,
@@ -85,6 +88,23 @@ public sealed class ArtistPageMountedTests(ShellHost host)
                 Assert.True(measured > 0f, "the page column reports its width to the host");
             }, UnderClassic());
     }
+
+    [Theory]
+    [InlineData(752f, 389.12f)]    // Medium (a 1072 window with the 320 pane): was 752 - 2 x 32 = 688
+    [InlineData(1120f, 591.2f)]    // Wide (a 1440 window with the 320 pane): was 1120 - 2 x 36 = 1048
+    public void The_hero_copy_ends_near_56_percent_of_the_hero_on_the_photo_tiers(float width, float copy)
+        => ViewHarness.With(host, ViewKeys.ArtistPage, Props(pending: false, failed: false, width: width, bodyReady: true),
+            harness =>
+            {
+                harness.RunFrames(30);
+                var m = ArtistHeroLayout.For(width, ArtistHeroTier.Wide);
+                Assert.Equal(copy, ClassicArtistRules.HeroCopyWidth(width, in m), 2);
+                var node = harness.Find("artist-hero-copy");
+                Assert.False(node.IsNull, "the hero's copy column is mounted");
+                var r = harness.LocalBounds(node);
+                Assert.Equal(copy, r.W, 1);
+                Assert.Equal(m.Gutter, harness.AbsoluteBounds(node).X - harness.AbsoluteBounds(harness.Find("artist-page:fixture")).X, 1);
+            }, UnderClassic());
 
     [Fact]
     public void A_failed_page_keeps_the_column_and_composes_no_body()

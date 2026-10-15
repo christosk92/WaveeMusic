@@ -202,8 +202,12 @@ public static class ArtistReadiness
     public static bool ChartSettled(bool chartReady, bool chartFailed) => chartReady || chartFailed;
 
     /// <summary>Live-table twin of <see cref="ChartFailed(bool,uint,uint,EdgeState,ReadOnlySpan{uint},ReadOnlySpan{uint},ReadOnlySpan{uint})"/>.
-    /// Unasked is pending, not failed — the page's first paint before Demand.</summary>
-    public static bool ChartFailed(Artist a)
+    /// Unasked is pending, not failed — the page's first paint before Demand.
+    /// <para><paramref name="targetsAsked"/>: the caller has asked the charted rows for the popular list it is reading (the
+    /// page host's demand latch). Until then the target marks are not read at all — a row nobody has asked YET reads as
+    /// "nothing coming", which settled the gate as failed in the render between the list landing and the rows being asked,
+    /// revealed the page with Top tracks still a shimmer, and played Top tracks as a second wave (tuned Classic D19).</para></summary>
+    public static bool ChartFailed(Artist a, bool targetsAsked)
     {
         if (!a.IsValid) return false;
         var scope = Entities.Current;
@@ -218,7 +222,7 @@ public static class ArtistReadiness
         if (!knows && (asked & (uint)ArtistFields.Chart) == 0) return false;
         var edges = scope.Edges.ArtistPopular;
         var tracks = scope.Tracks;
-        var targets = edges.Targets(slot);
+        var targets = targetsAsked ? edges.Targets(slot) : ReadOnlySpan<int>.Empty;
         int n = targets.Length;
         if (n == 0)
             return ChartFailed(knows, asked, inflight, edges.Readiness(slot), [], [], []);

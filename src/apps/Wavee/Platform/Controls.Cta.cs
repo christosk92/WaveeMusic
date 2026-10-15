@@ -71,10 +71,6 @@ public static partial class Controls
     /// `with`-tweak call site never has to import <c>ButtonRules</c> just to read the number back).</summary>
     public const float PrimaryMinWidth = ButtonRules.PrimaryWidthNominal;
 
-    /// <summary>The capsule Follow pill's height (<see cref="FollowButton"/> and its skeleton): one step above the 32-DIP
-    /// control ladder.</summary>
-    public const float PillHeight = 36f;
-
     // ══ 1b. THE NEW 32/r4 GRAMMAR (Workstream B) ═════════════════════════════════════════════════════════════════════
     //
     // A styled STOCK `Button`/`IconButton`/`ToggleButton`, never a hand-rolled box, so every one of these inherits the

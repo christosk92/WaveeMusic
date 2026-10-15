@@ -141,6 +141,11 @@ public readonly partial struct Artist
         // RowStamp's own Slot field is what keeps a reactivated page from aliasing the previous artist's cache.
         RowStamp _popularStamp, _popularImageStamp, _appearsStamp, _playlistsStamp, _videosStamp, _fansStamp, _latestStamp;
 
+        /// <summary>THE CHART DEMAND LATCH (tuned Classic D19): the (scope, artist, popular-list version) whose charted rows
+        /// <see cref="DemandRows"/> has asked. The chart gate reads the rows' marks only for that list
+        /// (<see cref="ArtistReadiness.ChartFailed(Artist, bool)"/>); a signal, so the render after the ask re-reads the gate.</summary>
+        readonly Signal<(uint Epoch, int Slot, uint Version)> _chartRowsAsked = new((0u, Table.None, 0u));
+
         /// <summary>The hero photo's LATCHED art identity (ch 08 BUG E, <see cref="Detail.CoverLatch"/>): the incoming
         /// candidate (the avatar the card already carried, later the header once the overview lands) only replaces what
         /// is showing when it is genuinely different art — never on a same-artwork CDN-size swap. Reset to null on a
@@ -337,7 +342,8 @@ public readonly partial struct Artist
 
             // ONE visual swap: overview + measured width + the first hero decode + chart settled. Snap, not FadeOnly:
             // waiting for the bitmap then fading the whole tree from 0 hid the photo again (stillwrong.mp4).
-            bool chartSettled = ArtistReadiness.ChartSettled(ArtistReadiness.Chart(a), ArtistReadiness.ChartFailed(a));
+            bool chartRowsAsked = a.IsValid && _chartRowsAsked.Value == (scope.Epoch, a.Slot, e.ArtistPopular.Version(a.Slot));
+            bool chartSettled = ArtistReadiness.ChartSettled(ArtistReadiness.Chart(a), ArtistReadiness.ChartFailed(a, chartRowsAsked));
             _bodyReady = ArtistReadiness.BodyReady(_ready, _measured, _heroGateOpened, chartSettled);
             if (_bodyReady) _heroGateOpened = true;
 
@@ -605,7 +611,7 @@ public readonly partial struct Artist
         /// </list>
         ///
         /// <para><b>Kept OUT of this fold</b> (too dynamic to fold cheaply, per the render-cost fix's own escape
-        /// hatch): <see cref="ArtistReadiness.Chart"/>/<see cref="ArtistReadiness.ChartFailed(Artist)"/> additionally
+        /// hatch): <see cref="ArtistReadiness.Chart"/>/<see cref="ArtistReadiness.ChartFailed(Artist, bool)"/> additionally
         /// read every popular track's <c>Known</c>/<c>Asked</c>/<c>Inflight</c> bits (up to
         /// <see cref="ArtistPopularTracks.ExtendedCap"/> rows, each landing independently) to decide the chart gate —
         /// folding that is as expensive as just re-rendering on it. Render keeps a literal
@@ -720,10 +726,8 @@ public readonly partial struct Artist
                 _popularStamp = popularStamp;
                 var popular = a.PopularSlots;
                 if (popular.Length > 0)
-                {
                     Entities.Ensure(MemoryMarshal.Cast<int, Track>(popular), TrackFields.Row | TrackFields.Video);
-
-                }
+                _chartRowsAsked.Value = (scope.Epoch, slot, e.ArtistPopular.Version(slot));
             }
 
             // The edge and its track rows can publish in different drains.  Repeat the bounded image prefetch when

@@ -109,7 +109,7 @@ internal static class ClassicArtistHero
                     Children =
                     [
                         Palette.ArtistHeroVeil(paletteUrl, vertical: false, w, height, key: "artist-veil:" + uri,
-                                               payloadAccent: headerAccent),
+                                               payloadAccent: headerAccent, hold: ClassicArtistRules.HeroVeilHold(w, in m)),
                     ],
                 }.StretchFromTop();
             expanded = new BoxEl
@@ -166,8 +166,9 @@ internal static class ClassicArtistHero
 
         return new BoxEl
         {
-            Direction = 1,
-            Width = MathF.Min(m.CopyMaxWidth, MathF.Max(1f, w - 2f * m.Gutter)),
+            Key = "artist-hero-copy", Direction = 1,
+            // D18: on the photo tiers the copy ends near 56 % of the hero and the veil holds to that edge (ClassicArtistRules).
+            Width = ClassicArtistRules.HeroCopyWidth(w, in m),
             MaxWidth = m.CopyMaxWidth, MinWidth = 0f, Gap = Spacing.S,
             // The page-level SkelRegion owns the single reveal. A second hero-copy entrance here made the
             // already-revealed page flash and move for another frame when the overview landed.
