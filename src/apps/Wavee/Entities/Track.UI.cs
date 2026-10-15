@@ -226,9 +226,10 @@ public readonly partial struct Track
     /// <summary>The row's "…" lane: <c>Controls.MoreButton</c> — the shared affordance with its
     /// <c>ClickRequestsContext</c> and <c>BlocksDragArm</c> — at the row's 28-DIP circle (Modern, Emphatic hover/press) or
     /// a square with no scale (Classic, ch 01 W8). It is invisible at rest in both row styles and appears on ROW hover
-    /// (tuned Classic L2): the reveal rides a NON-interactive wrapper so it follows the row. <paramref name="enabled"/> false is an invisible, inert placeholder that reserves the
+    /// (tuned Classic L2): the reveal rides a NON-interactive wrapper so it follows the row. <paramref name="shown"/> (a bound
+    /// row's focus fact) also shows it at rest, so the focused row offers it to the keyboard. <paramref name="enabled"/> false is an invisible, inert placeholder that reserves the
     /// lane (a skeleton / overscan row). Not a tab stop — the list owns the one roving stop.</summary>
-    public static Element MoreCell(bool enabled, bool classic, string? key = null)
+    public static Element MoreCell(bool enabled, bool classic, string? key = null, Func<bool>? shown = null)
     {
         var button = Controls.MoreButton(null, requestsContext: enabled) with
         {
@@ -248,7 +249,7 @@ public readonly partial struct Track
                 new BoxEl
                 {
                     Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Opacity = 0f,
+                    Opacity = enabled && shown is not null ? Prop.Of(() => shown() ? 1f : 0f) : (Prop<float>)0f,
                     HoverOpacity = enabled ? 1f : 0f,
                     Children = [button],
                 },

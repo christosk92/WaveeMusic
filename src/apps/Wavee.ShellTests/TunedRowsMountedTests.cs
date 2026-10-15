@@ -6,10 +6,13 @@
 //       keep the lane empty)
 //   L2  the heart lane shows a filled heart only on a liked row (every Liked Songs row; al14's unliked rows show nothing), the
 //       outline and the "…" are hover reveals (rest 0, hover 1)
+//       — and on the row that holds the list's focus, so a keyboard user sees them too
 //   L3  no lane carries a film glyph: the trailing lanes are the "…" and the chevron only
 //   L4  a withheld row states its reason in the duration lane (al14's waterfall rows are not out yet: their date, not a clock)
 
 using FluentGpu.Foundation;
+using FluentGpu.Input;
+using FluentGpu.Pal;
 using FluentGpu.Scene;
 using Wavee;
 using Wavee.Theming;
@@ -105,6 +108,32 @@ public sealed class TunedRowsMountedTests(ShellHost host)
             var liked = RowCells(shell, Track.CellKey.Heart);
             Assert.NotEmpty(liked);
             Assert.All(liked, h => Assert.Equal(1f, scene.Paint(h).Opacity));   // every liked song keeps its filled heart
+        }), widthDip: 1600f, heightDip: 900f);
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void The_focused_row_shows_its_outline_heart_and_more_button_without_hover(int rowStyle)
+        => host.Mounted(shell => WithRowStyle(shell, rowStyle, () =>
+        {
+            Open(shell, s_waterfall, "the waterfall album's rows");
+            var scene = shell.Host.Scene;
+            var first = shell.FindPrefix("row").Where(k => k.Key == "row" && OnScreen(scene, k.Node))
+                .Select(k => scene.PresentedAbsoluteRect(k.Node)).Where(r => r.H > 0f).OrderBy(r => r.Y).First();
+            // Click the first row (the list's roving focus lands on it), take the pointer away, then arrow to the second.
+            var p = new Point2(first.X + first.W / 2f, first.Y + first.H / 2f);
+            shell.Window.QueueInput(new InputEvent(InputKind.PointerMove, p, 0, 0));
+            shell.Window.QueueInput(new InputEvent(InputKind.PointerDown, p, 0, 0, TimestampMs: 1000));
+            shell.Window.QueueInput(new InputEvent(InputKind.PointerUp, p, 0, 0, TimestampMs: 1010));
+            shell.RunFrames(2);
+            shell.Window.QueueInput(new InputEvent(InputKind.PointerMove, new Point2(4f, 600f), 0, 0));
+            shell.RunFrames(2);
+            Key(shell, Keys.Down);
+            shell.RunFrames(30);
+
+            // al14's rows are unliked: only the focused row offers its outline heart and its "…" at rest.
+            Assert.Single(RowCells(shell, Track.CellKey.Heart), h => scene.Paint(h).Opacity == 1f);
+            Assert.Single(RowCells(shell, Track.CellKey.More), m => scene.Paint(m).Opacity == 1f);
         }), widthDip: 1600f, heightDip: 900f);
 
     [Theory]

@@ -13,8 +13,8 @@ versions separately under `v*` and is not tracked in this file.)
 ### Changed
 
 - **Track rows are quieter at rest.** A song shows a heart only when you like it; the outline heart and the "…" button
-  appear when you point at the row. The versions chevron now appears only on songs that have another version (a music
-  video or an alternate recording) and points down, turning as the versions open; other songs reach the same panel
+  appear when you point at the row or move to it with the keyboard, and the artist page's top tracks follow the same
+  rule. The versions chevron now appears only on songs that have another version (a music video or an alternate recording) and points down, turning as the versions open; other songs reach the same panel
   through "Track details" in their menu. A song with a music video no longer shows a film icon at the end of the row (it
   read like a checkbox on Liked Songs): a small film icon follows its title instead, in both row styles. A song you
   can't play states why in its time column, "Unavailable" or its release date in smaller text, and pointing at that

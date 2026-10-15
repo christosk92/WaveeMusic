@@ -102,7 +102,7 @@ internal static class ClassicTrackTable
         if (set.Plays) cells[i++] = Track.RowEndCell(BoundPlaysCell(r, classic), CellKey.Plays);
         if (RowMetrics.ShowTempo(in set)) cells[i++] = Track.RowEndCell(BoundTempoCell(r, classic), CellKey.Tempo);
         cells[i++] = Track.RowEndCell(BoundDurationCell(r, classic), CellKey.Duration);
-        if (set.Actions) cells[i++] = Track.MoreCell(true, classic, CellKey.More);
+        if (set.Actions) cells[i++] = Track.MoreCell(true, classic, CellKey.More, () => r.Focused);
         if (set.Expand) cells[i++] = BoundExpandCell(r);
 
         float padX = RowMetrics.PadXFor(set.Tier);
@@ -249,11 +249,12 @@ internal static class ClassicTrackTable
     /// <summary>The heart lane's row reveal (tuned Classic L2): a liked row keeps its filled heart at rest, an unliked one
     /// shows nothing until the ROW is hovered and then fades its outline in. The reveal rides a NON-interactive wrapper
     /// around the heart's own click target, so the hover it reads is the row skin's (the same idiom as the # cell's
-    /// layers); the rest opacity is bound to the presentation, so a like re-resolves it with no rebuild.</summary>
+    /// layers); the rest opacity is bound to the presentation and the slot's focus, so a like re-resolves it with no rebuild
+    /// and the focused row shows its outline to the keyboard.</summary>
     static Element BoundHeartReveal(BoundRow r, bool classic) => new BoxEl
     {
         Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        Opacity = Prop.Of(() => r.P.State.Saved ? 1f : 0f), HoverOpacity = 1f,
+        Opacity = Prop.Of(() => r.P.State.Saved || r.Focused ? 1f : 0f), HoverOpacity = 1f,
         Children = [BoundHeart(r, classic)],
     };
 

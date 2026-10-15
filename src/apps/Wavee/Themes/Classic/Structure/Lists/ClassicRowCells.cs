@@ -322,13 +322,17 @@ internal static class ClassicRowCells
     static Element HeartReveal(Track t, Element heart)
     {
         var track = t;
-        return new BoxEl
-        {
-            Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Opacity = Prop.Of(() => Track.LikedNow(track) ? 1f : 0f), HoverOpacity = 1f,
-            Children = [heart],
-        };
+        return HeartReveal(heart, () => Track.LikedNow(track));
     }
+
+    /// <summary>The ONE heart reveal every row shares (the eager lanes above, the artist chart): rest opacity 1 while
+    /// <paramref name="shown"/> holds (a liked row, or a row that holds the list's focus), 0 otherwise; 1 on ROW hover.</summary>
+    internal static Element HeartReveal(Element heart, Func<bool> shown) => new BoxEl
+    {
+        Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        Opacity = Prop.Of(() => shown() ? 1f : 0f), HoverOpacity = 1f,
+        Children = [heart],
+    };
 
     /// <summary>A Modern title with a video: the caller's title, then the small film glyph right after it (tuned Classic
     /// L3). The title yields first under pressure; the glyph keeps its size.</summary>

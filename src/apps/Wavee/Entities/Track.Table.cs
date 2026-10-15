@@ -1173,9 +1173,16 @@ public readonly partial struct Track
         /// <summary>The album arm's outer scroller's restore key: <see cref="ListScrollKey"/>'s identity, its own lane.</summary>
         string TrailScrollKey => _scrollScope + _latest.ScrollKey + ":trail:r" + _resetEpoch;
 
+        /// <summary>The slot ROOT every list path returns. The list's roving focus lands on the slot root, and a component's
+        /// node (its anchor) cannot carry a handler, so the root is this box: it hears the focus edge and feeds the slot's
+        /// focus fact (<c>RowScope.IsFocused</c>: the keyboard-current tracking and the row's focus reveals, tuned Classic L2).
+        /// Without it the skin's own edge never fired — the focus sits on its ancestor.</summary>
+        static Element FocusRoot(Element slot, Action<bool> focusEdge)
+            => new BoxEl { Direction = 1, MinWidth = 0f, OnFocusChanged = focusEdge, Children = [slot] };
+
         Element FlatList(RepeatLayout layout, bool trailing, bool narrate)
             => ItemsView.CreateBound(_rowItems!,
-                scope => Embed.Comp(() => new TableSlot(this, scope.Row, 0, narrate)),
+                scope => FocusRoot(Embed.Comp(() => new TableSlot(this, scope.Row, 0, narrate)), scope.Row.OnFocusChanged),
                 layout,
                 new ListOptions<Track>
                 {
@@ -1198,7 +1205,7 @@ public readonly partial struct Track
         /// included). The COUNT carries the section only while the page has rows or is empty — never over a shimmer.</summary>
         Element RecsList(int total, RepeatLayout layout, bool trailing, bool narrate)
             => ItemsView.CreateBound(total,
-                scope => Embed.Comp(() => new TableRecItem(this, scope, narrate)),
+                scope => FocusRoot(Embed.Comp(() => new TableRecItem(this, scope, narrate)), scope.OnFocusChanged),
                 layout,
                 new ListOptions
                 {
@@ -1233,7 +1240,7 @@ public readonly partial struct Track
         {
             int prefix = Detail.VerticalLayout.PrefixCount;
             return ItemsView.CreateBound(Detail.VerticalLayout.ItemCount(visible, facts),
-                scope => Embed.Comp(() => new TableVerticalItem(this, scope, narrate)),
+                scope => FocusRoot(Embed.Comp(() => new TableVerticalItem(this, scope, narrate)), scope.OnFocusChanged),
                 layout,
                 new ListOptions
                 {
@@ -2452,7 +2459,7 @@ public readonly partial struct Track
             if (_latch == 0) _latch = real ? (byte)2 : (byte)1;
             if (!real) return _host.PlaceholderRow(in set, shape.Tracks, shape.RowH, RowMetrics.PadXFor(set.Tier)) with { Key = "row:shim" };
 
-            _row ??= new Track.BoundRow(presentation, likePop, _hovered, Playback.IsPlaying, _host.AccentRead, PlayCurrent, LikeCurrent, ToggleExpandCurrent);
+            _row ??= new Track.BoundRow(presentation, likePop, _hovered, _scope.IsFocused, Playback.IsPlaying, _host.AccentRead, PlayCurrent, LikeCurrent, ToggleExpandCurrent);
             var row = _row;
             // The structure draws the grid (Modern or Classic template); built ONCE per slot per shape, like it always was.
             var templates = _host.RowTemplatesFor(set.Classic);

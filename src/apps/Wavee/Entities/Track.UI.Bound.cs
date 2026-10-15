@@ -114,11 +114,12 @@ public readonly partial struct Track
         bool ShowAlbumColumn, bool Open);
 
     /// <summary>One slot's bound inputs, created once at mount: the presentation memo every cell reads, the like-edge
-    /// memo, the row hover signal, the playback flag the equalizer animates on, the page accent and the three handlers (each
-    /// resolves the current item itself). The structure's row template binds its cells to these and never builds one.</summary>
+    /// memo, the row hover signal, the slot's focus fact, the playback flag the equalizer animates on, the page accent and
+    /// the three handlers (each resolves the current item itself). The structure's row template binds its cells to these
+    /// and never builds one.</summary>
     internal sealed class BoundRow(IReadSignal<RowPresentation> presentation, IReadSignal<bool> likePop,
-                                   IReadSignal<bool> hovered, IReadSignal<bool> playing, Func<ColorF> accent,
-                                   Action play, Action like, Action toggleExpand)
+                                   IReadSignal<bool> hovered, IReadSignal<bool>? focused, IReadSignal<bool> playing,
+                                   Func<ColorF> accent, Action play, Action like, Action toggleExpand)
     {
         public readonly IReadSignal<RowPresentation> Presentation = presentation;
         public readonly IReadSignal<bool> LikePop = likePop;
@@ -130,6 +131,13 @@ public readonly partial struct Track
 
         /// <summary>The current presentation — a subscribing read, for bind thunks only.</summary>
         public RowPresentation P => Presentation.Value;
+
+        /// <summary>Does the slot hold the list's focus (the ItemsView slot's <c>RowScope.IsFocused</c>)? A subscribing read,
+        /// for bind thunks only: the row's hover reveals (the outline heart, the "…") also show on the focused row, so a
+        /// keyboard user sees them (tuned Classic L2). False for a slot no ItemsView built.</summary>
+        public bool Focused => _focused?.Value ?? false;
+
+        readonly IReadSignal<bool>? _focused = focused;
     }
 
     internal static long NowUnix => Store.ToUnix(Entities.Now);
