@@ -410,7 +410,10 @@ public readonly partial struct Playlist
 
             if (!pl.IsValid) return Controls.Vacancy(Controls.VacancyVoice.Error);
 
-            var cfg = _local ? Detail.Config.Playlist with { Heart = HeartMode.None, Recommendations = false } : Detail.Config.Playlist;
+            // Your own playlist has no heart (tuned Classic D1): following it means nothing; a followed one keeps it as Unfollow.
+            var cfg = _local ? Detail.Config.Playlist with { Heart = HeartMode.None, Recommendations = false }
+                : pl.IsOwner ? Detail.Config.Playlist with { Heart = HeartMode.None }
+                : Detail.Config.Playlist;
             bool editable = pl.Editable;
             bool recs = PageRules.ShowsRecommendations(_local, editable, pl.Uri.Provider == EntityProvider.Spotify, stamp.EditsLive, stamp.Recommendations);
             bool tune = !_local && HasTuneChoice(pl) && pl.TuningCurrent;

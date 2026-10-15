@@ -1106,8 +1106,9 @@ public static partial class Detail
         /// <summary>The accent-rule placeholder: 20 × 2 at radius 1, 2-DIP top margin.</summary>
         public const float RuleWidth = Controls.AccentRuleWidth, RuleHeight = Controls.AccentRuleHeight,
                            RuleGap = Controls.AccentRuleGap, RuleRadius = 1f;
-        /// <summary>The action row: a 120-wide Play button (<see cref="Controls.PrimaryMinWidth"/>), then four 32-DIP
-        /// satellites. Renamed from <c>PlayPillWidth</c> (Workstream B migration group C).</summary>
+        /// <summary>A page's own primary (a podcast's Follow / Resume capsule): 120 wide (<see cref="Controls.PrimaryMinWidth"/>).
+        /// The default Play is the split, <see cref="RailLayout.PlaySplitWidth"/>. Renamed from <c>PlayPillWidth</c>
+        /// (Workstream B migration group C).</summary>
         public const float PlayButtonWidth = 120f;
         public const int SatelliteCount = 4;
         /// <summary>The toolbar band's three leading pills (the search pill is the command bar's SearchPreferred 240).</summary>
@@ -1137,7 +1138,7 @@ public static partial class Detail
         /// <c>Badges</c> may share its line) or the LEAD row (<c>Owner</c>: an OwnerRow owner block, or an episode's show
         /// link) · title · attribution (<c>Artists</c>: billed artists; a podcast's Attribution slot) · <c>Rating</c> ·
         /// meta (everything but a TypeYear album) · an episode's badges · <c>Ledger</c> · the CTA cluster (a primary +
-        /// <c>Fabs</c> FABs: the fixed heart / Share / ⋯ group, or a page's <c>Satellites</c>) · <c>Topics</c> · the blurb
+        /// <c>Fabs</c> actions: the fixed Shuffle / heart / Share / ⋯ group, or a page's <c>Satellites</c>) · <c>Topics</c> · the blurb
         /// (clamped to the rail's own description lines). The trailing fields default to "absent", so every rail without
         /// the podcast slots is the plan it always was. <c>ArtistFaces</c>: the <c>Artists</c> row is the artist line (an
         /// album-family page, whether the line comes from its Attribution slot or the default), whose reserved height is
@@ -1154,7 +1155,8 @@ public static partial class Detail
         /// <summary>The skeleton's PREDICTION, made before any data: per kind and badge style, plus the rail slots the page
         /// declared (<paramref name="slots"/> — presence is known at mount, the data is not). Default slots ⇒ exactly the
         /// pre-podcast plan. An episode with an Attribution slot is led by it (the <see cref="RailPlan.Owner"/> shape), and
-        /// has no eyebrow and no after-title attribution.</summary>
+        /// has no eyebrow and no after-title attribution. The fixed action group (tuned Classic D1) is Shuffle on a track
+        /// page, the heart when the kind has one, Share, and the ⋯ every kind but Liked carries.</summary>
         public static RailPlan RailPlanFor(DetailKind kind, BadgeStyle badges, bool heart, int descriptionMaxLines,
                                            RailSlotSet slots = default)
         {
@@ -1169,7 +1171,9 @@ public static partial class Detail
                 ArtistFaces: typeYear && !RailLayout.IsPodcast(kind),
                 Meta: !typeYear || RailLayout.IsPodcast(kind),
                 TitleLines: RailTitleLines,
-                Fabs: slots.Satellites ? Math.Max(0, slots.SatelliteCount) : (heart ? 1 : 0) + 1 + (kind != DetailKind.Album ? 1 : 0),
+                Fabs: slots.Satellites ? Math.Max(0, slots.SatelliteCount)
+                    : (kind is DetailKind.Album or DetailKind.Playlist or DetailKind.Liked ? 1 : 0) + (heart ? 1 : 0) + 1
+                      + (kind != DetailKind.Liked ? 1 : 0),
                 DescriptionLines: blurb ? RailDescriptionLinesFor(descriptionMaxLines) : 0,
                 Badges: RailLayout.BadgeRowFor(kind, slots.Badges, eyebrow),
                 Rating: slots.Rating,
@@ -1204,9 +1208,16 @@ public static partial class Detail
         public const float Gap = 14f, PadTop = 24f, PadBottom = 24f;
         /// <summary>The CTA cluster sits 4 DIP lower than the gap alone would put it.</summary>
         public const float CtaTopMargin = 4f;
-        /// <summary>The fixed group: [primary] 12 [heart · Share · ⋯], the group 8 apart, standard 32/r4 icon buttons
-        /// (Workstream B: was 40-DIP round FABs); the two units wrap.</summary>
+        /// <summary>The fixed group (tuned Classic D1): [Play split] 12 [Shuffle] 8 [heart] 8 [Share] 8 [⋯], standard 32/r4 icon
+        /// buttons in ONE wrap, 8 apart both ways; the 12 after the split is the 8 gap plus the split's own trailing margin
+        /// (<see cref="SplitTrail"/>), so a wrapped action starts its line flush.</summary>
         public const float CtaGap = 12f, FabGap = 8f, FabSize = 32f;
+        /// <summary>The Play split (tuned Classic D1, D2): [Play 88 │ ⌄ 32] joined by a 1-DIP divider, one 121-wide accent control.</summary>
+        public const float PlayHalf = 88f, MenuHalf = 32f, SplitDivider = 1f;
+        /// <inheritdoc cref="PlayHalf"/>
+        public const float PlaySplitWidth = PlayHalf + SplitDivider + MenuHalf;
+        /// <summary>The split's trailing margin: the 4 that, with the wrap's 8, set it 12 from the first action.</summary>
+        public const float SplitTrail = CtaGap - FabGap;
         /// <summary>A page's Satellites (W1's "36 FABs", now the standard 32 ladder): [primary][each satellite] in ONE
         /// wrap, 8 apart both ways.</summary>
         public const float SatelliteSize = 32f, SatelliteGap = 8f;
@@ -1298,31 +1309,25 @@ public static partial class Detail
         }
 
         /// <summary>The CTA cluster: its top margin plus its wrapped lines, laid out as the engine's flex wrap does (greedy,
-        /// the gap on both axes). The fixed arm wraps two units, the primary and the FAB group; the satellites arm wraps the
-        /// primary and every satellite one by one. The primary's nominal width is the skeleton capsule's.</summary>
+        /// the gap on both axes). Both arms wrap the primary and every action one by one: the fixed arm's primary is the
+        /// Play split with its trailing margin, the satellites arm's the page's 120 capsule.</summary>
         public static float CtaHeight(in Skeleton.RailPlan p, float coverEdge)
         {
             int fabs = Math.Max(0, p.Fabs);
-            if (!p.Satellites)
-            {
-                if (fabs == 0) return CtaTopMargin + PillHeight;
-                float group = fabs * FabSize + (fabs - 1) * FabGap;
-                bool oneLine = Skeleton.PlayButtonWidth + CtaGap + group <= coverEdge + WrapSlack;
-                return CtaTopMargin + (oneLine ? MathF.Max(PillHeight, FabSize) : PillHeight + CtaGap + FabSize);
-            }
-            float used = Skeleton.PlayButtonWidth, line = PillHeight, closed = 0f;
+            float gap = p.Satellites ? SatelliteGap : FabGap, size = p.Satellites ? SatelliteSize : FabSize;
+            float used = p.Satellites ? Skeleton.PlayButtonWidth : PlaySplitWidth + SplitTrail, line = PillHeight, closed = 0f;
             for (int i = 0; i < fabs; i++)
             {
-                if (used + SatelliteGap + SatelliteSize <= coverEdge + WrapSlack)
+                if (used + gap + size <= coverEdge + WrapSlack)
                 {
-                    used += SatelliteGap + SatelliteSize;
-                    line = MathF.Max(line, SatelliteSize);
+                    used += gap + size;
+                    line = MathF.Max(line, size);
                 }
                 else
                 {
-                    closed += line + SatelliteGap;
-                    used = SatelliteSize;
-                    line = SatelliteSize;
+                    closed += line + gap;
+                    used = size;
+                    line = size;
                 }
             }
             return CtaTopMargin + closed + line;

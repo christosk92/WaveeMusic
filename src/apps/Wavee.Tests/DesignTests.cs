@@ -818,7 +818,7 @@ public class DesignNavMotionTests
 
     [Fact]
     public void AccentFor_a_coverless_page_is_the_payload_hex_not_a_live_track()
-        => Assert.Equal(Design.Palette.ChromeFromPayload(0xFFC2185Bu), Detail.AccentFor(null, 0xFFC2185Bu));
+        => Assert.Equal(Design.Palette.Floor(Design.Palette.ChromeFromPayload(0xFFC2185Bu)), Detail.AccentFor(null, 0xFFC2185Bu));
 }
 
 public class DesignWashTests

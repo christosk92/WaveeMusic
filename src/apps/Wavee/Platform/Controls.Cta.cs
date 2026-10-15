@@ -12,8 +12,8 @@
 // A styled stock engine Button, NOT a hand-rolled box. Every LABELED Play/Resume/Shuffle CTA on a MEDIA surface routes
 // through `PrimaryButton` / `PlayButton`, so it inherits the Button's internals verbatim: the keyboard focus ring, the
 // automation role, the Space/Enter mechanics, the palette colour seam that carries an artwork-derived accent
-// (`Button.ButtonPalette.ForAccent`), and the 83 ms brush ramp on every state flip. It sits on the 32/r4 control ladder
-// with a 600 label and a floor width, nothing more.
+// (`AccentFillPalette`: the accent IS the fill, tuned Classic D20), and the 83 ms brush ramp on every state flip. It sits on
+// the 32/r4 control ladder with a 600 label and a floor width, nothing more.
 //
 // UTILITY surfaces (settings, dialogs, empty-state actions) keep stock Fluent rectangles by calling the engine's
 // `Button.*` directly. Circular play FABs sitting ON artwork are not this skin either: they keep their round geometry
@@ -81,11 +81,12 @@ public static partial class Controls
     // control's own internals verbatim (focus ring, automation role, Space/Enter mechanics, the 83ms brush ramp) instead
     // of re-deriving them. No `HoverScale`/`PressScale`/hand cursor anywhere in this section: the grammar table's whole
     // point is that these controls behave like ordinary WinUI controls, not like media chrome.
-    // All accent maths routes through `Button.ButtonPalette.ForAccent` (E1) — this file carries no copy of the tier
-    // arithmetic, only geometry.
+    // The accent is painted AS GIVEN (`AccentFillPalette`): every caller already hands a fill (the system accent's fill shade, or a
+    // page accent with its contrast floor, `Design.Palette.Floor`), so re-shading it through `ButtonPalette.ForAccent` (its
+    // Light2 / Dark1 tier) paled every Play a second time (tuned Classic D20: one Play style, the board's accent fill).
 
     /// <summary>The ONE primary call-to-action on a surface (Play/Resume) — a stock <c>Button</c> Accent-appearance,
-    /// tinted by <paramref name="accent"/> via <see cref="Button.ButtonPalette.ForAccent"/>, 32 tall/r4, 14 semibold
+    /// filled with <paramref name="accent"/> (<see cref="AccentFillPalette"/>), 32 tall/r4, 14 semibold
     /// label, floored at <see cref="PrimaryMinWidth"/> so a short label ("Play") never reads as an icon button.
     /// <paramref name="wrap"/> lets a narrow CTA row take a two-line label (the show page's) instead of the default single trimmed line.</summary>
     public static BoxEl PrimaryButton(string label, Action onClick, ColorF accent, string? glyph = null, bool wrap = false)
@@ -98,7 +99,7 @@ public static partial class Controls
             Wrap = wrap ? TextWrap.Wrap : TextWrap.NoWrap,
         });
         return Button.Create(label, onClick, ButtonAppearance.Accent, glyph: glyph,
-            style: Button.DefaultStyle(ButtonAppearance.Accent, palette: Button.ButtonPalette.ForAccent(accent)) with
+            style: Button.DefaultStyle(ButtonAppearance.Accent, palette: AccentFillPalette(accent)) with
             {
                 MinHeight = ButtonHeight,
             },
@@ -116,6 +117,20 @@ public static partial class Controls
     /// <inheritdoc cref="PlayButton(ColorF, Action, string?, string?)"/>
     public static BoxEl PlayButton(Func<ColorF> accent, Action onClick, string? label = null, string? glyph = null)
         => PlayButton(accent(), onClick, label, glyph);
+
+    /// <summary>The accent button palette with <paramref name="fill"/> as the fill itself: rest, then 0.90 and 0.80 alpha for
+    /// hover and pressed (the stock accent tiers), the legible on-fill ink (<see cref="ColorContrast.PickContrast(in ColorF)"/>)
+    /// dimmed when pressed, and the accent elevation border at rest and hover.</summary>
+    public static Button.ButtonPalette AccentFillPalette(ColorF fill)
+    {
+        ColorF ink = ColorContrast.PickContrast(fill);
+        return new Button.ButtonPalette(
+            Background: new StateBrush(fill, fill with { A = 0.90f }, fill with { A = 0.80f }, Tok.AccentDisabled),
+            Foreground: new StateBrush(ink, ink, ink with { A = OnFillSecondaryAlpha(ink) }, Tok.TextOnAccentDisabled),
+            Border: new Button.BorderRamp(Tok.AccentControlElevationBorder, Tok.AccentControlElevationBorder,
+                                          GradientSpec.Solid(ColorF.Transparent), GradientSpec.Solid(ColorF.Transparent)),
+            Sizing: BackgroundSizing.OuterBorderEdge);
+    }
 
     /// <summary>The ONE on-media scrim button ramp (Workstream B) — a <see cref="Button.ButtonPalette"/> for a labeled
     /// or icon-only stock control sitting directly on artwork (a video poster's transport row, a cover-corner action
@@ -311,32 +326,4 @@ public static partial class Controls
     /// constant, so neither a theme read nor an equality test would be correct here.</para></summary>
     public static float OnFillSecondaryAlpha(in ColorF ink)
         => ColorContrast.RelativeLuminance(ink) < 0.5f ? 0x80 / 255f : 0xB3 / 255f;
-
-    // ══ THE CONTEXT PLAY BUTTON — the hero ▶ that says what a press will do ═════════════════════════════════════════════
-
-    /// <summary>The detail hero's primary: <see cref="PlayButton(Func{ColorF}, Action, string?, string?)"/> whose glyph and
-    /// label follow playback (Play ▶ → Pause ⏸ while this subject is the one playing). A small component so the
-    /// play/pause flip re-renders THIS button and not the page rail around it; the props freeze at mount, so the subject
-    /// is keyed by its uri.</summary>
-    public static Element ContextPlayButton(string subjectUri, Func<ColorF> accent, Action onClick)
-        => Embed.Comp(() => new ContextPlayButtonHost { Uri = subjectUri, Accent = accent, OnClick = onClick })
-            with { Key = "ctxplay:" + subjectUri };
-
-    sealed class ContextPlayButtonHost : Component
-    {
-        public required string Uri { get; init; }
-        public required Func<ColorF> Accent { get; init; }
-        public required Action OnClick { get; init; }
-        EntityId _id;
-        bool _parsed;
-
-        public override Element Render()
-        {
-            if (!_parsed) { _id = EntityId.Parse(Uri); _parsed = true; }
-            bool pause = PlayRelation.ShowsPause(_id);
-            return pause
-                ? PlayButton(Accent(), OnClick, Loc.Get(Strings.Home.Pause), Icons.Pause)
-                : PlayButton(Accent(), OnClick);
-        }
-    }
 }

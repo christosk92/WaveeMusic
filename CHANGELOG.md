@@ -12,6 +12,14 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **Album, playlist and Liked Songs pages lead with one Play split.** The rail (and the narrow-window header) now starts with
+  one accent control, Play with a small ⌄ beside it ("More ways to play": Add to queue, Play next, Start radio), followed
+  by Shuffle, the heart, Share and ⋯. Albums get their ⋯ in the rail too, and your own playlists no longer show a heart
+  (a playlist you follow keeps it, to unfollow). The split reads as one button: one border, a quiet divider and a
+  12-point chevron. Every Play button in the app now uses the colour it is given instead of a paler shade of it, and a
+  colour taken from the artwork always keeps 4.5:1 contrast for the Play label, the hearts and accent text: a colour
+  that is too light or too dark steps to a darker or lighter shade, and falls back to your system accent when none fits.
+  The "Add to playlist" item in a playlist's list menu reads "Copy to playlist" for every playlist.
 - **Page heads have one title and a small breadcrumb.** A Browse category or section, a Home section and the Concerts pages
   no longer spell their parents out in large dimmed text: the page shows one 40-point title with a small "Home › Browse" trail
   of its parents above it (none when the page is only two levels deep), and the Concerts hub and a concert's page no longer

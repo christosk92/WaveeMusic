@@ -128,10 +128,10 @@ internal static partial class ClassicDetailFrame
         ColorF accentColor = accent();
         var kids = new List<Element>(16);
 
-        // The CTA's pieces first: how many FABs it carries is a row decision (it sizes the CTA's lines) as well as its
-        // children. A page's Satellites replace the fixed group; no Shuffle either way (the command bar's, W27).
+        // The CTA's pieces first: how many actions it carries is a row decision (it sizes the CTA's lines) as well as its
+        // children. A page's Satellites replace the fixed group (tuned Classic D1: Shuffle · heart · Share · ⋯).
         Element[]? satellites = slots.Satellites?.Invoke();
-        List<Element>? fabs = satellites is null ? RailFabs(id, cfg.Heart != HeartMode.None, acts, accent) : null;
+        List<Element>? fabs = satellites is null ? ClassicDetailKit.FixedActions("rail:", id, cfg.Heart != HeartMode.None, acts, accent) : null;
         var presence = PresenceOf(slots, satellites?.Length ?? 0);
         bool lead = RailLayout.LeadsWithAttribution(id.Kind, presence);
         bool blurb = (id.EditableMetadata && slots.Description is not null) || id.DescriptionHtml is { Length: > 0 };
@@ -191,22 +191,12 @@ internal static partial class ClassicDetailFrame
         if (id.DaylistExpiresAtMs > 0 && slots.Pulse is { } pulse) kids.Add(ClassicDetailKit.LateRow("rail:daylist", pulse()));
         if (id.ChartNewEntries > 0) kids.Add(ClassicDetailKit.LateRow("rail:chart", ChartCaption(id, slots)));
 
-        // CTA cluster: the primary (the page's, else Play), then the fixed FAB GROUP that wraps as a unit — or the page's
-        // satellites, wrapping one by one.
-        Element primary = slots.Primary is { } primaryOf ? primaryOf(accent) : Controls.ContextPlayButton(spec.Identity.Subject.Text, accent, play);
+        // CTA cluster: the primary (the page's, else the Play split, D1/D2), then the fixed actions or the page's satellites,
+        // all wrapping one by one.
+        Element primary = slots.Primary is { } primaryOf ? primaryOf(accent) : ClassicDetailKit.PlaySplit(id.Subject, accent, play);
         kids.Add(satellites is not null
             ? SatelliteCta("rail:cta", primary, satellites, RailLayout.CtaTopMargin)
-            : new BoxEl
-            {
-                Key = "rail:cta", Layout = ClassicDetailKit.Shove,
-                Direction = 0, Wrap = true, Gap = RailLayout.CtaGap, AlignItems = FlexAlign.Center,
-                Margin = new Edges4(0f, RailLayout.CtaTopMargin, 0f, 0f),
-                Children =
-                [
-                    primary,
-                    new BoxEl { Direction = 0, Gap = RailLayout.FabGap, AlignItems = FlexAlign.Center, Children = fabs!.ToArray() },
-                ],
-            });
+            : ClassicDetailKit.ActionRow("rail:cta", primary, fabs!, RailLayout.CtaTopMargin));
 
         if (rows.Topics && slots.Topics is { } topics) kids.Add(ClassicDetailKit.LateRow("rail:topics", topics(cover)));
 
@@ -242,26 +232,6 @@ internal static partial class ClassicDetailFrame
         Padding = new Edges4(RailSidePadL, RailLayout.PadTop, RailSidePadR, RailLayout.PadBottom),
         Children = rows,
     };
-
-    /// <summary>The rail's FIXED FAB group — the heart (a Save / Follow kind), Share, and the ⋯ every kind but the album
-    /// carries. What a page's <see cref="FrameSlots.Satellites"/> replace.</summary>
-    static List<Element> RailFabs(Identity id, bool heart, FrameActions acts, Func<ColorF> accent)
-    {
-        var fabs = new List<Element>(3);
-        if (heart)
-        {
-            string saveUri = ClassicDetailKit.SaveTargetOf(id).Text;
-            string saveName = id.Title;
-            fabs.Add(Embed.Comp(() => new Controls.SaveButton { Uri = saveUri, Name = saveName, Glyph = 16f, Box = RailFabSize, Accent = accent })
-                with { Key = "save:" + saveUri });
-        }
-        if (ClassicDetailKit.ShareActionFor(id) is { } share)
-            fabs.Add(Controls.Named(ClassicDetailKit.Fab(Icons.Share, share), Loc.Get(Strings.Menu.Share)));
-        // ch 05 parity 15: an album's rail has no ⋯ — its overflow is the vertical hero's alone.
-        if (acts.More is { } more && id.Kind != DetailKind.Album)
-            fabs.Add(ClassicDetailKit.MoreButton(more, RailFabSize) with { Key = "rail:more" });
-        return fabs;
-    }
 
     /// <summary>The SATELLITES arm of a CTA cluster (rail and vertical header): the primary, then each satellite, in ONE
     /// wrap 8 apart both ways — the prototype's <c>.cta</c> (W1, W4).</summary>
@@ -371,19 +341,17 @@ internal static partial class ClassicDetailFrame
         var fabs = new Element[Math.Max(0, plan.Fabs)];
         for (int i = 0; i < fabs.Length; i++)
             fabs[i] = new BoxEl { Width = fabEdge, Height = fabEdge, Shrink = 0f, Corners = Radii.ControlAll };
-        Element pill = new BoxEl { Width = Skeleton.PlayButtonWidth, Height = Controls.ButtonHeight, Shrink = 0f, Corners = Radii.ControlAll };
-        kids.Add(plan.Satellites
-            ? SatelliteCta("skel:cta", pill, fabs, RailLayout.CtaTopMargin)
+        // The primary's shape: a page's own 120 capsule, else the Play split with its trailing margin (RailLayout.CtaHeight's).
+        Element pill = plan.Satellites
+            ? new BoxEl { Width = Skeleton.PlayButtonWidth, Height = Controls.ButtonHeight, Shrink = 0f, Corners = Radii.ControlAll }
             : new BoxEl
             {
-                Direction = 0, Wrap = true, Gap = RailLayout.CtaGap, AlignItems = FlexAlign.Center,
-                Margin = new Edges4(0f, RailLayout.CtaTopMargin, 0f, 0f),
-                Children =
-                [
-                    pill,
-                    new BoxEl { Direction = 0, Gap = RailLayout.FabGap, AlignItems = FlexAlign.Center, Children = fabs },
-                ],
-            });
+                Width = RailLayout.PlaySplitWidth, Height = Controls.ButtonHeight, Shrink = 0f, Corners = Radii.ControlAll,
+                Margin = new Edges4(0f, 0f, RailLayout.SplitTrail, 0f),
+            };
+        kids.Add(plan.Satellites
+            ? SatelliteCta("skel:cta", pill, fabs, RailLayout.CtaTopMargin)
+            : ClassicDetailKit.ActionRow("skel:cta", pill, fabs, RailLayout.CtaTopMargin));
         if (plan.Topics)
         {
             var topicLines = new Element[RailLayout.TopicLines];
@@ -551,30 +519,12 @@ internal static partial class ClassicDetailFrame
             ],
         };
 
-        // The one fixed CTA cluster that differs: no More, a bare Share FAB. A page's primary replaces Play; its
-        // satellites replace the heart + Share and wrap one by one.
-        Element primary = slots.Primary is { } primaryOf ? primaryOf(accent) : Controls.ContextPlayButton(spec.Identity.Subject.Text, accent, play);
-        Element ctaRow;
-        if (satellites is not null)
-            ctaRow = SatelliteCta("hdr:play", primary, satellites, topMargin: 0f);
-        else
-        {
-            var cta = new List<Element>(3) { primary };
-            if (cfg.Heart != HeartMode.None)
-            {
-                string saveUri = ClassicDetailKit.SaveTargetOf(id).Text;
-                string saveName = id.Title;
-                cta.Add(Embed.Comp(() => new Controls.SaveButton { Uri = saveUri, Name = saveName, Glyph = 16f, Box = RailFabSize, Accent = accent })
-                    with { Key = "save:" + saveUri });
-            }
-            if (ClassicDetailKit.ShareActionFor(id) is { } share) cta.Add(Controls.Named(ClassicDetailKit.Fab(Icons.Share, share), Loc.Get(Strings.Menu.Share)));
-            ctaRow = new BoxEl
-            {
-                Key = "hdr:play", Layout = ClassicDetailKit.Shove,
-                Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center, Wrap = true,
-                Children = cta.ToArray(),
-            };
-        }
+        // A page's primary replaces the Play split; its satellites replace the fixed actions (D1, the rail's row) and wrap
+        // one by one.
+        Element primary = slots.Primary is { } primaryOf ? primaryOf(accent) : ClassicDetailKit.PlaySplit(id.Subject, accent, play);
+        Element ctaRow = satellites is not null
+            ? SatelliteCta("hdr:play", primary, satellites, topMargin: 0f)
+            : ClassicDetailKit.ActionRow("hdr:play", primary, ClassicDetailKit.FixedActions("hdr:", id, cfg.Heart != HeartMode.None, acts, accent), topMargin: 0f);
 
         var headerKids = new List<Element>(5) { coverRow };
         // The ledger spans the header (the narrow pane's full-basis row), above the CTA.
