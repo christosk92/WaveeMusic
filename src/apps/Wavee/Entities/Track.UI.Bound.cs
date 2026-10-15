@@ -114,11 +114,12 @@ public readonly partial struct Track
         bool ShowAlbumColumn, bool Open);
 
     /// <summary>One slot's bound inputs, created once at mount: the presentation memo every cell reads, the like-edge
-    /// memo, the row hover signal, the playback flag the equalizer animates on, the page accent and the three handlers (each
-    /// resolves the current item itself). The structure's row template binds its cells to these and never builds one.</summary>
+    /// memo, the row hover signal, the slot's focus fact, the playback flag the equalizer animates on, the page accent and
+    /// the three handlers (each resolves the current item itself). The structure's row template binds its cells to these
+    /// and never builds one.</summary>
     internal sealed class BoundRow(IReadSignal<RowPresentation> presentation, IReadSignal<bool> likePop,
-                                   IReadSignal<bool> hovered, IReadSignal<bool> playing, Func<ColorF> accent,
-                                   Action play, Action like, Action toggleExpand)
+                                   IReadSignal<bool> hovered, IReadSignal<bool>? focused, IReadSignal<bool> playing,
+                                   Func<ColorF> accent, Action play, Action like, Action toggleExpand)
     {
         public readonly IReadSignal<RowPresentation> Presentation = presentation;
         public readonly IReadSignal<bool> LikePop = likePop;
@@ -130,6 +131,13 @@ public readonly partial struct Track
 
         /// <summary>The current presentation — a subscribing read, for bind thunks only.</summary>
         public RowPresentation P => Presentation.Value;
+
+        /// <summary>Does the slot hold the list's focus (the ItemsView slot's <c>RowScope.IsFocused</c>)? A subscribing read,
+        /// for bind thunks only: the row's hover reveals (the outline heart, the "…") also show on the focused row, so a
+        /// keyboard user sees them (tuned Classic L2). False for a slot no ItemsView built.</summary>
+        public bool Focused => _focused?.Value ?? false;
+
+        readonly IReadSignal<bool>? _focused = focused;
     }
 
     internal static long NowUnix => Store.ToUnix(Entities.Now);
@@ -139,6 +147,28 @@ public readonly partial struct Track
 
     /// <summary>The ONE not-yet-out / unavailable predicate: the dim, the play gate and the duration lane never disagree.</summary>
     internal static bool Withheld(in RowPresentation p, long now) => p.Track.NotYetOut(now) || p.Track.Unplayable();
+
+    /// <summary>The duration lane's text, both row builders (the bound table and the eager grid): the clock, or for a
+    /// withheld row its SHORT reason — "Unavailable" for a ruled-unavailable row, the release date for a pending one.</summary>
+    internal static string DurationLabel(Track t, long now)
+        => RowCellRules.DurationKindOf(t.Unplayable(), t.NotYetOut(now), t.AvailableAt, now) switch
+        {
+            RowCellRules.DurationKind.Unavailable => Loc.Get(Strings.Detail.TrackFacts.UnavailableShort),
+            RowCellRules.DurationKind.ReleaseDate => Format.ReleaseDateLabel(t.AvailableAt, now),
+            RowCellRules.DurationKind.Dash => Format.Dash,
+            _ => Format.DurationCell(t.ForDisplay.DurationMs),
+        };
+
+    /// <summary>A withheld row's LONG reason, the tooltip over its duration lane (tuned Classic L4): "This song isn't
+    /// available to play" (a terminal verdict names no cause the client could state honestly) or "Releases {date}".
+    /// Null for a playable row.</summary>
+    internal static string? WithheldReason(Track t, long now)
+        => RowCellRules.DurationKindOf(t.Unplayable(), t.NotYetOut(now), t.AvailableAt, now) switch
+        {
+            RowCellRules.DurationKind.Unavailable => Loc.Get(Strings.Detail.TrackFacts.UnavailableReason),
+            RowCellRules.DurationKind.ReleaseDate => Strings.Detail.ReleasesOn(Format.ReleaseDateLabel(t.AvailableAt, now)),
+            _ => null,
+        };
 
     internal static bool ArtistInTitle(in RowPresentation p, bool setArtist) => p.ShowTrackArtist && !setArtist;
 

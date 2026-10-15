@@ -947,11 +947,10 @@ public readonly partial struct Track
 
     /// <summary>The embedded album table's lanes at <c>ShowPlays = false</c>: <c># · ♥ · Title* · ⏱ · …</c>. The ONE
     /// constant the pane's shimmer, its header shim and its width tracks all read (library rework §5.5).
-    /// <para>A release with a video track trades the "…" lane for the film lane (<c>TableRules.TrailingColumns</c>) — a
-    /// trade of CELL, not of width, since 2026-09-18: both are <c>Lane.Actions</c> wide. So the shim can show the common
-    /// arm without knowing what the rows will carry, and the real header lands on exactly the shim's geometry.</para></summary>
+    /// <para>A video is the film glyph after the title, never a lane (<c>TableRules.TrailingColumns</c>), so the shim
+    /// needs nothing the rows will carry and the real header lands on exactly the shim's geometry.</para></summary>
     public static readonly ColumnSet EmbeddedColumns = new(
-        Album: false, By: false, Date: false, Video: false, Plays: false, Heart: true, Thumb: false,
+        Album: false, By: false, Date: false, Plays: false, Heart: true, Thumb: false,
         Actions: true, Tier: EmbeddedTier);
 
     /// <summary>The width tracks for <see cref="EmbeddedColumns"/> — the SAME cached instance the real rows would get

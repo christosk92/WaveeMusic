@@ -213,10 +213,8 @@ public readonly partial struct Track
         public override bool HasDateAdded => _playlist.HasDateAddedColumn;
         public override bool HasAddedBy => _playlist.HasAddedByColumn;
         // NOT the commit-time flag. `HasVideoColumn` is folded while the MEMBERSHIP lands, and kind 99 (the video
-        // association) is asked for the rows only AFTER that - so the fold always saw hasVideo:false, the column was
-        // decided "no" forever, and a playlist full of music videos showed not one film glyph. The album table has
-        // read the live rows through `CachedVideo` all along ("kind 99 lands after the rows paint, and the film lane
-        // must appear when it does"); the playlist table now reads them the same way.
+        // association) is asked for the rows only AFTER that - so the fold always saw hasVideo:false and the filter's
+        // video row was decided "no" forever. The live rows are read through `CachedVideo`, as the album table does.
         public override bool HasVideo => CachedVideo(Edge.Targets(_playlist.Slot), Version);
         public override void Subscribe()
         {
@@ -636,12 +634,11 @@ public readonly partial struct Track
             var src = args.Source;
             var identity = TableRules.IdentityColumns(s.Classic, cfg.ShowArtThumb, s.ArtHidden, cfg.ShowTrackArtist, tier);
             // A null Drawer seam is "no chevron lane" (the contract), so it folds into ShowVersions before the tier gate.
-            var trailing = TableRules.TrailingColumns(s.Classic, src.HasVideo, cfg.ShowVersions && args.Profile.Drawer is not null, tier);
+            var trailing = TableRules.TrailingColumns(cfg.ShowVersions && args.Profile.Drawer is not null, tier);
             return new ColumnSet(
                 Album: cfg.ShowAlbumColumn && tier < 2,
                 By: src.HasAddedBy && tier < 1,
                 Date: src.HasDateAdded && tier < 3,
-                Video: trailing.Video,
                 Plays: TableColumnsPref.PlaysVisible(cfg.ShowPlays, cfg.PlaysColumnOptIn, s.PlaysColumn) && tier < 3,
                 Heart: tier < 5,
                 Thumb: identity.Thumb,
@@ -1176,9 +1173,16 @@ public readonly partial struct Track
         /// <summary>The album arm's outer scroller's restore key: <see cref="ListScrollKey"/>'s identity, its own lane.</summary>
         string TrailScrollKey => _scrollScope + _latest.ScrollKey + ":trail:r" + _resetEpoch;
 
+        /// <summary>The slot ROOT every list path returns. The list's roving focus lands on the slot root, and a component's
+        /// node (its anchor) cannot carry a handler, so the root is this box: it hears the focus edge and feeds the slot's
+        /// focus fact (<c>RowScope.IsFocused</c>: the keyboard-current tracking and the row's focus reveals, tuned Classic L2).
+        /// Without it the skin's own edge never fired — the focus sits on its ancestor.</summary>
+        static Element FocusRoot(Element slot, Action<bool> focusEdge)
+            => new BoxEl { Direction = 1, MinWidth = 0f, OnFocusChanged = focusEdge, Children = [slot] };
+
         Element FlatList(RepeatLayout layout, bool trailing, bool narrate)
             => ItemsView.CreateBound(_rowItems!,
-                scope => Embed.Comp(() => new TableSlot(this, scope.Row, 0, narrate)),
+                scope => FocusRoot(Embed.Comp(() => new TableSlot(this, scope.Row, 0, narrate)), scope.Row.OnFocusChanged),
                 layout,
                 new ListOptions<Track>
                 {
@@ -1201,7 +1205,7 @@ public readonly partial struct Track
         /// included). The COUNT carries the section only while the page has rows or is empty — never over a shimmer.</summary>
         Element RecsList(int total, RepeatLayout layout, bool trailing, bool narrate)
             => ItemsView.CreateBound(total,
-                scope => Embed.Comp(() => new TableRecItem(this, scope, narrate)),
+                scope => FocusRoot(Embed.Comp(() => new TableRecItem(this, scope, narrate)), scope.OnFocusChanged),
                 layout,
                 new ListOptions
                 {
@@ -1236,7 +1240,7 @@ public readonly partial struct Track
         {
             int prefix = Detail.VerticalLayout.PrefixCount;
             return ItemsView.CreateBound(Detail.VerticalLayout.ItemCount(visible, facts),
-                scope => Embed.Comp(() => new TableVerticalItem(this, scope, narrate)),
+                scope => FocusRoot(Embed.Comp(() => new TableVerticalItem(this, scope, narrate)), scope.OnFocusChanged),
                 layout,
                 new ListOptions
                 {
@@ -1722,7 +1726,8 @@ public readonly partial struct Track
         }
 
         /// <summary>Explorer semantics, settled BEFORE the host rows are read: a right-click outside the selection collapses it
-        /// to the clicked row. "Track details" exists only where the chevron lane does not (ShowVersionsMenuItem).</summary>
+        /// to the clicked row. "Track details" exists only where the row shows no chevron: no chevron lane, or a row with no
+        /// versions to put in it (ShowVersionsMenuItem).</summary>
         /// <summary>Track rows only — an episode row is never wrapped by <see cref="Skin"/> (<see cref="TableSlot"/>
         /// hands it straight to <see cref="Episode.ReaderRow"/>, which dispatches its own "…" to
         /// <see cref="Episode.Menu"/> through the <see cref="Episode.RowContext"/> the table builds).</summary>
@@ -1738,7 +1743,8 @@ public readonly partial struct Track
                 _selection.Select(slotIndex);
             }
             Action? details = null;
-            if (TableRules.ShowVersionsMenuItem(Cfg.ShowVersions && P.Drawer is not null, expandLane, t.Uri.Kind == EntityKind.Track))
+            if (TableRules.ShowVersionsMenuItem(Cfg.ShowVersions && P.Drawer is not null, expandLane && t.HasVersions(),
+                                                t.Uri.Kind == EntityKind.Track))
             {
                 string key = MembershipDiff.RowKey(t, ItemIdAt(display), display);
                 details = () => ToggleExpanded(key, t);
@@ -2453,7 +2459,7 @@ public readonly partial struct Track
             if (_latch == 0) _latch = real ? (byte)2 : (byte)1;
             if (!real) return _host.PlaceholderRow(in set, shape.Tracks, shape.RowH, RowMetrics.PadXFor(set.Tier)) with { Key = "row:shim" };
 
-            _row ??= new Track.BoundRow(presentation, likePop, _hovered, Playback.IsPlaying, _host.AccentRead, PlayCurrent, LikeCurrent, ToggleExpandCurrent);
+            _row ??= new Track.BoundRow(presentation, likePop, _hovered, _scope.IsFocused, Playback.IsPlaying, _host.AccentRead, PlayCurrent, LikeCurrent, ToggleExpandCurrent);
             var row = _row;
             // The structure draws the grid (Modern or Classic template); built ONCE per slot per shape, like it always was.
             var templates = _host.RowTemplatesFor(set.Classic);

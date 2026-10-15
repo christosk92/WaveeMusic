@@ -49,7 +49,7 @@ internal static class ClassicRecentsRows
 {
     // ── the lanes (rebuilt when the theme epoch moves: `ChildActionsCol` reads the spacing ramp) ──────────────────────
 
-    static readonly Track.ColumnSet ChildCols = new(Album: false, By: false, Date: false, Video: false, Plays: false,
+    static readonly Track.ColumnSet ChildCols = new(Album: false, By: false, Date: false, Plays: false,
         Heart: true, Thumb: true, Actions: true);
     static readonly Track.ColumnSet ChildColsNoArt = ChildCols with { Thumb = false };
 

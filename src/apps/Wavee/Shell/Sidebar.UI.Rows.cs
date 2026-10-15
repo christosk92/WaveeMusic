@@ -187,14 +187,15 @@ public static partial class Sidebar
             _open = open; _identity = identity; _glyph = glyph; _size = size; _openDeg = openDeg; _accent = accent;
         }
 
-        /// <summary>A SECTION header's chevron: ChevronDown at rest, rotated 180° when the section is open.</summary>
-        public static Element Section(Func<bool> open, float size = 10f, Func<int>? identity = null)
-            => Embed.Comp(() => new Chevron(open, identity, Icons.ChevronDown, size, 180f, accent: false));
+        /// <summary>A SECTION header's chevron: ChevronDown at rest, rotated 180° when the section is open.
+        /// <paramref name="accentWhenOpen"/> inks it secondary at rest and accent while open (the track table's versions
+        /// chevron, tuned Classic L1).</summary>
+        public static Element Section(Func<bool> open, float size = 10f, Func<int>? identity = null, bool accentWhenOpen = false)
+            => Embed.Comp(() => new Chevron(open, identity, Icons.ChevronDown, size, 180f, accentWhenOpen));
 
-        /// <summary>A DISCLOSURE chevron (a folder row / tree row): ChevronRight at rest, rotated 90° when expanded.
-        /// <paramref name="accentWhenOpen"/> inks it with the accent while open (the track table's expand cell).</summary>
-        public static Element Disclosure(Func<bool> open, float size = 10f, Func<int>? identity = null, bool accentWhenOpen = false)
-            => Embed.Comp(() => new Chevron(open, identity, Icons.ChevronRight, size, 90f, accentWhenOpen));
+        /// <summary>A DISCLOSURE chevron (a folder row / tree row): ChevronRight at rest, rotated 90° when expanded.</summary>
+        public static Element Disclosure(Func<bool> open, float size = 10f, Func<int>? identity = null)
+            => Embed.Comp(() => new Chevron(open, identity, Icons.ChevronRight, size, 90f, accent: false));
 
         public override Element Render()
         {
