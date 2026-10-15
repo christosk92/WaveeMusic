@@ -185,6 +185,9 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **The album and playlist side column shows again.** In Classic the left column of an album or playlist page (the cover,
+  title, artist, song count and the Play button) was blank; it now fills the page's height and shows its content. The
+  collapsed column also keeps its expand arrow at the bottom again.
 - **An album or playlist page takes its cover's colour when the colour arrives after the page opened.** The page ground
   used to stay neutral until you opened the page again whenever the cover's colour was not known yet (in Classic), and
   turning Surfaces off with a page open left that page's colour behind it.

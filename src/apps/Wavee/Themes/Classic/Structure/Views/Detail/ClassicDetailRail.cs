@@ -89,10 +89,14 @@ internal static partial class ClassicDetailFrame
 
     /// <summary>The rail's frame: the layer fill and, the LAST resort once the text has given, the rail's own scroller. Holds the
     /// loaded column, or the skeleton boundary that swaps to it (<see cref="RailTemplate"/>) — outside the boundary, so the fill
-    /// never blinks. (Liked Songs, whose rail had no fill, has no rail: tuned Classic D16.)</summary>
+    /// never blinks. (Liked Songs, whose rail had no fill, has no rail: tuned Classic D16.)
+    /// <para>It GROWS to the column's height rather than leaning on the row's stretch: the frame mounts it through the view slot's
+    /// two component anchors, and a nested anchor is a default column, so the row's cross-axis stretch reaches only the outer
+    /// anchor. Without its own grow the frame measured its content — a scroller with no minimum height, so 0 — and the whole rail
+    /// was clipped away (the blank rail).</para></summary>
     static Element RailFrame(float railW, Element body) => new BoxEl
     {
-        Direction = 1, Width = railW, Shrink = 0f, ClipToBounds = true,
+        Direction = 1, Width = railW, Shrink = 0f, Grow = 1f, MinHeight = 0f, ClipToBounds = true,
         Fill = Tok.FillLayerDefault,
         Children = [ScrollView(body) with { Grow = 1f, Shrink = 1f, MinHeight = 0f, Width = railW }],
     };
@@ -452,7 +456,9 @@ internal static partial class ClassicDetailFrame
                 expandHit,
             ],
         };
-        return ToolTip.Wrap(strip, spec.Identity.Title);
+        // Grown to the column's height for the same reason as RailFrame (the slot's nested anchor is a column): the spacer can then
+        // push the expand chevron to the strip's foot.
+        return ToolTip.Wrap(strip, spec.Identity.Title, grow: 1f);
     }
 
     /// <summary>W25: the VERTICAL show header — the third composition, never the hero system. Cover 140 at saturation

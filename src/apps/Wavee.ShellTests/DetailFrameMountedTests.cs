@@ -122,6 +122,52 @@ public sealed class DetailFrameMountedTests(ShellHost host)
             Assert.False(shell.Find("vhero:root").IsNull, "the hero is the table's item 0");
         }, widthDip: 480f, heightDip: 800f);
 
+    /// <summary>What the user sees of an album's rail in the real shell, at the owner's window (1510 × 950) with the Now Playing panel docked:
+    /// the cover and the title are laid out at a real size inside the rail's column, drawn (every ancestor visible and opaque) and inside every
+    /// clipping ancestor — not a skeleton, not a fade stuck at 0, not scrolled or clipped away. The isolated rail tests never caught a rail the
+    /// page left blank.</summary>
+    [Fact]
+    public void The_real_shell_paints_an_albums_rail_cover_and_title_with_the_panel_docked()
+        => host.Mounted(shell =>
+        {
+            try
+            {
+                Shell.Ui.Mode.Value = Shell.RailMode.NowPlaying;
+                Shell.Ui.RailOpen.Value = true;
+                Shell.GoTo(Shell.For(EntityUri.Parse("spotify:album:al2"), "Album"));
+                Until(shell, () => !shell.Find("rail:title").IsNull && shell.FindPrefix("row").Count(k => k.Key == "row") > 2, "the album's rail and rows");
+                shell.RunFrames(90);
+                var scene = shell.Host.Scene;
+                var column = scene.PresentedAbsoluteRect(Node(shell, "detail-rail-fade"));
+                Assert.True(column.W > 200f, $"the rail column has its width, got {column}");
+                foreach (var key in (string[])["rail:cover", "rail:title", "rail:cta"])
+                {
+                    var node = Node(shell, key);
+                    var rect = scene.PresentedAbsoluteRect(node);
+                    Assert.True(rect.W > 20f && rect.H > 10f, $"{key} has a real size, got {rect}");
+                    Assert.True(rect.X >= column.X - 0.5f && rect.X + rect.W <= column.X + column.W + 0.5f, $"{key} {rect} stands in the rail column {column}");
+                    for (var n = node; !n.IsNull; n = scene.Parent(n))
+                    {
+                        string who = scene.DebugKeyOf(n) ?? "#" + n.Raw.Index;
+                        Assert.True((scene.Flags(n) & NodeFlags.Visible) != 0, $"{key}: ancestor {who} is hidden");
+                        Assert.True(scene.Paint(n).Opacity >= 0.99f, $"{key}: ancestor {who} is drawn at {scene.Paint(n).Opacity}");
+                        if ((scene.Flags(n) & NodeFlags.ClipsToBounds) == 0) continue;
+                        var clip = scene.PresentedAbsoluteRect(n);
+                        Assert.True(rect.Y >= clip.Y - 0.5f && rect.Y + rect.H <= clip.Y + clip.H + 0.5f
+                                    && rect.X >= clip.X - 0.5f && rect.X + rect.W <= clip.X + clip.W + 0.5f,
+                            $"{key} {rect} escapes the clip of {who} {clip}");
+                    }
+                }
+                Assert.True(shell.FindPrefix("skel").Count(k => k.Key == "skel:cta") == 0, "the loaded rail, not its skeleton");
+            }
+            finally
+            {
+                Shell.Ui.RailOpen.Value = false;
+                Shell.Ui.Mode.Value = Shell.RailMode.Lyrics;
+                shell.RunFrames(30);
+            }
+        }, widthDip: 1510f, heightDip: 950f);
+
     // ── the rail ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
