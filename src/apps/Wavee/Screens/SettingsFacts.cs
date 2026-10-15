@@ -86,7 +86,7 @@ public sealed class LiveSettingsFacts : ISettingsFacts
     public bool CrossfadeEnabled => Platform.Settings.Get(Platform.Keys.CrossfadeEnabled);
     public bool VideoOverridesPresent => Video.Overrides.Present;
     public bool SidebarEditing => Sidebar.Editing.Value;
-    public bool SidebarModified => SidebarLayoutRules.IsModified(Sidebar.State.Of(Sidebar.Layout.Value));
+    public bool SidebarModified => SidebarLayoutRules.IsModified(Sidebar.State.Of(Sidebar.Layout.Value), Sidebar.LibraryView.Value);
     public bool AudioCacheAvailable => Spotify.Audio.DiskCache.Shared is not null;
     public bool MetadataClearAvailable => Settings.ClearMetadataCache is not null;
     public bool CrashServiceConfigured => Crash.Uploader.Configured;

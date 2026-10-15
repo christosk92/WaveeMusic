@@ -150,8 +150,10 @@ engine menu items (`SidebarMenus.Map`) and draws the Outline.
 ## 7. Stores, persistence and the account swap
 
 - **`sidebar.json`** (`SidebarStoreV3`, `Sidebar.Store.cs`, `FileName`): the device document, v3: the two layout overlays
-  only. Unknown section ids are dropped on read, and returned for logging. The width, userCollapsed and Library chip are
-  `Platform.Keys` settings (`sidebar.pane.*`, `sidebar.library.filter`); the active layout and the density are Classic's
+  only. Unknown section ids are dropped on read, and returned for logging. The Library chip is a
+  `Platform.Keys` setting (`sidebar.library.filter`); the pane width, userCollapsed and the Library's list/grid view are the active theme's
+  `ThemeState` (`Sidebar.PaneWidthKey` / `PaneCollapsedKey` / `LibraryViewKey`, M7b, `Sidebar.FollowThemeState` follows a theme switch; the view
+  is its own undo entry and is not a `SectionState` member); the active layout and the density are Classic's
   `structure.sidebar` / `structure.libraryDensity` options (M7a), carried into the core by `NavPanePolicy.Layout` / `Density`
   (`Sidebar.FollowDesign`; the verbs `SwitchLayout` / `SetDensity` store them through `ThemeHost.Request`).
 - **`sidebar.acct-<hash>.json`** (`SidebarAccountStore.FileNameOf(key)`, hash from `SidebarAccountKey.Hash`): the

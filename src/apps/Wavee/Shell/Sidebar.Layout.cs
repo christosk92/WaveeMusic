@@ -25,7 +25,7 @@ public enum SidebarSectionKind : byte
 /// 24). Glyph rows and headers are unaffected. PERSISTED as the int of Classic's `structure.libraryDensity` option.</summary>
 public enum SidebarDensity : byte { Default = 0, Compact = 1 }
 
-/// <summary>Your Library's list presentation.</summary>
+/// <summary>Your Library's list presentation. PERSISTED as the int of the active theme's state key `libraryView` (<see cref="Sidebar.LibraryViewKey"/>: List 0, Grid 1) — append only.</summary>
 public enum SidebarLibraryView : byte { List = 0, Grid = 1 }
 
 /// <summary>Your Library's sort. <see cref="CustomOrder"/> IS the Spotify rootlist order and applies under the Playlists
@@ -150,8 +150,7 @@ public static class SidebarCatalogue
     public static SectionState DefaultState(SidebarSectionKind kind) => kind switch
     {
         SidebarSectionKind.Recent or SidebarSectionKind.NewReleases => new SectionState(IdOf(kind), Hidden: true, Limit: DefaultLimit(kind)),
-        SidebarSectionKind.Library => new SectionState(IdOf(kind), Sort: SidebarLibrarySort.Recents, Descending: false,
-            View: SidebarLibraryView.List, ShowLiked: true),
+        SidebarSectionKind.Library => new SectionState(IdOf(kind), Sort: SidebarLibrarySort.Recents, Descending: false, ShowLiked: true),
         _ => new SectionState(IdOf(kind)),
     };
 
@@ -185,7 +184,6 @@ public sealed record SectionState(
     IReadOnlyList<string>? ItemOrder = null,
     SidebarLibrarySort? Sort = null,
     bool? Descending = null,
-    SidebarLibraryView? View = null,
     bool? ShowLiked = null)
 {
     public IReadOnlyList<string> HiddenList => HiddenItems ?? System.Array.Empty<string>();
@@ -195,7 +193,7 @@ public sealed record SectionState(
     public bool Equals(SectionState? other)
         => other is not null && string.Equals(Id, other.Id, System.StringComparison.Ordinal) && Hidden == other.Hidden
            && Collapsed == other.Collapsed && Limit == other.Limit && Sort == other.Sort && Descending == other.Descending
-           && View == other.View && ShowLiked == other.ShowLiked
+           && ShowLiked == other.ShowLiked
            && SidebarLayoutRules.SameList(HiddenItems, other.HiddenItems) && SidebarLayoutRules.SameList(ItemOrder, other.ItemOrder);
 
     public override int GetHashCode() => System.HashCode.Combine(Id, Hidden, Collapsed, Limit, HiddenItems?.Count ?? 0, ItemOrder?.Count ?? 0);
@@ -247,7 +245,6 @@ public sealed record SetSectionLimit(SidebarLayoutId Layout, string SectionId, i
 public sealed record SetItemShown(SidebarLayoutId Layout, string SectionId, string ItemId, bool Shown) : SidebarOp(Layout);
 public sealed record MoveItem(SidebarLayoutId Layout, string SectionId, string ItemId, int ToIndex) : SidebarOp(Layout);
 public sealed record SetLibrarySort(SidebarLibrarySort Sort, bool Descending) : SidebarOp(SidebarLayoutId.Library);
-public sealed record SetLibraryView(SidebarLibraryView View) : SidebarOp(SidebarLayoutId.Library);
 public sealed record SetShowLiked(bool Shown) : SidebarOp(SidebarLayoutId.Library);
 /// <summary>"Reset this layout": every section back to its default, collapse bits kept.</summary>
 public sealed record ResetLayout(SidebarLayoutId Layout) : SidebarOp(Layout);
@@ -286,7 +283,6 @@ public static class SidebarLayoutRules
             SetItemShown o => ItemShown(overlay, o, out var r5) ?? Fail(r5),
             MoveItem o => ItemMove(overlay, o, out var r6) ?? Fail(r6),
             SetLibrarySort o => Update(overlay, "library", s => s with { Sort = o.Sort, Descending = o.Descending }),
-            SetLibraryView o => Update(overlay, "library", s => s with { View = o.View }),
             SetShowLiked o => Update(overlay, "library", s => s with { ShowLiked = o.Shown }),
             ResetLayout => Reset(overlay),
             ReplaceOverlay o => MergeWithCatalogue(o.Overlay, null),
@@ -515,10 +511,12 @@ public static class SidebarLayoutRules
         return list;
     }
 
-    /// <summary>"Classic · modified" (design C.1): any section's shown / order / limit / sort / view / showLiked /
-    /// hidden items / item order differs from the catalogue default. Collapse, density, width and the filter never count.</summary>
-    public static bool IsModified(LayoutOverlay overlay)
+    /// <summary>"Classic · modified" (design C.1): any section's shown / order / limit / sort / showLiked /
+    /// hidden items / item order differs from the catalogue default, or the Library layout's list/grid <paramref name="view"/> (the theme's state,
+    /// not part of the overlay) is not List. Collapse, density, width and the filter never count.</summary>
+    public static bool IsModified(LayoutOverlay overlay, SidebarLibraryView view = SidebarLibraryView.List)
     {
+        if (overlay.Layout == SidebarLayoutId.Library && view != SidebarLibraryView.List) return true;
         var fresh = SidebarCatalogue.DefaultOverlay(overlay.Layout);
         if (overlay.Sections.Count != fresh.Sections.Count) return true;
         for (int i = 0; i < fresh.Sections.Count; i++)
@@ -529,7 +527,7 @@ public static class SidebarLayoutRules
             if (!SidebarCatalogue.TryKindOf(a.Id, out var kind)) return true;
             if (a.Hidden != b.Hidden || (a.Limit ?? 0) != (b.Limit ?? 0)) return true;
             if ((a.Sort ?? b.Sort) != b.Sort || (a.Descending ?? b.Descending) != b.Descending
-                || (a.View ?? b.View) != b.View || (a.ShowLiked ?? b.ShowLiked) != b.ShowLiked) return true;
+                || (a.ShowLiked ?? b.ShowLiked) != b.ShowLiked) return true;
             if (a.HiddenList.Count != 0) return true;
             if (!SameList(EffectiveItemOrder(overlay.Layout, kind, a), SidebarCatalogue.ItemsOf(overlay.Layout, kind))) return true;
         }
@@ -550,8 +548,9 @@ public static class SidebarLayoutRules
         return false;
     }
 
-    /// <summary>The resolved document for a layout (§P3.3).</summary>
-    public static SidebarLayoutDoc Resolve(SidebarLayoutState state, SidebarLayoutId layout, SidebarDensity density)
+    /// <summary>The resolved document for a layout (§P3.3). <paramref name="view"/> is the theme's list/grid state (not part of the overlay).</summary>
+    public static SidebarLayoutDoc Resolve(SidebarLayoutState state, SidebarLayoutId layout, SidebarDensity density,
+                                           SidebarLibraryView view = SidebarLibraryView.List)
     {
         var overlay = state.Of(layout);
         var sections = new SidebarSection[overlay.Sections.Count];
@@ -570,7 +569,7 @@ public static class SidebarLayoutRules
                 var hiddenKinds = SidebarLibraryKinds.None;
                 for (int k = 0; k < s.HiddenList.Count; k++) hiddenKinds |= SidebarCatalogue.KindFlagOf(s.HiddenList[k]);
                 lib = new SidebarLibraryOptions(s.Sort ?? SidebarLibrarySort.Recents, s.Descending ?? false,
-                    s.View ?? SidebarLibraryView.List, s.ShowLiked ?? true, hiddenKinds);
+                    view, s.ShowLiked ?? true, hiddenKinds);
             }
         }
         return new SidebarLayoutDoc(layout, sections, density, lib);

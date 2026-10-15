@@ -271,7 +271,6 @@ public sealed class SidebarSectionStateDto
     public string[]? ItemOrder { get; set; }
     public string? Sort { get; set; }          // "recents" | "recentlyAdded" | "alphabetical" | "creator" | "customOrder"
     public bool? Descending { get; set; }
-    public string? View { get; set; }          // "list" | "grid"
     public bool? ShowLiked { get; set; }
 }
 
@@ -390,7 +389,6 @@ public static class SidebarStoreV3
                 ItemOrder = s.ItemOrder is { Count: > 0 } o ? [.. o] : null,
                 Sort = s.Sort is { } sort ? SortName(sort) : null,
                 Descending = s.Descending,
-                View = s.View is { } view ? (view == SidebarLibraryView.Grid ? "grid" : "list") : null,
                 ShowLiked = s.ShowLiked,
             };
         }
@@ -413,7 +411,6 @@ public static class SidebarStoreV3
                 ItemOrder: d.ItemOrder,
                 Sort: TryParseSort(d.Sort, out var sort) ? sort : null,
                 Descending: d.Descending,
-                View: d.View switch { "grid" => SidebarLibraryView.Grid, "list" => SidebarLibraryView.List, _ => null },
                 ShowLiked: d.ShowLiked));
         }
         return new LayoutOverlay(layout, sections.ToArray());

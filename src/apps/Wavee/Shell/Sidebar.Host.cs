@@ -80,8 +80,11 @@ public static partial class Sidebar
         var design = ShellPolicy.Now.NavPane;
         Layout.Value = design.Layout;
         Density.Value = design.Density;
-        Width.Value = SidebarPaneBounds.Clamp(s.Get(Platform.Keys.SidebarPaneWidth));
-        UserCollapsed.Value = s.Get(Platform.Keys.SidebarPaneUserCollapsed);
+        // The pane's width and collapse and the Library's list/grid view are the active theme's STATE (M7b: `theme.<id>.state.paneWidth` /
+        // `.paneCollapsed` / `.libraryView`, copied from the legacy keys and the device file at boot by ThemeBootstrap).
+        Width.Value = SidebarPaneBounds.Clamp(ThemeState.Get(PaneWidthKey));
+        UserCollapsed.Value = ThemeState.Get(PaneCollapsedKey);
+        LibraryView.Value = ViewOf(ThemeState.Get(LibraryViewKey));
         Seam.Value = UserCollapsed.Peek() ? ShellPolicy.Now.NavPane.RailWidth : Width.Peek();
         PresentedWidth.Value = Seam.Peek();
 
@@ -178,6 +181,7 @@ public static partial class Sidebar
     static int s_docVersion = -1;
     static SidebarLayoutId s_docLayout;
     static SidebarDensity s_docDensity;
+    static SidebarLibraryView s_docView;
 
     /// <summary>Both overlays (the undo ring and the Outline read them).</summary>
     public static SidebarLayoutState State => s_state;
@@ -195,12 +199,14 @@ public static partial class Sidebar
             int v = s_layoutVersion.Peek();
             var layout = Layout.Peek();
             var density = Density.Peek();
-            if (s_doc is null || v != s_docVersion || layout != s_docLayout || density != s_docDensity)
+            var view = LibraryView.Peek();
+            if (s_doc is null || v != s_docVersion || layout != s_docLayout || density != s_docDensity || view != s_docView)
             {
-                s_doc = SidebarLayoutRules.Resolve(s_state, layout, density);
+                s_doc = SidebarLayoutRules.Resolve(s_state, layout, density, view);
                 s_docVersion = v;
                 s_docLayout = layout;
                 s_docDensity = density;
+                s_docView = view;
             }
             return s_doc;
         }
@@ -246,11 +252,13 @@ public static partial class Sidebar
         SetItemShown s => Loc.Format(s.Shown ? "sidebar.undo.label.show" : "sidebar.undo.label.hide", ("name", ItemName(s.ItemId))),
         MoveItem m => Loc.Format("sidebar.undo.label.move", ("name", ItemName(m.ItemId))),
         SetLibrarySort s => Loc.Format("sidebar.undo.label.sort", ("name", Loc.Get("sidebar.sort." + SidebarStoreV3.SortName(s.Sort)))),
-        SetLibraryView v => Loc.Format("sidebar.undo.label.view", ("name", Loc.Get(v.View == SidebarLibraryView.Grid ? "sidebar.view.grid" : "sidebar.view.list"))),
         SetShowLiked => Loc.Get("sidebar.undo.label.liked"),
         ResetLayout r => Loc.Format("sidebar.undo.label.reset", ("name", LayoutName(r.Layout))),
         _ => Loc.Format("sidebar.undo.label.reset", ("name", LayoutName(op.Layout))),
     };
+
+    static string ViewLabel(SidebarLibraryView view)
+        => Loc.Format("sidebar.undo.label.view", ("name", Loc.Get(view == SidebarLibraryView.Grid ? "sidebar.view.grid" : "sidebar.view.list")));
 
     static string SectionName(string id) => Loc.Get("sidebar.section.title." + id);
     static string ItemName(string id) => Loc.Get("sidebar.item." + id);
@@ -322,9 +330,11 @@ public static partial class Sidebar
         var classicBefore = State.Of(SidebarLayoutId.Classic);
         var libraryBefore = State.Of(SidebarLayoutId.Library);
         var densityBefore = Density.Peek();
+        var viewBefore = LibraryView.Peek();
         ApplyUnrecorded(new ReplaceOverlay(SidebarCatalogue.DefaultOverlay(SidebarLayoutId.Classic)));
         ApplyUnrecorded(new ReplaceOverlay(SidebarCatalogue.DefaultOverlay(SidebarLayoutId.Library)));
         SetDensityUnrecorded(SidebarDensity.Default);
+        SetLibraryViewUnrecorded(SidebarLibraryView.List);
         SetExpandedWidth(SidebarPaneBounds.DefaultWidth);
         string label = Loc.Get("sidebar.undo.label.resetEverything");
         Record(SidebarUndoEntry.Batch(Layout.Peek(), label,
@@ -332,6 +342,7 @@ public static partial class Sidebar
             new SidebarUndoEntry(0, SidebarUndoKind.Layout, SidebarLayoutId.Classic, label, Before: classicBefore, After: State.Of(SidebarLayoutId.Classic)),
             new SidebarUndoEntry(0, SidebarUndoKind.Layout, SidebarLayoutId.Library, label, Before: libraryBefore, After: State.Of(SidebarLayoutId.Library)),
             new SidebarUndoEntry(0, SidebarUndoKind.Density, Layout.Peek(), label, DensityBefore: densityBefore, DensityAfter: SidebarDensity.Default),
+            new SidebarUndoEntry(0, SidebarUndoKind.View, SidebarLayoutId.Library, label, ViewBefore: viewBefore, ViewAfter: SidebarLibraryView.List),
         ]), Loc.Get("sidebar.toast.resetEverything"));
     }
 
@@ -442,6 +453,9 @@ public static partial class Sidebar
             case SidebarUndoKind.Density:
                 SetDensityUnrecorded(undo ? e.DensityBefore : e.DensityAfter);
                 break;
+            case SidebarUndoKind.View:
+                SetLibraryViewUnrecorded(undo ? e.ViewBefore : e.ViewAfter);
+                break;
             case SidebarUndoKind.Pin when e.Pin is { } pin:
                 switch (e.PinChange)
                 {
@@ -503,7 +517,7 @@ public static partial class Sidebar
 
     // ── pane state (the ONE pane, both layouts) ─────────────────────────────────────────────────────────────────────────
     // Two stored facts, each with one owner: Width (the EXPANDED width, one value for both layouts) and UserCollapsed
-    // (persisted as `sidebar.pane.userCollapsed`). Band, Mode and OverlayOpen are the window's and the shell's; Seam and
+    // (both the active theme's state, `paneWidth` / `paneCollapsed`). Band, Mode and OverlayOpen are the window's and the shell's; Seam and
     // PresentedWidth are derived/transient. The pure rules live in SidebarResizeRules and SidebarPaneModeRules; every
     // writer below goes through Apply.
 
@@ -513,6 +527,20 @@ public static partial class Sidebar
     /// <summary>The user's collapse (the 48 rail). Written ONLY by a toggle / seam / double-click in the Wide band while
     /// not editing (<see cref="SidebarPaneModeRules.WritesUserCollapsed"/>).</summary>
     public static readonly Signal<bool> UserCollapsed = new(false);
+
+    /// <summary>The theme-state keys the pane keeps (M7b): the expanded width (the nav policy's clamp is applied on top), the user's collapse and
+    /// Your Library's list/grid view (an int: <see cref="SidebarLibraryView"/>). Per theme (owner Q6); the host writes them, a structure never does.</summary>
+    public static readonly StateKey<float> PaneWidthKey = new("paneWidth", SidebarPaneBounds.DefaultWidth, SidebarPaneBounds.NavPaneMinW, SidebarPaneBounds.NavPaneMaxW);
+
+    /// <inheritdoc cref="PaneWidthKey"/>
+    public static readonly StateKey<bool> PaneCollapsedKey = new("paneCollapsed", false, false, false);
+
+    /// <inheritdoc cref="PaneWidthKey"/>
+    public static readonly StateKey<int> LibraryViewKey = new("libraryView", (int)SidebarLibraryView.List, (int)SidebarLibraryView.List, (int)SidebarLibraryView.Grid);
+
+    /// <summary>Your Library's list/grid view: the theme's state mirrored live (the toolbar toggles, the undo ring and the narrow-pane fallback write it
+    /// through <see cref="SetLibraryView"/>; the planner reads it as <c>Doc.Library.View</c>).</summary>
+    public static readonly Signal<SidebarLibraryView> LibraryView = new(SidebarLibraryView.List);
 
     /// <summary>The window band — written ONLY by the shell's band effect.</summary>
     public static readonly Signal<SidebarWindowBand> Band = new(SidebarWindowBand.Wide);
@@ -586,16 +614,66 @@ public static partial class Sidebar
         Width.SetIfChanged(s.ExpandedWidth);
         if (SidebarPaneModeRules.WritesUserCollapsed(Band.Peek(), Editing.Peek())) UserCollapsed.SetIfChanged(s.UserCollapsed);
         Seam.SetIfChanged(s.TargetWidth);
-        Platform.Settings.Set(Platform.Keys.SidebarPaneWidth, s.ExpandedWidth);
-        Platform.Settings.Set(Platform.Keys.SidebarPaneUserCollapsed, UserCollapsed.Peek());
+        ThemeState.Set(PaneWidthKey, s.ExpandedWidth);
+        ThemeState.Set(PaneCollapsedKey, UserCollapsed.Peek());
+    }
+
+    /// <summary>The active theme changed (or its state moved): re-read the pane's width and collapse and the Library's view from the new scope, so
+    /// each theme keeps its own (owner Q6). The frame's effect calls this with <see cref="ThemeState.Scope"/>; a no-op while nothing differs.</summary>
+    public static void FollowThemeState()
+    {
+        float width = SidebarPaneBounds.Clamp(ThemeState.Get(PaneWidthKey));
+        bool collapsed = ThemeState.Get(PaneCollapsedKey);
+        bool paneMoved = Width.Peek() != width || UserCollapsed.Peek() != collapsed;
+        Width.SetIfChanged(width);
+        UserCollapsed.SetIfChanged(collapsed);
+        if (paneMoved) Seam.SetIfChanged(collapsed ? ShellPolicy.Now.NavPane.RailWidth : width);
+        SetLibraryViewUnrecorded(ViewOf(ThemeState.Get(LibraryViewKey)));
     }
 
     /// <summary>The toolbar's sort button and the sort menu: a sort (and its direction) through the one op.</summary>
     public static void SetLibrarySort(SidebarLibrarySort sort, bool descending)
         => Dispatch(new SetLibrarySort(sort, descending));
 
-    /// <summary>List ↔ Grid from the toolbar toggles.</summary>
-    public static void SetLibraryView(SidebarLibraryView view) => Dispatch(new SetLibraryView(view));
+    /// <summary>List ↔ Grid from the toolbar toggles: the theme's state (<see cref="LibraryViewKey"/>), recorded in the ring, never toasted.</summary>
+    public static void SetLibraryView(SidebarLibraryView view)
+    {
+        var before = LibraryView.Peek();
+        if (before == view) return;
+        SetLibraryViewUnrecorded(view);
+        Record(new SidebarUndoEntry(0, SidebarUndoKind.View, SidebarLayoutId.Library, ViewLabel(view), ViewBefore: before, ViewAfter: view), null);
+    }
+
+    static void SetLibraryViewUnrecorded(SidebarLibraryView view)
+    {
+        if (LibraryView.Peek() == view) return;
+        LibraryView.Value = view;
+        s_layoutVersion.Value = s_layoutVersion.Peek() + 1;
+        ThemeState.Set(LibraryViewKey, (int)view);
+    }
+
+    /// <summary>The stored view int as the enum (anything but Grid's int reads as List).</summary>
+    public static SidebarLibraryView ViewOf(int stored) => stored == (int)SidebarLibraryView.Grid ? SidebarLibraryView.Grid : SidebarLibraryView.List;
+
+    /// <summary>"Reset layout" (the pane menu, Settings): the layout's overlay AND, for Library, its list/grid view (the theme's state, outside the
+    /// overlay) go back to their defaults as ONE ring entry. Anything else is the plain op.</summary>
+    public static void ResetLayoutRecorded(SidebarLayoutId layout, string? toastText)
+    {
+        var viewBefore = LibraryView.Peek();
+        if (layout != SidebarLayoutId.Library || viewBefore == SidebarLibraryView.List)
+        {
+            Dispatch(new ResetLayout(layout), toastText);
+            return;
+        }
+        var overlayBefore = s_state.Of(layout);
+        var applied = ApplyUnrecorded(new ResetLayout(layout));
+        SetLibraryViewUnrecorded(SidebarLibraryView.List);
+        string label = LabelOf(new ResetLayout(layout));
+        var parts = new List<SidebarUndoEntry>(2);
+        if (applied.Changed) parts.Add(new SidebarUndoEntry(0, SidebarUndoKind.Layout, layout, label, Before: overlayBefore, After: s_state.Of(layout)));
+        parts.Add(new SidebarUndoEntry(0, SidebarUndoKind.View, layout, label, ViewBefore: viewBefore, ViewAfter: SidebarLibraryView.List));
+        Record(SidebarUndoEntry.Batch(layout, label, parts), toastText);
+    }
 
     // ── folder expansion (an unbounded id set ⇒ the account file, not settings) ─────────────────────────────────────────
 

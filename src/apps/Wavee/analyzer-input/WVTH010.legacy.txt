@@ -45,3 +45,7 @@ member Platform.Keys.DetailShowRailWidth
 member Platform.Keys.DetailShowRailCollapsed
 member Platform.Keys.DetailUniformRailWidth
 member Platform.Keys.DetailUniformRailCollapsed
+key sidebar.pane.width
+key sidebar.pane.userCollapsed
+member Platform.Keys.SidebarPaneWidth
+member Platform.Keys.SidebarPaneUserCollapsed

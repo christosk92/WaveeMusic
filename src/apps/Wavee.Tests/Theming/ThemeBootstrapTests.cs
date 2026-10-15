@@ -267,9 +267,13 @@ public sealed class ThemeBootstrapTests
     /// <summary>Runs every order of <paramref name="steps"/> over a copy of <paramref name="seed"/> and returns the distinct end
     /// states. Order independence means the answer has one element. The machinery the M-PRs reuse.</summary>
     static HashSet<string> EndStates(IReadOnlyList<ThemeBootstrapStep> steps, SnapshotSettings seed)
+        => EndStates(Permutations(steps), seed);
+
+    /// <summary>As <see cref="EndStates(IReadOnlyList{ThemeBootstrapStep}, SnapshotSettings)"/> over the given <paramref name="orders"/>.</summary>
+    static HashSet<string> EndStates(IEnumerable<IReadOnlyList<ThemeBootstrapStep>> orders, SnapshotSettings seed)
     {
         var states = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var order in Permutations(steps))
+        foreach (var order in orders)
         {
             var store = seed.Clone();
             ThemeBootstrap.Run(store, order);
@@ -332,7 +336,22 @@ public sealed class ThemeBootstrapTests
                 seed.Set(new SettingKey<int>(key, 0), 1);
                 seed.Set(new SettingKey<bool>(key, false), true);
             }
-        Assert.Single(EndStates(ThemeBootstrap.Steps, seed));
+        // Every permutation of the shipped steps is no longer enumerable (n! orders: the M-PRs have shipped eleven steps, 40 million orders): the order
+        // independence is PROVEN by `Disjointness` (no two steps write one key, none reads what another writes: `ShippedSteps_AreNamedAndDisjoint`) and
+        // SAMPLED here over the given order, its reverse, every rotation and a fixed set of shuffles.
+        Assert.Single(EndStates(SampledOrders(ThemeBootstrap.Steps), seed));
+    }
+
+    /// <summary>The given order, its reverse, every rotation of both and 200 shuffles of a fixed seed: enough orders to catch a step that reads what another wrote.</summary>
+    static IEnumerable<IReadOnlyList<ThemeBootstrapStep>> SampledOrders(IReadOnlyList<ThemeBootstrapStep> steps)
+    {
+        var forward = steps.ToArray();
+        var reverse = forward.Reverse().ToArray();
+        foreach (var basis in new[] { forward, reverse })
+            for (int shift = 0; shift < basis.Length; shift++)
+                yield return basis.Skip(shift).Concat(basis.Take(shift)).ToArray();
+        var random = new Random(7);
+        for (int i = 0; i < 200; i++) yield return forward.OrderBy(_ => random.Next()).ToArray();
     }
 
     [Fact]

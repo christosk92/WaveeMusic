@@ -25,6 +25,7 @@ public sealed record SidebarMigrationResult(
     SidebarLayoutId Layout,
     SidebarLayoutState State,
     SidebarDensity Density,
+    SidebarLibraryView LibraryView,   // the theme's state (M7b), not part of the layout state
     SidebarLibraryFilter Filter,
     float Width,
     bool UserCollapsed,
@@ -60,7 +61,7 @@ public static class SidebarMigrationV2
         var library = new List<SectionState>(SidebarCatalogue.DefaultOverlay(SidebarLayoutId.Library).Sections);
         var sort = (uint)input.V3Sort <= 4 ? (SidebarLibrarySort)input.V3Sort : SidebarLibrarySort.Recents;
         var view = input.V3View >= 2 ? SidebarLibraryView.Grid : SidebarLibraryView.List;
-        Set(library, "library", s => s with { Sort = sort, Descending = desc, View = view });
+        Set(library, "library", s => s with { Sort = sort, Descending = desc });
         var density = input.Design == 1 && input.V3View == 0 ? SidebarDensity.Compact : SidebarDensity.Default;
         var filter = input.V3Filter switch
         {
@@ -116,7 +117,7 @@ public static class SidebarMigrationV2
             0L,
             input.V2?.V3?.FirstSeen ?? []);
 
-        return new SidebarMigrationResult(layout, state, density, filter, SidebarPaneBounds.Clamp(input.DesignWidth),
+        return new SidebarMigrationResult(layout, state, density, view, filter, SidebarPaneBounds.Clamp(input.DesignWidth),
             input.DesignCollapsed, account, input.Design == 2 || topBarDiffered, dropped);
     }
 
@@ -281,8 +282,10 @@ internal static class SidebarMigrationHost
         // profile, so a legacy key written here would never be read).
         Theming.ThemeHost.Request(Theming.NavPaneOptionIds.Layout, r.Layout);
         Theming.ThemeHost.Request(Theming.NavPaneOptionIds.Density, r.Density);
-        settings.Set(Platform.Keys.SidebarPaneWidth, r.Width);
-        settings.Set(Platform.Keys.SidebarPaneUserCollapsed, r.UserCollapsed);
+        // The pane's width, collapse and the Library's view are the active theme's state (M7b), for the same reason.
+        Theming.ThemeState.Set(Sidebar.PaneWidthKey, r.Width);
+        Theming.ThemeState.Set(Sidebar.PaneCollapsedKey, r.UserCollapsed);
+        Theming.ThemeState.Set(Sidebar.LibraryViewKey, (int)r.LibraryView);
         settings.Set(Platform.Keys.SidebarLibraryFilter, (int)r.Filter);
         settings.Set(Platform.Keys.SidebarMigrationDropped, string.Join(",", r.Dropped));
         settings.Set(Platform.Keys.SidebarBootstrapVersion, 2);

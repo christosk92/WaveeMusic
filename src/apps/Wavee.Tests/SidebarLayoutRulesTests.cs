@@ -199,12 +199,11 @@ public sealed class SidebarLayoutRulesTests
     }
 
     [Fact]
-    public void LibrarySort_View_Liked_Persist_AndCountAsModified()
+    public void LibrarySort_Liked_Persist_AndCountAsModified()
     {
         var sort = Apply(new SetLibrarySort(SidebarLibrarySort.Alphabetical, false));
-        var view = Apply(new SetLibraryView(SidebarLibraryView.Grid));
         var liked = Apply(new SetShowLiked(false));
-        foreach (var r in new[] { sort, view, liked })
+        foreach (var r in new[] { sort, liked })
         {
             Assert.True(r.Changed);
             Assert.True(SidebarLayoutRules.IsModified(r.State.Library));
@@ -213,9 +212,19 @@ public sealed class SidebarLayoutRulesTests
         var options = SidebarLayoutRules.Resolve(sort.State, SidebarLayoutId.Library, SidebarDensity.Default).Library;
         Assert.Equal(SidebarLibrarySort.Alphabetical, options.Sort);
         Assert.False(options.Descending);
-        Assert.Equal(SidebarLibraryView.Grid, SidebarLayoutRules.Resolve(view.State, SidebarLayoutId.Library,
-            SidebarDensity.Default).Library.View);
         Assert.False(SidebarLayoutRules.Resolve(liked.State, SidebarLayoutId.Library, SidebarDensity.Default).Library.ShowLiked);
+    }
+
+    [Fact]
+    public void LibraryView_IsTheThemesState_NotTheOverlays_AndCountsAsModifiedOnlyInLibrary()
+    {
+        // M7b: the view is a Resolve input (the theme's state), never an overlay member.
+        Assert.Equal(SidebarLibraryView.List, SidebarLayoutRules.Resolve(SidebarLayoutState.Default, SidebarLayoutId.Library, SidebarDensity.Default).Library.View);
+        Assert.Equal(SidebarLibraryView.Grid, SidebarLayoutRules.Resolve(SidebarLayoutState.Default, SidebarLayoutId.Library, SidebarDensity.Default,
+            SidebarLibraryView.Grid).Library.View);
+        Assert.False(SidebarLayoutRules.IsModified(SidebarLayoutState.Default.Library));
+        Assert.True(SidebarLayoutRules.IsModified(SidebarLayoutState.Default.Library, SidebarLibraryView.Grid));
+        Assert.False(SidebarLayoutRules.IsModified(SidebarLayoutState.Default.Classic, SidebarLibraryView.Grid));
     }
 
     [Fact]
