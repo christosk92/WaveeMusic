@@ -147,7 +147,8 @@ public class AccentLadderTests
         // The regression this pins: before the fix, AccentOf hand-rolled
         // `ColorF.FromRgba((byte)(argb >> 16), (byte)(argb >> 8), (byte)argb, 255)` with no Lift. It must now be the
         // LIFTED payload colour (Design.Palette.ChromeFromPayload), not the raw one.
-        Assert.Equal(Design.Palette.ChromeFromPayload(0xFF6A1B9Au), richText);
+        // (The page accent carries its contrast floor, D13: the lifted colour, stepped a rung where it fails 4.5:1.)
+        Assert.Equal(Design.Palette.Floor(Design.Palette.ChromeFromPayload(0xFF6A1B9Au)), richText);
         Assert.NotEqual(ColorF.FromRgba(0x6A, 0x1B, 0x9A, 255), richText);
     }
 
@@ -173,8 +174,8 @@ public class AccentLadderTests
 
         var p = MakePlaylist("graded-wins", 0xFFC2185Bu, GradedImageId);
 
-        var graded = Design.Palette.ChromeAccent(scheme);
+        var graded = Design.Palette.Floor(Design.Palette.ChromeAccent(scheme));
         Assert.Equal(graded, Playlist.AccentOf(p));
-        Assert.NotEqual(Design.Palette.ChromeFromPayload(0xFFC2185Bu), Playlist.AccentOf(p));
+        Assert.NotEqual(Design.Palette.Floor(Design.Palette.ChromeFromPayload(0xFFC2185Bu)), Playlist.AccentOf(p));
     }
 }

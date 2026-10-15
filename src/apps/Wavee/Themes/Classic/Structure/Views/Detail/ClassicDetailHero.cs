@@ -39,6 +39,7 @@ using FrameSlots = Wavee.Detail.FrameSlots;
 using HeroParts = Wavee.Detail.HeroParts;
 using Identity = Wavee.Detail.Identity;
 using InsightsToggle = Wavee.Detail.InsightsToggle;
+using RailLayout = Wavee.Detail.RailLayout;
 using Skeleton = Wavee.Detail.Skeleton;
 using Text = Wavee.Detail.Text;
 using VerticalLayout = Wavee.Detail.VerticalLayout;
@@ -303,38 +304,13 @@ internal static partial class ClassicDetailFrame
         Key = key, Direction = 1, Layout = ClassicDetailKit.Shove, Enter = late ? ClassicDetailKit.FadeUp : (EnterExit?)null, Children = [child],
     };
 
-    /// <summary>W27: Play 32 + the 32-DIP satellites — Shuffle (when the page offers it) · the heart (DROPPED, not
-    /// disabled, when <c>Heart == None</c>) · Share · More.</summary>
+    /// <summary>The rail's action row (tuned Classic D1, D20): the Play split, then Shuffle (when the page offers it) · the
+    /// heart (DROPPED, not disabled, when <c>Heart == None</c>) · Share · More, in one wrap.</summary>
     static Element HeroActions(VerticalSpec spec, Identity id, in Config cfg, FrameActions acts)
-    {
-        var actions = new List<Element>(5)
-        {
-            Controls.PlayButton(spec.Accent, spec.PlayAll ?? DetailVerbs.PlayContext(id.Subject)) with { Key = "vhero-play" },
-        };
-        if (acts.Shuffle is { } shuffle)
-            actions.Add(ClassicDetailKit.Satellite(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle) with { Key = "vhero-shuffle" });
-        if (cfg.Heart != HeartMode.None)
-        {
-            // Keyed on the TARGET: SaveButton's uri freezes at mount. The heart reads the page accent through
-            // Design.AccentCtx, which the frame host provides.
-            string saveUri = ClassicDetailKit.SaveTargetOf(id).Text;
-            string saveName = id.Title;
-            actions.Add(Embed.Comp(() => new Controls.SaveButton
-                { Uri = saveUri, Name = saveName, Glyph = 16f, Box = Controls.IconButtonSize })
-                with { Key = "vhero-save:" + saveUri });
-        }
-        if (ClassicDetailKit.ShareActionFor(id) is { } share)
-            actions.Add(ClassicDetailKit.Satellite(Icons.Share, Loc.Get(Strings.Menu.Share), share) with { Key = "vhero-share" });
-        if (acts.More is { } more)
-            actions.Add(ClassicDetailKit.MoreButton(more, Controls.IconButtonSize) with { Key = "vhero-more:" + id.Subject.Text });
-        return new BoxEl
-        {
-            Direction = 0, Gap = Spacing.S, Wrap = true,
-            AlignItems = FlexAlign.Center, Justify = FlexJustify.Start,
-            Margin = new Edges4(0f, Spacing.XS, 0f, 0f),
-            Children = actions.ToArray(),
-        };
-    }
+        => ClassicDetailKit.ActionRow("vhero-actions",
+            ClassicDetailKit.PlaySplit(id.Subject, spec.Accent, spec.PlayAll ?? DetailVerbs.PlayContext(id.Subject)),
+            ClassicDetailKit.FixedActions("vhero-", id, cfg.Heart != HeartMode.None, acts, spec.Accent),
+            Spacing.XS);
 
     /// <summary>The hero attribution — THREE arms in precedence order after the page's own slot: the collaborator pile
     /// (width-keyed), the owner run, the billed-artist accent spans (NoWrap, one line, ", " joined).</summary>
@@ -490,8 +466,8 @@ internal static partial class ClassicDetailFrame
         var kids = new Element[1 + Skeleton.SatelliteCount];
         kids[0] = new BoxEl
         {
-            Width = Skeleton.PlayButtonWidth, Height = Controls.ButtonHeight,
-            Corners = Radii.ControlAll,
+            Width = RailLayout.PlaySplitWidth, Height = Controls.ButtonHeight,
+            Corners = Radii.ControlAll, Margin = new Edges4(0f, 0f, RailLayout.SplitTrail, 0f),
         };
         for (int i = 1; i < kids.Length; i++)
             kids[i] = new BoxEl

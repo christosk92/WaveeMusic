@@ -659,10 +659,28 @@ public static partial class Queue
         });
     }
 
-    static void QueueContext(EntityUri uri, bool next)
+    /// <summary>A container's members after the playing row (<paramref name="next"/>) or at the end of the queue, with the batch
+    /// toast; "nothing to add" while the tables do not hold them yet. The container verbs and the detail page's "More ways to
+    /// play" menu (<see cref="DetailVerbs.PlayMenu"/>) both land here.</summary>
+    internal static void QueueContext(EntityUri uri, bool next)
     {
         if (LocalMembers(uri.Id) is { } refs) QueueRefs(refs, next, announce: true);
         else Notify.Say(Loc.Get(Strings.Drag.NothingToAdd), InfoBarSeverity.Warning);
+    }
+
+    /// <summary>"Start radio" on a container (the detail page's "More ways to play", tuned Classic D2): the radio seam takes a song
+    /// or an artist seed, so a container seeds it with its FIRST member track; a container with no resident track (still
+    /// loading, or episodes) reports "Couldn't start radio" through <see cref="RadioToast"/>.</summary>
+    internal static void StartContextRadio(EntityUri uri)
+    {
+        if (LocalMembers(uri.Id) is { } refs)
+            for (int i = 0; i < refs.Length; i++)
+                if (refs[i].Kind == EntityKind.Track && new Track(refs[i].Slot) is { IsValid: true } seed)
+                {
+                    Playback.StartRadio(seed.Uri, RadioToast);
+                    return;
+                }
+        RadioToast(default);
     }
 
     static EntityRef[] RefsOf(IReadOnlyList<Track> tracks)

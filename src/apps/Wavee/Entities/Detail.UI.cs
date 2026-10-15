@@ -1096,7 +1096,8 @@ public static partial class Detail
     /// <summary>The one accent ladder (<see cref="AccentLadder"/>): the cover's chrome grading (else the fallback
     /// url's), else the payload hex, else the last remembered page accent while this page's grading is still pending,
     /// else the system accent. Never the now-playing track. Cached probes only — a miss enqueues elsewhere and the
-    /// caller's tracked effect re-runs when it lands.</summary>
+    /// caller's tracked effect re-runs when it lands. The answer carries the theme's contrast floor
+    /// (<see cref="Design.Palette.Floor"/>, D13): the hold remembers the graded colour, the floor is re-applied per theme.</summary>
     public static ColorF AccentFor(string? paletteUrl, uint payloadAccent, string? fallbackUrl = null)
     {
         var scheme = Design.ChromeSchemeFor(paletteUrl) ?? Design.ChromeSchemeFor(fallbackUrl);
@@ -1107,7 +1108,7 @@ public static partial class Detail
         var result = AccentLadder.Resolve(new AccentLadder.Input(graded, payloadAccent, definite),
             AccentHold.Last, Tok.AccentDefault, s_liftPayload);
         AccentHold.Remember(result);
-        return result.Color;
+        return Design.Palette.Floor(result.Color);
     }
 
     static ColorF ComputeAccent(FrameSpec spec)

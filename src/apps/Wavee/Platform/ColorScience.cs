@@ -225,6 +225,32 @@ public static class ColorScience
         return sat <= NeutralS ? fallback : Vivid(lifted);
     }
 
+    /// <summary>The page accent's CONTRAST FLOOR (tuned Classic D13): an artwork accent is the ink of the hearts and the
+    /// accent text AND the fill of the Play button, so it must pass <see cref="TextContrast"/> both ways: as ink against
+    /// the page <paramref name="ground"/>, and under its own legible label ink (<see cref="ColorContrast.PickContrast(in ColorF)"/>).
+    /// A failing accent steps along its own ramp (<see cref="AccentRamp"/>: Light1-3 on a dark ground, Dark1-3 on a light
+    /// one, the direction that raises both ratios) and the first rung that passes wins; when none does, the
+    /// <paramref name="system"/> accent stands in. A passing accent is returned unchanged. Pure.</summary>
+    public static ColorF AccentFloor(ColorF accent, ThemeKind theme, ColorF ground, ColorF system)
+    {
+        if (PassesFloor(accent, ground)) return accent;
+        var ramp = AccentRamp.Derive(accent);
+        ReadOnlySpan<ColorF> rungs = theme == ThemeKind.Dark
+            ? [ramp.Light1, ramp.Light2, ramp.Light3]
+            : [ramp.Dark1, ramp.Dark2, ramp.Dark3];
+        foreach (var rung in rungs)
+        {
+            var c = rung with { A = accent.A };
+            if (PassesFloor(c, ground)) return c;
+        }
+        return system;
+    }
+
+    /// <summary><see cref="AccentFloor"/>'s test: ink on the ground and label on the fill, both at <see cref="TextContrast"/>.</summary>
+    public static bool PassesFloor(ColorF accent, ColorF ground)
+        => ColorContrast.MeetsAaText(accent, ground, TextContrast)
+           && ColorContrast.MeetsAaText(ColorContrast.PickContrast(accent), accent, TextContrast);
+
     /// <summary>The cover's HUE — the most saturated of the graded roles, in preference order
     /// <c>BackgroundTintedBase → BackgroundBase → TextSubdued → TextBrightAccent</c> (strict <c>&gt;</c>, so a tie
     /// keeps the earlier, higher-preference role).

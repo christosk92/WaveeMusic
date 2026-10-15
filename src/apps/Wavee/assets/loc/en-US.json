@@ -53,6 +53,8 @@
   },
   "detail": {
     "play": "Play",
+    "moreWaysToPlay": "More ways to play",
+    "startRadio": "Start radio",
     "shuffle": "Shuffle",
     "tuning": {
       "tune": "Tune",

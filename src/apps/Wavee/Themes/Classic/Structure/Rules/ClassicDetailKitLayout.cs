@@ -23,6 +23,14 @@ public static class ClassicDetailKitLayout
     /// <summary>The page-facing billed-artist line (`ClassicDetailKit.ArtistLine`): size and line height of each link; the satellite icon action default edge.</summary>
     public const float ArtistLineSize = 14f, ArtistLineHeight = 20f, SatelliteSize = 32f;
 
+    // ── the Play split (tuned Classic D2; its widths are the rail model's, Detail.RailLayout.PlayHalf / MenuHalf / SplitDivider) ──
+
+    /// <summary>The divider between the halves: a 20-DIP hairline of the label ink at 20 %, on the accent (never a gap).</summary>
+    public const float SplitDividerHeight = 20f, SplitDividerInk = 0.2f;
+
+    /// <summary>The chevron: a 12-DIP glyph in the label ink at 80 %.</summary>
+    public const float SplitChevronGlyph = 12f, SplitChevronInk = 0.8f;
+
     // ── the notice strip ──
 
     /// <summary>The strip's padding: left and right, top, bottom.</summary>
