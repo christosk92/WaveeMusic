@@ -342,6 +342,9 @@ public sealed class NavPaneMountedTests(ShellHost host)
                 }
                 shows.Clear(me);
                 shows.MarkFailed(me, 0, 503);
+                // A real failed answer lands in a posted drain whose wrapper publishes the dirty tables (`PublishAfter`); this write runs
+                // outside one, so it ends the drain itself instead of waiting for some unrelated post to publish it.
+                Entities.Publish();
                 Until(shell, () => !shell.Find("library-error-banner").IsNull, "the library's retry banner");
 
                 var scene = shell.Host.Scene;
@@ -358,6 +361,7 @@ public sealed class NavPaneMountedTests(ShellHost host)
             {
                 scope.Edges.SavedShows.Replace(me, targets, payload, EdgeState.Complete, targets.Length);
                 scope.Edges.SavedShows.MarkAnswered(me);
+                Entities.Publish();
                 Until(shell, () => shell.Find("library-error-banner").IsNull, "the banner leaving once the source answers");
                 if (original != SidebarLayoutId.Library)
                 {
