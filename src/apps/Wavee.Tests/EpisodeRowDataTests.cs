@@ -47,9 +47,9 @@ public class EpisodeRowDataTests
     [Fact]
     public void Length_is_what_is_left_while_resumed_and_the_whole_duration_otherwise()
     {
-        Assert.Equal("44 min", Episode.RowPlan.LengthOf(44 * Min, 0));
-        Assert.Equal("33 min left", Episode.RowPlan.LengthOf(44 * Min, 11 * Min));
-        Assert.Equal("1 h 30 min", Episode.RowPlan.LengthOf(90 * Min, 0));
+        Assert.Equal(Strings.Detail.DurationMin(44L), Episode.RowPlan.LengthOf(44 * Min, 0));
+        Assert.Equal(Strings.Podcast.Left(Strings.Detail.DurationMin(33L)), Episode.RowPlan.LengthOf(44 * Min, 11 * Min));
+        Assert.Equal(Strings.Detail.DurationHrMin(1L, 30L), Episode.RowPlan.LengthOf(90 * Min, 0));
         Assert.Equal("", Episode.RowPlan.LengthOf(0, 0));
     }
 
@@ -65,8 +65,9 @@ public class EpisodeRowDataTests
     [Fact]
     public void Plan_caption_leads_with_the_date_and_swaps_the_length_for_what_is_left_while_resumed()
     {
-        Assert.Equal("Today" + Dot + "44 min", Episode.RowPlan.Of(Facts(), "Today", true, true).Caption);
-        Assert.Equal("Today" + Dot + "33 min left", Episode.RowPlan.Of(Facts(resumeMs: 11 * Min), "Today", true, true).Caption);
+        Assert.Equal("Today" + Dot + Strings.Detail.DurationMin(44L), Episode.RowPlan.Of(Facts(), "Today", true, true).Caption);
+        Assert.Equal("Today" + Dot + Strings.Podcast.Left(Strings.Detail.DurationMin(33L)),
+            Episode.RowPlan.Of(Facts(resumeMs: 11 * Min), "Today", true, true).Caption);
     }
 
     // ── the meta row: any part, only when the site asks ─────────────────────────────────────────────────────────────

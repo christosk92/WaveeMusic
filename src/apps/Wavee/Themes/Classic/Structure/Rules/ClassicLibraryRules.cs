@@ -61,8 +61,13 @@ public static class ClassicLibraryRules
     /// <summary>The loading state's shimmer rows.</summary>
     public const int NavSkelRows = 8;
 
-    /// <summary>The shimmer row's height (the compact row's plate).</summary>
-    public const float NavSkelRowHeight = 40f;
+    /// <summary>The shimmer row mirrors the bound row (tuned Classic X2): the stock list plate's 4-DIP side margin (its 2-DIP top and bottom are
+    /// <c>User.NavRowMarginY</c>), the content lane's inset (the plate's own 16 / 12 plus the row's 8 either side), and the bar widths of the
+    /// title and subtitle lines.</summary>
+    public const float NavSkelPlateMarginX = 4f, NavSkelTitleW = 160f, NavSkelSubtitleW = 96f;
+
+    /// <summary>See <see cref="NavSkelPlateMarginX"/>.</summary>
+    public static readonly Edges4 NavSkelContentPad = new(24f, 0f, 20f, 0f);
 
     /// <summary>The list row's art edge and its album / show corner (an artist is a circle), the title rung and the subtitle rung (shared with the search rows).</summary>
     public const float RowArt = 40f, RowArtCorner = 5f, RowTitleSize = 14f, RowTitleLine = 20f, RowSubtitleSize = 12f, RowSubtitleLine = 16f;

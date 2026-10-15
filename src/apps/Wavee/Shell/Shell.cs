@@ -1870,6 +1870,11 @@ public static partial class Shell
         /// the strip is caution-tinted with a standard action. A deliberate divergence: 0.2.9's banner had no call site
         /// (ch 29 parity 46).</summary>
         public static bool ShowsOfflineStrip(AuthState auth) => auth == AuthState.Offline;
+
+        /// <summary>The voice a vacancy speaks (tuned Classic X1): Error is a failure while ONLINE; while the session is offline the same
+        /// failure speaks the Offline voice ("you're offline", Retry reconnects). Every other voice is unchanged.</summary>
+        public static Controls.VacancyVoice VoiceFor(Controls.VacancyVoice asked, AuthState auth)
+            => asked == Controls.VacancyVoice.Error && auth == AuthState.Offline ? Controls.VacancyVoice.Offline : asked;
     }
 
     // ══ 13. THE MASTHEAD PUBLICATIONS (ch 18 W13) ═══════════════════════════════════════════════════════════════════

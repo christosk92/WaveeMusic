@@ -10,7 +10,7 @@ using FluentGpu.Foundation;
 namespace Wavee.Themes.Classic;
 
 /// <summary>The constants of the account chip and menu, the runtime banner, the update toast's card, the offline strip and the menu tile.</summary>
-internal static class ClassicOverlayRules
+public static class ClassicOverlayRules
 {
     // ── the account chip ────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -79,6 +79,26 @@ internal static class ClassicOverlayRules
 
     /// <summary>The strip's glyph.</summary>
     public const float OfflineIcon = 16f;
+
+    /// <summary>The cloud-off glyph of the offline voice (the strip and the vacancy; the sidebar's offline pin wears the same one).</summary>
+    public const string OfflineGlyph = SidebarGeometry.OfflineGlyph;
+
+    /// <summary>The strip (tuned Classic X1, board C-Offline): 36 tall, 12 either side, 10 between the glyph and the notice, r4.</summary>
+    public const float OfflineStripH = 36f, OfflineStripPadX = 12f, OfflineStripGap = 10f;
+
+    // ── the offline vacancy (tuned Classic X1, board C-Offline) ──────────────────────────────────────────────────────
+
+    /// <summary>The vacancy's glyph (40, tertiary) and the step from it to the title (12 on top of the column's 4).</summary>
+    public const float OfflineVacancyGlyph = 40f, OfflineVacancyTitleTop = 12f;
+
+    /// <summary>The column's gap, the caption's widest measure, and the step to the actions (16 on top of the gap).</summary>
+    public const float OfflineVacancyGap = 4f, OfflineVacancyCaptionMaxW = 360f, OfflineVacancyActionsTop = 16f;
+
+    /// <summary>Between Retry and the library link.</summary>
+    public const float OfflineVacancyActionsGap = 12f;
+
+    /// <summary>The column sits above the card's centre: 120 of bottom padding lifts it (the page title stays above it).</summary>
+    public const float OfflineVacancyLift = 120f;
 
     // ── the context menu's identity tile ────────────────────────────────────────────────────────────────────────────
 

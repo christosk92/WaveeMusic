@@ -454,20 +454,22 @@ public sealed class ThemeCatalogTests : IDisposable
     }
 
     [Fact]
-    public void ContractVersion_IsOnePointFive_AndRefusesAnythingElse()
+    public void ContractVersion_IsOnePointSix_AndRefusesAnythingElse()
     {
         // 1.1 (tuned Classic CT4): LyricsState.Offline + LyricsLinesStyle.Offline, PlayerBarSlots.VideoSplit.
         // 1.2 (tuned Classic CT1c): the omnibar model's focused-field facts. 1.3 (tuned Classic CT3a): SidebarRowShape.EntityText,
         // NavPanePolicy.ShowCovers, the row host's UnpinAction.
         // 1.4 (tuned Classic CT5c): the row lanes without a film lane, the versions and withheld-reason reads.
-        // 1.5 (tuned Classic CT5b): DetailRailProps.Shown, the two-column arm's insights sheet. A 1.0 theme still runs.
-        Assert.Equal("1.5", ContractVersion.Text);
+        // 1.5 (tuned Classic CT5b): DetailRailProps.Shown, the two-column arm's insights sheet.
+        // 1.6 (tuned Classic CT8): Overlay.OfflineVacancy and OfflineVacancyProps. A 1.0 theme still runs.
+        Assert.Equal("1.6", ContractVersion.Text);
         Assert.True(ContractVersion.IsCompatible(1, 0));
         Assert.True(ContractVersion.IsCompatible(1, 2));
         Assert.True(ContractVersion.IsCompatible(1, 3));
         Assert.True(ContractVersion.IsCompatible(1, 4));
         Assert.True(ContractVersion.IsCompatible(1, 5));
-        Assert.False(ContractVersion.IsCompatible(1, 6));
+        Assert.True(ContractVersion.IsCompatible(1, 6));
+        Assert.False(ContractVersion.IsCompatible(1, 7));
         Assert.False(ContractVersion.IsCompatible(2, 0));
         Assert.False(ContractVersion.IsCompatible(0, 0));
     }

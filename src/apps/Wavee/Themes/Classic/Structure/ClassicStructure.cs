@@ -266,6 +266,7 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.OverlayRuntimeBanner, ClassicRuntimeBanner.Template, "classic.overlay.runtime-banner");
         views.Add(ViewKeys.OverlayToast, ClassicToast.Template, "classic.overlay.toast");
         views.Add(ViewKeys.OverlayOfflineStrip, ClassicOfflineStrip.Template, "classic.overlay.offline-strip");
+        views.Add(ViewKeys.OverlayOfflineVacancy, ClassicOfflineVacancy.Template, "classic.overlay.offline-vacancy");   // tuned Classic X1
         views.Add(ViewKeys.MenuContext, ClassicContextMenuTile.Template, "classic.menu.context-tile");
         views.Add(ViewKeys.DialogLogoutConfirm, ClassicLogoutConfirm.Template, "classic.dialog.logout-confirm");
         views.Add(ViewKeys.DialogPlayLink, ClassicPlayLink.Template, "classic.dialog.play-link");

@@ -42,9 +42,7 @@ internal static class ClassicFrameRules
     /// <summary>The rail band's corner: the card radius on the top left only.</summary>
     public static CornerRadius4 RailBandCorners => new(Radii.Card, 0f, 0f, 0f);
 
-    /// <summary>The offline lane's widest extent.</summary>
-    public const float OfflineLaneMaxWidth = 720f;
-
-    /// <summary>The offline lane's inset from the content region (16 either side, 12 from the top).</summary>
-    public static readonly Edges4 OfflineLanePadding = new(16f, 12f, 16f, 0f);
+    /// <summary>The offline lane's inset in the content card (tuned Classic X1, board C-Offline): the page gutter either side, 16 from the card's
+    /// top, nothing below (the page's own head opens under it).</summary>
+    public static Edges4 OfflineLanePadding => new(Spacing.PageWide, 16f, Spacing.PageWide, 0f);
 }

@@ -6,10 +6,10 @@
 //   the registered frame   Classic registers both keys; the real shell mounted on the installed theme is drawn by that template
 //                          (its realized-node captures and regions are the template's), and a page, the not-found page and an
 //                          empty body each stand under the keys the shell mounted before the move
-//   the offline lane       floats over the kept content while the session is down and leaves when it is back
+//   the offline lane       stands above the kept content while the session is down and leaves when it is back
 //   each state's picture   `ViewHarness` mounts the content-state view alone under the Classic composition with fixture props:
 //                          the body boxes fill the card, the not-found page is the glyph, the line and the action, centred, and
-//                          the lane is a card no wider than its maximum, centred under the inset
+//                          the lane is the strip in the page gutter, 16 under the card's top (tuned Classic X1)
 //
 // The decision itself (every state and transition edge) is `Wavee.Tests\ContentStateTests.cs`.
 
@@ -171,7 +171,7 @@ public sealed class ContentStateMountedTests(ShellHost host)
         });
 
     [Fact]
-    public void The_offline_lane_floats_over_the_content_while_the_session_is_down_and_leaves_when_it_is_back()
+    public void The_offline_lane_stands_above_the_content_while_the_session_is_down_and_leaves_when_it_is_back()
         => host.Mounted(shell =>
         {
             shell.RunFrames(5);
@@ -192,7 +192,10 @@ public sealed class ContentStateMountedTests(ShellHost host)
                 Shell.Auth.Value = Shell.AuthState.Offline;
                 shell.RunFrames(10);
                 int with = CountUnder(shell, card);
-                Assert.True(with >= without + 4, "the lane's card, strip and its parts are mounted: " + without + " -> " + with);
+                Assert.True(with >= without + 4, "the lane, its strip and the strip's parts are mounted: " + without + " -> " + with);
+                var lane = shell.Host.Scene.AbsoluteRect(Node(shell, "offline-lane"));
+                var page = shell.Host.Scene.AbsoluteRect(Node(shell, key));
+                Assert.True(page.Y >= lane.Y + lane.H - 0.5f, "the page opens under the lane, not under a floating card");
 
                 Shell.Auth.Value = Shell.AuthState.Live;
                 shell.RunFrames(10);
@@ -255,16 +258,15 @@ public sealed class ContentStateMountedTests(ShellHost host)
             }, UnderClassic());
 
     [Fact]
-    public void The_offline_lane_is_a_card_under_the_inset_no_wider_than_its_maximum()
+    public void The_offline_lane_is_the_36_tall_strip_in_the_page_gutter_16_under_the_top()
         => ViewHarness.With(host, ViewKeys.ShellContentState,
-            ContentStateProps.ForOfflineLane(new OfflineStripProps { Message = new string('x', 240) }),   // wider than the card's maximum
+            ContentStateProps.ForOfflineLane(new OfflineStripProps { Message = new string('x', 240) }),   // longer than the window: it trims
             harness =>
             {
-                // The CARD holds the strip: a child wider than its max-width parent overflows instead of shrinking, and the
-                // card's clip is what keeps it inside 720.
-                var card = harness.AbsoluteBounds(harness.Node("offline-card"));
-                Assert.True(card.W <= 720.5f, $"the card stops at its maximum width (720), was {card.W}");
-                Assert.Equal(12f, card.Y, 0.5f);   // the lane's top inset
-                Assert.Equal(590f, card.X + card.W / 2f, 1f);   // centred in the 1180 window
+                var strip = harness.AbsoluteBounds(harness.Node("offline-strip"));
+                Assert.Equal(ClassicOverlayRules.OfflineStripH, strip.H, 0.5f);
+                Assert.Equal(16f, strip.Y, 0.5f);                                          // the lane's top inset
+                Assert.Equal(FluentGpu.Dsl.Spacing.PageWide, strip.X, 0.5f);              // the page gutter on the left …
+                Assert.Equal(1180f - FluentGpu.Dsl.Spacing.PageWide, strip.X + strip.W, 0.5f);   // … and on the right of the 1180 window
             }, UnderClassic());
 }

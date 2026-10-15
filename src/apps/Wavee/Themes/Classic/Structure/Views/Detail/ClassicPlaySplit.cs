@@ -158,6 +158,11 @@ internal static partial class ClassicDetailKit
 
     // ══ THE ACTION ROW ══════════════════════════════════════════════════════════════════════════════════════════════════
 
+    /// <summary>How many buttons <see cref="FixedActions"/> lays out for the same inputs: the vertical hero's skeleton reserves exactly these
+    /// (tuned Classic X2), so a page without a heart or a link does not shimmer a square it never draws.</summary>
+    public static int FixedActionCount(Detail.Identity id, bool heart, Detail.FrameActions acts)
+        => (acts.Shuffle is not null ? 1 : 0) + (heart ? 1 : 0) + (ShareActionFor(id) is not null ? 1 : 0) + (acts.More is not null ? 1 : 0);
+
     /// <summary>The fixed action group after the split (D1): Shuffle (when the page offers it), the heart (when the kind has
     /// one), Share (when the page has a link) and the ⋯ (when the page has a menu), each keyed under <paramref name="keyPrefix"/>.</summary>
     public static List<Element> FixedActions(string keyPrefix, Detail.Identity id, bool heart, Detail.FrameActions acts, Func<ColorF> accent)

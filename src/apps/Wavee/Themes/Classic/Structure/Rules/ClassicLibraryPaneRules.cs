@@ -34,8 +34,12 @@ public static class ClassicLibraryPaneRules
     /// <summary>The meta line, 12.5 / 16.</summary>
     public const float PaneHeaderMetaSize = 12.5f, PaneHeaderMetaLine = 16f;
 
-    /// <summary>The loading twin's three stand-in bars: widths (eyebrow, title, attribution) and heights (the two small ones, the title).</summary>
-    public const float SkeletonEyebrowW = 80f, SkeletonTitleW = 220f, SkeletonAttributionW = 120f, SkeletonSmallBarH = 11f, SkeletonTitleBarH = 26f;
+    /// <summary>The loading twin's four stand-in bars (tuned Classic X2): widths (eyebrow, title, attribution, meta) and heights (the small ones, the title).</summary>
+    public const float SkeletonEyebrowW = 80f, SkeletonTitleW = 220f, SkeletonAttributionW = 120f, SkeletonMetaW = 140f, SkeletonSmallBarH = 11f, SkeletonTitleBarH = 26f;
+
+    /// <summary>The line slots each bar is centred in: the real header's rungs (eyebrow 16, the 28/36 title, attribution 20; meta is
+    /// <see cref="PaneHeaderMetaLine"/>), so the bars stand where the words land: 16 + 36 + 20 + 16 + three 3-DIP gaps = 97.</summary>
+    public const float SkeletonEyebrowLine = 16f, SkeletonTitleLine = 36f, SkeletonAttributionLine = 20f;
 
     // ── the command row ───────────────────────────────────────────────────────────────────────────────────────────────────
 

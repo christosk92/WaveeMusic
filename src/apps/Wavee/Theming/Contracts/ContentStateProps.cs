@@ -9,7 +9,7 @@
 //   EmptyBody     an empty body box keyed `Key` (`page-empty:<route>`)
 //   NotFound      the route's own glyph (`Glyph`), the not-found line and the one action that always works (`GoHome`), keyed
 //                 `Key` (`page-notfound:<route>|<arg>`)
-//   OfflineLane   the strip over the kept content; `Strip` is the props of the strip's own view (`Overlay.OfflineStrip`, T11a)
+//   OfflineLane   the strip above the kept content; `Strip` is the props of the strip's own view (`Overlay.OfflineStrip`, T11a)
 //
 // Delegates are cached statics of the core (equal props compare equal by reference), so an unchanged state skips the template.
 
@@ -38,7 +38,7 @@ public sealed record ContentStateProps
     /// <summary>The not-found page's action: go to Home.</summary>
     public Action GoHome { get; init; } = s_nothing;
 
-    /// <summary>The offline strip the lane floats (the props of <see cref="ViewKeys.OverlayOfflineStrip"/>).</summary>
+    /// <summary>The offline strip the lane holds (the props of <see cref="ViewKeys.OverlayOfflineStrip"/>).</summary>
     public OfflineStripProps Strip { get; init; } = s_noStrip;
 
     /// <summary>A page fills the body.</summary>

@@ -1195,15 +1195,30 @@ public static partial class Controls
     /// <summary>THE vacancy — every "there is nothing to show" surface in the app, at one of eight shapes. The app has
     /// no second way to say it.
     /// <para>The copy is VERBATIM and lives in the loc table; a caller overrides <paramref name="title"/> /
-    /// <paramref name="subtitle"/> only where the surface genuinely knows something the grammar does not.</para></summary>
+    /// <paramref name="subtitle"/> only where the surface genuinely knows something the grammar does not.</para>
+    /// <para>THE OFFLINE VOICE (tuned Classic X1): an Error vacancy is a failure while ONLINE. While the session is offline
+    /// (<see cref="Shell.FrameRules.VoiceFor"/>) the same mount speaks the Offline voice instead, live: a page-scale vacancy becomes the
+    /// theme's offline vacancy (<c>Overlay.OfflineVacancy</c>: "&lt;page&gt; needs a connection", Retry, Go to Your Library), a
+    /// rail-scale one the compact Offline shape with the same reconnecting Retry. A page that has its content saved never gets here:
+    /// it keeps its rows under the offline strip.</para></summary>
     public static Element Vacancy(VacancyVoice voice, VacancyScale scale = VacancyScale.Page,
                                   string? title = null, string? subtitle = null,
                                   string? actionLabel = null, Action? onAction = null)
     {
+        Element picture = VacancyPicture(voice, scale, title, subtitle, actionLabel, onAction);
+        if (voice != VacancyVoice.Error) return picture;
+        Element offline = scale == VacancyScale.Page
+            ? FluentGpu.Theming.Slots.View(Theming.Contracts.ViewKeys.OverlayOfflineVacancy, Shell.OfflineVacancyFor(onAction))
+            : VacancyPicture(VacancyVoice.Offline, scale, null, null, null, Shell.ReconnectThen(onAction));
+        return Flow.Show(static () => Shell.FrameRules.VoiceFor(VacancyVoice.Error, Shell.Auth.Value) == VacancyVoice.Offline, offline, picture);
+    }
+
+    static Element VacancyPicture(VacancyVoice voice, VacancyScale scale, string? title, string? subtitle, string? actionLabel, Action? onAction)
+    {
         (string t, string s) = voice switch
         {
             VacancyVoice.Error => (Loc.Get(Strings.Common.ErrorTitle), Loc.Get(Strings.Common.ErrorSubtitle)),
-            VacancyVoice.Offline => (Loc.Get(Strings.Common.Offline), Loc.Get(Strings.Common.OfflineBanner)),
+            VacancyVoice.Offline => (Loc.Get(Strings.Common.OfflineTitle), Loc.Get(Strings.Common.OfflineBanner)),
             VacancyVoice.NoMatch => (Loc.Get(Strings.Common.EmptyTitle), Loc.Get(Strings.Common.EmptySubtitle)),
             _ => (Loc.Get(Strings.Common.EmptyTitle), Loc.Get(Strings.Common.EmptySubtitle)),
         };

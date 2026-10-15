@@ -1,6 +1,7 @@
 // ── Themes/Classic/Structure/Views/Home/ClassicHomeFacetRow.cs — Classic's `Home.FacetRow` (themes plan 6.1, T10a1) ─────────
 //
-// From `Home\Facet.UI.cs`: the facet row — SelectorBar (page-title style) + Following ToggleButton + busy ProgressBar + InfoBar. Every piece
+// From `Home\Facet.UI.cs`: the facet row — SelectorBar (page-title style) + Following ToggleButton + busy ProgressBar, and the failure
+// InfoBar's layer (`FailureLayer`, which the PAGE places, tuning H1). Every piece
 // is a STOCK engine control — nothing hand-rolled. The facet words ARE the page title (there is no greeting headline), so the stock
 // SelectorBar takes `R.Type.FacetTitleStyle` (28/36 display, rest secondary, selected primary semibold, no pill, a subtle hover plate,
 // 40-px items) through its `style` parameter instead of its default 14-px pill look.
@@ -11,13 +12,19 @@
 //   │  ├─ HStack h=SelectorH(40) [ SelectorBar.Create(labels, Index, onChange, style: R.Type.FacetTitleStyle) · spacer
 //   │  │                           · Flow.Show(hasSub, ToggleButton.Controlled) ]
 //   │  └─ 3-px slot { Flow.Show(Switch.Bar, ProgressBar.Indeterminate(width: NaN) fading in and out) }   (the slot never moves)
-//   └─ Flow.Show(Phase == Failed, InfoBar.Create(Error, "Couldn't load <facet>", …, Retry))
+//
+//   FailureLayer (a component the page lays OVER the top of its content, tuning H1)
+//   └─ pass-through column { Flow.Show(Phase == Failed, InfoBar.Create(Error, "Couldn't load <facet>", …, Retry)) }
 //
 // The HStack + the 3-px bar form the BAND, exactly `FacetRowH` tall, pinned with `.Sticky(StuckInset, scope: PageScope)` (transparent, no
 // acrylic — the page column names itself `PageScope`, so the pin holds for the whole page and not just this row's own column). The page
 // cuts the content column under it with `.StickyClip(StuckBottom)` + a `WhileStuck` top feather (`ClassicBrowseDirectory`'s masthead idiom); the
-// zones read the same constants for their chapter headers' stick inset. The InfoBar sits BELOW the band, unpinned — it scrolls with the
-// page's flow and, when it grows, pushes the content (never overlays it).
+// zones read the same constants for their chapter headers' stick inset.
+//
+// THE FAILURE SLOT (tuning H1): a failed facet switch reverts to the published facet and says so in an InfoBar. The bar used to sit in
+// the flow under the band and pushed every zone down by its height; now it has its own slot, a layer the page stacks over the top edge
+// of its content (`ClassicHomePage`), so the content below never moves when the bar comes or goes. The layer is pass-through: only
+// the bar itself takes the pointer. It is unpinned like the content it lies on: it scrolls away with the page's top.
 //
 // The row is a view slot, so it re-renders on `Words` / `Switch` changes without re-rendering the whole screen. Selection: the SelectorBar
 // OWNS `Index` (the host's cell, written on click/roving before OnChange fires); the host re-syncs it from the switch machine, so a failed or
@@ -114,24 +121,6 @@ internal static class ClassicHomeFacetRow
             ],
         };
 
-        string failedLabel = state.FailedTarget is { } ft ? LabelOf(words, ft) ?? ft : "";
-        string failedTarget = state.FailedTarget ?? "";
-        Element failure = Flow.Show(() => p.Switch.Value.Phase == FacetPhase.Failed, new BoxEl
-        {
-            Key = "home:facet:failure",
-            Direction = 1, MinWidth = 0f, Padding = new Edges4(0f, Spacing.S, 0f, 0f),
-            Enter = new EnterExit(Dy: ClassicHomeRules.FailureEnterDy, Opacity: 0f, Active: true),
-            Exit = new EnterExit(Opacity: 0f, Active: true),
-            Transition = MotionTokenDef.Eased(Design.Motion.Fast, Easing.FluentStandard, ReducedMotionPolicy.KeepFade),
-            Children =
-            [
-                InfoBar.Create(InfoBarSeverity.Error,
-                    Strings.Home.CouldntLoad(failedLabel), Loc.Get(Strings.Home.CheckConnection),
-                    onClose: p.Dismiss,
-                    actionButton: Button.Create(Loc.Get(Strings.Common.Retry), () => p.Select(failedTarget), ButtonAppearance.Standard)),
-            ],
-        });
-
         // The pinned band: selector row + bar, exactly FacetRowH tall, transparent. It pins against the PAGE column
         // (PageScope), which the page names — a scope-less Sticky would clamp to this row's own column.
         var band = new BoxEl
@@ -145,8 +134,45 @@ internal static class ClassicHomeFacetRow
         {
             Key = "home:facet",
             Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-            Children = [band, failure],
+            Children = [band],
         };
+    }
+
+    /// <summary>The failure InfoBar's layer (tuning H1): the page stacks it over the top of its content, so the bar has a slot of its own and
+    /// the zones never move when it comes or goes.</summary>
+    public static Element FailureLayer(FacetRowProps p) => Embed.Comp(() => new FailureLayerView(p)) with { Key = "home:facet:failure-layer" };
+
+    /// <summary>Re-renders on the switch machine alone (the row's own slot does too), never the page.</summary>
+    sealed class FailureLayerView(FacetRowProps p) : Component
+    {
+        public override Element Render()
+        {
+            var state = p.Switch.Value;
+            string failedLabel = state.FailedTarget is { } ft ? LabelOf(p.Words.Value, ft) ?? ft : "";
+            string failedTarget = state.FailedTarget ?? "";
+            return new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Justify = FlexJustify.Start, HitTestPassThrough = true,
+                Children =
+                [
+                    Flow.Show(() => p.Switch.Value.Phase == FacetPhase.Failed, new BoxEl
+                    {
+                        Key = "home:facet:failure",
+                        Direction = 1, MinWidth = 0f,
+                        Enter = new EnterExit(Dy: ClassicHomeRules.FailureEnterDy, Opacity: 0f, Active: true),
+                        Exit = new EnterExit(Opacity: 0f, Active: true),
+                        Transition = MotionTokenDef.Eased(Design.Motion.Fast, Easing.FluentStandard, ReducedMotionPolicy.KeepFade),
+                        Children =
+                        [
+                            InfoBar.Create(InfoBarSeverity.Error,
+                                Strings.Home.CouldntLoad(failedLabel), Loc.Get(Strings.Home.CheckConnection),
+                                onClose: p.Dismiss,
+                                actionButton: Button.Create(Loc.Get(Strings.Common.Retry), () => p.Select(failedTarget), ButtonAppearance.Standard)),
+                        ],
+                    }),
+                ],
+            };
+        }
     }
 
     static string? LabelOf(FacetWord[] words, string id)
