@@ -27,18 +27,27 @@ internal static class ClassicMaterial
     /// motion, never a hook branch.</summary>
     static EnterExit? WashFade => Design.Reduced ? null : new EnterExit(Opacity: 0f, Active: true);
 
+    /// <summary>"The navigation pane is docked beside the content card", provided by <see cref="ClassicFrame"/> (the core's
+    /// <c>ShellFrameProps.SidebarPaneDocked</c>). Null where no frame provides it (a view mounted alone): read as undocked.</summary>
+    internal static readonly Context<Func<bool>?> PaneDockedSlot = new(null);
+
     /// <summary>Colour washes are drawn: Classic's Surfaces option is anything but Off (Subtle with no store, as a bare unit test
     /// reads it). A tracked read: the caller re-renders when the option changes.</summary>
-    internal static bool WashesOn(IOptionReader? options)
-        => ClassicStructure.WashesOn(options is null ? ClassicStructure.Surfaces.Default : options.Get(ClassicStructure.Surfaces.Key));
+    internal static bool WashesOn(IOptionReader? options) => ClassicStructure.WashesOn(Level(options));
+
+    /// <summary>Classic's Surfaces level (Subtle with no store). A tracked read: the caller re-renders when the option changes.</summary>
+    internal static SurfaceWash Level(IOptionReader? options)
+        => options is null ? ClassicStructure.Surfaces.Default : options.Get(ClassicStructure.Surfaces.Key);
 
     /// <summary>The registered template of <see cref="ViewKeys.ShellMaterialLayer"/>.</summary>
     public static Element Template(MaterialProps props, in ViewContext ctx)
     {
         var state = props.State.Value;                              // navigation rate
         // Surfaces Off: the layer paints the neutral ground whatever the pages published (the core publishes data; the theme decides
-        // whether it is drawn), so Home's and Recents' washes leave and the tint fades to neutral in place.
-        if (!WashesOn(ctx.Options)) state = state with { Tint = null, Wash = null };
+        // whether it is drawn), so Home's and Recents' washes leave and the tint fades to neutral in place. Rich: the style's stronger pairs.
+        var level = Level(ctx.Options);
+        if (!ClassicStructure.WashesOn(level)) state = state with { Tint = null, Wash = null };
+        bool rich = ClassicStructure.RichWashes(level);
         var vp = ctx.Hooks.UseContextSignal(Viewport.Size);         // read through BOUND sizes: a resize never re-renders this
 
         // Always mounted, even at the neutral ground, so the node is live across a change and the brush transition has
@@ -54,9 +63,9 @@ internal static class ClassicMaterial
 
         var legs = new List<Element>(3);
         var strength = R.Wash;
-        AddWash(legs, wash.Hero, Design.Wash.Hero, strength.HeroAlpha, "shell.wash.hero", vp);
-        AddWash(legs, wash.Weekly, Design.Wash.Weekly, strength.ShelfAlpha, "shell.wash.weekly", vp);
-        AddWash(legs, wash.Mix, Design.Wash.Mix, strength.ShelfAlpha, "shell.wash.mix", vp);
+        AddWash(legs, wash.Hero, Design.Wash.Hero, strength.HeroAlphaAt(rich), "shell.wash.hero", vp);
+        AddWash(legs, wash.Weekly, Design.Wash.Weekly, strength.ShelfAlphaAt(rich), "shell.wash.weekly", vp);
+        AddWash(legs, wash.Mix, Design.Wash.Mix, strength.ShelfAlphaAt(rich), "shell.wash.mix", vp);
         return new BoxEl
         {
             Grow = 1f, ZStack = true, HitTestVisible = false,

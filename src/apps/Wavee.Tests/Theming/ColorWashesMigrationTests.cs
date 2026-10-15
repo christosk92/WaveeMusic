@@ -82,14 +82,15 @@ public sealed class ColorWashesMigrationTests
     }
 
     [Fact]
-    public void The_option_is_a_two_way_style_select_that_defaults_to_Subtle()
+    public void The_option_is_a_three_level_select_that_defaults_to_Subtle()
     {
         var option = ClassicStructure.Surfaces;
         Assert.Equal(SurfaceWash.Subtle, option.Default);
-        Assert.Equal(PickerStyle.Toggle, option.Picker);
-        Assert.Equal(new[] { SurfaceWash.Off, SurfaceWash.Subtle }, option.Choices.Select(c => c.Value));
+        Assert.Equal(PickerStyle.Cards, option.Picker);   // CT9: three preview cards (Rich joined)
+        Assert.Equal(new[] { SurfaceWash.Off, SurfaceWash.Subtle, SurfaceWash.Rich }, option.Choices.Select(c => c.Value));
         Assert.Same(option, new ClassicStructure().Options.Find("surfaces"));
         Assert.False(ClassicStructure.WashesOn(SurfaceWash.Off));
         Assert.True(ClassicStructure.WashesOn(SurfaceWash.Subtle));
+        Assert.True(ClassicStructure.WashesOn(SurfaceWash.Rich));
     }
 }

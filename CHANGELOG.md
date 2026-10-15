@@ -12,6 +12,14 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **Three Classic options for how much colour the artwork brings.** Settings › Appearance › Classic options › Surfaces now
+  has "Tinted surfaces" as three preview cards, Off, Subtle (today's look, the default) and a new Rich that tints the
+  title bar, the sidebar, the page ground and Home's washes more strongly; in the light theme a page's card stays one step
+  lighter than the sidebar beside it, so Rich never makes the card darker than the chrome. Off now also takes the colour
+  out of the artist photo's veil (it still darkens the photo under the name). "Accent from artwork" (on by default) lets
+  Play, Follow, hearts and links take their colour from the cover; turn it off to use your Windows accent everywhere.
+  "Now playing colours" (on by default) does the same for full screen, its lyrics, the queue's now-playing chip and the
+  now-playing cover's placeholder; off, they stay neutral.
 - **The library page is one surface, and its controls match the rest of the app.** The library list and the album or
   artist detail beside it now sit on the same content card, split only by a thin divider, instead of three differently
   tinted panels; the artist list's "in your library · newest" bar is a plain section too. The artist header's buttons are

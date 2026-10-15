@@ -43,9 +43,22 @@ public sealed record WashRoles(
     ModePair<float> ShellTintAlpha,
     Func<ThemeKind, ColorF, ColorF?> PageToneFromHue,
     Func<ThemeKind, Scheme, ColorF> ShellTintFromScheme,
-    Func<ThemeKind, Scheme?, uint, bool, AccentLadder.Result> BlendWashLadder);
+    Func<ThemeKind, Scheme?, uint, bool, AccentLadder.Result> BlendWashLadder)
+{
+    /// <summary>The stronger strengths a structure's "Rich" wash level takes (tuned Classic CT9, U1). Null: the style has one strength, and Rich
+    /// paints exactly the base pairs above.</summary>
+    public WashStrength? Rich { get; init; }
+}
 
-/// <summary>The wash roles as the call syntax a view mixes with (<c>R.Wash.HeroAlpha</c>). Every member evaluates its role for the
+/// <summary>A wash level's strengths: the pairs a level other than the base one replaces (the blend wash, the veil and the recipes stay the base ones).</summary>
+/// <param name="HeroAlpha">Alpha at the origin of Home's hero wash.</param>
+/// <param name="ShelfAlpha">Alpha at the origin of Home's two shelf washes.</param>
+/// <param name="PageTonePlaneAlpha">How much of the detail page's tone plane covers the Mica stack.</param>
+/// <param name="ShellTintAlpha">The alpha of the shell material tint a detail page publishes (the graded recipe's colour at this alpha).</param>
+public sealed record WashStrength(ModePair<float> HeroAlpha, ModePair<float> ShelfAlpha, ModePair<float> PageTonePlaneAlpha, ModePair<float> ShellTintAlpha);
+
+/// <summary>The wash roles as the call syntax a view mixes with (<c>R.Wash.CoverMix</c>; the four level-dependent strengths take the level,
+/// <c>R.Wash.HeroAlphaAt(rich)</c>). Every member evaluates its role for the
 /// ACTIVE theme kind at the call: nothing is cached.</summary>
 public readonly struct WashReads
 {
@@ -58,10 +71,6 @@ public readonly struct WashReads
 
     /// <inheritdoc cref="WashRoles.NeutralGround"/>
     public ColorF NeutralGround => _roles.NeutralGround.Now;
-    /// <inheritdoc cref="WashRoles.HeroAlpha"/>
-    public float HeroAlpha => _roles.HeroAlpha.Now;
-    /// <inheritdoc cref="WashRoles.ShelfAlpha"/>
-    public float ShelfAlpha => _roles.ShelfAlpha.Now;
     /// <inheritdoc cref="WashRoles.HeroVeilPull"/>
     public float HeroVeilPull => _roles.HeroVeilPull.Now;
     /// <inheritdoc cref="WashRoles.HeroVeilPeak"/>
@@ -70,20 +79,30 @@ public readonly struct WashReads
     public float CoverMix => _roles.CoverMix.Now;
     /// <inheritdoc cref="WashRoles.ConcertMediaMix"/>
     public float ConcertMediaMix => _roles.ConcertMediaMix.Now;
-    /// <inheritdoc cref="WashRoles.PageTonePlaneAlpha"/>
-    public float PageTonePlaneAlpha => _roles.PageTonePlaneAlpha.Now;
     /// <inheritdoc cref="WashRoles.BlendWashTop"/>
     public float BlendWashTop => _roles.BlendWashTop.Now;
     /// <inheritdoc cref="WashRoles.BlendWashBoundary"/>
     public float BlendWashBoundary => _roles.BlendWashBoundary.Now;
-    /// <inheritdoc cref="WashRoles.ShellTintAlpha"/>
-    public float ShellTintAlpha => _roles.ShellTintAlpha.Now;
+
+    /// <summary>Home's hero wash alpha at a level: the <see cref="WashRoles.Rich"/> pair when <paramref name="rich"/> (and the style has one).</summary>
+    public float HeroAlphaAt(bool rich) => (rich && _roles.Rich is { } r ? r.HeroAlpha : _roles.HeroAlpha).Now;
+    /// <summary>Home's shelf wash alpha at a level.</summary>
+    public float ShelfAlphaAt(bool rich) => (rich && _roles.Rich is { } r ? r.ShelfAlpha : _roles.ShelfAlpha).Now;
+    /// <summary>The detail page's tone plane alpha at a level.</summary>
+    public float PageTonePlaneAlphaAt(bool rich) => (rich && _roles.Rich is { } r ? r.PageTonePlaneAlpha : _roles.PageTonePlaneAlpha).Now;
+    /// <summary>The shell material tint's alpha for a raw payload colour at a level.</summary>
+    public float ShellTintAlphaAt(bool rich) => (rich && _roles.Rich is { } r ? r.ShellTintAlpha : _roles.ShellTintAlpha).Now;
+
+    /// <summary>The shell material tint a graded cover publishes under the ACTIVE theme kind at a level: the style's recipe, at the Rich alpha when
+    /// <paramref name="rich"/>.</summary>
+    public ColorF ShellTintFromScheme(in Scheme scheme, bool rich)
+    {
+        var tint = _roles.ShellTintFromScheme(Tok.Theme, scheme);
+        return rich && _roles.Rich is { } r ? tint with { A = r.ShellTintAlpha.Now } : tint;
+    }
 
     /// <summary>The page ground tone for a cover's dominant hue under the ACTIVE theme kind.</summary>
     public ColorF? PageToneFromHue(ColorF dominant) => _roles.PageToneFromHue(Tok.Theme, dominant);
-
-    /// <summary>The shell material tint a graded cover publishes under the ACTIVE theme kind.</summary>
-    public ColorF ShellTintFromScheme(in Scheme scheme) => _roles.ShellTintFromScheme(Tok.Theme, scheme);
 
     /// <summary>The artist blend wash's accent ladder under the ACTIVE theme kind.</summary>
     public AccentLadder.Result BlendWashLadder(Scheme? pageScheme, uint payloadAccent, bool definite)

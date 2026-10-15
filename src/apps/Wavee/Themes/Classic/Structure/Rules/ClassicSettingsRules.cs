@@ -109,6 +109,19 @@ internal static class ClassicSettingsRules
     /// <summary>The wireframe's gaps: between the rail and the rows, between its stacks, and the tight one inside an identity.</summary>
     public const float SketchColumnGap = 8f, SketchGap = 5f, SketchTightGap = 4f;
 
+    // ── the Surfaces cards' preview (CT9, U1; board C-Settings "Surfaces (washes)") ──
+
+    /// <summary>The preview's three lines (the chrome strip over two page lines) and the gap between them.</summary>
+    public const float SurfacesLineHeight = 10f, SurfacesLineGap = 6f;
+
+    /// <summary>The chrome strip's sample tint at Subtle (the board's 25 %); Rich scales it by the style's own Rich / Subtle tint ratio, so the
+    /// preview shows the real step between the levels. A fixed sample hue: Settings itself claims the neutral ground, so no live page colour
+    /// is on screen to preview with.</summary>
+    public const float SurfacesPreviewAlpha = 0.25f;
+
+    /// <summary>The sample artwork hue the Surfaces preview tints with (the board's mauve).</summary>
+    public static ColorF SurfacesSampleHue => ColorF.FromRgba(176, 110, 190);
+
     // ── the sidebar layout card's miniature (ch 25 W21) ──
 
     /// <summary>The miniature's height; the gap between its lines; the gap between the chips of the Library layout's strip.</summary>

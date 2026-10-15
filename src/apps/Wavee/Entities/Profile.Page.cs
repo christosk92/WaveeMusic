@@ -554,10 +554,10 @@ public static partial class Profile
     // ── what a host type may not read itself (WVTH008: no token / design reads inside a `[CoreHost]`) ───────────────────────
 
     /// <summary>The last remembered page accent, else the theme's default (so the first frame never paints the default over a held colour).</summary>
-    static ColorF HeldAccent() => AccentHold.Last ?? Tok.AccentDefault;
+    static ColorF HeldAccent() => Detail.HeldAccent ?? Tok.AccentDefault;
 
     static Design.PageAccent InitialPageAccent()
-        => new(AccentHold.Last ?? Tok.AccentTextPrimary, AccentHold.Last ?? Tok.AccentDefault, "");
+        => new(Detail.HeldAccent ?? Tok.AccentTextPrimary, Detail.HeldAccent ?? Tok.AccentDefault, "");
 
     static Design.PageAccent PageAccentOf(ColorF accent, string routeKey) => new(accent, accent, routeKey);
 

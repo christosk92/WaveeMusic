@@ -169,7 +169,7 @@ public sealed class SettingsPageContractTests : IDisposable
             Strings.Settings.ThemeOptions.Group.Surfaces, Strings.Settings.ThemeOptions.Group.TrackPages }.Select(ThemeOptionsSection.GroupTitle), groups.Select(g => g.Title));
         Assert.Equal(new[] { "opt:structure.sidebar", "opt:structure.libraryDensity", "opt:structure.showCovers", "legacy:sidebarReset", "legacy:sidebarCustomize", "legacy:sidebarResetEverything" },
             groups[0].Items.Select(i => i.Key));
-        Assert.Equal(new[] { "opt:structure.surfaces" }, groups[2].Items.Select(i => i.Key));
+        Assert.Equal(new[] { "opt:structure.surfaces", "opt:structure.accentFromArtwork", "opt:structure.nowPlayingColors" }, groups[2].Items.Select(i => i.Key));
         Assert.Equal(new[] { "opt:structure.pageLayout", "opt:structure.railUniform", "opt:structure.clearRememberedSizes" }, groups[3].Items.Select(i => i.Key));
     }
 
@@ -183,7 +183,7 @@ public sealed class SettingsPageContractTests : IDisposable
 
         var keys = groups.SelectMany(g => g.Items).Select(i => i.Key).ToArray();
         Assert.Equal(new[] { "opt:structure.sidebar", "opt:structure.libraryDensity" }, keys.Take(2));   // the sidebar group opens the page
-        Assert.Equal(new[] { "opt:structure.hideTrackArt", "opt:structure.libraryDensity", "opt:structure.pageLayout", "opt:structure.railUniform", "opt:structure.rowStyle", "opt:structure.showCovers", "opt:structure.sidebar", "opt:structure.surfaces", "opt:style.density" },
+        Assert.Equal(new[] { "opt:structure.accentFromArtwork", "opt:structure.hideTrackArt", "opt:structure.libraryDensity", "opt:structure.nowPlayingColors", "opt:structure.pageLayout", "opt:structure.railUniform", "opt:structure.rowStyle", "opt:structure.showCovers", "opt:structure.sidebar", "opt:structure.surfaces", "opt:style.density" },
             keys.OrderBy(k => k, StringComparer.Ordinal));
         Assert.All(groups.SelectMany(g => g.Items), i => Assert.Equal(SettingsOptionItemKind.Generated, i.Kind));
     }

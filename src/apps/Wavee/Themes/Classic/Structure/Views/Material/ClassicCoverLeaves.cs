@@ -60,12 +60,14 @@ internal sealed class ClassicCoverTone : Component
     /// rediscovered as a bug: <b>in light theme the record's hue is close to imperceptible</b> and a busy wallpaper
     /// shows through. Light identity is carried by the CHROME accent (the Play capsule, the accent rule, row chrome),
     /// not by the page ground. Raise THIS pair, never the clamp, if the page should take more colour again.</para></summary>
-    // The pair itself is `R.Wash.PageTonePlaneAlpha` (themes plan T2b).
+    // The pair itself is `R.Wash.PageTonePlaneAlphaAt(rich)` (themes plan T2b; the Rich pair is CT9's, capped by F2: see PlaneAlpha).
 
     public override Element Render()
     {
         var p = UseProps<CoverToneProps>();
-        bool washes = ClassicMaterial.WashesOn(UseContext(OptionStore.Context));   // Classic's Surfaces option; Off paints nothing
+        var level = ClassicMaterial.Level(UseContext(OptionStore.Context));   // Classic's Surfaces option; Off paints nothing
+        bool washes = ClassicStructure.WashesOn(level);
+        var paneDocked = UseContext(ClassicMaterial.PaneDockedSlot);
 
         // The watch subscriptions, resolved ONCE per render and read here. Hoisting them out of the Fill closure
         // matters: a bound brush is re-evaluated on the PAINT path. Render still has to subscribe (not just the brush)
@@ -81,7 +83,7 @@ internal sealed class ClassicCoverTone : Component
 
         // At most ONE child, and only in hero-only mode: the tone BAND that fades back to the neutral surface. The
         // default arm paints the plane's own flat fill and nothing else.
-        Element[] kids = p.HeroOnly && HeroOnlyVeil(p) is { } veil ? [veil] : [];
+        Element[] kids = p.HeroOnly && HeroOnlyVeil(p, PlaneAlpha(level, paneDocked)) is { } veil ? [veil] : [];
 
         return new BoxEl
         {
@@ -89,13 +91,20 @@ internal sealed class ClassicCoverTone : Component
             ClipToBounds = true, Corners = Design.Size.ContentPaneCorners,
             // BOUND: the brush stays a compositor value, so a theme/preset re-fire lands without this subtree being
             // rebuilt, and the 250 ms ramp CROSS-FADES a grading arrival instead of snapping to it.
+            // The docked-pane read sits inside the thunk: a pane docking or undocking under Rich re-paints the plane's alpha, never this leaf.
             Fill = Prop.Of(() => !p.HeroOnly && Resolve(p) is { } t
-                ? t with { A = R.Wash.PageTonePlaneAlpha }
+                ? t with { A = PlaneAlpha(level, paneDocked) }
                 : ColorF.Transparent),
             BrushTransitionMs = Design.Motion.Standard,
             Children = kids,
         };
     }
+
+    /// <summary>The plane's alpha at the Surfaces level: Rich takes the style's Rich pair, except in the light theme beside a docked navigation
+    /// pane, where it stays Subtle so the card stays one step lighter than the chrome (tuned item F2). The pane is read only under Rich.</summary>
+    static float PlaneAlpha(SurfaceWash level, Func<bool>? paneDocked)
+        => R.Wash.PageTonePlaneAlphaAt(ClassicStructure.RichWashes(level)
+            && ClassicStructure.RichTonePlane(level, R.IsLight, paneDocked is { } docked && docked()));
 
     /// <summary>Cover grading → the page's ground. Cheap: two table probes and the clamp; no subscription (the caller
     /// owns that), so it is safe on the paint path.</summary>
@@ -114,12 +123,11 @@ internal sealed class ClassicCoverTone : Component
     /// unpainted content stack, the same breathing surface every other page has.
     /// <para>The Settings row that turned this on ("Limit page color to the hero") is GONE and is not to be reinstated;
     /// the arm survives because a caller may still compose it.</para></summary>
-    static Element? HeroOnlyVeil(CoverToneProps p)
+    static Element? HeroOnlyVeil(CoverToneProps p, float alpha)
     {
         float pageH = p.PageHeight > 1f ? p.PageHeight : 0f;
         if (pageH <= 1f) return null;
         if (Resolve(p) is not { } tone) return null;
-        float alpha = R.Wash.PageTonePlaneAlpha;
         float start = Math.Clamp(p.BackdropBand / pageH, 0.12f, 0.80f);
         float end = MathF.Min(1f, start + 0.22f);
         return new BoxEl
@@ -210,14 +218,17 @@ internal sealed class ClassicCoverVeil : Component
     public override Element Render()
     {
         var p = UseProps<CoverVeilProps>();
-        if (p.Url is { Length: > 0 } url) _ = Palette.Watch(url).Value;
-        var pagePal = Design.SchemeFor(p.Url);
+        // Classic's Surfaces option (U1): Off keeps the veil (it still darkens the photo for the title) but takes the ladder's NEUTRAL rung, so it
+        // carries no hue; nothing is watched, and the neutral rung is definite at once.
+        bool washes = ClassicMaterial.WashesOn(UseContext(OptionStore.Context));
+        if (washes && p.Url is { Length: > 0 } url) _ = Palette.Watch(url).Value;
+        var pagePal = washes ? Design.SchemeFor(p.Url) : null;
         // The page palette's own lifted accent is the graded rung; the payload (header) accent and the neutral
         // FillLayerDefault (ArtistHeroVeil then lerps into the layer colour itself = no tint) fill the rest of the
         // ladder — the old chrome-scheme fallback is gone, subsumed by the shared ladder.
         ColorF? graded = pagePal is { } wp ? ColorScience.Lift(ColorScience.Accent(wp)) : null;
-        bool definite = string.IsNullOrEmpty(p.Url) || !Palette.CanGrade(p.Url);
-        var result = AccentLadder.Resolve(new(graded, p.PayloadAccent, definite), null, Tok.FillLayerDefault, s_lift);
+        bool definite = !washes || string.IsNullOrEmpty(p.Url) || !Palette.CanGrade(p.Url);
+        var result = AccentLadder.Resolve(new(graded, washes ? p.PayloadAccent : 0u, definite), null, Tok.FillLayerDefault, s_lift);
         // Keyed swap: see ClassicCoverBlend — a Gradient can't cross-fade through BrushTransitionMs, and a
         // component-root Key is inert (ReconcileSingleChild), so the keyed node is a CHILD.
         //
@@ -252,13 +263,15 @@ internal sealed class ClassicCoverVeil : Component
 internal sealed class ClassicCoverTint : Component
 {
     // The two tint arms are the style's `R.Wash.ShellTintFromScheme` (Classic: LIGHT lifts the cover's TEXT role to a 5% whisper; DARK takes
-    // the tinted background role at 14%: two different ROLES, not one role at two alphas) and `R.Wash.ShellTintAlpha` for a raw payload
-    // colour. The tint WARMS the ground; it never replaces it.
+    // the tinted background role at 14%: two different ROLES, not one role at two alphas) and `R.Wash.ShellTintAlphaAt` for a raw payload
+    // colour, each at the Surfaces level (Rich: the style's Rich alpha). The tint WARMS the ground; it never replaces it.
 
     public override Element Render()
     {
         var p = UseProps<CoverTintProps>();
-        bool washes = ClassicMaterial.WashesOn(UseContext(OptionStore.Context));   // Classic's Surfaces option
+        var level = ClassicMaterial.Level(UseContext(OptionStore.Context));   // Classic's Surfaces option
+        bool washes = ClassicStructure.WashesOn(level);
+        bool rich = ClassicStructure.RichWashes(level);
         if (p.Url is { Length: > 0 } url) _ = Palette.Watch(url).Value;
         if (p.FallbackUrl is { Length: > 0 } fb && !string.Equals(fb, p.Url, StringComparison.Ordinal))
             _ = Palette.Watch(fb).Value;
@@ -275,12 +288,12 @@ internal sealed class ClassicCoverTint : Component
             var wash = R.Wash;
             if (artPalette is { } artScheme)
             {
-                known = wash.ShellTintFromScheme(artScheme);
+                known = wash.ShellTintFromScheme(artScheme, rich);
             }
             else if (p.PayloadAccent != 0)
             {
                 var lifted = ColorScience.Lift(ColorScience.ToColor(p.PayloadAccent));
-                known = lifted with { A = wash.ShellTintAlpha };
+                known = lifted with { A = wash.ShellTintAlphaAt(rich) };
             }
         }
 

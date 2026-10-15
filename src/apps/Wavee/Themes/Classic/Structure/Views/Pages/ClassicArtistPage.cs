@@ -151,7 +151,8 @@ internal static class ClassicArtistPage
             .Sticky(ArtistHeroLayout.CompactIdentityHeight, engaged: p.CompactEdge());
 
         // The blend wash, from the RESOLVED metrics (ch 08 §9 inconsistency #1); a cover-keyed leaf, so a grading
-        // re-renders only the wash. Surfaces Off ⇒ the leaf renders nothing (the veil and the Play colour stay, §4).
+        // re-renders only the wash. Surfaces Off ⇒ the leaf renders nothing and the veil turns hue-less (it
+        // still darkens the photo); the Play colour follows the separate "Accent from artwork" option (CT9).
         Element wash = Palette.ArtistBlendWash(p.PaletteUrl, ArtistHeroLayout.BlendBackdropHeightFor(in m),
             ArtistHeroLayout.BlendBoundaryFor(in m), key: "artist-wash:" + uri,
             payloadAccent: a.HeaderAccent);

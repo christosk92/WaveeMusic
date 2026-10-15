@@ -447,9 +447,9 @@ public static partial class Stage
             var track = ctx.RowValue();
             string url = track.IsValid ? Controls.ArtUrl(track.ImageId) ?? "" : "";
             if (url.Length > 0) _ = global::Wavee.Palette.Watch(url).Value;
-            ColorF accentBase = Ink.Accent(url);
+            ColorF accentBase = Ink.Accent(url);   // the system accent with "Now playing colours" off (a tracked read: a flip re-runs this)
             ctx.Accent.SetIfChanged(AccentSet.From(accentBase));
-            var palette = Visualizer.Palette.From(accentBase, Design.SchemeFor(url), Ink.IsDark);
+            var palette = Visualizer.Palette.From(accentBase, Ink.NowPlayingColors ? Design.SchemeFor(url) : null, Ink.IsDark);
             ctx.BasePalette.SetIfChanged(palette);
             if (!_paletteSeeded)
             {

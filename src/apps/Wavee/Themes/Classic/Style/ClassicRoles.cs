@@ -288,7 +288,16 @@ public static class ClassicRoles
         ShellTintFromScheme: static (k, scheme) => k == ThemeKind.Light
             ? ColorScience.Lift(ColorScience.ToColor(scheme.TextBase)) with { A = TintAlphaLight }
             : ColorScience.TintedDark(scheme) with { A = TintAlphaDark },
-        BlendWashLadder: BlendLadder);
+        BlendWashLadder: BlendLadder)
+    {
+        // The Surfaces option's Rich level (CT9, U1): about 1.5x each Subtle pair, the chrome tint 2x in light (its 5% whisper is the weakest
+        // pair), every one still under the 0.5 that keeps body text above AA on the plane. The blend wash and the veil keep their one strength.
+        Rich = new WashStrength(
+            HeroAlpha: new ModePair<float>(0.08f, 0.15f),
+            ShelfAlpha: new ModePair<float>(0.075f, 0.13f),
+            PageTonePlaneAlpha: new ModePair<float>(0.45f, 0.30f),
+            ShellTintAlpha: new ModePair<float>(0.10f, 0.22f)),
+    };
 
     private static LyricsInkRoles Lyrics() => new(
         ThemePlateAlpha: 0.92f,

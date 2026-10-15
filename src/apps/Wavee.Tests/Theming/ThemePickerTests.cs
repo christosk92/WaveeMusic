@@ -183,8 +183,9 @@ public sealed class ThemePickerTests : IDisposable
         ThemeHost.Install(ClassicTheme.Create());
         var model = ThemeOptionsSection.Current(developerMode: true);
 
-        // M2 (row style), M4 (hide track art), M6 (surfaces), M7a (sidebar layout and density) and M8 (page layout, rails' uniformity, their reset) are structure options, M3 (row density) the style's: structure options come first in the schema.
-        Assert.Equal(new[] { "structure.sidebar", "structure.libraryDensity", "structure.showCovers", "structure.rowStyle", "structure.hideTrackArt", "structure.surfaces", "structure.pageLayout", "structure.railUniform", "structure.clearRememberedSizes", "style.density" },
+        // M2 (row style), M4 (hide track art), M6 (surfaces; CT9 its two artwork toggles), M7a (sidebar layout and density) and M8 (page layout, rails' uniformity, their reset) are structure options, M3 (row density) the style's: structure options come first in the schema.
+        Assert.Equal(new[] { "structure.sidebar", "structure.libraryDensity", "structure.showCovers", "structure.rowStyle", "structure.hideTrackArt", "structure.surfaces",
+                "structure.accentFromArtwork", "structure.nowPlayingColors", "structure.pageLayout", "structure.railUniform", "structure.clearRememberedSizes", "style.density" },
             model.Rows.Select(r => r.QualifiedId));
         var covers = model.Rows[2];   // CT3a (S0): the covers switch, in the sidebar group
         Assert.Equal(Strings.Settings.ThemeOptions.Group.Sidebar, covers.Group);
@@ -198,7 +199,12 @@ public sealed class ThemePickerTests : IDisposable
         Assert.Equal(SettingsRowKind.Choice, density.Row.Kind);  // a combo, as the row it replaced
         var surfaces = model.Rows.Single(r => r.QualifiedId == "structure.surfaces");
         Assert.Equal(Strings.Settings.ThemeOptions.Group.Surfaces, surfaces.Group);
-        Assert.Equal(SettingsRowKind.Toggle, surfaces.Row.Kind);
+        Assert.Equal(SettingsRowKind.Picker, surfaces.Row.Kind);   // CT9: the three preview cards
+        Assert.Equal(PickerStyle.Cards, surfaces.Picker);
+        Assert.Equal(new[] { "structure.surfaces", "structure.accentFromArtwork", "structure.nowPlayingColors" },
+            model.Rows.Where(r => r.Group == Strings.Settings.ThemeOptions.Group.Surfaces).Select(r => r.QualifiedId));
+        Assert.All(model.Rows.Where(r => r.QualifiedId is "structure.accentFromArtwork" or "structure.nowPlayingColors"),
+            r => Assert.Equal(SettingsRowKind.Toggle, r.Row.Kind));
         Assert.False(model.IsEmpty);
         Assert.Equal(3, model.Legacy.Count);   // 12 before the M-PRs: M6 took the washes, M3 the row density, M4 the hide-art row, M2 the track list style, M7a the sidebar layout and density, M8 the page layout and the two rail rows (M1 had deleted page motion)
         Assert.DoesNotContain(model.Legacy, l => l.RowId is "colorWashes" or "rowDensity" or "hideTrackArtwork" or "trackListStyle" or "sidebarDesign" or "sidebarDensity" or "pageLayout" or "railUniform" or "railReset");

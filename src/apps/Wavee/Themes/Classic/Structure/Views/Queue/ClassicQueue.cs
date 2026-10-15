@@ -89,13 +89,14 @@ internal sealed class ClassicQueuePanel : Component
     }
 
     /// <summary>The now-playing cover's graded chrome accent when the plane has it, the album's wire accent until then,
-    /// the last remembered colour while a cover is still grading, the semantic accent otherwise.</summary>
-    void ResolveChipAccent(EntityRef current, string cover)
+    /// the last remembered colour while a cover is still grading, the semantic accent otherwise. With "Now playing colours" off (CT9 U3): the
+    /// semantic accent, nothing remembered.</summary>
+    void ResolveChipAccent(EntityRef current, string cover, bool fromCover)
     {
-        ColorF? graded = Design.ChromeSchemeFor(cover) is { } scheme ? Design.Palette.ChromeAccent(scheme) : null;
-        uint payload = current.Kind == EntityKind.Track && new Track(current.Slot) is { IsValid: true } t && t.Album is { IsValid: true } album
+        ColorF? graded = fromCover && Design.ChromeSchemeFor(cover) is { } scheme ? Design.Palette.ChromeAccent(scheme) : null;
+        uint payload = fromCover && current.Kind == EntityKind.Track && new Track(current.Slot) is { IsValid: true } t && t.Album is { IsValid: true } album
             ? album.Accent : 0u;
-        var r = AccentLadder.Resolve(new AccentLadder.Input(graded, payload, Definite: cover.Length == 0), _queueHold, Tok.AccentDefault,
+        var r = AccentLadder.Resolve(new AccentLadder.Input(graded, payload, Definite: !fromCover || cover.Length == 0), fromCover ? _queueHold : null, Tok.AccentDefault,
                                      static a => Design.Palette.ChromeFromPayload(a));
         if (r.Remember) _queueHold = r.Color;
         _chipPending = r.Color;
@@ -124,8 +125,9 @@ internal sealed class ClassicQueuePanel : Component
         _rowExtent = ClassicQueueRules.Extent(hairline, ClassicQueueRules.QueueArt);
         lane.SetMetrics(_rowExtent, _extentOf ??= ExtentOf);
         string cover = queue.NowPlaying.IsNone ? "" : lane.TextOf(queue.NowPlaying).Art ?? "";
-        if (cover.Length > 0) _ = Wavee.Palette.Watch(cover).Value;
-        ResolveChipAccent(queue.NowPlaying, cover);
+        bool fromCover = ClassicOptions.NowPlayingColors();   // the chip's colour follows the cover (CT9 U3)
+        if (fromCover && cover.Length > 0) _ = Wavee.Palette.Watch(cover).Value;
+        ResolveChipAccent(queue.NowPlaying, cover, fromCover);
 
         var content = new List<Element>(4);
         if (queue.PlayingFrom is { } playingFrom) content.Add(PlayingFrom(playingFrom.Name, props.OpenPlayingFrom));

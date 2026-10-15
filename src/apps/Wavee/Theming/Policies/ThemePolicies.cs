@@ -1,7 +1,7 @@
 // ── Theming/Policies/ThemePolicies.cs — what a structure decides for the core (themes plan 5.5) ───────────────────────
 //
 //   · `ThemePolicies`      the policy bundle a structure returns: nav pane, panel, player bar, chrome, stage, and the window tiers
-//                          (`Tiers`, T3b, `Lists`, M4, and `Detail`, M8, init properties beside the five). Each member is
+//                          (`Tiers`, T3b, `Lists`, M4, `Detail`, M8, and `Artwork`, CT9, init properties beside the five). Each member is
 //                          its own file; the core state machines (`SidebarPaneModeRules`, `Shell.Chrome`, `PlayerBarLayout`,
 //                          `Stage.Layout`, `PanelHost`, the mini player) take the member instead of Classic constants.
 //   · `ShellCapabilities`  what the shell offers. `Unrestricted` is "every feature on", which is what Classic is today.
@@ -39,6 +39,9 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
     /// <summary>What the structure decides for the detail pages (M8: the page layout and whether the rails share one size). A structure that declares nothing is the shell as it shipped.</summary>
     public DetailPolicy Detail { get; init; } = DetailPolicy.Default;
 
+    /// <summary>What the structure decides about colour taken from artwork (CT9: the page accent and the now-playing colours). A structure that declares nothing follows the artwork.</summary>
+    public ArtworkColorPolicy Artwork { get; init; } = ArtworkColorPolicy.Default;
+
     /// <summary>Everything wrong with the bundle, empty when every core state machine can run on it.</summary>
     public IReadOnlyList<string> Validate()
     {
@@ -51,6 +54,7 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
         if (Tiers is null) problems.Add("Tiers is missing"); else problems.AddRange(Tiers.Validate());
         if (Lists is null) problems.Add("Lists is missing");
         if (Detail is null) problems.Add("Detail is missing");
+        if (Artwork is null) problems.Add("Artwork is missing");
         return problems;
     }
 }

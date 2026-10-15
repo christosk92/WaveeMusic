@@ -547,10 +547,11 @@ public static partial class Deck
     }
 
     /// <summary>The hero's cover WASH: the card ground lerped toward the cover's lifted accent (the theme accent before a
-    /// grading lands or with no cover) — every cover slot's placeholder, so an undecoded slot is a tint, never a hole.</summary>
+    /// grading lands or with no cover) — every cover slot's placeholder, so an undecoded slot is a tint, never a hole. With "Now playing colours"
+    /// off (CT9 U3) the theme accent stands in for the cover's.</summary>
     static ColorF Wash(string? url)
     {
-        ColorF accent = url is { Length: > 0 } && Design.SchemeFor(url) is { } s
+        ColorF accent = url is { Length: > 0 } && StageInk.NowPlayingColors && Design.SchemeFor(url) is { } s
             ? ColorScience.Lift(ColorScience.Accent(s))
             : Tok.AccentDefault;
         return ColorF.Lerp(Tok.FillCardSecondary, accent, R.Wash.CoverMix);
@@ -564,9 +565,10 @@ public static partial class Deck
     });
 
     /// <summary>The LIVE cover accent of whatever is playing (read inside a thunk: a track change or a late grading
-    /// repaints the bound fill and never rebuilds the face).</summary>
+    /// repaints the bound fill and never rebuilds the face). The fallback with "Now playing colours" off (CT9 U3; tracked, so a flip repaints).</summary>
     static ColorF LiveCoverAccent(ColorF fallback)
     {
+        if (!StageInk.NowPlayingColors) return fallback;
         var cur = Playback.Current.Value;
         string? url = CoverUrlOf(cur);
         if (url is null) { WatchRow(cur); return fallback; }

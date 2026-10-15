@@ -185,13 +185,19 @@ public static class StageInk
     public static float SelectedTileWash => Live.SelectedTileWash;
 
     /// <summary>The stage's accent for a cover url. The cover LOOKUP lives here rather than on the arm so the arm stays a pure value over the
-    /// roles, which is what lets value tests drive both arms with no cover plane, no theme and no window.</summary>
+    /// roles, which is what lets value tests drive both arms with no cover plane, no theme and no window. With the structure's "Now playing
+    /// colours" off (<see cref="ArtworkColorPolicy.NowPlayingColors"/>, CT9 U3) it is the system accent whatever the cover: a neutral stage.
+    /// The policy read is tracked, so a stage effect that derives its accent here re-runs when the option flips.</summary>
     public static ColorF Accent(ReadOnlySpan<char> coverUrl)
-        => Design.ChromeSchemeFor(coverUrl) is { } scheme
+        => NowPlayingColors && Design.ChromeSchemeFor(coverUrl) is { } scheme
             ? Live.AccentFrom(Design.Palette.ChromeAccent(scheme))
             : Tok.AccentDefault;
 
     /// <summary>The backdrop's stand-in while the cover is missing or still decoding, in the STAGE's polarity rather than the page's. The cover
-    /// TINT survives (it is what stops the slot reading as a hole); only the neutral it is blended toward follows the stage.</summary>
-    public static ColorF ArtStandIn(ReadOnlySpan<char> url) => Design.PlaceholderFor(url, light: !IsDark);
+    /// TINT survives (it is what stops the slot reading as a hole); only the neutral it is blended toward follows the stage. With "Now playing
+    /// colours" off the stand-in is the neutral tile.</summary>
+    public static ColorF ArtStandIn(ReadOnlySpan<char> url) => Design.PlaceholderFor(NowPlayingColors ? url : default, light: !IsDark);
+
+    /// <summary>The now-playing surfaces take the playing cover's colour (the active structure's <see cref="ArtworkColorPolicy.NowPlayingColors"/>). Tracked.</summary>
+    public static bool NowPlayingColors => ThemeHost.Policies.Value.Artwork.NowPlayingColors;
 }

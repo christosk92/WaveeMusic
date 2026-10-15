@@ -320,6 +320,34 @@ internal static partial class ClassicSettings
         return Controls.PickerTitled(Controls.PickerCard(on, Controls.PickerTile, sketch), PageLayoutLabel(value), on);
     }
 
+    /// <summary>A Surfaces level as a preview (CT9, U1; board C-Settings): a chrome strip over two page lines, the strip tinted with a sample artwork
+    /// hue at the level's strength (none at Off). The strength comes from the style's own tint pair, so Rich previews the real step from Subtle;
+    /// the preview never depends on the page behind Settings, which claims the neutral ground.</summary>
+    static Element SurfacesCard(int value, string label, bool on)
+    {
+        var ink = Controls.PickerInk.For(on);
+        var level = (SurfaceWash)value;
+        Element Line(ColorF fill) => new BoxEl
+        {
+            Height = ClassicSettingsRules.SurfacesLineHeight, AlignSelf = FlexAlign.Stretch, Corners = CornerRadius4.All(2f), Fill = fill,
+        };
+        ColorF strip = ink.Faint;
+        if (ClassicStructure.WashesOn(level))
+        {
+            bool rich = ClassicStructure.RichWashes(level);
+            float alpha = ClassicSettingsRules.SurfacesPreviewAlpha * R.Wash.ShellTintAlphaAt(rich) / R.Wash.ShellTintAlphaAt(false);
+            strip = ClassicSettingsRules.SurfacesSampleHue with { A = alpha };
+        }
+        return Controls.PickerTitled(
+            Controls.PickerCard(on, Controls.PickerTile,
+                new BoxEl
+                {
+                    Direction = 1, Gap = ClassicSettingsRules.SurfacesLineGap, Grow = 1f, Justify = FlexJustify.Center,
+                    Children = [Line(strip), Line(ink.Faint), Line(ink.Faint)],
+                }),
+            label, on);
+    }
+
     // ══ 5. SIDEBAR (G-182; ch 25 W21 compact cards, ch 27 W2/W29 ②) ═════════════════════════════════════════════════
 
     /// <summary>The two layout cards (Classic · Library), applied at once through the sidebar's verb (which stores the choice in the structure's option);

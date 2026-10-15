@@ -1559,7 +1559,7 @@ no other home yet (lyrics, full screen, now playing, Home). Nothing in it names 
 - **Palette.** An option with `Command = true` contributes rows (`ThemeOptionsSection.Commands`): a toggle on/off, a select one per
   choice, an action one. `Shell.CommandTable.BuildIndex` appends them after the builtins (`PaletteKind.ThemeOption`).
 - **Setup.Theme.** The wizard's second page (`WizardPage.Theme`, M7a: it replaced the Layout page and its two sidebar cards) mounts the `Setup.Theme` view (`ClassicSetup.ThemeTemplate`, on the Layout page's frame) with the picker and
-  the options (`Setup.ThemeProps`): the wizard plate draws the generated option rows (the layout cards, the density, the surfaces switch), no legacy rows and no actions.
+  the options (`Setup.ThemeProps`): the wizard plate draws the generated option rows (the layout cards, the density, the surfaces cards and its two artwork toggles), no legacy rows and no actions.
 
 ## 4. Migrating a retired switch (`ThemeBootstrap`)
 
@@ -1586,8 +1586,8 @@ for Neutral), asked for by `Shell.RecipeFor`; a theme that wants its own page mo
 
 ### M6: the colour washes became Classic's first option
 
-`appearance.colorWashes.enabled` (a bool, default on) is now `ClassicStructure.Surfaces`, a `SelectOption<SurfaceWash>` {Off 0, Subtle 1}
-(default Subtle, drawn as a switch because it has two choices; Rich joins in CT9), stored as the int under
+`appearance.colorWashes.enabled` (a bool, default on) is now `ClassicStructure.Surfaces`, a `SelectOption<SurfaceWash>` {Off 0, Subtle 1, Rich 2}
+(default Subtle; CT9 added Rich and draws it as three preview cards, `ClassicSettings.SurfacesCard`), stored as the int under
 `theme.classic.structure.surfaces`. It is a *structure* option, not the plan's `style.surfaces`: the structure's material views read it and
 WVTH005 lets a layer read only its own options (the style's roles do not change with it). The "ColorWashes" step in
 `ThemeBootstrap.Steps` copies the stored bool (`false` becomes Off, `true` becomes Subtle) when the new key is absent; the legacy key stays as
@@ -1600,6 +1600,16 @@ publishes a definite "no colour"), and `Shell.Material` (`ClassicMaterial.Templa
 pages published. The hosts (`Detail`, `Artist`, `Profile`, `Home`, `Recents`) pass no flag: `Palette.PageTonePlane/ArtistBlendWash/ShellTint`
 and the `Cover*Props` records lost their `disabled` parameter, and `ArtistProps.Washes` / `ProfilePageProps.Washes` are gone. The Recents
 binder publishes its wash and page accent whatever the option says (the accent follows the artwork even with the washes off, owner NQ6).
+
+**CT9: Rich and the two artwork toggles.** Rich takes the style's stronger pairs, `WashRoles.Rich` (a `WashStrength`: hero, shelf, tone plane, tint;
+the reads take the level, `R.Wash.HeroAlphaAt(rich)` and siblings, `ShellTintFromScheme(scheme, rich)`); a style without the pair paints Rich at its one
+strength. The tone plane stays at Subtle in the light theme while the navigation pane is docked (`ClassicStructure.RichTonePlane`, tuned item F2): the
+frame provides the core's `SidebarPaneDocked` predicate as `ClassicMaterial.PaneDockedSlot`, read inside the plane's bound fill. Off also turns the
+photo veil (`ClassicCoverVeil`) to the ladder's neutral rung. `accentFromArtwork` and `nowPlayingColors` are structure toggles in the same group; the core
+follows them through `ThemePolicies.Artwork` (`ArtworkColorPolicy`, contract 1.6): `Detail.AccentFor` (every page accent, so Play, Follow, hearts, the
+accent rule and links) and `Recents`' accent answer the system accent when the first is off; `StageInk.Accent` / `ArtStandIn`, the stage's visualizer
+palette and the deck faces drop the cover's colour when the second is off. Classic's own reads (`ClassicOptions.AccentFromArtwork()` /
+`NowPlayingColors()`) gate the search's top-result Play, the queue's now-playing chip and the panel's cover placeholder (`ClassicHeroWash`).
 
 ### M7a: the sidebar layout and density became Classic's options
 
