@@ -2253,7 +2253,8 @@
       "pageSuffix": "· {page}",
       "search": "Search in Your Library",
       "searchPlaceholder": "Search in Your Library",
-      "options": "More options"
+      "options": "More options",
+      "refreshFailed": "Couldn’t refresh your library. Showing what was loaded."
     },
     "view": {
       "list": "List",
@@ -2378,6 +2379,7 @@
       "emptyHint": "Or use the pin action on any library item.",
       "folderMissing": "Not in your library on this device yet",
       "unavailable": "Unavailable",
+      "offline": "Not available offline",
       "dropHere": "Drop here to pin",
       "signedOut": "Sign in to pin to the sidebar",
       "folder": "Folder",

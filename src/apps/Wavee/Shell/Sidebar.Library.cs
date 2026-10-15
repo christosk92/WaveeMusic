@@ -198,14 +198,25 @@ public static class SidebarLibraryEmptyRules
     }
 
     /// <summary>The empty state, in V3's priority order: a failure, then the search, then the chip, then the library itself.
-    /// Pending (or any contributing kind pending) shows skeletons, never an empty state.</summary>
+    /// A failure with nothing to show is the Error vacancy even while another kind is still pending (S10: the planner draws no
+    /// skeleton for a failed source, so "loading" would be a blank pane). Otherwise pending (or any contributing kind
+    /// pending) shows skeletons, never an empty state.</summary>
     public static SidebarLibraryEmpty Of(int scrollerRows, LoadState load, bool anyPending, SidebarLibraryFilter filter, bool searching)
     {
-        if (scrollerRows > 0 || anyPending || load == LoadState.Pending) return SidebarLibraryEmpty.None;
+        if (scrollerRows > 0) return SidebarLibraryEmpty.None;
         if (load == LoadState.Failed) return SidebarLibraryEmpty.Failed;
+        if (anyPending || load == LoadState.Pending) return SidebarLibraryEmpty.None;
         if (searching) return SidebarLibraryEmpty.Search;
         return filter != SidebarLibraryFilter.None ? SidebarLibraryEmpty.Filter : SidebarLibraryEmpty.Library;
     }
+
+    /// <summary>The load state Your Library's published list carries (S10). A contributing kind whose last ask FAILED makes it
+    /// Failed, rows or not: with rows the head draws its retry banner over what loaded, with none the Error vacancy. Otherwise
+    /// an empty list while a contributing kind is still pending is Pending (skeletons), and anything else is Ready.</summary>
+    public static LoadState LoadOf(int publishedCount, bool anyPending, bool anyFailed)
+        => anyFailed ? LoadState.Failed
+         : publishedCount == 0 && anyPending ? LoadState.Pending
+         : LoadState.Ready;
 }
 
 /// <summary>Your Library's fixed metrics: the drill-in width, the breadcrumb band, and the query test the search box reads.</summary>

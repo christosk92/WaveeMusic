@@ -47,14 +47,15 @@ public static class NavRowFacts
 
     /// <summary>The label an entity row shows. A PIN is never a blank row (design D9): while nothing has named it, the kind's noun
     /// shows ("Playlist" is honest where a uri fragment reads as data). An authoritative miss keeps the last-known name, dimmed,
-    /// with the warning mark (design Q9). A non-pin row keeps the identity gate (Trap 5) on its uri fallback.</summary>
+    /// with the warning mark (design Q9); an offline pin keeps it too, quieted (S9). A non-pin row keeps the identity gate
+    /// (Trap 5) on its uri fallback.</summary>
     public static NavRowLabel LabelOf(in SidebarLibraryEntry entry, bool online)
     {
         bool named = entry.Name.Length > 0;
         bool routeEntry = entry.Kind == SidebarEntryKind.AppRoute;
         bool pinned = entry.IsPinned;
         var pinState = pinned
-            ? SidebarPinStateRules.Of(entry.IdentityKnown || named, entry.Missing, online)
+            ? SidebarPinStateRules.Of(entry.IdentityKnown, named, entry.Missing, online, entry.Kind)
             : SidebarPinState.Resolved;
         string label = named ? entry.Name
             : routeEntry ? Shell.Dest(Shell.Parse(entry.Id)).Title
@@ -76,6 +77,22 @@ public sealed partial class NavModel
 
     /// <summary>A release's compact age against <see cref="Clock"/>.</summary>
     public string? AgeBadge(long epochMs) => epochMs <= 0 ? null : NavRowFacts.AgeBadge(epochMs, Clock());
+
+    /// <summary>Re-ask the library sources whose last ask FAILED (the rootlist, saved albums, followed artists, saved shows):
+    /// the retry behind Your Library's failure banner and its Error vacancy (S10). A source that answered, or is still out, is
+    /// left alone. No account scope (signed out, a fake demo without a library) asks nothing.</summary>
+    public void RetryFailedSources()
+    {
+        var scope = Entities.Current;
+        if (scope is null) return;
+        int me = scope.MeSlot;
+        if (me <= 0) return;
+        var e = scope.Edges;
+        if (e.Rootlist.IsFailed(me)) Entities.RefreshEdge(FetchEdge.Rootlist, me);
+        if (e.SavedAlbums.IsFailed(me)) Entities.RefreshEdge(FetchEdge.SavedAlbums, me);
+        if (e.FollowedArtists.IsFailed(me)) Entities.RefreshEdge(FetchEdge.FollowedArtists, me);
+        if (e.SavedShows.IsFailed(me)) Entities.RefreshEdge(FetchEdge.SavedShows, me);
+    }
 
     /// <summary>The label of an entity row, against <see cref="IsOnline"/>.</summary>
     public NavRowLabel LabelOf(in SidebarLibraryEntry entry) => NavRowFacts.LabelOf(in entry, IsOnline);

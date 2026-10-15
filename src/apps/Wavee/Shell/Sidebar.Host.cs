@@ -733,13 +733,13 @@ public static partial class Sidebar
 
     public static void MovePin(int fromIndex, int toIndex) => Pins.Move(fromIndex, toIndex);
 
-    /// <summary>Refresh a pin's cached display name from live library data. No-op when unchanged; coalesced into the
-    /// next commit — never commits alone. Called by <c>ResolvePins</c> on both the index-hit row and a freshly
+    /// <summary>Refresh a pin's cached display name and cover from live library data. No-op when unchanged; coalesced into
+    /// the next commit — never commits alone. Called by <c>ResolvePins</c> on both the index-hit row and a freshly
     /// hydrated unlisted pin, never by rows directly — going through this (rather than <c>Pins.Touch</c> straight)
     /// is what makes a touched name actually persist.</summary>
-    public static void TouchPin(string? pinId, string? name)
+    public static void TouchPin(string? pinId, string? name, FluentGpu.Foundation.StringId cover = default)
     {
-        if (Pins.Touch(pinId, name)) s_pinNamesDirty = true;
+        if (Pins.Touch(pinId, name, cover.IsEmpty ? null : Entities.Strings.Resolve(cover))) s_pinNamesDirty = true;
     }
 
     /// <summary>Pin with undo (appended, or at a drop's <paramref name="slot"/>). Q4: pinning while Pinned is hidden shows
@@ -1014,17 +1014,21 @@ public sealed class SidebarPinStore : IReadOnlyList<SidebarPin>
         Bump();
     }
 
-    /// <summary>Refresh a pin's cached display name (a renamed playlist) from live library data. Returns true when it
-    /// actually changed. Deliberately does NOT bump the version or raise <see cref="OnChanged"/>: a cache refresh must
-    /// never commit on its own and must never invalidate a render mid-projection.</summary>
-    public bool Touch(string? pinId, string? name)
+    /// <summary>Refresh a pin's cached display name (a renamed playlist) and cover (S9: what an offline pin keeps) from
+    /// live library data. An empty value never overwrites a cached one. Returns true when either actually changed.
+    /// Deliberately does NOT bump the version or raise <see cref="OnChanged"/>: a cache refresh must never commit on its
+    /// own and must never invalidate a render mid-projection.</summary>
+    public bool Touch(string? pinId, string? name, string? cover = null)
     {
-        if (string.IsNullOrEmpty(name)) return false;
+        bool hasName = !string.IsNullOrEmpty(name), hasCover = !string.IsNullOrEmpty(cover);
+        if (!hasName && !hasCover) return false;
         int at = IndexOf(pinId);
         if (at < 0) return false;
         var cur = _items[at];
-        if (string.Equals(cur.Name, name, StringComparison.Ordinal)) return false;
-        _items[at] = cur with { Name = name };
+        bool nameMoved = hasName && !string.Equals(cur.Name, name, StringComparison.Ordinal);
+        bool coverMoved = hasCover && !string.Equals(cur.Cover, cover, StringComparison.Ordinal);
+        if (!nameMoved && !coverMoved) return false;
+        _items[at] = cur with { Name = nameMoved ? name! : cur.Name, Cover = coverMoved ? cover! : cur.Cover };
         return true;
     }
 
@@ -1499,8 +1503,8 @@ public sealed class SidebarProjectionBinder
     public IReadSignal<int> InputVersion => _inputVersion;
 
     /// <summary>How far the two sources (the rootlist, the saved albums / artists / shows) have answered, INCLUDING a failed
-    /// ask (<see cref="NavReadiness.Failed"/>), which the planner's two-state <c>TreeState</c> / <c>LibraryState</c> cannot
-    /// say. Pending until the first rebuild; written by the rebuild only. The failure is part of the trigger fold, so a
+    /// ask (<see cref="NavReadiness.Failed"/>), which the planner reads as <c>TreeState</c> / <c>LibraryState</c> Error (S10).
+    /// Pending until the first rebuild; written by the rebuild only. The failure is part of the trigger fold, so a
     /// failed ask rebuilds once and lands here.</summary>
     public IReadSignal<NavReadinessFacts> Readiness => _readiness;
 
@@ -1557,7 +1561,7 @@ public sealed class SidebarProjectionBinder
                                 includeFolderChildren: true, lastPlayed: lastPlayed);
         build.Index.Rebuild(build.All);
         // THE SOURCE READINESS, derived once: the model publishes it as it is (a failed ask reads Failed), and the planner
-        // keeps reading its two-state projection (Failed draws as Pending, the skeleton, until a view draws the failure).
+        // reads its projection (Failed is Error: no skeleton in Your Library, whose head draws the failure — S10).
         var readiness = new NavReadinessFacts(
             NavReadinessRules.Of(u.RootlistReadiness),
             NavReadinessRules.Worst(NavReadinessRules.Of(u.Readiness(LibraryEdgeKind.SavedAlbums)),
@@ -1622,8 +1626,12 @@ public sealed class SidebarProjectionBinder
             SidebarNewReleasesRules.Fill(Notify.Items.Peek().Items, build.Index, _newReleases, RecencyCap);
         }
 
-        bool anyPending = AnyContributingKindPending(filter, u);
-        var (state, error) = PublishState(shape.Count, anyPending);
+        // A FAILED kind is not a pending one (S10): it stops the skeleton and the cell publishes Failed, which the Library
+        // head draws (a banner over what loaded, or the Error vacancy with Retry when nothing did).
+        bool anyPending = AnyContributingKind(filter, u, EdgeState.Unknown);
+        bool anyFailed = AnyContributingKind(filter, u, EdgeState.Failed);
+        var state = SidebarLibraryEmptyRules.LoadOf(shape.Count, anyPending, anyFailed);
+        Exception? error = null;
         _publishedStage = build;
         bool entriesChanged = Entries.Publish(state, error, anyPending, qualifiers, shape.PinCount, _publishedStage.All);
         bool inputChanged = PublishInput(countsMoved || !string.Equals(search, _input.Search ?? "", StringComparison.Ordinal));
@@ -1706,7 +1714,7 @@ public sealed class SidebarProjectionBinder
             if (index.TryGet(pin.Id, out var entry))
             {
                 _pinRows.Add(entry with { IsPinned = true, SourceOrder = i });
-                Sidebar.TouchPin(pin.Id, entry.Name);
+                Sidebar.TouchPin(pin.Id, entry.Name, entry.Cover);
                 // Bug H: a pin is shown regardless of folder collapse, but the index it was found in came from the
                 // FULL projection (`build.All`), which never ensures identity (see `SidebarProjection.Build`'s
                 // `ensureIdentity` doc) — only the fold-state-gated buffer build does, and a collapsed-away pin
@@ -1718,8 +1726,10 @@ public sealed class SidebarProjectionBinder
 
             var hydrated = ResolveLivePin(pin, out var row);
             if (!row.IsNone) _pinRefs.Add(row);
-            if (hydrated is { } h) Sidebar.TouchPin(pin.Id, h.Name);
-            _pinRows.Add(SidebarBinderPipeline.ResolveUnlistedPin(pin, i, hydrated, rootlistState));
+            if (hydrated is { } h) Sidebar.TouchPin(pin.Id, h.Name, h.Cover);
+            // S9: an unresolved pin paints its cached cover (interned once per pin: the cache is bounded by the pin count).
+            var cachedCover = pin.Cover.Length > 0 ? Entities.Strings.Intern(pin.Cover) : FluentGpu.Foundation.StringId.Empty;
+            _pinRows.Add(SidebarBinderPipeline.ResolveUnlistedPin(pin, i, hydrated, rootlistState, cachedCover));
         }
 
         // E3: ONE span-form ask per group for the whole pin band, after the loop — never one
@@ -1865,23 +1875,18 @@ public sealed class SidebarProjectionBinder
         }
     }
 
-    // The skeleton gate is per CONTRIBUTING kind (a pending Shows load must not skeleton the Playlists filter).
-    static bool AnyContributingKindPending(SidebarLibraryFilter filter, in User u)
+    // The skeleton and failure gates are per CONTRIBUTING kind (a pending Shows load must not skeleton the Playlists filter).
+    // They read the SURFACE readiness (`EdgeTableBase.Readiness`), which answers Failed for an unanswered list whose last
+    // ask failed, so a failed kind is Failed and never Unknown (pending).
+    static bool AnyContributingKind(SidebarLibraryFilter filter, in User u, EdgeState readiness)
     {
         var kinds = SidebarEntryKinds.From(filter);
-        if ((kinds & SidebarEntryKindMask.PlaylistTree) != 0 && u.RootlistState == EdgeState.Unknown) return true;
-        if ((kinds & SidebarEntryKindMask.Album) != 0 && u.State(LibraryEdgeKind.SavedAlbums) == EdgeState.Unknown) return true;
-        if ((kinds & SidebarEntryKindMask.Artist) != 0 && u.State(LibraryEdgeKind.FollowedArtists) == EdgeState.Unknown) return true;
-        if ((kinds & SidebarEntryKindMask.Show) != 0 && u.State(LibraryEdgeKind.SavedShows) == EdgeState.Unknown) return true;
+        if ((kinds & SidebarEntryKindMask.PlaylistTree) != 0 && u.RootlistReadiness == readiness) return true;
+        if ((kinds & SidebarEntryKindMask.Album) != 0 && u.Readiness(LibraryEdgeKind.SavedAlbums) == readiness) return true;
+        if ((kinds & SidebarEntryKindMask.Artist) != 0 && u.Readiness(LibraryEdgeKind.FollowedArtists) == readiness) return true;
+        if ((kinds & SidebarEntryKindMask.Show) != 0 && u.Readiness(LibraryEdgeKind.SavedShows) == readiness) return true;
         return false;
     }
-
-    // The entries cell's LoadState is what the Library view draws today, and no view draws a failure yet, so it stays
-    // Pending/Ready here. The failure itself IS published: `Readiness` (NavModel.Readiness) reads `EdgeTableBase.Readiness`,
-    // which answers Failed for an unanswered list whose last ask failed (Rebuild above). A view that draws the failure
-    // (CT3b) reads that, and this cell follows it then.
-    static (FluentGpu.Signals.LoadState State, Exception? Error) PublishState(int count, bool anyPending)
-        => count == 0 && anyPending ? (FluentGpu.Signals.LoadState.Pending, null) : (FluentGpu.Signals.LoadState.Ready, null);
 
 
     static SidebarFirstSeen LoadFirstSeen(SidebarFirstSeenDto[]? stored)

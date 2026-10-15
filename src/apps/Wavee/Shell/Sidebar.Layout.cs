@@ -744,16 +744,27 @@ public static class SidebarLibraryFilters
 
 /// <summary>A pin row's state (design Q9): pending (last-known name + kind glyph, no warning) until the projection
 /// hydrates; unavailable only after an AUTHORITATIVE miss (a converged rootlist that no longer carries a folder); offline
-/// neutral. Never auto-dropped, never a toast.</summary>
+/// while the session is offline and the pin's entity has not resolved this session (S9: it keeps its cached title and
+/// cover, quieted, "Not available offline"). Never auto-dropped, never a toast.</summary>
 public enum SidebarPinState : byte { Resolved = 0, Pending = 1, Unavailable = 2, Offline = 3 }
 
 public static class SidebarPinStateRules
 {
-    public static SidebarPinState Of(bool identityKnown, bool authoritativeMiss, bool online)
+    /// <summary>The state of a pin row. <paramref name="identityKnown"/> is the entity's own identity landing this session;
+    /// <paramref name="named"/> a cached or live name. Offline wins over a cached name for an ENTITY pin (S9: a cached name is
+    /// what it shows, not proof it is reachable); a route or folder pin is never "offline" (it is the app's own structure),
+    /// and online a cached name is enough to draw the row as resolved while the entity hydrates.</summary>
+    public static SidebarPinState Of(bool identityKnown, bool named, bool authoritativeMiss, bool online, SidebarEntryKind kind)
         => authoritativeMiss ? SidebarPinState.Unavailable
          : identityKnown ? SidebarPinState.Resolved
+         : !online && IsEntity(kind) ? SidebarPinState.Offline
+         : named ? SidebarPinState.Resolved
          : !online ? SidebarPinState.Offline
          : SidebarPinState.Pending;
+
+    /// <summary>A pin that names a catalogue entity (playlist, album, artist, show): the kinds that need a connection to resolve.</summary>
+    public static bool IsEntity(SidebarEntryKind kind)
+        => kind is SidebarEntryKind.Playlist or SidebarEntryKind.Album or SidebarEntryKind.Artist or SidebarEntryKind.Show;
 
     /// <summary>The localized noun a pin row shows while nothing has named it yet (design D9: nothing blank is ever
     /// rendered). Null for a kind that always carries its own title (a route pin's destination title).</summary>

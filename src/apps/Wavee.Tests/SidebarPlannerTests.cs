@@ -400,12 +400,38 @@ public sealed class SidebarRowPlannerTests
     static SidebarLayoutDoc GridDoc() => PlanFixture.Doc(SidebarLayoutId.Library, view: SidebarLibraryView.Grid);
 
     [Fact]
-    public void Library_GridPending_NoRows()
+    public void Library_GridPending_PlansSkeletonTileStrips()
     {
-        // Pending with an EMPTY published list: no placeholder strips, no skeletons (the list view would show three).
+        // S10: pending with an EMPTY published list, the grid plans its skeleton tiles (8) in strips of the planned column
+        // count, measured like the strips that replace them; never a real strip, never a list skeleton.
         var input = new SidebarProjectionInput(Library: [], LibraryState: SidebarSourceState.Pending);
         var plan = Plan(GridDoc(), input, new SidebarPlanOptions(GridColumns: 3));
-        Assert.DoesNotContain(plan.Rows, r => r.Kind is SidebarRowKind.GridStrip or SidebarRowKind.Skeleton);
+        Assert.DoesNotContain(plan.Rows, r => r.Kind == SidebarRowKind.GridStrip);
+        var strips = plan.Rows.Where(r => r.Kind == SidebarRowKind.Skeleton).ToList();
+        Assert.Equal(new[] { 3, 3, 2 }, strips.Select(r => r.ItemCount));
+        var doc = GridDoc();
+        var lib = doc.Find(SidebarSectionKind.Library);
+        int at = plan.Rows.ToList().FindIndex(r => r.Kind == SidebarRowKind.Skeleton);
+        Assert.True(float.IsNaN(SidebarRowExtents.HeightOf(plan.Rows, at, lib)));
+    }
+
+    [Fact]
+    public void Library_Failed_PlansNoSkeleton_InEitherView()
+    {
+        // S10: a failed source plans no skeleton (the head draws the failure: the banner over what loaded, or the vacancy).
+        var input = new SidebarProjectionInput(Library: [], LibraryState: SidebarSourceState.Error);
+        Assert.DoesNotContain(Plan(GridDoc(), input, new SidebarPlanOptions(GridColumns: 3)).Rows,
+            r => r.Kind is SidebarRowKind.GridStrip or SidebarRowKind.Skeleton);
+        Assert.DoesNotContain(Plan(PlanFixture.Doc(SidebarLayoutId.Library), input).Rows, r => r.Kind == SidebarRowKind.Skeleton);
+    }
+
+    [Fact]
+    public void Classic_FailedTree_KeepsTheSkeleton_NeverTheEmptyHint()
+    {
+        // The Classic layout has no failure voice of its own: a failed rootlist keeps its skeleton, never "no playlists".
+        var plan = Plan(Classic(), new SidebarProjectionInput(PlaylistTree: null, TreeState: SidebarSourceState.Error));
+        Assert.Contains(plan.Rows, r => r.Kind == SidebarRowKind.Skeleton);
+        Assert.DoesNotContain(plan.Rows, r => r.Kind == SidebarRowKind.Empty);
     }
 
     [Fact]

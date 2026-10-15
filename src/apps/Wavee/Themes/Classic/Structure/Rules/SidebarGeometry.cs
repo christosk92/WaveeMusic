@@ -119,8 +119,25 @@ public static class SidebarGeometry
     /// <summary>Grid cells stay media-card sized at the 460-DIP maximum.</summary>
     public const float GridCellMax = 160f;
 
-    /// <summary>The trailing width a row's label gives up to its count (the quiet badge).</summary>
-    public const float CountTrail = 28f;
+    // ── the trailing cluster's widths, for the label-fit estimate (S8) ──
+
+    /// <summary>The count's slot (board `C-Sidebar`: the count and the hover "…" share one 26-wide slot).</summary>
+    public const float CountSlot = 26f;
+    /// <summary>The playing row's equalizer: three 2.5-DIP bars at gap 2, rounded up.</summary>
+    public const float EqualizerWidth = 12f;
+    /// <summary>A folder row's own "+" (laid out always; it only fades in on hover or under a drag): 20 box, 12 glyph.</summary>
+    public const float FolderPlusBox = 20f, FolderPlusGlyph = 12f;
+
+    /// <summary>The width the trailing cluster takes from the label (S8: the tooltip estimate counts every part the row lays out,
+    /// the pin mark and the count slot included): the cluster's lead margin, each part, and the gaps between them. 0 for no
+    /// part. <paramref name="trailing"/> is the width of the row's own trailing content (a count slot, a mark), 0 for none.</summary>
+    public static float TrailingWidth(bool playing, bool pinned, float trailing)
+    {
+        int parts = (playing ? 1 : 0) + (pinned ? 1 : 0) + (trailing > 0f ? 1 : 0);
+        if (parts == 0) return 0f;
+        return TrailingGap * parts                       // the lead margin + the gaps between the parts
+               + (playing ? EqualizerWidth : 0f) + (pinned ? PinMarkSize : 0f) + MathF.Max(0f, trailing);
+    }
 
     /// <summary>A folder's 40-px chevron column replaces the 14-px trailing pad: the trailing width its label gives up.</summary>
     public const float FolderTrail = ChevronColumn - TrailingPad;
@@ -139,6 +156,15 @@ public static class SidebarGeometry
 
     /// <summary>The quiet pin mark beside a pinned entry's count.</summary>
     public const float PinMarkSize = 12f;
+
+    // ── the offline pin (S9, board `C-Sidebar` state offline) ──
+
+    /// <summary>An offline pin's mark: the cloud-off glyph (Segoe Fluent Icons U+EC9C, absent from the engine's glyph table) in a
+    /// 24 box, 12 glyph, tertiary. It takes the pin mark's place.</summary>
+    public const string OfflineGlyph = "";
+    public const float OfflineMarkBox = 24f, OfflineMarkGlyph = 12f;
+    /// <summary>An offline pin's cover is kept, quieted (board: opacity 0.45); its title is tertiary.</summary>
+    public const float OfflineArtOpacity = 0.45f;
 
     /// <summary>A track row's cover scrim and its ▶: the scrim is dark in BOTH themes, so the glyph is literal white (never
     /// <c>TextOnAccentPrimary</c>, which is black in dark). The glyph is 14, 10 in a Compact (one-line) row.</summary>
