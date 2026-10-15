@@ -342,6 +342,9 @@ public sealed class NavPaneMountedTests(ShellHost host)
                 }
                 shows.Clear(me);
                 shows.MarkFailed(me, 0, 503);
+                // The end of the drain production's failed fetch runs in: the edge's Changed signal fires (and the sidebar's binder
+                // rebuilds) only at a publish. Without it the banner waited for whatever posted work published next.
+                Entities.Publish();
                 Until(shell, () => !shell.Find("library-error-banner").IsNull, "the library's retry banner");
 
                 var scene = shell.Host.Scene;
@@ -358,6 +361,7 @@ public sealed class NavPaneMountedTests(ShellHost host)
             {
                 scope.Edges.SavedShows.Replace(me, targets, payload, EdgeState.Complete, targets.Length);
                 scope.Edges.SavedShows.MarkAnswered(me);
+                Entities.Publish();
                 Until(shell, () => shell.Find("library-error-banner").IsNull, "the banner leaving once the source answers");
                 if (original != SidebarLayoutId.Library)
                 {
