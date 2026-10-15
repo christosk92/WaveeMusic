@@ -114,6 +114,10 @@ public sealed record LikedChipBarProps
     /// <summary>The rail's scroll key (its scroll offset survives a rebuild).</summary>
     public required string ScrollKey { get; init; }
 
+    /// <summary>The chips ride the page bar between its lead and its tools (a page with no rail, tuned Classic D8) instead of a row of their
+    /// own. Appended (contract 1.6).</summary>
+    public bool Inline { get; init; }
+
     /// <summary>"All" was clicked: clear the tag filter.</summary>
     public required Action SelectAll { get; init; }
 
@@ -123,7 +127,8 @@ public sealed record LikedChipBarProps
 
     /// <inheritdoc />
     public bool Equals(LikedChipBarProps? other)
-        => other is not null && Evidenced == other.Evidenced && string.Equals(Selected, other.Selected, StringComparison.Ordinal)
+        => other is not null && Evidenced == other.Evidenced && Inline == other.Inline
+           && string.Equals(Selected, other.Selected, StringComparison.Ordinal)
            && string.Equals(ScrollKey, other.ScrollKey, StringComparison.Ordinal) && Titles.AsSpan().SequenceEqual(other.Titles);
 
     /// <inheritdoc />

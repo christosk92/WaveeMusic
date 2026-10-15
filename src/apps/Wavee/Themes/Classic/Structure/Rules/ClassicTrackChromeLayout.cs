@@ -27,14 +27,19 @@ public static class ClassicTrackChromeLayout
     public const float CaretGlyph = 9f, CaretSeedScale = 0.3f, LabelRise = 4f;
 
     /// <summary>Where the header's rule starts (tuned Classic D9 / V10): at the row PLATES' left edge — a Modern row's
-    /// <see cref="Track.RowMetrics.RowInset"/> skin margin, a Classic row's 0 (its plate and divider run full width). The hero arm keeps
-    /// the rows' gutter (its stacked rows are plain).</summary>
-    public static float HeaderRuleInset(bool classicRows, bool vertical, float padX)
-        => vertical ? padX : classicRows ? 0f : Track.RowMetrics.RowInset;
+    /// <see cref="Track.RowMetrics.RowInset"/> skin margin, a full-width plate's 0 (a Classic row's, and a quiet list's: Liked Songs, D16 / D-9).
+    /// The hero arm keeps the rows' gutter (its stacked rows are plain).</summary>
+    public static float HeaderRuleInset(bool fullWidthPlates, bool vertical, float padX)
+        => vertical ? padX : fullWidthPlates ? 0f : Track.RowMetrics.RowInset;
 
     /// <summary>The header shifting over for the check lane: the slow beat.</summary>
     public static readonly LayoutTransition HeaderShift = new(TransitionChannels.Position,
         TransitionDynamics.Tween(Design.Motion.Slow, Easing.FluentDecelerate));
+
+    // ── the date group head (tuned Classic D16, board C-TrackList) ────────────────────────────────────────────────────
+
+    /// <summary>The band: 40 tall, the words on its floor 6 up, 8 between the name and the count, both 13/18.</summary>
+    public const float GroupHeadHeight = 40f, GroupHeadPadBottom = 6f, GroupHeadGap = 8f, GroupHeadSize = 13f, GroupHeadLine = 18f;
 
     // ── the command bar ──────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -49,6 +54,10 @@ public static class ClassicTrackChromeLayout
 
     /// <summary>The disclosure chevron after a flyout command.</summary>
     public const float ChevronGlyph = 8f;
+
+    /// <summary>The page bar's lead (board C-Liked, tuned Classic D16): Shuffle's own lead after the split (with the split's 4 and the bar's 2,
+    /// the board's 8), and the slot the divider before the chips is centred in.</summary>
+    public const float PageShuffleLead = 2f, PageDividerSlot = 17f;
 
     /// <summary>The Filter funnel inside its icon-only button, and the count badge.</summary>
     public const float FunnelGlyph = 14f, BadgeSize = 18f, BadgeRadius = 9f;

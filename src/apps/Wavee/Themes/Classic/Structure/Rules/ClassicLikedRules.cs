@@ -58,6 +58,11 @@ internal static class ClassicLikedRules
     /// <summary>The flyout's card padding (the WinUI FlyoutContentPadding).</summary>
     public static readonly Edges4 FlyoutPad = new(16f, 15f, 16f, 17f);
 
+    // ── the inline chips (the page bar, tuned Classic D8) ──
+
+    /// <summary>The fade over the chips' trailing (and, once scrolled, leading) edge (board C-Liked: a 24-px mask).</summary>
+    public const float InlineChipFade = 24f;
+
     // ── the flyout's note ──
 
     public const float NoteSize = 12f;

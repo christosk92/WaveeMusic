@@ -151,10 +151,8 @@ public readonly partial struct Track
     /// <summary>How many cells (and width tracks) a set produces. ONE count for both, so a row always emits exactly one
     /// cell per track.
     /// <para>THREE builders size themselves from this: <c>Grid</c>, the bound twin <c>BoundGrid</c>
-    /// (Track.UI.Bound.cs) and the table's column header (Track.Table.Chrome.cs). Only <c>Grid</c> emits the
-    /// TRAILING ♥ cell today, because only the eager reader row sets <see cref="ColumnSet.HeartTrailing"/> — a bound
-    /// TABLE that sets it must gain the matching cell in <c>BoundGrid</c> and an empty header cell in the same
-    /// position first, or its cells and its tracks fall out of step by one.</para></summary>
+    /// (Track.UI.Bound.cs) and the table's column header (Track.Table.Chrome.cs). All three emit the TRAILING ♥ cell (the eager
+    /// reader row's, and a quiet table's, D16) in the same position, so the cells and the tracks never fall out of step.</para></summary>
     internal static int CellCount(in ColumnSet set)
         => 3 + (set.Heart ? 1 : 0) + (set.Thumb ? 1 : 0) + (set.Artist ? 1 : 0) + (set.Album ? 1 : 0)
            + (set.By ? 1 : 0) + (set.Date ? 1 : 0) + (set.Plays ? 1 : 0) + (RowMetrics.ShowTempo(in set) ? 1 : 0)

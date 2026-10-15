@@ -6,13 +6,13 @@
 // mounted tree can say:
 //
 //   registered   Classic registers every detail key
-//   real shell   the Liked page (the album / playlist / show frames are the same host) draws the two-column arm through the registered views at a
-//                wide window (the rail's column, the grip's seam layer, the content column) and the vertical arm at a narrow one (the table that
-//                hosts the hero, under the insights sheet's overlay)
+//   real shell   the Liked page draws its head arm at a wide window (no rail, the head over the list, the page bar; tuned Classic D16) and
+//                the vertical arm at a narrow one (the table that hosts the hero, under the insights sheet's overlay)
 //   rail         the cover fills the column less the side pads (the rule), and the identity rows stand in the order the row model decides
 //   strip        the collapsed rail is its 96-DIP strip with the cover and the expand chevron
 //   toggle       the insights toggle's glyph button is mounted by its own key
 
+using FluentGpu.Foundation;
 using Wavee.Themes.Classic;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
@@ -54,26 +54,56 @@ public sealed class DetailFrameMountedTests(ShellHost host)
 
     // ── the real shell ───────────────────────────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>Tuned Classic D16 / D8 (board C-Liked): at a wide window Liked Songs has no rail. Its head is the title and the meta in the
+    /// page gutter, and the list bar under it (8 of chrome air) is the page's: [Play split] 8 [Shuffle] [divider] [chips … 8] [tools], 44
+    /// tall with 4 under it; the row plates start 8 before the head's words, and the rows group by date (sorted by Date added).</summary>
     [Fact]
-    public void The_real_shell_draws_the_two_column_arm_at_a_wide_window()
+    public void The_real_shell_draws_liked_songs_as_a_head_over_the_list_with_no_rail()
         => host.Mounted(shell =>
         {
             Shell.GoTo(new Shell.Route(Shell.RouteKind.Liked));
-            Until(shell, () => !shell.Find("detail:two-column").IsNull, "the two-column arm");
+            Until(shell, () => !shell.Find("detail:head").IsNull, "the head arm");
             Until(shell, () => shell.FindPrefix("list:").Count == 1, "the liked list mounted");
+            Until(shell, () => !shell.Find("bar:chips").IsNull && shell.FindPrefix("group-head").Count > 0, "the chips and the date groups");
             shell.RunFrames(30);
+            var scene = shell.Host.Scene;
+            RectF At(string key) => scene.PresentedAbsoluteRect(Node(shell, key));
 
-            // the rail's column sits behind the fade wrapper, with the cover as its anchor
-            var fade = Node(shell, "detail-rail-fade");
-            var cover = Node(shell, "rail:cover");
-            var bounds = shell.Host.Scene.PresentedAbsoluteRect(cover);
-            Assert.Equal(bounds.W, bounds.H, 0.5f);
-            Assert.True(bounds.W <= shell.Host.Scene.PresentedAbsoluteRect(fade).W, "the cover never outgrows the column that holds it");
+            Assert.True(shell.Find("detail:two-column").IsNull, "no two-column row");
+            Assert.True(shell.Find("detail-rail-fade").IsNull, "no rail");
+            Assert.True(shell.Find("detail-rail-seam").IsNull, "no grip");
 
-            // the grip's layer is above the row in both arms, and the content column kept its key
-            Assert.False(shell.Find("detail-rail-seam").IsNull, "the seam layer");
-            Assert.False(shell.Find("right:tracks").IsNull, "the content column");
-            Assert.True(shell.Find("detail:vertical").IsNull, "one arm at a time");
+            var head = At("detail:head-title");
+            var bar = At("chrome:bar");
+            float gutter = ClassicDetailLayout.HeadGutter;
+            Assert.Equal(head.Y + head.H + 8f, bar.Y, 0.5f);                       // the chrome's own air: the bar sits 12 under the meta
+            Assert.Equal(44f, bar.H, 0.5f);
+            Assert.Equal(bar.Y + bar.H + 4f, At("header").Y, 0.5f);           // 4 of air under the bar: the head is 156
+            Assert.Equal(156f, At("header").Y - head.Y, 0.5f);                 // board C-Liked: the 156 head
+
+            // the lead: the split on the head's words, Shuffle 8 after it, then the divider's slot and the chips
+            var split = At("split:halves");
+            var shuffle = At("lead:shuffle");
+            var divider = At("lead:divider");
+            var chips = At("bar:chips");
+            Assert.Equal(head.X + gutter, split.X, 0.5f);
+            Assert.Equal(split.X + split.W + 8f, shuffle.X, 0.5f);
+            Assert.Equal(17f, divider.W, 0.5f);
+            Assert.Equal(divider.X + divider.W + 2f, chips.X, 0.5f);
+            Assert.True(chips.W >= 120f, $"the chips keep their least width, got {chips.W}");
+            // D8: the chips end 8 before the tools (and the bar's 2)
+            float tools = scene.PresentedAbsoluteRect(shell.FindPrefix("cmd:filter")[0].Node).X;
+            Assert.Equal(chips.X + chips.W + 8f + 2f, tools, 0.5f);
+            Assert.True(shell.FindPrefix("cmd:play-next").Count == 0, "the page bar leads with Play, not Play next");
+
+            // the row plates start 8 before the head's words, full width (no zebra inset)
+            var row = shell.FindPrefix("row").Where(k => k.Key == "row").Select(k => scene.PresentedAbsoluteRect(k.Node))
+                .Where(r => r.H > 0f).OrderBy(r => r.Y).First();
+            Assert.Equal(head.X + gutter - 8f, row.X, 0.5f);
+            // the date groups: a head is 40 tall above the row that starts its group; every other slot's bound head takes no room
+            var heads = shell.FindPrefix("group-head").Where(k => k.Key == "group-head").Select(k => scene.PresentedAbsoluteRect(k.Node).H).ToList();
+            Assert.Contains(heads, h => MathF.Abs(h - 40f) <= 0.5f);
+            Assert.All(heads, h => Assert.True(h <= 0.5f || MathF.Abs(h - 40f) <= 0.5f, $"a head is 40 or nothing, got {h}"));
         }, widthDip: 1600f, heightDip: 900f);
 
     [Fact]
@@ -87,7 +117,7 @@ public sealed class DetailFrameMountedTests(ShellHost host)
 
             // a track page's vertical arm ALWAYS composes the sheet's overlay, so the list never remounts when the facts arrive
             Assert.False(shell.Find("insights:content").IsNull, "the overlay's content slot");
-            Assert.True(shell.Find("detail:two-column").IsNull, "one arm at a time");
+            Assert.True(shell.Find("detail:head").IsNull, "one arm at a time");
             Assert.False(shell.Find("vhero:root").IsNull, "the hero is the table's item 0");
         }, widthDip: 480f, heightDip: 800f);
 
@@ -204,7 +234,7 @@ public sealed class DetailFrameMountedTests(ShellHost host)
         => host.Mounted(shell =>
         {
             Shell.GoTo(new Shell.Route(Shell.RouteKind.Liked));
-            Until(shell, () => !shell.Find("detail:two-column").IsNull, "the two-column arm");
+            Until(shell, () => !shell.Find("detail:head").IsNull, "the head arm");
             Until(shell, () => shell.FindPrefix("list:").Count == 1, "the liked list mounted");
             Until(shell, () => !shell.Find("cmd:insights").IsNull, "the facts settled and the bar grew its Insights button");
             shell.RunFrames(30);

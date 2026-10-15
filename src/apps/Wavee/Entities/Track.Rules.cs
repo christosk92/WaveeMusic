@@ -102,11 +102,15 @@ public readonly partial struct Track
     /// the RIGHT, immediately before the duration, at <see cref="Lane.HeartTrailing"/>. MUTUALLY EXCLUSIVE with
     /// <paramref name="Heart"/> — a row states its like once — and the gate both the width track and the cell read is
     /// <see cref="RowMetrics.ShowHeartTrailing"/>, which normalizes a set that asks for both by keeping the LEADING
-    /// heart (the lane every existing surface already reserves). It is NOT on the relief ladder: the ladder yields
-    /// trailing lanes for the tiered TABLE, and the only surface that sets this builds one fixed set at one width.</para></summary>
+    /// heart (the lane every existing surface already reserves). On the relief ladder it is the heart lane (it yields as
+    /// one with the leading heart): the reader row sets it at one fixed width, a quiet table (Liked, D16) at every tier.</para>
+    /// <para><paramref name="Quiet"/> is a collection's register (<see cref="Detail.Config.QuietRows"/>, Liked Songs, tuned Classic D16):
+    /// the plates run the list's full width with no zebra, the header rule with them, the titles are regular weight and the heart
+    /// shows only on the hovered (or focused) row — every row of the collection is liked, so a column of hearts says nothing.</para></summary>
     public readonly record struct ColumnSet(bool Album, bool By, bool Date, bool Plays, bool Heart, bool Thumb,
                                             bool Actions = true, int Tier = 0, bool Tempo = false, bool Expand = false,
-                                            bool Artist = false, bool Classic = false, bool HeartTrailing = false);
+                                            bool Artist = false, bool Classic = false, bool HeartTrailing = false,
+                                            bool Quiet = false);
 
     /// <summary>What the list is sorted by; <see cref="Index"/> = the context's own order. PERSISTED — new columns append
     /// and existing values never move.</summary>
@@ -314,7 +318,7 @@ public readonly partial struct Track
         /// <summary>The set's lanes as the ladder sees them; Tempo goes through <see cref="RowMetrics.ShowTempo"/> so the
         /// metric measures the lane the grid will actually build (DetailTracks.cs:626).</summary>
         public static Lanes LanesOf(in ColumnSet s) => new(
-            Heart: s.Heart, Thumb: s.Thumb, Artist: s.Artist, Album: s.Album, By: s.By, Date: s.Date,
+            Heart: s.Heart || RowMetrics.ShowHeartTrailing(in s), Thumb: s.Thumb, Artist: s.Artist, Album: s.Album, By: s.By, Date: s.Date,
             Plays: s.Plays, Tempo: RowMetrics.ShowTempo(in s), Actions: s.Actions, Expand: s.Expand);
 
         /// <summary>The set with <paramref name="step"/> lanes yielded, applied in ONE place so header, rows, shimmer and
@@ -327,7 +331,8 @@ public readonly partial struct Track
             var r = Relieve(LanesOf(in s), step);
             return s with
             {
-                Heart = r.Heart, Thumb = r.Thumb, Artist = r.Artist, Album = r.Album, By = r.By, Date = r.Date,
+                // The heart lane yields as one, leading or trailing (a quiet list's, D16).
+                Heart = s.Heart && r.Heart, HeartTrailing = s.HeartTrailing && r.Heart, Thumb = r.Thumb, Artist = r.Artist, Album = r.Album, By = r.By, Date = r.Date,
                 Plays = r.Plays, Tempo = s.Tempo && (r.Tempo || !RowMetrics.ShowTempo(in s)),
             };
         }
@@ -707,6 +712,9 @@ public readonly partial struct Track
         public const float SearchGap = 8f;
         /// <summary>The least the flexible gap between the left and the right group may shrink to.</summary>
         public const float GroupGap = 8f;
+        /// <summary>The page bar's inline chips (tuned Classic D8): the least width they keep before the view commands are evicted, and the
+        /// air between their faded end and the right group (board C-Liked: <c>min-width: 120px; margin-right: 8px</c>).</summary>
+        public const float InlineChipsMin = 120f, InlineChipsTrail = 8f;
         public const float PromotionHysteresis = 16f;
 
         /// <summary>Hysteresis applies in EVERY mode — it used to be skipped while search was open, exactly when evicted
@@ -768,6 +776,63 @@ public readonly partial struct Track
                 searchWidth = Math.Clamp(reservedSearch + spare, SearchMinExplicit, SearchMax);
             }
             return new CommandBarFit(inline, expanded, searchWidth);
+        }
+    }
+
+    // ══ 6b. THE DATE GROUPS ══════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>A date group's head as a row shows it: the group's name and its count, already worded. Value equality, so a slot's
+    /// memo over it notifies only when the head it draws really changes.</summary>
+    public sealed record DateGroupHead(string Label, string Count);
+
+    /// <summary>The date groups of a collection sorted by when its songs were added (<see cref="Detail.Config.DateGroups"/>, Liked Songs,
+    /// tuned Classic D16; board C-TrackList: "This week · 12 songs", "September · 41 songs"): the last seven days are one group, every
+    /// older song falls in its calendar month (local time), and a month of another year carries the year. A row with no date
+    /// (0) is its own trailing group, "Earlier". Groups are contiguous runs of the SORTED view, so they hold in either direction.</summary>
+    public static class DateGroupRules
+    {
+        /// <summary>The key of the last seven days.</summary>
+        public const int ThisWeek = int.MaxValue;
+
+        /// <summary>The key of a row with no date.</summary>
+        public const int Undated = int.MinValue;
+
+        const long WeekSeconds = 7L * 24 * 60 * 60;
+
+        /// <summary>The group a row added at <paramref name="addedUnix"/> belongs to, seen at <paramref name="nowUnix"/> (both unix seconds),
+        /// with <paramref name="offset"/> the local time's offset from UTC.</summary>
+        public static int KeyOf(long addedUnix, long nowUnix, TimeSpan offset)
+        {
+            if (addedUnix <= 0) return Undated;
+            if (nowUnix - addedUnix < WeekSeconds) return ThisWeek;
+            var local = DateTimeOffset.FromUnixTimeSeconds(addedUnix).ToOffset(offset);
+            return local.Year * 12 + (local.Month - 1);
+        }
+
+        /// <summary>The group's name: "This week", the month ("September") or, in another year than <paramref name="nowYear"/>, the month and
+        /// year ("September 2024") in <paramref name="culture"/>; <paramref name="thisWeek"/> and <paramref name="undated"/> are the
+        /// caller's localized words.</summary>
+        public static string LabelOf(int key, int nowYear, CultureInfo culture, string thisWeek, string undated)
+        {
+            if (key == ThisWeek) return thisWeek;
+            if (key == Undated) return undated;
+            var month = new DateTime(key / 12, key % 12 + 1, 1);
+            return month.Year == nowYear ? month.ToString("MMMM", culture) : month.ToString("MMMM yyyy", culture);
+        }
+
+        /// <summary>Fills <paramref name="heads"/> with, at each display index that STARTS a group, the length of that group's run (else 0),
+        /// from each display row's <paramref name="keys"/>.</summary>
+        public static void RunsOf(ReadOnlySpan<int> keys, Span<int> heads)
+        {
+            int i = 0;
+            while (i < keys.Length)
+            {
+                int j = i + 1;
+                while (j < keys.Length && keys[j] == keys[i]) j++;
+                heads[i] = j - i;
+                for (int k = i + 1; k < j; k++) heads[k] = 0;
+                i = j;
+            }
         }
     }
 

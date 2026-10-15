@@ -39,7 +39,7 @@ using TableRules = global::Wavee.Track.TableRules;
 internal static class ClassicTrackChrome
 {
     /// <summary>The chrome Classic registers as <c>TrackListStyle.Chrome</c>. Stateless.</summary>
-    public static readonly TrackChromeTemplates Templates = new(Header, new CommandKit(), FilterCard, Placeholder);
+    public static readonly TrackChromeTemplates Templates = new(Header, new CommandKit(), FilterCard, Placeholder, GroupHeader);
 
     // ══ THE PLACEHOLDER ══════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -60,6 +60,30 @@ internal static class ClassicTrackChrome
             Children = cells,
         };
     }
+
+    // ══ THE DATE GROUP HEAD ══════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The head of a date group (tuned Classic D16, board C-TrackList's liked groups): a 40-DIP band whose name (13/18 semibold)
+    /// and count (13/18, secondary) sit on its floor, 6 above the row they lead, at the rows' own gutter.</summary>
+    static Element GroupHeader(Func<Track.DateGroupHead?> head, float padX) => new BoxEl
+    {
+        Direction = 0, Height = ClassicTrackChromeLayout.GroupHeadHeight, AlignItems = FlexAlign.End, Gap = ClassicTrackChromeLayout.GroupHeadGap,
+        MinWidth = 0f, ClipToBounds = true, Visible = Prop.Of(() => head() is not null),
+        Padding = new Edges4(padX, 0f, padX, ClassicTrackChromeLayout.GroupHeadPadBottom),
+        Children =
+        [
+            new TextEl(Prop.Of(() => head()?.Label ?? ""))
+            {
+                Size = ClassicTrackChromeLayout.GroupHeadSize, LineHeight = ClassicTrackChromeLayout.GroupHeadLine, Weight = 600,
+                Color = Tok.TextPrimary, MaxLines = 1, Shrink = 0f,
+            },
+            new TextEl(Prop.Of(() => head()?.Count ?? ""))
+            {
+                Size = ClassicTrackChromeLayout.GroupHeadSize, LineHeight = ClassicTrackChromeLayout.GroupHeadLine, Color = Tok.TextSecondary,
+                MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
+            },
+        ],
+    };
 
     // ══ THE COLUMN HEADER ════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -103,6 +127,7 @@ internal static class ClassicTrackChrome
                 SortColumn.Plays, sort, FlexJustify.End));
         // BPM · Key is not sortable: tempo lands asynchronously per row, a sort would reorder under the cursor.
         if (RowMetrics.ShowTempo(in set)) Add(CellKey.Tempo, PlainHeader(Loc.Get(Strings.Detail.Column.Tempo), FlexJustify.End, classic));
+        if (RowMetrics.ShowHeartTrailing(in set)) Add(CellKey.HeartTrailing, new BoxEl());
         Add(CellKey.Duration, SortCell(a, vertical
                 ? HLabel(Loc.Get(Strings.Detail.Column.Time), SortColumn.Duration, sort, classic)
                 : Icon(Icons.Clock, ClassicTrackChromeLayout.ClockGlyph, sort.Column == SortColumn.Duration ? Tok.TextSecondary : Tok.TextTertiary),
@@ -111,9 +136,9 @@ internal static class ClassicTrackChrome
         if (set.Expand) Add(CellKey.Expand, new BoxEl());
 
         // ONE left edge (tuned Classic D9 / V10): the rule starts where the row plates start (a Modern row's RowInset margin, a Classic
-        // row's 0), and the cells sit at the rows' own gutter inside it, so "#" stays over the numbers.
+        // or a quiet row's 0 — Liked's rule runs the list's full width, D-9), and the cells sit at the rows' own gutter inside it, so "#" stays over the numbers.
         float padX = RowMetrics.PadXFor(set.Tier);
-        float edge = ClassicTrackChromeLayout.HeaderRuleInset(classic, vertical, padX);
+        float edge = ClassicTrackChromeLayout.HeaderRuleInset(classic || set.Quiet, vertical, padX);
         return new BoxEl
         {
             Direction = 1, MinWidth = 0f, Padding = new Edges4(edge, 0f, edge, 0f),
@@ -357,14 +382,22 @@ internal static class ClassicTrackChrome
         };
 
         /// <summary>The 44 list bar (tuned Classic D3, board <c>C-Album</c> / <c>C-Playlist</c>): [Play next │ ⌄] [Shuffle] [Tune], the flexible
-        /// gap, then [Filter (n)] [Sort ⌄], Find led by its own 6 DIP, [Insights] [⋯] — every command 2 DIP from the next.</summary>
-        public Element Bar(Element[] left, Element[] view, Element search, Element[] tail) => new BoxEl
+        /// gap, then [Filter (n)] [Sort ⌄], Find led by its own 6 DIP, [Insights] [⋯] — every command 2 DIP from the next. The page bar
+        /// (board <c>C-Liked</c>, tuned Classic D8) puts its chips in the gap's place: they take what the commands leave (never under 120) and
+        /// end 8 DIP before the tools, where the chip rail's own 24-DIP edge fade says there is more.</summary>
+        public Element Bar(Element[] left, Element[] view, Element search, Element[] tail, Element? middle) => new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Grow = 1f, MinWidth = 0f,
             Children =
             [
                 new BoxEl { Key = "bar:left", Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f, Children = left },
-                new BoxEl { Key = "bar:gap", Grow = 1f, MinWidth = CommandBarLayout.GroupGap },
+                middle is null
+                    ? new BoxEl { Key = "bar:gap", Grow = 1f, MinWidth = CommandBarLayout.GroupGap }
+                    : new BoxEl
+                    {
+                        Key = "bar:chips", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = CommandBarLayout.InlineChipsMin,
+                        Margin = new Edges4(0f, 0f, CommandBarLayout.InlineChipsTrail, 0f), Children = [middle],
+                    },
                 new BoxEl
                 {
                     Key = "bar:right", Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f,
@@ -377,6 +410,34 @@ internal static class ClassicTrackChrome
                             Margin = new Edges4(CommandBarLayout.SearchGap - CommandBarLayout.Gap, 0f, 0f, 0f), Children = [search],
                         },
                         .. tail,
+                    ],
+                },
+            ],
+        };
+
+        /// <summary>The page bar's lead (board <c>C-Liked</c>, tuned Classic D16): the detail header's own Play split (D20: one Play, never a
+        /// fork), 8 DIP on the bordered standard Shuffle with its word, and the 17-DIP slot of the 20-DIP divider before the chips.</summary>
+        public Element PageLead(EntityUri subject, Func<ColorF> accent, Action play, string shuffleLabel, Action shuffle) => new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f,
+            Children =
+            [
+                ClassicDetailKit.PlaySplit(subject, accent, play),
+                Button.Create(shuffleLabel, shuffle, ButtonAppearance.Standard, glyph: Icons.Shuffle) with
+                {
+                    Key = "lead:shuffle", Shrink = 0f, Height = ClassicTrackChromeLayout.CommandHeight,
+                    Margin = new Edges4(ClassicTrackChromeLayout.PageShuffleLead, 0f, 0f, 0f),
+                },
+                new BoxEl
+                {
+                    Key = "lead:divider", Width = ClassicTrackChromeLayout.PageDividerSlot, Shrink = 0f,
+                    AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Width = 1f, Height = ClassicTrackChromeLayout.SplitDividerHeight, Fill = Prop.Of(static () => Tok.StrokeDividerDefault),
+                        },
                     ],
                 },
             ],

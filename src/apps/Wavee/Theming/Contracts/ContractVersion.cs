@@ -27,6 +27,11 @@
 // `DensityPanel` (Row size, Select and the sort caret left the bar); `TrackRowSkin.PadX` went with the Classic row divider's inset (the
 // header rule, the plates and the dividers share one left edge, V10). No external theme exists yet.
 //
+// 1.6 (tuned Classic CT6a): a page with no rail (`Detail.Config.Rail` false, Liked Songs, D16) — the optional `DetailFrameProps.Head`
+// (`DetailHeadProps`: the title and meta over the list), `LikedChipBarProps.Inline` (the chips ride the page bar, D8) and
+// `TrackRowSkin.Quiet` (a quiet list's full-width plate). The command kit (internal) gains `PageLead` and `Bar`'s optional `middle`; the
+// chrome record gains its `GroupHeader` (the date groups' head).
+//
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
 // member and is a deliberate, owner-visible event. `ThemeCatalog` refuses to install a composition whose major differs
@@ -41,7 +46,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 5;
+    public const int Minor = 6;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

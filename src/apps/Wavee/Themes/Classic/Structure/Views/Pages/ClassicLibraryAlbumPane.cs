@@ -183,7 +183,7 @@ internal static class ClassicLibraryAlbumPane
 
         float padX = Track.RowMetrics.PadXFor(set.Tier);
         // The real header's ONE left edge (V10): the rule at the Modern plates' inset, the cells at the rows' gutter.
-        float edge = ClassicTrackChromeLayout.HeaderRuleInset(classicRows: false, vertical: false, padX);
+        float edge = ClassicTrackChromeLayout.HeaderRuleInset(fullWidthPlates: false, vertical: false, padX);
         return new BoxEl
         {
             Key = "header:shim", Direction = 1, ClipToBounds = true,

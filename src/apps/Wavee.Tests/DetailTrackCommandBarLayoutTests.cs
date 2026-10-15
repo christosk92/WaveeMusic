@@ -197,9 +197,9 @@ public class DetailTrackCommandBarLayoutTests
     public void HeaderRule_StartsAtTheRowPlatesLeftEdge()
     {
         float padX = Track.RowMetrics.PadXFor(0);
-        Assert.Equal(Track.RowMetrics.RowInset, Wavee.Themes.Classic.ClassicTrackChromeLayout.HeaderRuleInset(classicRows: false, vertical: false, padX));
-        Assert.Equal(0f, Wavee.Themes.Classic.ClassicTrackChromeLayout.HeaderRuleInset(classicRows: true, vertical: false, padX));
-        Assert.Equal(padX, Wavee.Themes.Classic.ClassicTrackChromeLayout.HeaderRuleInset(classicRows: false, vertical: true, padX));
+        Assert.Equal(Track.RowMetrics.RowInset, Wavee.Themes.Classic.ClassicTrackChromeLayout.HeaderRuleInset(fullWidthPlates: false, vertical: false, padX));
+        Assert.Equal(0f, Wavee.Themes.Classic.ClassicTrackChromeLayout.HeaderRuleInset(fullWidthPlates: true, vertical: false, padX));
+        Assert.Equal(padX, Wavee.Themes.Classic.ClassicTrackChromeLayout.HeaderRuleInset(fullWidthPlates: false, vertical: true, padX));
     }
 
     // ── D4: the rail's filtered count ──

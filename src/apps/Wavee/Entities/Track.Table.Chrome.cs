@@ -114,13 +114,21 @@ public readonly partial struct Track
             Element Gutter(Element e) => new BoxEl { Direction = 1, MinWidth = 0f, Padding = new Edges4(padX, 0f, padX, 0f), Children = [e] };
             Element header = Embed.Comp(() => new TableHeader(this)) with { Key = "header" };
             var stack = new List<Element>(4);
+            // The page bar (a page with no rail, tuned Classic D16) sits under the page head: its commands start on the head's words (the
+            // rows' 8-DIP plate inset less the bar's own 6) on both sides, it carries the chips inline (D8), and 4 DIP of air part it from
+            // the column header (board C-Liked: the head is 156).
+            bool pageBar = PageBar;
+            float pageBarInset = RowMetrics.RowInset - Detail.VerticalLayout.ToolbarSurfacePadX;
             if (toolbar)
                 stack.Add(new BoxEl
                 {
                     Key = "chrome:bar", Direction = 1, MinWidth = 0f,
-                    Padding = new Edges4(0f, 0f, RowMetrics.RowInset, 0f), Children = [Toolbar()],
+                    Padding = pageBar ? new Edges4(pageBarInset, 0f, pageBarInset, 0f) : new Edges4(0f, 0f, RowMetrics.RowInset, 0f),
+                    Margin = pageBar ? new Edges4(0f, 0f, 0f, Spacing.XS) : default,
+                    Children = [Toolbar()],
                 });
-            if (chips is not null && (vertical || _latest.ShowToolbar)) stack.Add(Gutter(chips) with { Key = "chrome:chips" });
+            if (chips is not null && !(toolbar && pageBar) && (vertical || _latest.ShowToolbar))
+                stack.Add(Gutter(chips) with { Key = "chrome:chips" });
             if (lens is not null) stack.Add(Gutter(lens) with { Key = "chrome:lens" });
             stack.Add(header);
             Element[] children = toolbar
@@ -145,6 +153,10 @@ public readonly partial struct Track
         /// the presence of the toggle object — the vertical arm's through its spec, the two-column arm's through the args.</summary>
         Detail.InsightsToggle? BarInsights => VerticalArm ? _latest.Vertical?.Insights : _latest.Insights;
 
+        /// <summary>The list bar is the PAGE's bar (tuned Classic D16): a page with no rail (<see cref="Detail.Config.Rail"/> false) in its
+        /// wide arm leads the bar with its Play split, a labelled Shuffle and its chips, under the page head.</summary>
+        bool PageBar => !VerticalArm && !_latest.Embedded && !Cfg.Rail;
+
         /// <summary>The list bar (tuned Classic D3, decisions D-6 / D-10): left [Play next │ ⌄] [Shuffle] [Tune]; right [Filter (n)]
         /// [Sort ⌄] [Find] [Insights] [⋯]. Row size, Select and the column opt-ins live in "…" only.</summary>
         Element BuildToolbar(float available)
@@ -153,20 +165,29 @@ public readonly partial struct Track
             if (_selectionVisible?.Value == true) return SelectionSurface("selection");
 
             bool vertical = VerticalArm;
+            bool pageBar = PageBar;
             bool hasTune = P.Tune is not null;
             var insights = BarInsights;
             bool explicitSearch = _searchExpanded.Value;
             var w = _toolbarWidths;
-            var widths = new CommandWidths(w[0], w[1], w[2], w[3], w[4]);
+            // The page bar's lead (split · Shuffle · divider) is ONE measured command in the Play slot and Shuffle never leaves it; the chips
+            // keep their least width (D8), so the view commands are what a narrow bar evicts.
+            Element? chips = pageBar ? P.ContentFilterBar?.Invoke() : null;
+            var widths = new CommandWidths(w[0], w[1], pageBar ? 0f : w[2], w[3], w[4]);
             float pane = HeldPane(MathF.Max(0f, available - ToolbarPaneInset));
-            var fit = CommandBarLayout.Resolve(pane, in widths, vertical, hasTune, insights is not null, explicitSearch, _toolbarFit);
+            float fitPane = chips is null ? pane : MathF.Max(0f, pane - CommandBarLayout.InlineChipsMin - CommandBarLayout.InlineChipsTrail);
+            var fit = CommandBarLayout.Resolve(fitPane, in widths, vertical, hasTune, insights is not null, explicitSearch, _toolbarFit);
+            if (pageBar) fit = fit with { Inline = fit.Inline | InlineCommand.Shuffle };
             if (!explicitSearch) _searchOpenFit = null;
             else if (_searchOpenFit is { } latched && MathF.Abs(latched.Available - pane) <= 0.5f) fit = latched.Fit;
             else _searchOpenFit = (pane, fit);
             _toolbarFit = fit;
 
             var left = new List<Element>(3);
-            if (!vertical)
+            if (pageBar)
+                left.Add(MeasuredCommand(0, "cmd:page-lead:" + _contextText,
+                    Kit.PageLead(_latest.Source.Context, _accent, _playAll, Loc.Get(Strings.Detail.Shuffle), _shuffle)));
+            else if (!vertical)
             {
                 IReadOnlyList<MenuFlyoutItem> playItems =
                 [
@@ -176,7 +197,7 @@ public readonly partial struct Track
                 left.Add(MeasuredCommand(0, "cmd:play-next:" + _contextText,
                     Kit.PlayNext(Loc.Get(Strings.Detail.PlayNext), () => RunOnContext(ActionId.PlayNext), playItems)));
             }
-            if (fit.Has(InlineCommand.Shuffle))
+            if (!pageBar && fit.Has(InlineCommand.Shuffle))
                 left.Add(MeasuredCommand(2, "cmd:shuffle", Kit.Labeled(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), false, Shuffle, null)));
             if (hasTune)
                 left.Add(MeasuredCommand(1, "cmd:tune", ToolTip.Wrap(
@@ -196,7 +217,7 @@ public readonly partial struct Track
 
             Element search = Embed.Comp(new SearchProps(fit.SearchExpanded, fit.SearchWidth, false, Funnel: false), () => new TableSearchHost(this))
                 with { Key = "search-host" };
-            return Kit.Surface("normal", Kit.Bar(left.ToArray(), view.ToArray(), search, tail));
+            return Kit.Surface("normal", Kit.Bar(left.ToArray(), view.ToArray(), search, tail, chips));
         }
 
         Element MeasuredCommand(int slot, string key, Element command) => Kit.Command(key, command, w => MeasureToolbarCommand(slot, w));
@@ -870,7 +891,8 @@ public readonly partial struct Track
 
             public Element Surface(string mode, Element content) => content;
             public Element Command(string key, Element command, Action<float> onWidth) => new BoxEl { Key = key };
-            public Element Bar(Element[] left, Element[] view, Element search, Element[] tail) => new BoxEl();
+            public Element Bar(Element[] left, Element[] view, Element search, Element[] tail, Element? middle) => new BoxEl();
+            public Element PageLead(EntityUri subject, Func<ColorF> accent, Action play, string shuffleLabel, Action shuffle) => new BoxEl();
             public Element PlayNext(string label, Action onPlay, IReadOnlyList<MenuFlyoutItem> items) => new BoxEl();
             public Element Labeled(string glyph, string label, bool active, Action onClick, Action<NodeHandle>? onRealized, Element? trailing) => new BoxEl();
             public Element IconButton(string glyph, bool active, Action onClick, Action<NodeHandle>? onRealized) => new BoxEl();

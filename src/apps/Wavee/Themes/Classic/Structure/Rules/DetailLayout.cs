@@ -60,6 +60,22 @@ public static class ClassicDetailLayout
     /// <summary>The owner / artists text: size and line height.</summary>
     public const float AttributionSize = 12f, AttributionLine = 16f;
 
+    // ── the head of a page with no rail (tuned Classic D16, board C-Liked) ─────────────────────────────────────────────
+
+    /// <summary>The head's words sit in the page gutter (the board's 36; the gutter ladder is the content tier's, TC1).</summary>
+    public const float HeadGutter = 36f;
+
+    /// <summary>The air above the title, and under the meta line: 4, so with the list chrome's own 8 of top air the bar sits 12 under the meta
+    /// (24 + 52 + 4 + 16 + 12 + the 44 bar + 4 = the board's 156).</summary>
+    public const float HeadPadTop = 24f, HeadPadBottom = 4f;
+
+    /// <summary>The title's line (the 40/52 display face) and the meta line 4 under it, one 16-DIP line (a loading meta shimmers in the same
+    /// slot).</summary>
+    public const float HeadTitleLine = 52f, HeadMetaGap = 4f, HeadMetaLine = 16f;
+
+    /// <summary>The list's inset under the head: the gutter less the row plates' 8, so the plates start 8 before the head's words.</summary>
+    public static float HeadListInset => HeadGutter - Track.RowMetrics.RowInset;
+
     // ── the insights sheet (tuned Classic I1, board C-Liked) ──────────────────────────────────────────────────────────
 
     /// <summary>The sheet's width (the board's 320; production's 390 vertical-arm sheet is gone) …</summary>

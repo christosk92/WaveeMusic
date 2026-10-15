@@ -67,8 +67,15 @@ internal interface ITrackCommandKit
 
     /// <summary>The list bar (tuned Classic D3): the <paramref name="left"/> group (Play next, Shuffle, Tune), a flexible gap, then the
     /// right group: the <paramref name="view"/> commands (Filter, Sort), the search host (Find, led by
-    /// <c>CommandBarLayout.SearchGap</c>) and the <paramref name="tail"/> (Insights, "…").</summary>
-    Element Bar(Element[] left, Element[] view, Element search, Element[] tail);
+    /// <c>CommandBarLayout.SearchGap</c>) and the <paramref name="tail"/> (Insights, "…"). A <paramref name="middle"/> (the page bar's genre
+    /// chips, tuned Classic D8) takes the flexible gap's place: it grows, never under <c>CommandBarLayout.InlineChipsMin</c>, and ends
+    /// <c>CommandBarLayout.InlineChipsTrail</c> before the right group.</summary>
+    Element Bar(Element[] left, Element[] view, Element search, Element[] tail, Element? middle = null);
+
+    /// <summary>The page bar's lead (a page with no rail, tuned Classic D16): the page's Play split for <paramref name="subject"/> in the
+    /// <paramref name="accent"/> ("More ways to play" on its chevron), the labelled <paramref name="shuffleLabel"/> button and the divider
+    /// before the chips.</summary>
+    Element PageLead(EntityUri subject, Func<ColorF> accent, Action play, string shuffleLabel, Action shuffle);
 
     /// <summary>The split "Play next" command (primary action + flyout of <paramref name="items"/>) wearing CommandBar visuals.</summary>
     Element PlayNext(string label, Action onPlay, IReadOnlyList<MenuFlyoutItem> items);
@@ -143,18 +150,26 @@ internal delegate Element TrackFilterCardTemplate(TrackFilterCardArgs args);
 /// (the core passes them), so the crossing is a cross-fade and never a reflow.</summary>
 internal delegate Element TrackPlaceholderTemplate(in Track.ColumnSet set, TrackSize[] tracks, float rowH, float padX);
 
+// ── the date group head ───────────────────────────────────────────────────────────────────────────────────────────────
+
+/// <summary>Draws the head of a date group above the row that starts it (tuned Classic D16): the group's name and its count, at the rows'
+/// own gutter <paramref name="padX"/>. BOUND: <paramref name="head"/> is the slot's live head (null on a row inside a group: it draws nothing
+/// and takes no room); read it only inside bound props, so a recycle never re-renders the slot.</summary>
+internal delegate Element TrackGroupHeaderTemplate(Func<Track.DateGroupHead?> head, float padX);
+
 // ── the record ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 /// <summary>The structure's chrome for the track table (<see cref="TrackListStyle.Chrome"/>).</summary>
 public sealed class TrackChromeTemplates
 {
     internal TrackChromeTemplates(TrackHeaderTemplate header, ITrackCommandKit commands, TrackFilterCardTemplate filterCard,
-                                  TrackPlaceholderTemplate placeholder)
+                                  TrackPlaceholderTemplate placeholder, TrackGroupHeaderTemplate groupHeader)
     {
         Header = header;
         Commands = commands;
         FilterCard = filterCard;
         Placeholder = placeholder;
+        GroupHeader = groupHeader;
     }
 
     /// <summary>The column header.</summary>
@@ -168,4 +183,7 @@ public sealed class TrackChromeTemplates
 
     /// <summary>The placeholder row.</summary>
     internal TrackPlaceholderTemplate Placeholder { get; }
+
+    /// <summary>The head of a date group (tuned Classic D16).</summary>
+    internal TrackGroupHeaderTemplate GroupHeader { get; }
 }

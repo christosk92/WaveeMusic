@@ -61,11 +61,15 @@ public sealed record DetailFrameProps
     public DetailShowHeaderProps? ShowHeader { get; init; }
 
     /// <summary>A TRACK page's insights sheet (null for a show / episode page): laid over the vertical arm's page, or over the two-column
-    /// arm's list column (tuned Classic I1, contract 1.6). Its <c>Page</c> is set by the view.</summary>
+    /// arm's list column (tuned Classic I1, contract 1.5). Its <c>Page</c> is set by the view.</summary>
     public DetailInsightsProps? Sheet { get; init; }
 
-    /// <summary>The two-column arm: the rail, its grip and the collapsed strip.</summary>
+    /// <summary>The two-column arm: the rail, its grip and the collapsed strip (null on a page with no rail, <see cref="Head"/>).</summary>
     public DetailTwoColumnProps? TwoColumn { get; init; }
+
+    /// <summary>The wide arm of a page with no rail (<c>Detail.Config.Rail</c> false, Liked Songs, tuned Classic D16): the page head (title
+    /// and meta) above the content column, whose list bar carries the page's own commands. Appended (contract 1.6).</summary>
+    public DetailHeadProps? Head { get; init; }
 
     /// <inheritdoc />
     public bool Equals(DetailFrameProps? other) => ReferenceEquals(this, other);
@@ -106,6 +110,23 @@ public sealed record DetailTwoColumnProps
     public DetailCompactRailProps? CompactRail { get; init; }
 }
 
+/// <summary>The head of a page with no rail (<see cref="DetailFrameProps.Head"/>): the title and the meta line over the list.</summary>
+public sealed record DetailHeadProps
+{
+    /// <summary>The page's spec (the identity's title and meta): the newest the host holds.</summary>
+    public required Detail.FrameSpec Spec { get; init; }
+
+    /// <summary>What the list shows against what it has: the meta reads "3 of 48 songs · 11 min (filtered)" while a find or a filter
+    /// narrows the list (<c>Detail.Text.FilteredMeta</c>, as the rail's count line does).</summary>
+    public IReadSignal<Detail.ListCount>? Shown { get; init; }
+
+    /// <inheritdoc />
+    public bool Equals(DetailHeadProps? other) => ReferenceEquals(this, other);
+
+    /// <inheritdoc />
+    public override int GetHashCode() => RuntimeHelpers.GetHashCode(this);
+}
+
 /// <summary>The props of <see cref="ViewKeys.DetailRail"/>: the expanded rail's column behind its skeleton boundary.</summary>
 public sealed record DetailRailProps
 {
@@ -134,7 +155,7 @@ public sealed record DetailRailProps
     public required Func<bool> Pending { get; init; }
 
     /// <summary>What the list shows against what it has (the table publishes it): while a find or a filter narrows the list the count line
-    /// reads "3 of 48 songs · 11 min (filtered)" (<c>Detail.Text.FilteredMeta</c>; tuned Classic D4). Null: the page's meta only. Appended (contract 1.6).</summary>
+    /// reads "3 of 48 songs · 11 min (filtered)" (<c>Detail.Text.FilteredMeta</c>; tuned Classic D4). Null: the page's meta only. Appended (contract 1.5).</summary>
     public IReadSignal<Detail.ListCount>? Shown { get; init; }
 
     /// <inheritdoc />

@@ -47,7 +47,7 @@ public readonly partial struct User
 
     sealed record LikedPageProps(string RouteKey);
 
-    /// <summary>The web link the rail's Share FAB copies (the collection has no ShareUrl column behind it).</summary>
+    /// <summary>The web link the vertical hero's Share copies (the collection has no ShareUrl column behind it).</summary>
     const string LikedShareUrl = "https://open.spotify.com/collection/tracks";
 
     /// <summary>ch 07 §7's demand bundle for every liked row: the row the table paints (Identity — credits included — +
@@ -89,13 +89,12 @@ public readonly partial struct User
             _lensHeader = () => LensHeader(_lens, DetailKind.Liked);
             _lens.ChipTitles = () => _chips?.Value.Titles ?? [];
 
-            // The cover slots: the dynamic treatment WITH its style picker on the rail and the vertical hero, the flat
-            // mosaic / stock with NO picker on the 96-DIP strip (ch 03 item 23, ch 07 §1.1 mount table).
+            // The cover slot: the dynamic treatment WITH its style picker on the vertical hero (ch 03 item 23). The wide arm has no rail and
+            // no collapsed strip, so no cover (tuned Classic D16: the head is the title and the meta over the page bar).
             Func<float, Element> cover = static size => LikedCover(size, Radii.Card, picker: true);
-            Func<float, Element> compactCover = static size => LikedCover(size, Radii.Card, picker: false);
             Func<float, Element> facts = width => _source is { } src ? FactsPanel(src, DetailKind.Liked, _lens, width, false) : new BoxEl();
-            _slotsWithFacts = new Detail.FrameSlots { Cover = cover, CompactCover = compactCover, LikedFacts = facts };
-            _slotsWithoutFacts = new Detail.FrameSlots { Cover = cover, CompactCover = compactCover };
+            _slotsWithFacts = new Detail.FrameSlots { Cover = cover, LikedFacts = facts };
+            _slotsWithoutFacts = new Detail.FrameSlots { Cover = cover };
             _actions = new Detail.FrameActions { Shuffle = Shuffle, CoverDrag = CoverDragPayload };
         }
 
@@ -322,6 +321,7 @@ public readonly partial struct User
                 // subscribe: the selected chip IS filter state
                 Selected = on ? live!.View.Value.Filters.Tag : null,
                 ScrollKey = p.ScrollKey,
+                Inline = live?.InlineChips ?? false,
                 SelectAll = _selectAll,
                 Select = _select,
             });
