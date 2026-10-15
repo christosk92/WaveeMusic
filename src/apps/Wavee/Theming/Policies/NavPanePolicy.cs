@@ -56,12 +56,15 @@ public static class NavPaneOptionIds
 /// <param name="Layout">Which of the two sidebar layouts the structure shows (M7a: the structure's choice, `structure.sidebar` in
 /// Classic). The core sidebar state machine (the layout document, the undo ring, the menus) follows it: <c>Sidebar.FollowDesign</c>.</param>
 /// <param name="Density">The entity-row density the structure shows (M7a: `structure.libraryDensity` in Classic).</param>
+/// <param name="ShowCovers">The Classic layout's entity rows show their covers (tuned item S0: `structure.showCovers` in Classic). False
+/// resolves those sections as text rows (<see cref="SidebarRowShape.EntityText"/>); the Library layout always shows covers.
+/// Appended (contract 1.3).</param>
 public sealed record NavPanePolicy(
     float ContentFloorW,
     float MinWidth, float MaxWidth, float DefaultWidth,
     float CollapseApproach, float CollapseHysteresis,
     NavPaneMode NarrowMode, NavPaneMode TinyMode, bool Resizable, float Seam, float RailWidth,
-    SidebarLayoutId Layout = SidebarLayoutId.Classic, SidebarDensity Density = SidebarDensity.Default)
+    SidebarLayoutId Layout = SidebarLayoutId.Classic, SidebarDensity Density = SidebarDensity.Default, bool ShowCovers = true)
 {
     /// <summary>The shell before themes: a 480 content floor, an expanded
     /// pane of 180-460 (320 fresh), a drag collapse 64 below the minimum with a 24 hold, a forced rail in Narrow and the

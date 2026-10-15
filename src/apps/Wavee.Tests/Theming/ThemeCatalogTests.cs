@@ -422,7 +422,7 @@ public sealed class ThemeCatalogTests : IDisposable
         Assert.True(classic.Registry.Contains(ViewKeys.ShellFrame.Id));
         Assert.True(classic.Registry.Contains(ViewKeys.ShellContentState.Id));
         Assert.True(classic.Registry.Contains(ViewKeys.PlayerBar.Id));
-        Assert.Equal(new[] { "sidebar", "libraryDensity", "rowStyle", "hideTrackArt", "surfaces", "pageLayout", "railUniform", "clearRememberedSizes", "density" }, classic.ExposedOptions.All.Select(o => o.Id));   // M7a, M2, M4, M6 and M8 (structure), M3 (style); each later M-PR adds its own
+        Assert.Equal(new[] { "sidebar", "libraryDensity", "showCovers", "rowStyle", "hideTrackArt", "surfaces", "pageLayout", "railUniform", "clearRememberedSizes", "density" }, classic.ExposedOptions.All.Select(o => o.Id));   // M7a, CT3a (showCovers), M2, M4, M6 and M8 (structure), M3 (style); each later M-PR adds its own
 
         var values = Values(classic);
         var definition = classic.Definition(values, AccentRamp.FluentDefault);
@@ -457,11 +457,13 @@ public sealed class ThemeCatalogTests : IDisposable
     public void ContractVersion_IsOnePointFour_AndRefusesAnythingElse()
     {
         // 1.1 (tuned Classic CT4): LyricsState.Offline + LyricsLinesStyle.Offline, PlayerBarSlots.VideoSplit.
-        // 1.2 (tuned Classic CT1c): the omnibar model's focused-field facts.
+        // 1.2 (tuned Classic CT1c): the omnibar model's focused-field facts. 1.3 (tuned Classic CT3a): SidebarRowShape.EntityText,
+        // NavPanePolicy.ShowCovers, the row host's UnpinAction.
         // 1.4 (tuned Classic CT5c): the row lanes without a film lane, the versions and withheld-reason reads. A 1.0 theme still runs.
         Assert.Equal("1.4", ContractVersion.Text);
         Assert.True(ContractVersion.IsCompatible(1, 0));
         Assert.True(ContractVersion.IsCompatible(1, 2));
+        Assert.True(ContractVersion.IsCompatible(1, 3));
         Assert.True(ContractVersion.IsCompatible(1, 4));
         Assert.False(ContractVersion.IsCompatible(1, 5));
         Assert.False(ContractVersion.IsCompatible(2, 0));

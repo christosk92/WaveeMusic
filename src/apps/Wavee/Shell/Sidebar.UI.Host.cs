@@ -82,6 +82,7 @@ public static partial class Sidebar
         Func<ContextMenuModel?>? INavRowHost.RouteMenu(SidebarSection section, string routeKey, int planIndex) => RouteMenu(section, routeKey, planIndex);
         Func<ContextMenuModel?>? INavRowHost.MissingFolderMenu(in SidebarLibraryEntry folder) => MissingFolderMenu(in folder);
         Action? INavRowHost.RenameAction(in SidebarLibraryEntry entry) => RenameAction(in entry);
+        Action? INavRowHost.UnpinAction(in SidebarLibraryEntry entry) => UnpinAction(in entry);
         Action<int>? INavRowHost.TreeMoveAction(in SidebarLibraryEntry entry) => TreeMoveAction(in entry);
         DragPayload INavRowHost.TreeDragPayload(in SidebarLibraryEntry entry) => TreeDragPayload(in entry);
         DragPayload INavRowHost.PayloadOf(in SidebarLibraryEntry entry, bool rootlistItem) => PayloadOf(in entry, rootlistItem);

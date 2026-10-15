@@ -12,7 +12,10 @@
 // before any external theme existed: `ShellTitleBarProps.ToggleTheme`, `SearchSuggestionsProps.AllowNarrow`, `ShellSearchProps.Avail`,
 // and `ShellSearchProps.FieldWidth` takes no measurement (`Func<float>`).
 //
-// 1.4 (tuned Classic CT5c; 1.3 is another lane's): the track row lanes lose the film lane — `Track.ColumnSet.Video`,
+// 1.3 (tuned Classic CT3a): `SidebarRowShape.EntityText` (the covers-off text row), the optional `NavPanePolicy.ShowCovers`, and
+// the nav row host's `UnpinAction` (the row's Unpin button).
+//
+// 1.4 (tuned Classic CT5c): the track row lanes lose the film lane — `Track.ColumnSet.Video`,
 // `TrailingColumns.Video` and `CellKey.Video` are gone (a video is the glyph after the title in both row styles) — and a row
 // template reads `Track.HasVersions()` for the versions chevron, `Track.DurationLabel` / `Track.WithheldReason` for the
 // duration lane. `GridOptions.HeartRevealOnHover` / `EagerRowOptions.HeartRevealOnHover` are removed: every heart lane reveals.

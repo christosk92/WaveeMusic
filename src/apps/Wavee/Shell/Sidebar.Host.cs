@@ -80,6 +80,7 @@ public static partial class Sidebar
         var design = ShellPolicy.Now.NavPane;
         Layout.Value = design.Layout;
         Density.Value = design.Density;
+        ShowCovers.Value = design.ShowCovers;
         // The pane's width and collapse and the Library's list/grid view are the active theme's STATE (M7b: `theme.<id>.state.paneWidth` /
         // `.paneCollapsed` / `.libraryView`, copied from the legacy keys and the device file at boot by ThemeBootstrap).
         Width.Value = SidebarPaneBounds.Clamp(ThemeState.Get(PaneWidthKey));
@@ -169,6 +170,10 @@ public static partial class Sidebar
     /// <summary>Entity-row density, global (the structure's `structure.libraryDensity` option, followed like <see cref="Layout"/>).</summary>
     public static readonly Signal<SidebarDensity> Density = new(SidebarDensity.Default);
 
+    /// <summary>The Classic layout's entity rows show covers (the structure's `structure.showCovers` option, S0, followed like <see cref="Layout"/>):
+    /// off resolves them as text rows. An option of the structure only: no verb of the sidebar changes it, so it is never in the undo ring.</summary>
+    public static readonly Signal<bool> ShowCovers = new(true);
+
     /// <summary>Your Library's active chip (<c>sidebar.library.filter</c>).</summary>
     public static readonly Signal<SidebarLibraryFilter> LibraryFilter = new(SidebarLibraryFilter.None);
 
@@ -181,16 +186,17 @@ public static partial class Sidebar
     static int s_docVersion = -1;
     static SidebarLayoutId s_docLayout;
     static SidebarDensity s_docDensity;
+    static bool s_docCovers = true;
     static SidebarLibraryView s_docView;
 
     /// <summary>Both overlays (the undo ring and the Outline read them).</summary>
     public static SidebarLayoutState State => s_state;
 
-    /// <summary>Bumped on every overlay, density or layout change — the plan's and the binder's edge.</summary>
+    /// <summary>Bumped on every overlay, density, covers or layout change — the plan's and the binder's edge.</summary>
     public static IReadSignal<int> LayoutVersion => s_layoutVersion;
 
     /// <summary>The active layout's resolved document. PEEKS: a render that must re-plan reads <see cref="LayoutVersion"/>.
-    /// Cached on (version, layout, density), so the same instance comes back until something changed — the pane's
+    /// Cached on (version, layout, density, view, covers), so the same instance comes back until something changed — the pane's
     /// publish reference test depends on it.</summary>
     public static SidebarLayoutDoc Doc
     {
@@ -200,13 +206,15 @@ public static partial class Sidebar
             var layout = Layout.Peek();
             var density = Density.Peek();
             var view = LibraryView.Peek();
-            if (s_doc is null || v != s_docVersion || layout != s_docLayout || density != s_docDensity || view != s_docView)
+            bool covers = ShowCovers.Peek();
+            if (s_doc is null || v != s_docVersion || layout != s_docLayout || density != s_docDensity || view != s_docView || covers != s_docCovers)
             {
-                s_doc = SidebarLayoutRules.Resolve(s_state, layout, density, view);
+                s_doc = SidebarLayoutRules.Resolve(s_state, layout, density, view, covers);
                 s_docVersion = v;
                 s_docLayout = layout;
                 s_docDensity = density;
                 s_docView = view;
+                s_docCovers = covers;
             }
             return s_doc;
         }
@@ -315,6 +323,12 @@ public static partial class Sidebar
             SwitchLayout(nav.Layout);
         }
         if (nav.Density != Density.Peek()) SetDensity(nav.Density);
+        if (nav.ShowCovers != ShowCovers.Peek())
+        {
+            // The text rows have another pitch: the version bump re-plans the pane and reseeds its extents.
+            ShowCovers.Value = nav.ShowCovers;
+            s_layoutVersion.Value = s_layoutVersion.Peek() + 1;
+        }
     }
 
     public static void SetLibraryFilter(SidebarLibraryFilter filter)

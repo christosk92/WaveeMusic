@@ -161,8 +161,8 @@ public static class SidebarPinRules
         return null;
     }
 
-    /// <summary>Does a row draw the 12-px pin mark? In Your Library the pins have no header, so each depth-0 row of the
-    /// pinned section is marked; the children an expanded pinned folder lists under it (depth ≥ 1) are not pins and are
+    /// <summary>Does a row draw its pin (Classic draws the 24-px Unpin button, S5)? In Your Library the pins have no header, so each
+    /// depth-0 row of the pinned section is marked; the children an expanded pinned folder lists under it (depth ≥ 1) are not pins and are
     /// not marked. Everywhere else the existing rule holds: a pinned entity that is not a track (#85).</summary>
     public static bool ShowsPinMark(SidebarLayoutId layout, SidebarSectionKind section, int rowDepth, bool isPinned, bool isTrack)
         => (layout == SidebarLayoutId.Library && section == SidebarSectionKind.Pinned && rowDepth == 0)

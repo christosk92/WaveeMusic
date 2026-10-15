@@ -184,8 +184,11 @@ public sealed class ThemePickerTests : IDisposable
         var model = ThemeOptionsSection.Current(developerMode: true);
 
         // M2 (row style), M4 (hide track art), M6 (surfaces), M7a (sidebar layout and density) and M8 (page layout, rails' uniformity, their reset) are structure options, M3 (row density) the style's: structure options come first in the schema.
-        Assert.Equal(new[] { "structure.sidebar", "structure.libraryDensity", "structure.rowStyle", "structure.hideTrackArt", "structure.surfaces", "structure.pageLayout", "structure.railUniform", "structure.clearRememberedSizes", "style.density" },
+        Assert.Equal(new[] { "structure.sidebar", "structure.libraryDensity", "structure.showCovers", "structure.rowStyle", "structure.hideTrackArt", "structure.surfaces", "structure.pageLayout", "structure.railUniform", "structure.clearRememberedSizes", "style.density" },
             model.Rows.Select(r => r.QualifiedId));
+        var covers = model.Rows[2];   // CT3a (S0): the covers switch, in the sidebar group
+        Assert.Equal(Strings.Settings.ThemeOptions.Group.Sidebar, covers.Group);
+        Assert.Equal(SettingsRowKind.Toggle, covers.Row.Kind);
         var layout = model.Rows[0];
         Assert.Equal(Strings.Settings.ThemeOptions.Group.Sidebar, layout.Group);
         Assert.Equal(SettingsRowKind.Picker, layout.Row.Kind);   // Cards
