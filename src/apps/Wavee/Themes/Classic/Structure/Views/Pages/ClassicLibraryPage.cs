@@ -8,7 +8,7 @@
 // ── THE SHAPE ────────────────────────────────────────────────────────────────────────────────────────────────────────
 //
 //  root BoxEl (OnBoundsChanged → the structure's collapse ladder → the host's collapse signal)
-//  ├─ WIDE "lib:wide": NavPanel "lib:nav"[Toolbar · ListBody | LeftSearchBody] │ "lib:grip" ColumnGrip(LeftW) │ right
+//  ├─ WIDE "lib:wide": Section "lib:nav"[Toolbar · ListBody | LeftSearchBody] │ "lib:grip" ColumnGrip(LeftW) │ right
 //  │        right = DetailColumn "lib:detail" (albums, podcasts) | ReaderColumn "lib:reader" (artists, no third pane)
 //  │                | the two SEARCH column shapes (MidW + "lib:midgrip")
 //  ├─ WIDE "lib:wide:saved": Toolbar · the Your Episodes page
@@ -125,7 +125,7 @@ internal static partial class ClassicLibraryPage
 
     /// <summary>The navigator column. KEYED: its <c>Width</c> is the persisted <c>LeftW</c> SIGNAL — a bound channel, wired once at mount — so this node may only ever be paired with
     /// another <c>lib:nav</c>. Anything else reusing it inherits a width nothing will ever write again.</summary>
-    static Element LeftColumn(LibraryPageProps p, PageCache c) => NavPanel with
+    static Element LeftColumn(LibraryPageProps p, PageCache c) => Section with
     {
         Key = "lib:nav",
         Width = p.LeftW(), Shrink = 0f,
@@ -141,25 +141,23 @@ internal static partial class ClassicLibraryPage
     static Element MidGrip(LibraryPageProps p)
         => ColumnGrip(p.MidW(), ClassicLibraryRules.MidMin, ClassicLibraryRules.MidMax, p.CommitMid) with { Key = "lib:midgrip" };
 
-    /// <summary>THE column seam (W18): a 16-DIP grip strip with a 1-DIP <c>StrokeCardDefault</c> hairline centred behind the splitter's hover thumb. The seam brush is a LIVE thunk, so a
-    /// theme swap re-resolves it without a render.</summary>
+    /// <summary>THE column seam (W18, Y1): a 16-DIP grip strip with a 1-DIP <c>StrokeDividerDefault</c> hairline centred behind the splitter's hover thumb — the only thing that splits
+    /// the navigator from the detail on the one content card. The seam brush is a LIVE thunk, so a theme swap re-resolves it without a render.</summary>
     static Element ColumnGrip(Signal<float> width, float min, float max, Action onCommit) => new BoxEl
     {
         Width = Splitter.StripW, Shrink = 0f, ZStack = true,
         Children =
         [
             new BoxEl { Width = ClassicLibraryRules.SeamHairline, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Center, HitTestVisible = false,
-                        Fill = Prop.Of(static () => Tok.StrokeCardDefault) },
+                        Fill = Prop.Of(static () => Tok.StrokeDividerDefault) },
             new BoxEl { Direction = 1, AlignItems = FlexAlign.Stretch, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
                         Children = [Splitter.Create(width, onCommit, new Splitter.SplitterOptions { Min = min, Max = max })] },
         ],
     };
 
-    /// <summary>The navigator's layer rung and the reading panes' card rung (ch 15 §0 #2) — the seam does the separating.</summary>
-    static BoxEl NavPanel => new() { Direction = 1, ClipToBounds = true, Fill = Tok.FillLayerDefault };
-
-    /// <inheritdoc cref="NavPanel"/>
-    static BoxEl ReadingPane => new() { Direction = 1, ClipToBounds = true, Fill = Tok.FillCardDefault };
+    /// <summary>A column of the page: the navigator and every reading pane are PLAIN sections on the one content card (Y1) — no layer or card rung of their own, so the card shows one
+    /// tint and the seam's divider does the separating.</summary>
+    static BoxEl Section => new() { Direction = 1, ClipToBounds = true };
 
     static Element EmptyCompact(string text)
         => Controls.Vacancy(Controls.VacancyVoice.NoMatch, Controls.VacancyScale.Compact, title: text, subtitle: "");
@@ -170,17 +168,17 @@ internal static partial class ClassicLibraryPage
     {
         if (!p.HasSelection) return Placeholder(p.Entity == EntityKind.Show ? Strings.Library.SelectShow : Strings.Library.SelectAlbum);
         // NO `Key` on the pane: a selection change RE-PUSHES its props and the pane re-skins in place (it owns its own crossfade).
-        return ReadingPane with { Key = "lib:detail", Grow = 1f, Basis = 0f, Children = [p.Pane()] };
+        return Section with { Key = "lib:detail", Grow = 1f, Basis = 0f, Children = [p.Pane()] };
     }
 
     /// <summary>The artists view's ONE right-hand rung (W3): the reader. There is no MidW here and no third pane — the reader is the leaf.</summary>
     static Element ReaderColumn(LibraryPageProps p)
     {
         if (!p.HasSelection) return Placeholder(Strings.Library.SelectArtist);
-        return ReadingPane with { Key = "lib:reader", Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [p.Pane()] };
+        return Section with { Key = "lib:reader", Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [p.Pane()] };
     }
 
-    static Element Placeholder(string key) => ReadingPane with { Key = "lib:empty", Grow = 1f, Children = [EmptyCompact(Loc.Get(key))] };
+    static Element Placeholder(string key) => Section with { Key = "lib:empty", Grow = 1f, Children = [EmptyCompact(Loc.Get(key))] };
 
     // ══ THE COLLAPSED DRILL-IN (W7) ══════════════════════════════════════════════════════════════════════════════════
 
@@ -213,15 +211,15 @@ internal static partial class ClassicLibraryPage
                     : (p.FullSearch ? LeftSearchBody(p, c) : ListBody(p, c))],
             };
         else if (depth >= 2)
-            body = ReadingPane with { Key = "col:tracks", Grow = 1f, Basis = 0f, Children = [TrackHits(p)] };
+            body = Section with { Key = "col:tracks", Grow = 1f, Basis = 0f, Children = [TrackHits(p)] };
         else if (artists)
-            body = ReadingPane with
+            body = Section with
             {
                 Key = "col:reader", Grow = 1f, Basis = 0f, MinWidth = 0f,
                 Children = [p.FullSearch ? AlbumHits(p, explain: false) : p.Pane()],
             };
         else
-            body = ReadingPane with
+            body = Section with
             {
                 Key = "col:detail", Grow = 1f, Basis = 0f,
                 Children = [p.FullSearch ? TrackHits(p) : p.Pane()],
@@ -240,14 +238,14 @@ internal static partial class ClassicLibraryPage
         };
     }
 
-    /// <summary>The collapsed layout's breadcrumb (W14-W17): on the navigator's layer rung, a 1-DIP divider under it.
+    /// <summary>The collapsed layout's breadcrumb (W14-W17): a plain band on the content card (Y1), a 1-DIP divider under it.
     /// <para>KEYED. It is the first child of the collapsed library's root and the nav column is the first child of the wide one, so with both unkeyed the reconciler paired the two by
     /// ordinal and reused ONE node for both — which handed the nav column this box's static <c>Width</c> in place of its own bound one (a static↔bound flip on a reused node is never
     /// re-wired — the engine's BindContract flags it). The key is what makes the crossing a remount.</para></summary>
     static Element CrumbBar(IReadOnlyList<string> crumbs, Action<int> onPick) => new BoxEl
     {
         Key = "lib:crumbs",
-        Direction = 1, Shrink = 0f, Fill = Tok.FillLayerDefault,
+        Direction = 1, Shrink = 0f,
         Children =
         [
             new BoxEl { Padding = new Edges4(Spacing.M, Spacing.S, Spacing.M, Spacing.S), Children = [BreadcrumbBar.Create(crumbs, onPick)] },

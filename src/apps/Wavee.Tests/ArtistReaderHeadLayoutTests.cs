@@ -9,6 +9,7 @@
 // The edge facts mirror LibraryLayoutBreakpointTests. `TextFit` (the trimmed-text proxies the tooltips use) is tested in
 // SurfaceRulesTests, beside the rule itself.
 
+using Wavee.Themes.Classic;
 using Xunit;
 using ReaderBlock = Wavee.Artist.ReaderBlock;
 using RS = Wavee.Artist.ReaderShape;
@@ -31,13 +32,13 @@ public class ArtistReaderHeadLayoutTests
     }
 
     [Fact]
-    public void Medium_enters_below_772_and_holds_until_796()
+    public void Medium_enters_below_748_and_holds_until_772()
     {
-        Assert.Equal(772f, RS.MediumBelow);
-        Assert.True(RS.Medium(771f, false));
-        Assert.False(RS.Medium(772f, false));
-        Assert.True(RS.Medium(795f, true));
-        Assert.False(RS.Medium(796f, true));
+        Assert.Equal(748f, RS.MediumBelow);
+        Assert.True(RS.Medium(747f, false));
+        Assert.False(RS.Medium(748f, false));
+        Assert.True(RS.Medium(771f, true));
+        Assert.False(RS.Medium(772f, true));
         Assert.True(RS.Medium(0f, true));
         Assert.False(RS.Medium(0f, false));
         Assert.True(RS.Medium(391f, false));                   // the owner's reader stacks its band, however it got there
@@ -49,7 +50,8 @@ public class ArtistReaderHeadLayoutTests
         // The wide band shares the lane with the 56-DIP spine (one signal drives both), so the narrowest reader that can
         // show it is everything in the row that never shrinks, plus the spine, plus the name's floor. The narrow-heads
         // plan's "484 + 232 = 716 ≤ 720" left the spine out: at 720 the name would have had 180 DIP.
-        Assert.Equal(484f, RS.WideBandFixedW);
+        Assert.Equal(460f, RS.WideBandFixedW);                     // Y3: 40 pad + 2 × 16 + 72 avatar + the 316 verb row
+        Assert.Equal(316f, RS.ActionsW);                           // Play all 120 + Follow 108 + 2 × 32 + 3 × 8
         Assert.Equal(56f, RS.SpineW);
         Assert.Equal(RS.WideBandFixedW + RS.SpineW + RS.NameMinW, RS.MediumBelow);
     }
@@ -75,6 +77,22 @@ public class ArtistReaderHeadLayoutTests
         // The shape is engine-free, so it names these widths rather than asking the controls — pinned to them here.
         Assert.Equal(Controls.PrimaryMinWidth, RS.PlayButtonMinW);
         Assert.Equal(Controls.IconButtonSize, RS.IconActionW);
+        Assert.Equal(Controls.ButtonHeight, RS.ActionH);           // Y3: one row of stock 32-tall controls in both arms
+    }
+
+    [Fact]
+    public void The_stacked_verb_row_folds_shuffle_and_open_into_a_menu_before_it_would_clip()
+    {
+        // Y3 follow-up: the stacked row measures its lane (the band less 2 × 16) and folds wherever the whole row does not fit — so the 300-DIP
+        // window floor (a ~268-DIP lane) is folded, a 391-DIP reader (359 lane) is not, and an unmeasured lane folds.
+        Assert.True(ClassicLibraryTiers.FoldVerbs(0f));
+        Assert.True(ClassicLibraryTiers.FoldVerbs(RS.ActionsW - 1f));
+        Assert.False(ClassicLibraryTiers.FoldVerbs(RS.ActionsW));
+        Assert.True(ClassicLibraryTiers.FoldVerbs(300f - 2f * RS.BandStackPadX));
+        Assert.False(ClassicLibraryTiers.FoldVerbs(391f - 2f * RS.BandStackPadX));
+        // Folded, what is left without Play all's label (Follow's slot, ⋯, two gaps) leaves Play all ≥ 100 DIP at the window floor.
+        float rest = RS.FollowSlotW + RS.IconActionW + 2f * RS.ActionGap;
+        Assert.True(300f - 2f * RS.BandStackPadX - rest >= 100f);
     }
 
     // ── 3. the stated heights (what the tree declares and the estimator reads) ────────────────────────────────────
@@ -94,7 +112,7 @@ public class ArtistReaderHeadLayoutTests
         Assert.True(RS.NameLine + RS.NameSubGap + RS.SubLine <= RS.AvatarEdge);   // ...its one-line name fits under the avatar
         Assert.Equal(100f, RS.NameColumnH);                         // two 40-DIP lines + 2 + the 18-DIP subline
         Assert.True(RS.NameColumnH >= RS.AvatarEdgeStacked);     // the avatar centres in the name column's box
-        Assert.Equal(168f, RS.BandStackedH);                        // 16 + 100 + 8 + 36 + 8
+        Assert.Equal(164f, RS.BandStackedH);                        // 16 + 100 + 8 + 32 (the verb row) + 8
         Assert.Equal(RS.BandH, RS.BandHeight(stacked: false));
         Assert.Equal(RS.BandStackedH, RS.BandHeight(stacked: true));
     }

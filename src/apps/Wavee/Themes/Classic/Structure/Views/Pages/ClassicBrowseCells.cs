@@ -7,7 +7,7 @@
 // ── FIVE DENSITIES, ONE PER BAND, CHEAPEST TO MOST EXPRESSIVE ────────────────────────────────────────────────────────
 //
 // Density is what the directory spends to say "here is how much this destination is". Top's four entry points need
-// nothing but their own name on a tall pill (Word); For you is one step down, a pip beside a name (Name); Genres runs
+// nothing but their own name on the stock link chip at 600 (Word); For you is one step down, a pip beside a name (Name); Genres runs
 // ~25 deep, so it is a padded pip + secondary text link (Link); a mood IS its colour, so Mood & activity earns a card
 // plate with the colour as a corner wash + tick (Bar); the long tail earns the same card weight plus a hanging cover
 // (Peek). 0.2.9 `BrowseTiles.cs` verbatim, ported onto 0.3's tokens: `Design.Type` / `Design.Motion` / `Design.Palette`
@@ -36,35 +36,12 @@ namespace Wavee.Themes.Classic;
 /// <summary>Wavee Classic's Browse cells.</summary>
 public static class ClassicBrowseCells
 {
-    /// <summary>The plate the two pill densities share (0.2.9 <c>ContentFilterChips.Chip</c>'s grammar, verbatim):
-    /// FillControlDefault → Secondary on hover, a stroke that goes accent on hover, the subtle scale tier. Shrink 0 on a
-    /// WRAPPING row: the row breaks to a new line rather than ellipsising every pill.</summary>
-    static Element Chip(in BrowseTileModel m, float height, Element? lead, TextEl label)
-    {
-        var text = label with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
-        return new BoxEl
-        {
-            Key = m.Uri,
-            Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand,
-            FocusVisualMargin = Design.FocusInsetBordered,
-            OnClick = m.Open,
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Height = height, Shrink = 0f, MinWidth = 0f,
-            Padding = new Edges4(Spacing.M, 0f, Spacing.M, 0f),
-            Corners = CornerRadius4.All(999f),
-            Fill = Tok.FillControlDefault, HoverFill = Tok.FillControlSecondary,
-            BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault, HoverBorderColor = Tok.AccentDefault,
-            HoverScale = R.Motion.ScaleSubtle.Hover, PressScale = R.Motion.ScaleSubtle.Press,
-            HoverDurationMs = Design.Motion.Fast, HoverEasing = Easing.FluentDecelerate,
-            Children = lead is null ? [text] : [lead, text],
-        };
-    }
+    /// <summary>Top: the stock link chip (<see cref="Controls.LinkChip"/>, 32/r4, D7), the only one at 600 — primary without being set
+    /// larger than the band heading that names it.</summary>
+    internal static Element Word(BrowseTileModel m) => Controls.LinkChip(m.Uri, m.Title, m.Open, strong: true);
 
-    /// <summary>Top: the tallest pill (36), the only one at BodyStrong — primary without being set larger than the band
-    /// heading that names it.</summary>
-    internal static Element Word(BrowseTileModel m) => Chip(in m, ClassicBrowseRules.WordChipH, null, BodyStrong(m.Title));
-
-    /// <summary>For you: the same plate one rung down (32), with the identity pip its detail page carries.</summary>
-    internal static Element Name(BrowseTileModel m) => Chip(in m, ClassicBrowseRules.NameChipH, Pip(in m), Body(m.Title));
+    /// <summary>For you: the same chip with the identity pip its detail page carries.</summary>
+    internal static Element Name(BrowseTileModel m) => Controls.LinkChip(m.Uri, m.Title, m.Open, Pip(in m));
 
     /// <summary>Genres — and Search's genre results (ch 13 §0.15): the pip beside Body secondary, one rung below Name
     /// because a genre column runs ~25 deep. The padded hit target and its hover fill are what make one row easy to click

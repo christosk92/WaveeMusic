@@ -184,11 +184,22 @@ public sealed class SidebarLibraryHeadRulesTests
             }
         Assert.Equal(SidebarLibraryHeadRules.ToolbarShape.Folded, ClassicLibraryHeadLayout.ShapeOf(180f, "Recents"));
         Assert.Equal(SidebarLibraryHeadRules.ToolbarShape.Folded, ClassicLibraryHeadLayout.ShapeOf(239f, "Recents"));
-        Assert.Equal(SidebarLibraryHeadRules.ToolbarShape.IconSort, ClassicLibraryHeadLayout.ShapeOf(320f, "Recently added"));
+        Assert.Equal(SidebarLibraryHeadRules.ToolbarShape.IconSort, ClassicLibraryHeadLayout.ShapeOf(300f, "Recently added"));
+        Assert.Equal(SidebarLibraryHeadRules.ToolbarShape.Full, ClassicLibraryHeadLayout.ShapeOf(320f, "Recently added"));   // Y2: "label ⌄" fits the default
         Assert.Equal(SidebarLibraryHeadRules.ToolbarShape.Full, ClassicLibraryHeadLayout.ShapeOf(460f, "Recents"));
         Assert.Equal(SidebarLibraryHeadRules.ToolbarShape.Full, ClassicLibraryHeadLayout.ShapeOf(320f, "Recents"));
         Assert.Equal(SidebarLibraryHeadRules.ToolbarShape.Folded, ClassicLibraryHeadLayout.ShapeOf(float.NaN, "Recents"));
         Assert.Equal(164f, ClassicLibraryHeadLayout.ToolbarLane(180f));
+    }
+
+    [Fact]
+    public void The_labelled_sort_is_one_label_and_one_chevron_28_tall()
+    {
+        // Y2 ("Recents ⌄"): 8 + label + 6 + the 10-DIP chevron + 8, on the toolbar's 28-DIP control height — no sort glyph.
+        Assert.Equal(32f, ClassicLibraryHeadLayout.SortButtonChrome);
+        Assert.Equal(28f, ClassicLibraryHeadLayout.ToolbarIconButton);
+        Assert.Equal(10f, ClassicLibraryHeadLayout.SortChevron);
+        Assert.Equal(12f, ClassicLibraryHeadLayout.SortTextSize);
     }
 
     static readonly SidebarLibraryOptions LikedShown = SidebarLibraryOptions.Default;                 // ShowLiked true

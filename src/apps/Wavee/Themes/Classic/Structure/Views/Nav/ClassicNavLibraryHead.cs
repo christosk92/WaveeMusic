@@ -459,7 +459,6 @@ internal sealed class ClassicLibraryToolbar(INavLibraryHeadHost s) : Component
         var sortAnchor = UseRef<NodeHandle>(default);
         var moreAnchor = UseRef<NodeHandle>(default);
         // Anchors survive the controls' re-assertion of their roots only through a Parts modifier (memoised once).
-        var sortParts = UseMemo(() => AnchorParts(Button.PartRoot, sortAnchor), DepKey.Empty);
         var sortIconParts = UseMemo(() => AnchorParts(IconButton.PartRoot, sortAnchor), DepKey.Empty);
         var moreParts = UseMemo(() => AnchorParts(IconButton.PartRoot, moreAnchor), DepKey.Empty);
         var searchParts = UseMemo(() =>
@@ -491,11 +490,11 @@ internal sealed class ClassicLibraryToolbar(INavLibraryHeadHost s) : Component
                 Loc.Get(SidebarLibraryHeadRules.ToolbarSortKey(SidebarLibraryHeadRules.Effective(l.Sort, f))));
         }).Value;
         // Icon-only while searching (the box takes the row) and whenever the labelled row would not fit (§P5.1 ShapeOf).
+        // Labelled, it is "Recents ⌄" (Y2): one label and one chevron, 28 tall — the menu says what the choices are.
         Element sortButton = searching || shape != SidebarLibraryHeadRules.ToolbarShape.Full
             ? ToolTip.Wrap(IconButton.Create(Icons.Sort, () => OpenSort(sortAnchor.Value, filter), parts: sortIconParts,
                                              size: ControlSize.Small) with { Key = "lib-sort-compact" }, sortLabel)
-            : Button.Create(sortLabel, () => OpenSort(sortAnchor.Value, filter), ButtonAppearance.Subtle, ControlSize.Small,
-                            glyph: Icons.Sort, parts: sortParts) with { Key = "lib-sort" };
+            : SortLabel(sortLabel, sortAnchor, () => OpenSort(sortAnchor.Value, filter));
 
         // The controls are built by walking the head's Tab order (§P5.1 TabOrder, Q11), so the Tab order IS the screen
         // order. Below 240 the view toggles leave the order (⋯ › View keeps the choice): ⋯ is never the control that gets
@@ -542,6 +541,28 @@ internal sealed class ClassicLibraryToolbar(INavLibraryHeadHost s) : Component
             Children = [.. kids],
         };
     }
+
+    /// <summary>The labelled sort (Y2): the sort's name in 12/600 TextSecondary and a 10-DIP chevron, on the subtle plate the
+    /// "Your Library ⌄" dropdown uses. The menu anchors on this box.</summary>
+    static Element SortLabel(string label, Ref<NodeHandle> anchor, Action open) => new BoxEl
+    {
+        Key = "lib-sort", Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicLibraryHeadLayout.SortChevronGap,
+        Height = ClassicLibraryHeadLayout.ToolbarIconButton, Shrink = 0f,
+        Padding = new Edges4(ClassicLibraryHeadLayout.SortPadX, 0f, ClassicLibraryHeadLayout.SortPadX, 0f),
+        Corners = Radii.ControlAll,
+        Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
+        OnRealized = h => anchor.Value = h,
+        OnClick = open,
+        Children =
+        [
+            new TextEl(label) { Size = ClassicLibraryHeadLayout.SortTextSize, Weight = 600, Color = Tok.TextSecondary, MaxLines = 1 },
+            Icon(Icons.ChevronDown, ClassicLibraryHeadLayout.SortChevron, Tok.TextSecondary),
+        ],
+    }.Interactive(new InteractionRecipe
+    {
+        Fill = new StateBrush(Tok.FillSubtleTransparent, Tok.FillSubtleSecondary, Tok.FillSubtleTertiary, Tok.FillSubtleTransparent),
+        BrushMs = 83f,
+    });
 
     static TemplateParts AnchorParts(string part, Ref<NodeHandle> anchor)
     {

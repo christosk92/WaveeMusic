@@ -72,7 +72,7 @@
 //     the wide arm has. NOT a mount input: the band is item 0, a persistent-prefix row, corrected in place in `Settle`.
 // The edges are DERIVED, not chosen (a test pins the medium one's sum): the inline head keeps `TitleFloorW` at the narrow
 // edge, the wide band leaves the name `NameMinW` at the medium one. The wide band shares the lane with the 56-DIP spine
-// (one signal drives both), so that edge is `WideBandFixedW + SpineW + NameMinW` = 772 — the plan's "484 + 232 = 716 ≤
+// (one signal drives both), so that edge is `WideBandFixedW + SpineW + NameMinW` = 748 (772 before Y3's one verb row) — the plan's "484 + 232 = 716 ≤
 // 720" left the spine out, and at 720 the name would have had 180 DIP.
 // Every height below is a STATED constant: the tree declares it as its `Height` and the estimator reads the same field,
 // so renderer == estimator by identity rather than by measurement (`library.reader.chrome` logs any exception).
@@ -180,7 +180,10 @@ public readonly partial struct Artist
 
         // ── the band: one row (wide) or avatar + name over the same verbs (stacked, under the medium edge) ────────────
 
-        public const float AvatarEdge = 72f, AvatarEdgeStacked = 56f, BandCircle = 36f, IconActionW = 32f;
+        public const float AvatarEdge = 72f, AvatarEdgeStacked = 56f, IconActionW = 32f;
+        /// <summary>The verbs' ONE row (Y3) in both arms: accent Play all · the Follow toggle · shuffle · ↗, every control the
+        /// stock 32 tall, 8 apart.</summary>
+        public const float ActionH = 32f, ActionGap = 8f;
         /// <summary>The Follow slot's reserved width — the LONGER face ("Following" ≈ 106 DIP in en-US), so nothing beside
         /// it moves on a follow flip. A MinWidth in the tree, not a Width: a longer locale label still grows it.</summary>
         public const float FollowSlotW = 108f;
@@ -194,16 +197,18 @@ public readonly partial struct Artist
         public const float NameLine = 40f, NameSubGap = 2f, SubLine = 18f;
         public const float NameColumnH = NameLines * NameLine + NameSubGap + SubLine;                       // 100
         public const float BandH = BandPadTop + AvatarEdge + BandPadBottom;                                // 100 (unchanged)
-        public const float BandStackedH = BandStackPadTop + NameColumnH + BandStackRowGap + BandCircle + BandPadBottom;   // 168
+        public const float BandStackedH = BandStackPadTop + NameColumnH + BandStackRowGap + ActionH + BandPadBottom;   // 164
         public static float BandHeight(bool stacked) => stacked ? BandStackedH : BandH;
-        /// <summary>Everything in the wide band's row that never shrinks: the padding, five gaps, the avatar, Play all at
-        /// its floor, shuffle, the Follow slot and ↗.</summary>
-        public const float WideBandFixedW = 2f * BandPadX + 5f * BandGap + AvatarEdge + PlayButtonMinW + IconActionW + FollowSlotW + IconActionW;   // 484
+        /// <summary>The wide arm's verb row: Play all at its floor, the Follow slot, shuffle and ↗, three gaps (316).</summary>
+        public const float ActionsW = PlayButtonMinW + FollowSlotW + 2f * IconActionW + 3f * ActionGap;
+        /// <summary>Everything in the wide band's row that never shrinks: the padding, the two band gaps (avatar · name ·
+        /// verbs), the avatar and the verb row.</summary>
+        public const float WideBandFixedW = 2f * BandPadX + 2f * BandGap + AvatarEdge + ActionsW;   // 460
         /// <summary>The floor the WIDE band must leave the name: ≈ 13 display glyphs ("Florence + The…").</summary>
         public const float NameMinW = 232f;
         /// <summary>The medium edge, DERIVED: the narrowest reader whose wide band — which shares the lane with the spine —
         /// still leaves the name <see cref="NameMinW"/>. Also where the spine goes (one signal drives both).</summary>
-        public const float MediumBelow = WideBandFixedW + SpineW + NameMinW;                               // 772
+        public const float MediumBelow = WideBandFixedW + SpineW + NameMinW;                               // 748
 
         /// <summary>How many rows a block shimmers when nothing has answered its count yet — four, the plan's literal.
         /// It is a COUNTED skeleton either way (§6 rule 5): a bare card is never an answer.</summary>

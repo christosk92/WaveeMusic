@@ -60,7 +60,8 @@ public static partial class Controls
     /// <summary>A toned chip's plate: the tone at 22 % (the prototype's <c>.chip.tone</c>).</summary>
     public const float BadgeToneFill = 0.22f;
 
-    /// <summary>A small badge beside a title — "exclusive", "E", "video", "episode 9", "subscribers only". Neutral:
+    /// <summary>THE static badge beside a title — "exclusive", "E", "video", "episode 9", "subscribers only", and Search's
+    /// "matched title" / "lyrics match" on the top result (D7: one badge, one chip; no private boxes). Neutral:
     /// <c>TextSecondary</c> on the subtle plate. <paramref name="tone"/>: the show's tone ink on the tone at 22 %
     /// (<paramref name="toneOf"/>, the system accent text when null). Not interactive — a filter chip is the OTHER
     /// <c>Chip</c> overload (<c>Controls.Art.cs</c>).</summary>
