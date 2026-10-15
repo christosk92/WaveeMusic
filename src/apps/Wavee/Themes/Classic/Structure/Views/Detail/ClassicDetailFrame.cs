@@ -6,7 +6,9 @@
 //     or the table that hosts the hero), and a TRACK page's vertical arm is ALWAYS wrapped in the insights sheet, open or not and facts or not, so
 //     the page's tree shape never changes underneath the list (the facts arriving must not remount the table and lose its scroll position);
 //   · the TWO-COLUMN arm: the centred row (MaxWidth `R.Space.PageMaxW`) of [rail | content] with the grip in a seam layer above it, and the
-//     collapsed 96-DIP identity strip in the rail's place; a TRACK page's content column carries the insights sheet over its list (I1).
+//     collapsed 96-DIP identity strip in the rail's place; a TRACK page's content column carries the insights sheet over its list (I1);
+//   · the HEAD arm of a page with no rail (Liked Songs, tuned Classic D16): the page head (`ClassicDetailHead.cs`) over the content column, in
+//     the same centred measure, the list inset so its plates start 8 before the head's words.
 //
 // WHAT THE HOST DECIDED (core, `Detail.FrameHost`): the page mode and both anti-flicker fail-safes, the Hero page-layout override, which rail cell
 // and its live width and collapsed flag, the page-aware cap, the rung that picks the title cap and the description clamp, the accent, the tint and
@@ -34,11 +36,18 @@ internal static partial class ClassicDetailFrame
     /// <summary>The registered template of <see cref="ViewKeys.DetailFrame"/>.</summary>
     public static Element Template(DetailFrameProps p, in ViewContext ctx)
     {
-        // The content column. Its Key is the host's (`right:tracks` / `right:eps`) and survives a rail collapse.
+        // The content column. Its Key is the host's (`right:tracks` / `right:eps`) and survives a rail collapse. Under a page head (no rail,
+        // tuned Classic D16) the list sits the row plates' inset inside the page gutter, so its plates start 8 before the head's words.
+        Element list = p.Head is null ? p.Content : new BoxEl
+        {
+            Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
+            Padding = new Edges4(ClassicDetailLayout.HeadListInset, 0f, ClassicDetailLayout.HeadListInset, 0f),
+            Children = [p.Content],
+        };
         BoxEl right = new BoxEl
         {
             Key = p.ContentKey, Grow = 1f, Shrink = 1f, MinWidth = p.ContentMinWidth, MinHeight = 0f, Direction = 1,
-            Children = [p.Content],
+            Children = [list],
         };
 
         // The page PROVIDES its accent: the heart and every other ambient consumer read it through the context.
@@ -81,7 +90,7 @@ internal static partial class ClassicDetailFrame
                 ZStack = true,
                 Children =
                 [
-                    p.Content,
+                    list,
                     new BoxEl
                     {
                         Key = "insights:layer", Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f,
@@ -92,6 +101,39 @@ internal static partial class ClassicDetailFrame
                 ],
             };
         }
+
+        // ── a page with no rail (tuned Classic D16, board C-Liked): the head over the list, centred like the two-column row ──
+        if (p.Head is { } head)
+        {
+            var headPage = new BoxEl
+            {
+                Key = "detail:head", Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true,
+                Children =
+                [
+                    p.Notice,
+                    new BoxEl
+                    {
+                        Direction = 0, Grow = 1f, Shrink = 1f, MinHeight = 0f, Justify = FlexJustify.Center,
+                        Children =
+                        [
+                            new BoxEl
+                            {
+                                Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Basis = 0f,
+                                MaxWidth = R.Space.PageMaxW, DropTarget = p.Drop,
+                                Children = [PageHead(head), right],
+                            },
+                        ],
+                    },
+                ],
+            };
+            return Ctx.Provide(Design.AccentCtx.Slot, accent, new BoxEl
+            {
+                ZStack = true, Grow = 1f, Shrink = 1f, MinHeight = 0f,
+                OnBoundsChanged = p.OnMeasured, ClipToBounds = true,
+                Children = [p.Tint, p.Tone, headPage],
+            });
+        }
+
         var tc = p.TwoColumn!;
         Element[] rowKids;
         Element seam = SeamOff;

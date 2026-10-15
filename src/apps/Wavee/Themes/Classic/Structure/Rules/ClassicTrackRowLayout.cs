@@ -59,8 +59,11 @@ internal static class ClassicTrackRowLayout
 
     // ── the row skin ─────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Modern's row radius (Classic rows are square).</summary>
-    public const float RowRadius = 6f;
+    /// <summary>Modern's row radius (Classic rows are square), and a quiet list's full-width plate's (board C-TrackList, liked: r4).</summary>
+    public const float RowRadius = 6f, QuietRowRadius = 4f;
+
+    /// <summary>The title's weight, and a quiet list's (tuned Classic D16: regular weight on Liked Songs).</summary>
+    public const ushort TitleWeight = 600, QuietTitleWeight = 400;
 
     /// <summary>The selection pill: 3 × 16, a 1.5 radius (Modern only), 2 DIP in from the row's leading edge.</summary>
     public const float PillWidth = 3f, PillHeight = 16f, PillRadius = 1.5f, PillLead = 2f;

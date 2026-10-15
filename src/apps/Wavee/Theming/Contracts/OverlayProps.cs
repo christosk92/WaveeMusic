@@ -98,7 +98,7 @@ public sealed record OfflineStripProps
     public Action? OnRetry { get; init; }
 }
 
-/// <summary>The props of <see cref="ViewKeys.OverlayOfflineVacancy"/> (contract 1.6, tuned Classic X1): a page that has nothing saved to show
+/// <summary>The props of <see cref="ViewKeys.OverlayOfflineVacancy"/> (contract 1.8, tuned Classic X1): a page that has nothing saved to show
 /// while the session is offline.</summary>
 public sealed record OfflineVacancyProps
 {

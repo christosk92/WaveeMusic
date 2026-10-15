@@ -102,12 +102,16 @@ public sealed class TunedRowsMountedTests(ShellHost host)
             });
 
             Shell.GoTo(new Shell.Route(Shell.RouteKind.Liked));
-            Until(shell, () => Shell.Shown.Peek().Kind == Shell.RouteKind.Liked && RowCells(shell, Track.CellKey.Heart).Count > 0,
+            Until(shell, () => Shell.Shown.Peek().Kind == Shell.RouteKind.Liked && RowCells(shell, Track.CellKey.HeartTrailing).Count > 0,
                   "the liked rows");
             shell.RunFrames(60);
-            var liked = RowCells(shell, Track.CellKey.Heart);
+            // Liked Songs is a quiet list (tuned Classic D16): every row is liked, so its heart is the trailing lane's and only the hovered
+            // (or focused) row shows it; there is no leading heart lane.
+            var liked = RowCells(shell, Track.CellKey.HeartTrailing);
             Assert.NotEmpty(liked);
-            Assert.All(liked, h => Assert.Equal(1f, scene.Paint(h).Opacity));   // every liked song keeps its filled heart
+            Assert.All(liked, h => Assert.Equal(1f, scene.Paint(h).HoverOpacity));
+            Assert.True(liked.Count(h => scene.Paint(h).Opacity > 0f) <= 1, "at rest no heart shows (a focused row may)");
+            Assert.Empty(RowCells(shell, Track.CellKey.Heart));
         }), widthDip: 1600f, heightDip: 900f);
 
     [Theory]

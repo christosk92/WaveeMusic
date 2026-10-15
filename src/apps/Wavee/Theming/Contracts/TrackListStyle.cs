@@ -102,6 +102,10 @@ internal sealed class TrackRowSkin
     /// <summary>The hero system's STACKED flow: plain full-bleed rows (Modern only; never true for Classic).</summary>
     public required bool Plain { get; init; }
 
+    /// <summary>A quiet list's row (<c>Track.ColumnSet.Quiet</c>, Liked Songs, tuned Classic D16): a full-width plate with no zebra and no
+    /// border. Appended (contract 1.9).</summary>
+    public bool Quiet { get; init; }
+
     /// <summary>The bottom corners are square: THIS row's drawer is open, or still closing under it.</summary>
     public required bool Squared { get; init; }
 

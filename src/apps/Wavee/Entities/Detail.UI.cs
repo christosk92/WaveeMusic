@@ -770,8 +770,21 @@ public static partial class Detail
                 });
             }
 
+            // ── modes 0/1/2 of a page with NO rail (Liked Songs, tuned Classic D16): the page head over the content column ──
+            if (!cfg.Rail)
+            {
+                return ViewSlots.View(Contracts.ViewKeys.DetailFrame, new Contracts.DetailFrameProps
+                {
+                    Vertical = false, VerticalTracks = false, PageAccent = _pageAccent, OnMeasured = _measure,
+                    Tint = tint, Tone = tone, Notice = notice,
+                    ContentKey = contentKey, Content = content, ContentMinWidth = rightMin, Drop = drop,
+                    Head = new Contracts.DetailHeadProps { Spec = spec, Shown = _listCount },
+                    Sheet = episodes ? null : SheetProps(routeKey),
+                });
+            }
+
             // ── modes 0/1/2: the centred two-column row [rail | grip | right] ──
-            var rail = _rails[(int)RailPolicy.ScopeFor(cfg.RailScope, uniform)];
+            var rail =_rails[(int)RailPolicy.ScopeFor(cfg.RailScope, uniform)];
             bool resizable = RailPolicy.ResizableFor(cfg.RailResizable, mode);
             // Read unconditionally (a stable subscription) but honoured only where the grip that can undo it exists.
             bool collapsed = rail.Collapsed.Value && resizable;

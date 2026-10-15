@@ -1128,7 +1128,8 @@ public static partial class Detail
         /// declared (<paramref name="slots"/> — presence is known at mount, the data is not). Default slots ⇒ exactly the
         /// pre-podcast plan. An episode with an Attribution slot is led by it (the <see cref="RailPlan.Owner"/> shape), and
         /// has no eyebrow and no after-title attribution. The fixed action group (tuned Classic D1) is Shuffle on a track
-        /// page, the heart when the kind has one, Share, and the ⋯ every kind but Liked carries.</summary>
+        /// page, the heart when the kind has one, Share, and the ⋯. Liked Songs has no rail (tuned Classic D16), so no plan here is
+        /// Liked's.</summary>
         public static RailPlan RailPlanFor(DetailKind kind, BadgeStyle badges, bool heart, int descriptionMaxLines,
                                            RailSlotSet slots = default)
         {
@@ -1144,8 +1145,7 @@ public static partial class Detail
                 Meta: !typeYear || RailLayout.IsPodcast(kind),
                 TitleLines: RailTitleLines,
                 Fabs: slots.Satellites ? Math.Max(0, slots.SatelliteCount)
-                    : (kind is DetailKind.Album or DetailKind.Playlist or DetailKind.Liked ? 1 : 0) + (heart ? 1 : 0) + 1
-                      + (kind != DetailKind.Liked ? 1 : 0),
+                    : (kind is DetailKind.Album or DetailKind.Playlist ? 1 : 0) + (heart ? 1 : 0) + 2,
                 DescriptionLines: blurb ? RailDescriptionLinesFor(descriptionMaxLines) : 0,
                 Badges: RailLayout.BadgeRowFor(kind, slots.Badges, eyebrow),
                 Rating: slots.Rating,
@@ -1378,7 +1378,10 @@ public static partial class Detail
         bool ShowVersions = false,      // the expand chevron + versions drawer
         bool PlaysColumnOptIn = false,  // the Plays column is a user opt-in here (NOT album semantics)
         RailScope RailScope = RailScope.Album,
-        bool RailResizable = true)
+        bool RailResizable = true,
+        bool Rail = true,               // false: no rail; the two-column arm is the page head over the list (tuned Classic D16)
+        bool QuietRows = false,         // full-width plates, no zebra, regular-weight titles, the heart on hover only (D16)
+        bool DateGroups = false)        // the rows group by when they were added while the list is sorted by date (D16)
     {
         public static Config Playlist => new(
             Kind: DetailKind.Playlist, TwoColumn: true, RailWidth: Design.Size.RailPlaylist, Badges: BadgeStyle.OwnerRow,
@@ -1405,7 +1408,7 @@ public static partial class Detail
             ShowArtThumb: true, ShowAlbumColumn: true,
             Selection: ItemsSelectionMode.Extended, HasTrailing: false, Heart: HeartMode.None, ShowTrackArtist: true,
             ShowTempo: true, ShowVersions: true, PlaysColumnOptIn: true,
-            RailScope: RailScope.Liked);
+            RailScope: RailScope.Liked, Rail: false, QuietRows: true, DateGroups: true);
 
         /// <summary>A podcast show: the album-style rail with EPISODES in the right column.</summary>
         public static Config Show => new(

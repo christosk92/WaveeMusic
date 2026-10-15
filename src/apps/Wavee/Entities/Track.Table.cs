@@ -387,8 +387,10 @@ public readonly partial struct Track
     }
 
     /// <summary>The table's live view, for the page-supplied rows it hosts (the Liked chip rail and lens header set and
-    /// read the filters; the lens header states the visible count). Provided around the table; null elsewhere.</summary>
-    public sealed record TableLive(IReadSignal<TableView> View, Action<FilterState> SetFilters, IReadSignal<int> Visible);
+    /// read the filters; the lens header states the visible count). Provided around the table; null elsewhere.
+    /// <paramref name="InlineChips"/>: the chips ride the page bar (a page with no rail, tuned Classic D8), not a row of their own.</summary>
+    public sealed record TableLive(IReadSignal<TableView> View, Action<FilterState> SetFilters, IReadSignal<int> Visible,
+                                   bool InlineChips = false);
 
     /// <inheritdoc cref="TableLive"/>
     public static readonly Context<TableLive?> TableLiveSlot = new(null);
@@ -645,14 +647,17 @@ public readonly partial struct Track
                 By: src.HasAddedBy && tier < 1,
                 Date: src.HasDateAdded && tier < 3,
                 Plays: TableColumnsPref.PlaysVisible(cfg.ShowPlays, cfg.PlaysColumnOptIn, s.PlaysColumn) && tier < 3,
-                Heart: tier < 5,
+                // A quiet list (Liked, D16) states its heart in the trailing lane, before the duration (board C-TrackList, liked).
+                Heart: tier < 5 && !cfg.QuietRows,
                 Thumb: identity.Thumb,
                 Actions: trailing.Actions,
                 Tier: tier,
                 Tempo: cfg.ShowTempo && s.TempoColumn,
                 Expand: trailing.Expand,
                 Artist: identity.Artist,
-                Classic: s.Classic);
+                Classic: s.Classic,
+                HeartTrailing: tier < 5 && cfg.QuietRows,
+                Quiet: cfg.QuietRows);
         }
 
         /// <summary>Self-heal: never RENDER a tier wider than the last measured width supports; before the first measure the
@@ -798,6 +803,64 @@ public readonly partial struct Track
         {
             var v = ViewNow();
             return (uint)display < (uint)v.Length ? v[display] : -1;
+        }
+
+        // ── the date groups (tuned Classic D16): per display row of the sorted view, its group key and, where a group starts, its run ──
+
+        int[] _groupKeys = [], _groupRuns = [];
+        Snapshot _groupsKey;
+        bool _groupsValid;
+
+        readonly Dictionary<(int Key, int Run), DateGroupHead> _groupHeads = new();
+
+        /// <summary>The list CAN group by date: a <see cref="Detail.Config.DateGroups"/> page's own table in its wide arm (never the library
+        /// pane's embedded one). Fixed for the host (the arm is in the table's key), so a slot decides once whether it carries a head.</summary>
+        internal bool GroupsCapable => Cfg.DateGroups && !VerticalArm && !_latest.Embedded;
+
+        /// <summary>The list groups by date now: it can, and it is sorted by when its songs were added.</summary>
+        bool GroupsOn(in Snapshot s) => GroupsCapable && s.Sort.Column == SortColumn.DateAdded && _latest.Source.HasDateAdded;
+
+        /// <summary>The head of the date group that STARTS at this display index, or null (no groups, or a row inside a group). Reads the
+        /// snapshot, so a slot's memo over it follows the sort, the filter and the membership.</summary>
+        internal DateGroupHead? GroupHeadAt(int display)
+        {
+            if (_snapshot is not { } memo) return null;
+            var s = memo.Value;
+            if (!GroupsOn(in s)) return null;
+            var v = ViewOf(in s);
+            if ((uint)display >= (uint)v.Length) return null;
+            if (!_groupsValid || !_groupsKey.Equals(s)) RebuildGroups(in s, v);
+            int run = _groupRuns[display];
+            if (run == 0) return null;
+            // Cached per (group, run): a recycle onto a head row allocates nothing once the head has been worded.
+            int key = _groupKeys[display];
+            if (_groupHeads.TryGetValue((key, run), out var cached)) return cached;
+            var offset = TimeZoneInfo.Local.GetUtcOffset(DateTime.UtcNow);
+            int year = DateTimeOffset.FromUnixTimeSeconds(Store.ToUnix(Entities.Now)).ToOffset(offset).Year;
+            string label = DateGroupRules.LabelOf(key, year, System.Globalization.CultureInfo.CurrentCulture,
+                Loc.Get(Strings.Detail.DateGroup.ThisWeek), Loc.Get(Strings.Detail.DateGroup.Earlier));
+            var head = new DateGroupHead(label, Strings.Detail.SongCount(run));
+            _groupHeads[(key, run)] = head;
+            return head;
+        }
+
+        /// <summary>The structure's head for a date group, at the rows' gutter (an empty box where no registry provides the chrome). BOUND:
+        /// <paramref name="head"/> is read inside the template's props, so a recycle onto or off a head row re-binds, never re-renders.</summary>
+        internal Element GroupHeader(Func<DateGroupHead?> head, in Shape shape)
+            => (_listStyle?.Chrome.GroupHeader(head, RowMetrics.PadXFor(shape.Set.Tier)) ?? new BoxEl()) with { Key = "group-head" };
+
+        void RebuildGroups(in Snapshot s, ReadOnlySpan<int> view)
+        {
+            int n = view.Length;
+            if (_groupKeys.Length < n) { _groupKeys = new int[Math.Max(n, _groupKeys.Length * 2)]; _groupRuns = new int[_groupKeys.Length]; }
+            var src = _latest.Source;
+            long now = Store.ToUnix(Entities.Now);   // AddedAt is unix seconds; Entities.Now is APP seconds
+            var offset = TimeZoneInfo.Local.GetUtcOffset(DateTime.UtcNow);
+            for (int i = 0; i < n; i++) _groupKeys[i] = DateGroupRules.KeyOf(src.AddedAt(view[i]), now, offset);
+            DateGroupRules.RunsOf(new ReadOnlySpan<int>(_groupKeys, 0, n), new Span<int>(_groupRuns, 0, n));
+            _groupHeads.Clear();   // the words follow the clock's year and the language: a rebuilt view re-words its heads
+            _groupsKey = s;
+            _groupsValid = true;
         }
 
         Action<int>? _benchToggle;
@@ -951,7 +1014,7 @@ public readonly partial struct Track
             _selectedCount = UseComputed(ComputeSelectedCount);
             _checksVisible = UseComputed(() => SelectionBarRules.ChecksVisible(_selectedCount!.Value, _multi.Value));
             _selectionVisible = UseComputed(() => SelectionBarRules.Visible(_selectedCount!.Value, _multi.Value));
-            var live = UseMemo(() => new TableLive(_viewMemo!, SetFilters, _visible), DepKey.Empty);
+            var live = UseMemo(() => new TableLive(_viewMemo!, SetFilters, _visible, PageBar), DepKey.Empty);
 
             var context = args.Source.Context;
             UseLayoutEffect(() => LoadView(context), DepKey.From(context.Id.GetHashCode()));
@@ -2103,6 +2166,7 @@ public readonly partial struct Track
                 CheckLane = SelectorVisualsBound.BoundCheckLane(_checksRead, isSel, interact, leftMargin: 4f),
                 RowHeight = shape.RowH,
                 Plain = plain,
+                Quiet = shape.Set.Quiet,
                 Squared = squared,
                 Entrance = entrance,
                 IsSelected = isSel,
@@ -2419,13 +2483,23 @@ public readonly partial struct Track
             int tstart = _start;
             Element content = Embed.Comp(() => new TableRowContent(thost, tscope, titem, tstart, hovered));
             Element row = _host.Skin(_scope, content, in shape, flow, isOpen || tail.Value, _start, hovered, _narrate) with { Key = "row" };
-            if (!isOpen) return new BoxEl { Direction = 1, MinWidth = 0f, Children = [row] };
+            // A row that starts a date group (tuned Classic D16) carries the group's head above its plate, inside its slot: the list stays
+            // one row per song, so selection, keys, drag and the drawer never see the heads. The head is BOUND (its presence and words read
+            // the slot's memo inside props), so scrolling recycles the slot without a render.
+            Element? head = null;
+            if (_host.GroupsCapable)
+            {
+                var group = UseComputed(() => _host.GroupHeadAt(_scope.Index.Value - _start));
+                head = _host.GroupHeader(() => group.Value, in shape);
+            }
+            if (!isOpen) return new BoxEl { Direction = 1, MinWidth = 0f, Children = head is null ? [row] : [head, row] };
             var t = _trackItem!.Peek();
             int display = _scope.Index.Peek() - _start;
+            Element drawer = _host.DrawerBox(t, display, in shape, _scope.Index, _start);
             return new BoxEl
             {
                 Direction = 1, MinWidth = 0f,
-                Children = [row, _host.DrawerBox(t, display, in shape, _scope.Index, _start)],
+                Children = head is null ? [row, drawer] : [head, row, drawer],
             };
         }
     }

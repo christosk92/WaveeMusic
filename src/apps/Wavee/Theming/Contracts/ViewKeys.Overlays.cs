@@ -40,7 +40,7 @@ public static partial class ViewKeys
     /// <summary>The strip over kept content while the session is down. Mounted by the content state's offline lane. Props: <see cref="OfflineStripProps"/>.</summary>
     public static readonly ViewKey<OfflineStripProps> OverlayOfflineStrip = new("Overlay.OfflineStrip");
 
-    /// <summary>The offline vacancy (contract 1.6): what a page with nothing saved shows while the session is offline, in place of its
+    /// <summary>The offline vacancy (contract 1.8): what a page with nothing saved shows while the session is offline, in place of its
     /// error vacancy. Mounted by the core vacancy (<c>Controls.Vacancy</c>, Error voice, page scale) while
     /// <c>Shell.FrameRules.OfflineVoice</c> holds. Props: <see cref="OfflineVacancyProps"/>.</summary>
     public static readonly ViewKey<OfflineVacancyProps> OverlayOfflineVacancy = new("Overlay.OfflineVacancy");

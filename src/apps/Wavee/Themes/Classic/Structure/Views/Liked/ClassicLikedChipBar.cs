@@ -3,12 +3,13 @@
 // From `Entities\User.Page.Liked.cs` (`LikedChipBar.Render`, the chip rail of ch 07 §0.13, W18; ch 04 items 32-33): ONE line that scrolls
 // (the rail's own edge fade), "All" first, EXCLUSIVE selection (All + at most one), re-tapping the active chip clears it, and an
 // un-evidenced curated chip rendered DISABLED as one contiguous tail (the evidence is a prefix, so the order IS the state). 0 DIP when there
-// is no set (W19).
+// is no set (W19). Under the page head (no rail, tuned Classic D8) the line rides the page bar instead of a 40-DIP row of its own.
 //
 // The core host keeps the table's live filter (`Track.TableLiveSlot`: it is read under the table's provider), the selected tag and the
 // two verbs; the view draws what it is handed.
 
 using FluentGpu.Dsl;
+using FluentGpu.Foundation;
 using FluentGpu.Localization;
 using FluentGpu.Theming;
 using Wavee.Theming.Contracts;
@@ -37,6 +38,20 @@ internal static class ClassicLikedChipBar
             kids[i + 1] = Controls.Chip(tag, on, available, available ? () => select(on ? null : tag) : null)
                 with { Key = "chip:" + tag };
         }
-        return Controls.ChipRail(kids, p.ScrollKey) with { Key = "chips" };
+        if (!p.Inline) return Controls.ChipRail(kids, p.ScrollKey) with { Key = "chips" };
+
+        // INLINE (tuned Classic D8, board C-Liked): the same one scrolling line inside the page bar, filling the room its lead and tools
+        // leave, its end fading over 24 DIP where more chips wait.
+        return Ui.ScrollView(new BoxEl
+        {
+            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
+            // The viewport clips at its edge: the inset keeps the first and last chip's stock focus ring whole.
+            Padding = new Edges4(Controls.ChipRailInsetX, 0f, Controls.ChipRailInsetX, 0f),
+            Children = kids,
+        }, horizontal: true) with
+        {
+            Key = "chips", Grow = 1f, MinWidth = 0f, AutoEdgeFade = true, AutoEdgeFadeBand = ClassicLikedRules.InlineChipFade,
+            SuppressScrollBar = true, ScrollKey = p.ScrollKey,
+        };
     }
 }

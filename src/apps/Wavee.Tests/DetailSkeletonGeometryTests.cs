@@ -69,16 +69,6 @@ public class DetailSkeletonGeometryTests
     }
 
     [Fact]
-    public void RailPlan_Liked_NoHeartNoBlurb()
-    {
-        var plan = Skeleton.RailPlanFor(DetailKind.Liked, BadgeStyle.None, heart: false, descriptionMaxLines: 6);
-        Assert.False(plan.Owner);
-        Assert.True(plan.Meta);
-        Assert.Equal(2, plan.Fabs);                       // Shuffle · Share (Liked has no heart and no ⋯)
-        Assert.Equal(0, plan.DescriptionLines);
-    }
-
-    [Fact]
     public void RailPlan_BlurbClampsToTheRailsOwnLines()
     {
         Assert.Equal(2, Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, heart: true, descriptionMaxLines: 2).DescriptionLines);
@@ -95,7 +85,6 @@ public class DetailSkeletonGeometryTests
     [InlineData(DetailKind.Album, BadgeStyle.TypeYear, true, 3)]
     [InlineData(DetailKind.Playlist, BadgeStyle.OwnerRow, true, 6)]
     [InlineData(DetailKind.Playlist, BadgeStyle.OwnerRow, false, 2)]
-    [InlineData(DetailKind.Liked, BadgeStyle.None, false, 6)]
     [InlineData(DetailKind.Show, BadgeStyle.TypeYear, true, 3)]
     [InlineData(DetailKind.Show, BadgeStyle.TypeYear, true, 6)]
     public void RailPlan_WithoutPodcastSlots_IsThePrePodcastPlan(DetailKind kind, BadgeStyle badges, bool heart, int descMax)
@@ -104,8 +93,7 @@ public class DetailSkeletonGeometryTests
         var before = new Skeleton.RailPlan(
             Eyebrow: typeYear, Owner: badges == BadgeStyle.OwnerRow, Artists: typeYear,
             Meta: !typeYear || kind == DetailKind.Show, TitleLines: Skeleton.RailTitleLines,
-            Fabs: (kind is DetailKind.Album or DetailKind.Playlist or DetailKind.Liked ? 1 : 0) + (heart ? 1 : 0) + 1
-                  + (kind != DetailKind.Liked ? 1 : 0),
+            Fabs: (kind is DetailKind.Album or DetailKind.Playlist ? 1 : 0) + (heart ? 1 : 0) + 2,
             DescriptionLines: kind is DetailKind.Playlist or DetailKind.Show ? Math.Min(Skeleton.RailDescriptionLines, descMax) : 0);
 
         // An album-family artists row IS the artist line (the page's own Attribution slot paints the same look), whose

@@ -357,13 +357,13 @@ public sealed class LiveOptionBehaviourTests(ShellHost host)
             try
             {
                 Shell.GoTo(new Shell.Route(Shell.RouteKind.Liked));
-                Until(shell, () => !shell.Find("detail:two-column").IsNull, "the wide liked page mounted its two-column arm");
+                Until(shell, () => !shell.Find("detail:head").IsNull, "the wide liked page mounted its head arm (no rail, tuned Classic D16)");
                 SetPageLayout(DetailPageLayout.Hero);   // Settings › Appearance › Page layout
                 Until(shell, () => !shell.Find("detail:vertical").IsNull, "Hero swapped the page to its vertical arm");
                 shell.RunFrames(30);
-                Assert.True(shell.Find("detail:two-column").IsNull, "the two-column arm stayed mounted under Hero");
+                Assert.True(shell.Find("detail:head").IsNull, "the head arm stayed mounted under Hero");
                 SetPageLayout(DetailPageLayout.Automatic);
-                Until(shell, () => !shell.Find("detail:two-column").IsNull, "Automatic swapped the wide page back to two columns");
+                Until(shell, () => !shell.Find("detail:head").IsNull, "Automatic swapped the wide page back to its head arm");
             }
             finally
             {

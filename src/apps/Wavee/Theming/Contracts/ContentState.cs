@@ -6,7 +6,7 @@
 //
 //   Body          what stands where the page goes: the page itself, an EMPTY body (a real destination whose page is not
 //                 registered yet: never the not-found page), or the not-found page (nothing claims the route).
-//   OfflineLane   the page-scale strip in the flow above the kept content (contract 1.6) while a stored credential exists but the session is
+//   OfflineLane   the page-scale strip in the flow above the kept content (contract 1.8) while a stored credential exists but the session is
 //                 down. Independent of the body: it stands above a page, an empty body and the not-found page alike.
 //
 // The state machines that feed it (the route reducer, the auth fold, developer mode) and the page transition (the keep-alive

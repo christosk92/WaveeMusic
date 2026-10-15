@@ -35,6 +35,12 @@ versions separately under `v*` and is not tracked in this file.)
   the library list's rows stand at the real rows' spacing, the narrow album/playlist header shows exactly the buttons the
   page will have and the song list's bar in its real shape, and the library's album and show header placeholders line
   up with the title and add the missing details line.
+- **Liked Songs is a list with a title, not a cover and a rail.** At a normal window the page is the title, the song count and one
+  bar: Play (with its ⌄ for more ways to play), Shuffle, then the genre chips inline, fading out where more wait, and on the
+  right Filter, Date added, Find, Insights and ⋯. The rows run the full width without stripes, titles are regular weight,
+  and the heart sits before the duration and shows only on the song you point at (every song here is liked). While the
+  list is sorted by Date added it is grouped: "This week", then one group per month ("September · 41 songs"). The cover
+  and its style picker stay on the narrow-window header.
 - **The library page is one surface, and its controls match the rest of the app.** The library list and the album or
   artist detail beside it now sit on the same content card, split only by a thin divider, instead of three differently
   tinted panels; the artist list's "in your library · newest" bar is a plain section too. The artist header's buttons are

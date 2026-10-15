@@ -92,7 +92,7 @@ internal static class ClassicTrackTable
         int i = 0;
 
         cells[i++] = BoundNumberCell(r, classic);
-        if (set.Heart) cells[i++] = Track.RowCenterCell(BoundHeartReveal(r, classic), CellKey.Heart);
+        if (set.Heart) cells[i++] = Track.RowCenterCell(BoundHeartReveal(r, classic, set.Quiet), CellKey.Heart);
         if (set.Thumb) cells[i++] = Track.RowCenterCell(BoundArtwork(r, artSize), CellKey.Art);
         cells[i++] = BoundTitleCell(r, in set, classic);
         if (set.Artist) cells[i++] = Track.RowLeftCell(BoundArtistLinks(r, classic), CellKey.Artist);
@@ -101,12 +101,14 @@ internal static class ClassicTrackTable
         if (set.Date) cells[i++] = Track.RowLeftCell(BoundDateCell(r, classic), CellKey.Date);
         if (set.Plays) cells[i++] = Track.RowEndCell(BoundPlaysCell(r, classic), CellKey.Plays);
         if (RowMetrics.ShowTempo(in set)) cells[i++] = Track.RowEndCell(BoundTempoCell(r, classic), CellKey.Tempo);
+        if (RowMetrics.ShowHeartTrailing(in set)) cells[i++] = Track.RowCenterCell(BoundHeartReveal(r, classic, set.Quiet), CellKey.HeartTrailing);
         cells[i++] = Track.RowEndCell(BoundDurationCell(r, classic), CellKey.Duration);
         if (set.Actions) cells[i++] = Track.MoreCell(true, classic, CellKey.More, () => r.Focused);
         if (set.Expand) cells[i++] = BoundExpandCell(r);
 
         float padX = RowMetrics.PadXFor(set.Tier);
-        float inner = classic ? padX : padX - RowMetrics.RowInset;
+        // A Modern row pays its plate's inset out of the gutter; a Classic or a quiet (full-width, D16) row's plate has none.
+        float inner = classic || set.Quiet ? padX : padX - RowMetrics.RowInset;
         return new GridEl
         {
             Columns = tracks, ColGap = RowMetrics.ColGapFor(set.Tier), RowHeight = rowH, Grow = 1f,
@@ -251,10 +253,11 @@ internal static class ClassicTrackTable
     /// around the heart's own click target, so the hover it reads is the row skin's (the same idiom as the # cell's
     /// layers); the rest opacity is bound to the presentation and the slot's focus, so a like re-resolves it with no rebuild
     /// and the focused row shows its outline to the keyboard.</summary>
-    static Element BoundHeartReveal(BoundRow r, bool classic) => new BoxEl
+    static Element BoundHeartReveal(BoundRow r, bool classic, bool quiet) => new BoxEl
     {
         Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        Opacity = Prop.Of(() => r.P.State.Saved || r.Focused ? 1f : 0f), HoverOpacity = 1f,
+        // A quiet list (Liked Songs, D16) rests with no heart at all: every row is liked, so only the hovered or focused row shows it.
+        Opacity = quiet ? Prop.Of(() => r.Focused ? 1f : 0f) : Prop.Of(() => r.P.State.Saved || r.Focused ? 1f : 0f), HoverOpacity = 1f,
         Children = [BoundHeart(r, classic)],
     };
 
@@ -328,7 +331,7 @@ internal static class ClassicTrackTable
     /// real mount so the marquee host only exists on that one row. <paramref name="inlineVideo"/> (the Modern row) makes the
     /// plain title one span run that carries the small film glyph right after the title when the track has a video
     /// (tuned Classic L3: a video is marked there, never in a trailing lane).</summary>
-    static Element[] BoundTitleRuns(BoundRow r, bool inlineVideo)
+    static Element[] BoundTitleRuns(BoundRow r, bool inlineVideo, ushort weight)
     {
         Prop<bool> plainVisible = Prop.Of(() => !(r.P.State.IsNow && r.P.Marquee));
         Element plain;
@@ -340,7 +343,7 @@ internal static class ClassicTrackTable
                 buffer.Clear();
                 var p = r.P;
                 bool now = p.State.IsNow;
-                FillClassicSpans(buffer, p.Track.ForDisplay, 0, p.Track.HasVideo,
+                FillClassicSpans(buffer, p.Track.ForDisplay, 0, p.Track.HasVideo, weight,
                     now ? Tok.AccentTextPrimary : Tok.TextPrimary, Tok.TextSecondary, now ? Tok.AccentTextPrimary : Tok.TextTertiary);
                 return buffer.Current;
             }))
@@ -355,7 +358,7 @@ internal static class ClassicTrackTable
             // R.Type.TrackTitle's rung (BodyStrong 14/20/600), constructed once with its binds.
             plain = new TextEl(Prop.Of(() => r.P.Track.ForDisplay.Title))
             {
-                Size = ClassicTrackRowLayout.BodySize, LineHeight = ClassicTrackRowLayout.BodyLine, Weight = 600,
+                Size = ClassicTrackRowLayout.BodySize, LineHeight = ClassicTrackRowLayout.BodyLine, Weight = weight,
                 Color = Prop.Of(() => r.P.State.IsNow ? Tok.AccentTextPrimary : Tok.TextPrimary),
                 Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 Visible = plainVisible,
@@ -368,9 +371,11 @@ internal static class ClassicTrackTable
     static Element BoundTitleCell(BoundRow r, in ColumnSet set, bool classic)
     {
         bool setArtist = set.Artist, setAlbum = set.Album;
-        var runs = BoundTitleRuns(r, inlineVideo: !classic);
+        // A quiet list's titles are regular weight (D16): the collection reads as one list, not a column of headings.
+        ushort weight = set.Quiet ? ClassicTrackRowLayout.QuietTitleWeight : ClassicTrackRowLayout.TitleWeight;
+        var runs = BoundTitleRuns(r, inlineVideo: !classic, weight);
         Element[] column;
-        if (classic) column = [BoundClassicTitleLine(r, runs, setArtist)];
+        if (classic) column = [BoundClassicTitleLine(r, runs, setArtist, weight)];
         else column = [runs[0], runs[1], BoundMetadataLine(r, setArtist, setAlbum)];
         var titleCol = new BoxEl
         {
@@ -455,7 +460,7 @@ internal static class ClassicTrackTable
 
     /// <summary>Classic's one-line title (ch 01 W8): the folded span run (artists in the title) or the plain title plus
     /// the film glyph, then the EXPLICIT word-mark pinned trailing. Both arms stay mounted; the fold flag picks one.</summary>
-    static Element BoundClassicTitleLine(BoundRow r, Element[] runs, bool setArtist)
+    static Element BoundClassicTitleLine(BoundRow r, Element[] runs, bool setArtist, ushort weight)
     {
         var buffer = new SpanBuffer();
         static bool ShowVideo(in RowPresentation p) => p.Track.HasVideo;
@@ -466,7 +471,7 @@ internal static class ClassicTrackTable
             buffer.Clear();
             var p = r.P;
             bool now = p.State.IsNow;
-            FillClassicSpans(buffer, p.Track.ForDisplay, p.Track.ForDisplay.ArtistSlots.Length, ShowVideo(in p),
+            FillClassicSpans(buffer, p.Track.ForDisplay, p.Track.ForDisplay.ArtistSlots.Length, ShowVideo(in p), weight,
                 now ? Tok.AccentTextPrimary : Tok.TextPrimary, now ? Tok.AccentTextPrimary : Tok.TextSecondary,
                 now ? Tok.AccentTextPrimary : Tok.TextTertiary);
             return buffer.Current;
@@ -720,10 +725,10 @@ internal static class ClassicTrackTable
         }
     }
 
-    static void FillClassicSpans(SpanBuffer b, Track t, int artistCount, bool showVideo, ColorF primary, ColorF secondary,
+    static void FillClassicSpans(SpanBuffer b, Track t, int artistCount, bool showVideo, ushort weight, ColorF primary, ColorF secondary,
                                  ColorF tertiary)
     {
-        b.Add(new TextSpan(t.Title, Weight: 600, Color: primary));
+        b.Add(new TextSpan(t.Title, Weight: weight, Color: primary));
         if (showVideo)
         {
             b.Add(new TextSpan(" "));
@@ -749,6 +754,9 @@ internal static class ClassicTrackTable
     static BoxEl Skin(TrackRowSkin a, bool classic)
     {
         bool plain = a.Plain;
+        // A quiet (Liked, D16) Modern row is a full-width plate like the stacked flow's, but keeps a 4-DIP corner.
+        bool quiet = a.Quiet && !classic && !plain;
+        bool flat = plain || quiet;
         var isSel = a.IsSelected;
         var cue = a.Cue;
         var odd = a.Odd;
@@ -758,28 +766,30 @@ internal static class ClassicTrackTable
         return new BoxEl
         {
             ZStack = true, MinHeight = a.RowHeight, ClipToBounds = true,
-            Margin = classic || plain ? default : new Edges4(RowMetrics.RowInset, 0f, RowMetrics.RowInset, 0f),
+            Margin = classic || flat ? default : new Edges4(RowMetrics.RowInset, 0f, RowMetrics.RowInset, 0f),
             // Bottom corners square while THIS row's drawer is open or still closing under it, so the row and its drawer
             // read as one plate.
             Corners = classic || plain ? CornerRadius4.All(0f)
+                : quiet ? (a.Squared ? new CornerRadius4(ClassicTrackRowLayout.QuietRowRadius, ClassicTrackRowLayout.QuietRowRadius, 0f, 0f)
+                                     : CornerRadius4.All(ClassicTrackRowLayout.QuietRowRadius))
                 : a.Squared ? new CornerRadius4(ClassicTrackRowLayout.RowRadius, ClassicTrackRowLayout.RowRadius, 0f, 0f)
                 : CornerRadius4.All(ClassicTrackRowLayout.RowRadius),
             Animate = a.Entrance ? ClassicTrackRowLayout.MountEntrance : null,
             DropTarget = a.DropTarget,
             Fill = classic ? Prop.Of(() => cue() || isSel() ? R.Layer.RowHover : ColorF.Transparent)
-                : plain ? Prop.Of(() => cue() ? R.Layer.RowHover : ColorF.Transparent)
+                : flat ? Prop.Of(() => cue() ? R.Layer.RowHover : ColorF.Transparent)
                 : Prop.Of(() => cue() ? R.Layer.RowHover : odd() ? R.Layer.RowZebra : ColorF.Transparent),
-            HoverFill = classic || plain ? Prop.Of(static () => R.Layer.RowHover)
+            HoverFill = classic || flat ? Prop.Of(static () => R.Layer.RowHover)
                 : Prop.Of(() => odd() ? R.Layer.RowHoverZebra : R.Layer.RowHover),
-            PressedFill = classic || plain ? Prop.Of(static () => R.Layer.RowPressed)
+            PressedFill = classic || flat ? Prop.Of(static () => R.Layer.RowPressed)
                 : Prop.Of(() => odd() ? R.Layer.RowPressedZebra : R.Layer.RowPressed),
             // No PressScale: a ~1000-DIP row that shrinks 2 % reads as the whole row springing back (ch 01 §0.11).
             // Stationary lift: the row stays at 0.4 while the chip follows the pointer.
             Draggable = a.Draggable,
-            BorderWidth = classic || plain ? 0f : 1f,
-            BorderColor = classic || plain ? ColorF.Transparent
+            BorderWidth = classic || flat ? 0f : 1f,
+            BorderColor = classic || flat ? ColorF.Transparent
                 : Prop.Of(() => odd() ? Tok.StrokeCardDefault : ColorF.Transparent),
-            HoverBorderColor = classic || plain ? ColorF.Transparent : Tok.StrokeCardDefault,
+            HoverBorderColor = classic || flat ? ColorF.Transparent : Tok.StrokeCardDefault,
             FocusVisualMargin = Design.FocusInsetRow,
             Focusable = false,                   // the ItemsView roving effect owns the one tab stop
             Role = AutomationRole.Button,

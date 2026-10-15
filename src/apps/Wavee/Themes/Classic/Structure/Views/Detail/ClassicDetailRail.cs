@@ -63,7 +63,7 @@ internal static partial class ClassicDetailFrame
     /// render's spec; a later push re-renders the frame and the region refreshes its Ready branch in place, so the rail keeps following the header
     /// (meta, description, a rename) after the reveal.</summary>
     public static Element RailTemplate(DetailRailProps p, in ViewContext ctx)
-        => RailFrame(p.Spec.Identity.Kind, p.RailWidth, new SkelRegionEl(
+        => RailFrame(p.RailWidth, new SkelRegionEl(
             Pending: p.Pending, Failed: s_false,
             Content: () => RailColumn(p.Spec, p.Actions, p.RailWidth, p.TitleSize, p.DescriptionLines, p.Accent, p.Play, p.Shown),
             ShimmerSource: () => RailSkeletonColumn(p.Spec, p.RailWidth, p.TitleSize, p.DescriptionLines),
@@ -87,13 +87,13 @@ internal static partial class ClassicDetailFrame
 
     // ── the rail family ──
 
-    /// <summary>The rail's frame: the layer fill and, the LAST resort once the text has given, the rail's own scroller.
-    /// The Liked arm differs in exactly ONE property — no layer fill (ch 03 §9). Holds the loaded column, or the skeleton
-    /// boundary that swaps to it (<see cref="RailTemplate"/>) — outside the boundary, so the fill never blinks.</summary>
-    static Element RailFrame(DetailKind kind, float railW, Element body) => new BoxEl
+    /// <summary>The rail's frame: the layer fill and, the LAST resort once the text has given, the rail's own scroller. Holds the
+    /// loaded column, or the skeleton boundary that swaps to it (<see cref="RailTemplate"/>) — outside the boundary, so the fill
+    /// never blinks. (Liked Songs, whose rail had no fill, has no rail: tuned Classic D16.)</summary>
+    static Element RailFrame(float railW, Element body) => new BoxEl
     {
         Direction = 1, Width = railW, Shrink = 0f, ClipToBounds = true,
-        Fill = kind == DetailKind.Liked ? ColorF.Transparent : Tok.FillLayerDefault,
+        Fill = Tok.FillLayerDefault,
         Children = [ScrollView(body) with { Grow = 1f, Shrink = 1f, MinHeight = 0f, Width = railW }],
     };
 

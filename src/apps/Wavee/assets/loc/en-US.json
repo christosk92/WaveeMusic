@@ -407,6 +407,10 @@
     "queueUnavailable": "Can’t add to queue right now",
     "songCountOf": "{shown} of {count, plural, one {# song} other {# songs}}",
     "filteredMark": "(filtered)",
+    "dateGroup": {
+      "thisWeek": "This week",
+      "earlier": "Earlier"
+    },
     "episodeCountOf": "{shown} of {count, plural, one {# episode} other {# episodes}}",
     "rail": {
       "artistsMenu": "Artists"
