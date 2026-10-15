@@ -32,7 +32,6 @@ public class SidebarStoreV3Tests
         s = Apply(s, new SetSectionLimit(SidebarLayoutId.Classic, "recent", 20));
         s = Apply(s, new SetSectionShown(SidebarLayoutId.Classic, "recent", true));
         s = Apply(s, new SetLibrarySort(SidebarLibrarySort.Alphabetical, true));
-        s = Apply(s, new SetLibraryView(SidebarLibraryView.Grid));
         s = Apply(s, new SetShowLiked(false));
         return s;
     }
@@ -69,14 +68,13 @@ public class SidebarStoreV3Tests
         Assert.Null(pinned.ItemOrder);
         Assert.Null(pinned.Sort);
         Assert.Null(pinned.Descending);
-        Assert.Null(pinned.View);
         Assert.Null(pinned.ShowLiked);
     }
 
     [Fact]
     public void EditedState_RoundTrips()
     {
-        // A hidden collections item, a moved section, the recent limit, a shown feed, and the library sort, view and liked.
+        // A hidden collections item, a moved section, the recent limit, a shown feed, and the library sort and liked.
         var edited = Edited();
         Assert.Equal(SidebarCatalogue.IdOf(SidebarSectionKind.Home), edited.Classic.Sections[0].Id);   // locked in place
         Assert.True(Array.IndexOf(IdsOf(edited.Classic), "newReleases") < Array.IndexOf(IdsOf(edited.Classic), "pinned"));
@@ -89,18 +87,28 @@ public class SidebarStoreV3Tests
         Assert.Equal(20, back.Classic.Find("recent")!.Limit);
         Assert.Equal(SidebarLibrarySort.Alphabetical, back.Library.Find("library")!.Sort);
         Assert.Equal(true, back.Library.Find("library")!.Descending);
-        Assert.Equal(SidebarLibraryView.Grid, back.Library.Find("library")!.View);
         Assert.Equal(false, back.Library.Find("library")!.ShowLiked);
     }
 
     [Fact]
-    public void Sort_and_view_are_written_by_name()
+    public void Sort_is_written_by_name()
     {
         var dto = DtoOf(SidebarStoreV3.Serialize(Edited()));
         var library = SectionDto(dto, SidebarLayoutId.Library, "library");
         Assert.Equal("alphabetical", library.Sort);
-        Assert.Equal("grid", library.View);
         Assert.True(library.Descending == true);
+    }
+
+    [Fact]
+    public void An_older_files_view_member_is_ignored_and_not_written_back()
+    {
+        // M7b: the Library view is the theme's state now; a file an older build wrote still carries `"view"`, which the reader skips (ThemeBootstrap copied it once).
+        const string json = "{\"v\":3,\"layouts\":{\"library\":{\"sections\":[{\"id\":\"library\",\"sort\":\"alphabetical\",\"view\":\"grid\"}]}}}";
+
+        Assert.True(SidebarStoreV3.TryParse(Encoding.UTF8.GetBytes(json), out var state));
+
+        Assert.Equal(SidebarLibrarySort.Alphabetical, state.Library.Find("library")!.Sort);
+        Assert.DoesNotContain("view", Encoding.UTF8.GetString(SidebarStoreV3.Serialize(state)));
     }
 
     [Fact]

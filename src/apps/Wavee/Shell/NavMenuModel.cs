@@ -65,7 +65,7 @@ public static class NavMenuModel
     public static string LayoutName(SidebarLayoutId layout)
     {
         string name = Loc.Get(layout == SidebarLayoutId.Library ? "sidebar.layoutName.library" : "sidebar.layoutName.classic");
-        return SidebarLayoutRules.IsModified(Sidebar.State.Of(layout)) ? Loc.Format("sidebar.layoutName.modified", ("layout", name)) : name;
+        return SidebarLayoutRules.IsModified(Sidebar.State.Of(layout), Sidebar.LibraryView.Peek()) ? Loc.Format("sidebar.layoutName.modified", ("layout", name)) : name;
     }
 
     /// <summary>The names of the pins that lock Pinned (route and module pins, §P3.2), for the reason lines. A shared list: read
@@ -94,7 +94,7 @@ public static class NavMenuModel
         {
             case NavMenuKind.Pane:
                 return SidebarMenuModel.Pane(Sidebar.Layout.Peek(), Sidebar.State, Sidebar.Density.Peek(),
-                    Sidebar.Editing.Peek(), LockingNames());
+                    Sidebar.Editing.Peek(), LockingNames(), Sidebar.LibraryView.Peek());
             case NavMenuKind.Header:
                 return target.SectionId is { } id && HasHeaderMenu(id)
                     ? SidebarMenuModel.Header(Sidebar.Layout.Peek(), Sidebar.State, id, LockingNames())
@@ -102,7 +102,7 @@ public static class NavMenuModel
             case NavMenuKind.Sort:
                 return SidebarMenuModel.Sort(Sidebar.State, target.Filter);
             case NavMenuKind.LibraryOptions:
-                return SidebarMenuModel.LibraryOptions(Sidebar.State, target.Filter);
+                return SidebarMenuModel.LibraryOptions(Sidebar.State, target.Filter, Sidebar.LibraryView.Peek());
             case NavMenuKind.EditReset:
             {
                 // §P4.5: this layout (recorded) and everything (confirmed, §P4.6).
@@ -110,7 +110,7 @@ public static class NavMenuModel
                 return new[]
                 {
                     new SidebarMenuRow(SidebarMenuAction.ResetLayout, "sidebar.menu.resetLayout",
-                        Enabled: SidebarLayoutRules.IsModified(Sidebar.State.Of(layout))),
+                        Enabled: SidebarLayoutRules.IsModified(Sidebar.State.Of(layout), Sidebar.LibraryView.Peek())),
                     new SidebarMenuRow(SidebarMenuAction.ResetEverything, "sidebar.menu.resetEverything"),
                 };
             }
@@ -143,7 +143,7 @@ public static class NavMenuModel
         switch (r.Action)
         {
             case SidebarMenuAction.SwitchLayout: Sidebar.SwitchLayout(r.Arg == "library" ? SidebarLayoutId.Library : SidebarLayoutId.Classic); break;
-            case SidebarMenuAction.ResetLayout: Sidebar.Dispatch(new ResetLayout(layout), Loc.Format("sidebar.toast.reset", ("name", LayoutName(layout)))); break;
+            case SidebarMenuAction.ResetLayout: Sidebar.ResetLayoutRecorded(layout, Loc.Format("sidebar.toast.reset", ("name", LayoutName(layout)))); break;
             case SidebarMenuAction.ShowSection: Sidebar.Dispatch(new SetSectionShown(layout, r.Arg, true)); break;
             case SidebarMenuAction.SetDensity: Sidebar.SetDensity(r.Arg == "compact" ? SidebarDensity.Compact : SidebarDensity.Default); break;
             case SidebarMenuAction.EditSidebar: Sidebar.EnterEdit(); break;
@@ -153,7 +153,7 @@ public static class NavMenuModel
                 Sidebar.Dispatch(new SetLibrarySort(sort, Sidebar.Doc.Library.Descending));
                 break;
             case SidebarMenuAction.ToggleDescending: Sidebar.Dispatch(new SetLibrarySort(Sidebar.Doc.Library.Sort, !Sidebar.Doc.Library.Descending)); break;
-            case SidebarMenuAction.SetView: Sidebar.Dispatch(new SetLibraryView(r.Arg == "grid" ? SidebarLibraryView.Grid : SidebarLibraryView.List)); break;
+            case SidebarMenuAction.SetView: Sidebar.SetLibraryView(r.Arg == "grid" ? SidebarLibraryView.Grid : SidebarLibraryView.List); break;
             case SidebarMenuAction.ToggleLiked: Sidebar.Dispatch(new SetShowLiked(!Sidebar.Doc.Library.ShowLiked)); break;
             case SidebarMenuAction.ToggleKind: ToggleKind(r.Arg); break;
             case SidebarMenuAction.SetLimit when sectionId is not null:

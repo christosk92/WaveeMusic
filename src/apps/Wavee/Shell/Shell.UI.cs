@@ -299,6 +299,8 @@ public static partial class Shell
             // THE SIDEBAR'S DESIGN (M7a): the layout and the density are the structure's options (published as the pane policy). A change that did
             // not come through a verb of the sidebar (the Settings options, the palette's option commands, a theme switch) reaches the sidebar here.
             UseSignalEffect(static () => Sidebar.FollowDesign(ShellPolicy.Tracked.NavPane));
+            // THE SIDEBAR'S STATE (M7b): the pane's width and collapse and the Library's view are the active theme's state; another theme brings its own.
+            UseSignalEffect(static () => { _ = Theming.ThemeState.Scope.Value; Sidebar.FollowThemeState(); });
             // The title bar's pane toggle is disabled while the sidebar is being edited (a plain signal mirrored here).
             UseSignalEffect(static () => s_paneToggleEnabled.SetIfChanged(
                 SidebarPaneModeRules.CanTogglePane(Sidebar.Band.Value, Sidebar.Editing.Value, ShellPolicy.Tracked.NavPane)));
@@ -623,7 +625,7 @@ public static partial class Shell
     {
         Sidebar.SidebarMenus.Overlay = overlay;
         return new ContextMenuModel(Sidebar.SidebarMenus.Map(SidebarMenuModel.Pane(Sidebar.Layout.Peek(), Sidebar.State, Sidebar.Density.Peek(),
-            Sidebar.Editing.Peek(), Sidebar.SidebarMenus.LockingNames())));
+            Sidebar.Editing.Peek(), Sidebar.SidebarMenus.LockingNames(), Sidebar.LibraryView.Peek())));
     }
 
     /// <summary>The rail seam's guide: the splitter's 2-DIP thumb, bound to the drag so it shows while the pointer is down

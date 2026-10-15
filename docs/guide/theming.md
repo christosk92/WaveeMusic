@@ -1644,6 +1644,21 @@ door (`LoadWidth`, `LoadDockedVideoHeight`, `SaveWidth`, `SaveDockedVideoHeight`
 stored values once (`PanelWidth`, `PanelDockedVideoHeight`). The sizes are read at boot: a live theme switch keeps the committed signals (`FitWidthTo` only fits the width to the new policy, persisting nothing), and the next
 launch loads the new active theme's own state.
 
+### M7b: the sidebar pane's width and collapse and the Library view became theme state
+
+`sidebar.pane.width`, `sidebar.pane.userCollapsed` and the Library's list/grid choice (`sidebar.json`, `layouts.library.sections[id=library].view`) are not options (the user does not choose
+them in Settings, they are what the pane remembers), so they are Classic's theme *state* (`theme.classic.state.paneWidth` / `.paneCollapsed` / `.libraryView`): `StateKey`s declared by the core
+host that writes them (`Sidebar.PaneWidthKey` 180-460, `PaneCollapsedKey`, `LibraryViewKey` 0-1), clamped on every read and write, per theme (owner Q6). The host stays the only writer: `Sidebar.Apply`
+(a seam drag, the toggle, a keyboard step, "Set width") stores the width and the collapse; `Sidebar.SetLibraryView` (the toolbar toggles, the ⋯ menu, the narrow-pane fallback to the list) stores the
+view. The live signals the views bind (`Sidebar.Width`, `UserCollapsed`, `LibraryView`) mirror the state, and `Doc.Library.View` is `SidebarLayoutRules.Resolve`'s new `view` input: the view is **no longer
+a member of the section overlay** (`SectionState.View`, the `SetLibraryView` op and the DTO's `view` are gone). What the old overlay gave for free is kept by the host: the view is its own ring entry
+(`SidebarUndoKind.View`), "Reset layout" of Library (`Sidebar.ResetLayoutRecorded`) and "Reset everything" put it back in the same entry, and `SidebarLayoutRules.IsModified(overlay, view)` still
+shows "Library - modified" for a grid. Because the state is per theme, the frame root's effect calls **`Sidebar.FollowThemeState()`** when `ThemeState.Scope` (new: the active theme's id as a signal)
+changes, so another theme brings its own pane and the next switch back finds Classic's. Three `ThemeBootstrap` steps copy the old values once (`SidebarPaneWidth`, `SidebarPaneCollapsed`,
+`SidebarLibraryView`; the last reads the device file with a plain JSON read, `ThemeBootstrap.CopyLibraryView`, and never touches it; a demo never reads the real profile), so an existing user keeps
+their width, their collapse and their view. The two settings keys and `Platform.Keys.SidebarPane*` are listed in `WVTH010.legacy.txt`; the v2 sidebar migration writes the three state keys instead.
+The `Sidebar.Width` reads in the sidebar's views stay: they read the host's signal, not a setting.
+
 ### Worked example: row density and hide track art (M3, M4)
 
 Two Classic switches became options in one PR. Row density (`detail.rowdensity`) is the **style's** `density` option (`Themes\Classic\Style\ClassicDensity.cs`:

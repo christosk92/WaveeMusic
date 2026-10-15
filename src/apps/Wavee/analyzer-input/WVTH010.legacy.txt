@@ -62,3 +62,7 @@ member Platform.Keys.ShellRailWidth
 member Platform.Keys.ShellDockedVideoHeight
 member Platform.Keys.LibraryLeftW
 member Platform.Keys.LibraryMidW
+key sidebar.pane.width
+key sidebar.pane.userCollapsed
+member Platform.Keys.SidebarPaneWidth
+member Platform.Keys.SidebarPaneUserCollapsed

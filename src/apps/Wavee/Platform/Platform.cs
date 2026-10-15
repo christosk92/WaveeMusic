@@ -85,17 +85,13 @@ public static partial class Platform
     {
         // ── sidebar: legacy (v0) global pane keys, read only by the first-run probe
         //    (`Setup.Bootstrap.IsFreshInstall`): a pane preference written by a build that predates the sidebar designs is
-        //    a witness that this is not a fresh install. The pane state is one value for both layouts (SidebarPaneWidth
+        //    a witness that this is not a fresh install. The pane state is one value for both layouts (the theme state `paneWidth`
         //    below) since v3.
         public static readonly SettingKey<bool> SidebarWidthUserSetLegacy = new("sidebar.width.userSet", false);
         public static readonly SettingKey<bool> SidebarCollapsedLegacy = new("sidebar.collapsed", false);
         /// <summary>Monotonic "which sidebar startup migrations have run" (0 = never; 2 = the v3 layout migration ran). It
         /// predates <see cref="IAppSettings.Has"/> and stays the latch those migrations read.</summary>
         public static readonly SettingKey<int> SidebarBootstrapVersion = new("sidebar.bootstrap.version", 0);
-        /// <summary>The expanded pane width, one value for both layouts (180-460).</summary>
-        public static readonly SettingKey<float> SidebarPaneWidth = new("sidebar.pane.width", 320f);
-        /// <summary>The user's collapse to the 48 rail — written only in the Wide band, never by a forced mode.</summary>
-        public static readonly SettingKey<bool> SidebarPaneUserCollapsed = new("sidebar.pane.userCollapsed", false);
         /// <summary>Your Library's chip: 0 none · 1 Playlists · 2 Albums · 3 Artists · 4 Podcasts · 5 Audiobooks.</summary>
         public static readonly SettingKey<int> SidebarLibraryFilter = new("sidebar.library.filter", 0);
         /// <summary>The loc keys of what the v2 migration could not carry over, comma-separated (Settings' "What changed").</summary>
@@ -1167,6 +1163,7 @@ public static partial class Platform
         if (!Args.RelaunchBroker && !Args.Headless && !Args.Fake) HostApplyFactoryReset();
         HostOpenSettings();
         ZoomAutoPolicy.MigrateMode(Settings);
+        Wavee.Theming.ThemeBootstrap.SidebarFolder = Args.Fake ? null : Path.Combine(LocalFolder, "WaveeMusic");   // M7b: where the "SidebarLibraryView" step finds sidebar.json (a demo reads no profile)
         Wavee.Theming.ThemeBootstrap.Run(Settings);   // themes plan 7.1: named, copy-only, order-independent steps (M3 density, M4 hide track art, M6 colour washes); before anything reads a presentation setting
         DetailRailPrefs.RegisterVerbs();   // M8: the theme verb behind the structure's "Clear all remembered sizes" action
         Developer.Load(Settings);

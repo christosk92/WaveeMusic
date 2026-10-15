@@ -53,7 +53,7 @@ public sealed class NavLibraryTests : IDisposable
         Sidebar.LibrarySearchOpen.SetIfChanged(false);
         foreach (string folder in Folders) Sidebar.SetFolderExpanded(folder, false);
         Sidebar.FlushPendingCommit();
-        Sidebar.Dispatch(new ResetLayout(SidebarLayoutId.Library));
+        Sidebar.ResetLayoutRecorded(SidebarLayoutId.Library, null);     // the overlay AND the view (the theme's state, which outlives the overlay)
         Sidebar.SwitchLayout(_layout);
         Sidebar.Pins.LoadFrom(null);
     }

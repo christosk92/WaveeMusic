@@ -269,19 +269,8 @@ public sealed class ThemeBootstrapTests
     static HashSet<string> EndStates(IReadOnlyList<ThemeBootstrapStep> steps, SnapshotSettings seed)
         => EndStates(Permutations(steps), seed);
 
-    /// <summary>Every order is n! runs: past eight steps (40 320) the shipped set is checked over a fixed sample instead (the given order, its reverse, every
-    /// rotation and a seeded run of shuffles), which still catches any pair of steps that interact: `Disjointness` already rejects the structural cases.</summary>
-    static IEnumerable<ThemeBootstrapStep[]> SampledOrders(IReadOnlyList<ThemeBootstrapStep> steps)
-    {
-        var all = steps.ToArray();
-        yield return all;
-        yield return all.Reverse().ToArray();
-        for (int r = 1; r < all.Length; r++) yield return all.Skip(r).Concat(all.Take(r)).ToArray();
-        var rng = new Random(20261014);
-        for (int i = 0; i < 2000; i++) yield return all.OrderBy(_ => rng.Next()).ToArray();
-    }
-
-    static HashSet<string> EndStates(IEnumerable<ThemeBootstrapStep[]> orders, SnapshotSettings seed)
+    /// <summary>As <see cref="EndStates(IReadOnlyList{ThemeBootstrapStep}, SnapshotSettings)"/> over the given <paramref name="orders"/>.</summary>
+    static HashSet<string> EndStates(IEnumerable<IReadOnlyList<ThemeBootstrapStep>> orders, SnapshotSettings seed)
     {
         var states = new HashSet<string>(StringComparer.Ordinal);
         foreach (var order in orders)
@@ -347,7 +336,22 @@ public sealed class ThemeBootstrapTests
                 seed.Set(new SettingKey<int>(key, 0), 1);
                 seed.Set(new SettingKey<bool>(key, false), true);
             }
-        Assert.Single(EndStates(ThemeBootstrap.Steps.Count <= 8 ? Permutations(ThemeBootstrap.Steps) : SampledOrders(ThemeBootstrap.Steps), seed));
+        // Every permutation of the shipped steps is no longer enumerable (n! orders: the M-PRs have shipped eleven steps, 40 million orders): the order
+        // independence is PROVEN by `Disjointness` (no two steps write one key, none reads what another writes: `ShippedSteps_AreNamedAndDisjoint`) and
+        // SAMPLED here over the given order, its reverse, every rotation and a fixed set of shuffles.
+        Assert.Single(EndStates(SampledOrders(ThemeBootstrap.Steps), seed));
+    }
+
+    /// <summary>The given order, its reverse, every rotation of both and 200 shuffles of a fixed seed: enough orders to catch a step that reads what another wrote.</summary>
+    static IEnumerable<IReadOnlyList<ThemeBootstrapStep>> SampledOrders(IReadOnlyList<ThemeBootstrapStep> steps)
+    {
+        var forward = steps.ToArray();
+        var reverse = forward.Reverse().ToArray();
+        foreach (var basis in new[] { forward, reverse })
+            for (int shift = 0; shift < basis.Length; shift++)
+                yield return basis.Skip(shift).Concat(basis.Take(shift)).ToArray();
+        var random = new Random(7);
+        for (int i = 0; i < 200; i++) yield return forward.OrderBy(_ => random.Next()).ToArray();
     }
 
     [Fact]

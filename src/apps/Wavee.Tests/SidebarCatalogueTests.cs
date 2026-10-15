@@ -92,7 +92,6 @@ public sealed class SidebarCatalogueTests
         var library = SidebarCatalogue.DefaultState(SidebarSectionKind.Library);
         Assert.Equal(SidebarLibrarySort.Recents, library.Sort);
         Assert.False(library.Descending);
-        Assert.Equal(SidebarLibraryView.List, library.View);
         Assert.True(library.ShowLiked);
     }
 }

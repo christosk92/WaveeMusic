@@ -34,8 +34,8 @@ static class PlanFixture
                SidebarPlaylistFlavor.None) { FolderId = "", FolderName = "", FirstArtistName = "" };
 
     public static SidebarLayoutDoc Doc(SidebarLayoutId layout, Func<SidebarLayoutState, SidebarLayoutState>? edit = null,
-                                       SidebarDensity density = SidebarDensity.Default)
-        => SidebarLayoutRules.Resolve((edit ?? (s => s))(SidebarLayoutState.Default), layout, density);
+                                       SidebarDensity density = SidebarDensity.Default, SidebarLibraryView view = SidebarLibraryView.List)
+        => SidebarLayoutRules.Resolve((edit ?? (s => s))(SidebarLayoutState.Default), layout, density, view);
 
     public static SidebarLayoutState Op(SidebarLayoutState s, SidebarOp op) => SidebarLayoutRules.Apply(s, op, false).State;
 
@@ -379,7 +379,7 @@ public sealed class SidebarRowPlannerTests
     {
         // Fact 21. Seven albums in three columns: strips of 3, 3 and 1.
         var albums = Enumerable.Range(0, 7).Select(i => PlanFixture.Album("a" + i)).ToArray();
-        var grid = Library(PlanFixture.Ops(new SetLibraryView(SidebarLibraryView.Grid)));
+        var grid = GridDoc();
         var plan = Plan(grid, new SidebarProjectionInput(Library: albums), new SidebarPlanOptions(GridColumns: 3));
         Assert.Equal(new[] { 3, 3, 1 }, plan.Rows.Where(r => r.Kind == SidebarRowKind.GridStrip).Select(r => r.ItemCount).ToArray());
     }
@@ -397,8 +397,7 @@ public sealed class SidebarRowPlannerTests
         Assert.DoesNotContain(Plan(Library(), withPins).Rows, r => r.Kind == SidebarRowKind.Empty);
     }
 
-    static SidebarLayoutDoc GridDoc() => PlanFixture.Doc(SidebarLayoutId.Library,
-        s => PlanFixture.Op(s, new SetLibraryView(SidebarLibraryView.Grid)));
+    static SidebarLayoutDoc GridDoc() => PlanFixture.Doc(SidebarLayoutId.Library, view: SidebarLibraryView.Grid);
 
     [Fact]
     public void Library_GridPending_NoRows()

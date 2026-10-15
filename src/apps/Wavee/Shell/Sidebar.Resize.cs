@@ -87,7 +87,7 @@ public static class SidebarPaneModeRules
     public static float OverlayWidth(float preferredW, float viewportW, NavPanePolicy? policy = null)
         => MathF.Max(0f, MathF.Min(SidebarPaneBounds.Clamp(preferredW, policy), viewportW - ShellPolicy.NavOr(policy).RailWidth));
 
-    /// <summary>Does a toggle / seam / double-click write <c>sidebar.pane.userCollapsed</c>? Only in a band that forces nothing
+    /// <summary>Does a toggle / seam / double-click write the theme state <c>paneCollapsed</c>? Only in a band that forces nothing
     /// (Wide in Classic) and never while editing.</summary>
     public static bool WritesUserCollapsed(SidebarWindowBand band, bool editing, NavPanePolicy? policy = null)
         => !editing && ShellPolicy.NavOr(policy).ForcedModeOf(band) == NavPaneMode.Expanded;

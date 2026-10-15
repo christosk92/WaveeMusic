@@ -203,7 +203,7 @@ public static partial class SettingsVerbs
     /// <summary>Reset the current layout to its authored form, with the sidebar's own undo toast.</summary>
     public static bool ResetSidebarLayout()
     {
-        Sidebar.Dispatch(new ResetLayout(Sidebar.Layout.Peek()),
+        Sidebar.ResetLayoutRecorded(Sidebar.Layout.Peek(),
             FluentGpu.Localization.Loc.Format("sidebar.toast.reset", ("name", Sidebar.LayoutName(Sidebar.Layout.Peek()))));
         return false;
     }

@@ -14,7 +14,7 @@
 //   · Value rules (BP 1.6): an unknown or out-of-range legacy value becomes the option default (the step simply does not
 //     copy it); a renamed option starts at its default; a removed choice becomes the default.
 //
-// T1 shipped the machinery; each M-PR registers its step in `Steps` (M3 row density, M4 hide track art, M6 colour washes, M7a sidebar, M8 detail layout and rails, M12 panel sizes, M13 library columns, M2 track row style). It runs from `Platform.Boot` right after `ZoomAutoPolicy.MigrateMode`
+// T1 shipped the machinery; each M-PR registers its step in `Steps` (M3 row density, M4 hide track art, M6 colour washes, M7a sidebar, M8 detail layout and rails, M12 panel sizes, M13 library columns, M2 track row style, M7b sidebar pane and Library view). It runs from `Platform.Boot` right after `ZoomAutoPolicy.MigrateMode`
 // and before anything reads a presentation setting. WVTH010 keeps legacy key names and deleted member names inside this file.
 
 namespace Wavee.Theming;
@@ -93,6 +93,47 @@ public static class ThemeBootstrap
                     static v => (!float.IsNaN(v), v));
     }
 
+    /// <summary>M7b: the sidebar pane's expanded width and the user's collapse, and Your Library's list/grid view, now Classic's theme STATE
+    /// (`theme.classic.state.paneWidth` / `.paneCollapsed` / `.libraryView`, `Sidebar.PaneWidthKey` and friends). The width and the collapse were settings; the
+    /// view lived in the device file (`sidebar.json`: `layouts.library.sections[id=library].view`, "list" or "grid"), which the step reads with a plain JSON read and never
+    /// touches. A width outside the pane's range is copied as it is (the state key clamps on every read, as the old reader did).</summary>
+    private static readonly SettingKey<float> LegacyPaneWidth = new("sidebar.pane.width", 320f);
+    private static readonly SettingKey<float> PaneWidthKey = new("theme.classic.state.paneWidth", 320f);
+    private static readonly SettingKey<bool> LegacyPaneCollapsed = new("sidebar.pane.userCollapsed", false);
+    private static readonly SettingKey<bool> PaneCollapsedKey = new("theme.classic.state.paneCollapsed", false);
+    private static readonly SettingKey<int> LibraryViewKey = new("theme.classic.state.libraryView", 0);
+
+    /// <summary>The folder of the sidebar's device file (`sidebar.json`) for the "SidebarLibraryView" step. Null (the default) reads no file: a unit test or a demo
+    /// (`--fake`) never reads a real profile. `Platform.Boot` sets it to the profile's sidebar folder before running the steps.</summary>
+    public static string? SidebarFolder { get; set; }
+
+    /// <summary>The device file's Library view as the state's int (List 0, Grid 1), or null when the file, the section or the member is absent or not
+    /// one of the two words (the default applies). The file is the sidebar's device file under <paramref name="profileDir"/>.</summary>
+    public static int? ReadLegacyLibraryView(string profileDir)
+    {
+        string path = Path.Combine(profileDir, "sidebar.json");
+        if (!File.Exists(path)) return null;
+        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(path));
+        if (!doc.RootElement.TryGetProperty("layouts", out var layouts) || !layouts.TryGetProperty("library", out var library)
+            || !library.TryGetProperty("sections", out var sections) || sections.ValueKind != System.Text.Json.JsonValueKind.Array) return null;
+        foreach (var section in sections.EnumerateArray())
+        {
+            if (!section.TryGetProperty("id", out var id) || id.ValueKind != System.Text.Json.JsonValueKind.String || id.GetString() != "library") continue;
+            if (!section.TryGetProperty("view", out var view) || view.ValueKind != System.Text.Json.JsonValueKind.String) return null;
+            return view.GetString() switch { "list" => 0, "grid" => 1, _ => null };
+        }
+        return null;
+    }
+
+    /// <summary>Copies the device file's Library view into the state key when that key is absent. A file that cannot be read throws (the step then
+    /// runs again next launch); a null <paramref name="profileDir"/> reads nothing.</summary>
+    public static void CopyLibraryView(IAppSettings s, string? profileDir)
+    {
+        ArgumentNullException.ThrowIfNull(s);
+        if (profileDir is null || s.Has(LibraryViewKey.Name)) return;
+        if (ReadLegacyLibraryView(profileDir) is { } view) s.Set(LibraryViewKey, view);
+    }
+
     /// <summary>The steps shipped in this build: each migration PR appends its own.</summary>
     public static IReadOnlyList<ThemeBootstrapStep> Steps { get; } =
     [
@@ -146,6 +187,16 @@ public static class ThemeBootstrap
         new ThemeBootstrapStep("TrackRowStyle",
             ReadsLegacyKeys: ["detail.rowstyle"], WritesKeys: ["theme.classic.structure.rowStyle"],
             Run: static s => Copy(s, LegacyRowStyle, RowStyleOptionKey, static v => (v is 0 or 1, v))),
+        // M7b sidebar pane: the width and the collapse a user left carry over to the Classic theme's state, and so does the Library's list/grid choice.
+        new ThemeBootstrapStep("SidebarPaneWidth",
+            ReadsLegacyKeys: ["sidebar.pane.width"], WritesKeys: ["theme.classic.state.paneWidth"],
+            Run: static s => Copy(s, LegacyPaneWidth, PaneWidthKey, static v => (!float.IsNaN(v), v))),
+        new ThemeBootstrapStep("SidebarPaneCollapsed",
+            ReadsLegacyKeys: ["sidebar.pane.userCollapsed"], WritesKeys: ["theme.classic.state.paneCollapsed"],
+            Run: static s => Copy(s, LegacyPaneCollapsed, PaneCollapsedKey)),
+        new ThemeBootstrapStep("SidebarLibraryView",
+            ReadsLegacyKeys: [], WritesKeys: ["theme.classic.state.libraryView"],
+            Run: static s => CopyLibraryView(s, SidebarFolder)),
     ];
 
     /// <summary>The setting name of a step's done marker.</summary>

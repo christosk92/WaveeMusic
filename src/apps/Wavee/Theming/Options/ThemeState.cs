@@ -5,6 +5,8 @@
 // an older build or a hand-edited store can never put a theme out of its bounds. Switching themes switches the scope; the
 // values of the other themes stay where they are.
 
+using FluentGpu.Signals;
+
 namespace Wavee.Theming;
 
 /// <summary>One state value of a theme: its id, default and the range it is clamped to (ignored for strings).</summary>
@@ -13,19 +15,23 @@ public readonly record struct StateKey<T>(string Id, T Default, T Min, T Max);
 /// <summary>Reads and writes <see cref="StateKey{T}"/> values of the active theme.</summary>
 public static class ThemeState
 {
-    private static string s_scope = ThemeCatalog.FallbackId;
+    private static readonly Signal<string> s_scope = new(ThemeCatalog.FallbackId);
+
+    /// <summary>The theme whose state is read and written now. A core host that mirrors a state value into a live signal (the sidebar's pane width)
+    /// follows this to re-read when the active theme changes.</summary>
+    public static IReadSignal<string> Scope => s_scope;
 
     /// <summary>The setting name of a state key of <paramref name="themeId"/>.</summary>
     public static string SettingName(string themeId, string keyId) => "theme." + themeId + ".state." + keyId;
 
     /// <summary>Points the state at <paramref name="themeId"/>. Called by <c>Themes</c> when the active theme changes.</summary>
-    internal static void Bind(string themeId) => s_scope = themeId;
+    internal static void Bind(string themeId) => s_scope.SetIfChanged(themeId);
 
     /// <summary>The state value of the active theme (the default when nothing valid is stored).</summary>
-    public static T Get<T>(StateKey<T> key) => Get(key, Platform.Settings, s_scope);
+    public static T Get<T>(StateKey<T> key) => Get(key, Platform.Settings, s_scope.Peek());
 
     /// <summary>Stores the state value of the active theme, clamped.</summary>
-    public static void Set<T>(StateKey<T> key, T value) => Set(key, value, Platform.Settings, s_scope);
+    public static void Set<T>(StateKey<T> key, T value) => Set(key, value, Platform.Settings, s_scope.Peek());
 
     /// <summary>As <see cref="Get{T}(StateKey{T})"/> over <paramref name="settings"/> for <paramref name="themeId"/>.</summary>
     public static T Get<T>(StateKey<T> key, IAppSettings settings, string themeId)

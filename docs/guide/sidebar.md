@@ -33,7 +33,7 @@ SidebarProjectionInput (binder) ────────────────
 - **`SidebarCatalogue`** (`Shell/Sidebar.Layout.cs`) says what each layout can hold: the section kinds
   (`SidebarSectionKind`), their default state, and what is locked.
 - **`SidebarLayoutState`** holds two `LayoutOverlay`s, one per layout. An overlay stores only what the user changed
-  (order, hidden, collapsed, limit, item order, library sort and view).
+  (order, hidden, collapsed, limit, item order, library sort; the list/grid view is the theme's state, not the overlay's).
 - **`SidebarOp`** is every edit: a record per action, applied by **`SidebarLayoutRules.Apply`**. Nothing else
   writes the overlays.
 - **`SidebarLayoutDoc`** is what the planner reads: the resolved section list for the current layout.
@@ -120,10 +120,16 @@ recomputed, never saved over. The overlay pane slides over the page; the pane an
 Two JSON files and one store class:
 
 - **`sidebar.json`** (v3, device-wide): the two layout overlays (per-section shown/collapsed/limit/hidden items/item
-  order, Library's sort, view and Liked toggle). Its DTO is `SidebarDeviceFileDto`.
-- **`settings.json`** keys (device-wide, `Platform.Keys`): the pane width
-  (`sidebar.pane.width`), the user's collapse (`sidebar.pane.userCollapsed`) and Your Library's chip
-  (`sidebar.library.filter`).
+  order, Library's sort and Liked toggle). Its DTO is `SidebarDeviceFileDto`. An older file's `"view"` member is ignored on read
+  (the `SidebarLibraryView` bootstrap step copied it to the theme state once) and not written again.
+- **`settings.json`** keys (device-wide, `Platform.Keys`): Your Library's chip (`sidebar.library.filter`).
+- **The pane width, the user's collapse and Your Library's list/grid view are the active theme's state** (M7b):
+  `theme.<id>.state.paneWidth` / `.paneCollapsed` / `.libraryView` (`ThemeState`, keys declared on `Sidebar`:
+  `PaneWidthKey`, `PaneCollapsedKey`, `LibraryViewKey`). `Sidebar.Boot` reads them, `Sidebar.Apply` and
+  `Sidebar.SetLibraryView` write them, and the frame's effect calls `Sidebar.FollowThemeState` when the active theme
+  changes. The old `sidebar.pane.width` / `.userCollapsed` and the `view` member of `sidebar.json` were copied once by
+  `ThemeBootstrap`. The view is an undoable ring entry of its own (`SidebarUndoKind.View`) and part of "Reset layout"
+  (`Sidebar.ResetLayoutRecorded`).
 - **The layout and the density are the structure's options, not sidebar keys** (M7a): Classic's `structure.sidebar` and
   `structure.libraryDensity` (`theme.classic.structure.sidebar` / `.libraryDensity` in `settings.json`; the old
   `sidebar.layout.id` and `sidebar.pane.density` are copied once by `ThemeBootstrap` and then ignored). The structure
@@ -148,7 +154,7 @@ Example of `sidebar.json` (shape only, values abbreviated):
   "v": 3,
   "layouts": {
     "classic": { "sections": [ { "id": "home" }, { "id": "pinned", "collapsed": true } ] },
-    "library": { "sections": [ { "id": "library", "sort": "recents", "view": "list", "showLiked": true } ] }
+    "library": { "sections": [ { "id": "library", "sort": "recents", "showLiked": true } ] }
   }
 }
 ```
