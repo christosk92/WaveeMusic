@@ -79,13 +79,13 @@ internal static partial class ClassicLibraryPage
         var search = p.Search!;
         int albumCount = search.ArtistAlbumHits().Count;
         var trackRows = TrackRows(search);
-        Element albumPane = ReadingPane with
+        Element albumPane = Section with
         {
             Key = "s:albums", Basis = p.MidW().Value, MinWidth = p.RailOpen ? ClassicLibraryRules.SearchAlbumsMinRailOpen : ClassicLibraryRules.SearchAlbumsMin,
             MaxWidth = p.MidW().Value, Shrink = 1f, Grow = 0f,
             Children = [FacetHeader(Loc.Get(Strings.Search.Albums), p.Shimmer ? -1 : albumCount, p.Awaiting), AlbumHits(p, explain: false)],
         };
-        Element trackPane = ReadingPane with
+        Element trackPane = Section with
         {
             Key = "s:tracks", Grow = 1f, Basis = 0f, MinWidth = ClassicLibraryRules.SearchTracksMin, Shrink = 1f,
             Children = [FacetHeader(Loc.Get(Strings.Search.Songs), p.Shimmer ? -1 : trackRows.Length, p.Awaiting),
@@ -104,7 +104,7 @@ internal static partial class ClassicLibraryPage
     static Element SearchAlbumDetail(LibraryPageProps p, PageCache c)
     {
         var rows = TrackRows(p.Search!);
-        return ReadingPane with
+        return Section with
         {
             Key = "s:detail", Grow = 1f, Basis = 0f,
             Children = [FacetHeader(Loc.Get(Strings.Search.Songs), p.Shimmer ? -1 : rows.Length, p.Awaiting),

@@ -5,7 +5,8 @@
 // `LibraryWordRailTests`, `AlbumPaneReadinessTests`). What only a mounted tree can say:
 //
 //   registered   Classic is the registered template of every key
-//   page         the wide arm stands the navigator column, the grip and the pane column keyed as the old tree was; a narrow window writes the collapse signal through
+//   page         the wide arm stands the navigator column, the grip and the pane column keyed as the old tree was, the two columns plain sections on the one card
+//                split by the grip's divider (Y1); a narrow window writes the collapse signal through
 //                the structure's ladder; the collapsed arm stands the crumb bar over a depth-keyed body
 //   album pane   the header skeleton is the stated header band, and its arm is keyed apart from the body so the swap is a crossfade
 //   show pane    the arms are keyed by the ARM (never the show)
@@ -14,6 +15,7 @@ using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Hooks;
 using FluentGpu.Signals;
+using FluentGpu.Theming;
 using Wavee;
 using Wavee.Themes.Classic;
 using Wavee.Theming;
@@ -120,6 +122,25 @@ public sealed class LibraryMountedTests(ShellHost host)
             Assert.True(harness.Contains("lib:detail"));
             Assert.True(harness.Contains("test:pane"));
             Assert.False(harness.Contains("lib:empty"));
+        }, UnderClassic());
+    }
+
+    [Fact]
+    public void The_navigator_and_the_detail_are_plain_sections_on_one_card_split_by_the_divider_grip()
+    {
+        // Y1: no layer rung under the navigator, no card rung under the detail — the content card shows through both, and the 16-DIP grip's
+        // 1-DIP divider is the only thing between them.
+        var state = new PageState();
+        ViewHarness.With(host, ViewKeys.LibraryPage, PageProps(state, selected: true), harness =>
+        {
+            harness.RunFrames(30);
+            var scene = harness.Shell.Host.Scene;
+            Assert.Equal(0f, scene.Paint(harness.Node("lib:nav")).Fill.A);
+            Assert.Equal(0f, scene.Paint(harness.Node("lib:detail")).Fill.A);
+            var grip = harness.Node("lib:grip");
+            Assert.Equal(16f, harness.LocalBounds(grip).W, 0.5f);
+            var hairline = harness.Subtree(grip).Single(n => harness.LocalBounds(n).W is > 0.5f and < 1.5f);
+            Assert.Equal(Tok.StrokeDividerDefault, scene.Paint(hairline).Fill);
         }, UnderClassic());
     }
 

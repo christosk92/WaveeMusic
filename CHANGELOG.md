@@ -12,6 +12,13 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **The library page is one surface, and its controls match the rest of the app.** The library list and the album or
+  artist detail beside it now sit on the same content card, split only by a thin divider, instead of three differently
+  tinted panels; the artist list's "in your library · newest" bar is a plain section too. The artist header's buttons are
+  one row: Play all, Follow, then Shuffle and Open artist page as quiet icon buttons, the same in a narrow window (where
+  Play all used to be a round button). The sidebar library's sort reads "Recents ⌄" (one label and a chevron, no arrows)
+  and keeps its label at the default sidebar width more often. Browse's Top and For you links use the same square-cornered
+  chips as every filter in the app, and Search's "matched title" / "lyrics match" tags use the same small badge as podcasts.
 - **The title bar search widens while you use it, and its suggestions line up with it.** Clicking into the search box
   widens it by up to 80 points, box and text together, without ever covering a tab or your profile picture; it eases back
   when you leave it. The suggestions list is now exactly as wide as the search box and starts at its left edge, instead of

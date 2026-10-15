@@ -6,6 +6,7 @@
 // own track count (`ClassicBrowseCells.StarGrid`) with its empty case, plus the pure half of the cell factories
 // (`BrowseTiles.ToModel` / `FeatureRoute` / `PageRoute`, still core).
 
+using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using Wavee;
@@ -70,9 +71,28 @@ public class BrowseLayoutTests
     public void StarGrid_WithNoCells_IsABareBox()
         => Assert.IsType<BoxEl>(ClassicBrowseCells.StarGrid(3, Spacing.S, Spacing.S, []));
 
+    // ── the link chip (D7) ──────────────────────────────────────────────────────────────────────────────────────────
+
     [Fact]
-    public void TheTopPillsOutrankForYous()
-        => Assert.True(ClassicBrowseRules.WordChipH > ClassicBrowseRules.NameChipH);
+    public void Top_and_For_you_are_the_one_chip_plate_32_tall_radius_4_on_a_link()
+    {
+        // D7: no private pill — Top and For you are the stock chip's unchecked plate (the ToggleButton's own off ramp and geometry) on a link.
+        var off = ToggleButton.DefaultStyle;
+        foreach (var chip in new[]
+                 {
+                     Controls.LinkChip("spotify:page:music", "Music", static () => { }, strong: true),          // Top
+                     Controls.LinkChip("spotify:page:mixes", "Mixes", static () => { }, new BoxEl { Width = 8f }), // For you, with its pip
+                 })
+        {
+            var box = Assert.IsType<BoxEl>(chip);
+            Assert.Equal(32f, box.MinHeight);
+            Assert.Equal(CornerRadius4.All(4f), box.Corners);
+            Assert.Equal(AutomationRole.Hyperlink, box.Role);
+            Assert.Equal(off.OffBackground, box.Fill);
+            Assert.Equal(off.OffHover, box.HoverFill);
+            Assert.Equal(off.Padding, box.Padding);
+        }
+    }
 
     // ── the tile model (0.2.9 BrowseTiles.ToModel) ──────────────────────────────────────────────────────────────────
 

@@ -1,6 +1,6 @@
 // ── Themes/Classic/Structure/Rules/ClassicBrowseRules.cs — the numbers of Classic's Browse views (themes plan 6.1, T10a2; P22) ───────────
 //
-// What `Entities\Browse.Rules.cs`'s `BrowseLayout` and `Entities\Browse.UI.cs` held beside the pictures they size: the five cell densities'
+// What `Entities\Browse.Rules.cs`'s `BrowseLayout` and `Entities\Browse.UI.cs` held beside the pictures they size: the cell densities'
 // heights, the pip, tick and hanging-cover sizes, the corner wash's radial geometry and its hover pair, the Peek cover's rest pose and hover
 // deltas, and the first-frame width the Responsive grids share. They are data, not decisions (WVTH003 allows literals only in `Rules\**`); the
 // column LADDERS are `Rules\Tiers.Browse.cs`, the DECISIONS (the band taxonomy, the page layout, the tile model) stay core and pure.
@@ -17,13 +17,7 @@ public static class ClassicBrowseRules
     /// <summary>First-frame width guess the directory's Responsive grids share before a real measure lands.</summary>
     public const float DirectoryFallbackWidth = 900f;
 
-    /// <summary>Top's pill: the tallest (36), the only one at BodyStrong.</summary>
-    public const float WordChipH = 36f;
-
-    /// <summary>For you's pill, one rung down (32).</summary>
-    public const float NameChipH = 32f;
-
-    /// <summary>The wrapping pill rows' gap.</summary>
+    /// <summary>The wrapping chip rows' gap.</summary>
     public static float ChipGap => Spacing.S;
 
     /// <summary>The 3-DIP left hairline of Bar / Peek, and the section tick of Search's headers.</summary>

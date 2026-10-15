@@ -204,8 +204,8 @@ internal static class ClassicSearchBody
         }
 
         var chips = new List<Element>(2);
-        if ((flags & SearchHitFlags.MatchedTitle) != 0) chips.Add(HeroChip(Loc.Get(Strings.Search.MatchedTitle)));
-        if ((flags & SearchHitFlags.MatchedLyrics) != 0) chips.Add(HeroChip(Loc.Get(Strings.Search.LyricsMatch)));
+        if ((flags & SearchHitFlags.MatchedTitle) != 0) chips.Add(Controls.Chip(Loc.Get(Strings.Search.MatchedTitle)));
+        if ((flags & SearchHitFlags.MatchedLyrics) != 0) chips.Add(Controls.Chip(Loc.Get(Strings.Search.LyricsMatch)));
 
         var copy = new BoxEl
         {
@@ -265,14 +265,6 @@ internal static class ClassicSearchBody
         }.Interactive(Interaction.Card);   // OnClick is set above, so Interactive gives the box the hand (the engine's clickable default)
         return menu is not null && !Controls.IsNullOverlay(ctx.Overlay) ? ContextMenu.Attach(card, ctx.Overlay, menu) : card;
     }
-
-    /// <summary>An outlined capsule — transparent fill, 1px stroke, never filled (parity 18).</summary>
-    static Element HeroChip(string text) => new BoxEl
-    {
-        Shrink = 0f, Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, Spacing.XS), Corners = Radii.FullAll,
-        Fill = ColorF.Transparent, BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault,
-        Children = [R.Type.Eyebrow(text) with { Color = Tok.TextSecondary }],
-    };
 
     // ══ BEST MATCHES, THE PLAYLIST RAIL, THE SONGS GRID (W5, W6, W1) ═════════════════════════════════════════════════
 
