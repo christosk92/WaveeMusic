@@ -45,7 +45,7 @@ public static partial class Shell
         public const float ChromeNameEnterW = 1360f;
 
         /// <summary>The ONE "actions in row" stage — bell · friends · pin enter the trailing island
-        /// TOGETHER at this width. 1200, not the old friends-only 1000: three 44-DIP buttons plus the theme toggle
+        /// TOGETHER at this width. 1200, not the old friends-only 1000: three 44-DIP buttons
         /// would starve the search field of a 1000-wide window with two tabs. Below it every one of the three FOLDS
         /// rather than vanishing — bell and friends become profile-menu rows, and pin simply drops from the row (the
         /// tab/page context menu still offers it).
@@ -116,10 +116,6 @@ public static partial class Shell
         /// <summary>The caption cluster: 3 × 46.</summary>
         public const float ChromeCaptionClusterW = 138f;
 
-        /// <summary>The permanent theme toggle immediately before the native caption buttons — a real bar-nav island
-        /// button (40 + 2+2), not the old hand-rolled 32-DIP box.</summary>
-        public const float ChromeThemeToggleW = 44f;
-
         /// <summary>Reserved on EACH flank of the centre island so the search never butts against the tab strip or the
         /// identity cluster. The bar's two grow bands split the real leftover between them; this is only the floor
         /// that keeps the two clusters from touching when the row is full.</summary>
@@ -142,6 +138,13 @@ public static partial class Shell
         public const float ChromeSearchMaxW = 420f;
         public const float ChromeSearchMinW = 280f;
         public const float ChromeSearchWidthRatio = 0.28f;
+
+        /// <summary>What the focused field grows by (tuned F6: +80 on focus), and the clearance it keeps inside the room
+        /// between the tabs and the trailing island (<c>min(rest + 80, room − 12)</c>), so it never covers a tab or the avatar.</summary>
+        public const float ChromeSearchFocusGrowW = 80f;
+
+        /// <inheritdoc cref="ChromeSearchFocusGrowW"/>
+        public const float ChromeSearchFocusClearW = 12f;
 
         /// <summary>The MINIMUM GUARANTEED form of the search: a magnifier that CLICK-expands, styled as a bar-nav
         /// island button (40 + 2+2). Tabs are measured against THIS, not against the field — the search yields all the
@@ -206,7 +209,13 @@ public static partial class Shell
         // and held across resolves with a WIDEN-IMMEDIATELY / NARROW-AFTER-hysteresis shape: the OPPOSITE polarity
         // from the boolean stages below (which promote late, demote at once), because here it is GROWTH that must
         // never clip a longer title and SHRINKING that must not reclaim space only to hand it straight back.
-        float LeadClusterW)
+        float LeadClusterW,
+        // The width the FIELD is laid out at while it has focus or its suggestions are open (tuned F6): the rest width plus the
+        // budget's focus growth, held inside the room between the tabs island and the trailing island less the focus clearance,
+        // and never below the rest width. The room counts the RESERVED tab cluster, so widening spends only the two drag bands
+        // and the tabs never move. Focus is not an input to Resolve: focusing the field never republishes the allocation.
+        // In the icon form it is the icon's own width.
+        float SearchExpandW = 0f)
     {
         /// <summary>Below the threshold: bell and friends become profile-menu rows (pin simply drops — the tab/page
         /// context menu still offers it).</summary>
@@ -305,7 +314,7 @@ public static partial class Shell
                  - RequiredTabExtent(naturalTabExtent, b);
         }
 
-        /// <summary>The width a FIELD is actually laid out at, given the bar's measured centre-column width. This is the
+        /// <summary>The width a FIELD is actually laid out at (at rest; <see cref="FocusedFieldWidth"/> while focused). This is the
         /// ONLY width computation a mounted field view may call — it never reads <see cref="SearchMode"/> and so it
         /// cannot answer 44, even when fed the icon form's own <see cref="SearchWidth"/> (<see cref="SearchWidthFor"/>
         /// publishes exactly 44 there): the clamp below floors it straight back up to
@@ -317,18 +326,24 @@ public static partial class Shell
         /// one-way ratchet with no floor: one transient measurement (a mount-order frame, a mode flip, a frame where
         /// the animating tabs lane overran the row) latches the field at that width forever, because the only thing
         /// that could raise <c>avail</c> again is the field it already shrank. That is the clipped "Sear" stub.</para>
-        /// <para>The rule: the ALLOCATOR is authoritative — it has already proved the lane can seat
-        /// <see cref="Layout.ChromeSearchMinW"/>. A measurement is honoured only while it is itself at least that
-        /// minimum (so it can still trim a field the row narrowed under, which is real), and the result never leaves
-        /// [min, max]. A measurement below the minimum is evidence the measurement is wrong, not the ladder. (#88)</para></summary>
-        public static float FieldWidthFor(float searchWidth, float measuredCentreAvail, ChromeBudget? budget = null)
+        /// <para>The rule: the ALLOCATOR is authoritative — it has already proved the row seats the published width
+        /// (<c>FixedBudget + SearchWidth + RequiredTabExtent ≤ width</c>), and the result never leaves [min, max]. No
+        /// measurement is read at all. #88 still honoured one at or above the minimum, to trim a field the row narrowed under;
+        /// that was the same ratchet one floor up: after one narrower frame the field never WIDENED again (a window grown
+        /// from 1180 to 1440 kept a 330 field where the allocation said 400). Tuned F6 drops it: the box follows the
+        /// allocation in both directions.</para></summary>
+        public static float FieldWidthFor(float searchWidth, ChromeBudget? budget = null)
         {
             var b = ShellPolicy.BudgetOr(budget);
-            float w = Math.Clamp(searchWidth, b.SearchMinW, b.SearchMaxW);
-            if (float.IsFinite(measuredCentreAvail) && measuredCentreAvail >= b.SearchMinW)
-                w = MathF.Min(w, MathF.Min(measuredCentreAvail, b.SearchMaxW));
-            return w;
+            return Math.Clamp(searchWidth, b.SearchMinW, b.SearchMaxW);
         }
+
+        /// <summary>The width the FOCUSED field is laid out at (tuned F6): the allocator's <see cref="SearchExpandW"/>, never
+        /// below the rest width <paramref name="restW"/> (<see cref="FieldWidthFor"/>). Like the rest width it reads no
+        /// measurement: the allocator already bounded <paramref name="expandW"/> by the room the row has. A non-finite allocation
+        /// keeps the rest width.</summary>
+        public static float FocusedFieldWidth(float expandW, float restW)
+            => float.IsFinite(expandW) ? MathF.Max(expandW, restW) : restW;
 
         /// <summary>The row's non-tab, non-search DIPs. <paramref name="actionsInRow"/> reserves THREE nav buttons at
         /// once (bell, friends, pin) REGARDLESS of whether pin actually applies to the current destination:
@@ -340,7 +355,6 @@ public static partial class Shell
         {
             var b = ShellPolicy.BudgetOr(budget);
             return b.BarLeadW
-                 + b.ThemeToggleW
                  + (back ? b.NavButtonW : 0f)
                  + (forward ? b.NavButtonW : 0f)
                  + (newTab ? b.AddSlotW : 0f)
@@ -433,9 +447,22 @@ public static partial class Shell
             float? previousLeadClusterW, ChromeBudget b)
         {
             float searchWidth = SearchWidthFor(width, naturalTabExtent, in stage, chip, b);
+            float lead = LeadClusterFor(width, naturalTabExtent, in stage, chip, searchWidth, previousLeadClusterW, b);
             return new Chrome(stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing, chip,
-                stage.Field ? MergedSearchMode.Field : MergedSearchMode.Icon, searchWidth,
-                LeadClusterFor(width, naturalTabExtent, in stage, chip, searchWidth, previousLeadClusterW, b));
+                stage.Field ? MergedSearchMode.Field : MergedSearchMode.Icon, searchWidth, lead,
+                stage.Field ? ExpandWidthFor(width, in stage, chip, searchWidth, lead, b) : searchWidth);
+        }
+
+        /// <summary>The focused field's width (tuned F6): <c>min(rest + grow, room − clear)</c>, quantised down, never below the
+        /// rest width. The ROOM is the span the centre column and its two drag bands share: the window less the fixed budget
+        /// (whose two gutter floors are given back, they ARE that span) and less the reserved tab cluster.</summary>
+        static float ExpandWidthFor(float width, in Stage stage, FrameRules.ChipForm chip, float searchWidth, float lead, ChromeBudget b)
+        {
+            if (b.SearchFocusGrowW <= 0f) return searchWidth;
+            float room = width - FixedBudget(stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing, chip, b)
+                       + 2f * b.GutterMinW - lead;
+            float expand = QuantiseDown(MathF.Min(searchWidth + b.SearchFocusGrowW, room - b.SearchFocusClearW), b);
+            return MathF.Max(searchWidth, expand);
         }
 
         /// <summary>The field is sized to the LANE, capped by the desire and floored at the minimum — so the published

@@ -454,13 +454,15 @@ public sealed class ThemeCatalogTests : IDisposable
     }
 
     [Fact]
-    public void ContractVersion_IsOnePointOne_AndRefusesAnythingElse()
+    public void ContractVersion_IsOnePointTwo_AndRefusesAnythingElse()
     {
-        // 1.1 (tuned Classic CT4): LyricsState.Offline + LyricsLinesStyle.Offline, PlayerBarSlots.VideoSplit. A 1.0 theme still runs.
-        Assert.Equal("1.1", ContractVersion.Text);
+        // 1.1 (tuned Classic CT4): LyricsState.Offline + LyricsLinesStyle.Offline, PlayerBarSlots.VideoSplit.
+        // 1.2 (tuned Classic CT1c): the omnibar model's focused-field facts. A 1.0 theme still runs.
+        Assert.Equal("1.2", ContractVersion.Text);
         Assert.True(ContractVersion.IsCompatible(1, 0));
         Assert.True(ContractVersion.IsCompatible(1, 1));
-        Assert.False(ContractVersion.IsCompatible(1, 2));
+        Assert.True(ContractVersion.IsCompatible(1, 2));
+        Assert.False(ContractVersion.IsCompatible(1, 3));
         Assert.False(ContractVersion.IsCompatible(2, 0));
         Assert.False(ContractVersion.IsCompatible(0, 0));
     }

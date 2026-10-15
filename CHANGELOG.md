@@ -12,6 +12,11 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **The title bar search widens while you use it, and its suggestions line up with it.** Clicking into the search box
+  widens it by up to 80 points, box and text together, without ever covering a tab or your profile picture; it eases back
+  when you leave it. The suggestions list is now exactly as wide as the search box and starts at its left edge, instead of
+  overhanging a narrow box. The light/dark button left the title bar: switch with Settings > Appearance > App mode or the
+  theme row in the profile menu. **Ctrl+,** opens Settings.
 - **Page heads have one title and a small breadcrumb.** A Browse category or section, a Home section and the Concerts pages
   no longer spell their parents out in large dimmed text: the page shows one 40-point title with a small "Home › Browse" trail
   of its parents above it (none when the page is only two levels deep), and the Concerts hub and a concert's page no longer

@@ -279,27 +279,19 @@ public class ShellChromeSearchFieldWidthTests
         Shell.FrameRules.ChipForm.Reconnect, Shell.FrameRules.ChipForm.SignIn,
     ];
 
-    // A field view's own candidate measurements: the stub value the bug actually produced, degenerate inputs a bad
-    // frame could hand back, and a spread either side of the floor and the ceiling.
-    static readonly float[] Measurements =
-        [float.NaN, float.PositiveInfinity, float.NegativeInfinity, -50f, 0f, 40f, 44f, 279f, 280f, 320f, 420f, 10_000f];
-
     [Fact]
     public void A_field_view_is_never_laid_out_below_the_floor_for_any_allocation_the_pressure_allocator_can_produce()
     {
         // Sweeps every width band the allocator resolves to — including the ones that land on `MergedSearchMode.Icon`,
         // exactly the allocation that used to hand a still-mounted `SearchField` the 44-DIP magnifier width. The test
         // calls `Chrome.FieldWidthFor` the same way `SearchField.Render()` now does: it is never told the mode, only
-        // the allocation's own `SearchWidth` and a candidate measurement.
+        // the allocation's own `SearchWidth`.
         foreach (var chip in Chips)
         for (float w = 200f; w <= 2600f; w += 25f)
         {
             var c = Shell.Chrome.Resolve(w, 220f, null, chip);
-            foreach (float measured in Measurements)
-            {
-                float fieldWidth = Shell.Chrome.FieldWidthFor(c.SearchWidth, measured);
-                Assert.InRange(fieldWidth, Shell.Layout.ChromeSearchMinW, Shell.Layout.ChromeSearchMaxW);
-            }
+            float fieldWidth = Shell.Chrome.FieldWidthFor(c.SearchWidth);
+            Assert.InRange(fieldWidth, Shell.Layout.ChromeSearchMinW, Shell.Layout.ChromeSearchMaxW);
         }
     }
 
@@ -315,7 +307,7 @@ public class ShellChromeSearchFieldWidthTests
         Assert.Equal(Shell.MergedSearchMode.Icon, icon.SearchMode);
         Assert.Equal(Shell.Layout.ChromeSearchIconW, icon.SearchWidth);
 
-        float fieldWidth = Shell.Chrome.FieldWidthFor(icon.SearchWidth, measuredCentreAvail: icon.SearchWidth);
+        float fieldWidth = Shell.Chrome.FieldWidthFor(icon.SearchWidth);
         Assert.Equal(Shell.Layout.ChromeSearchMinW, fieldWidth);
     }
 

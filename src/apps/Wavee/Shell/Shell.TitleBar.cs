@@ -52,7 +52,6 @@ public static partial class Shell
         BellUnread = static () => Diagnostics.StoreShot.Presenting.Value ? 0 : Notify.Unread.Value,
         ToggleNotifications = OpenNotificationPanel,
         Pin = CurrentPin,
-        ToggleTheme = static () => Appearance.ToggleMode(),
         Search = SearchProps(),
     };
 
@@ -111,7 +110,7 @@ public static partial class Shell
         Model = s_omnibar,
         TextCell = static () => SearchText,
         FocusTicket = static () => SearchFocusRequest.Value,
-        FieldWidth = static measured => Chrome.FieldWidthFor(ChromeLayout.Value.SearchWidth, measured),
+        FieldWidth = FieldWidthNow,
         Suggestions = new SearchSuggestionSource
         {
             Answer = OmnibarAnswer,
@@ -125,6 +124,17 @@ public static partial class Shell
             PopupBodyMaxHeight = Omnibar.PopupBodyMaxHeight,
         },
     };
+
+    /// <summary>The field's width now (tuned F6): the rest width (<see cref="Chrome.FieldWidthFor"/>), or, while the field has focus
+    /// or its suggestions are open, the allocator's focused width (<see cref="Chrome.FocusedFieldWidth"/>). Reads the allocation and
+    /// the two omnibar facts tracked, so the mounted field re-renders when either moves. No measurement is read: the centre column
+    /// hugs the field, so it is the feedback of this very width (<see cref="Chrome.FieldWidthFor"/>).</summary>
+    static float FieldWidthNow()
+    {
+        var l = ChromeLayout.Value;
+        float rest = Chrome.FieldWidthFor(l.SearchWidth);
+        return s_omnibar.FieldExpanded ? Chrome.FocusedFieldWidth(l.SearchExpandW, rest) : rest;
+    }
 
     /// <summary>The store's state as the popup draws it. Reading it subscribes the reader to the store's version (the popup
     /// re-renders on every change of the request lifecycle). The completions and the rich rows are cut to the visible caps; a rich

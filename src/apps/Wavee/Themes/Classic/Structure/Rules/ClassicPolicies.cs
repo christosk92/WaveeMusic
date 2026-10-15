@@ -94,14 +94,18 @@ public static class ClassicPolicies
 
     /// <summary>The title-bar row: bell, friends and pin from 1200, the profile name from 1360, forward above 520 (all
     /// budget-checked), every fixed affordance at the width the row really lays it out at, a 280-420 search field (28 % of the
-    /// window) that yields to the 44 magnifier, and 110-200 tabs.</summary>
+    /// window) that yields to the 44 magnifier and widens by 80 while focused (12 clear of the tabs and the avatar), and 110-200 tabs.
+    /// No theme toggle: light and dark live in Settings › App mode and the profile menu (tuned F13).</summary>
     public static ChromePolicy Chrome { get; } = new(new ChromeBudget(
         NameEnterW: 1360f, ActionsEnterW: 1200f, ForwardEnterW: 520f, PromotionHysteresisW: 40f,
         BarLeadW: 60f, NavButtonW: 44f, AddSlotW: 32f,
         ProfileChipW: 32f, ConnectingChipW: 90f, SignInChipW: 84f, ReconnectChipW: 100f, ProfileNameW: 90f,
-        MinDragStripW: 48f, CaptionClusterW: 138f, ThemeToggleW: 44f, GutterMinW: 8f,
+        MinDragStripW: 48f, CaptionClusterW: 138f, GutterMinW: 8f,
         WidthQuantumW: 10f, SearchMaxW: 420f, SearchMinW: 280f, SearchWidthRatio: 0.28f, SearchIconW: 44f,
-        TabMaxW: 200f, TabMinW: 110f, PinnedTabW: 40f, TabViewportMinW: 32f));
+        TabMaxW: 200f, TabMinW: 110f, PinnedTabW: 40f, TabViewportMinW: 32f)
+    {
+        SearchFocusGrowW = 80f, SearchFocusClearW = 12f,
+    });
 
     /// <summary>The stage: Compact under 600 wide or from 460 tall (back at 484), Portrait up to 0.80 (back above 0.85),
     /// Ultrawide from 2.00 (back at 1.95).</summary>

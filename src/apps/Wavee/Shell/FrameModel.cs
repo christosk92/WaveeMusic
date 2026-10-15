@@ -135,6 +135,9 @@ public interface IFrameVerbs
     /// <summary>Ctrl+F: ask the omnibar for focus.</summary>
     void FocusSearch();
 
+    /// <summary>Ctrl+,: open Settings.</summary>
+    void OpenSettings();
+
     /// <summary>F11: close the stage / toggle video fullscreen / open the stage, whichever applies.</summary>
     void ToggleFullscreen();
 
@@ -156,6 +159,7 @@ public sealed class FrameVerbs : IFrameVerbs
     public void NewTab() => Shell.OpenTab(new Shell.Route(Shell.RouteKind.Home));
     public void TogglePalette() => Shell.PaletteOpen.Value = !Shell.PaletteOpen.Peek();
     public void FocusSearch() => Shell.FocusSearch();
+    public void OpenSettings() => Shell.GoTo(new Shell.Route(Shell.RouteKind.Settings));
     public void ToggleFullscreen() => Shell.ToggleVideoFullscreen();
     public void Zoom(int direction) => Shell.ZoomStep(direction);
 

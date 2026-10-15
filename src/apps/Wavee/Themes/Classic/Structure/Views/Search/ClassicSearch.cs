@@ -83,10 +83,23 @@ internal static class ClassicSearch
             // field, 44 DIP wide, rendering the placeholder as a clipped "Sear" stub that then latches until a resize, because
             // under the elastic tabs lane the bar's measured centre width is itself a feedback of whatever this field just
             // asked for). `FieldWidth` cannot answer 44: it never reads the form, and it clamps whatever the allocation holds —
-            // including the icon form's own 44 — back up to the field's minimum. The measured centre width may still TRIM the
-            // result (that part is real: the row genuinely narrowed), but it can never take the field below its floor, so the
-            // worst case across a mode flip is a field briefly wider than its lane, never a clipped stub.
-            float width = props.FieldWidth(props.Avail is { } avail ? avail.Value : float.PositiveInfinity);
+            // including the icon form's own 44 — back up to the field's minimum, so the worst case across a mode flip is a field
+            // briefly wider than its lane, never a clipped stub. The core reads no measurement (the centre column hugs this field).
+            //
+            // FOCUSED (tuned F6): while the field has focus or its suggestions are open, `FieldWidth` answers the allocator's focused
+            // width (+80, never closer than 12 to the tabs or the avatar). The box EASES between the two widths as one reflow, so its
+            // text moves with it. Only the focus flip animates: a rest-width change without one (a resize, a tab added) snaps with its
+            // cluster, so the old wider box never overruns the row for the motion's length. A re-render keeps a motion in flight.
+            float width = props.FieldWidth();
+            bool expanded = model.FieldExpanded;
+            var lastExpanded = UseRef(expanded);
+            bool flipped = lastExpanded.Value != expanded;
+            lastExpanded.Value = expanded;
+            var lastWidth = UseRef(width);
+            var motion = UseRef<LayoutTransition?>(null);
+            if (flipped) motion.Value = Design.Reduced ? null : ClassicChromeLayout.FieldWidthMotion;
+            else if (lastWidth.Value != width) motion.Value = null;
+            lastWidth.Value = width;
             // A COLUMN, so the omnibar is STRETCHED to this slot's width (the cross axis). In fill mode it sizes its
             // editor from its own last bounds; in a row its width was its content's width, so one narrow frame (a visit
             // to the search page re-mounts the field) latched it at the query button's ~37 DIP inside a 330-DIP slot:
@@ -94,11 +107,14 @@ internal static class ClassicSearch
             return new BoxEl
             {
                 Key = "chrome-search-field", Direction = 1, Shrink = 0f, Justify = FlexJustify.Center, AlignItems = FlexAlign.Stretch,
-                Width = width,
+                Width = width, Animate = motion.Value,
+                // The settled width re-pushes the title bar's regions (the model counts a settle; the core folds it in).
+                OnBoundsChanged = r => model.ReportFieldWidth(r.W, width),
                 Children =
                 [
-                    Embed.Comp(() => new RichOmnibar(props, parts, ShellPolicy.Now.Chrome.Budget.SearchMaxW,
-                        AutoSuggestBoxSuggestionPresentation.Popup, allowNarrow: false)),
+                    // No fill cap (0): the box above sets the width, and the focused width runs past the rest maximum.
+                    Embed.Comp(() => new RichOmnibar(props, parts, 0f,
+                        AutoSuggestBoxSuggestionPresentation.Popup)),
                 ],
             };
         }
@@ -135,7 +151,7 @@ internal static class ClassicSearch
                         Children =
                         [
                             Embed.Comp(() => new RichOmnibar(props, null, flyoutWidth, AutoSuggestBoxSuggestionPresentation.Inline,
-                                allowNarrow: true, afterChoose: CloseFlyout)),
+                                afterChoose: CloseFlyout)),
                         ],
                     },
                     FlyoutPlacement.BottomEdgeAlignedRight,
@@ -177,7 +193,7 @@ internal static class ClassicSearch
     /// <summary>The real AutoSuggestBox (focus, editing, accessibility, popup lifetime) with Wavee's artwork-aware rows.
     /// The text IS the omnibar's text cell, synced to the route on navigation only.</summary>
     private sealed class RichOmnibar(ShellSearchProps props, TemplateParts? parts, float maxWidth,
-        AutoSuggestBoxSuggestionPresentation presentation, bool allowNarrow, Action? afterChoose = null) : Component
+        AutoSuggestBoxSuggestionPresentation presentation, Action? afterChoose = null) : Component
     {
         // The request in flight for the current generation (this form's slot). A superseding keystroke, a clear and an
         // unmount cancel it; the store drops whatever a cancelled request would have said, so cancelling is only ever a saving.
@@ -233,14 +249,20 @@ internal static class ClassicSearch
 
             var source = props.Suggestions;
             var presenter = new AutoSuggestBoxPresenter(
-                Build: context => ViewSlots.View(ViewKeys.ShellSearchSuggestions, new SearchSuggestionsProps
+                Build: context =>
                 {
-                    Source = source,
-                    Width = context.Width,
-                    Choose = selection => { if (InvokeSelection(selection)) context.Close(); },
-                    Close = context.Close,
-                    AllowNarrow = allowNarrow,
-                }),
+                    var body = ViewSlots.View(ViewKeys.ShellSearchSuggestions, new SearchSuggestionsProps
+                    {
+                        Source = source,
+                        Width = context.Width,
+                        Choose = selection => { if (InvokeSelection(selection)) context.Close(); },
+                        Close = context.Close,
+                    });
+                    // The field form's list holds the field at its focused width while it is open (a row press may take focus).
+                    return presentation == AutoSuggestBoxSuggestionPresentation.Popup
+                        ? Embed.Comp(() => new SuggestionsOpenMark(model, body))
+                        : body;
+                },
                 MoveSelection: delta => model.MoveHighlight(delta),
                 SubmitSelection: () => InvokeSelection(highlight.Peek()),
                 ResetSelection: () => model.ResetHighlight());
@@ -276,9 +298,8 @@ internal static class ClassicSearch
             var answer = source.Answer();
             var state = answer.State;
             int highlighted = source.Highlight.Value;
-            // A FLOOR, not just a fallback: the icon-mode anchor can be 44 DIP wide, and a popup may be wider than its anchor.
-            float measured = props.Width.Value > 0f ? props.Width.Value : ClassicChromeLayout.FallbackPopupWidth;
-            float w = props.AllowNarrow ? measured : MathF.Max(measured, ClassicChromeLayout.PopupMinWidth);
+            // The popup is exactly the box's width and hangs from its left edge (tuned F6: BottomStretch on the field, no floor).
+            float w = props.Width.Value > 0f ? props.Width.Value : ClassicChromeLayout.FallbackPopupWidth;
 
             // No client-side re-filter: the source's fuzzy matching is authoritative; staleness is handled at publish.
             var rows = new List<Element>(answer.Queries.Count + answer.Rows.Count + 1);
@@ -413,7 +434,7 @@ internal static class ClassicSearch
         {
             MinHeight = AutoSuggestBox.ItemMinHeight, AlignItems = FlexAlign.Center,
             Padding = ClassicChromeLayout.QueryRowPadding, Margin = ClassicChromeLayout.RowMargin, Corners = Radii.ControlAll,
-            Role = AutomationRole.MenuItem,
+            Role = AutomationRole.MenuItem, AllowFocusOnInteraction = false,   // the field keeps focus through a press
             Fill = selected ? Tok.FillSubtleSecondary : ColorF.Transparent,
             HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
             OnClick = () => props.Choose(index),
@@ -453,7 +474,21 @@ internal static class ClassicSearch
             };
 
             return Controls.SlotSurface(scope, data, OmnibarRowRules.RowShape)
-                with { Role = AutomationRole.MenuItem, Margin = ClassicChromeLayout.RowMargin };
+                with { Role = AutomationRole.MenuItem, Margin = ClassicChromeLayout.RowMargin, AllowFocusOnInteraction = false };
+        }
+    }
+
+    /// <summary>Marks the field form's suggestions list open while it is mounted (<see cref="OmnibarModel.SuggestionsOpen"/>).</summary>
+    private sealed class SuggestionsOpenMark(OmnibarModel model, Element body) : Component
+    {
+        public override Element Render()
+        {
+            UseLayoutEffect(() =>
+            {
+                model.SuggestionsOpen.SetIfChanged(true);
+                return () => model.SuggestionsOpen.SetIfChanged(false);
+            }, DepKey.Empty);
+            return body;
         }
     }
 

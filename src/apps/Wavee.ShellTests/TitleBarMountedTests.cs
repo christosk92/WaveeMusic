@@ -18,6 +18,7 @@
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Pal;
 using FluentGpu.Signals;
 using Wavee;
 using Wavee.Theming;
@@ -75,6 +76,64 @@ public sealed class TitleBarMountedTests(ShellHost host)
             Resized(shell, 1180f);
             Until(shell, () => !shell.Find("chrome-search-field").IsNull, "the field came back");
             Assert.Equal(Shell.MergedSearchMode.Field, Shell.ChromeLayout.Peek().SearchMode);
+        });
+
+    [Fact]
+    public void The_title_bar_has_no_theme_toggle()
+        => host.Mounted(shell =>
+        {
+            // Tuned F13: light and dark are Settings › App mode and the profile menu.
+            shell.RunFrames(10);
+            Assert.True(shell.Find("chrome-theme-toggle").IsNull);
+        });
+
+    [Fact]
+    public void A_focused_field_eases_eighty_wider_and_back_without_covering_the_tabs()
+        => host.Mounted(shell =>
+        {
+            Resized(shell, 1440f);
+            shell.RunFrames(20);
+            var scene = shell.Host.Scene;
+            var rest = scene.AbsoluteRect(Node(shell, "chrome-search-field"));
+            var layout = Shell.ChromeLayout.Peek();
+            Assert.Equal(layout.SearchWidth, rest.W, 0.5f);
+            Assert.True(layout.SearchExpandW > layout.SearchWidth, "the row has room to widen the field");
+            Assert.True(layout.SearchExpandW <= layout.SearchWidth + Shell.Layout.ChromeSearchFocusGrowW);
+            var before = Shell.OmnibarFactsForTests();
+            try
+            {
+                Shell.SetOmnibarFactsForTests(before with { SearchFocused = true });
+                shell.RunFrames(60);   // the motion settles (Standard)
+                var focused = scene.AbsoluteRect(Node(shell, "chrome-search-field"));
+                var lane = scene.AbsoluteRect(Node(shell, "chrome-tabs-lane"));
+                Assert.Equal(layout.SearchExpandW, focused.W, 0.5f);
+                Assert.True(focused.X >= lane.X + lane.W, "the focused field stays clear of the tabs island");
+                Assert.Equal(rest.X + rest.W / 2f, focused.X + focused.W / 2f, 1f);   // it widens about its centre
+            }
+            finally
+            {
+                Shell.SetOmnibarFactsForTests(before);
+            }
+            shell.RunFrames(60);
+            Assert.Equal(layout.SearchWidth, scene.AbsoluteRect(Node(shell, "chrome-search-field")).W, 0.5f);
+        });
+
+    [Fact]
+    public void Ctrl_comma_opens_settings()
+        => host.Mounted(shell =>
+        {
+            shell.RunFrames(5);
+            shell.Window.QueueInput(new InputEvent(InputKind.Key, default, 0, 0xBC, KeyModifiers.Ctrl));
+            shell.Window.QueueInput(new InputEvent(InputKind.KeyUp, default, 0, 0xBC, KeyModifiers.Ctrl));
+            try
+            {
+                Until(shell, () => Shell.Current.Peek().Kind == Shell.RouteKind.Settings, "Ctrl+, opened Settings");
+            }
+            finally
+            {
+                Shell.GoTo(new Shell.Route(Shell.RouteKind.Home));
+                shell.RunFrames(10);
+            }
         });
 
     /// <summary>WM_SIZE: the window changes size and one synchronous RESIZED paint follows, then frames to rest.</summary>
@@ -146,13 +205,12 @@ public sealed class TitleBarMountedTests(ShellHost host)
             BellUnread = static () => 0,
             ToggleNotifications = static (_, _, _) => { },
             Pin = () => pin,
-            ToggleTheme = static () => { },
             Search = new ShellSearchProps
             {
                 Model = FixtureModel(),
                 TextCell = () => text,
                 FocusTicket = static () => 0,
-                FieldWidth = static measured => Math.Clamp(measured, 280f, 420f),
+                FieldWidth = static () => 330f,
                 Suggestions = Source(SearchAnswerState.Idle),
             },
         };
@@ -211,12 +269,23 @@ public sealed class TitleBarMountedTests(ShellHost host)
 
     // ── the popup body (the suggestions view alone) ──────────────────────────────────────────────────────────────────────────
 
-    static SearchSuggestionsProps Popup(SearchAnswerState state, params string[] queries) => new()
+    static SearchSuggestionsProps Popup(SearchAnswerState state, params string[] queries) => Popup(500f, state, queries);
+
+    static SearchSuggestionsProps Popup(float width, SearchAnswerState state, params string[] queries) => new()
     {
         Source = Source(state, queries),
-        Width = new Signal<float>(500f),
+        Width = new Signal<float>(width),
         Choose = static _ => { },
     };
+
+    [Fact]
+    public void The_popup_is_exactly_as_wide_as_the_box_it_hangs_from()
+        => ViewHarness.With(host, ViewKeys.ShellSearchSuggestions, Popup(280f, SearchAnswerState.Results, "lo-fi"), harness =>
+        {
+            // Tuned F6: no 400-DIP floor under a 280 field; the list is the box's width (and BottomStretch gives its left edge).
+            harness.RunFrames(5);
+            Assert.Equal(280f, harness.AbsoluteBounds(harness.Node("omni-progress")).W, 0.5f);
+        }, UnderClassic());
 
     [Theory]
     [InlineData(SearchAnswerState.Idle)]
