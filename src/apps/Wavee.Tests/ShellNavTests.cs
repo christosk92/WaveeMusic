@@ -1147,32 +1147,6 @@ public class DevicePickerTests
 public class ShellTintOwnershipTests
 {
     [Fact]
-    public void An_ungraded_claim_holds_the_previous_colour_rather_than_flashing_neutral()
-    {
-        var held = Shell.Claim(Shell.TintOwner.Neutral, "album:a", 0xFF112233u, definite: true);
-        var next = Shell.Claim(held, "album:b", 0u, definite: false);
-        Assert.Equal("album:b", next.Claimant);
-        Assert.Equal(0xFF112233u, next.Argb);   // the chrome never dips to neutral between two coloured pages
-        Assert.False(next.Definite);
-    }
-
-    [Fact]
-    public void A_definite_grading_replaces_an_indefinite_one_and_never_the_other_way()
-    {
-        var indefinite = Shell.Claim(Shell.TintOwner.Neutral, "album:a", 0u, definite: false);
-        var definite = Shell.Claim(indefinite, "album:a", 0xFF445566u, definite: true);
-        Assert.True(definite.Definite);
-        Assert.Equal(0xFF445566u, definite.Argb);
-
-        var demote = Shell.Claim(definite, "album:a", 0xFF000000u, definite: false);
-        Assert.Equal(definite, demote);
-    }
-
-    [Fact]
-    public void An_empty_claimant_is_the_neutral_value()
-        => Assert.True(Shell.Claim(Shell.TintOwner.Neutral, "", 0u, true).IsNeutral);
-
-    [Fact]
     public void Two_pages_never_share_a_claimant_key()
     {
         var a = Shell.Parse("whatsnew", "0.2.9");

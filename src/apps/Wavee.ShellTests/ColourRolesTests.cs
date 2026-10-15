@@ -80,7 +80,7 @@ public sealed class ColourRolesTests(ShellHost host)
         });
 
     [Fact]
-    public void A_flip_is_a_colour_only_change_that_moves_the_epoch_and_the_tone_key_together()
+    public void A_flip_is_a_colour_only_change_that_moves_the_epoch_and_not_the_style_epoch()
         => host.Run(() =>
         {
             ThemeDefinition original = Tok.Definition;
@@ -89,17 +89,13 @@ public sealed class ColourRolesTests(ShellHost host)
             try
             {
                 int epoch = Tok.Epoch, style = Tok.StyleEpoch;
-                string before = Palette.ToneKey("album:probe", Tok.Epoch);
 
                 Design.SeedPalette(other);
-                Assert.Equal(epoch + 1, Tok.Epoch);
+                Assert.Equal(epoch + 1, Tok.Epoch);    // X44: the readers that re-derive by the epoch see the flip in its publication
                 Assert.Equal(style, Tok.StyleEpoch);   // the roles did not move: a colour flip is not a transaction
-                string after = Palette.ToneKey("album:probe", Tok.Epoch);
-                Assert.NotEqual(before, after);        // X44: the tone plane of the page is keyed in the same publication
 
                 Design.SeedPalette(kind);
-                Assert.NotEqual(after, Palette.ToneKey("album:probe", Tok.Epoch));
-                Assert.NotEqual(before, Palette.ToneKey("album:probe", Tok.Epoch));   // the epoch only counts up
+                Assert.Equal(epoch + 2, Tok.Epoch);    // the epoch only counts up
             }
             finally { Restore(original, kind); }
         });
@@ -123,7 +119,6 @@ public sealed class ColourRolesTests(ShellHost host)
             try
             {
                 int epoch = Tok.Epoch, style = Tok.StyleEpoch;
-                string before = Palette.ToneKey("playlist:probe", epoch);
 
                 Tok.Use(original with { AppRoles = Recoloured() }, kind);
 
@@ -133,7 +128,6 @@ public sealed class ColourRolesTests(ShellHost host)
                 Assert.Equal(kind == ThemeKind.Light ? ColorF.FromRgba(1, 2, 3) : ColorF.FromRgba(4, 5, 6), R.OnMedia.ScrimRest);
                 Assert.Equal(kind == ThemeKind.Light ? 0.31f : 0.32f, R.Wash.HeroAlpha);
                 Assert.Equal(0.5f, R.Lyrics.ThemePlateAlpha);
-                Assert.NotEqual(before, Palette.ToneKey("playlist:probe", Tok.Epoch));   // a swap that leaves the kind alone still re-keys the plane
 
                 Tok.Use(original, kind);
                 Assert.Same(ClassicRoles.Table, R.Current);

@@ -188,6 +188,18 @@ public class ShellFrameBodyRulesTests
         Assert.False(Shell.FrameRules.ClearsStagePlayable(new Shell.Route(Shell.RouteKind.Module), "spotify:track:x"));
     }
 
+    [Fact]
+    public void A_swap_lands_when_the_shown_route_catches_up_and_at_once_before_the_first_commit()
+    {
+        // Classic tuning D15: the shell material is painted as of this edge, so its colour changes with the page.
+        var home = new Shell.Route(Shell.RouteKind.Home, Tab: 1);
+        var browse = new Shell.Route(Shell.RouteKind.Browse, Tab: 1);
+        Assert.False(Shell.FrameRules.SwapLanded(shown: home, current: browse));               // the leaving page's exit leg
+        Assert.True(Shell.FrameRules.SwapLanded(shown: browse, current: browse));              // the exit leg has run
+        Assert.True(Shell.FrameRules.SwapLanded(shown: Shell.Route.None, current: browse));    // boot: the first frame is final
+        Assert.True(Shell.FrameRules.SwapLanded(shown: home, current: home));                  // a swap reversed inside its exit leg
+    }
+
     [Theory]
     [InlineData(Shell.AuthState.Live, Shell.FrameRules.ChipForm.Profile, false)]
     [InlineData(Shell.AuthState.Connecting, Shell.FrameRules.ChipForm.Connecting, false)]

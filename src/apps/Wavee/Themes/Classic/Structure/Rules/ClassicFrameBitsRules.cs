@@ -24,11 +24,16 @@ internal static class ClassicFrameBitsRules
     /// <summary>The band's padding.</summary>
     public static readonly Edges4 MastheadPadding = new(MastheadFrameX, MastheadFrameTop, MastheadFrameX, 0f);
 
-    /// <summary>The band leaving (a fade-through exit).</summary>
-    public static readonly MotionTokenDef MastheadHide = MotionTokenDef.Eased(Design.Nav.FadeThroughExitMs, Easing.FluentAccelerate, ReducedMotionPolicy.KeepFade);
-
-    /// <summary>The band arriving.</summary>
-    public static readonly MotionTokenDef MastheadShow = MotionTokenDef.Eased(Design.Nav.FadeThroughExitMs, Easing.SmoothOut, ReducedMotionPolicy.KeepFade);
+    /// <summary>The band's swap (tuning F7), on the page swap's own clock: a leaving head EXITS on the exit leg (90 ms, accelerate,
+    /// from the commit) with the leaving body; an arriving head waits that leg out and ENTERS on the enter leg (210 ms, decelerate),
+    /// with the new body. Opacity only: the head sits on the page's column and never travels.</summary>
+    public static LayoutTransition MastheadSwap => new(
+        TransitionChannels.Opacity,
+        TransitionDynamics.Tween(Design.Nav.EnterDurationMs, Easing.FluentDecelerate),
+        Enter: new EnterExit(Opacity: 0f, Active: true),
+        Exit: new EnterExit(Opacity: 0f, Active: true),
+        ExitDynamics: TransitionDynamics.Tween(Design.Nav.ExitDurationMs, Easing.FluentAccelerate),
+        DelayMs: Design.Nav.EnterDelayMs, ExitDelayMs: 0f);
 
     // ── the narrow drawer ───────────────────────────────────────────────────────────────────────────────────────────
 

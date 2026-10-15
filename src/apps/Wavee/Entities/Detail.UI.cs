@@ -730,7 +730,7 @@ public static partial class Detail
             float heroBand = verticalTracks ? _heroHeight.Peek() : pageH * TwoColumnHeroBandFraction;
             Element tone = Palette.PageTonePlane(paletteUrl, fallbackUrl: null, backdropBand: heroBand,
                 pageHeight: pageH, heroOnly: false,
-                key: Palette.ToneKey(routeKey, Tok.Epoch),
+                key: Palette.ToneKey(routeKey),
                 payloadAccent: id.CardAccent);
 
             // ── the notice strip: about the PAGE, read before the content it qualifies; never an error page ──

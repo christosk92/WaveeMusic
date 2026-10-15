@@ -9,9 +9,10 @@
 // a paint budget and not a look, and the cover-colour MATHS (lift, vivid, the page-tone clamp, the hairline solve) is
 // `Platform\ColorScience.cs`. A role here picks WHICH of those a style runs, and at what strength.
 //
-// THE KEYS. A wash or tone plane that is rebuilt by KEY must key on `Tok.Epoch` (kind AND definition), never on the light/dark
-// flag alone: a definition swap that moves a role (a different wash strength) leaves the kind where it was, and a key on the kind
-// would keep the old plane (themes plan 5.4, X44). `Entities\Palette.Host.cs` builds the keys.
+// THE KEYS. A wash or tone plane is keyed on its SURFACE (and a radial wash on its artwork), never on the theme: a light/dark flip
+// or a definition swap that moves a role re-runs the plane's colour in place inside the live cross-fade, which fades every colour
+// consumer, bound fills and gradients included (EP20, Classic tuning F10). A key on `Tok.Epoch` would remount the plane and snap it.
+// `Entities\Palette.Host.cs` builds the keys.
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;

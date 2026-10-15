@@ -267,6 +267,12 @@ public static partial class Shell
                     // The sign-in launch into the tray: the window exists, the tree mounts, nothing paints until the icon
                     // (or a second launch) shows it.
                     StartHidden = startHidden,
+                    // The first frame the user sees is final (Classic tuning F9): the window stays hidden until a frame has
+                    // presented (no bare Mica first) with the setup plate already up when a first run or a re-auth is due, and
+                    // every later show-from-hidden (the tray) repaints first the same way. Entrances seeded on the hidden
+                    // frames start on the first shown one (EP20, F11). The gate's watchdog shows the window regardless.
+                    RevealOnFirstPresent = true,
+                    FirstFrameReady = Setup.Wizard.FirstFrameReady,
                 },
                 new HarnessOptions { Frames = frames, Screenshot = screenshot });
         }
