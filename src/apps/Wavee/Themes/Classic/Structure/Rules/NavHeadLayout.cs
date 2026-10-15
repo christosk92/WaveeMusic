@@ -10,7 +10,7 @@
 namespace Wavee.Themes.Classic;
 
 /// <summary>The constants of Classic's navigation heads.</summary>
-internal static class ClassicNavHeadLayout
+public static class ClassicNavHeadLayout
 {
     // ── the section header ───────────────────────────────────────────────────────────────────────────────────────────
 
@@ -56,6 +56,21 @@ internal static class ClassicNavHeadLayout
     /// <summary>The retry banner's gap between its glyph, its text and its button.</summary>
     public const float BannerGap = 8f;
 
-    /// <summary>The retry banner's text size (the sentence and the button's label).</summary>
-    public const float BannerTextSize = 12f;
+    // ── the retry banner (S10, board `C-Sidebar` state failed): a caution plate under the head's rule, 8 in from the pane
+    //    edges (the head's own 4 plus 4), 4 above and 6 below, padding 10,8, r4; a 16 "!" glyph, the 12/16 sentence (it
+    //    wraps), and a standard Small "Retry" (24 tall). ──
+
+    /// <summary>The banner's inset beyond the head's own pane edge, and its top and bottom margins.</summary>
+    public const float BannerInsetX = 4f, BannerTop = 4f, BannerBottom = 6f;
+
+    /// <summary>The banner's padding.</summary>
+    public const float BannerPadX = 10f, BannerPadY = 8f;
+
+    /// <summary>The banner's glyph: Segoe Fluent Icons U+E783 (the outlined "!" in a circle, absent from the engine's glyph
+    /// table), 16.</summary>
+    public const string BannerGlyph = "";
+    public const float BannerGlyphSize = 16f;
+
+    /// <summary>The longest the banner's sentence runs before it trims (it wraps at narrow widths).</summary>
+    public const int BannerMaxLines = 3;
 }

@@ -286,6 +286,8 @@ public sealed class SidebarAccountFileDto
     public SidebarLocalPinDto[]? Local { get; set; }
     /// <summary>Last-known names of synced pins (design Q9: a pending pin paints its last name, never blank).</summary>
     public Dictionary<string, string>? Names { get; set; }
+    /// <summary>Last-known cover image ids of synced pins (S9: an offline pin keeps its last title AND cover).</summary>
+    public Dictionary<string, string>? Covers { get; set; }
     public string[]? ExpandedFolders { get; set; }
     public long NewReleasesSeenMs { get; set; }
     public SidebarFirstSeenDto[]? FirstSeen { get; set; }
@@ -297,6 +299,7 @@ public sealed class SidebarLocalPinDto
     public string? Kind { get; set; }          // SidebarPinWire.KindName
     public string? Uri { get; set; }
     public string? Name { get; set; }
+    public string? Cover { get; set; }
     public long AddedAtMs { get; set; }
 }
 
@@ -466,6 +469,7 @@ public static class SidebarAccountStore
         var order = new string[data.Pins.Count];
         var local = new List<SidebarLocalPinDto>();
         var names = new Dictionary<string, string>(StringComparer.Ordinal);
+        var covers = new Dictionary<string, string>(StringComparer.Ordinal);
         for (int i = 0; i < order.Length; i++)
         {
             var p = data.Pins[i];
@@ -473,11 +477,12 @@ public static class SidebarAccountStore
             if (PinSyncRules.IsSyncable(p.Id))
             {
                 if (p.Name.Length > 0) names[p.Id] = p.Name;
+                if (p.Cover.Length > 0) covers[p.Id] = p.Cover;
             }
             else local.Add(new SidebarLocalPinDto
             {
                 Id = p.Id, Kind = SidebarPinWire.KindName(p.Kind), Uri = p.Uri.Length > 0 ? p.Uri : null,
-                Name = p.Name.Length > 0 ? p.Name : null, AddedAtMs = p.AddedAtMs,
+                Name = p.Name.Length > 0 ? p.Name : null, Cover = p.Cover.Length > 0 ? p.Cover : null, AddedAtMs = p.AddedAtMs,
             });
         }
         var dto = new SidebarAccountFileDto
@@ -488,6 +493,7 @@ public static class SidebarAccountStore
             Pins = order.Length > 0 ? order : null,
             Local = local.Count > 0 ? local.ToArray() : null,
             Names = names.Count > 0 ? names : null,
+            Covers = covers.Count > 0 ? covers : null,
             ExpandedFolders = data.ExpandedFolders.Count > 0 ? [.. data.ExpandedFolders] : null,
             NewReleasesSeenMs = data.NewReleasesSeenMs,
             FirstSeen = data.FirstSeen.Count > 0 ? [.. data.FirstSeen] : null,
@@ -518,12 +524,13 @@ public static class SidebarAccountStore
                 if (local.TryGetValue(id, out var rec))
                 {
                     if (!SidebarPinWire.TryParseKind(rec.Kind, out var kind)) continue;
-                    pins.Add(new SidebarPin(id, kind, rec.Uri ?? "", rec.Name ?? "", rec.AddedAtMs));
+                    pins.Add(new SidebarPin(id, kind, rec.Uri ?? "", rec.Name ?? "", rec.AddedAtMs) { Cover = rec.Cover ?? "" });
                     continue;
                 }
                 if (!PinSyncRules.IsSyncable(id)) continue;
                 string name = dto.Names is { } n && n.TryGetValue(id, out var cached) ? cached : "";
-                pins.Add(new SidebarPin(id, SidebarPinId.KindOf(id), SidebarPinId.UriOf(id), name, 0L));
+                string cover = dto.Covers is { } c && c.TryGetValue(id, out var cachedCover) ? cachedCover : "";
+                pins.Add(new SidebarPin(id, SidebarPinId.KindOf(id), SidebarPinId.UriOf(id), name, 0L) { Cover = cover });
             }
         data = new SidebarAccountData(key, dto.MigratedToServer, pins, dto.ExpandedFolders ?? [], dto.NewReleasesSeenMs,
             dto.FirstSeen ?? []);

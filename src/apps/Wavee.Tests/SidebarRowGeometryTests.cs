@@ -113,9 +113,43 @@ public sealed class SidebarGeometryKitTests
     [Fact]
     public void LabelWidth_IsThePaneLessTheRowsLadder()
     {
-        // 320 - 8 (list insets) - 0 (indent) - 42 (icon column) - 8 (label gap) - 14 (trailing pad) - 28 (count).
+        // 320 - 8 (list insets) - 0 (indent) - 42 (icon column) - 8 (label gap) - 14 (trailing pad) - 28 (trailing).
         Assert.Equal(220f, SidebarGeometry.LabelWidth(320f, 0, 28f));
         Assert.Equal(220f - 31f, SidebarGeometry.LabelWidth(320f, 1, 28f));
+    }
+
+    [Fact]
+    public void TrailingWidth_CountsEveryPartTheRowLaysOut()
+    {
+        // S8: the cluster is a 6 lead margin, its parts and a 6 gap between them; nothing laid out takes nothing.
+        Assert.Equal(0f, SidebarGeometry.TrailingWidth(false, false, 0f));
+        Assert.Equal(6f + 26f, SidebarGeometry.TrailingWidth(false, false, SidebarGeometry.CountSlot));        // a count slot
+        Assert.Equal(6f + 12f, SidebarGeometry.TrailingWidth(false, true, 0f));                                // the pin mark alone
+        Assert.Equal(6f + 12f + 6f + 26f, SidebarGeometry.TrailingWidth(false, true, SidebarGeometry.CountSlot)); // pin + count
+        Assert.Equal(6f + 12f + 6f + 12f + 6f + 24f,
+            SidebarGeometry.TrailingWidth(true, true, SidebarGeometry.OfflineMarkBox));                        // eq + pin + a mark
+    }
+
+    [Fact]
+    public void A_pinned_row_with_a_count_cuts_its_label_earlier_than_the_count_alone_did()
+    {
+        // S8: the overflow estimate includes the pin mark beside the count, so a name that fits beside a count alone can still
+        // be cut once the pin mark stands next to it — and then it wears its tooltip.
+        string name = new('x', 30);   // 30 × 7 = 210 DIP estimated
+        float countOnly = SidebarGeometry.LabelWidth(320f, 0, SidebarGeometry.TrailingWidth(false, false, SidebarGeometry.CountSlot));
+        float pinAndCount = SidebarGeometry.LabelWidth(320f, 0, SidebarGeometry.TrailingWidth(false, true, SidebarGeometry.CountSlot));
+        Assert.False(SidebarLabelFit.Overflows(name, countOnly));
+        Assert.True(SidebarLabelFit.Overflows(name, pinAndCount));
+    }
+
+    [Fact]
+    public void The_offline_pin_mark_is_the_boards_24_box_and_its_cover_is_quieted()
+    {
+        // Board `C-Sidebar` (state offline): the 24 mark in the pin's place, 12 glyph, the cover at 0.45.
+        Assert.Equal(24f, SidebarGeometry.OfflineMarkBox);
+        Assert.Equal(12f, SidebarGeometry.OfflineMarkGlyph);
+        Assert.Equal(0.45f, SidebarGeometry.OfflineArtOpacity);
+        Assert.Equal("", SidebarGeometry.OfflineGlyph);
     }
 
     // ── the insertion caret's geometry (moved from SidebarDropCueTests with the pictures) ──

@@ -587,6 +587,9 @@
       "playlists": "아직 플레이리스트가 없습니다 — +를 눌러 만드세요"
     },
     "newPlaylist": "내 플레이리스트",
+    "library": {
+      "refreshFailed": "라이브러리를 새로 고치지 못했습니다. 불러온 항목을 표시합니다."
+    },
     "seam": {
       "announceWidth": "사이드바 너비 {width}"
     },
@@ -594,7 +597,8 @@
       "pinTo": "사이드바에 고정",
       "unpin": "사이드바에서 고정 해제",
       "undo": "실행 취소",
-      "emptyHint": "또는 라이브러리 항목의 고정 동작을 사용하세요."
+      "emptyHint": "또는 라이브러리 항목의 고정 동작을 사용하세요.",
+      "offline": "오프라인에서 사용할 수 없음"
     },
     "section": {
       "recentlyPlayed": "최근 재생한 항목",

@@ -49,7 +49,7 @@ public readonly record struct NavReadinessFacts(NavReadiness Tree, NavReadiness 
     public bool AnyFailed => Tree == NavReadiness.Failed || Library == NavReadiness.Failed;
 }
 
-/// <summary>The pure readiness rules: edge state in, readiness out, and the planner's two-state projection of it.</summary>
+/// <summary>The pure readiness rules: edge state in, readiness out, and the planner's projection of it.</summary>
 public static class NavReadinessRules
 {
     /// <summary>The readiness a surface renders for an edge (<see cref="EdgeTableBase.Readiness"/>'s answer): Unknown is Pending,
@@ -67,10 +67,14 @@ public static class NavReadinessRules
          : a == NavReadiness.Pending || b == NavReadiness.Pending ? NavReadiness.Pending
          : NavReadiness.Ready;
 
-    /// <summary>What the row planner reads: Ready, or Pending. A failed source draws as Pending (the skeleton) until a view
-    /// draws the failure, so publishing Failed changes no pixel of today's panes.</summary>
-    public static SidebarSourceState ToPlanner(NavReadiness readiness)
-        => readiness == NavReadiness.Ready ? SidebarSourceState.Ready : SidebarSourceState.Pending;
+    /// <summary>What the row planner reads: Ready, Pending (the skeleton) or Error (S10: a failed source plans no skeleton;
+    /// Your Library's head draws the failure, the Classic Playlists section keeps its skeleton).</summary>
+    public static SidebarSourceState ToPlanner(NavReadiness readiness) => readiness switch
+    {
+        NavReadiness.Ready => SidebarSourceState.Ready,
+        NavReadiness.Failed => SidebarSourceState.Error,
+        _ => SidebarSourceState.Pending,
+    };
 }
 
 // ── the small value shapes ─────────────────────────────────────────────────────────────────────────────────────────────

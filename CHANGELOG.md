@@ -94,6 +94,13 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **The sidebar says what it cannot show.** A sidebar name cut short by the pane now shows in full as a tooltip, also when a
+  pin mark or a count stands beside it, and in the rail's folder and section flyouts. A pinned playlist, album, artist or
+  podcast that cannot load while you are offline keeps its last name and cover, dimmed, with a "Not available offline"
+  mark in place of the pin, instead of turning into a grey "Playlist". When Your Library cannot be refreshed, a banner
+  under its toolbar says "Couldn't refresh your library. Showing what was loaded." with a Retry button (or, if nothing
+  loaded, the error state with Retry), instead of loading forever; the grid view now shows placeholder tiles while it
+  loads instead of an empty pane.
 - **Pages you return to no longer re-flow on their first frame.** When a page is opened again after it left the page
   cache, its width-dependent parts (the artist page's top and biography bands, Home's daylist, facet row and recents grid,
   Browse and Search grids, the concert pages, the track list's command bar and similar) now appear at their final layout

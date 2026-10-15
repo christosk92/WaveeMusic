@@ -1906,6 +1906,35 @@ public class NavRowFactsTests
     }
 
     [Fact]
+    public void An_offline_entity_pin_keeps_its_cached_name_and_is_offline_until_its_identity_lands()
+    {
+        // S9: offline, a cached name is what the pin shows, not proof it resolves: it stays Offline (quieted, "Not available
+        // offline") with its last title; online the same cached name draws the row as before; a landed identity is Resolved.
+        var cached = Entry("pl:x", SidebarEntryKind.Playlist, "Late night", pinned: true);
+        var offline = NavRowFacts.LabelOf(cached, online: false);
+        Assert.Equal("Late night", offline.Label);
+        Assert.Equal(SidebarPinState.Offline, offline.PinState);
+        Assert.False(offline.PlaceholderTitle);
+        Assert.Equal(SidebarPinState.Resolved, NavRowFacts.LabelOf(cached, online: true).PinState);
+        Assert.Equal(SidebarPinState.Resolved,
+            NavRowFacts.LabelOf(Entry("pl:x", SidebarEntryKind.Playlist, "Late night", pinned: true, known: true), online: false).PinState);
+        Assert.Equal(SidebarPinState.Offline,
+            NavRowFacts.LabelOf(Entry("album:y", SidebarEntryKind.Album, "Blue", pinned: true), online: false).PinState);
+    }
+
+    [Fact]
+    public void A_route_or_folder_pin_is_never_offline_when_it_has_a_name()
+    {
+        // The app's own structure needs no connection to name itself.
+        Assert.Equal(SidebarPinState.Resolved,
+            NavRowFacts.LabelOf(Entry("search", SidebarEntryKind.AppRoute, "Search", pinned: true), online: false).PinState);
+        Assert.Equal(SidebarPinState.Resolved,
+            NavRowFacts.LabelOf(Entry("folder:f", SidebarEntryKind.Folder, "Mixes", pinned: true), online: false).PinState);
+        Assert.Equal(SidebarPinState.Unavailable,
+            NavRowFacts.LabelOf(Entry("pl:x", SidebarEntryKind.Playlist, "Old", pinned: true, missing: true), online: false).PinState);
+    }
+
+    [Fact]
     public void An_authoritative_miss_keeps_the_last_known_name_and_marks_the_pin_unavailable()
     {
         var gone = NavRowFacts.LabelOf(Entry("pl:x", SidebarEntryKind.Playlist, "Old name", pinned: true, missing: true), online: true);

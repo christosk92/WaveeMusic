@@ -130,11 +130,18 @@ public sealed class SidebarVisibilityRulesTests
     [Fact]
     public void PinState_PendingOnlineUnknown_UnavailableOnAuthoritativeMiss_OfflineNeutral()
     {
-        Assert.Equal(SidebarPinState.Pending, SidebarPinStateRules.Of(identityKnown: false, authoritativeMiss: false, online: true));
-        Assert.Equal(SidebarPinState.Unavailable, SidebarPinStateRules.Of(identityKnown: false, authoritativeMiss: true, online: true));
-        Assert.Equal(SidebarPinState.Unavailable, SidebarPinStateRules.Of(identityKnown: false, authoritativeMiss: true, online: false));
-        Assert.Equal(SidebarPinState.Offline, SidebarPinStateRules.Of(identityKnown: false, authoritativeMiss: false, online: false));
-        Assert.Equal(SidebarPinState.Resolved, SidebarPinStateRules.Of(identityKnown: true, authoritativeMiss: false, online: false));
+        const SidebarEntryKind pl = SidebarEntryKind.Playlist;
+        Assert.Equal(SidebarPinState.Pending, SidebarPinStateRules.Of(identityKnown: false, named: false, authoritativeMiss: false, online: true, pl));
+        Assert.Equal(SidebarPinState.Unavailable, SidebarPinStateRules.Of(identityKnown: false, named: false, authoritativeMiss: true, online: true, pl));
+        Assert.Equal(SidebarPinState.Unavailable, SidebarPinStateRules.Of(identityKnown: false, named: false, authoritativeMiss: true, online: false, pl));
+        Assert.Equal(SidebarPinState.Offline, SidebarPinStateRules.Of(identityKnown: false, named: false, authoritativeMiss: false, online: false, pl));
+        Assert.Equal(SidebarPinState.Resolved, SidebarPinStateRules.Of(identityKnown: true, named: false, authoritativeMiss: false, online: false, pl));
+        // S9: a cached name is drawn as resolved online, but offline an unresolved entity pin is Offline (its cached title
+        // and cover, quieted); a route or folder pin with a name is the app's own structure and never offline.
+        Assert.Equal(SidebarPinState.Resolved, SidebarPinStateRules.Of(identityKnown: false, named: true, authoritativeMiss: false, online: true, pl));
+        Assert.Equal(SidebarPinState.Offline, SidebarPinStateRules.Of(identityKnown: false, named: true, authoritativeMiss: false, online: false, pl));
+        Assert.Equal(SidebarPinState.Resolved, SidebarPinStateRules.Of(false, true, false, false, SidebarEntryKind.AppRoute));
+        Assert.Equal(SidebarPinState.Resolved, SidebarPinStateRules.Of(false, true, false, false, SidebarEntryKind.Folder));
     }
 
     [Fact]

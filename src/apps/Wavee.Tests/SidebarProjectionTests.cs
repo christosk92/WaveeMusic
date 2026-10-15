@@ -2478,6 +2478,22 @@ public class SidebarBinderPipelineUnlistedPinFacts
         Assert.Equal(0, row.TrackCount);
     }
 
+    [Fact]
+    public void NoHydrationYet_PaintsTheCachedCover_AndHydrationReplacesIt()
+    {
+        // S9: an offline pin keeps its last cover (the caller interns the pin's cached image id); a hydrated identity wins.
+        var pin = new SidebarPin("pl:spotify:playlist:korea", SidebarEntryKind.Playlist, "spotify:playlist:korea",
+            "Top Songs - South Korea", AddedAtMs: 1000) { Cover = "https://i.scdn.co/image/cached" };
+        var cached = Entities.Strings.Intern(pin.Cover);
+
+        var row = SidebarBinderPipeline.ResolveUnlistedPin(pin, sourceOrder: 0, hydrated: null, cachedCover: cached);
+        Assert.Equal(cached, row.Cover);
+
+        var live = Entities.Strings.Intern("https://i.scdn.co/image/live");
+        var hydrated = row with { Cover = live, IdentityKnown = true };
+        Assert.Equal(live, SidebarBinderPipeline.ResolveUnlistedPin(pin, 0, hydrated, cachedCover: cached).Cover);
+    }
+
     /// <summary>THE USER'S ACTUAL STATE (trap 5 follow-up): a pin the ylpin bridge minted with an empty cached
     /// Name (the doc comment on `ResolveUnlistedPin` already names this: "the ylpin bridge mints every non-route
     /// pin with Name = ''"), for a kind that has no hydration yet. The row must carry `IdentityKnown: false` — the

@@ -332,33 +332,26 @@ internal sealed class ClassicLibraryHead(INavLibraryHeadHost s) : Component
         return new BoxEl { Key = "library-empty", Direction = 1, Shrink = 0f, Children = [body] };
     }
 
-    /// <summary>The one-line retry banner (rows present). CARD family: the plate's edge takes the pane edge.</summary>
+    /// <summary>The retry banner (S10: a failed library WITH rows — the rows that loaded stay, the banner says so). A caution
+    /// plate under the rule, 8 in from the pane edges: the "!" glyph, "Couldn't refresh your library. Showing what was loaded."
+    /// (12/16, wrapping) and a standard Small "Retry" that re-asks the failed sources.</summary>
     Element ErrorBanner() => new BoxEl
     {
         Key = "library-error-banner",
         Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicNavHeadLayout.BannerGap, Shrink = 0f,
-        Padding = new Edges4(8f, 6f, 8f, 6f),
-        Margin = new Edges4(0f, 4f, 0f, 4f),
-        Corners = Radii.ControlAll, Fill = Tok.FillSubtleSecondary,
+        Padding = new Edges4(ClassicNavHeadLayout.BannerPadX, ClassicNavHeadLayout.BannerPadY, ClassicNavHeadLayout.BannerPadX, ClassicNavHeadLayout.BannerPadY),
+        Margin = new Edges4(ClassicNavHeadLayout.BannerInsetX, ClassicNavHeadLayout.BannerTop, ClassicNavHeadLayout.BannerInsetX, ClassicNavHeadLayout.BannerBottom),
+        Corners = Radii.ControlAll, Fill = Tok.SystemFillCautionBackground,
+        Role = AutomationRole.InfoBar,
         Children =
         [
-            Icon(Icons.StatusWarning, 12f, Tok.TextSecondary),
-            new TextEl(Loc.Get(Strings.Common.ErrorTitle))
+            Icon(ClassicNavHeadLayout.BannerGlyph, ClassicNavHeadLayout.BannerGlyphSize, Tok.TextPrimary) with { Shrink = 0f },
+            Caption(Loc.Get("sidebar.library.refreshFailed")) with
             {
-                Size = ClassicNavHeadLayout.BannerTextSize, Color = Tok.TextSecondary, Grow = 1f, Basis = 0f, MaxLines = 1,
-                Trim = TextTrim.CharacterEllipsis,
+                Color = Tok.TextPrimary, Grow = 1f, Basis = 0f, MinWidth = 0f, Wrap = TextWrap.Wrap,
+                MaxLines = ClassicNavHeadLayout.BannerMaxLines, Trim = TextTrim.CharacterEllipsis,
             },
-            new BoxEl
-            {
-                Padding = new Edges4(6f, 2f, 6f, 2f), Corners = Radii.ControlAll,
-                Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true,
-                HoverFill = Tok.FillSubtleTertiary,
-                OnClick = s.Lib.Retry,
-                Children =
-                [
-                    new TextEl(Loc.Get(Strings.Common.Retry)) { Size = ClassicNavHeadLayout.BannerTextSize, Weight = 600, Color = Tok.AccentTextPrimary },
-                ],
-            },
+            Button.Create(Loc.Get(Strings.Common.Retry), s.Lib.Retry, ButtonAppearance.Standard, ControlSize.Small) with { Shrink = 0f },
         ],
     };
 }

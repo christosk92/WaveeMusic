@@ -341,9 +341,11 @@ public sealed class NavLibrary
 
     public void CreatePlaylist() => _model.CreatePlaylist();
 
-    /// <summary>The retry banner / error state: invalidate + sync re-runs the contributing reads.</summary>
+    /// <summary>The retry banner / error state (S10): ask every failed source AGAIN (a new ask clears its failure, so the list
+    /// goes back to loading), then invalidate + sync so the projection reads that at once.</summary>
     public void Retry()
     {
+        _model.RetryFailedSources();
         _model.Invalidate();
         _model.Sync();
     }

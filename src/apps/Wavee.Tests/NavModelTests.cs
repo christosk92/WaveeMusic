@@ -56,8 +56,8 @@ public class NavReadinessRulesTests
     [Theory]
     [InlineData(NavReadiness.Ready, SidebarSourceState.Ready)]
     [InlineData(NavReadiness.Pending, SidebarSourceState.Pending)]
-    [InlineData(NavReadiness.Failed, SidebarSourceState.Pending)]   // a failed source draws as today's skeleton until a view draws the failure
-    public void The_planner_reads_a_two_state_projection(NavReadiness readiness, SidebarSourceState expected)
+    [InlineData(NavReadiness.Failed, SidebarSourceState.Error)]   // S10: a failed source plans no skeleton (the head draws it)
+    public void The_planner_reads_the_readiness_as_ready_pending_or_error(NavReadiness readiness, SidebarSourceState expected)
         => Assert.Equal(expected, NavReadinessRules.ToPlanner(readiness));
 
     [Fact]
@@ -328,7 +328,7 @@ public sealed class NavModelProjectionTests : IDisposable
     // ── fixture 6: a failed load ───────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void A_failed_load_is_published_as_failed_while_the_planner_still_sees_pending()
+    public void A_failed_load_is_published_as_failed_and_the_planner_plans_no_skeleton()
     {
         TestScope.Fresh();
         var me = SidebarWiringStage.Me();
@@ -337,7 +337,6 @@ public sealed class NavModelProjectionTests : IDisposable
         Assert.Equal(NavReadinessFacts.Pending, model.Readiness.Peek());
         Assert.False(model.Sync());                       // nothing moved: one fold, no pass
         int inputVersion = model.InputVersion.Peek();
-        int revision = model.Revision;
 
         var edges = Entities.Current.Edges;
         edges.Rootlist.MarkFailed(me.Slot, 0, 503);
@@ -345,15 +344,17 @@ public sealed class NavModelProjectionTests : IDisposable
         edges.FollowedArtists.MarkFailed(me.Slot, 0, EdgeTableBase.Transport);
         edges.SavedShows.MarkFailed(me.Slot, 0, 500);
 
-        Assert.True(model.Sync());                        // a failure is a trigger: it moved Readiness and nothing else
+        Assert.True(model.Sync());                        // a failure is a trigger
         Assert.Equal(new NavReadinessFacts(NavReadiness.Failed, NavReadiness.Failed), model.Readiness.Peek());
         Assert.True(model.Readiness.Peek().AnyFailed);
 
-        // What every pane draws today is untouched: the planner still sees the skeleton, and no version moved.
-        Assert.Equal(SidebarSourceState.Pending, model.Projection.TreeState);
-        Assert.Equal(SidebarSourceState.Pending, model.Projection.LibraryState);
-        Assert.Equal(inputVersion, model.InputVersion.Peek());
-        Assert.Equal(revision, model.Revision);
+        // S10: the planner reads Error (no skeleton), the plan re-publishes, and Your Library's list carries Failed — a
+        // failed kind is not a pending one — which its head draws as the Error vacancy with Retry.
+        Assert.Equal(SidebarSourceState.Error, model.Projection.TreeState);
+        Assert.Equal(SidebarSourceState.Error, model.Projection.LibraryState);
+        Assert.NotEqual(inputVersion, model.InputVersion.Peek());
+        Assert.Equal(FluentGpu.Signals.LoadState.Failed, model.LibraryItems.State);
+        Assert.False(model.LibraryItems.AnyContributingKindPending);
         Assert.False(model.Counts.Known);
 
         // An answer recovers it.
@@ -376,7 +377,7 @@ public sealed class NavModelProjectionTests : IDisposable
         Assert.Equal(new NavReadinessFacts(NavReadiness.Ready, NavReadiness.Failed), model.Readiness.Peek());
         Assert.Equal(NavReadiness.Failed, NavReadinessRules.Worst(model.Readiness.Peek().Tree, model.Readiness.Peek().Library));
         Assert.Equal(SidebarSourceState.Ready, model.Projection.TreeState);
-        Assert.Equal(SidebarSourceState.Pending, model.Projection.LibraryState);
+        Assert.Equal(SidebarSourceState.Error, model.Projection.LibraryState);
     }
 
     // ── the selected route ─────────────────────────────────────────────────────────────────────────────────────────

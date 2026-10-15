@@ -842,7 +842,7 @@ public enum SidebarRowKind : byte
     FolderHeader  = 5,   // a rootlist folder; disclosure in the trailing chevron column
     GridStrip     = 6,   // Library grid: [EntryIndex, ItemCount] cells
     Empty         = 8,   // a quiet one-line hint (an empty Playlists, a search with no match)
-    Skeleton      = 9,   // the source is pending and nothing is known yet
+    Skeleton      = 9,   // the source is pending and nothing is known yet (ItemCount > 0: a grid strip of skeleton tiles)
     TreeEnd       = 14,  // the tree's closing drop gutter
     SectionTile   = 15,  // a collapsed section in the compact rail
     DropBand      = 16,  // empty Pinned while a pinnable drag is live: "Drop here to pin"
@@ -860,7 +860,7 @@ public readonly record struct SidebarRow(
     string SectionId,
     byte Depth,          // 0 top-level, 1 inside a CustomGroup / rootlist folder, 2 deeper folder nesting...
     int EntryIndex,      // index into the plan's entry list; -1 when not applicable
-    int ItemCount,       // GridStrip only: how many entries this strip draws
+    int ItemCount,       // GridStrip: how many entries this strip draws; Skeleton: a grid skeleton strip's tile count (0 = a row)
     string Key);         // the stable reconciler/selection key
 
 /// <summary>The planner's output. <paramref name="Entries"/> is the flattened, per-section-ordered entry slices the
@@ -2541,9 +2541,11 @@ public static class SidebarBinderPipeline
     /// must never disappear), then OVERLAYS <paramref name="hydrated"/> once the binder resolves the handle.
     /// <para>Trap 5: <paramref name="rootlistState"/> defaults to <see cref="EdgeState.Complete"/> — a caller that
     /// does not pass it (every non-folder-pin-state test, and any future caller that genuinely does not care) keeps
-    /// the pre-existing "not found ⇒ missing" behaviour; only a FOLDER pin ever reads it at all.</para></summary>
+    /// the pre-existing "not found ⇒ missing" behaviour; only a FOLDER pin ever reads it at all.</para>
+    /// <para>S9: <paramref name="cachedCover"/> is the pin's last-known cover (<see cref="SidebarPin.Cover"/>, interned by the
+    /// caller), so a pin the session cannot hydrate (offline) keeps the cover it last had; hydration replaces it.</para></summary>
     public static SidebarLibraryEntry ResolveUnlistedPin(SidebarPin pin, int sourceOrder, SidebarLibraryEntry? hydrated,
-        EdgeState rootlistState = EdgeState.Complete)
+        EdgeState rootlistState = EdgeState.Complete, StringId cachedCover = default)
     {
         // A folder pin has no separate hydration path (below) — its ONLY source of truth is the rootlist walk that
         // already ran this rebuild, so "not found" here means "not in the account's rootlist" only once that
@@ -2553,7 +2555,7 @@ public static class SidebarBinderPipeline
         var folderState = folder ? SidebarProjection.ResolveFolderPinState(rootlistState, foundInProjection: false)
                                   : SidebarPinFolderState.Normal;
         var baseEntry = new SidebarLibraryEntry(
-            pin.Id, pin.Kind, pin.Uri, pin.Name, "", StringId.Empty, null,
+            pin.Id, pin.Kind, pin.Uri, pin.Name, "", cachedCover, null,
             ChildCount: 0, AddedAtMs: pin.AddedAtMs, SortStamp: pin.AddedAtMs, LastVisitedTicksUtc: 0,
             SourceOrder: sourceOrder, Depth: 0, Circular: pin.Kind == SidebarEntryKind.Artist,
             Flavor: SidebarPlaylistFlavor.None)
@@ -2721,6 +2723,10 @@ public sealed class SidebarSourceIndex
 /// projection uses.</summary>
 public sealed record SidebarPin(string Id, SidebarEntryKind Kind, string Uri, string Name, long AddedAtMs)
 {
+    /// <summary>The last-known cover image id (S9): part of the same display CACHE as <see cref="Name"/>, so a pin the
+    /// session cannot resolve (offline) still paints the cover it last had. "" until the projection has seen one.</summary>
+    public string Cover { get; init; } = "";
+
     /// <summary>Consumer alias — the pin store keys on <see cref="Id"/>.</summary>
     public string Key => Id;
 

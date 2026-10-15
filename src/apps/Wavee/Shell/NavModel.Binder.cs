@@ -56,7 +56,7 @@ public sealed partial class NavModel
     public IReadSignal<int> BinderEpoch => _epoch;
 
     /// <summary>How far the rootlist and the saved library have answered, a failed ask included. Pending until the first
-    /// rebuild. The planner keeps reading its two-state projection of this (<see cref="NavReadinessRules.ToPlanner"/>).</summary>
+    /// rebuild. The planner reads its projection of this (<see cref="NavReadinessRules.ToPlanner"/>: Ready, Pending or Error).</summary>
     public IReadSignal<NavReadinessFacts> Readiness => _binder.Readiness;
 
     /// <summary>"Not known to be loaded" never presents as "is": a filing against an empty tree lands nowhere.</summary>
