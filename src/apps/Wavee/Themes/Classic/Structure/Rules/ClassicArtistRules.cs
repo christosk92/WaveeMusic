@@ -19,6 +19,11 @@ public static class ClassicArtistRules
     /// <summary>The copy column's floor on the photo tiers, so a narrow Medium hero still sets a readable measure.</summary>
     public const float HeroCopyFloor = 360f;
 
+    /// <summary>The lines the loading hero reserves for the biography's lead (clamped to 2 when loaded). Two, the more common case: at the copy measure
+    /// above (at most ~80 body glyphs a line) a biography's first sentence usually runs past one line; a one-line lead lands 10 DIP up of its bars
+    /// (the copy is centred), a two-line one exactly on them.</summary>
+    public const int HeroLeadSkeletonLines = 2;
+
     /// <summary>The copy column's width. Stacked tiers (no type on the photo) fill the band up to the tier's maximum. The photo tiers
     /// take <c>min(CopyMax, max(360, 0.56 w - gutter))</c>, so the copy ends near 56 % of the hero instead of running to 95 % of it
     /// over the bright half of the photo.</summary>

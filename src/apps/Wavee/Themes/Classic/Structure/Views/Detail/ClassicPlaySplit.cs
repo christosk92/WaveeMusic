@@ -158,7 +158,7 @@ internal static partial class ClassicDetailKit
 
     // ══ THE ACTION ROW ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>How many buttons <see cref="FixedActions"/> lays out for the same inputs: the vertical hero's skeleton reserves exactly these
+    /// <summary>How many buttons <see cref="FixedActions"/> lays out for the same inputs: the vertical hero's skeleton and the rail's reserve exactly these
     /// (tuned Classic X2), so a page without a heart or a link does not shimmer a square it never draws.</summary>
     public static int FixedActionCount(Detail.Identity id, bool heart, Detail.FrameActions acts)
         => (acts.Shuffle is not null ? 1 : 0) + (heart ? 1 : 0) + (ShareActionFor(id) is not null ? 1 : 0) + (acts.More is not null ? 1 : 0);

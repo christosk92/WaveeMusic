@@ -8,7 +8,9 @@
 //   page         the wide arm stands the navigator column, the grip and the pane column keyed as the old tree was, the two columns plain sections on the one card
 //                split by the grip's divider (Y1); a narrow window writes the collapse signal through
 //                the structure's ladder; the collapsed arm stands the crumb bar over a depth-keyed body
-//   album pane   the header skeleton is the stated header band, and its arm is keyed apart from the body so the swap is a crossfade
+//   album pane   the header skeleton is the stated header band, and its arm is keyed apart from the body so the swap is a crossfade; the
+//                counted shimmer stands on the row style's own rows and header (tuned Classic X2)
+//   grid view    the navigator's shimmer is the grid's cards at the fitted grid's cells, not rows (tuned Classic X2)
 //   show pane    the arms are keyed by the ARM (never the show)
 
 using FluentGpu.Controls;
@@ -215,6 +217,62 @@ public sealed class LibraryMountedTests(ShellHost host)
             Assert.True(harness.Contains("pane:7"));
             Assert.False(harness.Contains("paneskel:7"));
         }, UnderClassic());
+
+    /// <summary>Tuned Classic X2: the counted shimmer is the row style's (a Classic pane used to shimmer Modern's 48 rows under Modern's 36 header for
+    /// its 40 ones under a 32 header), and a Classic compilation's header carries its Artist lane.</summary>
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void The_counted_shimmer_stands_on_the_row_styles_own_rows_and_header(bool classic, bool compilation)
+    {
+        var rows = TrackRowMetrics.Standard;
+        float rowH = classic ? rows.ClassicRow : rows.ModernRow;
+        var props = AlbumProps(AlbumPaneState.Rows) with { RowHeight = rowH, Columns = Track.EmbeddedColumns(classic, compilation) };
+        ViewHarness.With(host, ViewKeys.LibraryAlbumPane, props, harness =>
+        {
+            harness.RunFrames(60);
+            var head = harness.AbsoluteBounds(harness.Node("header:shim"));
+            var first = harness.AbsoluteBounds(harness.Node("sh:0"));
+            var second = harness.AbsoluteBounds(harness.Node("sh:1"));
+            Assert.Equal(Track.TableRules.HeaderHeightFor(classic) + 1f, head.H, 0.5f);   // the band and its hairline
+            Assert.Equal(head.Y + head.H, first.Y, 0.5f);
+            Assert.Equal(rowH, first.H, 0.5f);
+            Assert.Equal(first.Y + rowH, second.Y, 0.5f);
+            Assert.Equal(classic && compilation, harness.Contains(Track.CellKey.Artist));
+        }, UnderClassic());
+    }
+
+    /// <summary>Tuned Classic X2: a grid view's loading shimmer is the grid's cards at the fitted grid's own cells (it drew list rows): the column count
+    /// and the cell width are the GridFit formula over the list's inner width, each card the fill-width cover in its 8 padding and, outside the compact
+    /// grid, 8 and the 16 title line.</summary>
+    [Theory]
+    [InlineData(3, 1)]   // grid, M
+    [InlineData(2, 0)]   // compact grid, S
+    public void The_grid_views_shimmer_draws_the_grids_cards_at_its_cells(int view, int size)
+    {
+        var props = PageProps(new PageState());
+        props.View().Value = view;
+        props.Size().Value = size;
+        ViewHarness.With(host, ViewKeys.LibraryPage, props, harness =>
+        {
+            harness.RunFrames(30);
+            var grid = harness.AbsoluteBounds(harness.Node("navskel"));
+            float inner = grid.W - 2f * Spacing.S;   // the grid's (8, 8, 8, 0) wrapper
+            float min = LibraryNavMount.CellMinFor(view, size);
+            int cols = GridEl.AutoFillColumnCount(inner, min, LibraryNavMount.GridGap);
+            float cell = (inner - (cols - 1) * LibraryNavMount.GridGap) / cols;
+            var first = harness.AbsoluteBounds(harness.Node("navskel:0"));
+            var second = harness.AbsoluteBounds(harness.Node("navskel:1"));
+            Assert.Equal(grid.X + Spacing.S, first.X, 0.5f);
+            Assert.Equal(grid.Y + Spacing.S, first.Y, 0.5f);
+            Assert.Equal(cell, first.W, 0.5f);
+            Assert.Equal(User.IsCompactView(view) ? cell : cell + Spacing.S + ClassicLibraryRules.CardTitleLine, first.H, 0.5f);
+            Assert.True(cols > 1, "the navigator holds more than one column");
+            Assert.Equal(first.X + cell + LibraryNavMount.GridGap, second.X, 0.5f);
+            Assert.Equal(first.Y, second.Y, 0.5f);
+        }, UnderClassic());
+    }
 
     // ── the show pane ────────────────────────────────────────────────────────────────────────────────────────────────────
 

@@ -9,6 +9,7 @@
 //   real shell   the Liked page draws its head arm at a wide window (no rail, the head over the list, the page bar; tuned Classic D16) and
 //                the vertical arm at a narrow one (the table that hosts the hero, under the insights sheet's overlay)
 //   rail         the cover fills the column less the side pads (the rule), and the identity rows stand in the order the row model decides
+//   skeleton     the loading rail's call to action reserves the fixed group the page will lay out: no Share square without a web link (X2)
 //   strip        the collapsed rail is its 96-DIP strip with the cover and the expand chevron
 //   toggle       the insights toggle's glyph button is mounted by its own key
 
@@ -185,6 +186,32 @@ public sealed class DetailFrameMountedTests(ShellHost host)
             Assert.Equal(halves.Y, shuffle.Y, 0.5f);                          // one row
             Assert.Equal(shuffle.X + 32f + 8f, share.X, 0.5f);
             Assert.True(harness.Find("rail:more").IsNull, "Liked carries no menu, so no ⋯");
+        }, UnderClassic());
+
+    /// <summary>Tuned Classic X2: the loading rail reserves exactly the actions the loaded one lays out. An album with a web link has Shuffle · heart ·
+    /// Share · ⋯ (the fourth wraps under a 256 cover: 32 + 8 + 32); a local album has no link, so no Share, and its three fit beside the split on one
+    /// line (it used to reserve the fourth square everywhere and stand 40 taller than the rail it dissolved into).</summary>
+    [Theory]
+    [InlineData(true, 72f)]
+    [InlineData(false, 32f)]
+    public void The_loading_rail_reserves_the_share_square_only_where_the_page_has_a_link(bool link, float cta)
+        => ViewHarness.With(host, ViewKeys.DetailRail, new DetailRailProps
+        {
+            Spec = new Detail.FrameSpec
+            {
+                Identity = new Detail.Identity
+                {
+                    Subject = default, Kind = DetailKind.Album, Title = "Fixture", HeaderPending = true,
+                    ShareUrl = link ? "https://open.spotify.com/album/fixture" : null,
+                },
+                Config = Detail.Config.Album,
+            },
+            Actions = new Detail.FrameActions { Shuffle = static () => { }, More = static () => null }, RailWidth = 280f,
+            TitleSize = 28f, DescriptionLines = 3, Accent = static () => default, Play = static () => { }, Pending = static () => true,
+        }, harness =>
+        {
+            harness.RunFrames(60);
+            Assert.Equal(cta, harness.AbsoluteBounds(harness.Node("skel:cta")).H, 0.5f);
         }, UnderClassic());
 
     // ── the strip ────────────────────────────────────────────────────────────────────────────────────────────────────────

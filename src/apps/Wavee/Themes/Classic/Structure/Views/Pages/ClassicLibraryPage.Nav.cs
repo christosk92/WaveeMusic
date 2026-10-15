@@ -30,11 +30,14 @@ internal static partial class ClassicLibraryPage
         => Skel.Region(p.Navigator.Load, c.NavShimmer!, c.NavContent!, SkelReveal.StaggerRows,
                        isEmpty: static n => n == 0, onEmpty: c.NavNoMatch!, group: p.SkelGroup);
 
-    /// <summary>The navigator's shimmer (tuned Classic X2): the bound list row's own geometry, so the rows land where the bars stood: the plate (56, or 40
-    /// compact) at the 60 / 44 pitch, the 40 art at the row's corner and the title and subtitle lines on their rungs. Before, the stock list-item
-    /// shape stood 66 apart and drifted 6 DIP a row.</summary>
-    internal static Element NavShimmer(bool compact)
+    /// <summary>The navigator's shimmer (tuned Classic X2), in the persisted view's own shape so the content lands where the bars stood. A list: the bound
+    /// row's geometry — the plate (56, or 40 compact) at the 60 / 44 pitch, the 40 art at the row's corner and the title and subtitle lines on their
+    /// rungs (the stock list-item shape stood 66 apart and drifted 6 DIP a row). A grid: the bound cards at the fitted grid's own cells (it used to draw
+    /// rows over a grid).</summary>
+    internal static Element NavShimmer(int view, int size, EntityKind entity)
     {
+        bool compact = User.IsCompactView(view);
+        if (User.IsGridView(view)) return NavGridShimmer(compact, LibraryNavMount.CellMinFor(view, size), entity == EntityKind.Artist);
         var rows = new Element[ClassicLibraryRules.NavSkelRows];
         for (int i = 0; i < rows.Length; i++) rows[i] = NavShimmerRow(compact) with { Key = "navskel:" + i };
         return new BoxEl { Key = "navskel", Direction = 1, Children = rows };
@@ -71,6 +74,53 @@ internal static partial class ClassicLibraryPage
         };
     }
 
+    /// <summary>The grid view's shimmer: <see cref="NavCard"/>'s shape at the fitted grid's cells — an auto-fill grid at the mount's cell minimum and gap
+    /// (the column count and the cell width are <see cref="RepeatLayout.GridFit"/>'s formula, <c>GridEl.AutoFillColumnCount</c>), inside the list's
+    /// <see cref="NavGridPad"/>, each card the fill-width square cover in its padding (16 round, 8 square) and, outside the compact grid, the title line.</summary>
+    static Element NavGridShimmer(bool compact, float cellMin, bool circular)
+    {
+        var cards = new Element[ClassicLibraryRules.NavSkelCards];
+        for (int i = 0; i < cards.Length; i++) cards[i] = NavShimmerCard(compact, circular) with { Key = "navskel:" + i };
+        return new BoxEl
+        {
+            Key = "navskel", Direction = 1, Padding = NavGridPad,
+            Children = [new GridEl { MinColWidth = cellMin, ColGap = LibraryNavMount.GridGap, RowGap = LibraryNavMount.GridGap, Children = cards }],
+        };
+    }
+
+    static Element NavShimmerCard(bool compact, bool circular)
+    {
+        // The cover is the media leaf itself (the deriver keeps an ImageEl's fluid square and paints only its placeholder).
+        Element art = new ImageEl
+        {
+            Source = "", Fit = ImageFit.Cover, AspectRatio = 1f,
+            Corners = CornerRadius4.All(circular ? Radii.Full : ClassicLibraryRules.CardArtCorner),
+        };
+        Element content = new BoxEl
+        {
+            Direction = 1, Gap = Spacing.S, ClipToBounds = true, Padding = Edges4.All(circular ? ClassicLibraryRules.CardPadRound : Spacing.S),
+            Children = compact
+                ? [art]
+                // The title's LINE, not its bar: a text leaf derives to a bar shorter than its line, which would land every card short.
+                : [art, new BoxEl
+                {
+                    Height = ClassicLibraryRules.CardTitleLine, Direction = 0, AlignItems = FlexAlign.Center,
+                    AlignSelf = circular ? FlexAlign.Center : FlexAlign.Start,
+                    Children =
+                    [
+                        new TextEl("Loading title")   // loc-allow: skeleton shimmer template — the leaf only sizes the bar
+                        {
+                            Size = ClassicLibraryRules.CardTitleSize, LineHeight = ClassicLibraryRules.CardTitleLine, Width = ClassicLibraryRules.NavSkelCardTitleW,
+                        },
+                    ],
+                }],
+        };
+        return new BoxEl { Direction = 1, Children = [content] };
+    }
+
+    /// <summary>A grid's wrapper padding around its cells (a list has none): the bound grid's and its shimmer's.</summary>
+    static Edges4 NavGridPad => new(Spacing.S, Spacing.S, Spacing.S, 0f);
+
     /// <summary>The real navigator (library-stabilization-plan §3.3, A1). The ROOT returned here is the region's single-child slot — UNKEYED and the SAME shape (a plain row `BoxEl`) every
     /// single render, forever, because a `Key` in that slot is INERT (RC1: <c>ReconcileSkeletonRegion</c> pairs a region's content root by <c>ElementTypeId</c> alone, never by
     /// <c>Key</c>). Everything that must actually remount is a KEYED CHILD, one level down, where <c>ReconcileChildren</c> honors keys: the nav list itself (<c>mount.Key</c>), the sticky
@@ -85,7 +135,7 @@ internal static partial class ClassicLibraryPage
         {
             Key = mount.Key, OnRealized = nav.OnMounted,
             Grow = 1f, Direction = 1, MinHeight = 0f,
-            Padding = mount.GridPadding ? new Edges4(Spacing.S, Spacing.S, Spacing.S, 0f) : default,
+            Padding = mount.GridPadding ? NavGridPad : default,
             Children = [ItemsView.CreateBound(nav.Items, c.TemplateOf(mount.Template), plan.Layout, plan.Options)],
         };
         Element body = new BoxEl

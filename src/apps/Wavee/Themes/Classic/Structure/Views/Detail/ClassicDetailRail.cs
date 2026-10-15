@@ -66,7 +66,7 @@ internal static partial class ClassicDetailFrame
         => RailFrame(p.RailWidth, new SkelRegionEl(
             Pending: p.Pending, Failed: s_false,
             Content: () => RailColumn(p.Spec, p.Actions, p.RailWidth, p.TitleSize, p.DescriptionLines, p.Accent, p.Play, p.Shown),
-            ShimmerSource: () => RailSkeletonColumn(p.Spec, p.RailWidth, p.TitleSize, p.DescriptionLines),
+            ShimmerSource: () => RailSkeletonColumn(p.Spec, p.Actions, p.RailWidth, p.TitleSize, p.DescriptionLines),
             OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false));
 
     /// <summary>The registered template of <see cref="ViewKeys.DetailCompactRail"/>: the collapsed strip's identity (cover + title) behind the same
@@ -278,8 +278,10 @@ internal static partial class ClassicDetailFrame
     /// bars: the same rows as <see cref="RailColumn"/> (<see cref="Skeleton.RailPlanFor"/> decides which, per kind and
     /// badge style and the rail slots the page declared) at the same widths, gap and padding — its nominal height is
     /// <see cref="RailLayout.HeightOf"/> of that plan. Unfilled boxes; a cover already known (a shelf card's 256 bucket)
-    /// is painted for real and exempted from the deriver, as the hero's skeleton does.</summary>
-    static Element RailSkeletonColumn(FrameSpec spec, float railW, float titleSize, int descMaxLines)
+    /// is painted for real and exempted from the deriver, as the hero's skeleton does. The CTA reserves exactly the buttons
+    /// <see cref="ClassicDetailKit.FixedActions"/> will lay out (<see cref="ClassicDetailKit.FixedActionCount"/>, tuned Classic X2): a page with no
+    /// web link (a local album or playlist) gets no Share square, one without a heart or a menu none for those.</summary>
+    static Element RailSkeletonColumn(FrameSpec spec, FrameActions acts, float railW, float titleSize, int descMaxLines)
     {
         var id = spec.Identity;
         var cfg = spec.Config;
@@ -287,7 +289,7 @@ internal static partial class ClassicDetailFrame
         float cover = RailCoverEdge(railW);
         // Satellites are COUNTED (the builder only makes elements; they are dropped here) so the CTA wraps as the reveal will.
         int satelliteCount = slots.Satellites is { } satellitesOf ? satellitesOf().Length : 0;
-        var plan = Skeleton.RailPlanFor(id.Kind, cfg.Badges, cfg.Heart != HeartMode.None, descMaxLines,
+        var plan = Skeleton.RailPlanFor(id.Kind, cfg.Badges, ClassicDetailKit.FixedActionCount(id, cfg.Heart != HeartMode.None, acts), descMaxLines,
                                         PresenceOf(slots, satelliteCount));
         var kids = new List<Element>(12) { SkeletonCover(id.CoverUrl, cover) };
 

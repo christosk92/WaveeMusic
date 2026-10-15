@@ -70,6 +70,7 @@ public readonly partial struct Album
         int _slot, _shimRows, _keySlot = int.MinValue;
         uint _keyEpoch;
         float _rowH = Track.RowMetrics.RowHeight;
+        Track.ColumnSet _columns = Track.EmbeddedColumns(classic: false, showTrackArtist: false);
         bool _showAlsoBy;
         string _paneKey = "", _skelKey = "", _saveKey = "", _scrollKey = "", _uri = "";
         Action<int>? _onAlsoBy;
@@ -177,7 +178,7 @@ public readonly partial struct Album
                 {
                     Vacant = true, State = AlbumPaneState.Header, BodyKey = "",
                     Open = _open, Play = _play, Shuffle = _shuffle, More = _menu, Retry = _retry,
-                    Region = _pending, ShimRows = _shimRows, RowHeight = _rowH, Table = _table, AlsoBy = _alsoByModel,
+                    Region = _pending, ShimRows = _shimRows, RowHeight = _rowH, Columns = _columns, Table = _table, AlsoBy = _alsoByModel,
                 });
 
             var edge = scope.Edges.AlbumTracks;
@@ -191,7 +192,12 @@ public readonly partial struct Album
             var state = AlbumPaneReadiness.Of(
                 knowsIdentity: a.Knows(AlbumFields.Title),
                 tracks: edgeState, edgeFailed: edge.IsFailed(_slot), rows: facts);
-            _rowH = Track.RowMetrics.Rows().ModernRow;
+            // The shimmer stands where the table will: the row style's own height and lanes (tuned Classic X2 — a Classic pane used to
+            // shimmer Modern's 48 rows under Modern's header for its 40 ones). The same tracked style read the table's snapshot makes.
+            bool classicRows = ShellPolicy.Tracked.Lists.ClassicRows;
+            var rowSizes = Track.RowMetrics.Rows();
+            _rowH = classicRows ? rowSizes.ClassicRow : rowSizes.ModernRow;
+            _columns = Track.EmbeddedColumns(classicRows, ConfigFor(a).ShowTrackArtist);
             _shimRows = AlbumPaneReadiness.ShimmerRows(a.Knows(AlbumFields.TrackCount), a.TrackCount, tracks.Length);
             LogState(state, edgeState, tracks.Length, in facts);
 
@@ -219,7 +225,7 @@ public readonly partial struct Album
                 Uri = _uri, SaveKey = _saveKey, Open = _open, Play = _play, Shuffle = _shuffle, More = _menu, Retry = _retry,
                 // One per state, never mutated: the region reads the State signal of the instance it was handed (§5.5 note 2).
                 Region = state == AlbumPaneState.Ready ? _ready : _pending, ShimRows = _shimRows, RowHeight = _rowH,
-                Table = _table, AlsoBy = _alsoByModel,
+                Columns = _columns, Table = _table, AlsoBy = _alsoByModel,
             });
         }
 

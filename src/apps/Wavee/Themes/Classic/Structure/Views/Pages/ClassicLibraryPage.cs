@@ -96,7 +96,7 @@ internal static partial class ClassicLibraryPage
             NavContent ??= _ => NavList(this);
             NavNoMatch ??= (static () => EmptyCompact(Loc.Get(Strings.Library.NoMatch)));
             // The persisted view cell, never the mount: a pending navigator is never asked for its mount.
-            NavShimmer ??= () => ClassicLibraryPage.NavShimmer(User.IsCompactView(Props.View().Value));
+            NavShimmer ??= () => ClassicLibraryPage.NavShimmer(Props.View().Value, Props.Size().Value, Props.Entity);
         }
 
         /// <summary>The page's measured bounds: the structure's ladder decides, the host's signal records it.</summary>

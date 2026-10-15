@@ -849,6 +849,10 @@ public readonly partial struct Track
         internal Element GroupHeader(Func<DateGroupHead?> head, in Shape shape)
             => (_listStyle?.Chrome.GroupHeader(head, RowMetrics.PadXFor(shape.Set.Tier)) ?? new BoxEl()) with { Key = "group-head" };
 
+        /// <summary>The first group's head while the rows shimmer: no words yet (the deriver sizes its bars), present.</summary>
+        static readonly DateGroupHead s_pendingHead = new("", "");
+        static readonly Func<DateGroupHead?> s_pendingGroupHead = static () => s_pendingHead;
+
         void RebuildGroups(in Snapshot s, ReadOnlySpan<int> view)
         {
             int n = view.Length;
@@ -1606,10 +1610,13 @@ public readonly partial struct Track
         /// <summary>12 copies of the REAL row grid over an empty track — the deriver shimmers the row's own shape (one
         /// source; the shimmer can never drift from the rows). A two-column Modern row sits inside its skin's plate inset
         /// (<see cref="RowMetrics.RowInset"/> either side), so its copy does too (tuned Classic X2: the bars used to start 8 DIP
-        /// left of the cells and run 16 wider).</summary>
+        /// left of the cells and run 16 wider). A list that groups by date (Liked Songs, D16, sorted by when its songs were added — its
+        /// default order) always opens on a group's head, so the first copy carries the head's band too (the rows used to land a head's
+        /// 40 DIP below the bars); the heads further down depend on the dates, which have not landed.</summary>
         Element RowsShimmer(in Shape shape)
         {
             Edges4 inset = !shape.Set.Classic && !VerticalArm ? new Edges4(RowMetrics.RowInset, 0f, RowMetrics.RowInset, 0f) : default;
+            bool groups = _snapshot is { } memo && GroupsOn(memo.Peek());
             var rows = new Element[Design.RevealRamp.Chunk];
             var set = shape.Set;
             var state = default(RowState);
@@ -1621,6 +1628,7 @@ public readonly partial struct Track
                 rows[i] = eager is null ? new BoxEl() : eager.Grid(default, i, in state, in set, shape.Tracks, shape.RowH, title, in options);
                 if (inset != default) rows[i] = new BoxEl { Direction = 1, Margin = inset, Children = [rows[i]] };
             }
+            if (groups) rows[0] = new BoxEl { Direction = 1, Children = [GroupHeader(s_pendingGroupHead, in shape), rows[0]] };
             return new BoxEl { Direction = 1, Children = rows };
         }
 

@@ -9,7 +9,7 @@
 //                hears the page's width
 //   failed       the error arm keeps the same column and composes no body
 //   hero copy    tuned Classic D18: on the photo tiers the hero's copy column is min(CopyMax, max(360, 0.56 w - gutter)) wide at the gutter, so it ends
-//                near 56 % of the hero (it ran to ~90 % at Medium and ~94 % at a 1440 window's Wide)
+//                near 56 % of the hero (it ran to ~90 % at Medium and ~94 % at a 1440 window's Wide) — the loading hero's too (X2)
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -103,6 +103,21 @@ public sealed class ArtistPageMountedTests(ShellHost host)
                 Assert.False(node.IsNull, "the hero's copy column is mounted");
                 var r = harness.LocalBounds(node);
                 Assert.Equal(copy, r.W, 1);
+                Assert.Equal(m.Gutter, harness.AbsoluteBounds(node).X - harness.AbsoluteBounds(harness.Find("artist-page:fixture")).X, 1);
+            }, UnderClassic());
+
+    /// <summary>Tuned Classic X2: the loading hero is the loaded hero's composition over a placeholder, so its copy column stands at the same D18 width
+    /// and gutter.</summary>
+    [Fact]
+    public void The_loading_heros_copy_column_is_the_loaded_ones()
+        => ViewHarness.With(host, ViewKeys.ArtistPage, Props(pending: true, failed: false, width: 1120f),
+            harness =>
+            {
+                harness.RunFrames(30);
+                var m = ArtistHeroLayout.For(1120f, ArtistHeroTier.Wide);
+                var node = harness.Find("artist-hero-copy");
+                Assert.False(node.IsNull, "the shimmer's copy column is mounted");
+                Assert.Equal(ClassicArtistRules.HeroCopyWidth(1120f, in m), harness.LocalBounds(node).W, 1);
                 Assert.Equal(m.Gutter, harness.AbsoluteBounds(node).X - harness.AbsoluteBounds(harness.Find("artist-page:fixture")).X, 1);
             }, UnderClassic());
 

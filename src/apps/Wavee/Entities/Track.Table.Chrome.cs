@@ -915,45 +915,39 @@ public readonly partial struct Track
 
     }
 
-    // ══ 6. THE EMBEDDED ARM: THE LANE CONSTANTS (library rework §5.5, wave L1) ═══════════════════════════════════════
+    // ══ 6. THE EMBEDDED ARM: THE LANE SET (library rework §5.5, wave L1) ════════════════════════════════════════════
     //
     // What a pane that has no table YET shimmers with: the lane set the embedded album table converges to and its width tracks. The real header is a
     // component on TableHost (it reads the live sort, the check lane and the measured tier), so a surface with no host cannot mount it — hence the
     // pane's own header shim (Classic's `ClassicLibraryAlbumPane.TableHeaderShim`, T10c1), built from the same GridEl over the same TrackSize[] with
     // the same gap, header height and hairline, so the crossing from the shim to the real header is a cross-fade and never a reflow.
     //
-    // WHY A CONSTANT SET, NOT A COMPUTED ONE: the live shape is a memo over the MEASURED tier, the relief ladder and the
-    // appearance prefs (TableHost.ComputeShape) — none of which exists before the table mounts. At `ShowPlays = false`
-    // the album arm's lanes are the SAME at every tier 0-4: Album / By / Date / Plays / Tempo / Artist / Expand are all
-    // off for an album source (Detail.Config.Album carries ShowArtThumb false, so Thumb is off too, and a profile with no
-    // Drawer seam has no Expand lane), and Heart folds only at tier ≥ 5 — a pane under 300 DIP, which the library's
-    // master-detail never gives the album column. So the compact-tier set below is EXACT for every width this surface
-    // has, and it is derived from the same rules the table applies rather than spelled out lane by lane.
+    // WHY NO MEASURED SHAPE: the live shape is a memo over the MEASURED tier, the relief ladder and the appearance prefs (TableHost.ComputeShape) —
+    // none of which exists before the table mounts. At `ShowPlays = false` the album arm's lanes are the SAME at every tier 0-3: Album / By / Date /
+    // Plays / Tempo / Expand are all off for an album source (Detail.Config.Album carries ShowArtThumb false, so Thumb is off too, and a profile with
+    // no Drawer seam has no Expand lane), Heart folds only at tier ≥ 5 — a pane under 300 DIP, which the library's master-detail never gives the album
+    // column — and a compilation's Classic Artist lane only at tier 4. What DOES vary is the ROW STYLE (tuned Classic X2): a Classic row is its own
+    // skin with its own lane identity (a compilation's Artist lane), so the set is a function of the style and the album's per-track artist, derived
+    // from the same rule the table applies (`TableRules.IdentityColumns`) rather than spelled out lane by lane.
 
     /// <summary>The tier the embedded pane converges to: the 720-859 rung the ~784-DIP album column lands on (W1). Tiers
     /// 0-3 share <see cref="RowMetrics.PadXFor"/> and <see cref="RowMetrics.ColGapFor"/>, so the shim's geometry is
     /// identical across all of them; the number only has to be one of them.</summary>
     public const int EmbeddedTier = 1;
 
-    /// <summary>The embedded album table's lanes at <c>ShowPlays = false</c>: <c># · ♥ · Title* · ⏱ · …</c>. The ONE
-    /// constant the pane's shimmer, its header shim and its width tracks all read (library rework §5.5).
+    /// <summary>The embedded album table's lanes at <c>ShowPlays = false</c> for a row style: <c># · ♥ · Title* · ⏱ · …</c>, plus the Artist
+    /// lane a Classic row gives an album whose tracks name their artists (a compilation). The ONE set the pane's shimmer, its header shim and
+    /// its width tracks all read (library rework §5.5); the host hands the pane the set its table will lay out.
     /// <para>A video is the film glyph after the title, never a lane (<c>TableRules.TrailingColumns</c>), so the shim
     /// needs nothing the rows will carry and the real header lands on exactly the shim's geometry.</para></summary>
-    public static readonly ColumnSet EmbeddedColumns = new(
+    public static ColumnSet EmbeddedColumns(bool classic, bool showTrackArtist) => new(
         Album: false, By: false, Date: false, Plays: false, Heart: true, Thumb: false,
-        Actions: true, Tier: EmbeddedTier);
+        Actions: true, Tier: EmbeddedTier,
+        Artist: TableRules.IdentityColumns(classic, showArtThumb: false, artworkHidden: false, showTrackArtist, EmbeddedTier).Artist,
+        Classic: classic);
 
-    /// <summary>The width tracks for <see cref="EmbeddedColumns"/> — the SAME cached instance the real rows would get
-    /// (<see cref="TracksFor"/>), so the shimmer rows and the header shim share the array the table itself hands out.
-    /// <para>A property over a lazy holder, NOT a <c>static readonly</c> field: field initializers of a partial type run
-    /// in an order C# does not specify across FILES, and this one would have to read <c>Track.UI.cs</c>'s track cache. The
-    /// holder is initialized on first touch instead, by which point the struct's own statics are in.</para></summary>
-    public static TrackSize[] EmbeddedTracks => EmbeddedLanes.Tracks;
-
-    static class EmbeddedLanes
-    {
-        // Art is irrelevant here (the set carries no Thumb lane) but it is part of the cache key, so pass the ladder's
-        // own default rung rather than a zero that would fork the cache.
-        internal static readonly TrackSize[] Tracks = TracksFor(in EmbeddedColumns, RowMetrics.ThumbSize);
-    }
+    /// <summary>The width tracks for an <see cref="EmbeddedColumns"/> set — the SAME cached instance the real rows would get
+    /// (<see cref="TracksFor"/>), so the shimmer rows and the header shim share the array the table itself hands out. Art is irrelevant
+    /// (the set carries no Thumb lane) but it is part of the cache key, so this passes the ladder's own default rung.</summary>
+    public static TrackSize[] EmbeddedTracks(in ColumnSet set) => TracksFor(in set, RowMetrics.ThumbSize);
 }

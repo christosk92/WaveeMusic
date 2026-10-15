@@ -1127,10 +1127,12 @@ public static partial class Detail
         /// <summary>The skeleton's PREDICTION, made before any data: per kind and badge style, plus the rail slots the page
         /// declared (<paramref name="slots"/> — presence is known at mount, the data is not). Default slots ⇒ exactly the
         /// pre-podcast plan. An episode with an Attribution slot is led by it (the <see cref="RailPlan.Owner"/> shape), and
-        /// has no eyebrow and no after-title attribution. The fixed action group (tuned Classic D1) is Shuffle on a track
-        /// page, the heart when the kind has one, Share, and the ⋯. Liked Songs has no rail (tuned Classic D16), so no plan here is
+        /// has no eyebrow and no after-title attribution. <paramref name="fixedActions"/> is how many buttons the fixed action group (tuned
+        /// Classic D1: Shuffle · heart · Share · ⋯) will lay out — the caller counts them off the page's identity and verbs, which are known
+        /// before the data (a Share needs the page's web link, which a Spotify uri always has and a local one never does), so a page without
+        /// a link or a heart reserves no square for it (tuned Classic X2). Liked Songs has no rail (tuned Classic D16), so no plan here is
         /// Liked's.</summary>
-        public static RailPlan RailPlanFor(DetailKind kind, BadgeStyle badges, bool heart, int descriptionMaxLines,
+        public static RailPlan RailPlanFor(DetailKind kind, BadgeStyle badges, int fixedActions, int descriptionMaxLines,
                                            RailSlotSet slots = default)
         {
             bool typeYear = badges == BadgeStyle.TypeYear;
@@ -1144,8 +1146,7 @@ public static partial class Detail
                 ArtistFaces: typeYear && !RailLayout.IsPodcast(kind),
                 Meta: !typeYear || RailLayout.IsPodcast(kind),
                 TitleLines: RailTitleLines,
-                Fabs: slots.Satellites ? Math.Max(0, slots.SatelliteCount)
-                    : (kind is DetailKind.Album or DetailKind.Playlist ? 1 : 0) + (heart ? 1 : 0) + 2,
+                Fabs: slots.Satellites ? Math.Max(0, slots.SatelliteCount) : Math.Max(0, fixedActions),
                 DescriptionLines: blurb ? RailDescriptionLinesFor(descriptionMaxLines) : 0,
                 Badges: RailLayout.BadgeRowFor(kind, slots.Badges, eyebrow),
                 Rating: slots.Rating,

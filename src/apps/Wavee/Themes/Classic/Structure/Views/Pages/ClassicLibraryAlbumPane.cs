@@ -105,26 +105,29 @@ internal static class ClassicLibraryAlbumPane
 
     static Element CountedShimmer(LibraryAlbumPaneProps p)
     {
-        var head = TableHeaderShim(compact: true);                // pays its own PadXFor: no wrapper padding
+        var set = p.Columns;
+        var tracks = Track.EmbeddedTracks(in set);
+        var head = TableHeaderShim(in set, tracks, compact: true);   // pays its own PadXFor: no wrapper padding
         var kids = new Element[p.ShimRows + 1];
         kids[0] = head.Skel(head);
-        for (int i = 0; i < p.ShimRows; i++) kids[i + 1] = ShimRow(p.RowHeight, i);
+        for (int i = 0; i < p.ShimRows; i++) kids[i + 1] = ShimRow(in set, tracks, p.RowHeight, i);
         return new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, ClipToBounds = true, Children = kids };
     }
 
-    /// <summary>One placeholder row at the real row's pitch and lanes: the # bar, the title bar (four lengths in rotation, so a column of rows reads as text and not as a fence) and the clock
-    /// bar. The ♥ and "…" lanes hold nothing — they carry no content to promise.</summary>
-    static Element ShimRow(float rowH, int i)
+    /// <summary>One placeholder row at the real row's pitch and lanes (the row style's own, tuned Classic X2): the # bar, the title bar (four lengths in
+    /// rotation, so a column of rows reads as text and not as a fence), a Classic compilation's artist bar and the clock bar. The ♥ and "…" lanes hold
+    /// nothing — they carry no content to promise. One cell per track, in the tracks' own order (<see cref="Track.TracksFor"/>).</summary>
+    static Element ShimRow(in Track.ColumnSet set, TrackSize[] tracks, float rowH, int i)
     {
-        var set = Track.EmbeddedColumns;
-        var tracks = Track.EmbeddedTracks;
-        var cells = new Element[tracks.Length];
-        int k = 0;
-        cells[k++] = Cell(Controls.PendingBar(ClassicLibraryPaneRules.ShimNumW, ClassicLibraryPaneRules.ShimBarH), FlexJustify.Center);
-        if (set.Heart && k < cells.Length) cells[k++] = new BoxEl();
-        if (k < cells.Length) cells[k++] = Cell(Controls.PendingBar(ClassicLibraryPaneRules.ShimTitleW(i), ClassicLibraryPaneRules.ShimBarH), FlexJustify.Start);
-        if (k < cells.Length) cells[k++] = Cell(Controls.PendingBar(ClassicLibraryPaneRules.ShimClockW, ClassicLibraryPaneRules.ShimBarH), FlexJustify.End);
-        while (k < cells.Length) cells[k++] = new BoxEl();
+        var cells = new List<Element>(tracks.Length)
+        {
+            Cell(Controls.PendingBar(ClassicLibraryPaneRules.ShimNumW, ClassicLibraryPaneRules.ShimBarH), FlexJustify.Center),
+        };
+        if (set.Heart) cells.Add(new BoxEl());
+        cells.Add(Cell(Controls.PendingBar(ClassicLibraryPaneRules.ShimTitleW(i), ClassicLibraryPaneRules.ShimBarH), FlexJustify.Start));
+        if (set.Artist) cells.Add(Cell(Controls.PendingBar(ClassicLibraryPaneRules.ShimArtistW, ClassicLibraryPaneRules.ShimBarH), FlexJustify.Start));
+        cells.Add(Cell(Controls.PendingBar(ClassicLibraryPaneRules.ShimClockW, ClassicLibraryPaneRules.ShimBarH), FlexJustify.End));
+        if (set.Actions) cells.Add(new BoxEl());
         float padX = Track.RowMetrics.PadXFor(set.Tier);
         return new GridEl
         {
@@ -132,7 +135,7 @@ internal static class ClassicLibraryAlbumPane
             // NOT Grow (the placeholder row's own Grow is for a ROW-direction slot): in this column it would hand each row a share of the slack and the pitch would stop matching the real
             // rows'. Shrink 0 for the same reason the other way — more rows than fit overflow into the clip, they never squeeze.
             Columns = tracks, ColGap = Track.RowMetrics.ColGapFor(set.Tier), RowHeight = rowH, Shrink = 0f,
-            Padding = new Edges4(padX, 0f, padX, 0f), Children = cells,
+            Padding = new Edges4(padX, 0f, padX, 0f), Children = cells.ToArray(),
         };
     }
 
@@ -141,38 +144,38 @@ internal static class ClassicLibraryAlbumPane
         Direction = 0, AlignItems = FlexAlign.Center, Justify = justify, MinWidth = 0f, ClipToBounds = true, Children = [bar],
     };
 
-    /// <summary>The embedded table's column header, WITHOUT a host: <c>#</c> (centred between the same two caret slots the real <c>IndexSortCell</c> reserves, so it sits over the row numbers),
-    /// an empty ♥ lane, "Title", the clock and an empty "…" lane, then the band's single 1-DIP hairline. Inert on purpose — there is nothing to sort yet.
+    /// <summary>The embedded table's column header, WITHOUT a host, in the row style's own register (<c>ClassicTrackChrome.Header</c>, tuned Classic X2): Modern's
+    /// <c>#</c> centred between the same two caret slots the real <c>IndexSortCell</c> reserves (Classic's # cell is empty), an empty ♥ lane, "Title", a Classic
+    /// compilation's "Artist", the clock and an empty "…" lane, then the band's single 1-DIP hairline — at the style's header height, the rule at the plates' left
+    /// edge (Modern's inset, Classic's 0). Inert on purpose — there is nothing to sort yet.
     /// <para><paramref name="compact"/> is the register: true = the pane's (no air above the header, because no toolbar sits over it — the embedded arm), false = the full table's two-column
-    /// chrome, which pays <c>Spacing.S</c> above it. The horizontal padding is the real header's (the rule at the plates' inset, the cells at <c>PadXFor(tier)</c>) in both cases, so a caller adds NONE of its own.</para>
+    /// chrome, which pays <c>Spacing.S</c> above it. The horizontal padding is the real header's (the rule at the plates' edge, the cells at <c>PadXFor(tier)</c>) in both cases, so a caller
+    /// adds NONE of its own.</para>
     /// <para>The colours are the default sort's (Index): the <c>#</c> reads as the active header, everything else as tertiary — exactly what the real header paints the instant it replaces
     /// this one.</para></summary>
-    static Element TableHeaderShim(bool compact)
+    static Element TableHeaderShim(in Track.ColumnSet set, TrackSize[] tracks, bool compact)
     {
-        var set = Track.EmbeddedColumns;
-        var tracks = Track.EmbeddedTracks;
+        bool classic = set.Classic;
         var cells = new List<Element>(tracks.Length);
-        cells.Add(new BoxEl
-        {
-            Key = Track.CellKey.Num, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true,
-            Children =
-            [
-                new BoxEl { Width = Track.Lane.NumCaretSlot, Shrink = 0f },
-                new BoxEl
-                {
-                    Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Children = [ShimLabel(Loc.Get(Strings.Detail.Column.Number), active: true)],
-                },
-                new BoxEl { Width = Track.Lane.NumCaretSlot, Shrink = 0f },
-            ],
-        });
+        cells.Add(classic
+            ? new BoxEl { Key = Track.CellKey.Num }
+            : new BoxEl
+            {
+                Key = Track.CellKey.Num, Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, ClipToBounds = true,
+                Children =
+                [
+                    new BoxEl { Width = Track.Lane.NumCaretSlot, Shrink = 0f },
+                    new BoxEl
+                    {
+                        Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                        Children = [ShimLabel(Loc.Get(Strings.Detail.Column.Number), active: true, classic)],
+                    },
+                    new BoxEl { Width = Track.Lane.NumCaretSlot, Shrink = 0f },
+                ],
+            });
         if (set.Heart) cells.Add(new BoxEl { Key = Track.CellKey.Heart });
-        cells.Add(new BoxEl
-        {
-            Key = Track.CellKey.Title, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Start,
-            MinWidth = 0f, ClipToBounds = true,
-            Children = [ShimLabel(Loc.Get(Strings.Detail.Column.Title), active: false)],
-        });
+        cells.Add(LabelCell(Track.CellKey.Title, Loc.Get(Strings.Detail.Column.Title), classic));
+        if (set.Artist) cells.Add(LabelCell(Track.CellKey.Artist, Loc.Get(Strings.Detail.Column.Artist), classic));
         cells.Add(new BoxEl
         {
             Key = Track.CellKey.Duration, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
@@ -182,8 +185,8 @@ internal static class ClassicLibraryAlbumPane
         if (set.Actions) cells.Add(new BoxEl { Key = Track.CellKey.More });
 
         float padX = Track.RowMetrics.PadXFor(set.Tier);
-        // The real header's ONE left edge (V10): the rule at the Modern plates' inset, the cells at the rows' gutter.
-        float edge = ClassicTrackChromeLayout.HeaderRuleInset(fullWidthPlates: false, vertical: false, padX);
+        // The real header's ONE left edge (V10): the rule at the plates' left edge (a Modern plate's inset, a Classic row's 0), the cells at the rows' gutter.
+        float edge = ClassicTrackChromeLayout.HeaderRuleInset(fullWidthPlates: classic, vertical: false, padX);
         return new BoxEl
         {
             Key = "header:shim", Direction = 1, ClipToBounds = true,
@@ -194,15 +197,21 @@ internal static class ClassicLibraryAlbumPane
                 {
                     Columns = tracks, ColGap = Track.RowMetrics.ColGapFor(set.Tier),
                     Padding = new Edges4(padX - edge, 0f, padX - edge, 0f),
-                    RowHeight = Track.TableRules.HeaderHeightFor(classic: false), Children = cells.ToArray(),
+                    RowHeight = Track.TableRules.HeaderHeightFor(classic), Children = cells.ToArray(),
                 },
                 new BoxEl { Height = 1f, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) },
             ],
         };
     }
 
-    /// <summary>The header label at the Modern rung (12/600), in the real header's two colours.</summary>
-    static TextEl ShimLabel(string text, bool active) => Ui.Caption(text) with
+    static Element LabelCell(string key, string text, bool classic) => new BoxEl
+    {
+        Key = key, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Start, MinWidth = 0f, ClipToBounds = true,
+        Children = [ShimLabel(text, active: false, classic)],
+    };
+
+    /// <summary>The header label at the style's rung (Modern's caption, Classic's micro meta; 600), in the real header's two colours.</summary>
+    static TextEl ShimLabel(string text, bool active, bool classic) => (classic ? R.Type.MicroMeta(text) : Ui.Caption(text)) with
     {
         Weight = 600, Color = active ? Tok.TextSecondary : Tok.TextTertiary,
         MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,

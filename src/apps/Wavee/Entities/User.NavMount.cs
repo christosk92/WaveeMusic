@@ -84,6 +84,16 @@ public readonly record struct LibraryNavMount(
     /// <summary>The grid's fixed gap between cells, every size and density.</summary>
     public const float GridGap = 8f;
 
+    /// <summary>A grid view's cell minimum (the S/M/L ladder of the compact or the full grid): the fitted grid's own column rule, which the
+    /// navigator's loading shimmer lays its cards out by too (tuned Classic X2), so the cards land where the bars stood. The view and the size are
+    /// clamped like <see cref="For"/>'s.</summary>
+    public static float CellMinFor(int view, int size)
+    {
+        bool compact = User.IsCompactView(Math.Clamp(view, 0, 3));
+        size = Math.Clamp(size, 0, 2);
+        return (compact ? CardCellMinCompact : CardCellMinFull) + size * (compact ? CardCellStepCompact : CardCellStepFull);
+    }
+
     /// <summary>The one mint. <paramref name="kind"/> is the page's route word ("artists"/"albums"/"podcasts" — the
     /// <c>ScrollKey</c>'s namespace); <paramref name="view"/>/<paramref name="size"/> are the persisted view-switcher
     /// signals (clamped defensively — a corrupt settings value must never index out of the ladder);
@@ -103,7 +113,7 @@ public readonly record struct LibraryNavMount(
                  : (compact ? LibraryNavTemplate.RowCompact : LibraryNavTemplate.Row),
             grid ? LibraryNavLayoutKind.GridFit : LibraryNavLayoutKind.Extents,
             compact ? User.NavRowCompactExtent : User.NavRowExtent,
-            (compact ? CardCellMinCompact : CardCellMinFull) + size * (compact ? CardCellStepCompact : CardCellStepFull),
+            CellMinFor(view, size),
             GridGap,
             lettered, alphabetical, grid,
             "lib:nav:" + kind + ":" + family);
