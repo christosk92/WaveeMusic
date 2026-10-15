@@ -115,11 +115,14 @@ public static partial class Shell
         /// <summary>A fresh index for one open: the builtins, then the active theme's option commands
         /// (<paramref name="themeCommands"/>: the options that asked for a palette row), then every registry action that
         /// accepts a target the palette can supply (now playing, the active page, or none). <paramref name="glyphOf"/>
-        /// resolves a descriptor's semantic icon key; null or an unknown key falls back to <c>Icons.More</c>.</summary>
+        /// resolves a descriptor's semantic icon key; null or an unknown key falls back to <c>Icons.More</c>.
+        /// <paramref name="playerStyleRows"/> false drops the two now-playing style rows (<see cref="IsPlayerStyleRow"/>): they are
+        /// offered only where a style can change Now playing (<c>Rail.PlayerPrefs.StyleChoiceVisible</c>, #199).</summary>
         public static PaletteEntry[] BuildIndex(IReadOnlyList<ActionDescriptor>? registryActions, Func<string, string?>? glyphOf,
-            IReadOnlyList<Theming.ThemeCommand>? themeCommands = null)
+            IReadOnlyList<Theming.ThemeCommand>? themeCommands = null, bool playerStyleRows = true)
         {
             var builtins = Builtins();
+            if (!playerStyleRows) builtins = Array.FindAll(builtins, static r => !IsPlayerStyleRow(r.Id));
             int themeCount = themeCommands?.Count ?? 0;
             int extra = 0;
             if (registryActions is not null)
@@ -153,6 +156,9 @@ public static partial class Shell
             }
             return all;
         }
+
+        /// <summary>The builtin rows that pick the hero's presentation or player style (the Cover/Player toggle, the next style).</summary>
+        public static bool IsPlayerStyleRow(string id) => id is "settings.npvPresentation" or "settings.npvNextStyle";
 
         /// <summary>Which target a palette invocation supplies, in preference order NowPlaying → ActiveRoute → None.
         /// False = the descriptor needs a picked entity and earns no palette row.</summary>
@@ -393,7 +399,7 @@ public static partial class Shell
     sealed class PaletteSession : IPaletteSession
     {
         readonly PaletteEntry[] _index = CommandTable.BuildIndex(Actions.Registry.Current?.Actions, s_paletteGlyphOf,
-            Theming.ThemeOptionsSection.Commands(Platform.Developer.Enabled.Peek()));
+            Theming.ThemeOptionsSection.Commands(Platform.Developer.Enabled.Peek()), playerStyleRows: Platform.Developer.Enabled.Peek() && !Diagnostics.StoreShot.Presenting.Peek());   // Rail.PlayerPrefs.StyleChoiceVisible, peeked
         readonly PaletteEntry[] _hits = new PaletteEntry[CommandTable.MaxResults];
         readonly PaletteEntry _scratch = CommandTable.NewCatalogScratch();
         int _count;

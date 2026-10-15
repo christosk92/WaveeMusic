@@ -89,8 +89,15 @@ public class StageLayoutAxisTests
         Assert.True(Rules.FaceAmbient(VL.LargeArt)); Assert.True(Rules.FaceAmbient(VL.Centered));
         Assert.False(Rules.FaceAmbient(VL.Card)); Assert.False(Rules.FaceAmbient(VL.Artist));
         // the scrim sits over the backdrop face only; Card has none
-        Assert.True(Rules.BackdropScrim(VL.LargeArt) > 0f);
-        Assert.Equal(0f, Rules.BackdropScrim(VL.Card));
+        Assert.True(Rules.BackdropScrim(VL.LargeArt, Visualizer.Kind.Bloom) > 0f);
+        Assert.Equal(0f, Rules.BackdropScrim(VL.Card, Visualizer.Kind.Bloom));
+        Assert.Equal(0f, Rules.BackdropScrim(VL.Artist, Visualizer.Kind.Bars));
+        // tuned R5: per face — deep over a cover-carrying face running ambient (Bloom, Ring, and the Bloom a Verse / Mosaic falls back
+        // to), lighter over a face that draws no now-playing part; never one flat value
+        Assert.Equal(Stage.Tone.BackdropScrimCoverA, Rules.BackdropScrim(VL.LargeArt, Visualizer.Kind.Ring));
+        Assert.Equal(Stage.Tone.BackdropScrimCoverA, Rules.BackdropScrim(VL.Centered, Visualizer.Kind.Verse));
+        Assert.Equal(Stage.Tone.BackdropScrimAtmosphereA, Rules.BackdropScrim(VL.Centered, Visualizer.Kind.Warp));
+        Assert.True(Rules.BackdropScrim(VL.LargeArt, Visualizer.Kind.Bars) < Rules.BackdropScrim(VL.LargeArt, Visualizer.Kind.Bloom));
         Assert.True(Rules.KeysStepFaces(VL.Centered)); Assert.False(Rules.KeysStepFaces(VL.Artist));
     }
 

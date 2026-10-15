@@ -122,16 +122,20 @@ internal static partial class ClassicSettings
         kids.Add(DocRow(D(Tab.Appearance, "stageCalm"), RowToggle(D(Tab.Appearance, "stageCalm"))));
         kids.Add(DocRow(D(Tab.Appearance, "stageMoments"), RowToggle(D(Tab.Appearance, "stageMoments"))));
 
-        kids.Add(SectionHeader(Loc.Get(Strings.Settings.NowPlaying.Title), SectionGlyph(Tab.Appearance, "Now playing"),
-            Loc.Get(Strings.Settings.NowPlaying.Subtitle)));
-        // The second label FOLLOWS the current style; SelectorBar re-pushes its items, so it relabels in place.
-        // DEVELOPER-ONLY, exactly like the rail header switch it duplicates — a normal build shows the cover.
-        if (D(Tab.Appearance, "npvPresentation").Visible(facts))
-            kids.Add(DocRow(D(Tab.Appearance, "npvPresentation"),
-                SelectorBar.Create([Loc.Get(Strings.Player.PresentationCover), Loc.Get(npvPreset.ShortLabelKey)],
-                    new Signal<int>(npvPresentation),
-                    onChange: static i => D(Tab.Appearance, "npvPresentation").Writer.Choose!(i))));
-        kids.Add(DocRow(D(Tab.Appearance, "npvStyle"), Embed.Comp(static () => new NpvStylePicker())));
+        // DEVELOPER-ONLY, the whole section: the Cover/Player switch exists only in developer mode, and the player style is hidden
+        // until it affects Now playing (#199), so a normal build composes neither row nor their header.
+        if (D(Tab.Appearance, "npvStyle").Visible(facts))
+        {
+            kids.Add(SectionHeader(Loc.Get(Strings.Settings.NowPlaying.Title), SectionGlyph(Tab.Appearance, "Now playing"),
+                Loc.Get(Strings.Settings.NowPlaying.Subtitle)));
+            // The second label FOLLOWS the current style; SelectorBar re-pushes its items, so it relabels in place.
+            if (D(Tab.Appearance, "npvPresentation").Visible(facts))
+                kids.Add(DocRow(D(Tab.Appearance, "npvPresentation"),
+                    SelectorBar.Create([Loc.Get(Strings.Player.PresentationCover), Loc.Get(npvPreset.ShortLabelKey)],
+                        new Signal<int>(npvPresentation),
+                        onChange: static i => D(Tab.Appearance, "npvPresentation").Writer.Choose!(i))));
+            kids.Add(DocRow(D(Tab.Appearance, "npvStyle"), Embed.Comp(static () => new NpvStylePicker())));
+        }
 
         kids.Add(SectionHeader(Loc.Get(Strings.Settings.Home.Title), SectionGlyph(Tab.Appearance, "Home"),
             Loc.Get(Strings.Settings.Home.Subtitle)));

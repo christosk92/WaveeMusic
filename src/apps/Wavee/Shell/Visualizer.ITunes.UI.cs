@@ -35,7 +35,7 @@ public static partial class Visualizer
     /// only. Preview and reduced: the bodies hold their seeded places, sized by their bands, the cores by the kick.</summary>
     public static Element MagnetoFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
-        bool pv = spec.Preview, dark = pal.Dark, live = !pv && !Design.Reduced;
+        bool pv = spec.Preview, dark = Ink.IsDark, live = !pv && !Design.Reduced;
         int count = pv ? Particles.Magneto.PreviewCount : Particles.Magneto.Count;
         bool rays = !pv;
         float m = MathF.Min(spec.W, spec.H), cx = spec.W * 0.5f, cy = spec.H * (pv ? 0.5f : 0.46f);
@@ -155,7 +155,7 @@ public static partial class Visualizer
             })));
             return FaceFrame(spec, kids);
         }
-        var sim = new FlowSim(slab, pal.Dark);
+        var sim = new FlowSim(slab, Ink.IsDark);
         var dt = sim.Dt; var time = sim.Time;
         float w = spec.W, h = spec.H;
         kids.Add(new CanvasChild(0f, 0f, new BoxEl

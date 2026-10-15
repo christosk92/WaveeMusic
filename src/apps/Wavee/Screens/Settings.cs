@@ -143,7 +143,8 @@ public static partial class Settings
             new(Tab.Appearance, "Fullscreen", "stageCalm", "RefineSparkle"),
             new(Tab.Appearance, "Fullscreen", "stageMoments", "Brush"),
             new(Tab.Appearance, "Now playing", "npvPresentation", "Picture", DeveloperOnly: true),
-            new(Tab.Appearance, "Now playing", "npvStyle", "Settings"),
+            // Developer-only like the switch above it: the player styles only drive Now playing where the Cover/Player switch exists (#199).
+            new(Tab.Appearance, "Now playing", "npvStyle", "Settings", DeveloperOnly: true),
             // #185: what the daylist clock shows (countdown / update time / both) on the playlist hero and the Home card.
             new(Tab.Appearance, "Home", "daylistClock", "Clock"),
 

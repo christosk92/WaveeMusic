@@ -29,8 +29,9 @@ using FluentGpu.Signals;
 namespace Wavee;
 
 /// <summary>What the reading surface shows: nothing playing, a document on its way, none to be had, a failed fetch, a
-/// static block of text, or a timed document that follows playback.</summary>
-public enum LyricsState : byte { Nothing, Loading, NoLyrics, Failed, Unsynced, Synced }
+/// static block of text, a timed document that follows playback, or (contract 1.1, APPENDED) none because the app is offline and
+/// this track's lyrics are not saved on this PC.</summary>
+public enum LyricsState : byte { Nothing, Loading, NoLyrics, Failed, Unsynced, Synced, Offline }
 
 /// <summary>Which surface a model belongs to (mount config, frozen for the model's life).</summary>
 /// <param name="Large">Stage metrics (type, gutter, band, σ ladder) rather than the rail's.</param>
@@ -118,22 +119,24 @@ public sealed class LyricsModel
     public readonly Signal<LyricsState> State = new(LyricsState.Nothing);
 
     /// <summary>PURE: the state of a surface. Nothing playing ⇒ <see cref="LyricsState.Nothing"/>; no lyrics id ⇒
-    /// NoLyrics; a document still on its way ⇒ Loading; a failed fetch ⇒ Failed; a ready document with no lines ⇒ NoLyrics;
-    /// an untimed one — or a timed one while a video suppresses sync — ⇒ Unsynced; else Synced.</summary>
-    public static LyricsState Classify(bool anything, bool hasTrack, bool pending, bool failed, Lyrics.Doc? doc, bool syncSuppressed)
+    /// NoLyrics; a document still on its way ⇒ Loading; a failed fetch ⇒ Failed; a ready document with no lines ⇒ Offline when the
+    /// answer was an offline miss (<paramref name="offline"/>: nothing cached and no connection), else NoLyrics; an untimed one — or
+    /// a timed one while a video suppresses sync — ⇒ Unsynced; else Synced. Cached lyrics show offline like any other.</summary>
+    public static LyricsState Classify(bool anything, bool hasTrack, bool pending, bool failed, Lyrics.Doc? doc, bool syncSuppressed,
+        bool offline = false)
     {
         if (!anything) return LyricsState.Nothing;
         if (!hasTrack) return LyricsState.NoLyrics;
         if (pending) return LyricsState.Loading;
         if (failed) return LyricsState.Failed;
-        if (doc is not { Lines.Count: > 0 }) return LyricsState.NoLyrics;
+        if (doc is not { Lines.Count: > 0 }) return offline ? LyricsState.Offline : LyricsState.NoLyrics;
         return !Lyrics.IsTimed(doc) || syncSuppressed ? LyricsState.Unsynced : LyricsState.Synced;
     }
 
     /// <summary>The state of a document that has landed (the load answered).</summary>
-    public static LyricsState ClassifyReady(Lyrics.Doc? doc, bool podcast)
+    public static LyricsState ClassifyReady(Lyrics.Doc? doc, bool podcast, bool offline = false)
         => Classify(anything: true, hasTrack: true, pending: false, failed: false, doc,
-            Lyrics.SyncGate.SyncSuppressed(Playback.VideoActive.Peek(), podcast));
+            Lyrics.SyncGate.SyncSuppressed(Playback.VideoActive.Peek(), podcast), offline);
 
     public void PublishState(LyricsState state) => State.SetIfChanged(state);
 

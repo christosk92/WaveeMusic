@@ -22,9 +22,10 @@
 - **A structure** registers views (`IStructureLayer.Register`), declares its options, and returns the shell's policies and
   capabilities for its option values. **A style** returns the engine's `ThemeDefinition` and the style metrics for its option
   values. Neither knows the other; the **composition** pairs them and adds counted overrides.
-- **Contract version 1.0** (`Contracts\ContractVersion.cs`): the published view keys and style keys, their props records
+- **Contract version 1.1** (`Contracts\ContractVersion.cs`): the published view keys and style keys, their props records
   and the role vocabulary. A theme records the version it was built against in its manifest; `ThemeHost.Install` refuses a
-  composition whose major differs or whose minor is newer than the core's.
+  composition whose major differs or whose minor is newer than the core's. 1.1 (CT4) appended `LyricsState.Offline`, the
+  optional `LyricsLinesStyle.Offline` picture and `PlayerBarSlots.VideoSplit`.
 - Keys live only in `Contracts\ViewKeys*.cs` and `StyleKeys.cs` (WVTH006). T1 declares none; each extraction PR adds its
   family in its own partial file (`ViewKeys.Shell.cs`: T4a's `Shell.Frame` and `Shell.ContentState`). How a surface becomes a
   registered view is section 2b.
@@ -758,7 +759,7 @@ every aspect class (Desktop / Compact / Portrait / Ultrawide).
 | `Stage.Hero` | `StageHeroProps` (`PrefetchDue`) | `Stage.HeroFacts` (the lookups) | `ClassicStageHero` -> `ClassicStageHeroLayer` / `ClassicStageHeroPhoto`: the Artist layout's photo (Ken Burns on the render thread, the cross-fade on a new artist, the hidden next-track decode) and its two scrims |
 | `Stage.ArtistName` | `StageArtistNameProps` (`Name`) | `Stage.ArtistNameProps` | `ClassicStageArtistName`: the eyebrow and the huge name |
 | `Stage.Face` | `StageLayerProps` | the face pick, `Visualizer.Face` | `ClassicStageFace`: the face on a keyed child (per kind and 8 DIP width bucket), inset while the gallery is open, told its safe rect |
-| `Stage.FaceScrim` | `StageFaceScrimProps` (`Alpha`) | `LayoutRules.BackdropScrim` | `ClassicStageFaceScrim`: the veil over a backdrop face |
+| `Stage.FaceScrim` | `StageFaceScrimProps` (`Alpha`) | `LayoutRules.BackdropScrim` (per face) | `ClassicStageFaceScrim`: the veil over a backdrop face |
 | `Stage.Spectrum` | `StageLayerProps` | `Stage.Layout.StripRect/RingBox` | `ClassicStageSpectrum`: the strip or ring in its own repaint boundary |
 | `Stage.NowPlayingCard` | `StageNowPlayingCardProps` (`Shown`) | `LayoutRules.ShowsNowPlayingCard` | `ClassicStageNowPlayingCard`: the acrylic card behind the Card thumb |
 | `Stage.Identity` | `StageIdentityProps` (`Title`, `Meta`, `Chips`, `NowPlayingMenu`, `OpenArtist`) | `Stage.IdentityProps`, `MetaFacts`, `ChipFacts` | `ClassicStageIdentity` (+ `ClassicStageMetaLink`, `ClassicStageChips`): the cover (`stage:cover`, the **bounds spring**) and the title column (`stage:titles`, the position spring) |
@@ -791,7 +792,7 @@ switch), the spectrum, the backdrop and the Artist pane (nothing playing, no fac
 | Key | Props / style | Core half | Classic template |
 |---|---|---|---|
 | `Lyrics.View` | `LyricsViewProps` (`Host` is an `ILyricsHost`; `Message`, `Body`, `Ticker`, `Debug`, `Footer`) | `Lyrics.ViewCore` (`Shell\Lyrics.UI.cs`, `Lyrics.Host.UI.cs`; the rail's body, the stage's pane and the podcast reader mount it) | `ClassicLyrics` (`Views\Lyrics\`): the layer stack, the breathing dots, the resync pill and its ring, the "no sync during video" note, the AI disclosure's place under the layers, the stage's capped left-anchored column |
-| `StyleKeys.LyricsLines` | `LyricsLinesStyle` (`Message`, `Shimmer`, `Skeleton`, `Unsynced`, `Lines`, `Peek`) | the host calls it where a document is on screen | `ClassicLyricsLines` (`Lists\`): the state line, the loading bars, the unsynced block, the measured virtual list and its rows (`ClassicLyricsRow`), the podcast peek and its gate |
+| `StyleKeys.LyricsLines` | `LyricsLinesStyle` (`Message`, `Shimmer`, `Skeleton`, `Unsynced`, `Lines`, `Peek`; optional `Offline` since 1.1) | the host calls it where a document is on screen | `ClassicLyricsLines` (`Lists\`): the state line, the loading bars, the unsynced block, the measured virtual list and its rows (`ClassicLyricsRow`), the podcast peek and its gate |
 
 **The model and the driver stay core.** `LyricsModel` (state, document, the upgrade gate, the clock, the follow and resync machine, the interlude
 reserve, the second line, the AI state, the verbs), `Lyrics.BlurPolicy` / `Lyrics.Prefs.BlurStrength(onStage)` and the frame driver in `ViewCore`
