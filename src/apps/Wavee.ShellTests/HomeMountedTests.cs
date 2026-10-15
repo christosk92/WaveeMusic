@@ -85,7 +85,8 @@ public sealed class HomeMountedTests(ShellHost host)
             harness =>
             {
                 Assert.Equal(ClassicHomeRules.FacetRowH, harness.AbsoluteBounds(harness.Node("home:facet:band")).H, 0.5f);
-                Assert.True(harness.Contains("home:facet:bar"), "the busy bar is always mounted: its opacity is a bind");
+                Assert.True(harness.Contains("home:facet:bar"), "the busy bar's 3-px slot is always laid out");
+                Assert.False(harness.Contains("home:facet:bar:busy"), "the bar itself is not drawn at rest");
                 Assert.False(harness.Contains("home:facet:failure"));
             }, UnderClassic());
 

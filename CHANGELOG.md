@@ -94,6 +94,17 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **Page changes move as one.** The Browse and Concerts title (the masthead) now leaves with the page it belongs to and
+  fades in with the next one, instead of the new title appearing over the old page for a moment. The window colour taken
+  from a page's artwork changes when the new page arrives instead of under the leaving one, and an album opened from
+  another album no longer shows the previous album's colour behind its loading placeholders. Home's loading bar now fades
+  in and out in its fixed place under the facet titles instead of popping on and off. The page change itself (90 ms out,
+  210 ms in) is unchanged.
+- **Switching between light and dark fades the album and playlist page colour too.** The tinted ground behind a track
+  page used to jump to the new mode while everything else faded; it now takes the same 250 ms fade.
+- **The window opens on a finished frame.** Wavee now shows its window only once the first frame has been drawn, so you no
+  longer see an empty window background first, and on a first start (or when you need to sign in again) the setup screen
+  is already up when the window appears. Pages and their animations start on the first frame you actually see.
 - **Pages you return to no longer re-flow on their first frame.** When a page is opened again after it left the page
   cache, its width-dependent parts (the artist page's top and biography bands, Home's daylist, facet row and recents grid,
   Browse and Search grids, the concert pages, the track list's command bar and similar) now appear at their final layout

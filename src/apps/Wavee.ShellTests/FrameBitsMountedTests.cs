@@ -5,8 +5,8 @@
 // and decisions (`Wavee.Tests\FrameBitsTests.cs` pins the pure ones). What only a mounted tree can say:
 //
 //   registered      Classic registers every key, and the real shell draws the masthead and the material through them
-//   masthead        the title row stands on the browse surfaces' frame; a held chrome stays drawn while the band is not live; a
-//                   chrome that was never shown draws nothing; a trail without a parent has no prefix
+//   masthead        the title row stands on the browse surfaces' frame; a band that is not live draws no head (a leaving band
+//                   finishes its exit as an orphan, ClassicMotionMountedTests); a trail without a parent has no prefix
 //   material        the tint node stays the SAME node across a change (the brush fades; nothing flashes), the washes are keyed on
 //                   their artwork, and the tint binder leaf still claims the shell material through its port
 //   drawer          the pane stays mounted, closed included, while the shell is narrow, and nothing is mounted otherwise; in the real
@@ -118,9 +118,9 @@ public sealed class FrameBitsMountedTests(ShellHost host)
             }, UnderClassic());
 
     [Fact]
-    public void A_held_chrome_stays_drawn_while_the_band_is_not_live()
+    public void A_band_that_is_not_live_draws_no_head()
         => ViewHarness.With(host, ViewKeys.ShellMasthead, new MastheadProps { Held = Chrome("Browse", "Pop"), Live = false },
-            harness => Assert.True(harness.Contains("masthead-current"), "an unknown family keeps the last trail and fades its opacity"),
+            harness => Assert.False(harness.Contains("masthead-current"), "the head leaves with its page (tuning F7)"),
             UnderClassic());
 
     [Fact]

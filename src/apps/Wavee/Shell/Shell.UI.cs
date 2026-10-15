@@ -133,6 +133,13 @@ public static partial class Shell
     internal static readonly Signal<ShellMaterialState> MaterialState = new(default);
     static readonly object s_neutralMaterialOwner = new();
 
+    /// <summary>The material ON SCREEN: <see cref="MaterialState"/> as of the page that is shown (Classic tuning D15). A page swap
+    /// decides the new page's claim on the route commit, but the material layer paints it when the swap lands
+    /// (<see cref="FrameRules.SwapLanded"/>), so the old page's tint leaves with the old page and the new one cross-fades in with the
+    /// new page's enter, never under the leaving body or the skeleton. Inside a page (a grading arriving, a theme flip, an option)
+    /// it follows the channel at once.</summary>
+    static readonly Signal<ShellMaterialState> PresentedMaterial = new(default);
+
     static bool s_frameSeeded;
 
     /// <summary>The persisted chrome state the frame's first layout must already have (no startup animation). Runs once,
@@ -488,10 +495,17 @@ public static partial class Shell
                 ChromeLayout.SetIfChanged(next);
             });
 
-            // ── the material mirror: the page channel → the model's TintOwner (the chrome's settled colour fact) ──
+            // ── the material on screen: the page channel as of the shown page (D15) ──
             UseSignalEffect(static () =>
             {
                 var m = MaterialState.Value;
+                if (FrameRules.SwapLanded(Shown.Value, Current.Peek())) PresentedMaterial.Value = m;
+            });
+
+            // ── the material mirror: the material on screen → the model's TintOwner (the chrome's settled colour fact) ──
+            UseSignalEffect(static () =>
+            {
+                var m = PresentedMaterial.Value;
                 bool neutral = m.Owner is null || ReferenceEquals(m.Owner, s_neutralMaterialOwner) || (m.Tint is null && m.Wash is null);
                 Material.SetIfChanged(neutral
                     ? TintOwner.Neutral
@@ -550,7 +564,7 @@ public static partial class Shell
             OnContentRegionBounds = static _ => PublishScrimClip(),
             TitleBar = TitleBarProps(),
             PlayerBar = PlayerBarHost.Props,
-            Material = new MaterialProps { State = MaterialState },
+            Material = new MaterialProps { State = PresentedMaterial },
             ContentHost = static () => Embed.Comp(static () => new ContentHost()),
             NavPane = Sidebar.DockedPaneProps,
             SidebarSeam = () => Splitter.Create(Sidebar.Seam, () => Sidebar.CommitSeam(), SidebarSeamOptionsFor(policies.NavPane),

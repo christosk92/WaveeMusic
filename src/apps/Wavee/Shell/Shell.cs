@@ -1004,10 +1004,6 @@ public static partial class Shell
     /// <summary>The scroll scope of a page in tab <paramref name="tab"/> (a prefix composed onto its scroll keys).</summary>
     public static string ScrollScopeOf(int tab) => "tab" + tab.ToString(CultureInfo.InvariantCulture) + "/";
 
-    /// <summary>The masthead band's fade window — the page's REAL exit window (<see cref="Design.Nav.ExitDurationMs"/>),
-    /// so a drill-in's two halves read as one gesture rather than an independent constant that can drift from it.</summary>
-    internal const float FadeThroughExitMs = Design.Nav.FadeThroughExitMs;
-
     /// <summary>The recipe for a page swap (<see cref="Design.Nav.RecipeFor"/>): the one fade-through for every pair of
     /// pages, a plain fade for Neutral.</summary>
     public static LayoutTransition RecipeFor(NavTransitionKind motion)
@@ -1459,10 +1455,11 @@ public static partial class Shell
 
     // ══ 8. TINT OWNERSHIP — the material hand-over ══════════════════════════════════════════════════════════════════
     //
-    // The window's material carries the PAGE's colour, and the one rule that matters is that it NEVER dips to neutral
-    // between two coloured pages. A page CLAIMS the plane the moment it navigates (with whatever colour it already
-    // has, which may be none); an ungraded claim HOLDS the previous colour rather than painting grey; a DEFINITE
-    // grading replaces it; and a grading that arrives for a page the user has already left is REFUSED.
+    // The window's material carries the PAGE's colour. A page CLAIMS the plane the moment it navigates (with whatever
+    // colour it already has; an ungraded claim is the neutral ground, never the previous page's colour, Classic tuning
+    // D15); a grading replaces it; a grading that arrives for a page the user has already left is REFUSED; and the shell
+    // paints the plane as of the page on screen, so the colour changes with the page swap. The decision table is
+    // `TintOwnership` (`Platform\ShellMaterial.cs`); this is the chrome's settled colour fact it is mirrored into.
 
     /// <summary>Who owns the shell material right now, and whether its colour is settled. <see cref="Argb"/> 0 means
     /// "no colour of its own yet"; neutral is a real value (the ground at A = 0.03), never <c>Transparent</c>.</summary>
@@ -1470,25 +1467,6 @@ public static partial class Shell
     {
         public static TintOwner Neutral => new("", 0u, true);
         public bool IsNeutral => Claimant.Length == 0;
-    }
-
-    /// <summary>The material hand-over, as a pure fold. Returns the new owner.
-    /// <list type="bullet">
-    /// <item><b>claim</b> — a route takes the plane. An ungraded claim keeps the CURRENT colour so the chrome never
-    /// flashes neutral on the way in.</item>
-    /// <item><b>refresh</b> — a grading lands for the claimant that already owns the plane. A definite grading always
-    /// wins; an indefinite one never demotes a definite.</item>
-    /// <item><b>neutral</b> — an empty claimant, the value a route that publishes no material of its own writes.</item>
-    /// </list></summary>
-    public static TintOwner Claim(in TintOwner current, string claimant, uint argb, bool definite)
-    {
-        if (claimant.Length == 0) return TintOwner.Neutral;
-        bool sameClaimant = string.Equals(current.Claimant, claimant, StringComparison.Ordinal);
-        if (!sameClaimant)
-            // A new page: it owns the plane from this instant. With no colour yet it HOLDS the outgoing colour.
-            return new TintOwner(claimant, definite || argb != 0u ? argb : current.Argb, definite);
-        if (!definite && current.Definite) return current;
-        return new TintOwner(claimant, argb != 0u ? argb : current.Argb, definite || current.Definite);
     }
 
     /// <summary>The claimant key a route publishes under. Two different pages must never collide, and the same page
@@ -1854,6 +1832,14 @@ public static partial class Shell
         /// PAGES' to hand over (an unconditional clear could land after the incoming page's claim and erase it).</summary>
         public static bool ClearsStagePlayable(in Route route, string currentPlayable)
             => route.Kind != RouteKind.Module && currentPlayable.Length > 0;
+
+        /// <summary>Has the page swap to <paramref name="current"/> LANDED, i.e. is its page the one on screen (Classic tuning D15)?
+        /// <paramref name="shown"/> is <see cref="Shown"/>, which the content host moves to the committed route once the leaving
+        /// page's exit leg has run; before the first commit it is <c>None</c> and everything lands at once (the first frame is
+        /// final). The shell material is painted as of this edge, so the leaving page keeps its colour for its exit and the new
+        /// page's colour cross-fades in with its enter.</summary>
+        public static bool SwapLanded(in Route shown, in Route current)
+            => shown.IsNone || shown.Equals(current);
 
         /// <summary>The trailing island's identity form, from the auth fold (ch 18 W17). Never raw session status.</summary>
         public enum ChipForm : byte { Profile, Connecting, Reconnect, SignIn }

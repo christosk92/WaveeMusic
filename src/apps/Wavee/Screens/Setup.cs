@@ -171,6 +171,13 @@ public static partial class Setup
         /// terms re-arm, so it rises over an already-painted shell.</summary>
         public static int OpenPosts(WizardEntry entry) => entry == WizardEntry.TermsRearm ? 2 : 1;
 
+        /// <summary>Does the wizard hold the window's reveal (Classic tuning F9: the first frame the user sees is final)? While a
+        /// first run or a re-auth is due and its plate has not opened yet, the frame would show the bare shell the plate then
+        /// covers, so the window stays hidden until the plate is up (the reveal gate's watchdog still shows it). A terms re-arm
+        /// rises over the painted shell on purpose (<see cref="OpenPosts"/>), so it never holds.</summary>
+        public static bool HoldsReveal(WizardEntry? due, bool shownThisLaunch)
+            => due is { } entry && OpenPosts(entry) == 1 && !shownThisLaunch;
+
         /// <summary>The wizard owns sign-in while its plate is up, and while it is armed but not yet shown this launch; once
         /// shown and closed the sign-in door takes it back (a later sign-out must still get a surface).</summary>
         public static bool OwnsSignIn(bool pending, bool open, bool shownThisLaunch) => open || (pending && !shownThisLaunch);

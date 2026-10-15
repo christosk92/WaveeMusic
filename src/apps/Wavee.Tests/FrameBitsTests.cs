@@ -115,8 +115,9 @@ public class FrameBitsTests
     }
 
     [Fact]
-    public void A_claim_without_a_colour_yet_keeps_what_is_showing_so_a_navigation_never_dips_to_neutral()
+    public void A_claim_without_a_colour_yet_is_the_neutral_ground_not_the_previous_pages_colour()
     {
+        // Classic tuning D15: an album's skeleton never wears the album before it; its grading cross-fades in when it lands.
         var slot = new Signal<ShellMaterialState>(default);
         var first = new object();
         var second = new object();
@@ -124,8 +125,10 @@ public class FrameBitsTests
         port.Publish(first, isClaim: true, definite: false, Blue, wash: null);
 
         port.Publish(second, isClaim: true, definite: false, tint: null, wash: null);   // graded colour not known yet
-
         Assert.Same(second, slot.Peek().Owner);
+        Assert.Null(slot.Peek().Tint);
+
+        port.Publish(second, isClaim: false, definite: false, Blue, wash: null);        // the grading lands
         Assert.Equal(Blue, slot.Peek().Tint);
     }
 

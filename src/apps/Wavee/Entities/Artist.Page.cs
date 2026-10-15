@@ -330,7 +330,7 @@ public readonly partial struct Artist
             // A 0-size leaf: the watch, the tone and the claim live there, never in this render. Gated on the incoming
             // art being USABLE (ch 08 BUG D) — never on Knows(Overview): a claim whose cover is already graded (the
             // search/home card's avatar, warmed by an earlier batch) must land its colour on the first paint, and only
-            // a genuinely ungraded cover falls through to TintOwnership's hold.
+            // a genuinely ungraded cover claims the neutral ground until its grading lands (TintOwnership, D15).
             bool artUsable = Detail.CoverLatch.IsUsable(paletteUrl);
             Element tint = Palette.ShellTint(paletteUrl, ready: artUsable, apply: true,
                 owner: _tintOwner, slot: shellSlot, key: "artist-tint:" + routeKey);
