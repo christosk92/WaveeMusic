@@ -1173,6 +1173,9 @@ public readonly partial struct Track
 
         string ListScrollKey => _scrollScope + _latest.ScrollKey + ":r" + _resetEpoch;
 
+        /// <summary>The album arm's outer scroller's restore key: <see cref="ListScrollKey"/>'s identity, its own lane.</summary>
+        string TrailScrollKey => _scrollScope + _latest.ScrollKey + ":trail:r" + _resetEpoch;
+
         Element FlatList(RepeatLayout layout, bool trailing, bool narrate)
             => ItemsView.CreateBound(_rowItems!,
                 scope => Embed.Comp(() => new TableSlot(this, scope.Row, 0, narrate)),
@@ -1326,11 +1329,15 @@ public readonly partial struct Track
                 children = [vertical ? content.StickyClip(stickyInset) : content];
             }
             // Keyed by the route/pane identity: a host that PERSISTS across contents (the library pane re-skins in place)
-            // must not hand the next album the previous one's offset, and a ScrollEl restores by node, not by a key of
-            // its own. A page mounts one per route anyway, so this only ever costs the pane a fresh viewport.
+            // must not hand the next album the previous one's offset. A page mounts one per route anyway, so this only ever
+            // costs the pane a fresh viewport. The restore key is the same identity in the page's scroll scope, with the
+            // content's reset epoch (exactly like the flat list's, ListScrollKey): an album evicted from KeepAlive and revisited,
+            // or remounted by a theme switch, opens at the offset it was left at, in its first layout (E8/F12), and a
+            // different album or a new content load starts at the top.
             return ScrollView(new BoxEl { Direction = 1, Grow = 1f, AlignSelf = FlexAlign.Stretch, ScrollScope = TrailScope, Children = children }) with
             {
                 Key = "trail:" + _latest.ScrollKey,
+                ScrollKey = TrailScrollKey,
                 Grow = 1f,
                 // WinUI's per-notch distance (15 % of the viewport, floored at 48 DIP) snapped to a whole number of
                 // rows at the live density, so a notch lands on a row boundary instead of slicing one in half. Dynamic
