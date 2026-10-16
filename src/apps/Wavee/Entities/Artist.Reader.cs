@@ -145,10 +145,11 @@ namespace Wavee;
 //      table (`Album.Pane.cs:168` says the same thing for the pane), and the block's reveal is extent-exact by
 //      construction — the counted skeleton is the same geometry as the content.
 //   9. TWO reader-width edges, not the plan's one at 1200 (the reader is 344-650 DIP in a non-maximized window, so a
-//      1200-DIP arm was never seen), both decided by `ReaderShape` (#158): under `NarrowBelow` (640) the block cover
+//      1200-DIP arm was never seen), decided by the reader's two arms (#158): under the narrow edge (640) the block cover
 //      drops 120 → 88 and the album head STACKS (`_narrow` — the arm the extents and the list mount key read); under
-//      `MediumBelow` (748, derived) the spine is gone and the band STACKS (`_stacked` — not a mount input; the band's
-//      extent is corrected in place). One 24-DIP hysteresis band each, `SetIfChanged` from `OnBoundsChanged`. W6's
+//      the medium edge (748, derived) the spine is gone and the band STACKS (`_stacked` — not a mount input; the band's
+//      extent is corrected in place). Since TC6 both edges are the structure's reader ladder (`ArtistLadders.Reader`, Classic
+//      `Rules\Tiers.Artist.cs`: 24 DIP of hold on widening each), over the width `OnBoundsChanged` writes. W6's
 //      one-row compact band, which this replaced, crushed the name to "Tro…" at 391 DIP.
 //  10. The SPINE is `ItemsView.CreateBound` with a `SpineDot` component per slot, not the plain `ItemsView.Create` over
 //      a cached-Element template the rework note asked for. A `Create` template is re-invoked only when the ItemsView
@@ -245,7 +246,7 @@ public readonly partial struct Artist
         /// apart because the band is not a block. Seeded in <see cref="SeedExtents"/>, corrected in <see cref="Settle"/>.</summary>
         float _bandExtent = ReaderShape.BandH;
         int _count, _library;
-        /// <summary>The two arms as THIS render read them (<see cref="_narrowBand"/>, <see cref="_medium"/>): the extent
+        /// <summary>The two arms as THIS render read them (<see cref="_arm"/>): the extent
         /// thunk, the block builders and the chrome check read these, never the signals, so a measure inside the layout
         /// pass cannot subscribe anything.</summary>
         bool _narrow, _stacked;
@@ -280,14 +281,18 @@ public readonly partial struct Artist
         readonly Action<NodeHandle> _onListMounted;
 
         readonly Signal<int> _current = new(0);        // the spine's highlighted block (scroll-spy; signals only)
-        /// <summary>The NARROW arm (<see cref="ReaderShape.Narrow"/>: cover 88 + the stacked album head), written from
-        /// <see cref="OnBounds"/>. ONE signal for both, because both sit on the same 640-DIP edge and two signals could
-        /// disagree for a frame; it is the list's mount input, so a flip reseeds every block extent.</summary>
-        readonly Signal<bool> _narrowBand = new(false);
-        /// <summary>The MEDIUM arm (<see cref="ReaderShape.Medium"/>, the wider 748 edge): the spine is GONE and the band
-        /// STACKS. One signal for both, because the wide band shares the lane with the spine — the edge is derived from
-        /// that sum. NOT a mount input: the band's extent is corrected in place (<see cref="Settle"/>).</summary>
-        readonly Signal<bool> _medium = new(false);
+        /// <summary>The reader's own arranged width, written from <see cref="OnBounds"/> (0 until the first measure: the seed answers until then).</summary>
+        readonly Signal<float> _readerW = new(0f);
+        /// <summary>The reader's ARM on the structure's reader ladder (<see cref="Theming.ArtistLadders.Reader"/>, TC6), resolved over <see cref="_readerW"/>:
+        /// NARROW (cover 88 + the stacked album head: the list's mount input, so a flip reseeds every block extent), MEDIUM (the spine is GONE and the band
+        /// STACKS: NOT a mount input, the band's extent is corrected in place, <see cref="Settle"/>) and wide. One ladder for both edges, so the two arms can
+        /// never disagree for a frame; a crossing found after mount commits on the first frame that is not resized.</summary>
+        IReadSignal<int>? _arm;
+        readonly Func<float> _readerSeed;
+        /// <summary>The narrow arm, read TRACKED (the running render or effect re-runs on a crossing).</summary>
+        bool NarrowArm => (_arm?.Value ?? Theming.ArtistLadders.ReaderArms - 1) == Theming.ArtistLadders.ReaderNarrow;
+        /// <summary>The medium (or narrow) arm: no spine and the stacked band, read TRACKED.</summary>
+        bool MediumArm => (_arm?.Value ?? Theming.ArtistLadders.ReaderArms - 1) <= Theming.ArtistLadders.ReaderMedium;
         /// <summary>One cell per ALBUM, minted on its first realize: it owns that block's readiness signal, its two
         /// builder thunks, its menu factory and the finished region element, so a re-realize allocates nothing.</summary>
         readonly Dictionary<int, BlockCell> _cells = new();
@@ -352,6 +357,8 @@ public readonly partial struct Artist
             _showAll = ShowAllReleases;
             _onVisibleRange = OnVisibleRange;
             _onBounds = OnBounds;
+            // Before the first measure the reader is seeded from the content region the frame resolved the window tiers on (an upper bound of the lane).
+            _readerSeed = () => Theming.ThemeHost.Facts.Peek().Tiers.ContentWidth is var w && w > 0f ? w : float.MaxValue;
             _onBandBounds = r => CheckChrome("band", Table.None, _stacked ? "stacked" : "wide", ReaderShape.BandHeight(_stacked),
                                              r.H, ref _bandLoggedDeclared, ref _bandLoggedMeasured);
             _onListMounted = OnListMounted;
@@ -383,8 +390,9 @@ public readonly partial struct Artist
             // in the navigator's page landed. `Tracks`/`AlbumTracks` were never here for the same reason: a landing
             // row reaches its block through the block's own readiness signal.
             _artist = p?.Slot ?? Table.None;
-            _narrow = _narrowBand.Value;
-            _stacked = _medium.Value;                                        // subscribe: the spine's presence is a tree edit
+            _arm = UseTier(Theming.ArtistLadders.Of(ShellPolicy.Now.Tiers, Theming.ArtistLadders.Reader), TierSource.Measured(_readerW, _readerSeed));
+            _narrow = NarrowArm;
+            _stacked = MediumArm;                                            // subscribe: the spine's presence is a tree edit
             bool spine = !_stacked;
             _shape = UseComputed(_compute);
             _listCount = UseComputed(_countOf);
@@ -748,7 +756,7 @@ public readonly partial struct Artist
             // so this is the same sanctioned seam one step earlier: the anchor below it is rebased with the write rather
             // than on the next measure. Read off the SIGNAL (it subscribes this effect), never off `_stacked`, so the
             // answer cannot depend on whether the render or this effect drains first.
-            float band = ReaderShape.BandHeight(_medium.Value);
+            float band = ReaderShape.BandHeight(MediumArm);
             if (band != _bandExtent && (_ctl.CorrectMeasuredExtent(0, band) || _ctl.Viewport.IsNull)) _bandExtent = band;
         }
 
@@ -814,14 +822,11 @@ public readonly partial struct Artist
             if ((uint)i < (uint)_count) _spineCtl.StartBringItemIntoView(i, float.NaN, animate: true);
         }
 
-        /// <summary>The two arms off the READER's own width (deviation 9), both DECIDED by <see cref="ReaderShape"/> —
-        /// <see cref="ReaderShape.Narrow"/> (640: cover 88 + the stacked album head) and <see cref="ReaderShape.Medium"/>
-        /// (748: no spine + the stacked band) — so the edges, their 24-DIP hysteresis and the unmeasured-width rule are
-        /// the tested ones, and this only feeds them the arranged width.</summary>
+        /// <summary>The two arms off the READER's own width (deviation 9), both DECIDED by the structure's reader ladder (<see cref="_arm"/>: the edges and
+        /// their holds are the structure's, `Rules\Tiers.Artist.cs`); this only feeds it the arranged width. An unmeasured width keeps the previous arm.</summary>
         void OnBounds(RectF r)
         {
-            _narrowBand.SetIfChanged(ReaderShape.Narrow(r.W, _narrowBand.Peek()));
-            _medium.SetIfChanged(ReaderShape.Medium(r.W, _medium.Peek()));
+            if (r.W > 0f) _readerW.SetIfChanged(r.W);
         }
 
         /// <summary>The always-on truthfulness line (renderer == estimator, the narrow-heads plan §3.4). A chrome root — the
@@ -868,7 +873,7 @@ public readonly partial struct Artist
             _ = Entities.Current.Artists.Changed.Value;
             _ = _propsSig.Value;
             var shape = _shape!.Value;
-            bool stacked = _medium.Value;
+            bool stacked = MediumArm;
             var a = new Artist(_artist);
             return new ArtistReaderBand(a, a.IsValid && a.Knows(ArtistFields.Name), shape, stacked);
         }
@@ -909,7 +914,7 @@ public readonly partial struct Artist
         /// <summary>The scope rail's "all releases · N": a bound prop over the SHAPE (a memo read inside a Prop thunk is tracked).</summary>
         public Prop<int> ReleaseTotal => _total;
         /// <summary>The narrow arm, read inside a bound text (the rail folds "all · N").</summary>
-        public bool NarrowNow() => _narrowBand.Value;
+        public bool NarrowNow() => NarrowArm;
         /// <summary>The spine's highlighted block.</summary>
         public Signal<int> Current => _current;
 

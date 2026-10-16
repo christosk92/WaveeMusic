@@ -7,7 +7,7 @@
 //
 // WHAT THE CORE KEEPS. `Artist.Reader` (`[CoreHost]`) decides: the props channel, the shape memo and its block order, the catalogue gate, the demand of every block, the
 // readiness of each block's cell, the measured-extent corrections, the scroll spy and the spine follow, the mount key, the layout and options of the mounted list, the two
-// width arms (`ReaderShape.Narrow` / `Medium`: no raw width compares here, WVTH013) and every verb. This view DRAWS: it is handed the mount's layout and options and a host
+// width arms (the structure's reader ladder, `ClassicArtistTiers.Reader`: no raw width compares here, WVTH013) and every verb. This view DRAWS: it is handed the mount's layout and options and a host
 // seam (`IArtistReaderHost`) its slots read live state through, in THEIR render, as the old nested components read the owner.
 //
 // THE PLANES ARE THE OLD TREE. The sub-rail is a RAW element returned straight into the scroller's content (a sticky root returned from a component never pins); every other
@@ -81,7 +81,7 @@ internal static partial class ClassicLibraryArtistReader
     /// <summary>72 avatar · the name LINK · "In your library: 3 albums · 35 songs" · the verbs. Painted from `ArtistFields.Identity` the moment the navigator's row carries it — the band never
     /// skeletons as a whole; an unnamed artist shows "…" in the title and nothing else (§5.7, W3).
     ///
-    /// <para>UNDER <see cref="Artist.ReaderShape.MediumBelow"/> it STACKS (#158): row 1 is a 56 avatar beside the name column, the name taking up to two lines; row 2 is the SAME verb row as
+    /// <para>UNDER <see cref="Artist.ReaderShape.WideBandLaneW"/> (the medium arm) it STACKS (#158): row 1 is a 56 avatar beside the name column, the name taking up to two lines; row 2 is the SAME verb row as
     /// the wide arm, left-aligned. The reason is arithmetic rather than taste: one row spends <see cref="Artist.ReaderShape.WideBandFixedW"/> (460 DIP, with the 56-DIP spine beside it) on what
     /// never shrinks, and the name column — the only flexible child — is what pays.</para>
     ///

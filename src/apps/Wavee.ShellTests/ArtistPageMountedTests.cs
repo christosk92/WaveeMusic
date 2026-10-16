@@ -27,8 +27,22 @@ public sealed class ArtistPageMountedTests(ShellHost host)
 {
     static ViewHarnessOptions UnderClassic() => new() { Composition = ClassicTheme.Create() };
 
-    static ArtistPageProps Props(bool pending, bool failed, Action<RectF>? measure = null, float width = ArtistHeroLayout.WideWidth,
-                                 bool bodyReady = false)
+    /// <summary>The metrics the core host latches for a <paramref name="width"/>-wide page in a <paramref name="window"/>-wide harness (its content region
+    /// is the window): the structure's record through the policy (TC6), at the page gutter.</summary>
+    static ArtistHeroMetrics MetricsAt(float width, float window)
+    {
+        var facts = WindowTiers.Resolve(ClassicTiers.Policy, window, 760f, window);
+        return ClassicArtistTiers.Policy.Hero(ClassicArtistTiers.HeroTierFor(width), in facts, width);
+    }
+
+    static ClassicArtistHeroForm FormAt(float width, float window)
+        => ClassicArtistTiers.HeroForm(ClassicArtistTiers.HeroTierFor(width), WindowTiers.Resolve(ClassicTiers.Policy, window, 760f, window), width);
+
+    /// <summary>The harness's default window width (`ViewHarnessOptions.WidthDip`).</summary>
+    const float HarnessWidth = 1180f;
+
+    static ArtistPageProps Props(bool pending, bool failed, Action<RectF>? measure = null, float width = 880f,
+                                 bool bodyReady = false, float window = HarnessWidth)
     {
         var accent = ColorF.FromRgba(30, 144, 255, 255);
         var compact = new Signal<bool>(false);
@@ -43,7 +57,7 @@ public sealed class ArtistPageMountedTests(ShellHost host)
             Retry = static () => { },
             BodyReady = bodyReady,
             Width = width,
-            Metrics = ArtistHeroLayout.For(width, ArtistHeroTier.Wide),
+            Metrics = MetricsAt(width, window),
             Measure = measure ?? (static _ => { }),
             Accent = accent,
             AccentFn = () => accent,
@@ -90,15 +104,15 @@ public sealed class ArtistPageMountedTests(ShellHost host)
     }
 
     [Theory]
-    [InlineData(752f, 389.12f)]    // Medium (a 1072 window with the 320 pane): was 752 - 2 x 32 = 688
-    [InlineData(1120f, 591.2f)]    // Wide (a 1440 window with the 320 pane): was 1120 - 2 x 36 = 1048
-    public void The_hero_copy_ends_near_56_percent_of_the_hero_on_the_photo_tiers(float width, float copy)
-        => ViewHarness.With(host, ViewKeys.ArtistPage, Props(pending: false, failed: false, width: width, bodyReady: true),
+    [InlineData(752f, 560f)]       // a 752 window is Small: C-Artist-Small's Medium hero sets a fixed 560 measure at the bottom-left (TC6)
+    [InlineData(1120f, 591.2f)]    // Wide at Standard (D18): 0.56 x 1120 - 36 (was 1120 - 2 x 36 = 1048)
+    public void The_hero_copy_column_is_the_tiers_measure(float width, float copy)
+        => ViewHarness.With(host, ViewKeys.ArtistPage, Props(pending: false, failed: false, width: width, bodyReady: true, window: width),
             harness =>
             {
                 harness.RunFrames(30);
-                var m = ArtistHeroLayout.For(width, ArtistHeroTier.Wide);
-                Assert.Equal(copy, ClassicArtistRules.HeroCopyWidth(width, in m), 2);
+                var m = MetricsAt(width, width);
+                Assert.Equal(copy, ClassicArtistRules.HeroCopyWidth(width, in m, FormAt(width, width)), 2);
                 var node = harness.Find("artist-hero-copy");
                 Assert.False(node.IsNull, "the hero's copy column is mounted");
                 var r = harness.LocalBounds(node);
@@ -114,10 +128,10 @@ public sealed class ArtistPageMountedTests(ShellHost host)
             harness =>
             {
                 harness.RunFrames(30);
-                var m = ArtistHeroLayout.For(1120f, ArtistHeroTier.Wide);
+                var m = MetricsAt(1120f, HarnessWidth);
                 var node = harness.Find("artist-hero-copy");
                 Assert.False(node.IsNull, "the shimmer's copy column is mounted");
-                Assert.Equal(ClassicArtistRules.HeroCopyWidth(1120f, in m), harness.LocalBounds(node).W, 1);
+                Assert.Equal(ClassicArtistRules.HeroCopyWidth(1120f, in m, FormAt(1120f, HarnessWidth)), harness.LocalBounds(node).W, 1);
                 Assert.Equal(m.Gutter, harness.AbsoluteBounds(node).X - harness.AbsoluteBounds(harness.Find("artist-page:fixture")).X, 1);
             }, UnderClassic());
 

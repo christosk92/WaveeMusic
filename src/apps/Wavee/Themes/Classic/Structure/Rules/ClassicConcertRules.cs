@@ -102,9 +102,6 @@ internal static class ClassicConcertRules
     /// <summary>The extra bottom padding past the player dock (the side inset is the page gutter, `ClassicTiers.PageOf`).</summary>
     public const float SubPageBottomExtra = 40f;
 
-    /// <summary>The measured-width fallbacks of the two dashboards before their first measure.</summary>
-    public const float ScheduleFallbackWidth = 900f, DetailFallbackWidth = 1000f;
-
     // ── the tour dashboard ──
     public const float ScheduleLocationW = 220f, TourDatesSize = 28f, TourDatesLine = 36f, MonthTabsH = 48f;
     public const float BoardHeadMinH = 58f, BoardMonthSize = 20f, BoardMonthLine = 28f, BoardShowAllMinH = 44f, BoardChevron = 14f;
@@ -121,6 +118,6 @@ internal static class ClassicConcertRules
     public const float LingerMs = 1000f;
 
     // ── the event page ──
-    public const float TicketsRailW = 320f, HeadlineGap = 4f, StatusPadY = 2f, FactGlyph = 16f;
+    public const float HeadlineGap = 4f, StatusPadY = 2f, FactGlyph = 16f;
     public const float ActAvatar = 44f, ActRowMinH = 60f, ActChevron = 14f;
 }

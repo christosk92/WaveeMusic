@@ -3,9 +3,8 @@
 // The literals that make the page look the way it does (WVTH003 keeps them out of the views): the pick card's pieces, the magazine's dock reserve, the
 // biography band's measure and tiles, the city bars, the upcoming card's cover, the tour badge and the latest-release cover.
 //
-// NOT here: the hero's tiers, heights, gutters, photo bands, copy maxima and collapse arithmetic. `ArtistHeroLayout` stays in core (`Entities\Artist.UI.cs`
-// §1): the profile page reads the same tiers, and the page host decodes the photo at the size it names. The plan's `Rules\ArtistHero.cs` is that file until the
-// profile page moves (T10c2).
+// NOT here: the hero's sub-tiers, heights, arms, photo bands and copy maxima are the tier records (`Rules\Tiers.Artist.cs`, TC6); the collapse arithmetic
+// is core (`ArtistHeroLayout`, `Entities\Artist.UI.cs` §1).
 
 namespace Wavee.Themes.Classic;
 
@@ -24,20 +23,20 @@ public static class ClassicArtistRules
     /// (the copy is centred), a two-line one exactly on them.</summary>
     public const int HeroLeadSkeletonLines = 2;
 
-    /// <summary>The copy column's width. Stacked tiers (no type on the photo) fill the band up to the tier's maximum. The photo tiers
-    /// take <c>min(CopyMax, max(360, 0.56 w - gutter))</c>, so the copy ends near 56 % of the hero instead of running to 95 % of it
-    /// over the bright half of the photo.</summary>
-    public static float HeroCopyWidth(float width, in ArtistHeroMetrics m)
+    /// <summary>The copy column's width. The stacked arms (no type on the photo, or a band of its own) and the bottom arm (the boards' fixed measure: 560 at
+    /// Small, 1120 at Huge) fill the band up to the form's maximum. The centred photo arm takes <c>min(CopyMax, max(360, 0.56 w - gutter))</c>, so the copy
+    /// ends near 56 % of the hero instead of running to 95 % of it over the bright half of the photo.</summary>
+    public static float HeroCopyWidth(float width, in ArtistHeroMetrics m, ClassicArtistHeroForm form)
     {
         float band = MathF.Max(1f, width - 2f * m.Gutter);
-        if (m.Stacked) return MathF.Min(m.CopyMaxWidth, band);
+        if (m.Stacked || form.Arm != ClassicArtistHeroArm.Centred) return MathF.Min(m.CopyMaxWidth, band);
         return MathF.Min(MathF.Min(m.CopyMaxWidth, band), MathF.Max(HeroCopyFloor, HeroCopyShare * width - m.Gutter));
     }
 
     /// <summary>Where the veil's hold ends, as a fraction of the hero's width: the copy column's right edge, so the veil keeps the copy on
-    /// its plate and fades over the photograph after it (<c>Controls.ArtistHeroVeil</c>). NaN on stacked tiers, which have no side veil.</summary>
-    public static float HeroVeilHold(float width, in ArtistHeroMetrics m)
-        => m.Stacked || width <= 1f ? float.NaN : (m.Gutter + HeroCopyWidth(width, in m)) / width;
+    /// its plate and fades over the photograph after it (<c>Controls.ArtistHeroVeil</c>). NaN on the stacked arms, which have no side veil.</summary>
+    public static float HeroVeilHold(float width, in ArtistHeroMetrics m, ClassicArtistHeroForm form)
+        => m.Stacked || width <= 1f ? float.NaN : (m.Gutter + HeroCopyWidth(width, in m, form)) / width;
 
     // ── the pick card ──
     /// <summary>The rail arm's photograph band height; the column supplies the width.</summary>

@@ -127,8 +127,10 @@ internal static partial class ClassicProfileList
     {
         var p = c.Props;
         bool chips = ProfileListFacets.HasChips(p.Facet());
-        var plan = ProfileGridFit.For(p.BodyWidth(), Spacing.Card);
-        int cols = plan.Columns > 0 ? plan.Columns : ClassicProfileListRules.ShimmerFallbackCols;
+        // The tier's narrowest card (TC6); the strip is not part of the silhouette.
+        int fit = ProfileGridFit.Columns(p.BodyWidth(), Spacing.Card, ClassicProfileTiers.Now.ListMinCell);
+        int cols = fit > 0 ? fit : ClassicProfileListRules.ShimmerFallbackCols;
+        var plan = p.Shape.Peek().Plan;   // the host's arm (the list ladder): the tools stack on its narrow arm
 
         var toolKids = new List<Element>(2);
         if (chips)

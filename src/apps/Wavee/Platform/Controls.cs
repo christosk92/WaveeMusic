@@ -929,6 +929,8 @@ public static partial class Controls
         /// mounts). Null reads the PAGE accent off <see cref="Design.AccentCtx"/>, falling back to the semantic token
         /// — the plan's "A = page accent, else Tok.AccentDefault".</summary>
         public Func<ColorF>? Accent { get; init; }
+        /// <summary>The toggle's control size: the stock 32 (<see cref="ControlSize.Medium"/>), or the 40-tall Compact target (<see cref="ControlSize.Large"/>, TC6).</summary>
+        public ControlSize Size { get; init; } = ControlSize.Medium;
 
         public override Element Render()
         {
@@ -943,7 +945,15 @@ public static partial class Controls
 
             return ToggleButton.Controlled(Label(Verb, false), on, _ => lib.ToggleSaved(Uri, Name),
                 glyph: Glyph(Verb, false), checkedGlyph: Glyph(Verb, true), checkedLabel: Label(Verb, true),
-                style: ButtonRules.FollowStyle(a, light), parts: RootNoShrink);
+                style: Sized(ButtonRules.FollowStyle(a, light), Size), parts: RootNoShrink);
+        }
+
+        /// <summary>The style at a control size: the size's height and padding over the stock ramp (Medium is the ramp as it is).</summary>
+        static ToggleButton.Style Sized(ToggleButton.Style style, ControlSize size)
+        {
+            if (size == ControlSize.Medium) return style;
+            var m = ControlMetrics.For(size);
+            return style with { MinHeight = m.MinHeight, Padding = m.Padding };
         }
 
         static string Label(FollowVerb verb, bool on) => Loc.Get(verb switch

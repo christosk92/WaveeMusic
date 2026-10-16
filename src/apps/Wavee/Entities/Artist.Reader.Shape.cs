@@ -65,10 +65,10 @@
 // head left the 32-px artist name ~79 DIP ("Tro…") and the 20-px title 3-42 DIP ("P…", "Ta…"): every control was
 // `Shrink 0` and the text was the only flexible child. A thinner row was tried first (W6's compact band, 2026-09-18) and
 // saved ~170 DIP, which was not enough — so both rows STACK instead, each on one reader-width edge with a 24-DIP exit
-// hysteresis:
+// hysteresis (the structure's reader ladder since TC6):
 //   · NARROW (< 640): the block cover drops 120 → 88 and the album head stacks — the title on a line of its own over
 //     the meta and the three circles. A list mount input (`ReaderMountPolicy.MountKey`), so its extents seed fresh.
-//   · MEDIUM (< MediumBelow): the cover spine is gone and the band stacks — avatar + a two-line name over the SAME verbs
+//   · MEDIUM (< the wide band's lane, 748): the cover spine is gone and the band stacks — avatar + a two-line name over the SAME verbs
 //     the wide arm has. NOT a mount input: the band is item 0, a persistent-prefix row, corrected in place in `Settle`.
 // The edges are DERIVED, not chosen (a test pins the medium one's sum): the inline head keeps `TitleFloorW` at the narrow
 // edge, the wide band leaves the name `NameMinW` at the medium one. The wide band shares the lane with the 56-DIP spine
@@ -124,22 +124,8 @@ public readonly partial struct Artist
     /// resort, so the order is total and the key deterministic.</summary>
     public static class ReaderShape
     {
-        // ── the two reader-width edges (#158; moved from the Reader's SpineHideBelow / NarrowBelow / BreakHysteresis) ─
-
-        /// <summary>The narrow edge: under it the block cover drops 120 → 88 and the album head STACKS. The library's
-        /// own 640 (`ClassicLibraryTiers.Collapsed`; WinUI's 641 compact threshold), and already sufficient for the
-        /// inline head — at 640 its title keeps <see cref="TitleFloorW"/> with room to spare.</summary>
-        public const float NarrowBelow = 640f;
-        /// <summary>Both edges' exit band: an arm entered under its edge holds until the width clears the edge by this
-        /// much, so dragging the grip across an edge cannot oscillate the layout (the page's own rule).</summary>
-        public const float BreakHysteresis = 24f;
-
-        /// <summary>Under 640 the block cover drops 120 → 88 and the album head STACKS; 24-DIP hysteresis on exit.
-        /// An unmeasured width keeps the previous answer (the library page's own rule).</summary>
-        public static bool Narrow(float w, bool was) => w <= 0f ? was : was ? w < NarrowBelow + BreakHysteresis : w < NarrowBelow;
-        /// <summary>Under <see cref="MediumBelow"/> the cover spine is gone AND the band folds to its stacked arm; the
-        /// same hysteresis and the same unmeasured rule.</summary>
-        public static bool Medium(float w, bool was) => w <= 0f ? was : was ? w < MediumBelow + BreakHysteresis : w < MediumBelow;
+        // The two reader-width edges (#158) are the structure's since TC6: its reader ladder (`Wavee.Theming.ArtistLadders.Reader`; Classic
+        // `Rules\Tiers.Artist.cs`: the narrow edge 640, the medium edge DERIVED from the wide band below, 24 DIP of hold on widening each).
 
         // ── block geometry (literals, not Spacing.*: this class is engine-free; the tree reads these same fields) ─────
 
@@ -206,9 +192,9 @@ public readonly partial struct Artist
         public const float WideBandFixedW = 2f * BandPadX + 2f * BandGap + AvatarEdge + ActionsW;   // 460
         /// <summary>The floor the WIDE band must leave the name: ≈ 13 display glyphs ("Florence + The…").</summary>
         public const float NameMinW = 232f;
-        /// <summary>The medium edge, DERIVED: the narrowest reader whose wide band — which shares the lane with the spine —
-        /// still leaves the name <see cref="NameMinW"/>. Also where the spine goes (one signal drives both).</summary>
-        public const float MediumBelow = WideBandFixedW + SpineW + NameMinW;                               // 748
+        /// <summary>The narrowest reader whose wide band — which shares the lane with the spine — still leaves the name <see cref="NameMinW"/>: the
+        /// structure derives its medium edge from it (one arm drives the spine and the band).</summary>
+        public const float WideBandLaneW = WideBandFixedW + SpineW + NameMinW;                             // 748
 
         /// <summary>How many rows a block shimmers when nothing has answered its count yet — four, the plan's literal.
         /// It is a COUNTED skeleton either way (§6 rule 5): a bare card is never an answer.</summary>

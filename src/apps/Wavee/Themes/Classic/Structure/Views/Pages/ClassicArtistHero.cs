@@ -5,8 +5,9 @@
 // End) — two compositions, never one with a flag (ch 08 §9 #1). A null `play` is the skeleton arm: no veil leaf, no band, the actions as their shapes.
 //
 // The hero is built by the page view for the live page AND for the derived shimmer (the skeleton deriver cannot run a view slot), and its pinned,
-// collapsing root has to stay a direct child of the page column, which is why it is a builder and not a key of its own. The tiers, the heights, the gutters
-// and the collapse arithmetic are `ArtistHeroLayout` (core: the profile page reads the same tiers); what the hero SAYS is `Artist.HeroText` (core facts).
+// collapsing root has to stay a direct child of the page column, which is why it is a builder and not a key of its own. The sub-tiers, the heights, the arms
+// and the copy measures are Classic's tier records (`Rules\Tiers.Artist.cs`, TC6: the core latches the metrics through them); the collapse arithmetic is
+// `ArtistHeroLayout` (core); what the hero SAYS is `Artist.HeroText` (core facts).
 
 using System.Globalization;
 using FluentGpu;
@@ -25,9 +26,12 @@ namespace Wavee.Themes.Classic;
 /// <summary>Wavee Classic's artist hero.</summary>
 internal static class ClassicArtistHero
 {
-    /// <summary>The full-bleed hero and its collapse into the 56-DIP band (ArtistPage.Hero.cs:22-198).</summary>
+    /// <summary>The full-bleed hero and its collapse into the 56-DIP band (ArtistPage.Hero.cs:22-198), in its tier's <paramref name="form"/>
+    /// (`Rules\Tiers.Artist.cs`): the photo arms (copy centred or at the bottom over a horizontal veil), the field arm (the photograph over the identity
+    /// column) or the overlay arm (the copy on the photograph over a vertical veil, the actions a row under it). The arm is keyed, so a tier crossing that
+    /// swaps it cross-fades the two, and the pinned root's height tweens (TC6).</summary>
     public static Element Build(in Artist.HeroText text, string uri, string? photoUrl, string? paletteUrl, float width,
-                                in ArtistHeroMetrics m, ColorF accent, bool compactCanHit,
+                                in ArtistHeroMetrics m, ClassicArtistHeroForm form, ColorF accent, bool compactCanHit,
                                 Action? play, Action? shuffle, Action? radio, Element? band,
                                 uint headerAccent = 0)
     {
@@ -58,88 +62,145 @@ internal static class ClassicArtistHero
             Children = [art],
         }.StretchFromTop().ParallaxY(ArtistHeroLayout.PhotoParallaxFraction, photoH);
 
-        // Shared by both arms: the expanded presentation slides up and fades as the band takes over.
+        // Shared by every arm: the expanded presentation slides up and fades as the band takes over.
         ScrollEffectSpec[] collapseEffects =
         [
             new(ScrollEffect.Parallax(0.0, collapse, 0f, -collapse)),
             new(ScrollEffect.Fade(ArtistHeroLayout.ExpandedFadeStart(collapse), collapse, 1f, 0f)),
         ];
 
-        Element identity = Identity(in text, uri, w, in m, accent, play, shuffle, radio);
-        Element expanded;
-        if (m.Stacked)
+        Element expanded = form.Arm switch
         {
-            // No veil: no type sits on the photograph on these tiers (ch 08 §0 #2).
-            expanded = new BoxEl
-            {
-                Width = w, Height = height, Direction = 1,
-                HitTestVisible = !compactCanHit, ScrollEffects = collapseEffects,
-                Children =
-                [
-                    media,
-                    new BoxEl
-                    {
-                        Grow = 1f, MinHeight = 0f, Direction = 1,
-                        Justify = FlexJustify.End, AlignItems = FlexAlign.Start,
-                        Padding = new Edges4(m.Gutter, Spacing.M, m.Gutter, Spacing.XL),
-                        Children = [identity],
-                    },
-                ],
-            };
-        }
-        else
+            ClassicArtistHeroArm.Field => FieldArm(in text, uri, w, height, in m, form, media, accent, compactCanHit, collapseEffects, play, shuffle, radio),
+            ClassicArtistHeroArm.Overlay => OverlayArm(in text, uri, paletteUrl, w, height, photoH, in m, form, media, accent, compactCanHit, collapseEffects,
+                play, shuffle, radio, headerAccent),
+            _ => PhotoArm(in text, uri, paletteUrl, w, height, in m, form, media, accent, compactCanHit, collapseEffects, play, shuffle, radio, headerAccent),
+        };
+        // One arm on screen under its own key: a crossing that swaps the arm cross-fades the two in the pinned z-stack instead of snapping one for the other.
+        Element arm = new BoxEl
         {
-            Element copy = new BoxEl
-            {
-                Width = w, Height = height, Direction = 1,
-                Justify = FlexJustify.Center, AlignItems = FlexAlign.Start,
-                Padding = new Edges4(m.Gutter, Spacing.XXL, m.Gutter, Spacing.XXL),
-                Children = [identity],
-            };
-            // A cover-keyed leaf: a late grading swaps the gradient without rebuilding the banner (ch 08 §4 row 3).
-            // headerAccent (row.HeaderAccent) is the raw payload rung the page passes through from the artist row.
-            // The veil stretches WITH the photo on a top overpan (the same top-anchored StretchFromTop): a fixed veil
-            // over a growing photo left an unveiled band above the hero's top edge.
-            Element veil = play is null
-                ? new BoxEl()
-                : new BoxEl
-                {
-                    Width = w, Height = height, ZStack = true, HitTestVisible = false,
-                    TransformOriginX = 0.5f, TransformOriginY = 0f,
-                    Children =
-                    [
-                        Palette.ArtistHeroVeil(paletteUrl, vertical: false, w, height, key: "artist-veil:" + uri,
-                                               payloadAccent: headerAccent, hold: ClassicArtistRules.HeroVeilHold(w, in m)),
-                    ],
-                }.StretchFromTop();
-            expanded = new BoxEl
-            {
-                Width = w, Height = height, ZStack = true,
-                HitTestVisible = !compactCanHit, ScrollEffects = collapseEffects,
-                Children = [media, veil, copy],
-            };
-        }
+            Key = s_armKeys[(int)form.Arm], Direction = 1, Width = w, Height = height,
+            Enter = ClassicArtistTiers.ArmFade, Exit = ClassicArtistTiers.ArmFade, Transition = ClassicArtistTiers.ArmFadeMotion,
+            Children = [expanded],
+        };
 
         // Pinned at the viewport top and COLLAPSING into the compact band: over the collapse distance the presented height
         // shrinks from the banner height to the band, and the Leading collapse cuts the expanded presentation (paint and
         // input) at that edge by itself — the presentation carries its own slide-away (collapseEffects). No ClipToBounds:
         // a box clip here would also cut the photo's overscroll stretch above the root's top (a dark band over the photo).
+        // A tier crossing tweens the hero's height (the detail hero's reflow recipe), so the magazine under it glides instead of jumping.
         return new BoxEl
         {
-            Direction = 1, Height = height, ZStack = true,
-            Children = band is null ? [expanded] : [expanded, band],
+            Direction = 1, Height = height, ZStack = true, Animate = ClassicArtistTiers.HeroMotion,
+            Children = band is null ? [arm] : [arm, band],
         }.Sticky(0f).Collapse(collapse, ArtistHeroLayout.CompactIdentityHeight, CollapseAnchor.Leading);
     }
 
-    /// <summary>Verified · name · first sentence · meta, then the action row (Hero.cs:34-95).</summary>
-    static Element Identity(in Artist.HeroText text, string uri, float w, in ArtistHeroMetrics m, ColorF accent,
-                            Action? play, Action? shuffle, Action? radio)
+    static readonly string[] s_armKeys = ["artist-hero:centred", "artist-hero:bottom", "artist-hero:field", "artist-hero:overlay"];
+
+    /// <summary>The photo arms: the photograph fills the hero, a horizontal veil holds to the copy's edge, the copy (with its actions) centred or at the
+    /// bottom-left.</summary>
+    static Element PhotoArm(in Artist.HeroText text, string uri, string? paletteUrl, float w, float height, in ArtistHeroMetrics m, ClassicArtistHeroForm form,
+                            Element media, ColorF accent, bool compactCanHit, ScrollEffectSpec[] collapseEffects,
+                            Action? play, Action? shuffle, Action? radio, uint headerAccent)
+    {
+        bool bottom = form.Arm == ClassicArtistHeroArm.Bottom;
+        Element copy = new BoxEl
+        {
+            Width = w, Height = height, Direction = 1,
+            Justify = bottom ? FlexJustify.End : FlexJustify.Center, AlignItems = FlexAlign.Start,
+            Padding = new Edges4(m.Gutter, Spacing.XXL, m.Gutter, bottom ? form.CopyBottom : Spacing.XXL),
+            Children = [Identity(in text, uri, w, in m, form, accent, play, shuffle, radio, actions: true)],
+        };
+        // A cover-keyed leaf: a late grading swaps the gradient without rebuilding the banner (ch 08 §4 row 3).
+        // headerAccent (row.HeaderAccent) is the raw payload rung the page passes through from the artist row.
+        // The veil stretches WITH the photo on a top overpan (the same top-anchored StretchFromTop): a fixed veil
+        // over a growing photo left an unveiled band above the hero's top edge.
+        Element veil = play is null
+            ? new BoxEl()
+            : new BoxEl
+            {
+                Width = w, Height = height, ZStack = true, HitTestVisible = false,
+                TransformOriginX = 0.5f, TransformOriginY = 0f,
+                Children =
+                [
+                    Palette.ArtistHeroVeil(paletteUrl, vertical: false, w, height, key: "artist-veil:" + uri,
+                                           payloadAccent: headerAccent, hold: ClassicArtistRules.HeroVeilHold(w, in m, form)),
+                ],
+            }.StretchFromTop();
+        return new BoxEl
+        {
+            Width = w, Height = height, ZStack = true,
+            HitTestVisible = !compactCanHit, ScrollEffects = collapseEffects,
+            Children = [media, veil, copy],
+        };
+    }
+
+    /// <summary>The field arm: the photograph is a field at the top and the identity column (with its actions) sits below it. No veil: no type sits on the
+    /// photograph (ch 08 §0 #2).</summary>
+    static Element FieldArm(in Artist.HeroText text, string uri, float w, float height, in ArtistHeroMetrics m, ClassicArtistHeroForm form, Element media,
+                            ColorF accent, bool compactCanHit, ScrollEffectSpec[] collapseEffects, Action? play, Action? shuffle, Action? radio)
+        => new BoxEl
+        {
+            Width = w, Height = height, Direction = 1,
+            HitTestVisible = !compactCanHit, ScrollEffects = collapseEffects,
+            Children =
+            [
+                media,
+                new BoxEl
+                {
+                    Grow = 1f, MinHeight = 0f, Direction = 1,
+                    Justify = FlexJustify.End, AlignItems = FlexAlign.Start,
+                    Padding = new Edges4(m.Gutter, Spacing.M, m.Gutter, Spacing.XL),
+                    Children = [Identity(in text, uri, w, in m, form, accent, play, shuffle, radio, actions: true)],
+                },
+            ],
+        };
+
+    /// <summary>The overlay arm (C-Artist-Compact): the photograph is a band of its own with the copy at its bottom over a vertical veil, and the actions are
+    /// a row of their own under it, at the Compact targets.</summary>
+    static Element OverlayArm(in Artist.HeroText text, string uri, string? paletteUrl, float w, float height, float photoH, in ArtistHeroMetrics m,
+                              ClassicArtistHeroForm form, Element media, ColorF accent, bool compactCanHit, ScrollEffectSpec[] collapseEffects,
+                              Action? play, Action? shuffle, Action? radio, uint headerAccent)
+    {
+        Element veil = play is null
+            ? new BoxEl()
+            : new BoxEl
+            {
+                Width = w, Height = photoH, ZStack = true, HitTestVisible = false,
+                Children = [Palette.ArtistHeroVeil(paletteUrl, vertical: true, w, photoH, key: "artist-veil:" + uri, payloadAccent: headerAccent)],
+            };
+        Element copy = new BoxEl
+        {
+            Width = w, Height = photoH, Direction = 1, Justify = FlexJustify.End, AlignItems = FlexAlign.Start,
+            Padding = new Edges4(m.Gutter, Spacing.M, m.Gutter, form.CopyBottom),
+            Children = [Identity(in text, uri, w, in m, form, accent, play, shuffle, radio, actions: false)],
+        };
+        return new BoxEl
+        {
+            Width = w, Height = height, Direction = 1, Gap = ClassicArtistTiers.OverlayActionsGap,
+            HitTestVisible = !compactCanHit, ScrollEffects = collapseEffects,
+            Children =
+            [
+                new BoxEl { Width = w, Height = photoH, ZStack = true, Children = [media, veil, copy] },
+                new BoxEl
+                {
+                    Direction = 0, MinWidth = 0f, Padding = new Edges4(m.Gutter, 0f, m.Gutter, 0f),
+                    Children = [Actions(text.Name, uri, accent, play, shuffle, radio, form)],
+                },
+            ],
+        };
+    }
+
+    /// <summary>Verified · name · first sentence · meta, then (on every arm but the overlay) the action row (Hero.cs:34-95).</summary>
+    static Element Identity(in Artist.HeroText text, string uri, float w, in ArtistHeroMetrics m, ClassicArtistHeroForm form, ColorF accent,
+                            Action? play, Action? shuffle, Action? radio, bool actions)
     {
         // The skeleton arm (no play) states every text run as its LINES: the deriver turns a text leaf into a bar 0.72 of its size tall, so the
         // copy came out ~70 DIP short of the loaded one at Wide (an 84/96 name became a 60 bar, each 14/20 line a 10 one) and, centred on the
         // photo, every bar and the action row stood off the words (tuned Classic X2).
         bool shimmer = play is null;
-        Element verified = text.Verified
+        Element verified = text.Verified && form.Details
             ? new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S,
@@ -151,47 +212,50 @@ internal static class ClassicArtistHero
             }
             : new BoxEl();
 
-        TextEl name = m.Tier switch
+        TextEl name = form.Name switch
         {
-            ArtistHeroTier.Wide => R.Type.ArtistDisplay(text.Name),
-            ArtistHeroTier.Medium => R.Type.ArtistTitle(text.Name),
+            ClassicArtistName.Display => R.Type.ArtistDisplay(text.Name),
+            ClassicArtistName.Title => R.Type.ArtistTitle(text.Name),
             _ => R.Type.ArtistCompactTitle(text.Name),
         };
         name = name with { Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MaxLines = 2, MinWidth = 0f };
         Element nameLine = Lines(name, 1, shimmer);
 
         // The lead is a COMMIT-computed column (ch 08 GAP 3): the hero never strips HTML on a render.
-        Element bio = text.Lead.Length == 0
+        Element bio = text.Lead.Length == 0 || form.BioLines <= 0
             ? new BoxEl()
             : Lines(Body(text.Lead) with
             {
-                Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis,
-                MinWidth = 0f,
-            }, ClassicArtistRules.HeroLeadSkeletonLines, shimmer);
+                Color = Tok.TextSecondary, Wrap = form.BioLines > 1 ? TextWrap.Wrap : TextWrap.NoWrap, MaxLines = form.BioLines,
+                Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, MaxWidth = form.BioMax,
+            }, Math.Min(form.BioLines, ClassicArtistRules.HeroLeadSkeletonLines), shimmer);
+
+        // Meta stays ONE horizontal row on the photo arms and wraps on the overlay band; only the Narrow field stacks it.
+        Element meta = form.Details
+            ? Meta(in text, stacked: form.Tier == ArtistHeroTier.Narrow && form.Arm == ClassicArtistHeroArm.Field,
+                   wrap: form.Arm == ClassicArtistHeroArm.Overlay, shimmer)
+            : new BoxEl();
 
         return new BoxEl
         {
             Key = "artist-hero-copy", Direction = 1,
-            // D18: on the photo tiers the copy ends near 56 % of the hero and the veil holds to that edge (ClassicArtistRules).
-            Width = ClassicArtistRules.HeroCopyWidth(w, in m),
+            // D18: on the centred photo arm the copy ends near 56 % of the hero and the veil holds to that edge (ClassicArtistRules).
+            Width = ClassicArtistRules.HeroCopyWidth(w, in m, form),
             MaxWidth = m.CopyMaxWidth, MinWidth = 0f, Gap = Spacing.S,
             // The page-level SkelRegion owns the single reveal. A second hero-copy entrance here made the
             // already-revealed page flash and move for another frame when the overview landed.
-            Children =
-            [
-                new BoxEl
-                {
-                    Direction = 1, Gap = Spacing.S, MinWidth = 0f,
-                    // Meta stays ONE horizontal row at Compact; only Narrow stacks it.
-                    Children = [verified, nameLine, bio, Meta(in text, m.Tier == ArtistHeroTier.Narrow, shimmer)],
-                },
-                Actions(text.Name, uri, accent, play, shuffle, radio, m.Tier),
-            ],
+            Children = actions
+                ?
+                [
+                    new BoxEl { Direction = 1, Gap = form.CopyGap, MinWidth = 0f, Children = [verified, nameLine, bio, meta] },
+                    Actions(text.Name, uri, accent, play, shuffle, radio, form),
+                ]
+                : [new BoxEl { Direction = 1, Gap = form.CopyGap, MinWidth = 0f, Children = [verified, nameLine, bio, meta] }],
         };
     }
 
     /// <summary>"#N in the world" (accent) · monthly listeners · followers — a zero stat drops its run (Hero.cs:236-259).</summary>
-    static Element Meta(in Artist.HeroText text, bool stacked, bool shimmer)
+    static Element Meta(in Artist.HeroText text, bool stacked, bool wrap, bool shimmer)
     {
         int count = (text.Rank > 0 ? 1 : 0) + (text.Monthly > 0 ? 1 : 0) + (text.Followers > 0 ? 1 : 0);
         var kids = new Element[count];
@@ -208,33 +272,45 @@ internal static class ClassicArtistHero
             Direction = (byte)(stacked ? 1 : 0),
             AlignItems = stacked ? FlexAlign.Start : FlexAlign.Center,
             Gap = stacked ? Spacing.XS : Spacing.L,
+            Wrap = wrap && !stacked,
             MinWidth = 0f,
             Children = kids,
         };
     }
 
-    /// <summary>Play (the cover's accent) · Shuffle · Follow · Radio; at Narrow [Play, Follow] over [Shuffle, Radio]
-    /// (Hero.cs:200-234). Never skeleton content (ch 08 §9 #8).
+    /// <summary>Play (the cover's accent) · Shuffle · Follow · Radio; [Play, Follow] over [Shuffle, Radio] where one row does not fit; Play · Follow on the
+    /// Short strip (Hero.cs:200-234). At the Compact targets every control is 40 tall and Shuffle is its glyph (C-Artist-Compact). Never skeleton content
+    /// (ch 08 §9 #8). Keyed, so the tier tests find the row.
     /// <para>Workstream B grammar: [<see cref="Controls.PlayButton(ColorF,Action,string?,string?)"/>][Shuffle, a stock
     /// Standard <c>Button.Create</c>][<see cref="Controls.FollowToggle"/>][radio, <see cref="Controls.IconAction"/>].</para></summary>
-    static Element Actions(string name, string uri, ColorF accent, Action? play, Action? shuffle, Action? radio,
-                           ArtistHeroTier tier)
+    static Element Actions(string name, string uri, ColorF accent, Action? play, Action? shuffle, Action? radio, ClassicArtistHeroForm form)
     {
-        Element playButton = Controls.PlayButton(accent, play ?? s_noop, Loc.Get(Strings.Artist.Play));
+        bool large = form.Target >= ClassicArtistTiers.CompactTarget;
+        var size = large ? ControlSize.Large : ControlSize.Medium;
+        Element playButton = Controls.PlayButton(accent, play ?? s_noop, size, Loc.Get(Strings.Artist.Play));
         // Keyed on the uri: FollowToggle carries its uri as a mount-frozen field.
         Element follow = uri.Length == 0
             ? Controls.FollowToggle.SkeletonShape()
-            : Embed.Comp(() => new Controls.FollowToggle { Uri = uri, Name = name })
+            : Embed.Comp(() => new Controls.FollowToggle { Uri = uri, Name = name, Size = size })
                 with { Key = "artist-follow:" + uri, SkeletonProxy = s_followShape };
-        Element shuffleButton = Button.Create(Loc.Get(Strings.Detail.Shuffle), shuffle ?? s_noop,
-            ButtonAppearance.Standard, glyph: Icons.Shuffle);
-        Element radioButton = Controls.Named(
-            Controls.IconAction(Icons.RadioTower, radio), Loc.Get(Strings.Artist.ArtistRadio));
 
-        if (tier == ArtistHeroTier.Narrow)
+        if (form.Actions == ClassicHeroActions.Primary)
             return new BoxEl
             {
-                Direction = 1, Gap = Spacing.S,
+                Key = "artist-hero-actions", Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
+                Children = [playButton, follow],
+            }.Skeletonized(false);
+
+        Element shuffleButton = large
+            ? Controls.Named(Controls.IconAction(Icons.Shuffle, shuffle, size: form.Target), Loc.Get(Strings.Detail.Shuffle))
+            : Button.Create(Loc.Get(Strings.Detail.Shuffle), shuffle ?? s_noop, ButtonAppearance.Standard, glyph: Icons.Shuffle);
+        Element radioButton = Controls.Named(
+            Controls.IconAction(Icons.RadioTower, radio, size: form.Target), Loc.Get(Strings.Artist.ArtistRadio));
+
+        if (form.Actions == ClassicHeroActions.TwoRows)
+            return new BoxEl
+            {
+                Key = "artist-hero-actions", Direction = 1, Gap = ClassicArtistTiers.ActionRowGap,
                 Children =
                 [
                     new BoxEl { Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Children = [playButton, follow] },
@@ -244,7 +320,7 @@ internal static class ClassicArtistHero
 
         return new BoxEl
         {
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
+            Key = "artist-hero-actions", Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
             Children = [playButton, shuffleButton, follow, radioButton],
         }.Skeletonized(false);
     }

@@ -60,7 +60,7 @@ internal static class ClassicDiscographyPage
 
         var content = new BoxEl
         {
-            Direction = 1, Gap = R.Space.SectionGap,
+            Key = "discography-page", Direction = 1, Gap = R.Space.SectionGap,
             Padding = new Edges4(gutter, Spacing.XXL, gutter, R.Space.DockReserve + gutter),
             Children =
             [

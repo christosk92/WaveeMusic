@@ -2,8 +2,8 @@
 //
 // The literals that make the page look the way it does (WVTH003 keeps them out of the views): the magazine's dock reserve and the shelf's geometry.
 //
-// NOT here: the hero's tiers, heights, gutters, stat budget and collapse arithmetic. `ProfileHeroLayout` (`Entities\Profile.Rules.cs`) stays in core over the
-// artist hero's tiers (`ArtistHeroLayout`): the artist page's host reads the same tiers.
+// NOT here: the hero's sub-tiers, heights, avatars, stat budget and the shelves' fit per tier are the tier records (`Rules\Tiers.Profile.cs`, TC6); the
+// collapse arithmetic is core (`ProfileHeroLayout`, `Entities\Profile.Rules.cs`).
 
 namespace Wavee.Themes.Classic;
 
@@ -13,16 +13,7 @@ internal static class ClassicProfileRules
     /// <summary>Added to the player dock's reserve under the last section.</summary>
     public const float MagazineDockExtra = 40f;
 
-    // The artist shelf's geometry (`ClassicArtistSections.ShelfOf` = PagedShelf's defaults) at a ONE-line caption.
-    /// <summary>The narrowest a shelf card may get.</summary>
-    public const float ShelfMinCard = 150f;
-
-    /// <summary>The widest a shelf card may get.</summary>
-    public const float ShelfMaxCard = 200f;
-
-    /// <summary>The gap between shelf cards.</summary>
-    public const float ShelfGap = 12f;
-
+    // The shelf's seed geometry at a ONE-line caption (the fit itself is the tier's: `ClassicProfileLayout.Shelf`).
     /// <summary>The gap between a shelf's header and its row of cards (the seed's).</summary>
     public const float ShelfHeaderGap = 12f;
 

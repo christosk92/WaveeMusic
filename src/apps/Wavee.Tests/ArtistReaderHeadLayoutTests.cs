@@ -18,55 +18,54 @@ namespace Wavee.Tests;
 
 public class ArtistReaderHeadLayoutTests
 {
-    // ── 1. the two edges ───────────────────────────────────────────────────────────────────────────────────────────
+    // ── 1. the two edges (the structure's reader ladder since TC6: `ClassicArtistTiers.Reader`) ─────────────────────────────
+
+    /// <summary>The reader's arm after a resolve from <paramref name="previous"/> (0 narrow, 1 medium, 2 wide; -1 a fresh resolve).</summary>
+    static int Arm(float w, int previous) => ClassicArtistTiers.Reader.Resolve(w, previous);
 
     [Fact]
     public void Narrow_enters_below_640_and_holds_until_664()
     {
-        Assert.True(RS.Narrow(639f, false));
-        Assert.False(RS.Narrow(640f, false));
-        Assert.True(RS.Narrow(663f, true));                    // the hysteresis band: once narrow, stay until 664
-        Assert.False(RS.Narrow(664f, true));
-        Assert.True(RS.Narrow(0f, true));                      // an unmeasured width keeps the previous answer
-        Assert.False(RS.Narrow(0f, false));
+        Assert.Equal(0, Arm(639f, 2));
+        Assert.NotEqual(0, Arm(640f, 2));
+        Assert.Equal(0, Arm(663f, 0));                          // the hysteresis band: once narrow, stay until 664
+        Assert.NotEqual(0, Arm(664f, 0));
+        Assert.NotEqual(0, Arm(640f, -1));                      // a fresh resolve uses the edge itself
     }
 
     [Fact]
     public void Medium_enters_below_748_and_holds_until_772()
     {
-        Assert.Equal(748f, RS.MediumBelow);
-        Assert.True(RS.Medium(747f, false));
-        Assert.False(RS.Medium(748f, false));
-        Assert.True(RS.Medium(771f, true));
-        Assert.False(RS.Medium(772f, true));
-        Assert.True(RS.Medium(0f, true));
-        Assert.False(RS.Medium(0f, false));
-        Assert.True(RS.Medium(391f, false));                   // the owner's reader stacks its band, however it got there
+        Assert.Equal(748f, ClassicArtistTiers.ReaderMediumBelow);
+        Assert.Equal(1, Arm(747f, 2));
+        Assert.Equal(2, Arm(748f, 2));
+        Assert.Equal(1, Arm(771f, 1));
+        Assert.Equal(2, Arm(772f, 1));
+        Assert.True(Arm(391f, 2) <= 1);                         // the owner's reader stacks its band, however it got there
     }
 
     [Fact]
     public void The_medium_edge_is_derived_from_the_wide_band_and_the_spine_beside_it()
     {
-        // The wide band shares the lane with the 56-DIP spine (one signal drives both), so the narrowest reader that can
+        // The wide band shares the lane with the 56-DIP spine (one arm drives both), so the narrowest reader that can
         // show it is everything in the row that never shrinks, plus the spine, plus the name's floor. The narrow-heads
         // plan's "484 + 232 = 716 ≤ 720" left the spine out: at 720 the name would have had 180 DIP.
         Assert.Equal(460f, RS.WideBandFixedW);                     // Y3: 40 pad + 2 × 16 + 72 avatar + the 316 verb row
         Assert.Equal(316f, RS.ActionsW);                           // Play all 120 + Follow 108 + 2 × 32 + 3 × 8
         Assert.Equal(56f, RS.SpineW);
-        Assert.Equal(RS.WideBandFixedW + RS.SpineW + RS.NameMinW, RS.MediumBelow);
+        Assert.Equal(RS.WideBandFixedW + RS.SpineW + RS.NameMinW, RS.WideBandLaneW);
+        Assert.Equal(RS.WideBandLaneW, ClassicArtistTiers.ReaderMediumBelow);
     }
 
     [Fact]
     public void The_narrow_arm_always_sits_inside_the_medium_one()
     {
-        // A narrow (stacked-head) reader has no spine beside it. That holds for every history only if the narrow arm's
-        // EXIT is under the medium arm's ENTRY.
-        Assert.True(RS.NarrowBelow + RS.BreakHysteresis <= RS.MediumBelow);
+        // One ladder for both edges: a narrow (stacked-head) reader is below the medium edge too, so it never has the spine beside it, and the narrow
+        // arm's EXIT is under the medium arm's ENTRY.
+        Assert.True(ClassicArtistTiers.ReaderNarrowBelow + ClassicArtistTiers.ReaderHold <= ClassicArtistTiers.ReaderMediumBelow);
         for (float w = 1f; w <= 1200f; w += 1f)
-            foreach (bool wasNarrow in new[] { false, true })
-                foreach (bool wasMedium in new[] { false, true })
-                    if (RS.Narrow(w, wasNarrow))
-                        Assert.True(RS.Medium(w, wasMedium), $"a narrow reader without the medium arm at {w} DIP");
+            for (int previous = -1; previous <= 2; previous++)
+                Assert.InRange(Arm(w, previous), 0, 2);
     }
 
     // ── 2. the band ────────────────────────────────────────────────────────────────────────────────────────────────

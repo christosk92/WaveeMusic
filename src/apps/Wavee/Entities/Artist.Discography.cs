@@ -743,10 +743,12 @@ public readonly partial struct Artist
             var count = UseComputed(_count);
             var style = _style ??= ListStyleLookup.Of(registry, StyleKeys.Discography);
             if (style is null) return new BoxEl();
-            // The structure's grid configuration; LazyGrid reads it as mount configuration.
+            // The structure's grid configuration; LazyGrid reads it as mount configuration, so the grid is keyed by it: a tier whose grid differs (TC6: the
+            // structure's metrics follow the window tier, read tracked) remounts the grid with the new column floor and gap, the expanded album kept here.
             var m = style.Metrics();
 
-            return Embed.Comp(() => new LazyGrid(
+            // A key on this component's ROOT would be inert: the keyed grid is the root column's one child.
+            return new BoxEl { Direction = 1, MinWidth = 0f, Children = [Embed.Comp(() => new LazyGrid(
                 count: count, cell: _cell, ensureRange: _ensureRange,
                 // Two rows keep a fast wheel/touchpad move covered without realizing four extra rows of album cards
                 // during navigation. The grid's range callback still asks the next visible rows before they enter.
@@ -756,7 +758,21 @@ public readonly partial struct Artist
                 expandedTopInset: _p.ExpandedTopInset, expandedRevealPeek: DiscoRevealPeek,
                 // AlignTop, not Minimal: the clicked row always parks under the sticky band, so the drawer opens in the
                 // SAME place on every click (ch 08 §9 must-not-simplify 4).
-                reveal: ExpandedReveal.AlignTop));
+                reveal: ExpandedReveal.AlignTop)) with { Key = GridKey(m) }] };
+        }
+
+        string _gridKey = "";
+        DiscographyMetrics _gridKeyFor;
+
+        /// <summary>The LazyGrid's key for a grid configuration (one string per configuration, not per render).</summary>
+        string GridKey(in DiscographyMetrics m)
+        {
+            if (_gridKey.Length == 0 || !_gridKeyFor.Equals(m))
+            {
+                _gridKeyFor = m;
+                _gridKey = string.Concat("disco-lazy:", m.MinColumn.ToString(CultureInfo.InvariantCulture), ":", m.Gap.ToString(CultureInfo.InvariantCulture));
+            }
+            return _gridKey;
         }
 
         /// <summary>The expanded album's tracklist: asked while nobody answered (and not failed — Retry re-asks), and

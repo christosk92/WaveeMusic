@@ -1,7 +1,7 @@
 // ── Themes/Classic/Structure/Views/Pages/ClassicConcertDetail.cs — Classic's `Pages.Concert` (themes plan 6.1, T10b3) ────────────────────────────
 //
 // From `Entities\Concert.Page.cs` §8 (`DetailPage`; 0.2.9 `ConcertDetailPage`): the split hero carries the identity and the provider's local-clock facts; tickets
-// ride a 320 rail at wide (920 enter / 860 leave, `ClassicConcertTiers.DetailWide`) ONLY when offers exist — else one full column — and move inline after the
+// ride the tier's rail (320, Huge 360) at wide (920 enter / 860 leave, `ClassicConcertTiers.Detail`) ONLY when offers exist — else one full column — and move inline after the
 // hero when narrow; then the lineup card and the related shelf, each omitted when empty. `Concert.DetailHost` (core) demands the whole row, publishes the verdict
 // and reads the row into the page's values (`ConcertDetailView`); the skeleton is the same builder over `ConcertDetailView.Seed` (§9 #4: facts + two offers +
 // three lineup rows, the exact silhouette of the loaded page).
@@ -50,13 +50,18 @@ internal static class ClassicConcertDetail
     public static Element Template(ConcertDetailProps props, in ViewContext ctx)
     {
         var latch = ctx.Hooks.UseRef(new Latch()).Value;
-        Func<float, Element> build = w => Compose(props.Detail(), Wide(latch, w));
-        Func<float, Element> buildSeed = w => Compose(ConcertDetailView.Seed, Wide(latch, w));
+        // The window tier's record (TC6: the hero's arm and size, the rail's width, the targets) and the first frame's width, seeded from the same-frame region
+        // estimate (no fixed fallback), so the first frame is already in its final arm.
+        var facts = ctx.Tier();
+        var layout = ClassicConcertTiers.Of(in facts);
+        float firstW = ClassicRegion.EstimateWidth(facts, ctx.Hooks.UseContextSignal(Viewport.Size).Peek().Width);
+        Func<float, Element> build = w => Compose(props.Detail(), Wide(latch, w), layout);
+        Func<float, Element> buildSeed = w => Compose(ConcertDetailView.Seed, Wide(latch, w), layout);
         Func<Element> content = () => props.Unavailable
             ? Controls.Vacancy(Controls.VacancyVoice.Empty, title: Loc.Get(Strings.Concerts.Detail.NotAvailable),
                 subtitle: Loc.Get(Strings.Concerts.Detail.NotAvailableSubtitle))
-            : Responsive.Of("concert-detail", build, fallback: Rules.DetailFallbackWidth);
-        Element region = Cells.Region(props.Pending, static () => false, content, () => Responsive.Of("concert-detail", buildSeed, fallback: Rules.DetailFallbackWidth),
+            : Responsive.Of("concert-detail", build, fallback: firstW);
+        Element region = Cells.Region(props.Pending, static () => false, content, () => Responsive.Of("concert-detail", buildSeed, fallback: firstW),
             s_never, "concert-detail:" + props.RouteKey);
         return Cells.SubPageScroll(props.ScrollScope + "concert-detail:" + props.RouteKey, region, ClassicTiers.PageOf(ctx.Tier()).Gutter);
     }
@@ -69,19 +74,21 @@ internal static class ClassicConcertDetail
         return wide;
     }
 
-    static Element Compose(ConcertDetailView d, bool wide)
+    static Element Compose(ConcertDetailView d, bool wide, ClassicConcertLayout layout)
     {
-        Element? tickets = d.Offers.Length > 0 ? Tickets(d.Offers) : null;
-        var main = new List<Element>(4) { Cells.SplitHero(d.ImageUrl, d.Accent, Identity(d), wide) };
+        Element? tickets = d.Offers.Length > 0 ? Tickets(d.Offers, layout) : null;
+        var main = new List<Element>(4) { Cells.SplitHero(d.ImageUrl, d.Accent, Identity(d), ClassicConcertTiers.EventHero(layout, wide)) };
+        // The rail docks only where the tier has one (C-Concert-Small keeps the tickets inline at every width).
+        wide = wide && layout.RailWidth > 0f;
         if (!wide && tickets is not null) main.Add(tickets);                  // narrow: inline, right after the facts
         if (d.Lineup.Length > 0) main.Add(Lineup(d.Lineup));
         if (d.Related.Length > 0) main.Add(Related(d.Related));
-        var column = new BoxEl { Direction = 1, Gap = Spacing.XL, MinWidth = 0f, Children = main.ToArray() };
+        var column = new BoxEl { Key = "concert-event:column", Direction = 1, Gap = Spacing.XL, MinWidth = 0f, Children = main.ToArray() };
         if (!wide || tickets is null) return column;                           // wide with NO offers: no rail (parity 64)
         return new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Start, Gap = Spacing.XL, MinWidth = 0f,
-            Children = [column with { Grow = 1f, Basis = 0f }, new BoxEl { Width = Rules.TicketsRailW, Shrink = 0f, Direction = 1, Children = [tickets] }],
+            Children = [column with { Grow = 1f, Basis = 0f }, new BoxEl { Width = layout.RailWidth, Shrink = 0f, Direction = 1, Children = [tickets] }],
         };
     }
 
@@ -127,8 +134,9 @@ internal static class ClassicConcertDetail
 
     /// <summary>"Tickets" + one card per offer: provider, availability, price, sale window, then Buy (a validated
     /// external link, lifted 4 DIP) or the quiet "Tickets not available online" — never a dead button (§0 #13).</summary>
-    static Element Tickets(ConcertOfferView[] offers)
+    static Element Tickets(ConcertOfferView[] offers, ClassicConcertLayout layout)
     {
+        var size = layout.Target >= ClassicArtistTiers.CompactTarget ? ControlSize.Large : ControlSize.Medium;
         var kids = new Element[offers.Length + 1];
         kids[0] = Cells.SectionCaption(Loc.Get(Strings.Concerts.Detail.Tickets));
         for (int i = 0; i < offers.Length; i++)
@@ -145,7 +153,8 @@ internal static class ClassicConcertDetail
                 lines.Add(new BoxEl
                 {
                     Direction = 0, Padding = new Edges4(0f, Spacing.XS, 0f, 0f),
-                    Children = [Button.Accent(Loc.Get(Strings.Concerts.Detail.BuyTickets), () => Actions.Services.OpenExternal?.Invoke(url))],
+                    Children = [Button.Create(Loc.Get(Strings.Concerts.Detail.BuyTickets), () => Actions.Services.OpenExternal?.Invoke(url),
+                        ButtonAppearance.Accent, size: size)],
                 });
             else lines.Add(R.Type.TrackMeta(Loc.Get(Strings.Concerts.Detail.TicketsUnavailable)) with { MaxLines = 1 });
             kids[i + 1] = new BoxEl

@@ -70,33 +70,48 @@ internal static class ClassicProfileSections
 
     /// <summary>A present section with rows. Every shelf of surface cards passes <c>onInvoke</c> (the slot owns click + focus: one Tab stop per card). "See all" rides
     /// the two people sections only (the caller passes null elsewhere).</summary>
-    internal static Element Shelf(ProfileSection s, ProfileCard[] items, ColorF accent, Action? seeAll)
+    internal static Element Shelf(ProfileSection s, ProfileCard[] items, ColorF accent, Action? seeAll, ClassicShelfBand band)
     {
         string title = SectionTitle(s);
         return s switch
         {
             ProfileSection.TopArtists => ShelfOf(items, s_rankedCard,
-                SectionHeader(title, accent, null, Loc.Get(Strings.Person.OnlyYou)), s_rankedHeight),
-            ProfileSection.Playlists => ShelfOf(items, s_playlistCard, SectionHeader(title, accent, seeAll), s_cardHeight),
-            ProfileSection.RecentArtists => ShelfOf(items, s_artistCard, SectionHeader(title, accent, null), s_cardHeight),
-            _ => ShelfOf(items, s_personCard, SectionHeader(title, accent, seeAll), s_cardHeight),
+                SectionHeader(title, accent, null, Loc.Get(Strings.Person.OnlyYou)), s_rankedHeight, band),
+            ProfileSection.Playlists => ShelfOf(items, s_playlistCard, SectionHeader(title, accent, seeAll), s_cardHeight, band),
+            ProfileSection.RecentArtists => ShelfOf(items, s_artistCard, SectionHeader(title, accent, null), s_cardHeight, band),
+            _ => ShelfOf(items, s_personCard, SectionHeader(title, accent, seeAll), s_cardHeight, band),
         };
     }
 
+    /// <summary>A shelf at the tier's fit (TC6: a 164 strip whose third card peeks at Compact, ten columns at Huge), keyed by the fit: a PagedShelf reads it
+    /// at mount, so a crossing that changes it remounts the shelf.</summary>
     static Element ShelfOf(ProfileCard[] items, Func<ProfileCard, int, float, Element> cardAt, Element header,
-                           Func<float, float> cardHeight) => new BoxEl
+                           Func<float, float> cardHeight, ClassicShelfBand band) => new BoxEl
     {
         Direction = 1, MinWidth = 0f,
         Children = [PagedShelf.Create(items, cardAt, onInvoke: s_open, cardHeight: cardHeight, header: header,
-            measured: false, keyOf: s_keyOf, lift: ShelfLift.None)],   // the shared card hovers fill-only: no lift halo
+            measured: false, keyOf: s_keyOf, lift: ShelfLift.None,   // the shared card hovers fill-only: no lift halo
+            pager: band.Pager ? ShelfPager.Chevrons : ShelfPager.None, minCardW: band.MinCardW, maxCardW: band.MaxCardW, gap: band.Gap,
+            fixedCardW: band.FixedCardW, maxColumns: band.MaxColumns) with { Key = ClassicArtistSections.ShelfKey(band) }],
     };
+
+    /// <summary>The seed row's fit: the strip's fixed card (as many as start inside the width, the next one peeking), else the shelf's own fit capped at the
+    /// tier's columns.</summary>
+    static (int PerPage, float CardW) SeedFit(float width, in ClassicShelfBand band)
+    {
+        if (band.FixedCardW > 0f) return (Math.Max(1, (int)MathF.Ceiling(width / band.FixedCardW)), band.FixedCardW);
+        var (perPage, cardW) = FillRowVirtualLayout.Fit(width, band.MinCardW, band.MaxCardW, band.Gap);
+        if (band.MaxColumns <= 0 || perPage <= band.MaxColumns) return (perPage, cardW);
+        int cols = band.MaxColumns;
+        return (cols, MathF.Max(band.MinCardW, (width - (cols - 1) * band.Gap) / cols));
+    }
 
     /// <summary>A section's shimmer SOURCE at the shelf's real fit: the real header, then the fitted count of SEED surfaces (a PagedShelf yields no rows against an
     /// unmeasured viewport — Browse's must-not-simplify 11).</summary>
-    internal static Element SeedShelf(ProfileSection s, ColorF accent, float width)
+    internal static Element SeedShelf(ProfileSection s, ColorF accent, float width, ClassicShelfBand band)
     {
         bool ranked = s == ProfileSection.TopArtists;
-        var (perPage, cardW) = FillRowVirtualLayout.Fit(width, ClassicProfileRules.ShelfMinCard, ClassicProfileRules.ShelfMaxCard, ClassicProfileRules.ShelfGap);
+        var (perPage, cardW) = SeedFit(width, band);
         var cells = new Element[perPage];
         for (int i = 0; i < perPage; i++)
         {
@@ -119,7 +134,7 @@ internal static class ClassicProfileSections
                     Direction = 0, AlignItems = FlexAlign.Center, MinHeight = ClassicProfileRules.ShelfChevron,
                     Children = [SectionHeader(SectionTitle(s), accent, null)],
                 },
-                new BoxEl { Direction = 0, Gap = ClassicProfileRules.ShelfGap, MinWidth = 0f, ClipToBounds = true, Children = cells },
+                new BoxEl { Direction = 0, Gap = band.Gap, MinWidth = 0f, ClipToBounds = true, Children = cells },
             ],
         };
     }

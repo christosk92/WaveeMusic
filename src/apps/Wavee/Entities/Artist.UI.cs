@@ -1,7 +1,8 @@
 // ── Entities/Artist.UI.cs ──────────────────────────────────────────────────────────────────────────────────────────
-// The artist page's CORE layout sections and facts: ArtistHeroLayout and ArtistPopularLayout (ported VERBATIM from 0.2.9's
-// Features/Detail/ArtistHeroLayout.cs / ArtistPopularLayout.cs, ch 08 §8) and ArtistSections (the page's pure decisions: section order, pivot
-// membership, the top band's wide latch, the chart's column clamp, the profile-facts list, the fans fallback, the page-failure verdict), then the
+// The artist page's CORE layout sections and facts: the hero's metrics and its tier-free collapse arithmetic (ArtistHeroLayout; WHERE the hero's
+// sub-tiers break and what each lays out is the structure's since TC6, `Theming\Policies\ArtistTierPolicy.cs`), ArtistPopularLayout (ported VERBATIM
+// from 0.2.9's Features/Detail/ArtistPopularLayout.cs, ch 08 §8) and ArtistSections (the page's pure decisions: section order, pivot
+// membership, the chart's column clamp, the profile-facts list, the fans fallback, the page-failure verdict), then the
 // hero's facts (HeroText) and the gallery lightbox's core (the overlay, the open index, the export). The hero, the artist pick, the shelves, the
 // biography band and the banners are the structure's since T10b1 (`Themes\Classic\Structure\Views\Pages\ClassicArtist*.cs`), the lightbox's
 // picture since T10b2 (`ClassicArtistLightbox.cs`, `ViewKeys.ArtistLightbox`); the Top-tracks chart is the named partial Artist.UI.Chart.cs.
@@ -23,7 +24,7 @@
 // HeroHeightFor/PageGutterFor, so between 856 and 880 the hero was 440 tall with a 36 gutter while the wash was sized for
 // 384 + 96. The page now resolves ONE ArtistHeroMetrics per render and hands it to the hero, the band, the wash
 // (BlendBackdropHeightFor/BlendBoundaryFor(in metrics)) and the magazine gutter (metrics.Gutter). The width-only height
-// forms stay, verbatim, for their tests.
+// forms went with the core's tier ladder (TC6): the structure's records are the only place a hero height is named.
 //
 // NAME NOTE: inside `struct Artist` the simple names `Uri`, `Id`, `Name`, `Version`, `Pick`, `Latest` and `Links` are the
 // handle's INSTANCE members — `System.Uri` is spelled in full and nothing here declares a nested type of those names.
@@ -44,7 +45,7 @@ using Slots = FluentGpu.Theming.Slots;
 
 namespace Wavee;
 
-// ══ 1. CORE — THE HERO LAYOUT (verbatim, ArtistHeroLayout.cs) ════════════════════════════════════════════════════════
+// ══ 1. CORE — THE HERO'S METRICS AND ITS COLLAPSE ARITHMETIC ═══════════════════════════════════════════════════════════
 
 public enum ArtistHeroTier : byte { Narrow, Compact, Medium, Wide }
 public enum ArtistHeroVeilAxis : byte { Horizontal, Vertical }
@@ -57,93 +58,30 @@ public readonly record struct ArtistHeroMetrics(
     float CopyMaxWidth)
 {
     public bool Stacked => VeilAxis == ArtistHeroVeilAxis.Vertical;
+
+    /// <summary>The photograph's own extent when it is a slice of the hero (a stacked arm); 0 when the photograph fills the whole hero.</summary>
+    public float PhotoHeight { get; init; }
 }
 
-/// <summary>Responsive geometry for the full-bleed artist hero. The photo always fills the hero; pressure changes only
-/// the copy placement and veil direction. Tier selection retains the detail layout's 24-DIP recovery band.</summary>
+/// <summary>The full-bleed artist hero's tier-free arithmetic: the photograph's extent, its fade and parallax, and the collapse into the 56-DIP band. WHERE
+/// the hero's sub-tiers break (the hero ladder, <see cref="Wavee.Theming.ArtistLadders.Hero"/>) and what each one lays out (its height, gutter, veil and copy
+/// measure: <see cref="Wavee.Theming.ArtistTierPolicy.Hero"/>) is the structure's (Classic: <c>Rules\Tiers.Artist.cs</c>).</summary>
 public static class ArtistHeroLayout
 {
-    // Lowered from 480/760/1040: the old thresholds dropped into the stacked presentation at ordinary desktop widths.
-    public const float CompactWidth = 360f;
-    public const float MediumWidth = 600f;
-    public const float WideWidth = 880f;
-    public const float TierHysteresis = 24f;
+    /// <summary>The photograph's own extent: the full hero, or the slice the metrics name. Both the banner's media box and <c>HeroArt</c> derive from THIS,
+    /// so they cannot disagree.</summary>
+    public static float PhotoHeightFor(in ArtistHeroMetrics m) => m.PhotoHeight > 0f ? MathF.Min(m.PhotoHeight, m.MinHeight) : m.MinHeight;
 
-    public const float WideHeight = 440f;
-    public const float MediumHeight = 384f;
-
-    // Stacked (Compact/Narrow): the photograph is a FIELD at the top and the identity column sits BELOW it.
-    public const float CompactPhotoHeight = 200f;
-    public const float NarrowPhotoHeight = 176f;
-
-    // The stacked identity band's WORST-CASE anatomy: verified caption + a 2-line title + a 2-line bio + meta (one row at
-    // Compact, three stacked rows at Narrow) + gaps + 12/20 padding + actions (one 32 row at Compact, two at Narrow).
-    // Workstream B (button standardisation): the action row's control lost 4 DIP — the old media pill/FollowButton's
-    // PillHeight (36) is replaced by the new grammar's ButtonHeight (32, Controls.Cta.cs) for PlayButton/Shuffle/
-    // FollowToggle/radio IconAction alike — so each 36 action row shrinks to 32. Compact stacks ONE action row
-    // (252 - 4 = 248); Narrow stacks TWO (300 - 2×4 = 292).
-    public const float CompactExpandedIdentityHeight = 248f;
-    public const float NarrowExpandedIdentityHeight = 292f;
-    public const float CompactHeight = CompactPhotoHeight + CompactExpandedIdentityHeight;
-    public const float NarrowHeight = NarrowPhotoHeight + NarrowExpandedIdentityHeight;
-
-    /// <summary>The photograph's own extent: the full hero on horizontal tiers, the top slice on stacked tiers. Both the
-    /// banner's media box and <c>HeroArt</c> derive from THIS, so they cannot disagree.</summary>
-    public static float PhotoHeightFor(in ArtistHeroMetrics m) => !m.Stacked ? m.MinHeight
-        : m.Tier == ArtistHeroTier.Compact ? CompactPhotoHeight
-        : NarrowPhotoHeight;
-
-    public const float WideCopyMaxWidth = 1120f;
-    public const float MediumCopyMaxWidth = 760f;
-    public const float CompactCopyMaxWidth = 640f;
-    public const float NarrowCopyMaxWidth = 520f;
     public const float PhotoParallaxFraction = 0.15f;
     public static float ContentBlendTail => Spacing.XXXL * 3f;
     public const float CompactIdentityHeight = Detail.VerticalLayout.CompactIdentityHeight;
-
-    public static ArtistHeroTier TierFor(float width, ArtistHeroTier previous)
-    {
-        if (previous == ArtistHeroTier.Wide && width >= WideWidth - TierHysteresis) return previous;
-        if (previous == ArtistHeroTier.Medium && width >= MediumWidth - TierHysteresis && width < WideWidth + TierHysteresis) return previous;
-        if (previous == ArtistHeroTier.Compact && width >= CompactWidth - TierHysteresis && width < MediumWidth + TierHysteresis) return previous;
-
-        if (width >= WideWidth + ((byte)previous < (byte)ArtistHeroTier.Wide ? TierHysteresis : 0f)) return ArtistHeroTier.Wide;
-        if (width >= MediumWidth + ((byte)previous < (byte)ArtistHeroTier.Medium ? TierHysteresis : 0f)) return ArtistHeroTier.Medium;
-        if (width >= CompactWidth + ((byte)previous < (byte)ArtistHeroTier.Compact ? TierHysteresis : 0f)) return ArtistHeroTier.Compact;
-        return ArtistHeroTier.Narrow;
-    }
-
-    public static ArtistHeroMetrics For(float width, ArtistHeroTier previous)
-    {
-        var tier = TierFor(width, previous);
-        return tier switch
-        {
-            ArtistHeroTier.Wide => new(tier, WideHeight, Spacing.PageWide, ArtistHeroVeilAxis.Horizontal, WideCopyMaxWidth),
-            ArtistHeroTier.Medium => new(tier, MediumHeight, Spacing.XXXL, ArtistHeroVeilAxis.Horizontal, MediumCopyMaxWidth),
-            ArtistHeroTier.Compact => new(tier, CompactHeight, Spacing.L, ArtistHeroVeilAxis.Vertical, CompactCopyMaxWidth),
-            _ => new(tier, NarrowHeight, Spacing.PageNarrow, ArtistHeroVeilAxis.Vertical, NarrowCopyMaxWidth),
-        };
-    }
 
     public static float PhotoFadeBandFor(float height) => Math.Clamp(height * 0.28f, 120f, 180f);
     public static float CollapseDistance(float height) => MathF.Max(1f, height - CompactIdentityHeight);
     public static float ExpandedFadeStart(float collapseDistance) => Detail.VerticalLayout.ExpandedFadeStart(collapseDistance);
     public static float CompactRevealStart(float collapseDistance) => Detail.VerticalLayout.CompactRevealStart(collapseDistance);
 
-    public static float HeroHeightFor(float width) => width >= WideWidth ? WideHeight
-        : width >= MediumWidth ? MediumHeight
-        : width >= CompactWidth ? CompactHeight
-        : NarrowHeight;
-    public static float BlendBackdropHeightFor(float width) => HeroHeightFor(width) + ContentBlendTail;
-    public static float BlendBoundaryFor(float width)
-    {
-        float height = HeroHeightFor(width);
-        return height / (height + ContentBlendTail);
-    }
-
-    // ── 0.3: the resolved-metrics forms (ch 08 §9 inconsistency #1) ──
-
-    /// <summary>The wash's extent from the RESOLVED (hysteretic) metrics the hero itself is sized from.</summary>
+    /// <summary>The wash's extent from the RESOLVED (hysteretic) metrics the hero itself is sized from (ch 08 §9 inconsistency #1).</summary>
     public static float BlendBackdropHeightFor(in ArtistHeroMetrics m) => m.MinHeight + ContentBlendTail;
 
     /// <summary>The wash's boundary stop, <c>h/(h+96)</c>, from the resolved metrics.</summary>
@@ -218,10 +156,8 @@ public static class ArtistSections
 {
     public const int Count = 16;
 
-    /// <summary>The Top-tracks band goes side by side at 760 and holds down to 736 once wide (TopTracks.cs:17-27).</summary>
-    public const float TopBandWideW = 760f, TopBandHysteresis = 24f;
-
-    /// <summary>The chart: never taller than five rows, never more than two columns, never more than 50 tracks.</summary>
+    /// <summary>The chart: never taller than five rows, never more than 50 tracks; its widest column count is the structure's per tier
+    /// (<see cref="Wavee.Theming.ArtistTierPolicy.ChartMaxColumns"/>), two where it declares none.</summary>
     public const int ChartMaxRows = 5, ChartMaxColumns = 2, ChartMaxTracks = 50;
 
     /// <summary>"Fans also like" falls back to this many followed artists, excluding the page artist.</summary>
@@ -297,14 +233,10 @@ public static class ArtistSections
     public static bool ShowsCountdown(long releaseAtUnix, long nowUnix)
         => releaseAtUnix > nowUnix && releaseAtUnix - nowUnix <= CountdownWindowSeconds;
 
-    /// <summary>The top band's latched wide/stacked decision.</summary>
-    public static bool TopBandWide(float width, bool wasWide)
-        => wasWide ? width >= TopBandWideW - TopBandHysteresis : width >= TopBandWideW;
-
     /// <summary>Never offer more columns than the rows can fill: a ≤5-track chart is ONE column at any width
-    /// (ArtistPopular.cs:138, ch 08 audit #4).</summary>
-    public static int ChartColumns(int total)
-        => Math.Clamp((total + ChartMaxRows - 1) / ChartMaxRows, 1, ChartMaxColumns);
+    /// (ArtistPopular.cs:138, ch 08 audit #4), and never more than <paramref name="maxColumns"/> (the tier's).</summary>
+    public static int ChartColumns(int total, int maxColumns = ChartMaxColumns)
+        => Math.Clamp((total + ChartMaxRows - 1) / ChartMaxRows, 1, Math.Max(1, maxColumns));
 
     /// <summary>The chart skeleton's counts: the rows shown (the known count, else the overview's seed cap: an empty edge assumes the overview's
     /// ten, W5), the columns the real layout would offer (up to ten charted is 2 x 5) and the rows per column. The structure's skeleton draws

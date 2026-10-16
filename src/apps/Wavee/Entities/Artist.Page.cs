@@ -94,11 +94,15 @@ public readonly partial struct Artist
         readonly object _tintOwner = new();
 
         // ── geometry: plain latched FIELDS (idempotent functions of the width — ch 08 §9 traps) ──
-        readonly Signal<float> _heroWidth = new(ArtistHeroLayout.WideWidth);
+        // The page's measured width (0 until the first measure: the hero ladder's seed answers until then) and the hero's sub-tier on the
+        // structure's ladder (themes plan 3.6, TC6): a crossing found after mount commits on the first frame that is not resized.
+        readonly Signal<float> _heroWidth = new(0f);
         readonly Signal<int> _layoutEpoch = new(0);
-        ArtistHeroTier _tier = ArtistHeroTier.Wide;
-        ArtistHeroMetrics _metrics = ArtistHeroLayout.For(ArtistHeroLayout.WideWidth, ArtistHeroTier.Wide);
-        float _width = ArtistHeroLayout.WideWidth;
+        IReadSignal<int>? _heroTier;
+        IReadSignal<Size2>? _viewportSize;
+        readonly Func<float> _heroSeed;
+        ArtistHeroMetrics _metrics;
+        float _width;
         bool _measured;
 
         // ── scroll, band, spy ──
@@ -217,6 +221,7 @@ public readonly partial struct Artist
                 _atEnd.SetIfChanged(atEnd);
             };
             _stampFn = Stamp;
+            _heroSeed = () => Detail.Breakpoints.EstimatePageWidth(Theming.ThemeHost.Facts.Peek().Tiers, _viewportSize?.Peek().Width ?? 0f);
         }
         public void ApplyProps(object props)
         {
@@ -280,10 +285,16 @@ public readonly partial struct Artist
             UseEffect(_republishAccent, DepKey.From(ThemeEpoch()));          // a theme flip or a definition swap re-derives the accent (X44)
             UseEffect(_resolveSpy);                                       // the scroll spy
 
+            // THE HERO'S SUB-TIER AND METRICS (TC6): the structure's ladder over the page's own width, seeded before the first measure from the content
+            // region the frame resolved the window tiers on (synchronous), so the first frame is already in its final sub-tier; the metrics are the
+            // structure's record for that sub-tier in the window tier on screen (tracked: a window or height crossing re-renders the page).
+            _viewportSize = UseContextSignal(Viewport.Size);
+            _heroTier = UseTier(Theming.ArtistLadders.Of(ShellPolicy.Now.Tiers, Theming.ArtistLadders.Hero), TierSource.Measured(_heroWidth, _heroSeed));
+            var tierFacts = Theming.ThemeHost.Facts.Value.Tiers;
             _ = _layoutEpoch.Value;
-            _width = MathF.Max(1f, _heroWidth.Value);
-            _metrics = ArtistHeroLayout.For(_width, _tier);
-            _tier = _metrics.Tier;
+            float measuredW = _heroWidth.Value;
+            _width = MathF.Max(1f, measuredW > 0.5f ? measuredW : _heroSeed());
+            _metrics = ShellPolicy.Tracked.ArtistTiers.Hero(Theming.ArtistLadders.HeroOf(_heroTier.Value), in tierFacts, _width);
 
             _ready = ArtistReadiness.Overview(a);
             bool overviewPending = a.IsValid

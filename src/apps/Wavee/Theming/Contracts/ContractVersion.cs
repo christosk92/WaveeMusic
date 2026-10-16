@@ -63,6 +63,12 @@
 // / `OpenNowPlaying` and `SeekRailProps.Hairline`, `ChromeRowState.TabsHidden`, the drawer's account row (`NarrowDrawerProps.ShowAccount`,
 // `.Account`, `DrawerAccountProps`) and `ProfileChipProps.Drawer`. `PanelPolicy.InlineMin` (the old fit test's content floor) is removed:
 // docking follows the window tier. Removed before any external theme existed, as 1.2 did.
+// 1.16 (Classic artist and people pages per tier, TC6): the optional `ThemePolicies.ArtistTiers` (`ArtistTierPolicy`: the artist and profile heroes' metrics per
+// sub-tier and window tier, the Top-tracks chart's columns, the profile list's narrowest card), the sub-ladder ids `ArtistLadders` (the hero, the library artist
+// reader, the profile list) a structure's `TierPolicy.Ladders` names, the optional `ArtistHeroMetrics.PhotoHeight`, `Controls.FollowToggle.Size` and the sized
+// `Controls.PlayButton` / `PrimaryButton`. The hero ladders and heights left the core (`ArtistHeroLayout.TierFor` / `For` and their constants,
+// `ProfileHeroLayout.For` / `Make`, `ArtistSections.TopBandWide`, `ReaderShape.Narrow` / `Medium` / `MediumBelow`, `ProfileGridFit.ShowsStrip` / `MinCell`);
+// removed before any external theme existed, as 1.2 did.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -78,7 +84,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 15;
+    public const int Minor = 16;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

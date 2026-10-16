@@ -275,6 +275,8 @@ internal static class ClassicArtistLightbox
         Element TopChrome(int current, Action<Action> post)
         {
             bool saving = _p.Saving.Value;
+            // The window tier's targets (TC6, built from Classic's parts: no board draws the lightbox): Export and Close are 40 tall at Compact.
+            var size = ClassicArtistTiers.Now.Target >= ClassicArtistTiers.CompactTarget ? ControlSize.Large : ControlSize.Medium;
             return new BoxEl
             {
                 Height = Rules.ChromeH, Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
@@ -294,9 +296,9 @@ internal static class ClassicArtistLightbox
                         ],
                     },
                     new BoxEl { Grow = 1f },
-                    Button.Accent(Loc.Get(saving ? Strings.Artist.GalleryExporting : Strings.Artist.GalleryExport),
-                        () => _p.Export(current, post), isEnabled: !saving),
-                    Button.Standard(Loc.Get(Strings.Common.Close), _p.Close),
+                    Button.Create(Loc.Get(saving ? Strings.Artist.GalleryExporting : Strings.Artist.GalleryExport),
+                        () => _p.Export(current, post), ButtonAppearance.Accent, size: size, isEnabled: !saving),
+                    Button.Create(Loc.Get(Strings.Common.Close), _p.Close, ButtonAppearance.Standard, size: size),
                 ],
             };
         }
@@ -319,13 +321,23 @@ internal static class ClassicArtistLightbox
                     Children = [Controls.Artwork(_photos[idx], Rules.Thumb, Rules.Thumb, Radii.Control, decodePx: Rules.ThumbDecode)],
                 };
             }
+            // The strip scrolls sideways where the thumbs outrun the window (a narrow window, a long gallery) instead of running off it; centred when they fit.
+            Element row = new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Padding = Edges4.All(Rules.StripPad), Children = thumbs,
+            };
             return new BoxEl
             {
-                Height = Rules.Thumb + 2f * Rules.StripPad, AlignSelf = FlexAlign.End,
-                Direction = 0, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center, Gap = Spacing.S,
-                Padding = Edges4.All(Rules.StripPad),
+                Height = Rules.Thumb + 2f * Rules.StripPad, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+                Direction = 0, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
                 Opacity = _chrome.Value ? 1f : 0f, Transition = MotionTok.ControlNormal,
-                Children = thumbs,
+                Children =
+                [
+                    ScrollView(new BoxEl { Direction = 0, Children = [row] }, horizontal: true) with
+                    {
+                        ContentSized = true, Shrink = 1f, MinWidth = 0f, Height = Rules.Thumb + 2f * Rules.StripPad, SuppressScrollBar = true, AutoEdgeFade = true,
+                    },
+                ],
             };
         }
 
