@@ -156,7 +156,7 @@ internal static class ClassicEpisodeRow
             };
         }
         if (ctx.Overlay is { } overlay && ctx.Menu is { } menu)
-            root = ContextMenu.Attach(root, overlay, () => menu(it.Peek().Episode), s_menuOptions);
+            root = ContextSheets.Attach(root, overlay, () => menu(it.Peek().Episode), s_menuOptions);
         return root;
     }
 

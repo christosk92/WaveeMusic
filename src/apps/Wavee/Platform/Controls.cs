@@ -1082,9 +1082,10 @@ public static partial class Controls
             // reads as a fit.
             float effective = lane > 0.5f ? lane : 720f;
 
+            var fit = OverlayFit.Layout.Selection;
             Element content = new BoxEl
             {
-                Direction = 1, Grow = 1f, MinWidth = 0f,
+                Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = fit.MinHeight,
                 OnBoundsChanged = r =>
                 {
                     if (r.W > 0f && MathF.Abs(r.W - _laneW.Peek()) > 0.5f) _laneW.Value = r.W;
@@ -1097,13 +1098,13 @@ public static partial class Controls
             {
                 Direction = 1, Grow = 1f, HitTestPassThrough = true,
                 AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
-                Padding = new Edges4(Spacing.L, 0f, Spacing.L, p.BottomPadding),
+                Padding = new Edges4(fit.SideInset ?? Spacing.L, 0f, fit.SideInset ?? Spacing.L, p.BottomPadding),
                 Children =
                 [
                     new BoxEl
                     {
                         Direction = 1, MinWidth = 0f,
-                        Padding = new Edges4(8f, 6f, 8f, 6f),
+                        Padding = fit.Padding,
                         Corners = CornerRadius4.All(Radii.Card),
                         Acrylic = Tok.AcrylicFlyout,
                         BorderWidth = 1f, BorderColor = Tok.StrokeFlyoutDefault,
@@ -1186,7 +1187,9 @@ public static partial class Controls
             && voice is VacancyVoice.Error or VacancyVoice.Offline)
             actionLabel = Loc.Get(Strings.Common.Retry);
 
-        TextEl headline = scale == VacancyScale.Page
+        // The structure's fit for the band (TC9): at Compact the page-scale headline is the 20/28 rung and the padding and the action's height follow the board.
+        var fit = OverlayFit.Layout.Vacancy;
+        TextEl headline = scale == VacancyScale.Page && !fit.QuietTitle
             ? R.Type.PageHero(title ?? t)
             : Ui.Subtitle(title ?? t);
 
@@ -1196,14 +1199,15 @@ public static partial class Controls
         if (actionLabel is { Length: > 0 } && onAction is not null)
         {
             kids.Add(new BoxEl { Height = Spacing.L });
-            kids.Add(Button.Standard(actionLabel, onAction));   // Standard, NEVER Accent — see the grammar note above
+            var action = Button.Standard(actionLabel, onAction);   // Standard, NEVER Accent — see the grammar note above
+            kids.Add(fit.ActionHeight > 0f ? action with { MinHeight = fit.ActionHeight, Height = fit.ActionHeight } : action);
         }
         // Wrap, but no text alignment: a text node has no alignment knob, so centring is the CONTAINER's job and each
         // run is its own centred box.
         return new BoxEl
         {
             Direction = 1, Grow = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Gap = Spacing.XS, Padding = Edges4.All(Spacing.XXL), Children = kids.ToArray(),
+            Gap = Spacing.XS, Padding = Edges4.All(fit.Padding ?? Spacing.XXL), Children = kids.ToArray(),
         };
     }
 
@@ -1237,7 +1241,7 @@ public static partial class Controls
             d.PrimaryText = verb;
             d.CloseText = Loc.Get(Strings.Auth.Cancel);
             d.DefaultButton = ContentDialog.DefaultBtn.Close;
-            d.DialogWidth = width;
+            OverlayFit.Dialog(d, width);
             d.PrimaryClick = onConfirm;
         });
     }
@@ -1255,7 +1259,7 @@ public static partial class Controls
             d.Title = title;
             d.PrimaryText = commitLabel;
             d.CloseText = Loc.Get(Strings.Auth.Cancel);
-            d.DialogWidth = width;
+            OverlayFit.Dialog(d, width);
             d.Content = TextBox.Create(text, v => text.Value = v);
             d.PrimaryClick = () => onCommit(text.Peek());
         });
@@ -1273,7 +1277,7 @@ public static partial class Controls
             d.PrimaryText = "";
             d.CloseText = Loc.Get(Strings.Common.Close);
             d.DefaultButton = ContentDialog.DefaultBtn.Close;
-            d.DialogWidth = width;
+            OverlayFit.Dialog(d, width);
             d.Content = body;
         });
     }

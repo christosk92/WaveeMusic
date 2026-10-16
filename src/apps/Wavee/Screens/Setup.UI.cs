@@ -94,12 +94,12 @@ public static partial class Setup
         s_signIn = ContentDialog.Show(overlay, d =>
         {
             d.Title = Loc.Get(Strings.Setup.SignIn.Title);
-            d.DialogWidth = SignInRules.DialogWidth;
             d.PrimaryText = "";                  // PrimaryText defaults to "OK": clear all three or a phantom OK appears
             d.SecondaryText = "";
             d.CloseText = "";
             d.Content = Slots.View(ViewKeys.SetupSignInDoor, s_doorBody);
             d.Footer = Slots.View(ViewKeys.SetupSignInDoor, s_doorFooter);
+            OverlayFit.Dialog(d, SignInRules.DialogWidth);
             d.Closed = static _ =>
             {
                 s_signIn = null;

@@ -77,6 +77,7 @@ public static partial class Sidebar
                 d.PrimaryText = Loc.Get("sidebar.edit.resetAllConfirm");
                 d.CloseText = Loc.Get(Strings.Auth.Cancel);
                 d.PrimaryClick = ResetEverythingRecorded;
+                OverlayFit.Dialog(d, Controls.DialogWidthCompact);
             });
 
         public static IReadOnlyList<MenuFlyoutItem> Map(IReadOnlyList<SidebarMenuRow> rows, string? sectionId = null, PaneView? pane = null)

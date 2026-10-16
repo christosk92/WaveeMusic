@@ -42,6 +42,10 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
     /// <summary>What the structure decides about colour taken from artwork (CT9: the page accent and the now-playing colours). A structure that declares nothing follows the artwork.</summary>
     public ArtworkColorPolicy Artwork { get; init; } = ArtworkColorPolicy.Default;
 
+    /// <summary>What the structure decides about the overlays the core composes, per window band (TC9: the dialog card's fit, the toast lane's dock, the vacancy, the
+    /// standalone selection bar, context menus as a sheet). A structure that declares nothing is the shell as it shipped.</summary>
+    public OverlayPolicy Overlays { get; init; } = OverlayPolicy.Default;
+
     /// <summary>Everything wrong with the bundle, empty when every core state machine can run on it.</summary>
     public IReadOnlyList<string> Validate()
     {
@@ -55,6 +59,7 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
         if (Lists is null) problems.Add("Lists is missing");
         if (Detail is null) problems.Add("Detail is missing");
         if (Artwork is null) problems.Add("Artwork is missing");
+        if (Overlays is null) problems.Add("Overlays is missing"); else problems.AddRange(Overlays.Validate());
         return problems;
     }
 }

@@ -26,7 +26,7 @@ public sealed class ClassicPoliciesTests
     [Fact]
     public void Classic_declares_exactly_the_shell_baseline()
     {
-        Assert.Equal(ThemePolicies.Default, ClassicPolicies.Bundle with { Tiers = TierPolicy.Standard });   // core never names a theme: Default carries Standard tiers
+        Assert.Equal(ThemePolicies.Default, ClassicPolicies.Bundle with { Tiers = TierPolicy.Standard, Overlays = OverlayPolicy.Default });   // core never names a theme: Default carries Standard tiers and the shipped overlays (TC9)
         Assert.NotSame(TierPolicy.Standard, ClassicPolicies.Bundle.Tiers);
         Assert.NotEqual(ThemePolicies.Default, ClassicPolicies.Bundle);
         Assert.Equal(NavPanePolicy.Default, ClassicPolicies.NavPane);

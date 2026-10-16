@@ -11,6 +11,8 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Localization;
 using FluentGpu.Theming;
+using FluentGpu.Hooks;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
@@ -20,17 +22,22 @@ namespace Wavee.Themes.Classic;
 internal static class ClassicProfileMenu
 {
     /// <summary>The registered template of <see cref="ViewKeys.OverlayProfileMenu"/>.</summary>
-    public static Element Template(ProfileMenuProps props, in ViewContext ctx) => new BoxEl
+    public static Element Template(ProfileMenuProps props, in ViewContext ctx)
     {
-        Direction = 1, MinWidth = ClassicOverlayRules.ProfileMenuWidth, MaxWidth = ClassicOverlayRules.ProfileMenuWidth,
-        Padding = ClassicOverlayRules.ProfileMenuPadding,
-        Children =
-        [
-            AccountHeader(props),
-            new BoxEl { Height = 1f, Margin = ClassicOverlayRules.ProfileMenuDividerMargin, Fill = Tok.StrokeDividerDefault },
-            MenuFlyout.Create(props.Items, props.Close, ClassicOverlayRules.ProfileMenuWidth),
-        ],
-    };
+        // Never wider than the window less the band's margin (a 300-DIP window): the menu's own 304 otherwise.
+        float width = ClassicOverlayTiers.For(ctx.Tier().Window).PanelWidth(ClassicOverlayRules.ProfileMenuWidth, ctx.Hooks.UseContextSignal(Viewport.Size).Value.Width);
+        return new BoxEl
+        {
+            Direction = 1, MinWidth = width, MaxWidth = width,
+            Padding = ClassicOverlayRules.ProfileMenuPadding,
+            Children =
+            [
+                AccountHeader(props),
+                new BoxEl { Height = 1f, Margin = ClassicOverlayRules.ProfileMenuDividerMargin, Fill = Tok.StrokeDividerDefault },
+                MenuFlyout.Create(props.Items, props.Close, width),
+            ],
+        };
+    }
 
     /// <summary>A 40-DIP avatar beside name · tier line.</summary>
     static Element AccountHeader(ProfileMenuProps props)

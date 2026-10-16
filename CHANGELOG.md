@@ -12,6 +12,15 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **Menus, dialogs, toasts and the empty, error and offline states fit a narrow window.** In a narrow Classic window (under 528 wide) a
+  right-click or "…" menu opens as a bottom sheet instead of a popup: the song's art and name, the Play, Play next, Play after and Save
+  buttons in one row, then 44-tall rows, with sub-menus opening in place and a short window scrolling the sheet; every target is at
+  least 40 tall. Dialogs (Set up local playback, rename, confirm, the log-out and play-a-link cards, the playlist picker, credits) fill
+  the window less 16 on each side and keep their buttons in the window, a dialog taller than the window scrolls its body instead of
+  pushing its buttons off screen, and none of them stretches in a very wide window. Toasts sit centred just above the mini player,
+  the offline bar is 40 tall edge to edge with a 40-tall Retry, the offline and empty pages use the smaller title with stacked
+  40-tall buttons (and drop their glyph in a very short window so everything fits), and the notification panel and the account menu
+  never leave a 300-wide window. Wider windows are unchanged.
 - **The artist page's header reads better at ordinary window sizes, and Top tracks arrives with the page.** The name, bio
   and stats now end a little past the middle of the header (they used to run across nine-tenths of it, over the bright
   half of the photo at a medium or 1440-wide window), and the dark side of the photo now reaches exactly as far as the

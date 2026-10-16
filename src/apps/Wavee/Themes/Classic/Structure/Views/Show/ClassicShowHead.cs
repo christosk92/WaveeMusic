@@ -116,7 +116,7 @@ internal static partial class ClassicShow
 
     /// <summary><paramref name="el"/> with the head's episode menu attached to it (a right-click anywhere on the card).</summary>
     static Element WithMenu(ShowHeadArgs a, Episode e, BoxEl el)
-        => MenuOf(a, e) is { } menu && a.RowCtx.Overlay is { } overlay ? ContextMenu.Attach(el, overlay, menu) : el;
+        => MenuOf(a, e) is { } menu && a.RowCtx.Overlay is { } overlay ? ContextSheets.Attach(el, overlay, menu) : el;
 
     static string? DescriptionOf(Episode e) => Episode.HasDescription(e) ? Episode.DescriptionOf(e) : null;
 

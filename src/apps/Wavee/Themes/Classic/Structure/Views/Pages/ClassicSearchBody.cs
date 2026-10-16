@@ -264,7 +264,7 @@ internal static class ClassicSearchBody
                 new BoxEl { Direction = 0, MinWidth = 0f, Height = ClassicSearchRules.HeroHeight, AlignSelf = FlexAlign.Stretch, Children = [copy, cover] },
             ],
         }.Interactive(Interaction.Card);   // OnClick is set above, so Interactive gives the box the hand (the engine's clickable default)
-        return menu is not null && !Controls.IsNullOverlay(ctx.Overlay) ? ContextMenu.Attach(card, ctx.Overlay, menu) : card;
+        return menu is not null && !Controls.IsNullOverlay(ctx.Overlay) ? ContextSheets.Attach(card, ctx.Overlay, menu) : card;
     }
 
     // ══ BEST MATCHES, THE PLAYLIST RAIL, THE SONGS GRID (W5, W6, W1) ═════════════════════════════════════════════════

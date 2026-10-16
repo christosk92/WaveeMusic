@@ -31,16 +31,13 @@ internal static class ClassicDialogRules
 
     // ── the log-out card: 380 wide (320..420) ───────────────────────────────────────────────────────────────────────
 
-    /// <summary>The log-out card's width and its bounds.</summary>
-    public const float LogoutWidth = 380f, LogoutMinWidth = 320f, LogoutMaxWidth = 420f;
+    /// <summary>The log-out card's width and its cap (never wider, never wider than the window: <c>ClassicOverlayTiers.CardWidth</c>).</summary>
+    public const float LogoutWidth = 380f, LogoutMaxWidth = 420f;
 
     // ── the play-a-link card ────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The card's width and its bounds.</summary>
-    public const float PlayLinkWidth = 420f, PlayLinkMinWidth = 360f, PlayLinkMaxWidth = 480f;
-
-    /// <summary>The field's width: the card less its padding (derived, never typed).</summary>
-    public const float PlayLinkFieldWidth = PlayLinkWidth - 2f * CardPadding;
+    /// <summary>The card's width and its cap.</summary>
+    public const float PlayLinkWidth = 420f, PlayLinkMaxWidth = 480f;
 
     /// <summary>The status line's reserved height (even when empty, so the button row never jumps when a status appears) and its text.</summary>
     public const float PlayLinkStatusHeight = 18f, PlayLinkStatusSize = 12f, PlayLinkStatusLine = 16f;
@@ -55,8 +52,11 @@ internal static class ClassicDialogRules
 
     // ── the destination picker ──────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The picker's panel width, the filter field's width and height, and the list's cap.</summary>
-    public const float PickerPanelWidth = 320f, PickerFieldWidth = 300f, PickerFieldHeight = 32f, PickerListMaxHeight = 360f;
+    /// <summary>The picker's panel width (the filter field is the panel less its padding), the field's height, and the list's cap.</summary>
+    public const float PickerPanelWidth = 320f, PickerFieldHeight = 32f, PickerListMaxHeight = 360f;
+
+    /// <summary>What the panel holds above the list (the guidance over two lines, the field and their gaps), so the list is bounded by the card's body room less it.</summary>
+    public const float PickerHeadHeight = 96f;
 
     /// <summary>The tree indent per level: the sidebar tree's own step.</summary>
     public const float PickerIndentStep = 12f;
@@ -86,6 +86,9 @@ internal static class ClassicDialogRules
 
     /// <summary>The body's cap.</summary>
     public const float CreditsMaxWidth = 440f;
+
+    /// <summary>The signature sheet's scrolling body cap (its nine rows and the summary fit under it in a tall window; a short one scrolls inside the card).</summary>
+    public const float SignatureMaxHeight = 560f;
 
     /// <summary>The credits list's cap and the loading bars' gap.</summary>
     public const float CreditsListMaxHeight = 420f, CreditsLoadingGap = 10f;

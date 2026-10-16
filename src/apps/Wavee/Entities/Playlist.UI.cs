@@ -515,7 +515,7 @@ public readonly partial struct Playlist
                 d.PrimaryText = "";
                 d.CloseText = Loc.Get(Strings.Common.Close);
                 d.DefaultButton = ContentDialog.DefaultBtn.Close;
-                d.DialogWidth = AccessPanelWidth + DialogChrome;
+                OverlayFit.Dialog(d, AccessPanelWidth + DialogChrome);
                 d.Content = Embed.Comp(new AccessProps(slot, close), static () => new AccessPanel());
             });
     }
@@ -851,7 +851,7 @@ public readonly partial struct Playlist
             d.PrimaryText = "";
             d.CloseText = Loc.Get(Strings.Common.Close);
             d.DefaultButton = ContentDialog.DefaultBtn.Close;
-            d.DialogWidth = TunePanelWidth + DialogChrome;
+            OverlayFit.Dialog(d, TunePanelWidth + DialogChrome);
             d.Content = ViewSlots.View(ViewKeys.PlaylistTune, new PlaylistTuneProps(TunePanelWidth, options, selected, pick));   // the `Playlist.Tune` view
         });
     }

@@ -11,6 +11,8 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Localization;
 using FluentGpu.Theming;
+using FluentGpu.Hooks;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
@@ -22,6 +24,9 @@ internal static class ClassicCreditsSheet
     /// <summary>The registered template of <see cref="ViewKeys.DialogSheet"/>.</summary>
     public static Element Template(CreditsSheetProps props, in ViewContext ctx)
     {
+        // A short window bounds the list (the card scrolls the body, never the command row out of the window).
+        float listMax = ClassicOverlayTiers.For(ctx.Tier().Window).Core.Dialog.BodyMaxHeight(
+            ClassicDialogRules.CreditsListMaxHeight, ctx.Hooks.UseContextSignal(Viewport.Size).Value.Height);
         Element body = props.State switch
         {
             Track.DrawerRules.CreditsView.Loading => new BoxEl
@@ -35,14 +40,14 @@ internal static class ClassicCreditsSheet
                     LoadingBar(ClassicDialogRules.CreditsBar2H, ClassicDialogRules.CreditsBar4W),
                 ],
             },
-            Track.DrawerRules.CreditsView.List => CreditsList(props),
+            Track.DrawerRules.CreditsView.List => CreditsList(props, listMax),
             _ => R.Type.DenseMeta(Loc.Get(Strings.Menu.NoCredits)) with { Color = Tok.TextSecondary },
         };
         return new BoxEl { Direction = 1, MinWidth = 0f, MaxWidth = ClassicDialogRules.CreditsMaxWidth, Children = [body] };
     }
 
     // The server's group headings in its own casing (never re-cased), one row per contributor, in a bounded scroll.
-    static Element CreditsList(CreditsSheetProps props)
+    static Element CreditsList(CreditsSheetProps props, float listMax)
     {
         var kids = new List<Element>(props.Entries.Count + 4);
         for (int i = 0; i < props.Entries.Count; i++)
@@ -53,7 +58,7 @@ internal static class ClassicCreditsSheet
             kids.Add(CreditRow(e.Name, e.Role, e.ArtistSlot, props.OpenArtist));
         }
         return ScrollView(new BoxEl { Direction = 1, Gap = Spacing.S, MinWidth = 0f, Children = kids.ToArray() })
-            with { MaxHeight = ClassicDialogRules.CreditsListMaxHeight };
+            with { MaxHeight = listMax };
     }
 
     // A credit linked to an artist slot is an accent link; an unlinked contributor is plain text.

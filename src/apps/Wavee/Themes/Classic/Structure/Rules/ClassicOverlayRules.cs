@@ -94,11 +94,19 @@ public static class ClassicOverlayRules
     /// <summary>The column's gap, the caption's widest measure, and the step to the actions (16 on top of the gap).</summary>
     public const float OfflineVacancyGap = 4f, OfflineVacancyCaptionMaxW = 360f, OfflineVacancyActionsTop = 16f;
 
-    /// <summary>Between Retry and the library link.</summary>
-    public const float OfflineVacancyActionsGap = 12f;
+    /// <summary>Between Retry and the library link (a row), and between them stacked (Compact: a column).</summary>
+    public const float OfflineVacancyActionsGap = 12f, OfflineVacancyStackGap = 4f;
+
+    /// <summary>Retry's least width where the actions stack (Compact).</summary>
+    public const float OfflineVacancyRetryMinW = 120f;
 
     /// <summary>The column sits above the card's centre: 120 of bottom padding lifts it (the page title stays above it).</summary>
     public const float OfflineVacancyLift = 120f;
+
+    // ── the toast lane ──────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The mini player bar's height (the Compact boards: 56), the bar a Compact toast clears.</summary>
+    public const float MiniBarHeight = 56f;
 
     // ── the context menu's identity tile ────────────────────────────────────────────────────────────────────────────
 

@@ -165,11 +165,11 @@ public static partial class Diagnostics
         public static void Open(IOverlayService overlay, string trackId) => ContentDialog.Show(overlay, d =>
         {
             d.Title = Loc.Get(Strings.Player.LyricsInspector);
-            d.DialogWidth = DialogWidth;
             d.PrimaryText = "";                        // "" hides the primary (null would show the localized OK)
             d.CloseText = Loc.Get(Strings.Common.Close);
             d.DefaultButton = ContentDialog.DefaultBtn.Close;
             d.Content = Embed.Comp(() => new LyricsInspectorBody(trackId));
+            OverlayFit.Dialog(d, DialogWidth);
         });
 
         /// <summary>The playing row's diagnostics key, or "" when nothing (or an episode) is playing. A <c>Peek</c>:

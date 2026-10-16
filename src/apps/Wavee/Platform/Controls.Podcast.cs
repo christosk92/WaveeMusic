@@ -296,7 +296,7 @@ public static partial class Controls
             WhileHover = s_doorLift, Transition = MotionTok.ControlFast,
             Children = layers.ToArray(),
         };
-        return d.Menu is { } menu && overlay is not null && !IsNullOverlay(overlay) ? ContextMenu.Attach(card, overlay, menu) : card;
+        return d.Menu is { } menu && overlay is not null && !IsNullOverlay(overlay) ? ContextSheets.Attach(card, overlay, menu) : card;
     }
 
     /// <summary>The lead door's wash: the tone at 26 % in the top-left corner fading into the card fill by 70 % of the

@@ -183,7 +183,7 @@ public static partial class Controls
             // honoured through `_latest`, like every other delegate.
             if (d.Selected) shell = style.Selected(shell, _latest?.Data.SelectedAccent);
             // The menu rides on the shell in BOTH modes: the right-click funnel is not a gesture owner.
-            if (hasMenu) shell = ContextMenu.Attach(shell, overlay!, _menu);
+            if (hasMenu) shell = ContextSheets.Attach(shell, overlay!, _menu);
             Element root = s.IsRow || float.IsNaN(p.Width) ? shell : SurfaceParts.Gutter(shell, p.Width);
             return SurfaceRules.TitleTip(trimmed: false, hasLabels: s.Labels) ? LabelTip(root, d.Title) : root;
         }

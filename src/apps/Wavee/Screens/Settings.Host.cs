@@ -380,6 +380,7 @@ public static partial class Settings
             d.CloseText = Loc.Get(Strings.Auth.Cancel);
             d.DefaultButton = ContentDialog.DefaultBtn.Primary;
             d.PrimaryClick = () => BeginRelocation(newBase, AudioCacheRelocationMode.Move);
+            OverlayFit.Dialog(d, Controls.DialogWidthWide);   // three buttons: the engine's own implicit width
             // Posted: the second dialog opens after the first has finished closing.
             d.SecondaryClick = () => s_post(() => OfferStartEmpty(newBase));
         });
@@ -398,6 +399,7 @@ public static partial class Settings
             d.CloseText = Loc.Get(Strings.Auth.Cancel);
             d.PrimaryClick = () => BeginRelocation(newBase, AudioCacheRelocationMode.StartEmptyDeleteOld);
             d.SecondaryClick = () => BeginRelocation(newBase, AudioCacheRelocationMode.StartEmptyKeepOld);
+            OverlayFit.Dialog(d, Controls.DialogWidthWide);
         });
     }
 

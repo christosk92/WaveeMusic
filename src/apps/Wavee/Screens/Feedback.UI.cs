@@ -135,12 +135,12 @@ public static partial class Feedback
         ContentDialog.Show(overlay, d =>
         {
             d.Title = Loc.Get(Strings.Report.Title);
-            d.DialogWidth = DialogWidth;
             // Keyed by the kind shown: every signal in the body is seeded once from an open-time constant.
             d.Content = Slots.View(ViewKeys.DialogFeedback, new FeedbackDialogProps { InitialKind = effective, Dialog = session })
                 with { Key = "report-body:" + (int)effective };
             d.PrimaryText = Loc.Get(isCrash ? Strings.Report.ReportOnGithub : Strings.Report.OpenGithub);
             d.CloseText = Loc.Get(isCrash ? Strings.Report.NotNow : Strings.Auth.Cancel);
+            OverlayFit.Dialog(d, DialogWidth);
             d.DefaultButton = ContentDialog.DefaultBtn.Primary;
             // VETOABLE: the body says why with a toast (still composing / no title) and the dialog stays open.
             d.PrimaryButtonClick = args => { if (!(session.Submit?.Invoke() ?? false)) args.Cancel = true; };

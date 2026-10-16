@@ -174,7 +174,7 @@ internal static class ClassicArtistPick
         };
         // The record is a container (or a track) like any other card: right-click opens the same menu.
         return overlay is not null && !Controls.IsNullOverlay(overlay)
-            ? ContextMenu.Attach(panel, overlay, () => ArtistVerbs.PickMenu(targetUri, title, cover, kind))
+            ? ContextSheets.Attach(panel, overlay, () => ArtistVerbs.PickMenu(targetUri, title, cover, kind))
             : panel;
     }
 

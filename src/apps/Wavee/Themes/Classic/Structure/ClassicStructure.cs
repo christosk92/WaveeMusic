@@ -270,6 +270,7 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.OverlayOfflineStrip, ClassicOfflineStrip.Template, "classic.overlay.offline-strip");
         views.Add(ViewKeys.OverlayOfflineVacancy, ClassicOfflineVacancy.Template, "classic.overlay.offline-vacancy");   // tuned Classic X1
         views.Add(ViewKeys.MenuContext, ClassicContextMenuTile.Template, "classic.menu.context-tile");
+        views.Add(ViewKeys.OverlayContextSheet, ClassicContextSheet.Template, "classic.overlay.context-sheet");   // TC9: a context menu at Compact
         views.Add(ViewKeys.DialogLogoutConfirm, ClassicLogoutConfirm.Template, "classic.dialog.logout-confirm");
         views.Add(ViewKeys.DialogPlayLink, ClassicPlayLink.Template, "classic.dialog.play-link");
         views.Add(ViewKeys.DialogSignature, ClassicSignature.Template, "classic.dialog.signature");

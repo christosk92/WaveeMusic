@@ -271,8 +271,7 @@ public static partial class Shell
             _railSeamParts ??= BuildRailSeamParts(_railDragging);
             // The structure's policies, read tracked: a theme switch or a policy-moving option re-renders the frame with the new seams.
             var policies = ShellPolicy.Tracked;
-            // Float the engine's toast lane above the docked player bar (the idempotent registration idiom).
-            Toast.EdgeInset = policies.PlayerBar.Height;
+            // The engine's toast lane floats above the docked player bar: the overlay lane docks it per band (`OverlayFit.Toasts`, TC9).
             var vp = UseContextSignal(Viewport.Size);
             var zoom = UseContextSignal(Viewport.Zoom);
 

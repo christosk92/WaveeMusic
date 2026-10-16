@@ -11,6 +11,8 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Localization;
 using FluentGpu.Theming;
+using FluentGpu.Hooks;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
@@ -22,19 +24,24 @@ internal static class ClassicPlayLink
     public static Element Template(PlayLinkProps props, in ViewContext ctx)
     {
         var submit = props.Submit;
-        var buttons = new List<Element>(3);
+        var tier = ClassicOverlayTiers.For(ctx.Tier().Window);
+        float viewport = ctx.Hooks.UseContextSignal(Viewport.Size).Value.Width;
+        // The field is the card less its padding: derived from the band's own record, never typed.
+        float field = tier.CardWidth(ClassicDialogRules.PlayLinkWidth, ClassicDialogRules.PlayLinkMaxWidth, viewport) - tier.CardPadding.Horizontal;
+
+        var buttons = new List<BoxEl>(3);
         if (props.OffersBrowser)
             buttons.Add(Button.Standard(Loc.Get(Strings.Play.OpenInBrowser), props.OpenInBrowser));
         buttons.Add(Button.Standard(Loc.Get(Strings.Auth.Cancel), props.Cancel) with { MinWidth = ClassicDialogRules.CardButtonMinWidth });
         buttons.Add(Button.Accent(Loc.Get(Strings.Play.Start), submit, isEnabled: props.CanPlay) with { MinWidth = ClassicDialogRules.CardButtonMinWidth });
 
-        return ClassicModalCard.Plate(ClassicDialogRules.PlayLinkWidth, ClassicDialogRules.PlayLinkMinWidth, ClassicDialogRules.PlayLinkMaxWidth,
+        return ClassicModalCard.Plate(in ctx, ClassicDialogRules.PlayLinkWidth, ClassicDialogRules.PlayLinkMaxWidth,
         [
             ClassicModalCard.Title(Loc.Get(Strings.Play.Title)),
             // Enter commits: the single-line field raises OnCommit, so the card needs no key handler of its own.
             TextBox.Create(props.Text(), null, new TextBox.TextBoxOptions
             {
-                Placeholder = props.Placeholder, Width = ClassicDialogRules.PlayLinkFieldWidth, OnCommit = _ => submit(),
+                Placeholder = props.Placeholder, Width = field, OnCommit = _ => submit(),
             }),
             // 18 DIP reserved even when empty, so the button row never jumps when a status appears.
             new BoxEl
@@ -49,11 +56,7 @@ internal static class ClassicPlayLink
                     },
                 ],
             },
-            new BoxEl
-            {
-                Direction = 0, Gap = Spacing.S, Justify = FlexJustify.End, Margin = new Edges4(0f, Spacing.S, 0f, 0f),
-                Children = buttons.ToArray(),
-            },
+            ClassicModalCard.Buttons(in ctx, buttons.ToArray()),
         ]);
     }
 }

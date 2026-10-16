@@ -12,6 +12,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
@@ -23,6 +24,13 @@ internal static class ClassicDestinationPicker
     /// <summary>The registered template of <see cref="ViewKeys.DialogFolderPicker"/>.</summary>
     public static Element Template(DestinationPickerProps props, in ViewContext ctx)
     {
+        // The panel's width and the list's height come from the dialog fit of the band: the card fills the window at Compact, and a short window bounds the list.
+        var fit = ClassicOverlayTiers.For(ctx.Tier().Window).Core.Dialog;
+        Size2 vp = ctx.Hooks.UseContextSignal(Viewport.Size).Value;
+        float panelWidth = fit.BodyWidth(ClassicDialogRules.PickerPanelWidth, vp.Width);
+        float fieldWidth = panelWidth - Edges4.All(props.PanelPadding).Horizontal;
+        float listMax = MathF.Max(ClassicDialogRules.PickerRowHeight * 2f,
+            fit.BodyMaxHeight(ClassicDialogRules.PickerListMaxHeight + ClassicDialogRules.PickerHeadHeight, vp.Height) - ClassicDialogRules.PickerHeadHeight);
         var rows = new List<Element>(props.Rows.Count);
         var commit = props.Commit;
         for (int i = 0; i < props.Rows.Count; i++)
@@ -36,7 +44,7 @@ internal static class ClassicDestinationPicker
             {
                 // No colour edge cue: the list sits on ContentDialog's translucent FillLayerAlt overlay, where the
                 // surface-colour cue samples the plate behind it and paints a darker band instead.
-                ContentSized = true, MaxHeight = ClassicDialogRules.PickerListMaxHeight, EdgeCues = ScrollEdgeCues.None,
+                ContentSized = true, MaxHeight = listMax, EdgeCues = ScrollEdgeCues.None,
                 Content = new BoxEl { Direction = 1, Gap = ClassicDialogRules.PickerListGap, Children = rows.ToArray() },
             }
             : new BoxEl
@@ -55,13 +63,13 @@ internal static class ClassicDestinationPicker
         string placeholder = props.Placeholder;
         kids.Add(Embed.Comp(() => new EditableText
         {
-            Placeholder = placeholder, Width = ClassicDialogRules.PickerFieldWidth, Height = ClassicDialogRules.PickerFieldHeight, Text = query,
+            Placeholder = placeholder, Width = fieldWidth, Height = ClassicDialogRules.PickerFieldHeight, Text = query,
         }));
         kids.Add(list);
 
         return new BoxEl
         {
-            Direction = 1, Width = ClassicDialogRules.PickerPanelWidth, Gap = Spacing.XS, Padding = Edges4.All(props.PanelPadding),
+            Direction = 1, Width = panelWidth, Gap = Spacing.XS, Padding = Edges4.All(props.PanelPadding),
             Children = kids.ToArray(),
         };
     }

@@ -12,6 +12,8 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Localization;
 using FluentGpu.Theming;
+using FluentGpu.Hooks;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
@@ -22,7 +24,8 @@ internal static class ClassicRuntimeBanner
     /// <summary>The registered template of <see cref="ViewKeys.OverlayRuntimeBanner"/>.</summary>
     public static Element Template(RuntimeBannerProps props, in ViewContext ctx) => new BoxEl
     {
-        MaxWidth = ClassicOverlayRules.BannerMaxWidth,
+        // Never wider than the window less the band's margin (a 300-DIP window): the lane's own 560 otherwise.
+        MaxWidth = ClassicOverlayTiers.For(ctx.Tier().Window).PanelWidth(ClassicOverlayRules.BannerMaxWidth, ctx.Hooks.UseContextSignal(Viewport.Size).Value.Width),
         Children = [props.Show ? Card(props) : new BoxEl { Shrink = 0f }],
     };
 

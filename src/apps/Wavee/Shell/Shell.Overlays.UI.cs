@@ -79,6 +79,11 @@ public static partial class Shell
             // wiring is the composition root's (`App.BindOverlayServices`); this is where the host's values exist.
             UseEffect(() => App.BindOverlayServices(overlay, hooks, post), DepKey.Empty);
 
+            // The structure's per-band fit of the overlays the core composes (TC9): hand over the live viewport (a dialog opens from a handler, outside any render)
+            // and dock the engine's toast lane above the bar. Reading the facts here is what re-docks it when a tier crosses.
+            OverlayFit.Bind(UseContextSignal(Viewport.Size));
+            OverlayFit.Toasts(Theming.ThemeHost.Facts.Value.Policies.PlayerBar.Height);
+
             return new BoxEl
             {
                 Grow = 1f, HitTestPassThrough = true,
@@ -224,10 +229,10 @@ public static partial class Shell
         ContentDialog.Show(overlay, d =>
         {
             d.Title = Loc.Get(LocSignatureTitle);
-            d.DialogWidth = Setup.RuntimeRules.SignatureDialogWidth;
             d.PrimaryText = "";
             d.SecondaryText = "";
             d.CloseText = Loc.Get(Strings.Common.Close);
+            OverlayFit.Dialog(d, Setup.RuntimeRules.SignatureDialogWidth);
             d.DefaultButton = ContentDialog.DefaultBtn.Close;
             d.Content = ViewSlots.View(ViewKeys.DialogSignature, new SignatureSheetProps
             {

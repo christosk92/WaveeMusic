@@ -77,11 +77,11 @@ public sealed class ThemePolicyHostTests : IDisposable
     public void Classic_installed_publishes_its_declaration_and_changes_nothing_for_the_core()
     {
         ThemeHost.Install(ClassicTheme.Create());
-        // Equal, not the same instance: Classic's bundle equals the baseline value for value but for its window tiers (core never
-        // names a theme, so the baseline carries the Standard tiers), so the rules below answer exactly what they did.
+        // Equal, not the same instance: Classic's bundle equals the baseline value for value but for its window tiers and its overlay layouts (core never
+        // names a theme, so the baseline carries the Standard tiers and the shipped overlays), so the rules below answer exactly what they did.
         Assert.Equal(ClassicPolicies.Bundle, ShellPolicy.Now);
         Assert.Equal(ClassicPolicies.Bundle, ThemeHost.Facts.Peek().Policies);
-        Assert.Equal(ThemePolicies.Default, ShellPolicy.Now with { Tiers = TierPolicy.Standard });
+        Assert.Equal(ThemePolicies.Default, ShellPolicy.Now with { Tiers = TierPolicy.Standard, Overlays = OverlayPolicy.Default });
         Assert.Equal(ShellCapabilities.Unrestricted, ThemeHost.Facts.Peek().Capabilities);
         Assert.NotEqual(StyleMetrics.Unset, ThemeHost.Facts.Peek().Metrics);
         Assert.Equal(s_baseline, Probe());

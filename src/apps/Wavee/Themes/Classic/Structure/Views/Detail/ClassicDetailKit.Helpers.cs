@@ -79,7 +79,7 @@ internal static partial class ClassicDetailKit
             var overlay = UseContext(Overlay.Service);
             // Workstream B: the ⋯ is the standard 32/r4 IconAction everywhere.
             BoxEl button = Controls.IconAction(Icons.More, null, requestsContext: true, size: p.Size);
-            if (!Controls.IsNullOverlay(overlay)) button = ContextMenu.Attach(button, overlay, _menu, s_moreMenu);
+            if (!Controls.IsNullOverlay(overlay)) button = ContextSheets.Attach(button, overlay, _menu, s_moreMenu);
             return ToolTip.Wrap(button, Loc.Get(Strings.Common.More));
         }
     }

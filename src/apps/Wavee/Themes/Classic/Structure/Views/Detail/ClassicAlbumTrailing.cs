@@ -193,7 +193,7 @@ internal static class ClassicAlbumTrailing
             Draggable = Drag.Source(v.Drag),
             Children = menu ? [thumbnail, text, SurfaceParts.Action(Controls.MoreButton(null, requestsContext: true, restOpacity: 0f))] : [thumbnail, text],
         };
-        return menu ? ContextMenu.Attach(hero, overlay!, v.Menu) : hero;
+        return menu ? ContextSheets.Attach(hero, overlay!, v.Menu) : hero;
     }
 
     /// <summary>The SHELF arm: one horizontal, page-snapping strip of video cards under a "Music videos" header — the artist page's own video shelf, on the

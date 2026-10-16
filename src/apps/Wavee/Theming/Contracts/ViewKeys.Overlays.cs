@@ -49,6 +49,11 @@ public static partial class ViewKeys
     /// Props: <see cref="ContextMenuTileProps"/>.</summary>
     public static readonly ViewKey<ContextMenuTileProps> MenuContext = new("Menu.Context");
 
+    /// <summary>The context sheet (contract 1.11, TC9): what a context menu opens as in a structure whose policy says menus are sheets at the window band
+    /// (<c>OverlayLayout.ContextSheet</c>): the identity header, the quick-action strip and the rows, laid over the page's lower edge. The core opens it
+    /// (<c>ContextSheets</c>) and keeps the overlay handle; it decides when it is a sheet and when the stock anchored menu. Props: <see cref="ContextSheetProps"/>.</summary>
+    public static readonly ViewKey<ContextSheetProps> OverlayContextSheet = new("Overlay.ContextSheet");
+
     /// <summary>The log-out confirmation card (a bare modal card, not a ContentDialog). Props: <see cref="LogoutConfirmProps"/>.</summary>
     public static readonly ViewKey<LogoutConfirmProps> DialogLogoutConfirm = new("Dialog.LogoutConfirm");
 

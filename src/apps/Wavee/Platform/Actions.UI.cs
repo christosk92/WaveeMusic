@@ -469,7 +469,7 @@ public static partial class Actions
             d.PrimaryText = "";                       // "" HIDES the primary; null would show a stray localized "OK"
             d.CloseText = Loc.Get(Strings.Auth.Cancel);
             d.DefaultButton = ContentDialog.DefaultBtn.Close;
-            d.DialogWidth = spec.DialogWidth;
+            OverlayFit.Dialog(d, spec.DialogWidth);
             d.Content = Embed.Comp(() => new DestinationPicker(spec, item => { pick(item); handle?.Close(); }));
         });
         return handle;

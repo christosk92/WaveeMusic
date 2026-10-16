@@ -536,7 +536,7 @@ public readonly partial struct Track
                 OnHoverMove = _ => { if (!hovered.Peek()) hovered.Value = true; },
                 OnPointerExit = () => { if (hovered.Peek()) hovered.Value = false; },
             });
-            return Controls.IsNullOverlay(svc) ? row : ContextMenu.Attach(row, svc, menu);
+            return Controls.IsNullOverlay(svc) ? row : ContextSheets.Attach(row, svc, menu);
         }
 
         DragSource? _drag;

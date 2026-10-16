@@ -18,6 +18,9 @@ internal static class ClassicNotificationRules
     /// + 8) and the chip strip (50: 2 + <c>Controls.ChipRailExtent</c>) above it still fit under the cap (48 + 50 + 420 = 518).</summary>
     public const float PanelWidth = 380f, FeedMaxHeight = 420f, PanelMaxHeight = 520f;
 
+    /// <summary>What sits above the feed: the header (48) and the chip rail (50). A window too short for the whole panel bounds the feed by the panel's room less this.</summary>
+    public const float FixedHeight = 98f;
+
     /// <summary>The feed's padding and the gap between its rows.</summary>
     public static readonly Edges4 FeedPadding = new(6f, 4f, 6f, 8f);
 

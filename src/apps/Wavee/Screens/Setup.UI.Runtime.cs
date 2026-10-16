@@ -45,12 +45,12 @@ public static partial class Setup
         var handle = ContentDialog.Show(overlay, d =>
         {
             d.Title = Loc.Get(Strings.Playback.Runtime.Title);
-            d.DialogWidth = RuntimeRules.DialogWidth;
             d.PrimaryText = "";                  // PrimaryText defaults to "OK": clear all three or a phantom OK appears
             d.SecondaryText = "";
             d.CloseText = "";
             d.Content = Slots.View(ViewKeys.SetupRuntimeCard, s_cardBody);
             d.Footer = Slots.View(ViewKeys.SetupRuntimeCard, s_cardFooter);
+            OverlayFit.Dialog(d, RuntimeRules.DialogWidth);
             d.Closing = a => { if (model.IsBusy) a.Cancel = true; };
             d.Closed = _ => Runtime.End(model);
         });

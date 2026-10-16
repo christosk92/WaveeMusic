@@ -22,10 +22,10 @@
 - **A structure** registers views (`IStructureLayer.Register`), declares its options, and returns the shell's policies and
   capabilities for its option values. **A style** returns the engine's `ThemeDefinition` and the style metrics for its option
   values. Neither knows the other; the **composition** pairs them and adds counted overrides.
-- **Contract version 1.10** (`Contracts\ContractVersion.cs`, which keeps the history): the published view keys and style keys, their props records
+- **Contract version 1.11** (`Contracts\ContractVersion.cs`, which keeps the history): the published view keys and style keys, their props records
   and the role vocabulary. A theme records the version it was built against in its manifest; `ThemeHost.Install` refuses a
   composition whose major differs or whose minor is newer than the core's. 1.1 (CT4) appended `LyricsState.Offline`, the
-  optional `LyricsLinesStyle.Offline` picture and `PlayerBarSlots.VideoSplit`; 1.6 (CT6b) added `CoverVeilProps.Hold`; 1.7 (CT9) `ThemePolicies.Artwork` and `WashRoles.Rich`; 1.8 (CT8) `Overlay.OfflineVacancy`; 1.9 (CT6a) `DetailFrameProps.Head`, `LikedChipBarProps.Inline` and `TrackRowSkin.Quiet`; 1.10 (X2 follow-up) `LibraryAlbumPaneProps.Columns`.
+  optional `LyricsLinesStyle.Offline` picture and `PlayerBarSlots.VideoSplit`; 1.6 (CT6b) added `CoverVeilProps.Hold`; 1.7 (CT9) `ThemePolicies.Artwork` and `WashRoles.Rich`; 1.8 (CT8) `Overlay.OfflineVacancy`; 1.9 (CT6a) `DetailFrameProps.Head`, `LikedChipBarProps.Inline` and `TrackRowSkin.Quiet`; 1.10 (X2 follow-up) `LibraryAlbumPaneProps.Columns`; 1.11 (P3t TC9) `ThemePolicies.Overlays` and `Overlay.ContextSheet`.
 - Keys live only in `Contracts\ViewKeys*.cs` and `StyleKeys.cs` (WVTH006). T1 declares none; each extraction PR adds its
   family in its own partial file (`ViewKeys.Shell.cs`: T4a's `Shell.Frame` and `Shell.ContentState`). How a surface becomes a
   registered view is section 2b.
@@ -1358,6 +1358,45 @@ the opener's. `Dialog.Feedback` and `Dialog.Crash` are T11c's, the setup and rel
 `PlayLinkRulesTests`, `ActionMenuRulesTests` and `TrackDrawerRulesTests`. The mounted facts are `Wavee.ShellTests\OverlaysMountedTests.cs`: the chip is one button and
 reports its node, one menu row per decided row, a card per notification under its key and the expanded wrapper, the banner's buttons only while shown, the offline
 strip's retry, the two cards' buttons, the picker's keyed rows and the credits and signature sheets.
+
+### Overlays, dialogs, toasts and states at every tier (P3t, TC9)
+
+The engine owns the shells (the dialog card, the toast lane, the menu presenter) and the core opens them, so a structure decides their size and place per window band
+through **one policy**: `ThemePolicies.Overlays` (`Theming\Policies\OverlayPolicy.cs`, contract 1.11), an `OverlayLayout` for Compact, for the bands between and for Huge
+(`For(WidthTier)`; a ladder that moves an edge moves no layout). Classic builds it from `Rules\Tiers.Overlays.cs` (`ClassicOverlayTiers`: `Compact`, `Standard`, `Huge`, each a
+`ClassicOverlayTier` that carries the core `OverlayLayout` and the numbers only Classic's own views read). A view reads `ClassicOverlayTiers.For(ctx.Tier().Window)` and passes
+the live viewport to the record's arithmetic (`CardWidth`, `PanelWidth`, `PanelHeight`, `PanelBodyHeight`); it compares no width (WVTH013).
+
+| Surface | Compact (the boards) | Small, Standard, Huge | Core reads / view reads |
+|---|---|---|---|
+| ContentDialog card (`OverlayFit.Dialog`, applied at every opener) | the window less 16 either side, 16 / 20 text padding, 8 / 16 command padding, never taller than the window less 16 | the opener's rung (320 / 480 / 548), never wider than the window less 16 and never over 548 (nothing stretches at 2560 or 3840), never taller than the window less 24 | `OverlayLayout.Dialog` (`DialogFit`) |
+| Bare cards (log-out, play-a-link) | fill the window less 16, 16 / 20 padding, two 40-tall buttons sharing the row | 380 / 420 wide, 24 padding, right-aligned stock buttons | `ClassicModalCard` |
+| Dialog bodies (picker, credits, signature) | the card's width less its padding; a body taller than the card scrolls inside it (`DialogFit.BodyMaxHeight`) | the tuned panel width | `ClassicDestinationPicker`, `ClassicCreditsSheet`, `ClassicSignature` |
+| Context menu | a bottom sheet (`Overlay.ContextSheet`): grabber, identity header, a four-column quick-action strip of 64-tall cells, 44-tall rows, a sub-menu page in place, scrim from the 48 DIP chrome row down | the engine's anchored menu | `ContextSheets` decides (`OverlayLayout.ContextSheet`); `ClassicContextSheet` draws |
+| Toast lane | bottom centre, 8 above the 56 mini bar | bottom right, 24 above the bar (as shipped) | `OverlayLayout.Toast`, docked by the overlay lane (`OverlayFit.Toasts`) |
+| Vacancy (empty, error, no match) | the 20 / 28 headline at page scale too, 16 around, a 40-tall action | the page hero, 24 around | `OverlayLayout.Vacancy`, read by `Controls.Vacancy` |
+| Offline strip / vacancy | 40 tall edge to edge with a 40-tall Retry; the vacancy is the quiet rung over a stacked column of 40-tall actions | the 36-tall r4 strip; the page-hero vacancy with its action row | `ClassicOfflineStrip`, `ClassicOfflineVacancy` |
+| Standalone selection bar | at least 48 tall, 8 from the sides, 4 padding | as shipped | `OverlayLayout.Selection`, read by `Controls.SelectionBar` |
+| Panels (notifications, account menu, runtime banner) | never wider than the window less 8 | less 16; the nominal 380 / 304 / 560 | `ClassicOverlayTier.PanelWidth`, `PanelHeight` |
+
+**Short windows.** A window under 680 tall (the page is 210 at 330) clamps everything that is taller than it: a dialog card to the window less its margin (its body scrolls), a
+panel to the window less the 48 DIP chrome row and its margin (its feed scrolls), a sheet to the window less the chrome row (its rows scroll), and the offline vacancy gives its
+glyph and its 120 lift up so the words and the actions fit (`VacancyShowsGlyph`, `VacancyLiftAt`).
+
+**Context sheets.** `ContextSheets.Attach` composes onto an element exactly as the engine's `ContextMenu.Attach` does, and decides **when the request arrives**: where the active
+policy's `ContextSheet` is true for the band on screen it opens `Overlay.ContextSheet` over the whole window (`PopupChrome.Raw`, `FlyoutPlacement.Full`, light dismiss), anywhere else it
+delegates to the engine's attach unchanged. The model is the same the stock menu would have shown, so no verb, row or order changes. `ContextSheetExtensions.WithContextMenu`
+shadows the engine's extension of the same shape for every file in `namespace Wavee.*` (an extension declared in an enclosing namespace wins over one a `using` imports), so
+`row.WithContextMenu(overlay, factory)` needs no edit; direct `ContextMenu.Attach(...)` calls say `ContextSheets.Attach(...)`. Menus that are not context menus (the sort and filter
+dropdowns, the sidebar's menus, a flyout card) are anchored popups at every band.
+
+**What the engine does not yet let a structure do (reported, not worked around).** `ContentDialog` fixes its command buttons at 32 DIP (a Compact target is 40), `Toast`'s lane docks
+24 in from each side and sizes a card 300 to 380 wide (a Compact toast is full width less 16, and a 300-wide window overflows it by 24), and its action button is the stock 32. The dialog's
+`Parts` carry the width, the heights and the paddings (`OverlayFit.Dialog`); the buttons and the toast's card need an engine knob.
+
+**Tests.** `Wavee.Tests\ClassicOverlayTiersTests.cs` pins the records, the band mapping and the arithmetic. `Wavee.ShellTests\ClassicOverlayTierTests.cs` mounts each surface at 400 x 860,
+300 x 330, 1440 x 960 and 2560 x 1440: inside the window, Compact targets at least 40, the card's width per band, a sheet's rows and strip, a sub-menu page, and an engine dialog fitted by
+`OverlayFit.Dialog` keeping its command row in the window.
 
 ### The Settings page (T11b)
 

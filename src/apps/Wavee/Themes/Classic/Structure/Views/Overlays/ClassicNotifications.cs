@@ -16,6 +16,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
@@ -30,6 +31,14 @@ internal static class ClassicNotifications
         var overlay = ctx.Hooks.UseContext(Overlay.Service);   // the release rows' album menu host
         var host = props.Host;
 
+        // The panel is never wider than the window less the band's margin, and a short window bounds the feed under its header and chip rail: the panel
+        // scrolls inside itself (TC9). The nominal sizes are the tuned panel's, so a roomy window draws exactly what it always did.
+        var tier = ClassicOverlayTiers.For(ctx.Tier().Window);
+        Size2 vp = ctx.Hooks.UseContextSignal(Viewport.Size).Value;
+        float panelW = tier.PanelWidth(ClassicNotificationRules.PanelWidth, vp.Width);
+        float panelH = tier.PanelHeight(ClassicNotificationRules.PanelMaxHeight, vp.Height);
+        float feedMax = tier.PanelBodyHeight(ClassicNotificationRules.FeedMaxHeight, ClassicNotificationRules.PanelMaxHeight, ClassicNotificationRules.FixedHeight, vp.Height);
+
         var rows = new List<Element>(props.Rows.Count);
         for (int i = 0; i < props.Rows.Count; i++)
             rows.Add(Row(props, props.Rows[i], overlay));
@@ -37,21 +46,21 @@ internal static class ClassicNotifications
         Element body = rows.Count > 0
             ? new ScrollEl
             {
-                MaxHeight = ClassicNotificationRules.FeedMaxHeight, ContentSized = true, AutoEdgeFade = true, ScrollKey = "notifications",
+                MaxHeight = feedMax, ContentSized = true, AutoEdgeFade = true, ScrollKey = "notifications",
                 Content = new BoxEl
                 {
-                    Direction = 1, Width = ClassicNotificationRules.PanelWidth, Padding = ClassicNotificationRules.FeedPadding,
+                    Direction = 1, Width = panelW, Padding = ClassicNotificationRules.FeedPadding,
                     Gap = ClassicNotificationRules.FeedGap,
                     Children = rows.ToArray(),
                 },
             }
-            : PanelEmpty(props.EmptyText);
+            : PanelEmpty(props.EmptyText, panelW);
 
         var pending = props.PendingEdits;
         return new BoxEl
         {
-            Direction = 1, Width = ClassicNotificationRules.PanelWidth, MinWidth = ClassicNotificationRules.PanelWidth,
-            MaxHeight = ClassicNotificationRules.PanelMaxHeight,
+            Direction = 1, Width = panelW, MinWidth = panelW,
+            MaxHeight = panelH,
             Children =
             [
                 PanelHeader(props),
@@ -387,9 +396,9 @@ internal static class ClassicNotifications
 
     // ── the pieces ──────────────────────────────────────────────────────────────────────────────────────────────────
 
-    static Element PanelEmpty(string message) => new BoxEl
+    static Element PanelEmpty(string message, float width) => new BoxEl
     {
-        Direction = 1, Width = ClassicNotificationRules.PanelWidth, MinHeight = ClassicNotificationRules.EmptyMinHeight,
+        Direction = 1, Width = width, MinHeight = ClassicNotificationRules.EmptyMinHeight,
         AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
         Padding = Edges4.All(ClassicNotificationRules.EmptyPadding),
         Children = [R.Type.DenseTitle(message) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxWidth = ClassicNotificationRules.EmptyMessageMaxWidth }],

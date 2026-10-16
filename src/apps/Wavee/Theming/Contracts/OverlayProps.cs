@@ -117,6 +117,22 @@ public sealed record OfflineVacancyProps
 /// <param name="Circular">A circle (an artist) rather than a rounded square.</param>
 public sealed record ContextMenuTileProps(string ArtUrl, bool Circular);
 
+/// <summary>The props of <see cref="ViewKeys.OverlayContextSheet"/> (contract 1.11): one context menu, decided by the core, drawn as a sheet.</summary>
+public sealed record ContextSheetProps
+{
+    /// <summary>The identity strip (the art, a title and a subtitle), or null for a menu with none.</summary>
+    public ContextMenuHeader? Header { get; init; }
+
+    /// <summary>The quick-action strip (transport verbs and the save toggle); empty for a plain menu.</summary>
+    public required IReadOnlyList<AppBarCommand> Primary { get; init; }
+
+    /// <summary>The rows (commands, toggles, separators, sub-menus), in the menu's order.</summary>
+    public required IReadOnlyList<MenuFlyoutItem> Rows { get; init; }
+
+    /// <summary>Close the sheet. A row closes it FIRST, then acts, as every menu row does.</summary>
+    public required Action Close { get; init; }
+}
+
 /// <summary>The props of <see cref="ViewKeys.DialogLogoutConfirm"/>.</summary>
 public sealed record LogoutConfirmProps
 {

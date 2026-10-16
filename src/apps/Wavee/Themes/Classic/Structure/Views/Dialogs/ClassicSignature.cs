@@ -8,6 +8,8 @@ using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Theming;
+using FluentGpu.Hooks;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
@@ -37,7 +39,14 @@ internal static class ClassicSignature
         };
         for (int i = 0; i < props.Rows.Count; i++)
             kids.Add(Row(props.Rows[i]));
-        return new BoxEl { Direction = 1, Gap = Spacing.M, Children = kids.ToArray() };
+        // A window shorter than the sheet scrolls the rows inside the card: the Close button stays where it is.
+        float max = ClassicOverlayTiers.For(ctx.Tier().Window).Core.Dialog.BodyMaxHeight(
+            ClassicDialogRules.SignatureMaxHeight, ctx.Hooks.UseContextSignal(Viewport.Size).Value.Height);
+        return new ScrollEl
+        {
+            ContentSized = true, MaxHeight = max, EdgeCues = ScrollEdgeCues.None,
+            Content = new BoxEl { Direction = 1, Gap = Spacing.M, Children = kids.ToArray() },
+        };
     }
 
     /// <summary>A stacked label (11 TextSecondary) over its value (12 TextPrimary, wrapping; "-" when blank).</summary>
