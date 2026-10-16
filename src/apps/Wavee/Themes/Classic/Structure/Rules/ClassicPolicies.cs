@@ -118,11 +118,8 @@ public static class ClassicPolicies
         Huge = RowBudget with { SearchMaxW = 480f, TabMaxW = 240f },
     };
 
-    /// <summary>The stage: Compact under 600 wide or from 460 tall (back at 484), Portrait up to 0.80 (back above 0.85),
-    /// Ultrawide from 2.00 (back at 1.95).</summary>
-    public static StagePolicy Stage { get; } = new(new AspectThresholds(
-        CompactBelowW: 600f, PortraitEnter: 0.80f, PortraitLeave: 0.85f, UltrawideEnter: 2.00f, UltrawideLeave: 1.95f,
-        CompactEnterH: 460f, CompactLeaveH: 484f));
+    /// <summary>The stage: its class ladders and per-tier metrics are the stage family's (`Tiers.Stage.cs`, TC3).</summary>
+    public static StagePolicy Stage => ClassicStageTiers.Policy;
 
     /// <summary>The whole bundle, with Classic's window tiers. One instance, so republishing the facts is not a change. Declared
     /// LAST: static properties initialise in textual order and it reads the five above (`ClassicTiers` builds its policy in its

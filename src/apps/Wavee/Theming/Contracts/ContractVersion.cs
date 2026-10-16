@@ -48,6 +48,10 @@
 // tab cap), the optional `ChromePolicy.Compact` / `.Huge` budgets with `ChromeBudget.TabsAsCount`, and `ctx.TierReader()` (the window
 // tiers for a bound channel of a template that renders once).
 //
+// 1.13 (Classic stage tiers TC3): `StagePolicy.Aspect` (`AspectThresholds`) is three engine `TierLadder`s (width, height, ratio) instead of
+// seven floats, and `StagePolicy` gains the optional per-window-tier `StageTierMetrics` (`Metrics`, `Compact`, `Small`, `Huge`: the transport
+// card's height and gutter, the lyrics pane's type range) with `MetricsFor`. The float members are removed before any external theme existed.
+//
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
 // member and is a deliberate, owner-visible event. `ThemeCatalog` refuses to install a composition whose major differs
@@ -62,7 +66,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 12;
+    public const int Minor = 13;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

@@ -26,7 +26,8 @@ public class StageLayoutTests
     [InlineData(3440f, 1440f, Stage.Aspect.Ultrawide)]
     [InlineData(900f, 1600f, Stage.Aspect.Portrait)]
     [InlineData(1100f, 440f, Stage.Aspect.Compact)]
-    [InlineData(599f, 1000f, Stage.Aspect.Compact)]     // under WideEnterW whatever the height
+    [InlineData(599f, 1000f, Stage.Aspect.Portrait)]    // a tall window is Portrait at every width (C-Stage-Compact: the 400 x 860 column)
+    [InlineData(599f, 580f, Stage.Aspect.Compact)]      // narrow and landscape: under the 600 width edge
     [InlineData(1200f, 500f, Stage.Aspect.Ultrawide)]   // ratio 2.4 and H > 460 (V-U24)
     [InlineData(1500f, 900f, Stage.Aspect.Desktop)]
     public void The_four_classes_are_the_prototypes_queries(float w, float h, Stage.Aspect expected)
@@ -58,7 +59,7 @@ public class StageLayoutTests
     [Fact]
     public void A_width_sweep_flips_each_edge_exactly_once_in_both_directions()
     {
-        // H = 1000: Compact (W < 600) → Portrait (≤ 0.80, held to 0.85) → Desktop → Ultrawide (2.00, held to 1.95).
+        // H = 1000: Portrait (≤ 0.80 at every width, held to 0.85) → Desktop → Ultrawide (2.00, held to 1.95).
         var cur = L.Seed(1f, 1000f);
         int flips = 0;
         for (float w = 1f; w <= 3000f; w += 1f)
@@ -67,7 +68,7 @@ public class StageLayoutTests
             if (next.Aspect != cur.Aspect) flips++;
             cur = next;
         }
-        Assert.Equal(3, flips);
+        Assert.Equal(2, flips);
         Assert.Equal(A.Ultrawide, cur.Aspect);
 
         cur = L.Seed(3000f, 1000f);
@@ -78,8 +79,8 @@ public class StageLayoutTests
             if (next.Aspect != cur.Aspect) flips++;
             cur = next;
         }
-        Assert.Equal(3, flips);
-        Assert.Equal(A.Compact, cur.Aspect);
+        Assert.Equal(2, flips);
+        Assert.Equal(A.Portrait, cur.Aspect);   // a 1-wide, 1000-tall window is tall: Portrait (C-Stage-Compact)
     }
 
     [Fact]
@@ -93,7 +94,7 @@ public class StageLayoutTests
             cur = L.Resolve(900f, h, cur);
             if (cur.Aspect == A.Compact) { enteredAt = h; break; }
         }
-        Assert.Equal(L.CompactEnterH, enteredAt);
+        Assert.Equal(Wavee.Themes.Classic.ClassicStageTiers.CompactAtOrBelowH, enteredAt);
 
         cur = L.Seed(900f, 1f);
         float leftAt = -1f;
@@ -102,7 +103,7 @@ public class StageLayoutTests
             cur = L.Resolve(900f, h, cur);
             if (cur.Aspect != A.Compact) { leftAt = h; break; }
         }
-        Assert.Equal(L.CompactLeaveH, leftAt);
+        Assert.Equal(Wavee.Themes.Classic.ClassicStageTiers.CompactLeaveH, leftAt);
         Assert.Equal(A.Desktop, cur.Aspect);
     }
 
@@ -354,7 +355,7 @@ public class StageLayoutTests
         Assert.Equal(48f, L.TopBarH);
         Assert.Equal(112f, L.TransportDesktopH);
         Assert.Equal(96f, L.TransportCompactH);
-        Assert.Equal(600f, L.WideEnterW);
+        Assert.Equal(600f, Wavee.Themes.Classic.ClassicStageTiers.WideFrom);
     }
 
     // ── the identity block: the title's width and line budget ──────────────────────────────────────────────────────

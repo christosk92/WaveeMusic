@@ -3,7 +3,8 @@
 // From `Shell\Stage.UI.cs`'s `TopBar` component: 48 DIP, brand · the SelectorBar (pill tinted through TemplateParts) · the options
 // toggle · exit. It fills its wrapper (Grow); the root places it under the chrome's Show. The mode, the layout class and the accent are the
 // stage context's signals (`props.Stage`), the verbs are its actions (`SetMode`, `OpenOptions`, `Exit`, `OverControls`); the options
-// button's realized node is the TeachingTip's anchor SIGNAL (V-U16). The template owns the selector's index cell and the pill's
+// button's realized node is the TeachingTip's anchor SIGNAL (V-U16). On a Compact window (C-Stage-Compact) the mode tabs and the glyph
+// buttons are 40 tall, the Compact target rule (`ClassicStageTiers.StageOf`). The template owns the selector's index cell and the pill's
 // parts through the slot's hook context, as the component owned them.
 
 using FluentGpu.Controls;
@@ -13,6 +14,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Signals;
 using FluentGpu.Localization;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
@@ -30,6 +32,7 @@ internal static class ClassicStageTopBar
         var st = props.Stage;
         var L = st.Layout.Value;
         var set = st.Accent.Value;
+        float targetH = ClassicStageTiers.StageOf(ctx.Tier()).BarTargetH;
         var index = h.UseSignal(0);
         h.UseSignalEffect(() => index.SetIfChanged((int)st.Mode.Value));
         var parts = h.UseMemo(() => { var p = new TemplateParts(); p.Set<BoxEl>(SelectorBar.PartPill, b => b with { Fill = set.Fill }); return p; }, DepKey.From(set.GetHashCode()));
@@ -38,7 +41,7 @@ internal static class ClassicStageTopBar
         var style = new SelectorBarStyle
         {
             RestColor = Ink.InkSecondary, SelectedColor = Ink.Ink, HoverColor = Ink.Ink, HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed,
-            SelectedWeight = ClassicStageGeometry.SelectorWeight, ItemHeight = ClassicStageGeometry.SelectorItemHeight, ItemGap = ClassicStageGeometry.SelectorItemGap,
+            SelectedWeight = ClassicStageGeometry.SelectorWeight, ItemHeight = MathF.Max(ClassicStageGeometry.SelectorItemHeight, targetH), ItemGap = ClassicStageGeometry.SelectorItemGap,
         };
         bool optionsOn = st.OptionsOpen.Value;
         var setMode = st.SetMode;
@@ -71,21 +74,21 @@ internal static class ClassicStageTopBar
                     Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = Stage.Layout.BarButtonGap,
                     Children =
                     [
-                        ToolTip.Wrap(BarGlyph(Icons.Equalizer, openOptions, lit: optionsOn, onRealized: n => galleryButton.SetIfChanged(n)), Loc.Get(Strings.Stage.Options.Button)),   // the TeachingTip's anchor SIGNAL (V-U16)
+                        ToolTip.Wrap(BarGlyph(Icons.Equalizer, openOptions, lit: optionsOn, onRealized: n => galleryButton.SetIfChanged(n), targetH), Loc.Get(Strings.Stage.Options.Button)),   // the TeachingTip's anchor SIGNAL (V-U16)
                         // Labelled only where the allocator says the column holds it (never "Ex…"); else the glyph with the label as its tooltip.
                         L.ExitLabelShown
                             ? Button.Create(Loc.Get(Strings.Stage.Exit), exit, ButtonAppearance.Standard, ControlSize.Small, glyph: Icons.BackToWindow) with { Shrink = 0f }
-                            : ToolTip.Wrap(BarGlyph(Icons.BackToWindow, exit, lit: false, onRealized: null), Loc.Get(Strings.Stage.Exit)),
+                            : ToolTip.Wrap(BarGlyph(Icons.BackToWindow, exit, lit: false, onRealized: null, targetH), Loc.Get(Strings.Stage.Exit)),
                     ],
                 },
             ],
         };
     }
 
-    /// <summary>A 40×36 glass glyph button of the top bar (the options toggle, the icon-only exit).</summary>
-    static BoxEl BarGlyph(string glyph, Action onClick, bool lit, Action<NodeHandle>? onRealized) => new()
+    /// <summary>A 40×36 glass glyph button of the top bar (the options toggle, the icon-only exit); 40×40 on a Compact window.</summary>
+    static BoxEl BarGlyph(string glyph, Action onClick, bool lit, Action<NodeHandle>? onRealized, float targetH) => new()
     {
-        Width = Stage.Layout.BarButtonW, Height = ClassicStageGeometry.BarButtonHeight, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
+        Width = Stage.Layout.BarButtonW, Height = MathF.Max(ClassicStageGeometry.BarButtonHeight, targetH), Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
         Fill = lit ? Ink.GlassHover : Ink.GlassRest, HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed, BrushTransitionMs = Design.Motion.Faster,
         Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
         OnClick = onClick, OnRealized = onRealized,

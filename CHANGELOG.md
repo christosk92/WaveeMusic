@@ -12,6 +12,17 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **Full screen fits a narrow or short window.** In a narrow, tall window (a phone-shaped window under 600 wide) full screen is one
+  column: the cover and title, the lyrics, Up next or the artist under them, and the playback card across the bottom with heart, previous,
+  play, next and "…" (the other controls stay in "…" and the player bar); every button there is at least 40 big. When the playback card
+  cannot fit all its buttons in one row it uses that same short row instead of letting buttons run off the card, and in a window only
+  330 tall full screen keeps the cover, the title and the controls apart (the lyric line under the cover gives way). In a small window the
+  playback card is 96 tall with a smaller play button and the lyrics are 30 instead of 36; in a narrow window they are 26. In a very large
+  window (2560 wide and up) the lyrics stop growing at 48 instead of 64. A 1440-wide window is unchanged.
+- **The queue and the video mini player are easier to tap in a narrow window.** Under 528 wide the queue's hearts, remove buttons, the
+  Shuffle / Repeat / Autoplay toggles, "Clear" and "Playing from" are at least 40 big, the lyrics' Resync button is 40 tall, and the video
+  mini player shows full screen and close as 40-big buttons all the time instead of only on hover.
+
 - **Menus, dialogs, toasts and the empty, error and offline states fit a narrow window.** In a narrow Classic window (under 528 wide) a
   right-click or "…" menu opens as a bottom sheet instead of a popup: the song's art and name, the Play, Play next, Play after and Save
   buttons in one row, then 44-tall rows, with sub-menus opening in place and a short window scrolling the sheet; every target is at

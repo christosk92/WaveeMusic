@@ -307,8 +307,15 @@ public static partial class Stage
             };
 
             // ── the ONE layout signal, equality-gated (Signal<T>.SetIfChanged) ──
-            // The classifier's edges are the stage policy's, read tracked so another structure re-classifies the open stage in place.
-            UseSignalEffect(() => { var size = vp.Value; ctx.Layout.SetIfChanged(Layout.Resolve(size.Width, size.Height, ctx.Layout.Peek(), ShellPolicy.Tracked.Stage.Aspect)); });
+            // The classifier's edges are the stage policy's, read tracked so another structure re-classifies the open stage in place; the
+            // budget's metrics are the window tier's (the stage fills the window), read tracked so a tier crossing re-allocates it.
+            UseSignalEffect(() =>
+            {
+                var size = vp.Value;
+                var stage = ShellPolicy.Tracked.Stage;
+                var metrics = stage.MetricsFor(Theming.ThemeHost.Facts.Value.Tiers);
+                ctx.Layout.SetIfChanged(Layout.Resolve(size.Width, size.Height, ctx.Layout.Peek(), stage.Aspect, metrics));
+            });
             // ── the gallery's "shown" gate, narrowed to one bool (a resize re-runs this, the clock's lease only on a flip): open, room
             //    for it, and a layout that has a gallery (only Card does) ──
             UseSignalEffect(() => ctx.GalleryShown.SetIfChanged(ctx.GalleryOpen.Value && ctx.Layout.Value.ShowGallery && LayoutRules.GalleryAllowed(ctx.Look.Value.Eff)));
@@ -336,8 +343,9 @@ public static partial class Stage
             // ── the layout axis, derived (each effect reads only what the previous wrote): the effective layout, whether the caption
             //    line shows, the ONE Look the geometry takes, the pane region's pane, and the lyrics view's visibility gate ──
             UseSignalEffect(() => ctx.Effective.SetIfChanged(LayoutRules.Effective(ctx.LayoutPref.Value, ctx.Layout.Value.Aspect, ctx.HeroFact.Value)));
+            // A row-identity stage too short for the Lyrics caption keeps its art, title and controls and drops the caption (Layout.CaptionFits).
             UseSignalEffect(() => ctx.CaptionOn.SetIfChanged(LayoutRules.ShowsCaption(ctx.Mode.Value, ctx.Effective.Value, ctx.LyricsOverlay.Value,
-                ctx.HasTimedLyrics.Value, ctx.Layout.Value.ShowPane, ctx.Kind.Value)));
+                ctx.HasTimedLyrics.Value, ctx.Layout.Value.ShowPane, ctx.Kind.Value) && ctx.Layout.Value.CaptionFits(ctx.Mode.Value)));
             UseSignalEffect(() =>
             {
                 var look = LayoutRules.LookOf(ctx.Mode.Value, ctx.Effective.Value, ctx.SpectrumPref.Value, ctx.HeroLyricsPref.Value, ctx.CaptionOn.Value);

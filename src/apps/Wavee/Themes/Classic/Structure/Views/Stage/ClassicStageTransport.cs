@@ -2,7 +2,9 @@
 //
 // From `Shell\Stage.UI.cs`'s `TransportCard` and its parts: the acrylic card with the seek row (the bar's own seek and times) and the three
 // clusters (the "Playing from" column; shuffle · previous · the play disc · next · repeat; heart · mute · volume · device · "…"). It fills its
-// wrapper (Grow); the root places it under the chrome's Show.
+// wrapper (Grow); the root places it under the chrome's Show. Where the card cannot seat the three clusters (`Layout.TransportStacked`: a
+// narrow window, C-Stage-Compact) the row stacks to heart · previous · play · next · "…" spread across the card at its 12 padding; the disc
+// and the volume slider are the window tier's (`ClassicStageTiers.StageOf`: Small's 48 disc and 88 slider, C-Stage-Small).
 //
 // What the card draws that is playback state arrives as `StageTransportFacts`, read INSIDE this render (`props.Facts()`): a signal read there
 // subscribes the card, as the component read them. The three small parts that kept their own components keep them (the mute button, the volume
@@ -17,6 +19,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 using Ink = Wavee.Theming.Roles.StageInk;
@@ -37,14 +40,14 @@ internal static class ClassicStageTransport
         var overlay = ctx.Hooks.UseContext(Overlay.Service);
         var f = props.Facts();
         var verbs = props.Verbs;
+        var tier = ClassicStageTiers.StageOf(ctx.Tier());
         bool compact = L.Aspect == Stage.Aspect.Compact;
+        bool stacked = L.TransportStacked;
+        float disc = MathF.Min(compact ? ClassicStageGeometry.PlayDiscCompact : ClassicStageGeometry.PlayDisc, tier.PlayDiscMax);
         var menuOpen = st.MenuOpen;
         var overControls = st.OverControls;
 
-        var right = new List<Element>(5) { Heart(f.Saved, f.Like, set.Fill), Embed.Comp(new MuteGlyph.Props(props), static () => new MuteGlyph()) };
-        if (L.VolumeFits) right.Add(Embed.Comp(new VolumeRow.Props(set, Stage.Layout.VolumeSliderW, props), static () => new VolumeRow()));   // only where the cluster still fits the card
-        right.Add(Embed.Comp(new DeviceButton.Props(props), static () => new DeviceButton()));
-        right.Add(new BoxEl
+        var more = new BoxEl
         {
             Width = ClassicStageGeometry.GlyphBox, Height = ClassicStageGeometry.GlyphBox, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
             Fill = Ink.GlassRest, HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed, BrushTransitionMs = Design.Motion.Faster,
@@ -52,11 +55,67 @@ internal static class ClassicStageTransport
             Children = [new TextEl(Icons.More) { Size = ClassicStageGeometry.SatelliteGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.Ink }],
         }.WithContextMenu(overlay,
             () => { var m = Stage.NowPlayingMenu?.Invoke(); if (m is { } model && ContextMenu.HasAnyEnabled(model)) menuOpen(true); return m; },  // the "…" menu holds the chrome (V-U22); an empty menu never opens, so never counts
-            new ContextMenuOptions { OnClosed = _ => menuOpen(false) }));                                       // ContextMenu.cs:43
+            new ContextMenuOptions { OnClosed = _ => menuOpen(false) });                                        // ContextMenu.cs:43
+
+        float rowH = MathF.Min(ClassicStageGeometry.ClusterRowMax, L.TransportH - ClassicStageGeometry.ClusterRowReserve);   // 10 pad + 32 seek hit-box + this ≤ the card (Compact is 96)
+        Element row;
+        if (stacked)
+        {
+            // C-Stage-Compact: heart · previous · play · next · "…", spread across the card (the rest is the "…" menu's and the bar's).
+            row = new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.SpaceBetween, Height = rowH,
+                Children =
+                [
+                    Heart(f.Saved, f.Like, set.Fill),
+                    ToolTip.Wrap(Glyph(Icons.Previous, verbs.Previous, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph, f.PrevEnabled), Loc.Get(Strings.Player.Previous)),
+                    Play(f.Playing, f.PrimaryEnabled, disc, set, verbs),
+                    ToolTip.Wrap(Glyph(Icons.Next, verbs.Next, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph, f.NextEnabled), Loc.Get(Strings.Player.Next)),
+                    more,
+                ],
+            };
+        }
+        else
+        {
+            var right = new List<Element>(5) { Heart(f.Saved, f.Like, set.Fill), Embed.Comp(new MuteGlyph.Props(props), static () => new MuteGlyph()) };
+            if (L.VolumeFits) right.Add(Embed.Comp(new VolumeRow.Props(set, tier.VolumeW, props), static () => new VolumeRow()));   // only where the cluster still fits the card
+            right.Add(Embed.Comp(new DeviceButton.Props(props), static () => new DeviceButton()));
+            right.Add(more);
+            row = new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Height = rowH,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 1,
+                        Children =
+                        [
+                            // a formatted key: the generated method formats; Loc.Get would render "[…]" (V-D15). No source ⇒ no label (never "Playing from search" for nothing).
+                            new TextEl(f.PlayingFrom) { Size = ClassicStageGeometry.SourceLabelSize, LineHeight = ClassicStageGeometry.SourceLabelLine, Color = Ink.InkTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                            new TextEl(f.Source) { Size = ClassicStageGeometry.SourceNameSize, LineHeight = ClassicStageGeometry.SourceNameLine, Weight = ClassicStageGeometry.SourceNameWeight, Color = Ink.Ink, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                        ],
+                    },
+                    new BoxEl
+                    {
+                        Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Shrink = 0f,
+                        Children =
+                        [
+                            ToolTip.Wrap(Satellite(Icons.Shuffle, verbs.ToggleShuffle, f.CanTransport, f.Shuffle, set.Fill), Loc.Get(Strings.Player.Shuffle)),
+                            ToolTip.Wrap(Glyph(Icons.Previous, verbs.Previous, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph, f.PrevEnabled), Loc.Get(Strings.Player.Previous)),
+                            Play(f.Playing, f.PrimaryEnabled, disc, set, verbs),
+                            ToolTip.Wrap(Glyph(Icons.Next, verbs.Next, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph, f.NextEnabled), Loc.Get(Strings.Player.Next)),
+                            ToolTip.Wrap(Satellite(f.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, verbs.CycleRepeat, f.CanTransport, f.RepeatOn, set.Fill), Loc.Get(Strings.Player.Repeat)),
+                        ],
+                    },
+                    new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = ClassicStageGeometry.RightClusterGap, Children = right.ToArray() },
+                ],
+            };
+        }
 
         return new BoxEl
         {
-            Grow = 1f, Height = L.TransportH, Direction = 1, Padding = ClassicStageGeometry.TransportPadding, Corners = Radii.CardAll,
+            Grow = 1f, Height = L.TransportH, Direction = 1, Padding = stacked ? ClassicStageTiers.StackedTransportPadding : ClassicStageGeometry.TransportPadding, Corners = Radii.CardAll,
             Acrylic = Ink.Card, Shadow = Elevation.Card, ClipToBounds = true,
             OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false),
             Children =
@@ -67,36 +126,7 @@ internal static class ClassicStageTransport
                     // the bar's own seek; its scrub edge holds the chrome through the new onScrubbing seam (§4.12 — a PlayerChromeFeed is inert without a MediaPlayerElement owner)
                     Children = [props.TimeText(false, Ink.InkSecondary), new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, Children = [props.SeekBar(st.Scrubbing)] }, props.TimeText(true, Ink.InkSecondary)],
                 },
-                new BoxEl
-                {
-                    Direction = 0, AlignItems = FlexAlign.Center, Height = MathF.Min(ClassicStageGeometry.ClusterRowMax, L.TransportH - ClassicStageGeometry.ClusterRowReserve),   // 10 pad + 32 seek hit-box + this ≤ the card (Compact is 96)
-                    Children =
-                    [
-                        new BoxEl
-                        {
-                            Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 1,
-                            Children =
-                            [
-                                // a formatted key: the generated method formats; Loc.Get would render "[…]" (V-D15). No source ⇒ no label (never "Playing from search" for nothing).
-                                new TextEl(f.PlayingFrom) { Size = ClassicStageGeometry.SourceLabelSize, LineHeight = ClassicStageGeometry.SourceLabelLine, Color = Ink.InkTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                                new TextEl(f.Source) { Size = ClassicStageGeometry.SourceNameSize, LineHeight = ClassicStageGeometry.SourceNameLine, Weight = ClassicStageGeometry.SourceNameWeight, Color = Ink.Ink, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                            ],
-                        },
-                        new BoxEl
-                        {
-                            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Shrink = 0f,
-                            Children =
-                            [
-                                ToolTip.Wrap(Satellite(Icons.Shuffle, verbs.ToggleShuffle, f.CanTransport, f.Shuffle, set.Fill), Loc.Get(Strings.Player.Shuffle)),
-                                ToolTip.Wrap(Glyph(Icons.Previous, verbs.Previous, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph, f.PrevEnabled), Loc.Get(Strings.Player.Previous)),
-                                Play(f.Playing, f.PrimaryEnabled, compact ? ClassicStageGeometry.PlayDiscCompact : ClassicStageGeometry.PlayDisc, set, verbs),
-                                ToolTip.Wrap(Glyph(Icons.Next, verbs.Next, ClassicStageGeometry.GlyphBox, ClassicStageGeometry.TransportGlyph, f.NextEnabled), Loc.Get(Strings.Player.Next)),
-                                ToolTip.Wrap(Satellite(f.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, verbs.CycleRepeat, f.CanTransport, f.RepeatOn, set.Fill), Loc.Get(Strings.Player.Repeat)),
-                            ],
-                        },
-                        new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = ClassicStageGeometry.RightClusterGap, Children = right.ToArray() },
-                    ],
-                },
+                row,
             ],
         };
     }

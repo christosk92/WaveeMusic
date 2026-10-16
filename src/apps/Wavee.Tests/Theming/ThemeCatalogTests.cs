@@ -468,7 +468,8 @@ public sealed class ThemeCatalogTests : IDisposable
         // 1.10 (tuned Classic X2 follow-up): LibraryAlbumPaneProps.Columns.
         // 1.11 (P3t TC9): ThemePolicies.Overlays, Overlay.ContextSheet and ContextSheetProps.
         // 1.12 (Classic frame tiers TC1): ChromeRowState.TabCount / TabMaxWidth, ChromePolicy.Compact / Huge, ctx.TierReader(). A 1.0 theme still runs.
-        Assert.Equal("1.12", ContractVersion.Text);
+        // 1.13 (Classic stage tiers TC3): StagePolicy.Aspect as three TierLadders, StagePolicy's per-tier StageTierMetrics.
+        Assert.Equal("1.13", ContractVersion.Text);
         Assert.True(ContractVersion.IsCompatible(1, 0));
         Assert.True(ContractVersion.IsCompatible(1, 2));
         Assert.True(ContractVersion.IsCompatible(1, 3));
@@ -481,7 +482,8 @@ public sealed class ThemeCatalogTests : IDisposable
         Assert.True(ContractVersion.IsCompatible(1, 10));
         Assert.True(ContractVersion.IsCompatible(1, 11));
         Assert.True(ContractVersion.IsCompatible(1, 12));
-        Assert.False(ContractVersion.IsCompatible(1, 13));
+        Assert.True(ContractVersion.IsCompatible(1, 13));
+        Assert.False(ContractVersion.IsCompatible(1, 14));
         Assert.False(ContractVersion.IsCompatible(2, 0));
         Assert.False(ContractVersion.IsCompatible(0, 0));
     }

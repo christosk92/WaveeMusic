@@ -1430,10 +1430,19 @@ public static partial class Lyrics
         public float Estimate => LineHeight + 2f * RowPad;
 
         /// <summary>The type and its rhythm (size, line, pads) scaled by <paramref name="k"/> and rounded to whole DIPs —
-        /// the big-stage growth (<c>Stage.Layout.LyricsTypeScale</c>). The side gutter is a frame, not type: unchanged.
-        /// Exactly this row at <paramref name="k"/> = 1.</summary>
+        /// the big-stage growth (<c>Stage.Layout.LyricsTypeScale</c>). The side gutter is a frame, not type: unchanged on a big stage;
+        /// on a small one (k below 1: a Small or Compact window's stage, TC3) it steps down with the type to the rail's gutter at the
+        /// Compact stage's rail-sized type (C-Lyrics-Compact draws the rail's 26/33 lines on a 400-wide stage). Exactly this row at
+        /// <paramref name="k"/> = 1.</summary>
         public RowMetrics Scaled(float k) => k == 1f ? this
-            : this with { FontSize = MathF.Round(FontSize * k), LineHeight = MathF.Round(LineHeight * k), RowPad = MathF.Round(RowPad * k) };
+            : this with
+            {
+                FontSize = MathF.Round(FontSize * k), LineHeight = MathF.Round(LineHeight * k), RowPad = MathF.Round(RowPad * k),
+                SidePad = k >= 1f ? SidePad : MathF.Round(MathF.Max(NarrowGutter, SidePad - (SidePad - NarrowGutter) * (1f - k) / (1f - NarrowScale))),
+            };
+
+        /// <summary>The rail's side gutter, and the stage type scale at which a small stage reaches it (the rail's 26 over the stage's 36).</summary>
+        public const float NarrowGutter = 22f, NarrowScale = 26f / 36f;
     }
 
     /// <summary>The fixed metrics of the two surfaces (the 340-DIP rail and the immersive stage) — one table, so the
