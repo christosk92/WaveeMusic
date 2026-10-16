@@ -219,8 +219,9 @@ public static partial class Diagnostics
             string folder = Path.Combine(Root, EvidenceReport.BundleFolderName(now, p.Verb.Tag));
             int w = capture.WidthPx, h = capture.HeightPx;
             bool alpha = p.Verb.Alpha;
+            ColorF ground = FluentGpu.Dsl.Tok.T.WindowBackground;   // the opaque form's backdrop, read on the UI thread
             Restore(p);
-            _ = Task.Run(() => Write(folder, bgra, w, h, alpha, json));
+            _ = Task.Run(() => Write(folder, bgra, w, h, alpha, ground, json));
         }
 
         static void Restore(Pending p)
@@ -230,13 +231,16 @@ public static partial class Diagnostics
             s_pending = null;
         }
 
-        /// <summary>WORKER. shot.png + shot.json, then the reply.</summary>
-        static void Write(string folder, byte[] bgra, int w, int h, bool alpha, string json)
+        /// <summary>WORKER. shot.png + shot.json, then the reply. The opaque form is flattened over the theme's solid base
+        /// (<paramref name="ground"/>): the back buffer is premultiplied, so dropping its alpha would dim every see-through fill.</summary>
+        static void Write(string folder, byte[] bgra, int w, int h, bool alpha, ColorF ground, string json)
         {
             try
             {
                 Directory.CreateDirectory(folder);
-                PngWriter.WriteBgra(Path.Combine(folder, "shot.png"), bgra, w, h, keepAlpha: alpha);
+                string shot = Path.Combine(folder, "shot.png");
+                if (alpha) PngWriter.WriteBgra(shot, bgra, w, h, keepAlpha: true);
+                else PngWriter.WriteBgra(shot, bgra, w, h, backdrop: ground);
                 File.WriteAllText(Path.Combine(folder, "shot.json"), json, Utf8);
                 Log.Info("evidence", "[shot] " + folder + " " + w.ToString(CultureInfo.InvariantCulture) + "x" + h.ToString(CultureInfo.InvariantCulture));
                 Evidence.Reply("shot", "ok", folder);

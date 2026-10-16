@@ -193,6 +193,10 @@ public static partial class Shell
 
         var args = Platform.Args.Argv;
         ParseArgs(args, out int frames, out string? screenshot, out int winW, out int winH);
+        // A `--screenshot` run's review-capture flags (Diagnostics.CaptureOptions): the off-screen surface, a Manual zoom for
+        // the run, and a wavee:// deep link. All of them are inert without `--screenshot`.
+        var capture = Diagnostics.CaptureOptions.Parse(args);
+        ZoomService.RunZoom = capture.RunZoom;
 
         InstallCrashNet();
         if (!Platform.Args.Headless && !Platform.Args.RelaunchBroker)
@@ -219,6 +223,9 @@ public static partial class Shell
                 Tray.HasTrayArg(args));
             Tray.Host.Arm(startHidden);
         }
+        // The harness arms hold no gate, so the activation above never parks their deep link: a capture's own
+        // `wavee://open?route=…&arg=…` goes through the same drain a cold protocol launch does (the shell's first effect).
+        else if (capture.DeepLink.Length > 0) s_pendingActivation = capture.DeepLink;
 
         Appearance.Seed(Appearance.ModeOf(Platform.Settings.Get(Platform.Keys.ThemeMode)));   // the persisted preference, else the live OS theme (a fresh install)
         LoadDocuments();
@@ -275,7 +282,13 @@ public static partial class Shell
                     RevealOnFirstPresent = true,
                     FirstFrameReady = Setup.Wizard.FirstFrameReady,
                 },
-                new HarnessOptions { Frames = frames, Screenshot = screenshot });
+                new HarnessOptions
+                {
+                    Frames = frames, Screenshot = screenshot,
+                    // `--offscreen`: lay out and render at --width x --height DIP (x --scale px), not at what the monitor allows.
+                    SurfaceSizeDip = capture.Offscreen ? new FluentGpu.Foundation.Size2(winW, winH) : default,
+                    SurfaceScale = capture.Scale,
+                });
         }
         catch (Exception ex)
         {
