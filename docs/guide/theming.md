@@ -1498,6 +1498,31 @@ The three diagnostics pages and the log viewer are **Common** blocks (`Themes\Co
 
 **History keeps today's behaviour.** The page re-renders on the log's version and on its three signals, exactly as the component did; a route this build has no page for stays in the log at 0.6 opacity and inert while its delete stays live; Clear all asks first (Cancel is the default button), a row delete does not; Most recent trims the last row's divider of every card, Most visited keeps every divider. The projection is built per render by the core (at most 500 rows) and carries ready-to-draw facts (title, glyph, kind label, argument, timestamp, visit count, reachability and the two verbs), so the view names no `Shell`.
 
+### The Common blocks' tiers (TC10)
+
+No theme draws a board for the Common blocks, so under owner Q18 each is built from the host theme's parts (the same tokens, the same controls) and tiered ONCE for every theme. A Common block therefore
+decides by what is true of every ladder: it reads the **content** tier (`ctx.Tier().Content`, or `CommonTierComponent.ReadTier()` in a component: the region the page is laid out in, whatever edges the
+host theme drew) and the height tier, never an edge and never a number of pixels. The per-tier layout records and their few numbers are `Themes\Common\Rules\Tiers.cs` (`CommonDiagnosticsLayout`,
+`CommonLogsLayout`, `CommonHistoryLayout`, `CommonCustomizeLayout`, `CommonModuleLayout`, `CommonNotFoundLayout`; `CommonTiers` holds what they share); each is a value built where it is used (the spacing
+roles are read live), asserted on the record by `Wavee.Tests\CommonTiersTests.cs`. The one rule everywhere:
+
+| Tier | What a Common block does |
+|---|---|
+| Compact | One column. A label and its value stack; a wide table becomes stacked rows (never a page-level scroll and never a scrolled region: a result row is two or three lines); a row of controls wraps; the page gutter is the narrow one (16); every hit target is at least 40 x 40 (a Large button, a 40-DIP icon button, a link, field, segmented strip or check lifted to 40, and a **picker**, a 40-DIP button that opens the choices as a menu, where the stock ComboBox would be: its 32-DIP field is an engine constant, `CommonTouch.Picker`) |
+| Small | the Standard arrangement narrowed: the gutter steps down to 32; a head that cannot fit one row (the log viewer's title with its session picker) takes two |
+| Standard | today's layout, unchanged |
+| Huge, Huge 4K | the Standard arrangement under a max content width, the fill rule: one column that stops growing at the width (the Classic page column, `R.Space.PageMaxW`; the diagnostics' own 1000) and keeps the page's left edge, as the Settings and release-notes Huge boards do; lines of text never run across 3840 DIP |
+| Short height | a pinned head that would eat the page scrolls with the page instead (history, the Home customizer; at Compact too); the log viewer drops its crumbs and caption and scrolls its toolbar as one line (Open folder moves into the "..." menu) |
+
+Per block. **Diagnostics**: Compact stacks `Row`, a pass, anomaly, root and tree row and the wire result and evidence hit tables into lines, wraps the control rows (pixel query, export), fits the text boxes to the card (240) and
+lifts every button, link, field and check; the column is 1000 on every tier. **Logs**: Compact draws a row as two lines (time, level, count over category and message) with no column header (the sort is a
+"..." menu item), wraps the toolbar with 40-DIP targets and pickers, and puts the picker cluster under the title (Small too); the footer wraps. **History**: Compact stacks the head (title, then stats and Clear all, then
+the full-width search, the filter chips as one scrolling line with 40-DIP chips and the sort picker), moves a row's time and visit count into its meta line and makes the delete a 40-DIP target. **Customizer**:
+Compact stacks Reset under the title, gives a row 56 DIP with 40-DIP Up and Down, and scrolls the head with the list (the list alone does not fit a Compact window). **Module page**: the gutter and a
+max-width column for the stage and the scroller, 40-DIP buttons, chips, links and the prose toggle; the hero, cards, fact tiles and chips already wrap. **Not found**: the line wraps inside a narrow side room
+and Go home is a 40-DIP target (the block keeps its call shape and its three children). **Frame-rate overlay**: no tier layout: a content-sized, hit-test pass-through pill that is never a target. The gutter reads
+`CommonTiers.WideGutter` / `Gutter` (36 / 32 / 16) until TC1's page gutter ladder owns those three numbers for the structure's own pages.
+
 ### The feedback and crash dialogs' bodies (T11c)
 
 The dialog **chrome** (the stock `ContentDialog`: title, buttons, the vetoable primary click) stays core; the **body** is the key's picture. `Dialog.Feedback` (`FeedbackDialogProps`: the opening kind and `IFeedbackDialog`) is Classic's `ClassicFeedback` and `Dialog.Crash` (`CrashDialogProps`) is `ClassicCrash` (`Themes\Classic\Structure\Views\Screens`, numbers in `Rules\ClassicFeedbackRules.cs` and `ClassicCrashRules.cs`). T11a owns the other nine dialog keys.
@@ -1507,7 +1532,7 @@ The dialog **chrome** (the stock `ContentDialog`: title, buttons, the vetoable p
 | `Dialog.Feedback` | `Feedback.OpenDialog` (the chrome and the veto) and `Screens\Feedback.Form.cs`: `FormModel` (one per fixed kind: the off-thread compose, the live preview, the crash form's three header states, the submit gate with its toasts, the GitHub door, Copy, Save As) behind `IFeedbackForm`; `DialogSession` behind `IFeedbackDialog` | `ClassicFeedback`: the subtitle, the kind `Segmented` (never in crash mode) and the card, a nested component keyed by the kind (a switch remounts the form, so every signal is seeded once). The field signals are the view's; the card installs its submit on the dialog while mounted and drops it on unmount |
 | `Dialog.Crash` | `Crash.OpenPrompt` (the chrome, `PromptProps`: the header message, the lead, the dump label, the compose factory, `CrashConsent.Submit`); the launch decision, the upload queue and the outcome toasts | `ClassicCrash`: the header bar, the lead, the "what is sent" box with the scrubbed preview, the dump and always-send boxes, the privacy and GitHub links. Send is vetoed with a "preparing" toast until the pool-thread preview has been posted back |
 
-**Tests.** `Wavee.Tests\CommonBlocksContractTests.cs` pins the ids, Classic's template ids and the empty history model; `Wavee.ShellTests\CommonBlocksMountedTests.cs` mounts the history page over a fixture projection (it projects under its own states and again when the version moves; an empty projection mounts the vacancy), the feedback card over a fixture form (one form, one compose, the submit held while mounted) and the crash card over fixture props (compose prepared, Send waits for the preview).
+**Tests.** `Wavee.Tests\CommonTiersTests.cs` pins the layout records per tier; `Wavee.ShellTests\CommonBlocksTierTests.cs` mounts every block at 300x640, 400x860, 300x330 (and the 210 and 126 page heights a 330-tall window leaves Classic and Zune), 1440x960, 2560x1440 and 3840x2160 (no page-level horizontal overflow, the record in use, Compact targets >= 40, the column under its max width, nothing laid out below the page). `Wavee.Tests\CommonBlocksContractTests.cs` pins the ids, Classic's template ids and the empty history model; `Wavee.ShellTests\CommonBlocksMountedTests.cs` mounts the history page over a fixture projection (it projects under its own states and again when the version moves; an empty projection mounts the vacancy), the feedback card over a fixture form (one form, one compose, the submit held while mounted) and the crash card over fixture props (compose prepared, Send waits for the preview).
 
 ## 3. Options
 
@@ -1769,7 +1794,7 @@ rule that allows none is WVTH901. Rules that need a list read `src\apps\Wavee\an
 | WVTH009 | `ctx.OptionRequests.Set` only with own-layer keys | none |
 | WVTH010 | retired keys and deleted members (listed in `analyzer-input\WVTH010.legacy.txt`) only in `ThemeBootstrap.cs` | empty after F4 |
 | WVTH011 | each hidden structure option has a line with two or more values in `analyzer-input\WVTH011.matrix.txt` | none |
-| WVTH013 | the tier fence: in `Themes\**` and `[CoreHost]` types, no comparison of a measured width (`Viewport.Size`, `UseMeasuredWidth`/`UseMeasuredBounds`, the width parameter of a `Responsive.Of` build lambda, a `TierFacts` width/height member) with a number or a constant declared outside `Rules\Tiers*.cs`, and no `Responsive.Of`/`UseMeasured*` call that feeds one (section 7) | Classic only, shrink-only, deleted by TC10 |
+| WVTH013 | the tier fence: in `Themes\**` and `[CoreHost]` types, no comparison of a measured width (`Viewport.Size`, `UseMeasuredWidth`/`UseMeasuredBounds`, the width parameter of a `Responsive.Of` build lambda, a `TierFacts` width/height member) with a number or a constant declared outside `Rules\Tiers*.cs`, and no `Responsive.Of`/`UseMeasured*` call that feeds one (section 7) | none (a hard gate: a baseline file is WVTH901; TC10 deleted Classic's) |
 
 The analyzers recognise types by namespace and name (they run inside the compiler and never reference the app), so a rule
 is tested with stand-in declarations (`Wavee.Analyzers.Tests\Fixtures.cs`).
@@ -1848,10 +1873,9 @@ whose result feeds one. A measurement is `Viewport.Size` (read through `UseConte
 `ViewportHeight`; a member read, `+ - * /`, a `Math`/`MathF` call and a local assigned from one carry it. Comparing the tier
 (`ctx.Tier().Content >= WidthTier.Huge`), a layout-record member, a control-size literal (`Width = 32`) or a value against zero is
 clean. That page-level widths come from the layout record is a review rule, not an analyzer rule (an analyzer cannot tell a page-level
-region from a control size). The baseline detail is the measurement kind (`Viewport.Size`, `UseMeasuredWidth`, `UseMeasuredBounds`,
-`Responsive.Of`, `TierFacts.ContentWidth`...), the same for the comparison and its call, so one entry per file and kind covers a site;
-Classic's file is `analyzer-baseline\WVTH013.txt` (no file today: every moved view is clean), emptied family by family by the
-Classic tier PRs and deleted by TC10. Where a ladder cannot move without a behaviour change, the move PR lists the file there.
+region from a control size). The rule has **no baseline**: Classic's grandfathered files were emptied family by family by the Classic tier PRs and TC10 deleted
+the mechanism for it, so an `analyzer-baseline\WVTH013.txt` is WVTH901. `Themes\Common\**` is held to the rule like a structure; a Common block's breakpoint
+constants, if it ever needs any, live in `Themes\Common\Rules\Tiers*.cs` (today it needs none: see "The Common blocks' tiers" below).
 
 **Keyed measurement (A4.0, engine E17c).** A measured region in a view is KEYED by its role: `Responsive.Of("artist:top-band", w => ...)`,
 `Responsive.Of("browse:genres", state, (st, w) => ...)`, `UseMeasuredWidth("show:body", 4f)`, `UseMeasuredBounds("recents:rail")`. The

@@ -5,6 +5,10 @@
 // the app's own vocabulary. Written once for every theme (a Common block); Classic registers it like its own views. `Modules.PageHost` keeps the route
 // parse, the load, the claim and the verbs.
 //
+// TIERS (themes plan 3.2, TC10): the page reads `ctx.Tier()` into a `CommonModuleLayout` (Rules\Tiers.cs): the page gutter (16 at Compact, 32 above) and the max width of the
+// stage and the scroller's column (a row holding one capped column, left-aligned: the Huge fill rule), and a hit target for the buttons, chips and links (40 at Compact). The
+// hero, the cards, the fact tiles and the chip row already wrap, so Compact needs no other arrangement. A component (the prose toggle, the subtitle link) reads the tier itself.
+//
 // Three states, owned by the engine: `Skel.Region` derives the shimmer from THIS page rendered against the seed (the cached document on a revisit, else
 // a figure-space placeholder), mounts the real page on Ready and the failed body on Failed. Unknown section kinds and action kinds are skipped, never fatal.
 //
@@ -20,6 +24,7 @@ using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Sdk;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 using static Wavee.Modules;
@@ -48,11 +53,13 @@ internal static class CommonModulePage
         string stagePlayable = ready ? Pages.StagePlayableUri(moduleId, live) : "";
         WatchPageModel? model = ready ? WatchPageModel.From(live, Pages.IsPlayingEntity(stagePlayable, nowUri)) : null;
         Action retry = props.Retry;
+        var layout = CommonModuleLayout.For(ctx.Tier());
+        float target = layout.Target;
 
         var body = Skel.Region(loadable,
-            content: doc => LoadedBody(doc, moduleId, routeArg),
+            content: doc => LoadedBody(doc, moduleId, routeArg, target),
             reveal: SkelReveal.Soft,
-            onFailed: () => FailedBody(loadable.Error, retry, pageUri),
+            onFailed: () => FailedBody(loadable.Error, retry, pageUri, target),
             group: "module-page:" + pageUri);
 
         return new BoxEl
@@ -67,18 +74,22 @@ internal static class CommonModulePage
                     {
                         // The props of the stage freeze inside it, so its identity and poster are folded into the key.
                         Key = "module-stage-slot:" + stagePlayable + "|" + (model.PosterUrl ?? ""),
-                        Direction = 1, Padding = new Edges4(CommonModuleRules.Gutter, 0f, CommonModuleRules.Gutter, 0f),
-                        Children = [Stage(stagePlayable, model.PosterUrl)],
+                        Direction = 0, Padding = new Edges4(layout.Gutter, 0f, layout.Gutter, 0f),
+                        Children = [Capped(layout, Stage(stagePlayable, model.PosterUrl))],
                     },
                 ScrollView(new BoxEl
                 {
-                    Direction = 1, MinWidth = 0f,
-                    Padding = new Edges4(CommonModuleRules.Gutter, CommonModuleRules.ScrollPad, CommonModuleRules.Gutter, R.Space.DockReserve + CommonModuleRules.ScrollPad),
-                    Children = [body],
+                    Direction = 0, MinWidth = 0f,
+                    Padding = new Edges4(layout.Gutter, CommonModuleRules.ScrollPad, layout.Gutter, R.Space.DockReserve + CommonModuleRules.ScrollPad),
+                    Children = [Capped(layout, body)],
                 }) with { Grow = 1f, MinHeight = 0f, ScrollKey = props.ScrollKey },
             ],
         };
     }
+
+    /// <summary>One column that grows to the tier's max width and stops, at the page's left edge (the Huge fill rule).</summary>
+    static Element Capped(CommonModuleLayout layout, Element content)
+        => new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MaxWidth = layout.MaxWidth, Children = [content] };
 
     /// <summary>The watch stage (G-151): <c>Video.WatchStage</c>, the video host's mount point — the poster ground, the
     /// idle play disc, and the one video surface once this page's playable is what plays and the arbitration hands the
@@ -88,7 +99,7 @@ internal static class CommonModulePage
 
     /// <summary>The failed state: the app's one vacancy grammar with Retry, plus this surface's escape hatch — when the
     /// module already told us a web url for the entity, the user can still go and look at it.</summary>
-    static Element FailedBody(Exception? error, Action retry, string pageUri)
+    static Element FailedBody(Exception? error, Action retry, string pageUri, float target)
     {
         string? subtitle = error is ModuleException { Message.Length: > 0 } me ? me.Message : null;
         var kids = new List<Element>(2)
@@ -99,28 +110,28 @@ internal static class CommonModulePage
             kids.Add(new BoxEl
             {
                 Direction = 0, Justify = FlexJustify.Center, Padding = new Edges4(0f, Spacing.S, 0f, 0f),
-                Children = [Button.Standard(Loc.Get(Strings.ModulePage.OpenInBrowser), () => OpenUrl(url))],
+                Children = [CommonTouch.Button(Loc.Get(Strings.ModulePage.OpenInBrowser), () => OpenUrl(url), target)],
             });
         return new BoxEl { Key = "module-failed", Direction = 1, Grow = 1f, Children = kids.ToArray() };
     }
 
     /// <summary>The loaded page: the watch reading when the template asks for it, the entity/custom reading otherwise.</summary>
-    static Element LoadedBody(ModulePageDoc doc, string moduleId, string? routeArg)
+    static Element LoadedBody(ModulePageDoc doc, string moduleId, string? routeArg, float target)
     {
         string stagePlayable = Pages.StagePlayableUri(moduleId, doc);
         return WatchPageModel.From(doc, Pages.IsPlayingEntity(stagePlayable, PlayingModuleUri())) is { } watch
-            ? WatchCaption(watch, moduleId, doc)
-            : EntityBody(doc, moduleId, routeArg);
+            ? WatchCaption(watch, moduleId, doc, target)
+            : EntityBody(doc, moduleId, routeArg, target);
     }
 
     // ══ 1. THE ENTITY READING ══════════════════════════════════════════════════════════════════════════════════════
 
-    static Element EntityBody(ModulePageDoc doc, string moduleId, string? routeArg)
+    static Element EntityBody(ModulePageDoc doc, string moduleId, string? routeArg, float target)
     {
         var kids = new List<Element>(8);
         PageHero? hero = Pages.HeroFor(doc, routeArg, Loc.Get(Strings.ModulePage.Title));
         if (hero is not null) kids.Add(Hero(hero, moduleId));
-        if (ActionRow(doc.Actions, moduleId) is { } actions) kids.Add(actions);
+        if (ActionRow(doc.Actions, moduleId, target) is { } actions) kids.Add(actions);
 
         // The budgets are the module's contract; re-applied here because a page arrives over a pipe and this is the last
         // place that can refuse to draw 4,000 rows. Items are spent in document order.
@@ -128,7 +139,7 @@ internal static class CommonModulePage
         int budget = ModulePageBudget.MaxItems, drawn = 0;
         for (int i = 0; i < sections.Length && drawn < ModulePageBudget.MaxSections; i++)
         {
-            if (sections[i] is not { } section || SectionBlock(section, i, moduleId, ref budget) is not { } block) continue;
+            if (sections[i] is not { } section || SectionBlock(section, i, moduleId, ref budget, target) is not { } block) continue;
             kids.Add(block);
             drawn++;
         }
@@ -179,7 +190,7 @@ internal static class CommonModulePage
         Children = [new TextEl(Loc.Get(Strings.Play.Live)) { Size = CommonModuleRules.BadgeSize, LineHeight = CommonModuleRules.BadgeLine, Weight = 600, Color = R.Ink.AccentDecor, Wrap = TextWrap.NoWrap }],
     };
 
-    static Element? ActionRow(PageAction[]? actions, string moduleId)
+    static Element? ActionRow(PageAction[]? actions, string moduleId, float target)
     {
         if (actions is not { Length: > 0 }) return null;
         var kids = new List<Element>(actions.Length);
@@ -187,7 +198,7 @@ internal static class CommonModulePage
         {
             if (a is null || Trimmed(a.Label) is not { } label) continue;
             if (InvokeFor(moduleId, a.Kind, a.Id, a.PlayableId, a.Url) is not { } invoke) continue;
-            kids.Add((a.Primary ? Button.Accent(label, invoke) : Button.Standard(label, invoke)) with { Key = "action:" + a.Id + ":" + a.Kind });
+            kids.Add(CommonTouch.Button(label, invoke, target, accent: a.Primary) with { Key = "action:" + a.Id + ":" + a.Kind });
         }
         if (kids.Count == 0) return null;
         return new BoxEl
@@ -197,7 +208,7 @@ internal static class CommonModulePage
         };
     }
 
-    static Element? SectionBlock(PageSection section, int index, string moduleId, ref int budget)
+    static Element? SectionBlock(PageSection section, int index, string moduleId, ref int budget, float target)
     {
         string key = "sec:" + index.ToString(System.Globalization.CultureInfo.InvariantCulture) + ":" + section.Kind;
         switch (section.Kind)
@@ -209,7 +220,7 @@ internal static class CommonModulePage
             case PageSection.KindFacts: return FactsBlock(key, section, ref budget);
             case PageSection.KindPlayables: return PlayablesBlock(key, section, moduleId, ref budget);
             case PageSection.KindCards: return CardsBlock(key, section, moduleId, ref budget);
-            case PageSection.KindLinks: return LinksBlock(key, section, ref budget);
+            case PageSection.KindLinks: return LinksBlock(key, section, ref budget, target);
             default: return null;   // unknown ⇒ skipped; the rest of the page still renders
         }
     }
@@ -293,7 +304,7 @@ internal static class CommonModulePage
         return Section(key, section.Title, new BoxEl { Key = key + ":cards", Direction = 0, Gap = Spacing.M, Wrap = true, MinWidth = 0f, Children = cards.ToArray() });
     }
 
-    static Element? LinksBlock(string key, PageSection section, ref int budget)
+    static Element? LinksBlock(string key, PageSection section, ref int budget, float target)
     {
         PageItem[] items = section.Items ?? [];
         int take = Pages.Take(items.Length, budget);
@@ -307,7 +318,7 @@ internal static class CommonModulePage
             rows.Add(new BoxEl
             {
                 Key = key + ":link:" + i.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f, MinHeight = target,
                 Padding = new Edges4(Spacing.M, Spacing.S, Spacing.M, Spacing.S),
                 Corners = Radii.ControlAll, Cursor = CursorId.Hand, OnClick = () => OpenUrl(url),
                 Role = AutomationRole.Hyperlink, Focusable = true,
@@ -328,7 +339,7 @@ internal static class CommonModulePage
     /// <summary>Everything UNDER the picture: the title one rung below the page hero (the picture is the identity), the
     /// LIVE badge + meta line, the channel row, the document's actions as capsules, the description card with the fact
     /// line folded into its top, and the 16:9 shelf.</summary>
-    static Element WatchCaption(WatchPageModel model, string moduleId, ModulePageDoc doc)
+    static Element WatchCaption(WatchPageModel model, string moduleId, ModulePageDoc doc, float target)
     {
         var kids = new List<Element>(6)
         {
@@ -336,7 +347,7 @@ internal static class CommonModulePage
         };
         if (model.IsLive || model.MetaLine is { Length: > 0 }) kids.Add(MetaRow(model));
         if (model.ChannelName is { Length: > 0 }) kids.Add(ChannelRow(model, moduleId));
-        if (ChipRow(model, moduleId) is { } chips) kids.Add(chips);
+        if (ChipRow(model, moduleId, target) is { } chips) kids.Add(chips);
         if (DescriptionCard(model) is { } card) kids.Add(card);
         if (WatchShelf(model, moduleId) is { } shelf) kids.Add(shelf);
         return new BoxEl { Key = "watch-caption", Direction = 1, Gap = Spacing.M, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = kids.ToArray() };
@@ -374,7 +385,7 @@ internal static class CommonModulePage
 
     /// <summary>The document's actions as capsules. The play capsule is replaced by an inert "Playing" state capsule
     /// while this page's playable is the item in the bar; nothing is invented (no Save, no Share).</summary>
-    static Element? ChipRow(WatchPageModel model, string moduleId)
+    static Element? ChipRow(WatchPageModel model, string moduleId, float target)
     {
         var kids = new List<Element>(model.Chips.Length + 1);
         bool playing = model.Stage == WatchStageKind.Live;
@@ -385,8 +396,8 @@ internal static class CommonModulePage
             if (InvokeFor(moduleId, chip.Kind, chip.Id, chip.PlayableId, chip.Url) is not { } invoke) continue;
             string? glyph = play ? Icons.Play : string.Equals(chip.Kind, PageAction.KindOpenUrl, StringComparison.Ordinal) ? Icons.OpenInNewWindow : null;
             kids.Add((chip.Primary
-                ? Controls.PrimaryButton(chip.Label, invoke, Tok.AccentDefault, glyph)
-                : Button.Create(chip.Label, invoke, glyph: glyph))
+                ? CommonTouch.Lift(Controls.PrimaryButton(chip.Label, invoke, Tok.AccentDefault, glyph), target)
+                : CommonTouch.Button(chip.Label, invoke, target, glyph: glyph))
                 with { Key = "chip:" + chip.Id + ":" + chip.Kind });
         }
         if (kids.Count == 0) return null;
@@ -478,12 +489,13 @@ internal static class CommonModulePage
 
     /// <summary>Plain module prose, clamped to <c>lines</c> with a quiet More/Less toggle. PLAIN text on purpose: a
     /// module's description is not markup, and nothing a module writes is parsed as a link.</summary>
-    sealed class ExpandableText(string text, int lines) : Component
+    sealed class ExpandableText(string text, int lines) : CommonTierComponent
     {
         readonly Signal<bool> _expanded = new(false);
 
         public override Element Render()
         {
+            float target = CommonModuleLayout.For(ReadTier()).Target;
             bool expanded = _expanded.Value;
             bool long_ = text.Length > lines * CommonModuleRules.CharsPerLine || text.AsSpan().Count('\n') >= lines;
             var kids = new List<Element>(2)
@@ -495,15 +507,15 @@ internal static class CommonModulePage
                 },
             };
             if (long_)
-                kids.Add(HyperlinkButton.Create(Loc.Get(expanded ? Strings.Common.Less : Strings.Common.More),
-                    () => _expanded.Value = !_expanded.Peek(), size: ControlSize.Small) with { AlignSelf = FlexAlign.Start });
+                kids.Add(CommonTouch.Link(Loc.Get(expanded ? Strings.Common.Less : Strings.Common.More),
+                    () => _expanded.Value = !_expanded.Peek(), target, ControlSize.Small) with { AlignSelf = FlexAlign.Start });
             return new BoxEl { Direction = 1, Gap = Spacing.XS, MinWidth = 0f, Children = kids.ToArray() };
         }
     }
 
     /// <summary>The hero subtitle: the player bar's meta-link grammar (hover recolours THIS word), navigating to the page
     /// the document named. Plain text when there is nowhere to go.</summary>
-    sealed class MetaLink(string text, string? route) : Component
+    sealed class MetaLink(string text, string? route) : CommonTierComponent
     {
         readonly Signal<bool> _hover = new(false);
 
@@ -511,9 +523,11 @@ internal static class CommonModulePage
         {
             bool enabled = route is not null;
             bool hover = enabled && _hover.Value;
+            float tierTarget = CommonModuleLayout.For(ReadTier()).Target;
+            float target = enabled ? tierTarget : 0f;
             return new BoxEl
             {
-                MinWidth = 0f, Shrink = 1f, AlignSelf = FlexAlign.Start,
+                MinWidth = 0f, MinHeight = target, Shrink = 1f, AlignSelf = FlexAlign.Start, AlignItems = FlexAlign.Center,
                 Cursor = enabled ? CursorId.Hand : null,
                 OnClick = enabled ? () => Navigate(route!, text) : null,
                 OnHoverMove = enabled ? _ => { if (!_hover.Peek()) _hover.Value = true; } : null,
