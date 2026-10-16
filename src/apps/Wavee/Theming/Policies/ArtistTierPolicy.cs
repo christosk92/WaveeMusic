@@ -7,7 +7,7 @@
 // the window tiers and a crossing found after mount commits on the first frame that is not resized and animates (plan 3.3).
 //
 // WHAT EACH TIER LAYS OUT is the structure's too: the hero's metrics for a sub-tier in the window tier on screen (its height, gutter, veil, copy measure and
-// photograph), the profile hero's, how many columns the Top-tracks chart may take and the profile list's narrowest card. A structure that declares nothing
+// photograph), the profile hero's, how many columns and rows the Top-tracks chart may take and the profile list's narrowest card. A structure that declares nothing
 // gets `Default`: one Wide hero at every width and the chart's two columns (the shell before tiers).
 
 using FluentGpu.Foundation;
@@ -79,6 +79,9 @@ public class ArtistTierPolicy
 
     /// <summary>The most columns the Top-tracks chart may take in the tiers <paramref name="facts"/> (the chart's own row count still caps them).</summary>
     public virtual int ChartMaxColumns(in TierFacts facts) => 2;
+
+    /// <summary>The rows of one chart column in the tiers <paramref name="facts"/> (contract 1.22): five where the structure declares none.</summary>
+    public virtual int ChartRows(in TierFacts facts) => ArtistSections.ChartMaxRows;
 
     /// <summary>The profile list grid's narrowest card in the tiers <paramref name="facts"/>.</summary>
     public virtual float ProfileListMinCell(in TierFacts facts) => 176f;

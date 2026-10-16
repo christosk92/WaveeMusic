@@ -3,8 +3,9 @@
 // From `Shell\Stage.UI.cs`'s `TransportCard` and its parts: the acrylic card with the seek row (the bar's own seek and times) and the three
 // clusters (the "Playing from" column; shuffle · previous · the play disc · next · repeat; heart · mute · volume · device · "…"). It fills its
 // wrapper (Grow); the root places it under the chrome's Show. Where the card cannot seat the three clusters (`Layout.TransportStacked`: a
-// narrow window, C-Stage-Compact) the row stacks to heart · previous · play · next · "…" spread across the card at its 12 padding; the disc
-// and the volume slider are the window tier's (`ClassicStageTiers.StageOf`: Small's 48 disc and 88 slider, C-Stage-Small).
+// narrow window, C-Stage-Compact) the row stacks to heart · previous · play · next · "…" spread across the card at its 12 padding; the disc,
+// the volume slider, the card's padding and its cluster gaps are the window tier's (`ClassicStageTiers.StageOf`: Small's 48 disc and 88
+// slider, C-Stage-Small; Huge's 24 / 14 card with 12 between the centred buttons, C-Stage-Huge).
 //
 // What the card draws that is playback state arrives as `StageTransportFacts`, read INSIDE this render (`props.Facts()`): a signal read there
 // subscribes the card, as the component read them. The three small parts that kept their own components keep them (the mute button, the volume
@@ -98,7 +99,7 @@ internal static class ClassicStageTransport
                     },
                     new BoxEl
                     {
-                        Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Shrink = 0f,
+                        Direction = 0, AlignItems = FlexAlign.Center, Gap = tier.ClusterGap ?? Spacing.S, Shrink = 0f,
                         Children =
                         [
                             ToolTip.Wrap(Satellite(Icons.Shuffle, verbs.ToggleShuffle, f.CanTransport, f.Shuffle, set.Fill), Loc.Get(Strings.Player.Shuffle)),
@@ -108,14 +109,14 @@ internal static class ClassicStageTransport
                             ToolTip.Wrap(Satellite(f.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, verbs.CycleRepeat, f.CanTransport, f.RepeatOn, set.Fill), Loc.Get(Strings.Player.Repeat)),
                         ],
                     },
-                    new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = ClassicStageGeometry.RightClusterGap, Children = right.ToArray() },
+                    new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = tier.RightGap, Children = right.ToArray() },
                 ],
             };
         }
 
         return new BoxEl
         {
-            Grow = 1f, Height = L.TransportH, Direction = 1, Padding = stacked ? ClassicStageTiers.StackedTransportPadding : ClassicStageGeometry.TransportPadding, Corners = Radii.CardAll,
+            Grow = 1f, Height = L.TransportH, Direction = 1, Padding = stacked ? ClassicStageTiers.StackedTransportPadding : tier.TransportPadding, Corners = Radii.CardAll,
             Acrylic = Ink.Card, Shadow = Elevation.Card, ClipToBounds = true,
             OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false),
             Children =
@@ -249,5 +250,38 @@ internal static class ClassicStageTransport
                 ],
             };
         }
+    }
+}
+
+/// <summary>Where the transport card stands: the bottom edge (AlignSelf End), full width at the tier's gutter, right of the art on the Compact
+/// class (<c>Layout.TransportLeft</c>), and a gutter short of a docked gallery that runs to the foot (<c>Layout.TransportRight</c>, C-Stage-Huge).
+/// Its own component so a gallery toggle re-renders this placement and not the stage's root; the card yields its width on the face's re-centre
+/// tween (re-laid out as it moves, so the clusters re-centre with it). The root is a full-bleed layer: this anchor is a flex column (V-U9).</summary>
+internal sealed class ClassicStageTransportPlace : Component
+{
+    public sealed record Props(Stage.StageCtx Stage, StageTransportProps Transport);
+
+    static readonly LayoutTransition s_yield = new(TransitionChannels.Bounds,
+        TransitionDynamics.Tween(ClassicStageGeometry.GalleryYieldMs, Easing.FluentDecelerate), SizeMode.Relayout);
+
+    public override Element Render()
+    {
+        var p = UseProps<Props>();
+        var sc = p.Stage;
+        var L = sc.Layout.Value;
+        bool gallery = sc.Mode.Value == Stage.Mode.Visualizer && sc.GalleryShown.Value;   // the root's own gate on the docked gallery
+        return Stage.Layer with
+        {
+            Children =
+            [
+                new BoxEl
+                {
+                    Key = "stage:transport:card", AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Stretch, Direction = 0,
+                    Margin = new Edges4(L.TransportLeft, 0f, L.TransportRight(gallery), L.TransportInset),
+                    Layout = s_yield,
+                    Children = [Slots.View(ViewKeys.StageTransport, p.Transport)],
+                },
+            ],
+        };
     }
 }

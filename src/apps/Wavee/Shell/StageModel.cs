@@ -34,9 +34,11 @@ public readonly record struct StageModel(Stage.Mode Mode, Visualizer.Kind Face, 
         => new(ctx.Mode.Value, ctx.Kind.Value, ctx.HasTimedLyrics.Value, ctx.Chrome.Value, idle.MenuHolds, ctx.GalleryOpen.Value,
             tipSeen, ctx.Layout.Value.Aspect, ctx.Look.Value, ctx.LayoutPref.Value);
 
-    /// <summary>The slice the verbs decide on, off the context's peeks.</summary>
+    /// <summary>The slice the verbs decide on, off the context's peeks. The gallery is open as the stage SHOWS it: the stored flag, or on a
+    /// tier whose gallery opens only on request (C-Stage-Compact) the flag once it was asked for (<c>Stage.Layout.GalleryOpenFor</c>), so the
+    /// first press of the face chip opens the sheet instead of closing a stored flag nobody sees.</summary>
     public static StageState StateOf(Stage.StageCtx ctx)
-        => new(ctx.Mode.Peek(), ctx.Look.Peek(), ctx.LayoutPref.Peek(), ctx.Kind.Peek(), ctx.GalleryOpen.Peek());
+        => new(ctx.Mode.Peek(), ctx.Look.Peek(), ctx.LayoutPref.Peek(), ctx.Kind.Peek(), ctx.Layout.Peek().GalleryOpenFor(ctx.GalleryOpen.Peek(), ctx.GalleryAsked.Peek()));
 
     // ══ THE RULES (pure) ═════════════════════════════════════════════════════════════════════════════════════════════
 

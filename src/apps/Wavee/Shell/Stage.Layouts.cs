@@ -347,7 +347,7 @@ public static partial class Stage
         /// <summary>The title / meta column centres its lines (a TextEl has no text-align): Centered always, Portrait Large art.</summary>
         public bool TitlesCentered(in Look k) => k.Eff == VizLayout.Centered || (k.Eff == VizLayout.LargeArt && Aspect == Aspect.Portrait);
         /// <summary>The identity block shows the format / lyrics chips: Card (outside the thumb) and Large art; the hero boards have none.</summary>
-        public bool ShowChipsFor(in Look k) => k.Eff is VizLayout.Centered or VizLayout.Artist ? false : ShowChips;
+        public bool ShowChipsFor(in Look k) => k.Eff is VizLayout.Centered or VizLayout.Artist || (!k.IsLayout && IdentityCardOn(k.Mode)) ? false : ShowChips;
 
         public (float Size, float Line) TitleFont(in Look k) => k.Eff switch
         {
@@ -364,7 +364,7 @@ public static partial class Stage
             _ => MetaFont(k.Mode),
         };
         /// <summary>The gap between the title, the meta line and the chips.</summary>
-        public float TitleGapFor(in Look k) => k.Eff == VizLayout.LargeArt ? LargeArtTitleGap : k.Eff == VizLayout.Artist ? 2f : TitleGap;
+        public float TitleGapFor(in Look k) => k.Eff == VizLayout.LargeArt ? LargeArtTitleGap : k.Eff == VizLayout.Artist ? 2f : !k.IsLayout && IdentityCardOn(k.Mode) ? 0f : TitleGap;
         /// <summary>The identity block's height with <paramref name="lines"/> title lines: title · meta · (chips).</summary>
         public float TitleBlockH(in Look k, int lines)
         {
@@ -415,7 +415,7 @@ public static partial class Stage
                     return (pad, top, MathF.Max(0f, w), MathF.Max(0f, bottom - top));
                 }
                 default:
-                    return (PaneX, PaneTop, PaneW, PaneH);
+                    return (PaneX, PaneTop, LyricsPaneW(k.Mode), PaneH);   // narrowed beside the Up next column (Lyrics mode, C-Stage-Huge4K)
             }
         }
 

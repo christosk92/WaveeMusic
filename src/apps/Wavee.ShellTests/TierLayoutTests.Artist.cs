@@ -4,10 +4,14 @@
 // page, Profile and ProfileList at the page sizes), through `AssertPage` (TierLayoutTests.cs: the tier final in the first frame, the frame's records, the
 // regions inside the window and apart, the Compact title-bar targets). Then, on the records, never on pixels:
 //
-//   · the window tier's page record is the one the core reads through the policy (`ThemePolicies.ArtistTiers`) and the one the views read;
+//   · the window tier's page record is the one the core reads through the policy (`ThemePolicies.ArtistTiers`) and the one the views read (Huge 4K's
+//     past the 3200 rung: the chart's four rows);
 //   · the hero's ARM on screen is the record's for the page's own width (one arm mounted once the page settled), and the hero is at most 60 % of a Short
 //     window's page;
-//   · at Compact every hit target of the hero's action row is at least 40 x 40.
+//   · ONE alignment source: the hero's copy starts where the magazine's sections start (the 4K review found the copy at the 36 gutter while Top tracks sat
+//     in the capped, centred column);
+//   · the 56 section row is under the hero at Huge only, the More button ends the Huge hero's actions, the albums are a strip at Compact only;
+//   · at Compact every hit target of the hero's action row is at least 40 x 40, and the concert hub's pills are 40 tall.
 
 using FluentGpu.Foundation;
 using FluentGpu.Scene;
@@ -41,11 +45,27 @@ public sealed partial class TierLayoutTests
         var layout = ClassicArtistTiers.Of(tiers);
         Assert.Equal(Sizes[size].Window, layout.Tier);
         Assert.Equal(Sizes[size].Window == WidthTier.Compact ? 128f : 180f, layout.DiscoMinColumn);
+        // The drawer's geometry per tier (C-Discography-Compact / -Small / -Huge), the one the core's verdict sizes.
+        Assert.Equal(Sizes[size].Window switch { WidthTier.Compact => 1, WidthTier.Small => 2, WidthTier.Standard => 0, _ => 4 }, layout.Drawer.Columns);
+        Assert.Equal(Sizes[size].Window == WidthTier.Compact ? 40f : 32f, layout.Drawer.RowPitch);
+        Assert.Equal(Sizes[size].Window == WidthTier.Compact, !float.IsNaN(layout.DiscoTab));
     });
 
     [Theory, MemberData(nameof(PageSizes))]
     public void The_concert_hub_holds_its_tier_layout(string size) => AssertPage(ConcertHub, size, (shell, tiers) =>
-        Assert.Equal(Sizes[size].Window, ClassicConcertTiers.Of(tiers).Tier));
+    {
+        var record = ClassicConcertTiers.Of(tiers);
+        Assert.Equal(Sizes[size].Window, record.Tier);
+        Assert.Equal(Sizes[size].Window == WidthTier.Compact ? 40f : 32f, record.HubPill);
+        // The filter bar's when pill (the rest pill or the fused one, one key) is the record's height: the Compact 40 target.
+        var scene = shell.Host.Scene;
+        foreach (var (pill, _) in shell.FindPrefix("when-pill"))
+        {
+            if (scene.InCollapsedSubtree(pill)) continue;
+            var r = scene.AbsoluteRect(pill);
+            if (r.H > 0f) Assert.True(r.H >= record.HubPill - 0.5f, $"{size}: the when pill is {r.H} tall, under {record.HubPill}");
+        }
+    });
 
     [Theory, MemberData(nameof(PageSizes))]
     public void The_concert_event_page_holds_its_tier_layout(string size) => AssertPage(ConcertEvent, size, (shell, tiers) =>
@@ -74,11 +94,25 @@ public sealed partial class TierLayoutTests
         var size = Sizes[sizeName];
         var scene = shell.Host.Scene;
 
-        // The record in use is the structure's for the window tier, the same one the core's chart reads.
+        // The record in use is the structure's for the window tier (Huge 4K's past the 3200 rung), the same one the core's chart reads.
         var layout = ClassicArtistTiers.Of(tiers);
         Assert.Equal(size.Window, layout.Tier);
+        Assert.Same(ClassicDetailTiers.Policy.IsHugeWide(tiers) ? ClassicArtistTiers.Huge4K : ClassicArtistTiers.For(size.Window), layout);
         Assert.Same(ClassicArtistTiers.Policy, ShellPolicy.Now.ArtistTiers);
         Assert.Equal(layout.ChartColumns, ShellPolicy.Now.ArtistTiers.ChartMaxColumns(tiers));
+        Assert.Equal(layout.ChartRows, ShellPolicy.Now.ArtistTiers.ChartRows(tiers));
+
+        // The section row: 56 under the hero at Huge (55 under the divider), nothing elsewhere; mounted at every tier, so a crossing tweens it.
+        var row = shell.Find("artist-section-row");
+        if (!row.IsNull)
+        {
+            float rowH = scene.AbsoluteRect(row).H;
+            float expected = layout.SectionRow ? ClassicArtistTiers.SectionRowHeight - 1f : 0f;
+            Assert.True(MathF.Abs(rowH - expected) <= 0.5f, $"{size.Name}: the section row is {rowH} tall, not {expected}");
+        }
+
+        // The discography: a strip of album cards at Compact, the inline grid elsewhere (never both).
+        Assert.Equal(0, shell.FindPrefix(layout.DiscoStrip ? "disco-arm:grid" : "disco-arm:strip").Count);
 
         // The hero: one arm once the page has settled, the record's for the page's own width.
         var page = shell.FindPrefix("artist-page:");
@@ -94,6 +128,24 @@ public sealed partial class TierLayoutTests
         if (size.Tall == HeightTier.Short)
             Assert.True(heroH <= ClassicArtistTiers.ShortHeroCap + 0.5f, $"{size.Name}: the hero is {heroH} tall in a Short window");
         if (size.Window == WidthTier.Compact) AssertTargets(shell, size, "artist-hero-actions");
+
+        // The More button ends the action row exactly where the form shows it (C-Artist-Huge).
+        bool more = form.More && form.Actions != ClassicHeroActions.Primary;
+        if (size.From is null)
+            Assert.True(more == shell.FindPrefix("artist-hero-more:").Count > 0, $"{size.Name}: the hero's More button is {(more ? "missing" : "shown")}");
+
+        // ONE alignment source: the hero's copy starts on the magazine's column (its sections' left edge) at every width, 4K included.
+        var copy = shell.FindPrefix("artist-hero-copy");
+        var sections = shell.FindPrefix("anchor:");
+        if (copy.Count == 1 && sections.Count > 0 && size.From is null)
+        {
+            float copyX = scene.AbsoluteRect(copy[0].Node).X;
+            float columnX = sections.Min(s => scene.AbsoluteRect(s.Node).X);
+            Assert.True(MathF.Abs(copyX - columnX) <= 1f, $"{size.Name}: the hero's copy starts at {copyX}, the magazine's column at {columnX}");
+            float pageX = scene.AbsoluteRect(page[0].Node).X;
+            Assert.True(MathF.Abs(copyX - pageX - layout.ColumnInset(pageW, ClassicTiers.PageOf(tiers).Gutter)) <= 1f,
+                $"{size.Name}: the hero's copy is {copyX - pageX} in, not the column inset");
+        }
     }
 
     // ── the profile page's own assertions ───────────────────────────────────────────────────────────────────────────
@@ -104,6 +156,8 @@ public sealed partial class TierLayoutTests
         var record = ClassicProfileTiers.Of(tiers);
         Assert.Equal(size.Window, record.Tier);
         Assert.Equal(size.Window == WidthTier.Compact ? 164f : 0f, record.Shelf.FixedCardW);
+        // The section pivot's words are the record's target tall: 40 at Compact (C-Profile-Compact's 48 row).
+        Assert.Equal(size.Window == WidthTier.Compact ? 40f : 32f, record.Target);
         if (size.Window == WidthTier.Compact) AssertTargets(shell, size, "profile-hero-actions");
     }
 

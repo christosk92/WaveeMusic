@@ -515,23 +515,23 @@ public readonly partial struct Artist
     /// "pending for THIS uri" (the placeholder, sized from the card's advertised count); Failed is loaded-and-empty with
     /// nothing pending — the 2-row Retry note. The card carries no thin tracks in 0.3, so that input is 0.</summary>
     public static DrawerVerdict DrawerVerdictFor(string selectedUri, EdgeState tracksReadiness, int tracksCount,
-                                                 int cardTrackCount, int gridColumns)
+                                                 int cardTrackCount, int gridColumns, Album.DrawerShape shape = default)
     {
         bool failed = tracksReadiness == EdgeState.Failed;
         bool loaded = failed || tracksReadiness == EdgeState.Complete
                    || (tracksReadiness == EdgeState.Partial && tracksCount > 0);
         return DrawerVerdict.For(selectedUri, loaded ? selectedUri : null, failed ? 0 : Math.Max(0, tracksCount),
                                       thinTracks: 0, thinTrackCount: Math.Max(0, cardTrackCount), pending: !loaded,
-                                      gridCols: gridColumns);
+                                      gridCols: gridColumns, shape: shape);
     }
 
     /// <summary>The verdict for an album handle, off the live tables.</summary>
-    public static DrawerVerdict DrawerVerdictFor(Album album, string selectedUri, int gridColumns)
+    public static DrawerVerdict DrawerVerdictFor(Album album, string selectedUri, int gridColumns, Album.DrawerShape shape = default)
     {
         if (!album.IsValid || selectedUri.Length == 0) return default;
         var tracks = Entities.Current.Edges.AlbumTracks;
         return DrawerVerdictFor(selectedUri, tracks.Readiness(album.Slot), tracks.Count(album.Slot), album.TrackCount,
-                                gridColumns);
+                                gridColumns, shape);
     }
 
     // ══ 6. THE FACET SECTION (UI host, ch 08 W14/W17) ════════════════════════════════════════════════════════════════
@@ -843,7 +843,9 @@ public readonly partial struct Artist
             _ = tracks.Changed.Value;                             // LazyGrid re-renders as the tracklist lands
             if (_expandedUriSlot != album) { _expandedUriSlot = album; _expandedUri = new Album(album).Uri.Text; }
             var al = new Album(album);
-            _verdict = DrawerVerdictFor(al, _expandedUri, info.Columns);
+            // The structure's drawer geometry for the tier on screen (its columns, pitch and head), read here, inside the grid's render: a tier crossing
+            // re-renders the grid, so an open drawer re-flows to the new tier's columns instead of keeping the old ones.
+            _verdict = DrawerVerdictFor(al, _expandedUri, info.Columns, style.Metrics().Drawer);
 
             var panel = Embed.Comp(new DrawerProps(al, _verdict, p.Accent, _retry, style), static () => new DrawerPanel())
                 with { Key = "drawer:" + _expandedUri };
@@ -1026,6 +1028,7 @@ public readonly partial struct Artist
         // mount, so a changed geometry is a keyed remount (the selection model is ours and survives it).
         Element? _list;
         int _geomCols = -1, _geomRows = -1, _geomCells = -1;
+        float _geomPitch = -1f;
 
         public DrawerPanel()
         {
@@ -1081,8 +1084,8 @@ public readonly partial struct Artist
         }
 
         /// <summary>The track rows (and the "Show all" cell) as ONE bound list: a vertical stack for one column, or a
-        /// column-major fill-row grid (the FIRST ceil(cells / 2) cells down the left, as the verdict's row count assumes)
-        /// for two. <paramref name="rows"/> is the list's row count (the structure sizes its box to exactly <c>rows x RowPitch</c>,
+        /// column-major fill-row grid (the FIRST ceil(cells / columns) cells down the left, as the verdict's row count assumes)
+        /// for more. <paramref name="rows"/> is the list's row count (the structure sizes its box to exactly <c>rows x Pitch</c>,
         /// so nothing scrolls and the reserved slot height holds). Null with no cell to list.</summary>
         Element? RowsList(DrawerVerdict v, out int rows)
         {
@@ -1091,15 +1094,15 @@ public readonly partial struct Artist
             if (cells <= 0) return null;
             int cols = v.Columns <= 1 ? 1 : v.Columns;
             rows = Math.Max(1, v.Rows);
-            if (_list is null || _geomCols != cols || _geomRows != rows || _geomCells != cells)
+            if (_list is null || _geomCols != cols || _geomRows != rows || _geomCells != cells || _geomPitch != v.Pitch)
             {
-                _geomCols = cols; _geomRows = rows; _geomCells = cells;
-                // gap 0: the columns butt together and the slot carries the gutter, so row stride == RowPitch exactly.
+                _geomCols = cols; _geomRows = rows; _geomCells = cells; _geomPitch = v.Pitch;
+                // gap 0: the columns butt together and the slot carries the gutter, so row stride == the verdict's pitch exactly.
                 RepeatLayout layout = cols == 1
-                    ? RepeatLayout.Stack(DrawerVerdict.RowPitch)
+                    ? RepeatLayout.Stack(v.Pitch)
                     : RepeatLayout.Custom(new FillRowVirtualLayout(1f, 99999f, 0f, rows, perPageOverride: cols), horizontal: true);
                 _list = ItemsView.CreateBound(cells, _slotTemplate, layout, _listOptions)
-                    with { Key = "rows:" + cols + "x" + rows + ":" + cells };
+                    with { Key = "rows:" + cols + "x" + rows + ":" + cells + "@" + (int)v.Pitch };
             }
             return _list;
         }

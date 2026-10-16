@@ -177,7 +177,7 @@ internal static class ClassicProfilePage
 
         float collapse = ProfileHeroLayout.CollapseDistance(in m);
         bool compact = p.Compact;
-        Element band = BandBar(p, collapse, compact, pivotItems, latch.Layout.PageMaxWidth);
+        Element band = BandBar(p, collapse, compact, pivotItems, latch.Layout.PageMaxWidth, latch);
         Element hero = ClassicProfileHero.Build(p.Hero, uri, width, in m, latch.Form, latch.Layout.PageMaxWidth, compact, p.HeroActs, band);
         Element sentinel = new BoxEl { Height = 0f, HitTestVisible = false }
             .Sticky(ArtistHeroLayout.CompactIdentityHeight, engaged: p.CompactEdge());
@@ -226,7 +226,7 @@ internal static class ClassicProfilePage
 
     // ── the context band (`ClassicArtistPage.BandBar`, the profile arm: title · pivot · Follow as a word) ───────────────────
 
-    static Element BandBar(ProfilePageProps p, float collapse, bool canHit, (string Label, Action OnClick)[] pivotItems, float pageMax)
+    static Element BandBar(ProfilePageProps p, float collapse, bool canHit, (string Label, Action OnClick)[] pivotItems, float pageMax, ClassicProfileLatch latch)
     {
         float width = p.Width;
         float gutter = p.Metrics.Gutter;
@@ -244,7 +244,8 @@ internal static class ClassicProfilePage
         Element pivot = new BoxEl
         {
             Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, Height = Detail.BandLayout.Height, AlignItems = FlexAlign.Center,
-            Children = [ClassicDetailBand.Pivot(pivotItems, p.Active, p.AccentFn)],
+            // The words are the record's target tall: 40 at Compact (C-Profile-Compact's 48 row), the band's 32 elsewhere.
+            Children = [ClassicDetailBand.Pivot(pivotItems, p.Active, p.AccentFn, latch.Layout.Target)],
         };
         Element actions = p.Own
             ? new BoxEl { Width = 0f, Height = 0f }

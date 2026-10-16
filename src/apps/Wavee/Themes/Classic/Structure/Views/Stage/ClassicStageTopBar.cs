@@ -5,7 +5,8 @@
 // stage context's signals (`props.Stage`), the verbs are its actions (`SetMode`, `OpenOptions`, `Exit`, `OverControls`); the options
 // button's realized node is the TeachingTip's anchor SIGNAL (V-U16). On a Compact window (C-Stage-Compact) the mode tabs and the glyph
 // buttons are 40 tall, the Compact target rule (`ClassicStageTiers.StageOf`). The template owns the selector's index cell and the pill's
-// parts through the slot's hook context, as the component owned them.
+// parts through the slot's hook context, as the component owned them. The face chip under the Compact window's identity card (C-Stage-Compact)
+// is chrome too: `ClassicStageFaceChip`, placed by the root under its own Show.
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -97,4 +98,47 @@ internal static class ClassicStageTopBar
 
     /// <summary>The stage veil at alpha <paramref name="a"/>.</summary>
     static ColorF Shade(float a) => Ink.Veil with { A = a };
+}
+
+/// <summary>The face chip under the Compact window's identity card (C-Stage-Compact, Visualizer mode): the face's name between its glyph and a
+/// chevron on a 40-tall pill, the door to the gallery sheet (the stage's one gallery rule, <c>ToggleGallery</c>). Its own component so a face
+/// change re-renders the chip only. The root is a full-bleed layer: this anchor is a flex column (V-U9).</summary>
+internal sealed class ClassicStageFaceChip : Component
+{
+    public sealed record Props(Stage.StageCtx Stage);
+
+    public override Element Render()
+    {
+        var sc = UseProps<Props>().Stage;
+        var L = sc.Layout.Value;
+        string name = Loc.Get(Visualizer.NameKey(sc.Kind.Value));
+        var toggle = sc.ToggleGallery;
+        var overControls = sc.OverControls;
+        var chip = new BoxEl
+        {
+            Height = Stage.Layout.FaceChipH, Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicStageLayerGeometry.FaceChipGap,
+            Padding = new Edges4(ClassicStageLayerGeometry.FaceChipPadX, 0f, ClassicStageLayerGeometry.FaceChipPadX, 0f), Corners = Radii.Circle(Stage.Layout.FaceChipH),
+            Fill = Ink.Plate, HoverFill = Ink.PlateHover, PressedFill = Ink.GlassPressed, BrushTransitionMs = Design.Motion.Faster, BorderWidth = 1f, BorderColor = Ink.Stroke,
+            Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, OnClick = toggle,
+            OnHoverMove = _ => overControls(true), OnPointerExit = () => overControls(false),
+            Children =
+            [
+                new TextEl(Icons.Equalizer) { Size = ClassicStageLayerGeometry.FaceChipGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.Ink },
+                new TextEl(name) { Size = ClassicStageLayerGeometry.FaceChipText, LineHeight = ClassicStageLayerGeometry.FaceChipLine, Weight = ClassicStageLayerGeometry.FaceChipWeight, Color = Ink.Ink, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
+                new TextEl(Icons.ChevronDown) { Size = ClassicStageLayerGeometry.FaceChipChevron, FontFamily = Tok.Definition.Fonts.Icon, Color = Ink.InkSecondary },
+            ],
+        };
+        return Stage.Layer with
+        {
+            Children =
+            [
+                new BoxEl
+                {
+                    AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Direction = 0, MaxWidth = MathF.Max(0f, L.W - 2f * L.TransportInset),
+                    Margin = new Edges4(L.TransportInset, L.FaceChipY, 0f, 0f),
+                    Children = [ToolTip.Wrap(chip, Loc.Get(Strings.Stage.Options.OpenGallery))],
+                },
+            ],
+        };
+    }
 }

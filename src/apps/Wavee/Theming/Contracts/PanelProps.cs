@@ -169,6 +169,25 @@ public sealed record PanelProps
     /// <summary>The transport a panel shown as a bottom sheet carries (the sheet covers the player bar; C-NowPlaying-Compact): the facts,
     /// the verbs and the bar's own seek rail and time labels. Null where the panel offers none (contract 1.20).</summary>
     public PanelTransportProps? Transport { get; init; }
+
+    /// <summary>The video body's title-row actions (C-Video-Huge: the heart and the "..." beside the playing track's title). Null where the
+    /// panel offers none (contract 1.22).</summary>
+    public PanelVideoTitleProps? VideoTitle { get; init; }
+}
+
+/// <summary>What the video title row's heart draws (contract 1.22).</summary>
+/// <param name="Saved">The playing track is in Liked Songs.</param>
+/// <param name="Like">The heart's verb: save or remove the playing track (null: nothing to save).</param>
+public readonly record struct PanelVideoTitleFacts(bool Saved, Action? Like);
+
+/// <summary>The video body's title-row actions (contract 1.22): the heart's facts and the playing track's "..." menu.</summary>
+public sealed record PanelVideoTitleProps
+{
+    /// <summary>The heart's facts; call it inside a render (it subscribes the playing track and the saved set).</summary>
+    public required Func<PanelVideoTitleFacts> Facts { get; init; }
+
+    /// <summary>The playing track's context menu, asked at OPEN time (null: none to show).</summary>
+    public required Func<FluentGpu.Controls.ContextMenuModel?> Menu { get; init; }
 }
 
 /// <summary>What the sheet's transport draws that playback decides (contract 1.20).</summary>

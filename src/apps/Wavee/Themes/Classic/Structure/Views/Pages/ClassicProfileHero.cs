@@ -9,7 +9,8 @@
 // the metrics through them); the stat plan (`ProfileStats`) and the collapse arithmetic (`ProfileHeroLayout`) are core.
 //
 // TYPE (Design.cs "THE TYPE RAMP" — no new alias, no raw TextEl size): the name is ArtistDisplay / ArtistTitle / ArtistCompactTitle by tier; stats and ranks are
-// StatHero (the sanctioned 350 cut); stat captions are Caption at 600 (Track.Drawer.Stat's idiom). No eyebrow over the name. Sentence case everywhere.
+// StatHero (the sanctioned 350 cut); stat captions are Caption at 600 (Track.Drawer.Stat's idiom). The boards' "Profile" eyebrow (12/600, secondary) sits over
+// the name where the form shows it (Compact, Small, Huge; the tuned Standard forms keep none). Sentence case everywhere.
 
 using System.Globalization;
 using FluentGpu;
@@ -107,7 +108,7 @@ internal static class ClassicProfileHero
         return PersonPicture.Create("", edge, displayName: t.Name, fill: fill) with { Shrink = 0f, Shadow = Elevation.Card };
     }
 
-    /// <summary>Name (the form's Artist alias, one line) · stats · actions (when they sit under the copy). No eyebrow.</summary>
+    /// <summary>The eyebrow (where the form shows it) · name (the form's Artist alias, one line) · stats · actions (when they sit under the copy).</summary>
     static BoxEl Identity(in ProfileHeroText t, string uri, in ProfileHeroMetrics m, ClassicProfileHeroForm form, ProfileHeroActs? acts)
     {
         bool centred = form.Arm == ClassicProfileHeroArm.Centred;
@@ -121,12 +122,17 @@ internal static class ClassicProfileHero
         {
             Color = Tok.TextPrimary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
-        var kids = new List<Element>(3)
-        {
-            // One line at every tier (the hero is sized for it — no empty band over a short name); a long name
-            // ellipsises and shows in full in the trim tooltip.
-            Controls.TrimmedTitle(name, t.Name, centred: centred),
-        };
+        var kids = new List<Element>(4);
+        if (form.Eyebrow)
+            kids.Add(new BoxEl
+            {
+                Direction = 0, MinWidth = 0f, Height = ClassicProfileTiers.EyebrowLine, Margin = new Edges4(0f, 0f, 0f, form.EyebrowGap),
+                AlignItems = FlexAlign.Center, Justify = centred ? FlexJustify.Center : FlexJustify.Start,
+                Children = [R.Type.Eyebrow(Loc.Get(Strings.Search.TypeUser)) with { Color = Tok.TextSecondary, MaxLines = 1 }],
+            });
+        // One line at every tier (the hero is sized for it — no empty band over a short name); a long name
+        // ellipsises and shows in full in the trim tooltip.
+        kids.Add(Controls.TrimmedTitle(name, t.Name, centred: centred));
         if (form.StatRows > 0)
             kids.Add(new BoxEl
             {

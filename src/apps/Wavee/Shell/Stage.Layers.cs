@@ -47,11 +47,18 @@ public static partial class Stage
         },
     };
 
-    /// <summary>The now-playing card's props: Visualizer mode, a layout that has the card, room for the chips.</summary>
+    /// <summary>The now-playing card's props: Visualizer mode in a layout that has the card and room for the chips; or the identity CARD a
+    /// Compact window draws (C-Stage-Compact, C-Lyrics-Compact: Visualizer mode, and every mode on a Portrait stage).</summary>
     static StageNowPlayingCardProps NowPlayingCardProps(StageCtx ctx) => new()
     {
         Stage = ctx,
-        Shown = () => ctx.Mode.Value == Mode.Visualizer && ctx.Layout.Value.ShowChips && LayoutRules.ShowsNowPlayingCard(ctx.Look.Value.Eff),
+        Shown = () =>
+        {
+            var mode = ctx.Mode.Value;
+            var layout = ctx.Layout.Value;
+            if (!LayoutRules.ShowsNowPlayingCard(ctx.Look.Value.Eff)) return false;
+            return layout.IdentityCardOn(mode) || (mode == Mode.Visualizer && layout.ShowChips);
+        },
     };
 
     /// <summary>The Artist layout's name layer: the artist whose photo shows; while the overview is pending, the first billed artist.</summary>

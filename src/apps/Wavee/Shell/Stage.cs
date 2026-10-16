@@ -167,7 +167,7 @@ public static partial class Stage
                     float padX = Q4(0.05f * w);
                     return new Layout(a, w, h, hero, ThumbDesktop, padX, identityTop,
                         PaneX: padX + hero + Q4(0.045f * w), PaneRight: Q4(0.04f * w), PaneTop: 88f, PaneBottom: transportH + inset + PaneAboveTransport,
-                        GalleryW: Q4(0.19f * w), GalleryH: MathF.Max(0f, h - GalleryTop - GalleryBottom), TransportH: transportH,
+                        GalleryW: Q4(0.19f * w), GalleryH: MathF.Max(0f, h - GalleryTop - GalleryBottomOf(m)), TransportH: transportH,
                         ShowPane: true, ShowChips: true, ShowGallery: true, ShowVolume: true, IconOnlySelector: false);
                 }
                 case Aspect.Portrait:
@@ -177,7 +177,9 @@ public static partial class Stage
                     float identityTop = TopBarH + 44f;
                     // The pane starts under the identity ROW: the art, or the title column beside it when that is taller (a narrow
                     // window's small art beside a two-line title, the meta line and the chips).
-                    float paneTop = identityTop + MathF.Max(hero, PortraitIdentityMinH) + Pad, paneBottom = transportH + inset + PaneAboveTransport;
+                    // The identity CARD (a Compact window, C-Lyrics-Compact) is shorter: the pane starts a card gap under it.
+                    float paneTop = m.IdentityCard ? IdentityCardBottom + IdentityCardTop : identityTop + MathF.Max(hero, PortraitIdentityMinH) + Pad;
+                    float paneBottom = transportH + inset + PaneAboveTransport;
                     return new Layout(a, w, h, hero, ThumbSmall, padX, identityTop,
                         PaneX: padX, PaneRight: padX, PaneTop: paneTop, PaneBottom: paneBottom,
                         GalleryW: w, GalleryH: Q4(0.55f * h), TransportH: transportH,
@@ -202,7 +204,7 @@ public static partial class Stage
                     float padX = Q4(0.058f * w);
                     return new Layout(Aspect.Desktop, w, h, hero, ThumbDesktop, padX, Q4(0.122f * h),
                         PaneX: padX + hero + Q4(0.05f * w), PaneRight: Q4(0.05f * w), PaneTop: 88f, PaneBottom: transportH + inset + PaneAboveTransport,
-                        GalleryW: GalleryDesktopW, GalleryH: MathF.Max(0f, h - GalleryTop - GalleryBottom), TransportH: transportH,
+                        GalleryW: GalleryDesktopW, GalleryH: MathF.Max(0f, h - GalleryTop - GalleryBottomOf(m)), TransportH: transportH,
                         ShowPane: true, ShowChips: true, ShowGallery: true, ShowVolume: true, IconOnlySelector: false);
                 }
             }
@@ -221,21 +223,95 @@ public static partial class Stage
         /// <summary>The transport card's gutter to the window's edges (the window tier's: 24, 16 on a Compact or Small window).</summary>
         public float TransportInset => M.TransportInset;
 
+        // ── the window tier's regions: the gallery to the foot, the Up next column, the bars under the cover, the identity card ─────
+
+        /// <summary>The docked gallery's gap to the stage's foot: the transport card's gutter where the tier runs it to the foot (C-Stage-Huge),
+        /// else clear of the full-width card (<see cref="GalleryBottom"/>).</summary>
+        static float GalleryBottomOf(Theming.StageTierMetrics m) => m.GalleryToFoot ? m.TransportInset : GalleryBottom;
+
+        /// <summary>The docked gallery's gap to the stage's foot (the root's margin under the column).</summary>
+        public float GalleryBottomInset => GalleryBottomOf(M);
+
+        /// <summary>The transport card's right gutter: beside a docked gallery that runs to the foot it ends a gutter short of the face's inset
+        /// (C-Stage-Huge: the card stops 516 from the right edge of a 2560 stage, the 444 gallery's column plus three 24 gutters); else the gutter.</summary>
+        public float TransportRight(bool galleryShown)
+            => galleryShown && M.GalleryToFoot && ShowGallery && Aspect != Aspect.Portrait ? FaceRight(true) + TransportInset : TransportInset;
+
+        /// <summary>The Up next column's gap to the lyrics pane (C-Stage-Huge4K: the 1600 lyrics column stops 336 short of the column).</summary>
+        public const float UpNextGap = 336f;
+
+        /// <summary>Lyrics mode docks the Up next column beside the lyrics (C-Stage-Huge4K): the tier has one and the stage is a wide class with its pane.</summary>
+        public bool UpNextShown(Mode mode) => M.UpNextW > 0f && mode == Mode.Lyrics && ShowPane && Aspect is Aspect.Desktop or Aspect.Ultrawide;
+
+        /// <summary>The Up next column's rect: the tier's width at the right gutter, from the gallery's top down to a gutter above the transport card.</summary>
+        public (float X, float Y, float W, float H) UpNextRect
+            => (MathF.Max(0f, W - TransportInset - M.UpNextW), GalleryTop, M.UpNextW, MathF.Max(0f, TransportTop - Pad - GalleryTop));
+
+        /// <summary>The lyrics pane's width beside the Up next column (never wider than the pane).</summary>
+        public float LyricsPaneW(Mode mode) => UpNextShown(mode) ? MathF.Max(0f, MathF.Min(PaneW, UpNextRect.X - UpNextGap - PaneX)) : PaneW;
+
+        /// <summary>The gap between the stacked identity block (two title lines' worth, so a title change never moves them) and the bars.</summary>
+        public const float ArtBarsGap = 48f;
+
+        /// <summary>The visualizer bars under the cover's title column (C-Stage-Huge4K): their rect in Lyrics mode, under the stacked identity's
+        /// two-line budget, the cover's width; empty where the tier has none, the class stacks no identity or the room above the card is short.</summary>
+        public (float X, float Y, float W, float H) ArtBarsRect(Mode mode)
+        {
+            if (M.ArtBarsH <= 0f || mode != Mode.Lyrics || IdentityIsRow) return default;
+            float y = TitleY(mode) + TitleBlockH(mode, 2) + ArtBarsGap;
+            if (y + M.ArtBarsH > TransportTop - Pad) return default;
+            return (PadX, y, HeroArt, M.ArtBarsH);
+        }
+
+        /// <summary>The bars under the cover show (<see cref="ArtBarsRect"/> is not empty): the clock leases the spectrum for them.</summary>
+        public bool ArtBarsShown(Mode mode) => ArtBarsRect(mode).H > 0f;
+
+        /// <summary>The identity card (C-Stage-Compact, C-Lyrics-Compact): its gap under the top bar, its height and padding, the cover in it and
+        /// the gap from the cover to the titles; the face chip's gap under the card and its height (a 40 target).</summary>
+        public const float IdentityCardTop = 8f, IdentityCardH = 72f, IdentityCardPad = 8f, IdentityCardArt = 56f, IdentityCardGap = 12f;
+        public const float FaceChipGap = 12f, FaceChipH = 40f;
+
+        /// <summary>The card's foot (under the top bar, its gap and its height).</summary>
+        public const float IdentityCardBottom = TopBarH + IdentityCardTop + IdentityCardH;
+
+        /// <summary>The identity is the now-playing CARD in <paramref name="mode"/>: the tier draws one, and the mode is Visualizer (the card
+        /// stands where the 460 card stood) or the stage is Portrait (the column draws the card in every mode).</summary>
+        public bool IdentityCardOn(Mode mode) => M.IdentityCard && (mode == Mode.Visualizer || Aspect == Aspect.Portrait);
+
+        /// <summary>The now-playing card's rect in <paramref name="mode"/>: the identity card across the stage at the tier's gutter, or the
+        /// 460 x 136 card at 24, 64.</summary>
+        public (float X, float Y, float W, float H) NowPlayingCardRect(Mode mode)
+            => IdentityCardOn(mode) ? (TransportInset, TopBarH + IdentityCardTop, MathF.Max(0f, W - 2f * TransportInset), IdentityCardH)
+                                    : (NowPlayingCardX, NowPlayingCardY, NowPlayingCardW, NowPlayingCardH);
+
+        /// <summary>The face chip (the face's name; it opens the gallery) shows under the identity card in Visualizer mode.</summary>
+        public bool FaceChipShown(Mode mode) => mode == Mode.Visualizer && IdentityCardOn(mode);
+
+        /// <summary>The face chip's top edge.</summary>
+        public float FaceChipY => IdentityCardBottom + FaceChipGap;
+
+        /// <summary>The gallery shows from the stored flag, or (a tier whose gallery opens only on request: C-Stage-Compact) once it was asked
+        /// for during the stage's life.</summary>
+        public bool GalleryOpenFor(bool stored, bool asked) => stored && (!M.GalleryOnDemand || asked);
+
         // ── derived reads the renderer uses ─────────────────────────────────────────────────────────────────────────
 
         /// <summary>The ONE cover node's size for a mode: the hero everywhere but the Visualizer thumb.</summary>
-        public float CoverSize(Mode mode) => mode == Mode.Visualizer ? ThumbArt : HeroArt;
-        public float CoverX(Mode mode) => mode == Mode.Visualizer ? NowPlayingCardX + 20f : PadX;
-        public float CoverY(Mode mode) => mode == Mode.Visualizer ? NowPlayingCardY + 20f : IdentityTop;
+        public float CoverSize(Mode mode) => IdentityCardOn(mode) ? IdentityCardArt : mode == Mode.Visualizer ? ThumbArt : HeroArt;
+        public float CoverX(Mode mode) => IdentityCardOn(mode) ? TransportInset + IdentityCardPad : mode == Mode.Visualizer ? NowPlayingCardX + 20f : PadX;
+        public float CoverY(Mode mode) => IdentityCardOn(mode) ? TopBarH + IdentityCardTop + IdentityCardPad : mode == Mode.Visualizer ? NowPlayingCardY + 20f : IdentityTop;
         /// <summary>Portrait and Compact lay the identity out as a ROW (art left, title right of it); Desktop/Ultrawide stack it.</summary>
         public bool IdentityIsRow => Aspect is Aspect.Portrait or Aspect.Compact;
         /// <summary>The title column: beside the thumb in Visualizer mode; beside the hero on the small classes (V-U23); under it otherwise.</summary>
-        public float TitleX(Mode mode) => mode == Mode.Visualizer ? CoverX(mode) + ThumbArt + 16f : IdentityIsRow ? PadX + HeroArt + Pad : PadX;
-        public float TitleY(Mode mode) => mode == Mode.Visualizer ? NowPlayingCardY + 18f : IdentityIsRow ? IdentityTop : IdentityTop + HeroArt + Pad;
+        public float TitleX(Mode mode) => IdentityCardOn(mode) ? CoverX(mode) + IdentityCardArt + IdentityCardGap
+            : mode == Mode.Visualizer ? CoverX(mode) + ThumbArt + 16f : IdentityIsRow ? PadX + HeroArt + Pad : PadX;
+        public float TitleY(Mode mode) => IdentityCardOn(mode) ? CoverY(mode) + MathF.Max(0f, (IdentityCardArt - TitleBlockH(mode, 1)) * 0.5f)
+            : mode == Mode.Visualizer ? NowPlayingCardY + 18f : IdentityIsRow ? IdentityTop : IdentityTop + HeroArt + Pad;
         /// <summary>The title column's width. Under the hero (Desktop/Ultrawide) it runs past the art's edge up to the pane's
         /// gutter (§3.2: the pane starts at PaneX), so a long title reads instead of being cut at the cover's width; beside the
         /// art on the small classes it takes the rest of the row; in the now-playing card it is the card minus the thumb.</summary>
-        public float TitleW(Mode mode) => mode == Mode.Visualizer ? NowPlayingCardW - (ThumbArt + 56f)
+        public float TitleW(Mode mode) => IdentityCardOn(mode) ? MathF.Max(0f, W - TransportInset - IdentityCardPad - TitleX(mode))
+            : mode == Mode.Visualizer ? NowPlayingCardW - (ThumbArt + 56f)
             : IdentityIsRow ? MathF.Max(MathF.Min(TitleRowMinW, W - TitleX(mode) - TitleRowEdge), W - TitleX(mode) - PadX) : MathF.Max(HeroArt, PaneX - Pad - PadX);
         /// <summary>The row's title column's floor, and the least gap it keeps to the window's edge when the floor would cross it.</summary>
         public const float TitleRowMinW = 160f, TitleRowEdge = 16f;
@@ -252,13 +328,14 @@ public static partial class Stage
         {
             var (_, titleLine) = TitleFont(mode);
             var (_, metaLine) = MetaFont(mode);
+            if (IdentityCardOn(mode)) return lines * titleLine + metaLine;   // the card's column: title over meta, no gap, no chips
             return lines * titleLine + TitleGap + metaLine + (ShowChips ? TitleGap + ChipsTop + ChipH : 0f);
         }
         /// <summary>The title's line budget: the thumb card holds ONE line (the card is a fixed 136 DIP); the hero takes TWO
         /// whenever the whole block (two lines, the meta line, the chips) still clears the transport card, else one. The
         /// meta and chips FLOW under it (a column), so nothing below the title is positioned by a hard-coded offset.</summary>
         public int TitleMaxLines(Mode mode)
-            => mode == Mode.Visualizer ? 1 : TitleY(mode) + TitleBlockH(mode, 2) <= TransportTop - Pad ? 2 : 1;
+            => mode == Mode.Visualizer || IdentityCardOn(mode) ? 1 : TitleY(mode) + TitleBlockH(mode, 2) <= TransportTop - Pad ? 2 : 1;
 
         // ── the top bar: brand · SelectorBar · [gallery][exit] ──────────────────────────────────────────────────────
 
@@ -383,7 +460,7 @@ public static partial class Stage
             bool compact = Aspect == Aspect.Compact;
             float left = compact ? TransportLeft : 0f;
             float right = compact ? W - Pad : W - FaceRight(galleryOpen);
-            float top = ShowChips ? NowPlayingCardY + NowPlayingCardH + Pad : TopBarH + Pad;
+            float top = IdentityCardOn(Mode.Visualizer) ? FaceChipY + FaceChipH + Pad : ShowChips ? NowPlayingCardY + NowPlayingCardH + Pad : TopBarH + Pad;
             float bottom = captionShown ? CaptionTopMin - Pad : TransportTop - Pad;
             if (Aspect == Aspect.Portrait && galleryOpen && ShowGallery) bottom = MathF.Min(bottom, SheetTop - Pad);
             right = MathF.Max(right, left + 1f);
@@ -417,11 +494,12 @@ public static partial class Stage
         /// classes step down (Title 28/36 · 24/30).</summary>
         public (float Size, float Line) TitleFont(Mode mode)
         {
+            if (IdentityCardOn(mode)) return (16f, 22f);
             if (mode == Mode.Visualizer) return (20f, 28f);
             return Aspect switch { Aspect.Portrait => (28f, 36f), Aspect.Compact => (24f, 30f), _ => (40f, 52f) };
         }
         public (float Size, float Line) MetaFont(Mode mode)
-            => mode != Mode.Visualizer && (Aspect is Aspect.Desktop or Aspect.Ultrawide) ? (18f, 24f) : (14f, 20f);
+            => IdentityCardOn(mode) ? (13f, 18f) : mode != Mode.Visualizer && (Aspect is Aspect.Desktop or Aspect.Ultrawide) ? (18f, 24f) : (14f, 20f);
 
         /// <summary>A monotone "how much is on screen" score for the narrowing-never-adds test: the five affordance flags and the
         /// transport height. The hero is EXCLUDED on purpose — it is a per-class formula (0.28·W vs Ultrawide's 0.21·W) and

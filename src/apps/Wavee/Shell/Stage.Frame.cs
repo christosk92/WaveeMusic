@@ -32,6 +32,7 @@ public static partial class Stage
         LyricFacts = static () => Embed.Comp(static () => new LyricFacts()),
         HeroFacts = static () => Embed.Comp(static () => new HeroFacts()),
         Clock = static () => Embed.Comp(static () => new Visualizer.Clock()),
+        UpNext = static () => Queue.StagePane(aside: true),
     };
 
     /// <summary>The props of the transport card for one stage context: the facts, the verbs and the bar's own seek and time pieces.</summary>

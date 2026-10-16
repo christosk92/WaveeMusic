@@ -148,6 +148,11 @@ public sealed record StageLayers
 
     /// <summary>The visualizer clock (zero-size).</summary>
     public required Func<Element> Clock { get; init; }
+
+    /// <summary>The Up next column a Huge 4K stage docks beside the lyrics (C-Stage-Huge4K; <c>Stage.Layout.UpNextShown</c> / <c>UpNextRect</c>):
+    /// a second stage-queue host that mounts <see cref="ViewKeys.QueueStagePane"/> with <see cref="QueueStagePaneProps.Aside"/>. Null where the core
+    /// offers none. Appended (contract 1.22).</summary>
+    public Func<Element>? UpNext { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.StagePane"/>: the pane region (Lyrics, Up next, Artist) the core pane host mounts. The template

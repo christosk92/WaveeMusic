@@ -58,4 +58,8 @@ public static class ClassicVideoRules
 
     /// <summary>"No video for this song" over the dimmed cover: the words' size, and the card's 16:9.</summary>
     public const float NoVideoText = 12f, NoVideoAspect = 16f / 9f;
+
+    /// <summary>The title row's heart and "..." glyphs (C-Video-Huge); their 32 boxes and the 12 gap are the tier's
+    /// (`ClassicStageTiers.VideoTitleButton` / `VideoTitleGap`).</summary>
+    public const float TitleGlyph = 16f;
 }

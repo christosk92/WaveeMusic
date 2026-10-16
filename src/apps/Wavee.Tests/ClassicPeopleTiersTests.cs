@@ -121,7 +121,8 @@ public class ClassicPeopleTiersTests
     [InlineData(400f, 1, 128f, 2f)]      // C-Artist-Compact: one chart column, a two-column discography
     [InlineData(800f, 2, 180f, 2f)]
     [InlineData(1440f, 2, 180f, 2f)]
-    [InlineData(2560f, 4, 180f, 3f)]     // C-Artist-Huge: up to four columns (the 264 floor fits three at 1544), 3 : 1 beside the pick
+    [InlineData(2560f, 3, 180f, 3f)]     // C-Artist-Huge: three columns of five, 3 : 1 beside the pick
+    [InlineData(3840f, 4, 180f, 4f)]     // C-Artist-Huge4K (past the 3200 rung): four columns of four, 4 : 1
     public void The_page_record_per_window_tier(float window, int chart, float disco, float share)
     {
         var facts = Facts(window, 1000f, window);
@@ -159,6 +160,143 @@ public class ClassicPeopleTiersTests
         Assert.False(ClassicArtistTiers.TopBandWide(735f, wasWide: true));
     }
 
+    [Theory]
+    [InlineData(2560f, false)]
+    [InlineData(3199f, false)]
+    [InlineData(3200f, true)]
+    [InlineData(3840f, true)]
+    public void A_Huge_window_reads_the_4K_artist_record_from_3200(float window, bool wide)
+    {
+        var facts = Facts(window, 1440f, window - 320f);
+        var layout = ClassicArtistTiers.Of(facts);
+        Assert.Same(wide ? ClassicArtistTiers.Huge4K : ClassicArtistTiers.Huge, layout);
+        Assert.Equal(WidthTier.Huge, layout.Tier);
+        // The core's chart reads the same columns and rows through the policy.
+        Assert.Equal(layout.ChartColumns, ClassicArtistTiers.Policy.ChartMaxColumns(facts));
+        Assert.Equal(layout.ChartRows, ClassicArtistTiers.Policy.ChartRows(facts));
+        Assert.Equal(wide ? 4 : 5, layout.ChartRows);
+        Assert.Equal(wide, layout.UpcomingBesidePick);
+        Assert.True(layout.SectionRow);                                  // the 56 section row under the hero at every Huge width
+        Assert.Equal(4, layout.DrawerColumns);                           // C-Discography-Huge: the drawer's four columns
+    }
+
+    [Fact]
+    public void Only_Huge_draws_the_section_row_and_only_Compact_draws_the_discography_strip()
+    {
+        foreach (var l in new[] { ClassicArtistTiers.Compact, ClassicArtistTiers.Small, ClassicArtistTiers.Standard })
+            Assert.False(l.SectionRow);
+        Assert.True(ClassicArtistTiers.Huge.SectionRow);
+        Assert.True(ClassicArtistTiers.Huge4K.SectionRow);
+        Assert.Equal(56f, ClassicArtistTiers.SectionRowHeight);
+        Assert.True(ClassicArtistTiers.Compact.DiscoStrip);
+        foreach (var l in new[] { ClassicArtistTiers.Small, ClassicArtistTiers.Standard, ClassicArtistTiers.Huge, ClassicArtistTiers.Huge4K })
+            Assert.False(l.DiscoStrip);
+        // C-Artist-Compact's albums: 152 cards on 12 is the shelves' 164 strip.
+        Assert.Equal(152f + 12f, ClassicArtistTiers.Compact.Shelf.FixedCardW);
+    }
+
+    [Fact]
+    public void The_column_inset_is_the_gutter_plus_half_of_what_the_measure_leaves()
+    {
+        float measure = ClassicArtistTiers.Standard.PageMaxWidth;
+        Assert.Equal(36f, ClassicArtistTiers.Standard.ColumnInset(measure - 400f, 36f), 3);   // inside the measure: the gutter
+        Assert.Equal(56f, ClassicArtistTiers.Standard.ColumnInset(measure + 40f, 36f), 3);    // past it: half of the 40 it leaves
+        Assert.Equal(36f, ClassicArtistTiers.Huge.ColumnInset(2400f, 36f), 3);
+    }
+
+    [Fact]
+    public void The_4K_hero_copy_lines_up_with_the_capped_body_column()
+    {
+        // 3840 less the 320 pane: a 3520 page, the 2400 column centred in it, so the copy and Top tracks both start 36 + 560 in.
+        var facts = Facts(3840f, 2160f, 3520f);
+        var layout = ClassicArtistTiers.Of(facts);
+        float inset = layout.ColumnInset(3520f, 36f);
+        Assert.Equal(36f + (3520f - 2400f) / 2f, inset, 3);
+        var form = ClassicArtistTiers.HeroForm(ArtistHeroTier.Wide, in facts, 3520f);
+        Assert.Equal(ClassicArtistHeroArm.Bottom, form.Arm);
+        Assert.True(form.More);                                          // C-Artist-Huge4K's More button
+        var m = form.Metrics(36f);
+        // The copy keeps the board's 1120 measure from the inset, and the veil holds to its right edge.
+        Assert.Equal(1120f, ClassicArtistRules.HeroCopyWidth(3520f, in m, form, inset));
+        Assert.Equal((inset + 1120f) / 3520f, ClassicArtistRules.HeroVeilHold(3520f, in m, form, inset), 4);
+        // NaN reads the gutter (every caller before the inset).
+        Assert.Equal(ClassicArtistRules.HeroCopyWidth(3520f, in m, form), ClassicArtistRules.HeroCopyWidth(3520f, in m, form, 36f));
+    }
+
+    [Fact]
+    public void Only_the_Huge_hero_ends_in_a_More_button()
+    {
+        Assert.True(Hero(2560f, 1440f, 1544f).More);                     // C-Artist-Huge
+        Assert.False(Hero(1440f, 960f, 1120f).More);                     // tuned Standard
+        Assert.False(Hero(800f, 900f, 752f).More);
+        Assert.False(Hero(400f, 860f, 400f).More);
+    }
+
+    [Fact]
+    public void The_discography_drawer_takes_its_columns_pitch_and_head_from_the_tier()
+    {
+        Assert.Equal(new Album.DrawerShape(1, 40f, 52f), ClassicArtistTiers.Compact.Drawer);   // C-Discography-Compact: one column of 40 rows, a 48 head
+        Assert.Equal(new Album.DrawerShape(2, 32f, 40f), ClassicArtistTiers.Small.Drawer);     // C-Discography-Small: two columns
+        Assert.Equal(new Album.DrawerShape(0, 32f, 40f), ClassicArtistTiers.Standard.Drawer);  // tuned: the grid's rule
+        Assert.Equal(new Album.DrawerShape(4, 32f, 40f), ClassicArtistTiers.Huge.Drawer);      // C-Discography-Huge: four columns
+        Assert.Equal(44f, ClassicArtistTiers.Compact.DiscoTab);
+        Assert.True(float.IsNaN(ClassicArtistTiers.Standard.DiscoTab));
+
+        // Huge: ten tracks in four columns of three; the verdict sizes the panel at the pitch.
+        var huge = Album.DrawerVerdict.For("spotify:album:H", "spotify:album:H", 10, 0, 10, pending: false, gridCols: 11, ClassicArtistTiers.Huge.Drawer);
+        Assert.Equal(4, huge.Columns);
+        Assert.Equal(3, huge.Rows);
+        Assert.Equal(32f, huge.Pitch);
+        Assert.Equal(40f + 3f * 32f, huge.PanelHeight);
+        // Compact: one column of 40 rows under a 52 head allowance.
+        var compact = Album.DrawerVerdict.For("spotify:album:C", "spotify:album:C", 7, 0, 7, pending: false, gridCols: 2, ClassicArtistTiers.Compact.Drawer);
+        Assert.Equal(1, compact.Columns);
+        Assert.Equal(7, compact.Rows);
+        Assert.Equal(40f, compact.Pitch);
+        Assert.Equal(52f + 7f * 40f, compact.PanelHeight);
+        Assert.True(compact.Pitch >= ClassicArtistTiers.CompactTarget);
+        // Standard keeps the grid's rule: two columns from five grid columns, one below.
+        Assert.Equal(2, Album.DrawerVerdict.For("u", "u", 13, 0, 13, false, 5, ClassicArtistTiers.Standard.Drawer).Columns);
+        Assert.Equal(1, Album.DrawerVerdict.For("u", "u", 13, 0, 13, false, 4, ClassicArtistTiers.Standard.Drawer).Columns);
+        // No shape is the drawer before tiers.
+        Assert.Equal(Album.DrawerVerdict.RowPitch, Album.DrawerVerdict.For("u", "u", 3, 0, 3, false, 3).Pitch);
+    }
+
+    [Fact]
+    public void The_pivot_words_reach_40_at_Compact_with_the_underline_inside()
+    {
+        Assert.Equal(40f, ClassicArtistTiers.Compact.Target);
+        Assert.Equal(40f, ClassicProfileTiers.Compact.Target);
+        Assert.Equal(32f, ClassicProfileTiers.Standard.Target);
+        Assert.Equal(Detail.BandLayout.UnderlineY, ClassicArtistRules.PivotUnderlineY(Detail.BandLayout.ItemHeight));
+        Assert.True(ClassicArtistRules.PivotUnderlineY(40f) + Detail.BandLayout.UnderlineHeight <= 40f);
+    }
+
+    [Fact]
+    public void The_overlay_meta_wraps_4_apart_with_16_between_its_runs()
+    {
+        Assert.Equal(4f, ClassicArtistTiers.OverlayMetaRowGap);
+        Assert.Equal(16f, ClassicArtistTiers.OverlayMetaColumnGap);
+    }
+
+    [Fact]
+    public void The_chart_takes_the_tiers_rows_and_its_skeleton_the_tiers_columns()
+    {
+        Assert.Equal(4, ArtistSections.ChartColumns(16, 4, 4));      // C-Artist-Huge4K: 4 x 4
+        Assert.Equal(4, ArtistSections.ChartColumns(15, 4, 4));
+        Assert.Equal(2, ArtistSections.ChartColumns(5, 4, 4));
+        Assert.Equal(3, ArtistSections.ChartColumns(15, 3));         // C-Artist-Huge: 3 x 5
+        // The skeleton's seed (ten) at each tier's columns and rows: Compact 1 x 5 (two pages), Standard 2 x 5, Huge 2 x 5, Huge 4K 3 x 4.
+        Assert.Equal((10, 1, 5), ArtistSections.ChartSkeletonShape(0, 1, 5));
+        Assert.Equal((10, 2, 5), ArtistSections.ChartSkeletonShape(0, 2, 5));
+        Assert.Equal((10, 2, 5), ArtistSections.ChartSkeletonShape(0, 3, 5));
+        Assert.Equal((10, 3, 4), ArtistSections.ChartSkeletonShape(0, 4, 4));
+        Assert.Equal((5, 2, 3), ArtistSections.ChartSkeletonShape(5, 4, 4));
+        // A structure that declares nothing: the old 2 x 5.
+        Assert.Equal((10, 2, 5), ArtistSections.ChartSkeletonShape(0));
+        Assert.Equal(ArtistSections.ChartMaxRows, ArtistTierPolicy.Default.ChartRows(default));
+    }
+
     [Fact]
     public void The_chart_clamps_by_its_rows_and_the_tier()
     {
@@ -186,18 +324,25 @@ public class ClassicPeopleTiersTests
         Assert.Equal(56f, compact.StatMinH);
         Assert.Equal(96f, compact.StatMinW);
         Assert.Equal(40f, compact.Target);
-        Assert.Equal(20f + 128f + 12f + 40f + 8f + 56f + 12f + 40f + 16f, compact.Height);
+        Assert.True(compact.Eyebrow);                                       // the board's "Profile" eyebrow, flush over the name
+        Assert.Equal(0f, compact.EyebrowGap);
+        Assert.Equal(20f + 128f + 12f + 16f + 40f + 8f + 56f + 12f + 40f + 16f, compact.Height);
 
         var small = Profile(800f, 900f, 752f);                             // C-Profile-Small: a 200 row, the actions at its right end
         Assert.Equal(ClassicProfileHeroArm.Row, small.Arm);
-        Assert.Equal(200f, small.Height);
+        Assert.Equal(200f, small.Height);                                  // the eyebrow 4 over the name: the 136 copy sets the row
+        Assert.True(small.Eyebrow);
+        Assert.Equal(4f, small.EyebrowGap);
         Assert.True(small.ActionsBeside);
         Assert.Equal(ClassicArtistName.Title, small.Name);
 
         Assert.Equal(260f, Profile(1440f, 960f, 1120f).Height);            // Standard: tuned
+        Assert.False(Profile(1440f, 960f, 1120f).Eyebrow);                  // the tuned Standard hero keeps no eyebrow (P3b)
 
         var huge = Profile(2560f, 1440f, 2240f);                           // C-Profile-Huge: a 320 row, a 240 avatar
         Assert.Equal(320f, huge.Height);
+        Assert.True(huge.Eyebrow);
+        Assert.Equal(12f, huge.EyebrowGap);
         Assert.Equal(240f, huge.Avatar);
         Assert.True(huge.ActionsBeside);
     }
@@ -257,6 +402,22 @@ public class ClassicPeopleTiersTests
         Assert.Equal(400f, ClassicConcertTiers.EventHero(huge, wide: true).Height);
         Assert.Equal(40f, ClassicConcertTiers.EventHero(huge, wide: true).Padding);
         Assert.Equal(360f, huge.RailWidth);
+    }
+
+    [Fact]
+    public void The_hub_pills_reach_40_at_Compact_and_Huge_sets_the_lineup_beside_the_dates()
+    {
+        Assert.Equal(40f, ClassicConcertLayout.HubPillOf(Facts(400f, 860f, 400f)));
+        Assert.Equal(40f, ClassicConcertLayout.HubPillOf(Facts(300f, 640f, 300f)));
+        Assert.Equal(32f, ClassicConcertLayout.HubPillOf(Facts(800f, 600f, 752f)));
+        Assert.Equal(32f, ClassicConcertLayout.HubPillOf(Facts(1440f, 960f, 1120f)));
+        Assert.Equal(32f, ClassicConcertLayout.HubPillOf(Facts(2560f, 1440f, 2240f)));
+        // C-Concert-Huge: the lineup a 640 column beside the four-column dates grid; the other tiers keep the full-width lineup and the related shelf.
+        Assert.Equal(640f, ClassicConcertTiers.Huge.LineupWidth);
+        Assert.Equal(4, ClassicConcertTiers.Huge.DateColumns);
+        Assert.Equal(0f, ClassicConcertTiers.Standard.LineupWidth);
+        Assert.Equal(0f, ClassicConcertTiers.Small.LineupWidth);
+        Assert.Equal(0f, ClassicConcertTiers.Compact.LineupWidth);
     }
 
     [Fact]

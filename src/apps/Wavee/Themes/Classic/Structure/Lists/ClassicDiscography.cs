@@ -36,12 +36,13 @@ internal static class ClassicDiscography
     public static readonly DiscographyStyle Style = new(Metrics, Facet, FacetFailed, Card, Opened, Seed, Cell, DrawerFrame, DrawerPanel,
                                                        DrawerBar, DrawerSlot, ShowAll, DrawerTrack);
 
-    /// <summary>The grid's configuration in the window tier on screen (TC6: a two-column floor at Compact), read TRACKED: the core's grid host re-renders on a
-    /// crossing and remounts its grid keyed by these numbers.</summary>
+    /// <summary>The grid's configuration in the window tier on screen (TC6: a two-column floor at Compact) and the album drawer's geometry (its columns,
+    /// pitch and head per tier: C-Discography-Compact's one column of 40 rows, -Small's two, -Huge's four), read TRACKED: the core's grid host re-renders
+    /// on a crossing (and remounts its grid keyed by the grid's numbers) and an open drawer re-flows to the tier's columns.</summary>
     static DiscographyMetrics Metrics()
     {
         var layout = ClassicArtistTiers.Now;
-        return new(layout.DiscoMinColumn, layout.DiscoGap, Rules.CardChrome, Rules.RowGap);
+        return new(layout.DiscoMinColumn, layout.DiscoGap, Rules.CardChrome, Rules.RowGap, layout.Drawer);
     }
 
     // ══ the facet section ════════════════════════════════════════════════════════════════════════════════════════════
@@ -246,8 +247,9 @@ internal static class ClassicDiscography
     static Element DrawerPanel(DiscoDrawerPanelArgs a)
     {
         var v = a.Verdict;
+        float pitch = v.Pitch;
         Element body = v.ReadyEmpty ? EmptyNote(a.Retry)
-                     : v.Loading ? BuildColumns(v.Shown, v.Columns, s_shimmer)
+                     : v.Loading ? BuildColumns(v.Shown, v.Columns, i => ShimmerRow(i, pitch))
                      : RowsBox(a);
         return new BoxEl
         {
@@ -266,16 +268,22 @@ internal static class ClassicDiscography
         };
     }
 
+    /// <summary>The head: Play, the cover, the title and meta (it opens the album) and the open button, at the tier's head row (C-Discography-Compact: 48
+    /// with its two buttons at the 40 target).</summary>
     static Element Head(DiscoDrawerPanelArgs a)
     {
         var al = a.Album;
         var titleType = R.Type.DenseTitle("");
+        var layout = ClassicArtistTiers.Now;
+        bool large = layout.Target >= ClassicArtistTiers.CompactTarget;
+        float play = large ? layout.Target : Rules.HeadPlay;
+        float open = large ? layout.Target : Rules.HeadOpen;
         return new BoxEl
         {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Height = Rules.HeadH,
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Height = layout.DrawerHead,
             Children =
             [
-                Controls.Named(Controls.PlayFab(a.PlayAlbum, Icons.Play, Rules.HeadPlay), Loc.Get(Strings.Detail.Play)),
+                Controls.Named(Controls.PlayFab(a.PlayAlbum, Icons.Play, play), Loc.Get(Strings.Detail.Play)),
                 Controls.Artwork(Controls.ArtUrl(al.ImageId), Rules.HeadCover, Rules.HeadCover, Radii.Control, decodePx: Rules.HeadCoverDecode),
                 new BoxEl
                 {
@@ -296,8 +304,8 @@ internal static class ClassicDiscography
                 },
                 Controls.Named(new BoxEl
                 {
-                    Width = Rules.HeadOpen, Height = Rules.HeadOpen, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Corners = CornerRadius4.All(Rules.HeadOpenRadius), BorderWidth = Rules.HeadBorder, BorderColor = Tok.StrokeControlDefault,
+                    Width = open, Height = open, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                    Corners = CornerRadius4.All(open * Rules.HeadOpenRound), BorderWidth = Rules.HeadBorder, BorderColor = Tok.StrokeControlDefault,
                     OnClick = a.GoAlbum, Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true,
                     HoverFill = Tok.FillSubtleSecondary,
                     Children = [Icon(Icons.OpenInNewWindow, Rules.HeadOpenGlyph, Tok.TextSecondary)],
@@ -307,10 +315,10 @@ internal static class ClassicDiscography
     }
 
     /// <summary>The track rows (and the "Show all" cell) as ONE bound list (the core's, mounted once per geometry). The list is exactly
-    /// <c>rows x RowPitch</c> tall, so nothing scrolls and the reserved slot height holds.</summary>
+    /// <c>rows x Pitch</c> tall (the verdict's pitch), so nothing scrolls and the reserved slot height holds.</summary>
     static Element RowsBox(DiscoDrawerPanelArgs a)
         => a.List is null ? new BoxEl()
-            : new BoxEl { Direction = 1, MinWidth = 0f, Height = a.Rows * DrawerVerdict.RowPitch, Children = [a.List] };
+            : new BoxEl { Direction = 1, MinWidth = 0f, Height = a.Rows * a.Verdict.Pitch, Children = [a.List] };
 
     /// <summary>READY BUT EMPTY — offline, a failed read, a trackless album: a fixed 2-row note with a Retry that
     /// re-asks the tracklist while the drawer stays open (W16).</summary>
@@ -326,13 +334,11 @@ internal static class ClassicDiscography
         ],
     };
 
-    static readonly Func<int, Element> s_shimmer = ShimmerRow;
-
-    /// <summary>The placeholder row at the SAME pitch and column split as the real rows — nothing reflows on land.</summary>
-    static Element ShimmerRow(int i) => new BoxEl
+    /// <summary>The placeholder row at the SAME pitch (the verdict's) and column split as the real rows — nothing reflows on land.</summary>
+    static Element ShimmerRow(int i, float pitch) => new BoxEl
     {
         Key = "shimmer:" + i.ToString(CultureInfo.InvariantCulture),
-        Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Height = DrawerVerdict.RowPitch,
+        Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Height = pitch,
         Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f),
         Children =
         [
@@ -355,7 +361,7 @@ internal static class ClassicDiscography
         return Split(kids, columns);
     }
 
-    /// <summary>One stack, or two parallel column-major stacks (the FIRST ⌈n/2⌉ cells go left), as the verdict's ⌈cells / columns⌉ rows assume.</summary>
+    /// <summary>One stack, or parallel column-major stacks (the FIRST ⌈n/columns⌉ cells go left), as the verdict's ⌈cells / columns⌉ rows assume.</summary>
     static Element Split(Element[] cells, int columns)
     {
         if (cells.Length == 0) return new BoxEl();
@@ -383,14 +389,15 @@ internal static class ClassicDiscography
     {
         var v = a.Verdict;
         int index = a.Index;
-        // 2-column gutter: the layout butts the columns together, the slot insets its inner edge.
+        // The columns' gutter: the layout butts the columns together and each slot insets its inner edges (a middle column of Huge's four both).
+        int column = index / Math.Max(1, v.Rows);
         Edges4 margin = v.Columns <= 1 ? default
-            : index / Math.Max(1, v.Rows) == 0 ? new Edges4(0f, 0f, Spacing.M, 0f) : new Edges4(Spacing.M, 0f, 0f, 0f);
+            : new Edges4(column > 0 ? Spacing.M : 0f, 0f, column < v.Columns - 1 ? Spacing.M : 0f, 0f);
         var scope = a.Scope;
         return new BoxEl
         {
-            // Height, not MinHeight: the slot IS the 32-DIP pitch, so a column totals EXACTLY rows x RowPitch.
-            ZStack = true, Height = DrawerVerdict.RowPitch, ClipToBounds = true, Corners = Radii.ControlAll, Margin = margin,
+            // Height, not MinHeight: the slot IS the verdict's pitch, so a column totals EXACTLY rows x Pitch.
+            ZStack = true, Height = v.Pitch, ClipToBounds = true, Corners = Radii.ControlAll, Margin = margin,
             Fill = ColorF.Transparent, HoverFill = R.Layer.RowHover, PressedFill = R.Layer.RowPressed,
             Role = AutomationRole.Button, Cursor = CursorId.Hand,
             Focusable = false,                                // the ItemsView roving effect owns the one tab stop
@@ -427,7 +434,7 @@ internal static class ClassicDiscography
     /// <summary>The "Show all N tracks" cell: not selectable (the list's IsItemSelectable), opens the album on a click, Enter or Space.</summary>
     static Element ShowAll(DiscoShowAllArgs a) => new BoxEl
     {
-        Key = "row:show-all", Height = DrawerVerdict.RowPitch, AlignItems = FlexAlign.Center,
+        Key = "row:show-all", Height = ClassicArtistTiers.Now.DrawerPitch, AlignItems = FlexAlign.Center,
         Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Cursor = CursorId.Hand, Role = AutomationRole.Button,
         Corners = Radii.ControlAll, HoverFill = R.Layer.RowHover, PressedFill = R.Layer.RowPressed,
         Focusable = false, FocusVisualMargin = Design.FocusInsetRow,
@@ -437,11 +444,15 @@ internal static class ClassicDiscography
         Children = [Ui.Caption(Strings.Detail.Discography.ShowAllTracks(a.Total)) with { Weight = 600, Color = Tok.AccentTextPrimary }],
     };
 
-    /// <summary># 26 · ♥ 28 · title ★ · time 44 · … 32 at the 32-DIP <c>DrawerVerdict.RowPitch</c> (content 28).</summary>
+    /// <summary># 26 · ♥ 28 · title ★ · time 44 · … 32 at the tuned 32 pitch (content 28); C-Discography-Compact's # 24 · ♥ · title · time 40 · … 40 at its
+    /// 40 pitch, so the row's More is a 40 target.</summary>
     static readonly Track.ColumnSet s_drawerCols = new(Album: false, By: false, Date: false, Plays: false,
                                                         Heart: true, Thumb: false);
     static readonly TrackSize[] s_drawerColumns =
         [TrackSize.Px(Rules.RankCol), TrackSize.Px(Track.RowMetrics.HeartCol), TrackSize.Star(), TrackSize.Px(Rules.TimeCol), TrackSize.Px(Rules.MoreCol)];
+    static readonly TrackSize[] s_drawerColumnsCompact =
+        [TrackSize.Px(Rules.RankColCompact), TrackSize.Px(Track.RowMetrics.HeartCol), TrackSize.Star(), TrackSize.Px(Rules.TimeColCompact),
+         TrackSize.Px(Rules.MoreColCompact)];
 
     /// <summary>One drawer track cell: the SAME eager-row grid `Track.EagerRow` draws (Classic's `StyleKeys.EagerTrackRow`), the title in the accent
     /// while it plays.</summary>
@@ -455,7 +466,11 @@ internal static class ClassicDiscography
                 Color = st.IsNow ? Tok.AccentTextPrimary : Tok.TextPrimary,
                 MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             };
-        return ClassicEagerRow.Style.Grid(t, a.Index, in st, in s_drawerCols, s_drawerColumns, Rules.RowContentH, title,
+        // The row's content is the pitch less the tuned 4 of air (28 in 32, 36 in Compact's 40).
+        float pitch = ClassicArtistTiers.Now.DrawerPitch;
+        bool compact = pitch >= ClassicArtistTiers.DrawerPitchCompact;
+        return ClassicEagerRow.Style.Grid(t, a.Index, in st, in s_drawerCols, compact ? s_drawerColumnsCompact : s_drawerColumns,
+                                          pitch - Rules.RowAir, title,
                                           new Track.GridOptions(OnPlay: a.Play, OnLike: a.Like, ActionsCell: Controls.MoreButton(null)));
     }
 }

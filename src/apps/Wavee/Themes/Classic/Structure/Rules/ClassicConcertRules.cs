@@ -58,8 +58,13 @@ internal static class ClassicConcertRules
     // ── the location button ──
     public const float LocationMinH = 32f, LocationGlyphBox = 20f, LocationPin = 16f, LocationChevronBoxW = 16f;
 
-    // ── the filter bar's pills and tokens ──
+    // ── the filter bar's pills and tokens (the height is the tier's: `ClassicConcertLayout.HubPill`, this tuned 32 or the Compact 40) ──
     public const float PillHeight = 32f, PillGap = 6f, PillPadX = 12f, PillPadY = 5f, PillGlyph = 14f, PillChevron = 10f;
+
+    // ── the Huge dates grid's card (C-Concert-Huge) ──
+    /// <summary>The date card's height, its date column, its rail (width, height, lead) and its day numeral (size, line).</summary>
+    public const float DateCardH = 68f, DateCardDateW = 44f, DateCardRailW = 3f, DateCardRailH = 32f, DateCardRailLead = 6f;
+    public const float DateCardDaySize = 22f, DateCardDayLine = 26f;
     public const float BarDividerH = 20f, BarScrollerH = 44f, BarEdgeFadeBand = 36f;
     public const float TokenReflowMs = 220f, PillReflowMs = 260f, SegmentDockMs = 300f, ChipExitMs = 220f;
 

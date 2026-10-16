@@ -109,11 +109,12 @@ internal sealed class ArtistChartCellArgs
 /// <summary>What the core decided for the chart's skeleton: the real layout's counts.</summary>
 internal sealed class ArtistChartSkeletonArgs
 {
-    /// <summary>The skeleton for a known chart length (0: the overview's seed), at the core's counts (<see cref="ArtistSections.ChartSkeletonShape"/>):
-    /// the chart host's shimmer and the artist page's derived skeleton read the same answer.</summary>
-    public static ArtistChartSkeletonArgs For(int knownCount, bool classic, bool showArtwork)
+    /// <summary>The skeleton for a known chart length (0: the overview's seed), at the core's counts (<see cref="ArtistSections.ChartSkeletonShape"/>) for the
+    /// tier's widest chart (<paramref name="maxColumns"/>) and its rows per column (<paramref name="rows"/>): the chart host's shimmer and the artist page's
+    /// derived skeleton read the same answer, so the skeleton keeps the chart's columns at every tier.</summary>
+    public static ArtistChartSkeletonArgs For(int knownCount, bool classic, bool showArtwork, int maxColumns, int rows)
     {
-        var (total, columns, perColumn) = ArtistSections.ChartSkeletonShape(knownCount);
+        var (total, columns, perColumn) = ArtistSections.ChartSkeletonShape(knownCount, maxColumns, rows);
         return new ArtistChartSkeletonArgs
         {
             Total = total, Columns = columns, PerColumn = perColumn, Classic = classic, ShowArtwork = showArtwork,
@@ -123,7 +124,7 @@ internal sealed class ArtistChartSkeletonArgs
     /// <summary>Charted rows shown (the known count, else the overview's seed cap).</summary>
     public required int Total { get; init; }
 
-    /// <summary>Columns (1 or 2).</summary>
+    /// <summary>Columns (1 up to the tier's widest).</summary>
     public required int Columns { get; init; }
 
     /// <summary>Rows per column.</summary>

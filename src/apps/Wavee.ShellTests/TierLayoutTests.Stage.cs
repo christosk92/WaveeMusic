@@ -7,7 +7,9 @@
 //   · the window tier is final in the first frame and the stage's allocator budgets from that tier's metrics (the transport card's height,
 //     the lyrics type);
 //   · the stage's top bar, cover, title column and transport card lie inside the window and never overlap;
-//   · at Compact every button of the stage's chrome, of the queue panel and of the mini player is at least 40 x 40.
+//   · at Compact every button of the stage's chrome, of the queue panel and of the mini player is at least 40 x 40;
+//   · a Compact window draws the identity card (C-Stage-Compact, C-Lyrics-Compact), with the face chip and no gallery sheet in Visualizer mode;
+//   · from the Huge 4K rung the Lyrics stage docks the Up next column beside the lyrics and the bars under the cover (C-Stage-Huge4K).
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -50,7 +52,8 @@ public sealed partial class TierLayoutTests
 
                 var tiers = Tiers;
                 var metrics = ClassicStageTiers.Policy.MetricsFor(tiers);
-                Assert.Same(ClassicStageTiers.Policy.MetricsFor(size.Window), metrics);
+                bool wide = ClassicStageTiers.Policy.IsHugeWide(tiers);   // the Huge 4K rung (3200): C-Stage-Huge4K
+                Assert.Same(wide ? ClassicStageTiers.HugeWideMetrics : ClassicStageTiers.Policy.MetricsFor(size.Window), metrics);
                 var expected = Stage.Layout.Seed(size.Width, size.Height, metrics: metrics);
                 Assert.Equal(ClassicStageTiers.Stage(size.Window), ClassicStageTiers.StageOf(tiers));
 
@@ -61,7 +64,7 @@ public sealed partial class TierLayoutTests
                 Assert.Equal(size.Height, root.H, 0.5f);
 
                 var top = Placed("chrome:top");
-                var transport = Placed("chrome:transport");
+                var transport = scene.PresentedAbsoluteRect(Node(shell, "stage:transport:card"));
                 var cover = scene.PresentedAbsoluteRect(Node(shell, "stage:cover"));
                 Assert.Equal(expected.TransportH, transport.H, 0.5f);            // the window tier's card (C-Stage-Compact 104, C-Stage-Small 96)
                 Assert.Equal(expected.TransportInset, size.Width - (transport.X + transport.W), 0.5f);
@@ -80,6 +83,36 @@ public sealed partial class TierLayoutTests
                     AssertButtonsAtLeast40(shell, Node(shell, "chrome:top"), size.Name + " stage top bar");
                     AssertButtonsAtLeast40(shell, Node(shell, "chrome:transport"), size.Name + " stage transport");
                 }
+                if (expected.IdentityCardOn(Stage.Mode.Lyrics))
+                {
+                    // C-Lyrics-Compact: the identity card under the top bar, the cover inside it
+                    var card = scene.PresentedAbsoluteRect(Node(shell, "stage:npcard"));
+                    var want = expected.NowPlayingCardRect(Stage.Mode.Lyrics);
+                    Assert.Equal(want.X, card.X, 0.5f);
+                    Assert.Equal(want.Y, card.Y, 0.5f);
+                    Assert.Equal(want.W, card.W, 0.5f);
+                    Assert.Equal(want.H, card.H, 0.5f);
+                    Assert.True(cover.X >= card.X - 0.5f && cover.Y >= card.Y - 0.5f && cover.X + cover.W <= card.X + card.W + 0.5f && cover.Y + cover.H <= card.Y + card.H + 0.5f,
+                        $"{size.Name}: the cover {cover} leaves the identity card {card}");
+                    Assert.True(card.Y + card.H <= transport.Y + 0.5f, $"{size.Name}: the identity card {card} overlaps the transport card {transport}");
+                }
+                else Assert.True(shell.Find("stage:npcard").IsNull, $"{size.Name}: Lyrics mode draws no card outside the Compact column");
+                if (wide)
+                {
+                    // C-Stage-Huge4K: the Up next column at its rect, clear of the transport card; the bars under the cover
+                    var column = Placed("stage:upnext");
+                    var want = expected.UpNextRect;
+                    Assert.Equal(want.X, column.X, 0.5f);
+                    Assert.Equal(want.W, column.W, 0.5f);
+                    Assert.True(column.Y + column.H <= transport.Y + 0.5f, $"{size.Name}: the Up next column {column} overlaps the transport card {transport}");
+                    Assert.True(column.Y >= top.Y + top.H - 0.5f, $"{size.Name}: the Up next column {column} runs under the top bar");
+                    Assert.NotEmpty(shell.FindPrefix("artbars:"));
+                }
+                else
+                {
+                    Assert.True(shell.Find("stage:upnext").IsNull, $"{size.Name}: only the Huge 4K stage docks the Up next column");
+                    Assert.Empty(shell.FindPrefix("artbars:"));
+                }
             }
             finally
             {
@@ -88,6 +121,49 @@ public sealed partial class TierLayoutTests
                 Prefs.Stage.SetMode(Platform.Keys.StageMode.Default);
             }
         }, size.From ?? size.Width, size.Height);
+    }
+
+    [Theory]
+    [InlineData("compact 400x860")]
+    [InlineData("floor 300x640")]
+    public void The_compact_visualizer_shows_the_card_and_its_face_chip_and_no_sheet(string sizeName)
+    {
+        var size = Sizes[sizeName];
+        host.Mounted(shell =>
+        {
+            AssertTier(size);
+            Prefs.Stage.SetMode((int)Stage.Mode.Visualizer);
+            Prefs.Stage.SetGalleryOpen(true);   // the stored flag is open: C-Stage-Compact still shows no sheet until it is asked for
+            Stage.Open(null, "test");
+            try
+            {
+                Until(shell, () => !shell.Find("stage:cover").IsNull && !shell.Find("chrome:facechip").IsNull, "the Compact visualizer at " + size.Name);
+                shell.RunFrames(120);
+                AssertTier(size);
+                Assert.True(shell.Find("chrome:gallery").IsNull, $"{size.Name}: the gallery sheet opened by default");
+
+                var expected = Stage.Layout.Seed(size.Width, size.Height, metrics: ClassicStageTiers.CompactMetrics);
+                var scene = shell.Host.Scene;
+                var card = scene.PresentedAbsoluteRect(Node(shell, "stage:npcard"));
+                var want = expected.NowPlayingCardRect(Stage.Mode.Visualizer);
+                Assert.Equal(want.X, card.X, 0.5f);
+                Assert.Equal(want.Y, card.Y, 0.5f);
+                Assert.Equal(want.W, card.W, 0.5f);                 // never wider than the window (the 460 card was)
+                Assert.Equal(want.H, card.H, 0.5f);
+                var cover = scene.PresentedAbsoluteRect(Node(shell, "stage:cover"));
+                Assert.True(cover.X + cover.W <= card.X + card.W + 0.5f && cover.Y + cover.H <= card.Y + card.H + 0.5f, $"{size.Name}: the cover {cover} leaves the card {card}");
+                AssertButtonsAtLeast40(shell, Node(shell, "chrome:facechip"), size.Name + " face chip");
+                var transport = scene.PresentedAbsoluteRect(Node(shell, "stage:transport:card"));
+                Assert.True(card.Y + card.H <= transport.Y + 0.5f, $"{size.Name}: the card overlaps the transport card");
+            }
+            finally
+            {
+                Stage.Close(null, "test");
+                shell.RunFrames(60);
+                Prefs.Stage.SetMode(Platform.Keys.StageMode.Default);
+                Prefs.Stage.SetGalleryOpen(Platform.Keys.StageGalleryOpen.Default);
+            }
+        }, size.Width, size.Height);
     }
 
     // ── the queue panel's contents ─────────────────────────────────────────────────────────────────────────────────────

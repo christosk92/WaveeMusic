@@ -454,7 +454,7 @@ public sealed class ThemeCatalogTests : IDisposable
     }
 
     [Fact]
-    public void ContractVersion_IsOnePointTwenty_AndRefusesAnythingElse()
+    public void ContractVersion_IsOnePointTwentyTwo_AndRefusesAnythingElse()
     {
         // 1.1 (tuned Classic CT4): LyricsState.Offline + LyricsLinesStyle.Offline, PlayerBarSlots.VideoSplit.
         // 1.2 (tuned Classic CT1c): the omnibar model's focused-field facts. 1.3 (tuned Classic CT3a): SidebarRowShape.EntityText,
@@ -478,7 +478,10 @@ public sealed class ThemeCatalogTests : IDisposable
         // 1.19 (compact control sizes): DialogFit.CommandSize / CommandMinWidth / UniformCommands replace CommandHeight, OverlayLayout.MenuSize, ToastDock.Lane. A 1.0
         // theme still runs.
         // 1.20 (the Compact overlays fix): PanelProps.Transport.
-        Assert.Equal("1.20", ContractVersion.Text);
+        // 1.21 (the Huge detail and library layouts): DetailFrameProps.Aside, DetailTierPolicy.HugeWide, NavPanePolicy.HugeWidth, LibraryTierPolicy.
+        // 1.22 (the remaining artist and stage items): ArtistTierPolicy.ChartRows, DiscographyMetrics.Drawer, the stage's 4K, Huge and Compact metrics,
+        // StageLayers.UpNext, QueueStagePaneProps.Aside, PanelProps.VideoTitle.
+        Assert.Equal("1.22", ContractVersion.Text);
         Assert.True(ContractVersion.IsCompatible(1, 0));
         Assert.True(ContractVersion.IsCompatible(1, 2));
         Assert.True(ContractVersion.IsCompatible(1, 3));
@@ -499,7 +502,9 @@ public sealed class ThemeCatalogTests : IDisposable
         Assert.True(ContractVersion.IsCompatible(1, 18));
         Assert.True(ContractVersion.IsCompatible(1, 19));
         Assert.True(ContractVersion.IsCompatible(1, 20));
-        Assert.False(ContractVersion.IsCompatible(1, 21));
+        Assert.True(ContractVersion.IsCompatible(1, 21));
+        Assert.True(ContractVersion.IsCompatible(1, 22));
+        Assert.False(ContractVersion.IsCompatible(1, 23));
         Assert.False(ContractVersion.IsCompatible(2, 0));
         Assert.False(ContractVersion.IsCompatible(0, 0));
     }

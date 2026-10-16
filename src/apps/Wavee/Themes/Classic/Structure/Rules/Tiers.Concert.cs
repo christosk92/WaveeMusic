@@ -11,11 +11,14 @@
 // of their own and keep the tuned design built from Classic's parts, owner Q18):
 //
 //   tier       split hero                                    tickets                                 targets
-//   Compact    stacked, a 220 photo pane                     inline after the facts                  40 (Buy, the lineup rows)
+//   Compact    stacked, a 220 photo pane                     inline after the facts                  40 (Buy, the lineup rows, the hub's
+//                                                                                                    filter pills)
 //   Small      split 56 / 44 at 240, pad 20                  inline                                  32
 //   Standard   the tuned arms (a 320 split from 920, else    the 320 rail from 920                   32
 //              the 180 stacked pane)
 //   Huge       split at 400, pad 40                          a 360 rail from 920                     32
+//              the lineup a 640 column beside the dates grid (four date cards a row; C-Concert-Huge's "Tour dates" geometry, filled with the
+//              related concerts: the app has no tour-dates feed, so the grid carries them under their own header and the related shelf folds into it)
 //
 // Public, because `ConcertLayoutTests`, `ConcertSchedulePageTests` and `ConcertDetailModelTests` pin the ladders.
 
@@ -61,10 +64,11 @@ public static class ClassicConcertTiers
         _ => EditorialHero(wide),
     };
 
-    /// <summary>Compact (C-Concert-Compact).</summary>
+    /// <summary>Compact (C-Concert-Compact; the hub's filter pills at the 40 target).</summary>
     public static ClassicConcertLayout Compact { get; } = new()
     {
         Tier = WidthTier.Compact, Hero = ClassicConcertHero.Stacked, HeroHeight = 220f, HeroPad = 16f, RailWidth = 0f, Target = ClassicArtistTiers.CompactTarget,
+        HubPill = ClassicArtistTiers.CompactTarget,
     };
 
     /// <summary>Small (C-Concert-Small): the split hero at 240 while the tickets stay inline.</summary>
@@ -79,10 +83,11 @@ public static class ClassicConcertTiers
         Tier = WidthTier.Standard, Hero = ClassicConcertHero.Tuned, HeroHeight = 320f, HeroPad = 28f, RailWidth = 320f, Target = ClassicArtistTiers.Target,
     };
 
-    /// <summary>Huge (C-Concert-Huge): the split hero at 400 with 40 of air, a 360 tickets rail.</summary>
+    /// <summary>Huge (C-Concert-Huge): the split hero at 400 with 40 of air, a 360 tickets rail, the lineup a 640 column beside the four-column dates grid.</summary>
     public static ClassicConcertLayout Huge { get; } = new()
     {
         Tier = WidthTier.Huge, Hero = ClassicConcertHero.Split, HeroHeight = 400f, HeroPad = 40f, RailWidth = 360f, Target = ClassicArtistTiers.Target,
+        LineupWidth = 640f, DateColumns = 4,
     };
 
     /// <summary>The record of window tier <paramref name="tier"/>.</summary>
@@ -146,4 +151,16 @@ public sealed record ClassicConcertLayout
 
     /// <summary>The page's hit targets (the Buy button, the lineup rows): 40 at Compact, the control's 32 elsewhere.</summary>
     public required float Target { get; init; }
+
+    /// <summary>The concert hub's filter pills and tokens (where, when, the genres): the 40 target at Compact, the tuned 32 elsewhere.</summary>
+    public float HubPill { get; init; } = ClassicConcertRules.PillHeight;
+
+    /// <summary>The lineup's column beside the dates grid (C-Concert-Huge: 640); 0 keeps the lineup a full-width card with the related shelf under it.</summary>
+    public float LineupWidth { get; init; }
+
+    /// <summary>The dates grid's columns (C-Concert-Huge: four date cards a row); read only where <see cref="LineupWidth"/> sets the grid beside the lineup.</summary>
+    public int DateColumns { get; init; }
+
+    /// <summary>The concert hub's records are the event page's (the hub has no board of its own): its filter pills' height in the tiers <paramref name="facts"/>.</summary>
+    public static float HubPillOf(in TierFacts facts) => ClassicConcertTiers.Of(in facts).HubPill;
 }

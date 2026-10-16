@@ -22,8 +22,9 @@ using FluentGpu.Signals;
 namespace Wavee.Theming.Contracts;
 
 /// <summary>The grid configuration the structure decides: the column minimum, the gap, the card's chrome under its square cover (the card is the cell
-/// width plus it) and the vertical gutter folded into the grid's row extra.</summary>
-internal readonly record struct DiscographyMetrics(float MinColumn, float Gap, float CardChrome, float RowGap);
+/// width plus it), the vertical gutter folded into the grid's row extra and the album drawer's geometry (its track columns, row pitch and head; contract
+/// 1.22, <c>default</c>: the drawer before tiers).</summary>
+internal readonly record struct DiscographyMetrics(float MinColumn, float Gap, float CardChrome, float RowGap, Album.DrawerShape Drawer = default);
 
 /// <summary>What the core decided for one render of a facet section.</summary>
 internal sealed class DiscoFacetArgs
@@ -124,7 +125,7 @@ internal sealed class DiscoDrawerPanelArgs
     /// <summary>The rows' bound list (the core mounts it once per geometry); null while there is no cell to list.</summary>
     public Element? List { get; init; }
 
-    /// <summary>The rows the list spans (each <see cref="Album.DrawerVerdict.RowPitch"/> tall).</summary>
+    /// <summary>The rows the list spans (each the verdict's <see cref="Album.DrawerVerdict.Pitch"/> tall).</summary>
     public required int Rows { get; init; }
 
     /// <summary>The floating selection bar (the core's component).</summary>

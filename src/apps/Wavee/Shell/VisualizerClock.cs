@@ -121,6 +121,7 @@ public static partial class Visualizer
             var tier = Demand.For(needs, viz, gallery, Shell.Ui.ImmersiveLyrics.Value, Playback.IsPlaying.Value,
                                   Playback.OwnerSignal.Value == Playback.Owner.Us, Playback.Audio.Supported.Value,
                                   _hooks?.WindowOccluded?.Value ?? false, Design.Reduced);
+            tier = Demand.WithArtBars(tier, ctx.ArtBars.Value);   // the Huge 4K Lyrics stage's bars under the cover (one bool: a resize never re-leases)
             ctx.Slab.LastTier = tier;
             Stage.Diagnostics.NoteLease(tier);
             if (tier == Tier.None) return null;

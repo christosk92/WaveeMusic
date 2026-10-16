@@ -16,19 +16,25 @@
 // through `ClassicArtistTierPolicy` (`ThemePolicies.ArtistTiers`), Classic's views read the forms and the records:
 //
 //   tier       hero                                                                        chart        shelves          discography
-//   Compact    the photograph full (300), the copy on it over a vertical veil, the actions    1 column     a 164 strip,     2 columns (128 floor)
-//              a 40 row below it (C-Artist-Compact); Narrow stacks them in two rows                         the 3rd peeks
-//   Small      Medium: the copy at the bottom-left (20 up), 560 wide, one bio line            2 columns    fit 150-200      the 180 floor
-//              (C-Artist-Small, capped at 288 by the Short window); Compact sub-tier as Compact
-//   Standard   the tuned design (P3b): Wide 440 / Medium 384 copy centred, Compact and Narrow 2 columns    fit 150-200      the 180 floor
-//              the photograph field over the identity column
-//   Huge       Wide: 560 (0.24 of the hero's width up to 640, C-Artist-Huge4K), the copy      up to 4      10 columns       the 180 floor
-//              at the bottom-left (40 up), 1120 wide, the bio at 760, the chart 3 : 1         (fit 264)
+//   Compact    the photograph full (300), the copy on it over a vertical veil, the actions    1 x 5        a 164 strip,     each facet a 164 strip (152
+//              a 40 row below it (C-Artist-Compact); Narrow stacks them in two rows                         the 3rd peeks    cards on 12); the page's drawer
+//                                                                                                                            1 column of 40 rows, 44 tabs
+//   Small      Medium: the copy at the bottom-left (20 up), 560 wide, one bio line            2 x 5        fit 150-200      the 180 floor; drawer 2
+//              (C-Artist-Small, capped at 288 by the Short window); Compact sub-tier as Compact                              columns (C-Discography-Small)
+//   Standard   the tuned design (P3b): Wide 440 / Medium 384 copy centred, Compact and Narrow 2 x 5        fit 150-200      the 180 floor; the drawer's
+//              the photograph field over the identity column                                                                 columns follow the grid
+//   Huge       Wide: 560 (0.24 of the hero's width up to 640), the copy at the bottom-left    3 x 5 at      10 columns       the 180 floor; drawer 4
+//              (40 up), 1120 wide, the bio at 760, a More button; the 56 section row under    3 : 1        (fit 264)        columns (C-Discography-Huge)
+//              the hero (C-Artist-Huge)
+//   Huge 4K    Huge's past the Huge 4K rung (window 3200, `ClassicDetailTiers.HugeWideRung`): the chart 4 x 4 at 4 : 1, the next concert under the pick
+//              (C-Artist-Huge4K)
 //   Short      under 680 tall a hero caps at 288 (60 % of the 480 page, C-Breakpoints) and its copy sits at the bottom; under 480 tall it is the 126
 //              strip (60 % of the 210 page): the name and Play · Follow only.
 //
-// THE PAGE GUTTER is the one gutter (TC1's content ladder, `ClassicTiers.PageOf`): the hero's metrics carry it, so the hero, the band and the magazine
-// all inset by it. Huge is designed, not scaled: the magazine fills to 2400 and the chart takes up to four columns.
+// THE PAGE GUTTER is the one gutter (TC1's content ladder, `ClassicTiers.PageOf`): the hero's metrics carry it. ONE ALIGNMENT SOURCE: where the page is
+// wider than its measure (1600; Huge's 2400) the magazine is a capped, centred column, and the hero's copy, the band, the section row and the magazine all
+// inset by `ClassicArtistLayout.ColumnInset` (the gutter plus half of what the cap leaves), so the copy lines up with Top tracks at 4K. Huge is designed,
+// not scaled: the magazine fills to 2400 and the chart takes three columns (four at Huge 4K).
 //
 // Public, so `Wavee.Tests` pins the ladders and the records (the assembly has no InternalsVisibleTo).
 
@@ -118,6 +124,9 @@ public sealed record ClassicArtistHeroForm
     /// <summary>The actions' edge: 40 at Compact (the brief's Compact rule), the control's 32 elsewhere.</summary>
     public required float Target { get; init; }
 
+    /// <summary>The action row ends in a More button (the artist's menu; C-Artist-Huge, C-Artist-Huge4K).</summary>
+    public bool More { get; init; }
+
     /// <summary>The photograph sits apart from the copy (no type on it, the field arm) or the copy is a band of its own on it (the overlay arm): the
     /// veil is vertical or absent.</summary>
     public bool Stacked => Arm is ClassicArtistHeroArm.Field or ClassicArtistHeroArm.Overlay;
@@ -138,6 +147,9 @@ public sealed record ClassicArtistLayout
     /// <summary>The most columns the Top-tracks chart takes (its 264 card floor and its row count still decide below that).</summary>
     public required int ChartColumns { get; init; }
 
+    /// <summary>The rows of one chart column (five; Huge 4K's four: C-Artist-Huge4K's 4 x 4).</summary>
+    public required int ChartRows { get; init; }
+
     /// <summary>The chart's share against the featured card beside it (2 : 1, Huge 3 : 1).</summary>
     public required float ChartShare { get; init; }
 
@@ -150,11 +162,40 @@ public sealed record ClassicArtistLayout
     /// <summary>The discography grid's gap.</summary>
     public required float DiscoGap { get; init; }
 
-    /// <summary>The page's hit targets: 40 at Compact, the control's 32 elsewhere.</summary>
+    /// <summary>The page's hit targets: 40 at Compact, the control's 32 elsewhere (the band's pivot words are this tall too).</summary>
     public required float Target { get; init; }
+
+    /// <summary>The 56 section row (the name, the pivot, Play · Follow as words) sits under the hero, in the flow (C-Artist-Huge).</summary>
+    public bool SectionRow { get; init; }
+
+    /// <summary>The albums, singles and compilations are each a strip at the shelves' fit (<see cref="Shelf"/>) instead of the inline grid with its
+    /// drawer (C-Artist-Compact: 152 cards on 12, the third peeking).</summary>
+    public bool DiscoStrip { get; init; }
+
+    /// <summary>The album drawer's track columns (0: the grid's own rule, two from a five-column grid).</summary>
+    public required int DrawerColumns { get; init; }
+
+    /// <summary>The album drawer's row pitch (the 40 target at Compact, C-Discography-Compact; the tuned 32 elsewhere).</summary>
+    public required float DrawerPitch { get; init; }
+
+    /// <summary>The album drawer's head row (C-Discography-Compact's 48 with its 40 Play and open buttons; the tuned 36 elsewhere).</summary>
+    public required float DrawerHead { get; init; }
+
+    /// <summary>The standalone discography page's release-type tabs: C-Discography-Compact's 44 (NaN: the stock SelectorBar item).</summary>
+    public float DiscoTab { get; init; } = float.NaN;
+
+    /// <summary>The artist's next concert sits under the pick, beside the chart (C-Artist-Huge4K).</summary>
+    public bool UpcomingBesidePick { get; init; }
 
     /// <summary>The widest the magazine grows: the page measure (<c>R.Space.PageMaxW</c>, 1600) up to Standard, Huge's own 2400 fill rule.</summary>
     public float PageMaxWidth => Tier >= WidthTier.Huge ? ClassicArtistTiers.HugePageMax : R.Space.PageMaxW;
+
+    /// <summary>THE ONE ALIGNMENT SOURCE: the inset of the page's column at a <paramref name="width"/>-wide page, the page <paramref name="gutter"/> plus half
+    /// of what the measure leaves either side. The hero's copy, the band, the section row and the magazine all inset by it, so they line up at every width.</summary>
+    public float ColumnInset(float width, float gutter) => gutter + MathF.Max(0f, (width - PageMaxWidth) * 0.5f);
+
+    /// <summary>The album drawer's geometry the core's verdict sizes (the head's allowance is the head row plus the panel's padding).</summary>
+    public Album.DrawerShape Drawer => new(DrawerColumns, DrawerPitch, DrawerHead + ClassicArtistTiers.DrawerHeadPad);
 }
 
 /// <summary>Classic's artist ladders and the artist page's tier records.</summary>
@@ -235,6 +276,22 @@ public static class ClassicArtistTiers
     /// <summary>The widest a Huge artist page's magazine grows (C-Breakpoints: "Huge lifts grids and shelves to 2400").</summary>
     public const float HugePageMax = 2400f;
 
+    /// <summary>The section row under a Huge hero (C-Artist-Huge: 56 between its two hairlines; the band's own height).</summary>
+    public const float SectionRowHeight = 56f;
+
+    /// <summary>The overlay arm's wrapped meta: the gap between its lines and between its runs (C-Artist-Compact: <c>gap: 4px 16px</c>).</summary>
+    public const float OverlayMetaRowGap = 4f, OverlayMetaColumnGap = 16f;
+
+    /// <summary>The album drawer's head rows (the tuned 36, C-Discography-Compact's 48) and what the panel's padding adds to the head's allowance in the
+    /// verdict (the core's 40 over the tuned 36).</summary>
+    public const float DrawerHeadRow = 36f, DrawerHeadRowCompact = 48f, DrawerHeadPad = 4f;
+
+    /// <summary>The album drawer's row pitches: the tuned 32 and the Compact 40 target.</summary>
+    public const float DrawerPitch = 32f, DrawerPitchCompact = 40f;
+
+    /// <summary>The standalone discography page's Compact tabs (C-Discography-Compact).</summary>
+    public const float DiscoTabCompact = 44f;
+
     // The tuned Standard forms (every number is the one the core's hero held before tiers).
     private static readonly ClassicArtistHeroForm s_wide = new()
     {
@@ -292,7 +349,7 @@ public static class ClassicArtistTiers
     // C-Artist-Huge (and -Huge4K): the copy 40 up, 1120 wide, the bio at 760, the lines 10 apart; the height follows the width between 560 and 640.
     private static readonly ClassicArtistHeroForm s_huge = s_wide with
     {
-        Arm = ClassicArtistHeroArm.Bottom, Height = HugeHeroMin, Photo = HugeHeroMin, CopyBottom = 40f, CopyGap = 10f, BioMax = 760f,
+        Arm = ClassicArtistHeroArm.Bottom, Height = HugeHeroMin, Photo = HugeHeroMin, CopyBottom = 40f, CopyGap = 10f, BioMax = 760f, More = true,
     };
 
     /// <summary>The hero's form for sub-tier <paramref name="tier"/> of a <paramref name="width"/>-wide page in the tiers <paramref name="facts"/>; the Standard
@@ -383,31 +440,42 @@ public static class ClassicArtistTiers
     /// <summary>The shelves' standard fit: cards 150-200, gap 12, the shelf's pager.</summary>
     private static readonly ClassicShelfBand s_shelf = new(150f, 200f, 0, FixedCardW: 0f, Gap: 12f, Pager: true);
 
-    /// <summary>Compact (C-Artist-Compact): one chart column, a 164 strip whose third card peeks, a two-column discography, 40 targets.</summary>
+    /// <summary>Compact (C-Artist-Compact): one chart column, a 164 strip whose third card peeks (the shelves and each discography facet: 152 cards on 12),
+    /// the discography page's two-column grid with its one-column drawer of 40 rows and its 44 tabs (C-Discography-Compact), 40 targets.</summary>
     public static ClassicArtistLayout Compact { get; } = new()
     {
-        Tier = WidthTier.Compact, ChartColumns = 1, ChartShare = 2f,
+        Tier = WidthTier.Compact, ChartColumns = 1, ChartRows = ArtistSections.ChartMaxRows, ChartShare = 2f,
         Shelf = new ClassicShelfBand(164f, 164f, 0, FixedCardW: 164f, Gap: 0f, Pager: false),
-        DiscoMinColumn = 128f, DiscoGap = 12f, Target = CompactTarget,
+        DiscoMinColumn = 128f, DiscoGap = 12f, Target = CompactTarget, DiscoStrip = true,
+        DrawerColumns = 1, DrawerPitch = DrawerPitchCompact, DrawerHead = DrawerHeadRowCompact, DiscoTab = DiscoTabCompact,
     };
 
-    /// <summary>Small (C-Artist-Small).</summary>
+    /// <summary>Small (C-Artist-Small; C-Discography-Small's two-column drawer).</summary>
     public static ClassicArtistLayout Small { get; } = new()
     {
-        Tier = WidthTier.Small, ChartColumns = 2, ChartShare = 2f, Shelf = s_shelf,
+        Tier = WidthTier.Small, ChartColumns = 2, ChartRows = ArtistSections.ChartMaxRows, ChartShare = 2f, Shelf = s_shelf,
         DiscoMinColumn = ClassicDiscographyRules.MinColumn, DiscoGap = ClassicDiscographyRules.Gap, Target = Target,
+        DrawerColumns = 2, DrawerPitch = DrawerPitch, DrawerHead = DrawerHeadRow,
     };
 
-    /// <summary>Standard: the tuned design.</summary>
-    public static ClassicArtistLayout Standard { get; } = Small with { Tier = WidthTier.Standard };
+    /// <summary>Standard: the tuned design (the drawer's columns follow the grid, two from five columns).</summary>
+    public static ClassicArtistLayout Standard { get; } = Small with { Tier = WidthTier.Standard, DrawerColumns = 0 };
 
-    /// <summary>Huge and Huge 4K (C-Artist-Huge, C-Artist-Huge4K): up to four chart columns at 3 : 1 beside the pick, ten-card shelves, the 2400 fill.</summary>
+    /// <summary>Huge (C-Artist-Huge, C-Discography-Huge): three chart columns of five at 3 : 1 beside the pick, the 56 section row under the hero, ten-card
+    /// shelves, the four-column drawer, the 2400 fill.</summary>
     public static ClassicArtistLayout Huge { get; } = Small with
     {
-        Tier = WidthTier.Huge, ChartColumns = 4, ChartShare = 3f, Shelf = new ClassicShelfBand(150f, 9999f, 10, FixedCardW: 0f, Gap: 12f, Pager: true),
+        Tier = WidthTier.Huge, ChartColumns = 3, ChartShare = 3f, Shelf = new ClassicShelfBand(150f, 9999f, 10, FixedCardW: 0f, Gap: 12f, Pager: true),
+        SectionRow = true, DrawerColumns = 4,
     };
 
-    /// <summary>The record of window tier <paramref name="tier"/> (Huge 4K reads Huge's: Classic draws no 4K band).</summary>
+    /// <summary>Huge 4K (C-Artist-Huge4K), past the Huge 4K rung: four chart columns of four at 4 : 1, the artist's next concert under the pick.</summary>
+    public static ClassicArtistLayout Huge4K { get; } = Huge with
+    {
+        ChartColumns = 4, ChartRows = 4, ChartShare = 4f, UpcomingBesidePick = true,
+    };
+
+    /// <summary>The record of window tier <paramref name="tier"/> (Huge's at every Huge width; <see cref="Of"/> reads Huge 4K past its rung).</summary>
     public static ClassicArtistLayout For(WidthTier tier) => tier switch
     {
         WidthTier.Compact => Compact,
@@ -416,8 +484,10 @@ public static class ClassicArtistTiers
         _ => Huge,
     };
 
-    /// <summary>The record of <paramref name="facts"/>; Standard's where no frame resolved the tiers (a view mounted alone).</summary>
-    public static ClassicArtistLayout Of(in TierFacts facts) => facts.Policy is null ? Standard : For(facts.Window);
+    /// <summary>The record of <paramref name="facts"/> (Huge 4K past the Huge 4K rung, the detail pages' `ClassicDetailTiers.HugeWideRung`); Standard's where
+    /// no frame resolved the tiers (a view mounted alone).</summary>
+    public static ClassicArtistLayout Of(in TierFacts facts)
+        => facts.Policy is null ? Standard : ClassicDetailTiers.Policy.IsHugeWide(in facts) ? Huge4K : For(facts.Window);
 
     /// <summary>The record on screen now, read TRACKED (the running render re-runs on a crossing): for the templates the core's components call
     /// (the discography grid's metrics), which carry no view context.</summary>
@@ -438,6 +508,9 @@ public sealed class ClassicArtistTierPolicy : ArtistTierPolicy
 
     /// <inheritdoc/>
     public override int ChartMaxColumns(in TierFacts facts) => ClassicArtistTiers.Of(in facts).ChartColumns;
+
+    /// <inheritdoc/>
+    public override int ChartRows(in TierFacts facts) => ClassicArtistTiers.Of(in facts).ChartRows;
 
     /// <inheritdoc/>
     public override float ProfileListMinCell(in TierFacts facts) => ClassicProfileTiers.Of(in facts).ListMinCell;

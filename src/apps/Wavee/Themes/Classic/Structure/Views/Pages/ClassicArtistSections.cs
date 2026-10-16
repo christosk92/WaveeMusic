@@ -33,6 +33,23 @@ internal sealed class ClassicArtistLatch
 
     /// <summary>The structure's chart templates (T8c): the page's skeleton draws the chart's own skeleton from them.</summary>
     public ArtistChartStyle? Chart;
+
+    Artist _menuArtist;
+    Func<ContextMenuModel?>? _menu;
+
+    /// <summary>The hero's More menu (C-Artist-Huge): the artist's container menu as its own page's hero offers it, built at open for the artist of the latest
+    /// render. One delegate per mount.</summary>
+    public Func<ContextMenuModel?> ArtistMenu(Artist a)
+    {
+        _menuArtist = a;
+        return _menu ??= () =>
+        {
+            var artist = _menuArtist;
+            return artist.IsValid
+                ? Menus.Container(ActionTarget.ForArtist(artist.Uri, artist.Name), Controls.ArtUrl(artist.ImageId), null, new ContainerExtras { OnPage = true })
+                : null;
+        };
+    }
 }
 
 /// <summary>Wavee Classic's artist page sections.</summary>
@@ -56,20 +73,63 @@ internal static class ClassicArtistSections
             ArtistSection.Popular => TopBand(p, latch, surface, layout),
             ArtistSection.Upcoming => SectionBlock(Loc.Get(Strings.Artist.Upcoming), ClassicArtistBanners.UpcomingCard(a, p.AccentFn, wide: false), accent),
             ArtistSection.LatestRelease => SectionBlock(Loc.Get(Strings.Artist.LatestRelease), ClassicArtistBanners.LatestBanner(a.Latest, accent), accent),
-            ArtistSection.Albums => Artist.FacetSection(a, DiscoFacet.Albums, p.AccentFn, Detail.BandLayout.Height, ArtistSections.FacetExpandedTopInset),
-            ArtistSection.Singles => Artist.FacetSection(a, DiscoFacet.Singles, p.AccentFn, Detail.BandLayout.Height, ArtistSections.FacetExpandedTopInset),
-            ArtistSection.Compilations => Artist.FacetSection(a, DiscoFacet.Compilations, p.AccentFn, Detail.BandLayout.Height, ArtistSections.FacetExpandedTopInset),
+            ArtistSection.Albums => Discography(a, DiscoFacet.Albums, p, layout),
+            ArtistSection.Singles => Discography(a, DiscoFacet.Singles, p, layout),
+            ArtistSection.Compilations => Discography(a, DiscoFacet.Compilations, p, layout),
             ArtistSection.AppearsOn => AppearsOnShelf(a, accent, shelf),
             ArtistSection.Tour => ClassicArtistBanners.TourBanner(a, accent),
             ArtistSection.MusicVideos => VideosShelf(a, accent, shelf),
             ArtistSection.Playlists => PlaylistsShelf(a, accent, shelf),
             ArtistSection.Concerts => ConcertsShelf(a, accent, shelf),
             ArtistSection.Merch => MerchShelf(a, accent, shelf),
-            ArtistSection.Biography => BiographyBand(p, latch, accent),
+            ArtistSection.Biography => BiographyBand(p, latch, accent, layout),
             ArtistSection.Gallery => GalleryShelf(p, accent, shelf),
             ArtistSection.Related => ArtistsShelf(a.RelatedSlots, accent, shelf),
             _ => ArtistsShelf(p.Fans, accent, shelf),
         };
+    }
+
+    // ── the discography facets (Discography.cs; C-Artist-Compact) ─────────────────────────────────────────────────────
+
+    static readonly string[] s_discoArmKeys = ["disco-arm:grid", "disco-arm:strip"];
+
+    /// <summary>One discography facet in the tier's arm: the core's inline facet (the accent-spined header, the grid and its album drawer) or, where the
+    /// record draws a strip (C-Artist-Compact), the facet's releases as a strip of album cards at the shelves' fit (152 cards on 12, the third peeking) under
+    /// an accent header; a card opens its album. The arm is keyed by what it is, never by the tier, and a crossing that swaps it cross-fades the two while
+    /// the sections under it glide (the page's section holders).</summary>
+    static Element Discography(Artist a, DiscoFacet facet, ArtistPageProps p, ClassicArtistLayout layout)
+    {
+        bool strip = layout.DiscoStrip;
+        Element body = strip
+            ? FacetStrip(a, facet, p.Accent, layout.Shelf)
+            : Artist.FacetSection(a, facet, p.AccentFn, Detail.BandLayout.Height, ArtistSections.FacetExpandedTopInset);
+        return new BoxEl
+        {
+            Direction = 1, MinWidth = 0f,
+            Children =
+            [
+                new BoxEl
+                {
+                    Key = s_discoArmKeys[strip ? 1 : 0], Direction = 1, MinWidth = 0f,
+                    Enter = ClassicArtistTiers.ArmFade, Exit = ClassicArtistTiers.ArmFade, Transition = ClassicArtistTiers.ArmFadeMotion,
+                    Children = [body],
+                },
+            ],
+        };
+    }
+
+    /// <summary>The facet's releases as a strip (C-Artist-Compact's "Albums": no drawer, a card opens its album); nothing while the facet has none.</summary>
+    static Element FacetStrip(Artist a, DiscoFacet facet, ColorF accent, ClassicShelfBand band)
+    {
+        ReadOnlySpan<int> slots = facet switch
+        {
+            DiscoFacet.Singles => a.SingleSlots,
+            DiscoFacet.Compilations => a.CompilationSlots,
+            _ => a.AlbumSlots,
+        };
+        if (slots.Length == 0) return new BoxEl();
+        return ShelfOf(Items(slots, EntityKind.Album, slots.Length), AlbumCard, Artist.FacetTitle(facet), accent, band,
+                       onInvoke: static (item, _) => OpenAlbum(item));
     }
 
     // ── the Top-tracks band (TopTracks.cs:17-104) ────────────────────────────────────────────────────────────────────
@@ -87,6 +147,8 @@ internal static class ClassicArtistSections
         Func<ColorF> accentFn = p.AccentFn;
         ColorF accent = p.Accent;
         IOverlayService? overlay = p.Overlay;
+        // C-Artist-Huge4K: the artist's next concert sits under the pick, beside the chart.
+        int concert = layout.UpcomingBesidePick && pick && a.ConcertSlots.Length > 0 ? a.ConcertSlots[0] : Table.None;
         return Responsive.Of("artist:top-band", w =>
         {
             bool wide = latch.TopBandWide = ClassicArtistTiers.TopBandWide(w, latch.TopBandWide);
@@ -96,6 +158,8 @@ internal static class ClassicArtistSections
                 ? ClassicArtistPick.Card(a, accentFn, horizontal: !wide, overlay, surface) with { Key = wide ? "featured:pick:rail" : "featured:pick:band" }
                 : SectionBlock(Loc.Get(Strings.Artist.Upcoming), ClassicArtistBanners.UpcomingCard(a, accentFn, wide), accent)
                     with { Key = wide ? "featured:upcoming:rail" : "featured:upcoming:band" };
+            // The featured column keeps the pick as its first child at every tier, so the concert card coming or going on a crossing never remounts it.
+            Element[] column = wide && concert > Table.None ? [featured, NextConcert(new Concert(concert))] : [featured];
             return new BoxEl
             {
                 Direction = (byte)(wide ? 0 : 1), Gap = Spacing.XL, MinWidth = 0f,
@@ -103,10 +167,46 @@ internal static class ClassicArtistSections
                 Children =
                 [
                     new BoxEl { Direction = 1, Grow = wide ? share : 0f, Basis = wide ? 0f : float.NaN, MinWidth = 0f, Children = [tracks] },
-                    new BoxEl { Direction = 1, Grow = wide ? 1f : 0f, Basis = wide ? 0f : float.NaN, MinWidth = 0f, Children = [featured] },
+                    new BoxEl
+                    {
+                        Direction = 1, Grow = wide ? 1f : 0f, Basis = wide ? 0f : float.NaN, MinWidth = 0f, Gap = Spacing.M,
+                        Animate = ClassicArtistTiers.HeroMotion, Children = column,
+                    },
                 ],
             };
-        }, fallback: MathF.Max(1f, p.Width - 2f * p.Metrics.Gutter));
+        }, fallback: MathF.Max(1f, p.Width - 2f * layout.ColumnInset(p.Width, p.Metrics.Gutter)));
+    }
+
+    /// <summary>The artist's next concert under the pick (C-Artist-Huge4K): the date block, "Upcoming", the concert and its venue and city; a click opens the
+    /// concert. Keyed on the concert; it fades in and out on a crossing while the featured column's height tweens.</summary>
+    static Element NextConcert(Concert c)
+    {
+        var (venue, city) = Concert.StubFacts(c);
+        string place = city.Length > 0 ? venue + ", " + city : venue;
+        return new BoxEl
+        {
+            Key = "featured:concert:" + c.Slot.ToString(CultureInfo.InvariantCulture),
+            Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center, MinWidth = 0f,
+            Padding = Edges4.All(Spacing.M), Corners = CornerRadius4.All(Radii.Card),
+            Fill = Tok.FillCardSecondary, HoverFill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
+            Role = AutomationRole.Button, Focusable = true, FocusVisualMargin = Design.FocusInsetBordered, Cursor = CursorId.Hand,
+            OnClick = () => ArtistVerbs.OpenConcert(c),
+            Enter = ClassicArtistTiers.ArmFade, Exit = ClassicArtistTiers.ArmFade, Transition = ClassicArtistTiers.ArmFadeMotion,
+            Children =
+            [
+                ClassicConcertCells.DateBlock(c.LocalDate),
+                new BoxEl
+                {
+                    Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                    Children =
+                    [
+                        Caption(Loc.Get(Strings.Artist.Upcoming)) with { Weight = 600, Color = Tok.TextSecondary, MaxLines = 1 },
+                        BodyStrong(c.TitleOrVenue) with { Color = Tok.TextPrimary, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                        Caption(place) with { Color = Tok.TextSecondary, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                    ],
+                },
+            ],
+        };
     }
 
     // ── the shelves (Shelves.cs, Discography.cs's appears-on; W19) ───────────────────────────────────────────────────
@@ -395,7 +495,7 @@ internal static class ClassicArtistSections
     /// <summary>The biography card (Grow 2) beside the profile facts (Grow 1) at mode 0 of the detail page's mode
     /// ladder (≥ 820, re-entered at 844), stacked below. Two genuine object panels — the page's one exception to
     /// "sections are not cards". A zero stat drops its tile; no tiles ⇒ the biography takes the full width.</summary>
-    static Element BiographyBand(ArtistPageProps p, ClassicArtistLatch latch, ColorF accent)
+    static Element BiographyBand(ArtistPageProps p, ClassicArtistLatch latch, ColorF accent, ClassicArtistLayout layout)
     {
         Artist a = p.Artist;
         string bio = ArtistVerbs.Text(a.BioId);
@@ -459,7 +559,7 @@ internal static class ClassicArtistSections
                 };
             }
             return new BoxEl { Direction = 1, MinWidth = 0f, Children = [band] };
-        }, fallback: MathF.Max(1f, p.Width - 2f * p.Metrics.Gutter));
+        }, fallback: MathF.Max(1f, p.Width - 2f * layout.ColumnInset(p.Width, p.Metrics.Gutter)));
     }
 
     static string FactLabel(ArtistFactKind kind) => kind switch
