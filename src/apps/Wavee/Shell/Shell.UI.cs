@@ -306,6 +306,8 @@ public static partial class Shell
             if (!_bandSeeded)
             {
                 _bandSeeded = true;
+                // The pane's resting width for the first tier (contract 1.21: Classic Huge 320 while never resized), before the seed lays it out.
+                Sidebar.FollowTier(tiers.WindowNow, policies.NavPane);
                 var size0 = vp.Peek();
                 var pane0 = FrameModel.Seed(new WindowFacts(size0.Width, size0.Height), tiers.WindowNow,
                     Sidebar.UserCollapsed.Peek(), Sidebar.Editing.Peek(), Sidebar.Width.Peek(), policies.NavPane);
@@ -333,6 +335,8 @@ public static partial class Shell
             UseSignalEffect(static () => Sidebar.FollowDesign(ShellPolicy.Tracked.NavPane));
             // THE SIDEBAR'S STATE (M7b): the pane's width and collapse and the Library's view are the active theme's state; another theme brings its own.
             UseSignalEffect(static () => { _ = Theming.ThemeState.Scope.Value; Sidebar.FollowThemeState(); });
+            // THE PANE'S RESTING WIDTH PER TIER (contract 1.21): a pane the user never resized follows the window tier's width (Classic Huge 320).
+            UseSignalEffect(() => Sidebar.FollowTier(tiers.Window, ShellPolicy.Tracked.NavPane));
             // The title bar's pane toggle is disabled while the sidebar is being edited (a plain signal mirrored here).
             UseSignalEffect(static () => s_paneToggleEnabled.SetIfChanged(
                 SidebarPaneModeRules.CanTogglePane(Sidebar.Band.Value, Sidebar.Editing.Value, ShellPolicy.Tracked.NavPane)));

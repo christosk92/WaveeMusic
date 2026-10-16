@@ -65,6 +65,12 @@ public static class SidebarPaneBounds
     /// <summary>The anti-flicker band for a threshold crossing (the regime flip's drag-back distance).</summary>
     public const float NavPaneHysteresisDip = 24f;
 
+    /// <summary>Is the stored expanded width the USER's (contract 1.21)? Yes once a resize flagged it (<paramref name="flagged"/>: `paneWidthSet`), or, for a
+    /// store from before the flag, when a value is <paramref name="stored"/> that none of the old defaults explains: the sidebar migration wrote the legacy
+    /// design's default (280 Classic, 320 curated, 340 v3) for every profile that never dragged. Migration-free: nothing is rewritten.</summary>
+    public static bool IsUserWidth(bool flagged, bool stored, float width)
+        => flagged || (stored && width is not (280f or 320f or 340f));
+
     /// <summary>The one clamp: the active nav-pane policy's bounds (Classic 180-460), or <paramref name="policy"/>'s. A
     /// non-finite width reads as the policy's default width. The consts above are the shell's baseline that the default
     /// policy is built from.</summary>

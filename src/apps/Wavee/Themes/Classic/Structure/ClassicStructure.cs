@@ -247,6 +247,7 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.AlbumUnresolved, ClassicAlbumRelease.UnresolvedTemplate, "classic.album.unresolved");
         views.Add(ViewKeys.AlbumTrailing, ClassicAlbumTrailing.TrailingTemplate, "classic.album.trailing");
         views.Add(ViewKeys.AlbumSections, ClassicAlbumTrailing.SectionsTemplate, "classic.album.sections");
+        views.Add(ViewKeys.AlbumAside, ClassicAlbumTrailing.AsideTemplate, "classic.album.aside");
         views.Add(ViewKeys.AlbumTrailStack, ClassicAlbumTrailing.StackTemplate, "classic.album.trail-stack");
         views.Add(ViewKeys.PlaylistCoverArt, ClassicPlaylist.CoverArtTemplate, "classic.playlist.cover-art");
         views.Add(ViewKeys.PlaylistCoverEditor, ClassicPlaylist.CoverEditorTemplate, "classic.playlist.cover-editor");

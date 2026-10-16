@@ -52,6 +52,10 @@ public static partial class ViewKeys
     /// `Album.SectionsHost`. Props: <see cref="AlbumSectionsProps"/>.</summary>
     public static readonly ViewKey<AlbumSectionsProps> AlbumSections = new("Album.Sections");
 
+    /// <summary>The Huge aside's body (C-Album-Huge): About this release, the artist card, Fans also like and "More by", in that order. Mounted by
+    /// `Album.SectionsHost`'s aside arm, placed by the frame's aside column (contract 1.21). Props: <see cref="AlbumAsideProps"/>.</summary>
+    public static readonly ViewKey<AlbumAsideProps> AlbumAside = new("Album.Aside");
+
     /// <summary>One capped list section: its title, the one-way "Show all N" and the rows. Mounted by `Album.StackHost`. Props:
     /// <see cref="AlbumTrailStackProps"/>.</summary>
     public static readonly ViewKey<AlbumTrailStackProps> AlbumTrailStack = new("Album.TrailStack");

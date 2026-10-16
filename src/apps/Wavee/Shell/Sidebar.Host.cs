@@ -83,7 +83,7 @@ public static partial class Sidebar
         ShowCovers.Value = design.ShowCovers;
         // The pane's width and collapse and the Library's list/grid view are the active theme's STATE (M7b: `theme.<id>.state.paneWidth` /
         // `.paneCollapsed` / `.libraryView`, copied from the legacy keys and the device file at boot by ThemeBootstrap).
-        Width.Value = SidebarPaneBounds.Clamp(ThemeState.Get(PaneWidthKey));
+        Width.Value = RestingWidth(ShellPolicy.Now.NavPane);
         UserCollapsed.Value = ThemeState.Get(PaneCollapsedKey);
         LibraryView.Value = ViewOf(ThemeState.Get(LibraryViewKey));
         Seam.Value = UserCollapsed.Peek() ? ShellPolicy.Now.NavPane.RailWidth : Width.Peek();
@@ -549,6 +549,30 @@ public static partial class Sidebar
     /// <inheritdoc cref="PaneWidthKey"/>
     public static readonly StateKey<bool> PaneCollapsedKey = new("paneCollapsed", false, false, false);
 
+    /// <summary>The user resized the pane (contract 1.21): set by the first resize that moved the width, after which no window tier re-rests it.</summary>
+    public static readonly StateKey<bool> PaneWidthSetKey = new("paneWidthSet", false, false, false);
+
+    /// <summary>The window tier the pane last rested for (<see cref="FollowTier"/>); Standard until the frame resolves one.</summary>
+    static Theming.Contracts.WidthTier s_tier = Theming.Contracts.WidthTier.Standard;
+
+    /// <summary>Is the stored width the user's (<see cref="SidebarPaneBounds.IsUserWidth"/>)?</summary>
+    public static bool WidthUserSet()
+        => SidebarPaneBounds.IsUserWidth(ThemeState.Get(PaneWidthSetKey), ThemeState.IsStored(PaneWidthKey), ThemeState.Get(PaneWidthKey));
+
+    /// <summary>The expanded width the pane rests at for the current tier: the user's once they resized it, else the structure's tier width (Classic Huge 320).</summary>
+    static float RestingWidth(Theming.NavPanePolicy nav) => nav.RestingWidthFor(s_tier, ThemeState.Get(PaneWidthKey), WidthUserSet());
+
+    /// <summary>The window tier moved (the frame's effect, and its seed before the first layout): a pane the user never resized rests at the tier's width
+    /// (contract 1.21: Classic's 320 from Huge on, the stored width below it). Never persisted; the presentation effect eases the column to it.</summary>
+    public static void FollowTier(Theming.Contracts.WidthTier tier, Theming.NavPanePolicy nav)
+    {
+        s_tier = tier;
+        float width = RestingWidth(nav);
+        if (Width.Peek() == width) return;
+        Width.Value = width;
+        if (!UserCollapsed.Peek()) Seam.SetIfChanged(width);
+    }
+
     /// <inheritdoc cref="PaneWidthKey"/>
     public static readonly StateKey<int> LibraryViewKey = new("libraryView", (int)SidebarLibraryView.List, (int)SidebarLibraryView.List, (int)SidebarLibraryView.Grid);
 
@@ -625,10 +649,14 @@ public static partial class Sidebar
 
     static void Apply(in SidebarResizeRules.Settle s)
     {
+        // A settle that MOVED the width makes it the user's (contract 1.21); one that did not (a collapse toggle) leaves a tier's resting width unpersisted, so
+        // the Huge 320 never overwrites the Standard width the store holds.
+        bool moved = s.ExpandedWidth != Width.Peek();
         Width.SetIfChanged(s.ExpandedWidth);
         if (SidebarPaneModeRules.WritesUserCollapsed(Band.Peek(), Editing.Peek())) UserCollapsed.SetIfChanged(s.UserCollapsed);
         Seam.SetIfChanged(s.TargetWidth);
-        ThemeState.Set(PaneWidthKey, s.ExpandedWidth);
+        if (moved || WidthUserSet()) ThemeState.Set(PaneWidthKey, s.ExpandedWidth);
+        if (moved) ThemeState.Set(PaneWidthSetKey, true);
         ThemeState.Set(PaneCollapsedKey, UserCollapsed.Peek());
     }
 
@@ -636,7 +664,7 @@ public static partial class Sidebar
     /// each theme keeps its own (owner Q6). The frame's effect calls this with <see cref="ThemeState.Scope"/>; a no-op while nothing differs.</summary>
     public static void FollowThemeState()
     {
-        float width = SidebarPaneBounds.Clamp(ThemeState.Get(PaneWidthKey));
+        float width = RestingWidth(ShellPolicy.Now.NavPane);
         bool collapsed = ThemeState.Get(PaneCollapsedKey);
         bool paneMoved = Width.Peek() != width || UserCollapsed.Peek() != collapsed;
         Width.SetIfChanged(width);

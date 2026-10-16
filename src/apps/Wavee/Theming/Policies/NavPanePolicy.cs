@@ -76,6 +76,15 @@ public sealed record NavPanePolicy(
         NarrowMode: NavPaneMode.Compact, TinyMode: NavPaneMode.Overlay, Resizable: true, Seam: Shell.FrameRules.SeamStripW,
         RailWidth: SidebarPaneBounds.RailWidth);
 
+    /// <summary>The width an expanded pane RESTS at in the Huge window tier while the user has never resized it (Classic 320: C-Shell-Huge); NaN: the stored width at
+    /// every tier. Appended (contract 1.21).</summary>
+    public float HugeWidth { get; init; } = float.NaN;
+
+    /// <summary>The expanded width the pane rests at in window tier <paramref name="tier"/>: the <paramref name="stored"/> preference once the user set it
+    /// (<paramref name="userSet"/>), else <see cref="HugeWidth"/> at Huge, else the stored one (Small and Standard unchanged); clamped.</summary>
+    public float RestingWidthFor(WidthTier tier, float stored, bool userSet)
+        => ClampWidth(!userSet && tier >= WidthTier.Huge && float.IsFinite(HugeWidth) ? HugeWidth : stored);
+
     /// <summary>The width a collapsed pane's drag falls to the rail at: <see cref="MinWidth"/> − <see cref="CollapseApproach"/>.</summary>
     public float RailEnterW => MinWidth - CollapseApproach;
 

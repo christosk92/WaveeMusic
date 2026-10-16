@@ -27,6 +27,7 @@ public class AlbumPlaylistContractTests
         (ViewKeys.AlbumReleasePanel.Id, "classic.album.release-panel"),
         (ViewKeys.AlbumTrailing.Id, "classic.album.trailing"),
         (ViewKeys.AlbumSections.Id, "classic.album.sections"),
+        (ViewKeys.AlbumAside.Id, "classic.album.aside"),
         (ViewKeys.AlbumTrailStack.Id, "classic.album.trail-stack"),
         (ViewKeys.AlbumUnresolved.Id, "classic.album.unresolved"),
         (ViewKeys.PlaylistCoverArt.Id, "classic.playlist.cover-art"),
@@ -52,6 +53,7 @@ public class AlbumPlaylistContractTests
         Assert.Equal("Album.ReleasePanel", ViewKeys.AlbumReleasePanel.Id);
         Assert.Equal("Album.Trailing", ViewKeys.AlbumTrailing.Id);
         Assert.Equal("Album.Sections", ViewKeys.AlbumSections.Id);
+        Assert.Equal("Album.Aside", ViewKeys.AlbumAside.Id);
         Assert.Equal("Album.TrailStack", ViewKeys.AlbumTrailStack.Id);
         Assert.Equal("Album.Unresolved", ViewKeys.AlbumUnresolved.Id);
         Assert.Equal("Playlist.CoverArt", ViewKeys.PlaylistCoverArt.Id);

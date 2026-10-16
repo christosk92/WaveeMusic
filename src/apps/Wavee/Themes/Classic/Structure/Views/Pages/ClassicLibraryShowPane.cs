@@ -28,7 +28,9 @@ internal static class ClassicLibraryShowPane
     /// <summary>The registered template of <see cref="ViewKeys.LibraryShowPane"/>.</summary>
     public static Element Template(LibraryShowPaneProps props, in ViewContext ctx)
     {
-        BoxEl child = props.HeaderReady ? Body(props) : ClassicLibraryPaneKit.HeaderSkeleton();
+        // The pane header's metrics are the library tier's (C-Library-Huge: the 160 cover in a 200 band), the album pane's own.
+        var layout = ClassicLibraryTiers.Of(ctx.Tier(), single: false);
+        BoxEl child = props.HeaderReady ? Body(props, layout) : ClassicLibraryPaneKit.HeaderSkeleton(layout);
         return new BoxEl
         {
             ZStack = true, Grow = 1f, Basis = 0f, MinHeight = 0f, ClipToBounds = true,
@@ -38,11 +40,11 @@ internal static class ClassicLibraryShowPane
 
     /// <summary>The library pane's column: the header, the command row (the primary, the heart while it is not the primary, the ⋯) and the SAME reader the route page mounts. The scroll key
     /// scopes its position per library slot (the host's).</summary>
-    static BoxEl Body(LibraryShowPaneProps p)
+    static BoxEl Body(LibraryShowPaneProps p, ClassicLibraryLayout layout)
     {
         Element header = ClassicLibraryPaneKit.PaneHeader(p.CoverUrl, p.Eyebrow, p.Title, p.Open,
             R.Type.DenseMeta(p.Publisher) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-            p.Meta);
+            p.Meta, layout);
         Element commands = new BoxEl
         {
             Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Padding = new Edges4(ClassicTiers.PaneInset, Spacing.S, ClassicTiers.PaneInset, Spacing.M),

@@ -5,8 +5,14 @@
 // `TierPolicy` (`LibraryLadders.Layout`, index 0 the one-column drill-in, every higher index a split layout), written with the engine's `TierLadder` so it holds
 // like the window tiers. The host measures the page's own width through `UseTier`: a first mount resolves in its own frame from the same-frame estimate, and a
 // crossing after it commits on the first frame that is not resized and animates (plan 3.3). A structure that declares nothing is always split: the page before tiers.
+//
+// THE NAVIGATOR'S DEFAULT WIDTH PER TIER (`LibraryTierPolicy`, contract 1.21). The persisted width (`library.<kind>.leftw`) is the user's: the host reads it as
+// the user's only while they set it (`ThemeState.IsCustomized`: stored and not the key's default). Until then the navigator rests at the structure's width
+// for the content tier (Classic Huge: 560, the artists' reader list 400, C-Library-Huge / C-LibraryList-Huge), and a crossing re-rests it; the first drag
+// makes the width the user's, and no tier moves it again.
 
 using FluentGpu.Foundation;
+using Wavee.Theming.Contracts;
 
 namespace Wavee.Theming;
 
@@ -25,4 +31,21 @@ public static class LibraryLadders
     public static bool IsSingleColumn(int index) => index <= 0;
 
     static readonly TierLadder s_split = new([new TierEdge(-1f)]);
+}
+
+/// <summary>What a structure decides about the library navigator's width per content tier, while the user has never dragged it (contract 1.21).</summary>
+public sealed record LibraryTierPolicy
+{
+    /// <summary>The navigator's resting width at a Huge content tier (NaN: the key's own default at every tier).</summary>
+    public float HugeNavWidth { get; init; } = float.NaN;
+
+    /// <summary>The artists' navigator (the reader's list) at a Huge content tier (NaN: the key's own default).</summary>
+    public float HugeReaderNavWidth { get; init; } = float.NaN;
+
+    /// <summary>The page before tiers: the key's own default everywhere.</summary>
+    public static LibraryTierPolicy Default { get; } = new();
+
+    /// <summary>The resting width at <paramref name="content"/> for the reader's list (<paramref name="reader"/>) or any other kind; NaN: the key's default.</summary>
+    public float NavWidthFor(WidthTier content, bool reader)
+        => content >= WidthTier.Huge ? (reader ? HugeReaderNavWidth : HugeNavWidth) : float.NaN;
 }

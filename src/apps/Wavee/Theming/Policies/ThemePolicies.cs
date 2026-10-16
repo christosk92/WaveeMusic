@@ -56,6 +56,10 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
     /// that declares nothing is the shell as it shipped.</summary>
     public ArtistTierPolicy ArtistTiers { get; init; } = ArtistTierPolicy.Default;
 
+    /// <summary>What the structure decides for the library navigator per content tier while the user never dragged it (contract 1.21: Classic's Huge 560 / 400).
+    /// A structure that declares nothing keeps the key's own default.</summary>
+    public LibraryTierPolicy LibraryTiers { get; init; } = LibraryTierPolicy.Default;
+
     /// <summary>Everything wrong with the bundle, empty when every core state machine can run on it.</summary>
     public IReadOnlyList<string> Validate()
     {
@@ -72,6 +76,7 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
         if (Overlays is null) problems.Add("Overlays is missing"); else problems.AddRange(Overlays.Validate());
         if (DetailTiers is null) problems.Add("DetailTiers is missing");
         if (ArtistTiers is null) problems.Add("ArtistTiers is missing");
+        if (LibraryTiers is null) problems.Add("LibraryTiers is missing");
         return problems;
     }
 }

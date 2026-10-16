@@ -33,6 +33,21 @@ public static class ThemeState
     /// <summary>Stores the state value of the active theme, clamped.</summary>
     public static void Set<T>(StateKey<T> key, T value) => Set(key, value, Platform.Settings, s_scope.Peek());
 
+    /// <summary>Has the user set this value (contract 1.21)? A value is stored AND it differs from the key's default. The migration-free reading of
+    /// "never dragged": a store that never held the key, or that holds the default an older build wrote on every save, reads as unset, so a tier's
+    /// own default (the Huge library navigator's 560) applies until the user moves it.</summary>
+    public static bool IsCustomized<T>(StateKey<T> key) => IsCustomized(key, Platform.Settings, s_scope.Peek());
+
+    /// <summary>Does the active theme's store hold a value for <paramref name="key"/> (whatever it is)? Contract 1.21.</summary>
+    public static bool IsStored<T>(StateKey<T> key) => Platform.Settings.Has(SettingName(s_scope.Peek(), key.Id));
+
+    /// <summary>As <see cref="IsCustomized{T}(StateKey{T})"/> over <paramref name="settings"/> for <paramref name="themeId"/>.</summary>
+    public static bool IsCustomized<T>(StateKey<T> key, IAppSettings settings, string themeId)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        return settings.Has(SettingName(themeId, key.Id)) && !EqualityComparer<T>.Default.Equals(Get(key, settings, themeId), key.Default);
+    }
+
     /// <summary>As <see cref="Get{T}(StateKey{T})"/> over <paramref name="settings"/> for <paramref name="themeId"/>.</summary>
     public static T Get<T>(StateKey<T> key, IAppSettings settings, string themeId)
     {

@@ -236,4 +236,88 @@ public sealed class ClassicDetailTiersTests
         // The Compact board's row: # · art · title · heart · more (no duration lane, no chevron).
         Assert.Equal(5, Track.TracksFor(in compact, 40f).Length);
     }
+
+    // ── the Huge aside and the Huge 4K record (contract 1.21: C-Album-Huge, C-Album-Huge4K, C-Playlist-Huge, C-PlaylistFollowed-Huge) ─────────
+
+    [Theory]
+    [InlineData(WidthTier.Compact)]
+    [InlineData(WidthTier.Small)]
+    [InlineData(WidthTier.Standard)]
+    public void No_tier_below_Huge_docks_an_aside_or_rests_the_insights_open(WidthTier tier)
+    {
+        var r = ClassicDetailTiers.For(tier);
+        Assert.False(r.Core.AsideDocked);
+        Assert.False(r.Core.InsightsRestOpen);
+        Assert.Null(r.Aside);
+    }
+
+    [Fact]
+    public void Huge_docks_the_boards_asides_and_rests_the_insights_open()
+    {
+        var h = ClassicDetailTiers.Huge;
+        Assert.True(h.Core.AsideDocked);
+        Assert.True(h.Core.InsightsRestOpen);
+        var g = Assert.IsType<ClassicDetailAside>(h.Aside);
+        Assert.Equal(520f, g.WidthFor(DetailKind.Album, body: true));           // C-Album-Huge
+        Assert.Equal(440f, g.WidthFor(DetailKind.Playlist, body: true));        // C-Playlist-Huge: recommendations + insights
+        Assert.Equal(400f, g.WidthFor(DetailKind.Playlist, body: false));       // C-PlaylistFollowed-Huge: the insights alone
+        Assert.Equal(270f, g.ArtistBand);
+        Assert.Equal(96f, g.FanArt);
+        Assert.Equal(4, g.FanColumns);
+    }
+
+    [Fact]
+    public void The_list_keeps_its_inset_before_the_asides_hairline()
+    {
+        var g = ClassicDetailTiers.Huge.Aside!;
+        // C-Album-Huge: the list column's 8 right pad, then the hairline 24 down with 16 either side, then the aside 24 in from the card's edge.
+        Assert.Equal(8f, g.ListInset);
+        Assert.Equal(new Edges4(16f, 24f, 16f, 0f), g.HairlineMargin);
+        Assert.Equal(33f, g.HairlineSpan);
+        Assert.Equal(553f, g.SlotWidthFor(DetailKind.Album, body: true));
+        Assert.Equal(24f, g.PadFor(DetailKind.Album).Right);
+        Assert.Equal(24f, g.PadFor(DetailKind.Album).Top);
+        Assert.Equal(20f, g.PadFor(DetailKind.Playlist).Top);
+        Assert.Equal(496f, g.ContentWidthFor(DetailKind.Album, body: true));
+        Assert.Equal(118f, g.FanCellFor(496f));                                 // four fans 8 apart in the 496 measure
+    }
+
+    [Fact]
+    public void Huge_4K_is_the_wider_album_board()
+    {
+        var w = ClassicDetailTiers.Huge4K;
+        Assert.Equal(WidthTier.Huge, w.Tier);
+        Assert.Equal(360f, w.Core.RailRest);                                     // C-Album-Huge4K: the 360 rail, its art 336
+        Assert.Equal(640f, w.Aside!.WidthFor(DetailKind.Album, body: true));
+        Assert.Equal(360f, w.Aside.ArtistBand);
+        Assert.Equal(120f, w.Aside.FanArt);
+        Assert.Equal(16f, w.Aside.FanRowGap);
+        Assert.Equal(440f, w.Aside.WidthFor(DetailKind.Playlist, body: true));  // no 4K playlist board: Huge's
+        Assert.True(w.Core.AsideDocked);
+        Assert.Equal(2400f, w.PageMaxWidth);                                     // the plan's 2400 cap stays (owner's call)
+        Assert.Same(w.Core, ClassicDetailTiers.Policy.HugeWide);
+    }
+
+    [Theory]
+    [InlineData(2560f, false)]
+    [InlineData(3199f, false)]
+    [InlineData(3200f, true)]
+    [InlineData(3840f, true)]
+    public void A_Huge_window_reads_the_4K_record_from_3200(float width, bool wide)
+    {
+        var facts = WindowTiers.Resolve(ClassicTierFixture.Tiers, width, 1440f, width - 320f);
+        Assert.True(facts.Window >= WidthTier.Huge);
+        var record = ClassicDetailTiers.Of(facts);
+        Assert.Same(wide ? ClassicDetailTiers.Huge4K : ClassicDetailTiers.Huge, record);
+        Assert.Same(record.Core, ClassicDetailTiers.Policy.For(facts));          // the core reads the same record the views read
+    }
+
+    [Fact]
+    public void The_4K_rung_holds_40_narrowing()
+    {
+        var edge = ClassicDetailTiers.HugeWide.Edge;
+        Assert.Equal(ClassicDetailTiers.HugeWideRung, ClassicDetailTiers.HugeWide.Id);
+        Assert.Equal(new TierEdge(3200f, NarrowHold: 40f, WidenHold: 0f), edge);
+        Assert.True(ClassicTierFixture.Tiers.IndexOfRung(ClassicDetailTiers.HugeWideRung) >= 0);
+    }
 }

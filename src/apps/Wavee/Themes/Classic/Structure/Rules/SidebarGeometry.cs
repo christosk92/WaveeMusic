@@ -30,6 +30,9 @@ public static class SidebarGeometry
     public const float RowMarginY = 2f;
     /// <summary>The compact rail (TR:208 NavigationViewCompactPaneLength).</summary>
     public const float RailWidth = 48f;
+    /// <summary>The expanded pane's width from the Huge window tier on while the user never resized it (C-Shell-Huge and every Huge board: 320; the Standard
+    /// boards draw 280, the store's own).</summary>
+    public const float HugeRestWidth = 320f;
     /// <summary>A compact-rail row: the 48 rail less the two 4-px insets.</summary>
     public const float TileWidth = 40f;
 

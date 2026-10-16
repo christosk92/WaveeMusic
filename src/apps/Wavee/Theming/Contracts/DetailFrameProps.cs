@@ -71,6 +71,11 @@ public sealed record DetailFrameProps
     /// and meta) above the content column, whose list bar carries the page's own commands. Appended (contract 1.9).</summary>
     public DetailHeadProps? Head { get; init; }
 
+    /// <summary>The two-column arm's right ASIDE (null: none at this tier, or the page has none): set where the window tier's record docks one
+    /// (<c>DetailTierLayout.AsideDocked</c>) and the page has an aside body or facts to show. What it holds left the rail, the band under the rows and the
+    /// list's tail (<c>Detail.AsideDocked</c>, provided around the frame). Appended (contract 1.21).</summary>
+    public DetailAsideProps? Aside { get; init; }
+
     /// <inheritdoc />
     public bool Equals(DetailFrameProps? other) => ReferenceEquals(this, other);
 
@@ -108,6 +113,27 @@ public sealed record DetailTwoColumnProps
 
     /// <summary>The collapsed strip (null while expanded).</summary>
     public DetailCompactRailProps? CompactRail { get; init; }
+}
+
+/// <summary>The right aside of a two-column page (<see cref="DetailFrameProps.Aside"/>, contract 1.21): the page's own body (the album's release, artist,
+/// fans and "More by"; a playlist's recommended songs) and, on a facts page, the insights the frame's <see cref="DetailFrameProps.Sheet"/> toggle shows
+/// in it instead of a sheet or a dock.</summary>
+public sealed record DetailAsideProps
+{
+    /// <summary>The page's kind (the structure sizes the aside per kind).</summary>
+    public required DetailKind Kind { get; init; }
+
+    /// <summary>The page's aside body (<c>Detail.FrameSlots.Aside</c>), or null: the aside holds only the insights.</summary>
+    public Element? Body { get; init; }
+
+    /// <summary>The page's route key (keys the aside's scroll).</summary>
+    public required string RouteKey { get; init; }
+
+    /// <inheritdoc />
+    public bool Equals(DetailAsideProps? other) => ReferenceEquals(this, other);
+
+    /// <inheritdoc />
+    public override int GetHashCode() => RuntimeHelpers.GetHashCode(this);
 }
 
 /// <summary>The head of a page with no rail (<see cref="DetailFrameProps.Head"/>): the title and the meta line over the list.</summary>

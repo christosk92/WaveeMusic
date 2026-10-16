@@ -104,7 +104,13 @@ public sealed record DetailTableTier(bool CompactRows, bool AlbumColumn, bool Pl
 /// <param name="InsightsDocked">The insights pane docks beside the list (a column of its own) instead of covering it as a sheet.</param>
 /// <param name="RailRest">The rail's resting width in the widest arm where the user never dragged it (0: the kind's own).</param>
 /// <param name="HeroActionExtra">How much taller than the nominal 36 the vertical hero's action row is (the Compact 40 targets: 8).</param>
-public sealed record DetailTierLayout(DetailTableTier Table, bool InsightsDocked, float RailRest, float HeroActionExtra)
+/// <param name="AsideDocked">A two-column page with an aside (<c>Detail.FrameSlots.Aside</c>, or facts to show) docks it as a right column: the album's release
+/// facts, artist, fans and "More by", a playlist's recommendations and insights, which then leave the rail, the band under the rows and the list's tail
+/// (<c>Detail.AsideDocked</c>). Appended (contract 1.21).</param>
+/// <param name="InsightsRestOpen">The insights pane rests OPEN where it is a column of the page (docked, or in the aside) until the user moves it; never
+/// over the list as a sheet (tuned Classic I1: a sheet never opens by itself). Appended (contract 1.21).</param>
+public sealed record DetailTierLayout(DetailTableTier Table, bool InsightsDocked, float RailRest, float HeroActionExtra,
+    bool AsideDocked = false, bool InsightsRestOpen = false)
 {
     /// <summary>The shell as it shipped: the density's rows, the sheet, the kinds' own rail widths, the nominal action row.</summary>
     public static DetailTierLayout Standard { get; } = new(DetailTableTier.Standard, InsightsDocked: false, RailRest: 0f, HeroActionExtra: 0f);
@@ -135,8 +141,20 @@ public sealed record DetailTierPolicy(DetailTierLayout Compact, DetailTierLayout
         _ => Huge,
     };
 
-    /// <summary>The layout of the facts' window tier; Standard's where no frame resolved the tiers (a view mounted alone).</summary>
-    public DetailTierLayout For(in TierFacts facts) => facts.Policy is null ? Standard : For(facts.Window);
+    /// <summary>The Huge band's wide twin (Classic's Huge 4K: C-Album-Huge4K), used from <see cref="HugeWideRung"/> on; null: Huge's at every Huge width.
+    /// Appended (contract 1.21).</summary>
+    public DetailTierLayout? HugeWide { get; init; }
+
+    /// <summary>The window-width rung of the structure's <see cref="TierPolicy.Rungs"/> from which a Huge window reads <see cref="HugeWide"/>. Appended (contract 1.21).</summary>
+    public string? HugeWideRung { get; init; }
+
+    /// <summary>Is the facts' window a Huge one past <see cref="HugeWideRung"/>?</summary>
+    public bool IsHugeWide(in TierFacts facts)
+        => HugeWide is not null && HugeWideRung is { } rung && facts.Policy is { } policy && facts.Window >= WidthTier.Huge
+           && policy.IndexOfRung(rung) >= 0 && facts.Rung(rung);
+
+    /// <summary>The layout of the facts' window tier (the wide Huge twin past its rung); Standard's where no frame resolved the tiers (a view mounted alone).</summary>
+    public DetailTierLayout For(in TierFacts facts) => facts.Policy is null ? Standard : IsHugeWide(in facts) ? HugeWide! : For(facts.Window);
 
     /// <summary>The rail title's cap at height rung <paramref name="rung"/> (<see cref="DetailLadders.Height"/>).</summary>
     public float RailTitleFor(int rung) => rung >= DetailLadders.HeightRungs - 1 ? RailTitleTall : RailTitleShort;

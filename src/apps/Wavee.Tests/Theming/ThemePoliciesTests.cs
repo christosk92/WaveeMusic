@@ -31,11 +31,12 @@ public sealed class ClassicPoliciesTests
         Assert.Equal(ThemePolicies.Default, ClassicPolicies.Bundle with
         {
             Tiers = TierPolicy.Standard, Overlays = OverlayPolicy.Default, DetailTiers = DetailTierPolicy.Default, ArtistTiers = ArtistTierPolicy.Default,
+            LibraryTiers = LibraryTierPolicy.Default, NavPane = ClassicPolicies.NavPane with { HugeWidth = float.NaN },
             Panel = ClassicPolicies.Panel with { Tiers = default }, PlayerBar = ClassicPolicies.PlayerBar with { Windows = default },
         });
         Assert.NotSame(TierPolicy.Standard, ClassicPolicies.Bundle.Tiers);
         Assert.NotEqual(ThemePolicies.Default, ClassicPolicies.Bundle);
-        Assert.Equal(NavPanePolicy.Default, ClassicPolicies.NavPane);
+        Assert.Equal(NavPanePolicy.Default, ClassicPolicies.NavPane with { HugeWidth = float.NaN });   // Classic rests an unresized pane at 320 from Huge (1.21)
         Assert.Equal(PanelPolicy.Default, ClassicPolicies.Panel with { Tiers = default });
         Assert.Equal(PlayerBarPolicy.Default, ClassicPolicies.PlayerBar with { Windows = default });
         Assert.NotEqual(PanelPolicy.Default, ClassicPolicies.Panel);              // Classic places its panel per window tier (TC2)
@@ -708,4 +709,42 @@ public sealed class PanelPolicyRulesTests
         Assert.Equal(300f, Video.Pip.FitHeight(360f, 9f / 16f, 900f, taller.Pip));
         Assert.Equal(202.5f, Video.Pip.FitHeight(360f, 9f / 16f, 900f, Classic.Pip), 2);
     }
+}
+
+/// <summary>The sidebar's resting width per window tier (contract 1.21).</summary>
+public sealed class NavPaneRestingWidthTests
+{
+    // ── the sidebar's resting width per tier (contract 1.21: C-Shell-Huge draws 320, the Standard boards 280) ─────────────────────────
+
+    [Theory]
+    [InlineData(WidthTier.Small, 280f)]
+    [InlineData(WidthTier.Standard, 280f)]
+    [InlineData(WidthTier.Huge, 320f)]
+    [InlineData(WidthTier.Huge4K, 320f)]
+    public void A_pane_never_resized_rests_at_its_tiers_width(WidthTier tier, float expected)
+        => Assert.Equal(expected, ClassicPolicies.NavPane.RestingWidthFor(tier, stored: 280f, userSet: false));
+
+    [Theory]
+    [InlineData(WidthTier.Standard)]
+    [InlineData(WidthTier.Huge)]
+    public void A_resized_pane_keeps_the_users_width_at_every_tier(WidthTier tier)
+        => Assert.Equal(300f, ClassicPolicies.NavPane.RestingWidthFor(tier, stored: 300f, userSet: true));
+
+    [Fact]
+    public void A_structure_without_a_huge_width_keeps_the_stored_one()
+    {
+        Assert.True(float.IsNaN(NavPanePolicy.Default.HugeWidth));
+        Assert.Equal(280f, NavPanePolicy.Default.RestingWidthFor(WidthTier.Huge, stored: 280f, userSet: false));
+        Assert.Equal(320f, ClassicPolicies.NavPane.HugeWidth);
+    }
+
+    [Theory]
+    [InlineData(false, false, 320f, false)]   // nothing stored: the tier's
+    [InlineData(false, true, 280f, false)]    // the Classic migration's default
+    [InlineData(false, true, 320f, false)]    // the curated design's default (and the fresh width)
+    [InlineData(false, true, 340f, false)]    // v3's default
+    [InlineData(false, true, 300f, true)]     // a width no default explains: a pre-flag drag
+    [InlineData(true, true, 280f, true)]      // flagged by a resize
+    public void The_stored_width_is_the_users_once_a_resize_flagged_it_or_no_default_explains_it(bool flagged, bool stored, float width, bool user)
+        => Assert.Equal(user, SidebarPaneBounds.IsUserWidth(flagged, stored, width));
 }

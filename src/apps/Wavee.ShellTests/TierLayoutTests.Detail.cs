@@ -8,7 +8,10 @@
 //   · the page's ARM is the mode ladder's answer for the page's own width (the vertical hero below 560, the rail arm or a page with no rail's
 //     head above it), and only that arm is mounted once the page has settled;
 //   · the track table's form: no column header in the Compact row form;
-//   · the insights pane docks as a column at Huge and only at Huge (a two-column or head arm of a track page);
+//   · the insights pane docks as a column at Huge and only at Huge (the head arm of a page with no rail: Liked Songs);
+//   · the ASIDE (contract 1.21): only at Huge, in the two-column arm, at the board's width for the kind (C-Album-Huge 520, -Huge4K 640;
+//     C-Playlist-Huge 440 / C-PlaylistFollowed-Huge 400), behind its hairline, the list keeping its 8 inset before it; nowhere below Huge;
+//     with it docked the album's band leaves About / Fans out and the rail its release row (nothing shown twice);
 //   · at Compact every hit target of the hero's action row and of the list bar is at least 40 x 40.
 
 using FluentGpu;
@@ -64,6 +67,8 @@ public sealed partial class TierLayoutTests
         Assert.Same(record.Core, ShellPolicy.Now.DetailTiers.For(tiers));
         Assert.Equal(size.Window == WidthTier.Compact, record.Core.Table.CompactRows);
         Assert.Equal(size.Window >= WidthTier.Huge, record.InsightsDocked);
+        Assert.Equal(size.Window >= WidthTier.Huge, record.Core.AsideDocked);
+        Assert.Equal(size.Window >= WidthTier.Huge, record.Aside is not null);
 
         // One arm on screen once the page has settled, and it is the mode ladder's answer for the page's own width.
         var arms = shell.FindPrefix(ArmPrefix);
@@ -80,10 +85,13 @@ public sealed partial class TierLayoutTests
         {
             // The Compact row form has no column header: its sort labels never mount.
             if (size.Window == WidthTier.Compact) Assert.Empty(shell.FindPrefix("sort-label:"));
-            // The insights pane docks as a column at Huge, and only there (a track page's two-column or head arm composes the dock slot).
-            bool docked = size.Window >= WidthTier.Huge && expected != "vertical";
+            // The insights pane docks as a column at Huge, and only there, on a page with no rail (Liked: the head arm composes the dock slot); a rail
+            // page's insights live in its aside at Huge instead.
+            bool docked = size.Window >= WidthTier.Huge && expected == "head";
             Assert.True(shell.FindPrefix("insights:dock-column").Count == (docked ? 1 : 0), $"{size.Name}: the docked insights column");
         }
+
+        if (rail) AssertAside(shell, record, size, expected == "two-column");
 
         if (size.Window == WidthTier.Compact) AssertCompactPageTargets(shell, size);
     }
@@ -107,4 +115,49 @@ public sealed partial class TierLayoutTests
                 }
         _ = targets;   // a page whose header is still pending lays out no action row yet; the bar's tools are there from the first frame
     }
+
+    /// <summary>The aside (contract 1.21): its column only at Huge in the two-column arm, at the record's width for the page's kind, after the hairline 16
+    /// past the list's 8 inset, inside the card; below Huge (and in any other arm) no column at all.</summary>
+    static void AssertAside(Shell.HeadlessShell shell, ClassicDetailTier record, TierSize size, bool twoColumn)
+    {
+        var scene = shell.Host.Scene;
+        var columns = shell.FindPrefix("aside:scroll:");
+        if (size.Window < WidthTier.Huge || !twoColumn)
+        {
+            Assert.True(columns.Count == 0, $"{size.Name}: an aside column below Huge or outside the two-column arm");
+            var slot = shell.Find("detail:aside");
+            if (!slot.IsNull && size.Window < WidthTier.Huge)
+                Assert.True(scene.AbsoluteRect(slot).W <= 0.5f, $"{size.Name}: the aside slot is {scene.AbsoluteRect(slot).W} wide below Huge");
+            return;
+        }
+        if (columns.Count == 0) return;   // a page with neither an aside body nor facts docks none (a show)
+        var g = record.Aside!;
+        var column = scene.AbsoluteRect(columns[0].Node);
+        float[] widths = [g.AlbumWidth, g.PlaylistWidth, g.InsightsWidth];
+        Assert.True(widths.Any(w => MathF.Abs(w - column.W) <= 0.5f), $"{size.Name}: the aside column is {column.W}, none of the board's {string.Join(" / ", widths)}");
+        var card = scene.AbsoluteRect(Node(shell, ClassicFrameLayout.ContentCardKey));
+        Assert.True(column.X + column.W <= card.X + card.W + 0.5f, $"{size.Name}: the aside runs past the card ({column} in {card})");
+        // The rows keep their inset: the list column ends 16 (the hairline's margin) before the hairline, its rows 8 inside that.
+        var list = scene.AbsoluteRect(Node(shell, "right:tracks"));
+        var hairline = scene.AbsoluteRect(Node(shell, "aside:hairline"));
+        Assert.True(MathF.Abs(hairline.X - (list.X + list.W) - g.HairlineMargin.Left) <= 0.5f,
+            $"{size.Name}: the list ends at {list.X + list.W}, the hairline is at {hairline.X} (want {g.HairlineMargin.Left} between)");
+        Assert.True(list.X + list.W + g.HairlineSpan <= column.X + 0.5f, $"{size.Name}: the list overlaps the aside");
+    }
+
+    /// <summary>Huge's album aside holds the release, artist and fans, and they leave the band and the rail: nothing is shown twice.</summary>
+    [Theory]
+    [InlineData("huge 2560x1440")]
+    [InlineData("huge4k 3840x2160")]
+    public void The_huge_album_aside_holds_what_the_band_and_the_rail_drop(string size) => AssertPage(Album, size, (shell, tiers) =>
+    {
+        var record = ClassicDetailTiers.Of(tiers);
+        Assert.Same(size.StartsWith("huge4k", StringComparison.Ordinal) ? ClassicDetailTiers.Huge4K : ClassicDetailTiers.Huge, record);
+        if (shell.FindPrefix("aside:scroll:").Count == 0) return;   // the arm settled vertical (a Hero page layout): no aside, the band keeps it all
+        Assert.Equal(record.Aside!.AlbumWidth, shell.Host.Scene.AbsoluteRect(shell.FindPrefix("aside:scroll:")[0].Node).W, 0.5f);
+        // At most one artist card and one fans section on the page: the aside's.
+        Assert.True(shell.FindPrefix("about:").Count == 0, "the band still draws About the artist beside the aside's card");
+        Assert.True(shell.FindPrefix("aside:fans").Count <= 1);
+        Assert.True(shell.FindPrefix("hdr:release").Count == 0 && shell.FindPrefix("rail:release").Count == 0, "the rail still carries About this release");
+    });
 }

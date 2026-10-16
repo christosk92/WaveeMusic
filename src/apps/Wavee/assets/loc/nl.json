@@ -412,7 +412,8 @@
       "creator": "artist",
       "recentlyAdded": "added",
       "releaseDate": "year",
-      "albums": "albums"
+      "albums": "albums",
+      "more": "meer"
     },
     "scope": {
       "inLibrary": "in your library",

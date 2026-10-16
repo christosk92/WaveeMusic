@@ -51,6 +51,9 @@ internal static partial class ClassicLibraryPage
         // The layout tier's record: the structure's ladder (the host's tier signal, `props.Collapsed`) decides the one-column drill-in, the content tier the split's numbers.
         cache.Layout = ClassicLibraryTiers.Of(ctx.Tier(), props.Collapsed);
         cache.Prepare();
+        // The navigator eases to a tier's resting width (contract 1.21: 340 -> 560 crossing into Huge while it was never dragged); a grip drag must track the
+        // pointer 1:1, so layout transitions are held off for the drag's length (the shell does the same for its sidebar seam).
+        ctx.Hooks.UseEffect(cache.SyncDrag);
 
         Element inner;
         if (props.Collapsed)
@@ -75,7 +78,7 @@ internal static partial class ClassicLibraryPage
             {
                 Key = "lib:wide", Animate = s_arm,
                 Direction = 0, Grow = 1f, AlignItems = FlexAlign.Stretch,
-                Children = [LeftColumn(props, cache), cache.LeftGrip ??= LeftGrip(props), right],
+                Children = [LeftColumn(props, cache), cache.LeftGrip ??= LeftGrip(props, cache.Dragging), right],
             };
         }
         // The page publishes no shell material and tints nothing: the library is the app's accent-neutral browser.
@@ -94,6 +97,14 @@ internal static partial class ClassicLibraryPage
         public Action<RectF>? OnBounds;
         public Func<int, Element>? NavContent;
         public Func<Element>? NavNoMatch, NavShimmer;
+        /// <summary>The navigator grip is being dragged (the splitter writes it); <see cref="SyncDrag"/> holds layout transitions off meanwhile.</summary>
+        public readonly Signal<bool> Dragging = new(false);
+        public readonly Action SyncDrag;
+        public PageCache()
+        {
+            var dragging = Dragging;
+            SyncDrag = () => FluentGpu.Dsl.Motion.SetLayoutTransitionsSuppressed(MotionSuppressionSource.AppResize, dragging.Value);
+        }
         Func<BoundItemScope<LibraryNavItem>, Element>? _slotT, _slotCompactT, _cardT, _cardCompactT;
 
         public void Prepare()
@@ -135,14 +146,15 @@ internal static partial class ClassicLibraryPage
         Key = "lib:nav",
         // The remembered width (`library.<kind>.leftw`, written only by the grip's release), which gives way by flex, down to the grip's floor, when the pane's floor
         // (`RightMin`) would not fit beside it: the tier never rewrites the stored width.
-        Width = p.LeftW(), Shrink = 1f, MinWidth = ClassicLibraryRules.LeftMin,
+        // A tier's resting width (an undragged navigator: 560 at Huge) eases in instead of snapping; a drag is 1:1 (the template holds transitions off for it).
+        Width = p.LeftW(), Shrink = 1f, MinWidth = ClassicLibraryRules.LeftMin, Animate = Design.Reveal.Resize,
         Children = [Toolbar(p, c), p.FullSearch ? LeftSearchBody(p, c) : ListBody(p, c)],
     };
 
     /// <summary>The two column seams, each built ONCE into its cached field — so the key goes on at construction rather than through a per-render <c>with</c> clone. Both carry a bound
     /// <c>Fill</c> and a <c>Splitter</c> bound to their own width signal, which is the reason they may not be paired by ordinal with anything else.</summary>
-    static Element LeftGrip(LibraryPageProps p)
-        => ColumnGrip(p.LeftW(), ClassicLibraryRules.LeftMin, ClassicLibraryRules.LeftMax, p.CommitLeft) with { Key = "lib:grip" };
+    static Element LeftGrip(LibraryPageProps p, Signal<bool> dragging)
+        => ColumnGrip(p.LeftW(), ClassicLibraryRules.LeftMin, ClassicLibraryRules.LeftMax, p.CommitLeft, dragging) with { Key = "lib:grip" };
 
     /// <inheritdoc cref="LeftGrip"/>
     static Element MidGrip(LibraryPageProps p)
@@ -150,7 +162,7 @@ internal static partial class ClassicLibraryPage
 
     /// <summary>THE column seam (W18, Y1): a 16-DIP grip strip with a 1-DIP <c>StrokeDividerDefault</c> hairline centred behind the splitter's hover thumb — the only thing that splits
     /// the navigator from the detail on the one content card. The seam brush is a LIVE thunk, so a theme swap re-resolves it without a render.</summary>
-    static Element ColumnGrip(Signal<float> width, float min, float max, Action onCommit) => new BoxEl
+    static Element ColumnGrip(Signal<float> width, float min, float max, Action onCommit, Signal<bool>? dragging = null) => new BoxEl
     {
         Width = Splitter.StripW, Shrink = 0f, ZStack = true,
         Children =
@@ -158,7 +170,7 @@ internal static partial class ClassicLibraryPage
             new BoxEl { Width = ClassicLibraryRules.SeamHairline, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Center, HitTestVisible = false,
                         Fill = Prop.Of(static () => Tok.StrokeDividerDefault) },
             new BoxEl { Direction = 1, AlignItems = FlexAlign.Stretch, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
-                        Children = [Splitter.Create(width, onCommit, new Splitter.SplitterOptions { Min = min, Max = max })] },
+                        Children = [Splitter.Create(width, onCommit, new Splitter.SplitterOptions { Min = min, Max = max }, dragging: dragging)] },
         ],
     };
 

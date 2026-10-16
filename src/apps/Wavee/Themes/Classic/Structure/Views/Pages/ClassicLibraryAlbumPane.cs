@@ -47,7 +47,9 @@ internal static class ClassicLibraryAlbumPane
 
         // The Compact pane (the drill-in's leaf) draws its commands 40 tall: the targets of a one-column page.
         float box = ctx.Tier().Content == WidthTier.Compact ? ClassicLibraryPaneRules.CompactCommandBox : ClassicLibraryPaneRules.CommandBox;
-        BoxEl child = props.State == AlbumPaneState.Header ? ClassicLibraryPaneKit.HeaderSkeleton() : Body(props, cell, box);
+        // The pane header's metrics are the library tier's (C-Library-Huge: the 160 cover in a 200 band).
+        var layout = ClassicLibraryTiers.Of(ctx.Tier(), single: false);
+        BoxEl child = props.State == AlbumPaneState.Header ? ClassicLibraryPaneKit.HeaderSkeleton(layout) : Body(props, cell, box, layout);
         // The host persists; only the child is keyed, so the swap is an orphaned fade under a rising entrance instead of a remount of this component (which would lose the table's scroll and
         // re-ask the model).
         return new BoxEl
@@ -72,7 +74,7 @@ internal static class ClassicLibraryAlbumPane
         }
     }
 
-    static BoxEl Body(LibraryAlbumPaneProps p, PaneCell cell, float box)
+    static BoxEl Body(LibraryAlbumPaneProps p, PaneCell cell, float box, ClassicLibraryLayout layout)
     {
         Element rows = p.State == AlbumPaneState.Failed
             // The Error voice supplies its own subtitle and Retry label; only the headline is ours.
@@ -86,7 +88,7 @@ internal static class ClassicLibraryAlbumPane
             Direction = 1, Grow = 1f, ClipToBounds = true,
             Children =
             [
-                ClassicLibraryPaneKit.PaneHeader(p.CoverUrl, p.Eyebrow, p.Title, p.Open, ClassicDetailKit.ArtistLine(p.Artists), p.Meta),
+                ClassicLibraryPaneKit.PaneHeader(p.CoverUrl, p.Eyebrow, p.Title, p.Open, ClassicDetailKit.ArtistLine(p.Artists), p.Meta, layout),
                 ClassicLibraryPaneKit.PaneCommands(p.Play, p.Shuffle,
                     Embed.Comp(() => new Controls.SaveButton { Uri = p.Uri, Name = p.Title, Box = box }) with { Key = p.SaveKey },
                     ClassicDetailKit.MoreButton(p.More, box), p.Open, box > ClassicLibraryPaneRules.CommandBox ? box : 0f),

@@ -8,7 +8,11 @@
 //   · the TWO-COLUMN arm: the centred row (MaxWidth `R.Space.PageMaxW`) of [rail | content] with the grip in a seam layer above it, and the
 //     collapsed 96-DIP identity strip in the rail's place; a TRACK page's content column carries the insights sheet over its list (I1);
 //   · the HEAD arm of a page with no rail (Liked Songs, tuned Classic D16): the page head (`ClassicDetailHead.cs`) over the content column, in
-//     the same centred measure, the list inset so its plates start 8 before the head's words.
+//     the same centred measure, the list inset so its plates start 8 before the head's words;
+//   · the ASIDE (contract 1.21, Classic Huge: C-Album-Huge, C-Playlist-Huge, C-PlaylistFollowed-Huge): a column right of the list behind a hairline,
+//     holding the page's aside body and, on a facts page, the insights (the toggle shows them there instead of a sheet or a dock). Its slot is in the
+//     row at EVERY tier (width 0 where none docks), so a crossing never re-parents the list: the slot eases its width open and closed and the list
+//     yields to it, the column inside keeping its full width while the slot reveals it.
 //
 // WHAT THE HOST DECIDED (core, `Detail.FrameHost`): the page mode and both anti-flicker fail-safes, the Hero page-layout override, which rail cell
 // and its live width and collapsed flag, the page-aware cap, the rung that picks the title cap and the description clamp, the accent, the tint and
@@ -91,7 +95,9 @@ internal static partial class ClassicDetailFrame
         if (p.Sheet is { } listSheet)
         {
             var open = listSheet.Toggle.Open;
-            bool docked = ClassicDetailTiers.Of(ctx.Tier()).InsightsDocked;
+            // With an aside the insights live in it (the toggle shows them there): no sheet over the list and no dock beside it.
+            bool inAside = p.Aside is not null;
+            bool docked = !inAside && detailTier.InsightsDocked;
             right = right with
             {
                 Direction = 0,
@@ -103,7 +109,7 @@ internal static partial class ClassicDetailFrame
                         Children =
                         [
                             list,
-                            docked
+                            docked || inAside
                                 ? new BoxEl { Key = "insights:layer", Grow = 1f, HitTestVisible = false }
                                 : new BoxEl
                                 {
@@ -162,7 +168,7 @@ internal static partial class ClassicDetailFrame
             // 20-DIP slot in the row, but the grip itself lives in the seam layer in BOTH arms.
             rowKids = [ctx.View(ViewKeys.DetailCompactRail, tc.CompactRail!),
                        new BoxEl { Key = "detail-rail-grip-slot", Width = tc.CollapsedGripWidth, Shrink = 0f, HitTestVisible = false },
-                       right];
+                       Inset(right, p, detailTier), AsideSlot(p, detailTier)];
             seam = SeamOverlay(tc.CompactWidth, Grip(tc, collapsedNow: true));
         }
         else
@@ -188,7 +194,7 @@ internal static partial class ClassicDetailFrame
             };
             // The expanded grip takes NO width in the row: it floats over the seam (SeamOverlay), so the gap between the rail and the list
             // is the rail's own right pad plus the rows' inset (8 + 8), the same as a fixed rail.
-            rowKids = [railFaded, right];
+            rowKids = [railFaded, Inset(right, p, detailTier), AsideSlot(p, detailTier)];
             if (tc.Resizable) seam = SeamOverlay(tc.RailWidth, Grip(tc, collapsedNow: false));
         }
 
@@ -237,6 +243,50 @@ internal static partial class ClassicDetailFrame
         Enter = ClassicDetailLayout.ArmFade, Exit = ClassicDetailLayout.ArmFade, Transition = ClassicDetailLayout.ArmFadeMotion,
         Children = [root],
     };
+
+    // ══ 1b. THE ASIDE (contract 1.21) ═════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The list column beside a docked aside keeps the board's 8 inset before the hairline (C-Album-Huge: the rows never run to the card's edge).</summary>
+    static BoxEl Inset(BoxEl right, DetailFrameProps p, ClassicDetailTier tier)
+        => p.Aside is not null && tier.Aside is { } g ? right with { Padding = new Edges4(0f, 0f, g.ListInset, 0f) } : right;
+
+    /// <summary>The aside's slot, the row's last child at every tier: width 0 where no aside docks, else the hairline (24 over it, 16 each side) and the
+    /// column (C-Album-Huge 520 / -Huge4K 640, C-Playlist-Huge 440, C-PlaylistFollowed-Huge 400) with its own scroller. An aside that holds only the
+    /// insights follows their toggle (0 closed), the slot easing its width with the insights dock's dynamics, so the list yields instead of jumping.</summary>
+    static Element AsideSlot(DetailFrameProps p, ClassicDetailTier tier)
+    {
+        if (p.Aside is not { } aside || tier.Aside is not { } g)
+            return new BoxEl { Key = "detail:aside", Width = 0f, Shrink = 0f, MinHeight = 0f, Animate = ClassicDetailLayout.DockReveal };
+        bool body = aside.Body is not null;
+        var insights = p.Sheet is { Facts: not null } sheet ? sheet : null;
+        float columnW = g.WidthFor(aside.Kind, body);
+        float slotW = g.SlotWidthFor(aside.Kind, body);
+        var pad = g.PadFor(aside.Kind);
+        float content = g.ContentWidthFor(aside.Kind, body);
+        var kids = new List<Element>(2);
+        if (aside.Body is { } b) kids.Add(b);
+        if (insights is { } i) kids.Add(ClassicInsights.AsideSection(i.Toggle, i.Facts!, content, g.InsightsGap));
+        Prop<float> width = slotW;
+        if (!body && insights is { } only)
+        {
+            var open = only.Toggle.Open;
+            width = Prop.Of(() => open.Value ? slotW : 0f);
+        }
+        return new BoxEl
+        {
+            Key = "detail:aside", Direction = 0, Shrink = 0f, MinHeight = 0f, ClipToBounds = true,
+            Width = width, Animate = ClassicDetailLayout.DockReveal,
+            Children =
+            [
+                new BoxEl { Key = "aside:hairline", Width = 1f, Shrink = 0f, Margin = g.HairlineMargin, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) },
+                Ui.ScrollView(new BoxEl
+                {
+                    Direction = 1, Width = columnW, Gap = aside.Kind == DetailKind.Album ? g.AlbumGap : g.PlaylistGap, Padding = pad,
+                    Children = kids.ToArray(),
+                }) with { Key = "aside:scroll:" + aside.RouteKey, Width = columnW, Shrink = 0f, MinHeight = 0f },
+            ],
+        };
+    }
 
     // ══ 2. THE GRIP AND ITS SEAM ═══════════════════════════════════════════════════════════════════════════════════════════
 

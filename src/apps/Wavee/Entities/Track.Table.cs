@@ -985,6 +985,8 @@ public readonly partial struct Track
             _overlay = UseContext(Overlay.Service);
             _hooks = UseContext(InputHooks.Current);
             _scrollScope = UseContext(Shell.PageScrollScope);
+            // The frame's docked aside holds the recommendations then (contract 1.21): the list does not append them a second time.
+            bool asideDocked = UseContext(Detail.AsideDocked);
             _post = UsePost();
             // The structure's row templates (T8a): resolved once per host render; the slots read `_listStyle` on their rare renders.
             var registry = UseContext(global::FluentGpu.Theming.ViewRegistry.Context);
@@ -1088,7 +1090,7 @@ public readonly partial struct Track
             float stickyInset = Detail.VerticalLayout.StickyClipInset(extent, TableRules.HeaderHeightFor(shape.Set));
             UseLayoutEffect(() => ApplyItemBand(stickyInset), DepKey.From(stickyInset, (float)_resetEpoch));
 
-            bool recsCapable = cfg.Recommendations && !args.Embedded && !vertical && P.Recommendations is not null;
+            bool recsCapable = cfg.Recommendations && !args.Embedded && !vertical && !asideDocked && P.Recommendations is not null;
             var listState = Playlist.RowsStateOf(snap.State is EdgeState.Partial or EdgeState.Complete, snap.Count, visible);
             bool recsLive = recsCapable && listState is PlaylistRowsState.Rows or PlaylistRowsState.Empty;
             int listTotal = visible + (recsLive ? 1 : 0);
