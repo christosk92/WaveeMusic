@@ -8,7 +8,11 @@
 // ISOLATION. xUnit v3 runs the classes in a different order on every run, and the host is ONE process: whatever a fact
 // leaves in process state is what the next fact starts from. `FactIsolation` (assembly attribute below) puts back,
 // before every fact, the process state a fact cannot be expected to restore because production keeps it on purpose:
-// the navigation (a remount opens on the page the last root showed) and, as a guard, Classic's option values.
+// the navigation (a remount opens on the page the last root showed), the window tiers (`ThemeHost.Facts.Tiers` is the
+// last mounted window's until the next root resolves its own) and, as a guard, Classic's option values.
+//
+// THE BOOT LOG. The app log is a 4096-entry ring and a full run writes well over that, so the boot's own lines are gone
+// long before the last fact: the host keeps the ring as the boot left it (`BootLog`).
 
 using System.Collections.Concurrent;
 using System.Reflection;
@@ -39,6 +43,12 @@ public sealed class ShellHost : IDisposable
     /// <summary>Classic's option values as the boot left them (the stamps of <see cref="ThemeHost.Values"/>).</summary>
     (int Structure, int Style, int Composition) _bootOptions;
 
+    /// <summary>The window tiers as the boot left them (no window mounted yet).</summary>
+    TierFacts _bootTiers;
+
+    /// <summary>The app log as the boot left it, oldest first: what the ring held before the first fact ran.</summary>
+    public WaveeLogEntry[] BootLog { get; private set; } = [];
+
     public ShellHost()
     {
         _thread = new Thread(Loop) { Name = "wavee-shell-ui", IsBackground = true };
@@ -52,6 +62,8 @@ public sealed class ShellHost : IDisposable
             // colour, from the first frame on: a cover asked while no grader exists is marked failed for good.
             Palette.Filler = static (uris, _) => Task.FromResult(Array.ConvertAll(uris, static _ => (Palette.Graded?)FixtureGrade));
             _bootOptions = OptionStamps();
+            _bootTiers = ThemeHost.Facts.Peek().Tiers;
+            BootLog = Log.Snapshot();
         });
         Instance = this;
     }
@@ -59,9 +71,12 @@ public sealed class ShellHost : IDisposable
     static (int, int, int) OptionStamps()
         => (ThemeHost.Values.Structure.Stamp, ThemeHost.Values.Style.Stamp, ThemeHost.Values.Composition.Stamp);
 
-    /// <summary>Between facts (UI thread, nothing mounted): the navigation back to a fresh session's Home, and Classic, alone
-    /// and with the options the boot left, as the active theme. Every fact that changes an option or installs a theme puts it
-    /// back itself; the theme half only catches one that did not.</summary>
+    /// <summary>Between facts (UI thread, nothing mounted): the navigation back to a fresh session's Home, the window tiers back
+    /// to the boot's, and Classic, alone and with the options the boot left, as the active theme. Every fact that changes an
+    /// option or installs a theme puts it back itself; the theme half only catches one that did not. The tiers are put back
+    /// because every mount leaves its window's: a frame or an installed-theme harness republishes its own, but a view drawn
+    /// under a composition (its own facts) and any code reading <c>ThemeHost.Facts</c> outside a mount would otherwise see the
+    /// window of whichever fact ran before.</summary>
     internal void ResetBetweenFacts()
         => Run(() =>
         {
@@ -69,6 +84,7 @@ public sealed class ShellHost : IDisposable
             if (!ThemeHost.Current.Peek().Manifest.Id.Equals(ClassicTheme.Id, StringComparison.Ordinal) || ThemeCatalog.Installed.Count != 1)
                 ClassicAlt.RestoreClassic();
             if (OptionStamps() != _bootOptions) ThemeHost.ResetOptions(ClassicTheme.Id);
+            ThemeHost.PublishTiers(in _bootTiers);
         });
 
     static readonly Scheme FixtureScheme = new(0xFF2E4A7Au, 0xFF3D5F99u, 0xFFFFFFFFu, 0xFFB3C2DDu, 0xFF8FB8FFu);

@@ -11,12 +11,14 @@ namespace Wavee.ShellTests;
 
 public sealed class ShellSmokeTests(ShellHost host)
 {
+    // The log as the boot left it, not the live ring: a full run writes more than the ring holds, so by a late fact the
+    // boot's lines are gone (`ShellHost.BootLog`).
     [Fact]
     public void The_boot_leaves_the_gui_marks_in_the_gui_order()
     {
         string[] expected = ["boot.platform", "boot.entities", "boot.playback", "boot.pages", "boot.documents"];
         var marks = new List<string>();
-        foreach (var entry in Log.Snapshot())
+        foreach (var entry in host.BootLog)
             if (entry.Category == "app" && entry.EventId.StartsWith("boot.", StringComparison.Ordinal) && !marks.Contains(entry.EventId))
                 marks.Add(entry.EventId);
         Assert.Equal(expected, marks);

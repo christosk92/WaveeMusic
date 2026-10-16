@@ -45,8 +45,9 @@ internal sealed class ClassicRecentsCalendar : Component
     {
         var host = _host;
         var calendar = host.ShapeNow.Calendar;
+        var facts = UseContext(ThemeFactsContext.Signal);   // the tiers this page is drawn in, as its template reads them
         Element grid = ItemsView.Create(calendar.Months.Length, _monthCard,
-            RepeatLayout.GridFit(RecentsLayout.CalGridW, ClassicRecentsTiers.Of(ThemeHost.Facts.Value.Tiers).CalendarGap, RecentsLayout.MonthCardHeight(RecentsView.MaxWeeks(calendar))),
+            RepeatLayout.GridFit(RecentsLayout.CalGridW, ClassicRecentsTiers.Of(facts is null ? TierFacts.Unknown : facts.Value.Tiers).CalendarGap, RecentsLayout.MonthCardHeight(RecentsView.MaxWeeks(calendar))),
             new ListOptions
             {
                 SelectionMode = ItemsSelectionMode.None, Selector = SelectorVisual.None,

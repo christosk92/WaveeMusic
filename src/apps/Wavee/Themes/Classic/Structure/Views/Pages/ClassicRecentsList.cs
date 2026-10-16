@@ -33,7 +33,9 @@ internal sealed class ClassicRecentsSurface(IRecentsHost host, string? token, in
         Element detail = Embed.Comp(() => new ClassicRecentsListSurface(host, token)) with { Key = "recents-list:" + suffix };
         Element rail = Embed.Comp(() => new ClassicRecentsRail(host)) with { Key = "recents-rail:" + suffix };
         // The day rail is the record's (Compact has none): read here, so a crossing re-renders the surface in place and the rail fades in or out as an Enter / Exit.
-        var layout = ClassicRecentsTiers.Of(ThemeHost.Facts.Value.Tiers);
+        // The tiers of the facts this page is drawn in (the same signal the page's ctx.Tier() reads), never the process's last-published window.
+        var facts = UseContext(ThemeFactsContext.Signal);
+        var layout = ClassicRecentsTiers.Of(facts is null ? TierFacts.Unknown : facts.Value.Tiers);
         Element zoomedIn = new BoxEl
         {
             Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Gap = layout.Rail ? Spacing.M : 0f, AlignItems = FlexAlign.Stretch,
@@ -128,7 +130,8 @@ internal sealed class ClassicRecentsRowSlot : Component
         _ = _scope.Index.Value;
         _ = _host.Epoch.Value;
         var shape = _host.ShapeNow;
-        var layout = ClassicRecentsTiers.Of(ThemeHost.Facts.Value.Tiers);   // read here: a tier crossing re-renders the realized slots in place (no remount)
+        var facts = UseContext(ThemeFactsContext.Signal);
+        var layout = ClassicRecentsTiers.Of(facts is null ? TierFacts.Unknown : facts.Value.Tiers);   // read here: a tier crossing re-renders the realized slots in place (no remount)
         if (flat.Kind == RecentsFlatItemKind.DateHeader) return ClassicRecentsList.DayHeader(_host, shape, flat.DayIndex, overlay: false, _onHeader);
         int r = flat.OriginalRowIndex;
         if ((uint)r >= (uint)shape.Rows.Count) return new BoxEl { Height = RecentsLayout.RowHeight };
