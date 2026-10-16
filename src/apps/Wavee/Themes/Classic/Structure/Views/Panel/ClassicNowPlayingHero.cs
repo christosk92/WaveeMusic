@@ -9,6 +9,10 @@
 // style flip re-mounts nothing the deck owns. Which face paints is the core's decision (`ResolvedPresentation`: the stored
 // presentation while developer mode is on, the cover otherwise).
 //
+// IN THE COMPACT SHEET (`ClassicPanel.SheetArtSide` provided): the tile is the art alone, centred at the side the window leaves it (the
+// header row rides the sheet's head, the drag handle), the deck scaled to that side; the identity, the transport and the rest are the sheet's
+// own column (`ClassicNowPlayingSheet`).
+//
 // THE BODY (scrolls under the pinned hero) is the panel's now-playing arm: title · artist links · album link · heart, the lyrics
 // peek (the core host `props.LyricsPeek`, which mounts `Player.LyricsPeek`), then About the artist, the cities, merch and Next up
 // (the `Panel.NextUp` view). It subscribes the entity tables through `props.SubscribeEntities` and
@@ -60,29 +64,33 @@ internal static class ClassicNowPlayingHero
     // ── the body: title · artists · album · heart, then the lyrics peek ──────────────────────────────────────────────
 
     /// <summary>Title · artist links · album link · heart, then the lyrics peek (the lyrics lane's, keyed per track).</summary>
+    /// <summary>The playing track's artists as one line of links (each opens its artist), or null with no credited artist.</summary>
+    internal static Element? ArtistLinks(NowPlayingHeroProps props, Track track, float size, float line)
+    {
+        var artists = track.ArtistSlots;
+        if (artists.Length == 0) return null;
+        var spans = new TextSpan[artists.Length * 2 - 1];
+        for (int i = 0, n = 0; i < artists.Length; i++)
+        {
+            if (i > 0) spans[n++] = new TextSpan(", ");
+            var a = new Artist(artists[i]);
+            string name = a.Name;
+            var artistUri = a.Uri;
+            spans[n++] = new TextSpan(name, OnClick: () => props.GoTo(artistUri, name));
+        }
+        return new SpanTextEl(spans)
+        {
+            Size = size, LineHeight = line, Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1,
+            Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+        };
+    }
+
     internal static Element HeroMeta(NowPlayingHeroProps props, Track track)
     {
         string uri = track.Uri.Text;
         string title = track.Title;
         var meta = new List<Element>(2);
-        var artists = track.ArtistSlots;
-        if (artists.Length > 0)
-        {
-            var spans = new TextSpan[artists.Length * 2 - 1];
-            for (int i = 0, n = 0; i < artists.Length; i++)
-            {
-                if (i > 0) spans[n++] = new TextSpan(", ");
-                var a = new Artist(artists[i]);
-                string name = a.Name;
-                var artistUri = a.Uri;
-                spans[n++] = new TextSpan(name, OnClick: () => props.GoTo(artistUri, name));
-            }
-            meta.Add(new SpanTextEl(spans)
-            {
-                Size = ClassicHeroLayout.ArtistSize, LineHeight = ClassicHeroLayout.ArtistLine, Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1,
-                Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-            });
-        }
+        if (ArtistLinks(props, track, ClassicHeroLayout.ArtistSize, ClassicHeroLayout.ArtistLine) is { } artistLine) meta.Add(artistLine);
         var album = track.Album;
         if (album.IsValid && album.Title.Length > 0)
         {
@@ -234,10 +242,12 @@ internal sealed class ClassicHeroTile : Component
         bool styleVisible = Rail.PlayerPrefs.StyleChoiceVisible();
         var preset = Rail.PlayerPrefs.CurrentPreset();
         float side = Rail.Hero.Side(props.RailWidth.Value);
+        var sheetSide = UseContext(ClassicPanel.SheetArtSide);
         if (!track.IsValid) return new BoxEl();                        // nothing playing: no square, no strip
 
         _source ??= () => props.NowArtUrl() ?? "";
         _placeholder ??= () => ClassicHeroWash.Of(props.NowArtUrl());
+        if (sheetSide is not null) return SheetTile(props, overlay, presentation, preset, styleVisible, side, sheetSide);
 
         Element hero = presentation == Rail.PlayerPrefs.Player
             ? new BoxEl { Key = preset.Slug + "@" + (int)side, Direction = 1, Shrink = 0f, Children = [props.Deck()] }
@@ -257,6 +267,39 @@ internal sealed class ClassicHeroTile : Component
             Direction = 1, Shrink = 0f, Gap = Rail.Hero.Inset,
             Padding = new Edges4(Rail.Hero.Inset, Rail.Hero.Inset, Rail.Hero.Inset, 0f),
             Children = [Embed.Comp(props, static () => new ClassicHeroHeaderRow()), heroBox],
+        };
+    }
+
+    /// <summary>The tile inside the Compact sheet: the art alone, centred, <paramref name="sheetSide"/> on a side (bound: a resize re-fits it
+    /// without a render); the deck keeps its own layout at the rail's side and is scaled down to the sheet's.</summary>
+    Element SheetTile(NowPlayingHeroProps props, IOverlayService overlay, int presentation, in Rail.PlayerCatalog.Preset preset, bool styleVisible,
+        float deckSide, Func<float> sheetSide)
+    {
+        Element hero = presentation == Rail.PlayerPrefs.Player
+            ? new BoxEl
+            {
+                Key = preset.Slug + "@" + (int)deckSide, Direction = 1, Shrink = 0f, AlignSelf = FlexAlign.Start, Width = deckSide, Height = deckSide,
+                TransformOriginX = 0f, TransformOriginY = 0f,
+                Transform = Prop.Of(() => Affine2D.Scale(sheetSide() / MathF.Max(1f, deckSide), sheetSide() / MathF.Max(1f, deckSide))),
+                Children = [props.Deck()],
+            }
+            : new ImageEl
+            {
+                Key = "cover",
+                Source = Prop.Of(_source!), Fit = ImageFit.Cover, DecodePx = ClassicHeroLayout.CoverDecodePx,
+                Corners = Radii.CardAll, AspectRatio = 1f, AlignSelf = FlexAlign.Stretch,
+                Placeholder = Prop.Of(_placeholder!),
+            };
+        var p = preset;
+        var heroBox = new BoxEl
+        {
+            Direction = 1, Shrink = 0f, Width = Prop.Of(sheetSide), Height = Prop.Of(sheetSide), Children = [hero],
+        }.WithContextMenu(overlay, () => ClassicNowPlayingHero.ArtMenu(props, presentation, p, styleVisible));
+        return new BoxEl
+        {
+            Direction = 1, Shrink = 0f, AlignItems = FlexAlign.Center,
+            Padding = new Edges4(0f, ClassicPanelTiers.SheetArtTop, 0f, 0f),
+            Children = [heroBox],
         };
     }
 }
@@ -367,8 +410,19 @@ internal sealed class ClassicNowPlayingBody : Component
 
         props.SubscribeEntities();
 
+        return ScrollView(new BoxEl
+        {
+            Direction = 1,
+            Children = [ClassicNowPlayingHero.HeroMeta(props, track), Sections(props, track, nowArtist)],
+        }) with { Grow = 1f, MinHeight = 0f, AutoEdgeFade = true };
+    }
+
+    /// <summary>About the artist (or its loading face), the cities, merch and "Next up", in one padded column (the docked body's and the
+    /// Compact sheet's); an empty box when there is none of them.</summary>
+    internal static Element Sections(NowPlayingHeroProps props, Track track, Artist nowArtist)
+    {
         var sections = new List<Element>(5);
-        if (artistSlot > 0)
+        if (nowArtist.Slot > 0)
         {
             var artist = nowArtist;
             if (artist.Knows(ArtistFields.Stats))
@@ -381,16 +435,7 @@ internal sealed class ClassicNowPlayingBody : Component
             if (merch.Length > 0) sections.Add(ClassicNowPlayingHero.MerchSection(props, merch));
         }
         if (props.HasNextUp()) sections.Add(ClassicNowPlayingHero.Section(Loc.Get(Strings.Player.NextUp), Slots.View(ViewKeys.PanelNextUp, props.NextUp)));
-
-        return ScrollView(new BoxEl
-        {
-            Direction = 1,
-            Children =
-            [
-                ClassicNowPlayingHero.HeroMeta(props, track),
-                sections.Count == 0 ? new BoxEl()
-                    : new BoxEl { Direction = 1, Gap = Spacing.L, Padding = new Edges4(Spacing.M, 0f, Spacing.M, Spacing.M), Children = sections.ToArray() },
-            ],
-        }) with { Grow = 1f, MinHeight = 0f, AutoEdgeFade = true };
+        return sections.Count == 0 ? new BoxEl()
+            : new BoxEl { Direction = 1, Gap = Spacing.L, Padding = new Edges4(Spacing.M, 0f, Spacing.M, Spacing.M), Children = sections.ToArray() };
     }
 }

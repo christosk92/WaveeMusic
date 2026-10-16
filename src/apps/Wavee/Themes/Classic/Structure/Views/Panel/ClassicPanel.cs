@@ -20,6 +20,13 @@
 // now-playing arm carries the sheet's Lyrics and Queue doors under the hero (C-NowPlaying-Compact). The frame places the host and the
 // scrim; a crossing that changes the placement re-seeds the slide at rest (the host's own FLIP carries the move).
 //
+// THE SHEET IS A MODAL SURFACE (the Compact overlays fix). Over the page and the mini bar it takes the wheel (`BlocksBackgroundScroll` on the
+// arm and the scrim: the page is a sibling under the panel layer, not an ancestor, so the router's containing-scroller scan found it), focus
+// moves into it with Tab trapped there (`ClassicModalScope`), Escape closes it, and its HEAD (the grab strip and the row under it) is the shared
+// bottom-sheet drag (`ClassicSheetDrag`): it follows the pointer 1:1, the scrim fading with it, and a release past the threshold closes the
+// panel (the slide-out runs from where the drag left it) or springs it back. The now-playing sheet is its own column (C-NowPlaying-Compact,
+// `ClassicNowPlayingSheet`): the art shrinks so the title, the transport and the Lyrics and Queue doors fit the window; the rest scrolls.
+//
 // The frame is a Component (as `Rail.FrameCore` was): the slide is a layout effect on the component's rendered root, its
 // seeded-once flag is a field, and the arms are the same elements in the same positions, so a mode switch reconciles exactly as
 // it did. The lyrics body and the queue body are core builders on the props (T7b and T7d's bodies are core hosts that mount their views); the video body is `ClassicVideoPanelBody` (T7c); the friends
@@ -34,6 +41,7 @@ using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Theming.Contracts;
+using static FluentGpu.Dsl.Ui;
 
 namespace Wavee.Themes.Classic;
 
@@ -46,6 +54,12 @@ internal static class ClassicPanel
 
     internal static CornerRadius4 RailCorners => new(Radii.Card, 0f, 0f, 0f);
 
+    /// <summary>The art side the now-playing hero is drawn at inside the Compact sheet (null everywhere else: the hero's own rail side).</summary>
+    internal static readonly Context<Func<float>?> SheetArtSide = new(null);
+
+    /// <summary>The shared sheet drag of the primary panel host (null outside the frame's panel layer, and for the second pane).</summary>
+    internal static readonly Context<ClassicSheetDrag?> SheetDragSlot = new(null);
+
     // ── the arm ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The arm's corners for a placement: the card radius top-left docked, every corner floating, the top two as a sheet.</summary>
@@ -56,15 +70,17 @@ internal static class ClassicPanel
         _ => RailCorners,
     };
 
-    internal static BoxEl Arm(bool open, PanelPlacement placement, Element surface, Element edge, params Element[] column)
+    internal static BoxEl Arm(bool open, PanelPlacement placement, Element surface, Element edge, Element? head, params Element[] column)
     {
         bool floating = placement != PanelPlacement.Dock;
-        // A sheet leads with its grab strip (C-Rail sheet: a 32 x 4 handle in a 16-tall strip); the column below is the arm's own.
-        Element[] kids = placement == PanelPlacement.Sheet ? [GrabStrip(), .. column] : column;
+        // A sheet leads with its head (the grab strip and the row under it: the drag handle); the column below is the arm's own.
+        Element[] kids = head is not null ? [head, .. column] : column;
         return new BoxEl
         {
             Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, Corners = CornersFor(placement),
             HitTestVisible = open,                                            // a closed rail is laid out, off-clip, unhittable
+            // Floating or a sheet it lies OVER the page: the wheel on its own non-scrolling parts must not reach the page behind.
+            BlocksBackgroundScroll = open && floating,
             BorderColor = floating ? Tok.StrokeCardDefault : ColorF.Transparent,
             BorderWidth = floating ? 1f : 0f,
             Shadow = floating ? Elevation.Flyout : (ShadowSpec?)null,         // NO shadow docked
@@ -72,7 +88,15 @@ internal static class ClassicPanel
         };
     }
 
-    /// <summary>The sheet's grab strip: a quiet handle that says the panel is a sheet (the scrim, Escape and ✕ close it).</summary>
+    /// <summary>The sheet's head: the grab strip over <paramref name="row"/>, wired as the shared drag handle (the row's buttons keep their
+    /// own presses).</summary>
+    internal static Element SheetHead(ClassicSheetDrag? drag, Element row)
+    {
+        var head = new BoxEl { Key = ClassicPanelTiers.SheetHeadKey, Direction = 1, Shrink = 0f, Children = [GrabStrip(), row] };
+        return drag is null ? head : drag.Head(head);
+    }
+
+    /// <summary>The sheet's grab strip: a quiet handle that says the panel is a sheet (drag it down, or the scrim, Escape and ✕ close it).</summary>
     static Element GrabStrip() => new BoxEl
     {
         Height = ClassicPanelTiers.GrabStripH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
@@ -91,8 +115,8 @@ internal static class ClassicPanel
     /// the same sheet.</summary>
     internal static Element SheetDoors(Action<PanelMode> show) => new BoxEl
     {
-        Direction = 0, Shrink = 0f, Gap = ClassicPanelTiers.SheetDoorGap,
-        Padding = new Edges4(ClassicPanelTiers.SheetDoorInset, Spacing.S, ClassicPanelTiers.SheetDoorInset, Spacing.S),
+        Key = ClassicPanelTiers.SheetDoorsKey, Direction = 0, Shrink = 0f, Gap = ClassicPanelTiers.SheetDoorGap,
+        Padding = new Edges4(ClassicPanelTiers.SheetDoorInset, ClassicPanelTiers.SheetDoorPadY, ClassicPanelTiers.SheetDoorInset, ClassicPanelTiers.SheetDoorPadY),
         Children =
         [
             SheetDoor(WaveeIcons.Lyrics, WaveeIcons.Font, Loc.Get(Strings.Player.Lyrics), () => show(PanelMode.Lyrics)),
@@ -161,6 +185,23 @@ internal static class ClassicPanel
         };
     }
 
+    /// <summary>The now-playing sheet's column (C-NowPlaying-Compact): one scroll holding the hero at the side the window leaves it (its
+    /// video switch over its corner when the video could dock), then the identity, the transport, the doors and the rest
+    /// (<see cref="ClassicNowPlayingSheet"/>). The side is bound to the window, so a resize re-fits it in the same frame.</summary>
+    internal static Element NowPlayingSheet(PanelProps props, PanelView view, IReadSignal<Size2> vp)
+    {
+        Func<float> side = () => ClassicPanelTiers.SheetArtSide(vp.Value.Width, vp.Value.Height, ClassicPanelTiers.GrabStripH + Rail.Hero.HeaderRowH);
+        Element art = Ctx.Provide(SheetArtSide, side, Slots.View(ViewKeys.NowPlayingHero, props.NowPlaying));
+        Element hero = view.Pinned == PanelPinned.ArtWithVideoToggle
+            ? new BoxEl { ZStack = true, Shrink = 0f, AlignSelf = FlexAlign.Center, Children = [art, ArtVideoToggle(props, sheet: true)] }
+            : art;
+        return ScrollView(new BoxEl
+        {
+            Direction = 1,
+            Children = [hero, Embed.Comp(props, static () => new ClassicNowPlayingSheet())],
+        }) with { Key = ClassicPanelTiers.SheetScrollKey, Grow = 1f, MinHeight = 0f, AutoEdgeFade = true };
+    }
+
     /// <summary>The NowPlaying arm's pinned slot — ONE slot, two possible occupants, never both.</summary>
     internal static Element PinnedHero(PanelProps props, PanelView view)
     {
@@ -168,17 +209,20 @@ internal static class ClassicPanel
         return view.Pinned switch
         {
             PanelPinned.DockedVideo => DockedCap(props, true, view.Width),
-            PanelPinned.ArtWithVideoToggle => new BoxEl { ZStack = true, Shrink = 0f, Children = [art, ArtVideoToggle(props)] },
+            PanelPinned.ArtWithVideoToggle => new BoxEl { ZStack = true, Shrink = 0f, Children = [art, ArtVideoToggle(props, sheet: false)] },
             _ => art,                                                      // the page stage owns the one surface, or nothing to dock
         };
     }
 
     /// <summary>The 2-state Art|Video toggle over the ART's top-right corner. Its offset is DERIVED from
-    /// <see cref="Rail.Hero.ArtTop"/>; each half's tooltip names the action IT performs.</summary>
-    static Element ArtVideoToggle(PanelProps props) => new BoxEl
+    /// <see cref="Rail.Hero.ArtTop"/> (in the sheet, from the art's own top: the head carries the header row); each half's tooltip names the
+    /// action IT performs.</summary>
+    static Element ArtVideoToggle(PanelProps props, bool sheet) => new BoxEl
     {
         Height = ClassicPanelLayout.ToggleH, Shrink = 0f, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.End,
-        Margin = new Edges4(0f, Rail.Hero.ArtTop + Spacing.XS, Spacing.S + Spacing.XS, 0f),
+        Margin = sheet
+            ? new Edges4(0f, ClassicPanelTiers.SheetArtTop + Spacing.XS, Spacing.XS, 0f)
+            : new Edges4(0f, Rail.Hero.ArtTop + Spacing.XS, Spacing.S + Spacing.XS, 0f),
         Direction = 0, Corners = Radii.ControlAll, ClipToBounds = true, Fill = R.OnMedia.GlassHover,
         Children =
         [
@@ -275,6 +319,9 @@ internal sealed class ClassicPanelFrame : Component
     PanelPlacement _seededPlacement;
     Func<ColorF>? _surfaceFill;
     Action<RectF>? _onBounds;
+    Action<KeyEventArgs>? _onKey;
+    Action? _close;
+    readonly ClassicModalScope _scope = new();
 
     public override Element Render()
     {
@@ -288,6 +335,24 @@ internal sealed class ClassicPanelFrame : Component
         var body = view.Body;
         var vp = UseContextSignal(Viewport.Size);
         bool sheet = placement == PanelPlacement.Sheet;
+        var hooks = UseContext(InputHooks.Current);
+        // The shared bottom-sheet drag (the frame's panel layer provides one for the primary host): it moves this arm and closes the panel.
+        var drag = UseContext(ClassicPanel.SheetDragSlot);
+        if (!sheet) drag = null;
+        drag?.Bind(Context, hooks);
+        _close = props.Close;
+        if (drag is not null) drag.Dismiss = _close;
+        UseLayoutEffect(() => { if (drag is not null) drag.SlideNode = Context.HostNode; });   // the arm runs the open/close slide; the drag moves the host
+        // A sheet is modal: focus into it with Tab trapped there, back where it was on close; Escape closes it.
+        bool modal = open && sheet;
+        UseLayoutEffect(() => _scope.Update(hooks, Context.Scene, Context.HostNode, modal), DepKey.From(modal));
+        UseEffect(() => (Action?)(() => _scope.Lower(Context.Scene)), DepKey.Empty);
+        _onKey ??= e =>
+        {
+            if (e.Handled || e.KeyCode != Keys.Escape || e.Mods != KeyModifiers.None || !_scope.Active) return;
+            e.Handled = true;
+            _close?.Invoke();
+        };
         // A pane that unmounts its body when closed (the second docked pane) keeps it for the slide-out, then lets it go.
         var (lingering, setLingering) = UseState(open);
         UseLayoutEffect(() => { if (open && !lingering) setLingering(true); }, DepKey.From(open ? 1 : 0));
@@ -312,9 +377,11 @@ internal sealed class ClassicPanelFrame : Component
                 anim.Animate(Context.HostNode, channel, target, target, 1f, Easing.Linear);
                 return;
             }
-            float from = Context.Scene is { } scene
+            // Where it is DRAWN: a running track (the slide, a drag's last pose, its spring back) first, else the painted pose.
+            float painted = Context.Scene is { } scene
                 ? (sheet ? scene.Paint(Context.HostNode).LocalTransform.Dy : scene.Paint(Context.HostNode).LocalTransform.Dx)
                 : (open ? offCanvas : 0f);
+            float from = ClassicOverlayMotion.From(Context, channel, painted);
             anim.Animate(Context.HostNode, channel, from, target, ClassicPanelLayout.SlideMs, ClassicPanelLayout.SlideEasing);
         }, DepKey.From(open ? 1 : 0, (int)MathF.Round(offCanvas) * 4 + (int)placement));
 
@@ -336,17 +403,29 @@ internal sealed class ClassicPanelFrame : Component
             BorderWidth = floating ? 0f : 1f, BorderColor = Tok.StrokeCardDefault,
         };
 
+        BoxEl arm;
         if (body == PanelMode.NowPlaying)
-            return sheet && props.ShowMode is { } show
+            arm = sheet
                 ? ClassicPanel.Arm(open, placement, surface, edge,
-                    ClassicPanel.PinnedHero(props, view), ClassicPanel.SheetDoors(show), ClassicPanel.GrowSlot(ClassicPanel.Body(props, PanelMode.NowPlaying)))
-                : ClassicPanel.Arm(open, placement, surface, edge,
+                    ClassicPanel.SheetHead(drag, new BoxEl
+                    {
+                        Direction = 1, Padding = new Edges4(Rail.Hero.Inset, 0f, Rail.Hero.Inset, 0f),
+                        Children = [Embed.Comp(props.NowPlaying, static () => new ClassicHeroHeaderRow())],
+                    }),
+                    ClassicPanel.NowPlayingSheet(props, view, vp))
+                : ClassicPanel.Arm(open, placement, surface, edge, null,
                     ClassicPanel.PinnedHero(props, view), ClassicPanel.GrowSlot(ClassicPanel.Body(props, PanelMode.NowPlaying)));
-
-        Element header = body == PanelMode.Lyrics ? Slots.View(ViewKeys.PanelLyricsHeader, props.LyricsHeader) : ClassicPanel.Header(props, body);
-        return ClassicPanel.Arm(open, placement, surface, edge,
-            ClassicPanel.DockedCap(props, view.DockedHere, railWidth), header,
-            ClassicPanel.GrowSlot(bodyLive ? ClassicPanel.Body(props, body) : new BoxEl { Grow = 1f, HitTestVisible = false }));
+        else
+        {
+            Element header = body == PanelMode.Lyrics ? Slots.View(ViewKeys.PanelLyricsHeader, props.LyricsHeader) : ClassicPanel.Header(props, body);
+            Element bodySlot = ClassicPanel.GrowSlot(bodyLive ? ClassicPanel.Body(props, body) : new BoxEl { Grow = 1f, HitTestVisible = false });
+            arm = sheet
+                ? ClassicPanel.Arm(open, placement, surface, edge, ClassicPanel.SheetHead(drag, header),
+                    ClassicPanel.DockedCap(props, view.DockedHere, railWidth), bodySlot)
+                : ClassicPanel.Arm(open, placement, surface, edge, null,
+                    ClassicPanel.DockedCap(props, view.DockedHere, railWidth), header, bodySlot);
+        }
+        return sheet ? arm with { OnKeyDown = _onKey } : arm;
     }
 }
 
@@ -355,20 +434,29 @@ internal sealed class ClassicPanelFrame : Component
 internal sealed class ClassicPanelScrim : Component
 {
     bool _mounted;
+    Action<NodeHandle>? _dimRealized;
 
     public override Element Render()
     {
         var props = UseProps<PanelProps>();
         var view = props.Read();
         bool show = view.Open && view.Placement == PanelPlacement.Sheet;
+        var drag = UseContext(ClassicPanel.SheetDragSlot);
         float ms = Design.Reduced ? 0f : Design.Motion.Fast;
         float target = show ? 1f : 0f;
-        UseTransition(AnimChannel.Opacity, _mounted ? 1f - target : target, target, ms, Easing.Linear, DepKey.From(show));
+        UseTransition(AnimChannel.Opacity, _mounted ? ClassicOverlayMotion.From(Context, AnimChannel.Opacity, 1f - target) : target, target, ms, Easing.Linear,
+            DepKey.From(show));
         _mounted = true;
+        // The dim a sheet drag fades lives on an inner layer, so the open/close fade above and the drag's share multiply (never fight); it is
+        // put back at full strength as the sheet opens, while the layer above is still clear.
+        UseLayoutEffect(() => { if (show) drag?.ResetDim(); }, DepKey.From(show));
+        if (drag is not null) _dimRealized ??= h => drag.DimNode = h;
         return new BoxEl
         {
-            Grow = 1f, Fill = ClassicPanelTiers.Scrim,
-            Opacity = target, HitTestVisible = show, OnClick = show ? props.Close : null,
+            Grow = 1f, Opacity = target, HitTestVisible = show, OnClick = show ? props.Close : null, TabStop = false,
+            // The page is a sibling under the panel layer, never an ancestor: without this the wheel over the dim found it.
+            BlocksBackgroundScroll = show,
+            Children = [new BoxEl { Grow = 1f, Fill = ClassicPanelTiers.Scrim, HitTestVisible = false, OnRealized = _dimRealized }],
         };
     }
 }

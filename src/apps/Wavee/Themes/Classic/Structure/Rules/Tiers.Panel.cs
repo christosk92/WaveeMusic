@@ -81,6 +81,55 @@ public static class ClassicPanelTiers
     /// <summary>The sheet's and the floating panel's corner.</summary>
     public const float Corner = 8f;
 
-    /// <summary>The now-playing sheet's doors under the hero (Lyrics, Queue): 48 tall, 8 apart, inset 16 (C-NowPlaying-Compact).</summary>
-    public const float SheetDoorH = 48f, SheetDoorGap = 8f, SheetDoorInset = 16f, SheetDoorGlyph = 16f, SheetDoorText = 12f, SheetDoorTextLine = 16f;
+    /// <summary>The now-playing sheet's doors under the transport (Lyrics, Queue): 48 tall, 8 apart, inset 16, 8 above and below
+    /// (C-NowPlaying-Compact).</summary>
+    public const float SheetDoorH = 48f, SheetDoorGap = 8f, SheetDoorInset = 16f, SheetDoorPadY = 8f, SheetDoorGlyph = 16f, SheetDoorText = 12f, SheetDoorTextLine = 16f;
+
+    // ── the now-playing sheet's column (C-NowPlaying-Compact) ────────────────────────────────────────────────────────
+    //
+    //   head      the grab strip and the hero's header row: it stays put and is the sheet's drag handle
+    //   scroll    the art (12 under the head, centred, at most 320 and never wider than the sheet less 16 either side), then 20 down the
+    //             title (20/28) over the artists (14/20) beside the 40 heart, 14 down the seek block (the rail's 32-tall lane over the 16-tall
+    //             times), 10 down the 56-tall transport row, the doors (8 + 48 + 8), then the lyrics peek and the sections
+    //
+    // The art is the one part that gives: it shrinks so the identity, the transport and the doors stay in the window (8 above its bottom
+    // edge), and only below its floor (96) does the column outgrow the sheet and scroll.
+
+    /// <summary>The node keys of the sheet's head (the drag handle), its scroll, the now-playing column's identity, title, transport and doors
+    /// (the mounted tests find them).</summary>
+    public const string SheetHeadKey = "panel.sheet.head", SheetScrollKey = "panel.sheet.scroll", SheetMetaKey = "panel.sheet.meta",
+        SheetTitleKey = "panel.sheet.title", SheetTransportKey = "panel.sheet.transport", SheetDoorsKey = "panel.sheet.doors";
+
+    /// <summary>The column's side inset, the art's top margin, its largest and smallest side and the room kept under the doors.</summary>
+    public const float SheetInset = 16f, SheetArtTop = 12f, SheetArtMax = 320f, SheetArtMin = 96f, SheetBottomRoom = 8f;
+
+    /// <summary>The identity block: its top margin, the title (20/28 semi-bold), the artists (14/20), the gap between them and the heart.</summary>
+    public const float SheetMetaTop = 20f, SheetTitleSize = 20f, SheetTitleLine = 28f, SheetArtistSize = 14f, SheetArtistLine = 20f,
+        SheetMetaGap = 2f, SheetHeartBox = 40f, SheetHeartGlyph = 18f;
+
+    /// <summary>The seek block: its top margin, the rail's lane (the bar's own 32-tall hit box, the 4-DIP track centred in it), the times row
+    /// and the gap between them (the lane's own slack is the board's 4).</summary>
+    public const float SheetSeekTop = 14f, SheetSeekRailH = 32f, SheetTimesH = 16f, SheetSeekGap = 0f;
+
+    /// <summary>The transport row: its top margin and height, shuffle and repeat (40), previous and next (48), the play disc (56), and their glyphs.</summary>
+    public const float SheetTransportTop = 10f, SheetTransportH = 56f, SheetSatelliteBox = 40f, SheetSkipBox = 48f, SheetPlayDisc = 56f,
+        SheetSatelliteGlyph = 16f, SheetSkipGlyph = 20f, SheetPlayGlyph = 20f;
+
+    /// <summary>The fixed column under the art: the identity, the seek block, the transport and the doors.</summary>
+    public const float SheetBelowArt = SheetMetaTop + SheetTitleLine + SheetMetaGap + SheetArtistLine
+        + SheetSeekTop + SheetSeekRailH + SheetSeekGap + SheetTimesH
+        + SheetTransportTop + SheetTransportH
+        + SheetDoorPadY + SheetDoorH + SheetDoorPadY;
+
+    /// <summary>The sheet's height in a window <paramref name="viewportH"/> tall: from 8 under the 48 title bar to the bottom edge.</summary>
+    public static float SheetHeight(float viewportH) => MathF.Max(1f, viewportH - ClassicSheetRules.ChromeRow - Gap);
+
+    /// <summary>The art's side in a window <paramref name="viewportW"/> x <paramref name="viewportH"/> under a head <paramref name="headH"/> tall:
+    /// the room the fixed column leaves, at most 320 and the sheet's width less its insets, never under 96 (whole DIP).</summary>
+    public static float SheetArtSide(float viewportW, float viewportH, float headH)
+    {
+        float room = SheetHeight(viewportH) - headH - SheetArtTop - SheetBelowArt - SheetBottomRoom;
+        float side = MathF.Min(MathF.Min(SheetArtMax, viewportW - 2f * SheetInset), room);
+        return MathF.Floor(MathF.Max(SheetArtMin, side));
+    }
 }

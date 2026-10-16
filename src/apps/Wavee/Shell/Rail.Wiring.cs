@@ -276,6 +276,30 @@ internal static class RailWiring
         FadeChrome = static (ctx, node, show) => OnMedia.FadeChrome(ctx, node, show),
     };
 
+    // ══ THE SHEET'S TRANSPORT ════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The transport the now-playing sheet carries (it covers the player bar at Compact): the stage's facts, the shared verbs,
+    /// the bar's own seek rail and time labels. Built once.</summary>
+    static readonly PanelTransportProps s_sheetTransport = new()
+    {
+        Facts = ReadSheetTransport,
+        Verbs = PlayerVerbs.Default,
+        SeekBar = static () => Shell.SeekBar(),
+        TimeText = static remaining => Shell.TimeText(remaining),
+    };
+
+    /// <summary>What the sheet's transport draws: the stage transport card's reads (the skip fold every surface shares).</summary>
+    static PanelTransportFacts ReadSheetTransport()
+    {
+        bool playing = Playback.IsPlaying.Value;
+        bool loading = Playback.PhaseSignal.Value == Playback.Phase.Loading;
+        var tf = PlayerVerbs.TransportFacts();
+        bool primary = Stage.Transport.PrimaryEnabled(!Playback.Current.Value.IsNone, loading);
+        var repeat = Playback.Repeat.Value;
+        return new PanelTransportFacts(playing, primary, tf.CanTransport, tf.PrevEnabled, tf.NextEnabled, Playback.Shuffle.Value,
+            repeat != Wavee.Spotify.Decode.RepeatMode.Off, repeat == Wavee.Spotify.Decode.RepeatMode.Track);
+    }
+
     // ══ THE PROPS THE FRAME MOUNTS ═══════════════════════════════════════════════════════════════════════════════════
 
     // Declared LAST: static fields initialize in textual order, and this one builds its parts from the helpers above.
@@ -311,6 +335,7 @@ internal static class RailWiring
         },
         NowPlaying = BuildNowPlaying(),
         Friends = BuildFriends(),
+        Transport = s_sheetTransport,
     };
 
     /// <summary>The props the frame mounts the SECOND pane with (the queue beside the primary panel): the primary's builders, its own
@@ -323,5 +348,6 @@ internal static class RailWiring
         Close = static () => Shell.PanelHost.Shared.CloseQueuePane(),
         ShowMode = null,
         DockedCard = static () => Shell.NoDockedCard(),
+        Transport = null,
     };
 }

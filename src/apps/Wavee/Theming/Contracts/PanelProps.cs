@@ -165,4 +165,36 @@ public sealed record PanelProps
 
     /// <summary>The friends body (<see cref="ViewKeys.PanelFriends"/>).</summary>
     public required FriendsProps Friends { get; init; }
+
+    /// <summary>The transport a panel shown as a bottom sheet carries (the sheet covers the player bar; C-NowPlaying-Compact): the facts,
+    /// the verbs and the bar's own seek rail and time labels. Null where the panel offers none (contract 1.19).</summary>
+    public PanelTransportProps? Transport { get; init; }
+}
+
+/// <summary>What the sheet's transport draws that playback decides (contract 1.19).</summary>
+/// <param name="Playing">Playing (the disc shows pause).</param>
+/// <param name="PrimaryEnabled">There is a playable and it is not loading.</param>
+/// <param name="CanTransport">Shuffle and repeat may be pressed.</param>
+/// <param name="PrevEnabled">Previous may be pressed.</param>
+/// <param name="NextEnabled">Next may be pressed.</param>
+/// <param name="Shuffle">Shuffle is on.</param>
+/// <param name="RepeatOn">Repeat is on (the context or the track).</param>
+/// <param name="RepeatOne">Repeat is the single track.</param>
+public readonly record struct PanelTransportFacts(bool Playing, bool PrimaryEnabled, bool CanTransport, bool PrevEnabled, bool NextEnabled,
+    bool Shuffle, bool RepeatOn, bool RepeatOne);
+
+/// <summary>The sheet's transport (contract 1.19): the same facts, verbs and seek pieces the stage's transport card reads.</summary>
+public sealed record PanelTransportProps
+{
+    /// <summary>The facts; call it inside a render (it subscribes playback).</summary>
+    public required Func<PanelTransportFacts> Facts { get; init; }
+
+    /// <summary>TogglePlay, Previous, Next, ToggleShuffle, CycleRepeat.</summary>
+    public required IPlayerVerbs Verbs { get; init; }
+
+    /// <summary>The bar's own seek rail (the core host that mounts <see cref="ViewKeys.SeekRail"/>).</summary>
+    public required Func<Element> SeekBar { get; init; }
+
+    /// <summary>The bar's elapsed (false) or remaining (true) time label (the core host that mounts <see cref="ViewKeys.TimeLabel"/>).</summary>
+    public required Func<bool, Element> TimeText { get; init; }
 }

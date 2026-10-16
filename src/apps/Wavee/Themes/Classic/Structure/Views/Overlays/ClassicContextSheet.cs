@@ -13,6 +13,12 @@
 // A sub-menu row opens its rows in place (a back row heads the page), so the sheet is one surface from the first press to the last. Every row
 // closes the sheet FIRST, then acts (the engine menu's rule). The core decides when this is the menu (`ContextSheets`, the structure's
 // `OverlayLayout.ContextSheet`) and what is in it; this draws it. The card slides up and fades on entry; the host fades the layer out on close.
+//
+// THE DRAG (the Compact overlays fix): the head (the grabber and the identity header) is the shared bottom-sheet drag every Classic sheet uses
+// (`ClassicSheetDrag`): the card follows the pointer, the scrim fading with it; a release past the threshold slides it the rest of the way
+// out and closes the sheet, short of it the card springs back. The drag moves the card's CARRIER (the column that seats it at the bottom), so the
+// card's own entry and exit motion compose with it. The scrim and the card are no tab stops (the trap's first stop is the first command), and
+// the card keeps the wheel off the page behind it.
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -37,6 +43,10 @@ internal static class ClassicContextSheet
         /// <summary>The rows of the sub-menu page on show, with its title; null is the menu's own page.</summary>
         readonly Signal<(string Title, IReadOnlyList<MenuFlyoutItem> Rows)?> _page = new(null);
 
+        readonly ClassicSheetDrag _drag = new();
+        NodeHandle _card;
+        Action<NodeHandle>? _cardRealized, _carrierRealized, _scrimRealized;
+
         public override Element Render()
         {
             var props = UseProps<ContextSheetProps>();
@@ -45,6 +55,16 @@ internal static class ClassicContextSheet
 
             Action close = props.Close;
             float cardMax = MathF.Max(1f, vp.Height - ClassicSheetRules.ChromeRow);
+            _drag.Bind(Context, UseContext(InputHooks.Current));
+            _drag.Height ??= () => _card.IsNull || Context.Scene is not { } scene || !scene.IsLive(_card) ? 0f : scene.Bounds(_card).H;
+            _drag.Dismiss = () =>
+            {
+                _drag.SlideOut(ClassicSheetRules.DismissMs);   // the rest of the way out, from where the drag left it
+                close();
+            };
+            _cardRealized ??= h => _card = h;
+            _carrierRealized ??= h => _drag.SheetNode = h;
+            _scrimRealized ??= h => _drag.DimNode = h;
 
             var card = new BoxEl
             {
@@ -55,6 +75,9 @@ internal static class ClassicContextSheet
                 Corners = new CornerRadius4(ClassicSheetRules.Radius, ClassicSheetRules.Radius, 0f, 0f),
                 ClipToBounds = true,
                 OnClick = static () => { },                    // the card is a hit target: a press on its inert area must not reach the scrim
+                TabStop = false,                               // ... and no tab stop: the trap's first stop is the first command
+                BlocksBackgroundScroll = true,                 // the page is a sibling under the overlay: the wheel on the card's inert parts stays here
+                OnRealized = _cardRealized,
                 Enter = new EnterExit(Dy: ClassicSheetRules.EnterDy, Opacity: 0f, Active: true),
                 Exit = new EnterExit(Dy: ClassicSheetRules.EnterDy, Opacity: 0f, Active: true),
                 Children = props.Content is { } content ? ContentPage(content, vp)
@@ -72,8 +95,12 @@ internal static class ClassicContextSheet
                         Grow = 1f, MinHeight = 0f, ZStack = true,
                         Children =
                         [
-                            new BoxEl { Fill = ClassicSheetRules.Scrim, OnClick = close, Enter = new EnterExit(Opacity: 0f, Active: true), Exit = new EnterExit(Opacity: 0f, Active: true) },
-                            new BoxEl { Direction = 1, Justify = FlexJustify.End, HitTestPassThrough = true, Children = [card] },
+                            new BoxEl
+                            {
+                                Fill = ClassicSheetRules.Scrim, OnClick = close, TabStop = false, BlocksBackgroundScroll = true, OnRealized = _scrimRealized,
+                                Enter = new EnterExit(Opacity: 0f, Active: true), Exit = new EnterExit(Opacity: 0f, Active: true),
+                            },
+                            new BoxEl { Direction = 1, Justify = FlexJustify.End, HitTestPassThrough = true, OnRealized = _carrierRealized, Children = [card] },
                         ],
                     },
                 ],
@@ -84,13 +111,14 @@ internal static class ClassicContextSheet
 
         Element[] MenuPage(ContextSheetProps props, Action close, Size2 vp)
         {
-            var kids = new List<Element>(4) { Grabber() };
+            var kids = new List<Element>(3);
             float chrome = ClassicSheetRules.GrabberZone + ClassicSheetRules.BottomPad;
             if (props.Header is { } header)
             {
-                kids.Add(Header(header));
+                kids.Add(Head(Grabber(), Header(header)));
                 chrome += ClassicSheetRules.HeaderHeight;
             }
+            else kids.Add(Head(Grabber()));
             var body = new List<Element>(props.Rows.Count + 2);
             if (props.Primary.Count > 0)
             {
@@ -106,8 +134,8 @@ internal static class ClassicContextSheet
 
         // ── a card's own body (the list's filter card at Compact, board C-Flyouts-Compact, TC5) ─────────────────────────────
 
-        static Element[] ContentPage(Element content, Size2 vp)
-            => [Grabber(), Body([content], vp, ClassicSheetRules.GrabberZone + ClassicSheetRules.BottomPad)];
+        Element[] ContentPage(Element content, Size2 vp)
+            => [Head(Grabber()), Body([content], vp, ClassicSheetRules.GrabberZone + ClassicSheetRules.BottomPad)];
 
         // ── a sub-menu page ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -120,10 +148,13 @@ internal static class ClassicContextSheet
             };
             AddRows(body, rows, close, onSub: OpenSub);
             float chrome = ClassicSheetRules.GrabberZone + ClassicSheetRules.BottomPad;
-            return [Grabber(), Body(body, vp, chrome)];
+            return [Head(Grabber()), Body(body, vp, chrome)];
         }
 
         // ── parts ────────────────────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>The sheet's head (the grabber, and the identity header when the menu has one): the shared drag handle.</summary>
+        Element Head(params Element[] rows) => _drag.Head(new BoxEl { Key = "sheet-head", Direction = 1, Shrink = 0f, Children = rows });
 
         static Element Grabber() => new BoxEl
         {

@@ -280,6 +280,15 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **The narrow-window drawer, the Now Playing sheet and the other bottom sheets behave like overlays.** In a narrow Classic
+  window the mouse wheel and the touchpad scrolled the page under an open drawer or sheet; they now scroll the drawer's or
+  the sheet's own list, and the page behind never moves. The drawer shows the full navigation under the account row again
+  (it had shrunk to a small card with only the account row). The Now Playing sheet fits the window: the cover shrinks so
+  the title, the playback controls and the Lyrics and Queue buttons stay on screen, and the rest scrolls; it now has its
+  own seek bar and play, previous, next, shuffle and repeat buttons, since it covers the player bar. Drag a sheet down by
+  its handle to close it, like on a phone: it follows the pointer, closes when you pull far or flick, and springs back
+  otherwise (the context-menu sheet too). Opening a drawer or sheet moves keyboard focus into it, Tab stays inside it,
+  Escape closes the sheet, and reopening one mid-close no longer jumps.
 - **The window can no longer be dragged down to a title-bar strip.** It now stops at 330 DIP tall, which keeps the title bar,
   a usable page and the player bar on screen (#197).
 - **The album and playlist side column shows again.** In Classic the left column of an album or playlist page (the cover,

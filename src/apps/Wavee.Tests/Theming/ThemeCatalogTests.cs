@@ -476,7 +476,8 @@ public sealed class ThemeCatalogTests : IDisposable
         // 1.17 (Classic screens TC8): DialogFit.FormWidth / CommandHeight and OverlayFit.ShowForm.
         // 1.18 (Classic artist and people pages per tier TC6): ThemePolicies.ArtistTiers, ArtistLadders, ArtistHeroMetrics.PhotoHeight, FollowToggle.Size. A 1.0
         // theme still runs.
-        Assert.Equal("1.18", ContractVersion.Text);
+        // 1.19 (the Compact overlays fix): PanelProps.Transport.
+        Assert.Equal("1.19", ContractVersion.Text);
         Assert.True(ContractVersion.IsCompatible(1, 0));
         Assert.True(ContractVersion.IsCompatible(1, 2));
         Assert.True(ContractVersion.IsCompatible(1, 3));
@@ -495,7 +496,8 @@ public sealed class ThemeCatalogTests : IDisposable
         Assert.True(ContractVersion.IsCompatible(1, 16));
         Assert.True(ContractVersion.IsCompatible(1, 17));
         Assert.True(ContractVersion.IsCompatible(1, 18));
-        Assert.False(ContractVersion.IsCompatible(1, 19));
+        Assert.True(ContractVersion.IsCompatible(1, 19));
+        Assert.False(ContractVersion.IsCompatible(1, 20));
         Assert.False(ContractVersion.IsCompatible(2, 0));
         Assert.False(ContractVersion.IsCompatible(0, 0));
     }

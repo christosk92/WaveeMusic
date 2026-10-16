@@ -21,7 +21,8 @@
 //     content region = ZStack[ row(sidebar column · content card · rail gap · rail reservation · second gap · second reservation) ·
 //                              sidebar seam · rail seam · narrow drawer ]
 //     panel layer    = ZStack[ sheet scrim · primary panel host · second panel host ]: over the content region AND the player dock, so
-//                      the Compact sheet can cover the mini bar (TC2)
+//                      the Compact sheet can cover the mini bar (TC2); it provides the sheet's one drag (`ClassicSheetDrag`) to the scrim and
+//                      the primary panel
 //
 // The surfaces that are not yet a key of their own (the overlays) arrive as element builders on the props (`ShellFrameProps`); T11 gives
 // each its own key and replaces the builder with a `ctx.View` call here. The two video layers are builders for good: they are the core
@@ -251,18 +252,22 @@ internal static class ClassicFrame
     private static Element PanelLayer(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers)
     {
         Func<PanelPlacement> placement = props.PanelPlacement ?? s_dock;
+        // The sheet's drag moves the primary HOST (the arm under it runs the open/close slide): its clip moves with it (the arm's
+        // slide happens inside that clip), so the sheet can rise the 8 DIP to the title bar's edge, its rubber band, before the body's clip.
+        var drag = new ClassicSheetDrag { Reach = ClassicPanelTiers.Gap };
         var kids = new List<Element>(3)
         {
             Embed.Comp(props.Panel, static () => new ClassicPanelScrim()),
-            PrimaryHost(props, in ctx, tiers, placement),
+            PrimaryHost(props, in ctx, tiers, placement, drag),
         };
         if (props.SecondPanel is { } second) kids.Add(SecondHost(props, second, in ctx, tiers));
-        return new BoxEl
+        // ONE sheet drag for the primary host's bottom sheet: its scrim's dim and its arm both move with it (`ClassicSheetDrag`).
+        return Ctx.Provide(ClassicPanel.SheetDragSlot, drag, new BoxEl
         {
             Grow = 1f, ZStack = true, HitTestPassThrough = true,
             Visible = Prop.Of(props.ChromeMounted),
             Children = kids.ToArray(),
-        };
+        });
     }
 
     private static readonly Func<PanelPlacement> s_dock = static () => PanelPlacement.Dock;
@@ -270,7 +275,7 @@ internal static class ClassicFrame
     /// <summary>The primary panel's host: bound spacers place it by the tier's record, its width is the placement's (the window for a
     /// sheet, 340 floating, the committed width docked), and it FLIPs when a crossing moves it. The panel body owns the slide, the coats
     /// and the bodies.</summary>
-    private static Element PrimaryHost(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers, Func<PanelPlacement> placement)
+    private static Element PrimaryHost(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers, Func<PanelPlacement> placement, ClassicSheetDrag drag)
     {
         float Top() => placement() == PanelPlacement.Dock ? 0f : ClassicPanelTiers.Of(tiers()).Inset;
         float Bottom()
@@ -317,6 +322,7 @@ internal static class ClassicFrame
                         {
                             Key = ClassicPanelTiers.HostKey,
                             Direction = 1, Shrink = 0f, ClipToBounds = true, ZStack = true, HitTestPassThrough = true,
+                            OnRealized = h => drag.SheetNode = h,
                             Width = Prop.Of(WidthNow), Corners = Prop.Of(CornersNow),
                             Animate = ClassicFrameRules.PanelHostAnim,
                             Children =

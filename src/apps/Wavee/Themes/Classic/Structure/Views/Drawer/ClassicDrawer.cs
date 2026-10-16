@@ -18,7 +18,18 @@
 // press opens the account menu), the bell and the friends door at 40 x 40, a divider under it.
 //
 // The scrim and the pane are Components: each runs its own opacity/translate transition on its own root, seeded from the closed
-// resting value on mount so the first open has something to slide from.
+// resting value on mount so the first open has something to slide from, and from where it is drawn on a reversal (a quick re-open
+// mid-close continues, never jumps).
+//
+// THE PANE FILLS THE WINDOW'S HEIGHT. It mounts inside a component anchor, and an anchor is a default COLUMN whatever row it sits in,
+// so a row's cross-axis stretch reaches the anchor only: the pane measured its content (the account row, and a nav list whose
+// scroller has no minimum height, so 0) and the drawer was a 100-tall card with no navigation. The pane is a column child that GROWS
+// instead, inside a column wrapper (the anchor mirrors the grow), so the account row sits on top and the nav pane takes the rest with
+// its own scroll (C-Shell-Compact, C-Frame-Narrow).
+//
+// MODAL (open and not pinned): the scrim and the pane keep the wheel off the page behind (`BlocksBackgroundScroll`: the page is a
+// sibling under the drawer, not an ancestor, so the router's containing-scroller scan would find it), and focus moves into the pane
+// with Tab trapped there (`ClassicModalScope`); the core host's key preview closes it on Escape.
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;
@@ -50,7 +61,7 @@ internal static class ClassicDrawer
                 Embed.Comp(parts, static () => new ClassicDrawerScrim()),
                 new BoxEl
                 {
-                    Grow = 1f, Direction = 0, Justify = FlexJustify.Start, HitTestPassThrough = true,
+                    Grow = 1f, Direction = 1, AlignItems = FlexAlign.Start, HitTestPassThrough = true,
                     Children = [Embed.Comp(props, static () => new ClassicDrawerPane())],
                 },
             ],
@@ -72,14 +83,17 @@ internal sealed class ClassicDrawerScrim : Component
         bool open = parts.IsOpen();
         float ms = Design.Reduced ? 0f : Design.Motion.Fast;
         float target = parts.RestingOpacity(open);
-        UseTransition(AnimChannel.Opacity, _mounted ? 1f - target : target, target, ms, Easing.Linear, DepKey.From(open));
+        UseTransition(AnimChannel.Opacity, _mounted ? ClassicOverlayMotion.From(Context, AnimChannel.Opacity, 1f - target) : target, target, ms, Easing.Linear, DepKey.From(open));
         _mounted = true;
+        bool modal = open && !pinned;
         return new BoxEl
         {
             Grow = 1f,
             Fill = pinned ? ClassicFrameBitsRules.DrawerPinnedScrim : ClassicFrameBitsRules.DrawerScrim,
             Opacity = pinned ? 1f : target,
-            HitTestVisible = open && !pinned, OnClick = pinned ? null : parts.Close,
+            HitTestVisible = modal, OnClick = pinned ? null : parts.Close, TabStop = false,
+            // The page is a sibling under the drawer, never an ancestor: without this the wheel over the dim found it.
+            BlocksBackgroundScroll = modal,
         };
     }
 }
@@ -88,22 +102,30 @@ internal sealed class ClassicDrawerScrim : Component
 internal sealed class ClassicDrawerPane : Component
 {
     bool _mounted;
+    readonly ClassicModalScope _scope = new();
 
     public override Element Render()
     {
         var props = UseProps<NarrowDrawerProps>();
         var parts = props.Parts;
         bool open = parts.IsOpen();
+        bool modal = open && !parts.IsPinned();
+        var hooks = UseContext(InputHooks.Current);
         var vp = UseContextSignal(Viewport.Size);
         float width = parts.WidthNow(vp.Peek().Width);
         float ms = Design.Reduced ? 0f : (open ? MotionTok.PaneOpen.DurationMs : MotionTok.PaneClose.DurationMs);
         float target = parts.RestingTranslateX(open, width);
-        UseTransition(AnimChannel.TranslateX, _mounted ? (open ? -width : 0f) : target, target, ms, Easing.FluentPane, DepKey.From(open));
+        UseTransition(AnimChannel.TranslateX, _mounted ? ClassicOverlayMotion.From(Context, AnimChannel.TranslateX, open ? -width : 0f) : target, target, ms,
+            Easing.FluentPane, DepKey.From(open));
         _mounted = true;
+        // Focus into the open pane, Tab trapped there; back where it was on close (a pinned pane leaves the page usable: no trap).
+        UseLayoutEffect(() => _scope.Update(hooks, Context.Scene, Context.HostNode, modal), DepKey.From(modal));
+        UseEffect(() => (Action?)(() => _scope.Lower(Context.Scene)), DepKey.Empty);
 
         return new BoxEl
         {
-            Direction = 1, Shrink = 0f, Grow = 0f, AlignSelf = FlexAlign.Stretch, ClipToBounds = true,
+            // A column child that GROWS to the window's height (see the file header): the anchor mirrors the grow, a stretch would not reach.
+            Key = "drawer-pane", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinHeight = 0f, ClipToBounds = true,
             // The resting position stays coupled to the live width: a closed pane can grow while resizing inside the
             // band, and a stale static translation would expose the added strip.
             Transform = Prop.Of(() => Affine2D.Translation(parts.RestingTranslateX(parts.IsOpen(), parts.Width(vp.Value.Width)), 0f)),
@@ -113,6 +135,8 @@ internal sealed class ClassicDrawerPane : Component
             BorderWidth = 1f, BorderColor = Prop.Of(static () => Tok.StrokeCardDefault),
             Corners = ClassicFrameBitsRules.DrawerPaneCorners,
             Shadow = Elevation.Flyout, HitTestVisible = open,
+            // Over the page, not inside it: the wheel over the pane's own rows scrolls the nav list (an ancestor), never the page.
+            BlocksBackgroundScroll = true,
             Children = props.ShowAccount && props.Account is { } account ? [AccountRow(account), parts.PaneBody()] : [parts.PaneBody()],
         };
     }
