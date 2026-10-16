@@ -19,8 +19,9 @@ namespace Wavee.Themes.Classic;
 /// <summary>Wavee Classic's stage pane region (<see cref="ViewKeys.StagePane"/>).</summary>
 internal static class ClassicStagePane
 {
-    static readonly LayoutTransition s_move = new(TransitionChannels.Position,
-        TransitionDynamics.Spring(ClassicStageGeometry.PaneMoveResponse, ClassicStageGeometry.PaneMoveDamping));
+    // Bounds, clip-revealed: the region slides to its new origin and its width follows (the Huge 4K lyrics narrowing beside the Up next column)
+    static readonly LayoutTransition s_move = new(TransitionChannels.Bounds,
+        TransitionDynamics.Spring(ClassicStageGeometry.PaneMoveResponse, ClassicStageGeometry.PaneMoveDamping), SizeMode.Reveal);
 
     static readonly Func<Element, Element> s_frame = Frame;
     static readonly Func<Element> s_empty = static () => new BoxEl { HitTestVisible = false };
@@ -35,7 +36,7 @@ internal static class ClassicStagePane
         return new BoxEl
         {
             AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = pane.W, Height = pane.H, ClipToBounds = true,
-            Margin = new Edges4(pane.X, pane.Y, 0f, 0f), Layout = s_move,   // the pane slides to its new rect with the cover (Lyrics ⇄ Large art)
+            Margin = new Edges4(pane.X, pane.Y, 0f, 0f), Layout = s_move,   // the pane slides to its new rect with the cover (Lyrics ⇄ Large art), its width with it
             Visible = Prop.Of(() => sc.Layout.Value.ShowPane && sc.Pane.Value != Stage.PaneKind.None),
             Children = [props.Panes(s_frame, s_empty)],
         };

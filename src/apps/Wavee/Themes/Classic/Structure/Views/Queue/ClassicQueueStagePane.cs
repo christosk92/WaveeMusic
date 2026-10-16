@@ -65,7 +65,9 @@ internal sealed class ClassicQueueStagePane : Component
             Foreground = Ink.Ink, MinWidth = ClassicQueueRules.SwitchMinW,
         };
         var layout = ctx.Layout.Value;
-        _s = layout.QueueScale;
+        // the Huge 4K stage's Up next column beside the lyrics (C-Stage-Huge4K) stands in its own frame: the board's 1x rows across that frame's
+        // width, not the pane region's scale and list cap
+        _s = props.Aside ? 1f : layout.QueueScale;
         lane.SetMetrics(ClassicQueueRules.StageRowH * _s, _extentOf ??= ExtentOf);
         bool art = !ClassicOptions.HideTrackArt();
 
@@ -93,7 +95,7 @@ internal sealed class ClassicQueueStagePane : Component
         float s = _s;
         return new BoxEl
         {
-            Direction = 1, Grow = 1f, MinHeight = 0f, MinWidth = 0f, ClipToBounds = true, MaxWidth = layout.QueueListMaxW,
+            Direction = 1, Grow = 1f, MinHeight = 0f, MinWidth = 0f, ClipToBounds = true, MaxWidth = props.Aside ? float.NaN : layout.QueueListMaxW,
             Children =
             [
                 new BoxEl
@@ -112,7 +114,7 @@ internal sealed class ClassicQueueStagePane : Component
                 },
                 new ScrollEl
                 {
-                    Grow = 1f, MinHeight = 0f, AutoEdgeFade = true, ScrollKey = "stagequeue",
+                    Grow = 1f, MinHeight = 0f, AutoEdgeFade = true, ScrollKey = props.Aside ? "stagequeue:aside" : "stagequeue",
                     Content = rows,
                 },
             ],

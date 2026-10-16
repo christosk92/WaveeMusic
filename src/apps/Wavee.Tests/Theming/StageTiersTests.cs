@@ -2,7 +2,10 @@
 //
 // Pure: the stage's class ladders moved out of the allocator (`ClassicStageTiers`, plan 3.1's "stage aspect classes"), their holds at every
 // edge, the boards' sizes in the boards' classes, the per-window-tier metrics the allocator budgets from (the transport card, the lyrics
-// type), the 330-tall stage that keeps its art, title and controls apart, and the view records (the stage's, the panel contents').
+// type), the 330-tall stage that keeps its art, title and controls apart, and the view records (the stage's, the panel contents'). The
+// regions the tiers add: the gallery down to the foot with the card beside it (C-Stage-Huge), the Up next column and the bars under the
+// cover (C-Stage-Huge4K, from the 3200 rung), the Compact window's identity card, face chip and gallery-on-request (C-Stage-Compact,
+// C-Lyrics-Compact), the Huge transport card's padding and gaps, and the video title row's actions (C-Video-Huge).
 
 using FluentGpu.Foundation;
 using Wavee.Themes.Classic;
@@ -243,5 +246,170 @@ public sealed class StageTiersTests
         Assert.Equal(ClassicQueueRules.HeaderExtent, ClassicQueueRules.HeaderExtentFor(standard.Target));
         Assert.Equal(ClassicQueueRules.HeaderSubExtent, ClassicQueueRules.HeaderSubExtentFor(standard.Target));
         Assert.Equal(ClassicQueueRules.HeaderExtent + 20f, ClassicQueueRules.HeaderExtentFor(compact.Target));   // the eyebrow row grows 20 to 40
+    }
+
+    [Fact]
+    public void The_transport_card_and_the_video_title_row_follow_the_huge_boards()
+    {
+        var huge = ClassicStageTiers.Stage(WidthTier.Huge);
+        Assert.Equal(new Edges4(24f, 14f, 24f, 0f), huge.TransportPadding);   // C-Stage-Huge: padding 14 24
+        Assert.Equal(12f, huge.ClusterGap);                                    // 12 between the centred buttons
+        Assert.Equal(8f, huge.RightGap);                                       // 8 in the right cluster
+        var standard = ClassicStageTiers.Stage(WidthTier.Standard);
+        Assert.Equal(new Edges4(20f, 10f, 20f, 0f), standard.TransportPadding);   // the tuned card, unchanged
+        Assert.Null(standard.ClusterGap);
+        Assert.Equal(6f, standard.RightGap);
+
+        Assert.True(ClassicStageTiers.Panel(WidthTier.Huge).VideoTitleActions, "C-Video-Huge: the heart and the ... on the title row");
+        Assert.False(ClassicStageTiers.Panel(WidthTier.Standard).VideoTitleActions);
+        Assert.False(ClassicStageTiers.Panel(WidthTier.Small).VideoTitleActions);
+        Assert.False(ClassicStageTiers.Panel(WidthTier.Compact).VideoTitleActions);
+        Assert.Equal(32f, ClassicStageTiers.VideoTitleButton);
+    }
+
+    // ── Huge: the gallery runs to the foot, the card beside it (C-Stage-Huge) ────────────────────────────────────────────
+
+    [Fact]
+    public void The_huge_gallery_runs_to_the_foot_and_the_card_yields_beside_it()
+    {
+        var huge = L.Seed(2560f, 1440f, Classic, ClassicStageTiers.HugeMetrics);
+        Assert.Equal(1440f - L.GalleryTop - 24f, huge.GalleryH);        // top 64, bottom 24 (the board's aside)
+        Assert.Equal(24f, huge.GalleryBottomInset);
+        Assert.Equal(516f, huge.TransportRight(galleryShown: true));     // the board's card stops 516 from the right edge
+        Assert.Equal(24f, huge.TransportRight(galleryShown: false));     // the full-width card when the gallery is closed
+        Assert.Equal(huge.W - huge.FaceRight(true), huge.W - huge.TransportRight(true) + 24f);   // the card and the face share the inset
+
+        var standard = L.Seed(1440f, 960f, Classic, ClassicStageTiers.StandardMetrics);
+        Assert.Equal(960f - L.GalleryTop - L.GalleryBottom, standard.GalleryH);   // the tuned column, clear of the full-width card
+        Assert.Equal(L.GalleryBottom, standard.GalleryBottomInset);
+        Assert.Equal(24f, standard.TransportRight(galleryShown: true));
+    }
+
+    // ── Huge 4K: the Up next column and the bars under the cover (C-Stage-Huge4K) ──────────────────────────────────────
+
+    [Theory]
+    [InlineData(2560f, false)]
+    [InlineData(3199f, false)]
+    [InlineData(3200f, true)]
+    [InlineData(3840f, true)]
+    public void A_huge_window_reads_the_4K_stage_metrics_from_3200(float width, bool wide)
+    {
+        var facts = WindowTiers.Resolve(ClassicTierFixture.Tiers, width, 2160f, width - 320f);
+        Assert.True(facts.Window >= WidthTier.Huge);
+        Assert.Same(wide ? ClassicStageTiers.HugeWideMetrics : ClassicStageTiers.HugeMetrics, ClassicStageTiers.Policy.MetricsFor(facts));
+        Assert.Equal(wide, ClassicStageTiers.Policy.IsHugeWide(facts));
+    }
+
+    [Fact]
+    public void The_4K_metrics_are_hugeplus_the_column_and_the_bars()
+    {
+        var wide = ClassicStageTiers.HugeWideMetrics;
+        Assert.Equal(ClassicStageTiers.HugeMetrics with { UpNextW = 520f, ArtBarsH = 140f }, wide);
+        Assert.Equal(ClassicDetailTiers.HugeWideRung, ClassicStageTiers.Policy.HugeWideRung);
+        Assert.Empty(ClassicStageTiers.Policy.Validate());
+        Assert.NotEmpty((ClassicStageTiers.Policy with { HugeWideRung = null }).Validate());   // a wide twin needs the rung it is read from
+        Assert.Equal(0f, ClassicStageTiers.HugeMetrics.UpNextW);
+        Assert.Equal(0f, ClassicStageTiers.HugeMetrics.ArtBarsH);
+    }
+
+    [Fact]
+    public void The_4K_lyrics_stage_docks_up_next_beside_the_lyrics_and_bars_under_the_cover()
+    {
+        var l = L.Seed(3840f, 2160f, Classic, ClassicStageTiers.HugeWideMetrics);
+        Assert.True(l.UpNextShown(M.Lyrics));
+        Assert.False(l.UpNextShown(M.Queue), "the Up next mode's pane IS the queue");
+        Assert.False(l.UpNextShown(M.Visualizer));
+        Assert.False(l.UpNextShown(M.Artist));
+        var up = l.UpNextRect;
+        Assert.Equal(3840f - 24f - 520f, up.X);       // right 24, 520 wide
+        Assert.Equal(64f, up.Y);                       // top 64
+        Assert.Equal(520f, up.W);
+        Assert.Equal(160f, 2160f - (up.Y + up.H));     // bottom 160: a gutter above the 112 card at 24
+
+        var lyrics = l.PaneRect(Stage.Look.Plain(M.Lyrics));
+        Assert.True(lyrics.X + lyrics.W <= up.X - L.UpNextGap + 0.5f, $"the lyrics {lyrics} run into the Up next column at {up.X}");
+        Assert.True(lyrics.W > 0f);
+        Assert.Equal(l.PaneW, l.PaneRect(Stage.Look.Plain(M.Queue)).W);   // the other panes keep the whole region
+        Assert.Equal(48f, l.LyricsTypeSize);                                // 48/60 on the board
+
+        var bars = l.ArtBarsRect(M.Lyrics);
+        Assert.True(l.ArtBarsShown(M.Lyrics));
+        Assert.False(l.ArtBarsShown(M.Queue));
+        Assert.Equal(140f, bars.H);                    // the board's 140
+        Assert.Equal(l.PadX, bars.X);                  // under the cover, the cover's width
+        Assert.Equal(l.HeroArt, bars.W);
+        Assert.True(bars.Y >= l.TitleY(M.Lyrics) + l.TitleBlockH(M.Lyrics, 2), "the bars sit under the two-line title budget");
+        Assert.True(bars.Y + bars.H <= l.TransportTop - L.Pad, "the bars clear the transport card");
+        Assert.True(bars.X + bars.W <= lyrics.X, "the bars stay in the cover's column");
+
+        var huge = L.Seed(3840f, 2160f, Classic, ClassicStageTiers.HugeMetrics);   // under the rung: no column, no bars
+        Assert.False(huge.UpNextShown(M.Lyrics));
+        Assert.False(huge.ArtBarsShown(M.Lyrics));
+        Assert.Equal(huge.PaneW, huge.PaneRect(Stage.Look.Plain(M.Lyrics)).W);
+    }
+
+    [Fact]
+    public void The_bars_under_the_cover_raise_the_lyrics_stage_lease_to_the_spectrum()
+    {
+        Assert.Equal(Visualizer.Tier.Spectrum, Visualizer.Demand.WithArtBars(Visualizer.Tier.Level, artBars: true));
+        Assert.Equal(Visualizer.Tier.Level, Visualizer.Demand.WithArtBars(Visualizer.Tier.Level, artBars: false));
+        Assert.Equal(Visualizer.Tier.None, Visualizer.Demand.WithArtBars(Visualizer.Tier.None, artBars: true));   // the gates closed it
+        Assert.Equal(Visualizer.Tier.Scope, Visualizer.Demand.WithArtBars(Visualizer.Tier.Scope, artBars: true));
+    }
+
+    // ── Compact: the identity card, the face chip, no gallery until asked (C-Stage-Compact, C-Lyrics-Compact) ──────────
+
+    [Fact]
+    public void The_compact_column_draws_the_identity_card_with_the_face_chip_under_it()
+    {
+        var l = L.Seed(400f, 860f, Classic, ClassicStageTiers.CompactMetrics);
+        Assert.Equal(A.Portrait, l.Aspect);
+        foreach (var mode in new[] { M.Lyrics, M.Visualizer, M.Queue, M.Artist })
+        {
+            Assert.True(l.IdentityCardOn(mode), $"{mode}: the Portrait column draws the card in every mode");
+            Assert.Equal((16f, 56f, 368f, 72f), l.NowPlayingCardRect(mode));   // left 16, top 56, 368 x 72
+            Assert.Equal(56f, l.CoverSize(mode));                               // the 56 cover at the card's 8 padding
+            Assert.Equal(24f, l.CoverX(mode));
+            Assert.Equal(64f, l.CoverY(mode));
+            Assert.Equal(24f + 56f + 12f, l.TitleX(mode));                      // 12 from the cover
+            Assert.Equal((16f, 22f), l.TitleFont(mode));                        // 16/22 over 13/18
+            Assert.Equal((13f, 18f), l.MetaFont(mode));
+            Assert.Equal(1, l.TitleMaxLines(mode));
+            Assert.Equal(40f, l.TitleBlockH(mode, 1));
+            Assert.Equal(72f, l.TitleY(mode));                                  // centred on the cover
+            Assert.Equal(400f - 16f - 8f - 92f, l.TitleW(mode));                // to the card's padding
+            Assert.False(l.ShowChipsFor(Stage.Look.Plain(mode)), "the card carries no chips");
+            Assert.Equal(0f, l.TitleGapFor(Stage.Look.Plain(mode)));
+        }
+        Assert.True(l.FaceChipShown(M.Visualizer));
+        Assert.False(l.FaceChipShown(M.Lyrics));
+        Assert.Equal(140f, l.FaceChipY);                                         // the board's chip at top 140
+        Assert.True(L.FaceChipH >= 40f, "the chip is a Compact target");
+        Assert.Equal(136f, l.PaneTop);                                           // C-Lyrics-Compact: the lyrics from 136
+        Assert.True(l.ShowPane);
+        Assert.Equal(l.FaceChipY + L.FaceChipH + L.Pad, l.FaceSafe(galleryOpen: false, captionShown: false).Y);   // a face centres under the chip
+
+        var narrowShort = L.Seed(500f, 400f, Classic, ClassicStageTiers.CompactMetrics);   // the landscape Compact class
+        Assert.Equal(A.Compact, narrowShort.Aspect);
+        Assert.True(narrowShort.IdentityCardOn(M.Visualizer), "the card stands where the 460 card would not fit");
+        Assert.Equal(500f - 32f, narrowShort.NowPlayingCardRect(M.Visualizer).W);
+        Assert.False(narrowShort.IdentityCardOn(M.Lyrics), "the Compact class keeps its art beside the card");
+
+        var small = L.Seed(800f, 600f, Classic, ClassicStageTiers.SmallMetrics);
+        Assert.False(small.IdentityCardOn(M.Visualizer));
+        Assert.Equal((L.NowPlayingCardX, L.NowPlayingCardY, L.NowPlayingCardW, L.NowPlayingCardH), small.NowPlayingCardRect(M.Visualizer));
+        Assert.False(small.FaceChipShown(M.Visualizer));
+    }
+
+    [Fact]
+    public void The_compact_gallery_opens_only_when_asked()
+    {
+        var compact = L.Seed(400f, 860f, Classic, ClassicStageTiers.CompactMetrics);
+        Assert.False(compact.GalleryOpenFor(stored: true, asked: false), "C-Stage-Compact shows no sheet by default");
+        Assert.True(compact.GalleryOpenFor(stored: true, asked: true));
+        Assert.False(compact.GalleryOpenFor(stored: false, asked: true));
+        var standard = L.Seed(1440f, 960f, Classic, ClassicStageTiers.StandardMetrics);
+        Assert.True(standard.GalleryOpenFor(stored: true, asked: false), "the stored flag stands on the wide tiers");
+        Assert.False(standard.GalleryOpenFor(stored: false, asked: true));
     }
 }

@@ -33,6 +33,17 @@ internal static class ClassicStageLayerGeometry
     /// <summary>The card drops in from this far above, after this delay.</summary>
     public const float CardEnterDy = -8f, CardEnterDelayMs = 150f;
 
+    /// <summary>The card follows a tier crossing (the 460 card and the Compact window's identity card) on the cover's spring: response, damping.</summary>
+    public const float CardMoveResponse = 0.45f, CardMoveDamping = 0.90f;
+
+    // ── the face chip under the identity card (C-Stage-Compact: "Change visualizer: Bloom") ──────────────────────────────────
+
+    /// <summary>The chip's side padding and gap, its glyph, its name (12/16 semibold) and its chevron. Its height and place are the
+    /// allocator's (<c>Stage.Layout.FaceChipH</c>, <c>FaceChipY</c>): a 40 target.</summary>
+    public const float FaceChipPadX = 12f, FaceChipGap = 6f, FaceChipGlyph = 14f, FaceChipText = 12f, FaceChipLine = 16f, FaceChipChevron = 10f;
+
+    public const ushort FaceChipWeight = 600;
+
     // ── the Artist layout's name ─────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The "NOW PLAYING" eyebrow: size, line height, letter spacing.</summary>

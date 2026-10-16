@@ -156,8 +156,9 @@ public static class ArtistSections
 {
     public const int Count = 16;
 
-    /// <summary>The chart: never taller than five rows, never more than 50 tracks; its widest column count is the structure's per tier
-    /// (<see cref="Wavee.Theming.ArtistTierPolicy.ChartMaxColumns"/>), two where it declares none.</summary>
+    /// <summary>The chart: never taller than five rows, never more than 50 tracks; its widest column count and its rows per column are the structure's per
+    /// tier (<see cref="Wavee.Theming.ArtistTierPolicy.ChartMaxColumns"/>, <see cref="Wavee.Theming.ArtistTierPolicy.ChartRows"/>), two and five where it
+    /// declares none.</summary>
     public const int ChartMaxRows = 5, ChartMaxColumns = 2, ChartMaxTracks = 50;
 
     /// <summary>"Fans also like" falls back to this many followed artists, excluding the page artist.</summary>
@@ -233,19 +234,22 @@ public static class ArtistSections
     public static bool ShowsCountdown(long releaseAtUnix, long nowUnix)
         => releaseAtUnix > nowUnix && releaseAtUnix - nowUnix <= CountdownWindowSeconds;
 
-    /// <summary>Never offer more columns than the rows can fill: a ≤5-track chart is ONE column at any width
+    /// <summary>Never offer more columns than the rows can fill: a chart no longer than one column's <paramref name="rows"/> is ONE column at any width
     /// (ArtistPopular.cs:138, ch 08 audit #4), and never more than <paramref name="maxColumns"/> (the tier's).</summary>
-    public static int ChartColumns(int total, int maxColumns = ChartMaxColumns)
-        => Math.Clamp((total + ChartMaxRows - 1) / ChartMaxRows, 1, Math.Max(1, maxColumns));
+    public static int ChartColumns(int total, int maxColumns = ChartMaxColumns, int rows = ChartMaxRows)
+    {
+        int perColumn = Math.Max(1, rows);
+        return Math.Clamp((total + perColumn - 1) / perColumn, 1, Math.Max(1, maxColumns));
+    }
 
     /// <summary>The chart skeleton's counts: the rows shown (the known count, else the overview's seed cap: an empty edge assumes the overview's
-    /// ten, W5), the columns the real layout would offer (up to ten charted is 2 x 5) and the rows per column. The structure's skeleton draws
-    /// them (`ArtistChartStyle.Skeleton`).</summary>
-    public static (int Total, int Columns, int PerColumn) ChartSkeletonShape(int knownCount)
+    /// ten, W5), the columns the real layout would offer at the tier's <paramref name="maxColumns"/> and <paramref name="rows"/> (so the skeleton
+    /// keeps the chart's own columns per tier) and the rows per column. The structure's skeleton draws them (`ArtistChartStyle.Skeleton`).</summary>
+    public static (int Total, int Columns, int PerColumn) ChartSkeletonShape(int knownCount, int maxColumns = ChartMaxColumns, int rows = ChartMaxRows)
     {
         int total = knownCount > 0 ? Math.Min(knownCount, ArtistPopularTracks.OverviewSeedCap) : ArtistPopularTracks.OverviewSeedCap;
-        int cols = ChartColumns(total);
-        int perCol = Math.Min(ChartMaxRows, Math.Max(1, (total + cols - 1) / cols));
+        int cols = ChartColumns(total, maxColumns, rows);
+        int perCol = Math.Min(Math.Max(1, rows), Math.Max(1, (total + cols - 1) / cols));
         return (total, cols, perCol);
     }
 

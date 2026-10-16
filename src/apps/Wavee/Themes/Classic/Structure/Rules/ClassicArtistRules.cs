@@ -24,19 +24,27 @@ public static class ClassicArtistRules
     public const int HeroLeadSkeletonLines = 2;
 
     /// <summary>The copy column's width. The stacked arms (no type on the photo, or a band of its own) and the bottom arm (the boards' fixed measure: 560 at
-    /// Small, 1120 at Huge) fill the band up to the form's maximum. The centred photo arm takes <c>min(CopyMax, max(360, 0.56 w - gutter))</c>, so the copy
-    /// ends near 56 % of the hero instead of running to 95 % of it over the bright half of the photo.</summary>
-    public static float HeroCopyWidth(float width, in ArtistHeroMetrics m, ClassicArtistHeroForm form)
+    /// Small, 1120 at Huge) fill the band up to the form's maximum. The centred photo arm takes <c>min(CopyMax, max(360, 0.56 w - inset))</c>, so the copy
+    /// ends near 56 % of the hero instead of running to 95 % of it over the bright half of the photo. <paramref name="inset"/> is the page column's inset
+    /// (<see cref="ClassicArtistLayout.ColumnInset"/>: the gutter, plus half of what the page's measure leaves on a wider page); NaN reads the gutter.</summary>
+    public static float HeroCopyWidth(float width, in ArtistHeroMetrics m, ClassicArtistHeroForm form, float inset = float.NaN)
     {
-        float band = MathF.Max(1f, width - 2f * m.Gutter);
+        float edge = float.IsNaN(inset) ? m.Gutter : inset;
+        float band = MathF.Max(1f, width - 2f * edge);
         if (m.Stacked || form.Arm != ClassicArtistHeroArm.Centred) return MathF.Min(m.CopyMaxWidth, band);
-        return MathF.Min(MathF.Min(m.CopyMaxWidth, band), MathF.Max(HeroCopyFloor, HeroCopyShare * width - m.Gutter));
+        return MathF.Min(MathF.Min(m.CopyMaxWidth, band), MathF.Max(HeroCopyFloor, HeroCopyShare * width - edge));
     }
 
     /// <summary>Where the veil's hold ends, as a fraction of the hero's width: the copy column's right edge, so the veil keeps the copy on
     /// its plate and fades over the photograph after it (<c>Controls.ArtistHeroVeil</c>). NaN on the stacked arms, which have no side veil.</summary>
-    public static float HeroVeilHold(float width, in ArtistHeroMetrics m, ClassicArtistHeroForm form)
-        => m.Stacked || width <= 1f ? float.NaN : (m.Gutter + HeroCopyWidth(width, in m, form)) / width;
+    public static float HeroVeilHold(float width, in ArtistHeroMetrics m, ClassicArtistHeroForm form, float inset = float.NaN)
+        => m.Stacked || width <= 1f ? float.NaN : ((float.IsNaN(inset) ? m.Gutter : inset) + HeroCopyWidth(width, in m, form, inset)) / width;
+
+    // ── the band's pivot ──
+    /// <summary>The pivot underline's top in a <paramref name="itemHeight"/>-tall link: under the word's centred line, at the band's gap (the band's own
+    /// <c>Detail.BandLayout.UnderlineY</c> at its 32 links).</summary>
+    public static float PivotUnderlineY(float itemHeight)
+        => (itemHeight - Detail.BandLayout.TextLine) * 0.5f + Detail.BandLayout.TextLine + Detail.BandLayout.UnderlineGap;
 
     // ── the pick card ──
     /// <summary>The rail arm's photograph band height; the column supplies the width.</summary>

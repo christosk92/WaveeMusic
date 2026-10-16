@@ -38,6 +38,15 @@ internal static class ClassicStageGeometry
     /// <summary>The gallery slides in from the right (or up from the foot on Portrait's sheet) by this much.</summary>
     public const float GallerySlide = 32f;
 
+    /// <summary>The transport card yields its width to a gallery that runs to the foot (C-Stage-Huge) over the face's re-centre tween
+    /// (FluentDecelerate), so the card and the face beside it move together; the gallery's own foot follows a tier crossing the same way.</summary>
+    public const float GalleryYieldMs = 550f;
+
+    // ── the Up next column (C-Stage-Huge4K) ──
+
+    /// <summary>The column's padding (the board's 20) and the distance it slides in from the right.</summary>
+    public const float UpNextPad = 20f, UpNextSlide = 32f;
+
     // ── the pane region (Lyrics, Up next, Artist: `Stage.Pane`) ──
 
     /// <summary>The region slides to its new rect with the cover (Lyrics ⇄ Large art) on this position spring: response, damping.</summary>
@@ -80,9 +89,6 @@ internal static class ClassicStageGeometry
 
     // ── the transport card ───────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The card's padding: 20 · 10 · 20 · 0 (the seek row sits 10 below the top).</summary>
-    public static readonly Edges4 TransportPadding = new(20f, 10f, 20f, 0f);
-
     /// <summary>The cluster row is at most this tall, and leaves this much of the card to the padding and the seek hit-box
     /// (10 pad + 32 seek hit-box + the row ≤ the card; Compact is 96).</summary>
     public const float ClusterRowMax = 58f, ClusterRowReserve = 46f;
@@ -100,9 +106,6 @@ internal static class ClassicStageGeometry
 
     /// <summary>The play disc, and its Compact size, and its glyph.</summary>
     public const float PlayDisc = 56f, PlayDiscCompact = 52f, PlayGlyph = 22f;
-
-    /// <summary>The right cluster's gap.</summary>
-    public const float RightClusterGap = 6f;
 
     // ── the volume slider ────────────────────────────────────────────────────────────────────────────────────────────
 

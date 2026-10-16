@@ -20,6 +20,9 @@
 //              stacked
 //   Huge       a row: a 240 avatar, the 84/96 name, the stats 32 apart, the actions at the   10 columns            the 176 floor
 //              right end, 320 tall (C-Profile-Huge)
+//   Eyebrow    the boards' "Profile" eyebrow over the name at Compact, Small and Huge (16 tall; 12 over the name on the row arms, flush on the centred
+//              one); the tuned Standard forms keep their none (P3b: "No eyebrow over the name"). The section pivot's words are the record's target tall
+//              (40 at Compact, C-Profile-Compact's 48 row in the 56 band).
 //   Short      a hero over 288 (60 % of the 480 page) becomes a 96-avatar row; under 480 tall the 64-avatar strip with the name alone.
 //
 // Public, so `Wavee.Tests` pins the ladder and the records (the assembly has no InternalsVisibleTo).
@@ -56,6 +59,12 @@ public sealed record ClassicProfileHeroForm
 
     /// <summary>The name's type rung and its line box.</summary>
     public required ClassicArtistName Name { get; init; }
+
+    /// <summary>The boards' "Profile" eyebrow over the name (C-Profile-Compact, -Small, -Huge; the tuned Standard forms have none).</summary>
+    public bool Eyebrow { get; init; }
+
+    /// <summary>The gap between the eyebrow and the name (12 on the row arms, flush on the centred one).</summary>
+    public float EyebrowGap { get; init; }
 
     /// <summary>The name's line box (96 / 60 / 40).</summary>
     public required float NameLine { get; init; }
@@ -103,8 +112,8 @@ public sealed record ClassicProfileHeroForm
     public float StatsHeight => StatRows <= 0 ? 0f
         : StatRows * MathF.Max(ClassicProfileTiers.StatHeight, StatMinH) + (StatRows - 1) * ClassicProfileTiers.StatRowGap;
 
-    /// <summary>The copy column's worst case: the name · gap · the stat rows · gap · the action row (when it sits under the copy).</summary>
-    public float CopyHeight => NameLine
+    /// <summary>The copy column's worst case: the eyebrow · gap · the name · gap · the stat rows · gap · the action row (when it sits under the copy).</summary>
+    public float CopyHeight => (Eyebrow ? ClassicProfileTiers.EyebrowLine + EyebrowGap : 0f) + NameLine
         + (StatRows > 0 ? NameToStats + StatsHeight : 0f)
         + (Actions && !ActionsBeside ? StatsToActions + Target : 0f);
 
@@ -124,7 +133,7 @@ public sealed record ClassicProfileLayout
     /// <summary>The shelves' fit.</summary>
     public required ClassicShelfBand Shelf { get; init; }
 
-    /// <summary>The section pivot's row (C-Profile-Compact's 48; the band's 56 elsewhere).</summary>
+    /// <summary>The page's hit targets and the section pivot's word height: 40 at Compact (C-Profile-Compact's 48 row), the band's 32 elsewhere.</summary>
     public required float Target { get; init; }
 
     /// <summary>The profile list grid's narrowest card.</summary>
@@ -155,6 +164,9 @@ public static class ClassicProfileTiers
 
     /// <summary>StatHero's 36 + its 12/16 caption; the gap between two stat rows.</summary>
     public const float StatHeight = 52f, StatRowGap = 8f;
+
+    /// <summary>The "Profile" eyebrow's line (12/16) and its gap over the name: C-Profile-Huge's copy column gap (12) and C-Profile-Small's (4).</summary>
+    public const float EyebrowLine = 16f, EyebrowRowGap = 12f, EyebrowTightGap = 4f;
 
     /// <summary>The Compact list grid's narrowest card and every other tier's (<c>SectionScreen</c>'s <c>SectionCardMinWidth</c>).</summary>
     public const float CompactListMinCell = 128f, ListMinCell = 176f;
@@ -187,21 +199,23 @@ public static class ClassicProfileTiers
     {
         Tier = ArtistHeroTier.Compact, Arm = ClassicProfileHeroArm.Centred, Avatar = 128f, Name = ClassicArtistName.Compact, NameLine = 40f, StatRows = 1,
         TopPad = 20f, BottomPad = 16f, CopyMax = 640f, AvatarGap = 12f, StatGap = 4f, NameToStats = 8f, StatsToActions = 12f,
-        Actions = true, ActionsBeside = false, Target = ClassicArtistTiers.CompactTarget, StatMinH = 56f, StatMinW = 96f,
+        Actions = true, ActionsBeside = false, Target = ClassicArtistTiers.CompactTarget, StatMinH = 56f, StatMinW = 96f, Eyebrow = true, EyebrowGap = 0f,
     };
 
     private static readonly ClassicProfileHeroForm s_centredNarrow = s_centred with { Tier = ArtistHeroTier.Narrow, StatRows = 2 };
 
-    // C-Profile-Small: a 200 row, a 128 avatar 24 from the copy, the 48/60 name 4 over the stats, the actions at the right end.
+    // C-Profile-Small: a 200 row, a 128 avatar 24 from the copy, the eyebrow 4 over the 48/60 name 4 over the stats (the 136 copy sets the row: 44 over it,
+    // 20 under it), the actions at the right end.
     private static readonly ClassicProfileHeroForm s_small = s_medium with
     {
-        Avatar = 128f, TopPad = 52f, BottomPad = 20f, CopyMax = 560f, AvatarGap = 24f, NameToStats = 4f, ActionsBeside = true,
+        Avatar = 128f, TopPad = 44f, BottomPad = 20f, CopyMax = 560f, AvatarGap = 24f, NameToStats = 4f, ActionsBeside = true,
+        Eyebrow = true, EyebrowGap = EyebrowTightGap,
     };
 
     // C-Profile-Huge: a 320 row, a 240 avatar 40 from the copy, the stats 32 apart, the actions at the right end.
     private static readonly ClassicProfileHeroForm s_huge = s_wide with
     {
-        Avatar = 240f, TopPad = 48f, BottomPad = 32f, AvatarGap = 40f, StatGap = 32f, ActionsBeside = true,
+        Avatar = 240f, TopPad = 48f, BottomPad = 32f, AvatarGap = 40f, StatGap = 32f, ActionsBeside = true, Eyebrow = true, EyebrowGap = EyebrowRowGap,
     };
 
     /// <summary>The hero's form for sub-tier <paramref name="tier"/> in the tiers <paramref name="facts"/>; the Standard forms where no frame resolved them.</summary>
@@ -221,13 +235,13 @@ public static class ClassicProfileTiers
             return form with
             {
                 Arm = ClassicProfileHeroArm.Row, Avatar = 64f, Name = ClassicArtistName.Compact, NameLine = 40f, StatRows = 0, TopPad = 16f, BottomPad = 12f,
-                AvatarGap = 16f, Actions = false, StatMinH = 0f, StatMinW = 0f,
+                AvatarGap = 16f, Actions = false, StatMinH = 0f, StatMinW = 0f, Eyebrow = false, EyebrowGap = 0f,
             };
         if (form.Height <= ClassicArtistTiers.ShortHeroCap) return form;
         return form with
         {
             Arm = ClassicProfileHeroArm.Row, Avatar = 96f, Name = ClassicArtistName.Compact, NameLine = 40f, TopPad = 16f, BottomPad = 16f, AvatarGap = 16f,
-            NameToStats = 8f, StatsToActions = 12f, ActionsBeside = false, StatMinH = 0f, StatMinW = 0f,
+            NameToStats = 8f, StatsToActions = 12f, ActionsBeside = false, StatMinH = 0f, StatMinW = 0f, Eyebrow = false, EyebrowGap = 0f,
             StatRows = tier == ArtistHeroTier.Narrow ? 2 : 1,
         };
     }

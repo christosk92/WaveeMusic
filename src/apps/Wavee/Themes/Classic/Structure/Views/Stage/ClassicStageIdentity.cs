@@ -40,7 +40,7 @@ internal static class ClassicStageIdentity
         var k = sc.Look.Value;                       // what is drawn: Card (the thumb) or a layout's cover + titles
         string url = track.IsValid ? Controls.ArtUrl(track.ImageId) ?? "" : "";
         float size = L.CoverSize(in k);
-        float corners = CoverCorners(in k);
+        float corners = CoverCorners(in k, !k.IsLayout && L.IdentityCardOn(k.Mode));
         int decode = size > 400f ? 1024 : 512;    // Spotify's largest cover is 640: the big covers decode at 1024, the rest at 512
         var flip = new LayoutTransition(TransitionChannels.Bounds, TransitionDynamics.Spring(0.45f, 0.90f), SizeMode.ScaleCorrect);
         var move = new LayoutTransition(TransitionChannels.Position, TransitionDynamics.Spring(0.45f, 0.90f));
@@ -93,13 +93,13 @@ internal static class ClassicStageIdentity
     }
 
     /// <summary>The cover's corner radius per look: the board's 14 (Large art), 18 (Centered), 8 / 6 (the Artist hero's identity row); Card keeps
-    /// the Mode's (the thumb's control radius, the hero's card radius).</summary>
-    static float CoverCorners(in Stage.Look k) => k.Eff switch
+    /// the Mode's (the thumb's control radius, the hero's card radius), and the identity card's thumb is a thumb in every mode (C-Lyrics-Compact).</summary>
+    static float CoverCorners(in Stage.Look k, bool card) => k.Eff switch
     {
         Stage.VizLayout.LargeArt => Radii.Card,
         Stage.VizLayout.Centered => G.CenteredCorners,
         Stage.VizLayout.Artist => k.HeroLyrics ? G.ArtistLyricsCorners : G.ArtistCorners,
-        _ => k.Mode == Stage.Mode.Visualizer ? Radii.Control : Radii.Card,
+        _ => card || k.Mode == Stage.Mode.Visualizer ? Radii.Control : Radii.Card,
     };
 }
 

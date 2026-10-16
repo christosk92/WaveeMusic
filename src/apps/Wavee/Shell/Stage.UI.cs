@@ -105,6 +105,12 @@ public static partial class Stage
         /// NOT part of it: an open gallery stays until it is closed, because the face is laid out beside it
         /// (<c>Layout.FaceRight</c>) and hiding the pane with the chrome left the face clipped beside an empty column.</summary>
         public readonly Signal<bool> GalleryShown = new(true);
+        /// <summary>The gallery was asked for during this stage's life (the face chip, G, the options footer): a tier whose gallery opens only
+        /// on request (<c>StageTierMetrics.GalleryOnDemand</c>, C-Stage-Compact) shows it from then on (<c>Layout.GalleryOpenFor</c>).</summary>
+        public readonly Signal<bool> GalleryAsked = new(false);
+        /// <summary>DERIVED by SurfaceCore: the bars under the cover show (<c>Layout.ArtBarsShown</c>, Lyrics mode on a Huge 4K stage), narrowed
+        /// to one bool so the clock's lease flips only when they come or go.</summary>
+        public readonly Signal<bool> ArtBars = new(false);
         // ── the visualizer LAYOUT axis (Stage.Layouts.cs): the stored preferences, mirrored by the one epoch effect ──
         /// <summary>The STORED layout and spectrum choice, the Artist hero's "lyrics over the image" and "slow pan and zoom" switches
         /// and its dimming (0–100) — never read from Prefs on a hot path (O8).</summary>
@@ -221,8 +227,10 @@ public static partial class Stage
             // The stage's verbs (StageModel.cs): the mode, the ONE gallery rule, the face step, exit, activity, options.
             _verbs = new StageVerbs(StagePrefsPort.Shared, () => StageModel.StateOf(_ctx), new StageHost(this));
             _ctx.SetMode = _verbs.SetMode;
-            _ctx.ToggleGallery = _verbs.ToggleGallery;
-            _ctx.OpenGallery = _verbs.OpenGallery;
+            // the verbs decide on the gallery as it is SHOWN (StageModel.StateOf), then the ask is noted: the order matters on a tier whose
+            // gallery opens only on request, where the first press must open a sheet nobody has seen yet
+            _ctx.ToggleGallery = () => { _verbs.ToggleGallery(); _ctx.GalleryAsked.Value = true; };
+            _ctx.OpenGallery = () => { _verbs.OpenGallery(); _ctx.GalleryAsked.Value = true; };
             _ctx.Exit = _verbs.Exit;
             _ctx.Activity = _verbs.Activity;
             _ctx.OpenOptions = _verbs.OpenOptions;
@@ -318,7 +326,12 @@ public static partial class Stage
             });
             // ── the gallery's "shown" gate, narrowed to one bool (a resize re-runs this, the clock's lease only on a flip): open, room
             //    for it, and a layout that has a gallery (only Card does) ──
-            UseSignalEffect(() => ctx.GalleryShown.SetIfChanged(ctx.GalleryOpen.Value && ctx.Layout.Value.ShowGallery && LayoutRules.GalleryAllowed(ctx.Look.Value.Eff)));
+            UseSignalEffect(() => ctx.ArtBars.SetIfChanged(ctx.Layout.Value.ArtBarsShown(ctx.Mode.Value)));
+            UseSignalEffect(() =>
+            {
+                var layout = ctx.Layout.Value;
+                ctx.GalleryShown.SetIfChanged(layout.GalleryOpenFor(ctx.GalleryOpen.Value, ctx.GalleryAsked.Value) && layout.ShowGallery && LayoutRules.GalleryAllowed(ctx.Look.Value.Eff));
+            });
 
             // ── EVERY preference, once per Prefs.Stage epoch, into the context's signals (O8) — the only Prefs.Stage reads on the stage ──
             UseSignalEffect(() =>

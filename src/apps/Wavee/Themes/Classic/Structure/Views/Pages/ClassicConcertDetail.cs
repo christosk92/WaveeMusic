@@ -81,8 +81,20 @@ internal static class ClassicConcertDetail
         // The rail docks only where the tier has one (C-Concert-Small keeps the tickets inline at every width).
         wide = wide && layout.RailWidth > 0f;
         if (!wide && tickets is not null) main.Add(tickets);                  // narrow: inline, right after the facts
-        if (d.Lineup.Length > 0) main.Add(Lineup(d.Lineup));
-        if (d.Related.Length > 0) main.Add(Related(d.Related));
+        if (layout.LineupWidth > 0f && d.Related.Length > 0)
+            // C-Concert-Huge: the lineup a 640 column beside the dates grid (the related concerts as date cards, four a row); either alone takes the row.
+            main.Add(new BoxEl
+            {
+                Key = "concert-event:lineup-dates", Direction = 0, Gap = Spacing.XL, AlignItems = FlexAlign.Start, MinWidth = 0f,
+                Children = d.Lineup.Length > 0
+                    ? [Lineup(d.Lineup) with { Width = layout.LineupWidth, Shrink = 0f }, Dates(d.Related, layout.DateColumns) with { Grow = 1f, Basis = 0f }]
+                    : [Dates(d.Related, layout.DateColumns) with { Grow = 1f, Basis = 0f }],
+            });
+        else
+        {
+            if (d.Lineup.Length > 0) main.Add(Lineup(d.Lineup));
+            if (d.Related.Length > 0) main.Add(Related(d.Related));
+        }
         var column = new BoxEl { Key = "concert-event:column", Direction = 1, Gap = Spacing.XL, MinWidth = 0f, Children = main.ToArray() };
         if (!wide || tickets is null) return column;                           // wide with NO offers: no rail (parity 64)
         return new BoxEl
@@ -167,9 +179,76 @@ internal static class ClassicConcertDetail
         return new BoxEl { Direction = 1, Gap = Spacing.S, MinWidth = 0f, Children = kids };
     }
 
+    /// <summary>The Huge dates grid (C-Concert-Huge's "Tour dates" geometry): the related concerts' header over <paramref name="columns"/> date cards a row,
+    /// in the lineup's card. The app has no tour-dates feed, so the grid carries the related concerts under their own header.</summary>
+    static BoxEl Dates(ConcertShelfItem[] related, int columns)
+    {
+        var tracks = new TrackSize[Math.Max(1, columns)];
+        for (int i = 0; i < tracks.Length; i++) tracks[i] = TrackSize.Star();
+        var cards = new Element[related.Length];
+        for (int i = 0; i < cards.Length; i++) cards[i] = DateCard(related[i].Slot);
+        return new BoxEl
+        {
+            Key = "concert-event:dates", Direction = 1, Gap = Spacing.M, MinWidth = 0f, ClipToBounds = true,
+            Padding = Edges4.All(Spacing.L), Corners = Radii.CardAll,
+            Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
+            Children =
+            [
+                Cells.SectionCaption(Loc.Get(Strings.Concerts.Detail.RelatedConcerts)),
+                new GridEl
+                {
+                    Columns = tracks, ColGap = Spacing.M, RowGap = Spacing.M, RowHeight = Rules.DateCardH, Children = cards,
+                },
+            ],
+        };
+    }
+
+    /// <summary>One date card (C-Concert-Huge): a rail, the accent month over the day, the venue over the city and the provider's day and time; a click opens
+    /// the concert.</summary>
+    static Element DateCard(int slot)
+    {
+        var c = new Concert(slot);
+        var culture = CultureInfo.CurrentCulture;
+        var date = c.LocalDate;
+        var (venue, city) = Concert.StubFacts(c);
+        string when = date.ToString("ddd", culture) + " " + date.ToString("t", culture);
+        return new BoxEl
+        {
+            Key = "date:" + slot.ToString(CultureInfo.InvariantCulture),
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f, Height = Rules.DateCardH,
+            Padding = new Edges4(Rules.DateCardRailLead, 0f, Spacing.M, 0f), Corners = Radii.CardAll,
+            Fill = Tok.FillSubtleSecondary, HoverFill = Tok.FillSubtleTertiary, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
+            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = () => ConcertVerbs.OpenConcert(slot),
+            Children =
+            [
+                new BoxEl { Width = Rules.DateCardRailW, Height = Rules.DateCardRailH, Shrink = 0f, Corners = Radii.ControlAll, Fill = Tok.StrokeControlDefault },
+                new BoxEl
+                {
+                    Direction = 1, Width = Rules.DateCardDateW, Shrink = 0f, AlignItems = FlexAlign.Center,
+                    Children =
+                    [
+                        R.Type.Eyebrow(date.ToString("MMM", culture)) with { Color = Tok.AccentTextPrimary, MaxLines = 1 },
+                        new TextEl(date.Day.ToString(culture))
+                        { Size = Rules.DateCardDaySize, LineHeight = Rules.DateCardDayLine, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1 },
+                    ],
+                },
+                new BoxEl
+                {
+                    Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                    Children =
+                    [
+                        BodyStrong(venue) with { Color = Tok.TextPrimary, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                        Caption(city.Length > 0 ? city + " · " + when : when) with
+                        { Color = Tok.TextSecondary, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                    ],
+                },
+            ],
+        };
+    }
+
     /// <summary>The lineup card: "Lineup" + "N artists", a divider, 60-DIP rows with 44 round avatars. Only a canonical
     /// artist navigates; a billing-only act is inert — no fill, no chevron, arrow cursor, not focusable (parity 49).</summary>
-    static Element Lineup(ConcertActView[] acts)
+    static BoxEl Lineup(ConcertActView[] acts)
     {
         var rows = new Element[acts.Length];
         for (int i = 0; i < rows.Length; i++)

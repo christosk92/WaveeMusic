@@ -214,4 +214,8 @@ public sealed record QueueStagePaneProps
 
     /// <summary>The queue's verbs, bound to this surface's page counters.</summary>
     public required IQueueVerbs Verbs { get; init; }
+
+    /// <summary>The column stands in its own frame beside the lyrics (the Huge 4K stage's Up next column, C-Stage-Huge4K): it fills that frame's
+    /// width at the board's scale instead of the pane region's width and the stage's queue scale. Appended (contract 1.22).</summary>
+    public bool Aside { get; init; }
 }

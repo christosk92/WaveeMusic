@@ -146,7 +146,8 @@ internal static class ClassicStageFaceScrim
         => Stage.Layer with { HitTestVisible = false, HitTestPassThrough = false, Fill = ClassicStageLayerKit.Shade(props.Alpha()), BrushTransitionMs = Stage.Tone.CrossFadeMs };
 }
 
-/// <summary>The layouts' spectrum: a component on the context's SIGNALS (Layout, Look) — it re-renders when the layout, the spectrum style or the
+/// <summary>The layouts' spectrum, and the bars under the cover of a Huge 4K Lyrics stage (C-Stage-Huge4K: <c>Layout.ArtBarsRect</c>; the clock
+/// leases the spectrum for them): a component on the context's SIGNALS (Layout, Look) — it re-renders when the layout, the spectrum style or the
 /// stage's size moves, never per tick. The strip itself is bound to the slab and lives in its own small RepaintBoundary, so a step re-rasters
 /// only that rect. Nothing is mounted for Card (the face is the picture) or Spectrum Off; the box is keyed by (layout, style, 8-DIP width
 /// bucket), so a style switch fades the old one out under the new and a drag does not rebuild it on every pixel.</summary>
@@ -163,7 +164,14 @@ internal static class ClassicStageSpectrum
         Element? body = null;
         float x = 0f, y = 0f, w = 0f, h = 0f;
         string key = "";
-        if (k.IsLayout)
+        if (!k.IsLayout && L.ArtBarsShown(k.Mode))
+        {
+            // the Huge 4K Lyrics stage's bars under the cover's title column (C-Stage-Huge4K): the strip's bars at the cover's width
+            (x, y, w, h) = L.ArtBarsRect(k.Mode);
+            body = Visualizer.StripBars(slab, w, h);
+            key = "artbars:" + ((int)w >> 3);
+        }
+        else if (k.IsLayout)
         {
             switch (k.Spectrum)
             {
@@ -204,23 +212,33 @@ internal static class ClassicStageSpectrum
     }
 }
 
-/// <summary>The acrylic now-playing card behind the thumb (Visualizer mode): TOP-LEFT (AlignSelf Start · JustifySelf Start).</summary>
+/// <summary>The acrylic now-playing card behind the thumb: TOP-LEFT (AlignSelf Start · JustifySelf Start). In Visualizer mode the 460 x 136 card;
+/// on a Compact window the identity CARD across the stage under the top bar (C-Stage-Compact, C-Lyrics-Compact), which a Portrait stage draws in
+/// every mode. The rect is the allocator's (<c>Layout.NowPlayingCardRect</c>); a tier crossing moves and resizes the card on the cover's spring.</summary>
 internal static class ClassicStageNowPlayingCard
 {
+    static readonly LayoutTransition s_move = new(TransitionChannels.Bounds,
+        TransitionDynamics.Spring(ClassicStageLayerGeometry.CardMoveResponse, ClassicStageLayerGeometry.CardMoveDamping), SizeMode.Relayout);
+
     /// <summary>The registered template of <see cref="ViewKeys.StageNowPlayingCard"/>.</summary>
-    public static Element Template(StageNowPlayingCardProps props, in ViewContext ctx) => new BoxEl
+    public static Element Template(StageNowPlayingCardProps props, in ViewContext ctx)
     {
-        AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, ZStack = true, HitTestVisible = false,   // a ZStack, so the card's Align/Justify mean something
-        Children =
-        [
-            Flow.Show(props.Shown, new BoxEl
-            {
-                Width = Stage.Layout.NowPlayingCardW, Height = Stage.Layout.NowPlayingCardH, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
-                Margin = new Edges4(Stage.Layout.NowPlayingCardX, Stage.Layout.NowPlayingCardY, 0f, 0f), Corners = Radii.CardAll,
-                Acrylic = Ink.Card, Shadow = Elevation.Card, HitTestVisible = false,
-                Enter = new EnterExit(Dy: ClassicStageLayerGeometry.CardEnterDy, Opacity: 0f, Active: true, DelayMs: ClassicStageLayerGeometry.CardEnterDelayMs),
-                Exit = new EnterExit(Opacity: 0f, Active: true), Transition = MotionTok.StandardEnter,
-            }),
-        ],
-    };
+        var sc = props.Stage;
+        var r = sc.Layout.Value.NowPlayingCardRect(sc.Mode.Value);
+        return new BoxEl
+        {
+            AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, ZStack = true, HitTestVisible = false,   // a ZStack, so the card's Align/Justify mean something
+            Children =
+            [
+                Flow.Show(props.Shown, new BoxEl
+                {
+                    Key = "stage:npcard", Width = r.W, Height = r.H, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
+                    Margin = new Edges4(r.X, r.Y, 0f, 0f), Corners = Radii.CardAll,
+                    Acrylic = Ink.Card, Shadow = Elevation.Card, HitTestVisible = false, Layout = s_move,
+                    Enter = new EnterExit(Dy: ClassicStageLayerGeometry.CardEnterDy, Opacity: 0f, Active: true, DelayMs: ClassicStageLayerGeometry.CardEnterDelayMs),
+                    Exit = new EnterExit(Opacity: 0f, Active: true), Transition = MotionTok.StandardEnter,
+                }),
+            ],
+        };
+    }
 }

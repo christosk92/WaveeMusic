@@ -884,12 +884,17 @@ public readonly partial struct Album
 
     // ── the artist-page album drawer (ch 05 W19, §8 row 3) ──────────────────────────────────────────────────────────
 
+    /// <summary>The drawer's geometry a structure decides per tier (themes plan 3.2): the track columns (0: the grid's own rule,
+    /// <see cref="DrawerVerdict.ColumnsFor"/>), the row pitch and the head's allowance (0: <see cref="DrawerVerdict.RowPitch"/> /
+    /// <see cref="DrawerVerdict.HeaderH"/>). <c>default</c> is the drawer before tiers.</summary>
+    public readonly record struct DrawerShape(int Columns, float RowPitch, float HeaderH);
+
     /// <summary>Everything the drawer needs, decided in ONE place (0.2.9 <c>AlbumDrawerVerdict</c>): rows, columns, the
-    /// show-all cell and BOTH heights, so the panel, the reserved slot and the bring-into-view can never disagree.</summary>
+    /// show-all cell, the row pitch and BOTH heights, so the panel, the reserved slot and the bring-into-view can never disagree.</summary>
     public readonly record struct DrawerVerdict(string Uri, int Rows, int Columns, int Shown, int Total, bool Loading,
-                                                bool ReadyEmpty, bool ShowAllRow, float PanelHeight, float SlotHeight)
+                                                bool ReadyEmpty, bool ShowAllRow, float PanelHeight, float SlotHeight, float Pitch)
     {
-        /// <summary>6 pad + 28 header row + 6 pad.</summary>
+        /// <summary>6 pad + 28 header row + 6 pad; the row pitch where the structure's shape names none.</summary>
         public const float HeaderH = 40f, RowPitch = 32f, TopGap = 8f, BottomGap = 8f;
         public const int CapPerColumn = 12, TwoColumnMinGridCols = 5, FallbackShimmerRows = 3;
 
@@ -900,22 +905,26 @@ public readonly partial struct Album
         /// <param name="loadedTracks">that album's rows</param>
         /// <param name="thinTracks">rows already on the card itself</param>
         /// <param name="thinTrackCount">the card's advertised count (sizes the placeholder)</param>
+        /// <param name="gridCols">the grid's columns (the column rule where <paramref name="shape"/> names no columns)</param>
+        /// <param name="shape">the structure's geometry for the tier on screen (<c>default</c>: the drawer before tiers)</param>
         public static DrawerVerdict For(string selectedUri, string? loadedUri, int loadedTracks, int thinTracks, int thinTrackCount,
-                                        bool pending, int gridCols)
+                                        bool pending, int gridCols, DrawerShape shape = default)
         {
             if (selectedUri.Length == 0) return default;
             bool match = loadedUri == selectedUri;                        // identity, not "whatever is in hand"
             int have = match ? loadedTracks : thinTracks;
             bool loading = !match && pending;
             bool readyEmpty = match && !pending && have == 0;
-            int columns = ColumnsFor(gridCols);
+            int columns = shape.Columns > 0 ? shape.Columns : ColumnsFor(gridCols);
+            float pitch = shape.RowPitch > 0f ? shape.RowPitch : RowPitch;
+            float head = shape.HeaderH > 0f ? shape.HeaderH : HeaderH;
             int cap = CapPerColumn * columns;
             int total = have > 0 ? have : Math.Max(thinTrackCount, 0);
             int shown = loading ? Math.Min(total > 0 ? total : FallbackShimmerRows, cap) : Math.Min(have, cap);
             bool showAll = !loading && total > cap;
             int rows = readyEmpty ? 2 : (int)Math.Ceiling((shown + (showAll ? 1 : 0)) / (float)columns);
-            float panel = HeaderH + rows * RowPitch;
-            return new(selectedUri, rows, columns, shown, total, loading, readyEmpty, showAll, panel, panel + TopGap + BottomGap);
+            float panel = head + rows * pitch;
+            return new(selectedUri, rows, columns, shown, total, loading, readyEmpty, showAll, panel, panel + TopGap + BottomGap, pitch);
         }
 
         /// <summary>The verdict off the album's own <c>AlbumTracks</c> edge: pending while the list is Unknown and not

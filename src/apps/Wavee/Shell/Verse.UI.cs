@@ -185,7 +185,7 @@ public static partial class Verse
             _slab = p.Slab;
             var ctx = UseContext(Stage.StageContext);
             var L = ctx?.Layout.Value ?? Stage.Layout.Seed(p.W, p.H);
-            bool galleryOpen = ctx?.GalleryOpen.Value ?? false;
+            bool galleryOpen = ctx?.GalleryShown.Value ?? false;   // what is on screen (a Compact sheet that was never asked for is not)
             bool chrome = ctx?.Chrome.Value ?? true;
             _calm = ctx?.Calm.Value ?? false;
             _ = ctx?.Palette.Value;                       // the cover / theme epoch: a flip re-renders with the arm's inks

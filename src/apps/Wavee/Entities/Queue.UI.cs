@@ -409,8 +409,10 @@ public static partial class Queue
         Children = [Embed.Comp(static () => new RailPanelHost())],
     };
 
-    /// <summary>The Up next column as the stage's pane region mounts it (the <c>Queue.StagePane</c> view inside the stage's pane frame).</summary>
-    public static Element StagePane() => Embed.Comp(static () => new StagePaneHost());
+    /// <summary>The Up next column as the stage's pane region mounts it (the <c>Queue.StagePane</c> view inside the stage's pane frame), or, with
+    /// <paramref name="aside"/>, as the Huge 4K stage docks it beside the lyrics in its own frame (C-Stage-Huge4K).</summary>
+    public static Element StagePane(bool aside = false)
+        => aside ? Embed.Comp(static () => new StagePaneHost(aside: true)) : Embed.Comp(static () => new StagePaneHost());
 
     /// <summary>The rail panel's host: this render's queue, the three sections' page counters, the lane, and the facts the panel
     /// reads for it ("Playing from" and where the now-playing row plays from). The picture is the structure's <c>Queue.Panel</c>.</summary>
@@ -511,7 +513,9 @@ public static partial class Queue
     /// the structure's <c>Queue.StagePane</c>.</summary>
     sealed class StagePaneHost : QueueSurface
     {
-        public StagePaneHost() : base(new Shell.QueuePages(unified: true)) { }
+        readonly bool _aside;
+
+        public StagePaneHost(bool aside = false) : base(new Shell.QueuePages(unified: true)) => _aside = aside;
 
         public override Element Render()
         {
@@ -527,6 +531,7 @@ public static partial class Queue
                 Queue = Model,
                 Lane = this,
                 Verbs = Verbs,
+                Aside = _aside,
             });
         }
     }

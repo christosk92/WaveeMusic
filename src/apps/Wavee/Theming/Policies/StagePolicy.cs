@@ -107,6 +107,26 @@ public sealed record StageTierMetrics(float TransportH, float TransportInset, fl
     /// <summary>The tuned Standard stage: the 112 card at the 24 gutter, the authored 36 grown up to 64 on a big stage.</summary>
     public static StageTierMetrics Default { get; } = new(112f, 24f, 36f, 64f);
 
+    /// <summary>The docked gallery runs down to the transport card's gutter at the stage's foot and the card yields its width beside it
+    /// (C-Stage-Huge); otherwise the gallery stops above the full-width card. Appended (contract 1.22).</summary>
+    public bool GalleryToFoot { get; init; }
+
+    /// <summary>Lyrics mode docks the Up next column at this width on the right, beside the lyrics, above the transport card
+    /// (C-Stage-Huge4K); 0: none. Appended (contract 1.22).</summary>
+    public float UpNextW { get; init; }
+
+    /// <summary>Lyrics mode draws the visualizer bars under the cover's title column, this tall (C-Stage-Huge4K); 0: none. Appended
+    /// (contract 1.22).</summary>
+    public float ArtBarsH { get; init; }
+
+    /// <summary>The identity is the now-playing CARD (the small cover and one title line in a card under the top bar) in Visualizer mode, and
+    /// in every mode on a Portrait stage (C-Stage-Compact, C-Lyrics-Compact). Appended (contract 1.22).</summary>
+    public bool IdentityCard { get; init; }
+
+    /// <summary>The gallery opens only when it is asked for during the stage's life (the face chip, the options footer, G), never from the
+    /// stored flag alone (C-Stage-Compact draws none). Appended (contract 1.22).</summary>
+    public bool GalleryOnDemand { get; init; }
+
     /// <summary>Everything wrong with the metrics of <paramref name="tier"/>.</summary>
     public IReadOnlyList<string> Validate(string tier)
     {
@@ -115,6 +135,8 @@ public sealed record StageTierMetrics(float TransportH, float TransportInset, fl
         if (!float.IsFinite(TransportInset) || TransportInset < 0f) problems.Add($"Stage.{tier}.TransportInset must be zero or more (was {TransportInset})");
         if (!float.IsFinite(LyricsTypeMin) || LyricsTypeMin <= 0f) problems.Add($"Stage.{tier}.LyricsTypeMin must be positive (was {LyricsTypeMin})");
         if (!float.IsFinite(LyricsTypeMax) || LyricsTypeMax < LyricsTypeMin) problems.Add($"Stage.{tier}.LyricsTypeMax must not be below LyricsTypeMin");
+        if (!float.IsFinite(UpNextW) || UpNextW < 0f) problems.Add($"Stage.{tier}.UpNextW must be zero or more (was {UpNextW})");
+        if (!float.IsFinite(ArtBarsH) || ArtBarsH < 0f) problems.Add($"Stage.{tier}.ArtBarsH must be zero or more (was {ArtBarsH})");
         return problems;
     }
 }
@@ -128,9 +150,11 @@ public sealed record StagePolicy(AspectThresholds Aspect)
     /// <see cref="TierPolicy.Standard"/> only <see cref="Metrics"/> is ever read.</summary>
     public static StagePolicy Default { get; } = new(AspectThresholds.Default)
     {
-        Compact = new StageTierMetrics(TransportH: 104f, TransportInset: 16f, LyricsTypeMin: 26f, LyricsTypeMax: 26f),
+        Compact = new StageTierMetrics(TransportH: 104f, TransportInset: 16f, LyricsTypeMin: 26f, LyricsTypeMax: 26f) { IdentityCard = true, GalleryOnDemand = true },
         Small = new StageTierMetrics(TransportH: 96f, TransportInset: 16f, LyricsTypeMin: 30f, LyricsTypeMax: 36f),
-        Huge = StageTierMetrics.Default with { LyricsTypeMax = 48f },
+        Huge = StageTierMetrics.Default with { LyricsTypeMax = 48f, GalleryToFoot = true },
+        HugeWide = StageTierMetrics.Default with { LyricsTypeMax = 48f, GalleryToFoot = true, UpNextW = 520f, ArtBarsH = 140f },
+        HugeWideRung = "detail.huge.wide",   // Classic's Huge 4K mark (ClassicDetailTiers.HugeWideRung); a policy without it reads Huge's at every Huge width
     };
 
     /// <summary>The metrics of every window tier that has none of its own (Standard).</summary>
@@ -145,6 +169,14 @@ public sealed record StagePolicy(AspectThresholds Aspect)
     /// <summary>The metrics while the window is Huge or Huge 4K; null keeps <see cref="Metrics"/>.</summary>
     public StageTierMetrics? Huge { get; init; }
 
+    /// <summary>The Huge band's wide twin (C-Stage-Huge4K: the Up next column beside the lyrics, the bars under the cover), read from
+    /// <see cref="HugeWideRung"/> on; null: Huge's at every Huge width. Appended (contract 1.22).</summary>
+    public StageTierMetrics? HugeWide { get; init; }
+
+    /// <summary>The window-width rung of the structure's <see cref="TierPolicy.Rungs"/> from which a Huge window reads <see cref="HugeWide"/>.
+    /// Appended (contract 1.22).</summary>
+    public string? HugeWideRung { get; init; }
+
     /// <summary>The metrics in window tier <paramref name="window"/>.</summary>
     public StageTierMetrics MetricsFor(WidthTier window) => window switch
     {
@@ -155,7 +187,12 @@ public sealed record StagePolicy(AspectThresholds Aspect)
     };
 
     /// <summary>The metrics for the window tier of <paramref name="tiers"/>; <see cref="Metrics"/> where no frame resolved the tiers.</summary>
-    public StageTierMetrics MetricsFor(in TierFacts tiers) => tiers.Policy is null ? Metrics : MetricsFor(tiers.Window);
+    public StageTierMetrics MetricsFor(in TierFacts tiers) => tiers.Policy is null ? Metrics : IsHugeWide(in tiers) ? HugeWide! : MetricsFor(tiers.Window);
+
+    /// <summary>Is the facts' window a Huge one past <see cref="HugeWideRung"/> (and the policy has a <see cref="HugeWide"/>)?</summary>
+    public bool IsHugeWide(in TierFacts tiers)
+        => HugeWide is not null && HugeWideRung is { } rung && tiers.Policy is { } policy && tiers.Window >= WidthTier.Huge
+           && policy.IndexOfRung(rung) >= 0 && tiers.Rung(rung);
 
     /// <summary>Everything wrong with the policy.</summary>
     public IReadOnlyList<string> Validate()
@@ -166,6 +203,11 @@ public sealed record StagePolicy(AspectThresholds Aspect)
         if (Compact is { } compact) problems.AddRange(compact.Validate("Compact"));
         if (Small is { } small) problems.AddRange(small.Validate("Small"));
         if (Huge is { } huge) problems.AddRange(huge.Validate("Huge"));
+        if (HugeWide is { } wide)
+        {
+            problems.AddRange(wide.Validate("HugeWide"));
+            if (HugeWideRung is not { Length: > 0 }) problems.Add("Stage.HugeWide needs the HugeWideRung it is read from");
+        }
         return problems;
     }
 }

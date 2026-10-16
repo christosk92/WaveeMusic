@@ -300,6 +300,27 @@ internal static class RailWiring
             repeat != Wavee.Spotify.Decode.RepeatMode.Off, repeat == Wavee.Spotify.Decode.RepeatMode.Track);
     }
 
+    /// <summary>The video body's title-row actions (C-Video-Huge): the playing track's heart and its "..." menu (the stage's now-playing menu).
+    /// Built once.</summary>
+    static readonly PanelVideoTitleProps s_videoTitle = new()
+    {
+        Facts = ReadVideoTitle,
+        Menu = static () => Stage.NowPlayingMenu?.Invoke(),
+    };
+
+    /// <summary>The heart's facts: the playing track's saved state (subscribed through the library seam) and its toggle; the stage transport
+    /// card's reads.</summary>
+    static PanelVideoTitleFacts ReadVideoTitle()
+    {
+        var track = Rail.NowTrack();
+        var lib = Controls.Library;
+        string uri = track.IsValid ? track.Uri.Text : "";
+        string title = track.IsValid ? track.Title : "";
+        bool saved = lib is not null && uri.Length > 0 && lib.IsSaved(uri);
+        Action? like = lib is { } seam && uri.Length > 0 ? () => seam.ToggleSaved(uri, title) : null;
+        return new PanelVideoTitleFacts(saved, like);
+    }
+
     // ══ THE PROPS THE FRAME MOUNTS ═══════════════════════════════════════════════════════════════════════════════════
 
     // Declared LAST: static fields initialize in textual order, and this one builds its parts from the helpers above.
@@ -336,6 +357,7 @@ internal static class RailWiring
         NowPlaying = BuildNowPlaying(),
         Friends = BuildFriends(),
         Transport = s_sheetTransport,
+        VideoTitle = s_videoTitle,
     };
 
     /// <summary>The props the frame mounts the SECOND pane with (the queue beside the primary panel): the primary's builders, its own
@@ -349,5 +371,6 @@ internal static class RailWiring
         ShowMode = null,
         DockedCard = static () => Shell.NoDockedCard(),
         Transport = null,
+        VideoTitle = null,
     };
 }

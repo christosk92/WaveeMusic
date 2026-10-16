@@ -12,6 +12,17 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **Artist and profile pages fit every window size.** On a 4K window the artist's name and buttons now line up with Top tracks instead of
+  sitting at the far left. Huge windows show a row of section links under the artist photo, a More button after Radio, Top tracks in three
+  columns of five (four by four on 4K) and the artist's next concert under their pick. Narrow windows show the albums, singles and
+  compilations as a row of covers you swipe through. Song lists in an opened album sit in four columns on Huge windows and two on smaller
+  ones. On narrow windows the album song rows, the release-type tabs, the section links on artist and profile pages and the concert filter
+  buttons are large enough to tap. Profiles show a "Profile" label over the name on narrow, small and Huge windows. On Huge windows a concert
+  page shows the lineup beside a grid of related concert dates. The artist's stats on a narrow window no longer leave a wide gap when they
+  wrap to a second line.
+- **Full screen fits every window size.** On a 4K screen the lyrics have an Up next column and visualizer bars beside them. On Huge screens
+  the visualizer gallery runs to the bottom with the controls beside it. Narrow windows show the track as a compact card with a visualizer
+  chip and no longer open the gallery on their own. The Huge video panel has like and more buttons next to the title.
 - **Huge windows use their room on album, playlist and library pages.** From 1920 wide an album page has a right-hand column with About this
   release, the artist (a large photo, monthly listeners, the bio), Fans also like in rows of four and More by; they leave the left column and the
   space under the songs, and the songs keep their margin instead of running to the window's edge. On a 4K window the column is 640 wide and the

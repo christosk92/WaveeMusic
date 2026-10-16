@@ -14,6 +14,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Scroll.Effects;
 using FluentGpu.Signals;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 using Cells = Wavee.Themes.Classic.ClassicConcertCells;
@@ -59,10 +60,16 @@ internal sealed class ClassicConcertFilterBar : Component
         _whereContent = () => Embed.Comp(() => new ClassicConcertWhereFlyout(Io.Radius, pickRadius, _searchCities, _searchCities));
     }
 
+    /// <summary>The pills' height in the tiers this bar is drawn in (the hub's record: the Compact 40 target, the tuned 32), written by render.</summary>
+    float _pill = Rules.PillHeight;
+
     public override Element Render()
     {
         _a = UseProps<Args>();
         _overlay = UseContext(Overlay.Service);
+        // The tiers of the facts this bar is drawn in (the page's ctx.Tier()), never the process's last-published window: a crossing re-renders the bar.
+        var themeFacts = UseContext(ThemeFactsContext.Signal);
+        _pill = ClassicConcertLayout.HubPillOf(themeFacts is null ? TierFacts.Unknown : themeFacts.Value.Tiers);
         var io = _a.Io;
         var place = io.Place.Value;
         bool? inferred = io.Inferred.Value;
@@ -83,7 +90,7 @@ internal sealed class ClassicConcertFilterBar : Component
             ],
         };
         // decision (ch 17 §8, parity 71): the pill states an INFERRED place as "Near X (approximate)"
-        Element where = Cells.WherePill(ConcertHub.WhereLabel(place, inferred, radius), _openWhere) with { OnRealized = io.CaptureWhere };
+        Element where = Cells.WherePill(ConcertHub.WhereLabel(place, inferred, radius), _openWhere, _pill) with { OnRealized = io.CaptureWhere };
         Element row = new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
@@ -108,29 +115,32 @@ internal sealed class ClassicConcertFilterBar : Component
         Element[] kids = when.Kind == ConcertWhenKind.Any || when.Range is null
             ?
             [
-                Cells.RestDatePill(_openWhen) with { OnRealized = _captureWhen },
-                Cells.FilterToken(Loc.Get(Strings.Concerts.Filter.ThisWeekend), false, _thisWeekend, animate: Cells.ChipExit) with { Key = "when-chip" },
+                Cells.RestDatePill(_openWhen, _pill) with { OnRealized = _captureWhen },
+                Cells.FilterToken(Loc.Get(Strings.Concerts.Filter.ThisWeekend), false, _thisWeekend, animate: Cells.ChipExit, size: TokenSize) with { Key = "when-chip" },
             ]
-            : [Cells.FusedPill("when-pill", SegmentedPillStyle.Accent, when.Name, ConcertHub.WhenLabel(when.Range, CultureInfo.CurrentCulture), _openWhen) with { OnRealized = _captureWhen }];
+            : [Cells.FusedPill("when-pill", SegmentedPillStyle.AccentAt(_pill), when.Name, ConcertHub.WhenLabel(when.Range, CultureInfo.CurrentCulture), _openWhen) with { OnRealized = _captureWhen }];
         return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Children = kids };
     }
 
     Element Genres(IReadOnlyList<ConcertConcept> all, IReadOnlyList<string> selected, bool expanded)
     {
         var shown = ConcertHub.TopConcepts(all, selected, expanded);
-        var kids = new List<Element>(shown.Count + 2) { Cells.FilterToken(Loc.Get(Strings.Concerts.AllGenres), selected.Count == 0, _clearGenres) };
+        var kids = new List<Element>(shown.Count + 2) { Cells.FilterToken(Loc.Get(Strings.Concerts.AllGenres), selected.Count == 0, _clearGenres, size: TokenSize) };
         for (int i = 0; i < shown.Count; i++)
         {
             string uri = shown[i].Uri;
             bool active = false;
             for (int k = 0; k < selected.Count && !active; k++) active = string.Equals(selected[k], uri, StringComparison.Ordinal);
             kids.Add(Cells.FilterToken(ConcertHub.ConceptLabel(shown[i].Name, Loc.Get(Strings.Concerts.GenreFallback)), active,
-                () => Io.SetSelected(ConcertHub.ToggleConcept(Io.Selected.Peek(), uri))));
+                () => Io.SetSelected(ConcertHub.ToggleConcept(Io.Selected.Peek(), uri)), size: TokenSize));
         }
-        if (all.Count > shown.Count) kids.Add(Cells.MoreToken(Strings.Concerts.Filter.MoreGenres(all.Count - shown.Count), false, _expand));
-        else if (expanded && all.Count > ConcertHub.TopConceptCount) kids.Add(Cells.MoreToken(Loc.Get(Strings.Concerts.Filter.ShowLess), true, _collapse));
+        if (all.Count > shown.Count) kids.Add(Cells.MoreToken(Strings.Concerts.Filter.MoreGenres(all.Count - shown.Count), false, _expand, _pill));
+        else if (expanded && all.Count > ConcertHub.TopConceptCount) kids.Add(Cells.MoreToken(Loc.Get(Strings.Concerts.Filter.ShowLess), true, _collapse, _pill));
         return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Children = kids.ToArray() };
     }
+
+    /// <summary>The genre tokens' size: Large (the stock 40) where the pills are at the Compact target.</summary>
+    ControlSize TokenSize => _pill >= ClassicArtistTiers.CompactTarget ? ControlSize.Large : ControlSize.Medium;
 
     void OpenWhen()
     {

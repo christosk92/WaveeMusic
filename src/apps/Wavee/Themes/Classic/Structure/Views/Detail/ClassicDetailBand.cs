@@ -68,23 +68,24 @@ internal static class ClassicDetailBand
 
     /// <summary>The band's middle cluster (artist arm): the page's sections as text links, a 2-DIP accent underline under
     /// the active one — ALWAYS mounted, switching colour over 167 ms. <paramref name="active"/> is the caller's scroll-spy
-    /// answer; the section set is re-pushed (it grows after mount), the signal instance freezes at mount.</summary>
+    /// answer; the section set is re-pushed (it grows after mount), the signal instance freezes at mount. <paramref name="itemHeight"/> is each
+    /// link's height (the page record's target: 40 at Compact, the brief's rule); NaN keeps the band's own <see cref="BandLayout.ItemHeight"/>.</summary>
     public static Element Pivot(IReadOnlyList<(string Label, Action OnClick)> sections, IReadSignal<int> active,
-                                Func<ColorF> accent)
-        => Embed.Comp(new PivotProps(sections, active, accent), static () => new PivotHost());
+                                Func<ColorF> accent, float itemHeight = float.NaN)
+        => Embed.Comp(new PivotProps(sections, active, accent, float.IsNaN(itemHeight) ? BandLayout.ItemHeight : itemHeight), static () => new PivotHost());
 
-    sealed record PivotProps(IReadOnlyList<(string Label, Action OnClick)> Sections, IReadSignal<int> Active, Func<ColorF> Accent)
+    sealed record PivotProps(IReadOnlyList<(string Label, Action OnClick)> Sections, IReadSignal<int> Active, Func<ColorF> Accent, float ItemHeight)
     {
         public bool Equals(PivotProps? o)
         {
             if (ReferenceEquals(this, o)) return true;
-            if (o is null || !ReferenceEquals(Active, o.Active) || Sections.Count != o.Sections.Count) return false;
+            if (o is null || !ReferenceEquals(Active, o.Active) || Sections.Count != o.Sections.Count || !ItemHeight.Equals(o.ItemHeight)) return false;
             for (int i = 0; i < Sections.Count; i++)
                 if (!string.Equals(Sections[i].Label, o.Sections[i].Label, StringComparison.Ordinal)) return false;
             return true;
         }
 
-        public override int GetHashCode() => HashCode.Combine(Sections.Count, Active);
+        public override int GetHashCode() => HashCode.Combine(Sections.Count, Active, ItemHeight);
     }
 
     sealed class PivotHost : Component, IPropsHost
@@ -130,7 +131,7 @@ internal static class ClassicDetailBand
 
             var kids = new Element[shown];
             for (int i = 0; i < shown; i++)
-                kids[i] = PivotLink(p.Sections[i].Label, i == current, _tabFills[i], _tabClicks[i], _tabRealized[i]);
+                kids[i] = PivotLink(p.Sections[i].Label, i == current, _tabFills[i], _tabClicks[i], _tabRealized[i], p.ItemHeight);
             return new ScrollEl
             {
                 Horizontal = true, ContentSized = true,
@@ -183,12 +184,12 @@ internal static class ClassicDetailBand
         }
 
         /// <summary>One link: the hover boundary is the LINK's own box, so the word under the pointer lights alone. A ZSTACK of
-        /// <see cref="BandLayout.ItemHeight"/>: the word centred on the band's 20-DIP line (the same line as the title and
-        /// the actions), the active mark an OVERLAY at <see cref="BandLayout.UnderlineY"/>.</summary>
-        static Element PivotLink(string label, bool isActive, Func<ColorF> fill, Action go, Action<NodeHandle> realized) => new BoxEl
+        /// <paramref name="height"/> (the band's <see cref="BandLayout.ItemHeight"/>, the Compact 40 target): the word centred on the band's 20-DIP line
+        /// (the same line as the title and the actions), the active mark an OVERLAY under it (<see cref="ClassicArtistRules.PivotUnderlineY"/>).</summary>
+        static Element PivotLink(string label, bool isActive, Func<ColorF> fill, Action go, Action<NodeHandle> realized, float height) => new BoxEl
         {
             ZStack = true, Shrink = 0f,
-            Height = BandLayout.ItemHeight,
+            Height = height,
             Padding = new Edges4(BandLayout.PivotPadX, 0f, BandLayout.PivotPadX, 0f),
             Corners = Radii.ControlAll,
             Role = AutomationRole.Tab, Focusable = true, Cursor = CursorId.Hand, OnClick = go, OnRealized = realized,
@@ -211,7 +212,7 @@ internal static class ClassicDetailBand
                 new BoxEl
                 {
                     Height = BandLayout.UnderlineHeight, AlignSelf = FlexAlign.Stretch,
-                    Margin = new Edges4(0f, BandLayout.UnderlineY, 0f, 0f),
+                    Margin = new Edges4(0f, ClassicArtistRules.PivotUnderlineY(height), 0f, 0f),
                     Fill = fill,
                     BrushTransitionMs = AccentTransitionMs,
                     HitTestVisible = false,

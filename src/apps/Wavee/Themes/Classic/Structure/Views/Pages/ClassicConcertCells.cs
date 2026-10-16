@@ -39,6 +39,10 @@ internal sealed record SegmentedPillStyle(
     ColorF ValueInk, ColorF TrailingInk, string TrailingGlyph,
     float BorderWidth = 0f, ColorF BorderColor = default)
 {
+    /// <summary>The Concerts register at the hub's pill <paramref name="height"/> (the tuned 32, the Compact 40): the segment keeps its padding inside.</summary>
+    public static SegmentedPillStyle AccentAt(float height)
+        => height.Equals(Rules.AccentPillH) ? Accent : Accent with { Height = height, SegmentHeight = height - 2f * Rules.AccentPillPadT };
+
     /// <summary>The Concerts register: a 32-DIP accent capsule carrying an OPAQUE raised segment (<c>FillControlSolid</c>
     /// — never <c>FillCardDefault</c>, which in dark is 5 % white and read as accent-on-accent ink).</summary>
     public static SegmentedPillStyle Accent => new(
@@ -308,10 +312,11 @@ internal static class ClassicConcertCells
     /// pill leg, <see cref="ChipExit"/>) — <c>Animate</c> rides the toggle's own root via <c>Parts[PartRoot]</c>
     /// (F20/control-fidelity §6), never a caller-side <c>with { Animate = … }</c>: the return type here is the base
     /// <see cref="Element"/>, and <c>Animate</c> is a <c>BoxEl</c>-only property.</param>
-    public static Element FilterToken(string label, bool selected, Action onClick, LayoutTransition? animate = null)
+    /// <param name="size">The toggle's size: Large is the Compact 40 target (the hub's pill height there).</param>
+    public static Element FilterToken(string label, bool selected, Action onClick, LayoutTransition? animate = null, ControlSize size = ControlSize.Medium)
         // Key + Shrink + the width reflow ride the toggle's own root via Parts[PartRoot] (F20/control-fidelity §6) —
         // no one-child host box.
-        => ToggleButton.Controlled(label, selected, _ => onClick(), parts: animate is null ? s_tokenParts : TokenParts(animate.Value))
+        => ToggleButton.Controlled(label, selected, _ => onClick(), parts: animate is null ? s_tokenParts : TokenParts(animate.Value), size: size)
             with { Key = "filter-token:" + label };
 
     /// <inheritdoc cref="FilterToken"/>
@@ -326,10 +331,10 @@ internal static class ClassicConcertCells
     /// token; the chevron rides alongside it as a plain icon (a hyperlink has no icon slot).
     /// <para><c>// Workstream B</c>: was a dashed-border pill (<c>Interaction.Subtle</c>); "+N genres" reads as
     /// navigation, not a toggle, so it belongs on the link rung, not the button ladder.</para></summary>
-    public static Element MoreToken(string label, bool expanded, Action onClick) => new BoxEl
+    public static Element MoreToken(string label, bool expanded, Action onClick, float height) => new BoxEl
     {
         Key = "genre-more", Animate = s_tokenReflow,
-        Direction = 0, Height = Rules.PillHeight, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = Rules.PillGap,
+        Direction = 0, Height = height, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = Rules.PillGap,
         Children =
         [
             HyperlinkButton.Create(label, onClick),
@@ -337,10 +342,11 @@ internal static class ClassicConcertCells
         ],
     };
 
-    /// <summary>The where pill: MapPin 14, the label (BodyStrong), chevron 10; H 32, fully rounded, the control ramp.</summary>
-    public static BoxEl WherePill(string label, Action onClick) => new()
+    /// <summary>The where pill: MapPin 14, the label (BodyStrong), chevron 10; <paramref name="height"/> tall (the tier's: 32, the Compact 40), fully
+    /// rounded, the control ramp.</summary>
+    public static BoxEl WherePill(string label, Action onClick, float height) => new()
     {
-        Direction = 0, Height = Rules.PillHeight, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = Rules.PillGap,
+        Direction = 0, Height = height, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = Rules.PillGap,
         Padding = new Edges4(Rules.PillPadX, Rules.PillPadY, Rules.PillPadX, Rules.PillPadY), Corners = Radii.FullAll,
         Fill = Tok.FillControlDefault, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
         BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault,
@@ -355,10 +361,10 @@ internal static class ClassicConcertCells
 
     /// <summary>The when-area at rest: Calendar, "Dates", chevron — keyed <c>when-pill</c>, the SAME key as the fused
     /// pill, so the node is reused and its width reflows over 260 ms (§9 #10).</summary>
-    public static BoxEl RestDatePill(Action onClick) => new()
+    public static BoxEl RestDatePill(Action onClick, float height) => new()
     {
         Key = "when-pill", Animate = s_pillReflow,
-        Direction = 0, Height = Rules.PillHeight, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = Rules.PillGap,
+        Direction = 0, Height = height, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = Rules.PillGap,
         Padding = new Edges4(Rules.PillPadX, Rules.PillPadY, Rules.PillPadX, Rules.PillPadY), Corners = Radii.FullAll,
         Fill = Tok.FillControlDefault, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
         BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault,

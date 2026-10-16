@@ -2,7 +2,8 @@
 //
 // What `Entities\Artist.Discography.cs` wrote as literals beside the facet section, the grid, the cards, the album drawer and the standalone page, moved
 // verbatim with their pictures (`Lists\ClassicDiscography.cs`, `Views\Pages\ClassicDiscographyPage.cs`). They are data, not decisions: the drawer's
-// verdict and its geometry (`Album.DrawerVerdict`: the header, the row pitch, the gaps, the per-column cap) stay core, and the views read them.
+// verdict (`Album.DrawerVerdict`: the gaps, the per-column cap, the heights) stays core and sizes the tier's geometry the artist records name
+// (`ClassicArtistLayout.Drawer`: the columns, the pitch, the head), and the views read them.
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -44,12 +45,14 @@ internal static class ClassicDiscographyRules
     /// <summary>The panel's padding (horizontal, vertical) and its border.</summary>
     public const float PanelPadX = 12f, PanelPadY = 6f, PanelBorder = 1f;
 
-    /// <summary>The head row: its height, the play button, the cover and its decode, the open button and its corner, and its glyph.</summary>
-    public const float HeadH = 36f, HeadPlay = 32f, HeadCover = 28f, HeadOpen = 28f, HeadOpenRadius = 14f, HeadOpenGlyph = 11.76f, HeadBorder = 1f;
+    /// <summary>The head row's play button, the cover and its decode, the open button and its roundness (a circle), and its glyph (the row's height and
+    /// the Compact 40 buttons are the artist records': `ClassicArtistLayout.DrawerHead`, `.Target`).</summary>
+    public const float HeadPlay = 32f, HeadCover = 28f, HeadOpen = 28f, HeadOpenRound = 0.5f, HeadOpenGlyph = 11.76f, HeadBorder = 1f;
     public const int HeadCoverDecode = 56;
 
-    /// <summary>The rows' columns: # 26 · heart · title ★ · time 44 · … 32, at the 32-DIP <c>DrawerVerdict.RowPitch</c> (content 28).</summary>
-    public const float RankCol = 26f, TimeCol = 44f, MoreCol = 32f, RowContentH = 28f;
+    /// <summary>The rows' columns: # 26 · heart · title ★ · time 44 · … 32 at the tuned pitch; C-Discography-Compact's # 24 · time 40 · … 40; the air the pitch
+    /// keeps over a row's content (28 in 32).</summary>
+    public const float RankCol = 26f, TimeCol = 44f, MoreCol = 32f, RankColCompact = 24f, TimeColCompact = 40f, MoreColCompact = 40f, RowAir = 4f;
 
     /// <summary>The shimmer row's bars: the rank, the title (and its cap), the time, the trailing air; their height and corner.</summary>
     public const float ShimmerRank = 16f, ShimmerTitleMax = 240f, ShimmerTime = 30f, ShimmerTrail = 32f, ShimmerBarH = 11f, ShimmerRadius = 4f;

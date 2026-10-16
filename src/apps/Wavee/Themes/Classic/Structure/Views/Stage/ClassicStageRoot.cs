@@ -93,6 +93,9 @@ internal static class ClassicStageRoot
                     Children = [Slots.View(ViewKeys.StageArtistName, v.ArtistName)],
                 }),
                 layers.Pane() with { Key = "stage:pane" },
+                // the Huge 4K stage's Up next column beside the lyrics (C-Stage-Huge4K): its own acrylic frame at the allocator's rect, sliding
+                // in from the right as the tier or the mode brings it
+                Flow.Show(() => layers.UpNext is not null && v.Stage.Layout.Value.UpNextShown(v.Stage.Mode.Value), UpNext(v)),
                 // the lyric caption: a full-bleed LAYER (the Show's child carries the fade); the caption host places its block from the
                 // allocator's caption geometry (Layout.CaptionX/W/Bottom) — centred in the face's region, above the transport
                 Flow.Show(v.ShowCaption, Stage.Layer with
@@ -160,20 +163,20 @@ internal static class ClassicStageRoot
                     ],
                 }),
                 // TRANSPORT card: bottom edge (AlignSelf End — auto height ⇒ the card's own height, the window tier's), full width at the
-                // tier's gutter, or right of the art on Compact (Layout.TransportLeft — V-U23); the Margin is the ZStack offset, so the gutters hold.
+                // tier's gutter, or right of the art on Compact (Layout.TransportLeft — V-U23), or beside a gallery that runs to the foot
+                // (C-Stage-Huge); its own component places it, so a gallery toggle re-renders the placement and not this surface.
                 Flow.Show(v.ChromeVisible, Stage.Layer with
                 {
                     Key = "chrome:transport",
                     Enter = new EnterExit(Dy: ClassicStageGeometry.BarEnterDy, Opacity: 0f, Active: true), Exit = new EnterExit(Dy: ClassicStageGeometry.BarEnterDy, Opacity: 0f, Active: true), Transition = MotionTok.ControlNormal,
-                    Children =
-                    [
-                        new BoxEl
-                        {
-                            AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Stretch, Direction = 0,
-                            Margin = new Edges4(L.TransportLeft, 0f, L.TransportInset, L.TransportInset),
-                            Children = [Slots.View(ViewKeys.StageTransport, v.Transport)],
-                        },
-                    ],
+                    Children = [Embed.Comp(new ClassicStageTransportPlace.Props(v.Stage, v.Transport), static () => new ClassicStageTransportPlace())],
+                }),
+                // the FACE CHIP under the identity card (C-Stage-Compact, Visualizer mode in the Card layout): the face's name, and the door to the gallery sheet
+                Flow.Show(() => v.ChromeVisible() && v.Stage.Layout.Value.FaceChipShown(v.Stage.Mode.Value) && Stage.LayoutRules.ShowsNowPlayingCard(v.Stage.Look.Value.Eff), Stage.Layer with
+                {
+                    Key = "chrome:facechip",
+                    Enter = new EnterExit(Dy: -ClassicStageGeometry.BarEnterDy, Opacity: 0f, Active: true), Exit = new EnterExit(Opacity: 0f, Active: true), Transition = MotionTok.ControlNormal,
+                    Children = [Embed.Comp(new ClassicStageFaceChip.Props(v.Stage), static () => new ClassicStageFaceChip())],
                 }),
                 // GALLERY pane: a right-docked column (top-aligned, JustifySelf End) or Portrait's bottom sheet (AlignSelf End, full width)
                 // NOT gated on the idle chrome: the face beside it is inset for it while it is open (GalleryShown)
@@ -187,7 +190,8 @@ internal static class ClassicStageRoot
                         {
                             Direction = 0,
                             AlignSelf = sheet ? FlexAlign.End : FlexAlign.Start, JustifySelf = sheet ? FlexAlign.Stretch : FlexAlign.End,
-                            Margin = sheet ? new Edges4(0f, 0f, 0f, L.TransportH + ClassicStageGeometry.SheetGutters * Stage.Layout.Pad) : new Edges4(0f, Stage.Layout.GalleryTop, Stage.Layout.GalleryRight, Stage.Layout.GalleryBottom),
+                            Margin = sheet ? new Edges4(0f, 0f, 0f, L.TransportH + ClassicStageGeometry.SheetGutters * Stage.Layout.Pad) : new Edges4(0f, Stage.Layout.GalleryTop, Stage.Layout.GalleryRight, L.GalleryBottomInset),
+                            Layout = s_galleryFoot,   // a tier crossing moves its foot (to the stage's foot at Huge, C-Stage-Huge) on the yield's tween
                             Children = [Slots.View(ViewKeys.StageGallery, v.Gallery)],
                         },
                     ],
@@ -198,6 +202,36 @@ internal static class ClassicStageRoot
 
     /// <summary>The gallery's slide: in from the right (or up from the foot on Portrait's sheet) and back out the same way.</summary>
     static EnterExit GalleryMotion(bool sheet) => new(Dx: sheet ? 0f : ClassicStageGeometry.GallerySlide, Dy: sheet ? ClassicStageGeometry.GallerySlide : 0f, Opacity: 0f, Active: true);
+
+    /// <summary>The docked gallery's foot follows a tier crossing (clip-revealed, on the transport card's yield tween).</summary>
+    static readonly LayoutTransition s_galleryFoot = new(TransitionChannels.Bounds, TransitionDynamics.Tween(ClassicStageGeometry.GalleryYieldMs, Easing.FluentDecelerate), SizeMode.Reveal);
+
+    /// <summary>The Up next column's slide: in from the right and back out the same way.</summary>
+    static readonly EnterExit s_upNextMotion = new(Dx: ClassicStageGeometry.UpNextSlide, Opacity: 0f, Active: true);
+
+    /// <summary>The Huge 4K stage's Up next column (C-Stage-Huge4K): a full-bleed layer carrying the slide, the acrylic frame placed at the
+    /// allocator's rect (<c>Layout.UpNextRect</c>) as its direct ZStack child, the core's stage-queue host inside it.</summary>
+    static Element UpNext(StageRootView v)
+    {
+        var L = v.Stage.Layout.Value;
+        var r = L.UpNextRect;
+        var build = v.Layers.UpNext;
+        return Stage.Layer with
+        {
+            Key = "stage:upnext",
+            Enter = s_upNextMotion, Exit = s_upNextMotion, Transition = MotionTok.StandardEnter,
+            Children =
+            [
+                new BoxEl
+                {
+                    AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, Width = r.W, Height = r.H, Margin = new Edges4(r.X, r.Y, 0f, 0f),
+                    Direction = 1, Padding = Edges4.All(ClassicStageGeometry.UpNextPad), Corners = Radii.CardAll, ClipToBounds = true,
+                    Acrylic = Ink.Card, BorderWidth = 1f, BorderColor = Ink.Stroke,
+                    Children = build is null ? [] : [build()],
+                },
+            ],
+        };
+    }
 
     /// <summary>The stage veil at alpha <paramref name="a"/> (the arm's veil: dark on the dark arm, light on the light).</summary>
     static ColorF Shade(float a) => Ink.Veil with { A = a };

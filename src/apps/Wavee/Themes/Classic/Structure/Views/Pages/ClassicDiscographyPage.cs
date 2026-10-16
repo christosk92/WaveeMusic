@@ -31,7 +31,9 @@ internal static class ClassicDiscographyPage
     /// <summary>The registered template of <see cref="ViewKeys.Discography"/>.</summary>
     public static Element Template(DiscographyPageProps p, in ViewContext ctx)
     {
-        float gutter = ClassicTiers.PageOf(ctx.Tier()).Gutter;   // the one page gutter (F3)
+        var facts = ctx.Tier();
+        float gutter = ClassicTiers.PageOf(in facts).Gutter;   // the one page gutter (F3)
+        var layout = ClassicArtistTiers.Of(in facts);
         if (!p.Parsed) return Controls.Vacancy(Controls.VacancyVoice.Error);
 
         var labels = new string[s_facetLabelKeys.Length];
@@ -53,8 +55,8 @@ internal static class ClassicDiscographyPage
                     ],
                 },
                 // A FRESH signal per render: the ROUTE, not the control, is the truth; a change navigates and the next
-                // route re-seeds it (0.2.9 DiscographyPage.cs:120-125).
-                SelectorBar.Create(labels, new Signal<int>((int)p.Facet), onChange: p.OnFacet),
+                // route re-seeds it (0.2.9 DiscographyPage.cs:120-125). C-Discography-Compact's tabs are 44 tall (the Compact target); the stock item elsewhere.
+                SelectorBar.Create(labels, new Signal<int>((int)p.Facet), onChange: p.OnFacet, style: TabStyle(layout)),
             ],
         };
 
@@ -74,4 +76,12 @@ internal static class ClassicDiscographyPage
             Grow = 1f, ScrollKey = p.ScrollKey, Handle = p.Scroll,
         };
     }
+
+    static SelectorBarStyle? s_compactTabs;
+
+    /// <summary>The release-type tabs' style in the tier: null (the stock WinUI item) unless the record names a tab height (C-Discography-Compact's 44).</summary>
+    static SelectorBarStyle? TabStyle(ClassicArtistLayout layout)
+        => float.IsNaN(layout.DiscoTab) ? null
+            : s_compactTabs is { } cached && cached.ItemHeight.Equals(layout.DiscoTab) ? cached
+            : s_compactTabs = new SelectorBarStyle { ItemHeight = layout.DiscoTab };
 }

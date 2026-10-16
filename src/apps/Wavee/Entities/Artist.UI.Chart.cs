@@ -93,6 +93,8 @@ public readonly partial struct Artist
         ArtistPopularLayout.Tier? _tier;
         bool _tierClassic;
         bool _ready, _failed;
+        /// <summary>The tier's widest chart and its rows per column, written by render (the derived shimmer reads them outside it).</summary>
+        int _maxColumns = ArtistSections.ChartMaxColumns, _rows = ArtistSections.ChartMaxRows;
         Element? _shelf;
         IOverlayService? _overlay;
 
@@ -145,7 +147,7 @@ public readonly partial struct Artist
             _failedFn = () => _failed;
             _contentFn = () => _shelf ?? new BoxEl();
             _shimmerFn = () => _style is null ? new BoxEl()
-                : _style.Skeleton(ArtistChartSkeletonArgs.For(Owner.PopularSlots.Length, Classic, ShowArtwork));
+                : _style.Skeleton(ArtistChartSkeletonArgs.For(Owner.PopularSlots.Length, Classic, ShowArtwork, _maxColumns, _rows));
             _retry = Retry;
             _failedPanelFn = () => _style is null ? new BoxEl()
                 : _style.Failed(Loc.Get(Strings.Artist.TopTracks), AccentSignal?.Peek() ?? Tok.AccentDefault, _retry);
@@ -198,8 +200,13 @@ public readonly partial struct Artist
             RefreshItems();
             Selection.ItemCount = _items.Length;
 
-            // The tier's widest chart (TC6: two columns at Standard, more at Huge, one at Compact), read tracked: a window crossing re-renders the chart.
-            int cols = ArtistSections.ChartColumns(_items.Length, Math.Min(ChartKeyColumns, ShellPolicy.Tracked.ArtistTiers.ChartMaxColumns(Theming.ThemeHost.Facts.Value.Tiers)));
+            // The tier's widest chart and its rows per column (TC6: two columns at Standard, more at Huge, one at Compact; Huge 4K's four rows), read
+            // tracked: a window crossing re-renders the chart. The skeleton reads the same pair (the fields), so it keeps the chart's columns per tier.
+            var chartTiers = ShellPolicy.Tracked.ArtistTiers;
+            var tierFacts = Theming.ThemeHost.Facts.Value.Tiers;
+            _maxColumns = Math.Min(ChartKeyColumns, chartTiers.ChartMaxColumns(tierFacts));
+            _rows = Math.Max(1, chartTiers.ChartRows(tierFacts));
+            int cols = ArtistSections.ChartColumns(_items.Length, _maxColumns, _rows);
             int shelfKey = (cols - 1) * 4 + (ShowArtwork ? 2 : 0) + (Classic ? 1 : 0);
             Element shelf = PagedShelf.Create(
                 _items,
@@ -212,7 +219,7 @@ public readonly partial struct Artist
                 maxCardW: 9999f,
                 gap: metrics.CellGap,
                 headerGap: metrics.HeaderGap,
-                rows: ArtistSections.ChartMaxRows,
+                rows: _rows,
                 edgeFade: metrics.EdgeFade,
                 keyOf: _keyOf,
                 maxColumns: cols,
@@ -223,8 +230,23 @@ public readonly partial struct Artist
                 onInvoke: _invoke,
                 selectionMode: ItemsSelectionMode.Extended,
                 selection: Selection);
-            // The shelf's remount key rides the shelf itself; the structure's holder keeps it a CHILD (a key on a component's ROOT is inert).
-            _shelf = style.Shelf(shelf with { Key = s_chartShelfKeys[shelfKey] });
+            // The shelf's remount key rides the shelf itself; the structure's holder keeps it a CHILD (a key on a component's ROOT is inert). The
+            // rows per column are the shelf's frozen mount configuration too, so they key a pass-through column around it (only a crossing that
+            // changes them, Huge 4K's four rows against five, remounts the shelf; the selection model is this host's and survives it).
+            // A key on the region content's ROOT would be inert, so the keyed column is the root's one child.
+            _shelf = new BoxEl
+            {
+                Direction = 1, MinWidth = 0f,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Key = _rows == ArtistSections.ChartMaxRows ? "chart-rows" : "chart-rows:" + _rows.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                        Direction = 1, MinWidth = 0f,
+                        Children = [style.Shelf(shelf with { Key = s_chartShelfKeys[shelfKey] })],
+                    },
+                ],
+            };
 
             // The selection bar is its own component, so a select/clear re-renders the bar and the bound row chrome, never this host or the shelf.
             return style.Frame(new ArtistChartFrameArgs
