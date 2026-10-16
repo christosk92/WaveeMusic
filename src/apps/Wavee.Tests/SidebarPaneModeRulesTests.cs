@@ -20,17 +20,18 @@ public sealed class SidebarPaneModeRulesTests
     public void Band_FromWide(float w, SidebarWindowBand expected)
         => Assert.Equal(expected, ClassicTierFixture.BandOf(w, SidebarWindowBand.Wide));
 
-    [Fact] public void Band_NarrowLeavesOnlyAt700()
+    [Fact] public void Band_NarrowLeavesOnlyAt1048()
     {
-        Assert.Equal(SidebarWindowBand.Narrow, ClassicTierFixture.BandOf(690f, SidebarWindowBand.Narrow));
-        Assert.Equal(SidebarWindowBand.Wide, ClassicTierFixture.BandOf(700f, SidebarWindowBand.Narrow));
+        Assert.Equal(SidebarWindowBand.Narrow, ClassicTierFixture.BandOf(1040f, SidebarWindowBand.Narrow));
+        Assert.Equal(SidebarWindowBand.Wide, ClassicTierFixture.BandOf(1048f, SidebarWindowBand.Narrow));
     }
 
     [Fact] public void Band_TinyLeavesOnlyAt568()
     {
         Assert.Equal(SidebarWindowBand.Tiny, ClassicTierFixture.BandOf(560f, SidebarWindowBand.Tiny));
         Assert.Equal(SidebarWindowBand.Narrow, ClassicTierFixture.BandOf(568f, SidebarWindowBand.Tiny));
-        Assert.Equal(SidebarWindowBand.Wide, ClassicTierFixture.BandOf(720f, SidebarWindowBand.Tiny));
+        Assert.Equal(SidebarWindowBand.Narrow, ClassicTierFixture.BandOf(720f, SidebarWindowBand.Tiny));   // the rail covers the whole Small band
+        Assert.Equal(SidebarWindowBand.Wide, ClassicTierFixture.BandOf(1048f, SidebarWindowBand.Tiny));
     }
 
     [Fact] public void Band_ZeroWidthNeverMoves()

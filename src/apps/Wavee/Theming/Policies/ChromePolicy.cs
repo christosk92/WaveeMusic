@@ -6,6 +6,8 @@
 // each optional island is allowed to appear, how wide the search and the tabs may be) is the structure's, and arrives as this
 // value. `Default` is the shell before themes (what Wavee Classic declares), taken from the row's own named widths.
 
+using Wavee.Theming.Contracts;
+
 namespace Wavee.Theming;
 
 /// <summary>The title-bar row's budget: widths in DIP unless a name says otherwise.</summary>
@@ -65,6 +67,11 @@ public sealed record ChromeBudget(
     /// evenly by the two drag bands either side), so a widened field never covers a tab or the avatar.</summary>
     public float SearchFocusClearW { get; init; }
 
+    /// <summary>The tabs island is ONE tab-count button instead of the tab strip (a Compact title bar: the count opens the open tabs as
+    /// a menu). The allocator then budgets the island at <see cref="NavButtonW"/> and reserves no "+" slot. False (the default) keeps
+    /// the strip.</summary>
+    public bool TabsAsCount { get; init; }
+
     /// <summary>Everything wrong with the budget, empty when the allocator can run on it.</summary>
     public IReadOnlyList<string> Validate()
     {
@@ -105,12 +112,41 @@ public sealed record ChromeBudget(
 }
 
 /// <summary>The title-bar row's policy.</summary>
-/// <param name="Budget">The row's budget.</param>
+/// <param name="Budget">The row's budget (every window tier that has no budget of its own).</param>
 public sealed record ChromePolicy(ChromeBudget Budget)
 {
-    /// <summary>The shell before themes.</summary>
-    public static ChromePolicy Default { get; } = new(ChromeBudget.Default);
+    /// <summary>The shell before themes: the row's named widths, with the Compact row's tab count and the Huge row's wider search and
+    /// tabs (what Wavee Classic declares; under <see cref="TierPolicy.Standard"/> only the base budget is ever read).</summary>
+    public static ChromePolicy Default { get; } = new(ChromeBudget.Default)
+    {
+        Compact = ChromeBudget.Default with { TabsAsCount = true },
+        Huge = ChromeBudget.Default with { SearchMaxW = Shell.Layout.ChromeHugeSearchMaxW, TabMaxW = Shell.Layout.ChromeHugeTabMaxW },
+    };
 
-    /// <summary>Everything wrong with the policy.</summary>
-    public IReadOnlyList<string> Validate() => Budget is null ? new[] { "Chrome.Budget is missing" } : Budget.Validate();
+    /// <summary>The row's budget while the window is Compact; null keeps <see cref="Budget"/>.</summary>
+    public ChromeBudget? Compact { get; init; }
+
+    /// <summary>The row's budget while the window is Huge or Huge 4K; null keeps <see cref="Budget"/>.</summary>
+    public ChromeBudget? Huge { get; init; }
+
+    /// <summary>The budget the row is allocated by in window tier <paramref name="window"/>.</summary>
+    public ChromeBudget BudgetFor(WidthTier window) => window switch
+    {
+        WidthTier.Compact => Compact ?? Budget,
+        WidthTier.Huge or WidthTier.Huge4K => Huge ?? Budget,
+        _ => Budget,
+    };
+
+    /// <summary>The budget for the window tier of <paramref name="tiers"/>; <see cref="Budget"/> where no frame resolved the tiers.</summary>
+    public ChromeBudget BudgetFor(in TierFacts tiers) => tiers.Policy is null ? Budget : BudgetFor(tiers.Window);
+
+    /// <summary>Everything wrong with the policy: the base budget and each tier's own.</summary>
+    public IReadOnlyList<string> Validate()
+    {
+        if (Budget is null) return new[] { "Chrome.Budget is missing" };
+        var problems = new List<string>(Budget.Validate());
+        if (Compact is { } compact) foreach (string p in compact.Validate()) problems.Add("Compact: " + p);
+        if (Huge is { } huge) foreach (string p in huge.Validate()) problems.Add("Huge: " + p);
+        return problems;
+    }
 }

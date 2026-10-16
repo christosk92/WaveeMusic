@@ -17,6 +17,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
@@ -30,6 +31,7 @@ internal static class ClassicDiscographyPage
     /// <summary>The registered template of <see cref="ViewKeys.Discography"/>.</summary>
     public static Element Template(DiscographyPageProps p, in ViewContext ctx)
     {
+        float gutter = ClassicTiers.PageOf(ctx.Tier()).Gutter;   // the one page gutter (F3)
         if (!p.Parsed) return Controls.Vacancy(Controls.VacancyVoice.Error);
 
         var labels = new string[s_facetLabelKeys.Length];
@@ -59,7 +61,7 @@ internal static class ClassicDiscographyPage
         var content = new BoxEl
         {
             Direction = 1, Gap = R.Space.SectionGap,
-            Padding = new Edges4(Spacing.PageWide, Spacing.XXL, Spacing.PageWide, R.Space.DockReserve + Spacing.PageWide),
+            Padding = new Edges4(gutter, Spacing.XXL, gutter, R.Space.DockReserve + gutter),
             Children =
             [
                 head,

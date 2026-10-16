@@ -18,7 +18,9 @@ public class FrameModelTests
 
     [Theory]
     [InlineData(1180f, SidebarWindowBand.Wide, SidebarPaneMode.Expanded)]
-    [InlineData(700f, SidebarWindowBand.Wide, SidebarPaneMode.Expanded)]
+    [InlineData(1008f, SidebarWindowBand.Wide, SidebarPaneMode.Expanded)]     // a fresh launch at the edge itself is Standard (NQ12)
+    [InlineData(1007f, SidebarWindowBand.Narrow, SidebarPaneMode.Compact)]    // the forced rail covers the whole Small band
+    [InlineData(700f, SidebarWindowBand.Narrow, SidebarPaneMode.Compact)]
     [InlineData(600f, SidebarWindowBand.Narrow, SidebarPaneMode.Compact)]     // a fresh launch at 600 is Narrow: the entering edge applies
     [InlineData(500f, SidebarWindowBand.Tiny, SidebarPaneMode.Minimal)]
     public void A_launch_seeds_the_band_and_mode_for_its_first_width(float width, SidebarWindowBand band, SidebarPaneMode mode)
@@ -46,9 +48,10 @@ public class FrameModelTests
     // ── the band follows the width, with hysteresis ─────────────────────────────────────────────────────────────────
 
     [Theory]
-    [InlineData(SidebarWindowBand.Wide, 650f, SidebarWindowBand.Narrow)]
-    [InlineData(SidebarWindowBand.Narrow, 680f, SidebarWindowBand.Narrow)]    // 660 < w < 700: no flip back yet
-    [InlineData(SidebarWindowBand.Narrow, 700f, SidebarWindowBand.Wide)]
+    [InlineData(SidebarWindowBand.Wide, 1000f, SidebarWindowBand.Narrow)]
+    [InlineData(SidebarWindowBand.Wide, 1008f, SidebarWindowBand.Wide)]       // narrowing has no hold at 1008
+    [InlineData(SidebarWindowBand.Narrow, 1047f, SidebarWindowBand.Narrow)]   // 1008 <= w < 1048: no flip back yet
+    [InlineData(SidebarWindowBand.Narrow, 1048f, SidebarWindowBand.Wide)]
     [InlineData(SidebarWindowBand.Narrow, 500f, SidebarWindowBand.Tiny)]
     [InlineData(SidebarWindowBand.Tiny, 550f, SidebarWindowBand.Tiny)]       // leaves at 568
     [InlineData(SidebarWindowBand.Tiny, 568f, SidebarWindowBand.Narrow)]

@@ -18,6 +18,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Wavee.Themes.Common;
 using static FluentGpu.Dsl.Ui;
@@ -28,12 +29,16 @@ namespace Wavee.Themes.Classic;
 internal static class ClassicContentState
 {
     /// <summary>The registered template of <see cref="ViewKeys.ShellContentState"/>.</summary>
-    public static Element Template(ContentStateProps props, in ViewContext ctx) => props.Kind switch
+    public static Element Template(ContentStateProps props, in ViewContext ctx)
     {
-        ContentStateKind.NotFound => CommonNotFound.Block(props.Key, props.Glyph, props.GoHome),
-        ContentStateKind.OfflineLane => OfflineLane(props),
-        _ => PageBox(props.Key, props.Page),
-    };
+        float gutter = ClassicTiers.PageOf(ctx.Tier()).Gutter;   // read unconditionally: the facts read is a hook
+        return props.Kind switch
+        {
+            ContentStateKind.NotFound => CommonNotFound.Block(props.Key, props.Glyph, props.GoHome),
+            ContentStateKind.OfflineLane => OfflineLane(props, gutter),
+            _ => PageBox(props.Key, props.Page),
+        };
+    }
 
     private static BoxEl PageBox(string key, Element? page) => new()
     {
@@ -43,11 +48,11 @@ internal static class ClassicContentState
 
     /// <summary>The page-scale offline strip (ch 29 W9 C / W10) in the flow above the kept content: the page gutter either side, 16 from the
     /// card's top (tuned Classic X1).</summary>
-    private static BoxEl OfflineLane(ContentStateProps props) => new()
+    private static BoxEl OfflineLane(ContentStateProps props, float gutter) => new()
     {
         Key = "offline-lane",
         Direction = 1, AlignItems = FlexAlign.Stretch, MinWidth = 0f, Shrink = 0f,
-        Padding = ClassicFrameRules.OfflineLanePadding,
+        Padding = ClassicFrameRules.OfflineLanePadding(gutter),
         Children = [Slots.View(ViewKeys.OverlayOfflineStrip, props.Strip)],
     };
 }

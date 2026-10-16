@@ -24,6 +24,9 @@ internal static class ClassicFrameRules
     /// <summary>The content row's shared-layout group: the content card FLIPs relative to the row, which never moves on a toggle.</summary>
     public const string ContentRowMorphId = "shell.content-row";
 
+    /// <summary>The content card's hairline width.</summary>
+    public const float StrokeWidth = 1f;
+
     /// <summary>The pane opens in 200 ms and closes in 100 ms on WinUI's SplitView spline (MotionTok.PaneOpen/PaneClose).</summary>
     public static readonly LayoutTransition SidebarPaneAnim = new(TransitionChannels.Size | TransitionChannels.Position,
         TransitionDynamics.Tween(MotionTok.PaneOpen.DurationMs, Easing.FluentPane), SizeMode.Reveal,
@@ -42,7 +45,7 @@ internal static class ClassicFrameRules
     /// <summary>The rail band's corner: the card radius on the top left only.</summary>
     public static CornerRadius4 RailBandCorners => new(Radii.Card, 0f, 0f, 0f);
 
-    /// <summary>The offline lane's inset in the content card (tuned Classic X1, board C-Offline): the page gutter either side, 16 from the card's
-    /// top, nothing below (the page's own head opens under it).</summary>
-    public static Edges4 OfflineLanePadding => new(Spacing.PageWide, 16f, Spacing.PageWide, 0f);
+    /// <summary>The offline lane's inset in the content card (tuned Classic X1, board C-Offline): the page <paramref name="gutter"/> either side,
+    /// 16 from the card's top, nothing below (the page's own head opens under it).</summary>
+    public static Edges4 OfflineLanePadding(float gutter) => new(gutter, 16f, gutter, 0f);
 }

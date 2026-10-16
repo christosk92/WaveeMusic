@@ -7,7 +7,7 @@
 //   Pages.Home
 //   └─ ZStack [ Wash (the shell tint claim the host built),
 //      ScrollView (Key/ScrollKey per PUBLISHED facet, Handle = the host's scroll handle)
-//        └─ centred column  Gap=XL(20)  MaxWidth=PageMaxW  Padding=(PageWide, XXL(24), PageWide, Dock.Reserve+32)
+//        └─ centred column  Gap=XL(20)  MaxWidth=PageMaxW  Padding=(gutter, XXL(24), gutter, Dock.Reserve+32), the gutter the content tier's
 //           │                ScrollScope=PageScope
 //           ├─ Home.FacetRow (the SelectorBar in R.Type.FacetTitleStyle — the facet words ARE the page title —
 //           │     · Following ToggleButton · busy ProgressBar)
@@ -40,6 +40,7 @@ using FluentGpu.Scroll.Effects;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.HomeUi;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
@@ -50,6 +51,7 @@ internal static class ClassicHomePage
     /// <summary>The registered template of <see cref="ViewKeys.HomePage"/>.</summary>
     public static Element Template(HomePageProps props, in ViewContext ctx)
     {
+        float gutter = ClassicTiers.PageOf(ctx.Tier()).Gutter;   // the one page gutter (F3): 16 / 32 / 36 by the content tier
         // Reveal None: the zones own their entrance (Design.Entrance rows in the zone column); the shimmer is the SAME tree
         // rendered against the seed, so the skeleton is derived from the real page, never authored by hand.
         Element region = new SkelRegionEl(
@@ -80,7 +82,7 @@ internal static class ClassicHomePage
             Key = "home:column", Direction = 1, Gap = Spacing.XL,
             Grow = 1f, Shrink = 1f, MinWidth = 0f, Basis = 0f, MaxWidth = R.Space.PageMaxW,
             AlignItems = FlexAlign.Stretch, ScrollScope = ClassicHomeRules.PageScope,
-            Padding = new Edges4(Spacing.PageWide, Spacing.XXL, Spacing.PageWide, R.Space.DockReserve + Spacing.XXXL),
+            Padding = new Edges4(gutter, Spacing.XXL, gutter, R.Space.DockReserve + Spacing.XXXL),
             Children =
             [
                 ctx.View(ViewKeys.HomeFacetRow, props.FacetRow) with { Key = "home:facet-row" },

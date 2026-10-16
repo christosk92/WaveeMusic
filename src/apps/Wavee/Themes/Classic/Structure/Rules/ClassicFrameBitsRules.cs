@@ -15,14 +15,12 @@ internal static class ClassicFrameBitsRules
 {
     // ── the masthead band ───────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The band's horizontal frame inset: the browse surfaces' own frame, so the band's title sits on the page's column.</summary>
-    public const float MastheadFrameX = 36f;
-
     /// <summary>The band's top inset.</summary>
     public const float MastheadFrameTop = 32f;
 
-    /// <summary>The band's padding.</summary>
-    public static readonly Edges4 MastheadPadding = new(MastheadFrameX, MastheadFrameTop, MastheadFrameX, 0f);
+    /// <summary>The band's padding: the page <paramref name="gutter"/> either side (the content tier's, so the band's title sits on the
+    /// page's column at every tier) and the top inset.</summary>
+    public static Edges4 MastheadPadding(float gutter) => new(gutter, MastheadFrameTop, gutter, 0f);
 
     /// <summary>The band's swap (tuning F7), on the page swap's own clock: a leaving head EXITS on the exit leg (90 ms, accelerate,
     /// from the commit) with the leaving body; an arriving head waits that leg out and ENTERS on the enter leg (210 ms, decelerate),

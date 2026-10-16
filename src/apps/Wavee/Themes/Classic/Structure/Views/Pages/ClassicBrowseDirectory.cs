@@ -22,6 +22,7 @@ using FluentGpu.Scene;
 using FluentGpu.Scroll.Effects;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
@@ -36,6 +37,7 @@ internal static class ClassicBrowseDirectory
         // The loading directory is built once per template instance (the old page's `_skeleton ??=`); the body once per run of this template,
         // which the host re-runs only when the band list, a tile row or the verdict changed.
         var skeleton = ctx.Hooks.UseRef<Element?>(null);
+        var page = ClassicTiers.PageOf(ctx.Tier());   // the one page gutter (F3)
         Element? body = null;
 
         // smoothResize false: a page-level region whose branches differ by hundreds of DIP lands its height at once.
@@ -53,7 +55,9 @@ internal static class ClassicBrowseDirectory
         Element directory = new BoxEl
         {
             Direction = 1, MinWidth = 0f, Gap = Spacing.L,
-            Padding = BrowseMastheadMetrics.FamilyUnderBandPad(R.Space.DockReserve + Spacing.XXL),
+            // The reserve is a SPACER above the clipped node (so the cut engages when content reaches the band, not at rest), leaving the
+            // gutters and the bottom on the node.
+            Padding = page.Pad(0f, R.Space.DockReserve + Spacing.XXL),
             // Feathered exactly while the clip is engaged, on the render turn that poses it (RCA 2026-09-25 F(ii)).
             EdgeFade = new EdgeFadeSpec(EdgeMask.Top, BrowseMastheadMetrics.ClipFadeBand) { WhileStuck = true },
             Children = [region],

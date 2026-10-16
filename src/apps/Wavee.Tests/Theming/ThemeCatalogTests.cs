@@ -446,7 +446,7 @@ public sealed class ThemeCatalogTests : IDisposable
         // capabilities and the tier FACT (no frame has resolved one) are the defaults.
         var facts = ThemeHost.Facts.Peek();
         Assert.Equal(Wavee.Themes.Classic.ClassicPolicies.Bundle, facts.Policies);
-        Assert.Same(Wavee.Themes.Classic.ClassicPolicies.Bundle.Tiers, facts.Policies.Tiers);   // ClassicTiers.Policy (internal): the bundle carries it
+        Assert.Same(Wavee.Themes.Classic.ClassicPolicies.Bundle.Tiers, facts.Policies.Tiers);   // ClassicTiers.Policy: the bundle carries it
         Assert.NotSame(TierPolicy.Standard, facts.Policies.Tiers);
         Assert.Equal(ThemeFacts.Default.Capabilities, facts.Capabilities);
         Assert.Equal(ThemeFacts.Default.Tiers, facts.Tiers);
@@ -466,8 +466,9 @@ public sealed class ThemeCatalogTests : IDisposable
         // 1.8 (tuned Classic CT8): Overlay.OfflineVacancy and OfflineVacancyProps.
         // 1.9 (tuned Classic CT6a): DetailFrameProps.Head, LikedChipBarProps.Inline, TrackRowSkin.Quiet.
         // 1.10 (tuned Classic X2 follow-up): LibraryAlbumPaneProps.Columns.
-        // 1.11 (P3t TC9): ThemePolicies.Overlays, Overlay.ContextSheet and ContextSheetProps. A 1.0 theme still runs.
-        Assert.Equal("1.11", ContractVersion.Text);
+        // 1.11 (P3t TC9): ThemePolicies.Overlays, Overlay.ContextSheet and ContextSheetProps.
+        // 1.12 (Classic frame tiers TC1): ChromeRowState.TabCount / TabMaxWidth, ChromePolicy.Compact / Huge, ctx.TierReader(). A 1.0 theme still runs.
+        Assert.Equal("1.12", ContractVersion.Text);
         Assert.True(ContractVersion.IsCompatible(1, 0));
         Assert.True(ContractVersion.IsCompatible(1, 2));
         Assert.True(ContractVersion.IsCompatible(1, 3));
@@ -479,7 +480,8 @@ public sealed class ThemeCatalogTests : IDisposable
         Assert.True(ContractVersion.IsCompatible(1, 9));
         Assert.True(ContractVersion.IsCompatible(1, 10));
         Assert.True(ContractVersion.IsCompatible(1, 11));
-        Assert.False(ContractVersion.IsCompatible(1, 12));
+        Assert.True(ContractVersion.IsCompatible(1, 12));
+        Assert.False(ContractVersion.IsCompatible(1, 13));
         Assert.False(ContractVersion.IsCompatible(2, 0));
         Assert.False(ContractVersion.IsCompatible(0, 0));
     }

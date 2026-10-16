@@ -46,7 +46,7 @@ public static class ClassicPageHeadRules
     /// its body by this and cuts its scrolling content at it. <see cref="PageHeadForm.Title"/>'s is <see cref="BrowseMastheadMetrics.Reserve"/>.</summary>
     public static float HeadReserve(PageHeadForm form) => ClassicFrameBitsRules.MastheadFrameTop + HeadHeight(form);
 
-    /// <summary>A drill-in page's body padding under the band: the page gutters, the drill reserve plus the 16-DIP gap under the head, and the
-    /// page's own bottom.</summary>
-    public static Edges4 DrillBodyPad(float bottom) => new(Spacing.PageWide, HeadReserve(PageHeadForm.Drill) + Spacing.L, Spacing.PageWide, bottom);
+    /// <summary>A drill-in page's body padding under the band: the page <paramref name="gutter"/> either side (the content tier's,
+    /// <see cref="ClassicTiers.PageOf"/>), the drill reserve plus the 16-DIP gap under the head, and the page's own bottom.</summary>
+    public static Edges4 DrillBodyPad(float gutter, float bottom) => new(gutter, HeadReserve(PageHeadForm.Drill) + Spacing.L, gutter, bottom);
 }

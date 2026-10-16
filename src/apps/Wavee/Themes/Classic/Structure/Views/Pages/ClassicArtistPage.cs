@@ -30,6 +30,7 @@ using FluentGpu.Localization;
 using FluentGpu.Scroll.Effects;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
@@ -52,6 +53,9 @@ internal static class ClassicArtistPage
     /// <summary>The registered template of <see cref="ViewKeys.ArtistPage"/>.</summary>
     public static Element Template(ArtistPageProps p, in ViewContext ctx)
     {
+        // The one page gutter (tuned Classic F3): the hero, the band and the magazine inset by the content tier's gutter, so the artist
+        // page sits on the same column as every other page (the hero tier keeps its own heights, veils and copy widths).
+        p = p with { Metrics = p.Metrics with { Gutter = ClassicTiers.PageOf(ctx.Tier()).Gutter } };
         // The latched layout decisions outlive a render (they were the host's fields); the styles resolve once per mount, as the host cached them.
         var latchCell = ctx.Hooks.UseRef<ClassicArtistLatch?>(null);
         var latch = latchCell.Value ??= new ClassicArtistLatch();

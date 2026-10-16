@@ -76,7 +76,7 @@ public sealed class DetailFrameMountedTests(ShellHost host)
 
             var head = At("detail:head-title");
             var bar = At("chrome:bar");
-            float gutter = ClassicDetailLayout.HeadGutter;
+            float gutter = ClassicTiers.PageOf(Wavee.Theming.ThemeHost.Facts.Peek().Tiers).Gutter;   // the content tier's (TC1): 32 beside a 320 pane at 1180
             Assert.Equal(head.Y + head.H + 8f, bar.Y, 0.5f);                       // the chrome's own air: the bar sits 12 under the meta
             Assert.Equal(44f, bar.H, 0.5f);
             Assert.Equal(bar.Y + bar.H + 4f, At("header").Y, 0.5f);           // 4 of air under the bar: the head is 156

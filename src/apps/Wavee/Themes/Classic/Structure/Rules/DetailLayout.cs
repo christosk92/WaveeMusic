@@ -62,19 +62,19 @@ public static class ClassicDetailLayout
 
     // ── the head of a page with no rail (tuned Classic D16, board C-Liked) ─────────────────────────────────────────────
 
-    /// <summary>The head's words sit in the page gutter (the board's 36; the gutter ladder is the content tier's, TC1).</summary>
-    public const float HeadGutter = 36f;
+    // The head's words sit in the page gutter (the content tier's, `ClassicTiers.PageOf`: the board's 36 at Standard), with the head rhythm's
+    // 24 of air above the title and the meta line 4 under it (`ClassicTiers.HeadTop`, `ClassicTiers.HeadMetaGap`, tuned Classic F3).
 
-    /// <summary>The air above the title, and under the meta line: 4, so with the list chrome's own 8 of top air the bar sits 12 under the meta
-    /// (24 + 52 + 4 + 16 + 12 + the 44 bar + 4 = the board's 156).</summary>
-    public const float HeadPadTop = 24f, HeadPadBottom = 4f;
+    /// <summary>The air under the meta line: 4, so with the list chrome's own 8 of top air the bar sits 12 under the meta
+    /// (24 + 52 + 4 + 16 + 4 + 8 + the 44 bar + 4 = the board's 156).</summary>
+    public const float HeadPadBottom = 4f;
 
-    /// <summary>The title's line (the 40/52 display face) and the meta line 4 under it, one 16-DIP line (a loading meta shimmers in the same
-    /// slot).</summary>
-    public const float HeadTitleLine = 52f, HeadMetaGap = 4f, HeadMetaLine = 16f;
+    /// <summary>The title's line (the 40/52 display face) and the meta line, one 16-DIP line (a loading meta shimmers in the same slot).</summary>
+    public const float HeadTitleLine = 52f, HeadMetaLine = 16f;
 
-    /// <summary>The list's inset under the head: the gutter less the row plates' 8, so the plates start 8 before the head's words.</summary>
-    public static float HeadListInset => HeadGutter - Track.RowMetrics.RowInset;
+    /// <summary>The list's inset under the head: the page <paramref name="gutter"/> less the row plates' 8, so the plates start 8 before the
+    /// head's words.</summary>
+    public static float HeadListInset(float gutter) => gutter - Track.RowMetrics.RowInset;
 
     // ── the insights sheet (tuned Classic I1, board C-Liked) ──────────────────────────────────────────────────────────
 
@@ -94,7 +94,7 @@ public static class ClassicDetailLayout
     public static float SheetListTop => Spacing.S + Detail.VerticalLayout.ToolbarRowHeight;
 
     /// <summary>The sheet's padding on every side and the gap between its header row and its body.</summary>
-    public static float SheetPad => Spacing.L;
+    public static float SheetPad => ClassicTiers.PaneInset;
 
     /// <inheritdoc cref="SheetPad"/>
     public static float SheetGap => Spacing.M;

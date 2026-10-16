@@ -410,8 +410,8 @@ internal static class ClassicConcertCells
             .StickyClip(ClassicPageHeadRules.HeadReserve(PageHeadForm.Hero));
 
     /// <summary>The schedule/detail page frame (§1.2, §1.3): the trail's reserve + 12 as a SPACER (the page's hero is its title), then
-    /// the 32-gutter body cut under the band, one vertical viewport.</summary>
-    public static ScrollEl SubPageScroll(string scrollKey, Element region) => ScrollView(new BoxEl
+    /// the body inset by the page <paramref name="gutter"/> and cut under the band, one vertical viewport.</summary>
+    public static ScrollEl SubPageScroll(string scrollKey, Element region, float gutter) => ScrollView(new BoxEl
     {
         Direction = 1,
         Children =
@@ -420,7 +420,7 @@ internal static class ClassicConcertCells
             UnderBand(new BoxEl
             {
                 Direction = 1, MinWidth = 0f,
-                Padding = new Edges4(Rules.SubPageGutter, 0f, Rules.SubPageGutter, R.Space.DockReserve + Rules.SubPageBottomExtra), Children = [region],
+                Padding = new Edges4(gutter, 0f, gutter, R.Space.DockReserve + Rules.SubPageBottomExtra), Children = [region],
             }),
         ],
     }) with { Grow = 1f, MinHeight = 0f, ScrollKey = scrollKey };

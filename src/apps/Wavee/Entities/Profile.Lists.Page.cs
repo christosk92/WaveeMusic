@@ -13,7 +13,7 @@
 //  view:  column
 //     ├─ HEAD (always real, outside the region): BreadcrumbBar [name › facet] · PageHero(facet) · SelectorBar (a change NAVIGATES —
 //     │        the route is the truth, not the control; Discography's head)
-//     └─ BODY (PageWide gutters) └─ measured box (_bodyW, floored to 8 DIP) └─ ONE SkelRegionEl (Soft; no outer ScrollView —
+//     └─ BODY (the page gutters) └─ measured box (_bodyW, floored to 8 DIP) └─ ONE SkelRegionEl (Soft; no outer ScrollView —
 //              the bound list OWNS the scroll)
 //          Pending     → the derived shimmer (tool bones + two rows of circular seed cards; stateful leaves never mount)
 //          Ready       → [tools: chips + find] over [ ZStack{ list · StickyLetter } · JumpStrip ]

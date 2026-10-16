@@ -25,7 +25,7 @@
 - **Contract version 1.11** (`Contracts\ContractVersion.cs`, which keeps the history): the published view keys and style keys, their props records
   and the role vocabulary. A theme records the version it was built against in its manifest; `ThemeHost.Install` refuses a
   composition whose major differs or whose minor is newer than the core's. 1.1 (CT4) appended `LyricsState.Offline`, the
-  optional `LyricsLinesStyle.Offline` picture and `PlayerBarSlots.VideoSplit`; 1.6 (CT6b) added `CoverVeilProps.Hold`; 1.7 (CT9) `ThemePolicies.Artwork` and `WashRoles.Rich`; 1.8 (CT8) `Overlay.OfflineVacancy`; 1.9 (CT6a) `DetailFrameProps.Head`, `LikedChipBarProps.Inline` and `TrackRowSkin.Quiet`; 1.10 (X2 follow-up) `LibraryAlbumPaneProps.Columns`; 1.11 (P3t TC9) `ThemePolicies.Overlays` and `Overlay.ContextSheet`.
+  optional `LyricsLinesStyle.Offline` picture and `PlayerBarSlots.VideoSplit`; 1.6 (CT6b) added `CoverVeilProps.Hold`; 1.7 (CT9) `ThemePolicies.Artwork` and `WashRoles.Rich`; 1.8 (CT8) `Overlay.OfflineVacancy`; 1.9 (CT6a) `DetailFrameProps.Head`, `LikedChipBarProps.Inline` and `TrackRowSkin.Quiet`; 1.10 (X2 follow-up) `LibraryAlbumPaneProps.Columns`; 1.11 (P3t TC9) `ThemePolicies.Overlays` and `Overlay.ContextSheet`; 1.12 (TC1) `ChromeRowState.TabCount` / `.TabMaxWidth`, the optional `ChromePolicy.Compact` / `.Huge` budgets with `ChromeBudget.TabsAsCount`, and `ctx.TierReader()`.
 - Keys live only in `Contracts\ViewKeys*.cs` and `StyleKeys.cs` (WVTH006). T1 declares none; each extraction PR adds its
   family in its own partial file (`ViewKeys.Shell.cs`: T4a's `Shell.Frame` and `Shell.ContentState`). How a surface becomes a
   registered view is section 2b.
@@ -1831,14 +1831,14 @@ Tiers are a **core fact**; where a tier begins, how it holds across a resize and
 | `TierPolicy` | `Theming\Policies\TierPolicy.cs` | three engine `TierLadder`s (window width, content width, window height), `CompactFloor` (300), `ShortFloor`, `NamedRung`s (board marks that are not tiers) and `NamedLadder`s (finer ladders a core model may read by id; Classic declares none); `ThemePolicies.Tiers` |
 | `TierFacts` | `Theming\Policies\TierFacts.cs` | what is published: `Window`, `Height`, `Content`, `ContentWidth`, the viewport size, `Resizing`, `Rung(id)` |
 | `WindowTiers` | `Shell\WindowTiers.cs` | the core rules (`EstimateContentWidth`, `Resolve`) and the frame root's `Binding` over the engine's `UseTier` |
-| `ctx.Tier()` | `Theming\TierContext.cs` | how a template reads `TierFacts` (never a width) |
+| `ctx.Tier()`, `ctx.TierReader()` | `Theming\TierContext.cs` | how a template reads `TierFacts` (never a width); `TierReader` for a bound channel of a template that renders once (the frame) |
 | `TierRegion`, `ITierLayoutRecord`, `TierClip` | `Theming\Policies\TierRegions.cs` | the clip-region API of a tier layout record |
-| Classic's ladders | `Themes\Classic\Structure\Rules\Tiers.cs` | the production numbers, moved out of core |
+| Classic's ladders and frame records | `Themes\Classic\Structure\Rules\Tiers.cs` | `ClassicTiers`: the board's ladders (TC1), `ClassicFrameLayout` per window tier, `ClassicPageLayout` (the gutter) per content tier |
 
 **An edge** is the engine's `TierEdge(At, NarrowHold, WidenHold)`: crossed upward at `At + WidenHold`, downward below
 `At - NarrowHold`; a fresh resolve (a launch, a navigation, a first mount) uses `At`. An absent edge (`TierEdge.None`) leaves the
-band above it unreachable, so a structure that draws no Huge 4K band lets its Huge band cover every wider window. Classic holds on
-widening (528 to 568, 660 to 700); WinUI, Zune and Panorama will hold on narrowing.
+band above it unreachable, so a structure that draws no Huge 4K band lets its Huge band cover every wider window. Classic holds 40 on
+widening at 528 and 1008 (to 568 and 1048) and on narrowing at 1920 (back below 1880); WinUI, Zune and Panorama will hold on narrowing.
 
 **The sidebar's bands are the window tiers.** `SidebarPaneModeRules.BandOf(WidthTier)` maps Compact to Tiny, Small to Narrow and the rest to Wide; `NavPanePolicy.ModeFor(WidthTier)` is what the band forces. The pane has no edges of its own, so the frame seeds its band from the window tier of the first frame and derives `Sidebar.Band` from the tier signal. **The player bar's levels are not a ladder here:** they are `PlayerBarPolicy`'s (section 2a), which carries each level's slots and spacing beside its start width and the narrowing hold.
 
@@ -1903,7 +1903,29 @@ rung that fits. `ZoomTierTests` pin the rule.
 (resized frame keeps the old tier, the next frame crosses with tracks, a drag crosses once) is `Wavee.ShellTests\TierResizeTests`;
 `ViewHarness` resolves the tiers of a view mounted alone from its window size, with hysteresis across `Resize`.
 
-**Classic today.** Classic's window ladder is the production sidebar band (Compact below 528, Small below 660, Standard above) and has
-no Huge band; TC1 redesigns it from the boards (528 / 1008 / 1920). Not moved out of core, because none is a ladder this primitive can
-state without changing behaviour: the chrome-row allocator, the stage aspect classes, the right-rail fit and the detail page-mode
-ladder.
+**Classic (TC1, board `C-Breakpoints`).** `ClassicTiers` (`Rules\Tiers.cs`) holds every number:
+
+| Ladder | Edges | Holds |
+|---|---|---|
+| window | Compact < 528 · Small 528-1007 · Standard 1008-1919 · Huge >= 1920 (no Huge 4K band: Huge covers 3840) | 40 on widening at 528 and 1008, 40 on narrowing at 1920; a fresh resolve uses the edge itself, so 528-567 and 1008-1047 depend on the direction (owner NQ12) |
+| content | the page gutter's: Compact < 600 (16) · Small 600 (32) · Standard 880 (36) · Huge 1600 (36) | 24 either way at 600 and 880, 40 on narrowing at 1600 |
+| height | Short below 680, Regular from 720; `ShortFloor` 210 (330 less the 48 title row and the 72 player bar) | 40 on growing |
+
+What each window tier lays out: **Compact** the drawer (no rail), the content card square and flush to the window's left edge with its
+top hairline only, the title bar's tabs folded into one tab-count button whose menu switches tabs (`ChromePolicy.Compact`,
+`TabsAsCount`); **Small** the forced 48 rail over the whole band, its ☰ opening the pane over the page; **Standard** the resizable
+pane the user may collapse; **Huge** the same pane, a title bar search of up to 480 and tabs of up to 240 (`ChromePolicy.Huge`).
+Forward hides at 520 and below at every tier. A view reads `ClassicTiers.FrameOf(ctx.Tier())` (the card) and
+`ClassicTiers.PageOf(ctx.Tier())` (the gutter): **every Classic page insets its content by `PageOf(...).Gutter`**, never by
+`Spacing.PageWide`; the tier-invariant rhythm is `ClassicTiers.PaneInset` (16), `HeadMetaGap` (4), `HeadTop` (24) and `RailPadding`
+(24 / 8 / 24 / 16). The window's minimum height is `TierPolicy.WindowMinHeight` (330, `Shell.Host`; F8, #197).
+
+Still not moved out of core, because none is a ladder this primitive can state without changing behaviour: the chrome-row allocator
+(it now takes the tier's budget), the stage aspect classes, the right-rail fit, the detail page-mode ladder and the artist hero's tiers
+(the Classic artist and profile pages override the hero metrics' gutter with the page gutter).
+
+**Testing the tiers.** `TierPolicyTests` pin the ladders and records; `Wavee.ShellTests\TierLayoutTests` mounts the real frame at every
+plan 3.5 size and threshold edge (527/528, 567 from below, 1007/1008, 1047 from below, 1879/1880 from above, 1919/1920) and asserts the
+tier in the first frame, the records in use, the four top-level regions inside the window without overlap, Compact targets of at least
+40 and the ShortFloor at 330 tall. A lane adds its pages in its own partial file of `TierLayoutTests` (a `TierPage` fixture and a
+theory over `PageSizes` that calls `AssertPage(page, size, more)`), never by editing the core file.

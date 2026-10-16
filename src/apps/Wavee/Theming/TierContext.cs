@@ -24,4 +24,13 @@ public static class TierContext
         var facts = ctx.Hooks.UseContext(ThemeFactsContext.Signal);
         return facts is null ? TierFacts.Unknown : facts.Value.Tiers;
     }
+
+    /// <summary>The window tiers as a LIVE reader for a bound channel (<c>Prop.Of(() => record(tiers()).X)</c>): calling it inside a bind
+    /// subscribes that bind, never the template, so a template that renders once (the frame) follows a crossing without re-rendering.
+    /// <see cref="TierFacts.Unknown"/> where no root provides the facts.</summary>
+    public static Func<TierFacts> TierReader(this in ViewContext ctx)
+    {
+        var facts = ctx.Hooks.UseContext(ThemeFactsContext.Signal);
+        return facts is null ? static () => TierFacts.Unknown : () => facts.Value.Tiers;
+    }
 }

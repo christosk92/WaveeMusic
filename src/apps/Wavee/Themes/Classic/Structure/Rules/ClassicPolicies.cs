@@ -1,8 +1,8 @@
 // ── Themes/Classic/Structure/Rules/ClassicPolicies.cs — Wavee Classic's policies (themes plan 5.5, 6.1) ───────────────
 //
 // What the Classic structure decides for the core: the navigation pane's widths and what each band forces, the panel's bounds
-// and the mini player's, the player bar's six pressure levels, the title-bar row's budget and the stage's layout classes, and
-// (T3b) the window tiers whose edges are the pane's bands (`Tiers.cs`). These are the
+// and the mini player's, the player bar's six pressure levels, the title-bar row's budget (per window tier, TC1) and the stage's
+// layout classes, and the window tiers whose edges are the pane's bands (`Tiers.cs`, TC1: board C-Breakpoints). These are the
 // numbers the shell shipped with before themes existed; Classic behaves exactly as it did because the core state machines now
 // take them from here (through `ThemeHost.Policies`) instead of from constants.
 //
@@ -20,8 +20,9 @@ namespace Wavee.Themes.Classic;
 /// <summary>The policies of Wavee Classic.</summary>
 public static class ClassicPolicies
 {
-    /// <summary>The pane: the Wide band lets the user collapse; Narrow forces the 48-DIP rail with an overlay pane; Tiny is the
-    /// drawer (where the bands begin is the window ladder's, 528 and 660 in <c>ClassicTiers</c>). An expanded pane is 180-460
+    /// <summary>The pane: the Wide band (Standard and Huge) lets the user collapse; Narrow (Small) forces the 48-DIP rail with an overlay
+    /// pane over the whole band; Tiny (Compact) is the drawer (where the bands begin is the window ladder's, 528 and 1008 in
+    /// <c>ClassicTiers</c>, board C-Breakpoints). An expanded pane is 180-460
     /// (320 fresh) and leaves 480 of content; a drag 64 below 180 collapses it, 24 back expands it. The seam strip is 16 wide and the collapsed rail 48.</summary>
     public static NavPanePolicy NavPane { get; } = new(
         ContentFloorW: 480f,
@@ -95,8 +96,9 @@ public static class ClassicPolicies
     /// <summary>The title-bar row: bell, friends and pin from 1200, the profile name from 1360, forward above 520 (all
     /// budget-checked), every fixed affordance at the width the row really lays it out at, a 280-420 search field (28 % of the
     /// window) that yields to the 44 magnifier and widens by 80 while focused (12 clear of the tabs and the avatar), and 110-200 tabs.
-    /// No theme toggle: light and dark live in Settings › App mode and the profile menu (tuned F13).</summary>
-    public static ChromePolicy Chrome { get; } = new(new ChromeBudget(
+    /// No theme toggle: light and dark live in Settings › App mode and the profile menu (tuned F13). Every window tier but Compact and
+    /// Huge is allocated by this budget.</summary>
+    private static ChromeBudget RowBudget { get; } = new(
         NameEnterW: 1360f, ActionsEnterW: 1200f, ForwardEnterW: 520f, PromotionHysteresisW: 40f,
         BarLeadW: 60f, NavButtonW: 44f, AddSlotW: 32f,
         ProfileChipW: 32f, ConnectingChipW: 90f, SignInChipW: 84f, ReconnectChipW: 100f, ProfileNameW: 90f,
@@ -105,7 +107,16 @@ public static class ClassicPolicies
         TabMaxW: 200f, TabMinW: 110f, PinnedTabW: 40f, TabViewportMinW: 32f)
     {
         SearchFocusGrowW = 80f, SearchFocusClearW = 12f,
-    });
+    };
+
+    /// <summary>The title-bar row per window tier (board C-TitleBar, TC1): Compact folds the tab strip into ONE tab-count button that
+    /// opens the open tabs as a menu (≡, Back, the search icon and the count; no "+"); Huge seats a search of up to 480 and tabs of up to
+    /// 240; Small and Standard keep <see cref="RowBudget"/>. Forward hides below 520 at every tier (the budget's <c>ForwardEnterW</c>).</summary>
+    public static ChromePolicy Chrome { get; } = new(RowBudget)
+    {
+        Compact = RowBudget with { TabsAsCount = true },
+        Huge = RowBudget with { SearchMaxW = 480f, TabMaxW = 240f },
+    };
 
     /// <summary>The stage: Compact under 600 wide or from 460 tall (back at 484), Portrait up to 0.80 (back above 0.85),
     /// Ultrawide from 2.00 (back at 1.95).</summary>

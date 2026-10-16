@@ -266,7 +266,8 @@ public sealed class ContentStateMountedTests(ShellHost host)
                 var strip = harness.AbsoluteBounds(harness.Node("offline-strip"));
                 Assert.Equal(ClassicOverlayRules.OfflineStripH, strip.H, 0.5f);
                 Assert.Equal(16f, strip.Y, 0.5f);                                          // the lane's top inset
-                Assert.Equal(FluentGpu.Dsl.Spacing.PageWide, strip.X, 0.5f);              // the page gutter on the left …
-                Assert.Equal(1180f - FluentGpu.Dsl.Spacing.PageWide, strip.X + strip.W, 0.5f);   // … and on the right of the 1180 window
+                float gutter = ClassicTiers.Page(Wavee.Theming.Contracts.WidthTier.Standard).Gutter;   // an 1180 content region: Standard's 36
+                Assert.Equal(gutter, strip.X, 0.5f);                                      // the page gutter on the left …
+                Assert.Equal(1180f - gutter, strip.X + strip.W, 0.5f);                    // … and on the right of the 1180 window
             }, UnderClassic());
 }

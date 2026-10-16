@@ -26,6 +26,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
@@ -42,6 +43,7 @@ internal static class ClassicBrowseCategory
     public static Element Template(BrowseCategoryProps props, in ViewContext ctx)
     {
         Element? body = null;
+        float gutter = ClassicTiers.PageOf(ctx.Tier()).Gutter;   // the one page gutter (F3)
 
         // FadeOnly: this body owns no entrance, and None would floor the shimmer's exit at 400 ms and leave a ghost
         // under real content (must-not-simplify 12). smoothResize false (must-not-simplify 2).
@@ -59,7 +61,7 @@ internal static class ClassicBrowseCategory
         return new BoxEl
         {
             Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-            Padding = ClassicPageHeadRules.DrillBodyPad(Spacing.L),
+            Padding = ClassicPageHeadRules.DrillBodyPad(gutter, Spacing.L),
             Children =
             [
                 new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Children = [region] },

@@ -112,11 +112,13 @@ public sealed class LikedSongsHeadTests
     public void The_head_is_156_and_the_list_plates_start_8_before_its_words()
     {
         // head (24 + 52 + 4 + 16 + 4) + the list chrome's air (8) + the 44 bar + the 4 under it = the board's 156
-        float head = ClassicDetailLayout.HeadPadTop + ClassicDetailLayout.HeadTitleLine + ClassicDetailLayout.HeadMetaGap
+        float head = ClassicTiers.HeadTop + ClassicDetailLayout.HeadTitleLine + ClassicTiers.HeadMetaGap
                      + ClassicDetailLayout.HeadMetaLine + ClassicDetailLayout.HeadPadBottom;
         Assert.Equal(156f, head + Spacing.S + Detail.VerticalLayout.ToolbarRowHeight + Spacing.XS);
-        Assert.Equal(36f, ClassicDetailLayout.HeadGutter);
-        Assert.Equal(28f, ClassicDetailLayout.HeadListInset);
+        float gutter = ClassicTiers.Page(Wavee.Theming.Contracts.WidthTier.Standard).Gutter;   // the board's 36 at Standard (TC1's ladder)
+        Assert.Equal(36f, gutter);
+        Assert.Equal(28f, ClassicDetailLayout.HeadListInset(gutter));
+        Assert.Equal(8f, ClassicDetailLayout.HeadListInset(16f));                            // Compact: the plates still start 8 before the words
         // D8: the inline chips keep 120 and end 8 before the tools
         Assert.Equal(120f, Track.CommandBarLayout.InlineChipsMin);
         Assert.Equal(8f, Track.CommandBarLayout.InlineChipsTrail);

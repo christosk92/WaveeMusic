@@ -116,20 +116,20 @@ public sealed class NavPanePolicyRulesTests
 {
     static readonly NavPanePolicy Classic = ClassicPolicies.NavPane;
 
-    // ── Classic: today's edges (the window ladder's), at the bounds ─────────────────────────────────────────────────
+    // ── Classic: the board's edges (the window ladder's, C-Breakpoints), at the bounds ─────────────────────────────────
 
     [Theory]
-    [InlineData(660f, SidebarWindowBand.Wide, SidebarWindowBand.Wide)]
-    [InlineData(659.9f, SidebarWindowBand.Wide, SidebarWindowBand.Narrow)]
+    [InlineData(1008f, SidebarWindowBand.Wide, SidebarWindowBand.Wide)]
+    [InlineData(1007.9f, SidebarWindowBand.Wide, SidebarWindowBand.Narrow)]
     [InlineData(528f, SidebarWindowBand.Wide, SidebarWindowBand.Narrow)]
     [InlineData(527.9f, SidebarWindowBand.Wide, SidebarWindowBand.Tiny)]
-    [InlineData(699.9f, SidebarWindowBand.Narrow, SidebarWindowBand.Narrow)]
-    [InlineData(700f, SidebarWindowBand.Narrow, SidebarWindowBand.Wide)]
+    [InlineData(1047.9f, SidebarWindowBand.Narrow, SidebarWindowBand.Narrow)]
+    [InlineData(1048f, SidebarWindowBand.Narrow, SidebarWindowBand.Wide)]
     [InlineData(527.9f, SidebarWindowBand.Narrow, SidebarWindowBand.Tiny)]
     [InlineData(567.9f, SidebarWindowBand.Tiny, SidebarWindowBand.Tiny)]
     [InlineData(568f, SidebarWindowBand.Tiny, SidebarWindowBand.Narrow)]
-    [InlineData(700f, SidebarWindowBand.Tiny, SidebarWindowBand.Wide)]
-    public void Classic_bands_move_at_the_edges_it_always_had(float width, SidebarWindowBand from, SidebarWindowBand expected)
+    [InlineData(1048f, SidebarWindowBand.Tiny, SidebarWindowBand.Wide)]
+    public void Classic_bands_move_at_the_boards_edges(float width, SidebarWindowBand from, SidebarWindowBand expected)
     {
         Assert.Equal(expected, ClassicTierFixture.BandOf(width, from));
     }
@@ -184,11 +184,14 @@ public sealed class NavPanePolicyRulesTests
     [Fact]
     public void The_frame_seed_follows_the_tier_and_the_policy()
     {
-        var classic = FrameModel.Seed(new WindowFacts(750f, 800f), ClassicTierFixture.FreshWindow(750f),
-            userCollapsed: false, editing: false, expandedWidth: 320f, policy: Classic);
+        var classic = FrameModel.Seed(new WindowFacts(1008f, 800f), ClassicTierFixture.FreshWindow(1008f),
+            userCollapsed: false, editing: false, expandedWidth: 600f, policy: Classic);
         Assert.Equal(SidebarWindowBand.Wide, classic.Band);
         Assert.Equal(SidebarPaneMode.Expanded, classic.Mode);
-        Assert.Equal(270f, classic.PresentedWidth);   // 750 less the 480 content floor
+        Assert.Equal(460f, classic.PresentedWidth);   // the 460 maximum (1008 less the 480 content floor is 528)
+        var floor = FrameModel.Seed(new WindowFacts(750f, 800f), WidthTier.Standard,
+            userCollapsed: false, editing: false, expandedWidth: 320f, policy: Classic);
+        Assert.Equal(270f, floor.PresentedWidth);     // a Standard pane in a 750 window (another ladder): 750 less the 480 content floor
         var small = FrameModel.Seed(new WindowFacts(600f, 800f), ClassicTierFixture.FreshWindow(600f),
             userCollapsed: false, editing: false, expandedWidth: 320f, policy: Classic);
         Assert.Equal(SidebarWindowBand.Narrow, small.Band);

@@ -166,7 +166,7 @@ public class ZoomTierTests
     /// <summary>The window ladders the boards draw: every shipped structure's Huge edge is the core reference.</summary>
     public static IEnumerable<object[]> BoardLadders()
     {
-        yield return ["Classic", PolicyWithWindowEdges(new TierEdge(528f, 0f, 40f), new TierEdge(1008f, 0f, 40f), new TierEdge(1920f, 40f, 0f))];
+        yield return ["Classic", Wavee.Themes.Classic.ClassicTiers.Policy];   // the shipped ladder (TC1, C-Breakpoints)
         yield return ["WinUI", PolicyWithWindowEdges(new TierEdge(641f, 24f), new TierEdge(1008f, 24f), new TierEdge(1920f, 24f))];
         yield return ["Zune", PolicyWithWindowEdges(new TierEdge(640f, 24f), new TierEdge(1008f, 24f), new TierEdge(1920f, 24f), new TierEdge(3200f, 24f))];
     }

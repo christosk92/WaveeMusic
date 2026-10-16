@@ -5,7 +5,7 @@
 // Plan: docs/plans/wavee/sidebar-rework-implementation.md §P2.1
 //
 // The pane reads the window only: the window's width TIER picks the band (T3b: the structure's window ladder, with its
-// hysteresis, decides where the bands begin; Classic's 528 / 568 and 660 / 700 live in `Themes\Classic\Structure\Rules\Tiers.cs`),
+// hysteresis, decides where the bands begin; Classic's 528 / 568 and 1008 / 1048 live in `Themes\Classic\Structure\Rules\Tiers.cs`),
 // the band picks the mode (Expanded, Compact rail, Minimal drawer), and the user's collapse decides only in the Wide band.
 // Forced modes never write the user's collapse. Everything here is engine-free — no signal, no clock, no Element — so
 // Wavee.Tests drives every branch. `public` because Wavee.Tests is a ProjectReference with no InternalsVisibleTo.
@@ -27,8 +27,8 @@ public enum SidebarPaneMode : byte { Expanded = 0, Compact = 1, Minimal = 2 }
 
 /// <summary>The window's width band, the sidebar's reading of the window <see cref="WidthTier"/>. Wide (Standard and up): the
 /// user's collapse decides. Narrow (Small): a FORCED rail whose toggle opens the overlay pane. Tiny (Compact): no rail, the
-/// drawer. Where each begins is the structure's window ladder (Classic: Narrow from 528, leaving Tiny at 568; Wide from 660,
-/// leaving Narrow at 700). What each band forces is the policy's (<see cref="NavPanePolicy.NarrowMode"/>,
+/// drawer. Where each begins is the structure's window ladder (Classic, board C-Breakpoints: Narrow from 528, leaving Tiny at 568;
+/// Wide from 1008, leaving Narrow at 1048). What each band forces is the policy's (<see cref="NavPanePolicy.NarrowMode"/>,
 /// <see cref="NavPanePolicy.TinyMode"/>).</summary>
 public enum SidebarWindowBand : byte { Wide = 0, Narrow = 1, Tiny = 2 }
 

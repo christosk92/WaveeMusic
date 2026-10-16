@@ -238,9 +238,10 @@ public static partial class Shell
                     // MinWidth 300 (DIP): the shell is verified sound below 360 — the detail surface is in vertical
                     // mode, the track table is at its narrowest tier and the hero artwork is at its 64-DIP floor — and
                     // 360 was a hard ~564 physical-px floor at 150 % DPI that stopped the window fitting a half-screen
-                    // split.
+                    // split. MinHeight 330 (DIP, tuned Classic F8, #197): before it the window could be dragged down to a
+                    // title-bar strip; 330 keeps the title row, a 210-DIP page and the player bar on screen.
                     Title = "Wavee Music", Width = winW, Height = winH,
-                    MinWidth = 300, CustomFrame = true,
+                    MinWidth = 300, MinHeight = (int)Theming.TierPolicy.WindowMinHeight, CustomFrame = true,
                     // Always base Mica, never Mica Alt: Alt's stronger tint reads as an over-saturated navy chrome
                     // next to apps that default to base Mica on the same wallpaper. The material is visible through
                     // EVERY chrome band — title bar, sidebar band, player dock — because the root is transparent and

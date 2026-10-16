@@ -9,7 +9,7 @@
 //  column
 //  ├─ HEAD (always real, outside the region): the trail [name] over the 40/52 title (facet) · SelectorBar (a change NAVIGATES — the route is the truth, not the control;
 //  │        Discography's head)
-//  └─ BODY (PageWide gutters) └─ measured box (the host's body width, floored to 8 DIP) └─ ONE SkelRegionEl (Soft; no outer ScrollView — the bound list OWNS the scroll)
+//  └─ BODY (the page gutters) └─ measured box (the host's body width, floored to 8 DIP) └─ ONE SkelRegionEl (Soft; no outer ScrollView — the bound list OWNS the scroll)
 //          Pending     → the derived shimmer (tool bones + two rows of circular seed cards; stateful leaves never mount)
 //          Ready       → [tools: chips + find] over [ ZStack{ list · StickyLetter } · JumpStrip ]
 //          Empty / Hidden / Unavailable → Controls.Vacancy as CONTENT (no Retry); Failed → the error vacancy with Retry
@@ -26,6 +26,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
@@ -44,11 +45,12 @@ internal static partial class ClassicProfileList
     public static Element Template(ProfileListProps props, in ViewContext ctx)
     {
         var cache = ctx.Hooks.UseRef(new PageCache()).Value;
+        float gutter = ClassicTiers.PageOf(ctx.Tier()).Gutter;   // the one page gutter (F3)
         cache.Props = props;
         cache.Prepare();
         if (!props.Parsed) return Controls.Vacancy(Controls.VacancyVoice.Error);
 
-        Element head = Head(props.Head);
+        Element head = Head(props.Head, gutter);
         Element region = new SkelRegionEl(
             Pending: props.Pending, Failed: props.Failed, Content: cache.Content!, ShimmerSource: cache.Shimmer!,
             OnFailed: cache.FailedPanel!, Reveal: SkelReveal.Soft, Style: SkeletonStyle.Default,
@@ -56,7 +58,7 @@ internal static partial class ClassicProfileList
         Element body = new BoxEl
         {
             Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
-            Padding = new Edges4(Spacing.PageWide, 0f, Spacing.PageWide, Spacing.L),
+            Padding = new Edges4(gutter, 0f, gutter, Spacing.L),
             Children =
             [
                 // The measured box is INSIDE the gutters: its width is the list's, not the page's.
@@ -103,11 +105,11 @@ internal static partial class ClassicProfileList
 
     // ══ THE HEAD (always real) ═══════════════════════════════════════════════════════════════════════════════════════
 
-    static Element Head(ProfileListHead head)
+    static Element Head(ProfileListHead head, float gutter)
         => new BoxEl
         {
             Direction = 1, Gap = Spacing.S, MinWidth = 0f, Shrink = 0f,
-            Padding = new Edges4(Spacing.PageWide, Spacing.XXL, Spacing.PageWide, Spacing.M),
+            Padding = new Edges4(gutter, Spacing.XXL, gutter, Spacing.M),
             Children =
             [
                 // Breadcrumb B: the profile is the one ancestor, the list is the title (never repeated in the trail).

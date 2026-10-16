@@ -25,6 +25,7 @@ using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
@@ -49,6 +50,7 @@ internal static class ClassicRecents
         var host = p.Host;
         var cell = ctx.Hooks.UseRef<Cache?>(null);
         var cache = cell.Value ??= new Cache();
+        float gutter = ClassicTiers.PageOf(ctx.Tier()).Gutter;   // the one page gutter (F3)
         cache.Content ??= () => Content(host);
         cache.Shimmer ??= () => PendingContent(host);
         var retry = p.Retry;
@@ -58,10 +60,10 @@ internal static class ClassicRecents
             SkelReveal.None, SkeletonStyle.Default, null, SmoothResize: true);
         var kids = new Element[]
         {
-            Hero(p),
+            Hero(p, gutter),
             new BoxEl
             {
-                Padding = new Edges4(Spacing.PageWide, 0f, Spacing.PageWide, Spacing.S),
+                Padding = new Edges4(gutter, 0f, gutter, Spacing.S),
                 // Keyed on the SHAPE, not the token: a pivot switch re-renders the live strip (its underline enters).
                 Children = [Embed.Comp(() => new PivotTabs(host)) with { Key = "recents-pivots:" + FormatCache.Int(p.ShapeEpoch) }],
             },
@@ -69,7 +71,7 @@ internal static class ClassicRecents
             {
                 Grow = 1f, Shrink = 1f, Direction = 1, MinWidth = 0f, MinHeight = 0f,
                 // No dock reserve (§9.1 #10): the shell clips above the player bar; Spacing.L is breathing room.
-                Padding = new Edges4(Spacing.PageWide, 0f, Spacing.PageWide, Spacing.L),
+                Padding = new Edges4(gutter, 0f, gutter, Spacing.L),
                 // The FLIP on a pivot switch. Reduced motion is a VALUE: no transition at all.
                 Layout = Design.Reduced ? null : BodyFlip,
                 Children = [body],
@@ -89,7 +91,7 @@ internal static class ClassicRecents
 
     // ── the masthead (W3, §0 #1-#2) ──────────────────────────────────────────────────────────────────────────────
 
-    static Element Hero(RecentsPageProps p)
+    static Element Hero(RecentsPageProps p, float gutter)
     {
         var title = R.Type.SurfaceDisplay(Loc.Get(Strings.Home.Recents)) with
         {
@@ -105,7 +107,7 @@ internal static class ClassicRecents
         return new BoxEl
         {
             Direction = 1, Gap = Spacing.XS,
-            Padding = new Edges4(Spacing.PageWide, Spacing.XXL, Spacing.PageWide, Spacing.L),
+            Padding = new Edges4(gutter, Spacing.XXL, gutter, Spacing.L),
             // The two lines arrive 45 ms apart; reduced motion is a VALUE (0), never a branch.
             Stagger = Design.Reduced ? 0f : R.Motion.MastheadStaggerMs,
             Children = p.Summary.Length == 0

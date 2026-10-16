@@ -45,9 +45,12 @@ public enum SearchForm : byte
 /// <param name="Search">The search's form.</param>
 /// <param name="SearchWidth">The width the field was allocated (a width the row can seat; the icon form publishes its own).</param>
 /// <param name="TabIslandWidth">The tabs island's reserved width: the lead cluster plus the history buttons and the add slot.</param>
+/// <param name="TabCount">The tabs island is one tab-count button (a menu of the open tabs) instead of the strip (contract 1.12).</param>
+/// <param name="TabMaxWidth">The widest a tab of the strip grows at this window tier; 0 where the allocation predates it (contract 1.12).</param>
 public readonly record struct ChromeRowState(
     bool ShowName, bool ShowActions, bool ShowForward, bool ShowBack, bool ShowNewTab, bool ShowTrailing,
-    ChromeChipForm Chip, SearchForm Search, float SearchWidth, float TabIslandWidth);
+    ChromeChipForm Chip, SearchForm Search, float SearchWidth, float TabIslandWidth,
+    bool TabCount = false, float TabMaxWidth = 0f);
 
 /// <summary>The direct Pin / Unpin the trailing island offers for the destination on screen.</summary>
 /// <param name="Glyph">The button's glyph.</param>

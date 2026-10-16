@@ -10,6 +10,10 @@
 //     [pane toggle][tabs island: back · forward · text-first tab strip][drag band][CENTRE: the omnibar field][drag band]
 //     [trailing island: identity chip · bell · friends · pin][48 drag strip][caption-leading: the search icon][min/max/close]
 //
+//   PER WINDOW TIER (TC1, board C-TitleBar) the core allocates the row by the structure's tier budget (`ClassicPolicies.Chrome`):
+//   at Compact the tab strip folds into ONE tab-count button that opens the open tabs as a menu (≡, Back, the search icon, the
+//   count), at Huge the search seats up to 480 and the tabs grow to 240; forward hides below 520 at every tier.
+//
 //   No theme toggle (tuned F13): light and dark live in Settings › App mode and the profile menu, and its width left the budget.
 //
 //   The drag regions and the three caption buttons are the engine control's: it reports the interactive islands as Client regions
@@ -96,8 +100,20 @@ internal static class ClassicTitleBar
         {
             kids.Add(Embed.Comp(() => new NavHistoryButton(props, forward: true)) with { Key = "chrome-forward" });
         }
-        if (s_strip is { } strip) strip.IsAddTabButtonVisible = l.ShowNewTab;
-        kids.Add(Embed.Comp(() => BuildTabStrip(props)) with { Key = "chrome-tab-strip" });
+        if (l.TabCount)
+        {
+            // Compact: the open tabs are one count button (its menu switches tabs); the strip is not mounted.
+            kids.Add(Embed.Comp(() => new TabCountButton(props)) with { Key = "chrome-tab-count" });
+        }
+        else
+        {
+            if (s_strip is { } strip)
+            {
+                strip.IsAddTabButtonVisible = l.ShowNewTab;
+                strip.MaxTabWidth = TabMaxWidth(l);   // the tier's cap (Huge grows tabs to 240)
+            }
+            kids.Add(Embed.Comp(() => BuildTabStrip(props)) with { Key = "chrome-tab-strip" });
+        }
         return new BoxEl
         {
             Key = "chrome-tabs-lane", Animate = ClassicChromeLayout.TabLaneMotion,
@@ -105,6 +121,9 @@ internal static class ClassicTitleBar
             Width = l.TabIslandWidth, Shrink = 0f, ClipToBounds = true, Children = kids.ToArray(),
         };
     }
+
+    /// <summary>The widest a tab grows: the allocation's tier cap, the base budget's where the allocation carries none.</summary>
+    private static float TabMaxWidth(in ChromeRowState l) => l.TabMaxWidth > 0f ? l.TabMaxWidth : ShellPolicy.Now.Chrome.Budget.TabMaxW;
 
     private static TabStrip BuildTabStrip(ShellTitleBarProps props)
     {
@@ -120,7 +139,7 @@ internal static class ClassicTitleBar
             OnAddTabButtonClick = () => { props.OnNewTab(); return null; },
             IndicatorFill = Prop.Of(static () => Tok.AccentDefault),
             MinTabWidth = ShellPolicy.Now.Chrome.Budget.TabMinW,
-            MaxTabWidth = ShellPolicy.Now.Chrome.Budget.TabMaxW,
+            MaxTabWidth = TabMaxWidth(props.PeekLayout()),
             ItemsSource = props.TabItems,
             ItemsVersion = props.TabItemsVersion,
             // CONTRACT: the strip WRITES this cell before raising OnSelectionChanged, so it is never evidence of a change —
@@ -200,6 +219,60 @@ internal static class ClassicTitleBar
                 Shrink = 0f, HitTestVisible = false, Opacity = 0f,
             };
         return ChromeButton(pin.Glyph, pin.Invoke, pin.Label, "chrome-pin");
+    }
+
+    /// <summary>The Compact title bar's tab count (board C-TitleBar: "N tabs open, switch tabs"): a chrome button whose face is the open
+    /// tab count in a small outlined box; a click opens the open tabs as a menu, the active one checked, and picking one switches to it.
+    /// The menu is read at OPEN, never at mount.</summary>
+    private sealed class TabCountButton(ShellTitleBarProps props) : Component
+    {
+        public override Element Render()
+        {
+            _ = props.TabsVersion();   // the count follows the workspace
+            var overlay = UseContext(Overlay.Service);
+            var anchor = UseRef<NodeHandle>(default);
+            var handle = UseRef<OverlayHandle?>(null);
+            int count = props.TabItems().Count;
+
+            void Open()
+            {
+                if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
+                var tabs = props.TabItems();
+                int selected = props.TabSelection().Peek();
+                var rows = new MenuFlyoutItem[tabs.Count];
+                for (int i = 0; i < rows.Length; i++)
+                {
+                    int index = i;
+                    rows[i] = MenuFlyoutItem.RadioItem(tabs[i].Header, i == selected, () => props.OnActivateTab(index), tabs[i].Icon);
+                }
+                var h = overlay.Open(() => anchor.Value,
+                    () => ViewSlots.View(ViewKeys.ShellHistoryMenu, new HistoryMenuProps { Items = rows, Close = () => handle.Value?.Close() }),
+                    FlyoutPlacement.BottomEdgeAlignedLeft,
+                    new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
+                handle.Value = h;
+                h.ClosedAction = () => handle.Value = null;
+            }
+
+            var style = ChromeButtonStyle;
+            var face = new BoxEl
+            {
+                MinWidth = ClassicChromeLayout.TabCountBox, Height = ClassicChromeLayout.TabCountBox, Padding = ClassicChromeLayout.TabCountPadding,
+                Corners = CornerRadius4.All(ClassicChromeLayout.TabCountRadius), BorderWidth = ClassicChromeLayout.TabCountStroke,
+                BorderColor = style.Foreground, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HitTestVisible = false,
+                Children =
+                [
+                    new TextEl(FormatCache.Int(count))
+                    {
+                        Size = ClassicChromeLayout.TabCountTextSize, Weight = ClassicChromeLayout.TabCountWeight, Color = style.Foreground,
+                    },
+                ],
+            };
+            var button = IconButton.Create("", Open, style) with
+            {
+                Margin = ClassicChromeLayout.ButtonMargin, OnRealized = h => anchor.Value = h, Children = [face],
+            };
+            return ToolTip.Wrap(button, Loc.Format("shell.switchTabs", ("count", count)));
+        }
     }
 
     /// <summary>Back or Forward: the primary on click, the history flyout on right-click / touch-hold.</summary>

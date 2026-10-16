@@ -29,12 +29,19 @@
 // (T7a1) as `Stage.Root`; T4c did the same for
 // the material, the file-drop cue, the palette, the cover scrim, the drag chip and the frame-rate overlay (each member of the props is now
 // the child view's props record); the narrow drawer's core host (its props change with the band) is still a builder.
+//
+// PER WINDOW TIER (TC1, `ClassicTiers.Frame`): the content card is square and flush at Compact (no rail beside it: only its top
+// hairline, boards C-Shell-Compact and C-Frame-Narrow) and the r8 card with its left and top hairline from Small up. The frame renders
+// once, so the card reads the tier through BOUND channels (`ctx.TierReader()`): a crossing recolours and reshapes it without a
+// re-render. The four top-level regions carry keys (`shell.titlebar`, `shell.nav.column`, `shell.content.card`, `shell.playerbar`) so
+// the tier tests find them.
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
@@ -46,6 +53,7 @@ internal static class ClassicFrame
     /// <summary>The registered template of <see cref="ViewKeys.ShellFrame"/>.</summary>
     public static Element Template(ShellFrameProps props, in ViewContext ctx)
     {
+        var tiers = ctx.TierReader();
         var column = new BoxEl
         {
             // Window-tall, bound: the content region yields instead of shoving the docked bar off the bottom.
@@ -59,9 +67,9 @@ internal static class ClassicFrame
                 // structural Flow.Show rebuilt the tab row and the whole player bar (seek rail, marquee, art, device
                 // buttons) on every exit. A bound Visible takes each out of layout, paint, hit-test and focus and
                 // pauses its subtree (UseInterval, UseIsActive), and the edge never re-renders the frame.
-                ctx.View(ViewKeys.ShellTitleBar, props.TitleBar) with { Visible = Prop.Of(props.ChromeMounted) },
-                ContentRegion(props, in ctx),
-                ctx.View(ViewKeys.PlayerBar, props.PlayerBar) with { Visible = Prop.Of(props.ChromeMounted) },
+                ctx.View(ViewKeys.ShellTitleBar, props.TitleBar) with { Key = ClassicFrameLayout.TitleBarKey, Visible = Prop.Of(props.ChromeMounted) },
+                ContentRegion(props, in ctx, tiers),
+                ctx.View(ViewKeys.PlayerBar, props.PlayerBar) with { Key = ClassicFrameLayout.PlayerBarKey, Visible = Prop.Of(props.ChromeMounted) },
             ],
         };
 
@@ -99,7 +107,7 @@ internal static class ClassicFrame
             ctx.View(ViewKeys.ShellFps, props.Fps)) with { Grow = 1f });
     }
 
-    private static Element ContentRegion(ShellFrameProps props, in ViewContext ctx) => ZStack(
+    private static Element ContentRegion(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers) => ZStack(
         new BoxEl
         {
             // The row never moves on a toggle: the content card FLIPs relative to THIS frame.
@@ -110,7 +118,7 @@ internal static class ClassicFrame
                 {
                     // THE W12 TRAP lives in FrameRules.SidebarPaneWidth (the core computes the width): a drag peek presents the
                     // pane expanded, so this clipped column widens with it.
-                    Direction = 1, Shrink = 0f, ClipToBounds = true,
+                    Key = ClassicFrameLayout.NavColumnKey, Direction = 1, Shrink = 0f, ClipToBounds = true,
                     OnRealized = props.OnSidebarColumnRealized,
                     Width = Prop.Of(props.SidebarColumnWidth),
                     Animate = ClassicFrameRules.SidebarPaneAnim,
@@ -129,19 +137,20 @@ internal static class ClassicFrame
                 },
                 new BoxEl
                 {
-                    // The stock Win11 content region: flush, one corner, a left+top stroke, no shadow, no gutter.
+                    // The stock Win11 content region: flush, one corner, a left+top stroke, no shadow, no gutter. Square at Compact.
+                    Key = ClassicFrameLayout.ContentCardKey,
                     Direction = 1, ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Basis = 0f,
                     Children =
                     [
-                        new BoxEl { Grow = 1f, Fill = Prop.Of(static () => R.Layer.FileArea), Corners = Design.Size.ContentPaneCorners },
+                        new BoxEl { Grow = 1f, Fill = Prop.Of(static () => R.Layer.FileArea), Corners = Prop.Of(() => ClassicTiers.FrameOf(tiers()).CardCorners) },
                         new BoxEl
                         {
                             Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-                            Fill = ColorF.Transparent, Corners = Design.Size.ContentPaneCorners, ClipToBounds = true,
+                            Fill = ColorF.Transparent, Corners = Prop.Of(() => ClassicTiers.FrameOf(tiers()).CardCorners), ClipToBounds = true,
                             IsolateLayout = true, Animate = ClassicFrameRules.ContentCardAnim, RelativeTo = ClassicFrameRules.ContentRowMorphId,
                             Children = [props.ContentHost()],
                         },
-                        ContentRegionStroke(),
+                        ContentRegionStroke(tiers),
                     ],
                 },
                 // The rail's 8-DIP breathing room exists only while the rail is inline.
@@ -230,16 +239,23 @@ internal static class ClassicFrame
 
     /// <summary>The content card's hairline: the top-left card radius and a 1-DIP stroke on the left and top edges (the right and bottom ones
     /// overhang the clip). ALWAYS laid out with the card's own size, and its colour a bound brush, so a theme or light/dark switch only recolours
-    /// it; the stroke box is keyed so a test can hold it to that.</summary>
-    private static Element ContentRegionStroke() => new BoxEl
+    /// it; the stroke box is keyed so a test can hold it to that. At Compact (a square card flush to the window edge) the ring is clear and the
+    /// one-DIP top line alone draws the hairline, so no stroke runs down the window's left edge.</summary>
+    private static Element ContentRegionStroke(Func<TierFacts> tiers) => new BoxEl
     {
         ZStack = true, ClipToBounds = true, HitTestVisible = false,
         Children =
         [
             new BoxEl
             {
-                Key = "shell.content.stroke", Margin = ClassicFrameRules.StrokeOverhang, BorderWidth = 1f, BorderColor = Prop.Of(static () => Tok.StrokeCardDefault),
-                Corners = Design.Size.ContentPaneCorners,
+                Key = "shell.content.stroke", Margin = ClassicFrameRules.StrokeOverhang, BorderWidth = ClassicFrameRules.StrokeWidth,
+                BorderColor = Prop.Of(() => ClassicTiers.FrameOf(tiers()).SquareCard ? ColorF.Transparent : Tok.StrokeCardDefault),
+                Corners = Prop.Of(() => ClassicTiers.FrameOf(tiers()).CardCorners),
+            },
+            new BoxEl
+            {
+                Key = "shell.content.stroke.top", Height = ClassicFrameRules.StrokeWidth,
+                Fill = Prop.Of(() => ClassicTiers.FrameOf(tiers()).SquareCard ? Tok.StrokeCardDefault : ColorF.Transparent),
             },
         ],
     };

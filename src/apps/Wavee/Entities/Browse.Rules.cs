@@ -350,10 +350,6 @@ public static class BrowseMastheadMetrics
     public static float ClipInset => Reserve;
     /// <summary>The feather at that cut — the band every detail surface uses.</summary>
     public const float ClipFadeBand = Detail.VerticalLayout.StickyFadeBand;
-
-    /// <summary>Padding for a page that clips under the band: the reserve is a SPACER above the clipped node (so the cut
-    /// engages when content reaches the band, not at rest), leaving the gutters and the bottom on the node.</summary>
-    public static Edges4 FamilyUnderBandPad(float bottom) => new(Spacing.PageWide, 0f, Spacing.PageWide, bottom);
 }
 
 /// <summary>One destination a Browse cell renders, wherever it came from — a directory category, a page's related

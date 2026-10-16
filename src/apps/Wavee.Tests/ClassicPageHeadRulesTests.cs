@@ -40,10 +40,10 @@ public class ClassicPageHeadRulesTests
     [Fact]
     public void A_drill_in_body_clears_the_drill_reserve_then_the_16_gap_on_the_page_gutters()
     {
-        var pad = ClassicPageHeadRules.DrillBodyPad(Spacing.L);
+        var pad = ClassicPageHeadRules.DrillBodyPad(32f, Spacing.L);   // the gutter is the content tier's (TC1): any one of 16 / 32 / 36
         Assert.Equal(132f, pad.Top);
-        Assert.Equal(Spacing.PageWide, pad.Left);
-        Assert.Equal(Spacing.PageWide, pad.Right);
+        Assert.Equal(32f, pad.Left);
+        Assert.Equal(32f, pad.Right);
         Assert.Equal(Spacing.L, pad.Bottom);
     }
 }

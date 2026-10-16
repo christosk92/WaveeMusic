@@ -25,6 +25,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 using Catalog = Wavee.Settings.Catalog;
@@ -47,6 +48,7 @@ internal static partial class ClassicSettings
     public static Element Template(SettingsPageProps props, in ViewContext ctx)
     {
         var hooks = ctx.Hooks;
+        float gutter = ClassicTiers.PageOf(ctx.Tier()).Gutter;   // the one page gutter (F3), unconditional like every hook here
 
         // UNCONDITIONAL — above the tab switch (a conditional hook breaks hook ORDER).
         hooks.UseEffect(() =>
@@ -85,7 +87,7 @@ internal static partial class ClassicSettings
                 ScrollView(new BoxEl
                 {
                     Direction = 1,
-                    Padding = new Edges4(Spacing.PageWide, Spacing.L, Spacing.PageWide, Spacing.PageWide),
+                    Padding = new Edges4(gutter, Spacing.L, gutter, gutter),
                     Children = [ContentColumn(body)],
                 }) with { Grow = 1f, ScrollKey = "settings:" + slug, Key = "settings:scroll:" + slug },
             ],
@@ -97,10 +99,10 @@ internal static partial class ClassicSettings
             Grow = 1f, Direction = 1,
             Children =
             [
-                Header(),
+                Header(gutter),
                 new BoxEl
                 {
-                    Direction = 1, Padding = new Edges4(Spacing.PageWide, 0f, Spacing.PageWide, 0f),
+                    Direction = 1, Padding = new Edges4(gutter, 0f, gutter, 0f),
                     Children = [SelectorBar.Create(TabLabels(), props.TabCell()), Divider()],
                 },
                 content,
@@ -134,11 +136,11 @@ internal static partial class ClassicSettings
     /// <summary>The section header's margin: a 32-DIP gap above, the 8-DIP breath under.</summary>
     static Edges4 SectionHeaderMargin => new(0f, Spacing.XXXL, 0f, Spacing.S);
 
-    /// <summary>The page head: the page title alone (40/52 display, no glyph and no meta line), padded (36, 16, 36, 12).</summary>
-    static Element Header() => new BoxEl
+    /// <summary>The page head: the page title alone (40/52 display, no glyph and no meta line), padded (gutter, 16, gutter, 12).</summary>
+    static Element Header(float gutter) => new BoxEl
     {
         Direction = 0, AlignItems = FlexAlign.End,
-        Padding = new Edges4(Spacing.PageWide, Spacing.L, Spacing.PageWide, Spacing.M),
+        Padding = new Edges4(gutter, Spacing.L, gutter, Spacing.M),
         Children = [R.Type.SurfaceDisplay(Loc.Get(Strings.Settings.Title)) with { Key = "settings:title", Grow = 1f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
     };
 
