@@ -98,6 +98,8 @@ internal static partial class ClassicDetailFrame
         public override Element Render()
         {
             _ = _props.Value;
+            // The tiers this hero is drawn in (its root's facts, the signal its table reads), never the process's last window.
+            var tiers = global::Wavee.Theming.TierContext.DrawnIn(UseContext(global::Wavee.Theming.ThemeFactsContext.Signal)).Value.Tiers;
             var p = _latest!;
             var spec = p.Spec;
             var parts = p.Parts;
@@ -151,7 +153,7 @@ internal static partial class ClassicDetailFrame
             if (f.Chart) blocks.Add(Block("hero-chart", ChartCaption(id, slots), late: true));
             // The window tier's target edge (Tiers.Detail.cs): the Compact hero's actions are 40 x 40 (board C-Album-Compact). A tracked read, so a
             // crossing re-renders the hero; the core's action-row height follows the same record (`VerticalLayout.ActionRowExtra`).
-            blocks.Add(Block("hero-actions", HeroActions(spec, id, cfg, acts, ClassicDetailTiers.Now.Target)));
+            blocks.Add(Block("hero-actions", HeroActions(spec, id, cfg, acts, ClassicDetailTiers.Of(tiers).Target)));
 
             // The description is no longer a row of the identity column: it is the padded box's second child, after
             // the whole [artwork, identity] row, in both flows (D49's band arithmetic already excludes it here).
@@ -365,7 +367,7 @@ internal static partial class ClassicDetailFrame
     /// <summary>The vertical arm's reserved LOADING band: the same parts at the same sizes from the same resolver as the
     /// loaded hero, bucketed once. Unfilled boxes — the table mounts this as its skeleton region's shimmer SOURCE and
     /// the engine's deriver paints the bars; a usable preview cover is painted for real (exempt from the deriver).</summary>
-    internal static Element HeroSkeleton(VerticalSpec spec, float columnWidth, float compactLeft)
+    internal static Element HeroSkeleton(VerticalSpec spec, float columnWidth, float compactLeft, global::Wavee.Theming.TierFacts tiers)
     {
         float w = columnWidth > 0f ? columnWidth : VerticalLayout.FallbackW;
         bool rowFlow = VerticalLayout.RowFlow(w);
@@ -396,7 +398,7 @@ internal static partial class ClassicDetailFrame
         if (f.Meta) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.MetaFraction), VerticalLayout.MetaRowHeight));
         if (f.Pulse) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.PulseFraction), VerticalLayout.PulseRowHeight));
         if (f.Chart) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.ChartFraction), VerticalLayout.ChartRowHeight));
-        blocks.Add(SkeletonActionRow(spec, ClassicDetailTiers.Now.Target));
+        blocks.Add(SkeletonActionRow(spec, ClassicDetailTiers.Of(tiers).Target));
 
         Element identity = new BoxEl
         {

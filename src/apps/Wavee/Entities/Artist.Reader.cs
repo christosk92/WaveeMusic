@@ -289,6 +289,9 @@ public readonly partial struct Artist
         /// never disagree for a frame; a crossing found after mount commits on the first frame that is not resized.</summary>
         IReadSignal<int>? _arm;
         readonly Func<float> _readerSeed;
+        /// <summary>The facts this reader is drawn in (`TierContext.DrawnIn`, set in render): its root's, never the process's last window. The seeds
+        /// read them before the first render through the process's.</summary>
+        IReadSignal<Theming.ThemeFacts>? _facts;
         /// <summary>The narrow arm, read TRACKED (the running render or effect re-runs on a crossing).</summary>
         bool NarrowArm => (_arm?.Value ?? Theming.ArtistLadders.ReaderArms - 1) == Theming.ArtistLadders.ReaderNarrow;
         /// <summary>The medium (or narrow) arm: no spine and the stacked band, read TRACKED.</summary>
@@ -358,7 +361,7 @@ public readonly partial struct Artist
             _onVisibleRange = OnVisibleRange;
             _onBounds = OnBounds;
             // Before the first measure the reader is seeded from the content region the frame resolved the window tiers on (an upper bound of the lane).
-            _readerSeed = () => Theming.ThemeHost.Facts.Peek().Tiers.ContentWidth is var w && w > 0f ? w : float.MaxValue;
+            _readerSeed = () => (_facts ?? Theming.ThemeHost.Facts).Peek().Tiers.ContentWidth is var w && w > 0f ? w : float.MaxValue;
             _onBandBounds = r => CheckChrome("band", Table.None, _stacked ? "stacked" : "wide", ReaderShape.BandHeight(_stacked),
                                              r.H, ref _bandLoggedDeclared, ref _bandLoggedMeasured);
             _onListMounted = OnListMounted;
@@ -390,6 +393,7 @@ public readonly partial struct Artist
             // in the navigator's page landed. `Tracks`/`AlbumTracks` were never here for the same reason: a landing
             // row reaches its block through the block's own readiness signal.
             _artist = p?.Slot ?? Table.None;
+            _facts = Theming.TierContext.DrawnIn(UseContext(Theming.ThemeFactsContext.Signal));
             _arm = UseTier(Theming.ArtistLadders.Of(ShellPolicy.Now.Tiers, Theming.ArtistLadders.Reader), TierSource.Measured(_readerW, _readerSeed));
             _narrow = NarrowArm;
             _stacked = MediumArm;                                            // subscribe: the spine's presence is a tree edit

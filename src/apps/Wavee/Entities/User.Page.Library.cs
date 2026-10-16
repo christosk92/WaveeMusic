@@ -222,9 +222,18 @@ public readonly partial struct User
         readonly Signal<float> _pageW = new(0f);
         IReadSignal<int>? _layoutTier;
         IReadSignal<Size2>? _viewport;
+        /// <summary>The facts this page is drawn in (`TierContext.DrawnIn`, set in render): its root's, never the process's last window. The constructor's
+        /// navigator seed reads the process's (no context exists before mount; in the app the root provides that same signal).</summary>
+        IReadSignal<Theming.ThemeFacts>? _facts;
         readonly Func<float> _pageSeed;
         readonly Signal<int> _depth = new(0);
         bool _syncingSel, _fullSearch;
+        /// <summary>The ARM SWAP (themes plan 3.3, the owner's "a crossing must not cost your place"): the arm the last render drew (-1 before the first,
+        /// 0 the split, 1 the one column), the navigator's first visible item captured on the render that swaps the arms (-1: at its top) for the arriving
+        /// arm's list to bring to its top (<see cref="ApplyNavPlace"/>; a grid of another width shows that item in a different column, so a pixel offset
+        /// would land on another row), and a crossing into the one column drawing the navigator rung on its own frame (the reset effect writes it after).</summary>
+        int _navArm = -1, _navPlace = -1;
+        bool _depthReset;
         /// <summary><c>SyncNav</c>'s own memory of what it last saw, to tell a REMOUNT (<see cref="LibraryNavMount.Key"/>
         /// moved: the fresh ItemsView starts with nothing highlighted) from an in-place REORDER (only `OrderKey` moved:
         /// the same mounted list, a different index for the selected item) from a pick that came off the list itself
@@ -297,7 +306,7 @@ public readonly partial struct User
         readonly Func<bool> _isSearching;
         readonly Func<string> _filterText;
         readonly Func<uint> _runSearch;
-        readonly Action _demandEdge, _demandRows, _syncNav, _syncLetters, _syncLoad, _saveState, _resetDepth, _autoTop, _autoAlbum;
+        readonly Action _demandEdge, _demandRows, _syncNav, _syncLetters, _syncLoad, _saveState, _resetDepth, _autoTop, _autoAlbum, _applyNavPlace;
         readonly Action _onNavSel, _commitLeft, _commitMid, _restLeft;
         /// <summary>The user has set the navigator's width (contract 1.21): no tier re-rests it from here on.</summary>
         bool _leftCustomized;
@@ -354,7 +363,7 @@ public readonly partial struct User
         /// unknown seeds the split layout, as the page always did.</summary>
         float PageSeed()
         {
-            float seed = Detail.Breakpoints.EstimatePageWidth(Theming.ThemeHost.Facts.Peek().Tiers, _viewport?.Peek().Width ?? 0f);
+            float seed = Detail.Breakpoints.EstimatePageWidth((_facts ?? Theming.ThemeHost.Facts).Peek().Tiers, _viewport?.Peek().Width ?? 0f);
             return seed > 0f ? seed : float.PositiveInfinity;
         }
 
@@ -409,7 +418,8 @@ public readonly partial struct User
             _syncLetters = SyncLetters;
             _syncLoad = SyncNavLoad;
             _saveState = SaveState;
-            _resetDepth = () => { if (Collapsed) _depth.Value = 0; };
+            _resetDepth = () => { _depthReset = false; if (Collapsed) _depth.Value = 0; };
+            _applyNavPlace = ApplyNavPlace;
             _pageSeed = PageSeed;
             _autoTop = AutoSelectTop;
             _autoAlbum = AutoSelectAlbum;
@@ -473,13 +483,13 @@ public readonly partial struct User
         void RestLeft()
         {
             float rest = LibraryViewPrefs.RestingLeftW(_kind, LibraryViewPrefs.LeftWKey(_kind).Default, _leftCustomized,
-                Theming.ThemeHost.Facts.Value.Tiers.Content, ShellPolicy.Tracked.LibraryTiers);
+                (_facts ?? Theming.ThemeHost.Facts).Value.Tiers.Content, ShellPolicy.Tracked.LibraryTiers);
             if (!_leftCustomized) LeftW.SetIfChanged(rest);
         }
 
         float RestingLeftNow()
             => LibraryViewPrefs.RestingLeftW(_kind, LibraryViewPrefs.LeftWKey(_kind).Default, false,
-                Theming.ThemeHost.Facts.Peek().Tiers.Content, ShellPolicy.Now.LibraryTiers);
+                (_facts ?? Theming.ThemeHost.Facts).Peek().Tiers.Content, ShellPolicy.Now.LibraryTiers);
 
         public override Element Render()
         {
@@ -497,6 +507,7 @@ public readonly partial struct User
             // The structure's LAYOUT ladder over the page's measured width (themes plan 3.3): the first frame resolves from the seed (the content region the frame resolved the
             // window tiers on), so a page mounted at Compact is one column from its first frame; a crossing after it commits on the first non-resized frame and animates.
             _viewport = UseContextSignal(Viewport.Size);
+            _facts = Theming.TierContext.DrawnIn(UseContext(Theming.ThemeFactsContext.Signal));
             _layoutTier = UseTier(Theming.LibraryLadders.Of(ShellPolicy.Now.Tiers), TierSource.Measured(_pageW, _pageSeed));
 
             _items ??= BoundItems.Project(_shape, static s => s.FlatCount, (_, i) => ItemAt(i), default(LibraryNavItem));
@@ -514,6 +525,14 @@ public readonly partial struct User
             int selectedSlot = SelectedSlot.Value;
             bool railOpen = Shell.Ui.RailOpen.Value;
             bool collapsed = Theming.LibraryLadders.IsSingleColumn(_layoutTier.Value);
+            // The arm swap: read where the navigator is before this render replaces its list (a plain field write; see `_navArm`).
+            int navArm = collapsed ? 1 : 0;
+            if (_navArm >= 0 && _navArm != navArm)
+            {
+                _navPlace = FirstVisibleNav();
+                _depthReset = collapsed;
+            }
+            _navArm = navArm;
             int sArtist = _sArtist.Value;
 
             // The bound list's KEY is `shape.Mount.Key` (minted ONCE, in `ComputeShape`, by `LibraryNavMount.For`) — what
@@ -529,6 +548,7 @@ public readonly partial struct User
             UseEffect(_saveState, sortCode + "|" + Desc.Value + "|" + view + "|" + size + "|" + sel + "|" + albumKey + "|"
                                   + Scope.Value + "|" + RSort.Value);
             UseEffect(_resetDepth, DepKey.From(collapsed));
+            UseLayoutEffect(_applyNavPlace, DepKey.From(collapsed));
             UseEffect(_autoTop, DepKey.From((int)hitsGeneration, fullSearch ? 1 : 0));
             UseEffect(_autoAlbum, DepKey.From((int)hitsGeneration, sArtist));
 
@@ -541,7 +561,8 @@ public readonly partial struct User
             IReadOnlyList<string> crumbs = Array.Empty<string>();
             if (collapsed)
             {
-                depth = Math.Clamp(_depth.Value, 0, IsArtists && fullSearch ? 2 : 1);
+                int rung = _depth.Value;   // read on every collapsed render: a pick writes it
+                depth = _depthReset ? 0 : Math.Clamp(rung, 0, IsArtists && fullSearch ? 2 : 1);
                 crumbs = CrumbsOf(depth, fullSearch, selectedSlot);
             }
 
@@ -874,6 +895,36 @@ public readonly partial struct User
             _pickedFromList = true;   // consumed + cleared by SyncNav in the SAME effect run: already revealed, don't re-bring
             Select(_sorted[row]);
             if (Collapsed) _depth.Value = 1;
+        }
+
+        /// <summary>The navigator's first visible item (the flat index under the top of its visible band, below a pinned letter), or -1 when it rests
+        /// at its top or is not mounted. Read in the render that swaps the arms, while the leaving list is still laid out.</summary>
+        int FirstVisibleNav()
+        {
+            var scene = Context.Scene;
+            var vp = _navCtl.Viewport;
+            if (scene is null || vp.IsNull || !scene.IsLive(vp) || !scene.TryGetScroll(vp, out var sc)) return -1;
+            if (sc.OffsetY <= 0.5f || sc.ViewportH <= 1f) return -1;
+            float inset = float.IsFinite(sc.ItemClipTopInset) ? MathF.Max(0f, sc.ItemClipTopInset) : 0f;
+            // Probes a little under the band's edge, across the row (a grid's gutters and row gaps hold no item).
+            for (float dy = 1f; dy <= 33f; dy += 8f)
+            {
+                float ratio = MathF.Min(1f, (inset + dy) / sc.ViewportH);
+                if (_navCtl.TryGetItemIndex(0.5f, ratio, out int item) || _navCtl.TryGetItemIndex(0.25f, ratio, out item)
+                    || _navCtl.TryGetItemIndex(0.1f, ratio, out item)) return item;
+            }
+            return -1;
+        }
+
+        /// <summary>Layout effect on the arm (after layout, before paint): the arriving arm's navigator brings the item that topped the leaving one to the top of
+        /// its visible band, unanimated (the arms cross-fade over it). The pixel offset the shared ScrollKey restored is only right for a list of the same
+        /// row height; a grid re-flows its columns with the width.</summary>
+        void ApplyNavPlace()
+        {
+            int item = _navPlace;
+            _navPlace = -1;
+            if (item < 0 || _navCtl.Viewport.IsNull) return;
+            _navCtl.StartBringItemIntoView(item, 0f);
         }
 
         /// <summary><paramref name="alignmentRatio"/> is the WinUI `StartBringItemIntoView` alignment: <c>NaN</c> is

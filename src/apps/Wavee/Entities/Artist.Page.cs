@@ -100,6 +100,9 @@ public readonly partial struct Artist
         readonly Signal<int> _layoutEpoch = new(0);
         IReadSignal<int>? _heroTier;
         IReadSignal<Size2>? _viewportSize;
+        /// <summary>The facts this page is drawn in (`TierContext.DrawnIn`, set in render): its root's, never the process's last window. The seeds
+        /// read them before the first render through the process's.</summary>
+        IReadSignal<Theming.ThemeFacts>? _facts;
         readonly Func<float> _heroSeed;
         ArtistHeroMetrics _metrics;
         float _width;
@@ -221,7 +224,7 @@ public readonly partial struct Artist
                 _atEnd.SetIfChanged(atEnd);
             };
             _stampFn = Stamp;
-            _heroSeed = () => Detail.Breakpoints.EstimatePageWidth(Theming.ThemeHost.Facts.Peek().Tiers, _viewportSize?.Peek().Width ?? 0f);
+            _heroSeed = () => Detail.Breakpoints.EstimatePageWidth((_facts ?? Theming.ThemeHost.Facts).Peek().Tiers, _viewportSize?.Peek().Width ?? 0f);
         }
         public void ApplyProps(object props)
         {
@@ -289,8 +292,9 @@ public readonly partial struct Artist
             // region the frame resolved the window tiers on (synchronous), so the first frame is already in its final sub-tier; the metrics are the
             // structure's record for that sub-tier in the window tier on screen (tracked: a window or height crossing re-renders the page).
             _viewportSize = UseContextSignal(Viewport.Size);
+            _facts = Theming.TierContext.DrawnIn(UseContext(Theming.ThemeFactsContext.Signal));
             _heroTier = UseTier(Theming.ArtistLadders.Of(ShellPolicy.Now.Tiers, Theming.ArtistLadders.Hero), TierSource.Measured(_heroWidth, _heroSeed));
-            var tierFacts = Theming.ThemeHost.Facts.Value.Tiers;
+            var tierFacts = _facts.Value.Tiers;
             _ = _layoutEpoch.Value;
             float measuredW = _heroWidth.Value;
             _width = MathF.Max(1f, measuredW > 0.5f ? measuredW : _heroSeed());

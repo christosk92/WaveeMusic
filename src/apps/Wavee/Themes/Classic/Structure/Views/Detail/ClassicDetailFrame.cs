@@ -236,7 +236,9 @@ internal static partial class ClassicDetailFrame
 
     /// <summary>One arm of the frame under its own key: a mode crossing (the vertical arm ↔ the two-column arm, committed by the host on the first
     /// frame that is not resized, themes plan 3.3) swaps the key, and the reconciler's keyed Exit / Enter cross-fades the two arms in the frame's
-    /// z-stack instead of snapping one for the other (the Home facet swap's mechanism).</summary>
+    /// z-stack instead of snapping one for the other (the Home facet swap's mechanism). The list is a different table in each arm (the hero rides the
+    /// vertical arm's list), so the user's place crosses by hand-over, not by re-parenting: the host hands the arriving table the leaving one's first
+    /// visible row, selection, focus and view state (`Entities\Track.Table.Place.cs`), and both arms fade over the same rows.</summary>
     static Element Arm(string arm, Element root) => new BoxEl
     {
         Key = "detail:arm:" + arm, Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,

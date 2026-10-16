@@ -729,6 +729,8 @@ public readonly partial struct Artist
             var p = UseProps<GridProps>();
             _p = p;
             var registry = UseContext(global::FluentGpu.Theming.ViewRegistry.Context);
+            // The facts this grid is drawn in (its root's, never the process's last window): the metrics below read them tracked.
+            var facts = global::Wavee.Theming.TierContext.DrawnIn(UseContext(global::Wavee.Theming.ThemeFactsContext.Signal));
             _ = Entities.ScopeEpoch.Value;
             var edge = FacetEdge(p.Facet);
             _ = edge.Changed.Value;
@@ -745,7 +747,7 @@ public readonly partial struct Artist
             if (style is null) return new BoxEl();
             // The structure's grid configuration (TC6: its metrics follow the window tier, read tracked) rides the grid as LIVE props (LazyGridFit), so a
             // tier whose grid differs re-fits the SAME grid: its realized cells, the open drawer and the page's scroll survive the crossing.
-            var m = style.Metrics();
+            var m = style.Metrics(facts.Value.Tiers);
 
             // A key on this component's ROOT would be inert: the keyed grid is the root column's one child.
             return new BoxEl { Direction = 1, MinWidth = 0f, Children = [Embed.Comp(new LazyGridFit(m.MinColumn, m.Gap, m.CardChrome + m.RowGap), () => new LazyGrid(
@@ -940,10 +942,12 @@ public readonly partial struct Artist
             var p = UseProps<DiscoCellProps>();
             _p = p;
             var stamp = UseComputed(_stamp).Value;
+            // The facts this cell is drawn in, peeked (the grid remounts its cells on a crossing that moves its metrics).
+            var tiers = global::Wavee.Theming.TierContext.DrawnIn(UseContext(global::Wavee.Theming.ThemeFactsContext.Signal)).Peek().Tiers;
             if (p.Style is not { } style) return new BoxEl();
             // The PINNED height (the cell width plus the structure's card chrome) is part of the data (it is the shell's), so a responsive width
             // change rebuilds it too.
-            float height = p.CardW + style.Metrics().CardChrome;
+            float height = p.CardW + style.Metrics(tiers).CardChrome;
             if (!stamp.Ready)
             {
                 _slot = Table.None;
@@ -1248,11 +1252,11 @@ public readonly partial struct Artist
             var v = p.Verdict;
             var style = p.Style;
             if (index >= v.Shown)
-                return v.ShowAllRow && index == v.Shown ? ShowAll(style, v.Total) : new BoxEl();
+                return v.ShowAllRow && index == v.Shown ? ShowAll(style, v.Total, v.Pitch) : new BoxEl();
 
             var skin = style.DrawerSlot(new DiscoDrawerSlotArgs
             {
-                Content = Embed.Comp(new DrawerRowProps(p.Album, index, style), s_rowFactory) with { Key = "content" },
+                Content = Embed.Comp(new DrawerRowProps(p.Album, index, style, v.Pitch), s_rowFactory) with { Key = "content" },
                 Index = index, Verdict = v, Scope = _scope,
                 Release = _release, Key = _key, Drag = _drag,
                 ChecksVisible = _o.ChecksVisible, PillFill = _pillFill, PillOpacity = _pillOpacity,
@@ -1263,9 +1267,9 @@ public readonly partial struct Artist
 
         /// <summary>The "Show all N tracks" cell: not selectable (the list's IsItemSelectable), opens the album on a
         /// click, Enter or Space.</summary>
-        Element ShowAll(DiscographyStyle style, int total) => style.ShowAll(new DiscoShowAllArgs
+        Element ShowAll(DiscographyStyle style, int total, float pitch) => style.ShowAll(new DiscoShowAllArgs
         {
-            Total = total,
+            Total = total, Pitch = pitch,
             Release = _showAllRelease ??= _ => _o.GoAlbum(),
             Key = _showAllKey ??= args =>
             {
@@ -1275,7 +1279,7 @@ public readonly partial struct Artist
         });
     }
 
-    sealed record DrawerRowProps(Album Album, int Index, DiscographyStyle Style);
+    sealed record DrawerRowProps(Album Album, int Index, DiscographyStyle Style, float Pitch);
 
     /// <summary>One drawer track cell — a component, so a play/pause/skip anywhere re-skins only THIS row. The track is
     /// read LIVE off the album's edge at its fixed index every render; the structure draws it (the SAME eager-row grid `Track.EagerRow` draws).</summary>
@@ -1311,7 +1315,7 @@ public readonly partial struct Artist
             _ = Entities.Current.Edges.AlbumTracks.Changed.Value;
             var t = TrackOf(p);
             if (t.Slot <= Table.None) return new BoxEl();
-            return p.Style.DrawerTrack(new DiscoDrawerTrackArgs { Track = t, Index = p.Index, State = Track.StateOf(t), Play = _play, Like = _like });
+            return p.Style.DrawerTrack(new DiscoDrawerTrackArgs { Track = t, Index = p.Index, Pitch = p.Pitch, State = Track.StateOf(t), Play = _play, Like = _like });
         }
     }
 

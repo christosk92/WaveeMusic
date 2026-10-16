@@ -290,7 +290,4 @@ public static class ClassicProfileTiers
 
     /// <summary>The record of <paramref name="facts"/>; Standard's where no frame resolved the tiers.</summary>
     public static ClassicProfileLayout Of(in TierFacts facts) => facts.Policy is null ? Standard : For(facts.Window);
-
-    /// <summary>The record on screen now, read TRACKED.</summary>
-    public static ClassicProfileLayout Now => Of(ThemeHost.Facts.Value.Tiers);
 }

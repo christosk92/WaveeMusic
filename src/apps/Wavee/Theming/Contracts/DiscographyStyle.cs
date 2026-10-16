@@ -172,6 +172,9 @@ internal sealed class DiscoShowAllArgs
     /// <summary>The album's track total.</summary>
     public required int Total { get; init; }
 
+    /// <summary>The drawer's row pitch in the tier it is drawn in (the verdict's <see cref="Album.DrawerVerdict.Pitch"/>).</summary>
+    public required float Pitch { get; init; }
+
     /// <summary>The release and the keys that open the album.</summary>
     public required Action<PointerEventArgs> Release { get; init; }
 
@@ -188,6 +191,9 @@ internal sealed class DiscoDrawerTrackArgs
     /// <summary>The row's track and index.</summary>
     public required Track Track { get; init; }
 
+    /// <summary>The drawer's row pitch in the tier it is drawn in (the verdict's <see cref="Album.DrawerVerdict.Pitch"/>).</summary>
+    public required float Pitch { get; init; }
+
     /// <inheritdoc cref="Track"/>
     public required int Index { get; init; }
 
@@ -201,8 +207,9 @@ internal sealed class DiscoDrawerTrackArgs
     public required Action Like { get; init; }
 }
 
-/// <summary>The grid's configuration.</summary>
-internal delegate DiscographyMetrics DiscographyMetricsTemplate();
+/// <summary>The grid's configuration in <paramref name="tiers"/>: the window tiers of the facts the calling grid is drawn in (its root's, never the
+/// process's last window).</summary>
+internal delegate DiscographyMetrics DiscographyMetricsTemplate(in TierFacts tiers);
 
 /// <summary>Draws a facet section: the spined header (an expander that pins), the grid clipped under it, the trailing air.</summary>
 internal delegate Element DiscoFacetTemplate(DiscoFacetArgs args);

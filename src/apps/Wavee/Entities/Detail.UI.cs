@@ -526,8 +526,16 @@ public static partial class Detail
         readonly Signal<ColorF> _accent = new(ColorF.Transparent);
         readonly Signal<Design.PageAccent> _pageAccent = new(new Design.PageAccent(Tok.AccentTextPrimary, Tok.AccentDefault, ""));
         readonly Action?[] _playAllCell = new Action?[1];
+        // The list's place across an arm swap (Track.Table.Place.cs): the table is keyed by its arm, so the leaving table hands the arriving one
+        // its first visible row, selection, focus and view state. Captured on the render that flips the arm, for the same route only.
+        readonly Track.ListPlace _listPlace = new();
+        int _placeArm = -1;
+        string _placeRoute = "";
         readonly object _tintOwner = new();
         IReadSignal<Size2>? _viewport;
+        /// <summary>The facts this frame is drawn in (`TierContext.DrawnIn`): its root's, never the process's last window where a root provides others.
+        /// Null until the first render (the mount's first `ApplyProps` reads the process's).</summary>
+        IReadSignal<ThemeFacts>? _facts;
         bool _accentSeeded;
 
         // ── INSIGHTS SHEET (additive; Detail.Insights.cs) ── the host of the facts bento on every facts page (I1). One toggle
@@ -668,7 +676,7 @@ public static partial class Detail
                 _factsLatched = null;        // the facts latch is the ROUTE's, exactly like the open state
                 // The tier's RESTING state from the route's first frame (a Huge dock or aside is open before it is laid out, so it never
                 // eases in under the reader); later crossings and the facts latch re-rest it in `_restInsights`.
-                _insights.Rest(RestsOpen(ShellPolicy.Now.DetailTiers.For(ThemeHost.Facts.Peek().Tiers), ShellPolicy.Now.Detail.PageLayout,
+                _insights.Rest(RestsOpen(ShellPolicy.Now.DetailTiers.For((_facts ?? ThemeHost.Facts).Peek().Tiers), ShellPolicy.Now.Detail.PageLayout,
                     spec.Slots.LikedFacts is not null && spec.Config.Content == DetailContent.Tracks, vertical: false));
             }
             if (!_accentSeeded)
@@ -703,6 +711,7 @@ public static partial class Detail
             _inputHooks = UseContext(InputHooks.Current);       // ── INSIGHTS SHEET (additive): the focus return ──
             var viewportSig = UseContextSignal(Viewport.Size);
             _viewport = viewportSig;
+            _facts = TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal));   // before the seeds below read it
             // The structure's sub-ladders (themes plan 3.6; Classic: Tiers.Detail.cs). They freeze at mount like every hook's inputs: a theme
             // switch mounts a new root, and with it a new frame.
             var tierPolicy = ShellPolicy.Now.Tiers;
@@ -710,7 +719,7 @@ public static partial class Detail
             _heightRung = UseTier(DetailLadders.Of(tierPolicy, DetailLadders.Height), TierSource.ViewportHeight);
             // The window tier's layout (tracked: a crossing re-renders the frame on the frame it commits).
             var tierLayouts = ShellPolicy.Tracked.DetailTiers;
-            var tierFacts = ThemeHost.Facts.Value.Tiers;
+            var tierFacts = _facts.Value.Tiers;
             UseEffect(_publishAccentTracked);                                   // grading / spec
             UseEffect(_republishAccent, DepKey.From(Tok.Epoch));                // a theme flip or a definition swap re-derives the accent (X44)
 
@@ -728,6 +737,12 @@ public static partial class Detail
                 mode = Breakpoints.VerticalMode;
             bool vertical = mode == Breakpoints.VerticalMode;
             bool verticalTracks = vertical && cfg.Content == DetailContent.Tracks;
+            // The table's arm flips with `verticalTracks` (its key): ask the live table where the user is before this render swaps it (a plain
+            // field write, Track.Table.Place.cs).
+            int placeArm = verticalTracks ? 1 : 0;
+            if (_placeArm >= 0 && _placeArm != placeArm && string.Equals(_placeRoute, routeKey, StringComparison.Ordinal)) _listPlace.Capture();
+            _placeArm = placeArm;
+            _placeRoute = routeKey;
 
             // ── INSIGHTS SHEET (additive; Detail.Insights.cs) ── tuned Classic I1: the facts bento is a sheet over the list on every
             //    facts page, in every arm, toggled from the list bar — never a rail row, never appended to the page body.
@@ -937,6 +952,7 @@ public static partial class Detail
                 HeroHeight = _heroHeight,
                 WidthSeed = widthSeed,
                 ScrollKey = routeKey,
+                Place = _listPlace,
             };
             // A route is a new scroll/hero identity; the arm is in the key (a hero-system list must never reconcile
             // against a standard one). The tier is NOT (ch 03 §9 traps).
@@ -1050,7 +1066,7 @@ public static partial class Detail
             int mode = _modeTier is { } tier ? DetailLadders.ModeOf(tier.Value) : RailPolicy.WideMode;
             float max = _railMax.Value;
             // The window tier's resting width (Classic Huge's 320): tracked, so a crossing re-rests every undragged rail on the frame it commits.
-            float wideRest = ShellPolicy.Tracked.DetailTiers.For(ThemeHost.Facts.Value.Tiers).RailRest;
+            float wideRest = ShellPolicy.Tracked.DetailTiers.For((_facts ?? ThemeHost.Facts).Value.Tiers).RailRest;
             for (int i = 0; i < _rails.Length; i++) _rails[i].Rest(mode, max, wideRest);
         }
 
@@ -1059,7 +1075,7 @@ public static partial class Detail
         float PageSeed()
         {
             float vw = _viewport?.Peek().Width ?? 0f;
-            float seed = Breakpoints.EstimatePageWidth(ThemeHost.Facts.Peek().Tiers, vw);
+            float seed = Breakpoints.EstimatePageWidth((_facts ?? ThemeHost.Facts).Peek().Tiers, vw);
             return seed > 0f ? seed : float.PositiveInfinity;
         }
 

@@ -489,10 +489,6 @@ public static class ClassicArtistTiers
     public static ClassicArtistLayout Of(in TierFacts facts)
         => facts.Policy is null ? Standard : ClassicDetailTiers.Policy.IsHugeWide(in facts) ? Huge4K : For(facts.Window);
 
-    /// <summary>The record on screen now, read TRACKED (the running render re-runs on a crossing): for the templates the core's components call
-    /// (the discography grid's metrics), which carry no view context.</summary>
-    public static ClassicArtistLayout Now => Of(ThemeHost.Facts.Value.Tiers);
-
     /// <summary>The policy the structure publishes for the core hosts.</summary>
     public static ArtistTierPolicy Policy { get; } = new ClassicArtistTierPolicy();
 }

@@ -215,10 +215,6 @@ public static class ClassicDetailTiers
     public static ClassicDetailTier Of(in TierFacts facts)
         => facts.Policy is null ? Standard : Policy.IsHugeWide(in facts) ? Huge4K : For(facts.Window);
 
-    /// <summary>The record on screen now, read TRACKED (the running render or effect re-runs on a crossing): for the chrome kit and the row
-    /// templates, which run inside the core table's components and carry no view context.</summary>
-    public static ClassicDetailTier Now => Of(ThemeHost.Facts.Value.Tiers);
-
     /// <summary>The policy the structure publishes for the core frame and table.</summary>
     public static DetailTierPolicy Policy { get; } = new(Compact.Core, Small.Core, Standard.Core, Huge.Core,
         RailTitleShort: 28f, RailTitleTall: 40f, DescriptionShort: 3, DescriptionRegular: 6)

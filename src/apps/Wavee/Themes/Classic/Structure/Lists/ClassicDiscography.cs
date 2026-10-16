@@ -36,12 +36,12 @@ internal static class ClassicDiscography
     public static readonly DiscographyStyle Style = new(Metrics, Facet, FacetFailed, Card, Opened, Seed, Cell, DrawerFrame, DrawerPanel,
                                                        DrawerBar, DrawerSlot, ShowAll, DrawerTrack);
 
-    /// <summary>The grid's configuration in the window tier on screen (TC6: a two-column floor at Compact) and the album drawer's geometry (its columns,
-    /// pitch and head per tier: C-Discography-Compact's one column of 40 rows, -Small's two, -Huge's four), read TRACKED: the core's grid host re-renders
-    /// on a crossing (and remounts its grid keyed by the grid's numbers) and an open drawer re-flows to the tier's columns.</summary>
-    static DiscographyMetrics Metrics()
+    /// <summary>The grid's configuration in the window tier the grid is drawn in (TC6: a two-column floor at Compact) and the album drawer's geometry
+    /// (its columns, pitch and head per tier: C-Discography-Compact's one column of 40 rows, -Small's two, -Huge's four): the core's grid host reads its
+    /// facts tracked and re-fits the same grid on a crossing, and an open drawer re-flows to the tier's columns.</summary>
+    static DiscographyMetrics Metrics(in global::Wavee.Theming.TierFacts tiers)
     {
-        var layout = ClassicArtistTiers.Now;
+        var layout = ClassicArtistTiers.Of(tiers);
         return new(layout.DiscoMinColumn, layout.DiscoGap, Rules.CardChrome, Rules.RowGap, layout.Drawer);
     }
 
@@ -274,10 +274,10 @@ internal static class ClassicDiscography
     {
         var al = a.Album;
         var titleType = R.Type.DenseTitle("");
-        var layout = ClassicArtistTiers.Now;
-        bool large = layout.Target >= ClassicArtistTiers.CompactTarget;
-        float play = large ? layout.Target : Rules.HeadPlay;
-        float open = large ? layout.Target : Rules.HeadOpen;
+        // The verdict's pitch says the tier the drawer is drawn in: Compact's 40 rows carry the 40 head buttons.
+        bool large = a.Verdict.Pitch >= ClassicArtistTiers.DrawerPitchCompact;
+        float play = large ? ClassicArtistTiers.CompactTarget : Rules.HeadPlay;
+        float open = large ? ClassicArtistTiers.CompactTarget : Rules.HeadOpen;
         return new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Height = layout.DrawerHead,
@@ -434,7 +434,7 @@ internal static class ClassicDiscography
     /// <summary>The "Show all N tracks" cell: not selectable (the list's IsItemSelectable), opens the album on a click, Enter or Space.</summary>
     static Element ShowAll(DiscoShowAllArgs a) => new BoxEl
     {
-        Key = "row:show-all", Height = ClassicArtistTiers.Now.DrawerPitch, AlignItems = FlexAlign.Center,
+        Key = "row:show-all", Height = a.Pitch, AlignItems = FlexAlign.Center,
         Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Cursor = CursorId.Hand, Role = AutomationRole.Button,
         Corners = Radii.ControlAll, HoverFill = R.Layer.RowHover, PressedFill = R.Layer.RowPressed,
         Focusable = false, FocusVisualMargin = Design.FocusInsetRow,
@@ -467,7 +467,7 @@ internal static class ClassicDiscography
                 MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             };
         // The row's content is the pitch less the tuned 4 of air (28 in 32, 36 in Compact's 40).
-        float pitch = ClassicArtistTiers.Now.DrawerPitch;
+        float pitch = a.Pitch;
         bool compact = pitch >= ClassicArtistTiers.DrawerPitchCompact;
         return ClassicEagerRow.Style.Grid(t, a.Index, in st, in s_drawerCols, compact ? s_drawerColumnsCompact : s_drawerColumns,
                                           pitch - Rules.RowAir, title,

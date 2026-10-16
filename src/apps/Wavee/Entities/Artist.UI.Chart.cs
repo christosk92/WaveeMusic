@@ -164,6 +164,7 @@ public readonly partial struct Artist
             var p = UseProps<ChartProps>();
             _overlay = UseContext(Overlay.Service);
             var registry = UseContext(global::FluentGpu.Theming.ViewRegistry.Context);
+            var facts = Theming.TierContext.DrawnIn(UseContext(Theming.ThemeFactsContext.Signal));   // the tiers this chart is drawn in
             uint scopeEpoch = Entities.ScopeEpoch.Value;
             var scope = Entities.Current;
             _ = scope.Edges.ArtistPopular.Changed.Value;
@@ -202,7 +203,7 @@ public readonly partial struct Artist
             // The tier's widest chart and its rows per column (TC6: two columns at Standard, more at Huge, one at Compact; Huge 4K's four rows), read
             // tracked: a window crossing re-renders the chart. The skeleton reads the same pair (the fields), so it keeps the chart's columns per tier.
             var chartTiers = ShellPolicy.Tracked.ArtistTiers;
-            var tierFacts = Theming.ThemeHost.Facts.Value.Tiers;
+            var tierFacts = facts.Value.Tiers;
             _maxColumns = Math.Min(ChartKeyColumns, chartTiers.ChartMaxColumns(tierFacts));
             _rows = Math.Max(1, chartTiers.ChartRows(tierFacts));
             int cols = ArtistSections.ChartColumns(_items.Length, _maxColumns, _rows);

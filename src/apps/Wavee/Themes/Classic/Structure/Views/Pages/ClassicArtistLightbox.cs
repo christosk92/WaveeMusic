@@ -56,6 +56,8 @@ internal static class ClassicArtistLightbox
         Point2 _dragLast, _dragDown;
         bool _dragMoved;
         TimerHandle _idleHide, _unzoom;
+        /// <summary>The tiers this viewer is drawn in (its root's facts, read in render), never the process's last window.</summary>
+        global::Wavee.Theming.TierFacts _tiers;
 
         public Viewer(ArtistLightboxProps p)
         {
@@ -82,6 +84,7 @@ internal static class ClassicArtistLightbox
         public override Element Render()
         {
             var vp = UseContext(Viewport.Size);
+            _tiers = global::Wavee.Theming.TierContext.DrawnIn(UseContext(global::Wavee.Theming.ThemeFactsContext.Signal)).Value.Tiers;
             int selected = _p.Selected.Value;
             Action<int> setSelected = _p.Select;
             var post = UsePost();
@@ -276,7 +279,7 @@ internal static class ClassicArtistLightbox
         {
             bool saving = _p.Saving.Value;
             // The window tier's targets (TC6, built from Classic's parts: no board draws the lightbox): Export and Close are 40 tall at Compact.
-            var size = ClassicArtistTiers.Now.Target >= ClassicArtistTiers.CompactTarget ? ControlSize.Large : ControlSize.Medium;
+            var size = ClassicArtistTiers.Of(_tiers).Target >= ClassicArtistTiers.CompactTarget ? ControlSize.Large : ControlSize.Medium;
             return new BoxEl
             {
                 Height = Rules.ChromeH, Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,

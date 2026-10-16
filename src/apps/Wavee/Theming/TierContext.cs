@@ -10,6 +10,7 @@
 // rung, and the modal size-move edge), never once per resized frame: the engine commits a crossing on the first frame that
 // is not resized (plan 3.3), so the template re-renders once, on the frame the crossing animates.
 
+using FluentGpu.Signals;
 using FluentGpu.Theming;
 
 namespace Wavee.Theming;
@@ -33,4 +34,10 @@ public static class TierContext
         var facts = ctx.Hooks.UseContext(ThemeFactsContext.Signal);
         return facts is null ? static () => TierFacts.Unknown : () => facts.Value.Tiers;
     }
+
+    /// <summary>The facts a CORE COMPONENT is drawn in (a host has no view context): the signal its root provides (`ThemeRoot`, or a harness mounting a
+    /// view under its own composition and window), else the process's, for a host mounted outside any root. A component passes
+    /// <c>UseContext(ThemeFactsContext.Signal)</c>; reading <c>.Value</c> subscribes it to a crossing, <c>.Peek()</c> does not. Never the process's
+    /// facts where a root provides others: a composition mounted at another size than the app window draws in its own tiers.</summary>
+    public static IReadSignal<ThemeFacts> DrawnIn(IReadSignal<ThemeFacts>? provided) => provided ?? ThemeHost.Facts;
 }

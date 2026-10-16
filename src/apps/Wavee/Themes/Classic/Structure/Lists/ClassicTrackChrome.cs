@@ -39,7 +39,7 @@ using TableRules = global::Wavee.Track.TableRules;
 internal static class ClassicTrackChrome
 {
     /// <summary>The chrome Classic registers as <c>TrackListStyle.Chrome</c>. Stateless.</summary>
-    public static readonly TrackChromeTemplates Templates = new(Header, new CommandKit(), FilterCard, Placeholder, GroupHeader);
+    public static readonly TrackChromeTemplates Templates = new(Header, CommandKit.For(ClassicDetailTiers.Standard), FilterCard, Placeholder, GroupHeader);
 
     // ══ THE PLACEHOLDER ══════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -372,12 +372,31 @@ internal static class ClassicTrackChrome
     /// <summary>The command bar's pictures (the contract is <see cref="ITrackCommandKit"/>).</summary>
     sealed class CommandKit : ITrackCommandKit
     {
+        /// <summary>The window tier's record this kit draws (Tiers.Detail.cs): the table hands its own tiers through <see cref="In"/>, so the kit follows
+        /// the facts the table is drawn in, never the process's last window. One kit per record, built once.</summary>
+        readonly ClassicDetailTier _tier;
+        static readonly Dictionary<ClassicDetailTier, CommandKit> s_byTier = new();
+
+        CommandKit(ClassicDetailTier tier) => _tier = tier;
+
+        public static CommandKit For(ClassicDetailTier tier)
+        {
+            if (!s_byTier.TryGetValue(tier, out var kit)) s_byTier[tier] = kit = new CommandKit(tier);
+            return kit;
+        }
+
+        public ITrackCommandKit In(in global::Wavee.Theming.TierFacts tiers)
+        {
+            var tier = ClassicDetailTiers.Of(tiers);
+            return Equals(tier, _tier) ? this : For(tier);
+        }
+
         /// <summary>The chromeless 44-DIP lane both modes share; the keyed mode box is what animates browse ↔ selection. At Compact (the tier record)
         /// the lane's padding gives its 40 targets the room (the lane keeps the 44 the hero's band reserves), and the selection mode is tinted with
         /// the accent (board C-MultiSelect-Compact).</summary>
         public Element Surface(string mode, Element content)
         {
-            var tier = ClassicDetailTiers.Now;
+            var tier = _tier;
             float padY = ClassicTrackChromeLayout.SurfacePadYFor(tier.Target);
             bool tinted = tier.SelectionTinted && mode == "selection";
             return new BoxEl
@@ -398,7 +417,7 @@ internal static class ClassicTrackChrome
         }
 
         /// <summary>The square commands' edge at the window tier on screen (the tier record's target: 40 at Compact).</summary>
-        public float CommandEdge => ClassicTrackChromeLayout.PlateFor(ClassicDetailTiers.Now.Target);
+        public float CommandEdge => ClassicTrackChromeLayout.PlateFor(_tier.Target);
 
         public Element Command(string key, Element command, Action<float> onWidth) => new BoxEl
         {
@@ -415,7 +434,7 @@ internal static class ClassicTrackChrome
         /// from the view group to the left one.</para></summary>
         public Element Bar(Element[] left, Element[] view, Element search, Element[] tail, Element? middle)
         {
-            if (ClassicDetailTiers.Now.SortLeadsBar)
+            if (_tier.SortLeadsBar)
             {
                 var lead = new List<Element>(left.Length + 1);
                 var rest = new List<Element>(view.Length);
@@ -465,10 +484,10 @@ internal static class ClassicTrackChrome
             Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f,
             Children =
             [
-                ClassicDetailKit.PlaySplit(subject, accent, play, ClassicDetailTiers.Now.Target),
+                ClassicDetailKit.PlaySplit(subject, accent, play, _tier.Target),
                 Button.Create(shuffleLabel, shuffle, ButtonAppearance.Standard, glyph: Icons.Shuffle) with
                 {
-                    Key = "lead:shuffle", Shrink = 0f, Height = ClassicTrackChromeLayout.CommandHeightFor(ClassicDetailTiers.Now.Target),
+                    Key = "lead:shuffle", Shrink = 0f, Height = ClassicTrackChromeLayout.CommandHeightFor(_tier.Target),
                     Margin = new Edges4(ClassicTrackChromeLayout.PageShuffleLead, 0f, 0f, 0f),
                 },
                 new BoxEl
@@ -503,7 +522,7 @@ internal static class ClassicTrackChrome
                 ],
             };
             return SplitButton.Create(content, onPlay, items,
-                parts: ClassicDetailTiers.Now.Target > ClassicTrackChromeLayout.CommandHeight ? s_splitPartsCompact : s_splitParts);
+                parts: _tier.Target > ClassicTrackChromeLayout.CommandHeight ? s_splitPartsCompact : s_splitParts);
         }
 
         /// <summary>The labeled (icon + text) command — every inline command is labeled; one that does not fit is evicted,
@@ -517,7 +536,7 @@ internal static class ClassicTrackChrome
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicTrackChromeLayout.CommandGap,
-                Height = ClassicTrackChromeLayout.CommandHeightFor(ClassicDetailTiers.Now.Target), Padding = new Edges4(9f, 0f, 10f, 0f),
+                Height = ClassicTrackChromeLayout.CommandHeightFor(_tier.Target), Padding = new Edges4(9f, 0f, 10f, 0f),
                 Corners = Radii.ControlAll,
                 Fill = active ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.11f }) : (Prop<ColorF>)ColorF.Transparent,
                 HoverFill = active ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.17f }) : Prop.Of(static () => Tok.FillSubtleSecondary),
@@ -532,7 +551,7 @@ internal static class ClassicTrackChrome
         /// <summary>The 32×32 toolbar glyph button: active → the accent@0.11 plate + accent glyph; idle → ghost.</summary>
         public Element IconButton(string glyph, bool active, Action onClick, Action<NodeHandle>? onRealized) => new BoxEl
         {
-            Width = ClassicTrackChromeLayout.PlateFor(ClassicDetailTiers.Now.Target), Height = ClassicTrackChromeLayout.PlateFor(ClassicDetailTiers.Now.Target),
+            Width = ClassicTrackChromeLayout.PlateFor(_tier.Target), Height = ClassicTrackChromeLayout.PlateFor(_tier.Target),
             AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             Corners = Radii.ControlAll,
             Fill = active ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.11f }) : (Prop<ColorF>)ColorF.Transparent,
@@ -558,7 +577,7 @@ internal static class ClassicTrackChrome
             bool active = count > 0;
             Prop<ColorF> ink = active ? Prop.Of(static () => Tok.AccentTextPrimary) : Prop.Of(static () => Tok.TextSecondary);
             Element glyph = Icon(Icons.Filter, ClassicTrackChromeLayout.CommandGlyph) with { Color = ink };
-            float target = ClassicDetailTiers.Now.Target;
+            float target = _tier.Target;
             var box = new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Height = ClassicTrackChromeLayout.CommandHeightFor(target), Shrink = 0f,
@@ -636,8 +655,8 @@ internal static class ClassicTrackChrome
         /// <summary>The button's slot never changes size: the badge is an overlay on a fixed 32-DIP box, so a filter turning on moves nothing.</summary>
         public Element MoreSlot(Element more, int filterCount) => new BoxEl
         {
-            ZStack = true, Width = ClassicTrackChromeLayout.PlateFor(ClassicDetailTiers.Now.Target),
-            Height = ClassicTrackChromeLayout.PlateFor(ClassicDetailTiers.Now.Target), Shrink = 0f, AlignSelf = FlexAlign.Center,
+            ZStack = true, Width = ClassicTrackChromeLayout.PlateFor(_tier.Target),
+            Height = ClassicTrackChromeLayout.PlateFor(_tier.Target), Shrink = 0f, AlignSelf = FlexAlign.Center,
             Children = filterCount > 0
                 ? [more, InfoBadge.Count(filterCount, parts: s_badgeCornerMore) with { HitTestVisible = false, Key = "more:filter-badge" }]
                 : [more],
