@@ -18,10 +18,12 @@
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.HomeUi;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
@@ -34,39 +36,49 @@ internal static class ClassicHomeRecents
     static readonly Func<string?> s_noDevice = static () => null;
 
     /// <summary>The registered template of <see cref="ViewKeys.HomeZoneRecentGrid"/>.</summary>
-    public static Element Template(HomeRecentsProps props, in ViewContext ctx) => Tree(props);
+    public static Element Template(HomeRecentsProps props, in ViewContext ctx)
+    {
+        var facts = ctx.Tier();
+        // The first frame is seeded from the tier's own region estimate (the Huge tiles share their band with the hero), never a fixed 1100.
+        return Tree(props, ClassicHomeTiers.Of(facts), ClassicRegion.EstimateHomeBand(facts, ctx.Hooks.UseContextSignal(Viewport.Size).Peek().Width, hero: false));
+    }
 
     /// <summary>The embed's <see cref="ComponentEl.SkeletonProxy"/>: the SAME tree at neutral live facts.</summary>
-    public static Element Skeleton(Zone zone)
+    public static Element Skeleton(Zone zone, ClassicHomeLayout layout)
     {
         var cells = RecentsCells.Of(zone.Items, NoPlays, likedSongsCount: 0,
                                     DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), TimeZoneInfo.Local, System.Globalization.CultureInfo.CurrentCulture);
         return Tree(new HomeRecentsProps
         {
             Zone = zone, Cells = cells, Week = default, Playing = s_idle, RemoteDeviceName = s_noDevice,
-        });
+        }, layout, firstWidth: layout.Recents.MinCol * layout.Recents.MaxCols + Spacing.M * (layout.Recents.MaxCols - 1));
     }
 
     /// <summary>The whole grid: a <see cref="Responsive"/> box that rebuilds the grid at its measured width. The ONE builder both the
     /// template and the skeleton call.</summary>
-    static Element Tree(HomeRecentsProps p)
-        => Responsive.Of("home:recents", w => Grid(w, p), fallback: HomeModuleLayout.FallbackWidth);
+    static Element Tree(HomeRecentsProps p, ClassicHomeLayout layout, float firstWidth)
+        => Responsive.Of("home:recents", w => Grid(w, p, layout), fallback: firstWidth);
 
-    /// <summary>The grid at one measured width: 2·cols − 1 played tiles + the history tile, two flush rows.</summary>
-    static Element Grid(float w, HomeRecentsProps p)
+    /// <summary>The grid at one measured width: the tier's rows of columns, less the history tile (two flush rows; Huge fills its band).</summary>
+    static Element Grid(float w, HomeRecentsProps p, ClassicHomeLayout layout)
     {
         var cells = p.Cells;
-        int cols = GridEl.AutoFillColumnCount(w, ClassicHomeRules.RecentsMinCol, Spacing.M, ClassicHomeRules.RecentsMaxCols);
-        int n = RecentsPlan.Cells(cols, cells.Count);
+        var band = layout.Recents;
+        int cols = GridEl.AutoFillColumnCount(w, band.MinCol, Spacing.M, band.MaxCols);
+        int n = layout.RecentsCells(cols, cells.Count);
         var rows = new Element[n + 1];
-        for (int i = 0; i < n; i++) rows[i] = Row(cells[i], i, p);
-        rows[n] = HistoryTile(p.Week);
+        for (int i = 0; i < n; i++) rows[i] = Row(cells[i], i, p, layout);
+        rows[n] = HistoryTile(p.Week, layout);
         return new GridEl
         {
-            MinColWidth = ClassicHomeRules.RecentsMinCol, MaxColumns = ClassicHomeRules.RecentsMaxCols,
-            ColGap = Spacing.M, RowGap = Spacing.S, RowHeight = ClassicHomeRules.RowH, Children = rows,
+            MinColWidth = band.MinCol, MaxColumns = band.MaxCols,
+            ColGap = Spacing.M, RowGap = Spacing.S, RowHeight = layout.RecentsRowH, Children = rows,
         };
     }
+
+    /// <summary>The tile's shape in a tier: the tuned 48-art row, or Compact's 40 art in a 56 row.</summary>
+    static SurfaceShape TileShape(SurfaceShape shape, ClassicHomeLayout layout)
+        => layout.RecentsArt == shape.ArtEdge ? shape : shape with { ArtEdge = layout.RecentsArt, MinHeight = layout.RecentsRowH };
 
     /// <summary>One played tile: <c>Surface(…, Shape.RowTile)</c> whose subtitle is [equalizer · detail · when], the
     /// equalizer PRESENT and the tertiary tail swapped to "playing on {device}" / "Playing now" exactly while the
@@ -74,7 +86,7 @@ internal static class ClassicHomeRecents
     /// touches two node props and re-renders nothing). The equalizer box opts out of skeleton derivation: a
     /// shimmer never shows a "playing" pill. A blank seed card has no uri, so it is keyed by its
     /// <paramref name="index"/> (the shelf's <c>home-shelf-blank:{i}</c> rule) — seven blanks never share a key.</summary>
-    static Element Row(RecentsCell cell, int index, HomeRecentsProps p)
+    static Element Row(RecentsCell cell, int index, HomeRecentsProps p, ClassicHomeLayout layout)
     {
         var c = cell.Card;
         string uri = c.Uri;
@@ -105,13 +117,13 @@ internal static class ClassicHomeRecents
         var data = new Controls.CardData(uri, cell.Title, subtitle, c.ImageUrl,
             () => HomeCardNav.Open(in c), () => HomeCardNav.Play(in c),
             Circular: cell.Round, Drag: HomeCardNav.DragOf(in c),
-            CoverOverride: c.Kind == HomeCardKind.Liked ? Sidebar.Cover.Liked(Design.Size.Thumb48) : null)
+            CoverOverride: c.Kind == HomeCardKind.Liked ? Sidebar.Cover.Liked(layout.RecentsArt) : null)
         { Menu = HomeCardNav.MenuOf(in c) };
         return new BoxEl
         {
             Key = c.IsBlank ? "recent-blank:" + index.ToString(System.Globalization.CultureInfo.InvariantCulture) : "recent:" + uri,
             Direction = 1, MinWidth = 0f,
-            Children = [Controls.Surface(data, Shape.RowTile)],
+            Children = [Controls.Surface(data, TileShape(Shape.RowTile, layout))],
         };
     }
 
@@ -119,7 +131,7 @@ internal static class ClassicHomeRecents
     /// <see cref="Controls.IconPlate"/> for a cover, the stock <see cref="SparkBars"/> 7-day strip (left = six days
     /// ago, right = today in the full accent) beside "{n} plays this week", a trailing chevron, no play FAB. Opens
     /// the listening history.</summary>
-    static Element HistoryTile(RecentsWeek week)
+    static Element HistoryTile(RecentsWeek week, ClassicHomeLayout layout)
     {
         var culture = System.Globalization.CultureInfo.CurrentCulture;
         var today = DateTime.Today;
@@ -150,12 +162,12 @@ internal static class ClassicHomeRecents
         };
         var data = new Controls.CardData("home:history", Loc.Get(Strings.Home.ListeningHistory), subtitle, null,
             HomeVerbs.OpenRecents, OnPlay: null, ShowMenu: false,
-            CoverOverride: Controls.IconPlate(Icons.Headphones, Design.Size.Thumb48, Tok.AccentSubtle, Tok.AccentTextPrimary))
+            CoverOverride: Controls.IconPlate(Icons.Headphones, layout.RecentsArt, Tok.AccentSubtle, Tok.AccentTextPrimary))
         { Trailing = Ui.Icon(Icons.ChevronRight, 14f, Tok.TextTertiary) with { Shrink = 0f } };
         return new BoxEl
         {
             Key = "recent:history", Direction = 1, MinWidth = 0f,
-            Children = [Controls.Surface(data, Shape.RowOutline)],
+            Children = [Controls.Surface(data, TileShape(Shape.RowOutline, layout))],
         };
     }
 }

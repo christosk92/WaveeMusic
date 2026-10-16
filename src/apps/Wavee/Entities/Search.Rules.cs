@@ -500,6 +500,4 @@ public readonly partial struct Search
 
     /// <summary>Does a facet's list keep paging? The edge says there is more and the ceiling is not reached.</summary>
     public static bool KeepsPaging(EdgeState state, int count) => state == EdgeState.Partial && count < FacetHitCeiling;
-
-    public static int FacetGridColumns(float w) =>Math.Max(1, (int)MathF.Floor((w + FacetGridGap) / (FacetGridMinCol + FacetGridGap)));
 }

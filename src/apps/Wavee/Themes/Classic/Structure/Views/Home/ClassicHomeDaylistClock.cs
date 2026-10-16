@@ -18,10 +18,12 @@
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.HomeUi;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
@@ -35,6 +37,11 @@ internal static class ClassicHomeDaylistClock
         // Hooks run unconditionally (a slot's face never changes, but the hook order must not depend on it).
         var spans = ctx.Hooks.UseRef(new SpanBuffer()).Value;
         int current = (int)p.Current;
+        // The tier's form of the block (Compact: ring, countdown and daypart over bars; Small: one line; Huge: a plate; Short: none) and its first-frame width.
+        var facts = ctx.Tier();
+        var dl = ClassicHomeTiers.Of(facts).Daylist;
+        var form = dl.Clock;
+        float firstW = ClassicHomeDaylist.TextWidthEstimate(dl, ClassicRegion.EstimateHomeBand(facts, ctx.Hooks.UseContextSignal(Viewport.Size).Peek().Width, hero: true));
         switch (p.Face)
         {
             case HomeDaylistClockFace.Counting when p.Countdown is { } countdown && p.Elapsed is { } elapsed && p.Segments is { } segs:
@@ -52,22 +59,22 @@ internal static class ClassicHomeDaylistClock
                     return spans.Current;
                 }));
                 var ring = ProgressRing.Create(elapsed, ClassicHomeRules.RingSize, track: Tok.StrokeControlStrongDefault);
-                return Shape(ring, line, p.Caption, segs, current);
+                return Shape(ring, line, p.Caption, segs, current, form, firstW);
             }
             case HomeDaylistClockFace.Updating:
-                return Shape(ProgressRing.Indeterminate(ClassicHomeRules.RingSize), StaticLine(p.Line), p.Caption, null, current,
+                return Shape(ProgressRing.Indeterminate(ClassicHomeRules.RingSize), StaticLine(p.Line), p.Caption, null, current, form, firstW,
                              DaylistClockFace.Face.Updating);
             case HomeDaylistClockFace.Late:
             {
                 var check = HyperlinkButton.Create(Loc.Get(Strings.Home.Daylist.CheckAgain), p.CheckAgain ?? (static () => { }),
                                                    size: ControlSize.Small) with { AlignSelf = FlexAlign.Start, BlocksDragArm = true };
                 return Shape(ProgressRing.Determinate(1f, ClassicHomeRules.RingSize, foreground: Tok.TextTertiary, track: Tok.StrokeControlStrongDefault),
-                             StaticLine(p.Line), "", null, current, DaylistClockFace.Face.Late, check);
+                             StaticLine(p.Line), "", null, current, form, firstW, DaylistClockFace.Face.Late, check);
             }
             default:
                 // UpdateTime: the ring and the five bars are drawn once at the window's elapsed fraction (no signal is ever written to them).
                 return Shape(ProgressRing.Determinate(p.ElapsedValue, ClassicHomeRules.RingSize, track: Tok.StrokeControlStrongDefault),
-                             StaticLine(p.Line), p.Caption, p.Segments, current);
+                             StaticLine(p.Line), p.Caption, p.Segments, current, form, firstW);
         }
     }
 
@@ -86,14 +93,66 @@ internal static class ClassicHomeDaylistClock
         };
     }
 
-    /// <summary>The clock block — shared by every face and the card's skeleton: [ring · (line / second line)], then the
-    /// timeline at the block's measured width. The ring is centred against the two-line column (the Fluent
-    /// settings-card stack: a 16–20 icon beside a 14/20 header over a 12/16 description). The second line is
-    /// <paramref name="action"/> when given (the Late face's link), else the <paramref name="caption"/>; an empty
+    /// <summary>The clock block, shared by every face and the card's skeleton, in the tier's <paramref name="form"/>: the tuned block (<see cref="ClassicClockForm.Full"/>:
+    /// [ring, (line over second line)], then the timeline at the block's measured width; the ring is centred against the two-line column, the Fluent
+    /// settings-card stack), Compact's ring, line and daypart word over unlabelled bars, Small's single line, Huge's plate around the full block, or nothing (Short).
+    /// The second line is <paramref name="action"/> when given (the Late face's link), else the <paramref name="caption"/>; an empty
     /// caption leaves the first line alone. <paramref name="segs"/> null = static bars: empty for the Counting face (the
-    /// skeleton), the finished segments full for Updating/Late — Updating's next segment an indeterminate bar.</summary>
+    /// skeleton), the finished segments full for Updating/Late; Updating's next segment an indeterminate bar. <paramref name="firstWidth"/> is the timeline's
+    /// width on its first frame (the tier's estimate, not a fixed 340).</summary>
     internal static Element Shape(Element ring, SpanTextEl line, string caption, FloatSignal[]? segs, int current,
-                                  DaylistClockFace.Face face = DaylistClockFace.Face.Counting, Element? action = null) => new BoxEl
+                                  ClassicClockForm form, float firstWidth,
+                                  DaylistClockFace.Face face = DaylistClockFace.Face.Counting, Element? action = null)
+    {
+        switch (form)
+        {
+            case ClassicClockForm.None:
+                return new BoxEl { HitTestVisible = false };
+            case ClassicClockForm.Line:
+                return new BoxEl
+                {
+                    Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                    Children =
+                    [
+                        ring,
+                        line with { Grow = 0f, Shrink = 0f },
+                        action ?? (caption.Length > 0 ? (Element)(CaptionLine(caption) with { Shrink = 1f }) : new BoxEl()),
+                    ],
+                };
+            case ClassicClockForm.Bars:
+                return new BoxEl
+                {
+                    Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                            Children =
+                            [
+                                ring,
+                                line with { Grow = 1f, Shrink = 1f },
+                                Ui.Caption(Loc.Get(DaypartTimeline.LabelKey(Math.Clamp(current, 0, DaypartTimeline.Segments - 1)))) with
+                                    { Weight = 600, MaxLines = 1, Wrap = TextWrap.NoWrap, Shrink = 0f },
+                            ],
+                        },
+                        Responsive.Of("home:daylist:timeline", w => Timeline(w, segs, current, face, labels: false), fallback: firstWidth),
+                    ],
+                };
+            case ClassicClockForm.Boxed:
+                return new BoxEl
+                {
+                    Width = ClassicHomeRules.ClockPlateW, Padding = ClassicHomeRules.ClockPlatePadding, Corners = Radii.CardAll,
+                    Fill = ClassicHomeRules.ClockPlateFill, Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                    Children = [Full(ring, line, caption, segs, current, face, action, ClassicHomeRules.ClockPlateW - ClassicHomeRules.ClockPlatePadding.Horizontal)],
+                };
+            default:
+                return Full(ring, line, caption, segs, current, face, action, firstWidth);
+        }
+    }
+
+    static Element Full(Element ring, SpanTextEl line, string caption, FloatSignal[]? segs, int current, DaylistClockFace.Face face, Element? action,
+                        float firstWidth) => new BoxEl
     {
         Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
         Children =
@@ -112,7 +171,7 @@ internal static class ClassicHomeDaylistClock
                     },
                 ],
             },
-            Responsive.Of("home:daylist:timeline", w => Timeline(w, segs, current, face), fallback: DaylistForm.TextMin),
+            Responsive.Of("home:daylist:timeline", w => Timeline(w, segs, current, face, labels: true), fallback: firstWidth),
         ],
     };
 
@@ -136,19 +195,20 @@ internal static class ClassicHomeDaylistClock
     /// which holds at least its cell and never truncates (its neighbours give way instead). The bars are determinate
     /// (live per <paramref name="segs"/>, or static: empty for the skeleton, the finished window's fills once it has
     /// ended); Updating makes the segment after the current one an indeterminate bar.</summary>
-    static Element Timeline(float w, FloatSignal[]? segs, int current, DaylistClockFace.Face face)
+    static Element Timeline(float w, FloatSignal[]? segs, int current, DaylistClockFace.Face face, bool labels)
     {
         float cell = DaypartTimeline.CellWidth(w);
         int next = (int)DaypartRules.Next((Daypart)current);
         var bars = new Element[DaypartTimeline.Segments];
-        var labels = new Element[DaypartTimeline.Segments];
+        var labelCells = new Element[DaypartTimeline.Segments];
+        bool showLabels = labels;
         for (int i = 0; i < DaypartTimeline.Segments; i++)
         {
             bars[i] = face == DaylistClockFace.Face.Updating && i == next ? ProgressBar.Indeterminate(cell)
                 : segs is not null ? ProgressBar.Create(segs[i], cell)
                 : ProgressBar.Determinate(face == DaylistClockFace.Face.Counting ? 0f : DaypartTimeline.Fill(i, current, 1f), cell);
             string label = Loc.Get(DaypartTimeline.LabelKey(i));
-            labels[i] = i == current
+            labelCells[i] = i == current
                 ? Ui.Caption(label).Primary() with { Weight = 600, MaxLines = 1, Wrap = TextWrap.NoWrap, MinWidth = cell, Shrink = 0f }
                 : Ui.Caption(label).Tertiary() with
                 {
@@ -166,11 +226,11 @@ internal static class ClassicHomeDaylistClock
                     Direction = 0, Gap = DaypartTimeline.Gap, AlignItems = FlexAlign.Center, MinWidth = 0f,
                     Margin = new Edges4(0f, Spacing.S + Spacing.XXS, 0f, 0f), Children = bars,
                 },
-                new BoxEl
+                showLabels ? new BoxEl
                 {
                     Direction = 0, Gap = DaypartTimeline.Gap, MinWidth = 0f,
-                    Margin = new Edges4(0f, Spacing.XS + Spacing.XXS, 0f, 0f), Children = labels,
-                },
+                    Margin = new Edges4(0f, Spacing.XS + Spacing.XXS, 0f, 0f), Children = labelCells,
+                } : new BoxEl(),
             ],
         };
     }

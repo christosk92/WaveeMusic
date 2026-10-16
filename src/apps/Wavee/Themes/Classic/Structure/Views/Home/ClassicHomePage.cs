@@ -7,7 +7,8 @@
 //   Pages.Home
 //   └─ ZStack [ Wash (the shell tint claim the host built),
 //      ScrollView (Key/ScrollKey per PUBLISHED facet, Handle = the host's scroll handle)
-//        └─ centred column  Gap=XL(20)  MaxWidth=PageMaxW  Padding=(gutter, XXL(24), gutter, Dock.Reserve+32), the gutter the content tier's
+//        └─ centred column  Gap=HeadGap  MaxWidth=PageCap  Padding=(gutter, PageTop, gutter, Dock.Reserve+32): the gutter, the cap, the top and the gap
+//           │                are the content tier's `ClassicHomeLayout` (`Rules/Tiers.Home.cs`: Standard is 20 / 1600 / 24, Huge caps at 2400, Short tops at 16)
 //           │                ScrollScope=PageScope
 //           ├─ Home.FacetRow (the SelectorBar in R.Type.FacetTitleStyle — the facet words ARE the page title —
 //           │     · Following ToggleButton · busy ProgressBar)
@@ -51,14 +52,16 @@ internal static class ClassicHomePage
     /// <summary>The registered template of <see cref="ViewKeys.HomePage"/>.</summary>
     public static Element Template(HomePageProps props, in ViewContext ctx)
     {
-        float gutter = ClassicTiers.PageOf(ctx.Tier()).Gutter;   // the one page gutter (F3): 16 / 32 / 36 by the content tier
+        var facts = ctx.Tier();
+        float gutter = ClassicTiers.PageOf(facts).Gutter;   // the one page gutter (F3): 16 / 32 / 36 by the content tier
+        var layout = ClassicHomeTiers.Of(facts);             // the tier's record (plan 3.6, TC4): page cap, rhythm, daylist form, column bands
         // Reveal None: the zones own their entrance (Design.Entrance rows in the zone column); the shimmer is the SAME tree
         // rendered against the seed, so the skeleton is derived from the real page, never authored by hand.
         Element region = new SkelRegionEl(
             Pending: props.Pending,
             Failed: props.Failed,
-            Content: () => FacetContent(props),
-            ShimmerSource: () => ClassicHomeZones.Column(props.Seed(), props.Facet, props.Overlay),
+            Content: () => FacetContent(props, layout),
+            ShimmerSource: () => ClassicHomeZones.Column(props.Seed(), props.Facet, props.Overlay, layout),
             OnFailed: () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: props.RetryFirstLoad),
             Reveal: SkelReveal.None, Style: SkeletonStyle.Default, Group: props.Group, SmoothResize: false);
 
@@ -79,10 +82,10 @@ internal static class ClassicHomePage
         // facet-row → first zone step); the zones space themselves at SectionGapWide inside the zone column.
         Element column = new BoxEl
         {
-            Key = "home:column", Direction = 1, Gap = Spacing.XL,
-            Grow = 1f, Shrink = 1f, MinWidth = 0f, Basis = 0f, MaxWidth = R.Space.PageMaxW,
+            Key = "home:column", Direction = 1, Gap = layout.HeadGap,
+            Grow = 1f, Shrink = 1f, MinWidth = 0f, Basis = 0f, MaxWidth = layout.PageMaxW,
             AlignItems = FlexAlign.Stretch, ScrollScope = ClassicHomeRules.PageScope,
-            Padding = new Edges4(gutter, Spacing.XXL, gutter, R.Space.DockReserve + Spacing.XXXL),
+            Padding = new Edges4(gutter, layout.PageTop, gutter, R.Space.DockReserve + Spacing.XXXL),
             Children =
             [
                 ctx.View(ViewKeys.HomeFacetRow, props.FacetRow) with { Key = "home:facet-row" },
@@ -116,7 +119,7 @@ internal static class ClassicHomePage
     /// (Reconciler.cs "hit-testable so it receives press/drag AND bare-hover/exit"), which made the whole zone column an interactive
     /// hover scope — every card → gap → card move flipped it and re-walked hover over the column (seventh pass: the late hover). F35's
     /// "interacted" mark went with it; a Refreshing landing swaps on at-top + within-window alone (FacetSwitch.Landed).</summary>
-    static Element FacetContent(HomePageProps props)
+    static Element FacetContent(HomePageProps props, ClassicHomeLayout layout)
     {
         var m = props.Content();
         props.OnContent(m);
@@ -132,7 +135,7 @@ internal static class ClassicHomePage
                     Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
                     Opacity = Prop.Of(() => FacetDimPlan.Of(props.Switch.Value.Phase).Opacity),      // compositor-only (F18)
                     HitTestVisible = Prop.Of(() => !props.Switch.Value.Dim),                          // E15
-                    Children = [ClassicHomeZones.Column(m, m.Facet, props.Overlay)],
+                    Children = [ClassicHomeZones.Column(m, m.Facet, props.Overlay, layout)],
                 },
             ],
         };

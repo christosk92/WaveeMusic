@@ -87,6 +87,13 @@ public static class ClassicTiers
     /// <summary>The height ladder: Short below 680, Regular from 720.</summary>
     public static TierLadder Height { get; } = TierLadder.Of(new TierEdge(ShortBelow, NarrowHold: 0f, WidenHold: ShortHold));
 
+    /// <summary>The rung under which a page's hero collapses to a strip: the window is at least this tall (<see cref="HeroFullFrom"/>) while the hero's own height
+    /// (a 216 banner) still fits the board's 60 % cap of the page (the window less the 48 title row and the 72 player bar). A Short window above it keeps its hero.</summary>
+    public const string HeroFullRung = "page.hero.full";
+
+    /// <summary>The window height from which the Small banner (216) fits under the cap: <c>216 / 0.6 + 120</c> (C-Breakpoints: heroes cap at 60 % of the content height).</summary>
+    public const float HeroFullFrom = 480f;
+
     /// <summary>The page height Classic's Short layout guarantees at the 330-DIP window minimum: 330 less the 48-DIP title row and the
     /// 72-DIP player bar (plan 3.2; C-Shell-Short draws exactly this 210).</summary>
     public const float ShortFloorH = 210f;
@@ -97,7 +104,8 @@ public static class ClassicTiers
         Window, Content, Height,
         CompactFloor: TierPolicy.WindowFloor,
         ShortFloor: ShortFloorH,
-        Rungs: ImmutableArray<NamedRung>.Empty,
+        // The board marks that are not tiers: the height from which a hero keeps its own height instead of the Short strip (read by Home's records).
+        Rungs: ImmutableArray.Create(new NamedRung(HeroFullRung, new TierEdge(HeroFullFrom, NarrowHold: 0f, WidenHold: ShortHold), RungAxis.Height)),
         Ladders: ImmutableArray<NamedLadder>.Empty);
 
     // ── the frame's records (per window tier) ────────────────────────────────────────────────────────────────────────────

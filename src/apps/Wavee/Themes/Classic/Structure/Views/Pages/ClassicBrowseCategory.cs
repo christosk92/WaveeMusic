@@ -37,20 +37,23 @@ internal static class ClassicBrowseCategory
 {
     /// <summary>The state the flattened grid's responsive box is gated on: the memoized card list BY REFERENCE, its key and
     /// the DECODED chart bit (never a uri lookup — ch 12 trap 10).</summary>
-    sealed record GridState(IReadOnlyList<HomeCard> Cards, string Key, bool Charts);
+    sealed record GridState(IReadOnlyList<HomeCard> Cards, string Key, bool Charts, ClassicShelfBand Band);
 
     /// <summary>The registered template of <see cref="ViewKeys.BrowseCategory"/>.</summary>
     public static Element Template(BrowseCategoryProps props, in ViewContext ctx)
     {
         Element? body = null;
-        float gutter = ClassicTiers.PageOf(ctx.Tier()).Gutter;   // the one page gutter (F3)
+        var facts = ctx.Tier();
+        float gutter = ClassicTiers.PageOf(facts).Gutter;   // the one page gutter (F3)
+        var layout = ClassicBrowseTiers.Of(facts);          // the tier's record: shelf band, link columns, the flattened grid's band
+        float firstW = ClassicRegion.EstimateWidth(facts, ctx.Hooks.UseContextSignal(Viewport.Size).Peek().Width);
 
         // FadeOnly: this body owns no entrance, and None would floor the shimmer's exit at 400 ms and leave a ghost
         // under real content (must-not-simplify 12). smoothResize false (must-not-simplify 2).
         Element region = new SkelRegionEl(
             Pending: () => props.Load == BrowseLoad.Pending, Failed: () => props.Load == BrowseLoad.Failed,
-            Content: () => body ??= props.Load == BrowseLoad.Ready ? Body(props) : new BoxEl(),
-            ShimmerSource: s_shimmer,
+            Content: () => body ??= props.Load == BrowseLoad.Ready ? Body(props, layout, firstW) : new BoxEl(),
+            ShimmerSource: () => Shimmer(layout),
             // W22 + 0.3's Retry (§9 gap 9): the error arm offers Retry AND the Explore link, inside the scroll frame.
             OnFailed: () => Framed(props, Controls.Vacancy(Controls.VacancyVoice.Error, onAction: props.Retry)),
             Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null,
@@ -71,16 +74,16 @@ internal static class ClassicBrowseCategory
 
     // ── the body ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    static Element Body(BrowseCategoryProps p)
+    static Element Body(BrowseCategoryProps p, ClassicBrowseLayout layout, float firstW)
     {
         if (p.Bands.Count == 0) return Framed(p, EmptyVacancy());
         return p.Mode switch
         {
-            BrowsePageLayout.Mode.FlattenOne => FlattenBody(p, concat: false),
-            BrowsePageLayout.Mode.FlattenTwoConcat => FlattenBody(p, concat: true),
+            BrowsePageLayout.Mode.FlattenOne => FlattenBody(p, concat: false, layout, firstW),
+            BrowsePageLayout.Mode.FlattenTwoConcat => FlattenBody(p, concat: true, layout, firstW),
             // FlattenTwoStacked — 0.2.9's pragmatic deviation, kept: two virtual grids cannot both own scroll, and one
             // shared scroller re-creates the zero-height trap. The pure rule still tells the two modes apart.
-            _ => ShelvesBody(p),
+            _ => ShelvesBody(p, layout),
         };
     }
 
@@ -89,14 +92,14 @@ internal static class ClassicBrowseCategory
 
     /// <summary>Shelves: the page owns a ScrollView (keyed by the page uri); every section keyed by its own uri, then
     /// the Explore link; the dock clearance lives INSIDE the scrolled content so the viewport reaches the pane edge.</summary>
-    static Element ShelvesBody(BrowseCategoryProps p)
+    static Element ShelvesBody(BrowseCategoryProps p, ClassicBrowseLayout layout)
     {
         var bands = p.Bands;
         var kids = new Element[bands.Count + 1];
         for (int i = 0; i < bands.Count; i++)
         {
             var band = bands[i];
-            kids[i] = band.Facts.Kind == BrowseSectionKind.Shelf ? Shelf(p, band) : CategoryBlockOf(p, band);
+            kids[i] = band.Facts.Kind == BrowseSectionKind.Shelf ? Shelf(p, band, layout) : CategoryBlockOf(p, band, layout);
         }
         kids[^1] = ClassicBrowseCells.ExploreAll(p.ExploreAll);
         return ScrollView(new BoxEl
@@ -119,8 +122,9 @@ internal static class ClassicBrowseCategory
     /// <summary>One shelf band (0.2.9 <c>BrowsePage.Shelf</c>): a PagedShelf of the house shelf cell — play FAB, card
     /// menu, and a drag source for everything but tracks and episodes. A TITLED shelf's header drills into
     /// <c>browse-section:</c> with this page as the origin; an untitled one has no header row at all (parity 77).</summary>
-    static Element Shelf(BrowseCategoryProps p, BrowseBand band)
+    static Element Shelf(BrowseCategoryProps p, BrowseBand band, ClassicBrowseLayout layout)
     {
+        var shelf = layout.Shelf;
         var f = band.Facts;
         var view = band.Shelf!;
         var items = new HomeCards.ShelfItem[view.Cards.Count];
@@ -134,7 +138,13 @@ internal static class ClassicBrowseCategory
         Element? header = null;
         string? shelfTitle = f.Title;
         if (!string.IsNullOrWhiteSpace(shelfTitle))
-            header = HomeModules.DrillHeader(shelfTitle, () => open(view));
+        {
+            // Huge adds the board's "See all" link beside the title; Compact gives the title a 40 target (C-BrowseCategory-Compact / -Huge).
+            Element? tools = layout.ShelfSeeAll ? HyperlinkButton.Create(Loc.Get(Strings.Home.SeeAll), () => open(view)) with { Shrink = 0f } : null;
+            header = tools is null ? HomeModules.DrillHeader(shelfTitle, () => open(view)) : HomeModules.ModuleHeader(shelfTitle, null, tools, () => open(view));
+            if (layout.ShelfHeaderH > 0f)
+                header = new BoxEl { Height = layout.ShelfHeaderH, Direction = 1, Justify = FlexJustify.Center, MinWidth = 0f, Children = [header] };
+        }
         return PagedShelf.Create<HomeCards.ShelfItem>(items,
             (item, i, cardW) =>
             {
@@ -145,22 +155,24 @@ internal static class ClassicBrowseCategory
             onInvoke: static (item, _) => HomeCardNav.Open(item.Card),   // the slot owns the click: the card's own open
             cardHeight: HomeModuleLayout.ShelfCardHeight,
             header: header,
-            minCardW: HomeModuleLayout.ShelfCardMin, maxCardW: HomeModuleLayout.ShelfCardMax,
-            gap: HomeModuleLayout.ShelfGap, edgeFade: HomeModuleLayout.ShelfEdgeFade,
+            pager: shelf.Pager ? ShelfPager.Chevrons : ShelfPager.None,
+            minCardW: shelf.MinCardW, maxCardW: shelf.MaxCardW, maxColumns: shelf.MaxColumns, fixedCardW: shelf.FixedCardW,
+            gap: shelf.Gap, edgeFade: HomeModuleLayout.ShelfEdgeFade,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
             lift: ShelfLift.None,   // the shared card hovers fill-only: no lift halo to reserve clearance for
             keyOf: static (item, i) => "browse-shelf-card:" + item.Card.Uri)
-           with { Key = "browse-shelf:" + f.Uri };
+           // Keyed by the tier: the card band, the column cap and the pager are frozen at mount, so a crossing remounts the shelf (the page cross-fades it).
+           with { Key = "browse-shelf:" + f.Uri + ":" + ((int)layout.Tier).ToString(System.Globalization.CultureInfo.InvariantCulture) };
     }
 
     /// <summary>A grid / related band: its category tiles as live link cells under a LABEL header. A tile drills with THIS
     /// page as its origin (<see cref="BrowseTileOrigin"/>), so Decades › 00s keeps its parent crumb; the origin is read at
     /// click time from the host's own fields, never frozen into a mount-time closure.</summary>
-    static Element CategoryBlockOf(BrowseCategoryProps p, BrowseBand band)
+    static Element CategoryBlockOf(BrowseCategoryProps p, BrowseBand band, ClassicBrowseLayout layout)
     {
         var tiles = new List<BrowseTileModel>(band.Tiles.Count);
         for (int i = 0; i < band.Tiles.Count; i++) tiles.Add(BrowseTiles.ToModel(band.Tiles[i], p.OpenCategory, BrowseTiles.OpenFeature));
-        return ClassicBrowseCells.CategoryBlock("browse-cats:" + band.Facts.Uri, band.Facts.Title, tiles);
+        return ClassicBrowseCells.CategoryBlock("browse-cats:" + band.Facts.Uri, band.Facts.Title, tiles, layout);
     }
 
     /// <summary>A flattened body (0.2.9 <c>BrowsePage.FlattenBody</c>): the non-shelf blocks and the Explore link PIN
@@ -168,7 +180,7 @@ internal static class ClassicBrowseCategory
     /// grid is the section's WHOLE list as the query layer walked it — nothing here pages — headed by the section's
     /// title when that says more than the masthead (<see cref="BrowsePageLayout.TitleIsRedundant"/>).
     /// FlattenTwoConcat merges both shelves.</summary>
-    static Element FlattenBody(BrowseCategoryProps p, bool concat)
+    static Element FlattenBody(BrowseCategoryProps p, bool concat, ClassicBrowseLayout layout, float firstW)
     {
         var pinned = new List<Element>(3);
         HomeSectionView? first = null, second = null;
@@ -179,7 +191,7 @@ internal static class ClassicBrowseCategory
         {
             var band = bands[i];
             var f = band.Facts;
-            if (f.Kind != BrowseSectionKind.Shelf) { pinned.Add(CategoryBlockOf(p, band)); continue; }
+            if (f.Kind != BrowseSectionKind.Shelf) { pinned.Add(CategoryBlockOf(p, band, layout)); continue; }
             var view = band.Shelf!;
             if (first is null)
             {
@@ -198,8 +210,9 @@ internal static class ClassicBrowseCategory
         IReadOnlyList<HomeCard> cards = concat ? p.Merged : first?.Cards ?? (IReadOnlyList<HomeCard>)Array.Empty<HomeCard>();
         bool charts = first is { IsChart: true } && (!concat || second is null || second.IsChart);
 
-        Element grid = Responsive.Of("browse-category:grid", new GridState(cards, key, charts), static (st, w) => HomeModules.SectionGrid(
-            st.Cards, st.Key, w, static c => HomeCardNav.Open(in c), charts: st.Charts), fallback: HomeModuleLayout.FallbackWidth, grow: 1f);
+        Element grid = Responsive.Of("browse-category:grid", new GridState(cards, key, charts, layout.Grid), static (st, w) => HomeModules.SectionGrid(
+            st.Cards, st.Key, w, static c => HomeCardNav.Open(in c), charts: st.Charts,
+            minCardW: st.Band.MinCardW, maxCardW: st.Band.MaxCardW, maxColumns: st.Band.MaxColumns), fallback: firstW, grow: 1f);
 
         return new BoxEl
         {
@@ -218,22 +231,22 @@ internal static class ClassicBrowseCategory
     /// shelf bands of six shared-surface seed cards — no PagedShelf, no virtual grid, every box sized off the same constants the
     /// real body uses, so nothing measures zero and nothing reflows when the real width lands. Body only: the masthead
     /// is real from frame one. Its words are never shown (the deriver paints bars in their place).</summary>
-    static readonly Func<Element> s_shimmer = static () => new BoxEl
+    static Element Shimmer(ClassicBrowseLayout layout) => new BoxEl
     {
         Direction = 1, Gap = Spacing.L, MinWidth = 0f, Grow = 1f,
         Padding = new Edges4(0f, 0f, 0f, R.Space.DockReserve + Spacing.XXL),
-        Children = [ShimmerRelated(), ShimmerShelf(), ShimmerShelf()],
+        Children = [ShimmerRelated(layout), ShimmerShelf(), ShimmerShelf()],
     };
 
     static readonly string[] s_shimmerTileUris =
         ["wavee:skeleton:related:0", "wavee:skeleton:related:1", "wavee:skeleton:related:2", "wavee:skeleton:related:3", "wavee:skeleton:related:4"];
 
-    static Element ShimmerRelated()
+    static Element ShimmerRelated(ClassicBrowseLayout layout)
     {
         var tiles = new BrowseTileModel[s_shimmerTileUris.Length];
         for (int i = 0; i < tiles.Length; i++)
             tiles[i] = new BrowseTileModel(Loc.Get(Strings.Browse.Genres), s_shimmerTileUris[i], null, null, BrowseTiles.ToModelNoop);
-        return ClassicBrowseCells.CategoryBlock("browse-more", Loc.Get(Strings.Browse.More), tiles);
+        return ClassicBrowseCells.CategoryBlock("browse-more", Loc.Get(Strings.Browse.More), tiles, layout);
     }
 
     static Element ShimmerShelf()

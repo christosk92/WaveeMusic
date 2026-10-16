@@ -2,8 +2,8 @@
 //
 // What `Entities\Browse.Rules.cs`'s `BrowseLayout` and `Entities\Browse.UI.cs` held beside the pictures they size: the cell densities'
 // heights, the pip, tick and hanging-cover sizes, the corner wash's radial geometry and its hover pair, the Peek cover's rest pose and hover
-// deltas, and the first-frame width the Responsive grids share. They are data, not decisions (WVTH003 allows literals only in `Rules\**`); the
-// column LADDERS are `Rules\Tiers.Browse.cs`, the DECISIONS (the band taxonomy, the page layout, the tile model) stay core and pure.
+// deltas. They are data, not decisions (WVTH003 allows literals only in `Rules\**`); the
+// column RECORDS are `Rules\Tiers.Browse.cs`, the DECISIONS (the band taxonomy, the page layout, the tile model) stay core and pure.
 //
 // `BrowseMastheadMetrics` stays core: the Concert page, the module page and Classic's Home drill page read the same reserve.
 
@@ -14,9 +14,6 @@ namespace Wavee.Themes.Classic;
 /// <summary>The constants of Classic's Browse views.</summary>
 public static class ClassicBrowseRules
 {
-    /// <summary>First-frame width guess the directory's Responsive grids share before a real measure lands.</summary>
-    public const float DirectoryFallbackWidth = 900f;
-
     /// <summary>The wrapping chip rows' gap.</summary>
     public static float ChipGap => Spacing.S;
 

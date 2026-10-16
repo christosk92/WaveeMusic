@@ -1523,6 +1523,35 @@ max-width column for the stage and the scroller, 40-DIP buttons, chips, links an
 and Go home is a 40-DIP target (the block keeps its call shape and its three children). **Frame-rate overlay**: no tier layout: a content-sized, hit-test pass-through pill that is never a target. The gutter reads
 `CommonTiers.WideGutter` / `Gutter` (36 / 32 / 16) until TC1's page gutter ladder owns those three numbers for the structure's own pages.
 
+### Discovery at every tier (TC4)
+
+Home, the Home "See all" page, Browse (the directory, its Charts band and a category page) and Search are tiered by the **content** tier (`ctx.Tier().Content`, the region the page is in, which
+is also what the page gutter follows) and the height tier. Each page reads one record: `ClassicHomeTiers.Of(facts)` (`Rules\Tiers.Home.cs`: `ClassicHomeLayout` with the nested
+`ClassicDaylistLayout`), `ClassicBrowseTiers.Of(facts)` (`Rules\Tiers.Browse.cs`) and `ClassicSearchTiers.Of(facts)` (`Rules\Tiers.Search.cs`). A column count is a `ClassicGridBand(MinCol, MaxCols)`
+(a floor-fit INSIDE the tier at the region's own measured width, or a fixed count when `MinCol` is 0) and a paged shelf is a `ClassicShelfBand` (card band, column cap, fixed strip width, pager);
+no view compares a width with a number and the old 720 / 380 genre bands, the Mood and More floor-fits and the fixed 900 and 1100 first-frame guesses are gone. A width-driven box (`Responsive.Of`)
+is seeded from `ClassicRegion.EstimateWidth(facts, viewport width)`: the same-frame viewport less the chrome in front of the page (the facts' content width when they are current), so the first
+frame is in its final tier. A paged shelf, a drill grid and the Fold deck freeze their card band at mount, so their key carries the tier and a crossing remounts them through the page's cross-fade.
+
+| Page | Compact (400) | Small (800) | Standard | Huge (2560, and 3840) |
+|---|---|---|---|---|
+| Home page | column fills, top 12, zone gap 24, 20/28 facet words | fills, top 16, gap 32 | cap 1600, top 24, gap 40 (tuned) | cap 2400, head gap 28 |
+| Daylist | stacked: 140 art, copy over its foot, 40-tall actions, clock = ring, countdown and the daypart word over 4-high bars | 216 banner, 364 copy, clock one line | the tuned card (320 floor, half-width copy) | 400 hero beside the tiles (1.35 : 1), 760 copy at 68/92, clock a 440 plate |
+| Recently played | 2 columns of 56 tiles with 40 art (3 + history) | 3 columns (5 + history) | fit 200, up to 4 | 2 columns x 4 rows beside the hero (7 + history) |
+| Cover / wide shelf | fixed 164 cell strip (148 art), no pager | fit 148-188, paged | fit 148-188, paged | 10 columns (wide: 5), paged |
+| Release, cluster, tile, episode grids | 1 column | tuned | tuned | 3 / 4 / 6 / 3 columns |
+| "See all" grid | cells from 124 | 156 | 176 | 216 |
+| Failure InfoBar | 72 tall, Retry 40 | stock | stock | stock |
+| Browse genres / mood / more | 2 / 2 / 2 | 2 / 5 / 3 | 3 / fit 132 / 4 | 6 / 12 / 8 |
+| Browse charts | stacked, 136 tall, 92 covers | stacked, 140 tall, 100 covers | paged two up, 176 | paged four up |
+| Browse chips | Top 40-tall pills; For you one 40-tall scrolling line | stock | stock | stock |
+| Category shelf | 164 cell strip, 40-tall title, no pager | 176 cell strip, 4 gap | fit 148-188 | 10 columns, "See all" |
+| Search | rows flush, 44 art in 60, a 44-tall scrolling tab strip, 1 song column, 2 genre columns | scrolling 36 tab strip, 2 song columns | wrapping tabs, tuned | top result 700 x 300 beside Best matches, 6 genre columns beside Related, 10-column rails and grids |
+
+**Short** (330-679 tall; `C-Shell-Short`): the page top is 16 and the hero never sits beside the tiles. Under 480 tall (the `page.hero.full` height rung, `ClassicTiers.HeroFullRung`: where 60 % of the page,
+the window less 120, no longer holds the 216 banner) the daylist is a strip capped at 60 % of the 210-DIP page (126 tall) carrying only its eyebrow and title with no clock; from 480 it keeps its form (the
+Small board is drawn at 800 x 600, a Short window), Huge's 400 hero stepping down to the banner. **Huge 4K** reads Huge's records: Classic draws no 4K band and the plan caps the grids at 2400, so the 12-card shelves and full-bleed page of `C-Home-Huge4K` are not built.
+
 ### The feedback and crash dialogs' bodies (T11c)
 
 The dialog **chrome** (the stock `ContentDialog`: title, buttons, the vetoable primary click) stays core; the **body** is the key's picture. `Dialog.Feedback` (`FeedbackDialogProps`: the opening kind and `IFeedbackDialog`) is Classic's `ClassicFeedback` and `Dialog.Crash` (`CrashDialogProps`) is `ClassicCrash` (`Themes\Classic\Structure\Views\Screens`, numbers in `Rules\ClassicFeedbackRules.cs` and `ClassicCrashRules.cs`). T11a owns the other nine dialog keys.

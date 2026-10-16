@@ -26,8 +26,6 @@ namespace Wavee;
 /// <see cref="SurfaceGeometry"/> — the rule the shared surface renders — so the two cannot be handed different numbers.</summary>
 public static class HomeModuleLayout
 {
-    public const float FallbackWidth = 1100f;
-
     // The shelf band and its edge feather are the style's space roles (a property, so a definition swap reaches the next layout).
     public static float ShelfCardMin => R.Space.ShelfCardMin;
     public static float ShelfCardMax => R.Space.ShelfCardMax;
@@ -47,16 +45,18 @@ public static class HomeModuleLayout
 
     /// <summary>Cover i's REST pose in card-local DIP (right:-40 / top:6 / width:250), clamped so a 0-width first frame
     /// cannot park covers at a negative X.</summary>
-    public static void FoldRest(int i, float cardW, out float x, out float y, out float rot)
+    public static void FoldRest(int i, float cardW, out float x, out float y, out float rot, float cover = FoldCover)
     {
-        float left = MathF.Max(0f, cardW - 250f + 40f);
+        // The pose is drawn for the 124 cover and a 250 fan; a smaller cover (the Compact and Small tiles) scales the fan with it.
+        float k = cover / FoldCover;
+        float left = MathF.Max(0f, cardW - 250f * k + 40f * k);
         (float lx, float ly, float r) = i switch
         {
             0 => (0f, 32f, -11f),
             1 => (44f, 16f, 5f),
             _ => (92f, 2f, -2f),
         };
-        x = left + lx; y = 6f + ly; rot = r;
+        x = left + lx * k; y = (6f + ly) * k; rot = r;
     }
 
     /// <summary>Cover i's hover DELTA on the rest pose (WhileHover is additive).</summary>
@@ -147,16 +147,39 @@ public static class HomeModules
     /// one key shape, rows 1, at most two tiles filling the row (two-up at ≥ 892 of content). No tile eyebrow: the
     /// 0.2.9 eyebrow parameters had no caller (code wins).</summary>
     public static Element FoldDeck(IReadOnlyList<HomeSectionView> sections, string title, Action<HomeSectionView> openTile,
-                                   Action? openHeader = null)
-        => PagedShelf.Create(sections,
-            (section, i, cardW) => HomeFoldTile.Create(section, cardW, null, openTile),
-            cardHeight: static _ => HomeModuleLayout.FoldCardHeight,
+                                   Action? openHeader = null, int maxColumns = 2, float tileHeight = HomeModuleLayout.FoldCardHeight,
+                                   float cover = HomeModuleLayout.FoldCover)
+    {
+        Func<float, float> height = tileHeight == HomeModuleLayout.FoldCardHeight ? s_foldHeight : _ => tileHeight;
+        return PagedShelf.Create(sections,
+            (section, i, cardW) => HomeFoldTile.Create(section, cardW, null, openTile, tileHeight, cover),
+            cardHeight: height,
             header: DrillHeader(title, openHeader),
             minCardW: HomeModuleLayout.FoldCardMin, maxCardW: HomeModuleLayout.FoldCardMax,
-            gap: Spacing.M, rows: 1, maxColumns: 2, edgeFade: HomeModuleLayout.ShelfEdgeFade,
+            gap: Spacing.M, rows: 1, maxColumns: maxColumns, edgeFade: HomeModuleLayout.ShelfEdgeFade,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
             keyOf: static (section, i) => "home-fold-tile:" + (section.Uri is { Length: > 0 } u ? u : i.ToString(CultureInfo.InvariantCulture)))
-           with { Key = HomeModuleLayout.SectionSetKey(sections) + ":fold" };
+           // Keyed by the deck's frozen mount configuration (the tier's column cap and tile height), so a tier crossing remounts it.
+           with { Key = HomeModuleLayout.SectionSetKey(sections) + ":fold:" + maxColumns.ToString(CultureInfo.InvariantCulture) + ":" + tileHeight.ToString(CultureInfo.InvariantCulture) };
+    }
+
+    static readonly Func<float, float> s_foldHeight = static _ => HomeModuleLayout.FoldCardHeight;
+
+    /// <summary>The Fold deck as a STACK (the Compact and Small Charts band): every tile its own full-width row under the chevron header, no pager. The tiles
+    /// are built at <paramref name="width"/> (the band's measured width), the same tile the paged deck builds.</summary>
+    public static Element FoldStack(IReadOnlyList<HomeSectionView> sections, string title, Action<HomeSectionView> openTile, float width,
+                                    Action? openHeader = null, float tileHeight = HomeModuleLayout.FoldCardHeight, float cover = HomeModuleLayout.FoldCover)
+    {
+        var tiles = new Element[sections.Count];
+        for (int i = 0; i < tiles.Length; i++)
+            tiles[i] = HomeFoldTile.Create(sections[i], width, null, openTile, tileHeight, cover);
+        return new BoxEl
+        {
+            Key = HomeModuleLayout.SectionSetKey(sections) + ":fold-stack",
+            Direction = 1, Gap = Spacing.S, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+            Children = [DrillHeader(title, openHeader), new BoxEl { Direction = 1, Gap = Spacing.M, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = tiles }],
+        };
+    }
 
     /// <summary>The drill grid — the Home section page's and Browse's FlattenOne body. Fit decides the COLUMN COUNT
     /// only; the covers are square because <see cref="AspectGridVirtualLayout"/> derives the row height from the ARRANGED
@@ -164,26 +187,27 @@ public static class HomeModules
     /// a uri lookup: it blanks the subtitle and drops that rung from the cell reserve, the same bool in both places. The
     /// grid renders the cards it is handed and never asks for more: the query layer walks a section whole.</summary>
     public static Element SectionGrid(IReadOnlyList<HomeCard> cards, string? sectionKey, float width,
-        Action<HomeCard> open, string? highlightQuery = null, int titleLines = 1, bool charts = false)
+        Action<HomeCard> open, string? highlightQuery = null, int titleLines = 1, bool charts = false,
+        float minCardW = 0f, float maxCardW = 0f, int maxColumns = 0)
     {
         // Subscribing reads, taken by WHICHEVER render calls this (the page's responsive box): a hydrated card row must
         // re-describe its cell, and the grid host's props gate otherwise sees the same card list instance.
         var scope = Entities.Current;
         uint epoch = scope.Playlists.Changed.Value + scope.Albums.Changed.Value * 3u + scope.Artists.Changed.Value * 5u
                      + scope.Shows.Changed.Value * 7u + scope.Tracks.Changed.Value * 11u + scope.Episodes.Changed.Value * 13u;
-        return Embed.Comp(new GridProps(cards, sectionKey, width, open, highlightQuery, titleLines, charts, epoch),
+        return Embed.Comp(new GridProps(cards, sectionKey, width, open, highlightQuery, titleLines, charts, epoch, minCardW, maxCardW, maxColumns),
                           static () => new SectionGridHost());
     }
 
     sealed record GridProps(IReadOnlyList<HomeCard> Cards, string? SectionKey, float Width, Action<HomeCard> Open,
-        string? Query, int TitleLines, bool Charts, uint Epoch)
+        string? Query, int TitleLines, bool Charts, uint Epoch, float MinCardW = 0f, float MaxCardW = 0f, int MaxColumns = 0)
     {
         // Delegates are behaviour, not data (component-props-contract): the gate compares the card list by reference
         // and the scalars by value.
         public bool Equals(GridProps? o) => o is not null && ReferenceEquals(Cards, o.Cards)
             && string.Equals(SectionKey, o.SectionKey, StringComparison.Ordinal) && Width == o.Width
             && string.Equals(Query, o.Query, StringComparison.Ordinal) && TitleLines == o.TitleLines && Charts == o.Charts
-            && Epoch == o.Epoch;
+            && Epoch == o.Epoch && MinCardW == o.MinCardW && MaxCardW == o.MaxCardW && MaxColumns == o.MaxColumns;
 
         public override int GetHashCode() => HashCode.Combine(Cards.Count, Width, TitleLines, Charts, Epoch);
     }
@@ -198,8 +222,9 @@ public static class HomeModules
             _latest = p;
             var overlay = UseContext(Overlay.Service);
             IOverlayService? host = Controls.IsNullOverlay(overlay) ? null : overlay;
-            var (columns, _) = FillRowVirtualLayout.Fit(p.Width, HomeModuleLayout.ShelfCardMin, HomeModuleLayout.ShelfCardMax,
-                                                        HomeModuleLayout.GridGap);
+            var (columns, _) = FillRowVirtualLayout.Fit(p.Width, p.MinCardW > 0f ? p.MinCardW : HomeModuleLayout.ShelfCardMin,
+                                                        p.MaxCardW > 0f ? p.MaxCardW : HomeModuleLayout.ShelfCardMax,
+                                                        HomeModuleLayout.GridGap, maxColumns: p.MaxColumns);
             columns = Math.Max(1, columns);
             string tier = columns.ToString(CultureInfo.InvariantCulture) + ":" + p.TitleLines.ToString(CultureInfo.InvariantCulture);
             var cards = p.Cards;
@@ -236,7 +261,8 @@ public static class HomeFoldTile
     /// <summary>Build a tile for <paramref name="s"/> at the shelf's fitted <paramref name="cardW"/>. The width is baked
     /// into the key (a re-fit REPLACES the tile); the loading shape is ONE explicit card-silhouette bone, because a
     /// derived shimmer would zero the covers' authored pose and drop the plate.</summary>
-    public static Element Create(HomeSectionView s, float cardW, string? eyebrow, Action<HomeSectionView> open)
+    public static Element Create(HomeSectionView s, float cardW, string? eyebrow, Action<HomeSectionView> open,
+                                 float height = HomeModuleLayout.FoldCardHeight, float cover = HomeModuleLayout.FoldCover)
     {
         var cards = s.Cards;
         // The wash is the FIRST card's RAW payload accent, never lifted, never graded, never invented: 0 → no layer.
@@ -248,7 +274,7 @@ public static class HomeFoldTile
             children.Add(new BoxEl
             {
                 HitTestVisible = false, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
-                Height = HomeModuleLayout.FoldCardHeight,
+                Height = height,
                 Gradient = new GradientSpec(GradientShape.Radial, 0f, [new GradientStop(0f, c with { A = 0.22f }), new GradientStop(0.72f, c with { A = 0f })])
                 {
                     RadialCenter = new Point2(1.0f, 0.48f), RadialRadius = new Point2(0.70f, 1.10f),
@@ -261,18 +287,18 @@ public static class HomeFoldTile
         for (int i = 0; i < coverCount; i++)
         {
             var card = cards[i];
-            HomeModuleLayout.FoldRest(i, cardW, out float x, out float y, out float rot);
+            HomeModuleLayout.FoldRest(i, cardW, out float x, out float y, out float rot, cover);
             HomeModuleLayout.FoldFan(i, out float dx, out float dy, out float drot);
             children.Add(new BoxEl
             {
-                Width = HomeModuleLayout.FoldCover, Height = HomeModuleLayout.FoldCover,
+                Width = cover, Height = cover,
                 OffsetX = x, OffsetY = y, Rotation = rot,
                 // DELTAS on the rest pose; the token carries the reduced-motion policy — no branch anywhere here.
                 WhileHover = new MotionTarget { OffsetX = dx, OffsetY = dy, Rotation = drot },
                 Transition = MotionTok.ControlNormal,
                 HitTestVisible = false, Shadow = Elevation.Card, ClipToBounds = true,
                 Corners = CornerRadius4.All(Radii.Control),
-                Children = [HomeCards.Art(in card, HomeModuleLayout.FoldCover, HomeModuleLayout.FoldCover, Radii.Control, decodePx: 128)],
+                Children = [HomeCards.Art(in card, cover, cover, Radii.Control, decodePx: 128)],
             });
         }
 
@@ -282,7 +308,7 @@ public static class HomeFoldTile
         children.Add(new BoxEl
         {
             HitTestVisible = false, Direction = 1, Justify = FlexJustify.End, Gap = Spacing.XS,
-            Height = HomeModuleLayout.FoldCardHeight, AlignSelf = FlexAlign.Stretch,
+            Height = height, AlignSelf = FlexAlign.Stretch,
             // Edges4 is POSITIONAL (L, T, R, B): left 20, top 20, right 12, bottom 18 — NOT the prototype's CSS order.
             Padding = new Edges4(Spacing.XL, Spacing.XL, Spacing.M, 18f),
             MaxWidth = cardW * HomeModuleLayout.FoldCopyMaxFrac, Grow = 1f, Basis = 0f, MinWidth = 0f,
@@ -293,7 +319,7 @@ public static class HomeFoldTile
 
         Element root = new BoxEl
         {
-            ZStack = true, Width = cardW > 0f ? cardW : float.NaN, Height = HomeModuleLayout.FoldCardHeight, MinWidth = 0f,
+            ZStack = true, Width = cardW > 0f ? cardW : float.NaN, Height = height, MinWidth = 0f,
             ClipToBounds = true, Corners = Radii.CardAll, Fill = Tok.FillCardDefault, HoverFill = Tok.FillCardSecondary,
             BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, Shadow = Elevation.Card,
             OnClick = () => open(s), Cursor = CursorId.Hand, Role = AutomationRole.Hyperlink, Focusable = true,
@@ -303,7 +329,7 @@ public static class HomeFoldTile
         };
         Element bone = new BoxEl
         {
-            Width = cardW > 0f ? cardW : HomeModuleLayout.FoldCardMin, Height = HomeModuleLayout.FoldCardHeight, MinWidth = 0f,
+            Width = cardW > 0f ? cardW : HomeModuleLayout.FoldCardMin, Height = height, MinWidth = 0f,
             Corners = Radii.CardAll, Fill = SkeletonStyle.Default.BarColor, IsEnabled = false, HitTestVisible = false,
         };
         return root.Skel(bone);

@@ -26,6 +26,10 @@
 // hands in. What must SUBSCRIBE (the greeted name, whether the ▶ names Pause) was read by the host; the saved heart is the stock
 // `SaveButton`, which subscribes on its own. The cold-load skeleton is the SAME builders fed placeholders (`Skeleton`) — the placeholder
 // art slot across the card, no veil — so it shimmers as this card's real shape.
+// THE FORM IS THE TIER'S (`Rules/Tiers.Home.cs`, `ClassicDaylistLayout`): Compact stacks the art over the copy (`C-Home-Compact`: 140 art, the copy rising 28
+// over it, 40-high actions), Small is a 216 banner with 364 of copy (`C-Home-Small`), Standard is the tuned card, Huge is a 400 hero with 760 of copy at the
+// 68/92 display size and the clock a plate in its corner (`C-Home-Huge`), and a Short window caps the hero at a 126 strip carrying the eyebrow and the title only
+// (`C-Shell-Short`). The first frame is built at the region's estimated width (`ClassicRegion`), never a fixed 1100.
 // Pure rules (core): `DaylistForm` / `DaypartTimeline` / `DaylistCountdownLine` / `DaylistArt` (Items.Rules.cs) and
 // `DaypartRules` / `DaylistCountdown` / `DaylistNext`.
 
@@ -36,6 +40,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Theming;
 using Wavee.HomeUi;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
@@ -53,6 +58,11 @@ internal static class ClassicHomeDaylist
     /// <summary>The registered template of <see cref="ViewKeys.HomeDaylist"/>.</summary>
     public static Element Template(HomeDaylistProps props, in ViewContext ctx)
     {
+        // The tier's form and the first-frame width are read before any early return: the hooks run on every render, in the same order.
+        var facts = ctx.Tier();
+        var dl = ClassicHomeTiers.Of(facts).Daylist;
+        float firstW = ClassicRegion.EstimateHomeBand(facts, ctx.Hooks.UseContextSignal(Viewport.Size).Peek().Width, hero: true);
+
         var zone = props.Zone;
         if (zone.Items.Count == 0) return new BoxEl();
         var card = zone.Items[0];
@@ -70,35 +80,33 @@ internal static class ClassicHomeDaylist
         // The ▶ names what a press does: Pause while this daylist is the context playing (read by the host: a subscribing, coarse-first read).
         bool pauses = props.Pauses;
 
-        var actions = ActionRow(
-            Button.Create(Loc.Get(pauses ? Strings.Home.Pause : Strings.Home.Play), Play, ButtonAppearance.Accent,
-                          glyph: pauses ? Icons.Pause : Icons.Play)
-                with { MinWidth = Controls.PrimaryMinWidth, Shrink = 0f },
-            Button.Create(Loc.Get(Strings.Detail.Shuffle), Shuffle, ButtonAppearance.Standard, glyph: Icons.Shuffle)
+        var actions = ActionRow(dl,
+            PlayButton(dl, Loc.Get(pauses ? Strings.Home.Pause : Strings.Home.Play), Play, pauses ? Icons.Pause : Icons.Play),
+            Button.Create(Loc.Get(Strings.Detail.Shuffle), Shuffle, ButtonAppearance.Standard, dl.Buttons, glyph: Icons.Shuffle)
                 with { Shrink = 0f },
-            Controls.Named(Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title }) with { Key = "save:" + uri },
+            Controls.Named(Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Box = dl.IconBox }) with { Key = "save:" + uri },
                            Loc.Get(Strings.Home.Save)),
             // A STANDALONE icon button, not `Controls.MoreButton`: that one is the list-row overflow whose 0.45-opacity
             // rest + HoverOpacity reveal lights up when its ANCESTOR is hovered — on this card it lit (and pressed) the
             // "…" whenever the card was hovered or pressed.
-            Controls.Named(Controls.IconAction(Icons.More, null, requestsContext: true) with { BlocksDragArm = true },
+            Controls.Named(Controls.IconAction(Icons.More, null, requestsContext: true, size: dl.IconBox) with { BlocksDragArm = true },
                            Loc.Get(Strings.Home.More)));
 
         // The header art across the whole card under the artist hero's horizontal veil; no art ⇒ neither layer (the
         // plain card, like the artist hero's "no url ⇒ flat"). The veil leaf is cover-keyed (a late grading swaps its
         // gradient without rebuilding this card) and keyed on the CARD, the surface, never the url: a new daylist's art
         // re-grades the mounted leaf, which cross-fades its tone instead of remounting. The card's accent is the
-        // ladder's payload rung until the grading lands.
+        // ladder's payload rung until the grading lands. The Compact stack's veil is vertical (the copy rises over the art's foot).
         string? artUrl = DaylistArt.Of(card.HeaderImageUrl, card.ImageUrl);
         Element? art = artUrl is null ? null : ArtLayer(artUrl);
         Element? veil = artUrl is null ? null
-            : Palette.ArtistHeroVeil(artUrl, vertical: false, float.NaN, float.NaN, key: "daylist-veil:" + uri,
+            : Palette.ArtistHeroVeil(artUrl, vertical: dl.Form == ClassicDaylistForm.Stacked, float.NaN, float.NaN, key: "daylist-veil:" + uri,
                                      payloadAccent: card.Accent);
 
         // The card IS the daylist: a click anywhere outside its buttons opens the playlist (the buttons are nested
         // click targets, so Play/Shuffle/♡/… keep their own action). The tile ramp is the card's hover/press feedback.
         var root = CardShape(new Parts(props.Eyebrow, title, Tags(card), Strings.Home.DaylistMeta(card.TrackCount), actions,
-                                       props.Clock ?? new BoxEl(), art, veil))
+                                       props.Clock ?? new BoxEl(), art, veil), dl, firstW)
             .Interactive(Interaction.Tile) with
             {
                 OnClick = () => HomeCardNav.Open(in c), Cursor = CursorId.Hand,
@@ -111,38 +119,60 @@ internal static class ClassicHomeDaylist
 
     /// <summary>The cold-load shape: the SAME builders as <see cref="Template"/>, fed placeholder words, stand-in buttons
     /// and a static ring/timeline. Never early-outs — the seed zone's card is a blank (no uri). The embed's
-    /// <see cref="ComponentEl.SkeletonProxy"/>.</summary>
-    internal static Element Skeleton()
+    /// <see cref="ComponentEl.SkeletonProxy"/>, at the tier's form.</summary>
+    internal static Element Skeleton(ClassicHomeLayout layout)
     {
+        var dl = layout.Daylist;
         string words = Loc.Get(Strings.Home.YourDaylist);
-        var actions = ActionRow(
-            Button.Create(Loc.Get(Strings.Home.Play), static () => { }, ButtonAppearance.Accent, glyph: Icons.Play)
-                with { MinWidth = Controls.PrimaryMinWidth, Shrink = 0f },
-            Button.Create(Loc.Get(Strings.Detail.Shuffle), static () => { }, ButtonAppearance.Standard, glyph: Icons.Shuffle)
+        var actions = ActionRow(dl,
+            PlayButton(dl, Loc.Get(Strings.Home.Play), static () => { }, Icons.Play),
+            Button.Create(Loc.Get(Strings.Detail.Shuffle), static () => { }, ButtonAppearance.Standard, dl.Buttons, glyph: Icons.Shuffle)
                 with { Shrink = 0f },
-            Controls.IconAction(Icons.More, null),
-            Controls.IconAction(Icons.More, null));
+            Controls.IconAction(Icons.More, null, size: dl.IconBox),
+            Controls.IconAction(Icons.More, null, size: dl.IconBox));
         var current = DaypartRules.OfHour(DateTime.Now.Hour);
         var line = ClassicHomeDaylistClock.Line((TextSpans)new TextSpan[] { new(Strings.Home.NextDaylistIn(DaypartRules.Countdown(0))) });
         // The caption's placeholder is the real rule read at "now": a caption-width line with the next daypart's word.
         string caption = DaylistNext.Caption(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), current,
                                              TimeZoneInfo.Local, System.Globalization.CultureInfo.CurrentCulture);
-        var clock = ClassicHomeDaylistClock.Shape(ProgressRing.Determinate(0f, ClassicHomeRules.RingSize), line, caption, null, (int)current);
+        float nominal = float.IsNaN(dl.CopyW) ? 2f * DaylistForm.CopyMax : dl.CopyW;
+        var clock = ClassicHomeDaylistClock.Shape(ProgressRing.Determinate(0f, ClassicHomeRules.RingSize), line, caption, null, (int)current,
+                                                  dl.Clock, TextWidthEstimate(dl, nominal));
         // The art slot as its watched placeholder across the card (the real shape), and no veil: a component the
         // deriver cannot see into would shimmer as one stray bar.
         return CardShape(new Parts(words, Loc.Get(Strings.Home.Layout.Daylist), TagLine(new TextSpan[] { new(words) }, null),
-                                   Strings.Home.DaylistMeta(50), actions, clock, ArtLayer(null), null));
+                                   Strings.Home.DaylistMeta(50), actions, clock, ArtLayer(null), null), dl, nominal);
+    }
+
+    /// <summary>The primary action at the tier's size; the Compact stack's grows to take the row's slack (<c>C-Home-Compact</c>).</summary>
+    static Element PlayButton(ClassicDaylistLayout dl, string label, Action onClick, string glyph)
+        => Button.Create(label, onClick, ButtonAppearance.Accent, dl.Buttons, glyph: glyph)
+            with { MinWidth = Controls.PrimaryMinWidth, Shrink = 0f, Grow = dl.Form == ClassicDaylistForm.Stacked ? 1f : 0f };
+
+    /// <summary>The copy's text width at a card <paramref name="cardW"/> wide: the clock block's first-frame width.</summary>
+    internal static float TextWidthEstimate(ClassicDaylistLayout dl, float cardW)
+    {
+        float pad = dl.CopyPad.Horizontal;
+        return dl.Form switch
+        {
+            ClassicDaylistForm.Card => DaylistForm.CopyWidth(MathF.Max(0f, cardW - pad)),
+            ClassicDaylistForm.Hero => ClassicHomeRules.ClockPlateW - ClassicHomeRules.ClockPlatePadding.Horizontal,
+            ClassicDaylistForm.Stacked => MathF.Max(0f, cardW - pad),
+            _ => MathF.Max(0f, MathF.Min(dl.CopyW, cardW) - pad),
+        };
     }
 
     /// <summary>The card: a Fluent card frame (border, 8-DIP corners) with NO padding — the art reaches its edges and
-    /// the insets ride on the copy (<see cref="ClassicHomeRules.DaylistCopyPadding"/>) — that clips its layers to its rounded corners
+    /// the insets ride on the copy (the tier's <see cref="ClassicDaylistLayout.CopyPad"/>) — that clips its layers to its rounded corners
     /// (the border paints after the children, so it stays on top of the art), around the layers built at the card's
-    /// width (<see cref="Row"/>; the copy's width follows <see cref="DaylistForm"/>).</summary>
-    static BoxEl CardShape(Parts parts)
-        => Ui.Card(Responsive.Of("home:daylist", w => Row(parts, w), fallback: HomeModuleLayout.FallbackWidth, grow: 1f))
+    /// width (<see cref="Row"/>). The card is the tier's height: a 320 floor for the tuned card, a fixed 216 / 400 / 126, or the stack's own.</summary>
+    static BoxEl CardShape(Parts parts, ClassicDaylistLayout dl, float firstWidth)
+        => Ui.Card(Responsive.Of("home:daylist", w => Row(parts, w, dl), fallback: firstWidth, grow: 1f))
             with
             {
-                Padding = default, ClipToBounds = true, MinHeight = ClassicHomeRules.DaylistCardMinHeight,
+                Padding = default, ClipToBounds = true,
+                MinHeight = dl.Form == ClassicDaylistForm.Card ? ClassicHomeRules.DaylistCardMinHeight : 0f,
+                Height = dl.CardH,
                 MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
             };
 
@@ -152,16 +182,23 @@ internal static class ClassicHomeDaylist
     static Element ArtLayer(string? url)
         => Controls.CoverFill(url, 0f, ClassicHomeRules.DaylistArtDecodePx, focusY: ClassicHomeRules.DaylistArtFocusY);
 
-    /// <summary>The card's layers at card width <paramref name="w"/> (the card has no padding, so this is its whole
-    /// width), in a ZStack: the art, its veil, then the copy over the veil's opaque side —
+    /// <summary>The card's layers at card width <paramref name="w"/> (the card has no padding, so this is its whole width), in the tier's form.</summary>
+    static Element Row(Parts p, float w, ClassicDaylistLayout dl) => dl.Form switch
+    {
+        ClassicDaylistForm.Stacked => Stacked(p, dl),
+        ClassicDaylistForm.Card => CardRow(p, w, dl),
+        _ => Layered(p, w, dl),
+    };
+
+    /// <summary>The tuned card (Standard): the art, its veil, then the copy over the veil's opaque side —
     /// <see cref="DaylistForm.CopyWidth"/> of the content width inside the copy padding, plus that
     /// padding. Neither layer measures anything, so the copy alone decides the card's height above its 320 floor, and
     /// the stack stretches both layers over the whole card and the copy over its full height (SpaceBetween pins the
     /// clock to the foot). The three slots never move — an absent layer is an empty, hit-test-free box — and the copy
     /// is keyed, so art arriving late mounts the layers without remounting the copy and its clock.</summary>
-    static Element Row(Parts p, float w)
+    static Element CardRow(Parts p, float w, ClassicDaylistLayout dl)
     {
-        var pad = ClassicHomeRules.DaylistCopyPadding;
+        var pad = dl.CopyPad;
         float text = DaylistForm.CopyWidth(MathF.Max(0f, w - pad.Horizontal));
         var copy = new BoxEl
         {
@@ -169,7 +206,7 @@ internal static class ClassicHomeDaylist
             Direction = 1, Width = text + pad.Horizontal, MinWidth = 0f,
             // SpaceBetween pins the clock to the card's foot; the Gap is its floor when a two-line title fills the card.
             Justify = FlexJustify.SpaceBetween, Padding = pad, Gap = Spacing.XL,
-            Children = [Top(p, text), p.Clock],
+            Children = [Top(p, text, dl, withActions: true), p.Clock],
         };
         return new BoxEl
         {
@@ -178,46 +215,113 @@ internal static class ClassicHomeDaylist
         };
     }
 
+    /// <summary>The fixed-height forms over a horizontal veil: Small's 216 banner (364 of copy, the clock a line), Short's 126 strip (the eyebrow and the title
+    /// only) and Huge's 400 hero (760 of copy, the actions pinned to the foot, the clock a plate in the corner).</summary>
+    static Element Layered(Parts p, float w, ClassicDaylistLayout dl)
+    {
+        var pad = dl.CopyPad;
+        float copyW = MathF.Min(dl.CopyW, MathF.Max(0f, w));
+        float text = MathF.Max(0f, copyW - pad.Horizontal);
+        bool hero = dl.Form == ClassicDaylistForm.Hero;
+        bool strip = dl.Form == ClassicDaylistForm.Strip;
+        Element[] copyKids = strip ? [Top(p, text, dl, withActions: false)]
+            : hero ? [Top(p, text, dl, withActions: false), p.Actions]
+            : [Top(p, text, dl, withActions: true), p.Clock];
+        var copy = new BoxEl
+        {
+            Key = "daylist-copy",
+            Direction = 1, Width = copyW, MinWidth = 0f,
+            Justify = strip ? FlexJustify.Start : FlexJustify.SpaceBetween, Padding = pad, Gap = Spacing.S,
+            Children = copyKids,
+        };
+        Element plate = hero
+            ? new BoxEl
+            {
+                AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.End,
+                Margin = new Edges4(0f, 0f, ClassicHomeRules.ClockPlateInset, ClassicHomeRules.ClockPlateInset),
+                Children = [p.Clock],
+            }
+            : NoLayer();
+        return new BoxEl
+        {
+            ZStack = true, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+            Children = [p.Art ?? NoLayer(), p.Veil ?? NoLayer(), copy, plate],
+        };
+    }
+
+    /// <summary>Compact's stack (<c>C-Home-Compact</c>): the art band on top under a vertical veil, the copy rising 28 over its foot with the actions 40 high
+    /// and the clock under them. A daylist without art is the copy alone.</summary>
+    static Element Stacked(Parts p, ClassicDaylistLayout dl)
+    {
+        bool hasArt = p.Art is not null;
+        var copy = new BoxEl
+        {
+            Key = "daylist-copy",
+            Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Padding = dl.CopyPad, Gap = Spacing.S,
+            Margin = hasArt ? new Edges4(0f, -ClassicHomeRules.StackedOverlap, 0f, 0f) : default,
+            Children = [Top(p, float.NaN, dl, withActions: true), p.Clock],
+        };
+        return new BoxEl
+        {
+            Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+            Children =
+            [
+                hasArt
+                    ? new BoxEl
+                    {
+                        Key = "daylist-art", ZStack = true, Height = dl.ArtH, MinWidth = 0f, AlignItems = FlexAlign.Stretch, ClipToBounds = true,
+                        Children = [p.Art!, p.Veil ?? NoLayer()],
+                    }
+                    : NoLayer(),
+                copy,
+            ],
+        };
+    }
+
     /// <summary>An absent layer's slot: empty and hit-test free.</summary>
     static BoxEl NoLayer() => new() { HitTestVisible = false };
 
-    /// <summary>The copy's top block at text width <paramref name="text"/>: eyebrow · title · tags · meta · the ONE
-    /// action row.</summary>
-    static BoxEl Top(Parts p, float text)
-        => new()
+    /// <summary>The copy's top block at text width <paramref name="text"/> (NaN: the column's own): eyebrow · title · tags · meta · the ONE
+    /// action row (the strip keeps the eyebrow and the title; the hero parts its actions to the foot).</summary>
+    static BoxEl Top(Parts p, float text, ClassicDaylistLayout dl, bool withActions)
+    {
+        var kids = new List<Element>(5)
         {
-            Direction = 1, MinWidth = 0f,
-            Children =
-            [
-                Ui.Body(p.Eyebrow).Secondary() with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                TitleRung(p.Title, text) with
-                {
-                    MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                    Margin = new Edges4(0f, Spacing.XS, 0f, 0f),
-                },
-                p.Tags,
-                Ui.Caption(p.Meta).Tertiary() with
-                {
-                    MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                    Margin = new Edges4(0f, Spacing.XS, 0f, 0f),
-                },
-                p.Actions,
-            ],
+            Ui.Body(p.Eyebrow).Secondary() with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+            TitleRung(p.Title, text, dl) with
+            {
+                MaxLines = dl.TitleLines, Wrap = dl.TitleLines > 1 ? TextWrap.Wrap : TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                Margin = new Edges4(0f, Spacing.XS, 0f, 0f),
+            },
         };
+        if (dl.Details)
+        {
+            kids.Add(p.Tags);
+            kids.Add(Ui.Caption(p.Meta).Tertiary() with
+            {
+                MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                Margin = new Edges4(0f, Spacing.XS, 0f, 0f),
+            });
+            if (withActions) kids.Add(p.Actions);
+        }
+        return new BoxEl { Direction = 1, MinWidth = 0f, Children = kids.ToArray() };
+    }
 
-    /// <summary>The title's rung at the copy's text width <paramref name="text"/>: the 40/52 <c>HeroTitle</c> while
-    /// the copy is at least <see cref="DaylistForm.HeroTitleMinText"/> wide, else the 28/36 display rung at 600
-    /// (<see cref="DaylistForm.UseHeroTitle"/> over <see cref="DaylistForm.CopyWidth"/>).</summary>
-    static TextEl TitleRung(string title, float text)
-        => DaylistForm.UseHeroTitle(text)
-            ? R.Type.HeroTitle(title)
-            : R.Type.DetailHero(title) with { Weight = 600 };
+    /// <summary>The title's rung: the tuned card's 40/52 <c>HeroTitle</c> while the copy is at least
+    /// <see cref="DaylistForm.HeroTitleMinText"/> wide, else the 28/36 display rung at 600 (<see cref="DaylistForm.UseHeroTitle"/>);
+    /// the compact forms hold the 28/36 and the Huge hero the 68/92 display size.</summary>
+    static TextEl TitleRung(string title, float text, ClassicDaylistLayout dl) => dl.Title switch
+    {
+        ClassicDaylistTitle.Display68 => Ui.Display(title) with { Weight = 600 },
+        ClassicDaylistTitle.Display28 => R.Type.DetailHero(title) with { Weight = 600 },
+        _ => DaylistForm.UseHeroTitle(text) ? R.Type.HeroTitle(title) : R.Type.DetailHero(title) with { Weight = 600 },
+    };
 
-    /// <summary>The ONE action row: 20 below the meta, 8 apart, never wrapping (the copy's floor fits it).</summary>
-    static BoxEl ActionRow(params Element[] actions) => new()
+    /// <summary>The ONE action row: 20 below the meta (12 in the compact forms), 8 apart, never wrapping (the copy's floor fits it).</summary>
+    static BoxEl ActionRow(ClassicDaylistLayout dl, params Element[] actions) => new()
     {
         Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Wrap = false, MinWidth = 0f,
-        Margin = new Edges4(0f, Spacing.XL, 0f, 0f),
+        Margin = new Edges4(0f, dl.Form == ClassicDaylistForm.Card ? Spacing.XL : Spacing.M, 0f, 0f),
         Children = actions,
     };
 

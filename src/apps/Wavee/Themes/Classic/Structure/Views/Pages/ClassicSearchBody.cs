@@ -43,65 +43,93 @@ internal static class ClassicSearchBody
 {
     static readonly Func<bool> s_true = static () => true;
     static readonly Func<bool> s_false = static () => false;
-    static readonly Func<Element> s_genreSeed = static () => GenreSeed();
 
     /// <summary>The facet body for the host's model (read inside the skeleton region's content binding).</summary>
-    public static Element Content(SearchPageProps props)
+    public static Element Content(SearchPageProps props, ClassicSearchLayout layout, float firstW)
     {
         var m = props.Body();
         var ctx = m.Hits;
         switch (m.Kind)
         {
-            case SearchBodyKind.Pending: return ClassicSearchPage.Shimmer(m.Facet);
+            case SearchBodyKind.Pending: return ClassicSearchPage.Shimmer(m.Facet, layout);
             case SearchBodyKind.Empty: return Empty(m.Facet, ctx.Query);
-            case SearchBodyKind.All: return AllBody(m, props);
-            case SearchBodyKind.Genres: return GenreGrid(m.Genres, header: false);
-            case SearchBodyKind.Songs: return SongsGrid(m.Rows, in ctx);
-            case SearchBodyKind.FacetGrid: return FacetGrid(m.Row, ctx);
-            default: return HitsList(m.Rows, m.Facet, in ctx);
+            case SearchBodyKind.All: return AllBody(m, props, layout, firstW);
+            case SearchBodyKind.Genres: return GenreGrid(m.Genres, header: false, layout);
+            case SearchBodyKind.Songs: return SongsGrid(m.Rows, in ctx, layout);
+            case SearchBodyKind.FacetGrid: return FacetGrid(m.Row, ctx, layout, firstW);
+            default: return HitsList(m.Rows, m.Facet, in ctx, layout);
         }
     }
 
     /// <summary>The All tab (W1): the Top Result and Best matches off the ranked list — or, for an answer that carried
     /// none, the fallback interleave — then the playlist rail, the genre links and the related queries.</summary>
-    static Element AllBody(SearchBodyModel m, SearchPageProps props)
+    static Element AllBody(SearchBodyModel m, SearchPageProps props, ClassicSearchLayout layout, float firstW)
     {
         var ctx = m.Hits;
         var kids = new List<Element>(6);
         if (m.Hero is { } hero)
         {
-            kids.Add(TopResult(hero.Ref, hero.Flags, in ctx));
-            if (m.Best is { } best) kids.Add(BestMatches(best, props.ColsFor, ctx));
+            Element top = TopResult(hero.Ref, hero.Flags, in ctx, layout);
+            bool beside = !float.IsNaN(layout.HeroBesideW);
+            if (m.Best is { } best)
+            {
+                // Huge (C-Search-Huge): the top result is 700 wide with Best matches beside it, filling the rest of the row.
+                float bestW = beside ? MathF.Max(0f, firstW - layout.HeroBesideW - ClassicSearchTiers.BesideGap) : firstW;
+                Element bestMatches = BestMatches(best, props.ColsFor, ctx, layout, bestW);
+                if (beside)
+                    kids.Add(new BoxEl
+                    {
+                        Direction = 0, Gap = ClassicSearchTiers.BesideGap, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
+                        Children =
+                        [
+                            new BoxEl { Direction = 1, Width = layout.HeroBesideW, Shrink = 0f, Children = [top] },
+                            new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [bestMatches] },
+                        ],
+                    });
+                else { kids.Add(top); kids.Add(bestMatches); }
+            }
+            else kids.Add(top);
         }
-        else if (m.Fallback is { } fallback) kids.Add(FallbackList(fallback, in ctx));
+        else if (m.Fallback is { } fallback) kids.Add(FallbackList(fallback, in ctx, layout));
         else kids.Add(Empty(SearchFacet.All, ctx.Query));
 
-        if (m.Rail.Count > 0) kids.Add(PlaylistRail(m.Rail, props.SelectPlaylists, ctx));
-        kids.Add(GenreSection(m, props));
-        kids.Add(RelatedSection(m, props));
+        if (m.Rail.Count > 0) kids.Add(PlaylistRail(m.Rail, props.SelectPlaylists, ctx, layout));
+        // Genres (two parts) and Related searches (one) share a row at Huge.
+        Element genres = GenreSection(m, props, layout), related = RelatedSection(m, props);
+        if (layout.GenresBeside)
+            kids.Add(new BoxEl
+            {
+                Direction = 0, Gap = ClassicSearchTiers.BesideGap, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
+                Children =
+                [
+                    new BoxEl { Direction = 1, Grow = 2f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [genres] },
+                    new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = [related] },
+                ],
+            });
+        else { kids.Add(genres); kids.Add(related); }
         return new BoxEl { Direction = 1, Gap = Spacing.L, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = kids.ToArray() };
     }
 
     /// <summary>0.2.9's no-top-hits list: the host's interleave drawn as hit rows (the lead one large).</summary>
-    static Element FallbackList(IReadOnlyList<Search.FallbackHit> plan, in Search.HitContext ctx)
+    static Element FallbackList(IReadOnlyList<Search.FallbackHit> plan, in Search.HitContext ctx, ClassicSearchLayout layout)
     {
         if (plan.Count == 0) return Empty(SearchFacet.All, ctx.Query);
         var rows = new Element[plan.Count];
         for (int i = 0; i < rows.Length; i++)
-            rows[i] = HitRow(plan[i].Hit.Ref, plan[i].Hit.Flags, plan[i].Large, in ctx);
+            rows[i] = HitRow(plan[i].Hit.Ref, plan[i].Hit.Flags, plan[i].Large, in ctx, layout);
         return HitColumn(rows);
     }
 
-    static Element GenreSection(SearchBodyModel m, SearchPageProps props)
+    static Element GenreSection(SearchBodyModel m, SearchPageProps props, ClassicSearchLayout layout)
     {
         switch (m.GenreState)
         {
-            case SearchSection.Ready: return GenreGrid(m.Genres, header: true);
+            case SearchSection.Ready: return GenreGrid(m.Genres, header: true, layout);
             case SearchSection.Failed: return SectionFailed(props.RetryAll);
             case SearchSection.Concluded: return new BoxEl();
             default:
                 return new SkelRegionEl(
-                    Pending: s_true, Failed: s_false, Content: s_genreSeed, ShimmerSource: null, OnFailed: null,
+                    Pending: s_true, Failed: s_false, Content: () => GenreSeed(layout), ShimmerSource: null, OnFailed: null,
                     Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
         }
     }
@@ -147,11 +175,13 @@ internal static class ClassicSearchBody
     /// <summary>THE search row: <see cref="Search.HitData"/> on the one media surface at <see cref="SearchHitRules.ShapeOf"/> — 48
     /// art in the 64 floor (a hidden-artwork track row: the 32 play square), 84 art in the 112 floor when <paramref name="large"/>.
     /// Keyed by the hit's kind + slot, so a result list that reorders carries each row's hover and menu with it.</summary>
-    static Element HitRow(EntityRef hit, SearchHitFlags flags, bool large, in Search.HitContext ctx)
+    static Element HitRow(EntityRef hit, SearchHitFlags flags, bool large, in Search.HitContext ctx, ClassicSearchLayout layout)
     {
         if (hit.IsNone) return new BoxEl();
         bool hideTrackArt = ClassicOptions.HideTrackArt();   // tracked: the region's binding re-runs when the option flips
+        // The tier's row: Compact's 44 art in a 60 floor (C-Search-Compact); the large lead row and a hidden-art row keep the media row's own.
         var shape = SearchHitRules.ShapeOf(large, artHidden: !SearchHitRules.ShowsArt(hit.Kind, hideTrackArt));
+        if (SearchHitRules.ShowsArt(hit.Kind, hideTrackArt)) shape = layout.RowShape(shape);
         return Controls.Surface(Search.HitData(hit, flags, large, in ctx, hideTrackArt), shape) with { Key = "hit:" + Search.KeyOf(hit) };
     }
 
@@ -165,7 +195,7 @@ internal static class ClassicSearchBody
     /// the cover's own chrome grading (none when ungradeable), Play on that accent, Open page for a destination, the
     /// trailing control and the "…" only when a menu resolved. A static function, never a Component — the hit is read
     /// from the edge on every render (§1.5).</summary>
-    static Element TopResult(EntityRef hit, SearchHitFlags flags, in Search.HitContext ctx)
+    static Element TopResult(EntityRef hit, SearchHitFlags flags, in Search.HitContext ctx, ClassicSearchLayout layout)
     {
         if (hit.IsNone) return new BoxEl();
         string uri = hit.Id.Text;
@@ -239,7 +269,7 @@ internal static class ClassicSearchBody
         };
         var card = new BoxEl
         {
-            Height = ClassicSearchRules.HeroHeight, MinWidth = 0f, Grow = 1f, AlignSelf = FlexAlign.Stretch,
+            Height = layout.HeroH, MinWidth = 0f, Grow = 1f, AlignSelf = FlexAlign.Stretch,
             ClipToBounds = true, Corners = Radii.CardAll,
             Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
             Role = AutomationRole.Button, Focusable = true, FocusVisualMargin = Design.FocusInsetBordered,
@@ -249,7 +279,7 @@ internal static class ClassicSearchBody
                 scheme is { } graded
                     ? new BoxEl
                     {
-                        HitTestVisible = false, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Height = ClassicSearchRules.HeroHeight,
+                        HitTestVisible = false, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Height = layout.HeroH,
                         Gradient = new GradientSpec(GradientShape.Radial, 0f,
                         [
                             new GradientStop(0f, Design.Palette.ChromeAccent(graded) with { A = ClassicSearchRules.HeroWashAlpha }),
@@ -261,7 +291,7 @@ internal static class ClassicSearchBody
                         },
                     }
                     : new BoxEl { HitTestVisible = false },
-                new BoxEl { Direction = 0, MinWidth = 0f, Height = ClassicSearchRules.HeroHeight, AlignSelf = FlexAlign.Stretch, Children = [copy, cover] },
+                new BoxEl { Direction = 0, MinWidth = 0f, Height = layout.HeroH, AlignSelf = FlexAlign.Stretch, Children = [copy, cover] },
             ],
         }.Interactive(Interaction.Card);   // OnClick is set above, so Interactive gives the box the hand (the engine's clickable default)
         return menu is not null && !Controls.IsNullOverlay(ctx.Overlay) ? ContextSheets.Attach(card, ctx.Overlay, menu) : card;
@@ -272,7 +302,7 @@ internal static class ClassicSearchBody
     /// <summary>The hits after the Top Result as a width-fitted N×N PagedShelf of hit rows with chevrons and pips.
     /// <paramref name="colsFor"/> is the page's hysteretic column count (<see cref="Search.ColsFor"/> over the host's own fields).
     /// The shelf sits in a wrapper box: a Key on PagedShelf's component root is ignored (§9 traps).</summary>
-    static Element BestMatches(IReadOnlyList<Search.HitItem> items, Func<float, int> colsFor, Search.HitContext ctx)
+    static Element BestMatches(IReadOnlyList<Search.HitItem> items, Func<float, int> colsFor, Search.HitContext ctx, ClassicSearchLayout layout, float firstW)
     {
         if (items.Count == 0) return new BoxEl();
         return Stretch(Responsive.Of("search:best-matches", w =>
@@ -281,7 +311,7 @@ internal static class ClassicSearchBody
             int rows = Search.RowsFor(cols);
             int maxCols = Search.MaxColumns(cols, rows, items.Count);
             return PagedShelf.Create(items,
-                cardAt: (item, i, _) => HitRow(item.Ref, item.Flags, large: false, in ctx),
+                cardAt: (item, i, _) => HitRow(item.Ref, item.Flags, large: false, in ctx, layout),
                 onInvoke: (item, _) => Search.OpenHit(item.Ref, ctx.Origin),   // the slot owns the click; the row inside is click-less
                 cardHeight: static _ => Search.BestMatchRowH,
                 header: TickHeader(Loc.Get(Strings.Search.BestMatches)),
@@ -290,27 +320,30 @@ internal static class ClassicSearchBody
                 snap: ShelfSnap.Page, cardWidthAgnostic: true, edgeFade: ClassicSearchRules.BestMatchEdgeFade,
                 prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
                 keyOf: static (item, _) => Search.KeyOf(item.Ref));
-        }, fallback: 0f));
+        }, fallback: firstW));
     }
 
     /// <summary>The All tab's playlist rail: 148-188 DIP grid cards with a chevron header that SWITCHES to the Playlists
     /// tab (not a navigation, parity 24), never repeating the hero's own item.</summary>
-    static Element PlaylistRail(IReadOnlyList<Search.HitItem> items, Action? openFacet, Search.HitContext ctx)
+    static Element PlaylistRail(IReadOnlyList<Search.HitItem> items, Action? openFacet, Search.HitContext ctx, ClassicSearchLayout layout)
     {
         if (items.Count == 0) return new BoxEl();
+        var band = layout.Rail;
         return Stretch(PagedShelf.Create(items,
             cardAt: (item, i, cardW) => ShelfCardOf(item.Ref, cardW, in ctx),
             onInvoke: (item, _) => Search.OpenHit(item.Ref, ctx.Origin),   // the slot owns the click; the card inside is click-less
             cardHeight: static w => SurfaceGeometry.StackExtent(in ClassicSearchRules.RailCard, w, 1f),   // the card's own shape: one-line subtitle
             header: TickHeader(Loc.Get(Strings.Search.Playlists), openFacet),
-            pager: ShelfPager.Chevrons | ShelfPager.Pips,
-            minCardW: HomeModuleLayout.ShelfCardMin, maxCardW: HomeModuleLayout.ShelfCardMax, gap: HomeModuleLayout.ShelfGap,
+            pager: band.Pager ? ShelfPager.Chevrons | ShelfPager.Pips : ShelfPager.None,
+            minCardW: band.MinCardW, maxCardW: band.MaxCardW, maxColumns: band.MaxColumns, fixedCardW: band.FixedCardW, gap: band.Gap,
             // NOT cardWidthAgnostic: the shelf card takes its width literally (its column and cover are sized from it), so
             // it needs the fitted width hint — an agnostic shelf hands every card maxCardW and the cards overrun their cells.
             snap: ShelfSnap.Page, edgeFade: HomeModuleLayout.ShelfEdgeFade,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
             lift: ShelfLift.None,   // the shared card hovers fill-only: no lift halo to reserve clearance for
-            keyOf: static (item, _) => Search.KeyOf(item.Ref)));
+            keyOf: static (item, _) => Search.KeyOf(item.Ref)))
+            // Keyed by the tier: the card band and the pager are frozen at mount, so a crossing remounts the rail.
+            with { Key = "search:rail:" + ((int)layout.Tier).ToString(CultureInfo.InvariantCulture) };
     }
 
     /// <summary>A shelf card for a hit (the rail): the one surface at the shelf's card width. Inside the shelf's slot it
@@ -320,12 +353,14 @@ internal static class ClassicSearchBody
 
     /// <summary>The Songs facet: a wrapping AutoGrid(280, 12) of hit rows scrolling with the page — no pager (W6). Its row
     /// height is the tallest cell (auto): a row that wears the "Lyrics match" eyebrow is 72 where the rest are 64.</summary>
-    static Element SongsGrid(IReadOnlyList<Search.HitItem> rows, in Search.HitContext ctx)
+    static Element SongsGrid(IReadOnlyList<Search.HitItem> rows, in Search.HitContext ctx, ClassicSearchLayout layout)
     {
         var cells = new Element[rows.Count];
         for (int i = 0; i < cells.Length; i++)
-            cells[i] = Stretch(HitRow(rows[i].Ref, rows[i].Flags, large: false, in ctx));
-        return Stretch(AutoGrid(ClassicSearchRules.SongsColMin, Spacing.M, float.NaN, cells));
+            cells[i] = Stretch(HitRow(rows[i].Ref, rows[i].Flags, large: false, in ctx, layout));
+        var grid = AutoGrid(layout.Songs.MinCol, Spacing.M, float.NaN, cells);
+        // The tier's column cap (Compact 1, Small 2); Standard and Huge fit the 280 floor to the width.
+        return Stretch(layout.Songs.MaxCols == int.MaxValue ? grid : grid with { MaxColumns = layout.Songs.MaxCols });
     }
 
     // ══ THE ALBUMS / PLAYLISTS FACET GRID (W7) ═══════════════════════════════════════════════════════════════════════
@@ -334,11 +369,10 @@ internal static class ClassicSearchBody
     /// extent comes from the stated total (capped at <see cref="Search.FacetHitCeiling"/>), so an index whose page has not landed
     /// renders a card-shaped placeholder and scrolling never shifts the rows; the page pages the edge from its demand
     /// (the host), never from the visible window.</summary>
-    static Element FacetGrid(Search row, Search.HitContext ctx)
+    static Element FacetGrid(Search row, Search.HitContext ctx, ClassicSearchLayout layout, float firstW)
         => Responsive.Of("search:facet-grid", w =>
         {
-            float width = w > 0f ? w : HomeModuleLayout.FallbackWidth;
-            int cols = Search.FacetGridColumns(width);
+            int cols = layout.FacetGridColumns(w);
             int count = Math.Min(Math.Max(row.ResultCount, row.ResultTotal), Search.FacetHitCeiling);
             var r = row;
             var c = ctx;
@@ -351,7 +385,7 @@ internal static class ClassicSearchBody
                 KeyOf = i => r.ResultRef(i) is { IsNone: false } hit ? Search.KeyOf(hit) : "search-card:placeholder:" + i.ToString(CultureInfo.InvariantCulture),
                 Grow = 1f, Shrink = 1f, MinHeight = 0f, AlignSelf = FlexAlign.Stretch,
             } with { Key = "search-facet-grid:" + cols.ToString(CultureInfo.InvariantCulture) };
-        }, fallback: HomeModuleLayout.FallbackWidth, grow: 1f);
+        }, fallback: firstW, grow: 1f);
 
     /// <summary>One grid cell: the one surface at the grid shape (the host attaches the menu carried in the data) — or, for
     /// an unrealised index, the SAME host on <see cref="Controls.CardData.Seed"/>: exactly a real card's box, so a landing
@@ -367,11 +401,11 @@ internal static class ClassicSearchBody
     /// <summary>A dedicated facet's hits (Artists, Podcasts, Episodes, Profiles) through the ONE row factory, or that facet's own
     /// empty sentence (parity 36). The Artists facet is the same row with circular art, its subtitle the kind word "Artist" — with the menu, drag and
     /// follow control 0.2.9's thinner row lacked (W10, §9 gap 8).</summary>
-    static Element HitsList(IReadOnlyList<Search.HitItem> rows, SearchFacet facet, in Search.HitContext ctx)
+    static Element HitsList(IReadOnlyList<Search.HitItem> rows, SearchFacet facet, in Search.HitContext ctx, ClassicSearchLayout layout)
     {
         if (rows.Count == 0) return Empty(facet, ctx.Query);
         var cells = new Element[rows.Count];
-        for (int i = 0; i < cells.Length; i++) cells[i] = HitRow(rows[i].Ref, rows[i].Flags, large: false, in ctx);
+        for (int i = 0; i < cells.Length; i++) cells[i] = HitRow(rows[i].Ref, rows[i].Flags, large: false, in ctx, layout);
         return HitColumn(cells);
     }
 
@@ -380,28 +414,27 @@ internal static class ClassicSearchBody
     /// <summary>The genre tiles as browse-category LINKS — the directory's own cell, column count and star-grid math, with
     /// every pip the semantic accent (Color null, §0.15). A genre opens its browse page with the search LOOKUP origin (the tile's own verb).
     /// <paramref name="header"/> false is the dedicated Genres tab; an empty list is an empty box, no sentence (parity 38).</summary>
-    static Element GenreGrid(IReadOnlyList<BrowseTileModel> tiles, bool header)
-        => tiles.Count == 0 ? new BoxEl() : GenreBody(tiles, header);
+    static Element GenreGrid(IReadOnlyList<BrowseTileModel> tiles, bool header, ClassicSearchLayout layout)
+        => tiles.Count == 0 ? new BoxEl() : GenreBody(tiles, header, layout);
 
     /// <summary>The genre section's shimmer: the eight seed names through the same cells.</summary>
-    static Element GenreSeed()
+    static Element GenreSeed(ClassicSearchLayout layout)
     {
         var seeds = ClassicSearchRules.SeedGenres;
         var models = new BrowseTileModel[seeds.Length];
         for (int i = 0; i < models.Length; i++)
             models[i] = new BrowseTileModel(seeds[i], "seed:genre:" + i.ToString(CultureInfo.InvariantCulture), null, null, static () => { });
-        return GenreBody(models, header: true);
+        return GenreBody(models, header: true, layout);
     }
 
-    static Element GenreBody(IReadOnlyList<BrowseTileModel> models, bool header)
+    static Element GenreBody(IReadOnlyList<BrowseTileModel> models, bool header, ClassicSearchLayout layout)
     {
-        Element body = Responsive.Of("search:genres", width =>
-        {
-            int cols = ClassicBrowseTiers.LinkColumns(width > 0f ? width : ClassicBrowseRules.DirectoryFallbackWidth);
-            var cells = new Element[models.Count];
-            for (int i = 0; i < cells.Length; i++) cells[i] = ClassicBrowseCells.Link(models[i]);
-            return ClassicBrowseCells.StarGrid(cols, Spacing.M, Spacing.S, cells) with { Key = "search-genres-grid:" + cols.ToString(CultureInfo.InvariantCulture) };
-        }, fallback: ClassicBrowseRules.DirectoryFallbackWidth);
+        // The genre links are the directory's own cell; the column count is the tier's fixed one (2 / 2 / 3 / 6) — no width read, no Responsive box.
+        var browse = ClassicBrowseTiers.For(layout.Tier);
+        int cols = layout.Genres.Columns(0f);
+        var cells = new Element[models.Count];
+        for (int i = 0; i < cells.Length; i++) cells[i] = ClassicBrowseCells.Link(models[i], browse);
+        Element body = ClassicBrowseCells.StarGrid(cols, Spacing.M, browse.LinkRowGap, cells) with { Key = "search-genres-grid:" + cols.ToString(CultureInfo.InvariantCulture) };
         if (!header) return Stretch(body);
         return new BoxEl
         {

@@ -38,17 +38,19 @@ public static class ClassicBrowseCells
 {
     /// <summary>Top: the stock link chip (<see cref="Controls.LinkChip"/>, 32/r4, D7), the only one at 600 — primary without being set
     /// larger than the band heading that names it.</summary>
-    internal static Element Word(BrowseTileModel m) => Controls.LinkChip(m.Uri, m.Title, m.Open, strong: true);
+    internal static Element Word(BrowseTileModel m, ClassicBrowseLayout layout)
+        => Controls.LinkChip(m.Uri, m.Title, m.Open, strong: true, minHeight: layout.TopChipH, cornerRadius: layout.TopChipRadius, padX: layout.TopChipPadX);
 
     /// <summary>For you: the same chip with the identity pip its detail page carries.</summary>
-    internal static Element Name(BrowseTileModel m) => Controls.LinkChip(m.Uri, m.Title, m.Open, Pip(in m));
+    internal static Element Name(BrowseTileModel m, ClassicBrowseLayout layout)
+        => Controls.LinkChip(m.Uri, m.Title, m.Open, Pip(in m), minHeight: layout.ForYouChipH);
 
     /// <summary>Genres — and Search's genre results (ch 13 §0.15): the pip beside Body secondary, one rung below Name
     /// because a genre column runs ~25 deep. The padded hit target and its hover fill are what make one row easy to click
     /// without catching its neighbour; a search genre passes <c>Color: null</c> ⇒ an accent pip.</summary>
-    internal static Element Link(BrowseTileModel m) => new BoxEl
+    internal static Element Link(BrowseTileModel m, ClassicBrowseLayout layout) => new BoxEl
     {
-        Key = m.Uri,
+        Key = m.Uri, MinHeight = layout.LinkMinH,
         Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand,
         FocusVisualMargin = Design.FocusInsetBordered,
         OnClick = m.Open, MinWidth = 0f,
@@ -196,14 +198,14 @@ public static class ClassicBrowseCells
     /// <summary>ONE accent resolution for every cell: a colour ⇒ raw; null or 0 ⇒ the semantic accent (never black).</summary>
     static ColorF Accent(in BrowseTileModel m) => m.Color is { } c && c != 0u ? ColorScience.ToColor(c) : Tok.AccentDefault;
 
-    /// <summary>The Genres grid — the SAME grid a category page's grid/related block renders: 3 / 2 / 1 columns at the
-    /// 720 / 380 bands, colGap 12, rowGap 8, keyed by its column count (the one width a key may carry).</summary>
-    internal static Element LinkGrid(IReadOnlyList<BrowseTileModel> items, float width)
+    /// <summary>The Genres grid — the SAME grid a category page's grid/related block renders: the tier's fixed columns (2 / 2 / 3 / 6), colGap 12, the tier's
+    /// row gap, keyed by its column count (the one width a key may carry). No width is read: the count is the record's.</summary>
+    internal static Element LinkGrid(IReadOnlyList<BrowseTileModel> items, ClassicBrowseLayout layout)
     {
-        int cols = ClassicBrowseTiers.LinkColumns(width > 0f ? width : ClassicBrowseRules.DirectoryFallbackWidth);
+        int cols = layout.GenreColumns();
         var cells = new Element[items.Count];
-        for (int i = 0; i < cells.Length; i++) cells[i] = Link(items[i]);
-        return StarGrid(cols, Spacing.M, Spacing.S, cells) with { Key = LinkGridKey(cols) };
+        for (int i = 0; i < cells.Length; i++) cells[i] = Link(items[i], layout);
+        return StarGrid(cols, Spacing.M, layout.LinkRowGap, cells) with { Key = LinkGridKey(cols) };
     }
 
     static readonly string[] s_linkKeys = ["browse-link-grid:1", "browse-link-grid:2", "browse-link-grid:3"];
@@ -224,10 +226,9 @@ public static class ClassicBrowseCells
     /// <summary>A grid / related block (0.2.9 <c>BrowsePage.CategoryBlock</c>): a LABEL header — <c>DrillHeader(title,
     /// null)</c>, never a chevron, never a click — over the Responsive link grid; an untitled block is the bare grid with
     /// no header row and no header gap (parity 101).</summary>
-    internal static Element CategoryBlock(string key, string? title, IReadOnlyList<BrowseTileModel> tiles)
+    internal static Element CategoryBlock(string key, string? title, IReadOnlyList<BrowseTileModel> tiles, ClassicBrowseLayout layout)
     {
-        // Keyed (E17c): the grid remounts at its remembered width; the block itself carries the same key.
-        Element grid = Responsive.Of(key + ":grid", tiles, static (items, w) => LinkGrid(items, w), fallback: ClassicBrowseRules.DirectoryFallbackWidth);
+        Element grid = LinkGrid(tiles, layout);
         if (string.IsNullOrWhiteSpace(title)) return grid with { Key = key };
         return new BoxEl
         {

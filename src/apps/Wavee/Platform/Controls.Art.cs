@@ -577,8 +577,10 @@ public static partial class Controls
     /// "checked", so this is not a toggle; it exists so a link chip is not a private box with its own look (D7).
     /// <paramref name="lead"/> sits <see cref="ToggleButton.Style.GlyphGap"/> before the label (Browse's identity pip);
     /// <paramref name="strong"/> sets the label at 600. Shrink 0: on a wrapping row the row breaks rather than every chip
-    /// ellipsising.</summary>
-    public static Element LinkChip(string key, string label, Action onClick, Element? lead = null, bool strong = false)
+    /// ellipsising. <paramref name="minHeight"/>, <paramref name="cornerRadius"/> and <paramref name="padX"/> (all 0 / negative = the stock) are the Compact
+    /// tier's: a 40-high target, the pill's full corner and its 16 side padding (<c>C-Browse-Compact</c>).</summary>
+    public static Element LinkChip(string key, string label, Action onClick, Element? lead = null, bool strong = false,
+                                   float minHeight = 0f, float cornerRadius = -1f, float padX = -1f)
     {
         var s = ToggleButton.DefaultStyle;
         var text = new TextEl(label)
@@ -592,7 +594,9 @@ public static partial class Controls
             Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand, FocusVisualMargin = s.FocusVisualMargin,
             OnClick = onClick,
             Direction = 0, Gap = lead is null ? 0f : s.GlyphGap, AlignItems = FlexAlign.Center, Shrink = 0f, MinWidth = 0f,
-            MinHeight = s.MinHeight, Padding = s.Padding, Corners = CornerRadius4.All(s.CornerRadius),
+            MinHeight = minHeight > 0f ? MathF.Max(minHeight, s.MinHeight) : s.MinHeight,
+            Padding = padX >= 0f ? new Edges4(padX, s.Padding.Top, padX, s.Padding.Bottom) : s.Padding,
+            Corners = CornerRadius4.All(cornerRadius >= 0f ? cornerRadius : s.CornerRadius),
             Fill = s.OffBackground, HoverFill = s.OffHover, PressedFill = s.OffPressed,
             BorderWidth = s.BorderWidth, BorderBrush = s.OffBorder, HoverBorderBrush = s.OffHoverBorder, PressedBorderBrush = s.OffPressedBorder,
             BrushTransitionMs = s.BrushTransitionMs,

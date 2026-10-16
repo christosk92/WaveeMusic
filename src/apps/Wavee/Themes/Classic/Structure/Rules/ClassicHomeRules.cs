@@ -122,6 +122,12 @@ public static class ClassicHomeRules
     /// ends), the timeline labels 24 above the foot.</summary>
     public static Edges4 DaylistCopyPadding => new(Spacing.XXXL, Spacing.XXXL, Spacing.M, Spacing.XXL);
 
+    /// <summary>The tier forms' pieces (`C-Home-Compact`, `C-Home-Huge`): the Compact stack's copy rises this far over its art; the Huge hero's clock is a
+    /// 440-wide dark plate (padding 14 / 12) inset 24 from the card's corner; the Compact and Small clock rows' gap.</summary>
+    public const float StackedOverlap = 28f, ClockPlateW = 440f, ClockPlateInset = 24f;
+    public static ColorF ClockPlateFill => ColorF.FromRgba(0, 0, 0) with { A = 0.26f };
+    public static Edges4 ClockPlatePadding => new(14f, 12f, 14f, 12f);
+
     /// <summary>At most this many tag links on the description line.</summary>
     public const int DaylistMaxTags = 6;
 

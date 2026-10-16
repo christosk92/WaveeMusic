@@ -36,15 +36,18 @@ internal static class ClassicBrowseDirectory
     {
         // The loading directory is built once per template instance (the old page's `_skeleton ??=`); the body once per run of this template,
         // which the host re-runs only when the band list, a tile row or the verdict changed.
-        var skeleton = ctx.Hooks.UseRef<Element?>(null);
-        var page = ClassicTiers.PageOf(ctx.Tier());   // the one page gutter (F3)
+        var skeleton = ctx.Hooks.UseRef<(WidthTier Tier, Element? Tree)>((WidthTier.Standard, null));
+        var facts = ctx.Tier();
+        var page = ClassicTiers.PageOf(facts);   // the one page gutter (F3)
+        var layout = ClassicBrowseTiers.Of(facts);   // the tier's record: chips, columns, charts, band gap
+        float firstW = ClassicRegion.EstimateWidth(facts, ctx.Hooks.UseContextSignal(Viewport.Size).Peek().Width);
         Element? body = null;
 
         // smoothResize false: a page-level region whose branches differ by hundreds of DIP lands its height at once.
         Element region = new SkelRegionEl(
             Pending: () => props.Load == BrowseLoad.Pending, Failed: () => props.Load == BrowseLoad.Failed,
-            Content: () => body ??= Content(props.Groups),
-            ShimmerSource: () => skeleton.Value ??= Skeleton(),
+            Content: () => body ??= Content(props.Groups, layout, firstW),
+            ShimmerSource: () => skeleton.Value.Tree is { } tree && skeleton.Value.Tier == layout.Tier ? tree : (skeleton.Value = (layout.Tier, Skeleton(layout, firstW))).Tree!,
             // Retry vacancy: `Entities.Refresh`, never `Demand`'s `Ensure` — a row the planner has already sealed
             // Asked-and-unanswered is exactly a no-op for `Ensure` (P4's dedupe: `wanted & ~known & ~asked`), so a
             // failed directory's Retry button did nothing until it un-asks first (root cause of the failure card).
@@ -54,7 +57,7 @@ internal static class ClassicBrowseDirectory
 
         Element directory = new BoxEl
         {
-            Direction = 1, MinWidth = 0f, Gap = Spacing.L,
+            Direction = 1, MinWidth = 0f, Gap = layout.BandGap,
             // The reserve is a SPACER above the clipped node (so the cut engages when content reaches the band, not at rest), leaving the
             // gutters and the bottom on the node.
             Padding = page.Pad(0f, R.Space.DockReserve + Spacing.XXL),
@@ -73,10 +76,10 @@ internal static class ClassicBrowseDirectory
     }
 
     /// <summary>The Ready content: the bands, or the "unavailable" vacancy for a directory that answered with no categories.</summary>
-    static Element Content(IReadOnlyList<(BrowseGroup Group, IReadOnlyList<BrowseCategory> Items)>? groups)
+    static Element Content(IReadOnlyList<(BrowseGroup Group, IReadOnlyList<BrowseCategory> Items)>? groups, ClassicBrowseLayout layout, float firstW)
         => groups is null || groups.Count == 0
             ? Controls.Vacancy(Controls.VacancyVoice.Empty, title: Loc.Get(Strings.Browse.Unavailable), subtitle: "")
-            : DirectoryBody(groups, live: true, s_liveChartsBand);
+            : DirectoryBody(groups, live: true, s_liveChartsBand, layout, firstW);
 
     // ── the Charts band ──────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -84,20 +87,37 @@ internal static class ClassicBrowseDirectory
     /// section rows, with the deck's own header (no eyebrow above it — parity 64) and no per-tile eyebrow (parity 65). Pending shimmers the three
     /// blank folds; Ready-and-empty is the compact "No charts right now"; Failed is a compact vacancy WITH its own Retry, refetching only the deck
     /// (parity 66, 97).</summary>
-    public static Element ChartsTemplate(BrowseChartsProps props, in ViewContext ctx) => new SkelRegionEl(
-        Pending: () => props.State == HomeLoad.Pending, Failed: () => props.State == HomeLoad.Failed,
-        Content: () => props.Deck.Count == 0
-            ? Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact, title: Loc.Get(Strings.Home.ChartsEmpty), subtitle: "")
-            : HomeModules.FoldDeck(props.Deck, Loc.Get(Strings.Browse.Charts), props.OpenTile, props.OpenHeader),
-        ShimmerSource: static () => HomeModules.FoldDeck(HomeBrowseCards.ChartDeckSeed, Loc.Get(Strings.Browse.Charts), s_noopSection),
-        OnFailed: () => Controls.Vacancy(Controls.VacancyVoice.Error, Controls.VacancyScale.Compact, onAction: props.Retry),
-        Reveal: SkelReveal.None, Style: SkeletonStyle.Default, Group: null,
-        SmoothResize: false);
+    public static Element ChartsTemplate(BrowseChartsProps props, in ViewContext ctx)
+    {
+        var facts = ctx.Tier();
+        var layout = ClassicBrowseTiers.Of(facts);
+        float firstW = ClassicRegion.EstimateWidth(facts, ctx.Hooks.UseContextSignal(Viewport.Size).Peek().Width);
+        return new SkelRegionEl(
+            Pending: () => props.State == HomeLoad.Pending, Failed: () => props.State == HomeLoad.Failed,
+            Content: () => props.Deck.Count == 0
+                ? Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact, title: Loc.Get(Strings.Home.ChartsEmpty), subtitle: "")
+                : Deck(props.Deck, props.OpenTile, props.OpenHeader, layout, firstW),
+            ShimmerSource: () => Deck(HomeBrowseCards.ChartDeckSeed, s_noopSection, null, layout, firstW),
+            OnFailed: () => Controls.Vacancy(Controls.VacancyVoice.Error, Controls.VacancyScale.Compact, onAction: props.Retry),
+            Reveal: SkelReveal.None, Style: SkeletonStyle.Default, Group: null,
+            SmoothResize: false);
+    }
+
+    /// <summary>The Charts deck in the tier's form: a stack of full-width tiles at Compact and Small (136 / 140 high), the paged deck at Standard (two up) and
+    /// Huge (four up), each at the tier's tile height and cover (<c>C-Browse-*</c>).</summary>
+    static Element Deck(IReadOnlyList<HomeSectionView> sections, Action<HomeSectionView> openTile, Action? openHeader, ClassicBrowseLayout layout, float firstW)
+    {
+        var band = layout.Charts;
+        string title = Loc.Get(Strings.Browse.Charts);
+        if (!band.Stacked)
+            return HomeModules.FoldDeck(sections, title, openTile, openHeader, band.MaxColumns, band.TileH, band.Cover);
+        return Responsive.Of("browse:charts-stack", w => HomeModules.FoldStack(sections, title, openTile, w, openHeader, band.TileH, band.Cover), fallback: firstW);
+    }
 
     static readonly Action<HomeSectionView> s_noopSection = static _ => { };
 
     /// <summary>The live Charts slot: the core host, in the band's entrance row.</summary>
-    static readonly Func<int, Element> s_liveChartsBand = static index => new BoxEl
+    static readonly Func<int, ClassicBrowseLayout, float, Element> s_liveChartsBand = static (index, _, _) => new BoxEl
     {
         Direction = 1, MinWidth = 0f,
         Animate = Design.Entrance.Row(index),
@@ -105,11 +125,11 @@ internal static class ClassicBrowseDirectory
     };
 
     /// <summary>The loading Charts slot: the Fold deck over its seed, in the same entrance row.</summary>
-    static readonly Func<int, Element> s_seedChartsBand = static index => new BoxEl
+    static readonly Func<int, ClassicBrowseLayout, float, Element> s_seedChartsBand = static (index, layout, firstW) => new BoxEl
     {
         Direction = 1, MinWidth = 0f,
         Animate = Design.Entrance.Row(index),
-        Children = [HomeModules.FoldDeck(HomeBrowseCards.ChartDeckSeed, Loc.Get(Strings.Browse.Charts), s_noopSection)],
+        Children = [Deck(HomeBrowseCards.ChartDeckSeed, s_noopSection, null, layout, firstW)],
     };
 
     // ── the body and its bands ───────────────────────────────────────────────────────────────────────────────────────
@@ -120,17 +140,17 @@ internal static class ClassicBrowseDirectory
     /// as tiles) and <paramref name="chartsBandAt"/> is injected in its slot, always. <paramref name="live"/> false is the
     /// loading directory: every cell still hovers and does nothing.</summary>
     static Element DirectoryBody(IReadOnlyList<(BrowseGroup Group, IReadOnlyList<BrowseCategory> Items)> groups,
-                                 bool live, Func<int, Element> chartsBandAt)
+                                 bool live, Func<int, ClassicBrowseLayout, float, Element> chartsBandAt, ClassicBrowseLayout layout, float firstW)
     {
         var children = new List<Element>(groups.Count + 2);
         int band = 1;   // the first band's OWN entrance delay (0.2.9: the masthead used to hold rung 0)
         for (int b = 0; b < BrowseTaxonomy.BandOrder.Count; b++)
         {
             var g = BrowseTaxonomy.BandOrder[b];
-            if (g == BrowseGroup.Charts) { children.Add(chartsBandAt(band++) with { Key = "browse-band:charts" }); continue; }
-            if (ItemsOf(groups, g) is { Count: > 0 } items) children.Add(BandOf(g, items, live, band++));
+            if (g == BrowseGroup.Charts) { children.Add(chartsBandAt(band++, layout, firstW) with { Key = "browse-band:charts" }); continue; }
+            if (ItemsOf(groups, g) is { Count: > 0 } items) children.Add(BandOf(g, items, live, band++, layout, firstW));
         }
-        return new BoxEl { Direction = 1, Gap = Spacing.L, MinWidth = 0f, Children = children.ToArray() };
+        return new BoxEl { Direction = 1, Gap = layout.BandGap, MinWidth = 0f, Children = children.ToArray() };
     }
 
     static IReadOnlyList<BrowseCategory>? ItemsOf(IReadOnlyList<(BrowseGroup Group, IReadOnlyList<BrowseCategory> Items)> groups, BrowseGroup g)
@@ -142,23 +162,25 @@ internal static class ClassicBrowseDirectory
 
     /// <summary>The state a band's responsive grid is gated on: the memoized item list BY REFERENCE plus the live bit, so a
     /// page re-render that changed nothing (the under-band clip edge) rebuilds no grid.</summary>
-    sealed record BandState(IReadOnlyList<BrowseCategory> Items, bool Live);
+    sealed record BandState(IReadOnlyList<BrowseCategory> Items, bool Live, ClassicBrowseLayout Layout);
 
     static readonly string[] s_bandKeys =
         ["browse-band:top", "browse-band:foryou", "browse-band:genres", "browse-band:mood", "browse-band:charts", "browse-band:more"];
 
     /// <summary>One band: an eyebrow label over the density its destinations earn, cascading in at
     /// <paramref name="index"/> (the only thing the index is for).</summary>
-    static Element BandOf(BrowseGroup group, IReadOnlyList<BrowseCategory> items, bool live, int index)
+    static Element BandOf(BrowseGroup group, IReadOnlyList<BrowseCategory> items, bool live, int index, ClassicBrowseLayout layout, float firstW)
     {
-        var state = new BandState(items, live);
+        var state = new BandState(items, live, layout);
         Element body = group switch
         {
-            BrowseGroup.Top => WrapRow(items, live, word: true),
-            BrowseGroup.ForYou => WrapRow(items, live, word: false),
-            BrowseGroup.Genres => Responsive.Of("browse:genres", state, static (st, w) => LinkGridOf(st, w), fallback: ClassicBrowseRules.DirectoryFallbackWidth),
-            BrowseGroup.MoodActivity => Responsive.Of("browse:moods", state, static (st, w) => BarGrid(st, w), fallback: ClassicBrowseRules.DirectoryFallbackWidth),
-            _ => Responsive.Of("browse:more", state, static (st, w) => MoreGrid(st, w), fallback: ClassicBrowseRules.DirectoryFallbackWidth),
+            BrowseGroup.Top => WrapRow(items, live, word: true, layout),
+            BrowseGroup.ForYou => WrapRow(items, live, word: false, layout),
+            // The Genres columns are the tier's fixed count: no width, no Responsive box, nothing to seed.
+            BrowseGroup.Genres => LinkGridOf(state),
+            // Mood and More fit INSIDE the tier at their measured width; the first frame is the region's estimate.
+            BrowseGroup.MoodActivity => Responsive.Of("browse:moods", state, static (st, w) => BarGrid(st, w), fallback: firstW),
+            _ => Responsive.Of("browse:more", state, static (st, w) => MoreGrid(st, w), fallback: firstW),
         };
         return new BoxEl
         {
@@ -169,28 +191,30 @@ internal static class ClassicBrowseDirectory
         };
     }
 
-    /// <summary>Top / For you: a wrapping row of pills at their own natural width — no grid, no column count.</summary>
-    static Element WrapRow(IReadOnlyList<BrowseCategory> items, bool live, bool word)
+    /// <summary>Top / For you: a wrapping row of pills at their own natural width — no grid, no column count. At Compact For you is one scrolling strip with a
+    /// faded edge (<c>C-Browse-Compact</c>), its chips 40 high.</summary>
+    static Element WrapRow(IReadOnlyList<BrowseCategory> items, bool live, bool word, ClassicBrowseLayout layout)
     {
         var cells = new Element[items.Count];
         for (int i = 0; i < cells.Length; i++)
         {
             var m = BrowseTiles.ModelOf(items[i], live);
-            cells[i] = word ? ClassicBrowseCells.Word(m) : ClassicBrowseCells.Name(m);
+            cells[i] = word ? ClassicBrowseCells.Word(m, layout) : ClassicBrowseCells.Name(m, layout);
         }
+        if (!word && layout.ForYouStrip) return Controls.ChipRail(cells, "browse:foryou");
         return new BoxEl { Direction = 0, Gap = ClassicBrowseRules.ChipGap, Wrap = true, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = cells };
     }
 
-    static Element LinkGridOf(BandState st, float width)
+    static Element LinkGridOf(BandState st)
     {
         var tiles = new BrowseTileModel[st.Items.Count];
         for (int i = 0; i < tiles.Length; i++) tiles[i] = BrowseTiles.ModelOf(st.Items[i], st.Live);
-        return ClassicBrowseCells.LinkGrid(tiles, width);
+        return ClassicBrowseCells.LinkGrid(tiles, st.Layout);
     }
 
     static Element BarGrid(BandState st, float width)
     {
-        int cols = ClassicBrowseTiers.BarColumns(width > 0f ? width : ClassicBrowseRules.DirectoryFallbackWidth);
+        int cols = st.Layout.MoodColumns(width);
         var cells = new Element[st.Items.Count];
         for (int i = 0; i < cells.Length; i++) cells[i] = ClassicBrowseCells.Bar(BrowseTiles.ModelOf(st.Items[i], st.Live));
         return ClassicBrowseCells.StarGrid(cols, Spacing.XS, Spacing.XS, cells) with { Key = "browse-mood-grid:" + cols.ToString(System.Globalization.CultureInfo.InvariantCulture) };
@@ -200,9 +224,8 @@ internal static class ClassicBrowseDirectory
     /// (0.2.9 <c>BrowseDirectory.cs:312</c>, kept — it only bounds the copy column).</summary>
     static Element MoreGrid(BandState st, float width)
     {
-        float w = width > 0f ? width : ClassicBrowseRules.DirectoryFallbackWidth;
-        int cols = ClassicBrowseTiers.MoreColumns(w);
-        float cellW = w / cols;
+        int cols = st.Layout.MoreColumns(width);
+        float cellW = width / cols;
         var cells = new Element[st.Items.Count];
         for (int i = 0; i < cells.Length; i++) cells[i] = ClassicBrowseCells.Peek(BrowseTiles.ModelOf(st.Items[i], st.Live), cellW);
         return ClassicBrowseCells.StarGrid(cols, Spacing.M, Spacing.M, cells) with { Key = "browse-more-grid:" + cols.ToString(System.Globalization.CultureInfo.InvariantCulture) };
@@ -227,6 +250,6 @@ internal static class ClassicBrowseDirectory
     /// <summary>The loading directory (0.2.9 <c>BrowseDirectory.Skeleton</c>): the SAME body over the seeds — 4 / 10 / 25 /
     /// 14 / 3 — with the Charts band shimmering off <see cref="HomeBrowseCards.ChartDeckSeed"/>, the whole tree
     /// <c>.Skeletonized(true)</c>. Built once per template instance and handed to its region.</summary>
-    static Element Skeleton()
-        => DirectoryBody(BrowseTaxonomy.Grouped(BrowseDirectorySeeds.Categories), live: false, s_seedChartsBand).Skeletonized(true);
+    static Element Skeleton(ClassicBrowseLayout layout, float firstW)
+        => DirectoryBody(BrowseTaxonomy.Grouped(BrowseDirectorySeeds.Categories), live: false, s_seedChartsBand, layout, firstW).Skeletonized(true);
 }

@@ -32,6 +32,16 @@ versions separately under `v*` and is not tracked in this file.)
   it is the full, resizable sidebar; and from 1920 the title bar's search grows to 480 and tabs to 240. Each step waits 40 DIP
   before it changes back (widening past 528 and 1008, narrowing past 1920), so a window resting on a line never flickers.
   Pages now share one margin that follows the space they have: 16 when narrow, 32 in a small window, 36 from 880 wide.
+- **Home, Browse, a Browse category and Search are designed for every window size.** In a narrow window Home stacks the daylist (the art on
+  top, the actions 40 tall, the clock a countdown over four bars), Recently played is two 56-tall tiles across, the shelves are a strip
+  whose next card peeks, and the failed-tab message is a 72-tall bar with a 40-tall Retry. A small window gets a 216-tall daylist
+  banner and three tiles across. A very large window caps the page at 2400 and shows ten covers across a shelf, the daylist as a
+  400-tall hero beside the Recently played tiles, and three release columns. A window under 480 tall caps the daylist at a 126-tall strip so the page
+  shows content. Browse shows two genre columns when narrow and small, three standard, six huge; the Charts tiles stack one per row (136 and 140 tall) when
+  narrow, the Mood plates are two, five and twelve across, For you is one scrolling line of 40-tall chips, and a category's shelves are a
+  strip when narrow and ten across when huge. Search runs edge to edge in a narrow window (60-tall rows, a 44-tall scrolling tab strip), scrolls its tabs
+  in a small one, and at huge size puts the top result beside Best matches. The first frame is already laid out for the window's size: Home and Browse no
+  longer build one 1100-wide frame and correct it.
 - **The artist page's header reads better at ordinary window sizes, and Top tracks arrives with the page.** The name, bio
   and stats now end a little past the middle of the header (they used to run across nine-tenths of it, over the bright
   half of the photo at a medium or 1440-wide window), and the dark side of the photo now reaches exactly as far as the

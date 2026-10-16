@@ -253,15 +253,6 @@ public class SearchFacetRulesTests
     public void EmptyKey_OnlyTheDedicatedFacetsHaveTheirOwnSentence(SearchFacet facet, string? key)
         => Assert.Equal(key, Search.EmptyKey(facet));
 
-    [Theory]
-    [InlineData(0f, 1)]
-    [InlineData(179f, 1)]
-    [InlineData(376f, 2)]             // floor((376 + 16) / 196)
-    [InlineData(375f, 1)]
-    [InlineData(1000f, 5)]
-    public void FacetGridColumns_FloorFitsAt180PlusTheGap(float width, int expected)
-        => Assert.Equal(expected, Search.FacetGridColumns(width));
-
     // ── where a genre result goes (0.2.9 SearchRoutes.OpenGenre) ────────────────────────────────────────────────────
 
     [Fact]

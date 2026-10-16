@@ -4,7 +4,7 @@
 // pill widths, the top-result card's height, cover and wash, the Songs grid's column floor, the three loading shapes' counts and bars, the Best-matches
 // edge fade, the facet row's entrance rise, and the seed genre names the genre section shimmers from. They are data, not decisions (WVTH003 allows literals
 // only in `Rules\**`); the DECISIONS stay core and pure (`Search.FacetsFrom`, `ColsFor` and its hysteresis, `FallbackRows`, `PlaylistShelfItems`,
-// `FacetGridColumns`, `ShimmerFor`, `Slides`, `ChipRowSkeletal`), and the views call them.
+// `ShimmerFor`, `Slides`, `ChipRowSkeletal`), and the views call them.
 //
 // Public, because the chip skeleton's fact (one pill per facet) is pinned by `SearchChipSkeletonPolicyTests` over `ChipSkeletonWidths`.
 
@@ -20,6 +20,9 @@ public static class ClassicSearchRules
 
     /// <summary>The selected tab's underline height, and the time it takes to grow from its left edge.</summary>
     public const float FacetUnderlineH = 3f, FacetUnderlineMs = 260f;
+
+    /// <summary>The tuned facet tab's height (8 over the 20 line, 4 under, the 3 underline), the strip's height where a tier gives none of its own.</summary>
+    public const float TabStripH = 36f;
 
     /// <summary>The real row rises this far into place when it replaces the skeleton row (the body's own 8-DIP rise).</summary>
     public const float FacetRowEnterDy = 8f;

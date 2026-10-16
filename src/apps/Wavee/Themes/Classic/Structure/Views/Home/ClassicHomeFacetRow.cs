@@ -40,6 +40,7 @@ using FluentGpu.Scroll.Effects;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.HomeUi;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
@@ -55,6 +56,10 @@ internal static class ClassicHomeFacetRow
     {
         var words = p.Words.Value;
         var state = p.Switch.Value;
+        var facts = ctx.Tier();
+        var layout = ClassicHomeTiers.Of(facts);
+        // The row's first frame: the region's width from the same-frame viewport (no fixed 600), so the words are in the form they settle in.
+        float firstWidth = ClassicRegion.EstimateWidth(facts, ctx.Hooks.UseContextSignal(Viewport.Size).Peek().Width);
 
         var labels = new string[words.Length];
         for (int i = 0; i < labels.Length; i++) labels[i] = words[i].Label;
@@ -86,7 +91,8 @@ internal static class ClassicHomeFacetRow
             };
 
         // The band (a column) cross-stretches the Responsive box, so it measures the row's full width and builds the row
-        // in the form that width holds.
+        // in the form that width holds (a Compact tier keeps the 20/28 words at every width: `C-Home-Compact`).
+        bool compactWords = layout.CompactFacets;
         Element row = Responsive.Of("home:facet", w => new BoxEl
         {
             Key = "home:facet:row",
@@ -94,11 +100,11 @@ internal static class ClassicHomeFacetRow
             Children =
             [
                 SelectorBar.Create(labels, p.Index(), onChange: OnWord,
-                    style: FacetForm.IsTitle(w) ? R.Type.FacetTitleStyle : R.Type.FacetCompactStyle),
+                    style: !compactWords && FacetForm.IsTitle(w) ? R.Type.FacetTitleStyle : R.Type.FacetCompactStyle),
                 new BoxEl { Grow = 1f, MinWidth = 0f },
                 Flow.Show(() => hasSub, following),
             ],
-        }, fallback: FacetForm.TitleMinWidth);
+        }, fallback: firstWidth);
 
         // The busy bar (tuning F7): a FIXED 3-px slot, always laid out, so the band never moves; the stretched indeterminate bar
         // inside it only FADES in and out with Switch.Bar (a Show swap with an opacity Enter/Exit: a bound opacity would snap),
@@ -147,6 +153,16 @@ internal static class ClassicHomeFacetRow
     {
         public override Element Render()
         {
+            // The tier's bar: 72 tall with a 40 Retry at Compact (`C-Error-Compact`), the stock bar elsewhere. A tier crossing re-renders only this leaf.
+            var themeFacts = UseContext(ThemeFactsContext.Signal);
+            var layout = ClassicHomeTiers.Of(themeFacts is null ? TierFacts.Unknown : themeFacts.Value.Tiers);
+            TemplateParts? barParts = null;
+            if (layout.FailureBarH > 0f)
+            {
+                barParts = new TemplateParts();
+                float barH = layout.FailureBarH;
+                barParts.Set<BoxEl>(InfoBar.PartRoot, b => b with { MinHeight = barH });
+            }
             var state = p.Switch.Value;
             string failedLabel = state.FailedTarget is { } ft ? LabelOf(p.Words.Value, ft) ?? ft : "";
             string failedTarget = state.FailedTarget ?? "";
@@ -167,7 +183,8 @@ internal static class ClassicHomeFacetRow
                             InfoBar.Create(InfoBarSeverity.Error,
                                 Strings.Home.CouldntLoad(failedLabel), Loc.Get(Strings.Home.CheckConnection),
                                 onClose: p.Dismiss,
-                                actionButton: Button.Create(Loc.Get(Strings.Common.Retry), () => p.Select(failedTarget), ButtonAppearance.Standard)),
+                                actionButton: Button.Create(Loc.Get(Strings.Common.Retry), () => p.Select(failedTarget), ButtonAppearance.Standard, layout.FailureRetry),
+                                parts: barParts),
                         ],
                     }),
                 ],

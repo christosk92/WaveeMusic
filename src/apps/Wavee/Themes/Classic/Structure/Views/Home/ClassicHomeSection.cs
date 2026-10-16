@@ -34,7 +34,7 @@ internal static class ClassicHomeSection
     /// <summary>The row-height ESTIMATE (the seed before the first row measures; GridFit corrects to the real measured height itself, this
     /// never pins it). The estimate is the surface's own geometry, never a local sum: an estimate that drifts from the rendered card re-pins
     /// the scroll.</summary>
-    static float CardRowEstimate => SurfaceGeometry.GridRowEstimate(ClassicHomeRules.SectionCardMinWidth, Shape.Grid, hasSubtitle: true);
+    static float CardRowEstimate(float minCell) => SurfaceGeometry.GridRowEstimate(minCell, Shape.Grid, hasSubtitle: true);
 
     /// <summary>The registered template of <see cref="ViewKeys.HomeSection"/>.</summary>
     public static Element Template(HomeSectionProps props, in ViewContext ctx)
@@ -42,7 +42,9 @@ internal static class ClassicHomeSection
         // The cell template runs ONCE per recycled slot and is frozen at the grid's mount (the adapter is the host's one stable delegate).
         var cell = ctx.Hooks.UseRef<Func<BoundItemScope<HomeCard>, Element>?>(null);
         Func<BoundItemScope<HomeCard>, Element> template = cell.Value ??= item => Controls.BoundSurface(in item, Shape.Grid, props.Adapt);
-        float gutter = ClassicTiers.PageOf(ctx.Tier()).Gutter;   // the one page gutter (F3)
+        var facts = ctx.Tier();
+        float gutter = ClassicTiers.PageOf(facts).Gutter;   // the one page gutter (F3)
+        var layout = ClassicHomeTiers.Of(facts);             // the tier's narrowest cell (Compact 2-3 columns, Huge ~10)
 
         return new BoxEl
         {
@@ -54,17 +56,17 @@ internal static class ClassicHomeSection
                 props.Total > 0
                     ? R.Type.TrackMeta(Strings.Home.SectionItems(props.Total))
                     : new BoxEl(),
-                new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1, Children = [Body(props, template)] },
+                new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1, Children = [Body(props, template, layout)] },
             ],
         };
     }
 
     // ── the shimmer/content/failed boundary (Skel — Pending until the whole section has landed) ────────────────────
 
-    static Element Body(HomeSectionProps props, Func<BoundItemScope<HomeCard>, Element> cell) => new SkelRegionEl(
+    static Element Body(HomeSectionProps props, Func<BoundItemScope<HomeCard>, Element> cell, ClassicHomeLayout layout) => new SkelRegionEl(
         Pending: props.Pending,
         Failed: props.Failed,
-        Content: () => props.Empty() ? Controls.Vacancy(Controls.VacancyVoice.Empty) : Grid(props, cell),
+        Content: () => props.Empty() ? Controls.Vacancy(Controls.VacancyVoice.Empty) : Grid(props, cell, layout),
         ShimmerSource: null,   // Content(seed) IS the shimmer: while Pending, the card source still holds the seed cards ⇒ blank cards
         OnFailed: () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: props.Retry),
         Reveal: SkelReveal.StaggerRows,
@@ -72,12 +74,14 @@ internal static class ClassicHomeSection
         Group: props.Group,
         SmoothResize: false);
 
-    static Element Grid(HomeSectionProps props, Func<BoundItemScope<HomeCard>, Element> cell) => ItemsView.CreateBound(props.Cards, cell,
-        RepeatLayout.GridFit(ClassicHomeRules.SectionCardMinWidth, Spacing.Card, CardRowEstimate),
+    static Element Grid(HomeSectionProps props, Func<BoundItemScope<HomeCard>, Element> cell, ClassicHomeLayout layout) => ItemsView.CreateBound(props.Cards, cell,
+        RepeatLayout.GridFit(layout.SectionMinCell, Spacing.Card, CardRowEstimate(layout.SectionMinCell)),
         new ListOptions<HomeCard>
         {
             Grow = 1f, SelectionMode = ItemsSelectionMode.None, Selector = SelectorVisual.None,
             IsItemInvokedEnabled = true, OnInvokedTyped = props.OnInvoked, IsItemEnabledTyped = props.IsEnabled,
             Scroll = new ScrollOptions { ScrollKey = props.ScrollKey },
-        });
+        })
+        // Keyed by the tier: the fit's cell floor is the layout's mount configuration, so a crossing remounts the grid (the page cross-fades it).
+        with { Key = "home-section-grid:" + ((int)layout.Tier).ToString(System.Globalization.CultureInfo.InvariantCulture) };
 }

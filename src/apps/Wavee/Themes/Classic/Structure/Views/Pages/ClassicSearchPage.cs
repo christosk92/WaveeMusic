@@ -26,6 +26,7 @@ using FluentGpu.Localization;
 using FluentGpu.Reconciler;
 using FluentGpu.Scene;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
@@ -37,14 +38,20 @@ internal static class ClassicSearchPage
     /// <summary>The registered template of <see cref="ViewKeys.SearchPage"/>.</summary>
     public static Element Template(SearchPageProps props, in ViewContext ctx)
     {
+        // The tier's record (plan 3.6, TC4): the page inset, the facet row's form, the hit rows, the columns. The first frame of every width-driven box is seeded
+        // from the region estimate — no fixed 900 / 1100. Read before the early return: the hooks run on every render, in the same order.
+        var facts = ctx.Tier();
+        var layout = ClassicSearchTiers.Of(facts);
+        float firstW = ClassicRegion.EstimateWidth(facts, ctx.Hooks.UseContextSignal(Viewport.Size).Peek().Width);
+
         if (props.Vacant) return Controls.Vacancy(Controls.VacancyVoice.Empty);
 
         // The tabs arrive WITH the first result, not a beat before it: the chip row stays skeletal until the body has
         // answered once for this query. Both rows are keyed so the swap is a mount, not an in-place patch — an unkeyed swap
         // never fires Enter — and the real row rides the body's own 8-DIP rise.
         Element chipRow = props.ChipsSkeletal
-            ? FacetRowSkeleton() with { Key = "facets-skel" }
-            : FacetRow(props) with
+            ? FacetRowSkeleton(layout) with { Key = "facets-skel" }
+            : FacetRow(props, layout) with
             {
                 Key = "facets",
                 Enter = new EnterExit(Dy: ClassicSearchRules.FacetRowEnterDy, Opacity: 0f, Active: true),
@@ -53,7 +60,7 @@ internal static class ClassicSearchPage
 
         SearchFacet facet = props.Facet;
         var region = new SkelRegionEl(
-            Pending: props.Pending, Failed: props.Failed, Content: () => ClassicSearchBody.Content(props), ShimmerSource: () => Shimmer(facet),
+            Pending: props.Pending, Failed: props.Failed, Content: () => ClassicSearchBody.Content(props, layout, firstW), ShimmerSource: () => Shimmer(facet, layout),
             OnFailed: () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: props.Retry),
             Reveal: facet == SearchFacet.Tracks ? SkelReveal.None : SkelReveal.StaggerRows,
             Style: SkeletonStyle.Default, Group: null, SmoothResize: false);
@@ -70,13 +77,13 @@ internal static class ClassicSearchPage
             {
                 Key = "facet-body:" + facetId, Animate = motion,
                 Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f, AlignSelf = FlexAlign.Stretch,
-                Padding = new Edges4(Spacing.L, Spacing.S, Spacing.L, 0f),
+                Padding = new Edges4(layout.BodyInset, Spacing.S, layout.BodyInset, 0f),
                 Children = [region],
             }
             : ScrollView(new BoxEl
             {
                 Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
-                Padding = new Edges4(Spacing.L, Spacing.S, Spacing.L, R.Space.DockReserve + Spacing.XXL),
+                Padding = new Edges4(layout.BodyInset, Spacing.S, layout.BodyInset, R.Space.DockReserve + Spacing.XXL),
                 Children =
                 [
                     new BoxEl { Key = "facet-body:" + facetId, Animate = motion, Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = [region] },
@@ -94,8 +101,9 @@ internal static class ClassicSearchPage
                 new BoxEl
                 {
                     Direction = 1, Shrink = 0f, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Gap = Spacing.S,
-                    Padding = new Edges4(Spacing.L, Spacing.M, Spacing.L, Spacing.S),
-                    Children = [QueryEcho(props.Echo), chipRow],
+                    Padding = new Edges4(layout.Gutter, Spacing.M, layout.Gutter, Spacing.S),
+                    // Compact's tab strip runs edge to edge (C-Search-Compact): it takes back the gutter, less the 4 its first tab keeps.
+                    Children = [QueryEcho(props.Echo), layout.Flush ? new BoxEl { Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Margin = new Edges4(4f - layout.Gutter, 0f, 4f - layout.Gutter, 0f), Children = [chipRow] } : chipRow],
                 },
                 body,
             ],
@@ -113,7 +121,7 @@ internal static class ClassicSearchPage
 
     /// <summary>The eleven placeholder pills at their real widths, each with a transparent underline spacer so the
     /// row's per-tab height matches a real tab (W2, §9 must-not-simplify 3).</summary>
-    static Element FacetRowSkeleton()
+    static Element FacetRowSkeleton(ClassicSearchLayout layout)
     {
         var widths = ClassicSearchRules.ChipSkeletonWidths;
         var tabs = new Element[widths.Length];
@@ -132,25 +140,34 @@ internal static class ClassicSearchPage
                     new BoxEl { Height = ClassicSearchRules.FacetUnderlineH, Shrink = 0f },
                 ],
             };
-        return new BoxEl { Direction = 0, Wrap = true, AlignItems = FlexAlign.End, MinWidth = 0f, Grow = 1f, Children = tabs };
+        // A strip tier keeps ONE row of the strip's height (clipped), so the real strip replaces it without a height change.
+        return layout.TabsWrap
+            ? new BoxEl { Direction = 0, Wrap = true, AlignItems = FlexAlign.End, MinWidth = 0f, Grow = 1f, Children = tabs }
+            : new BoxEl { Direction = 0, AlignItems = FlexAlign.End, MinWidth = 0f, Grow = 1f, Height = layout.TabStripH, ClipToBounds = true, Children = tabs };
     }
 
     /// <summary>The real facet row over the host's tab list: server rank first, All always first, counts omitted for
     /// All and for 0 (W3; the host computed the counts). <c>Selectors</c> holds one cached click per index.</summary>
-    static Element FacetRow(SearchPageProps props)
+    static Element FacetRow(SearchPageProps props, ClassicSearchLayout layout)
     {
         var tabs = new Element[props.Tabs.Count];
         for (int i = 0; i < tabs.Length; i++)
         {
             var tab = props.Tabs[i];
-            tabs[i] = FacetTab(Loc.Get(Search.FacetNameKey(tab.Facet)), tab.Count, i == props.Selected, props.Selectors[i]);
+            tabs[i] = FacetTab(Loc.Get(Search.FacetNameKey(tab.Facet)), tab.Count, i == props.Selected, props.Selectors[i], layout.TabH);
         }
-        return new BoxEl { Direction = 0, Wrap = true, AlignItems = FlexAlign.End, MinWidth = 0f, Grow = 1f, Children = tabs };
+        if (layout.TabsWrap)
+            return new BoxEl { Direction = 0, Wrap = true, AlignItems = FlexAlign.End, MinWidth = 0f, Grow = 1f, Children = tabs };
+        // Compact and Small: ONE strip that scrolls, its trailing edge faded (the tabs never wrap onto a second row on a narrow card).
+        return ScrollView(new BoxEl { Direction = 0, AlignItems = FlexAlign.End, MinWidth = 0f, Children = tabs }, horizontal: true) with
+        {
+            Grow = 0f, Height = layout.TabStripH, AutoEdgeFade = true, SuppressScrollBar = true, ScrollKey = "search:tabs", MinWidth = 0f,
+        };
     }
 
     /// <summary>One tab: label + count over a 3-DIP underline that GROWS from its left edge when selected (§0.4). Tabs
     /// are focus stops (§9 gap 3).</summary>
-    static Element FacetTab(string name, int total, bool selected, Action onClick)
+    static Element FacetTab(string name, int total, bool selected, Action onClick, float tabH)
     {
         Element label = Body(name) with
         {
@@ -162,7 +179,7 @@ internal static class ClassicSearchPage
             : [label];
         return new BoxEl
         {
-            Direction = 1, Shrink = 0f,
+            Direction = 1, Shrink = 0f, MinHeight = tabH,
             Role = AutomationRole.Tab, Focusable = true, FocusVisualMargin = Design.FocusInsetRow,
             Cursor = CursorId.Hand, OnClick = onClick,
             Children =
@@ -170,7 +187,9 @@ internal static class ClassicSearchPage
                 new BoxEl
                 {
                     Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS,
-                    Padding = new Edges4(Spacing.M, Spacing.S, Spacing.M, Spacing.XS),
+                    // A tier with its own tab height (Compact's 44 target) centres the label in what the underline leaves.
+                    Grow = tabH > 0f ? 1f : 0f,
+                    Padding = tabH > 0f ? new Edges4(Spacing.M, 0f, Spacing.M, 0f) : new Edges4(Spacing.M, Spacing.S, Spacing.M, Spacing.XS),
                     Children = labelKids,
                 },
                 selected
@@ -192,11 +211,11 @@ internal static class ClassicSearchPage
 
     /// <summary>The facet body's shimmer, in the shape of the facet it stands in for — never one bar stack. Its cards and
     /// rows are the media surface's own seed face (<see cref="SeedFace"/>), so a hydrating page shifts nothing.</summary>
-    internal static Element Shimmer(SearchFacet facet) => Search.ShimmerFor(facet) switch
+    internal static Element Shimmer(SearchFacet facet, ClassicSearchLayout layout) => Search.ShimmerFor(facet) switch
     {
-        Search.ShimmerShape.Hero => ShimmerAll(),
+        Search.ShimmerShape.Hero => ShimmerAll(layout),
         Search.ShimmerShape.CardGrid => ShimmerCardGrid(),
-        _ => ShimmerRows(),
+        _ => ShimmerRows(layout),
     };
 
     /// <summary>One seed card or row: <see cref="SurfaceParts.Seed"/> — the live surface's geometry in bones — handed to the
@@ -210,10 +229,10 @@ internal static class ClassicSearchPage
     }
 
     /// <summary>Ten seed rows at the hit row's own geometry — 48 art in the 64 floor — on the 8-DIP list gap.</summary>
-    static Element ShimmerRows()
+    static Element ShimmerRows(ClassicSearchLayout layout)
     {
         var rows = new Element[ClassicSearchRules.ShimmerRows];
-        for (int i = 0; i < rows.Length; i++) rows[i] = SeedFace(Shape.Row(SearchHitRules.RowArt));
+        for (int i = 0; i < rows.Length; i++) rows[i] = SeedFace(layout.RowShape(Shape.Row(SearchHitRules.RowArt)));
         return new BoxEl { Direction = 1, Gap = Spacing.S, AlignSelf = FlexAlign.Stretch, AlignItems = FlexAlign.Stretch, Children = rows };
     }
 
@@ -225,11 +244,13 @@ internal static class ClassicSearchPage
         return new BoxEl { Direction = 0, Wrap = true, Gap = Spacing.M, AlignSelf = FlexAlign.Stretch, Children = cards };
     }
 
-    static Element ShimmerAll()
+    static Element ShimmerAll(ClassicSearchLayout layout)
     {
+        bool beside = !float.IsNaN(layout.HeroBesideW);
         var hero = new BoxEl
         {
-            Height = ClassicSearchRules.HeroHeight, MinWidth = 0f, Grow = 1f, AlignSelf = FlexAlign.Stretch, Direction = 0,
+            Height = layout.HeroH, MinWidth = 0f, Grow = beside ? 0f : 1f, Width = beside ? layout.HeroBesideW : float.NaN, Shrink = beside ? 0f : 1f,
+            AlignSelf = FlexAlign.Stretch, Direction = 0,
             ClipToBounds = true, Corners = Radii.CardAll,
             Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
             Children =
@@ -249,6 +270,14 @@ internal static class ClassicSearchPage
                 new BoxEl { Width = ClassicSearchRules.HeroCoverW, Height = ClassicSearchRules.HeroCoverH, Shrink = 0f, AlignSelf = FlexAlign.Center, Corners = CornerRadius4.All(Radii.Card), Fill = Tok.FillSubtleTertiary },
             ],
         };
-        return new BoxEl { Direction = 1, Gap = Spacing.L, AlignSelf = FlexAlign.Stretch, Children = [hero, ShimmerCardGrid()] };
+        // Where the top result sits beside Best matches (Huge) the shimmer keeps that band: the hero and a column of seed rows.
+        Element top = beside
+            ? new BoxEl
+            {
+                Direction = 0, Gap = ClassicSearchTiers.BesideGap, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
+                Children = [hero, new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [ShimmerRows(layout)] }],
+            }
+            : hero;
+        return new BoxEl { Direction = 1, Gap = Spacing.L, AlignSelf = FlexAlign.Stretch, Children = [top, ShimmerCardGrid()] };
     }
 }
