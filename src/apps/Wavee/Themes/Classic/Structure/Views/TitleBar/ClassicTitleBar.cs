@@ -30,6 +30,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 using ViewSlots = FluentGpu.Theming.Slots;
@@ -40,7 +41,14 @@ namespace Wavee.Themes.Classic;
 internal static class ClassicTitleBar
 {
     /// <summary>The registered template of <see cref="ViewKeys.ShellTitleBar"/>.</summary>
-    public static Element Template(ShellTitleBarProps props, in ViewContext ctx) => Embed.Comp(() =>
+    public static Element Template(ShellTitleBarProps props, in ViewContext ctx)
+    {
+        // The row's spacers follow the window tier (a live reader: the bar renders once, the thunk re-renders it on a crossing).
+        var tiers = ctx.TierReader();
+        return Embed.Comp(() => Bar(props, tiers));
+    }
+
+    private static TitleBar Bar(ShellTitleBarProps props, Func<TierFacts> tiers)
     {
         var bar = new TitleBar
         {
@@ -52,10 +60,11 @@ internal static class ClassicTitleBar
             TabsElasticLane = true,            // tabs absorb the overrun; the omnibar keeps its allocation
             Trailing = () => TrailingIsland(props), CaptionLeading = () => CaptionLeadingIsland(props),
             ContentVersion = props.ContentVersion,
+            RowSpacing = () => ClassicChromeLayout.SpacingFor(tiers().Window),
         };
         bar.CenterContent = _ => CenterIsland(props);
         return bar;
-    });
+    }
 
     // ── the strip instance ───────────────────────────────────────────────────────────────────────────────────────────
 
@@ -103,8 +112,8 @@ internal static class ClassicTitleBar
         }
         if (l.TabCount)
         {
-            // Compact: the open tabs are one count button (its menu switches tabs); the strip is not mounted. At the 300-DIP floor the row
-            // cannot seat it whole beside the search and the captions, and it drops whole (as Back does) instead of clipping (TC2).
+            // Compact: the open tabs are one count button (its menu switches tabs); the strip is not mounted. Where the row cannot seat it whole beside the
+            // search and the captions it drops whole (as Back does) instead of clipping (TC2); with the Compact spacers that is below Classic's 300 floor.
             if (!l.TabsHidden) kids.Add(Embed.Comp(() => new TabCountButton(props)) with { Key = "chrome-tab-count" });
         }
         else

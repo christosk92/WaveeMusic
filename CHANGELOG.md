@@ -12,6 +12,13 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **The stock controls are 40 big in a narrow window.** Under 528 wide every dialog's buttons are 40 tall and share the row in two equal
+  columns (two of them now fit side by side even in a 300-wide window, where they used to stack), dropdowns are the normal dropdown with a
+  40-tall field and roomier rows (it was a separate button that opened a menu), the crossfade and storage-budget number boxes are 40 tall,
+  the rows of every menu that opens from a button (sort, filter, the "..." menus) are 40 tall, the log viewer keeps its Settings ›
+  Privacy & diagnostics › Logs trail with 40 by 40 crumbs, and a toast is the window's full width less 8 on each side with a 40-tall action
+  button, so it no longer runs off a 300-wide window. The title bar drops its 14-wide gap after ☰ and keeps a 16-wide drag strip instead of
+  48, so the tab-count button now always fits, and Back joins it from 332 wide. Wider windows look exactly as before.
 - **The library, Recents and Local files are laid out for every window size.** Under 600 wide the library is one column: kind chips (Albums,
   Artists, Podcasts, Audiobooks, Liked Songs) over the title, the sort as a 40-tall button that opens a menu of its words next to 40 big
   list and grid buttons, a 40-tall filter, and a tap on a row opens its album, show or artist with a breadcrumb back (the old rule folded at

@@ -260,20 +260,20 @@ internal static partial class ClassicSettings
                         s_budgetGiB.Value = Settings.StorageFormat.BodyBudgetBytes[i] / (double)(1L << 30);
                         if (D(Tab.Storage, "budgetPreset").Writer.Choose!(i)) Settings.Bump();
                     }),
-                    NumberBox.Create(s_budgetGiB, static v =>
+                    NumberField(s_budgetGiB, static v =>
                     {
                         if (!double.IsFinite(v)) return;
                         long bytes = Settings.StorageFormat.GiBToBytes(v);
                         s_budgetPreset.Value = Settings.StorageFormat.BodyBudgetExactIndex(bytes);   // a typed value snaps to Custom
                         CommitBudgetBytes(bytes);
-                    }, s_gibBox),
+                    }, s_gibBox, "budget:gib"),
                 ],
             },
-            (int)AudioCacheBudgetMode.DriveShare => NumberBox.Create(s_budgetPercent, static v =>
+            (int)AudioCacheBudgetMode.DriveShare => NumberField(s_budgetPercent, static v =>
             {
                 s_budgetPercent.Value = SettingsVerbs.ClampBudgetPercent(v);
                 if (SettingsVerbs.SetBudgetPercent(v)) Settings.Bump();
-            }, s_percentBox) with { Key = "budget:share" },
+            }, s_percentBox, "budget:share"),
             _ => new TextEl(Loc.Get(Strings.Settings.Storage.UnlimitedReserve)) { Key = "budget:unlimited", Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextSecondary },
         };
 

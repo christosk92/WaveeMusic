@@ -2,10 +2,8 @@
 //
 // The Compact rule is a floor, not a size: every hit target is at least 40 x 40 (the brief). The page asks for a control through the helpers below and gets the
 // stock control at the size the tier's record (`ClassicSettingsLayout.Target`: 40 at Compact, 0 = the control's own size elsewhere) asks for: a Large button, a link
-// with a 40 floor, a switch in a 48 x 40 cell, a segmented selector and a slider at 40. The one stock control that cannot be lifted is the ComboBox (its field is a
-// 32-DIP constant of the engine), so Compact draws a picker over the same selection: a full-width 40-DIP field that opens the choices as an anchored menu, as TC10's
-// Common blocks do (`Themes\Common\CommonTouch.cs`; this one also honours a combo's disabled items). A NumberBox's field is a 32-DIP constant too and has no seam to
-// lift it: it stays (an engine gap, listed in the lane report). Nothing here decides anything; it draws what the record asks for.
+// with a 40 floor, a switch in a 48 x 40 cell, a segmented selector and a slider at 40, the stock ComboBox at its Large (40-DIP) field filling the row with its
+// touch-padded rows (C-SettingsSections-Compact), and a NumberBox whose field is the target tall. Nothing here decides anything; it draws what the record asks for.
 //
 // The record is read from `s_layout`: the page template sets it from the tier facts before it builds the first tab, and `SettingsComponent` sets it again before a
 // component builds its control, from the facts it subscribed to, so a control is never built from a stale tier.
@@ -103,72 +101,25 @@ internal static partial class ClassicSettings
             ? RadioButton.Create(label, isSelected, onChange, RadioButton.DefaultStyle with { MinHeight = s_layout.Target }, isEnabled)
             : RadioButton.Create(label, isSelected, onChange, isEnabled: isEnabled);
 
-    // ── the combo ───────────────────────────────────────────────────────────────────────────────────────────────────────────
+    // ── the combo and the number box ────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>A choice over <paramref name="selectedIndex"/>: the stock ComboBox, or at a hit target the full-width 40-DIP menu picker (see the file header).
-    /// The arguments are the ComboBox's, so a call site changes by its name only.</summary>
+    /// <summary>A choice over <paramref name="selectedIndex"/>: the stock ComboBox, at a hit target its Large (40-DIP) field filling the stacked row with the touch
+    /// rows (the field's width is the row's: a column that grows in the card's content row). The arguments are the ComboBox's, so a call site changes by its name only.</summary>
     static Element Combo(IReadOnlyList<string> items, Signal<int> selectedIndex, float width = 220f, bool isEnabled = true, Action<int>? onChange = null,
                          IReadOnlyList<string>? itemDescriptions = null, IReadOnlyList<bool>? itemEnabled = null)
         => s_layout.Touch
             ? new BoxEl
             {
                 Direction = 1, Grow = 1f, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
-                Children = [Embed.Comp(new TouchComboProps(items, selectedIndex, onChange, itemEnabled, isEnabled, s_layout.Target), static () => new TouchCombo())],
+                Children = [ComboBox.Create(items, selectedIndex, width: float.NaN, isEnabled: isEnabled, onChange: onChange, touchInputMode: true,
+                    itemDescriptions: itemDescriptions, itemEnabled: itemEnabled, size: ControlSize.Large)],
             }
             : ComboBox.Create(items, selectedIndex, width: width, isEnabled: isEnabled, onChange: onChange, itemDescriptions: itemDescriptions, itemEnabled: itemEnabled);
 
-    internal sealed record TouchComboProps(IReadOnlyList<string> Items, Signal<int> Selected, Action<int>? OnChange, IReadOnlyList<bool>? ItemEnabled, bool IsEnabled, float Target);
-
-    /// <summary>The field that shows the selection and opens the choices as an anchored menu. The field's width is the row's: it fills the stacked content.</summary>
-    sealed class TouchCombo : Component
-    {
-        IOverlayService? _overlay;
-        OverlayHandle? _menu;
-        NodeHandle _anchor = NodeHandle.Null;
-        TouchComboProps? _props;
-
-        public override Element Render()
-        {
-            var p = _props = UseProps<TouchComboProps>();
-            _overlay = UseContext(Overlay.Service);
-            int selected = p.Selected.Value;
-            string label = (uint)selected < (uint)p.Items.Count ? p.Items[selected] : "";
-            return new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicSettingsRules.TouchComboGap, AlignSelf = FlexAlign.Stretch, Grow = 1f, MinWidth = 0f,
-                Height = p.Target, MinHeight = p.Target, Padding = new Edges4(Spacing.M, 0f, Spacing.M, 0f),
-                Corners = Radii.ControlAll, Role = AutomationRole.ComboBox, Focusable = true, OnClick = Open,
-                OnRealized = h => _anchor = h,
-                Children =
-                [
-                    new TextEl(label) { Grow = 1f, MinWidth = 0f, Size = ClassicSettingsRules.TouchComboTextSize, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Color = Tok.TextPrimary },
-                    Ui.Icon(Icons.ChevronDown, ClassicSettingsRules.TouchComboChevron, Tok.TextSecondary),
-                ],
-            }.Interactive(Interaction.Control, p.IsEnabled);
-        }
-
-        void Open()
-        {
-            if (_overlay is not { } overlay || _props is not { IsEnabled: true } p) return;
-            if (_menu is { IsOpen: true } open) { open.Close(); return; }
-            var items = new List<MenuFlyoutItem>(p.Items.Count);
-            for (int i = 0; i < p.Items.Count; i++)
-            {
-                int index = i;
-                bool enabled = p.ItemEnabled is null || (uint)index >= (uint)p.ItemEnabled.Count || p.ItemEnabled[index];
-                items.Add(MenuFlyoutItem.RadioItem(p.Items[i], index == p.Selected.Peek(), () =>
-                {
-                    if (p.Selected.Peek() == index) return;
-                    // The verb may refuse (the page's own writer): it decides, the mirror follows only what it accepted.
-                    p.Selected.Value = index;
-                    p.OnChange?.Invoke(index);
-                }, enabled: enabled));
-            }
-            var handle = overlay.Open(() => _anchor, () => MenuFlyout.Create(items, () => _menu?.Close()),
-                FlyoutPlacement.BottomEdgeAlignedLeft,
-                new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
-            _menu = handle;
-            handle.ClosedAction = () => { if (ReferenceEquals(_menu, handle)) _menu = null; };
-        }
-    }
+    /// <summary>A NumberBox whose field is the tier's hit target tall (the engine's own 32 elsewhere). Its options freeze at mount, so the two forms are keyed apart
+    /// (<paramref name="key"/>, and a touch suffix): a crossing remounts the box at the other height.</summary>
+    static Element NumberField(Signal<double> value, Action<double> onChange, NumberBox.NumberBoxOptions options, string key)
+        => s_layout.Touch
+            ? NumberBox.Create(value, onChange, options with { Style = NumberBox.DefaultStyle with { FieldHeight = s_layout.Target } }) with { Key = key + ":touch" }
+            : NumberBox.Create(value, onChange, options) with { Key = key };
 }

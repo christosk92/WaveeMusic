@@ -18,5 +18,5 @@ internal static class ClassicVideoPlacementMenu
 {
     /// <summary>The registered template of <see cref="ViewKeys.VideoPlacementMenu"/>.</summary>
     public static Element Template(VideoPlacementMenuProps props, in ViewContext ctx)
-        => MenuFlyout.Create(props.Items, props.Close);
+        => MenuFlyout.Create(props.Items, props.Close, size: OverlayFit.MenuSize);
 }

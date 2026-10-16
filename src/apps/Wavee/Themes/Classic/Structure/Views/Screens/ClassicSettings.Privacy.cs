@@ -333,7 +333,7 @@ internal static partial class ClassicSettings
                 Loc.Get(PvReports.DeleteConfirmTitle), Loc.Get(PvReports.DeleteConfirmBody),
                 Loc.Get(PvReports.Delete), () => Crash.Host.Delete(b.Dir))));
             var handle = overlay.Open(() => _anchors.TryGetValue(id, out var a) ? a : NodeHandle.Null,
-                () => MenuFlyout.Create(items, () => _menu?.Close()),
+                () => MenuFlyout.Create(items, () => _menu?.Close(), size: OverlayFit.MenuSize),
                 FlyoutPlacement.BottomEdgeAlignedRight,
                 new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
             _menu = handle;

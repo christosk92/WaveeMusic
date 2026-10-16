@@ -6,6 +6,7 @@
 // (capped at 1000) or, at Huge, two 1000-capped columns that never overlap and start on the gutter (left-aligned, never centred), and at Compact every control that can be
 // pressed is at least 40 x 40. Asserted on the records and the node geometry, never on pixels.
 
+using FluentGpu.Controls;
 using FluentGpu.Foundation;
 using FluentGpu.Scene;
 using Wavee;
@@ -87,7 +88,25 @@ public sealed partial class TierLayoutTests
 
             // Compact: every control that can be pressed in the body and the strip is at least 40 x 40 (the brief's rule).
             if (layout.Touch) AssertSettingsTargets(shell, tab, size);
+            AssertStockCombos(shell, tab, size, layout.Touch);
         });
+    }
+
+    /// <summary>The page's choices are the stock ComboBox at every tier: its Large 40-DIP field at Compact, the engine's own 32 elsewhere (unchanged).</summary>
+    static void AssertStockCombos(Shell.HeadlessShell shell, Settings.Tab tab, string size, bool touch)
+    {
+        var scene = shell.Host.Scene;
+        string slug = Settings.TabSlugs[(int)tab];
+        int combos = 0;
+        foreach (var n in Subtree(scene, Node(shell, "settings:scroll:" + slug)))
+        {
+            if (scene.InCollapsedSubtree(n) || scene.Interaction(n).Role != AutomationRole.ComboBox) continue;
+            var r = scene.AbsoluteRect(n);
+            if (r.W <= 0.5f || r.H <= 0.5f) continue;
+            combos++;
+            Assert.True(MathF.Abs(r.H - (touch ? 40f : ComboBox.MinHeight)) <= 0.5f, $"{size}: a {slug} combo is {r.H:0.#} tall");
+        }
+        if (tab == Settings.Tab.Playback) Assert.True(combos > 0, $"{size}: the Playback tab shows its combos");
     }
 
     static readonly AutomationRole[] SettingsTargetRoles =

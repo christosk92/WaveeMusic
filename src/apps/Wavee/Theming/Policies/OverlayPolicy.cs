@@ -24,10 +24,14 @@ namespace Wavee.Theming;
 /// <param name="CommandPadding">The command row's padding; null keeps the engine's 24.</param>
 /// <param name="FormWidth">The card width a FORM dialog (the report and the crash prompt: <c>OverlayFit.ShowForm</c>) takes where the band has the room for a second pane,
 /// independent of <paramref name="MaxWidth"/> (which still caps every other dialog); null keeps the opener's rung.</param>
-/// <param name="CommandHeight">A form dialog's command buttons are this tall (Compact: 40): the engine's own are a 32-DIP constant, so the form's command row is built by
-/// <c>OverlayFit.ShowForm</c> instead; 0 keeps the engine's buttons.</param>
+/// <param name="CommandSize">The command buttons' size on the engine's size axis (<c>ContentDialog.CommandSize</c>): Medium keeps the engine's 32-DIP buttons,
+/// Large is the 40-DIP target (Compact).</param>
+/// <param name="CommandMinWidth">Each command button's least width (<c>ContentDialog.CommandMinWidth</c>; the engine's 130 by default): a narrow band lowers it so two
+/// 40-tall buttons still sit side by side in its card. <see cref="StacksCommands"/> reads it.</param>
+/// <param name="UniformCommands">The command buttons share the row equally (<c>ContentDialog.UniformCommandWidths</c>: the Compact boards' two-column grid) instead of
+/// each growing from its own label.</param>
 public sealed record DialogFit(bool Fill, float Inset, float MaxWidth, float EdgeY, Edges4? ContentPadding = null, Edges4? CommandPadding = null,
-    float? FormWidth = null, float CommandHeight = 0f)
+    float? FormWidth = null, ControlSize CommandSize = ControlSize.Medium, float CommandMinWidth = DialogFit.EngineButtonMinWidth, bool UniformCommands = false)
 {
     /// <summary>The engine's card with the window caps only: the opener's rung, never wider than the window less the inset.</summary>
     public static DialogFit Stock { get; } = new(Fill: false, Inset: 16f, MaxWidth: 548f, EdgeY: 24f);
@@ -61,16 +65,16 @@ public sealed record DialogFit(bool Fill, float Inset, float MaxWidth, float Edg
     /// bounds its own body scroller by its tallest height less 200.</summary>
     public const float ChromeHeight = 200f;
 
-    /// <summary>The engine's command buttons are at least this wide (<c>ContentDialog.ButtonMinW</c>) and sit this far apart (<c>BtnGap</c>).</summary>
+    /// <summary>The engine's command buttons are at least this wide by default (<c>ContentDialog.CommandMinWidth</c>) and sit this far apart (<c>BtnGap</c>).</summary>
     public const float EngineButtonMinWidth = 130f, EngineButtonGap = 8f;
 
-    /// <summary>The command row stacks its buttons in a column when <paramref name="buttons"/> of them cannot sit side by side inside a card
-    /// <paramref name="cardWidth"/> wide (a 300-DIP window's 268 holds two 130-wide buttons only with no padding at all).</summary>
+    /// <summary>The command row stacks its buttons in a column when <paramref name="buttons"/> of them, each at least <see cref="CommandMinWidth"/> wide, cannot sit side
+    /// by side inside a card <paramref name="cardWidth"/> wide (a 300-DIP window's 268 holds two 130-wide buttons only with no padding at all).</summary>
     public bool StacksCommands(float cardWidth, int buttons)
     {
         if (buttons < 2) return false;
         float inner = cardWidth - (CommandPadding?.Horizontal ?? 2f * EnginePadding);
-        return inner < buttons * EngineButtonMinWidth + (buttons - 1) * EngineButtonGap;
+        return inner < buttons * CommandMinWidth + (buttons - 1) * EngineButtonGap;
     }
 
     /// <summary>The widest a dialog's body may be in a window <paramref name="viewportWidth"/> wide: the card's width less the text region's padding. A body
@@ -88,11 +92,13 @@ public sealed record DialogFit(bool Fill, float Inset, float MaxWidth, float Edg
         => MathF.Min(nominal, MathF.Max(96f, MaxHeightFor(viewportHeight) - ChromeHeight));
 }
 
-/// <summary>Where the engine's toast lane docks, and how far above the docked player bar it floats.</summary>
+/// <summary>Where the engine's toast lane docks, how far above the docked player bar it floats, and its geometry.</summary>
 /// <param name="Placement">The lane's corner or edge.</param>
 /// <param name="GapAboveBar">The gap between the lane and the player bar's top.</param>
 /// <param name="BarHeight">The height of the bar the lane clears at this band when it is not the policy's own (Compact's mini bar), else null.</param>
-public sealed record ToastDock(ToastPlacement Placement, float GapAboveBar, float? BarHeight = null)
+/// <param name="Lane">The lane's side margin, card widths and action size (the engine's <c>ToastLaneStyle</c>, provided as <c>Toast.Lane</c>); null keeps the engine's
+/// (24 in from each side, 300-380 cards, a 32-DIP action).</param>
+public sealed record ToastDock(ToastPlacement Placement, float GapAboveBar, float? BarHeight = null, ToastLaneStyle? Lane = null)
 {
     /// <summary>The engine's own dock margin from the screen edge (`ToastController.BuildLane`): the lane always sits this far in, then
     /// <c>Toast.EdgeInset</c> more.</summary>
@@ -132,7 +138,10 @@ public sealed record SelectionFit(float MinHeight, float? SideInset, Edges4 Padd
 /// <param name="Vacancy">The vacancy's type and padding.</param>
 /// <param name="Selection">The standalone selection bar.</param>
 /// <param name="ContextSheet">Context menus open as a bottom sheet (<c>Overlay.ContextSheet</c>) instead of an anchored menu.</param>
-public sealed record OverlayLayout(DialogFit Dialog, ToastDock Toast, VacancyFit Vacancy, SelectionFit Selection, bool ContextSheet)
+/// <param name="MenuSize">The anchored menus' rows on the engine's size axis (<c>MenuFlyout.Create(…, size:)</c>): Medium keeps the engine's 36-DIP rows, Large is the
+/// 40-DIP target (Compact).</param>
+public sealed record OverlayLayout(DialogFit Dialog, ToastDock Toast, VacancyFit Vacancy, SelectionFit Selection, bool ContextSheet,
+    ControlSize MenuSize = ControlSize.Medium)
 {
     /// <summary>The shell as it shipped: the engine's card, the toast lane bottom right, the page-hero vacancy, anchored menus.</summary>
     public static OverlayLayout Stock { get; } = new(DialogFit.Stock, ToastDock.Stock, VacancyFit.Stock, SelectionFit.Stock, ContextSheet: false);
@@ -143,6 +152,7 @@ public sealed record OverlayLayout(DialogFit Dialog, ToastDock Toast, VacancyFit
         var problems = new List<string>();
         if (Dialog is null) problems.Add("Dialog is missing");
         else if (Dialog.Inset < 0f || Dialog.EdgeY < 0f || Dialog.MaxWidth <= 0f) problems.Add("the dialog's inset, edge and width cap must be positive");
+        else if (!float.IsFinite(Dialog.CommandMinWidth) || Dialog.CommandMinWidth < 0f) problems.Add("the dialog's command min width must be zero or more");
         if (Toast is null) problems.Add("Toast is missing");
         if (Vacancy is null) problems.Add("Vacancy is missing");
         if (Selection is null) problems.Add("Selection is missing");

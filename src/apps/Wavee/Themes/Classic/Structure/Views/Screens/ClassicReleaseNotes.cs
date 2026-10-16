@@ -358,9 +358,9 @@ internal static partial class ClassicReleaseNotes
     static string PickerLabel(ReleaseNotesIndexEntry e)
         => ReleaseDate(e.Date) is { Length: > 0 } date ? e.Version + "  ·  " + date : e.Version;
 
-    /// <summary>Choosing a release opens its page (a NEW keep-alive slot keyed by the version, like a rail row). At the hit target the choices are the 40-DIP menu picker
-    /// (a ComboBox's field is fixed at 32); below it the stock combo. The combo freezes its items, signal and handler at mount, so the signal follows the selection
-    /// through an effect, the handler reads the CURRENT rows, and the combo is keyed by what it was built from.</summary>
+    /// <summary>Choosing a release opens its page (a NEW keep-alive slot keyed by the version, like a rail row). At the hit target the choices are the stock combo at its
+    /// 40-DIP field (`CommonTouch.Picker`); below it the stock combo at its own. The combo freezes its items, signal and handler at mount, so the signal follows the
+    /// selection through an effect, the handler reads the CURRENT rows, and the combo is keyed by what it was built from.</summary>
     sealed class ReleasePickerView : Component
     {
         readonly Signal<int> _selected = new(0);
@@ -378,8 +378,7 @@ internal static partial class ClassicReleaseNotes
             }
             UseEffect(() => { _selected.Value = index; }, DepKey.From(index));
 
-            if (a.Target > 0f) return Wavee.Themes.Common.CommonTouch.Picker(labels, _selected, K.PickerWidth, a.Target, Pick);
-            return ComboBox.Create(labels, _selected, width: K.PickerWidth, onChange: Pick)
+            return Wavee.Themes.Common.CommonTouch.Picker(labels, _selected, K.PickerWidth, a.Target, Pick)
                 with { Key = "rn:picker:combo:" + labels.Length.ToString(System.Globalization.CultureInfo.InvariantCulture) };
         }
 

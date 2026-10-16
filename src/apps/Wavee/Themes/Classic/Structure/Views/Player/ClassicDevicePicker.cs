@@ -40,7 +40,7 @@ internal static class ClassicDevicePicker
         return new BoxEl
         {
             Direction = 1,
-            Children = [MenuFlyout.Create(items, props.Close, parts: parts) with { Key = "devices:" + version }],
+            Children = [MenuFlyout.Create(items, props.Close, parts: parts, size: OverlayFit.MenuSize) with { Key = "devices:" + version }],
         };
     }
 

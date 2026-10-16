@@ -84,13 +84,17 @@ public static class ClassicOverlayTiers
     public static ClassicOverlayTier Compact { get; } = new()
     {
         Core = new OverlayLayout(
+            // Every dialog's commands are the engine's buttons at the 40-DIP target, a two-column grid (C-Dialogs-Compact): equal shares from a 96 floor, so two sit
+            // side by side in a 300-DIP window's 268 card (236 inside the 16 padding) and three stack until the card holds 3 x 96 + 2 x 8.
             Dialog: new DialogFit(Fill: true, Inset: 16f, MaxWidth: 548f, EdgeY: 16f,
                 ContentPadding: new Edges4(16f, 20f, 16f, 20f), CommandPadding: new Edges4(16f, 8f, 16f, 16f),
-                CommandHeight: ClassicScreenDialogTiers.CompactTarget),   // the report and crash forms' 40-DIP commands (the engine's own are 32)
-            Toast: new ToastDock(ToastPlacement.BottomCenter, GapAboveBar: 8f, BarHeight: ClassicPlayerTiers.MiniHeight),
+                CommandSize: ControlSize.Large, CommandMinWidth: 96f, UniformCommands: true),
+            // C-Toasts-Compact: the card is the window less 8 either side, its action a 40-DIP button.
+            Toast: new ToastDock(ToastPlacement.BottomCenter, GapAboveBar: 8f, BarHeight: ClassicPlayerTiers.MiniHeight,
+                Lane: new ToastLaneStyle { SideMargin = 8f, FillWidth = true, ActionSize = ControlSize.Large }),
             Vacancy: new VacancyFit(QuietTitle: true, Padding: 16f, ActionHeight: 40f),
             Selection: new SelectionFit(MinHeight: 48f, SideInset: 8f, Padding: new Edges4(4f, 4f, 4f, 4f)),
-            ContextSheet: true),
+            ContextSheet: true, MenuSize: ControlSize.Large),   // the anchored menus (sort, filter, the "..." menus) at 40-DIP rows
         CardFills = true, CardMargin = 16f, CardPadding = new Edges4(16f, 20f, 16f, 16f), CardGap = 12f, CardButtonHeight = 40f,
         PanelMargin = 8f,
         StripHeight = 40f, StripPadX = 16f, StripCorner = 0f, StripRetryHeight = 40f,

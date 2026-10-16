@@ -17,9 +17,8 @@
 // arithmetic over the sections' weights, never a width comparison. A tab with one section stays one column. The columns never exceed 1000 each and the pair is
 // LEFT-ALIGNED (never centred), as the Huge boards draw.
 //
-// TOUCH. `Target` is the Compact hit target (40): the page asks for a control at that size and the record never decides what a control is. The stock ComboBox's
-// field is a 32-DIP constant of the engine, so a Compact page draws the 40-DIP menu picker (`ClassicSettings.Touch.cs`) over the same selection, as TC10's Common
-// blocks do; a NumberBox's 32 field cannot be lifted (an engine gap, listed in the lane report).
+// TOUCH. `Target` is the Compact hit target (40): the page asks for a control at that size and the record never decides what a control is. The stock ComboBox takes
+// its Large (40-DIP) field and fills the stacked row, and a NumberBox takes a 40-DIP field through its options' style (`ClassicSettings.Touch.cs`).
 //
 // Public, so `Wavee.Tests` pins the records (the assembly has no InternalsVisibleTo).
 

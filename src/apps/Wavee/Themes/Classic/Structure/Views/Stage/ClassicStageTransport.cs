@@ -229,7 +229,7 @@ internal static class ClassicStageTransport
             {
                 if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
                 t.OpenDevicePicker();
-                var opened = overlay.Open(() => anchor.Value, () => MenuFlyout.Create(t.DeviceItems(), () => handle.Value?.Close()),
+                var opened = overlay.Open(() => anchor.Value, () => MenuFlyout.Create(t.DeviceItems(), () => handle.Value?.Close(), size: OverlayFit.MenuSize),
                     FlyoutPlacement.TopEdgeAlignedRight, new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = true });
                 st.MenuOpen(true);                                                          // the flyout holds the chrome (V-U22)
                 opened.ClosedAction = () => { handle.Value = null; st.MenuOpen(false); };

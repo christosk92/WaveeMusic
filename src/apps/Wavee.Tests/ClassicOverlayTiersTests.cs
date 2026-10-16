@@ -155,12 +155,46 @@ public sealed class ClassicOverlayTiersTests
     }
 
     [Theory]
-    [InlineData(268f, 2, true)]      // a 300-DIP window: two 130-wide buttons do not fit a 236 inner width
+    [InlineData(268f, 2, false)]     // a 300-DIP window: two 96-wide buttons fit a 236 inner width side by side
     [InlineData(268f, 1, false)]
-    [InlineData(368f, 2, false)]     // 400: 336 holds 268
-    [InlineData(368f, 3, true)]      // three buttons need 406
-    public void A_Compact_dialog_stacks_its_buttons_where_they_cannot_sit_side_by_side(float card, int buttons, bool stacks)
+    [InlineData(268f, 3, true)]      // three need 304
+    [InlineData(368f, 2, false)]     // 400: 336 holds them
+    [InlineData(368f, 3, false)]     // and three
+    public void A_Compact_dialog_stacks_its_buttons_only_where_they_cannot_sit_side_by_side(float card, int buttons, bool stacks)
         => Assert.Equal(stacks, ClassicOverlayTiers.Compact.Core.Dialog.StacksCommands(card, buttons));
+
+    [Fact]
+    public void Compact_gives_every_dialog_the_engines_40_DIP_commands_in_equal_columns_and_the_other_bands_keep_the_engines_own()
+    {
+        var compact = ClassicOverlayTiers.Compact.Core.Dialog;
+        Assert.Equal(ControlSize.Large, compact.CommandSize);
+        Assert.Equal(40f, ControlMetrics.For(compact.CommandSize).MinHeight);
+        Assert.True(compact.UniformCommands);
+        Assert.Equal(96f, compact.CommandMinWidth);
+        foreach (var fit in new[] { ClassicOverlayTiers.Standard.Core.Dialog, ClassicOverlayTiers.Huge.Core.Dialog })
+        {
+            Assert.Equal(ControlSize.Medium, fit.CommandSize);
+            Assert.Equal(DialogFit.EngineButtonMinWidth, fit.CommandMinWidth);
+            Assert.False(fit.UniformCommands);
+        }
+    }
+
+    [Fact]
+    public void Compact_menus_and_the_toast_lane_take_the_40_DIP_target_and_the_lane_fills_the_window_less_16()
+    {
+        Assert.Equal(ControlSize.Large, ClassicOverlayTiers.Compact.Core.MenuSize);
+        Assert.Equal(40f, MenuFlyout.RowHeightFor(ClassicOverlayTiers.Compact.Core.MenuSize));
+        var lane = ClassicOverlayTiers.Compact.Core.Toast.Lane;
+        Assert.NotNull(lane);
+        Assert.True(lane!.FillWidth);
+        Assert.Equal(8f, lane.SideMargin);
+        Assert.Equal(ControlSize.Large, lane.ActionSize);
+        foreach (var tier in new[] { ClassicOverlayTiers.Standard, ClassicOverlayTiers.Huge })
+        {
+            Assert.Equal(ControlSize.Medium, tier.Core.MenuSize);
+            Assert.Null(tier.Core.Toast.Lane);   // the engine's lane: 24 in, 300-380 cards, a 32-DIP action
+        }
+    }
 
     [Theory]
     [InlineData(320f, 2)]            // the engine's own compact rung holds its two buttons

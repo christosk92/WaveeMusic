@@ -16,7 +16,7 @@
 //
 // TIERS (themes plan 3.2, TC10): the viewer reads `ctx.Tier()` through `CommonTierComponent` into a `CommonLogsLayout` (Rules\Tiers.cs). Compact draws a row as two lines
 // (time, level and count over category and message; no column header: the sort lives in the "..." menu), the toolbar wraps with 40-DIP targets, the ComboBoxes become
-// menu pickers, the crumbs go (their stock items are 32 DIP tall); Compact and Small put the picker cluster under the title; Short at those widths drops the crumbs and the caption and scrolls the toolbar as one line; every
+// stock combos at their 40-DIP field, the crumbs at their Large (40 x 40) size; Compact and Small put the picker cluster under the title; Short at those widths drops the crumbs and the caption and scrolls the toolbar as one line; every
 // tier is one column capped at the page's max width (the Huge fill rule).
 //
 // NOTHING HERE READS A CLOCK PER FRAME (ch 27 N12): the live tail polls at 750 ms and bumps only when `Log.Version` moved (and not at all on a
@@ -206,11 +206,12 @@ internal static class CommonLogs
             // combo's remount key onto the wrong sibling.
             var title = R.Type.PageHero(Loc.Get(Strings.Logs.Title)) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
             // Settings › Privacy & diagnostics › Logs. The first crumb opens Settings on its remembered tab; the
-            // second lands on the tab this page belongs to; the last is this page and does nothing. Compact and the bare Short header drop them (the Back of the title bar stays).
+            // second lands on the tab this page belongs to; the last is this page and does nothing. At a hit target the crumbs are the Large ones (40 x 40); the bare
+            // Short header drops them (the Back of the title bar stays).
             Element[] lane = !layout.ShowCrumbs
                 ? [title]
                 : [BreadcrumbBar.Create([Loc.Get(Strings.Nav.Settings), Loc.Get(Strings.Settings.Tabs.Privacy), Loc.Get(Strings.Logs.Title)],
-                    _onCrumb ??= host.OpenCrumb), title];
+                    _onCrumb ??= host.OpenCrumb, size: layout.Target > 0f ? ControlSize.Large : ControlSize.Medium), title];
             BoxEl titleLane = new()
             {
                 Key = "logs:title", Direction = 1, MinWidth = 0f, Justify = FlexJustify.Center, Gap = Spacing.XXS, Children = lane,
@@ -365,7 +366,7 @@ internal static class CommonLogs
             // The bare Short header has no Open folder button: it lives here.
             if (_layout.BareHeader) items.Add(new(Loc.Get(Strings.Logs.OpenFolder), Icons.Folder, true, host.OpenLogFolder));
             // Same anchored-flyout shape as Shell.UI.cs's history menu and `ClassicSettings.VideoOverrides.cs`'s manager menu.
-            var handle = overlay.Open(() => _moreAnchor, () => MenuFlyout.Create(items, () => _menu?.Close()),
+            var handle = overlay.Open(() => _moreAnchor, () => MenuFlyout.Create(items, () => _menu?.Close(), size: OverlayFit.MenuSize),
                 FlyoutPlacement.BottomEdgeAlignedRight,
                 new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
             _menu = handle;

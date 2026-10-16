@@ -74,6 +74,11 @@
 // `Controls.PlayButton` / `PrimaryButton`. The hero ladders and heights left the core (`ArtistHeroLayout.TierFor` / `For` and their constants,
 // `ProfileHeroLayout.For` / `Make`, `ArtistSections.TopBandWide`, `ReaderShape.Narrow` / `Medium` / `MediumBelow`, `ProfileGridFit.ShowsStrip` / `MinCell`);
 // removed before any external theme existed, as 1.2 did.
+// 1.19 (compact control sizes): the engine's stock controls reach the 40-DIP target, so the structure sets their own knobs: `DialogFit.CommandSize`,
+// `.CommandMinWidth` and `.UniformCommands` (every dialog's command buttons per band, through the engine's `ContentDialog.CommandSize` /
+// `CommandMinWidth` / `UniformCommandWidths`) replace `DialogFit.CommandHeight` and the hand-built form command row; `OverlayLayout.MenuSize` (the anchored menus' rows); the optional `ToastDock.Lane` (the
+// engine's `ToastLaneStyle`: the lane's side margin, card widths and action size, provided as `Toast.Lane`). `DialogFit.CommandHeight` is removed
+// before any external theme existed, as 1.2 did.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -89,7 +94,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 18;
+    public const int Minor = 19;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

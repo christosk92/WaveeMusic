@@ -222,7 +222,7 @@ internal sealed class ClassicLibraryHead(INavLibraryHeadHost s) : Component
         var items = s.PagesMenu(_pages, page);
         _pagesMenu = svc.Open(
             () => s.DropdownNode,
-            () => MenuFlyout.Create(items, () => _pagesMenu?.Close(), minWidth: ClassicNavHeadLayout.MenuMinWidth),
+            () => MenuFlyout.Create(items, () => _pagesMenu?.Close(), minWidth: ClassicNavHeadLayout.MenuMinWidth, size: OverlayFit.MenuSize),
             FlyoutPlacement.BottomEdgeAlignedLeft,
             new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
             { ConstrainToRootBounds = false });
@@ -605,7 +605,7 @@ internal sealed class ClassicLibraryToolbar(INavLibraryHeadHost s) : Component
         if (s.PaneRef?.MenuOverlay is not { } svc || items.Count == 0) return;
         if (_menu is { IsOpen: true } open) { open.Close(); return; }
         s.BindMenuOverlay(svc);
-        _menu = svc.Open(() => anchor, () => MenuFlyout.Create(items, () => _menu?.Close(), minWidth: ClassicNavHeadLayout.MenuMinWidth),
+        _menu = svc.Open(() => anchor, () => MenuFlyout.Create(items, () => _menu?.Close(), minWidth: ClassicNavHeadLayout.MenuMinWidth, size: OverlayFit.MenuSize),
             FlyoutPlacement.BottomEdgeAlignedLeft,
             new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
             { ConstrainToRootBounds = false });

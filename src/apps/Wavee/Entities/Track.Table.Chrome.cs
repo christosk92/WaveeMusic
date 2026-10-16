@@ -579,7 +579,7 @@ public readonly partial struct Track
                 var current = h._sort.Value;
                 bool active = TableRules.SortDiffersFromDefault(current, h.P.DefaultSort);
                 void Toggle() => ToggleOverlay(overlay, anchor, handle,
-                    () => MenuFlyout.Create(h.SortItems(), () => handle.Value?.Close()), MenuPopup);
+                    () => MenuFlyout.Create(h.SortItems(), () => handle.Value?.Close(), size: OverlayFit.MenuSize), MenuPopup);
                 return h.Kit.Labeled(Icons.Sort, h.SortLabelFor(current.Column), active, Toggle, n => anchor.Value = n, h.Kit.Chevron());
             }
         }
@@ -646,7 +646,7 @@ public readonly partial struct Track
                     return items;
                 }
 
-                void Toggle() => ToggleOverlay(overlay, anchor, handle, () => MenuFlyout.Create(Items(), () => handle.Value?.Close()), MenuPopup);
+                void Toggle() => ToggleOverlay(overlay, anchor, handle, () => MenuFlyout.Create(Items(), () => handle.Value?.Close(), size: OverlayFit.MenuSize), MenuPopup);
                 Element more = h.Kit.IconButton(Icons.More, false, Toggle, n => anchor.Value = n);
                 return ToolTip.Wrap(h.Kit.MoreSlot(more, activeFilters), Loc.Get(Strings.Common.More));
             }

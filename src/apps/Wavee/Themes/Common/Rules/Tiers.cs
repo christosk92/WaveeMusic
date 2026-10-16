@@ -94,7 +94,7 @@ public readonly record struct CommonDiagnosticsLayout(
 /// <param name="MaxWidth">The widest the page grows (0 = fill).</param>
 /// <param name="StackHeader">The picker cluster (caption, session, open folder) under the title instead of beside it.</param>
 /// <param name="BareHeader">Short: no crumbs and no caption, the title and the picker on one line.</param>
-/// <param name="ShowCrumbs">The breadcrumb bar over the title (its items are stock 32-DIP controls, so Compact, which needs 40, and the bare Short header go without; the title bar's Back stays).</param>
+/// <param name="ShowCrumbs">The breadcrumb bar over the title (at Compact its crumbs are the stock Large ones, at least 40 x 40; the bare Short header goes without, the title bar's Back stays).</param>
 /// <param name="TwoLineRows">A row is two lines (time, level, count over category and message) and the column header is gone.</param>
 /// <param name="OneLineToolbar">Short: the toolbar is one scrolling line instead of a wrapping block.</param>
 /// <param name="Target">The smallest hit target (0 = the control's own size).</param>
@@ -111,7 +111,7 @@ public readonly record struct CommonLogsLayout(
         bool narrow = width <= WidthTier.Small;
         return new CommonLogsLayout(
             CommonTiers.WideGutter(width), CommonTiers.ColumnMax, narrow, narrow && CommonTiers.Short(tier.Height),
-            !compact && !(narrow && CommonTiers.Short(tier.Height)), compact,
+            !(narrow && CommonTiers.Short(tier.Height)), compact,
             narrow && CommonTiers.Short(tier.Height), CommonTiers.Target(width),
             compact ? CommonLogsRules.CompactRowExtent : CommonLogsRules.EstimatedRowExtent,
             compact ? CommonLogsRules.CompactDetailInset : CommonLogsRules.DetailInset);

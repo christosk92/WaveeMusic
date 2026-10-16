@@ -113,7 +113,7 @@ internal sealed class ClassicOverlayChrome : Component
             if (moreHandle.Value is { IsOpen: true } open) { open.Close(); return; }
             moreHandle.Value = overlay.Open(
                 () => moreAnchor.Value,
-                () => MenuFlyout.Create(props.MoreMenu(), () => moreHandle.Value?.Close()),
+                () => MenuFlyout.Create(props.MoreMenu(), () => moreHandle.Value?.Close(), size: OverlayFit.MenuSize),
                 FlyoutPlacement.TopEdgeAlignedRight,
                 // A MENU, so the DEFAULT chrome (Flyout) - which is also the only chrome that carries an OS window
                 // material. `Chrome: PopupChrome.Popup` mapped to PopupWindowMaterial.None, which fails the second

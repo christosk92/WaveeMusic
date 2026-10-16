@@ -173,7 +173,7 @@ internal static partial class ClassicLibraryPage
                 if (_handle is { IsOpen: true } open) { open.Close(); return; }
                 _handle = overlay.Open(
                     () => _anchor,
-                    () => MenuFlyout.Create(Items(), () => _handle?.Close()),
+                    () => MenuFlyout.Create(Items(), () => _handle?.Close(), size: OverlayFit.MenuSize),
                     FlyoutPlacement.BottomEdgeAlignedLeft,
                     new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup) { ConstrainToRootBounds = false });
                 _handle.ClosedAction = () => _handle = null;

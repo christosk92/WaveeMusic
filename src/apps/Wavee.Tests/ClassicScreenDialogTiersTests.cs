@@ -5,6 +5,7 @@
 // the arithmetic, never on pixels. What only a mounted tree can say (the card inside the window, no horizontal overflow, Compact targets, a 330-tall card) is
 // `Wavee.ShellTests\TierLayoutTests.Dialogs`.
 
+using FluentGpu.Controls;
 using Wavee.Themes.Classic;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
@@ -138,7 +139,7 @@ public sealed class ClassicScreenDialogTiersTests
     public void Compact_lifts_the_form_dialogs_commands_to_40_and_fills_the_window()
     {
         var fit = ClassicOverlayTiers.Compact.Core.Dialog;
-        Assert.Equal(ClassicScreenDialogTiers.CompactTarget, fit.CommandHeight);
+        Assert.Equal(ClassicScreenDialogTiers.CompactTarget, ControlMetrics.For(fit.CommandSize).MinHeight);   // the engine's own buttons, at 40
         Assert.Null(fit.FormWidth);
         Assert.Equal(368f, fit.FormCardWidthFor(548f, 400f));
         Assert.Equal(268f, fit.FormCardWidthFor(548f, 300f));
@@ -154,11 +155,11 @@ public sealed class ClassicScreenDialogTiersTests
         Assert.Equal(992f, huge.FormBodyWidth(500f, 2560f));
         Assert.Equal(548f, huge.MaxWidth);
         Assert.Equal(548f, huge.WidthFor(548f, 2560f));                              // any other dialog never stretches
-        Assert.Equal(0f, huge.CommandHeight);
+        Assert.Equal(ControlSize.Medium, huge.CommandSize);
         foreach (var fit in new[] { ClassicOverlayTiers.Standard.Core.Dialog })
         {
             Assert.Null(fit.FormWidth);
-            Assert.Equal(0f, fit.CommandHeight);
+            Assert.Equal(ControlSize.Medium, fit.CommandSize);
             Assert.Equal(548f, fit.FormCardWidthFor(548f, 1440f));
             Assert.Equal(500f, fit.FormBodyWidth(500f, 1440f));
         }

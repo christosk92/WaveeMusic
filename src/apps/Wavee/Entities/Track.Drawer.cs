@@ -292,7 +292,7 @@ public readonly partial struct Track
             // The way BACK out of an override — without it the choice is a one-way door.
             items[n + 1] = MenuFlyoutItem.RadioItem(Loc.Get(Strings.Detail.Versions.UseDefaultQuality), current is null,
                 () => Playback.SetFormatOverride(id, null));
-            var handle = overlay.Open(_anchorOf, () => MenuFlyout.Create(items, _close), FlyoutPlacement.BottomEdgeAlignedRight,
+            var handle = overlay.Open(_anchorOf, () => MenuFlyout.Create(items, _close, size: OverlayFit.MenuSize), FlyoutPlacement.BottomEdgeAlignedRight,
                 new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
             handle.ClosedAction = () => { if (ReferenceEquals(cell.Value, handle)) cell.Value = null; };
             cell.Value = handle;

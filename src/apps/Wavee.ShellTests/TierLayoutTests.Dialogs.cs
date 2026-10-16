@@ -7,7 +7,8 @@
 //   · the card's width: the window less 16 where it fills (Compact) or is narrower than its own 548, the board's 1040 two-pane card at Huge;
 //   · the record in use: the second pane (divider) exists only at Huge, the folded "Report preview" row only at Compact, and the body is as wide as the record says;
 //   · the card lies inside the window and the body never runs past the card (no horizontal overflow);
-//   · at Compact every hit target in the card is at least 40 x 40 (the lifted command row included: the engine's own are 32);
+//   · at Compact every hit target in the card is at least 40 x 40 (the command row included: the engine's own buttons at their Large size), and elsewhere the
+//     command buttons are the engine's 32;
 //   · at 330 tall the card clamps to the window and its command row stays on screen, under the body that scrolls.
 //
 // The dialogs are opened by core code from an event handler, outside any render: the harness publishes the tiers the opener reads (as `ClassicOverlayTierTests` does).
@@ -156,6 +157,8 @@ public sealed partial class TierLayoutTests
                 .Where(r => r.Bottom >= card.Bottom - 100f && r.Bottom <= card.Bottom + 0.5f && r.X >= card.X - 0.5f && r.Right <= card.Right + 0.5f).ToList();
             Assert.True(commands.Count >= 2, $"{size.Name}: the card keeps its two commands on screen (found {commands.Count})");
             Assert.True(commands.All(r => r.Y >= card.Y - 0.5f), $"{size.Name}: a command is pushed out of the card");
+            float commandH = compact ? 40f : 32f;   // the engine's own command buttons: Large at Compact, the stock 32 elsewhere
+            Assert.True(commands.All(r => MathF.Abs(r.H - commandH) <= 0.5f), $"{size.Name}: the commands are not {commandH} tall");
 
             if (compact) AssertCardTargets(scene, all, card, size);
             overlay!.CloseAll();
@@ -163,7 +166,7 @@ public sealed partial class TierLayoutTests
         });
     }
 
-    /// <summary>At Compact every hit target in the card (the lifted command row, the fields, the check boxes, the links, the pickers) is at least 40 x 40.</summary>
+    /// <summary>At Compact every hit target in the card (the command row, the fields, the check boxes, the links, the pickers) is at least 40 x 40.</summary>
     static void AssertCardTargets(SceneStore scene, List<NodeHandle> all, RectF card, TierSize size)
     {
         int targets = 0;

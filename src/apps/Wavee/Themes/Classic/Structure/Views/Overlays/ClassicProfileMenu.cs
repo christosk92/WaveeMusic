@@ -34,7 +34,7 @@ internal static class ClassicProfileMenu
             [
                 AccountHeader(props),
                 new BoxEl { Height = 1f, Margin = ClassicOverlayRules.ProfileMenuDividerMargin, Fill = Tok.StrokeDividerDefault },
-                MenuFlyout.Create(props.Items, props.Close, width),
+                MenuFlyout.Create(props.Items, props.Close, width, size: OverlayFit.MenuSize),
             ],
         };
     }

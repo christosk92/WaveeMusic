@@ -688,7 +688,7 @@ internal static partial class ClassicDetailFrame
             {
                 if (Controls.IsNullOverlay(overlay)) return;
                 if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
-                var opened = overlay.Open(() => anchor.Value, () => MenuFlyout.Create(MenuItems(artists), () => handle.Value?.Close()),
+                var opened = overlay.Open(() => anchor.Value, () => MenuFlyout.Create(MenuItems(artists), () => handle.Value?.Close(), size: OverlayFit.MenuSize),
                     FlyoutPlacement.BottomEdgeAlignedLeft,
                     new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
                 handle.Value = opened;

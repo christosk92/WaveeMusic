@@ -678,7 +678,7 @@ internal static partial class ClassicPlayerBar
                 // A PLAIN MenuFlyout upward — never CommandBarFlyout, whose second clip fought the reveal.
                 handle.Value = overlay.Open(
                     () => anchor.Value,
-                    () => MenuFlyout.Create(items, () => handle.Value?.Close()),
+                    () => MenuFlyout.Create(items, () => handle.Value?.Close(), size: OverlayFit.MenuSize),
                     FlyoutPlacement.TopEdgeAlignedRight,
                     new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
                 handle.Value.ClosedAction = () => handle.Value = null;

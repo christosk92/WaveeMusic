@@ -375,7 +375,7 @@ internal static partial class ClassicSettings
                     Children =
                     [
                         SliderControl(s_crossSlider, static v => CommitCrossfade(v), s_crossSliderOptions, length: ClassicSettingsRules.CrossSliderLength, isEnabled: crossOn),
-                        NumberBox.Create(s_crossSecs, static v => CommitCrossfade(v), crossOn ? s_crossBoxOn : s_crossBoxOff),
+                        NumberField(s_crossSecs, static v => CommitCrossfade(v), crossOn ? s_crossBoxOn : s_crossBoxOff, "crossfade-seconds"),
                     ],
                 }),
             ],

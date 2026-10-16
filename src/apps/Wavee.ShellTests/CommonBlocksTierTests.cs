@@ -142,6 +142,14 @@ public sealed class CommonBlocksTierTests(ShellHost host)
                 Assert.Equal(layout.Gutter, title.X, 0.5f);   // the head's side gutter is the record's
                 Assert.Equal(layout.StackHeader && !layout.BareHeader, harness.Contains("logs:cluster"));   // the picker cluster under the title, or beside it
                 Assert.Equal(layout.ShowCrumbs, CrumbsStand(harness));
+                if (layout.ShowCrumbs)
+                {
+                    // The stock crumbs: their Large size (40 x 40) at a hit target, the WinUI crumb (a 20 line in 3 + 3) elsewhere.
+                    var crumb = scene.FirstChild(scene.FirstChild(harness.Node("logs:title")));
+                    float crumbH = scene.AbsoluteRect(crumb).H;
+                    if (layout.Target > 0f) Assert.True(crumbH >= 40f - 0.5f && scene.AbsoluteRect(crumb).W >= 40f - 0.5f, "a Compact crumb is " + crumbH + " tall");
+                    else Assert.True(crumbH < 40f, "a crumb keeps its stock size: " + crumbH);
+                }
                 var first = harness.FindPrefix("logs:row:");
                 Assert.NotEmpty(first);
                 float rowHeight = scene.AbsoluteRect(scene.FirstChild(first[0].Node)).H;

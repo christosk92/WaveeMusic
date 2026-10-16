@@ -142,7 +142,7 @@ internal sealed class ClassicNavCreateButton : Component
             if (_menu() is not { } model || model.Rows.Count == 0) { _onPlaylist(); return; }
             handle.Value = svc.Open(
                 () => anchor.Value,
-                () => MenuFlyout.Create(model.Rows, () => handle.Value?.Close()),
+                () => MenuFlyout.Create(model.Rows, () => handle.Value?.Close(), size: OverlayFit.MenuSize),
                 FlyoutPlacement.BottomEdgeAlignedRight,
                 new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss,
                                  Chrome: PopupChrome.Popup) { ConstrainToRootBounds = false });

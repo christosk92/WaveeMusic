@@ -150,7 +150,7 @@ internal static partial class ClassicDetailKit
             if (Controls.IsNullOverlay(_overlay)) return;
             var items = DetailVerbs.PlayMenu(Subject);
             OverlayHandle? opened = null;
-            opened = _overlay.Open(() => _anchor, () => MenuFlyout.Create(items, () => opened?.Close()), FlyoutPlacement.BottomLeft,
+            opened = _overlay.Open(() => _anchor, () => MenuFlyout.Create(items, () => opened?.Close(), size: OverlayFit.MenuSize), FlyoutPlacement.BottomLeft,
                 new PopupOptions(FocusTrap: true) { ConstrainToRootBounds = false });
             _menu = opened;
             opened.ClosedAction = () =>

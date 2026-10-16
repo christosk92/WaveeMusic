@@ -113,6 +113,9 @@ public static partial class Shell
         /// optimistic — the search field appeared to fit 44 DIP sooner than the row could actually give it. (#88)</summary>
         public const float ChromeMinDragStripW = 48f;
 
+        /// <summary>The Compact row's drag strip (the title bar's <c>TitleBarSpacing.MinDragStrip</c> there): 16, so a narrow window seats its buttons.</summary>
+        public const float ChromeCompactDragStripW = 16f;
+
         /// <summary>The caption cluster: 3 × 46.</summary>
         public const float ChromeCaptionClusterW = 138f;
 
@@ -411,9 +414,11 @@ public static partial class Shell
             // to disappear; the captions and the compact search trigger never participate in that trade. Neither
             // optional island is bought yet, so this runs against the bare row — and it only ever binds far below the
             // narrowest width at which a field is possible at all (FixedBudget + 280 + one tab ≈ 780+).
+            // The count form's island is one whole nav button, so that is what it must keep (a strip keeps its viewport's floor).
+            float essentialTabs = b.TabsAsCount ? b.NavButtonW : b.TabViewportMinW;
             bool FitsEssential()
                 => width - FixedBudget(name, actionsInRow, forward, back, newTab, trailing, chip, b) - b.SearchIconW
-                   >= b.TabViewportMinW;
+                   >= essentialTabs;
             if (!FitsEssential()) newTab = false;
             if (!FitsEssential()) trailing = false;
             if (!FitsEssential()) back = false;

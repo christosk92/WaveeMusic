@@ -159,7 +159,7 @@ public class CommonTiersTests
         Assert.True(customize.Scrolls, "the list alone does not fit a Compact window");
 
         var logs = CommonLogsLayout.For(facts);
-        Assert.False(logs.ShowCrumbs, "the crumbs' stock items are 32 DIP tall");
+        Assert.True(logs.ShowCrumbs, "the crumbs stand at Compact: the stock Large crumbs are 40 x 40");
         Assert.True(logs.StackHeader);
         Assert.True(logs.RowExtent > CommonLogsLayout.For(Facts(WidthTier.Standard)).RowExtent, "a two-line row estimates taller");
         Assert.True(logs.DetailInset < CommonLogsLayout.For(Facts(WidthTier.Standard)).DetailInset);

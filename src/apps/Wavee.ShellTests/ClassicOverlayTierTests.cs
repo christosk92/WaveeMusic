@@ -320,11 +320,18 @@ public sealed class ClassicOverlayTierTests(ShellHost host)
 
             var buttons = all.Where(n => scene.Interaction(n).Role == AutomationRole.Button).Select(scene.PresentedAbsoluteRect).ToList();
             Assert.Equal(2, buttons.Count);
-            // Two 130-wide buttons do not fit a 300-DIP window's card: they stack, one under the other, never a button past the card's edge.
-            if (w < 330f)
+            if (IsCompact(w))
             {
-                var (upper, lower) = buttons[0].Y <= buttons[1].Y ? (buttons[0], buttons[1]) : (buttons[1], buttons[0]);
-                Assert.True(lower.Y >= upper.Bottom - 0.5f, $"stacked in a column: {upper.X:0.#},{upper.Y:0.#} {upper.W:0.#}x{upper.H:0.#} over {lower.X:0.#},{lower.Y:0.#} {lower.W:0.#}x{lower.H:0.#}");
+                // The engine's own command buttons at the 40-DIP target, side by side in two equal columns even in a 300-DIP window's card (a 96 floor each).
+                Assert.All(buttons, b => Assert.Equal(40f, b.H, 0.5f));
+                Assert.Equal(buttons[0].Y, buttons[1].Y, 0.5f);
+                Assert.Equal(buttons[0].W, buttons[1].W, 0.5f);
+            }
+            else
+            {
+                // Elsewhere the engine's WinUI buttons, unchanged: 32 tall, at least 130 wide.
+                Assert.All(buttons, b => Assert.Equal(32f, b.H, 0.5f));
+                Assert.All(buttons, b => Assert.True(b.W >= 130f - 0.5f, $"a {b.W:0.#}-wide command"));
             }
             foreach (var b in buttons)
                 Assert.True(b.X >= card.X - 0.5f && b.Right <= card.Right + 0.5f && b.Bottom <= height + 0.5f && b.Y >= 0f,

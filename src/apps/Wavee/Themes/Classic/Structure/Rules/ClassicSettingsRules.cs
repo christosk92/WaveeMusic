@@ -28,9 +28,6 @@ internal static class ClassicSettingsRules
     /// <summary>A section header's glyph and how far it drops to sit on the title's first line.</summary>
     public const float SectionGlyph = 16f, SectionGlyphDrop = 2f;
 
-    /// <summary>The Compact combo picker's field: the gap between its label and chevron, the label's size and the chevron's.</summary>
-    public const float TouchComboGap = 8f, TouchComboTextSize = 14f, TouchComboChevron = 12f;
-
     /// <summary>N4: the collapsed picker group's answer in an expander header.</summary>
     public const float ValueTagSize = 14f;
 

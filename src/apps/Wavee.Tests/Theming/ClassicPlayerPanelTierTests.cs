@@ -4,6 +4,7 @@
 // clamp at the board sizes and the edges), the panel per window tier (placement, how many dock, the Huge floor's fill rule), the panel
 // host's two-pane verbs (D3), the docked floor, and the Compact title bar (the chip in the drawer, the tab-count button whole or out).
 
+using FluentGpu.Controls;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Wavee.Themes.Classic;
@@ -242,5 +243,23 @@ public sealed class ClassicPlayerPanelTierTests
             row.Chip, b) - 2f * b.GutterMinW + b.SearchIconW + (row.TabsHidden ? 0f : b.NavButtonW);
         Assert.True(used <= width + 0.5f, $"{width}: the row seats {used}");   // the gutter floors are drag space, not elements
         if (width >= 400f) Assert.False(row.TabsHidden);                 // the board's 400: ≡, Back, Search and the count
+        Assert.False(row.TabsHidden, $"{width}: the Compact spacers seat the count from 288, below the 300 floor");
+    }
+
+    [Theory]
+    [InlineData(300f, false)]
+    [InlineData(331f, false)]
+    [InlineData(332f, true)]        // 46 lead + 3 x 44 + the 16 strip + the 138 captions
+    [InlineData(400f, true)]
+    public void The_compact_row_narrows_its_spacers_so_the_count_always_stands_and_Back_joins_it_from_332(float width, bool back)
+    {
+        var b = CompactBudget;
+        Assert.Equal(ClassicPolicies.Chrome.Budget.BarLeadW - TitleBarSpacing.Default.LeadPad, b.BarLeadW);   // no lead pad after the pane toggle
+        Assert.Equal(16f, b.MinDragStripW);
+        Assert.Equal(0f, b.GutterMinW);
+        Assert.Equal(TitleBarSpacing.Default.MinDragStrip, ClassicPolicies.Chrome.BudgetFor(WidthTier.Small).MinDragStripW);   // every other tier: WinUI's 48
+        var row = Shell.Chrome.Resolve(width, 3, null, Shell.FrameRules.ChipForm.Profile, b);
+        Assert.False(row.TabsHidden);
+        Assert.Equal(back, row.ShowBack);
     }
 }

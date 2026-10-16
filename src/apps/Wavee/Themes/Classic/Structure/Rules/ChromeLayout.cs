@@ -7,8 +7,10 @@
 // in `Rules\**`). The WIDTHS the row is allocated by (what each affordance costs, where the optional ones may appear, how wide the
 // search and the tabs may be) are not here: they are `ClassicPolicies.Chrome`, the budget the core allocator runs on.
 
+using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using Wavee.Theming.Contracts;
 using FgMotion = FluentGpu.Dsl.Motion;
 
 namespace Wavee.Themes.Classic;
@@ -27,6 +29,14 @@ internal static class ClassicChromeLayout
 
     /// <summary>2 DIP either side: what the bar gives its own pane toggle.</summary>
     public static readonly Edges4 ButtonMargin = new(2f, 0f, 2f, 0f);
+
+    /// <summary>The Compact row's spacers (board C-TitleBar, Compact: ≡ and Back side by side, a flexible gap, the search and the count against the captions): no lead
+    /// pad after the pane toggle and a 16-DIP drag strip, so the four 44-DIP buttons and the caption cluster fit a narrow window. Every other tier keeps the engine's
+    /// WinUI 14 and 48. `ClassicPolicies.Chrome.Compact` budgets the same two numbers, so the allocation and the bar agree.</summary>
+    public static readonly TitleBarSpacing CompactSpacing = new(LeadPad: 0f, MinDragStrip: 16f);   // = the core's ChromePolicy.Default.Compact (the shell baseline)
+
+    /// <summary>The row's spacers in window tier <paramref name="window"/>.</summary>
+    public static TitleBarSpacing SpacingFor(WidthTier window) => window == WidthTier.Compact ? CompactSpacing : TitleBarSpacing.Default;
 
     /// <summary>The "Connecting" caption chip's height.</summary>
     public const float ChipHeight = 32f;

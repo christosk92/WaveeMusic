@@ -1,9 +1,9 @@
 // ── Themes/Common/CommonTouch.cs — the Common blocks' controls at a tier's hit target (themes plan 3.2, TC10) ───────────────────
 //
 // The Compact rule is a floor, not a size: every hit target is at least 40 x 40 (the brief). A block asks for a control with the layout record's `Target` (0 = the control's own
-// size, 40 at Compact) and gets the stock control at that size: a Large button, an icon button of the target's edge, a link and a segmented strip lifted to the target. The one
-// stock control that cannot be lifted is the ComboBox (its field is a 32-DIP constant of the engine), so a Compact block draws a picker over the same selection instead: a
-// 40-DIP button that opens the choices as a menu. Nothing here decides anything; it draws what the record asks for.
+// size, 40 at Compact) and gets the stock control at that size: a Large button, an icon button of the target's edge, a link and a segmented strip lifted to the target, and the
+// stock ComboBox at its Large (40-DIP) field with touch-padded rows. The one picker that is not a ComboBox is the bare icon head (a header with no room for the selection's label):
+// a 40-DIP icon button that opens the choices as a menu of 40-DIP rows. Nothing here decides anything; it draws what the record asks for.
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -61,17 +61,21 @@ internal static class CommonTouch
             ? CheckBox.Create(label, isChecked, style: CheckBox.DefaultStyle with { MinHeight = target })
             : CheckBox.Create(label, isChecked);
 
-    /// <summary>A choice over <paramref name="selected"/>: the stock ComboBox, or at a hit target the 40-DIP menu picker (see the file header); with
-    /// <paramref name="glyph"/> the picker is a bare 40-DIP icon button (a head with no room for the selection's label).</summary>
+    /// <summary>A choice over <paramref name="selected"/>: the stock ComboBox <paramref name="width"/> wide, at a hit target its Large (40-DIP) field with the touch
+    /// rows and no width of its own (it fills a column parent and hugs its selection in a row, so a Compact window never holds a field wider than itself; the size, the
+    /// width and the rows are live: a tier crossing re-sizes the mounted combo); with <paramref name="glyph"/> at a hit target, a bare 40-DIP icon button that opens
+    /// the choices as a menu (a head with no room for the selection's label).</summary>
     public static Element Picker(IReadOnlyList<string> items, Signal<int> selected, float width, float target, Action<int>? onChange = null, string? glyph = null)
-        => target > 0f
-            ? Embed.Comp(new PickerProps(items, selected, onChange, target, glyph), static () => new TouchPicker())
-            : ComboBox.Create(items, selected, width: width, onChange: onChange);
+        => target > 0f && glyph is not null
+            ? Embed.Comp(new PickerProps(items, selected, onChange, target, glyph), static () => new IconPicker())
+            : target > 0f
+                ? ComboBox.Create(items, selected, width: float.NaN, onChange: onChange, touchInputMode: true, size: ControlSize.Large)
+                : ComboBox.Create(items, selected, width: width, onChange: onChange);
 
-    internal sealed record PickerProps(IReadOnlyList<string> Items, Signal<int> Selected, Action<int>? OnChange, float Target, string? Glyph);
+    internal sealed record PickerProps(IReadOnlyList<string> Items, Signal<int> Selected, Action<int>? OnChange, float Target, string Glyph);
 
-    /// <summary>The button that shows the selection and opens the choices as an anchored menu.</summary>
-    sealed class TouchPicker : Component
+    /// <summary>The icon button that opens the choices as an anchored menu of 40-DIP rows.</summary>
+    sealed class IconPicker : Component
     {
         IOverlayService? _overlay;
         OverlayHandle? _menu;
@@ -82,12 +86,7 @@ internal static class CommonTouch
         {
             var p = _props = UseProps<PickerProps>();
             _overlay = UseContext(Overlay.Service);
-            int selected = p.Selected.Value;
-            string label = (uint)selected < (uint)p.Items.Count ? p.Items[selected] : "";
-            BoxEl button = p.Glyph is { } glyph
-                ? FluentGpu.Controls.IconButton.Create(glyph, Open, FluentGpu.Controls.IconButton.DefaultStyle with { Size = p.Target })
-                : FluentGpu.Controls.Button.Create(label, Open, ButtonAppearance.Standard, ControlSize.Large, glyph: Icons.ChevronDown);
-            return button with { OnRealized = h => _anchor = h };
+            return FluentGpu.Controls.IconButton.Create(p.Glyph, Open, FluentGpu.Controls.IconButton.DefaultStyle with { Size = p.Target }) with { OnRealized = h => _anchor = h };
         }
 
         void Open()
@@ -105,7 +104,7 @@ internal static class CommonTouch
                     p.OnChange?.Invoke(index);
                 }));
             }
-            var handle = overlay.Open(() => _anchor, () => MenuFlyout.Create(items, () => _menu?.Close()),
+            var handle = overlay.Open(() => _anchor, () => MenuFlyout.Create(items, () => _menu?.Close(), size: ControlSize.Large),
                 FlyoutPlacement.BottomEdgeAlignedLeft,
                 new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
             _menu = handle;

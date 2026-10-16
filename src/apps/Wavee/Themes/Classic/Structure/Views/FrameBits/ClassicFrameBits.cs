@@ -26,7 +26,7 @@ namespace Wavee.Themes.Classic;
 internal static class ClassicFrameBits
 {
     /// <summary>The registered template of <see cref="ViewKeys.ShellHistoryMenu"/>.</summary>
-    public static Element HistoryMenu(HistoryMenuProps props, in ViewContext ctx) => MenuFlyout.Create(props.Items, props.Close);
+    public static Element HistoryMenu(HistoryMenuProps props, in ViewContext ctx) => MenuFlyout.Create(props.Items, props.Close, size: OverlayFit.MenuSize);
 
     /// <summary>The registered template of <see cref="ViewKeys.ShellFileDrop"/>: the centred drop pill — bound opacity, so a drag
     /// hover never re-renders the shell.</summary>

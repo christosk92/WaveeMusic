@@ -745,7 +745,7 @@ public readonly partial struct Track
                 }
                 var opened = svc.Open(
                     () => anchor.Value,
-                    () => MenuFlyout.Create(items, () => handle.Value?.Close()),
+                    () => MenuFlyout.Create(items, () => handle.Value?.Close(), size: OverlayFit.MenuSize),
                     FlyoutPlacement.BottomEdgeAlignedLeft,
                     new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
                 handle.Value = opened;

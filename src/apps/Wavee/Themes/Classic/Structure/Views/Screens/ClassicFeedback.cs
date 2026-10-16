@@ -11,7 +11,7 @@
 // THE TIERS (TC8; `Rules\Tiers.Dialogs.cs`, boards C-Feedback-Compact / -Small / -Huge). The body is laid out by the record of the window tier the dialog OPENED in and
 // the width its card left it (`ClassicScreenDialogShape`, frozen in a ref: the card is sized once, at open, so a body that re-measured would outgrow it):
 //   Compact   the kind switch wraps in a pill of 40-DIP buttons, the fields, the check box and the pickers are 40 tall, and the report preview folds behind a
-//             40-DIP "Report preview" row; the card's own command row is the 2-column grid `OverlayFit.ShowForm` builds.
+//             40-DIP "Report preview" row; the card's own command row is the engine's, 40-DIP buttons in two equal columns (the band's `DialogFit`).
 //   Small, Standard   today's design: the preview always under the form, its Copy / Save over it.
 //   Huge      a second pane: the form on the left (472), a divider, the live report on the right with Copy / Save under it.
 
@@ -327,7 +327,7 @@ internal static class ClassicFeedback
             }
         }
 
-        /// <summary>A dropdown: the stock ComboBox (its field is a 32-DIP constant of the engine), or at a hit target the header over a 40-DIP menu picker over the same signal.</summary>
+        /// <summary>A dropdown: the stock ComboBox, or at a hit target the header over the stock ComboBox at its 40-DIP field, filling the column.</summary>
         static Element Choice(IReadOnlyList<string> items, Signal<int> selected, string header, ClassicScreenDialogLayout layout, float width)
             => layout.Touch
                 ? new BoxEl

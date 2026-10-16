@@ -555,8 +555,11 @@ public static partial class Shell
 
             // HomeLayout (F29): one app-wide document signal, provided at the shell root beside the material cell so
             // HomeScreen and CustomizeScreen both read it and a customize edit is visible on Home the same frame.
+            // The engine's toast lane reads its geometry (side margin, card widths, the action's size) from the band the window is in: a thunk over the
+            // facts, so the lane follows a tier crossing although this root renders once (`OverlayFit.ToastLane`, the structure's `ToastDock.Lane`).
             return Ctx.Provide(HomeLayout.Slot, HomeLayout.Instance,
-                Ctx.Provide(ShellMaterial.Slot, MaterialState, OverlayHost.Create(frame)));
+                Ctx.Provide(ShellMaterial.Slot, MaterialState,
+                    Ctx.Provide(Toast.Lane, OverlayFit.ToastLane, OverlayHost.Create(frame))));
         }
 
         /// <summary>The props of the structure's frame: the live values as read-only signals and Funcs, the behaviour this host wired

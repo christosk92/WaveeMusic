@@ -5,8 +5,8 @@
 // `ClassicScreenDialogTiers.Of(ctx.Tier())`; a body never compares a width (WVTH013), it asks the record how its preview sits and how tall its targets are, and
 // asks `BodyWidth` how wide the card leaves it.
 //
-//   Compact   the card fills the window less 16 (`ClassicOverlayTiers.Compact`: padding 16 / 20, the command row a 2-column grid of 40-DIP buttons, built by
-//             `OverlayFit.ShowForm`); the report preview folds behind a 40-DIP "Report preview" row; fields, check boxes, links and the kind switch are 40 tall.
+//   Compact   the card fills the window less 16 (`ClassicOverlayTiers.Compact`: padding 16 / 20, the command row the engine's 40-DIP buttons in equal columns, the
+//             band's `DialogFit.CommandSize`); the report preview folds behind a 40-DIP "Report preview" row; fields, check boxes, links and the kind switch are 40 tall.
 //   Small     the tuned 548 card (board C-Feedback-Small / C-Crash-Small: 548 wide, the body scrolls, the command row 80 high with two equal buttons).
 //   Standard  the same card, today's design (C-Feedback / C-Crash).
 //   Huge      a two-pane card, 1040 wide (`OverlayFit.ShowForm` + `DialogFit.FormWidth`): the form on the left, the live report on the right, always shown.

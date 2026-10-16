@@ -67,7 +67,14 @@ public static class ClassicPolicies
     /// 240; Small and Standard keep <see cref="RowBudget"/>. Forward hides below 520 at every tier (the budget's <c>ForwardEnterW</c>).</summary>
     public static ChromePolicy Chrome { get; } = new(RowBudget)
     {
-        Compact = RowBudget with { TabsAsCount = true, TrailingInDrawer = true },
+        // Compact also narrows the row's spacers (`ClassicChromeLayout.CompactSpacing`, which the bar draws): the lead column loses its 14 pad, the drag strip is 16,
+        // and the centre island's flank floors go (no field sits there), so the count seats from 288 and Back joins it from 332 (300: ≡, search, count).
+        Compact = RowBudget with
+        {
+            TabsAsCount = true, TrailingInDrawer = true,
+            BarLeadW = RowBudget.BarLeadW - FluentGpu.Controls.TitleBarSpacing.Default.LeadPad + ClassicChromeLayout.CompactSpacing.LeadPad,
+            MinDragStripW = ClassicChromeLayout.CompactSpacing.MinDragStrip, GutterMinW = 0f,
+        },
         Huge = RowBudget with { SearchMaxW = 480f, TabMaxW = 240f },
     };
 
