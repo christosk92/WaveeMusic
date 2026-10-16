@@ -76,6 +76,9 @@ public static partial class ProfileLists
         /// strip and lays the tools side by side, 0 stacks them. Seeded from the content region before the first measure.</summary>
         IReadSignal<int>? _listArm;
         readonly Func<float> _bodySeed;
+        /// <summary>The facts this page is drawn in (`TierContext.DrawnIn`, set in render): its root's, never the process's last window. The seeds
+        /// read them before the first render through the process's.</summary>
+        IReadSignal<Theming.ThemeFacts>? _facts;
         /// <summary>The structure's narrowest card for the tier on screen, as the last <see cref="Sync"/> read it (the mount's seed extent reads it too).</summary>
         float _minCell = Theming.ArtistTierPolicy.Default.ProfileListMinCell(default);
         readonly Signal<int> _sticky = new(-1);
@@ -154,7 +157,7 @@ public static partial class ProfileLists
             _mount = key => { EnsureMount(key); return new ProfileListMount(_layout, _options!); };
             _facetNow = () => _facet;
             _bodyWidthNow = () => _bodyW.Peek();
-            _bodySeed = () => Theming.ThemeHost.Facts.Peek().Tiers.ContentWidth is var w && w > 0f ? w : float.MaxValue;
+            _bodySeed = () => (_facts ?? Theming.ThemeHost.Facts).Peek().Tiers.ContentWidth is var w && w > 0f ? w : float.MaxValue;
             _displayName = DisplayName;
             _visibleCount = () => _model.VisibleCount;
             _visibleAt = k => _model.VisibleAt(k);
@@ -194,6 +197,7 @@ public static partial class ProfileLists
             _debounced = UseDebouncedValue<string>(_query, 150f);
             var u = _user;
             UseEffect(_demand, DepKey.From(u.Slot, (int)facet, (int)epoch, 0));
+            _facts = Theming.TierContext.DrawnIn(UseContext(Theming.ThemeFactsContext.Signal));
             _listArm = UseTier(Theming.ArtistLadders.Of(ShellPolicy.Now.Tiers, Theming.ArtistLadders.ProfileList), TierSource.Measured(_bodyW, _bodySeed));
             UseSignalEffect(_sync);
             UseSignalEffect(_watchLetters);
@@ -300,7 +304,7 @@ public static partial class ProfileLists
 
             // The structure's arm and narrowest card (tracked: a list-arm or a window crossing re-runs this derivation).
             bool wideArm = (_listArm?.Value ?? 1) > 0;
-            _minCell = ShellPolicy.Tracked.ArtistTiers.ProfileListMinCell(Theming.ThemeHost.Facts.Value.Tiers);
+            _minCell = ShellPolicy.Tracked.ArtistTiers.ProfileListMinCell((_facts ?? Theming.ThemeHost.Facts).Value.Tiers);
             var plan = ProfileGridFit.For(bodyW, Spacing.Card, wideArm, _minCell);
             bool rows = filter || plan != _planSeen;
             if (rows)

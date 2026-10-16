@@ -729,6 +729,8 @@ public readonly partial struct Artist
             var p = UseProps<GridProps>();
             _p = p;
             var registry = UseContext(global::FluentGpu.Theming.ViewRegistry.Context);
+            // The facts this grid is drawn in (its root's, never the process's last window): the metrics below read them tracked.
+            var facts = global::Wavee.Theming.TierContext.DrawnIn(UseContext(global::Wavee.Theming.ThemeFactsContext.Signal));
             _ = Entities.ScopeEpoch.Value;
             var edge = FacetEdge(p.Facet);
             _ = edge.Changed.Value;
@@ -745,7 +747,7 @@ public readonly partial struct Artist
             if (style is null) return new BoxEl();
             // The structure's grid configuration; LazyGrid reads it as mount configuration, so the grid is keyed by it: a tier whose grid differs (TC6: the
             // structure's metrics follow the window tier, read tracked) remounts the grid with the new column floor and gap, the expanded album kept here.
-            var m = style.Metrics();
+            var m = style.Metrics(facts.Value.Tiers);
 
             // A key on this component's ROOT would be inert: the keyed grid is the root column's one child.
             return new BoxEl { Direction = 1, MinWidth = 0f, Children = [Embed.Comp(() => new LazyGrid(
@@ -952,10 +954,12 @@ public readonly partial struct Artist
             var p = UseProps<DiscoCellProps>();
             _p = p;
             var stamp = UseComputed(_stamp).Value;
+            // The facts this cell is drawn in, peeked (the grid remounts its cells on a crossing that moves its metrics).
+            var tiers = global::Wavee.Theming.TierContext.DrawnIn(UseContext(global::Wavee.Theming.ThemeFactsContext.Signal)).Peek().Tiers;
             if (p.Style is not { } style) return new BoxEl();
             // The PINNED height (the cell width plus the structure's card chrome) is part of the data (it is the shell's), so a responsive width
             // change rebuilds it too.
-            float height = p.CardW + style.Metrics().CardChrome;
+            float height = p.CardW + style.Metrics(tiers).CardChrome;
             if (!stamp.Ready)
             {
                 _slot = Table.None;

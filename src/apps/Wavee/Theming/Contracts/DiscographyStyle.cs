@@ -200,8 +200,9 @@ internal sealed class DiscoDrawerTrackArgs
     public required Action Like { get; init; }
 }
 
-/// <summary>The grid's configuration.</summary>
-internal delegate DiscographyMetrics DiscographyMetricsTemplate();
+/// <summary>The grid's configuration in <paramref name="tiers"/>: the window tiers of the facts the calling grid is drawn in (its root's, never the
+/// process's last window).</summary>
+internal delegate DiscographyMetrics DiscographyMetricsTemplate(in TierFacts tiers);
 
 /// <summary>Draws a facet section: the spined header (an expander that pins), the grid clipped under it, the trailing air.</summary>
 internal delegate Element DiscoFacetTemplate(DiscoFacetArgs args);

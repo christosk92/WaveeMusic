@@ -59,6 +59,11 @@ internal sealed class TrackHeaderArgs
 /// <summary>The command bar's pictures. The core decides which commands exist and hands each one's behaviour; the kit draws them.</summary>
 internal interface ITrackCommandKit
 {
+    /// <summary>This kit as drawn in <paramref name="tiers"/>: the window tiers of the facts the calling table is drawn in (its root's, never the
+    /// process's last window), so every tier-dependent picture below (the Compact 40 targets, the sort-led bar) follows the mount it draws in.
+    /// A kit with no tier rules is itself.</summary>
+    ITrackCommandKit In(in TierFacts tiers) => this;
+
     /// <summary>The chromeless lane both modes (browse and selection) share; the keyed mode box is what animates between them.</summary>
     Element Surface(string mode, Element content);
 

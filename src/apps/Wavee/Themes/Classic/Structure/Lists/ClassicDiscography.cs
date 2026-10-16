@@ -36,11 +36,11 @@ internal static class ClassicDiscography
     public static readonly DiscographyStyle Style = new(Metrics, Facet, FacetFailed, Card, Opened, Seed, Cell, DrawerFrame, DrawerPanel,
                                                        DrawerBar, DrawerSlot, ShowAll, DrawerTrack);
 
-    /// <summary>The grid's configuration in the window tier on screen (TC6: a two-column floor at Compact), read TRACKED: the core's grid host re-renders on a
-    /// crossing and remounts its grid keyed by these numbers.</summary>
-    static DiscographyMetrics Metrics()
+    /// <summary>The grid's configuration in the window tier the grid is drawn in (TC6: a two-column floor at Compact): the core's grid host reads its facts
+    /// tracked, re-renders on a crossing and remounts its grid keyed by these numbers.</summary>
+    static DiscographyMetrics Metrics(in global::Wavee.Theming.TierFacts tiers)
     {
-        var layout = ClassicArtistTiers.Now;
+        var layout = ClassicArtistTiers.Of(tiers);
         return new(layout.DiscoMinColumn, layout.DiscoGap, Rules.CardChrome, Rules.RowGap);
     }
 

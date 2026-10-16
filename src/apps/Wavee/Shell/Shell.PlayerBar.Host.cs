@@ -112,8 +112,10 @@ public static partial class Shell
             // clamp), and the committed WINDOW TIER clamps it to the levels the tier may use (the policy's `Windows`, TC2): a level that
             // belongs to a tier changes on the crossing frame and animates, one inside a tier tracks the width as before.
             var viewport = hooks.UseContextSignal(Viewport.Size);
+            // The tiers the bar is drawn in (its root's facts; in the app the frame's own), never the process's last window.
+            var drawnIn = Theming.TierContext.DrawnIn(hooks.UseContext(Theming.ThemeFactsContext.Signal));
             float initialWidth = viewport.Peek().Width;
-            int initialTier = WindowTierIndex(Theming.ThemeHost.Facts.Peek().Tiers);
+            int initialTier = WindowTierIndex(drawnIn.Peek().Tiers);
             var initialRaw = Shell.PlayerBar.Nominal(initialWidth);
             var levelSignal = hooks.UseSignal(PlayerBarLayout.ForTier(Shell.PlayerBar.ForWindow(initialRaw, initialTier), initialWidth));
             var rawLevel = hooks.UseRef(initialRaw);
@@ -123,7 +125,7 @@ public static partial class Shell
             {
                 var previous = levelSignal.Peek();
                 float width = viewport.Value.Width;
-                int windowTier = WindowTierIndex(Theming.ThemeHost.Facts.Value.Tiers);
+                int windowTier = WindowTierIndex(drawnIn.Value.Tiers);
                 // The policy is read tracked: a theme's own levels, slots and spacing re-resolve the bar in place.
                 var policy = ShellPolicy.Tracked.PlayerBar;
                 var raw = Shell.PlayerBar.Resolve(width, rawLevel.Value, initialized.Value, policy);

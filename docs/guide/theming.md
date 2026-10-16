@@ -2006,7 +2006,7 @@ Tiers are a **core fact**; where a tier begins, how it holds across a resize and
 | `TierPolicy` | `Theming\Policies\TierPolicy.cs` | three engine `TierLadder`s (window width, content width, window height), `CompactFloor` (300), `ShortFloor`, `NamedRung`s (board marks that are not tiers) and `NamedLadder`s (finer ladders a core model may read by id; Classic declares none); `ThemePolicies.Tiers` |
 | `TierFacts` | `Theming\Policies\TierFacts.cs` | what is published: `Window`, `Height`, `Content`, `ContentWidth`, the viewport size, `Resizing`, `Rung(id)` |
 | `WindowTiers` | `Shell\WindowTiers.cs` | the core rules (`EstimateContentWidth`, `Resolve`) and the frame root's `Binding` over the engine's `UseTier` |
-| `ctx.Tier()`, `ctx.TierReader()` | `Theming\TierContext.cs` | how a template reads `TierFacts` (never a width); `TierReader` for a bound channel of a template that renders once (the frame) |
+| `ctx.Tier()`, `ctx.TierReader()`, `TierContext.DrawnIn` | `Theming\TierContext.cs` | how a template reads `TierFacts` (never a width); `TierReader` for a bound channel of a template that renders once (the frame); `DrawnIn(UseContext(ThemeFactsContext.Signal))` for a component |
 | `TierRegion`, `ITierLayoutRecord`, `TierClip` | `Theming\Policies\TierRegions.cs` | the clip-region API of a tier layout record |
 | Classic's ladders and frame records | `Themes\Classic\Structure\Rules\Tiers.cs` | `ClassicTiers`: the board's ladders (TC1), `ClassicFrameLayout` per window tier, `ClassicPageLayout` (the gutter) per content tier |
 
@@ -2023,8 +2023,13 @@ size and snaps, and the new tier crosses on the next frame as an ordinary animat
 cross-fade). A composited edge drag therefore produces one crossing, at mouse-up. A size that is not positive and finite (a minimised
 window reports 0) resolves to "keep the previous tier", so a restore returns to the tier the window left.
 
-**Reading tiers.** Core models read `ThemeHost.Facts.Value.Tiers`; a template reads `ctx.Tier()` and its structure's layout record
-for that tier. The fact is republished when a tier, a rung or `Resizing` changes, not once per resized frame, so the three size members
+**Reading tiers.** Read the facts a view is DRAWN IN, never the process's: a template reads `ctx.Tier()` and its structure's layout record
+for that tier; a component (a core host, a theme's stateful card) reads `TierContext.DrawnIn(UseContext(ThemeFactsContext.Signal))` (`.Value` to
+follow a crossing, `.Peek()` for a seed); a style builder the core calls outside any view (the track command kit, the hero skeleton, the
+discography metrics) is handed the calling component's tiers (contract 1.22). A composition mounted at another size than the app window (the view
+harness, a theme preview) draws in its own facts, so a read of the process's `ThemeHost.Facts` there is a bug. Only code that means the app
+WINDOW itself reads `ThemeHost.Facts`: the overlay layer (`OverlayFit`, the context sheet's band, the toast lane), the title bar's field budget,
+the frame's own tier publisher (`WindowTiers`), and the seeds that run before a component has a context (a constructor, the first `ApplyProps`). The fact is republished when a tier, a rung or `Resizing` changes, not once per resized frame, so the three size members
 are the sizes *at that snapshot*; a reader that needs the live width reads `Viewport.Size`.
 
 **Content width** is the window less the sidebar column the *logical* window tier presents (the pending crossing included, so the

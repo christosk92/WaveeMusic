@@ -46,6 +46,7 @@ internal static partial class ClassicProfileList
     {
         var cache = ctx.Hooks.UseRef(new PageCache()).Value;
         float gutter = ClassicTiers.PageOf(ctx.Tier()).Gutter;   // the one page gutter (F3)
+        cache.Tiers = ctx.TierReader();   // the tiers this page is drawn in, for the shimmer the region derives later
         cache.Props = props;
         cache.Prepare();
         if (!props.Parsed) return Controls.Vacancy(Controls.VacancyVoice.Error);
@@ -83,6 +84,8 @@ internal static partial class ClassicProfileList
     sealed class PageCache
     {
         public ProfileListProps Props = null!;
+        /// <summary>The page's tiers as a live reader (the facts its template is drawn in), for the builders that run outside the template.</summary>
+        public Func<TierFacts> Tiers = static () => TierFacts.Unknown;
         public Func<Element>? Content, Shimmer, FailedPanel;
         public Func<BoundItemScope<ProfileRowItem>, Element>? RowT;
         public Action[]? ChipClicks;

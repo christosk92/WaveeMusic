@@ -1144,6 +1144,7 @@ public static partial class Shell
             bool pinned = SidebarPaneModeRules.OverlayPinned(band, Sidebar.Editing.Value);
             bool open = overlay && (Sidebar.OverlayOpen.Value || pinned);
             var hooks = UseContext(InputHooks.Current);
+            var facts = Theming.TierContext.DrawnIn(UseContext(Theming.ThemeFactsContext.Signal));   // the tiers this frame is drawn in
             _escapePreview ??= key =>
             {
                 // While editing, Esc belongs to the pane (it exits Edit first); a second Esc then closes the overlay.
@@ -1189,7 +1190,7 @@ public static partial class Shell
                 Open = open,
                 Parts = s_drawerParts,
                 // The tier whose title bar carries no identity chip carries the account here (TC2: Classic Compact).
-                ShowAccount = ShellPolicy.Tracked.Chrome.BudgetFor(Theming.ThemeHost.Facts.Value.Tiers).TrailingInDrawer,
+                ShowAccount = ShellPolicy.Tracked.Chrome.BudgetFor(facts.Value.Tiers).TrailingInDrawer,
                 Account = s_drawerAccount,
             });
         }

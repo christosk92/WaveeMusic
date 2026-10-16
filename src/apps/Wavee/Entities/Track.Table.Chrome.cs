@@ -48,7 +48,8 @@ public readonly partial struct Track
         InputHooks? _hooks;
 
         /// <summary>The structure's command-bar kit (T8b); a host with no registry gets one that draws nothing (logged with the rows).</summary>
-        ITrackCommandKit Kit => _listStyle?.Chrome.Commands ?? NoChromeKit.Instance;
+        /// <summary>The structure's kit as drawn in this table's tiers, read TRACKED (the calling render re-runs on a crossing).</summary>
+        ITrackCommandKit Kit => (_listStyle?.Chrome.Commands ?? NoChromeKit.Instance).In(TiersNow());
         readonly Signal<bool> _searchExpanded = new(false);
         readonly Signal<bool> _searchFocused = new(false);
         bool _restoreSearchFocus;

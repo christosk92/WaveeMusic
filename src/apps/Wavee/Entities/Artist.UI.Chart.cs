@@ -163,6 +163,7 @@ public readonly partial struct Artist
             var p = UseProps<ChartProps>();
             _overlay = UseContext(Overlay.Service);
             var registry = UseContext(global::FluentGpu.Theming.ViewRegistry.Context);
+            var facts = Theming.TierContext.DrawnIn(UseContext(Theming.ThemeFactsContext.Signal));   // the tiers this chart is drawn in
             uint scopeEpoch = Entities.ScopeEpoch.Value;
             var scope = Entities.Current;
             _ = scope.Edges.ArtistPopular.Changed.Value;
@@ -199,7 +200,7 @@ public readonly partial struct Artist
             Selection.ItemCount = _items.Length;
 
             // The tier's widest chart (TC6: two columns at Standard, more at Huge, one at Compact), read tracked: a window crossing re-renders the chart.
-            int cols = ArtistSections.ChartColumns(_items.Length, Math.Min(ChartKeyColumns, ShellPolicy.Tracked.ArtistTiers.ChartMaxColumns(Theming.ThemeHost.Facts.Value.Tiers)));
+            int cols = ArtistSections.ChartColumns(_items.Length, Math.Min(ChartKeyColumns, ShellPolicy.Tracked.ArtistTiers.ChartMaxColumns(facts.Value.Tiers)));
             int shelfKey = (cols - 1) * 4 + (ShowArtwork ? 2 : 0) + (Classic ? 1 : 0);
             Element shelf = PagedShelf.Create(
                 _items,

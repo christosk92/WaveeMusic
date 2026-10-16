@@ -293,6 +293,7 @@ public static partial class Stage
             var overlay = UseContext(Overlay.Service);
             _begin = UseContext(SharedTransition.Begin);
             var vp = UseContextSignal(Viewport.Size);
+            var facts = Theming.TierContext.DrawnIn(UseContext(Theming.ThemeFactsContext.Signal));   // the tiers this stage is drawn in
             var ctx = _ctx;
             // the options popover: anchored under the sliders button (the TeachingTip's anchor too), light-dismiss, holding the chrome while open
             _openOptions = () =>
@@ -313,7 +314,7 @@ public static partial class Stage
             {
                 var size = vp.Value;
                 var stage = ShellPolicy.Tracked.Stage;
-                var metrics = stage.MetricsFor(Theming.ThemeHost.Facts.Value.Tiers);
+                var metrics = stage.MetricsFor(facts.Value.Tiers);
                 ctx.Layout.SetIfChanged(Layout.Resolve(size.Width, size.Height, ctx.Layout.Peek(), stage.Aspect, metrics));
             });
             // ── the gallery's "shown" gate, narrowed to one bool (a resize re-runs this, the clock's lease only on a flip): open, room

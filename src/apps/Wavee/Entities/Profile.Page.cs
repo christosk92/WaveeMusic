@@ -68,6 +68,9 @@ public static partial class Profile
         readonly Signal<int> _layoutEpoch = new(0);
         IReadSignal<int>? _heroTier;
         IReadSignal<Size2>? _viewportSize;
+        /// <summary>The facts this page is drawn in (`TierContext.DrawnIn`, set in render): its root's, never the process's last window. The seeds
+        /// read them before the first render through the process's.</summary>
+        IReadSignal<Theming.ThemeFacts>? _facts;
         readonly Func<float> _heroSeed;
         ProfileHeroMetrics _metrics;
         float _width;
@@ -166,7 +169,7 @@ public static partial class Profile
                 _atEnd.SetIfChanged(atEnd);
             };
             _stampFn = Stamp;
-            _heroSeed = () => Detail.Breakpoints.EstimatePageWidth(Theming.ThemeHost.Facts.Peek().Tiers, _viewportSize?.Peek().Width ?? 0f);
+            _heroSeed = () => Detail.Breakpoints.EstimatePageWidth((_facts ?? Theming.ThemeHost.Facts).Peek().Tiers, _viewportSize?.Peek().Width ?? 0f);
             _acts = new ProfileHeroActs(
                 Share: () => Episode.CopyLink(_user.IsValid ? Actions.WebLinkOf(_user.Uri) : ""),
                 Menu: () => MenuFor(_user, _name),
@@ -222,8 +225,9 @@ public static partial class Profile
             // THE HERO'S SUB-TIER AND METRICS (TC6): the artist hero's ladder over the page's own width, seeded before the first measure from the content
             // region the frame resolved the window tiers on; the metrics are the structure's record for that sub-tier in the window tier on screen.
             _viewportSize = UseContextSignal(Viewport.Size);
+            _facts = Theming.TierContext.DrawnIn(UseContext(Theming.ThemeFactsContext.Signal));
             _heroTier = UseTier(Theming.ArtistLadders.Of(ShellPolicy.Now.Tiers, Theming.ArtistLadders.Hero), TierSource.Measured(_heroWidth, _heroSeed));
-            var tierFacts = Theming.ThemeHost.Facts.Value.Tiers;
+            var tierFacts = _facts.Value.Tiers;
             _ = _layoutEpoch.Value;
             float measuredW = _heroWidth.Value;
             _width = MathF.Max(1f, measuredW > 0.5f ? measuredW : _heroSeed());

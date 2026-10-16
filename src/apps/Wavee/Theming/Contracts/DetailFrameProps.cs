@@ -268,8 +268,9 @@ public sealed record DetailHeroProps(Detail.VerticalSpec Spec, Detail.HeroParts 
 /// table reads through the ambient registry, the way it reads <see cref="TrackListStyle"/>.</summary>
 public sealed class DetailHeroStyle
 {
-    /// <summary>The reserved band: the same parts at the same sizes as the loaded hero, from the bucketed width, unfilled.</summary>
-    public required Func<Detail.VerticalSpec, float, float, Element> Skeleton { get; init; }
+    /// <summary>The reserved band: the same parts at the same sizes as the loaded hero, from the bucketed width, unfilled. The last argument is the
+    /// window tiers the calling table is drawn in (its root's facts, never the process's last window), the tiers the loaded hero reads too.</summary>
+    public required Func<Detail.VerticalSpec, float, float, TierFacts, Element> Skeleton { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.DetailInsights"/>: the insights sheet over a track page's list (either arm).</summary>
