@@ -454,7 +454,7 @@ public sealed class ThemeCatalogTests : IDisposable
     }
 
     [Fact]
-    public void ContractVersion_IsOnePointSeventeen_AndRefusesAnythingElse()
+    public void ContractVersion_IsOnePointEighteen_AndRefusesAnythingElse()
     {
         // 1.1 (tuned Classic CT4): LyricsState.Offline + LyricsLinesStyle.Offline, PlayerBarSlots.VideoSplit.
         // 1.2 (tuned Classic CT1c): the omnibar model's focused-field facts. 1.3 (tuned Classic CT3a): SidebarRowShape.EntityText,
@@ -470,11 +470,13 @@ public sealed class ThemeCatalogTests : IDisposable
         // 1.12 (Classic frame tiers TC1): ChromeRowState.TabCount / TabMaxWidth, ChromePolicy.Compact / Huge, ctx.TierReader().
         // 1.13 (Classic stage tiers TC3): StagePolicy.Aspect as three TierLadders, StagePolicy's per-tier StageTierMetrics.
         // 1.14 (Classic detail tiers TC5): ThemePolicies.DetailTiers, DetailLadders, ColumnSet.Compact, DetailInsightsProps.Docked.
-                // 1.15 (Classic player bar and panels per tier TC2): PanelPlacement and the panel's tier rules, the second docked pane, the bar's
-        // window rules and mini bar parts, ChromeBudget.TrailingInDrawer, ChromeRowState.TabsHidden, the drawer's account row. A 1.0 theme still runs.
+        // 1.15 (Classic player bar and panels per tier TC2): PanelPlacement and the panel's tier rules, the second docked pane, the bar's
+        // window rules and mini bar parts, ChromeBudget.TrailingInDrawer, ChromeRowState.TabsHidden, the drawer's account row.
         // 1.16 (Classic collection tiers TC7): LibraryPageProps.SetPageWidth / Kinds, LibraryLadders.Layout.
         // 1.17 (Classic screens TC8): DialogFit.FormWidth / CommandHeight and OverlayFit.ShowForm.
-        Assert.Equal("1.17", ContractVersion.Text);
+        // 1.18 (Classic artist and people pages per tier TC6): ThemePolicies.ArtistTiers, ArtistLadders, ArtistHeroMetrics.PhotoHeight, FollowToggle.Size. A 1.0
+        // theme still runs.
+        Assert.Equal("1.18", ContractVersion.Text);
         Assert.True(ContractVersion.IsCompatible(1, 0));
         Assert.True(ContractVersion.IsCompatible(1, 2));
         Assert.True(ContractVersion.IsCompatible(1, 3));
@@ -492,7 +494,8 @@ public sealed class ThemeCatalogTests : IDisposable
         Assert.True(ContractVersion.IsCompatible(1, 15));
         Assert.True(ContractVersion.IsCompatible(1, 16));
         Assert.True(ContractVersion.IsCompatible(1, 17));
-        Assert.False(ContractVersion.IsCompatible(1, 18));
+        Assert.True(ContractVersion.IsCompatible(1, 18));
+        Assert.False(ContractVersion.IsCompatible(1, 19));
         Assert.False(ContractVersion.IsCompatible(2, 0));
         Assert.False(ContractVersion.IsCompatible(0, 0));
     }

@@ -30,7 +30,7 @@ public sealed class ClassicPoliciesTests
         // player bar (TC2: one docked panel and every level in every tier).
         Assert.Equal(ThemePolicies.Default, ClassicPolicies.Bundle with
         {
-            Tiers = TierPolicy.Standard, Overlays = OverlayPolicy.Default, DetailTiers = DetailTierPolicy.Default,
+            Tiers = TierPolicy.Standard, Overlays = OverlayPolicy.Default, DetailTiers = DetailTierPolicy.Default, ArtistTiers = ArtistTierPolicy.Default,
             Panel = ClassicPolicies.Panel with { Tiers = default }, PlayerBar = ClassicPolicies.PlayerBar with { Windows = default },
         });
         Assert.NotSame(TierPolicy.Standard, ClassicPolicies.Bundle.Tiers);

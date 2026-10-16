@@ -83,7 +83,7 @@ public sealed class ThemePolicyHostTests : IDisposable
         Assert.Equal(ClassicPolicies.Bundle, ThemeHost.Facts.Peek().Policies);
         Assert.Equal(ThemePolicies.Default, ShellPolicy.Now with
         {
-            Tiers = TierPolicy.Standard, Overlays = OverlayPolicy.Default, DetailTiers = DetailTierPolicy.Default,
+            Tiers = TierPolicy.Standard, Overlays = OverlayPolicy.Default, DetailTiers = DetailTierPolicy.Default, ArtistTiers = ArtistTierPolicy.Default,
             Panel = ShellPolicy.Now.Panel with { Tiers = default }, PlayerBar = ShellPolicy.Now.PlayerBar with { Windows = default },   // TC2's tier rules
         });
         Assert.Equal(ShellCapabilities.Unrestricted, ThemeHost.Facts.Peek().Capabilities);

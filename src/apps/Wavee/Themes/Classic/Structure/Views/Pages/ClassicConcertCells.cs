@@ -215,8 +215,13 @@ internal static class ClassicConcertCells
     /// seam gradient only. Wide is a 56/44 row at 320; narrow stacks a 180-DIP pane above the copy. No photo ⇒ the
     /// accent-tinted plate with ONE centred 52-DIP calendar (W13c); no accent ⇒ the flat base (W13b).</summary>
     public static Element SplitHero(string? imageUrl, uint accent, Element copy, bool wide)
+        => SplitHero(imageUrl, accent, copy, ClassicConcertTiers.EditorialHero(wide));
+
+    /// <summary>The split card at the tier's <paramref name="metrics"/> (the event page's records, TC6: split at 240 at Small and at 400 at Huge, the 220 stacked
+    /// pane at Compact): a row when the metrics have a height of their own, the stacked pane otherwise.</summary>
+    public static Element SplitHero(string? imageUrl, uint accent, Element copy, EditorialHeroMetrics metrics)
     {
-        var metrics = ClassicConcertTiers.EditorialHero(wide);
+        bool wide = metrics.Split;
         ColorF baseFill = R.Layer.EventHeroPlate;
         ColorF mediaFill = accent != 0 ? ColorF.Lerp(baseFill, ColorScience.ToColor(accent), R.Wash.ConcertMediaMix) : baseFill;
 

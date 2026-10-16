@@ -41,6 +41,10 @@ internal sealed class ClassicProfileLatch
     /// <summary>The props of the latest render (the derived skeleton and the failed panels read the live width, accent and own flag through it).</summary>
     public ProfilePageProps P = null!;
 
+    /// <summary>The window tier's page record and the hero's form for the latest render's metrics (TC6, `Rules\Tiers.Profile.cs`).</summary>
+    public ClassicProfileLayout Layout = ClassicProfileTiers.Standard;
+    public ClassicProfileHeroForm Form = ClassicProfileTiers.StandardForm(ArtistHeroTier.Wide);
+
     /// <summary>The page body of this render (null while it is not composed).</summary>
     public Element? Body;
 
@@ -66,7 +70,7 @@ internal sealed class ClassicProfileLatch
             SecPending[k] = () => Verdict[k] == ProfileSectionBody.Seed;
             SecFailed[k] = () => Verdict[k] == ProfileSectionBody.Error;
             SecContent[k] = () => Els[k] ?? new BoxEl();
-            SecShimmer[k] = () => ClassicProfileSections.SeedShelf(s, P.AccentPeek(), ClassicProfilePage.MagazineInnerWidth(P));
+            SecShimmer[k] = () => ClassicProfileSections.SeedShelf(s, P.AccentPeek(), ClassicProfilePage.MagazineInnerWidth(P, Layout.PageMaxWidth), Layout.Shelf);
             SecFailedPanel[k] = () => ClassicProfileSections.SectionError(s, P.AccentPeek(), Retry[k]);
         }
     }
@@ -89,11 +93,14 @@ internal static class ClassicProfilePage
     /// <summary>The registered template of <see cref="ViewKeys.ProfilePage"/>.</summary>
     public static Element Template(ProfilePageProps p, in ViewContext ctx)
     {
-        // The one page gutter (tuned Classic F3), as the artist page: the profile's surfaces inset by the content tier's gutter.
-        p = p with { Metrics = p.Metrics with { Gutter = ClassicTiers.PageOf(ctx.Tier()).Gutter } };
+        // The tier records (TC6): the page's (the shelves' fit) and the hero's form for the metrics the core latched (they already carry the one page gutter,
+        // tuned Classic F3, as the artist page's).
+        var facts = ctx.Tier();
         var latchCell = ctx.Hooks.UseRef<ClassicProfileLatch?>(null);
         var latch = latchCell.Value ??= new ClassicProfileLatch();
         latch.P = p;
+        latch.Layout = ClassicProfileTiers.Of(in facts);
+        latch.Form = ClassicProfileTiers.HeroForm(p.Metrics.Tier, in facts, p.Width);
 
         latch.Body = p.Unavailable ? ClassicProfileSections.Unavailable()
                    : p.BodyReady ? Compose(p, latch)
@@ -149,7 +156,7 @@ internal static class ClassicProfilePage
             latch.Retry[k] = slot.Retry;
             latch.Els[k] = slot.Body switch
             {
-                ProfileSectionBody.Cards => ClassicProfileSections.Shelf(s, slot.Cards, accent, slot.SeeAll),
+                ProfileSectionBody.Cards => ClassicProfileSections.Shelf(s, slot.Cards, accent, slot.SeeAll, latch.Layout.Shelf),
                 ProfileSectionBody.Empty => ClassicArtistSections.SectionBlock(ClassicProfileSections.SectionTitle(s),
                     ClassicProfileSections.EmptyShelf(p.Own), accent),
                 _ => null,
@@ -170,8 +177,8 @@ internal static class ClassicProfilePage
 
         float collapse = ProfileHeroLayout.CollapseDistance(in m);
         bool compact = p.Compact;
-        Element band = BandBar(p, collapse, compact, pivotItems);
-        Element hero = ClassicProfileHero.Build(p.Hero, uri, width, in m, compact, p.HeroActs, band);
+        Element band = BandBar(p, collapse, compact, pivotItems, latch.Layout.PageMaxWidth);
+        Element hero = ClassicProfileHero.Build(p.Hero, uri, width, in m, latch.Form, latch.Layout.PageMaxWidth, compact, p.HeroActs, band);
         Element sentinel = new BoxEl { Height = 0f, HitTestVisible = false }
             .Sticky(ArtistHeroLayout.CompactIdentityHeight, engaged: p.CompactEdge());
         Element wash = Palette.ArtistBlendWash(p.PaletteUrl, ProfileHeroLayout.WashHeight(in m),
@@ -184,12 +191,12 @@ internal static class ClassicProfilePage
         // its top and simply scrolls away under the transparent band.
         Element magazine = new BoxEl
         {
-            Key = "profile-under-band", Direction = 1,
+            Key = "profile-under-band", Direction = 1, Animate = ClassicArtistTiers.FollowMotion,
             EdgeFade = new EdgeFadeSpec(EdgeMask.Top, Detail.BandLayout.ClipFadeBand) { WhileStuck = true },
             Children =
             [
                 new BoxEl { Height = 1f, Fill = Tok.StrokeDividerDefault, HitTestVisible = false },
-                new BoxEl { Direction = 0, Justify = FlexJustify.Center, Children = [Magazine(sections, m.Gutter)] },
+                new BoxEl { Direction = 0, Justify = FlexJustify.Center, Children = [Magazine(sections, m.Gutter, latch.Layout.PageMaxWidth)] },
             ],
         }.StickyClip(Detail.BandLayout.ClipInset);
 
@@ -204,22 +211,22 @@ internal static class ClassicProfilePage
         };
     }
 
-    /// <summary>The centred magazine column: Grow toward the row's free width, capped at 1600, the hero's gutter on both sides, a 32 section gap, the player dock's
-    /// reserve under the last section.</summary>
-    static Element Magazine(Element[] sections, float gutter) => new BoxEl
+    /// <summary>The centred magazine column: Grow toward the row's free width, capped at the tier's measure (1600; Huge's 2400), the hero's gutter on both sides,
+    /// a 32 section gap, the player dock's reserve under the last section.</summary>
+    static Element Magazine(Element[] sections, float gutter, float pageMax) => new BoxEl
     {
         Direction = 1, Gap = R.Space.SectionGap,
-        Grow = 1f, Shrink = 1f, MinWidth = 0f, Basis = 0f, MaxWidth = R.Space.PageMaxW,
+        Grow = 1f, Shrink = 1f, MinWidth = 0f, Basis = 0f, MaxWidth = pageMax,
         Padding = new Edges4(gutter, Spacing.M, gutter, R.Space.DockReserve + ClassicProfileRules.MagazineDockExtra),
         Children = sections,
     };
 
-    /// <summary>The magazine's measure: the page's width capped at the 1600 column, minus the hero's gutter on both sides.</summary>
-    internal static float MagazineInnerWidth(ProfilePageProps p) => MathF.Max(1f, MathF.Min(p.Width, R.Space.PageMaxW) - 2f * p.Metrics.Gutter);
+    /// <summary>The magazine's measure: the page's width capped at the tier's column, minus the hero's gutter on both sides.</summary>
+    internal static float MagazineInnerWidth(ProfilePageProps p, float pageMax) => MathF.Max(1f, MathF.Min(p.Width, pageMax) - 2f * p.Metrics.Gutter);
 
     // ── the context band (`ClassicArtistPage.BandBar`, the profile arm: title · pivot · Follow as a word) ───────────────────
 
-    static Element BandBar(ProfilePageProps p, float collapse, bool canHit, (string Label, Action OnClick)[] pivotItems)
+    static Element BandBar(ProfilePageProps p, float collapse, bool canHit, (string Label, Action OnClick)[] pivotItems, float pageMax)
     {
         float width = p.Width;
         float gutter = p.Metrics.Gutter;
@@ -251,8 +258,8 @@ internal static class ClassicProfilePage
                         with { Key = "profile-band-follow:" + uri, SkeletonProxy = s_emptyShape },
                 ],
             };
-        // The content sits at the page's 1600 measure; the band's extent stays full-bleed.
-        Element row = ClassicDetailBand.Band(MathF.Min(width, R.Space.PageMaxW), gutter, [title, pivot, actions]);
+        // The content sits at the page's measure (the magazine's); the band's extent stays full-bleed.
+        Element row = ClassicDetailBand.Band(MathF.Min(width, pageMax), gutter, [title, pivot, actions]);
         float revealStart = ArtistHeroLayout.CompactRevealStart(collapse);
         return new BoxEl
         {
@@ -279,7 +286,7 @@ internal static class ClassicProfilePage
     {
         var p = latch.P;
         var m = p.Metrics;
-        float inner = MagazineInnerWidth(p);
+        float inner = MagazineInnerWidth(p, latch.Layout.PageMaxWidth);
         var first = p.Own ? ProfileSection.TopArtists : ProfileSection.Playlists;
         var second = p.Own ? ProfileSection.Playlists : ProfileSection.RecentArtists;
         ColorF accent = p.AccentPeek();
@@ -288,14 +295,15 @@ internal static class ClassicProfilePage
             Direction = 1,
             Children =
             [
-                ClassicProfileHero.Build(ProfileHeroText.PlaceholderFor(p.Own), "", p.Width, in m, false, null, null),
+                ClassicProfileHero.Build(ProfileHeroText.PlaceholderFor(p.Own), "", p.Width, in m, latch.Form, latch.Layout.PageMaxWidth, false, null, null),
                 new BoxEl { Height = 1f, Fill = Tok.StrokeDividerDefault },
                 new BoxEl
                 {
                     Direction = 0, Justify = FlexJustify.Center,
                     Children =
                     [
-                        Magazine([ClassicProfileSections.SeedShelf(first, accent, inner), ClassicProfileSections.SeedShelf(second, accent, inner)], m.Gutter),
+                        Magazine([ClassicProfileSections.SeedShelf(first, accent, inner, latch.Layout.Shelf),
+                                  ClassicProfileSections.SeedShelf(second, accent, inner, latch.Layout.Shelf)], m.Gutter, latch.Layout.PageMaxWidth),
                     ],
                 },
             ],

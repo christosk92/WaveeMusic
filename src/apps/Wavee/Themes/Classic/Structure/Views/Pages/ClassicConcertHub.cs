@@ -51,7 +51,7 @@ internal static class ClassicConcertHub
             () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: props.Retry), "concert-hub");
         var content = new BoxEl
         {
-            Direction = 1,
+            Key = "concert-hub:page", Direction = 1,
             Children =
             [
                 // The trail's reserve + 12 as a SPACER (the header card is the hub's hero and its title): the clipped nodes start where the

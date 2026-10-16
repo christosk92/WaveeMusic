@@ -21,7 +21,7 @@ namespace Wavee.Themes.Classic;
 /// <summary>The page view's latched layout decisions: plain fields that outlive a render (the view's hook cell), exactly the host fields they replace.</summary>
 internal sealed class ClassicArtistLatch
 {
-    /// <summary>The Top band's wide/stacked decision (760, held down to 736 once wide).</summary>
+    /// <summary>The Top band's wide/stacked decision (the band ladder, `ClassicArtistTiers.TopBand`: 760, held down to 736 once wide).</summary>
     public bool TopBandWide = true;
 
     /// <summary>The biography band's mode (the detail page's mode ladder) and whether it has decided once.</summary>
@@ -46,28 +46,29 @@ internal static class ClassicArtistSections
     };
 
     /// <summary>One section's body, in the plan's order (ArtistPage.cs:234-269).</summary>
-    public static Element Body(ArtistSection s, ArtistPageProps p, ClassicArtistLatch latch, SurfaceStyle? surface)
+    public static Element Body(ArtistSection s, ArtistPageProps p, ClassicArtistLatch latch, SurfaceStyle? surface, ClassicArtistLayout layout)
     {
         Artist a = p.Artist;
         ColorF accent = p.Accent;
+        var shelf = layout.Shelf;
         return s switch
         {
-            ArtistSection.Popular => TopBand(p, latch, surface),
+            ArtistSection.Popular => TopBand(p, latch, surface, layout),
             ArtistSection.Upcoming => SectionBlock(Loc.Get(Strings.Artist.Upcoming), ClassicArtistBanners.UpcomingCard(a, p.AccentFn, wide: false), accent),
             ArtistSection.LatestRelease => SectionBlock(Loc.Get(Strings.Artist.LatestRelease), ClassicArtistBanners.LatestBanner(a.Latest, accent), accent),
             ArtistSection.Albums => Artist.FacetSection(a, DiscoFacet.Albums, p.AccentFn, Detail.BandLayout.Height, ArtistSections.FacetExpandedTopInset),
             ArtistSection.Singles => Artist.FacetSection(a, DiscoFacet.Singles, p.AccentFn, Detail.BandLayout.Height, ArtistSections.FacetExpandedTopInset),
             ArtistSection.Compilations => Artist.FacetSection(a, DiscoFacet.Compilations, p.AccentFn, Detail.BandLayout.Height, ArtistSections.FacetExpandedTopInset),
-            ArtistSection.AppearsOn => AppearsOnShelf(a, accent),
+            ArtistSection.AppearsOn => AppearsOnShelf(a, accent, shelf),
             ArtistSection.Tour => ClassicArtistBanners.TourBanner(a, accent),
-            ArtistSection.MusicVideos => VideosShelf(a, accent),
-            ArtistSection.Playlists => PlaylistsShelf(a, accent),
-            ArtistSection.Concerts => ConcertsShelf(a, accent),
-            ArtistSection.Merch => MerchShelf(a, accent),
+            ArtistSection.MusicVideos => VideosShelf(a, accent, shelf),
+            ArtistSection.Playlists => PlaylistsShelf(a, accent, shelf),
+            ArtistSection.Concerts => ConcertsShelf(a, accent, shelf),
+            ArtistSection.Merch => MerchShelf(a, accent, shelf),
             ArtistSection.Biography => BiographyBand(p, latch, accent),
-            ArtistSection.Gallery => GalleryShelf(p, accent),
-            ArtistSection.Related => ArtistsShelf(a.RelatedSlots, accent),
-            _ => ArtistsShelf(p.Fans, accent),
+            ArtistSection.Gallery => GalleryShelf(p, accent, shelf),
+            ArtistSection.Related => ArtistsShelf(a.RelatedSlots, accent, shelf),
+            _ => ArtistsShelf(p.Fans, accent, shelf),
         };
     }
 
@@ -76,8 +77,9 @@ internal static class ClassicArtistSections
     /// <summary>The chart beside ONE featured object — the pick, or (no pick) the upcoming card — at ≥ 760 (736 once
     /// wide), stacked below it otherwise. Decided at the 900-DIP pre-measure width on the first composed frame
     /// (parity 90); the featured child's key folds the arm (props freeze at mount).</summary>
-    static Element TopBand(ArtistPageProps p, ClassicArtistLatch latch, SurfaceStyle? surface)
+    static Element TopBand(ArtistPageProps p, ClassicArtistLatch latch, SurfaceStyle? surface, ClassicArtistLayout layout)
     {
+        float share = layout.ChartShare;
         Artist a = p.Artist;
         bool pick = a.HasPick;
         bool upcomingInRail = ArtistSections.UpcomingInRail(pick, a.HasPreRelease && a.HasUpcoming);
@@ -87,7 +89,7 @@ internal static class ClassicArtistSections
         IOverlayService? overlay = p.Overlay;
         return Responsive.Of("artist:top-band", w =>
         {
-            bool wide = latch.TopBandWide = ArtistSections.TopBandWide(w, latch.TopBandWide);
+            bool wide = latch.TopBandWide = ClassicArtistTiers.TopBandWide(w, latch.TopBandWide);
             Element tracks = Artist.Chart(a, accentSignal);
             if (!pick && !upcomingInRail) return new BoxEl { Direction = 1, MinWidth = 0f, Children = [tracks] };
             Element featured = pick
@@ -100,7 +102,7 @@ internal static class ClassicArtistSections
                 AlignItems = wide ? FlexAlign.Start : FlexAlign.Stretch,
                 Children =
                 [
-                    new BoxEl { Direction = 1, Grow = wide ? 2f : 0f, Basis = wide ? 0f : float.NaN, MinWidth = 0f, Children = [tracks] },
+                    new BoxEl { Direction = 1, Grow = wide ? share : 0f, Basis = wide ? 0f : float.NaN, MinWidth = 0f, Children = [tracks] },
                     new BoxEl { Direction = 1, Grow = wide ? 1f : 0f, Basis = wide ? 0f : float.NaN, MinWidth = 0f, Children = [featured] },
                 ],
             };
@@ -114,10 +116,10 @@ internal static class ClassicArtistSections
     /// shelf's gate compares it by VALUE.</summary>
     readonly record struct ShelfEntity(int Slot, uint Version, StringId Sub, int Aux, string Key);
 
-    /// <summary>A measured PagedShelf under an accent header: auto-fit cards between 150 and 200, gap 12, one row,
-    /// edge fade 36, stock chevrons. The items are VALUE records (slot + version), so a publish that changes nothing
+    /// <summary>A measured PagedShelf under an accent header, at the tier's fit (<paramref name="band"/>: cards between 150 and 200, gap 12, stock chevrons;
+    /// a 164 strip whose third card peeks at Compact; ten columns at Huge), one row, edge fade 36. The items are VALUE records (slot + version), so a publish that changes nothing
     /// a card paints rebuilds no card; a hydrated name bumps the version and rebuilds exactly that card.</summary>
-    static Element ShelfOf(ShelfEntity[] items, Func<ShelfEntity, int, float, Element> cardAt, string title, ColorF accent,
+    static Element ShelfOf(ShelfEntity[] items, Func<ShelfEntity, int, float, Element> cardAt, string title, ColorF accent, ClassicShelfBand band,
                            Func<float, float>? cardHeight = null, Action<ShelfEntity, int>? onInvoke = null)
         => new BoxEl
         {
@@ -131,10 +133,16 @@ internal static class ClassicArtistSections
             // per card, Enter/Space invoke); a shelf whose cards own their click (concert stub, merch, gallery) omits it.
             Children = [PagedShelf.Create(items, cardAt, onInvoke: onInvoke, cardHeight: cardHeight ?? s_squareHeight,
                 header: Controls.AccentHeader(title, accent), measured: false, keyOf: s_shelfKey,
-                lift: ShelfLift.None)],   // the shared card hovers fill-only: no lift halo to reserve clearance for
+                pager: band.Pager ? ShelfPager.Chevrons : ShelfPager.None, minCardW: band.MinCardW, maxCardW: band.MaxCardW, gap: band.Gap,
+                fixedCardW: band.FixedCardW, maxColumns: band.MaxColumns,
+                lift: ShelfLift.None) with { Key = ShelfKey(band) }],   // the shared card hovers fill-only: no lift halo to reserve clearance for
         };
 
     static readonly Func<ShelfEntity, int, string> s_shelfKey = static (item, _) => item.Key;
+
+    /// <summary>The shelf's key per fit: a PagedShelf reads its fit at mount, so a tier crossing that changes the fit remounts it (the strip, the column cap,
+    /// the plain fit).</summary>
+    internal static string ShelfKey(in ClassicShelfBand band) => band.FixedCardW > 0f ? "shelf:strip" : band.MaxColumns > 0 ? "shelf:cols" : "shelf:fit";
     static readonly Func<float, float> s_squareHeight = static w => SurfaceGeometry.ShelfHeight(w);
 
     static ShelfEntity[] Items(ReadOnlySpan<int> slots, EntityKind kind, int cap)
@@ -158,9 +166,9 @@ internal static class ClassicArtistSections
         return items;
     }
 
-    static Element AppearsOnShelf(Artist a, ColorF accent)
+    static Element AppearsOnShelf(Artist a, ColorF accent, ClassicShelfBand band)
         => ShelfOf(Items(a.AppearsOnSlots, EntityKind.Album, ArtistSections.AppearsOnCap), AlbumCard,
-                   Loc.Get(Strings.Artist.AppearsOn), accent, onInvoke: static (item, _) => OpenAlbum(item));
+                   Loc.Get(Strings.Artist.AppearsOn), accent, band, onInvoke: static (item, _) => OpenAlbum(item));
 
     /// <summary>The album card's click, shared with the shelf slot's <c>onInvoke</c>.</summary>
     static void OpenAlbum(ShelfEntity item) => Track.GoToAlbum(new Album(item.Slot));
@@ -188,7 +196,7 @@ internal static class ClassicArtistSections
     /// (<c>SurfaceGeometry.ShelfHeight(w)</c> = <c>w + 66</c>).</summary>
     static readonly SurfaceShape s_shelfShape = Shape.Shelf(captionLines: 2);
 
-    static Element VideosShelf(Artist a, ColorF accent)
+    static Element VideosShelf(Artist a, ColorF accent, ClassicShelfBand band)
     {
         var slots = a.VideoSlots;
         var payload = a.VideoPayload;
@@ -200,7 +208,7 @@ internal static class ClassicArtistSections
             items[i] = new ShelfEntity(slots[i], new Track(slots[i]).Version, v.Thumb, v.DurationMs,
                 slots[i].ToString(CultureInfo.InvariantCulture));
         }
-        return ShelfOf(items, VideoCard, Loc.Get(Strings.Artist.MusicVideos), accent, cardHeight: s_videoHeight,
+        return ShelfOf(items, VideoCard, Loc.Get(Strings.Artist.MusicVideos), accent, band, cardHeight: s_videoHeight,
                        onInvoke: static (item, _) => PlayVideo(item));
     }
 
@@ -238,7 +246,7 @@ internal static class ClassicArtistSections
 
     static readonly Track.MenuOptions s_trackMenu = new(ShowGoToAlbum: true);
 
-    static Element PlaylistsShelf(Artist a, ColorF accent)
+    static Element PlaylistsShelf(Artist a, ColorF accent, ClassicShelfBand band)
     {
         var slots = a.PlaylistSlots;
         var subtitles = a.PlaylistSubtitleIds;
@@ -247,7 +255,7 @@ internal static class ClassicArtistSections
         for (int i = 0; i < n; i++)
             items[i] = new ShelfEntity(slots[i], new Playlist(slots[i]).Version, i < subtitles.Length ? subtitles[i] : default, 0,
                 slots[i].ToString(CultureInfo.InvariantCulture));
-        return ShelfOf(items, PlaylistCard, Loc.Get(Strings.Artist.PlaylistsDiscovery), accent,
+        return ShelfOf(items, PlaylistCard, Loc.Get(Strings.Artist.PlaylistsDiscovery), accent, band,
                        onInvoke: static (item, _) => OpenPlaylist(item));
     }
 
@@ -271,9 +279,9 @@ internal static class ClassicArtistSections
         return Controls.Surface(data, s_shelfShape, w);
     }
 
-    static Element ConcertsShelf(Artist a, ColorF accent)
+    static Element ConcertsShelf(Artist a, ColorF accent, ClassicShelfBand band)
         => ShelfOf(Items(a.ConcertSlots, EntityKind.Concert, ArtistSections.ConcertCap), s_concertCard,
-                   Loc.Get(Strings.Artist.UpcomingConcerts), accent);
+                   Loc.Get(Strings.Artist.UpcomingConcerts), accent, band);
 
     /// <summary>The concert stub is the concert cells' (`ClassicConcertCells.Stub`, T10b3; ch 08 §9: 0.2.9's ArtistPage.ConcertStub). No menu.</summary>
     static readonly Func<ShelfEntity, int, float, Element> s_concertCard = static (item, _, w) =>
@@ -282,8 +290,8 @@ internal static class ClassicArtistSections
         return ClassicConcertCells.Stub(c, () => ArtistVerbs.OpenConcert(c), w);
     };
 
-    static Element MerchShelf(Artist a, ColorF accent)
-        => ShelfOf(Items(a.MerchSlots, EntityKind.Unknown, ArtistSections.MerchCap), s_merchCard, Loc.Get(Strings.Artist.Merch), accent);
+    static Element MerchShelf(Artist a, ColorF accent, ClassicShelfBand band)
+        => ShelfOf(Items(a.MerchSlots, EntityKind.Unknown, ArtistSections.MerchCap), s_merchCard, Loc.Get(Strings.Artist.Merch), accent, band);
 
     /// <summary>Square art, a 2-line name, the price in accent ink (Shelves.cs:139-165). 0.2.9's card was the one inert
     /// card on the page (parity 91): 0.3 opens the shop link when the row carries one.</summary>
@@ -323,7 +331,7 @@ internal static class ClassicArtistSections
         };
     };
 
-    static Element GalleryShelf(ArtistPageProps p, ColorF accent)
+    static Element GalleryShelf(ArtistPageProps p, ColorF accent, ClassicShelfBand band)
     {
         var ids = p.Artist.GallerySlots;
         int n = Math.Min(ids.Length, ArtistSections.GalleryCap);
@@ -343,14 +351,14 @@ internal static class ClassicArtistSections
             HoverScale = R.Motion.ScaleStandard.Hover, PressScale = R.Motion.ScaleStandard.Press,
             OnClick = () => open(urls, index),
             Children = [Controls.Artwork(urls[index], w, w, Radii.Card, decodePx: 480)],
-        }, Loc.Get(Strings.Artist.Gallery), accent);
+        }, Loc.Get(Strings.Artist.Gallery), accent, band);
     }
 
     /// <summary>"Fans also like": circular cards with the subtitle "Artist" — the related artists, or the fallback
     /// pool of followed artists (the section keys differ, so the two never share a subtree).</summary>
-    static Element ArtistsShelf(ReadOnlySpan<int> slots, ColorF accent)
+    static Element ArtistsShelf(ReadOnlySpan<int> slots, ColorF accent, ClassicShelfBand band)
         => ShelfOf(Items(slots, EntityKind.Artist, ArtistSections.FansCap), ArtistCard,
-                   Loc.Get(Strings.Detail.FansAlsoLike), accent, onInvoke: static (item, _) => OpenArtist(item));
+                   Loc.Get(Strings.Detail.FansAlsoLike), accent, band, onInvoke: static (item, _) => OpenArtist(item));
 
     /// <summary>The artist card's click, shared with the shelf slot's <c>onInvoke</c>.</summary>
     static void OpenArtist(ShelfEntity item) => Track.GoToArtist(new Artist(item.Slot));

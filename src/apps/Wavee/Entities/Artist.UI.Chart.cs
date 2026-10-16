@@ -68,7 +68,12 @@ public readonly partial struct Artist
     [
         "chart-shelf:1:noart:modern", "chart-shelf:1:noart:classic", "chart-shelf:1:art:modern", "chart-shelf:1:art:classic",
         "chart-shelf:2:noart:modern", "chart-shelf:2:noart:classic", "chart-shelf:2:art:modern", "chart-shelf:2:art:classic",
+        "chart-shelf:3:noart:modern", "chart-shelf:3:noart:classic", "chart-shelf:3:art:modern", "chart-shelf:3:art:classic",
+        "chart-shelf:4:noart:modern", "chart-shelf:4:noart:classic", "chart-shelf:4:art:modern", "chart-shelf:4:art:classic",
     ];
+
+    /// <summary>The most chart columns a shelf key exists for (a structure that offers more is held to it).</summary>
+    const int ChartKeyColumns = 4;
 
     // ══ 2. THE HOST ══════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -193,7 +198,8 @@ public readonly partial struct Artist
             RefreshItems();
             Selection.ItemCount = _items.Length;
 
-            int cols = ArtistSections.ChartColumns(_items.Length);
+            // The tier's widest chart (TC6: two columns at Standard, more at Huge, one at Compact), read tracked: a window crossing re-renders the chart.
+            int cols = ArtistSections.ChartColumns(_items.Length, Math.Min(ChartKeyColumns, ShellPolicy.Tracked.ArtistTiers.ChartMaxColumns(Theming.ThemeHost.Facts.Value.Tiers)));
             int shelfKey = (cols - 1) * 4 + (ShowArtwork ? 2 : 0) + (Classic ? 1 : 0);
             Element shelf = PagedShelf.Create(
                 _items,

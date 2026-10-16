@@ -66,13 +66,15 @@ internal static class ClassicConcertSchedule
     public static Element Template(ConcertScheduleProps props, in ViewContext ctx)
     {
         var cell = ctx.Hooks.UseRef(new Cell()).Value;
+        // The first frame's width: the same-frame region estimate (TC6; no fixed fallback), so the first frame is already in its final arm.
+        float firstW = ClassicRegion.EstimateWidth(ctx.Tier(), ctx.Hooks.UseContextSignal(Viewport.Size).Peek().Width);
         Func<float, Element> build = w => Dashboard(props, cell, props.Model(), Wide(cell, w));
         Func<float, Element> buildSeed = w => Dashboard(props, cell, props.Seed(), Wide(cell, w));
         Func<Element> content = () => props.Empty
             ? Controls.Vacancy(Controls.VacancyVoice.Empty, title: Loc.Get(Strings.Concerts.Schedule.NoUpcoming),
                 subtitle: Loc.Get(Strings.Concerts.Schedule.NoUpcomingSubtitle))
-            : Responsive.Of("concert-schedule", build, fallback: Rules.ScheduleFallbackWidth);
-        Element region = Cells.Region(props.Pending, props.Failed, content, () => Responsive.Of("concert-schedule", buildSeed, fallback: Rules.ScheduleFallbackWidth),
+            : Responsive.Of("concert-schedule", build, fallback: firstW);
+        Element region = Cells.Region(props.Pending, props.Failed, content, () => Responsive.Of("concert-schedule", buildSeed, fallback: firstW),
             () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: props.Retry), "artist-schedule:" + props.RouteKey);
         Element scroll = Cells.SubPageScroll(props.ScrollScope + "artist-schedule:" + props.RouteKey, region, ClassicTiers.PageOf(ctx.Tier()).Gutter) with
         {

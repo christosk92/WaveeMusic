@@ -84,16 +84,6 @@ public class ArtistPageRulesTests
         Assert.Equal(11, destinations);
     }
 
-    /// <summary>TopTracks.cs:17-27: wide at 760, held down to 736 once wide, re-entered only at 760.</summary>
-    [Fact]
-    public void TopBandWide_HoldsTwentyFourDipOnceWide()
-    {
-        Assert.True(ArtistSections.TopBandWide(760f, wasWide: false));
-        Assert.False(ArtistSections.TopBandWide(759f, wasWide: false));
-        Assert.True(ArtistSections.TopBandWide(736f, wasWide: true));
-        Assert.False(ArtistSections.TopBandWide(735f, wasWide: true));
-    }
-
     /// <summary>ch 08 audit #4: a ≤ 5-track chart is ONE column at any width; never more than two.</summary>
     [Theory]
     [InlineData(0, 1)]
@@ -167,20 +157,17 @@ public class ArtistPageRulesTests
     }
 
     /// <summary>ch 08 §9 inconsistency #1: the wash sized from the RESOLVED metrics follows the hero's own hysteretic
-    /// tier — at 870 a page that was Wide keeps the 440 hero AND the 440 + 96 wash, where the width-only form drops to
-    /// Medium's 384 + 96.</summary>
+    /// tier — at 870 a page that was Wide keeps the 440 hero AND the 440 + 96 wash (the structure's hero ladder holds Wide down to 856).</summary>
     [Fact]
     public void BlendWash_FromResolvedMetrics_FollowsTheHysteresis()
     {
-        var held = ArtistHeroLayout.For(870f, ArtistHeroTier.Wide);
-        Assert.Equal(ArtistHeroTier.Wide, held.Tier);
-        Assert.Equal(ArtistHeroLayout.WideHeight + ArtistHeroLayout.ContentBlendTail, ArtistHeroLayout.BlendBackdropHeightFor(in held));
-        Assert.Equal(ArtistHeroLayout.MediumHeight + ArtistHeroLayout.ContentBlendTail, ArtistHeroLayout.BlendBackdropHeightFor(870f));
-
-        // Outside every hysteresis band the two forms agree.
-        var wide = ArtistHeroLayout.For(1200f, ArtistHeroTier.Wide);
-        Assert.Equal(ArtistHeroLayout.BlendBackdropHeightFor(1200f), ArtistHeroLayout.BlendBackdropHeightFor(in wide));
-        Assert.Equal(ArtistHeroLayout.BlendBoundaryFor(1200f), ArtistHeroLayout.BlendBoundaryFor(in wide), 4);
-        Assert.Equal(Spacing.PageWide, wide.Gutter);
+        var tier = Wavee.Themes.Classic.ClassicArtistTiers.HeroTierFor(870f, (int)ArtistHeroTier.Wide);
+        Assert.Equal(ArtistHeroTier.Wide, tier);
+        var held = Wavee.Themes.Classic.ClassicArtistTiers.StandardForm(tier).Metrics(Spacing.PageWide);
+        Assert.Equal(440f + ArtistHeroLayout.ContentBlendTail, ArtistHeroLayout.BlendBackdropHeightFor(in held));
+        Assert.Equal(440f / (440f + ArtistHeroLayout.ContentBlendTail), ArtistHeroLayout.BlendBoundaryFor(in held), 4);
+        // A fresh resolve at 870 is Medium: 384 + 96.
+        var fresh = Wavee.Themes.Classic.ClassicArtistTiers.StandardForm(Wavee.Themes.Classic.ClassicArtistTiers.HeroTierFor(870f)).Metrics(Spacing.PageWide);
+        Assert.Equal(384f + ArtistHeroLayout.ContentBlendTail, ArtistHeroLayout.BlendBackdropHeightFor(in fresh));
     }
 }

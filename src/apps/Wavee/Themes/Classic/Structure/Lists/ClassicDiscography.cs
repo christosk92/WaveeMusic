@@ -36,7 +36,13 @@ internal static class ClassicDiscography
     public static readonly DiscographyStyle Style = new(Metrics, Facet, FacetFailed, Card, Opened, Seed, Cell, DrawerFrame, DrawerPanel,
                                                        DrawerBar, DrawerSlot, ShowAll, DrawerTrack);
 
-    static DiscographyMetrics Metrics() => new(Rules.MinColumn, Rules.Gap, Rules.CardChrome, Rules.RowGap);
+    /// <summary>The grid's configuration in the window tier on screen (TC6: a two-column floor at Compact), read TRACKED: the core's grid host re-renders on a
+    /// crossing and remounts its grid keyed by these numbers.</summary>
+    static DiscographyMetrics Metrics()
+    {
+        var layout = ClassicArtistTiers.Now;
+        return new(layout.DiscoMinColumn, layout.DiscoGap, Rules.CardChrome, Rules.RowGap);
+    }
 
     // ══ the facet section ════════════════════════════════════════════════════════════════════════════════════════════
 

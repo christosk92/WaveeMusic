@@ -5,7 +5,8 @@
 // bottom edge inside a fixed tier height, so the sticky collapse is exact.
 //
 // The hero is built by the page view for the live page AND for the derived shimmer (the skeleton deriver cannot run a view slot); a null `acts` is the shimmer arm
-// (shapes only). The tiers, the heights and the stat plan (`ProfileHeroLayout`, `ProfileStats`) are core: the artist hero's tiers decide them.
+// (shapes only). The sub-tier is the artist hero's; what each lays out per window tier is Classic's tier records (`Rules\Tiers.Profile.cs`, TC6: the core latches
+// the metrics through them); the stat plan (`ProfileStats`) and the collapse arithmetic (`ProfileHeroLayout`) are core.
 //
 // TYPE (Design.cs "THE TYPE RAMP" — no new alias, no raw TextEl size): the name is ArtistDisplay / ArtistTitle / ArtistCompactTitle by tier; stats and ranks are
 // StatHero (the sanctioned 350 cut); stat captions are Caption at 600 (Track.Drawer.Stat's idiom). No eyebrow over the name. Sentence case everywhere.
@@ -30,9 +31,11 @@ internal static class ClassicProfileHero
     static readonly Func<Element> s_followShape = static () => Controls.FollowToggle.SkeletonShape();
     static readonly Action s_noop = static () => { };
 
-    /// <summary>The round-avatar hero and its collapse into the 56-DIP band: horizontal tiers put avatar | copy bottom-aligned; stacked tiers put avatar over copy.</summary>
-    public static Element Build(in ProfileHeroText t, string uri, float width, in ProfileHeroMetrics m, bool compactCanHit,
-                                ProfileHeroActs? acts, Element? band)
+    /// <summary>The round-avatar hero and its collapse into the 56-DIP band, in its tier's <paramref name="form"/> (`Rules\Tiers.Profile.cs`): the row arm puts
+    /// avatar | copy bottom-aligned (the actions under the stats or at the row's right end), the stacked arm the avatar over the copy on the left, the centred arm
+    /// (C-Profile-Compact) the avatar over the copy, centred. The pinned root's height tweens on a tier crossing.</summary>
+    public static Element Build(in ProfileHeroText t, string uri, float width, in ProfileHeroMetrics m, ClassicProfileHeroForm form, float pageMax,
+                                bool compactCanHit, ProfileHeroActs? acts, Element? band)
     {
         float w = MathF.Max(1f, width);
         float collapse = ProfileHeroLayout.CollapseDistance(in m);
@@ -43,18 +46,25 @@ internal static class ClassicProfileHero
         ];
 
         Element avatar = Avatar(in t, m.Avatar);
-        Element copy = Identity(in t, uri, in m, acts);
-        Element content = m.Stacked
-            ? new BoxEl
+        Element copy = Identity(in t, uri, in m, form, acts);
+        Element content = form.Arm switch
+        {
+            ClassicProfileHeroArm.Centred => new BoxEl
             {
-                Direction = 1, Gap = ProfileHeroLayout.StackedAvatarGap, AlignItems = FlexAlign.Start, MinWidth = 0f,
+                Direction = 1, Gap = form.AvatarGap, AlignItems = FlexAlign.Center, MinWidth = 0f,
                 Children = [avatar, copy],
-            }
-            : new BoxEl
+            },
+            ClassicProfileHeroArm.Stacked => new BoxEl
             {
-                Direction = 0, Gap = ProfileHeroLayout.AvatarGap, AlignItems = FlexAlign.End, MinWidth = 0f,
+                Direction = 1, Gap = form.AvatarGap, AlignItems = FlexAlign.Start, MinWidth = 0f,
                 Children = [avatar, copy],
-            };
+            },
+            _ => new BoxEl
+            {
+                Direction = 0, Gap = form.AvatarGap, AlignItems = FlexAlign.End, MinWidth = 0f,
+                Children = form.Actions && form.ActionsBeside ? [avatar, copy, ActionRow(in t, uri, acts, form)] : [avatar, copy],
+            },
+        };
         Element expanded = new BoxEl
         {
             Width = w, Height = m.Height, Direction = 0, Justify = FlexJustify.Center,
@@ -64,7 +74,7 @@ internal static class ClassicProfileHero
                 new BoxEl
                 {
                     Direction = 1, Justify = FlexJustify.End, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
-                    MaxWidth = R.Space.PageMaxW,   // aligns with the magazine's 1600 measure
+                    MaxWidth = pageMax,   // aligns with the magazine's measure
                     Padding = new Edges4(m.Gutter, m.TopPad, m.Gutter, m.BottomPad),
                     Children = [content],
                 },
@@ -74,7 +84,7 @@ internal static class ClassicProfileHero
         // collapse cuts the expanded presentation at that edge by itself — paint and input — so no ClipToBounds here.
         return new BoxEl
         {
-            Direction = 1, Height = m.Height, ZStack = true,
+            Direction = 1, Height = m.Height, ZStack = true, Animate = ClassicArtistTiers.HeroMotion,
             Children = band is null ? [expanded] : [expanded, band],
         }.Sticky(0f).Collapse(collapse, ArtistHeroLayout.CompactIdentityHeight, CollapseAnchor.Leading);
     }
@@ -97,76 +107,86 @@ internal static class ClassicProfileHero
         return PersonPicture.Create("", edge, displayName: t.Name, fill: fill) with { Shrink = 0f, Shadow = Elevation.Card };
     }
 
-    /// <summary>Name (the tier's Artist alias, line budget from the metrics) · stats · actions. No eyebrow.</summary>
-    static BoxEl Identity(in ProfileHeroText t, string uri, in ProfileHeroMetrics m, ProfileHeroActs? acts)
+    /// <summary>Name (the form's Artist alias, one line) · stats · actions (when they sit under the copy). No eyebrow.</summary>
+    static BoxEl Identity(in ProfileHeroText t, string uri, in ProfileHeroMetrics m, ClassicProfileHeroForm form, ProfileHeroActs? acts)
     {
-        TextEl name = (m.Tier switch
+        bool centred = form.Arm == ClassicProfileHeroArm.Centred;
+        bool stacked = form.Arm != ClassicProfileHeroArm.Row;
+        TextEl name = (form.Name switch
         {
-            ArtistHeroTier.Wide => R.Type.ArtistDisplay(t.Name),
-            ArtistHeroTier.Medium => R.Type.ArtistTitle(t.Name),
+            ClassicArtistName.Display => R.Type.ArtistDisplay(t.Name),
+            ClassicArtistName.Title => R.Type.ArtistTitle(t.Name),
             _ => R.Type.ArtistCompactTitle(t.Name),
         }) with
         {
-            Color = Tok.TextPrimary, Wrap = m.NameLines > 1 ? TextWrap.Wrap : TextWrap.NoWrap, MaxLines = m.NameLines,
-            Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            Color = Tok.TextPrimary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
+        var kids = new List<Element>(3)
+        {
+            // One line at every tier (the hero is sized for it — no empty band over a short name); a long name
+            // ellipsises and shows in full in the trim tooltip.
+            Controls.TrimmedTitle(name, t.Name, centred: centred),
+        };
+        if (form.StatRows > 0)
+            kids.Add(new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, Margin = new Edges4(0f, form.NameToStats, 0f, 0f),
+                AlignItems = centred ? FlexAlign.Center : FlexAlign.Stretch,
+                Children = [Stats(in t, form, acts)],
+            });
+        if (form.Actions && !form.ActionsBeside)
+            kids.Add(new BoxEl
+            {
+                Direction = 0, MinWidth = 0f, Margin = new Edges4(0f, form.StatsToActions, 0f, 0f),
+                Justify = centred ? FlexJustify.Center : FlexJustify.Start,
+                Children = [ActionRow(in t, uri, acts, form)],
+            });
         return new BoxEl
         {
             Direction = 1, MinWidth = 0f, Shrink = 1f,
-            Grow = m.Stacked ? 0f : 1f, Basis = m.Stacked ? float.NaN : 0f,
-            AlignSelf = m.Stacked ? FlexAlign.Stretch : FlexAlign.Auto,
+            Grow = stacked ? 0f : 1f, Basis = stacked ? float.NaN : 0f,
+            AlignSelf = stacked ? FlexAlign.Stretch : FlexAlign.Auto,
+            AlignItems = centred ? FlexAlign.Center : FlexAlign.Stretch,
             MaxWidth = m.CopyMaxWidth,
-            Children =
-            [
-                // One line at every tier (the hero is sized for it — no empty band over a short name); a long name
-                // ellipsises and shows in full in the trim tooltip.
-                Controls.TrimmedTitle(name, t.Name),
-                new BoxEl
-                {
-                    Direction = 1, MinWidth = 0f, Margin = new Edges4(0f, ProfileHeroLayout.NameToStats(in m), 0f, 0f),
-                    Children = [Stats(in t, in m, acts)],
-                },
-                new BoxEl
-                {
-                    Direction = 0, MinWidth = 0f, Margin = new Edges4(0f, ProfileHeroLayout.StatsToActions(in m), 0f, 0f),
-                    Children = [ActionRow(in t, uri, acts)],
-                },
-            ],
+            Children = kids.ToArray(),
         };
     }
 
-    /// <summary>The numerals — explicit rows (Narrow's 2-row budget splits 2 + 1), never a wrap, so the height the
-    /// metrics budget is the height laid out.</summary>
-    static Element Stats(in ProfileHeroText t, in ProfileHeroMetrics m, ProfileHeroActs? acts)
+    /// <summary>The numerals — explicit rows (a two-row budget splits 2 + 1), never a wrap, so the height the form budgets is the height laid out.</summary>
+    static Element Stats(in ProfileHeroText t, ClassicProfileHeroForm form, ProfileHeroActs? acts)
     {
         Span<ProfileStatCell> cells = stackalloc ProfileStatCell[ProfileStats.Max];
         int n = ProfileStats.Plan(t.Own, t.ShowFollows, t.Followers, t.Following, t.Playlists, cells);
-        int perRow = ProfileStats.PerRow(n, m.StatRows);
+        int perRow = ProfileStats.PerRow(n, form.StatRows);
         int rows = (n + perRow - 1) / perRow;
+        bool centred = form.Arm == ClassicProfileHeroArm.Centred;
         var lines = new Element[rows];
         for (int r = 0; r < rows; r++)
         {
             int start = r * perRow, count = Math.Min(perRow, n - start);
             var kids = new Element[count];
-            for (int i = 0; i < count; i++) kids[i] = Stat(cells[start + i], acts);
+            for (int i = 0; i < count; i++) kids[i] = Stat(cells[start + i], acts, form);
             lines[r] = new BoxEl
             {
-                Direction = 0, Gap = ProfileHeroLayout.StatGap, AlignItems = FlexAlign.Start, MinWidth = 0f, Children = kids,
+                Direction = 0, Gap = form.StatGap, AlignItems = FlexAlign.Start, MinWidth = 0f,
+                Justify = centred ? FlexJustify.Center : FlexJustify.Start, Children = kids,
             };
         }
-        return rows == 1 ? lines[0] : new BoxEl { Direction = 1, Gap = ProfileHeroLayout.StatRowGap, MinWidth = 0f, Children = lines };
+        return rows == 1 ? lines[0] : new BoxEl { Direction = 1, Gap = ClassicProfileTiers.StatRowGap, MinWidth = 0f, Children = lines };
     }
 
     /// <summary>A StatHero numeral over its sentence-case caption (Track.Drawer.Stat). A cell that links (the cell's
     /// own rule: never Public playlists, never a zero) is a subtle-plated button into the list route; the ±8/±4 margin
-    /// keeps the TEXT on the copy's edge while the plate overhangs it.</summary>
-    static Element Stat(in ProfileStatCell c, ProfileHeroActs? acts)
+    /// keeps the TEXT on the copy's edge while the plate overhangs it. At Compact a cell is a 96 x 56 target, centred (C-Profile-Compact).</summary>
+    static Element Stat(in ProfileStatCell c, ProfileHeroActs? acts, ClassicProfileHeroForm form)
     {
+        bool target = form.StatMinH > 0f;
         var cell = new BoxEl
         {
-            Direction = 1, Shrink = 1f, MinWidth = 0f, Corners = Radii.ControlAll,
+            Direction = 1, Shrink = 1f, MinWidth = target ? form.StatMinW : 0f, MinHeight = form.StatMinH, Corners = Radii.ControlAll,
+            AlignItems = target ? FlexAlign.Center : FlexAlign.Start, Justify = target ? FlexJustify.Center : FlexJustify.Start,
             Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, Spacing.XS),
-            Margin = new Edges4(-Spacing.S, -Spacing.XS, -Spacing.S, -Spacing.XS),
+            Margin = target ? default : new Edges4(-Spacing.S, -Spacing.XS, -Spacing.S, -Spacing.XS),
             Children =
             [
                 R.Type.StatHero(ProfileStats.Numeral(c.Value, CultureInfo.CurrentCulture), null),
@@ -193,30 +213,32 @@ internal static class ClassicProfileHero
         _ => Strings.Person.Stat.Playlists(c.Value),
     };
 
-    /// <summary>[FollowToggle (others only)] [Share] [⋯] — the normal grammar (`ClassicArtistHero`'s action family). Never
-    /// skeleton content: <c>Skeletonized(false)</c> leaves a same-size blank in the shimmer.</summary>
-    static Element ActionRow(in ProfileHeroText t, string uri, ProfileHeroActs? acts)
+    /// <summary>[FollowToggle (others only)] [Share] [⋯] — the normal grammar (`ClassicArtistHero`'s action family), at the form's target (40 at Compact).
+    /// Never skeleton content: <c>Skeletonized(false)</c> leaves a same-size blank in the shimmer. Keyed, so the tier tests find the row.</summary>
+    static Element ActionRow(in ProfileHeroText t, string uri, ProfileHeroActs? acts, ClassicProfileHeroForm form)
     {
         string name = t.Name;
+        float edge = form.Target;
+        var size = edge >= ClassicArtistTiers.CompactTarget ? ControlSize.Large : ControlSize.Medium;
         var kids = new List<Element>(4);
         // Your own profile: the account lives on spotify.com — a stock button whose glyph says it leaves the app
         // (replaces the account flyout's old "Account" row, #161).
         if (t.Own)
-            kids.Add(Button.Create(Loc.Get(Strings.Person.OpenAccount), ProfileVerbs.OpenAccount, ButtonAppearance.Standard,
+            kids.Add(Button.Create(Loc.Get(Strings.Person.OpenAccount), ProfileVerbs.OpenAccount, ButtonAppearance.Standard, size: size,
                 glyph: Icons.OpenInNewWindow));
         if (!t.Own)
             kids.Add(acts is null || uri.Length == 0
                 ? Controls.FollowToggle.SkeletonShape()
                 // Keyed on the uri: FollowToggle carries its uri as a mount-frozen field.
-                : Embed.Comp(() => new Controls.FollowToggle { Uri = uri, Name = name })
+                : Embed.Comp(() => new Controls.FollowToggle { Uri = uri, Name = name, Size = size })
                     with { Key = "profile-follow:" + uri, SkeletonProxy = s_followShape });
-        kids.Add(ClassicDetailKit.CommandCircle(Icons.Share, Loc.Get(Strings.Menu.Share), acts?.Share ?? s_noop));
+        kids.Add(Controls.Named(Controls.IconAction(Icons.Share, acts?.Share ?? s_noop, size: edge), Loc.Get(Strings.Menu.Share)));
         kids.Add(acts is null
-            ? new BoxEl { Width = Controls.IconButtonSize, Height = Controls.IconButtonSize, Corners = Radii.ControlAll }
-            : ClassicDetailKit.MoreButton(acts.Menu, Controls.IconButtonSize) with { Key = "profile-more:" + uri });
+            ? new BoxEl { Width = edge, Height = edge, Corners = Radii.ControlAll }
+            : ClassicDetailKit.MoreButton(acts.Menu, edge) with { Key = "profile-more:" + uri });
         return new BoxEl
         {
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Height = ProfileHeroLayout.ActionRow,
+            Key = "profile-hero-actions", Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Height = edge, Shrink = 0f,
             Children = kids.ToArray(),
         }.Skeletonized(false);
     }

@@ -57,7 +57,7 @@ internal static partial class ClassicProfileList
             Group: null, SmoothResize: false);
         Element body = new BoxEl
         {
-            Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
+            Key = "people:page", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
             Padding = new Edges4(gutter, 0f, gutter, Spacing.L),
             Children =
             [
@@ -166,7 +166,7 @@ internal static partial class ClassicProfileList
     }
 
     /// <summary>The tools: Following has the All / Artists / People chips and the find box, Followers the find box alone.
-    /// Wide, chips sit left and find right; below <see cref="ProfileGridFit.ToolsStackBelow"/> they stack. They stay mounted
+    /// Wide, chips sit left and find right; on the list ladder's narrow arm (`ClassicProfileTiers.List`) they stack. They stay mounted
     /// when a query narrows the list to nothing, so the query can be cleared.</summary>
     static Element Tools(PageCache c, ProfileListShape s)
     {

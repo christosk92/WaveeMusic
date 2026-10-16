@@ -62,11 +62,15 @@ public static partial class Profile
         readonly object _tintOwner = new();
 
         // ── geometry (latched fields — `Artist.PageHost`'s discipline) ──
-        readonly Signal<float> _heroWidth = new(ArtistHeroLayout.WideWidth);
+        // The page's measured width (0 until the first measure: the hero ladder's seed answers until then) and the hero's sub-tier on the structure's
+        // ladder, the artist hero's (themes plan 3.6, TC6): a crossing found after mount commits on the first frame that is not resized.
+        readonly Signal<float> _heroWidth = new(0f);
         readonly Signal<int> _layoutEpoch = new(0);
-        ArtistHeroTier _tier = ArtistHeroTier.Wide;
-        ProfileHeroMetrics _metrics = ProfileHeroLayout.For(ArtistHeroLayout.WideWidth, ArtistHeroTier.Wide);
-        float _width = ArtistHeroLayout.WideWidth;
+        IReadSignal<int>? _heroTier;
+        IReadSignal<Size2>? _viewportSize;
+        readonly Func<float> _heroSeed;
+        ProfileHeroMetrics _metrics;
+        float _width;
         bool _measured;
 
         // ── scroll, band, spy ──
@@ -162,6 +166,7 @@ public static partial class Profile
                 _atEnd.SetIfChanged(atEnd);
             };
             _stampFn = Stamp;
+            _heroSeed = () => Detail.Breakpoints.EstimatePageWidth(Theming.ThemeHost.Facts.Peek().Tiers, _viewportSize?.Peek().Width ?? 0f);
             _acts = new ProfileHeroActs(
                 Share: () => Episode.CopyLink(_user.IsValid ? Actions.WebLinkOf(_user.Uri) : ""),
                 Menu: () => MenuFor(_user, _name),
@@ -214,10 +219,15 @@ public static partial class Profile
             UseEffect(_resolveSpy);
             UseActivation(onActivated: _demand);                   // keep-alive return re-reads (SWR: ProfileAsk → Invalidate)
 
+            // THE HERO'S SUB-TIER AND METRICS (TC6): the artist hero's ladder over the page's own width, seeded before the first measure from the content
+            // region the frame resolved the window tiers on; the metrics are the structure's record for that sub-tier in the window tier on screen.
+            _viewportSize = UseContextSignal(Viewport.Size);
+            _heroTier = UseTier(Theming.ArtistLadders.Of(ShellPolicy.Now.Tiers, Theming.ArtistLadders.Hero), TierSource.Measured(_heroWidth, _heroSeed));
+            var tierFacts = Theming.ThemeHost.Facts.Value.Tiers;
             _ = _layoutEpoch.Value;
-            _width = MathF.Max(1f, _heroWidth.Value);
-            _metrics = ProfileHeroLayout.For(_width, _tier);
-            _tier = _metrics.Tier;
+            float measuredW = _heroWidth.Value;
+            _width = MathF.Max(1f, measuredW > 0.5f ? measuredW : _heroSeed());
+            _metrics = ShellPolicy.Tracked.ArtistTiers.ProfileHero(Theming.ArtistLadders.HeroOf(_heroTier.Value), in tierFacts, _width);
 
             _header = valid ? ProfileLoadRule.Header(u) : ProfileLoad.Unavailable;
             _bodyReady = ProfileReveal.BodyReady(_header, _measured, _revealed);

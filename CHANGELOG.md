@@ -39,6 +39,16 @@ versions separately under `v*` and is not tracked in this file.)
   behind a 40-tall row, and the fields, pickers, check boxes, links and the Send / Cancel buttons are at least 40 tall. At Huge they open
   as a two-pane 1040-wide card with the live report beside the form.
 
+- **Artist, profile and concert pages are laid out for every window size.** In a narrow Classic window (under 528 wide) the artist's photo
+  fills the top of the page with the name and the listener counts on it, and Play, Shuffle, Follow and Radio sit in a row of 40-big
+  buttons under it; Top tracks is one column, the shelves are a strip whose next card peeks, and the discography shows two albums
+  across. A profile is centred with a 128 picture, 40-big stats and buttons; a concert's photo sits above its title and the Buy button is
+  40 tall. In a small window the artist's name and buttons sit at the bottom left of the photo, and a profile is a 200-tall row with its
+  buttons on the right. In a short window (under 680 tall) an artist or profile header takes at most 288, and in a window only 330 tall
+  it is a 126 strip with just the name. In a very large window (1920 wide and up) the artist photo is 560 to 640 tall, Top tracks takes up
+  to four columns, the shelves show ten cards, a profile header is 320 tall with a 240 picture, and a concert's tickets sit in a 360
+  column. The photo viewer's buttons are 40 tall in a narrow window and its thumbnails scroll instead of running off the window. A
+  1440-wide window is unchanged.
 - **Full screen fits a narrow or short window.** In a narrow, tall window (a phone-shaped window under 600 wide) full screen is one
   column: the cover and title, the lyrics, Up next or the artist under them, and the playback card across the bottom with heart, previous,
   play, next and "…" (the other controls stay in "…" and the player bar); every button there is at least 40 big. When the playback card

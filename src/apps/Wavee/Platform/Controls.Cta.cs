@@ -85,7 +85,8 @@ public static partial class Controls
     /// filled with <paramref name="accent"/> (<see cref="AccentFillPalette"/>), 32 tall/r4, 14 semibold
     /// label, floored at <see cref="PrimaryMinWidth"/> so a short label ("Play") never reads as an icon button.
     /// <paramref name="wrap"/> lets a narrow CTA row take a two-line label (the show page's) instead of the default single trimmed line.</summary>
-    public static BoxEl PrimaryButton(string label, Action onClick, ColorF accent, string? glyph = null, bool wrap = false)
+    public static BoxEl PrimaryButton(string label, Action onClick, ColorF accent, string? glyph = null, bool wrap = false,
+                                      ControlSize size = ControlSize.Medium)
     {
         var parts = new TemplateParts();
         parts.Set<TextEl>(Button.PartLabel, t => t with
@@ -95,9 +96,9 @@ public static partial class Controls
             Wrap = wrap ? TextWrap.Wrap : TextWrap.NoWrap,
         });
         return Button.Create(label, onClick, ButtonAppearance.Accent, glyph: glyph,
-            style: Button.DefaultStyle(ButtonAppearance.Accent, palette: AccentFillPalette(accent)) with
+            style: Button.DefaultStyle(ButtonAppearance.Accent, size, palette: AccentFillPalette(accent)) with
             {
-                MinHeight = ButtonHeight,
+                MinHeight = size == ControlSize.Medium ? ButtonHeight : ControlMetrics.For(size).MinHeight,
             },
             parts: parts) with { MinWidth = PrimaryMinWidth };
     }
@@ -109,6 +110,10 @@ public static partial class Controls
     /// itself hold state (component props freeze at mount, so the LIVE seam is the caller's render, not a field here).</summary>
     public static BoxEl PlayButton(ColorF accent, Action onClick, string? label = null, string? glyph = null)
         => PrimaryButton(label ?? Loc.Get(Strings.Detail.Play), onClick, accent, glyph ?? Icons.Play);
+
+    /// <summary>The PLAY primary at a control size (the 40-tall Compact target, TC6).</summary>
+    public static BoxEl PlayButton(ColorF accent, Action onClick, ControlSize size, string? label = null)
+        => PrimaryButton(label ?? Loc.Get(Strings.Detail.Play), onClick, accent, Icons.Play, size: size);
 
     /// <inheritdoc cref="PlayButton(ColorF, Action, string?, string?)"/>
     public static BoxEl PlayButton(Func<ColorF> accent, Action onClick, string? label = null, string? glyph = null)
