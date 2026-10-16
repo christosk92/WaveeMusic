@@ -124,7 +124,7 @@ public static class ClassicPolicies
     /// <summary>The whole bundle, with Classic's window tiers. One instance, so republishing the facts is not a change. Declared
     /// LAST: static properties initialise in textual order and it reads the five above (`ClassicTiers` builds its policy in its
     /// own initializer and never reads this class).</summary>
-    public static ThemePolicies Bundle { get; } = new(NavPane, Panel, PlayerBar, Chrome, Stage) { Tiers = ClassicTiers.Policy, Overlays = ClassicOverlayTiers.Policy };
+    public static ThemePolicies Bundle { get; } = new(NavPane, Panel, PlayerBar, Chrome, Stage) { Tiers = ClassicTiers.Policy, Overlays = ClassicOverlayTiers.Policy, DetailTiers = ClassicDetailTiers.Policy };
 
     // The bundle for each combination of the structure options that reach the core (M7a: the sidebar layout x density; M4: the track artwork hidden; M8: the
     // detail page layout x the rails' uniformity; M2: the track row style; S0: the sidebar covers; CT9: the accent from artwork and the now-playing colours):

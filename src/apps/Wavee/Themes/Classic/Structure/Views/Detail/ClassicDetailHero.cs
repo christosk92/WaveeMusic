@@ -149,7 +149,9 @@ internal static partial class ClassicDetailFrame
             if (f.Meta) blocks.Add(Block("hero-meta", HeroMeta(id, contentW), late: true));
             if (f.Pulse && slots.Pulse is { } pulse) blocks.Add(Block("hero-pulse", pulse(), late: true));
             if (f.Chart) blocks.Add(Block("hero-chart", ChartCaption(id, slots), late: true));
-            blocks.Add(Block("hero-actions", HeroActions(spec, id, cfg, acts)));
+            // The window tier's target edge (Tiers.Detail.cs): the Compact hero's actions are 40 x 40 (board C-Album-Compact). A tracked read, so a
+            // crossing re-renders the hero; the core's action-row height follows the same record (`VerticalLayout.ActionRowExtra`).
+            blocks.Add(Block("hero-actions", HeroActions(spec, id, cfg, acts, ClassicDetailTiers.Now.Target)));
 
             // The description is no longer a row of the identity column: it is the padded box's second child, after
             // the whole [artwork, identity] row, in both flows (D49's band arithmetic already excludes it here).
@@ -302,10 +304,10 @@ internal static partial class ClassicDetailFrame
 
     /// <summary>The rail's action row (tuned Classic D1, D20): the Play split, then Shuffle (when the page offers it) · the
     /// heart (DROPPED, not disabled, when <c>Heart == None</c>) · Share · More, in one wrap.</summary>
-    static Element HeroActions(VerticalSpec spec, Identity id, in Config cfg, FrameActions acts)
+    static Element HeroActions(VerticalSpec spec, Identity id, in Config cfg, FrameActions acts, float target)
         => ClassicDetailKit.ActionRow("vhero-actions",
-            ClassicDetailKit.PlaySplit(id.Subject, spec.Accent, spec.PlayAll ?? DetailVerbs.PlayContext(id.Subject)),
-            ClassicDetailKit.FixedActions("vhero-", id, cfg.Heart != HeartMode.None, acts, spec.Accent),
+            ClassicDetailKit.PlaySplit(id.Subject, spec.Accent, spec.PlayAll ?? DetailVerbs.PlayContext(id.Subject), target),
+            ClassicDetailKit.FixedActions("vhero-", id, cfg.Heart != HeartMode.None, acts, spec.Accent, MathF.Max(RailLayout.FabSize, target)),
             Spacing.XS);
 
     /// <summary>The hero attribution — THREE arms in precedence order after the page's own slot: the collaborator pile
@@ -394,7 +396,7 @@ internal static partial class ClassicDetailFrame
         if (f.Meta) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.MetaFraction), VerticalLayout.MetaRowHeight));
         if (f.Pulse) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.PulseFraction), VerticalLayout.PulseRowHeight));
         if (f.Chart) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.ChartFraction), VerticalLayout.ChartRowHeight));
-        blocks.Add(SkeletonActionRow(spec));
+        blocks.Add(SkeletonActionRow(spec, ClassicDetailTiers.Now.Target));
 
         Element identity = new BoxEl
         {
@@ -460,14 +462,16 @@ internal static partial class ClassicDetailFrame
     /// <summary>The hero's action row while loading (tuned Classic X2): the loaded row's own shape, the Play split then exactly the buttons
     /// <see cref="ClassicDetailKit.FixedActions"/> will lay out for this page (<see cref="ClassicDetailKit.FixedActionCount"/>), in the same
     /// wrapping row. It used to reserve four squares on every page, one too many where the heart or Share is dropped.</summary>
-    static Element SkeletonActionRow(VerticalSpec spec)
+    static Element SkeletonActionRow(VerticalSpec spec, float target)
     {
+        float fab = MathF.Max(RailLayout.FabSize, target), h = MathF.Max(Controls.ButtonHeight, target);
         var fabs = new Element[ClassicDetailKit.FixedActionCount(spec.Identity, spec.Config.Heart != HeartMode.None, spec.Actions)];
         for (int i = 0; i < fabs.Length; i++)
-            fabs[i] = new BoxEl { Width = RailLayout.FabSize, Height = RailLayout.FabSize, Shrink = 0f, Corners = Radii.ControlAll };
+            fabs[i] = new BoxEl { Width = fab, Height = fab, Shrink = 0f, Corners = Radii.ControlAll };
         Element split = new BoxEl
         {
-            Width = RailLayout.PlaySplitWidth, Height = Controls.ButtonHeight, Shrink = 0f,
+            // The loaded split's own shape at the tier's height (both halves grow by what the height adds).
+            Width = ClassicDetailTiers.PlaySplitWidthFor(h), Height = h, Shrink = 0f,
             Corners = Radii.ControlAll, Margin = new Edges4(0f, 0f, RailLayout.SplitTrail, 0f),
         };
         return ClassicDetailKit.ActionRow("vhero-skel-actions", split, fabs, Spacing.XS);

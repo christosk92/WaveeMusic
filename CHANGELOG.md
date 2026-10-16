@@ -23,6 +23,15 @@ versions separately under `v*` and is not tracked in this file.)
   Shuffle / Repeat / Autoplay toggles, "Clear" and "Playing from" are at least 40 big, the lyrics' Resync button is 40 tall, and the video
   mini player shows full screen and close as 40-big buttons all the time instead of only on hover.
 
+- **Album, playlist, Liked Songs, show and episode pages are laid out for every window size.** In a narrow Classic window (under 528
+  wide) the song rows are 56 tall with 40-DIP art, the heart sits at the end of the row before an always-visible 40-DIP "…", the
+  column header and the versions chevron give way, and a song's length moves under its title; the Play button, the actions beside it
+  and the list's Sort, Filter, Find, Insights and "…" are all 40 by 40, the sort word leads the list bar, the selection bar takes the
+  page accent, and Filter opens as a bottom sheet. In a small window (528 to 1007) the Album and Plays columns give way (Liked Songs
+  keeps its date). In a very wide window (1920 and up) the side rail rests at 320, the rows are a size larger, the page uses up to 2400
+  of the width, and Insights opens as a 360-wide column beside the list instead of covering it. Changing between the hero layout and
+  the side-rail layout, and the columns a width admits, now happens once the window has settled and cross-fades instead of snapping,
+  and leaving the hero layout no longer jumps past the side-rail sizes in between.
 - **Menus, dialogs, toasts and the empty, error and offline states fit a narrow window.** In a narrow Classic window (under 528 wide) a
   right-click or "…" menu opens as a bottom sheet instead of a popup: the song's art and name, the Play, Play next, Play after and Save
   buttons in one row, then 44-tall rows, with sub-menus opening in place and a short window scrolling the sheet; every target is at

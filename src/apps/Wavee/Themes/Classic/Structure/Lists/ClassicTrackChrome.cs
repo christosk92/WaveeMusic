@@ -128,10 +128,11 @@ internal static class ClassicTrackChrome
         // BPM · Key is not sortable: tempo lands asynchronously per row, a sort would reorder under the cursor.
         if (RowMetrics.ShowTempo(in set)) Add(CellKey.Tempo, PlainHeader(Loc.Get(Strings.Detail.Column.Tempo), FlexJustify.End, classic));
         if (RowMetrics.ShowHeartTrailing(in set)) Add(CellKey.HeartTrailing, new BoxEl());
-        Add(CellKey.Duration, SortCell(a, vertical
-                ? HLabel(Loc.Get(Strings.Detail.Column.Time), SortColumn.Duration, sort, classic)
-                : Icon(Icons.Clock, ClassicTrackChromeLayout.ClockGlyph, sort.Column == SortColumn.Duration ? Tok.TextSecondary : Tok.TextTertiary),
-            SortColumn.Duration, sort, FlexJustify.End));
+        if (RowMetrics.ShowDuration(in set))
+            Add(CellKey.Duration, SortCell(a, vertical
+                    ? HLabel(Loc.Get(Strings.Detail.Column.Time), SortColumn.Duration, sort, classic)
+                    : Icon(Icons.Clock, ClassicTrackChromeLayout.ClockGlyph, sort.Column == SortColumn.Duration ? Tok.TextSecondary : Tok.TextTertiary),
+                SortColumn.Duration, sort, FlexJustify.End));
         if (set.Actions) Add(CellKey.More, new BoxEl());
         if (set.Expand) Add(CellKey.Expand, new BoxEl());
 
@@ -139,6 +140,14 @@ internal static class ClassicTrackChrome
         // or a quiet row's 0 — Liked's rule runs the list's full width, D-9), and the cells sit at the rows' own gutter inside it, so "#" stays over the numbers.
         float padX = RowMetrics.PadXFor(set.Tier);
         float edge = ClassicTrackChromeLayout.HeaderRuleInset(classic || set.Quiet, vertical, padX);
+        // The Compact row form has no column header (board C-TrackList compact): only its hairline stays, so the list keeps its one rule
+        // under the bar and the chrome's extent is the hairline (`TableRules.HeaderHeightFor(set)` is 0).
+        if (set.Compact)
+            return new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, Padding = new Edges4(edge, 0f, edge, 0f),
+                Children = [new BoxEl { Height = 1f, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) }],
+            };
         return new BoxEl
         {
             Direction = 1, MinWidth = 0f, Padding = new Edges4(edge, 0f, edge, 0f),
@@ -287,20 +296,25 @@ internal static class ClassicTrackChrome
 
     /// <summary>Real SplitButton behaviour (two hit targets, keyboard chords) wearing CommandBar visuals: the joined
     /// root is ghosted at rest instead of painting the boxed form-control surface.</summary>
-    static readonly TemplateParts s_splitParts = new()
+    static readonly TemplateParts s_splitParts = SplitParts(ClassicTrackChromeLayout.CommandHeight);
+
+    /// <summary>The Compact bar's split (TC5): the same parts at the 40 target, the chevron half 40 square.</summary>
+    static readonly TemplateParts s_splitPartsCompact = SplitParts(ClassicTrackChromeLayout.CommandHeightFor(ClassicDetailTiers.CompactTarget));
+
+    static TemplateParts SplitParts(float h) => new()
     {
-        [SplitButton.PartRoot] = static e => e with
+        [SplitButton.PartRoot] = e => e with
         {
-            AlignSelf = FlexAlign.Center, MinHeight = ClassicTrackChromeLayout.CommandHeight, Fill = ColorF.Transparent, BorderWidth = 0f, BorderBrush = null,
+            AlignSelf = FlexAlign.Center, MinHeight = h, Fill = ColorF.Transparent, BorderWidth = 0f, BorderBrush = null,
             Corners = Radii.ControlAll,
         },
-        [SplitButton.PartPrimaryButton] = static e => e with
+        [SplitButton.PartPrimaryButton] = e => e with
         {
-            Grow = 0f, MinWidth = 0f, Height = ClassicTrackChromeLayout.CommandHeight, Padding = new Edges4(9f, 0f, 8f, 0f),
+            Grow = 0f, MinWidth = 0f, Height = h, Padding = new Edges4(9f, 0f, 8f, 0f),
         },
-        [SplitButton.PartSecondaryButton] = static e => e with
+        [SplitButton.PartSecondaryButton] = e => e with
         {
-            Width = ClassicTrackChromeLayout.SplitSecondaryWidth, Height = ClassicTrackChromeLayout.CommandHeight, Padding = default,
+            Width = MathF.Max(ClassicTrackChromeLayout.SplitSecondaryWidth, h > ClassicTrackChromeLayout.CommandHeight ? h : 0f), Height = h, Padding = default,
             Justify = FlexJustify.Center,
         },
         [SplitButton.PartDivider] = static e => e with
@@ -358,21 +372,33 @@ internal static class ClassicTrackChrome
     /// <summary>The command bar's pictures (the contract is <see cref="ITrackCommandKit"/>).</summary>
     sealed class CommandKit : ITrackCommandKit
     {
-        /// <summary>The chromeless 44-DIP lane both modes share; the keyed mode box is what animates browse ↔ selection.</summary>
-        public Element Surface(string mode, Element content) => new BoxEl
+        /// <summary>The chromeless 44-DIP lane both modes share; the keyed mode box is what animates browse ↔ selection. At Compact (the tier record)
+        /// the lane's padding gives its 40 targets the room (the lane keeps the 44 the hero's band reserves), and the selection mode is tinted with
+        /// the accent (board C-MultiSelect-Compact).</summary>
+        public Element Surface(string mode, Element content)
         {
-            Direction = 1, Height = DetailLayout.ToolbarRowHeight, MinWidth = 0f, ClipToBounds = true,
-            Padding = new Edges4(DetailLayout.ToolbarSurfacePadX, DetailLayout.ToolbarSurfacePadY,
-                                 DetailLayout.ToolbarSurfacePadX, DetailLayout.ToolbarSurfacePadY),
-            Children =
-            [
-                new BoxEl
-                {
-                    Key = "commandbar-mode:" + mode, Direction = 1, Grow = 1f, MinWidth = 0f,
-                    Animate = ClassicTrackChromeLayout.ModeMotion, Children = [content],
-                },
-            ],
-        };
+            var tier = ClassicDetailTiers.Now;
+            float padY = ClassicTrackChromeLayout.SurfacePadYFor(tier.Target);
+            bool tinted = tier.SelectionTinted && mode == "selection";
+            return new BoxEl
+            {
+                Direction = 1, Height = DetailLayout.ToolbarRowHeight, MinWidth = 0f, ClipToBounds = true,
+                Padding = new Edges4(DetailLayout.ToolbarSurfacePadX, padY, DetailLayout.ToolbarSurfacePadX, padY),
+                Fill = tinted ? Prop.Of(static () => Tok.AccentDefault with { A = ClassicTrackChromeLayout.SelectionTint }) : (Prop<ColorF>)ColorF.Transparent,
+                Corners = Radii.ControlAll,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Key = "commandbar-mode:" + mode, Direction = 1, Grow = 1f, MinWidth = 0f,
+                        Animate = ClassicTrackChromeLayout.ModeMotion, Children = [content],
+                    },
+                ],
+            };
+        }
+
+        /// <summary>The square commands' edge at the window tier on screen (the tier record's target: 40 at Compact).</summary>
+        public float CommandEdge => ClassicTrackChromeLayout.PlateFor(ClassicDetailTiers.Now.Target);
 
         public Element Command(string key, Element command, Action<float> onWidth) => new BoxEl
         {
@@ -384,36 +410,53 @@ internal static class ClassicTrackChrome
         /// <summary>The 44 list bar (tuned Classic D3, board <c>C-Album</c> / <c>C-Playlist</c>): [Play next │ ⌄] [Shuffle] [Tune], the flexible
         /// gap, then [Filter (n)] [Sort ⌄], Find led by its own 6 DIP, [Insights] [⋯] — every command 2 DIP from the next. The page bar
         /// (board <c>C-Liked</c>, tuned Classic D8) puts its chips in the gap's place: they take what the commands leave (never under 120) and
-        /// end 8 DIP before the tools, where the chip rail's own 24-DIP edge fade says there is more.</summary>
-        public Element Bar(Element[] left, Element[] view, Element search, Element[] tail, Element? middle) => new BoxEl
+        /// end 8 DIP before the tools, where the chip rail's own 24-DIP edge fade says there is more.
+        /// <para>At Compact (board C-Album-Compact) the sort word LEADS the bar and the tools after the gap are glyphs: the sort command moves
+        /// from the view group to the left one.</para></summary>
+        public Element Bar(Element[] left, Element[] view, Element search, Element[] tail, Element? middle)
         {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Grow = 1f, MinWidth = 0f,
-            Children =
-            [
-                new BoxEl { Key = "bar:left", Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f, Children = left },
-                middle is null
-                    ? new BoxEl { Key = "bar:gap", Grow = 1f, MinWidth = CommandBarLayout.GroupGap }
-                    : new BoxEl
-                    {
-                        Key = "bar:chips", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = CommandBarLayout.InlineChipsMin,
-                        Margin = new Edges4(0f, 0f, CommandBarLayout.InlineChipsTrail, 0f), Children = [middle],
-                    },
-                new BoxEl
-                {
-                    Key = "bar:right", Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f,
-                    Children =
-                    [
-                        .. view,
-                        new BoxEl
+            if (ClassicDetailTiers.Now.SortLeadsBar)
+            {
+                var lead = new List<Element>(left.Length + 1);
+                var rest = new List<Element>(view.Length);
+                lead.AddRange(left);
+                foreach (var v in view) (v.Key == SortCommandKey ? lead : rest).Add(v);
+                left = lead.ToArray();
+                view = rest.ToArray();
+            }
+            return new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Grow = 1f, MinWidth = 0f,
+                Children =
+                [
+                    new BoxEl { Key = "bar:left", Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f, Children = left },
+                    middle is null
+                        ? new BoxEl { Key = "bar:gap", Grow = 1f, MinWidth = CommandBarLayout.GroupGap }
+                        : new BoxEl
                         {
-                            Key = "bar:find", Direction = 1, Shrink = 0f,
-                            Margin = new Edges4(CommandBarLayout.SearchGap - CommandBarLayout.Gap, 0f, 0f, 0f), Children = [search],
+                            Key = "bar:chips", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = CommandBarLayout.InlineChipsMin,
+                            Margin = new Edges4(0f, 0f, CommandBarLayout.InlineChipsTrail, 0f), Children = [middle],
                         },
-                        .. tail,
-                    ],
-                },
-            ],
-        };
+                    new BoxEl
+                    {
+                        Key = "bar:right", Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f,
+                        Children =
+                        [
+                            .. view,
+                            new BoxEl
+                            {
+                                Key = "bar:find", Direction = 1, Shrink = 0f,
+                                Margin = new Edges4(CommandBarLayout.SearchGap - CommandBarLayout.Gap, 0f, 0f, 0f), Children = [search],
+                            },
+                            .. tail,
+                        ],
+                    },
+                ],
+            };
+        }
+
+        /// <summary>The core's key for the measured sort command (<c>cmd:sort</c>).</summary>
+        const string SortCommandKey = "cmd:sort";
 
         /// <summary>The page bar's lead (board <c>C-Liked</c>, tuned Classic D16): the detail header's own Play split (D20: one Play, never a
         /// fork), 8 DIP on the bordered standard Shuffle with its word, and the 17-DIP slot of the 20-DIP divider before the chips.</summary>
@@ -422,10 +465,10 @@ internal static class ClassicTrackChrome
             Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f,
             Children =
             [
-                ClassicDetailKit.PlaySplit(subject, accent, play),
+                ClassicDetailKit.PlaySplit(subject, accent, play, ClassicDetailTiers.Now.Target),
                 Button.Create(shuffleLabel, shuffle, ButtonAppearance.Standard, glyph: Icons.Shuffle) with
                 {
-                    Key = "lead:shuffle", Shrink = 0f, Height = ClassicTrackChromeLayout.CommandHeight,
+                    Key = "lead:shuffle", Shrink = 0f, Height = ClassicTrackChromeLayout.CommandHeightFor(ClassicDetailTiers.Now.Target),
                     Margin = new Edges4(ClassicTrackChromeLayout.PageShuffleLead, 0f, 0f, 0f),
                 },
                 new BoxEl
@@ -459,7 +502,8 @@ internal static class ClassicTrackChrome
                     new TextEl(label) { Size = Ui.Caption("").Size, Weight = 600, Color = Prop.Of(static () => Tok.TextSecondary) },
                 ],
             };
-            return SplitButton.Create(content, onPlay, items, parts: s_splitParts);
+            return SplitButton.Create(content, onPlay, items,
+                parts: ClassicDetailTiers.Now.Target > ClassicTrackChromeLayout.CommandHeight ? s_splitPartsCompact : s_splitParts);
         }
 
         /// <summary>The labeled (icon + text) command — every inline command is labeled; one that does not fit is evicted,
@@ -473,7 +517,7 @@ internal static class ClassicTrackChrome
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicTrackChromeLayout.CommandGap,
-                Height = ClassicTrackChromeLayout.CommandHeight, Padding = new Edges4(9f, 0f, 10f, 0f),
+                Height = ClassicTrackChromeLayout.CommandHeightFor(ClassicDetailTiers.Now.Target), Padding = new Edges4(9f, 0f, 10f, 0f),
                 Corners = Radii.ControlAll,
                 Fill = active ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.11f }) : (Prop<ColorF>)ColorF.Transparent,
                 HoverFill = active ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.17f }) : Prop.Of(static () => Tok.FillSubtleSecondary),
@@ -488,7 +532,7 @@ internal static class ClassicTrackChrome
         /// <summary>The 32×32 toolbar glyph button: active → the accent@0.11 plate + accent glyph; idle → ghost.</summary>
         public Element IconButton(string glyph, bool active, Action onClick, Action<NodeHandle>? onRealized) => new BoxEl
         {
-            Width = ClassicTrackChromeLayout.PlateSize, Height = ClassicTrackChromeLayout.PlateSize,
+            Width = ClassicTrackChromeLayout.PlateFor(ClassicDetailTiers.Now.Target), Height = ClassicTrackChromeLayout.PlateFor(ClassicDetailTiers.Now.Target),
             AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             Corners = Radii.ControlAll,
             Fill = active ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.11f }) : (Prop<ColorF>)ColorF.Transparent,
@@ -514,9 +558,10 @@ internal static class ClassicTrackChrome
             bool active = count > 0;
             Prop<ColorF> ink = active ? Prop.Of(static () => Tok.AccentTextPrimary) : Prop.Of(static () => Tok.TextSecondary);
             Element glyph = Icon(Icons.Filter, ClassicTrackChromeLayout.CommandGlyph) with { Color = ink };
+            float target = ClassicDetailTiers.Now.Target;
             var box = new BoxEl
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Height = ClassicTrackChromeLayout.CommandHeight, Shrink = 0f,
+                Direction = 0, AlignItems = FlexAlign.Center, Height = ClassicTrackChromeLayout.CommandHeightFor(target), Shrink = 0f,
                 Corners = Radii.ControlAll, BorderWidth = 1f,
                 Fill = active ? Prop.Of(static () => Tok.AccentDefault with { A = 0.14f }) : (Prop<ColorF>)ColorF.Transparent,
                 HoverFill = active ? Prop.Of(static () => Tok.AccentDefault with { A = 0.22f }) : Prop.Of(static () => Tok.FillSubtleSecondary),
@@ -545,7 +590,7 @@ internal static class ClassicTrackChrome
             // and pill never share ink.
             return box with
             {
-                ZStack = true, Width = CommandBarLayout.FilterIconWidth, Justify = FlexJustify.Center,
+                ZStack = true, Width = MathF.Max(CommandBarLayout.FilterIconWidth, target), Justify = FlexJustify.Center,
                 Children =
                 [
                     new BoxEl
@@ -591,7 +636,8 @@ internal static class ClassicTrackChrome
         /// <summary>The button's slot never changes size: the badge is an overlay on a fixed 32-DIP box, so a filter turning on moves nothing.</summary>
         public Element MoreSlot(Element more, int filterCount) => new BoxEl
         {
-            ZStack = true, Width = ClassicTrackChromeLayout.PlateSize, Height = ClassicTrackChromeLayout.PlateSize, Shrink = 0f, AlignSelf = FlexAlign.Center,
+            ZStack = true, Width = ClassicTrackChromeLayout.PlateFor(ClassicDetailTiers.Now.Target),
+            Height = ClassicTrackChromeLayout.PlateFor(ClassicDetailTiers.Now.Target), Shrink = 0f, AlignSelf = FlexAlign.Center,
             Children = filterCount > 0
                 ? [more, InfoBadge.Count(filterCount, parts: s_badgeCornerMore) with { HitTestVisible = false, Key = "more:filter-badge" }]
                 : [more],

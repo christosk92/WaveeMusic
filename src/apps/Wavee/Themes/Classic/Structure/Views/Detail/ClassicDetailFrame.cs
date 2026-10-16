@@ -38,6 +38,7 @@ internal static partial class ClassicDetailFrame
     public static Element Template(DetailFrameProps p, in ViewContext ctx)
     {
         float gutter = ClassicTiers.PageOf(ctx.Tier()).Gutter;   // the one page gutter (F3)
+        var detailTier = ClassicDetailTiers.Of(ctx.Tier());       // the window tier's record (Tiers.Detail.cs, TC5)
         // The content column. Its Key is the host's (`right:tracks` / `right:eps`) and survives a rail collapse. Under a page head (no rail,
         // tuned Classic D16) the list sits the row plates' inset inside the page gutter, so its plates start 8 before the head's words.
         Element list = p.Head is null ? p.Content : new BoxEl
@@ -76,7 +77,7 @@ internal static partial class ClassicDetailFrame
             return Ctx.Provide(Design.AccentCtx.Slot, accent, new BoxEl
             {
                 ZStack = true, Grow = 1f, OnBoundsChanged = p.OnMeasured, ClipToBounds = true,
-                Children = [p.Tint, p.Tone, verticalRoot],
+                Children = [p.Tint, p.Tone, Arm("vertical", verticalRoot)],
             });
         }
 
@@ -84,22 +85,38 @@ internal static partial class ClassicDetailFrame
         // A TRACK page lays the insights sheet over its list column, below the list bar (tuned Classic I1, board C-Liked): composed open or
         // not, so the list never remounts; the layer takes hits only while the sheet is open (its light-dismiss closes it on a list click),
         // so a closed sheet leaves every row and the bar reachable.
+        // At Huge (the tier record, board C-Liked-Huge) the pane DOCKS instead: a 360 column beside the list that the list yields its width to.
+        // The tree is the same in every tier — [the list host (the list + the sheet's layer) | the dock slot] — so a crossing never re-parents
+        // the list (it keeps its scroll); the tier only decides which of the two carries the pane.
         if (p.Sheet is { } listSheet)
         {
             var open = listSheet.Toggle.Open;
+            bool docked = ClassicDetailTiers.Of(ctx.Tier()).InsightsDocked;
             right = right with
             {
-                ZStack = true,
+                Direction = 0,
                 Children =
                 [
-                    list,
                     new BoxEl
                     {
-                        Key = "insights:layer", Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f,
-                        Padding = new Edges4(0f, ClassicDetailLayout.SheetListTop, 0f, 0f),
-                        HitTestVisible = Prop.Of(() => open.Value),
-                        Children = [ctx.View(ViewKeys.DetailInsights, listSheet with { Page = new BoxEl { Grow = 1f, HitTestVisible = false } })],
+                        Key = "insights:host", ZStack = true, Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
+                        Children =
+                        [
+                            list,
+                            docked
+                                ? new BoxEl { Key = "insights:layer", Grow = 1f, HitTestVisible = false }
+                                : new BoxEl
+                                {
+                                    Key = "insights:layer", Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f,
+                                    Padding = new Edges4(0f, ClassicDetailLayout.SheetListTop, 0f, 0f),
+                                    HitTestVisible = Prop.Of(() => open.Value),
+                                    Children = [ctx.View(ViewKeys.DetailInsights, listSheet with { Page = new BoxEl { Grow = 1f, HitTestVisible = false } })],
+                                },
+                        ],
                     },
+                    docked
+                        ? ctx.View(ViewKeys.DetailInsights, listSheet with { Docked = true }) with { Key = "insights:dock-slot" }
+                        : new BoxEl { Key = "insights:dock-slot", Width = 0f, Shrink = 0f },
                 ],
             };
         }
@@ -121,7 +138,7 @@ internal static partial class ClassicDetailFrame
                             new BoxEl
                             {
                                 Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Basis = 0f,
-                                MaxWidth = R.Space.PageMaxW, DropTarget = p.Drop,
+                                MaxWidth = detailTier.PageMaxWidth, DropTarget = p.Drop,
                                 Children = [PageHead(head, gutter), right],
                             },
                         ],
@@ -132,7 +149,7 @@ internal static partial class ClassicDetailFrame
             {
                 ZStack = true, Grow = 1f, Shrink = 1f, MinHeight = 0f,
                 OnBoundsChanged = p.OnMeasured, ClipToBounds = true,
-                Children = [p.Tint, p.Tone, headPage],
+                Children = [p.Tint, p.Tone, Arm("head", headPage)],
             });
         }
 
@@ -181,7 +198,7 @@ internal static partial class ClassicDetailFrame
             // clipped content card. A z-stack of the [rail | right] flow and the seam layer above it; both arms keep this shape, so `right`
             // reconciles in place across a collapse.
             ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Basis = 0f,
-            MaxWidth = R.Space.PageMaxW,
+            MaxWidth = detailTier.PageMaxWidth,
             DropTarget = p.Drop,
             Children =
             [
@@ -207,9 +224,19 @@ internal static partial class ClassicDetailFrame
         {
             ZStack = true, Grow = 1f, Shrink = 1f, MinHeight = 0f,
             OnBoundsChanged = p.OnMeasured, ClipToBounds = true,
-            Children = [p.Tint, p.Tone, twoColumnPage],
+            Children = [p.Tint, p.Tone, Arm("two-column", twoColumnPage)],
         });
     }
+
+    /// <summary>One arm of the frame under its own key: a mode crossing (the vertical arm ↔ the two-column arm, committed by the host on the first
+    /// frame that is not resized, themes plan 3.3) swaps the key, and the reconciler's keyed Exit / Enter cross-fades the two arms in the frame's
+    /// z-stack instead of snapping one for the other (the Home facet swap's mechanism).</summary>
+    static Element Arm(string arm, Element root) => new BoxEl
+    {
+        Key = "detail:arm:" + arm, Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
+        Enter = ClassicDetailLayout.ArmFade, Exit = ClassicDetailLayout.ArmFade, Transition = ClassicDetailLayout.ArmFadeMotion,
+        Children = [root],
+    };
 
     // ══ 2. THE GRIP AND ITS SEAM ═══════════════════════════════════════════════════════════════════════════════════════════
 

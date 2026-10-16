@@ -40,6 +40,9 @@ internal static class ClassicTrackRowLayout
     /// <summary>The expand lane's disclosure chevron.</summary>
     public const float ChevronSize = 12f;
 
+    /// <summary>What leads the duration a Compact Modern row states in its subline ("Daft Punk · 4:34", board C-TrackList compact).</summary>
+    public const string InlineDurationLead = " · ";
+
     // ── the small boxes ──────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The gap between the # cell's number and its chart mark.</summary>

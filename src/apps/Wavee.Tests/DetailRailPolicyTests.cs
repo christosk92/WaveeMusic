@@ -192,7 +192,7 @@ public class DetailRailPolicyTests
     {
         for (float w = 300f; w <= 2400f; w += 1f)
             for (int mode = 0; mode < Breakpoints.VerticalMode; mode++)
-                if (Breakpoints.ModeFor(w, mode, initialized: true) == mode)
+                if (Wavee.Themes.Classic.ClassicDetailTiers.ModeFor(w, mode, initialized: true) == mode)
                     yield return (w, mode);
     }
 

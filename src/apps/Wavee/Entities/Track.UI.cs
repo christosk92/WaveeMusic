@@ -141,7 +141,7 @@ public readonly partial struct Track
         // The trailing ♥ — the SAME gate the cell reads, and it sits IMMEDIATELY before the duration (the reader's
         // 28 | 1fr | 32 | 52), never after it: the duration is the row's last fact, and a heart past it reads as chrome.
         if (RowMetrics.ShowHeartTrailing(in set)) arr[i++] = TrackSize.Px(Lane.HeartTrailing);
-        arr[i++] = TrackSize.Px(Lane.Duration);
+        if (RowMetrics.ShowDuration(in set)) arr[i++] = TrackSize.Px(Lane.Duration);
         if (set.Actions) arr[i++] = TrackSize.Px(Lane.Actions);
         if (set.Expand) arr[i++] = TrackSize.Px(Lane.Expand);
         s_rowTrackCache[key] = arr;
@@ -154,7 +154,7 @@ public readonly partial struct Track
     /// (Track.UI.Bound.cs) and the table's column header (Track.Table.Chrome.cs). All three emit the TRAILING ♥ cell (the eager
     /// reader row's, and a quiet table's, D16) in the same position, so the cells and the tracks never fall out of step.</para></summary>
     internal static int CellCount(in ColumnSet set)
-        => 3 + (set.Heart ? 1 : 0) + (set.Thumb ? 1 : 0) + (set.Artist ? 1 : 0) + (set.Album ? 1 : 0)
+        => 2 + (RowMetrics.ShowDuration(in set) ? 1 : 0) + (set.Heart ? 1 : 0) + (set.Thumb ? 1 : 0) + (set.Artist ? 1 : 0) + (set.Album ? 1 : 0)
            + (set.By ? 1 : 0) + (set.Date ? 1 : 0) + (set.Plays ? 1 : 0) + (RowMetrics.ShowTempo(in set) ? 1 : 0)
            + (RowMetrics.ShowHeartTrailing(in set) ? 1 : 0)
            + (set.Actions ? 1 : 0) + (set.Expand ? 1 : 0);
@@ -226,13 +226,16 @@ public readonly partial struct Track
     /// a square with no scale (Classic, ch 01 W8). It is invisible at rest in both row styles and appears on ROW hover
     /// (tuned Classic L2): the reveal rides a NON-interactive wrapper so it follows the row. <paramref name="shown"/> (a bound
     /// row's focus fact) also shows it at rest, so the focused row offers it to the keyboard. <paramref name="enabled"/> false is an invisible, inert placeholder that reserves the
-    /// lane (a skeleton / overscan row). Not a tab stop — the list owns the one roving stop.</summary>
-    public static Element MoreCell(bool enabled, bool classic, string? key = null, Func<bool>? shown = null)
+    /// lane (a skeleton / overscan row). Not a tab stop — the list owns the one roving stop.
+    /// <para><paramref name="box"/> above the 28 (the Compact row's 40 target, board C-RowStates-Compact) sizes the button, and
+    /// <paramref name="atRest"/> shows it at rest on every row (a Compact row has no hover to reveal it).</para></summary>
+    public static Element MoreCell(bool enabled, bool classic, string? key = null, Func<bool>? shown = null, float box = 0f, bool atRest = false)
     {
+        float edge = box > RowMoreBox ? box : RowMoreBox;
         var button = Controls.MoreButton(null, requestsContext: enabled) with
         {
-            Width = RowMoreBox, Height = RowMoreBox,
-            Corners = classic ? CornerRadius4.All(Radii.None) : Radii.Circle(RowMoreBox),
+            Width = edge, Height = edge,
+            Corners = classic ? CornerRadius4.All(Radii.None) : Radii.Circle(edge),
             HoverScale = classic ? 1f : R.Motion.ScaleEmphatic.Hover,
             PressScale = classic ? 1f : R.Motion.ScaleEmphatic.Press,
             Opacity = 1f, HoverOpacity = float.NaN,
@@ -247,7 +250,8 @@ public readonly partial struct Track
                 new BoxEl
                 {
                     Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Opacity = enabled && shown is not null ? Prop.Of(() => shown() ? 1f : 0f) : (Prop<float>)0f,
+                    Opacity = enabled && atRest ? (Prop<float>)1f
+                        : enabled && shown is not null ? Prop.Of(() => shown() ? 1f : 0f) : (Prop<float>)0f,
                     HoverOpacity = enabled ? 1f : 0f,
                     Children = [button],
                 },

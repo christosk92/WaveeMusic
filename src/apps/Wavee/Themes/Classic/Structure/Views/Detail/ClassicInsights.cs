@@ -32,6 +32,7 @@ using FluentGpu.Localization;
 using FluentGpu.Render;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 using BandLayout = Wavee.Detail.BandLayout;
@@ -45,16 +46,22 @@ internal static class ClassicInsights
     /// <summary>The registered template of <see cref="ViewKeys.DetailInsights"/>: what it covers (the vertical arm's page, or the two-column arm's
     /// pass-through layer over the list), wrapped in the sheet's overlay. ALWAYS composed for a track page (the host decides), open or not.</summary>
     public static Element SheetTemplate(DetailInsightsProps p, in ViewContext ctx)
-        => Sheet(p.Page ?? new BoxEl(), p.Toggle, p.Facts, p.PageWidth, p.RouteKey, p.OnClosed);
+        => p.Docked
+            ? Docked(p.Toggle, p.Facts, p.RouteKey)
+            : Sheet(p.Page ?? new BoxEl(), p.Toggle, p.Facts, p.PageWidth, p.RouteKey, p.OnClosed);
 
     /// <summary>The registered template of <see cref="ViewKeys.DetailInsightsToggle"/>: the list bar's glyph button, or the pinned band's word.
     /// Each is its own component, so opening or closing the sheet re-renders ONE button.</summary>
     public static Element ToggleTemplate(DetailInsightsToggleProps p, in ViewContext ctx)
     {
         var toggle = p.Toggle;
+        // The bar's commands take the tier's target edge (40 at Compact, the brief's rule); the edge is in the key, so a crossing re-mounts the
+        // one button at its new size.
+        float edge = MathF.Max(SheetToggleEdge, ClassicDetailTiers.Of(ctx.Tier()).Target);
         return p.Form == DetailInsightsToggleForm.BandWord
             ? Embed.Comp(() => new InsightsBandWord(toggle))
-            : ToolTip.Wrap(Embed.Comp(() => new InsightsBarButton(toggle)), Loc.Get(Strings.Detail.LikedFacts.SheetOpen)) with { Key = "insights:toggle-tip" };
+            : ToolTip.Wrap(Embed.Comp(() => new InsightsBarButton(toggle, edge)) with { Key = "insights:toggle:" + edge },
+                Loc.Get(Strings.Detail.LikedFacts.SheetOpen)) with { Key = "insights:toggle-tip" };
     }
 
     // ══ 2. THE GLYPH AND THE TOKENS ══════════════════════════════════════════════════════════════════════════════════
@@ -119,6 +126,49 @@ internal static class ClassicInsights
             ClipToBounds = true,
         };
         return parts;
+    }
+
+    // ══ 3b. THE DOCKED PANE (Huge, board C-Liked-Huge) ════════════════════════════════════════════════════════════════
+
+    /// <summary>The pane DOCKED beside the list (the Huge record, C-Liked-Huge): a 360 column with its left hairline on the layer fill, the same header
+    /// and body as the sheet. Its slot's width is bound to the open state (0 closed), and the slot eases it with the pane's own dynamics, so the
+    /// list yields its width as the pane opens instead of jumping; the column inside keeps its full width while the slot reveals it, so nothing in
+    /// the pane reflows. There is no light dismiss and no cast: a docked pane is a column of the page, closed by its × or the bar's toggle.</summary>
+    static Element Docked(InsightsToggle toggle, Func<float, Element>? facts, string routeKey)
+    {
+        var open = toggle.Open;
+        float w = ClassicDetailTiers.DockedInsightsWidth;
+        return new BoxEl
+        {
+            Key = "insights:dock", Direction = 1, Shrink = 0f, MinHeight = 0f, ClipToBounds = true,
+            Width = Prop.Of(() => open.Value ? w : 0f),
+            Animate = ClassicDetailLayout.DockReveal,
+            Children =
+            [
+                new BoxEl
+                {
+                    Key = "insights:dock-column", Direction = 1, Grow = 1f, Width = w, Shrink = 0f, MinHeight = 0f,
+                    Fill = Prop.Of(static () => Tok.FillLayerDefault),
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Direction = 0, Grow = 1f, MinHeight = 0f,
+                            Children =
+                            [
+                                new BoxEl { Width = 1f, Shrink = 0f, Fill = Prop.Of(static () => Tok.StrokeDividerDefault) },
+                                new BoxEl
+                                {
+                                    Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
+                                    Padding = ClassicDetailLayout.DockPadding,
+                                    Children = [SheetPane(toggle, facts, w - 1f - ClassicDetailLayout.DockPadding.Left - ClassicDetailLayout.DockPadding.Right, routeKey)],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        };
     }
 
     // ══ 4. THE CAST ══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -212,7 +262,7 @@ internal static class ClassicInsights
     /// <summary>The list bar's 32-DIP glyph button (the two-column arm's bar, and the vertical arm's hero bar while the hero is expanded — the
     /// range the pinned band cannot serve). Pressed, it takes the accent plate and accent ink (board C-Liked: <c>aria-pressed</c>). Its own
     /// component: the open signal is the only thing it reads, so a toggle never re-renders the bar that hosts it.</summary>
-    sealed class InsightsBarButton(InsightsToggle toggle) : Component
+    sealed class InsightsBarButton(InsightsToggle toggle, float edge) : Component
     {
         public override Element Render()
         {
@@ -221,7 +271,7 @@ internal static class ClassicInsights
             return new BoxEl
             {
                 Key = "insights:toggle",
-                Width = SheetToggleEdge, Height = SheetToggleEdge, Shrink = 0f,
+                Width = edge, Height = edge, Shrink = 0f,
                 AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
                 Fill = open ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.11f }) : (Prop<ColorF>)ColorF.Transparent,
                 HoverFill = open ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.17f }) : Prop.Of(static () => Tok.FillSubtleSecondary),

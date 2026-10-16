@@ -57,7 +57,8 @@ internal static class ClassicContextSheet
                 OnClick = static () => { },                    // the card is a hit target: a press on its inert area must not reach the scrim
                 Enter = new EnterExit(Dy: ClassicSheetRules.EnterDy, Opacity: 0f, Active: true),
                 Exit = new EnterExit(Dy: ClassicSheetRules.EnterDy, Opacity: 0f, Active: true),
-                Children = page is { } sub ? SubPage(sub.Title, sub.Rows, close, vp) : MenuPage(props, close, vp),
+                Children = props.Content is { } content ? ContentPage(content, vp)
+                    : page is { } sub ? SubPage(sub.Title, sub.Rows, close, vp) : MenuPage(props, close, vp),
             };
 
             return new BoxEl
@@ -102,6 +103,11 @@ internal static class ClassicContextSheet
         }
 
         void OpenSub(MenuFlyoutItem item) => _page.Value = (item.Label, item.SubItems ?? []);
+
+        // ── a card's own body (the list's filter card at Compact, board C-Flyouts-Compact, TC5) ─────────────────────────────
+
+        static Element[] ContentPage(Element content, Size2 vp)
+            => [Grabber(), Body([content], vp, ClassicSheetRules.GrabberZone + ClassicSheetRules.BottomPad)];
 
         // ── a sub-menu page ──────────────────────────────────────────────────────────────────────────────────────
 

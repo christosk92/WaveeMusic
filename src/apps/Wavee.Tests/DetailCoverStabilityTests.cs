@@ -11,6 +11,7 @@
 // The stored URL IS the rendition, so PreferVisible must upgrade a larger same-art id and never downgrade.
 
 using Wavee;
+using Wavee.Themes.Classic;
 using Xunit;
 using Breakpoints = Wavee.Detail.Breakpoints;
 using CoverLatch = Wavee.Detail.CoverLatch;
@@ -31,6 +32,18 @@ public class DetailCoverStabilityTests
     }
 
     /// <summary>The allowance is the nav pane's own token (240), not a restated literal.</summary>
+    /// <summary>The frame's content width (the region it resolved the window tiers on) is the better seed; the viewport estimate is the fallback.</summary>
+    [Fact]
+    public void EstimatePageWidth_PrefersTheContentRegion()
+    {
+        // The chrome's share at the last crossing (800 less the 48 rail) applied to the live width: a resize that crossed nothing moves the page.
+        var facts = new Wavee.Theming.TierFacts(Wavee.Theming.Contracts.WidthTier.Small, Wavee.Theming.Contracts.HeightTier.Regular,
+            Wavee.Theming.Contracts.WidthTier.Small, ContentWidth: 752f, ViewportWidth: 800f, ViewportHeight: 600f, Resizing: false);
+        Assert.Equal(752f, Breakpoints.EstimatePageWidth(in facts, 800f));
+        Assert.Equal(852f, Breakpoints.EstimatePageWidth(in facts, 900f));
+        Assert.Equal(800f - Breakpoints.ShellChromeAllowanceDip, Breakpoints.EstimatePageWidth(Wavee.Theming.TierFacts.Unknown, 800f));
+    }
+
     [Fact]
     public void ShellChromeAllowance_IsTheNavPaneToken()
         => Assert.Equal(Design.Size.NavPaneW, Breakpoints.ShellChromeAllowanceDip);
@@ -44,8 +57,8 @@ public class DetailCoverStabilityTests
         float pageWidthEstimate = Breakpoints.EstimatePageWidthFromViewport(windowWidth);
         Assert.Equal(559f, pageWidthEstimate);
 
-        int fromWindow = Breakpoints.InitialModeForViewport(windowWidth);
-        int fromPage = Breakpoints.InitialModeForViewport(pageWidthEstimate);
+        int fromWindow = ClassicDetailTiers.ModeFor(windowWidth, 0, initialized: false);
+        int fromPage = ClassicDetailTiers.ModeFor(pageWidthEstimate, 0, initialized: false);
 
         Assert.Equal(1, fromWindow);
         Assert.Equal(Breakpoints.VerticalMode, fromPage);
@@ -57,8 +70,8 @@ public class DetailCoverStabilityTests
     {
         for (float w = 300f; w <= 1400f; w += 4f)
         {
-            int fromWindow = Breakpoints.InitialModeForViewport(w);
-            int fromPage = Breakpoints.InitialModeForViewport(Breakpoints.EstimatePageWidthFromViewport(w));
+            int fromWindow = ClassicDetailTiers.ModeFor(w, 0, initialized: false);
+            int fromPage = ClassicDetailTiers.ModeFor(Breakpoints.EstimatePageWidthFromViewport(w), 0, initialized: false);
             Assert.True(fromPage >= fromWindow, $"w={w}: page-derived mode {fromPage} was WIDER than the window reading {fromWindow}");
         }
     }

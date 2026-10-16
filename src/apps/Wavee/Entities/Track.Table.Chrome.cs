@@ -40,7 +40,9 @@ public readonly partial struct Track
         /// <summary>The ONE search-disclosure duration: the width tween, the icon↔field cross-fade, the chrome brush fade
         /// and the underline all run on it, so the box growing and its styling resolving read as one motion.</summary>
         const float SearchExpandMs = 260f, SearchCollapseMs = 180f;
-        const float ToolbarPaneInset = 12f;
+        /// <summary>What the bar's lane takes from the measured width before the commands fit: its own horizontal padding, both sides (the
+        /// surface's 6 + 6). Named from the lane it describes, so the fit and the picture cannot drift apart (TC5 resolved the old literal 12).</summary>
+        const float ToolbarPaneInset = 2f * Detail.VerticalLayout.ToolbarSurfacePadX;
 
         Action<Action>? _post;
         InputHooks? _hooks;
@@ -247,6 +249,15 @@ public readonly partial struct Track
         /// <summary>Open or close the filter card under <paramref name="anchor"/>, holding the bar's rung while it is open.</summary>
         void ToggleFilterCard(IOverlayService overlay, Ref<NodeHandle> anchor, Ref<OverlayHandle?> handle)
         {
+            // Where the structure draws menus as a sheet (Classic Compact, board C-Flyouts-Compact) the card opens in that sheet, not anchored.
+            if (!Controls.IsNullOverlay(overlay) && handle.Value is not { IsOpen: true } && ContextSheets.SheetNow())
+            {
+                var sheet = ContextSheets.OpenContent(overlay, () => Embed.Comp(() => new TableFilterFlyout(this)),
+                    () => { handle.Value = null; HoldBarForFilterCard(false); });
+                handle.Value = sheet;
+                HoldBarForFilterCard(true);
+                return;
+            }
             ToggleOverlay(overlay, anchor, handle, () => Embed.Comp(() => new TableFilterFlyout(this)), FilterPopup, () => HoldBarForFilterCard(false));
             if (handle.Value is { IsOpen: true }) HoldBarForFilterCard(true);
         }
@@ -380,18 +391,20 @@ public readonly partial struct Track
                 var h = host;
                 var p = UseProps<SearchProps>();
                 bool expanded = p.Compact ? h._searchExpanded.Value : p.Expanded;
+                float edge = h.Kit.CommandEdge;   // the structure's command edge at this tier (Classic Compact: 40)
                 float width = p.Compact && !expanded ? CommandBarLayout.SearchWithFilterWidth : p.Width;
+                if (!expanded) width = MathF.Max(width, edge);
                 bool queryActive = h._query.Value.Length > 0;
                 bool focused = expanded && h._searchFocused.Value;
                 Element query = expanded
                     ? new BoxEl
                     {
-                        Key = "search:field", Direction = 1, Height = 32f, Animate = s_searchSwap,
+                        Key = "search:field", Direction = 1, Height = edge, Animate = s_searchSwap,
                         Children = [Embed.Comp(() => new TableSearchField(h, band: p.Compact))],
                     }
                     : new BoxEl
                     {
-                        Key = "search:icon", Direction = 1, Width = 32f, Height = 32f, JustifySelf = FlexAlign.Start, Animate = s_searchSwap,
+                        Key = "search:icon", Direction = 1, Width = edge, Height = edge, JustifySelf = FlexAlign.Start, Animate = s_searchSwap,
                         Children = [ToolTip.Wrap(h.Kit.IconButton(Icons.Search, queryActive, h._openSearch, h._captureSearchButton),
                                                  Loc.Get(Strings.Detail.Filter.SearchThisList))],
                     };
@@ -401,10 +414,10 @@ public readonly partial struct Track
                 // so without it a long query, or the 66-DIP start of the expand tween, pushes the fixed 32-DIP funnel out.
                 var row = new BoxEl
                 {
-                    Direction = 0, Gap = expanded ? 0f : CommandBarLayout.Gap, Height = 32f, AlignItems = FlexAlign.Center,
+                    Direction = 0, Gap = expanded ? 0f : CommandBarLayout.Gap, Height = edge, AlignItems = FlexAlign.Center,
                     Children =
                     [
-                        new BoxEl { Key = "search-query-region", ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, Height = 32f, ClipToBounds = true, Children = [query] },
+                        new BoxEl { Key = "search-query-region", ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, Height = edge, ClipToBounds = true, Children = [query] },
                     ],
                 };
                 // STABLE key: keying on capabilities would remount the funnel and orphan an open flyout. The command bar's host has no
@@ -424,7 +437,7 @@ public readonly partial struct Track
                     : [row];
                 return new BoxEl
                 {
-                    ZStack = true, Width = width, Height = 32f, Shrink = 0f, Corners = Radii.ControlAll,
+                    ZStack = true, Width = width, Height = edge, Shrink = 0f, Corners = Radii.ControlAll,
                     Fill = expanded ? (focused ? Tok.FillControlInputActive : Tok.FillControlDefault) : ColorF.Transparent,
                     BorderWidth = 1f,
                     BorderColor = expanded ? Tok.StrokeControlDefault : ColorF.Transparent,
@@ -891,6 +904,7 @@ public readonly partial struct Track
             public static readonly NoChromeKit Instance = new();
 
             public Element Surface(string mode, Element content) => content;
+            public float CommandEdge => 32f;
             public Element Command(string key, Element command, Action<float> onWidth) => new BoxEl { Key = key };
             public Element Bar(Element[] left, Element[] view, Element search, Element[] tail, Element? middle) => new BoxEl();
             public Element PageLead(EntityUri subject, Func<ColorF> accent, Action play, string shuffleLabel, Action shuffle) => new BoxEl();

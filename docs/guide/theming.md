@@ -25,7 +25,7 @@
 - **Contract version 1.11** (`Contracts\ContractVersion.cs`, which keeps the history): the published view keys and style keys, their props records
   and the role vocabulary. A theme records the version it was built against in its manifest; `ThemeHost.Install` refuses a
   composition whose major differs or whose minor is newer than the core's. 1.1 (CT4) appended `LyricsState.Offline`, the
-  optional `LyricsLinesStyle.Offline` picture and `PlayerBarSlots.VideoSplit`; 1.6 (CT6b) added `CoverVeilProps.Hold`; 1.7 (CT9) `ThemePolicies.Artwork` and `WashRoles.Rich`; 1.8 (CT8) `Overlay.OfflineVacancy`; 1.9 (CT6a) `DetailFrameProps.Head`, `LikedChipBarProps.Inline` and `TrackRowSkin.Quiet`; 1.10 (X2 follow-up) `LibraryAlbumPaneProps.Columns`; 1.11 (P3t TC9) `ThemePolicies.Overlays` and `Overlay.ContextSheet`; 1.12 (TC1) `ChromeRowState.TabCount` / `.TabMaxWidth`, the optional `ChromePolicy.Compact` / `.Huge` budgets with `ChromeBudget.TabsAsCount`, and `ctx.TierReader()`; 1.13 (TC3) `StagePolicy.Aspect` as three `TierLadder`s and the per-tier `StageTierMetrics`.
+  optional `LyricsLinesStyle.Offline` picture and `PlayerBarSlots.VideoSplit`; 1.6 (CT6b) added `CoverVeilProps.Hold`; 1.7 (CT9) `ThemePolicies.Artwork` and `WashRoles.Rich`; 1.8 (CT8) `Overlay.OfflineVacancy`; 1.9 (CT6a) `DetailFrameProps.Head`, `LikedChipBarProps.Inline` and `TrackRowSkin.Quiet`; 1.10 (X2 follow-up) `LibraryAlbumPaneProps.Columns`; 1.11 (P3t TC9) `ThemePolicies.Overlays` and `Overlay.ContextSheet`; 1.12 (TC1) `ChromeRowState.TabCount` / `.TabMaxWidth`, the optional `ChromePolicy.Compact` / `.Huge` budgets with `ChromeBudget.TabsAsCount`, and `ctx.TierReader()`; 1.13 (TC3) `StagePolicy.Aspect` as three `TierLadder`s and the per-tier `StageTierMetrics`; 1.14 (TC5) `ThemePolicies.DetailTiers`, the `DetailLadders` ids, `Track.ColumnSet.Compact`, `Track.RowMetrics.ShowDuration`, `DetailInsightsProps.Docked` and `ContextSheetProps.Content`.
 - Keys live only in `Contracts\ViewKeys*.cs` and `StyleKeys.cs` (WVTH006). T1 declares none; each extraction PR adds its
   family in its own partial file (`ViewKeys.Shell.cs`: T4a's `Shell.Frame` and `Shell.ContentState`). How a surface becomes a
   registered view is section 2b.
@@ -1192,6 +1192,29 @@ rail satellites (`ClassicDetailKit.Satellites.cs`) and dropped `Detail.PlayButto
 the seam layer in both arms (a drag collapses and re-opens mid-gesture); the track page's vertical arm is always wrapped in the sheet's overlay so the
 facts arriving never remount the list; the sheet's slide (350 ms open, 120 ms close, reduced motion snaps), its focus trap and return, the hero's
 parallax and band reveal, and the rail's row FLIP and fade-up are unchanged.
+
+**At every tier (P3t, TC5).** The frame's three width and height ladders are no longer core numbers: the page MODE ladder (the vertical hero arm
+below 560, held 20 both ways, then 660 and 820 re-admitted 24 past the edge), the track table's TIER ladder (300 … 860, re-admitted 24 past each
+edge) and the HEIGHT rungs (760 and 900, held 40 on growing) are named sub-ladders of the structure's `TierPolicy` (`TierPolicy.Ladders`, ids
+`Wavee.Theming.DetailLadders.Mode` / `.Table` / `.Height`; Classic: `Themes\Classic\Structure\Rules\Tiers.Detail.cs`, `ClassicDetailTiers`). The
+frame resolves the mode and the height rung, and the table its tier, through the engine's `UseTier` over the measured page / list width (seeded
+from the content region the frame resolved the window tiers on, so the first frame is already in its final arm): a crossing found after mount is
+PENDING until the first frame that is not resized and then animates, the arms cross-fade under their own keys (`detail:arm:vertical` /
+`two-column` / `head`), and the vertical exit takes the holds of the edges it crosses (the old core ladder jumped to the width's nominal mode and
+snapped). A structure that declares no detail ladders gets the shell as it shipped (the widest arm, tier 0, the tall rung). What each WINDOW tier
+lays out is the structure's `ThemePolicies.DetailTiers` (`DetailTierPolicy`: per band a `DetailTierLayout` with the table's form, `DetailTableTier`,
+the docked insights flag, the rail's resting width where the user never dragged it, the hero action row's extra height, and the rail title's cap and
+the description clamp per height rung), read by the core frame and table; Classic's views read the richer `ClassicDetailTier` records (the target
+edge, the sort-led Compact bar, the selection tint, the page row's max width). Classic's records: Compact the vertical arm with the C-TrackList
+compact row (`ColumnSet.Compact`: no column header but its hairline, the heart trailing, no chevron lane, a 40 "…" shown at rest, the Modern
+duration in the subline, 56 / 44 rows with 40 art), 40 x 40 hero actions and list-bar commands with the sort word leading the bar, the selection
+bar tinted with the accent, the filter card in the context sheet (`ContextSheets.OpenContent`); Small the 224 rail arm with no Album or Plays lane and
+the date only on a quiet list; Standard unchanged; Huge (and Huge 4K) the rail resting at 320, the cozy rows (56 / 44, 40 art), the page row up to
+2400 and the insights pane docked as a 360 column beside the list (`DetailInsightsProps.Docked`). The bar's fit slack (`ToolbarPaneInset`) is now
+named from the lane it describes (twice the surface's horizontal pad). Tests: `Wavee.Tests\Theming\ClassicDetailTiersTests.cs` (the ladders, their
+holds, the board sizes' modes, the records, the rail's Huge rest, the Compact row form's lanes) and `Wavee.ShellTests\TierLayoutTests.Detail.cs`
+(Album at every size including 3840, Playlist, Liked, Show and Episode at the page sizes and edges: the record in use, the arm, the header, the dock,
+the Compact targets).
 
 **Tests.** The ids, the registration (every key and the hero style, distinct template ids), the equality promises and the shared toggle are
 `Wavee.Tests\DetailContractTests.cs`; the arithmetic stays `DetailRailPolicyTests`, `DetailSkeletonGeometryTests`, `DetailInsightsSheetTests`. The mounted

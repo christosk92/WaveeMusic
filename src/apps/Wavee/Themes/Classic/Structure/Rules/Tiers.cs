@@ -106,7 +106,7 @@ public static class ClassicTiers
         ShortFloor: ShortFloorH,
         // The board marks that are not tiers: the height from which a hero keeps its own height instead of the Short strip (read by Home's records).
         Rungs: ImmutableArray.Create(new NamedRung(HeroFullRung, new TierEdge(HeroFullFrom, NarrowHold: 0f, WidenHold: ShortHold), RungAxis.Height)),
-        Ladders: ImmutableArray<NamedLadder>.Empty);
+        Ladders: ClassicDetailTiers.Ladders);   // the detail page's mode, table and height sub-ladders (Tiers.Detail.cs, TC5)
 
     // ── the frame's records (per window tier) ────────────────────────────────────────────────────────────────────────────
 

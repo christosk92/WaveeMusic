@@ -399,7 +399,7 @@ internal static class ClassicArtistSections
         int relatedCount = p.RelatedCount;
         return Responsive.Of("artist:bio-band", w =>
         {
-            latch.BioMode = Detail.Breakpoints.ModeFor(w, latch.BioMode, latch.BioModeInitialized);
+            latch.BioMode = ClassicDetailTiers.ModeFor(w, latch.BioMode, latch.BioModeInitialized);   // the detail page's mode ladder (Tiers.Detail.cs)
             latch.BioModeInitialized = true;
             bool wide = latch.BioMode == 0;
 

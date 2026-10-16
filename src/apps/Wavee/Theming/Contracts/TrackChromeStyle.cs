@@ -62,6 +62,10 @@ internal interface ITrackCommandKit
     /// <summary>The chromeless lane both modes (browse and selection) share; the keyed mode box is what animates between them.</summary>
     Element Surface(string mode, Element content);
 
+    /// <summary>The edge of the bar's square commands at the window tier on screen (the search box among them): the tuned 32, or the Compact 40
+    /// (the brief's target rule, TC5). A tracked read, so the bar's builder follows a crossing.</summary>
+    float CommandEdge { get; }
+
     /// <summary>One measured command slot: the keyed box that enters and exits on the bar's motion and reports its width.</summary>
     Element Command(string key, Element command, Action<float> onWidth);
 
