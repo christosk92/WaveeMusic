@@ -454,7 +454,7 @@ public sealed class ThemeCatalogTests : IDisposable
     }
 
     [Fact]
-    public void ContractVersion_IsOnePointNineteen_AndRefusesAnythingElse()
+    public void ContractVersion_IsOnePointTwenty_AndRefusesAnythingElse()
     {
         // 1.1 (tuned Classic CT4): LyricsState.Offline + LyricsLinesStyle.Offline, PlayerBarSlots.VideoSplit.
         // 1.2 (tuned Classic CT1c): the omnibar model's focused-field facts. 1.3 (tuned Classic CT3a): SidebarRowShape.EntityText,
@@ -477,7 +477,8 @@ public sealed class ThemeCatalogTests : IDisposable
         // 1.18 (Classic artist and people pages per tier TC6): ThemePolicies.ArtistTiers, ArtistLadders, ArtistHeroMetrics.PhotoHeight, FollowToggle.Size.
         // 1.19 (compact control sizes): DialogFit.CommandSize / CommandMinWidth / UniformCommands replace CommandHeight, OverlayLayout.MenuSize, ToastDock.Lane. A 1.0
         // theme still runs.
-        Assert.Equal("1.19", ContractVersion.Text);
+        // 1.20 (the Compact overlays fix): PanelProps.Transport.
+        Assert.Equal("1.20", ContractVersion.Text);
         Assert.True(ContractVersion.IsCompatible(1, 0));
         Assert.True(ContractVersion.IsCompatible(1, 2));
         Assert.True(ContractVersion.IsCompatible(1, 3));
@@ -497,7 +498,8 @@ public sealed class ThemeCatalogTests : IDisposable
         Assert.True(ContractVersion.IsCompatible(1, 17));
         Assert.True(ContractVersion.IsCompatible(1, 18));
         Assert.True(ContractVersion.IsCompatible(1, 19));
-        Assert.False(ContractVersion.IsCompatible(1, 20));
+        Assert.True(ContractVersion.IsCompatible(1, 20));
+        Assert.False(ContractVersion.IsCompatible(1, 21));
         Assert.False(ContractVersion.IsCompatible(2, 0));
         Assert.False(ContractVersion.IsCompatible(0, 0));
     }

@@ -262,4 +262,47 @@ public sealed class ClassicPlayerPanelTierTests
         Assert.False(row.TabsHidden);
         Assert.Equal(back, row.ShowBack);
     }
+
+    // ── the now-playing sheet's column and the shared sheet drag (the Compact overlays fix) ─────────────────────────────
+
+    [Theory]
+    [InlineData(400f, 860f, 320f)]     // C-NowPlaying-Compact: the board's 320 art, room to spare
+    [InlineData(400f, 640f, 250f)]     // the art gives so the identity, the transport and the doors stay in the window
+    [InlineData(300f, 860f, 268f)]     // never wider than the sheet less its 16 insets
+    [InlineData(400f, 330f, 96f)]      // a Short window: the floor, and the column scrolls
+    public void The_sheets_art_gives_way_to_the_fixed_column(float w, float h, float side)
+    {
+        float head = ClassicPanelTiers.GrabStripH + Rail.Hero.HeaderRowH;
+        Assert.Equal(side, ClassicPanelTiers.SheetArtSide(w, h, head));
+        float bottom = ClassicSheetRules.ChromeRow + ClassicPanelTiers.Gap + head + ClassicPanelTiers.SheetArtTop + side + ClassicPanelTiers.SheetBelowArt;
+        if (side > ClassicPanelTiers.SheetArtMin) Assert.True(bottom <= h, $"{w} x {h}: the doors end at {bottom}");
+    }
+
+    [Theory]
+    [InlineData(0f, 0f, 800f, false)]          // a tap
+    [InlineData(60f, 180f, 800f, false)]       // a slow, short drag springs back
+    [InlineData(170f, 300f, 800f, true)]       // past the 160 travel
+    [InlineData(100f, 300f, 300f, true)]       // a short sheet: 30 % of its height
+    [InlineData(40f, 1200f, 800f, true)]       // a downward fling
+    [InlineData(8f, 1200f, 800f, false)]       // ... but not a tap's jitter
+    [InlineData(200f, -1200f, 800f, false)]    // flicked back up: it stays
+    [InlineData(-20f, 0f, 800f, false)]        // above the rest
+    public void A_release_dismisses_past_the_travel_or_the_speed(float offset, float velocity, float height, bool dismisses)
+        => Assert.Equal(dismisses, ClassicSheetRules.Dismisses(offset, velocity, height));
+
+    [Fact]
+    public void The_sheet_follows_down_one_to_one_and_rubber_bands_up_within_its_reach()
+    {
+        Assert.Equal(120f, ClassicSheetRules.Rubber(120f, 8f));
+        float last = 0f;
+        foreach (float raw in new[] { -1f, -10f, -50f, -200f, -2000f })
+        {
+            float y = ClassicSheetRules.Rubber(raw, 8f);
+            Assert.True(y < last && y > -8f, $"{raw} gives {y}");
+            last = y;
+        }
+        Assert.Equal(1f, ClassicSheetRules.ScrimShare(0f, 800f));
+        Assert.Equal(0.5f, ClassicSheetRules.ScrimShare(400f, 800f), 3);
+        Assert.Equal(0f, ClassicSheetRules.ScrimShare(900f, 800f));
+    }
 }

@@ -50,4 +50,49 @@ public static class ClassicSheetRules
 
     /// <summary>The entry slide (up from below).</summary>
     public const float EnterDy = 48f;
+
+    // ── the drag (ONE behaviour for every bottom sheet: the Compact panel sheet and the context sheet; `ClassicSheetDrag`) ───────────
+
+    /// <summary>A release dismisses once the sheet has travelled this share of its height, or <see cref="DismissTravel"/>, whichever
+    /// is less (a tall sheet does not ask for a 300-DIP pull).</summary>
+    public const float DismissShare = 0.3f, DismissTravel = 160f;
+
+    /// <summary>A downward fling of at least this speed (DIP per second) dismisses whatever the travel, once the sheet has moved at least
+    /// <see cref="FlingMinTravel"/> (a tap's jitter never flings).</summary>
+    public const float FlingSpeed = 900f, FlingMinTravel = 12f;
+
+    /// <summary>Dragged up past its rest the sheet rubber-bands: it gives at most its reach (<see cref="RubberReach"/> where nothing clips it
+    /// sooner), stiffening as it goes.</summary>
+    public const float RubberReach = 48f, RubberStiffness = 0.55f;
+
+    /// <summary>The release velocity is the pointer's travel over the last <see cref="VelocityWindowS"/> seconds; a pointer that has not
+    /// moved for <see cref="StillAfterS"/> seconds before the release has none.</summary>
+    public const double VelocityWindowS = 0.1, StillAfterS = 0.06;
+
+    /// <summary>The spring a sheet released short of the threshold settles back with (damped enough not to wobble).</summary>
+    public const float SettleResponseS = 0.32f, SettleDamping = 0.9f;
+
+    /// <summary>A drag-dismissed context sheet slides the rest of the way out in this time (the panel sheet runs its own 300 ms slide).</summary>
+    public const float DismissMs = 220f;
+
+    /// <summary>The sheet's presented offset for a raw drag offset: 1:1 below the rest, rubber-banded above it up to <paramref name="reach"/>.</summary>
+    public static float Rubber(float raw, float reach)
+    {
+        if (raw >= 0f) return raw;
+        float r = MathF.Max(1f, reach);
+        return -r * (1f - 1f / (1f - raw * RubberStiffness / r));
+    }
+
+    /// <summary>Does a release at <paramref name="offset"/> (DIP below the rest), moving at <paramref name="velocity"/> (DIP per second,
+    /// positive downward), dismiss a sheet <paramref name="height"/> tall?</summary>
+    public static bool Dismisses(float offset, float velocity, float height)
+    {
+        if (offset <= 0f) return false;
+        if (velocity <= -FlingSpeed) return false;                                  // flicked back up: it stays
+        if (velocity >= FlingSpeed && offset >= FlingMinTravel) return true;
+        return offset >= MathF.Min(DismissTravel, MathF.Max(1f, height) * DismissShare);
+    }
+
+    /// <summary>The scrim's share of its resting opacity with the sheet <paramref name="offset"/> DIP below its rest.</summary>
+    public static float ScrimShare(float offset, float height) => Math.Clamp(1f - offset / MathF.Max(1f, height), 0f, 1f);
 }
