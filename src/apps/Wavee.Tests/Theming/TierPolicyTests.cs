@@ -353,8 +353,9 @@ public sealed class TierPolicyTests
         Assert.Same(ladder, policy.Ladder("test.bar"));
         Assert.False(policy.TryGetLadder("no.such.ladder", out _));
         Assert.Throws<InvalidOperationException>(() => policy.Ladder("no.such.ladder"));
-        // Classic names the detail page's mode, table and height ladders (Tiers.Detail.cs) and nothing else: its player bar is PlayerBarPolicy.
-        Assert.Equal(3, ClassicTierFixture.Tiers.Ladders.Length);
+        // Classic names the detail page's mode, table and height ladders (Tiers.Detail.cs) and the library's layout ladder (Tiers.Library.cs, TC7): its player bar is PlayerBarPolicy.
+        Assert.Equal(4, ClassicTierFixture.Tiers.Ladders.Length);
+        Assert.Same(Wavee.Themes.Classic.ClassicLibraryTiers.Layout, ClassicTierFixture.Tiers.Ladder(LibraryLadders.Layout));
         Assert.Same(Wavee.Themes.Classic.ClassicDetailTiers.Mode, ClassicTierFixture.Tiers.Ladder(DetailLadders.Mode));
         Assert.Same(Wavee.Themes.Classic.ClassicDetailTiers.Table, ClassicTierFixture.Tiers.Ladder(DetailLadders.Table));
         Assert.Same(Wavee.Themes.Classic.ClassicDetailTiers.Height, ClassicTierFixture.Tiers.Ladder(DetailLadders.Height));

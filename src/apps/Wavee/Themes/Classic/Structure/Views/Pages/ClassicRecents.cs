@@ -51,6 +51,7 @@ internal static class ClassicRecents
         var cell = ctx.Hooks.UseRef<Cache?>(null);
         var cache = cell.Value ??= new Cache();
         float gutter = ClassicTiers.PageOf(ctx.Tier()).Gutter;   // the one page gutter (F3)
+        var layout = ClassicRecentsTiers.Of(ctx.Tier());          // the content tier's record (Tiers.Recents.cs)
         cache.Content ??= () => Content(host);
         cache.Shimmer ??= () => PendingContent(host);
         var retry = p.Retry;
@@ -60,12 +61,13 @@ internal static class ClassicRecents
             SkelReveal.None, SkeletonStyle.Default, null, SmoothResize: true);
         var kids = new Element[]
         {
-            Hero(p, gutter),
+            Hero(p, gutter, layout),
             new BoxEl
             {
                 Padding = new Edges4(gutter, 0f, gutter, Spacing.S),
                 // Keyed on the SHAPE, not the token: a pivot switch re-renders the live strip (its underline enters).
-                Children = [Embed.Comp(() => new PivotTabs(host)) with { Key = "recents-pivots:" + FormatCache.Int(p.ShapeEpoch) }],
+                // …and on the tier: the Compact strip is its own shape (40 tabs), a crossing remounts the strip once.
+                Children = [Embed.Comp(() => new PivotTabs(host, layout)) with { Key = "recents-pivots:" + FormatCache.Int(p.ShapeEpoch) + ":" + FormatCache.Int((int)layout.Tier) }],
             },
             new BoxEl
             {
@@ -91,15 +93,16 @@ internal static class ClassicRecents
 
     // ── the masthead (W3, §0 #1-#2) ──────────────────────────────────────────────────────────────────────────────
 
-    static Element Hero(RecentsPageProps p, float gutter)
+    static Element Hero(RecentsPageProps p, float gutter, ClassicRecentsLayout layout)
     {
         var title = R.Type.SurfaceDisplay(Loc.Get(Strings.Home.Recents)) with
         {
             MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Grow = 1f, Basis = 0f,
             Enter = new EnterExit(Dy: ClassicRecentsRules.EnterDy, Opacity: 0f, Active: true), Transition = MotionTok.StandardEnter,
         };
+        // 24 at Small and Standard (the Small control), 32 at Huge and 40 at Compact (a target): the record's.
         var overview = Button.Create(Loc.Get(Strings.Recents.Overview), p.OpenOverview, ButtonAppearance.Subtle,
-            ControlSize.Small, glyph: Icons.Calendar) with { Shrink = 0f };
+            layout.OverviewH > ClassicRecentsRules.OverviewSmallH ? ControlSize.Medium : ControlSize.Small, glyph: Icons.Calendar) with { Shrink = 0f, MinHeight = layout.OverviewH };
         Element titleRow = new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinWidth = 0f, Children = [title, overview],
@@ -107,7 +110,7 @@ internal static class ClassicRecents
         return new BoxEl
         {
             Direction = 1, Gap = Spacing.XS,
-            Padding = new Edges4(gutter, Spacing.XXL, gutter, Spacing.L),
+            Padding = new Edges4(gutter, layout.HeadTop, gutter, layout.HeadBottom),
             // The two lines arrive 45 ms apart; reduced motion is a VALUE (0), never a branch.
             Stagger = Design.Reduced ? 0f : R.Motion.MastheadStaggerMs,
             Children = p.Summary.Length == 0
@@ -173,7 +176,7 @@ internal static class ClassicRecents
 
     /// <summary>Four FIXED tabs on frame one; a tab with no rows is dimmed and inert, never hidden. Only the selected tab
     /// MOUNTS its underline, so the scaleX 0 → 1 enter is a real mount; the others reserve the 2-DIP baseline.</summary>
-    sealed class PivotTabs(IRecentsHost host) : Component
+    sealed class PivotTabs(IRecentsHost host, ClassicRecentsLayout layout) : Component
     {
         static MotionTokenDef UnderlineEnter => MotionTokenDef.Eased(ClassicRecentsRules.UnderlineEnterMs, Easing.SmoothOut);
 
@@ -182,9 +185,9 @@ internal static class ClassicRecents
             string? selected = host.Chip.Value;
             _ = host.ShapeEpoch.Value;
             var rows = host.ShapeNow.Rows;
-            return new BoxEl
+            Element strip = new BoxEl
             {
-                Direction = 0, Gap = Spacing.XL, AlignItems = FlexAlign.Center, Shrink = 0f,
+                Direction = 0, Gap = layout.PivotGap, AlignItems = FlexAlign.Center, Shrink = 0f,
                 Children =
                 [
                     Tab(null, Loc.Get(Strings.Detail.Filter.All), true, selected is null),
@@ -195,6 +198,11 @@ internal static class ClassicRecents
                     Tab(RecentsView.PivotArtists, Loc.Get(Strings.Recents.Pivot.Artists), RecentsView.PivotAvailable(rows, RecentsView.PivotArtists),
                         string.Equals(selected, RecentsView.PivotArtists, StringComparison.OrdinalIgnoreCase)),
                 ],
+            };
+            // Compact (C-Recents-Compact): the four tabs are one scrolling line whose end fades, so a 300-wide page never runs the strip off its card.
+            return layout.PivotH <= 0f ? strip : ScrollView(strip, horizontal: true) with
+            {
+                Grow = 1f, Basis = 0f, Height = layout.PivotH, MinWidth = 0f, AutoEdgeFade = true, SuppressScrollBar = true, ScrollKey = "recents:pivots",
             };
         }
 
@@ -215,6 +223,8 @@ internal static class ClassicRecents
             return new BoxEl
             {
                 Direction = 1, Gap = Spacing.XS, Shrink = 0f,
+                // Compact: a 40 target (the label sits under 8 of air, the underline on the bottom edge) with the board's 8 of side padding.
+                MinHeight = layout.PivotH, Padding = new Edges4(layout.PivotPadX, layout.PivotH > 0f ? Spacing.S : 0f, layout.PivotPadX, 0f),
                 Role = AutomationRole.Button, Focusable = available, Cursor = available ? CursorId.Hand : CursorId.Arrow,
                 IsEnabled = available,
                 FocusVisualMargin = new Edges4(ClassicRecentsRules.PivotFocusMargin, ClassicRecentsRules.PivotFocusMargin,

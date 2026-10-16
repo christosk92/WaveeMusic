@@ -1067,7 +1067,7 @@ the collapse state and every pane's model, readiness and verbs stay core.
 
 | Key | Props | Core host | Classic template |
 |---|---|---|---|
-| `Pages.Library` | `LibraryPageProps` (the title and kind, the arm facts: collapsed, saved-episodes mode, full search, shimmer, depth and crumbs; the persisted signals `LeftW`, `MidW`, `Sort`, `Desc`, `View`, `Size`, `Filter`, `PodcastsMode` and their commit verbs; the collapse seam `IsCollapsed` / `SetCollapsed`; the pane and Your Episodes slots; `LibraryNavigatorProps`: the load state, the bound source, the mount and the letters' signals; `LibrarySearchProps`: the hit lists as lazy Funcs and the selection) | `User.LibraryPage` (`[CoreHost]`, `Entities\User.Page.Library.cs`): the shape memo, the selection and its re-assert effects, the letters, the demand, the search state, the persistence, the collapse signal; `ResolveMount()` is the one place the mount identity, the selection pre-write and the cached layout and options meet | `ClassicLibraryPage` (`.cs`, `.Toolbar.cs`, `.Nav.cs`, `.Search.cs`): the root with the measured collapse ladder, the wide arm (navigator column, `lib:grip`, the pane column), Your Episodes, the three search columns, the collapsed crumb bar over a depth-keyed drill; the toolbar with the word rail and view toggle; the bound list, rows, cards and letter headers; the hit rows |
+| `Pages.Library` | `LibraryPageProps` (the title and kind, the arm facts: collapsed, saved-episodes mode, full search, shimmer, depth and crumbs; the persisted signals `LeftW`, `MidW`, `Sort`, `Desc`, `View`, `Size`, `Filter`, `PodcastsMode` and their commit verbs; the width seam `SetPageWidth` and the kind chips `Kinds` (the layout ladder's source and the one-column head's chips); the pane and Your Episodes slots; `LibraryNavigatorProps`: the load state, the bound source, the mount and the letters' signals; `LibrarySearchProps`: the hit lists as lazy Funcs and the selection) | `User.LibraryPage` (`[CoreHost]`, `Entities\User.Page.Library.cs`): the shape memo, the selection and its re-assert effects, the letters, the demand, the search state, the persistence, the layout tier (`UseTier` over the structure's `library.layout` ladder); `ResolveMount()` is the one place the mount identity, the selection pre-write and the cached layout and options meet | `ClassicLibraryPage` (`.cs`, `.Toolbar.cs`, `.Nav.cs`, `.Search.cs`): the root that reports its width, the wide arm (navigator column, `lib:grip`, the pane column), Your Episodes, the three search columns, the collapsed drill (the kind chips over the root rung, a crumb bar over a leaf) keyed by depth, the two arms cross-faded; the toolbar with the word rail and view toggle (Compact: kind chips, a sort button and 40 view cells); the bound list, rows, cards and letter headers; the hit rows |
 | `Library.AlbumPane` | `LibraryAlbumPaneProps` (the readiness state, the keyed child's key, the header facts, the verbs, the notice, the region's cached `Loadable`, the shimmer count and row height, `Table` and `AlsoBy`) | `Album.Pane` (`[CoreHost]`, `Entities\Album.Pane.cs`): the demand (identity, rows, credits, partial pages), `AlbumPaneReadiness`, the keys, the log, the retry | `ClassicLibraryAlbumPane`: the header and its stated-height skeleton, the command row, the keyed swap with its crossfade, the counted shimmer under the header shim, the failed strip and the "Also by" strip |
 | `Library.ShowPane` | `LibraryShowPaneProps` (the header facts, the primary as a Func over the accent, the heart's presence bind, the menu, the reader element) | `Show.Pane` (`[CoreHost]`, `Entities\Show.Pane.cs`): the selection signal, the memo pair, the demand, the reader's per-show key | `ClassicLibraryShowPane`: the two arm keys (`showpane:body` / `showpane:skel`), the swap, the header, the command row and the reader slot |
 | `Library.SavedEpisodes` | `LibrarySavedEpisodesProps` (pending, failed, the content and failed arms as Funcs) | `SavedEpisodesReader` (`[CoreHost]`, `Entities\User.SavedEpisodes.cs`): the read of the listen-later playlist, the edge demand, the table | `ClassicLibrarySavedEpisodes`: the region with the cold seed of the structure's episode rows and the fade-only reveal |
@@ -1078,8 +1078,11 @@ delegates, because a key on a branch root is what turns a branch swap into the r
 cache per mounted template (`ctx.Hooks.UseRef`), built lazily: keys, binds and mounts are the old tree's. The host rebuilds ONE props record per render (it compares by reference) and caches the navigator's record, whose
 delegates are the host's stable fields.
 
-**The collapse ladder is the structure's.** `LibraryLayoutBreakpoints` (640 with a 24 DIP hysteresis) is `Rules\Tiers.Library.cs` (`ClassicLibraryTiers.Collapsed`, with Your Episodes' compact rung `SavedEpisodesCompact`). The page view answers
-it from its own measured width and writes the host's collapse signal (`SetCollapsed`), which the selection, the crumbs and the persisted pick read; no Classic view compares a width with a number (WVTH013).
+**The collapse ladder is the structure's, and a named ladder of its `TierPolicy`.** The old 640 / 664 collapse (`LibraryLayoutBreakpoints`, then `ClassicLibraryTiers.Collapsed`) is `ClassicLibraryTiers.Layout`
+(`Rules\Tiers.Library.cs`; TC7): the split from 600 of the page's own width, held 24 either way. The view reports its measured width (`SetPageWidth`); the core host resolves the structure's `library.layout` ladder
+(`Wavee.Theming.LibraryLadders`, a structure that names none is always split) through `UseTier` over it, seeded from the same-frame content estimate, so a page mounted at Compact is one column in its FIRST frame and a
+crossing after it commits on the first non-resized frame, where the two arms cross-fade (`s_arm`) instead of snapping. The answer is the host's `Collapsed`, which the selection, the crumbs and the persisted pick read; no
+Classic view compares a width with a number (WVTH013). The numbers within a layout are the record, `ClassicLibraryTiers.Of(facts, single)` (see "The collection at every tier (TC7)").
 
 **Column widths (M13).** `library.<kind>.leftw/midw` are Classic's theme *state* (`theme.classic.state.library.<kind>.leftw|midw`, owner Q6: per theme), one `StateKey` per kind and column declared by the core host that
 writes them (`LibraryViewPrefs.LeftWKey/MidWKey`; default 340, 280 for artists, and 440; clamped on every read and write to the grips' range, which core spells as `LibraryViewPrefs.LeftMin` / `LeftMax` / `MidMin` / `MidMax`
@@ -1094,9 +1097,9 @@ retry, the ⋯ menu) arrive as props. The numbers are `Rules\ClassicLibraryRules
 **Skeletons.** The navigator's eight shimmer rows cross-dissolve into the rows (`SkelReveal.StaggerRows`); the album pane's header skeleton states the real header's height, so the crossfade is a dissolve and never a reflow; its
 counted shimmer is the table's own lanes and row pitch under the header shim; Your Episodes seeds with the structure's episode rows; the reader's blocks keep their analytic extents.
 
-**Tests.** The ids, Classic's registration, the by-reference props and the pane arithmetic are `Wavee.Tests\LibraryContractTests.cs`; the collapse ladder `LibraryLayoutBreakpointTests`; the search row shapes `LibrarySearchRowTests`;
+**Tests.** The ids, Classic's registration, the by-reference props and the pane arithmetic are `Wavee.Tests\LibraryContractTests.cs`; the ladder and the records `LibraryTiersTests`; the search row shapes `LibrarySearchRowTests`;
 the pane header's budget `AlbumPageRulesTests`; the "Also by" strip `AlbumSurfaceRulesTests`; the reader's chrome `ArtistReaderChromeTests`. The mounted facts (Classic is the registered template of every key, the wide arm's keyed
-columns, the collapse written through the ladder at a narrow window, the crumb bar over the depth-keyed drill, the header skeleton at the stated height, the show pane's arm keys) are `Wavee.ShellTests\LibraryMountedTests.cs`.
+columns, the page's width reported to the host, the kind chips over the root rung and the crumb bar over a leaf of the depth-keyed drill, the header skeleton at the stated height, the show pane's arm keys) are `Wavee.ShellTests\LibraryMountedTests.cs`.
 
 ### The Recents page (T10c2)
 
@@ -1110,7 +1113,7 @@ The Recents page is the structure's picture over a core host. The masthead, the 
 
 **Motion is the page's, unchanged.** The masthead's two lines 45 ms apart, the underline's scaleX enter, the body FLIP (a value under reduced motion), the drawer's spring reveal, the zoom's 1.08 / 0.94 crossfade, the brush glide of every accent consumer (bound `Prop`s over the page's thunks), the pinned band's quantized push (a bound transform: a scroll frame never re-renders it) are the same elements with the same keys. The skeleton source is the real day headers and the row's real geometry over the pending seed rows, so the shimmer matches the real heights.
 
-**Numbers.** The card's art, the Saved stack's tiles, the child lanes and the single-play lanes are `Rules\ClassicRecentsRules.cs`; the grouped layout's own geometry (the day header and row heights, the calendar's cell and card sizes, the sticky push quantum) stays in the core `RecentsLayout` because the layout, the rail and the calendar grid read it. There is no width threshold in the page: the calendar's columns come from the engine's GridFit.
+**Numbers.** The card's art, the Saved stack's tiles, the child lanes and the single-play lanes are `Rules\ClassicRecentsRules.cs`; the grouped layout's own geometry (the day header and row heights, the calendar's cell and card sizes, the sticky push quantum) stays in the core `RecentsLayout` because the layout, the rail and the calendar grid read it. There is no width threshold in the page: the calendar's columns come from the engine's GridFit, and the tier's numbers are `ClassicRecentsTiers.Of(facts)` (see "The collection at every tier (TC7)").
 
 **Tests.** The id, Classic's registration, the unknown facts and a shape over the pending seed are `Wavee.Tests\RecentsContractTests.cs`; the grouping, the time buckets and the layout arithmetic are the existing `RecentsView` / `RecentsLayout` tests. `Wavee.ShellTests\RecentsMountedTests.cs` mounts the view over a fixture host: Classic is the registered template, a pending page keeps the pivot strip and the core leaves and mounts no surface, an answered empty relation shows the vacancy, an answered relation mounts the keyed semantic surface with its list and rail.
 
@@ -1572,6 +1575,30 @@ Compact stacks Reset under the title, gives a row 56 DIP with 40-DIP Up and Down
 max-width column for the stage and the scroller, 40-DIP buttons, chips, links and the prose toggle; the hero, cards, fact tiles and chips already wrap. **Not found**: the line wraps inside a narrow side room
 and Go home is a 40-DIP target (the block keeps its call shape and its three children). **Frame-rate overlay**: no tier layout: a content-sized, hit-test pass-through pill that is never a target. The gutter reads
 `CommonTiers.WideGutter` / `Gutter` (36 / 32 / 16) until TC1's page gutter ladder owns those three numbers for the structure's own pages.
+
+### The collection at every tier (TC7)
+
+The library, Recents and Local files are tiered by the **content** tier (`ctx.Tier().Content`) and, for the library, by its own layout ladder. Boards: `C-Library`, `C-LibraryList` and `C-Recents` with their `-Compact`,
+`-Small` and `-Huge` twins; Local files has no board in any theme (owner Q18) and is the playlist page (`Playlist.LocalFiles`), so it holds the detail family's tier layout.
+
+| | Compact (400) | Small (800) | Standard | Huge (2560, and 3840) |
+|---|---|---|---|---|
+| Library columns | ONE column, drill-in (the navigator, then the pane or reader; a crumb bar over a leaf) | split: navigator at its remembered width (grip 240-560), pane floor 300 | split (tuned), pane floor 360 | split, pane floor 480 |
+| Library head | kind chips (40 pills, the page on screen filled with the accent), title and count, a 40 sort button (menu of the kind's words) with 40 view cells, a 40 filter; rows 12 apart, 16 sides, 12 over it | tuned: title, word rail and 28 view cells, 32 filter; 12 sides, 16 over | as Small | 16 sides, 24 over it |
+| Library pane | the pane's insets are the frame's 16 (`ClassicTiers.PaneInset`, was 20); command row 40 | 16 | 16 | 16 |
+| Recents masthead | 12 over it, Overview 40, pivot tabs 40 tall (8 pad, gap 4) | 16 over it, Overview 24 | 24 over it, Overview 24 | Overview 32 |
+| Recents rows | stacked: the kind and played-at stamp under the sub line, a 40 chevron, no hover "...", child rows 44, no day rail | the tuned row, rail 44 | as Small | as Small |
+| Recents calendar gap | 16 | 24 | 36 (the old `PageWide`) | 16 |
+
+**The persisted column widths are never written by a tier.** `library.<kind>.leftw` / `.midw` are the host's: the grip's release writes them (`CommitLeft`), nothing else does. The one-column arm leaves them alone, and a split
+whose pane would fall under its floor squeezes the navigator by flex (`Shrink 1`, down to the grip's 240), it does not rewrite it. The column counts of a grid are the engine's floor-fit over the navigator's width (116-164
+cells): 2 at the 340 default and at Compact. **Not built** (reported): the Huge boards' 560 / 400 navigator defaults and 4-column grid (a tier-aware DEFAULT of the stored width needs a core seam), Small's 240 navigator with 96-DIP
+cells (the cell ladder is core's), the album pane's Huge 300 "Also by" aside (it stays the table's trailing band), the Huge board's tinted navigator, Recents' Huge Overview as a docked aside (the calendar stays the semantic zoom's
+zoomed-out view), and the show pane's command row at 40 (its primary is the core's).
+
+**Tests.** `Wavee.Tests\LibraryTiersTests.cs` pins the ladder (the 600 edge, the 24 holds both ways, the policy's named ladder, a structure with none is always split), the records and the 16 inset;
+`Wavee.ShellTests\TierLayoutTests.Collection.cs` mounts the albums library (a list at every size including 3840, and a grid), the artists library, Recents and Local files at the plan 3.5 sizes and every threshold edge, with a
+width stored before each library fact that a tier must leave alone.
 
 ### Discovery at every tier (TC4)
 

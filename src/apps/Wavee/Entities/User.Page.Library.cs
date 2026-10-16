@@ -19,7 +19,7 @@
 // ── THE SHAPE (the host hands `Pages.Library` one props record per render; Classic draws this tree) ─────────────────────────────────
 //
 //  LibraryPage (keyed "library:"+route)            ─ seeds every persisted signal in its CONSTRUCTOR (frame one = saved)
-//  └─ Pages.Library → root BoxEl (OnBoundsChanged → the structure's 640/24 collapse ladder → `_collapsed`)
+//  └─ Pages.Library → root BoxEl (OnBoundsChanged → `SetPageWidth` → the structure's layout ladder → `_layoutTier`)
 //     ├─ WIDE "lib:wide": NavPanel "lib:nav"[Toolbar · ListBody | LeftSearchBody] │ "lib:grip" ColumnGrip(LeftW) │ right
 //     │        Toolbar = PageHero + the bound count · the word rail + the view toggle · the filter box
 //     │        right   = the pane (`PaneFor`): Album.Pane (albums) | Show.Pane (podcasts, audiobooks)
@@ -216,7 +216,13 @@ public readonly partial struct User
         readonly ScrollOptions _navScroll;
         readonly Signal<int> _sArtist = new(0), _sAlbum = new(0);   // the search drill-down, by slot, apart from browse
         readonly object _skelGroup = new();
-        readonly Signal<bool> _collapsed = new(false);
+        /// <summary>The page's own measured width (written by the structure's view through <see cref="_setPageWidth"/>, value-gated) and the structure's LAYOUT tier over it
+        /// (<see cref="Theming.LibraryLadders.Layout"/>: 0 the one-column drill-in). The tier is a <c>UseTier</c> signal: a first mount resolves in its own frame from the same-frame
+        /// estimate, a crossing after it commits on the first non-resized frame and animates (themes plan 3.3).</summary>
+        readonly Signal<float> _pageW = new(0f);
+        IReadSignal<int>? _layoutTier;
+        IReadSignal<Size2>? _viewport;
+        readonly Func<float> _pageSeed;
         readonly Signal<int> _depth = new(0);
         bool _syncingSel, _fullSearch;
         /// <summary><c>SyncNav</c>'s own memory of what it last saw, to tell a REMOUNT (<see cref="LibraryNavMount.Key"/>
@@ -314,13 +320,41 @@ public readonly partial struct User
         readonly Func<IReadOnlyList<LibraryHitRow>> _artistHitRows, _albumHitRows, _artistAlbumHitRows;
         readonly Func<IReadOnlyList<LibraryTrackHitRow>> _trackHitRows;
         readonly Action<int> _selectArtist, _selectAlbum;
-        readonly Action<bool> _setCollapsed;
-        readonly Func<bool> _isCollapsed;
+        readonly Action<float> _setPageWidth;
+        readonly Func<IReadOnlyList<LibraryKindChip>> _kinds;
         // The writable cells the view binds its controls to, as Funcs (WVTH006): the same instances for the page's life.
         readonly Func<Signal<float>> _leftW, _midW;
         readonly Func<Signal<int>> _sort, _view, _size, _podcastsMode;
         readonly Func<Signal<bool>> _desc;
         readonly Func<Signal<string>> _filter;
+
+        /// <summary>The columns are folded into the one-column drill-in: the structure's layout tier (<see cref="Theming.LibraryLadders.Layout"/>) is its index 0. Read where
+        /// a verb decides, never from a render (a render reads the tier signal itself).</summary>
+        bool Collapsed => _layoutTier is { } tier && Theming.LibraryLadders.IsSingleColumn(tier.Peek());
+
+        static readonly Shell.RouteKind[] s_kindRoutes =
+            [Shell.RouteKind.LibraryAlbums, Shell.RouteKind.LibraryArtists, Shell.RouteKind.LibraryPodcasts, Shell.RouteKind.LibraryAudiobooks, Shell.RouteKind.Liked];
+
+        /// <summary>The one-column head's kind chips: the library's kinds in the nav's order, this page's selected. Built when the structure's view asks (only the Compact head
+        /// draws them), so a split page allocates nothing for them.</summary>
+        IReadOnlyList<LibraryKindChip> KindChips()
+        {
+            var chips = new LibraryKindChip[s_kindRoutes.Length];
+            for (int i = 0; i < chips.Length; i++)
+            {
+                var kind = s_kindRoutes[i];
+                chips[i] = new LibraryKindChip(Shell.Dest(new Shell.Route(kind)).Title, kind == _route, () => Shell.GoTo(new Shell.Route(kind)));
+            }
+            return chips;
+        }
+
+        /// <summary>The layout ladder's seed before the first measure: the content region the frame resolved the window tiers on, else the viewport less a sidebar;
+        /// unknown seeds the split layout, as the page always did.</summary>
+        float PageSeed()
+        {
+            float seed = Detail.Breakpoints.EstimatePageWidth(Theming.ThemeHost.Facts.Peek().Tiers, _viewport?.Peek().Width ?? 0f);
+            return seed > 0f ? seed : float.PositiveInfinity;
+        }
 
         bool IsArtists => _entity == EntityKind.Artist;
         /// <summary>The Show ENTITY, whichever of the two show-kind library routes this is (A2 plan §3.6): the
@@ -370,14 +404,15 @@ public readonly partial struct User
             _syncLetters = SyncLetters;
             _syncLoad = SyncNavLoad;
             _saveState = SaveState;
-            _resetDepth = () => { if (_collapsed.Peek()) _depth.Value = 0; };
+            _resetDepth = () => { if (Collapsed) _depth.Value = 0; };
+            _pageSeed = PageSeed;
             _autoTop = AutoSelectTop;
             _autoAlbum = AutoSelectAlbum;
             _onNavSel = OnNavSel;
             _commitLeft = () => LibraryViewPrefs.SetLeftW(_kind, LeftW.Peek());
             _commitMid = () => LibraryViewPrefs.SetMidW(_kind, MidW.Peek());
-            _isCollapsed = () => _collapsed.Peek();
-            _setCollapsed = c => { if (c != _collapsed.Peek()) _collapsed.Value = c; };
+            _setPageWidth = w => { if (w > 0f && w != _pageW.Peek()) _pageW.Value = w; };
+            _kinds = KindChips;
             _pickDepth = i => _depth.Value = i;
             _jump = Jump;
             _onAlsoBy = Select;                       // the ONE library-internal jump that stays: select in place
@@ -431,6 +466,10 @@ public readonly partial struct User
             UseEffect(_demandEdge, DepKey.From((int)epoch, Entities.Current.MeSlot));   // once per scope; a failed ask never re-arms here
             UseEffect(_demandRows);                                                     // re-runs as the relation lands
             UseSignalEffect(_watchLetters);                                             // the sticky letter off the nav scroll
+            // The structure's LAYOUT ladder over the page's measured width (themes plan 3.3): the first frame resolves from the seed (the content region the frame resolved the
+            // window tiers on), so a page mounted at Compact is one column from its first frame; a crossing after it commits on the first non-resized frame and animates.
+            _viewport = UseContextSignal(Viewport.Size);
+            _layoutTier = UseTier(Theming.LibraryLadders.Of(ShellPolicy.Now.Tiers), TierSource.Measured(_pageW, _pageSeed));
 
             _items ??= BoundItems.Project(_shape, static s => s.FlatCount, (_, i) => ItemAt(i), default(LibraryNavItem));
 
@@ -446,7 +485,7 @@ public readonly partial struct User
             string sel = SelectedKey.Value, albumKey = AlbumKey.Value;
             int selectedSlot = SelectedSlot.Value;
             bool railOpen = Shell.Ui.RailOpen.Value;
-            bool collapsed = _collapsed.Value;
+            bool collapsed = Theming.LibraryLadders.IsSingleColumn(_layoutTier.Value);
             int sArtist = _sArtist.Value;
 
             // The bound list's KEY is `shape.Mount.Key` (minted ONCE, in `ComputeShape`, by `LibraryNavMount.For`) — what
@@ -490,7 +529,7 @@ public readonly partial struct User
                 Title = Shell.Dest(new Shell.Route(_route)).Title, Entity = _entity, IsPodcasts = IsPodcasts,
                 Collapsed = collapsed, SavedEpisodesMode = savedMode, FullSearch = fullSearch, Shimmer = shimmer, Awaiting = awaiting,
                 RailOpen = railOpen, HasSelection = sel.Length > 0, Depth = depth, Crumbs = crumbs,
-                IsCollapsed = _isCollapsed, SetCollapsed = _setCollapsed, PickDepth = _pickDepth,
+                SetPageWidth = _setPageWidth, Kinds = _kinds, PickDepth = _pickDepth,
                 LeftW = _leftW, MidW = _midW, Sort = _sort, Desc = _desc, View = _view, Size = _size, Filter = _filter, PodcastsMode = _podcastsMode,
                 CommitLeft = _commitLeft, CommitMid = _commitMid, CountText = _countText,
                 Pane = () => PaneFor(selectedSlot),
@@ -806,7 +845,7 @@ public readonly partial struct User
             if (_syncingSel || row < 0 || row >= _sortedCount) return;   // the page's own re-sync is a VIEW update, never a pick
             _pickedFromList = true;   // consumed + cleared by SyncNav in the SAME effect run: already revealed, don't re-bring
             Select(_sorted[row]);
-            if (_collapsed.Peek()) _depth.Value = 1;
+            if (Collapsed) _depth.Value = 1;
         }
 
         /// <summary><paramref name="alignmentRatio"/> is the WinUI `StartBringItemIntoView` alignment: <c>NaN</c> is
@@ -1258,14 +1297,14 @@ public readonly partial struct User
         {
             _sArtist.Value = slot;
             _sAlbum.Value = 0;
-            Apply(LibrarySelectionCommit.ForArtist(IsArtists, _collapsed.Peek(), LibraryRows.IdOf(EntityKind.Artist, slot).Text));
+            Apply(LibrarySelectionCommit.ForArtist(IsArtists, Collapsed, LibraryRows.IdOf(EntityKind.Artist, slot).Text));
         }
 
         void SelectAlbum(int slot)
         {
             _sAlbum.Value = slot;
             int owner = _sArtist.Peek();
-            Apply(LibrarySelectionCommit.ForAlbum(IsArtists, _collapsed.Peek(), LibraryRows.IdOf(EntityKind.Album, slot).Text,
+            Apply(LibrarySelectionCommit.ForAlbum(IsArtists, Collapsed, LibraryRows.IdOf(EntityKind.Album, slot).Text,
                 owner > Table.None ? LibraryRows.IdOf(EntityKind.Artist, owner).Text : ""), albumPick: true);
         }
 
@@ -1278,7 +1317,7 @@ public readonly partial struct User
             if (c.SelectedKey is { } selected) SelectedKey.Value = selected;
             if (c.AlbumKey is { } album) AlbumKey.Value = album;
             if (c.ClearFilter && Filter.Peek().Length > 0) Filter.Value = "";
-            if (c.Depth is { } d) _depth.Value = albumPick && d == 1 && IsArtists && _fullSearch && _collapsed.Peek() ? 2 : d;
+            if (c.Depth is { } d) _depth.Value = albumPick && d == 1 && IsArtists && _fullSearch && Collapsed ? 2 : d;
         }
     }
 }

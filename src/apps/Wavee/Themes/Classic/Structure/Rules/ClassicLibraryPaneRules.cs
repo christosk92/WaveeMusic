@@ -20,10 +20,10 @@ public static class ClassicLibraryPaneRules
     /// <summary>The cover's decode size.</summary>
     public const int CoverDecodePx = 256;
 
-    /// <summary>The pane header's STATED height: the cover plus its own padding (128 + 20 + 12 = 160). Stated, not content-derived, because a content-derived header is a header that MOVES: the
+    /// <summary>The pane header's STATED height: the cover plus its own padding (128 + the 16 pane inset + 12 = 156). Stated, not content-derived, because a content-derived header is a header that MOVES: the
     /// text column reaches past the cover the moment a title wraps to two lines, and everything under it — the command row, the column header, the first row — slid ~9 DIP down on those
     /// albums and back up on the next one. With one number the rows below start on the same DIP for every release, and the column that has to fit inside it is sized to fit.</summary>
-    public static float PaneHeaderHeight => PaneCover + Spacing.XL + Spacing.M;
+    public static float PaneHeaderHeight => PaneCover + ClassicTiers.PaneInset + Spacing.M;
 
     /// <summary>The gap between the cover and the text column.</summary>
     public const float HeaderGap = 18f;
@@ -46,8 +46,8 @@ public static class ClassicLibraryPaneRules
     /// <summary>The gap between the verbs, the "Open album" link's own gap and vertical padding, and its glyph.</summary>
     public const float CommandsGap = 10f, OpenLinkGap = 6f, OpenLinkPadY = 6f, OpenGlyph = 14f;
 
-    /// <summary>The save and ⋯ circles' box and the ⋯ glyph.</summary>
-    public const float CommandBox = 36f;
+    /// <summary>The save and ⋯ circles' box (the Compact tier's is 40: a target).</summary>
+    public const float CommandBox = 36f, CompactCommandBox = 40f;
 
     // ── the selection swap ────────────────────────────────────────────────────────────────────────────────────────────────
 

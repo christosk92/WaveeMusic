@@ -7,7 +7,7 @@
 //
 // ── THE SHAPE ────────────────────────────────────────────────────────────────────────────────────────────────────────
 //
-//  root BoxEl (OnBoundsChanged → the structure's collapse ladder → the host's collapse signal)
+//  root BoxEl (OnBoundsChanged → `SetPageWidth` → the host's UseTier over the structure's layout ladder → `Collapsed`)
 //  ├─ WIDE "lib:wide": Section "lib:nav"[Toolbar · ListBody | LeftSearchBody] │ "lib:grip" ColumnGrip(LeftW) │ right
 //  │        right = DetailColumn "lib:detail" (albums, podcasts) | ReaderColumn "lib:reader" (artists, no third pane)
 //  │                | the two SEARCH column shapes (MidW + "lib:midgrip")
@@ -20,8 +20,10 @@
 // runs at MOUNT — so the reused node came out of the collapse holding the crumb bar's static `Width = NaN`, took the whole page and pushed the reader off screen. Keys, not props, are what
 // turn a branch swap into the remount a bind needs.
 //
-// THE COLLAPSE IS THE STRUCTURE'S. The ladder (`Rules\Tiers.Library.cs`, 640 with a 24 DIP hysteresis) answers from the page's own measured width; the host owns the signal because the
-// selection, the crumbs and the persisted pick all read it. Stable elements and delegates the old component kept as fields (the picker, the two grips, the sticky letter and the strip, the
+// THE COLLAPSE IS THE STRUCTURE'S. The layout ladder (`Rules\Tiers.Library.cs`: split from 600 of the page's own width, held 24 either way) is resolved by the host's `UseTier` over the width
+// this view reports (`SetPageWidth`): the page's FIRST frame is already in its tier (a same-frame seed), and a crossing commits on the first non-resized frame, where the two arms cross-fade
+// (`s_arm`) instead of snapping. The host owns the answer (`Collapsed`) because the selection, the crumbs and the persisted pick all read it; the tier's numbers are the record
+// (`ClassicLibraryTiers.Of`). The persisted column widths are never written by a tier. Stable elements and delegates the old component kept as fields (the picker, the two grips, the sticky letter and the strip, the
 // slot templates) live in a per-template-instance cache (`ctx.Hooks.UseRef`), so keys, binds and mounts are identical to the old tree.
 
 using FluentGpu.Animation;
@@ -32,6 +34,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
@@ -45,6 +48,8 @@ internal static partial class ClassicLibraryPage
     {
         var cache = ctx.Hooks.UseRef(new PageCache()).Value;
         cache.Props = props;
+        // The layout tier's record: the structure's ladder (the host's tier signal, `props.Collapsed`) decides the one-column drill-in, the content tier the split's numbers.
+        cache.Layout = ClassicLibraryTiers.Of(ctx.Tier(), props.Collapsed);
         cache.Prepare();
 
         Element inner;
@@ -55,20 +60,20 @@ internal static partial class ClassicLibraryPage
         else if (props.SavedEpisodesMode)
             inner = new BoxEl
             {
-                Key = "lib:wide:saved",
+                Key = "lib:wide:saved", Animate = s_arm,
                 Direction = 1, Grow = 1f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
-                Children = [Toolbar(props, cache, title: true), props.SavedEpisodes()],
+                Children = [Toolbar(props, cache), props.SavedEpisodes()],
             };
         else
         {
             bool artists = props.Entity == EntityKind.Artist;
             Element right = props.FullSearch
                 ? (artists ? SearchArtistColumns(props, cache) : SearchAlbumDetail(props, cache))
-                : (artists ? ReaderColumn(props) : DetailColumn(props));
+                : (artists ? ReaderColumn(props, cache.Layout) : DetailColumn(props, cache.Layout));
             // KEYED, and so is `Collapsed`'s root: see the note in the file header.
             inner = new BoxEl
             {
-                Key = "lib:wide",
+                Key = "lib:wide", Animate = s_arm,
                 Direction = 0, Grow = 1f, AlignItems = FlexAlign.Stretch,
                 Children = [LeftColumn(props, cache), cache.LeftGrip ??= LeftGrip(props), right],
             };
@@ -84,7 +89,8 @@ internal static partial class ClassicLibraryPage
     sealed class PageCache
     {
         public LibraryPageProps Props = null!;
-        public Element? Picker, LeftGrip, MidGrip, Sticky, Strip;
+        public ClassicLibraryLayout Layout = null!;
+        public Element? Picker, PickerCompact, LeftGrip, MidGrip, Sticky, Strip;
         public Action<RectF>? OnBounds;
         public Func<int, Element>? NavContent;
         public Func<Element>? NavNoMatch, NavShimmer;
@@ -99,14 +105,11 @@ internal static partial class ClassicLibraryPage
             NavShimmer ??= () => ClassicLibraryPage.NavShimmer(Props.View().Value, Props.Size().Value, Props.Entity);
         }
 
-        /// <summary>The page's measured bounds: the structure's ladder decides, the host's signal records it.</summary>
+        /// <summary>The page's measured bounds, reported to the host: its layout ladder (`ClassicLibraryTiers.Layout`) over this width decides the one-column drill-in, in the
+        /// page's first frame from a same-frame seed and on a crossing on the first non-resized frame (the host's value gate drops every report that did not move).</summary>
         void Measured(RectF r)
         {
-            if (r.W <= 0f) return;
-            var props = Props;
-            bool previous = props.IsCollapsed();
-            bool next = ClassicLibraryTiers.Collapsed(r.W, previous);
-            if (next != previous) props.SetCollapsed(next);
+            if (r.W > 0f) Props.SetPageWidth(r.W);
         }
 
         /// <summary>The slot template of a mount's template kind: one stable delegate per kind for the page's life.</summary>
@@ -130,8 +133,10 @@ internal static partial class ClassicLibraryPage
     static Element LeftColumn(LibraryPageProps p, PageCache c) => Section with
     {
         Key = "lib:nav",
-        Width = p.LeftW(), Shrink = 0f,
-        Children = [Toolbar(p, c, title: true), p.FullSearch ? LeftSearchBody(p, c) : ListBody(p, c)],
+        // The remembered width (`library.<kind>.leftw`, written only by the grip's release), which gives way by flex, down to the grip's floor, when the pane's floor
+        // (`RightMin`) would not fit beside it: the tier never rewrites the stored width.
+        Width = p.LeftW(), Shrink = 1f, MinWidth = ClassicLibraryRules.LeftMin,
+        Children = [Toolbar(p, c), p.FullSearch ? LeftSearchBody(p, c) : ListBody(p, c)],
     };
 
     /// <summary>The two column seams, each built ONCE into its cached field — so the key goes on at construction rather than through a per-render <c>with</c> clone. Both carry a bound
@@ -166,18 +171,18 @@ internal static partial class ClassicLibraryPage
 
     // ══ THE RIGHT COLUMN (BROWSE) ════════════════════════════════════════════════════════════════════════════════════
 
-    static Element DetailColumn(LibraryPageProps p)
+    static Element DetailColumn(LibraryPageProps p, ClassicLibraryLayout layout)
     {
         if (!p.HasSelection) return Placeholder(p.Entity == EntityKind.Show ? Strings.Library.SelectShow : Strings.Library.SelectAlbum);
         // NO `Key` on the pane: a selection change RE-PUSHES its props and the pane re-skins in place (it owns its own crossfade).
-        return Section with { Key = "lib:detail", Grow = 1f, Basis = 0f, Children = [p.Pane()] };
+        return Section with { Key = "lib:detail", Grow = 1f, Basis = 0f, MinWidth = layout.RightMin, Children = [p.Pane()] };
     }
 
     /// <summary>The artists view's ONE right-hand rung (W3): the reader. There is no MidW here and no third pane — the reader is the leaf.</summary>
-    static Element ReaderColumn(LibraryPageProps p)
+    static Element ReaderColumn(LibraryPageProps p, ClassicLibraryLayout layout)
     {
         if (!p.HasSelection) return Placeholder(Strings.Library.SelectArtist);
-        return Section with { Key = "lib:reader", Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [p.Pane()] };
+        return Section with { Key = "lib:reader", Grow = 1f, Basis = 0f, MinWidth = layout.RightMin, Children = [p.Pane()] };
     }
 
     static Element Placeholder(string key) => Section with { Key = "lib:empty", Grow = 1f, Children = [EmptyCompact(Loc.Get(key))] };
@@ -189,6 +194,13 @@ internal static partial class ClassicLibraryPage
     static readonly LayoutTransition s_drillIn = new(
         TransitionChannels.Opacity, TransitionDynamics.Tween(ClassicLibraryRules.DrillMs, Easing.SmoothOut),
         Enter: new EnterExit(Dx: ClassicLibraryRules.DrillDx, Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
+        ExitDynamics: TransitionDynamics.Tween(ClassicLibraryRules.DrillMs, Easing.SmoothOut));
+
+    /// <summary>The two arms (the split columns and the one-column drill-in) cross-fade when the layout tier crosses: the arriving arm fades in while the leaving one fades out
+    /// as an exit orphan under it, never a snap (themes plan 3.3). Opacity only, the drill's own 160 ms.</summary>
+    static readonly LayoutTransition s_arm = new(
+        TransitionChannels.Opacity, TransitionDynamics.Tween(ClassicLibraryRules.DrillMs, Easing.SmoothOut),
+        Enter: new EnterExit(Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
         ExitDynamics: TransitionDynamics.Tween(ClassicLibraryRules.DrillMs, Easing.SmoothOut));
 
     static readonly LayoutTransition s_drillRoot = new(
@@ -208,7 +220,7 @@ internal static partial class ClassicLibraryPage
             {
                 Key = "col:nav",   // keyed like its three alternatives; the "depth:N" wrapper already separates them
                 Direction = 1, Grow = 1f,
-                Children = [Toolbar(p, c, title: false), p.SavedEpisodesMode
+                Children = [Toolbar(p, c), p.SavedEpisodesMode
                     ? p.SavedEpisodes()
                     : (p.FullSearch ? LeftSearchBody(p, c) : ListBody(p, c))],
             };
@@ -235,8 +247,9 @@ internal static partial class ClassicLibraryPage
         // Width) on the way back out.
         return new BoxEl
         {
-            Key = "lib:collapsed", Direction = 1, Grow = 1f, ClipToBounds = true,
-            Children = [CrumbBar(p.Crumbs, p.PickDepth), wrapper],
+            Key = "lib:collapsed", Animate = s_arm, Direction = 1, Grow = 1f, ClipToBounds = true,
+            // The root rung's head is the kind chips and the title (C-Library-Compact), so the breadcrumb stands only over a rung that is a leaf.
+            Children = depth == 0 ? [wrapper] : [CrumbBar(p.Crumbs, p.PickDepth), wrapper],
         };
     }
 

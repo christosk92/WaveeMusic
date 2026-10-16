@@ -35,14 +35,17 @@ public static class ClassicLibraryRules
 
     // ── the toolbar ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The filter box's floor height and its fill cap.</summary>
-    public const float FilterMinHeight = 32f, FilterMaxFill = 9999f;
+    /// <summary>The filter box's fill cap (its height is the tier's, `ClassicLibraryLayout.ControlH`).</summary>
+    public const float FilterMaxFill = 9999f;
 
     /// <summary>The count beside the page title (14/20 tertiary); the search message shares the rung.</summary>
     public const float CountSize = 14f, CountLine = 20f;
 
-    /// <summary>The view toggle's three cells: the edge, the corner and the glyph.</summary>
-    public const float ViewIconEdge = 28f, ViewIconCorner = 4f, ViewIconGlyph = 15f;
+    /// <summary>The view toggle's three cells: the corner and the glyph (the edge is the tier's, `ClassicLibraryLayout.ViewCell`).</summary>
+    public const float ViewIconCorner = 4f, ViewIconGlyph = 15f;
+
+    /// <summary>The Compact sort button's chevron, and the kind pills' label type (14/20; the selected one at 600).</summary>
+    public const float SortChevron = 12f, PillSize = 14f, PillLine = 20f;
 
     /// <summary>The trimmed panel's minimum width, the dimmed Size bank's opacity while a list view is on, and the four view cells (width, height, corner, gap).</summary>
     public const float PanelMinWidth = 200f, SizeBankDim = 0.4f, ViewCellW = 40f, ViewCellH = 30f, ViewCellCorner = 5f, ViewCellGap = 4f;

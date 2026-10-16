@@ -12,6 +12,18 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **The library, Recents and Local files are laid out for every window size.** Under 600 wide the library is one column: kind chips (Albums,
+  Artists, Podcasts, Audiobooks, Liked Songs) over the title, the sort as a 40-tall button that opens a menu of its words next to 40 big
+  list and grid buttons, a 40-tall filter, and a tap on a row opens its album, show or artist with a breadcrumb back (the old rule folded at
+  640 and came back at 664; it now folds under 576 and comes back at 624, and a window opened narrow is already one column in its first
+  frame). The change between the columns and the single column fades instead of jumping. The pane's edges are 16 instead of 20, and in a
+  narrow window its Play, Shuffle, save and "..." buttons are 40 big. A column width you dragged is never changed by a window size; a
+  pane that would get too small takes the room from the list instead. In a narrow window Recents puts a row's type and time under its
+  subtitle, its chevron is a 40-big button, its Overview button and kind tabs are 40 tall and the day rail steps aside; the calendar's
+  month cards sit 16 apart in a very large window and 24 in a small one. A 1440-wide window keeps its tuned layout (the pane is 360 at
+  least beside the list).
+- **Local files** is the playlist page, so it follows the same layout at every window size.
+
 - **Full screen fits a narrow or short window.** In a narrow, tall window (a phone-shaped window under 600 wide) full screen is one
   column: the cover and title, the lyrics, Up next or the artist under them, and the playback card across the bottom with heart, previous,
   play, next and "…" (the other controls stay in "…" and the player bar); every button there is at least 40 big. When the playback card

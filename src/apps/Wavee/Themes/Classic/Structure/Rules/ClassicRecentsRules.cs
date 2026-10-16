@@ -20,6 +20,9 @@ public static class ClassicRecentsRules
     /// <summary>The pivot underline's height (a non-selected tab reserves the same baseline) and the focus ring's margin.</summary>
     public const float UnderlineHeight = 2f, PivotFocusMargin = 2f;
 
+    /// <summary>The Small Overview button's height: the stock Small control (a taller tier asks the Medium control with its own floor).</summary>
+    public const float OverviewSmallH = 24f;
+
     /// <summary>The underline's scaleX 0 → 1 enter, in milliseconds.</summary>
     public const float UnderlineEnterMs = 260f;
 
@@ -36,6 +39,14 @@ public static class ClassicRecentsRules
 
     /// <summary>The Saved check's size and the heat key's swatch edge.</summary>
     public const float CheckSize = 12f, SwatchEdge = 12f;
+
+    // ── the Compact row (C-Recents-Compact) ───────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The chevron glyph inside its 40 lane.</summary>
+    public const float ChevronGlyph = 14f;
+
+    /// <summary>The day rail's fade when a tier crossing adds or removes it, in milliseconds.</summary>
+    public const float RailFadeMs = 160f;
 
     // ── the single-play arm and the drawer's children ─────────────────────────────────────────────────────────────────────
 

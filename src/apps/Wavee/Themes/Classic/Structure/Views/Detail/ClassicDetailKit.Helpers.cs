@@ -36,8 +36,8 @@ internal static partial class ClassicDetailKit
     /// by its tooltip.
     /// <para><c>// Workstream B</c>: was a 36-px subtle CIRCLE — the detail rail's round FAB shape. Every non-media icon
     /// affordance is now this same square ladder, so a pane's Shuffle and the rail's satellites read as one grammar.</para></summary>
-    public static Element CommandCircle(string glyph, string name, Action tap)
-        => Controls.Named(Controls.IconAction(glyph, tap), name);
+    public static Element CommandCircle(string glyph, string name, Action tap, float size = 0f)
+        => Controls.Named(size > 0f ? Controls.IconAction(glyph, tap, size: size) : Controls.IconAction(glyph, tap), name);
 
     // ══ T10c2: THE MORE BUTTON ══════════════════════════════════════════════════════════════════════════════════════════════
 

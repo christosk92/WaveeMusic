@@ -32,7 +32,7 @@ public sealed record LibraryPageProps
 
     // ── which arm the page draws ───────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The columns have become a breadcrumb drill-in (the structure writes it through <see cref="SetCollapsed"/>).</summary>
+    /// <summary>The columns have become a breadcrumb drill-in (the structure's layout ladder over <see cref="SetPageWidth"/>).</summary>
     public required bool Collapsed { get; init; }
 
     /// <summary>Podcasts with the Your Episodes word selected: the whole body is the saved-episodes page under the toolbar.</summary>
@@ -61,11 +61,13 @@ public sealed record LibraryPageProps
 
     // ── the page's measured width → collapse ───────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The current collapse state, read at the moment of a measure (the hysteresis needs the previous answer).</summary>
-    public required Func<bool> IsCollapsed { get; init; }
+    /// <summary>The page's own measured width, reported by the structure's view on every bounds change (value-gated by the host). The host feeds it to the structure's
+    /// layout ladder (<see cref="Wavee.Theming.LibraryLadders.Layout"/>) through <c>UseTier</c>, which answers <see cref="Collapsed"/>: the first frame is already in its tier
+    /// and a crossing commits on the first non-resized frame.</summary>
+    public required Action<float> SetPageWidth { get; init; }
 
-    /// <summary>The structure's answer for the measured width: write the collapse state (a no-op when it did not change).</summary>
-    public required Action<bool> SetCollapsed { get; init; }
+    /// <summary>The kind chips of the one-column head (Albums, Artists, Podcasts, Audiobooks, Liked Songs), in order: each opens its page.</summary>
+    public required Func<IReadOnlyList<LibraryKindChip>> Kinds { get; init; }
 
     /// <summary>A crumb was picked (collapsed layout): the rung to show.</summary>
     public required Action<int> PickDepth { get; init; }
@@ -196,3 +198,6 @@ public sealed record LibrarySearchProps
     /// <summary>An album hit was picked (selects in place).</summary>
     public required Action<int> SelectAlbum { get; init; }
 }
+
+/// <summary>One kind chip of the one-column library head: the kind's page title, whether it is the page on screen and the verb that opens it.</summary>
+public sealed record LibraryKindChip(string Title, bool Selected, Action Open);

@@ -4,12 +4,14 @@
 // mounted (the zoom's keep-alive); the overview enters from 1.08 while the list recedes to 0.94. The slot components read the core's live state through `IRecentsHost`
 // (one stable object per page), so a read inside a slot's render subscribes THAT slot, never the page.
 
+using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
@@ -19,20 +21,30 @@ namespace Wavee.Themes.Classic;
 /// parent — a deliberate remount on a re-cut.</summary>
 internal sealed class ClassicRecentsSurface(IRecentsHost host, string? token, int shapeEpoch) : Component
 {
+    /// <summary>The day rail entering or leaving with a tier crossing: opacity only (the list takes its 44 back as the rail goes), 160 ms.</summary>
+    static readonly LayoutTransition s_rail = new(
+        TransitionChannels.Opacity, TransitionDynamics.Tween(ClassicRecentsRules.RailFadeMs, Easing.SmoothOut),
+        Enter: new EnterExit(Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
+        ExitDynamics: TransitionDynamics.Tween(ClassicRecentsRules.RailFadeMs, Easing.SmoothOut));
+
     public override Element Render()
     {
         string suffix = (token ?? "all") + ":" + FormatCache.Int(shapeEpoch);
         Element detail = Embed.Comp(() => new ClassicRecentsListSurface(host, token)) with { Key = "recents-list:" + suffix };
         Element rail = Embed.Comp(() => new ClassicRecentsRail(host)) with { Key = "recents-rail:" + suffix };
+        // The day rail is the record's (Compact has none): read here, so a crossing re-renders the surface in place and the rail fades in or out as an Enter / Exit.
+        var layout = ClassicRecentsTiers.Of(ThemeHost.Facts.Value.Tiers);
         Element zoomedIn = new BoxEl
         {
-            Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Gap = Spacing.M, AlignItems = FlexAlign.Stretch,
-            Children =
-            [
-                new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, Children = [detail] },
-                // The HStack item is a stretch COLUMN around the rail: Grow on the rail's own root would steal width.
-                new BoxEl { Direction = 1, AlignSelf = FlexAlign.Stretch, MinHeight = 0f, Children = [rail] },
-            ],
+            Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Gap = layout.Rail ? Spacing.M : 0f, AlignItems = FlexAlign.Stretch,
+            Children = layout.Rail
+                ?
+                [
+                    new BoxEl { Key = "recents-list-col", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, Children = [detail] },
+                    // The HStack item is a stretch COLUMN around the rail: Grow on the rail's own root would steal width.
+                    new BoxEl { Key = "recents-rail-col", Animate = s_rail, Direction = 1, AlignSelf = FlexAlign.Stretch, MinHeight = 0f, Children = [rail] },
+                ]
+                : [new BoxEl { Key = "recents-list-col", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, Children = [detail] }],
         };
         Element zoomedOut = Embed.Comp(() => new ClassicRecentsCalendar(host, shapeEpoch)) with { Key = "recents-calendar:" + FormatCache.Int(shapeEpoch) };
         return SemanticZoom.Create(
@@ -116,6 +128,7 @@ internal sealed class ClassicRecentsRowSlot : Component
         _ = _scope.Index.Value;
         _ = _host.Epoch.Value;
         var shape = _host.ShapeNow;
+        var layout = ClassicRecentsTiers.Of(ThemeHost.Facts.Value.Tiers);   // read here: a tier crossing re-renders the realized slots in place (no remount)
         if (flat.Kind == RecentsFlatItemKind.DateHeader) return ClassicRecentsList.DayHeader(_host, shape, flat.DayIndex, overlay: false, _onHeader);
         int r = flat.OriginalRowIndex;
         if ((uint)r >= (uint)shape.Rows.Count) return new BoxEl { Height = RecentsLayout.RowHeight };
@@ -124,7 +137,7 @@ internal sealed class ClassicRecentsRowSlot : Component
         if (RecentsLayout.UsesTrackArm(shape.Rows, r)) return ClassicRecentsRows.SingleRow(_host, shape, r, _actions);
         var id = shape.Rows.Rows[r].ItemId;
         bool expanded = !id.IsEmpty && _host.ExpandedRow.Value == id;
-        return ClassicRecentsRows.Card(_host, shape, r, expanded, _actions);
+        return ClassicRecentsRows.Card(_host, shape, r, expanded, _actions, layout);
     }
 }
 

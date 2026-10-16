@@ -10,6 +10,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
@@ -45,7 +46,7 @@ internal sealed class ClassicRecentsCalendar : Component
         var host = _host;
         var calendar = host.ShapeNow.Calendar;
         Element grid = ItemsView.Create(calendar.Months.Length, _monthCard,
-            RepeatLayout.GridFit(RecentsLayout.CalGridW, Spacing.PageWide, RecentsLayout.MonthCardHeight(RecentsView.MaxWeeks(calendar))),
+            RepeatLayout.GridFit(RecentsLayout.CalGridW, ClassicRecentsTiers.Of(ThemeHost.Facts.Value.Tiers).CalendarGap, RecentsLayout.MonthCardHeight(RecentsView.MaxWeeks(calendar))),
             new ListOptions
             {
                 SelectionMode = ItemsSelectionMode.None, Selector = SelectorVisual.None,

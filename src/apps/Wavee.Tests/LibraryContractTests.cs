@@ -59,7 +59,7 @@ public class LibraryContractTests
     public void The_pane_header_states_one_height_for_both_kinds()
     {
         // The album pane and the show pane draw the SAME header, rung for rung, and the loading twin states the same band.
-        Assert.Equal(160f, ClassicLibraryPaneRules.PaneHeaderHeight);
+        Assert.Equal(156f, ClassicLibraryPaneRules.PaneHeaderHeight);
     }
 
     [Theory]
@@ -68,7 +68,7 @@ public class LibraryContractTests
     [InlineData(2)]
     [InlineData(3)]
     public void Every_view_code_has_a_glyph_size(int view)
-        => Assert.InRange(ClassicLibraryRules.ViewGlyphSizes[view], 1f, ClassicLibraryRules.ViewIconEdge);
+        => Assert.InRange(ClassicLibraryRules.ViewGlyphSizes[view], 1f, ClassicLibraryTiers.For(WidthTier.Standard, single: false).ViewCell);
 
     [Theory]
     [InlineData(0, 208f)]

@@ -35,7 +35,7 @@ internal static class ClassicLibraryPaneKit
         // ONE target: cover + eyebrow + title + attribution + meta open the album (the show pane's: the show). A title-only hyperlink left the cover inert in the library pane.
         Direction = 0, Gap = ClassicLibraryPaneRules.HeaderGap, AlignItems = FlexAlign.End, Shrink = 0f,
         Height = ClassicLibraryPaneRules.PaneHeaderHeight, ClipToBounds = true,
-        Padding = new Edges4(Spacing.XL, Spacing.XL, Spacing.XL, Spacing.M),
+        Padding = new Edges4(ClassicTiers.PaneInset, ClassicTiers.PaneInset, ClassicTiers.PaneInset, Spacing.M),
         Corners = Radii.CardAll, Cursor = CursorId.Hand, Focusable = true, Role = AutomationRole.Button, OnClick = open,
         Children =
         [
@@ -76,7 +76,7 @@ internal static class ClassicLibraryPaneKit
     public static BoxEl HeaderSkeleton() => new()
     {
         Direction = 0, Gap = ClassicLibraryPaneRules.HeaderGap, AlignItems = FlexAlign.End, Height = ClassicLibraryPaneRules.PaneHeaderHeight, ClipToBounds = true,
-        Padding = new Edges4(Spacing.XL, Spacing.XL, Spacing.XL, Spacing.M),
+        Padding = new Edges4(ClassicTiers.PaneInset, ClassicTiers.PaneInset, ClassicTiers.PaneInset, Spacing.M),
         Children =
         [
             new BoxEl { Width = ClassicLibraryPaneRules.PaneCover, Height = ClassicLibraryPaneRules.PaneCover, Shrink = 0f, Corners = Radii.CardAll, Fill = Tok.FillSubtleSecondary },
@@ -108,7 +108,7 @@ internal static class ClassicLibraryPaneKit
     /// the edge. Now the spacer gives way first, then the label ellipsizes, and a trimmed label — only a trimmed one — gets its whole text as a tooltip (<c>Controls.TrimTip</c>). The
     /// tooltip wraps the LABEL, in a column slot of its own, rather than the whole link: that slot is exactly the text's box, so the trim test compares like with like (around the link it
     /// would measure a box 36 DIP wider than the text — padding, gap and glyph), and a ToolTip wrapper is `Shrink 0`, so it can only be sized as a COLUMN child (the engine's rule 11).</para></summary>
-    public static Element PaneCommands(Action play, Action shuffle, Element save, Element more, Action open)
+    public static Element PaneCommands(Action play, Action shuffle, Element save, Element more, Action open, float box = 0f)
     {
         string openLabel = Loc.Get(Strings.Library.OpenAlbum);
         TextEl label = R.Type.DenseMeta(openLabel) with
@@ -119,11 +119,11 @@ internal static class ClassicLibraryPaneKit
         return new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicLibraryPaneRules.CommandsGap, Shrink = 0f,
-            Padding = new Edges4(Spacing.XL, Spacing.M, Spacing.XL, Spacing.S),
+            Padding = new Edges4(ClassicTiers.PaneInset, Spacing.M, ClassicTiers.PaneInset, Spacing.S),
             Children =
             [
-                Controls.PlayButton(Tok.AccentDefault, play),
-                ClassicDetailKit.CommandCircle(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle),
+                box > 0f ? Controls.PlayButton(Tok.AccentDefault, play) with { MinHeight = box } : Controls.PlayButton(Tok.AccentDefault, play),
+                ClassicDetailKit.CommandCircle(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle, box),
                 save, more,
                 new BoxEl { Grow = 1f },
                 new BoxEl

@@ -28,6 +28,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
@@ -44,7 +45,9 @@ internal static class ClassicLibraryAlbumPane
         cell.Props = props;
         cell.Prepare();
 
-        BoxEl child = props.State == AlbumPaneState.Header ? ClassicLibraryPaneKit.HeaderSkeleton() : Body(props, cell);
+        // The Compact pane (the drill-in's leaf) draws its commands 40 tall: the targets of a one-column page.
+        float box = ctx.Tier().Content == WidthTier.Compact ? ClassicLibraryPaneRules.CompactCommandBox : ClassicLibraryPaneRules.CommandBox;
+        BoxEl child = props.State == AlbumPaneState.Header ? ClassicLibraryPaneKit.HeaderSkeleton() : Body(props, cell, box);
         // The host persists; only the child is keyed, so the swap is an orphaned fade under a rising entrance instead of a remount of this component (which would lose the table's scroll and
         // re-ask the model).
         return new BoxEl
@@ -69,7 +72,7 @@ internal static class ClassicLibraryAlbumPane
         }
     }
 
-    static BoxEl Body(LibraryAlbumPaneProps p, PaneCell cell)
+    static BoxEl Body(LibraryAlbumPaneProps p, PaneCell cell, float box)
     {
         Element rows = p.State == AlbumPaneState.Failed
             // The Error voice supplies its own subtitle and Retry label; only the headline is ours.
@@ -85,8 +88,8 @@ internal static class ClassicLibraryAlbumPane
             [
                 ClassicLibraryPaneKit.PaneHeader(p.CoverUrl, p.Eyebrow, p.Title, p.Open, ClassicDetailKit.ArtistLine(p.Artists), p.Meta),
                 ClassicLibraryPaneKit.PaneCommands(p.Play, p.Shuffle,
-                    Embed.Comp(() => new Controls.SaveButton { Uri = p.Uri, Name = p.Title, Box = ClassicLibraryPaneRules.CommandBox }) with { Key = p.SaveKey },
-                    ClassicDetailKit.MoreButton(p.More, ClassicLibraryPaneRules.CommandBox), p.Open),
+                    Embed.Comp(() => new Controls.SaveButton { Uri = p.Uri, Name = p.Title, Box = box }) with { Key = p.SaveKey },
+                    ClassicDetailKit.MoreButton(p.More, box), p.Open, box > ClassicLibraryPaneRules.CommandBox ? box : 0f),
                 p.Notice!,
                 // ONE flex slot, in every state: the shimmer, the Retry strip and the real table all grow into it, so the header and the commands above never move. "Also by" is NOT a
                 // sibling here any more — it is the table's trailing band, inside the table's scroller.
@@ -229,7 +232,7 @@ internal static class ClassicLibraryAlbumPane
         return new BoxEl
         {
             Direction = 1, Gap = ClassicLibraryPaneRules.AlsoByGap, Shrink = 0f,
-            Padding = new Edges4(Spacing.XL, Spacing.S, Spacing.XL, Spacing.XL),
+            Padding = new Edges4(ClassicTiers.PaneInset, Spacing.S, ClassicTiers.PaneInset, Spacing.XL),
             Children =
             [
                 R.Type.Eyebrow(Strings.Library.AlsoBy(model.ArtistName)) with { Color = Tok.TextTertiary },

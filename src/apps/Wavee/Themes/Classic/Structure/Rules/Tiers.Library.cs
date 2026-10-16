@@ -1,28 +1,126 @@
-// ── Themes/Classic/Structure/Rules/Tiers.Library.cs — the library page's collapse ladder (themes plan 3.6; T10c1) ──────────────────────────────
+// ── Themes/Classic/Structure/Rules/Tiers.Library.cs — the library page's layout ladder and its tier records (themes plan 3.1, 3.6; TC7) ───────────────
 //
-// `LibraryLayoutBreakpoints` from `Entities\User.cs` (ch 15 §8, verbatim), moved out of core (plan 3.6: each move PR moves its own view's ladders into
-// `Rules\Tiers.<Family>.cs`). Only Classic's library page reads it: below `CollapseBelow` the master-detail columns become a breadcrumb drill-in, with a hysteresis so a window
-// sitting on the boundary does not flip-flop. The view answers it from the page's own measured width and writes the host's collapse signal, which the selection, the crumbs and the
-// persisted pick read; no view compares a width with a number (WVTH013).
+// THE LADDER (replaces the hand-rolled 640 collapse of `Entities\User.cs`, moved here by T10c1 and onto tier records by TC7). The page's two columns (the
+// navigator and the pane or reader) are side by side from `SplitFrom` of the page's OWN width and fold into the one-column breadcrumb drill-in below it, held
+// 24 DIP either way (the artist hero's `TierHysteresis`, the content ladder's own hold): a page that sits on the edge never flip-flops. It is the content ladder's
+// Compact | Small edge (600), so the page gutter, the controls' size and the column fold change together; it stays a ladder of its own because the core host
+// resolves it by id (`Wavee.Theming.LibraryLadders`) over the page's measured width and never sees a number. The host's `UseTier` resolves it in the page's first
+// frame (a page mounted at Compact is one column from frame one) and commits a crossing on the first non-resized frame, where the two arms cross-fade.
 //
-// Public, because `LibraryLayoutBreakpointTests` pins the ladder.
+// THE RECORDS (one per layout tier; boards C-Library / C-LibraryList with their -Compact / -Small / -Huge twins):
+//
+//   tier      columns                         head pad           rows of the head                          targets
+//   Compact   ONE column, drill-in            16 / top 12        kind chips, title, sort button + view     40 (chips, sort, view cells, filter)
+//                                                                 cells, filter; rows 12 apart
+//   Small     split, the navigator at its     12 / top 16        title, word rail + view, filter           the stock 32 / 28
+//             remembered width (grip 240-560)
+//   Standard  split (the tuned design)        12 / top 16        as Small                                  the stock 32 / 28
+//   Huge      split                           16 / top 24        as Small                                  the stock 32 / 28
+//
+// THE PERSISTED COLUMN WIDTHS (`library.<kind>.leftw` / `.midw`, clamped to the grips' range) are the host's: a tier never writes them. A tier that hides a column
+// (the one-column arm) leaves the stored width alone, and a split tier that cannot afford it clips by flex (`RightMin` is the pane's floor, the navigator gives way down
+// to the grip's 240), it does not rewrite it. The grid column counts are the fitted grid's own floor-fit over the navigator's width (116-164 cells): 2 columns at
+// the 340 default, 2 at Compact, 4 at the Huge board's 560.
+//
+// Public, so `Wavee.Tests` pins the ladder and the records (the assembly has no InternalsVisibleTo).
+
+using System.Collections.Immutable;
+using FluentGpu.Dsl;
+using FluentGpu.Foundation;
+using Wavee.Theming;
+using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
 
-/// <summary>Classic's library collapse ladder.</summary>
+/// <summary>What Classic's library page is in one layout tier.</summary>
+public sealed record ClassicLibraryLayout
+{
+    /// <summary>The layout tier the record is for (Compact is the one-column drill-in; Huge 4K reads Huge's).</summary>
+    public required WidthTier Tier { get; init; }
+
+    /// <summary>The columns are folded into the breadcrumb drill-in (the navigator, then the pane or reader, one at a time).</summary>
+    public bool Single => Tier == WidthTier.Compact;
+
+    /// <summary>The navigator head's padding (left, top, right, bottom).</summary>
+    public required Edges4 HeadPad { get; init; }
+
+    /// <summary>The gap between the head's rows (the kind chips, the title, the sort and view row, the filter).</summary>
+    public required float HeadGap { get; init; }
+
+    /// <summary>The height of the sort, view and filter controls: 40 at Compact, the stock 32 elsewhere.</summary>
+    public required float ControlH { get; init; }
+
+    /// <summary>The view toggle's cell edge: 40 at Compact (the board's radiogroup), 28 elsewhere.</summary>
+    public required float ViewCell { get; init; }
+
+    /// <summary>The kind chips (Albums, Artists, Podcasts, Audiobooks, Liked Songs) stand over the title and the sort is a button with its own menu: the Compact head, which
+    /// has no nav pane beside it.</summary>
+    public bool KindChips => Single;
+
+    /// <summary>The kind chips' height (the Compact board's 40 pills).</summary>
+    public required float ChipH { get; init; }
+
+    /// <summary>The detail pane's floor beside the navigator: the navigator gives way (down to the grip's range floor) before the pane drops under it.</summary>
+    public required float RightMin { get; init; }
+
+    /// <summary>The pane's insets (the album and show panes' header, commands and "Also by" band, and the reader's bands): <see cref="ClassicTiers.PaneInset"/> at every tier.</summary>
+    public float PaneInset => ClassicTiers.PaneInset;
+}
+
+/// <summary>Classic's library ladder and records.</summary>
 public static class ClassicLibraryTiers
 {
-    /// <summary>Below this width the columns collapse (~NavigationView.CompactModeThresholdWidth).</summary>
-    public const float CollapseBelow = 640f;
+    /// <summary>The split layout begins here (the content ladder's Small edge).</summary>
+    public const float SplitFrom = 600f;
 
-    /// <summary>The width it takes past <see cref="CollapseBelow"/> to un-collapse.</summary>
-    public const float Hysteresis = 24f;
+    /// <summary>The ladder's hold, both ways: entered below 576, left at 624.</summary>
+    public const float SplitHold = 24f;
 
-    /// <summary>Collapse when narrow; un-collapse only once comfortably wide. An unmeasured width (≤ 0) keeps the answer.</summary>
-    public static bool Collapsed(float w, bool wasCollapsed)
+    /// <summary>The layout ladder: index 0 the one-column drill-in, 1 the split.</summary>
+    public static TierLadder Layout { get; } = TierLadder.Of(new TierEdge(SplitFrom, NarrowHold: SplitHold, WidenHold: SplitHold));
+
+    /// <summary>The ladders this family adds to <see cref="ClassicTiers.Policy"/>: the core host resolves them by id.</summary>
+    public static ImmutableArray<NamedLadder> Ladders { get; } = ImmutableArray.Create(new NamedLadder(LibraryLadders.Layout, Layout));
+
+    /// <summary>Compact's navigator head: 16 sides, 12 over it, the rows 12 apart, every control 40 (C-Library-Compact).</summary>
+    static readonly ClassicLibraryLayout s_compact = new()
     {
-        if (w <= 0f) return wasCollapsed;
-        return wasCollapsed ? w < CollapseBelow + Hysteresis : w < CollapseBelow;
+        Tier = WidthTier.Compact, HeadPad = new Edges4(16f, 12f, 16f, 8f), HeadGap = 12f, ControlH = 40f, ViewCell = 40f, ChipH = 40f, RightMin = 0f,
+    };
+
+    /// <summary>Small's head is the tuned head (C-Library-Small draws 12 sides, 16 over it); its pane keeps 300 beside the navigator.</summary>
+    static readonly ClassicLibraryLayout s_small = new()
+    {
+        Tier = WidthTier.Small, HeadPad = new Edges4(12f, 16f, 12f, 8f), HeadGap = 8f, ControlH = 32f, ViewCell = 28f, ChipH = 0f, RightMin = 300f,
+    };
+
+    /// <summary>Standard: the tuned design.</summary>
+    static readonly ClassicLibraryLayout s_standard = new()
+    {
+        Tier = WidthTier.Standard, HeadPad = new Edges4(12f, 16f, 12f, 8f), HeadGap = 8f, ControlH = 32f, ViewCell = 28f, ChipH = 0f, RightMin = 360f,
+    };
+
+    /// <summary>Huge (C-Library-Huge): 24 over the head, 16 sides.</summary>
+    static readonly ClassicLibraryLayout s_huge = new()
+    {
+        Tier = WidthTier.Huge, HeadPad = new Edges4(16f, 24f, 16f, 8f), HeadGap = 8f, ControlH = 32f, ViewCell = 28f, ChipH = 0f, RightMin = 480f,
+    };
+
+    /// <summary>The record for <paramref name="facts"/>' content tier while the page is <paramref name="single"/> (the layout ladder's answer: the host's tier signal) or split. A
+    /// split page in a Compact content tier (the ladders' holds differ by a frame) reads Small's; Standard's where no frame resolved the tiers (a view mounted alone).</summary>
+    public static ClassicLibraryLayout Of(in TierFacts facts, bool single)
+        => For(facts.Policy is null ? WidthTier.Standard : facts.Content, single);
+
+    /// <summary>The record for content tier <paramref name="content"/> (Huge 4K reads Huge's).</summary>
+    public static ClassicLibraryLayout For(WidthTier content, bool single)
+    {
+        if (single) return s_compact;
+        return (WidthTier)Math.Min((int)content, (int)WidthTier.Huge) switch
+        {
+            WidthTier.Compact or WidthTier.Small => s_small,
+            WidthTier.Standard => s_standard,
+            _ => s_huge,
+        };
     }
 
     /// <summary>The artist reader's STACKED verb row (Y3) folds shuffle and ↗ into one ⋯ menu when its measured lane is narrower than the whole

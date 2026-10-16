@@ -131,7 +131,7 @@ internal static partial class ClassicLibraryArtistReader
                 new BoxEl
                 {
                     Height = Artist.ReaderShape.Divider, MinWidth = 0f, Shrink = 0f, Fill = Tok.StrokeDividerDefault,
-                    Margin = new Edges4(Spacing.XL, 0f, Spacing.XL, 0f),
+                    Margin = new Edges4(ClassicTiers.PaneInset, 0f, ClassicTiers.PaneInset, 0f),
                 },
             ],
         };

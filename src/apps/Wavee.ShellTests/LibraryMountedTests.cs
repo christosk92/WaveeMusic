@@ -1,13 +1,13 @@
 // ── Wavee.ShellTests/LibraryMountedTests.cs — the library page and its panes, mounted (themes plan 6.1, T10c1) ──────────────────────────────────
 //
 // The library page, the album pane and the compact show pane are the structure's since T10c1; the core hosts keep the data, the shape memo, the selection, the
-// search matcher, the collapse state and the pane models (`Wavee.Tests` pins the pure ones: `LibraryContractTests`, `LibraryLayoutBreakpointTests`,
+// search matcher, the layout tier and the pane models (`Wavee.Tests` pins the pure ones: `LibraryContractTests`, `LibraryTiersTests`,
 // `LibraryWordRailTests`, `AlbumPaneReadinessTests`). What only a mounted tree can say:
 //
 //   registered   Classic is the registered template of every key
 //   page         the wide arm stands the navigator column, the grip and the pane column keyed as the old tree was, the two columns plain sections on the one card
-//                split by the grip's divider (Y1); a narrow window writes the collapse signal through
-//                the structure's ladder; the collapsed arm stands the crumb bar over a depth-keyed body
+//                split by the grip's divider (Y1); the page reports its measured width to the host (the layout ladder's source);
+//                the collapsed arm stands the kind chips over the root rung and the crumb bar over a leaf, in a depth-keyed body
 //   album pane   the header skeleton is the stated header band, and its arm is keyed apart from the body so the swap is a crossfade; the
 //                counted shimmer stands on the row style's own rows and header (tuned Classic X2)
 //   grid view    the navigator's shimmer is the grid's cards at the fitted grid's cells, not rows (tuned Classic X2)
@@ -52,7 +52,7 @@ public sealed class LibraryMountedTests(ShellHost host)
 
     sealed class PageState
     {
-        public bool Collapsed;
+        public float Width;
         public int Writes;
     }
 
@@ -72,8 +72,8 @@ public sealed class LibraryMountedTests(ShellHost host)
             Title = "Albums", Entity = EntityKind.Album, IsPodcasts = false,
             Collapsed = collapsed, SavedEpisodesMode = false, FullSearch = false, Shimmer = false, Awaiting = false, RailOpen = false,
             HasSelection = selected, Depth = depth, Crumbs = depth == 0 ? new[] { "Albums" } : new[] { "Albums", "Abbey Road" },
-            IsCollapsed = () => state.Collapsed,
-            SetCollapsed = c => { state.Collapsed = c; state.Writes++; },
+            SetPageWidth = w => { state.Width = w; state.Writes++; },
+            Kinds = static () => [new("Albums", true, static () => { }), new("Artists", false, static () => { }), new("Podcasts", false, static () => { })],
             PickDepth = static _ => { },
             LeftW = () => cells.LeftW, MidW = () => cells.MidW,
             Sort = () => cells.Sort, Desc = () => cells.Desc, View = () => cells.View, Size = () => cells.Size,
@@ -147,29 +147,31 @@ public sealed class LibraryMountedTests(ShellHost host)
     }
 
     [Fact]
-    public void A_narrow_window_writes_the_collapse_signal_through_the_structures_ladder()
+    public void The_page_reports_its_measured_width_to_the_host()
     {
+        // The host feeds it to the structure's layout ladder (UseTier): the page itself decides nothing from a number.
         var state = new PageState();
         ViewHarness.With(host, ViewKeys.LibraryPage, PageProps(state), harness =>
         {
             harness.RunFrames(30);
-            Assert.True(state.Collapsed, "500 DIP is under the 640 rung");
             Assert.True(state.Writes >= 1);
+            Assert.InRange(state.Width, 400f, 500.5f);
         }, UnderClassic(width: 500f));
     }
 
     [Fact]
-    public void The_collapsed_arm_stands_the_crumb_bar_over_a_depth_keyed_body()
+    public void The_collapsed_arm_stands_the_kind_chips_over_the_root_rung_and_a_depth_keyed_body()
     {
-        var state = new PageState { Collapsed = true };
+        var state = new PageState();
         ViewHarness.With(host, ViewKeys.LibraryPage, PageProps(state, collapsed: true, depth: 0), harness =>
         {
             harness.RunFrames(30);
             Assert.True(harness.Contains("lib:collapsed"));
-            Assert.True(harness.Contains("lib:crumbs"));
+            Assert.False(harness.Contains("lib:crumbs"), "the root rung's head is the kind chips, not a breadcrumb");
             Assert.True(harness.Contains("depth:0"));
             Assert.True(harness.Contains("col:nav"));
-            Assert.True(harness.Contains("lib:toolbar:compact"), "the collapsed toolbar drops the title row");
+            Assert.True(harness.Contains("lib:toolbar"), "the Compact head keeps its title row");
+            Assert.True(harness.Contains("lib:kinds"), "and stands the kind chips over it");
             Assert.False(harness.Contains("lib:wide"));
         }, UnderClassic(width: 500f));
     }
@@ -177,11 +179,12 @@ public sealed class LibraryMountedTests(ShellHost host)
     [Fact]
     public void The_collapsed_drill_shows_the_pane_at_depth_one()
     {
-        var state = new PageState { Collapsed = true };
+        var state = new PageState();
         ViewHarness.With(host, ViewKeys.LibraryPage, PageProps(state, collapsed: true, depth: 1, selected: true), harness =>
         {
             harness.RunFrames(30);
             Assert.True(harness.Contains("depth:1"));
+            Assert.True(harness.Contains("lib:crumbs"), "a leaf rung stands the breadcrumb");
             Assert.True(harness.Contains("col:detail"));
             Assert.True(harness.Contains("test:pane"));
         }, UnderClassic(width: 500f));

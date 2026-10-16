@@ -269,7 +269,7 @@ internal static partial class ClassicLibraryArtistReader
             new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, MinWidth = 0f,
-                Padding = new Edges4(Spacing.XL, Artist.ReaderShape.SubRailPadTop, Spacing.XL, Artist.ReaderShape.SubRailPadBottom),
+                Padding = new Edges4(ClassicTiers.PaneInset, Artist.ReaderShape.SubRailPadTop, ClassicTiers.PaneInset, Artist.ReaderShape.SubRailPadBottom),
                 Children =
                 [
                     ClassicLibraryRails.ScopeRail(scope, host.ReleaseTotal, () => host.NarrowNow(), fill: true),   // the narrow arm folds "all · N"
@@ -377,7 +377,7 @@ internal static partial class ClassicLibraryArtistReader
             Direction = 1, Shrink = 0f, MinWidth = 0f,
             Height = tail.Height,
             // The vacancy owns its own padding (and centres inside it); the line and the air take the list's gutter.
-            Padding = tail.Kind == 2 ? new Edges4() : new Edges4(Spacing.XL, Spacing.S, Spacing.XL, Spacing.XL),
+            Padding = tail.Kind == 2 ? new Edges4() : new Edges4(ClassicTiers.PaneInset, Spacing.S, ClassicTiers.PaneInset, Spacing.XL),
             Children = body,
         };
     }

@@ -103,7 +103,7 @@ internal static class ClassicRecentsRows
     // ── the group card (W3, W5, W7, W16, W23) ─────────────────────────────────────────────────────────────────────
 
     /// <summary>One card row, and — when this row is the open accordion entry — its drawer under it.</summary>
-    internal static Element Card(IRecentsHost host, RecentsShape shape, int r, bool expanded, ClassicRecentsRowActions h)
+    internal static Element Card(IRecentsHost host, RecentsShape shape, int r, bool expanded, ClassicRecentsRowActions h, ClassicRecentsLayout layout)
     {
         var rows = shape.Rows;
         var row = rows.Rows[r];
@@ -112,7 +112,7 @@ internal static class ClassicRecentsRows
         bool canExpand = RecentsView.CanExpand(rows, r);
         bool saved = row.Why == RecentsReason.Saved;
         bool circular = target.Kind == EntityKind.Artist;
-        bool menu = HasCardMenu(target.Kind);
+        bool menu = HasCardMenu(target.Kind) && !layout.Stacked;   // Compact: no hover "..." over the 40 chevron (the right button still opens the menu)
         string uri = host.UriOf(shape, r, target);
         string when = host.WhenOf(shape, r);
         string sub = host.SubtitleOf(shape, r, in row, facts.Subtitle);
@@ -130,16 +130,33 @@ internal static class ClassicRecentsRows
         // stays visible while the pointer is on the row.
         string? chip = KindLabel(target.Kind);
         var trail = new List<Element>(4);
-        if (chip is not null) trail.Add(Controls.RowChip(chip) with { Key = "chip" });
-        if (when.Length > 0) trail.Add(Caption(when) with { Key = "when", Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1 });
-        trail.Add(canExpand
-            ? Track.ExpandCell(expanded, h.Toggle) with { Key = "chevron" }
-            : new BoxEl { Key = "chevron", Width = Spacing.XXL, Height = Spacing.XXL, Shrink = 0f });
-        trail.Add(new BoxEl { Key = "more-lane", Width = Controls.IconButtonSize, Shrink = 0f });
+        if (layout.Stacked)
+        {
+            // Compact (C-Recents-Compact): the kind and the played-at stamp fold under the sub line, and the trailing cluster is the chevron's 40 lane alone.
+            trail.Add(ChevronLane(canExpand, expanded, h.Toggle, layout.ChevronLane));
+        }
+        else
+        {
+            if (chip is not null) trail.Add(Controls.RowChip(chip) with { Key = "chip" });
+            if (when.Length > 0) trail.Add(Caption(when) with { Key = "when", Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1 });
+            trail.Add(canExpand
+                ? Track.ExpandCell(expanded, h.Toggle) with { Key = "chevron" }
+                : new BoxEl { Key = "chevron", Width = Spacing.XXL, Height = Spacing.XXL, Shrink = 0f });
+            trail.Add(new BoxEl { Key = "more-lane", Width = Controls.IconButtonSize, Shrink = 0f });
+        }
+        Element? subtitle = !facts.Known ? Controls.PendingBar(ClassicRecentsRules.CardNameBar, ClassicRecentsRules.CardNameBarHeight) : saved ? SavedMeta(sub) : sub.Length > 0 ? SubText(sub) : null;
+        if (layout.Stacked)
+        {
+            string meta = chip is null ? when : when.Length > 0 ? chip + " · " + when : chip;
+            var lines = new List<Element>(2);
+            if (subtitle is not null) lines.Add(subtitle);
+            if (meta.Length > 0) lines.Add(SubMeta(meta));
+            subtitle = lines.Count == 0 ? null : new BoxEl { Direction = 1, MinWidth = 0f, Children = lines.ToArray() };
+        }
 
         var data = new Controls.CardData(
             uri, facts.Known ? facts.Title : "",
-            !facts.Known ? Controls.PendingBar(ClassicRecentsRules.CardNameBar, ClassicRecentsRules.CardNameBarHeight) : saved ? SavedMeta(sub) : sub.Length > 0 ? SubText(sub) : null,
+            subtitle,
             null, canExpand ? h.Toggle : h.Open, h.Play, circular,
             global::Wavee.Drag.KindOf(target.Kind) == DragKind.Route ? null : h.DragFrom,
             ShowMenu: menu,
@@ -151,12 +168,27 @@ internal static class ClassicRecentsRows
         };
         Element primary = Controls.Surface(data, global::Wavee.Shape.Row(ClassicRecentsRules.CardArt) with { MinHeight = RecentsLayout.RowHeight });
         return expanded && canExpand
-            ? new BoxEl { Direction = 1, MinWidth = 0f, Children = [primary, Drawer(host, shape, r)] }
+            ? new BoxEl { Direction = 1, MinWidth = 0f, Children = [primary, Drawer(host, shape, r, layout)] }
             : new BoxEl { Direction = 1, MinWidth = 0f, Children = [primary] };
     }
 
     static TextEl SubText(string sub)
         => Caption(sub) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
+
+    /// <summary>The Compact row's third line: the kind and the played-at stamp, tertiary (C-Recents-Compact).</summary>
+    static TextEl SubMeta(string meta)
+        => Caption(meta) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
+
+    /// <summary>The Compact chevron's lane: a <paramref name="lane"/> x <paramref name="lane"/> target that toggles the drawer (a row with nothing to open keeps the lane empty, so the
+    /// rows align).</summary>
+    static Element ChevronLane(bool canExpand, bool expanded, Action toggle, float lane) => !canExpand
+        ? new BoxEl { Key = "chevron", Width = lane, Height = lane, Shrink = 0f }
+        : new BoxEl
+        {
+            Key = "chevron", Width = lane, Height = lane, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Corners = Radii.ControlAll, Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = toggle,
+            Children = [Icon(expanded ? Icons.ChevronUp : Icons.ChevronDown, ClassicRecentsRules.ChevronGlyph, Tok.TextSecondary)],
+        }.Interactive(Interaction.Subtle);
 
     /// <summary>The Saved row's green meta line (W7): a 12 check and the sentence, both <c>SystemFillSuccess</c> at 600.</summary>
     static Element SavedMeta(string text) => new BoxEl
@@ -221,7 +253,7 @@ internal static class ClassicRecentsRows
 
     /// <summary>The accordion's body: a 1-DIP accent spine 32 in, the children a further 24. A member with no target is
     /// skipped, so the RENDERED ordinal (the # cell) and the wire index (the key) differ on purpose (§9.2).</summary>
-    internal static Element Drawer(IRecentsHost host, RecentsShape shape, int r)
+    internal static Element Drawer(IRecentsHost host, RecentsShape shape, int r, ClassicRecentsLayout layout)
     {
         var rows = shape.Rows;
         var entries = RecentsView.DrawerEntries(rows, r);
@@ -236,7 +268,7 @@ internal static class ClassicRecentsRows
             rendered.Add(new BoxEl
             {
                 Key = "child:" + key + ":" + FormatCache.Int(i), Direction = 1,
-                Children = [ChildRow(host, targets[i], ordinal, entries[i].PlayedAtMs, art)],
+                Children = [ChildRow(host, targets[i], ordinal, entries[i].PlayedAtMs, art, layout.ChildRowH)],
             });
         }
         Element body = new BoxEl
@@ -270,7 +302,7 @@ internal static class ClassicRecentsRows
     /// <summary>ch 16 §1.3's <c>Recents.ChildRow</c>: a drawer member at 40 — the shared eager row (its own menu, heart,
     /// now-playing ink) with the actions lane [played-at · "…"] in a FIXED 60-DIP caption lane so every "…" aligns. An
     /// episode member is the shared media surface (<see cref="EpisodeRow"/>) with the same played-at lane.</summary>
-    static Element ChildRow(IRecentsHost host, EntityRef target, int ordinal, long playedAtMs, bool art)
+    static Element ChildRow(IRecentsHost host, EntityRef target, int ordinal, long playedAtMs, bool art, float rowH)
     {
         Lanes();
         string when = host.PlayedAt(playedAtMs);
@@ -279,10 +311,10 @@ internal static class ClassicRecentsRows
             var episode = new Episode(target.Slot);
             return EpisodeRow(episode, ChildEpisodeShape, when, () => host.PlayContext(episode.Id));
         }
-        if (target.Kind != EntityKind.Track) return new BoxEl { Height = RecentsLayout.ChildRowHeight };
+        if (target.Kind != EntityKind.Track) return new BoxEl { Height = rowH };
         var track = new Track(target.Slot);
         return Track.EagerRow(track, ordinal, art ? ChildCols : ChildColsNoArt, art ? s_childTracks : s_childTracksNoArt,
-            RecentsLayout.ChildRowHeight, () => host.PlayContext(track.Id),
+            rowH, () => host.PlayContext(track.Id),
             new Track.EagerRowOptions(ShowTrackArtist: true, ActionsCell: ChildActions(when)));
     }
 

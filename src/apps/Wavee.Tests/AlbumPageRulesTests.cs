@@ -381,8 +381,8 @@ public class AlbumPageRulesTableTests
     [Fact]
     public void PaneHeader_StatesTheCoverPlusItsOwnPadding()
     {
-        Assert.Equal(160f, ClassicLibraryPaneRules.PaneHeaderHeight);
-        Assert.Equal(ClassicLibraryPaneRules.PaneCover, ClassicLibraryPaneRules.PaneHeaderHeight - Spacing.XL - Spacing.M);
+        Assert.Equal(156f, ClassicLibraryPaneRules.PaneHeaderHeight);   // 128 + the 16 pane inset + 12
+        Assert.Equal(ClassicLibraryPaneRules.PaneCover, ClassicLibraryPaneRules.PaneHeaderHeight - ClassicTiers.PaneInset - Spacing.M);
         Assert.True(ClassicLibraryPaneRules.PaneHeaderHeight > ClassicLibraryPaneRules.PaneCover, "the cover would touch the block's edges");
     }
 }
