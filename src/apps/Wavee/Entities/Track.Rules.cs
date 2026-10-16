@@ -106,11 +106,14 @@ public readonly partial struct Track
     /// one with the leading heart): the reader row sets it at one fixed width, a quiet table (Liked, D16) at every tier.</para>
     /// <para><paramref name="Quiet"/> is a collection's register (<see cref="Detail.Config.QuietRows"/>, Liked Songs, tuned Classic D16):
     /// the plates run the list's full width with no zebra, the header rule with them, the titles are regular weight and the heart
-    /// shows only on the hovered (or focused) row — every row of the collection is liked, so a column of hearts says nothing.</para></summary>
+    /// shows only on the hovered (or focused) row — every row of the collection is liked, so a column of hearts says nothing.</para>
+    /// <para><paramref name="Compact"/> is the structure's Compact row form (<c>DetailTableTier.CompactRows</c>, board C-TrackList compact): no column
+    /// header (its hairline stays), and a Modern row states its duration in its subline instead of a lane of its own
+    /// (<see cref="RowMetrics.ShowDuration"/>).</para></summary>
     public readonly record struct ColumnSet(bool Album, bool By, bool Date, bool Plays, bool Heart, bool Thumb,
                                             bool Actions = true, int Tier = 0, bool Tempo = false, bool Expand = false,
                                             bool Artist = false, bool Classic = false, bool HeartTrailing = false,
-                                            bool Quiet = false);
+                                            bool Quiet = false, bool Compact = false);
 
     /// <summary>What the list is sorted by; <see cref="Index"/> = the context's own order. PERSISTED — new columns append
     /// and existing values never move.</summary>
@@ -158,6 +161,9 @@ public readonly partial struct Track
         }
 
         public static float HeaderHeightFor(bool classic) => classic ? ClassicHeaderHeight : 36f;
+
+        /// <summary>The column header's height for a set: none in the Compact row form (only its hairline stays, board C-TrackList compact).</summary>
+        public static float HeaderHeightFor(in ColumnSet set) => set.Compact ? 0f : HeaderHeightFor(set.Classic);
 
         /// <summary>The rows the shimmer holds for before the list is allowed to show: the first page. A Partial edge
         /// whose first page (two rows) swapped the shimmer for a near-empty list that then filled row by row is the
@@ -382,6 +388,10 @@ public readonly partial struct Track
         /// leading heart rather than throwing: the flags come from static per-surface sets, so the failure a throw would
         /// buy is a crash on a surface nobody exercised, while the normalization is one lane in one place.</summary>
         public static bool ShowHeartTrailing(in ColumnSet set) => set.HeartTrailing && !set.Heart;
+
+        /// <summary>Does the set lay out a duration LANE? Every set but a Modern one in the Compact row form, whose subline states the duration
+        /// ("artist · 3:20", board C-TrackList compact). The width track, the cell count, the cell and the header all read this one gate.</summary>
+        public static bool ShowDuration(in ColumnSet set) => !(set.Compact && !set.Classic);
 
         /// <summary>The x of the row's ARTWORK CENTRE from the skin's left edge — the leading lanes (# · ♥) and their gaps
         /// plus half the art. DERIVED from the lane table, not a constant: the leading cluster is # alone, # + ♥, or

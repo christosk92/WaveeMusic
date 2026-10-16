@@ -74,6 +74,21 @@ public static class ClassicTrackChromeLayout
     /// <summary>The play-next command's glyph and word spacing.</summary>
     public const float PlayNextGlyph = 14f;
 
+    // ── the bar at every tier (Tiers.Detail.cs, TC5) ─────────────────────────────────────────────────────────────────
+
+    /// <summary>A command's height for the tier's <paramref name="target"/> edge (the tuned 32, the Compact 40).</summary>
+    public static float CommandHeightFor(float target) => MathF.Max(CommandHeight, target);
+
+    /// <summary>The glyph plate's edge for the tier's <paramref name="target"/> edge.</summary>
+    public static float PlateFor(float target) => MathF.Max(PlateSize, target);
+
+    /// <summary>The lane's vertical padding: the tuned 5, or what is left of the 44 lane around the tier's taller commands (Compact: 2).</summary>
+    public static float SurfacePadYFor(float target)
+        => MathF.Max(0f, MathF.Min(Detail.VerticalLayout.ToolbarSurfacePadY, (Detail.VerticalLayout.ToolbarRowHeight - CommandHeightFor(target)) / 2f));
+
+    /// <summary>The selection bar's accent tint at Compact (board C-MultiSelect-Compact: the accent at 10 %).</summary>
+    public const float SelectionTint = 0.10f;
+
     /// <summary>A command entering and leaving the bar (a rung evicts or promotes it).</summary>
     public static readonly LayoutTransition CommandMotion = new(TransitionChannels.Position | TransitionChannels.Opacity,
         TransitionDynamics.Tween(220f, Easing.SmoothOut),

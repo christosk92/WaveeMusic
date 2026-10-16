@@ -131,7 +131,7 @@ internal static class ClassicRowCells
         // The clock, or a withheld row's SHORT reason ("Unavailable", the release date) at the reason rung with the LONG
         // reason as its tooltip (tuned Classic L4) — the bound table's lane, word for word (`Track.DurationLabel`).
         string durationText = Track.DurationLabel(t, now);
-        cells[i++] = Track.RowEndCell(withheld
+        if (RowMetrics.ShowDuration(in set)) cells[i++] = Track.RowEndCell(withheld
             ? ToolTip.Wrap(new TextEl(durationText)
               {
                   Size = ClassicTrackRowLayout.ReasonSize, LineHeight = classic ? ClassicTrackRowLayout.BodyLine : ClassicTrackRowLayout.CaptionLine,

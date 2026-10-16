@@ -268,6 +268,10 @@ public sealed record DetailInsightsProps
     /// <summary>Runs when the sheet closed: the host hands focus back to the toggle.</summary>
     public Action? OnClosed { get; init; }
 
+    /// <summary>Draw the pane DOCKED: a column of its own beside the list that the list yields its width to, instead of a sheet laid over it
+    /// (the view sets it from its tier record, Classic Huge: C-Liked-Huge; contract 1.13). <see cref="Page"/> is unused then.</summary>
+    public bool Docked { get; init; }
+
     /// <inheritdoc />
     public bool Equals(DetailInsightsProps? other) => ReferenceEquals(this, other);
 

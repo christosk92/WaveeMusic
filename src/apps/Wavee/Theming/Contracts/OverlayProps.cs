@@ -131,6 +131,10 @@ public sealed record ContextSheetProps
 
     /// <summary>Close the sheet. A row closes it FIRST, then acts, as every menu row does.</summary>
     public required Action Close { get; init; }
+
+    /// <summary>A card's own body drawn in the sheet instead of menu rows (contract 1.13): the list's filter card at Compact (board C-Flyouts-Compact,
+    /// TC5). Null for a menu; with it, <see cref="Primary"/> and <see cref="Rows"/> are empty.</summary>
+    public FluentGpu.Dsl.Element? Content { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.DialogLogoutConfirm"/>.</summary>

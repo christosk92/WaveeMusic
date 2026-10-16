@@ -102,8 +102,11 @@ internal static class ClassicTrackTable
         if (set.Plays) cells[i++] = Track.RowEndCell(BoundPlaysCell(r, classic), CellKey.Plays);
         if (RowMetrics.ShowTempo(in set)) cells[i++] = Track.RowEndCell(BoundTempoCell(r, classic), CellKey.Tempo);
         if (RowMetrics.ShowHeartTrailing(in set)) cells[i++] = Track.RowCenterCell(BoundHeartReveal(r, classic, set.Quiet), CellKey.HeartTrailing);
-        cells[i++] = Track.RowEndCell(BoundDurationCell(r, classic), CellKey.Duration);
-        if (set.Actions) cells[i++] = Track.MoreCell(true, classic, CellKey.More, () => r.Focused);
+        if (RowMetrics.ShowDuration(in set)) cells[i++] = Track.RowEndCell(BoundDurationCell(r, classic), CellKey.Duration);
+        // The Compact row's "…" is a 40 target shown on every row (C-RowStates-Compact): there is no hover to reveal it.
+        if (set.Actions) cells[i++] = set.Compact
+            ? Track.MoreCell(true, classic, CellKey.More, () => r.Focused, box: ClassicDetailTiers.CompactTarget, atRest: true)
+            : Track.MoreCell(true, classic, CellKey.More, () => r.Focused);
         if (set.Expand) cells[i++] = BoundExpandCell(r);
 
         float padX = RowMetrics.PadXFor(set.Tier);
@@ -376,7 +379,7 @@ internal static class ClassicTrackTable
         var runs = BoundTitleRuns(r, inlineVideo: !classic, weight);
         Element[] column;
         if (classic) column = [BoundClassicTitleLine(r, runs, setArtist, weight)];
-        else column = [runs[0], runs[1], BoundMetadataLine(r, setArtist, setAlbum)];
+        else column = [runs[0], runs[1], BoundMetadataLine(r, setArtist, setAlbum, durationInline: !RowMetrics.ShowDuration(in set))];
         var titleCol = new BoxEl
         {
             Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XXS,
@@ -395,8 +398,9 @@ internal static class ClassicTrackTable
     }
 
     /// <summary>The Modern subline (ch 01 §1.1): [EPISODE] · [E] · artists · album as one bound span run; the line
-    /// collapses when it has nothing to say.</summary>
-    static Element BoundMetadataLine(BoundRow r, bool setArtist, bool setAlbum)
+    /// collapses when it has nothing to say. <paramref name="durationInline"/> (the Compact row form, board C-TrackList compact: no duration
+    /// lane) closes the line with " · 3:20", or a withheld row's short reason.</summary>
+    static Element BoundMetadataLine(BoundRow r, bool setArtist, bool setAlbum, bool durationInline = false)
     {
         var buffer = new SpanBuffer();
         int ArtistCount(in RowPresentation p) => Track.ArtistInTitle(in p, setArtist) ? p.Track.ForDisplay.ArtistSlots.Length : 0;
@@ -405,7 +409,8 @@ internal static class ClassicTrackTable
         return new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicTrackRowLayout.MetaGap, MinWidth = 0f, ClipToBounds = true,
-            Visible = Prop.Of(() =>
+            // The Compact form's line always states the duration, so it never collapses there.
+            Visible = durationInline ? (Prop<bool>)true : Prop.Of(() =>
             {
                 var p = r.P;
                 return RowCellRules.ShowMeta(false, Track.ArtistInTitle(in p, setArtist), Track.ShowAlbumInMeta(in p, false, setAlbum), Track.Badge(in p));
@@ -438,7 +443,7 @@ internal static class ClassicTrackTable
                 {
                     Size = ClassicTrackRowLayout.CaptionSize, LineHeight = ClassicTrackRowLayout.CaptionLine, Color = Tok.TextSecondary,
                     Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MaxLines = 1,
-                    Grow = 1f, Basis = 0f, MinWidth = 0f,
+                    Grow = durationInline ? 0f : 1f, Shrink = 1f, Basis = durationInline ? float.NaN : 0f, MinWidth = 0f,
                     Visible = Prop.Of(() =>
                     {
                         var p = r.P;
@@ -453,6 +458,19 @@ internal static class ClassicTrackTable
                         if (target >= 0) Track.GoToArtistAt(d, target);
                         else if (target == RowCellRules.Container) Track.GoToContainer(d);
                     },
+                },
+                new TextEl(Prop.Of(() =>
+                {
+                    var p = r.P;
+                    var d = p.Track.ForDisplay;
+                    bool lead = RowCellRules.LinkSpanCount(ArtistCount(in p), HasContainer(in p, d)) > 0;
+                    string duration = Track.DurationLabel(p.Track, Track.NowUnix);
+                    return lead ? ClassicTrackRowLayout.InlineDurationLead + duration : duration;
+                }))
+                {
+                    Size = ClassicTrackRowLayout.CaptionSize, LineHeight = ClassicTrackRowLayout.CaptionLine, Color = Tok.TextSecondary,
+                    Wrap = TextWrap.NoWrap, MaxLines = 1, Shrink = 0f,
+                    Visible = durationInline,
                 },
             ],
         };

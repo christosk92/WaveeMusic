@@ -31,16 +31,22 @@ internal static partial class ClassicDetailKit
 
     /// <summary>The detail header's Play split for <paramref name="subject"/>: <paramref name="play"/> on the left half, the "More
     /// ways to play" menu on the ⌄. <paramref name="accent"/> is read every render (a palette that lands later re-tints it).
-    /// Keyed on the subject: the props freeze at mount.</summary>
-    public static Element PlaySplit(EntityUri subject, Func<ColorF> accent, Action play)
-        => Embed.Comp(() => new PlaySplitHost { Subject = subject, Accent = accent, Play = play })
-            with { Key = "ctxplay:" + subject.Text };
+    /// Keyed on the subject: the props freeze at mount.
+    /// <para><paramref name="height"/> above the tuned 32 (the Compact hero's 40 targets, board C-Album-Compact: [Play 96 │ ⌄ 40]) grows both halves
+    /// by the difference; it is in the key, so a tier crossing re-mounts the one control at its new size.</para></summary>
+    public static Element PlaySplit(EntityUri subject, Func<ColorF> accent, Action play, float height = 0f)
+    {
+        float h = MathF.Max(Controls.ButtonHeight, height);
+        return Embed.Comp(() => new PlaySplitHost { Subject = subject, Accent = accent, Play = play, Height = h })
+            with { Key = "ctxplay:" + subject.Text + (h > Controls.ButtonHeight ? ":" + h.ToString(System.Globalization.CultureInfo.InvariantCulture) : "") };
+    }
 
     sealed class PlaySplitHost : Component
     {
         public required EntityUri Subject { get; init; }
         public required Func<ColorF> Accent { get; init; }
         public required Action Play { get; init; }
+        public float Height { get; init; } = Controls.ButtonHeight;
 
         readonly Signal<bool> _open = new(false);
         IOverlayService? _overlay;
@@ -63,19 +69,20 @@ internal static partial class ClassicDetailKit
             bool open = _open.Value;
             var palette = Controls.AccentFillPalette(fill);
             float r = Radii.Control;
+            float h = Height, grow = MathF.Max(0f, h - Controls.ButtonHeight);
 
             BoxEl playHalf = Controls.PrimaryButton(Loc.Get(pause ? Strings.Home.Pause : Strings.Detail.Play), Play, fill,
                 pause ? Icons.Pause : Icons.Play) with
             {
-                Key = "split:play", MinWidth = RailLayout.PlayHalf, Shrink = 0f,
+                Key = "split:play", MinWidth = RailLayout.PlayHalf + grow, Height = h, Shrink = 0f,
                 Corners = new CornerRadius4(r, 0f, 0f, r),
                 BorderWidth = 0f, BorderBrush = null, HoverBorderBrush = null, PressedBorderBrush = null,
             };
 
             BoxEl menuHalf = Button.Create("", _toggle, ButtonAppearance.Accent,
-                style: Button.DefaultStyle(ButtonAppearance.Accent, palette: palette) with { MinHeight = Controls.ButtonHeight }) with
+                style: Button.DefaultStyle(ButtonAppearance.Accent, palette: palette) with { MinHeight = h }) with
             {
-                Key = "split:menu", Width = RailLayout.MenuHalf, MinWidth = 0f, Shrink = 0f, Padding = default, Gap = 0f,
+                Key = "split:menu", Width = RailLayout.MenuHalf + grow, Height = h, MinWidth = 0f, Shrink = 0f, Padding = default, Gap = 0f,
                 Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
                 Corners = new CornerRadius4(0f, r, r, 0f),
                 BorderWidth = 0f, BorderBrush = null, HoverBorderBrush = null, PressedBorderBrush = null,
@@ -93,7 +100,7 @@ internal static partial class ClassicDetailKit
             // The divider sits ON the accent: a full-height strip of the fill with the hairline centred in it.
             Element divider = new BoxEl
             {
-                Width = RailLayout.SplitDivider, Height = Controls.ButtonHeight, Shrink = 0f, Fill = fill,
+                Width = RailLayout.SplitDivider, Height = h, Shrink = 0f, Fill = fill,
                 AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                 Children =
                 [
@@ -107,14 +114,14 @@ internal static partial class ClassicDetailKit
 
             return new BoxEl
             {
-                ZStack = true, Shrink = 0f, Height = Controls.ButtonHeight,
+                ZStack = true, Shrink = 0f, Height = h,
                 Margin = new Edges4(0f, 0f, RailLayout.SplitTrail, 0f),
                 OnRealized = _capture, OnKeyDown = _keys,
                 Children =
                 [
                     new BoxEl
                     {
-                        Key = "split:halves", Direction = 0, AlignItems = FlexAlign.Center, Height = Controls.ButtonHeight,
+                        Key = "split:halves", Direction = 0, AlignItems = FlexAlign.Center, Height = h,
                         Corners = Radii.ControlAll, ClipToBounds = true,
                         Children = [playHalf, divider, ToolTip.Wrap(menuHalf, Loc.Get(Strings.Detail.MoreWaysToPlay))],
                     },
@@ -165,24 +172,25 @@ internal static partial class ClassicDetailKit
 
     /// <summary>The fixed action group after the split (D1): Shuffle (when the page offers it), the heart (when the kind has
     /// one), Share (when the page has a link) and the ⋯ (when the page has a menu), each keyed under <paramref name="keyPrefix"/>.</summary>
-    public static List<Element> FixedActions(string keyPrefix, Detail.Identity id, bool heart, Detail.FrameActions acts, Func<ColorF> accent)
+    public static List<Element> FixedActions(string keyPrefix, Detail.Identity id, bool heart, Detail.FrameActions acts, Func<ColorF> accent,
+        float box = RailLayout.FabSize)
     {
         var actions = new List<Element>(4);
         if (acts.Shuffle is { } shuffle)
-            actions.Add(Controls.Named(ShuffleButton(shuffle) with { Key = keyPrefix + "shuffle:button" }, Loc.Get(Strings.Detail.Shuffle))
+            actions.Add(Controls.Named(ShuffleButton(shuffle, box) with { Key = keyPrefix + "shuffle:button" }, Loc.Get(Strings.Detail.Shuffle))
                 with { Key = keyPrefix + "shuffle" });
         if (heart)
         {
             string saveUri = SaveTargetOf(id).Text;
             string saveName = id.Title;
-            actions.Add(Embed.Comp(() => new Controls.SaveButton { Uri = saveUri, Name = saveName, Glyph = 16f, Box = RailLayout.FabSize, Accent = accent })
+            actions.Add(Embed.Comp(() => new Controls.SaveButton { Uri = saveUri, Name = saveName, Glyph = 16f, Box = box, Accent = accent })
                 with { Key = keyPrefix + "save:" + saveUri });
         }
         if (ShareActionFor(id) is { } share)
-            actions.Add(Controls.Named(Fab(Icons.Share, share) with { Key = keyPrefix + "share:button" }, Loc.Get(Strings.Menu.Share))
+            actions.Add(Controls.Named(Fab(Icons.Share, share, box) with { Key = keyPrefix + "share:button" }, Loc.Get(Strings.Menu.Share))
                 with { Key = keyPrefix + "share" });
         if (acts.More is { } more)
-            actions.Add(MoreButton(more, RailLayout.FabSize) with { Key = keyPrefix + "more:" + id.Subject.Text });
+            actions.Add(MoreButton(more, box) with { Key = keyPrefix + "more:" + id.Subject.Text });
         return actions;
     }
 
@@ -203,7 +211,7 @@ internal static partial class ClassicDetailKit
 
     /// <summary>Shuffle beside the split: the standard 32/r4 icon button on the control fill with its elevation stroke, the
     /// plate that says "a second way to play" next to the accent one.</summary>
-    static BoxEl ShuffleButton(Action shuffle) => Fab(Icons.Shuffle, shuffle) with
+    static BoxEl ShuffleButton(Action shuffle, float box) => Fab(Icons.Shuffle, shuffle, box) with
     {
         Fill = Tok.FillControlDefault, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
         BorderWidth = 1f, BorderBrush = Tok.ControlElevationBorder,

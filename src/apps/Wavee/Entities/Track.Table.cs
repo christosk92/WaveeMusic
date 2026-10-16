@@ -368,7 +368,7 @@ public readonly partial struct Track
         public Detail.InsightsToggle? Insights { get; init; }
         /// <summary>The table publishes what it shows against what it has (from an effect), for the rail's count line (tuned Classic D4).</summary>
         public Signal<Detail.ListCount>? ListCount { get; init; }
-        /// <summary>Pre-measure column width estimate (Detail.Breakpoints.EstimatePageWidthFromViewport).</summary>
+        /// <summary>Pre-measure list-column width estimate (the frame's: the page estimate less the rail it composes), the table tier's seed.</summary>
         public float WidthSeed { get; init; }
         /// <summary>Route identity for ScrollMemory / list keys.</summary>
         public string ScrollKey { get; init; } = "";
@@ -442,13 +442,17 @@ public readonly partial struct Track
         readonly Signal<bool> _multi = new(false);
 
         // ── tier + relief (ch 04 §0.2) ──────────────────────────────────────────────────────────────────────────────
-        readonly Signal<int> _tier = new(0);
+        // The tier is the structure's table ladder over the list column's measured width (`_listW`, value-gated), through UseTier: the first
+        // mount resolves in its own frame from the frame's seed (the list column's estimate), a crossing after it commits on the first frame
+        // that is not resized and re-deals the rows animated (themes plan 3.3).
+        IReadSignal<int>? _tierSig;
+        readonly Signal<float> _listW = new(0f);
+        readonly Func<float> _listSeed;
         readonly Signal<int> _relief = new(0);
         readonly Signal<bool> _tierMeasured = new(false);
         readonly Signal<float> _colW = new(0f);
         readonly Signal<bool> _rowFlow = new(false);
         float _lastW;
-        int _seedTier;
         bool _flowInit;
         Lanes _reliefLanes;
         float _reliefGap = RowMetrics.ColGap, _reliefPad = RowMetrics.PadX;
@@ -532,6 +536,8 @@ public readonly partial struct Track
         public TableHost()
         {
             _onBounds = OnColumnBounds;
+            // Unknown (no seed) is the widest tier, as the table always opened.
+            _listSeed = () => _latest is { WidthSeed: > 0f } a ? a.WidthSeed : float.PositiveInfinity;
             _onHeroMeasured = h => { if (h > 1f && MathF.Abs(_heroH.Peek() - h) > 1f) _heroH.Value = h; };
             _playAll = () => StartVisible(0);
             _shuffle = Shuffle;
@@ -627,50 +633,51 @@ public readonly partial struct Track
             var args = _args.Value!;
             // Two ladders, in order: the tier admits the lanes this WIDTH allows, then relief takes back the ones the
             // identity lanes cannot pay for. Relief only subtracts, so this can never widen the table.
-            var admitted = SetFor(in snap, args, ClampTier(_tier.Value));
+            // The window tier's table form (the structure's record: the Compact row, the lanes a band never admits, the row floors). Tracked, so
+            // a crossing re-shapes on the frame it commits. An embedded table (a library pane) keeps the density's rows and every lane.
+            var form = args.Embedded
+                ? global::Wavee.Theming.DetailTableTier.Standard
+                : ShellPolicy.Tracked.DetailTiers.For(global::Wavee.Theming.ThemeHost.Facts.Value.Tiers).Table;
+            var admitted = SetFor(in snap, args, TierNow(), form);
             var set = TableRules.ApplyRelief(in admitted, ReliefStepFor(in admitted));
             var rows = RowMetrics.Rows();   // the style's density (M3)
-            float art = set.Classic ? rows.ClassicArt : rows.ModernArt;
-            return new Shape(set, Track.TracksFor(in set, art), art, set.Classic ? rows.ClassicRow : rows.ModernRow, rows.Rung,
-                rows.EpisodeRow, rows.NarrowEpisode);
+            float art = form.ArtFor(set.Classic ? rows.ClassicArt : rows.ModernArt);
+            float rowH = form.RowFor(set.Classic, set.Classic ? rows.ClassicRow : rows.ModernRow);
+            return new Shape(set, Track.TracksFor(in set, art), art, rowH, rows.Rung, rows.EpisodeRow, rows.NarrowEpisode);
         }
 
-        static ColumnSet SetFor(in Snapshot s, TableArgs args, int tier)
+        /// <summary>The committed table tier (0 the widest); the widest before the hook has run.</summary>
+        int TierNow() => _tierSig is { } t ? global::Wavee.Theming.DetailLadders.TierOf(t.Value) : 0;
+
+        static ColumnSet SetFor(in Snapshot s, TableArgs args, int tier, global::Wavee.Theming.DetailTableTier form)
         {
             var cfg = s.Config;
             var src = args.Source;
             var identity = TableRules.IdentityColumns(s.Classic, cfg.ShowArtThumb, s.ArtHidden, cfg.ShowTrackArtist, tier);
             // A null Drawer seam is "no chevron lane" (the contract), so it folds into ShowVersions before the tier gate.
             var trailing = TableRules.TrailingColumns(cfg.ShowVersions && args.Profile.Drawer is not null, tier);
+            // The Compact row (boards C-TrackList compact, C-RowStates-Compact): no column header, the heart trailing before the duration,
+            // no versions chevron lane (the drawer stays reachable through the menu's "Track details"), no Artist / Added-by / tempo lane,
+            // and the 40 more lane at every width.
+            bool compact = form.CompactRows;
             return new ColumnSet(
-                Album: cfg.ShowAlbumColumn && tier < 2,
-                By: src.HasAddedBy && tier < 1,
-                Date: src.HasDateAdded && tier < 3,
-                Plays: TableColumnsPref.PlaysVisible(cfg.ShowPlays, cfg.PlaysColumnOptIn, s.PlaysColumn) && tier < 3,
+                Album: cfg.ShowAlbumColumn && tier < 2 && form.AlbumColumn,
+                By: src.HasAddedBy && tier < 1 && !compact,
+                // A quiet list (Liked) keeps its date wherever the width does (C-TrackList small: "Added" on Liked only).
+                Date: src.HasDateAdded && tier < 3 && (form.DateColumn || cfg.QuietRows) && !compact,
+                Plays: TableColumnsPref.PlaysVisible(cfg.ShowPlays, cfg.PlaysColumnOptIn, s.PlaysColumn) && tier < 3 && form.PlaysColumn,
                 // A quiet list (Liked, D16) states its heart in the trailing lane, before the duration (board C-TrackList, liked).
-                Heart: tier < 5 && !cfg.QuietRows,
+                Heart: tier < 5 && !cfg.QuietRows && !compact,
                 Thumb: identity.Thumb,
-                Actions: trailing.Actions,
+                Actions: trailing.Actions || compact,
                 Tier: tier,
-                Tempo: cfg.ShowTempo && s.TempoColumn,
-                Expand: trailing.Expand,
-                Artist: identity.Artist,
+                Tempo: cfg.ShowTempo && s.TempoColumn && !compact,
+                Expand: trailing.Expand && !compact,
+                Artist: identity.Artist && !compact,
                 Classic: s.Classic,
-                HeartTrailing: tier < 5 && cfg.QuietRows,
-                Quiet: cfg.QuietRows);
-        }
-
-        /// <summary>Self-heal: never RENDER a tier wider than the last measured width supports; before the first measure the
-        /// width seed governs and the one-shot `_tierMeasured` flip retires it (DetailTracks.cs:565-581).</summary>
-        int ClampTier(int tier)
-        {
-            if (_lastW <= 0f)
-            {
-                _ = _tierMeasured.Value;
-                return Math.Max(tier, _seedTier);
-            }
-            int fit = Detail.Breakpoints.TierFor(_lastW, tier, initialized: true);
-            return fit > tier ? fit : tier;
+                HeartTrailing: compact || (tier < 5 && cfg.QuietRows),
+                Quiet: cfg.QuietRows,
+                Compact: compact);
         }
 
         int ReliefStepFor(in ColumnSet s)
@@ -698,8 +705,8 @@ public readonly partial struct Track
                 _flowInit = true;
             }
             bool measured = _tierMeasured.Peek();
-            int t = Detail.Breakpoints.TierFor(r.W, _tier.Peek(), measured);
-            if (t != _tier.Peek()) _tier.Value = t;
+            // The tier ladder's source (value-gated). Its crossing is the host's: pending until the first non-resized frame, then animated.
+            if (r.W != _listW.Peek()) _listW.Value = r.W;
             int relief = TableRules.ReliefFor(in _reliefLanes, r.W, _reliefGap, _reliefPad, _relief.Peek(), measured);
             if (relief != _relief.Peek()) _relief.Value = relief;
             if (!measured) _tierMeasured.Value = true;
@@ -992,6 +999,9 @@ public readonly partial struct Track
             _drawerStyle ??= global::Wavee.Theming.Contracts.ListStyleLookup.Of(registry, global::Wavee.Theming.Contracts.StyleKeys.TrackDrawer);
 
             _snapshot = UseComputed(ComputeSnapshot);
+            // The structure's table ladder (themes plan 3.6; Classic: Tiers.Detail.cs); it freezes at mount like every hook's inputs.
+            _tierSig = UseTier(global::Wavee.Theming.DetailLadders.Of(ShellPolicy.Now.Tiers, global::Wavee.Theming.DetailLadders.Table),
+                TierSource.Measured(_listW, _listSeed));
             _shape = UseComputed(ComputeShape);
             _hotSettled = UseComputed(ComputeHotSettled);
             _rowItems = UseMemo(() => BoundItems.Project(_snapshot!,
@@ -1022,8 +1032,6 @@ public readonly partial struct Track
 
             var context = args.Source.Context;
             UseLayoutEffect(() => LoadView(context), DepKey.From(context.Id.GetHashCode()));
-
-            if (_lastW <= 0f && args.WidthSeed > 0f) _seedTier = Detail.Breakpoints.InitialTierForViewport(args.WidthSeed);
 
             var snap = _snapshot.Value;
             var shape = _shape.Value;
@@ -1077,7 +1085,7 @@ public readonly partial struct Track
             Element? chips = P.ContentFilterBar?.Invoke();
             Element? lens = P.LensHeader?.Invoke();
             float extent = (chips is not null ? P.ContentFilterExtent : 0f) + (lens is not null ? P.LensExtent : 0f);
-            float stickyInset = Detail.VerticalLayout.StickyClipInset(extent, TableRules.HeaderHeightFor(shape.Set.Classic));
+            float stickyInset = Detail.VerticalLayout.StickyClipInset(extent, TableRules.HeaderHeightFor(shape.Set));
             UseLayoutEffect(() => ApplyItemBand(stickyInset), DepKey.From(stickyInset, (float)_resetEpoch));
 
             bool recsCapable = cfg.Recommendations && !args.Embedded && !vertical && P.Recommendations is not null;

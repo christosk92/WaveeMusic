@@ -211,10 +211,12 @@ public sealed partial class TierLayoutTests(ShellHost host)
         }
 
         // No page-level horizontal overflow: the page body never runs wider than the card it sits in.
+        // Only the pages IN the card: a page the keep-alive parked after a navigation (Home, once a detail fixture is on screen) sits outside it.
+        var inCard = new HashSet<NodeHandle>(Subtree(scene, Node(shell, ClassicFrameLayout.ContentCardKey)));
         foreach (var (node, key) in shell.FindPrefix("page:"))
         {
             var r = scene.AbsoluteRect(node);
-            if (r.W <= 0f) continue;   // a parked page
+            if (r.W <= 0f || !inCard.Contains(node)) continue;   // a parked page
             Assert.True(r.X >= card.X - 0.5f && r.X + r.W <= card.X + card.W + 0.5f, $"{size.Name}: {key} runs outside the content card ({r} in {card})");
         }
 

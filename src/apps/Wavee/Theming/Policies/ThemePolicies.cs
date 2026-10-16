@@ -46,6 +46,11 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
     /// standalone selection bar, context menus as a sheet). A structure that declares nothing is the shell as it shipped.</summary>
     public OverlayPolicy Overlays { get; init; } = OverlayPolicy.Default;
 
+    /// <summary>What the structure decides for the detail pages per window tier and height rung (TC5: the table's Compact form and lane caps, the docked
+    /// insights pane, the rail's resting width, the hero's action row, the rail title's cap). Its ladders are <see cref="Tiers"/>' named ones
+    /// (<see cref="DetailLadders"/>). A structure that declares nothing is the shell as it shipped.</summary>
+    public DetailTierPolicy DetailTiers { get; init; } = DetailTierPolicy.Default;
+
     /// <summary>Everything wrong with the bundle, empty when every core state machine can run on it.</summary>
     public IReadOnlyList<string> Validate()
     {
@@ -60,6 +65,7 @@ public sealed record ThemePolicies(NavPanePolicy NavPane, PanelPolicy Panel, Pla
         if (Detail is null) problems.Add("Detail is missing");
         if (Artwork is null) problems.Add("Artwork is missing");
         if (Overlays is null) problems.Add("Overlays is missing"); else problems.AddRange(Overlays.Validate());
+        if (DetailTiers is null) problems.Add("DetailTiers is missing");
         return problems;
     }
 }

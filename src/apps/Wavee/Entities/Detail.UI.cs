@@ -376,7 +376,7 @@ public static partial class Detail
 
     // ══ 3. THE FRAME ═════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>THE detail scaffold (ch 03 §1). Owns the 4-mode ladder and both fail-safes, the per-scope rail prefs +
+    /// <summary>THE detail scaffold (ch 03 §1). Resolves the 4-mode ladder (the structure's, through UseTier), the per-scope rail prefs +
     /// grip + collapse, the notice strip, the tone plane, the shell tint, the page drop target and the accent; mounts
     /// <c>Track.Table</c> for tracks.</summary>
     public static Element Frame(FrameSpec spec)
@@ -388,8 +388,6 @@ public static partial class Detail
     const float RailCompactW = RailPolicy.CompactStripW;               // the collapsed identity strip
     const float GripStripCollapsedW = RailPolicy.CollapsedGripW;       // the grip while collapsed (also a re-open gesture)
     const float TwoColumnHeroBandFraction = 0.55f;                    // the tone plane's synthetic band (hero-only is dead)
-    const float TallWindowH = Design.Size.DesignH;                    // the 40/52 rail title at ≥ 900
-    const float ShortWindowH = 760f;                                  // the 3-line description below 760
 
     /// <summary><c>DetailShell.RailW</c>: the breakpoint rail of modes 1/2, the config's own width at mode 0. The
     /// NON-RESIZABLE arm only (<c>RailResizable: false</c>) — a resizable rail rests through
@@ -415,6 +413,7 @@ public static partial class Detail
         float _stored;                                  // the REMEMBERED width — a page-width clamp never lowers it
         float _max = RailPolicy.MaxWidth;
         int _mode = RailPolicy.WideMode;
+        float _wideRest;                                // the window tier's resting width of an undragged wide arm (0: the kind's own)
 
         public RailCell(RailScope scope, Signal<float> fade)
         {
@@ -450,21 +449,22 @@ public static partial class Detail
 
         /// <summary>The page reported a new (mode, maximum): re-derive the LIVE width from the REMEMBERED one. Value-gated,
         /// so a resize that changes nothing costs no render. Runs from an effect, never from a render.</summary>
-        public void Rest(int mode, float max)
+        public void Rest(int mode, float max, float wideRest)
         {
             _mode = mode;
             _max = max;
-            float w = RailPolicy.RestingWidth(_stored, Scope, mode, max);
+            _wideRest = wideRest;
+            float w = RailPolicy.RestingWidth(_stored, Scope, mode, max, wideRest);
             if (w != Width.Peek()) Width.Value = w;
         }
 
         /// <summary>The width the frame COMPOSES this render for (mode, max): what <see cref="Rest"/> will write until it
         /// has run for exactly that pair, the live (dragged) width after (<see cref="RailPolicy.ComposedWidth"/>). Reads
         /// <see cref="Width"/> unconditionally, so a drag always re-renders. Pure read — a render never writes the cell.</summary>
-        public float ComposedWidth(int mode, float max)
+        public float ComposedWidth(int mode, float max, float wideRest)
         {
             float live = Width.Value;
-            return RailPolicy.ComposedWidth(live, _stored, Scope, _mode, _max, mode, max);
+            return RailPolicy.ComposedWidth(live, _stored, Scope, _mode, _max, mode, max, _wideRest, wideRest);
         }
 
         void CommitNow()
@@ -486,7 +486,7 @@ public static partial class Detail
         public void Resync()
         {
             _stored = DetailRailPrefs.StoredWidth(Scope);
-            Rest(_mode, _max);
+            Rest(_mode, _max, _wideRest);
             Collapsed.Value = DetailRailPrefs.Collapsed(Scope);
         }
     }
@@ -497,10 +497,13 @@ public static partial class Detail
         FrameSpec? _latest;
         readonly Signal<FrameSpec?> _spec = new(null);
 
-        // ── the page mode ──
-        readonly Signal<int> _mode = new(0);
+        // ── the page mode: the structure's mode ladder over the page's measured width (UseTier: a first mount resolves in its own frame from
+        //    the seed, a crossing after it commits on the first non-resized frame and animates, themes plan 3.3), and the height rung ──
+        readonly Signal<float> _pageW = new(0f);
+        IReadSignal<int>? _modeTier;
+        IReadSignal<int>? _heightRung;
+        readonly Func<float> _pageSeed;
         float _measuredW, _measuredH;
-        bool _modeInitialized;
 
         // ── rails, fade, hero height, accent, play cell, tint owner ──
         readonly RailCell[] _rails;
@@ -541,7 +544,6 @@ public static partial class Detail
         readonly Action _restRails;
         readonly Action _publishAccentTracked;
         readonly Action _republishAccent;
-        readonly Func<int> _heightRungsCompute;
         readonly Func<bool> _railPending;
 
         // trampolines into _latest
@@ -572,8 +574,6 @@ public static partial class Detail
         Track.TableProfile? _profileFallback;
         Config _profileFor;
 
-        const int RungTall = 1, RungShort = 2;
-
         public FrameHost()
         {
             _rails = new RailCell[5];
@@ -586,7 +586,7 @@ public static partial class Detail
             _restRails = RestRails;
             _publishAccentTracked = PublishAccentTracked;
             _republishAccent = RepublishAccent;
-            _heightRungsCompute = ComputeHeightRungs;
+            _pageSeed = PageSeed;
             _railPending = () => _spec.Value?.Identity.HeaderPending ?? true;
 
             _tShuffle = () => _latest?.Actions.Shuffle?.Invoke();
@@ -671,7 +671,7 @@ public static partial class Detail
             bool uniform = detailPolicy.RailUniform;
             int railEpoch = DetailRailPrefs.Epoch.Value;
             UseEffect(_resyncRails, DepKey.From(railEpoch));
-            // Auto-tracked on _mode + _railMax: a breakpoint cross or a narrower page re-rests every rail from its
+            // Auto-tracked on the mode tier, _railMax and the window tier: a breakpoint cross or a narrower page re-rests every rail from its
             // REMEMBERED width. A signal write belongs in an effect, never in a render (rule 6).
             UseEffect(_restRails);
 
@@ -679,7 +679,14 @@ public static partial class Detail
             _inputHooks = UseContext(InputHooks.Current);       // ── INSIGHTS SHEET (additive): the focus return ──
             var viewportSig = UseContextSignal(Viewport.Size);
             _viewport = viewportSig;
-            var rungsMemo = UseComputed(_heightRungsCompute);
+            // The structure's sub-ladders (themes plan 3.6; Classic: Tiers.Detail.cs). They freeze at mount like every hook's inputs: a theme
+            // switch mounts a new root, and with it a new frame.
+            var tierPolicy = ShellPolicy.Now.Tiers;
+            _modeTier = UseTier(DetailLadders.Of(tierPolicy, DetailLadders.Mode), TierSource.Measured(_pageW, _pageSeed));
+            _heightRung = UseTier(DetailLadders.Of(tierPolicy, DetailLadders.Height), TierSource.ViewportHeight);
+            // The window tier's layout (tracked: a crossing re-renders the frame on the frame it commits).
+            var tierLayouts = ShellPolicy.Tracked.DetailTiers;
+            var tierFacts = ThemeHost.Facts.Value.Tiers;
             UseEffect(_publishAccentTracked);                                   // grading / spec
             UseEffect(_republishAccent, DepKey.From(Tok.Epoch));                // a theme flip or a definition swap re-derives the accent (X44)
 
@@ -687,19 +694,12 @@ public static partial class Detail
             string routeKey = spec.RouteKey;
             RefreshCaches(id);
 
-            // ── the mode, with both anti-flicker fail-safes (ch 03 §6) ──
-            float pageWidthEstimate = Breakpoints.EstimatePageWidthFromViewport(viewportSig.Peek().Width);
-            int mode = _mode.Value;
-            // (a) pre-measure seed: a NARROWER arm is always safe to seed; a wider one is the flicker.
-            if (!_modeInitialized && _measuredW <= 0f)
-                mode = Math.Max(mode, Breakpoints.InitialModeForViewport(pageWidthEstimate));
-            // (b) self-heal: never RENDER a mode wider than the last measured width supports (0 = widest).
-            if (_measuredW > 0f)
-            {
-                int fit = Breakpoints.ModeFor(_measuredW, mode, _modeInitialized);
-                if (fit > mode) mode = fit;
-            }
-            // The Hero page layout forces the vertical SYSTEM for track pages only; _mode keeps tracking the real width.
+            // ── the mode: the committed tier of the mode ladder. Seeded before the first measure from the content region the frame resolved the
+            //    window tiers on (synchronous), so the first frame is already in its final arm; a crossing after it lands on the first non-resized
+            //    frame (the resized frame lays the old arm out at the new size, clipped) and the arms cross-fade (the structure's frame view).
+            float pageWidthEstimate = Breakpoints.EstimatePageWidth(in tierFacts, viewportSig.Peek().Width);
+            int mode = DetailLadders.ModeOf(_modeTier.Value);
+            // The Hero page layout forces the vertical SYSTEM for track pages only; the mode tier keeps tracking the real width.
             if (cfg.Content == DetailContent.Tracks && pageLayout == DetailPageLayout.Hero)
                 mode = Breakpoints.VerticalMode;
             bool vertical = mode == Breakpoints.VerticalMode;
@@ -741,7 +741,7 @@ public static partial class Detail
             bool episodes = cfg.Content == DetailContent.Episodes;
             Element content = episodes
                 ? (spec.Slots.Episodes is null ? new BoxEl { Grow = 1f } : _sEpisodes(vertical)) with { Key = "episodes:" + routeKey }
-                : TableFor(spec, vertical, verticalTracks, pageWidthEstimate, routeKey);
+                : TableFor(spec, vertical, verticalTracks, ListSeed(cfg, vertical, mode, uniform, pageWidthEstimate, tierLayouts.For(tierFacts).RailRest), routeKey);
             string contentKey = episodes ? "right:eps" : "right:tracks";
 
             var acts = TrampolineActions(spec.Actions);
@@ -796,7 +796,8 @@ public static partial class Detail
             // "full title for 1-2 frames" flicker, 2026-09-30).
             float railMaxLive = _railMax.Value;
             float railMax = _measuredW > 0f ? railMaxLive : RailPolicy.MaxWidthForPage(pageWidthEstimate, mode);
-            float railW = resizable ? rail.ComposedWidth(mode, railMax) : RailWidthForMode(mode, cfg);
+            float wideRest = tierLayouts.For(tierFacts).RailRest;
+            float railW = resizable ? rail.ComposedWidth(mode, railMax, wideRest) : RailWidthForMode(mode, cfg);
 
             Contracts.DetailTwoColumnProps twoColumn;
             if (collapsed)
@@ -814,11 +815,11 @@ public static partial class Detail
             }
             else
             {
-                int rungs = rungsMemo.Value;                                      // re-renders only on a rung cross
-                // The window rung is the title's size CAP; the size drawn and its natural line box are the title rule's
-                // (VerticalLayout.RailTitleTypeFor), never an authored pair.
-                float titleSize = (rungs & RungTall) != 0 ? 40f : 28f;
-                int descLines = (rungs & RungShort) != 0 ? 3 : 6;
+                int rung = _heightRung.Value;                                     // re-renders only on a rung cross
+                // The window rung is the title's size CAP (the structure's, per rung); the size drawn and its natural line box are the title
+                // rule's (VerticalLayout.RailTitleTypeFor), never an authored pair.
+                float titleSize = tierLayouts.RailTitleFor(rung);
+                int descLines = tierLayouts.DescriptionFor(rung);
                 twoColumn = new Contracts.DetailTwoColumnProps
                 {
                     Collapsed = false, Resizable = resizable, RailWidth = railW,
@@ -858,6 +859,17 @@ public static partial class Detail
                 with { Key = rail.GripKey };
 
         // ── the table ──
+
+        /// <summary>The list column's pre-measure width, the table tier's seed: the page estimate, less the rail the two-column arm will compose
+        /// (its width for this mode and cap), so a launch into the wide arm seeds the list's own tier, not the page's.</summary>
+        float ListSeed(in Config cfg, bool vertical, int mode, bool uniform, float pageWidthEstimate, float wideRest)
+        {
+            if (vertical || !cfg.Rail || pageWidthEstimate <= 0f) return pageWidthEstimate;
+            var rail = _rails[(int)RailPolicy.ScopeFor(cfg.RailScope, uniform)];
+            float max = RailPolicy.MaxWidthForPage(pageWidthEstimate, mode);
+            float railW = RailPolicy.ResizableFor(cfg.RailResizable, mode) ? rail.ComposedWidth(mode, max, wideRest) : RailWidthForMode(mode, cfg);
+            return MathF.Max(0f, MathF.Min(pageWidthEstimate, R.Space.PageMaxW) - railW);
+        }
 
         Element TableFor(FrameSpec spec, bool vertical, bool verticalTracks, float widthSeed, string routeKey)
         {
@@ -979,11 +991,12 @@ public static partial class Detail
             if (r.W <= 0f) return;
             _measuredW = r.W;
             if (r.H > 0f) _measuredH = r.H;
-            int md = Breakpoints.ModeFor(r.W, _mode.Peek(), _modeInitialized);
-            _modeInitialized = true;
-            if (md != _mode.Peek()) _mode.Value = md;     // value-gated: a re-render only on a breakpoint cross
-            // …and the rail's page-aware ceiling, quantized to 8 DIP and value-gated for the same reason.
-            float mx = RailPolicy.MaxWidthForPage(r.W, md);
+            // The mode ladder's source (value-gated). Its tier crosses only through the host: a crossing found here is PENDING until the first
+            // frame that is not resized, then commits before FLIP capture and animates (themes plan 3.3); a plain write of the mode here snapped.
+            if (r.W != _pageW.Peek()) _pageW.Value = r.W;
+            // …and the rail's page-aware ceiling, quantized to 8 DIP and value-gated. Every two-column arm shares one formula (the vertical arm
+            // composes no rail, so its cap is never read), so it does not wait for the mode's commit.
+            float mx = RailPolicy.MaxWidthForPage(r.W, RailPolicy.WideMode);
             if (mx != _railMax.Peek()) _railMax.Value = mx;
         }
 
@@ -996,9 +1009,20 @@ public static partial class Detail
         /// in a narrow arm the scope has never been dragged in, the persisted width once it has — clamped, never written back.</summary>
         void RestRails()
         {
-            int mode = _mode.Value;
+            int mode = _modeTier is { } tier ? DetailLadders.ModeOf(tier.Value) : RailPolicy.WideMode;
             float max = _railMax.Value;
-            for (int i = 0; i < _rails.Length; i++) _rails[i].Rest(mode, max);
+            // The window tier's resting width (Classic Huge's 320): tracked, so a crossing re-rests every undragged rail on the frame it commits.
+            float wideRest = ShellPolicy.Tracked.DetailTiers.For(ThemeHost.Facts.Value.Tiers).RailRest;
+            for (int i = 0; i < _rails.Length; i++) _rails[i].Rest(mode, max, wideRest);
+        }
+
+        /// <summary>The mode ladder's seed before the first measure: the content region the frame resolved the window tiers on, else the viewport
+        /// less a sidebar; unknown (no viewport yet) seeds the widest arm, as the shell always did.</summary>
+        float PageSeed()
+        {
+            float vw = _viewport?.Peek().Width ?? 0f;
+            float seed = Breakpoints.EstimatePageWidth(ThemeHost.Facts.Peek().Tiers, vw);
+            return seed > 0f ? seed : float.PositiveInfinity;
         }
 
         void PlayAll()
@@ -1042,12 +1066,6 @@ public static partial class Detail
             var accent = ComputeAccent(spec);
             _accent.Value = accent;
             _pageAccent.SetIfChanged(new Design.PageAccent(accent, accent, spec.RouteKey));
-        }
-
-        int ComputeHeightRungs()
-        {
-            float h = _viewport is { } v ? v.Value.Height : 0f;
-            return (h >= TallWindowH ? RungTall : 0) | (h < ShortWindowH ? RungShort : 0);
         }
 
         void RefreshCaches(Identity id)

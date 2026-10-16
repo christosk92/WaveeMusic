@@ -98,7 +98,7 @@ public static class ClassicTiers
         CompactFloor: TierPolicy.WindowFloor,
         ShortFloor: ShortFloorH,
         Rungs: ImmutableArray<NamedRung>.Empty,
-        Ladders: ImmutableArray<NamedLadder>.Empty);
+        Ladders: ClassicDetailTiers.Ladders);   // the detail page's mode, table and height sub-ladders (Tiers.Detail.cs, TC5)
 
     // ── the frame's records (per window tier) ────────────────────────────────────────────────────────────────────────────
 

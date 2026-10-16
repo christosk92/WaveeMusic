@@ -78,6 +78,26 @@ public static class ContextSheets
         if (options?.OnClosed is { } onClosed) handle.ClosedAction = () => onClosed(OverlayCloseCause.Programmatic);
         return handle;
     }
+
+    /// <summary>Open a card's own body (<paramref name="content"/>, built now) in the same sheet a context menu opens as (TC5: the list's filter card at
+    /// Compact, board C-Flyouts-Compact), over the whole window and light-dismissed. <paramref name="closed"/> runs once it has closed. The handle.</summary>
+    public static OverlayHandle OpenContent(IOverlayService svc, Func<Element> content, Action? closed = null)
+    {
+        OverlayHandle? handle = null;
+        var props = new ContextSheetProps
+        {
+            Primary = [], Rows = [],
+            Content = content(),
+            Close = () => handle?.Close(),
+        };
+        handle = svc.OpenAt(
+            () => new RectF(0f, 0f, 1f, 1f),
+            () => ViewSlots.View(ViewKeys.OverlayContextSheet, props),
+            FlyoutPlacement.Full,
+            new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Raw));
+        if (closed is not null) handle.ClosedAction = closed;
+        return handle;
+    }
 }
 
 /// <summary>The shadow of the engine's <c>WithContextMenu</c> (see <see cref="ContextSheets"/>).</summary>

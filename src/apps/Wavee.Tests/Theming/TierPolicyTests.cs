@@ -340,7 +340,7 @@ public sealed class TierPolicyTests
         Assert.Equal(200f, standard.TabMaxW);
     }
 
-    // ── the named-ladder mechanism (Classic declares none: its player bar's levels are PlayerBarPolicy's) ──────────────────
+    // ── the named-ladder mechanism (Classic declares the detail page's three, TC5; its player bar's levels are PlayerBarPolicy's) ──
 
     [Fact]
     public void A_structure_may_declare_a_named_ladder_a_core_model_reads_by_id()
@@ -353,7 +353,11 @@ public sealed class TierPolicyTests
         Assert.Same(ladder, policy.Ladder("test.bar"));
         Assert.False(policy.TryGetLadder("no.such.ladder", out _));
         Assert.Throws<InvalidOperationException>(() => policy.Ladder("no.such.ladder"));
-        Assert.True(ClassicTierFixture.Tiers.Ladders.IsDefaultOrEmpty);   // Classic's player bar is PlayerBarPolicy, not a ladder
+        // Classic names the detail page's mode, table and height ladders (Tiers.Detail.cs) and nothing else: its player bar is PlayerBarPolicy.
+        Assert.Equal(3, ClassicTierFixture.Tiers.Ladders.Length);
+        Assert.Same(Wavee.Themes.Classic.ClassicDetailTiers.Mode, ClassicTierFixture.Tiers.Ladder(DetailLadders.Mode));
+        Assert.Same(Wavee.Themes.Classic.ClassicDetailTiers.Table, ClassicTierFixture.Tiers.Ladder(DetailLadders.Table));
+        Assert.Same(Wavee.Themes.Classic.ClassicDetailTiers.Height, ClassicTierFixture.Tiers.Ladder(DetailLadders.Height));
         Assert.False(ClassicTierFixture.Tiers.TryGetLadder("player.bar", out _));
     }
 

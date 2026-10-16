@@ -1,5 +1,6 @@
 // ── Entities/Detail.cs ─────────────────────────────────────────────────────────────────────────────────────────────
-// THE SHARED DETAIL FRAME'S PURE RULES: the width breakpoints and their hysteresis, the vertical/hero arithmetic (the
+// THE SHARED DETAIL FRAME'S PURE RULES: the page modes and the page-width estimate (the mode and table LADDERS are the structure's since TC5:
+// `TierPolicy.Ladders`, Classic `Rules\Tiers.Detail.cs`), the vertical/hero arithmetic (the
 // title type plan, the reserved band, the collapse ladder, the slot map), the rail policy and its persisted keys, the
 // header merge, the notice ladder, the context band's geometry and scroll spy, the cover latch, the skeleton's bar
 // geometry, the per-kind config table, the header text (eyebrow / byline / meta lines) and the per-context sort keys.
@@ -30,8 +31,8 @@
 // list state (Playlist.RowsStateOf). Deleted, not ported: DetailLiveRefresh, DetailOwnerIds, HeroCta,
 // DetailRail.BilledArtists, DetailConfig.CapTitle/Columns, PreReleaseDerivation/AlbumReleaseFactsRules (Album.cs, Wave 5).
 //
-// Engine-free except Loc (FluentGpu.Localization) and ItemsSelectionMode (FluentGpu.Controls): nothing here reads a
-// signal, mounts a node or ticks a clock.
+// Engine-free except Loc (FluentGpu.Localization) and ItemsSelectionMode (FluentGpu.Controls): nothing here mounts a node or
+// ticks a clock, and the one signal read is `VerticalLayout.ActionRowExtra`'s untracked peek of the window tier's record (TC5).
 
 using System.Globalization;
 using FluentGpu.Controls;
@@ -68,72 +69,43 @@ public static partial class Detail
 {
     // ══ 1. BREAKPOINTS ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The page's width ladders with resize hysteresis: the table TIER ladder (measured on the right column)
-    /// and the page MODE ladder (measured on the page's own content column). Different boxes — keep them apart.</summary>
+    /// <summary>The page's two width ladders' IDENTITIES: the table TIER (measured on the list column, 0 the widest … 6) and the page MODE
+    /// (measured on the page's own content column, 0 the widest two-column arm … <see cref="VerticalMode"/>). Different boxes — keep them
+    /// apart. WHERE they break and how they hold is the structure's (its <c>TierPolicy</c>'s named ladders, <see cref="Wavee.Theming.DetailLadders"/>,
+    /// Classic: <c>Tiers.Detail.cs</c>, TC5): the frame and the table resolve them through <c>UseTier</c>, so a crossing found after mount commits
+    /// on the first non-resized frame and animates (themes plan 3.3). What stays here is the page arithmetic every arm needs.</summary>
     public static class Breakpoints
     {
+        /// <summary>The relief ladder's re-admit band and the shared hysteresis grammar of the width-fitted lanes (the search field, the
+        /// table's relief): yield at once, re-admit once the width clears the threshold by this much.</summary>
         public const float TierHysteresisDip = 24f;
-        public const float ModeHysteresisDip = 24f;
-
-        public static int NominalTierFor(float w) =>
-            w <= 0f ? 0 : w >= 860f ? 0 : w >= 720f ? 1 : w >= 560f ? 2 : w >= 440f ? 3 : w >= 340f ? 4 : w >= 300f ? 5 : 6;
-
-        /// <summary>Pre-measure seed, so a 360-DIP launch never composes the wide table for its first frame.</summary>
-        public static int InitialTierForViewport(float viewportWidth) => NominalTierFor(viewportWidth);
 
         /// <summary>The WINDOW viewport overstates the page by roughly a sidebar. Deliberately the sidebar's SMALLEST
         /// plausible footprint: a too-small allowance can seed a too-wide arm (the hero-remount flicker this exists to
-        /// prevent); a too-large one only seeds a narrower arm, which the next Measure self-corrects.</summary>
+        /// prevent); a too-large one only seeds a narrower arm, which the next Measure self-corrects. The fallback where
+        /// no frame published the content width (<c>TierFacts.ContentWidth</c>).</summary>
         public const float ShellChromeAllowanceDip = Design.Size.NavPaneW;
 
         /// <summary>A pre-measure PAGE width from the WINDOW viewport — what the mode/tier seeds and the vertical hero's
-        /// pre-measure geometry read instead of the raw viewport.</summary>
+        /// pre-measure geometry read where no frame published the content width.</summary>
         public static float EstimatePageWidthFromViewport(float viewportWidth)
             => MathF.Max(0f, viewportWidth - ShellChromeAllowanceDip);
 
-        /// <summary>Narrow immediately; re-admit a column only once the width clears the threshold by
-        /// <see cref="TierHysteresisDip"/>. <paramref name="initialized"/> false ⇒ <paramref name="prev"/> is a seed,
-        /// not a tier the user has seen: take the nominal tier outright.</summary>
-        public static int TierFor(float w, int prev, bool initialized = true)
-        {
-            if (w <= 0f) return prev;
-            if (!initialized) return NominalTierFor(w);
-            int nominal = NominalTierFor(w);
-            if (nominal >= prev) return nominal;
-            int dipped = NominalTierFor(w - TierHysteresisDip);
-            return dipped < prev ? dipped : prev;
-        }
+        /// <summary>The pre-measure PAGE width: the live viewport less what the frame's chrome took from it when the tiers were last resolved
+        /// (<paramref name="facts"/>: the window less the nav pane and an inline panel, synchronous, so the first frame is already in its final
+        /// mode). The facts are a snapshot taken at a crossing, so the chrome's share is read from them and applied to the LIVE width (a resize that
+        /// crossed nothing leaves their widths behind). <see cref="EstimatePageWidthFromViewport"/> where no frame resolved them.</summary>
+        public static float EstimatePageWidth(in Wavee.Theming.TierFacts facts, float viewportWidth)
+            => facts.ContentWidth > 0f && facts.ViewportWidth > 0f && viewportWidth > 0f
+                ? MathF.Max(0f, viewportWidth - MathF.Max(0f, facts.ViewportWidth - facts.ContentWidth))
+                : EstimatePageWidthFromViewport(viewportWidth);
 
         public const int VerticalMode = 3;
-        public const float VerticalEnterW = 540f;
-        public const float VerticalExitW = 580f;
         public const float TwoColumnContentMinW = 300f;
 
         /// <summary>The vertical page may use tier 6 all the way down; two-column frames keep the 300-DIP guard.</summary>
         public static float ContentMinWidthForMode(int mode)
             => mode == VerticalMode ? 0f : TwoColumnContentMinW;
-
-        public static int NominalModeFor(float w) =>
-            w <= 0f ? 0 : w >= 820f ? 0 : w >= 660f ? 1 : w >= 560f ? 2 : VerticalMode;
-
-        /// <summary>Pre-measure page-system seed. Ultra-narrow launches choose Vertical before the first bounds callback.</summary>
-        public static int InitialModeForViewport(float viewportWidth) => NominalModeFor(viewportWidth);
-
-        /// <summary>820/660 crossings use <see cref="ModeHysteresisDip"/>; the 540/580 vertical band is its own. A
-        /// Vertical answer on a widening measurement (nominal or dipped) is coerced to 2.</summary>
-        public static int ModeFor(float w, int currentMode, bool initialized)
-        {
-            if (w <= 0f) return currentMode;
-            if (!initialized) return NominalModeFor(w);
-            if (currentMode == VerticalMode) return w >= VerticalExitW ? NominalModeFor(w) : VerticalMode;
-            if (w < VerticalEnterW) return VerticalMode;
-            int nominal = NominalModeFor(w);
-            if (nominal == VerticalMode) return 2;
-            if (nominal >= currentMode) return nominal;
-            int dipped = NominalModeFor(w - ModeHysteresisDip);
-            if (dipped == VerticalMode) dipped = 2;
-            return dipped < currentMode ? dipped : currentMode;
-        }
     }
 
     // ══ 2. THE VERTICAL / HERO ARITHMETIC ════════════════════════════════════════════════════════════════════════════
@@ -419,9 +391,15 @@ public static partial class Detail
             if (meta) { h += MetaRowHeight; blocks++; }
             if (pulse) { h += PulseRowHeight; blocks++; }
             if (chart) { h += ChartRowHeight; blocks++; }
-            h += ActionRowHeight; blocks++;
+            h += ActionRowHeight + ActionRowExtra; blocks++;
             return (h, blocks);
         }
+
+        /// <summary>How much taller than <see cref="ActionRowHeight"/> the window tier's action row is (the structure's
+        /// <c>DetailTierLayout.HeroActionExtra</c>: Classic Compact's 40 targets add 8). One untracked read of the facts, so the skeleton's reserved
+        /// band and the loaded hero's pre-measure binds still agree row for row; 0 where no structure resolved the tiers.</summary>
+        public static float ActionRowExtra
+            => Wavee.Theming.ThemeHost.Policies.Peek().DetailTiers.For(Wavee.Theming.ThemeHost.Facts.Peek().Tiers).HeroActionExtra;
 
         /// <summary>Row flow's title HEIGHT BUDGET: the cover edge less the other chrome and its gaps. The description
         /// lives in the band under the hero now, never in this column, so it never steers the title's size. Stacked ⇒ 0.</summary>
@@ -680,11 +658,16 @@ public static partial class Detail
         /// <summary>THE resting width: what the live rail shows for a (scope, mode, maximum), derived from the REMEMBERED
         /// width alone. Wide arm — the persisted width, as ever. Narrow arms — the breakpoint rail until the user has
         /// dragged this scope, then their own width. Always clamped through <see cref="ClampLive"/>, and the clamp is
-        /// never written back to the store, so widening the window restores the remembered width.</summary>
-        public static float RestingWidth(float storedWidth, RailScope scope, int mode, float maxWidth)
+        /// never written back to the store, so widening the window restores the remembered width.
+        /// <para><paramref name="wideRest"/> (the window tier's, <c>DetailTierLayout.RailRest</c>: Classic Huge's 320) replaces the authored
+        /// default in the wide arm while the scope has never been dragged; 0 keeps it. A dragged scope always rests at its own width.</para></summary>
+        public static float RestingWidth(float storedWidth, RailScope scope, int mode, float maxWidth, float wideRest = 0f)
         {
             float stored = ClampStored(storedWidth, scope);
-            float want = mode == WideMode || HasDraggedWidth(storedWidth, scope) ? stored : NarrowRestWidthFor(mode);
+            bool dragged = HasDraggedWidth(storedWidth, scope);
+            float want = dragged ? stored
+                : mode == WideMode ? (wideRest > 0f ? wideRest : stored)
+                : NarrowRestWidthFor(mode);
             return ClampLive(want, scope, maxWidth);
         }
 
@@ -696,10 +679,11 @@ public static partial class Detail
         /// <paramref name="maxWidth"/>) this answers what that rest WILL write; once it has, the live (possibly dragged)
         /// width, clamped on read as ever.</summary>
         public static float ComposedWidth(float liveWidth, float storedWidth, RailScope scope,
-                                          int restedMode, float restedMax, int mode, float maxWidth)
-            => restedMode == mode && restedMax == maxWidth
+                                          int restedMode, float restedMax, int mode, float maxWidth,
+                                          float restedWideRest = 0f, float wideRest = 0f)
+            => restedMode == mode && restedMax == maxWidth && restedWideRest == wideRest
                 ? ClampLive(liveWidth, scope, maxWidth)
-                : RestingWidth(storedWidth, scope, mode, maxWidth);
+                : RestingWidth(storedWidth, scope, mode, maxWidth, wideRest);
 
         /// <summary>What a drag RELEASE persists. A drag that merely parked against a page-imposed cap keeps the wider
         /// remembered width (the cap is the page's verdict, not the user's); any other release is the user's own number.</summary>

@@ -5,7 +5,7 @@
 // cover and info measure, the attribution run's type, and the insights sheet's geometry (width, padding, toggle, close, header title, the cast,
 // the spline). They are data, not decisions (WVTH003 allows literals only in `Rules\**`).
 //
-// WHAT IS NOT HERE, AND WHY. The width bands of the rail (the breakpoint ladder `Detail.Breakpoints`, the rest, minimum, maximum and page-aware cap of
+// WHAT IS NOT HERE, AND WHY. The page-mode, table and height LADDERS and the per-tier records are `Tiers.Detail.cs` (TC5). The width bands of the rail (the rest, minimum, maximum and page-aware cap of
 // `Detail.RailPolicy`, the collapse detent) and the hero's arithmetic (`Detail.VerticalLayout`, `BandLayout`, `Skeleton.RailPlanFor`, `RailLayout`)
 // are DECISIONS the core host and the table both read and the skeleton must agree with row for row, so they stay core, pure and unit-tested
 // (`DetailRailPolicyTests`, `DetailSkeletonGeometryTests`); the views are handed their results through the props, and no view compares a width with
@@ -21,6 +21,14 @@ namespace Wavee.Themes.Classic;
 /// <summary>The constants of Classic's detail frame views.</summary>
 public static class ClassicDetailLayout
 {
+    // ── the arms' cross-fade (a page-mode crossing, themes plan 3.3) ───────────────────────────────────────────────────
+
+    /// <summary>An arm enters and leaves on its opacity alone: the shared cross-fade of a tier swap.</summary>
+    public static readonly EnterExit ArmFade = new(Opacity: 0f, Active: true);
+
+    /// <summary>The cross-fade's timing (the plan's ~160 ms, <c>Design.Motion.Fast</c>).</summary>
+    public static MotionTokenDef ArmFadeMotion => MotionTok.ControlFast;
+
     // ── the rail and its collapsed strip ──────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The decode bucket every rail / strip / show-header cover asks for (the shelf card's 256 bucket: a warm texture on arrival).</summary>
@@ -114,6 +122,15 @@ public static class ClassicDetailLayout
 
     /// <summary>The WinUI sheet spline (0.1, 0.9, 0.2, 1.0): the slide and the cast.</summary>
     public static readonly EasingSpec SheetSpline = EasingSpec.CubicBezier(0.1f, 0.9f, 0.2f, 1.0f);
+
+    /// <summary>The docked pane's padding around the sheet's own 16 (board C-Liked-Huge: 24 / 20 overall): what the docked column adds.</summary>
+    public static readonly Edges4 DockPadding = new(4f, 8f, 4f, 8f);
+
+    /// <summary>The docked pane's slot easing its width open and closed on the sheet's timings (350 ms open, 120 ms close, the sheet spline), revealing
+    /// the full-width column inside it, so the list beside it yields smoothly.</summary>
+    public static readonly LayoutTransition DockReveal = new(TransitionChannels.Size | TransitionChannels.Position,
+        TransitionDynamics.Tween(350f, SheetSpline), SizeMode.Reveal,
+        ExitDynamics: TransitionDynamics.Tween(120f, SheetSpline));
 
     /// <summary>The cast's gradient: clear at its left edge, 35 % black at the sheet's edge.</summary>
     public static ColorF SheetCastClear => ColorF.FromRgba(0, 0, 0, 0);
