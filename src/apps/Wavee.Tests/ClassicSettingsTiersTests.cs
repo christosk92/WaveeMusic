@@ -81,6 +81,21 @@ public class ClassicSettingsTiersTests
         Assert.False(l.TabsScroll);
     }
 
+    [Theory]
+    // tier, title glyph, caption on the title's line, space above, space under (C-Settings-* and C-SettingsSections-*; Standard is the tuned 32 / 8, stacked, no glyph)
+    [InlineData(WidthTier.Compact, true, false, 20f, 6f)]
+    [InlineData(WidthTier.Small, true, true, 24f, 8f)]
+    [InlineData(WidthTier.Standard, false, false, 32f, 8f)]
+    [InlineData(WidthTier.Huge, true, true, 28f, 4f)]
+    public void The_head_and_the_section_headers_follow_the_boards(WidthTier tier, bool glyph, bool inline, float top, float bottom)
+    {
+        var l = ClassicSettingsTiers.For(tier);
+        Assert.Equal(glyph, l.TitleGlyph);
+        Assert.Equal(inline, l.SectionInline);
+        Assert.Equal(top, l.SectionTop);
+        Assert.Equal(bottom, l.SectionBottom);
+    }
+
     [Fact]
     public void Huge_4K_reads_the_Huge_record_because_Classic_draws_no_4K_band()
         => Assert.Same(ClassicSettingsTiers.For(WidthTier.Huge), ClassicSettingsTiers.For(WidthTier.Huge4K));

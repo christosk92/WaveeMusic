@@ -95,21 +95,60 @@ internal static partial class ClassicPlaylist
 
     // ══ 2. RECOMMENDED SONGS ════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The registered template of <see cref="ViewKeys.PlaylistRecs"/>: the header over the rows, one slot each (keyed <c>rec:&lt;track slot&gt;</c>).</summary>
+    /// <summary>The registered template of <see cref="ViewKeys.PlaylistRecs"/>: the header over the rows, one slot each (keyed <c>rec:&lt;track slot&gt;</c>).
+    /// Where the tier record leads an EMPTY playlist's section (Compact, C-Empty-Compact) the lead stands over the header: "Nothing here yet", its line
+    /// and the field that finds songs to add; the section's commands are the tier's targets (40 at Compact).</summary>
     public static Element RecsTemplate(PlaylistRecsProps p, in ViewContext ctx)
     {
-        var kids = new Element[p.Rows.Count + 1];
-        kids[0] = RecsHeader(p);
+        var tier = ClassicDetailTiers.Of(ctx.Tier());
+        float edge = MathF.Max(ClassicPlaylistLayout.RecsButton, tier.Target);
+        var kids = new List<Element>(p.Rows.Count + 2);
+        if (tier.EmptyLead && p.Lead is { } lead) kids.Add(EmptyLead(lead));
+        kids.Add(RecsHeader(p, edge));
         for (int i = 0; i < p.Rows.Count; i++)
-            kids[i + 1] = ctx.View(ViewKeys.PlaylistRecRow, p.Rows[i]) with { Key = "rec:" + p.Rows[i].Slot };
-        return new BoxEl { Direction = 1, Children = kids };
+            kids.Add(ctx.View(ViewKeys.PlaylistRecRow, p.Rows[i]) with { Key = "rec:" + p.Rows[i].Slot });
+        return new BoxEl { Direction = 1, Children = kids.ToArray() };
     }
 
-    /// <summary>The header: the title, the "No suggestions right now" note after an empty reply, and the spinner (asked) or the refresh.</summary>
-    static Element RecsHeader(PlaylistRecsProps p) => new BoxEl
+    static readonly string[] s_noSuggestions = [];
+
+    /// <summary>The empty playlist's lead (C-Empty-Compact): the centred 20/28 "Nothing here yet" over its line, 16 over and 4 under, then the 40 field that
+    /// looks for songs to add (its submit is the core's: Search for the query), 12 apart, at the rows' 16 gutter. It enters with the late rows' fade.</summary>
+    static Element EmptyLead(PlaylistRecsLead lead) => new BoxEl
+    {
+        Key = "rec:lead", Direction = 1, Gap = ClassicPlaylistLayout.LeadGap,
+        Padding = new Edges4(Spacing.L, 0f, Spacing.L, ClassicPlaylistLayout.LeadGap),
+        Enter = ClassicDetailKit.FadeUp,
+        Children =
+        [
+            new BoxEl
+            {
+                Key = "rec:lead:message", Direction = 1, AlignItems = FlexAlign.Center, Gap = Spacing.XS,
+                Padding = new Edges4(0f, ClassicPlaylistLayout.LeadMessagePadTop, 0f, ClassicPlaylistLayout.LeadMessagePadBottom),
+                Children =
+                [
+                    Subtitle(Loc.Get(Strings.Detail.Empty.NoTracks)) with { MaxLines = 2, Wrap = TextWrap.WrapWholeWords },
+                    Caption(Loc.Get(Strings.Detail.Empty.FindSongs)) with { MaxLines = 2, Wrap = TextWrap.WrapWholeWords },
+                ],
+            },
+            new BoxEl
+            {
+                Key = "rec:lead:find", Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                Children =
+                [
+                    AutoSuggestBox.Create(s_noSuggestions, Loc.Get(Strings.Detail.Empty.SearchSongs), onQuerySubmitted: lead.Find, queryIcon: Icons.Search,
+                        minHeight: ClassicDetailTiers.CompactTarget, cornerRadius: Radii.Control, grow: 1f),
+                ],
+            },
+        ],
+    };
+
+    /// <summary>The header: the title, the "No suggestions right now" note after an empty reply, and the spinner (asked) or the refresh, each
+    /// <paramref name="edge"/> square (the tuned 32, the Compact 40).</summary>
+    static Element RecsHeader(PlaylistRecsProps p, float edge) => new BoxEl
     {
         Key = "rec:header", Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center,
-        MinHeight = Track.RowMetrics.RowHeight, Padding = new Edges4(Spacing.L, 0f, Spacing.L, 0f),
+        MinHeight = MathF.Max(Track.RowMetrics.RowHeight, edge + ClassicPlaylistLayout.RecsHeaderPadY), Padding = new Edges4(Spacing.L, 0f, Spacing.L, 0f),
         Children =
         [
             BodyStrong(Loc.Get(Strings.Detail.Recommended)) with { Color = Tok.TextPrimary, Grow = 1f, MinWidth = 0f, MaxLines = 1 },
@@ -119,13 +158,13 @@ internal static partial class ClassicPlaylist
             p.Loading
                 ? new BoxEl
                 {
-                    Width = ClassicPlaylistLayout.RecsButton, Height = ClassicPlaylistLayout.RecsButton, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                    Width = edge, Height = edge, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                     Children = [Track.Spinner()],
                 }
                 : ToolTip.Wrap(new BoxEl
                 {
-                    Width = ClassicPlaylistLayout.RecsButton, Height = ClassicPlaylistLayout.RecsButton,
-                    Corners = CornerRadius4.All(ClassicPlaylistLayout.RecsButton / 2f), AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                    Width = edge, Height = edge,
+                    Corners = CornerRadius4.All(edge / 2f), AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                     HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary, BrushTransitionMs = Design.Motion.Faster,
                     HoverScale = R.Motion.ScaleEmphatic.Hover, PressScale = R.Motion.ScaleEmphatic.Press,
                     Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, OnClick = p.Refresh,
@@ -146,24 +185,45 @@ internal static partial class ClassicPlaylist
         int slot = p.Slot;
         var add = p.Add;
         var play = p.Play;
+        // At Compact (C-Playlist-Compact, C-Empty-Compact) the "+" is a 40 target around its 28 ring and the row has no duration lane.
+        bool compact = ClassicDetailTiers.Of(ctx.Tier()).EmptyLead;
+        float box = compact ? ClassicDetailTiers.CompactTarget : ClassicPlaylistLayout.RecAddBox;
 
         Element addCell = p.Busy
             ? new BoxEl
             {
-                Width = ClassicPlaylistLayout.RecAddBox, Height = ClassicPlaylistLayout.RecAddBox, Shrink = 0f, AlignItems = FlexAlign.Center,
+                Width = box, Height = box, Shrink = 0f, AlignItems = FlexAlign.Center,
                 Justify = FlexJustify.Center, Children = [Track.Spinner()],
             }
-            : ToolTip.Wrap(Track.AddButton(() => add(slot)), Loc.Get(Strings.Detail.AddToPlaylist));
+            : ToolTip.Wrap(compact ? CompactAdd(() => add(slot)) : Track.AddButton(() => add(slot)), Loc.Get(Strings.Detail.AddToPlaylist));
         var trailing = new BoxEl
         {
             Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Shrink = 0f,
-            Children =
-            [
-                addCell,
-                R.Type.TrackMeta(Track.Format.TrackTime(t.DurationMs)) with { Width = ClassicPlaylistLayout.RecDurationW, MaxLines = 1 },
-            ],
+            Children = compact
+                ? [addCell]
+                : [addCell, R.Type.TrackMeta(Track.Format.TrackTime(t.DurationMs)) with { Width = ClassicPlaylistLayout.RecDurationW, MaxLines = 1 }],
         };
         var data = Track.RowData(t, new Track.RowDataOptions(OnClick: () => play(slot), Trailing: trailing));
         return Controls.Surface(data, s_recShape);
     }
+
+    /// <summary>The Compact "+": a 40 target (the brief's Compact rule) around the row's 28 ring.</summary>
+    static Element CompactAdd(Action onAdd) => new BoxEl
+    {
+        Width = ClassicDetailTiers.CompactTarget, Height = ClassicDetailTiers.CompactTarget, Shrink = 0f,
+        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = CornerRadius4.All(ClassicDetailTiers.CompactTarget / 2f),
+        HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary, BrushTransitionMs = Design.Motion.Faster,
+        PressScale = R.Motion.ScaleEmphatic.Press,
+        Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, BlocksDragArm = true, OnClick = onAdd,
+        Children =
+        [
+            new BoxEl
+            {
+                Width = ClassicPlaylistLayout.RecAddBox, Height = ClassicPlaylistLayout.RecAddBox, HitTestVisible = false,
+                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Corners = CornerRadius4.All(ClassicPlaylistLayout.RecAddBox / 2f), BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault,
+                Children = [Icon(Icons.Add, ClassicPlaylistLayout.RecAddGlyph, Tok.TextPrimary)],
+            },
+        ],
+    };
 }

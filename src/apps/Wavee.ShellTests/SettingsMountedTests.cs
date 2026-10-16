@@ -50,7 +50,8 @@ public sealed class SettingsMountedTests(ShellHost host)
             shell.RunFrames(60);
         });
 
-    // Classic tuning T1 + F4: the head is the 40/52 page title alone (no glyph, no meta line), and the first section header has no top margin:
+    // Classic tuning T1 + F4: the head is the 40/52 page title (no meta line; the gear glyph before it only where the tier's record draws one, TierLayoutTests.Settings),
+    // and the first section header has no space above it:
     // the tab lane's own 16 is the whole gap above it.
     [Fact]
     public void The_head_is_the_page_title_alone_and_the_first_section_sits_on_the_lanes_top()

@@ -335,7 +335,7 @@ public static partial class Shell
     /// (window height − 96 DIP, G-210) rather than trusting the engine's own fixed 468-DIP <c>MenuFlyout</c> cap, which
     /// closes 0.2.9's uncapped-roster trap (ch 20 §9, parity 81) even on a short/undocked window. The body re-renders WHILE OPEN
     /// (a transfer landing swaps the checks in place, parity 79).</summary>
-    static void BarToggleDevicePicker(IOverlayService overlay, Ref<NodeHandle> anchor, Ref<OverlayHandle?> handle)
+    internal static void BarToggleDevicePicker(IOverlayService overlay, Ref<NodeHandle> anchor, Ref<OverlayHandle?> handle)
     {
         if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
         PlayerVerbs.Default.OpenDevicePicker();                                // the cluster hears it, as the official client's picker does

@@ -86,6 +86,16 @@
 // `DetailTierLayout.AsideDocked` / `.InsightsRestOpen` and `DetailTierPolicy.HugeWide` / `.HugeWideRung` (the Huge 4K record), `AboutLayout.Aside`,
 // the optional `NavPanePolicy.HugeWidth` (the sidebar's width at Huge while the user never resized it), `ThemePolicies.LibraryTiers` with
 // `LibraryTierPolicy` (the navigator's default width per tier while the user never dragged it), and `ThemeState.IsCustomized`.
+// 1.22 (the remaining board items on the detail pages, Home, Search, Settings, the library and the now-playing sheet): the optional `PanelTransportProps.Source`
+// (`PanelSourceFacts`: the sheet's "Playing from" header), `.Device` (`PanelDeviceFacts`) and `.ToggleDevicePicker` (its Devices door); the unavailable-songs bar
+// (`TrackUnavailableBarArgs`, `TrackUnavailableBarTemplate`, the optional `TrackChromeTemplates.UnavailableBar` / `.UnavailableBarExtent`, over the core's
+// `Track.UnavailableTally`, `FilterModel.HiddenByPlayable` / `.OffersHide`: "Hide them" turns on `FilterFlags.PlayableOnly`); the optional `DetailTableTier.ListIndex`
+// with `Track.ColumnSet.IndexHidden` / `Track.Lanes.IndexHidden` (a row form with no "#" lane), `PlaylistRecsProps.Lead` (`PlaylistRecsLead`: an empty
+// playlist's search lead), `VerticalItemRole.Recommendations` and the optional `recommendations` argument of `Detail.VerticalLayout.ItemCount` / `RowSlots` /
+// `ItemRole` (the vertical arm's Recommended songs), the internal kit's `ITrackCommandKit.SortCommand`; the optional `FacetRowProps.ToggleFriends`,
+// `SearchBodyModel.ArtistRail` and `SearchPageProps.SelectArtists`; and `LibraryTierPolicy.SmallNavWidth`, `.SmallReaderNavWidth`, `.SmallCardCellMin` and
+// `CardCellMinFor` (the Small navigator and its card floor; `NavWidthFor` answers at Small too). `LibraryShowPaneProps.Primary` takes the button's `ControlSize`
+// (the 40 command row at Compact): a changed signature, made before any external theme existed, as 1.2 did.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -101,7 +111,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 21;
+    public const int Minor = 22;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

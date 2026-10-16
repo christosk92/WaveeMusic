@@ -28,6 +28,21 @@ internal static class ClassicSettingsRules
     /// <summary>A section header's glyph and how far it drops to sit on the title's first line.</summary>
     public const float SectionGlyph = 16f, SectionGlyphDrop = 2f;
 
+    /// <summary>A one-row section header (Small, Huge: C-SettingsSections-Small / -Huge): the gap between the title and the caption on its line.</summary>
+    public const float SectionInlineGap = 8f;
+
+    /// <summary>The page title's gear glyph where the tier draws one (C-Settings-Compact / -Small / -Huge: 24, 12 before the title).</summary>
+    public const float TitleGlyph = 24f, TitleGlyphGap = 12f;
+
+    /// <summary>The title glyph arrives and leaves on a tier crossing with the form fade (opacity over <c>Design.Motion.Fast</c>), while the title beside it
+    /// slides (<see cref="HeadSlide"/>).</summary>
+    public static LayoutTransition HeadFade => new(TransitionChannels.Opacity, TransitionDynamics.Tween(Design.Motion.Fast, Easing.SmoothOut),
+        Enter: new EnterExit(Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
+        ExitDynamics: TransitionDynamics.Tween(Design.Motion.Fast, Easing.FluentAccelerate));
+
+    /// <summary>What moves inside the head and the section headers on a tier crossing (the title behind its glyph, a caption between its two slots) slides there.</summary>
+    public static LayoutTransition HeadSlide => new(TransitionChannels.Position, TransitionDynamics.Tween(Design.Motion.Standard, Easing.SmoothOut));
+
     /// <summary>N4: the collapsed picker group's answer in an expander header.</summary>
     public const float ValueTagSize = 14f;
 

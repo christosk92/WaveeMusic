@@ -93,6 +93,11 @@ internal interface ITrackCommandKit
     /// <summary>The disclosure chevron after a command that opens a flyout (the Sort button's one chevron, tuned Classic D6).</summary>
     Element Chevron();
 
+    /// <summary>The Sort command: the sort glyph, the current order's <paramref name="label"/> and the chevron (tuned Classic D6). A structure may draw
+    /// the glyph and the chevron alone where its tier says so, the order's word then in the tooltip (C-Album-Small). Appended (contract 1.22).</summary>
+    Element SortCommand(string label, bool active, Action onClick, Action<NodeHandle> onRealized)
+        => Labeled(Icons.Sort, label, active, onClick, onRealized, Chevron());
+
     /// <summary>The Filter command: the funnel + <paramref name="label"/> or the funnel alone, with the count badge while filters are on.
     /// The button's slot never changes size with the count, so a filter turning on moves nothing.</summary>
     Element FilterCommand(int count, bool labelled, string label, Action onClick, Action<NodeHandle> onRealized);
@@ -161,6 +166,36 @@ internal delegate Element TrackPlaceholderTemplate(in Track.ColumnSet set, Track
 /// and takes no room); read it only inside bound props, so a recycle never re-renders the slot.</summary>
 internal delegate Element TrackGroupHeaderTemplate(Func<Track.DateGroupHead?> head, float padX);
 
+// ── the unavailable-songs bar ─────────────────────────────────────────────────────────────────────────────────────────
+
+/// <summary>What the core decided for one render of the unavailable-songs bar (contract 1.22, boards C-Unavailable / C-Unavailable-Compact): the
+/// list holds rows that cannot be played and none is hidden yet, so the bar offers "Hide them" (<c>Track.FilterFlags.PlayableOnly</c>, the
+/// filter card's own "Hide songs I can’t play" switch). The core keeps the bar's slot mounted while the list could show it and flips
+/// <see cref="Shown"/>: the template reserves its band while shown and releases it, animated, when not.</summary>
+internal sealed class TrackUnavailableBarArgs
+{
+    /// <summary>The bar is on: the list has rows the filter would hide and the filter is off.</summary>
+    public required bool Shown { get; init; }
+
+    /// <summary>The short sentence ("2 songs here can’t be played."), already worded.</summary>
+    public required string Summary { get; init; }
+
+    /// <summary>The sentence with its reasons ("2 songs here can’t be played: one isn’t available in your country, one isn’t out yet."), already worded.</summary>
+    public required string Explained { get; init; }
+
+    /// <summary>The action's word ("Hide them").</summary>
+    public required string ActionLabel { get; init; }
+
+    /// <summary>Turn the filter on (the bar then leaves).</summary>
+    public required Action Hide { get; init; }
+
+    /// <summary>The bar's horizontal edges in the chrome: the rows' gutter in the hero arm, the row plates' inset in the two-column arm.</summary>
+    public required float InsetX { get; init; }
+}
+
+/// <summary>Draws the unavailable-songs bar's slot from what the core decided (contract 1.22).</summary>
+internal delegate Element TrackUnavailableBarTemplate(TrackUnavailableBarArgs args);
+
 // ── the record ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 /// <summary>The structure's chrome for the track table (<see cref="TrackListStyle.Chrome"/>).</summary>
@@ -190,4 +225,11 @@ public sealed class TrackChromeTemplates
 
     /// <summary>The head of a date group (tuned Classic D16).</summary>
     internal TrackGroupHeaderTemplate GroupHeader { get; }
+
+    /// <summary>The unavailable-songs bar (contract 1.22); null draws none.</summary>
+    internal TrackUnavailableBarTemplate? UnavailableBar { get; init; }
+
+    /// <summary>The band the bar takes in the chrome while shown, its gap to what follows included, at the window tier on screen (a tracked
+    /// read, contract 1.22): the hero arm's pinned chrome adds it to the rows' clip inset. Null (or no <see cref="UnavailableBar"/>): 0.</summary>
+    internal Func<float>? UnavailableBarExtent { get; init; }
 }

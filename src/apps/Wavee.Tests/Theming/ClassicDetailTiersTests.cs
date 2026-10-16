@@ -320,4 +320,83 @@ public sealed class ClassicDetailTiersTests
         Assert.Equal(new TierEdge(3200f, NarrowHold: 40f, WidenHold: 0f), edge);
         Assert.True(ClassicTierFixture.Tiers.IndexOfRung(ClassicDetailTiers.HugeWideRung) >= 0);
     }
+
+    // ── the remaining Compact and Small board items (fix/remaining-pages: C-Playlist-Compact, C-Liked-Compact, C-Empty-Compact, C-Album-Small) ───────
+
+    [Fact]
+    public void Compact_drops_a_lists_index_lane_and_draws_filter_as_a_glyph()
+    {
+        var c = ClassicDetailTiers.Compact;
+        Assert.False(c.Core.Table.ListIndex);   // C-TrackList compact: a playlist's / Liked's Modern row has no "#"
+        Assert.True(c.FilterGlyph);
+        Assert.True(c.EmptyLead);
+        Assert.False(c.SortGlyph);              // the Compact bar LEADS with the sort word
+        Assert.Same(ClassicDetailRail.Standard, c.Rail);   // the Compact page is the vertical arm: no rail
+        foreach (var tier in new[] { WidthTier.Small, WidthTier.Standard, WidthTier.Huge })
+        {
+            var r = ClassicDetailTiers.For(tier);
+            Assert.True(r.Core.Table.ListIndex);
+            Assert.False(r.FilterGlyph);
+            Assert.False(r.EmptyLead);
+        }
+    }
+
+    [Fact]
+    public void Small_draws_sort_as_a_glyph_and_pads_its_rail_16_12_with_rows_10_apart()
+    {
+        var s = ClassicDetailTiers.Small;
+        Assert.True(s.SortGlyph);
+        Assert.False(s.FilterGlyph);            // C-Album-Small keeps the Filter word
+        var rail = s.Rail;
+        Assert.Equal(new Edges4(12f, 16f, 12f, 16f), rail.Padding);
+        Assert.Equal(10f, rail.Gap);
+        Assert.True(rail.BreakAfterPrimary);    // the Play row breaks after Play
+        Assert.Equal(200f, rail.ContentWidth(224f));   // the 224 rail keeps its 200 cover
+        Assert.Equal(ClassicDetailRail.Standard.ContentWidth(224f), rail.ContentWidth(224f));   // so a crossing never resizes the cover
+    }
+
+    [Theory]
+    [InlineData(WidthTier.Standard)]
+    [InlineData(WidthTier.Huge)]
+    public void Standard_and_Huge_keep_the_tuned_rail_and_the_labelled_sort(WidthTier tier)
+    {
+        var r = ClassicDetailTiers.For(tier);
+        Assert.False(r.SortGlyph);
+        Assert.Same(ClassicDetailRail.Standard, r.Rail);
+        Assert.Equal(ClassicTiers.RailPadding, r.Rail.Padding);
+        Assert.Equal(Wavee.Detail.RailLayout.Gap, r.Rail.Gap);
+        Assert.False(r.Rail.BreakAfterPrimary);
+    }
+
+    [Fact]
+    public void A_hidden_index_lane_leaves_the_tracks_the_floor_and_the_art_centre()
+    {
+        var compact = new Track.ColumnSet(Album: false, By: false, Date: false, Plays: false, Heart: false, Thumb: true, HeartTrailing: true, Compact: true);
+        var list = compact with { IndexHidden = true };
+        // The Compact list row: art · title · heart · more (C-TrackList compact, a playlist).
+        Assert.Equal(4, Track.TracksFor(in list, 40f).Length);
+        Assert.Equal(Track.TracksFor(in compact, 40f).Length - 1, Track.TracksFor(in list, 40f).Length);
+        var lanes = Track.TableRules.LanesOf(in list);
+        Assert.True(lanes.IndexHidden);
+        float gap = Track.RowMetrics.ColGapFor(list.Tier), pad = Track.RowMetrics.PadXFor(list.Tier);
+        Assert.Equal(Track.Lane.Num + gap,
+            Track.TableRules.MinWidthFor(Track.TableRules.LanesOf(in compact), gap, pad) - Track.TableRules.MinWidthFor(in lanes, gap, pad), 3);
+        Assert.True(Track.TableRules.Relieve(in lanes, 3).IndexHidden);   // relief never brings the lane back
+        // The art centre moves left by the lane and its gap.
+        Assert.Equal(Track.Lane.Num + gap, Track.RowMetrics.ArtCentreIndent(in compact, 40f) - Track.RowMetrics.ArtCentreIndent(in list, 40f), 3);
+    }
+
+    [Theory]
+    [InlineData(0, 3)]    // an empty playlist: the hero, the chrome and the section alone (C-Empty-Compact)
+    [InlineData(1, 4)]
+    [InlineData(50, 53)]
+    public void The_hero_arm_appends_the_recommendations_after_its_rows(int visible, int count)
+    {
+        Assert.Equal(count, Wavee.Detail.VerticalLayout.ItemCount(visible, recommendations: true));
+        Assert.Equal(VerticalItemRole.Recommendations, Wavee.Detail.VerticalLayout.ItemRole(2 + visible, visible, recommendations: true));
+        if (visible > 0) Assert.Equal(VerticalItemRole.ExpandableTrack, Wavee.Detail.VerticalLayout.ItemRole(1 + visible, visible, recommendations: true));
+        // Without the section the slot map is the old one (an empty list keeps its placeholder slot).
+        Assert.Equal(2 + Math.Max(1, visible), Wavee.Detail.VerticalLayout.ItemCount(visible));
+        Assert.Equal(VerticalItemRole.Empty, Wavee.Detail.VerticalLayout.ItemRole(2 + visible, visible));
+    }
 }

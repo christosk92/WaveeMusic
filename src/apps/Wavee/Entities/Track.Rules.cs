@@ -109,11 +109,13 @@ public readonly partial struct Track
     /// shows only on the hovered (or focused) row — every row of the collection is liked, so a column of hearts says nothing.</para>
     /// <para><paramref name="Compact"/> is the structure's Compact row form (<c>DetailTableTier.CompactRows</c>, board C-TrackList compact): no column
     /// header (its hairline stays), and a Modern row states its duration in its subline instead of a lane of its own
-    /// (<see cref="RowMetrics.ShowDuration"/>).</para></summary>
+    /// (<see cref="RowMetrics.ShowDuration"/>).</para>
+    /// <para><paramref name="IndexHidden"/> drops the "#" lane (<c>DetailTableTier.ListIndex</c> false: a Modern list row at Compact, board C-TrackList
+    /// compact, whose now-playing row is told by its accent title). The width track, the cell count, every row builder and the header read it.</para></summary>
     public readonly record struct ColumnSet(bool Album, bool By, bool Date, bool Plays, bool Heart, bool Thumb,
                                             bool Actions = true, int Tier = 0, bool Tempo = false, bool Expand = false,
                                             bool Artist = false, bool Classic = false, bool HeartTrailing = false,
-                                            bool Quiet = false, bool Compact = false);
+                                            bool Quiet = false, bool Compact = false, bool IndexHidden = false);
 
     /// <summary>What the list is sorted by; <see cref="Index"/> = the context's own order. PERSISTED — new columns append
     /// and existing values never move.</summary>
@@ -131,10 +133,11 @@ public readonly partial struct Track
     /// <summary>The trailing lanes: the one command lane ("…") and the versions chevron's lane.</summary>
     public readonly record struct TrailingColumns(bool Actions, bool Expand);
 
-    /// <summary>The lanes a table draws, as pure geometry — the relief ladder's whole input beside the gap and inset.</summary>
+    /// <summary>The lanes a table draws, as pure geometry — the relief ladder's whole input beside the gap and inset. <paramref name="IndexHidden"/>:
+    /// the set has no "#" lane (<see cref="ColumnSet.IndexHidden"/>).</summary>
     public readonly record struct Lanes(
         bool Heart, bool Thumb, bool Artist, bool Album, bool By, bool Date, bool Plays, bool Tempo,
-        bool Actions, bool Expand);
+        bool Actions, bool Expand, bool IndexHidden = false);
 
     // ══ 2. THE TABLE RULES: skins, ladders, the sort cycle, the relief ladder ════════════════════════════════════════
 
@@ -277,15 +280,16 @@ public readonly partial struct Track
             Date: l.Date && step < 4,
             Plays: l.Plays && step < 1,
             Tempo: l.Tempo && step < 2,
-            Actions: l.Actions, Expand: l.Expand);
+            Actions: l.Actions, Expand: l.Expand, IndexHidden: l.IndexHidden);
 
         /// <summary>The narrowest width at which <paramref name="l"/> still clears the identity floors: fixed lanes at
         /// their <see cref="Lane"/> widths, identity lanes at their FLOORS, one gap between each pair and the grid's own
-        /// padding on both sides. Title and duration are unconditional, so the seed carries both.</summary>
+        /// padding on both sides. Title and duration are unconditional, so the seed carries both; the "#" lane unless the set drops it.</summary>
         public static float MinWidthFor(in Lanes l, float colGap, float padX)
         {
-            float w = Lane.Num + Lane.TitleFloor + Lane.Duration;
-            int cols = 3;
+            float w = Lane.TitleFloor + Lane.Duration;
+            int cols = 2;
+            if (!l.IndexHidden) { w += Lane.Num; cols++; }
             if (l.Heart) { w += Lane.Heart; cols++; }
             if (l.Thumb) { w += Lane.Thumb; cols++; }
             if (l.Artist) { w += Lane.ArtistFloor; cols++; }
@@ -325,7 +329,7 @@ public readonly partial struct Track
         /// metric measures the lane the grid will actually build (DetailTracks.cs:626).</summary>
         public static Lanes LanesOf(in ColumnSet s) => new(
             Heart: s.Heart || RowMetrics.ShowHeartTrailing(in s), Thumb: s.Thumb, Artist: s.Artist, Album: s.Album, By: s.By, Date: s.Date,
-            Plays: s.Plays, Tempo: RowMetrics.ShowTempo(in s), Actions: s.Actions, Expand: s.Expand);
+            Plays: s.Plays, Tempo: RowMetrics.ShowTempo(in s), Actions: s.Actions, Expand: s.Expand, IndexHidden: s.IndexHidden);
 
         /// <summary>The set with <paramref name="step"/> lanes yielded, applied in ONE place so header, rows, shimmer and
         /// tracks agree. Tempo is cleared only where the lane was actually up: the flag also means "this surface wants
@@ -401,9 +405,11 @@ public readonly partial struct Track
         {
             float gap = ColGapFor(set.Tier);
             float x = PadXFor(set.Tier) - (set.Classic ? 0f : RowInset);   // the grid's own left pad
-            x += Lane.Num;
-            if (set.Heart) x += gap + HeartCol;
-            return set.Thumb ? x + gap + art / 2f : x + gap;
+            bool lead = false;                                              // a lane laid out before the art (its gap follows it)
+            if (!set.IndexHidden) { x += Lane.Num; lead = true; }
+            if (set.Heart) { x += (lead ? gap : 0f) + HeartCol; lead = true; }
+            float before = lead ? gap : 0f;
+            return set.Thumb ? x + before + art / 2f : x + before;
         }
 
         /// <summary>The drawer's indent: the art centre less the rail's own offset, never negative (DetailTracks.cs:3347).</summary>
@@ -996,10 +1002,34 @@ public readonly partial struct Track
         }
     }
 
+    /// <summary>The rows <see cref="FilterFlags.PlayableOnly"/> would hide, counted by why: the "Hide them" bar's numbers (boards C-Unavailable /
+    /// C-Unavailable-Compact). <paramref name="NotAvailable"/>: ruled unavailable with no release instant (<see cref="Track.Unplayable()"/>: withdrawn,
+    /// region-locked, gone, "isn’t available in your country"); <paramref name="NotYetOut"/>: ruled unavailable until a release instant still ahead
+    /// ("isn’t out yet"). A row is counted once, under the first that holds.</summary>
+    public readonly record struct UnavailableTally(int NotAvailable = 0, int NotYetOut = 0)
+    {
+        /// <summary>Every row the filter would hide.</summary>
+        public int Total => NotAvailable + NotYetOut;
+
+        /// <summary>This tally with one more row of the given verdict (a playable or unruled row adds nothing).</summary>
+        public UnavailableTally With(bool notYetOut, bool unplayable)
+            => unplayable ? this with { NotAvailable = NotAvailable + 1 }
+             : notYetOut ? this with { NotYetOut = NotYetOut + 1 }
+             : this;
+    }
+
     /// <summary>The filter predicate shared by the table and the tests.</summary>
     public static class FilterModel
     {
         const long SecondsPerDay = 86_400L;
+
+        /// <summary>Does <see cref="FilterFlags.PlayableOnly"/> hide a row of this verdict? Only a CONFIRMED unavailable: <see cref="Matches"/> and
+        /// the "Hide them" bar's count read this one rule, so the bar can never promise a row the filter keeps.</summary>
+        public static bool HiddenByPlayable(bool notYetOut, bool unplayable) => notYetOut || unplayable;
+
+        /// <summary>Does the list offer "Hide them" (boards C-Unavailable / C-Unavailable-Compact)? While it has rows the filter would hide and the
+        /// filter is off: hiding them (or the card's own switch) takes the bar away, and turning the switch off brings it back.</summary>
+        public static bool OffersHide(in UnavailableTally tally, in FilterState filter) => tally.Total > 0 && !filter.PlayableOnly;
 
         public static bool Matches(in FilterRow row, string query, in FilterState filter, long nowUnixSeconds)
         {
@@ -1009,7 +1039,7 @@ public readonly partial struct Track
             // Only a CONFIRMED unavailable is hidden: an unruled row is never not-yet-out nor unplayable, so a surface
             // that carries no verdict at all is never emptied — and a passed release instant keeps a stale verdict's row.
             // A ruled row with NO instant (`Track.Unplayable`) has nothing to wait for and is hidden outright.
-            if (filter.PlayableOnly && (row.NotYetOut || row.Unplayable)) return false;
+            if (filter.PlayableOnly && HiddenByPlayable(row.NotYetOut, row.Unplayable)) return false;
 
             if (filter.Origin == OriginFilter.Streamed && row.Local) return false;
             if (filter.Origin == OriginFilter.Local && !row.Local) return false;

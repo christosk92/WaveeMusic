@@ -45,6 +45,29 @@ public sealed partial class TierLayoutTests
             var card = scene.AbsoluteRect(Node(shell, ClassicFrameLayout.ContentCardKey));
             float gutter = ClassicTiers.PageOf(tiers).Gutter;
 
+            // The head: the gear glyph before the title where the record draws one (C-Settings-Compact / -Small / -Huge), none at Standard, and none where a Short
+            // window gives the title row away.
+            bool glyph = layout.TitleGlyph && tiers.Height != HeightTier.Short;
+            Assert.True(glyph == !shell.Find("settings:title-glyph").IsNull, $"{size}: the title glyph is {(glyph ? "missing" : "drawn")} (record {layout.Tier})");
+
+            // The section headers: the caption rides the title's line where the record says so (Small, Huge: the boards' baseline row), otherwise it hangs under
+            // the title in the title's own column (past the 16 glyph and its 8 gap at most).
+            const string captionPrefix = "settings:section-caption:";
+            const float titleColumn = 16f + 8f;
+            foreach (var (captionNode, captionKey) in shell.FindPrefix(captionPrefix))
+            {
+                if (scene.InCollapsedSubtree(captionNode)) continue;
+                var header = shell.Find("settings:section:" + captionKey[captionPrefix.Length..]);
+                if (header.IsNull) continue;
+                var c = scene.AbsoluteRect(captionNode);
+                if (c.W <= 0.5f) continue;
+                float lead = c.X - scene.AbsoluteRect(header).X;
+                if (layout.SectionInline)
+                    Assert.True(lead > titleColumn + 0.5f, $"{size}: {captionKey} hangs under its title ({lead} from the header's edge), not on its line");
+                else
+                    Assert.True(lead <= titleColumn + 0.5f, $"{size}: {captionKey} rides its title's line ({lead} from the header's edge)");
+            }
+
             // The tab strip: one scrolling lane (Compact, Small) or the stock strip in the column (Standard, Huge).
             Assert.Equal(layout.TabsScroll, !shell.Find("settings:tabs").IsNull);
             if (layout.TabsScroll)

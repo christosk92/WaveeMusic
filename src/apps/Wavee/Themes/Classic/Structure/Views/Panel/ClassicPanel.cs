@@ -17,7 +17,7 @@
 // PER WINDOW TIER (TC2, `ClassicPanelTiers`; the core decides `PanelView.Placement` from the committed window tier): DOCKED (Standard,
 // Huge) the arm is the band described above; FLOATING (Small) it is a 340-wide r8 card with the ring and the flyout shadow that slides in
 // from the right; a SHEET (Compact) has r8 top corners and a 16-tall grab strip, slides UP from the window's bottom edge, and its
-// now-playing arm carries the sheet's Lyrics and Queue doors under the hero (C-NowPlaying-Compact). The frame places the host and the
+// now-playing arm carries its own header (close · "Playing from" · ⋯, `ClassicSheetHeader`) and the Lyrics, Devices and Queue doors under the hero (C-NowPlaying-Compact). The frame places the host and the
 // scrim; a crossing that changes the placement re-seeds the slide at rest (the host's own FLIP carries the move).
 //
 // THE SHEET IS A MODAL SURFACE (the Compact overlays fix). Over the page and the mini bar it takes the wheel (`BlocksBackgroundScroll` on the
@@ -25,7 +25,7 @@
 // moves into it with Tab trapped there (`ClassicModalScope`), Escape closes it, and its HEAD (the grab strip and the row under it) is the shared
 // bottom-sheet drag (`ClassicSheetDrag`): it follows the pointer 1:1, the scrim fading with it, and a release past the threshold closes the
 // panel (the slide-out runs from where the drag left it) or springs it back. The now-playing sheet is its own column (C-NowPlaying-Compact,
-// `ClassicNowPlayingSheet`): the art shrinks so the title, the transport and the Lyrics and Queue doors fit the window; the rest scrolls.
+// `ClassicNowPlayingSheet`): the art shrinks so the title, the transport and the doors fit the window; the rest scrolls.
 //
 // The frame is a Component (as `Rail.FrameCore` was): the slide is a layout effect on the component's rendered root, its
 // seeded-once flag is a field, and the arms are the same elements in the same positions, so a mode switch reconciles exactly as
@@ -111,34 +111,82 @@ internal static class ClassicPanel
         ],
     };
 
-    /// <summary>The now-playing sheet's doors under the hero (C-NowPlaying-Compact: Lyrics and Queue, 48 tall): each opens that body in
-    /// the same sheet.</summary>
-    internal static Element SheetDoors(Action<PanelMode> show) => new BoxEl
+    /// <summary>The now-playing sheet's doors under the hero (C-NowPlaying-Compact: Lyrics, Devices and Queue, three equal 48-tall columns):
+    /// Lyrics and Queue open that body in the same sheet; Devices (where <paramref name="transport"/> offers one) opens the device picker,
+    /// named for the device playback is on. The set is fixed for the props (built once), so the row never re-flows.</summary>
+    internal static Element SheetDoors(Action<PanelMode> show, PanelTransportProps? transport)
     {
-        Key = ClassicPanelTiers.SheetDoorsKey, Direction = 0, Shrink = 0f, Gap = ClassicPanelTiers.SheetDoorGap,
-        Padding = new Edges4(ClassicPanelTiers.SheetDoorInset, ClassicPanelTiers.SheetDoorPadY, ClassicPanelTiers.SheetDoorInset, ClassicPanelTiers.SheetDoorPadY),
-        Children =
-        [
-            SheetDoor(WaveeIcons.Lyrics, WaveeIcons.Font, Loc.Get(Strings.Player.Lyrics), () => show(PanelMode.Lyrics)),
-            SheetDoor(Icons.Queue, null, Loc.Get(Strings.Player.Queue), () => show(PanelMode.Queue)),
-        ],
+        bool devices = transport is { Device: not null, ToggleDevicePicker: not null };
+        Element lyrics = SheetDoor(WaveeIcons.Lyrics, WaveeIcons.Font, Loc.Get(Strings.Player.Lyrics), () => show(PanelMode.Lyrics));
+        Element queue = SheetDoor(Icons.Queue, null, Loc.Get(Strings.Player.Queue), () => show(PanelMode.Queue));
+        return new BoxEl
+        {
+            Key = ClassicPanelTiers.SheetDoorsKey, Direction = 0, Shrink = 0f, Gap = ClassicPanelTiers.SheetDoorGap,
+            Padding = new Edges4(ClassicPanelTiers.SheetDoorInset, ClassicPanelTiers.SheetDoorPadY, ClassicPanelTiers.SheetDoorInset, ClassicPanelTiers.SheetDoorPadY),
+            Children = devices
+                ? [
+                    lyrics,
+                    // The door is a component (its anchor, its picker handle, the roster it reads); its column takes the door's share of the row.
+                    new BoxEl
+                    {
+                        Key = ClassicPanelTiers.SheetDevicesKey, Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 1,
+                        Children = [Embed.Comp(transport!, static () => new ClassicSheetDeviceDoor())],
+                    },
+                    queue,
+                  ]
+                : [lyrics, queue],
+        };
+    }
+
+    static Element SheetDoor(string glyph, string? font, string label, Action onClick)
+        => DoorBox(glyph, font, label, onClick, latched: false, realized: null) with { Grow = 1f, Basis = 0f, MinWidth = 0f };
+
+    /// <summary>One door: the glyph over its label (12/16), centred, the label ellipsised in the door's width. <paramref name="latched"/> inks it in the
+    /// accent (the Devices door while playback is on another device).</summary>
+    internal static BoxEl DoorBox(string glyph, string? font, string label, Action onClick, bool latched, Action<NodeHandle>? realized)
+    {
+        ColorF ink = latched ? Tok.AccentTextPrimary : Tok.TextSecondary;
+        ColorF hover = latched ? Tok.AccentTextPrimary : Tok.TextPrimary;
+        return new BoxEl
+        {
+            Height = ClassicPanelTiers.SheetDoorH,
+            Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Gap = Spacing.XS, Corners = Radii.ControlAll,
+            Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, OnClick = onClick,
+            OnRealized = realized,
+            Children =
+            [
+                new TextEl(glyph) { Size = ClassicPanelTiers.SheetDoorGlyph, FontFamily = font ?? Tok.Definition.Fonts.Icon, Color = ink, HoverColor = hover },
+                CentredLine(new TextEl(label)
+                {
+                    Size = ClassicPanelTiers.SheetDoorText, LineHeight = ClassicPanelTiers.SheetDoorTextLine, Color = ink,
+                    MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
+                }),
+            ],
+        }.Interactive(Interaction.Subtle);
+    }
+
+    /// <summary>One line of text centred across its column and ellipsised when it is wider (a row that lets the text shrink: the engine's text
+    /// has no alignment of its own).</summary>
+    internal static Element CentredLine(TextEl text) => new BoxEl
+    {
+        Direction = 0, Justify = FlexJustify.Center, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+        Children = [text with { Shrink = 1f, MinWidth = 0f }],
     };
 
-    static Element SheetDoor(string glyph, string? font, string label, Action onClick) => new BoxEl
+    // ── the now-playing sheet's header (C-NowPlaying-Compact) ────────────────────────────────────────────────────────
+
+    /// <summary>A 40 x 40 glyph button of the sheet's header (the close chevron, the "⋯"); a disabled one is drawn quiet and takes no press.</summary>
+    internal static BoxEl SheetGlyphButton(string glyph, Action? onClick, bool enabled) => new BoxEl
     {
-        Grow = 1f, Basis = 0f, MinWidth = 0f, Height = ClassicPanelTiers.SheetDoorH,
-        Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Gap = Spacing.XS, Corners = Radii.ControlAll,
-        Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, OnClick = onClick,
+        Width = ClassicPanelTiers.SheetHeaderButton, Height = ClassicPanelTiers.SheetHeaderButton, Shrink = 0f,
+        Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
+        Role = AutomationRole.Button, Focusable = enabled, AllowFocusOnInteraction = false, IsEnabled = enabled,
+        Cursor = enabled ? CursorId.Hand : null, OnClick = enabled ? onClick : null,
         Children =
         [
-            new TextEl(glyph) { Size = ClassicPanelTiers.SheetDoorGlyph, FontFamily = font ?? Tok.Definition.Fonts.Icon, Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary },
-            new TextEl(label)
-            {
-                Size = ClassicPanelTiers.SheetDoorText, LineHeight = ClassicPanelTiers.SheetDoorTextLine, Color = Tok.TextSecondary,
-                MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
-            },
+            new TextEl(glyph) { Size = ClassicPanelTiers.SheetHeaderGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = enabled ? Tok.TextPrimary : Tok.TextDisabled },
         ],
-    }.Interactive(Interaction.Subtle);
+    }.Interactive(Interaction.Subtle, enabled);
 
     internal static BoxEl GrowSlot(Element body) => new() { Grow = 1f, MinHeight = 0f, ClipToBounds = true, Children = [body] };
 
@@ -190,7 +238,7 @@ internal static class ClassicPanel
     /// (<see cref="ClassicNowPlayingSheet"/>). The side is bound to the window, so a resize re-fits it in the same frame.</summary>
     internal static Element NowPlayingSheet(PanelProps props, PanelView view, IReadSignal<Size2> vp)
     {
-        Func<float> side = () => ClassicPanelTiers.SheetArtSide(vp.Value.Width, vp.Value.Height, ClassicPanelTiers.GrabStripH + Rail.Hero.HeaderRowH);
+        Func<float> side = () => ClassicPanelTiers.SheetArtSide(vp.Value.Width, vp.Value.Height, ClassicPanelTiers.SheetHeadH);
         Element art = Ctx.Provide(SheetArtSide, side, Slots.View(ViewKeys.NowPlayingHero, props.NowPlaying));
         Element hero = view.Pinned == PanelPinned.ArtWithVideoToggle
             ? new BoxEl { ZStack = true, Shrink = 0f, AlignSelf = FlexAlign.Center, Children = [art, ArtVideoToggle(props, sheet: true)] }
@@ -407,10 +455,10 @@ internal sealed class ClassicPanelFrame : Component
         if (body == PanelMode.NowPlaying)
             arm = sheet
                 ? ClassicPanel.Arm(open, placement, surface, edge,
+                    // The sheet's own header (C-NowPlaying-Compact): close · "Playing from" · ⋯, in a column so the component's anchor stretches.
                     ClassicPanel.SheetHead(drag, new BoxEl
                     {
-                        Direction = 1, Padding = new Edges4(Rail.Hero.Inset, 0f, Rail.Hero.Inset, 0f),
-                        Children = [Embed.Comp(props.NowPlaying, static () => new ClassicHeroHeaderRow())],
+                        Direction = 1, Children = [Embed.Comp(props, static () => new ClassicSheetHeader())],
                     }),
                     ClassicPanel.NowPlayingSheet(props, view, vp))
                 : ClassicPanel.Arm(open, placement, surface, edge, null,

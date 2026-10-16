@@ -106,7 +106,7 @@ internal static partial class ClassicSettings
             Grow = 1f, Direction = 1,
             Children =
             [
-                titleGivesWay ? new BoxEl { Key = "settings:title", Height = 0f, HitTestVisible = false } : Header(gutter),
+                titleGivesWay ? new BoxEl { Key = "settings:title", Height = 0f, HitTestVisible = false } : Header(gutter, layout),
                 TabStrip(layout, gutter, props),
                 content,
             ],
@@ -136,16 +136,37 @@ internal static partial class ClassicSettings
 
     // ══ 1. THE SHARED ROW GRAMMAR (0.2.9 `SettingsPage.cs:192-290`, `SettingsShared.cs`) ══════════════════════════
 
-    /// <summary>The section header's margin: a 32-DIP gap above, the 8-DIP breath under.</summary>
-    static Edges4 SectionHeaderMargin => new(0f, Spacing.XXXL, 0f, Spacing.S);
-
-    /// <summary>The page head: the page title alone (40/52 display, no glyph and no meta line), padded (gutter, 16, gutter, 12).</summary>
-    static Element Header(float gutter) => new BoxEl
+    /// <summary>The page head: the page title (40/52 display, no meta line), padded (gutter, 16, gutter, 12), behind the 24 gear glyph where the tier's record
+    /// draws one (C-Settings-Compact / -Small / -Huge; the tuned Standard title stands alone). On a crossing the glyph fades in or out and the title slides
+    /// beside it (both keyed, no tier in the keys).</summary>
+    static Element Header(float gutter, ClassicSettingsLayout layout)
     {
-        Direction = 0, AlignItems = FlexAlign.End,
-        Padding = new Edges4(gutter, Spacing.L, gutter, Spacing.M),
-        Children = [R.Type.SurfaceDisplay(Loc.Get(Strings.Settings.Title)) with { Key = "settings:title", Grow = 1f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
-    };
+        Element title = new BoxEl
+        {
+            Key = "settings:title", Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, Animate = ClassicSettingsRules.HeadSlide,
+            Children = [R.Type.SurfaceDisplay(Loc.Get(Strings.Settings.Title)) with { Grow = 1f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
+        };
+        return new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.End,
+            Padding = new Edges4(gutter, Spacing.L, gutter, Spacing.M),
+            Children = layout.TitleGlyph
+                ? [
+                    new BoxEl
+                    {
+                        Key = TitleGlyphKey, Direction = 0, Width = ClassicSettingsRules.TitleGlyph, Height = ClassicSettingsRules.TitleGlyph, Shrink = 0f,
+                        AlignSelf = FlexAlign.Center, Margin = new Edges4(0f, 0f, ClassicSettingsRules.TitleGlyphGap, 0f), HitTestVisible = false,
+                        Animate = ClassicSettingsRules.HeadFade,
+                        Children = [Icon(Icons.Settings, ClassicSettingsRules.TitleGlyph, Tok.TextPrimary)],
+                    },
+                    title,
+                ]
+                : [title],
+        };
+    }
+
+    /// <summary>The title glyph's node (the tier tests find it where the record draws it).</summary>
+    internal const string TitleGlyphKey = "settings:title-glyph";
 
     /// <summary>N1: a LEFT-aligned column capped by the tier's record (1000, or the pair of them at Huge) — never centred, never full-bleed.</summary>
     static Element ContentColumn(Element body, ClassicSettingsLayout layout) => new BoxEl
@@ -197,8 +218,14 @@ internal static partial class ClassicSettings
     static Element Column(Element[] children, ClassicSettingsLayout layout, int index)
     {
         bool pair = index >= 0;
-        if (children.Length > 0 && children[0] is BoxEl { Margin.Top: > 0f } first)
-            children[0] = first with { Margin = first.Margin with { Top = 0f } };
+        if (children.Length > 0 && children[0] is BoxEl first)
+        {
+            // The space above a section is a section header's own top padding (inside its height reveal) or another opener's top margin: the first has none.
+            if (first.Margin.Top > 0f) first = first with { Margin = first.Margin with { Top = 0f } };
+            if (first.Padding.Top > 0f && first.Key is { } key && key.StartsWith(SectionKeyPrefix, StringComparison.Ordinal))
+                first = first with { Padding = first.Padding with { Top = 0f } };
+            children[0] = first;
+        }
         return new BoxEl
         {
             Key = pair ? ColumnKey + ":" + index : ColumnKey, Direction = 1, Gap = ClassicSettingsRules.CardSpacing, AlignSelf = pair ? FlexAlign.Start : FlexAlign.Stretch,
@@ -229,19 +256,40 @@ internal static partial class ClassicSettings
     /// <summary>The key every section header carries (the column split starts a group at one).</summary>
     const string SectionKeyPrefix = "settings:section:";
 
-    /// <summary>A group eyebrow: 16-DIP glyph + BodyStrong title, optionally a ≤ 2-line caption in the SAME column as
-    /// the title; margin (0, 32, 0, 8). One line centres on the glyph; two lines hang from the top.</summary>
+    /// <summary>The key of a section header's caption (inside the header: the column split reads only the headers' own keys).</summary>
+    internal const string SectionCaptionKeyPrefix = "settings:section-caption:";
+
+    /// <summary>A group eyebrow: 16-DIP glyph + BodyStrong title, optionally a caption. Where the tier's record keeps the caption under the title (Compact, the tuned
+    /// Standard) it is ≤ 2 lines in the SAME column as the title and the header hangs from the top; where it rides the title's line (Small, Huge: the boards'
+    /// baseline row) it is one line that ends in an ellipsis, 8 after the title, its last line on the title's. The record's space above (none above the tab's first,
+    /// <see cref="Column"/>) and under is the header's own padding, so a crossing that changes the header's height or spacing reveals it (`Design.Reveal.Resize`: the
+    /// cards below ride it) while the caption slides between its slots; the tree is the same in every tier.</summary>
     static Element SectionHeader(string title, string? icon = null, string? subtitle = null)
     {
+        var layout = s_layout;
         bool hasSub = subtitle is { Length: > 0 };
+        bool inline = hasSub && layout.SectionInline;
         Element text = hasSub
             ? new BoxEl
             {
-                Direction = 1, Gap = Spacing.XXS, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                Direction = inline ? 0 : 1, Gap = inline ? ClassicSettingsRules.SectionInlineGap : Spacing.XXS,
+                AlignItems = inline ? FlexAlign.End : FlexAlign.Stretch, Grow = 1f, Basis = 0f, MinWidth = 0f,
                 Children =
                 [
-                    BodyStrong(title),
-                    Caption(subtitle!) with { Color = Tok.TextSecondary, MinWidth = 0f, Wrap = TextWrap.Wrap, MaxLines = 2 },
+                    BodyStrong(title) with { Shrink = 0f },
+                    new BoxEl
+                    {
+                        Key = SectionCaptionKeyPrefix + title, Direction = 1, MinWidth = 0f,
+                        Grow = inline ? 1f : 0f, Basis = inline ? 0f : float.NaN, Animate = ClassicSettingsRules.HeadSlide,
+                        Children =
+                        [
+                            Caption(subtitle!) with
+                            {
+                                Color = Tok.TextSecondary, MinWidth = 0f, Wrap = inline ? TextWrap.NoWrap : TextWrap.Wrap, MaxLines = inline ? 1 : 2,
+                                Trim = inline ? TextTrim.CharacterEllipsis : TextTrim.None,
+                            },
+                        ],
+                    },
                 ],
             }
             : BodyStrong(title);
@@ -250,8 +298,9 @@ internal static partial class ClassicSettings
         {
             Key = SectionKeyPrefix + title,
             Direction = 0, Gap = Spacing.S,
-            AlignItems = hasSub ? FlexAlign.Start : FlexAlign.Center,
-            Margin = SectionHeaderMargin,
+            AlignItems = hasSub && !inline ? FlexAlign.Start : FlexAlign.Center,
+            Padding = new Edges4(0f, layout.SectionTop, 0f, layout.SectionBottom),
+            Animate = Design.Reveal.Resize,
             AlignSelf = FlexAlign.Stretch,
             Children = icon is null
                 ? [text]

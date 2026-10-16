@@ -53,7 +53,11 @@ public sealed class HomeHost
     public FacetRowProps RowProps => _rowProps ??= new FacetRowProps(Words, Switch, Index: () => FacetIndex,
         Select: target => Select(target, Tab),
         Dismiss: () => Switch.Value = FacetSwitch.Dismiss(Switch.Peek()),
-        FollowingMemory: id => _followingMemory.TryGetValue(id, out bool on) && on);
+        FollowingMemory: id => _followingMemory.TryGetValue(id, out bool on) && on)
+    {
+        // The facet row's Friend activity button (Classic Compact, contract 1.22): the shell's friends panel, as the title bar's button toggles it.
+        ToggleFriends = static () => Shell.Ui.Toggle(Shell.RailMode.Friends),
+    };
 
     /// <summary>The facet's last-known zone shape on this tab (F30), for the shimmer; false before it was first shown.</summary>
     public bool TryLastShape(string facet, [MaybeNullWhen(false)] out ZoneKind[] kinds) => _lastShape.TryGetValue(facet, out kinds);

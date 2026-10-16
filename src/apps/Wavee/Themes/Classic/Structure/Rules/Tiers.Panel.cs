@@ -81,13 +81,22 @@ public static class ClassicPanelTiers
     /// <summary>The sheet's and the floating panel's corner.</summary>
     public const float Corner = 8f;
 
-    /// <summary>The now-playing sheet's doors under the transport (Lyrics, Queue): 48 tall, 8 apart, inset 16, 8 above and below
-    /// (C-NowPlaying-Compact).</summary>
+    /// <summary>The now-playing sheet's doors under the transport (Lyrics, Devices, Queue: three equal columns): 48 tall, 8 apart, inset 16,
+    /// 8 above and below (C-NowPlaying-Compact).</summary>
     public const float SheetDoorH = 48f, SheetDoorGap = 8f, SheetDoorInset = 16f, SheetDoorPadY = 8f, SheetDoorGlyph = 16f, SheetDoorText = 12f, SheetDoorTextLine = 16f;
+
+    /// <summary>The now-playing sheet's own header under the grab strip (C-NowPlaying-Compact): a 48-tall row inset 8 from the sheet's edges,
+    /// its parts 4 apart: the close chevron (40), "Playing from album" over the source's name (12/16 each, the name bold, centred), the
+    /// "⋯" (40); 16 glyphs.</summary>
+    public const float SheetHeaderH = 48f, SheetHeaderInset = 8f, SheetHeaderGap = 4f, SheetHeaderButton = 40f, SheetHeaderGlyph = 16f,
+        SheetSourceSize = 12f, SheetSourceLine = 16f;
+
+    /// <summary>The now-playing sheet's whole head: the grab strip over the header row.</summary>
+    public const float SheetHeadH = GrabStripH + SheetHeaderH;
 
     // ── the now-playing sheet's column (C-NowPlaying-Compact) ────────────────────────────────────────────────────────
     //
-    //   head      the grab strip and the hero's header row: it stays put and is the sheet's drag handle
+    //   head      the grab strip and the sheet's header row (close · "Playing from" · ⋯): it stays put and is the sheet's drag handle
     //   scroll    the art (12 under the head, centred, at most 320 and never wider than the sheet less 16 either side), then 20 down the
     //             title (20/28) over the artists (14/20) beside the 40 heart, 14 down the seek block (the rail's 32-tall lane over the 16-tall
     //             times), 10 down the 56-tall transport row, the doors (8 + 48 + 8), then the lyrics peek and the sections
@@ -99,6 +108,10 @@ public static class ClassicPanelTiers
     /// (the mounted tests find them).</summary>
     public const string SheetHeadKey = "panel.sheet.head", SheetScrollKey = "panel.sheet.scroll", SheetMetaKey = "panel.sheet.meta",
         SheetTitleKey = "panel.sheet.title", SheetTransportKey = "panel.sheet.transport", SheetDoorsKey = "panel.sheet.doors";
+
+    /// <summary>The node keys of the sheet's header row, its close chevron, its source column, its "⋯" and the Devices door (the mounted tests find them).</summary>
+    public const string SheetHeaderKey = "panel.sheet.header", SheetCloseKey = "panel.sheet.close", SheetSourceKey = "panel.sheet.source",
+        SheetMoreKey = "panel.sheet.more", SheetDevicesKey = "panel.sheet.devices";
 
     /// <summary>The column's side inset, the art's top margin, its largest and smallest side and the room kept under the doors.</summary>
     public const float SheetInset = 16f, SheetArtTop = 12f, SheetArtMax = 320f, SheetArtMin = 96f, SheetBottomRoom = 8f;

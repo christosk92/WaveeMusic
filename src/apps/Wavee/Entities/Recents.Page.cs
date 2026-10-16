@@ -647,7 +647,10 @@ public readonly partial struct Recents
         public void JumpIn(DateOnly date, int monthIndex)
         {
             CalendarDay.Value = date;
-            ZoomController.ZoomInTo(monthIndex);
+            if (IsZoomedOut.Peek()) { ZoomController.ZoomInTo(monthIndex); return; }
+            // A calendar beside the list (a structure's docked Overview, C-Recents-Huge): nothing to zoom, so the list itself is brought to the day.
+            int flat = MapOutToInFunc(monthIndex);
+            if (flat >= 0) ListController.StartBringItemIntoView(flat, alignmentRatio: 0f, animate: true);
         }
 
         public void FocusDay(bool focused, DateOnly date)

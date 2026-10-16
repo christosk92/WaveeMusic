@@ -189,6 +189,33 @@ public class SearchFacetRulesTests
         Assert.Equal([1, 2], into);
     }
 
+    // ── the artist rail (Classic Huge, C-Search-Huge) ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ArtistShelfItems_TopHitArtistsFirst_ThenTheFacet_DedupedAndNeverTheHero()
+    {
+        EntityRef[] hits =
+        [
+            new(EntityKind.Artist, 4), new(EntityKind.Playlist, 5), new(EntityKind.Artist, 3), new(EntityKind.Artist, 4),
+        ];
+        int[] artists = [3, 5, 6, 0];
+        var into = new int[8];
+
+        int n = Search.ArtistShelfItems(hits, artists, skip: new EntityRef(EntityKind.Artist, 3), into);
+
+        // 3 is the hero itself; playlist slot 5 is NOT artist slot 5; slot 0 is "none".
+        Assert.Equal([4, 5, 6], into.AsSpan(0, n).ToArray());
+    }
+
+    [Fact]
+    public void ArtistShelfItems_AHeroOfAnotherKind_SkipsNothing()
+    {
+        int[] artists = [7, 8];
+        var into = new int[4];
+        int n = Search.ArtistShelfItems([], artists, skip: new EntityRef(EntityKind.Playlist, 7), into);
+        Assert.Equal([7, 8], into.AsSpan(0, n).ToArray());
+    }
+
     // ── related links, gates, shimmer, slide, keys, the facet grid ──────────────────────────────────────────────────
 
     [Theory]

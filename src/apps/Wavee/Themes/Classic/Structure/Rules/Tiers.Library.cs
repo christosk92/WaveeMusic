@@ -23,8 +23,16 @@
 // the 340 default, 2 at Compact, 4 at the Huge board's 560.
 //
 // THE NAVIGATOR'S RESTING WIDTH PER TIER (`Policy`, contract 1.21): while the user has never dragged the grip (the stored width is unset or the key's default), the
-// navigator rests at the tier's width: 560 at Huge (C-Library-Huge: the 4-column grid), the artists' reader list 400 (C-LibraryList-Huge); the key's own 340 / 280
-// below Huge. The host applies it (it never writes the store); the first drag makes the width the user's for good.
+// navigator rests at the tier's width: 560 at Huge (C-Library-Huge: the 4-column grid), the artists' reader list 400 (C-LibraryList-Huge); 240 at Small for every kind
+// (C-Library-Small / C-LibraryList-Small, contract 1.22); the key's own 340 / 280 at Standard. The host applies it (it never writes the store); the first drag makes
+// the width the user's for good.
+//
+// THE GRID'S CELL FLOOR AT SMALL (`Policy.SmallCardCellMin`, contract 1.22): the full grid's size-S cell is 96 there (C-Library-Small: two 96 cells in the 240 navigator;
+// the core's 116 would fit one). The S/M/L steps stay the core's; it moves the mounted grid's floor, never its mount key, so a crossing re-fits the grid in place.
+//
+// THE HUGE NAVIGATOR AND ALBUM PANE (C-Library-Huge): the navigator column is TINTED (`NavTinted`: the board's 2 % ink over the card) and the album pane's "Also by …
+// in your library" leaves the bottom of the rows for a 300 ASIDE 32 right of them (`AlsoByAside`, `AlsoByAsideGap`): two columns of 140 covers, 16 / 20 apart. Below
+// Huge the aside is width 0 (it stays in the pane's row, so a crossing eases it) and the strip is the rows' trailing band again.
 //
 // THE PANE HEADER PER TIER: the album and show panes' stated header is 156 tall with its 128 cover 18 from the words at Small and Standard (C-Library), and 200 with a
 // 160 cover 24 from the words at Huge (C-Library-Huge).
@@ -81,6 +89,21 @@ public sealed record ClassicLibraryLayout
 
     /// <summary>The gap between the pane cover and its words (18; C-Library-Huge 24).</summary>
     public float PaneHeaderGap { get; init; } = ClassicLibraryPaneRules.HeaderGap;
+
+    /// <summary>The navigator column carries its own faint tint over the card (C-Library-Huge, C-LibraryList-Huge); the tuned pages leave it on the card's own.</summary>
+    public bool NavTinted { get; init; }
+
+    /// <summary>The album pane's "Also by … in your library" aside beside the rows (C-Library-Huge: 300), 0 where the strip is the rows' trailing band.</summary>
+    public float AlsoByAside { get; init; }
+
+    /// <summary>The air between the rows and the aside (C-Library-Huge: 32).</summary>
+    public float AlsoByAsideGap { get; init; }
+
+    /// <summary>The full grid's size-S cell floor the navigator's shimmer lays its cards at: the host's mount floor for this tier (96 at Small, the core's 116 elsewhere).</summary>
+    public float CardCellMin { get; init; } = LibraryNavMount.CardCellMinFull;
+
+    /// <summary>The aside docks (<see cref="AlsoByAside"/> is not 0).</summary>
+    public bool AlsoByDocked => AlsoByAside > 0f;
 }
 
 /// <summary>Classic's library ladder and records.</summary>
@@ -104,10 +127,11 @@ public static class ClassicLibraryTiers
         Tier = WidthTier.Compact, HeadPad = new Edges4(16f, 12f, 16f, 8f), HeadGap = 12f, ControlH = 40f, ViewCell = 40f, ChipH = 40f, RightMin = 0f,
     };
 
-    /// <summary>Small's head is the tuned head (C-Library-Small draws 12 sides, 16 over it); its pane keeps 300 beside the navigator.</summary>
+    /// <summary>Small's head is the tuned head (C-Library-Small draws 12 sides, 16 over it); its pane keeps 300 beside the navigator, whose grid starts at 96.</summary>
     static readonly ClassicLibraryLayout s_small = new()
     {
         Tier = WidthTier.Small, HeadPad = new Edges4(12f, 16f, 12f, 8f), HeadGap = 8f, ControlH = 32f, ViewCell = 28f, ChipH = 0f, RightMin = 300f,
+        CardCellMin = SmallCardCellMin,
     };
 
     /// <summary>Standard: the tuned design.</summary>
@@ -116,12 +140,22 @@ public static class ClassicLibraryTiers
         Tier = WidthTier.Standard, HeadPad = new Edges4(12f, 16f, 12f, 8f), HeadGap = 8f, ControlH = 32f, ViewCell = 28f, ChipH = 0f, RightMin = 360f,
     };
 
-    /// <summary>Huge (C-Library-Huge): 24 over the head, 16 sides.</summary>
+    /// <summary>Huge (C-Library-Huge): 24 over the head, 16 sides, the tinted navigator and the album pane's 300 "Also by" aside.</summary>
     static readonly ClassicLibraryLayout s_huge = new()
     {
         Tier = WidthTier.Huge, HeadPad = new Edges4(16f, 24f, 16f, 8f), HeadGap = 8f, ControlH = 32f, ViewCell = 28f, ChipH = 0f, RightMin = 480f,
         PaneCover = HugePaneCover, PaneHeaderHeight = HugePaneHeader, PaneHeaderGap = HugePaneGap,
+        NavTinted = true, AlsoByAside = HugeAlsoByAside, AlsoByAsideGap = HugeAlsoByGap,
     };
+
+    /// <summary>The Huge album pane's "Also by" aside (C-Library-Huge): 300 wide, 32 right of the rows.</summary>
+    public const float HugeAlsoByAside = 300f, HugeAlsoByGap = 32f;
+
+    /// <summary>The navigator's resting width at Small while the user never dragged it, every kind (C-Library-Small, C-LibraryList-Small: 240).</summary>
+    public const float SmallNavWidth = 240f;
+
+    /// <summary>The full grid's size-S cell floor at Small (C-Library-Small: two 96 cells in the 240 navigator).</summary>
+    public const float SmallCardCellMin = 96f;
 
     /// <summary>The Huge pane header (C-Library-Huge): a 160 cover in a 200 band, 24 from the words.</summary>
     public const float HugePaneCover = 160f, HugePaneHeader = 200f, HugePaneGap = 24f;
@@ -131,7 +165,11 @@ public static class ClassicLibraryTiers
     public const float HugeNavWidth = 560f, HugeReaderNavWidth = 400f;
 
     /// <summary>The policy the structure publishes for the core host (`ThemePolicies.LibraryTiers`).</summary>
-    public static LibraryTierPolicy Policy { get; } = new() { HugeNavWidth = HugeNavWidth, HugeReaderNavWidth = HugeReaderNavWidth };
+    public static LibraryTierPolicy Policy { get; } = new()
+    {
+        HugeNavWidth = HugeNavWidth, HugeReaderNavWidth = HugeReaderNavWidth,
+        SmallNavWidth = SmallNavWidth, SmallReaderNavWidth = SmallNavWidth, SmallCardCellMin = SmallCardCellMin,
+    };
 
     /// <summary>The record for <paramref name="facts"/>' content tier while the page is <paramref name="single"/> (the layout ladder's answer: the host's tier signal) or split. A
     /// split page in a Compact content tier (the ladders' holds differ by a frame) reads Small's; Standard's where no frame resolved the tiers (a view mounted alone).</summary>

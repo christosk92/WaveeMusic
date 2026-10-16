@@ -10,9 +10,13 @@
 //     remembered width;
 //   · THE PERSISTED COLUMN WIDTH IS NEVER WRITTEN BY A TIER: a width of 420 stored before the mount (a tier that hides the column, or squeezes it, must leave it) reads
 //     420 after;
-//   · WHILE THE USER NEVER DRAGGED THE GRIP (contract 1.21) the navigator rests at the tier's width (C-Library-Huge 560, C-LibraryList-Huge 400, the key's 340 / 280
-//     below Huge) and the store stays unset; the sidebar likewise rests at 320 from Huge on (C-Shell-Huge) while never resized, its Small / Standard width unchanged;
-//   · Recents' record is the content tier's, its kind pivots carry the record's tier and are 40 tall at Compact;
+//   · WHILE THE USER NEVER DRAGGED THE GRIP (contract 1.21) the navigator rests at the tier's width (C-Library-Huge 560, C-LibraryList-Huge 400, Small's 240 for every kind,
+//     contract 1.22; the key's 340 / 280 at Standard) and the store stays unset; the sidebar likewise rests at 320 from Huge on (C-Shell-Huge) while never resized, its Small /
+//     Standard width unchanged;
+//   · the Huge record tints the navigator and docks the album pane's "Also by" aside: its slot is in the pane's row at every tier, 0 wide below Huge, never past the card;
+//     the Small record's grid floor is the policy's (96) and nowhere else;
+//   · Recents' record is the content tier's, its kind pivots carry the record's tier and are 40 tall at Compact; at Huge the column is capped at the 1100 list (plus the
+//     gutters) and the Overview aside stands beside it inside the card, 0 wide below Huge;
 //   · Local files (an ordinary playlist page: no board in any theme, owner Q18) holds the playlist family's tier layout.
 
 using FluentGpu.Foundation;
@@ -92,6 +96,11 @@ public sealed partial class TierLayoutTests
         Assert.True(shell.Find("lib:kinds").IsNull == !single, $"{size.Name}: the kind chips stand over the one-column head only");
         var expected = single ? WidthTier.Compact : tiers.Content switch { WidthTier.Compact or WidthTier.Small => WidthTier.Small, WidthTier.Standard => WidthTier.Standard, _ => WidthTier.Huge };
         Assert.Equal(expected, layout.Tier);
+        // C-Library-Huge: the tinted navigator and the album pane's aside are Huge's only; the grid's floor is Small's 96 (contract 1.22), the policy's for the same tier.
+        Assert.Equal(layout.Tier == WidthTier.Huge, layout.NavTinted);
+        Assert.Equal(layout.Tier == WidthTier.Huge, layout.AlsoByDocked);
+        Assert.Equal(layout.Tier == WidthTier.Small ? ClassicLibraryTiers.SmallCardCellMin : LibraryNavMount.CardCellMinFull, layout.CardCellMin);
+        Assert.Equal(tiers.Content == WidthTier.Small, float.IsFinite(ClassicLibraryTiers.Policy.CardCellMinFor(tiers.Content)));
 
         // The navigator's mount follows the persisted view (list 1, grid 3): its key carries the code.
         var mounts = shell.FindPrefix("nav:" + view.ToString(System.Globalization.CultureInfo.InvariantCulture) + ":");
@@ -141,6 +150,18 @@ public sealed partial class TierLayoutTests
             Assert.True(pane.W >= layout.RightMin - 0.5f, $"{size.Name}: the pane is {pane.W}, under its {layout.RightMin} floor");
             Assert.True(nav.X + nav.W <= pane.X + 0.5f, $"{size.Name}: the navigator overlaps the pane");
             Assert.True(pane.X + pane.W <= card.X + card.W + 0.5f, $"{size.Name}: the pane runs outside the card");
+
+            // The album pane's "Also by" aside slot: 0 wide below Huge, at most the record's column at Huge (0 where the album has no other saved albums by its artist),
+            // inside the pane, after the rows.
+            var aside = shell.Find("pane:also-aside");
+            if (!aside.IsNull)
+            {
+                var a = scene.AbsoluteRect(aside);
+                float max = ClassicLibraryPaneRules.AlsoByAsideOuter(layout.AlsoByAside, layout.AlsoByAsideGap);
+                if (!layout.AlsoByDocked) Assert.True(a.W <= 0.5f, $"{size.Name}: the also-by aside is {a.W} wide below Huge");
+                else Assert.True(a.W <= max + 0.5f, $"{size.Name}: the also-by aside is {a.W}, past the record's {max}");
+                Assert.True(a.X + a.W <= pane.X + pane.W + 0.5f, $"{size.Name}: the also-by aside runs past the pane ({a} in {pane})");
+            }
         }
 
         // A tier never writes the persisted widths: what the fact stored is what is stored.
@@ -156,6 +177,25 @@ public sealed partial class TierLayoutTests
         Assert.Equal((WidthTier)Math.Min((int)tiers.Content, (int)WidthTier.Huge), layout.Tier);
         var scene = shell.Host.Scene;
         var card = scene.AbsoluteRect(Node(shell, ClassicFrameLayout.ContentCardKey));
+
+        // C-Recents-Huge: the column capped at the 1100 list (its gutters outside it) and the Overview aside beside it; below Huge the aside is 0 wide and the column fills.
+        Assert.Equal(layout.Tier == WidthTier.Huge, layout.OverviewDocked);
+        var column = scene.AbsoluteRect(Node(shell, "recents:column"));
+        var aside = scene.AbsoluteRect(Node(shell, "recents:overview-aside"));
+        float gutter = ClassicTiers.PageOf(tiers).Gutter;
+        if (layout.OverviewDocked)
+        {
+            Assert.True(column.W <= layout.ListMax + 2f * gutter + 0.5f, $"{size}: the Recents column is {column.W}, past the 1100 list and its gutters");
+            Assert.True(MathF.Abs(aside.W - (layout.OverviewGap + layout.OverviewAside)) <= 0.5f, $"{size}: the Overview aside is {aside.W}, not {layout.OverviewGap + layout.OverviewAside}");
+            Assert.True(column.X + column.W <= aside.X + 0.5f, $"{size}: the Recents column overlaps the Overview ({column} / {aside})");
+            Assert.True(aside.X + aside.W <= card.X + card.W + 0.5f, $"{size}: the Overview runs outside the card ({aside} in {card})");
+            Assert.False(shell.Find("recents:overview-toggle").IsNull, $"{size}: the Overview button is not the aside's toggle");
+        }
+        else
+        {
+            Assert.True(aside.W <= 0.5f, $"{size}: the Overview aside is {aside.W} wide below Huge");
+            Assert.True(shell.Find("recents:overview-toggle").IsNull, $"{size}: an Overview toggle below Huge");
+        }
 
         // The pivot strip is keyed on the record's tier, lies inside the card, and at Compact its tabs are 40 targets.
         var (strip, key) = Single(shell, "recents-pivots:");
@@ -228,7 +268,9 @@ public sealed partial class TierLayoutTests
         var size = Sizes[sizeName];
         var scene = shell.Host.Scene;
         float rest = LibraryViewPrefs.RestingLeftW(kind, LibraryViewPrefs.LeftWKey(kind).Default, customized: false, tiers.Content, ClassicLibraryTiers.Policy);
-        Assert.Equal(tiers.Content >= WidthTier.Huge ? (kind == "artists" ? 400f : 560f) : (kind == "artists" ? 280f : 340f), rest);
+        Assert.Equal(tiers.Content >= WidthTier.Huge ? (kind == "artists" ? 400f : 560f)
+                     : tiers.Content <= WidthTier.Small ? ClassicLibraryTiers.SmallNavWidth                  // C-Library-Small / C-LibraryList-Small (contract 1.22)
+                     : (kind == "artists" ? 280f : 340f), rest);
         if (!shell.Find("lib:wide").IsNull)
         {
             // The navigator rests at the tier's width wherever the pane's floor leaves room for it, and never past it.

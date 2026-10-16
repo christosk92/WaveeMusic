@@ -82,8 +82,10 @@ public static class DetailLadders
 /// <param name="ModernRow">The Modern row height floor (0: the density's), exact in the Compact form.</param>
 /// <param name="ClassicRow">The Classic row height floor (0: the density's), exact in the Compact form.</param>
 /// <param name="Art">The row art floor (0: the density's), exact in the Compact form.</param>
+/// <param name="ListIndex">A LIST's "#" lane shows (a playlist's or Liked Songs' position). False: a Modern row of a list drops the lane (board C-TrackList
+/// compact); an album's track number and the Classic row keep theirs. Appended (contract 1.22).</param>
 public sealed record DetailTableTier(bool CompactRows, bool AlbumColumn, bool PlaysColumn, bool DateColumn,
-    float ModernRow = 0f, float ClassicRow = 0f, float Art = 0f)
+    float ModernRow = 0f, float ClassicRow = 0f, float Art = 0f, bool ListIndex = true)
 {
     /// <summary>Every lane the width admits, the density's rows.</summary>
     public static DetailTableTier Standard { get; } = new(CompactRows: false, AlbumColumn: true, PlaysColumn: true, DateColumn: true);

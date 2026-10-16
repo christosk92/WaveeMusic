@@ -91,7 +91,7 @@ internal static class ClassicTrackTable
         var cells = new Element[Track.CellCount(in set)];
         int i = 0;
 
-        cells[i++] = BoundNumberCell(r, classic);
+        if (!set.IndexHidden) cells[i++] = BoundNumberCell(r, classic);
         if (set.Heart) cells[i++] = Track.RowCenterCell(BoundHeartReveal(r, classic, set.Quiet), CellKey.Heart);
         if (set.Thumb) cells[i++] = Track.RowCenterCell(BoundArtwork(r, artSize), CellKey.Art);
         cells[i++] = BoundTitleCell(r, in set, classic);

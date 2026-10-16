@@ -24,7 +24,10 @@
 // WVTH006: a sealed record with init-only members and no writable signal. The record is built once (`RailWiring.Panel`), so an
 // equal re-push skips the template.
 
+using FluentGpu.Controls;
 using FluentGpu.Dsl;
+using FluentGpu.Foundation;
+using FluentGpu.Hooks;
 using FluentGpu.Signals;
 
 namespace Wavee.Theming.Contracts;
@@ -197,4 +200,31 @@ public sealed record PanelTransportProps
 
     /// <summary>The bar's elapsed (false) or remaining (true) time label (the core host that mounts <see cref="ViewKeys.TimeLabel"/>).</summary>
     public required Func<bool, Element> TimeText { get; init; }
+
+    /// <summary>Where playback comes from (the sheet's head: "Playing from album" over the context's name, a link to its page); call it inside
+    /// a render (it subscribes the context). Null where the sheet names none (contract 1.22).</summary>
+    public Func<PanelSourceFacts>? Source { get; init; }
+
+    /// <summary>The device playback is on (the sheet's Devices door: its name, latched while it is another device); call it inside a render
+    /// (it subscribes the roster). Null where the sheet offers no Devices door (contract 1.22).</summary>
+    public Func<PanelDeviceFacts>? Device { get; init; }
+
+    /// <summary>Open the device picker over an anchor, or close it when it is open: the player bar's own toggle (the core's overlay, placement,
+    /// dismissal and picker-opened side effect; the menu is <see cref="ViewKeys.DevicePicker"/>). Null with no Devices door (contract 1.22).</summary>
+    public Action<IOverlayService, Ref<NodeHandle>, Ref<OverlayHandle?>>? ToggleDevicePicker { get; init; }
 }
+
+/// <summary>Where playback comes from, for the now-playing sheet's head (contract 1.22).</summary>
+/// <param name="PlayingFrom">The "Playing from album" line; empty with no source (never a "Playing from" with no name).</param>
+/// <param name="Name">The source's name; empty with no source.</param>
+/// <param name="Open">Go to the source's page; null where it has none.</param>
+public readonly record struct PanelSourceFacts(string PlayingFrom, string Name, Action? Open)
+{
+    /// <summary>There is a source to name.</summary>
+    public bool HasSource => Name is { Length: > 0 };
+}
+
+/// <summary>The device playback is on, for the now-playing sheet's Devices door (contract 1.22).</summary>
+/// <param name="Name">The device's name ("This computer" when it is this one).</param>
+/// <param name="Remote">Playback is on another device (the door latches, as the player bar's Devices button does).</param>
+public readonly record struct PanelDeviceFacts(string Name, bool Remote);

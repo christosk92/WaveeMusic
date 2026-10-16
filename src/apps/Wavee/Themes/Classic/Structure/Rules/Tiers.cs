@@ -168,8 +168,9 @@ public static class ClassicTiers
     /// <summary>The head rhythm: the air over a page head that has no masthead (the Liked head's 24).</summary>
     public const float HeadTop = 24f;
 
-    /// <summary>The detail rail's padding: 24 / 8 / 24 / 16 (top, right, bottom, left).</summary>
-    public static readonly Edges4 RailPadding = new(16f, 24f, 8f, 24f);
+    /// <summary>The detail rail's padding: 24 / 8 / 24 / 16 (top, right, bottom, left). A computed read, not a field: <see cref="Policy"/>'s
+    /// initializer reaches <c>ClassicDetailRail.Standard</c> (through <c>ClassicDetailTiers</c>) before a field declared here would be set.</summary>
+    public static Edges4 RailPadding => new(16f, 24f, 8f, 24f);
 }
 
 /// <summary>What Classic's frame lays out in one window tier.</summary>

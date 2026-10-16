@@ -156,12 +156,20 @@ public sealed record PlaylistDaylistProps(DaylistCountdown.Phase Phase, bool Lat
 /// <param name="Rows">One per recommended track.</param>
 public sealed record PlaylistRecsProps(bool Loading, bool Empty, Action Refresh, IReadOnlyList<PlaylistRecRowProps> Rows)
 {
+    /// <summary>The playlist has no songs: what a structure may lead the section with (C-Empty-Compact: "Nothing here yet", a line, and a field that
+    /// finds songs to add). Null while the playlist has rows. Appended (contract 1.22).</summary>
+    public PlaylistRecsLead? Lead { get; init; }
+
     /// <inheritdoc />
     public bool Equals(PlaylistRecsProps? other) => ReferenceEquals(this, other);
 
     /// <inheritdoc />
     public override int GetHashCode() => RuntimeHelpers.GetHashCode(this);
 }
+
+/// <summary>The lead of an EMPTY playlist's Recommended section (<see cref="PlaylistRecsProps.Lead"/>, contract 1.22).</summary>
+/// <param name="Find">The field's submit: look for songs to add (the core opens Search for the query).</param>
+public sealed record PlaylistRecsLead(Action<string> Find);
 
 /// <summary>The props of <see cref="ViewKeys.PlaylistRecRow"/>: one recommended track. Plain data with the section's two stable handlers (its own method
 /// groups), so a section re-render that leaves a row alone re-renders nothing: the compiler's record equality is the gate.</summary>

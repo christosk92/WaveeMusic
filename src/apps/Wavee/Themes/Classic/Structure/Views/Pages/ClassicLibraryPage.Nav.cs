@@ -33,11 +33,11 @@ internal static partial class ClassicLibraryPage
     /// <summary>The navigator's shimmer (tuned Classic X2), in the persisted view's own shape so the content lands where the bars stood. A list: the bound
     /// row's geometry — the plate (56, or 40 compact) at the 60 / 44 pitch, the 40 art at the row's corner and the title and subtitle lines on their
     /// rungs (the stock list-item shape stood 66 apart and drifted 6 DIP a row). A grid: the bound cards at the fitted grid's own cells (it used to draw
-    /// rows over a grid).</summary>
-    internal static Element NavShimmer(int view, int size, EntityKind entity)
+    /// rows over a grid). <paramref name="fullBase"/> is the full grid's size-S floor of the tier (the record's <c>CardCellMin</c>, the host's mount floor).</summary>
+    internal static Element NavShimmer(int view, int size, EntityKind entity, float fullBase = LibraryNavMount.CardCellMinFull)
     {
         bool compact = User.IsCompactView(view);
-        if (User.IsGridView(view)) return NavGridShimmer(compact, LibraryNavMount.CellMinFor(view, size), entity == EntityKind.Artist);
+        if (User.IsGridView(view)) return NavGridShimmer(compact, LibraryNavMount.CellMinFor(view, size, fullBase), entity == EntityKind.Artist);
         var rows = new Element[ClassicLibraryRules.NavSkelRows];
         for (int i = 0; i < rows.Length; i++) rows[i] = NavShimmerRow(compact) with { Key = "navskel:" + i };
         return new BoxEl { Key = "navskel", Direction = 1, Children = rows };

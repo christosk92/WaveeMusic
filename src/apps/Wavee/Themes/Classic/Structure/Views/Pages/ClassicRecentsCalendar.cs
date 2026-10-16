@@ -63,6 +63,72 @@ internal sealed class ClassicRecentsCalendar : Component
     }
 }
 
+/// <summary>The docked Overview (C-Recents-Huge, the Huge record's `OverviewAside`): the "Overview" head with the heat key over two columns of PLATED month cards (the
+/// calendar's own card in a 16-padded card plate), scrolling on their own. A day jumps the list beside it to that day (`IRecentsHost.JumpIn`: nothing is zoomed out).
+/// It shares the month card with the zoomed-out calendar, never its controller: the two lists scroll apart.</summary>
+internal sealed class ClassicRecentsOverview : Component
+{
+    readonly IRecentsHost _host;
+    readonly Func<int, Element> _monthCard;
+    readonly Func<int, string> _monthKey;
+
+    public ClassicRecentsOverview(IRecentsHost host)
+    {
+        _host = host;
+        _monthKey = MonthKey;
+        _monthCard = i => new BoxEl
+        {
+            Key = MonthKey(i), Direction = 1, Corners = Radii.CardAll, Fill = Tok.FillCardDefault,
+            BorderWidth = ClassicRecentsRules.OverviewCardBorder, BorderColor = Tok.StrokeCardDefault,
+            Padding = new Edges4(ClassicRecentsRules.OverviewCardPadX, ClassicRecentsRules.OverviewCardPadTop, ClassicRecentsRules.OverviewCardPadX, ClassicRecentsRules.OverviewCardPadBottom),
+            Children = [Embed.Comp(() => new ClassicRecentsMonthCard(host, i))],
+        };
+    }
+
+    string MonthKey(int i)
+    {
+        var months = _host.ShapeNow.Calendar.Months;
+        return (uint)i < (uint)months.Length
+            ? "overview-month:" + FormatCache.Int(months[i].Year) + ":" + FormatCache.Int(months[i].Month)
+            : "overview-month:none";
+    }
+
+    public override Element Render()
+    {
+        var host = _host;
+        int epoch = host.ShapeEpoch.Value;
+        var calendar = host.ShapeNow.Calendar;
+        var facts = UseContext(ThemeFactsContext.Signal);   // the tiers this page is drawn in, as its template reads them
+        var layout = ClassicRecentsTiers.Of(facts is null ? TierFacts.Unknown : facts.Value.Tiers);
+        Element head = new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Shrink = 0f, MinWidth = 0f,
+            Children =
+            [
+                R.Type.ModuleHeader(Loc.Get(Strings.Recents.Overview)) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Grow = 1f, Basis = 0f, MinWidth = 0f },
+                ClassicRecentsCalendarParts.Legend(host),
+            ],
+        };
+        // A page with nothing played yet (or still pending) keeps the head over an empty column: the aside's width is reserved either way.
+        if (calendar.Months.Length == 0)
+            return new BoxEl { Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f, Children = [head] };
+        float rowEstimate = RecentsLayout.MonthCardHeight(RecentsView.MaxWeeks(calendar)) + ClassicRecentsRules.OverviewCardPadTop + ClassicRecentsRules.OverviewCardPadBottom;
+        Element grid = ItemsView.Create(calendar.Months.Length, _monthCard,
+            RepeatLayout.GridFit(ClassicRecentsRules.OverviewCardW, layout.CalendarGap, rowEstimate),
+            new ListOptions
+            {
+                SelectionMode = ItemsSelectionMode.None, Selector = SelectorVisual.None, Grow = 1f, KeyOf = _monthKey,
+                Scroll = new ScrollOptions { ScrollKey = host.ScrollScope + "recents-overview:" + FormatCache.Int(epoch), AutoEdgeFade = true },
+            });
+        return new BoxEl
+        {
+            Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Gap = ClassicRecentsRules.OverviewHeadGap,
+            OnPointerExit = host.ResetCalendarDayAction,
+            Children = [head, grid],
+        };
+    }
+}
+
 /// <summary>ONE band: the hovered day over its readout, the legend beside them; the readout gives width back.</summary>
 internal sealed class ClassicRecentsCalendarBand(IRecentsHost host) : Component
 {

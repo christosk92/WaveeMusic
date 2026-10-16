@@ -122,8 +122,10 @@ public sealed record LibraryShowPaneProps
     /// <summary>Open the show's page.</summary>
     public required Action Open { get; init; }
 
-    /// <summary>The primary slot: a core component keyed "showpane:primary", built by the host over the accent the view hands it (the app accent: a live read); null while the header is a skeleton.</summary>
-    public Func<Func<ColorF>, Element>? Primary { get; init; }
+    /// <summary>The primary slot: a core component keyed "showpane:primary", built by the host over the accent the view hands it (the app accent: a live read) at the
+    /// control size the view asks for (the stock Medium, or Large for the 40-DIP targets of a Compact pane; contract 1.22: the size argument is new, before any external
+    /// theme existed, as 1.2 did); null while the header is a skeleton.</summary>
+    public Func<Func<ColorF>, ControlSize, Element>? Primary { get; init; }
 
     /// <summary>The heart's presence bind (shown while the primary is not "Follow").</summary>
     public required Prop<bool> HeartShown { get; init; }

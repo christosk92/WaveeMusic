@@ -22,8 +22,11 @@
 // own views read:
 //   · Compact: the vertical arm (the page is below 560); the C-TrackList compact row (56 Modern / 44 Classic, 40 art, the heart trailing, a 40 more
 //     lane, no column header and no chevron lane, the duration in the Modern subline); the list bar's commands and the hero's actions 40 x 40, the
-//     sort word leading the bar and the view tools as glyphs; the selection bar tinted with the accent (C-MultiSelect-Compact).
-//   · Small: the two-column arm (mode 1's 224 rail at 800); no Album and no Plays lane, and the Date lane only on a quiet list (C-TrackList small).
+//     sort word leading the bar and the view tools as glyphs, Filter as the funnel alone; a list's Modern row without its "#" lane (an album keeps its
+//     track numbers); the selection bar tinted with the accent (C-MultiSelect-Compact); an empty playlist's Recommended songs led by "Nothing here yet"
+//     and a field that finds songs (C-Empty-Compact), the section's commands 40.
+//   · Small: the two-column arm (mode 1's 224 rail at 800); no Album and no Plays lane, and the Date lane only on a quiet list (C-TrackList small); Sort as
+//     its glyph; the rail padded 16 / 12 with its rows 10 apart and the Play row breaking after Play (C-Album-Small, C-Playlist-Small, C-Liked-Small).
 //   · Standard: the tuned design (P3b), unchanged.
 //   · Huge (and Huge 4K): the rail rests at 320 where it was never dragged, the rows at the cozy rung (56 / 44, 40 art), the insights pane docks as a
 //     360 column beside the list (C-Liked-Huge) instead of covering it and rests OPEN there; a two-column page docks its ASIDE (contract 1.21): the album's
@@ -165,9 +168,9 @@ public static class ClassicDetailTiers
     public static ClassicDetailTier Compact { get; } = new()
     {
         Core = new DetailTierLayout(
-            new DetailTableTier(CompactRows: true, AlbumColumn: false, PlaysColumn: false, DateColumn: false, RowModern, RowClassic, RowArt),
+            new DetailTableTier(CompactRows: true, AlbumColumn: false, PlaysColumn: false, DateColumn: false, RowModern, RowClassic, RowArt, ListIndex: false),
             InsightsDocked: false, RailRest: 0f, HeroActionExtra: CompactActionExtra),
-        Tier = WidthTier.Compact, Target = CompactTarget, SortLeadsBar = true, SelectionTinted = true,
+        Tier = WidthTier.Compact, Target = CompactTarget, SortLeadsBar = true, SelectionTinted = true, FilterGlyph = true, EmptyLead = true,
     };
 
     /// <summary>Small (C-Album-Small, C-Playlist-Small, C-TrackList small).</summary>
@@ -176,7 +179,7 @@ public static class ClassicDetailTiers
         Core = new DetailTierLayout(
             new DetailTableTier(CompactRows: false, AlbumColumn: false, PlaysColumn: false, DateColumn: false),
             InsightsDocked: false, RailRest: 0f, HeroActionExtra: 0f),
-        Tier = WidthTier.Small, Target = Target, SortLeadsBar = false, SelectionTinted = false,
+        Tier = WidthTier.Small, Target = Target, SortLeadsBar = false, SelectionTinted = false, SortGlyph = true, Rail = ClassicDetailRail.Small,
     };
 
     /// <summary>Standard: the tuned design.</summary>
@@ -298,6 +301,29 @@ public sealed record ClassicDetailAside
     public static ClassicDetailAside Huge4K { get; } = new() { AlbumWidth = 640f, ArtistBand = 360f, FanArt = 120f, FanRowGap = 16f };
 }
 
+/// <summary>The two-column rail's own metrics in one window tier: its padding, the gap between its rows and whether the CTA's actions start a line of their own.</summary>
+public sealed record ClassicDetailRail
+{
+    /// <summary>The column's padding (left, top, right, bottom).</summary>
+    public required Edges4 Padding { get; init; }
+
+    /// <summary>Between two rows.</summary>
+    public required float Gap { get; init; }
+
+    /// <summary>The fixed actions (Shuffle, heart, Share, ⋯) start their own line under the Play split (C-Album-Small): a full-width break follows the primary.
+    /// The page's own satellites keep their one wrap.</summary>
+    public bool BreakAfterPrimary { get; init; }
+
+    /// <summary>The cover edge (and the content measure) in a <paramref name="railWidth"/>-wide rail.</summary>
+    public float ContentWidth(float railWidth) => railWidth - Padding.Left - Padding.Right;
+
+    /// <summary>The tuned rail (tuned Classic F3): 24 / 8 / 24 / 16 and the row model's 14 (<c>Detail.RailLayout.Gap</c>).</summary>
+    public static ClassicDetailRail Standard { get; } = new() { Padding = ClassicTiers.RailPadding, Gap = Detail.RailLayout.Gap };
+
+    /// <summary>Small (C-Album-Small, C-Playlist-Small): 16 over and under, 12 each side (the 224 rail keeps its 200 cover), rows 10 apart, the Play row breaking after Play.</summary>
+    public static ClassicDetailRail Small { get; } = new() { Padding = new Edges4(12f, 16f, 12f, 16f), Gap = 10f, BreakAfterPrimary = true };
+}
+
 /// <summary>What Classic's detail views lay out in one window tier.</summary>
 public sealed record ClassicDetailTier
 {
@@ -316,11 +342,28 @@ public sealed record ClassicDetailTier
     /// <summary>The selection bar is tinted with the accent (C-MultiSelect-Compact).</summary>
     public required bool SelectionTinted { get; init; }
 
+    /// <summary>The list bar's Sort is the sort glyph and its chevron, the order's word in the tooltip (C-Album-Small, C-Playlist-Small, C-Liked-Small).</summary>
+    public bool SortGlyph { get; init; }
+
+    /// <summary>The list bar's Filter is the funnel alone (its count badge on its corner), whatever the bar's width (C-Album-Compact, C-Playlist-Compact,
+    /// C-Liked-Compact).</summary>
+    public bool FilterGlyph { get; init; }
+
+    /// <summary>An empty playlist's Recommended songs are led by "Nothing here yet", its line and a field that finds songs to add (C-Empty-Compact), and the
+    /// section's commands are the Compact 40 targets.</summary>
+    public bool EmptyLead { get; init; }
+
+    /// <summary>The rail's padding, row gap and CTA break (C-Album-Small: 16 / 12, gap 10, the Play row breaking after Play).</summary>
+    public ClassicDetailRail Rail { get; init; } = ClassicDetailRail.Standard;
+
     /// <summary>The docked aside's geometry (Huge: C-Album-Huge, C-Playlist-Huge; Huge 4K: C-Album-Huge4K); null where the tier docks none.</summary>
     public ClassicDetailAside? Aside { get; init; }
 
     /// <summary>The insights pane docks beside the list.</summary>
     public bool InsightsDocked => Core.InsightsDocked;
+
+    /// <summary>The unavailable-songs bar of this tier (C-Unavailable, C-Unavailable-Compact; contract 1.22).</summary>
+    public ClassicUnavailableBar Unavailable => ClassicUnavailableBar.For(Tier);
 
     /// <summary>The widest the page's centred row grows: the page measure (<c>R.Space.PageMaxW</c>, 1600) up to Standard, and Huge's own fill
     /// rule, the 2400 the Huge boards fill to (C-Breakpoints: "Huge grids to 2400"), so a Huge page is laid out rather than a Standard page

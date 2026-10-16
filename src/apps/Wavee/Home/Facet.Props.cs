@@ -35,4 +35,9 @@ public sealed record FacetRowProps(
     Func<Signal<int>> Index,
     Action<string> Select,
     Action Dismiss,
-    Func<string, bool> FollowingMemory);
+    Func<string, bool> FollowingMemory)
+{
+    /// <summary>Opens or closes the friend-activity panel (contract 1.22): a structure that puts a Friend activity button on the facet row (Classic
+    /// Compact, <c>C-Home-Compact</c>) calls it. Null where the host offers none.</summary>
+    public Action? ToggleFriends { get; init; }
+}

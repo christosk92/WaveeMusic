@@ -405,16 +405,24 @@ public readonly partial struct Search
     /// <summary>The All tab's playlist rail (0.2.9 <c>PlaylistShelfItems</c>): the top hits' playlists first, in hit
     /// order, then the Playlists facet's own slots — deduped, and never the hero's own item.</summary>
     public static int PlaylistShelfItems(ReadOnlySpan<EntityRef> hits, ReadOnlySpan<int> playlists, EntityRef skip, Span<int> into)
+        => ShelfItems(EntityKind.Playlist, hits, playlists, skip, into);
+
+    /// <summary>The All tab's artist rail (a structure that draws one: Classic Huge, <c>C-Search-Huge</c>): the top hits' artists first, in hit
+    /// order, then the Artists facet's own slots — deduped, and never the hero's own item. The playlist rail's rule over the other kind.</summary>
+    public static int ArtistShelfItems(ReadOnlySpan<EntityRef> hits, ReadOnlySpan<int> artists, EntityRef skip, Span<int> into)
+        => ShelfItems(EntityKind.Artist, hits, artists, skip, into);
+
+    static int ShelfItems(EntityKind kind, ReadOnlySpan<EntityRef> hits, ReadOnlySpan<int> own, EntityRef skip, Span<int> into)
     {
         int n = 0;
         for (int i = 0; i < hits.Length && n < into.Length; i++)
-            if (hits[i].Kind == EntityKind.Playlist) Add(hits[i].Slot, skip, into, ref n);
-        for (int i = 0; i < playlists.Length && n < into.Length; i++) Add(playlists[i], skip, into, ref n);
+            if (hits[i].Kind == kind) Add(kind, hits[i].Slot, skip, into, ref n);
+        for (int i = 0; i < own.Length && n < into.Length; i++) Add(kind, own[i], skip, into, ref n);
         return n;
 
-        static void Add(int slot, EntityRef skip, Span<int> into, ref int n)
+        static void Add(EntityKind kind, int slot, EntityRef skip, Span<int> into, ref int n)
         {
-            if (slot <= Table.None || (skip.Kind == EntityKind.Playlist && skip.Slot == slot)) return;
+            if (slot <= Table.None || (skip.Kind == kind && skip.Slot == slot)) return;
             if (into[..n].IndexOf(slot) >= 0) return;
             into[n++] = slot;
         }

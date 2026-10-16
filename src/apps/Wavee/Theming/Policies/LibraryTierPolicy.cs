@@ -9,7 +9,8 @@
 // THE NAVIGATOR'S DEFAULT WIDTH PER TIER (`LibraryTierPolicy`, contract 1.21). The persisted width (`library.<kind>.leftw`) is the user's: the host reads it as
 // the user's only while they set it (`ThemeState.IsCustomized`: stored and not the key's default). Until then the navigator rests at the structure's width
 // for the content tier (Classic Huge: 560, the artists' reader list 400, C-Library-Huge / C-LibraryList-Huge), and a crossing re-rests it; the first drag
-// makes the width the user's, and no tier moves it again.
+// makes the width the user's, and no tier moves it again. Contract 1.22 adds the Small rest (Classic 240, C-Library-Small / C-LibraryList-Small) and the
+// grid's cell floor there (Classic 96: the Small board's two 96 cells in a 240 navigator; the core's 116 floor would fit one).
 
 using FluentGpu.Foundation;
 using Wavee.Theming.Contracts;
@@ -42,10 +43,25 @@ public sealed record LibraryTierPolicy
     /// <summary>The artists' navigator (the reader's list) at a Huge content tier (NaN: the key's own default).</summary>
     public float HugeReaderNavWidth { get; init; } = float.NaN;
 
+    /// <summary>The navigator's resting width at a Small (or narrower, split) content tier (NaN: the key's own default; contract 1.22).</summary>
+    public float SmallNavWidth { get; init; } = float.NaN;
+
+    /// <summary>The artists' navigator at a Small (or narrower, split) content tier (NaN: the key's own default; contract 1.22).</summary>
+    public float SmallReaderNavWidth { get; init; } = float.NaN;
+
+    /// <summary>The full grid's cell minimum at size S in a Small content tier (the split page's narrow navigator): the navigator's card ladder starts here
+    /// instead of the core's 116 (NaN: the core's ladder; contract 1.22). The S/M/L steps are the core's. A Compact page is one column wide and keeps the core's.</summary>
+    public float SmallCardCellMin { get; init; } = float.NaN;
+
     /// <summary>The page before tiers: the key's own default everywhere.</summary>
     public static LibraryTierPolicy Default { get; } = new();
 
     /// <summary>The resting width at <paramref name="content"/> for the reader's list (<paramref name="reader"/>) or any other kind; NaN: the key's default.</summary>
     public float NavWidthFor(WidthTier content, bool reader)
-        => content >= WidthTier.Huge ? (reader ? HugeReaderNavWidth : HugeNavWidth) : float.NaN;
+        => content >= WidthTier.Huge ? (reader ? HugeReaderNavWidth : HugeNavWidth)
+         : content <= WidthTier.Small ? (reader ? SmallReaderNavWidth : SmallNavWidth)
+         : float.NaN;
+
+    /// <summary>The full grid's cell minimum at size S for <paramref name="content"/>; NaN: the core's own ladder (contract 1.22).</summary>
+    public float CardCellMinFor(WidthTier content) => content == WidthTier.Small ? SmallCardCellMin : float.NaN;
 }

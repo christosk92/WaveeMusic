@@ -10,7 +10,8 @@
 //   column
 //   ├─ band  (Sticky) column h=FacetRowH
 //   │  ├─ HStack h=SelectorH(40) [ SelectorBar.Create(labels, Index, onChange, style: R.Type.FacetTitleStyle) · spacer
-//   │  │                           · Flow.Show(hasSub, ToggleButton.Controlled) ]
+//   │  │                           · Flow.Show(hasFollowing, ToggleButton.Controlled "Following")
+//   │  │                           · Flow.Show(the tier's FriendsButton, IconButton 40 "Friend activity") ]
 //   │  └─ 3-px slot { Flow.Show(Switch.Bar, ProgressBar.Indeterminate(width: NaN) fading in and out) }   (the slot never moves)
 //
 //   FailureLayer (a component the page lays OVER the top of its content, tuning H1)
@@ -65,8 +66,12 @@ internal static class ClassicHomeFacetRow
         for (int i = 0; i < labels.Length; i++) labels[i] = words[i].Label;
 
         var (idx, followingOn) = FacetPivot.Resolve(words, state.Target);
-        bool hasSub = (uint)idx < (uint)words.Length && words[idx].HasSub;
         var word = (uint)idx < (uint)words.Length ? words[idx] : default;
+        // The word whose sub-chip the Following toggle drives: the selected word's own, or, where the tier stands the toggle on every word (Huge,
+        // C-Home-Huge: "Following" beside "All"), the first word that has one.
+        int followIdx = FacetPivot.FollowingWord(words, idx, layout.FollowingOnEveryWord);
+        bool hasFollowing = followIdx >= 0;
+        var followWord = hasFollowing ? words[followIdx] : default;
 
         // The page title: the stock bar in the facet-title style (no pill; the selected word is the semibold primary one),
         // one rung smaller when the row is too narrow for the title words (FacetForm).
@@ -77,12 +82,28 @@ internal static class ClassicHomeFacetRow
             p.Select(FacetPivot.Target(ws[i], p.FollowingMemory(ws[i].Id)));
         }
 
-        // Built every render; Flow.Show only MOUNTS it while hasSub is true, so the "no sub-chip" default word never
-        // reaches the screen. Value-controlled: the checked state is the switch machine's own resolution.
+        // Built every render; Flow.Show only MOUNTS it while there is a sub-chip to drive, so the "no sub-chip" default word never
+        // reaches the screen. Value-controlled: the checked state is the switch machine's own resolution (on only while the selected
+        // word's own sub-chip is the target). Off returns to the selected word.
         Element following = ToggleButton.Controlled(
-            word.SubLabel ?? Loc.Get(Strings.Home.Following), followingOn,
-            on => p.Select(on && word.SubId is not null ? word.SubId : word.Id),
+            followWord.SubLabel ?? Loc.Get(Strings.Home.Following), followingOn,
+            on => p.Select(on && followWord.SubId is not null ? followWord.SubId : word.Id),
             glyph: Icons.Friends)
+            with
+            {
+                Enter = new EnterExit(Opacity: 0f, Active: true),
+                Exit = new EnterExit(Opacity: 0f, Active: true),
+                Transition = s_fade,
+            };
+
+        // The Friend activity button (Compact, C-Home-Compact): 40 x 40 at the row's end, the shell's friends panel. It fades in and out on a
+        // tier crossing; the row's height never changes, so nothing moves under it.
+        bool showFriends = layout.FriendsButton && p.ToggleFriends is not null;
+        var toggleFriends = p.ToggleFriends;
+        Element friends = ToolTip.Wrap(
+            // The drawer account row's 40 x 40 glyph button (a 16 glyph, the board's): the stock IconButton tops out at 36.
+            ClassicDrawerButtons.Glyph(Icons.Friends, () => toggleFriends?.Invoke()) with { Key = "home:facet:friends" },
+            Loc.Get(Strings.Friends.Title))
             with
             {
                 Enter = new EnterExit(Opacity: 0f, Active: true),
@@ -93,17 +114,34 @@ internal static class ClassicHomeFacetRow
         // The band (a column) cross-stretches the Responsive box, so it measures the row's full width and builds the row
         // in the form that width holds (a Compact tier keeps the 20/28 words at every width: `C-Home-Compact`).
         bool compactWords = layout.CompactFacets;
-        Element row = Responsive.Of("home:facet", w => new BoxEl
+        // Where the row ends with the Friend activity button (Compact) the words yield to it: their box shrinks and clips, its trailing edge
+        // faded (C-Home-Compact's masked tablist). The box is pulled out by the style's leading inset and padded back, so the first word's
+        // hover plate is inside the clip. Elsewhere the same box just wraps the bar at its own width (the tuned row, unchanged).
+        bool yieldWords = showFriends;
+        Element row = Responsive.Of("home:facet", w =>
         {
-            Key = "home:facet:row",
-            Direction = 0, AlignItems = FlexAlign.Center, Height = ClassicHomeRules.SelectorH, MinWidth = 0f,
-            Children =
-            [
-                SelectorBar.Create(labels, p.Index(), onChange: OnWord,
-                    style: !compactWords && FacetForm.IsTitle(w) ? R.Type.FacetTitleStyle : R.Type.FacetCompactStyle),
-                new BoxEl { Grow = 1f, MinWidth = 0f },
-                Flow.Show(() => hasSub, following),
-            ],
+            var style = !compactWords && FacetForm.IsTitle(w) ? R.Type.FacetTitleStyle : R.Type.FacetCompactStyle;
+            float lead = yieldWords ? MathF.Max(0f, -style.LeadingInset) : 0f;
+            return new BoxEl
+            {
+                Key = "home:facet:row",
+                Direction = 0, AlignItems = FlexAlign.Center, Height = ClassicHomeRules.SelectorH, MinWidth = 0f,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Key = "home:facet:words",
+                        Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = yieldWords ? 1f : 0f,
+                        Margin = new Edges4(-lead, 0f, 0f, 0f), Padding = new Edges4(lead, 0f, 0f, 0f),
+                        ClipToBounds = yieldWords,
+                        EdgeFade = yieldWords ? new EdgeFadeSpec(EdgeMask.Right, ClassicHomeTiers.WordsFadeBand) : null,
+                        Children = [SelectorBar.Create(labels, p.Index(), onChange: OnWord, style: style)],
+                    },
+                    new BoxEl { Grow = 1f, MinWidth = 0f },
+                    Flow.Show(() => hasFollowing, following),
+                    Flow.Show(() => showFriends, friends),
+                ],
+            };
         }, fallback: firstWidth);
 
         // The busy bar (tuning F7): a FIXED 3-px slot, always laid out, so the band never moves; the stretched indeterminate bar

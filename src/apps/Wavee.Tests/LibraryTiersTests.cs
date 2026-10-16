@@ -209,7 +209,9 @@ public class LibraryTiersTests
 
     [Theory]
     [InlineData("albums", WidthTier.Standard, 340f)]
-    [InlineData("albums", WidthTier.Small, 340f)]
+    [InlineData("albums", WidthTier.Small, 240f)]       // C-Library-Small (contract 1.22)
+    [InlineData("artists", WidthTier.Small, 240f)]      // C-LibraryList-Small
+    [InlineData("podcasts", WidthTier.Small, 240f)]
     [InlineData("albums", WidthTier.Huge, 560f)]
     [InlineData("albums", WidthTier.Huge4K, 560f)]
     [InlineData("podcasts", WidthTier.Huge, 560f)]
@@ -259,5 +261,112 @@ public class LibraryTiersTests
         Assert.Equal(ClassicLibraryPaneRules.PaneCover, standard.PaneCover);   // the tuned 128 / 156 / 18
         Assert.Equal(ClassicLibraryPaneRules.PaneHeaderHeight, standard.PaneHeaderHeight);
         Assert.Equal(ClassicLibraryPaneRules.HeaderGap, standard.PaneHeaderGap);
+    }
+
+    // ── Small's navigator and its grid floor (contract 1.22: C-Library-Small, C-LibraryList-Small) ──────────────────────────────────────
+
+    [Fact]
+    public void The_small_grid_starts_at_96_and_the_other_tiers_keep_the_cores_ladder()
+    {
+        Assert.Equal(96f, ClassicLibraryTiers.For(WidthTier.Small, single: false).CardCellMin);
+        foreach (var content in new[] { WidthTier.Standard, WidthTier.Huge, WidthTier.Huge4K })
+            Assert.Equal(LibraryNavMount.CardCellMinFull, ClassicLibraryTiers.For(content, single: false).CardCellMin);
+        Assert.Equal(LibraryNavMount.CardCellMinFull, ClassicLibraryTiers.For(WidthTier.Compact, single: true).CardCellMin);   // the one-column page
+        // The policy the host reads says the same, and nothing outside Small (a Compact page is one column: the core's 116 fits two there).
+        Assert.Equal(96f, ClassicLibraryTiers.Policy.CardCellMinFor(WidthTier.Small));
+        Assert.True(float.IsNaN(ClassicLibraryTiers.Policy.CardCellMinFor(WidthTier.Compact)));
+        Assert.True(float.IsNaN(ClassicLibraryTiers.Policy.CardCellMinFor(WidthTier.Standard)));
+        Assert.True(float.IsNaN(ClassicLibraryTiers.Policy.CardCellMinFor(WidthTier.Huge)));
+        Assert.True(float.IsNaN(LibraryTierPolicy.Default.CardCellMinFor(WidthTier.Small)));
+    }
+
+    [Fact]
+    public void The_240_navigator_holds_two_96_cells_where_the_cores_floor_fits_one()
+    {
+        float inner = ClassicLibraryTiers.SmallNavWidth - 2f * 8f;   // the grid's (8, 8, 8, 0) wrapper
+        float gap = LibraryNavMount.GridGap;
+        static int Cols(float inner, float min, float gap) => System.Math.Max(1, (int)((inner + gap) / (min + gap)));
+        Assert.Equal(2, Cols(inner, LibraryNavMount.CellMinFor(3, 0, ClassicLibraryTiers.SmallCardCellMin), gap));
+        Assert.Equal(1, Cols(inner, LibraryNavMount.CellMinFor(3, 0), gap));
+    }
+
+    [Fact]
+    public void The_grid_floor_moves_the_cell_never_the_mount_key()
+    {
+        var core = LibraryNavMount.For("albums", 3, 1, alphabetical: false, lettersKey: 0);
+        var small = LibraryNavMount.For("albums", 3, 1, alphabetical: false, lettersKey: 0, fullBase: ClassicLibraryTiers.SmallCardCellMin);
+        Assert.Equal(core.Key, small.Key);                                               // a crossing never remounts the navigator
+        Assert.Equal(96f + LibraryNavMount.CardCellStepFull, small.CellMin);            // the S/M/L steps stay the core's
+        Assert.Equal(LibraryNavMount.CardCellMinFull + LibraryNavMount.CardCellStepFull, core.CellMin);
+        // The compact grid keeps its own ladder; a non-finite base reads as the core's.
+        Assert.Equal(LibraryNavMount.CellMinFor(2, 0), LibraryNavMount.CellMinFor(2, 0, ClassicLibraryTiers.SmallCardCellMin));
+        Assert.Equal(LibraryNavMount.CardCellMinFull, LibraryNavMount.CellMinFor(3, 0, float.NaN));
+    }
+
+    // ── the Huge navigator and album pane (C-Library-Huge) ─────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Only_huge_tints_the_navigator_and_docks_the_also_by_aside()
+    {
+        var huge = ClassicLibraryTiers.For(WidthTier.Huge, single: false);
+        Assert.True(huge.NavTinted);
+        Assert.True(huge.AlsoByDocked);
+        Assert.Equal(300f, huge.AlsoByAside);
+        Assert.Equal(32f, huge.AlsoByAsideGap);
+        Assert.Same(huge, ClassicLibraryTiers.For(WidthTier.Huge4K, single: false));
+        foreach (var (content, single) in new[] { (WidthTier.Compact, true), (WidthTier.Small, false), (WidthTier.Standard, false) })
+        {
+            var record = ClassicLibraryTiers.For(content, single);
+            Assert.False(record.NavTinted);
+            Assert.False(record.AlsoByDocked);
+            Assert.Equal(0f, record.AlsoByAside);
+        }
+    }
+
+    [Fact]
+    public void The_also_by_aside_is_the_boards_300_column_of_140_covers_32_right_of_the_rows()
+    {
+        // The covers' column: two 140 covers 20 apart = 300; the tiles' plates bleed 8 each side of a cover.
+        float covers = 2f * ClassicLibraryPaneRules.AlsoByAsideArt + (ClassicLibraryPaneRules.AlsoByAsideColGap + 2f * SurfaceGeometry.ShelfPlatePad);
+        Assert.Equal(ClassicLibraryTiers.HugeAlsoByAside, covers);
+        Assert.Equal(156f, ClassicLibraryPaneRules.AlsoByAsideCardW);
+        // The column's width: the gap, the covers and the pane's right inset; its padding puts the covers exactly 32 right of the rows.
+        float outer = ClassicLibraryPaneRules.AlsoByAsideOuter(ClassicLibraryTiers.HugeAlsoByAside, ClassicLibraryTiers.HugeAlsoByGap);
+        Assert.Equal(32f + 300f + ClassicTiers.PaneInset, outer);
+        Assert.Equal(outer, ClassicLibraryPaneRules.AlsoByAsideLead(32f) + 2f * ClassicLibraryPaneRules.AlsoByAsideCardW + ClassicLibraryPaneRules.AlsoByAsideColGap
+                            + ClassicLibraryPaneRules.AlsoByAsideTrail);
+        Assert.Equal(32f, ClassicLibraryPaneRules.AlsoByAsideLead(32f) + SurfaceGeometry.ShelfPlatePad);
+        Assert.Equal(0f, ClassicLibraryPaneRules.AlsoByAsideOuter(0f, 0f));               // below Huge the slot is 0 wide
+    }
+
+    // ── Recents' docked Overview (C-Recents-Huge) ──────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Only_huge_recents_docks_the_overview_beside_an_1100_list()
+    {
+        var huge = ClassicRecentsTiers.For(WidthTier.Huge);
+        Assert.True(huge.OverviewDocked);
+        Assert.Equal(1100f, huge.ListMax);
+        Assert.Equal(48f, huge.OverviewGap);
+        Assert.Equal(660f, huge.OverviewAside);                                          // two plated 322 month cards 16 apart
+        Assert.Equal(322f, ClassicRecentsRules.OverviewCardW);
+        Assert.Equal(2f * ClassicRecentsRules.OverviewCardW + huge.CalendarGap, huge.OverviewAside);
+        Assert.Same(huge, ClassicRecentsTiers.For(WidthTier.Huge4K));
+        foreach (var content in new[] { WidthTier.Compact, WidthTier.Small, WidthTier.Standard })
+        {
+            var record = ClassicRecentsTiers.For(content);
+            Assert.False(record.OverviewDocked);
+            Assert.Equal(0f, record.OverviewAside);
+            Assert.True(float.IsNaN(record.ListMax));
+        }
+    }
+
+    [Fact]
+    public void The_overview_aside_fits_two_month_cards()
+    {
+        var huge = ClassicRecentsTiers.For(WidthTier.Huge);
+        float gap = huge.CalendarGap;
+        int cols = System.Math.Max(1, (int)((huge.OverviewAside + gap) / (ClassicRecentsRules.OverviewCardW + gap)));
+        Assert.Equal(2, cols);
     }
 }

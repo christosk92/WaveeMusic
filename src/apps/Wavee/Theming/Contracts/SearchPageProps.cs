@@ -92,6 +92,10 @@ public sealed record SearchBodyModel
     /// <summary>The All tab's playlist rail items; empty draws nothing.</summary>
     public IReadOnlyList<Search.HitItem> Rail { get; init; } = Array.Empty<Search.HitItem>();
 
+    /// <summary>The All tab's artist rail items (contract 1.22): the ranked hits' artists, then the Artists facet's own list once it has landed, never the
+    /// Top result itself. A structure that draws no artist rail ignores it (Classic draws one at Huge only, <c>C-Search-Huge</c>); empty draws nothing.</summary>
+    public IReadOnlyList<Search.HitItem> ArtistRail { get; init; } = Array.Empty<Search.HitItem>();
+
     /// <summary>The genre section's answer (All).</summary>
     public SearchSection GenreState { get; init; }
 
@@ -162,4 +166,7 @@ public sealed record SearchPageProps
 
     /// <summary>Best matches' column count for a measured width, with the page's hysteresis behind it.</summary>
     public required Func<float, int> ColsFor { get; init; }
+
+    /// <summary>The artist rail's header: switch to the Artists tab (not a navigation; contract 1.22). Null where the host offers no Artists tab.</summary>
+    public Action? SelectArtists { get; init; }
 }

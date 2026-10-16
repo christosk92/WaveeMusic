@@ -139,7 +139,8 @@
       "duration": "Duration",
       "ascending": "Ascending",
       "descending": "Descending",
-      "menu": "Sort"
+      "menu": "Sort",
+      "named": "Sort: {order}"
     },
     "filter": {
       "title": "Filter tracks",
@@ -192,7 +193,17 @@
       "tempoFast": "120–139 BPM",
       "tempoVeryFast": "140+ BPM",
       "onlyLiked": "Only songs I liked",
-      "hideUnplayable": "Hide songs I can’t play"
+      "hideUnplayable": "Hide songs I can’t play",
+      "unavailable": {
+        "$comment": "The bar over a list that holds songs the user cannot play (boards C-Unavailable / C-Unavailable-Compact). `summary` is the short form; `explained` names the reasons, joined from `region` / `upcoming`, or `allRegion` / `allUpcoming` when every such song shares one reason. `hide` turns on the filter card's `hideUnplayable` switch.",
+        "summary": "{count, plural, one {# song here can’t be played.} other {# songs here can’t be played.}}",
+        "explained": "{count, plural, one {# song here can’t be played} other {# songs here can’t be played}}: {reasons}.",
+        "region": "{count, plural, one {one isn’t available in your country} other {# aren’t available in your country}}",
+        "upcoming": "{count, plural, one {one isn’t out yet} other {# aren’t out yet}}",
+        "allRegion": "{count, plural, one {it isn’t available in your country} other {they aren’t available in your country}}",
+        "allUpcoming": "{count, plural, one {it isn’t out yet} other {they aren’t out yet}}",
+        "hide": "{count, plural, one {Hide it} other {Hide them}}"
+      }
     },
     "density": {
       "rowSize": "Row size",
@@ -205,7 +216,10 @@
       "$comment": "The three things that can stand in for rows. `noTracks` is a VERDICT (the membership landed and it is empty); `loadFailed` is the absence of a verdict (the fetch failed and nothing is resident) and is deliberately a different sentence — saying \"Nothing here yet\" about a playlist we simply could not read is a lie the user cannot act on.",
       "noTracks": "Nothing here yet",
       "noMatch": "No songs match your filter",
-      "loadFailed": "Couldn't load these songs"
+      "loadFailed": "Couldn't load these songs",
+      "$commentLead": "An EMPTY playlist's lead over its Recommended songs (Compact): findSongs is the line under noTracks, searchSongs the placeholder of the field that looks for songs to add.",
+      "findSongs": "Find songs to add, or start from the suggestions below.",
+      "searchSongs": "Search for songs or episodes"
     },
     "discography": {
       "$comment": "The artist page's inline album drawer (AlbumDrawerPanel) — capped at AlbumDrawerVerdict.CapPerColumn rows per column; past the cap the last slot links to the full album page instead of growing the drawer.",

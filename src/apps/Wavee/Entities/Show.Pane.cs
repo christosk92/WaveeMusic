@@ -148,7 +148,7 @@ public readonly partial struct Show
                 HeaderReady = true, CoverUrl = id.CoverUrl, Eyebrow = id.Eyebrow, Title = id.Title,
                 Publisher = Entities.Strings.Resolve(show.PublisherId), Meta = id.Meta ?? "", Uri = _uri,
                 Open = _open, HeartShown = _heartShown, More = _more,
-                Primary = accent => Embed.Comp(new SlotProps(m, accent), static () => new PrimarySlot()) with { Key = "showpane:primary" },
+                Primary = (accent, size) => Embed.Comp(new SlotProps(m, accent, Size: size), static () => new PrimarySlot()) with { Key = "showpane:primary" },
                 Reader = Embed.Comp(new ReaderProps(m, _scrollKey), static () => new ReaderHost()) with { Key = _readerKey },
             });
         }

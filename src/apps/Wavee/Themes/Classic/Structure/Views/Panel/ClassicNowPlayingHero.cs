@@ -9,9 +9,9 @@
 // style flip re-mounts nothing the deck owns. Which face paints is the core's decision (`ResolvedPresentation`: the stored
 // presentation while developer mode is on, the cover otherwise).
 //
-// IN THE COMPACT SHEET (`ClassicPanel.SheetArtSide` provided): the tile is the art alone, centred at the side the window leaves it (the
-// header row rides the sheet's head, the drag handle), the deck scaled to that side; the identity, the transport and the rest are the sheet's
-// own column (`ClassicNowPlayingSheet`).
+// IN THE COMPACT SHEET (`ClassicPanel.SheetArtSide` provided): the tile is the art alone, centred at the side the window leaves it (no header
+// strip: the sheet's head carries its own header, `ClassicSheetHeader`, which seats the developer-only style gear, `ClassicHeroHeaderRow.StyleGear`),
+// the deck scaled to that side; the identity, the transport and the rest are the sheet's own column (`ClassicNowPlayingSheet`).
 //
 // THE BODY (scrolls under the pinned hero) is the panel's now-playing arm: title · artist links · album link · heart, the lyrics
 // peek (the core host `props.LyricsPeek`, which mounts `Player.LyricsPeek`), then About the artist, the cities, merch and Next up
@@ -345,14 +345,10 @@ internal sealed class ClassicHeroHeaderRow : Component
         var preset = Rail.PlayerPrefs.CurrentPreset();
         var presentation = UseSignal(stored);
         UseEffect(() => { presentation.SetIfChanged(stored); }, DepKey.From(epoch));
-        bool open = Rail.PlayerPrefs.StyleFlyoutOpen.Value;              // the gear lights wherever the flyout was opened from
         bool styleVisible = Rail.PlayerPrefs.StyleChoiceVisible();     // the switch AND the gear: developer-only (#199)
 
         string[] items = [Loc.Get(Strings.Player.PresentationCover), Loc.Get(preset.ShortLabelKey)];
         var verbs = props.Style;
-        var flyout = props.Flyout;
-        Element gear = ClassicPanel.HeaderButton(Icons.Settings, Loc.Get(Strings.Player.PlayerStyle),
-            () => verbs.ToggleStyleFlyout(), active: open);
 
         // Sentence case, never .ToUpper() on a localized string.
         Element eyebrow = R.Type.Eyebrow(Loc.Get(Strings.Player.NowPlaying)) with
@@ -360,18 +356,7 @@ internal sealed class ClassicHeroHeaderRow : Component
             Color = Tok.TextTertiary, Grow = 1f, Basis = 0f, MinWidth = 0f,
             Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
         };
-        // A plain wrapper takes the row's Center: the popup's own anchor wrapper is AlignSelf=Start.
-        Element gearBox = new BoxEl
-        {
-            Direction = 0, Shrink = 0f,
-            Children =
-            [
-                Popup.Create(gear, () => Slots.View(ViewKeys.DeckStyleFlyout, flyout), Rail.PlayerPrefs.StyleFlyoutOpen,
-                    onOpenChanged: static nowOpen => { if (!nowOpen) Rail.NpvDiagnostics.FlyoutClosed(); },
-                    placement: FlyoutPlacement.BottomEdgeAlignedRight,
-                    options: new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)),
-            ],
-        };
+        Element gearBox = StyleGear(props);
 
         return new BoxEl
         {
@@ -386,6 +371,30 @@ internal sealed class ClassicHeroHeaderRow : Component
                     gearBox,
                   ]
                 : [eyebrow],
+        };
+    }
+
+    /// <summary>The style gear and the popup it owns (the one flyout instance: the art menu's "Player style…" opens the same one). Developer-only:
+    /// the caller composes it only while <c>Rail.PlayerPrefs.StyleChoiceVisible()</c>. Read inside a render: it subscribes the flyout's open flag
+    /// (the gear lights wherever the flyout was opened from). The docked header row and the Compact sheet's header both seat it.</summary>
+    internal static Element StyleGear(NowPlayingHeroProps props)
+    {
+        bool open = Rail.PlayerPrefs.StyleFlyoutOpen.Value;
+        var verbs = props.Style;
+        var flyout = props.Flyout;
+        Element gear = ClassicPanel.HeaderButton(Icons.Settings, Loc.Get(Strings.Player.PlayerStyle),
+            () => verbs.ToggleStyleFlyout(), active: open);
+        // A plain wrapper takes the row's Center: the popup's own anchor wrapper is AlignSelf=Start.
+        return new BoxEl
+        {
+            Direction = 0, Shrink = 0f,
+            Children =
+            [
+                Popup.Create(gear, () => Slots.View(ViewKeys.DeckStyleFlyout, flyout), Rail.PlayerPrefs.StyleFlyoutOpen,
+                    onOpenChanged: static nowOpen => { if (!nowOpen) Rail.NpvDiagnostics.FlyoutClosed(); },
+                    placement: FlyoutPlacement.BottomEdgeAlignedRight,
+                    options: new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)),
+            ],
         };
     }
 }

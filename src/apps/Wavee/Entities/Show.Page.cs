@@ -1147,9 +1147,10 @@ public readonly partial struct Show
     // Each slot is a core component that owns its tone memo, its facts and its verbs and hands them to the structure's `ShowReaderStyle`
     // (`Primary`, `Ledger`, `Rating`, `Badges`; the topics are `Show.Podcasts.cs`), which draws them.
 
-    /// <summary>What a rail slot body is handed: the page's model, the frame's accent (Primary only) and the rail's
-    /// measure (NaN in the vertical header: fill the column).</summary>
-    sealed record SlotProps(ReaderModel Model, Func<ColorF>? Accent, float Width = float.NaN);
+    /// <summary>What a rail slot body is handed: the page's model, the frame's accent (Primary only), the rail's
+    /// measure (NaN in the vertical header: fill the column) and the primary's control size (the library pane's 40-DIP
+    /// Compact targets; contract 1.22).</summary>
+    sealed record SlotProps(ReaderModel Model, Func<ColorF>? Accent, float Width = float.NaN, ControlSize Size = ControlSize.Medium);
 
     /// <summary>The CTA's primary by visit (§4): New &amp; not following → Follow + a ghost ▶ (episode 1 for a serial,
     /// else the latest); Returning → Resume · N min left on listen-next's resume; otherwise ▶ the latest. Play is
@@ -1190,7 +1191,7 @@ public readonly partial struct Show
             return style.Primary(new ShowPrimaryArgs
             {
                 Primary = f.Primary, Ghost = f.Ghost, ResumeLeft = f.ResumeLeft, FirstNumber = f.FirstNumber,
-                Follow = _follow, Resume = _resume, First = _first, Latest = _latest,
+                Follow = _follow, Resume = _resume, First = _first, Latest = _latest, Size = p.Size,
             });
         }
     }

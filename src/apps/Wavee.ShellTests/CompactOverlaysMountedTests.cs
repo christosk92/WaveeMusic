@@ -9,6 +9,8 @@
 //                 card: the pane sat in a component anchor, a default column, so a row's stretch never reached it)
 //   sheet fit     the now-playing sheet's title, transport and Lyrics / Queue doors lie inside the window at 400 x 860 and 400 x 640; the art
 //                 is what gives; every other panel kind's head and body lie inside the window too
+//   sheet head    the now-playing sheet's own header (C-NowPlaying-Compact: close · "Playing from" · ⋯) lies inside the window, its chevron
+//                 closes the sheet, its "⋯" is armed while a track plays, and the Devices door stands between Lyrics and Queue
 //   drag          the sheet's head follows a scripted pointer drag 1:1 (the cursor the vertical-resize arrows), springs back short of the
 //                 threshold, dismisses past it or on a fling, rubber-bands upward, and a tap moves nothing; the context sheet takes the same
 //                 drag; Escape still closes the sheet and the keys go to it (focus moves in)
@@ -259,9 +261,10 @@ public sealed class CompactOverlaysMountedTests(ShellHost host)
                 AssertInside(shell, ClassicPanelTiers.SheetTransportKey, height);
                 AssertInside(shell, ClassicPanelTiers.SheetDoorsKey, height);
                 var head = At(shell, Node(shell, ClassicPanelTiers.SheetHeadKey));
-                // The head's header row is laid out across the sheet: its eyebrow has a width (it once sat in a row wrapper at 0 wide).
+                // The head's header row is laid out across the sheet: its source lines have a width (a row once sat in a component anchor at 0 wide).
                 var scene = shell.Host.Scene;
-                var texts = Subtree(scene, Node(shell, ClassicPanelTiers.SheetHeadKey)).Where(n => scene.Bounds(n).H > 0f && scene.ElementTypeId(n) == new TextEl("").ElementTypeId).ToList();
+                AssertInside(shell, ClassicPanelTiers.SheetHeaderKey, height);
+                var texts = Subtree(scene, Node(shell, ClassicPanelTiers.SheetSourceKey)).Where(n => scene.Bounds(n).H > 0f && scene.ElementTypeId(n) == new TextEl("").ElementTypeId).ToList();
                 Assert.NotEmpty(texts);
                 Assert.All(texts, n => Assert.True(scene.Bounds(n).W > 20f, $"a head text is {scene.Bounds(n).W} wide"));
                 float side = ClassicPanelTiers.SheetArtSide(W, height, head.H);
@@ -273,6 +276,37 @@ public sealed class CompactOverlaysMountedTests(ShellHost host)
             }
             finally { CloseSheet(shell); }
         }, W, height);
+
+    [Fact]
+    public void The_now_playing_sheets_chevron_closes_it_and_its_devices_door_names_this_computer()
+        => host.Mounted(shell =>
+        {
+            shell.RunFrames(20);
+            try
+            {
+                OpenSheet(shell, Shell.RailMode.NowPlaying);
+                var scene = shell.Host.Scene;
+
+                // The Devices door stands between Lyrics and Queue with its glyph over its label (the device playback is on: this one, offline).
+                AssertInside(shell, ClassicPanelTiers.SheetDevicesKey, H);
+                var texts = Subtree(scene, Node(shell, ClassicPanelTiers.SheetDevicesKey))
+                    .Where(n => scene.ElementTypeId(n) == new TextEl("").ElementTypeId && scene.Bounds(n).W > 0f).ToList();
+                Assert.True(texts.Count >= 2, $"the Devices door draws its glyph and its label ({texts.Count} texts)");
+
+                // The "⋯" is armed while a track plays (it opens the now-playing menu through the context funnel).
+                Assert.True((scene.Flags(Node(shell, ClassicPanelTiers.SheetMoreKey)) & NodeFlags.Focusable) != 0, "the sheet's ⋯ is armed");
+
+                // A press on the chevron closes the sheet.
+                var close = At(shell, Node(shell, ClassicPanelTiers.SheetCloseKey));
+                var at = new Point2(close.X + close.W / 2f, close.Y + close.H / 2f);
+                Move(shell, at); Frame(shell);
+                Down(shell, at); Frame(shell);
+                Up(shell, at);
+                for (int i = 0; i < 30; i++) Frame(shell);
+                Assert.False(Shell.Ui.RailOpen.Peek(), "the chevron closes the sheet");
+            }
+            finally { CloseSheet(shell); }
+        }, W, H);
 
     [Theory]
     [InlineData(Shell.RailMode.Lyrics)]

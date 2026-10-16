@@ -43,10 +43,10 @@ public sealed partial class TierLayoutTests
     public void The_album_page_holds_its_tier_layout(string size) => AssertPage(Album, size, (shell, tiers) => AssertDetail(shell, tiers, size, rail: true, tracks: true));
 
     [Theory, MemberData(nameof(PageSizes))]
-    public void The_playlist_page_holds_its_tier_layout(string size) => AssertPage(Playlist, size, (shell, tiers) => AssertDetail(shell, tiers, size, rail: true, tracks: true));
+    public void The_playlist_page_holds_its_tier_layout(string size) => AssertPage(Playlist, size, (shell, tiers) => AssertDetail(shell, tiers, size, rail: true, tracks: true, list: true));
 
     [Theory, MemberData(nameof(PageSizes))]
-    public void The_liked_page_holds_its_tier_layout(string size) => AssertPage(Liked, size, (shell, tiers) => AssertDetail(shell, tiers, size, rail: false, tracks: true));
+    public void The_liked_page_holds_its_tier_layout(string size) => AssertPage(Liked, size, (shell, tiers) => AssertDetail(shell, tiers, size, rail: false, tracks: true, list: true));
 
     [Theory, MemberData(nameof(PageSizes))]
     public void The_show_page_holds_its_tier_layout(string size) => AssertPage(Show, size, (shell, tiers) => AssertDetail(shell, tiers, size, rail: true, tracks: false));
@@ -56,7 +56,7 @@ public sealed partial class TierLayoutTests
 
     // ── the detail page's own assertions ──────────────────────────────────────────────────────────────────────────────
 
-    static void AssertDetail(Shell.HeadlessShell shell, TierFacts tiers, string sizeName, bool rail, bool tracks)
+    static void AssertDetail(Shell.HeadlessShell shell, TierFacts tiers, string sizeName, bool rail, bool tracks, bool list = false)
     {
         var size = Sizes[sizeName];
         var scene = shell.Host.Scene;
@@ -89,19 +89,80 @@ public sealed partial class TierLayoutTests
             // page's insights live in its aside at Huge instead.
             bool docked = size.Window >= WidthTier.Huge && expected == "head";
             Assert.True(shell.FindPrefix("insights:dock-column").Count == (docked ? 1 : 0), $"{size.Name}: the docked insights column");
+            // The unavailable-songs bar's slot (contract 1.22, C-Unavailable / -Compact) never takes more than its tier's band: the bar and the air under it.
+            var unavailable = shell.Find("unavailable");
+            if (!unavailable.IsNull)
+                Assert.True(scene.AbsoluteRect(unavailable).H <= record.Unavailable.Extent + 0.5f,
+                    $"{size.Name}: the unavailable bar's slot is {scene.AbsoluteRect(unavailable).H} tall, past its {record.Unavailable.Extent} band");
         }
 
+        if (tracks) AssertBarAndRows(shell, record, size, list, expected);
+        if (rail && tracks && expected == "two-column") AssertRailCta(shell, record, size);
         if (rail) AssertAside(shell, record, size, expected == "two-column");
 
         if (size.Window == WidthTier.Compact) AssertCompactPageTargets(shell, size);
     }
 
-    /// <summary>At Compact every hit target of the hero's action row and of the list bar is at least 40 x 40 (the brief's Compact rule).</summary>
+    /// <summary>The list bar and the rows as the record draws them (fix/remaining-pages): at Compact the Filter is the funnel alone (C-Album-Compact,
+    /// C-Playlist-Compact, C-Liked-Compact) and a LIST's Modern rows have no "#" lane (C-TrackList compact); at Small the Sort is its glyph and chevron
+    /// (C-Album-Small, C-Playlist-Small, C-Liked-Small); the hero arm carries at most one recommendations section, after its rows, and at Compact its
+    /// header's commands are 40 targets (C-Playlist-Compact, C-Empty-Compact).</summary>
+    static void AssertBarAndRows(Shell.HeadlessShell shell, ClassicDetailTier record, TierSize size, bool list, string arm)
+    {
+        var scene = shell.Host.Scene;
+        foreach (var (node, key) in shell.FindPrefix("cmd:filter"))
+        {
+            if (key != "cmd:filter" || scene.InCollapsedSubtree(node) || !record.FilterGlyph) continue;
+            float w = scene.AbsoluteRect(node).W;
+            Assert.True(w <= ClassicDetailTiers.CompactTarget + 0.5f, $"{size.Name}: the Compact Filter is {w} wide, not the 40 funnel");
+        }
+        foreach (var (node, key) in shell.FindPrefix("cmd:sort"))
+        {
+            if (key != "cmd:sort" || scene.InCollapsedSubtree(node) || !record.SortGlyph) continue;
+            // The glyph form: 9, the sort glyph, 4, the chevron, 6 (about 41); never the order's word (Custom order, Album order, Date added: 100+).
+            float w = scene.AbsoluteRect(node).W;
+            Assert.True(w > 0f && w < 64f, $"{size.Name}: the Small Sort is {w} wide, not its glyph");
+        }
+        // A list's Modern Compact row: art, title, heart, more. Told apart from a Classic row (which keeps its "#" and its duration) by the duration lane.
+        if (list && !record.Core.Table.ListIndex && shell.FindPrefix(Track.CellKey.Title).Count > 0 && shell.FindPrefix(Track.CellKey.Duration).Count == 0)
+            Assert.True(shell.FindPrefix(Track.CellKey.Num).Count == 0, $"{size.Name}: a Compact list row still lays out its # lane");
+        if (arm == "vertical") Assert.True(shell.FindPrefix("vitem:recs").Count <= 1, $"{size.Name}: the hero arm carries more than one recommendations section");
+        if (!record.EmptyLead) return;
+        foreach (var (root, _) in shell.FindPrefix("rec:header"))
+            foreach (var n in Subtree(scene, root))
+            {
+                if (scene.InCollapsedSubtree(n)) continue;
+                var flags = scene.Flags(n);
+                if ((flags & NodeFlags.Focusable) == 0 || (flags & NodeFlags.Visible) == 0) continue;
+                var r = scene.AbsoluteRect(n);
+                if (r.W <= 0f || r.H <= 0f) continue;
+                Assert.True(r.W >= 40f - 0.5f && r.H >= 40f - 0.5f, $"{size.Name}: a Recommended songs command is {r.W} x {r.H}, under 40 x 40");
+            }
+    }
+
+    /// <summary>The rail's CTA (fix/remaining-pages, C-Album-Small): where the record breaks the Play row the fixed actions start their own line (the keyed
+    /// break follows the split); elsewhere no break. Only once the rail has loaded its CTA.</summary>
+    static void AssertRailCta(Shell.HeadlessShell shell, ClassicDetailTier record, TierSize size)
+    {
+        var ctas = shell.FindPrefix("rail:cta");
+        if (!ctas.Any(c => c.Key == "rail:cta")) return;
+        bool broken = ctas.Any(c => c.Key == "rail:cta:break");
+        Assert.True(broken == record.Rail.BreakAfterPrimary, $"{size.Name}: the rail's Play row break is {(broken ? "on" : "off")}, the record says {record.Rail.BreakAfterPrimary}");
+        if (!broken) return;
+        var scene = shell.Host.Scene;
+        var mark = scene.AbsoluteRect(ctas.First(c => c.Key == "rail:cta:break").Node);
+        foreach (var (node, key) in shell.FindPrefix("rail:shuffle:button"))
+            if (key == "rail:shuffle:button")
+                Assert.True(scene.AbsoluteRect(node).Y >= mark.Y - 0.5f, $"{size.Name}: Shuffle stayed on the Play row");
+    }
+
+    /// <summary>At Compact every hit target of the hero's action row, of the list bar and of the unavailable-songs bar ("Hide them", C-Unavailable-Compact,
+    /// contract 1.22) is at least 40 x 40 (the brief's Compact rule).</summary>
     static void AssertCompactPageTargets(Shell.HeadlessShell shell, TierSize size)
     {
         var scene = shell.Host.Scene;
         int targets = 0;
-        foreach (string prefix in new[] { "vhero-actions", "bar:left", "bar:right" })
+        foreach (string prefix in new[] { "vhero-actions", "bar:left", "bar:right", "unavailable:bar" })
             foreach (var (root, _) in shell.FindPrefix(prefix))
                 foreach (var n in Subtree(scene, root))
                 {

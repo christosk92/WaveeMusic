@@ -336,4 +336,103 @@ public class TrackFilterModelTests
         Assert.False(Matches(f, "", Track.FilterState.Default with { Tempo = Track.TempoBand.From120To139 }, Now));
         Assert.True(Matches(f, "", Track.FilterState.Default, Now));
     }
+
+    // ── the "Hide them" bar (boards C-Unavailable / C-Unavailable-Compact, contract 1.22) ────────────────────────────────────────
+
+    /// <summary>A row as the table's scan sees it: <paramref name="ruledUntil"/> null = playable; else ruled unavailable until that instant
+    /// (0: no instant, withdrawn / region-locked).</summary>
+    static Track.FilterRow Row(int? ruledUntil) => ruledUntil is not int at
+        ? Song()
+        : new Track.FilterRow
+        {
+            Title = "Ruled", ArtistLine = "Somebody", DurationMs = 200_000, ArtistSlots = [1],
+            NotYetOut = Track.NotYetOutOf(availabilityKnown: true, unavailable: true, at, Now),
+            Unplayable = Track.Unplayable(availabilityKnown: true, unavailable: true, at),
+        };
+
+    /// <summary>The table's tally over <paramref name="rows"/> (`TableHost.UnavailableNow`'s loop).</summary>
+    static Track.UnavailableTally Tally(params int?[] rows)
+    {
+        var tally = default(Track.UnavailableTally);
+        foreach (var at in rows)
+        {
+            var r = Row(at);
+            if (Track.FilterModel.HiddenByPlayable(r.NotYetOut, r.Unplayable)) tally = tally.With(r.NotYetOut, r.Unplayable);
+        }
+        return tally;
+    }
+
+    [Fact]
+    public void The_bar_counts_exactly_the_rows_PlayableOnly_hides_by_why()
+    {
+        int soon = (int)(Now + 7 * 86_400);
+        // Two playable rows, one withdrawn ("isn’t available in your country"), two announced ("isn’t out yet").
+        int?[] rows = [null, null, 0, soon, soon];
+        var tally = Tally(rows);
+
+        Assert.Equal(1, tally.NotAvailable);
+        Assert.Equal(2, tally.NotYetOut);
+        Assert.Equal(3, tally.Total);
+
+        // The bar's number is the filter's: every counted row is hidden by PlayableOnly, every other row is kept.
+        var hide = new Track.FilterState(Flags: Track.FilterFlags.PlayableOnly);
+        int hidden = 0, kept = 0;
+        foreach (var at in rows)
+        {
+            var r = Row(at);
+            if (Matches(r, "", hide, Now)) kept++; else hidden++;
+        }
+        Assert.Equal(tally.Total, hidden);
+        Assert.Equal(rows.Length - tally.Total, kept);
+    }
+
+    [Fact]
+    public void A_row_with_no_instant_counts_once_as_not_available_though_it_is_also_not_yet_out()
+    {
+        // `NotYetOutOf` holds for a ruled row with no instant too; the tally names it by its stronger verdict, once.
+        var withdrawn = Row(0);
+        Assert.True(withdrawn.NotYetOut);
+        Assert.True(withdrawn.Unplayable);
+        Assert.Equal(new Track.UnavailableTally(NotAvailable: 1, NotYetOut: 0), Tally(0));
+    }
+
+    [Fact]
+    public void A_passed_release_and_an_unruled_row_are_never_counted()
+    {
+        int past = (int)(Now - 86_400);
+        var healed = Row(past);
+        var unruled = new Track.FilterRow { Title = "Cold", ArtistLine = "Nobody", ArtistSlots = [1], NotYetOut = false, Unplayable = false };
+
+        Assert.False(Track.FilterModel.HiddenByPlayable(healed.NotYetOut, healed.Unplayable));
+        Assert.False(Track.FilterModel.HiddenByPlayable(unruled.NotYetOut, unruled.Unplayable));
+        Assert.Equal(0, Tally(past, null).Total);
+    }
+
+    [Fact]
+    public void The_bar_is_offered_while_there_are_rows_to_hide_and_the_filter_is_off()
+    {
+        var some = new Track.UnavailableTally(NotAvailable: 1, NotYetOut: 1);
+        var none = default(Track.UnavailableTally);
+        var off = Track.FilterState.Default;
+        var on = new Track.FilterState(Flags: Track.FilterFlags.PlayableOnly);
+        var likedOnly = off with { Flags = Track.FilterFlags.LikedOnly };
+
+        Assert.True(Track.FilterModel.OffersHide(in some, in off));
+        Assert.False(Track.FilterModel.OffersHide(in some, in on));          // "Hide them" (or the card's switch) takes the bar away
+        Assert.False(Track.FilterModel.OffersHide(in none, in off));         // nothing to hide: no bar
+        Assert.True(Track.FilterModel.OffersHide(in some, in likedOnly));    // another facet leaves it alone
+    }
+
+    [Fact]
+    public void Hide_them_sets_PlayableOnly_and_keeps_every_other_facet()
+    {
+        // What the bar's verb writes (`TableHost._hideUnavailable`): the flag OR-ed into the live filter, nothing else touched.
+        var before = new Track.FilterState(Flags: Track.FilterFlags.LikedOnly, Duration: Track.DurationRange.UnderThreeMinutes);
+        var after = before with { Flags = before.Flags | Track.FilterFlags.PlayableOnly };
+
+        Assert.True(after.PlayableOnly);
+        Assert.True(after.LikedOnly);
+        Assert.Equal(Track.DurationRange.UnderThreeMinutes, after.Duration);
+        Assert.Equal(before.ActiveCountFor(searching: false) + 1, after.ActiveCountFor(searching: false));
+    }
 }

@@ -12,6 +12,28 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **Album, playlist and Liked Songs pages say when they hold songs you can't play.** A bar over the list reads, for example, "2 songs here
+  can't be played: one isn't available in your country, one isn't out yet." Its **Hide them** button turns on the filter's "Hide songs I can't
+  play". In a narrow window it uses the short sentence and a 40-tall button. It slides open and closed instead of moving the list.
+- **The now-playing sheet in a narrow window has its own header and a Devices button.** The header has a close chevron, "Playing from" with the
+  album or playlist name (tap it to open that page) and a "⋯" button that opens the track menu. A Devices button between Lyrics and Queue shows
+  where playback is and opens the device picker.
+- **Detail pages fit narrow and medium windows better.** Under 528 wide, playlists and Liked Songs drop the "#" column (albums keep their
+  track numbers), Filter is a single 40 × 40 icon, and playlists show Recommended songs under their songs. An empty playlist opens with
+  "Nothing here yet" and a field that searches for songs to add. From 528 to 1007 wide, Sort is an icon (the order is in its tooltip), and
+  the album and playlist side column is padded 16/12 with its rows 10 apart, its other actions on their own line under Play.
+- **Home and Search use the room they have.** From 1920 wide, Home's "Following" button stands at the end of the facet row on every word,
+  "All" included (on All it opens Music's Following). Search puts the top result's art at the top left (round for an artist) above a large
+  title, under a "Top result" header, and adds an Artists row of round cards under the playlists. Under 528 wide, Home's facet row ends in a
+  40 × 40 Friend activity button (the words fade out at their edge instead of pushing it off), and section headers drop their subtitles.
+- **Settings follows its narrow, medium and huge designs.** The page title has a gear before it under 1008 wide and from 1920 wide. From 528
+  wide, a section's description sits on the same line as its name and ends in "…" when it is too long (in the 1008-1919 layout it stays under
+  the name). Section spacing follows each design. On a resize the gear fades, the title slides and the headers ease to their new height.
+- **The library and Recents use their designs for medium and huge windows.** From 528 to 1007 wide, the library's list rests at 240 with two
+  96-wide covers a row. From 1920 wide the list is tinted, and an album shows "Also by … in your library" in a 300-wide column beside its
+  songs instead of under them. Recents shows its Overview calendar beside an 1100-wide list; the Overview button shows or hides it, and a
+  click on a day scrolls the list to that day. Under 528 wide, a podcast or audiobook's Follow/Play button, heart and "⋯" are 40 × 40.
+
 - **Huge windows use their room on album, playlist and library pages.** From 1920 wide an album page has a right-hand column with About this
   release, the artist (a large photo, monthly listeners, the bio), Fans also like in rows of four and More by; they leave the left column and the
   space under the songs, and the songs keep their margin instead of running to the window's edge. On a 4K window the column is 640 wide and the

@@ -10,6 +10,12 @@
 //   Huge      gutter 36             wrapping row                     tuned                       fit 280           300 x 700 beside   6 columns beside Related
 //                                                                                                                  Best matches (3)
 //
+// THE TOP RESULT'S FORM. Compact to Standard keep the tuned card (the eyebrow, the copy left, the cover cropped off the right at -2.5 degrees). Huge
+// (C-Search-Huge) draws the AVATAR form: a "Top result" header over the card, and in the 300-tall card the hit's 128 art at the top left (round for a
+// person), the 40/52 title under it, the kind line, and the actions at the card's bottom right, all inset 28.
+// THE ARTIST RAIL. Huge alone draws an "Artists" rail of round cards between the playlist rail and Genres (10 columns, the playlist rail's band);
+// the region reveals and collapses on a crossing into or out of Huge (a size reveal: the sections below ride its edge).
+//
 // Public, so `Wavee.Tests` pins the records (the assembly has no InternalsVisibleTo).
 
 using FluentGpu.Dsl;
@@ -55,6 +61,12 @@ public sealed record ClassicSearchLayout
     /// <summary>The playlist rail's shelf.</summary>
     public required ClassicShelfBand Rail { get; init; }
 
+    /// <summary>The artist rail's shelf (Huge: <c>C-Search-Huge</c>'s ten round cards); null draws no artist rail.</summary>
+    public required ClassicShelfBand? ArtistRail { get; init; }
+
+    /// <summary>How the top result is drawn.</summary>
+    public required ClassicSearchHeroForm HeroForm { get; init; }
+
     /// <summary>The genre links' columns.</summary>
     public required ClassicGridBand Genres { get; init; }
 
@@ -91,6 +103,7 @@ public static class ClassicSearchTiers
         {
             Tier = WidthTier.Compact, Gutter = gutter, Flush = true, TabsWrap = false, TabH = 44f, RowArt = 44f, RowMinH = 60f,
             Songs = new ClassicGridBand(ClassicSearchRules.SongsColMin, 1), HeroH = ClassicSearchRules.HeroHeight, HeroBesideW = float.NaN,
+            HeroForm = ClassicSearchHeroForm.Card, ArtistRail = null,
             Rail = new ClassicShelfBand(148f, 188f, 0, FixedCardW: 164f, Gap: 0f, Pager: false),
             Genres = ClassicGridBand.Fixed(2), GenresBeside = false,
             FacetGrid = new ClassicGridBand(140f, 2),
@@ -99,6 +112,7 @@ public static class ClassicSearchTiers
         {
             Tier = WidthTier.Small, Gutter = gutter, Flush = false, TabsWrap = false, TabH = 36f, RowArt = 0f, RowMinH = 0f,
             Songs = new ClassicGridBand(ClassicSearchRules.SongsColMin, 2), HeroH = ClassicSearchRules.HeroHeight, HeroBesideW = float.NaN,
+            HeroForm = ClassicSearchHeroForm.Card, ArtistRail = null,
             Rail = new ClassicShelfBand(R.Space.ShelfCardMin, R.Space.ShelfCardMax, 0, FixedCardW: 0f, Gap: HomeModuleLayout.ShelfGap, Pager: true),
             Genres = ClassicGridBand.Fixed(2), GenresBeside = false,
             FacetGrid = new ClassicGridBand(Search.FacetGridMinCol, int.MaxValue),
@@ -107,6 +121,7 @@ public static class ClassicSearchTiers
         {
             Tier = WidthTier.Standard, Gutter = gutter, Flush = false, TabsWrap = true, TabH = 0f, RowArt = 0f, RowMinH = 0f,
             Songs = new ClassicGridBand(ClassicSearchRules.SongsColMin, int.MaxValue), HeroH = ClassicSearchRules.HeroHeight, HeroBesideW = float.NaN,
+            HeroForm = ClassicSearchHeroForm.Card, ArtistRail = null,
             Rail = new ClassicShelfBand(R.Space.ShelfCardMin, R.Space.ShelfCardMax, 0, FixedCardW: 0f, Gap: HomeModuleLayout.ShelfGap, Pager: true),
             Genres = ClassicGridBand.Fixed(3), GenresBeside = false,
             FacetGrid = new ClassicGridBand(Search.FacetGridMinCol, int.MaxValue),
@@ -115,7 +130,9 @@ public static class ClassicSearchTiers
         {
             Tier = WidthTier.Huge, Gutter = gutter, Flush = false, TabsWrap = true, TabH = 0f, RowArt = 0f, RowMinH = 0f,
             Songs = new ClassicGridBand(ClassicSearchRules.SongsColMin, int.MaxValue), HeroH = HugeHeroH, HeroBesideW = HugeHeroW,
+            HeroForm = ClassicSearchHeroForm.Avatar,
             Rail = new ClassicShelfBand(R.Space.ShelfCardMin, 9999f, 10, FixedCardW: 0f, Gap: HomeModuleLayout.ShelfGap, Pager: true),
+            ArtistRail = new ClassicShelfBand(R.Space.ShelfCardMin, 9999f, 10, FixedCardW: 0f, Gap: HomeModuleLayout.ShelfGap, Pager: true),
             Genres = ClassicGridBand.Fixed(6), GenresBeside = true,
             FacetGrid = new ClassicGridBand(Search.FacetGridMinCol, 10),
         },
@@ -126,4 +143,27 @@ public static class ClassicSearchTiers
 
     /// <summary>The gap between the top result and Best matches beside it, and between Genres and Related searches (<c>C-Search-Huge</c>: 32).</summary>
     public const float BesideGap = 32f;
+
+    /// <summary>The avatar form (<c>C-Search-Huge</c>): the art's edge, the card's inset on every side, the step from the art to the title, and the gap
+    /// between the card's lines.</summary>
+    public const float AvatarArt = 128f, AvatarPad = 28f, AvatarTitleGap = 10f, AvatarLineGap = 6f;
+
+    /// <summary>The avatar form's kind line: 14/20, secondary ink (<c>C-Search-Huge</c>).</summary>
+    public const float AvatarMetaSize = 14f, AvatarMetaLineHeight = 20f;
+
+    /// <summary>The step from the "Top result" header to the card under it (<c>C-Search-Huge</c>: 10).</summary>
+    public const float AvatarHeaderGap = 10f;
+
+    /// <summary>The header's line over the avatar card: the rail header's 20/28 (the shimmer reserves it).</summary>
+    public const float AvatarHeaderH = 28f;
+}
+
+/// <summary>How a tier draws the Search top result.</summary>
+public enum ClassicSearchHeroForm : byte
+{
+    /// <summary>The tuned card: the eyebrow and the copy left, the cover cropped off the right edge at -2.5 degrees (Compact to Standard).</summary>
+    Card,
+    /// <summary>A "Top result" header over the card; in it the hit's art at the top left (round for a person), the title, the kind line, the actions at
+    /// the bottom right (Huge: <c>C-Search-Huge</c>).</summary>
+    Avatar,
 }

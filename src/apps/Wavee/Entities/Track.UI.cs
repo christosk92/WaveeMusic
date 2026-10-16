@@ -116,7 +116,7 @@ public readonly partial struct Track
 
     /// <summary>THE width tracks for a column set, cached per (set, art): the header and the rows read the SAME array
     /// instance (ch 04 §0.1), and a scroll frame never rebuilds one (ch 01 §9, "Where the plan is wrong" 7). Order:
-    /// # · ♥ · art · Title* · Artist* · Album* · By · Date · Plays · Tempo · ♥(trailing) · Duration · Actions · Expand.
+    /// # · ♥ · art · Title* · Artist* · Album* · By · Date · Plays · Tempo · ♥(trailing) · Duration · Actions · Expand (no # where the set hides it).
     /// The key space is finite (a dozen flags × seven tiers × four art rungs), so the cache is never trimmed —
     /// trimming would hand the header and the rows two different instances for one shape. The KEY is the whole
     /// <see cref="ColumnSet"/>, so <see cref="ColumnSet.HeartTrailing"/> forks the cache by construction.</summary>
@@ -126,7 +126,7 @@ public readonly partial struct Track
         if (s_rowTrackCache.TryGetValue(key, out var cached)) return cached;
         var arr = new TrackSize[CellCount(in set)];
         int i = 0;
-        arr[i++] = TrackSize.Px(Lane.Num);
+        if (!set.IndexHidden) arr[i++] = TrackSize.Px(Lane.Num);
         if (set.Heart) arr[i++] = TrackSize.Px(Lane.Heart);
         if (set.Thumb) arr[i++] = TrackSize.Px(art);
         arr[i++] = TrackSize.Star(Lane.TitleStar);
@@ -154,7 +154,7 @@ public readonly partial struct Track
     /// (Track.UI.Bound.cs) and the table's column header (Track.Table.Chrome.cs). All three emit the TRAILING ♥ cell (the eager
     /// reader row's, and a quiet table's, D16) in the same position, so the cells and the tracks never fall out of step.</para></summary>
     internal static int CellCount(in ColumnSet set)
-        => 2 + (RowMetrics.ShowDuration(in set) ? 1 : 0) + (set.Heart ? 1 : 0) + (set.Thumb ? 1 : 0) + (set.Artist ? 1 : 0) + (set.Album ? 1 : 0)
+        => (set.IndexHidden ? 1 : 2) + (RowMetrics.ShowDuration(in set) ? 1 : 0) + (set.Heart ? 1 : 0) + (set.Thumb ? 1 : 0) + (set.Artist ? 1 : 0) + (set.Album ? 1 : 0)
            + (set.By ? 1 : 0) + (set.Date ? 1 : 0) + (set.Plays ? 1 : 0) + (RowMetrics.ShowTempo(in set) ? 1 : 0)
            + (RowMetrics.ShowHeartTrailing(in set) ? 1 : 0)
            + (set.Actions ? 1 : 0) + (set.Expand ? 1 : 0);

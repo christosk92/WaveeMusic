@@ -204,7 +204,7 @@ public interface IRecentsHost
     void PlayContext(EntityId id);
     /// <summary>A day header was invoked: zoom out to the calendar at that day.</summary>
     void InvokeDay(int dayIndex);
-    /// <summary>A calendar cell was invoked: zoom in at the month.</summary>
+    /// <summary>A calendar cell was invoked: zoom in at the month (a calendar docked beside the list brings the list to the day instead: nothing is zoomed out).</summary>
     void JumpIn(DateOnly date, int monthIndex);
     /// <summary>A calendar cell took or lost focus.</summary>
     void FocusDay(bool focused, DateOnly date);

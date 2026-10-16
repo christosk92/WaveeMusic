@@ -17,6 +17,9 @@
 //  4. THE PANE SCROLLS ONCE. Header and commands are fixed; everything below — the column header, the rows, then the "Also by" strip — is the embedded table's own trailing arm: ONE scroller, one
 //     scrollbar, one edge fade. The strip is therefore handed to the table as its trailing band instead of being laid out beside it, which is what used to trap a 5-track EP in a half-height inner
 //     viewport with the strip pinned underneath.
+//  5. AT HUGE THE STRIP IS AN ASIDE (C-Library-Huge, the record's `AlsoByAside`): "Also by … in your library" stands 32 right of the rows as a 300 column of 140 covers in two columns, and
+//     the rows' trailing band gives it up (it reads `s_alsoDocked`, which this view provides around the rows). The aside column is in the pane's row at EVERY tier, width 0 below Huge,
+//     so a crossing eases its width and the table beside it is never re-parented (its scroll and rows stay); its body fades in and out.
 //
 // The shimmer thunks, the rows thunk and the trailing thunk the old component kept as fields live in a per-template-instance cell (`ctx.Hooks.UseRef`): the region and the table are handed the SAME
 // delegates on every render, exactly as before.
@@ -28,6 +31,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using System.Runtime.CompilerServices;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
@@ -69,8 +73,34 @@ internal static class ClassicLibraryAlbumPane
         public void Prepare()
         {
             Shimmer ??= () => CountedShimmer(Props);
-            Trailing ??= () => AlsoBy(Props.AlsoBy());
+            // The trailing band is a host of its own: it reads whether the aside holds the strip (`s_alsoDocked`) and the model in ITS render, so a tier crossing or a
+            // save landing re-renders the band alone. Its props carry the selection's uri, so a new album re-reads its model.
+            Trailing ??= () => Embed.Comp(new TrailingProps(this, Props.Uri), static () => new AlsoByTrailing());
             Rows ??= _ => Props.Table(Trailing);
+        }
+    }
+
+    /// <summary>True under an album pane whose record docks the "Also by" aside (Huge): the rows' trailing band gives the strip up.</summary>
+    static readonly Context<bool> s_alsoDocked = new(false);
+
+    /// <summary>The trailing band's props: the pane's cell (the latest props) and the selection's uri (the band re-reads the model when the album changes).</summary>
+    sealed record TrailingProps(PaneCell Cell, string Uri)
+    {
+        public bool Equals(TrailingProps? o) => o is not null && ReferenceEquals(Cell, o.Cell) && Uri == o.Uri;
+        public override int GetHashCode() => HashCode.Combine(RuntimeHelpers.GetHashCode(Cell), Uri);
+    }
+
+    /// <summary>The rows' trailing band: the "Also by" strip, or nothing while the Huge aside holds it. It reads the model in its own render (the table host's subscriptions do
+    /// not reach a save landing), exactly as the old thunk did inside the table's.</summary>
+    sealed class AlsoByTrailing : Component
+    {
+        public override Element Render()
+        {
+            var p = UseProps<TrailingProps>();
+            bool docked = UseContext(s_alsoDocked);
+            // One root, keyed and eased, in both states: the band's height eases away when the aside takes the strip instead of snapping the scroller's tail.
+            Element band = docked ? new BoxEl() : AlsoBy(p.Cell.Props.AlsoBy());
+            return new BoxEl { Key = "also:band", Direction = 1, Shrink = 0f, ClipToBounds = true, Animate = Design.Reveal.Resize, Children = [band] };
         }
     }
 
@@ -94,11 +124,72 @@ internal static class ClassicLibraryAlbumPane
                     ClassicDetailKit.MoreButton(p.More, box), p.Open, box > ClassicLibraryPaneRules.CommandBox ? box : 0f),
                 p.Notice!,
                 // ONE flex slot, in every state: the shimmer, the Retry strip and the real table all grow into it, so the header and the commands above never move. "Also by" is NOT a
-                // sibling here any more — it is the table's trailing band, inside the table's scroller.
-                new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinHeight = 0f, ClipToBounds = true, Children = [rows] },
+                // sibling here any more — it is the table's trailing band, inside the table's scroller — except at Huge, where it is the aside beside the slot (C-Library-Huge).
+                new BoxEl
+                {
+                    Direction = 0, Grow = 1f, Basis = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
+                    Children =
+                    [
+                        Ctx.Provide(s_alsoDocked, layout.AlsoByDocked,
+                            new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true, Children = [rows] }),
+                        AsideColumn(p, layout),
+                    ],
+                },
             ],
         };
     }
+
+    // ══ THE HUGE "ALSO BY" ASIDE (C-Library-Huge) ════════════════════════════════════════════════════════════════════
+
+    /// <summary>The aside column beside the rows: in the row at every tier, width 0 below Huge (and where the album has no other saved albums by its artist), so a crossing
+    /// eases it open or shut and the rows' slot is never re-parented. Its body enters rising and fades out as an orphan.</summary>
+    static Element AsideColumn(LibraryAlbumPaneProps p, ClassicLibraryLayout layout)
+    {
+        // The template runs inside the pane host's render, which already subscribes every signal the model reads. The model needs no rows, so the aside opens with
+        // the header (the body's first frame), never late when the rows land.
+        var model = layout.AlsoByDocked ? p.AlsoBy() : null;
+        return new BoxEl
+        {
+            Key = "pane:also-aside", Direction = 1, Shrink = 0f, MinHeight = 0f, ClipToBounds = true, Animate = Design.Reveal.Resize,
+            Width = model is null ? 0f : ClassicLibraryPaneRules.AlsoByAsideOuter(layout.AlsoByAside, layout.AlsoByAsideGap),
+            Children = model is null ? [] : [AsideBody(model, layout) with { Key = "also:aside", Animate = ClassicLibraryPaneKit.PaneSwap }],
+        };
+    }
+
+    /// <summary>The aside's body: the heading (14/20 semibold, the board's) over two columns of 140 covers, scrolling on its own when the artist has more than fit.</summary>
+    static BoxEl AsideBody(LibraryAlsoByModel model, ClassicLibraryLayout layout)
+    {
+        var tiles = new Element[model.Tiles.Count];
+        for (int i = 0; i < tiles.Length; i++) tiles[i] = AsideTile(model.Tiles[i], i);
+        float pad = SurfaceGeometry.ShelfPlatePad;
+        return new BoxEl
+        {
+            Direction = 1, Grow = 1f, MinHeight = 0f, Shrink = 0f,
+            Width = ClassicLibraryPaneRules.AlsoByAsideOuter(layout.AlsoByAside, layout.AlsoByAsideGap),
+            Gap = ClassicLibraryPaneRules.AlsoByAsideTitleGap,
+            Padding = new Edges4(ClassicLibraryPaneRules.AlsoByAsideLead(layout.AlsoByAsideGap), ClassicLibraryPaneRules.AlsoByAsideTop, ClassicLibraryPaneRules.AlsoByAsideTrail, 0f),
+            Children =
+            [
+                // The heading stands on the covers' edge, not the plates'.
+                new BoxEl
+                {
+                    Direction = 1, MinWidth = 0f, Padding = new Edges4(pad, 0f, pad, 0f),
+                    Children = [R.Type.CardTitle(Strings.Library.AlsoBy(model.ArtistName)) with { Color = Tok.TextPrimary, MaxLines = 2, Wrap = TextWrap.Wrap, MinWidth = 0f }],
+                },
+                ScrollView(new GridEl
+                {
+                    MinColWidth = ClassicLibraryPaneRules.AlsoByAsideCardW, ColGap = ClassicLibraryPaneRules.AlsoByAsideColGap, RowGap = 0f, Children = tiles,
+                }) with { Grow = 1f, Basis = 0f, MinHeight = 0f, SuppressScrollBar = true, AutoEdgeFade = true, AutoEdgeFadeBand = ClassicLibraryPaneRules.AlsoByFadeBand },
+            ],
+        };
+    }
+
+    /// <summary>One aside tile: the shared surface at the 156 card (a 140 cover in its plate), with the strip tile's verbs and cascade.</summary>
+    static Element AsideTile(LibraryAlsoByTile tile, int i) => new BoxEl
+    {
+        Key = "also:" + FormatCache.Int(tile.Slot), Direction = 1, Shrink = 0f, Animate = Design.Entrance.Row(i),
+        Children = [Controls.Surface(tile.Card with { Height = ClassicLibraryPaneRules.AlsoByAsideCardH }, Shape.Shelf(), ClassicLibraryPaneRules.AlsoByAsideCardW)],
+    };
 
     // ══ THE COUNTED SHIMMER ══════════════════════════════════════════════════════════════════════════════════════════
     //
