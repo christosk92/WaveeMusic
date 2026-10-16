@@ -38,18 +38,29 @@ public static class WindowTiers
     /// non-positive or non-finite size.</summary>
     public static float UsableSize(float value) => float.IsFinite(value) && value > 0f ? value : float.NaN;
 
-    /// <summary>The content region's width from the window's: the window less the sidebar column and the rail's inline
-    /// reservation (its 8-DIP gap and its width, only while it is open AND fits beside the pane and the content floor). NaN
-    /// where the window width is unusable, so the content ladder keeps its tier too. Synchronous: every input is known before
-    /// the first layout.</summary>
-    public static float EstimateContentWidth(float viewportWidth, float sidebarColumnWidth, bool railOpen, float railWidth)
+    /// <summary>The content region's width from the window's: the window less the sidebar column and what the docked panels reserve
+    /// (<paramref name="panelsReserved"/>: their gaps and widths, <c>FrameRules.PanelsReservedWidth</c>; 0 where the window tier floats
+    /// the panel or none is open). NaN where the window width is unusable, so the content ladder keeps its tier too. Synchronous: every
+    /// input is known before the first layout.</summary>
+    public static float EstimateContentWidth(float viewportWidth, float sidebarColumnWidth, float panelsReserved)
     {
         float vp = UsableSize(viewportWidth);
         if (float.IsNaN(vp)) return float.NaN;
         float pane = float.IsFinite(sidebarColumnWidth) ? MathF.Max(0f, sidebarColumnWidth) : 0f;
-        bool fits = Shell.CanFitRail(vp, pane, railWidth);
-        float rail = Shell.FrameRules.RailGapWidth(railOpen, fits) + Shell.FrameRules.RailReservedWidth(railOpen, fits, railWidth);
-        return MathF.Max(0f, vp - pane - rail);
+        float panels = float.IsFinite(panelsReserved) ? MathF.Max(0f, panelsReserved) : 0f;
+        return MathF.Max(0f, vp - pane - panels);
+    }
+
+    /// <summary>What the docked panels reserve in a window <paramref name="viewportWidth"/> wide in window tier <paramref name="window"/>
+    /// under <paramref name="panel"/>: the primary while it is open and the tier docks it (at its width brought up to the tier's floor), and
+    /// the second pane while the queue is open beside it and the tier docks two.</summary>
+    public static float PanelsReserved(PanelPolicy panel, WidthTier window, float viewportWidth, bool railOpen, Shell.RailMode mode,
+        float railWidth, bool queueBeside)
+    {
+        var rule = panel.For(window);
+        float floor = rule.FloorFor(viewportWidth);
+        bool second = Shell.FrameRules.SecondOpen(queueBeside, rule.DocksTwo, railOpen, mode);
+        return Shell.FrameRules.PanelsReservedWidth(railOpen, rule.Docks, MathF.Max(railWidth, floor), second, Shell.FrameRules.SecondWidth(floor));
     }
 
     /// <summary>The tiers of a window of <paramref name="viewportWidth"/> by <paramref name="viewportHeight"/> whose content
@@ -217,9 +228,14 @@ public static class WindowTiers
             var nav = track ? ShellPolicy.Tracked.NavPane : ShellPolicy.Now.NavPane;
             var mode = SidebarPaneModeRules.Resolve(band, collapsed, editing, nav);
             float presented = SidebarPaneModeRules.PresentedWidth(mode, expanded, viewportWidth, nav);
+            // The panels are the ones the LOGICAL window tier lays out (its docking rule, its floor), for the same reason as the pane.
             bool railOpen = track ? Shell.Ui.RailOpen.Value : Shell.Ui.RailOpen.Peek();
             float railWidth = track ? Shell.Ui.RailWidth.Value : Shell.Ui.RailWidth.Peek();
-            return EstimateContentWidth(viewportWidth, Shell.FrameRules.SidebarPaneWidth(peek, expanded, presented), railOpen, railWidth);
+            var railMode = track ? Shell.Ui.Mode.Value : Shell.Ui.Mode.Peek();
+            bool queueBeside = track ? Shell.Ui.QueueBeside.Value : Shell.Ui.QueueBeside.Peek();
+            var panel = track ? ShellPolicy.Tracked.Panel : ShellPolicy.Now.Panel;
+            float panels = PanelsReserved(panel, (WidthTier)logical, viewportWidth, railOpen, railMode, railWidth, queueBeside);
+            return EstimateContentWidth(viewportWidth, Shell.FrameRules.SidebarPaneWidth(peek, expanded, presented), panels);
         }
     }
 }

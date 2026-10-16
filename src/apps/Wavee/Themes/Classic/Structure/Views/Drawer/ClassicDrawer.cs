@@ -13,13 +13,19 @@
 //                 keeps a lighter, non-dismissing scrim that lets the page behind stay usable) under the PANE (a stock overlay
 //                 pane: in-app acrylic + flyout elevation, sliding in on the pane spline). Open/close is compositor-only.
 //
+// THE ACCOUNT ROW (TC2, C-Shell-Compact / C-Sidebar account="true"): where the window tier's title bar carries no identity chip (Classic
+// Compact), the pane leads with a 56-DIP account row: the account chip in its row form (the avatar, the name over "Account and more"; a
+// press opens the account menu), the bell and the friends door at 40 x 40, a divider under it.
+//
 // The scrim and the pane are Components: each runs its own opacity/translate transition on its own root, seeded from the closed
 // resting value on mount so the first open has something to slide from.
 
 using FluentGpu.Animation;
+using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
+using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Theming.Contracts;
@@ -45,7 +51,7 @@ internal static class ClassicDrawer
                 new BoxEl
                 {
                     Grow = 1f, Direction = 0, Justify = FlexJustify.Start, HitTestPassThrough = true,
-                    Children = [Embed.Comp(parts, static () => new ClassicDrawerPane())],
+                    Children = [Embed.Comp(props, static () => new ClassicDrawerPane())],
                 },
             ],
         };
@@ -85,7 +91,8 @@ internal sealed class ClassicDrawerPane : Component
 
     public override Element Render()
     {
-        var parts = UseProps<NarrowDrawerParts>();
+        var props = UseProps<NarrowDrawerProps>();
+        var parts = props.Parts;
         bool open = parts.IsOpen();
         var vp = UseContextSignal(Viewport.Size);
         float width = parts.WidthNow(vp.Peek().Width);
@@ -106,7 +113,88 @@ internal sealed class ClassicDrawerPane : Component
             BorderWidth = 1f, BorderColor = Prop.Of(static () => Tok.StrokeCardDefault),
             Corners = ClassicFrameBitsRules.DrawerPaneCorners,
             Shadow = Elevation.Flyout, HitTestVisible = open,
-            Children = [parts.PaneBody()],
+            Children = props.ShowAccount && props.Account is { } account ? [AccountRow(account), parts.PaneBody()] : [parts.PaneBody()],
         };
     }
+
+    /// <summary>The account row over the pane (Compact): the chip's row form (or "Sign in"), the bell and the friends door, a divider under it.</summary>
+    static Element AccountRow(DrawerAccountProps account) => new BoxEl
+    {
+        Key = "drawer-account", Direction = 1, Shrink = 0f, Margin = new Edges4(0f, 0f, 0f, ClassicFrameBitsRules.AccountRowBelow),
+        Children =
+        [
+            new BoxEl
+            {
+                Direction = 0, Height = ClassicFrameBitsRules.AccountRowH, Shrink = 0f, AlignItems = FlexAlign.Center,
+                Gap = ClassicFrameBitsRules.AccountRowGap, Padding = ClassicFrameBitsRules.AccountRowPadding,
+                Children =
+                [
+                    Embed.Comp(account, static () => new ClassicDrawerIdentity()),
+                    Embed.Comp(account, static () => new ClassicDrawerBell()),
+                    ToolTip.Wrap(ClassicDrawerButtons.Glyph(Icons.Friends, account.ToggleFriends) with { Key = "drawer-friends" }, Loc.Get(Strings.Shell.Friends)),
+                ],
+            },
+            new BoxEl { Height = 1f, Shrink = 0f, Fill = Prop.Of(static () => Tok.StrokeDividerDefault), HitTestVisible = false },
+        ],
+    };
+}
+
+/// <summary>The account row's identity: the chip's drawer form while signed in, else "Sign in" / "Reconnect".</summary>
+internal sealed class ClassicDrawerIdentity : Component
+{
+    public override Element Render()
+    {
+        var account = UseProps<DrawerAccountProps>();
+        return account.SignedIn()
+            ? new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, Direction = 0, Children = [account.Chip()] }
+            : new BoxEl
+            {
+                Grow = 1f, Shrink = 1f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center,
+                Children = [Button.Accent(Loc.Get(Strings.Shell.SignIn), account.SignIn) with { Key = "drawer-sign-in" }],
+            };
+    }
+}
+
+/// <summary>The account row's bell: the unread pill over the button's own box.</summary>
+internal sealed class ClassicDrawerBell : Component
+{
+    public override Element Render()
+    {
+        var account = UseProps<DrawerAccountProps>();
+        var overlay = UseContext(Overlay.Service);
+        var anchor = UseRef<NodeHandle>(default);
+        var handle = UseRef<OverlayHandle?>(null);
+        int unread = account.BellUnread();
+        var button = ClassicDrawerButtons.Glyph(Icons.Bell, () => account.ToggleNotifications(overlay, () => anchor.Value, handle)) with
+        {
+            OnRealized = h => anchor.Value = h,
+        };
+        float box = ClassicFrameBitsRules.AccountButton;
+        BoxEl content = unread <= 0 ? button : new BoxEl
+        {
+            ZStack = true, Width = box, Height = box, Shrink = 0f,
+            Children =
+            [
+                button,
+                new BoxEl
+                {
+                    Width = box, Height = box, Direction = 1, Justify = FlexJustify.Start, HitTestVisible = false,
+                    Children = [new BoxEl { Direction = 0, Justify = FlexJustify.End, Children = [InfoBadge.Count(unread)] }],
+                },
+            ],
+        };
+        return ToolTip.Wrap(content with { Key = "drawer-bell" }, Loc.Get(Strings.Notifications.Title));
+    }
+}
+
+/// <summary>The account row's 40 x 40 glyph buttons.</summary>
+internal static class ClassicDrawerButtons
+{
+    public static BoxEl Glyph(string glyph, Action onClick) => new BoxEl
+    {
+        Width = ClassicFrameBitsRules.AccountButton, Height = ClassicFrameBitsRules.AccountButton, Shrink = 0f,
+        Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
+        Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, OnClick = onClick,
+        Children = [new TextEl(glyph) { Size = ClassicFrameBitsRules.AccountGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.TextPrimary }],
+    }.Interactive(Interaction.Subtle);
 }

@@ -35,6 +35,10 @@ public sealed record ProfileChipProps
 
     /// <summary>Report the chip's node: the menu anchors to it.</summary>
     public required Action<NodeHandle> Realized { get; init; }
+
+    /// <summary>The chip is the nav drawer's account ROW (contract 1.13, TC2): the larger avatar, the name and its "Account and more" line,
+    /// the row's width; false: the title bar's chip.</summary>
+    public bool Drawer { get; init; }
 }
 
 /// <summary>The props of <see cref="ViewKeys.OverlayProfileMenu"/>.</summary>

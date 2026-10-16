@@ -86,7 +86,7 @@ public static class ClassicOverlayTiers
         Core = new OverlayLayout(
             Dialog: new DialogFit(Fill: true, Inset: 16f, MaxWidth: 548f, EdgeY: 16f,
                 ContentPadding: new Edges4(16f, 20f, 16f, 20f), CommandPadding: new Edges4(16f, 8f, 16f, 16f)),
-            Toast: new ToastDock(ToastPlacement.BottomCenter, GapAboveBar: 8f, BarHeight: ClassicOverlayRules.MiniBarHeight),
+            Toast: new ToastDock(ToastPlacement.BottomCenter, GapAboveBar: 8f, BarHeight: ClassicPlayerTiers.MiniHeight),
             Vacancy: new VacancyFit(QuietTitle: true, Padding: 16f, ActionHeight: 40f),
             Selection: new SelectionFit(MinHeight: 48f, SideInset: 8f, Padding: new Edges4(4f, 4f, 4f, 4f)),
             ContextSheet: true),

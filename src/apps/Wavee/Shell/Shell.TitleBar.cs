@@ -67,7 +67,7 @@ public static partial class Shell
             _ => ChromeChipForm.Profile,
         },
         l.SearchMode == MergedSearchMode.Icon ? SearchForm.Icon : SearchForm.Field,
-        l.SearchWidth, l.TabIslandWidth, l.TabCount, l.TabMaxW);
+        l.SearchWidth, l.TabIslandWidth, l.TabCount, l.TabMaxW, l.TabsHidden);
 
     /// <summary>The history flyout's rows for the back stack (<paramref name="forward"/> false) or the forward stack, read at OPEN.
     /// An empty stack answers no rows, and then nothing opens at all.</summary>

@@ -1274,6 +1274,8 @@ public static partial class Shell
     {
         public bool RailOpen { get; set; }
         public int RailMode { get; set; }
+        /// <summary>The queue is open beside the panel (the second docked pane where the window tier docks two, TC2).</summary>
+        public bool QueueBeside { get; set; }
     }
 
     /// <summary>The persisted deck (G-078, G-217): identities as uri TEXT and plain numbers, never a slot — slots do not
@@ -1417,13 +1419,13 @@ public static partial class Shell
 
         /// <summary>Persist the session-only rail presentation. EQUALITY-GATED, because the shell's effect also runs
         /// once at mount after adopting the saved values.</summary>
-        public static void CaptureShell(bool railOpen, int railMode)
+        public static void CaptureShell(bool railOpen, int railMode, bool queueBeside = false)
         {
             if (s_writesBlocked) return;
             lock (s_gate)
             {
-                if (s_doc.Shell is { } cur && cur.RailOpen == railOpen && cur.RailMode == railMode) return;
-                s_doc.Shell = new SessionShellDto { RailOpen = railOpen, RailMode = railMode };
+                if (s_doc.Shell is { } cur && cur.RailOpen == railOpen && cur.RailMode == railMode && cur.QueueBeside == queueBeside) return;
+                s_doc.Shell = new SessionShellDto { RailOpen = railOpen, RailMode = railMode, QueueBeside = queueBeside };
             }
             Interlocked.Exchange(ref s_dirty, 1);
             ScheduleSave();

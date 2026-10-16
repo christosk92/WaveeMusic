@@ -61,10 +61,30 @@ internal static class RailWiring
             Open = panel.Open,
             Width = panel.Width,
             Floats = panel.Floats,
+            Placement = panel.Placement,
             FullHeight = ShellPolicy.Tracked.Panel.FullHeight,
             Body = ModeOf(Rail.VideoCoupling.BodyModeFor(panel.Mode, stageHosts)),
             DockedHere = docked && !stageHosts,
             Pinned = Rail.VideoCoupling.PinnedFor(stageHosts, docked, Video.PlacementCore.Allows(state.Available, Video.SurfacePlacement.Docked)),
+        };
+    }
+
+    /// <summary>The decided view of the SECOND docked pane (TC2, D3): always the queue, docked, with no docked video card; open while the
+    /// queue is open beside the primary panel at a tier that docks two.</summary>
+    internal static PanelView ReadQueuePane()
+    {
+        var host = Shell.PanelHost.Shared;
+        return new PanelView
+        {
+            Open = host.SecondOpen(),
+            Width = host.SecondWidth(),
+            Floats = false,
+            Placement = PanelPlacement.Dock,
+            FullHeight = ShellPolicy.Tracked.Panel.FullHeight,
+            Body = PanelMode.Queue,
+            DockedHere = false,
+            Pinned = PanelPinned.Art,
+            UnmountWhenClosed = true,
         };
     }
 
@@ -274,6 +294,7 @@ internal static class RailWiring
         DockedVideoMax = static () => Shell.DockedCapCeiling(Shell.Ui.RailBodyHeight.Peek()),
         CommitDockedVideo = Shell.PanelHost.CommitDockedVideo,
         Close = static () => Shell.PanelHost.Shared.Close(),
+        ShowMode = static mode => Shell.PanelHost.Shared.SetMode((Shell.RailMode)(byte)mode),
         ShowArt = static () => Shell.PanelHost.Shared.HideVideo(),
         ShowVideoDocked = static () => Shell.PanelHost.Shared.ShowVideoAt(Video.SurfacePlacement.Docked),
         VideoToMiniPlayer = static () => Shell.PanelHost.Shared.ShowVideoAt(Video.SurfacePlacement.Floating),
@@ -290,5 +311,17 @@ internal static class RailWiring
         },
         NowPlaying = BuildNowPlaying(),
         Friends = BuildFriends(),
+    };
+
+    /// <summary>The props the frame mounts the SECOND pane with (the queue beside the primary panel): the primary's builders, its own
+    /// read, its own close, and no docked video card (the one card lives in the primary panel).</summary>
+    public static readonly PanelProps QueuePane = Panel with
+    {
+        Read = static () => ReadQueuePane(),
+        InlineAndOpen = static () => Shell.PanelHost.Shared.SecondOpen(),
+        BodyHeightChanged = static _ => { },
+        Close = static () => Shell.PanelHost.Shared.CloseQueuePane(),
+        ShowMode = null,
+        DockedCard = static () => Shell.NoDockedCard(),
     };
 }

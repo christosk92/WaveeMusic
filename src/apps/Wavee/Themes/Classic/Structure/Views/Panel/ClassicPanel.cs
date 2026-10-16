@@ -14,6 +14,12 @@
 // takes the coat back for the 300 ms slide-out (the Fill bind includes the open flag); floating paints its own FileArea, a
 // uniform ring and Elevation.Flyout. Open/close is ONE TranslateX track on the host node, never an opacity track.
 //
+// PER WINDOW TIER (TC2, `ClassicPanelTiers`; the core decides `PanelView.Placement` from the committed window tier): DOCKED (Standard,
+// Huge) the arm is the band described above; FLOATING (Small) it is a 340-wide r8 card with the ring and the flyout shadow that slides in
+// from the right; a SHEET (Compact) has r8 top corners and a 16-tall grab strip, slides UP from the window's bottom edge, and its
+// now-playing arm carries the sheet's Lyrics and Queue doors under the hero (C-NowPlaying-Compact). The frame places the host and the
+// scrim; a crossing that changes the placement re-seeds the slide at rest (the host's own FLIP carries the move).
+//
 // The frame is a Component (as `Rail.FrameCore` was): the slide is a layout effect on the component's rendered root, its
 // seeded-once flag is a field, and the arms are the same elements in the same positions, so a mode switch reconciles exactly as
 // it did. The lyrics body and the queue body are core builders on the props (T7b and T7d's bodies are core hosts that mount their views); the video body is `ClassicVideoPanelBody` (T7c); the friends
@@ -42,15 +48,73 @@ internal static class ClassicPanel
 
     // ── the arm ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    internal static BoxEl Arm(bool open, bool floating, Element surface, Element edge, params Element[] column) => new()
+    /// <summary>The arm's corners for a placement: the card radius top-left docked, every corner floating, the top two as a sheet.</summary>
+    internal static CornerRadius4 CornersFor(PanelPlacement placement) => placement switch
     {
-        Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, Corners = RailCorners,
-        HitTestVisible = open,                                            // a closed rail is laid out, off-clip, unhittable
-        BorderColor = floating ? Tok.StrokeCardDefault : ColorF.Transparent,
-        BorderWidth = floating ? 1f : 0f,
-        Shadow = floating ? Elevation.Flyout : (ShadowSpec?)null,         // NO shadow docked
-        Children = [surface, new BoxEl { Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, Children = column }, edge],
+        PanelPlacement.Float => CornerRadius4.All(ClassicPanelTiers.Corner),
+        PanelPlacement.Sheet => new CornerRadius4(ClassicPanelTiers.Corner, ClassicPanelTiers.Corner, 0f, 0f),
+        _ => RailCorners,
     };
+
+    internal static BoxEl Arm(bool open, PanelPlacement placement, Element surface, Element edge, params Element[] column)
+    {
+        bool floating = placement != PanelPlacement.Dock;
+        // A sheet leads with its grab strip (C-Rail sheet: a 32 x 4 handle in a 16-tall strip); the column below is the arm's own.
+        Element[] kids = placement == PanelPlacement.Sheet ? [GrabStrip(), .. column] : column;
+        return new BoxEl
+        {
+            Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, Corners = CornersFor(placement),
+            HitTestVisible = open,                                            // a closed rail is laid out, off-clip, unhittable
+            BorderColor = floating ? Tok.StrokeCardDefault : ColorF.Transparent,
+            BorderWidth = floating ? 1f : 0f,
+            Shadow = floating ? Elevation.Flyout : (ShadowSpec?)null,         // NO shadow docked
+            Children = [surface, new BoxEl { Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, Children = kids }, edge],
+        };
+    }
+
+    /// <summary>The sheet's grab strip: a quiet handle that says the panel is a sheet (the scrim, Escape and ✕ close it).</summary>
+    static Element GrabStrip() => new BoxEl
+    {
+        Height = ClassicPanelTiers.GrabStripH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        HitTestVisible = false,
+        Children =
+        [
+            new BoxEl
+            {
+                Width = ClassicPanelTiers.GrabBarW, Height = ClassicPanelTiers.GrabBarH,
+                Corners = CornerRadius4.All(ClassicPanelTiers.GrabBarH / 2f), Fill = Tok.StrokeControlStrongDefault,
+            },
+        ],
+    };
+
+    /// <summary>The now-playing sheet's doors under the hero (C-NowPlaying-Compact: Lyrics and Queue, 48 tall): each opens that body in
+    /// the same sheet.</summary>
+    internal static Element SheetDoors(Action<PanelMode> show) => new BoxEl
+    {
+        Direction = 0, Shrink = 0f, Gap = ClassicPanelTiers.SheetDoorGap,
+        Padding = new Edges4(ClassicPanelTiers.SheetDoorInset, Spacing.S, ClassicPanelTiers.SheetDoorInset, Spacing.S),
+        Children =
+        [
+            SheetDoor(WaveeIcons.Lyrics, WaveeIcons.Font, Loc.Get(Strings.Player.Lyrics), () => show(PanelMode.Lyrics)),
+            SheetDoor(Icons.Queue, null, Loc.Get(Strings.Player.Queue), () => show(PanelMode.Queue)),
+        ],
+    };
+
+    static Element SheetDoor(string glyph, string? font, string label, Action onClick) => new BoxEl
+    {
+        Grow = 1f, Basis = 0f, MinWidth = 0f, Height = ClassicPanelTiers.SheetDoorH,
+        Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Gap = Spacing.XS, Corners = Radii.ControlAll,
+        Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand, OnClick = onClick,
+        Children =
+        [
+            new TextEl(glyph) { Size = ClassicPanelTiers.SheetDoorGlyph, FontFamily = font ?? Tok.Definition.Fonts.Icon, Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary },
+            new TextEl(label)
+            {
+                Size = ClassicPanelTiers.SheetDoorText, LineHeight = ClassicPanelTiers.SheetDoorTextLine, Color = Tok.TextSecondary,
+                MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
+            },
+        ],
+    }.Interactive(Interaction.Subtle);
 
     internal static BoxEl GrowSlot(Element body) => new() { Grow = 1f, MinHeight = 0f, ClipToBounds = true, Children = [body] };
 
@@ -208,6 +272,7 @@ internal static class ClassicPanel
 internal sealed class ClassicPanelFrame : Component
 {
     bool _motionSeeded;
+    PanelPlacement _seededPlacement;
     Func<ColorF>? _surfaceFill;
     Action<RectF>? _onBounds;
 
@@ -216,48 +281,94 @@ internal sealed class ClassicPanelFrame : Component
         var props = UseProps<PanelProps>();
         var view = props.Read();
         bool open = view.Open;
-        float railWidth = view.Width;
+        var placement = view.Placement;
         bool floating = view.Floats;
+        // The width the arm is laid out at: the committed width docked, the record's floating width at Small; a sheet is the window's width.
+        float railWidth = placement == PanelPlacement.Float ? ClassicPanelTiers.FloatW : view.Width;
         var body = view.Body;
+        var vp = UseContextSignal(Viewport.Size);
+        bool sheet = placement == PanelPlacement.Sheet;
+        // A pane that unmounts its body when closed (the second docked pane) keeps it for the slide-out, then lets it go.
+        var (lingering, setLingering) = UseState(open);
+        UseLayoutEffect(() => { if (open && !lingering) setLingering(true); }, DepKey.From(open ? 1 : 0));
+        UseTimeout(() => { if (!open) setLingering(false); }, ClassicPanelLayout.SlideMs, DepKey.From(open ? 1 : 0));
+        bool bodyLive = !view.UnmountWhenClosed || open || lingering;
+        // Off-canvas: a sheet below the window's bottom edge, a floating card past its 8-DIP inset, a docked band by its width.
+        float offCanvas = sheet ? MathF.Max(1f, vp.Peek().Height) : placement == PanelPlacement.Float ? railWidth + ClassicPanelTiers.Gap : railWidth;
 
-        // ONE retained translate track on the host node; a rapid reversal continues from the PRESENTED position.
+        // ONE retained translate track on the host node (Y for a sheet, X otherwise); a rapid reversal continues from the PRESENTED position.
         UseLayoutEffect(() =>
         {
             if (Context.Anim is not { } anim || Context.HostNode.IsNull) return;
-            float x = open ? 0f : railWidth;
-            if (!_motionSeeded)
+            var channel = sheet ? AnimChannel.TranslateY : AnimChannel.TranslateX;
+            float target = open ? 0f : offCanvas;
+            if (!_motionSeeded || _seededPlacement != placement)
             {
-                _motionSeeded = true;                                  // seed closed off-canvas: no startup fly-in
-                anim.Animate(Context.HostNode, AnimChannel.TranslateX, x, x, 1f, Easing.Linear);
+                // Seed at rest (no startup fly-in), and again when a crossing changes the placement: the host's own FLIP carries that move,
+                // and the other axis is put back to rest.
+                _motionSeeded = true;
+                _seededPlacement = placement;
+                anim.Animate(Context.HostNode, sheet ? AnimChannel.TranslateX : AnimChannel.TranslateY, 0f, 0f, 1f, Easing.Linear);
+                anim.Animate(Context.HostNode, channel, target, target, 1f, Easing.Linear);
                 return;
             }
-            float from = Context.Scene is { } scene ? scene.Paint(Context.HostNode).LocalTransform.Dx : (open ? railWidth : 0f);
-            anim.Animate(Context.HostNode, AnimChannel.TranslateX, from, x, ClassicPanelLayout.SlideMs, ClassicPanelLayout.SlideEasing);
-        }, DepKey.From(open ? 1 : 0, (int)MathF.Round(railWidth)));
+            float from = Context.Scene is { } scene
+                ? (sheet ? scene.Paint(Context.HostNode).LocalTransform.Dy : scene.Paint(Context.HostNode).LocalTransform.Dx)
+                : (open ? offCanvas : 0f);
+            anim.Animate(Context.HostNode, channel, from, target, ClassicPanelLayout.SlideMs, ClassicPanelLayout.SlideEasing);
+        }, DepKey.From(open ? 1 : 0, (int)MathF.Round(offCanvas) * 4 + (int)placement));
 
         // The binds are built once per instance: a fresh thunk per render would re-register them for nothing.
         _surfaceFill ??= () => props.InlineAndOpen() ? ColorF.Transparent : R.Layer.FileArea;
         _onBounds ??= r => props.BodyHeightChanged(r.H);
 
+        var corners = ClassicPanel.CornersFor(placement);
         Element surface = new BoxEl
         {
-            Grow = 1f, Corners = ClassicPanel.RailCorners, ClipToBounds = true,
+            Grow = 1f, Corners = corners, ClipToBounds = true,
             Fill = Prop.Of(_surfaceFill),
             OnBoundsChanged = _onBounds,
         };
-        // The ONE docked hairline, LEFT + TOP, drawn topmost so content cannot cover it. Floating: the ring is the arm's.
+        // The ONE docked hairline, LEFT + TOP, drawn topmost so content cannot cover it. Floating and as a sheet: the ring is the arm's.
         Element edge = new BoxEl
         {
-            Margin = new Edges4(0f, 0f, -1f, -1f), HitTestVisible = false, Corners = ClassicPanel.RailCorners,
+            Margin = new Edges4(0f, 0f, -1f, -1f), HitTestVisible = false, Corners = corners,
             BorderWidth = floating ? 0f : 1f, BorderColor = Tok.StrokeCardDefault,
         };
 
         if (body == PanelMode.NowPlaying)
-            return ClassicPanel.Arm(open, floating, surface, edge,
-                ClassicPanel.PinnedHero(props, view), ClassicPanel.GrowSlot(ClassicPanel.Body(props, PanelMode.NowPlaying)));
+            return sheet && props.ShowMode is { } show
+                ? ClassicPanel.Arm(open, placement, surface, edge,
+                    ClassicPanel.PinnedHero(props, view), ClassicPanel.SheetDoors(show), ClassicPanel.GrowSlot(ClassicPanel.Body(props, PanelMode.NowPlaying)))
+                : ClassicPanel.Arm(open, placement, surface, edge,
+                    ClassicPanel.PinnedHero(props, view), ClassicPanel.GrowSlot(ClassicPanel.Body(props, PanelMode.NowPlaying)));
 
         Element header = body == PanelMode.Lyrics ? Slots.View(ViewKeys.PanelLyricsHeader, props.LyricsHeader) : ClassicPanel.Header(props, body);
-        return ClassicPanel.Arm(open, floating, surface, edge,
-            ClassicPanel.DockedCap(props, view.DockedHere, railWidth), header, ClassicPanel.GrowSlot(ClassicPanel.Body(props, body)));
+        return ClassicPanel.Arm(open, placement, surface, edge,
+            ClassicPanel.DockedCap(props, view.DockedHere, railWidth), header,
+            ClassicPanel.GrowSlot(bodyLive ? ClassicPanel.Body(props, body) : new BoxEl { Grow = 1f, HitTestVisible = false }));
+    }
+}
+
+/// <summary>The Compact sheet's scrim (TC2, C-Queue-Compact / C-NowPlaying-Compact: black at 0.4 from the title bar down): it fades with
+/// the sheet's open state and a press on it closes the sheet. Nothing (transparent, never hit) at every other placement.</summary>
+internal sealed class ClassicPanelScrim : Component
+{
+    bool _mounted;
+
+    public override Element Render()
+    {
+        var props = UseProps<PanelProps>();
+        var view = props.Read();
+        bool show = view.Open && view.Placement == PanelPlacement.Sheet;
+        float ms = Design.Reduced ? 0f : Design.Motion.Fast;
+        float target = show ? 1f : 0f;
+        UseTransition(AnimChannel.Opacity, _mounted ? 1f - target : target, target, ms, Easing.Linear, DepKey.From(show));
+        _mounted = true;
+        return new BoxEl
+        {
+            Grow = 1f, Fill = ClassicPanelTiers.Scrim,
+            Opacity = target, HitTestVisible = show, OnClick = show ? props.Close : null,
+        };
     }
 }

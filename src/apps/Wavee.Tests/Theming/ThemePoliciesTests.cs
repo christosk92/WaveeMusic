@@ -26,12 +26,20 @@ public sealed class ClassicPoliciesTests
     [Fact]
     public void Classic_declares_exactly_the_shell_baseline()
     {
-        Assert.Equal(ThemePolicies.Default, ClassicPolicies.Bundle with { Tiers = TierPolicy.Standard, Overlays = OverlayPolicy.Default });   // core never names a theme: Default carries Standard tiers and the shipped overlays (TC9)
+        // Core never names a theme: Default carries Standard tiers and the shipped overlays (TC9), and no per-window-tier rules for the panel and the
+        // player bar (TC2: one docked panel and every level in every tier).
+        Assert.Equal(ThemePolicies.Default, ClassicPolicies.Bundle with
+        {
+            Tiers = TierPolicy.Standard, Overlays = OverlayPolicy.Default,
+            Panel = ClassicPolicies.Panel with { Tiers = default }, PlayerBar = ClassicPolicies.PlayerBar with { Windows = default },
+        });
         Assert.NotSame(TierPolicy.Standard, ClassicPolicies.Bundle.Tiers);
         Assert.NotEqual(ThemePolicies.Default, ClassicPolicies.Bundle);
         Assert.Equal(NavPanePolicy.Default, ClassicPolicies.NavPane);
-        Assert.Equal(PanelPolicy.Default, ClassicPolicies.Panel);
-        Assert.Equal(PlayerBarPolicy.Default, ClassicPolicies.PlayerBar);
+        Assert.Equal(PanelPolicy.Default, ClassicPolicies.Panel with { Tiers = default });
+        Assert.Equal(PlayerBarPolicy.Default, ClassicPolicies.PlayerBar with { Windows = default });
+        Assert.NotEqual(PanelPolicy.Default, ClassicPolicies.Panel);              // Classic places its panel per window tier (TC2)
+        Assert.NotEqual(PlayerBarPolicy.Default, ClassicPolicies.PlayerBar);      // and clamps the bar's levels per window tier
         Assert.Equal(ChromePolicy.Default, ClassicPolicies.Chrome);
         Assert.Equal(StagePolicy.Default, ClassicPolicies.Stage);
     }
@@ -68,8 +76,7 @@ public sealed class ClassicPoliciesTests
         // The dock is ONE row: the player-bar policy's height is the seek row plus the transport row, and the page reserve is the same number.
         Assert.Equal(m.SeekRow + m.TransportRow, ClassicPolicies.PlayerBar.Height);
         Assert.Equal(ClassicRoles.Table.Space.DockReserve, ClassicPolicies.PlayerBar.Height);
-        // A page column keeps the content floor the panel needs beside it.
-        Assert.Equal(ClassicPolicies.Panel.InlineMin, m.MinPageColumn);
+        // A page column keeps the content floor the nav pane leaves beside it.
         Assert.Equal(ClassicPolicies.NavPane.ContentFloorW, m.MinPageColumn);
     }
 
@@ -248,10 +255,7 @@ public sealed class NavPanePolicyRulesTests
         Assert.Equal(220f, SidebarPaneModeRules.PresentedWidth(SidebarPaneMode.Expanded, 460f, 700f, Classic));   // 700 - 480
         var p = Classic with { ContentFloorW = 300f };
         Assert.Equal(400f, SidebarPaneModeRules.PresentedWidth(SidebarPaneMode.Expanded, 460f, 700f, p));
-        Assert.True(SidebarPaneModeRules.RailFits(300f, 340f, 1119f, p));         // 300 + 340 + 300 of floor fits with room to spare
-        Assert.True(SidebarPaneModeRules.RailFits(300f, 340f, 1120f, Classic));   // 300 + 340 + 480 = 1120 exactly fits
-        Assert.False(SidebarPaneModeRules.RailFits(300f, 340f, 1119f, Classic));  // one DIP less does not
-        Assert.False(SidebarPaneModeRules.RailFits(300f, 340f, 939f, p));         // 300 + 340 + 300 = 940
+
     }
 
     [Fact]
@@ -652,14 +656,17 @@ public sealed class PanelPolicyRulesTests
     }
 
     [Fact]
-    public void The_inline_floor_decides_floating()
+    public void The_window_tier_decides_docking_not_a_fit_test()
     {
-        // Classic: sidebar 280 + panel 340 + 480 of content = 1100.
-        Assert.True(Shell.CanFitRail(1100f, 280f, 340f, Classic.InlineMin));
-        Assert.False(Shell.CanFitRail(1099f, 280f, 340f, Classic.InlineMin));
-        var p = Classic with { InlineMin = 600f };
-        Assert.False(Shell.CanFitRail(1100f, 280f, 340f, p.InlineMin));
-        Assert.True(Shell.CanFitRail(1220f, 280f, 340f, p.InlineMin));
+        // TC2: a sheet at Compact, floating at Small, one docked at Standard, two at Huge; a policy with no rules docks one everywhere.
+        Assert.Equal(PanelPlacement.Sheet, Classic.For(WidthTier.Compact).Placement);
+        Assert.Equal(PanelPlacement.Float, Classic.For(WidthTier.Small).Placement);
+        Assert.True(Classic.For(WidthTier.Standard).Docks);
+        Assert.False(Classic.For(WidthTier.Standard).DocksTwo);
+        Assert.True(Classic.For(WidthTier.Huge).DocksTwo);
+        Assert.True(Classic.For(WidthTier.Huge4K).DocksTwo);
+        Assert.Equal(PanelTierRule.Docked, PanelPolicy.Default.For(WidthTier.Compact));
+        Assert.Equal(PanelTierRule.Docked, Classic.For(new TierFacts()));   // no frame resolved the tiers: Standard's rule
     }
 
     [Fact]

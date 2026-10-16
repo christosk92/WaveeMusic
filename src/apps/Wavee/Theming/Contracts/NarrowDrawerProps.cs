@@ -11,7 +11,11 @@
 // change re-runs the template, exactly as the host's own re-render did. `Parts` is the STABLE half (cached statics of the core):
 // the live reads the scrim and the pane component bind to, so a drag-resize inside the band never re-runs the template.
 
+using FluentGpu.Controls;
 using FluentGpu.Dsl;
+using FluentGpu.Foundation;
+using FluentGpu.Hooks;
+using FluentGpu.Signals;
 
 namespace Wavee.Theming.Contracts;
 
@@ -26,6 +30,36 @@ public sealed record NarrowDrawerProps
 
     /// <summary>The live reads and verbs the scrim and the pane bind to.</summary>
     public required NarrowDrawerParts Parts { get; init; }
+
+    /// <summary>The drawer carries the ACCOUNT row over the pane (contract 1.13, TC2): the window tier's title bar has no identity chip
+    /// (Classic Compact, board C-Shell-Compact).</summary>
+    public bool ShowAccount { get; init; }
+
+    /// <summary>What the account row draws and calls; null where the core offers none.</summary>
+    public DrawerAccountProps? Account { get; init; }
+}
+
+/// <summary>The drawer's account row (contract 1.13, TC2): the identity chip in its row form, the bell and the friends door.</summary>
+public sealed record DrawerAccountProps
+{
+    /// <summary>The account chip's core host in its drawer form (it mounts <see cref="ViewKeys.OverlayProfileChip"/> with
+    /// <see cref="ProfileChipProps.Drawer"/> set and keeps the account menu's handle).</summary>
+    public required Func<Element> Chip { get; init; }
+
+    /// <summary>Is an account signed in (else the row offers "Sign in" / "Reconnect")? Tracked.</summary>
+    public required Func<bool> SignedIn { get; init; }
+
+    /// <summary>"Sign in" / "Reconnect".</summary>
+    public required Action SignIn { get; init; }
+
+    /// <summary>The unread notification count (zero while the store shot presents). Tracked.</summary>
+    public required Func<int> BellUnread { get; init; }
+
+    /// <summary>Open the notification panel from the bell (a second press closes it).</summary>
+    public required Action<IOverlayService, Func<NodeHandle>, Ref<OverlayHandle?>> ToggleNotifications { get; init; }
+
+    /// <summary>The friends panel's door.</summary>
+    public required Action ToggleFriends { get; init; }
 }
 
 /// <summary>The stable half of <see cref="NarrowDrawerProps"/>: delegates of the core, cached statics, equal across renders.</summary>

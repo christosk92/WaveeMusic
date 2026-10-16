@@ -174,7 +174,9 @@ public sealed partial class TierLayoutTests(ShellHost host)
 
         var row = Shell.ChromeLayout.Peek();
         Assert.True(row.TabCount == (size.Window == WidthTier.Compact), $"{size.Name}: the tab count form is {row.TabCount}");
-        Assert.True(shell.Find("chrome-tab-count").IsNull != (size.Window == WidthTier.Compact), $"{size.Name}: the tab-count button");
+        // TC2: at the 300 floor the count button cannot sit whole beside the search and the captions, and drops whole (TabsHidden), never clipped.
+        Assert.True(shell.Find("chrome-tab-count").IsNull != (size.Window == WidthTier.Compact && !row.TabsHidden), $"{size.Name}: the tab-count button");
+        if (size.Width >= 400f) Assert.False(row.TabsHidden, $"{size.Name}: the board's 400 seats the tab-count button");
         Assert.True(shell.Find("chrome-tab-strip").IsNull == (size.Window == WidthTier.Compact), $"{size.Name}: the tab strip");
         if (size.Width <= Shell.Layout.ChromeForwardEnterW) Assert.False(row.ShowForward, $"{size.Name}: Forward hides below 520");
         if (size.Window == WidthTier.Huge) Assert.Equal(240f, row.TabMaxW);    // the Huge budget's tab cap

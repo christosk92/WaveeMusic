@@ -48,6 +48,14 @@
 // tab cap), the optional `ChromePolicy.Compact` / `.Huge` budgets with `ChromeBudget.TabsAsCount`, and `ctx.TierReader()` (the window
 // tiers for a bound channel of a template that renders once).
 //
+// 1.13 (Classic player bar and panels per tier, TC2): `PanelPlacement`, `PanelView.Placement` / `.UnmountWhenClosed`, the optional `PanelProps.ShowMode`, the
+// frame's optional second docked pane (`ShellFrameProps.PanelPlacement`, `SecondPanel`, `SecondPanelOpen`, `SecondPanelWidth`,
+// `SecondGapWidth`, `SecondReservedWidth`), the policies' per-window-tier rules (`PanelPolicy.Tiers` / `PanelTierRule`,
+// `PlayerBarPolicy.Windows` / `PlayerBarWindowRule`, `ChromeBudget.TrailingInDrawer`), the mini player bar's `PlayerBarProps.ProgressLine`
+// / `OpenNowPlaying` and `SeekRailProps.Hairline`, `ChromeRowState.TabsHidden`, the drawer's account row (`NarrowDrawerProps.ShowAccount`,
+// `.Account`, `DrawerAccountProps`) and `ProfileChipProps.Drawer`. `PanelPolicy.InlineMin` (the old fit test's content floor) is removed:
+// docking follows the window tier. Removed before any external theme existed, as 1.2 did.
+//
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
 // member and is a deliberate, owner-visible event. `ThemeCatalog` refuses to install a composition whose major differs
@@ -62,7 +70,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 12;
+    public const int Minor = 13;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

@@ -27,13 +27,17 @@ public static partial class Shell
     public readonly record struct DockedVideoState(float Height, bool Pinned);
 
     /// <summary>What a panel view draws. <see cref="Width"/> is the COMMITTED width (the layout's; a drag previews on
-    /// <see cref="PanelCells.DragWidth"/> and commits on release). <see cref="Floats"/> is true when the panel does not fit
-    /// inline and overlays the content instead.</summary>
-    public readonly record struct PanelState(bool Open, RailMode Mode, float Width, bool Floats, DockedVideoState DockedVideo);
+    /// <see cref="PanelCells.DragWidth"/> and commits on release). <see cref="Floats"/> is true when the window tier does not dock
+    /// the panel and it overlays the content instead; <see cref="Placement"/> says how (floating or a bottom sheet).</summary>
+    public readonly record struct PanelState(bool Open, RailMode Mode, float Width, bool Floats, DockedVideoState DockedVideo,
+        Theming.Contracts.PanelPlacement Placement = Theming.Contracts.PanelPlacement.Dock);
 
-    /// <summary>The panel's cells. The shell's are <see cref="Ui"/>'s own signals (<see cref="Frame"/>).</summary>
+    /// <summary>The panel's cells. The shell's are <see cref="Ui"/>'s own signals (<see cref="Frame"/>). The last four are the window
+    /// tier's placement facts and the second docked pane (TC2); a unit fact that leaves them out gets private ones (one docked panel).</summary>
     public sealed class PanelCells(Signal<bool> open, Signal<RailMode> mode, FloatSignal width, FloatSignal dragWidth,
-        FloatSignal dockedVideoHeight, Signal<bool> dockedVideoPinned, FloatSignal bodyHeight, Signal<bool> fits)
+        FloatSignal dockedVideoHeight, Signal<bool> dockedVideoPinned, FloatSignal bodyHeight, Signal<bool> fits,
+        Signal<bool>? queueBeside = null, Signal<bool>? secondAllowed = null, FloatSignal? floor = null,
+        Signal<Theming.Contracts.PanelPlacement>? placement = null)
     {
         public Signal<bool> Open { get; } = open;
         public Signal<RailMode> Mode { get; } = mode;
@@ -44,15 +48,31 @@ public static partial class Shell
         public FloatSignal BodyHeight { get; } = bodyHeight;
         public Signal<bool> Fits { get; } = fits;
 
+        /// <summary>The queue is open beside the primary panel (the second docked pane where the tier docks two).</summary>
+        public Signal<bool> QueueBeside { get; } = queueBeside ?? new Signal<bool>(false);
+
+        /// <summary>The window tier docks two panels.</summary>
+        public Signal<bool> SecondAllowed { get; } = secondAllowed ?? new Signal<bool>(false);
+
+        /// <summary>The least width a docked panel keeps in the window tier (0: none).</summary>
+        public FloatSignal Floor { get; } = floor ?? new FloatSignal(0f);
+
+        /// <summary>Where the window tier lays the panel out.</summary>
+        public Signal<Theming.Contracts.PanelPlacement> Placement { get; } = placement ?? new Signal<Theming.Contracts.PanelPlacement>(Theming.Contracts.PanelPlacement.Dock);
+
         /// <summary>The shell's panel: the very signals every reader binds.</summary>
         public static readonly PanelCells Frame = new(Ui.RailOpen, Ui.Mode, Ui.RailWidth, Ui.RailDragWidth,
-            Ui.DockedVideoHeight, Ui.DockedVideoHeightPinned, Ui.RailBodyHeight, Ui.RailFits);
+            Ui.DockedVideoHeight, Ui.DockedVideoHeightPinned, Ui.RailBodyHeight, Ui.RailFits,
+            Ui.QueueBeside, Ui.SecondPaneAllowed, Ui.PanelFloor, Ui.PanelPlacement);
 
         /// <summary>A private set at <see cref="Ui"/>'s defaults (closed, Lyrics, 340 wide, fits).</summary>
         public static PanelCells Fresh() => new(new Signal<bool>(false), new Signal<RailMode>(RailMode.Lyrics),
             new FloatSignal(RailDefaultW), new FloatSignal(RailDefaultW), new FloatSignal(DockedVideoNaturalH(RailDefaultW)),
             new Signal<bool>(false), new FloatSignal(0f), new Signal<bool>(true));
     }
+
+    /// <summary>The docked video card of a pane that hosts none (the second docked pane, TC2): zero size, never hit.</summary>
+    internal static FluentGpu.Dsl.Element NoDockedCard() => new FluentGpu.Dsl.BoxEl { Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false };
 
     // ══ THE PERSISTED SIZES ══════════════════════════════════════════════════════════════════════════════════════════
 
@@ -153,8 +173,12 @@ public static partial class Shell
         /// <summary>The mode's door: clicking the mode already showing CLOSES the panel; otherwise switch to it and open.</summary>
         void Toggle(RailMode mode);
 
-        /// <summary>Close the panel, whatever it shows (a docked video is demoted by the coupling).</summary>
+        /// <summary>Close the panel, whatever it shows (a docked video is demoted by the coupling). Where one panel shows at a time it
+        /// also forgets the queue beside it, so closing never uncovers a second panel.</summary>
         void Close();
+
+        /// <summary>Close the second docked pane (the queue beside the primary panel).</summary>
+        void CloseQueuePane();
 
         /// <summary>Commit the width the seam preview holds: the layout, the docked video and the persisted width change here,
         /// once per drag. Nothing happens when there is nothing to commit.</summary>
@@ -240,11 +264,24 @@ public static partial class Shell
             float width = Cells.Width.Value;
             var mode = Cells.Mode.Value;
             bool floats = !Cells.Fits.Value;
+            var placement = Cells.Placement.Value;
             var docked = withDockedVideo
                 ? new DockedVideoState(Cells.DockedVideoHeight.Value, Cells.DockedVideoPinned.Value)
                 : default;
-            return new PanelState(open, mode, width, floats, docked);
+            return new PanelState(open, mode, width, floats, docked, placement);
         }
+
+        /// <summary>The second docked pane is on screen (tracked): the queue beside the primary, at a tier that docks two, while the
+        /// primary is not already showing the queue.</summary>
+        public bool SecondOpen()
+            => FrameRules.SecondOpen(Cells.QueueBeside.Value, Cells.SecondAllowed.Value, Cells.Open.Value, Cells.Mode.Value);
+
+        /// <summary><see cref="SecondOpen"/> without subscribing.</summary>
+        public bool SecondOpenNow()
+            => FrameRules.SecondOpen(Cells.QueueBeside.Peek(), Cells.SecondAllowed.Peek(), Cells.Open.Peek(), Cells.Mode.Peek());
+
+        /// <summary>The second pane's width (tracked): the tier's floor.</summary>
+        public float SecondWidth() => FrameRules.SecondWidth(Cells.Floor.Value);
 
         // ── the persisted chrome state the frame's first layout must already have ──────────────────────────────────
 
@@ -256,12 +293,14 @@ public static partial class Shell
             Cells.DockedVideoHeight.Value = sizes.LoadDockedVideoHeight(Cells.Width.Peek());
         }
 
-        /// <summary>Restore the session's open state and mode. A mode outside the vocabulary (a newer build's) is ignored.</summary>
-        public void RestoreSession(bool open, int railMode)
+        /// <summary>Restore the session's open state, mode and the queue beside the panel. A mode outside the vocabulary (a newer
+        /// build's) is ignored.</summary>
+        public void RestoreSession(bool open, int railMode, bool queueBeside = false)
         {
             if (railMode < (int)RailMode.Lyrics || railMode > (int)RailMode.Video) return;
             Cells.Open.Value = open;
             Cells.Mode.Value = (RailMode)railMode;
+            Cells.QueueBeside.Value = queueBeside;
         }
 
         // ── the verbs ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -272,17 +311,64 @@ public static partial class Shell
             Cells.Open.Value = true;
         }
 
+        /// <summary>The mode's door. Where ONE panel shows at a time: the mode on show closes it (and forgets the queue beside it),
+        /// any other switches to it. Where TWO dock (D3), the queue lives in the second pane: its door opens or closes that pane (or
+        /// the primary, while the primary itself shows the queue), and switching the primary away from the queue moves the queue into
+        /// the second pane instead of closing it.</summary>
         public void Toggle(RailMode mode)
         {
-            if (Cells.Open.Peek() && Cells.Mode.Peek() == mode) { Cells.Open.Value = false; return; }
+            bool open = Cells.Open.Peek();
+            var current = Cells.Mode.Peek();
+            if (!Cells.SecondAllowed.Peek())
+            {
+                if (open && current == mode) { Cells.Open.Value = false; Cells.QueueBeside.Value = false; return; }
+                SetMode(mode);
+                return;
+            }
+            if (mode == RailMode.Queue)
+            {
+                if (open && current == RailMode.Queue) { Cells.Open.Value = false; Cells.QueueBeside.Value = false; return; }
+                if (SecondOpenNow()) { Cells.QueueBeside.Value = false; return; }
+                if (open) { Cells.QueueBeside.Value = true; return; }
+                SetMode(RailMode.Queue);
+                return;
+            }
+            if (open && current == mode) { Cells.Open.Value = false; return; }
+            if (open && current == RailMode.Queue) Cells.QueueBeside.Value = true;   // the queue moves beside, it does not close
             SetMode(mode);
         }
 
-        public void Close() => Cells.Open.Value = false;
+        public void Close()
+        {
+            Cells.Open.Value = false;
+            if (!Cells.SecondAllowed.Peek()) Cells.QueueBeside.Value = false;
+        }
+
+        public void CloseQueuePane() => Cells.QueueBeside.Value = false;
+
+        /// <summary>A crossing to a tier that docks ONE panel while only the queue's second pane was open: the queue becomes the panel,
+        /// so the crossing never hides what the user had open. Nothing to do otherwise.</summary>
+        public void FoldSecondIntoPrimary()
+        {
+            if (Cells.SecondAllowed.Peek() || Cells.Open.Peek() || !Cells.QueueBeside.Peek()) return;
+            Cells.Mode.Value = RailMode.Queue;
+            Cells.Open.Value = true;
+            Cells.QueueBeside.Value = false;
+        }
+
+        /// <summary>The window tier's floor moved (a crossing into or out of Huge, or a Huge window resized): the committed width is the
+        /// stored preference brought up to <paramref name="floor"/> (never persisted), so every reader of the width (the reservation, the
+        /// docked video, the seam) sees the width on screen.</summary>
+        public void FitWidthToFloor(float floor)
+        {
+            float target = MathF.Max(sizes.LoadWidth(), floor > 0f ? ClampRailWidth(floor) : 0f);
+            if (Cells.Width.Peek() != target) Cells.Width.Value = target;
+            if (Cells.DragWidth.Peek() != target) Cells.DragWidth.Value = target;
+        }
 
         public void ResizePanel()
         {
-            if (FrameRules.RailDragCommit(Cells.DragWidth.Peek(), Cells.Width.Peek()) is not { } w) return;
+            if (FrameRules.RailDragCommit(Cells.DragWidth.Peek(), Cells.Width.Peek(), Cells.Floor.Peek()) is not { } w) return;
             Cells.Width.Value = w;
             Cells.DragWidth.Value = w;
             sizes.SaveWidth(w);

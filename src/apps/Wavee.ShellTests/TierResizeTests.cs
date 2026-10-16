@@ -269,6 +269,128 @@ public sealed class TierResizeTests(ShellHost host)
             Assert.Equal(tier, Tiers.Window);
         }, width, 760f);
 
+    // ── the panels dock, float and pair by tier, on the crossing frame (TC2) ───────────────────────────────────────────
+
+    /// <summary>True when the node keyed <paramref name="key"/> carries animation tracks (its layout transition is FLIPping it).</summary>
+    static bool Moves(Shell.HeadlessShell shell, string key)
+    {
+        var node = shell.Find(key);
+        Assert.False(node.IsNull, key + " is not mounted");
+        return shell.Host.Animation.HasTracks(node);
+    }
+
+    static void ClosePanels(Shell.HeadlessShell shell)
+    {
+        Shell.PanelHost.Shared.Close();
+        Shell.PanelHost.Shared.CloseQueuePane();
+        shell.RunFrames(30);
+    }
+
+    [Fact]
+    public void Undocking_at_a_crossing_keeps_the_old_placement_on_the_resized_frame_then_floats_it_animated()
+        => host.Mounted(shell =>
+        {
+            try
+            {
+                Shell.PanelHost.Shared.SetMode(Shell.RailMode.Lyrics);
+                shell.RunFrames(90);
+                Assert.True(Shell.Ui.RailFits.Peek());                                   // Standard docks it
+
+                Resized(shell, 800f);
+                Assert.True(Shell.Ui.RailFits.Peek());                                   // the resized frame keeps the old tier's placement
+                Assert.Equal(PanelPlacement.Dock, Shell.Ui.PanelPlacement.Peek());
+                Assert.False(Moves(shell, Wavee.Themes.Classic.ClassicPanelTiers.HostKey), "a resized frame snaps: no tracks");
+
+                shell.Host.RunFrame();                                                   // the crossing frame
+                Assert.Equal(WidthTier.Small, Tiers.Window);
+                Assert.False(Shell.Ui.RailFits.Peek());
+                Assert.Equal(PanelPlacement.Float, Shell.Ui.PanelPlacement.Peek());
+                Assert.True(Moves(shell, Wavee.Themes.Classic.ClassicPanelTiers.HostKey), "the undocking snapped the panel instead of animating it");
+                Assert.True(Moves(shell, Wavee.Themes.Classic.ClassicFrameLayout.ContentCardKey) || PaneColumnMoves(shell),
+                    "the page did not animate into the width the panel gave back");
+
+                shell.RunFrames(90);
+                Assert.False(Moves(shell, Wavee.Themes.Classic.ClassicPanelTiers.HostKey));
+
+                Settled(shell, 1180f);                                                   // and back: it docks again, once
+                Assert.True(Shell.Ui.RailFits.Peek());
+            }
+            finally { ClosePanels(shell); }
+        }, 1180f, 760f);
+
+    [Fact]
+    public void Crossing_into_huge_docks_the_queue_beside_the_panel_on_the_crossing_frame()
+        => host.Mounted(shell =>
+        {
+            try
+            {
+                Shell.PanelHost.Shared.SetMode(Shell.RailMode.Lyrics);
+                Shell.Ui.QueueBeside.Value = true;                                       // remembered, not shown where one docks
+                shell.RunFrames(90);
+                Assert.False(Shell.PanelHost.Shared.SecondOpenNow());
+
+                Resized(shell, 2560f, 1440f);
+                Assert.False(Shell.PanelHost.Shared.SecondOpenNow());                    // the resized frame keeps Standard's one panel
+
+                shell.Host.RunFrame();
+                Assert.Equal(WidthTier.Huge, Tiers.Window);
+                Assert.True(Shell.PanelHost.Shared.SecondOpenNow());
+                Assert.Equal(380f, Shell.Ui.PanelFloor.Peek());
+                Assert.True(Moves(shell, Wavee.Themes.Classic.ClassicPanelTiers.HostKey), "the primary pane snapped aside instead of animating");
+                shell.RunFrames(90);
+
+                Resized(shell, 1440f, 960f);                                             // and out of Huge: one panel again
+                shell.Host.RunFrame();
+                Assert.Equal(WidthTier.Standard, Tiers.Window);
+                Assert.False(Shell.PanelHost.Shared.SecondOpenNow());
+                Assert.Equal(0f, Shell.Ui.PanelFloor.Peek());
+                shell.RunFrames(60);
+            }
+            finally { ClosePanels(shell); }
+        }, 1440f, 960f);
+
+    [Fact]
+    public void A_panel_never_flips_dock_and_float_inside_a_hold()
+        => host.Mounted(shell =>
+        {
+            try
+            {
+                Shell.PanelHost.Shared.SetMode(Shell.RailMode.Queue);
+                shell.RunFrames(60);
+                var docked = new List<bool>();
+                foreach (float w in new[] { 1000f, 1040f, 1010f, 1047f, 1008f, 1009f, 1048f, 1040f, 1009f })
+                {
+                    Settled(shell, w);
+                    docked.Add(Shell.Ui.RailFits.Peek());
+                    Assert.Equal(Tiers.Window >= WidthTier.Standard, Shell.Ui.RailFits.Peek());   // docking IS the tier, never a fit test
+                }
+                int flips = 0;
+                for (int i = 1; i < docked.Count; i++) if (docked[i] != docked[i - 1]) flips++;
+                Assert.Equal(1, flips);                                                  // floats from 1000, docks again only at 1048
+                Assert.True(docked[^1]);
+            }
+            finally { ClosePanels(shell); }
+        }, 1180f, 760f);
+
+    [Fact]
+    public void The_player_bar_takes_its_tiers_form_on_the_crossing_frame()
+        => host.Mounted(shell =>
+        {
+            shell.RunFrames(60);
+            Assert.True(shell.Find("mini-door").IsNull);
+            Resized(shell, 400f, 860f);
+            Assert.True(shell.Find("mini-door").IsNull, "the resized frame keeps the old tier's bar");
+            shell.Host.RunFrame();
+            shell.RunFrames(2);
+            Assert.Equal(WidthTier.Compact, Tiers.Window);
+            Assert.False(shell.Find("mini-door").IsNull, "Compact draws the mini bar");
+            var bar = shell.Host.Scene.AbsoluteRect(shell.Find(Wavee.Themes.Classic.ClassicFrameLayout.PlayerBarKey));
+            Assert.Equal(56f, bar.H, 0.5f);
+            Settled(shell, 1180f, 760f);
+            Assert.True(shell.Find("mini-door").IsNull);
+            shell.RunFrames(30);
+        }, 1180f, 760f);
+
     // ── the facts a view reads ─────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]

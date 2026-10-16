@@ -76,6 +76,26 @@ public sealed record ShellFrameProps
     /// <summary>The rail seam's x translation.</summary>
     public required Func<float> RailSeamX { get; init; }
 
+    // ── the window tier's panel placement and the second docked pane (contract 1.13, TC2) ──────────────────────────────
+
+    /// <summary>Where the window tier lays the panel out (dock, float or sheet); null where the core publishes none (Dock).</summary>
+    public Func<PanelPlacement>? PanelPlacement { get; init; }
+
+    /// <summary>Is the second docked pane (the queue beside the primary panel) on screen? Null: never.</summary>
+    public Func<bool>? SecondPanelOpen { get; init; }
+
+    /// <summary>The second pane's width.</summary>
+    public Func<float>? SecondPanelWidth { get; init; }
+
+    /// <summary>The second pane's breathing gap (8 while open, else 0).</summary>
+    public Func<float>? SecondGapWidth { get; init; }
+
+    /// <summary>The second pane's row reservation (its width while open, else 0).</summary>
+    public Func<float>? SecondReservedWidth { get; init; }
+
+    /// <summary>The second pane's props: the frame mounts <see cref="ViewKeys.ShellPanel"/> with them beside the primary panel.</summary>
+    public PanelProps? SecondPanel { get; init; }
+
     // ── behaviour the host wires ─────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The shell chords: zero-size accelerator boxes the column mounts first.</summary>

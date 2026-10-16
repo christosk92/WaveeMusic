@@ -53,6 +53,9 @@ public static partial class Shell
     // MOUNT POINT (stage B contract)
     public static Element ProfileChip() => Embed.Comp(() => new ProfileChipCore());
 
+    /// <summary>The account chip in the nav drawer's account row (TC2: a Compact title bar carries none), with the same menu.</summary>
+    public static Element DrawerProfileChip() => Embed.Comp(() => new ProfileChipCore(drawer: true));
+
     // ══ 2. THE SEAMS ═══════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>"Play ▸ File…" — pick a local file and play it (owner O). Null ⇒ no `Play ▸` row at all.</summary>
@@ -309,7 +312,7 @@ public static partial class Shell
     /// <summary>The chip's host: the menu's overlay handle (open, toggle, light dismiss, focus trap), the anchor capture, the chrome
     /// ladder's flags and the Store-shot presentation switch. The picture is `Overlay.ProfileChip`.</summary>
     [CoreHost]
-    sealed class ProfileChipCore : Component
+    sealed class ProfileChipCore(bool drawer = false) : Component
     {
         public override Element Render()
         {
@@ -342,7 +345,7 @@ public static partial class Shell
                     () => anchor.Value,
                     () => ProfileMenuContent(peekIdentity, tier, unread, actionsInMenu, overlay, Close,
                         () => NotificationsLauncher?.Invoke(overlay, () => anchor.Value, notifyHandle)),
-                    FlyoutPlacement.BottomEdgeAlignedRight,
+                    drawer ? FlyoutPlacement.BottomEdgeAlignedLeft : FlyoutPlacement.BottomEdgeAlignedRight,
                     // MENU chrome, not flyout-presenter chrome: the anchored 250 ms MenuPopupThemeTransition unfold over a
                     // windowed DWM transient-acrylic popup — like every other menu in the shell.
                     new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Flyout)
@@ -356,8 +359,8 @@ public static partial class Shell
             return ViewSlots.View(ViewKeys.OverlayProfileChip, new ProfileChipProps
             {
                 Known = identity.Known, Name = identity.Name, AvatarUrl = identity.AvatarUrl,
-                ShowName = layout.ShowName, Presenting = presenting, NameCap = nameCap,
-                Open = OpenMenu, Realized = h => anchor.Value = h,
+                ShowName = drawer || layout.ShowName, Presenting = presenting, NameCap = nameCap,
+                Open = OpenMenu, Realized = h => anchor.Value = h, Drawer = drawer,
             });
         }
     }

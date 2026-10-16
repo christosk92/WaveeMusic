@@ -12,6 +12,14 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **The player bar and the side panels fit every window size.** Below 528 DIP wide the player bar is a 56-tall mini bar (a thin
+  progress line, the song as one button that opens Now playing as a sheet, the heart and play), and lyrics, the queue, friends and
+  Now playing open as a sheet from the bottom that a tap outside closes. From 528 to 1007 the bar keeps previous, next, the times,
+  volume, lyrics and the queue, and a side panel floats over the page (340 wide) instead of squeezing it. From 1008 one panel docks
+  beside the page (it used to float between 1008 and about 1140, and to dock in some smaller windows). From 1920 the bar spreads into
+  three zones with the controls centred, and the queue opens in its own panel beside lyrics or Now playing, both at least 380 wide.
+  Changing the window size moves the panels and the bar smoothly instead of jumping. In a narrow window the account and the
+  notifications are at the top of the ☰ drawer, and the title bar's tab button is never cut off.
 - **Menus, dialogs, toasts and the empty, error and offline states fit a narrow window.** In a narrow Classic window (under 528 wide) a
   right-click or "…" menu opens as a bottom sheet instead of a popup: the song's art and name, the Play, Play next, Play after and Save
   buttons in one row, then 44-tall rows, with sub-menus opening in place and a short window scrolling the sheet; every target is at

@@ -10,6 +10,12 @@
 // `Default` is the shell before themes (what Wavee Classic declares): 440 / 760 / 900 / 1100 / 1240 with a 24-DIP narrowing
 // hold and a 72-DIP bar. T6a: each level also states what the PODCAST bar carries (`PodcastSlots`, `PodcastLeftW`), which is what
 // `Shell.PodcastBarLayout` used to derive from the level ordinals.
+//
+// PER WINDOW TIER (plan 3.2: `PlayerBarPolicy.Tiers` keyed by `WidthTier`, TC2). The six levels are the structure's SUB-LADDER over the
+// window width; `Windows` says which of them each window tier may use (`PlayerBarWindowRule`: the lowest and the highest level). The
+// level machine resolves the width through the sub-ladder with its hold, then clamps it to the committed window tier's range, so a level
+// that belongs to a tier changes on the crossing frame (animated) and one inside a tier tracks the width as before. `Default` carries no
+// window rules (every level in every tier).
 
 using System.Collections.Immutable;
 
@@ -87,6 +93,18 @@ public sealed record PlayerTier(
         => PodcastSlots ?? (VisibleSlots & ~(PlayerBarSlots.ShuffleRepeat | PlayerBarSlots.VolumeSlider));
 }
 
+/// <summary>Which levels of the player bar one window tier may use.</summary>
+/// <param name="MinLevel">The lowest level (0 = Minimal) the tier lays the bar out at.</param>
+/// <param name="MaxLevel">The highest level (5 = Full) the tier lays the bar out at.</param>
+public readonly record struct PlayerBarWindowRule(int MinLevel, int MaxLevel)
+{
+    /// <summary>Every level: the rule of a structure that declares none.</summary>
+    public static readonly PlayerBarWindowRule Any = new(0, PlayerBarPolicy.TierCount - 1);
+
+    /// <summary><paramref name="level"/> brought inside the rule's range.</summary>
+    public int Clamp(int level) => Math.Clamp(level, MinLevel, Math.Max(MinLevel, MaxLevel));
+}
+
 /// <summary>The player bar's policy.</summary>
 /// <param name="Tiers">Exactly <see cref="TierCount"/> levels, narrowest first, each starting wider than the one before.</param>
 /// <param name="Hysteresis">Narrowing holds the current level through this many DIP of dip, so a pointer resize cannot chatter
@@ -148,6 +166,14 @@ public sealed record PlayerBarPolicy(ImmutableArray<PlayerTier> Tiers, float Hys
         ],
         Hysteresis: 24f, Height: Design.Size.PlayerBarH);
 
+    /// <summary>The levels each window tier may use, Compact first (<c>WidthTier</c> order; Huge 4K reads the last rule given). Empty: every
+    /// level in every tier.</summary>
+    public ImmutableArray<PlayerBarWindowRule> Windows { get; init; } = ImmutableArray<PlayerBarWindowRule>.Empty;
+
+    /// <summary>The window rule of tier index <paramref name="windowTier"/> (a <c>WidthTier</c>; negative: no tier known, every level).</summary>
+    public PlayerBarWindowRule WindowRule(int windowTier)
+        => Windows.IsDefaultOrEmpty || windowTier < 0 ? PlayerBarWindowRule.Any : Windows[Math.Min(windowTier, Windows.Length - 1)];
+
     /// <summary>The level (0 = narrowest) a window width belongs to before any narrowing hold: the widest level whose start
     /// the width has reached. A level never starts below the first one.</summary>
     public int LevelOf(float width)
@@ -163,6 +189,8 @@ public sealed record PlayerBarPolicy(ImmutableArray<PlayerTier> Tiers, float Hys
     {
         if (ReferenceEquals(this, other)) return true;
         if (other is null || Hysteresis != other.Hysteresis || Height != other.Height) return false;
+        bool noWindows = Windows.IsDefaultOrEmpty, otherNoWindows = other.Windows.IsDefaultOrEmpty;
+        if (noWindows != otherNoWindows || (!noWindows && !Windows.AsSpan().SequenceEqual(other.Windows.AsSpan()))) return false;
         if (Tiers.IsDefault || other.Tiers.IsDefault) return Tiers.IsDefault && other.Tiers.IsDefault;
         if (Tiers.Length != other.Tiers.Length) return false;
         for (int i = 0; i < Tiers.Length; i++)
@@ -178,6 +206,8 @@ public sealed record PlayerBarPolicy(ImmutableArray<PlayerTier> Tiers, float Hys
         hash.Add(Height);
         if (!Tiers.IsDefault)
             foreach (var tier in Tiers) hash.Add(tier);
+        if (!Windows.IsDefaultOrEmpty)
+            foreach (var rule in Windows) hash.Add(rule);
         return hash.ToHashCode();
     }
 
@@ -216,6 +246,16 @@ public sealed record PlayerBarPolicy(ImmutableArray<PlayerTier> Tiers, float Hys
             if (!(t.ButtonBox >= Shell.PlayerBarLayout.MinButtonBox) || !(t.ButtonGlyph >= Shell.PlayerBarLayout.MinButtonGlyph)
                 || !(t.PrimaryBox >= Shell.PlayerBarLayout.MinPrimaryBox) || !(t.PrimaryGlyph >= Shell.PlayerBarLayout.MinPrimaryGlyph))
                 problems.Add(at + " has a hit target below the 32 / 36 DIP floors");
+        }
+        if (!Windows.IsDefaultOrEmpty)
+        {
+            if (Windows.Length > 5) problems.Add($"PlayerBar.Windows holds {Windows.Length} rules, at most 5 fit WidthTier");
+            for (int i = 0; i < Windows.Length; i++)
+            {
+                var w = Windows[i];
+                if (w.MinLevel < 0 || w.MaxLevel >= TierCount || w.MinLevel > w.MaxLevel)
+                    problems.Add($"PlayerBar.Windows[{i}] must name levels 0..{TierCount - 1} with MinLevel <= MaxLevel");
+            }
         }
         return problems;
     }

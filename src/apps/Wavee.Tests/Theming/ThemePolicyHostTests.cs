@@ -81,7 +81,11 @@ public sealed class ThemePolicyHostTests : IDisposable
         // names a theme, so the baseline carries the Standard tiers and the shipped overlays), so the rules below answer exactly what they did.
         Assert.Equal(ClassicPolicies.Bundle, ShellPolicy.Now);
         Assert.Equal(ClassicPolicies.Bundle, ThemeHost.Facts.Peek().Policies);
-        Assert.Equal(ThemePolicies.Default, ShellPolicy.Now with { Tiers = TierPolicy.Standard, Overlays = OverlayPolicy.Default });
+        Assert.Equal(ThemePolicies.Default, ShellPolicy.Now with
+        {
+            Tiers = TierPolicy.Standard, Overlays = OverlayPolicy.Default,
+            Panel = ShellPolicy.Now.Panel with { Tiers = default }, PlayerBar = ShellPolicy.Now.PlayerBar with { Windows = default },   // TC2's tier rules
+        });
         Assert.Equal(ShellCapabilities.Unrestricted, ThemeHost.Facts.Peek().Capabilities);
         Assert.NotEqual(StyleMetrics.Unset, ThemeHost.Facts.Peek().Metrics);
         Assert.Equal(s_baseline, Probe());

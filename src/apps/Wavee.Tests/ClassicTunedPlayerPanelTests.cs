@@ -77,7 +77,7 @@ public class ClassicTunedPlayerBarTests
 
     [Fact]
     public void The_core_default_policy_is_classics()
-        => Assert.Equal(ClassicPolicies.PlayerBar, PlayerBarPolicy.Default);
+        => Assert.Equal(ClassicPolicies.PlayerBar with { Windows = default }, PlayerBarPolicy.Default);   // the window rules are Classic's alone (TC2)
 }
 
 public class ClassicTunedPlayerStyleTests
