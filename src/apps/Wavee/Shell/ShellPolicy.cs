@@ -11,6 +11,7 @@
 //                facts, and so would a live option that moves a policy) re-runs it. It does not re-run on a tier change.
 
 using Wavee.Theming;
+using Wavee.Theming.Contracts;
 
 namespace Wavee;
 
@@ -30,6 +31,10 @@ public static class ShellPolicy
     internal static PlayerBarPolicy PlayerBarOr(PlayerBarPolicy? given) => given ?? Now.PlayerBar;
 
     internal static ChromeBudget BudgetOr(ChromeBudget? given) => given ?? Now.Chrome.Budget;
+
+    /// <summary>The title-bar budget of the window tier on screen (the structure's per-tier budget, <see cref="ChromePolicy.BudgetFor(WidthTier)"/>),
+    /// read without subscribing; the base budget where no frame resolved the tiers.</summary>
+    internal static ChromeBudget ChromeBudgetNow => Now.Chrome.BudgetFor(ThemeHost.Facts.Peek().Tiers);
 
     internal static AspectThresholds AspectOr(AspectThresholds? given) => given ?? Now.Stage.Aspect;
 }

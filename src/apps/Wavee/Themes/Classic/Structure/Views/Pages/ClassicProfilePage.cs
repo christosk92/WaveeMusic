@@ -28,6 +28,7 @@ using FluentGpu.Scroll.Effects;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 
@@ -88,6 +89,8 @@ internal static class ClassicProfilePage
     /// <summary>The registered template of <see cref="ViewKeys.ProfilePage"/>.</summary>
     public static Element Template(ProfilePageProps p, in ViewContext ctx)
     {
+        // The one page gutter (tuned Classic F3), as the artist page: the profile's surfaces inset by the content tier's gutter.
+        p = p with { Metrics = p.Metrics with { Gutter = ClassicTiers.PageOf(ctx.Tier()).Gutter } };
         var latchCell = ctx.Hooks.UseRef<ClassicProfileLatch?>(null);
         var latch = latchCell.Value ??= new ClassicProfileLatch();
         latch.P = p;

@@ -25,6 +25,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
@@ -36,12 +37,13 @@ internal static partial class ClassicDetailFrame
     /// <summary>The registered template of <see cref="ViewKeys.DetailFrame"/>.</summary>
     public static Element Template(DetailFrameProps p, in ViewContext ctx)
     {
+        float gutter = ClassicTiers.PageOf(ctx.Tier()).Gutter;   // the one page gutter (F3)
         // The content column. Its Key is the host's (`right:tracks` / `right:eps`) and survives a rail collapse. Under a page head (no rail,
         // tuned Classic D16) the list sits the row plates' inset inside the page gutter, so its plates start 8 before the head's words.
         Element list = p.Head is null ? p.Content : new BoxEl
         {
             Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-            Padding = new Edges4(ClassicDetailLayout.HeadListInset, 0f, ClassicDetailLayout.HeadListInset, 0f),
+            Padding = new Edges4(ClassicDetailLayout.HeadListInset(gutter), 0f, ClassicDetailLayout.HeadListInset(gutter), 0f),
             Children = [p.Content],
         };
         BoxEl right = new BoxEl
@@ -120,7 +122,7 @@ internal static partial class ClassicDetailFrame
                             {
                                 Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Basis = 0f,
                                 MaxWidth = R.Space.PageMaxW, DropTarget = p.Drop,
-                                Children = [PageHead(head), right],
+                                Children = [PageHead(head, gutter), right],
                             },
                         ],
                     },

@@ -20,6 +20,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 using Cells = Wavee.Themes.Classic.ClassicConcertCells;
@@ -45,6 +46,7 @@ internal static class ClassicConcertHub
     /// <summary>The registered template of <see cref="ViewKeys.ConcertsHub"/>.</summary>
     public static Element Template(ConcertHubProps props, in ViewContext ctx)
     {
+        var page = ClassicTiers.PageOf(ctx.Tier());   // the one page gutter (F3)
         Element region = Cells.Region(props.Pending, props.Failed, () => props.Body is { } body ? FeedOf(props, body) : new BoxEl(), FeedSeed,
             () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: props.Retry), "concert-hub");
         var content = new BoxEl
@@ -53,12 +55,12 @@ internal static class ClassicConcertHub
             Children =
             [
                 // The trail's reserve + 12 as a SPACER (the header card is the hub's hero and its title): the clipped nodes start where the
-                // content does, so each cut engages only once it scrolls (BrowseMastheadMetrics.FamilyUnderBandPad).
+                // content does, so each cut engages only once it scrolls (the Browse directory's frame).
                 new BoxEl { Height = ClassicPageHeadRules.HeadReserve(PageHeadForm.Hero) + ClassicPageHeadRules.HeroGap, HitTestVisible = false },
                 new BoxEl
                 {
                     Direction = 1, Gap = Spacing.L,
-                    Padding = BrowseMastheadMetrics.FamilyUnderBandPad(R.Space.DockReserve + Spacing.PageWide),
+                    Padding = page.Pad(0f, R.Space.DockReserve + page.Gutter),
                     Children =
                     [
                         Cells.UnderBand(HeaderCard()),

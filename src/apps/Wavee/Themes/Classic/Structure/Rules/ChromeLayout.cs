@@ -34,6 +34,16 @@ internal static class ClassicChromeLayout
     /// <summary>The "Connecting" caption chip's padding.</summary>
     public static readonly Edges4 ConnectingChipPadding = new(8f, 0f, 8f, 0f);
 
+    /// <summary>The Compact title bar's tab count (board C-TitleBar): an 18-DIP outlined box at the 4 radius with a 1.2 stroke, 3 DIP of
+    /// padding either side of an 11 / 600 count.</summary>
+    public const float TabCountBox = 18f, TabCountRadius = 4f, TabCountStroke = 1.2f, TabCountTextSize = 11f;
+
+    /// <inheritdoc cref="TabCountBox"/>
+    public const ushort TabCountWeight = 600;
+
+    /// <inheritdoc cref="TabCountBox"/>
+    public static readonly Edges4 TabCountPadding = new(3f, 0f, 3f, 0f);
+
     /// <summary>The tab titles' text size (text-first tabs: weight and opacity carry selection).</summary>
     public const float TabTextSize = 13f;
 

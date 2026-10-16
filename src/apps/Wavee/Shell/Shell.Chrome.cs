@@ -154,6 +154,9 @@ public static partial class Shell
         // Tabs: the FLOOR is what the allocator counts with (a text tab narrower than this is unreadable); the CAP is
         // what a tab may grow to once the search is comfortable and there is still surplus.
         public const float ChromeTabMaxW = 200f;
+
+        /// <summary>The Huge row's search and tab caps (board C-TitleBar: a 480 search, 240 tabs from 1920).</summary>
+        public const float ChromeHugeSearchMaxW = 480f, ChromeHugeTabMaxW = 240f;
         public const float ChromeTabMinW = 110f;
         public const float ChromePinnedTabW = 40f;
         public const float ChromeTabViewportMinW = 32f;
@@ -215,7 +218,12 @@ public static partial class Shell
         // and never below the rest width. The room counts the RESERVED tab cluster, so widening spends only the two drag bands
         // and the tabs never move. Focus is not an input to Resolve: focusing the field never republishes the allocation.
         // In the icon form it is the icon's own width.
-        float SearchExpandW = 0f)
+        float SearchExpandW = 0f,
+        // The tabs island is ONE tab-count button instead of the strip (the budget's `TabsAsCount`: Classic's Compact title bar,
+        // C-TitleBar's "≡, Back, Search, tab count"). The island is budgeted at one nav button and carries no "+" slot.
+        bool TabCount = false,
+        // The widest a strip tab grows under the budget the row was allocated by (Classic's Huge budget lets tabs grow wider).
+        float TabMaxW = 0f)
     {
         /// <summary>Below the threshold: bell and friends become profile-menu rows (pin simply drops — the tab/page
         /// context menu still offers it).</summary>
@@ -240,7 +248,8 @@ public static partial class Shell
         {
             var b = ShellPolicy.BudgetOr(budget);
             width = MathF.Max(0f, width);
-            naturalTabExtent = MathF.Max(b.TabViewportMinW, naturalTabExtent);
+            // The count form's island is one nav button whatever the strip would measure.
+            naturalTabExtent = b.TabsAsCount ? b.NavButtonW : MathF.Max(b.TabViewportMinW, naturalTabExtent);
             var candidate = StageFor(width, naturalTabExtent, chip, b);
             if (previous is not { } old) return Compose(width, naturalTabExtent, in candidate, chip, null, b);
 
@@ -392,7 +401,7 @@ public static partial class Shell
         {
             bool name = false, actionsInRow = false;
             bool forward = width > b.ForwardEnterW;
-            bool back = true, newTab = true, trailing = true;
+            bool back = true, newTab = !b.TabsAsCount, trailing = true;   // the count form has no strip, so no "+" slot
 
             // The tab viewport is the last elastic lane. Under extreme pressure shed fixed islands before allowing it
             // to disappear; the captions and the compact search trigger never participate in that trade. Neither
@@ -450,7 +459,7 @@ public static partial class Shell
             float lead = LeadClusterFor(width, naturalTabExtent, in stage, chip, searchWidth, previousLeadClusterW, b);
             return new Chrome(stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing, chip,
                 stage.Field ? MergedSearchMode.Field : MergedSearchMode.Icon, searchWidth, lead,
-                stage.Field ? ExpandWidthFor(width, in stage, chip, searchWidth, lead, b) : searchWidth);
+                stage.Field ? ExpandWidthFor(width, in stage, chip, searchWidth, lead, b) : searchWidth, b.TabsAsCount, b.TabMaxW);
         }
 
         /// <summary>The focused field's width (tuned F6): <c>min(rest + grow, room − clear)</c>, quantised down, never below the

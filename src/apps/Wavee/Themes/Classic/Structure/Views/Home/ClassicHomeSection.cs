@@ -23,6 +23,7 @@ using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Hooks;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
@@ -41,12 +42,13 @@ internal static class ClassicHomeSection
         // The cell template runs ONCE per recycled slot and is frozen at the grid's mount (the adapter is the host's one stable delegate).
         var cell = ctx.Hooks.UseRef<Func<BoundItemScope<HomeCard>, Element>?>(null);
         Func<BoundItemScope<HomeCard>, Element> template = cell.Value ??= item => Controls.BoundSurface(in item, Shape.Grid, props.Adapt);
+        float gutter = ClassicTiers.PageOf(ctx.Tier()).Gutter;   // the one page gutter (F3)
 
         return new BoxEl
         {
             Key = "home-section-body", Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
             Gap = ClassicHomeRules.SectionBodyGap,
-            Padding = ClassicPageHeadRules.DrillBodyPad(Spacing.XXL),
+            Padding = ClassicPageHeadRules.DrillBodyPad(gutter, Spacing.XXL),
             Children =
             [
                 props.Total > 0

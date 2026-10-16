@@ -12,6 +12,12 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **The window adapts to its size in four steps.** Below 528 DIP wide the sidebar is a drawer behind the ☰ button, the page
+  card runs square to the window's edge and the title bar folds its tabs into one count button that lists them (with Back and
+  the search button beside it); from 528 to 1007 the sidebar is the 48-DIP rail (it used to expand again from 660); from 1008
+  it is the full, resizable sidebar; and from 1920 the title bar's search grows to 480 and tabs to 240. Each step waits 40 DIP
+  before it changes back (widening past 528 and 1008, narrowing past 1920), so a window resting on a line never flickers.
+  Pages now share one margin that follows the space they have: 16 when narrow, 32 in a small window, 36 from 880 wide.
 - **The artist page's header reads better at ordinary window sizes, and Top tracks arrives with the page.** The name, bio
   and stats now end a little past the middle of the header (they used to run across nine-tenths of it, over the bright
   half of the photo at a medium or 1440-wide window), and the dark side of the photo now reaches exactly as far as the
@@ -185,6 +191,8 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **The window can no longer be dragged down to a title-bar strip.** It now stops at 330 DIP tall, which keeps the title bar,
+  a usable page and the player bar on screen (#197).
 - **The album and playlist side column shows again.** In Classic the left column of an album or playlist page (the cover,
   title, artist, song count and the Play button) was blank; it now fills the page's height and shows its content. The
   collapsed column also keeps its expand arrow at the bottom again.

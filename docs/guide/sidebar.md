@@ -80,9 +80,9 @@ width bounds, the content floor and the seam) is the structure's `NavPanePolicy`
 
 | Band | Width | Mode |
 |---|---|---|
-| Wide | ≥ 700 (leaves Narrow at < 660) | Expanded, or Compact if the user collapsed it |
-| Narrow | 528 to 660 (leaves Wide at ≥ 700, Tiny below 528) | Compact |
-| Tiny | < 528 (leaves at ≥ 568) | Minimal |
+| Wide (Standard, Huge) | ≥ 1048 when widening, ≥ 1008 on a fresh launch (leaves for Narrow below 1008) | Expanded, or Compact if the user collapsed it |
+| Narrow (Small) | 528 to 1007 (leaves for Wide at ≥ 1048, for Tiny below 528) | Compact (the forced 48 rail over the whole band, board C-Breakpoints) |
+| Tiny (Compact) | < 528 (leaves at ≥ 568) | Minimal |
 
 The 40-px hysteresis keeps the band from flickering at a threshold, and the band changes on the first frame that is not
 resized (the resized frame keeps the old band), so the pane animates across the crossing instead of snapping. Narrow and Tiny force their mode whatever the

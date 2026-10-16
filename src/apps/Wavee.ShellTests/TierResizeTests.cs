@@ -10,8 +10,10 @@
 //   · a composited edge drag paints nothing until mouse-up, so it produces exactly ONE crossing, at the settle;
 //   · a window dragged back and forth inside a hysteresis band never flips between tiers.
 //
-// Classic only: its window ladder is the production one (528 / 568, 660 / 700), moved. A theme switch changing no tier needs
-// a second installed structure and lands with the first non-Classic theme. Every fact leaves the window at its mount size.
+// Classic only: its window ladder is the board's (`C-Breakpoints`, TC1): Compact < 528, Small 528-1007, Standard 1008-1919, Huge from
+// 1920, held 40 on widening at 528 and 1008 (567 and 1047 stay put from below) and on narrowing at 1920 (1880 holds Huge, 1879 does
+// not). A theme switch changing no tier needs a second installed structure and lands with the first non-Classic theme. Every fact
+// leaves the window at its mount size.
 
 using FluentGpu.Foundation;
 using FluentGpu.Scene;
@@ -72,8 +74,11 @@ public sealed class TierResizeTests(ShellHost host)
     // ── the first frame ────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
+    [InlineData(1920f, WidthTier.Huge, SidebarWindowBand.Wide)]
     [InlineData(1180f, WidthTier.Standard, SidebarWindowBand.Wide)]
-    [InlineData(700f, WidthTier.Standard, SidebarWindowBand.Wide)]
+    [InlineData(1008f, WidthTier.Standard, SidebarWindowBand.Wide)]
+    [InlineData(1007f, WidthTier.Small, SidebarWindowBand.Narrow)]
+    [InlineData(700f, WidthTier.Small, SidebarWindowBand.Narrow)]     // the forced rail covers the whole Small band
     [InlineData(600f, WidthTier.Small, SidebarWindowBand.Narrow)]
     [InlineData(528f, WidthTier.Small, SidebarWindowBand.Narrow)]
     [InlineData(527f, WidthTier.Compact, SidebarWindowBand.Tiny)]
@@ -165,9 +170,9 @@ public sealed class TierResizeTests(ShellHost host)
             AssertBand(WidthTier.Compact, SidebarWindowBand.Tiny);
 
             shell.Host.Paint(0, keepAlive: true);                        // the second paint is not resized
-            AssertBand(WidthTier.Standard, SidebarWindowBand.Wide);
+            AssertBand(WidthTier.Small, SidebarWindowBand.Narrow);
             shell.RunFrames(60);
-            AssertBand(WidthTier.Standard, SidebarWindowBand.Wide);
+            AssertBand(WidthTier.Small, SidebarWindowBand.Narrow);
             shell.Window.Scale = 1f;                                     // put the mount's DPI back before it is disposed
             shell.Host.Paint(0, keepAlive: true);
             shell.RunFrames(10);
@@ -217,12 +222,12 @@ public sealed class TierResizeTests(ShellHost host)
         {
             shell.RunFrames(90);
             var seen = new List<WidthTier>();
-            foreach (float w in new[] { 650f, 690f, 655f, 699f, 660f, 661f, 700f, 690f, 661f })
+            foreach (float w in new[] { 1000f, 1040f, 1010f, 1047f, 1008f, 1009f, 1048f, 1040f, 1009f })
             {
                 Settled(shell, w);
                 seen.Add(Tiers.Window);
             }
-            // Standard -> Small at 650; Small holds through 699 (it leaves only at 700); Standard from 700 holds down to 660.
+            // Standard -> Small at 1000; Small holds through 1047 (it leaves only at 1048); Standard from 1048 holds down to 1008.
             Assert.Equal(
                 new[] { WidthTier.Small, WidthTier.Small, WidthTier.Small, WidthTier.Small, WidthTier.Small, WidthTier.Small,
                         WidthTier.Standard, WidthTier.Standard, WidthTier.Standard },
@@ -233,6 +238,36 @@ public sealed class TierResizeTests(ShellHost host)
             Assert.Equal(SidebarWindowBand.Wide, Sidebar.Band.Peek());
             shell.RunFrames(60);
         }, 1180f, 760f);
+
+    // ── the board's holds, from each side (C-Breakpoints, NQ12) ─────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(400f, 567f, WidthTier.Compact, 568f, WidthTier.Small)]       // widening past 528 holds Compact to 567
+    [InlineData(800f, 1047f, WidthTier.Small, 1048f, WidthTier.Standard)]    // widening past 1008 holds Small to 1047
+    [InlineData(2560f, 1880f, WidthTier.Huge, 1879f, WidthTier.Standard)]    // narrowing past 1920 holds Huge to 1880
+    public void A_hold_edge_keeps_the_tier_the_window_came_from(float start, float held, WidthTier heldTier, float crossed, WidthTier crossedTier)
+        => host.Mounted(shell =>
+        {
+            shell.RunFrames(30);
+            Settled(shell, held);
+            Assert.Equal(heldTier, Tiers.Window);                        // the hold: the window keeps its tier
+            Settled(shell, crossed);
+            Assert.Equal(crossedTier, Tiers.Window);                     // one DIP further it crosses, once
+            shell.RunFrames(30);
+            Assert.Equal(crossedTier, Tiers.Window);
+        }, start, 760f);
+
+    [Theory]
+    [InlineData(567f, WidthTier.Small)]       // a FRESH launch inside a hold uses the edge itself (NQ12)
+    [InlineData(1047f, WidthTier.Standard)]
+    [InlineData(1879f, WidthTier.Standard)]
+    public void A_fresh_launch_inside_a_hold_uses_the_edge_itself(float width, WidthTier tier)
+        => host.Mounted(shell =>
+        {
+            Assert.Equal(tier, Tiers.Window);
+            shell.RunFrames(3);
+            Assert.Equal(tier, Tiers.Window);
+        }, width, 760f);
 
     // ── the facts a view reads ─────────────────────────────────────────────────────────────────────────────────────────
 
@@ -245,7 +280,12 @@ public sealed class TierResizeTests(ShellHost host)
             // The content region is the window less the sidebar column (and an inline rail when one is open).
             Assert.True(facts.ContentWidth > 0f);
             Assert.True(facts.ContentWidth <= facts.ViewportWidth);
-            Assert.Equal(WidthTier.Standard, facts.Content);
+            // The content tier is the gutter ladder's for the window less the pane (1180 less a 320 pane is 860: Small, 32).
+            Assert.Equal((WidthTier)Wavee.Themes.Classic.ClassicTiers.Content.Resolve(facts.ContentWidth, -1), facts.Content);
+
+            Settled(shell, 1440f);
+            facts = Tiers;
+            Assert.Equal(WidthTier.Standard, facts.Content);             // 1120: Standard (36), past 880 + its 24 hold
 
             Settled(shell, 600f);
             facts = Tiers;
@@ -253,8 +293,8 @@ public sealed class TierResizeTests(ShellHost host)
             Assert.True(facts.ContentWidth <= 600f);
             Assert.True(facts.ContentWidth >= 600f - 48f - 1f);          // the rail pane: the window less its 48-DIP column
             // The content tier crossed WITH the window tier (the estimate sizes the pane the new window tier presents), so a
-            // settled resize is one crossing, not a window crossing followed by a content one.
-            Assert.Equal(WidthTier.Small, facts.Content);
+            // settled resize is one crossing, not a window crossing followed by a content one. 552 is the gutter ladder's Compact (16).
+            Assert.Equal(WidthTier.Compact, facts.Content);
             shell.RunFrames(60);
             Assert.Equal(facts, Tiers);                                   // and nothing moved after it
         }, 1180f, 760f);

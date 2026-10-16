@@ -19,6 +19,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Localization;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
@@ -29,6 +30,7 @@ internal static class ClassicMasthead
     /// <summary>The registered template of <see cref="ViewKeys.ShellMasthead"/>.</summary>
     public static Element Template(MastheadProps props, in ViewContext ctx)
     {
+        float gutter = ClassicTiers.PageOf(ctx.Tier()).Gutter;   // the band's title sits on the page's column (F3)
         // One stable host; the band is its only child while live, so a band mounts (enters) and unmounts (exits) with its page.
         if (!props.Live || props.Held is not { } chrome)
             return new BoxEl { MinWidth = 0f, Direction = 1, HitTestPassThrough = true };
@@ -48,7 +50,7 @@ internal static class ClassicMasthead
                 {
                     Key = BandKey(chrome),
                     Direction = 0, MinWidth = 0f, Gap = Spacing.M, AlignItems = FlexAlign.End,
-                    Padding = ClassicFrameBitsRules.MastheadPadding,
+                    Padding = ClassicFrameBitsRules.MastheadPadding(gutter),
                     Animate = ClassicFrameBitsRules.MastheadSwap,
                     Children = [ctx.View(ViewKeys.PageHead, new PageHeadProps(chrome)), tools],
                 },

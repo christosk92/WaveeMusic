@@ -20,6 +20,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Localization;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 using static Wavee.ReleaseNotes;
@@ -48,8 +49,9 @@ internal static partial class ClassicReleaseNotes
     /// <summary>The registered template of <see cref="ViewKeys.WhatsNewPage"/>.</summary>
     public static Element PageTemplate(WhatsNewPageProps props, in ViewContext ctx)
     {
+        float gutter = ClassicTiers.PageOf(ctx.Tier()).Gutter;   // the one page gutter (F3)
         if (props.State != WhatsNewState.Loaded || props.View is not { } view)
-            return Frame(props.State == WhatsNewState.Empty ? EmptyState(props) : LoadingState(), rail: null);
+            return Frame(props.State == WhatsNewState.Empty ? EmptyState(props) : LoadingState(), rail: null, gutter);
 
         var releases = view.Releases;
         bool stacked = releases.Length > 1 && !props.OnlyLatest;
@@ -88,7 +90,7 @@ internal static partial class ClassicReleaseNotes
 
         return Frame(
             new BoxEl { Direction = 1, Gap = Spacing.M, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Children = column.ToArray() },
-            ReleaseRail(props, view.Index, view.SelectedVersion, props.RunningVersion, view.LastSeen));
+            ReleaseRail(props, view.Index, view.SelectedVersion, props.RunningVersion, view.LastSeen), gutter);
     }
 
     static Element SinceBanner(WhatsNewPageProps props, ReleaseEntry[] releases) => new BoxEl
@@ -106,7 +108,7 @@ internal static partial class ClassicReleaseNotes
         ],
     };
 
-    static Element Frame(Element body, Element? rail) => new BoxEl
+    static Element Frame(Element body, Element? rail, float gutter) => new BoxEl
     {
         Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1,
         Children =
@@ -114,13 +116,13 @@ internal static partial class ClassicReleaseNotes
             new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-                Padding = new Edges4(Spacing.PageWide, Spacing.L, Spacing.PageWide, Spacing.M),
+                Padding = new Edges4(gutter, Spacing.L, gutter, Spacing.M),
                 Children = [Icon(Icons.Tag, 22f, Tok.TextPrimary), R.Type.SurfaceDisplay(Loc.Get(Strings.WhatsNew.Title)) with { Grow = 1f }],
             },
             new BoxEl
             {
                 Direction = 0, Gap = K.FrameGap, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-                Padding = new Edges4(Spacing.PageWide, 0f, Spacing.PageWide, 0f),
+                Padding = new Edges4(gutter, 0f, gutter, 0f),
                 Children = rail is null ? [body] : [body, rail],   // loading / empty: the 208 column AND the 14 gap are gone
             },
         ],

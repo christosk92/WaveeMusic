@@ -44,8 +44,8 @@ namespace Wavee.Themes.Classic;
 internal static partial class ClassicDetailFrame
 {
     // The rail's own pictures' numbers (Rules\DetailLayout.cs).
-    static float RailSidePadL => Spacing.L;
-    static float RailSidePadR => Spacing.S;   // 16 / 8
+    static float RailSidePadL => ClassicTiers.RailPadding.Left;    // 16
+    static float RailSidePadR => ClassicTiers.RailPadding.Right;   // 8
     const float RailGap = RailLayout.Gap;                             // 14 — the row model's (Detail.cs §8b)
     const float RailFabSize = RailLayout.FabSize;                     // 32 (Workstream B: was 40)
     const int RailCoverDecodePx = ClassicDetailLayout.CoverDecodePx;  // the shelf card's bucket — a warm texture on arrival
@@ -234,7 +234,7 @@ internal static partial class ClassicDetailFrame
     static Element RailColumnBox(float railW, Element[] rows) => new BoxEl
     {
         Direction = 1, Gap = RailGap, Width = railW, Shrink = 0f,
-        Padding = new Edges4(RailSidePadL, RailLayout.PadTop, RailSidePadR, RailLayout.PadBottom),
+        Padding = ClassicTiers.RailPadding,   // 24 / 8 / 24 / 16 (tuned Classic F3)
         Children = rows,
     };
 

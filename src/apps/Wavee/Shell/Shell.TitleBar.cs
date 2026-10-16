@@ -67,7 +67,7 @@ public static partial class Shell
             _ => ChromeChipForm.Profile,
         },
         l.SearchMode == MergedSearchMode.Icon ? SearchForm.Icon : SearchForm.Field,
-        l.SearchWidth, l.TabIslandWidth);
+        l.SearchWidth, l.TabIslandWidth, l.TabCount, l.TabMaxW);
 
     /// <summary>The history flyout's rows for the back stack (<paramref name="forward"/> false) or the forward stack, read at OPEN.
     /// An empty stack answers no rows, and then nothing opens at all.</summary>
@@ -132,7 +132,7 @@ public static partial class Shell
     static float FieldWidthNow()
     {
         var l = ChromeLayout.Value;
-        float rest = Chrome.FieldWidthFor(l.SearchWidth);
+        float rest = Chrome.FieldWidthFor(l.SearchWidth, ShellPolicy.ChromeBudgetNow);
         return s_omnibar.FieldExpanded ? Chrome.FocusedFieldWidth(l.SearchExpandW, rest) : rest;
     }
 

@@ -21,6 +21,7 @@ using FluentGpu.Localization;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 using Cells = Wavee.Themes.Classic.ClassicConcertCells;
@@ -73,7 +74,7 @@ internal static class ClassicConcertSchedule
             : Responsive.Of("concert-schedule", build, fallback: Rules.ScheduleFallbackWidth);
         Element region = Cells.Region(props.Pending, props.Failed, content, () => Responsive.Of("concert-schedule", buildSeed, fallback: Rules.ScheduleFallbackWidth),
             () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: props.Retry), "artist-schedule:" + props.RouteKey);
-        Element scroll = Cells.SubPageScroll(props.ScrollScope + "artist-schedule:" + props.RouteKey, region) with
+        Element scroll = Cells.SubPageScroll(props.ScrollScope + "artist-schedule:" + props.RouteKey, region, ClassicTiers.PageOf(ctx.Tier()).Gutter) with
         {
             Handle = cell.Handle, OnRealized = cell.CaptureViewport,
         };

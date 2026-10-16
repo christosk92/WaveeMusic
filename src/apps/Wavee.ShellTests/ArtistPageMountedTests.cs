@@ -104,7 +104,7 @@ public sealed class ArtistPageMountedTests(ShellHost host)
                 var r = harness.LocalBounds(node);
                 Assert.Equal(copy, r.W, 1);
                 Assert.Equal(m.Gutter, harness.AbsoluteBounds(node).X - harness.AbsoluteBounds(harness.Find("artist-page:fixture")).X, 1);
-            }, UnderClassic());
+            }, UnderClassic() with { WidthDip = width });   // the content region IS the page: its gutter tier is the hero's (TC1)
 
     /// <summary>Tuned Classic X2: the loading hero is the loaded hero's composition over a placeholder, so its copy column stands at the same D18 width
     /// and gutter.</summary>

@@ -17,6 +17,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 using Cells = Wavee.Themes.Classic.ClassicConcertCells;
@@ -57,7 +58,7 @@ internal static class ClassicConcertDetail
             : Responsive.Of("concert-detail", build, fallback: Rules.DetailFallbackWidth);
         Element region = Cells.Region(props.Pending, static () => false, content, () => Responsive.Of("concert-detail", buildSeed, fallback: Rules.DetailFallbackWidth),
             s_never, "concert-detail:" + props.RouteKey);
-        return Cells.SubPageScroll(props.ScrollScope + "concert-detail:" + props.RouteKey, region);
+        return Cells.SubPageScroll(props.ScrollScope + "concert-detail:" + props.RouteKey, region, ClassicTiers.PageOf(ctx.Tier()).Gutter);
     }
 
     static bool Wide(Latch latch, float width)

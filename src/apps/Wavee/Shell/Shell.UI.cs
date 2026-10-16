@@ -494,7 +494,10 @@ public static partial class Shell
                 // The identity chip's FORM is a budget input, not a decoration: "Connecting" and "Reconnect" are 58-68
                 // DIP wider than the avatar, well past the 16-DIP gutter cushion (#88). Reading it here also subscribes
                 // this effect to the auth fold, so a sign-in or a resume RE-ALLOCATES the row instead of overflowing it.
-                var next = Chrome.Resolve(w, extent, old, FrameRules.ChipFor(Auth.Value), ShellPolicy.Tracked.Chrome.Budget);
+                // The BUDGET is the window tier's (tracked): Classic's Compact row folds the tab strip into a count button and its Huge row
+                // seats a wider search and wider tabs. The tier commits on the first frame that is not resized, so the row re-allocates
+                // once per crossing, on the frame the crossing animates.
+                var next = Chrome.Resolve(w, extent, old, FrameRules.ChipFor(Auth.Value), ShellPolicy.Tracked.Chrome.BudgetFor(tiers.Window));
                 if (FrameRules.ReissueSearchFocus(old.SearchMode, next.SearchMode, s_omnibar.SearchFocused.Peek(), s_omnibar.FlyoutOpen.Peek()))
                     s_omnibar.Focus();
                 ChromeLayout.SetIfChanged(next);
@@ -957,7 +960,7 @@ public static partial class Shell
         var l = ChromeLayout.Value;
         int flags = (l.ShowName ? 1 : 0) | (l.ShowActions ? 2 : 0) | (l.ShowForward ? 4 : 0)
                   | (l.SearchMode == MergedSearchMode.Icon ? 8 : 0) | (l.ShowBack ? 16 : 0)
-                  | (l.ShowNewTab ? 32 : 0) | (l.ShowTrailing ? 64 : 0);
+                  | (l.ShowNewTab ? 32 : 0) | (l.ShowTrailing ? 64 : 0) | (l.TabCount ? 128 : 0);
         var r = Current.Value;
         // The route and the pin store's version: the trailing Pin/Unpin follows a navigation and a pin change.
         // l.Chip is the form the trailing island actually BUILDS from (the view's AuthChip); Auth.Value alone is not enough:
@@ -965,7 +968,7 @@ public static partial class Shell
         // and the version must move again when ChromeLayout lands, or TitleBar's render memo returns the stale tree.
         // FieldSettled: the search field eases to its focused width and back (F6); the regions are pushed once it has SETTLED.
         return HashCode.Combine(flags, (int)l.SearchWidth, (int)l.LeadClusterW, TitleBarTabsVersion(), (int)Auth.Value,
-            HashCode.Combine(r.Kind, r.Subject, r.Arg), Sidebar.PinsVersion.Value, HashCode.Combine((int)l.Chip, s_omnibar.FieldSettled.Value));
+            HashCode.Combine(r.Kind, r.Subject, r.Arg), Sidebar.PinsVersion.Value, HashCode.Combine((int)l.Chip, s_omnibar.FieldSettled.Value, (int)l.TabMaxW));
     }
 
     // Both fold Shown: the strip's labels come from the staged route, so it must rebuild when that route LANDS (the

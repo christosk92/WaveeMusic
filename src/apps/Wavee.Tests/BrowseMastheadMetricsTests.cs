@@ -37,14 +37,15 @@ public class BrowseMastheadMetricsTests
         Assert.True(BrowseMastheadMetrics.ClipFadeBand > 0f);
     }
 
-    // The under-band pad drops the top: the reserve becomes a spacer ABOVE the clipped node.
+    // The under-band pad drops the top: the reserve becomes a spacer ABOVE the clipped node; the sides are the page gutter (TC1).
     [Fact]
-    public void FamilyUnderBandPad_HasNoTop_SoTheSpacerCarriesTheReserve()
+    public void The_family_under_band_pad_has_no_top_so_the_spacer_carries_the_reserve()
     {
-        var pad = BrowseMastheadMetrics.FamilyUnderBandPad(Spacing.XXL);
+        var page = Wavee.Themes.Classic.ClassicTiers.Page(Wavee.Theming.Contracts.WidthTier.Standard);
+        var pad = page.Pad(0f, Spacing.XXL);
         Assert.Equal(0f, pad.Top);
-        Assert.Equal(Spacing.PageWide, pad.Left);
-        Assert.Equal(Spacing.PageWide, pad.Right);
+        Assert.Equal(36f, pad.Left);
+        Assert.Equal(36f, pad.Right);
         Assert.Equal(Spacing.XXL, pad.Bottom);
     }
 

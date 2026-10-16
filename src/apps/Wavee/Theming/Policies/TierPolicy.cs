@@ -64,6 +64,11 @@ public sealed record TierPolicy(
     /// <summary>The smallest layout width of every shipped structure: the window minimum.</summary>
     public const float WindowFloor = 300f;
 
+    /// <summary>The window's minimum client height (themes plan 3.2, tuned Classic F8, #197): 330 DIP keeps the title row, a usable page
+    /// and the player bar on screen, and fits a quarter Snap of a 1080p work area at 150 % if Snap ignores the custom frame's bottom
+    /// border (owner NQ9; 328 is the fallback if it does not).</summary>
+    public const float WindowMinHeight = 330f;
+
     /// <summary>The most rungs a policy may declare (they travel in one 64-bit mask of <see cref="TierFacts"/>).</summary>
     public const int MaxRungs = 64;
 

@@ -6,7 +6,8 @@
 // (Play split, Shuffle, the genre chips, the view commands), so it shares the list's state with no second copy. The bar's 8-DIP top air
 // is the chrome's own, so the head stops 4 short of the board's 12.
 //
-// The numbers are `Rules\DetailLayout.cs` (`ClassicDetailLayout.Head*`).
+// The numbers are `Rules\DetailLayout.cs` (`ClassicDetailLayout.Head*`) and the frame rhythm of `Rules\Tiers.cs` (the page gutter, the
+// head's 24 / 4).
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -17,8 +18,8 @@ namespace Wavee.Themes.Classic;
 
 internal static partial class ClassicDetailFrame
 {
-    /// <summary>The page head: the title and, 4 below it, the meta line, in the page gutter.</summary>
-    static Element PageHead(DetailHeadProps head)
+    /// <summary>The page head: the title and, 4 below it, the meta line, in the page <paramref name="gutter"/>.</summary>
+    static Element PageHead(DetailHeadProps head, float gutter)
     {
         var id = head.Spec.Identity;
         Element meta = head.Shown is { } shown
@@ -27,8 +28,7 @@ internal static partial class ClassicDetailFrame
         return new BoxEl
         {
             Key = "detail:head-title", Direction = 1, Shrink = 0f, MinWidth = 0f,
-            Padding = new Edges4(ClassicDetailLayout.HeadGutter, ClassicDetailLayout.HeadPadTop, ClassicDetailLayout.HeadGutter,
-                                 ClassicDetailLayout.HeadPadBottom),
+            Padding = new Edges4(gutter, ClassicTiers.HeadTop, gutter, ClassicDetailLayout.HeadPadBottom),
             Children =
             [
                 // Fixed line boxes (the board's 52 and 16): the face's natural box is taller than its line, and the head is 156 whatever
@@ -41,7 +41,7 @@ internal static partial class ClassicDetailFrame
                 new BoxEl
                 {
                     Direction = 1, MinWidth = 0f, Height = ClassicDetailLayout.HeadMetaLine,
-                    Margin = new Edges4(0f, ClassicDetailLayout.HeadMetaGap, 0f, 0f),
+                    Margin = new Edges4(0f, ClassicTiers.HeadMetaGap, 0f, 0f),
                     Children = [meta],
                 },
             ],

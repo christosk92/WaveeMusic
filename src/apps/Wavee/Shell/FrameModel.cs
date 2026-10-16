@@ -6,7 +6,7 @@
 // signals, asks, and writes the answers back in the order it always wrote them.
 //
 // THE POLICY IS THE STRUCTURE'S. `NavPaneState`'s band comes from the window's width TIER (T3b: `WindowTiers` resolves it
-// through the active structure's window ladder, with its hysteresis; Classic's 528 / 568 and 660 / 700 live in
+// through the active structure's window ladder, with its hysteresis; Classic's 528 / 568 and 1008 / 1048 live in
 // `Themes\Classic\Structure\Rules\Tiers.cs`); its mode and presented width come from `SidebarPaneModeRules` over a
 // `NavPanePolicy` (T3). Every decision here takes a trailing policy; null is the active one. The frame's effects pass
 // `ShellPolicy.Tracked.NavPane` so a policy change re-runs them.

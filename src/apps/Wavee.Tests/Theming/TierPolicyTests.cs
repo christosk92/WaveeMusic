@@ -5,10 +5,12 @@
 //
 //   · every shipped structure's policy is bindable, ascending, has hysteresis on every present edge and covers the compact
 //     floor to infinity;
-//   · Classic's window ladder is the production numbers, moved: the sidebar's window band (528 / 568, 660 / 700) resolves
-//     EXACTLY as the code it replaced, proved against a transcription of that code over a width sweep from every starting
-//     tier (the oracle below is the old code, kept only here). The player bar's levels are `PlayerBarPolicy`'s (T3), pinned by
-//     `ThemePoliciesTests`; the named-ladder mechanism is tested with a synthetic ladder;
+//   · Classic's ladders are the board's (`C-Breakpoints`, TC1): Compact < 528, Small 528-1007, Standard 1008-1919, Huge >= 1920,
+//     held 40 on widening at 528 and 1008 and on narrowing at 1920 (567 and 1047 from below, 1879 from above), no Huge 4K band;
+//     the content ladder is the page gutter's (600 / 880 held 24 either way, Huge from 1600), the height ladder Short below 680
+//     and Regular from 720. The frame's and the page's tier records (the card's state, the gutter) are pinned per tier. The player
+//     bar's levels are `PlayerBarPolicy`'s (T3), pinned by `ThemePoliciesTests`; the named-ladder mechanism is tested with a
+//     synthetic ladder;
 //   · a five-band policy with narrowing holds (the Zune shape) puts the board sizes in the board's band and holds per direction;
 //   · rungs resolve with the same holds on their own axis; the clip declaration of a tier layout record is checkable;
 //   · edge cases: exact edge sizes, oscillation around an edge, tiny and unusable sizes, a different policy after a switch.
@@ -89,31 +91,57 @@ public sealed class TierPolicyTests
         Assert.Same(ClassicTierFixture.Tiers, first);
     }
 
-    // ── Classic's window ladder: the production numbers ────────────────────────────────────────────────────────────────
+    // ── Classic's window ladder: the board's (C-Breakpoints) ───────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Classics_policy_is_the_boards_ladder()
+    {
+        Assert.Same(ClassicTiers.Policy, ClassicTierFixture.Tiers);
+        TierLadder w = ClassicTierFixture.Tiers.Window;
+        Assert.Equal(new TierEdge(528f, NarrowHold: 0f, WidenHold: 40f), w.EdgeAt(0));
+        Assert.Equal(new TierEdge(1008f, NarrowHold: 0f, WidenHold: 40f), w.EdgeAt(1));
+        Assert.Equal(new TierEdge(1920f, NarrowHold: 40f, WidenHold: 0f), w.EdgeAt(2));
+        Assert.True(w.EdgeCount < 4 || !w.EdgeAt(3).IsPresent);                // no Huge 4K band: Huge covers 3840
+        Assert.Equal(210f, ClassicTierFixture.Tiers.ShortFloor);               // 330 - the 48 title row - the 72 player bar
+        Assert.Equal(330f, TierPolicy.WindowMinHeight);                        // F8 (#197): the window's minimum height
+    }
 
     [Theory]
     [InlineData(300f, WidthTier.Compact)]
-    [InlineData(400f, WidthTier.Compact)]
+    [InlineData(400f, WidthTier.Compact)]     // the Compact board
     [InlineData(527f, WidthTier.Compact)]
-    [InlineData(528f, WidthTier.Small)]      // an exact edge lands in the upper tier on a fresh resolve
-    [InlineData(659f, WidthTier.Small)]
-    [InlineData(660f, WidthTier.Standard)]
-    [InlineData(1440f, WidthTier.Standard)]
-    [InlineData(3840f, WidthTier.Standard)]  // Classic has no Huge band until TC1 (Auto zoom folds it into Standard today)
+    [InlineData(528f, WidthTier.Small)]       // an exact edge lands in the upper tier on a fresh resolve (NQ12)
+    [InlineData(567f, WidthTier.Small)]
+    [InlineData(800f, WidthTier.Small)]       // the Small board
+    [InlineData(1007f, WidthTier.Small)]
+    [InlineData(1008f, WidthTier.Standard)]
+    [InlineData(1047f, WidthTier.Standard)]
+    [InlineData(1440f, WidthTier.Standard)]   // the Standard boards
+    [InlineData(1879f, WidthTier.Standard)]
+    [InlineData(1919f, WidthTier.Standard)]
+    [InlineData(1920f, WidthTier.Huge)]       // Auto zoom on a 4K monitor at 100 %
+    [InlineData(2048f, WidthTier.Huge)]       // Auto zoom on 1440p at 100 % / 4K at 150 %
+    [InlineData(2560f, WidthTier.Huge)]       // the Huge board
+    [InlineData(3840f, WidthTier.Huge)]       // "Huge 4K uses the same rules at 3840"
     public void Classics_window_ladder_on_a_fresh_resolve(float width, WidthTier expected)
         => Assert.Equal(expected, ClassicTierFixture.FreshWindow(width));
 
     [Theory]
-    [InlineData(WidthTier.Compact, 567f, WidthTier.Compact)]     // leaves Compact only at 568
+    [InlineData(WidthTier.Compact, 567f, WidthTier.Compact)]     // widening holds 40 at 528: Small only at 568
     [InlineData(WidthTier.Compact, 568f, WidthTier.Small)]
-    [InlineData(WidthTier.Compact, 699f, WidthTier.Small)]
-    [InlineData(WidthTier.Compact, 700f, WidthTier.Standard)]    // a jump over a band crosses both edges at their widening widths
-    [InlineData(WidthTier.Small, 699f, WidthTier.Small)]         // leaves Small only at 700
-    [InlineData(WidthTier.Small, 700f, WidthTier.Standard)]
+    [InlineData(WidthTier.Compact, 1047f, WidthTier.Small)]      // a jump over a band crosses each edge at its widening width
+    [InlineData(WidthTier.Compact, 1048f, WidthTier.Standard)]
+    [InlineData(WidthTier.Small, 1047f, WidthTier.Small)]        // widening holds 40 at 1008: Standard only at 1048
+    [InlineData(WidthTier.Small, 1048f, WidthTier.Standard)]
     [InlineData(WidthTier.Small, 528f, WidthTier.Small)]
-    [InlineData(WidthTier.Small, 527f, WidthTier.Compact)]       // narrowing has no hold
-    [InlineData(WidthTier.Standard, 660f, WidthTier.Standard)]
-    [InlineData(WidthTier.Standard, 659f, WidthTier.Small)]
+    [InlineData(WidthTier.Small, 527f, WidthTier.Compact)]       // narrowing has no hold at 528 ...
+    [InlineData(WidthTier.Standard, 1008f, WidthTier.Standard)]
+    [InlineData(WidthTier.Standard, 1007f, WidthTier.Small)]     // ... nor at 1008
+    [InlineData(WidthTier.Standard, 1919f, WidthTier.Standard)]
+    [InlineData(WidthTier.Standard, 1920f, WidthTier.Huge)]      // widening has no hold at 1920
+    [InlineData(WidthTier.Huge, 1880f, WidthTier.Huge)]          // narrowing holds 40 at 1920: Standard only below 1880
+    [InlineData(WidthTier.Huge, 1879f, WidthTier.Standard)]
+    [InlineData(WidthTier.Huge, 1007f, WidthTier.Small)]
     [InlineData(WidthTier.Standard, 300f, WidthTier.Compact)]
     public void Classics_window_ladder_holds_per_direction(WidthTier from, float width, WidthTier expected)
         => Assert.Equal(expected, (WidthTier)ClassicTierFixture.Tiers.Window.Resolve(width, (int)from));
@@ -121,67 +149,195 @@ public sealed class TierPolicyTests
     [Fact]
     public void Oscillating_around_an_edge_never_flips_between_tiers()
     {
-        // From Standard, narrow across 660 once, then wiggle inside the 660..700 hold band: the tier stays Small until 700.
+        // From Standard, narrow across 1008 once, then wiggle inside the 1008..1048 hold band: the tier stays Small until 1048.
         var ladder = ClassicTierFixture.Tiers.Window;
         int tier = (int)WidthTier.Standard;
         var seen = new List<int>();
-        foreach (float w in new[] { 650f, 690f, 655f, 699f, 660f, 661f, 659f, 680f, 700f, 690f, 661f, 659f })
+        foreach (float w in new[] { 1000f, 1040f, 1010f, 1047f, 1008f, 1009f, 1007f, 1030f, 1048f, 1040f, 1009f, 1007f })
         {
             tier = ladder.Resolve(w, tier);
             seen.Add(tier);
         }
-        // 650 Small | 690 .. 680 Small (the hold band) | 700 Standard | 690 and 661 stay Standard (no narrowing hold) | 659 Small
+        // 1000 Small | 1040 .. 1030 Small (the hold band) | 1048 Standard | 1040 and 1009 stay Standard (no narrowing hold) | 1007 Small
         Assert.Equal(new[] { 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 1 }, seen.ToArray());
         int crossings = 0;
         for (int i = 1; i < seen.Count; i++) if (seen[i] != seen[i - 1]) crossings++;
         Assert.Equal(2, crossings);
+
+        // And at the Huge edge the hold is on the narrowing side: wiggling between 1880 and 1919 after a Huge window stays Huge.
+        tier = (int)WidthTier.Huge;
+        foreach (float w in new[] { 1919f, 1880f, 1900f, 1881f })
+        {
+            tier = ladder.Resolve(w, tier);
+            Assert.Equal((int)WidthTier.Huge, tier);
+        }
+        Assert.Equal((int)WidthTier.Standard, ladder.Resolve(1879f, tier));
     }
 
     [Fact]
-    public void The_content_and_height_ladders_are_resolvable_data()
+    public void The_height_ladder_is_short_below_680_and_regular_from_720()
     {
         Assert.Equal((int)HeightTier.Short, ClassicTierFixture.Tiers.Height.Resolve(330f, -1));
         Assert.Equal((int)HeightTier.Short, ClassicTierFixture.Tiers.Height.Resolve(679f, -1));
         Assert.Equal((int)HeightTier.Regular, ClassicTierFixture.Tiers.Height.Resolve(680f, -1));
-        Assert.Equal((int)HeightTier.Short, ClassicTierFixture.Tiers.Height.Resolve(700f, (int)HeightTier.Short));    // leaves Short at 720
+        Assert.Equal((int)HeightTier.Short, ClassicTierFixture.Tiers.Height.Resolve(719f, (int)HeightTier.Short));    // leaves Short at 720
         Assert.Equal((int)HeightTier.Regular, ClassicTierFixture.Tiers.Height.Resolve(720f, (int)HeightTier.Short));
-        Assert.Equal((int)WidthTier.Small, ClassicTierFixture.Tiers.Content.Resolve(600f, -1));
+        Assert.Equal((int)HeightTier.Short, ClassicTierFixture.Tiers.Height.Resolve(679f, (int)HeightTier.Regular));  // no narrowing hold
     }
 
-    // ── the moved ladders equal the code they replaced ─────────────────────────────────────────────────────────────────
+    // ── Classic's content ladder: the page gutter (F3) ─────────────────────────────────────────────────────────────────
 
-    /// <summary>The sidebar's old window band (<c>SidebarPaneModeRules.BandOf</c>), transcribed. The oracle exists only here.</summary>
-    private static SidebarWindowBand LegacyBand(float viewportW, SidebarWindowBand current)
+    [Theory]
+    [InlineData(352f, WidthTier.Compact, 16f)]      // a 400 window with the drawer (no column): its whole width
+    [InlineData(592f, WidthTier.Compact, 16f)]      // C-Frame-Narrow 640: the 48 rail leaves 592, "Gutter 16"
+    [InlineData(599f, WidthTier.Compact, 16f)]
+    [InlineData(600f, WidthTier.Small, 32f)]
+    [InlineData(752f, WidthTier.Small, 32f)]        // C-Shell-Small / C-Shell-Short 800: the rail leaves 752, gutter 32
+    [InlineData(879f, WidthTier.Small, 32f)]
+    [InlineData(880f, WidthTier.Standard, 36f)]
+    [InlineData(1120f, WidthTier.Standard, 36f)]    // the Standard boards: 1440 less the 320 pane
+    [InlineData(1599f, WidthTier.Standard, 36f)]
+    [InlineData(1600f, WidthTier.Huge, 36f)]        // a 1920 window beside the 320 pane
+    [InlineData(2240f, WidthTier.Huge, 36f)]        // C-Shell-Huge 2560 less the pane
+    public void The_content_ladder_is_the_gutter_ladder(float contentWidth, WidthTier tier, float gutter)
     {
-        if (!float.IsFinite(viewportW) || viewportW <= 0f) return current;
-        return current switch
-        {
-            SidebarWindowBand.Wide => viewportW >= 660f ? SidebarWindowBand.Wide
-                : viewportW >= 528f ? SidebarWindowBand.Narrow : SidebarWindowBand.Tiny,
-            SidebarWindowBand.Narrow => viewportW >= 700f ? SidebarWindowBand.Wide
-                : viewportW >= 528f ? SidebarWindowBand.Narrow : SidebarWindowBand.Tiny,
-            _ => viewportW >= 700f ? SidebarWindowBand.Wide
-                : viewportW >= 568f ? SidebarWindowBand.Narrow : SidebarWindowBand.Tiny,
-        };
+        var facts = WindowTiers.Resolve(ClassicTierFixture.Tiers, 1440f, 900f, contentWidth);
+        Assert.Equal(tier, facts.Content);
+        Assert.Equal(gutter, ClassicTiers.PageOf(facts).Gutter);
+        Assert.Equal(gutter, ClassicTiers.Page(tier).Gutter);
+        Assert.Equal(tier, ClassicTiers.Page(tier).Tier);
     }
 
     [Theory]
-    [InlineData(SidebarWindowBand.Wide)]
-    [InlineData(SidebarWindowBand.Narrow)]
-    [InlineData(SidebarWindowBand.Tiny)]
-    public void The_window_ladder_is_the_old_sidebar_band_at_every_width(SidebarWindowBand from)
+    [InlineData(WidthTier.Compact, 623f, WidthTier.Compact)]     // widening holds 24 at 600 ...
+    [InlineData(WidthTier.Compact, 624f, WidthTier.Small)]
+    [InlineData(WidthTier.Small, 576f, WidthTier.Small)]         // ... and so does narrowing
+    [InlineData(WidthTier.Small, 575f, WidthTier.Compact)]
+    [InlineData(WidthTier.Small, 903f, WidthTier.Small)]         // the same 24 either way at 880
+    [InlineData(WidthTier.Small, 904f, WidthTier.Standard)]
+    [InlineData(WidthTier.Standard, 856f, WidthTier.Standard)]
+    [InlineData(WidthTier.Standard, 855f, WidthTier.Small)]
+    [InlineData(WidthTier.Standard, 1600f, WidthTier.Huge)]      // Huge at 1600, held 40 on narrowing
+    [InlineData(WidthTier.Huge, 1560f, WidthTier.Huge)]
+    [InlineData(WidthTier.Huge, 1559f, WidthTier.Standard)]
+    public void The_gutter_ladder_holds_24_either_way(WidthTier from, float width, WidthTier expected)
+        => Assert.Equal(expected, (WidthTier)ClassicTierFixture.Tiers.Content.Resolve(width, (int)from));
+
+    [Fact]
+    public void A_view_mounted_with_no_frame_reads_the_standard_records()
     {
-        for (float w = -20f; w <= 3000f; w += 0.25f)
-            Assert.Equal(LegacyBand(w, from), ClassicTierFixture.BandOf(w, from));
-        foreach (float odd in new[] { float.NaN, float.PositiveInfinity, float.NegativeInfinity, 0f, -0f })
-            Assert.Equal(from, ClassicTierFixture.BandOf(odd, from));            // an unusable size never moves the band
+        Assert.Equal(36f, ClassicTiers.PageOf(TierFacts.Unknown).Gutter);
+        Assert.Equal(WidthTier.Standard, ClassicTiers.FrameOf(TierFacts.Unknown).Tier);
+        Assert.False(ClassicTiers.FrameOf(TierFacts.Unknown).SquareCard);
     }
 
     [Fact]
-    public void A_fresh_window_resolve_is_the_old_initial_band()
+    public void The_frame_rhythm_is_one_pane_inset_and_one_head_rhythm()
     {
-        for (float w = 1f; w <= 3000f; w += 0.25f)
-            Assert.Equal(LegacyBand(w, SidebarWindowBand.Wide), SidebarPaneModeRules.BandOf(ClassicTierFixture.FreshWindow(w)));
+        Assert.Equal(16f, ClassicTiers.PaneInset);
+        Assert.Equal(4f, ClassicTiers.HeadMetaGap);
+        Assert.Equal(24f, ClassicTiers.HeadTop);
+        Assert.Equal(new Edges4(16f, 24f, 8f, 24f), ClassicTiers.RailPadding);   // 24 / 8 / 24 / 16, top right bottom left
+        Assert.Equal(16f, ClassicDetailLayout.SheetPad);
+    }
+
+    // ── Classic's frame records per window tier ────────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(WidthTier.Compact, true)]       // C-Shell-Compact / C-Frame-Narrow 420: square, flush, the top hairline alone
+    [InlineData(WidthTier.Small, false)]
+    [InlineData(WidthTier.Standard, false)]
+    [InlineData(WidthTier.Huge, false)]
+    [InlineData(WidthTier.Huge4K, false)]       // Huge 4K reads Huge's record
+    public void The_content_card_is_square_only_at_compact(WidthTier tier, bool square)
+    {
+        var frame = ClassicTiers.Frame(tier);
+        Assert.Equal(square, frame.SquareCard);
+        Assert.Equal(square ? 0f : Radii.Card, frame.CardCorners.TopLeft);
+        Assert.Equal(0f, frame.CardCorners.TopRight);
+        Assert.Empty(TierClip.Validate(frame));
+        Assert.Equal(tier == WidthTier.Huge4K ? WidthTier.Huge : tier, frame.Tier);
+    }
+
+    [Fact]
+    public void A_frame_record_clips_only_what_its_tier_cannot_fit()
+    {
+        // The Standard record keeps the rail and the 480 content floor; a resized frame narrower than both clips the card, never the pane.
+        var standard = ClassicTiers.Frame(WidthTier.Standard);
+        Assert.Empty(TierClip.ClippedAt(standard, 1008f, 600f));
+        Assert.Equal(new[] { "content.card" }, TierClip.ClippedAt(standard, 500f, 600f).ToArray());
+        // Compact has no pane region: the card is the window from the 300 floor.
+        var compact = ClassicTiers.Frame(WidthTier.Compact);
+        Assert.Empty(TierClip.ClippedAt(compact, 300f, 330f));
+        Assert.DoesNotContain(compact.Regions, r => r.Id == "nav.pane");
+    }
+
+    // ── the nav pane's mode by tier (ClassicPolicies.NavPane over the window tier) ───────────────────────────────────────
+
+    [Theory]
+    [InlineData(400f, SidebarPaneMode.Minimal)]    // Compact: the drawer, no rail
+    [InlineData(527f, SidebarPaneMode.Minimal)]
+    [InlineData(528f, SidebarPaneMode.Compact)]    // Small: the forced 48 rail ...
+    [InlineData(700f, SidebarPaneMode.Compact)]    // ... over the WHOLE band (production forced it only 528-660)
+    [InlineData(1007f, SidebarPaneMode.Compact)]
+    [InlineData(1008f, SidebarPaneMode.Expanded)]  // Standard: the resizable pane
+    [InlineData(2560f, SidebarPaneMode.Expanded)]  // Huge
+    public void The_nav_pane_mode_follows_the_window_tier(float width, SidebarPaneMode mode)
+    {
+        var band = SidebarPaneModeRules.BandOf(ClassicTierFixture.FreshWindow(width));
+        var nav = ClassicPolicies.NavPane;
+        Assert.Equal(mode, SidebarPaneModeRules.Resolve(band, userCollapsed: false, editing: false, nav));
+        Assert.Equal(mode == SidebarPaneMode.Expanded, SidebarPaneModeRules.SeamVisible(band, nav));          // resizable only when docked
+        Assert.Equal(mode != SidebarPaneMode.Expanded, SidebarPaneModeRules.HasOverlay(band, nav));           // the rail and the drawer open the overlay pane
+    }
+
+    // ── the title bar's allocation by tier (ClassicPolicies.Chrome) ────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_title_bar_budget_is_the_tiers()
+    {
+        var chrome = ClassicPolicies.Chrome;
+        Assert.Empty(chrome.Validate());
+        Assert.True(chrome.BudgetFor(WidthTier.Compact).TabsAsCount);                // Compact: one tab-count button
+        Assert.False(chrome.BudgetFor(WidthTier.Small).TabsAsCount);
+        Assert.Same(chrome.Budget, chrome.BudgetFor(WidthTier.Small));
+        Assert.Same(chrome.Budget, chrome.BudgetFor(WidthTier.Standard));
+        Assert.Equal(480f, chrome.BudgetFor(WidthTier.Huge).SearchMaxW);              // C-TitleBar's Huge search
+        Assert.Equal(240f, chrome.BudgetFor(WidthTier.Huge).TabMaxW);
+        Assert.Same(chrome.BudgetFor(WidthTier.Huge), chrome.BudgetFor(WidthTier.Huge4K));
+        Assert.Same(chrome.Budget, chrome.BudgetFor(TierFacts.Unknown));               // no frame resolved the tiers: the base budget
+        foreach (var budget in new[] { chrome.BudgetFor(WidthTier.Compact), chrome.Budget, chrome.BudgetFor(WidthTier.Huge) })
+            Assert.Equal(520f, budget.ForwardEnterW);                                  // Forward hides below 520 at every tier
+    }
+
+    [Theory]
+    [InlineData(400f)]
+    [InlineData(527f)]
+    public void The_compact_row_is_back_the_count_and_the_search_icon(float width)
+    {
+        var b = ClassicPolicies.Chrome.BudgetFor(WidthTier.Compact);
+        var row = Shell.Chrome.Resolve(width, 300f, budget: b);
+        Assert.True(row.TabCount);
+        Assert.False(row.ShowNewTab);                                                 // no strip, so no "+"
+        Assert.Equal(Shell.MergedSearchMode.Icon, row.SearchMode);
+        Assert.Equal(width > 520f, row.ShowForward);
+        Assert.True(row.ShowBack);
+        Assert.True(row.TabIslandWidthFor(b) >= b.NavButtonW + (row.ShowBack ? b.NavButtonW : 0f), "the count button fits its island");
+        Assert.True(row.FixedBudgetFor(b) + row.SearchWidth + row.LeadClusterW <= width + 0.5f, "the row seats what it allocated");
+    }
+
+    [Fact]
+    public void The_huge_row_seats_a_wider_search_and_wider_tabs()
+    {
+        var b = ClassicPolicies.Chrome.BudgetFor(WidthTier.Huge);
+        var row = Shell.Chrome.Resolve(2560f, 600f, budget: b);
+        Assert.Equal(Shell.MergedSearchMode.Field, row.SearchMode);
+        Assert.Equal(480f, row.SearchWidth);
+        Assert.Equal(240f, row.TabMaxW);
+        Assert.False(row.TabCount);
+        var standard = Shell.Chrome.Resolve(1440f, 600f, budget: ClassicPolicies.Chrome.Budget);
+        Assert.True(standard.SearchWidth <= 420f);
+        Assert.Equal(200f, standard.TabMaxW);
     }
 
     // ── the named-ladder mechanism (Classic declares none: its player bar's levels are PlayerBarPolicy's) ──────────────────
