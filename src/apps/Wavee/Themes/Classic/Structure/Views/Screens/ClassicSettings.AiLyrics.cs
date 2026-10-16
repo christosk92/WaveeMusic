@@ -41,7 +41,7 @@ internal static partial class ClassicSettings
         => Embed.Comp(static () => new AiLyricsCardView()) with { Key = "appearance.ai-lyrics" };
 
     /// <summary>The card. Every static it needs lives here, so nothing runs in the page's own type initializer.</summary>
-    sealed class AiLyricsCardView : Component
+    sealed class AiLyricsCardView : SettingsComponent
     {
         const float AiBarWidth = ClassicSettingsRules.AiBarWidth;
 
@@ -117,6 +117,7 @@ internal static partial class ClassicSettings
 
         public override Element Render()
         {
+            UseLayout();
             // UNCONDITIONAL hooks, fixed order.
             UseEffect(s_aiMarkVisible, DepKey.Empty);
             UseActivation(onActivated: s_aiOnActivated, onDeactivated: s_aiMarkHidden);
@@ -186,7 +187,7 @@ internal static partial class ClassicSettings
             Loc.Get(AiS.Setup.Title),
             AiS.Setup.Sub(AiLyrics.Rules.FormatBytes(st.PendingDownloadBytes)),
             AiRow(
-                Button.Accent(Loc.Get(AiS.Setup.Action),
+                AccentButton(Loc.Get(AiS.Setup.Action),
                     static () => AiDownloadThen(AiLyrics.Current.Peek().PendingDownloadBytes, s_aiStartDownload)),
                 AiSwitch(true, enabled: true)));
 
@@ -202,8 +203,8 @@ internal static partial class ClassicSettings
                 : Loc.Get(AiS.Setup.Title);
             return AiCard(header, AiDownloadLine(st),
                 AiRow(bar,
-                    HyperlinkButton.Create(Loc.Get(AiS.Pause), static () => AiLyrics.PauseDownload()),
-                    HyperlinkButton.Create(Loc.Get(AiS.Cancel), static () => AiLyrics.CancelDownload())),
+                    LinkButton(Loc.Get(AiS.Pause), static () => AiLyrics.PauseDownload()),
+                    LinkButton(Loc.Get(AiS.Cancel), static () => AiLyrics.CancelDownload())),
                 s_aiLiveDescription);
         }
 
@@ -213,8 +214,8 @@ internal static partial class ClassicSettings
             AiS.Paused.Sub(AiLyrics.Rules.FormatBytes(st.Download.Done), AiLyrics.Rules.FormatBytes(st.Download.Total)),
             AiRow(
                 ProgressBar.Create(fraction, AiBarWidth, ProgressBarState.Paused, s_aiFillEase),
-                Button.Standard(Loc.Get(AiS.Resume), static () => AiDownloadThen(AiRemainingBytes(), static () => AiLyrics.ResumeDownload())),
-                HyperlinkButton.Create(Loc.Get(AiS.Cancel), static () => AiLyrics.CancelDownload())));
+                StdButton(Loc.Get(AiS.Resume), static () => AiDownloadThen(AiRemainingBytes(), static () => AiLyrics.ResumeDownload())),
+                LinkButton(Loc.Get(AiS.Cancel), static () => AiLyrics.CancelDownload())));
 
         /// <summary>The first NPU compile: "x of y" (why, when a stale cache is rebuilt), the bar by compile weight.</summary>
         static Element PreparingCard(in AiCardShape shape, FloatSignal fraction)
@@ -260,8 +261,8 @@ internal static partial class ClassicSettings
                         AiLanguages(st.Languages), icon: RowGlyph(Tab.Appearance, "aiLanguages")),
                     Item(Loc.Get(AiS.Files), AiS.FilesSub(AiLyrics.Rules.FormatBytes(installed)),
                         AiRow(
-                            HyperlinkButton.Create(Loc.Get(AiS.OpenFolder), static () => AiLyrics.OpenFolder()),
-                            Button.Standard(Loc.Get(AiS.Remove), () => AiConfirmRemove(installed))),
+                            LinkButton(Loc.Get(AiS.OpenFolder), static () => AiLyrics.OpenFolder()),
+                            StdButton(Loc.Get(AiS.Remove), () => AiConfirmRemove(installed))),
                         icon: RowGlyph(Tab.Appearance, "aiFiles")),
                 ],
             });
@@ -275,11 +276,11 @@ internal static partial class ClassicSettings
             long installed = st.InstalledBytes;
             var actions = new List<Element>(3);
             if (detail.Length > 0)
-                actions.Add(HyperlinkButton.Create(Loc.Get(AiS.Details), () => setDetails(!details)));
+                actions.Add(LinkButton(Loc.Get(AiS.Details), () => setDetails(!details)));
             if (AiLyrics.Rules.ErrorOffersRemove(error))
-                actions.Add(Button.Standard(Loc.Get(AiS.Remove), () => AiConfirmRemove(installed)));
+                actions.Add(StdButton(Loc.Get(AiS.Remove), () => AiConfirmRemove(installed)));
             if (AiLyrics.Rules.ErrorOffersRetry(error))
-                actions.Add(Button.Accent(Loc.Get(AiS.Retry), static () =>
+                actions.Add(AccentButton(Loc.Get(AiS.Retry), static () =>
                 {
                     // a download error downloads again: the same metered question as Download (a model error does not)
                     if (AiLyrics.Rules.RetryLoadsModels(AiLyrics.Current.Peek().Error)) AiLyrics.Retry();
@@ -322,13 +323,11 @@ internal static partial class ClassicSettings
         /// <summary>The master switch. Each arm mounts its own (the arms are keyed per phase), so the fresh signal's value
         /// is the truth at mount; a gesture writes it and the host's answer swaps the arm.</summary>
         static Element AiSwitch(bool on, bool enabled)
-            => ToggleSwitch.Create(new Signal<bool>(on), onChange: enabled ? s_aiSetEnabled : null, isEnabled: enabled,
-                style: SettingsCard.CompactToggleStyle());
+            => Toggle(new Signal<bool>(on), onChange: enabled ? s_aiSetEnabled : null, isEnabled: enabled);
 
         /// <summary>A behaviour switch: the row's writer (written through the AI preferences' one setter, so the driver's epoch re-evaluates the song).</summary>
         static Element AiPrefSwitch(SettingsRow row)
-            => ToggleSwitch.Create(new Signal<bool>(row.Current is true), onChange: on => row.Writer.Toggle!(on),
-                style: SettingsCard.CompactToggleStyle());
+            => Toggle(new Signal<bool>(row.Current is true), onChange: on => row.Writer.Toggle!(on));
 
         /// <summary>One row per aligner language in the pack: name, Installed (✓) or its size, and Download / Remove. The last
         /// installed language cannot be removed (the host refuses it too).</summary>
@@ -349,8 +348,8 @@ internal static partial class ClassicSettings
                 ? AiRow(Icon(Icons.Accept, 12f, Tok.AccentDefault), Caption(Loc.Get(AiS.Lang.Installed)))
                 : Caption(AiLyrics.Rules.FormatBytes(bytes));
             Element action = isInstalled
-                ? canRemove ? HyperlinkButton.Create(Loc.Get(AiS.Lang.Remove), () => AiLyrics.RemoveLanguage(lang)) : new BoxEl()
-                : Button.Standard(Loc.Get(AiS.Lang.Download), () => AiDownloadThen(bytes, () => AiLyrics.InstallLanguage(lang)));
+                ? canRemove ? LinkButton(Loc.Get(AiS.Lang.Remove), () => AiLyrics.RemoveLanguage(lang)) : new BoxEl()
+                : StdButton(Loc.Get(AiS.Lang.Download), () => AiDownloadThen(bytes, () => AiLyrics.InstallLanguage(lang)));
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinHeight = ClassicSettingsRules.AiLanguageRowHeight,

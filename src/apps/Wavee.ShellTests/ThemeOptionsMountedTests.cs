@@ -103,7 +103,7 @@ public sealed class ThemeOptionsMountedTests(ShellHost host)
                 Assert.False(shell.Find("opt:" + id).IsNull, "generated row '" + id + "' is mounted");
             foreach (string id in new[] { "colorWashes", "rowDensity", "hideTrackArtwork", "trackListStyle", "sidebarDesign", "sidebarDensity", "pageLayout", "railUniform", "railReset" })
                 Assert.True(shell.Find("legacy:" + id).IsNull, "'" + id + "' is a generated option now");
-        });
+        }, 1440f, 960f);   // a Standard content region: the tuned 208 x 172 cards (Small's strip and Compact's grid: ClassicSettingsTiersTests)
 
     [Fact]
     public void The_tab_keeps_the_boards_order_theme_options_app_mode_zoom()

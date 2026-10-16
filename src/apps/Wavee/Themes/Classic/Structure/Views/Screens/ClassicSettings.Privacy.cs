@@ -122,7 +122,7 @@ internal static partial class ClassicSettings
             Direction = 1, Gap = Spacing.XXS, MinWidth = 0f,
             Children =
             [
-                RadioButton.Create(label, isSelected: current == mode, onChange: () => SetCrashMode(mode), isEnabled: enabled),
+                Radio(label, isSelected: current == mode, onChange: () => SetCrashMode(mode), isEnabled: enabled),
                 Caption(sub) with
                 {
                     Color = enabled ? Tok.TextSecondary : Tok.TextDisabled,
@@ -141,10 +141,11 @@ internal static partial class ClassicSettings
     /// <summary>"Your data on the crash service": the shortened install id, Copy id, and the confirmed right-to-erasure
     /// (§J). Its own component: the erase runs off the UI thread and, on success, the install id has ROTATED — the epoch
     /// below re-renders the card so the new id shows.</summary>
-    sealed class CrashServiceCard : Component
+    sealed class CrashServiceCard : SettingsComponent
     {
         public override Element Render()
         {
+            UseLayout();
             var overlay = UseContext(Overlay.Service);
             _ = SettingsFacts.CrashDataEpoch.Value;   // subscribed: a rotated install id re-renders
 
@@ -161,8 +162,8 @@ internal static partial class ClassicSettings
                 Description = PvFacts.YourDataSub(PrivacyRules.ShortInstallId(fullId)),
                 HeaderIcon = RowGlyph(Tab.PrivacyDiagnostics, "crashService"),
                 Content = HStack(Spacing.S,
-                    Button.Subtle(Loc.Get(PvFacts.CopyId), () => D(Tab.PrivacyDiagnostics, "crashServiceCopy").Writer.Run!(), isEnabled: fullId.Length > 0),
-                    Button.Standard(Loc.Get(PvFacts.DeleteMyData), OnDelete, isEnabled: configured)),
+                    SubtleButton(Loc.Get(PvFacts.CopyId), () => D(Tab.PrivacyDiagnostics, "crashServiceCopy").Writer.Run!(), isEnabled: fullId.Length > 0),
+                    StdButton(Loc.Get(PvFacts.DeleteMyData), OnDelete, isEnabled: configured)),
             });
         }
     }
@@ -176,13 +177,14 @@ internal static partial class ClassicSettings
     /// is non-empty), then a row per report with a single "…" menu (View · Copy · Send… · Delete), Open folder and Delete
     /// all in the footer. Subscribes the two events that change what it shows — the reports folder and the outbox — so the
     /// page never re-renders for them.</summary>
-    sealed class SavedReportsGroup : Component
+    sealed class SavedReportsGroup : SettingsComponent
     {
         readonly Dictionary<string, NodeHandle> _anchors = new(StringComparer.Ordinal);
         OverlayHandle? _menu;
 
         public override Element Render()
         {
+            UseLayout();
             var overlay = UseContext(Overlay.Service);
             _ = Crash.Host.ReportsVersion.Value;       // subscribed
             _ = Crash.Uploader.OutboxVersion.Value;    // subscribed
@@ -197,8 +199,8 @@ internal static partial class ClassicSettings
                     queued == 1 ? Loc.Get(PvReports.QueuedOne) : PvReports.Queued(queued.ToString(CultureInfo.InvariantCulture)),
                     isClosable: false,
                     actionButton: HStack(Spacing.S,
-                        Button.Accent(Loc.Get(PvReports.SendNow), static () => D(Tab.PrivacyDiagnostics, "reportsSendNow").Writer.Run!(), isEnabled: configured),
-                        Button.Standard(Loc.Get(PvReports.Discard), static () => D(Tab.PrivacyDiagnostics, "reportsDiscard").Writer.Run!())))) with { Key = "privacy.reports.queued" });
+                        AccentButton(Loc.Get(PvReports.SendNow), static () => D(Tab.PrivacyDiagnostics, "reportsSendNow").Writer.Run!(), isEnabled: configured),
+                        StdButton(Loc.Get(PvReports.Discard), static () => D(Tab.PrivacyDiagnostics, "reportsDiscard").Writer.Run!())))) with { Key = "privacy.reports.queued" });
             foreach (var b in bundles)
                 items.Add(ReportRow(b, overlay, configured) with { Key = "crash:" + b.Summary.ReportId });
             PruneAnchors(bundles);
@@ -223,8 +225,8 @@ internal static partial class ClassicSettings
                     [
                         Caption(PvReports.Retention(Crash.Files.KeepBundles.ToString(CultureInfo.InvariantCulture)))
                             with { Color = Tok.TextTertiary, Grow = 1f, MinWidth = 0f, Wrap = TextWrap.Wrap },
-                        Button.Standard(Loc.Get(PvReports.OpenFolder), static () => D(Tab.PrivacyDiagnostics, "reportsOpenFolder").Writer.Run!()),
-                        Button.Standard(Loc.Get(PvReports.DeleteAll), () => Controls.Confirm(overlay,
+                        StdButton(Loc.Get(PvReports.OpenFolder), static () => D(Tab.PrivacyDiagnostics, "reportsOpenFolder").Writer.Run!()),
+                        StdButton(Loc.Get(PvReports.DeleteAll), () => Controls.Confirm(overlay,
                             Loc.Get(PvReports.DeleteAllConfirmTitle), Loc.Get(PvReports.DeleteAllConfirmBody),
                             Loc.Get(PvReports.DeleteAll), static () => D(Tab.PrivacyDiagnostics, "reportsDeleteAll").Writer.Run!()), isEnabled: tally.Total > 0),
                     ],
@@ -255,6 +257,7 @@ internal static partial class ClassicSettings
         {
             var s = b.Summary;
             string id = s.ReportId;
+            if (s_layout.Touch) return TouchReportRow(b, overlay, configured);
             return new BoxEl
             {
                 Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.Stretch, MinHeight = ClassicSettingsRules.ReportRowHeight,
@@ -275,6 +278,37 @@ internal static partial class ClassicSettings
                     new TextEl(WhatText(s)) { Size = ClassicSettingsRules.ReportTextSize, Color = Tok.TextSecondary, Grow = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                     new TextEl(StateText(b)) { Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextTertiary, Width = ClassicSettingsRules.ReportStateWidth, Shrink = 0f },
                     ToolTip.Wrap(IconButton.Create(Icons.More, () => OpenRowMenu(b, overlay, configured), size: ControlSize.Small)
+                        with { Shrink = 0f, OnRealized = h => _anchors[id] = h }, Loc.Get(PvReports.RowMenu)),
+                ],
+            };
+        }
+
+        /// <summary>The report row where the tier asks for a hit target (Compact): the fixed lanes (stamp 150, kind 56, state 110) cannot sit in a 300-wide card, so the
+        /// row is the dot, ONE text column (when and id, the kind and what it was, the send state) and a 40-DIP "…" handle.</summary>
+        Element TouchReportRow(Crash.BundleInfo b, IOverlayService? overlay, bool configured)
+        {
+            var s = b.Summary;
+            string id = s.ReportId;
+            return new BoxEl
+            {
+                Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.Stretch, MinHeight = ClassicSettingsRules.ReportRowHeight, MinWidth = 0f,
+                Padding = new Edges4(Spacing.L, Spacing.XS, Spacing.XS, Spacing.XS),
+                Children =
+                [
+                    new BoxEl { Width = ClassicSettingsRules.ReportDotSize, Height = ClassicSettingsRules.ReportDotSize, Corners = Radii.FullAll, Fill = DotFor(s.Kind), Shrink = 0f },
+                    new BoxEl
+                    {
+                        Direction = 1, Gap = ClassicSettingsRules.ReportStackGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                        Children =
+                        [
+                            new TextEl(Loc.Get(PrivacyRules.KindKey(s.Kind)) + " · " + WhatText(s))
+                                { Size = ClassicSettingsRules.ReportTextSize, Weight = 600, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                            new TextEl(b.StampLocal.ToString("g", CultureInfo.CurrentCulture) + " · " + PvReports.ReportId(Crash.ShortId(id)))
+                                { Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                            new TextEl(StateText(b)) { Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                        ],
+                    },
+                    ToolTip.Wrap(IconButton.Create(Icons.More, () => OpenRowMenu(b, overlay, configured), IconButton.DefaultStyle with { Size = s_layout.Target })
                         with { Shrink = 0f, OnRealized = h => _anchors[id] = h }, Loc.Get(PvReports.RowMenu)),
                 ],
             };
@@ -357,7 +391,7 @@ internal static partial class ClassicSettings
     /// template part, fed by a 750 ms interval that writes only when the log or the minute moved — so ONE text node
     /// re-renders, the card never remounts, and nothing runs per frame (N12). The component renders once: its render
     /// reads no signal, and the signal is seeded at construction (a render never writes one).</summary>
-    sealed class LogViewerCard : Component
+    sealed class LogViewerCard : SettingsComponent
     {
         readonly Signal<string> _line = new(Compose());
         readonly TemplateParts _parts = new();
@@ -367,6 +401,7 @@ internal static partial class ClassicSettings
 
         public override Element Render()
         {
+            UseLayout();
             UseInterval(() =>
             {
                 long version = Log.Version, minute = Log.SinceStartMs / 60_000;
@@ -402,10 +437,11 @@ internal static partial class ClassicSettings
     /// persisted settings, so the group subscribes <see cref="Platform.SettingsChanged"/> — the viewer's Verbose toggle
     /// writes the same keys and the header tag follows. A combo's items and selection freeze at mount, so each is keyed by
     /// the level VALUE it shows, and the write is posted so the click finishes before the remount.</summary>
-    sealed class DetailLevelGroup : Component
+    sealed class DetailLevelGroup : SettingsComponent
     {
         public override Element Render()
         {
+            UseLayout();
             _ = Platform.SettingsChanged.Value;   // subscribed
             var viewer = Log.MinLevel;
             var file = LogCapturePolicy.EffectiveFileLevel(viewer, Log.FileMinLevel);
@@ -421,11 +457,11 @@ internal static partial class ClassicSettings
                 Items =
                 [
                     Item(Loc.Get(PvLogs.InViewer), Loc.Get(PvLogs.InViewerSub),
-                        ComboBox.Create(Diagnostics.LogView.LevelNames, new Signal<int>(viewerIndex), width: ClassicSettingsRules.LevelComboWidth,
+                        Combo(Diagnostics.LogView.LevelNames, new Signal<int>(viewerIndex), width: ClassicSettingsRules.LevelComboWidth,
                             onChange: static i => D(Tab.PrivacyDiagnostics, "logLevelViewer").Writer.Choose!(i))
                             with { Key = "privacy.level.viewer:" + viewerIndex.ToString(CultureInfo.InvariantCulture) }),
                     Item(Loc.Get(PvLogs.InFile), Loc.Get(PvLogs.InFileSub),
-                        ComboBox.Create(Diagnostics.LogView.LevelNames, new Signal<int>(fileIndex), width: ClassicSettingsRules.LevelComboWidth,
+                        Combo(Diagnostics.LogView.LevelNames, new Signal<int>(fileIndex), width: ClassicSettingsRules.LevelComboWidth,
                             onChange: static i => D(Tab.PrivacyDiagnostics, "logLevelFile").Writer.Choose!(i))
                             with { Key = "privacy.level.file:" + fileIndex.ToString(CultureInfo.InvariantCulture) }),
                 ],
@@ -438,7 +474,7 @@ internal static partial class ClassicSettings
     static Element LogFilesCard() => Row(Loc.Get(PvLogs.Files),
         PvLogs.FilesSub(PrivacyRules.WholeMb(Log.MaxFileBytes), Log.RetentionDays.ToString(CultureInfo.InvariantCulture),
             PrivacyRules.WholeMb(Log.RetentionBytes)),
-        Button.Standard(Loc.Get(PvLogs.OpenFolder), static () => D(Tab.PrivacyDiagnostics, "logFiles").Writer.Run!()),
+        StdButton(Loc.Get(PvLogs.OpenFolder), static () => D(Tab.PrivacyDiagnostics, "logFiles").Writer.Run!()),
         RowGlyph(Tab.PrivacyDiagnostics, "logFiles"));
 
     static Element ReportProblemCard() => Row(Loc.Get(PvLogs.Report), Loc.Get(PvLogs.ReportSub), null,
@@ -464,7 +500,7 @@ internal static partial class ClassicSettings
             Item(Loc.Get(PvTools.OpenCaptureViewer), Loc.Get(PvTools.OpenCaptureViewerSub), isClickEnabled: true,
                 onClick: static () => D(Tab.PrivacyDiagnostics, "captureViewer").Writer.Run!()),
             Item(Loc.Get(PvTools.OpenCaptureFolder), Loc.Get(PvTools.OpenCaptureFolderSub),
-                Button.Standard(Loc.Get(PvTools.OpenFolder), static () => D(Tab.PrivacyDiagnostics, "captureFolder").Writer.Run!())),
+                StdButton(Loc.Get(PvTools.OpenFolder), static () => D(Tab.PrivacyDiagnostics, "captureFolder").Writer.Run!())),
         ],
     }) with { Key = "privacy.capture" };
 
@@ -474,10 +510,11 @@ internal static partial class ClassicSettings
     /// (D2), never composed away. The switch and the FPS overlay go through <see cref="Platform.Developer"/> — the one
     /// persist-then-publish setter — so they apply at once instead of at the next launch; the group reads the same
     /// signals, so it follows a flip made anywhere.</summary>
-    sealed class DeveloperGroup : Component
+    sealed class DeveloperGroup : SettingsComponent
     {
         public override Element Render()
         {
+            UseLayout();
             var facts = SettingsFacts.Live;
             bool dev = facts.DeveloperMode;
             bool fps = Platform.Developer.FpsOverlay.Value;
@@ -491,23 +528,23 @@ internal static partial class ClassicSettings
                 Header = Loc.Get(PvDev.Mode),
                 Description = Loc.Get(PvDev.ModeSub),
                 HeaderIcon = RowGlyph(Tab.PrivacyDiagnostics, "developerMode"),
-                Content = ToggleSwitch.Create(new Signal<bool>(dev), onChange: static on =>
+                Content = Toggle(new Signal<bool>(dev), onChange: static on =>
                 {
                     // The Appearance / Notifications developer-only rows are page-composed, so the writer asks the page to re-read.
                     if (D(Tab.PrivacyDiagnostics, "developerMode").Writer.Toggle!(on)) Settings.Bump();
-                }, style: SettingsCard.CompactToggleStyle()),
+                }),
                 Items =
                 [
                     Item(Loc.Get(PvDev.FpsOverlay), Loc.Get(PvDev.FpsOverlaySub),
-                        ToggleSwitch.Create(new Signal<bool>(fps), onChange: static on => D(Tab.PrivacyDiagnostics, "fpsOverlay").Writer.Toggle!(on),
-                            isEnabled: fpsDoc.Enabled(facts).Enabled, style: SettingsCard.CompactToggleStyle()),
+                        Toggle(new Signal<bool>(fps), onChange: static on => D(Tab.PrivacyDiagnostics, "fpsOverlay").Writer.Toggle!(on),
+                            isEnabled: fpsDoc.Enabled(facts).Enabled),
                         isEnabled: fpsDoc.Enabled(facts).Enabled, icon: RowGlyph(Tab.PrivacyDiagnostics, "fpsOverlay")),
                     Item(Loc.Get(PvDev.SimulateUpdate), Loc.Get(PvDev.SimulateUpdateSub),
-                        Button.Standard(Loc.Get(PvDev.SimulateUpdateButton), static () => D(Tab.PrivacyDiagnostics, "simulateUpdate").Writer.Run!(),
+                        StdButton(Loc.Get(PvDev.SimulateUpdateButton), static () => D(Tab.PrivacyDiagnostics, "simulateUpdate").Writer.Run!(),
                             isEnabled: simulateDoc.Enabled(facts).Enabled),
                         isEnabled: simulateDoc.Enabled(facts).Enabled, icon: RowGlyph(Tab.PrivacyDiagnostics, "simulateUpdate")),
                     Item(Loc.Get(PvDev.SendTestCrashReport), Loc.Get(testDoc.Caption(facts)!),
-                        Button.Standard(Loc.Get(PvDev.SendTestCrashReportButton), static () => D(Tab.PrivacyDiagnostics, "sendTestCrashReport").Writer.Run!(),
+                        StdButton(Loc.Get(PvDev.SendTestCrashReportButton), static () => D(Tab.PrivacyDiagnostics, "sendTestCrashReport").Writer.Run!(),
                             isEnabled: testDoc.Enabled(facts).Enabled),
                         isEnabled: dev && canSend, icon: RowGlyph(Tab.PrivacyDiagnostics, "sendTestCrashReport")),
                 ],

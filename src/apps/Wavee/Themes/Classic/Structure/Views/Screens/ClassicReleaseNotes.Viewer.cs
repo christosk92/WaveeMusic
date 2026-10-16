@@ -17,6 +17,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
 using static Wavee.ReleaseNotes;
@@ -41,11 +42,12 @@ internal static partial class ClassicReleaseNotes
         hooks.UseEffect(() => { if (pip.Peek() != index) pip.Value = index; }, index);
         if (count == 0) return new BoxEl();
 
-        return new ViewerBody(props, indexCell, dir).Build(vp.Width, vp.Height, index);
+        // The window's overlay record: the chrome circles, the pager's hit boxes and the actions are 40 at Compact (the viewer sizes against the window, not the page).
+        return new ViewerBody(props, indexCell, dir, ClassicReleaseNotesTiers.Overlay(ctx.Tier())).Build(vp.Width, vp.Height, index);
     }
 
     /// <summary>The viewer's tree for one render: the props, the index cell and the direction ref.</summary>
-    sealed class ViewerBody(HighlightViewerProps props, Signal<int> indexCell, Ref<HighlightSlideDirection> dir)
+    sealed class ViewerBody(HighlightViewerProps props, Signal<int> indexCell, Ref<HighlightSlideDirection> dir, ClassicReleaseOverlayLayout ov)
     {
         // The chrome's hover / dimmed media scrim (properties: they read tokens, so they follow a theme switch).
         static ColorF ChromeDimmed => Tok.MediaScrim with { A = K.ChromeDimmedAlpha };
@@ -150,7 +152,7 @@ internal static partial class ClassicReleaseNotes
                     Children =
                     [
                         new BoxEl { Margin = new Edges4(8f, 8f, 0f, 0f), Children = [KindPill(h.Kind, store)] },
-                        ToolTip.Wrap(Circle(Icons.ChromeClose, K.CloseGlyph, enabled: true, props.Close, "hv:close") with { Margin = new Edges4(0f, 12f, 12f, 0f) },
+                        ToolTip.Wrap(Circle(Icons.ChromeClose, K.CloseGlyph, enabled: true, props.Close, "hv:close", ov.ChromeCircle) with { Margin = new Edges4(0f, 12f, 12f, 0f) },
                             Loc.Get(Strings.WhatsNew.Viewer.Close)),
                     ],
                 },
@@ -169,20 +171,20 @@ internal static partial class ClassicReleaseNotes
         // The glyph-only circles' tooltip is the ONLY name each carries. A dimmed end button is not hit-testable, so it
         // simply never raises one.
         Element Prev(int index, int count) => ToolTip.Wrap(
-            Circle(Icons.ChevronLeft, K.ChevronGlyph, index > 0, () => Go(HighlightPaging.Step(indexCell.Peek(), count, HighlightNavKey.Previous)), "hv:prev"),
+            Circle(Icons.ChevronLeft, K.ChevronGlyph, index > 0, () => Go(HighlightPaging.Step(indexCell.Peek(), count, HighlightNavKey.Previous)), "hv:prev", ov.ChromeCircle),
             Loc.Get(Strings.WhatsNew.Viewer.Previous));
 
         Element Next(int index, int count) => ToolTip.Wrap(
-            Circle(Icons.ChevronRight, K.ChevronGlyph, index < count - 1, () => Go(HighlightPaging.Step(indexCell.Peek(), count, HighlightNavKey.Next)), "hv:next"),
+            Circle(Icons.ChevronRight, K.ChevronGlyph, index < count - 1, () => Go(HighlightPaging.Step(indexCell.Peek(), count, HighlightNavKey.Next)), "hv:next", ov.ChromeCircle),
             Loc.Get(Strings.WhatsNew.Viewer.Next));
 
         /// <summary>The SAME node on every slide (a stable caller key): at an end it DIMS IN PLACE over an 83-ms ease and
         /// leaves the tab order, but never the layout — removing it read as the chrome jumping.</summary>
-        static BoxEl Circle(string glyph, float glyphSize, bool enabled, Action onClick, string key) => new BoxEl
+        static BoxEl Circle(string glyph, float glyphSize, bool enabled, Action onClick, string key, float size) => new BoxEl
         {
             Key = key,
-            Width = VL.ChromeCircle, Height = VL.ChromeCircle, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Corners = CornerRadius4.All(VL.ChromeCircle / 2f),
+            Width = size, Height = size, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Corners = CornerRadius4.All(size / 2f),
             Fill = enabled ? Tok.MediaScrim : ChromeDimmed,
             HoverFill = enabled ? ChromeHover : default,
             BrushTransitionMs = Design.Motion.Faster,
@@ -204,7 +206,7 @@ internal static partial class ClassicReleaseNotes
             var openUrl = props.OpenUrl;
             return new BoxEl
             {
-                Direction = 0, Gap = K.WatchGap, AlignItems = FlexAlign.Center,
+                Direction = 0, Gap = K.WatchGap, AlignItems = FlexAlign.Center, MinHeight = ov.Target,
                 Padding = new Edges4(14f, 8f, 16f, 8f), Corners = CornerRadius4.All(Radii.Pill),
                 Fill = Tok.MediaScrim, HoverFill = ChromeHover, BrushTransitionMs = Design.Motion.Faster,
                 Role = AutomationRole.Hyperlink, Cursor = CursorId.Hand, Focusable = true,
@@ -228,25 +230,37 @@ internal static partial class ClassicReleaseNotes
             {
                 int target = i;
                 bool on = i == index;
-                pips[i] = new BoxEl
+                var dot = new BoxEl
                 {
-                    Key = "pip:" + target,
+                    Key = ov.Target > 0f ? "pipdot:" + target : "pip:" + target,
                     Animate = new LayoutTransition(TransitionChannels.Size, TransitionDynamics.Tween(K.PipMs, Easing.SmoothOut),
                         Size: SizeMode.Reflow, Axes: SizeAxes.Width),
                     Width = on ? K.PipSelected : K.PipDot, Height = K.PipDot, Shrink = 0f, Corners = CornerRadius4.All(Radii.Full),
                     Fill = on ? Tok.TextPrimary : K.PipOff, HoverFill = on ? Tok.TextPrimary : K.PipOffHover,
                     BrushTransitionMs = K.PipMs,
-                    Cursor = CursorId.Hand, Focusable = true, Role = AutomationRole.Button,
-                    OnClick = () => Go(HighlightPaging.StepTo(indexCell.Peek(), target, count)),
                 };
+                // At the hit target each pip is a transparent box of the target's size around its dot: the hit area grows, never the picture.
+                pips[i] = ov.Target > 0f
+                    ? new BoxEl
+                    {
+                        Key = "pip:" + target, Shrink = 0f, MinWidth = ov.Target, Height = ov.Target, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                        Cursor = CursorId.Hand, Focusable = true, Role = AutomationRole.Button,
+                        OnClick = () => Go(HighlightPaging.StepTo(indexCell.Peek(), target, count)),
+                        Children = [dot with { HitTestVisible = false }],
+                    }
+                    : dot with
+                    {
+                        Cursor = CursorId.Hand, Focusable = true, Role = AutomationRole.Button,
+                        OnClick = () => Go(HighlightPaging.StepTo(indexCell.Peek(), target, count)),
+                    };
             }
             return new BoxEl
             {
-                AlignSelf = FlexAlign.Stretch, Height = K.PagerRowHeight, Margin = new Edges4(0f, K.PagerRowTop, 0f, 0f),
+                AlignSelf = FlexAlign.Stretch, Height = ov.PagerRowH, Margin = new Edges4(0f, K.PagerRowTop, 0f, 0f),
                 Direction = 0, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
                 Children =
                 [
-                    ToolTip.Wrap(new BoxEl { Height = K.PagerRowHeight, Direction = 0, AlignItems = FlexAlign.Center, Gap = K.PipGap, Children = pips },
+                    ToolTip.Wrap(new BoxEl { Height = ov.PagerRowH, Direction = 0, AlignItems = FlexAlign.Center, Gap = ov.Target > 0f ? 0f : K.PipGap, Children = pips },
                         Strings.WhatsNew.Viewer.Position(index + 1, count)),
                 ],
             };
@@ -297,10 +311,10 @@ internal static partial class ClassicReleaseNotes
             };
             Element? action = null;
             if (store)
-                action = Button.Accent(Loc.Get(Strings.WhatsNew.StoreCta), live ? props.OpenStoreListing : Inert, isEnabled: live);
+                action = Btn(Loc.Get(Strings.WhatsNew.StoreCta), live ? props.OpenStoreListing : Inert, ButtonAppearance.Accent, ControlSize.Medium, ov.Target, live);
             else if (props.TryItFor(h) is { } tryIt)
             {
-                action = Button.Accent(Loc.Get(Strings.WhatsNew.TryIt), live ? tryIt : Inert, isEnabled: live);
+                action = Btn(Loc.Get(Strings.WhatsNew.TryIt), live ? tryIt : Inert, ButtonAppearance.Accent, ControlSize.Medium, ov.Target, live);
             }
             if (action is not null)
                 content.Add(new BoxEl { Direction = 0, Gap = K.ViewerActionGap, Margin = new Edges4(0f, 16f, 0f, 0f), Children = [action] });

@@ -48,18 +48,24 @@ internal static partial class ClassicSettings
 
     // ══ 1. THE THEME PICKER ═══════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>A picker card's footprint. The 1-DIP inset is the resting padding a selected card spends on its border growing
-    /// 1 → 2, so the thumbnail never shifts by a pixel when the selection moves.</summary>
-    static readonly Controls.PickerShell ThemeCardShell = new(ClassicSettingsRules.ThemeCardWidth, ClassicSettingsRules.ThemeCardHeight, 1f, 0f);
+    /// <summary>A picker card's footprint in a tier: the record's width and height (0 = fluid / sized by its content). The 1-DIP inset is the resting padding a
+    /// selected card spends on its border growing 1 → 2, so the thumbnail never shifts by a pixel when the selection moves.</summary>
+    static Controls.PickerShell ThemeCardShell(ClassicSettingsLayout layout, float cardWidth)
+        => new(cardWidth, layout.PickerCardH > 0f ? layout.PickerCardH : float.NaN, 1f, 0f);
 
-    /// <summary>The picker as a Settings row: a card holding the strip of theme cards. With one installed theme it is one card,
-    /// left-aligned, exactly as tall as with five; with more than fit a line the strip wraps to the next line.</summary>
+    /// <summary>The picker as a Settings row: a card holding the theme cards. With one installed theme it is one card, left-aligned, exactly as tall as with
+    /// five; with more than fit a line the cards wrap to the next line (Standard, Huge), scroll sideways as one strip (Small) or fill a two-column grid (Compact).</summary>
     static Element ThemePickerView() => Embed.Comp(static () => new ThemePickerCard());
 
-    sealed class ThemePickerCard : Component
+    sealed class ThemePickerCard : SettingsComponent
     {
         public override Element Render()
         {
+            UseLayout();
+            var layout = UseLayout();
+            var viewport = UseContext(Viewport.Size);   // the Compact grid's card width follows the window live inside the tier
+            float gutter = ClassicTiers.PageOf(Tier).Gutter;
+            float cardWidth = layout.Picker == ClassicThemePickerForm.Grid ? layout.GridCardWidth(viewport.Width, gutter) : layout.PickerCardW;
             var entries = ThemePickerFacts.State.Value.Entries(Platform.Developer.Enabled.Value);   // tracked: a switch or Developer mode re-renders
             Element body;
             if (entries.Count == 0)
@@ -73,14 +79,19 @@ internal static partial class ClassicSettings
                     if (entries[i].Selected) { selected = i; break; }
                 // A pick runs a theme transaction: while its prewarm holds the UI the picked card shows a busy ring after 100 ms.
                 string? busyId = ThemeHost.SwitchBusy ? ThemeHost.PendingSwitch.Value : null;
-                body = Controls.PickerStrip(entries.Count, selected, (i, on) => ThemeCard(entries[i], on, busyId == entries[i].Id), PickTheme);
+                body = Controls.PickerStrip(entries.Count, selected, (i, on) => ThemeCard(entries[i], on, busyId == entries[i].Id, layout, cardWidth), PickTheme,
+                    layout.Picker == ClassicThemePickerForm.Strip ? entries.Count : null,
+                    layout.Picker == ClassicThemePickerForm.Strip ? OneLineParts : null);
+                // Small: ONE strip that scrolls, its end fading where more cards wait (the board's mask).
+                if (layout.Picker == ClassicThemePickerForm.Strip)
+                    body = ScrollView(body, horizontal: true) with { Grow = 0f, Shrink = 0f, MinWidth = 0f, SuppressScrollBar = true, AutoEdgeFade = true, ScrollKey = "settings:theme:strip" };
             }
 
             var card = SettingsCard.DefaultStyle;
             return new BoxEl
             {
                 Key = "settings:theme:picker", Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
-                Padding = Edges4.All(Spacing.L), Corners = CornerRadius4.All(card.CornerRadius), Fill = card.Background,
+                Padding = Edges4.All(layout.PickerPad), Corners = CornerRadius4.All(card.CornerRadius), Fill = card.Background,
                 BorderWidth = card.BorderWidth, BorderColor = card.Border,
                 Children = [body],
             };
@@ -96,7 +107,14 @@ internal static partial class ClassicSettings
         if (D(Tab.Appearance, "themePicker").Writer.Choose!(index)) Settings.Bump();
     }
 
-    static Element ThemeCard(ThemePickerEntry entry, bool on, bool busy)
+    /// <summary>The cards in one line, no wrap (the Small strip scrolls instead).</summary>
+    static readonly TemplateParts OneLineParts = new()
+    {
+        [RadioButtons.PartGrid] = g => g with { Wrap = false, Gap = Spacing.M },
+        [RadioButtons.PartColumn] = c => c with { Shrink = 0f },
+    };
+
+    static Element ThemeCard(ThemePickerEntry entry, bool on, bool busy, ClassicSettingsLayout layout, float cardWidth)
     {
         string name = Loc.Get(entry.NameKey);
         var nameText = (on ? BodyStrong(name) : Body(name)) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Wrap = TextWrap.NoWrap, MinWidth = 0f, Shrink = 1f };
@@ -113,20 +131,28 @@ internal static partial class ClassicSettings
                 Children = tags.ToArray(),
             },
         };
-        if (entry.DescriptionKey is { } descriptionKey)
+        // The Compact grid card is the thumbnail over its name alone (the board draws no description there).
+        if (layout.PickerShowsText && entry.DescriptionKey is { } descriptionKey)
             kids.Add(Caption(Loc.Get(descriptionKey)) with
             {
-                Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.WordEllipsis, MinWidth = 0f,
-                AlignSelf = FlexAlign.Stretch,
+                Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = layout.Picker == ClassicThemePickerForm.Strip ? ClassicSettingsRules.ThemeStripDescriptionLines : 2,
+                Trim = TextTrim.WordEllipsis, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
             });
 
+        bool grid = layout.Picker == ClassicThemePickerForm.Grid;
         Element details = new BoxEl
         {
-            Direction = 1, Gap = Spacing.XXS, Grow = 1f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true,
-            Padding = new Edges4(Spacing.M, Spacing.S, Spacing.M, Spacing.M),
+            Direction = 1, Gap = Spacing.XXS, Grow = 1f, MinWidth = 0f, MinHeight = grid ? ClassicSettingsTiers.GridNameRowH : 0f, ClipToBounds = true,
+            Justify = grid ? FlexJustify.Center : FlexJustify.Start,
+            Padding = layout.Picker switch
+            {
+                ClassicThemePickerForm.Grid => ClassicSettingsRules.ThemeGridDetailsPadding,
+                ClassicThemePickerForm.Strip => ClassicSettingsRules.ThemeStripDetailsPadding,
+                _ => ClassicSettingsRules.ThemeDetailsPadding,
+            },
             Children = kids.ToArray(),
         };
-        return Controls.PickerCard(on, ThemeCardShell, ThemeThumbnail(entry.Preview), details) with { Key = "settings:theme:card:" + entry.Id };
+        return Controls.PickerCard(on, ThemeCardShell(layout, cardWidth), ThemeThumbnail(entry.Preview, layout), details) with { Key = "settings:theme:card:" + entry.Id };
     }
 
     static Element DeveloperTag() => new BoxEl
@@ -138,20 +164,20 @@ internal static partial class ClassicSettings
 
     /// <summary>The preview: the theme's preview image over a UI-native miniature (so a missing asset, the state of every theme
     /// until it ships one, leaves a thumbnail of the same size, and the image fades in over it instead of replacing a blank).</summary>
-    static Element ThemeThumbnail(ThemePreview preview)
+    static Element ThemeThumbnail(ThemePreview preview, ClassicSettingsLayout layout)
     {
-        var layers = new List<Element>(2) { ThemeMiniature() };
+        var layers = new List<Element>(2) { ThemeMiniature(layout.PickerThumbH) };
         string asset = R.IsLight ? preview.LightAsset : preview.DarkAsset;
         if (PreviewPath(asset) is { } path)
             layers.Add(new ImageEl
             {
-                Source = path, Fit = ImageFit.Cover, Height = ClassicSettingsRules.ThemeThumbHeight, AlignSelf = FlexAlign.Stretch,
-                DecodePx = ClassicSettingsRules.ThemeCardWidth * 2f, Placeholder = ColorF.Transparent,
+                Source = path, Fit = ImageFit.Cover, Height = layout.PickerThumbH, AlignSelf = FlexAlign.Stretch,
+                DecodePx = ClassicSettingsRules.PreviewDecodePx, Placeholder = ColorF.Transparent,
                 RevealTransition = ImageTransition.Fade(ClassicSettingsRules.PreviewFadeMs),
             });
         return new BoxEl
         {
-            ZStack = true, Height = ClassicSettingsRules.ThemeThumbHeight, Shrink = 0f, AlignSelf = FlexAlign.Stretch, ClipToBounds = true,
+            ZStack = true, Height = layout.PickerThumbH, Shrink = 0f, AlignSelf = FlexAlign.Stretch, ClipToBounds = true,
             Fill = Tok.FillSolidBase, Children = layers.ToArray(),
         };
     }
@@ -176,7 +202,7 @@ internal static partial class ClassicSettings
 
     /// <summary>A window in miniature drawn from the live tokens: a navigation column, a content plate with a title bar in
     /// the accent and two skeleton lines (the board's thumbnail). Proportions are flex ratios, so it fills any card.</summary>
-    static Element ThemeMiniature()
+    static Element ThemeMiniature(float height)
     {
         Element Line(float fillGrow, float restGrow, ColorF fill) => new BoxEl
         {
@@ -185,7 +211,7 @@ internal static partial class ClassicSettings
         };
         return new BoxEl
         {
-            Direction = 0, Height = ClassicSettingsRules.ThemeThumbHeight, AlignSelf = FlexAlign.Stretch, Shrink = 0f,
+            Direction = 0, Height = height, AlignSelf = FlexAlign.Stretch, Shrink = 0f,
             Children =
             [
                 new BoxEl { Grow = 26f, Basis = 0f, MinWidth = 0f, Fill = Tok.FillLayerAlt },
@@ -233,10 +259,11 @@ internal static partial class ClassicSettings
         public List<(string Key, Element Row)> Rows { get; } = new(4);
     }
 
-    sealed class ThemeOptionsCard : Component
+    sealed class ThemeOptionsCard : SettingsComponent
     {
         public override Element Render()
         {
+            UseLayout();
             var facts = SettingsFacts.Live;
             SettingsOptionsView view = SettingsThemeOptions.Current(wizard: false);
             string title = Strings.Settings.ThemeOptions.Title(Loc.Get(view.NameKey));
@@ -334,7 +361,7 @@ internal static partial class ClassicSettings
         bool enabled = reset.Enabled(facts).Enabled;
         string? sub = reset.DescriptionKey(facts) is { } key ? Loc.Get(key) : null;
         var confirm = reset.Confirm!;
-        Element button = Button.Standard(Loc.Get(confirm.PrimaryKey), () =>
+        Element button = StdButton(Loc.Get(confirm.PrimaryKey), () =>
             ConfirmThen(Loc.Get(confirm.TitleKey), Loc.Get(confirm.BodyKey), Loc.Get(confirm.PrimaryKey),
                 () => { if (reset.Writer.Run!()) Settings.Bump(); }), isEnabled: enabled);
         return OptionRowBox("opt:reset", Item(Loc.Get(reset.TitleKey), sub, button, isEnabled: enabled, icon: Icons.Undo), divider: false);
@@ -379,10 +406,11 @@ internal static partial class ClassicSettings
     /// <summary>The sidebar layout option (<see cref="ClassicStructure.Sidebar"/>): the preview cards (Classic · Library) under the row's title instead of the
     /// generic text cards. Subscribes to the sidebar's layout signals, so a change made on the pane itself shows here live; while the sidebar is being edited the
     /// cards say why they do not switch.</summary>
-    sealed class SidebarLayoutOption(GeneratedOptionRow g, bool wizard) : Component
+    sealed class SidebarLayoutOption(GeneratedOptionRow g, bool wizard) : SettingsComponent
     {
         public override Element Render()
         {
+            UseLayout();
             var layout = Sidebar.Layout.Value;
             _ = Sidebar.LayoutVersion.Value;
             bool editing = Sidebar.Editing.Value;
@@ -398,10 +426,11 @@ internal static partial class ClassicSettings
 
     /// <summary>Reset layout · Edit sidebar · Reset everything: clickable rows that grey (with the row's reason) while the
     /// sidebar is being edited or has nothing to reset.</summary>
-    sealed class SidebarActionItem(string id, string icon) : Component
+    sealed class SidebarActionItem(string id, string icon) : SettingsComponent
     {
         public override Element Render()
         {
+            UseLayout();
             _ = Sidebar.Editing.Value;
             _ = Sidebar.LayoutVersion.Value;
             var facts = SettingsFacts.Live;
@@ -431,14 +460,14 @@ internal static partial class ClassicSettings
         {
             case SettingsRowKind.Toggle:
                 return OptionCard(wizard, title, sub,
-                    ToggleSwitch.Create(new Signal<bool>(g.Current is true), onChange: on =>
+                    Toggle(new Signal<bool>(g.Current is true), onChange: on =>
                     {
                         if (row.Writer.Toggle!(on)) Settings.Bump();
-                    }, isEnabled: enabled, style: SettingsCard.CompactToggleStyle()), icon, isEnabled: enabled);
+                    }, isEnabled: enabled), icon, isEnabled: enabled);
 
             case SettingsRowKind.Segmented:
                 return OptionCard(wizard, title, sub,
-                    SelectorBar.Create(ChoiceLabels(g), new Signal<int>(g.Current is int at ? at : -1), onChange: i =>
+                    Selector(ChoiceLabels(g), new Signal<int>(g.Current is int at ? at : -1), onChange: i =>
                     {
                         if (row.Writer.Choose!(i)) Settings.Bump();
                     }), icon, isEnabled: enabled);
@@ -467,7 +496,7 @@ internal static partial class ClassicSettings
 
             case SettingsRowKind.Action when row.Confirm is { } confirm:
                 // A destructive action (M8's "Clear all remembered sizes"): a button that asks first, as the row it replaced did.
-                return OptionCard(wizard, title, sub, Button.Standard(Loc.Get(confirm.PrimaryKey), () =>
+                return OptionCard(wizard, title, sub, StdButton(Loc.Get(confirm.PrimaryKey), () =>
                     ConfirmThen(Loc.Get(confirm.TitleKey), Loc.Get(confirm.BodyKey), Loc.Get(confirm.PrimaryKey),
                         () => { if (row.Writer.Run!()) Settings.Bump(); }), isEnabled: enabled), icon, isEnabled: enabled);
 
@@ -536,7 +565,7 @@ internal static partial class ClassicSettings
     {
         Element? control = pref switch
         {
-            CorePref.AppMode => SelectorBar.Create(ThemeLabels(), new Signal<int>((int)Appearance.Mode), onChange: static m => SetTheme(m)),
+            CorePref.AppMode => Selector(ThemeLabels(), new Signal<int>((int)Appearance.Mode), onChange: static m => SetTheme(m)),
             CorePref.Zoom => Embed.Comp(static () => new ZoomPicker()),
             CorePref.Marquee => RowToggle(row),
             CorePref.StageFace => Embed.Comp(static () => new StageVisualizerPicker()),
@@ -566,28 +595,29 @@ internal static partial class ClassicSettings
     /// <summary>A 30-DIP circle, not a card; the selection survives a colour-blind read through the heavier ring.</summary>
     static Element ColorSwatch(ColorF color, bool on) => new BoxEl
     {
-        Width = ClassicSettingsRules.SwatchSize, Height = ClassicSettingsRules.SwatchSize, Shrink = 0f, Corners = Radii.PillAll, Fill = color,
+        Width = MathF.Max(ClassicSettingsRules.SwatchSize, s_layout.Target), Height = MathF.Max(ClassicSettingsRules.SwatchSize, s_layout.Target), Shrink = 0f, Corners = Radii.PillAll, Fill = color,
         BorderWidth = on ? 3f : 1f, BorderColor = on ? Tok.TextPrimary : Tok.StrokeControlDefault,
         HoverScale = R.Motion.ScaleSubtle.Hover, PressScale = R.Motion.ScaleSubtle.Press, Cursor = CursorId.Hand,
     };
 
     /// <summary>A select drawn as a combo box. The items and signal freeze at mount, so the component keeps the signal in step
     /// with the option's live value; the row is re-keyed (by the caller) when the choices change.</summary>
-    sealed class OptionCombo(GeneratedOptionRow g) : Component
+    sealed class OptionCombo(GeneratedOptionRow g) : SettingsComponent
     {
         readonly Signal<int> _selected = new(g.Live() is int first ? first : -1);
 
         public override Element Render()
         {
+            UseLayout();
             _ = ThemeHost.Options.EpochSignal.Value;
             int at = g.Live() is int live ? live : -1;
             UseEffect(() => _selected.SetIfChanged(at), DepKey.From(at));
-            return ComboBox.Create(ChoiceLabels(g), _selected, width: ComboWidthOf(g), onChange: i => g.Row.Writer.Choose!(i));
+            return Combo(ChoiceLabels(g), _selected, width: ComboWidthOf(g), onChange: i => g.Row.Writer.Choose!(i));
         }
     }
 
     /// <summary>A slider over the option's range. One signal for the control's life, re-seeded from the live value.</summary>
-    sealed class OptionSlider(GeneratedOptionRow g) : Component
+    sealed class OptionSlider(GeneratedOptionRow g) : SettingsComponent
     {
         readonly FloatSignal _value = new(g.Live() is float first ? first : g.Min);
         readonly Slider.SliderOptions _options = new()
@@ -598,10 +628,11 @@ internal static partial class ClassicSettings
 
         public override Element Render()
         {
+            UseLayout();
             _ = ThemeHost.Options.EpochSignal.Value;
             float live = g.Live() is float f ? f : g.Min;
             UseEffect(() => _value.SetIfChanged(live), DepKey.From(live));
-            return Slider.Create(_value, v => g.Row.Writer.Slide!(v), _options, length: ClassicSettingsRules.SliderLength);
+            return SliderControl(_value, v => g.Row.Writer.Slide!(v), _options, length: ClassicSettingsRules.SliderLength);
         }
     }
 
@@ -613,12 +644,13 @@ internal static partial class ClassicSettings
 
     /// <summary>A free colour picker. The signal is seeded from the option and written by the picker; every drag step is a
     /// live write (the colour-only retheme path).</summary>
-    sealed class OptionColorPicker(GeneratedOptionRow g) : Component
+    sealed class OptionColorPicker(GeneratedOptionRow g) : SettingsComponent
     {
         readonly Signal<ColorF> _color = new(g.Live() is int first ? ThemeOptionsSection.UnpackColor(first) : ClassicSettingsRules.FreePickerSeed);
 
         public override Element Render()
         {
+            UseLayout();
             _ = ThemeHost.Options.EpochSignal.Value;
             int packed = g.Live() is int live ? live : ThemeOptionsSection.PackColor(_color.Peek());
             UseEffect(() => _color.SetIfChanged(ThemeOptionsSection.UnpackColor(packed)), DepKey.From(packed));

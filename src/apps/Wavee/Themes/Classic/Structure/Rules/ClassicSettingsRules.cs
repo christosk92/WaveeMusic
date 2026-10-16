@@ -2,8 +2,8 @@
 //
 // From `Screens\Settings.UI*.cs`: the page's measures (the 1000-DIP left-aligned column, the 4-DIP card spacing, the section glyphs, the tab swap), the widths of
 // the combos and number boxes, the theme picker's fixed card, the miniatures the sidebar, track-list and page-layout cards draw, the Storage tab's hues and meter,
-// the Privacy tab's report rows, the About hero, the attached-videos manager. WVTH003 allows literal looks only here. Settings has no tiers: its column is capped
-// (`ContentMaxWidth`), never compared with a window width (WVTH013).
+// the Privacy tab's report rows, the About hero, the attached-videos manager. WVTH003 allows literal looks only here. The page's TIERS (the column cap, the two Huge
+// columns, the stacked Compact rows, the picker's forms) are `Tiers.Settings.cs` (TC8): nothing here is compared with a window width (WVTH013).
 
 using FluentGpu.Animation;
 using FluentGpu.Foundation;
@@ -15,9 +15,6 @@ internal static class ClassicSettingsRules
 {
     // ── the page (N1, N2, W1) ──
 
-    /// <summary>N1: the left-aligned content column's cap.</summary>
-    public const float ContentMaxWidth = 1000f;
-
     /// <summary>N2: cards 4 DIP apart.</summary>
     public const float CardSpacing = 4f;
 
@@ -25,8 +22,14 @@ internal static class ClassicSettingsRules
     /// arriving one.</summary>
     public static LayoutTransition TabSwap => Design.Nav.RecipeFor(Design.NavTransitionKind.Neutral);
 
+    /// <summary>The tab strip's first label sits on the page gutter: the item's own 12-DIP padding pulled back out (board: margin 0 0 0 -12).</summary>
+    public const float TabLeadingInset = -12f;
+
     /// <summary>A section header's glyph and how far it drops to sit on the title's first line.</summary>
     public const float SectionGlyph = 16f, SectionGlyphDrop = 2f;
+
+    /// <summary>The Compact combo picker's field: the gap between its label and chevron, the label's size and the chevron's.</summary>
+    public const float TouchComboGap = 8f, TouchComboTextSize = 14f, TouchComboChevron = 12f;
 
     /// <summary>N4: the collapsed picker group's answer in an expander header.</summary>
     public const float ValueTagSize = 14f;
@@ -83,8 +86,15 @@ internal static class ClassicSettingsRules
 
     // ── the theme picker and the generated options ──
 
-    /// <summary>A picker card's fixed footprint and its thumbnail (one size whatever the text).</summary>
-    public const float ThemeCardWidth = 208f, ThemeCardHeight = 172f, ThemeThumbHeight = 92f;
+    /// <summary>The decode width of a picker card's preview image (twice the widest card: the tier records carry the card's own width).</summary>
+    public const float PreviewDecodePx = 416f;
+
+    /// <summary>A picker card's details: the padding of the tuned card (name over a two-line description), of the Small strip card and of the Compact grid card
+    /// (the name row alone, 36 tall), and the strip card's one-line description.</summary>
+    public static readonly Edges4 ThemeDetailsPadding = new(12f, 8f, 12f, 12f), ThemeStripDetailsPadding = new(10f, 8f, 10f, 10f), ThemeGridDetailsPadding = new(10f, 6f, 10f, 6f);
+
+    /// <summary>The strip card's description is one line.</summary>
+    public const int ThemeStripDescriptionLines = 1;
 
     /// <summary>The preview image's fade over the miniature.</summary>
     public const float PreviewFadeMs = 140f;

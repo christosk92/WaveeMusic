@@ -12,6 +12,22 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **Settings fits every window size.** In a narrow window (under 528 wide) the tabs are one 44-tall strip that scrolls sideways and fades at
+  its end, every setting sits under its name with its control full width (choices open as a 40-tall picker, switches keep their row in a
+  48 by 40 cell), buttons, links, sliders, selectors and radio buttons are at least 40 big, the About card stacks, and the theme picker is
+  two columns of thumbnails. In a small window the tabs scroll and fade and the theme cards are one strip you scroll sideways. In a very
+  large window (1920 wide and up) each tab's sections share two columns of up to 1000 each, left-aligned, and the theme cards are 184 wide.
+- **Setup: the wizard has a layout for every window size.** Compact is a full-screen sheet with a stacked footer and 40-DIP buttons; Small
+  drops the icon column and shows the two sign-in cards side by side; Huge is a larger 960 x 600 plate. The 770-pixel icon breakpoint is gone.
+- **What's new follows the window size.** Compact swaps the release rail for a 40-high release picker under the title, stacks the hero's
+  actions as a two-column grid of 40-high buttons, lists the highlights as one column of poster rows and gives every control a 40-point
+  target; Small puts a picker beside the title and shows the highlights in two columns; Huge caps the notes at 1600 (left-aligned) beside a
+  wider rail, with the changelog in three columns. The after-update plate fits narrow windows (its cards stack at Compact and its footer
+  buttons can no longer be cut off in a short window) and the highlight viewer's close, arrows and pager dots are 40-point targets at Compact.
+- **The report-a-problem dialog and the crash prompt fit every window.** At Compact they fill the window less 16, the report preview folds
+  behind a 40-tall row, and the fields, pickers, check boxes, links and the Send / Cancel buttons are at least 40 tall. At Huge they open
+  as a two-pane 1040-wide card with the live report beside the form.
+
 - **Full screen fits a narrow or short window.** In a narrow, tall window (a phone-shaped window under 600 wide) full screen is one
   column: the cover and title, the lyrics, Up next or the artist under them, and the playback card across the bottom with heart, previous,
   play, next and "…" (the other controls stay in "…" and the player bar); every button there is at least 40 big. When the playback card

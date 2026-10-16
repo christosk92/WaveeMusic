@@ -106,7 +106,7 @@ public static partial class Crash
     {
         if (overlay is null) return;
         var session = new PromptSession();
-        var handle = ContentDialog.Show(overlay, d =>
+        var handle = OverlayFit.ShowForm(overlay, DialogChrome, d =>
         {
             d.Title = Loc.Get(fromList ? Strings.Crash.PromptListTitle
                 : bundle.Summary.Kind == Kind.Hang ? Strings.Crash.PromptHangTitle : Strings.Crash.PromptTitle);
@@ -114,7 +114,6 @@ public static partial class Crash
                 with { Key = "crash-prompt:" + bundle.Summary.ReportId };
             d.PrimaryText = Loc.Get(Strings.Crash.Send);
             d.CloseText = Loc.Get(Strings.Crash.NotNow);
-            OverlayFit.Dialog(d, DialogChrome);
             d.DefaultButton = ContentDialog.DefaultBtn.Primary;
             d.IsPrimaryButtonEnabled = Uploader.Configured;
             // VETOABLE: the body has not finished composing the scrubbed preview yet.

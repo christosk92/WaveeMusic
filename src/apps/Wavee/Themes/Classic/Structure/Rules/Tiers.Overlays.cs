@@ -85,7 +85,8 @@ public static class ClassicOverlayTiers
     {
         Core = new OverlayLayout(
             Dialog: new DialogFit(Fill: true, Inset: 16f, MaxWidth: 548f, EdgeY: 16f,
-                ContentPadding: new Edges4(16f, 20f, 16f, 20f), CommandPadding: new Edges4(16f, 8f, 16f, 16f)),
+                ContentPadding: new Edges4(16f, 20f, 16f, 20f), CommandPadding: new Edges4(16f, 8f, 16f, 16f),
+                CommandHeight: ClassicScreenDialogTiers.CompactTarget),   // the report and crash forms' 40-DIP commands (the engine's own are 32)
             Toast: new ToastDock(ToastPlacement.BottomCenter, GapAboveBar: 8f, BarHeight: ClassicPlayerTiers.MiniHeight),
             Vacancy: new VacancyFit(QuietTitle: true, Padding: 16f, ActionHeight: 40f),
             Selection: new SelectionFit(MinHeight: 48f, SideInset: 8f, Padding: new Edges4(4f, 4f, 4f, 4f)),
@@ -106,8 +107,12 @@ public static class ClassicOverlayTiers
         VacancyQuietTitle = false, VacancyPadX = 0f, VacancyActionHeight = 0f, VacancyActionsStack = false, VacancyLift = ClassicOverlayRules.OfflineVacancyLift,
     };
 
-    /// <summary>Huge and Huge 4K: the standard design (a dialog never stretches: its width caps at the engine's 548; a panel keeps its width).</summary>
-    public static ClassicOverlayTier Huge { get; } = Standard with { Core = new OverlayLayout(DialogFit.Stock, ToastDock.Stock, VacancyFit.Stock, SelectionFit.Stock, ContextSheet: false) };
+    /// <summary>Huge and Huge 4K: the standard design (a dialog never stretches: its width caps at the engine's 548; a panel keeps its width), except the two FORM dialogs
+    /// (the report and the crash prompt), whose card is the boards' two-pane 1040 (<c>C-Feedback-Huge</c>, <c>C-Crash-Huge</c>).</summary>
+    public static ClassicOverlayTier Huge { get; } = Standard with
+    {
+        Core = new OverlayLayout(DialogFit.Stock with { FormWidth = ClassicScreenDialogTiers.HugeCardWidth }, ToastDock.Stock, VacancyFit.Stock, SelectionFit.Stock, ContextSheet: false),
+    };
 
     /// <summary>The record of <paramref name="tier"/>: Compact, Huge (and Huge 4K), and the standard record for the bands between.</summary>
     public static ClassicOverlayTier For(WidthTier tier) => tier == WidthTier.Compact ? Compact : tier >= WidthTier.Huge ? Huge : Standard;

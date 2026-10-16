@@ -5,7 +5,7 @@
 // through `ISetupSignInHost`, so a fixture host stands in for them:
 //
 //   registered   Classic is the registered template of every setup key
-//   plate        the plate stands under its key, the page stack shows the session's page and Back appears with the pages that have one; the icon column is the window's breakpoint
+//   plate        the plate stands under its key, the page stack shows the session's page and Back appears with the pages that have one; the icon column is the window tier's (Standard, Huge)
 //   terms        the crash-consent card shows on a first run and not on a re-auth
 //   sign-in      the door's body keeps one tree for Idle and the retry facets, a Busy and a Done body each have their own; the wizard's Sign in page keys its body by the facet
 //   runtime      the card's command row asks the host whether the diagnostics page exists
@@ -111,7 +111,7 @@ public sealed class SetupMountedTests(ShellHost host)
         });
 
     [Fact]
-    public void The_icon_column_is_the_windows_breakpoint_and_the_compact_frame_has_none()
+    public void The_icon_column_is_the_window_tiers_and_the_small_frame_has_none()
         => host.Run(() =>
         {
             var session = new Setup.WizardModel(Setup.WizardEntry.FirstRun, signedIn: false);
@@ -123,11 +123,16 @@ public sealed class SetupMountedTests(ShellHost host)
                 // The reconciler reuses the frame's root node across the swap (the key stays the first one), so the picture is read from the
                 // node's first child: the 192 DIP icon column when it shows, the content column when it does not.
                 float FirstChildWidth() => harness.AbsoluteBounds(harness.Shell.Host.Scene.FirstChild(harness.Node("setup:layout:wide"))).W;
-                Assert.Equal(SetupGeometry.IconColumnWidth, FirstChildWidth(), 0.5f);
+                Assert.Equal(ClassicSetupTiers.For(WidthTier.Standard).IconColumn, FirstChildWidth(), 0.5f);
+
+                // TC8: the icon column is the Standard / Huge tiers' (the old 770-DIP breakpoint is gone): a 900-wide window is Small and has none.
+                harness.Resize(900f, 700f);
+                harness.RunFrames(30);
+                Assert.True(FirstChildWidth() > ClassicSetupTiers.For(WidthTier.Standard).IconColumn + 1f, "Small (528-1007): the frame has no icon column");
 
                 harness.Resize(600f, 700f);
                 harness.RunFrames(30);
-                Assert.True(FirstChildWidth() > SetupGeometry.IconColumnWidth + 1f, "under 770: the compact frame, no icon column");
+                Assert.True(FirstChildWidth() > ClassicSetupTiers.For(WidthTier.Standard).IconColumn + 1f, "Small: no icon column");
             }
             finally { session.End(); }
         });

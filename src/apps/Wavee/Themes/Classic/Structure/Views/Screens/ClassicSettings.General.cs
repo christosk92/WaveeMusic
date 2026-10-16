@@ -37,7 +37,7 @@ internal static partial class ClassicSettings
             SectionHeader(Loc.Get(Strings.Settings.Language.Title), SectionGlyph(Tab.General, "Language & region"),
                 Loc.Get(Strings.Settings.Language.Subtitle)),
             DocRow(D(Tab.General, "language"),
-                ComboBox.Create(LanguageLabels(), s_language, width: ClassicSettingsRules.GeneralComboWidth, onChange: SetLanguage,
+                Combo(LanguageLabels(), s_language, width: ClassicSettingsRules.GeneralComboWidth, onChange: SetLanguage,
                     itemEnabled: Settings.Language.Enabled)),
 
             SectionHeader(Loc.Get(Strings.Settings.Links.Title), SectionGlyph(Tab.General, "Links"),
@@ -86,7 +86,7 @@ internal static partial class ClassicSettings
         var facts = SettingsFacts.Live;
         var iconMode = D(Tab.General, "trayIcon");
         kids.Add(DocRow(iconMode,
-            ComboBox.Create(
+            Combo(
                 [
                     Loc.Get(Strings.Settings.General.Tray.IconAlways),
                     Loc.Get(Strings.Settings.General.Tray.IconWhileHidden),
@@ -113,13 +113,14 @@ internal static partial class ClassicSettings
     /// <summary>Settings › General › Graphics — the render-GPU picker. Its own component so the seeding effect lives on
     /// a child whose lifetime IS the tab. The adapter list is enumerated ONCE at mount (a cold DXGI walk) and frozen;
     /// picking persists LUID + name and live-applies through the engine's device-reset path.</summary>
-    sealed class GpuPickerCard : Component
+    sealed class GpuPickerCard : SettingsComponent
     {
         readonly Signal<int> _selected = new(0);
         readonly IReadOnlyList<GpuAdapterDesc> _adapters = SettingsFacts.RefreshGpus();
 
         public override Element Render()
         {
+            UseLayout();
             UseEffect(() =>
             {
                 _selected.Value = D(Tab.General, "preferredGpu").Current is int index ? index : 0;
@@ -133,7 +134,7 @@ internal static partial class ClassicSettings
                 labels[k + 1] = a.IsCurrent ? Strings.Settings.Gpu.InUse(a.Name) : a.Name;
             }
 
-            return DocRow(D(Tab.General, "preferredGpu"), ComboBox.Create(labels, _selected, width: ClassicSettingsRules.GpuComboWidth, onChange: Pick));
+            return DocRow(D(Tab.General, "preferredGpu"), Combo(labels, _selected, width: ClassicSettingsRules.GpuComboWidth, onChange: Pick));
         }
 
         // The verb persists and live-applies; the combo's selection is this card's mirror (0 = Automatic).
@@ -193,7 +194,7 @@ internal static partial class ClassicSettings
             : [Loc.Get(Strings.Settings.Notify.LevelOff), Loc.Get(Strings.Settings.Notify.LevelInApp)];
 
         var ladder = D(Tab.Notifications, SettingsDoc.TopicRowId(topic));
-        var dial = SelectorBar.Create(labels, new Signal<int>((int)level), onChange: i =>
+        var dial = Selector(labels, new Signal<int>((int)level), onChange: i =>
         {
             // The verb persists and, for a SCHEDULED topic dialled down, gives back the toast the OS already holds.
             if (ladder.Writer.Choose!(i)) Settings.Bump();
@@ -212,7 +213,7 @@ internal static partial class ClassicSettings
             Items =
             [
                 Item(Loc.Get(Strings.Settings.Notify.Send), sendSub,
-                    Button.Standard(Loc.Get(Strings.Settings.Notify.SendButton), () =>
+                    StdButton(Loc.Get(Strings.Settings.Notify.SendButton), () =>
                     {
                         if (D(Tab.Notifications, SettingsDoc.TopicTestRowId(topic)).Writer.Run!()) Settings.Bump();
                     })),
@@ -263,7 +264,7 @@ internal static partial class ClassicSettings
     }
 
     static Element HourCombo(string[] hours, SettingsRow row, int value)
-        => ComboBox.Create(hours, new Signal<int>(Math.Clamp(value, 0, 23)), width: ClassicSettingsRules.HourComboWidth, onChange: h =>
+        => Combo(hours, new Signal<int>(Math.Clamp(value, 0, 23)), width: ClassicSettingsRules.HourComboWidth, onChange: h =>
         {
             if (row.Writer.Choose!(h)) Settings.Bump();
         });
@@ -279,7 +280,7 @@ internal static partial class ClassicSettings
         };
         if (text is not { } t) return null;
         Element? action = Settings.NotifyRules.OffersOpenSettings(banner)
-            ? Button.Standard(Loc.Get(Strings.Settings.Notify.OpenWindows), static () => SettingsVerbs.OpenUri("ms-settings:notifications"))
+            ? StdButton(Loc.Get(Strings.Settings.Notify.OpenWindows), static () => SettingsVerbs.OpenUri("ms-settings:notifications"))
             : null;
         return InfoBar.Create(InfoBarSeverity.Warning, t.Title, t.Body, isClosable: false, actionButton: action);
     }

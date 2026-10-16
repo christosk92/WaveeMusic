@@ -8,14 +8,17 @@
 using FluentGpu.Foundation;
 using Wavee;
 using Wavee.Themes.Classic;
+using Wavee.Theming.Contracts;
 using Xunit;
 
 namespace Wavee.Tests;
 
-/// <summary>Classic's wizard plate (`SetupGeometry`): the Rise reference metrics as arithmetic: the plate clamp, the single 770 breakpoint, the footer split, the
-/// 314-of-325 sign-in lane, and the SettingsCard bands of W3b.</summary>
+/// <summary>Classic's wizard plate (`ClassicSetupTiers`, the Standard record): the Rise reference metrics as arithmetic, the plate clamp. The tier ladder, the icon column, the footer
+/// split and the other tiers' records are pinned in <c>ClassicSetupTiersTests</c>.</summary>
 public class SetupWizardLayoutTests
 {
+    static ClassicSetupLayout Plate => ClassicSetupTiers.For(WidthTier.Standard);
+
     [Theory]
     [InlineData(0f, 320f)]      // no viewport known yet → the floor
     [InlineData(1200f, 762f)]
@@ -23,7 +26,7 @@ public class SetupWizardLayoutTests
     [InlineData(800f, 736f)]    // below 826 (762 + 2×32) the plate shrinks
     [InlineData(300f, 320f)]
     public void Width_clamps_to_the_rise_plate(float viewport, float expected)
-        => Assert.Equal(expected, SetupGeometry.Width(viewport));
+        => Assert.Equal(expected, Plate.RootWidth(viewport));
 
     [Theory]
     [InlineData(0f, 184f)]
@@ -31,50 +34,17 @@ public class SetupWizardLayoutTests
     [InlineData(500f, 436f)]
     [InlineData(200f, 184f)]
     public void Height_clamps_to_the_rise_plate(float viewport, float expected)
-        => Assert.Equal(expected, SetupGeometry.Height(viewport));
-
-    [Theory]
-    [InlineData(769f, false)]
-    [InlineData(770f, true)]    // one on/off switch, no hysteresis band
-    [InlineData(1200f, true)]
-    public void The_icon_column_shows_at_the_rise_breakpoint(float viewport, bool expected)
-        => Assert.Equal(expected, SetupGeometry.ShowsIcon(viewport));
-
-    [Theory]
-    [InlineData(true, 210f)]
-    [InlineData(false, 0f)]
-    public void The_progress_column_collapses_with_the_icon(bool large, float expected)
-        => Assert.Equal(expected, SetupGeometry.ProgressColumnFor(large));
-
-    /// <summary>W3b: the scan card's QR wraps below its header while the card is narrower than SettingsCard's 476, and every
-    /// card drops its icon under 286 — two bands inside the wizard's own clamp ladder.</summary>
-    [Theory]
-    [InlineData(770f, 442f)]
-    [InlineData(803f, 475f)]
-    [InlineData(804f, 476f)]
-    [InlineData(587f, 475f)]
-    [InlineData(588f, 476f)]
-    [InlineData(397f, 285f)]
-    [InlineData(398f, 286f)]
-    public void The_card_width_bands_land_on_the_settings_card_thresholds(float viewport, float expected)
-        => Assert.Equal(expected, SetupGeometry.CardWidth(viewport));
+        => Assert.Equal(expected, Plate.RootHeight(viewport));
 
     [Fact]
-    public void The_thresholds_the_bands_are_measured_against_are_the_engine_cards()
+    public void The_back_spacer_applies_only_where_back_sits_in_the_pages_column_on_a_page_that_shows_back()
     {
-        Assert.True(SetupGeometry.CardWidth(803f) < FluentGpu.Controls.SettingsCard.WrapThreshold);
-        Assert.False(SetupGeometry.CardWidth(804f) < FluentGpu.Controls.SettingsCard.WrapThreshold);
-        Assert.True(SetupGeometry.CardWidth(397f) < FluentGpu.Controls.SettingsCard.WrapNoIconThreshold);
-        Assert.False(SetupGeometry.CardWidth(398f) < FluentGpu.Controls.SettingsCard.WrapNoIconThreshold);
-    }
-
-    [Fact]
-    public void The_back_spacer_applies_only_without_the_icon_column_on_the_page_that_shows_back()
-    {
-        Assert.True(SetupGeometry.BackSpacerApplies(Setup.WizardPage.LocalPlayback, iconShown: false));
-        Assert.False(SetupGeometry.BackSpacerApplies(Setup.WizardPage.LocalPlayback, iconShown: true));
-        Assert.False(SetupGeometry.BackSpacerApplies(Setup.WizardPage.Terms, iconShown: false));
-        Assert.False(SetupGeometry.BackSpacerApplies(Setup.WizardPage.SignIn, iconShown: false));
+        var standard = ClassicSetupTiers.For(WidthTier.Standard);   // Back over the icon column's corner: no spacer
+        var small = ClassicSetupTiers.For(WidthTier.Small);         // Back beside the title
+        Assert.False(standard.BackSpacerApplies(Setup.WizardPage.LocalPlayback));
+        Assert.True(small.BackSpacerApplies(Setup.WizardPage.LocalPlayback));
+        Assert.False(small.BackSpacerApplies(Setup.WizardPage.Terms));
+        Assert.False(small.BackSpacerApplies(Setup.WizardPage.SignIn));
     }
 
     [Fact]

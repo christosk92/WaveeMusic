@@ -43,7 +43,7 @@ internal static partial class ClassicSettings
     /// have never been opened — the ONLY unread affordance outside the notification centre.</summary>
     static Element AboutLinksCard()
     {
-        Element whatsNew = HyperlinkButton.Create(Loc.Get(Strings.Update.About.OpenWhatsNew), static () => D(Tab.About, "whatsNew").Writer.Run!());
+        Element whatsNew = LinkButton(Loc.Get(Strings.Update.About.OpenWhatsNew), static () => D(Tab.About, "whatsNew").Writer.Run!());
         if (ReleaseNotes.RunningNotesUnread())
             whatsNew = new BoxEl { Direction = 0, Gap = ClassicSettingsRules.AboutBadgeGap, AlignItems = FlexAlign.Center, Children = [whatsNew, InfoBadge.Dot()] };
 
@@ -56,14 +56,14 @@ internal static partial class ClassicSettings
                 Children =
                 [
                     whatsNew,
-                    HyperlinkButton.Create(Loc.Get(Strings.Report.AboutReportProblem), static () => D(Tab.About, "reportProblem").Writer.Run!()),
-                    HyperlinkButton.Create(Loc.Get(Strings.Report.AboutSuggestFeature), static () => D(Tab.About, "suggestFeature").Writer.Run!()),
-                    HyperlinkButton.Create(Loc.Get(Strings.Report.AboutAllIssues), Settings.IssuesUrl),
-                    HyperlinkButton.Create(Loc.Get(Strings.Settings.About.Website), Settings.WebsiteUrl),
-                    HyperlinkButton.Create(Loc.Get(Strings.Settings.About.PrivacyPolicy), Settings.PrivacyUrl),
-                    HyperlinkButton.Create(Loc.Get(Strings.Settings.About.ThirdPartyNotices), static () => D(Tab.About, "thirdPartyNotices").Writer.Run!()),
-                    HyperlinkButton.Create(Loc.Get(Strings.Settings.About.CopyDiagnostics), static () => D(Tab.About, "copyDiagnostics").Writer.Run!()),
-                    HyperlinkButton.Create(Loc.Get(Strings.Settings.About.OpenDataFolder), static () => D(Tab.About, "openDataFolder").Writer.Run!()),
+                    LinkButton(Loc.Get(Strings.Report.AboutReportProblem), static () => D(Tab.About, "reportProblem").Writer.Run!()),
+                    LinkButton(Loc.Get(Strings.Report.AboutSuggestFeature), static () => D(Tab.About, "suggestFeature").Writer.Run!()),
+                    LinkButton(Loc.Get(Strings.Report.AboutAllIssues), Settings.IssuesUrl),
+                    LinkButton(Loc.Get(Strings.Settings.About.Website), Settings.WebsiteUrl),
+                    LinkButton(Loc.Get(Strings.Settings.About.PrivacyPolicy), Settings.PrivacyUrl),
+                    LinkButton(Loc.Get(Strings.Settings.About.ThirdPartyNotices), static () => D(Tab.About, "thirdPartyNotices").Writer.Run!()),
+                    LinkButton(Loc.Get(Strings.Settings.About.CopyDiagnostics), static () => D(Tab.About, "copyDiagnostics").Writer.Run!()),
+                    LinkButton(Loc.Get(Strings.Settings.About.OpenDataFolder), static () => D(Tab.About, "openDataFolder").Writer.Run!()),
                     new TextEl(Loc.Get(Strings.Settings.About.Unofficial)) { Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap },
                     new TextEl(Settings.OsDescription) { Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap },
                     new TextEl(Platform.LocalFolder) { Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextSecondary, FontFamily = "Cascadia Code", Wrap = TextWrap.Wrap },
@@ -101,25 +101,25 @@ internal static partial class ClassicSettings
 
     /// <summary>Re-renders on every published snapshot (it reads <see cref="Notify.Update"/>). A Store install has no
     /// feed, channel, install-on-quit or metered gate — the Store owns all four — so one card replaces them.</summary>
-    sealed class AboutUpdatePanel : Component
+    sealed class AboutUpdatePanel : SettingsComponent
     {
         public override Element Render()
         {
+            UseLayout();
             var s = Notify.Update.Value;
             var me = Platform.Version;
             var kids = new List<Element>(6) { UpdateHero(me, s) };
             if (me.IsStore)
             {
                 kids.Add(DocRow(D(Tab.About, "storeOpen"),
-                    Button.Create(Loc.Get(Strings.Update.Store.Open), static () => D(Tab.About, "storeOpen").Writer.Run!(),
-                        ButtonAppearance.Standard, ControlSize.Small), icon: Icons.Refresh));
+                    StdButton(Loc.Get(Strings.Update.Store.Open), static () => D(Tab.About, "storeOpen").Writer.Run!()), icon: Icons.Refresh));
             }
             else
             {
                 kids.Add(UpdateStatusCard(s));
                 // A LINK, not a picker: Beta installs beside Stable, nothing in this app changes when it is clicked.
                 kids.Add(DocRow(D(Tab.About, "channel"),
-                    HyperlinkButton.Create(Loc.Get(Strings.Update.Channel.Beta), Settings.BetaFeedUrl), icon: Icons.Devices));
+                    LinkButton(Loc.Get(Strings.Update.Channel.Beta), Settings.BetaFeedUrl), icon: Icons.Devices));
                 kids.Add(DocRow(D(Tab.About, "installOnQuit"), RowToggle(D(Tab.About, "installOnQuit")), icon: Icons.Download));
                 kids.Add(DocRow(D(Tab.About, "updateOnMetered"), RowToggle(D(Tab.About, "updateOnMetered")), icon: Icons.RadioTower));
             }
@@ -153,23 +153,26 @@ internal static partial class ClassicSettings
             : static () => D(Tab.About, "updateHero").Writer.Run!();
         var right = new List<Element>(3)
         {
-            Button.Create(Loc.Get(shape.ButtonKey), act,
+            Btn(Loc.Get(shape.ButtonKey), act,
                 shape.Tone == AboutRules.HeroTone.Accent ? ButtonAppearance.Accent : ButtonAppearance.Standard,
-                ControlSize.Medium, isEnabled: shape.Tone != AboutRules.HeroTone.Disabled),
+                shape.Tone != AboutRules.HeroTone.Disabled),
         };
         if (me.Codename.Length > 0)
-            right.Add(HyperlinkButton.Create(Strings.Update.About.WhatsNewIn(me.Codename), static () => D(Tab.About, "whatsNew").Writer.Run!()));
+            right.Add(LinkButton(Strings.Update.About.WhatsNewIn(me.Codename), static () => D(Tab.About, "whatsNew").Writer.Run!()));
         // The after-update plate on demand; a dev build has no update story to summarize.
         if (SettingsContext.Overlay is not null && ReleaseNotes.CanShowSummaryAgain)
-            right.Add(HyperlinkButton.Create(Loc.Get(Strings.Update.About.ShowSummaryAgain), static () => D(Tab.About, "showSummaryAgain").Writer.Run!()));
+            right.Add(LinkButton(Loc.Get(Strings.Update.About.ShowSummaryAgain), static () => D(Tab.About, "showSummaryAgain").Writer.Run!()));
 
         long lastChecked = s.LastCheckedMs > 0 ? s.LastCheckedMs : SettingsFacts.UpdateLastCheckedMs();
         string provenance = AboutRules.Provenance(me.BuildDate, lastChecked, static d => Strings.Update.About.Built(d),
             static w => Strings.Update.About.LastChecked(w), Loc.Get(Strings.Update.About.NeverChecked));
 
+        // The hero's three parts sit in a row; where the tier stacks its controls (Compact) there is no room for the tile, the words and the buttons side by side:
+        // they stack, the buttons under the words.
+        bool stack = s_layout.StacksControls;
         return new BoxEl
         {
-            Direction = 0, Gap = ClassicSettingsRules.HeroGap, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+            Direction = stack ? (byte)1 : (byte)0, Gap = ClassicSettingsRules.HeroGap, AlignItems = stack ? FlexAlign.Start : FlexAlign.Center, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
             Padding = new Edges4(24f, 22f, 24f, 22f), Corners = CornerRadius4.All(Radii.Card),
             Fill = Tok.FillCardSecondary, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
             Children =
@@ -182,7 +185,7 @@ internal static partial class ClassicSettings
                 },
                 new BoxEl
                 {
-                    Direction = 1, Gap = ClassicSettingsRules.HeroTextGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                    Direction = 1, Gap = ClassicSettingsRules.HeroTextGap, Grow = 1f, Shrink = 1f, Basis = stack ? float.NaN : 0f, MinWidth = 0f, AlignSelf = stack ? FlexAlign.Stretch : FlexAlign.Auto,
                     Children =
                     [
                         new TextEl(ReleaseNotes.VersionDisplayText()) { Size = ClassicSettingsRules.HeroVersionSize, Weight = 600, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap },
@@ -190,7 +193,7 @@ internal static partial class ClassicSettings
                         new TextEl(provenance) { Size = ClassicSettingsRules.CaptionSize, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap },
                     ],
                 },
-                new BoxEl { Direction = 1, Gap = Spacing.S, Shrink = 0f, AlignItems = FlexAlign.End, Children = right.ToArray() },
+                new BoxEl { Direction = 1, Gap = Spacing.S, Shrink = 0f, AlignItems = stack ? FlexAlign.Start : FlexAlign.End, Children = right.ToArray() },
             ],
         };
     }
@@ -212,10 +215,10 @@ internal static partial class ClassicSettings
                 ],
             },
             // The release that FAILED, not the bare listing (`Update.ReleasePageUrl` is the one owner of that rule).
-            AppUpdateState.Failed => Button.Create(Loc.Get(Strings.Update.Action.OpenReleasePage),
-                static () => D(Tab.About, "updateOpenReleasePage").Writer.Run!(), ButtonAppearance.Standard, ControlSize.Small),
-            AppUpdateState.Completed => Button.Create(Loc.Get(Strings.Update.Action.Dismiss),
-                static () => D(Tab.About, "updateDismiss").Writer.Run!(), ButtonAppearance.Subtle, ControlSize.Small),
+            AppUpdateState.Failed => StdButton(Loc.Get(Strings.Update.Action.OpenReleasePage),
+                static () => D(Tab.About, "updateOpenReleasePage").Writer.Run!()),
+            AppUpdateState.Completed => SubtleButton(Loc.Get(Strings.Update.Action.Dismiss),
+                static () => D(Tab.About, "updateDismiss").Writer.Run!()),
             _ => null,
         };
         return Row(Loc.Get(Strings.Update.Status.Title), Notify.AppUpdateToasts.StateSentence(s), content, Icons.Refresh);
@@ -223,7 +226,7 @@ internal static partial class ClassicSettings
 
     // ══ 3. "WAVEE RIGHT NOW" (N12: a 5 000 ms interval on THIS child; Render never reads process/GPU/FPS) ═════════
 
-    sealed class ReceiptsCard : Component
+    sealed class ReceiptsCard : SettingsComponent
     {
         readonly Signal<string> _gpu = new(Settings.Receipts.Dash), _workingSet = new(Settings.Receipts.Dash), _managed = new(Settings.Receipts.Dash),
             _uptime = new(Settings.Receipts.Dash), _fps = new(Settings.Receipts.Dash), _zoom = new(Settings.Receipts.Dash), _gpuAssets = new(Settings.Receipts.Dash),
@@ -231,6 +234,7 @@ internal static partial class ClassicSettings
 
         public override Element Render()
         {
+            UseLayout();
             UseEffect(Tick, DepKey.Empty);
             UseInterval(Tick, ClassicSettingsRules.ReceiptsTickMs);
             return SettingsCard.Create(new SettingsCard.Options

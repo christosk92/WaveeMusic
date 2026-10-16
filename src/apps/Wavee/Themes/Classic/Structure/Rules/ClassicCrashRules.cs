@@ -1,24 +1,16 @@
 // ── Themes/Classic/Structure/Rules/ClassicCrashRules.cs — the numbers of Classic's crash consent card (themes plan 6.1, T11c) ──────
 //
-// What `Crash.UI.cs` held as file-level constants and inline literals, moved verbatim with the picture. The body is 500 DIP inside the stock 548
-// dialog (WinUI ContentDialog padding 24). Data, not decisions (WVTH003 allows literals only here, in `Rules\**`).
+// What `Crash.UI.cs` held as file-level constants and inline literals, moved verbatim with the picture. The body's WIDTH and everything that differs per window
+// tier (the report's place, the 40-DIP targets, the Huge second pane) is the tier record in `Tiers.Dialogs.cs`; what is here are the insets inside it. Data, not
+// decisions (WVTH003 allows literals only here, in `Rules\**`).
 
 namespace Wavee.Themes.Classic;
 
 /// <summary>The constants of the crash / hang consent card.</summary>
 internal static class ClassicCrashRules
 {
-    /// <summary>The card's width inside the stock dialog.</summary>
-    public const float BodyWidth = 500f;
-
-    /// <summary>The scrubbed preview box's height.</summary>
-    public const float PreviewHeight = 220f;
-
-    /// <summary>The "what is sent" box's inner width: the card's padding either side of the body.</summary>
+    /// <summary>The "what is sent" box's inner width inset: its padding either side of the body.</summary>
     public const float BoxInset = 32f;
-
-    /// <summary>The preview text's width inset inside the preview box (padding either side).</summary>
-    public const float PreviewTextInset = 52f;
 
     /// <summary>The preview box's inner padding (all sides).</summary>
     public const float PreviewPadding = 10f;

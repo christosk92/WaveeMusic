@@ -94,7 +94,7 @@ internal static partial class ClassicSettings
         // G-132: the switch 0.2.9 persisted but never showed. D5: it, the mode and album mode all apply LIVE to the playing track.
         DocRow(D(Tab.Playback, "normalization"), RowToggle(D(Tab.Playback, "normalization"))),
         DocRow(D(Tab.Playback, "normalizationMode"),
-            ComboBox.Create([Loc.Get(Strings.Settings.Playback.NormQuiet), Loc.Get(Strings.Settings.Playback.NormNormal), Loc.Get(Strings.Settings.Playback.NormLoud)],
+            Combo([Loc.Get(Strings.Settings.Playback.NormQuiet), Loc.Get(Strings.Settings.Playback.NormNormal), Loc.Get(Strings.Settings.Playback.NormLoud)],
                 s_normMode, width: ClassicSettingsRules.NarrowComboWidth,
                 itemDescriptions: [Loc.Get(Strings.Settings.Playback.NormQuietSub), Loc.Get(Strings.Settings.Playback.NormNormalSub), Loc.Get(Strings.Settings.Playback.NormLoudSub)],
                 onChange: static i => D(Tab.Playback, "normalizationMode").Writer.Choose!(i))),
@@ -128,7 +128,7 @@ internal static partial class ClassicSettings
                 Header = Loc.Get(Strings.Settings.Common.Ready),
                 Description = Loc.Get(Strings.Settings.Playback.RuntimeReadySub),
                 HeaderIcon = Icons.StatusSuccess,
-                Content = Button.Standard(Loc.Get(Strings.Settings.Common.Manage), static () => D(Tab.Playback, "runtimeSetup").Writer.Run!()),
+                Content = StdButton(Loc.Get(Strings.Settings.Common.Manage), static () => D(Tab.Playback, "runtimeSetup").Writer.Run!()),
                 Items =
                 [
                     RuntimeFact(Loc.Get(Strings.Playback.Runtime.DetailVersion),
@@ -146,7 +146,7 @@ internal static partial class ClassicSettings
             return InfoBar.Create(InfoBarSeverity.Informational,
                 Loc.Get(Strings.Settings.Playback.RuntimeNotSetUp), Loc.Get(Strings.Settings.Playback.RuntimeNotSetUpSub),
                 isClosable: false,
-                actionButton: Button.Accent(Loc.Get(Strings.Playback.Runtime.SetUp), static () => D(Tab.Playback, "runtimeSetup").Writer.Run!()))
+                actionButton: AccentButton(Loc.Get(Strings.Playback.Runtime.SetUp), static () => D(Tab.Playback, "runtimeSetup").Writer.Run!()))
                 with { Key = "playback.runtime:setup" };
 
         // The typed issue's own sentence — the banner used to show one static line and drop the reason.
@@ -157,7 +157,7 @@ internal static partial class ClassicSettings
             actionButton: new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S,
-                Children = [links, Button.Accent(Loc.Get(Strings.Settings.Common.RetrySetup), static () => D(Tab.Playback, "runtimeSetup").Writer.Run!())],
+                Children = [links, AccentButton(Loc.Get(Strings.Settings.Common.RetrySetup), static () => D(Tab.Playback, "runtimeSetup").Writer.Run!())],
             }) with { Key = "playback.runtime:problem" };
     }
 
@@ -168,9 +168,9 @@ internal static partial class ClassicSettings
         Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S,
         Children =
         [
-            HyperlinkButton.Create(Loc.Get(Strings.Playback.Runtime.ViewDiagnostics),
+            LinkButton(Loc.Get(Strings.Playback.Runtime.ViewDiagnostics),
                 static () => D(Tab.PrivacyDiagnostics, "playbackRuntime").Writer.Run!()),
-            HyperlinkButton.Create(Loc.Get(Strings.Nav.ConnectDiagnostics),
+            LinkButton(Loc.Get(Strings.Nav.ConnectDiagnostics),
                 static () => D(Tab.PrivacyDiagnostics, "connectDiagnostics").Writer.Run!()),
         ],
     };
@@ -188,7 +188,7 @@ internal static partial class ClassicSettings
         string summary = Setup.RuntimeSignatureSummary(facts);
         bool canView = facts.Signature is { FilePath: { Length: > 0 } path } && File.Exists(path);
         Element? link = canView
-            ? HyperlinkButton.Create(Loc.Get(Strings.Playback.Runtime.ViewSignature), static () => D(Tab.Playback, "runtimeSignature").Writer.Run!())
+            ? LinkButton(Loc.Get(Strings.Playback.Runtime.ViewSignature), static () => D(Tab.Playback, "runtimeSignature").Writer.Run!())
             : null;
         return Item(Loc.Get(Strings.Playback.Runtime.DetailSignature), summary.Length > 0 ? summary : null, link);
     }
@@ -228,7 +228,7 @@ internal static partial class ClassicSettings
     static Element QualityCombo()
     {
         int count = Settings.Quality.AudioRungCount(SettingsFacts.Live.CanDerive);
-        return ComboBox.Create(QualityLabels(count), s_quality, width: ClassicSettingsRules.WideComboWidth, itemDescriptions: QualityDescriptions(count),
+        return Combo(QualityLabels(count), s_quality, width: ClassicSettingsRules.WideComboWidth, itemDescriptions: QualityDescriptions(count),
             onChange: static i =>
             {
                 if (D(Tab.Playback, "audioQuality").Writer.Choose!(i)) Settings.Bump();
@@ -249,7 +249,7 @@ internal static partial class ClassicSettings
     static Element MeteredQualityCombo()
     {
         int count = Settings.Quality.MeteredRungCount(SettingsFacts.Live.CanDerive);
-        return ComboBox.Create(QualityLabels(count), Platform.Network.MeteredQualityCap, width: ClassicSettingsRules.WideComboWidth,
+        return Combo(QualityLabels(count), Platform.Network.MeteredQualityCap, width: ClassicSettingsRules.WideComboWidth,
             itemDescriptions: QualityDescriptions(count), onChange: static i =>
             {
                 if (D(Tab.Playback, "meteredQuality").Writer.Choose!(i)) Settings.Bump();   // persist, then publish
@@ -300,7 +300,7 @@ internal static partial class ClassicSettings
             [
                 // The item's own description is the SELECTED preset's sentence.
                 Item(Loc.Get(Strings.Settings.Sound.Preset), descriptions[preset],
-                    ComboBox.Create(EqPresetLabels(), s_eqPreset, width: ClassicSettingsRules.NarrowComboWidth, itemDescriptions: descriptions,
+                    Combo(EqPresetLabels(), s_eqPreset, width: ClassicSettingsRules.NarrowComboWidth, itemDescriptions: descriptions,
                         isEnabled: eqOn, onChange: static i => ApplyEqPreset(i))),
                 Item(Loc.Get(Strings.Settings.Sound.Curve),
                     Loc.Get(eqOn ? Strings.Settings.Sound.CurveOn : Strings.Settings.Sound.CurveOff),
@@ -313,7 +313,7 @@ internal static partial class ClassicSettings
                             new BoxEl
                             {
                                 Direction = 0, Justify = FlexJustify.End,
-                                Children = [HyperlinkButton.Create(Loc.Get(Strings.Settings.Sound.ResetCurve), static () => ResetEqCurve(), isEnabled: eqOn)],
+                                Children = [LinkButton(Loc.Get(Strings.Settings.Sound.ResetCurve), static () => ResetEqCurve(), isEnabled: eqOn)],
                             },
                         ],
                     },
@@ -371,10 +371,10 @@ internal static partial class ClassicSettings
                 Item(Loc.Get(Strings.Settings.Sound.CrossfadeDuration), Strings.Settings.Sound.Seconds(seconds), new BoxEl
                 {
                     Key = crossOn ? "crossfade-duration-on" : "crossfade-duration-off",
-                    Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
+                    Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Wrap = true,
                     Children =
                     [
-                        Slider.Create(s_crossSlider, static v => CommitCrossfade(v), s_crossSliderOptions, length: ClassicSettingsRules.CrossSliderLength, isEnabled: crossOn),
+                        SliderControl(s_crossSlider, static v => CommitCrossfade(v), s_crossSliderOptions, length: ClassicSettingsRules.CrossSliderLength, isEnabled: crossOn),
                         NumberBox.Create(s_crossSecs, static v => CommitCrossfade(v), crossOn ? s_crossBoxOn : s_crossBoxOff),
                     ],
                 }),
@@ -395,7 +395,7 @@ internal static partial class ClassicSettings
     // ══ 7. VIDEO (W11) ════════════════════════════════════════════════════════════════════════════════════════════════
 
     static Element VideoQualityCombo()
-        => ComboBox.Create([Loc.Get(Strings.Settings.Playback.VideoQualityAuto), "180p", "240p", "320p", "480p", "720p", "1080p"],
+        => Combo([Loc.Get(Strings.Settings.Playback.VideoQualityAuto), "180p", "240p", "320p", "480p", "720p", "1080p"],
             s_videoQuality, width: ClassicSettingsRules.WideComboWidth, onChange: static i =>
             {
                 // Stored as a height (0 = Auto); the verb persists, then pins live: the ABR ceiling + the engine's selection.
@@ -405,7 +405,7 @@ internal static partial class ClassicSettings
     /// <summary>A stored height that matches nothing reads as 480p (index 1). Persisted and published through the
     /// network policy; the video session folds it on its next quality decision.</summary>
     static Element MeteredVideoCombo()
-        => ComboBox.Create([Loc.Get(Strings.Settings.Playback.VideoQualityUnlimited), "480p", "720p", "1080p"],
+        => Combo([Loc.Get(Strings.Settings.Playback.VideoQualityUnlimited), "480p", "720p", "1080p"],
             s_meteredVideo, width: ClassicSettingsRules.WideComboWidth, onChange: static i =>
             {
                 if (D(Tab.Playback, "videoMetered").Writer.Choose!(i)) Settings.Bump();

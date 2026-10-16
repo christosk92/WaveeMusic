@@ -14,8 +14,8 @@ public static class ClassicSetupRules
 {
     // ── the wizard's footer, the Optional pill and the body's enter / exit ────────────────────────────────────────────────
 
-    /// <summary>The footer's button lane height and its step label's size.</summary>
-    public const float FooterButtonHeight = 32f, FooterStepLabelSize = 14f;
+    /// <summary>The footer's step label's size (the buttons' height is the tier record's `ButtonHeight`).</summary>
+    public const float FooterStepLabelSize = 14f;
 
     /// <summary>The page body's enter and exit offsets (a page swap's content slides in from below, out upward).</summary>
     public const float BodyEnterDy = 6f, BodyExitDy = -4f;
@@ -41,8 +41,8 @@ public static class ClassicSetupRules
     public static readonly ColorF QrFallbackGlyph = ColorF.FromRgba(0x1D, 0xB9, 0x54);
     public const float QrFallbackGlyphSize = 28f;
 
-    /// <summary>The command rows' buttons (the door's and the runtime card's): minimum width and height.</summary>
-    public const float DialogButtonMinWidth = 96f, DialogButtonHeight = 32f;
+    /// <summary>The command rows' buttons (the door's and the runtime card's): minimum width (the height is the tier record's `ButtonHeight`).</summary>
+    public const float DialogButtonMinWidth = 96f;
 
     /// <summary>The hyperlink's own 11-DIP inner padding: −11 puts the first link's TEXT flush with the copy.</summary>
     public static readonly Edges4 FlushLinkMargin = new(-11f, 0f, 0f, 0f);
@@ -65,7 +65,7 @@ public static class ClassicSetupRules
 
     /// <summary>The Ready fact box's padding and gap, and the [Signature] button.</summary>
     public const float ReadyFactPad = 12f, ReadyFactGap = 6f;
-    public const float SignatureButtonMinWidth = 86f, SignatureButtonHeight = 28f;
+    public const float SignatureButtonMinWidth = 86f;
 
     /// <summary>A local-source setting row: the gap, the padding, the glyph and the chevron.</summary>
     public const float SettingRowGap = 13f, SettingRowGlyphSize = 16f, SettingRowChevronSize = 12f;
