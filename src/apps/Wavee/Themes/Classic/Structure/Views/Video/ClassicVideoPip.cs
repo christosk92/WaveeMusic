@@ -24,6 +24,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
@@ -35,9 +36,11 @@ internal static class ClassicVideoPip
     public static Element Template(VideoPipProps props, in ViewContext ctx)
     {
         bool floating = props.Placement == Video.SurfacePlacement.Floating;
+        // The chrome's targets are the window tier's: a Compact window (C-Video-Compact) shows 40 x 40 buttons at rest on a 40 strip.
+        var tier = ClassicStageTiers.PanelOf(ctx.Tier());
         var kids = new List<Element>(4) { props.Area() };
-        if (props.Placement == Video.SurfacePlacement.Docked) kids.Add(DockedStrip(props));
-        if (floating) { kids.Add(Chrome(props)); kids.Add(ResizeBands(props.Gestures)); }
+        if (props.Placement == Video.SurfacePlacement.Docked) kids.Add(DockedStrip(props, tier));
+        if (floating) { kids.Add(Chrome(props, tier)); kids.Add(ResizeBands(props.Gestures)); }
 
         return new BoxEl
         {
@@ -64,34 +67,35 @@ internal static class ClassicVideoPip
 
     // ── the docked strip ─────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The hover-revealed top strip: mini player, full screen, off, right-aligned, no label.</summary>
-    static Element DockedStrip(VideoPipProps props) => new BoxEl
+    /// <summary>The hover-revealed top strip: mini player, full screen, off, right-aligned, no label (shown at rest on a Compact window).</summary>
+    static Element DockedStrip(VideoPipProps props, ClassicPanelContentLayout tier) => new BoxEl
     {
         Grow = 1f, Direction = 1, HitTestPassThrough = true,
         Children =
         [
             new BoxEl
             {
-                Height = ClassicVideoRules.StripH, Shrink = 0f, Direction = 0,
+                Height = MathF.Max(tier.MediaStripH, tier.MediaGlyphBox), Shrink = 0f, Direction = 0,
                 AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = Spacing.XXS,
                 Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f),
                 Gradient = Tok.ScrimTop,
-                Opacity = 0f, HoverOpacity = 1f,
+                Opacity = tier.MediaChromeAtRest ? 1f : 0f, HoverOpacity = 1f,
                 HoverDurationMs = Design.Motion.Fast, HoverEasing = Easing.FluentDecelerate,
                 Children =
                 [
-                    Glyph(Icons.BackToWindow, Loc.Get(Strings.Player.VideoMiniPlayer), props.ToMiniPlayer),
-                    Glyph(Icons.FullScreen, Loc.Get(Strings.Player.VideoFullScreen), props.ToFullscreen),
-                    Glyph(Icons.Cancel, Loc.Get(Strings.Player.TurnOffVideo), props.TurnOffDocked),
+                    Glyph(Icons.BackToWindow, Loc.Get(Strings.Player.VideoMiniPlayer), props.ToMiniPlayer, tier),
+                    Glyph(Icons.FullScreen, Loc.Get(Strings.Player.VideoFullScreen), props.ToFullscreen, tier),
+                    Glyph(Icons.Cancel, Loc.Get(Strings.Player.TurnOffVideo), props.TurnOffDocked, tier),
                 ],
             },
         ],
     };
 
-    /// <summary>A hover-revealed chrome glyph on the on-media ladder (24 x 24, 11-DIP icon). Its tooltip is its name, and names the DESTINATION.</summary>
-    static Element Glyph(string glyph, string tip, Action onClick) => ToolTip.Wrap(new BoxEl
+    /// <summary>A hover-revealed chrome glyph on the on-media ladder (24 x 24, 40 x 40 on a Compact window; 11-DIP icon). Its tooltip is its
+    /// name, and names the DESTINATION.</summary>
+    static Element Glyph(string glyph, string tip, Action onClick, ClassicPanelContentLayout tier) => ToolTip.Wrap(new BoxEl
     {
-        Width = ClassicVideoRules.GlyphBox, Height = ClassicVideoRules.GlyphBox, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        Width = tier.MediaGlyphBox, Height = tier.MediaGlyphBox, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
         Corners = CornerRadius4.All(Radii.Control),
         Fill = ColorF.Transparent,
         HoverFill = Tok.OnMediaPrimary with { A = ClassicVideoRules.GlyphHoverAlpha },
@@ -104,8 +108,8 @@ internal static class ClassicVideoPip
     // ── the mini player's chrome ─────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The hover strip: a drag surface and the close button, inset by the corner width and the edge band so neither sits under a
-    /// resize zone.</summary>
-    static Element Chrome(VideoPipProps props)
+    /// resize zone. On a Compact window (C-Video-Compact) it shows at rest, 40 x 40 targets, with full screen at its leading end.</summary>
+    static Element Chrome(VideoPipProps props, ClassicPanelContentLayout tier)
     {
         var gestures = props.Gestures;
         var dragSurface = new BoxEl
@@ -118,16 +122,18 @@ internal static class ClassicVideoPip
             OnClick = gestures.Commit,          // an OnDrag node's click IS its release edge
             OnDragCanceled = gestures.Commit,
         };
-        var close = Glyph(Icons.Cancel, Loc.Get(Strings.Player.TurnOffVideo), props.ClosePip);
+        var close = Glyph(Icons.Cancel, Loc.Get(Strings.Player.TurnOffVideo), props.ClosePip, tier);
         var strip = new BoxEl
         {
-            Height = ClassicVideoRules.StripH, Shrink = 0f, Direction = 0,
+            Height = MathF.Max(tier.MediaStripH, tier.MediaGlyphBox + Video.Pip.EdgeBand), Shrink = 0f, Direction = 0,
             Padding = new Edges4(Video.Pip.CornerW, Video.Pip.EdgeBand, Video.Pip.CornerW, 0f),
             Gradient = Tok.ScrimTop,
             Corners = new CornerRadius4(Radii.Card, Radii.Card, 0f, 0f),
-            Opacity = 0f, HoverOpacity = 1f,
+            Opacity = tier.MediaChromeAtRest ? 1f : 0f, HoverOpacity = 1f,
             HoverDurationMs = Design.Motion.Fast, HoverEasing = Easing.FluentDecelerate,
-            Children = [dragSurface, close],
+            Children = tier.MediaChromeAtRest
+                ? [Glyph(Icons.FullScreen, Loc.Get(Strings.Player.VideoFullScreen), props.ToFullscreen, tier), dragSurface, close]
+                : [dragSurface, close],
         };
         return new BoxEl { Grow = 1f, Direction = 1, HitTestPassThrough = true, Children = [strip] };
     }

@@ -451,7 +451,8 @@ public static partial class Diagnostics
         /// the [wake] census, render pace) sees the ordinary frame loop driving a live karaoke wipe. The document comes
         /// from Lyrics.Fixtures; nothing here owns frames after the setup.
         /// <para>`--stage-demo`: the same track on the fullscreen STAGE instead of the rail, in the profile's stage mode (its
-        /// lyric caption shows in a compact window, e.g. `--height 440`); `--stage-viz` puts the stage in Visualizer mode,
+        /// lyric caption shows in a compact window, e.g. `--height 440`; `--stage-windowed` keeps the window at its `--width` / `--height`
+        /// instead of going fullscreen, for the tier screenshots); `--stage-viz` puts the stage in Visualizer mode,
         /// the caption over the face. Either way the census sees the stage's karaoke wipe.</para></summary>
         static bool TryLyricsDemo(AppHost host, IPlatformWindow window, IGpuDevice device)
         {
@@ -463,6 +464,7 @@ public static partial class Diagnostics
             if (s_options.StageDemo)
             {
                 if (s_options.StageViz) Prefs.Stage.SetMode((int)Stage.Mode.Visualizer);
+                if (s_options.StageWindowed) ImmersiveService.Shared.KeepWindowed = true;
                 Stage.Open(null, "probe");
             }
             else
@@ -845,7 +847,7 @@ public static partial class Diagnostics
         bool MenuBench = false, int MenuRounds = 5, bool LyricsDemo = false,
         bool MemSoak = false, int MemSoakRounds = 6, int MemSoakIdleSec = 40, bool MemSoakMinimize = false, int MemSoakLohMb = 0,
         bool PlayDemo = false, string PlayDemoShot = "",
-        string PlayDemoTitle = "", bool StageDemo = false, bool StageViz = false)
+        string PlayDemoTitle = "", bool StageDemo = false, bool StageViz = false, bool StageWindowed = false)
     {
         /// <summary>The only values <see cref="CrashProbe"/> ever holds once <see cref="Parse"/> has run.</summary>
         static readonly string[] KnownCrashModes = ["throw", "throw-ui", "failfast", "native", "hang", "boot"];
@@ -876,7 +878,8 @@ public static partial class Diagnostics
                 Array.IndexOf(args, "--mem-soak") >= 0, Int(args, "--mem-soak-rounds", 6, 1, 200), Int(args, "--mem-soak-idle-sec", 40, 5, 600),
                 Array.IndexOf(args, "--mem-soak-minimize") >= 0, Int(args, "--mem-soak-loh-mb", 0, 0, 2048),
                 Array.IndexOf(args, "--play-demo") >= 0, shot, title,
-                Array.IndexOf(args, "--stage-demo") >= 0 || Array.IndexOf(args, "--stage-viz") >= 0, Array.IndexOf(args, "--stage-viz") >= 0);
+                Array.IndexOf(args, "--stage-demo") >= 0 || Array.IndexOf(args, "--stage-viz") >= 0, Array.IndexOf(args, "--stage-viz") >= 0,
+                Array.IndexOf(args, "--stage-windowed") >= 0);
         }
 
         static int Int(string[] args, string flag, int fallback, int lo, int hi)

@@ -25,7 +25,7 @@
 - **Contract version 1.11** (`Contracts\ContractVersion.cs`, which keeps the history): the published view keys and style keys, their props records
   and the role vocabulary. A theme records the version it was built against in its manifest; `ThemeHost.Install` refuses a
   composition whose major differs or whose minor is newer than the core's. 1.1 (CT4) appended `LyricsState.Offline`, the
-  optional `LyricsLinesStyle.Offline` picture and `PlayerBarSlots.VideoSplit`; 1.6 (CT6b) added `CoverVeilProps.Hold`; 1.7 (CT9) `ThemePolicies.Artwork` and `WashRoles.Rich`; 1.8 (CT8) `Overlay.OfflineVacancy`; 1.9 (CT6a) `DetailFrameProps.Head`, `LikedChipBarProps.Inline` and `TrackRowSkin.Quiet`; 1.10 (X2 follow-up) `LibraryAlbumPaneProps.Columns`; 1.11 (P3t TC9) `ThemePolicies.Overlays` and `Overlay.ContextSheet`; 1.12 (TC1) `ChromeRowState.TabCount` / `.TabMaxWidth`, the optional `ChromePolicy.Compact` / `.Huge` budgets with `ChromeBudget.TabsAsCount`, and `ctx.TierReader()`.
+  optional `LyricsLinesStyle.Offline` picture and `PlayerBarSlots.VideoSplit`; 1.6 (CT6b) added `CoverVeilProps.Hold`; 1.7 (CT9) `ThemePolicies.Artwork` and `WashRoles.Rich`; 1.8 (CT8) `Overlay.OfflineVacancy`; 1.9 (CT6a) `DetailFrameProps.Head`, `LikedChipBarProps.Inline` and `TrackRowSkin.Quiet`; 1.10 (X2 follow-up) `LibraryAlbumPaneProps.Columns`; 1.11 (P3t TC9) `ThemePolicies.Overlays` and `Overlay.ContextSheet`; 1.12 (TC1) `ChromeRowState.TabCount` / `.TabMaxWidth`, the optional `ChromePolicy.Compact` / `.Huge` budgets with `ChromeBudget.TabsAsCount`, and `ctx.TierReader()`; 1.13 (TC3) `StagePolicy.Aspect` as three `TierLadder`s and the per-tier `StageTierMetrics`.
 - Keys live only in `Contracts\ViewKeys*.cs` and `StyleKeys.cs` (WVTH006). T1 declares none; each extraction PR adds its
   family in its own partial file (`ViewKeys.Shell.cs`: T4a's `Shell.Frame` and `Shell.ContentState`). How a surface becomes a
   registered view is section 2b.
@@ -167,7 +167,7 @@ A structure decides the numbers the core state machines run on; the machines the
 | `PanelPolicy` | the panel's min and max width, the content it must leave to stay inline, full height (on `PanelView.FullHeight` since T6b), the mini player's `Video.PipBounds` | `Shell.ClampRailWidth`, `Shell.CanFitRail`, `PanelHost.FitWidthTo`, `Video.PipGesture` |
 | `PlayerBarPolicy` | six pressure levels (start width, `PlayerBarSlots`, spacing, art, hit targets, and what the podcast bar carries at the level: `PodcastSlots`, `PodcastLeftW`), the narrowing hold and the bar height | `Shell.PlayerBar`, `Shell.PlayerBarLayout.ForTier`, `Shell.PodcastBarLayout` (so `PlayerBarRules.Overflow` and `RightWidth` follow); `R.Space.DockReserve` answers the bar's height |
 | `ChromePolicy` | the title-bar row's `ChromeBudget`: where the actions, name and forward button may appear, what each affordance costs, the search and tab widths | `Shell.Chrome` (the allocator) |
-| `StagePolicy` | the stage's `AspectThresholds` (Compact, Portrait, Ultrawide edges and holds) | `Stage.Layout.ClassOf` / `Resolve` |
+| `StagePolicy` | the stage's `AspectThresholds` (three `TierLadder`s: width, height, ratio, each edge with its hold) and the per-window-tier `StageTierMetrics` (`Metrics`, `Compact`, `Small`, `Huge`: the transport card's height and gutter, the lyrics type range; contract 1.13) | `Stage.Layout.ClassOf` / `Resolve` (the stage surface passes `MetricsFor(tiers)`) |
 
 `ShellCapabilities` says what the shell offers (Classic: `Unrestricted`) and `StyleMetrics` is the style's row heights and
 gutters (Classic publishes its own from `Design`). `ThemePolicies.Tiers` carries the tier policy (`TierPolicy`, `WidthTier`; section 7).
@@ -734,7 +734,8 @@ built once per stage context, and the template reads the layout, the look and th
 glyph and disc sizes, the volume slider's alphas, the pane region's move spring and its panes' entrance: `PaneMoveResponse` / `PaneMoveDamping`, `PaneEnterDy`,
 `PaneFadeMs`); `StageGeometry.Options.cs`, `.Gallery.cs` and `.Caption.cs` hold their views'. The allocator's
 authored extents (`Stage.Layout.TopBarH`, `TransportDesktopH`, `Pad`, the gallery column, the caption block) stay in `Stage.Layout`: the core budgets
-the face-safe rect, the caption and the pane from them, so the views read them by name. The aspect thresholds are `StagePolicy`'s.
+the face-safe rect, the caption and the pane from them, so the views read them by name. The aspect thresholds are `StagePolicy`'s (see the
+stage family's tiers below).
 
 **Polarity.** The stage faces' own dark flag (`StageInk.IsDark`; T7a2 re-points the faces) is read by the core palette derivation only
 (`Stage.StageCtx`'s seed palette and `SurfaceCore.PublishAccent`: polarity as an argument, not a colour); the moved views take rungs from the stage-arm
@@ -1358,6 +1359,32 @@ the opener's. `Dialog.Feedback` and `Dialog.Crash` are T11c's, the setup and rel
 `PlayLinkRulesTests`, `ActionMenuRulesTests` and `TrackDrawerRulesTests`. The mounted facts are `Wavee.ShellTests\OverlaysMountedTests.cs`: the chip is one button and
 reports its node, one menu row per decided row, a card per notification under its key and the expanded wrapper, the banner's buttons only while shown, the offline
 strip's retry, the two cards' buttons, the picker's keyed rows and the credits and signature sheets.
+
+### The stage, lyrics, video and queue at every tier (P3t, TC3)
+
+The fullscreen stage fills the window, so it reads the WINDOW tier; its own layout classes stay the allocator's, but their edges are three engine
+`TierLadder`s the structure declares (`StagePolicy.Aspect`, contract 1.13; Classic's in `Rules\Tiers.Stage.cs`, `ClassicStageTiers`): **width** (Compact
+under 600, no hold), **height** (a landscape stage at or below 460 tall is Compact, held to 484) and **ratio** (Portrait at or below 0.80, held to 0.85;
+Ultrawide from 2.00, held while above 1.95). The lower bands are inclusive, so `AspectThresholds.AtOrBelow` / `.From` set each edge one float above the
+board value and the holds land exactly on the leave values. `Stage.Layout.ClassOf` composes them: a tall window is Portrait at every width (the
+400 x 860 boards draw a column with its pane), a narrow one Compact, a short landscape one Compact, the ratio splits the rest; each ladder resolves
+against the band the previous class sat in.
+
+Beside the ladders the policy carries **per-window-tier metrics** (`StageTierMetrics`, `StagePolicy.MetricsFor(tiers)`), which the core surface hands
+`Stage.Layout.Resolve`: the wide classes' transport card (Compact 104, Small 96, Standard and Huge 112), its gutter (16 on a Compact or Small
+window, 24 above) and the lyrics pane's type range (Compact 26, Small 30-36, Standard 36-64, Huge 36-48: C-Lyrics-Compact, -Small, -Huge,
+C-Stage-Huge4K). The allocator decides two fits from them: `TransportStacked` (the card cannot seat its three clusters: it stacks to heart · previous
+· play · next · "…", C-Stage-Compact) and, on the Compact class, `TransportUnder` (the strip beside the art cannot hold even that row: the card
+parks under the art at full width). `CaptionFits(mode)` drops the Lyrics-mode caption on a row-identity stage too short to clear the title
+(330 tall keeps the art, the title and the controls). Portrait's pane starts under its identity row (the art or a two-line title column).
+
+The views read `ClassicStageTiers.StageOf(ctx.Tier())` (`ClassicStageLayout`: the top bar's 40 targets at Compact, the play disc's ceiling, Small's
+48 disc and 88 volume slider) and the panel views read `ClassicStageTiers.PanelOf(...)` (`ClassicPanelContentLayout`): the queue, lyrics and
+video views are fluid at every panel width the frame gives them (200-500), and on a Compact window every target is at least 40 x 40 (the queue's
+hearts, remove buttons, toggles, "Clear", whose header grows with the lane's slot maths, and "Playing from"; the lyrics' Resync pill; the video
+chrome's 40 buttons on a 40 strip, shown at rest, with full screen on the mini player, C-Video-Compact). Tests: `Wavee.Tests\Theming\StageTiersTests`
+(the ladders, their holds, the boards' sizes in the boards' classes, the metrics, the 330-tall geometry, the records) and
+`Wavee.ShellTests\TierLayoutTests.Stage.cs` (the real stage at every plan 3.5 size and edge, 3840 x 2160 included; the queue panel; the mini player).
 
 ### Overlays, dialogs, toasts and states at every tier (P3t, TC9)
 

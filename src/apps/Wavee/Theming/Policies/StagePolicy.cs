@@ -1,50 +1,120 @@
-// ── Theming/Policies/StagePolicy.cs — what a structure decides about the fullscreen stage (themes plan 5.5) ───────────
+// ── Theming/Policies/StagePolicy.cs — what a structure decides about the fullscreen stage (themes plan 5.5, 3.2) ──────
 //
-// The stage's allocator (`Stage.Layout.Resolve`) classifies its (W, H) into one of four layout classes with a hysteresis
-// on every edge; the classification is core, the edges are the structure's. There is no default FACE here: the face is
-// Bloom in every theme until the user picks one (owner NQ3).
+// The stage's allocator (`Stage.Layout.Resolve`) classifies its (W, H) into one of four layout classes; the classification is
+// core, the edges are the structure's: three engine `TierLadder`s (TC3, plan 3.1's "stage aspect classes", moved out of the
+// allocator's constants into the structure's `Rules\Tiers.Stage.cs`), each edge with its own hold, resolved against the band the
+// previous class sat in, so a drag across an edge flips once per crossing. Beside them, the per-WINDOW-tier numbers the allocator
+// budgets from (the transport card's height and gutter, the lyrics pane's type range): the stage fills the window, so its tier is
+// the window's. There is no default FACE here: the face is Bloom in every theme until the user picks one (owner NQ3).
+
+using FluentGpu.Foundation;
+using Wavee.Theming.Contracts;
 
 namespace Wavee.Theming;
 
-/// <summary>The edges between the stage's layout classes. Demotion is immediate, promotion needs the hold: a class entered at
-/// one value is left only past the other, so a drag across an edge flips once per crossing.</summary>
-/// <param name="CompactBelowW">Under this width the stage is Compact whatever the height.</param>
-/// <param name="PortraitEnter">Width/height ratio at or below which the stage is Portrait.</param>
-/// <param name="PortraitLeave">Ratio a Portrait stage must exceed to leave Portrait (greater than <see cref="PortraitEnter"/>).</param>
-/// <param name="UltrawideEnter">Ratio at or above which the stage is Ultrawide.</param>
-/// <param name="UltrawideLeave">Ratio an Ultrawide stage must fall to (or below) to leave Ultrawide (less than <see cref="UltrawideEnter"/>).</param>
-/// <param name="CompactEnterH">Height at or below which a landscape stage is Compact.</param>
-/// <param name="CompactLeaveH">Height a Compact landscape stage must reach to leave Compact (greater than <see cref="CompactEnterH"/>).</param>
-public sealed record AspectThresholds(
-    float CompactBelowW, float PortraitEnter, float PortraitLeave, float UltrawideEnter, float UltrawideLeave,
-    float CompactEnterH, float CompactLeaveH)
+/// <summary>The edges between the stage's layout classes, as three ladders. The class is decided in this order: a stage whose
+/// width / height ratio is in the <see cref="Ratio"/> ladder's Portrait band is Portrait at every width; otherwise a stage under the
+/// <see cref="Width"/> ladder's edge is Compact when it is landscape (ratio at least 1) and Portrait when it is not; otherwise a landscape stage (ratio at least 1) in the <see cref="Height"/> ladder's
+/// short band is Compact; otherwise the Ratio ladder's top band is Ultrawide and its middle one Desktop. Each ladder is resolved
+/// against the band the PREVIOUS class sat in, so its edge holds.</summary>
+/// <param name="Width">One edge: band 0 (under it) is the narrow Compact stage, band 1 is wide.</param>
+/// <param name="Height">One edge: band 0 is the short landscape stage (Compact), band 1 is tall enough for the wide classes.</param>
+/// <param name="Ratio">Two edges on width / height: band 0 Portrait, band 1 Desktop, band 2 Ultrawide.</param>
+public sealed record AspectThresholds(TierLadder Width, TierLadder Height, TierLadder Ratio)
 {
-    /// <summary>The shell before themes: Compact under 600 wide or from 460 tall (leaves at 484), Portrait up to 0.80
-    /// (leaves above 0.85), Ultrawide from 2.00 (leaves at 1.95).</summary>
+    /// <summary>The bands of the three ladders.</summary>
+    public const int NarrowBand = 0, ShortBand = 0, PortraitBand = 0, DesktopBand = 1, UltrawideBand = 2;
+
+    /// <summary>The shell before themes, what Wavee Classic declares (<c>ClassicStageTiers.Aspect</c>; `ClassicPoliciesTests` pins the
+    /// two equal): Compact under 600 wide, a landscape stage Compact at or below 460 tall (back at 484), Portrait at or below the ratio
+    /// 0.80 (back at 0.85), Ultrawide from 2.00 (back at 1.95 or below).</summary>
     public static AspectThresholds Default { get; } = new(
-        Stage.Layout.WideEnterW, Stage.Layout.PortraitEnter, Stage.Layout.PortraitLeave,
-        Stage.Layout.UltrawideEnter, Stage.Layout.UltrawideLeave, Stage.Layout.CompactEnterH, Stage.Layout.CompactLeaveH);
+        TierLadder.Of(new TierEdge(600f)),
+        TierLadder.Of(AtOrBelow(460f, leaveAt: 484f)),
+        TierLadder.Of(AtOrBelow(0.80f, leaveAt: 0.85f), From(2.00f, leaveAtOrBelow: 1.95f)));
+
+    /// <summary>An edge whose LOWER band includes <paramref name="atOrBelow"/> and is left once the value reaches
+    /// <paramref name="leaveAt"/>. A ladder edge is "at or above <c>At</c>" for the band above it, so the edge sits one float above the
+    /// inclusive value; the widening hold is exact (Sterbenz: the two values are within a factor of two of each other).</summary>
+    public static TierEdge AtOrBelow(float atOrBelow, float leaveAt)
+    {
+        float at = MathF.BitIncrement(atOrBelow);
+        return new TierEdge(at, NarrowHold: 0f, WidenHold: MathF.Max(0f, leaveAt - at));
+    }
+
+    /// <summary>An edge entered at <paramref name="from"/> and left once the value falls to <paramref name="leaveAtOrBelow"/> or
+    /// below: the band above holds while the value stays above <paramref name="leaveAtOrBelow"/>.</summary>
+    public static TierEdge From(float from, float leaveAtOrBelow)
+        => new(from, NarrowHold: MathF.Max(0f, from - MathF.BitIncrement(leaveAtOrBelow)), WidenHold: 0f);
 
     /// <summary>Everything wrong with the thresholds, empty when they can classify a stage.</summary>
     public IReadOnlyList<string> Validate()
     {
         var problems = new List<string>();
-        void Finite(string name, float v)
+        if (Width is null || Height is null || Ratio is null)
         {
-            if (!float.IsFinite(v) || v < 0f) problems.Add($"Stage.Aspect.{name} must be zero or more and finite (was {v})");
+            problems.Add("Stage.Aspect needs its width, height and ratio ladders");
+            return problems;
         }
-        Finite(nameof(CompactBelowW), CompactBelowW);
-        Finite(nameof(PortraitEnter), PortraitEnter);
-        Finite(nameof(PortraitLeave), PortraitLeave);
-        Finite(nameof(UltrawideEnter), UltrawideEnter);
-        Finite(nameof(UltrawideLeave), UltrawideLeave);
-        Finite(nameof(CompactEnterH), CompactEnterH);
-        Finite(nameof(CompactLeaveH), CompactLeaveH);
+        if (Width.EdgeCount != 1 || !Width.EdgeAt(0).IsPresent) problems.Add("Stage.Aspect.Width must have exactly one edge");
+        if (Height.EdgeCount != 1 || !Height.EdgeAt(0).IsPresent) problems.Add("Stage.Aspect.Height must have exactly one edge");
+        if (Ratio.EdgeCount != 2 || !Ratio.EdgeAt(0).IsPresent || !Ratio.EdgeAt(1).IsPresent) problems.Add("Stage.Aspect.Ratio must have exactly two edges (Portrait | Desktop | Ultrawide)");
         if (problems.Count > 0) return problems;
-        if (PortraitLeave < PortraitEnter) problems.Add("Stage.Aspect.PortraitLeave must not be below PortraitEnter");
-        if (UltrawideLeave > UltrawideEnter) problems.Add("Stage.Aspect.UltrawideLeave must not exceed UltrawideEnter");
-        if (CompactLeaveH < CompactEnterH) problems.Add("Stage.Aspect.CompactLeaveH must not be below CompactEnterH");
-        if (PortraitLeave >= UltrawideLeave) problems.Add("Stage.Aspect: the Portrait and Ultrawide ratio bands must not overlap");
+        if (Width.EdgeAt(0).At < 0f || Height.EdgeAt(0).At < 0f || Ratio.EdgeAt(0).At < 0f) problems.Add("Stage.Aspect: no edge may lie below zero");
+        // Portrait is left (widening) before Ultrawide is left (narrowing): the two held bands never overlap.
+        TierEdge portrait = Ratio.EdgeAt(0), ultra = Ratio.EdgeAt(1);
+        if (portrait.At + portrait.WidenHold >= ultra.At - ultra.NarrowHold) problems.Add("Stage.Aspect: the Portrait and Ultrawide ratio bands must not overlap");
+        return problems;
+    }
+
+    /// <summary>Equal when the three ladders have the same edges (a ladder is a class: compared edge by edge, not by reference), so an
+    /// unchanged policy republished is not a change.</summary>
+    public bool Equals(AspectThresholds? other)
+        => other is not null && Same(Width, other.Width) && Same(Height, other.Height) && Same(Ratio, other.Ratio);
+
+    /// <summary>The hash of the three ladders' edges.</summary>
+    public override int GetHashCode() => HashCode.Combine(Hash(Width), Hash(Height), Hash(Ratio));
+
+    static bool Same(TierLadder? a, TierLadder? b)
+    {
+        if (ReferenceEquals(a, b)) return true;
+        if (a is null || b is null || a.EdgeCount != b.EdgeCount || a.Aspect != b.Aspect) return false;
+        for (int i = 0; i < a.EdgeCount; i++)
+        {
+            TierEdge x = a.EdgeAt(i), y = b.EdgeAt(i);
+            if (x.IsPresent != y.IsPresent || (x.IsPresent && x != y)) return false;
+        }
+        return true;
+    }
+
+    static int Hash(TierLadder? ladder)
+    {
+        if (ladder is null) return 0;
+        var h = new HashCode();
+        for (int i = 0; i < ladder.EdgeCount; i++) h.Add(ladder.EdgeAt(i).IsPresent ? ladder.EdgeAt(i).At : -1f);
+        return h.ToHashCode();
+    }
+}
+
+/// <summary>What the stage's allocator budgets from in one WINDOW tier (the stage fills the window).</summary>
+/// <param name="TransportH">The transport card's height on the wide classes (Desktop, Ultrawide, Portrait); the Compact class keeps its
+/// own short card.</param>
+/// <param name="TransportInset">The transport card's gutter to the window's edges.</param>
+/// <param name="LyricsTypeMin">The lyrics pane's smallest type size.</param>
+/// <param name="LyricsTypeMax">The lyrics pane's largest type size.</param>
+public sealed record StageTierMetrics(float TransportH, float TransportInset, float LyricsTypeMin, float LyricsTypeMax)
+{
+    /// <summary>The tuned Standard stage: the 112 card at the 24 gutter, the authored 36 grown up to 64 on a big stage.</summary>
+    public static StageTierMetrics Default { get; } = new(112f, 24f, 36f, 64f);
+
+    /// <summary>Everything wrong with the metrics of <paramref name="tier"/>.</summary>
+    public IReadOnlyList<string> Validate(string tier)
+    {
+        var problems = new List<string>();
+        if (!float.IsFinite(TransportH) || TransportH < 80f) problems.Add($"Stage.{tier}.TransportH must hold the seek row and the play disc (at least 80, was {TransportH})");
+        if (!float.IsFinite(TransportInset) || TransportInset < 0f) problems.Add($"Stage.{tier}.TransportInset must be zero or more (was {TransportInset})");
+        if (!float.IsFinite(LyricsTypeMin) || LyricsTypeMin <= 0f) problems.Add($"Stage.{tier}.LyricsTypeMin must be positive (was {LyricsTypeMin})");
+        if (!float.IsFinite(LyricsTypeMax) || LyricsTypeMax < LyricsTypeMin) problems.Add($"Stage.{tier}.LyricsTypeMax must not be below LyricsTypeMin");
         return problems;
     }
 }
@@ -53,9 +123,49 @@ public sealed record AspectThresholds(
 /// <param name="Aspect">The layout-class edges.</param>
 public sealed record StagePolicy(AspectThresholds Aspect)
 {
-    /// <summary>The shell before themes.</summary>
-    public static StagePolicy Default { get; } = new(AspectThresholds.Default);
+    /// <summary>The shell before themes (what Wavee Classic declares, <c>ClassicStageTiers.Policy</c>): the boards' metrics per window
+    /// tier (C-Stage-Compact / C-Lyrics-Compact, C-Stage-Small / C-Lyrics-Small, C-Lyrics-Huge / C-Stage-Huge4K). Under
+    /// <see cref="TierPolicy.Standard"/> only <see cref="Metrics"/> is ever read.</summary>
+    public static StagePolicy Default { get; } = new(AspectThresholds.Default)
+    {
+        Compact = new StageTierMetrics(TransportH: 104f, TransportInset: 16f, LyricsTypeMin: 26f, LyricsTypeMax: 26f),
+        Small = new StageTierMetrics(TransportH: 96f, TransportInset: 16f, LyricsTypeMin: 30f, LyricsTypeMax: 36f),
+        Huge = StageTierMetrics.Default with { LyricsTypeMax = 48f },
+    };
+
+    /// <summary>The metrics of every window tier that has none of its own (Standard).</summary>
+    public StageTierMetrics Metrics { get; init; } = StageTierMetrics.Default;
+
+    /// <summary>The metrics while the window is Compact; null keeps <see cref="Metrics"/>.</summary>
+    public StageTierMetrics? Compact { get; init; }
+
+    /// <summary>The metrics while the window is Small; null keeps <see cref="Metrics"/>.</summary>
+    public StageTierMetrics? Small { get; init; }
+
+    /// <summary>The metrics while the window is Huge or Huge 4K; null keeps <see cref="Metrics"/>.</summary>
+    public StageTierMetrics? Huge { get; init; }
+
+    /// <summary>The metrics in window tier <paramref name="window"/>.</summary>
+    public StageTierMetrics MetricsFor(WidthTier window) => window switch
+    {
+        WidthTier.Compact => Compact ?? Metrics,
+        WidthTier.Small => Small ?? Metrics,
+        WidthTier.Huge or WidthTier.Huge4K => Huge ?? Metrics,
+        _ => Metrics,
+    };
+
+    /// <summary>The metrics for the window tier of <paramref name="tiers"/>; <see cref="Metrics"/> where no frame resolved the tiers.</summary>
+    public StageTierMetrics MetricsFor(in TierFacts tiers) => tiers.Policy is null ? Metrics : MetricsFor(tiers.Window);
 
     /// <summary>Everything wrong with the policy.</summary>
-    public IReadOnlyList<string> Validate() => Aspect is null ? new[] { "Stage.Aspect is missing" } : Aspect.Validate();
+    public IReadOnlyList<string> Validate()
+    {
+        if (Aspect is null) return new[] { "Stage.Aspect is missing" };
+        var problems = new List<string>(Aspect.Validate());
+        if (Metrics is null) problems.Add("Stage.Metrics is missing"); else problems.AddRange(Metrics.Validate("Metrics"));
+        if (Compact is { } compact) problems.AddRange(compact.Validate("Compact"));
+        if (Small is { } small) problems.AddRange(small.Validate("Small"));
+        if (Huge is { } huge) problems.AddRange(huge.Validate("Huge"));
+        return problems;
+    }
 }

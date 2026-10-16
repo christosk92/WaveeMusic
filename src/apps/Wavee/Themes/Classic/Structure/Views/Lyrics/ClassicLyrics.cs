@@ -19,6 +19,8 @@
 //     ~263 DIP; the rail can be 200), and flex items do not shrink by default - a narrow rail, or a drag back to narrow, would keep
 //     the wider width and clip the reading column.
 //   - The stage's reading column is capped (1000 times the type scale), left-anchored, its gutter spelled as TRAILING padding.
+//   - TIERS (TC3): the lines are fluid at every panel width (200-500); on the stage their type is the window tier's (`Stage.Layout.LyricsTypeSize`:
+//     26 Compact, 30 Small, 36 Standard, up to 48 Huge). On a Compact window the Resync pill is a 40-tall target (`ClassicStageTiers.PanelOf`).
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;
@@ -28,6 +30,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
 
@@ -42,7 +45,7 @@ internal static class ClassicLyrics
         var host = props.Host;
         Element content = props.Message is { } text
             ? ctx.StyleOf(StyleKeys.LyricsLines).Message(host, text)
-            : Layers(props, host);
+            : Layers(props, host, ClassicStageTiers.PanelOf(ctx.Tier()).MinTarget);
         return host.OnStage ? StageColumn(host, content) : content;
     }
 
@@ -65,14 +68,14 @@ internal static class ClassicLyrics
         ],
     };
 
-    static Element Layers(LyricsViewProps props, ILyricsHost host)
+    static Element Layers(LyricsViewProps props, ILyricsHost host, float targetMinH)
     {
         // The frame stepper stays UNMOUNTED while the host's gate is up, so a surface that cannot step costs no frames.
         var kids = new List<Element>(6);
         if (props.Body is { } body) kids.Add(body);
         if (props.Ticker is { } ticker) kids.Add(ticker);
         kids.Add(InterludeDots(host));
-        kids.Add(ResyncOverlay(host));
+        kids.Add(ResyncOverlay(host, targetMinH));
         kids.Add(VideoNote(host));
         if (props.Debug is { } debug) kids.Add(debug);
 
@@ -129,7 +132,7 @@ internal static class ClassicLyrics
     }
 
     /// <summary>The "Resync" pill with its 4 s countdown ring, up while the user owns the scroll.</summary>
-    static Element ResyncOverlay(ILyricsHost host)
+    static Element ResyncOverlay(ILyricsHost host, float targetMinH)
     {
         var ink = host.Ink;
         return new BoxEl
@@ -143,7 +146,7 @@ internal static class ClassicLyrics
                     host.ResyncShown,
                     new BoxEl
                     {
-                        Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicLyricsRules.ResyncGap,
+                        Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicLyricsRules.ResyncGap, MinHeight = targetMinH,
                         Padding = new Edges4(ClassicLyricsRules.ResyncPadLeft, ClassicLyricsRules.ResyncPadTop, ClassicLyricsRules.ResyncPadRight, ClassicLyricsRules.ResyncPadBottom),
                         Corners = CornerRadius4.All(ClassicLyricsRules.ResyncRadius),
                         Fill = ink.Plate, BorderWidth = 1f, BorderColor = ink.PlateStroke,

@@ -16,6 +16,10 @@
 //
 // The panel is a component (as `RailPanel` was): the swipe group, the scroll handle, the chip accent and its hold are the picture's state.
 // The stage's column is `ClassicQueueStagePane` (its own file).
+//
+// TIERS (TC3). The rows are fluid, so the panel lays out at whatever width the frame gives it (200-500). On a Compact window the panel is a
+// sheet (C-Queue-Compact) and every target is at least 40 x 40: the hearts, the remove buttons, the mode toggles, "Clear" (its header grows
+// to hold it, and the lane's slot maths with it) and "Playing from" (`ClassicStageTiers.PanelOf`).
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;
@@ -26,6 +30,7 @@ using FluentGpu.Localization;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Wavee.Theming.Roles;
 
@@ -77,6 +82,7 @@ internal sealed class ClassicQueuePanel : Component
     Action? _toggleShuffle, _cycleRepeat, _toggleAutoplay, _clear, _togglePlay;
     Func<QueueSlot, float>? _extentOf;
     float _rowExtent;
+    ClassicPanelContentLayout _tier = ClassicStageTiers.Panel(WidthTier.Standard);   // this render's: the window tier's targets
 
     public ClassicQueuePanel()
     {
@@ -105,7 +111,7 @@ internal sealed class ClassicQueuePanel : Component
 
     float ExtentOf(QueueSlot slot) => slot.Kind switch
     {
-        QueueSlotKind.Header => slot.Section == QueueSection.Autoplay ? ClassicQueueRules.HeaderSubExtent : ClassicQueueRules.HeaderExtent,
+        QueueSlotKind.Header => slot.Section == QueueSection.Autoplay ? ClassicQueueRules.HeaderSubExtentFor(_tier.Target) : ClassicQueueRules.HeaderExtentFor(_tier.Target),
         QueueSlotKind.More => ClassicQueueRules.MoreExtent,
         _ => _rowExtent,                 // the live skin's: SetMetrics, each render
     };
@@ -113,6 +119,8 @@ internal sealed class ClassicQueuePanel : Component
     public override Element Render()
     {
         var props = UseProps<QueuePanelProps>();
+        var facts = UseContext(ThemeFactsContext.Signal);
+        _tier = ClassicStageTiers.PanelOf(facts is null ? TierFacts.Unknown : facts.Value.Tiers);
         var queue = props.Queue;
         var lane = props.Lane;
         _toggleShuffle ??= props.Player.ToggleShuffle;
@@ -130,7 +138,7 @@ internal sealed class ClassicQueuePanel : Component
         ResolveChipAccent(queue.NowPlaying, cover, fromCover);
 
         var content = new List<Element>(4);
-        if (queue.PlayingFrom is { } playingFrom) content.Add(PlayingFrom(playingFrom.Name, props.OpenPlayingFrom));
+        if (queue.PlayingFrom is { } playingFrom) content.Add(PlayingFrom(playingFrom.Name, props.OpenPlayingFrom, _tier));
         if (!queue.NowPlaying.IsNone) content.Add(NowPlayingCard(props, hairline));
         if (lane.SlotCount > 0) content.Add(lane.List(Upcoming(props, art, hairline), "lane:upcoming"));
         if (queue.NothingPlaying)
@@ -219,7 +227,7 @@ internal sealed class ClassicQueuePanel : Component
         Action skip = () => verbs.Play(itemId, index, r);
         var data = SurfaceData(r, text, art, click: skip, play: skip, draggable: row.Draggable, queueItem: itemId,
                                menu: () => verbs.RowMenu(itemId, index, r, viewer),
-                               trailing: RowTrailing(text, row.Removable, () => verbs.Remove(itemId, index, r)));
+                               trailing: RowTrailing(text, row.Removable, () => verbs.Remove(itemId, index, r), _tier));
         var shape = Shape.Row(TrackRowRules.ArtEdge(ClassicQueueRules.QueueArt, art)) with { MinHeight = _rowExtent };
         return new BoxEl
         {
@@ -247,9 +255,9 @@ internal sealed class ClassicQueuePanel : Component
             Padding = new Edges4(Spacing.S, 0f, Spacing.XS, 0f),
             Children =
             [
-                HeartLane(text, ClassicQueueRules.HairlineExtent),
+                HeartLane(text, _tier, ClassicQueueRules.HairlineExtent),
                 Identity(text, nowPlaying: false),
-                row.Removable ? CloseGlyph(() => verbs.Remove(itemId, index, r), hairline: true) : new BoxEl { Width = Controls.IconButtonSize, Shrink = 0f },
+                row.Removable ? CloseGlyph(() => verbs.Remove(itemId, index, r), hairline: true, _tier) : new BoxEl { Width = _tier.CloseBox, Shrink = 0f },
             ],
         };
         var el = new BoxEl
@@ -287,7 +295,7 @@ internal sealed class ClassicQueuePanel : Component
         Action? open = ClassicQueueRules.NowPlayingClickOf(props.OpenNowPlaying is not null) == ClassicQueueRules.NowPlayingClick.OpenContext
             ? props.OpenNowPlaying : null;
         var data = SurfaceData(current, text, art: true, click: open, play: toggle, draggable: true, queueItem: null, menu: null,
-                               trailing: HeartLane(text));
+                               trailing: HeartLane(text, _tier));
         var shape = Shape.RowTile with { ArtEdge = ClassicQueueRules.NowArt };
         return new BoxEl
         {
@@ -327,8 +335,8 @@ internal sealed class ClassicQueuePanel : Component
                 identity,
                 new BoxEl
                 {
-                    Width = ClassicQueueRules.NowHeartLaneW, Height = ClassicQueueRules.HairlineExtent, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Children = [Heart(text)],
+                    Width = _tier.AtLeast(ClassicQueueRules.NowHeartLaneW), Height = ClassicQueueRules.HairlineExtent, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                    Children = [Heart(text, _tier)],
                 },
             ],
         };
@@ -384,13 +392,13 @@ internal sealed class ClassicQueuePanel : Component
 
     /// <summary>The surface's trailing cluster: the heart, then the ✕ — or its width, so the hearts of removable and
     /// viewed rows line up.</summary>
-    static Element RowTrailing(QueueRowText text, bool removable, Action remove) => new BoxEl
+    static Element RowTrailing(QueueRowText text, bool removable, Action remove, ClassicPanelContentLayout tier) => new BoxEl
     {
         Direction = 0, Gap = Spacing.XXS, AlignItems = FlexAlign.Center, Shrink = 0f,
         Children =
         [
-            HeartLane(text),
-            removable ? CloseGlyph(remove, hairline: false) : new BoxEl { Width = Controls.IconButtonSize, Shrink = 0f },
+            HeartLane(text, tier),
+            removable ? CloseGlyph(remove, hairline: false, tier) : new BoxEl { Width = tier.CloseBox, Shrink = 0f },
         ],
     };
 
@@ -406,17 +414,18 @@ internal sealed class ClassicQueuePanel : Component
         if (section == QueueSection.Queue && !props.Queue.Viewer)
             top.Add(new BoxEl
             {
+                MinHeight = _tier.MinTarget, MinWidth = _tier.MinTarget, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
                 Padding = new Edges4(Spacing.S, Spacing.XXS, Spacing.S, Spacing.XXS), Corners = Radii.ControlAll,
                 HoverFill = R.Layer.RowHover, PressedFill = R.Layer.RowPressed,
                 Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, OnClick = _clear,
                 Children = [new TextEl(Loc.Get(Strings.Player.Clear)) { Size = ClassicQueueRules.SmallSize, LineHeight = ClassicQueueRules.SmallLine, Weight = 600, Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary }],
             });
         bool hint = section == QueueSection.Autoplay;
-        Element eyebrowRow = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinHeight = ClassicQueueRules.HeaderRowH, Children = top.ToArray() };
+        Element eyebrowRow = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinHeight = _tier.AtLeast(ClassicQueueRules.HeaderRowH), Children = top.ToArray() };
         return new BoxEl
         {
             Key = "hdr:" + QueueSections.Tag(section),
-            Direction = 1, Gap = Spacing.XXS, Height = hint ? ClassicQueueRules.HeaderSubExtent : ClassicQueueRules.HeaderExtent,
+            Direction = 1, Gap = Spacing.XXS, Height = hint ? ClassicQueueRules.HeaderSubExtentFor(_tier.Target) : ClassicQueueRules.HeaderExtentFor(_tier.Target),
             Padding = new Edges4(Spacing.S, Spacing.M, Spacing.S, Spacing.XS),
             Layout = LayoutTransition.Slide,
             BlocksDragArm = true,                                              // a slot, never a handle
@@ -447,13 +456,13 @@ internal sealed class ClassicQueuePanel : Component
         };
     }
 
-    static Element PlayingFrom(string source, Action? open)
+    static Element PlayingFrom(string source, Action? open, ClassicPanelContentLayout tier)
     {
         bool nav = open is not null;
         return new BoxEl
         {
             Key = "qp:ctx",
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinHeight = ClassicQueueRules.PlayingFromMinH,
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinHeight = tier.AtLeast(ClassicQueueRules.PlayingFromMinH),
             Padding = new Edges4(Spacing.S, Spacing.XXS, Spacing.S, Spacing.S), Corners = Radii.ControlAll,
             HoverFill = nav ? R.Layer.RowHover : ColorF.Transparent, Cursor = nav ? CursorId.Hand : CursorId.Arrow,
             OnClick = open,
@@ -477,29 +486,32 @@ internal sealed class ClassicQueuePanel : Component
         // The common (non-text-glyph) case reuses the shared cached RootNoShrink instance (no per-render
         // allocation); the text-glyph arm (autoplay's "∞") needs its own PartGlyph modifier too, so it builds a
         // local TemplateParts carrying both.
+        // A Compact window's toggles are 40 tall (the Compact target rule): their root takes the tier's least height.
+        float target = _tier.Target;
         TemplateParts parts = Controls.RootNoShrink;
-        if (glyphIsText)
+        if (glyphIsText || target > 0f)
         {
-            parts = new TemplateParts { [ToggleButton.PartRoot] = b => b with { Shrink = 0f } };
-            parts.Set<TextEl>(ToggleButton.PartGlyph, t => t with { FontFamily = null, Weight = 600 });
+            parts = new TemplateParts { [ToggleButton.PartRoot] = b => target > 0f ? b with { Shrink = 0f, MinHeight = target, Height = float.NaN } : b with { Shrink = 0f } };
+            if (glyphIsText) parts.Set<TextEl>(ToggleButton.PartGlyph, t => t with { FontFamily = null, Weight = 600 });
         }
         return ToggleButton.Controlled(label, on, _ => click(), glyph: glyph,
             style: Controls.AccentToggleStyle(_chipAccent.Value), parts: parts);
     }
 
-    /// <summary>The heart's 26-wide lane — the hairline row's leading cell (<paramref name="height"/> its row) and the
-    /// surface's trailing one (NaN: as tall as its cluster).</summary>
-    static Element HeartLane(in QueueRowText text, float height = float.NaN) => new BoxEl
+    /// <summary>The heart's 26-wide lane (40 on a Compact window) — the hairline row's leading cell (<paramref name="height"/> its row) and
+    /// the surface's trailing one (NaN: as tall as its cluster).</summary>
+    static Element HeartLane(in QueueRowText text, ClassicPanelContentLayout tier, float height = float.NaN) => new BoxEl
     {
-        Width = ClassicQueueRules.HeartLaneW, Height = height, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        BlocksDragArm = true, Children = [Heart(text)],
+        Width = tier.AtLeast(ClassicQueueRules.HeartLaneW), Height = height, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        BlocksDragArm = true, Children = [Heart(text, tier)],
     };
 
-    static Element Heart(in QueueRowText text)
+    static Element Heart(in QueueRowText text, ClassicPanelContentLayout tier)
     {
         if (text.Uri.Length == 0) return new BoxEl();
         string uri = text.Uri, title = text.Title;
-        return Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Glyph = 14f, Box = 26f }) with { Key = "save:" + uri };
+        float box = tier.HeartBox;
+        return Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Glyph = 14f, Box = box }) with { Key = "save:" + uri };
     }
 
     /// <summary>The hairline skin: no artwork, title and artists folded into ONE 14/20 run, the explicit mark pinned after the
@@ -534,9 +546,9 @@ internal sealed class ClassicQueuePanel : Component
     };
 
     /// <summary>The rail's ✕ is painted AT REST (no hover-opacity — that is the stage's row, ch 21 §11 #1).</summary>
-    static Element CloseGlyph(Action remove, bool hairline) => new BoxEl
+    static Element CloseGlyph(Action remove, bool hairline, ClassicPanelContentLayout tier) => new BoxEl
     {
-        Width = Controls.IconButtonSize, Height = Controls.IconButtonSize, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        Width = tier.CloseBox, Height = tier.CloseBox, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
         Corners = hairline ? CornerRadius4.All(0f) : Radii.ControlAll, HoverFill = R.Layer.RowPressed,
         Role = AutomationRole.Button, Cursor = CursorId.Hand, BlocksDragArm = true, OnClick = remove,
         Children = [new TextEl(Icons.ChromeClose) { Size = ClassicQueueRules.GlyphSize, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.TextTertiary, HoverColor = Tok.TextPrimary }],

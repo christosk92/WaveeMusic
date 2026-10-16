@@ -108,7 +108,9 @@ public sealed class ClassicPoliciesTests
         Assert.NotEmpty((d with { PlayerBar = d.PlayerBar with { Tiers = d.PlayerBar.Tiers.SetItem(2, d.PlayerBar.Tiers[2] with { VisibleSlots = PlayerBarSlots.LikeSlot }) } }).Validate());   // no device route
         Assert.NotEmpty((d with { Chrome = new ChromePolicy(d.Chrome.Budget with { SearchMaxW = 100f }) }).Validate());                  // max < min
         Assert.NotEmpty((d with { Chrome = new ChromePolicy(d.Chrome.Budget with { WidthQuantumW = 0f }) }).Validate());
-        Assert.NotEmpty((d with { Stage = new StagePolicy(d.Stage.Aspect with { PortraitLeave = 0.5f }) }).Validate());                  // leaves below it enters
+        Assert.NotEmpty((d with { Stage = new StagePolicy(d.Stage.Aspect with { Ratio = FluentGpu.Foundation.TierLadder.Of(new FluentGpu.Foundation.TierEdge(0.8f, WidenHold: 1.5f), new FluentGpu.Foundation.TierEdge(2f, NarrowHold: 0.05f)) }) }).Validate());   // the held bands overlap
+        Assert.NotEmpty((d with { Stage = new StagePolicy(d.Stage.Aspect with { Ratio = FluentGpu.Foundation.TierLadder.Of(new FluentGpu.Foundation.TierEdge(0.8f)) }) }).Validate());   // the ratio needs two edges
+        Assert.NotEmpty((d with { Stage = d.Stage with { Small = d.Stage.Metrics with { LyricsTypeMax = 10f } } }).Validate());          // max below min
     }
 }
 
@@ -572,7 +574,8 @@ public sealed class StageAspectPolicyTests
     static readonly AspectThresholds Classic = ClassicPolicies.Stage.Aspect;
 
     [Theory]
-    [InlineData(599f, 1000f, A.Compact)]
+    [InlineData(599f, 580f, A.Compact)]      // narrow and landscape
+    [InlineData(599f, 1000f, A.Portrait)]    // tall at every width (C-Stage-Compact)
     [InlineData(600f, 1000f, A.Portrait)]    // 0.6
     [InlineData(1000f, 460f, A.Compact)]     // landscape, short
     [InlineData(1000f, 600f, A.Desktop)]
@@ -600,15 +603,15 @@ public sealed class StageAspectPolicyTests
     {
         // 700 x 500: Desktop under the baseline; Compact when the width edge rises to 800.
         Assert.Equal(A.Desktop, L.ClassOf(700f, 500f, null, Classic));
-        var wideEdge = Classic with { CompactBelowW = 800f };
+        var wideEdge = Classic with { Width = FluentGpu.Foundation.TierLadder.Of(new FluentGpu.Foundation.TierEdge(800f)) };
         Assert.Equal(A.Compact, L.ClassOf(700f, 500f, null, wideEdge));
         // 1000 x 700 (ratio 1.43): Desktop; Ultrawide once its edge drops to 1.4.
         Assert.Equal(A.Desktop, L.ClassOf(1000f, 700f, null, Classic));
-        var ultra = Classic with { UltrawideEnter = 1.4f, UltrawideLeave = 1.3f };
+        var ultra = Classic with { Ratio = FluentGpu.Foundation.TierLadder.Of(AspectThresholds.AtOrBelow(0.80f, 0.85f), AspectThresholds.From(1.4f, 1.3f)) };
         Assert.Empty((ThemePolicies.Default with { Stage = new StagePolicy(ultra) }).Validate());
         Assert.Equal(A.Ultrawide, L.ClassOf(1000f, 700f, null, ultra));
         // A taller compact band.
-        var tall = Classic with { CompactEnterH = 600f, CompactLeaveH = 640f };
+        var tall = Classic with { Height = FluentGpu.Foundation.TierLadder.Of(AspectThresholds.AtOrBelow(600f, 640f)) };
         Assert.Equal(A.Compact, L.ClassOf(1000f, 600f, A.Desktop, tall));
         Assert.Equal(A.Compact, L.ClassOf(1000f, 639f, A.Compact, tall));
         Assert.Equal(A.Desktop, L.ClassOf(1000f, 640f, A.Compact, tall));
@@ -617,7 +620,7 @@ public sealed class StageAspectPolicyTests
     [Fact]
     public void The_layout_resolves_through_the_policy_and_a_degenerate_size_keeps_the_class()
     {
-        var wideEdge = Classic with { CompactBelowW = 800f };
+        var wideEdge = Classic with { Width = FluentGpu.Foundation.TierLadder.Of(new FluentGpu.Foundation.TierEdge(800f)) };
         Assert.Equal(A.Compact, L.Resolve(700f, 500f, null, wideEdge).Aspect);
         Assert.Equal(A.Desktop, L.Resolve(700f, 500f, null, Classic).Aspect);
         Assert.Equal(A.Compact, L.Seed(700f, 500f, wideEdge).Aspect);

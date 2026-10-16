@@ -49,6 +49,15 @@ public class LyricsSurfaceMetricsTests
         Assert.Equal(MathF.Round(big.RowPad), big.RowPad);
         Assert.Equal(m.SidePad, big.SidePad);
         Assert.Equal(m.Weight, big.Weight);
+
+        // a small stage (TC3): the Compact window's 26/33 lines on the rail's 22 gutter, the Small window's 30 on a gutter between
+        var compact = m.Scaled(26f / 36f);
+        Assert.Equal(26f, compact.FontSize);
+        Assert.Equal(33f, compact.LineHeight);
+        Assert.Equal(Lyrics.Surface.Timed(large: false).SidePad, compact.SidePad);
+        var small = m.Scaled(30f / 36f);
+        Assert.Equal(30f, small.FontSize);
+        Assert.InRange(small.SidePad, Lyrics.RowMetrics.NarrowGutter + 1f, m.SidePad - 1f);
     }
 
     [Fact]

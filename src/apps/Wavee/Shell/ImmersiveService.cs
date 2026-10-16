@@ -109,6 +109,10 @@ public sealed class ImmersiveService
     /// <summary>The shell's service. UI thread only.</summary>
     public static readonly ImmersiveService Shared = new();
 
+    /// <summary>`--stage-demo --stage-windowed` (a diagnostic probe, never a setting): an immersive mode keeps the window as it is instead
+    /// of going borderless-fullscreen, so a screenshot loop can capture the stage at a given window size (`--width` / `--height`).</summary>
+    public bool KeepWindowed { get; set; }
+
     sealed class Entry
     {
         public bool WindowActive, PriorFullscreen;
@@ -140,7 +144,7 @@ public sealed class ImmersiveService
         var e = Of(kind);
         if (e.WindowActive) return false;
         e.WindowActive = true;
-        e.PriorFullscreen = host.IsWindowFullscreen();
+        e.PriorFullscreen = KeepWindowed || host.IsWindowFullscreen();   // kept windowed: as if it already was, so the exit restores nothing
         if (!e.PriorFullscreen) host.SetWindowFullscreen(true);
         return true;
     }

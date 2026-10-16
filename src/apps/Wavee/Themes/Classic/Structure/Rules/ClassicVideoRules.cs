@@ -26,16 +26,14 @@ public static class ClassicVideoRules
 
     // ── the hover glyph ──────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>A hover-revealed chrome glyph's box and icon (the tooltip names the DESTINATION).</summary>
-    public const float GlyphBox = 24f, GlyphSize = 11f;
+    /// <summary>A hover-revealed chrome glyph's icon (the tooltip names the DESTINATION). Its box and the strip it sits on are the window
+    /// tier's (`ClassicStageTiers.Panel`: 24 on a 30 strip, 40 on a 40 strip at Compact).</summary>
+    public const float GlyphSize = 11f;
 
     /// <summary>The glyph plate's hover and pressed alpha over the on-media ink.</summary>
     public const float GlyphHoverAlpha = 0.14f, GlyphPressedAlpha = 0.22f;
 
     // ── the strips ───────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The docked card's hover strip and the mini player's drag strip: height of the scrim row.</summary>
-    public const float StripH = 30f;
 
     /// <summary>The fullscreen band's height and its inset (the title's left edge adds a small step; the exit plate sits at the right).</summary>
     public const float FullscreenBandH = 56f, BandInset = 12f, FullscreenBandTop = 12f;

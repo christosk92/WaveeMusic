@@ -131,7 +131,8 @@ public sealed class StageFrameMountedTests(ShellHost host)
             {
                 var sheet = Placed(shell, "chrome:gallery");
                 Assert.Equal(700f, sheet.W, 0.5f);
-                Assert.True(sheet.Y + sheet.H <= 1000f - 2f * Stage.Layout.Pad - Stage.Layout.TransportDesktopH + 0.5f, "the sheet is parked above the transport card and its two gutters");
+                float card = Stage.Layout.Seed(700f, 1000f, metrics: ClassicStageTiers.SmallMetrics).TransportH;   // a 700-wide window is Small: its 96 card
+                Assert.True(sheet.Y + sheet.H <= 1000f - 2f * Stage.Layout.Pad - card + 0.5f, "the sheet is parked above the transport card and its two gutters");
             }
             finally { CloseStage(shell); }
         }, widthDip: 700f, heightDip: 1000f);

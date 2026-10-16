@@ -43,7 +43,7 @@ public sealed class ThemePolicyHostTests : IDisposable
             PlayerBar = d.PlayerBar with { Tiers = d.PlayerBar.Tiers.SetItem(2, d.PlayerBar.Tiers[2] with { MinWidth = 800f }) },
             Panel = d.Panel with { MinWidth = 260f, MaxWidth = 400f },
             Chrome = new ChromePolicy(d.Chrome.Budget with { ActionsEnterW = 500f }),
-            Stage = new StagePolicy(d.Stage.Aspect with { CompactBelowW = 800f }),
+            Stage = new StagePolicy(d.Stage.Aspect with { Width = FluentGpu.Foundation.TierLadder.Of(new FluentGpu.Foundation.TierEdge(800f)) }),
         };
     }
 

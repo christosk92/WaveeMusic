@@ -159,8 +159,8 @@ internal static class ClassicStageRoot
                         },
                     ],
                 }),
-                // TRANSPORT card: bottom edge (AlignSelf End — auto height ⇒ the card's own 112/96), full width at Pad, or right of
-                // the art on Compact (Layout.TransportLeft — V-U23); the Margin is the ZStack offset, so the gutters hold.
+                // TRANSPORT card: bottom edge (AlignSelf End — auto height ⇒ the card's own height, the window tier's), full width at the
+                // tier's gutter, or right of the art on Compact (Layout.TransportLeft — V-U23); the Margin is the ZStack offset, so the gutters hold.
                 Flow.Show(v.ChromeVisible, Stage.Layer with
                 {
                     Key = "chrome:transport",
@@ -170,7 +170,7 @@ internal static class ClassicStageRoot
                         new BoxEl
                         {
                             AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Stretch, Direction = 0,
-                            Margin = new Edges4(L.TransportLeft, 0f, Stage.Layout.Pad, Stage.Layout.Pad),
+                            Margin = new Edges4(L.TransportLeft, 0f, L.TransportInset, L.TransportInset),
                             Children = [Slots.View(ViewKeys.StageTransport, v.Transport)],
                         },
                     ],

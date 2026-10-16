@@ -28,6 +28,13 @@ public static class ClassicQueueRules
     /// <summary>…and the Autoplay header's, with its hint line under it (54).</summary>
     public static float HeaderSubExtent => HeaderExtent + Spacing.XXS + 16f;
 
+    /// <summary>A section header's slot when its row is at least <paramref name="target"/> tall (the Compact window's 40, so its "Clear" is a
+    /// 40-tall target: <c>ClassicStageTiers.Panel</c>); <see cref="HeaderExtent"/> at the desktop row.</summary>
+    public static float HeaderExtentFor(float target) => Spacing.M + MathF.Max(HeaderRowH, target) + Spacing.XS;
+
+    /// <summary>The Autoplay header's slot at that row (its hint line under it).</summary>
+    public static float HeaderSubExtentFor(float target) => HeaderExtentFor(target) + Spacing.XXS + 16f;
+
     /// <summary>The "Show more" slot: its row and its margins.</summary>
     public static float MoreExtent => MoreRowH + Spacing.XS + Spacing.XXS;
 
