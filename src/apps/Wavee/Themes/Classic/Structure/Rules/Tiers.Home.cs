@@ -12,6 +12,10 @@
 //   Huge      400 hero BESIDE the recents    2 cols x 4 rows beside the hero    10 columns                        2400, top 24, gap 40
 //   Short     page top 16; under 480 tall the daylist is a 126 strip (60 % of the 210 page), eyebrow and title only; from 480 it keeps its form (Huge: Small's banner)
 //
+// THE FACET ROW'S TRAILING BUTTON and the chapter subtitles: Compact ends the row with the 40 x 40 Friend activity button and drops the chapter headers'
+// subtitles (`C-Home-Compact`); Huge stands the Following toggle at the row's end on EVERY word, "All" included (`C-Home-Huge`, `-Huge4K`); Small and
+// Standard keep the tuned row (Following only on a word with its own sub-chip) and the subtitles.
+//
 // HUGE 4K. Classic draws no 4K band ("Huge 4K uses the same rules at 3840", `C-Breakpoints`) and the grids stop at 2400 (`C-Breakpoints`: "Auto-fill to
 // 2400"), so 3840 reads the Huge record; `C-Home-Huge4K` draws 12-card shelves and a full-bleed page, which the plan text overrules (flagged in the lane report).
 //
@@ -159,6 +163,16 @@ public sealed record ClassicHomeLayout
     /// <summary>The facet words take the compact rung (20/28) at every width, instead of the title rung while the row fits it.</summary>
     public required bool CompactFacets { get; init; }
 
+    /// <summary>The facet row ends with the 40 x 40 Friend activity button (Compact: <c>C-Home-Compact</c>).</summary>
+    public required bool FriendsButton { get; init; }
+
+    /// <summary>The Following toggle stands at the facet row's end on every word, "All" included, driving the first word's sub-chip there (Huge:
+    /// <c>C-Home-Huge</c>); false shows it only on a word that has its own sub-chip (the tuned row).</summary>
+    public required bool FollowingOnEveryWord { get; init; }
+
+    /// <summary>The chapter headers carry their subtitles beside the title (false at Compact: <c>C-Home-Compact</c> draws the titles alone).</summary>
+    public required bool HeaderSubtitles { get; init; }
+
     /// <summary>The failed-facet InfoBar's height (72 at Compact: <c>C-Error-Compact</c>); 0 keeps the stock bar's own.</summary>
     public required float FailureBarH { get; init; }
 
@@ -286,6 +300,7 @@ public static class ClassicHomeTiers
     {
         Tier = WidthTier.Compact, Short = false,
         PageMaxW = float.NaN, PageTop = 12f, HeadGap = 16f, ZoneGap = 24f, CompactFacets = true,
+        FriendsButton = true, FollowingOnEveryWord = false, HeaderSubtitles = false,
         FailureBarH = 72f, FailureRetry = ControlSize.Large,
         Daylist = new ClassicDaylistLayout
         {
@@ -307,6 +322,7 @@ public static class ClassicHomeTiers
     {
         Tier = WidthTier.Small, Short = false,
         PageMaxW = float.NaN, PageTop = 16f, HeadGap = 16f, ZoneGap = 32f, CompactFacets = false,
+        FriendsButton = false, FollowingOnEveryWord = false, HeaderSubtitles = true,
         FailureBarH = 0f, FailureRetry = ControlSize.Medium,
         Daylist = new ClassicDaylistLayout
         {
@@ -331,6 +347,7 @@ public static class ClassicHomeTiers
     {
         Tier = WidthTier.Standard, Short = false,
         PageMaxW = R.Space.PageMaxW, PageTop = Spacing.XXL, HeadGap = Spacing.XL, ZoneGap = R.Space.SectionGapWide, CompactFacets = false,
+        FriendsButton = false, FollowingOnEveryWord = false, HeaderSubtitles = true,
         FailureBarH = 0f, FailureRetry = ControlSize.Medium,
         Daylist = new ClassicDaylistLayout
         {
@@ -356,6 +373,7 @@ public static class ClassicHomeTiers
     {
         Tier = WidthTier.Huge, Short = false,
         PageMaxW = HugePageMaxW, PageTop = Spacing.XXL, HeadGap = 28f, ZoneGap = R.Space.SectionGapWide, CompactFacets = false,
+        FriendsButton = false, FollowingOnEveryWord = true, HeaderSubtitles = true,
         FailureBarH = 0f, FailureRetry = ControlSize.Medium,
         Daylist = new ClassicDaylistLayout
         {
@@ -383,6 +401,9 @@ public static class ClassicHomeTiers
 
     /// <summary>The gap between the hero and the tiles beside it.</summary>
     public const float HeroGap = 24f;
+
+    /// <summary>Where the facet words yield to the Friend activity button (Compact), their clipped box's trailing fade (<c>C-Home-Compact</c>: the tablist's 24 mask).</summary>
+    public const float WordsFadeBand = 24f;
 }
 
 /// <summary>The first-frame width of a discovery page's region: what a width-driven box is built at before it has measured itself (plan 3.3 rule 1).</summary>

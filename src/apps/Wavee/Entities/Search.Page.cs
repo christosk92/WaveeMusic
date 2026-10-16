@@ -105,7 +105,7 @@ public readonly partial struct Search
         readonly Func<float, int> _colsFor;
         readonly Func<bool> _pending, _failed;
         readonly Func<SearchBodyModel> _body;
-        readonly Action _demand, _demandTracked, _retry, _retryAll, _recheckNow, _clampChip, _selectPlaylists;
+        readonly Action _demand, _demandTracked, _retry, _retryAll, _recheckNow, _clampChip, _selectPlaylists, _selectArtists;
 
         public PageHost()
         {
@@ -126,6 +126,7 @@ public readonly partial struct Search
             _recheckNow = Recheck;
             _clampChip = () => { if (_chip.Peek() >= _facetCount) _chip.Value = 0; };
             _selectPlaylists = () => SelectFacet(SearchFacet.Playlists);
+            _selectArtists = () => SelectFacet(SearchFacet.Artists);
         }
 
         public override Element Render()
@@ -196,7 +197,7 @@ public readonly partial struct Search
                 Vacant = vacant, Echo = echo, ChipsSkeletal = chipsSkeletal, Tabs = tabs, Selected = selected, Selectors = _selectors,
                 Facet = _facet, Slide = slide, ScrollKey = scrollKey,
                 Pending = _pending, Failed = _failed, Body = _body,
-                Retry = _retry, RetryAll = _retryAll, SelectPlaylists = _selectPlaylists, ColsFor = _colsFor,
+                Retry = _retry, RetryAll = _retryAll, SelectPlaylists = _selectPlaylists, ColsFor = _colsFor, SelectArtists = _selectArtists,
             };
 
         /// <summary>The facet strip over the All row's chip strip: server rank first, All always first, counts omitted for
@@ -330,6 +331,7 @@ public readonly partial struct Search
                 Kind = SearchBodyKind.All, Facet = SearchFacet.All, Hits = ctx,
                 Hero = top, Best = best, Fallback = fallback,
                 Rail = RailItems(all, hero),
+                ArtistRail = ArtistRailItems(all, hero),
                 GenreState = genreState,
                 Genres = genreState == SearchSection.Ready ? GenreTiles(_all, _origin) : Array.Empty<BrowseTileModel>(),
                 RelatedState = relatedState,
@@ -397,6 +399,23 @@ public readonly partial struct Search
             var items = new List<HitItem>(m);
             for (int i = 0; i < m; i++)
                 items.Add(new HitItem(new EntityRef(EntityKind.Playlist, slots[i]), playlists.Version[slots[i]], SearchHitFlags.None));
+            return items;
+        }
+
+        /// <summary>The artist rail: the ranked hits' artists, then the Artists facet's own list when it has landed (the playlist rail's rule).</summary>
+        List<HitItem> ArtistRailItems(Search all, EntityRef hero)
+        {
+            int n = all.ResultCount;
+            var hits = new EntityRef[n];
+            for (int i = 0; i < n; i++) hits[i] = all.ResultRef(i);
+            var facetRow = Entities.Search(_query.AsSpan(), SearchFacet.Artists);
+            ReadOnlySpan<int> own = facetRow.Knows(SearchFields.Results) ? facetRow.ResultSlots : default;
+            var slots = new int[n + own.Length];
+            int m = ArtistShelfItems(hits, own, hero, slots);
+            var artists = Entities.Current.Artists;
+            var items = new List<HitItem>(m);
+            for (int i = 0; i < m; i++)
+                items.Add(new HitItem(new EntityRef(EntityKind.Artist, slots[i]), artists.Version[slots[i]], SearchHitFlags.None));
             return items;
         }
 

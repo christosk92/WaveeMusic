@@ -74,10 +74,17 @@ public readonly partial struct Track
         Func<IReadOnlyList<Track>> _laneTracks = null!;
         Func<IReadOnlyList<Episode>> _laneEpisodes = null!;
         Func<PlaylistHost> _laneHost = null!;
+        // the unavailable-songs bar (contract 1.22): its verb, whether it is on (the hero arm's clip inset follows it), and its cached tally
+        Action _hideUnavailable = null!;
+        readonly Signal<bool> _unavailableShown = new(false);
+        UnavailableTally _tally;
+        uint _tallyVersion, _tallyPublication;
+        bool _tallySeeded;
 
         void InitChrome()
         {
             _buildToolbar = BuildToolbar;
+            _hideUnavailable = () => { var f = _filters.Peek(); SetFilters(f with { Flags = f.Flags | FilterFlags.PlayableOnly }); };
             _selectionCommands = SelectionCommands;
             _openSearch = () => _searchExpanded.Value = true;
             _toggleFind = () => { if (_searchExpanded.Peek()) CollapseSearch(restoreFocus: false); else _searchExpanded.Value = true; };
@@ -103,8 +110,8 @@ public readonly partial struct Track
 
         // ══ 1. THE CHROME STACK ══════════════════════════════════════════════════════════════════════════════════════
 
-        /// <summary>Toolbar · chips · lens · header (two-column); lens · header (no toolbar); chips · lens · header (the
-        /// hero arm, whose toolbar lives in the hero). The chips sit BETWEEN the bar and the header — they change what
+        /// <summary>Toolbar · [unavailable bar] · chips · lens · header (two-column); lens · header (no toolbar); [unavailable bar] · chips · lens ·
+        /// header (the hero arm, whose toolbar lives in the hero). The chips sit BETWEEN the bar and the header — they change what
         /// the rows contain — and the lens directly above the header, in the header's own register (W18). No fill: the
         /// stuck stratum is an unpainted omission and the rows are clipped at its lower edge.</summary>
         Element Chrome(in Shape shape, Element? chips, Element? lens)
@@ -131,6 +138,11 @@ public readonly partial struct Track
                     Margin = pageBar ? new Edges4(0f, 0f, 0f, Spacing.XS) : default,
                     Children = [Toolbar()],
                 });
+            // The unavailable-songs bar (boards C-Unavailable / C-Unavailable-Compact, contract 1.22) leads what narrows the rows: under the
+            // list bar in the two-column arm, first in the hero arm's pinned chrome (the hero above it). Its slot stays mounted on a track list
+            // and eases its own height, so it never moves the rows by a snap.
+            if (HasUnavailableBar)
+                stack.Add(Embed.Comp(() => new TableUnavailableBar(this)) with { Key = "chrome:unavailable" });
             if (chips is not null && !(toolbar && pageBar) && (vertical || _latest.ShowToolbar))
                 stack.Add(Gutter(chips) with { Key = "chrome:chips" });
             if (lens is not null) stack.Add(Gutter(lens) with { Key = "chrome:lens" });
@@ -581,7 +593,7 @@ public readonly partial struct Track
                 bool active = TableRules.SortDiffersFromDefault(current, h.P.DefaultSort);
                 void Toggle() => ToggleOverlay(overlay, anchor, handle,
                     () => MenuFlyout.Create(h.SortItems(), () => handle.Value?.Close(), size: OverlayFit.MenuSize), MenuPopup);
-                return h.Kit.Labeled(Icons.Sort, h.SortLabelFor(current.Column), active, Toggle, n => anchor.Value = n, h.Kit.Chevron());
+                return h.Kit.SortCommand(h.SortLabelFor(current.Column), active, Toggle, n => anchor.Value = n);
             }
         }
 
@@ -693,6 +705,83 @@ public readonly partial struct Track
             _caps = new FilterCaps(src.HasVideo, src.HasDateAdded, local && streamed, unavailable, User.Me.IsValid, tempo);
             _capsSeeded = true; _capsVersion = version; _capsPublication = publication;
             return _caps;
+        }
+
+        // ══ 6a. THE UNAVAILABLE-SONGS BAR (boards C-Unavailable / C-Unavailable-Compact, contract 1.22) ════════════════════════════════
+
+        /// <summary>Does this table carry the bar's slot? A detail page's track list (the hero arm, or the two-column arm with its list bar) under a
+        /// structure that draws one; never a library pane's embedded table nor an episode list.</summary>
+        bool HasUnavailableBar => _listStyle?.Chrome.UnavailableBar is not null && !_latest.Embedded && Cfg.Content == DetailContent.Tracks
+                                  && (VerticalArm || _latest.ShowToolbar);
+
+        /// <summary>The band the bar takes in the hero arm's pinned chrome while it is on (0 while off): the rows' clip inset adds it. Reading it
+        /// subscribes the caller to the bar's on / off edge and to the structure's tier read, never to the tally.</summary>
+        float UnavailableBarExtent()
+            => HasUnavailableBar && _unavailableShown.Value ? MathF.Max(0f, _listStyle!.Chrome.UnavailableBarExtent?.Invoke(TiersNow()) ?? 0f) : 0f;
+
+        /// <summary>The rows <see cref="FilterFlags.PlayableOnly"/> would hide, by why (<see cref="FilterModel.HiddenByPlayable"/>: the filter's own
+        /// rule), over the whole membership. Cached per (membership version, track publication) like <see cref="CapsNow"/>; reading it subscribes
+        /// the caller to both.</summary>
+        UnavailableTally UnavailableNow()
+        {
+            var src = _latest.Source;
+            src.Subscribe();
+            uint version = src.Version, publication = Entities.Current.Tracks.Changed.Value;
+            if (_tallySeeded && version == _tallyVersion && publication == _tallyPublication) return _tally;
+            long now = Store.ToUnix(Entities.Now);
+            var tally = default(UnavailableTally);
+            for (int i = 0, n = src.Count; i < n; i++)
+            {
+                var t = src.At(i);
+                if (!t.IsValid) continue;
+                bool unplayable = t.Unplayable(), notYetOut = t.NotYetOut(now);
+                if (FilterModel.HiddenByPlayable(notYetOut, unplayable)) tally = tally.With(notYetOut, unplayable);
+            }
+            _tally = tally;
+            _tallySeeded = true; _tallyVersion = version; _tallyPublication = publication;
+            return _tally;
+        }
+
+        /// <summary>The bar's sentence with its reasons: "2 songs here can’t be played: one isn’t available in your country, one isn’t out yet." (board
+        /// C-Unavailable), or one shared reason ("…: they aren’t out yet.").</summary>
+        static string UnavailableExplained(in UnavailableTally tally)
+        {
+            string reasons = tally.NotAvailable > 0 && tally.NotYetOut > 0
+                ? Strings.Detail.Filter.Unavailable.Region(count: tally.NotAvailable) + ", " + Strings.Detail.Filter.Unavailable.Upcoming(count: tally.NotYetOut)
+                : tally.NotAvailable > 0
+                    ? Strings.Detail.Filter.Unavailable.AllRegion(count: tally.NotAvailable)
+                    : Strings.Detail.Filter.Unavailable.AllUpcoming(count: tally.NotYetOut);
+            return Strings.Detail.Filter.Unavailable.Explained(count: tally.Total, reasons: reasons);
+        }
+
+        /// <summary>The bar's slot: the core decides whether it is on (<see cref="FilterModel.OffersHide"/>: rows the filter would hide, the filter
+        /// off) and words it; the structure's template draws it and eases its band. Its own component, so a track publication re-renders the
+        /// bar only (the tally is read here, never in the host), and the host hears the on / off edge alone (<c>_unavailableShown</c>).</summary>
+        sealed class TableUnavailableBar(TableHost host) : Component
+        {
+            public override Element Render()
+            {
+                var h = host;
+                var tally = h.UnavailableNow();
+                var filters = h._filters.Value;
+                var template = h._listStyle?.Chrome.UnavailableBar;
+                bool shown = template is not null && FilterModel.OffersHide(in tally, in filters);
+                UseLayoutEffect(() => h._unavailableShown.Value = shown, DepKey.From(shown));
+                if (template is null) return new BoxEl();
+                bool vertical = h.VerticalArm;
+                float insetX = vertical ? RowMetrics.PadXFor(h.ShapeValue.Set.Tier) : RowMetrics.RowInset;
+                int count = Math.Max(1, tally.Total);
+                return template(new TrackUnavailableBarArgs
+                {
+                    Shown = shown,
+                    Summary = Strings.Detail.Filter.Unavailable.Summary(count: count),
+                    Explained = tally.Total > 0 ? UnavailableExplained(in tally) : Strings.Detail.Filter.Unavailable.Summary(count: count),
+                    ActionLabel = Strings.Detail.Filter.Unavailable.Hide(count: count),
+                    Hide = h._hideUnavailable,
+                    InsetX = insetX,
+                    Tiers = h.TiersNow(),
+                });
+            }
         }
 
         static PopupOptions FilterPopup => new(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)

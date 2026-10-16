@@ -75,8 +75,10 @@ internal static class ClassicRowCells
         // 123-member BoxEl a second time per cell, per render (rule 13's recycle-frame budget).
         // # — number / equalizer / star / spinner at rest, the transport on ROW hover; no hover play for a row that is
         // not out or ruled unavailable (the play would be a button that does nothing, or one that can only fail).
-        cells[i++] = NumberCell(displayIndex, in st, withheld ? null : o.OnPlay, o.HoverPaused, o.ChartStatus, classic,
-                                o.Accent, CellKey.Num);
+        // (No # lane where the set drops it: a Modern list row at Compact, board C-TrackList compact; the accent title tells the playing row.)
+        if (!set.IndexHidden)
+            cells[i++] = NumberCell(displayIndex, in st, withheld ? null : o.OnPlay, o.HoverPaused, o.ChartStatus, classic,
+                                    o.Accent, CellKey.Num);
 
         if (set.Heart)
             cells[i++] = Track.RowCenterCell(HeartReveal(t, Heart(st.Saved, o.OnLike, o.LikePop, classic)), CellKey.Heart);

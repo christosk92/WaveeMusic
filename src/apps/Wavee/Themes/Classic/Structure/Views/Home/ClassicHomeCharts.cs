@@ -12,6 +12,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Localization;
 using FluentGpu.Theming;
 using Wavee.HomeUi;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
@@ -20,10 +21,10 @@ namespace Wavee.Themes.Classic;
 internal static class ClassicHomeCharts
 {
     /// <summary>The registered template of <see cref="ViewKeys.HomeCharts"/>.</summary>
-    public static Element Template(HomeChartsProps props, in ViewContext ctx) => Tree(props.Model);
+    public static Element Template(HomeChartsProps props, in ViewContext ctx) => Tree(props.Model, ClassicHomeTiers.Of(ctx.Tier()).HeaderSubtitles);
 
-    /// <summary>The block's one static tree.</summary>
-    internal static Element Tree(ChartTilesModel m)
+    /// <summary>The block's one static tree. <paramref name="subtitle"/> false drops the header's subtitle (Compact, <c>C-Home-Compact</c>).</summary>
+    internal static Element Tree(ChartTilesModel m, bool subtitle)
     {
         Element[] tiles =
         [
@@ -36,7 +37,7 @@ internal static class ClassicHomeCharts
             Direction = 1, MinWidth = 0f, Gap = Spacing.S, AlignItems = FlexAlign.Stretch,
             Children =
             [
-                Ui.SectionHeader(Loc.Get(Strings.Home.Charts), Loc.Get(Strings.Home.UpdatedDaily)) with { Margin = default },
+                Ui.SectionHeader(Loc.Get(Strings.Home.Charts), subtitle ? Loc.Get(Strings.Home.UpdatedDaily) : null) with { Margin = default },
                 new GridEl
                 {
                     MinColWidth = ClassicHomeRules.TilesMinCol, MaxColumns = ClassicHomeRules.ChartsMaxCols,

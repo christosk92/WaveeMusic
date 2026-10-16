@@ -247,13 +247,14 @@ internal static class ClassicSearchPage
     static Element ShimmerAll(ClassicSearchLayout layout)
     {
         bool beside = !float.IsNaN(layout.HeroBesideW);
+        bool avatar = layout.HeroForm == ClassicSearchHeroForm.Avatar;
         var hero = new BoxEl
         {
             Height = layout.HeroH, MinWidth = 0f, Grow = beside ? 0f : 1f, Width = beside ? layout.HeroBesideW : float.NaN, Shrink = beside ? 0f : 1f,
             AlignSelf = FlexAlign.Stretch, Direction = 0,
             ClipToBounds = true, Corners = Radii.CardAll,
             Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-            Children =
+            Children = avatar ? ShimmerAvatarFace(layout) :
             [
                 new BoxEl
                 {
@@ -270,14 +271,52 @@ internal static class ClassicSearchPage
                 new BoxEl { Width = ClassicSearchRules.HeroCoverW, Height = ClassicSearchRules.HeroCoverH, Shrink = 0f, AlignSelf = FlexAlign.Center, Corners = CornerRadius4.All(Radii.Card), Fill = Tok.FillSubtleTertiary },
             ],
         };
+        // The avatar form's card stands under its own header (C-Search-Huge): the shimmer reserves the header's line and step too.
+        Element heroColumn = avatar
+            ? new BoxEl
+            {
+                Direction = 1, Gap = ClassicSearchTiers.AvatarHeaderGap, MinWidth = 0f, Shrink = beside ? 0f : 1f, Width = beside ? layout.HeroBesideW : float.NaN,
+                AlignSelf = FlexAlign.Stretch,
+                Children =
+                [
+                    new BoxEl { Width = ClassicSearchRules.ShimmerEyebrowW, Height = ClassicSearchTiers.AvatarHeaderH, Corners = CornerRadius4.All(Radii.Control), Fill = Tok.FillSubtleSecondary },
+                    hero,
+                ],
+            }
+            : hero;
         // Where the top result sits beside Best matches (Huge) the shimmer keeps that band: the hero and a column of seed rows.
         Element top = beside
             ? new BoxEl
             {
                 Direction = 0, Gap = ClassicSearchTiers.BesideGap, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
-                Children = [hero, new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [ShimmerRows(layout)] }],
+                Children = [heroColumn, new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [ShimmerRows(layout)] }],
             }
-            : hero;
+            : heroColumn;
         return new BoxEl { Direction = 1, Gap = Spacing.L, AlignSelf = FlexAlign.Stretch, Children = [top, ShimmerCardGrid()] };
+    }
+
+    /// <summary>The avatar form's bones (Huge): the round art at the top left, the title and the kind line under it, the buttons at the bottom right.</summary>
+    static Element[] ShimmerAvatarFace(ClassicSearchLayout layout)
+    {
+        float pad = ClassicSearchTiers.AvatarPad, art = ClassicSearchTiers.AvatarArt;
+        return
+        [
+            new BoxEl
+            {
+                Direction = 1, Grow = 1f, MinWidth = 0f, Gap = ClassicSearchTiers.AvatarLineGap, Justify = FlexJustify.Start, AlignItems = FlexAlign.Start,
+                Padding = new Edges4(pad, pad, pad, pad),
+                Children =
+                [
+                    new BoxEl { Width = art, Height = art, Corners = Radii.FullAll, Fill = Tok.FillSubtleTertiary, Margin = new Edges4(0f, 0f, 0f, ClassicSearchTiers.AvatarTitleGap) },
+                    new BoxEl { Width = ClassicSearchRules.ShimmerTitleW, Height = ClassicSearchRules.ShimmerTitleH, Corners = CornerRadius4.All(Radii.Control), Fill = Tok.FillSubtleSecondary },
+                    new BoxEl { Width = ClassicSearchRules.ShimmerSubtitleW, Height = ClassicSearchRules.ShimmerSubtitleH, Corners = CornerRadius4.All(Radii.Control), Fill = Tok.FillSubtleTertiary },
+                ],
+            },
+            new BoxEl
+            {
+                Direction = 1, Shrink = 0f, Justify = FlexJustify.End, Padding = new Edges4(0f, pad, pad, pad),
+                Children = [new BoxEl { Width = ClassicSearchRules.ShimmerButtonW, Height = ClassicSearchRules.ShimmerButtonH, Corners = Radii.FullAll, Fill = Tok.FillSubtleSecondary }],
+            },
+        ];
     }
 }

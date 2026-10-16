@@ -1,16 +1,21 @@
 // ── Themes/Classic/Structure/Views/Panel/ClassicNowPlayingSheet.cs — the Compact now-playing sheet's column under the art ─────────────
 //
-// C-NowPlaying-Compact: under the art (the hero tile, at the side `ClassicPanelTiers.SheetArtSide` leaves it) the sheet carries what the
-// mini bar it covers would have, and more:
+// C-NowPlaying-Compact: the sheet's own HEADER under the grab strip (`ClassicSheetHeader`, the head the sheet drags by), then under the art (the
+// hero tile, at the side `ClassicPanelTiers.SheetArtSide` leaves it) what the mini bar it covers would have, and more:
 //
+//   header      the close chevron (40) · "Playing from album" over the source's name (12/16, centred, a link to its page) · "⋯" (40, the
+//               now-playing track's menu: the same seam the bar's right-click opens), 48 tall; the developer-only style gear beside the "⋯"
 //   identity    the title (20/28, one line) over the artists (14/20, links), the heart (40) beside them
 //   seek        the bar's own seek rail in its 32-tall lane, the elapsed and remaining times under it
 //   transport   shuffle (40) · previous (48) · the play disc (56) · next (48) · repeat (40), spread across the sheet
-//   doors       Lyrics and Queue (48), each opening that body in the same sheet
+//   doors       Lyrics · Devices · Queue (48, three equal columns): Lyrics and Queue open that body in the same sheet, Devices the bar's own
+//               device picker, named for the device playback is on ("This computer") and inked in the accent while it is another device
 //   the rest    the lyrics peek and the docked body's sections (about the artist, the cities, merch, "Next up")
 //
-// Every block above the rest has a fixed height (`ClassicPanelTiers.SheetBelowArt`), so the art's side arithmetic and the column agree. The
-// transport is its own component: a playback edge re-renders it, not the column. Its facts and verbs are the core's (`PanelProps.Transport`).
+// Every block above the rest has a fixed height (`ClassicPanelTiers.SheetBelowArt`, the head `SheetHeadH`), so the art's side arithmetic and the
+// column agree, and nothing in the header or the doors changes a height when the source or the device changes. The transport, the header and the
+// Devices door are their own components: a playback, context or roster edge re-renders them, not the column. Their facts and verbs are the core's
+// (`PanelProps.Transport`; the source, the device and the picker toggle are contract 1.22).
 
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -45,7 +50,7 @@ internal sealed class ClassicNowPlayingSheet : Component
         }
         else kids.Add(Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact, title: Loc.Get(Strings.Player.NothingPlaying), subtitle: ""));
         if (props.Transport is { } transport) kids.Add(Embed.Comp(transport, static () => new ClassicSheetTransport()));
-        if (props.ShowMode is { } show) kids.Add(ClassicPanel.SheetDoors(show));
+        if (props.ShowMode is { } show) kids.Add(ClassicPanel.SheetDoors(show, props.Transport));
         if (track.IsValid)
         {
             kids.Add(new BoxEl
@@ -167,4 +172,103 @@ internal sealed class ClassicSheetTransport : Component
             },
         ],
     };
+}
+
+/// <summary>The now-playing sheet's own header (C-NowPlaying-Compact): the close chevron, "Playing from album" over the source's name (a link to its
+/// page, which closes the sheet first: the page must not change behind a modal surface), and the "⋯" that opens the now-playing track's menu (as a
+/// context sheet at Compact, the window band the sheet exists in). A fixed 48-tall row: the source's two lines, its one-line fallback and the
+/// developer-only gear change no height. Reads the source in its own render, so a context change re-renders only this.</summary>
+internal sealed class ClassicSheetHeader : Component
+{
+    public override Element Render()
+    {
+        var props = UseProps<PanelProps>();
+        var overlay = UseContext(Overlay.Service);
+        var transport = props.Transport;
+        var source = transport?.Source is { } readSource ? readSource() : new PanelSourceFacts("", "", null);
+        bool hasTrack = props.NowPlaying.NowTrack().IsValid;
+        bool styleVisible = Rail.PlayerPrefs.StyleChoiceVisible();     // the style gear is developer-only (#199)
+        var close = props.Close;
+
+        var kids = new List<Element>(4)
+        {
+            ToolTip.Wrap(ClassicPanel.SheetGlyphButton(Icons.ChevronDown, close, enabled: true) with { Key = ClassicPanelTiers.SheetCloseKey },
+                Loc.Get(Strings.Common.Close)),
+            Source(source, close),
+        };
+        if (styleVisible && hasTrack) kids.Add(ClassicHeroHeaderRow.StyleGear(props.NowPlaying));
+        if (transport is { } t)
+        {
+            // The ONE now-playing menu seam the bar's right-click and the stage open (`IPlayerVerbs.NowPlayingMenu`); the click re-enters the
+            // context funnel, so at Compact it opens as the context sheet (`ContextSheets`).
+            var verbs = t.Verbs;
+            var more = ClassicPanel.SheetGlyphButton(Icons.More, null, enabled: hasTrack) with
+            {
+                Key = ClassicPanelTiers.SheetMoreKey, ClickRequestsContext = hasTrack,
+            };
+            kids.Add(ToolTip.Wrap(hasTrack ? more.WithContextMenu(overlay, () => verbs.NowPlayingMenu()) : more, Loc.Get(Strings.Common.More)));
+        }
+        else kids.Add(new BoxEl { Width = ClassicPanelTiers.SheetHeaderButton, Height = ClassicPanelTiers.SheetHeaderButton, Shrink = 0f });   // keeps the source centred
+
+        return new BoxEl
+        {
+            Key = ClassicPanelTiers.SheetHeaderKey,
+            Direction = 0, Height = ClassicPanelTiers.SheetHeaderH, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = ClassicPanelTiers.SheetHeaderGap,
+            Padding = new Edges4(ClassicPanelTiers.SheetHeaderInset, 0f, ClassicPanelTiers.SheetHeaderInset, 0f),
+            Children = kids.ToArray(),
+        };
+    }
+
+    /// <summary>"Playing from album" over the source's name, centred and ellipsised; "Now playing" alone where playback names no source. A link to the
+    /// source's page where it has one.</summary>
+    static Element Source(PanelSourceFacts source, Action close)
+    {
+        Element[] lines = source.HasSource
+            ? [
+                ClassicPanel.CentredLine(Line(source.PlayingFrom, 400, Tok.TextSecondary)),
+                ClassicPanel.CentredLine(Line(source.Name, 700, Tok.TextPrimary)),
+              ]
+            : [ClassicPanel.CentredLine(Line(Loc.Get(Strings.Player.NowPlaying), 600, Tok.TextSecondary))];
+        var box = new BoxEl
+        {
+            Key = ClassicPanelTiers.SheetSourceKey,
+            // 40 tall at least: the link is a Compact target like the two buttons beside it (its two 16 lines are 32).
+            Grow = 1f, Basis = 0f, MinWidth = 0f, MinHeight = ClassicPanelTiers.SheetHeaderButton, Direction = 1, Justify = FlexJustify.Center,
+            Corners = Radii.ControlAll,
+            Children = lines,
+        };
+        if (source.Open is not { } open) return box;
+        return (box with
+        {
+            Role = AutomationRole.Hyperlink, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
+            OnClick = () => { close(); open(); },
+        }).Interactive(Interaction.Subtle);
+    }
+
+    static TextEl Line(string text, ushort weight, ColorF ink) => new(text)
+    {
+        Size = ClassicPanelTiers.SheetSourceSize, LineHeight = ClassicPanelTiers.SheetSourceLine, Weight = weight, Color = ink,
+        Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+    };
+}
+
+/// <summary>The now-playing sheet's Devices door (C-NowPlaying-Compact): the device playback is on ("This computer"), inked in the accent while it is
+/// another device, opening the player bar's own device picker over the door (the core's overlay; the menu is <c>Player.DevicePicker</c>). Reads the
+/// roster in its own render, so a device change re-renders only the door.</summary>
+internal sealed class ClassicSheetDeviceDoor : Component
+{
+    Action<NodeHandle>? _realized;
+
+    public override Element Render()
+    {
+        var t = UseProps<PanelTransportProps>();
+        var anchor = UseRef<NodeHandle>(default);
+        var handle = UseRef<OverlayHandle?>(null);
+        var overlay = UseContext(Overlay.Service);
+        var device = t.Device is { } read ? read() : new PanelDeviceFacts(Loc.Get(Strings.Player.ThisComputer), false);
+        var toggle = t.ToggleDevicePicker;
+        _realized ??= h => anchor.Value = h;
+        var door = ClassicPanel.DoorBox(Icons.Devices, null, device.Name, () => toggle?.Invoke(overlay, anchor, handle), device.Remote, _realized);
+        return ToolTip.Wrap(door, Loc.Get(Strings.Player.ChooseDevice));
+    }
 }

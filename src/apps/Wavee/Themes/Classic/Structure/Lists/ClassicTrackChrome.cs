@@ -39,7 +39,47 @@ using TableRules = global::Wavee.Track.TableRules;
 internal static class ClassicTrackChrome
 {
     /// <summary>The chrome Classic registers as <c>TrackListStyle.Chrome</c>. Stateless.</summary>
-    public static readonly TrackChromeTemplates Templates = new(Header, CommandKit.For(ClassicDetailTiers.Standard), FilterCard, Placeholder, GroupHeader);
+    public static readonly TrackChromeTemplates Templates = new(Header, CommandKit.For(ClassicDetailTiers.Standard), FilterCard, Placeholder, GroupHeader)
+    {
+        UnavailableBar = UnavailableBar,
+        UnavailableBarExtent = static tiers => ClassicDetailTiers.Of(in tiers).Unavailable.Extent,
+    };
+
+    // ══ THE UNAVAILABLE-SONGS BAR ════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The unavailable-songs bar (boards C-Unavailable, C-Unavailable-Compact; contract 1.22): the card plate with the accent info glyph, the
+    /// sentence (the short one at Compact and Small, the one with its reasons from Standard) and "Hide them", 40 tall at Compact. The slot is mounted
+    /// while the list could show the bar; its height moves between the tier's band (the bar and the air under it) and 0 with the disclosure reveal, its
+    /// content clipped, so the rows below ride it instead of jumping when it comes or goes. Hidden, the button is disabled (no focus, no click).</summary>
+    static Element UnavailableBar(TrackUnavailableBarArgs a)
+    {
+        var g = ClassicDetailTiers.Of(a.Tiers).Unavailable;
+        Element bar = new BoxEl
+        {
+            Key = "unavailable:bar", Direction = 0, AlignItems = FlexAlign.Center, Gap = g.Gap, MinWidth = 0f,
+            Height = g.Height, Shrink = 0f, Padding = g.Padding, Margin = new Edges4(0f, 0f, 0f, g.GapBelow),
+            Corners = Radii.ControlAll, BorderWidth = 1f,
+            Fill = Prop.Of(static () => Tok.FillCardDefault), BorderColor = Prop.Of(static () => Tok.StrokeCardDefault),
+            Children =
+            [
+                Icon(Icons.Info, g.Glyph, Tok.AccentDefault) with { Shrink = 0f },
+                new TextEl(g.Explains ? a.Explained : a.Summary)
+                {
+                    Size = g.TextSize, LineHeight = g.TextLine, Color = Tok.TextPrimary, Grow = 1f, Shrink = 1f, MinWidth = 0f,
+                    MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                },
+                Button.Create(a.ActionLabel, a.Hide, ButtonAppearance.Standard, g.ButtonSize, isEnabled: a.Shown) with { Key = "unavailable:hide", Shrink = 0f },
+            ],
+        };
+        return new BoxEl
+        {
+            Key = "unavailable", Direction = 1, MinWidth = 0f, ClipToBounds = true, Shrink = 0f,
+            Height = a.Shown ? g.Extent : 0f,
+            Padding = new Edges4(a.InsetX, 0f, a.InsetX, 0f),
+            Animate = Design.Reduced ? null : ClassicUnavailableBar.Motion,
+            Children = [bar],
+        };
+    }
 
     // ══ THE PLACEHOLDER ══════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -102,7 +142,7 @@ internal static class ClassicTrackChrome
         void Add(string key, Element cell) => cells.Add(cell with { Key = key });
 
         // Classic's # cell is EMPTY: no clickable #, no caret slots; Sort → Custom order is the route back (W22).
-        Add(CellKey.Num, classic ? new BoxEl() : IndexSortCell(a, sort));
+        if (!set.IndexHidden) Add(CellKey.Num, classic ? new BoxEl() : IndexSortCell(a, sort));
         if (set.Heart) Add(CellKey.Heart, new BoxEl());
         if (set.Thumb) Add(CellKey.Art, new BoxEl());
         // Title owns Artist while the artist is folded into its subline; with a dedicated Artist lane each cell
@@ -565,6 +605,28 @@ internal static class ClassicTrackChrome
 
         public Element Chevron() => Icon(Icons.ChevronDown, ClassicTrackChromeLayout.ChevronGlyph, Tok.TextTertiary);
 
+        /// <summary>The Sort command: the labelled one (glyph, the order's word, the chevron), or where the tier record draws it as a glyph (Small: C-Album-Small,
+        /// C-Playlist-Small, C-Liked-Small) the sort glyph and the chevron alone, 4 apart, the order's word in its tooltip.</summary>
+        public Element SortCommand(string label, bool active, Action onClick, Action<NodeHandle> onRealized)
+        {
+            var tier = _tier;
+            if (!tier.SortGlyph) return Labeled(Icons.Sort, label, active, onClick, onRealized, Chevron());
+            Prop<ColorF> ink = active ? Prop.Of(static () => Tok.AccentTextPrimary) : Prop.Of(static () => Tok.TextSecondary);
+            return ToolTip.Wrap(new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicTrackChromeLayout.SortGlyphGap,
+                Height = ClassicTrackChromeLayout.CommandHeightFor(tier.Target), Padding = ClassicTrackChromeLayout.SortGlyphPad,
+                Corners = Radii.ControlAll,
+                Fill = active ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.11f }) : (Prop<ColorF>)ColorF.Transparent,
+                HoverFill = active ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.17f }) : Prop.Of(static () => Tok.FillSubtleSecondary),
+                PressedFill = active ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.08f }) : Prop.Of(static () => Tok.FillSubtleTertiary),
+                HoverDurationMs = Motion.ControlFaster, PressDurationMs = Motion.ControlFaster,
+                Role = AutomationRole.Button, Focusable = true,
+                OnClick = onClick, OnRealized = onRealized,
+                Children = [Icon(Icons.Sort, ClassicTrackChromeLayout.CommandGlyph) with { Color = ink }, Chevron()],
+            }, Strings.Detail.Sort.Named(label));
+        }
+
         // The row-size control (M3): the style's density option, in "…" only (D3).
         public IReadOnlyList<MenuFlyoutItem> DensityItems() => ClassicTrackDensity.Items();
 
@@ -590,7 +652,8 @@ internal static class ClassicTrackChrome
                 Role = AutomationRole.Button, Focusable = true,
                 OnClick = onClick, OnRealized = onRealized,
             };
-            if (labelled)
+            // The tier record may draw it as the funnel alone whatever the bar's fit (Compact: C-Album-Compact, C-Playlist-Compact, C-Liked-Compact).
+            if (labelled && !_tier.FilterGlyph)
                 return box with
                 {
                     Gap = ClassicTrackChromeLayout.CommandGap, Padding = new Edges4(9f, 0f, 6f, 0f),

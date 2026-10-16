@@ -9,6 +9,8 @@
 //   · two panels dock only at Huge (D3), side by side, each at the tier's floor (380 at 2560, 420 at 3840); elsewhere the queue beside
 //     the panel is not shown;
 //   · the panels lie inside the window and the content region never runs under a docked one.
+//   · the now-playing SHEET (Compact, C-NowPlaying-Compact) carries its own 48-tall header (close · "Playing from" · ⋯, inset 8, every
+//     target at least 40 x 40) and the Devices door between Lyrics and Queue, one of three equal 48-tall doors.
 
 using FluentGpu.Foundation;
 using FluentGpu.Scene;
@@ -128,6 +130,47 @@ public sealed partial class TierLayoutTests
         }
     });
 
+    [Theory, MemberData(nameof(FrameSizes))]
+    public void The_now_playing_sheet_carries_its_header_and_the_devices_door(string size) => AssertPage(Home, size, (shell, tiers) =>
+    {
+        var s = Sizes[size];
+        if (ClassicPanelTiers.Of(tiers).Rule.Placement != PanelPlacement.Sheet) return;   // the sheet is Compact's
+        try
+        {
+            Play("spotify:track:tr40", fromMs: 20_000);
+            Shell.PanelHost.Shared.SetMode(Shell.RailMode.NowPlaying);
+            shell.RunFrames(60);
+            var scene = shell.Host.Scene;
+
+            // The header: 48 tall, across the sheet less its 8 insets, the chevron first and the "⋯" last, the source between them.
+            var header = scene.AbsoluteRect(Node(shell, ClassicPanelTiers.SheetHeaderKey));
+            var close = scene.AbsoluteRect(Node(shell, ClassicPanelTiers.SheetCloseKey));
+            var source = scene.AbsoluteRect(Node(shell, ClassicPanelTiers.SheetSourceKey));
+            var more = scene.AbsoluteRect(Node(shell, ClassicPanelTiers.SheetMoreKey));
+            Assert.Equal(ClassicPanelTiers.SheetHeaderH, header.H, 0.5f);
+            Assert.True(header.X >= -0.5f && header.X + header.W <= s.Width + 0.5f, $"{s.Name}: the header leaves the window ({header})");
+            Assert.Equal(header.X + ClassicPanelTiers.SheetHeaderInset, close.X, 0.5f);
+            Assert.Equal(header.X + header.W - ClassicPanelTiers.SheetHeaderInset, more.X + more.W, 0.5f);
+            Assert.True(close.X + close.W <= source.X + 0.5f && source.X + source.W <= more.X + 0.5f, $"{s.Name}: close {close}, source {source}, more {more}");
+            Assert.True(source.W > 0f, $"{s.Name}: the source column has a width ({source})");
+            AssertTargetsAtLeast40(shell, Node(shell, ClassicPanelTiers.SheetHeaderKey), s.Name);
+
+            // The doors: Lyrics, Devices, Queue, three equal 48-tall columns; Devices is the middle one.
+            var doors = scene.AbsoluteRect(Node(shell, ClassicPanelTiers.SheetDoorsKey));
+            var devices = scene.AbsoluteRect(Node(shell, ClassicPanelTiers.SheetDevicesKey));
+            float share = (doors.W - 2f * ClassicPanelTiers.SheetDoorInset - 2f * ClassicPanelTiers.SheetDoorGap) / 3f;
+            Assert.Equal(share, devices.W, 0.5f);
+            Assert.Equal(ClassicPanelTiers.SheetDoorH, devices.H, 0.5f);
+            Assert.Equal(doors.X + ClassicPanelTiers.SheetDoorInset + share + ClassicPanelTiers.SheetDoorGap, devices.X, 0.5f);
+            AssertTargetsAtLeast40(shell, Node(shell, ClassicPanelTiers.SheetDoorsKey), s.Name);
+        }
+        finally
+        {
+            Shell.PanelHost.Shared.Close();
+            shell.RunFrames(30);
+        }
+    });
+
     /// <summary>Every focusable, visible node under <paramref name="root"/> is at least 40 x 40 (the Compact target floor).</summary>
     static void AssertTargetsAtLeast40(Shell.HeadlessShell shell, NodeHandle root, string sizeName)
     {
@@ -141,8 +184,8 @@ public sealed partial class TierLayoutTests
             var r = scene.AbsoluteRect(n);
             if (r.W <= 0f || r.H <= 0f) continue;
             targets++;
-            Assert.True(r.W >= 40f - 0.5f && r.H >= 40f - 0.5f, $"{sizeName}: a mini-bar target is {r.W} x {r.H}, under 40 x 40");
+            Assert.True(r.W >= 40f - 0.5f && r.H >= 40f - 0.5f, $"{sizeName}: a Compact target is {r.W} x {r.H}, under 40 x 40");
         }
-        Assert.True(targets >= 2, $"{sizeName}: the mini bar offers its targets (found {targets})");
+        Assert.True(targets >= 2, $"{sizeName}: the region offers its targets (found {targets})");
     }
 }

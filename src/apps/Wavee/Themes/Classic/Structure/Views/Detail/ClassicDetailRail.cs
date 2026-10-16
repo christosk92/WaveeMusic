@@ -43,16 +43,13 @@ namespace Wavee.Themes.Classic;
 /// (this class is split over <c>ClassicDetailFrame.cs</c>, <c>ClassicDetailRail.cs</c> and <c>ClassicDetailHero.cs</c>).</summary>
 internal static partial class ClassicDetailFrame
 {
-    // The rail's own pictures' numbers (Rules\DetailLayout.cs).
-    static float RailSidePadL => ClassicTiers.RailPadding.Left;    // 16
-    static float RailSidePadR => ClassicTiers.RailPadding.Right;   // 8
-    const float RailGap = RailLayout.Gap;                             // 14 — the row model's (Detail.cs §8b)
+    // The rail's own pictures' numbers (Rules\DetailLayout.cs); its padding and row gap are the window tier's (`ClassicDetailTier.Rail`, Tiers.Detail.cs).
     const float RailFabSize = RailLayout.FabSize;                     // 32 (Workstream B: was 40)
     const int RailCoverDecodePx = ClassicDetailLayout.CoverDecodePx;  // the shelf card's bucket — a warm texture on arrival
     const string MetaShimmerText = ClassicDetailLayout.MetaShimmerText;   // the shimmer SHAPE only; never painted as text
 
-    /// <summary><c>DetailRail.CoverEdge</c>: the rail cover fills the column less its side padding, floored at 80.</summary>
-    static float RailCoverEdge(float railW) => MathF.Max(ClassicDetailLayout.RailCoverMin, railW - RailSidePadL - RailSidePadR);
+    /// <summary><c>DetailRail.CoverEdge</c>: the rail cover fills the column less the tier's side padding, floored at 80.</summary>
+    static float RailCoverEdge(float railW, ClassicDetailRail rail) => MathF.Max(ClassicDetailLayout.RailCoverMin, rail.ContentWidth(railW));
 
     // ── the templates ──
 
@@ -68,10 +65,12 @@ internal static partial class ClassicDetailFrame
         var spec = ctx.Hooks.UseContext(Detail.AsideDocked) && p.Spec.Slots.ReleasePanel is not null
             ? p.Spec with { Slots = p.Spec.Slots with { ReleasePanel = null } }
             : p.Spec;
+        // The window tier's padding, row gap and CTA break (C-Album-Small): a crossing re-renders the rail and its rows shove into place.
+        var rail = ClassicDetailTiers.Of(ctx.Tier()).Rail;
         return RailFrame(p.RailWidth, new SkelRegionEl(
             Pending: p.Pending, Failed: s_false,
-            Content: () => RailColumn(spec, p.Actions, p.RailWidth, p.TitleSize, p.DescriptionLines, p.Accent, p.Play, p.Shown),
-            ShimmerSource: () => RailSkeletonColumn(spec, p.Actions, p.RailWidth, p.TitleSize, p.DescriptionLines),
+            Content: () => RailColumn(spec, p.Actions, p.RailWidth, rail, p.TitleSize, p.DescriptionLines, p.Accent, p.Play, p.Shown),
+            ShimmerSource: () => RailSkeletonColumn(spec, p.Actions, p.RailWidth, rail, p.TitleSize, p.DescriptionLines),
             OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false));
     }
 
@@ -128,13 +127,13 @@ internal static partial class ClassicDetailFrame
     /// <see cref="RailLayout.RowsFor"/>'s decisions; <see cref="RailSkeletonColumn"/> reserves the same rows
     /// (<see cref="Skeleton.RailPlanFor"/>) in the same order at the same widths, so the swap is a dissolve and never a
     /// reflow. With none of the podcast slots declared the column is exactly the pre-podcast one.</summary>
-    static Element RailColumn(FrameSpec spec, FrameActions acts, float railW, float titleSize,
+    static Element RailColumn(FrameSpec spec, FrameActions acts, float railW, ClassicDetailRail rail, float titleSize,
                               int descMaxLines, Func<ColorF> accent, Action play, IReadSignal<Detail.ListCount>? shown)
     {
         var id = spec.Identity;
         var cfg = spec.Config;
         var slots = spec.Slots;
-        float cover = RailCoverEdge(railW);
+        float cover = RailCoverEdge(railW, rail);
         ColorF accentColor = accent();
         var kids = new List<Element>(16);
 
@@ -210,7 +209,7 @@ internal static partial class ClassicDetailFrame
         Element primary = slots.Primary is { } primaryOf ? primaryOf(accent) : ClassicDetailKit.PlaySplit(id.Subject, accent, play);
         kids.Add(satellites is not null
             ? SatelliteCta("rail:cta", primary, satellites, RailLayout.CtaTopMargin)
-            : ClassicDetailKit.ActionRow("rail:cta", primary, fabs!, RailLayout.CtaTopMargin));
+            : ClassicDetailKit.ActionRow("rail:cta", primary, fabs!, RailLayout.CtaTopMargin, rail.BreakAfterPrimary ? cover : 0f));
 
         if (rows.Topics && slots.Topics is { } topics) kids.Add(ClassicDetailKit.LateRow("rail:topics", topics(cover)));
 
@@ -234,13 +233,13 @@ internal static partial class ClassicDetailFrame
                     descMaxLines, id.Subject.Text, DetailVerbs.NavigateKey, fullTextTip: true)));
         }
 
-        return RailColumnBox(railW, kids.ToArray());
+        return RailColumnBox(railW, rail, kids.ToArray());
     }
 
-    static Element RailColumnBox(float railW, Element[] rows) => new BoxEl
+    static Element RailColumnBox(float railW, ClassicDetailRail rail, Element[] rows) => new BoxEl
     {
-        Direction = 1, Gap = RailGap, Width = railW, Shrink = 0f,
-        Padding = ClassicTiers.RailPadding,   // 24 / 8 / 24 / 16 (tuned Classic F3)
+        Direction = 1, Gap = rail.Gap, Width = railW, Shrink = 0f,
+        Padding = rail.Padding,   // Standard 24 / 8 / 24 / 16 (tuned Classic F3); Small 16 / 12 / 16 / 12 (C-Album-Small)
         Children = rows,
     };
 
@@ -291,12 +290,12 @@ internal static partial class ClassicDetailFrame
     /// is painted for real and exempted from the deriver, as the hero's skeleton does. The CTA reserves exactly the buttons
     /// <see cref="ClassicDetailKit.FixedActions"/> will lay out (<see cref="ClassicDetailKit.FixedActionCount"/>, tuned Classic X2): a page with no
     /// web link (a local album or playlist) gets no Share square, one without a heart or a menu none for those.</summary>
-    static Element RailSkeletonColumn(FrameSpec spec, FrameActions acts, float railW, float titleSize, int descMaxLines)
+    static Element RailSkeletonColumn(FrameSpec spec, FrameActions acts, float railW, ClassicDetailRail rail, float titleSize, int descMaxLines)
     {
         var id = spec.Identity;
         var cfg = spec.Config;
         var slots = spec.Slots;
-        float cover = RailCoverEdge(railW);
+        float cover = RailCoverEdge(railW, rail);
         // Satellites are COUNTED (the builder only makes elements; they are dropped here) so the CTA wraps as the reveal will.
         int satelliteCount = slots.Satellites is { } satellitesOf ? satellitesOf().Length : 0;
         var plan = Skeleton.RailPlanFor(id.Kind, cfg.Badges, ClassicDetailKit.FixedActionCount(id, cfg.Heart != HeartMode.None, acts), descMaxLines,
@@ -364,7 +363,7 @@ internal static partial class ClassicDetailFrame
             };
         kids.Add(plan.Satellites
             ? SatelliteCta("skel:cta", pill, fabs, RailLayout.CtaTopMargin)
-            : ClassicDetailKit.ActionRow("skel:cta", pill, fabs, RailLayout.CtaTopMargin));
+            : ClassicDetailKit.ActionRow("skel:cta", pill, fabs, RailLayout.CtaTopMargin, rail.BreakAfterPrimary ? cover : 0f));
         if (plan.Topics)
         {
             var topicLines = new Element[RailLayout.TopicLines];
@@ -376,7 +375,7 @@ internal static partial class ClassicDetailFrame
         if (plan.DescriptionLines > 0)
             kids.Add(Lines(cover, VerticalLayout.DescriptionLineHeight, plan.DescriptionLines, Skeleton.DescriptionLastLineFraction));
 
-        return RailColumnBox(railW, kids.ToArray());
+        return RailColumnBox(railW, rail, kids.ToArray());
     }
 
     /// <summary>The skeleton's cover slot — the rail's, the collapsed strip's and the vertical hero's alike (the page

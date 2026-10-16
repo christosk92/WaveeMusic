@@ -179,7 +179,7 @@ internal static partial class ClassicDetailFrame
             {
                 Key = "detail-rail-fade",
                 Direction = 0, AlignItems = FlexAlign.Stretch, AlignSelf = FlexAlign.Stretch,
-                // CLIPS (bug B). `rail:cover` takes an EXPLICIT square of `RailCoverEdge(railW)` and, like every flex item, defaults to
+                // CLIPS (bug B). `rail:cover` takes an EXPLICIT square of `RailCoverEdge(railW, rail)` and, like every flex item, defaults to
                 // `Shrink = 0` — so while a two-column split is still settling, a `railW` that has not caught up mints a cover wider than
                 // the column it sits in, and with nothing bounding it the square paints straight over the table's `#` lane and first
                 // rows. This wrapper is the one box that always knows the column's REAL width, so it is the right place to contain it.

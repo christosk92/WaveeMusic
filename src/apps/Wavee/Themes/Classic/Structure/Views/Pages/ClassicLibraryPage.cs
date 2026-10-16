@@ -112,8 +112,9 @@ internal static partial class ClassicLibraryPage
             OnBounds ??= Measured;
             NavContent ??= _ => NavList(this);
             NavNoMatch ??= (static () => EmptyCompact(Loc.Get(Strings.Library.NoMatch)));
-            // The persisted view cell, never the mount: a pending navigator is never asked for its mount.
-            NavShimmer ??= () => ClassicLibraryPage.NavShimmer(Props.View().Value, Props.Size().Value, Props.Entity);
+            // The persisted view cell, never the mount: a pending navigator is never asked for its mount. The grid's cell floor is the tier record's (the host's
+            // mount floor for the same tier: 96 at Small), read off the cache's current record.
+            NavShimmer ??= () => ClassicLibraryPage.NavShimmer(Props.View().Value, Props.Size().Value, Props.Entity, Layout.CardCellMin);
         }
 
         /// <summary>The page's measured bounds, reported to the host: its layout ladder (`ClassicLibraryTiers.Layout`) over this width decides the one-column drill-in, in the
@@ -148,6 +149,9 @@ internal static partial class ClassicLibraryPage
         // (`RightMin`) would not fit beside it: the tier never rewrites the stored width.
         // A tier's resting width (an undragged navigator: 560 at Huge) eases in instead of snapping; a drag is 1:1 (the template holds transitions off for it).
         Width = p.LeftW(), Shrink = 1f, MinWidth = ClassicLibraryRules.LeftMin, Animate = Design.Reveal.Resize,
+        // C-Library-Huge tints the navigator column over the card (the record's `NavTinted`); the tuned tiers leave it clear. A STATIC fill both ways (never a
+        // bound one: a static <-> bound flip on this keyed node would never re-wire), eased across a crossing.
+        Fill = c.Layout.NavTinted ? ClassicLibraryRules.NavTint : ColorF.Transparent, BrushTransitionMs = Design.Motion.Fast,
         Children = [Toolbar(p, c), p.FullSearch ? LeftSearchBody(p, c) : ListBody(p, c)],
     };
 

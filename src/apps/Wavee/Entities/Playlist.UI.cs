@@ -754,7 +754,14 @@ public readonly partial struct Playlist
         /// suggestions") and its version — which rows, in which order. A row paints its own facts (title, artists, art,
         /// duration) from its own subscription (its `Playlist.RecRow` view slot), so a track edge re-renders one row and never
         /// the section.</summary>
-        readonly record struct RecsStamp(uint Epoch, EdgeState State, bool Failed, uint Edge);
+        readonly record struct RecsStamp(uint Epoch, EdgeState State, bool Failed, uint Edge, bool ListEmpty);
+
+        /// <summary>The empty playlist's lead (C-Empty-Compact): its field looks for songs to add, through Search.</summary>
+        static readonly PlaylistRecsLead s_lead = new(static query =>
+        {
+            string q = query.Trim();
+            if (q.Length > 0) Shell.GoTo(new Shell.Route(Shell.RouteKind.Search, default, Entities.Strings.Intern(q)));
+        });
 
         public RecsSection()
         {
@@ -770,9 +777,11 @@ public readonly partial struct Playlist
             uint epoch = Entities.ScopeEpoch.Value;
             var recs = Entities.Current.Edges.PlaylistRecs;
             _ = recs.Changed.Value;
+            _ = Entities.Current.Edges.PlaylistTracks.Changed.Value;   // the lead follows the list emptying and filling
             var p = new Playlist(_slot);
-            if (!p.IsValid) return new RecsStamp(epoch, EdgeState.Unknown, false, 0);
-            return new RecsStamp(epoch, recs.State(p.Slot), recs.IsFailed(p.Slot), recs.Version(p.Slot));
+            if (!p.IsValid) return new RecsStamp(epoch, EdgeState.Unknown, false, 0, false);
+            return new RecsStamp(epoch, recs.State(p.Slot), recs.IsFailed(p.Slot), recs.Version(p.Slot),
+                p.RowsState(0) == PlaylistRowsState.Empty);
         }
 
         /// <summary>The "+" of one row: that track is "adding" (its button becomes a spinner) until the write settles.</summary>
@@ -795,7 +804,7 @@ public readonly partial struct Playlist
         {
             var props = UseProps<RecsProps>();
             _slot = props.Slot;
-            _ = UseComputed(_stamp).Value;
+            var stamp = UseComputed(_stamp).Value;
             var scope = Entities.Current;
             int adding = _adding.Value;
             UseEffect(_demand);
@@ -810,7 +819,7 @@ public readonly partial struct Playlist
             // section; a row's props are plain data with this section's two stable handlers, so an untouched row re-renders nothing).
             var rows = new PlaylistRecRowProps[slots.Length];
             for (int i = 0; i < rows.Length; i++) rows[i] = new PlaylistRecRowProps(slots[i], adding == slots[i], _add, _play);
-            return ViewSlots.View(ViewKeys.PlaylistRecs, new PlaylistRecsProps(loading, empty, _refresh, rows));
+            return ViewSlots.View(ViewKeys.PlaylistRecs, new PlaylistRecsProps(loading, empty, _refresh, rows) { Lead = stamp.ListEmpty ? s_lead : null });
         }
 
         void Demand()

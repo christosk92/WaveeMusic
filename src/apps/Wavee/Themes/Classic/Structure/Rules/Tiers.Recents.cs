@@ -8,10 +8,14 @@
 //                                                                                       chevron, no hover "..." (child rows 44)
 //   Small     16 / 8                    24 button     the tuned strip (gap 20)          the tuned row (chip, time, chevron)               44       24
 //   Standard  24 / 16                   24 button     the tuned strip                   the tuned row                                     44       36 (the old PageWide)
-//   Huge      24 / 16                   32 button     the tuned strip                   the tuned row                                     44       16
+//   Huge      24 / 16                   32 toggle     the tuned strip                   the tuned row                                     44       16
 //
-// The page gutter is the page's own (`ClassicTiers.PageOf`: 16 / 32 / 36 / 36). Not built (reported): Huge's Overview as a docked aside beside a 1100 list (the calendar
-// stays the semantic zoom's zoomed-out view at every tier) and the Compact row's day rail (Compact has none).
+// HUGE DOCKS THE OVERVIEW (C-Recents-Huge): the page's column (masthead, pivots, list) caps at an 1100 list (`ListMax`, plus the page gutters) and the Overview stands
+// 48 right of it (`OverviewGap`) as a 660 aside (`OverviewAside`: two plated 322 month cards 16 apart) with its own "Overview" head and the heat key. The masthead's Overview
+// button becomes the aside's toggle (pressed while it shows); a day in it brings the list to that day. The aside is in the page's row at every tier, width 0 below Huge,
+// so a crossing eases it and the column beside it is never re-parented. The semantic zoom's calendar stays the zoomed-out view (a day header still zooms out to it).
+//
+// The page gutter is the page's own (`ClassicTiers.PageOf`: 16 / 32 / 36 / 36). Not built (reported): the Compact row's day rail (Compact has none).
 //
 // Public, so `Wavee.Tests` pins the records (the assembly has no InternalsVisibleTo).
 
@@ -58,6 +62,18 @@ public sealed record ClassicRecentsLayout
 
     /// <summary>The gap between the calendar's month cards (its grid's own rule: it used to borrow <c>Spacing.PageWide</c>, the page gutter's old name).</summary>
     public required float CalendarGap { get; init; }
+
+    /// <summary>The list column's cap (C-Recents-Huge: 1100, the page gutters outside it); NaN: the column fills the page.</summary>
+    public float ListMax { get; init; } = float.NaN;
+
+    /// <summary>The docked Overview aside's width (C-Recents-Huge: 660, two plated month cards); 0: no aside, the Overview is the semantic zoom's alone.</summary>
+    public float OverviewAside { get; init; }
+
+    /// <summary>The air between the list column and the aside (C-Recents-Huge: 48).</summary>
+    public float OverviewGap { get; init; }
+
+    /// <summary>The Overview docks as an aside (<see cref="OverviewAside"/> is not 0): the masthead's button toggles it.</summary>
+    public bool OverviewDocked => OverviewAside > 0f;
 }
 
 /// <summary>Classic's Recents records.</summary>
@@ -84,8 +100,15 @@ public static class ClassicRecentsTiers
     static readonly ClassicRecentsLayout s_huge = new()
     {
         Tier = WidthTier.Huge, HeadTop = 24f, HeadBottom = 16f, OverviewH = 32f, PivotH = 0f, PivotGap = 20f, PivotPadX = 0f,
-        Stacked = false, ChevronLane = 24f, ChildRowH = 40f, Rail = true, CalendarGap = 16f,
+        Stacked = false, ChevronLane = 24f, ChildRowH = 40f, Rail = true, CalendarGap = HugeCalendarGap,
+        ListMax = HugeListMax, OverviewAside = HugeOverviewWidth, OverviewGap = HugeOverviewGap,
     };
+
+    /// <summary>C-Recents-Huge: the month cards 16 apart, the list capped at 1100, the aside 48 right of it.</summary>
+    public const float HugeCalendarGap = 16f, HugeListMax = 1100f, HugeOverviewGap = 48f;
+
+    /// <summary>The Huge aside's width: two plated month cards (<see cref="ClassicRecentsRules.OverviewCardW"/>, 322) and the cards' gap between them = 660.</summary>
+    public static float HugeOverviewWidth => 2f * ClassicRecentsRules.OverviewCardW + HugeCalendarGap;
 
     /// <summary>The record for <paramref name="facts"/>' content tier; Standard's where no frame resolved the tiers (a view mounted alone).</summary>
     public static ClassicRecentsLayout Of(in TierFacts facts) => For(facts.Policy is null ? WidthTier.Standard : facts.Content);

@@ -94,6 +94,8 @@ internal static class ClassicSearchBody
         else kids.Add(Empty(SearchFacet.All, ctx.Query));
 
         if (m.Rail.Count > 0) kids.Add(PlaylistRail(m.Rail, props.SelectPlaylists, ctx, layout));
+        // The artist rail (Huge, C-Search-Huge): keyed apart from the tier, it reveals on a crossing into Huge and collapses on the way out.
+        if (layout.ArtistRail is { } artistBand && m.ArtistRail.Count > 0) kids.Add(ArtistRail(m.ArtistRail, props.SelectArtists, ctx, artistBand));
         // Genres (two parts) and Related searches (one) share a row at Huge.
         Element genres = GenreSection(m, props, layout), related = RelatedSection(m, props);
         if (layout.GenresBeside)
@@ -194,7 +196,8 @@ internal static class ClassicSearchBody
     /// <summary>The 228-DIP top-result card: copy left, a 300×260 cover cropped off the right at −2.5°, a radial wash of
     /// the cover's own chrome grading (none when ungradeable), Play on that accent, Open page for a destination, the
     /// trailing control and the "…" only when a menu resolved. A static function, never a Component — the hit is read
-    /// from the edge on every render (§1.5).</summary>
+    /// from the edge on every render (§1.5). The tier picks the face (<see cref="ClassicSearchHeroForm"/>): the tuned card, or at Huge the avatar form
+    /// under its own "Top result" header (<c>C-Search-Huge</c>); the card itself, its wash, its click, menu and actions are one in both.</summary>
     static Element TopResult(EntityRef hit, SearchHitFlags flags, in Search.HitContext ctx, ClassicSearchLayout layout)
     {
         if (hit.IsNone) return new BoxEl();
@@ -238,6 +241,50 @@ internal static class ClassicSearchBody
         if ((flags & SearchHitFlags.MatchedTitle) != 0) chips.Add(Controls.Chip(Loc.Get(Strings.Search.MatchedTitle)));
         if ((flags & SearchHitFlags.MatchedLyrics) != 0) chips.Add(Controls.Chip(Loc.Get(Strings.Search.LyricsMatch)));
 
+        bool avatar = layout.HeroForm == ClassicSearchHeroForm.Avatar;
+        Element[] face = avatar
+            ? AvatarFace(hit, flags, title, url, chips, actions, layout.HeroH)
+            : [CardFace(hit, flags, title, url, chips, actions, layout.HeroH)];
+        var card = new BoxEl
+        {
+            Height = layout.HeroH, MinWidth = 0f, Grow = 1f, AlignSelf = FlexAlign.Stretch,
+            ClipToBounds = true, Corners = Radii.CardAll,
+            Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
+            Role = AutomationRole.Button, Focusable = true, FocusVisualMargin = Design.FocusInsetBordered,
+            OnClick = open, ZStack = true, Draggable = Search.DragOf(hit), OnFocusChanged = cardFocus,
+            Children =
+            [
+                scheme is { } graded
+                    ? new BoxEl
+                    {
+                        HitTestVisible = false, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Height = layout.HeroH,
+                        Gradient = new GradientSpec(GradientShape.Radial, 0f,
+                        [
+                            new GradientStop(0f, Design.Palette.ChromeAccent(graded) with { A = ClassicSearchRules.HeroWashAlpha }),
+                            new GradientStop(ClassicSearchRules.HeroWashFadeStop, Design.Palette.ChromeAccent(graded) with { A = 0f }),
+                        ])
+                        {
+                            RadialCenter = new Point2(ClassicSearchRules.HeroWashCenterX, ClassicSearchRules.HeroWashCenterY),
+                            RadialRadius = new Point2(ClassicSearchRules.HeroWashRadiusX, ClassicSearchRules.HeroWashRadiusY),
+                        },
+                    }
+                    : new BoxEl { HitTestVisible = false },
+                .. face,
+            ],
+        }.Interactive(Interaction.Card);   // OnClick is set above, so Interactive gives the box the hand (the engine's clickable default)
+        Element result = menu is not null && !Controls.IsNullOverlay(ctx.Overlay) ? ContextSheets.Attach(card, ctx.Overlay, menu) : card;
+        if (!avatar) return result;
+        // The avatar form wears its own "Top result" header over the card (C-Search-Huge), level with Best matches' header beside it.
+        return new BoxEl
+        {
+            Key = "search:top-result", Direction = 1, Gap = ClassicSearchTiers.AvatarHeaderGap, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
+            Children = [TickHeader(Loc.Get(Strings.Search.TopResult)), result],
+        };
+    }
+
+    /// <summary>The tuned card's face (Compact to Standard): the eyebrow and the copy left, the cover cropped off the right at -2.5 degrees.</summary>
+    static Element CardFace(EntityRef hit, SearchHitFlags flags, string title, string? url, List<Element> chips, List<Element> actions, float height)
+    {
         var copy = new BoxEl
         {
             Direction = 1, Grow = 1f, MinWidth = 0f, Gap = Spacing.S, Justify = FlexJustify.End,
@@ -267,34 +314,47 @@ internal static class ClassicSearchBody
             // square decodePx: 512 this replaced forced a 512x512 decode/upload (~3.4x the bytes) for one hero image.
             Children = [Controls.Artwork(url, ClassicSearchRules.HeroCoverW, ClassicSearchRules.HeroCoverH, Search.RoundArt(hit.Kind) ? ClassicSearchRules.HeroCoverRoundCorners : Radii.Card)],
         };
-        var card = new BoxEl
+        return new BoxEl { Direction = 0, MinWidth = 0f, Height = height, AlignSelf = FlexAlign.Stretch, Children = [copy, cover] };
+    }
+
+    /// <summary>The avatar form's face (Huge, <c>C-Search-Huge</c>): two layers over the wash. The copy column, inset 28: the hit's 128 art at the top left (a
+    /// circle for a person, the card radius otherwise), the 40/52 title under it, the kind line and the match chips. Over it a pass-through layer holds the
+    /// actions at the card's bottom right, so the copy and the buttons never push each other out of the 300-tall card.</summary>
+    static Element[] AvatarFace(EntityRef hit, SearchHitFlags flags, string title, string? url, List<Element> chips, List<Element> actions, float height)
+    {
+        float art = ClassicSearchTiers.AvatarArt;
+        float corners = Search.RoundArt(hit.Kind) ? art / 2f : Radii.Card;
+        float pad = ClassicSearchTiers.AvatarPad;
+        var copy = new BoxEl
         {
-            Height = layout.HeroH, MinWidth = 0f, Grow = 1f, AlignSelf = FlexAlign.Stretch,
-            ClipToBounds = true, Corners = Radii.CardAll,
-            Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-            Role = AutomationRole.Button, Focusable = true, FocusVisualMargin = Design.FocusInsetBordered,
-            OnClick = open, ZStack = true, Draggable = Search.DragOf(hit), OnFocusChanged = cardFocus,
+            Direction = 1, MinWidth = 0f, Gap = ClassicSearchTiers.AvatarLineGap, Justify = FlexJustify.Start, AlignItems = FlexAlign.Start,
+            AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Height = height, HitTestVisible = false,
+            Padding = new Edges4(pad, pad, pad, pad),
             Children =
             [
-                scheme is { } graded
-                    ? new BoxEl
-                    {
-                        HitTestVisible = false, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Height = layout.HeroH,
-                        Gradient = new GradientSpec(GradientShape.Radial, 0f,
-                        [
-                            new GradientStop(0f, Design.Palette.ChromeAccent(graded) with { A = ClassicSearchRules.HeroWashAlpha }),
-                            new GradientStop(ClassicSearchRules.HeroWashFadeStop, Design.Palette.ChromeAccent(graded) with { A = 0f }),
-                        ])
-                        {
-                            RadialCenter = new Point2(ClassicSearchRules.HeroWashCenterX, ClassicSearchRules.HeroWashCenterY),
-                            RadialRadius = new Point2(ClassicSearchRules.HeroWashRadiusX, ClassicSearchRules.HeroWashRadiusY),
-                        },
-                    }
-                    : new BoxEl { HitTestVisible = false },
-                new BoxEl { Direction = 0, MinWidth = 0f, Height = layout.HeroH, AlignSelf = FlexAlign.Stretch, Children = [copy, cover] },
+                new BoxEl
+                {
+                    Width = art, Height = art, Shrink = 0f, ClipToBounds = true, Corners = CornerRadius4.All(corners),
+                    Margin = new Edges4(0f, 0f, 0f, ClassicSearchTiers.AvatarTitleGap),
+                    Children = [Controls.Artwork(url, art, art, corners)],
+                },
+                R.Type.HeroTitle(title) with { MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, AlignSelf = FlexAlign.Stretch },
+                new TextEl(Search.SubtitleOf(hit, flags))
+                {
+                    Size = ClassicSearchTiers.AvatarMetaSize, LineHeight = ClassicSearchTiers.AvatarMetaLineHeight, Color = Tok.TextSecondary,
+                    MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                },
+                chips.Count == 0 ? new BoxEl() : new BoxEl { Direction = 0, Gap = Spacing.S, Wrap = true, MinWidth = 0f, Children = chips.ToArray() },
             ],
-        }.Interactive(Interaction.Card);   // OnClick is set above, so Interactive gives the box the hand (the engine's clickable default)
-        return menu is not null && !Controls.IsNullOverlay(ctx.Overlay) ? ContextSheets.Attach(card, ctx.Overlay, menu) : card;
+        };
+        var tools = new BoxEl
+        {
+            Direction = 1, Justify = FlexJustify.End, AlignItems = FlexAlign.End, HitTestPassThrough = true,
+            AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Height = height,
+            Padding = new Edges4(pad, pad, pad, pad),
+            Children = actions.Count == 0 ? [] : [new BoxEl { Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Children = actions.ToArray() }],
+        };
+        return [copy, tools];
     }
 
     // ══ BEST MATCHES, THE PLAYLIST RAIL, THE SONGS GRID (W5, W6, W1) ═════════════════════════════════════════════════
@@ -345,6 +405,23 @@ internal static class ClassicSearchBody
             // ONE key at every tier: the card band and the pager are live props, so a crossing re-fits the SAME rail (its cards and its page survive).
             with { Key = "search:rail" };
     }
+
+    /// <summary>The All tab's artist rail (Huge, <c>C-Search-Huge</c>): the playlist rail's shelf of round cards (a person's art is a circle in the card data)
+    /// under an "Artists" header that SWITCHES to the Artists tab, never repeating the hero's own artist. The region is keyed WITHOUT the tier (only Huge
+    /// draws it, so its frozen band never changes under it) and mounts with the drawer reveal: the sections below ride its edge as it opens or closes.</summary>
+    static Element ArtistRail(IReadOnlyList<Search.HitItem> items, Action? openFacet, Search.HitContext ctx, ClassicShelfBand band)
+        => Stretch(PagedShelf.Create(items,
+            cardAt: (item, i, cardW) => ShelfCardOf(item.Ref, cardW, in ctx),
+            onInvoke: (item, _) => Search.OpenHit(item.Ref, ctx.Origin),   // the slot owns the click; the card inside is click-less
+            cardHeight: static w => SurfaceGeometry.StackExtent(in ClassicSearchRules.RailCard, w, 1f),
+            header: TickHeader(Loc.Get(Search.FacetNameKey(SearchFacet.Artists)), openFacet),
+            pager: band.Pager ? ShelfPager.Chevrons | ShelfPager.Pips : ShelfPager.None,
+            minCardW: band.MinCardW, maxCardW: band.MaxCardW, maxColumns: band.MaxColumns, fixedCardW: band.FixedCardW, gap: band.Gap,
+            snap: ShelfSnap.Page, edgeFade: HomeModuleLayout.ShelfEdgeFade,
+            prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
+            lift: ShelfLift.None,
+            keyOf: static (item, _) => Search.KeyOf(item.Ref)))
+            with { Key = "search:artists", Animate = Design.Reveal.Drawer };
 
     /// <summary>A shelf card for a hit (the rail): the one surface at the shelf's card width. Inside the shelf's slot it
     /// renders click- and focus-less (the slot owns both); the host attaches the menu carried in the data.</summary>

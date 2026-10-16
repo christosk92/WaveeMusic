@@ -217,6 +217,25 @@ public class ClassicDiscoveryTierTests
         Assert.True(ClassicRegion.EstimateWidth(TierFacts.Unknown, 1000f) > 0f);
     }
 
+    // ── the facet row's trailing button and the chapter subtitles (C-Home-Compact, C-Home-Huge) ───────────────────────────────
+
+    [Theory]
+    [InlineData(WidthTier.Compact, true, false, false)]   // C-Home-Compact: the 40 Friend activity button, the titles alone
+    [InlineData(WidthTier.Small, false, false, true)]     // the tuned row
+    [InlineData(WidthTier.Standard, false, false, true)]  // the tuned row
+    [InlineData(WidthTier.Huge, false, true, true)]       // C-Home-Huge: "Following" beside "All"
+    [InlineData(WidthTier.Huge4K, false, true, true)]
+    public void TheFacetRow_AndTheHeaders_FollowTheBoard(WidthTier tier, bool friends, bool followingEverywhere, bool subtitles)
+    {
+        foreach (bool shortWindow in new[] { false, true })
+        {
+            var l = Home(tier, shortWindow);
+            Assert.Equal(friends, l.FriendsButton);
+            Assert.Equal(followingEverywhere, l.FollowingOnEveryWord);
+            Assert.Equal(subtitles, l.HeaderSubtitles);
+        }
+    }
+
     // ── Search ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
     static ClassicSearchLayout SearchOf(WidthTier tier) => ClassicSearchTiers.For(tier, ClassicTiers.Page(tier).Gutter);
@@ -258,6 +277,8 @@ public class ClassicDiscoveryTierTests
         Assert.Equal(int.MaxValue, l.Songs.MaxCols);
         Assert.Equal(ClassicSearchRules.HeroHeight, l.HeroH);
         Assert.True(float.IsNaN(l.HeroBesideW));
+        Assert.Equal(ClassicSearchHeroForm.Card, l.HeroForm);
+        Assert.Null(l.ArtistRail);
         Assert.Equal(36f, l.Gutter);
         // The Albums / Playlists grid is a floor-fit at 180 + the 16 gap, uncapped: floor((1368 + 16) / 196) = 7.
         Assert.Equal(7, l.FacetGridColumns(1368f));
@@ -273,6 +294,27 @@ public class ClassicDiscoveryTierTests
         Assert.Equal(6, l.Genres.Columns(0f));
         Assert.Equal(10, l.Rail.MaxColumns);
         Assert.Equal(10, l.FacetGridColumns(9000f));              // capped at 10
+        // The avatar top result and the ten-card Artists rail (C-Search-Huge).
+        Assert.Equal(ClassicSearchHeroForm.Avatar, l.HeroForm);
+        Assert.Equal((128f, 28f), (ClassicSearchTiers.AvatarArt, ClassicSearchTiers.AvatarPad));
+        Assert.NotNull(l.ArtistRail);
+        Assert.Equal(10, l.ArtistRail!.Value.MaxColumns);
+        Assert.True(l.ArtistRail!.Value.Pager);
+        // The avatar card's copy fits its 300: the inset, the art and its step, the 40/52 title, the kind line.
+        float copy = 2f * ClassicSearchTiers.AvatarPad + ClassicSearchTiers.AvatarArt + ClassicSearchTiers.AvatarTitleGap
+                     + 2f * ClassicSearchTiers.AvatarLineGap + 52f + ClassicSearchTiers.AvatarMetaLineHeight;
+        Assert.True(copy <= l.HeroH, $"the avatar copy needs {copy}, the card is {l.HeroH}");
+    }
+
+    [Theory]
+    [InlineData(WidthTier.Compact)]
+    [InlineData(WidthTier.Small)]
+    [InlineData(WidthTier.Standard)]
+    public void Search_BelowHuge_KeepsTheTunedCard_AndDrawsNoArtistRail(WidthTier tier)
+    {
+        var l = SearchOf(tier);
+        Assert.Equal(ClassicSearchHeroForm.Card, l.HeroForm);
+        Assert.Null(l.ArtistRail);
     }
 
     [Fact]

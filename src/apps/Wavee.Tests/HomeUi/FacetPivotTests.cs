@@ -125,4 +125,31 @@ public class FacetPivotTests
         var words = StandardWords();
         Assert.Equal("audiobooks-chip", FacetPivot.Target(words[3], followingOn: true));
     }
+
+    // ── the word the Following toggle drives (Classic Huge stands it on every word: C-Home-Huge) ──
+
+    [Fact]
+    public void FollowingWord_is_the_selected_word_when_it_has_a_sub_chip()
+    {
+        var words = StandardWords();
+        Assert.Equal(1, FacetPivot.FollowingWord(words, 1, everyWord: false));
+        Assert.Equal(2, FacetPivot.FollowingWord(words, 2, everyWord: true));
+    }
+
+    [Fact]
+    public void FollowingWord_on_a_word_without_one_is_none_unless_the_toggle_stands_on_every_word()
+    {
+        var words = StandardWords();
+        Assert.Equal(-1, FacetPivot.FollowingWord(words, 0, everyWord: false));   // All: the tuned row shows no toggle
+        Assert.Equal(1, FacetPivot.FollowingWord(words, 0, everyWord: true));     // All at Huge: Music's Following
+        Assert.Equal(1, FacetPivot.FollowingWord(words, 3, everyWord: true));     // Audiobooks has none: the first word that does
+    }
+
+    [Fact]
+    public void FollowingWord_is_none_when_no_word_has_a_sub_chip()
+    {
+        var words = FacetPivot.Words(new[] { Audiobooks }, "All");
+        Assert.Equal(-1, FacetPivot.FollowingWord(words, 0, everyWord: true));
+        Assert.Equal(-1, FacetPivot.FollowingWord(System.Array.Empty<FacetWord>(), 0, everyWord: true));
+    }
 }

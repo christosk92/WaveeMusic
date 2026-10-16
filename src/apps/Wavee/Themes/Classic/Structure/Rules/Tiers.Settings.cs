@@ -17,6 +17,18 @@
 // arithmetic over the sections' weights, never a width comparison. A tab with one section stays one column. The columns never exceed 1000 each and the pair is
 // LEFT-ALIGNED (never centred), as the Huge boards draw.
 //
+// THE HEAD AND THE SECTION HEADERS. The Compact, Small and Huge boards draw the page title behind a 24 gear glyph (gap 12); the tuned Standard title stays alone. A
+// section header is the glyph and the title with its caption UNDER it at Compact (C-SettingsSections-Compact: 20 above, 6 under) and at Standard (the tuned 32 / 8);
+// at Small and Huge the caption rides the title's line (C-SettingsSections-Small: baseline row, gap 8, 24 / 8, the caption one line with an ellipsis;
+// C-SettingsSections-Huge: 28 / 4). The views key the glyph, the title and each header and animate the change: the glyph fades, the title slides, a header's
+// height reveals (the cards below ride it) and its caption slides between the two slots.
+//
+//   tier      title glyph   header            above / under
+//   Compact   24, gap 12    caption under     20 / 6
+//   Small     24, gap 12    one row           24 / 8
+//   Standard  none          caption under     32 / 8   (tuned)
+//   Huge      24, gap 12    one row           28 / 4
+//
 // TOUCH. `Target` is the Compact hit target (40): the page asks for a control at that size and the record never decides what a control is. The stock ComboBox takes
 // its Large (40-DIP) field and fills the stacked row, and a NumberBox takes a 40-DIP field through its options' style (`ClassicSettings.Touch.cs`).
 //
@@ -55,10 +67,15 @@ public enum ClassicThemePickerForm : byte
 /// <param name="PickerShowsText">The card carries the theme's description under its name.</param>
 /// <param name="PickerGap">The gap between picker cards.</param>
 /// <param name="PickerPad">The padding of the card the picker sits in (the board's 12 at Compact, 16 elsewhere).</param>
+/// <param name="TitleGlyph">The page title stands behind the 24 gear glyph (Compact, Small, Huge boards; the tuned Standard title stands alone).</param>
+/// <param name="SectionInline">A section header's caption rides the title's line (Small, Huge) instead of hanging under it.</param>
+/// <param name="SectionTop">The space above a section header (none above the tab's first).</param>
+/// <param name="SectionBottom">The space between a section header and its first card.</param>
 public sealed record ClassicSettingsLayout(
     WidthTier Tier, float Target, bool StacksControls, float TabHeight, bool TabsScroll, bool TabsBleed,
     int Columns, float ColumnMaxW, float ColumnGap,
-    ClassicThemePickerForm Picker, float PickerCardW, float PickerCardH, float PickerThumbH, bool PickerShowsText, float PickerGap, float PickerPad)
+    ClassicThemePickerForm Picker, float PickerCardW, float PickerCardH, float PickerThumbH, bool PickerShowsText, float PickerGap, float PickerPad,
+    bool TitleGlyph, bool SectionInline, float SectionTop, float SectionBottom)
 {
     /// <summary>The page lays its controls out for touch (the Compact rule: every hit target is at least 40).</summary>
     public bool Touch => Target > 0f;
@@ -78,19 +95,23 @@ public static class ClassicSettingsTiers
         // Compact (C-Settings-Compact): the tabs bleed to the card's edges, 44 tall; the rows stack; the theme picker is a 2-up grid of 72-high thumbs.
         new(WidthTier.Compact, Target: 40f, StacksControls: true, TabHeight: 44f, TabsScroll: true, TabsBleed: true,
             Columns: 1, ColumnMaxW: 1000f, ColumnGap: 0f,
-            ClassicThemePickerForm.Grid, PickerCardW: 0f, PickerCardH: 0f, PickerThumbH: 72f, PickerShowsText: false, PickerGap: 12f, PickerPad: 12f),
+            ClassicThemePickerForm.Grid, PickerCardW: 0f, PickerCardH: 0f, PickerThumbH: 72f, PickerShowsText: false, PickerGap: 12f, PickerPad: 12f,
+            TitleGlyph: true, SectionInline: false, SectionTop: 20f, SectionBottom: 6f),
         // Small (C-Settings-Small): 40-tall tabs that fade out at the edge; the picker is one scrolling strip of 190-wide cards with 72-high thumbs.
         new(WidthTier.Small, Target: 0f, StacksControls: false, TabHeight: 40f, TabsScroll: true, TabsBleed: true,
             Columns: 1, ColumnMaxW: 1000f, ColumnGap: 0f,
-            ClassicThemePickerForm.Strip, PickerCardW: 190f, PickerCardH: 0f, PickerThumbH: 72f, PickerShowsText: true, PickerGap: 12f, PickerPad: 16f),
+            ClassicThemePickerForm.Strip, PickerCardW: 190f, PickerCardH: 0f, PickerThumbH: 72f, PickerShowsText: true, PickerGap: 12f, PickerPad: 16f,
+            TitleGlyph: true, SectionInline: true, SectionTop: 24f, SectionBottom: 8f),
         // Standard: the tuned design, unchanged (the 1000 column, the 208 x 172 cards).
         new(WidthTier.Standard, Target: 0f, StacksControls: false, TabHeight: 0f, TabsScroll: false, TabsBleed: false,
             Columns: 1, ColumnMaxW: 1000f, ColumnGap: 0f,
-            ClassicThemePickerForm.Wrap, PickerCardW: 208f, PickerCardH: 172f, PickerThumbH: 92f, PickerShowsText: true, PickerGap: 12f, PickerPad: 16f),
+            ClassicThemePickerForm.Wrap, PickerCardW: 208f, PickerCardH: 172f, PickerThumbH: 92f, PickerShowsText: true, PickerGap: 12f, PickerPad: 16f,
+            TitleGlyph: false, SectionInline: false, SectionTop: 32f, SectionBottom: 8f),
         // Huge (C-Settings-Huge, C-SettingsSections-Huge): two 1000 columns 32 apart, left-aligned; the picker's cards are the board's five-up 184.
         new(WidthTier.Huge, Target: 0f, StacksControls: false, TabHeight: 0f, TabsScroll: false, TabsBleed: false,
             Columns: 2, ColumnMaxW: 1000f, ColumnGap: 32f,
-            ClassicThemePickerForm.Wrap, PickerCardW: 184f, PickerCardH: 172f, PickerThumbH: 92f, PickerShowsText: true, PickerGap: 12f, PickerPad: 16f),
+            ClassicThemePickerForm.Wrap, PickerCardW: 184f, PickerCardH: 172f, PickerThumbH: 92f, PickerShowsText: true, PickerGap: 12f, PickerPad: 16f,
+            TitleGlyph: true, SectionInline: true, SectionTop: 28f, SectionBottom: 4f),
     ];
 
     /// <summary>The record of content tier <paramref name="content"/> (Huge 4K reads Huge's: Classic draws no 4K band).</summary>

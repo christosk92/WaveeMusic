@@ -169,7 +169,7 @@ internal static class ClassicHomeZones
     internal static Element Chapter(Zone zone, IOverlayService? overlay, ShelfController? controller, ClassicHomeLayout layout)
     {
         Element body = Body(zone, overlay, controller, layout);
-        Element? header = Header(zone, controller is not null && ShelfBandOf(zone.Kind, layout).Pager ? controller : null);
+        Element? header = Header(zone, controller is not null && ShelfBandOf(zone.Kind, layout).Pager ? controller : null, layout);
         if (header is null) return body;
         return new BoxEl
         {
@@ -198,9 +198,11 @@ internal static class ClassicHomeZones
     /// <summary>The chapter header: `HomeModules.ModuleHeader` with the zone's title/subtitle as a plain label (no
     /// chevron, no click — `open: null`), the drill carried by the tools' link ("See all" / "Listening history") beside
     /// the shelf pager. Null for the headerless kinds (Daylist, EmptyFacet) and for the ReleaseList sub-block, whose
-    /// `Ui.SectionHeader` is part of its body.</summary>
-    static Element? Header(Zone zone, ShelfController? controller)
+    /// `Ui.SectionHeader` is part of its body. A tier that draws the titles alone (Compact, <c>C-Home-Compact</c>: <see cref="ClassicHomeLayout.HeaderSubtitles"/>)
+    /// drops the subtitle; it rides the title's own line, so the header keeps its height either way.</summary>
+    static Element? Header(Zone zone, ShelfController? controller, ClassicHomeLayout layout)
     {
+        bool sub = layout.HeaderSubtitles;
         switch (zone.Kind)
         {
             case ZoneKind.Daylist or ZoneKind.EmptyFacet or ZoneKind.ReleaseList:
@@ -208,10 +210,10 @@ internal static class ClassicHomeZones
             case ZoneKind.RecentGrid:
                 return HomeModules.ModuleHeader(
                     zone.Title ?? Loc.Get(Strings.Sidebar.Section.RecentlyPlayed),
-                    zone.Subtitle ?? Loc.Get(Strings.Home.RecentsSub),
+                    sub ? zone.Subtitle ?? Loc.Get(Strings.Home.RecentsSub) : null,
                     HyperlinkButton.Create(Loc.Get(Strings.Home.ListeningHistory), HomeVerbs.OpenRecents), open: null);
             default:
-                return HomeModules.ModuleHeader(zone.Title ?? "", zone.Subtitle,
+                return HomeModules.ModuleHeader(zone.Title ?? "", sub ? zone.Subtitle : null,
                                                 ShelfHeaderTools(HomeVerbs.SeeAll(zone), controller), open: null);
         }
     }
@@ -446,7 +448,7 @@ internal static class ClassicHomeZones
             Children =
             [
                 Ui.SectionHeader(zone.Title ?? Loc.Get(Strings.Home.Zone.FromArtistsYouFollow),
-                                 zone.Subtitle ?? Loc.Get(Strings.Home.ReleasedThisWeek)) with { Margin = default },
+                                 layout.HeaderSubtitles ? zone.Subtitle ?? Loc.Get(Strings.Home.ReleasedThisWeek) : null) with { Margin = default },
                 new GridEl
                 {
                     MinColWidth = layout.Releases.MinCol, MaxColumns = layout.Releases.MaxCols,
@@ -557,17 +559,18 @@ internal static class ClassicHomeZones
                     MinColWidth = layout.Tiles.MinCol, MaxColumns = layout.Tiles.MaxCols,
                     ColGap = Spacing.M, RowGap = Spacing.M, Children = tiles,
                 },
-                ChartsBlock(),
+                ChartsBlock(layout.HeaderSubtitles),
             ],
         };
     }
 
     /// <summary>The Browse facet's "Charts" sub-block (RCA 2026-09-30): the core host owns the section's demand and the derived tile model
     /// and mounts `Home.Charts`; its skeleton proxy is the same static tree over <see cref="ChartTilesModel.Fallback"/>.</summary>
-    static Element ChartsBlock()
-        => Embed.Comp(static () => new ChartsBlockView()) with { Key = "home:charts", SkeletonProxy = s_chartsProxy };
+    static Element ChartsBlock(bool subtitle)
+        => Embed.Comp(static () => new ChartsBlockView()) with { Key = "home:charts", SkeletonProxy = subtitle ? s_chartsProxy : s_chartsProxyBare };
 
-    static readonly Func<Element> s_chartsProxy = static () => ClassicHomeCharts.Tree(ChartTilesModel.Fallback);
+    static readonly Func<Element> s_chartsProxy = static () => ClassicHomeCharts.Tree(ChartTilesModel.Fallback, subtitle: true);
+    static readonly Func<Element> s_chartsProxyBare = static () => ClassicHomeCharts.Tree(ChartTilesModel.Fallback, subtitle: false);
 
     // ── 2.6 episodes: Shape.EpisodeRow (56, two-line title) fed by Episode.RowData — the podcast caption, the resume rung,
     //    the episode menu behind the "…" and the right-click ────────────────────────────────────────────────────────────

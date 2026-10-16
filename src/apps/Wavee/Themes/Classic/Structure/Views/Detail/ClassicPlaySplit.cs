@@ -194,12 +194,16 @@ internal static partial class ClassicDetailKit
         return actions;
     }
 
-    /// <summary>The primary and the actions in ONE wrap, 8 apart both ways (the split's own trailing margin makes its 12).</summary>
-    public static BoxEl ActionRow(string key, Element primary, IReadOnlyList<Element> actions, float topMargin)
+    /// <summary>The primary and the actions in ONE wrap, 8 apart both ways (the split's own trailing margin makes its 12). A <paramref name="breakWidth"/>
+    /// (the row's content measure) puts a zero-height break of that width after the primary, so the actions start their own line (C-Album-Small: the
+    /// board's full-basis break, 8 on either side of it); the break is keyed, so the actions keep their nodes and shove into place on a crossing.</summary>
+    public static BoxEl ActionRow(string key, Element primary, IReadOnlyList<Element> actions, float topMargin, float breakWidth = 0f)
     {
-        var kids = new Element[1 + actions.Count];
+        int lead = breakWidth > 0f ? 2 : 1;
+        var kids = new Element[lead + actions.Count];
         kids[0] = primary;
-        for (int i = 0; i < actions.Count; i++) kids[i + 1] = actions[i];
+        if (lead == 2) kids[1] = new BoxEl { Key = key + ":break", Width = breakWidth, Height = 0f, Shrink = 0f };
+        for (int i = 0; i < actions.Count; i++) kids[i + lead] = actions[i];
         return new BoxEl
         {
             Key = key, Layout = Shove,

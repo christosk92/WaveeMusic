@@ -267,15 +267,40 @@ public sealed class ClassicPlayerPanelTierTests
 
     [Theory]
     [InlineData(400f, 860f, 320f)]     // C-NowPlaying-Compact: the board's 320 art, room to spare
-    [InlineData(400f, 640f, 250f)]     // the art gives so the identity, the transport and the doors stay in the window
+    [InlineData(400f, 640f, 238f)]     // the art gives so the identity, the transport and the doors stay in the window
     [InlineData(300f, 860f, 268f)]     // never wider than the sheet less its 16 insets
     [InlineData(400f, 330f, 96f)]      // a Short window: the floor, and the column scrolls
     public void The_sheets_art_gives_way_to_the_fixed_column(float w, float h, float side)
     {
-        float head = ClassicPanelTiers.GrabStripH + Rail.Hero.HeaderRowH;
+        float head = ClassicPanelTiers.SheetHeadH;
         Assert.Equal(side, ClassicPanelTiers.SheetArtSide(w, h, head));
         float bottom = ClassicSheetRules.ChromeRow + ClassicPanelTiers.Gap + head + ClassicPanelTiers.SheetArtTop + side + ClassicPanelTiers.SheetBelowArt;
         if (side > ClassicPanelTiers.SheetArtMin) Assert.True(bottom <= h, $"{w} x {h}: the doors end at {bottom}");
+    }
+
+    [Fact]
+    public void The_now_playing_sheets_header_is_the_boards_and_its_targets_are_40()
+    {
+        // C-NowPlaying-Compact: the 16 grab strip over a 48-tall header inset 8, its parts 4 apart: the chevron 40, the source (12/16 twice), the "⋯" 40.
+        Assert.Equal(48f, ClassicPanelTiers.SheetHeaderH);
+        Assert.Equal(8f, ClassicPanelTiers.SheetHeaderInset);
+        Assert.Equal(4f, ClassicPanelTiers.SheetHeaderGap);
+        Assert.Equal(16f, ClassicPanelTiers.SheetHeaderGlyph);
+        Assert.Equal(12f, ClassicPanelTiers.SheetSourceSize);
+        Assert.Equal(16f, ClassicPanelTiers.SheetSourceLine);
+        Assert.True(ClassicPanelTiers.SheetHeaderButton >= 40f, "the header's buttons are Compact targets");
+        Assert.True(2f * ClassicPanelTiers.SheetSourceLine <= ClassicPanelTiers.SheetHeaderH, "the source's two lines fit the header");
+        Assert.Equal(ClassicPanelTiers.GrabStripH + ClassicPanelTiers.SheetHeaderH, ClassicPanelTiers.SheetHeadH);
+        // The doors (Lyrics, Devices, Queue) stay 48: the Devices door joins the row, it adds no height under the art.
+        Assert.Equal(48f, ClassicPanelTiers.SheetDoorH);
+    }
+
+    [Fact]
+    public void The_sheets_source_names_no_kind_without_a_name()
+    {
+        Assert.False(new PanelSourceFacts("", "", null).HasSource);
+        Assert.False(default(PanelSourceFacts).HasSource);
+        Assert.True(new PanelSourceFacts("Playing from album", "Random Access Memories", null).HasSource);
     }
 
     [Theory]

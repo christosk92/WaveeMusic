@@ -132,4 +132,13 @@ public static class ClassicPlaylistLayout
 
     /// <summary>A row: art edge, the add button's box, the duration's width.</summary>
     public const float RecArt = 40f, RecAddBox = 28f, RecDurationW = 52f;
+
+    /// <summary>The "+" glyph inside the add ring.</summary>
+    public const float RecAddGlyph = 15f;
+
+    /// <summary>What the header keeps over and under a Compact 40 command (C-Playlist-Compact: a 48 header).</summary>
+    public const float RecsHeaderPadY = 8f;
+
+    /// <summary>An empty playlist's lead (C-Empty-Compact): 12 between its message, its field and the header; the message 16 over and 4 under.</summary>
+    public const float LeadGap = 12f, LeadMessagePadTop = 16f, LeadMessagePadBottom = 4f;
 }

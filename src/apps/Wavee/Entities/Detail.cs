@@ -62,8 +62,9 @@ public enum HeartMode : byte { None, Save, Follow }
 /// rail on either moves both. The ordinal is the frame's rail-cell index — append only.</summary>
 public enum RailScope : byte { Album, Playlist, Liked, Show, Uniform }
 
-/// <summary>Identity of one slot in the vertical (hero-system) list viewport.</summary>
-public enum VerticalItemRole : byte { Hero, Chrome, ExpandableTrack, Empty }
+/// <summary>Identity of one slot in the vertical (hero-system) list viewport. <see cref="VerticalItemRole.Recommendations"/>: the playlist's "Recommended songs"
+/// section after the rows (C-Playlist-Compact, C-Empty-Compact).</summary>
+public enum VerticalItemRole : byte { Hero, Chrome, ExpandableTrack, Empty, Recommendations }
 
 public static partial class Detail
 {
@@ -551,22 +552,27 @@ public static partial class Detail
         /// named separately so a caller states what it means, not <see cref="StickyClipInset"/>'s.</summary>
         public static float TrailingClipInset => CompactIdentityHeight;
 
-        // ── the vertical viewport's slot map: hero, pinned chrome, the recycled rows. The facts are the insights sheet's (tuned
-        //    Classic I1), never a list footer.
+        // ── the vertical viewport's slot map: hero, pinned chrome, the recycled rows, and (a playlist that offers them) the recommendations after the
+        //    rows, as the two-column list appends them (C-Playlist-Compact). The facts are the insights sheet's (tuned Classic I1), never a list footer.
         public const int PrefixCount = 2;
 
-        /// <summary>Row slots held open; an empty / loading list keeps ONE (the placeholder).</summary>
-        public static int RowSlots(int visibleTracks) => Math.Max(1, visibleTracks);
+        /// <summary>Row slots held open; an empty / loading list keeps ONE (the placeholder). With the recommendations appended the rows are exactly
+        /// the visible ones: an EMPTY list shows the section alone (its lead says the list is empty), like the two-column list.</summary>
+        public static int RowSlots(int visibleTracks, bool recommendations = false)
+            => recommendations ? Math.Max(0, visibleTracks) : Math.Max(1, visibleTracks);
 
-        /// <summary>The viewport's item total: the prefix and the row slots.</summary>
-        public static int ItemCount(int visibleTracks) => PrefixCount + RowSlots(visibleTracks);
+        /// <summary>The viewport's item total: the prefix, the row slots and the recommendations section.</summary>
+        public static int ItemCount(int visibleTracks, bool recommendations = false)
+            => PrefixCount + RowSlots(visibleTracks, recommendations) + (recommendations ? 1 : 0);
 
-        public static VerticalItemRole ItemRole(int itemIndex, int visibleTracks)
+        public static VerticalItemRole ItemRole(int itemIndex, int visibleTracks, bool recommendations = false)
         {
             if (itemIndex == 0) return VerticalItemRole.Hero;
             if (itemIndex == 1) return VerticalItemRole.Chrome;
             int display = itemIndex - PrefixCount;
-            if (display >= 0 && display < Math.Max(0, visibleTracks)) return VerticalItemRole.ExpandableTrack;
+            int rows = Math.Max(0, visibleTracks);
+            if (display >= 0 && display < rows) return VerticalItemRole.ExpandableTrack;
+            if (recommendations && display == rows) return VerticalItemRole.Recommendations;
             return VerticalItemRole.Empty;
         }
 

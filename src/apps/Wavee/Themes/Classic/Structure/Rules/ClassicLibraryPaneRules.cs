@@ -80,4 +80,30 @@ public static class ClassicLibraryPaneRules
 
     /// <summary>The gap between the strip's eyebrow and its tiles, and the strip's edge fade.</summary>
     public const float AlsoByGap = 10f, AlsoByFadeBand = 24f;
+
+    // ── the Huge "Also by" aside (C-Library-Huge) ─────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The aside's covers (140), the air over its heading (4) and between the heading and the tiles (12).</summary>
+    public const float AlsoByAsideArt = 140f, AlsoByAsideTop = 4f, AlsoByAsideTitleGap = 12f;
+
+    /// <summary>A tile's width: the 140 cover in the surface's 8-DIP plate padding on each side.</summary>
+    public static float AlsoByAsideCardW => AlsoByAsideArt + 2f * SurfaceGeometry.ShelfPlatePad;
+
+    /// <summary>The tiles' column gap: the board's 20 between covers less the two plates' padding between them.</summary>
+    public static float AlsoByAsideColGap => 20f - 2f * SurfaceGeometry.ShelfPlatePad;
+
+    /// <summary>A tile's pinned shell height: the shelf extent of the 156 card less the shelf gutter over and under the plate (one caption line).</summary>
+    public static float AlsoByAsideCardH => SurfaceGeometry.ShelfHeight(AlsoByAsideCardW, 1f, captionLines: 1, metaLine: false)
+                                            - SurfaceGeometry.ShelfGutterTop - SurfaceGeometry.ShelfGutterBottom;
+
+    /// <summary>The aside column's whole width for the record's <paramref name="aside"/> (300) and <paramref name="gap"/> (32): the gap, the covers' column and the
+    /// pane's right inset. The tiles' plates bleed 8 past the covers on each side, so the column pads <see cref="AlsoByAsideLead"/> before them and
+    /// <see cref="AlsoByAsideTrail"/> after: the covers stand exactly <paramref name="gap"/> right of the rows and the column is <paramref name="aside"/> wide at the covers' edges.</summary>
+    public static float AlsoByAsideOuter(float aside, float gap) => aside <= 0f ? 0f : gap + aside + ClassicTiers.PaneInset;
+
+    /// <summary>The aside's lead padding before the plates (the gap less a plate's bleed).</summary>
+    public static float AlsoByAsideLead(float gap) => gap - SurfaceGeometry.ShelfPlatePad;
+
+    /// <summary>The aside's trailing padding after the plates (the pane inset less a plate's bleed).</summary>
+    public static float AlsoByAsideTrail => ClassicTiers.PaneInset - SurfaceGeometry.ShelfPlatePad;
 }

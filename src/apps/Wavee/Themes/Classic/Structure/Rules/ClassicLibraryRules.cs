@@ -7,6 +7,7 @@
 //
 // The persisted column widths (`library.<kind>.leftw/midw`) are the HOST's state; the ranges the grips clamp them to are the structure's.
 
+using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 
 namespace Wavee.Themes.Classic;
@@ -18,6 +19,10 @@ public static class ClassicLibraryRules
 
     /// <summary>The navigator column's grip range (the persisted <c>LeftW</c> is clamped to it by the splitter).</summary>
     public const float LeftMin = 240f, LeftMax = 560f;
+
+    /// <summary>The Huge navigator's tint over the content card (C-Library-Huge: 2 % white on the dark card; 2 % black on the light one). A property (never a field),
+    /// so a live theme flip re-resolves it on the next render.</summary>
+    public static ColorF NavTint => Theme.Dark ? ColorF.FromRgba(255, 255, 255, 5) : ColorF.FromRgba(0, 0, 0, 5);
 
     /// <summary>The search layout's middle column grip range.</summary>
     public const float MidMin = 300f, MidMax = 620f;

@@ -29,11 +29,11 @@ internal static partial class ClassicDetailKit
 
     /// <summary>The heart as a satellite: <c>Controls.SaveButton</c> at <see cref="Detail.RailLayout.SatelliteSize"/>, inked by the
     /// page's ambient accent (the frame provides it), keyed on the uri (props freeze at mount).</summary>
-    public static Element RailSatelliteSave(string uri, string name)
-        => Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = name, Glyph = 16f, Box = Detail.RailLayout.SatelliteSize })
+    public static Element RailSatelliteSave(string uri, string name, float box = Detail.RailLayout.SatelliteSize)
+        => Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = name, Glyph = 16f, Box = box })
             with { Key = "save:" + uri };
 
     /// <summary>The ⋯ as a satellite: the frame's lazily-built More menu at <see cref="Detail.RailLayout.SatelliteSize"/>.</summary>
-    public static Element RailSatelliteMore(Func<ContextMenuModel?> menu)
-        => MoreButton(menu, Detail.RailLayout.SatelliteSize) with { Key = "rail:more" };
+    public static Element RailSatelliteMore(Func<ContextMenuModel?> menu, float size = Detail.RailLayout.SatelliteSize)
+        => MoreButton(menu, size) with { Key = "rail:more" };
 }

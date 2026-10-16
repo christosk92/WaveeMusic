@@ -48,6 +48,20 @@ public static class ClassicRecentsRules
     /// <summary>The day rail's fade when a tier crossing adds or removes it, in milliseconds.</summary>
     public const float RailFadeMs = 160f;
 
+    // ── the Huge Overview aside (C-Recents-Huge) ──────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>A month card's plate in the aside: its padding (16 sides, 14 over, 16 under) and its 1-DIP card stroke.</summary>
+    public const float OverviewCardPadX = 16f, OverviewCardPadTop = 14f, OverviewCardPadBottom = 16f, OverviewCardBorder = 1f;
+
+    /// <summary>The air between the aside's "Overview" head and its month cards, and over the head (the board's 4 below the masthead's top).</summary>
+    public const float OverviewHeadGap = 16f, OverviewTop = 4f;
+
+    /// <summary>A plated month card's width: the calendar's 290 grid in its plate.</summary>
+    public static float OverviewCardW => RecentsLayout.CalGridW + 2f * OverviewCardPadX;
+
+    /// <summary>The aside's body fading in and out as the tier docks or undocks it (or the Overview toggle shows or hides it), in milliseconds.</summary>
+    public const float OverviewFadeMs = 160f;
+
     // ── the single-play arm and the drawer's children ─────────────────────────────────────────────────────────────────────
 
     /// <summary>An episode member's drawer band: a 40 cover in a 56 row (the shared row cannot be shorter than its text column plus its padding).</summary>

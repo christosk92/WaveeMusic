@@ -10,7 +10,10 @@
 // show is a different list.
 //
 // The column is the header, the command row (the primary, the heart while it is not the primary, the ⋯) and the reader. The header and its loading twin are the album pane's (`ClassicLibraryPaneKit`).
+// At a Compact content tier (the drill-in's leaf) the command row is 40 tall, the album pane's rule: the primary asks the host for its Large size (contract 1.22), the heart and
+// the ⋯ take the 40 box.
 
+using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Theming;
@@ -30,7 +33,9 @@ internal static class ClassicLibraryShowPane
     {
         // The pane header's metrics are the library tier's (C-Library-Huge: the 160 cover in a 200 band), the album pane's own.
         var layout = ClassicLibraryTiers.Of(ctx.Tier(), single: false);
-        BoxEl child = props.HeaderReady ? Body(props, layout) : ClassicLibraryPaneKit.HeaderSkeleton(layout);
+        // The Compact pane (the drill-in's leaf) draws its commands 40 tall, the album pane's rule: the targets of a one-column page.
+        bool compact = ctx.Tier().Content == WidthTier.Compact;
+        BoxEl child = props.HeaderReady ? Body(props, layout, compact) : ClassicLibraryPaneKit.HeaderSkeleton(layout);
         return new BoxEl
         {
             ZStack = true, Grow = 1f, Basis = 0f, MinHeight = 0f, ClipToBounds = true,
@@ -40,8 +45,9 @@ internal static class ClassicLibraryShowPane
 
     /// <summary>The library pane's column: the header, the command row (the primary, the heart while it is not the primary, the ⋯) and the SAME reader the route page mounts. The scroll key
     /// scopes its position per library slot (the host's).</summary>
-    static BoxEl Body(LibraryShowPaneProps p, ClassicLibraryLayout layout)
+    static BoxEl Body(LibraryShowPaneProps p, ClassicLibraryLayout layout, bool compact)
     {
+        float box = compact ? ClassicLibraryPaneRules.CompactCommandBox : Detail.RailLayout.SatelliteSize;
         Element header = ClassicLibraryPaneKit.PaneHeader(p.CoverUrl, p.Eyebrow, p.Title, p.Open,
             R.Type.DenseMeta(p.Publisher) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
             p.Meta, layout);
@@ -50,9 +56,9 @@ internal static class ClassicLibraryShowPane
             Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Padding = new Edges4(ClassicTiers.PaneInset, Spacing.S, ClassicTiers.PaneInset, Spacing.M),
             Children =
             [
-                p.Primary!(static () => Tok.AccentDefault),
-                new BoxEl { Visible = p.HeartShown, Children = [ClassicDetailKit.RailSatelliteSave(p.Uri, p.Title)] },
-                ClassicDetailKit.RailSatelliteMore(p.More),
+                p.Primary!(static () => Tok.AccentDefault, compact ? ControlSize.Large : ControlSize.Medium),
+                new BoxEl { Visible = p.HeartShown, Children = [ClassicDetailKit.RailSatelliteSave(p.Uri, p.Title, box)] },
+                ClassicDetailKit.RailSatelliteMore(p.More, box),
             ],
         };
         return new BoxEl

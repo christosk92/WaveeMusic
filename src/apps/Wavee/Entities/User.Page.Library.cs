@@ -273,6 +273,9 @@ public readonly partial struct User
         readonly Loadable<int> _navLoad = Loadable<int>.Pending(0);
 
         Memo<NavShape>? _shape;
+        /// <summary>The full grid's size-S cell floor for the content tier (the structure's `LibraryTierPolicy.CardCellMinFor`, contract 1.22; the core's 116 where
+        /// it says nothing). Its own memo, so the shape re-mints only when the floor itself moves, never on every tier republish.</summary>
+        Memo<float>? _cellBase;
         internal Memo<int>? SelectedSlot;   // NOT "Album": a member named like the type would shadow it
         Memo<bool>? _searchActive;
         IReadSignal<string>? _query;
@@ -302,6 +305,7 @@ public readonly partial struct User
         readonly NavMountCache _mounts = new();
 
         readonly Func<NavShape> _computeShape;
+        readonly Func<float> _cellBaseOf;
         readonly Func<int> _resolveSelected;
         readonly Func<bool> _isSearching;
         readonly Func<string> _filterText;
@@ -408,6 +412,11 @@ public readonly partial struct User
             RSort = new(saved.AlbumSort);
 
             _computeShape = ComputeShape;
+            _cellBaseOf = () =>
+            {
+                float floor = ShellPolicy.Tracked.LibraryTiers.CardCellMinFor(Theming.ThemeHost.Facts.Value.Tiers.Content);
+                return float.IsFinite(floor) && floor > 0f ? floor : LibraryNavMount.CardCellMinFull;
+            };
             _resolveSelected = () => { _ = Entities.ScopeEpoch.Value; return SlotOfKey(_entity, SelectedKey.Value); };
             _isSearching = () => Filter.Value.AsSpan().Trim().Length > 0;
             _filterText = () => Filter.Value.Trim();
@@ -495,6 +504,7 @@ public readonly partial struct User
         {
             uint epoch = Entities.ScopeEpoch.Value;          // FIRST: a scope switch re-points every table below
             _scrollScope = UseContext(Shell.PageScrollScope);
+            _cellBase = UseComputed(_cellBaseOf);              // before the shape: the mint reads it
             _shape = UseComputed(_computeShape);
             SelectedSlot = UseComputed(_resolveSelected);
             _searchActive = UseComputed(_isSearching);
@@ -661,12 +671,14 @@ public readonly partial struct User
             // provisional mount to read it before the grouping (which needs a row extent to seed itself) produces the
             // real letters key, then mint the real mount once that key is known. A grid or a non-alphabetical sort never
             // pays the second mint: `Key` folds `lettersKey` in only while `lettered` is true.
-            var mount = LibraryNavMount.For(_kind, view, size, alpha, 0UL);
+            // The full grid's cell floor is the content tier's (contract 1.22): it moves CellMin, never the key, so a crossing re-fits the mounted grid in place.
+            float cellBase = _cellBase?.Value ?? LibraryNavMount.CardCellMinFull;
+            var mount = LibraryNavMount.For(_kind, view, size, alpha, 0UL, cellBase);
             if (alpha) _letters.Build(display, mount.RowExtent);
             _lettersBuilt = alpha;
             _hasLetters = lettered;
             ulong lettersKey = lettered ? _letters.Key() : 0UL;
-            if (lettered) mount = LibraryNavMount.For(_kind, view, size, alpha, lettersKey);
+            if (lettered) mount = LibraryNavMount.For(_kind, view, size, alpha, lettersKey, cellBase);
             _mountSpec = mount;
 
             ulong rowsKey = FillRowVersions(n, out bool titlesKnown, out bool anyTitleFailed);
@@ -1193,6 +1205,13 @@ public readonly partial struct User
                         ? RepeatLayout.GridFit(spec.CellMin, spec.Gap)
                         : RepeatLayout.Extents(page._extentOf, spec.RowExtent);
                     _options = page.OptionsFor(spec);
+                }
+                else if (spec.Layout == LibraryNavLayoutKind.GridFit && _spec.CellMin != spec.CellMin)
+                {
+                    // A content-tier crossing moved the grid's cell floor (contract 1.22) under the SAME key: a fresh GridFit VALUE (stateless: the ItemsView
+                    // re-memos its grid on the new floor) re-fits the mounted list in place; the options, the scroll and the selection stay.
+                    _spec = spec;
+                    _layout = RepeatLayout.GridFit(spec.CellMin, spec.Gap);
                 }
                 return (_layout, _options!);
             }

@@ -55,6 +55,13 @@ public static class ClassicTrackChromeLayout
     /// <summary>The disclosure chevron after a flyout command.</summary>
     public const float ChevronGlyph = 8f;
 
+    /// <summary>The Sort command drawn as a glyph (the Small tier record, boards C-Album-Small / C-Playlist-Small / C-Liked-Small): the sort glyph and
+    /// the chevron 4 apart, padded 9 before and 6 after.</summary>
+    public const float SortGlyphGap = 4f;
+
+    /// <inheritdoc cref="SortGlyphGap"/>
+    public static readonly Edges4 SortGlyphPad = new(9f, 0f, 6f, 0f);
+
     /// <summary>The page bar's lead (board C-Liked, tuned Classic D16): Shuffle's own lead after the split (with the split's 4 and the bar's 2,
     /// the board's 8), and the slot the divider before the chips is centred in.</summary>
     public const float PageShuffleLead = 2f, PageDividerSlot = 17f;

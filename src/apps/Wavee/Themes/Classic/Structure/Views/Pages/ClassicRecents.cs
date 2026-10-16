@@ -5,14 +5,16 @@
 //
 //   Pages.Recents
 //   └─ Ctx.Provide(Design.AccentCtx = the page accent)
-//      └─ Column (focusable, Escape zooms back in)
-//         ├─ the masthead: "Recents" + the Overview button, then the summary line (the two lines arrive 45 ms apart)
-//         ├─ the pivot strip (keyed on the shape epoch: a pivot switch re-renders the live strip, its underline enters)
-//         ├─ the body: SkelRegionEl  (the FLIP on a pivot switch; reduced motion is a VALUE: no transition at all)
-//         │    ├─ Content  the empty vacancy, or the SemanticSurface (list + rail  ⇄  calendar)
-//         │    └─ Shimmer  the real day headers and the row's real geometry over the pending seed rows
-//         ├─ the accent binder leaf (core)
-//         └─ the owner demand leaf (core)
+//      └─ Row (focusable, Escape zooms back in)
+//         ├─ "recents:column" (capped at the record's ListMax: C-Recents-Huge's 1100 list)
+//         │    ├─ the masthead: "Recents" + the Overview button (the aside's toggle where it docks), then the summary line (the two lines arrive 45 ms apart)
+//         │    ├─ the pivot strip (keyed on the shape epoch: a pivot switch re-renders the live strip, its underline enters)
+//         │    ├─ the body: SkelRegionEl  (the FLIP on a pivot switch; reduced motion is a VALUE: no transition at all)
+//         │    │    ├─ Content  the empty vacancy, or the SemanticSurface (list + rail  ⇄  calendar)
+//         │    │    └─ Shimmer  the real day headers and the row's real geometry over the pending seed rows
+//         │    ├─ the accent binder leaf (core)
+//         │    └─ the owner demand leaf (core)
+//         └─ "recents:overview-aside" (width 0 below Huge; C-Recents-Huge: the docked Overview, 48 right of the list, `ClassicRecentsOverview`)
 //
 // What the view does NOT own: the shape, the demand, the accordion's state, the sticky band's arithmetic, the accent and its wash, and every verb (`Recents.PageView`).
 
@@ -38,10 +40,18 @@ internal static class ClassicRecents
         MotionTok.ContentResize.ToDynamics(),
         Enter: new EnterExit(Dy: Spacing.S, Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true));
 
-    /// <summary>The region's delegates, built once per mounted page: a fresh delegate per render would re-arm the skeleton region.</summary>
+    /// <summary>The docked Overview's body entering or leaving (a tier crossing, or the toggle): opacity only, 160 ms; the column eases its width beside it.</summary>
+    static readonly LayoutTransition s_overview = new(
+        TransitionChannels.Opacity, TransitionDynamics.Tween(ClassicRecentsRules.OverviewFadeMs, Easing.SmoothOut),
+        Enter: new EnterExit(Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
+        ExitDynamics: TransitionDynamics.Tween(ClassicRecentsRules.OverviewFadeMs, Easing.SmoothOut));
+
+    /// <summary>The region's delegates, built once per mounted page: a fresh delegate per render would re-arm the skeleton region. And the docked Overview's
+    /// toggle (the masthead's button where the record docks the aside): shown until the user hides it, per mounted page.</summary>
     sealed class Cache
     {
         public Func<Element>? Content, Shimmer, FailedPanel;
+        public readonly Signal<bool> OverviewShown = new(true);
     }
 
     /// <summary>The registered template of <see cref="ViewKeys.RecentsPage"/>.</summary>
@@ -59,9 +69,11 @@ internal static class ClassicRecents
 
         Element body = new SkelRegionEl(p.Pending, p.Failed, cache.Content, cache.Shimmer, cache.FailedPanel,
             SkelReveal.None, SkeletonStyle.Default, null, SmoothResize: true);
+        // C-Recents-Huge: the Overview docks beside the list while the toggle shows it (the record's; width 0 elsewhere, so a crossing eases it).
+        bool asideOn = layout.OverviewDocked && cache.OverviewShown.Value;
         var kids = new Element[]
         {
-            Hero(p, gutter, layout),
+            Hero(p, gutter, layout, cache.OverviewShown),
             new BoxEl
             {
                 Padding = new Edges4(gutter, 0f, gutter, Spacing.S),
@@ -81,28 +93,67 @@ internal static class ClassicRecents
             p.AccentBinder,
             p.OwnerDemand,
         };
+        // The column holds the masthead, the pivots and the list: capped at the record's list width (plus the gutters) where the Overview docks beside it.
+        Element column = new BoxEl
+        {
+            Key = "recents:column", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
+            MaxWidth = float.IsFinite(layout.ListMax) ? layout.ListMax + 2f * gutter : float.NaN, Animate = Design.Reveal.Resize,
+            Children = kids,
+        };
         Element page = new BoxEl
         {
-            Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Focusable = true,
-            OnKeyDown = p.OnKeyDown, Children = kids,
+            Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch, Focusable = true,
+            OnKeyDown = p.OnKeyDown, Children = [column, OverviewAside(host, layout, gutter, asideOn, p.ShapeEpoch)],
         };
         // The page PROVIDES its accent: the equalizer, the # cell and the save button read "this page's accent"
         // through the context instead of knowing they sit in Recents (§0 #16).
         return Ctx.Provide(Design.AccentCtx.Slot, p.PageAccent, page);
     }
 
+    /// <summary>The docked Overview (C-Recents-Huge): in the page's row at every tier, width 0 where the record docks none or the toggle hides it, so a crossing eases
+    /// it and the column beside it is never re-parented. Its body stands <see cref="ClassicRecentsLayout.OverviewGap"/> right of the list (the column's gutter is part of
+    /// it) and on the masthead's line; it fades in and out.</summary>
+    static Element OverviewAside(IRecentsHost host, ClassicRecentsLayout layout, float gutter, bool on, int shapeEpoch)
+    {
+        float width = on ? layout.OverviewGap + layout.OverviewAside : 0f;
+        return new BoxEl
+        {
+            Key = "recents:overview-aside", Direction = 1, Shrink = 0f, MinHeight = 0f, ClipToBounds = true, Animate = Design.Reveal.Resize, Width = width,
+            Children = on
+                ?
+                [
+                    new BoxEl
+                    {
+                        Key = "recents:overview", Animate = s_overview, Direction = 1, Grow = 1f, MinHeight = 0f, Width = width, Shrink = 0f,
+                        Padding = new Edges4(layout.OverviewGap - gutter, layout.HeadTop + ClassicRecentsRules.OverviewTop, gutter, Spacing.L),
+                        // Keyed on the shape like the calendar: a re-cut forgets the aside's scroll, a tier crossing never does.
+                        Children = [Embed.Comp(() => new ClassicRecentsOverview(host)) with { Key = "recents-overview:" + FormatCache.Int(shapeEpoch) }],
+                    },
+                ]
+                : [],
+        };
+    }
+
     // ── the masthead (W3, §0 #1-#2) ──────────────────────────────────────────────────────────────────────────────
 
-    static Element Hero(RecentsPageProps p, float gutter, ClassicRecentsLayout layout)
+    static Element Hero(RecentsPageProps p, float gutter, ClassicRecentsLayout layout, Signal<bool> overviewShown)
     {
         var title = R.Type.SurfaceDisplay(Loc.Get(Strings.Home.Recents)) with
         {
             MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Grow = 1f, Basis = 0f,
             Enter = new EnterExit(Dy: ClassicRecentsRules.EnterDy, Opacity: 0f, Active: true), Transition = MotionTok.StandardEnter,
         };
-        // 24 at Small and Standard (the Small control), 32 at Huge and 40 at Compact (a target): the record's.
-        var overview = Button.Create(Loc.Get(Strings.Recents.Overview), p.OpenOverview, ButtonAppearance.Subtle,
-            layout.OverviewH > ClassicRecentsRules.OverviewSmallH ? ControlSize.Medium : ControlSize.Small, glyph: Icons.Calendar) with { Shrink = 0f, MinHeight = layout.OverviewH };
+        // 24 at Small and Standard (the Small control), 32 at Huge and 40 at Compact (a target): the record's. Where the Overview docks (Huge) the button is the aside's
+        // toggle, pressed while it shows (C-Recents-Huge); elsewhere it zooms out to the calendar.
+        var size = layout.OverviewH > ClassicRecentsRules.OverviewSmallH ? ControlSize.Medium : ControlSize.Small;
+        Element overview = layout.OverviewDocked
+            ? new BoxEl
+            {
+                Key = "recents:overview-toggle", Shrink = 0f, MinHeight = layout.OverviewH, AlignItems = FlexAlign.Center,
+                Children = [ToggleButton.Create(Loc.Get(Strings.Recents.Overview), overviewShown, size: size, glyph: Icons.Calendar)],
+            }
+            : Button.Create(Loc.Get(Strings.Recents.Overview), p.OpenOverview, ButtonAppearance.Subtle, size, glyph: Icons.Calendar)
+                with { Key = "recents:overview-button", Shrink = 0f, MinHeight = layout.OverviewH };
         Element titleRow = new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinWidth = 0f, Children = [title, overview],

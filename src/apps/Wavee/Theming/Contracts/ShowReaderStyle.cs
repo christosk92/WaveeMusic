@@ -48,6 +48,10 @@ internal sealed class ShowPrimaryArgs
 
     /// <summary>Play the latest episode.</summary>
     public required Action Latest { get; init; }
+
+    /// <summary>The pill's (and the ghost's) control size: the stock Medium, or Large where the host's surface wants 40-DIP targets (the library show pane at
+    /// Compact; contract 1.22).</summary>
+    public ControlSize Size { get; init; } = ControlSize.Medium;
 }
 
 /// <summary>The played ledger: the bar and its counts line, or the "progress unavailable" line.</summary>

@@ -475,6 +475,8 @@ public readonly partial struct Track
         // parameter, EdgeFadeSpec.WhileStuck — no engaged signal, no re-render; RCA 2026-09-25 F(ii).)
         readonly Signal<bool> _compactInteractive = new(false);
         readonly Signal<int> _verticalItemCount = new(Detail.VerticalLayout.ItemCount(0));
+        // The hero arm's list carries the recommendations section after its rows (C-Playlist-Compact, C-Empty-Compact): the slot map reads it.
+        readonly Signal<bool> _verticalRecs = new(false);
 
         // ── selection · list controller · counts ───────────────────────────────────────────────────────────────────
         readonly SelectionModel _selection = new();
@@ -688,7 +690,9 @@ public readonly partial struct Track
                 Classic: s.Classic,
                 HeartTrailing: compact || (tier < 5 && cfg.QuietRows),
                 Quiet: cfg.QuietRows,
-                Compact: compact);
+                Compact: compact,
+                // A list's Modern row drops its "#" where the tier says so (C-TrackList compact); an album's track number and the Classic row keep it.
+                IndexHidden: !form.ListIndex && !s.Classic && cfg.Kind != DetailKind.Album);
         }
 
         int ReliefStepFor(in ColumnSet s)
@@ -1107,12 +1111,14 @@ public readonly partial struct Track
 
             Element? chips = P.ContentFilterBar?.Invoke();
             Element? lens = P.LensHeader?.Invoke();
-            float extent = (chips is not null ? P.ContentFilterExtent : 0f) + (lens is not null ? P.LensExtent : 0f);
+            // The unavailable-songs bar rides the pinned chrome while it is on (contract 1.22): the rows clip under it too.
+            float extent = (chips is not null ? P.ContentFilterExtent : 0f) + (lens is not null ? P.LensExtent : 0f) + UnavailableBarExtent();
             float stickyInset = Detail.VerticalLayout.StickyClipInset(extent, TableRules.HeaderHeightFor(shape.Set));
             _placeBand = vertical ? stickyInset : 0f;
             UseLayoutEffect(() => ApplyItemBand(stickyInset), DepKey.From(stickyInset, (float)_resetEpoch));
 
-            bool recsCapable = cfg.Recommendations && !args.Embedded && !vertical && !asideDocked && P.Recommendations is not null;
+            // The hero arm appends the section too (C-Playlist-Compact, C-Empty-Compact): after its rows, as one more slot of its viewport.
+            bool recsCapable = cfg.Recommendations && !args.Embedded && !asideDocked && P.Recommendations is not null;
             var listState = Playlist.RowsStateOf(snap.State is EdgeState.Partial or EdgeState.Complete, snap.Count, visible);
             bool recsLive = recsCapable && listState is PlaylistRowsState.Rows or PlaylistRowsState.Empty;
             int listTotal = visible + (recsLive ? 1 : 0);
@@ -1120,8 +1126,9 @@ public readonly partial struct Track
             {
                 _visible.Value = visible;
                 _listCount.Value = listTotal;
-                _verticalItemCount.Value = Detail.VerticalLayout.ItemCount(visible);
-            }, DepKey.From(visible, listTotal));
+                _verticalRecs.Value = recsLive;
+                _verticalItemCount.Value = Detail.VerticalLayout.ItemCount(visible, recsLive);
+            }, DepKey.From(visible, listTotal, recsLive ? 1 : 0, 0));
             UseEffect(PublishHeroHeight);
             var listCount = CountNow(in snap, visible);
             UseEffect(() => { if (_latest.ListCount is { } target) target.Value = listCount; },
@@ -1140,7 +1147,7 @@ public readonly partial struct Track
                 DepKey.From(variableRows ? 1f : 0f, rowH, shape.EpisodeRowH, 0f));
 
             Element realList =
-                vertical && !trailing ? VerticalList(visible, layout, stickyInset, narrate)
+                vertical && !trailing ? VerticalList(visible, recsLive, layout, stickyInset, narrate)
                 : recsLive ? RecsList(listTotal, layout, trailing, narrate)
                 : listState == PlaylistRowsState.Rows ? FlatList(layout, trailing, narrate)
                 : Placeholder(listState, in shape);
@@ -1369,10 +1376,10 @@ public readonly partial struct Track
         /// inset with a 24-DIP feather, and no stock scroll-edge cue (ch 03 §0.16). The two prefix items pin from their
         /// component's own rendered root (<see cref="HeroItem"/>, <see cref="ChromeItem"/>) against the declared
         /// <see cref="TableScope"/> — a named scope, so no raw wrapper is needed around the item component.</summary>
-        Element VerticalList(int visible, RepeatLayout layout, float stickyInset, bool narrate)
+        Element VerticalList(int visible, bool recs, RepeatLayout layout, float stickyInset, bool narrate)
         {
             int prefix = Detail.VerticalLayout.PrefixCount;
-            return ItemsView.CreateBound(Detail.VerticalLayout.ItemCount(visible),
+            return ItemsView.CreateBound(Detail.VerticalLayout.ItemCount(visible, recs),
                 scope => FocusRoot(Embed.Comp(() => new TableVerticalItem(this, scope, narrate)), scope.OnFocusChanged),
                 layout,
                 new ListOptions
@@ -1389,7 +1396,10 @@ public readonly partial struct Track
                     OnInvoked = i => { if (_rowItems!.TryPeek(i, out _, prefix)) PlayRow(i - prefix); },
                     ItemText = i => _rowItems!.TryPeek(i, out var t, prefix) ? t.Title : "",
                     IsItemEnabled = i => _rowItems!.TryPeek(i, out _, prefix),
-                    ContentType = i => i < prefix ? -1 - i : (int)RowKindAt(i - prefix),
+                    // The recommendations section recycles in a pool of its own (it is never a row).
+                    ContentType = i => i < prefix ? -1 - i
+                        : Detail.VerticalLayout.ItemRole(i, _rowItems!.Count.Peek(), _verticalRecs.Peek()) == VerticalItemRole.Recommendations ? -1 - prefix
+                        : (int)RowKindAt(i - prefix),
                     PersistentPrefixCount = prefix,
                     Grow = 1f,
                     Controller = _listCtl,
@@ -1593,6 +1603,8 @@ public readonly partial struct Track
         }
 
         internal int VisibleCountValue => _rowItems!.Count.Value;
+        /// <summary>The hero arm's list carries the recommendations section after its rows (a tracked read: the slot map follows it).</summary>
+        internal bool VerticalRecsValue => _verticalRecs.Value;
         internal Shape ShapeValue => _shape!.Value;
         internal Func<ColorF> AccentRead => _accent;
         internal Element? RecommendationsElement() => P.Recommendations?.Invoke();
@@ -2636,7 +2648,7 @@ public readonly partial struct Track
             var slot = UseComputed(() =>
             {
                 int i = _scope.Index.Value;
-                return new Slot(Detail.VerticalLayout.ItemRole(i, _host.VisibleCountValue), i == prefix);
+                return new Slot(Detail.VerticalLayout.ItemRole(i, _host.VisibleCountValue, _host.VerticalRecsValue), i == prefix);
             }).Value;
             switch (slot.Role)
             {
@@ -2653,6 +2665,16 @@ public readonly partial struct Track
                     {
                         Key = "vitem:row", Direction = 1,
                         Children = [Embed.Comp(() => new TableSlot(host, scope, prefix, narrate))],
+                    };
+                }
+                case VerticalItemRole.Recommendations:
+                {
+                    // The playlist's "Recommended songs" after the rows (C-Playlist-Compact; an empty list shows it alone, C-Empty-Compact).
+                    Element? section = _host.RecommendationsElement();
+                    return new BoxEl
+                    {
+                        Key = section is null ? "vitem:blank" : "vitem:recs", Direction = 1,
+                        Children = section is null ? [] : [section],
                     };
                 }
                 default:

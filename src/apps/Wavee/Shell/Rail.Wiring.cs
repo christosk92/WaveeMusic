@@ -279,14 +279,43 @@ internal static class RailWiring
     // ══ THE SHEET'S TRANSPORT ════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The transport the now-playing sheet carries (it covers the player bar at Compact): the stage's facts, the shared verbs,
-    /// the bar's own seek rail and time labels. Built once.</summary>
+    /// the bar's own seek rail and time labels, and (contract 1.22) the head's "Playing from" source and the Devices door's device with the bar's
+    /// own picker toggle. Built once.</summary>
     static readonly PanelTransportProps s_sheetTransport = new()
     {
         Facts = ReadSheetTransport,
         Verbs = PlayerVerbs.Default,
         SeekBar = static () => Shell.SeekBar(),
         TimeText = static remaining => Shell.TimeText(remaining),
+        Source = ReadSheetSource,
+        Device = ReadSheetDevice,
+        ToggleDevicePicker = Shell.BarToggleDevicePicker,
     };
+
+    /// <summary>Where playback comes from: the stage's "Playing from {kind}" over the context's name (the same reads as the stage's transport
+    /// card and the queue's "Playing from" row), and the context's page. No name: no source (never a "Playing from" with no name).</summary>
+    static PanelSourceFacts ReadSheetSource()
+    {
+        EntityId contextId = Playback.ContextUri.Value;
+        Queue.ContextWire wire = Playback.ContextLabel.Value;
+        string? name = Queue.ContextName(contextId, in wire);
+        if (name is not { Length: > 0 }) return new PanelSourceFacts("", "", null);
+        EntityId target = Queue.ContextTarget(contextId, in wire);
+        var route = target.IsEmpty ? default : Shell.For(new EntityUri(target), name);
+        Action? open = target.IsEmpty || route.IsNone ? null : () => Shell.GoTo(route);
+        // a formatted key: the generated method formats (Loc.Get would render "[…]", V-D15)
+        return new PanelSourceFacts(Strings.Stage.PlayingFrom(Queue.ContextKindLabel(contextId)), name, open);
+    }
+
+    /// <summary>The device playback is on: another device's name while it owns playback (the owner-gated verdict the bar's Devices button
+    /// and its "Playing on" line read), else "This computer".</summary>
+    static PanelDeviceFacts ReadSheetDevice()
+    {
+        _ = Playback.Devices.Changed.Value;
+        var rows = Playback.Devices.Rows;
+        int slot = Shell.DeviceRoster.RemoteSlot(Playback.OwnerSignal.Value, Playback.ActiveDeviceSlot.Value, rows);
+        return slot >= 0 ? new PanelDeviceFacts(rows[slot].Name ?? "", true) : new PanelDeviceFacts(Loc.Get(Strings.Player.ThisComputer), false);
+    }
 
     /// <summary>What the sheet's transport draws: the stage transport card's reads (the skip fold every surface shares).</summary>
     static PanelTransportFacts ReadSheetTransport()
