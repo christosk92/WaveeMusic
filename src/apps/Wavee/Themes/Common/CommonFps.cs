@@ -4,6 +4,9 @@
 // design). The developer HUD: a full-bleed, hit-test PASS-THROUGH plain positioner (a component's output would mirror its Grow onto
 // the wrapper and swallow every hit: the 0.2.9 bug that killed scrolling) holding a content-sized pill, mounted only while
 // developer mode AND the overlay toggle are on (the core decides, `FpsProps.Shown`).
+//
+// TIERS (TC10): none needed. The pill is content-sized and sits at the window's top right on every tier and height (its inset clears the title bar and the first rows),
+// the positioner is hit-test pass-through, and nothing in it is a target, so there is no Compact target and no max width to apply; `CommonBlocksTierTests` mounts it at every plan size to pin that.
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;

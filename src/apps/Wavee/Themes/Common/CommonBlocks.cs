@@ -11,6 +11,9 @@
 //   Pages.Logs             the log files page                              CommonLogs
 //   Pages.Module           a module's page                                 CommonModulePage
 //
+// TIERS (themes plan 3.2, TC10): every block is tiered once for every theme, from the content tier and the height tier alone (`Rules\Tiers.cs`, `CommonTouch.cs`,
+// `CommonTierComponent.cs`); no theme has a board for them (owner Q18), so a block never names an edge of the ladder its theme draws.
+//
 // The not-found page is a block too (`CommonNotFound`), but the content state draws it: `Shell.ContentState` is a structure's own key (the page box
 // and the offline lane are the theme's), and its NotFound arm calls the one block.
 

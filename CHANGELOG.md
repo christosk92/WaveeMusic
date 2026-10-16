@@ -12,6 +12,11 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **History, the Home customizer, the log viewer, the diagnostics pages, module pages and the not-found page fit every window
+  size.** In a narrow window each is one column: a label sits above its value, a wide table becomes stacked rows, buttons,
+  links, fields and pickers are at least 40 DIP, the history head stacks over a full-width search, and the log viewer shows each
+  entry on two lines. In a short window their heads scroll with the page instead of covering it. In a very large window their
+  content stops at a comfortable width instead of stretching across the screen.
 - **The artist page's header reads better at ordinary window sizes, and Top tracks arrives with the page.** The name, bio
   and stats now end a little past the middle of the header (they used to run across nine-tenths of it, over the bright
   half of the photo at a medium or 1440-wide window), and the dark side of the photo now reaches exactly as far as the

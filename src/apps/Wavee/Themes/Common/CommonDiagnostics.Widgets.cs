@@ -19,11 +19,17 @@ namespace Wavee.Themes.Common;
 
 internal static partial class CommonDiagnostics
 {
-    static Element Labeled(string label, Element control) => new BoxEl
-    {
-        Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
-        Children = [new TextEl(label) { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextSecondary, Width = CommonDiagnosticsRules.RuntimeLabelWidth, Shrink = 0f }, control],
-    };
+    static Element Labeled(string label, Element control, bool stacked) => stacked
+        ? new BoxEl
+        {
+            Direction = 1, Gap = CommonDiagnosticsRules.StackedRowGap,
+            Children = [new TextEl(label) { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextSecondary }, control],
+        }
+        : new BoxEl
+        {
+            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
+            Children = [new TextEl(label) { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextSecondary, Width = CommonDiagnosticsRules.RuntimeLabelWidth, Shrink = 0f }, control],
+        };
 
     // ══ THE PLAYBACK HEALTH CARD (playback-smoothness-implementation.md §4.14; #167) ════════════════════════════════
     //
@@ -31,16 +37,17 @@ internal static partial class CommonDiagnostics
     // nothing while nothing changes. A row whose fact does not exist yet (no live session, no decode yet, no seek yet) prints the page's usual "—".
 
     /// <summary>Self-refreshing: it owns a 1 Hz <c>UseInterval</c> over the node's read, so the page's own Refresh button is not needed for it.</summary>
-    sealed class HealthCard : Component
+    sealed class HealthCard : CommonTierComponent
     {
         readonly Signal<int> _tick = new(0);
 
         public override Element Render()
         {
+            var layout = CommonDiagnosticsLayout.For(ReadTier());
             var node = UseProps<DiagHealth>();
             UseInterval(() => _tick.Value = _tick.Peek() + 1, node.PollMs, enabled: true);
             _ = _tick.Value;
-            return CardOf(node.Read(), Env.None);
+            return CardOf(node.Read(), Env.Of(layout));
         }
     }
 
@@ -53,7 +60,7 @@ internal static partial class CommonDiagnostics
     /// BOTH fields once, at mount, from the now-playing episode/show if one is playing (never overwrites a field the user already typed into). The
     /// network walk itself runs on an api worker thread; this component only awaits it and marshals the result back with <c>UsePost</c>,
     /// same as every other background action on this page.</summary>
-    sealed class WireCheckCard : Component
+    sealed class WireCheckCard : CommonTierComponent
     {
         readonly Signal<string> _showUri = new("");
         readonly Signal<string> _episodeUri = new("");
@@ -64,6 +71,7 @@ internal static partial class CommonDiagnostics
 
         public override Element Render()
         {
+            var layout = CommonDiagnosticsLayout.For(ReadTier());
             var node = UseProps<DiagWireCheck>();
             var host = node.Host;
             var post = UsePost();
@@ -83,21 +91,19 @@ internal static partial class CommonDiagnostics
             var rows = new List<Element>(6)
             {
                 Body(node.Body),
-                TextBox.Create(_showUri, null, new TextBox.TextBoxOptions
-                    { Header = node.ShowUriLabel, Width = CommonDiagnosticsRules.WireBoxWidth }),
-                TextBox.Create(_episodeUri, null, new TextBox.TextBoxOptions
-                    { Header = node.EpisodeUriLabel, Width = CommonDiagnosticsRules.WireBoxWidth }),
-                CheckBox.Create(node.SaveCapturesLabel, _saveCaptures),
+                CommonTouch.TextField(_showUri, node.ShowUriLabel, layout.WireBoxWidth, layout.Target),
+                CommonTouch.TextField(_episodeUri, node.EpisodeUriLabel, layout.WireBoxWidth, layout.Target),
+                CommonTouch.Check(node.SaveCapturesLabel, _saveCaptures, layout.Target),
                 new BoxEl
                 {
                     Direction = 0, Gap = Spacing.S,
                     Children =
                     [
-                        Button.Accent(running ? node.RunningLabel : node.RunLabel, () => Run(host, post), isEnabled: live && !running),
+                        CommonTouch.Button(running ? node.RunningLabel : node.RunLabel, () => Run(host, post), layout.Target, accent: true, enabled: live && !running),
                     ],
                 },
             };
-            if (_results is { Count: > 0 } results) rows.Add(ResultsTable(node, results));
+            if (_results is { Count: > 0 } results) rows.Add(ResultsTable(node, results, layout));
             return Card(node.Title, rows);
         }
 
@@ -122,8 +128,28 @@ internal static partial class CommonDiagnostics
             });
         }
 
-        static Element ResultsTable(DiagWireCheck node, IReadOnlyList<DiagWireRow> results)
+        static Element ResultsTable(DiagWireCheck node, IReadOnlyList<DiagWireRow> results, CommonDiagnosticsLayout layout)
         {
+            // Compact: no column header, each result its own stacked lines (operation, then status and size, then the root).
+            if (layout.Stacked)
+            {
+                var stacked = new List<Element>(results.Count);
+                foreach (var r in results)
+                {
+                    stacked.Add(new BoxEl
+                    {
+                        Direction = 1, Gap = CommonDiagnosticsRules.StackedRowGap,
+                        Children =
+                        [
+                            new TextEl(r.Op) { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MinWidth = 0f },
+                            new TextEl(node.ColStatus + " " + r.Status + "  " + node.ColBytes + " " + r.Bytes) { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f },
+                            new TextEl(node.ColRoot + " " + r.Root) { Size = CommonDiagnosticsRules.TextSize, Color = r.RootFound ? Tok.TextPrimary : Tok.SystemFillCritical, Wrap = TextWrap.Wrap, MinWidth = 0f },
+                        ],
+                    });
+                }
+                return new BoxEl { Direction = 1, Gap = CommonDiagnosticsRules.WireTableGap, Children = stacked.ToArray() };
+            }
+
             var rows = new List<Element>(results.Count + 2)
             {
                 new BoxEl
@@ -161,12 +187,13 @@ internal static partial class CommonDiagnostics
 
     /// <summary>The Diagnostics "Scroll" card: the probe level (Off · Summary · Trace), the feel profile, and the CSV export. Every control reads
     /// and writes the node's host; the card holds no state of its own.</summary>
-    sealed class ScrollCard : Component
+    sealed class ScrollCard : CommonTierComponent
     {
         SegmentedItem[]? _levelItems;
 
         public override Element Render()
         {
+            var layout = CommonDiagnosticsLayout.For(ReadTier());
             var node = UseProps<DiagScroll>();
             var host = node.Host;
             if (_levelItems is null)   // the launch locale is fixed for the process
@@ -176,14 +203,14 @@ internal static partial class CommonDiagnostics
                 _levelItems = items;
             }
             return Card(node.Title,
-                Labeled(node.ProbeLevelLabel, Segmented.Create(_levelItems, host.Level, onChange: host.SetLevel)),
+                Labeled(node.ProbeLevelLabel, CommonTouch.Segmented(_levelItems, host.Level, layout.Target, host.SetLevel), layout.Stacked),
                 Body(node.LevelBody),
                 Labeled(node.ProfileLabel,
-                    ComboBox.Create(host.ProfileNames, host.Profile, width: CommonDiagnosticsRules.ProfileComboWidth, onChange: host.SetProfile)),
+                    CommonTouch.Picker(host.ProfileNames, host.Profile, CommonDiagnosticsRules.ProfileComboWidth, layout.Target, host.SetProfile), layout.Stacked),
                 new BoxEl
                 {
                     Direction = 0, Gap = Spacing.S,
-                    Children = [Button.Standard(node.ExportLabel, () => host.Export(Context.Scene?.DeviceScale ?? 1f))],
+                    Children = [CommonTouch.Button(node.ExportLabel, () => host.Export(Context.Scene?.DeviceScale ?? 1f), layout.Target)],
                 },
                 Caption(node.Caption));
         }
@@ -194,7 +221,7 @@ internal static partial class CommonDiagnostics
     /// <summary>The Diagnostics "Tiles" card: the always-on retained-tile census, its invalidation reasons, and the GPU pass timing toggle +
     /// breakdown. Every number is read straight off the engine each poll (the node's host); the card holds no state but the toggle and its own
     /// refresh tick.</summary>
-    sealed class TileCard : Component
+    sealed class TileCard : CommonTierComponent
     {
         Signal<bool>? _passTiming;
         readonly Signal<int> _refresh = new(0);
@@ -203,6 +230,7 @@ internal static partial class CommonDiagnostics
 
         public override Element Render()
         {
+            var layout = CommonDiagnosticsLayout.For(ReadTier());
             var node = UseProps<DiagTiles>();
             var host = _host = node.Host;
             // Seeded from the host: the timeline may already be on (`--fg gpu-timing`, a probe), and the toggle must say so.
@@ -214,7 +242,7 @@ internal static partial class CommonDiagnostics
             // pass-timeline copy only actually runs while the toggle is on.
             UseInterval(() => _refresh.Value = _refresh.Peek() + 1, node.PollMs, enabled: true);
 
-            var env = new Env(null, null, null, t => Labeled(t.Label, ToggleSwitch.Create(passTiming, _onToggle ??= OnToggle, isEnabled: t.Enabled)));
+            var env = new Env(null, null, null, t => Labeled(t.Label, ToggleSwitch.Create(passTiming, _onToggle ??= OnToggle, isEnabled: t.Enabled), layout.Stacked), layout);
             return CardOf(host.Read(passTimingOn), env);
         }
 
@@ -238,7 +266,7 @@ internal static partial class CommonDiagnostics
     // the evidence bundle export. Decisions and formats are the core's (the node's host); this component owns the boxes, the pick-with-click
     // observer and the card.
 
-    sealed class EvidenceCard : Component
+    sealed class EvidenceCard : CommonTierComponent
     {
         readonly Signal<string> _x = new("0");
         readonly Signal<string> _y = new("0");
@@ -252,6 +280,7 @@ internal static partial class CommonDiagnostics
 
         public override Element Render()
         {
+            var layout = CommonDiagnosticsLayout.For(ReadTier());
             var node = UseProps<DiagEvidence>();
             _host = node.Host;
             _ = _refresh.Value;
@@ -268,15 +297,15 @@ internal static partial class CommonDiagnostics
                     : Status(new DiagStatus(Icons.StatusWarning, DiagTone.Caution, node.WarningTitle, view.Facts)),
                 new BoxEl
                 {
-                    Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
+                    Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Wrap = layout.Stacked,
                     Children =
                     [
                         new TextEl(node.PixelLabel) { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextSecondary, Width = CommonDiagnosticsRules.PixelLabelWidth, Shrink = 0f },
-                        TextBox.Create(_x, null, new TextBox.TextBoxOptions { Header = "x", Width = CommonDiagnosticsRules.PixelBoxWidth }),
-                        TextBox.Create(_y, null, new TextBox.TextBoxOptions { Header = "y", Width = CommonDiagnosticsRules.PixelBoxWidth }),
+                        CommonTouch.TextField(_x, "x", layout.PixelBoxWidth, layout.Target),
+                        CommonTouch.TextField(_y, "y", layout.PixelBoxWidth, layout.Target),
                         new TextEl(node.DipLabel) { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextTertiary, Shrink = 0f },
-                        Button.Standard(node.QueryLabel, Query),
-                        Button.Standard(_pick is null ? node.PickLabel : node.PickingLabel, TogglePick),
+                        CommonTouch.Button(node.QueryLabel, Query, layout.Target),
+                        CommonTouch.Button(_pick is null ? node.PickLabel : node.PickingLabel, TogglePick, layout.Target),
                     ],
                 },
             };
@@ -284,28 +313,39 @@ internal static partial class CommonDiagnostics
             var hits = _rows.Value;
             if (hits.Count > 0)
             {
-                rows.Add(HitRow("#", "kind", "node", "α", "f1", "f2", "tile", "raster", header: true, stale: false));
-                foreach (var r in hits) rows.Add(HitRow(r.Index, r.Kind, r.Node, r.Alpha, r.Feather1, r.Feather2, r.Tile, r.Raster, header: false, stale: r.Stale));
+                if (!layout.Stacked) rows.Add(HitRow("#", "kind", "node", "α", "f1", "f2", "tile", "raster", header: true, stale: false, stacked: false));
+                foreach (var r in hits) rows.Add(HitRow(r.Index, r.Kind, r.Node, r.Alpha, r.Feather1, r.Feather2, r.Tile, r.Raster, header: false, stale: r.Stale, stacked: layout.Stacked));
             }
             rows.Add(Separator(DiagGap.Hairline));
             rows.Add(new BoxEl
             {
-                Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.End,
+                Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.End, Wrap = layout.Stacked,
                 Children =
                 [
-                    Button.Standard(view.Busy ? node.ExportingLabel : node.ExportLabel, Export),
-                    TextBox.Create(_tag, null, new TextBox.TextBoxOptions { Header = node.TagLabel, Width = CommonDiagnosticsRules.TagBoxWidth }),
+                    CommonTouch.Button(view.Busy ? node.ExportingLabel : node.ExportLabel, Export, layout.Target),
+                    CommonTouch.TextField(_tag, node.TagLabel, layout.TagBoxWidth, layout.Target),
                 ],
             });
-            rows.Add(Row(node.LastLabel, view.LastFolder, CommonDiagnosticsRules.RuntimeLabelWidth));
+            rows.Add(Row(node.LastLabel, view.LastFolder, CommonDiagnosticsRules.RuntimeLabelWidth, layout.Stacked));
             rows.Add(Caption(node.Caption));
             return Card(node.Title, rows);
         }
 
         static Element HitRow(string index, string kind, string node, string alpha, string f1, string f2, string tile, string raster,
-            bool header, bool stale)
+            bool header, bool stale, bool stacked)
         {
             ColorF c = header ? Tok.TextSecondary : stale ? Tok.SystemFillCritical : Tok.TextPrimary;
+            if (stacked)
+                return new BoxEl
+                {
+                    Direction = 1, Gap = CommonDiagnosticsRules.StackedRowGap,
+                    Children =
+                    [
+                        new TextEl(index + "  " + kind + "  " + node) { Size = CommonDiagnosticsRules.TextSize, Color = c, FontFamily = "Cascadia Code", Wrap = TextWrap.Wrap, MinWidth = 0f },
+                        new TextEl("α " + alpha + "  f1 " + f1 + "  f2 " + f2 + "  " + tile + "  " + (stale ? raster + "*" : raster))
+                            { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextTertiary, FontFamily = "Cascadia Code", Wrap = TextWrap.Wrap, MinWidth = 0f },
+                    ],
+                };
             TextEl Cell(string s, float w) => new(s) { Size = CommonDiagnosticsRules.TextSize, Color = c, Width = w, Shrink = 0f, FontFamily = "Cascadia Code", Trim = TextTrim.CharacterEllipsis };
             return new BoxEl
             {
@@ -313,7 +353,7 @@ internal static partial class CommonDiagnostics
                 Children =
                 [
                     Cell(index, CommonDiagnosticsRules.HitIndexWidth), Cell(kind, CommonDiagnosticsRules.HitKindWidth),
-                    new TextEl(node) { Size = CommonDiagnosticsRules.TextSize, Color = c, Grow = 1f, MinWidth = 0f, FontFamily = "Cascadia Code", Trim = TextTrim.CharacterEllipsis },
+                    new TextEl(node) { Size = CommonDiagnosticsRules.TextSize, Color = c, Grow = 1f, Shrink = 1f, MinWidth = 0f, FontFamily = "Cascadia Code", Trim = TextTrim.CharacterEllipsis },
                     Cell(alpha, CommonDiagnosticsRules.HitAlphaWidth), Cell(f1, CommonDiagnosticsRules.HitAlphaWidth), Cell(f2, CommonDiagnosticsRules.HitAlphaWidth),
                     Cell(tile, CommonDiagnosticsRules.HitTileWidth), Cell(stale ? raster + "*" : raster, CommonDiagnosticsRules.HitRasterWidth),
                 ],

@@ -27,11 +27,12 @@ namespace Wavee.Analyzers.Themes;
 /// one of the ~255 control-size <c>Width = N</c> literals, so nothing here looks at those.</item>
 /// </list>
 /// Allowed: <c>Rules\**</c> of a structure, <c>Theming\Policies\**</c>, <c>Shell\WindowTiers.cs</c> (the measurement).
-/// A comparison against zero is a usability guard, not a breakpoint, and is not reported. Classic's grandfathered files are
-/// listed in <c>analyzer-baseline\WVTH013.txt</c>, emptied family by family by the Classic tier PRs and deleted by TC10; the
-/// baseline detail is the measurement kind (<c>Viewport.Size</c>, <c>UseMeasuredWidth</c>, <c>UseMeasuredBounds</c>,
-/// <c>Responsive.Of</c>, <c>TierFacts.ContentWidth</c>...), the same string for (a) and (b), so one entry per file and kind
-/// covers a site's comparison and its call.
+/// A comparison against zero is a usability guard, not a breakpoint, and is not reported. A hard gate with no baseline (Classic's
+/// grandfathered files were emptied family by family by the Classic tier PRs and the file was deleted by TC10): an
+/// <c>analyzer-baseline\WVTH013.txt</c> is WVTH901. The first argument of a report is the measurement kind (<c>Viewport.Size</c>,
+/// <c>UseMeasuredWidth</c>, <c>UseMeasuredBounds</c>, <c>Responsive.Of</c>, <c>TierFacts.ContentWidth</c>...), the same string for
+/// (a) and (b), and names what was measured in the message. The Common blocks (<c>Themes\Common\**</c>) are held to the rule like
+/// a structure; their breakpoint constants, if they ever need any, live in <c>Themes\Common\Rules\Tiers*.cs</c>.
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class WindowTierFenceAnalyzer : ThemeRuleAnalyzer
@@ -47,6 +48,8 @@ public sealed class WindowTierFenceAnalyzer : ThemeRuleAnalyzer
     private const int MaxDepth = 6;
 
     protected override DiagnosticDescriptor Descriptor => Rule;
+
+    protected override bool AllowsBaseline => false;
 
     protected override void OnStart(CompilationStartAnalysisContext start, RuleEnv env)
     {

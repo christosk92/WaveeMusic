@@ -212,47 +212,30 @@ public sealed class WindowTierFenceAnalyzerTests
     public void SameCode_InAnAllowedCoreFile_IsClean(string path)
         => Assert.Empty(Flagged(path, Host(ViaUseContext)));
 
-    // ---- the baseline ------------------------------------------------------------------------------------------------------
+    // ---- no baseline (TC10 deleted Classic's) --------------------------------------------------------------------------------
 
     private const string ClassicMeasured =
         "namespace Wavee.Themes.Classic { class Page { bool Wide(" + Hooks + ") { var w = hooks.UseMeasuredWidth(); return w.Value >= 800f; } } }";
 
     [Fact]
-    public void Baseline_ByDetail_ExemptsTheComparisonAndTheCall_AndIsNotStale()
+    public void ClassicStructure_IsHeldToTheSameRuleAsEveryTheme()
+        => Assert.Equal(2, Flagged("Themes/Classic/Structure/Page.cs", ClassicMeasured).Length);   // the comparison and the call
+
+    [Fact]
+    public void Baseline_IsDisallowed_AndExemptsNothing()
     {
         var diagnostics = Run(new WindowTierFenceAnalyzer(), new[] { Src("Themes/Classic/Structure/Page.cs", ClassicMeasured) },
             new[] { Baseline("WVTH013", "Themes/Classic/Structure/Page.cs :: UseMeasuredWidth") });
-        Assert.Empty(Harness.Only(diagnostics, "WVTH013"));
-        Assert.Empty(Harness.Only(diagnostics, "WVTH900"));
-    }
-
-    [Fact]
-    public void Baseline_WithoutDetail_ExemptsTheWholeFile()
-    {
-        var diagnostics = Run(new WindowTierFenceAnalyzer(), new[] { Src("Themes/Classic/Structure/Page.cs", ClassicMeasured) },
-            new[] { Baseline("WVTH013", "# Classic, emptied by the tier PRs; deleted by TC10\r\nThemes/Classic/Structure/Page.cs\r\n") });
-        Assert.Empty(Harness.Only(diagnostics, "WVTH013"));
-        Assert.Empty(Harness.Only(diagnostics, "WVTH900"));
-    }
-
-    [Fact]
-    public void Baseline_ForAnotherMeasurementKind_DoesNotExempt_AndIsStale()
-    {
-        var diagnostics = Run(new WindowTierFenceAnalyzer(), new[] { Src("Themes/Classic/Structure/Page.cs", ClassicMeasured) },
-            new[] { Baseline("WVTH013", "Themes/Classic/Structure/Page.cs :: Viewport.Size") });
+        Assert.Single(Harness.Only(diagnostics, "WVTH901"));
         Assert.Equal(2, Harness.Only(diagnostics, "WVTH013").Count);
-        Assert.Single(Harness.Only(diagnostics, "WVTH900"));
+        Assert.Empty(Harness.Only(diagnostics, "WVTH900"));
     }
 
     [Fact]
-    public void Baseline_EntryThatMatchesNothing_IsReportedStale()
-    {
-        var diagnostics = Run(new WindowTierFenceAnalyzer(),
-            new[] { Src("Themes/Classic/Structure/Page.cs", "namespace Wavee.Themes.Classic { class Page { } }") },
-            new[] { Baseline("WVTH013", "Themes/Classic/Structure/Page.cs :: UseMeasuredWidth") });
-        Assert.Empty(Harness.Only(diagnostics, "WVTH013"));
-        Assert.Single(Harness.Only(diagnostics, "WVTH900"));
-    }
+    public void ComparisonAgainstAConstantDeclaredInCommonRulesTiers_IsClean()
+        => Assert.Empty(FlaggedFiles(
+            Src("Themes/Common/Rules/Tiers.cs", "namespace Wavee.Themes.Zune { static class CommonTiers { public const float CompactBelow = 640f; } }"),
+            Src("Themes/Common/Block.cs", Page("bool Narrow(" + Hooks + ") { " + ReadViewport + "return vp.Width < Wavee.Themes.Zune.CommonTiers.CompactBelow; }"))));
 
     [Fact]
     public void Descriptor_IsAnError_WithTheRuleId()

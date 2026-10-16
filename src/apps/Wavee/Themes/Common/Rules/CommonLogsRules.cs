@@ -8,8 +8,7 @@ namespace Wavee.Themes.Common;
 /// <summary>The log viewer's geometry.</summary>
 internal static class CommonLogsRules
 {
-    /// <summary>The toolbar's and the list card's side gutter.</summary>
-    public const float GutterX = 36f;
+    // The side gutter is the tier layout's (`CommonLogsLayout.Gutter`, Rules\Tiers.cs): 36 on Standard and Huge, 32 on Small, 16 on Compact.
 
     /// <summary>The list card's column header.</summary>
     public const float ColumnHeaderHeight = 32f;
@@ -22,6 +21,19 @@ internal static class CommonLogsRules
 
     /// <summary>One row's minimum height, and the list's estimate before a row is measured.</summary>
     public const float RowMinHeight = 36f, EstimatedRowExtent = 36f;
+
+    /// <summary>A two-line (Compact) row: the estimate before it is measured, the gap between its lines, and the indent of the second line under the first line's time
+    /// (chevron 12 + dot 6 + two gaps of 8).</summary>
+    public const float CompactRowExtent = 64f, CompactLineGap = 2f, CompactMessageInset = 34f;
+
+    /// <summary>The expanded details' left inset (under the message column), and the Compact one.</summary>
+    public const float DetailInset = 44f, CompactDetailInset = 28f;
+
+    /// <summary>The filter box's width (the stock suggest box's) and the Short toolbar's: one scrolling line of this height.</summary>
+    public const float FilterWidth = 280f, ShortFilterWidth = 200f, ToolbarShortHeight = 48f;
+
+    /// <summary>The empty-filter state's vertical room.</summary>
+    public const float EmptyInsetY = 64f;
 
     /// <summary>The live tail's poll period (milliseconds).</summary>
     public const float PollMs = 750f;

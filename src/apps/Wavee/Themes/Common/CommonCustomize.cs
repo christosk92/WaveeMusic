@@ -5,6 +5,10 @@
 // `HomeLayout` instance Home reads too (a toggle/reorder here is visible on Home the same frame it commits), and the three verbs are the core
 // host's (`CustomizeScreen`); this view draws the document it is handed.
 //
+// TIERS (themes plan 3.2, TC10): the page reads `ctx.Tier()` into a `CommonCustomizeLayout` (Rules\Tiers.cs); a row (a component) reads the same fact through
+// `CommonTierComponent`. Compact stacks Reset under the title, gives a row the 40-DIP hit target (Up, Down), narrows the gutter, and scrolls the head with the list; Short
+// scrolls them too; every tier is one column capped at the page's max width (the Huge fill rule).
+//
 // WIRING THE REORDERABLE. A drag asks for a re-render of the component that BUILT the rows, so this view (the slot's own component) gives the
 // reorderable its scene, its render request and the row extent from its render context — the host only owns the behaviour object. A row's
 // `ToggleSwitch` keeps its OWN `Signal<bool>`, which freezes its INSTANCE at mount (`ToggleSwitch.Create`'s contract), so each row component
@@ -18,6 +22,7 @@ using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.HomeUi;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Common;
@@ -34,7 +39,8 @@ internal static class CommonCustomize
         reorder.Scene = ctx.Hooks.Scene;
         reorder.RequestRender = ctx.Hooks.RequestRerender;
         reorder.ItemCount = n;
-        reorder.ItemExtent = CommonCustomizeRules.CustomizeRowH;
+        var layout = CommonCustomizeLayout.For(ctx.Tier());
+        reorder.ItemExtent = layout.RowHeight;
 
         var rows = new Element[n];
         for (int i = 0; i < n; i++)
@@ -45,40 +51,52 @@ internal static class CommonCustomize
             rows[i] = reorder.Item(item, RowFor(props, entry, item, n), key: entry.Kind);
         }
 
+        Element head = Header(props, layout);
+        Element list = new BoxEl
+        {
+            Key = "home-customize-list", Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1,
+            Padding = new Edges4(Left: layout.Gutter, Top: CommonCustomizeRules.CustomizeListTop, Right: layout.Gutter, Bottom: Spacing.XXL),
+            Children = [reorder.List(new BoxEl { Direction = 1, MinWidth = 0f, Grow = 1f, Shrink = 1f, Children = rows })],
+        };
+        // The head and the list scroll as one page where the list alone would not fit (Compact, Short).
+        Element[] page = layout.Scrolls
+            ? [Ui.ScrollView(new BoxEl { Direction = 1, Children = [head, list] }) with { Grow = 1f, ScrollKey = "home-customize" }]
+            : [head, list];
+        // A row holding ONE column: the column stops growing at the tier's max width and keeps the page's left edge (the Huge fill rule).
         return new BoxEl
         {
-            Key = "home-customize", Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
+            Key = "home-customize", Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
             Children =
             [
-                Header(props),
-                new BoxEl
-                {
-                    Key = "home-customize-list", Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1,
-                    Padding = new Edges4(Left: Spacing.XXXL, Top: CommonCustomizeRules.CustomizeListTop, Right: Spacing.XXXL, Bottom: Spacing.XXL),
-                    Children = [reorder.List(new BoxEl { Direction = 1, MinWidth = 0f, Grow = 1f, Shrink = 1f, Children = rows })],
-                },
+                new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, MaxWidth = layout.MaxWidth, Children = page },
             ],
         };
     }
 
-    static Element Header(HomeCustomizeProps props) => new BoxEl
+    static Element Header(HomeCustomizeProps props, CommonCustomizeLayout layout)
     {
-        Key = "home-customize-header", Direction = 0, AlignItems = FlexAlign.Center, Gap = CommonCustomizeRules.CustomizeHeaderGap,
-        Padding = new Edges4(Left: Spacing.XXXL, Top: Spacing.XXL, Right: Spacing.XXXL, Bottom: 0f),
-        Children =
-        [
-            new BoxEl
-            {
-                Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Gap = CommonCustomizeRules.CustomizeTitleGap,
-                Children =
-                [
-                    R.Type.PageHero(Loc.Get(Strings.Home.Customizer.Title)) with { Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MaxLines = 1 },
-                    R.Type.TrackMeta(Loc.Get(Strings.Home.CustomizeBody)) with { Wrap = TextWrap.Wrap, MaxLines = 2 },
-                ],
-            },
-            Button.Standard(Loc.Get(Strings.Home.ResetDefault), props.Reset) with { Shrink = 0f },
-        ],
-    };
+        bool stack = layout.StackHeader;
+        var titleBlock = new BoxEl
+        {
+            Direction = 1, Shrink = 1f, MinWidth = 0f, Gap = CommonCustomizeRules.CustomizeTitleGap,
+            Children =
+            [
+                R.Type.PageHero(Loc.Get(Strings.Home.Customizer.Title)) with { Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MaxLines = 1 },
+                R.Type.TrackMeta(Loc.Get(Strings.Home.CustomizeBody)) with { Wrap = TextWrap.Wrap, MaxLines = 2 },
+            ],
+        };
+        // Beside Reset the title block is the one flexible child; over it (Compact) both are just a column.
+        return new BoxEl
+        {
+            Key = "home-customize-header", Direction = stack ? (byte)1 : (byte)0, AlignItems = stack ? FlexAlign.Start : FlexAlign.Center, Gap = CommonCustomizeRules.CustomizeHeaderGap,
+            Padding = new Edges4(Left: layout.Gutter, Top: Spacing.XXL, Right: layout.Gutter, Bottom: 0f),
+            Children =
+            [
+                stack ? titleBlock : titleBlock with { Grow = 1f },
+                CommonTouch.Button(Loc.Get(Strings.Home.ResetDefault), props.Reset, layout.Target) with { Shrink = 0f },
+            ],
+        };
+    }
 
     static Element RowFor(HomeCustomizeProps props, LayoutEntry entry, int index, int count)
         => Embed.Comp(new RowProps(entry, index, count, props.Toggle, props.Move), static () => new ZoneRow());
@@ -89,7 +107,7 @@ internal static class CommonCustomize
     /// <see cref="Signal{T}"/> instance freezes at mount (<c>ToggleSwitch.Create</c>'s contract), so it is kept in
     /// sync with the live document through a layout effect rather than rebuilt — the same shape the old customizer's
     /// row used, over the new document.</summary>
-    sealed class ZoneRow : Component
+    sealed class ZoneRow : CommonTierComponent
     {
         readonly Signal<bool> _visible = new(true);
         bool _wantVisible;
@@ -98,6 +116,7 @@ internal static class CommonCustomize
 
         public override Element Render()
         {
+            var layout = CommonCustomizeLayout.For(ReadTier());
             var p = UseProps<RowProps>();
             bool visible = p.Entry.Visible;
             _wantVisible = visible;
@@ -110,7 +129,7 @@ internal static class CommonCustomize
 
             return new BoxEl
             {
-                Direction = 0, Height = CommonCustomizeRules.CustomizeRowH, AlignItems = FlexAlign.Center, Gap = CommonCustomizeRules.CustomizeRowGap,
+                Direction = 0, Height = layout.RowHeight, AlignItems = FlexAlign.Center, Gap = layout.RowGap,
                 Grow = 1f, Shrink = 1f, MinWidth = 0f,
                 Opacity = visible ? 1f : CommonCustomizeRules.CustomizeHiddenOpacity,
                 Children =
@@ -122,9 +141,9 @@ internal static class CommonCustomize
                         Grow = 1f, Shrink = 1f, MinWidth = 0f, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MaxLines = 1,
                     },
                     // loc: "Move up" / "Move down" — reuses the app's existing move-row vocabulary (Strings.Menu.*).
-                    Controls.Named(Controls.IconAction(Icons.ChevronUp, index > 0 ? () => move(index, index - 1) : null),
+                    Controls.Named(Controls.IconAction(Icons.ChevronUp, index > 0 ? () => move(index, index - 1) : null, size: layout.Target > 0f ? layout.Target : Controls.IconButtonSize),
                         Loc.Get(Strings.Menu.MoveUp)),
-                    Controls.Named(Controls.IconAction(Icons.ChevronDown, index < count - 1 ? () => move(index, index + 1) : null),
+                    Controls.Named(Controls.IconAction(Icons.ChevronDown, index < count - 1 ? () => move(index, index + 1) : null, size: layout.Target > 0f ? layout.Target : Controls.IconButtonSize),
                         Loc.Get(Strings.Menu.MoveDown)),
                     ToggleSwitch.Create(_visible, onChange: _onToggle ??= _ => p.Toggle(zone)),
                 ],

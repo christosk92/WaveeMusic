@@ -14,6 +14,11 @@
 // Esc → back (the host's one exit). The capture level and file level combos left the viewer (they are Settings › Privacy & diagnostics › Logs ›
 // Detail level); Verbose stays here as a checkable item of the "…" menu.
 //
+// TIERS (themes plan 3.2, TC10): the viewer reads `ctx.Tier()` through `CommonTierComponent` into a `CommonLogsLayout` (Rules\Tiers.cs). Compact draws a row as two lines
+// (time, level and count over category and message; no column header: the sort lives in the "..." menu), the toolbar wraps with 40-DIP targets, the ComboBoxes become
+// menu pickers, the crumbs go (their stock items are 32 DIP tall); Compact and Small put the picker cluster under the title; Short at those widths drops the crumbs and the caption and scrolls the toolbar as one line; every
+// tier is one column capped at the page's max width (the Huge fill rule).
+//
 // NOTHING HERE READS A CLOCK PER FRAME (ch 27 N12): the live tail polls at 750 ms and bumps only when `Log.Version` moved (and not at all on a
 // past session). The sessions are re-listed once on mount and once per page activation (a keep-alive return, or the window coming back) —
 // `UseActivation` fires on TRANSITIONS only, which is why the mount walk is its own effect.
@@ -31,6 +36,7 @@ using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using LogLevelBucket = Wavee.Diagnostics.LogLevelBucket;
 using LogView = Wavee.Diagnostics.LogView;
@@ -57,7 +63,7 @@ internal static class CommonLogs
     /// <summary>The viewer. <see cref="_rows"/> and <see cref="_categories"/> are FIELDS, refreshed at the top of every
     /// render, so a command built by an OLDER render (the toolbar does not remount for a plain search edit) still reads the
     /// CURRENT rows when clicked.</summary>
-    sealed class LogsPageView : Component
+    sealed class LogsPageView : CommonTierComponent
     {
         readonly Signal<string> _search = new("");
         readonly Signal<int> _level = new((int)LogLevelBucket.All);
@@ -69,6 +75,7 @@ internal static class CommonLogs
         readonly Signal<long> _expandedSeq = new(-1);
 
         ILogsHost _host = null!;
+        CommonLogsLayout _layout;
         LogViewRow[] _rows = [];
         string[] _categories = [];
         readonly ItemsViewController _listCtrl = new();
@@ -83,6 +90,7 @@ internal static class CommonLogs
         public override Element Render()
         {
             var host = _host = UseProps<LogsPageProps>().Host;
+            var layout = _layout = CommonLogsLayout.For(ReadTier());
             var hooks = UseContext(InputHooks.Current);
             var post = UsePost();
             var lastVersion = UseRef(-1L);
@@ -112,7 +120,7 @@ internal static class CommonLogs
                 lastVersion.Value = v;
                 host.Bump();
             }, CommonLogsRules.PollMs, enabled: host.Session.Value == 0);
-            var logLayout = UseMemo(static () => new MeasuredStackVirtualLayout(estimatedExtent: CommonLogsRules.EstimatedRowExtent), DepKey.Empty);
+            var logLayout = UseMemo(() => new MeasuredStackVirtualLayout(estimatedExtent: layout.RowExtent), layout.TwoLineRows ? 1 : 0);
 
             _ = host.Refresh.Value; _ = _expandedSeq.Value; _ = _search.Value; _ = _level.Value; _ = _category.Value;
             _ = _newestFirst.Value; _ = _groupRepeats.Value; _ = _wrap.Value; _ = _visibleLimit.Value; _ = host.SessionsRev.Value;
@@ -127,27 +135,37 @@ internal static class CommonLogs
             var result = entries is null ? LogViewResult.Empty : LogView.Build(entries, query);
             _rows = result.Rows;
 
+            // The page is a row holding ONE column, so the column can stop growing at the tier's max width and keep the page's left edge (the Huge fill rule).
+            var card = new List<Element>(5);
+            if (!layout.TwoLineRows)
+            {
+                card.Add(ColumnHeader(post));
+                card.Add(Divider());
+            }
+            card.Add(LogBody(entries, result, query, logLayout));
+            card.Add(Divider());
+            card.Add(Footer(result, live, entries, past));
             return new BoxEl
             {
-                Key = "logs-page", Grow = 1f, Shrink = 1f, Direction = 1, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true,
+                Key = "logs-page", Grow = 1f, Shrink = 1f, Direction = 0, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true,
                 OnKeyDown = _onKey ??= OnPageKey,
                 Children =
                 [
-                    HeaderBar(),
-                    Divider(),
-                    Toolbar(result, live, hooks, post),
                     new BoxEl
                     {
-                        Margin = new Edges4(CommonLogsRules.GutterX, 0f, CommonLogsRules.GutterX, Spacing.L),
-                        Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1, Corners = CornerRadius4.All(Radii.Card),
-                        Fill = Tok.FillCardSecondary, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, ClipToBounds = true,
+                        Key = "logs-column", Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, MaxWidth = layout.MaxWidth,
                         Children =
                         [
-                            ColumnHeader(post),
+                            HeaderBar(),
                             Divider(),
-                            LogBody(entries, result, query, logLayout),
-                            Divider(),
-                            Footer(result, live, entries, past),
+                            Toolbar(result, live, hooks, post),
+                            new BoxEl
+                            {
+                                Margin = new Edges4(layout.Gutter, 0f, layout.Gutter, Spacing.L),
+                                Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1, Corners = CornerRadius4.All(Radii.Card),
+                                Fill = Tok.FillCardSecondary, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, ClipToBounds = true,
+                                Children = card.ToArray(),
+                            },
                         ],
                     },
                 ],
@@ -183,42 +201,70 @@ internal static class CommonLogs
         Element HeaderBar()
         {
             var host = _host;
+            var layout = _layout;
             // Every child is keyed: the picker caption comes and goes, and a positional diff would otherwise slide the
             // combo's remount key onto the wrong sibling.
-            var kids = new List<Element>(4)
+            var title = R.Type.PageHero(Loc.Get(Strings.Logs.Title)) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
+            // Settings › Privacy & diagnostics › Logs. The first crumb opens Settings on its remembered tab; the
+            // second lands on the tab this page belongs to; the last is this page and does nothing. Compact and the bare Short header drop them (the Back of the title bar stays).
+            Element[] lane = !layout.ShowCrumbs
+                ? [title]
+                : [BreadcrumbBar.Create([Loc.Get(Strings.Nav.Settings), Loc.Get(Strings.Settings.Tabs.Privacy), Loc.Get(Strings.Logs.Title)],
+                    _onCrumb ??= host.OpenCrumb), title];
+            BoxEl titleLane = new()
             {
-                new BoxEl
-                {
-                    Key = "logs:title", Direction = 1, Grow = 1f, Basis = 0f, Shrink = 1f, MinWidth = 0f, Justify = FlexJustify.Center, Gap = Spacing.XXS,
-                    Children =
-                    [
-                        // Settings › Privacy & diagnostics › Logs. The first crumb opens Settings on its remembered tab; the
-                        // second lands on the tab this page belongs to; the last is this page and does nothing.
-                        BreadcrumbBar.Create([Loc.Get(Strings.Nav.Settings), Loc.Get(Strings.Settings.Tabs.Privacy), Loc.Get(Strings.Logs.Title)],
-                            _onCrumb ??= host.OpenCrumb),
-                        R.Type.PageHero(Loc.Get(Strings.Logs.Title)) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                    ],
-                },
+                Key = "logs:title", Direction = 1, MinWidth = 0f, Justify = FlexJustify.Center, Gap = Spacing.XXS, Children = lane,
             };
+            // Beside the cluster the title lane is the only flexible child (Grow 1 · Basis 0 · Shrink 1 · MinWidth 0), so under
+            // pressure the title ellipsizes and the picker cluster holds its width; over it (Compact, Small) it is just a row.
+            if (!layout.StackHeader || layout.BareHeader) titleLane = titleLane with { Grow = 1f, Basis = 0f, Shrink = 1f };
+
+            // The bare Short header has no room for the selection's label at a hit target: the picker is an icon button there.
+            var picker = CommonTouch.Picker(host.SessionLabels(), host.Session, CommonLogsRules.SessionComboWidth, layout.Target, _ => _expandedSeq.Value = -1,
+                    layout.BareHeader ? Icons.Clock : null)
+                with { Key = "logs:session:" + host.SessionsRev.Value.ToString(CultureInfo.InvariantCulture) };
+            // Short at a narrow width the head gives up its top room too (the page is 210 tall or less).
+            var padding = new Edges4(layout.Gutter, layout.BareHeader ? Spacing.S : Spacing.L, layout.Gutter, Spacing.S);
+
+            // Short at a narrow width: the title and the picker on one line; Open folder moves into the "..." menu.
+            if (layout.BareHeader)
+                return new BoxEl
+                {
+                    Key = "logs-header", Direction = 0, Shrink = 0f, Gap = Spacing.S, AlignItems = FlexAlign.Center, Padding = padding,
+                    Children = [titleLane, picker],
+                };
+
+            var cluster = new List<Element>(3);
             if (host.PickerCaption() is { } caption)
-                kids.Add(R.Type.MicroMeta(caption) with
+                cluster.Add(R.Type.MicroMeta(caption) with
                 {
                     Key = "logs:caption", Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis,
                     MaxWidth = CommonLogsRules.CaptionMaxWidth, Shrink = 1f, MinWidth = 0f,
                 });
-            var labels = host.SessionLabels();
-            kids.Add(ComboBox.Create(labels, host.Session, width: CommonLogsRules.SessionComboWidth, onChange: _ => _expandedSeq.Value = -1)
-                with { Key = "logs:session:" + host.SessionsRev.Value.ToString(CultureInfo.InvariantCulture) });
-            kids.Add(Button.Create(Loc.Get(Strings.Logs.OpenFolder), _openFolder ??= host.OpenLogFolder,
-                ButtonAppearance.Standard, ControlSize.Small, glyph: Icons.Folder) with { Key = "logs:folder", Shrink = 0f });
+            cluster.Add(picker);
+            cluster.Add((layout.Target > 0f
+                ? CommonTouch.Button(Loc.Get(Strings.Logs.OpenFolder), _openFolder ??= host.OpenLogFolder, layout.Target, glyph: Icons.Folder)
+                : Button.Create(Loc.Get(Strings.Logs.OpenFolder), _openFolder ??= host.OpenLogFolder, ButtonAppearance.Standard, ControlSize.Small, glyph: Icons.Folder))
+                with { Key = "logs:folder", Shrink = 0f });
 
+            if (layout.StackHeader)
+                return new BoxEl
+                {
+                    Key = "logs-header", Direction = 1, Shrink = 0f, Gap = Spacing.S, Padding = padding,
+                    Children =
+                    [
+                        titleLane,
+                        new BoxEl { Key = "logs:cluster", Direction = 0, Wrap = true, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = cluster.ToArray() },
+                    ],
+                };
+
+            // The page gutter and the hero's top room, as Profile.Lists.Page's head; the picker cluster sits on the hero's
+            // baseline row, so it centres against the two-line title lane.
+            cluster.Insert(0, titleLane);
             return new BoxEl
             {
-                // The page gutter (PageWide) and the hero's top room, as Profile.Lists.Page's head; the picker cluster
-                // sits on the hero's baseline row, so it centres against the two-line title lane.
-                Key = "logs-header", Direction = 0, Shrink = 0f, Gap = Spacing.S,
-                AlignItems = FlexAlign.Center, Padding = new Edges4(Spacing.PageWide, Spacing.L, Spacing.PageWide, Spacing.S),
-                Children = kids.ToArray(),
+                Key = "logs-header", Direction = 0, Shrink = 0f, Gap = Spacing.S, AlignItems = FlexAlign.Center, Padding = padding,
+                Children = cluster.ToArray(),
             };
         }
 
@@ -227,6 +273,8 @@ internal static class CommonLogs
         Element Toolbar(LogViewResult result, bool live, InputHooks hooks, Action<Action> post)
         {
             var host = _host;
+            var layout = _layout;
+            float target = layout.Target;
             var catLabels = new string[_categories.Length + 1];
             catLabels[0] = Loc.Get(Strings.Logs.AllCategories);
             Array.Copy(_categories, 0, catLabels, 1, _categories.Length);
@@ -241,32 +289,49 @@ internal static class CommonLogs
                 ? Loc.Get(Strings.Logs.ExportSession) + "\n" + Loc.Get(Strings.Logs.ExportSessionLive)
                 : Loc.Get(Strings.Logs.ExportSession);
 
-            return new BoxEl
+            // Short: one scrolling line (a wrapping block would take the page); everywhere else the filter grows and the block wraps.
+            bool oneLine = layout.OneLineToolbar;
+            var kids = new List<Element>(5)
             {
-                Key = "logs-toolbar", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Wrap = true, Shrink = 0f,
-                Padding = new Edges4(CommonLogsRules.GutterX, Spacing.L, CommonLogsRules.GutterX, Spacing.S),
+                AutoSuggestBox.Create(Array.Empty<string>(), placeholder: Loc.Get(Strings.Logs.FilterPlaceholder),
+                    width: oneLine ? CommonLogsRules.ShortFilterWidth : CommonLogsRules.FilterWidth,
+                    grow: oneLine ? 0f : 1f, maxFillWidth: CommonLogsRules.FilterMaxFill, text: _search, onChange: q => _search.Value = q, onQuerySubmitted: q => _search.Value = q,
+                    minHeight: target > 0f ? target : CommonLogsRules.FilterMinHeight, cornerRadius: Radii.Control),
+                CommonTouch.Segmented(levelItems, _level, target),
+                CommonTouch.Picker(catLabels, _category, CommonLogsRules.CategoryComboWidth, target)
+                    with { Key = "logs:cat:" + host.Session.Value.ToString(CultureInfo.InvariantCulture) + ":" + _categories.Length.ToString(CultureInfo.InvariantCulture) },
+            };
+            if (!oneLine) kids.Add(new BoxEl { Grow = 1f });
+            kids.Add(new BoxEl
+            {
+                Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, Shrink = 0f,
                 Children =
                 [
-                    AutoSuggestBox.Create(Array.Empty<string>(), placeholder: Loc.Get(Strings.Logs.FilterPlaceholder),
-                        grow: 1f, maxFillWidth: CommonLogsRules.FilterMaxFill, text: _search, onChange: q => _search.Value = q, onQuerySubmitted: q => _search.Value = q,
-                        minHeight: CommonLogsRules.FilterMinHeight, cornerRadius: Radii.Control),
-                    Segmented.Create(levelItems, _level),
-                    ComboBox.Create(catLabels, _category, width: CommonLogsRules.CategoryComboWidth)
-                        with { Key = "logs:cat:" + host.Session.Value.ToString(CultureInfo.InvariantCulture) + ":" + _categories.Length.ToString(CultureInfo.InvariantCulture) },
-                    new BoxEl { Grow = 1f },
-                    new BoxEl
-                    {
-                        Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, Shrink = 0f,
-                        Children =
-                        [
-                            ToolTip.Wrap(IconButton.Create(Icons.Copy, () => hooks.Clipboard?.SetText(LogView.CopyText(_rows))) with { Shrink = 0f },
-                                Loc.Get(Strings.Logs.CopyVisible)),
-                            ToolTip.Wrap(IconButton.Create(Icons.Download, _exportSession ??= host.ExportSession) with { Shrink = 0f }, exportTip),
-                            ToolTip.Wrap(IconButton.Create(Icons.More, () => OpenMore(post)) with { Shrink = 0f, OnRealized = h => _moreAnchor = h },
-                                Loc.Get(Strings.Logs.More)),
-                        ],
-                    },
+                    ToolTip.Wrap(CommonTouch.IconButton(Icons.Copy, () => hooks.Clipboard?.SetText(LogView.CopyText(_rows)), target) with { Shrink = 0f },
+                        Loc.Get(Strings.Logs.CopyVisible)),
+                    ToolTip.Wrap(CommonTouch.IconButton(Icons.Download, _exportSession ??= host.ExportSession, target) with { Shrink = 0f }, exportTip),
+                    ToolTip.Wrap(CommonTouch.IconButton(Icons.More, () => OpenMore(post), target) with { Shrink = 0f, OnRealized = h => _moreAnchor = h },
+                        Loc.Get(Strings.Logs.More)),
                 ],
+            });
+
+            var padding = new Edges4(layout.Gutter, oneLine ? Spacing.S : Spacing.L, layout.Gutter, Spacing.S);
+            if (oneLine)
+                return new BoxEl
+                {
+                    Key = "logs-toolbar", Direction = 0, Shrink = 0f, Padding = padding,
+                    Children =
+                    [
+                        FluentGpu.Dsl.Ui.ScrollView(new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Children = kids.ToArray() }, horizontal: true) with
+                        {
+                            Grow = 1f, Basis = 0f, MinWidth = 0f, Height = CommonLogsRules.ToolbarShortHeight, SuppressScrollBar = true, AutoEdgeFade = true,
+                        },
+                    ],
+                };
+            return new BoxEl
+            {
+                Key = "logs-toolbar", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Wrap = true, Shrink = 0f, Padding = padding,
+                Children = kids.ToArray(),
             };
         }
 
@@ -297,6 +362,8 @@ internal static class CommonLogs
                     () => { host.ClearRing(); host.Bump(); })),
                 new(Loc.Get(Strings.Report.ThisSession), Icons.Attention, true, host.ReportThisSession),
             };
+            // The bare Short header has no Open folder button: it lives here.
+            if (_layout.BareHeader) items.Add(new(Loc.Get(Strings.Logs.OpenFolder), Icons.Folder, true, host.OpenLogFolder));
             // Same anchored-flyout shape as Shell.UI.cs's history menu and `ClassicSettings.VideoOverrides.cs`'s manager menu.
             var handle = overlay.Open(() => _moreAnchor, () => MenuFlyout.Create(items, () => _menu?.Close()),
                 FlyoutPlacement.BottomEdgeAlignedRight,
@@ -355,8 +422,8 @@ internal static class CommonLogs
                 return new BoxEl
                 {
                     Grow = 1f, Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Gap = Spacing.M,
-                    Padding = new Edges4(0f, 64f, 0f, 64f),
-                    Children = [FluentGpu.Dsl.Ui.Icon(Icons.Search, CommonLogsRules.EmptyGlyphSize, Tok.TextTertiary), R.Type.PageHero(Loc.Get(Strings.Logs.EmptyFilter))],
+                    Padding = new Edges4(Spacing.L, CommonLogsRules.EmptyInsetY, Spacing.L, CommonLogsRules.EmptyInsetY),
+                    Children = [FluentGpu.Dsl.Ui.Icon(Icons.Search, CommonLogsRules.EmptyGlyphSize, Tok.TextTertiary), R.Type.PageHero(Loc.Get(Strings.Logs.EmptyFilter)) with { Wrap = TextWrap.Wrap, MinWidth = 0f }],
                 };
 
             // The list's ItemCount/template freeze at mount: the visible SET changing remounts it; ScrollKey keeps the offset.
@@ -364,7 +431,7 @@ internal static class CommonLogs
             var rows = result.Rows;
             return new BoxEl
             {
-                Key = "logs:list:" + LogView.RemountKey(_host.Session.Value, query, result.Shown),
+                Key = "logs:list:" + LogView.RemountKey(_host.Session.Value, query, result.Shown) + (_layout.TwoLineRows ? ":2" : ":1"),
                 Grow = 1f, Shrink = 1f, MinHeight = 0f,
                 Children =
                 [
@@ -387,33 +454,65 @@ internal static class CommonLogs
         }
 
         /// <summary>36 DIP, fixed columns (<see cref="ColumnHeader"/> mirrors them): chevron 12 · dot 6 · time 92 · pill
-        /// 58 × 22 · category 96 · message · ×N.</summary>
+        /// 58 × 22 · category 96 · message · ×N. A two-line row (Compact) has no column header: time, level and count on the first line,
+        /// category and message on the second, indented under the time.</summary>
         Element LogRow(LogViewRow row)
         {
             var e = row.Entry;
             long seq = e.Sequence;
+            var layout = _layout;
             bool expanded = _expandedSeq.Value == seq;
             bool wrapAll = expanded || _wrap.Value != 0;
-            var line = new BoxEl
+            var message = R.Type.DenseMeta(e.Message) with
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinHeight = CommonLogsRules.RowMinHeight, Padding = new Edges4(Spacing.M, 0f, Spacing.M, 0f),
-                Grow = 1f, Fill = expanded ? Tok.FillSubtleSecondary : ColorF.Transparent,
-                // The message wraps when expanded: the taller line reveals, never snaps.
-                Animate = Design.Reveal.Resize,
-                Children =
+                Color = Tok.TextPrimary, Grow = 1f, MinWidth = 0f,
+                Wrap = wrapAll ? TextWrap.Wrap : TextWrap.NoWrap, Trim = wrapAll ? TextTrim.None : TextTrim.CharacterEllipsis, MaxLines = wrapAll ? 0 : 1,
+            };
+            Element[] cells = layout.TwoLineRows
+                ?
+                [
+                    new BoxEl
+                    {
+                        Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S,
+                        Children =
+                        [
+                            Sidebar.Chevron.Disclosure(() => _expandedSeq.Value == seq, size: CommonLogsRules.ChevronSlot),
+                            SeverityDot(e.Level),
+                            new TextEl(LogView.FormatTime(e.UnixMs, LocalOffset)) { Size = CommonLogsRules.CellSize, Color = Tok.TextSecondary, FontFamily = "Cascadia Code", Grow = 1f, MinWidth = 0f },
+                            LevelPill(e.Level),
+                            row.Repeat > 1 ? RepeatBadge(row.Repeat) : new BoxEl(),
+                        ],
+                    },
+                    new BoxEl
+                    {
+                        Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Start, MinWidth = 0f, Padding = new Edges4(CommonLogsRules.CompactMessageInset, 0f, 0f, 0f),
+                        Children =
+                        [
+                            new TextEl(e.Category) { Size = CommonLogsRules.CellSize, Color = Tok.TextSecondary, FontFamily = "Cascadia Code", MaxWidth = CommonLogsRules.CategoryColumn, Shrink = 0f, Trim = TextTrim.CharacterEllipsis },
+                            message,
+                        ],
+                    },
+                ]
+                :
                 [
                     Sidebar.Chevron.Disclosure(() => _expandedSeq.Value == seq, size: CommonLogsRules.ChevronSlot),
                     SeverityDot(e.Level),
                     new TextEl(LogView.FormatTime(e.UnixMs, LocalOffset)) { Size = CommonLogsRules.CellSize, Color = Tok.TextSecondary, FontFamily = "Cascadia Code", Width = CommonLogsRules.TimeColumn, Shrink = 0f },
                     LevelPill(e.Level),
                     new TextEl(e.Category) { Size = CommonLogsRules.CellSize, Color = Tok.TextSecondary, FontFamily = "Cascadia Code", Width = CommonLogsRules.CategoryColumn, Shrink = 0f, Trim = TextTrim.CharacterEllipsis },
-                    R.Type.DenseMeta(e.Message) with
-                    {
-                        Color = Tok.TextPrimary, Grow = 1f, MinWidth = 0f,
-                        Wrap = wrapAll ? TextWrap.Wrap : TextWrap.NoWrap, Trim = wrapAll ? TextTrim.None : TextTrim.CharacterEllipsis, MaxLines = wrapAll ? 0 : 1,
-                    },
+                    message,
                     row.Repeat > 1 ? RepeatBadge(row.Repeat) : new BoxEl(),
-                ],
+                ];
+            var line = new BoxEl
+            {
+                Direction = layout.TwoLineRows ? (byte)1 : (byte)0, AlignItems = layout.TwoLineRows ? FlexAlign.Stretch : FlexAlign.Center,
+                Gap = layout.TwoLineRows ? CommonLogsRules.CompactLineGap : Spacing.S,
+                MinHeight = layout.Target > 0f ? layout.Target : CommonLogsRules.RowMinHeight,
+                Padding = layout.TwoLineRows ? new Edges4(Spacing.M, Spacing.S, Spacing.M, Spacing.S) : new Edges4(Spacing.M, 0f, Spacing.M, 0f),
+                Grow = 1f, Fill = expanded ? Tok.FillSubtleSecondary : ColorF.Transparent,
+                // The message wraps when expanded: the taller line reveals, never snaps.
+                Animate = Design.Reveal.Resize,
+                Children = cells,
             }.Interactive(Interaction.ListRow);
 
             // The row is ALWAYS the keyed column; expanding only adds the details child, a Drawer reveal (Design.Reveal.Drawer).
@@ -423,9 +522,9 @@ internal static class CommonLogs
             {
                 var detail = new List<Element>(3);
                 string fieldText = LogView.FieldText(e.Fields);
-                if (fieldText.Length > 0) detail.Add(DetailSection(Loc.Get(Strings.Logs.Fields), fieldText));
-                if (e.Exception is { Length: > 0 } ex) detail.Add(DetailSection(Loc.Get(Strings.Logs.Exception), ex));
-                detail.Add(R.Type.MicroMeta(LogView.MetaLine(in e)) with { Color = Tok.TextTertiary, FontFamily = "Cascadia Code", Margin = new Edges4(44f, 0f, 0f, 0f) });
+                if (fieldText.Length > 0) detail.Add(DetailSection(Loc.Get(Strings.Logs.Fields), fieldText, layout.DetailInset));
+                if (e.Exception is { Length: > 0 } ex) detail.Add(DetailSection(Loc.Get(Strings.Logs.Exception), ex, layout.DetailInset));
+                detail.Add(R.Type.MicroMeta(LogView.MetaLine(in e)) with { Color = Tok.TextTertiary, FontFamily = "Cascadia Code", Wrap = TextWrap.Wrap, MinWidth = 0f, Margin = new Edges4(layout.DetailInset, 0f, 0f, 0f) });
                 children = [line, new BoxEl
                 {
                     Key = "details", Direction = 1, Gap = CommonLogsRules.DetailGap, Padding = new Edges4(0f, 4f, 0f, Spacing.S),
@@ -435,9 +534,9 @@ internal static class CommonLogs
             return new BoxEl { Key = "logs:row:" + seq.ToString(CultureInfo.InvariantCulture), Direction = 1, Children = children };
         }
 
-        static Element DetailSection(string caption, string text) => new BoxEl
+        static Element DetailSection(string caption, string text, float inset) => new BoxEl
         {
-            Direction = 1, Gap = CommonLogsRules.DetailGap, Padding = new Edges4(44f, 0f, Spacing.M, 4f),
+            Direction = 1, Gap = CommonLogsRules.DetailGap, Padding = new Edges4(inset, 0f, Spacing.M, 4f),
             Children = [R.Type.MicroMeta(caption) with { Weight = 600, Color = Tok.TextTertiary }, CodeBlock.Create(text, copyable: true, fontSize: CommonLogsRules.CellSize)],
         };
 
@@ -486,16 +585,17 @@ internal static class CommonLogs
 
             var kids = new List<Element>(3)
             {
-                new TextEl(text) { Size = CommonLogsRules.CellSize, Color = Tok.TextSecondary, Grow = 1f, MinWidth = 0f },
+                new TextEl(text) { Size = CommonLogsRules.CellSize, Color = Tok.TextSecondary, Grow = 1f, MinWidth = 0f, Wrap = TextWrap.Wrap },
             };
             // The cap stops growing at LogView.MaxRows; past it there is nothing more to load.
             if (result.Truncated && _visibleLimit.Value < LogView.MaxRows)
-                kids.Add(HyperlinkButton.Create(Loc.Get(Strings.Logs.LoadMore), () => _visibleLimit.Value = LogView.NextCap(_visibleLimit.Peek())));
+                kids.Add(CommonTouch.Link(Loc.Get(Strings.Logs.LoadMore), () => _visibleLimit.Value = LogView.NextCap(_visibleLimit.Peek()), _layout.Target));
             var (ring, file) = _host.CaptureLevels();
-            kids.Add(R.Type.MicroMeta(Strings.Logs.CaptureCaption(ring, file)) with { Color = Tok.TextTertiary });
+            kids.Add(R.Type.MicroMeta(Strings.Logs.CaptureCaption(ring, file)) with { Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MinWidth = 0f });
             return new BoxEl
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Padding = new Edges4(Spacing.L, Spacing.S, Spacing.M, Spacing.S),
+                // Compact: the caption does not fit beside the count, so the footer wraps (two-line rows are the Compact form).
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Wrap = _layout.TwoLineRows, Padding = new Edges4(Spacing.L, Spacing.S, Spacing.M, Spacing.S),
                 Children = kids.ToArray(),
             };
         }

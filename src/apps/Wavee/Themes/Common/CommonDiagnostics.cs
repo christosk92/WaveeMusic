@@ -9,6 +9,10 @@
 // formats, the stamps) is the core builder's; the cards, rows, chips and buttons are drawn here. A status glyph's tone is a `DiagTone` mapped
 // to the system fills here (P15: the hero tone is a role, not a literal at the call site).
 //
+// TIERS (themes plan 3.2, TC10): the pages read `ctx.Tier()` into a `CommonDiagnosticsLayout` (Rules\Tiers.cs) and pass it down in the `Env`; a card component reads
+// the same fact through `CommonTierComponent`. Compact stacks a label over its value, a table row into stacked lines and a control row into a wrapping one, and every
+// button, link and field is a 40-DIP target; the scroll column is capped on every tier (the Huge fill rule: the column stops at 1000 and keeps the page's left edge).
+//
 // NOTHING HERE READS A CLOCK PER FRAME (ch 27 N12). No surface carries a context menu, a drag or a shortcut (ch 27 §6).
 //
 // PROPS FREEZE AT MOUNT: every control whose interesting fields freeze is REMOUNTED through a `Key` that changes exactly when its frozen input
@@ -23,6 +27,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Common;
@@ -40,15 +45,18 @@ internal static partial class CommonDiagnostics
 
     /// <summary>What a drawn node may reach: the page's refresh and expanded-root signals, the clipboard, and (inside the tiles card) the
     /// pass-timing switch.</summary>
-    internal sealed class Env(Signal<int>? refresh, Signal<long>? expanded, InputHooks? input, Func<DiagToggle, Element>? toggle)
+    internal sealed class Env(Signal<int>? refresh, Signal<long>? expanded, InputHooks? input, Func<DiagToggle, Element>? toggle, CommonDiagnosticsLayout layout)
     {
         public readonly Signal<int>? Refresh = refresh;
         public readonly Signal<long>? Expanded = expanded;
         public readonly InputHooks? Input = input;
         public readonly Func<DiagToggle, Element>? Toggle = toggle;
 
+        /// <summary>The tier layout the page (or the card's own read) resolved.</summary>
+        public readonly CommonDiagnosticsLayout Layout = layout;
+
         /// <summary>For a widget card that has no page signals.</summary>
-        public static readonly Env None = new(null, null, null, null);
+        public static Env Of(CommonDiagnosticsLayout layout) => new(null, null, null, null, layout);
     }
 
     /// <summary>The registered template of the three keys.</summary>
@@ -66,11 +74,12 @@ internal static partial class CommonDiagnostics
         bool poll = props.PollWhile?.Value ?? false;
         h.UseInterval(() => refresh.Value = refresh.Peek() + 1, props.PollMs, enabled: poll);
 
-        var env = new Env(refresh, expanded, input, null);
+        var layout = CommonDiagnosticsLayout.For(ctx.Tier());
+        var env = new Env(refresh, expanded, input, null, layout);
         var body = new List<Element>(10);
         foreach (var node in props.Build(open))
             Draw(node, env, body);
-        return PageFrame(props.Glyph, props.Title, props.ScrollKey, body);
+        return PageFrame(props.Glyph, props.Title, props.ScrollKey, body, layout);
     }
 
     // ══ THE SHARED DIAGNOSTICS CHROME (ONE copy — 0.2.9 had it twice) ════════════════════════════════════════════════
@@ -78,11 +87,16 @@ internal static partial class CommonDiagnostics
     static Element PageHeader(string glyph, string title) => new BoxEl
     {
         Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Padding = new Edges4(Spacing.L, Spacing.L, Spacing.L, Spacing.M),
-        Children = [FluentGpu.Dsl.Ui.Icon(glyph, CommonDiagnosticsRules.HeaderGlyphSize, Tok.TextPrimary), R.Type.PageHero(title) with { Grow = 1f }],
+        Children =
+        [
+            FluentGpu.Dsl.Ui.Icon(glyph, CommonDiagnosticsRules.HeaderGlyphSize, Tok.TextPrimary),
+            R.Type.PageHero(title) with { Grow = 1f, Shrink = 1f, MinWidth = 0f, Wrap = TextWrap.Wrap, MaxLines = CommonDiagnosticsRules.HeaderTitleLines, Trim = TextTrim.CharacterEllipsis },
+        ],
     };
 
-    /// <summary>The pinned header over ONE scroll keyed on the route (ch 27 W28: nothing compacts, nothing is sticky).</summary>
-    static Element PageFrame(string glyph, string title, string scrollKey, List<Element> body) => new BoxEl
+    /// <summary>The pinned header over ONE scroll keyed on the route (ch 27 W28: nothing compacts, nothing is sticky). A scroll's content fills its viewport and
+    /// ignores its own max width, so the capped column is the one child of a row that is the content: it grows to the tier's max width and keeps the left edge.</summary>
+    static Element PageFrame(string glyph, string title, string scrollKey, List<Element> body, CommonDiagnosticsLayout layout) => new BoxEl
     {
         Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1,
         Children =
@@ -90,8 +104,15 @@ internal static partial class CommonDiagnostics
             PageHeader(glyph, title),
             FluentGpu.Dsl.Ui.ScrollView(new BoxEl
             {
-                Direction = 1, Gap = CommonDiagnosticsRules.PageGap, MaxWidth = CommonDiagnosticsRules.PageMaxWidth, AlignSelf = FlexAlign.Stretch,
-                Padding = new Edges4(Spacing.L, Spacing.L, Spacing.L, Spacing.XXL), Children = body.ToArray(),
+                Direction = 0, MinWidth = 0f,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Direction = 1, Gap = CommonDiagnosticsRules.PageGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MaxWidth = layout.MaxWidth,
+                        Padding = new Edges4(Spacing.L, Spacing.L, Spacing.L, Spacing.XXL), Children = body.ToArray(),
+                    },
+                ],
             }) with { Grow = 1f, Shrink = 1f, MinHeight = 0f, ScrollKey = scrollKey },
         ],
     };
@@ -109,15 +130,25 @@ internal static partial class CommonDiagnostics
     internal static Element Card(string title, params Element[] rows) => Card(title, new List<Element>(rows));
 
     /// <summary>Label + value (a blank value is already a dash: ch 27 W23 — an unknown fact is a dash, never an empty column).</summary>
-    internal static Element Row(string label, string value, float labelWidth) => new BoxEl
-    {
-        Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Start,
-        Children =
-        [
-            new TextEl(label) { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextSecondary, Width = labelWidth, Shrink = 0f },
-            new TextEl(value) { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, Grow = 1f, MinWidth = 0f },
-        ],
-    };
+    internal static Element Row(string label, string value, float labelWidth, bool stacked) => stacked
+        ? new BoxEl
+        {
+            Direction = 1, Gap = CommonDiagnosticsRules.StackedRowGap,
+            Children =
+            [
+                new TextEl(label) { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextSecondary },
+                new TextEl(value) { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MinWidth = 0f },
+            ],
+        }
+        : new BoxEl
+        {
+            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Start,
+            Children =
+            [
+                new TextEl(label) { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextSecondary, Width = labelWidth, Shrink = 0f },
+                new TextEl(value) { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, Grow = 1f, Shrink = 1f, MinWidth = 0f },
+            ],
+        };
 
     /// <summary>The presence chip: text is TextPrimary in both states; only the background carries the severity.</summary>
     static Element Chip(DiagChip chip) => new BoxEl
@@ -171,7 +202,7 @@ internal static partial class CommonDiagnostics
             new TextEl(s.Glyph) { Size = CommonDiagnosticsRules.StatusGlyphSize, FontFamily = Tok.Definition.Fonts.Icon, Color = ToneInk(s.Tone), Shrink = 0f, Margin = new Edges4(0f, 1f, 0f, 0f) },
             new BoxEl
             {
-                Direction = 1, Gap = CommonDiagnosticsRules.StatusGap, Grow = 1f, MinWidth = 0f,
+                Direction = 1, Gap = CommonDiagnosticsRules.StatusGap, Grow = 1f, Shrink = 1f, MinWidth = 0f,
                 Children =
                 [
                     R.Type.TrackTitle(s.Heading) with { Wrap = TextWrap.Wrap },
@@ -195,7 +226,7 @@ internal static partial class CommonDiagnostics
                 into.Add(CardOf(c, env));
                 break;
             case DiagRow r:
-                into.Add(Row(r.Label, r.Value, r.Wide ? CommonDiagnosticsRules.ConnectLabelWidth : CommonDiagnosticsRules.RuntimeLabelWidth));
+                into.Add(Row(r.Label, r.Value, r.Wide ? CommonDiagnosticsRules.ConnectLabelWidth : CommonDiagnosticsRules.RuntimeLabelWidth, env.Layout.Stacked));
                 break;
             case DiagBody b:
                 into.Add(Body(b.Text));
@@ -220,10 +251,10 @@ internal static partial class CommonDiagnostics
                     break;
                 }
             case DiagPassRow pass:
-                into.Add(PassRow(pass));
+                into.Add(PassRow(pass, env.Layout));
                 break;
             case DiagNamed named:
-                into.Add(Named(named));
+                into.Add(Named(named, env.Layout));
                 break;
             case DiagButtons buttons:
                 into.Add(Buttons(buttons, env));
@@ -232,15 +263,15 @@ internal static partial class CommonDiagnostics
                 into.Add(new BoxEl
                 {
                     Direction = 1, Gap = CommonDiagnosticsRules.LinkGap, Margin = new Edges4(0f, CommonDiagnosticsRules.LinkTop, 0f, 0f),
-                    Children = [HyperlinkButton.Create(link.Label, link.Click), Caption(link.Hint)],
+                    Children = [CommonTouch.Link(link.Label, link.Click, env.Layout.Target), Caption(link.Hint)],
                 });
                 break;
             case DiagAnomaly a:
-                into.Add(AnomalyRow(a));
+                into.Add(AnomalyRow(a, env.Layout));
                 break;
             case DiagRoot root:
                 into.Add(RootRow(root, env));
-                if (root.Tree is { } tree) into.Add(TreeView(tree, root.EmptyTree));
+                if (root.Tree is { } tree) into.Add(TreeView(tree, root.EmptyTree, env.Layout));
                 break;
             case DiagToggle toggle:
                 if (env.Toggle is { } draw) into.Add(draw(toggle));
@@ -276,7 +307,17 @@ internal static partial class CommonDiagnostics
         return l.Wrap ? text with { Wrap = TextWrap.Wrap } : text;
     }
 
-    static Element PassRow(DiagPassRow p) => new BoxEl
+    static Element PassRow(DiagPassRow p, CommonDiagnosticsLayout layout) => layout.Stacked
+        ? new BoxEl
+        {
+            Direction = 1, Gap = CommonDiagnosticsRules.StackedRowGap,
+            Children =
+            [
+                new TextEl(p.Kind) { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MinWidth = 0f },
+                new TextEl(p.Target + "  " + p.Ms) { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextSecondary, FontFamily = "Cascadia Code", Wrap = TextWrap.Wrap, MinWidth = 0f },
+            ],
+        }
+        : new BoxEl
     {
         Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
         Children =
@@ -287,14 +328,14 @@ internal static partial class CommonDiagnostics
         ],
     };
 
-    static Element Named(DiagNamed named)
+    static Element Named(DiagNamed named, CommonDiagnosticsLayout layout)
     {
         var kids = new List<Element>(named.Chips.Count + 1)
         {
             new TextEl(named.Name) { Size = CommonDiagnosticsRules.TextSize, Weight = 600, Color = Tok.TextPrimary },
         };
         foreach (var chip in named.Chips) kids.Add(Chip(chip));
-        return new BoxEl { Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Children = kids.ToArray() };
+        return new BoxEl { Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Wrap = layout.Stacked, Children = kids.ToArray() };
     }
 
     static Element Buttons(DiagButtons row, Env env)
@@ -316,21 +357,40 @@ internal static partial class CommonDiagnostics
                 };
             }
             click ??= (static () => { });
-            kids[i] = b.Accent ? Button.Accent(b.Label, click) : Button.Standard(b.Label, click);
+            kids[i] = CommonTouch.Button(b.Label, click, env.Layout.Target, b.Accent);
         }
-        return new BoxEl { Direction = 0, Gap = Spacing.S, Children = kids };
+        return new BoxEl { Direction = 0, Gap = Spacing.S, Wrap = env.Layout.Stacked, Children = kids };
     }
 
     // ── the capture page's anomalies and roots ──────────────────────────────────────────────────────────────────
 
-    static Element AnomalyRow(DiagAnomaly a) => new BoxEl
+    static Element AnomalyRow(DiagAnomaly a, CommonDiagnosticsLayout layout) => layout.Stacked
+        ? new BoxEl
+        {
+            Direction = 1, Gap = CommonDiagnosticsRules.StackedRowGap,
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
+                    Children =
+                    [
+                        InfoBadge.Dot(InfoBadgeSeverity.Critical),
+                        new TextEl(a.Kind) { Size = CommonDiagnosticsRules.TextSize, Weight = 600, Color = Tok.TextPrimary, Grow = 1f, Shrink = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis },
+                        new TextEl(a.RootId) { Size = CommonDiagnosticsRules.MonoSize, Color = Tok.TextTertiary, FontFamily = "Cascadia Code", Shrink = 0f },
+                    ],
+                },
+                new TextEl(a.Summary) { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MinWidth = 0f },
+            ],
+        }
+        : new BoxEl
     {
         Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
         Children =
         [
             InfoBadge.Dot(InfoBadgeSeverity.Critical),
             new TextEl(a.Kind) { Size = CommonDiagnosticsRules.TextSize, Weight = 600, Color = Tok.TextPrimary, Width = CommonDiagnosticsRules.AnomalyKindWidth, Shrink = 0f },
-            new TextEl(a.Summary) { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextSecondary, Grow = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis },
+            new TextEl(a.Summary) { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextSecondary, Grow = 1f, Shrink = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis },
             new TextEl(a.RootId) { Size = CommonDiagnosticsRules.MonoSize, Color = Tok.TextTertiary, FontFamily = "Cascadia Code", Shrink = 0f },
         ],
     };
@@ -340,6 +400,27 @@ internal static partial class CommonDiagnostics
         bool expanded = r.Expanded;
         long rootId = r.RootId;
         var open = env.Expanded;
+        var toggle = CommonTouch.Link(r.ToggleLabel, () => { if (open is not null) open.Value = expanded ? -1 : rootId; }, env.Layout.Target);
+        if (env.Layout.Stacked)
+            return new BoxEl
+            {
+                Direction = 1, Gap = CommonDiagnosticsRules.StackedRowGap,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
+                        Children =
+                        [
+                            InfoBadge.Dot(ToneBadge(r.Tone)),
+                            new TextEl(r.Time) { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextSecondary, FontFamily = "Cascadia Code", Grow = 1f, Shrink = 1f, MinWidth = 0f },
+                            new TextEl(r.EffectCount) { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextTertiary, Shrink = 0f },
+                            toggle,
+                        ],
+                    },
+                    new TextEl(r.Label) { Size = CommonDiagnosticsRules.TextSize, Weight = 600, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MinWidth = 0f },
+                ],
+            };
         return new BoxEl
         {
             Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
@@ -347,16 +428,16 @@ internal static partial class CommonDiagnostics
             [
                 InfoBadge.Dot(ToneBadge(r.Tone)),
                 new TextEl(r.Time) { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextSecondary, FontFamily = "Cascadia Code", Width = CommonDiagnosticsRules.RootTimeWidth, Shrink = 0f },
-                new TextEl(r.Label) { Size = CommonDiagnosticsRules.TextSize, Weight = 600, Color = Tok.TextPrimary, Grow = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis },
+                new TextEl(r.Label) { Size = CommonDiagnosticsRules.TextSize, Weight = 600, Color = Tok.TextPrimary, Grow = 1f, Shrink = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis },
                 new TextEl(r.EffectCount) { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextTertiary, Shrink = 0f },
-                HyperlinkButton.Create(r.ToggleLabel, () => { if (open is not null) open.Value = expanded ? -1 : rootId; }),
+                toggle,
             ],
         };
     }
 
     /// <summary>The expanded tree, indented under its own root row — input → decisions → requests → echoes →
     /// UI outcomes → errors, in causal + time order (§2.5). Header fields only; no payload is ever read here.</summary>
-    static Element TreeView(IReadOnlyList<DiagTreeRow> tree, string emptyText)
+    static Element TreeView(IReadOnlyList<DiagTreeRow> tree, string emptyText, CommonDiagnosticsLayout layout)
     {
         if (tree.Count == 0) return new BoxEl
         {
@@ -365,7 +446,7 @@ internal static partial class CommonDiagnostics
         };
 
         var rows = new Element[tree.Count];
-        for (int i = 0; i < tree.Count; i++) rows[i] = TreeRow(tree[i]);
+        for (int i = 0; i < tree.Count; i++) rows[i] = TreeRow(tree[i], layout);
         return new BoxEl
         {
             Direction = 1, Gap = CommonDiagnosticsRules.TreeGap,
@@ -373,14 +454,24 @@ internal static partial class CommonDiagnostics
         };
     }
 
-    static Element TreeRow(DiagTreeRow row) => new BoxEl
+    static Element TreeRow(DiagTreeRow row, CommonDiagnosticsLayout layout) => layout.Stacked
+        ? new BoxEl
+        {
+            Direction = 1, Gap = CommonDiagnosticsRules.StackedRowGap, Margin = new Edges4(row.Depth * layout.TreeStep, 0f, 0f, 0f),
+            Children =
+            [
+                new TextEl(row.Label) { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MinWidth = 0f },
+                new TextEl(row.Time) { Size = CommonDiagnosticsRules.MonoSize, Color = Tok.TextTertiary, FontFamily = "Cascadia Code" },
+            ],
+        }
+        : new BoxEl
     {
-        Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Margin = new Edges4(row.Depth * CommonDiagnosticsRules.TreeDepthStep, 0f, 0f, 0f),
+        Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Margin = new Edges4(row.Depth * layout.TreeStep, 0f, 0f, 0f),
         Children =
         [
             new TextEl("└─") { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextTertiary, FontFamily = "Cascadia Code", Shrink = 0f },
             new TextEl(row.Time) { Size = CommonDiagnosticsRules.MonoSize, Color = Tok.TextTertiary, FontFamily = "Cascadia Code", Width = CommonDiagnosticsRules.TreeTimeWidth, Shrink = 0f },
-            new TextEl(row.Label) { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextPrimary, Grow = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis },
+            new TextEl(row.Label) { Size = CommonDiagnosticsRules.TextSize, Color = Tok.TextPrimary, Grow = 1f, Shrink = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis },
         ],
     };
 }

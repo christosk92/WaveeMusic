@@ -8,6 +8,10 @@
 // The page's three UI states (the search text, the filter chip, the sort) are this view's own signals (they were the page component's), and the
 // view re-renders on the log's version signal and on them, as the component did.
 //
+// TIERS (themes plan 3.2, TC10): the page reads `ctx.Tier()` into a `CommonHistoryLayout` (Rules\Tiers.cs). Compact is one column: the head stacks (title, then the stats
+// and Clear all, then the full-width search, the filter chips as one scrolling line and the sort picker), a row carries its time and visit count in its meta line, and every
+// target is 40 DIP; the head scrolls with the list at Compact and at Short height; every tier is one column capped at the page's max width (the Huge fill rule).
+//
 // What History deliberately does NOT have (§6.2 — keep it that way): no context menu, no drag source, no ItemsView (a plain scroll over built
 // rows; the log is capped at 500), no ScrollKey (returning starts at the top), no skeleton (the whole page is synchronous over an in-memory
 // list), and no undo (Clear all asks first; a row delete does not).
@@ -19,6 +23,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Common;
@@ -48,27 +53,34 @@ internal static class CommonHistory
 
         _ = props.Version.Value;   // re-render when the log changes
         var model = props.Project(search.Value, filterIndex.Value, sortIndex.Value);
+        var layout = CommonHistoryLayout.For(ctx.Tier());
 
         Element body = model.Body switch
         {
             HistoryBodyKind.Empty => Empty(model),
-            HistoryBodyKind.MostVisited => MostVisited(model.Sections),
-            _ => DateGroups(model.Sections),
+            HistoryBodyKind.MostVisited => MostVisited(model.Sections, layout),
+            _ => DateGroups(model.Sections, layout),
         };
 
         var (filters, sorts) = labels.Value.Value;
+        Element head = Header(overlay, search, filterIndex, sortIndex, filters, sorts, model.TotalVisits, model.UniqueRoutes, layout);
+        Element list = new BoxEl
+        {
+            Direction = 1, Gap = Spacing.L,
+            Padding = new Edges4(layout.Gutter, Spacing.M, layout.Gutter, Spacing.XXL),
+            Children = [body],
+        };
+        // The head scrolls with the list where it would eat the page (Compact, Short); otherwise it is pinned over the scroll.
+        Element[] page = layout.HeaderScrolls
+            ? [Ui.ScrollView(new BoxEl { Direction = 1, Children = [head, list] }) with { Grow = 1f }]
+            : [head, Ui.ScrollView(list) with { Grow = 1f }];
+        // A row holding ONE column: the column stops growing at the tier's max width and keeps the page's left edge (the Huge fill rule).
         return new BoxEl
         {
-            Grow = 1f, Direction = 1,
+            Grow = 1f, Direction = 0, MinWidth = 0f, MinHeight = 0f,
             Children =
             [
-                Header(overlay, search, filterIndex, sortIndex, filters, sorts, model.TotalVisits, model.UniqueRoutes),
-                Ui.ScrollView(new BoxEl
-                {
-                    Direction = 1, Gap = Spacing.L,
-                    Padding = new Edges4(Spacing.PageWide, Spacing.M, Spacing.PageWide, Spacing.XXL),
-                    Children = [body],
-                }) with { Grow = 1f },
+                new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, MaxWidth = layout.MaxWidth, Children = page },
             ],
         };
     }
@@ -76,13 +88,57 @@ internal static class CommonHistory
     // ── the header ──────────────────────────────────────────────────────────────────────────────────────────────────
 
     static Element Header(IOverlayService? overlay, Signal<string> search, Signal<int> filterIndex, Signal<int> sortIndex,
-        string[] filters, string[] sorts, int totalVisits, int uniqueRoutes)
-        => new BoxEl
+        string[] filters, string[] sorts, int totalVisits, int uniqueRoutes, CommonHistoryLayout layout)
+    {
+        // Destructive and unrecoverable (Clear also DELETES the file), so it asks first; the default
+        // button is Cancel.
+        Element clearAll = CommonTouch.Button(Loc.Get(Strings.Nav.History.ClearAll), () => Controls.Confirm(
+            overlay,
+            Loc.Get(Strings.Nav.History.ClearAllConfirm),
+            Loc.Get(Strings.Nav.History.ClearAllConfirmBody),
+            Loc.Get(Strings.Nav.History.ClearAll),
+            static () => HistoryVerbs.ClearAll()), layout.Target);
+        Element stats = new BoxEl
         {
-            Direction = 1, Gap = Spacing.M,
-            // No fill: the header inherits the content ground (a fill here fought the light theme).
-            Padding = new Edges4(Spacing.PageWide, Spacing.L, Spacing.PageWide, Spacing.M),
+            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
             Children =
+            [
+                StatPill(FormatCache.Int(totalVisits), Loc.Get(Strings.Nav.History.Stat.Visits)),
+                StatPill(FormatCache.Int(uniqueRoutes), Loc.Get(Strings.Nav.History.Stat.Unique)),
+            ],
+        };
+        Element searchBox = AutoSuggestBox.Create(
+            Array.Empty<string>(),
+            placeholder: Loc.Get(Strings.Nav.History.SearchPlaceholder),
+            grow: 1f,
+            text: search,
+            onQuerySubmitted: q => search.Value = q,
+            onChange: q => search.Value = q,
+            minHeight: layout.Target > 0f ? layout.Target : CommonHistoryRules.SearchMinHeight,
+            cornerRadius: Radii.Control);
+
+        Element[] top = layout.Compact
+            ?
+            [
+                new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
+                    Children =
+                    [
+                        Ui.Icon(Icons.Clock, CommonHistoryRules.TitleGlyphSize, Tok.TextPrimary),
+                        R.Type.PageHero(Loc.Get(Strings.Nav.History.Title)) with { Grow = 1f, MinWidth = 0f, Wrap = TextWrap.Wrap, MaxLines = CommonHistoryRules.TitleLines, Trim = TextTrim.CharacterEllipsis },
+                    ],
+                },
+                new BoxEl { Direction = 0, Wrap = true, Gap = Spacing.S, AlignItems = FlexAlign.Center, Children = [stats, clearAll] },
+                searchBox,
+                // The six chips are wider than the column: one scrolling line, its end fading where more wait.
+                Ui.ScrollView(SelectorBar.Create(filters, filterIndex, style: new SelectorBarStyle { ItemHeight = layout.Target }), horizontal: true) with
+                {
+                    Grow = 0f, Shrink = 0f, MinWidth = 0f, Height = CommonHistoryRules.ChipRailHeight, SuppressScrollBar = true, AutoEdgeFade = true,
+                },
+                CommonTouch.Picker(sorts, sortIndex, CommonHistoryRules.SortComboWidth, layout.Target),
+            ]
+            :
             [
                 new BoxEl
                 {
@@ -91,34 +147,11 @@ internal static class CommonHistory
                     [
                         Ui.Icon(Icons.Clock, CommonHistoryRules.TitleGlyphSize, Tok.TextPrimary),
                         R.Type.PageHero(Loc.Get(Strings.Nav.History.Title)) with { Grow = 1f },
-                        new BoxEl
-                        {
-                            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
-                            Children =
-                            [
-                                StatPill(FormatCache.Int(totalVisits), Loc.Get(Strings.Nav.History.Stat.Visits)),
-                                StatPill(FormatCache.Int(uniqueRoutes), Loc.Get(Strings.Nav.History.Stat.Unique)),
-                            ],
-                        },
-                        // Destructive and unrecoverable (Clear also DELETES the file), so it asks first; the default
-                        // button is Cancel.
-                        Button.Standard(Loc.Get(Strings.Nav.History.ClearAll), () => Controls.Confirm(
-                            overlay,
-                            Loc.Get(Strings.Nav.History.ClearAllConfirm),
-                            Loc.Get(Strings.Nav.History.ClearAllConfirmBody),
-                            Loc.Get(Strings.Nav.History.ClearAll),
-                            static () => HistoryVerbs.ClearAll())),
+                        stats,
+                        clearAll,
                     ],
                 },
-                AutoSuggestBox.Create(
-                    Array.Empty<string>(),
-                    placeholder: Loc.Get(Strings.Nav.History.SearchPlaceholder),
-                    grow: 1f,
-                    text: search,
-                    onQuerySubmitted: q => search.Value = q,
-                    onChange: q => search.Value = q,
-                    minHeight: CommonHistoryRules.SearchMinHeight,
-                    cornerRadius: Radii.Control),
+                searchBox,
                 new BoxEl
                 {
                     // The bottom margin clears the chip bar's selection pill from the first group header.
@@ -128,11 +161,18 @@ internal static class CommonHistory
                     [
                         SelectorBar.Create(filters, filterIndex),
                         new BoxEl { Grow = 1f },
-                        ComboBox.Create(sorts, sortIndex, width: CommonHistoryRules.SortComboWidth),
+                        CommonTouch.Picker(sorts, sortIndex, CommonHistoryRules.SortComboWidth, layout.Target),
                     ],
                 },
-            ],
+            ];
+        return new BoxEl
+        {
+            Direction = 1, Gap = Spacing.M,
+            // No fill: the header inherits the content ground (a fill here fought the light theme).
+            Padding = new Edges4(layout.Gutter, Spacing.L, layout.Gutter, Spacing.M),
+            Children = top,
         };
+    }
 
     static BoxEl StatPill(string value, string label) => new()
     {
@@ -156,7 +196,7 @@ internal static class CommonHistory
 
     /// <summary>Most recent: one card per date bucket (Today · Yesterday · This week · This month · Earlier), each with
     /// an eyebrow + rule + count-pill header. The LAST row of each card carries no divider (contrast Most visited).</summary>
-    static Element DateGroups(IReadOnlyList<HistorySection> sections)
+    static Element DateGroups(IReadOnlyList<HistorySection> sections, CommonHistoryLayout layout)
     {
         var cards = new Element[sections.Count];
         for (int s = 0; s < cards.Length; s++)
@@ -164,7 +204,7 @@ internal static class CommonHistory
             var section = sections[s];
             var rows = new Element[section.Rows.Count];
             for (int k = 0; k < rows.Length; k++)
-                rows[k] = Row(section.Rows[k], showDivider: k < rows.Length - 1);
+                rows[k] = Row(section.Rows[k], showDivider: k < rows.Length - 1, layout);
             cards[s] = new BoxEl
             {
                 Direction = 1, Gap = Spacing.S,
@@ -180,12 +220,12 @@ internal static class CommonHistory
 
     /// <summary>Most visited: ONE flat card, newest entry per route key, count descending (the stable fold), a
     /// <c>N×</c> badge wherever N &gt; 1 — and EVERY row keeps its divider, the last included (the card clips it).</summary>
-    static Element MostVisited(IReadOnlyList<HistorySection> sections)
+    static Element MostVisited(IReadOnlyList<HistorySection> sections, CommonHistoryLayout layout)
     {
         var section = sections[0];
         var rows = new Element[section.Rows.Count];
         for (int k = 0; k < rows.Length; k++)
-            rows[k] = Row(section.Rows[k], showDivider: true);
+            rows[k] = Row(section.Rows[k], showDivider: true, layout);
         return new BoxEl
         {
             Direction = 1, Gap = Spacing.S,
@@ -225,16 +265,24 @@ internal static class CommonHistory
     /// <summary>One visit, 56 DIP. A route this build has no page for (retired, or developer-gated) stays in the log at
     /// 0.6 opacity and INERT — still a record of where the user went, no longer an offer to go back — while its delete
     /// button stays live.</summary>
-    static Element Row(in HistoryRowFacts e, bool showDivider)
+    static Element Row(in HistoryRowFacts e, bool showDivider, CommonHistoryLayout layout)
     {
-        var meta = new List<Element>(3)
+        // Compact has no room for a time and a count beside the title: they join the meta line under it.
+        bool compact = layout.Compact;
+        var meta = new List<Element>(5)
         {
             new TextEl(e.KindLabel) { Size = CommonHistoryRules.SmallTextSize, LineHeight = CommonHistoryRules.SmallTextLine, Color = Tok.TextTertiary },
         };
         if (e.Arg is { Length: > 0 } arg)
         {
             meta.Add(new TextEl("·") { Size = CommonHistoryRules.SmallTextSize, LineHeight = CommonHistoryRules.SmallTextLine, Color = Tok.TextTertiary });
-            meta.Add(new TextEl(arg) { Size = CommonHistoryRules.SmallTextSize, LineHeight = CommonHistoryRules.SmallTextLine, Color = Tok.TextTertiary, Trim = TextTrim.CharacterEllipsis, MaxLines = 1 });
+            meta.Add(new TextEl(arg) { Size = CommonHistoryRules.SmallTextSize, LineHeight = CommonHistoryRules.SmallTextLine, Color = Tok.TextTertiary, Trim = TextTrim.CharacterEllipsis, MaxLines = 1, Shrink = 1f, MinWidth = 0f });
+        }
+        if (compact)
+        {
+            string tail = e.VisitCount > 1 ? e.Timestamp + " · " + Strings.Nav.History.VisitMultiplier(e.VisitCount) : e.Timestamp;
+            meta.Add(new TextEl("·") { Size = CommonHistoryRules.SmallTextSize, LineHeight = CommonHistoryRules.SmallTextLine, Color = Tok.TextTertiary });
+            meta.Add(new TextEl(tail) { Size = CommonHistoryRules.SmallTextSize, LineHeight = CommonHistoryRules.SmallTextLine, Color = Tok.TextTertiary, Shrink = 0f });
         }
 
         var kids = new List<Element>(5)
@@ -249,25 +297,29 @@ internal static class CommonHistory
             },
             new BoxEl
             {
-                Direction = 1, Grow = 1f, Gap = CommonHistoryRules.TitleMetaGap, MinWidth = 0f,
+                Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, Gap = CommonHistoryRules.TitleMetaGap, MinWidth = 0f,
                 Children =
                 [
                     Ui.Body(e.Title) with { Trim = TextTrim.CharacterEllipsis, MaxLines = 1 },
                     new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f, Children = meta.ToArray() },
                 ],
             },
-            new TextEl(e.Timestamp) { Size = CommonHistoryRules.SmallTextSize, LineHeight = CommonHistoryRules.SmallTextLine, Color = Tok.TextTertiary },
         };
-        if (e.VisitCount > 1)
-            kids.Add(new BoxEl
-            {
-                Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, Spacing.XS), Corners = Radii.FullAll,
-                Fill = Tok.FillSubtleSecondary,
-                Children = [new TextEl(Strings.Nav.History.VisitMultiplier(e.VisitCount)) { Size = CommonHistoryRules.SmallTextSize, LineHeight = CommonHistoryRules.SmallTextLine, Color = Tok.TextSecondary }],
-            });
+        if (!compact)
+        {
+            kids.Add(new TextEl(e.Timestamp) { Size = CommonHistoryRules.SmallTextSize, LineHeight = CommonHistoryRules.SmallTextLine, Color = Tok.TextTertiary });
+            if (e.VisitCount > 1)
+                kids.Add(new BoxEl
+                {
+                    Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, Spacing.XS), Corners = Radii.FullAll,
+                    Fill = Tok.FillSubtleSecondary,
+                    Children = [new TextEl(Strings.Nav.History.VisitMultiplier(e.VisitCount)) { Size = CommonHistoryRules.SmallTextSize, LineHeight = CommonHistoryRules.SmallTextLine, Color = Tok.TextSecondary }],
+                });
+        }
+        float deleteBox = layout.Target > 0f ? layout.Target : CommonHistoryRules.DeleteBox;
         kids.Add(new BoxEl
         {
-            Width = CommonHistoryRules.DeleteBox, Height = CommonHistoryRules.DeleteBox, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Width = deleteBox, Height = deleteBox, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Shrink = 0f,
             Corners = CornerRadius4.All(Radii.Control), Opacity = CommonHistoryRules.DeleteRestOpacity,
             Role = AutomationRole.Button,
             OnClick = e.Remove,

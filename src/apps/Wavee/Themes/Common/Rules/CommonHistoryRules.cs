@@ -38,6 +38,12 @@ public static class CommonHistoryRules
     /// <summary>The sort combo's width.</summary>
     public const float SortComboWidth = 160f;
 
+    /// <summary>The Compact filter chips' scrolling line: the chip height (the tier's hit target) plus the selection pill's room.</summary>
+    public const float ChipRailHeight = 48f;
+
+    /// <summary>The Compact title wraps to this many lines before it ellipsizes.</summary>
+    public const int TitleLines = 2;
+
     /// <summary>The gap between a row's title and its meta line.</summary>
     public const float TitleMetaGap = 2f;
 

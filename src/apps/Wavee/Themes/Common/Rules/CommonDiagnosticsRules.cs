@@ -18,6 +18,12 @@ internal static class CommonDiagnosticsRules
     /// <summary>The page header's glyph.</summary>
     public const float HeaderGlyphSize = 22f;
 
+    /// <summary>The page header's title wraps to this many lines before it ellipsizes.</summary>
+    public const int HeaderTitleLines = 2;
+
+    /// <summary>The gap between a stacked row's lines (a label over its value, a table row as lines).</summary>
+    public const float StackedRowGap = 2f;
+
     /// <summary>The gap between a page's cards.</summary>
     public const float PageGap = 12f;
 
