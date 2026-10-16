@@ -205,11 +205,18 @@ public static partial class ZoomService
 
     // ══ 2. THE STORED STATE ══════════════════════════════════════════════════════════════════════════════════════════
 
+    /// <summary>A review capture's Manual zoom (`--screenshot --zoom`, or `--offscreen`'s implied 1: <c>Diagnostics.CaptureOptions</c>);
+    /// 0 for none. Set once by <c>Shell.Run</c> before the window exists. While set, <see cref="Mode"/> answers Manual and
+    /// <see cref="PersistedLevel"/> answers it, so the first frame lays out at it and the Auto loop stands down; the profile's
+    /// stored zoom is never rewritten for it.</summary>
+    public static float RunZoom { get; set; }
+
     /// <summary>The persisted picker mode, clamped like every reader (a value this build does not define is not a crash).</summary>
-    public static ZoomAutoMode Mode => (ZoomAutoMode)Math.Clamp(Platform.Settings.Get(Platform.Keys.ZoomMode), 0, 2);
+    public static ZoomAutoMode Mode => RunZoom > 0f ? ZoomAutoMode.Manual
+        : (ZoomAutoMode)Math.Clamp(Platform.Settings.Get(Platform.Keys.ZoomMode), 0, 2);
 
     /// <summary>The persisted zoom level.</summary>
-    public static float PersistedLevel => Platform.Settings.Get(Platform.Keys.ZoomLevel);
+    public static float PersistedLevel => RunZoom > 0f ? RunZoom : Platform.Settings.Get(Platform.Keys.ZoomLevel);
 
     // ══ 3. THE VERBS ═════════════════════════════════════════════════════════════════════════════════════════════════
 

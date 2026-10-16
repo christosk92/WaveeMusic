@@ -287,6 +287,9 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **Store screenshots are no longer dimmed.** The opaque form of the Store screenshot capture (`wavee://diag?cmd=shot`) composited the
+  window's see-through title bar, sidebar and page fills over black, so every shot came out with a grey cast and black chrome; it now
+  composites them over the window's own background colour, which is what the window shows.
 - **The window can no longer be dragged down to a title-bar strip.** It now stops at 330 DIP tall, which keeps the title bar,
   a usable page and the player bar on screen (#197).
 - **The album and playlist side column shows again.** In Classic the left column of an album or playlist page (the cover,

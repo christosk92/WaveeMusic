@@ -314,3 +314,45 @@ public class QrPngTests
         Assert.Equal(new byte[] { 0, 255, 255, 255, 0, 255, 0, 255, 0, 255, 255, 255 }, raw.ToArray());
     }
 }
+
+public class CaptureOptionsTests
+{
+    [Fact]
+    public void Without_screenshot_every_capture_flag_is_inert()
+    {
+        var o = Diagnostics.CaptureOptions.Parse(["--offscreen", "--zoom", "2", "wavee://open?route=settings&arg=playback"]);
+        Assert.False(o.Screenshot);
+        Assert.False(o.Offscreen);
+        Assert.Equal(0f, o.RunZoom);
+        Assert.Equal("", o.DeepLink);
+    }
+
+    [Fact]
+    public void Offscreen_implies_zoom_one_and_scale_one_unless_told()
+    {
+        var o = Diagnostics.CaptureOptions.Parse(["--fake", "--offscreen", "--width", "3840", "--screenshot", "a.png"]);
+        Assert.True(o.Offscreen);
+        Assert.Equal(1f, o.Scale);
+        Assert.Equal(1f, o.RunZoom);
+        var z = Diagnostics.CaptureOptions.Parse(["--offscreen", "--scale", "1.5", "--zoom", "1.25", "--screenshot", "a.png"]);
+        Assert.Equal(1.5f, z.Scale);
+        Assert.Equal(1.25f, z.RunZoom);
+    }
+
+    [Fact]
+    public void A_plain_screenshot_keeps_the_profile_zoom_and_takes_its_deep_link()
+    {
+        var o = Diagnostics.CaptureOptions.Parse(["--screenshot", "a.png", "wavee://open?route=settings&arg=playback"]);
+        Assert.False(o.Offscreen);
+        Assert.Equal(0f, o.RunZoom);
+        Assert.Equal("wavee://open?route=settings&arg=playback", o.DeepLink);
+    }
+
+    [Fact]
+    public void Out_of_range_values_fall_back()
+    {
+        var o = Diagnostics.CaptureOptions.Parse(["--screenshot", "a.png", "--offscreen", "--scale", "9", "--zoom", "nope"]);
+        Assert.Equal(1f, o.Scale);
+        Assert.Equal(1f, o.RunZoom);
+    }
+}
