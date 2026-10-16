@@ -11,7 +11,9 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
+using Wavee.Themes.Common;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee.Themes.Classic;
@@ -20,53 +22,58 @@ internal static partial class ClassicSetup
 {
     /// <summary>The registered template of <see cref="ViewKeys.SetupRuntimeCard"/>: the dialog's body or its command row.</summary>
     public static Element RuntimeCardTemplate(SetupRuntimeCardProps props, in ViewContext ctx)
-        => props.Part == SetupDialogPart.Footer ? RuntimeFooter(props) : RuntimeBody(props, ctx);
+    {
+        var layout = ClassicSetupTiers.Of(ctx.Tier());   // the dialog opens inside the window's tier: its buttons, links and rows are the tier's height
+        return props.Part == SetupDialogPart.Footer ? RuntimeFooter(props, layout) : RuntimeBody(props, ctx, layout);
+    }
 
     // ── the body ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    private static Element RuntimeBody(SetupRuntimeCardProps props, in ViewContext ctx)
+    private static Element RuntimeBody(SetupRuntimeCardProps props, in ViewContext ctx, ClassicSetupLayout layout)
     {
         var overlay = ctx.Hooks.UseContext(Overlay.Service);
+        // The bars are the dialog body's width: 412 in the stock card, the window less its margins where the card fills (Compact).
+        float bar = OverlayFit.Layout.Dialog.BodyWidth(Setup.RuntimeRules.ProgressWidth, ctx.Hooks.UseContextSignal(Viewport.Size).Value.Width);
         if (Setup.Runtime.Active.Value is not { } m) return RuntimeText(Loc.Get(Strings.Playback.Runtime.NotActive));
         return m.Phase.Value switch
         {
             RuntimePhase.Offer => RuntimeText(Loc.Get(Strings.Playback.Runtime.OfferBody)),
-            RuntimePhase.FetchingCatalog => RuntimeCatalogWaiting(),
-            RuntimePhase.Downloading => RuntimeDownloading(m),
+            RuntimePhase.FetchingCatalog => RuntimeCatalogWaiting(bar),
+            RuntimePhase.Downloading => RuntimeDownloading(m, bar),
             RuntimePhase.Verifying => RuntimeColumn(
                 RuntimeLead(Loc.Get(Strings.Playback.Runtime.Verifying)),
                 RuntimeMetricRow(Loc.Get(Strings.Playback.Runtime.VerifyingCaption), Setup.RuntimeRules.VerifySize(m.Total.Value)),
-                ProgressBar.Indeterminate(Setup.RuntimeRules.ProgressWidth),
+                ProgressBar.Indeterminate(bar),
                 RuntimeVerifyFacts(m)),
             RuntimePhase.Untrusted => RuntimeStatus(Icons.StatusWarning, Tok.SystemFillCaution,
                 Loc.Get(Strings.Playback.Runtime.SignatureInvalid), Loc.Get(Strings.Playback.Runtime.UntrustedBody)),
-            RuntimePhase.Ready => CardReady(m, overlay, props.OpenSignature),
+            RuntimePhase.Ready => CardReady(m, overlay, props.OpenSignature, layout),
             RuntimePhase.Failed => RuntimeStatus(Icons.StatusError, Tok.SystemFillCritical,
                 Loc.Get(Strings.Playback.Runtime.Missing), m.Error.Value ?? Loc.Get(Strings.Playback.Runtime.NoPack)),
-            RuntimePhase.Advanced => CardAdvanced(m),
+            RuntimePhase.Advanced => CardAdvanced(m, layout),
             _ => new BoxEl(),
         };
     }
 
-    private static Element CardReady(Setup.RuntimeModel m, IOverlayService overlay, Action<IOverlayService, Setup.RuntimeFacts> openSignature)
+    private static Element CardReady(Setup.RuntimeModel m, IOverlayService overlay, Action<IOverlayService, Setup.RuntimeFacts> openSignature, ClassicSetupLayout layout)
     {
         var facts = m.Status;
         var kids = new List<Element>(4) { RuntimeReadyBadge() };
         if (m.UpToDate.Value) kids.Add(RuntimeText(Loc.Get(Strings.Playback.Runtime.UpToDate)));
-        kids.Add(RuntimeReadyFacts(facts, overlay, openSignature));
+        kids.Add(RuntimeReadyFacts(facts, overlay, openSignature, layout));
         kids.Add(new BoxEl
         {
             Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
             Children =
             [
-                HyperlinkButton.Create(Loc.Get(Strings.Playback.Runtime.Replace), m.ShowAdvanced),
-                HyperlinkButton.Create(Loc.Get(Strings.Playback.Runtime.Remove), m.Remove),
+                CommonTouch.Link(Loc.Get(Strings.Playback.Runtime.Replace), m.ShowAdvanced, layout.Target),
+                CommonTouch.Link(Loc.Get(Strings.Playback.Runtime.Remove), m.Remove, layout.Target),
             ],
         });
         return new BoxEl { Direction = 1, Gap = Spacing.M, Children = kids.ToArray() };
     }
 
-    private static Element CardAdvanced(Setup.RuntimeModel m)
+    private static Element CardAdvanced(Setup.RuntimeModel m, ClassicSetupLayout layout)
     {
         var kids = new List<Element>(6) { RuntimeText(Loc.Get(Strings.Playback.Runtime.AdvancedBody)) };
         switch (Setup.RuntimeRules.AdvancedArm(m.Catalog.Value, m.SupportedPacks.Count))
@@ -75,7 +82,7 @@ internal static partial class ClassicSetup
                 kids.Add(RuntimeBusyRow(Loc.Get(Strings.Playback.Runtime.CheckingSupport)));
                 break;
             case Setup.RuntimeAdvancedArm.Picker:
-                kids.Add(RuntimeVersionPicker(m, Loc.Get(Strings.Playback.Runtime.ChooseVersion)));
+                kids.Add(RuntimeVersionPicker(m, Loc.Get(Strings.Playback.Runtime.ChooseVersion), layout));
                 break;
             case Setup.RuntimeAdvancedArm.NoPack:
                 kids.Add(RuntimeText(Loc.Get(Strings.Playback.Runtime.NoPack)));
@@ -86,7 +93,7 @@ internal static partial class ClassicSetup
             // NotFetched: no arm at all — no busy row, no copy (ported, W32).
         }
         kids.Add(new BoxEl { Height = SetupGeometry.SeparatorHeight, Fill = Tok.StrokeCardDefault, Margin = ClassicSetupRules.CardRuleMargin });
-        kids.AddRange(RuntimeLocalSourceRows(m));
+        kids.AddRange(RuntimeLocalSourceRows(m, layout));
         return new BoxEl { Direction = 1, Gap = Spacing.S, Children = kids.ToArray() };
     }
 
@@ -144,7 +151,7 @@ internal static partial class ClassicSetup
     };
 
     /// <summary>FetchingCatalog: one calm status line, the process architecture, the real indeterminate bar.</summary>
-    private static Element RuntimeCatalogWaiting(float barWidth = Setup.RuntimeRules.ProgressWidth) => RuntimeColumn(
+    private static Element RuntimeCatalogWaiting(float barWidth) => RuntimeColumn(
         RuntimeLead(Loc.Get(Strings.Playback.Runtime.CheckingSupport)),
         RuntimeMetricRow(Loc.Get(Strings.Playback.Runtime.ReachingCatalog),
             System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString()),
@@ -152,7 +159,7 @@ internal static partial class ClassicSetup
 
     /// <summary>Downloading: the label, "12.3 / 84.0 MB", a determinate bar (indeterminate while the total is unknown)
     /// and the "you can't leave this step" caption.</summary>
-    private static Element RuntimeDownloading(Setup.RuntimeModel m, float barWidth = Setup.RuntimeRules.ProgressWidth)
+    private static Element RuntimeDownloading(Setup.RuntimeModel m, float barWidth)
     {
         long received = m.Received.Value, total = m.Total.Value;
         Element bar = total > 0
@@ -213,7 +220,7 @@ internal static partial class ClassicSetup
     /// <summary>The Ready fact box: Version · Architecture · Signature (+ the [Signature] button when details exist) ·
     /// Location.</summary>
     private static Element RuntimeReadyFacts(Setup.RuntimeFacts facts, IOverlayService overlay, Action<IOverlayService, Setup.RuntimeFacts> openSignature,
-                                             float labelWidth = Setup.RuntimeRules.DetailLabelWidth)
+                                             ClassicSetupLayout layout, float labelWidth = Setup.RuntimeRules.DetailLabelWidth)
     {
         var sigKids = new List<Element>(3)
         {
@@ -226,7 +233,7 @@ internal static partial class ClassicSetup
         if (facts.Signature is not null)
             sigKids.Add(Button.Standard(Loc.Get(Strings.Playback.Runtime.DetailSignature), () => openSignature(overlay, facts)) with
             {
-                MinWidth = ClassicSetupRules.SignatureButtonMinWidth, Height = ClassicSetupRules.SignatureButtonHeight, MinHeight = ClassicSetupRules.SignatureButtonHeight, Justify = FlexJustify.Center,
+                MinWidth = ClassicSetupRules.SignatureButtonMinWidth, Height = layout.SignatureHeight, MinHeight = layout.SignatureHeight, Justify = FlexJustify.Center,
             });
         return RuntimeFactBox(ClassicSetupRules.ReadyFactPad, ClassicSetupRules.ReadyFactGap,
             RuntimeFactRow(Loc.Get(Strings.Playback.Runtime.DetailVersion), facts.Version, labelWidth),
@@ -236,7 +243,7 @@ internal static partial class ClassicSetup
     }
 
     /// <summary>The Advanced version list: "Spotify {v} · {arch}", the first carrying "  (Recommended)" (two spaces).</summary>
-    private static Element RuntimeVersionPicker(Setup.RuntimeModel m, string? header)
+    private static Element RuntimeVersionPicker(Setup.RuntimeModel m, string? header, ClassicSetupLayout layout)
     {
         var packs = m.SupportedPacks;
         var labels = new string[packs.Count];
@@ -245,21 +252,21 @@ internal static partial class ClassicSetup
             labels[i] = Strings.Runtime.Sig.PackLabel(packs[i].Version, packs[i].Arch);
             if (i == 0) labels[i] += "  (" + Loc.Get(Strings.Playback.Runtime.Recommended) + ")";
         }
-        return RadioButtons.Create(labels, m.SelectedPack, header: header);
+        return TouchRadios(labels, m.SelectedPack, layout.Target, header: header);
     }
 
     /// <summary>The two offline sources under Advanced: "Choose a Spotify.dll…" and "Use installed Spotify".</summary>
-    private static Element[] RuntimeLocalSourceRows(Setup.RuntimeModel m) =>
+    private static Element[] RuntimeLocalSourceRows(Setup.RuntimeModel m, ClassicSetupLayout layout) =>
     [
         RuntimeSettingRow(Icons.Folder, Loc.Get(Strings.Playback.Runtime.InstallFromFolder),
-            Loc.Get(Strings.Playback.Runtime.InstallFromFolderCaption), m.PickFolder),
+            Loc.Get(Strings.Playback.Runtime.InstallFromFolderCaption), m.PickFolder, layout),
         RuntimeSettingRow(Icons.MusicNote, Loc.Get(Strings.Playback.Runtime.UseInstalled),
-            Loc.Get(Strings.Playback.Runtime.UseInstalledCaption), m.UseInstalled),
+            Loc.Get(Strings.Playback.Runtime.UseInstalledCaption), m.UseInstalled, layout),
     ];
 
-    private static Element RuntimeSettingRow(string glyph, string title, string caption, Action onClick) => new BoxEl
+    private static Element RuntimeSettingRow(string glyph, string title, string caption, Action onClick, ClassicSetupLayout layout) => new BoxEl
     {
-        Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicSetupRules.SettingRowGap, Padding = ClassicSetupRules.SettingRowPadding,
+        Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicSetupRules.SettingRowGap, Padding = ClassicSetupRules.SettingRowPadding, MinHeight = layout.Target,
         Corners = CornerRadius4.All(Radii.Control), Role = AutomationRole.Button, Focusable = true,
         FocusVisualMargin = Design.FocusInsetRow, OnClick = onClick,
         Children =
@@ -280,22 +287,22 @@ internal static partial class ClassicSetup
 
     // ── the command row ─────────────────────────────────────────────────────────────────────────────────────────────
 
-    private static Element RuntimeFooter(SetupRuntimeCardProps props)
+    private static Element RuntimeFooter(SetupRuntimeCardProps props, ClassicSetupLayout layout)
     {
-        if (Setup.Runtime.Active.Value is not { } m) return RuntimeRow(null, RuntimeBtn(Loc.Get(Strings.Common.Dismiss), () => { }, false));
+        if (Setup.Runtime.Active.Value is not { } m) return RuntimeRow(null, RuntimeBtn(Loc.Get(Strings.Common.Dismiss), () => { }, false, layout));
         var footer = Setup.RuntimeRules.FooterFor(m.Phase.Value, m.Catalog.Value, m.SupportedPacks.Count, props.HasDiagnosticsPage());
 
         Element? left = footer.Link == Setup.RuntimeVerb.None ? null
-            : footer.Link2 == Setup.RuntimeVerb.None ? RuntimeLink(m, footer.Link, flush: true)
+            : footer.Link2 == Setup.RuntimeVerb.None ? RuntimeLink(m, footer.Link, flush: true, layout)
             : new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center,
                 // Only the FIRST link takes the flush-left margin; the rest keep their own 11-DIP padding.
-                Children = [RuntimeLink(m, footer.Link, flush: true), RuntimeLink(m, footer.Link2, flush: false)],
+                Children = [RuntimeLink(m, footer.Link, flush: true, layout), RuntimeLink(m, footer.Link2, flush: false, layout)],
             };
         var right = new List<Element>(2);
-        if (footer.Standard != Setup.RuntimeVerb.None) right.Add(RuntimeBtn(VerbLabel(footer.Standard), VerbAction(m, footer.Standard), footer.StandardEnabled));
-        if (footer.Accent != Setup.RuntimeVerb.None) right.Add(RuntimeAccentBtn(VerbLabel(footer.Accent), VerbAction(m, footer.Accent), footer.AccentEnabled));
+        if (footer.Standard != Setup.RuntimeVerb.None) right.Add(RuntimeBtn(VerbLabel(footer.Standard), VerbAction(m, footer.Standard), footer.StandardEnabled, layout));
+        if (footer.Accent != Setup.RuntimeVerb.None) right.Add(RuntimeAccentBtn(VerbLabel(footer.Accent), VerbAction(m, footer.Accent), footer.AccentEnabled, layout));
         return RuntimeRow(left, right.ToArray());
     }
 
@@ -330,20 +337,20 @@ internal static partial class ClassicSetup
         _ => m.Close,
     };
 
-    private static Element RuntimeLink(Setup.RuntimeModel m, Setup.RuntimeVerb verb, bool flush)
+    private static Element RuntimeLink(Setup.RuntimeModel m, Setup.RuntimeVerb verb, bool flush, ClassicSetupLayout layout)
     {
-        var link = HyperlinkButton.Create(VerbLabel(verb), VerbAction(m, verb));
+        var link = CommonTouch.Link(VerbLabel(verb), VerbAction(m, verb), layout.Target);
         // The hyperlink carries its own 11-DIP inner padding; −11 puts the first link's TEXT flush with the copy.
         return flush ? link with { Margin = ClassicSetupRules.FlushLinkMargin } : link;
     }
 
-    private static Element RuntimeBtn(string text, Action onClick, bool enabled) =>
+    private static Element RuntimeBtn(string text, Action onClick, bool enabled, ClassicSetupLayout layout) =>
         Button.Standard(text, onClick, isEnabled: enabled) with
-        { MinWidth = ClassicSetupRules.DialogButtonMinWidth, Height = ClassicSetupRules.DialogButtonHeight, MinHeight = ClassicSetupRules.DialogButtonHeight, Justify = FlexJustify.Center };
+        { MinWidth = ClassicSetupRules.DialogButtonMinWidth, Height = layout.ButtonHeight, MinHeight = layout.ButtonHeight, Justify = FlexJustify.Center };
 
-    private static Element RuntimeAccentBtn(string text, Action onClick, bool enabled) =>
+    private static Element RuntimeAccentBtn(string text, Action onClick, bool enabled, ClassicSetupLayout layout) =>
         Button.Accent(text, onClick, isEnabled: enabled) with
-        { MinWidth = ClassicSetupRules.DialogButtonMinWidth, Height = ClassicSetupRules.DialogButtonHeight, MinHeight = ClassicSetupRules.DialogButtonHeight, Justify = FlexJustify.Center, TabIndex = 1 };
+        { MinWidth = ClassicSetupRules.DialogButtonMinWidth, Height = layout.ButtonHeight, MinHeight = layout.ButtonHeight, Justify = FlexJustify.Center, TabIndex = 1 };
 
     /// <summary>A WRAPPING command row: [links?][buttons group, Grow 1, Justify End]. The group takes the line's leftover
     /// and right-aligns its buttons, so a footer that fits (Offer, Ready) is one line exactly as before; the Failed

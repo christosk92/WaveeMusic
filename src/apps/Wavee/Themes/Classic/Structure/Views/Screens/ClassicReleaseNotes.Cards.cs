@@ -20,25 +20,129 @@ namespace Wavee.Themes.Classic;
 
 internal static partial class ClassicReleaseNotes
 {
-    /// <summary>Three is a cap, not a layout. No highlights ⇒ a 0-height, hit-invisible box: the eyebrow AND the row vanish.</summary>
-    static Element Strip(IReadOnlyList<HighlightItem> highlights, Action<int> open, Action openStore)
+    /// <summary>Three is a cap, not a layout. No highlights ⇒ a 0-height, hit-invisible box: the eyebrow AND the row vanish. The record sets the form: one row of
+    /// poster cards (Standard, Huge: under a 20/28 heading), two columns of ROW cards (Small) or one column of them (Compact).</summary>
+    static Element Strip(IReadOnlyList<HighlightItem> highlights, Action<int> open, Action openStore, ClassicReleaseNotesLayout layout)
     {
         if (highlights.Count == 0) return new BoxEl { Height = 0f, HitTestVisible = false };
         int n = Math.Min(highlights.Count, HighlightMax);
+        var form = layout.HighlightForm;
         var cards = new Element[n];
         for (int i = 0; i < n; i++)
         {
             int idx = i;   // the row's own index, not the closed-over loop variable
-            cards[i] = CardFor(highlights[i], () => open(idx), openStore, compact: false) with { Key = "hl:" + SlideId(highlights[i], i) };
+            Element card = form == ClassicReleaseHighlightForm.Strip
+                ? CardFor(highlights[i], () => open(idx), openStore, compact: false)
+                : RowCard(highlights[i], () => open(idx), openStore, layout, inRow: form == ClassicReleaseHighlightForm.Grid2);
+            cards[i] = card with { Key = "hl:" + SlideId(highlights[i], i) };
         }
+        Element heading = layout.HighlightsHeading
+            ? new TextEl(Loc.Get(Strings.WhatsNew.Highlights)) { Size = K.HeadingSize, LineHeight = K.HeadingLine, Weight = 600, Color = Tok.TextPrimary }
+            : R.Type.Eyebrow(Loc.Get(Strings.WhatsNew.Highlights)) with { Color = Tok.TextTertiary };
+        Element body = form switch
+        {
+            ClassicReleaseHighlightForm.Grid2 => TwoColumns(cards, layout.HighlightGap),
+            ClassicReleaseHighlightForm.Column => new BoxEl { Key = "rn:hl", Direction = 1, Gap = layout.HighlightGap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Children = cards },
+            _ => new BoxEl { Key = "rn:hl", Direction = 0, Gap = layout.HighlightGap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = cards },
+        };
         return new BoxEl
         {
             Direction = 1, Gap = K.StripGap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+            Children = [heading, body],
+        };
+    }
+
+    /// <summary>Rows of two equal columns; a lone last card keeps its column's width (an inert spacer takes the other).</summary>
+    static Element TwoColumns(Element[] cards, float gap)
+    {
+        var rows = new List<Element>((cards.Length + 1) / 2);
+        for (int i = 0; i < cards.Length; i += 2)
+            rows.Add(new BoxEl
+            {
+                Key = "rn:hlrow:" + (i / 2).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                Direction = 0, Gap = gap, AlignItems = FlexAlign.Stretch, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+                Children =
+                [
+                    cards[i],
+                    i + 1 < cards.Length ? cards[i + 1] : new BoxEl { Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, HitTestVisible = false },
+                ],
+            });
+        return new BoxEl { Key = "rn:hl", Direction = 1, Gap = gap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Children = rows.ToArray() };
+    }
+
+    /// <summary>The ROW card (Compact and Small, boards `C-ReleaseNotes-Compact` / `-Small`; also the after-update plate's cards at Compact): a 120 x 68 poster beside the
+    /// kind pill, the title and "Read more". A new path: the poster-over-copy <see cref="CardView"/> and its plate arithmetic are untouched. The whole card is the hit
+    /// region (at least the tier's target tall: the poster alone is 68); the Store card keeps its button a SIBLING of the hit region, as the poster card does.</summary>
+    static Element RowCard(HighlightItem item, Action open, Action openStore, ClassicReleaseNotesLayout layout, bool inRow)
+    {
+        var h = item.Highlight;
+        bool store = HighlightVisibility.IsStore(h);
+        var frame = new BoxEl
+        {
+            Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, MinHeight = layout.Target,
+            Grow = inRow ? 1f : 0f, Shrink = 1f, Basis = inRow ? 0f : float.NaN,
+            Corners = CornerRadius4.All(Radii.Card), ClipToBounds = true,
+            Fill = Tok.FillCardDefault, BorderWidth = 1f,
+            BorderColor = store ? Tok.AccentDefault : Tok.StrokeCardDefault,
+            HoverBorderColor = store ? Tok.AccentDefault : Tok.StrokeCardDefault,
+            BrushTransitionMs = Design.Motion.Faster,
+        };
+        var row = new BoxEl
+        {
+            Direction = 0, Gap = K.RowCardGap, AlignItems = FlexAlign.Center, MinWidth = 0f, Padding = Edges4.All(K.RowCardPad),
+            Children = [RowPoster(item.Poster, store), RowCopy(h, store, layout)],
+        };
+        if (!store)
+            return frame.Interactive(Interaction.Card) with
+            {
+                Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = open,
+                Children = [row],
+            };
+        return frame with
+        {
             Children =
             [
-                R.Type.Eyebrow(Loc.Get(Strings.WhatsNew.Highlights)) with { Color = Tok.TextTertiary },
-                new BoxEl { Direction = 0, Gap = K.StripCardGap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = cards },
+                new BoxEl { Direction = 1, MinWidth = 0f, Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = open, Children = [row] },
+                new BoxEl
+                {
+                    Direction = 0, Padding = new Edges4(K.RowCardPad, 0f, K.RowCardPad, K.RowCardPad),
+                    Children = [Btn(Loc.Get(Strings.WhatsNew.StoreCta), openStore, ButtonAppearance.Accent, ControlSize.Medium, layout.Target)],
+                },
             ],
+        };
+    }
+
+    /// <summary>The row card's poster: a tinted plate (a card that loses its picture reads as broken) with the image over it.</summary>
+    static Element RowPoster(string? poster, bool store) => new BoxEl
+    {
+        Width = K.RowPosterW, Height = K.RowPosterH, Shrink = 0f, ZStack = true, ClipToBounds = true, HitTestVisible = false,
+        Corners = CornerRadius4.All(Radii.Control), Fill = store ? Tok.AccentSubtle : Tok.FillSubtleSecondary,
+        Children = poster is { Length: > 0 }
+            ? [new ImageEl
+              {
+                  Source = poster, Fit = ImageFit.Cover, Height = K.RowPosterH, AlignSelf = FlexAlign.Stretch, DecodePx = K.RowPosterDecodePx,
+                  Placeholder = Tok.FillSubtleSecondary,
+              }]
+            : [],
+    };
+
+    static Element RowCopy(ReleaseHighlight h, bool store, ClassicReleaseNotesLayout layout)
+    {
+        var kids = new List<Element>(3)
+        {
+            new BoxEl { AlignSelf = FlexAlign.Start, Children = [KindPill(h.Kind, store)] },
+            new TextEl(h.Title)
+            {
+                Size = layout.RowTitleSize, LineHeight = layout.RowTitleLine, Weight = 600, Color = Tok.TextPrimary,
+                Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis,
+            },
+        };
+        if (!store)   // the Store card's accent button says it
+            kids.Add(new TextEl(Loc.Get(Strings.WhatsNew.ReadMore)) { Size = K.MetaSize, Weight = 600, Color = Tok.AccentTextPrimary, Wrap = TextWrap.NoWrap, MaxLines = 1 });
+        return new BoxEl
+        {
+            Direction = 1, Gap = K.RowCopyGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center, HitTestVisible = false,
+            Children = kids.ToArray(),
         };
     }
 

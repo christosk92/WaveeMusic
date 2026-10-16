@@ -14,7 +14,9 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
+using Wavee.Themes.Common;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee.Themes.Classic;
@@ -25,11 +27,14 @@ internal static partial class ClassicSetup
 
     /// <summary>The registered template of <see cref="ViewKeys.SetupSignInDoor"/>: the dialog's body or its footer.</summary>
     public static Element SignInDoorTemplate(SetupSignInDoorProps props, in ViewContext ctx)
-        => props.Part == SetupDialogPart.Footer ? DoorFooter(props.Host) : DoorBody(props.Host, ctx);
+    {
+        var layout = ClassicSetupTiers.Of(ctx.Tier());   // the dialog opens inside the window's tier: its buttons and links are the tier's height
+        return props.Part == SetupDialogPart.Footer ? DoorFooter(props.Host, layout) : DoorBody(props.Host, ctx, layout);
+    }
 
     // ── the shared option cards (the door's body and the wizard's Sign in page) ────────────────────────────────────────
 
-    private static Element BrowserCard(ISetupSignInHost host) => SettingsCard.Create(new SettingsCard.Options
+    private static Element BrowserCard(ISetupSignInHost host, ClassicSetupLayout layout, bool wizard) => SettingsCard.Create(new SettingsCard.Options
     {
         Header = Loc.Get(Strings.Setup.SignIn.BrowserCardTitle),
         Description = Loc.Get(Strings.Setup.SignIn.BrowserCardSub),
@@ -37,24 +42,31 @@ internal static partial class ClassicSetup
         ActionIcon = Icons.OpenInNewWindow,
         IsClickEnabled = true,
         OnClick = host.StartBrowser,
+        Style = wizard ? SideCardStyle(layout) : null,
     });
+
+    /// <summary>A side-by-side card's style (the record's 132 floor and padding); null where the cards stack at the stock card.</summary>
+    private static SettingsCard.Style? SideCardStyle(ClassicSetupLayout layout)
+        => layout.SignInSideBySide
+            ? SettingsCard.DefaultStyle with { MinHeight = layout.SignInCardMinHeight, Padding = Edges4.All(layout.SignInCardPadding) }
+            : null;
 
     /// <summary>"Wavee needs Spotify Premium.  Don't have a Spotify account? Sign up" — ONE wrapping row. The wizard sets it at
     /// body 14 secondary with a medium (32-DIP lane) link; the 460 door keeps caption size.</summary>
-    private static Element PremiumRow(ISetupSignInHost host, bool wizard) => new BoxEl
+    private static Element PremiumRow(ISetupSignInHost host, bool wizard, ClassicSetupLayout layout) => new BoxEl
     {
         Direction = 0, Wrap = true, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f,
         Children =
         [
             (wizard ? Body(Loc.Get(Strings.Setup.SignIn.PremiumNote)).Secondary() : Caption(Loc.Get(Strings.Setup.SignIn.PremiumNote))) with { MinWidth = 0f },
-            HyperlinkButton.Create(Loc.Get(Strings.Setup.SignIn.NoAccount), host.OpenSignUp,
-                size: wizard ? ControlSize.Medium : ControlSize.Small),
+            CommonTouch.Link(Loc.Get(Strings.Setup.SignIn.NoAccount), host.OpenSignUp, layout.Target,
+                wizard ? ControlSize.Medium : ControlSize.Small),
         ],
     };
 
     // ── the door's body ─────────────────────────────────────────────────────────────────────────────────────────────
 
-    private static Element DoorBody(ISetupSignInHost host, in ViewContext ctx)
+    private static Element DoorBody(ISetupSignInHost host, in ViewContext ctx, ClassicSetupLayout layout)
     {
         SetupSignInFacts f = host.Facts();
 
@@ -67,7 +79,7 @@ internal static partial class ClassicSetup
         {
             Setup.SignInFacet.Busy => DoorBusy(f),
             Setup.SignInFacet.Done => RuntimeStatus(Icons.Accept, Tok.AccentDefault, Loc.Get(Strings.Auth.SigningIn), Loc.Get(Strings.Auth.StepProfile)),
-            _ => DoorCards(host, f),
+            _ => DoorCards(host, f, layout),
         };
         return body with { Key = FacetKey(f.Facet) };
     }
@@ -94,7 +106,7 @@ internal static partial class ClassicSetup
             });
     }
 
-    private static Element DoorCards(ISetupSignInHost host, in SetupSignInFacts f)
+    private static Element DoorCards(ISetupSignInHost host, in SetupSignInFacts f, ClassicSetupLayout layout)
     {
         Element head = f.Facet switch
         {
@@ -112,9 +124,9 @@ internal static partial class ClassicSetup
             Children =
             [
                 head with { Key = "signin:head" },
-                BrowserCard(host) with { Key = "signin:browser" },
+                BrowserCard(host, layout, wizard: false) with { Key = "signin:browser" },
                 Embed.Comp(() => new PairingCard(host)) with { Key = "signin:pairing" },
-                PremiumRow(host, wizard: false) with { Key = "signin:premium" },
+                PremiumRow(host, wizard: false, layout) with { Key = "signin:premium" },
             ],
         };
     }
@@ -125,10 +137,11 @@ internal static partial class ClassicSetup
     /// <param name="wizard">The wizard's scan card (ch 28 W3): the countdown rides in the one-line description
     /// ("CODE · spotify.com/pair  ·  Expires in mm:ss", a 1 Hz re-render of this card only) and the QR is asked for at 80
     /// (paints 82). The door (false) keeps the 96 QR and its bound countdown / copy / open row. A mount constant.</param>
-    private sealed class PairingCard(ISetupSignInHost host, bool wizard = false) : Component
+    private sealed class PairingCard(ISetupSignInHost host, bool wizard = false) : CommonTierComponent
     {
         public override Element Render()
         {
+            var layout = ClassicSetupTiers.Of(ReadTier());
             SetupPairingFacts st = host.Pairing();
             var tick = UseSignal(0);
             UseInterval(() => tick.Value = tick.Peek() + 1, ClassicSetupRules.PairingTickMs, enabled: st.HasChallenge);
@@ -143,13 +156,14 @@ internal static partial class ClassicSetup
                     Description = working ? null
                         : Loc.Get(st.CodeFailed ? Setup.SignInRules.LocGetCodeFailed : Strings.Auth.CodeExpiredBody),
                     HeaderIcon = Icons.Camera,
+                    Style = wizard ? SideCardStyle(layout) : null,
                     Content = working
                         ? new BoxEl
                         {
                             Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
                             Children = [ProgressRing.Indeterminate(ClassicSetupRules.PairingRingSize), R.Type.DenseMeta(Loc.Get(Strings.Auth.GettingCode)) with { Color = Tok.TextTertiary }],
                         }
-                        : Button.Standard(Loc.Get(Strings.Auth.GetNewCode), host.StartPairing),
+                        : CommonTouch.Button(Loc.Get(Strings.Auth.GetNewCode), host.StartPairing, layout.Target),
                 });
             }
 
@@ -157,7 +171,8 @@ internal static partial class ClassicSetup
             string code = st.UserCode;
             string scanUri = st.ScanUri;
             // Keyed by the code: a new code is a new symbol, and the grid's props freeze at mount.
-            Element qr = Embed.Comp(() => new QrGrid(scanUri, wizard ? SetupGeometry.QrSize : Setup.SignInRules.QrSize)) with { Key = "qr:" + code };
+            float qrSize = wizard ? layout.QrSize : Setup.SignInRules.QrSize;
+            Element qr = Embed.Comp(new QrProps(scanUri, qrSize), static () => new QrGrid()) with { Key = "qr:" + code };   // keyed by the code; the size rides the props, so a tier crossing re-renders it
             if (wizard)
             {
                 _ = tick.Value;   // the 1 Hz subscription: this small card re-renders, the page (and its Lottie hero) does not
@@ -168,6 +183,7 @@ internal static partial class ClassicSetup
                         + Strings.Auth.ExpiresIn(Setup.SignInRules.Countdown(expiresAt, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())),
                     HeaderIcon = Icons.Camera,
                     Content = qr,
+                    Style = SideCardStyle(layout),
                 });
             }
             return new BoxEl
@@ -195,8 +211,8 @@ internal static partial class ClassicSetup
                             {
                                 Size = ClassicSetupRules.CaptionSize, LineHeight = ClassicSetupRules.CaptionLine, Color = Tok.TextSecondary,
                             },
-                            HyperlinkButton.Create(Loc.Get(Strings.Auth.CopyCode), () => hooks.Clipboard?.SetText(code), size: ControlSize.Small),
-                            HyperlinkButton.Create(Loc.Get(Setup.SignInRules.LocOpenPairPage), () => host.OpenExternal(scanUri), size: ControlSize.Small),
+                            CommonTouch.Link(Loc.Get(Strings.Auth.CopyCode), () => hooks.Clipboard?.SetText(code), layout.Target, ControlSize.Small),
+                            CommonTouch.Link(Loc.Get(Setup.SignInRules.LocOpenPairPage), () => host.OpenExternal(scanUri), layout.Target, ControlSize.Small),
                         ],
                     },
                 ],
@@ -210,10 +226,15 @@ internal static partial class ClassicSetup
     /// hundred nodes, not version²) on a white quiet-zone plate. Pure black on white whatever the theme: contrast is what a
     /// phone camera binarizes on. Renders once per mount; mount it keyed by its text. Unencodable text paints the same white
     /// plate with a music note in Spotify green (ch 28 §4.2).</summary>
-    private sealed class QrGrid(string text, float size) : Component
+    private sealed record QrProps(string Text, float Size);
+
+    private sealed class QrGrid : Component
     {
         public override Element Render()
         {
+            var props = UseProps<QrProps>();
+            string text = props.Text;
+            float size = props.Size;
             bool[,] m;
             try { m = Setup.Qr.Encode(text, Setup.Qr.Ecc.M); }
             catch (ArgumentException)
@@ -253,34 +274,36 @@ internal static partial class ClassicSetup
 
     // ── the door's footer ───────────────────────────────────────────────────────────────────────────────────────────
 
-    private static Element DoorFooter(ISetupSignInHost host)
+    private static Element DoorFooter(ISetupSignInHost host, ClassicSetupLayout layout)
     {
         SetupSignInFacts f = host.Facts();
+        Element Standard(string text, Action onClick) => DoorStandard(text, onClick, layout);
+        Element Accent(string text, Action onClick) => DoorAccent(text, onClick, layout);
         return f.Facet switch
         {
             Setup.SignInFacet.Busy => f.Handed
-                ? DoorRow(null, DoorStandard(Loc.Get(Strings.Auth.Close), host.CloseDoor))
-                : DoorRow(null, DoorStandard(Loc.Get(Strings.Auth.Cancel), host.CancelBrowser)),
-            Setup.SignInFacet.Done => DoorRow(null, DoorAccent(Loc.Get(Strings.Auth.Close), host.CloseDoor)),
+                ? DoorRow(null, Standard(Loc.Get(Strings.Auth.Close), host.CloseDoor))
+                : DoorRow(null, Standard(Loc.Get(Strings.Auth.Cancel), host.CancelBrowser)),
+            Setup.SignInFacet.Done => DoorRow(null, Accent(Loc.Get(Strings.Auth.Close), host.CloseDoor)),
             Setup.SignInFacet.Premium => DoorRow(
-                HyperlinkButton.Create(Loc.Get(Strings.Auth.Upgrade), host.OpenPremium) with { Margin = ClassicSetupRules.FlushLinkMargin },
-                DoorStandard(Loc.Get(Strings.Auth.Close), host.CloseDoor),
-                DoorAccent(Loc.Get(Strings.Auth.UseAnotherAccount), host.StartBrowser)),
-            Setup.SignInFacet.Expired => DoorRow(null, DoorStandard(Loc.Get(Strings.Auth.Close), host.CloseDoor),
-                DoorAccent(Loc.Get(Strings.Auth.GetNewCode), host.StartPairing)),
-            Setup.SignInFacet.Failed => DoorRow(null, DoorStandard(Loc.Get(Strings.Auth.Close), host.CloseDoor),
-                DoorAccent(Loc.Get(Strings.Auth.TryAgain), host.Retry)),
-            _ => DoorRow(null, DoorStandard(Loc.Get(Strings.Auth.Close), host.CloseDoor), DoorAccent(Loc.Get(Strings.Auth.LogIn), host.StartBrowser)),
+                CommonTouch.Link(Loc.Get(Strings.Auth.Upgrade), host.OpenPremium, layout.Target) with { Margin = ClassicSetupRules.FlushLinkMargin },
+                Standard(Loc.Get(Strings.Auth.Close), host.CloseDoor),
+                Accent(Loc.Get(Strings.Auth.UseAnotherAccount), host.StartBrowser)),
+            Setup.SignInFacet.Expired => DoorRow(null, Standard(Loc.Get(Strings.Auth.Close), host.CloseDoor),
+                Accent(Loc.Get(Strings.Auth.GetNewCode), host.StartPairing)),
+            Setup.SignInFacet.Failed => DoorRow(null, Standard(Loc.Get(Strings.Auth.Close), host.CloseDoor),
+                Accent(Loc.Get(Strings.Auth.TryAgain), host.Retry)),
+            _ => DoorRow(null, Standard(Loc.Get(Strings.Auth.Close), host.CloseDoor), Accent(Loc.Get(Strings.Auth.LogIn), host.StartBrowser)),
         };
     }
 
-    private static Element DoorStandard(string text, Action onClick) =>
+    private static Element DoorStandard(string text, Action onClick, ClassicSetupLayout layout) =>
         Button.Standard(text, onClick) with
-        { MinWidth = ClassicSetupRules.DialogButtonMinWidth, Height = ClassicSetupRules.DialogButtonHeight, MinHeight = ClassicSetupRules.DialogButtonHeight, Justify = FlexJustify.Center };
+        { MinWidth = ClassicSetupRules.DialogButtonMinWidth, Height = layout.ButtonHeight, MinHeight = layout.ButtonHeight, Justify = FlexJustify.Center };
 
-    private static Element DoorAccent(string text, Action onClick) =>
+    private static Element DoorAccent(string text, Action onClick, ClassicSetupLayout layout) =>
         Button.Accent(text, onClick) with
-        { MinWidth = ClassicSetupRules.DialogButtonMinWidth, Height = ClassicSetupRules.DialogButtonHeight, MinHeight = ClassicSetupRules.DialogButtonHeight, Justify = FlexJustify.Center, TabIndex = 1 };
+        { MinWidth = ClassicSetupRules.DialogButtonMinWidth, Height = layout.ButtonHeight, MinHeight = layout.ButtonHeight, Justify = FlexJustify.Center, TabIndex = 1 };
 
     private static Element DoorRow(Element? left, params Element[] right)
     {
@@ -300,6 +323,7 @@ internal static partial class ClassicSetup
     {
         var session = props.Session;
         var host = props.Host;
+        var layout = ClassicSetupTiers.Of(ctx.Tier());
         SetupSignInFacts f = host.Facts();
         Setup.SignInFacet facet = f.Facet;
 
@@ -321,8 +345,8 @@ internal static partial class ClassicSetup
         }, DepKey.From((int)facet, StringComparer.Ordinal.GetHashCode(code)));
 
         Element body = (facet == Setup.SignInFacet.Busy ? BusyBody(host, f)
-            : Setup.SignInPresentation.ShowsIdleCards(facet) ? CardsBody(host, facet, failure)
-            : DoneBody(host)) with
+            : Setup.SignInPresentation.ShowsIdleCards(facet) ? CardsBody(host, facet, failure, layout)
+            : DoneBody(host, layout)) with
         {
             Key = FacetKeys[(int)facet], Enter = BodyEnter, Exit = BodyExit, Transition = MotionTok.StandardEnter,
         };
@@ -330,17 +354,31 @@ internal static partial class ClassicSetup
         return WizardFrame(Setup.WizardPage.SignIn, header, body, backAutoPadding: false);
     }
 
-    private static Element CardsBody(ISetupSignInHost host, Setup.SignInFacet facet, string failure) => SetupText.Stack(
-        facet switch
+    private static Element CardsBody(ISetupSignInHost host, Setup.SignInFacet facet, string failure, ClassicSetupLayout layout)
+    {
+        Element lead = facet switch
         {
             Setup.SignInFacet.Failed => InfoBar.Create(InfoBarSeverity.Error, Loc.Get(Strings.Auth.CouldntSignIn), failure, isClosable: false),
             Setup.SignInFacet.Expired => InfoBar.Create(InfoBarSeverity.Error, Loc.Get(Strings.Auth.CodeExpired), Loc.Get(Strings.Auth.CodeExpiredBody), isClosable: false),
             Setup.SignInFacet.Premium => InfoBar.Create(InfoBarSeverity.Error, Loc.Get(Strings.Auth.PremiumTitle), Loc.Get(Strings.Auth.PremiumBody), isClosable: false),
             _ => SetupText.Lead(Loc.Get(Strings.Setup.SignIn.Lead)),
-        },
-        BrowserCard(host),
-        Embed.Comp(() => new PairingCard(host, wizard: true)) with { Key = "signin:scan" },
-        PremiumRow(host, wizard: true));
+        };
+        Element browser = BrowserCard(host, layout, wizard: true);
+        Element scan = Embed.Comp(() => new PairingCard(host, wizard: true)) with { Key = "signin:scan" };
+        // Small and Huge: the two cards share a row (the plate has no icon column to give up); Standard's 498-DIP column and Compact stack them.
+        Element cards = layout.SignInSideBySide
+            ? new BoxEl
+            {
+                Key = "signin:cards:row", Direction = 0, Gap = Spacing.M, AlignSelf = FlexAlign.Stretch, AlignItems = FlexAlign.Stretch, MinWidth = 0f,
+                Children =
+                [
+                    new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [browser] },
+                    new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [scan] },
+                ],
+            }
+            : new BoxEl { Key = "signin:cards:column", Direction = 1, Gap = SetupGeometry.BodySpacing, MinWidth = 0f, Children = [browser, scan] };
+        return SetupText.Stack(lead, cards, PremiumRow(host, wizard: true, layout));
+    }
 
     private static Element BusyBody(ISetupSignInHost host, in SetupSignInFacts f) => SetupText.Stack(
         SetupText.Lead(Loc.Get(Strings.Setup.SignIn.Waiting)),
@@ -356,7 +394,7 @@ internal static partial class ClassicSetup
 
     /// <summary>"Is this you?": a plain 68-DIP account row — no green pill, no auto-advance. The name arrives with the
     /// account's user row; until then the account id stands in (the host's <c>Account</c> answers it).</summary>
-    private static Element DoneBody(ISetupSignInHost host)
+    private static Element DoneBody(ISetupSignInHost host, ClassicSetupLayout layout)
     {
         SetupAccountFacts me = host.Account();   // subscribes: the account's identity lands a tick after Online
         return SetupText.Stack(
@@ -378,7 +416,7 @@ internal static partial class ClassicSetup
                             Caption(Loc.Get(me.Premium ? Strings.Auth.PremiumBadge : Strings.Setup.SignIn.Free)),
                         ],
                     },
-                    HyperlinkButton.Create(Loc.Get(Strings.Setup.SignIn.NotMe), host.SwitchAccount, size: ControlSize.Small),
+                    CommonTouch.Link(Loc.Get(Strings.Setup.SignIn.NotMe), host.SwitchAccount, layout.Target, ControlSize.Small),
                 ],
             },
             SetupText.Secondary(Loc.Get(Strings.Setup.SignIn.ConfirmHint)));
@@ -409,7 +447,8 @@ internal static partial class ClassicSetup
             };
             return new BoxEl
             {
-                Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Height = ClassicSetupRules.StepRowHeight, Width = ClassicSetupRules.StepRowWidth, Shrink = 0f,
+                Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Height = ClassicSetupRules.StepRowHeight,
+                Basis = ClassicSetupRules.StepRowWidth, MaxWidth = ClassicSetupRules.StepRowWidth, MinWidth = 0f, Shrink = 1f,
                 Enter = new EnterExit(Dx: -6f, Opacity: 0f, Active: true), Transition = MotionTok.ControlNormal,
                 Children =
                 [

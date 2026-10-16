@@ -116,7 +116,8 @@ public static partial class Feedback
 
     // ══ 5. THE DIALOG ══════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The dialog chrome's width: the WinUI ContentDialog maximum (548, padding 24 — the form gets 500 DIP inside the stock card).</summary>
+    /// <summary>The dialog chrome's width: the WinUI ContentDialog maximum (548, padding 24). The structure's overlay fit re-sizes it per window band
+    /// (`OverlayFit.ShowForm`: the window less 16 at Compact, a two-pane card at Huge), and the body reads the width its card leaves it.</summary>
     const float DialogWidth = 548f;
 
     /// <summary>A crash kind / crash-report prefill forces the fixed Crash form (<see cref="ReportForm.EffectiveKind"/>) —
@@ -132,7 +133,7 @@ public static partial class Feedback
         Log.Info("report", $"report.open kind={kind} effective={effective} prefill={prefill is not null}");
 
         var session = new DialogSession(prefill);
-        ContentDialog.Show(overlay, d =>
+        OverlayFit.ShowForm(overlay, DialogWidth, d =>
         {
             d.Title = Loc.Get(Strings.Report.Title);
             // Keyed by the kind shown: every signal in the body is seeded once from an open-time constant.
@@ -140,7 +141,6 @@ public static partial class Feedback
                 with { Key = "report-body:" + (int)effective };
             d.PrimaryText = Loc.Get(isCrash ? Strings.Report.ReportOnGithub : Strings.Report.OpenGithub);
             d.CloseText = Loc.Get(isCrash ? Strings.Report.NotNow : Strings.Auth.Cancel);
-            OverlayFit.Dialog(d, DialogWidth);
             d.DefaultButton = ContentDialog.DefaultBtn.Primary;
             // VETOABLE: the body says why with a toast (still composing / no title) and the dialog stays open.
             d.PrimaryButtonClick = args => { if (!(session.Submit?.Invoke() ?? false)) args.Cancel = true; };

@@ -99,7 +99,7 @@ internal static partial class ClassicSettings
             ThemeOptionsExpander(),
             // The core presentation prefs every theme honours: no header, so they read as the board's rows under the options.
             DocRow(D(Tab.Appearance, "appMode"),
-                SelectorBar.Create(ThemeLabels(), new Signal<int>((int)Appearance.Mode), onChange: static m => SetTheme(m))),
+                Selector(ThemeLabels(), new Signal<int>((int)Appearance.Mode), onChange: static m => SetTheme(m))),
             // A ComboBox, not a SelectorBar: thirteen items (Auto + twelve rungs) would be thirteen segments wide.
             DocRow(D(Tab.Appearance, "zoom"), Embed.Comp(static () => new ZoomPicker())),
             DocRow(D(Tab.Appearance, "marquee"), RowToggle(D(Tab.Appearance, "marquee"))),
@@ -131,7 +131,7 @@ internal static partial class ClassicSettings
             // The second label FOLLOWS the current style; SelectorBar re-pushes its items, so it relabels in place.
             if (D(Tab.Appearance, "npvPresentation").Visible(facts))
                 kids.Add(DocRow(D(Tab.Appearance, "npvPresentation"),
-                    SelectorBar.Create([Loc.Get(Strings.Player.PresentationCover), Loc.Get(npvPreset.ShortLabelKey)],
+                    Selector([Loc.Get(Strings.Player.PresentationCover), Loc.Get(npvPreset.ShortLabelKey)],
                         new Signal<int>(npvPresentation),
                         onChange: static i => D(Tab.Appearance, "npvPresentation").Writer.Choose!(i))));
             kids.Add(DocRow(D(Tab.Appearance, "npvStyle"), Embed.Comp(static () => new NpvStylePicker())));
@@ -172,7 +172,7 @@ internal static partial class ClassicSettings
     /// <summary>The Zoom row's combo. Index 0 is "Auto (N%)" with the LIVE resolved percent and is the selection for BOTH
     /// Auto and Dense; only Manual selects a rung (ch 27 W2). Its own component because it needs the live zoom, the
     /// viewport and one effect: a chord or the Ctrl+wheel moves the selection with no settings write.</summary>
-    sealed class ZoomPicker : Component
+    sealed class ZoomPicker : SettingsComponent
     {
         float _auto = 1f;
         int _labelsPercent = -1;
@@ -180,6 +180,7 @@ internal static partial class ClassicSettings
 
         public override Element Render()
         {
+            UseLayout();
             float zoom = UseContext(Viewport.Zoom);
             var viewport = UseContext(Viewport.Size);
             // baseDip = the live (already zoomed) viewport × zoom — ZoomAutoPolicy takes BASE dips, never live ones.
@@ -200,7 +201,7 @@ internal static partial class ClassicSettings
                 Array.Copy(s_zoomRungLabels, 0, _labels, 1, s_zoomRungLabels.Length);
             }
             // The combo's ITEMS freeze at mount: the head label changes only on a plateau change, so re-key on that.
-            return ComboBox.Create(_labels, s_zoomIndex, width: ClassicSettingsRules.ZoomComboWidth, onChange: Pick) with { Key = "appearance.zoom:" + percent };
+            return Combo(_labels, s_zoomIndex, width: ClassicSettingsRules.ZoomComboWidth, onChange: Pick) with { Key = "appearance.zoom:" + percent };
         }
 
         /// <summary>A deliberate pick writes at once (the chords' debounce exists for key repeats). The head item writes
@@ -252,12 +253,13 @@ internal static partial class ClassicSettings
     /// <see cref="DaylistClockMode"/>'s order — the index IS the store. Its own component so the frozen combo's signal
     /// follows the appearance epoch; the write goes through the ONE appearance writer, so the playlist hero strip and the
     /// Home card swap their clock live, with no page bump (nothing else on this tab reads it).</summary>
-    sealed class DaylistClockPicker : Component
+    sealed class DaylistClockPicker : SettingsComponent
     {
         public override Element Render()
         {
+            UseLayout();
             UseSignalEffect(static () => s_daylistClock.Value = D(Tab.Appearance, "daylistClock").Current is int clock ? clock : (int)DaylistClockMode.Both);
-            return ComboBox.Create(
+            return Combo(
                 [
                     Loc.Get(Strings.Settings.Appearance.DaylistClockBoth),
                     Loc.Get(Strings.Settings.Appearance.DaylistClockUpdateTime),
@@ -465,7 +467,7 @@ internal static partial class ClassicSettings
         => new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Shrink = 0f,
-            Children = [Slider.Create(s_lyricsBlurSlider, static v => SetLyricsBlur(v), s_lyricsBlurOptions, length: ClassicSettingsRules.SliderLength)],
+            Children = [SliderControl(s_lyricsBlurSlider, static v => SetLyricsBlur(v), s_lyricsBlurOptions, length: ClassicSettingsRules.SliderLength)],
         };
 
     /// <summary>Writes the 0..100 value through the row's writer, then re-seeds the slider from the document.</summary>
@@ -480,15 +482,16 @@ internal static partial class ClassicSettings
     /// <summary>The player-style combo: all twelve presets in catalog order, index == id. The selection follows every
     /// other style writer through one effect on the now-playing epoch; the write goes through the rail's adapter (it also
     /// flips the hero to Player and logs the source) and never bumps the page.</summary>
-    sealed class NpvStylePicker : Component
+    sealed class NpvStylePicker : SettingsComponent
     {
         public override Element Render()
         {
+            UseLayout();
             UseSignalEffect(static () => s_npvStyle.Value = D(Tab.Appearance, "npvStyle").Current is int style ? style : Rail.PlayerCatalog.DefaultPresetId);
             var presets = Rail.PlayerCatalog.Presets;
             var labels = new string[presets.Length];
             for (int i = 0; i < presets.Length; i++) labels[i] = Loc.Get(presets[i].LabelKey);
-            return ComboBox.Create(labels, s_npvStyle, width: ClassicSettingsRules.NpvComboWidth,
+            return Combo(labels, s_npvStyle, width: ClassicSettingsRules.NpvComboWidth,
                 onChange: static i => D(Tab.Appearance, "npvStyle").Writer.Choose!(i));
         }
     }
@@ -504,13 +507,14 @@ internal static partial class ClassicSettings
         return labels;
     }
 
-    sealed class StageVisualizerPicker : Component
+    sealed class StageVisualizerPicker : SettingsComponent
     {
         public override Element Render()
         {
+            UseLayout();
             // the gallery's pick lands here live
             UseSignalEffect(static () => s_stageVisualizer.Value = D(Tab.Appearance, "stageVisualizer").Current is int index ? index : 0);
-            return ComboBox.Create(VisualizerLabels(), s_stageVisualizer, width: ClassicSettingsRules.StageComboWidth,
+            return Combo(VisualizerLabels(), s_stageVisualizer, width: ClassicSettingsRules.StageComboWidth,
                 onChange: static i => D(Tab.Appearance, "stageVisualizer").Writer.Choose!(i));
         }
     }
@@ -519,29 +523,32 @@ internal static partial class ClassicSettings
     [
         Loc.Get(Strings.Stage.Layout.Card), Loc.Get(Strings.Stage.Layout.Large), Loc.Get(Strings.Stage.Layout.Centered), Loc.Get(Strings.Stage.Layout.Artist),
     ];
-    sealed class StageLayoutPicker : Component
+    sealed class StageLayoutPicker : SettingsComponent
     {
         public override Element Render()
         {
+            UseLayout();
             // the options popover's and the [ ] keys' picks land here live
             UseSignalEffect(static () => { if (D(Tab.Appearance, "stageLayout").Current is int layout) s_stageLayout.SetIfChanged(layout); });
-            return ComboBox.Create(LayoutLabels(), s_stageLayout, width: ClassicSettingsRules.StageComboWidth, onChange: static i => D(Tab.Appearance, "stageLayout").Writer.Choose!(i));
+            return Combo(LayoutLabels(), s_stageLayout, width: ClassicSettingsRules.StageComboWidth, onChange: static i => D(Tab.Appearance, "stageLayout").Writer.Choose!(i));
         }
     }
-    sealed class StageSensitivitySlider : Component
+    sealed class StageSensitivitySlider : SettingsComponent
     {
         public override Element Render()
         {
+            UseLayout();
             UseSignalEffect(static () => { if (D(Tab.Appearance, "stageSensitivity").Current is float sensitivity) s_stageSensitivity.SetIfChanged(sensitivity); });
-            return Slider.Create(s_stageSensitivity, static v => D(Tab.Appearance, "stageSensitivity").Writer.Slide!(v), s_stageSensitivityOptions, length: ClassicSettingsRules.SliderLength);
+            return SliderControl(s_stageSensitivity, static v => D(Tab.Appearance, "stageSensitivity").Writer.Slide!(v), s_stageSensitivityOptions, length: ClassicSettingsRules.SliderLength);
         }
     }
-    sealed class StageSyncSlider : Component
+    sealed class StageSyncSlider : SettingsComponent
     {
         public override Element Render()
         {
+            UseLayout();
             UseSignalEffect(static () => { if (D(Tab.Appearance, "stageSyncOffset").Current is float offset) s_stageSyncOffset.SetIfChanged(offset); });
-            return Slider.Create(s_stageSyncOffset, static v => D(Tab.Appearance, "stageSyncOffset").Writer.Slide!(v), s_stageSyncOptions, length: ClassicSettingsRules.SliderLength);
+            return SliderControl(s_stageSyncOffset, static v => D(Tab.Appearance, "stageSyncOffset").Writer.Slide!(v), s_stageSyncOptions, length: ClassicSettingsRules.SliderLength);
         }
     }
 }

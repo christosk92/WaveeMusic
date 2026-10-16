@@ -25,18 +25,19 @@ internal static partial class ClassicReleaseNotes
     {
         /// <summary>Gates on the section and the states by REFERENCE: the loader replaces the states cache wholesale, so the
         /// issue-state republish re-renders the sections and a page re-render with the same document re-renders none.
-        /// <see cref="OpenUrl"/> is a verb of the page (stable for its life) and takes no part in the comparison.</summary>
-        public sealed record Props(ReleaseSection Section, IssueStateCache? States, Action<string> OpenUrl)
+        /// <see cref="OpenUrl"/> is a verb of the page (stable for its life) and takes no part in the comparison. The tier's record rides along: a crossing re-renders
+        /// the section (its rows' least height, the "Show all" target, the chips' hit boxes).</summary>
+        public sealed record Props(ReleaseSection Section, IssueStateCache? States, Action<string> OpenUrl, ClassicReleaseNotesLayout Layout)
         {
-            public bool Equals(Props? other) => other is not null && ReferenceEquals(Section, other.Section) && ReferenceEquals(States, other.States);
-            public override int GetHashCode() => HashCode.Combine(Section, States);
+            public bool Equals(Props? other) => other is not null && ReferenceEquals(Section, other.Section) && ReferenceEquals(States, other.States) && Layout == other.Layout;
+            public override int GetHashCode() => HashCode.Combine(Section, States, Layout);
         }
 
         readonly Signal<bool> _all = new(false);
 
         /// <summary><paramref name="key"/> is unique across the page (release + kind), or two stacked releases share one fold.</summary>
-        public static Element Create(ReleaseSection section, IssueStateCache? states, Action<string> openUrl, string key)
-            => Embed.Comp(new Props(section, states, openUrl), static () => new SectionView()) with { Key = key };
+        public static Element Create(ReleaseSection section, IssueStateCache? states, Action<string> openUrl, string key, ClassicReleaseNotesLayout layout)
+            => Embed.Comp(new Props(section, states, openUrl, layout), static () => new SectionView()) with { Key = key };
 
         public override Element Render()
         {
@@ -49,7 +50,7 @@ internal static partial class ClassicReleaseNotes
             for (int i = 0; i < shown; i++)
             {
                 if (i > 0) rows.Add(new BoxEl { Height = 1f, Fill = Tok.StrokeDividerDefault, AlignSelf = FlexAlign.Stretch });
-                rows.Add(ChangelogRow(items[i], p.States, p.OpenUrl));
+                rows.Add(ChangelogRow(items[i], p.States, p.OpenUrl, p.Layout));
             }
 
             var (glyph, ink, wash) = Badge(p.Section.Kind);
@@ -65,14 +66,14 @@ internal static partial class ClassicReleaseNotes
                 new TextEl(items.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)) { Size = K.MetaSize, Color = Tok.TextTertiary, Grow = 1f },
             };
             if (shown < items.Length)   // expands in place and never folds back while the page is open
-                header.Add(Button.Create(Strings.WhatsNew.ShowAll(items.Length), () => _all.Value = true, ButtonAppearance.Subtle, ControlSize.Small) with { Shrink = 0f });
+                header.Add(Btn(Strings.WhatsNew.ShowAll(items.Length), () => _all.Value = true, ButtonAppearance.Subtle, ControlSize.Small, p.Layout.Target) with { Shrink = 0f });
 
             return new BoxEl
             {
                 Direction = 1, Gap = K.SectionGap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
                 Children =
                 [
-                    new BoxEl { Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinHeight = K.SectionHeaderMinHeight, Children = header.ToArray() },
+                    new BoxEl { Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinHeight = MathF.Max(K.SectionHeaderMinHeight, p.Layout.Target), Children = header.ToArray() },
                     new BoxEl
                     {
                         Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
@@ -99,7 +100,7 @@ internal static partial class ClassicReleaseNotes
 
     /// <summary>One bullet: an optional UPPERCASED scope eyebrow run + the sentence as ONE selectable span paragraph, then
     /// the reference chips on their own wrapping row (a span run cannot carry a box) and the contributor stack.</summary>
-    static Element ChangelogRow(ReleaseItem item, IssueStateCache? states, Action<string> openUrl)
+    static Element ChangelogRow(ReleaseItem item, IssueStateCache? states, Action<string> openUrl, ClassicReleaseNotesLayout layout)
     {
         var tokens = MarkdownLite.Tokenize(item.Text);
         var spans = new List<TextSpan>(tokens.Length + 1);
@@ -108,8 +109,8 @@ internal static partial class ClassicReleaseNotes
         spans.AddRange(ToSpans(tokens, openUrl));
 
         var refs = new List<Element>(item.Issues.Length + item.Prs.Length);
-        foreach (var i in item.Issues) refs.Add(IssueChip(i, states?.Lookup(i), openUrl));
-        foreach (var pr in item.Prs) refs.Add(PrChip(pr, openUrl));
+        foreach (var i in item.Issues) refs.Add(IssueChip(i, states?.Lookup(i), openUrl, layout.Target));
+        foreach (var pr in item.Prs) refs.Add(PrChip(pr, openUrl, layout.Target));
 
         var denseBody = R.Type.DenseMeta("");
         var column = new List<Element>(2)
@@ -125,7 +126,7 @@ internal static partial class ClassicReleaseNotes
 
         return new BoxEl
         {
-            Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Start, Padding = new Edges4(Spacing.M, 9f, Spacing.M, 9f),
+            Direction = 0, Gap = Spacing.M, AlignItems = layout.RowMinH > 0f ? FlexAlign.Center : FlexAlign.Start, Padding = new Edges4(Spacing.M, 9f, Spacing.M, 9f), MinHeight = layout.RowMinH,
             Children =
             [
                 new BoxEl { Direction = 1, Gap = K.RowRefGap, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Children = column.ToArray() },
@@ -135,7 +136,7 @@ internal static partial class ClassicReleaseNotes
     }
 
     /// <summary>"● #412 closed": the LIVE state when fetched, the release tool's snapshot otherwise — never nothing.</summary>
-    static Element IssueChip(ReleaseIssue issue, IssueState? live, Action<string> openUrl)
+    static Element IssueChip(ReleaseIssue issue, IssueState? live, Action<string> openUrl, float target)
     {
         var state = IssueChipState(live, issue);
         ColorF dot = state switch { ChipState.Open => Tok.SystemFillSuccess, ChipState.NotPlanned => Tok.TextTertiary, _ => Tok.AccentDefault };
@@ -146,29 +147,37 @@ internal static partial class ClassicReleaseNotes
             _ => Strings.WhatsNew.Issue.Closed,
         });
         return Chip("#" + issue.Number.ToString(System.Globalization.CultureInfo.InvariantCulture), word, dot,
-            Links.IssueUrl(issue.Repo, issue.Number, issue.IsPullRequest), IssueChipTip(live, issue), openUrl);
+            Links.IssueUrl(issue.Repo, issue.Number, issue.IsPullRequest), IssueChipTip(live, issue), openUrl, target);
     }
 
     /// <summary>A pull request is merged or it is not — there is no "not planned".</summary>
-    static Element PrChip(ReleasePr pr, Action<string> openUrl) => Chip("!" + pr.Number.ToString(System.Globalization.CultureInfo.InvariantCulture),
+    static Element PrChip(ReleasePr pr, Action<string> openUrl, float target) => Chip("!" + pr.Number.ToString(System.Globalization.CultureInfo.InvariantCulture),
         Loc.Get(pr.Merged ? Strings.WhatsNew.Issue.Merged : Strings.WhatsNew.Issue.Open),
-        pr.Merged ? Tok.AccentDefault : Tok.SystemFillSuccess, Links.IssueUrl(pr.Repo, pr.Number, pr: true), pr.Title, openUrl);
+        pr.Merged ? Tok.AccentDefault : Tok.SystemFillSuccess, Links.IssueUrl(pr.Repo, pr.Number, pr: true), pr.Title, openUrl, target);
 
-    static Element Chip(string number, string word, ColorF dot, string url, string? tooltip, Action<string> openUrl)
+    /// <summary>A reference chip. Where the tier asks for a hit target (<paramref name="target"/> 40 at Compact) the chip keeps its 18-tall LOOK but the focusable, clickable
+    /// node is a transparent box of the target's size around it: the hit area grows, never the picture.</summary>
+    static Element Chip(string number, string word, ColorF dot, string url, string? tooltip, Action<string> openUrl, float target)
     {
-        var chip = new BoxEl
+        var look = new BoxEl
         {
             Shrink = 0f, Direction = 0, Gap = K.ChipGap, Height = K.ChipHeight, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             Padding = new Edges4(6f, 0f, 8f, 0f), Corners = CornerRadius4.All(K.ChipHeight / 2f),
-            Role = AutomationRole.Hyperlink, Cursor = CursorId.Hand, Focusable = true,
-            OnClick = () => openUrl(url),
             Children =
             [
                 new BoxEl { Width = K.ChipDot, Height = K.ChipDot, Shrink = 0f, Corners = CornerRadius4.All(3.5f), Fill = dot },
                 R.Type.MicroMeta(number) with { Weight = 600, Color = Tok.TextPrimary, FontFamily = "Cascadia Code", MaxLines = 1 },
                 R.Type.MicroMeta(word) with { Color = Tok.TextTertiary, MaxLines = 1 },
             ],
-        }.Interactive(Interaction.Control);
+        };
+        BoxEl chip = target > 0f
+            ? new BoxEl
+            {
+                Shrink = 0f, Direction = 0, MinHeight = target, MinWidth = target, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Role = AutomationRole.Hyperlink, Cursor = CursorId.Hand, Focusable = true, OnClick = () => openUrl(url),
+                Children = [look with { HitTestVisible = false }],
+            }
+            : (look with { Role = AutomationRole.Hyperlink, Cursor = CursorId.Hand, Focusable = true, OnClick = () => openUrl(url) }).Interactive(Interaction.Control);
         return tooltip is { Length: > 0 } t ? ToolTip.Wrap(chip, t) : chip;   // no title anywhere ⇒ no tooltip at all
     }
 

@@ -79,7 +79,7 @@ internal static partial class ClassicSettings
         Element census = phase == Settings.StorageLoadPhase.Failed
             ? InfoBar.Create(InfoBarSeverity.Error, Loc.Get(Strings.Settings.Storage.ReadFailed),
                 storage.Error ?? Loc.Get(Strings.Common.ErrorTitle), isClosable: false,
-                actionButton: Button.Standard(Loc.Get(Strings.Common.Retry), static () => Settings.RefreshStorage()))
+                actionButton: StdButton(Loc.Get(Strings.Common.Retry), static () => Settings.RefreshStorage()))
             : s is null
                 ? new BoxEl
                 {
@@ -117,11 +117,11 @@ internal static partial class ClassicSettings
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Wrap = true,
                 Children =
                 [
-                    Button.Standard(Loc.Get(Strings.Settings.Storage.ChooseLocation),
+                    StdButton(Loc.Get(Strings.Settings.Storage.ChooseLocation),
                         static () => D(Tab.Storage, "cacheLocation").Writer.Run!(), isEnabled: D(Tab.Storage, "cacheLocation").Enabled(facts).Enabled),
-                    Button.Standard(Loc.Get(Strings.Settings.Storage.UseDefaultLocation),
+                    StdButton(Loc.Get(Strings.Settings.Storage.UseDefaultLocation),
                         static () => D(Tab.Storage, "cacheLocationDefault").Writer.Run!(), isEnabled: D(Tab.Storage, "cacheLocationDefault").Enabled(facts).Enabled),
-                    HyperlinkButton.Create(Loc.Get(Strings.Settings.Storage.OpenFolder), static () => SettingsVerbs.OpenStorageFolder("cacheLocation")),
+                    LinkButton(Loc.Get(Strings.Settings.Storage.OpenFolder), static () => SettingsVerbs.OpenStorageFolder("cacheLocation")),
                 ],
             }, RowGlyph(Tab.Storage, "cacheLocation")),
             StorageRow(4, "audioBodies", Loc.Get(Strings.Settings.Storage.AudioBodiesSub), s?.AudioBody,
@@ -130,7 +130,7 @@ internal static partial class ClassicSettings
 
             SectionHeader(Loc.Get(Strings.Settings.Storage.MetadataCache), SectionGlyph(Tab.Storage, "Metadata cache")),
             DocRow(D(Tab.Storage, "metadataBudget"),
-                ComboBox.Create(Settings.StorageFormat.MetaBudgetLabels, s_metaBudget, width: ClassicSettingsRules.BudgetComboWidth, onChange: SetMetaBudget)),
+                Combo(Settings.StorageFormat.MetaBudgetLabels, s_metaBudget, width: ClassicSettingsRules.BudgetComboWidth, onChange: SetMetaBudget)),
             Row(Loc.Get(Strings.Settings.Storage.MetadataCache), MetadataSub(storage.Meta),
                 StorageClearButton(D(Tab.Storage, "clearMetadata"), facts),
                 RowGlyph(Tab.Storage, "clearMetadata")),
@@ -138,7 +138,7 @@ internal static partial class ClassicSettings
             SectionHeader(Loc.Get(Strings.Settings.Storage.FactoryReset), SectionGlyph(Tab.Storage, "Reset"),
                 Loc.Get(Strings.Settings.Storage.FactoryResetSub)),
             DocRow(D(Tab.Storage, "factoryReset"),
-                Button.Standard(Loc.Get(Strings.Settings.Storage.FactoryResetAction), static () =>
+                StdButton(Loc.Get(Strings.Settings.Storage.FactoryResetAction), static () =>
                 {
                     var reset = D(Tab.Storage, "factoryReset");
                     ConfirmThen(Loc.Get(reset.Confirm!.TitleKey), Loc.Get(reset.Confirm.BodyKey), Loc.Get(reset.Confirm.PrimaryKey),
@@ -151,7 +151,7 @@ internal static partial class ClassicSettings
     static Element StorageClearButton(SettingsRow row, ISettingsFacts facts)
     {
         var confirm = row.Confirm!;
-        return Button.Standard(Loc.Get(confirm.TitleKey),
+        return StdButton(Loc.Get(confirm.TitleKey),
             () => ConfirmThen(Loc.Get(confirm.TitleKey), Loc.Get(confirm.BodyKey), Loc.Get(confirm.PrimaryKey), () => row.Writer.Run!()),
             isEnabled: row.Enabled(facts).Enabled);
     }
@@ -164,7 +164,7 @@ internal static partial class ClassicSettings
         var actions = new List<Element>(3);
         if (size is { } bytes) actions.Add(R.Type.DenseMeta(Settings.StorageFormat.Bytes(bytes)) with { Color = Tok.TextSecondary, Shrink = 0f });
         // "Open folder" is the category row's writer (the folder door).
-        actions.Add(HyperlinkButton.Create(Loc.Get(Strings.Settings.Storage.OpenFolder), () => D(Tab.Storage, rowId).Writer.Run!()));
+        actions.Add(LinkButton(Loc.Get(Strings.Settings.Storage.OpenFolder), () => D(Tab.Storage, rowId).Writer.Run!()));
         if (extra is not null) actions.Add(extra);
         return new BoxEl
         {
@@ -254,7 +254,7 @@ internal static partial class ClassicSettings
                 Key = "budget:fixed", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Wrap = true,
                 Children =
                 [
-                    ComboBox.Create(Settings.StorageFormat.BodyBudgetLabels, s_budgetPreset, width: ClassicSettingsRules.BudgetComboWidth, onChange: static i =>
+                    Combo(Settings.StorageFormat.BodyBudgetLabels, s_budgetPreset, width: ClassicSettingsRules.BudgetComboWidth, onChange: static i =>
                     {
                         if ((uint)i >= (uint)Settings.StorageFormat.BodyBudgetBytes.Length) return;
                         s_budgetGiB.Value = Settings.StorageFormat.BodyBudgetBytes[i] / (double)(1L << 30);
@@ -283,7 +283,7 @@ internal static partial class ClassicSettings
             Direction = 1, Gap = ClassicSettingsRules.BudgetGap,
             Children =
             [
-                SelectorBar.Create(
+                Selector(
                     [Loc.Get(Strings.Settings.Storage.FixedSize), Loc.Get(Strings.Settings.Storage.DriveShare), Loc.Get(Strings.Settings.Storage.Unlimited)],
                     s_budgetMode, onChange: static m =>
                     {

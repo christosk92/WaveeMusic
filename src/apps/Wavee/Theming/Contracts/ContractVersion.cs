@@ -67,6 +67,8 @@
 // 1.16 (Classic collection tiers TC7): `LibraryPageProps.SetPageWidth` and `.Kinds` (`LibraryKindChip`) replace `IsCollapsed` / `SetCollapsed`: the structure's
 // layout ladder (`LibraryLadders.Layout`, a named sub-ladder of its `TierPolicy`) over the page's measured width decides the one-column drill-in, resolved by the
 // core host through `UseTier`. The two members are removed before any external theme existed, as 1.2 did.
+// 1.17 (Classic screens TC8): the optional `DialogFit.FormWidth` and `DialogFit.CommandHeight` (a structure's card width and 40-DIP command row for the report and crash
+// form dialogs), `DialogFit.FormCardWidthFor` / `FormBodyWidth`, and `OverlayFit.ShowForm`, the door both form dialogs open through.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -82,7 +84,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 16;
+    public const int Minor = 17;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

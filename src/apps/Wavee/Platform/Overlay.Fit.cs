@@ -53,8 +53,30 @@ public static class OverlayFit
     public static void Dialog(ContentDialog dialog, float? requestedWidth)
     {
         var fit = Layout.Dialog;
+        Fit(dialog, fit, fit.WidthFor(requestedWidth ?? DefaultWidth(dialog), Viewport.Width));
+    }
+
+    /// <summary>Open a FORM dialog (the report and the crash prompt: a body with its own fields and, where the band has the room, a second pane for the live preview).
+    /// <paramref name="configure"/> sets the title, the body and the commands as for <c>ContentDialog.Show</c>; this then fits the card: the band's form width
+    /// (<see cref="DialogFit.FormWidth"/>, else <paramref name="requestedWidth"/> as <see cref="Dialog"/> does) and, where the band lifts the commands
+    /// (<see cref="DialogFit.CommandHeight"/>), a command row of buttons that tall in place of the engine's 32-DIP ones. Returns the open dialog's handle.</summary>
+    public static OverlayHandle ShowForm(IOverlayService overlay, float requestedWidth, Action<ContentDialog> configure)
+    {
+        OverlayHandle? handle = null;
+        handle = ContentDialog.Show(overlay, d =>
+        {
+            configure(d);
+            var fit = Layout.Dialog;
+            if (fit.CommandHeight > 0f && d.Footer is null) d.Footer = CommandRow(d, fit.CommandHeight, () => handle);
+            Fit(d, fit, fit.FormCardWidthFor(requestedWidth, Viewport.Width));
+        });
+        return handle;
+    }
+
+    /// <summary>The card's part modifiers and width: the shared half of <see cref="Dialog"/> and <see cref="ShowForm"/>.</summary>
+    static void Fit(ContentDialog dialog, DialogFit fit, float width)
+    {
         var viewport = Viewport;
-        float width = fit.WidthFor(requestedWidth ?? DefaultWidth(dialog), viewport.Width);
         float height = fit.MaxHeightFor(viewport.Height);
         dialog.DialogWidth = width;
 
@@ -75,6 +97,46 @@ public static class OverlayFit
             parts[ContentDialog.PartCommandRow] = row => row with { Padding = fit.CommandPadding ?? row.Padding, Direction = stack ? (byte)1 : row.Direction };
         dialog.Parts = parts;
     }
+
+    /// <summary>The lifted command row: the dialog's own commands (the primary, the secondary and the close, in the engine's order) as buttons <paramref name="height"/> tall
+    /// sharing the row equally. Each runs what the engine's button runs: the cancelable click handler first (a veto keeps the dialog open), then the plain click, then the
+    /// close. The engine still routes Enter to the default command (the plate's key handler), so the commands' texts stay set on the dialog.</summary>
+    static Element CommandRow(ContentDialog d, float height, Func<OverlayHandle?> handle)
+    {
+        void Run(Action<ContentDialogButtonClickArgs>? veto, Action? click)
+        {
+            if (veto is not null)
+            {
+                var args = new ContentDialogButtonClickArgs();
+                veto(args);
+                if (args.Cancel) return;
+            }
+            click?.Invoke();
+            handle()?.Close();
+        }
+
+        BoxEl Command(string text, bool accent, bool enabled, Action onClick) => Button.Create(text, onClick,
+            accent ? ButtonAppearance.Accent : ButtonAppearance.Standard, ControlSize.Large, isEnabled: enabled) with
+        {
+            MinWidth = 0f, MinHeight = height, Height = height, Grow = 1f, Basis = 0f, Justify = FlexJustify.Center, TabIndex = accent ? 1 : 2,
+        };
+
+        var kids = new List<Element>(3);
+        bool primaryAccent = d.DefaultButton == ContentDialog.DefaultBtn.Primary;
+        if (d.PrimaryText != "")
+            kids.Add(Command(d.PrimaryText ?? "", primaryAccent, d.IsPrimaryButtonEnabled, () => { if (d.IsPrimaryButtonEnabled) Run(d.PrimaryButtonClick, d.PrimaryClick); }));
+        if (d.SecondaryText.Length > 0)
+            kids.Add(Command(d.SecondaryText, d.DefaultButton == ContentDialog.DefaultBtn.Secondary, d.IsSecondaryButtonEnabled, () => { if (d.IsSecondaryButtonEnabled) Run(d.SecondaryButtonClick, d.SecondaryClick); }));
+        if (d.CloseText.Length > 0)
+            kids.Add(Command(d.CloseText, d.DefaultButton == ContentDialog.DefaultBtn.Close, true, () => Run(d.CloseButtonClick, d.CloseClick)));
+        return new BoxEl
+        {
+            Direction = 0, Gap = CommandGap, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, AlignItems = FlexAlign.Stretch, Children = kids.ToArray(),
+        };
+    }
+
+    /// <summary>The engine's own gap between command buttons (<c>ContentDialog.BtnGap</c>).</summary>
+    const float CommandGap = 8f;
 
     /// <summary>The engine's own default rung for a dialog its opener gave none: the wide rung for three buttons, else the compact one.</summary>
     static float DefaultWidth(ContentDialog dialog) => ShownButtons(dialog) >= 3 ? Controls.DialogWidthWide : Controls.DialogWidthCompact;

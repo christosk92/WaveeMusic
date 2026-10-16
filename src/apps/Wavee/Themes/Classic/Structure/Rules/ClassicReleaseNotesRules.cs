@@ -7,6 +7,7 @@
 // (`HighlightMax`) and every decision the pages take stay core.
 
 using System;
+using FluentGpu.Animation;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 
@@ -17,8 +18,8 @@ public static class ClassicReleaseNotesRules
 {
     // ── the page's frame, states and since banner ─────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The since banner's gap; the frame's gap between the body column and the rail (the 14 goes with the rail).</summary>
-    public const float SinceGap = 10f, FrameGap = 14f;
+    /// <summary>The since banner's gap. (The frame's gap to the rail is the tier record's: <c>ClassicReleaseNotesLayout.FrameGap</c>.)</summary>
+    public const float SinceGap = 10f;
 
     /// <summary>The loading ring and the empty state's text measure.</summary>
     public const float LoadingRingSize = 28f, EmptyTextMaxWidth = 360f;
@@ -36,8 +37,20 @@ public static class ClassicReleaseNotesRules
 
     // ── the strip, the card chrome, the kind pill ─────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The strip's eyebrow-to-row gap and the gap between cards.</summary>
-    public const float StripGap = 6f, StripCardGap = 10f;
+    /// <summary>The strip's eyebrow-to-row gap. (The gap between cards is the tier record's: <c>ClassicReleaseNotesLayout.HighlightGap</c>.)</summary>
+    public const float StripGap = 6f;
+
+    /// <summary>The ROW card (Compact and Small highlights): the poster's size and decode width, the card's padding, the gap between the poster and the copy and between the
+    /// copy's lines, and the Highlights heading's size and line (Huge).</summary>
+    public const float RowPosterW = 120f, RowPosterH = 68f, RowPosterDecodePx = 240f, RowCardPad = 8f, RowCardGap = 12f, RowCopyGap = 4f, HeadingSize = 20f, HeadingLine = 28f;
+
+    /// <summary>The release picker's width where it is a combo (Small) and the form swap's fade (the rail and the picker cross-fade when a tier crossing swaps them).</summary>
+    public const float PickerWidth = 190f;
+
+    /// <summary>The rail / picker swap and the section / card re-flow fade in and out together over <c>Design.Motion.Fast</c>.</summary>
+    public static LayoutTransition FormFade => new(TransitionChannels.Opacity, TransitionDynamics.Tween(Design.Motion.Fast, Easing.SmoothOut),
+        Enter: new EnterExit(Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
+        ExitDynamics: TransitionDynamics.Tween(Design.Motion.Fast, Easing.FluentAccelerate));
 
     /// <summary>The kind pill's height, the play glyph's disc and the "Read more" row's gap and size.</summary>
     public const float KindPillHeight = 20f, PlayDisc = 32f, ReadMoreGap = 4f;
@@ -74,8 +87,8 @@ public static class ClassicReleaseNotesRules
 
     // ── the release rail ──────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The rail's width, its gap, its row list's gap, a row's gap, radio ring (diameter and stroke), unread dot and the title row's gap.</summary>
-    public const float RailWidth = 208f, RailGap = 6f, RailListGap = 2f, RailRowGap = 6f, RailRadio = 9f, RailRadioRing = 1.5f, RailDot = 6f;
+    /// <summary>The rail's gap, its row list's gap, a row's gap, radio ring (diameter and stroke), unread dot and the title row's gap. (Its width is the tier record's.)</summary>
+    public const float RailGap = 6f, RailListGap = 2f, RailRowGap = 6f, RailRadio = 9f, RailRadioRing = 1.5f, RailDot = 6f;
 
     // ── the kind pill's shadow (issue #89 L3: 0/1/4 #00000066) ────────────────────────────────────────────────────────────
 

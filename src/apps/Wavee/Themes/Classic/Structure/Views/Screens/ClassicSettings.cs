@@ -48,7 +48,14 @@ internal static partial class ClassicSettings
     public static Element Template(SettingsPageProps props, in ViewContext ctx)
     {
         var hooks = ctx.Hooks;
-        float gutter = ClassicTiers.PageOf(ctx.Tier()).Gutter;   // the one page gutter (F3), unconditional like every hook here
+        TierFacts tiers = ctx.Tier();
+        float gutter = ClassicTiers.PageOf(tiers).Gutter;   // the one page gutter (F3), unconditional like every hook here
+        // The page's tier record: read once, here, so the first frame is already in its final form; the tab bodies (static functions) and the components
+        // that draw controls read it through `s_layout`, which every one of them sets from the same facts before it builds a control.
+        var layout = s_layout = ClassicSettingsTiers.Of(tiers);
+        // A Short window (330-679 tall; the page is 210 at the minimum) cannot spare the 80 the title takes above a 100-high body: the title row gives way there
+        // (the title bar's tab already says "Settings"), and the tab strip leads.
+        bool titleGivesWay = tiers.Height == HeightTier.Short;
 
         // UNCONDITIONAL — above the tab switch (a conditional hook breaks hook ORDER).
         hooks.UseEffect(() =>
@@ -88,7 +95,7 @@ internal static partial class ClassicSettings
                 {
                     Direction = 1,
                     Padding = new Edges4(gutter, Spacing.L, gutter, gutter),
-                    Children = [ContentColumn(body)],
+                    Children = [ContentColumn(body, layout)],
                 }) with { Grow = 1f, ScrollKey = "settings:" + slug, Key = "settings:scroll:" + slug },
             ],
         };
@@ -99,12 +106,8 @@ internal static partial class ClassicSettings
             Grow = 1f, Direction = 1,
             Children =
             [
-                Header(gutter),
-                new BoxEl
-                {
-                    Direction = 1, Padding = new Edges4(gutter, 0f, gutter, 0f),
-                    Children = [SelectorBar.Create(TabLabels(), props.TabCell()), Divider()],
-                },
+                titleGivesWay ? new BoxEl { Key = "settings:title", Height = 0f, HitTestVisible = false } : Header(gutter),
+                TabStrip(layout, gutter, props),
                 content,
             ],
         };
@@ -144,23 +147,87 @@ internal static partial class ClassicSettings
         Children = [R.Type.SurfaceDisplay(Loc.Get(Strings.Settings.Title)) with { Key = "settings:title", Grow = 1f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
     };
 
-    /// <summary>N1: a LEFT-aligned 1000-DIP column — never centred, never full-bleed.</summary>
-    static Element ContentColumn(Element body) => new BoxEl
+    /// <summary>N1: a LEFT-aligned column capped by the tier's record (1000, or the pair of them at Huge) — never centred, never full-bleed.</summary>
+    static Element ContentColumn(Element body, ClassicSettingsLayout layout) => new BoxEl
     {
-        Direction = 1, MaxWidth = ClassicSettingsRules.ContentMaxWidth, AlignSelf = FlexAlign.Stretch, Children = [body],
+        Direction = 1, MaxWidth = layout.Columns * layout.ColumnMaxW + (layout.Columns - 1) * layout.ColumnGap, AlignSelf = FlexAlign.Stretch, Children = [body],
     };
 
+    /// <summary>The page's tier record as the tab bodies see it (see <see cref="Template"/>).</summary>
+    static ClassicSettingsLayout s_layout = ClassicSettingsTiers.For(WidthTier.Standard);
+
+    /// <summary>The tab strip (board: the tabs under the title). Where the lane runs off the edge (Compact, Small) it is ONE strip that scrolls, bleeding to the
+    /// card's edges, its end fading where more wait; otherwise it ends at the column. The first label sits on the gutter either way.</summary>
+    static Element TabStrip(ClassicSettingsLayout layout, float gutter, SettingsPageProps props)
+    {
+        var style = layout.TabHeight > 0f ? new SelectorBarStyle { ItemHeight = layout.TabHeight, LeadingInset = ClassicSettingsRules.TabLeadingInset } : null;
+        Element bar = SelectorBar.Create(TabLabels(), props.TabCell(), style: style);
+        if (!layout.TabsScroll)
+            return new BoxEl { Direction = 1, Padding = new Edges4(gutter, 0f, gutter, 0f), Children = [bar, Divider()] };
+        return new BoxEl
+        {
+            Key = "settings:tabs", Direction = 1, Shrink = 0f,
+            Children =
+            [
+                ScrollView(new BoxEl { Direction = 0, Padding = new Edges4(gutter, 0f, gutter, 0f), Children = [bar] }, horizontal: true) with
+                {
+                    Grow = 0f, Shrink = 0f, MinWidth = 0f, Height = layout.TabHeight, SuppressScrollBar = true, AutoEdgeFade = true, ScrollKey = "settings:tabs",
+                },
+                Divider(),
+            ],
+        };
+    }
+
     /// <summary>N2: cards 4 DIP apart. The tab's first child sits on the column's top edge: a section header that opens the tab drops its
-    /// 32-DIP top margin (the gap above a section separates it from the one before; the first has none).</summary>
+    /// 32-DIP top margin (the gap above a section separates it from the one before; the first has none). Where the tier has two columns (Huge) the
+    /// sections split over them at the boundary that balances the two (<see cref="ClassicSettingsTiers.SplitAt"/>); each column starts on its top edge.</summary>
     static Element TabStack(params Element[] children)
     {
+        var layout = s_layout;
+        if (layout.Columns > 1 && SplitSections(children, out var left, out var right))
+            return new BoxEl
+            {
+                Direction = 0, Gap = layout.ColumnGap, AlignSelf = FlexAlign.Stretch, AlignItems = FlexAlign.Start,
+                Children = [Column(left, layout, 0), Column(right, layout, 1)],
+            };
+        return Column(children, layout, -1);
+    }
+
+    /// <summary>One column of cards: 4 apart, its first child on its top edge. A column of a pair grows to share the row, each capped.</summary>
+    static Element Column(Element[] children, ClassicSettingsLayout layout, int index)
+    {
+        bool pair = index >= 0;
         if (children.Length > 0 && children[0] is BoxEl { Margin.Top: > 0f } first)
             children[0] = first with { Margin = first.Margin with { Top = 0f } };
         return new BoxEl
         {
-            Direction = 1, Gap = ClassicSettingsRules.CardSpacing, AlignSelf = FlexAlign.Stretch, Children = children,
+            Key = pair ? ColumnKey + ":" + index : ColumnKey, Direction = 1, Gap = ClassicSettingsRules.CardSpacing, AlignSelf = pair ? FlexAlign.Start : FlexAlign.Stretch,
+            Grow = pair ? 1f : 0f, Basis = pair ? 0f : float.NaN, MinWidth = 0f, MaxWidth = pair ? layout.ColumnMaxW : float.NaN, Children = children,
         };
     }
+
+    /// <summary>The tab's sections (a run that starts at a section header) split in two by weight; false when it has one section.</summary>
+    static bool SplitSections(Element[] children, out Element[] left, out Element[] right)
+    {
+        var starts = new List<int>(8);
+        for (int i = 0; i < children.Length; i++)
+            if (children[i] is BoxEl { Key: { } key } && key.StartsWith(SectionKeyPrefix, StringComparison.Ordinal)) starts.Add(i);
+        if (starts.Count == 0 || starts[0] != 0) starts.Insert(0, 0);   // rows before the first header are the first group
+        var weights = new int[starts.Count];
+        for (int g = 0; g < weights.Length; g++) weights[g] = (g + 1 < starts.Count ? starts[g + 1] : children.Length) - starts[g];
+        int at = ClassicSettingsTiers.SplitAt(weights);
+        if (at < 0) { left = children; right = []; return false; }
+        int cut = starts[at];
+        left = children[..cut];
+        right = children[cut..];
+        return true;
+    }
+
+    /// <summary>The tab body's column node (`settings:column`, or `settings:column:0` and `:1` where the tier has two): the tier tests find them.</summary>
+    internal const string ColumnKey = "settings:column";
+
+    /// <summary>The key every section header carries (the column split starts a group at one).</summary>
+    const string SectionKeyPrefix = "settings:section:";
 
     /// <summary>A group eyebrow: 16-DIP glyph + BodyStrong title, optionally a ≤ 2-line caption in the SAME column as
     /// the title; margin (0, 32, 0, 8). One line centres on the glyph; two lines hang from the top.</summary>
@@ -181,7 +248,7 @@ internal static partial class ClassicSettings
 
         return new BoxEl
         {
-            Key = "settings:section:" + title,
+            Key = SectionKeyPrefix + title,
             Direction = 0, Gap = Spacing.S,
             AlignItems = hasSub ? FlexAlign.Start : FlexAlign.Center,
             Margin = SectionHeaderMargin,
@@ -202,7 +269,8 @@ internal static partial class ClassicSettings
             Description = sub,
             HeaderIcon = icon,
             Content = control,
-            Alignment = align,
+            Alignment = Aligned(align, control),
+            Style = InlineStyle(control),
             IsClickEnabled = isClickEnabled,
             IsActionIconVisible = isClickEnabled,
             ActionIcon = actionIcon,
@@ -214,7 +282,20 @@ internal static partial class ClassicSettings
     static Element Item(string label, string? sub, Element? control = null,
                         SettingsCard.ContentAlignment align = SettingsCard.ContentAlignment.Right,
                         bool isEnabled = true, bool isClickEnabled = false, Action? onClick = null, string? icon = null)
-        => SettingsExpander.Item(label, sub, control, align, isEnabled, isClickEnabled, onClick, icon);
+        => SettingsExpander.Item(label, sub, control, Aligned(align, control), isEnabled, isClickEnabled, onClick, icon);
+
+    /// <summary>A toggle's row at a tier that stacks the other controls keeps the board's label | switch row: the card's own wrap thresholds (it moves a control under
+    /// its label when it measures narrower than 476) are switched off for it. Null elsewhere: the stock card.</summary>
+    static SettingsCard.Style? InlineStyle(Element? control)
+        => s_layout.StacksControls && IsToggle(control) ? SettingsCard.DefaultStyle with { WrapThreshold = 0f, WrapNoIconThreshold = 0f } : null;
+
+    /// <summary>The alignment a row's control gets in this tier: where the tier stacks its controls (Compact) a control sits UNDER its label, full width, instead of
+    /// squeezing beside it — except a toggle, which keeps the label | state | switch row of the board. Asked for explicitly, not left to the card's own measured
+    /// threshold (that one reads the card's width a frame late, so the first frame would be the wide form).</summary>
+    static SettingsCard.ContentAlignment Aligned(SettingsCard.ContentAlignment align, Element? control)
+        => align == SettingsCard.ContentAlignment.Right && s_layout.StacksControls && control is not null && !IsToggle(control)
+            ? SettingsCard.ContentAlignment.Vertical
+            : align;
 
     /// <summary>N4: a collapsed picker group's ANSWER in its header — 14 DIP secondary, one line, char-ellipsis.</summary>
     static Element ValueTag(string value) => new TextEl(value)
@@ -237,10 +318,10 @@ internal static partial class ClassicSettings
     /// <summary>A compact toggle over a document row: a FRESH signal seeded from the row's value, the row's writer (the one
     /// verb that persists and applies), then the page bump when the writer asks for it.</summary>
     static Element RowToggle(SettingsRow row, bool isEnabled = true)
-        => ToggleSwitch.Create(new Signal<bool>(row.Current is true), onChange: on =>
+        => Toggle(new Signal<bool>(row.Current is true), on =>
         {
             if (row.Writer.Toggle!(on)) Settings.Bump();
-        }, isEnabled: isEnabled, style: SettingsCard.CompactToggleStyle());
+        }, isEnabled);
 
     /// <summary>One settings row drawn from a document row: its title, its description (the row's REASON while it is greyed
     /// with one, else its caption — <paramref name="sub"/> overrides it for a live sentence), its glyph (the catalog's, or

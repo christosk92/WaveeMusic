@@ -50,11 +50,11 @@ internal static partial class ClassicSettings
             Direction = 0, Shrink = 0f,
             // The realized wrapper is the anchor.
             OnRealized = static h => s_voAnchor = h,
-            Children = [Button.Standard(Loc.Get(Strings.VideoOverride.Manage), static () => ToggleVideoOverrideManager())],
+            Children = [StdButton(Loc.Get(Strings.VideoOverride.Manage), static () => ToggleVideoOverrideManager())],
         };
         if (count > 0)
             // Bulk detach is the ONE place a confirm earns its keep here: N links at once, no per-row undo (N11).
-            kids[2] = Button.Standard(Loc.Get(Strings.VideoOverride.ClearAll), static () =>
+            kids[2] = StdButton(Loc.Get(Strings.VideoOverride.ClearAll), static () =>
             {
                 var clear = D(Tab.Playback, "videoOverrides");
                 ConfirmThen(Loc.Get(clear.Confirm!.TitleKey), Loc.Get(clear.Confirm.BodyKey), Loc.Get(clear.Confirm.PrimaryKey),
@@ -251,18 +251,18 @@ internal static partial class ClassicSettings
             string uri = row.Uri, path = row.Path, sourceKey = row.Override.SourceKey;
             var actions = new List<Element>(4)
             {
-                HyperlinkButton.Create(Loc.Get(Strings.VideoOverride.Replace), () => Pick(uri, sourceKey, Loc.Get(Strings.VideoOverride.PickTitle), null)),
+                LinkButton(Loc.Get(Strings.VideoOverride.Replace), () => Pick(uri, sourceKey, Loc.Get(Strings.VideoOverride.PickTitle), null)),
             };
             if (row.CanLocate)
-                actions.Add(HyperlinkButton.Create(Loc.Get(Strings.VideoOverride.Locate), () =>
+                actions.Add(LinkButton(Loc.Get(Strings.VideoOverride.Locate), () =>
                 {
                     string? start = Video.OverrideUx.NearestExistingAncestor(path, Video.Overrides.DirectoryExists);
                     Pick(uri, sourceKey, Loc.Get(Strings.VideoOverride.LocateTitle), start);
                 }));
             if (row.CanReveal)
-                actions.Add(HyperlinkButton.Create(Loc.Get(Strings.VideoOverride.ShowInExplorer), () => Reveal(path)));
+                actions.Add(LinkButton(Loc.Get(Strings.VideoOverride.ShowInExplorer), () => Reveal(path)));
             // Applies immediately with a toast-undo, never a dialog (the verb).
-            actions.Add(Button.Standard(Loc.Get(Strings.VideoOverride.Remove), () => SettingsVerbs.RemoveVideoOverride(uri, path, sourceKey)));
+            actions.Add(StdButton(Loc.Get(Strings.VideoOverride.Remove), () => SettingsVerbs.RemoveVideoOverride(uri, path, sourceKey)));
 
             return new BoxEl
             {

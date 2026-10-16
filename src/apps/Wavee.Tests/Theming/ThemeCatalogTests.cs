@@ -454,7 +454,7 @@ public sealed class ThemeCatalogTests : IDisposable
     }
 
     [Fact]
-    public void ContractVersion_IsOnePointEleven_AndRefusesAnythingElse()
+    public void ContractVersion_IsOnePointSeventeen_AndRefusesAnythingElse()
     {
         // 1.1 (tuned Classic CT4): LyricsState.Offline + LyricsLinesStyle.Offline, PlayerBarSlots.VideoSplit.
         // 1.2 (tuned Classic CT1c): the omnibar model's focused-field facts. 1.3 (tuned Classic CT3a): SidebarRowShape.EntityText,
@@ -473,7 +473,8 @@ public sealed class ThemeCatalogTests : IDisposable
                 // 1.15 (Classic player bar and panels per tier TC2): PanelPlacement and the panel's tier rules, the second docked pane, the bar's
         // window rules and mini bar parts, ChromeBudget.TrailingInDrawer, ChromeRowState.TabsHidden, the drawer's account row. A 1.0 theme still runs.
         // 1.16 (Classic collection tiers TC7): LibraryPageProps.SetPageWidth / Kinds, LibraryLadders.Layout.
-        Assert.Equal("1.16", ContractVersion.Text);
+        // 1.17 (Classic screens TC8): DialogFit.FormWidth / CommandHeight and OverlayFit.ShowForm.
+        Assert.Equal("1.17", ContractVersion.Text);
         Assert.True(ContractVersion.IsCompatible(1, 0));
         Assert.True(ContractVersion.IsCompatible(1, 2));
         Assert.True(ContractVersion.IsCompatible(1, 3));
@@ -490,7 +491,8 @@ public sealed class ThemeCatalogTests : IDisposable
         Assert.True(ContractVersion.IsCompatible(1, 14));
         Assert.True(ContractVersion.IsCompatible(1, 15));
         Assert.True(ContractVersion.IsCompatible(1, 16));
-        Assert.False(ContractVersion.IsCompatible(1, 17));
+        Assert.True(ContractVersion.IsCompatible(1, 17));
+        Assert.False(ContractVersion.IsCompatible(1, 18));
         Assert.False(ContractVersion.IsCompatible(2, 0));
         Assert.False(ContractVersion.IsCompatible(0, 0));
     }

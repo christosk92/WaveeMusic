@@ -14,7 +14,9 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
+using Wavee.Themes.Common;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee.Themes.Classic;
@@ -42,6 +44,7 @@ internal static partial class ClassicSetup
     public static Element TermsTemplate(SetupTermsProps props, in ViewContext ctx)
     {
         var session = props.Session;
+        var layout = ClassicSetupTiers.Of(ctx.Tier());
         var kids = new List<Element>(12)
         {
             SetupText.Lead(Loc.Get(Strings.Setup.Terms.Start)),
@@ -53,7 +56,7 @@ internal static partial class ClassicSetup
             SetupText.Lead(Loc.Get(Strings.Setup.Terms.Section4Title)), SetupText.Body(Loc.Get(Strings.Setup.Terms.Section4Body)),
             SetupText.Group(
                 SetupText.Secondary(Loc.Get(Strings.Setup.Terms.Fine)),
-                HyperlinkButton.Create(Loc.Get(Strings.Setup.Terms.PrivacyLink), props.OpenPrivacy, size: ControlSize.Small)),
+                CommonTouch.Link(Loc.Get(Strings.Setup.Terms.PrivacyLink), props.OpenPrivacy, layout.Target, ControlSize.Small)),
         };
         // crash-diagnostics plan §D/§F: the consent card never shows on a re-auth (WizardRules.ConsentShown gates it
         // the same way the durable write does in WizardModel.Primary, so the two never disagree).
@@ -72,10 +75,11 @@ internal static partial class ClassicSetup
     /// summary (the page's fine print carries the Privacy link). The choice writes the setting the instant it changes — never waits for Continue, so a
     /// crash between the click and the wizard's own advance cannot lose it. Consent-asked itself is stamped once, on
     /// Continue, by <c>Setup.WizardRules.MarkConsentAsked</c> (<c>WizardModel.Primary</c>), not here.</summary>
-    private sealed class CrashConsentCard(SetupConsent consent) : Component
+    private sealed class CrashConsentCard(SetupConsent consent) : CommonTierComponent
     {
         public override Element Render()
         {
+            var layout = ClassicSetupTiers.Of(ReadTier());
             // #165: a build that can't send (no ingest URL / key / quad) offers only No · Ask me first — "Always send"
             // would be a promise it cannot keep. The offered list is a prefix of Off/Ask/Auto, so the radio index stays
             // the stored Crash.Reporting value; the seed is the EFFECTIVE mode (a stored Auto reads Ask there).
@@ -92,10 +96,7 @@ internal static partial class ClassicSetup
             // A vertical radio group (the Windows privacy-settings shape), not a segmented switcher: three labels of
             // very different length never fit three equal-width segments, and a consent choice reads as a list.
             var set = consent.Set;
-            Element choice = RadioButtons.Create(
-                labels,
-                index,
-                onChange: i => set(i));
+            Element choice = TouchRadios(labels, index, layout.Target, onChange: i => set(i));
 
             Element titleRow = new BoxEl
             {
@@ -126,6 +127,7 @@ internal static partial class ClassicSetup
     public static Element LocalPlaybackTemplate(SetupLocalPlaybackProps props, in ViewContext ctx)
     {
         var overlay = ctx.Hooks.UseContext(Overlay.Service);
+        var layout = ClassicSetupTiers.Of(ctx.Tier());
         if (props.Session.Model is not { } m)   // no provisioning host (D3): the model-null arm — no Key, no motion, no fine print
             return WizardFrame(Setup.WizardPage.LocalPlayback, Loc.Get(Setup.Commands.RuntimeHeaderKey(null)), SetupText.Stack(
                 SetupText.Lead(Loc.Get(Setup.Commands.RuntimeLeadKey(null))),
@@ -133,7 +135,7 @@ internal static partial class ClassicSetup
 
         RuntimePhase phase = m.Phase.Value;
         string arch = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString();
-        var kids = new List<Element>(3) { SetupText.Lead(Loc.Get(Setup.Commands.RuntimeLeadKey(phase))), LocalContent(props, m, phase, arch, overlay) };
+        var kids = new List<Element>(3) { SetupText.Lead(Loc.Get(Setup.Commands.RuntimeLeadKey(phase))), LocalContent(props, m, phase, arch, overlay, layout) };
         if (phase != RuntimePhase.Advanced)
             kids.Add(SetupText.Secondary(Loc.Get(Strings.Setup.LocalPlayback.FinePrint)) with { Key = "runtime:fineprint" });
         Element body = SetupText.Stack(kids.ToArray()) with
@@ -143,7 +145,7 @@ internal static partial class ClassicSetup
         return WizardFrame(Setup.WizardPage.LocalPlayback, Loc.Get(Setup.Commands.RuntimeHeaderKey(phase)), body);
     }
 
-    private static Element LocalContent(SetupLocalPlaybackProps props, Setup.RuntimeModel m, RuntimePhase phase, string arch, IOverlayService overlay) => phase switch
+    private static Element LocalContent(SetupLocalPlaybackProps props, Setup.RuntimeModel m, RuntimePhase phase, string arch, IOverlayService overlay, ClassicSetupLayout layout) => phase switch
     {
         RuntimePhase.Offer => SetupText.Group(OfferCard(arch), SettingsExpander.Create(new SettingsExpander.Options
         {
@@ -168,17 +170,17 @@ internal static partial class ClassicSetup
             InfoBar.Create(InfoBarSeverity.Warning, Loc.Get(Strings.Playback.Runtime.SignatureInvalid), Loc.Get(Strings.Playback.Runtime.UntrustedBody), isClosable: false),
             SetupText.Card(Loc.Get(Strings.Playback.Runtime.DetailVersion), m.ActiveEntry is { } e ? e.Version + "  ·  " + e.Arch : "—"),
             SetupText.Card(Loc.Get(Strings.Playback.Runtime.DetailSha256), m.ActiveEntry is { } h ? Setup.RuntimeRules.ShortHash(h.Sha256) : "—")),
-        RuntimePhase.Ready => LocalReady(props, m, overlay),
+        RuntimePhase.Ready => LocalReady(props, m, overlay, layout),
         RuntimePhase.Failed => SetupText.Group(
             InfoBar.Create(InfoBarSeverity.Error, Loc.Get(Strings.Playback.Runtime.Missing), m.Error.Value ?? Loc.Get(Strings.Playback.Runtime.NoPack), isClosable: false),
             OfferCard(arch)),
-        _ => LocalAdvanced(m),
+        _ => LocalAdvanced(m, layout),
     };
 
     private static Element OfferCard(string arch) =>
         SetupText.Card(Loc.Get(Strings.Setup.LocalPlayback.CardTitle), Strings.Setup.LocalPlayback.CardSub(arch), Icons.Download);
 
-    private static Element LocalReady(SetupLocalPlaybackProps props, Setup.RuntimeModel m, IOverlayService overlay)
+    private static Element LocalReady(SetupLocalPlaybackProps props, Setup.RuntimeModel m, IOverlayService overlay, ClassicSetupLayout layout)
     {
         Setup.RuntimeFacts facts = m.Status;
         string? location = facts.Location;
@@ -190,25 +192,25 @@ internal static partial class ClassicSetup
         kids.Add(SetupText.Card(Loc.Get(Strings.Setup.LocalPlayback.Architecture), Setup.RuntimeRules.OrDash(facts.Arch)));
         kids.Add(SetupText.Card(Loc.Get(Strings.Setup.LocalPlayback.Signature), Setup.RuntimeSignatureSummary(facts),
             content: facts.Signature is null ? null
-                : HyperlinkButton.Create(Loc.Get(Strings.Setup.LocalPlayback.View), () => open(overlay, facts))));
+                : CommonTouch.Link(Loc.Get(Strings.Setup.LocalPlayback.View), () => open(overlay, facts), layout.Target)));
         kids.Add(SetupText.Card(Loc.Get(Strings.Setup.LocalPlayback.Location), Setup.RuntimeRules.OrDash(location),
-            content: HyperlinkButton.Create(Loc.Get(Strings.Setup.LocalPlayback.OpenFolder), () => reveal(location))));
+            content: CommonTouch.Link(Loc.Get(Strings.Setup.LocalPlayback.OpenFolder), () => reveal(location), layout.Target)));
         return SetupText.Group(kids.ToArray());
     }
 
     /// <summary>The Advanced arm — owner I's catalog arms and pieces (<see cref="RuntimeVersionPicker"/>,
     /// <see cref="RuntimeLocalSourceRows"/>), mounted as the standalone card mounts them.</summary>
-    private static Element LocalAdvanced(Setup.RuntimeModel m)
+    private static Element LocalAdvanced(Setup.RuntimeModel m, ClassicSetupLayout layout)
     {
         var kids = new List<Element>(5) { RuntimeText(Loc.Get(Strings.Playback.Runtime.AdvancedBody)) };
         switch (Setup.RuntimeRules.AdvancedArm(m.Catalog.Value, m.SupportedPacks.Count))
         {
             case Setup.RuntimeAdvancedArm.Busy: kids.Add(RuntimeBusyRow(Loc.Get(Strings.Playback.Runtime.CheckingSupport))); break;
-            case Setup.RuntimeAdvancedArm.Picker: kids.Add(RuntimeVersionPicker(m, null)); break;
+            case Setup.RuntimeAdvancedArm.Picker: kids.Add(RuntimeVersionPicker(m, null, layout)); break;
             case Setup.RuntimeAdvancedArm.NoPack: kids.Add(RuntimeText(Loc.Get(Strings.Playback.Runtime.NoPack))); break;
             case Setup.RuntimeAdvancedArm.Unreachable: kids.Add(RuntimeText(Loc.Get(Strings.Playback.Runtime.CatalogUnreachable))); break;
         }
-        kids.AddRange(RuntimeLocalSourceRows(m));
+        kids.AddRange(RuntimeLocalSourceRows(m, layout));
         return SetupText.Group(kids.ToArray());
     }
 
