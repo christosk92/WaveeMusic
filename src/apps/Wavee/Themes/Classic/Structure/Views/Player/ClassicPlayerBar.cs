@@ -16,6 +16,12 @@
 //   `PlayerBarView`; everything below draws that view. This template's own hooks (the hover signal, the captured nodes, the like
 //   pop and the face cross-fade) follow, as they followed the bookkeeping in the single component.
 //
+//   PER WINDOW TIER (TC2, `ClassicPlayerTiers`): the level the core hands in is already the tier's (the sub-ladder clamped to the window
+//   tier's range); the template draws the tier's FORM. Compact is the 56-DIP MINI bar (the progress hairline, the identity as one door to
+//   the now-playing sheet, the heart and the play disc at 40 x 40); Small and Standard the single centred row as before; Huge the three
+//   zones (a 360 identity zone with the 56 cover, the transport with shuffle and repeat CENTRED in a column of at most 1040, a 360 right
+//   zone with a 128 volume rail). Every hook runs in every form, in the same order; the form only changes what is assembled.
+//
 //   What the template places but does not draw itself: the seek rail and the time labels (`props.SeekBar` / `props.TimeText` are the
 //   core hosts shared with the stage and the on-media strip; they mount `Player.SeekRail` / `Player.TimeLabel`, drawn by
 //   `ClassicTransport.cs`). The credits line under the title is this template's own (`ClassicPlayerBar.Credits.cs`, over the facts
@@ -29,6 +35,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
 using FluentGpu.Theming;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 
 namespace Wavee.Themes.Classic;
@@ -45,6 +52,10 @@ internal static partial class ClassicPlayerBar
         // ── the core half: its hooks, then the decided view ──
         var v = props.Host.Use(rc);
         var m = v.Metrics;
+        // The window tier's form (TC2): read every render (a hook), so a crossing re-renders the bar once, on the crossing frame.
+        var barTier = ClassicPlayerTiers.BarOf(ctx.Tier());
+        bool huge = barTier.Form == ClassicBarForm.Huge;
+        float artSize = huge ? ClassicPlayerTiers.HugeArt : m.ArtSize;
 
         // ── hooks (positional, stable order) ──
         var titleLinkHover = rc.UseSignal(false);      // the title's link ink (the marquees scroll unattended)
@@ -170,9 +181,11 @@ internal static partial class ClassicPlayerBar
                 ClassicPlayerBarLayout.FaceSwap.EffectiveDurationMs(AnimChannel.Opacity), Easing.FluentDecelerate);
         }, DepKey.From((int)faceRef.Kind, faceRef.Slot));
 
+        if (barTier.Form == ClassicBarForm.Mini) return MiniBar(props, v, barTier, titleRun, titleKey, artScale, likeNode, metaNode, barNode, input, overlay);
+
         var art = new BoxEl
         {
-            Key = "art", Width = m.ArtSize, Height = m.ArtSize, Shrink = 0f,
+            Key = "art", Width = artSize, Height = artSize, Shrink = 0f,
             Cursor = v.ArtNav ? CursorId.Hand : null,
             OnClick = v.ArtNav ? props.NavigateArt : null,
             Role = v.ArtNav ? AutomationRole.Hyperlink : AutomationRole.None,
@@ -181,7 +194,7 @@ internal static partial class ClassicPlayerBar
             // double-click's first click would still navigate, InputDispatcher.DoubleClickMs = 500). The Expand button
             // is the bar's door; the flight captures this TAGGED art wherever the click lands. A morph-tagged slot
             // mounts no shimmer and a frozen placeholder — accepted for a 48-DIP thumbnail.
-            Children = [Controls.Artwork(v.ArtUrl, m.ArtSize, m.ArtSize, ClassicPlayerBarLayout.ArtCorner, morphKey: props.ArtMorphKey, scale: artScale, keepWhileHidden: true)],
+            Children = [Controls.Artwork(v.ArtUrl, artSize, artSize, ClassicPlayerBarLayout.ArtCorner, morphKey: props.ArtMorphKey, scale: artScale, keepWhileHidden: true)],
         };
         // The heart's SLOT is the level's; an idle bar shows no face in it (and the face cannot be hit or focused).
         var saveIcon = v.FaceIsEpisode ? ActionIcons.Resolve(ActionIcons.Save, v.Liked) : ActionIcons.Resolve(ActionIcons.Heart, v.Liked);
@@ -196,14 +209,14 @@ internal static partial class ClassicPlayerBar
         var leftFlow = new BoxEl
         {
             Key = "left-flow", Grow = 1f, Shrink = 1f, MinWidth = 0f,
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = m.LeftGap, ClipToBounds = true,
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = huge ? ClassicPlayerTiers.HugeLeftGap : m.LeftGap, ClipToBounds = true,
             Children = !v.ShowTitleBlock ? [art] : v.ShowLikeSlot ? [art, metaCol, likeSlot] : [art, metaCol],
         };
         // No hover "…" here: the now-playing cluster's menu is the right-click / Menu key / long-press below (owner,
         // 2026-10-02) — an overlay "…" landed between the title and the heart, over the end of the title.
         var left = new BoxEl
         {
-            Key = "left", Width = m.LeftW, Shrink = 0f, MinWidth = 0f, Animate = ClassicPlayerBarLayout.MoveMotion,
+            Key = "left", Width = huge ? ClassicPlayerTiers.HugeZoneW : m.LeftW, Shrink = 0f, MinWidth = 0f, Animate = ClassicPlayerBarLayout.MoveMotion,
             ZStack = true,
             // The factory PEEKS at promotion time: the mounted cluster outlives every track change. An idle bar is
             // not a drag handle at all.
@@ -216,7 +229,9 @@ internal static partial class ClassicPlayerBar
         left = left.WithContextMenu(overlay, () => verbs.NowPlayingMenu());
 
         // ── CENTRE — transport + seek (empty while a full-bleed surface owns the transport) ─────────────────────
-        var transportKids = new List<Element>(3);
+        // At Huge shuffle and repeat flank the transport (C-PlayerBar huge) instead of riding the right zone.
+        var transportKids = new List<Element>(5);
+        if (huge && v.OwnsTransport && (v.Slots & RightSlot.Shuffle) != 0) transportKids.Add(RightSlotOf(RightSlot.Shuffle));
         if (v.OwnsTransport && v.ShowPrevNext)
             transportKids.Add(BarButton(Icons.Previous, () => verbs.Previous(), v.PrevEnabled, false, box, glyph)
                 with { Key = "prev" });
@@ -230,6 +245,7 @@ internal static partial class ClassicPlayerBar
         if (v.OwnsTransport && v.ShowPrevNext)
             transportKids.Add(BarButton(Icons.Next, () => verbs.Next(), v.NextEnabled, false, box, glyph)
                 with { Key = "next" });
+        if (huge && v.OwnsTransport && (v.Slots & RightSlot.Repeat) != 0) transportKids.Add(RightSlotOf(RightSlot.Repeat));
 
         if (v.OwnsTransport && v.Episode)
         {
@@ -253,7 +269,7 @@ internal static partial class ClassicPlayerBar
         var centre = new BoxEl
         {
             Key = "centre", Grow = 1f, Shrink = 1f, MinWidth = 0f, Animate = ClassicPlayerBarLayout.MoveMotion,
-            Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Start, Gap = m.ClusterGap,
+            Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             // A drop on the transport is PLAY NEXT — a front-insert, never an immediate playback change.
             DropTarget = Drop.Target<DragPayload>(Drag.Resource,
                 accepts: static p => p.CanCopyTracks,
@@ -263,15 +279,24 @@ internal static partial class ClassicPlayerBar
                 visualPolicy: DropTargetVisualPolicy.Spotlight),
             Children =
             [
+                // The transport and the seek row in one column: the whole centre below Huge, a column of at most 1040 centred at Huge.
                 new BoxEl
                 {
-                    Key = "transport", Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Animate = ClassicPlayerBarLayout.MoveMotion, Children = transportKids.ToArray(),
-                },
-                new BoxEl
-                {
-                    Key = "seek-row", Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center,
-                    Gap = m.SeekGap, Animate = ClassicPlayerBarLayout.MoveMotion, Children = seekKids.ToArray(),
+                    Key = "centre-column", Grow = 1f, Shrink = 1f, MinWidth = 0f, MaxWidth = huge ? ClassicPlayerTiers.HugeCentreMaxW : float.NaN,
+                    Direction = 0, AlignItems = FlexAlign.Center, Gap = m.ClusterGap,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Key = "transport", Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                            Animate = ClassicPlayerBarLayout.MoveMotion, Children = transportKids.ToArray(),
+                        },
+                        new BoxEl
+                        {
+                            Key = "seek-row", Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center,
+                            Gap = m.SeekGap, Animate = ClassicPlayerBarLayout.MoveMotion, Children = seekKids.ToArray(),
+                        },
+                    ],
                 },
             ],
         };
@@ -301,7 +326,7 @@ internal static partial class ClassicPlayerBar
 
         Element RightSlotOf(RightSlot slot)
         {
-            float w = v.SlotWidth(slot);
+            float w = huge && slot == RightSlot.VolumeSlider ? ClassicPlayerTiers.HugeVolumeW : v.SlotWidth(slot);
             bool lit = (v.Lit & slot) != 0;
             switch (slot)
             {
@@ -322,7 +347,7 @@ internal static partial class ClassicPlayerBar
                     // The STOCK slider style — a 22-DIP ring, not 0.2.9's old 12-DIP grab; thickness clears the ring.
                     return Slot("volume-slider", w, box, lit,
                         Slider.Create(props.Volume, props.SetVolume, new Slider.SliderOptions { ThumbToolTipValueConverter = props.VolumeText },
-                            length: m.VolumeSliderW, thickness: Slider.DefaultStyle.ThumbRingDiameter));
+                            length: huge ? ClassicPlayerTiers.HugeVolumeW : m.VolumeSliderW, thickness: Slider.DefaultStyle.ThumbRingDiameter));
                 case RightSlot.Lyrics:
                     return Slot("lyrics", w, box, lit,
                         ToolTip.Wrap(BarButton(WaveeIcons.Lyrics, props.OpenLyrics, lit, v.LyricsOpen, box, glyph, font: WaveeIcons.Font),
@@ -374,14 +399,22 @@ internal static partial class ClassicPlayerBar
         for (int bit = 1; bit <= (int)RightSlot.More; bit <<= 1)
         {
             var slot = (RightSlot)bit;
+            if (huge && slot is RightSlot.Shuffle or RightSlot.Repeat) continue;   // the Huge transport carries them
             if ((v.Slots & slot) != 0) rightKids.Add(RightSlotOf(slot));
         }
 
-        var right = new BoxEl
-        {
-            Key = "right", Width = v.RightWidth, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
-            Gap = m.RightGap, Animate = ClassicPlayerBarLayout.MoveMotion, Children = rightKids.ToArray(),
-        };
+        // At Huge the right zone mirrors the identity zone (360, the board's), so the transport column sits on the bar's centre line.
+        var right = huge
+            ? new BoxEl
+            {
+                Key = "right", MinWidth = ClassicPlayerTiers.HugeZoneW, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
+                Gap = m.RightGap, Animate = ClassicPlayerBarLayout.MoveMotion, Children = rightKids.ToArray(),
+            }
+            : new BoxEl
+            {
+                Key = "right", Width = v.RightWidth, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
+                Gap = m.RightGap, Animate = ClassicPlayerBarLayout.MoveMotion, Children = rightKids.ToArray(),
+            };
 
         // ── assemble: the top activity edge + the single centred row ────────────────────────────────────────────
         Element topEdge = v.TopEdgeSweeps
@@ -396,7 +429,7 @@ internal static partial class ClassicPlayerBar
         return new BoxEl
         {
             // NO fill, NO shadow, NO Elevation.DockTop: the dock is a paint-site omission over live Mica.
-            Direction = 1, Height = m.Height, ClipToBounds = true,
+            Direction = 1, Height = barTier.Height, ClipToBounds = true,
             IsolateLayout = true,   // the layout firewall: a title change re-solves THIS subtree only
             Focusable = true, FocusVisualMargin = Edges4.All(Spacing.XXS),
             OnRealized = node => barNode.Value = node,
@@ -407,13 +440,111 @@ internal static partial class ClassicPlayerBar
                 topEdge,
                 new BoxEl
                 {
-                    Key = "player-row", Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Gap = m.RowGap,
-                    Padding = new Edges4(m.RowPad, 0f, m.RowPad, 0f), Animate = ClassicPlayerBarLayout.MoveMotion,
+                    Key = "player-row", Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Gap = huge ? ClassicPlayerTiers.HugeRowGap : m.RowGap,
+                    Padding = huge ? new Edges4(ClassicPlayerTiers.HugeRowPad, 0f, ClassicPlayerTiers.HugeRowPad, 0f) : new Edges4(m.RowPad, 0f, m.RowPad, 0f),
+                    Animate = ClassicPlayerBarLayout.MoveMotion,
                     // ALWAYS three clusters: the row's shape is the level's, never the state's.
                     Children = [left, centre, right],
                 },
             ],
         };
+    }
+
+    // ══ THE MINI BAR (Compact, TC2: C-PlayerBar tier="mini", C-Shell-Compact) ═════════════════════════════════════════════
+
+    /// <summary>The 56-DIP mini bar: the progress hairline over the top edge, then ONE row of the identity door (the 40 cover, the title
+    /// and the artist line; it opens the now-playing sheet), the heart and the play disc, both 40 x 40.</summary>
+    private static Element MiniBar(PlayerBarProps props, PlayerBarView v, ClassicPlayerBarTier tier, TextEl titleRun, string titleKey,
+        float artScale, Ref<NodeHandle> likeNode, Ref<NodeHandle> metaNode, Ref<NodeHandle> barNode, InputHooks input, IOverlayService overlay)
+    {
+        var verbs = props.Verbs;
+        float button = ClassicPlayerTiers.MiniButton, glyph = ClassicPlayerTiers.MiniGlyph;
+        Element progress = props.ProgressLine is { } line
+            ? new BoxEl { Key = "mini-progress", Height = ClassicPlayerTiers.MiniProgressH, Shrink = 0f, Direction = 0, Children = [line()] }
+            : new BoxEl { Key = "mini-progress", Height = ClassicPlayerTiers.MiniProgressH, Shrink = 0f, Fill = Tok.StrokeDividerDefault };
+
+        var title = new BoxEl
+        {
+            Key = titleKey, ClipToBounds = true, MinWidth = 0f,
+            Children = [titleRun with { LineHeight = ClassicPlayerTiers.MiniTitleLine }],
+        };
+        var meta = new BoxEl
+        {
+            Key = "meta", Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Shrink = 1f, Gap = ClassicPlayerTiers.MiniLinesGap,
+            Justify = FlexJustify.Center, ClipToBounds = true, OnRealized = h => metaNode.Value = h,
+            Children = v.ShowArtistLine
+                ? [title, new BoxEl { Key = "np-artists", ClipToBounds = true, MinWidth = 0f, Children = [Embed.Comp(() => new MiniCredits(props))] }]
+                : [title],
+        };
+        var door = new BoxEl
+        {
+            Key = "mini-door", Grow = 1f, Shrink = 1f, MinWidth = 0f, Height = ClassicPlayerTiers.MiniDoorH,
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = ClassicPlayerTiers.MiniDoorGap,
+            Padding = new Edges4(0f, 0f, ClassicPlayerTiers.MiniDoorPadRight, 0f), Corners = Radii.ControlAll,
+            Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, Cursor = CursorId.Hand,
+            OnClick = props.OpenNowPlaying,
+            Draggable = v.Draggable ? Drag.Source(props.DragPayload) : null,
+            Children =
+            [
+                new BoxEl
+                {
+                    Key = "art", Width = ClassicPlayerTiers.MiniArt, Height = ClassicPlayerTiers.MiniArt, Shrink = 0f, HitTestVisible = false,
+                    Children = [Controls.Artwork(v.ArtUrl, ClassicPlayerTiers.MiniArt, ClassicPlayerTiers.MiniArt, ClassicPlayerTiers.MiniArtCorner,
+                        morphKey: props.ArtMorphKey, scale: artScale, keepWhileHidden: true)],
+                },
+                meta,
+            ],
+        }.Interactive(Interaction.Subtle).WithContextMenu(overlay, () => verbs.NowPlayingMenu());
+
+        var saveIcon = v.FaceIsEpisode ? ActionIcons.Resolve(ActionIcons.Save, v.Liked) : ActionIcons.Resolve(ActionIcons.Heart, v.Liked);
+        var heart = Slot("like", button, button, v.LikeLit,
+            BarButton(saveIcon.Glyph ?? Icons.Add, () => verbs.ToggleLike(), v.LikeEnabled, v.Liked, button, glyph,
+                onRealized: h => likeNode.Value = h, platedWhenLatched: false) with { BlocksDragArm = true });
+        Element play = PrimaryButton(props,
+                v.Errored ? ClassicPlayerBarLayout.PlaySolid : v.PauseGlyph ? ClassicPlayerBarLayout.PauseSolid : ClassicPlayerBarLayout.PlaySolid,
+                v.Primary, button, ClassicPlayerTiers.MiniPlayGlyph)
+            with { Key = "primary" };
+
+        return new BoxEl
+        {
+            Direction = 1, Height = tier.Height, ClipToBounds = true, IsolateLayout = true,
+            Focusable = true, FocusVisualMargin = Edges4.All(Spacing.XXS),
+            OnRealized = node => barNode.Value = node,
+            OnKeyDown = e => props.OnKey(e, input.GetFocus?.Invoke() == barNode.Value),
+            Children =
+            [
+                progress,
+                new BoxEl
+                {
+                    Key = "player-row", Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Gap = ClassicPlayerTiers.MiniGap,
+                    Padding = ClassicPlayerTiers.MiniPadding,
+                    Children = v.OwnsTransport ? [door, heart, play] : [door, heart],
+                },
+            ],
+        };
+    }
+
+    /// <summary>The mini bar's artist line: the names as plain text (the whole identity is ONE door, so nothing in it is a link of its own).</summary>
+    private sealed class MiniCredits(PlayerBarProps props) : Component
+    {
+        public override Element Render()
+        {
+            _ = UseComputed(props.CreditsStamp).Value;
+            var credits = props.Credits();
+            string text = credits.Show is { } show ? show.Text : JoinNames(credits.Artists);
+            return new TextEl(text)
+            {
+                Size = ClassicPlayerTiers.MiniSubSize, LineHeight = ClassicPlayerTiers.MiniSubLine, Color = Tok.TextSecondary,
+                MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            };
+        }
+
+        static string JoinNames(PlayerCreditLink[] artists)
+        {
+            var names = new List<string>(artists.Length);
+            foreach (var a in artists) if (a.Text.Length > 0) names.Add(a.Text);
+            return string.Join(", ", names);
+        }
     }
 
     private static ColorF TitleInkOf(NowPlayingInk ink) => ink switch

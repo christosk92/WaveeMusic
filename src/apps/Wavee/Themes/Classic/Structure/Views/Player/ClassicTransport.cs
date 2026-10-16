@@ -40,6 +40,21 @@ internal static class ClassicTransport
 
         var host = props.Host;
         bool enabled = props.Enabled;
+        // The mini bar's hairline (TC2, board C-PlayerBar mini): the played fraction as a 2-DIP line, the strong rail behind it, nothing to grab.
+        if (props.Hairline)
+            return new BoxEl
+            {
+                Height = ClassicPlayerTiers.MiniProgressH, Grow = 1f, ZStack = true, ClipToBounds = true, HitTestVisible = false,
+                Fill = Tok.FillControlStrong, OnBoundsChanged = host.BoundsChanged,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Grow = 1f, Fill = enabled ? Tok.AccentDefault : Tok.FillControlStrong, HitTestVisible = false,
+                        TransformOriginX = 0f, Transform = host.FillTransform,
+                    },
+                ],
+            };
         Element chapters = props.Chapters ?? new BoxEl { HitTestVisible = false };
         var s = Slider.DefaultStyle;
         var fill = new BoxEl

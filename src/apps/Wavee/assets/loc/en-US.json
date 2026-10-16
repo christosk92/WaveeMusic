@@ -1770,7 +1770,8 @@
     "closeOtherTabs": "Close other tabs",
     "closeTabsRight": "Close tabs to the right",
     "closeAllUnpinned": "Close all unpinned tabs",
-    "switchTabs": "{count} open tabs"
+    "switchTabs": "{count} open tabs",
+    "accountAndMore": "Account and more"
   },
   "friends": {
     "title": "Friend activity",

@@ -32,13 +32,13 @@ public enum SidebarPaneMode : byte { Expanded = 0, Compact = 1, Minimal = 2 }
 /// <see cref="NavPanePolicy.TinyMode"/>).</summary>
 public enum SidebarWindowBand : byte { Wide = 0, Narrow = 1, Tiny = 2 }
 
-/// <summary>THE MODE RULES (design V.1). The pane reads the viewport ONLY; the right rail reads the pane's presented width
+/// <summary>THE MODE RULES (design V.1). The pane reads the viewport ONLY; the right panel reads the window tier
 /// (never the reverse), so opening the rail or docking a video never moves the sidebar. A forced mode never writes the
 /// user's collapse (WinUI's <c>m_wasForceClosed</c>, NavigationView.cpp:1491, 1658-1670): when the window grows back the
 /// user's own state returns. Edit mode presents Expanded whatever <c>userCollapsed</c> says.</summary>
 public static class SidebarPaneModeRules
 {
-    /// <summary>The shell's baseline content floor (<c>Shell.MinContentW</c>).</summary>
+    /// <summary>The shell's baseline content floor: the content a docked nav pane leaves beside it.</summary>
     public const float ContentFloorW = 480f;
 
     /// <summary>The band of a window width tier: Compact is Tiny, Small is Narrow, Standard and up are Wide. The hysteresis is
@@ -119,9 +119,6 @@ public static class SidebarPaneModeRules
     /// while editing.</summary>
     public static bool LeafInvokeClosesOverlay(bool editing) => !editing;
 
-    /// <summary>③ The right rail fits inline beside the presented pane and the content floor.</summary>
-    public static bool RailFits(float presentedW, float railW, float viewportW, NavPanePolicy? policy = null)
-        => presentedW + railW + ShellPolicy.NavOr(policy).ContentFloorW <= viewportW;
 }
 
 /// <summary>THE SEAM RULES (design V.1 "Seam"): drag resizes the policy's [min, max] (Classic 180-460); below

@@ -209,7 +209,7 @@ public sealed class PanelMountedTests(ShellHost host)
         });
 
     [Fact]
-    public void A_window_too_narrow_to_keep_the_content_wide_floats_the_panel_still_at_the_right_edge()
+    public void A_small_window_floats_the_panel_340_wide_inset_from_the_right_edge()
         => host.Mounted(shell =>
         {
             try
@@ -218,18 +218,21 @@ public sealed class PanelMountedTests(ShellHost host)
                 Shell.Ui.Mode.Value = Shell.RailMode.NowPlaying;
                 Shell.Ui.RailOpen.Value = true;
                 shell.RunFrames(20);
-                Assert.True(Shell.Ui.RailFits.Peek());                                  // 1180 DIP leaves the content its room
+                Assert.True(Shell.Ui.RailFits.Peek());                                  // a Standard window docks the panel
 
                 shell.Resize(760f, 760f);
                 shell.Host.Paint(0, keepAlive: true);
                 shell.Host.RunFrame();
                 shell.RunFrames(3);
-                Until(shell, () => !Shell.Ui.RailFits.Peek(), "the panel stopped fitting inline and floats");
+                Until(shell, () => !Shell.Ui.RailFits.Peek(), "a Small window floats the panel (TC2)");
+                Assert.Equal(Wavee.Theming.Contracts.PanelPlacement.Float, Shell.Ui.PanelPlacement.Peek());
 
                 shell.RunFrames(30);
+                var host = shell.Host.Scene.AbsoluteRect(Node(shell, Wavee.Themes.Classic.ClassicPanelTiers.HostKey));
+                Assert.Equal(Wavee.Themes.Classic.ClassicPanelTiers.FloatW, host.W, 0.5f);
+                Assert.Equal(760f - Wavee.Themes.Classic.ClassicPanelTiers.Gap, host.X + host.W, 0.5f);   // 8 in from the right edge
                 var rect = shell.Host.Scene.AbsoluteRect(Node(shell, "cover"));
-                float width = Shell.Ui.RailWidth.Peek();
-                Assert.True(rect.X >= 760f - width - 0.5f && rect.X + rect.W <= 760f + 0.5f, "the floating panel is still the window's right edge");
+                Assert.True(rect.X >= host.X - 0.5f && rect.X + rect.W <= host.X + host.W + 0.5f, "the hero sits in the floating panel");
             }
             finally
             {

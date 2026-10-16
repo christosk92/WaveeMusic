@@ -149,7 +149,26 @@ public static partial class Shell
         if (s_frameSeeded) return;
         s_frameSeeded = true;
         PanelHost.Shared.SeedSizes();
-        if (Session.ShellSection is { } shell) PanelHost.Shared.RestoreSession(shell.RailOpen, shell.RailMode);
+        if (Session.ShellSection is { } shell) PanelHost.Shared.RestoreSession(shell.RailOpen, shell.RailMode, shell.QueueBeside);
+    }
+
+    /// <summary>THE PANEL'S PLACEMENT (TC2, plan 3.2): the window tier's panel rule, published as the frame's facts. Docking follows the
+    /// committed window tier (never a fit test of pane + panel + content), so a crossing docks, undocks or adds the second pane on the
+    /// crossing frame, where the reservation's change FLIPs the content card and the panels. The floor moves the committed width only when
+    /// it changes (a crossing into or out of Huge, a Huge window resized), and a crossing to a one-panel tier folds a lone second pane into
+    /// the panel.</summary>
+    static void PublishPanelTier(Theming.PanelTierRule rule, float viewportWidth)
+    {
+        float floor = rule.FloorFor(viewportWidth);
+        Ui.PanelPlacement.SetIfChanged(rule.Placement);
+        Ui.RailFits.SetIfChanged(rule.Docks);
+        Ui.SecondPaneAllowed.SetIfChanged(rule.DocksTwo);
+        if (Ui.PanelFloor.Peek() != floor)
+        {
+            Ui.PanelFloor.Value = floor;
+            PanelHost.Shared.FitWidthToFloor(floor);
+        }
+        PanelHost.Shared.FoldSecondIntoPrimary();
     }
 
     // ══ 2. THE FRAME ROOT ═════════════════════════════════════════════════════════════════════════════════════════
@@ -293,6 +312,8 @@ public static partial class Shell
                 Sidebar.Band.SetIfChanged(pane0.Band);
                 Sidebar.Mode.SetIfChanged(pane0.Mode);
                 Sidebar.PresentedWidth.SetIfChanged(pane0.PresentedWidth);
+                // The panel's placement is known before the first layout too, so a launch at any size lays the panel out where it belongs.
+                PublishPanelTier(policies.Panel.For(tiers.WindowNow), size0.Width);
             }
             // The content tier is estimated from the sidebar the seed above just settled, then the facts are published.
             tiers.Complete(Context);
@@ -350,7 +371,7 @@ public static partial class Shell
                 if (Ui.RailDragWidth.Peek() != committed) Ui.RailDragWidth.Value = committed;
             });
             // Session chrome, not a preference: reopening restores the rail exactly as it was.
-            UseSignalEffect(static () => Session.CaptureShell(Ui.RailOpen.Value, (int)Ui.Mode.Value));
+            UseSignalEffect(static () => Session.CaptureShell(Ui.RailOpen.Value, (int)Ui.Mode.Value, Ui.QueueBeside.Value));
 
             // ── large-display auto-zoom (ch 18 W24; plan 3.2, C1b): the window's base extent → the pure control loop ──
             // A SETTLED size (a maximize, restore, Snap, a drag release, a DPI or monitor change) steps HERE, synchronously: this
@@ -430,11 +451,7 @@ public static partial class Shell
                 Auth.SetIfChanged(FoldAuth(Spotify.Status.Value, Spotify.Fault.Value, Platform.Args.Fake || Platform.HasStoredCredential())));   // --fake presents its seeded account as signed in (G-065)
             UseSignalEffect(() => _pageStageHosts.SetIfChanged(
                 Video.DockedHosting.PageStageHosts(Ui.ActiveStagePlayable.Value, Playback.CurrentId.Value.Text)));
-            UseSignalEffect(() =>
-            {
-                Ui.RailFits.SetIfChanged(Ui.CanFitRail(vp.Value.Width, Sidebar.PresentedWidth.Value, Ui.RailWidth.Value,
-                    ShellPolicy.Tracked.Panel.InlineMin));
-            });
+            UseSignalEffect(() => PublishPanelTier(ShellPolicy.Tracked.Panel.For(tiers.Window), vp.Value.Width));
             // A policy change (a theme switch) moves the panel's bounds: the committed width follows them. The stored preference is
             // left alone, so the next launch loads it again through the new bounds.
             UseSignalEffect(() => PanelHost.Shared.FitWidthTo(ShellPolicy.Tracked.Panel));
@@ -561,8 +578,15 @@ public static partial class Shell
             SidebarSeamWidth = static () => FrameRules.SidebarSeamWidth(SidebarPaneModeRules.SeamVisible(Sidebar.Band.Value)),
             RailGapWidth = static () => FrameRules.RailGapWidth(Ui.RailOpen.Value, Ui.RailFits.Value),
             RailReservedWidth = static () => FrameRules.RailReservedWidth(Ui.RailOpen.Value, Ui.RailFits.Value, Ui.RailWidth.Value),
-            RailSeamWidth = static () => FrameRules.RailSeamWidth(Ui.RailOpen.Value),
-            RailSeamX = () => FrameRules.RailSeamX(vp.Value.Width, Ui.RailDragWidth.Value),
+            RailSeamWidth = static () => FrameRules.RailSeamWidth(Ui.RailOpen.Value, Ui.RailFits.Value),
+            RailSeamX = () => FrameRules.RailSeamX(vp.Value.Width, MathF.Max(Ui.RailDragWidth.Value, Ui.PanelFloor.Value),
+                FrameRules.SecondOffset(PanelHost.Shared.SecondOpen(), PanelHost.Shared.SecondWidth())),
+            PanelPlacement = static () => Ui.PanelPlacement.Value,
+            SecondPanelOpen = static () => PanelHost.Shared.SecondOpen(),
+            SecondPanelWidth = static () => PanelHost.Shared.SecondWidth(),
+            SecondGapWidth = static () => FrameRules.SecondGapWidth(PanelHost.Shared.SecondOpen()),
+            SecondReservedWidth = static () => FrameRules.SecondReservedWidth(PanelHost.Shared.SecondOpen(), PanelHost.Shared.SecondWidth()),
+            SecondPanel = RailWiring.QueuePane,
             Chords = s_chords,
             OnKeyDown = OnShellKey,
             FileDrop = _fileDrop,
@@ -959,7 +983,7 @@ public static partial class Shell
         var l = ChromeLayout.Value;
         int flags = (l.ShowName ? 1 : 0) | (l.ShowActions ? 2 : 0) | (l.ShowForward ? 4 : 0)
                   | (l.SearchMode == MergedSearchMode.Icon ? 8 : 0) | (l.ShowBack ? 16 : 0)
-                  | (l.ShowNewTab ? 32 : 0) | (l.ShowTrailing ? 64 : 0) | (l.TabCount ? 128 : 0);
+                  | (l.ShowNewTab ? 32 : 0) | (l.ShowTrailing ? 64 : 0) | (l.TabCount ? 128 : 0) | (l.TabsHidden ? 256 : 0);
         var r = Current.Value;
         // The route and the pin store's version: the trailing Pin/Unpin follows a navigation and a pin change.
         // l.Chip is the form the trailing island actually BUILDS from (the view's AuthChip); Auth.Value alone is not enough:
@@ -1091,6 +1115,17 @@ public static partial class Shell
             PaneBody = static () => Sidebar.DrawerPane(),
         };
 
+        /// <summary>The account row's reads and verbs (TC2): the drawer form of the account chip, the bell and the friends door.</summary>
+        static readonly DrawerAccountProps s_drawerAccount = new()
+        {
+            Chip = static () => DrawerProfileChip(),
+            SignedIn = static () => ChromeLayout.Value.Chip == FrameRules.ChipForm.Profile,
+            SignIn = static () => Spotify.Login(),
+            BellUnread = static () => Diagnostics.StoreShot.Presenting.Value ? 0 : Notify.Unread.Value,
+            ToggleNotifications = OpenNotificationPanel,
+            ToggleFriends = static () => Ui.Toggle(RailMode.Friends),
+        };
+
         Func<int, bool>? _savedPreview;
         Func<int, bool>? _escapePreview;
         bool _installed;
@@ -1146,6 +1181,9 @@ public static partial class Shell
                 Mounted = NarrowDrawerMount.ShouldMount(overlay, Sidebar.OverlayOpen.Peek()),
                 Open = open,
                 Parts = s_drawerParts,
+                // The tier whose title bar carries no identity chip carries the account here (TC2: Classic Compact).
+                ShowAccount = ShellPolicy.Tracked.Chrome.BudgetFor(Theming.ThemeHost.Facts.Value.Tiers).TrailingInDrawer,
+                Account = s_drawerAccount,
             });
         }
     }

@@ -25,7 +25,7 @@
 - **Contract version 1.11** (`Contracts\ContractVersion.cs`, which keeps the history): the published view keys and style keys, their props records
   and the role vocabulary. A theme records the version it was built against in its manifest; `ThemeHost.Install` refuses a
   composition whose major differs or whose minor is newer than the core's. 1.1 (CT4) appended `LyricsState.Offline`, the
-  optional `LyricsLinesStyle.Offline` picture and `PlayerBarSlots.VideoSplit`; 1.6 (CT6b) added `CoverVeilProps.Hold`; 1.7 (CT9) `ThemePolicies.Artwork` and `WashRoles.Rich`; 1.8 (CT8) `Overlay.OfflineVacancy`; 1.9 (CT6a) `DetailFrameProps.Head`, `LikedChipBarProps.Inline` and `TrackRowSkin.Quiet`; 1.10 (X2 follow-up) `LibraryAlbumPaneProps.Columns`; 1.11 (P3t TC9) `ThemePolicies.Overlays` and `Overlay.ContextSheet`; 1.12 (TC1) `ChromeRowState.TabCount` / `.TabMaxWidth`, the optional `ChromePolicy.Compact` / `.Huge` budgets with `ChromeBudget.TabsAsCount`, and `ctx.TierReader()`; 1.13 (TC3) `StagePolicy.Aspect` as three `TierLadder`s and the per-tier `StageTierMetrics`; 1.14 (TC5) `ThemePolicies.DetailTiers`, the `DetailLadders` ids, `Track.ColumnSet.Compact`, `Track.RowMetrics.ShowDuration`, `DetailInsightsProps.Docked` and `ContextSheetProps.Content`.
+  optional `LyricsLinesStyle.Offline` picture and `PlayerBarSlots.VideoSplit`; 1.6 (CT6b) added `CoverVeilProps.Hold`; 1.7 (CT9) `ThemePolicies.Artwork` and `WashRoles.Rich`; 1.8 (CT8) `Overlay.OfflineVacancy`; 1.9 (CT6a) `DetailFrameProps.Head`, `LikedChipBarProps.Inline` and `TrackRowSkin.Quiet`; 1.10 (X2 follow-up) `LibraryAlbumPaneProps.Columns`; 1.11 (P3t TC9) `ThemePolicies.Overlays` and `Overlay.ContextSheet`; 1.12 (TC1) `ChromeRowState.TabCount` / `.TabMaxWidth`, the optional `ChromePolicy.Compact` / `.Huge` budgets with `ChromeBudget.TabsAsCount`, and `ctx.TierReader()`; 1.13 (TC3) `StagePolicy.Aspect` as three `TierLadder`s and the per-tier `StageTierMetrics`; 1.14 (TC5) `ThemePolicies.DetailTiers`, the `DetailLadders` ids, `Track.ColumnSet.Compact`, `Track.RowMetrics.ShowDuration`, `DetailInsightsProps.Docked` and `ContextSheetProps.Content`; 1.15 (TC2) the panel's placement per window tier (`PanelPlacement`, `PanelView.Placement`, `PanelPolicy.Tiers`, the frame's second docked pane), `PlayerBarPolicy.Windows`, the mini bar's `PlayerBarProps.ProgressLine` / `OpenNowPlaying` and `SeekRailProps.Hairline`, `ChromeBudget.TrailingInDrawer`, `ChromeRowState.TabsHidden` and the drawer's account row (`NarrowDrawerProps.Account`, `ProfileChipProps.Drawer`); `PanelPolicy.InlineMin` is removed.
 - Keys live only in `Contracts\ViewKeys*.cs` and `StyleKeys.cs` (WVTH006). T1 declares none; each extraction PR adds its
   family in its own partial file (`ViewKeys.Shell.cs`: T4a's `Shell.Frame` and `Shell.ContentState`). How a surface becomes a
   registered view is section 2b.
@@ -164,7 +164,7 @@ A structure decides the numbers the core state machines run on; the machines the
 | Record | What the structure decides | Core machine that takes it |
 |---|---|---|
 | `NavPanePolicy` | what the Narrow and Tiny bands force (`NavPaneMode`: Expanded, Compact rail, Overlay drawer, None; `ModeFor(WidthTier)`), the expanded width bounds and default, the content floor, the seam collapse rule, the collapsed rail's width (`RailWidth`), whether the pane is resizable. The bands themselves are the window tiers (section 7): Compact is Tiny, Small is Narrow, Standard and up are Wide | `SidebarPaneModeRules`, `SidebarResizeRules`, `FrameModel`, `SidebarPaneBounds.Clamp` |
-| `PanelPolicy` | the panel's min and max width, the content it must leave to stay inline, full height (on `PanelView.FullHeight` since T6b), the mini player's `Video.PipBounds` | `Shell.ClampRailWidth`, `Shell.CanFitRail`, `PanelHost.FitWidthTo`, `Video.PipGesture` |
+| `PanelPolicy` | the panel's min and max width, its placement per window tier (`Tiers`: `PanelTierRule` docked / floating / sheet, how many dock, the docked floor; TC2), full height (on `PanelView.FullHeight` since T6b), the mini player's `Video.PipBounds` | `Shell.ClampRailWidth`, `PanelHost.FitWidthTo` / `FitWidthToFloor`, the frame's placement effect, `WindowTiers.PanelsReserved`, `Video.PipGesture` |
 | `PlayerBarPolicy` | six pressure levels (start width, `PlayerBarSlots`, spacing, art, hit targets, and what the podcast bar carries at the level: `PodcastSlots`, `PodcastLeftW`), the narrowing hold and the bar height | `Shell.PlayerBar`, `Shell.PlayerBarLayout.ForTier`, `Shell.PodcastBarLayout` (so `PlayerBarRules.Overflow` and `RightWidth` follow); `R.Space.DockReserve` answers the bar's height |
 | `ChromePolicy` | the title-bar row's `ChromeBudget`: where the actions, name and forward button may appear, what each affordance costs, the search and tab widths | `Shell.Chrome` (the allocator) |
 | `StagePolicy` | the stage's `AspectThresholds` (three `TierLadder`s: width, height, ratio, each edge with its hold) and the per-window-tier `StageTierMetrics` (`Metrics`, `Compact`, `Small`, `Huge`: the transport card's height and gutter, the lyrics type range; contract 1.13) | `Stage.Layout.ClassOf` / `Resolve` (the stage surface passes `MetricsFor(tiers)`) |
@@ -1919,7 +1919,7 @@ Tiers are a **core fact**; where a tier begins, how it holds across a resize and
 band above it unreachable, so a structure that draws no Huge 4K band lets its Huge band cover every wider window. Classic holds 40 on
 widening at 528 and 1008 (to 568 and 1048) and on narrowing at 1920 (back below 1880); WinUI, Zune and Panorama will hold on narrowing.
 
-**The sidebar's bands are the window tiers.** `SidebarPaneModeRules.BandOf(WidthTier)` maps Compact to Tiny, Small to Narrow and the rest to Wide; `NavPanePolicy.ModeFor(WidthTier)` is what the band forces. The pane has no edges of its own, so the frame seeds its band from the window tier of the first frame and derives `Sidebar.Band` from the tier signal. **The player bar's levels are not a ladder here:** they are `PlayerBarPolicy`'s (section 2a), which carries each level's slots and spacing beside its start width and the narrowing hold.
+**The sidebar's bands are the window tiers.** `SidebarPaneModeRules.BandOf(WidthTier)` maps Compact to Tiny, Small to Narrow and the rest to Wide; `NavPanePolicy.ModeFor(WidthTier)` is what the band forces. The pane has no edges of its own, so the frame seeds its band from the window tier of the first frame and derives `Sidebar.Band` from the tier signal. **The player bar's levels are a sub-ladder, not a tier ladder:** they are `PlayerBarPolicy`'s (section 2a), which carries each level's slots and spacing beside its start width and the narrowing hold, and `PlayerBarPolicy.Windows` clamps the level to the range the committed window tier may use (TC2). **The panel docks by tier:** `PanelPolicy.For(tier)` says whether the panel docks, floats or is a sheet and how many panels dock; the frame publishes it from the committed tier (`Shell.Ui.RailFits`, `PanelPlacement`, `SecondPaneAllowed`, `PanelFloor`), so docking never depends on a fit test.
 
 **No jumps (plan 3.3).** A first mount resolves in its own frame. A crossing found after mount is a *pending* value in the host and
 is committed on the first frame that is **not resized**, right before FLIP capture: the resized frame lays the OLD tier out at the new
@@ -1932,7 +1932,7 @@ for that tier. The fact is republished when a tier, a rung or `Resizing` changes
 are the sizes *at that snapshot*; a reader that needs the live width reads `Viewport.Size`.
 
 **Content width** is the window less the sidebar column the *logical* window tier presents (the pending crossing included, so the
-content tier crosses together with the window tier) and an inline rail (`WindowTiers.EstimateContentWidth`).
+content tier crosses together with the window tier) and the panels that tier docks (`WindowTiers.PanelsReserved`, `EstimateContentWidth`).
 
 **Clip, never squeeze.** A tier layout record implements `ITierLayoutRecord`: it lists the regions it may clip with their minimum
 sizes, builds each with `TierRegion.Host` and puts them in a `TierClip.Ancestor`. On the resized frame a region the old tier cannot fit
@@ -1999,8 +1999,23 @@ Forward hides at 520 and below at every tier. A view reads `ClassicTiers.FrameOf
 `Spacing.PageWide`; the tier-invariant rhythm is `ClassicTiers.PaneInset` (16), `HeadMetaGap` (4), `HeadTop` (24) and `RailPadding`
 (24 / 8 / 24 / 16). The window's minimum height is `TierPolicy.WindowMinHeight` (330, `Shell.Host`; F8, #197).
 
+**The player bar and the panels per tier (TC2; boards C-PlayerBar, C-PlayerBars, C-Shell-*, C-NowPlaying-Compact, C-Queue-Small,
+C-Shell-Huge, the Huge 4K boards).** `Rules\Tiers.Player.cs` (`ClassicPlayerTiers`) holds the six levels (the sub-ladder 0 / 440 / 760 /
+900 / 1100 / 1240, 24 narrowing hold, moved from `ClassicPolicies`) and one `ClassicPlayerBarTier` per window tier: **Compact** the 56 mini
+bar (a 2-DIP progress hairline, the identity as one door to the now-playing sheet, the heart and the play disc at 40 x 40); **Small** the
+Medium level (capped there; 528-759 keeps the Compact level, where the Medium row does not fit); **Standard** the production ladder
+(Comfortable / Wide / Full); **Huge** the three-zone bar (360 identity zone with a 56 cover, the transport with shuffle and repeat centred
+in a column of at most 1040, a 360 right zone with a 128 volume rail). A Short window keeps its tier's bar (72). `Rules\Tiers.Panel.cs`
+(`ClassicPanelTiers`) places the panel: **Compact** a bottom sheet from 56 down over the page and the mini bar (grab strip, r8 top
+corners, a 0.4 scrim that closes it; its now-playing arm adds Lyrics and Queue doors), **Small** floating 340 wide 8 in from the right,
+the title bar and the bar, **Standard** one docked panel, **Huge** two (D3: the queue opens in a second pane right of the primary, both at
+least 380, 420 at 3840). The frame's panel layer spans the content region and the dock; its hosts carry a layout transition, so a crossing
+that docks, floats, sheets or adds the second pane animates on the crossing frame. At Compact the title bar carries no identity chip
+(`ChromeBudget.TrailingInDrawer`): the drawer leads with the account row; the tab-count button drops whole (`TabsHidden`) where the row
+cannot seat it, never clipped.
+
 Still not moved out of core, because none is a ladder this primitive can state without changing behaviour: the chrome-row allocator
-(it now takes the tier's budget), the stage aspect classes, the right-rail fit, the detail page-mode ladder and the artist hero's tiers
+(it now takes the tier's budget), the stage aspect classes, the detail page-mode ladder and the artist hero's tiers
 (the Classic artist and profile pages override the hero metrics' gutter with the page gutter).
 
 **Testing the tiers.** `TierPolicyTests` pin the ladders and records; `Wavee.ShellTests\TierLayoutTests` mounts the real frame at every

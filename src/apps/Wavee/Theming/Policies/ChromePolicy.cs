@@ -72,6 +72,10 @@ public sealed record ChromeBudget(
     /// the strip.</summary>
     public bool TabsAsCount { get; init; }
 
+    /// <summary>The trailing island (the identity chip and its actions) is not in the row: the window tier carries the account in the nav
+    /// drawer instead (Classic's Compact title bar, boards C-Shell-Compact and C-Sidebar's account row; TC2). False (the default) keeps it.</summary>
+    public bool TrailingInDrawer { get; init; }
+
     /// <summary>Everything wrong with the budget, empty when the allocator can run on it.</summary>
     public IReadOnlyList<string> Validate()
     {
@@ -115,11 +119,11 @@ public sealed record ChromeBudget(
 /// <param name="Budget">The row's budget (every window tier that has no budget of its own).</param>
 public sealed record ChromePolicy(ChromeBudget Budget)
 {
-    /// <summary>The shell before themes: the row's named widths, with the Compact row's tab count and the Huge row's wider search and
+    /// <summary>The shell before themes: the row's named widths, with the Compact row's tab count (and its account in the drawer, TC2) and the Huge row's wider search and
     /// tabs (what Wavee Classic declares; under <see cref="TierPolicy.Standard"/> only the base budget is ever read).</summary>
     public static ChromePolicy Default { get; } = new(ChromeBudget.Default)
     {
-        Compact = ChromeBudget.Default with { TabsAsCount = true },
+        Compact = ChromeBudget.Default with { TabsAsCount = true, TrailingInDrawer = true },
         Huge = ChromeBudget.Default with { SearchMaxW = Shell.Layout.ChromeHugeSearchMaxW, TabMaxW = Shell.Layout.ChromeHugeTabMaxW },
     };
 

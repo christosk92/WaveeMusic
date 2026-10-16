@@ -54,6 +54,9 @@ public static partial class Shell
         /// no sweep) forever. Two <c>UseTimeout</c>s below bump it; the render reads it through <see cref="BarFaceNow"/>.</summary>
         static readonly Action s_wake = static () => NowPlayingFace.Shared.Bump();
 
+        /// <summary>The window tier a level clamp reads: the committed tier, or -1 where no frame resolved one (every level).</summary>
+        static int WindowTierIndex(in Theming.TierFacts tiers) => tiers.Policy is null ? -1 : (int)tiers.Window;
+
         /// <summary>The props the frame mounts <c>Player.Bar</c> with: the host, the verbs, the live reads and the actions, built once.</summary>
         public static readonly PlayerBarProps Props = new()
         {
@@ -97,23 +100,35 @@ public static partial class Shell
             Credits = static () => BarCredits(),
             OverflowRow = OverflowItem,
             VideoPlacementMenu = static () => Video.PlacementMenu(includeFullscreen: true),
+            ProgressLine = static () => ProgressLine(),
+            OpenNowPlaying = static () => PanelHost.Shared.SetMode(RailMode.NowPlaying),
         };
 
         /// <inheritdoc />
         public PlayerBarView Use(RenderContext hooks)
         {
             // ── 1. the level machine (was PlayerBarRoot) ──
+            // The window width walks the structure's level sub-ladder with its hold (the RAW level, kept apart so the hold never sees a
+            // clamp), and the committed WINDOW TIER clamps it to the levels the tier may use (the policy's `Windows`, TC2): a level that
+            // belongs to a tier changes on the crossing frame and animates, one inside a tier tracks the width as before.
             var viewport = hooks.UseContextSignal(Viewport.Size);
             float initialWidth = viewport.Peek().Width;
-            var levelSignal = hooks.UseSignal(PlayerBarLayout.Initial(initialWidth));
+            int initialTier = WindowTierIndex(Theming.ThemeHost.Facts.Peek().Tiers);
+            var initialRaw = Shell.PlayerBar.Nominal(initialWidth);
+            var levelSignal = hooks.UseSignal(PlayerBarLayout.ForTier(Shell.PlayerBar.ForWindow(initialRaw, initialTier), initialWidth));
+            var rawLevel = hooks.UseRef(initialRaw);
             var initialized = hooks.UseRef(initialWidth > 0f);
 
             hooks.UseSignalEffect(() =>
             {
                 var previous = levelSignal.Peek();
                 float width = viewport.Value.Width;
+                int windowTier = WindowTierIndex(Theming.ThemeHost.Facts.Value.Tiers);
                 // The policy is read tracked: a theme's own levels, slots and spacing re-resolve the bar in place.
-                var next = PlayerBarLayout.Resolve(width, in previous, initialized.Value, ShellPolicy.Tracked.PlayerBar);
+                var policy = ShellPolicy.Tracked.PlayerBar;
+                var raw = Shell.PlayerBar.Resolve(width, rawLevel.Value, initialized.Value, policy);
+                rawLevel.Value = raw;
+                var next = PlayerBarLayout.ForTier(Shell.PlayerBar.ForWindow(raw, windowTier, policy), width, policy);
                 if (width > 0f) initialized.Value = true;
                 if (next.Equals(previous)) return;
                 // Always-on and cheap: a band change is a handful of events per session (0.2.9 gated this on an env var).
@@ -277,7 +292,7 @@ public static partial class Shell
                 HasVideo = hasVideo,
                 VideoLive = videoLive,
                 LyricsOpen = railOpen && railMode == RailMode.Lyrics,
-                QueueOpen = railOpen && railMode == RailMode.Queue,
+                QueueOpen = railOpen && railMode == RailMode.Queue || PanelHost.Shared.SecondOpen(),
             };
         }
 

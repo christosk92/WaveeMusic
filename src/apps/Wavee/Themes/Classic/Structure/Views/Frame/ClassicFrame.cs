@@ -14,11 +14,14 @@
 //   erase over a DComp visual beneath it), so everything drawn BEFORE it is erased where it overlaps and everything drawn
 //   AFTER it covers the picture. Those layers are pass-through, so the mini player still takes its drag.
 //
-//     column = 14 zero-size chord boxes · [chrome row] · content region · [player dock]
-//              the bracketed bands and the content region COLLAPSE (bound Visible, still mounted) under full-screen video OR the
-//              fullscreen stage: out of layout, paint and hit-test, subtree inactive
-//     content region = ZStack[ row(sidebar column · content card · rail gap · rail reservation) · sidebar seam ·
-//                              rail overlay · rail seam · narrow drawer ]
+//     column = 14 zero-size chord boxes · [chrome row] · body
+//     body   = ZStack[ column(content region · [player dock]) · panel layer ]
+//              the bracketed bands, the content region and the panel layer COLLAPSE (bound Visible, still mounted) under full-screen
+//              video OR the fullscreen stage: out of layout, paint and hit-test, subtree inactive
+//     content region = ZStack[ row(sidebar column · content card · rail gap · rail reservation · second gap · second reservation) ·
+//                              sidebar seam · rail seam · narrow drawer ]
+//     panel layer    = ZStack[ sheet scrim · primary panel host · second panel host ]: over the content region AND the player dock, so
+//                      the Compact sheet can cover the mini bar (TC2)
 //
 // The surfaces that are not yet a key of their own (the overlays) arrive as element builders on the props (`ShellFrameProps`); T11 gives
 // each its own key and replaces the builder with a `ctx.View` call here. The two video layers are builders for good: they are the core
@@ -35,6 +38,12 @@
 // once, so the card reads the tier through BOUND channels (`ctx.TierReader()`): a crossing recolours and reshapes it without a
 // re-render. The four top-level regions carry keys (`shell.titlebar`, `shell.nav.column`, `shell.content.card`, `shell.playerbar`) so
 // the tier tests find them.
+//
+// THE PANELS PER WINDOW TIER (TC2, `ClassicPanelTiers`): the primary panel host is placed by bound spacers from the tier's record (a
+// sheet 8 under the title bar down to the window's bottom edge at Compact, floating 340 wide 8 in from the right, the title bar and the
+// player bar at Small, docked beside the page at Standard and Huge) and carries a layout transition, so a crossing that docks, floats or
+// sheets it FLIPs the host on the crossing frame while the content card FLIPs with the reservation. At Huge the second pane (the queue) sits
+// right of it with its own reservation; the primary host moves left by the second pane's width when it opens, animated the same way.
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -68,8 +77,25 @@ internal static class ClassicFrame
                 // buttons) on every exit. A bound Visible takes each out of layout, paint, hit-test and focus and
                 // pauses its subtree (UseInterval, UseIsActive), and the edge never re-renders the frame.
                 ctx.View(ViewKeys.ShellTitleBar, props.TitleBar) with { Key = ClassicFrameLayout.TitleBarKey, Visible = Prop.Of(props.ChromeMounted) },
-                ContentRegion(props, in ctx, tiers),
-                ctx.View(ViewKeys.PlayerBar, props.PlayerBar) with { Key = ClassicFrameLayout.PlayerBarKey, Visible = Prop.Of(props.ChromeMounted) },
+                new BoxEl
+                {
+                    // The body: the content region and the dock in a column, the panel layer over both (TC2). It is the ONE region that
+                    // yields when the window is shorter than the column.
+                    ZStack = true, Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f,
+                            Children =
+                            [
+                                ContentRegion(props, in ctx, tiers),
+                                ctx.View(ViewKeys.PlayerBar, props.PlayerBar) with { Key = ClassicFrameLayout.PlayerBarKey, Visible = Prop.Of(props.ChromeMounted) },
+                            ],
+                        },
+                        PanelLayer(props, in ctx, tiers),
+                    ],
+                },
             ],
         };
 
@@ -160,19 +186,14 @@ internal static class ClassicFrame
                     Width = Prop.Of(props.RailGapWidth),
                 },
                 // The rail RESERVATION: snaps 0 ↔ width at commit; its underlay is the docked band's ONE coat.
+                Reservation(props.RailReservedWidth),
+                // The second docked pane's gap and reservation (Huge, D3): 0 unless the queue is open beside the panel.
                 new BoxEl
                 {
-                    Shrink = 0f,
-                    Width = Prop.Of(props.RailReservedWidth),
-                    Children =
-                    [
-                        new BoxEl
-                        {
-                            Grow = 1f, HitTestPassThrough = true, ClipToBounds = true, ZStack = true,
-                            Children = [new BoxEl { Margin = ClassicFrameRules.StrokeOverhang, Fill = Prop.Of(static () => R.Layer.FileArea), Corners = ClassicFrameRules.RailBandCorners }],
-                        },
-                    ],
+                    Shrink = 0f, HitTestVisible = false,
+                    Width = Prop.Of(props.SecondGapWidth ?? s_zero),
                 },
+                Reservation(props.SecondReservedWidth ?? s_zero),
             ],
         },
         // The sidebar seam: a strip translated to the pane edge, entirely on the content side of it.
@@ -183,38 +204,8 @@ internal static class ClassicFrame
             Transform = Prop.Of(() => Affine2D.Translation(props.SidebarPresentedWidth.Value, 0f)),
             Children = [props.SidebarSeam()],
         },
-        // The rail overlay: final width always; the rail body owns the translate, the coats and the bodies.
-        new BoxEl
-        {
-            Grow = 1f, Direction = 0, Justify = FlexJustify.End, HitTestPassThrough = true,
-            Children =
-            [
-                new BoxEl
-                {
-                    Direction = 1, Shrink = 0f, ClipToBounds = true, ZStack = true, HitTestPassThrough = true,
-                    Width = Prop.Of(() => props.RailWidth.Value),
-                    Children =
-                    [
-                        // The FLOATING rail's backing band (the shell ground) — paint-only, never the deepest hit.
-                        new BoxEl
-                        {
-                            Grow = 1f, HitTestPassThrough = true,
-                            Fill = Prop.Of(() => props.RailFloats() ? R.Layer.FloatingChrome : ColorF.Transparent),
-                        },
-                        new BoxEl
-                        {
-                            Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, HitTestPassThrough = true,
-                            Corners = ClassicFrameRules.RailBandCorners, IsolateLayout = true,
-                            Opacity = Prop.Of(() => props.RailFade.Value),
-                            Children = [ctx.View(ViewKeys.ShellPanel, props.Panel)],
-                        },
-                    ],
-                },
-            ],
-        },
-        // The rail seam: exists only while the rail is open. It paints AFTER (above) the rail overlay: the rail no longer
-        // moves during a drag, so a narrowing drag carries the guide into the rail's rect, and it must stay visible over
-        // the rail's content. At rest the strip lies wholly left of the rail, so hit-testing is unchanged.
+        // The rail seam: exists only while the rail is open and docked. The panel layer paints over the content region, so a narrowing drag
+        // that carries the guide into the panel's rect draws it under the panel's content; at rest the strip lies wholly left of the panel.
         new BoxEl
         {
             Direction = 1, ClipToBounds = true,
@@ -224,7 +215,7 @@ internal static class ClassicFrame
         },
         props.NarrowDrawer()) with
     {
-        // The ONE region that yields when the window is shorter than the column; clipped so a settling page never
+        // The region that yields (inside the body) when the window is shorter than the column; clipped so a settling page never
         // paints into the dock slot. The drag spotlight scrim is scoped to it (chrome and dock stay lit).
         // The bound Visible COLLAPSES the whole shell body while the fullscreen stage OR full-screen video is up: out of
         // layout, paint and hit-test, and its subtree goes inactive (UseInterval pauses, UseActivation fires its edges as on a KeepAlive
@@ -235,6 +226,148 @@ internal static class ClassicFrame
         Visible = Prop.Of(props.ChromeMounted),
         OnRealized = props.OnContentRegionRealized,
         OnBoundsChanged = props.OnContentRegionBounds,
+    };
+
+    private static readonly Func<float> s_zero = static () => 0f;
+
+    /// <summary>A docked panel's row reservation: <paramref name="width"/> wide, its underlay the docked band's ONE coat.</summary>
+    private static Element Reservation(Func<float> width) => new BoxEl
+    {
+        Shrink = 0f,
+        Width = Prop.Of(width),
+        Children =
+        [
+            new BoxEl
+            {
+                Grow = 1f, HitTestPassThrough = true, ClipToBounds = true, ZStack = true,
+                Children = [new BoxEl { Margin = ClassicFrameRules.StrokeOverhang, Fill = Prop.Of(static () => R.Layer.FileArea), Corners = ClassicFrameRules.RailBandCorners }],
+            },
+        ],
+    };
+
+    // ── the panel layer (TC2) ─────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The panels over the content region and the dock: the Compact sheet's scrim, the primary panel host and the second pane.</summary>
+    private static Element PanelLayer(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers)
+    {
+        Func<PanelPlacement> placement = props.PanelPlacement ?? s_dock;
+        var kids = new List<Element>(3)
+        {
+            Embed.Comp(props.Panel, static () => new ClassicPanelScrim()),
+            PrimaryHost(props, in ctx, tiers, placement),
+        };
+        if (props.SecondPanel is { } second) kids.Add(SecondHost(props, second, in ctx, tiers));
+        return new BoxEl
+        {
+            Grow = 1f, ZStack = true, HitTestPassThrough = true,
+            Visible = Prop.Of(props.ChromeMounted),
+            Children = kids.ToArray(),
+        };
+    }
+
+    private static readonly Func<PanelPlacement> s_dock = static () => PanelPlacement.Dock;
+
+    /// <summary>The primary panel's host: bound spacers place it by the tier's record, its width is the placement's (the window for a
+    /// sheet, 340 floating, the committed width docked), and it FLIPs when a crossing moves it. The panel body owns the slide, the coats
+    /// and the bodies.</summary>
+    private static Element PrimaryHost(ShellFrameProps props, in ViewContext ctx, Func<TierFacts> tiers, Func<PanelPlacement> placement)
+    {
+        float Top() => placement() == PanelPlacement.Dock ? 0f : ClassicPanelTiers.Of(tiers()).Inset;
+        float Bottom()
+        {
+            var t = tiers();
+            float bar = ClassicPlayerTiers.BarOf(t).Height;
+            return placement() switch
+            {
+                PanelPlacement.Sheet => 0f,
+                PanelPlacement.Float => bar + ClassicPanelTiers.Of(t).Inset,
+                _ => bar,
+            };
+        }
+        float Right() => placement() switch
+        {
+            PanelPlacement.Float => ClassicPanelTiers.Of(tiers()).Inset,
+            PanelPlacement.Dock => (props.SecondGapWidth?.Invoke() ?? 0f) + (props.SecondReservedWidth?.Invoke() ?? 0f),
+            _ => 0f,
+        };
+        float WidthNow() => placement() switch
+        {
+            PanelPlacement.Sheet => props.Viewport.Value.Width,
+            PanelPlacement.Float => ClassicPanelTiers.Of(tiers()).FloatWidth,
+            _ => props.RailWidth.Value,
+        };
+        CornerRadius4 CornersNow() => placement() switch
+        {
+            PanelPlacement.Sheet => new CornerRadius4(ClassicPanelTiers.Corner, ClassicPanelTiers.Corner, 0f, 0f),
+            PanelPlacement.Float => CornerRadius4.All(ClassicPanelTiers.Corner),
+            _ => ClassicFrameRules.RailBandCorners,
+        };
+        return new BoxEl
+        {
+            Direction = 1, Grow = 1f, HitTestPassThrough = true,
+            Children =
+            [
+                new BoxEl { Shrink = 0f, HitTestVisible = false, Height = Prop.Of(Top) },
+                new BoxEl
+                {
+                    Direction = 0, Grow = 1f, Shrink = 1f, MinHeight = 0f, Justify = FlexJustify.End, HitTestPassThrough = true,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Key = ClassicPanelTiers.HostKey,
+                            Direction = 1, Shrink = 0f, ClipToBounds = true, ZStack = true, HitTestPassThrough = true,
+                            Width = Prop.Of(WidthNow), Corners = Prop.Of(CornersNow),
+                            Animate = ClassicFrameRules.PanelHostAnim,
+                            Children =
+                            [
+                                // The FLOATING panel's backing band (the shell ground) — paint-only, never the deepest hit.
+                                new BoxEl
+                                {
+                                    Grow = 1f, HitTestPassThrough = true, Corners = Prop.Of(CornersNow),
+                                    Fill = Prop.Of(() => props.RailFloats() ? R.Layer.FloatingChrome : ColorF.Transparent),
+                                },
+                                new BoxEl
+                                {
+                                    Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, HitTestPassThrough = true,
+                                    Corners = Prop.Of(CornersNow), IsolateLayout = true,
+                                    Opacity = Prop.Of(() => props.RailFade.Value),
+                                    Children = [ctx.View(ViewKeys.ShellPanel, props.Panel)],
+                                },
+                            ],
+                        },
+                        new BoxEl { Shrink = 0f, HitTestVisible = false, Width = Prop.Of(Right) },
+                    ],
+                },
+                new BoxEl { Shrink = 0f, HitTestVisible = false, Height = Prop.Of(Bottom) },
+            ],
+        };
+    }
+
+    /// <summary>The second docked pane's host (Huge, D3): the queue beside the primary panel, docked at the right edge above the dock. Its
+    /// panel body owns its slide.</summary>
+    private static Element SecondHost(ShellFrameProps props, PanelProps second, in ViewContext ctx, Func<TierFacts> tiers) => new BoxEl
+    {
+        Direction = 1, Grow = 1f, HitTestPassThrough = true,
+        Children =
+        [
+            new BoxEl
+            {
+                Direction = 0, Grow = 1f, Shrink = 1f, MinHeight = 0f, Justify = FlexJustify.End, HitTestPassThrough = true,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Key = ClassicPanelTiers.SecondHostKey,
+                        Direction = 1, Shrink = 0f, ClipToBounds = true, HitTestPassThrough = true,
+                        Corners = ClassicFrameRules.RailBandCorners, IsolateLayout = true,
+                        Width = Prop.Of(props.SecondPanelWidth ?? s_zero),
+                        Children = [ctx.View(ViewKeys.ShellPanel, second)],
+                    },
+                ],
+            },
+            new BoxEl { Shrink = 0f, HitTestVisible = false, Height = Prop.Of(() => ClassicPlayerTiers.BarOf(tiers()).Height) },
+        ],
     };
 
     /// <summary>The content card's hairline: the top-left card radius and a 1-DIP stroke on the left and top edges (the right and bottom ones

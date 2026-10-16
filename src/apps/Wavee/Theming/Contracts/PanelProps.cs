@@ -1,10 +1,14 @@
 // ── Theming/Contracts/PanelProps.cs — the props of `Shell.Panel` (themes plan 6.0, T6b) ───────────────────────────────────────
 //
 // THE PANEL IS A CORE STATE MACHINE AND A THEME VIEW. The core keeps what decides: `Shell.PanelHost` (open, mode, committed
-// width, floating or inline, the docked video's height and pin), the width and fit rules (`PanelPolicy`, `Shell.ClampRailWidth`,
-// `Shell.CanFitRail`, `PanelHost.FitWidthTo`), the rail <-> docked-video coupling, the seam's splitter (the frame places it) and
-// the open/close bookkeeping. This record is what the template draws from: ONE decided `PanelView` per read, plus the verbs a
-// click asks for and the builders of the bodies the core hosts.
+// width, docked, floating or a sheet, the docked video's height and pin, the queue beside it), the width and placement rules
+// (`PanelPolicy` per window tier, `Shell.ClampRailWidth`, `PanelHost.FitWidthTo` / `FitWidthToFloor`), the rail <-> docked-video
+// coupling, the seam's splitter (the frame places it) and the open/close bookkeeping. This record is what the template draws from: ONE
+// decided `PanelView` per read, plus the verbs a click asks for and the builders of the bodies the core hosts.
+//
+// TWO PANES (TC2, D3). Where the window tier docks two panels, the queue opens in a SECOND pane beside the primary one. The frame mounts
+// `Shell.Panel` a second time with the second pane's own props (`ShellFrameProps.SecondPanel`): its view is always the queue, docked, with
+// no docked video card.
 //
 // WHAT THE VIEW SAYS. `Read` is called inside the template's render (the panel frame is a component of the theme), so the
 // subscriptions land on it: the panel's cells, the video surface's placement, the stage that may host the docked video, and the
@@ -29,6 +33,19 @@ namespace Wavee.Theming.Contracts;
 /// and the session document persists).</summary>
 public enum PanelMode : byte { Lyrics, Queue, NowPlaying, Friends, Video }
 
+/// <summary>Where the right panel is laid out in a window tier (the structure's <c>PanelPolicy</c>; contract 1.15).</summary>
+public enum PanelPlacement : byte
+{
+    /// <summary>Docked beside the page: the content row reserves its width.</summary>
+    Dock,
+
+    /// <summary>Floating over the page: the page keeps its width.</summary>
+    Float,
+
+    /// <summary>A bottom sheet over the page and the player bar.</summary>
+    Sheet,
+}
+
 /// <summary>What occupies the now-playing arm's pinned slot: ONE slot, two possible occupants, never both.</summary>
 public enum PanelPinned : byte
 {
@@ -49,8 +66,15 @@ public sealed record PanelView
     /// <summary>The committed width (the layout's; a seam drag previews elsewhere and commits on release).</summary>
     public float Width { get; init; }
 
-    /// <summary>The panel does not fit inline and overlays the page.</summary>
+    /// <summary>The window tier does not dock the panel: it overlays the page (<see cref="Placement"/> says how).</summary>
     public bool Floats { get; init; }
+
+    /// <summary>Where the window tier lays the panel out: docked, floating or a bottom sheet (contract 1.15).</summary>
+    public PanelPlacement Placement { get; init; }
+
+    /// <summary>The body unmounts once a close has slid out (the second docked pane, whose queue must not stay mounted beside the
+    /// primary panel's own); false keeps a closed panel's body mounted, as the primary panel always has (contract 1.15).</summary>
+    public bool UnmountWhenClosed { get; init; }
 
     /// <summary>The policy says the panel spans the window's full height instead of the content row. Read by a theme whose panel is
     /// laid out that way; the state machine does not depend on it (Classic's is false).</summary>
@@ -98,6 +122,10 @@ public sealed record PanelProps
 
     /// <summary>Close the panel, whatever it shows (a docked video is demoted by the coupling).</summary>
     public required Action Close { get; init; }
+
+    /// <summary>Show another body in this panel (the Compact now-playing sheet's Lyrics and Queue doors); null where the panel offers none
+    /// (contract 1.15).</summary>
+    public Action<PanelMode>? ShowMode { get; init; }
 
     /// <summary>Turn the docked video back into the art ("switch to audio").</summary>
     public required Action ShowArt { get; init; }

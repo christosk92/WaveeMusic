@@ -77,6 +77,10 @@ public sealed record SeekRailProps
     /// <summary>An episode's chapter rail: the hover handlers are wired (when enabled) and the pointer-exit always.</summary>
     public bool ChapterRail { get; init; }
 
+    /// <summary>The progress HAIRLINE of the Compact mini player bar (contract 1.15, TC2): the played fraction as a thin line across the
+    /// bar's top edge, no thumb, no hit test (the mini bar is a door to the now-playing sheet, where the rail seeks).</summary>
+    public bool Hairline { get; init; }
+
     /// <summary>The chapter decoration's core host (it mounts <see cref="ViewKeys.SeekChapters"/>) while <see cref="ChapterRail"/>
     /// holds; null otherwise (the picture places an inert box in its layer).</summary>
     public Element? Chapters { get; init; }

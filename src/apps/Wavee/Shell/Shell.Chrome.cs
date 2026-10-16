@@ -223,7 +223,10 @@ public static partial class Shell
         // C-TitleBar's "≡, Back, Search, tab count"). The island is budgeted at one nav button and carries no "+" slot.
         bool TabCount = false,
         // The widest a strip tab grows under the budget the row was allocated by (Classic's Huge budget lets tabs grow wider).
-        float TabMaxW = 0f)
+        float TabMaxW = 0f,
+        // The count form's button is OUT of the row: the window is too narrow to seat it whole beside the search icon and the captions (a
+        // Compact window at the 300-DIP floor). It drops whole, as Back does, instead of being clipped into a sliver (TC2).
+        bool TabsHidden = false)
     {
         /// <summary>Below the threshold: bell and friends become profile-menu rows (pin simply drops — the tab/page
         /// context menu still offers it).</summary>
@@ -261,7 +264,8 @@ public static partial class Shell
                 candidate.Back && (old.ShowBack || reserved.Back),
                 candidate.NewTab && (old.ShowNewTab || reserved.NewTab),
                 candidate.Trailing && (old.ShowTrailing || reserved.Trailing),
-                candidate.Field && (old.SearchMode == MergedSearchMode.Field || reserved.Field));
+                candidate.Field && (old.SearchMode == MergedSearchMode.Field || reserved.Field),
+                candidate.Tabs && (!old.TabsHidden || reserved.Tabs));
             return Compose(width, naturalTabExtent, in held, chip, old.LeadClusterW, b);
         }
 
@@ -395,13 +399,13 @@ public static partial class Shell
             };
         }
 
-        readonly record struct Stage(bool Name, bool Actions, bool Forward, bool Back, bool NewTab, bool Trailing, bool Field);
+        readonly record struct Stage(bool Name, bool Actions, bool Forward, bool Back, bool NewTab, bool Trailing, bool Field, bool Tabs = true);
 
         static Stage StageFor(float width, float naturalTabExtent, FrameRules.ChipForm chip, ChromeBudget b)
         {
             bool name = false, actionsInRow = false;
             bool forward = width > b.ForwardEnterW;
-            bool back = true, newTab = !b.TabsAsCount, trailing = true;   // the count form has no strip, so no "+" slot
+            bool back = true, newTab = !b.TabsAsCount, trailing = !b.TrailingInDrawer;   // the count form has no strip, so no "+" slot; the drawer may carry the chip
 
             // The tab viewport is the last elastic lane. Under extreme pressure shed fixed islands before allowing it
             // to disappear; the captions and the compact search trigger never participate in that trade. Neither
@@ -413,6 +417,9 @@ public static partial class Shell
             if (!FitsEssential()) newTab = false;
             if (!FitsEssential()) trailing = false;
             if (!FitsEssential()) back = false;
+            // The count form is one whole button or nothing: it needs its own nav-button width, never the strip's 32-DIP sliver.
+            bool tabs = !b.TabsAsCount
+                || width - FixedBudget(name, actionsInRow, forward, back, newTab, trailing, chip, b) - b.SearchIconW >= b.NavButtonW;
 
             // ── THE PROMOTION RULE (#88): a width threshold is a PERMISSION, not a decision ───────────────────────────
             //
@@ -449,7 +456,7 @@ public static partial class Shell
             // (`Compose` handing back 280+ whatever the lane was), which is what seated a clipped stub.
             float lane = SearchLane(width, naturalTabExtent, name, actionsInRow, forward, back, newTab, trailing, chip, b);
             bool field = lane >= b.SearchMinW;
-            return new Stage(name, actionsInRow, forward, back, newTab, trailing, field);
+            return new Stage(name, actionsInRow, forward, back, newTab, trailing, field, tabs);
         }
 
         static Chrome Compose(float width, float naturalTabExtent, in Stage stage, FrameRules.ChipForm chip,
@@ -459,7 +466,7 @@ public static partial class Shell
             float lead = LeadClusterFor(width, naturalTabExtent, in stage, chip, searchWidth, previousLeadClusterW, b);
             return new Chrome(stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing, chip,
                 stage.Field ? MergedSearchMode.Field : MergedSearchMode.Icon, searchWidth, lead,
-                stage.Field ? ExpandWidthFor(width, in stage, chip, searchWidth, lead, b) : searchWidth, b.TabsAsCount, b.TabMaxW);
+                stage.Field ? ExpandWidthFor(width, in stage, chip, searchWidth, lead, b) : searchWidth, b.TabsAsCount, b.TabMaxW, !stage.Tabs);
         }
 
         /// <summary>The focused field's width (tuned F6): <c>min(rest + grow, room − clear)</c>, quantised down, never below the
@@ -493,6 +500,8 @@ public static partial class Shell
         static float LeadClusterFor(float width, float naturalTabExtent, in Stage stage, FrameRules.ChipForm chip,
             float searchWidth, float? previousLeadClusterW, ChromeBudget b)
         {
+            // The count form's island is the one button, whole, or nothing (TC2): never a width the button would be clipped to.
+            if (b.TabsAsCount) return stage.Tabs ? b.NavButtonW : 0f;
             float fixedBudget = FixedBudget(stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing, chip, b);
             float available = MathF.Max(b.TabViewportMinW, width - fixedBudget - searchWidth);
             float desired = MathF.Max(b.TabViewportMinW,

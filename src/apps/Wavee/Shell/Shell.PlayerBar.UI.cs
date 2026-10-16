@@ -72,6 +72,9 @@ public static partial class Shell
     public static Element SeekBar(PlayerChromeFeed? feed = null, Action<bool>? onScrubbing = null, IReadSignal<bool>? reveal = null)
         => Embed.Comp(() => new BarSeekRail(feed, onScrubbing, reveal));
 
+    /// <summary>The mini player bar's progress hairline (TC2): the same rail host, drawn as a line with no thumb and no hit test.</summary>
+    public static Element ProgressLine() => Embed.Comp(static () => new BarSeekRail(hairline: true));
+
     /// <summary>A transport time label's core host (it mounts <see cref="ViewKeys.TimeLabel"/>). <paramref name="remaining"/> picks the right slot (−remaining ⇄ duration, or
     /// the live mark while live); <paramref name="ink"/> is the stage's theme-invariant on-media override (null = the
     /// bar's own caption ink). Both are STRUCTURAL and fixed for the label's life. <paramref name="reveal"/> is the
@@ -427,8 +430,11 @@ public static partial class Shell
         readonly Action _onExit;
         readonly Action<RectF> _onBounds;
 
-        public BarSeekRail(PlayerChromeFeed? chromeFeed = null, Action<bool>? onScrubbing = null, IReadSignal<bool>? reveal = null)
+        readonly bool _hairline;   // the mini bar's progress line (TC2): no thumb, no hit test, never a scrub
+
+        public BarSeekRail(PlayerChromeFeed? chromeFeed = null, Action<bool>? onScrubbing = null, IReadSignal<bool>? reveal = null, bool hairline = false)
         {
+            _hairline = hairline;
             _chromeFeed = chromeFeed;
             _onScrubbing = onScrubbing;
             _reveal = reveal;
@@ -477,6 +483,8 @@ public static partial class Shell
             // order never varies.
             if (mode == SeekRailMode.Line)
                 return ViewSlots.View(ViewKeys.SeekRail, new SeekRailProps { Host = this, Enabled = enabled, Line = true });
+            if (_hairline)
+                return ViewSlots.View(ViewKeys.SeekRail, new SeekRailProps { Host = this, Enabled = enabled, Hairline = true });
 
             var chapterId = Playback.CurrentId.Value;
             uint chapterEpoch = Entities.ScopeEpoch.Value;

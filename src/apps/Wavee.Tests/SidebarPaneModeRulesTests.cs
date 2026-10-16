@@ -87,12 +87,4 @@ public sealed class SidebarPaneModeRulesTests
     [Fact] public void OverlayWidth_LeavesTheRailsWorthOfPage()
         => Assert.Equal(452f, SidebarPaneModeRules.OverlayWidth(460f, 500f));
 
-    [Fact] public void RailFit_ReadsThePresentedPane_NeverChangesTheMode()
-    {
-        // The right rail at 360 does not fit beside a 320 pane in a 1100 window: it floats, and the pane stays Expanded.
-        Assert.False(SidebarPaneModeRules.RailFits(320f, 360f, 1100f));
-        Assert.Equal(SidebarPaneMode.Expanded,
-            SidebarPaneModeRules.Resolve(ClassicTierFixture.BandOf(1100f, SidebarWindowBand.Wide), false, false));
-        Assert.True(SidebarPaneModeRules.RailFits(48f, 360f, 1100f));
-    }
 }

@@ -469,8 +469,10 @@ public sealed class ThemeCatalogTests : IDisposable
         // 1.11 (P3t TC9): ThemePolicies.Overlays, Overlay.ContextSheet and ContextSheetProps.
         // 1.12 (Classic frame tiers TC1): ChromeRowState.TabCount / TabMaxWidth, ChromePolicy.Compact / Huge, ctx.TierReader().
         // 1.13 (Classic stage tiers TC3): StagePolicy.Aspect as three TierLadders, StagePolicy's per-tier StageTierMetrics.
-        // 1.14 (Classic detail tiers TC5): ThemePolicies.DetailTiers, DetailLadders, ColumnSet.Compact, DetailInsightsProps.Docked. A 1.0 theme still runs.
-        Assert.Equal("1.14", ContractVersion.Text);
+        // 1.14 (Classic detail tiers TC5): ThemePolicies.DetailTiers, DetailLadders, ColumnSet.Compact, DetailInsightsProps.Docked.
+                // 1.15 (Classic player bar and panels per tier TC2): PanelPlacement and the panel's tier rules, the second docked pane, the bar's
+        // window rules and mini bar parts, ChromeBudget.TrailingInDrawer, ChromeRowState.TabsHidden, the drawer's account row. A 1.0 theme still runs.
+        Assert.Equal("1.15", ContractVersion.Text);
         Assert.True(ContractVersion.IsCompatible(1, 0));
         Assert.True(ContractVersion.IsCompatible(1, 2));
         Assert.True(ContractVersion.IsCompatible(1, 3));
@@ -485,7 +487,8 @@ public sealed class ThemeCatalogTests : IDisposable
         Assert.True(ContractVersion.IsCompatible(1, 12));
         Assert.True(ContractVersion.IsCompatible(1, 13));
         Assert.True(ContractVersion.IsCompatible(1, 14));
-        Assert.False(ContractVersion.IsCompatible(1, 15));
+        Assert.True(ContractVersion.IsCompatible(1, 15));
+        Assert.False(ContractVersion.IsCompatible(1, 16));
         Assert.False(ContractVersion.IsCompatible(2, 0));
         Assert.False(ContractVersion.IsCompatible(0, 0));
     }

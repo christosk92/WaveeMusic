@@ -12,7 +12,8 @@
 //
 //   PER WINDOW TIER (TC1, board C-TitleBar) the core allocates the row by the structure's tier budget (`ClassicPolicies.Chrome`):
 //   at Compact the tab strip folds into ONE tab-count button that opens the open tabs as a menu (≡, Back, the search icon, the
-//   count), at Huge the search seats up to 480 and the tabs grow to 240; forward hides below 520 at every tier.
+//   count; the account chip lives in the drawer's account row, TC2), at Huge the search seats up to 480 and the tabs grow to 240;
+//   forward hides below 520 at every tier.
 //
 //   No theme toggle (tuned F13): light and dark live in Settings › App mode and the profile menu, and its width left the budget.
 //
@@ -102,8 +103,9 @@ internal static class ClassicTitleBar
         }
         if (l.TabCount)
         {
-            // Compact: the open tabs are one count button (its menu switches tabs); the strip is not mounted.
-            kids.Add(Embed.Comp(() => new TabCountButton(props)) with { Key = "chrome-tab-count" });
+            // Compact: the open tabs are one count button (its menu switches tabs); the strip is not mounted. At the 300-DIP floor the row
+            // cannot seat it whole beside the search and the captions, and it drops whole (as Back does) instead of clipping (TC2).
+            if (!l.TabsHidden) kids.Add(Embed.Comp(() => new TabCountButton(props)) with { Key = "chrome-tab-count" });
         }
         else
         {

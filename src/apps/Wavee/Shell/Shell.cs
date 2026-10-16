@@ -3,7 +3,7 @@
 // the Shell.History section and the play log (ch 16); the in-app update card's arms (ch 14 → ch
 // 19); the player bar's tier + picker rules and the Shell.Ui rail-state section the bar's four toggles write —
 // RailOpen, Mode, RailWidth, DockedVideoHeight(+Pinned), ActiveStagePlayable, RailFits, ImmersiveLyrics, Toggle,
-// CanFitRail (App/ShellUi.cs 91; ch 20 asks for a home and §2 had none) (ch 20, +230)
+// the panel placement facts (App/ShellUi.cs 91; ch 20 asks for a home and §2 had none) (ch 20, +230)
 //
 // Role: CORE
 // Owner: I
@@ -1089,10 +1089,24 @@ public static partial class Shell
         /// and the page stage never mounted — on the one module the feature exists for.</para></summary>
         public static readonly Signal<string> ActiveStagePlayable = new("");
 
-        /// <summary>Whether the rail can currently reserve inline layout width alongside the sidebar and the content
-        /// region. When false the shell FLOATS the rail over content instead of allocating row width for it. A DERIVED
-        /// FACT published by one effect — the shell must never probe three widths at a call site.</summary>
+        /// <summary>The window tier DOCKS the panel beside the page (the structure's <c>PanelPolicy.For(tier)</c>, TC2). When false the
+        /// shell FLOATS the panel over the page (or shows it as a bottom sheet) instead of allocating row width for it. A DERIVED FACT
+        /// published by one effect from the COMMITTED window tier, so a crossing docks or undocks it on the crossing frame.</summary>
         public static readonly Signal<bool> RailFits = new(true);
+
+        /// <summary>Where the window tier lays the panel out (dock, float or sheet): the same effect's fact, beside <see cref="RailFits"/>.</summary>
+        public static readonly Signal<Theming.Contracts.PanelPlacement> PanelPlacement = new(Theming.Contracts.PanelPlacement.Dock);
+
+        /// <summary>The window tier docks two panels side by side (Classic Huge: the primary panel and the queue beside it, D3).</summary>
+        public static readonly Signal<bool> SecondPaneAllowed = new(false);
+
+        /// <summary>The least width a docked panel keeps in the window tier at this window width (Classic Huge: 380, growing to 420 at
+        /// 3840); 0 where the tier has no floor. The committed <see cref="RailWidth"/> never presents below it.</summary>
+        public static readonly FloatSignal PanelFloor = new(0f);
+
+        /// <summary>The queue is open BESIDE the primary panel: shown as the second docked pane where the tier docks two
+        /// (<see cref="SecondPaneAllowed"/>), remembered elsewhere. Session chrome, like <see cref="RailOpen"/>.</summary>
+        public static readonly Signal<bool> QueueBeside = new(false);
 
         /// <summary>The immersive fullscreen lyrics surface is open. Deliberately NOT a <see cref="RailMode"/>: the
         /// surface covers the whole shell rather than replacing the rail's panel, so the rail's own state is
@@ -1109,21 +1123,15 @@ public static partial class Shell
 
         /// <summary>Clicking the already-showing mode CLOSES the rail; otherwise switch to that mode and open.</summary>
         public static void Toggle(RailMode mode) => PanelHost.Shared.Toggle(mode);
-
-        /// <summary>Viewport-fit test for sidebar + rail + a minimum usable content region.</summary>
-        public static bool CanFitRail(float viewportW, float sidebarW, float railW = RailDefaultW,
-            float minContentW = MinContentW)
-            => Shell.CanFitRail(viewportW, sidebarW, railW, minContentW);
     }
 
     // ── 6.1 the rail's clamps (one pair, every writer) ──────────────────────────────────────────────────────────────
-    // One clamp for every writer (the left-seam splitter, the settings seed, CanFitRail). A second literal pair is how
+    // One clamp for every writer (the left-seam splitter, the settings seed, the tier floor). A second literal pair is how
     // the sidebar drag and the probe drifted apart in 0.2.9; do not reintroduce that here.
 
-    /// <summary>The shell's baseline panel bounds and content floor: <c>PanelPolicy.Default</c> (what Wavee Classic declares) is
-    /// built from them; the clamp reads the policy.</summary>
+    /// <summary>The shell's baseline panel bounds: <c>PanelPolicy.Default</c> (what Wavee Classic declares) is built from them; the
+    /// clamp reads the policy.</summary>
     public const float RailMinW = 200f, RailMaxW = 500f, RailDefaultW = 340f;
-    public const float MinContentW = 480f;
 
     /// <summary>The one panel-width clamp: the active panel policy's bounds (Classic 200-500), or <paramref name="policy"/>'s.</summary>
     public static float ClampRailWidth(float w, Theming.PanelPolicy? policy = null) => ShellPolicy.PanelOr(policy).ClampWidth(w);
@@ -1165,10 +1173,6 @@ public static partial class Shell
         return Math.Clamp(railW * ratio, DockedVideoFitMinH, DockedCapCeiling(remainingRailH));
     }
 
-    /// <summary>Viewport-fit test for sidebar + rail + a minimum usable content region.</summary>
-    public static bool CanFitRail(float viewportW, float sidebarW, float railW = RailDefaultW,
-        float minContentW = MinContentW)
-        => sidebarW + railW + minContentW <= viewportW;
 
     // ══ 7. THE PLAYER BAR'S TIERS AND ITS DEVICE PICKER (ch 20, +230 CORE) ══════════════════════════════════════════
 
@@ -1184,6 +1188,11 @@ public static partial class Shell
         /// <summary>The level a width belongs to before any narrowing hold.</summary>
         public static PlayerBarTier Nominal(float width, Theming.PlayerBarPolicy? policy = null)
             => (PlayerBarTier)ShellPolicy.PlayerBarOr(policy).LevelOf(width);
+
+        /// <summary>The level of the sub-ladder (<see cref="Resolve"/>) brought inside the window tier's range (the policy's
+        /// <c>Windows</c>; <paramref name="windowTier"/> negative: no tier known, every level).</summary>
+        public static PlayerBarTier ForWindow(PlayerBarTier ladderLevel, int windowTier, Theming.PlayerBarPolicy? policy = null)
+            => (PlayerBarTier)ShellPolicy.PlayerBarOr(policy).WindowRule(windowTier).Clamp((int)ladderLevel);
 
         /// <summary>Widening commits immediately; narrowing holds the current presentation through the policy's dip (24 DIP in
         /// Classic) so a pointer resize cannot chatter structural controls at a threshold.</summary>
@@ -1735,20 +1744,43 @@ public static partial class Shell
         /// page rather than resizing it).</summary>
         public static bool RailFloats(bool open, bool fits) => open && !fits;
 
-        /// <summary>The rail seam grip: translated to the rail's left edge, on the content side.</summary>
-        public static float RailSeamX(float viewportWidth, float railWidth) => viewportWidth - railWidth - SeamStripW;
+        /// <summary>The rail seam grip: translated to the rail's left edge, on the content side. <paramref name="rightOffset"/> is what
+        /// lies right of the primary panel (the second docked pane and its gap, at a two-pane tier).</summary>
+        public static float RailSeamX(float viewportWidth, float railWidth, float rightOffset = 0f) => viewportWidth - rightOffset - railWidth - SeamStripW;
 
-        /// <summary>The rail seam grip only exists while the rail is open.</summary>
-        public static float RailSeamWidth(bool open) => open ? SeamStripW : 0f;
+        /// <summary>The rail seam grip only exists while the rail is open AND docked (a floating panel and a sheet have no width to drag).</summary>
+        public static float RailSeamWidth(bool open, bool docked = true) => open && docked ? SeamStripW : 0f;
+
+        /// <summary>The second docked pane's 8-DIP gap: only while it is open.</summary>
+        public static float SecondGapWidth(bool open) => open ? RailGapW : 0f;
+
+        /// <summary>The second docked pane's row reservation (0 while closed).</summary>
+        public static float SecondReservedWidth(bool open, float width) => open ? width : 0f;
+
+        /// <summary>What lies right of the primary panel: the second pane and its gap while it is open.</summary>
+        public static float SecondOffset(bool open, float width) => SecondGapWidth(open) + SecondReservedWidth(open, width);
+
+        /// <summary>Everything the docked panels take from the content row: the primary's gap and width (open and docked) and the
+        /// second pane's (open).</summary>
+        public static float PanelsReservedWidth(bool open, bool docked, float width, bool secondOpen, float secondWidth)
+            => RailGapWidth(open, docked) + RailReservedWidth(open, docked, width) + SecondOffset(secondOpen, secondWidth);
+
+        /// <summary>The second docked pane is on screen: the queue is open beside the primary, the tier docks two, and the primary is not
+        /// already showing the queue (the queue is never on screen twice).</summary>
+        public static bool SecondOpen(bool queueBeside, bool allowed, bool railOpen, RailMode mode)
+            => queueBeside && allowed && !(railOpen && mode == RailMode.Queue);
+
+        /// <summary>The second pane's width: the tier's floor (both Huge panes are the board's width), never under the panel default.</summary>
+        public static float SecondWidth(float floor) => MathF.Max(floor, RailDefaultW);
 
         /// <summary>F243: the width a rail splitter drag COMMITS to <c>Ui.RailWidth</c> (and the settings) on release: the
         /// preview width through the one rail clamp, or null when there is nothing to commit (a non-finite preview, or the
         /// pointer ended where the rail already was). Nothing reaches the layout, the docked video or the settings until
         /// this answers a width.</summary>
-        public static float? RailDragCommit(float dragWidth, float committedWidth)
+        public static float? RailDragCommit(float dragWidth, float committedWidth, float floor = 0f)
         {
             if (!float.IsFinite(dragWidth)) return null;
-            float w = ClampRailWidth(dragWidth);
+            float w = MathF.Max(ClampRailWidth(dragWidth), floor > 0f ? ClampRailWidth(floor) : 0f);
             return MathF.Abs(w - committedWidth) < 0.01f ? null : w;
         }
 

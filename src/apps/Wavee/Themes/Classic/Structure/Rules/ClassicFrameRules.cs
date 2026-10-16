@@ -37,6 +37,12 @@ internal static class ClassicFrameRules
         TransitionDynamics.Tween(PaneMs, PaneEase), SizeMode.Reveal,
         ExitDynamics: TransitionDynamics.Tween(PaneMs, PaneEase), SuppressDescendantTransitions: true);
 
+    /// <summary>The panel host's transition (TC2): a crossing that docks, floats or sheets the panel, or opens the second pane beside it,
+    /// moves and resizes the host on the content card's dynamics, laid out at the final size (a clip and a translate ease).</summary>
+    public static readonly LayoutTransition PanelHostAnim = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(PaneMs, PaneEase), SizeMode.Reveal,
+        ExitDynamics: TransitionDynamics.Tween(PaneMs, PaneEase), SuppressDescendantTransitions: true);
+
     /// <summary>A LEFT+TOP-only stroke: the engine's border is one uniform SDF ring, so the stroked box is one DIP larger on
     /// its right and bottom and parked in a clip of the real geometry: the right/bottom strokes land in the clipped DIP
     /// and the rounded top-left arc survives whole.</summary>

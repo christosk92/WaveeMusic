@@ -264,4 +264,11 @@ public sealed record PlayerBarProps
     public required Func<OverflowCommand, Action<string>?, MenuFlyoutItem> OverflowRow { get; init; }
     /// <summary>The video placement ladder the split button's chevron opens (the rows are the core's; the flyout that presents them is <see cref="ViewKeys.VideoPlacementMenu"/>).</summary>
     public required Func<IReadOnlyList<MenuFlyoutItem>> VideoPlacementMenu { get; init; }
+
+    /// <summary>The progress hairline of the mini player bar (contract 1.15, TC2): the seek rail's core host drawn as a line (<see cref="SeekRailProps.Hairline"/>).
+    /// Null where the core offers none.</summary>
+    public Func<Element>? ProgressLine { get; init; }
+
+    /// <summary>The mini player bar's identity door (contract 1.15, TC2): open the now-playing panel (a sheet at Compact). Null: no door.</summary>
+    public Action? OpenNowPlaying { get; init; }
 }

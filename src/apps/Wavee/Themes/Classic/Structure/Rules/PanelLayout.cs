@@ -5,9 +5,10 @@
 // grid and the on-media strip's buttons. They are data, not decisions: `Views\Panel\*.cs` and `Views\Player\ClassicOnMedia.cs`
 // read them (WVTH003 allows literals only here, in `Rules\**`).
 //
-// WHERE THE POLICY IS. The panel's bounds (min and max width, the content it must leave to stay inline, full height, the mini
-// player) are `PanelPolicy`'s, declared by `ClassicPolicies`, because the core's width and fit machines run on them
-// (`Shell.ClampRailWidth`, `Shell.CanFitRail`, `PanelHost.FitWidthTo`). What this file adds is the look of the parts inside.
+// WHERE THE POLICY IS. The panel's bounds (min and max width, full height, the mini player) are `PanelPolicy`'s, declared by
+// `ClassicPolicies`, and its placement per window tier is `ClassicPanelTiers`' (Tiers.Panel.cs, TC2), because the core's width and
+// placement machines run on them (`Shell.ClampRailWidth`, `PanelHost.FitWidthTo` / `FitWidthToFloor`). What this file adds is the look of
+// the parts inside.
 
 using FluentGpu.Animation;
 using FluentGpu.Controls;

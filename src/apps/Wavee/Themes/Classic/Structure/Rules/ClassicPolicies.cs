@@ -31,67 +31,19 @@ public static class ClassicPolicies
         NarrowMode: NavPaneMode.Compact, TinyMode: NavPaneMode.Overlay, Resizable: true, Seam: 16f,
         RailWidth: SidebarGeometry.RailWidth);
 
-    /// <summary>The panel: 200-500 wide, inline while 480 of content remains (otherwise it floats), beside the content row. The
-    /// mini player keeps the 0.2.9 numbers: 240 x 135 at the least, 72 clear below (the player bar) and 32 above (the chrome),
-    /// 16 from every edge.</summary>
+    /// <summary>The panel: 200-500 wide, beside the content row, placed per window tier (`ClassicPanelTiers`, TC2: a sheet at Compact,
+    /// floating at Small, one docked at Standard, two at Huge). The mini player keeps the 0.2.9 numbers: 240 x 135 at the least, 72 clear
+    /// below (the player bar) and 32 above (the chrome), 16 from every edge.</summary>
     public static PanelPolicy Panel { get; } = new(
-        MinWidth: 200f, MaxWidth: 500f, InlineMin: 480f, FullHeight: false,
-        Pip: new Video.PipBounds(MinW: 240f, MinH: 135f, ReserveBottom: 72f, ReserveTop: 32f, Margin: 16f));
+        MinWidth: 200f, MaxWidth: 500f, FullHeight: false,
+        Pip: new Video.PipBounds(MinW: 240f, MinH: 135f, ReserveBottom: 72f, ReserveTop: 32f, Margin: 16f))
+    {
+        Tiers = ClassicPanelTiers.Rules,
+    };
 
-    /// <summary>The player bar: the 72-DIP dock, six levels starting at 0 / 440 / 760 / 900 / 1100 / 1240, narrowing held through a
-    /// 24-DIP dip. Pressure is absorbed by what a level drops and by the spacing rungs, never by the buttons: the hit targets are
-    /// flat at 32 (36 and 18 for the play button, 40 and 20 from Medium up). Each level also states what the PODCAST bar carries
-    /// (`PodcastSlots`, `PodcastLeftW`): no shuffle / repeat or inline volume rail (the transport spends that room on its ±10 s steps and
-    /// the speed button), previous / next from Wide, the time labels from Comfortable, the heart from Medium, the queue from Compact (as the
-    /// music bar), and the identity block a bare cover at Minimal and 120 wide at Compact.</summary>
-    public static PlayerBarPolicy PlayerBar { get; } = new(
-        ImmutableArray.Create(
-            // Minimal: the 300-DIP floor. Identity-first: art, title and artist, the heart and the device picker.
-            new PlayerTier(0f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title,
-                LeftW: 132f, ArtSize: 40f, RowGap: 3f, RowPad: 6f, ClusterGap: 2f, LeftGap: 4f, SeekGap: 4f, RightGap: 0f,
-                ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: 36f, PrimaryGlyph: 18f,
-                PodcastSlots: PlayerBarSlots.Devices | PlayerBarSlots.Subtitle, PodcastLeftW: 40f),
-            // Compact: the remaining time and the queue join (tuned P1: the queue stays from here up, ahead of lyrics, volume and
-            // shuffle / repeat; its room comes from the seek bar and the gaps, never from the button sizes).
-            new PlayerTier(440f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.Queue | PlayerBarSlots.TimesRemaining,
-                LeftW: 172f, ArtSize: 40f, RowGap: 4f, RowPad: 8f, ClusterGap: 3f, LeftGap: 6f, SeekGap: 5f, RightGap: 1f,
-                ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: 36f, PrimaryGlyph: 18f,
-                PodcastSlots: PlayerBarSlots.Devices | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.Queue, PodcastLeftW: 120f),
-            // Medium: the 48 cover, the roomy play button, previous / next, elapsed time, lyrics and the volume button.
-            new PlayerTier(760f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.Queue | PlayerBarSlots.TimesRemaining
-                    | PlayerBarSlots.VolumeButton | PlayerBarSlots.Lyrics | PlayerBarSlots.TimesElapsed | PlayerBarSlots.PrevNext,
-                LeftW: 220f, ArtSize: 48f, RowGap: 6f, RowPad: 8f, ClusterGap: 4f, LeftGap: 8f, SeekGap: 6f, RightGap: 2f,
-                ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: 40f, PrimaryGlyph: 20f,
-                PodcastSlots: PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.Queue | PlayerBarSlots.VolumeButton
-                    | PlayerBarSlots.Lyrics),
-            // Comfortable: shuffle / repeat and the remote-device line join.
-            new PlayerTier(900f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.Queue | PlayerBarSlots.TimesRemaining
-                    | PlayerBarSlots.VolumeButton | PlayerBarSlots.Lyrics | PlayerBarSlots.TimesElapsed | PlayerBarSlots.PrevNext
-                    | PlayerBarSlots.ShuffleRepeat | PlayerBarSlots.RemoteDeviceLine,
-                LeftW: 230f, ArtSize: 48f, RowGap: 6f, RowPad: 8f, ClusterGap: 4f, LeftGap: 8f, SeekGap: 6f, RightGap: 2f,
-                ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: 40f, PrimaryGlyph: 20f,
-                PodcastSlots: PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.Queue | PlayerBarSlots.TimesRemaining
-                    | PlayerBarSlots.VolumeButton | PlayerBarSlots.Lyrics | PlayerBarSlots.TimesElapsed | PlayerBarSlots.RemoteDeviceLine),
-            // Wide: the inline volume rail and the video split join; the row breathes (gap 8, pad 12).
-            new PlayerTier(1100f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.TimesRemaining
-                    | PlayerBarSlots.VolumeButton | PlayerBarSlots.Lyrics | PlayerBarSlots.TimesElapsed | PlayerBarSlots.PrevNext
-                    | PlayerBarSlots.ShuffleRepeat | PlayerBarSlots.RemoteDeviceLine | PlayerBarSlots.Queue | PlayerBarSlots.VideoSplit | PlayerBarSlots.VolumeSlider,
-                LeftW: 240f, ArtSize: 48f, RowGap: 8f, RowPad: 12f, ClusterGap: 4f, LeftGap: 8f, SeekGap: 6f, RightGap: 2f,
-                ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: 40f, PrimaryGlyph: 20f,
-                PodcastSlots: PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.TimesRemaining
-                    | PlayerBarSlots.VolumeButton | PlayerBarSlots.Lyrics | PlayerBarSlots.TimesElapsed | PlayerBarSlots.PrevNext
-                    | PlayerBarSlots.RemoteDeviceLine | PlayerBarSlots.Queue | PlayerBarSlots.VideoSplit),
-            // Full: the expand button joins; the widest identity block.
-            new PlayerTier(1240f, PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.TimesRemaining
-                    | PlayerBarSlots.VolumeButton | PlayerBarSlots.Lyrics | PlayerBarSlots.TimesElapsed | PlayerBarSlots.PrevNext
-                    | PlayerBarSlots.ShuffleRepeat | PlayerBarSlots.RemoteDeviceLine | PlayerBarSlots.Queue | PlayerBarSlots.VideoSplit | PlayerBarSlots.VolumeSlider
-                    | PlayerBarSlots.Expand,
-                LeftW: 260f, ArtSize: 48f, RowGap: 8f, RowPad: 12f, ClusterGap: 4f, LeftGap: 8f, SeekGap: 6f, RightGap: 2f,
-                ButtonBox: 32f, ButtonGlyph: 16f, PrimaryBox: 40f, PrimaryGlyph: 20f,
-                PodcastSlots: PlayerBarSlots.Devices | PlayerBarSlots.LikeSlot | PlayerBarSlots.Subtitle | PlayerBarSlots.Title | PlayerBarSlots.TimesRemaining
-                    | PlayerBarSlots.VolumeButton | PlayerBarSlots.Lyrics | PlayerBarSlots.TimesElapsed | PlayerBarSlots.PrevNext
-                    | PlayerBarSlots.RemoteDeviceLine | PlayerBarSlots.Queue | PlayerBarSlots.VideoSplit | PlayerBarSlots.Expand)),
-        Hysteresis: 24f, Height: 72f);
+    /// <summary>The player bar: the 72-DIP dock, its six levels (the sub-ladder) and the levels each window tier may use: `ClassicPlayerTiers`
+    /// (Rules/Tiers.Player.cs, TC2).</summary>
+    public static PlayerBarPolicy PlayerBar { get; } = ClassicPlayerTiers.Policy;
 
     /// <summary>The title-bar row: bell, friends and pin from 1200, the profile name from 1360, forward above 520 (all
     /// budget-checked), every fixed affordance at the width the row really lays it out at, a 280-420 search field (28 % of the
@@ -110,11 +62,12 @@ public static class ClassicPolicies
     };
 
     /// <summary>The title-bar row per window tier (board C-TitleBar, TC1): Compact folds the tab strip into ONE tab-count button that
-    /// opens the open tabs as a menu (≡, Back, the search icon and the count; no "+"); Huge seats a search of up to 480 and tabs of up to
+    /// opens the open tabs as a menu (≡, Back, the search icon and the count; no "+") and carries the account in the drawer, not the row
+    /// (C-Shell-Compact, TC2); Huge seats a search of up to 480 and tabs of up to
     /// 240; Small and Standard keep <see cref="RowBudget"/>. Forward hides below 520 at every tier (the budget's <c>ForwardEnterW</c>).</summary>
     public static ChromePolicy Chrome { get; } = new(RowBudget)
     {
-        Compact = RowBudget with { TabsAsCount = true },
+        Compact = RowBudget with { TabsAsCount = true, TrailingInDrawer = true },
         Huge = RowBudget with { SearchMaxW = 480f, TabMaxW = 240f },
     };
 

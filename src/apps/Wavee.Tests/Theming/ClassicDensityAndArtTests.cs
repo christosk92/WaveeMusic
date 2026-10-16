@@ -89,7 +89,12 @@ public sealed class ClassicDensityAndArtTests : IDisposable
         Assert.True(shown.Lists.TrackArtwork);
         Assert.False(hidden.Lists.TrackArtwork);
         Assert.Equal(ListPolicy.Default, ThemePolicies.Default.Lists);
-        Assert.Equal(ThemePolicies.Default with { Tiers = shown.Tiers, Overlays = shown.Overlays, DetailTiers = shown.DetailTiers }, shown);   // only the window tiers, the overlay and the detail layouts differ from the baseline
+        // Only the window tiers, the overlay layouts, the detail layouts (TC5) and the per-tier rules of the panel and the bar (TC2) differ from the baseline.
+        Assert.Equal(ThemePolicies.Default with
+        {
+            Tiers = shown.Tiers, Overlays = shown.Overlays, DetailTiers = shown.DetailTiers,
+            Panel = ThemePolicies.Default.Panel with { Tiers = shown.Panel.Tiers }, PlayerBar = ThemePolicies.Default.PlayerBar with { Windows = shown.PlayerBar.Windows },
+        }, shown);
         Assert.Equal(shown with { Lists = new ListPolicy(false) }, hidden);
         Assert.Empty(hidden.Validate());
     }

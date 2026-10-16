@@ -26,6 +26,17 @@ public static class ClassicOverlayRules
     /// <summary>The unknown name's skeleton bar height and radius.</summary>
     public const float ChipNameBarHeight = 12f, SkeletonBarRadius = 2f;
 
+    // ── the account chip as the drawer's account row (TC2, C-Sidebar account="true") ─────────────────────────────────
+
+    /// <summary>The row form: 48 tall, 8 either side, the 32 avatar 10 from the name (14/20 semibold) over "Account and more" (12/16).</summary>
+    public const float DrawerChipH = 48f, DrawerChipAvatar = 32f, DrawerChipGap = 10f;
+
+    /// <summary>The row form's padding.</summary>
+    public static readonly Edges4 DrawerChipPadding = new(8f, 0f, 8f, 0f);
+
+    /// <summary>The name and the line under it.</summary>
+    public const float DrawerNameSize = 14f, DrawerNameLine = 20f, DrawerSubSize = 12f, DrawerSubLine = 16f;
+
     // ── the account menu ────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The menu's width (the rows and the header share it).</summary>
@@ -102,11 +113,6 @@ public static class ClassicOverlayRules
 
     /// <summary>The column sits above the card's centre: 120 of bottom padding lifts it (the page title stays above it).</summary>
     public const float OfflineVacancyLift = 120f;
-
-    // ── the toast lane ──────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The mini player bar's height (the Compact boards: 56), the bar a Compact toast clears.</summary>
-    public const float MiniBarHeight = 56f;
 
     // ── the context menu's identity tile ────────────────────────────────────────────────────────────────────────────
 

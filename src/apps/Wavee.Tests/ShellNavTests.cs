@@ -322,12 +322,6 @@ public class ShellResponsiveLayoutTests
     public void The_splitter_floor_is_sixteen_by_nine_and_a_zero_height_takes_it()
         => Assert.Equal(Shell.DockedVideoNaturalH(340f), Shell.ClampDockedVideoHeight(0f, 340f), 3);
 
-    [Fact]
-    public void Can_fit_rail_is_the_one_answer()
-    {
-        Assert.True(Shell.CanFitRail(1600f, 280f));
-        Assert.False(Shell.CanFitRail(900f, 280f));
-    }
 }
 
 public class MergedChromeLayoutTests

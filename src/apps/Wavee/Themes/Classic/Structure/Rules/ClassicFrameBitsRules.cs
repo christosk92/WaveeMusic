@@ -44,6 +44,17 @@ internal static class ClassicFrameBitsRules
     /// <summary>The drawer pane's corners: square on the window edge, the card radius on the content side.</summary>
     public static CornerRadius4 DrawerPaneCorners => new(0f, Radii.Card, Radii.Card, 0f);
 
+    // ── the drawer's account row (TC2, C-Shell-Compact / C-Sidebar account="true": a Compact title bar carries no chip) ──
+
+    /// <summary>The row: 56 tall, 4 left and 6 right of padding, 2 between its parts, 4 under its divider.</summary>
+    public const float AccountRowH = 56f, AccountRowGap = 2f, AccountRowBelow = 4f;
+
+    /// <summary>The row's padding.</summary>
+    public static readonly Edges4 AccountRowPadding = new(4f, 0f, 6f, 0f);
+
+    /// <summary>The bell and friends buttons: 40 x 40 (the Compact target floor), glyph 16.</summary>
+    public const float AccountButton = 40f, AccountGlyph = 16f;
+
     // ── the command palette ─────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The card's hard width (W1: no clamp).</summary>

@@ -574,22 +574,32 @@ public sealed class TierPolicyTests
     // ── the content-width estimate and the size guard ──────────────────────────────────────────────────────────────────
 
     [Theory]
-    [InlineData(1180f, 320f, false, 340f, 860f)]            // no rail: the window less the pane
-    [InlineData(1180f, 320f, true, 340f, 512f)]             // an open rail that fits (320 + 340 + 480 <= 1180): less its 8-DIP gap and its width
-    [InlineData(1100f, 320f, true, 340f, 780f)]             // an open rail that does not fit floats over the page: no reservation
-    [InlineData(1180f, 48f, true, 340f, 784f)]              // the forced rail pane leaves room for the docked rail
-    [InlineData(500f, 0f, false, 340f, 500f)]               // Tiny: the drawer takes no column
-    [InlineData(300f, 320f, false, 340f, 0f)]               // never negative
-    public void The_content_width_is_the_window_less_the_pane_and_an_inline_rail(float window, float pane, bool railOpen, float railWidth, float expected)
-        => Assert.Equal(expected, WindowTiers.EstimateContentWidth(window, pane, railOpen, railWidth));
+    [InlineData(1180f, 320f, 0f, 860f)]                     // no panel: the window less the pane
+    [InlineData(1180f, 320f, 348f, 512f)]                   // a docked panel: less its 8-DIP gap and its width
+    [InlineData(500f, 0f, 0f, 500f)]                        // Tiny: the drawer takes no column
+    [InlineData(300f, 320f, 0f, 0f)]                        // never negative
+    public void The_content_width_is_the_window_less_the_pane_and_the_docked_panels(float window, float pane, float panels, float expected)
+        => Assert.Equal(expected, WindowTiers.EstimateContentWidth(window, pane, panels));
+
+    [Theory]
+    [InlineData(WidthTier.Standard, 1180f, true, false, 348f)]     // Standard docks one: its gap and width
+    [InlineData(WidthTier.Standard, 1180f, true, true, 348f)]      // the queue beside it is not shown where one docks
+    [InlineData(WidthTier.Small, 800f, true, true, 0f)]            // Small floats: nothing reserved
+    [InlineData(WidthTier.Compact, 400f, true, false, 0f)]         // Compact is a sheet: nothing reserved
+    [InlineData(WidthTier.Huge, 2560f, true, false, 388f)]         // Huge: the 380 floor
+    [InlineData(WidthTier.Huge, 2560f, true, true, 776f)]          // Huge with the queue beside: two 380 panes and two gaps
+    [InlineData(WidthTier.Huge, 3840f, true, true, 856f)]          // at 3840 both are 420
+    [InlineData(WidthTier.Huge, 2560f, false, true, 388f)]         // the queue alone in its pane
+    public void The_docked_panels_follow_the_window_tier(WidthTier window, float width, bool railOpen, bool queueBeside, float expected)
+        => Assert.Equal(expected, WindowTiers.PanelsReserved(ClassicPolicies.Panel, window, width, railOpen, Shell.RailMode.Lyrics, 340f, queueBeside));
 
     [Fact]
     public void The_content_width_of_an_unusable_window_is_not_a_number()
     {
-        Assert.True(float.IsNaN(WindowTiers.EstimateContentWidth(0f, 320f, false, 340f)));
-        Assert.True(float.IsNaN(WindowTiers.EstimateContentWidth(-5f, 320f, true, 340f)));
-        Assert.True(float.IsNaN(WindowTiers.EstimateContentWidth(float.NaN, 320f, false, 340f)));
-        Assert.Equal(900f, WindowTiers.EstimateContentWidth(900f, float.NaN, false, 340f));   // a broken pane width counts as none
+        Assert.True(float.IsNaN(WindowTiers.EstimateContentWidth(0f, 320f, 0f)));
+        Assert.True(float.IsNaN(WindowTiers.EstimateContentWidth(-5f, 320f, 348f)));
+        Assert.True(float.IsNaN(WindowTiers.EstimateContentWidth(float.NaN, 320f, 0f)));
+        Assert.Equal(900f, WindowTiers.EstimateContentWidth(900f, float.NaN, 0f));   // a broken pane width counts as none
     }
 
     [Theory]
