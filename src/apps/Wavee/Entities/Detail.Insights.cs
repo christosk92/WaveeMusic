@@ -79,9 +79,10 @@ public static partial class Detail
 
         public InsightsToggle()
         {
-            Toggle = () => { ButtonNode[0] = _heroNode[0]; Open.Value = !Open.Peek(); };
-            ToggleFromBand = () => { ButtonNode[0] = _bandNode[0]; Open.Value = !Open.Peek(); };
+            Toggle = () => { ButtonNode[0] = _heroNode[0]; Touched = true; Open.Value = !Open.Peek(); };
+            ToggleFromBand = () => { ButtonNode[0] = _bandNode[0]; Touched = true; Open.Value = !Open.Peek(); };
             Close = () => { if (Open.Peek()) Open.Value = false; };
+            Dismiss = () => { Touched = true; if (Open.Peek()) Open.Value = false; };
             // Seed the focus target with whichever entry point realizes first, so a sheet opened before either has been
             // clicked (a route restore) still has somewhere to hand focus back to.
             CaptureButton = h => { _heroNode[0] = h; if (ButtonNode[0].IsNull) ButtonNode[0] = h; };
@@ -92,10 +93,29 @@ public static partial class Detail
         public readonly Action Toggle;
         /// <summary>The pinned BAND word's click — the same verb, recording the other opener for the focus return.</summary>
         public readonly Action ToggleFromBand;
-        /// <summary>Close from anywhere (the × , a route change, leaving the vertical arm). Value-gated.</summary>
+        /// <summary>Close from anywhere (a route change, leaving the vertical arm). Value-gated.</summary>
         public readonly Action Close;
+        /// <summary>The pane's ×: the USER closes it (a resting-open pane stays closed from here on, <see cref="Rest"/>). Value-gated.</summary>
+        public readonly Action Dismiss;
         internal readonly Action<NodeHandle> CaptureButton;
         internal readonly Action<NodeHandle> CaptureBandButton;
+
+        /// <summary>The user has moved the pane on this route (a toggle or the ×): the tier's resting state no longer applies (contract 1.21).</summary>
+        public bool Touched { get; private set; }
+
+        /// <summary>The window tier's RESTING state (<c>DetailTierLayout.InsightsRestOpen</c>): open where the pane is a column of the page (the Huge dock,
+        /// the aside), closed elsewhere — applied only while the user has not moved it, so a reader's own choice always wins. Value-gated.</summary>
+        public void Rest(bool open)
+        {
+            if (!Touched) Open.SetIfChanged(open);
+        }
+
+        /// <summary>A new route: closed and untouched again.</summary>
+        public void Reset()
+        {
+            Touched = false;
+            if (Open.Peek()) Open.Value = false;
+        }
     }
 
     // ══ 7. THE PINNED BAND'S TOGGLE ══════════════════════════════════════════════════════════════════════════════════

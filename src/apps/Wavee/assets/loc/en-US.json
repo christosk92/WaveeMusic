@@ -1066,7 +1066,8 @@
       "creator": "artist",
       "recentlyAdded": "recently added",
       "releaseDate": "release date",
-      "albums": "albums"
+      "albums": "albums",
+      "more": "more"
     },
     "scope": {
       "inLibrary": "in your library",

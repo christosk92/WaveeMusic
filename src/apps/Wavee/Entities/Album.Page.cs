@@ -202,7 +202,9 @@ public readonly partial struct Album
             Func<Element> preRelease = () => Countdown(_display.Uri, _upcomingAt, _accent);
             Func<bool, Element> release = outer => ReleasePanel(_display, outer);
             Func<Element> trailing = () => Trailing(_display);
-            _slots = new Detail.FrameSlots { Attribution = attribution, PreRelease = preRelease, ReleasePanel = release, Trailing = trailing };
+            // The Huge aside (C-Album-Huge, contract 1.21): the release facts, the artist, Fans also like and "More by" leave the rail and the band for it.
+            Func<Element> aside = () => Aside(_display);
+            _slots = new Detail.FrameSlots { Attribution = attribution, PreRelease = preRelease, ReleasePanel = release, Trailing = trailing, Aside = aside };
             // Without a panel the rail must not hold an empty `rail:release` row — it would still take a 14-DIP gap.
             _slotsUnresolved = new Detail.FrameSlots { Episodes = static _ => ViewSlots.View(ViewKeys.AlbumUnresolved, AlbumUnresolvedProps.Instance) };   // Func<bool, Element> (Detail.UI.cs patch P-B1)
         }
@@ -526,7 +528,15 @@ public readonly partial struct Album
         => Embed.Comp(new TrailingProps(a.Slot), static () => new TrailingHost())
             with { Key = "album-trailing:" + a.Slot.ToString(CultureInfo.InvariantCulture) };
 
-    sealed record TrailingProps(int AlbumSlot);
+    /// <summary>The band's (or, <paramref name="Aside"/>, the Huge aside's) album.</summary>
+    sealed record TrailingProps(int AlbumSlot, bool Aside = false);
+
+    /// <summary>The Huge aside's body (C-Album-Huge / -Huge4K): About this release, the artist, Fans also like and "More by", from the band's own host and
+    /// gates (<see cref="SectionsHost"/> in its aside arm), keyed per album. Mounted by the frame only while the aside is docked; the rail and the band
+    /// drop what it holds then (<see cref="Detail.AsideDocked"/>).</summary>
+    static Element Aside(Album a)
+        => Embed.Comp(new TrailingProps(a.Slot, Aside: true), static () => new SectionsHost())
+            with { Key = "album-aside:" + a.Slot.ToString(CultureInfo.InvariantCulture) };
 
     /// <summary>ONE skeleton region (the `Album.Trailing` view), shimmering from the first frame and revealing once into whatever it resolves
     /// to — the sections, or a collapsed empty box. The shimmer is shaped by what the row already knows
@@ -570,6 +580,8 @@ public readonly partial struct Album
         {
             var p = UseProps<TrailingProps>();
             _slot = p.AlbumSlot;
+            // The Huge aside holds About and Fans also like while it is docked (contract 1.21): the band's reserve does not shimmer for them.
+            bool asideDocked = UseContext(Detail.AsideDocked);
             UseEffect(_demand);
             // The deadline is keyed on (album, demanded): UseTimeout arms from mount and RE-ARMS when its deps change,
             // so the fire that counts is the one 400 ms after the page demanded — DeadlineHit ignores the pre-demand
@@ -593,6 +605,7 @@ public readonly partial struct Album
                 _shape = a.IsValid
                     ? PageRules.SkeletonShape(videoKnown: videoCount > 0, videoShelf: PageRules.ArmFor(videoCount) == PageRules.VideoArm.Shelf)
                     : PageRules.SkeletonShape();
+                if (asideDocked) _shape = _shape with { About = false, Fans = false };
                 int hash = (_shape.About ? 1 : 0) | (_shape.Fans ? 2 : 0) | (_shape.Video ? 4 : 0) | (_shape.VideoShelf ? 8 : 0)
                            | (_shape.RowBlocks << 4);
                 _skelKey = "trailing-skel:" + hash.ToString(CultureInfo.InvariantCulture);
@@ -908,6 +921,11 @@ public readonly partial struct Album
             var p = UseProps<TrailingProps>();
             _slot = p.AlbumSlot;
             var overlay = UseContext(Overlay.Service);               // the video hero's menu host (its shelf cards read their own)
+            // The Huge aside (contract 1.21): its arm draws About, Fans also like and "More by" beside the release facts; while it is docked the band
+            // under the rows leaves those three out, so nothing is shown twice.
+            bool asideDocked = UseContext(Detail.AsideDocked);
+            bool asideArm = p.Aside;
+            bool leaveOut = asideDocked && !asideArm;
             // The gate (W2-A2): the twelve counters are subscribed inside the memo; the section data below — seven sections, each a card or a keyed stack — is
             // rebuilt only when the stamp moved.
             _ = UseComputed(_stamp).Value;
@@ -915,7 +933,7 @@ public readonly partial struct Album
             var e = Entities.Current.Edges;
 
             var a = new Album(p.AlbumSlot);
-            if (!a.IsValid) return Mount(false, [], false, null, null, [], []);
+            if (!a.IsValid) return asideArm ? MountAside(a, null, [], null) : Mount(false, [], false, null, null, [], []);
             var memberSlots = a.TrackSlots;
             var members = MemoryMarshal.Cast<int, Track>(memberSlots);
             bool shortRelease = PageRules.IsShortRelease(a.Knows(AlbumFields.Kind) ? a.Kind : AlbumKind.Album, members.Length);
@@ -936,6 +954,16 @@ public readonly partial struct Album
             int slot = a.Slot;
             int featured = e.AlbumRecommendations.Count(slot), merch = e.AlbumMerch.Count(slot);
             int similar = e.AlbumSimilar.Count(slot), moreBy = e.AlbumMoreBy.Count(slot);
+            if (asideArm)
+            {
+                var asideFans = new TrailCardData[fanCount];
+                for (int i = 0; i < asideFans.Length; i++) asideFans[i] = FanCard(new Artist(fans[i]));
+                Element? moreByStack = moreBy > 0 && billed.Length > 0
+                    ? Stack(Strings.Detail.MoreBy(lead.Name), moreBy, TrailKind.MoreBy, slot, Signature("moreby:", moreBy, e.AlbumMoreBy.Targets(slot)))
+                    : null;
+                return MountAside(a, about ? lead : null, asideFans, moreByStack);
+            }
+            if (leaveOut) { about = false; fanCount = 0; moreBy = 0; }
             if (!PageRules.HasTrailingSections(videos.Length > 0, about, fanCount, featured, merch, similar, moreBy, billed.Length))
                 return Mount(false, [], false, null, null, [], []);   // nothing to show: the region eases to zero
 
@@ -964,6 +992,14 @@ public readonly partial struct Album
             => ViewSlots.View(ViewKeys.AlbumSections, new AlbumSectionsProps
             {
                 Any = any, Videos = videos, CustomVideo = customVideo, Overlay = overlay, About = about, Fans = fans, Lists = lists,
+            });
+
+        /// <summary>The aside arm's view: the release facts (always: the rail no longer carries them), then whichever of the artist, the fans and "More by"
+        /// are present.</summary>
+        static Element MountAside(Album a, Artist? about, IReadOnlyList<TrailCardData> fans, Element? moreBy)
+            => ViewSlots.View(ViewKeys.AlbumAside, new AlbumAsideProps
+            {
+                Release = a.IsValid ? ReleasePanel(a, false) : null, About = about, Fans = fans, MoreBy = moreBy,
             });
 
         static string Signature(string prefix, int count, ReadOnlySpan<int> targets)

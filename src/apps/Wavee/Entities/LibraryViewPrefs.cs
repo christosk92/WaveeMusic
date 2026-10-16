@@ -59,6 +59,19 @@ public static class LibraryViewPrefs
     /// <summary>The nav column's width, committed on release of its grip.</summary>
     public static void SetLeftW(string kind, float width) => Theming.ThemeState.Set(LeftWKey(kind), width);
 
+    /// <summary>Has the user set the kind's navigator width (a grip release stored a width other than the default)? Until then the structure's tier default applies
+    /// (contract 1.21; `Theming.ThemeState.IsCustomized`: a store that never held the key, or holds the default an older build saved, is unset).</summary>
+    public static bool LeftWCustomized(string kind) => Theming.ThemeState.IsCustomized(LeftWKey(kind));
+
+    /// <summary>The navigator's resting width: the <paramref name="stored"/> one once the user set it (<paramref name="customized"/>), else the structure's width for the
+    /// <paramref name="content"/> tier (the artists' kind reads the reader's), clamped to the grip's range; the stored (the key's default) where the structure has none.</summary>
+    public static float RestingLeftW(string kind, float stored, bool customized, Theming.Contracts.WidthTier content, Theming.LibraryTierPolicy policy)
+    {
+        if (customized) return stored;
+        float tier = policy.NavWidthFor(content, reader: kind == "artists");
+        return float.IsFinite(tier) ? Math.Clamp(tier, LeftMin, LeftMax) : stored;
+    }
+
     /// <summary>The middle column's width (the search shapes' third column), committed on release of its grip.</summary>
     public static void SetMidW(string kind, float width) => Theming.ThemeState.Set(MidWKey(kind), width);
 

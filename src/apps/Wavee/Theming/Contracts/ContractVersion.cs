@@ -81,6 +81,11 @@
 // before any external theme existed, as 1.2 did.
 // 1.20 (the Compact overlays fix): the optional `PanelProps.Transport` (`PanelTransportProps`, `PanelTransportFacts`: the transport the now-playing sheet
 // carries, since the sheet covers the player bar).
+// 1.21 (the Huge detail and library layouts): the optional `DetailFrameProps.Aside` (`DetailAsideProps`: a page's right aside column at a tier whose
+// record docks one), the core slot `Detail.FrameSlots.Aside` and the `Detail.AsideDocked` context, the `Album.Aside` key (`AlbumAsideProps`), the optional
+// `DetailTierLayout.AsideDocked` / `.InsightsRestOpen` and `DetailTierPolicy.HugeWide` / `.HugeWideRung` (the Huge 4K record), `AboutLayout.Aside`,
+// the optional `NavPanePolicy.HugeWidth` (the sidebar's width at Huge while the user never resized it), `ThemePolicies.LibraryTiers` with
+// `LibraryTierPolicy` (the navigator's default width per tier while the user never dragged it), and `ThemeState.IsCustomized`.
 //
 // RULES (themes plan 1.2, 5.3). A MINOR bump only ADDS: a new key, a new optional member of a props record, a new role.
 // A theme built against 1.N keeps working on any core that is 1.M with M >= N. A MAJOR bump may remove or change a
@@ -96,7 +101,7 @@ public static class ContractVersion
     public const int Major = 1;
 
     /// <summary>Additive changes to the published keys, props records or verbs.</summary>
-    public const int Minor = 20;
+    public const int Minor = 21;
 
     /// <summary>True when a theme built against <paramref name="major"/>.<paramref name="minor"/> can run on this core.</summary>
     public static bool IsCompatible(int major, int minor) => major == Major && minor >= 0 && minor <= Minor;

@@ -298,7 +298,9 @@ public readonly partial struct User
         readonly Func<string> _filterText;
         readonly Func<uint> _runSearch;
         readonly Action _demandEdge, _demandRows, _syncNav, _syncLetters, _syncLoad, _saveState, _resetDepth, _autoTop, _autoAlbum;
-        readonly Action _onNavSel, _commitLeft, _commitMid;
+        readonly Action _onNavSel, _commitLeft, _commitMid, _restLeft;
+        /// <summary>The user has set the navigator's width (contract 1.21): no tier re-rests it from here on.</summary>
+        bool _leftCustomized;
         readonly Action<int> _pickDepth, _jump, _onAlsoBy;
         /// <summary>The truthful mount signal (A3): wired ONCE, frozen, on the keyed nav-list box — the engine calls it
         /// only when THAT box is actually realized (a real mount), never on a refresh. It reads <c>_shape.Peek()</c> for
@@ -382,7 +384,10 @@ public readonly partial struct User
             };
             _navScroll = new ScrollOptions { ScrollKey = "lib:nav:" + _kind, Handle = _navHandle };
             var saved = LibraryViewPrefs.Read(_kind);
-            LeftW = new(saved.LeftW);
+            // The navigator rests at the structure's width for the content tier until the user drags it (contract 1.21): read from the tiers the frame already
+            // resolved, so frame one is final, and re-rested on a crossing (`_restLeft`); the first drag makes the stored width the user's.
+            _leftCustomized = LibraryViewPrefs.LeftWCustomized(_kind);
+            LeftW = new(LibraryViewPrefs.RestingLeftW(_kind, saved.LeftW, _leftCustomized, Theming.ThemeHost.Facts.Peek().Tiers.Content, ShellPolicy.Now.LibraryTiers));
             MidW = new(saved.MidW);
             Sort = new(saved.Sort);
             Desc = new(saved.Desc);
@@ -409,7 +414,8 @@ public readonly partial struct User
             _autoTop = AutoSelectTop;
             _autoAlbum = AutoSelectAlbum;
             _onNavSel = OnNavSel;
-            _commitLeft = () => LibraryViewPrefs.SetLeftW(_kind, LeftW.Peek());
+            _commitLeft = CommitLeft;
+            _restLeft = RestLeft;
             _commitMid = () => LibraryViewPrefs.SetMidW(_kind, MidW.Peek());
             _setPageWidth = w => { if (w > 0f && w != _pageW.Peek()) _pageW.Value = w; };
             _kinds = KindChips;
@@ -454,6 +460,27 @@ public readonly partial struct User
             };
         }
 
+        /// <summary>A grip release: the width becomes the user's (a release that moved nothing from the tier's rest keeps the navigator the tier's).</summary>
+        void CommitLeft()
+        {
+            float w = LeftW.Peek();
+            if (!_leftCustomized && w == RestingLeftNow()) return;
+            LibraryViewPrefs.SetLeftW(_kind, w);
+            _leftCustomized = true;
+        }
+
+        /// <summary>Auto-tracked on the tiers and the structure's library policy: an undragged navigator follows the tier's resting width.</summary>
+        void RestLeft()
+        {
+            float rest = LibraryViewPrefs.RestingLeftW(_kind, LibraryViewPrefs.LeftWKey(_kind).Default, _leftCustomized,
+                Theming.ThemeHost.Facts.Value.Tiers.Content, ShellPolicy.Tracked.LibraryTiers);
+            if (!_leftCustomized) LeftW.SetIfChanged(rest);
+        }
+
+        float RestingLeftNow()
+            => LibraryViewPrefs.RestingLeftW(_kind, LibraryViewPrefs.LeftWKey(_kind).Default, false,
+                Theming.ThemeHost.Facts.Peek().Tiers.Content, ShellPolicy.Now.LibraryTiers);
+
         public override Element Render()
         {
             uint epoch = Entities.ScopeEpoch.Value;          // FIRST: a scope switch re-points every table below
@@ -465,6 +492,7 @@ public readonly partial struct User
             uint hitsGeneration = UseComputed(_runSearch).Value;
             UseEffect(_demandEdge, DepKey.From((int)epoch, Entities.Current.MeSlot));   // once per scope; a failed ask never re-arms here
             UseEffect(_demandRows);                                                     // re-runs as the relation lands
+            UseEffect(_restLeft);                                                       // auto-tracked: a content-tier crossing re-rests an undragged navigator
             UseSignalEffect(_watchLetters);                                             // the sticky letter off the nav scroll
             // The structure's LAYOUT ladder over the page's measured width (themes plan 3.3): the first frame resolves from the seed (the content region the frame resolved the
             // window tiers on), so a page mounted at Compact is one column from its first frame; a crossing after it commits on the first non-resized frame and animates.

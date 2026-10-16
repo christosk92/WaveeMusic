@@ -63,11 +63,17 @@ internal static partial class ClassicDetailFrame
     /// render's spec; a later push re-renders the frame and the region refreshes its Ready branch in place, so the rail keeps following the header
     /// (meta, description, a rename) after the reveal.</summary>
     public static Element RailTemplate(DetailRailProps p, in ViewContext ctx)
-        => RailFrame(p.RailWidth, new SkelRegionEl(
+    {
+        // A docked aside holds About this release (C-Album-Huge, contract 1.21): the rail leaves its release row out, loaded and shimmering alike.
+        var spec = ctx.Hooks.UseContext(Detail.AsideDocked) && p.Spec.Slots.ReleasePanel is not null
+            ? p.Spec with { Slots = p.Spec.Slots with { ReleasePanel = null } }
+            : p.Spec;
+        return RailFrame(p.RailWidth, new SkelRegionEl(
             Pending: p.Pending, Failed: s_false,
-            Content: () => RailColumn(p.Spec, p.Actions, p.RailWidth, p.TitleSize, p.DescriptionLines, p.Accent, p.Play, p.Shown),
-            ShimmerSource: () => RailSkeletonColumn(p.Spec, p.Actions, p.RailWidth, p.TitleSize, p.DescriptionLines),
+            Content: () => RailColumn(spec, p.Actions, p.RailWidth, p.TitleSize, p.DescriptionLines, p.Accent, p.Play, p.Shown),
+            ShimmerSource: () => RailSkeletonColumn(spec, p.Actions, p.RailWidth, p.TitleSize, p.DescriptionLines),
             OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false));
+    }
 
     /// <summary>The registered template of <see cref="ViewKeys.DetailCompactRail"/>: the collapsed strip's identity (cover + title) behind the same
     /// boundary; the expand chevron stays real.</summary>

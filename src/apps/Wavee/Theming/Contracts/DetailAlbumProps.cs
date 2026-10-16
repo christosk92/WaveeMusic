@@ -122,6 +122,29 @@ public sealed record MerchRowData(string Key, string Name, string Price, string?
 /// <summary>One row of a trailing list section.</summary>
 public sealed record TrailRowData(TrailRowKind Kind, TrailCardData? Card = null, MerchRowData? Merch = null);
 
+/// <summary>The props of <see cref="ViewKeys.AlbumAside"/> (contract 1.21): the Huge aside's sections, each null or empty when absent. Compares by reference
+/// (the host is the gate, as <see cref="AlbumSectionsProps"/>).</summary>
+public sealed record AlbumAsideProps
+{
+    /// <summary>About this release (the `Album.ReleasePanel` host, without outer padding); null before the album row exists.</summary>
+    public Element? Release { get; init; }
+
+    /// <summary>The lead artist the card is for (null: no card).</summary>
+    public Artist? About { get; init; }
+
+    /// <summary>Fans also like's circular artist cards (absent when empty).</summary>
+    public required IReadOnlyList<TrailCardData> Fans { get; init; }
+
+    /// <summary>The "More by" list section (a keyed `Album.StackHost`), or null.</summary>
+    public Element? MoreBy { get; init; }
+
+    /// <inheritdoc />
+    public bool Equals(AlbumAsideProps? other) => ReferenceEquals(this, other);
+
+    /// <inheritdoc />
+    public override int GetHashCode() => RuntimeHelpers.GetHashCode(this);
+}
+
 /// <summary>The props of <see cref="ViewKeys.AlbumSections"/>: the sections the host decided are present, each with what it paints. Their order is fixed
 /// (videos, About the artist, Fans also like, then the lists).</summary>
 public sealed record AlbumSectionsProps

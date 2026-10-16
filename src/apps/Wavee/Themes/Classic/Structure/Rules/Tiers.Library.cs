@@ -22,6 +22,13 @@
 // to the grip's 240), it does not rewrite it. The grid column counts are the fitted grid's own floor-fit over the navigator's width (116-164 cells): 2 columns at
 // the 340 default, 2 at Compact, 4 at the Huge board's 560.
 //
+// THE NAVIGATOR'S RESTING WIDTH PER TIER (`Policy`, contract 1.21): while the user has never dragged the grip (the stored width is unset or the key's default), the
+// navigator rests at the tier's width: 560 at Huge (C-Library-Huge: the 4-column grid), the artists' reader list 400 (C-LibraryList-Huge); the key's own 340 / 280
+// below Huge. The host applies it (it never writes the store); the first drag makes the width the user's for good.
+//
+// THE PANE HEADER PER TIER: the album and show panes' stated header is 156 tall with its 128 cover 18 from the words at Small and Standard (C-Library), and 200 with a
+// 160 cover 24 from the words at Huge (C-Library-Huge).
+//
 // Public, so `Wavee.Tests` pins the ladder and the records (the assembly has no InternalsVisibleTo).
 
 using System.Collections.Immutable;
@@ -65,6 +72,15 @@ public sealed record ClassicLibraryLayout
 
     /// <summary>The pane's insets (the album and show panes' header, commands and "Also by" band, and the reader's bands): <see cref="ClassicTiers.PaneInset"/> at every tier.</summary>
     public float PaneInset => ClassicTiers.PaneInset;
+
+    /// <summary>The album and show panes' cover edge (128; C-Library-Huge 160).</summary>
+    public float PaneCover { get; init; } = ClassicLibraryPaneRules.PaneCover;
+
+    /// <summary>The panes' STATED header height (the cover with its padding: 156; C-Library-Huge 200).</summary>
+    public float PaneHeaderHeight { get; init; } = ClassicLibraryPaneRules.PaneHeaderHeight;
+
+    /// <summary>The gap between the pane cover and its words (18; C-Library-Huge 24).</summary>
+    public float PaneHeaderGap { get; init; } = ClassicLibraryPaneRules.HeaderGap;
 }
 
 /// <summary>Classic's library ladder and records.</summary>
@@ -104,7 +120,18 @@ public static class ClassicLibraryTiers
     static readonly ClassicLibraryLayout s_huge = new()
     {
         Tier = WidthTier.Huge, HeadPad = new Edges4(16f, 24f, 16f, 8f), HeadGap = 8f, ControlH = 32f, ViewCell = 28f, ChipH = 0f, RightMin = 480f,
+        PaneCover = HugePaneCover, PaneHeaderHeight = HugePaneHeader, PaneHeaderGap = HugePaneGap,
     };
+
+    /// <summary>The Huge pane header (C-Library-Huge): a 160 cover in a 200 band, 24 from the words.</summary>
+    public const float HugePaneCover = 160f, HugePaneHeader = 200f, HugePaneGap = 24f;
+
+    /// <summary>The navigator's resting width at Huge while the user never dragged it (C-Library-Huge 560: the 4-column grid), and the artists' reader list's
+    /// (C-LibraryList-Huge 400).</summary>
+    public const float HugeNavWidth = 560f, HugeReaderNavWidth = 400f;
+
+    /// <summary>The policy the structure publishes for the core host (`ThemePolicies.LibraryTiers`).</summary>
+    public static LibraryTierPolicy Policy { get; } = new() { HugeNavWidth = HugeNavWidth, HugeReaderNavWidth = HugeReaderNavWidth };
 
     /// <summary>The record for <paramref name="facts"/>' content tier while the page is <paramref name="single"/> (the layout ladder's answer: the host's tier signal) or split. A
     /// split page in a Compact content tier (the ladders' holds differ by a frame) reads Small's; Standard's where no frame resolved the tiers (a view mounted alone).</summary>

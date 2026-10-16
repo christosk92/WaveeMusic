@@ -28,7 +28,9 @@ internal static class ClassicLibraryRails
             words[i] = new Controls.Words.Word(Loc.Bind(LibraryWordRail.WordKey(codes[i])), Code: c,
                                                Chevron: () => sort.Value == c && desc.Value);
         }
-        return Controls.Words.Rail(words, sort, fill: true,
+        // FIT, not fill: the words that fit the navigator's head whole, the rest behind "more ▾" (a fill rail's feathered edge read as a clipped fourth word,
+        // "rece…", at every size). The view toggle beside it keeps its cells.
+        return Controls.Words.Rail(words, sort, fit: true,
             onReselect: _ => desc.Value = !desc.Peek(),
             onSelect: _ => desc.Value = false);
     }

@@ -12,6 +12,13 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **Huge windows use their room on album, playlist and library pages.** From 1920 wide an album page has a right-hand column with About this
+  release, the artist (a large photo, monthly listeners, the bio), Fans also like in rows of four and More by; they leave the left column and the
+  space under the songs, and the songs keep their margin instead of running to the window's edge. On a 4K window the column is 640 wide and the
+  cover on the left grows to 336. A playlist shows its recommended songs and Insights in a 440 column (Insights alone, 400, on a playlist you
+  follow), and Liked Songs opens with its Insights column showing; close it and it stays closed for that visit. The library's list starts 560
+  wide (400 for Artists) with four covers a row and a bigger album header, and the sidebar starts at 320, until you drag them yourself; your own
+  widths are kept. The library's sort words no longer fade out at the end: the ones that do not fit go into a "more" menu.
 - **The stock controls are 40 big in a narrow window.** Under 528 wide every dialog's buttons are 40 tall and share the row in two equal
   columns (two of them now fit side by side even in a 300-wide window, where they used to stack), dropdowns are the normal dropdown with a
   40-tall field and roomier rows (it was a separate button that opened a menu), the crossfade and storage-budget number boxes are 40 tall,

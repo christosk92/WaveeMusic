@@ -29,20 +29,23 @@ internal static class ClassicLibraryPaneKit
     /// prototype's stance.
     /// <para>The block is <see cref="ClassicLibraryPaneRules.PaneHeaderHeight"/> tall, ALWAYS, and the text column is budgeted to fit inside the 128 the cover leaves: 16 eyebrow + 36 title
     /// + 20 attribution + 16 meta + three 3-DIP gaps = 97. A second 36-DIP title line would put the column at 133 and push the whole tracklist down, so the title ellipsizes on its one line.
-    /// The <c>MinHeight 0</c> / <c>ClipToBounds</c> on the column and on the block are the BACKSTOP for a locale whose metrics overrun the budget anyway: it clips, it never reflows.</para></summary>
-    public static Element PaneHeader(string? cover, string eyebrow, string title, Action open, Element attribution, string meta) => new BoxEl
+    /// The <c>MinHeight 0</c> / <c>ClipToBounds</c> on the column and on the block are the BACKSTOP for a locale whose metrics overrun the budget anyway: it clips, it never reflows.</para>
+    /// <para><paramref name="layout"/> is the library tier's record: its cover, stated height and gap (C-Library-Huge: a 160 cover in a 200 band, 24 from the words;
+    /// 128 / 156 / 18 below Huge). A tier crossing eases the band's height (and the cover's edge) instead of snapping the rows under it.</para></summary>
+    public static Element PaneHeader(string? cover, string eyebrow, string title, Action open, Element attribution, string meta, ClassicLibraryLayout layout) => new BoxEl
     {
         // ONE target: cover + eyebrow + title + attribution + meta open the album (the show pane's: the show). A title-only hyperlink left the cover inert in the library pane.
-        Direction = 0, Gap = ClassicLibraryPaneRules.HeaderGap, AlignItems = FlexAlign.End, Shrink = 0f,
-        Height = ClassicLibraryPaneRules.PaneHeaderHeight, ClipToBounds = true,
+        Direction = 0, Gap = layout.PaneHeaderGap, AlignItems = FlexAlign.End, Shrink = 0f,
+        Height = layout.PaneHeaderHeight, ClipToBounds = true, Animate = Design.Reveal.Resize,
         Padding = new Edges4(ClassicTiers.PaneInset, ClassicTiers.PaneInset, ClassicTiers.PaneInset, Spacing.M),
         Corners = Radii.CardAll, Cursor = CursorId.Hand, Focusable = true, Role = AutomationRole.Button, OnClick = open,
         Children =
         [
             new BoxEl
             {
-                Width = ClassicLibraryPaneRules.PaneCover, Height = ClassicLibraryPaneRules.PaneCover, Shrink = 0f, Corners = Radii.CardAll, ClipToBounds = true, Shadow = Elevation.Card,
-                Children = [Controls.Artwork(cover, ClassicLibraryPaneRules.PaneCover, ClassicLibraryPaneRules.PaneCover, Radii.Card, decodePx: ClassicLibraryPaneRules.CoverDecodePx)],
+                Width = layout.PaneCover, Height = layout.PaneCover, Shrink = 0f, Corners = Radii.CardAll, ClipToBounds = true, Shadow = Elevation.Card,
+                Animate = Design.Reveal.Resize,
+                Children = [Controls.Artwork(cover, layout.PaneCover, layout.PaneCover, Radii.Card, decodePx: ClassicLibraryPaneRules.CoverDecodePx)],
             },
             new BoxEl
             {
@@ -73,13 +76,13 @@ internal static class ClassicLibraryPaneKit
     /// words and the meta had none), in the SAME stated <see cref="ClassicLibraryPaneRules.PaneHeaderHeight"/>, padding, gap and bottom alignment, so the crossfade into the real
     /// header is a dissolve and never a reflow. The header's STATED height, not this tree's content height, is the point: the two must occupy the same band. Inert — no click, no role, no
     /// focus (a header that cannot say what it opens offers nothing).</summary>
-    public static BoxEl HeaderSkeleton() => new()
+    public static BoxEl HeaderSkeleton(ClassicLibraryLayout layout) => new()
     {
-        Direction = 0, Gap = ClassicLibraryPaneRules.HeaderGap, AlignItems = FlexAlign.End, Height = ClassicLibraryPaneRules.PaneHeaderHeight, ClipToBounds = true,
+        Direction = 0, Gap = layout.PaneHeaderGap, AlignItems = FlexAlign.End, Height = layout.PaneHeaderHeight, ClipToBounds = true, Animate = Design.Reveal.Resize,
         Padding = new Edges4(ClassicTiers.PaneInset, ClassicTiers.PaneInset, ClassicTiers.PaneInset, Spacing.M),
         Children =
         [
-            new BoxEl { Width = ClassicLibraryPaneRules.PaneCover, Height = ClassicLibraryPaneRules.PaneCover, Shrink = 0f, Corners = Radii.CardAll, Fill = Tok.FillSubtleSecondary },
+            new BoxEl { Width = layout.PaneCover, Height = layout.PaneCover, Shrink = 0f, Corners = Radii.CardAll, Fill = Tok.FillSubtleSecondary },
             new BoxEl
             {
                 Direction = 1, Gap = ClassicLibraryPaneRules.PaneHeaderGap, Grow = 1f, Basis = 0f, MinWidth = 0f,

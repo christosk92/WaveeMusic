@@ -50,6 +50,7 @@ public sealed class AlbumPlaylistMountedTests(ShellHost host)
                 (ViewKeys.AlbumReleasePanel.Id, "classic.album.release-panel"),
                 (ViewKeys.AlbumTrailing.Id, "classic.album.trailing"),
                 (ViewKeys.AlbumSections.Id, "classic.album.sections"),
+                (ViewKeys.AlbumAside.Id, "classic.album.aside"),
                 (ViewKeys.AlbumTrailStack.Id, "classic.album.trail-stack"),
                 (ViewKeys.AlbumUnresolved.Id, "classic.album.unresolved"),
                 (ViewKeys.PlaylistCoverArt.Id, "classic.playlist.cover-art"),

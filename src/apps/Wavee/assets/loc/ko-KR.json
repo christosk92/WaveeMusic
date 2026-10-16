@@ -410,7 +410,8 @@
       "creator": "artist",
       "recentlyAdded": "added",
       "releaseDate": "year",
-      "albums": "albums"
+      "albums": "albums",
+      "more": "더보기"
     },
     "scope": {
       "inLibrary": "in your library",

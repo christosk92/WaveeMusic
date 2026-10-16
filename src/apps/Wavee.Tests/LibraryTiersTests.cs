@@ -204,4 +204,60 @@ public class LibraryTiersTests
         Assert.Equal(24f, ClassicRecentsTiers.For(WidthTier.Small).CalendarGap);
         Assert.Equal(16f, ClassicRecentsTiers.For(WidthTier.Huge).CalendarGap);   // C-Recents-Huge's month cards sit 16 apart
     }
+
+    // ── the navigator's resting width per tier (contract 1.21: C-Library-Huge 560, C-LibraryList-Huge 400) ──────────────────────────────
+
+    [Theory]
+    [InlineData("albums", WidthTier.Standard, 340f)]
+    [InlineData("albums", WidthTier.Small, 340f)]
+    [InlineData("albums", WidthTier.Huge, 560f)]
+    [InlineData("albums", WidthTier.Huge4K, 560f)]
+    [InlineData("podcasts", WidthTier.Huge, 560f)]
+    [InlineData("artists", WidthTier.Standard, 280f)]
+    [InlineData("artists", WidthTier.Huge, 400f)]
+    public void An_undragged_navigator_rests_at_its_tiers_width(string kind, WidthTier content, float expected)
+    {
+        float stored = LibraryViewPrefs.LeftWKey(kind).Default;
+        Assert.Equal(expected, LibraryViewPrefs.RestingLeftW(kind, stored, customized: false, content, ClassicLibraryTiers.Policy));
+    }
+
+    [Theory]
+    [InlineData(WidthTier.Standard)]
+    [InlineData(WidthTier.Huge)]
+    public void A_dragged_navigator_keeps_the_users_width_at_every_tier(WidthTier content)
+        => Assert.Equal(420f, LibraryViewPrefs.RestingLeftW("albums", 420f, customized: true, content, ClassicLibraryTiers.Policy));
+
+    [Fact]
+    public void A_structure_without_a_library_policy_keeps_the_keys_default()
+    {
+        Assert.Equal(340f, LibraryViewPrefs.RestingLeftW("albums", 340f, customized: false, WidthTier.Huge, LibraryTierPolicy.Default));
+        Assert.Same(ClassicLibraryTiers.Policy, Wavee.Themes.Classic.ClassicPolicies.Bundle.LibraryTiers);
+    }
+
+    [Fact]
+    public void A_stored_width_is_the_users_only_when_it_is_not_the_default()
+    {
+        // Migration-free: a store that never held the key, or holds the default an older build saved on every visit, is "never dragged".
+        var settings = new MemoryAppSettings();
+        var key = LibraryViewPrefs.LeftWKey("albums");
+        Assert.False(ThemeState.IsCustomized(key, settings, "classic"));
+        ThemeState.Set(key, 340f, settings, "classic");
+        Assert.False(ThemeState.IsCustomized(key, settings, "classic"));
+        ThemeState.Set(key, 420f, settings, "classic");
+        Assert.True(ThemeState.IsCustomized(key, settings, "classic"));
+        Assert.False(ThemeState.IsCustomized(key, settings, "zune"));           // per theme
+    }
+
+    [Fact]
+    public void The_huge_pane_header_is_the_boards_200_band()
+    {
+        var huge = ClassicLibraryTiers.For(WidthTier.Huge, single: false);
+        Assert.Equal(160f, huge.PaneCover);                                      // C-Library-Huge: the 160 cover in a 200 band, 24 from the words
+        Assert.Equal(200f, huge.PaneHeaderHeight);
+        Assert.Equal(24f, huge.PaneHeaderGap);
+        var standard = ClassicLibraryTiers.For(WidthTier.Standard, single: false);
+        Assert.Equal(ClassicLibraryPaneRules.PaneCover, standard.PaneCover);   // the tuned 128 / 156 / 18
+        Assert.Equal(ClassicLibraryPaneRules.PaneHeaderHeight, standard.PaneHeaderHeight);
+        Assert.Equal(ClassicLibraryPaneRules.HeaderGap, standard.PaneHeaderGap);
+    }
 }

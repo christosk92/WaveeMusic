@@ -10,6 +10,8 @@
 //     remembered width;
 //   · THE PERSISTED COLUMN WIDTH IS NEVER WRITTEN BY A TIER: a width of 420 stored before the mount (a tier that hides the column, or squeezes it, must leave it) reads
 //     420 after;
+//   · WHILE THE USER NEVER DRAGGED THE GRIP (contract 1.21) the navigator rests at the tier's width (C-Library-Huge 560, C-LibraryList-Huge 400, the key's 340 / 280
+//     below Huge) and the store stays unset; the sidebar likewise rests at 320 from Huge on (C-Shell-Huge) while never resized, its Small / Standard width unchanged;
 //   · Recents' record is the content tier's, its kind pivots carry the record's tier and are 40 tall at Compact;
 //   · Local files (an ordinary playlist page: no board in any theme, owner Q18) holds the playlist family's tier layout.
 
@@ -180,4 +182,76 @@ public sealed partial class TierLayoutTests
         var arms = shell.FindPrefix("detail:arm:");
         Assert.True(arms.Count == 1, $"{size}: {arms.Count} arms mounted ({string.Join(", ", arms.Select(a => a.Key))})");
     });
+
+    // ── the resting widths while never dragged (contract 1.21) ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>Clear the kind's stored navigator width (never dragged), run <paramref name="body"/>, put the kind's state back.</summary>
+    void WithUnsetLibraryWidth(string kind, int view, Action body)
+    {
+        LibraryViewState saved = default;
+        bool customized = false;
+        string name = "";
+        host.Run(() =>
+        {
+            saved = LibraryViewPrefs.Read(kind);
+            customized = LibraryViewPrefs.LeftWCustomized(kind);
+            name = ThemeState.SettingName(ThemeState.Scope.Peek(), LibraryViewPrefs.LeftWKey(kind).Id);
+            LibraryViewPrefs.Save(kind, saved with { View = view }, artists: false);
+            Platform.Settings.Remove(name);
+        });
+        try { body(); }
+        finally
+        {
+            host.Run(() =>
+            {
+                LibraryViewPrefs.Save(kind, saved, artists: false);
+                if (customized) LibraryViewPrefs.SetLeftW(kind, saved.LeftW);
+                else Platform.Settings.Remove(name);
+            });
+        }
+    }
+
+    [Theory, MemberData(nameof(FrameSizes))]
+    public void The_albums_navigator_and_the_sidebar_rest_at_the_tiers_width_while_never_dragged(string size)
+        => WithUnsetLibraryWidth("albums", view: 3, () => AssertPage(LibraryAlbums, size, (shell, tiers) =>
+        {
+            AssertNavigatorRest(shell, tiers, size, "albums");
+            AssertSidebarRest(size);
+        }));
+
+    [Theory, MemberData(nameof(PageSizes))]
+    public void The_artists_navigator_rests_at_the_tiers_width_while_never_dragged(string size)
+        => WithUnsetLibraryWidth("artists", view: 1, () => AssertPage(LibraryArtists, size, (shell, tiers) => AssertNavigatorRest(shell, tiers, size, "artists")));
+
+    static void AssertNavigatorRest(Shell.HeadlessShell shell, TierFacts tiers, string sizeName, string kind)
+    {
+        var size = Sizes[sizeName];
+        var scene = shell.Host.Scene;
+        float rest = LibraryViewPrefs.RestingLeftW(kind, LibraryViewPrefs.LeftWKey(kind).Default, customized: false, tiers.Content, ClassicLibraryTiers.Policy);
+        Assert.Equal(tiers.Content >= WidthTier.Huge ? (kind == "artists" ? 400f : 560f) : (kind == "artists" ? 280f : 340f), rest);
+        if (!shell.Find("lib:wide").IsNull)
+        {
+            // The navigator rests at the tier's width wherever the pane's floor leaves room for it, and never past it.
+            var card = scene.AbsoluteRect(Node(shell, ClassicFrameLayout.ContentCardKey));
+            var nav = scene.AbsoluteRect(Node(shell, "lib:nav"));
+            var layout = ClassicLibraryTiers.Of(tiers, single: false);
+            Assert.True(nav.W <= rest + 0.5f, $"{size.Name}: the navigator is {nav.W}, past the tier's {rest}");
+            if (card.W >= rest + 16f + layout.RightMin + 1f)
+                Assert.True(MathF.Abs(nav.W - rest) <= 0.5f, $"{size.Name}: the navigator is {nav.W}, not the tier's {rest}");
+        }
+        // The tier never wrote the store: the width is still the user's to set.
+        Assert.False(LibraryViewPrefs.LeftWCustomized(kind), $"{size.Name}: a tier stored the navigator's width");
+    }
+
+    /// <summary>The expanded sidebar rests at the tier's width (C-Shell-Huge 320 from Huge on) unless the user resized it.</summary>
+    static void AssertSidebarRest(string sizeName)
+    {
+        var size = Sizes[sizeName];
+        if (Sidebar.Mode.Peek() != SidebarPaneMode.Expanded) return;
+        bool user = Sidebar.WidthUserSet();
+        float expected = ClassicPolicies.NavPane.RestingWidthFor(size.Window, ThemeState.Get(Sidebar.PaneWidthKey), user);
+        Assert.True(MathF.Abs(Sidebar.Width.Peek() - expected) <= 0.5f, $"{size.Name}: the sidebar rests at {Sidebar.Width.Peek()}, not {expected}");
+        if (size.Window >= WidthTier.Huge && !user)
+            Assert.True(MathF.Abs(Sidebar.Width.Peek() - 320f) <= 0.5f, $"{size.Name}: an unresized Huge sidebar is {Sidebar.Width.Peek()}, not the board's 320");
+    }
 }

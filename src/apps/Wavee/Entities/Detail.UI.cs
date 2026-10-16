@@ -324,6 +324,11 @@ public static partial class Detail
         /// height, arrives with the description, and the full text / chapters / links stay in the page body. Rail only
         /// (the vertical header puts its body under the rows, where the About section already is).</summary>
         public Func<float, Element>? About { get; init; }
+        /// <summary>The page's right ASIDE body (contract 1.21): mounted only where the window tier's record docks an aside
+        /// (<c>DetailTierLayout.AsideDocked</c>) in the two-column arm. What it holds must leave the rail, the band under the rows and the
+        /// list's tail while it is docked: those read <see cref="AsideDocked"/>. The album's release facts, artist, fans and "More by"; a
+        /// playlist's recommended songs.</summary>
+        public Func<Element>? Aside { get; init; }
 
         internal int Mask()
             => (Cover is null ? 0 : 1) | (CompactCover is null ? 0 : 2) | (Title is null ? 0 : 4)
@@ -332,11 +337,16 @@ public static partial class Detail
              | (LikedFacts is null ? 0 : 512) | (Trailing is null ? 0 : 1024) | (Episodes is null ? 0 : 2048)
              | (Badges is null ? 0 : 4096) | (Rating is null ? 0 : 8192) | (Ledger is null ? 0 : 16384)
              | (Primary is null ? 0 : 32768) | (Satellites is null ? 0 : 65536) | (Topics is null ? 0 : 131072)
-             | (About is null ? 0 : 262144);
+             | (About is null ? 0 : 262144) | (Aside is null ? 0 : 524288);
 
         public bool Equals(FrameSlots? o) => o is not null && Mask() == o.Mask();
         public override int GetHashCode() => Mask();
     }
+
+    /// <summary>True under a frame whose aside is docked (<see cref="FrameSlots.Aside"/>, contract 1.21): what the aside now holds leaves the
+    /// places it lives otherwise (the rail's release row, the album band's About / Fans / "More by", the playlist list's recommendations), so
+    /// nothing is shown twice. Provided by <c>FrameHost</c> around the frame view; false everywhere else.</summary>
+    public static readonly Context<bool> AsideDocked = new(false);
 
     /// <summary>Everything a page hands the frame. Equality gates on DATA: the identity by value, the config, the table
     /// source by (type, context, version, count, total, state), the profile by its own data equality, the verbs and slots
@@ -526,6 +536,8 @@ public static partial class Detail
         readonly InsightsToggle _insights = new();
         readonly Action _returnInsightsFocus;
         readonly Action _syncInsightsArm;
+        readonly Action _restInsights;
+        bool _restOpenNow;
         InputHooks? _inputHooks;
         string _sheetRoute = "\0";
         bool _sheetHosts;
@@ -558,6 +570,7 @@ public static partial class Detail
         readonly Func<bool, Element> _sReleasePanel, _sEpisodes;
         readonly Func<Func<ColorF>, Element> _sPrimary;
         readonly Func<Element[]> _sSatellites;
+        readonly Func<Element> _sAside;
         FrameActions? _trampActions;
         int _trampActionsMask = -1;
         FrameSlots? _trampSlots;
@@ -614,11 +627,18 @@ public static partial class Detail
             _sTopics = w => _latest?.Slots.Topics?.Invoke(w) ?? new BoxEl();
             _sPrimary = a => _latest?.Slots.Primary?.Invoke(a) ?? new BoxEl();
             _sSatellites = () => _latest?.Slots.Satellites?.Invoke() ?? Array.Empty<Element>();
+            _sAside = () => _latest?.Slots.Aside?.Invoke() ?? new BoxEl();
 
             // ── INSIGHTS SHEET (additive) ──
             _returnInsightsFocus = ReturnInsightsFocus;
             _syncInsightsArm = () => { if (!_sheetHosts) _insights.Close(); };
+            _restInsights = () => _insights.Rest(_restOpenNow);
         }
+
+        /// <summary>The insights pane's resting state: open only where the tier's record rests it open (<c>DetailTierLayout.InsightsRestOpen</c>), on a
+        /// page that hosts facts, outside the vertical arm (where it is a sheet over the page, which never opens by itself: tuned Classic I1).</summary>
+        static bool RestsOpen(DetailTierLayout layout, DetailPageLayout pageLayout, bool hostsFacts, bool vertical)
+            => layout.InsightsRestOpen && hostsFacts && !vertical && pageLayout != DetailPageLayout.Hero;
 
         /// <summary>── INSIGHTS SHEET (additive) ── Focus returns to the toolbar toggle when the sheet closes. The
         /// control has already popped its focus scope and restored whatever held focus when the sheet opened; this is
@@ -644,8 +664,12 @@ public static partial class Detail
             if (!string.Equals(_sheetRoute, spec.RouteKey, StringComparison.Ordinal))
             {
                 _sheetRoute = spec.RouteKey;
-                _insights.Close();
+                _insights.Reset();
                 _factsLatched = null;        // the facts latch is the ROUTE's, exactly like the open state
+                // The tier's RESTING state from the route's first frame (a Huge dock or aside is open before it is laid out, so it never
+                // eases in under the reader); later crossings and the facts latch re-rest it in `_restInsights`.
+                _insights.Rest(RestsOpen(ShellPolicy.Now.DetailTiers.For(ThemeHost.Facts.Peek().Tiers), ShellPolicy.Now.Detail.PageLayout,
+                    spec.Slots.LikedFacts is not null && spec.Config.Content == DetailContent.Tracks, vertical: false));
             }
             if (!_accentSeeded)
             {
@@ -719,6 +743,12 @@ public static partial class Detail
             _sheetHosts = InsightsSheet.ShowsToggle(id.Kind, factsSettled, cfg.Content);
             // Losing the facts CLOSES the sheet — a signal write belongs in an effect, never in a render (rule 6).
             UseEffect(_syncInsightsArm, DepKey.From(_sheetHosts ? 1 : 0));
+            // …and the tier's RESTING state (contract 1.21): open where the pane is a column of the page (the Huge dock, the aside) until the user
+            // moves it, closed again when a crossing leaves that tier. Re-run on a crossing (the tracked reads above re-render this host) and when
+            // the facts latch settles.
+            var tierLayout = tierLayouts.For(tierFacts);
+            _restOpenNow = RestsOpen(tierLayout, pageLayout, _sheetHosts && cfg.Content == DetailContent.Tracks, vertical);
+            UseEffect(_restInsights, DepKey.From(_restOpenNow ? 1 : 0));
 
             // ── the leaves: shell tint (a hand-over, never a clear) and the page tone plane (the ONE ground) ──
             Element tint = Palette.ShellTint(paletteUrl, ready: true, apply: cfg.TwoColumn,
@@ -750,7 +780,7 @@ public static partial class Detail
             // ── mode 3: the vertical / hero system ──
             if (vertical)
             {
-                return ViewSlots.View(Contracts.ViewKeys.DetailFrame, new Contracts.DetailFrameProps
+                return Ctx.Provide(AsideDocked, false, ViewSlots.View(Contracts.ViewKeys.DetailFrame, new Contracts.DetailFrameProps
                 {
                     Vertical = true, VerticalTracks = verticalTracks, PageAccent = _pageAccent, OnMeasured = _measure,
                     Tint = tint, Tone = tone, Notice = notice,
@@ -767,20 +797,20 @@ public static partial class Detail
                     //    pane must never disagree, and the builder closes over the page's own live source, so a latched
                     //    one is never stale data.
                     Sheet = verticalTracks ? SheetProps(routeKey) : null,
-                });
+                }));
             }
 
             // ── modes 0/1/2 of a page with NO rail (Liked Songs, tuned Classic D16): the page head over the content column ──
             if (!cfg.Rail)
             {
-                return ViewSlots.View(Contracts.ViewKeys.DetailFrame, new Contracts.DetailFrameProps
+                return Ctx.Provide(AsideDocked, false, ViewSlots.View(Contracts.ViewKeys.DetailFrame, new Contracts.DetailFrameProps
                 {
                     Vertical = false, VerticalTracks = false, PageAccent = _pageAccent, OnMeasured = _measure,
                     Tint = tint, Tone = tone, Notice = notice,
                     ContentKey = contentKey, Content = content, ContentMinWidth = rightMin, Drop = drop,
                     Head = new Contracts.DetailHeadProps { Spec = spec, Shown = _listCount },
                     Sheet = episodes ? null : SheetProps(routeKey),
-                });
+                }));
             }
 
             // ── modes 0/1/2: the centred two-column row [rail | grip | right] ──
@@ -832,15 +862,23 @@ public static partial class Detail
                     },
                 };
             }
-            return ViewSlots.View(Contracts.ViewKeys.DetailFrame, new Contracts.DetailFrameProps
+            // ── the ASIDE (contract 1.21): docked where the window tier's record docks one (Classic Huge, C-Album-Huge / C-Playlist-Huge) and the page has
+            //    an aside body or facts to show in it. Everything it holds leaves the rail, the band and the list's tail under `AsideDocked`. ──
+            bool asideOn = tierLayout.AsideDocked && !episodes && (spec.Slots.Aside is not null || _sheetHosts);
+            Contracts.DetailAsideProps? aside = asideOn
+                ? new Contracts.DetailAsideProps { Kind = id.Kind, Body = spec.Slots.Aside is null ? null : _sAside(), RouteKey = routeKey }
+                : null;
+            return Ctx.Provide(AsideDocked, asideOn, ViewSlots.View(Contracts.ViewKeys.DetailFrame, new Contracts.DetailFrameProps
             {
                 Vertical = false, VerticalTracks = false, PageAccent = _pageAccent, OnMeasured = _measure,
                 Tint = tint, Tone = tone, Notice = notice,
                 ContentKey = contentKey, Content = content, ContentMinWidth = rightMin, Drop = drop,
                 TwoColumn = twoColumn,
-                // ── INSIGHTS SHEET ── a TRACK page's two-column arm lays the sheet over its list column (I1), composed open or not.
+                // ── INSIGHTS SHEET ── a TRACK page's two-column arm lays the sheet over its list column (I1), composed open or not; with an aside the
+                //    aside shows the insights instead.
                 Sheet = episodes ? null : SheetProps(routeKey),
-            });
+                Aside = aside,
+            }));
         }
 
         /// <summary>The sheet's props for this render: the LATCHED facts builder (null while this page hosts no facts, so the pane renders

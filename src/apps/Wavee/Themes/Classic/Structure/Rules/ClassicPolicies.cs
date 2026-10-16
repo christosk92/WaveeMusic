@@ -29,7 +29,11 @@ public static class ClassicPolicies
         MinWidth: 180f, MaxWidth: 460f, DefaultWidth: 320f,
         CollapseApproach: 64f, CollapseHysteresis: 24f,
         NarrowMode: NavPaneMode.Compact, TinyMode: NavPaneMode.Overlay, Resizable: true, Seam: 16f,
-        RailWidth: SidebarGeometry.RailWidth);
+        RailWidth: SidebarGeometry.RailWidth)
+    {
+        // C-Shell-Huge (and every Huge board) draws the pane at 320, the Standard boards at 280: a pane the user never resized rests at 320 from Huge on.
+        HugeWidth = SidebarGeometry.HugeRestWidth,
+    };
 
     /// <summary>The panel: 200-500 wide, beside the content row, placed per window tier (`ClassicPanelTiers`, TC2: a sheet at Compact,
     /// floating at Small, one docked at Standard, two at Huge). The mini player keeps the 0.2.9 numbers: 240 x 135 at the least, 72 clear
@@ -84,7 +88,7 @@ public static class ClassicPolicies
     /// <summary>The whole bundle, with Classic's window tiers. One instance, so republishing the facts is not a change. Declared
     /// LAST: static properties initialise in textual order and it reads the five above (`ClassicTiers` builds its policy in its
     /// own initializer and never reads this class).</summary>
-    public static ThemePolicies Bundle { get; } = new(NavPane, Panel, PlayerBar, Chrome, Stage) { Tiers = ClassicTiers.Policy, Overlays = ClassicOverlayTiers.Policy, DetailTiers = ClassicDetailTiers.Policy, ArtistTiers = ClassicArtistTiers.Policy };
+    public static ThemePolicies Bundle { get; } = new(NavPane, Panel, PlayerBar, Chrome, Stage) { Tiers = ClassicTiers.Policy, Overlays = ClassicOverlayTiers.Policy, DetailTiers = ClassicDetailTiers.Policy, ArtistTiers = ClassicArtistTiers.Policy, LibraryTiers = ClassicLibraryTiers.Policy };
 
     // The bundle for each combination of the structure options that reach the core (M7a: the sidebar layout x density; M4: the track artwork hidden; M8: the
     // detail page layout x the rails' uniformity; M2: the track row style; S0: the sidebar covers; CT9: the accent from artwork and the now-playing colours):

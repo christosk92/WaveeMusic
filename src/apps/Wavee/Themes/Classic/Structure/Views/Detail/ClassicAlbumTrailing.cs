@@ -11,6 +11,9 @@
 //   · the SECTIONS (`SectionsTemplate`): the music videos (ONE video keeps the hero card's geometry; TWO OR MORE get a horizontal shelf through the shared
 //     `PagedShelf`), About the artist, Fans also like, and the list sections, in that fixed order;
 //   · the STACK (`StackTemplate`): a capped vertical stack under a section header; "Show all N" lengthens it IN PLACE and is one-way;
+//   · the HUGE ASIDE (`AsideTemplate`, contract 1.21, C-Album-Huge / -Huge4K): About this release, the artist card with its image band, Fans also like as
+//     a four-column grid and "More by", 24 apart in the frame's docked aside column. While it is docked the band leaves those sections out and the rail its
+//     release row (`Detail.AsideDocked`);
 //   · the SKELETON: the section skeletons `PageRules.SkeletonShape` names, in the loaded band's own order. The sizes are `PageRules.Skel*` (derived from the
 //     real builders, pinned by facts) so `PageRules.SkeletonHeight` equals what is drawn and the reveal is a dissolve, not a snap. It deliberately UNDER-states
 //     (no "show all", merch or two-video shelf placeholder).
@@ -47,6 +50,50 @@ internal static class ClassicAlbumTrailing
                     Pending: p.Pending, Failed: s_never, Content: p.Content, ShimmerSource: () => TrailingSkeleton(in shape), OnFailed: null,
                     Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: true)
                 { Key = p.SkeletonKey },
+            ],
+        };
+    }
+
+    // ══ 1b. THE HUGE ASIDE (C-Album-Huge, C-Album-Huge4K) ═════════════════════════════════════════════════════════════════
+
+    /// <summary>The registered template of <see cref="ViewKeys.AlbumAside"/>: the sections present, in the board's order, at the tier record's aside measure.</summary>
+    public static Element AsideTemplate(AlbumAsideProps p, in ViewContext ctx)
+    {
+        var g = ClassicDetailTiers.Of(ctx.Tier()).Aside ?? ClassicDetailAside.Huge;
+        float content = g.ContentWidthFor(DetailKind.Album, body: true);
+        var kids = new List<Element>(4);
+        if (p.Release is { } release) kids.Add(release);
+        // The card freezes at mount: its band height is in the key, so a Huge | Huge 4K crossing re-mounts it at the new band.
+        if (p.About is { } artist)
+            kids.Add(Controls.ArtistAboutCard(artist, AboutLayout.Aside, g.ArtistBand)
+                with { Key = "aside:about:" + artist.Uri.Text + ":" + g.ArtistBand.ToString(CultureInfo.InvariantCulture) });
+        if (p.Fans.Count > 0) kids.Add(AsideFans(p.Fans, g, content));
+        if (p.MoreBy is { } moreBy) kids.Add(moreBy);
+        return new BoxEl { Direction = 1, Gap = g.AlbumGap, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = kids.ToArray() };
+    }
+
+    /// <summary>Fans also like in the aside: the 14/20 section title over rows of four circular cards (C-Album-Huge 96 circles 12 apart in rows, 8 across;
+    /// 120 and 16 at 4K), the same card as the band's.</summary>
+    static Element AsideFans(IReadOnlyList<TrailCardData> fans, ClassicDetailAside g, float content)
+    {
+        float cell = g.FanCellFor(content);
+        int columns = Math.Max(1, g.FanColumns);
+        var rows = new List<Element>((fans.Count + columns - 1) / columns);
+        for (int start = 0; start < fans.Count; start += columns)
+        {
+            int n = Math.Min(columns, fans.Count - start);
+            var cards = new Element[n];
+            for (int i = 0; i < n; i++)
+                cards[i] = Controls.Surface(CardOf(fans[start + i]), s_fanShape, cell) with { Key = fans[start + i].Key };
+            rows.Add(new BoxEl { Direction = 0, Gap = g.FanColumnGap, MinWidth = 0f, Children = cards });
+        }
+        return new BoxEl
+        {
+            Key = "aside:fans", Direction = 1, Gap = Spacing.M, MinWidth = 0f,
+            Children =
+            [
+                Ui.BodyStrong(Loc.Get(Strings.Detail.FansAlsoLike)) with { Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                new BoxEl { Direction = 1, Gap = g.FanRowGap, MinWidth = 0f, Children = rows.ToArray() },
             ],
         };
     }

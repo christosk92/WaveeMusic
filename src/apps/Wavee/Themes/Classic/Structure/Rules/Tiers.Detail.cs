@@ -26,7 +26,11 @@
 //   · Small: the two-column arm (mode 1's 224 rail at 800); no Album and no Plays lane, and the Date lane only on a quiet list (C-TrackList small).
 //   · Standard: the tuned design (P3b), unchanged.
 //   · Huge (and Huge 4K): the rail rests at 320 where it was never dragged, the rows at the cozy rung (56 / 44, 40 art), the insights pane docks as a
-//     360 column beside the list (C-Liked-Huge) instead of covering it.
+//     360 column beside the list (C-Liked-Huge) instead of covering it and rests OPEN there; a two-column page docks its ASIDE (contract 1.21): the album's
+//     520 release / artist / fans / "More by" column (C-Album-Huge), a playlist's 440 recommendations and insights (C-Playlist-Huge), or the 400 insights
+//     alone (C-PlaylistFollowed-Huge), right of the list behind a hairline, the list keeping its 8 inset before it.
+//   · Huge 4K (`HugeWideRung`, from 3200 of window width, held 40 narrowing: the midpoint of the 2560 and 3840 boards): C-Album-Huge4K's 360 rail (336
+//     art), the 640 album aside with its 360 artist band and 120 fans.
 //
 // Public, so `Wavee.Tests` pins the ladders and the records (the assembly has no InternalsVisibleTo).
 
@@ -137,6 +141,18 @@ public static class ClassicDetailTiers
     /// <summary>The docked insights column at Huge (C-Liked-Huge).</summary>
     public const float DockedInsightsWidth = 360f;
 
+    /// <summary>The Huge 4K rung (C-Album-Huge4K): from this window width a Huge window reads <see cref="Huge4K"/>. The midpoint of the 2560 and 3840 boards.</summary>
+    public const string HugeWideRung = "detail.huge.wide";
+
+    /// <summary>Where the Huge 4K rung begins, and its hold on narrowing (the window tiers' 40).</summary>
+    public const float HugeWideFrom = 3200f, HugeWideHold = 40f;
+
+    /// <summary>The rung as Classic's tier policy declares it (window width).</summary>
+    public static NamedRung HugeWide { get; } = new(HugeWideRung, new TierEdge(HugeWideFrom, NarrowHold: HugeWideHold, WidenHold: 0f), RungAxis.Window);
+
+    /// <summary>The rail's resting width at Huge 4K where it was never dragged (C-Album-Huge4K: 360, its art 336).</summary>
+    public const float Huge4KRailRest = 360f;
+
     /// <summary>The Play split's whole width at a button <paramref name="height"/>: both halves grow by what the height adds over the tuned 32
     /// ([Play 88 │ ⌄ 32] → [Play 96 │ ⌄ 40] at Compact, board C-Album-Compact). The skeleton reserves the same box.</summary>
     public static float PlaySplitWidthFor(float height)
@@ -175,8 +191,15 @@ public static class ClassicDetailTiers
     {
         Core = new DetailTierLayout(
             new DetailTableTier(CompactRows: false, AlbumColumn: true, PlaysColumn: true, DateColumn: true, RowModern, RowClassic, RowArt),
-            InsightsDocked: true, RailRest: HugeRailRest, HeroActionExtra: 0f),
-        Tier = WidthTier.Huge, Target = Target, SortLeadsBar = false, SelectionTinted = false,
+            InsightsDocked: true, RailRest: HugeRailRest, HeroActionExtra: 0f, AsideDocked: true, InsightsRestOpen: true),
+        Tier = WidthTier.Huge, Target = Target, SortLeadsBar = false, SelectionTinted = false, Aside = ClassicDetailAside.Huge,
+    };
+
+    /// <summary>Huge 4K (C-Album-Huge4K): Huge's, with the 360 rail and the wider aside.</summary>
+    public static ClassicDetailTier Huge4K { get; } = Huge with
+    {
+        Core = Huge.Core with { RailRest = Huge4KRailRest },
+        Aside = ClassicDetailAside.Huge4K,
     };
 
     /// <summary>The record of window tier <paramref name="tier"/> (Huge 4K reads Huge's: Classic draws no 4K band).</summary>
@@ -188,8 +211,9 @@ public static class ClassicDetailTiers
         _ => Huge,
     };
 
-    /// <summary>The record of <paramref name="facts"/>; Standard's where no frame resolved the tiers (a view mounted alone).</summary>
-    public static ClassicDetailTier Of(in TierFacts facts) => facts.Policy is null ? Standard : For(facts.Window);
+    /// <summary>The record of <paramref name="facts"/> (Huge 4K past <see cref="HugeWideRung"/>); Standard's where no frame resolved the tiers (a view mounted alone).</summary>
+    public static ClassicDetailTier Of(in TierFacts facts)
+        => facts.Policy is null ? Standard : Policy.IsHugeWide(in facts) ? Huge4K : For(facts.Window);
 
     /// <summary>The record on screen now, read TRACKED (the running render or effect re-runs on a crossing): for the chrome kit and the row
     /// templates, which run inside the core table's components and carry no view context.</summary>
@@ -197,7 +221,81 @@ public static class ClassicDetailTiers
 
     /// <summary>The policy the structure publishes for the core frame and table.</summary>
     public static DetailTierPolicy Policy { get; } = new(Compact.Core, Small.Core, Standard.Core, Huge.Core,
-        RailTitleShort: 28f, RailTitleTall: 40f, DescriptionShort: 3, DescriptionRegular: 6);
+        RailTitleShort: 28f, RailTitleTall: 40f, DescriptionShort: 3, DescriptionRegular: 6)
+    { HugeWide = Huge4K.Core, HugeWideRung = HugeWideRung };
+}
+
+/// <summary>The docked aside of a Huge two-column page (contract 1.21): its width per kind, the hairline before it and what its sections measure.</summary>
+public sealed record ClassicDetailAside
+{
+    /// <summary>The album aside (C-Album-Huge 520, -Huge4K 640).</summary>
+    public required float AlbumWidth { get; init; }
+
+    /// <summary>A playlist's aside with recommendations (C-Playlist-Huge 440).</summary>
+    public float PlaylistWidth { get; init; } = 440f;
+
+    /// <summary>The aside with the insights alone (C-PlaylistFollowed-Huge 400).</summary>
+    public float InsightsWidth { get; init; } = 400f;
+
+    /// <summary>The album aside's artist band (270, 360 at 4K).</summary>
+    public required float ArtistBand { get; init; }
+
+    /// <summary>The fans' circle (96, 120 at 4K).</summary>
+    public required float FanArt { get; init; }
+
+    /// <summary>The fans grid's row gap (12, 16 at 4K).</summary>
+    public required float FanRowGap { get; init; }
+
+    /// <summary>Fans a row.</summary>
+    public int FanColumns { get; init; } = 4;
+
+    /// <summary>The gap between two fans of a row.</summary>
+    public float FanColumnGap { get; init; } = 8f;
+
+    /// <summary>The list column's right inset before the hairline: the rows keep it and never run to the card's edge.</summary>
+    public float ListInset { get; init; } = 8f;
+
+    /// <summary>The hairline's margins: 24 over it, 16 each side.</summary>
+    public Edges4 HairlineMargin { get; init; } = new(16f, 24f, 16f, 0f);
+
+    /// <summary>The album aside's padding over its first section (24), on the right (the card's edge, 24) and under its last (24).</summary>
+    public Edges4 AlbumPad { get; init; } = new(0f, 24f, 24f, 24f);
+
+    /// <summary>A playlist aside's padding (C-Playlist-Huge: 20 over it).</summary>
+    public Edges4 PlaylistPad { get; init; } = new(0f, 20f, 24f, 24f);
+
+    /// <summary>The gap between the album aside's sections.</summary>
+    public float AlbumGap { get; init; } = 24f;
+
+    /// <summary>The gap between a playlist aside's sections.</summary>
+    public float PlaylistGap { get; init; } = 20f;
+
+    /// <summary>The gap inside the insights section (its title over the cards).</summary>
+    public float InsightsGap { get; init; } = 12f;
+
+    /// <summary>The hairline and its two margins: what the aside slot adds beside its column.</summary>
+    public float HairlineSpan => HairlineMargin.Left + 1f + HairlineMargin.Right;
+
+    /// <summary>The aside column's width for a page of <paramref name="kind"/> (<paramref name="body"/>: the page has a body of its own, not only the insights).</summary>
+    public float WidthFor(DetailKind kind, bool body) => kind == DetailKind.Album ? AlbumWidth : body ? PlaylistWidth : InsightsWidth;
+
+    /// <summary>The whole slot: the hairline span and the column.</summary>
+    public float SlotWidthFor(DetailKind kind, bool body) => HairlineSpan + WidthFor(kind, body);
+
+    /// <summary>The column's padding for <paramref name="kind"/>.</summary>
+    public Edges4 PadFor(DetailKind kind) => kind == DetailKind.Album ? AlbumPad : PlaylistPad;
+
+    /// <summary>The column's content measure (less its right pad).</summary>
+    public float ContentWidthFor(DetailKind kind, bool body) => WidthFor(kind, body) - PadFor(kind).Right;
+
+    /// <summary>The width of one fan cell in a <paramref name="content"/>-wide aside.</summary>
+    public float FanCellFor(float content) => MathF.Max(0f, (content - (FanColumns - 1) * FanColumnGap) / FanColumns);
+
+    /// <summary>Huge (C-Album-Huge, C-Playlist-Huge, C-PlaylistFollowed-Huge).</summary>
+    public static ClassicDetailAside Huge { get; } = new() { AlbumWidth = 520f, ArtistBand = 270f, FanArt = 96f, FanRowGap = 12f };
+
+    /// <summary>Huge 4K (C-Album-Huge4K): the playlist asides keep Huge's (no 4K board draws them).</summary>
+    public static ClassicDetailAside Huge4K { get; } = new() { AlbumWidth = 640f, ArtistBand = 360f, FanArt = 120f, FanRowGap = 16f };
 }
 
 /// <summary>What Classic's detail views lay out in one window tier.</summary>
@@ -217,6 +315,9 @@ public sealed record ClassicDetailTier
 
     /// <summary>The selection bar is tinted with the accent (C-MultiSelect-Compact).</summary>
     public required bool SelectionTinted { get; init; }
+
+    /// <summary>The docked aside's geometry (Huge: C-Album-Huge, C-Playlist-Huge; Huge 4K: C-Album-Huge4K); null where the tier docks none.</summary>
+    public ClassicDetailAside? Aside { get; init; }
 
     /// <summary>The insights pane docks beside the list.</summary>
     public bool InsightsDocked => Core.InsightsDocked;

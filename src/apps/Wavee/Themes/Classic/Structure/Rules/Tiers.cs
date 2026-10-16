@@ -104,8 +104,10 @@ public static class ClassicTiers
         Window, Content, Height,
         CompactFloor: TierPolicy.WindowFloor,
         ShortFloor: ShortFloorH,
-        // The board marks that are not tiers: the height from which a hero keeps its own height instead of the Short strip (read by Home's records).
-        Rungs: ImmutableArray.Create(new NamedRung(HeroFullRung, new TierEdge(HeroFullFrom, NarrowHold: 0f, WidenHold: ShortHold), RungAxis.Height)),
+        // The board marks that are not tiers: the height from which a hero keeps its own height instead of the Short strip (read by Home's records), and the
+        // window width from which a Huge detail page reads its Huge 4K record (Tiers.Detail.cs: C-Album-Huge4K).
+        Rungs: ImmutableArray.Create(new NamedRung(HeroFullRung, new TierEdge(HeroFullFrom, NarrowHold: 0f, WidenHold: ShortHold), RungAxis.Height),
+            ClassicDetailTiers.HugeWide),
         // The detail page's mode, table and height sub-ladders (Tiers.Detail.cs, TC5), the library's layout ladder (Tiers.Library.cs, TC7), the artist hero's and
         // the library reader's (Tiers.Artist.cs, TC6) and the profile list's (Tiers.Profile.cs, TC6).
         Ladders: ClassicDetailTiers.Ladders.AddRange(ClassicLibraryTiers.Ladders).AddRange(ClassicArtistTiers.Ladders).AddRange(ClassicProfileTiers.Ladders));

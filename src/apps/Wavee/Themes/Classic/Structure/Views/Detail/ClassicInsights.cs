@@ -141,7 +141,8 @@ internal static class ClassicInsights
         return new BoxEl
         {
             Key = "insights:dock", Direction = 1, Shrink = 0f, MinHeight = 0f, ClipToBounds = true,
-            Width = Prop.Of(() => open.Value ? w : 0f),
+            // A page whose facts have not settled yet docks nothing, even while the pane rests open (contract 1.21: a Huge dock rests open).
+            Width = facts is null ? 0f : Prop.Of(() => open.Value ? w : 0f),
             Animate = ClassicDetailLayout.DockReveal,
             Children =
             [
@@ -167,6 +168,29 @@ internal static class ClassicInsights
                         },
                     ],
                 },
+            ],
+        };
+    }
+
+    // ══ 3c. THE INSIGHTS IN THE ASIDE (Huge, C-Playlist-Huge / C-PlaylistFollowed-Huge; contract 1.21) ═════════════════
+
+    /// <summary>The insights as a section of the docked aside: the same header (title + ×) over the shared bento at the aside's content
+    /// <paramref name="width"/>, shown while the toggle is open (the list bar's button reads pressed) and faded in and out with it. No scroller of its own: the
+    /// aside scrolls.</summary>
+    public static Element AsideSection(InsightsToggle toggle, Func<float, Element> facts, float width, float gap)
+    {
+        var open = toggle.Open;
+        return new BoxEl
+        {
+            Key = "aside:insights", Direction = 1, MinWidth = 0f,
+            Children =
+            [
+                Flow.Show(() => open.Value, new BoxEl
+                {
+                    Direction = 1, Gap = gap, MinWidth = 0f,
+                    Enter = ClassicDetailLayout.ArmFade, Exit = ClassicDetailLayout.ArmFade, Transition = ClassicDetailLayout.ArmFadeMotion,
+                    Children = [SheetHeader(toggle), facts(width)],
+                }),
             ],
         };
     }
@@ -253,7 +277,7 @@ internal static class ClassicInsights
         PressedFill = Prop.Of(static () => Tok.FillSubtleTertiary),
         HoverDurationMs = MotionTok.ControlFaster.DurationMs, PressDurationMs = MotionTok.ControlFaster.DurationMs,
         Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-        OnClick = toggle.Close,
+        OnClick = toggle.Dismiss,
         Children = [Icon(Icons.ChromeClose, SheetCloseGlyph, Tok.TextSecondary)],
     };
 
