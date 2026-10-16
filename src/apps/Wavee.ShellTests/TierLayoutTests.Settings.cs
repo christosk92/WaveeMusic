@@ -45,14 +45,11 @@ public sealed partial class TierLayoutTests
             var card = scene.AbsoluteRect(Node(shell, ClassicFrameLayout.ContentCardKey));
             float gutter = ClassicTiers.PageOf(tiers).Gutter;
 
-            // The tab strip: one scrolling lane (Compact, Small) or the stock strip in the column (Standard, Huge).
-            Assert.Equal(layout.TabsScroll, !shell.Find("settings:tabs").IsNull);
+            // The tab strip: ONE strip at every tier (a crossing keeps it), a scrolling lane (Compact, Small) or ending at the column (Standard, Huge).
+            var strip = scene.AbsoluteRect(Node(shell, "settings:tabs"));
+            Assert.True(strip.W <= card.W + 0.5f, $"{size}: the tab strip is wider than the card");
             if (layout.TabsScroll)
-            {
-                var strip = scene.AbsoluteRect(Node(shell, "settings:tabs"));
-                Assert.True(strip.W <= card.W + 0.5f, $"{size}: the tab strip is wider than the card");
                 Assert.True(strip.H >= layout.TabHeight - 0.5f, $"{size}: the tab strip is {strip.H} tall, under the record's {layout.TabHeight}");
-            }
 
             // The body: one column capped by the record, or two that share the row without overlap, left-aligned on the gutter.
             if (layout.Columns == 1)

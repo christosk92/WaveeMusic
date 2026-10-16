@@ -135,14 +135,14 @@ internal static class ClassicArtistSections
                 header: Controls.AccentHeader(title, accent), measured: false, keyOf: s_shelfKey,
                 pager: band.Pager ? ShelfPager.Chevrons : ShelfPager.None, minCardW: band.MinCardW, maxCardW: band.MaxCardW, gap: band.Gap,
                 fixedCardW: band.FixedCardW, maxColumns: band.MaxColumns,
-                lift: ShelfLift.None) with { Key = ShelfKey(band) }],   // the shared card hovers fill-only: no lift halo to reserve clearance for
+                lift: ShelfLift.None) with { Key = ShelfKey }],   // the shared card hovers fill-only: no lift halo to reserve clearance for
         };
 
     static readonly Func<ShelfEntity, int, string> s_shelfKey = static (item, _) => item.Key;
 
-    /// <summary>The shelf's key per fit: a PagedShelf reads its fit at mount, so a tier crossing that changes the fit remounts it (the strip, the column cap,
-    /// the plain fit).</summary>
-    internal static string ShelfKey(in ClassicShelfBand band) => band.FixedCardW > 0f ? "shelf:strip" : band.MaxColumns > 0 ? "shelf:cols" : "shelf:fit";
+    /// <summary>The shelf's ONE key: its fit (the strip, the column cap, the plain fit) and its pager are live props of the mounted PagedShelf, so a tier crossing
+    /// re-fits the SAME shelf (its cards and its page survive) instead of remounting it.</summary>
+    internal const string ShelfKey = "shelf";
     static readonly Func<float, float> s_squareHeight = static w => SurfaceGeometry.ShelfHeight(w);
 
     static ShelfEntity[] Items(ReadOnlySpan<int> slots, EntityKind kind, int cap)

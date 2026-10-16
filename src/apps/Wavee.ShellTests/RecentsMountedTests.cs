@@ -136,7 +136,7 @@ public sealed class RecentsMountedTests(ShellHost host)
             harness =>
             {
                 harness.RunFrames(30);
-                Assert.True(harness.Contains("recents-pivots:0:" + (int)WidthTier.Standard), "the pivot strip is keyed on the shape epoch");
+                Assert.True(harness.Contains("recents-pivots:0"), "the pivot strip is keyed on the shape epoch (never on the tier)");
                 Assert.True(harness.Contains("recents-accent"), "the accent binder leaf rides in the page");
                 Assert.True(harness.Contains("recents-owners"), "the owner demand leaf rides in the page");
                 Assert.False(harness.Contains("recents-semantic:all:0"), "the shimmer is derived: the stateful surface never mounts while pending");
@@ -148,7 +148,7 @@ public sealed class RecentsMountedTests(ShellHost host)
             harness =>
             {
                 harness.RunFrames(30);
-                Assert.True(harness.Contains("recents-pivots:0:" + (int)WidthTier.Standard));
+                Assert.True(harness.Contains("recents-pivots:0"));
                 Assert.False(harness.Contains("recents-semantic:all:0"), "no rows: the display sentence stands alone");
             }, UnderClassic());
 

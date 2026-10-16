@@ -37,9 +37,16 @@ public sealed partial class TierLayoutTests
         // Short: the hero is a strip no taller than the 60 % cap.
         foreach (var (node, _) in shell.FindPrefix("daylist-copy"))
             if (layout.Daylist.Form == ClassicDaylistForm.Strip) Assert.True(scene.AbsoluteRect(node).H <= ClassicHomeTiers.ShortHeroH + 0.5f, $"{size}: the Short daylist is taller than its cap");
-        // Huge: the hero and the tiles share one band (a keyed row), never in a Short window.
-        bool beside = shell.FindPrefix("zone:").Any(static z => z.Key.Contains('+'));
-        if (!layout.DaylistBeside) Assert.False(beside, $"{size}: the hero sits beside the tiles outside Huge");
+        // The hero and the tiles share ONE band at every tier (so a crossing moves them instead of remounting them); only Huge sets them side by side, never
+        // in a Short window.
+        foreach (var (_, key) in shell.FindPrefix("zone:").Where(static z => z.Key.Contains('+')))
+        {
+            int plus = key.IndexOf('+');
+            var hero = scene.AbsoluteRect(Node(shell, key[..plus]));
+            var tiles = scene.AbsoluteRect(Node(shell, "zone:" + key[(plus + 1)..]));
+            bool beside = Math.Abs(hero.Y - tiles.Y) < 1f && tiles.X > hero.X + hero.W - 0.5f;
+            Assert.True(beside == layout.DaylistBeside, $"{size}: the hero {(beside ? "sits beside" : "is stacked over")} the tiles at {layout.Tier}");
+        }
     });
 
     /// <summary>Open the next mount on <paramref name="route"/> (a remount opens on the page the last root showed), so the page under test is the only one in the
@@ -63,9 +70,18 @@ public sealed partial class TierLayoutTests
                 var r = scene.AbsoluteRect(node);
                 Assert.True(r.W <= card.W + 0.5f, $"{size}: {key} is wider than the card");
             }
-            foreach (var (_, key) in shell.FindPrefix("browse-link-grid:"))
-                Assert.Equal("browse-link-grid:" + layout.GenreColumns(), key);
+            AssertGenreColumns(shell, layout, size);
         });
+    }
+
+    /// <summary>Every genre link grid (one key at every tier) lays out the tier's fixed column count.</summary>
+    static void AssertGenreColumns(Shell.HeadlessShell shell, ClassicBrowseLayout layout, string size)
+    {
+        foreach (var (node, _) in shell.FindPrefix("browse-link-grid"))
+        {
+            Assert.True(shell.Host.Scene.TryGetGrid(node, out var grid), $"{size}: the genre grid is not a grid");
+            Assert.True(grid.Columns.Length == layout.GenreColumns(), $"{size}: the genre grid has {grid.Columns.Length} columns, not {layout.GenreColumns()}");
+        }
     }
 
     [Theory, MemberData(nameof(PageSizes))]
@@ -79,8 +95,7 @@ public sealed partial class TierLayoutTests
         {
             var layout = ClassicBrowseTiers.Of(tiers);
             Assert.Equal(tiers.Content > WidthTier.Huge ? WidthTier.Huge : tiers.Content, layout.Tier);
-            foreach (var (_, key) in shell.FindPrefix("browse-link-grid:"))
-                Assert.Equal("browse-link-grid:" + layout.GenreColumns(), key);
+            AssertGenreColumns(shell, layout, size);
         });
     }
 

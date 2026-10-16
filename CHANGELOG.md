@@ -287,6 +287,12 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **Resizing the window past a size step no longer rebuilds parts of the page.** Crossing 528, 1008 or 1920 wide (or the page widths 600,
+  880 and 1600) used to throw away Home's shelves, the "See all" grid, Browse and Search shelves and grids, the Recents tabs, the Settings
+  tab strip and number boxes, the What's new picker, cards and sections, the log list and the artist page's shelves, chart and albums, and
+  build them fresh: they lost their scroll position, page or focus and popped in. They now stay the same and glide into their new size and
+  place; a list or grid keeps the item at its top, and only parts that really change shape (the What's new rail and picker, its poster and
+  row cards) fade from one to the other.
 - **The narrow-window drawer, the Now Playing sheet and the other bottom sheets behave like overlays.** In a narrow Classic
   window the mouse wheel and the touchpad scrolled the page under an open drawer or sheet; they now scroll the drawer's or
   the sheet's own list, and the page behind never moves. The drawer shows the full navigation under the account row again

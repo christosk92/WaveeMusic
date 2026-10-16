@@ -22,7 +22,6 @@
 // "browse-peek:<uri>:<cardW>" remounted every peek cell on a resize — ch 13 §9 ReuseGuard trap): the only width in a
 // key is the column count of the grid that holds them. The numbers are `Rules\ClassicBrowseRules.cs`, the column ladders `Rules\Tiers.Browse.cs`.
 
-using System.Globalization;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -51,6 +50,7 @@ public static class ClassicBrowseCells
     internal static Element Link(BrowseTileModel m, ClassicBrowseLayout layout) => new BoxEl
     {
         Key = m.Uri, MinHeight = layout.LinkMinH,
+        Layout = ClassicTierMotion.Shove,   // a re-fit of the grid moves the same cell into its new track (plan 3.3)
         Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand,
         FocusVisualMargin = Design.FocusInsetBordered,
         OnClick = m.Open, MinWidth = 0f,
@@ -78,6 +78,7 @@ public static class ClassicBrowseCells
         return new BoxEl
         {
             Key = m.Uri,
+            Layout = ClassicTierMotion.Shove,   // a re-fit of the grid moves the same cell into its new track (plan 3.3)
             Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand,
             FocusVisualMargin = Design.FocusInsetBordered,
             OnClick = m.Open, MinWidth = 0f,
@@ -135,6 +136,7 @@ public static class ClassicBrowseCells
         return new BoxEl
         {
             Key = m.Uri,
+            Layout = ClassicTierMotion.Shove,   // a re-fit of the grid moves the same cell into its new track (plan 3.3)
             Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand,
             FocusVisualMargin = Design.FocusInsetBordered,
             OnClick = m.Open,
@@ -199,17 +201,18 @@ public static class ClassicBrowseCells
     static ColorF Accent(in BrowseTileModel m) => m.Color is { } c && c != 0u ? ColorScience.ToColor(c) : Tok.AccentDefault;
 
     /// <summary>The Genres grid — the SAME grid a category page's grid/related block renders: the tier's fixed columns (2 / 2 / 3 / 6), colGap 12, the tier's
-    /// row gap, keyed by its column count (the one width a key may carry). No width is read: the count is the record's.</summary>
+    /// row gap, one key at every count (a crossing moves the cells into their new tracks). No width is read: the count is the record's.</summary>
     internal static Element LinkGrid(IReadOnlyList<BrowseTileModel> items, ClassicBrowseLayout layout)
     {
         int cols = layout.GenreColumns();
         var cells = new Element[items.Count];
         for (int i = 0; i < cells.Length; i++) cells[i] = Link(items[i], layout);
-        return StarGrid(cols, Spacing.M, layout.LinkRowGap, cells) with { Key = LinkGridKey(cols) };
+        return StarGrid(cols, Spacing.M, layout.LinkRowGap, cells) with { Key = LinkGridKey };
     }
 
-    static readonly string[] s_linkKeys = ["browse-link-grid:1", "browse-link-grid:2", "browse-link-grid:3"];
-    static string LinkGridKey(int cols) => cols is >= 1 and <= 3 ? s_linkKeys[cols - 1] : "browse-link-grid:" + cols.ToString(CultureInfo.InvariantCulture);
+    /// <summary>The Genres grid's ONE key: its column count is a prop of the same grid, so a crossing that changes it moves the cells (each keyed by its
+    /// destination) into their new tracks instead of remounting the grid.</summary>
+    internal const string LinkGridKey = "browse-link-grid";
 
     /// <summary>A star grid, not a wrapped flex row (a row of Grow cells reports a one-line measure). AlignSelf Stretch
     /// backfills a 1-column band; zero cells is a bare box.</summary>

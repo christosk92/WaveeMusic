@@ -217,7 +217,8 @@ internal static class ClassicBrowseDirectory
         int cols = st.Layout.MoodColumns(width);
         var cells = new Element[st.Items.Count];
         for (int i = 0; i < cells.Length; i++) cells[i] = ClassicBrowseCells.Bar(BrowseTiles.ModelOf(st.Items[i], st.Live));
-        return ClassicBrowseCells.StarGrid(cols, Spacing.XS, Spacing.XS, cells) with { Key = "browse-mood-grid:" + cols.ToString(System.Globalization.CultureInfo.InvariantCulture) };
+        // One key at every column count: a re-fit moves the same cells into their new tracks.
+        return ClassicBrowseCells.StarGrid(cols, Spacing.XS, Spacing.XS, cells) with { Key = "browse-mood-grid" };
     }
 
     /// <summary>The More grid; the cell width handed to Peek is <c>width / cols</c> with the gaps NOT subtracted
@@ -228,7 +229,8 @@ internal static class ClassicBrowseDirectory
         float cellW = width / cols;
         var cells = new Element[st.Items.Count];
         for (int i = 0; i < cells.Length; i++) cells[i] = ClassicBrowseCells.Peek(BrowseTiles.ModelOf(st.Items[i], st.Live), cellW);
-        return ClassicBrowseCells.StarGrid(cols, Spacing.M, Spacing.M, cells) with { Key = "browse-more-grid:" + cols.ToString(System.Globalization.CultureInfo.InvariantCulture) };
+        // One key at every column count: a re-fit moves the same cells into their new tracks.
+        return ClassicBrowseCells.StarGrid(cols, Spacing.M, Spacing.M, cells) with { Key = "browse-more-grid" };
     }
 
     /// <summary>A band heading NAMES the row; it is not a peer of its destinations — the eyebrow rung (Caption 600 +

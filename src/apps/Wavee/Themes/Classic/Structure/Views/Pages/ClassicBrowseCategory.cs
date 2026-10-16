@@ -161,8 +161,9 @@ internal static class ClassicBrowseCategory
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
             lift: ShelfLift.None,   // the shared card hovers fill-only: no lift halo to reserve clearance for
             keyOf: static (item, i) => "browse-shelf-card:" + item.Card.Uri)
-           // Keyed by the tier: the card band, the column cap and the pager are frozen at mount, so a crossing remounts the shelf (the page cross-fades it).
-           with { Key = "browse-shelf:" + f.Uri + ":" + ((int)layout.Tier).ToString(System.Globalization.CultureInfo.InvariantCulture) };
+           // ONE key at every tier: the card band, the column cap and the pager are live props, so a crossing re-fits the SAME shelf (its cards and its
+           // page survive) instead of remounting it.
+           with { Key = "browse-shelf:" + f.Uri };
     }
 
     /// <summary>A grid / related band: its category tiles as live link cells under a LABEL header. A tile drills with THIS

@@ -155,9 +155,9 @@ public sealed partial class TierLayoutTests
         var scene = shell.Host.Scene;
         var card = scene.AbsoluteRect(Node(shell, ClassicFrameLayout.ContentCardKey));
 
-        // The pivot strip is keyed on the record's tier, lies inside the card, and at Compact its tabs are 40 targets.
+        // The pivot strip is keyed on the shape alone (a crossing keeps it), lies inside the card, and at Compact its tabs are 40 targets.
         var (strip, key) = Single(shell, "recents-pivots:");
-        Assert.EndsWith(":" + ((int)layout.Tier).ToString(System.Globalization.CultureInfo.InvariantCulture), key);
+        Assert.Matches("^recents-pivots:[0-9]+$", key);
         var stripRect = scene.AbsoluteRect(strip);
         Assert.True(stripRect.X >= card.X - 0.5f && stripRect.X + stripRect.W <= card.X + card.W + 0.5f, $"{size}: the pivot strip runs outside the card ({stripRect} in {card})");
         if (layout.PivotH > 0f)

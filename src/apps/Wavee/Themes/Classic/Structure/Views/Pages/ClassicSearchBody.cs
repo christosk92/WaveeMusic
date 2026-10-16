@@ -342,8 +342,8 @@ internal static class ClassicSearchBody
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
             lift: ShelfLift.None,   // the shared card hovers fill-only: no lift halo to reserve clearance for
             keyOf: static (item, _) => Search.KeyOf(item.Ref)))
-            // Keyed by the tier: the card band and the pager are frozen at mount, so a crossing remounts the rail.
-            with { Key = "search:rail:" + ((int)layout.Tier).ToString(CultureInfo.InvariantCulture) };
+            // ONE key at every tier: the card band and the pager are live props, so a crossing re-fits the SAME rail (its cards and its page survive).
+            with { Key = "search:rail" };
     }
 
     /// <summary>A shelf card for a hit (the rail): the one surface at the shelf's card width. Inside the shelf's slot it
@@ -379,13 +379,24 @@ internal static class ClassicSearchBody
             return new VirtualListEl
             {
                 ItemCount = count,
-                // A square cover + the 50-DIP label chrome; the 4 extra DIP turn the 16 column gap into the 20 row gap.
-                ItemLayout = new AspectGridVirtualLayout(cols, 1f, Search.FacetGridChrome + (Search.FacetGridRowGap - Search.FacetGridGap), Search.FacetGridGap),
+                // A square cover + the 50-DIP label chrome; the 4 extra DIP turn the 16 column gap into the 20 row gap. One shared layout per column count
+                // (pure geometry), so a re-fit swaps the viewport's layout and keeps the viewport, its scroll offset and its keyed cells.
+                ItemLayout = FacetGridLayout(cols),
                 RenderItem = i => GridCell(r, i, in c),
                 KeyOf = i => r.ResultRef(i) is { IsNone: false } hit ? Search.KeyOf(hit) : "search-card:placeholder:" + i.ToString(CultureInfo.InvariantCulture),
                 Grow = 1f, Shrink = 1f, MinHeight = 0f, AlignSelf = FlexAlign.Stretch,
-            } with { Key = "search-facet-grid:" + cols.ToString(CultureInfo.InvariantCulture) };
+            } with { Key = "search-facet-grid" };
         }, fallback: firstW, grow: 1f);
+
+    static readonly Dictionary<int, AspectGridVirtualLayout> s_facetGridLayouts = new();
+
+    /// <summary>The facet grid's layout at <paramref name="cols"/> columns: stateless geometry, so one instance per count serves every mount.</summary>
+    static AspectGridVirtualLayout FacetGridLayout(int cols)
+    {
+        if (!s_facetGridLayouts.TryGetValue(cols, out var layout))
+            s_facetGridLayouts[cols] = layout = new AspectGridVirtualLayout(cols, 1f, Search.FacetGridChrome + (Search.FacetGridRowGap - Search.FacetGridGap), Search.FacetGridGap);
+        return layout;
+    }
 
     /// <summary>One grid cell: the one surface at the grid shape (the host attaches the menu carried in the data) — or, for
     /// an unrealised index, the SAME host on <see cref="Controls.CardData.Seed"/>: exactly a real card's box, so a landing
@@ -434,7 +445,8 @@ internal static class ClassicSearchBody
         int cols = layout.Genres.Columns(0f);
         var cells = new Element[models.Count];
         for (int i = 0; i < cells.Length; i++) cells[i] = ClassicBrowseCells.Link(models[i], browse);
-        Element body = ClassicBrowseCells.StarGrid(cols, Spacing.M, browse.LinkRowGap, cells) with { Key = "search-genres-grid:" + cols.ToString(CultureInfo.InvariantCulture) };
+        // One key at every column count: a crossing moves the same link cells into their new tracks.
+        Element body = ClassicBrowseCells.StarGrid(cols, Spacing.M, browse.LinkRowGap, cells) with { Key = "search-genres-grid" };
         if (!header) return Stretch(body);
         return new BoxEl
         {

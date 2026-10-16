@@ -65,9 +65,9 @@ internal static class ClassicRecents
             new BoxEl
             {
                 Padding = new Edges4(gutter, 0f, gutter, Spacing.S),
-                // Keyed on the SHAPE, not the token: a pivot switch re-renders the live strip (its underline enters).
-                // …and on the tier: the Compact strip is its own shape (40 tabs), a crossing remounts the strip once.
-                Children = [Embed.Comp(() => new PivotTabs(host, layout)) with { Key = "recents-pivots:" + FormatCache.Int(p.ShapeEpoch) + ":" + FormatCache.Int((int)layout.Tier) }],
+                // Keyed on the SHAPE, not the token: a pivot switch re-renders the live strip (its underline enters). NOT on the tier: the record is a
+                // live prop, so a crossing re-sizes the SAME strip (the selected tab's underline stays, the strip's scroll offset stays).
+                Children = [Embed.Comp(layout, () => new PivotTabs(host)) with { Key = "recents-pivots:" + FormatCache.Int(p.ShapeEpoch) }],
             },
             new BoxEl
             {
@@ -175,19 +175,23 @@ internal static class ClassicRecents
     // ══ THE PIVOTS (W3, W10, §0 #3) ══════════════════════════════════════════════════════════════════════════════
 
     /// <summary>Four FIXED tabs on frame one; a tab with no rows is dimmed and inert, never hidden. Only the selected tab
-    /// MOUNTS its underline, so the scaleX 0 → 1 enter is a real mount; the others reserve the 2-DIP baseline.</summary>
-    sealed class PivotTabs(IRecentsHost host, ClassicRecentsLayout layout) : Component
+    /// MOUNTS its underline, so the scaleX 0 → 1 enter is a real mount; the others reserve the 2-DIP baseline. The tier's record is the LIVE
+    /// prop (a crossing re-renders the same strip at the new target size).</summary>
+    sealed class PivotTabs(IRecentsHost host) : Component
     {
         static MotionTokenDef UnderlineEnter => MotionTokenDef.Eased(ClassicRecentsRules.UnderlineEnterMs, Easing.SmoothOut);
 
+        ClassicRecentsLayout _layout = ClassicRecentsTiers.For(WidthTier.Standard);
+
         public override Element Render()
         {
+            _layout = UseProps<ClassicRecentsLayout>();
             string? selected = host.Chip.Value;
             _ = host.ShapeEpoch.Value;
             var rows = host.ShapeNow.Rows;
             Element strip = new BoxEl
             {
-                Direction = 0, Gap = layout.PivotGap, AlignItems = FlexAlign.Center, Shrink = 0f,
+                Direction = 0, Gap = _layout.PivotGap, AlignItems = FlexAlign.Center, Shrink = 0f,
                 Children =
                 [
                     Tab(null, Loc.Get(Strings.Detail.Filter.All), true, selected is null),
@@ -199,10 +203,13 @@ internal static class ClassicRecents
                         string.Equals(selected, RecentsView.PivotArtists, StringComparison.OrdinalIgnoreCase)),
                 ],
             };
-            // Compact (C-Recents-Compact): the four tabs are one scrolling line whose end fades, so a 300-wide page never runs the strip off its card.
-            return layout.PivotH <= 0f ? strip : ScrollView(strip, horizontal: true) with
+            // ONE tree at every tier, so a crossing keeps the tabs (and the selected one's underline): the strip always rides a horizontal scroller. At
+            // Compact (C-Recents-Compact) the four tabs overrun a 300-wide card and the line scrolls, its end fading; elsewhere they fit and it never
+            // scrolls (an auto edge fade shows only while content runs past an edge), its height the strip's own.
+            return ScrollView(strip, horizontal: true) with
             {
-                Grow = 1f, Basis = 0f, Height = layout.PivotH, MinWidth = 0f, AutoEdgeFade = true, SuppressScrollBar = true, ScrollKey = "recents:pivots",
+                Grow = 1f, Basis = 0f, Height = _layout.PivotH > 0f ? _layout.PivotH : float.NaN, MinWidth = 0f, AutoEdgeFade = true, SuppressScrollBar = true,
+                ScrollKey = "recents:pivots",
             };
         }
 
@@ -224,7 +231,7 @@ internal static class ClassicRecents
             {
                 Direction = 1, Gap = Spacing.XS, Shrink = 0f,
                 // Compact: a 40 target (the label sits under 8 of air, the underline on the bottom edge) with the board's 8 of side padding.
-                MinHeight = layout.PivotH, Padding = new Edges4(layout.PivotPadX, layout.PivotH > 0f ? Spacing.S : 0f, layout.PivotPadX, 0f),
+                MinHeight = _layout.PivotH, Padding = new Edges4(_layout.PivotPadX, _layout.PivotH > 0f ? Spacing.S : 0f, _layout.PivotPadX, 0f),
                 Role = AutomationRole.Button, Focusable = available, Cursor = available ? CursorId.Hand : CursorId.Arrow,
                 IsEnabled = available,
                 FocusVisualMargin = new Edges4(ClassicRecentsRules.PivotFocusMargin, ClassicRecentsRules.PivotFocusMargin,

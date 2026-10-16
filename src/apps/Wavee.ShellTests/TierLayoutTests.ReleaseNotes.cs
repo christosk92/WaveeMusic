@@ -39,8 +39,9 @@ public sealed partial class TierLayoutTests
             var title = scene.AbsoluteRect(Node(shell, "rn:title"));
             // The title row lies in the card, on the page gutter, whatever state the page is in.
             Assert.True(title.X >= card.X - 0.5f && title.X + title.W <= card.X + card.W + 0.5f, $"{size}: the title row runs outside the card ({title} in {card})");
-            // The Compact picker row exists (and its height is held) even before the release list loads.
-            Assert.Equal(!layout.HasRail && !layout.PickerInTitleRow, !shell.Find("rn:picker-row").IsNull);
+            // The picker's slot exists wherever a picker switches releases (Compact, Small), its height held even before the release list loads.
+            Assert.Equal(!layout.HasRail, !shell.Find("rn:picker-slot").IsNull);
+            if (!layout.HasRail) Assert.True(scene.AbsoluteRect(Node(shell, "rn:picker-slot")).H >= layout.PickerHeight - 0.5f, $"{size}: the picker slot's height is not held");
             // A rail never draws without its form, and a picker never beside a rail.
             if (!layout.HasRail) Assert.True(shell.Find("rn:rail").IsNull, $"{size}: a rail at {layout.Tier}");
             else Assert.True(shell.Find("rn:picker").IsNull, $"{size}: a picker at {layout.Tier}");
@@ -117,7 +118,7 @@ public sealed partial class TierLayoutTests
             Assert.Equal(layout.HasRail, harness.Contains("rn:rail"));
             Assert.Equal(!layout.HasRail, harness.Contains("rn:picker"));
             if (layout.HasRail) Assert.Equal(layout.RailWidth, At("rn:rail").W, 0.5f);
-            Assert.Equal(!layout.HasRail && !layout.PickerInTitleRow, harness.Contains("rn:picker-row"));
+            Assert.Equal(!layout.HasRail, harness.Contains("rn:picker-slot"));
             if (!layout.HasRail) Assert.True(At("rn:picker").H >= layout.PickerHeight - 0.5f, $"{sizeName}: the picker is {At("rn:picker").H} tall, under {layout.PickerHeight}");
             // Small: the picker rides the title row; Compact: it sits under it.
             if (!layout.HasRail)
