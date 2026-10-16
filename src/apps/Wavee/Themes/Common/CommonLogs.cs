@@ -25,7 +25,9 @@
 //
 // PROPS FREEZE AT MOUNT: every control whose interesting fields freeze (the session / category combos, the virtualised list) is REMOUNTED
 // through a `Key` that changes exactly when its frozen input does, and every write that tears down the node that was clicked runs through
-// `UsePost` so the click finishes first. No signal is written in render.
+// `UsePost` so the click finishes first. No signal is written in render. A tier crossing is NOT such an input (plan 3.3): the list keeps its
+// node, its scroll offset and its expanded row; its rows read the row form from the tier facts and re-render in place (one line <-> two lines,
+// the height revealed), and the column header folds to no height and back with a height reveal.
 
 using System.Globalization;
 using FluentGpu.Controls;
@@ -76,6 +78,7 @@ internal static class CommonLogs
 
         ILogsHost _host = null!;
         CommonLogsLayout _layout;
+        IReadSignal<ThemeFacts>? _facts;   // the tier facts, read by the rows themselves (a crossing re-renders them in place)
         LogViewRow[] _rows = [];
         string[] _categories = [];
         readonly ItemsViewController _listCtrl = new();
@@ -91,6 +94,7 @@ internal static class CommonLogs
         {
             var host = _host = UseProps<LogsPageProps>().Host;
             var layout = _layout = CommonLogsLayout.For(ReadTier());
+            _facts = UseContext(ThemeFactsContext.Signal);
             var hooks = UseContext(InputHooks.Current);
             var post = UsePost();
             var lastVersion = UseRef(-1L);
@@ -120,7 +124,9 @@ internal static class CommonLogs
                 lastVersion.Value = v;
                 host.Bump();
             }, CommonLogsRules.PollMs, enabled: host.Session.Value == 0);
-            var logLayout = UseMemo(() => new MeasuredStackVirtualLayout(estimatedExtent: layout.RowExtent), layout.TwoLineRows ? 1 : 0);
+            // ONE measured layout for the list's life: a crossing re-measures its rows in place (the list is not remounted, so a fresh layout would
+            // never reach it); the mount's estimate only seeds rows never measured yet.
+            var logLayout = UseMemo(() => new MeasuredStackVirtualLayout(estimatedExtent: layout.RowExtent), 0);
 
             _ = host.Refresh.Value; _ = _expandedSeq.Value; _ = _search.Value; _ = _level.Value; _ = _category.Value;
             _ = _newestFirst.Value; _ = _groupRepeats.Value; _ = _wrap.Value; _ = _visibleLimit.Value; _ = host.SessionsRev.Value;
@@ -136,15 +142,21 @@ internal static class CommonLogs
             _rows = result.Rows;
 
             // The page is a row holding ONE column, so the column can stop growing at the tier's max width and keep the page's left edge (the Huge fill rule).
-            var card = new List<Element>(5);
-            if (!layout.TwoLineRows)
+            // Every child keyed. The column header belongs to the one-line rows: it is ALWAYS mounted and the two-line form folds it to no height (a
+            // height reveal either way), so a crossing never inserts it above the list (no jump) nor remounts its sort button.
+            bool header = !layout.TwoLineRows;
+            var card = new List<Element>(5)
             {
-                card.Add(ColumnHeader(post));
-                card.Add(Divider());
-            }
+                ColumnHeader(post) with
+                {
+                    Key = "logs:colhead", Animate = Design.Reveal.Resize, ClipToBounds = true,
+                    Height = header ? CommonLogsRules.ColumnHeaderHeight : 0f, HitTestVisible = header,
+                },
+                Divider() with { Key = "logs:colhead-rule", Animate = Design.Reveal.Resize, Height = header ? 1f : 0f },
+            };
             card.Add(LogBody(entries, result, query, logLayout));
-            card.Add(Divider());
-            card.Add(Footer(result, live, entries, past));
+            card.Add(Divider() with { Key = "logs:footer-rule" });
+            card.Add(Footer(result, live, entries, past) with { Key = "logs:footer" });
             return new BoxEl
             {
                 Key = "logs-page", Grow = 1f, Shrink = 1f, Direction = 0, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true,
@@ -376,7 +388,7 @@ internal static class CommonLogs
         // ── the list card: column header · body · footer ────────────────────────────────────────────────────────────
 
         /// <summary>The same padding, gap and column widths as <see cref="LogRow"/>; only Time is interactive (flips the sort).</summary>
-        Element ColumnHeader(Action<Action> post)
+        BoxEl ColumnHeader(Action<Action> post)
         {
             bool newestFirst = _newestFirst.Value != 0;
             return new BoxEl
@@ -416,23 +428,24 @@ internal static class CommonLogs
             if (entries is null)
                 return new BoxEl
                 {
-                    Grow = 1f, Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Gap = Spacing.M,
+                    Key = "logs:loading", Grow = 1f, Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Gap = Spacing.M,
                     Children = [ProgressRing.Indeterminate(), new TextEl(Loc.Get(Strings.Logs.LoadingSession)) { Size = CommonLogsRules.CellSize, Color = Tok.TextSecondary }],
                 };
             if (result.Shown == 0)
                 return new BoxEl
                 {
-                    Grow = 1f, Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Gap = Spacing.M,
+                    Key = "logs:empty", Grow = 1f, Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Gap = Spacing.M,
                     Padding = new Edges4(Spacing.L, CommonLogsRules.EmptyInsetY, Spacing.L, CommonLogsRules.EmptyInsetY),
                     Children = [FluentGpu.Dsl.Ui.Icon(Icons.Search, CommonLogsRules.EmptyGlyphSize, Tok.TextTertiary), R.Type.PageHero(Loc.Get(Strings.Logs.EmptyFilter)) with { Wrap = TextWrap.Wrap, MinWidth = 0f }],
                 };
 
-            // The list's ItemCount/template freeze at mount: the visible SET changing remounts it; ScrollKey keeps the offset.
+            // The list's ItemCount/template freeze at mount: the visible SET changing remounts it; ScrollKey keeps the offset. The row form is NOT in
+            // the key: the rows read it themselves (RowLayout), so a crossing re-renders them in place.
             string scrollKey = "logs:scroll:" + _host.Session.Value.ToString(CultureInfo.InvariantCulture);
             var rows = result.Rows;
             return new BoxEl
             {
-                Key = "logs:list:" + LogView.RemountKey(_host.Session.Value, query, result.Shown) + (_layout.TwoLineRows ? ":2" : ":1"),
+                Key = "logs:list:" + LogView.RemountKey(_host.Session.Value, query, result.Shown),
                 Grow = 1f, Shrink = 1f, MinHeight = 0f,
                 Children =
                 [
@@ -461,7 +474,7 @@ internal static class CommonLogs
         {
             var e = row.Entry;
             long seq = e.Sequence;
-            var layout = _layout;
+            var layout = RowLayout();
             bool expanded = _expandedSeq.Value == seq;
             bool wrapAll = expanded || _wrap.Value != 0;
             var message = R.Type.DenseMeta(e.Message) with
@@ -534,6 +547,10 @@ internal static class CommonLogs
             }
             return new BoxEl { Key = "logs:row:" + seq.ToString(CultureInfo.InvariantCulture), Direction = 1, Children = children };
         }
+
+        /// <summary>The row form on screen now, read from the tier facts INSIDE the list's realize (like <see cref="_expandedSeq"/>), so a crossing re-renders the
+        /// realized rows in place, keyed as they were, instead of the list being remounted for the other form.</summary>
+        CommonLogsLayout RowLayout() => _facts is { } facts ? CommonLogsLayout.For(facts.Value.Tiers) : _layout;
 
         static Element DetailSection(string caption, string text, float inset) => new BoxEl
         {

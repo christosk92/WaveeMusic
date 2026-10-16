@@ -21,7 +21,10 @@ namespace Wavee.Themes.Classic;
 internal static partial class ClassicReleaseNotes
 {
     /// <summary>Three is a cap, not a layout. No highlights ⇒ a 0-height, hit-invisible box: the eyebrow AND the row vanish. The record sets the form: one row of
-    /// poster cards (Standard, Huge: under a 20/28 heading), two columns of ROW cards (Small) or one column of them (Compact).</summary>
+    /// poster cards (Standard, Huge: under a 20/28 heading), two columns of ROW cards (Small) or one column of them (Compact).
+    /// <para>A tier crossing never rebuilds a card it keeps (plan 3.3): the row cards of Compact and Small are ONE grid whose track count is the form's, so
+    /// 528 moves the same cards into their new cells (a position FLIP); the poster strip and the row cards are different trees (1008), so the two families
+    /// are keyed apart and cross-fade.</para></summary>
     static Element Strip(IReadOnlyList<HighlightItem> highlights, Action<int> open, Action openStore, ClassicReleaseNotesLayout layout)
     {
         if (highlights.Count == 0) return new BoxEl { Height = 0f, HitTestVisible = false };
@@ -34,17 +37,28 @@ internal static partial class ClassicReleaseNotes
             Element card = form == ClassicReleaseHighlightForm.Strip
                 ? CardFor(highlights[i], () => open(idx), openStore, compact: false)
                 : RowCard(highlights[i], () => open(idx), openStore, layout, inRow: form == ClassicReleaseHighlightForm.Grid2);
-            cards[i] = card with { Key = "hl:" + SlideId(highlights[i], i) };
+            cards[i] = form == ClassicReleaseHighlightForm.Strip
+                ? card with { Key = "hl:" + SlideId(highlights[i], i) }
+                : card with { Key = "hl:" + SlideId(highlights[i], i), Layout = ClassicTierMotion.Shove };   // a re-fit moves the same row card
         }
         Element heading = layout.HighlightsHeading
             ? new TextEl(Loc.Get(Strings.WhatsNew.Highlights)) { Size = K.HeadingSize, LineHeight = K.HeadingLine, Weight = 600, Color = Tok.TextPrimary }
             : R.Type.Eyebrow(Loc.Get(Strings.WhatsNew.Highlights)) with { Color = Tok.TextTertiary };
-        Element body = form switch
-        {
-            ClassicReleaseHighlightForm.Grid2 => TwoColumns(cards, layout.HighlightGap),
-            ClassicReleaseHighlightForm.Column => new BoxEl { Key = "rn:hl", Direction = 1, Gap = layout.HighlightGap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Children = cards },
-            _ => new BoxEl { Key = "rn:hl", Direction = 0, Gap = layout.HighlightGap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = cards },
-        };
+        Element body = form == ClassicReleaseHighlightForm.Strip
+            ? new BoxEl
+            {
+                Key = "rn:hl:strip", Direction = 0, Gap = layout.HighlightGap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
+                Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
+                Children = cards,
+            }
+            // Rows of two equal columns (Small) or one column (Compact): a lone last card keeps its column's width; a row is as tall as its tallest card.
+            : new GridEl
+            {
+                Key = "rn:hl:rows", Columns = form == ClassicReleaseHighlightForm.Grid2 ? s_twoTracks : s_oneTrack,
+                ColGap = layout.HighlightGap, RowGap = layout.HighlightGap, AlignSelf = FlexAlign.Stretch,
+                Enter = ClassicTierMotion.SwapFade, Exit = ClassicTierMotion.SwapFade, Transition = ClassicTierMotion.SwapFadeMotion,
+                Children = cards,
+            };
         return new BoxEl
         {
             Direction = 1, Gap = K.StripGap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
@@ -52,23 +66,9 @@ internal static partial class ClassicReleaseNotes
         };
     }
 
-    /// <summary>Rows of two equal columns; a lone last card keeps its column's width (an inert spacer takes the other).</summary>
-    static Element TwoColumns(Element[] cards, float gap)
-    {
-        var rows = new List<Element>((cards.Length + 1) / 2);
-        for (int i = 0; i < cards.Length; i += 2)
-            rows.Add(new BoxEl
-            {
-                Key = "rn:hlrow:" + (i / 2).ToString(System.Globalization.CultureInfo.InvariantCulture),
-                Direction = 0, Gap = gap, AlignItems = FlexAlign.Stretch, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
-                Children =
-                [
-                    cards[i],
-                    i + 1 < cards.Length ? cards[i + 1] : new BoxEl { Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, HitTestVisible = false },
-                ],
-            });
-        return new BoxEl { Key = "rn:hl", Direction = 1, Gap = gap, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Children = rows.ToArray() };
-    }
+    // The row cards' track lists (shared, never mutated: a grid keeps its track array by reference).
+    static readonly TrackSize[] s_oneTrack = [TrackSize.Star()];
+    static readonly TrackSize[] s_twoTracks = [TrackSize.Star(), TrackSize.Star()];
 
     /// <summary>The ROW card (Compact and Small, boards `C-ReleaseNotes-Compact` / `-Small`; also the after-update plate's cards at Compact): a 120 x 68 poster beside the
     /// kind pill, the title and "Read more". A new path: the poster-over-copy <see cref="CardView"/> and its plate arithmetic are untouched. The whole card is the hit

@@ -150,7 +150,7 @@ public static class HomeModules
                                    Action? openHeader = null, int maxColumns = 2, float tileHeight = HomeModuleLayout.FoldCardHeight,
                                    float cover = HomeModuleLayout.FoldCover)
     {
-        Func<float, float> height = tileHeight == HomeModuleLayout.FoldCardHeight ? s_foldHeight : _ => tileHeight;
+        Func<float, float> height = FoldHeight(tileHeight);
         return PagedShelf.Create(sections,
             (section, i, cardW) => HomeFoldTile.Create(section, cardW, null, openTile, tileHeight, cover),
             cardHeight: height,
@@ -159,11 +159,23 @@ public static class HomeModules
             gap: Spacing.M, rows: 1, maxColumns: maxColumns, edgeFade: HomeModuleLayout.ShelfEdgeFade,
             prevGlyph: Icons.ChevronLeft, nextGlyph: Icons.ChevronRight,
             keyOf: static (section, i) => "home-fold-tile:" + (section.Uri is { Length: > 0 } u ? u : i.ToString(CultureInfo.InvariantCulture)))
-           // Keyed by the deck's frozen mount configuration (the tier's column cap and tile height), so a tier crossing remounts it.
-           with { Key = HomeModuleLayout.SectionSetKey(sections) + ":fold:" + maxColumns.ToString(CultureInfo.InvariantCulture) + ":" + tileHeight.ToString(CultureInfo.InvariantCulture) };
+           // Keyed by the section set only: the tier's column cap and tile height are live props of the mounted deck, so a crossing re-fits the SAME
+           // deck (its tiles and its page survive) instead of remounting it.
+           with { Key = HomeModuleLayout.SectionSetKey(sections) + ":fold" };
     }
 
     static readonly Func<float, float> s_foldHeight = static _ => HomeModuleLayout.FoldCardHeight;
+    static readonly Dictionary<float, Func<float, float>> s_foldHeights = new();
+
+    /// <summary>The deck's extent for a tile height, one cached delegate per height (a fresh closure per render would read as a new height
+    /// function on every push of the live deck).</summary>
+    static Func<float, float> FoldHeight(float tileHeight)
+    {
+        if (tileHeight == HomeModuleLayout.FoldCardHeight) return s_foldHeight;
+        if (!s_foldHeights.TryGetValue(tileHeight, out var height))
+            s_foldHeights[tileHeight] = height = _ => tileHeight;
+        return height;
+    }
 
     /// <summary>The Fold deck as a STACK (the Compact and Small Charts band): every tile its own full-width row under the chevron header, no pager. The tiles
     /// are built at <paramref name="width"/> (the band's measured width), the same tile the paged deck builds.</summary>

@@ -19,10 +19,11 @@
 //
 // ── THE CHAPTER SHAPE (one per zone) ──────────────────────────────────────────────────────────────────────────────────
 //
-//   BoxEl { Key = "zone:" + key, ScrollScope = key, Animate = Design.Entrance.Row(i) }
-//   ├─ HEADER  ModuleHeader(title, subtitle, tools, open: null)  .Sticky(StuckBottom, scope: key)  — paints NOTHING
-//   └─ BODY    .StickyClip(StuckBottom + HeaderH + HeaderGap)
-//              EdgeFade = EdgeFadeSpec(Top, ClipFadeBand) { WhileStuck = true }
+//   BoxEl { Key = "zone:" + key, ScrollScope = key, Layout = ClassicTierMotion.Reflow }   — the SAME node at every tier: a crossing FLIPs it
+//   └─ BoxEl { Animate = Design.Entrance.Row(i) }                                            — the entrance (its stagger) on the inner box
+//      ├─ HEADER  ModuleHeader(title, subtitle, tools, open: null)  .Sticky(StuckBottom, scope: key)  — paints NOTHING
+//      └─ BODY    .StickyClip(StuckBottom + HeaderH + HeaderGap)
+//                 EdgeFade = EdgeFadeSpec(Top, ClipFadeBand) { WhileStuck = true }
 //
 // The header pins under the (transparent) facet row and the body cuts ITSELF at the header's lower edge, feathered only while the clip is
 // engaged — the Browse masthead / Artist band idiom (`ClassicBrowseDirectory`; `ClassicArtistPage`). The zone box is the sticky SCOPE,
@@ -90,7 +91,7 @@ internal static class ClassicHomeZones
         var kids = new List<Element>(zones.Count + 1);
         for (int i = 0; i < zones.Count; i++)
         {
-            if (layout.DaylistBeside && zones[i].Kind == ZoneKind.Daylist && i + 1 < zones.Count && zones[i + 1].Kind == ZoneKind.RecentGrid)
+            if (zones[i].Kind == ZoneKind.Daylist && i + 1 < zones.Count && zones[i + 1].Kind == ZoneKind.RecentGrid)
             {
                 kids.Add(Beside(zones[i], zones[i + 1], i, overlay, layout));
                 i++;
@@ -111,18 +112,25 @@ internal static class ClassicHomeZones
         };
     }
 
-    /// <summary>The Huge band: the daylist hero and the Recently played tiles side by side (<c>C-Home-Huge</c>), the hero 1.35 shares of the row to the tiles' 1.
-    /// Each is its own chapter (its own sticky scope and entrance); the row only places them.</summary>
-    static Element Beside(Zone hero, Zone recents, int index, IOverlayService? overlay, ClassicHomeLayout layout) => new BoxEl
+    /// <summary>The daylist and the Recently played tiles as ONE band at every tier, so a crossing into or out of Huge MOVES the two chapters (each keeps
+    /// its node, its sticky scope and its entrance) instead of reparenting them: where the tier sets them side by side (Huge, <c>C-Home-Huge</c>) the
+    /// band is a row, the hero 1.35 shares of it to the tiles' 1; elsewhere it is a column at the zone gap, each chapter its natural height.</summary>
+    static Element Beside(Zone hero, Zone recents, int index, IOverlayService? overlay, ClassicHomeLayout layout)
     {
-        Key = "zone:" + hero.Key + "+" + recents.Key,
-        Direction = 0, Gap = ClassicHomeTiers.HeroGap, MinWidth = 0f, AlignItems = FlexAlign.Start,
-        Children =
-        [
-            Chapter(hero, index, overlay, layout) with { Grow = ClassicHomeTiers.HeroShare, Shrink = 1f, Basis = 0f },
-            Chapter(recents, index + 1, overlay, layout) with { Grow = 1f, Shrink = 1f, Basis = 0f },
-        ],
-    };
+        bool beside = layout.DaylistBeside;
+        return new BoxEl
+        {
+            Key = "zone:" + hero.Key + "+" + recents.Key,
+            Direction = (byte)(beside ? 0 : 1), Gap = beside ? ClassicHomeTiers.HeroGap : layout.ZoneGap, MinWidth = 0f,
+            AlignItems = beside ? FlexAlign.Start : FlexAlign.Stretch,
+            Layout = ClassicTierMotion.Reflow,
+            Children =
+            [
+                Chapter(hero, index, overlay, layout) with { Grow = beside ? ClassicHomeTiers.HeroShare : 0f, Shrink = beside ? 1f : 0f, Basis = beside ? 0f : float.NaN },
+                Chapter(recents, index + 1, overlay, layout) with { Grow = beside ? 1f : 0f, Shrink = beside ? 1f : 0f, Basis = beside ? 0f : float.NaN },
+            ],
+        };
+    }
 
     /// <summary>One zone's chapter box: the keyed sticky scope carrying the entrance. A shelf zone mounts
     /// <see cref="ClassicHomeShelfChapter"/> (it owns the pager controller); everything else is a plain tree.
@@ -140,8 +148,17 @@ internal static class ClassicHomeZones
         return new BoxEl
         {
             Key = "zone:" + zone.Key, Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-            ScrollScope = zone.Key, Animate = Design.Entrance.Row(index),
-            Children = [content],
+            ScrollScope = zone.Key,
+            // A crossing moves and resizes the SAME zone (plan 3.3): it FLIPs into its new box. The entrance (its stagger) rides the inner box.
+            Layout = ClassicTierMotion.Reflow,
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Animate = Design.Entrance.Row(index),
+                    Children = [content],
+                },
+            ],
         };
     }
 
@@ -152,7 +169,7 @@ internal static class ClassicHomeZones
     internal static Element Chapter(Zone zone, IOverlayService? overlay, ShelfController? controller, ClassicHomeLayout layout)
     {
         Element body = Body(zone, overlay, controller, layout);
-        Element? header = Header(zone, controller);
+        Element? header = Header(zone, controller is not null && ShelfBandOf(zone.Kind, layout).Pager ? controller : null);
         if (header is null) return body;
         return new BoxEl
         {
@@ -304,7 +321,7 @@ internal static class ClassicHomeZones
         // wide cell is its 16:9 cover + title + ONE caption line + the separate meta line; a cover shelf reserves the
         // most caption lines any of its cards shows — 2 when it carries the lead (its meta inline on those lines), else
         // 1 — and no meta line. A square beside the lead is merely 16 shorter than its row (its plate stretches, labels
-        // top-aligned). Like every PagedShelf prop but the items, the extent is fixed at mount.
+        // top-aligned). The extent is a live prop of the mounted shelf, like its band: a crossing that drops the lead re-sizes the same strip.
         Func<float, float> cardHeight = wide ? s_wideCardHeight : CoverCardHeight(HomeCards.CaptionLinesOf(items));
 
         return PagedShelf.Create<HomeCards.ShelfItem>(items,
@@ -328,9 +345,9 @@ internal static class ClassicHomeZones
                 ? (item, i, leadW) => Cell(in item, leadW, ShelfLead.LeadAspect(leadW, HomeModuleLayout.ShelfGap, ClassicHomeRules.LeadSpan, Spacing.S))
                 : null,
             leadMinColumns: wide ? 0 : ClassicHomeRules.LeadMinColumns)
-           // Keyed by the tier too: the shelf's card band, column cap and pager are frozen at mount, so a tier crossing REMOUNTS it (through the page's
-           // cross-fade) instead of keeping a stale fit.
-           with { Key = "home-shelf:" + zone.Key + ":" + ((int)layout.Tier).ToString(System.Globalization.CultureInfo.InvariantCulture) };
+           // ONE key at every tier: the card band, the column cap, the pager and the card height are live props, so a crossing re-fits the SAME shelf
+           // (its cards, its page and the header's controller survive) instead of remounting it.
+           with { Key = "home-shelf:" + zone.Key };
     }
 
     /// <summary>The shelf band of a zone kind in <paramref name="layout"/>: the wide tiles' or the covers'.</summary>
@@ -343,12 +360,16 @@ internal static class ClassicHomeZones
     static readonly Func<float, float> s_coverCardHeight1 = static w => SurfaceGeometry.ShelfHeight(w, 1f, captionLines: 1, metaLine: false);
     static readonly Func<float, float> s_coverCardHeight2 = static w => SurfaceGeometry.ShelfHeight(w, 1f, captionLines: 2, metaLine: false);
 
-    static Func<float, float> CoverCardHeight(int captionLines) => captionLines switch
+    static readonly Dictionary<int, Func<float, float>> s_coverCardHeightN = new();
+
+    static Func<float, float> CoverCardHeight(int captionLines)
     {
-        <= 1 => s_coverCardHeight1,
-        2 => s_coverCardHeight2,
-        _ => w => SurfaceGeometry.ShelfHeight(w, 1f, captionLines, metaLine: false),
-    };
+        if (captionLines <= 1) return s_coverCardHeight1;
+        if (captionLines == 2) return s_coverCardHeight2;
+        if (!s_coverCardHeightN.TryGetValue(captionLines, out var height))
+            s_coverCardHeightN[captionLines] = height = w => SurfaceGeometry.ShelfHeight(w, 1f, captionLines, metaLine: false);
+        return height;
+    }
 
     /// <summary>The shelf pager in the sticky header's tools slot: ‹ pips › — the stock pips between two stock chevrons
     /// (the prototype's order), every action routed back through the controller (the gallery's
@@ -399,8 +420,9 @@ internal static class ClassicHomeZones
         public override Element Render()
         {
             var p = UseProps<ShelfChapterProps>();
-            // The pager rides the sticky header only where the tier pages this shelf (its band says so); a strip has none.
-            return Chapter(p.Zone, p.Overlay, ShelfBandOf(p.Zone.Kind, p.Layout).Pager ? _controller : null, p.Layout);
+            // The shelf is bound to the controller at every tier (PagedShelf freezes it at mount); the pager rides the sticky header only where the
+            // tier pages this shelf (Chapter reads the band), a strip has none.
+            return Chapter(p.Zone, p.Overlay, _controller, p.Layout);
         }
     }
 

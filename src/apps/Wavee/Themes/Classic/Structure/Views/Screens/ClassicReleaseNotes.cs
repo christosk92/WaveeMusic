@@ -10,11 +10,14 @@
 // cards), the changelog's section columns and the body column's cap are all the record's. The first frame is already in the final tier; a crossing swaps the rail and
 // the picker with the shared fade and the rest FLIPs.
 //
-//   Frame ── title row (key `rn:title`: glyph · PageHero · [Small: picker])
-//          ├ [Compact] picker row (key `rn:picker-row`, its height reserved while loading)
+//   Frame ── head grid (key `rn:head`): title (key `rn:title`: glyph · PageHero) · [Compact, Small: picker slot `rn:picker-slot`, beside the
+//          │                            title at Small, under it at Compact, its height reserved while loading]
 //          └ row ── body column (<= 1600 at Huge) ── [stacked] SinceBanner
-//                │               └ ScrollView "whatsnew:<ver>" → Hero · Strip(CardView ×≤3 | row cards)
-//                │                  · per release [Divider] · InfoBar per notice · SectionView(props) per section (1 or 3 columns) · as-of
+//                │               └ ScrollView "whatsnew:<ver>" → Hero · Strip(CardView ×≤3 | a grid of row cards)
+//                │                  · per release [Divider] · InfoBar per notice · a grid of SectionView(props) (1 or 3 columns) · as-of
+//
+// A crossing never rebuilds a part it keeps (plan 3.3): the picker, the row cards and the sections stay in ONE grid each whose track count is the tier's, so
+// they FLIP into their new cells; only the rail and the picker (1008) and the poster strip and the row cards (1008) swap, under the shared cross-fade.
 //                └ ReleaseRail (208 / 280, Flow.For keyed by version)          — absent while loading / empty / offline, and at Compact / Small
 //
 // The page is a DOCUMENT, not a virtualized list (ch 28 §9.2): ≤ 3 cards, ≤ 8 + expansion rows per section, ≤ ~20 rail rows; posters are resolved in the loader,
@@ -118,35 +121,40 @@ internal static partial class ClassicReleaseNotes
     }
 
     /// <summary>One release's sections: stacked (every tier but Huge) or set side by side in rows of <see cref="ClassicReleaseNotesLayout.SectionColumns"/>, each
-    /// column an equal share, a short last row padded so its columns keep the same width.</summary>
+    /// column an equal share. ONE grid per release at every tier (its track count is the record's), each section in a cell keyed by the section itself, so a
+    /// crossing into or out of Huge moves the same sections (their expanded state survives) into their new cells instead of reparenting them. A cell is as
+    /// tall as its row; the section inside it keeps its own height.</summary>
     static void AddSections(List<Element> main, List<Element> sections, string version, ClassicReleaseNotesLayout layout)
     {
-        if (layout.SectionColumns <= 1)
-        {
-            main.AddRange(sections);
-            return;
-        }
-        int columns = layout.SectionColumns;
-        for (int start = 0; start < sections.Count; start += columns)
-        {
-            var cells = new Element[columns];
-            for (int c = 0; c < columns; c++)
+        if (sections.Count == 0) return;
+        var cells = new Element[sections.Count];
+        for (int i = 0; i < cells.Length; i++)
+            cells[i] = new BoxEl
             {
-                int at = start + c;
-                cells[c] = new BoxEl
-                {
-                    Key = "secw:" + version + ":" + at.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
-                    Children = at < sections.Count ? [sections[at]] : [],
-                };
-            }
-            main.Add(new BoxEl
-            {
-                Key = "secrow:" + version + ":" + (start / columns).ToString(System.Globalization.CultureInfo.InvariantCulture),
-                Direction = 0, Gap = layout.SectionColumnGap, AlignItems = FlexAlign.Start, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
-                Children = cells,
-            });
+                Key = "secw:" + (sections[i].Key ?? version + ":" + i.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                Direction = 1, MinWidth = 0f, Layout = ClassicTierMotion.Shove,   // a re-fit moves the same section into its new cell
+                Children = [sections[i]],
+            };
+        main.Add(new GridEl
+        {
+            Key = "secgrid:" + version, Columns = SectionTracks(Math.Max(1, layout.SectionColumns)),
+            ColGap = layout.SectionColumnGap, RowGap = layout.BodyGap, AlignSelf = FlexAlign.Stretch,
+            Children = cells,
+        });
+    }
+
+    static readonly Dictionary<int, TrackSize[]> s_sectionTracks = new();
+
+    /// <summary>The sections' track list at <paramref name="columns"/> equal columns (shared, never mutated: a grid keeps its track array by reference).</summary>
+    static TrackSize[] SectionTracks(int columns)
+    {
+        if (!s_sectionTracks.TryGetValue(columns, out var tracks))
+        {
+            tracks = new TrackSize[columns];
+            for (int i = 0; i < columns; i++) tracks[i] = TrackSize.Star();
+            s_sectionTracks[columns] = tracks;
         }
+        return tracks;
     }
 
     static Element SinceBanner(WhatsNewPageProps props, ReleaseEntry[] releases, ClassicReleaseNotesLayout layout) => new BoxEl
@@ -163,31 +171,44 @@ internal static partial class ClassicReleaseNotes
         ],
     };
 
-    /// <summary>The page's frame: the title row (the picker rides it at Small), the Compact picker row (its height reserved even while there is no picker yet), and the
-    /// body beside the rail. The rail and the picker are keyed, fading wrappers, so a tier crossing cross-fades them instead of snapping one for the other.</summary>
+    /// <summary>The page's frame: the head (the title, and the picker beside it at Small or under it at Compact, its height reserved even while there is no picker
+    /// yet), and the body beside the rail. The rail and the picker are keyed, fading wrappers, so a crossing at 1008 cross-fades them instead of snapping one for
+    /// the other. The head is ONE grid at every tier (one track, or the title's and the picker's), so a crossing at 528 moves the SAME picker (its open list,
+    /// its focus) from beside the title to under it instead of remounting it in another row.</summary>
     static Element Frame(Element body, Element? rail, Element? picker, float gutter, ClassicReleaseNotesLayout layout)
     {
-        var title = new List<Element>(3);
+        var title = new List<Element>(2);
         if (layout.TitleGlyph) title.Add(Icon(Icons.Tag, 22f, Tok.TextPrimary));
         title.Add(R.Type.SurfaceDisplay(Loc.Get(Strings.WhatsNew.Title)) with { Grow = 1f });
-        if (layout.PickerInTitleRow && picker is not null) title.Add(picker);
 
-        var rows = new List<Element>(3)
+        bool switcher = !layout.HasRail;                         // Compact and Small switch releases with a picker
+        bool under = switcher && !layout.PickerInTitleRow;       // Compact: the picker sits under the title
+        var head = new List<Element>(2)
         {
             new BoxEl
             {
-                Key = "rn:title", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-                Padding = new Edges4(gutter, layout.PageTop, gutter, layout.TitleBottom),
+                Key = "rn:title", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinWidth = 0f,
+                Margin = new Edges4(0f, 0f, 0f, under ? layout.TitleBottom : 0f),
                 Children = title.ToArray(),
             },
         };
-        if (!layout.HasRail && !layout.PickerInTitleRow)   // Compact: under the title, its height held while the release list loads
-            rows.Add(new BoxEl
+        if (switcher)
+            head.Add(new BoxEl
             {
-                Key = "rn:picker-row", Direction = 0, MinHeight = layout.PickerHeight, AlignItems = FlexAlign.Start,
-                Padding = new Edges4(gutter, 0f, gutter, Spacing.XS),
+                Key = "rn:picker-slot", Direction = 0, MinHeight = layout.PickerHeight, MinWidth = 0f,
+                AlignItems = FlexAlign.Center, Layout = ClassicTierMotion.Shove,   // a crossing moves the same slot beside or under the title
                 Children = picker is null ? [] : [picker],
             });
+
+        var rows = new List<Element>(2)
+        {
+            new GridEl
+            {
+                Key = "rn:head", Columns = switcher && !under ? s_titleAndPicker : s_titleOnly, ColGap = Spacing.M,
+                Padding = new Edges4(gutter, layout.PageTop, gutter, under ? Spacing.XS : layout.TitleBottom),
+                Children = head.ToArray(),
+            },
+        };
         rows.Add(new BoxEl
         {
             Key = "rn:frame", Direction = 0, Gap = layout.FrameGap, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
@@ -196,6 +217,10 @@ internal static partial class ClassicReleaseNotes
         });
         return new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1, Children = rows.ToArray() };
     }
+
+    // The head's track lists (shared, never mutated: a grid keeps its track array by reference).
+    static readonly TrackSize[] s_titleOnly = [TrackSize.Star()];
+    static readonly TrackSize[] s_titleAndPicker = [TrackSize.Star(), TrackSize.Auto];
 
     static Element LoadingState() => new BoxEl
     {

@@ -104,22 +104,24 @@ internal static partial class ClassicSettings
     // ── the combo and the number box ────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>A choice over <paramref name="selectedIndex"/>: the stock ComboBox, at a hit target its Large (40-DIP) field filling the stacked row with the touch
-    /// rows (the field's width is the row's: a column that grows in the card's content row). The arguments are the ComboBox's, so a call site changes by its name only.</summary>
+    /// rows (the field's width is the row's: a column that grows in the card's content row). The arguments are the ComboBox's, so a call site changes by its name only.
+    /// ONE tree at every tier: the combo's size, width and touch rows are live props of the mounted combo and its column is always there (it hugs the
+    /// field where the tier asks for no target), so a crossing re-sizes the SAME combo (an open list, its focus) instead of remounting it.</summary>
     static Element Combo(IReadOnlyList<string> items, Signal<int> selectedIndex, float width = 220f, bool isEnabled = true, Action<int>? onChange = null,
                          IReadOnlyList<string>? itemDescriptions = null, IReadOnlyList<bool>? itemEnabled = null)
-        => s_layout.Touch
-            ? new BoxEl
-            {
-                Direction = 1, Grow = 1f, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
-                Children = [ComboBox.Create(items, selectedIndex, width: float.NaN, isEnabled: isEnabled, onChange: onChange, touchInputMode: true,
-                    itemDescriptions: itemDescriptions, itemEnabled: itemEnabled, size: ControlSize.Large)],
-            }
-            : ComboBox.Create(items, selectedIndex, width: width, isEnabled: isEnabled, onChange: onChange, itemDescriptions: itemDescriptions, itemEnabled: itemEnabled);
+    {
+        bool touch = s_layout.Touch;
+        return new BoxEl
+        {
+            Direction = 1, MinWidth = 0f, Grow = touch ? 1f : 0f, AlignSelf = touch ? FlexAlign.Stretch : FlexAlign.Auto,
+            Children = [ComboBox.Create(items, selectedIndex, width: touch ? float.NaN : width, isEnabled: isEnabled, onChange: onChange, touchInputMode: touch,
+                itemDescriptions: itemDescriptions, itemEnabled: itemEnabled, size: touch ? ControlSize.Large : ControlSize.Medium)],
+        };
+    }
 
-    /// <summary>A NumberBox whose field is the tier's hit target tall (the engine's own 32 elsewhere). Its options freeze at mount, so the two forms are keyed apart
-    /// (<paramref name="key"/>, and a touch suffix): a crossing remounts the box at the other height.</summary>
+    /// <summary>A NumberBox whose field is the tier's hit target tall (the engine's own 32 elsewhere). ONE key at every tier: the style is a live prop of
+    /// the mounted box, so a crossing re-sizes the SAME field (its text, caret and focus survive).</summary>
     static Element NumberField(Signal<double> value, Action<double> onChange, NumberBox.NumberBoxOptions options, string key)
-        => s_layout.Touch
-            ? NumberBox.Create(value, onChange, options with { Style = NumberBox.DefaultStyle with { FieldHeight = s_layout.Target } }) with { Key = key + ":touch" }
-            : NumberBox.Create(value, onChange, options) with { Key = key };
+        => NumberBox.Create(value, onChange, s_layout.Touch ? options with { Style = NumberBox.DefaultStyle with { FieldHeight = s_layout.Target } } : options with { Style = null })
+            with { Key = key };
 }

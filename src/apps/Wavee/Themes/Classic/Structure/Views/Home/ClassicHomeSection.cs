@@ -82,6 +82,7 @@ internal static class ClassicHomeSection
             IsItemInvokedEnabled = true, OnInvokedTyped = props.OnInvoked, IsItemEnabledTyped = props.IsEnabled,
             Scroll = new ScrollOptions { ScrollKey = props.ScrollKey },
         })
-        // Keyed by the tier: the fit's cell floor is the layout's mount configuration, so a crossing remounts the grid (the page cross-fades it).
-        with { Key = "home-section-grid:" + ((int)layout.Tier).ToString(System.Globalization.CultureInfo.InvariantCulture) };
+        // ONE key at every tier: the cell floor is a live layout prop (the engine re-fits the mounted grid in place), so a crossing reflows the
+        // same grid, keeps its scroll offset (the anchor row stays where the user sees it) and its realized cards.
+        with { Key = "home-section-grid" };
 }

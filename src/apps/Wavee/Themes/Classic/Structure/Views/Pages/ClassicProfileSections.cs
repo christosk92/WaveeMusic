@@ -92,7 +92,7 @@ internal static class ClassicProfileSections
         Children = [PagedShelf.Create(items, cardAt, onInvoke: s_open, cardHeight: cardHeight, header: header,
             measured: false, keyOf: s_keyOf, lift: ShelfLift.None,   // the shared card hovers fill-only: no lift halo
             pager: band.Pager ? ShelfPager.Chevrons : ShelfPager.None, minCardW: band.MinCardW, maxCardW: band.MaxCardW, gap: band.Gap,
-            fixedCardW: band.FixedCardW, maxColumns: band.MaxColumns) with { Key = ClassicArtistSections.ShelfKey(band) }],
+            fixedCardW: band.FixedCardW, maxColumns: band.MaxColumns) with { Key = ClassicArtistSections.ShelfKey }],
     };
 
     /// <summary>The seed row's fit: the strip's fixed card (as many as start inside the width, the next one peeking), else the shelf's own fit capped at the

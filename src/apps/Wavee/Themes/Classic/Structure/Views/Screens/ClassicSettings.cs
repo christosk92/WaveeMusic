@@ -156,14 +156,14 @@ internal static partial class ClassicSettings
     /// <summary>The page's tier record as the tab bodies see it (see <see cref="Template"/>).</summary>
     static ClassicSettingsLayout s_layout = ClassicSettingsTiers.For(WidthTier.Standard);
 
-    /// <summary>The tab strip (board: the tabs under the title). Where the lane runs off the edge (Compact, Small) it is ONE strip that scrolls, bleeding to the
-    /// card's edges, its end fading where more wait; otherwise it ends at the column. The first label sits on the gutter either way.</summary>
+    /// <summary>The tab strip (board: the tabs under the title). Where the lane runs off the edge (Compact, Small) it scrolls, bleeding to the card's edges, its
+    /// end fading where more wait; otherwise it ends at the column (its rule inside the gutters). The first label sits on the gutter either way. ONE tree at every
+    /// tier (the strip always rides its scroller; the tier sets the scroller's height, its fade and the rule's inset), so a crossing keeps the SAME selector bar —
+    /// the selected tab's pill and the focused tab survive — instead of swapping one form for the other.</summary>
     static Element TabStrip(ClassicSettingsLayout layout, float gutter, SettingsPageProps props)
     {
         var style = layout.TabHeight > 0f ? new SelectorBarStyle { ItemHeight = layout.TabHeight, LeadingInset = ClassicSettingsRules.TabLeadingInset } : null;
         Element bar = SelectorBar.Create(TabLabels(), props.TabCell(), style: style);
-        if (!layout.TabsScroll)
-            return new BoxEl { Direction = 1, Padding = new Edges4(gutter, 0f, gutter, 0f), Children = [bar, Divider()] };
         return new BoxEl
         {
             Key = "settings:tabs", Direction = 1, Shrink = 0f,
@@ -171,9 +171,10 @@ internal static partial class ClassicSettings
             [
                 ScrollView(new BoxEl { Direction = 0, Padding = new Edges4(gutter, 0f, gutter, 0f), Children = [bar] }, horizontal: true) with
                 {
-                    Grow = 0f, Shrink = 0f, MinWidth = 0f, Height = layout.TabHeight, SuppressScrollBar = true, AutoEdgeFade = true, ScrollKey = "settings:tabs",
+                    Grow = 0f, Shrink = 0f, MinWidth = 0f, Height = layout.TabHeight > 0f ? layout.TabHeight : float.NaN, SuppressScrollBar = true,
+                    AutoEdgeFade = layout.TabsScroll, ScrollKey = "settings:tabs",
                 },
-                Divider(),
+                Divider() with { Margin = layout.TabsScroll ? default : new Edges4(gutter, 0f, gutter, 0f) },
             ],
         };
     }

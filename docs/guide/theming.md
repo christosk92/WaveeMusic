@@ -1647,8 +1647,9 @@ nothing gets `ArtistTierPolicy.Default` (one Wide hero, two chart columns).
 | Short (330-679 tall) | a hero caps at 288 (60 % of the 480 page) with its copy at the bottom; under 480 tall the 126 strip (the name, Play · Follow) | | a 96-avatar row; under 480 tall the 64-avatar strip | |
 
 A hero crossing commits on the first frame that is not resized: the hero's arm is keyed (`artist-hero:<arm>`) and cross-fades, the pinned root's height tweens
-(`ClassicArtistTiers.HeroMotion`, the detail hero's reflow recipe) and the magazine under it glides (`FollowMotion`). A shelf, the discography grid and the chart key on
-their fit, so a crossing that changes it remounts them. The lightbox (no board) takes 40 targets at Compact and its filmstrip scrolls sideways where it outruns the window.
+(`ClassicArtistTiers.HeroMotion`, the detail hero's reflow recipe) and the magazine under it glides (`FollowMotion`). A shelf, the discography grid and the chart keep
+ONE key at every tier: their fit is a live prop (PagedShelf's band, `LazyGridFit`), so a crossing re-fits the same nodes (their page, the chart's selection, the open
+album drawer and the page's scroll survive). The lightbox (no board) takes 40 targets at Compact and its filmstrip scrolls sideways where it outruns the window.
 
 **Tests.** `Wavee.Tests\ClassicPeopleTiersTests.cs` (the records per tier against the boards, the Short caps, the ladders), `ArtistHeroLayoutTests` /
 `ProfileHeroLayoutTests` (the tuned Standard numbers and the collapse), `ArtistReaderHeadLayoutTests` (the reader ladder), `ProfileListRulesTests`, the concert ladder
@@ -1663,7 +1664,10 @@ is also what the page gutter follows) and the height tier. Each page reads one r
 (a floor-fit INSIDE the tier at the region's own measured width, or a fixed count when `MinCol` is 0) and a paged shelf is a `ClassicShelfBand` (card band, column cap, fixed strip width, pager);
 no view compares a width with a number and the old 720 / 380 genre bands, the Mood and More floor-fits and the fixed 900 and 1100 first-frame guesses are gone. A width-driven box (`Responsive.Of`)
 is seeded from `ClassicRegion.EstimateWidth(facts, viewport width)`: the same-frame viewport less the chrome in front of the page (the facts' content width when they are current), so the first
-frame is in its final tier. A paged shelf, a drill grid and the Fold deck freeze their card band at mount, so their key carries the tier and a crossing remounts them through the page's cross-fade.
+frame is in its final tier. A paged shelf, the drill grid and the Fold deck keep ONE key at every tier: the card band, the column cap, the pager and the card height are live props
+of the mounted shelf (the engine re-fits `FillRowVirtualLayout` in place), and the drill grid's cell floor is a live layout prop (`GridVirtualLayout.SetMinCellWidth`, applied
+in the layout pass's anchored-reseed seam so the row at the top stays where the user sees it). The daylist and the Recently played tiles are one band at every tier (a row at
+Huge, a column elsewhere), so the Huge crossing moves the two chapters instead of reparenting them, and every zone FLIPs into its new box (`ClassicTierMotion.Reflow`).
 
 | Page | Compact (400) | Small (800) | Standard | Huge (2560, and 3840) |
 |---|---|---|---|---|
@@ -2022,6 +2026,16 @@ is committed on the first frame that is **not resized**, right before FLIP captu
 size and snaps, and the new tier crosses on the next frame as an ordinary animated update (moved nodes FLIP, swapped subtrees
 cross-fade). A composited edge drag therefore produces one crossing, at mouse-up. A size that is not positive and finite (a minimised
 window reports 0) resolves to "keep the previous tier", so a restore returns to the tier the window left.
+
+**A crossing keeps the parts it keeps.** A part that survives a crossing keeps its node, so its scroll offset, selection and focus
+survive with it: never key a node on a tier, a form or a layout record. Where a control froze a prop at mount the prop is live
+(PagedShelf's band, pager and card height; a bound ItemsView's responsive cell floor; `LazyGridFit`; NumberBox's style; ComboBox's size),
+and where two forms differ only in arrangement they share one container whose shape is the tier's (a grid's track count, a box's
+direction) so the children move instead of being reparented. Only a genuinely different tree swaps, keyed per family, under the shared
+cross-fade. Classic's crossing recipes are `Rules\Tiers.Motion.cs` (`ClassicTierMotion.Reflow`, `.Shove`, `.SwapFade`). Where the nav
+pane changes (528, 1008) the content card is the one projection root of the commit and the page reflows inside its glide.
+`Wavee.ShellTests\TierLayoutTests.Crossing.cs` mounts each page, scrolls and focuses it, crosses 528 and 1008 (and 1920 for Home) both
+ways and asserts the same nodes, the kept offset and focus, and tracks on the crossing frame.
 
 **Reading tiers.** Core models read `ThemeHost.Facts.Value.Tiers`; a template reads `ctx.Tier()` and its structure's layout record
 for that tier. The fact is republished when a tier, a rung or `Resizing` changes, not once per resized frame, so the three size members
