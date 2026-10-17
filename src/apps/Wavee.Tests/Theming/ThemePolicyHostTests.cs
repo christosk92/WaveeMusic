@@ -84,6 +84,7 @@ public sealed class ThemePolicyHostTests : IDisposable
         Assert.Equal(ThemePolicies.Default, ShellPolicy.Now with
         {
             Tiers = TierPolicy.Standard, Overlays = OverlayPolicy.Default, DetailTiers = DetailTierPolicy.Default, ArtistTiers = ArtistTierPolicy.Default,
+            LibraryTiers = LibraryTierPolicy.Default, NavPane = ShellPolicy.Now.NavPane with { HugeWidth = float.NaN },   // the Huge and Small resting widths (1.21, 1.24)
             Panel = ShellPolicy.Now.Panel with { Tiers = default }, PlayerBar = ShellPolicy.Now.PlayerBar with { Windows = default },   // TC2's tier rules
         });
         Assert.Equal(ShellCapabilities.Unrestricted, ThemeHost.Facts.Peek().Capabilities);

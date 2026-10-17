@@ -93,6 +93,7 @@ public sealed class ClassicDensityAndArtTests : IDisposable
         Assert.Equal(ThemePolicies.Default with
         {
             Tiers = shown.Tiers, Overlays = shown.Overlays, DetailTiers = shown.DetailTiers, ArtistTiers = shown.ArtistTiers,
+            LibraryTiers = shown.LibraryTiers, NavPane = ThemePolicies.Default.NavPane with { HugeWidth = shown.NavPane.HugeWidth },
             Panel = ThemePolicies.Default.Panel with { Tiers = shown.Panel.Tiers }, PlayerBar = ThemePolicies.Default.PlayerBar with { Windows = shown.PlayerBar.Windows },
         }, shown);
         Assert.Equal(shown with { Lists = new ListPolicy(false) }, hidden);
