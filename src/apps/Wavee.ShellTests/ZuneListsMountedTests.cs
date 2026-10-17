@@ -34,7 +34,10 @@ public sealed class ZuneListsMountedTests(ShellHost host)
     static void Open(Shell.HeadlessShell shell, Shell.Route route, string what)
     {
         Shell.GoTo(route);
-        Until(shell, () => shell.FindPrefix("row").Count(k => k.Key == "row") > 2 && shell.FindPrefix(DropKey).Count > 0, what);
+        // A wall-clock wait, not a frame budget (as ArmSwapPlaceTests): a playlist this process never revalidated opens RevalidateThenPaint and
+        // HOLDS its rows (the shimmer) for up to ListFreshness.BlockingBudgetMs (1500 ms of the Stopwatch clock); 240 headless frames run in a
+        // fraction of that, so a fact run alone (no earlier fact warmed pl1) timed out.
+        UntilBackground(shell, () => shell.FindPrefix("row").Count(k => k.Key == "row") > 2 && shell.FindPrefix(DropKey).Count > 0, what);
         shell.RunFrames(40);
     }
 
@@ -114,7 +117,7 @@ public sealed class ZuneListsMountedTests(ShellHost host)
                 foreach (var density in new[] { ZuneDensity.Compact, ZuneDensity.Comfortable, ZuneDensity.Standard })
                 {
                     ApplyDensity(shell, density);
-                    Until(shell, () => shell.FindPrefix(DropKey).Count > 0, "the rows after the density change");
+                    UntilBackground(shell, () => shell.FindPrefix(DropKey).Count > 0, "the rows after the density change");
                     shell.RunFrames(20);
                     Assert.Equal((int)density, ThemeHost.Metrics.Peek().TrackRows.Rung);
                     float expected = ZuneListRules.RowFor(density);
@@ -131,7 +134,7 @@ public sealed class ZuneListsMountedTests(ShellHost host)
             Play(AlbumFirstTrack);
             shell.RunFrames(10);
             Open(shell, s_album, "the album's rows under Zune");
-            Until(shell, () => shell.FindPrefix(NowKey).Count > 0, "the playing row's bars");
+            UntilBackground(shell, () => shell.FindPrefix(NowKey).Count > 0, "the playing row's bars");
             Assert.Single(shell.FindPrefix(NowKey));
         }, 1440f, 960f);
 }
