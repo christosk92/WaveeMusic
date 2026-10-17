@@ -467,7 +467,7 @@ public class InspectLintTests
         Assert.Equal("gutter", f.GetProperty("rule").GetString());
         Assert.Equal("error", f.GetProperty("severity").GetString());
         Assert.Equal("the band is off", f.GetProperty("message").GetString());
-        Assert.Equal(["a", "b"], f.GetProperty("keys").EnumerateArray().Select(e => e.GetString()).ToArray());
+        Assert.Equal(new[] { "a", "b" }, f.GetProperty("keys").EnumerateArray().Select(e => e.GetString() ?? "").ToArray());
         Assert.Equal(80.12, f.GetProperty("measured").GetProperty("x").GetDouble());
         Assert.Equal(-32.12, f.GetProperty("measured").GetProperty("delta").GetDouble());
         Assert.Equal(48d, f.GetProperty("expected").GetProperty("x").GetDouble());

@@ -139,6 +139,8 @@ def show(reply, pretty, findings=False):
 
 
 def main():
+    # replies carry glyphs (icon code points, curly quotes) a legacy console code page cannot encode
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(description="Drive Wavee.exe --inspect.")
     ap.add_argument("--exe", help="path to Wavee.exe (default: the newest build under src/apps/Wavee/bin)")
     ap.add_argument("--pipe", help="talk over \\\\.\\pipe\\<name> instead of stdin/stdout")
