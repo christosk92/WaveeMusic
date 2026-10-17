@@ -25,7 +25,8 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Theming;
 using Wavee.Theming.Contracts;
-using static FluentGpu.Dsl.Ui;
+using static FluentGpu.Dsl.Ui;
+using FluentGpu.Signals;
 
 namespace Wavee.Themes.Zune;
 
