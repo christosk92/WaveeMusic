@@ -4,6 +4,8 @@
 > store them, the migration of retired switches, the analyzers that fence it all, and how a test mounts one view. The plan
 > (`docs/themes/plan/technical-plan.md`) is the design; this is the working guide for the code that exists. T1
 > (`feat/theming-core`) ships the machinery with Wavee Classic as the only theme and **no user-visible change**.
+>
+> **Zune** (P5, Developer-only) has its own guide, one section per lane: [theming-zune.md](theming-zune.md).
 
 ---
 

@@ -96,7 +96,8 @@ public static class App
         RegisterShapes();                // the catalog's disk schema (G-007): before Store.Boot / Entities.Boot either way, so --fake and a real profile share one registration path
         // The compositions, once and before any surface mounts: it resolves the stored theme id and publishes the active theme's registry, options and facts. FULLY QUALIFIED because
         // inside `namespace Wavee` the simple name `Themes` is the namespace `Wavee.Themes` (the theme packages), not the class.
-        Wavee.Theming.ThemeHost.Install(Wavee.Themes.Classic.ClassicTheme.Create());
+        // Zune is Developer-only: with Developer mode off a stored "zune" resolves to Classic (and is kept for when it is on again).
+        Wavee.Theming.ThemeHost.Install(Wavee.Themes.Classic.ClassicTheme.Create(), Wavee.Themes.Zune.ZuneTheme.Create());
         if (!Platform.Args.Fake)
         {
             Setup.BootstrapInstall();    // fresh-install detection over the profile's disk witnesses (read-only probe), before any store opens (B5)

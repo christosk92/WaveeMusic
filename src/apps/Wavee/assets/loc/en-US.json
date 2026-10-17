@@ -2712,6 +2712,54 @@
     "classic": {
       "name": "Wavee Classic",
       "description": "Today’s Wavee: sidebar, tabs, washes"
+    },
+    "zune": {
+      "$comment": "Zune (P5, Developer-only). Z0 owns name, description and options; each family lane writes only inside its own object below.",
+      "name": "Zune",
+      "description": "Big type, pivots and a band in place of the sidebar",
+      "options": {
+        "background": "Background",
+        "backgroundSub": "What sits behind page titles",
+        "backgroundArtworkWash": "Artwork wash",
+        "backgroundMix": "Mix",
+        "backgroundNone": "None",
+        "panoramaFit": "Panorama titles",
+        "panoramaFitSub": "Page titles bleed off the edge, or fit the window",
+        "panoramaFitBleed": "Bleed off the edge",
+        "panoramaFitFit": "Fit the window",
+        "bandPins": "Pins in the band",
+        "bandPinsSub": "Show up to six pinned items beside the pivots when the window is wide enough",
+        "group": {
+          "pages": "Pages",
+          "band": "Band"
+        },
+        "parameter": {
+          "$comment": "Structure parameters: never shown in Settings; a composition sets them.",
+          "collapseBand": "Collapse the band on scroll",
+          "pivotOverflow": "Pivots that do not fit",
+          "edgeFadeScroll": "Scroll under an edge fade",
+          "moreMenu": "More menu",
+          "seekTimes": "Play bar times",
+          "inFace": "Beside the title",
+          "atSliderEnds": "At the ends of the seek bar",
+          "panelMode": "Right panel",
+          "inlineWhenRoom": "Inline when there is room",
+          "alwaysOverlay": "Always overlay",
+          "maxDockedPanes": "Docked panes"
+        }
+      },
+      "frame": {},
+      "band": {},
+      "lists": {},
+      "player": {},
+      "stage": {},
+      "discovery": {},
+      "detail": {},
+      "artist": {},
+      "collection": {},
+      "overlays": {},
+      "screens": {},
+      "states": {}
     }
   },
   "setup": {
